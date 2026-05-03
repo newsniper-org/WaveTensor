@@ -143,6 +143,35 @@ Y4 가 기반으로 삼을 컴포넌트 조합 (사용자 결정):
 - **융합**: SLUB 의 cache 구조 + DragonFlyBSD 의 lock-free 알고리즘 + OpenBSD 의 mmap-randomized 백엔드
 - 가속기 메모리 할당 (zero-copy ring buffer 등) 에 결정론적 latency + 보안 동시 확보
 
+### Bootloader — **기존 OSS bootloader 최소 수정 채택** (자체 개발 X)
+
+Y4 자체 부팅 단계는 **자체 작성하지 않고 기존 검증된 OSS bootloader 를 그대로 가져다 사용**한다. 이유:
+- bootloader 는 platform 다양성 (UEFI 변종, ARM ATF/EDK2, RISC-V SBI, coreboot payload, Secure Boot 인증 chain) 을 모두 흡수해야 하므로 자체 작성 시 지속적 maintenance 부담이 큼.
+- 우리 차별화의 핵심은 가속기 lease capability / HIU 통합 / wave-aligned scheduler 이며 부팅 단계는 그 가치 영역 밖.
+- 기존 OSS bootloader 들은 이미 광범위한 hardware coverage + Secure Boot signing infra + serial/network recovery 기능을 갖춤. 이를 **bypass 또는 fork** 해 재구현하는 것은 ROI 가 명백히 음수.
+
+**채택 우선순위** (Y4 가 그 위에 올라가는 chain-load 형태):
+
+| 순위 | bootloader | 라이선스 | 채택 이유 |
+|---|---|---|---|
+| 1차 | **Limine** | BSD-2-Clause | 모던, minimal, kernel-dev 친화적 인터페이스 (Limine boot protocol). systemd 등 외부 ecosystem 의존성 0 — Y4 의 BSD/Redox/Tock + Rust 정체성과 라이선스·생태계 양쪽에서 1:1 정합. UEFI x86_64 / ARM64 / RISC-V 모두 지원. boot entry 는 평문 `limine.conf` 단일 파일 → Y4 image build 파이프라인이 직접 fwrite. |
+| 2차 | **GRUB2** (BLS 패치판) | GPLv3 | 산업 표준. multi-arch 커버리지 압도적. **GPL 전염 회피**: Y4 메인 트리는 GRUB2 binary 를 chain-load 만 하고 직접 link 하지 않음 (Linux kernel 모델과 동일 패턴). BLS entry 직접 write 가능 → grub-mkconfig 없이도 등록. |
+| 3차 | **U-Boot** | GPLv2 | ARM SoC / 임베디드 폼팩터에서 사실상 표준. 위 2차 와 동일한 chain-load 격리. SPL → U-Boot proper → Y4 의 일반적 ARM 부팅 chain 그대로 활용. |
+| 4차 | **coreboot + LinuxBoot/Heads payload** | GPLv2+ | 펌웨어 수준 신뢰 chain 이 필요한 인증 트랙 (Phase 4) 의 옵션. 본체 펌웨어 수준 영향이라 도입 시점은 한참 후. |
+| **제외** | systemd-boot | LGPL-2.1+ | EFI 바이너리 자체는 UEFI 런타임 의존성만 갖지만 **boot entry 관리 체인 (`bootctl`, `kernel-install`, `sdbootutil`) 이 systemd 프로젝트 일부** → Y4 처럼 systemd 를 ship 하지 않는 OS 가 자기 entry 를 유지하려면 외부 systemd 환경에 의존해야 함. BSD-only 개발 머신에서 build 파이프라인이 막히고 Y4 의 ecosystem 정체성과 misalignment. **MicroOS / 일반 systemd-Linux 측의 native bootloader 로는 적합하지만 Y4 측 후보에서는 제외.** |
+| **제외** | rEFInd | BSD-3 | 대용량 multi-boot menu 의 정성적 사용성 우수. 그러나 transactional-update 모델과의 통합 hook 부재 → 우리 폼팩터에 적용 시 maintenance 부담 (별도 메모 §`.private` 참조). |
+
+**최소 수정 원칙**:
+- 우리는 bootloader 의 **소스 트리를 fork 하지 않는다**. upstream 패키지 (또는 distro 빌드) 를 그대로 사용.
+- Y4 에 필요한 추가 항목 (예: HIU 부팅 단계의 IOMMU 사전 셋업, partitioned TLB 초기화) 은 **bootloader 가 아니라 Y4 의 첫 stage** 에서 처리. bootloader 는 단순히 Y4 를 load + execute 만.
+- Secure Boot key enroll, BLS entry 형식 등 spec 표준에 정렬된 인터페이스만 사용.
+- **그래도 패치가 필요한 경우** (예: 가속기 PCIe IDE 가 부팅 시 어떻게 해야 하는 등): upstream 에 patch 제출이 1순위, 우리 트리의 fork 는 최후수단. fork 시에도 git submodule 로 격리 + 상시 upstream rebase.
+
+**결과**:
+- Y4 image 는 standard EFI executable (UEFI) 또는 ARM Image (U-Boot) 형태로 빌드. distro 의 sdbootutil / grub2-mkconfig 가 자동으로 entry 등록.
+- bootloader maintenance 가 우리 책임 외 — distro / upstream 이 보안 패치 / 신규 hardware 지원 자동 제공.
+- Phase 4 인증 시 bootloader 부분은 "사용된 공식 OSS + 인증 받은 Secure Boot signing" 으로 패스.
+
 ### Verification 방식 — **선 정식증명 → 후 구현** (formal-first)
 
 **핵심 원칙**: 컴포넌트 작성 전에 **명세 + 증명을 먼저 작성**, 증명이 통과한 후에야 구현.
@@ -321,7 +350,7 @@ Phase 4  formal-verified 인증 트랙 + 외부 출시
   - GPU (display only, 가속기와 별개): 사용자가 게스트 OS 안에서 기존 driver 사용 — hypervisor 가 GPU 를 게스트에 passthrough
 - **scheduler**: 가속기 lease 전환은 wave 단위와 정렬되어야 함 — DragonFlyBSD LWKT 의 per-CPU 모델을 가속기 wave 단위로 확장
 - **guest OS 호환**: Linux 와 DragonFlyBSD 가 paravirt interface 를 어떻게 쓰는가? Xen-PV 호환? virtio? 또는 자체 인터페이스?
-- **부팅 / 펌웨어**: UEFI 기반? coreboot + custom payload? 폼팩터별 다를 수도
+- ~~**부팅 / 펌웨어**~~ → **Bootloader 자체 개발 X, 기존 OSS bootloader 최소 수정 채택** 으로 확정 (위 §Bootloader). 1차 systemd-boot, 2차 GRUB2-BLS, 3차 U-Boot, 4차 coreboot. 폼팩터별로 위 우선순위 안에서 선택.
 - **업데이트 / OTA**: hypervisor + guest OS 의 양면 업데이트 정책 (signed image, A/B partition 등)
 - **인증 트랙**: 의료 (FDA 510k), 항공 (DO-178C), 금융 (FIPS 140-3) 중 어느 것을 먼저? formal-first 라 모두 가능하지만 우선순위 결정 필요
 
