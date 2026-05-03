@@ -2,3 +2,4 @@
 **/*.pyc
 sim_build/
 .claude-assets/
+.private/
