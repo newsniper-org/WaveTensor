@@ -1,0 +1,10 @@
+-------------------------------------
+| Tool Version : Vivado v.2025.2.1
+| Date         : Sun May  3 13:59:54 2026
+| Host         : cachyos-ybi-tuf
+| Design       : checkpoint_pod_2x2_2x2_synth
+| Device       : xcau25p-ffvb676-2-E-
+-------------------------------------
+
+For more information on clockInfo.txt clock routing debug file see https://support.xilinx.com/s/article/000035660?language=en_US
+

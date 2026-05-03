@@ -1,0 +1,54 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2025.2.1 (lin64) Build 6403652 Thu Mar 19 13:47:00 MDT 2026
+| Date         : Sun May  3 13:58:27 2026
+| Host         : cachyos-ybi-tuf running 64-bit CachyOS
+| Command      : report_design_analysis -file /home/ybi/WaveTensor/synth/reports/pod_2x2_2x2_synth_analysis.rpt -timing -setup
+| Design       : Pod
+| Device       : xcau25p
+| Design State : Synthesized
+---------------------------------------------------------------------------------------------------------------------------------------------
+
+Report Design Analysis
+
+Table of Contents
+-----------------
+1. Setup Path Characteristics 1-1
+
+1. Setup Path Characteristics 1-1
+---------------------------------
+
++---------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+|      Characteristics      |                                                                                                 Path #1                                                                                                 |
++---------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Requirement               | 10.000                                                                                                                                                                                                  |
+| Path Delay                | 5.203                                                                                                                                                                                                   |
+| Logic Delay               | 3.934(76%)                                                                                                                                                                                              |
+| Net Delay                 | 1.269(24%)                                                                                                                                                                                              |
+| Clock Skew                | -0.009                                                                                                                                                                                                  |
+| Slack                     | 4.778                                                                                                                                                                                                   |
+| Clock Uncertainty         | 0.035                                                                                                                                                                                                   |
+| Clock Pair Classification | Timed                                                                                                                                                                                                   |
+| Clock Delay Group         | Same Clock                                                                                                                                                                                              |
+| Logic Levels              | 17                                                                                                                                                                                                      |
+| Routes                    | NA                                                                                                                                                                                                      |
+| Logical Path              | FDCE/C-(303)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT-LUT5-(1)-LUT6-(1)-LUT3-(1)-LUT6-(1)-LUT6-(1)-FDCE/D |
+| Start Point Clock         | clk                                                                                                                                                                                                     |
+| End Point Clock           | clk                                                                                                                                                                                                     |
+| DSP Block                 | Comb                                                                                                                                                                                                    |
+| RAM Registers             | None-None                                                                                                                                                                                               |
+| IO Crossings              | 0                                                                                                                                                                                                       |
+| SLR Crossings             | 0                                                                                                                                                                                                       |
+| PBlocks                   | 0                                                                                                                                                                                                       |
+| High Fanout               | 303                                                                                                                                                                                                     |
+| ASYNC REG                 | 0                                                                                                                                                                                                       |
+| Dont Touch                | 0                                                                                                                                                                                                       |
+| Mark Debug                | 0                                                                                                                                                                                                       |
+| Start Point Pin Primitive | FDCE/C                                                                                                                                                                                                  |
+| End Point Pin Primitive   | FDCE/D                                                                                                                                                                                                  |
+| Start Point Pin           | dec_input_payload_reg[55]/C                                                                                                                                                                             |
+| End Point Pin             | output_payload_reg[2]/D                                                                                                                                                                                 |
++---------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+* Bounding box calculated as % of dimensions for the target device (2658, 496)
+
+

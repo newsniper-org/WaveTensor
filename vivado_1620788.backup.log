@@ -1,0 +1,902 @@
+#-----------------------------------------------------------
+# Vivado v2025.2.1 (64-bit)
+# SW Build 6403652 on Thu Mar 19 13:47:00 MDT 2026
+# IP Build 6403511 on Thu Mar 19 12:41:45 MDT 2026
+# SharedData Build 6403650 on Thu Mar 19 14:02:13 MDT 2026
+# Start of session at: Sat May  2 19:13:39 2026
+# Process ID         : 1620788
+# Current directory  : /home/ybi/WaveTensor
+# Command line       : vivado -mode batch -source synth/scripts/synth_pod.tcl -tclargs PART=xcau25p-ffvb676-2-e
+# Log file           : /home/ybi/WaveTensor/vivado.log
+# Journal file       : /home/ybi/WaveTensor/vivado.jou
+# Running On         : cachyos-ybi-tuf
+# Platform           : cachyos
+# Operating System   : CachyOS
+# Processor Detail   : AMD Ryzen 7 260 w/ Radeon 780M Graphics
+# CPU Frequency      : 5088.898 MHz
+# CPU Physical cores : 8
+# CPU Logical cores  : 16
+# Host memory        : 49820 MB
+# Swap memory        : 49819 MB
+# Total Virtual      : 99640 MB
+# Available Virtual  : 51155 MB
+#-----------------------------------------------------------
+source synth/scripts/synth_pod.tcl
+# foreach arg $argv {
+#     if {[regexp {^([A-Z_][A-Z_0-9]*)=(.*)$} $arg -> key val]} {
+#         set ::$key $val
+#     }
+# }
+# source [file join [file dirname [info script]] common.tcl]
+## set REPO_ROOT [file normalize [file join [file dirname [info script]] ../..]]
+## set SYNTH_DIR [file join $REPO_ROOT synth]
+## set REPORT_DIR [file join $SYNTH_DIR reports]
+## set CKPT_DIR  [file join $SYNTH_DIR checkpoints]
+## set XDC_FILE  [file join $SYNTH_DIR constraints pod.xdc]
+## file mkdir $REPORT_DIR
+## file mkdir $CKPT_DIR
+## if {![info exists ::PART]} {
+##     set ::PART "xczu3eg-sfvc784-1-i"
+## }
+## foreach {var def} {PE_ROWS 2 PE_COLS 2 CLUSTER_ROWS 2 CLUSTER_COLS 2} {
+##     if {[info exists ::env($var)]} {
+##         set ::$var $::env($var)
+##     } else {
+##         set ::$var $def
+##     }
+## }
+## set ::POD_SOURCES [list \
+##     [file join $REPO_ROOT Pod.v] \
+##     [file join $REPO_ROOT Cluster.v] \
+##     [file join $REPO_ROOT PE.v] \
+##     [file join $REPO_ROOT ISA_Decoder.v] \
+##     [file join $REPO_ROOT EHDecode.v] \
+##     [file join $REPO_ROOT PE_Core.v] \
+## ]
+## proc print_banner {msg} {
+##     puts ""
+##     puts "================================================================"
+##     puts "  $msg"
+##     puts "================================================================"
+## }
+## proc dump_summary {tag} {
+##     print_banner "Geometry summary ($tag)"
+##     puts "  Target part         : $::PART"
+##     puts "  PE_ROWS x PE_COLS   : $::PE_ROWS x $::PE_COLS"
+##     puts "  CLUSTER_ROWS x COLS : $::CLUSTER_ROWS x $::CLUSTER_COLS"
+##     puts "  Total PE count      : [expr {$::PE_ROWS * $::PE_COLS \
+##                                        * $::CLUSTER_ROWS * $::CLUSTER_COLS}]"
+##     puts ""
+## }
+# dump_summary "synthesis"
+
+================================================================
+  Geometry summary (synthesis)
+================================================================
+  Target part         : xcau25p-ffvb676-2-e
+  PE_ROWS x PE_COLS   : 2 x 2
+  CLUSTER_ROWS x COLS : 2 x 2
+  Total PE count      : 16
+
+# create_project -in_memory -part $::PART
+# foreach src $::POD_SOURCES { read_verilog $src }
+# read_xdc $::XDC_FILE
+# print_banner "Running synth_design (out-of-context, top=Pod)"
+
+================================================================
+  Running synth_design (out-of-context, top=Pod)
+================================================================
+# synth_design -top Pod \
+#              -part $::PART \
+#              -mode out_of_context \
+#              -generic PE_ROWS=$::PE_ROWS \
+#              -generic PE_COLS=$::PE_COLS \
+#              -generic CLUSTER_ROWS=$::CLUSTER_ROWS \
+#              -generic CLUSTER_COLS=$::CLUSTER_COLS \
+#              -flatten_hierarchy none
+Command: synth_design -top Pod -part xcau25p-ffvb676-2-e -mode out_of_context -generic PE_ROWS=2 -generic PE_COLS=2 -generic CLUSTER_ROWS=2 -generic CLUSTER_COLS=2 -flatten_hierarchy none
+Starting synth_design
+Attempting to get a license for feature 'Synthesis' and/or device 'xcau25p'
+INFO: [Common 17-349] Got license for feature 'Synthesis' and/or device 'xcau25p'
+INFO: [Device 21-403] Loading part xcau25p-ffvb676-2-e
+INFO: [Synth 8-7079] Multithreading enabled for synth_design using a maximum of 7 processes.
+INFO: [Synth 8-7078] Launching helper process for spawning children vivado processes
+INFO: [Synth 8-7075] Helper process launched with PID 1620876
+---------------------------------------------------------------------------------
+Starting RTL Elaboration : Time (s): cpu = 00:00:02 ; elapsed = 00:00:02 . Memory (MB): peak = 2901.453 ; gain = 185.656 ; free physical = 10103 ; free virtual = 46860
+---------------------------------------------------------------------------------
+WARNING: [Synth 8-6901] identifier 'stg_active' is used before its declaration [/home/ybi/WaveTensor/EHDecode.v:115]
+INFO: [Synth 8-6157] synthesizing module 'Pod' [/home/ybi/WaveTensor/Pod.v:34]
+	Parameter PE_ROWS bound to: 2 - type: integer 
+	Parameter PE_COLS bound to: 2 - type: integer 
+	Parameter CLUSTER_ROWS bound to: 2 - type: integer 
+	Parameter CLUSTER_COLS bound to: 2 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'Cluster' [/home/ybi/WaveTensor/Cluster.v:46]
+	Parameter ADDR_WIDTH bound to: 64 - type: integer 
+	Parameter TAG_WIDTH bound to: 80 - type: integer 
+	Parameter MAX_EH bound to: 4 - type: integer 
+	Parameter INSTR_WIDTH bound to: 416 - type: integer 
+	Parameter PE_ROWS bound to: 2 - type: integer 
+	Parameter PE_COLS bound to: 2 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'PE_Core' [/home/ybi/WaveTensor/PE_Core.v:30]
+	Parameter ADDR_WIDTH bound to: 64 - type: integer 
+	Parameter TAG_WIDTH bound to: 80 - type: integer 
+	Parameter MUL_OPS_SUPPORTED bound to: 0 - type: integer 
+	Parameter DIV_OPS_SUPPORTED bound to: 0 - type: integer 
+	Parameter NON_MUL_OPS_SUPPORTED bound to: 1 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'PE_Core' (0#1) [/home/ybi/WaveTensor/PE_Core.v:30]
+INFO: [Synth 8-6157] synthesizing module 'EHDecode' [/home/ybi/WaveTensor/EHDecode.v:37]
+	Parameter ADDR_WIDTH bound to: 64 - type: integer 
+	Parameter TAG_WIDTH bound to: 80 - type: integer 
+	Parameter MAX_EH bound to: 4 - type: integer 
+	Parameter INSTR_WIDTH bound to: 416 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'EHDecode' (0#1) [/home/ybi/WaveTensor/EHDecode.v:37]
+INFO: [Synth 8-6157] synthesizing module 'PE_Core__parameterized0' [/home/ybi/WaveTensor/PE_Core.v:30]
+	Parameter ADDR_WIDTH bound to: 64 - type: integer 
+	Parameter TAG_WIDTH bound to: 80 - type: integer 
+	Parameter MUL_OPS_SUPPORTED bound to: 1 - type: integer 
+	Parameter DIV_OPS_SUPPORTED bound to: 0 - type: integer 
+	Parameter NON_MUL_OPS_SUPPORTED bound to: 0 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'PE_Core__parameterized0' (0#1) [/home/ybi/WaveTensor/PE_Core.v:30]
+INFO: [Synth 8-6157] synthesizing module 'PE_Core__parameterized1' [/home/ybi/WaveTensor/PE_Core.v:30]
+	Parameter ADDR_WIDTH bound to: 64 - type: integer 
+	Parameter TAG_WIDTH bound to: 80 - type: integer 
+	Parameter MUL_OPS_SUPPORTED bound to: 0 - type: integer 
+	Parameter DIV_OPS_SUPPORTED bound to: 1 - type: integer 
+	Parameter NON_MUL_OPS_SUPPORTED bound to: 0 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'PE_Core__parameterized1' (0#1) [/home/ybi/WaveTensor/PE_Core.v:30]
+INFO: [Synth 8-6155] done synthesizing module 'Cluster' (0#1) [/home/ybi/WaveTensor/Cluster.v:46]
+INFO: [Synth 8-6155] done synthesizing module 'Pod' (0#1) [/home/ybi/WaveTensor/Pod.v:34]
+WARNING: [Synth 8-6014] Unused sequential element mul_valid_p1_reg was removed.  [/home/ybi/WaveTensor/PE_Core.v:377]
+WARNING: [Synth 8-6014] Unused sequential element mul_valid_p2_reg was removed.  [/home/ybi/WaveTensor/PE_Core.v:378]
+WARNING: [Synth 8-6014] Unused sequential element div_valid_p1_reg was removed.  [/home/ybi/WaveTensor/PE_Core.v:379]
+WARNING: [Synth 8-6014] Unused sequential element div_valid_p2_reg was removed.  [/home/ybi/WaveTensor/PE_Core.v:380]
+WARNING: [Synth 8-6014] Unused sequential element tag_latched_reg was removed.  [/home/ybi/WaveTensor/EHDecode.v:111]
+WARNING: [Synth 8-6014] Unused sequential element acc_mem_addr_mode_reg was removed.  [/home/ybi/WaveTensor/EHDecode.v:222]
+WARNING: [Synth 8-6014] Unused sequential element acc_mem_stride_reg was removed.  [/home/ybi/WaveTensor/EHDecode.v:223]
+WARNING: [Synth 8-6014] Unused sequential element acc_opref_port_id_reg was removed.  [/home/ybi/WaveTensor/EHDecode.v:227]
+WARNING: [Synth 8-6014] Unused sequential element acc_opref_noc_route_reg was removed.  [/home/ybi/WaveTensor/EHDecode.v:228]
+WARNING: [Synth 8-6014] Unused sequential element div_valid_p1_reg was removed.  [/home/ybi/WaveTensor/PE_Core.v:379]
+WARNING: [Synth 8-6014] Unused sequential element div_valid_p2_reg was removed.  [/home/ybi/WaveTensor/PE_Core.v:380]
+WARNING: [Synth 8-7137] Register mul_a_p1_reg in module PE_Core__parameterized0 has both Set and reset with same priority. This may cause simulation mismatches. Consider rewriting code  [/home/ybi/WaveTensor/PE_Core.v:390]
+WARNING: [Synth 8-7137] Register mul_b_p1_reg in module PE_Core__parameterized0 has both Set and reset with same priority. This may cause simulation mismatches. Consider rewriting code  [/home/ybi/WaveTensor/PE_Core.v:391]
+WARNING: [Synth 8-7137] Register mul_tag_p1_reg in module PE_Core__parameterized0 has both Set and reset with same priority. This may cause simulation mismatches. Consider rewriting code  [/home/ybi/WaveTensor/PE_Core.v:392]
+WARNING: [Synth 8-7137] Register mul_result_p2_reg in module PE_Core__parameterized0 has both Set and reset with same priority. This may cause simulation mismatches. Consider rewriting code  [/home/ybi/WaveTensor/PE_Core.v:395]
+WARNING: [Synth 8-7137] Register mul_tag_p2_reg in module PE_Core__parameterized0 has both Set and reset with same priority. This may cause simulation mismatches. Consider rewriting code  [/home/ybi/WaveTensor/PE_Core.v:396]
+WARNING: [Synth 8-6014] Unused sequential element mul_valid_p1_reg was removed.  [/home/ybi/WaveTensor/PE_Core.v:377]
+WARNING: [Synth 8-6014] Unused sequential element mul_valid_p2_reg was removed.  [/home/ybi/WaveTensor/PE_Core.v:378]
+WARNING: [Synth 8-6014] Unused sequential element div_b_zero_p2_reg was removed.  [/home/ybi/WaveTensor/PE_Core.v:416]
+WARNING: [Synth 8-7137] Register div_a_p1_reg in module PE_Core__parameterized1 has both Set and reset with same priority. This may cause simulation mismatches. Consider rewriting code  [/home/ybi/WaveTensor/PE_Core.v:405]
+WARNING: [Synth 8-7137] Register div_b_p1_reg in module PE_Core__parameterized1 has both Set and reset with same priority. This may cause simulation mismatches. Consider rewriting code  [/home/ybi/WaveTensor/PE_Core.v:406]
+WARNING: [Synth 8-7137] Register div_tag_p1_reg in module PE_Core__parameterized1 has both Set and reset with same priority. This may cause simulation mismatches. Consider rewriting code  [/home/ybi/WaveTensor/PE_Core.v:407]
+WARNING: [Synth 8-7137] Register div_b_zero_p1_reg in module PE_Core__parameterized1 has both Set and reset with same priority. This may cause simulation mismatches. Consider rewriting code  [/home/ybi/WaveTensor/PE_Core.v:408]
+WARNING: [Synth 8-7137] Register div_is_mod_p1_reg in module PE_Core__parameterized1 has both Set and reset with same priority. This may cause simulation mismatches. Consider rewriting code  [/home/ybi/WaveTensor/PE_Core.v:409]
+WARNING: [Synth 8-7137] Register div_is_divmod_p1_reg in module PE_Core__parameterized1 has both Set and reset with same priority. This may cause simulation mismatches. Consider rewriting code  [/home/ybi/WaveTensor/PE_Core.v:410]
+WARNING: [Synth 8-7137] Register div_tag_p2_reg in module PE_Core__parameterized1 has both Set and reset with same priority. This may cause simulation mismatches. Consider rewriting code  [/home/ybi/WaveTensor/PE_Core.v:417]
+WARNING: [Synth 8-7137] Register div_result_p2_reg in module PE_Core__parameterized1 has both Set and reset with same priority. This may cause simulation mismatches. Consider rewriting code  [/home/ybi/WaveTensor/PE_Core.v:420]
+WARNING: [Synth 8-6014] Unused sequential element mu_target_pipe_s3_reg was removed.  [/home/ybi/WaveTensor/Cluster.v:511]
+WARNING: [Synth 8-6014] Unused sequential element mu_target_pipe_s4_reg was removed.  [/home/ybi/WaveTensor/Cluster.v:512]
+WARNING: [Synth 8-6014] Unused sequential element mu_active_pipe_s2_reg was removed.  [/home/ybi/WaveTensor/Cluster.v:513]
+WARNING: [Synth 8-6014] Unused sequential element mu_active_pipe_s3_reg was removed.  [/home/ybi/WaveTensor/Cluster.v:514]
+WARNING: [Synth 8-6014] Unused sequential element mu_active_pipe_s4_reg was removed.  [/home/ybi/WaveTensor/Cluster.v:515]
+WARNING: [Synth 8-7129] Port dec_input_payload_b_valid in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[15] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[14] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[13] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[12] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[11] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[10] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[9] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[8] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_opref_kind[3] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_opref_kind[2] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_opref_kind[1] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_opref_kind[0] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[47] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[46] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[45] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[44] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[43] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[42] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[41] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[40] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[39] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[38] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[37] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[36] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[35] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[34] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[33] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[32] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[31] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[30] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[29] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[28] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[27] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[26] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[25] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[24] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[23] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[22] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[21] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[20] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[19] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[18] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[17] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[16] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[15] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[14] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[13] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[12] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[11] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[10] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[9] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[8] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[7] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[6] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[5] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[4] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[3] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[2] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[1] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[0] in module PE_Core__parameterized1 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_input_payload_b_valid in module PE_Core__parameterized0 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[15] in module PE_Core__parameterized0 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[14] in module PE_Core__parameterized0 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[13] in module PE_Core__parameterized0 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[12] in module PE_Core__parameterized0 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[11] in module PE_Core__parameterized0 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[10] in module PE_Core__parameterized0 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[9] in module PE_Core__parameterized0 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[8] in module PE_Core__parameterized0 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_opref_kind[3] in module PE_Core__parameterized0 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_opref_kind[2] in module PE_Core__parameterized0 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_opref_kind[1] in module PE_Core__parameterized0 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_opref_kind[0] in module PE_Core__parameterized0 is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_input_payload_b_valid in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[15] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[14] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[13] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[12] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[11] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[10] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[9] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_imm16[8] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_opref_kind[3] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_opref_kind[2] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_opref_kind[1] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_opref_kind[0] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[47] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[46] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[45] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[44] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[43] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[42] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[41] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[40] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[39] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[38] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[37] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[36] in module PE_Core is either unconnected or has no load
+WARNING: [Synth 8-7129] Port dec_eff_subscript[35] in module PE_Core is either unconnected or has no load
+INFO: [Common 17-14] Message 'Synth 8-7129' appears 100 times and further instances of the messages will be disabled. Use the Tcl command set_msg_config to change the current settings.
+---------------------------------------------------------------------------------
+Finished RTL Elaboration : Time (s): cpu = 00:00:03 ; elapsed = 00:00:04 . Memory (MB): peak = 3010.422 ; gain = 294.625 ; free physical = 9965 ; free virtual = 46723
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Handling Custom Attributes
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Finished Handling Custom Attributes : Time (s): cpu = 00:00:04 ; elapsed = 00:00:04 . Memory (MB): peak = 3010.422 ; gain = 294.625 ; free physical = 9957 ; free virtual = 46716
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Finished RTL Optimization Phase 1 : Time (s): cpu = 00:00:04 ; elapsed = 00:00:04 . Memory (MB): peak = 3010.422 ; gain = 294.625 ; free physical = 9957 ; free virtual = 46716
+---------------------------------------------------------------------------------
+Netlist sorting complete. Time (s): cpu = 00:00:00.21 ; elapsed = 00:00:00.2 . Memory (MB): peak = 3010.422 ; gain = 0.000 ; free physical = 9985 ; free virtual = 46744
+INFO: [Project 1-570] Preparing netlist for logic optimization
+
+Processing XDC Constraints
+Initializing timing engine
+Parsing XDC File [/home/ybi/WaveTensor/synth/constraints/pod.xdc]
+Finished Parsing XDC File [/home/ybi/WaveTensor/synth/constraints/pod.xdc]
+Completed Processing XDC Constraints
+
+Netlist sorting complete. Time (s): cpu = 00:00:00.01 ; elapsed = 00:00:00.01 . Memory (MB): peak = 3125.512 ; gain = 0.000 ; free physical = 10066 ; free virtual = 46833
+INFO: [Project 1-111] Unisim Transformation Summary:
+No Unisim elements were transformed.
+
+Constraint Validation Runtime : Time (s): cpu = 00:00:00.18 ; elapsed = 00:00:00.09 . Memory (MB): peak = 3125.547 ; gain = 0.000 ; free physical = 10067 ; free virtual = 46834
+---------------------------------------------------------------------------------
+Finished Constraint Validation : Time (s): cpu = 00:00:14 ; elapsed = 00:00:14 . Memory (MB): peak = 3125.547 ; gain = 409.750 ; free physical = 10131 ; free virtual = 46901
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Loading Part and Timing Information
+---------------------------------------------------------------------------------
+Loading part: xcau25p-ffvb676-2-e
+INFO: [Synth 8-6742] Reading net delay rules and data
+---------------------------------------------------------------------------------
+Finished Loading Part and Timing Information : Time (s): cpu = 00:00:14 ; elapsed = 00:00:14 . Memory (MB): peak = 3133.516 ; gain = 417.719 ; free physical = 10131 ; free virtual = 46901
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Applying 'set_property' XDC Constraints
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Finished applying 'set_property' XDC Constraints : Time (s): cpu = 00:00:14 ; elapsed = 00:00:14 . Memory (MB): peak = 3133.516 ; gain = 417.719 ; free physical = 10134 ; free virtual = 46904
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Finished RTL Optimization Phase 2 : Time (s): cpu = 00:00:16 ; elapsed = 00:00:15 . Memory (MB): peak = 3133.516 ; gain = 417.719 ; free physical = 10123 ; free virtual = 46895
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start RTL Component Statistics 
+---------------------------------------------------------------------------------
+Detailed RTL Component Info : 
++---Adders : 
+	   2 Input   64 Bit       Adders := 64    
+	   3 Input   64 Bit       Adders := 24    
+	   2 Input   32 Bit       Adders := 28    
+	   2 Input   16 Bit       Adders := 108   
+	   4 Input   16 Bit       Adders := 20    
+	   3 Input   16 Bit       Adders := 4     
+	   2 Input    7 Bit       Adders := 24    
+	   2 Input    4 Bit       Adders := 12    
+	   3 Input    4 Bit       Adders := 4     
+	   2 Input    3 Bit       Adders := 100   
++---Registers : 
+	              416 Bit    Registers := 4     
+	               80 Bit    Registers := 48    
+	               64 Bit    Registers := 128   
+	               48 Bit    Registers := 8     
+	               32 Bit    Registers := 20    
+	               16 Bit    Registers := 28    
+	                8 Bit    Registers := 68    
+	                4 Bit    Registers := 80    
+	                3 Bit    Registers := 4     
+	                1 Bit    Registers := 240   
++---Multipliers : 
+	              32x32  Multipliers := 8     
+	              64x64  Multipliers := 4     
++---Muxes : 
+	   2 Input   80 Bit        Muxes := 152   
+	   2 Input   64 Bit        Muxes := 100   
+	   4 Input   64 Bit        Muxes := 4     
+	   2 Input   48 Bit        Muxes := 4     
+	   2 Input   32 Bit        Muxes := 4     
+	   2 Input   16 Bit        Muxes := 216   
+	   4 Input   16 Bit        Muxes := 24    
+	   4 Input    8 Bit        Muxes := 48    
+	   2 Input    8 Bit        Muxes := 48    
+	   2 Input    4 Bit        Muxes := 92    
+	   2 Input    3 Bit        Muxes := 4     
+	   4 Input    2 Bit        Muxes := 24    
+	   2 Input    1 Bit        Muxes := 418   
+	   3 Input    1 Bit        Muxes := 8     
+---------------------------------------------------------------------------------
+Finished RTL Component Statistics 
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Part Resource Summary
+---------------------------------------------------------------------------------
+Part Resources:
+DSPs: 1200 (col length:96)
+BRAMs: 600 (col length: RAMB18 96 RAMB36 48)
+---------------------------------------------------------------------------------
+Finished Part Resource Summary
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Cross Boundary and Area Optimization
+---------------------------------------------------------------------------------
+DSP Report: Generating DSP euclid_norm_sq_return0, operation Mode is: A*B.
+DSP Report: operator euclid_norm_sq_return0 is absorbed into DSP euclid_norm_sq_return0.
+DSP Report: operator euclid_norm_sq_return0 is absorbed into DSP euclid_norm_sq_return0.
+DSP Report: Generating DSP euclid_norm_sq_return0, operation Mode is: (PCIN>>17)+A*B.
+DSP Report: operator euclid_norm_sq_return0 is absorbed into DSP euclid_norm_sq_return0.
+DSP Report: operator euclid_norm_sq_return0 is absorbed into DSP euclid_norm_sq_return0.
+DSP Report: Generating DSP euclid_norm_sq_return0, operation Mode is: A*B.
+DSP Report: operator euclid_norm_sq_return0 is absorbed into DSP euclid_norm_sq_return0.
+DSP Report: operator euclid_norm_sq_return0 is absorbed into DSP euclid_norm_sq_return0.
+DSP Report: Generating DSP euclid_norm_sq_return0, operation Mode is: (PCIN>>17)+A*B.
+DSP Report: operator euclid_norm_sq_return0 is absorbed into DSP euclid_norm_sq_return0.
+DSP Report: operator euclid_norm_sq_return0 is absorbed into DSP euclid_norm_sq_return0.
+DSP Report: Generating DSP euclid_norm_sq_return0, operation Mode is: A*B.
+DSP Report: operator euclid_norm_sq_return0 is absorbed into DSP euclid_norm_sq_return0.
+DSP Report: operator euclid_norm_sq_return0 is absorbed into DSP euclid_norm_sq_return0.
+DSP Report: Generating DSP euclid_norm_sq_return0, operation Mode is: (PCIN>>17)+A*B.
+DSP Report: operator euclid_norm_sq_return0 is absorbed into DSP euclid_norm_sq_return0.
+DSP Report: operator euclid_norm_sq_return0 is absorbed into DSP euclid_norm_sq_return0.
+DSP Report: Generating DSP euclid_norm_sq_return0, operation Mode is: A*B.
+DSP Report: operator euclid_norm_sq_return0 is absorbed into DSP euclid_norm_sq_return0.
+DSP Report: operator euclid_norm_sq_return0 is absorbed into DSP euclid_norm_sq_return0.
+DSP Report: Generating DSP euclid_norm_sq_return0, operation Mode is: (PCIN>>17)+A*B.
+DSP Report: operator euclid_norm_sq_return0 is absorbed into DSP euclid_norm_sq_return0.
+DSP Report: operator euclid_norm_sq_return0 is absorbed into DSP euclid_norm_sq_return0.
+DSP Report: Generating DSP matmul_func_return1, operation Mode is: A*B.
+DSP Report: operator matmul_func_return1 is absorbed into DSP matmul_func_return1.
+DSP Report: Generating DSP matmul_func_return0, operation Mode is: C+A*B.
+DSP Report: operator matmul_func_return0 is absorbed into DSP matmul_func_return0.
+DSP Report: operator matmul_func_return1 is absorbed into DSP matmul_func_return0.
+DSP Report: Generating DSP matmul_func_return1, operation Mode is: A*B.
+DSP Report: operator matmul_func_return1 is absorbed into DSP matmul_func_return1.
+DSP Report: Generating DSP matmul_func_return0, operation Mode is: C+A*B.
+DSP Report: operator matmul_func_return0 is absorbed into DSP matmul_func_return0.
+DSP Report: operator matmul_func_return1 is absorbed into DSP matmul_func_return0.
+DSP Report: Generating DSP matmul_func_return1, operation Mode is: A*B.
+DSP Report: operator matmul_func_return1 is absorbed into DSP matmul_func_return1.
+DSP Report: Generating DSP matmul_func_return0, operation Mode is: C+A*B.
+DSP Report: operator matmul_func_return0 is absorbed into DSP matmul_func_return0.
+DSP Report: operator matmul_func_return1 is absorbed into DSP matmul_func_return0.
+DSP Report: Generating DSP matmul_func_return1, operation Mode is: A*B.
+DSP Report: operator matmul_func_return1 is absorbed into DSP matmul_func_return1.
+DSP Report: Generating DSP matmul_func_return0, operation Mode is: C+A*B.
+DSP Report: operator matmul_func_return0 is absorbed into DSP matmul_func_return0.
+DSP Report: operator matmul_func_return1 is absorbed into DSP matmul_func_return0.
+DSP Report: Generating DSP einsum_hadamard_return0, operation Mode is: A*B.
+DSP Report: operator einsum_hadamard_return0 is absorbed into DSP einsum_hadamard_return0.
+DSP Report: Generating DSP einsum_hadamard_return0, operation Mode is: A*B.
+DSP Report: operator einsum_hadamard_return0 is absorbed into DSP einsum_hadamard_return0.
+DSP Report: Generating DSP matmul_func_return1, operation Mode is: A*B.
+DSP Report: operator matmul_func_return1 is absorbed into DSP matmul_func_return1.
+DSP Report: Generating DSP einsum_outer_return0, operation Mode is: A*B.
+DSP Report: operator einsum_outer_return0 is absorbed into DSP einsum_outer_return0.
+DSP Report: Generating DSP einsum_dot_return0, operation Mode is: PCIN+A*B.
+DSP Report: operator einsum_dot_return0 is absorbed into DSP einsum_dot_return0.
+DSP Report: operator matmul_func_return1 is absorbed into DSP einsum_dot_return0.
+DSP Report: Generating DSP einsum_dot_return0, operation Mode is: PCIN+A*B.
+DSP Report: operator einsum_dot_return0 is absorbed into DSP einsum_dot_return0.
+DSP Report: operator einsum_hadamard_return0 is absorbed into DSP einsum_dot_return0.
+DSP Report: Generating DSP einsum_dot_return0, operation Mode is: PCIN+A*B.
+DSP Report: operator einsum_dot_return0 is absorbed into DSP einsum_dot_return0.
+DSP Report: operator einsum_hadamard_return0 is absorbed into DSP einsum_dot_return0.
+DSP Report: Generating DSP einsum_mat_vec_return0, operation Mode is: C+A*B.
+DSP Report: operator einsum_mat_vec_return0 is absorbed into DSP einsum_mat_vec_return0.
+DSP Report: operator einsum_hadamard_return0 is absorbed into DSP einsum_mat_vec_return0.
+DSP Report: Generating DSP einsum_mat_vec_return0, operation Mode is: C+A*B.
+DSP Report: operator einsum_mat_vec_return0 is absorbed into DSP einsum_mat_vec_return0.
+DSP Report: operator einsum_mat_vec_return1 is absorbed into DSP einsum_mat_vec_return0.
+DSP Report: Generating DSP mul_result_p20, operation Mode is: A*B.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: Generating DSP mul_result_p20, operation Mode is: (PCIN>>17)+A*B.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: Generating DSP mul_result_p20, operation Mode is: PCIN+A*B.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: Generating DSP mul_result_p20, operation Mode is: (PCIN>>17)+A*B.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: Generating DSP mul_result_p20, operation Mode is: A*B.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: Generating DSP mul_result_p20, operation Mode is: PCIN+A*B.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: Generating DSP mul_result_p20, operation Mode is: (PCIN>>17)+A*B.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: Generating DSP mul_result_p20, operation Mode is: PCIN+A*B.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: Generating DSP mul_result_p20, operation Mode is: A*B.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: Generating DSP mul_result_p20, operation Mode is: PCIN+A*B.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: Generating DSP mul_result_p20, operation Mode is: (PCIN>>17)+A*B.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: Generating DSP mul_result_p20, operation Mode is: PCIN+A*B.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: Generating DSP mul_result_p20, operation Mode is: A*B.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: Generating DSP mul_result_p20, operation Mode is: (PCIN>>17)+A*B.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: Generating DSP mul_result_p20, operation Mode is: PCIN+A*B.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: Generating DSP mul_result_p20, operation Mode is: (PCIN>>17)+A*B.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+DSP Report: operator mul_result_p20 is absorbed into DSP mul_result_p20.
+---------------------------------------------------------------------------------
+Finished Cross Boundary and Area Optimization : Time (s): cpu = 00:02:01 ; elapsed = 00:02:02 . Memory (MB): peak = 3599.617 ; gain = 883.820 ; free physical = 9859 ; free virtual = 46507
+---------------------------------------------------------------------------------
+ Sort Area is Cluster__GCBM1 mul_result_p20_0 : 0 0 : 3101 12442 : Used 1 time 100
+ Sort Area is Cluster__GCBM1 mul_result_p20_0 : 0 1 : 3120 12442 : Used 1 time 100
+ Sort Area is Cluster__GCBM1 mul_result_p20_0 : 0 2 : 3101 12442 : Used 1 time 100
+ Sort Area is Cluster__GCBM1 mul_result_p20_0 : 0 3 : 3120 12442 : Used 1 time 100
+ Sort Area is Cluster__GCBM1 mul_result_p20_4 : 0 0 : 3101 11782 : Used 1 time 100
+ Sort Area is Cluster__GCBM1 mul_result_p20_4 : 0 1 : 3101 11782 : Used 1 time 100
+ Sort Area is Cluster__GCBM1 mul_result_p20_4 : 0 2 : 2479 11782 : Used 1 time 100
+ Sort Area is Cluster__GCBM1 mul_result_p20_4 : 0 3 : 3101 11782 : Used 1 time 100
+ Sort Area is Cluster__GCBM1 mul_result_p20_6 : 0 0 : 3101 11141 : Used 1 time 100
+ Sort Area is Cluster__GCBM1 mul_result_p20_6 : 0 1 : 2460 11141 : Used 1 time 100
+ Sort Area is Cluster__GCBM1 mul_result_p20_6 : 0 2 : 2479 11141 : Used 1 time 100
+ Sort Area is Cluster__GCBM1 mul_result_p20_6 : 0 3 : 3101 11141 : Used 1 time 100
+ Sort Area is Cluster__GCBM1 mul_result_p20_8 : 0 0 : 2460 9675 : Used 1 time 100
+ Sort Area is Cluster__GCBM1 mul_result_p20_8 : 0 1 : 2479 9675 : Used 1 time 100
+ Sort Area is Cluster__GCBM1 mul_result_p20_8 : 0 2 : 2460 9675 : Used 1 time 100
+ Sort Area is Cluster__GCBM1 mul_result_p20_8 : 0 3 : 2276 9675 : Used 1 time 100
+ Sort Area is Cluster__GCBM1 matmul_func_return1_11 : 0 0 : 1946 8069 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 matmul_func_return1_11 : 0 1 : 2041 8069 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 matmul_func_return1_11 : 0 2 : 2041 8069 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 matmul_func_return1_11 : 0 3 : 2041 8069 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 euclid_norm_sq_return0_1c : 0 0 : 3101 5879 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 euclid_norm_sq_return0_1c : 0 1 : 2778 5879 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 euclid_norm_sq_return0_21 : 0 0 : 3101 5879 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 euclid_norm_sq_return0_21 : 0 1 : 2778 5879 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 euclid_norm_sq_return0_1e : 0 0 : 2759 5418 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 euclid_norm_sq_return0_1e : 0 1 : 2659 5418 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 euclid_norm_sq_return0_22 : 0 0 : 2759 5418 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 euclid_norm_sq_return0_22 : 0 1 : 2659 5418 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 einsum_mat_vec_return0_10 : 0 0 : 1993 1993 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 einsum_mat_vec_return0_d : 0 0 : 1993 1993 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 matmul_func_return0_17 : 0 0 : 1993 1993 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 matmul_func_return0_18 : 0 0 : 1993 1993 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 matmul_func_return0_19 : 0 0 : 1993 1993 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 matmul_func_return0_1b : 0 0 : 1993 1993 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 einsum_hadamard_return0_15 : 0 0 : 1946 1946 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 einsum_hadamard_return0_16 : 0 0 : 1946 1946 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 einsum_outer_return0_14 : 0 0 : 1946 1946 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 matmul_func_return1_13 : 0 0 : 1946 1946 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 matmul_func_return1_1a : 0 0 : 1946 1946 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 matmul_func_return1_b : 0 0 : 1946 1946 : Used 1 time 0
+ Sort Area is Cluster__GCBM1 matmul_func_return1_f : 0 0 : 1946 1946 : Used 1 time 0
+---------------------------------------------------------------------------------
+Start ROM, RAM, DSP, Shift Register and Retiming Reporting
+---------------------------------------------------------------------------------
+
+DSP: Preliminary Mapping Report (see note below. The ' indicates corresponding REG is set)
++------------+----------------+--------+--------+--------+--------+--------+------+------+------+------+-------+------+------+
+|Module Name | DSP Mapping    | A Size | B Size | C Size | D Size | P Size | AREG | BREG | CREG | DREG | ADREG | MREG | PREG | 
++------------+----------------+--------+--------+--------+--------+--------+------+------+------+------+-------+------+------+
+|PE_Core     | A*B            | 18     | 16     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | (PCIN>>17)+A*B | 16     | 16     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 18     | 18     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | (PCIN>>17)+A*B | 18     | 16     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 18     | 16     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | (PCIN>>17)+A*B | 16     | 16     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 18     | 18     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | (PCIN>>17)+A*B | 18     | 16     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A*B       | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A*B       | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A*B       | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 18     | 14     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | (PCIN>>17)+A*B | 18     | 14     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A*B       | 18     | 14     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | (PCIN>>17)+A*B | 14     | 14     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 18     | 18     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A*B       | 18     | 14     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | (PCIN>>17)+A*B | 18     | 14     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A*B       | 18     | 18     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 18     | 18     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A*B       | 18     | 18     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | (PCIN>>17)+A*B | 18     | 14     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A*B       | 18     | 18     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 18     | 18     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | (PCIN>>17)+A*B | 18     | 18     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A*B       | 18     | 18     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | (PCIN>>17)+A*B | 18     | 18     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
++------------+----------------+--------+--------+--------+--------+--------+------+------+------+------+-------+------+------+
+
+Note: The table above is a preliminary report that shows the DSPs inferred at the current stage of the synthesis flow. Some DSP may be reimplemented as non DSP primitives later in the synthesis flow. Multiple instantiated DSPs are reported only once.
+---------------------------------------------------------------------------------
+Finished ROM, RAM, DSP, Shift Register and Retiming Reporting
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Applying XDC Timing Constraints
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Finished Applying XDC Timing Constraints : Time (s): cpu = 00:02:05 ; elapsed = 00:02:07 . Memory (MB): peak = 3760.363 ; gain = 1044.566 ; free physical = 9962 ; free virtual = 46610
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Timing Optimization
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Finished Timing Optimization : Time (s): cpu = 00:02:47 ; elapsed = 00:02:50 . Memory (MB): peak = 3911.379 ; gain = 1195.582 ; free physical = 9799 ; free virtual = 46187
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Technology Mapping
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Finished Technology Mapping : Time (s): cpu = 00:03:13 ; elapsed = 00:03:17 . Memory (MB): peak = 3966.629 ; gain = 1250.832 ; free physical = 9752 ; free virtual = 46125
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start IO Insertion
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Final Netlist Cleanup
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Finished Final Netlist Cleanup
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Finished IO Insertion : Time (s): cpu = 00:03:18 ; elapsed = 00:03:22 . Memory (MB): peak = 4120.441 ; gain = 1404.645 ; free physical = 9527 ; free virtual = 45900
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Renaming Generated Instances
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Finished Renaming Generated Instances : Time (s): cpu = 00:03:18 ; elapsed = 00:03:22 . Memory (MB): peak = 4120.441 ; gain = 1404.645 ; free physical = 9513 ; free virtual = 45887
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Handling Custom Attributes
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Finished Handling Custom Attributes : Time (s): cpu = 00:03:24 ; elapsed = 00:03:28 . Memory (MB): peak = 4120.441 ; gain = 1404.645 ; free physical = 9638 ; free virtual = 46012
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start ROM, RAM, DSP, Shift Register and Retiming Reporting
+---------------------------------------------------------------------------------
+
+Static Shift Register Report:
++------------+--------------------------+--------+-------+--------------+--------------------+-------------------+--------+---------+
+|Module Name | RTL Name                 | Length | Width | Reset Signal | Pull out first Reg | Pull out last Reg | SRL16E | SRLC32E | 
++------------+--------------------------+--------+-------+--------------+--------------------+-------------------+--------+---------+
+|Cluster     | pe_active_lpe_s6_reg[3]  | 6      | 16    | YES          | NO                 | YES               | 16     | 0       | 
+|Cluster     | pe_active_du_s6_reg      | 6      | 4     | YES          | NO                 | YES               | 4      | 0       | 
+|Cluster     | pe_active_mu_s6_reg      | 6      | 4     | YES          | NO                 | YES               | 4      | 0       | 
+|Cluster     | mu_target_pipe_s2_reg[3] | 7      | 16    | YES          | NO                 | YES               | 16     | 0       | 
++------------+--------------------------+--------+-------+--------------+--------------------+-------------------+--------+---------+
+
+---------------------------------------------------------------------------------
+Finished ROM, RAM, DSP, Shift Register and Retiming Reporting
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Writing Synthesis Report
+---------------------------------------------------------------------------------
+
+DSP Final Report (the ' indicates corresponding REG is set)
++------------+----------------+--------+--------+--------+--------+--------+------+------+------+------+-------+------+------+
+|Module Name | DSP Mapping    | A Size | B Size | C Size | D Size | P Size | AREG | BREG | CREG | DREG | ADREG | MREG | PREG | 
++------------+----------------+--------+--------+--------+--------+--------+------+------+------+------+-------+------+------+
+|PE_Core     | A*B            | 17     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A*B   | 15     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 17     | 17     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A*B   | 17     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 17     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A*B   | 15     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 17     | 17     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A*B   | 17     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A*B       | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A*B       | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A*B       | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A'*B'          | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A'*B'     | 17     | 13     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A'*B'          | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A'*B'     | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A'*B' | 17     | 13     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A'*B'     | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A'*B'          | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A'*B' | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A'*B'     | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A'*B' | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 17     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A*B   | 15     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 17     | 17     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A*B   | 17     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 17     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A*B   | 15     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 17     | 17     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A*B   | 17     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A*B       | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A*B       | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A*B       | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A'*B'          | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A'*B'     | 17     | 13     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A'*B'          | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A'*B'     | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A'*B' | 17     | 13     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A'*B'     | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A'*B'          | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A'*B' | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A'*B'     | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A'*B' | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 17     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A*B   | 15     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 17     | 17     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A*B   | 17     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 17     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A*B   | 15     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 17     | 17     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A*B   | 17     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A*B       | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A*B       | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A*B       | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A'*B'          | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A'*B'     | 17     | 13     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A'*B'          | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A'*B'     | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A'*B' | 17     | 13     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A'*B'     | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A'*B'          | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A'*B' | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A'*B'     | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A'*B' | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 17     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A*B   | 15     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 17     | 17     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A*B   | 17     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 17     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A*B   | 15     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 17     | 17     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A*B   | 17     | 15     | -      | -      | 48     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A*B            | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A*B       | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A*B       | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A*B       | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | C+A*B          | 16     | 16     | 16     | -      | 16     | 0    | 0    | 0    | -    | -     | 0    | 0    | 
+|PE_Core     | A'*B'          | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A'*B'     | 17     | 13     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A'*B'          | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A'*B'     | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A'*B' | 17     | 13     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A'*B'     | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | A'*B'          | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A'*B' | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN+A'*B'     | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
+|PE_Core     | PCIN>>17+A'*B' | 17     | 17     | -      | -      | 48     | 1    | 1    | -    | -    | -     | 0    | 0    | 
++------------+----------------+--------+--------+--------+--------+--------+------+------+------+------+-------+------+------+
+
+
+Report BlackBoxes: 
++-+--------------+----------+
+| |BlackBox name |Instances |
++-+--------------+----------+
++-+--------------+----------+
+
+Report Cell Usage: 
++------+----------------+------+
+|      |Cell            |Count |
++------+----------------+------+
+|1     |CARRY8          |  7236|
+|2     |DSP_ALU         |   140|
+|3     |DSP_A_B_DATA    |   140|
+|5     |DSP_C_DATA      |   140|
+|7     |DSP_MULTIPLIER  |   140|
+|8     |DSP_M_DATA      |   140|
+|9     |DSP_OUTPUT      |   140|
+|10    |DSP_PREADD      |   140|
+|11    |DSP_PREADD_DATA |   140|
+|12    |LUT1            |  3548|
+|13    |LUT2            |  8184|
+|14    |LUT3            | 45172|
+|15    |LUT4            |  5936|
+|16    |LUT5            |  9452|
+|17    |LUT6            | 26960|
+|18    |MUXF7           |   494|
+|19    |SRL16E          |    40|
+|20    |FDCE            | 12024|
+|21    |FDPE            |    16|
+|22    |FDRE            |  2356|
++------+----------------+------+
+---------------------------------------------------------------------------------
+Finished Writing Synthesis Report : Time (s): cpu = 00:03:24 ; elapsed = 00:03:28 . Memory (MB): peak = 4120.441 ; gain = 1404.645 ; free physical = 9624 ; free virtual = 45997
+---------------------------------------------------------------------------------
+Synthesis finished with 0 errors, 0 critical warnings and 61 warnings.
+Synthesis Optimization Runtime : Time (s): cpu = 00:03:17 ; elapsed = 00:03:22 . Memory (MB): peak = 4120.441 ; gain = 1289.520 ; free physical = 9576 ; free virtual = 45950
+Synthesis Optimization Complete : Time (s): cpu = 00:03:24 ; elapsed = 00:03:29 . Memory (MB): peak = 4120.441 ; gain = 1404.645 ; free physical = 9576 ; free virtual = 45950
+INFO: [Project 1-571] Translating synthesized netlist
+Netlist sorting complete. Time (s): cpu = 00:00:00.59 ; elapsed = 00:00:00.6 . Memory (MB): peak = 4120.441 ; gain = 0.000 ; free physical = 9533 ; free virtual = 45910
+INFO: [Netlist 29-17] Analyzing 7870 Unisim elements for replacement
+INFO: [Netlist 29-28] Unisim Transformation completed in 0 CPU seconds
+INFO: [Project 1-570] Preparing netlist for logic optimization
+Parsing XDC File [/home/ybi/WaveTensor/synth/constraints/pod.xdc]
+Finished Parsing XDC File [/home/ybi/WaveTensor/synth/constraints/pod.xdc]
+INFO: [Opt 31-138] Pushed 0 inverter(s) to 0 load pin(s).
+Netlist sorting complete. Time (s): cpu = 00:00:00.03 ; elapsed = 00:00:00.03 . Memory (MB): peak = 4120.441 ; gain = 0.000 ; free physical = 9665 ; free virtual = 46053
+INFO: [Project 1-111] Unisim Transformation Summary:
+  A total of 140 instances were transformed.
+  DSP48E2 => DSP48E2 (DSP_ALU, DSP_A_B_DATA, DSP_C_DATA, DSP_MULTIPLIER, DSP_M_DATA, DSP_OUTPUT, DSP_PREADD, DSP_PREADD_DATA): 140 instances
+
+Synth Design complete | Checksum: adcf7cce
+INFO: [Common 17-83] Releasing license: Synthesis
+28 Infos, 133 Warnings, 0 Critical Warnings and 0 Errors encountered.
+synth_design completed successfully
+synth_design: Time (s): cpu = 00:03:45 ; elapsed = 00:03:48 . Memory (MB): peak = 4120.441 ; gain = 2469.738 ; free physical = 9662 ; free virtual = 46051
+INFO: [Common 17-2834] synth_design peak Physical Memory [PSS] (MB): overall = 3588.069; main = 3461.299; forked = 359.367
+INFO: [Common 17-2834] synth_design peak Virtual Memory [VSS] (MB): overall = 5060.055; main = 4083.438; forked = 1016.422
+# set tag "pod_${::PE_ROWS}x${::PE_COLS}_${::CLUSTER_ROWS}x${::CLUSTER_COLS}_synth"
+# report_utilization     -file [file join $REPORT_DIR ${tag}_util.rpt]    -hierarchical
+# report_timing_summary  -file [file join $REPORT_DIR ${tag}_timing.rpt]
+INFO: [Timing 38-35] Done setting XDC timing constraints.
+INFO: [Timing 38-91] UpdateTimingParams: Speed grade: -2, Temperature grade: E, Delay Type: min_max.
+INFO: [Timing 38-191] Multithreading enabled for timing update using a maximum of 8 CPUs
+WARNING: [Timing 38-242] The property HD.CLK_SRC of clock port "clk" is not set. In out-of-context mode, this prevents timing estimation for clock delay/skew
+Resolution: Set the HD.CLK_SRC property of the out-of-context port to the location of the clock buffer instance in the top-level design
+report_timing_summary: Time (s): cpu = 00:00:37 ; elapsed = 00:00:19 . Memory (MB): peak = 4697.555 ; gain = 577.113 ; free physical = 9227 ; free virtual = 45729
+# report_design_analysis -file [file join $REPORT_DIR ${tag}_analysis.rpt] -timing -setup
+# report_methodology     -file [file join $REPORT_DIR ${tag}_methodology.rpt]
+Command: report_methodology -file /home/ybi/WaveTensor/synth/reports/pod_2x2_2x2_synth_methodology.rpt
+INFO: [Timing 38-35] Done setting XDC timing constraints.
+INFO: [DRC 23-133] Running Methodology with 8 threads
+WARNING: [DRC 23-814] Not all possible (connectivity based) DRCs may have been run because this design is seen as Out of Context.
+INFO: [Vivado_Tcl 2-1520] The results of Report Methodology are in file /home/ybi/WaveTensor/synth/reports/pod_2x2_2x2_synth_methodology.rpt.
+report_methodology completed successfully
+report_methodology: Time (s): cpu = 00:00:19 ; elapsed = 00:00:05 . Memory (MB): peak = 4697.555 ; gain = 0.000 ; free physical = 9200 ; free virtual = 45709
+# write_checkpoint -force [file join $CKPT_DIR ${tag}.dcp]
+INFO: [Timing 38-35] Done setting XDC timing constraints.
+INFO: [Timing 38-480] Writing timing data to binary archive.
+Write ShapeDB Complete: Time (s): cpu = 00:00:00.49 ; elapsed = 00:00:00.13 . Memory (MB): peak = 4729.570 ; gain = 0.000 ; free physical = 9179 ; free virtual = 45711
+INFO: [Common 17-1381] The checkpoint '/home/ybi/WaveTensor/synth/checkpoints/pod_2x2_2x2_synth.dcp' has been generated.
+# print_banner "synthesis complete"
+
+================================================================
+  synthesis complete
+================================================================
+# puts "  reports → $REPORT_DIR"
+  reports → /home/ybi/WaveTensor/synth/reports
+# puts "  ckpt    → [file join $CKPT_DIR ${tag}.dcp]"
+  ckpt    → /home/ybi/WaveTensor/synth/checkpoints/pod_2x2_2x2_synth.dcp
+# exit 0
+INFO: [Common 17-206] Exiting Vivado at Sat May  2 19:17:59 2026...

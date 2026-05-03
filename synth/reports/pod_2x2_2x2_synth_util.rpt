@@ -1,0 +1,65 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2025.2.1 (lin64) Build 6403652 Thu Mar 19 13:47:00 MDT 2026
+| Date         : Sun May  3 13:58:10 2026
+| Host         : cachyos-ybi-tuf running 64-bit CachyOS
+| Command      : report_utilization -file /home/ybi/WaveTensor/synth/reports/pod_2x2_2x2_synth_util.rpt -hierarchical
+| Design       : Pod
+| Device       : xcau25p-ffvb676-2-e
+| Speed File   : -2
+| Design State : Synthesized
+---------------------------------------------------------------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++-------------------------------------+----------------------------+------------+------------+---------+------+-------+--------+--------+------+------------+
+|               Instance              |           Module           | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs  | RAMB36 | RAMB18 | URAM | DSP Blocks |
++-------------------------------------+----------------------------+------------+------------+---------+------+-------+--------+--------+------+------------+
+| Pod                                 |                      (top) |      62296 |      62256 |       0 |   40 | 14300 |      0 |      0 |    0 |        140 |
+|   (Pod)                             |                      (top) |        426 |        426 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_crow[0].g_ccol[0].u_cluster     |                 Cluster__1 |      15468 |      15458 |       0 |   10 |  3575 |      0 |      0 |    0 |         35 |
+|     (g_crow[0].g_ccol[0].u_cluster) |                 Cluster__1 |        954 |        944 |       0 |   10 |   546 |      0 |      0 |    0 |          0 |
+|     g_row[0].g_col[0].u_lpe         |                 PE_Core__1 |       2454 |       2454 |       0 |    0 |   212 |      0 |      0 |    0 |          0 |
+|     g_row[0].g_col[1].u_lpe         |                 PE_Core__2 |       2454 |       2454 |       0 |    0 |   212 |      0 |      0 |    0 |          0 |
+|     g_row[1].g_col[0].u_lpe         |                 PE_Core__3 |       2454 |       2454 |       0 |    0 |   212 |      0 |      0 |    0 |          0 |
+|     g_row[1].g_col[1].u_lpe         |                 PE_Core__4 |       2454 |       2454 |       0 |    0 |   212 |      0 |      0 |    0 |          0 |
+|     u_div_unit                      | PE_Core__parameterized1__2 |        932 |        932 |       0 |    0 |   561 |      0 |      0 |    0 |          0 |
+|     u_ehdec                         |                EHDecode__2 |        985 |        985 |       0 |    0 |  1263 |      0 |      0 |    0 |          0 |
+|     u_matmul_unit                   | PE_Core__parameterized0__2 |       2781 |       2781 |       0 |    0 |   357 |      0 |      0 |    0 |         35 |
+|   g_crow[0].g_ccol[1].u_cluster     |                 Cluster__2 |      15468 |      15458 |       0 |   10 |  3575 |      0 |      0 |    0 |         35 |
+|     (g_crow[0].g_ccol[1].u_cluster) |                 Cluster__2 |        954 |        944 |       0 |   10 |   546 |      0 |      0 |    0 |          0 |
+|     g_row[0].g_col[0].u_lpe         |                 PE_Core__5 |       2454 |       2454 |       0 |    0 |   212 |      0 |      0 |    0 |          0 |
+|     g_row[0].g_col[1].u_lpe         |                 PE_Core__6 |       2454 |       2454 |       0 |    0 |   212 |      0 |      0 |    0 |          0 |
+|     g_row[1].g_col[0].u_lpe         |                 PE_Core__7 |       2454 |       2454 |       0 |    0 |   212 |      0 |      0 |    0 |          0 |
+|     g_row[1].g_col[1].u_lpe         |                 PE_Core__8 |       2454 |       2454 |       0 |    0 |   212 |      0 |      0 |    0 |          0 |
+|     u_div_unit                      | PE_Core__parameterized1__5 |        932 |        932 |       0 |    0 |   561 |      0 |      0 |    0 |          0 |
+|     u_ehdec                         |                EHDecode__5 |        985 |        985 |       0 |    0 |  1263 |      0 |      0 |    0 |          0 |
+|     u_matmul_unit                   | PE_Core__parameterized0__5 |       2781 |       2781 |       0 |    0 |   357 |      0 |      0 |    0 |         35 |
+|   g_crow[1].g_ccol[0].u_cluster     |                 Cluster__3 |      15467 |      15457 |       0 |   10 |  3575 |      0 |      0 |    0 |         35 |
+|     (g_crow[1].g_ccol[0].u_cluster) |                 Cluster__3 |        953 |        943 |       0 |   10 |   546 |      0 |      0 |    0 |          0 |
+|     g_row[0].g_col[0].u_lpe         |                 PE_Core__9 |       2454 |       2454 |       0 |    0 |   212 |      0 |      0 |    0 |          0 |
+|     g_row[0].g_col[1].u_lpe         |                PE_Core__10 |       2454 |       2454 |       0 |    0 |   212 |      0 |      0 |    0 |          0 |
+|     g_row[1].g_col[0].u_lpe         |                PE_Core__11 |       2454 |       2454 |       0 |    0 |   212 |      0 |      0 |    0 |          0 |
+|     g_row[1].g_col[1].u_lpe         |                PE_Core__12 |       2454 |       2454 |       0 |    0 |   212 |      0 |      0 |    0 |          0 |
+|     u_div_unit                      | PE_Core__parameterized1__7 |        932 |        932 |       0 |    0 |   561 |      0 |      0 |    0 |          0 |
+|     u_ehdec                         |                EHDecode__7 |        985 |        985 |       0 |    0 |  1263 |      0 |      0 |    0 |          0 |
+|     u_matmul_unit                   | PE_Core__parameterized0__7 |       2781 |       2781 |       0 |    0 |   357 |      0 |      0 |    0 |         35 |
+|   g_crow[1].g_ccol[1].u_cluster     |                    Cluster |      15467 |      15457 |       0 |   10 |  3575 |      0 |      0 |    0 |         35 |
+|     (g_crow[1].g_ccol[1].u_cluster) |                    Cluster |        953 |        943 |       0 |   10 |   546 |      0 |      0 |    0 |          0 |
+|     g_row[0].g_col[0].u_lpe         |                PE_Core__13 |       2454 |       2454 |       0 |    0 |   212 |      0 |      0 |    0 |          0 |
+|     g_row[0].g_col[1].u_lpe         |                PE_Core__14 |       2454 |       2454 |       0 |    0 |   212 |      0 |      0 |    0 |          0 |
+|     g_row[1].g_col[0].u_lpe         |                PE_Core__15 |       2454 |       2454 |       0 |    0 |   212 |      0 |      0 |    0 |          0 |
+|     g_row[1].g_col[1].u_lpe         |                    PE_Core |       2454 |       2454 |       0 |    0 |   212 |      0 |      0 |    0 |          0 |
+|     u_div_unit                      |    PE_Core__parameterized1 |        932 |        932 |       0 |    0 |   561 |      0 |      0 |    0 |          0 |
+|     u_ehdec                         |                   EHDecode |        985 |        985 |       0 |    0 |  1263 |      0 |      0 |    0 |          0 |
+|     u_matmul_unit                   |    PE_Core__parameterized0 |       2781 |       2781 |       0 |    0 |   357 |      0 |      0 |    0 |         35 |
++-------------------------------------+----------------------------+------------+------------+---------+------+-------+--------+--------+------+------------+
+
+

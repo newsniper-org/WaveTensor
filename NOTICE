@@ -1,0 +1,42 @@
+WaveTensor
+Copyright (c) 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors.
+
+This product includes hardware design and software developed by the
+WaveTensor project (see LICENSE.md and the SPDX tags in each file).
+
+================================================================================
+Hardware components are dual-licensed under:
+  - Solderpad Hardware License Version 2.1 (SHL-2.1)
+  - CERN Open Hardware Licence Version 2 — Weakly Reciprocal (CERN-OHL-W-2.0)
+
+Software components are triple-licensed under:
+  - GNU Lesser General Public License v2.1 or later (LGPL-2.1-or-later)
+  - BSD 2-Clause License (BSD-2-Clause)
+  - Apache License Version 2.0 (Apache-2.0)
+
+Documentation and the WT64v1 ISA specification are licensed under:
+  - Creative Commons Attribution 4.0 International (CC-BY-4.0)
+
+See LICENSE.md for the full terms and the choice rules.
+================================================================================
+
+External dependencies used in the build, simulation, or verification flows
+of this project (each carrying its own license; not redistributed here):
+
+  * Verilator                          https://www.veripool.org/verilator/
+                                       (LGPL-3.0-or-later OR Artistic-2.0)
+  * cocotb                             https://www.cocotb.org/
+                                       (BSD-3-Clause)
+  * Icarus Verilog (optional)          https://github.com/steveicarus/iverilog
+                                       (LGPL-2.0-or-later)
+  * AMD/Xilinx Vivado (proprietary)    https://www.amd.com/en/products/software/adaptive-socs-and-fpgas/vivado.html
+                                       (used for synthesis & impl; not
+                                        redistributed)
+  * Python 3                           https://www.python.org/
+                                       (PSF License)
+  * NumPy (used in einsum ground-truth tests) (BSD-3-Clause)
+
+These tools are not part of WaveTensor's distributed sources; their
+licensing applies only when those tools are obtained and used to build
+this project. WaveTensor's own license terms above govern only the
+code and documentation in this repository.
