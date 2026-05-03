@@ -1,15 +1,17 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 <!-- SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors -->
 
-# Custom hypervisor — WaveTensor 가속기 모든 상용 폼팩터의 공통 기반
+# Y4 — WaveTensor 가속기 모든 상용 폼팩터의 공통 기반 hypervisor
+
+본 hypervisor 의 정식 명칭은 **Y4** 이다. 이하 본 메모와 다른 메모에서 "Y4" 는 곧 본 custom hypervisor 를 가리킨다.
 
 > **연관 메모**:
 > - [`remote_accelerator_access.md`](./remote_accelerator_access.md) — A의 호스트 OS 가 가벼우면 좋다는 원래 결정. 본 메모는 그 항목을 한 단계 더 깊이 파는 변형.
-> - [`sdk_architecture.md`](./sdk_architecture.md) — Rust 중심 stack 일관성. hypervisor 도 Rust 면 동일 ecosystem.
+> - [`sdk_architecture.md`](./sdk_architecture.md) — Rust 중심 stack 일관성. Y4 도 Rust 면 동일 ecosystem.
 
 ## 제안 (확장 — 적용 범위 전면 확대)
 
-WaveTensor 가속기를 탑재하는 **모든 상용 폼팩터의 공통 기반 OS** 로 custom hypervisor 채택:
+WaveTensor 가속기를 탑재하는 **모든 상용 폼팩터의 공통 기반 OS** 로 Y4 (custom hypervisor) 채택:
 
 - 서버팜 시나리오의 호스트 A (`remote_accelerator_access.md`)
 - **특수목적 랩탑** (개인 ML/HPO 워크스테이션)
@@ -27,7 +29,7 @@ WaveTensor 가속기를 탑재하는 **모든 상용 폼팩터의 공통 기반 
 └────────────────────────┬───────────────────────────┘
                          │ paravirt / cap-restricted
 ┌────────────────────────▼───────────────────────────┐
-│ WaveTensor custom hypervisor (Type-1, Rust)         │
+│ Y4 — WaveTensor custom hypervisor (Type-1, Rust)         │
 │  - seL4 microkernel base                            │
 │  - Tock capsule 모델 (드라이버 격리)                 │
 │  - 융합 IPC (DragonFlyBSD LWKT + Redox scheme)      │
@@ -95,10 +97,10 @@ WaveTensor 가속기를 탑재하는 **모든 상용 폼팩터의 공통 기반 
 
 이전에 언급한 "Linux driver 포팅 = GPLv2 전염" 은 다음과 같이 정리:
 
-- 우리 hypervisor 메인 트리: **Apache-2.0** (위 결정)
+- Y4 메인 트리: **Apache-2.0** (위 결정)
 - GPL'd Linux driver 를 그대로 차용하는 capsule: **GPLv2 라이선스 그대로 유지**, 별도 binary
 - 메인 트리는 GPL capsule 을 **외부 ABI 로만** 호출 — 직접 link 하지 않음
-- 이 경계 덕에 메인 hypervisor 는 Apache-2.0 으로 깨끗 유지, GPL capsule 은 GPL 로 따로 distribute (Linux 처럼)
+- 이 경계 덕에 Y4 메인 트리 는 Apache-2.0 으로 깨끗 유지, GPL capsule 은 GPL 로 따로 distribute (Linux 처럼)
 
 법적으로 가장 안전한 패턴은 Linux kernel 자체가 채택한 "loadable module + stable in-kernel ABI" 모델과 유사. 우리 capsule 인터페이스를 이 형태로 디자인.
 
@@ -117,7 +119,7 @@ WaveTensor 가속기를 탑재하는 **모든 상용 폼팩터의 공통 기반 
 
 ## 확정된 기술 stack
 
-본 hypervisor 가 기반으로 삼을 컴포넌트 조합 (사용자 결정):
+Y4 가 기반으로 삼을 컴포넌트 조합 (사용자 결정):
 
 ### Microkernel base — **seL4**
 - BSD-2-Clause, formally verified
@@ -145,7 +147,7 @@ WaveTensor 가속기를 탑재하는 **모든 상용 폼팩터의 공통 기반 
 
 **핵심 원칙**: 컴포넌트 작성 전에 **명세 + 증명을 먼저 작성**, 증명이 통과한 후에야 구현.
 
-- seL4 가 이미 microkernel 부분 정식증명 → 우리는 그 위 layer 의 증명 만 추가하면 됨
+- seL4 가 이미 microkernel 부분 정식증명 → Y4 는 그 위 layer 의 증명 만 추가하면 됨
 - 도구 후보:
   - **Coq / Lean 4** — high-level 명세 + 증명
   - **Frama-C / Why3** — C 코드 (driver 일부) 정식 검증
@@ -179,7 +181,7 @@ formal-first 가 가져다 주는 결과:
 │ A (가속기 호스트)                             │
 │                                              │
 │ ┌────────────────────────────────────────┐   │
-│ │  Custom hypervisor (Type-1, Rust)       │   │
+│ │  Y4 (Type-1 Rust hypervisor)       │   │
 │ │  ─────────────────────────────────────  │   │
 │ │  ↑ 책임:                                │   │
 │ │   - boot, IOMMU, HIU shadow region 셋업 │   │
@@ -221,7 +223,7 @@ formal-first 가 가져다 주는 결과:
 | XChaCha20 masking | tenant 별 key/nonce — 동일 가속기에서 다른 tenant 가 옛 데이터 reconstruct 불가 |
 | `flush-on-context-switch` | 자동 — 따로 OS 가 청소할 필요 없음 |
 
-→ 우리 가속기는 **이미 hypervisor-friendly 한 디자인**. custom hypervisor 가 그 잠재력을 실제로 활용.
+→ 우리 가속기는 **이미 hypervisor-friendly 한 디자인**. Y4 가 그 잠재력을 실제로 활용.
 
 ### Lease 의 OS-level 모델링
 
@@ -251,7 +253,7 @@ Linux 위에서 사용자 공간 daemon 으로 같은 일을 하려면 syscall �
 - **드라이버 생태계 부족**: PCIe/USB/CXL host controller 드라이버는 base OS (seL4 / Tock 등) 가 가진 만큼만 활용. **3-tier driver 전략** 으로 완화 — DragonFlyBSD (BSD) 1순위 → NetBSD via rump kernel 2순위 → Linux port (해당 driver 한정 GPLv2) 최후수단
 - **메인테넌스**: 보안 패치, 새 하드웨어 지원 등 모든 책임이 우리 팀
 - **디버깅 도구 빈약**: gdb-stub, kprobes, eBPF 같은 도구 모두 직접 만들거나 포기
-- **사용자 onboarding 어려움**: 외부 기여자가 Linux 익숙 → custom hypervisor 학습 곡선
+- **사용자 onboarding 어려움**: 외부 기여자가 Linux 익숙 → Y4 학습 곡선
 - **합법성/인증**: 특정 산업 (의료/항공) 인증을 받으려면 OS 자체도 인증 트랙. seL4 처럼 formally verified 가야 인증이 짧아짐
 
 ### 중간 옵션
@@ -260,7 +262,7 @@ Linux 위에서 사용자 공간 daemon 으로 같은 일을 하려면 syscall �
 |------|------|
 | (i) Linux + 가속기 driver/daemon (현 plan) | 작음 |
 | (ii) Linux + KVM 위에 LibrettOS/Redox/Tock 의 light tenant compartment | 중간 |
-| (iii) **bare-metal Rust hypervisor 직접 (이 메모의 제안)** | 큼 |
+| (iii) **bare-metal Rust hypervisor 직접 (Y4 — 이 메모의 제안)** | 큼 |
 | (iv) seL4 도입 + 그 위에 가속기 daemon | 중대형 (seL4 자체 학습 + 통합) |
 | (v) Xen Type-1 + dom0 가 Rust unikernel | 중간 |
 
