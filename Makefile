@@ -102,3 +102,89 @@ synth-report:
 synth-clean:
 	rm -rf $(SYNTH_DIR)/reports/* $(SYNTH_DIR)/checkpoints/* \
 	       vivado*.jou vivado*.log .Xil
+
+# =============================================================================
+# Claude Code memory mirror — copies the per-project memory directory
+#   ~/.claude/projects/-home-ybi-WaveTensor/memory/
+# into the repo's `.claude-memories/` so the memory state can be backed up,
+# diffed, and (optionally) committed.
+#
+# Usage:
+#   make mirror-memory           # one-shot: copy memory/ → .claude-memories/
+#   make mirror-memory-dry       # rsync --dry-run preview, no changes
+#   make mirror-memory-clean     # remove the mirror copy
+#
+# Wire-up (optional):
+#   * Pre-commit hook: `.git/hooks/pre-commit` may invoke `make mirror-memory`
+#     so every commit captures the latest memory state.
+#   * Session-end hook: see `.claude/settings.local.json` Stop hook to call
+#     `make mirror-memory` automatically when the CC session ends.
+# =============================================================================
+
+CC_MEMORY_SRC := $(HOME)/.claude/projects/-home-ybi-WaveTensor/memory
+CC_MEMORY_DST := $(PWD)/.claude-memories
+
+.PHONY: mirror-memory mirror-memory-dry mirror-memory-clean
+
+mirror-memory:
+	@if [ ! -d "$(CC_MEMORY_SRC)" ]; then \
+	    echo "mirror-memory: source $(CC_MEMORY_SRC) not found — skipping."; \
+	    exit 0; \
+	fi
+	@mkdir -p "$(CC_MEMORY_DST)"
+	@rsync -a --delete \
+	    --exclude='.git/' \
+	    "$(CC_MEMORY_SRC)/" "$(CC_MEMORY_DST)/"
+	@echo "mirror-memory: $(CC_MEMORY_SRC) → $(CC_MEMORY_DST)"
+	@ls -1 "$(CC_MEMORY_DST)" | sed 's/^/  /'
+
+mirror-memory-dry:
+	@if [ ! -d "$(CC_MEMORY_SRC)" ]; then \
+	    echo "mirror-memory-dry: source $(CC_MEMORY_SRC) not found."; \
+	    exit 0; \
+	fi
+	@rsync -a --delete --dry-run --itemize-changes \
+	    --exclude='.git/' \
+	    "$(CC_MEMORY_SRC)/" "$(CC_MEMORY_DST)/"
+
+mirror-memory-clean:
+	rm -rf "$(CC_MEMORY_DST)"
+
+# =============================================================================
+# Claude Code session resume — reads the session ID stamped by the CC
+# SessionEnd hook (`.claude/session-end-hook.sh`) into the file
+# `.claude-recent-session-id` and re-attaches with `claude --resume`.
+#
+# Usage:
+#   make claude-resume          # resume the most recently ended session
+#
+# The recent-session-id file is machine-local and gitignored — it is
+# overwritten every time a CC session ends in this repo.
+# =============================================================================
+
+CC_RECENT_SID := $(PWD)/.claude-recent-session-id
+
+.PHONY: claude-resume claude-recent-id
+
+claude-resume:
+	@if [ ! -f "$(CC_RECENT_SID)" ]; then \
+	    echo "claude-resume: $(CC_RECENT_SID) not found."; \
+	    echo "  → start a CC session in this repo first; the SessionEnd hook"; \
+	    echo "    will stamp the file when the session ends."; \
+	    exit 1; \
+	fi
+	@sid=$$(cat "$(CC_RECENT_SID)" | tr -d '[:space:]'); \
+	if [ -z "$$sid" ]; then \
+	    echo "claude-resume: $(CC_RECENT_SID) is empty."; \
+	    exit 1; \
+	fi; \
+	echo "claude-resume: resuming session $$sid"; \
+	exec claude --resume "$$sid"
+
+claude-recent-id:
+	@if [ -f "$(CC_RECENT_SID)" ]; then \
+	    cat "$(CC_RECENT_SID)"; \
+	else \
+	    echo "(no recent session id stamped yet)"; \
+	    exit 1; \
+	fi

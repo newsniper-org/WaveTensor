@@ -3,3 +3,4 @@
 sim_build/
 .claude-assets/
 .private/
+.claude-recent-session-id

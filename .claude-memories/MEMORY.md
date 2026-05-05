@@ -1,0 +1,1 @@
+- [Y4 hypervisor lives in separate repo](y4_separate_repo.md) — Y4 development happens at /home/ybi/Y4 (own git repo, Apache-2.0), not inside WaveTensor.

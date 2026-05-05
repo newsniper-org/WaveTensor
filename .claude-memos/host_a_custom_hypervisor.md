@@ -350,7 +350,7 @@ Phase 4  formal-verified 인증 트랙 + 외부 출시
   - GPU (display only, 가속기와 별개): 사용자가 게스트 OS 안에서 기존 driver 사용 — hypervisor 가 GPU 를 게스트에 passthrough
 - **scheduler**: 가속기 lease 전환은 wave 단위와 정렬되어야 함 — DragonFlyBSD LWKT 의 per-CPU 모델을 가속기 wave 단위로 확장
 - **guest OS 호환**: Linux 와 DragonFlyBSD 가 paravirt interface 를 어떻게 쓰는가? Xen-PV 호환? virtio? 또는 자체 인터페이스?
-- ~~**부팅 / 펌웨어**~~ → **Bootloader 자체 개발 X, 기존 OSS bootloader 최소 수정 채택** 으로 확정 (위 §Bootloader). 1차 systemd-boot, 2차 GRUB2-BLS, 3차 U-Boot, 4차 coreboot. 폼팩터별로 위 우선순위 안에서 선택.
+- ~~**부팅 / 펌웨어**~~ → **Bootloader 자체 개발 X, 기존 OSS bootloader 최소 수정 채택** 으로 확정 (위 §Bootloader). 1차 Limine, 2차 GRUB2-BLS, 3차 U-Boot, 4차 coreboot. systemd-boot / rEFInd 는 Y4 에서 제외 (이유는 §Bootloader 표 참조). 폼팩터별로 위 우선순위 안에서 선택.
 - **업데이트 / OTA**: hypervisor + guest OS 의 양면 업데이트 정책 (signed image, A/B partition 등)
 - **인증 트랙**: 의료 (FDA 510k), 항공 (DO-178C), 금융 (FIPS 140-3) 중 어느 것을 먼저? formal-first 라 모두 가능하지만 우선순위 결정 필요
 
