@@ -122,7 +122,7 @@ synth-clean:
 # =============================================================================
 
 CC_MEMORY_SRC := $(HOME)/.claude/projects/-home-ybi-WaveTensor/memory
-CC_MEMORY_DST := $(PWD)/.claude-memories
+CC_MEMORY_DST := $(CURDIR)/.claude-memories
 
 .PHONY: mirror-memory mirror-memory-dry mirror-memory-clean
 
@@ -162,7 +162,7 @@ mirror-memory-clean:
 # overwritten every time a CC session ends in this repo.
 # =============================================================================
 
-CC_RECENT_SID := $(PWD)/.claude-recent-session-id
+CC_RECENT_SID := $(CURDIR)/.claude-recent-session-id
 
 .PHONY: claude-resume claude-recent-id
 

@@ -3,6 +3,12 @@
 
 # Notebook 스타일 웹 UI — 설계 및 구현 검토
 
+> **🛈 본 메모는 historical context 입니다 (2026-05-07).** 본 메모의 가속기 무관 영역은
+> **Dasima** (`/home/ybi/dasima/`, Apache-2.0) 로 분리되었으며, 정전 디자인은 거기의
+> `docs/architecture.md` 입니다. WaveTensor-specific UI (WT64v1 ISA 시각화, HIU 대시보드,
+> `%%wt` magic, synth dashboard) 는 향후 별도 `wt-notebook-ext` 저장소에서 Dasima core +
+> integrations 를 의존성으로 사용 예정. 본 메모는 이전 디자인 토론 보존용으로만 유지됩니다.
+>
 > **연관 메모**: [`remote_accelerator_access.md`](./remote_accelerator_access.md) — A/M/S/N 토폴로지와 가속기 lease 흐름. 본 메모의 "셀 실행 흐름" / "Lease panel" / "가속기 RPC" 부분은 그 메모에서 정의되는 daemon API 위에 얹힘.
 
 ## 목적

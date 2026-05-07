@@ -1,1 +1,2 @@
 - [Y4 hypervisor lives in separate repo](y4_separate_repo.md) — Y4 development happens at /home/ybi/Y4 (own git repo, Apache-2.0), not inside WaveTensor.
+- [Dasima notebook kit lives in separate repo](dasima_separate_repo.md) — extracted from notebook_web_ui.md on 2026-05-07; lives at /home/ybi/dasima (Apache-2.0); WaveTensor-specific UI deferred to future wt-notebook-ext.
