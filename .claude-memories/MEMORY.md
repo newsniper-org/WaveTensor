@@ -1,2 +1,5 @@
 - [Y4 hypervisor lives in separate repo](y4_separate_repo.md) — Y4 development happens at /home/ybi/Y4 (own git repo, Apache-2.0), not inside WaveTensor.
 - [Dasima notebook kit lives in separate repo](dasima_separate_repo.md) — extracted from notebook_web_ui.md on 2026-05-07; lives at /home/ybi/dasima (Apache-2.0); WaveTensor-specific UI deferred to future wt-notebook-ext.
+- [WaveTensor memo spin-off scaffold pattern](spinoff_pattern.md) — when extracting a .claude-memos/ idea into a sibling repo, apply Y4/Dasima scaffold pattern (Apache-2.0, docs, memory seeds, mirror-memory, forward pointer).
+- [CC memory backup + session-resume infrastructure](memory_backup_pattern.md) — mirror-memory Makefile targets + SessionEnd hook + pre-commit hook; standard across WaveTensor / Y4 / Dasima.
+- [Use $(CURDIR) not $(PWD) in Makefiles](makefile_curdir_rule.md) — `make -C <dir>` exposes the $(PWD) bug; $(CURDIR) is GNU Make's per-invocation cwd. Fixed on 2026-05-07.
