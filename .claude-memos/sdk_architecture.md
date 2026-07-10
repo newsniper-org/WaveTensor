@@ -3,7 +3,12 @@
 
 # WaveTensor SDK 아키텍처 — Rust core + 다중 언어 FFI
 
-> **연관 메모**: [`imads_hpo_integration.md`](./imads_hpo_integration.md) — 동일 stack 구조의 선례. [`notebook_web_ui.md`](./notebook_web_ui.md) — Python binding 의 1차 소비자. [`remote_accelerator_access.md`](./remote_accelerator_access.md) — 가속기 daemon RPC 의 client lib 가 본 SDK 의 한 layer.
+> **🛈 본 메모는 historical context 입니다 (2026-07-10).** 본 메모의 디자인은
+> **WaveTensor SDK** (`/home/ybi/wavetensor-sdk/`, Apache-2.0) 로 분리되었으며,
+> 정전 디자인은 거기의 `docs/architecture.md` 입니다. 본 메모는 이전 디자인 초안
+> 보존용으로만 유지됩니다. 새 SDK 디자인 변경은 `/home/ybi/wavetensor-sdk/` 에서.
+>
+> **연관 메모**: [`imads_hpo_integration.md`](./imads_hpo_integration.md) — 동일 stack 구조의 선례. [`notebook_web_ui.md`](./notebook_web_ui.md) — Python binding 의 1차 소비자 (Dasima 로 분리되어 향후 `wt-notebook-ext` 를 통해 SDK 소비). [`remote_accelerator_access.md`](./remote_accelerator_access.md) — 가속기 daemon RPC 의 client lib 가 본 SDK 의 한 layer (계획된 `wavetensor-daemon` repo 로 향후 분리).
 
 ## 결정
 
