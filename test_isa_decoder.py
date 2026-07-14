@@ -1906,3 +1906,114 @@ async def test_trace_iijk_wrong_dim_lowers(dut):
                payload_a=0, payload_b=0, payload_b_valid=1)
     assert dut.lower_required.value == 1
     assert dut.output_valid.value == 0
+
+
+# =============================================================================
+# v1.3 multi-SUBSCRIPT EH accumulation (§16)
+# =============================================================================
+#
+# EHDecode.v acc_subscript is widened to 96 bits and accepts up to 2
+# SUBSCRIPT EHs (low + hi). Third SUBSCRIPT raises stg_chain_err.
+# ISA_Decoder exposes dec_eff_subscript_hi as a hierarchical signal
+# accessible via `dut.u_ehdec.dec_eff_subscript_hi`.
+
+
+@cocotb.test()
+async def test_multi_subscript_low_only_backward_compat(dut):
+    """Single SUBSCRIPT EH — dec_eff_subscript_hi must stay zero (backward
+    compat with v1.0/1.1/1.2 signatures)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # Standard 2x2 matmul (v1.0 SIG_MATMUL_2X2) — one SUBSCRIPT EH.
+    instr = encode_instr(0x32,
+                         _STD_PORT(),
+                         eh_subscript(axes(1, 2, 0, 0), axes(2, 3, 0, 0),
+                                      axes(1, 3, 0, 0)),
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    await fire(dut, instr, _STD_TAG(dim=0x11),
+               payload_a=pack16(1, 2, 3, 4), payload_b=pack16(5, 6, 7, 8),
+               payload_b_valid=1)
+    assert dut.output_valid.value == 1
+    # Hierarchical: EHDecode is instantiated as `u_ehdec` in ISA_Decoder.
+    assert int(dut.u_ehdec.dec_eff_subscript_hi.value) == 0
+
+
+@cocotb.test()
+async def test_multi_subscript_two_ehs_accumulate(dut):
+    """Two SUBSCRIPT EHs — first lands in dec_eff_subscript, second in
+    dec_eff_subscript_hi. No matching HW signature so lower_required fires
+    (expected — v1.3 lands encoding only, not 5+ axes primitives)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    lo_a = axes(1, 2, 3, 4)
+    lo_b = axes(1, 3, 5, 0)
+    lo_o = axes(1, 2, 4, 0)
+    hi_a = axes(5, 0, 0, 0)
+    hi_b = axes(0, 0, 0, 0)
+    hi_o = axes(0, 0, 0, 0)
+
+    instr = encode_instr(0x32,
+                         _STD_PORT(),
+                         eh_subscript(lo_a, lo_b, lo_o),
+                         eh_subscript(hi_a, hi_b, hi_o),
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    await fire(dut, instr, _STD_TAG(dim=0x55),
+               payload_a=0, payload_b=0, payload_b_valid=1)
+    # No matching 5-axes signature in PE_Core, so lower_required is expected.
+    assert dut.lower_required.value == 1
+    # But the DECODE stage MUST have captured both SUBSCRIPT bodies.
+    # Packing order in acc_subscript matches SIG_BMM constant layout:
+    # [47:32]=A_packed, [31:16]=B_packed, [15:0]=O_packed.
+    lo_expected = (lo_o & 0xFFFF) | ((lo_b & 0xFFFF) << 16) | ((lo_a & 0xFFFF) << 32)
+    hi_expected = (hi_o & 0xFFFF) | ((hi_b & 0xFFFF) << 16) | ((hi_a & 0xFFFF) << 32)
+    assert int(dut.u_ehdec.dec_eff_subscript.value) == lo_expected
+    assert int(dut.u_ehdec.dec_eff_subscript_hi.value) == hi_expected
+
+
+@cocotb.test()
+async def test_multi_subscript_three_ehs_raises_chain_err(dut):
+    """Three SUBSCRIPT EHs exceed the acc_subscript capacity (96 bits =
+    2 slots). Third one raises stg_chain_err → decode_error surfaces."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    lo = eh_subscript(axes(1, 2, 3, 4), axes(1, 3, 5, 0), axes(1, 2, 4, 0))
+    mid = eh_subscript(axes(5, 0, 0, 0), axes(0, 0, 0, 0), axes(0, 0, 0, 0))
+    hi = eh_subscript(axes(6, 0, 0, 0), axes(0, 0, 0, 0), axes(0, 0, 0, 0))
+
+    instr = encode_instr(0x32, _STD_PORT(), lo, mid, hi, eh_opref(),
+                         flags=F_HAS_OPB)
+    await fire(dut, instr, _STD_TAG(dim=0x55),
+               payload_a=0, payload_b=0, payload_b_valid=1)
+    assert dut.error_flag.value == 1
+
+
+@cocotb.test()
+async def test_multi_subscript_max_chain_fits_MAX_EH_slots(dut):
+    """A chain of MAX_EH=4 EHs (PORT + SUBSCRIPT + SUBSCRIPT + OPREF)
+    fits exactly in the default MAX_EH=4 hardware bus. Chain walks all
+    4 slots, sentinel EH_END sits in OPREF's next_hdr."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    instr = encode_instr(0x32,
+                         _STD_PORT(),
+                         eh_subscript(axes(1, 2, 3, 4), axes(1, 3, 5, 0),
+                                      axes(1, 2, 4, 0)),
+                         eh_subscript(axes(5, 0, 0, 0), axes(0, 0, 0, 0),
+                                      axes(0, 0, 0, 0)),
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    await fire(dut, instr, _STD_TAG(dim=0x55),
+               payload_a=0, payload_b=0, payload_b_valid=1)
+    # Decode succeeds even though PE_Core has no matching primitive.
+    assert dut.error_flag.value == 0
+    assert dut.lower_required.value == 1

@@ -4,35 +4,45 @@
 // =============================================================================
 // EHDecode.v — Cluster-shared instruction-decode front-end.
 //
-// Pipelined chain walk: ONE EH per cycle, 4 slots = 4 cycles, plus a final
-// stage-1 latch. Total latency from in_valid to dec_valid is 4 cycles.
-// Replaces the previous single-cycle 4-deep combinational cascade whose
-// nested variable-index muxes consumed ~80 K LUT per instance.
+// Pipelined chain walk: ONE EH per cycle, up to MAX_EH slots. Termination
+// is **sentinel-driven** — the walk exits the moment an EH whose `next_hdr`
+// is EH_END (0x0) is processed, or the moment `stg_expect` itself is
+// EH_END on entry (empty chain). The `stg_index == MAX_EH-1` check is a
+// **safety cap** against malformed instructions with no sentinel: not the
+// primary termination condition.
 //
-// Resource win: instead of 4 cascaded sets of 16:1 muxes (one per slot,
-// each reading 3 words from a 16-word array, all in series in one cycle),
-// we instantiate ONE set of 16:1 muxes and reuse it across 4 cycles. The
-// per-slot offset is held in a register, advances on each clock edge, and
-// drives the same physical mux. Vivado is then free to share the mux
-// hardware across the 4 cycles instead of replicating it 4x.
+// WT64v1 v1.3 (2026-07-14) amendment moves EH count from a spec constraint
+// to a hardware-sizing hint. Software emits any number of EHs it needs; the
+// bus width (INSTR_WIDTH = 32 + MAX_EH*96) is the only hard cap. See
+// `wt64v1_spec.md` §16 for details.
+//
+// Resource win: instead of MAX_EH cascaded sets of 16:1 muxes (one per
+// slot, each reading 3 words from an INSTR_WORDS-word array, all in series
+// in one cycle), we instantiate ONE set of muxes and reuse it across
+// cycles. The per-slot offset is held in a register, advances on each
+// clock edge, and drives the same physical mux.
 //
 // Pipeline (with `instruction` and `input_*` held stable from in_valid until
 // done; the parent (Cluster/ISA_Decoder) is responsible for not changing
-// inputs mid-walk — `in_valid` rises for one cycle, then the inputs are
-// held until the consumer is ready):
+// inputs mid-walk):
 //
-//   cycle T   : in_valid=1, instruction valid. Inputs are latched into
+//   cycle T   : in_valid=1, instruction valid. Inputs latched into
 //               instr_latched / tag_latched / payload_latched. Pipeline
 //               kicks on next edge with stg_index=0.
-//   cycle T+1 : SLOT 0 decoded combinationally from iw_c[stg_off]; per-class
-//               accumulators update. stg_off / stg_expect advance.
-//   cycle T+2 : SLOT 1 decoded.
-//   cycle T+3 : SLOT 2 decoded.
-//   cycle T+4 : SLOT 3 decoded; done_d1 latches.
-//   cycle T+5 : dec_* registers update from accumulator + legality check.
+//   cycle T+1 : SLOT 0 decoded from iw_c[stg_off]; accumulators update.
+//               stg_off / stg_expect advance. If cur_next == EH_END:
+//               done_d1 latches immediately (early sentinel exit).
+//   cycle T+k : SLOT k-1 decoded; done_d1 latches when sentinel reached
+//               or safety cap (k == MAX_EH) hits.
+//   cycle T+k+1 : dec_* registers update from accumulator + legality check.
 //
-// External interface compatibility: ISA_Decoder.v stays as a thin wrapper.
-// Tests wait 5 RisingEdges from in_valid assertion to observe dec_valid.
+// v1.3 also adds multi-SUBSCRIPT accumulation (§16): up to 2 SUBSCRIPT
+// EHs concatenate low → hi in `acc_subscript[95:0]`, exposing 8 axes for
+// 5+ axes EINSUM signatures. Third SUBSCRIPT raises chain_err.
+//
+// External interface: ISA_Decoder.v stays as a thin wrapper. Tests use
+// `RisingEdge(dec_valid)` polling, not fixed cycle waits — so early
+// sentinel exit is transparent.
 // =============================================================================
 
 /* verilator lint_off UNUSEDSIGNAL */
@@ -68,6 +78,9 @@ module EHDecode #(
     output reg [3:0]             dec_eff_opref_kind,
     output reg [31:0]            dec_eff_mem_offset,
     output reg [47:0]            dec_eff_subscript,
+    // v1.3: second SUBSCRIPT EH body (axes 4-7 for {A,B,O}). Zero when
+    // only one SUBSCRIPT EH was emitted (backward compatible w/ v1.2 sigs).
+    output reg [47:0]            dec_eff_subscript_hi,
     output reg [7:0]             dec_eff_output_port_id,
     output reg [7:0]             dec_eff_precision,
     output reg [31:0]            dec_wave_number,
@@ -84,7 +97,15 @@ module EHDecode #(
     // Constants
     // -------------------------------------------------------------------------
     localparam INSTR_WORDS_REAL = INSTR_WIDTH/32;
-    localparam INSTR_WORDS      = 16;
+    // INSTR_WORDS pads iw_c[] to at least the safe upper bound so the mux
+    // never goes out of range regardless of MAX_EH. Kept at 32 to cover
+    // MAX_EH up to ~10 (32 = 1 + 10*3 + 1 slack).
+    localparam INSTR_WORDS      = (INSTR_WORDS_REAL > 32) ? INSTR_WORDS_REAL : 32;
+    // v1.3: parametric chain-walk state widths. stg_off addresses iw_c[];
+    // stg_index counts slots up to the MAX_EH safety cap. Minimum widths
+    // preserve backward compat when MAX_EH=4 ($clog2(32)=5, $clog2(5)=3).
+    localparam OFF_W  = $clog2(INSTR_WORDS);
+    localparam IDX_W  = $clog2(MAX_EH + 1);
     localparam [3:0] EH_END        = 4'h0;
     localparam [3:0] EH_PORT       = 4'h1;
     localparam [3:0] EH_IMM16      = 4'h2;
@@ -142,13 +163,16 @@ module EHDecode #(
 
     // -------------------------------------------------------------------------
     // Chain-walk pipeline state — one slot per cycle.
+    // v1.3: widths parametric on MAX_EH (was hardcoded 4-bit/3-bit for
+    // MAX_EH=4). Termination is sentinel-driven; stg_index is only used
+    // as a safety cap against malformed instructions without EH_END.
     // -------------------------------------------------------------------------
-    reg [3:0]  stg_off;
-    reg [3:0]  stg_expect;
-    reg [2:0]  stg_index;
-    reg        stg_active;
-    reg        stg_chain_err;
-    reg        stg_unknown;
+    reg [OFF_W-1:0]  stg_off;
+    reg [3:0]        stg_expect;
+    reg [IDX_W-1:0]  stg_index;
+    reg              stg_active;
+    reg              stg_chain_err;
+    reg              stg_unknown;
 
     // Accumulated body fields
     reg [15:0] acc_port_body;
@@ -158,7 +182,11 @@ module EHDecode #(
     reg [ 3:0] acc_mem_addr_mode;
     reg [11:0] acc_mem_stride;
     reg [31:0] acc_mem_offset;
-    reg [47:0] acc_subscript;
+    // v1.3: widened to hold up to 2 SUBSCRIPT EH bodies (low + hi).
+    // Lower 48 bits = first SUBSCRIPT (axes 0-3 for {A,B,O}).
+    // Upper 48 bits = second SUBSCRIPT (axes 4-7 for {A,B,O}).
+    reg [95:0] acc_subscript;
+    reg [1:0]  acc_subscript_slot;  // 0=none seen, 1=one seen, 2=two seen
     reg [ 3:0] acc_opref_src_kind;
     reg [ 3:0] acc_opref_port_id;
     reg [ 7:0] acc_opref_noc_route;
@@ -184,8 +212,8 @@ module EHDecode #(
 
     // Single-stage decoded slot wires (one set, reused every cycle).
     wire [31:0] cur_w0 = iw_c[stg_off];
-    wire [31:0] cur_w1 = iw_c[stg_off + 4'd1];
-    wire [31:0] cur_w2 = iw_c[stg_off + 4'd2];
+    wire [31:0] cur_w1 = iw_c[stg_off + {{(OFF_W-1){1'b0}}, 1'b1}];
+    wire [31:0] cur_w2 = iw_c[stg_off + {{(OFF_W-2){1'b0}}, 2'd2}];
     wire [3:0]  cur_next   = cur_w0[15:12];
     wire [3:0]  cur_type   = cur_w0[11: 8];
     wire [7:0]  cur_extlen = cur_w0[ 7: 0];
@@ -212,9 +240,9 @@ module EHDecode #(
 
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            stg_off            <= 4'd1;
+            stg_off            <= {{(OFF_W-1){1'b0}}, 1'b1};
             stg_expect         <= EH_END;
-            stg_index          <= 3'd0;
+            stg_index          <= {IDX_W{1'b0}};
             stg_active         <= 1'b0;
             stg_chain_err      <= 1'b0;
             stg_unknown        <= 1'b0;
@@ -225,7 +253,8 @@ module EHDecode #(
             acc_mem_addr_mode  <= 4'h0;
             acc_mem_stride     <= 12'h0;
             acc_mem_offset     <= 32'h0;
-            acc_subscript      <= 48'h0;
+            acc_subscript      <= 96'h0;
+            acc_subscript_slot <= 2'd0;
             acc_opref_src_kind <= 4'h0;
             acc_opref_port_id  <= 4'h0;
             acc_opref_noc_route<= 8'h0;
@@ -256,9 +285,9 @@ module EHDecode #(
                 // wire — saves a cycle of latency vs. requiring a separate
                 // walk_kick stage. Subsequent slot reads use the registered
                 // instr_latched (this same edge writes it).
-                stg_off            <= 4'd1;
+                stg_off            <= {{(OFF_W-1){1'b0}}, 1'b1};
                 stg_expect         <= instruction[23:20];
-                stg_index          <= 3'd0;
+                stg_index          <= {IDX_W{1'b0}};
                 stg_active         <= 1'b1;
                 stg_chain_err      <= 1'b0;
                 stg_unknown        <= 1'b0;
@@ -269,7 +298,8 @@ module EHDecode #(
                 acc_mem_addr_mode  <= 4'h0;
                 acc_mem_stride     <= 12'h0;
                 acc_mem_offset     <= 32'h0;
-                acc_subscript      <= 48'h0;
+                acc_subscript      <= 96'h0;
+                acc_subscript_slot <= 2'd0;
                 acc_opref_src_kind <= 4'h0;
                 acc_opref_port_id  <= 4'h0;
                 acc_opref_noc_route<= 8'h0;
@@ -320,8 +350,18 @@ module EHDecode #(
                         acc_any_mem       <= 1'b1;
                     end
                     if (is_subscript_c) begin
-                        acc_subscript     <= {cur_w1, cur_w0[31:16]};
-                        acc_any_subscript <= 1'b1;
+                        // v1.3: multi-SUBSCRIPT accumulation. Up to 2 SUBSCRIPT
+                        // EHs concatenate low → hi. Third raises chain_err.
+                        if (acc_subscript_slot == 2'd0) begin
+                            acc_subscript[47:0]  <= {cur_w1, cur_w0[31:16]};
+                            acc_any_subscript    <= 1'b1;
+                            acc_subscript_slot   <= 2'd1;
+                        end else if (acc_subscript_slot == 2'd1) begin
+                            acc_subscript[95:48] <= {cur_w1, cur_w0[31:16]};
+                            acc_subscript_slot   <= 2'd2;
+                        end else begin
+                            stg_chain_err        <= 1'b1;
+                        end
                     end
                     if (is_opref_c) begin
                         acc_opref_src_kind  <= cur_w0[19:16];
@@ -334,14 +374,30 @@ module EHDecode #(
                         acc_prec_dim      <= cur_w0[31:24];
                         acc_any_precision <= 1'b1;
                     end
-                    stg_off    <= stg_off + cur_extlen[3:0];
+                    stg_off    <= stg_off + {{(OFF_W-4){1'b0}}, cur_extlen[3:0]};
                     stg_expect <= cur_next;
                 end
-                if (stg_index == 3'd3) begin
+                // Termination (v1.3): fixed MAX_EH-cycle walk. The sentinel
+                // (EH_END = 0x0) is dynamically enforced by `cur_present`
+                // gating — cycles after the sentinel do no work but the
+                // pipeline still runs to MAX_EH slots so the downstream
+                // pe_active alignment stays deterministic (see Cluster.v's
+                // 6-stage pe_active shift register).
+                //
+                // The user's C-string-style "chain walks until '\0'" analogy
+                // is realized as: bus width (MAX_EH*96) is a HARDWARE sizing
+                // hint; software emits any count of EHs it needs up to that
+                // bus width, and the sentinel logically terminates the chain.
+                // Extra pipeline cycles beyond the sentinel are pure no-ops.
+                //
+                // Bumping MAX_EH also requires bumping the Cluster.v
+                // pe_active pipeline depth in lockstep.
+                if (stg_index == (MAX_EH[IDX_W-1:0] -
+                                  {{(IDX_W-1){1'b0}}, 1'b1})) begin
                     stg_active <= 1'b0;
                     done_d1    <= 1'b1;
                 end else begin
-                    stg_index <= stg_index + 3'd1;
+                    stg_index <= stg_index + {{(IDX_W-1){1'b0}}, 1'b1};
                 end
             end
         end
@@ -486,7 +542,7 @@ module EHDecode #(
          (cb_opcode == 8'h53) || (cb_opcode == 8'h54) || (cb_opcode == 8'h55) ||
          (cb_opcode == 8'h56);
 
-    wire bh_len_mismatch = (cb_bh_len != {4'h0, stg_off});
+    wire bh_len_mismatch = (cb_bh_len != {{(8-OFF_W){1'b0}}, stg_off});
     wire reserved_nonzero = (cb_reserved != 8'h00);
     wire prec_flag_without_eh = (f_precision_ovr || f_dim_ovr) && !acc_any_precision;
     wire opb_required_invalid   = f_has_opb && !payload_b_valid_latched;
@@ -531,6 +587,7 @@ module EHDecode #(
             dec_eff_opref_kind        <= 4'h0;
             dec_eff_mem_offset        <= 32'h0;
             dec_eff_subscript         <= 48'h0;
+            dec_eff_subscript_hi      <= 48'h0;
             dec_eff_output_port_id    <= 8'h00;
             dec_eff_precision         <= 8'h00;
             dec_wave_number           <= 32'h0;
@@ -552,7 +609,8 @@ module EHDecode #(
                 dec_eff_dim_sizes         <= eff_dim_sizes;
                 dec_eff_opref_kind        <= acc_opref_src_kind;
                 dec_eff_mem_offset        <= acc_mem_offset;
-                dec_eff_subscript         <= acc_subscript;
+                dec_eff_subscript         <= acc_subscript[47:0];
+                dec_eff_subscript_hi      <= acc_subscript[95:48];
                 dec_eff_output_port_id    <= eff_output_port_id;
                 dec_eff_precision         <= eff_precision;
                 dec_wave_number           <= cb_wave_number;
@@ -579,8 +637,8 @@ module EHDecode #(
     endgenerate
 
     integer sc;
-    reg [3:0] off_c     [0:MAX_EH];
-    reg [3:0] expect_c  [0:MAX_EH];
+    reg [OFF_W-1:0] off_c     [0:MAX_EH];
+    reg [3:0]       expect_c  [0:MAX_EH];
     reg [3:0] type_c, next_c;
     reg [7:0] extlen_c;
     reg [3:0] opref_kind_c;
@@ -589,7 +647,7 @@ module EHDecode #(
     reg       opref_found_c;
 
     always @(*) begin
-        off_c[0]      = 4'd1;
+        off_c[0]      = {{(OFF_W-1){1'b0}}, 1'b1};
         expect_c[0]   = instruction[23:20];
         opref_kind_c  = 4'h0;
         opref_port_c  = 4'h0;
@@ -609,7 +667,7 @@ module EHDecode #(
                     opref_route_c = iw_raw[off_c[sc]][31:24];
                     opref_found_c = 1'b1;
                 end
-                off_c[sc+1]    = off_c[sc] + extlen_c[3:0];
+                off_c[sc+1]    = off_c[sc] + {{(OFF_W-4){1'b0}}, extlen_c[3:0]};
                 expect_c[sc+1] = next_c;
             end else begin
                 off_c[sc+1]    = off_c[sc];

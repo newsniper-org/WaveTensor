@@ -4,7 +4,9 @@
 # WT64v1 EH 인코딩 확장 조사 — MAX_EH 완화 / 해제
 
 작성일: 2026-07-14
-상태: **design memo (계획 안)** — 사용자 지시 (2026-07-14) "EH 최대 갯수 제한을 완화하거나 해제할 방법도 모색"
+상태: **v1.3 amendment 로 랜딩** (2026-07-14). 사용자 후속 지시로 "C-string sentinel" 접근이 채택되어 §11 로 실행 요약 추가.
+
+원래 설계 조사 (2026-07-14): 사용자 지시 "EH 최대 갯수 제한을 완화하거나 해제할 방법도 모색"
 
 > **연관 메모**: [`wt64v1_spec.md`](./wt64v1_spec.md) §15.8 (남은 raise: 3+ batch dims 는 EH 인코딩 상한 원인). [`einsum_trace_broadcast_analysis.md`](./einsum_trace_broadcast_analysis.md).
 
@@ -194,3 +196,44 @@ def _pack_axes(codes: List[int]) -> int:
 - `wt64v1_spec.md` §15.8 갱신 — 3+ batch dims 관련 assembler error message 개선 정책 명시.
 - `wt64v1_spec.md` §16 신설 (v1.3 amendment) — MAX_EH ↑ + SUBSCRIPT_v2 스펙 상세 (사용자 승인 시).
 - Or: 본 memo 로만 유지 (구현 지연).
+
+## 11. 실제 랜딩 (v1.3 amendment, 2026-07-14) — sentinel 방식 채택
+
+사용자 후속 통찰 (2026-07-14): "EH 자체의 크기는 고정이니까, 특정 비트(들)의 값이 미리 정의된 terminal 상수인 EH가 나올때까지 갯수 제한없이 받아들이도록 하는 것은 어떨까? 마치, 문자열의 끝은 항상 `'\0'`이어야 한다는 C언어의 규칙처럼 말이지."
+
+이 관점이 **SUBSCRIPT_v2 body 확장 (옵션 B) 보다 훨씬 우아**함이 확인됨:
+
+- Base ISA 는 이미 sentinel (`EH_END = 0x0`) 를 `next_hdr` 필드에 사용 중.
+- `EHDecode.v:340` 의 `stg_index == 3'd3` 하드코드가 그 원리를 무효화하고 있었음.
+- 이 하드코드를 파라메트릭 (`stg_index == MAX_EH-1`) 로 대체하면 **MAX_EH 는 인코딩 spec 제약이 아니라 hardware sizing hint** 가 됨.
+
+### 11.1 v1.3 실제 랜딩 스코프 (`wt64v1_spec.md` §16 참조)
+
+- Chain-walk state 파라메트릭 (`$clog2`) — MAX_EH 임의 override 가능
+- `MAX_EH = 4` default 유지 → 완전 backward-compat (기존 145 cocotb + 65 assembler 회귀 통과)
+- Multi-SUBSCRIPT accumulation (`acc_subscript` 48→96 bit) — 두 SUBSCRIPT EH concatenate → 8 axes 지원
+- 신규 output: `dec_eff_subscript_hi` (48-bit, 둘째 SUBSCRIPT body)
+- Assembler `_pack_axes_multi` + `_encode_subscript_eh_multi` → 5+ axes 자동 emit
+- `HW_DIRECT_EINSUM_SIGS_MULTI` (6-tuple) — SIG_BMM_3_CANDIDATE / SIG_TRACE_IIJKL_CANDIDATE 등록
+
+### 11.2 남은 blocker (v2 scope 유지)
+
+- **3+ batch dims 실행**: multi-SUBSCRIPT 로 인코딩 성공 후 RTL 에서 `lower_required` (매칭 primitive 없음). 근본 원인은 payload 64-bit 상한.
+- **원래 §5-7 분석 결론 재확인**: payload 128-bit (v2) 없이는 실행 지원 불가.
+
+### 11.3 옵션 A/B/C 재평가
+
+원래 §2 의 옵션들과 v1.3 실제 채택 비교:
+
+| 옵션 | 원래 평가 | v1.3 실제 |
+|---|---|---|
+| A (MAX_EH↑) | +5-8K LUT | 랜딩 (default 4 유지, override 가능한 파라메트릭화 만) |
+| B (SUBSCRIPT_v2 body↑) | +2K LUT | **폐기** — sentinel + multi-SUBSCRIPT 방식이 우수 |
+| C (indirect) | 비권장 | 유지 (비권장) |
+| **D (sentinel — user 발안)** | 언급 없었음 | **채택** — spec/RTL 둘 다 간결 |
+
+### 11.4 학습 포인트
+
+원래 조사 (§2-7) 는 "고정된 개별 EH body 를 확장" 방향으로만 사고. 사용자 발안은 "**EH chain 자체의 길이 제약 개념을 spec 에서 제거**" 하는 상위 원리적 접근. 결과적으로 훨씬 적은 RTL 변경 (`stg_index` 하드코드 1줄) 으로 훨씬 큰 유연성 확보.
+
+일반 원칙: 실제 blocker 를 spec 층위에서 재정의하는 방향이 code 변경보다 우아할 때가 많음.

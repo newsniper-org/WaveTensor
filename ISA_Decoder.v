@@ -60,6 +60,12 @@ module ISA_Decoder #(
     wire [3:0]                 dec_eff_opref_kind;
     wire [31:0]                dec_eff_mem_offset;
     wire [47:0]                dec_eff_subscript;
+    /* verilator lint_off UNUSEDSIGNAL */
+    // v1.3: second SUBSCRIPT EH body. Exposed for hierarchical test access
+    // and future 5+ axes signature dispatch. Unused by current PE_Core (see
+    // wt64v1_spec.md §16).
+    wire [47:0]                dec_eff_subscript_hi;
+    /* verilator lint_on UNUSEDSIGNAL */
     wire [7:0]                 dec_eff_output_port_id;
     wire [7:0]                 dec_eff_precision;
     wire [31:0]                dec_wave_number;
@@ -99,6 +105,7 @@ module ISA_Decoder #(
         .dec_eff_opref_kind        (dec_eff_opref_kind),
         .dec_eff_mem_offset        (dec_eff_mem_offset),
         .dec_eff_subscript         (dec_eff_subscript),
+        .dec_eff_subscript_hi      (dec_eff_subscript_hi),
         .dec_eff_output_port_id    (dec_eff_output_port_id),
         .dec_eff_precision         (dec_eff_precision),
         .dec_wave_number           (dec_wave_number),

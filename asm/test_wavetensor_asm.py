@@ -688,15 +688,50 @@ class TestEinsumLowering(unittest.TestCase):
         opcodes = [(w >> 24) & 0xFF for w in insts]
         self.assertEqual(opcodes, [0x32], f"expected single EINSUM, got {[hex(o) for o in opcodes]}")
 
-    def test_3_batch_dims_still_raises_beyond_v1_2(self):
-        """Beyond v1.2: 3 batch axes exceeds SIG_BMM_2's 2. Still raises."""
+    def test_3_batch_dims_v1_3_multi_subscript_pass_through(self):
+        """v1.3 §16: `abcij,abcjk->abcik` (3-batch matmul) now matches
+        SIG_BMM_3_CANDIDATE via multi-SUBSCRIPT encoding. Assembler emits
+        the EINSUM opcode with two SUBSCRIPT EHs concatenated. RTL will
+        `lower_required` (no matching PE primitive), but the encoding
+        path itself is exercised — this closes the v1.2 raise."""
         src = (
             ".default_port mask=0x01 out=0\n"
             "EINSUM opb .subscript A=a,b,c,i,j B=a,b,c,j,k O=a,b,c,i,k .opref "
             ".shape a=2 b=2 c=2 i=2 j=2 k=2\n"
         )
-        # 5-axis A/B exceeds 4-axis EH encoding limit → raises at subscript
-        # parse level or earlier legality check.
+        insts = assemble(src)
+        opcodes = [(w >> 24) & 0xFF for w in insts]
+        self.assertEqual(opcodes, [0x32],
+                         f"expected single EINSUM, got {[hex(o) for o in opcodes]}")
+        # Verify two SUBSCRIPT EHs are present in the emitted instruction.
+        # Walk the chain: base header + PORT + SUBSCRIPT_low + SUBSCRIPT_hi + OPREF.
+        val = insts[0]
+        words = [(val >> (i * 32)) & 0xFFFFFFFF for i in range(13)]
+        # base word 0: next_hdr in [23:20] = 0x1 (PORT)
+        self.assertEqual((words[0] >> 20) & 0xF, 0x1, "base.next_hdr must be PORT")
+        # PORT (word 1): next_hdr = SUBSCRIPT (0x6)
+        self.assertEqual((words[1] >> 12) & 0xF, 0x6, "PORT.next_hdr must be SUBSCRIPT")
+        # SUBSCRIPT_low (word 2): next_hdr = SUBSCRIPT (0x6) — chained SUBSCRIPT
+        self.assertEqual((words[2] >> 12) & 0xF, 0x6,
+                         "first SUBSCRIPT.next_hdr must be SUBSCRIPT (chained multi)")
+        self.assertEqual((words[2] >> 8) & 0xF, 0x6, "type must be SUBSCRIPT")
+        # SUBSCRIPT_hi (word 4): next_hdr = OPREF (0x7)
+        self.assertEqual((words[4] >> 12) & 0xF, 0x7,
+                         "second SUBSCRIPT.next_hdr must be OPREF")
+        self.assertEqual((words[4] >> 8) & 0xF, 0x6, "type must still be SUBSCRIPT")
+
+    def test_4_batch_dims_still_raises_beyond_v1_3(self):
+        """Beyond v1.3 §16: 4 batch axes would give 7-axis A/B/O tensors,
+        exceeding _pack_axes_multi's 8-axis limit only if very rank-heavy.
+        For `abcdij,abcdjk->abcdik` it's 6 axes / group — encoding fits
+        (multi-SUBSCRIPT), BUT signature isn't in
+        HW_DIRECT_EINSUM_SIGS_MULTI, so falls through to _lower_einsum_general
+        which raises on batched contraction."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "EINSUM opb .subscript A=a,b,c,d,i,j B=a,b,c,d,j,k O=a,b,c,d,i,k "
+            ".opref .shape a=2 b=2 c=2 d=2 i=2 j=2 k=2\n"
+        )
         with self.assertRaises(AssemblerError):
             assemble(src)
 

@@ -549,15 +549,54 @@ HW_DIRECT_EINSUM_SIGS = frozenset([
 ])
 
 
+# v1.3 §16 (2026-07-14) — 5+ axes patterns via multi-SUBSCRIPT EH chain.
+# 6-tuple = (a_lo, b_lo, o_lo, a_hi, b_hi, o_hi). Encoded via 2 SUBSCRIPT
+# EHs in the machine code. Currently NO matching PE_Core primitive: RTL
+# will surface `lower_required` for these signatures — v1.3 lands the
+# encoding infrastructure only. Execution requires a payload extension
+# (>64-bit) which is a v2 scope. See `.claude-memos/eh_encoding_expansion.md`.
+HW_DIRECT_EINSUM_SIGS_MULTI = frozenset([
+    # SIG_BMM_3 candidate: 'abcij,abcjk->abcik' (3-batch matmul)
+    #   Labels: a=1, b=2, c=3, i=4, j=5, k=6
+    #   A = [a,b,c,i,j] → lo=0x4321, hi=0x0005
+    #   B = [a,b,c,j,k] → lo=0x5321, hi=0x0006
+    #   O = [a,b,c,i,k] → lo=0x4321, hi=0x0006
+    (0x4321, 0x5321, 0x4321, 0x0005, 0x0006, 0x0006),
+    # SIG_TRACE_IIJKL candidate: 'iijkl->jkl' (trace + 3 kept axes)
+    #   Labels: i=1, j=2, k=3, l=4
+    #   A = [i,i,j,k,l] → lo=0x3211, hi=0x0004
+    #   B = []          → lo=0x0000, hi=0x0000
+    #   O = [j,k,l]     → lo=0x0432, hi=0x0000  (wait: 3 axes fit in lo)
+    # Correction: O = [j,k,l] labels [2,3,4] → lo=0x0432 (axis0=2,axis1=3,axis2=4).
+    # But if O had 5+ axes, hi would be nonzero. Here O is 3 axes, all in lo.
+    (0x3211, 0x0000, 0x0432, 0x0004, 0x0000, 0x0000),
+])
+
+
 def _einsum_signature_packed(a_codes, b_codes, o_codes):
     """Pack each canonicalized axis list to a 16-bit value (the same form
-    that ends up in the SUBSCRIPT EH body)."""
+    that ends up in the SUBSCRIPT EH body). Only axes 0-3."""
     def pack(codes):
         v = 0
         for i, c in enumerate(codes[:4]):
             v |= (c & 0xF) << (i * 4)
         return v
     return (pack(a_codes), pack(b_codes), pack(o_codes))
+
+
+def _einsum_signature_multi(a_codes, b_codes, o_codes):
+    """v1.3 §16 — 6-tuple (lo_a, lo_b, lo_o, hi_a, hi_b, hi_o) for 5+ axes
+    patterns. axes 0-3 → lo half, axes 4-7 → hi half. hi_* = 0 when the
+    corresponding tensor has ≤4 axes."""
+    def pack_hi(codes):
+        if len(codes) <= 4:
+            return 0
+        v = 0
+        for i, c in enumerate(codes[4:8]):
+            v |= (c & 0xF) << (i * 4)
+        return v
+    lo_a, lo_b, lo_o = _einsum_signature_packed(a_codes, b_codes, o_codes)
+    return (lo_a, lo_b, lo_o, pack_hi(a_codes), pack_hi(b_codes), pack_hi(o_codes))
 
 
 def _elem_count(dim_sizes: int) -> int:
@@ -591,8 +630,14 @@ def _maybe_lower_einsum(inst: Instruction) -> List[Instruction]:
         return [inst]
 
     codes = _canonicalize_subscript(sub_eh)
+    max_axes = max(len(codes['A']), len(codes['B']), len(codes['O']))
     sig = _einsum_signature_packed(codes['A'], codes['B'], codes['O'])
-    if sig in HW_DIRECT_EINSUM_SIGS:
+    matched = (max_axes <= 4 and sig in HW_DIRECT_EINSUM_SIGS)
+    if not matched and max_axes > 4:
+        # v1.3 §16 — 5+ axes patterns match via 6-tuple.
+        sig_multi = _einsum_signature_multi(codes['A'], codes['B'], codes['O'])
+        matched = sig_multi in HW_DIRECT_EINSUM_SIGS_MULTI
+    if matched:
         if shape_eh is None:
             return [inst]
         # HW reads tensor shape from the token tag, not from .shape — drop
@@ -1100,6 +1145,11 @@ def _canonicalize_subscript(eh: ExtensionHeader) -> Dict[str, List[int]]:
 
 
 def _pack_axes(codes: List[int]) -> int:
+    """Pack up to 4 axis codes into a 16-bit value.
+
+    v1.3: raises now indicate encoding overflow (>4 axes per SUBSCRIPT EH
+    half). Callers targeting 5+ axes should chain 2 SUBSCRIPT EHs via
+    `_pack_axes_multi` and emit both bodies (§16)."""
     if len(codes) > 4:
         raise AssemblerError(f"at most 4 subscript axes per group, got {codes}")
     v = 0
@@ -1110,6 +1160,21 @@ def _pack_axes(codes: List[int]) -> int:
             )
         v |= (c & 0xF) << (i * 4)
     return v
+
+
+def _pack_axes_multi(codes: List[int]) -> Tuple[int, int]:
+    """v1.3 §16 — split up to 8 axis codes into (low_half, hi_half).
+
+    Positions 0-3 go into low_half (axes 0-3), positions 4-7 into hi_half
+    (axes 4-7). Returns (low16, hi16). 9+ axes raises."""
+    if len(codes) > 8:
+        raise AssemblerError(
+            f"at most 8 subscript axes per group (v1.3 multi-SUBSCRIPT limit), "
+            f"got {len(codes)}: {codes}"
+        )
+    lo = _pack_axes(codes[:4])
+    hi = _pack_axes(codes[4:]) if len(codes) > 4 else 0
+    return lo, hi
 
 
 def _take_immediate(eh: ExtensionHeader) -> int:
@@ -1181,12 +1246,38 @@ def _encode_eh(eh: ExtensionHeader) -> Tuple[int, List[int]]:
     raise AssemblerError(f"line {eh.line}: cannot encode EH kind {kind!r}")
 
 
+def _encode_subscript_eh_multi(eh: ExtensionHeader) -> List[Tuple[int, List[int]]]:
+    """v1.3 §16 — encode a `.subscript` ExtensionHeader as ONE or TWO
+    SUBSCRIPT EHs based on axes count. Groups with ≤4 axes emit a single
+    SUBSCRIPT EH (backward compat). Groups with 5-8 axes emit two — the
+    first carries axes 0-3, the second axes 4-7 for all of A/B/O."""
+    codes = _canonicalize_subscript(eh)
+    a_lo, a_hi = _pack_axes_multi(codes.get('A', []))
+    b_lo, b_hi = _pack_axes_multi(codes.get('B', []))
+    o_lo, o_hi = _pack_axes_multi(codes.get('O', []))
+    ehs: List[Tuple[int, List[int]]] = [(EH_SUBSCRIPT, [
+        ((o_lo & 0xFFFF) << 16) | (EH_SUBSCRIPT << 8) | 2,
+        ((a_lo & 0xFFFF) << 16) | (b_lo & 0xFFFF),
+    ])]
+    if a_hi or b_hi or o_hi:
+        ehs.append((EH_SUBSCRIPT, [
+            ((o_hi & 0xFFFF) << 16) | (EH_SUBSCRIPT << 8) | 2,
+            ((a_hi & 0xFFFF) << 16) | (b_hi & 0xFFFF),
+        ]))
+    return ehs
+
+
 def _encode_instruction(inst: Instruction) -> int:
     opcode = MNEMONIC_TO_OPCODE[inst.mnemonic]
     flags = 0
     for fname in inst.flags:
         flags |= 1 << FLAG_BITS[fname]
-    encoded = [_encode_eh(eh) for eh in inst.eh_list]
+    encoded: List[Tuple[int, List[int]]] = []
+    for eh in inst.eh_list:
+        if eh.kind == 'subscript':
+            encoded.extend(_encode_subscript_eh_multi(eh))
+        else:
+            encoded.append(_encode_eh(eh))
     bh_len = 1 + sum(len(words) for _, words in encoded)
     # Patch next_hdr fields walking from end backwards.
     next_hdr = EH_END
