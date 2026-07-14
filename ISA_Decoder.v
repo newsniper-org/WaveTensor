@@ -21,7 +21,9 @@ module ISA_Decoder #(
     parameter INSTR_WIDTH           = 32 + MAX_EH*96,
     parameter MUL_OPS_SUPPORTED     = 1,
     parameter DIV_OPS_SUPPORTED     = 1,
-    parameter NON_MUL_OPS_SUPPORTED = 1
+    parameter NON_MUL_OPS_SUPPORTED = 1,
+    parameter FRAG_MAX              = 16,
+    parameter WIDE_W                = FRAG_MAX * ADDR_WIDTH
 ) (
     input                       clk,
     input                       rst,
@@ -31,6 +33,10 @@ module ISA_Decoder #(
     input  [ADDR_WIDTH-1:0]     input_payload,
     input  [ADDR_WIDTH-1:0]     input_payload_b,
     input                       input_payload_b_valid,
+    // v1.5.2 §19 — wide payload input (from Cluster fragment buffer).
+    // For standalone tests without fragmentation, tie both to 0.
+    input  [WIDE_W-1:0]         input_payload_wide,
+    input                       input_payload_wide_valid,
     output [ADDR_WIDTH-1:0]     output_payload,
     output [TAG_WIDTH-1:0]      output_tag,
     output                      output_valid,
@@ -38,6 +44,11 @@ module ISA_Decoder #(
     // v1.5 §17 — NoC wave-token fragment header. Default 8'h00 (single-
     // fragment) for all v1.0..1.4 primitives.
     output [7:0]                output_frag_hdr,
+    // v1.5.2 §19 — reassembled wide payload latched into the dec_* stage.
+    // Exposed at the ISA_Decoder boundary for hierarchical test access
+    // and downstream (PE.v / Cluster.v / Top_Core.v) legacy tie-off.
+    output [WIDE_W-1:0]         dec_input_payload_wide_out,
+    output                      dec_input_payload_wide_valid_out,
     output                      memory_req,
     output [ADDR_WIDTH-1:0]     mem_addr,
     output                      error_flag,
@@ -87,7 +98,9 @@ module ISA_Decoder #(
         .ADDR_WIDTH (ADDR_WIDTH),
         .TAG_WIDTH  (TAG_WIDTH),
         .MAX_EH     (MAX_EH),
-        .INSTR_WIDTH(INSTR_WIDTH)
+        .INSTR_WIDTH(INSTR_WIDTH),
+        .FRAG_MAX   (FRAG_MAX),
+        .WIDE_W     (WIDE_W)
     ) u_ehdec (
         .clk                       (clk),
         .rst                       (rst),
@@ -97,6 +110,8 @@ module ISA_Decoder #(
         .input_payload             (input_payload),
         .input_payload_b           (input_payload_b),
         .input_payload_b_valid     (input_payload_b_valid),
+        .input_payload_wide        (input_payload_wide),
+        .input_payload_wide_valid  (input_payload_wide_valid),
         .dec_valid                 (dec_valid),
         .dec_opcode                (dec_opcode),
         .dec_decode_error          (dec_decode_error),
@@ -114,6 +129,8 @@ module ISA_Decoder #(
         .dec_eff_subscript         (dec_eff_subscript),
         .dec_eff_subscript_hi      (dec_eff_subscript_hi),
         .dec_eff_imm64_hi          (dec_eff_imm64_hi),
+        .dec_input_payload_wide       (dec_input_payload_wide_out),
+        .dec_input_payload_wide_valid (dec_input_payload_wide_valid_out),
         .dec_eff_output_port_id    (dec_eff_output_port_id),
         .dec_eff_precision         (dec_eff_precision),
         .dec_wave_number           (dec_wave_number),

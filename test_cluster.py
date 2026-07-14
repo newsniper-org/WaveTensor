@@ -486,3 +486,76 @@ async def test_frag_buffer_four_fragments_assemble(dut):
     dut.ext_frag_hdr.value = 0
     await Timer(1, units="ns")
     assert int(dut.frag_active.value) == 0
+
+
+# =============================================================================
+# v1.5.2 §19 — Fragment buffer → EHDecode wide-payload threading
+# =============================================================================
+#
+# frag_reass_wide + frag_reass_valid feed EHDecode's input_payload_wide.
+# EHDecode's in_valid is now gated by `wave_complete = (frag_hdr==0x00) ||
+# frag_reass_valid`, so intermediate fragments no longer trigger chain
+# walk. Legacy single-fragment path is unchanged.
+
+
+@cocotb.test()
+async def test_wave_complete_gates_intermediate_fragments(dut):
+    """v1.5.2: intermediate fragments (frag_reass_valid=0) must NOT trigger
+    EHDecode's chain walk. Verify u_ehdec.stg_active stays 0 during
+    fragment accumulation."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    tag = _tag(port_context_id=0)
+    instr = encode_instr(0x10, eh_port(input_port_mask=0x01, output_port_id=0),
+                         eh_imm16(0))
+    frag0 = 0x1111222233334444
+
+    # Fragment 0 of 2 — buffer captures but EHDecode MUST NOT start walking
+    await _drive_fragment(dut, tag, frag0, frag_hdr=0x01, instruction=instr)
+    await Timer(1, units="ns")
+    assert int(dut.u_ehdec.stg_active.value) == 0
+
+
+@cocotb.test()
+async def test_fragment_completion_feeds_ehdecode_wide(dut):
+    """v1.5.2: send 2-fragment wave. After completion EHDecode's chain walk
+    fires and dec_input_payload_wide latches the reassembled wide payload."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    tag = _tag(port_context_id=0)
+    instr = encode_instr(0x10, eh_port(input_port_mask=0x01, output_port_id=0),
+                         eh_imm16(0))
+    frag0 = 0xAAAAA5A5CAFEBABE
+    frag1 = 0x5555F0F0DEADBEEF
+
+    # Fragment 0
+    await _drive_fragment(dut, tag, frag0, frag_hdr=0x01, instruction=instr)
+    # Fragment 1 — completes the wave and triggers EHDecode
+    dut.ext_instruction.value = instr
+    dut.ext_tag.value = tag
+    dut.ext_payload.value = frag1
+    dut.ext_payload_b.value = 0
+    dut.ext_payload_b_valid.value = 0
+    dut.ext_frag_hdr.value = 0x11
+    dut.ext_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.ext_valid.value = 0
+    dut.ext_frag_hdr.value = 0
+
+    # Wait for chain walk + PE dispatch (~7 cycles)
+    for _ in range(20):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.ext_out_valid.value) == 1:
+            break
+
+    wide = int(dut.u_ehdec.dec_input_payload_wide.value)
+    assert (wide & ((1 << 64) - 1)) == frag0, \
+        f"slot0: {wide & ((1<<64)-1):016x} != {frag0:016x}"
+    assert ((wide >> 64) & ((1 << 64) - 1)) == frag1, \
+        f"slot1: {(wide>>64) & ((1<<64)-1):016x} != {frag1:016x}"
+    assert int(dut.u_ehdec.dec_input_payload_wide_valid.value) == 1

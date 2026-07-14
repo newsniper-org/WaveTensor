@@ -162,13 +162,47 @@ Fragmentation 은 **RTL 층위 인프라**이지 어셈블러 코드에 노출 �
 - Single-slot: 동시 활성 multi-fragment wave 1개
 - Downstream 미연결 — `frag_reass_wide` 는 Cluster-internal (v1.5.2 에서 EHDecode 스레딩)
 
+## 11b. v1.5.2 landing (2026-07-15 완료) — EHDecode 스레딩 + wave-complete gating
+
+**EHDecode 인터페이스 확장** (§7 시나리오 A 실현):
+- 신규 파라미터: `FRAG_MAX = 16`, `WIDE_W = 1024`
+- 신규 입력: `input_payload_wide[1023:0]` + `input_payload_wide_valid`
+- 신규 latch: `payload_wide_latched` + `payload_wide_valid_latched`
+- 신규 출력: `dec_input_payload_wide[1023:0]` + `_valid` (registered, `done_d1` 에 update)
+
+**Cluster wave-complete gating**:
+```verilog
+wire wave_complete = ext_valid
+                   && ((ext_frag_hdr == 8'h00) || frag_reass_valid);
+```
+- Legacy 단일-fragment: 즉시 트리거 (완전 backward compat)
+- Multi-fragment 중간: EHDecode idle, buffer 만 축적
+- Multi-fragment 마지막: 재조립 완료 후 EHDecode 트리거
+
+**Payload mux**: `(ext_frag_hdr == 0x00) ? ext_payload : frag_reass_wide[63:0]` — legacy consumers 는 low slot 을 정상 소비.
+
+**상류 tie-off**: PE.v / Top_Core.v 는 wide input 을 `1024'h0` + `1'b0` 로 hardwire. Pod.v 는 무영향 (재조립은 Cluster 각자).
+
+**회귀**: 165 cocotb + 66 assembler = 231 tests PASS. 신규 4 tests:
+- `test_wide_payload_latches_when_valid` (ISA_Decoder)
+- `test_wide_payload_zero_when_invalid` (ISA_Decoder)
+- `test_wave_complete_gates_intermediate_fragments` (Cluster)
+- `test_fragment_completion_feeds_ehdecode_wide` (Cluster)
+
+**하드웨어 비용**: ~2K FF + 200 LUT / Cluster (payload_wide_latched + dec_input_payload_wide register + mux).
+
+**한계 (v1.5.3 로 이월)**:
+- PE_Core 는 wide input 아직 미소비 — `dec_input_payload_wide` 는 hierarchical 접근만
+- 실제 wide-consumer primitive (SIG_BMM_3 등) 실행은 v1.5.3
+
 ## 12. v1.6+ 로드맵 요약
 
 | 단계 | 스코프 | 예상 LUT 비용 | 상태 |
 |---|---|---|---|
 | v1.5.1 | Fabric fragment buffer + reassembly (Cluster) | +1.5-2K LUT + 1K FF/Cluster | **완료 (2026-07-14)** |
 | v1.5.1b | Multi-slot buffer (N-slot LRU) | +8-16K LUT + 8Kbit BRAM | 대기 |
-| v1.5.2 | EHDecode.v `dec_input_payload_wide` output + PE_Core wide-input port | +500 LUT | 대기 |
+| v1.5.2 | EHDecode `dec_input_payload_wide` + Cluster threading + wave_complete gate | +2K FF + 200 LUT / Cluster | **완료 (2026-07-15)** |
+| v1.5.2b | PE_Core wide input port (dispatch layer 준비) | +100 LUT | 대기 |
 | v1.5.3 | Wide-output primitive: SIG_BMM_3 실행 (multi-fragment emit) | +3K LUT (matmul_2x2 확장) | 대기 |
 | v1.5.4 | Assembler multi-IMM64 emit 자동화 (5+ axes einsum 감지 시) | Python only | 대기 |
 | v1.5.5 | Multi-fragment SIG_TRACE_IIJKL 등 reduction primitive | +1K LUT each | 대기 |

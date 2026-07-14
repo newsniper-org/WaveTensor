@@ -242,12 +242,15 @@ def _decode_mirror(instr_int):
 # =============================================================================
 
 async def fire(dut, instruction, tag, payload_a=0,
-               payload_b=0, payload_b_valid=0):
+               payload_b=0, payload_b_valid=0,
+               payload_wide=0, payload_wide_valid=0):
     dut.instruction.value = instruction
     dut.input_tag.value = tag
     dut.input_payload.value = payload_a
     dut.input_payload_b.value = payload_b
     dut.input_payload_b_valid.value = payload_b_valid
+    dut.input_payload_wide.value = payload_wide
+    dut.input_payload_wide_valid.value = payload_wide_valid
     dut.token_valid.value = 1
     await RisingEdge(dut.clk)
     dut.token_valid.value = 0
@@ -274,6 +277,9 @@ async def reset(dut):
     dut.input_tag.value = 0
     dut.input_payload.value = 0
     dut.input_payload_b.value = 0
+    # v1.5.2 §19 — default wide input to zero (legacy path).
+    dut.input_payload_wide.value = 0
+    dut.input_payload_wide_valid.value = 0
     await Timer(15, units="ns")
     dut.rst.value = 0
     await RisingEdge(dut.clk)
@@ -2147,3 +2153,51 @@ async def test_frag_hdr_default_zero_einsum(dut):
                payload_b_valid=1)
     assert dut.output_valid.value == 1
     assert int(dut.output_frag_hdr.value) == 0x00
+
+
+# =============================================================================
+# v1.5.2 §19 — Wide payload latch through EHDecode
+# =============================================================================
+#
+# EHDecode latches `input_payload_wide` (1024-bit) alongside legacy
+# `input_payload` (64-bit) and exposes it on `dec_input_payload_wide_out`
+# after chain walk completion. Wide-consumer primitives (v1.5.3+) will
+# read this in parallel with dec_input_payload.
+
+
+@cocotb.test()
+async def test_wide_payload_latches_when_valid(dut):
+    """v1.5.2: drive input_payload_wide + valid alongside an ADD. After
+    completion, dec_input_payload_wide_out must equal the driven value and
+    dec_input_payload_wide_valid_out must be 1."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # Distinctive 1024-bit pattern
+    wide_val = 0
+    for i in range(16):
+        wide_val |= ((0xA000 + i) & 0xFFFF) << (i * 64)
+
+    instr = encode_instr(0x10, _STD_PORT(), eh_imm16(0))
+    await fire(dut, instr, _STD_TAG(), payload_a=42,
+               payload_wide=wide_val, payload_wide_valid=1)
+    assert dut.output_valid.value == 1
+    assert int(dut.dec_input_payload_wide_out.value) == wide_val
+    assert int(dut.dec_input_payload_wide_valid_out.value) == 1
+
+
+@cocotb.test()
+async def test_wide_payload_zero_when_invalid(dut):
+    """v1.5.2: without wide_valid, the wide bus latches whatever is on it
+    (0 in this case since we don't drive) and valid_out stays 0.
+    Legacy path unaffected."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    instr = encode_instr(0x10, _STD_PORT(), eh_imm16(5))
+    await fire(dut, instr, _STD_TAG(), payload_a=10)
+    assert dut.output_valid.value == 1
+    assert int(dut.output_payload.value) == 15  # legacy ADD unaffected
+    assert int(dut.dec_input_payload_wide_valid_out.value) == 0

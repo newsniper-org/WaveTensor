@@ -12,6 +12,7 @@
 - v1.4 (2026-07-14): Multi-IMM64 EH accumulation — 128-bit wide input immediate via 2-slot bank. Input payload 64-bit blocker 우회. §17 참조.
 - v1.5 (2026-07-14): NoC wave-token 에 **IPv6-style Fragment Extension Header** (8-bit `frag_hdr`) 신설. Output payload 64-bit blocker 우회 인프라. §17 참조.
 - v1.5.1 (2026-07-14): Cluster 진입에 **single-slot fragment reassembly buffer** 도입 — 조합 wide payload assembly + 완결 pulse. Downstream 소비는 v1.5.2 로. §18 참조.
+- v1.5.2 (2026-07-15): Fragment 재조립을 **EHDecode 로 스레딩** + `wave_complete` gating 도입. `dec_input_payload_wide[1023:0]` 인터페이스 확립. wide 소비 primitive 는 v1.5.3+. §19 참조.
 
 참조 구현 마이그레이션: **진행 중 (2026-07-12 개시)** — 참조 보드가 XCAU25P → LFE5U-85F → Avant G70 순으로 이동, 아래 §"참조 구현 마이그레이션 노트" 참조.
 
@@ -800,3 +801,101 @@ test_cluster.py 신규 4 tests:
 ### 18.10 진입 트리거
 
 v1.5.1 amendment 는 **결정된 상태 (2026-07-14)**. 사용자 지시로 v1.5.1 부터 차근차근 sequential landing. 구현 완료 (2026-07-14).
+
+## 19. Fragment → EHDecode threading + wave-complete gating — v1.5.2 amendment (2026-07-15)
+
+### 19.1 배경
+
+v1.5.1 은 Cluster 안에 fragment buffer 를 landing 했지만 `frag_reass_wide` 는 **Cluster-internal signal 로만 노출** (테스트 hierarchical 접근용). v1.5.2 는 이를 **EHDecode 안까지 스레딩** 하여 `dec_input_payload_wide[1023:0]` 이라는 표준 인터페이스 로 확립. Wide-consumer primitive (v1.5.3+) 가 사용할 landing zone.
+
+사용자 지시 (2026-07-15): "v1.5.2로 진행".
+
+### 19.2 EHDecode wide-input path
+
+**신규 파라미터**:
+- `parameter FRAG_MAX = 16` — fragment 최대 갯수 (Cluster 버퍼와 일치)
+- `parameter WIDE_W = FRAG_MAX * ADDR_WIDTH = 1024` — wide payload 폭
+
+**신규 입력**:
+- `input [WIDE_W-1:0] input_payload_wide` — 재조립된 wide payload
+- `input input_payload_wide_valid` — wide 유효 신호 (fragment 완결 신호)
+
+**신규 상태**:
+- `reg [WIDE_W-1:0] payload_wide_latched` — 다른 payload 와 같은 edge 에서 latch
+- `reg payload_wide_valid_latched`
+
+**신규 출력**:
+- `output reg [WIDE_W-1:0] dec_input_payload_wide` — `done_d1` 시 registered
+- `output reg dec_input_payload_wide_valid`
+
+### 19.3 wave_complete gating (Cluster)
+
+Cluster.v 는 이제 다음 신호로 EHDecode 를 트리거:
+
+```verilog
+wire wave_complete = ext_valid
+                   && ((ext_frag_hdr == 8'h00) || frag_reass_valid);
+```
+
+- **Legacy single-fragment** (`ext_frag_hdr == 8'h00`): 즉시 wave_complete = 1 → EHDecode 트리거. 완전 backward compat.
+- **Multi-fragment 중간**: `frag_reass_valid = 0` → wave_complete = 0 → EHDecode 무동작 (buffer 만 축적).
+- **Multi-fragment 마지막**: `frag_reass_valid = 1` → wave_complete = 1 → EHDecode 트리거 with **재조립된 wide + legacy low64**.
+
+`ext_to_mu/du/lpe` 클래스ifier 도 `wave_complete` 로 gate → PE_active pipeline 은 중간 fragment 시 idle 유지.
+
+### 19.4 Payload mux — legacy vs multi-frag
+
+Cluster.v 에서 EHDecode 입력용 legacy payload 는:
+
+```verilog
+wire [63:0] ehdec_input_payload =
+    (ext_frag_hdr == 8'h00) ? ext_payload
+                            : frag_reass_wide[63:0];  // multi-frag low slot
+```
+
+- Legacy: `ext_payload` 그대로 (기존 동작)
+- Multi-frag: `frag_reass_wide` 의 **low 64-bit slot** 이 legacy `dec_input_payload` 로 노출 → wide 를 무시하는 primitive 도 slot 0 을 정상 소비 가능
+
+### 19.5 상류 배선
+
+- **ISA_Decoder.v**: `input_payload_wide` + valid 를 top-level 로 노출, wide output `dec_input_payload_wide_out/valid_out` 도 top-level 로.
+- **PE.v** (single-PE wrapper): wide input 을 `1024'h0` + `1'b0` 로 tie-off. Wide 는 fabric 이 없으므로 legacy 만 동작.
+- **Top_Core.v** (single-cluster demo): 동일하게 wide 0 tie-off.
+- **Cluster.v**: `frag_reass_wide` + `frag_reass_valid` → EHDecode 로 스레딩.
+- **Pod.v**: fragment 는 개별 Cluster 안에서 재조립되므로 Pod 는 무영향 (Cluster 각자 재조립).
+
+### 19.6 백워드 호환
+
+- 모든 legacy 145 tests (v1.0..v1.4 primitives) 100% 통과 확인.
+- `input_payload_wide_valid = 0` (기본값) 시 `dec_input_payload_wide_valid = 0` → wide-consumer 는 skip.
+- Multi-fragment 없이 legacy 정확성 유지.
+
+### 19.7 회귀
+
+test_isa_decoder.py 신규 2 tests:
+- `test_wide_payload_latches_when_valid` — wide input + valid drive, dec output 확인
+- `test_wide_payload_zero_when_invalid` — wide 비활성 시 legacy path 무영향
+
+test_cluster.py 신규 2 tests:
+- `test_wave_complete_gates_intermediate_fragments` — 중간 fragment 시 `stg_active` 여전히 0
+- `test_fragment_completion_feeds_ehdecode_wide` — 2-fragment wave → EHDecode wide 캡처
+
+전체 회귀: **231 tests PASS** (165 cocotb + 66 assembler).
+
+### 19.8 하드웨어 비용 증분 (LFE5U-85F 추정)
+
+- `payload_wide_latched` register: 1024-bit → 1K FF/EHDecode instance
+- `dec_input_payload_wide` register: 1024-bit → 1K FF
+- Wide mux + latch 로직: ~200 LUT
+- **총 ~2K FF + 200 LUT / Cluster** (EHDecode 는 Cluster 당 1개)
+
+### 19.9 남은 v1.5.x 스코프
+
+- **v1.5.2b**: PE_Core 에 `dec_input_payload_wide` input port 추가 (unused for legacy, primed for v1.5.3). 현 세션에서는 Cluster/EHDecode 계층까지만.
+- **v1.5.3**: 실제 wide-consumer primitive (SIG_BMM_3, SIG_TRACE_IIJKL) 실행. PE_Core state machine 확장, wide 소비 + fragmented output emit.
+- **v1.5.4**: Assembler multi-IMM64 자동화.
+- **v1.5.5**: 추가 reduction primitive.
+
+### 19.10 진입 트리거
+
+v1.5.2 amendment 는 **결정된 상태 (2026-07-15)**. 사용자 지시로 v1.5.1 완료 후 곧바로 v1.5.2 진행. 구현 완료 (2026-07-15).

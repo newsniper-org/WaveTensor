@@ -216,9 +216,16 @@ module Cluster #(
     wire is_div_op = (ext_opcode == 8'h13)   // DIV
                   || (ext_opcode == 8'h1C)   // MOD
                   || (ext_opcode == 8'h1D);  // DIVMOD
-    wire ext_to_mu  = ext_valid &&  is_mul_op;
-    wire ext_to_du  = ext_valid &&  is_div_op;
-    wire ext_to_lpe = ext_valid && !is_mul_op && !is_div_op;
+    // v1.5.2 §19 — wave-complete gate. Legacy single-fragment
+    // (ext_frag_hdr == 0x00) fires immediately. Multi-fragment waves
+    // fire ONLY on the last fragment's cycle (frag_reass_valid pulse).
+    // Intermediate fragments are absorbed by the reassembly buffer without
+    // triggering EHDecode or PE_active pipelines.
+    wire wave_complete = ext_valid
+                       && ((ext_frag_hdr == 8'h00) || frag_reass_valid);
+    wire ext_to_mu  = wave_complete &&  is_mul_op;
+    wire ext_to_du  = wave_complete &&  is_div_op;
+    wire ext_to_lpe = wave_complete && !is_mul_op && !is_div_op;
 
     // -------------------------------------------------------------------------
     // Logical port_context_id → linear PE index
@@ -252,6 +259,8 @@ module Cluster #(
     /* verilator lint_off UNUSEDSIGNAL */
     wire [47:0]                dec_eff_subscript_hi;   // v1.3 §16
     wire [63:0]                dec_eff_imm64_hi;       // v1.4 §17
+    wire [1023:0]              dec_input_payload_wide; // v1.5.2 §19
+    wire                       dec_input_payload_wide_valid;
     /* verilator lint_on UNUSEDSIGNAL */
     wire [7:0]                 dec_eff_output_port_id;
     wire [7:0]                 dec_eff_precision;
@@ -317,6 +326,13 @@ module Cluster #(
     // valid input (mul or non-mul); per-unit gating happens inside each
     // PE_Core via `pe_active`.
     // -------------------------------------------------------------------------
+    // v1.5.2 §19 — payload selection: for multi-fragment waves, the low
+    // 64-bit slot of the reassembled wide payload feeds legacy consumers;
+    // for single-fragment (legacy), ext_payload passes through unchanged.
+    wire [ADDR_WIDTH-1:0] ehdec_input_payload =
+        (ext_frag_hdr == 8'h00) ? ext_payload
+                                : frag_reass_wide[ADDR_WIDTH-1:0];
+
     EHDecode #(
         .ADDR_WIDTH (ADDR_WIDTH),
         .TAG_WIDTH  (TAG_WIDTH),
@@ -325,12 +341,14 @@ module Cluster #(
     ) u_ehdec (
         .clk                       (clk),
         .rst                       (rst),
-        .in_valid                  (ext_valid),
+        .in_valid                  (wave_complete),
         .instruction               (ext_instruction),
         .input_tag                 (ext_tag),
-        .input_payload             (ext_payload),
+        .input_payload             (ehdec_input_payload),
         .input_payload_b           (cluster_b_payload),
         .input_payload_b_valid     (cluster_b_valid),
+        .input_payload_wide        (frag_reass_wide),
+        .input_payload_wide_valid  (frag_reass_valid),
         .dec_valid                 (dec_valid),
         .dec_opcode                (dec_opcode),
         .dec_decode_error          (dec_decode_error),
@@ -348,6 +366,8 @@ module Cluster #(
         .dec_eff_subscript         (dec_eff_subscript),
         .dec_eff_subscript_hi      (dec_eff_subscript_hi),
         .dec_eff_imm64_hi          (dec_eff_imm64_hi),
+        .dec_input_payload_wide       (dec_input_payload_wide),
+        .dec_input_payload_wide_valid (dec_input_payload_wide_valid),
         .dec_eff_output_port_id    (dec_eff_output_port_id),
         .dec_eff_precision         (dec_eff_precision),
         .dec_wave_number           (dec_wave_number),

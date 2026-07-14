@@ -112,6 +112,13 @@ module Top_Core #(
     // -------------------------------------------------------------------------
     // ISA_Decoder instance — execution + control
     // -------------------------------------------------------------------------
+    // v1.5.2 §19 — Top_Core is a single-decoder demo. External NoC is not
+    // present; tie wide input to 0 (legacy single-fragment path only).
+    /* verilator lint_off UNUSEDSIGNAL */
+    wire [1023:0] tc_dec_input_payload_wide_out;
+    wire          tc_dec_input_payload_wide_valid_out;
+    /* verilator lint_on UNUSEDSIGNAL */
+
     ISA_Decoder #(
         .ADDR_WIDTH (ADDR_WIDTH),
         .TAG_WIDTH  (TAG_WIDTH),
@@ -126,11 +133,15 @@ module Top_Core #(
         .input_payload        (input_payload),
         .input_payload_b      (input_payload_b),
         .input_payload_b_valid(input_payload_b_valid),
+        .input_payload_wide        (1024'h0),
+        .input_payload_wide_valid  (1'b0),
         .output_payload       (output_payload),
         .output_tag           (output_tag),
         .output_valid         (output_valid),
         .opcode_out           (opcode_out),
         .output_frag_hdr      (output_frag_hdr),
+        .dec_input_payload_wide_out       (tc_dec_input_payload_wide_out),
+        .dec_input_payload_wide_valid_out (tc_dec_input_payload_wide_valid_out),
         .memory_req           (dec_memory_req),
         .mem_addr             (dec_mem_addr),
         .error_flag           (error_flag),

@@ -95,6 +95,14 @@ module PE #(
     /* verilator lint_on UNUSEDSIGNAL */
     /* verilator lint_on UNUSEDPARAM */
 
+    // v1.5.2 §19 — PE.v is a single-PE wrapper without upstream fabric
+    // fragment reassembly. Tie wide input to 0; wide outputs are exposed
+    // internally only (no external port).
+    /* verilator lint_off UNUSEDSIGNAL */
+    wire [1023:0] pe_dec_input_payload_wide_out;
+    wire          pe_dec_input_payload_wide_valid_out;
+    /* verilator lint_on UNUSEDSIGNAL */
+
     ISA_Decoder #(
         .ADDR_WIDTH            (ADDR_WIDTH),
         .TAG_WIDTH             (TAG_WIDTH),
@@ -112,11 +120,15 @@ module PE #(
         .input_payload        (in_payload),
         .input_payload_b      (in_b_payload),
         .input_payload_b_valid(in_b_valid),
+        .input_payload_wide        (1024'h0),
+        .input_payload_wide_valid  (1'b0),
         .output_payload       (out_payload),
         .output_tag           (out_tag),
         .output_valid         (out_valid),
         .opcode_out           (out_opcode),
         .output_frag_hdr      (out_frag_hdr),
+        .dec_input_payload_wide_out       (pe_dec_input_payload_wide_out),
+        .dec_input_payload_wide_valid_out (pe_dec_input_payload_wide_valid_out),
         .memory_req           (memory_req),
         .mem_addr             (mem_addr),
         .error_flag           (error_flag),

@@ -51,7 +51,12 @@ module EHDecode #(
     parameter ADDR_WIDTH  = 64,
     parameter TAG_WIDTH   = 80,
     parameter MAX_EH      = 4,
-    parameter INSTR_WIDTH = 32 + MAX_EH*96
+    parameter INSTR_WIDTH = 32 + MAX_EH*96,
+    // v1.5.2 §19 — wide-input path capacity. 16 slot × 64 bit = 1024 bit
+    // matches Cluster's fragment buffer (FRAG_MAX = 16). Legacy consumers
+    // ignore this signal; wide-consumer primitives (v1.5.3+) read it.
+    parameter FRAG_MAX    = 16,
+    parameter WIDE_W      = FRAG_MAX * ADDR_WIDTH
 ) (
     input                       clk,
     input                       rst,
@@ -61,6 +66,13 @@ module EHDecode #(
     input  [ADDR_WIDTH-1:0]     input_payload,
     input  [ADDR_WIDTH-1:0]     input_payload_b,
     input                       input_payload_b_valid,
+    // v1.5.2 §19 — wide payload path. Cluster's fragment buffer drives
+    // this with the reassembled wave-token payload when a multi-fragment
+    // wave completes; otherwise legacy `input_payload` is authoritative.
+    // `input_payload_wide_valid` distinguishes: 1 = wide is meaningful
+    // (multi-fragment), 0 = legacy single-fragment (wide is unused).
+    input  [WIDE_W-1:0]         input_payload_wide,
+    input                       input_payload_wide_valid,
 
     // ---- Stage-1 registered dec_* bus (consumed by PE_Core) ----
     output reg                   dec_valid,
@@ -86,6 +98,11 @@ module EHDecode #(
     // wide-tensor payload without changing the NoC packet format. See
     // wt64v1_spec.md §17.
     output reg [63:0]            dec_eff_imm64_hi,
+    // v1.5.2 §19 — reassembled wide payload latched into the decoder's
+    // dec_* bus. Zero when the wave was single-fragment (legacy). Wide-
+    // consumer primitives (v1.5.3+) read this alongside dec_input_payload.
+    output reg [WIDE_W-1:0]      dec_input_payload_wide,
+    output reg                   dec_input_payload_wide_valid,
     output reg [7:0]             dec_eff_output_port_id,
     output reg [7:0]             dec_eff_precision,
     output reg [31:0]            dec_wave_number,
@@ -133,20 +150,27 @@ module EHDecode #(
     reg [TAG_WIDTH-1:0]   tag_latched;
     reg [ADDR_WIDTH-1:0]  payload_latched, payload_b_latched;
     reg                   payload_b_valid_latched;
+    // v1.5.2 §19 — wide payload latched on the same edge as legacy inputs.
+    reg [WIDE_W-1:0]      payload_wide_latched;
+    reg                   payload_wide_valid_latched;
 
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            instr_latched           <= {INSTR_WIDTH{1'b0}};
-            tag_latched             <= {TAG_WIDTH{1'b0}};
-            payload_latched         <= {ADDR_WIDTH{1'b0}};
-            payload_b_latched       <= {ADDR_WIDTH{1'b0}};
-            payload_b_valid_latched <= 1'b0;
+            instr_latched              <= {INSTR_WIDTH{1'b0}};
+            tag_latched                <= {TAG_WIDTH{1'b0}};
+            payload_latched            <= {ADDR_WIDTH{1'b0}};
+            payload_b_latched          <= {ADDR_WIDTH{1'b0}};
+            payload_b_valid_latched    <= 1'b0;
+            payload_wide_latched       <= {WIDE_W{1'b0}};
+            payload_wide_valid_latched <= 1'b0;
         end else if (in_valid && !stg_active) begin
-            instr_latched           <= instruction;
-            tag_latched             <= input_tag;
-            payload_latched         <= input_payload;
-            payload_b_latched       <= input_payload_b;
-            payload_b_valid_latched <= input_payload_b_valid;
+            instr_latched              <= instruction;
+            tag_latched                <= input_tag;
+            payload_latched            <= input_payload;
+            payload_b_latched          <= input_payload_b;
+            payload_b_valid_latched    <= input_payload_b_valid;
+            payload_wide_latched       <= input_payload_wide;
+            payload_wide_valid_latched <= input_payload_wide_valid;
         end
     end
 
@@ -610,11 +634,13 @@ module EHDecode #(
             dec_eff_imm16             <= 16'h0;
             dec_eff_dim_sizes         <= 8'h00;
             dec_eff_opref_kind        <= 4'h0;
-            dec_eff_mem_offset        <= 32'h0;
-            dec_eff_subscript         <= 48'h0;
-            dec_eff_subscript_hi      <= 48'h0;
-            dec_eff_imm64_hi          <= 64'h0;
-            dec_eff_output_port_id    <= 8'h00;
+            dec_eff_mem_offset           <= 32'h0;
+            dec_eff_subscript            <= 48'h0;
+            dec_eff_subscript_hi         <= 48'h0;
+            dec_eff_imm64_hi             <= 64'h0;
+            dec_input_payload_wide       <= {WIDE_W{1'b0}};
+            dec_input_payload_wide_valid <= 1'b0;
+            dec_eff_output_port_id       <= 8'h00;
             dec_eff_precision         <= 8'h00;
             dec_wave_number           <= 32'h0;
             dec_thread_id             <= 16'h0;
@@ -634,11 +660,13 @@ module EHDecode #(
                 dec_eff_imm16             <= acc_imm16;
                 dec_eff_dim_sizes         <= eff_dim_sizes;
                 dec_eff_opref_kind        <= acc_opref_src_kind;
-                dec_eff_mem_offset        <= acc_mem_offset;
-                dec_eff_subscript         <= acc_subscript[47:0];
-                dec_eff_subscript_hi      <= acc_subscript[95:48];
-                dec_eff_imm64_hi          <= acc_imm64_hi;
-                dec_eff_output_port_id    <= eff_output_port_id;
+                dec_eff_mem_offset           <= acc_mem_offset;
+                dec_eff_subscript            <= acc_subscript[47:0];
+                dec_eff_subscript_hi         <= acc_subscript[95:48];
+                dec_eff_imm64_hi             <= acc_imm64_hi;
+                dec_input_payload_wide       <= payload_wide_latched;
+                dec_input_payload_wide_valid <= payload_wide_valid_latched;
+                dec_eff_output_port_id       <= eff_output_port_id;
                 dec_eff_precision         <= eff_precision;
                 dec_wave_number           <= cb_wave_number;
                 dec_thread_id             <= cb_thread_id;
