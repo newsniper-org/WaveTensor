@@ -1430,3 +1430,100 @@ async def test_shape_op_forbids_subscript(dut):
                          eh_subscript(axes(1), axes(), axes()))
     await fire(dut, instr, _STD_TAG(dim=0x0C), payload_a=0)
     assert dut.error_flag.value == 1
+
+
+# =============================================================================
+# SPLAT (opcode 0x26) — WT64v1 v1.1 amendment (2026-07-14).
+# Scalar in imm16[7:0] (signed int8) sign-extended to int16 and replicated
+# across all 4 lanes of the 64-bit payload. Result is 1-D of size 4
+# (dim_sizes = 8'h03).
+# =============================================================================
+
+@cocotb.test()
+async def test_splat_positive_scalar(dut):
+    """SPLAT of a small positive int8 → 4 lanes of that value."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # scalar = 5; 4 lanes each holding 0x0005 → payload = 0x0005_0005_0005_0005
+    instr = encode_instr(0x26, _STD_PORT(), eh_imm16(0x0005))
+    await fire(dut, instr, _STD_TAG(dim=0x00), payload_a=0)
+    assert dut.error_flag.value == 0
+    assert dut.lower_required.value == 0
+    assert dut.output_valid.value == 1
+    assert int(dut.output_payload.value) == 0x00050005_00050005
+    # Result tag has dim_sizes = 0x03 (1-D of 4 elements).
+    assert _tag_dim(int(dut.output_tag.value)) == 0x03
+
+
+@cocotb.test()
+async def test_splat_negative_scalar_sign_extends(dut):
+    """SPLAT of a negative int8 must sign-extend to int16 lanes."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # scalar = -1 (0xFF as int8) → each lane = 0xFFFF (int16 -1)
+    instr = encode_instr(0x26, _STD_PORT(), eh_imm16(0x00FF))
+    await fire(dut, instr, _STD_TAG(dim=0x00), payload_a=0)
+    assert dut.output_valid.value == 1
+    assert int(dut.output_payload.value) == 0xFFFFFFFF_FFFFFFFF
+    assert _tag_dim(int(dut.output_tag.value)) == 0x03
+
+
+@cocotb.test()
+async def test_splat_zero(dut):
+    """SPLAT of 0 → all lanes zero."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    instr = encode_instr(0x26, _STD_PORT(), eh_imm16(0x0000))
+    await fire(dut, instr, _STD_TAG(dim=0x00), payload_a=0xDEAD_BEEF_DEAD_BEEF)
+    assert dut.output_valid.value == 1
+    # Input payload is ignored — output is pure constant.
+    assert int(dut.output_payload.value) == 0
+    assert _tag_dim(int(dut.output_tag.value)) == 0x03
+
+
+@cocotb.test()
+async def test_splat_max_positive_int8(dut):
+    """SPLAT of int8 max (0x7F = +127) → each lane = 0x007F."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    instr = encode_instr(0x26, _STD_PORT(), eh_imm16(0x007F))
+    await fire(dut, instr, _STD_TAG(dim=0x00), payload_a=0)
+    assert dut.output_valid.value == 1
+    assert int(dut.output_payload.value) == 0x007F007F_007F007F
+    assert _tag_dim(int(dut.output_tag.value)) == 0x03
+
+
+@cocotb.test()
+async def test_splat_min_negative_int8(dut):
+    """SPLAT of int8 min (0x80 = -128) → each lane = 0xFF80."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    instr = encode_instr(0x26, _STD_PORT(), eh_imm16(0x0080))
+    await fire(dut, instr, _STD_TAG(dim=0x00), payload_a=0)
+    assert dut.output_valid.value == 1
+    assert int(dut.output_payload.value) == 0xFF80FF80_FF80FF80
+    assert _tag_dim(int(dut.output_tag.value)) == 0x03
+
+
+@cocotb.test()
+async def test_splat_forbids_subscript(dut):
+    """SPLAT is a shape op — SUBSCRIPT EH is forbidden → error_flag."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    instr = encode_instr(0x26, _STD_PORT(), eh_imm16(0x0001),
+                         eh_subscript(axes(1), axes(), axes()))
+    await fire(dut, instr, _STD_TAG(dim=0x00), payload_a=0)
+    assert dut.error_flag.value == 1
+    assert dut.output_valid.value == 0

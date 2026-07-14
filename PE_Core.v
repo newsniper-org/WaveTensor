@@ -777,6 +777,30 @@ module PE_Core #(
                                 lower_required <= 1'b1; output_valid <= 1'b0;
                             end
                         end
+                        8'h26: begin
+                            // SPLAT (v1.1 amendment, 2026-07-14). Sign-extend
+                            // the 8-bit signed scalar in dec_eff_imm16[7:0]
+                            // to int16, then replicate across all 4 lanes of
+                            // the 64-bit payload. Result tensor is 1-D of
+                            // size 4 (dim_sizes = 8'h03 → first axis = 3+1 = 4
+                            // elements, others = size 1).
+                            //
+                            // Input tensor semantics: N/A — SPLAT is a source
+                            // op that generates a constant. The input payload
+                            // is ignored; forwarded_tag's non-dim fields are
+                            // preserved (wave_number, thread_id, port,
+                            // precision).
+                            //
+                            // Primary use case: broadcast lowering. See
+                            // `.claude-memos/einsum_trace_broadcast_analysis.md`
+                            // and `wt64v1_spec.md` §14.
+                            output_tag <= {dec_wave_number, dec_thread_id,
+                                           8'h00, dec_eff_output_port_id,
+                                           dec_eff_precision,
+                                           8'h03};
+                            output_payload <= {4{ {{8{dec_eff_imm16[7]}}, dec_eff_imm16[7:0]} }};
+                            output_valid <= 1'b1;
+                        end
                         8'h30: begin
                             if (!MUL_OPS_SUPPORTED) begin
                                 lower_required <= 1'b1; output_valid <= 1'b0;

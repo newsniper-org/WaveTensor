@@ -419,7 +419,10 @@ module EHDecode #(
                 forbid_subscript = 1'b1; forbid_mem = 1'b1;
                 forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
             end
-            8'h20, 8'h21, 8'h22, 8'h23, 8'h24, 8'h25: begin
+            8'h20, 8'h21, 8'h22, 8'h23, 8'h24, 8'h25, 8'h26: begin
+                // 0x26 = SPLAT (v1.1 amendment). Same legality shape as
+                // other shape ops: PORT required, IMM16 required (holds
+                // the scalar in [7:0]), no subscript / mem / opref.
                 req_port = 1'b1; req_imm16 = 1'b1;
                 forbid_subscript = 1'b1; forbid_mem = 1'b1;
                 forbid_opref     = 1'b1;
@@ -476,7 +479,7 @@ module EHDecode #(
          (cb_opcode == 8'h1C) || (cb_opcode == 8'h1D) || (cb_opcode == 8'h1E) ||
          (cb_opcode == 8'h1F) || (cb_opcode == 8'h20) || (cb_opcode == 8'h21) ||
          (cb_opcode == 8'h22) || (cb_opcode == 8'h23) || (cb_opcode == 8'h24) ||
-         (cb_opcode == 8'h25) || (cb_opcode == 8'h30) || (cb_opcode == 8'h31) ||
+         (cb_opcode == 8'h25) || (cb_opcode == 8'h26) || (cb_opcode == 8'h30) || (cb_opcode == 8'h31) ||
          (cb_opcode == 8'h32) || (cb_opcode == 8'h40) || (cb_opcode == 8'h41) ||
          (cb_opcode == 8'h42) || (cb_opcode == 8'h43) || (cb_opcode == 8'h44) ||
          (cb_opcode == 8'h50) || (cb_opcode == 8'h51) || (cb_opcode == 8'h52) ||
