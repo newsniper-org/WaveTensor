@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# pod_ulx3s.lpf — Lattice Preference File (constraints) for WaveTensor Pod
+#                 on ULX3S (CS-ULX3S-03, LFE5U-85F-6BG381C).
+#
+# This is the Stage 1 constraint file. It is the LPF-format equivalent of
+# synth/constraints/pod.xdc (Vivado) — currently a minimal OOC-like set
+# (just clock definition + reset false path). Real ULX3S pin assignments
+# will be added when the board arrives and we lift the Pod up into a full
+# design with visible pins.
+#
+# TODO(Stage 1 Board arrival):
+#   * add pin assignments (LOCATE COMP ...) for:
+#     - clk    → ULX3S 25 MHz oscillator on pin G2 (needs PLL to 100 MHz)
+#     - rst    → ULX3S user button (BTN0 on pin R1)
+#     - LED status → 8 LEDs on pins B2, C2, C1, D2, D1, E2, E1, H3
+#     - USB CDC UART TX/RX → FTDI FT231X on pins M1, L4 (per ULX3S schematic)
+#   * add PLL configuration (25 MHz → 100 MHz core clock)
+#   * add DDR3 constraints if we bring up the on-board SDRAM for host transport
+#   * verify the CS-ULX3S-03 revision — ULX3S SKUs have multiple hardware revs
+#     (v1.7, v2.0, v3.0.7, v3.1.7). Pinout differences exist.
+
+# --- Clock definition ---------------------------------------------------
+FREQUENCY PORT "clk" 100 MHZ;
+
+# --- Reset is asynchronous ---------------------------------------------
+# Nextpnr does not need an explicit false path directive for async reset;
+# the RTL uses `posedge rst` in flops which nextpnr recognizes as an async
+# preset/clear input and does not include on the timing graph.
+
+# --- Pin assignments (deferred, see TODO above) ------------------------
+# LOCATE COMP "clk"     SITE "G2";
+# LOCATE COMP "rst"     SITE "R1";
+# LOCATE COMP "led[0]"  SITE "B2";
+# IOBUF PORT "clk" IO_TYPE=LVCMOS33;
+
+# --- OOC / synthesis-only note -----------------------------------------
+# Currently Pod's full I/O surface (416-bit instruction bus + 80-bit tag +
+# 64-bit dual payload) far exceeds ULX3S's ~100 user I/O pins. For Stage 1
+# we will not expose the raw Pod ports directly — a thin wrapper (e.g.,
+# `Pod_ulx3s_top.v`) will:
+#   1. Instantiate Pod with the default geometry (2,2)x(2,2) = 16 PE.
+#   2. Feed instructions from an on-chip ROM or FIFO fed by USB CDC UART.
+#   3. Route results back over the same UART.
+#   4. Expose only clk/rst/UART/LED to real pins.
+#
+# The wrapper design is deferred to Stage 1 board bring-up.

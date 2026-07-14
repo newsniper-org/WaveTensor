@@ -58,6 +58,11 @@ else
     $(error Unknown MOD '$(MOD)'. Valid: HIU, ISA_Decoder, Tensor_ALU, SIMD_ALU, ALU_Extended, Top_Core, PE, Cluster, Pod)
 endif
 
+# Add include path so `include/attributes.vh` (vendor-agnostic attribute macros)
+# is discoverable by whichever simulator cocotb chooses (verilator / iverilog).
+# See include/attributes.vh for the macro semantics and per-vendor mapping.
+COMPILE_ARGS += -I$(CURDIR)/include
+
 include $(shell cocotb-config --makefiles)/Makefile.sim
 
 # =============================================================================
@@ -102,6 +107,48 @@ synth-report:
 synth-clean:
 	rm -rf $(SYNTH_DIR)/reports/* $(SYNTH_DIR)/checkpoints/* \
 	       vivado*.jou vivado*.log .Xil
+
+# =============================================================================
+# Lattice ECP5 synthesis flow — Stage 1 target (ULX3S / LFE5U-85F).
+#
+# Fully FOSS: yosys (frontend + techmap) → nextpnr-ecp5 (place+route) → ecppack
+# (bitstream). No vendor Radiant install required. Vendor-neutral attribute
+# macros are defined in include/attributes.vh and enabled by the yosys script
+# via +define+WT_VENDOR_LATTICE_YOSYS.
+#
+# Usage:
+#   make synth-pod-ecp5    # yosys synthesis → JSON netlist
+#   make impl-pod-ecp5     # nextpnr place+route + ecppack bitstream
+#
+# Prerequisites (install before first invocation):
+#   * yosys (>= 0.36)                # arch: yosys yosys-abc
+#   * nextpnr-ecp5                   # arch: nextpnr-ecp5
+#   * prjtrellis (via ecppack)       # arch: prjtrellis
+#   * openFPGALoader                 # arch: openfpgaloader
+# =============================================================================
+
+YOSYS         ?= yosys
+NEXTPNR_ECP5  ?= nextpnr-ecp5
+ECPPACK       ?= ecppack
+
+LATTICE_DIR   := $(CURDIR)/synth/lattice
+LATTICE_TAG   := $(PE_ROWS)x$(PE_COLS)_$(CLUSTER_ROWS)x$(CLUSTER_COLS)
+
+.PHONY: synth-pod-ecp5 impl-pod-ecp5 lattice-clean
+
+synth-pod-ecp5:
+	$(YOSYS) -q -l $(LATTICE_DIR)/reports/pod_$(LATTICE_TAG)_synth.log \
+	    -c $(LATTICE_DIR)/scripts/synth_pod.ys
+
+impl-pod-ecp5: synth-pod-ecp5
+	GEOM=$(LATTICE_TAG) sh $(LATTICE_DIR)/scripts/pnr_pod.sh
+
+lattice-clean:
+	rm -rf $(LATTICE_DIR)/reports/pod_*.json \
+	       $(LATTICE_DIR)/reports/pod_*.rpt \
+	       $(LATTICE_DIR)/reports/pod_*.log \
+	       $(LATTICE_DIR)/reports/pod_*.config \
+	       $(LATTICE_DIR)/reports/pod_*.bit
 
 # =============================================================================
 # Claude Code memory mirror — copies the per-project memory directory

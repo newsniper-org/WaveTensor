@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
 // SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
 
+`include "attributes.vh"
+
 // =============================================================================
 // PE_Core.v — Stage-2 ALU dispatch for a single PE.
 //
@@ -106,7 +108,7 @@ module PE_Core #(
     function [ADDR_WIDTH-1:0] euclid_norm_sq;
         input [ADDR_WIDTH-1:0] in_val;
         reg [31:0] re; reg [31:0] im;
-        (* use_dsp = "yes" *) reg [63:0] re_sq, im_sq;
+        `WT_USE_DSP reg [63:0] re_sq, im_sq;
         begin
             re = in_val[63:32]; im = in_val[31:0];
             re_sq = re*re; im_sq = im*im;
@@ -240,7 +242,7 @@ module PE_Core #(
 
     function [ADDR_WIDTH-1:0] einsum_dot;
         input [ADDR_WIDTH-1:0] a; input [ADDR_WIDTH-1:0] b;
-        (* use_dsp = "yes" *) reg [31:0] m0, m1, m2, m3;
+        `WT_USE_DSP reg [31:0] m0, m1, m2, m3;
         reg [31:0] acc;
         begin
             m0 = {16'h0,a[15:0]}*{16'h0,b[15:0]};
@@ -255,7 +257,7 @@ module PE_Core #(
     function [ADDR_WIDTH-1:0] einsum_mat_vec;
         input [ADDR_WIDTH-1:0] a; input [ADDR_WIDTH-1:0] b;
         reg [15:0] a00,a01,a10,a11,b0,b1;
-        (* use_dsp = "yes" *) reg [15:0] r0, r1;
+        `WT_USE_DSP reg [15:0] r0, r1;
         begin
             a00=a[0+:16]; a01=a[16+:16]; a10=a[32+:16]; a11=a[48+:16];
             b0=b[0+:16]; b1=b[16+:16];
@@ -298,7 +300,7 @@ module PE_Core #(
     function [ADDR_WIDTH-1:0] matmul_func;
         input [ADDR_WIDTH-1:0] a; input [ADDR_WIDTH-1:0] b;
         reg [15:0] a00,a01,a10,a11,b00,b01,b10,b11;
-        (* use_dsp = "yes" *) reg [15:0] r00,r01,r10,r11;
+        `WT_USE_DSP reg [15:0] r00,r01,r10,r11;
         begin
             a00=a[0+:16]; a01=a[16+:16]; a10=a[32+:16]; a11=a[48+:16];
             b00=b[0+:16]; b01=b[16+:16]; b10=b[32+:16]; b11=b[48+:16];
@@ -339,7 +341,7 @@ module PE_Core #(
 
     function [ADDR_WIDTH-1:0] einsum_hadamard;
         input [ADDR_WIDTH-1:0] a; input [ADDR_WIDTH-1:0] b;
-        (* use_dsp = "yes" *) reg [15:0] r0,r1,r2,r3;
+        `WT_USE_DSP reg [15:0] r0,r1,r2,r3;
         begin
             r0 = a[0+:16]*b[0+:16];
             r1 = a[16+:16]*b[16+:16];
@@ -352,7 +354,7 @@ module PE_Core #(
     function [ADDR_WIDTH-1:0] einsum_outer;
         input [ADDR_WIDTH-1:0] a; input [ADDR_WIDTH-1:0] b;
         reg [15:0] a0,a1,b0,b1;
-        (* use_dsp = "yes" *) reg [15:0] r00,r01,r10,r11;
+        `WT_USE_DSP reg [15:0] r00,r01,r10,r11;
         begin
             a0=a[0+:16]; a1=a[16+:16]; b0=b[0+:16]; b1=b[16+:16];
             r00=a0*b0; r01=a0*b1; r10=a1*b0; r11=a1*b1;
@@ -395,7 +397,7 @@ module PE_Core #(
     reg [ADDR_WIDTH-1:0] mul_a_p1, mul_b_p1;
     reg                  mul_valid_p1;
     reg [TAG_WIDTH-1:0]  mul_tag_p1;
-    (* use_dsp = "yes" *) reg [ADDR_WIDTH-1:0] mul_result_p2;
+    `WT_USE_DSP reg [ADDR_WIDTH-1:0] mul_result_p2;
     reg                  mul_valid_p2;
     reg [TAG_WIDTH-1:0]  mul_tag_p2;
 

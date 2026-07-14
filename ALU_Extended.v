@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
 // SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
 
+`include "attributes.vh"
+
 // =============================================================================
 // ALU_Extended.v — Multi-precision arithmetic + unary FP ALU.
 //
@@ -112,8 +114,8 @@ module ALU_Extended #(
         // matching the convention used by the surrounding 64-bit datapath.
         // `use_dsp` hints map these signed multiply-and-add lines into DSP58
         // slices on UltraScale+, freeing LUTs.
-        (* use_dsp = "yes" *) reg signed [63:0] re_part;
-        (* use_dsp = "yes" *) reg signed [63:0] im_part;
+        `WT_USE_DSP reg signed [63:0] re_part;
+        `WT_USE_DSP reg signed [63:0] im_part;
         begin
             a_re = a[63:32];
             a_im = a[31: 0];

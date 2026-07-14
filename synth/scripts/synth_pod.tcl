@@ -33,6 +33,8 @@ print_banner "Running synth_design (out-of-context, top=Pod)"
 synth_design -top Pod \
              -part $::PART \
              -mode out_of_context \
+             -include_dirs [file join $REPO_ROOT include] \
+             -verilog_define WT_VENDOR_VIVADO=1 \
              -generic PE_ROWS=$::PE_ROWS \
              -generic PE_COLS=$::PE_COLS \
              -generic CLUSTER_ROWS=$::CLUSTER_ROWS \

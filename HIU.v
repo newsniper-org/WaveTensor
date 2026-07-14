@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
 // SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
 
+`include "attributes.vh"
+
 module HIU #(
     parameter ADDR_WIDTH = 64,
     parameter MAX_REGIONS = 16,
@@ -353,8 +355,8 @@ localparam TRNG_NRO = 8;
 // Simulation path: ifdef VERILATOR uses an alternative LFSR-derived sample
 // because Verilator cannot model combinational feedback safely.
 
-(* keep = "true" *) (* dont_touch = "true" *) wire [TRNG_NRO-1:0] ro_out_w;
-(* keep = "true" *) (* dont_touch = "true" *) reg  [TRNG_NRO-1:0] ro_lfsr_q;
+`WT_KEEP `WT_DONT_TOUCH wire [TRNG_NRO-1:0] ro_out_w;
+`WT_KEEP `WT_DONT_TOUCH reg  [TRNG_NRO-1:0] ro_lfsr_q;
 
 `ifdef VERILATOR
 // Simulation-only entropy proxy: per-RO LFSR. NOT cryptographic.
@@ -375,7 +377,7 @@ assign ro_out_w = ro_lfsr_q;
 genvar gri;
 generate
     for (gri = 0; gri < TRNG_NRO; gri = gri + 1) begin : g_ro
-        (* keep = "true" *) (* dont_touch = "true" *) wire ro_s1, ro_s2, ro_s3;
+        `WT_KEEP `WT_DONT_TOUCH wire ro_s1, ro_s2, ro_s3;
         assign ro_s1 = ~(ro_s3 ^ rst);
         assign ro_s2 = ~ro_s1;
         assign ro_s3 = ~ro_s2;

@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# synth_pod.ys — Yosys synthesis script for WaveTensor Pod on ECP5
+#
+# This is the Stage 1 (ULX3S / LFE5U-85F) FOSS synthesis flow. It reads
+# the same Verilog sources as the Vivado flow, defines WT_VENDOR_LATTICE_YOSYS
+# so that include/attributes.vh emits (* keep *) instead of Xilinx-style
+# attributes, and produces a JSON netlist for nextpnr-ecp5.
+#
+# Invoke via: `make MOD=synth-pod-ecp5` or manually:
+#     yosys -q -c synth/lattice/scripts/synth_pod.ys
+#
+# Expected output:
+#     synth/lattice/reports/pod_<GEOM>_synth.json   (netlist for nextpnr)
+#     synth/lattice/reports/pod_<GEOM>_synth.rpt    (utilization / stats)
+#
+# Geometry is passed via `-D` command-line defines to the Verilog reader.
+# Default geometry (2x2 clusters x 2x2 PEs) is baked into the RTL parameters.
+
+# --- Read sources with vendor macro defined ------------------------------
+read_verilog -defer -sv \
+    -DWT_VENDOR_LATTICE_YOSYS \
+    -I include \
+    Pod.v \
+    Cluster.v \
+    PE.v \
+    ISA_Decoder.v \
+    EHDecode.v \
+    PE_Core.v
+
+# --- Hierarchy + elaboration --------------------------------------------
+hierarchy -check -top Pod
+
+# --- Standard synthesis flow for ECP5 -----------------------------------
+# synth_ecp5 handles opt / techmap / abc / mapping to ECP5 cell library.
+# -json emits the netlist nextpnr-ecp5 consumes.
+# TODO(Stage 1): confirm 2x2 x 2x2 geometry produces expected LUT count;
+#                 compare against Vivado XCAU25P (62K LUT baseline).
+synth_ecp5 -abc9 -json synth/lattice/reports/pod_2x2_2x2_synth.json
+
+# --- Emit stats report --------------------------------------------------
+tee -o synth/lattice/reports/pod_2x2_2x2_synth.rpt stat -tech ecp5
+
+# TODO(Stage 1 Board bring-up):
+#   * verify TRNG ring oscillator rings survive synthesis (grep for HIU
+#     signal names in the .json netlist — `ro_out_w`, `ro_lfsr_q` must appear)
+#   * check DSP inference for MATMUL_UNIT — ECP5 has SLICE-based mult primitives,
+#     not dedicated DSP48-style blocks. Expect different resource distribution
+#     vs XCAU25P (140 DSP → 0 DSP + more LUTs).
+#   * geometry sweep: manually re-parameterize Pod / Cluster generics
+#     (currently CLUSTER_ROWS/COLS + PE_ROWS/COLS are hardcoded to 2,2 in
+#     the RTL). Alternative: use `chparam` inside this script to override.
