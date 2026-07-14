@@ -597,14 +597,56 @@ class TestEinsumLowering(unittest.TestCase):
         with self.assertRaises(AssemblerError):
             assemble(src)
 
-    def test_broadcast_in_o_raises(self):
-        # Label 'q' in O but not in A or B
+    def test_broadcast_in_o_size_gt_1_raises(self):
+        """Non-trivial broadcast (size > 1) requires runtime constant vector
+        splat that WT64v1 lacks — must raise with pointer to analysis memo."""
+        # Label 'q' in O but not in A or B, size 2 → non-trivial
         src = (
             ".default_port mask=0x01 out=0\n"
             "EINSUM opb .subscript A=i B=j O=i,j,q .opref "
             ".shape i=2 j=2 q=2\n"
         )
-        with self.assertRaises(AssemblerError):
+        with self.assertRaisesRegex(AssemblerError, "size-1 broadcast"):
+            assemble(src)
+
+    def test_broadcast_size_1_lowers_via_unsqueeze(self):
+        """Size-1 broadcast IS lowerable — via UNSQUEEZE (metadata-only).
+        Result is matmul chain + UNSQUEEZE for each bcast dim."""
+        # Label 'q' in O but not in A or B, size 1 → trivially lowerable
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "EINSUM opb .subscript A=i,j B=j,k O=i,k,q .opref "
+            ".shape i=2 j=2 k=2 q=1\n"
+        )
+        insts = assemble(src)
+        # Should succeed without raising.
+        self.assertGreater(len(insts), 0)
+        # Should contain at least one USQZ (0x21) for the size-1 bcast axis.
+        opcodes = [(w >> 24) & 0xFF for w in insts]
+        self.assertIn(0x21, opcodes,
+                      f"expected USQZ (0x21) in lowered chain, got {[hex(o) for o in opcodes]}")
+
+    def test_broadcast_size_1_in_middle_of_O(self):
+        """Broadcast label sandwiched between real labels — USQZ position
+        must match the label's location in O."""
+        # O = [i, q, j] where q is size 1 broadcast; i and j come from A, B.
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "EINSUM opb .subscript A=i B=j O=i,q,j .opref "
+            ".shape i=2 j=2 q=1\n"
+        )
+        insts = assemble(src)
+        opcodes = [(w >> 24) & 0xFF for w in insts]
+        self.assertIn(0x21, opcodes)
+
+    def test_mixed_batched_raises_with_hint(self):
+        """Label in A ∩ B ∩ O (batched matmul) — raise pointing at memo."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "EINSUM opb .subscript A=b,i,j B=b,j,k O=b,i,k .opref "
+            ".shape b=2 i=2 j=2 k=2\n"
+        )
+        with self.assertRaisesRegex(AssemblerError, "batched contraction"):
             assemble(src)
 
     def test_lowered_matmul_produces_executable_bits(self):

@@ -632,40 +632,68 @@ def _lower_einsum_general(inst: Instruction,
     for lab in set(a_labels) | set(b_labels) | set(o_labels):
         shapes.setdefault(lab, 2)
 
-    # ---------- Validation ----------
+    # ---------- Validation — patterns not lowerable by pure macro pass ----------
+    # See `.claude-memos/einsum_trace_broadcast_analysis.md` for why these
+    # patterns need HW support (batched-trace, batched-matmul, constant-vector
+    # splat) rather than macro-level rewrites, and what proposals exist for
+    # closing them in a future WT64v1-C extension.
     if len(a_labels) != len(set(a_labels)):
         raise AssemblerError(
             f"line {inst.line}: trace-style EINSUM (duplicate label in A) "
-            f"is not supported by macro_pass yet"
+            f"is not lowerable by macro_pass — WT64v1 provides HW-direct "
+            f"'ii->' (SIG_TRACE_II) and 'ii->i' (SIG_DIAGONAL) but no batched "
+            f"trace over additional kept axes. "
+            f"See `.claude-memos/einsum_trace_broadcast_analysis.md`."
         )
     if len(b_labels) != len(set(b_labels)):
         raise AssemblerError(
             f"line {inst.line}: trace-style EINSUM (duplicate label in B) "
-            f"is not supported by macro_pass yet"
+            f"is not lowerable by macro_pass — same reason as trace-in-A. "
+            f"See `.claude-memos/einsum_trace_broadcast_analysis.md`."
         )
     if len(o_labels) != len(set(o_labels)):
         raise AssemblerError(
             f"line {inst.line}: duplicate label in O subscript"
         )
     a_set, b_set, o_set = set(a_labels), set(b_labels), set(o_labels)
-    bcast = o_set - a_set - b_set
-    if bcast:
-        raise AssemblerError(
-            f"line {inst.line}: broadcast labels {sorted(bcast)} (in O but "
-            f"absent from both A and B) are not yet handled by lowering"
-        )
     mixed = (a_set & b_set) & o_set
     if mixed:
         raise AssemblerError(
             f"line {inst.line}: labels {sorted(mixed)} appear in A, B, and O "
-            f"simultaneously (mixed contraction/broadcast); not supported"
+            f"simultaneously (batched contraction) — WT64v1 has no batched-"
+            f"matmul primitive to close this. Rewrite as a sequence of "
+            f"per-batch matmuls or await WT64v1-C extension. "
+            f"See `.claude-memos/einsum_trace_broadcast_analysis.md`."
         )
 
-    # ---------- Identify groups ----------
-    contracted_set = (a_set & b_set) - o_set
+    # ---------- Broadcast handling (partial — size-1 axes only) ----------
+    # Labels in O but absent from A and B are "broadcast" axes: the result
+    # tensor has a dimension along which the value is replicated. WT64v1
+    # can express this only when the axis size is 1 — then UNSQUEEZE (a
+    # metadata-only op) suffices to add the axis. For size > 1 we'd need
+    # a runtime constant-vector splat primitive which WT64v1 does not have.
+    bcast_labels = list(o_set - a_set - b_set)
+    non_trivial_bcast = [l for l in bcast_labels if shapes[l] != 1]
+    if non_trivial_bcast:
+        sizes = {l: shapes[l] for l in non_trivial_bcast}
+        raise AssemblerError(
+            f"line {inst.line}: broadcast labels {sorted(non_trivial_bcast)} "
+            f"have sizes {sizes} — only size-1 broadcast is lowerable via "
+            f"UNSQUEEZE (WT64v1 has no constant-vector splat primitive). "
+            f"Add `.shape {sorted(non_trivial_bcast)[0]}=1` to indicate the "
+            f"axis is a placeholder, or await WT64v1-C extension. "
+            f"See `.claude-memos/einsum_trace_broadcast_analysis.md`."
+        )
+    # All broadcast labels are size-1; each becomes an UNSQUEEZE insertion
+    # in Step 8 (post-matmul-chain).
+    o_reduced = [l for l in o_labels if l not in bcast_labels]
+
+    # ---------- Identify groups (using o_reduced — bcast labels are inserted post) ----
+    o_reduced_set = set(o_reduced)
+    contracted_set = (a_set & b_set) - o_reduced_set
     contracted = [l for l in a_labels if l in contracted_set]
-    kept_a = [l for l in o_labels if l in a_set]      # in A and O
-    kept_b = [l for l in o_labels if l in b_set
+    kept_a = [l for l in o_reduced if l in a_set]      # in A and o_reduced
+    kept_b = [l for l in o_reduced if l in b_set
                                   and l not in a_set]  # B-only kept
 
     # ---------- Find PORT and OPREF EHs to replicate on each emitted op ----
@@ -751,13 +779,25 @@ def _lower_einsum_general(inst: Instruction,
                             line=line),
         ]))
 
-    # ---------- Step 7: PERM result from (kept_a + kept_b) to O order ------
+    # ---------- Step 7: PERM result from (kept_a + kept_b) to o_reduced order ----
+    # Note: uses o_reduced (not o_labels) — bcast dims are inserted at Step 8.
     intermediate_o = kept_a + kept_b
-    if intermediate_o != o_labels and len(intermediate_o) >= 2:
-        perm_o = _compute_perm_pattern(intermediate_o, o_labels)
+    if intermediate_o != o_reduced and len(intermediate_o) >= 2:
+        perm_o = _compute_perm_pattern(intermediate_o, o_reduced)
         insts.append(make('PERM', set(), [
             ExtensionHeader(kind='imm16', args={'_pos': [perm_o]}, line=line),
         ]))
+
+    # ---------- Step 8: UNSQUEEZE for each size-1 broadcast axis ----------
+    # As we walk o_labels in order, insert USQZ at each broadcast label's
+    # target position. Because we process in ascending o_labels order and
+    # the current tag already contains all preceding non-bcast positions
+    # in their final locations, the target position is exactly o_labels.index(lab).
+    for pos, lab in enumerate(o_labels):
+        if lab in bcast_labels:
+            insts.append(make('USQZ', set(), [
+                ExtensionHeader(kind='imm16', args={'_pos': [pos]}, line=line),
+            ]))
 
     return insts
 
