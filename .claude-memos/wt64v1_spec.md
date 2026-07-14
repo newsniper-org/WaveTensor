@@ -4,11 +4,13 @@
 # WaveTensor 기본 ISA v1 (WT64v1) — 사양
 
 작성일: 2026-05-03
-현재 버전: **v1.3** (2026-07-14 sentinel-terminated EH chain + multi-SUBSCRIPT)
+현재 버전: **v1.5** (2026-07-14 payload extension via multi-EH + NoC fragmentation)
 - v1.0 (2026-05-03): 초기 확정. 10 HW-direct EINSUM signature.
 - v1.1 (2026-07-14): SPLAT + SIG_BMM + SIG_TRACE_IIJ 추가 (기본 ISA 완결성 확보, backward-compatible). 자세한 근거는 §14 및 [`einsum_trace_broadcast_analysis.md`](./einsum_trace_broadcast_analysis.md) 참조.
 - v1.2 (2026-07-14): SIG_BMM_2 + SIG_TRACE_IIJK 추가 (4D int4 packed 16-nibble path). §15 참조.
 - v1.3 (2026-07-14): EH chain 종료를 **C-string-style sentinel** (EH_END = 0x0) 로 재정의 + multi-SUBSCRIPT accumulation (5+ axes). MAX_EH 는 spec 제약이 아닌 hardware sizing hint 로 격하. §16 참조.
+- v1.4 (2026-07-14): Multi-IMM64 EH accumulation — 128-bit wide input immediate via 2-slot bank. Input payload 64-bit blocker 우회. §17 참조.
+- v1.5 (2026-07-14): NoC wave-token 에 **IPv6-style Fragment Extension Header** (8-bit `frag_hdr`) 신설. Output payload 64-bit blocker 우회 인프라. §17 참조.
 
 참조 구현 마이그레이션: **진행 중 (2026-07-12 개시)** — 참조 보드가 XCAU25P → LFE5U-85F → Avant G70 순으로 이동, 아래 §"참조 구현 마이그레이션 노트" 참조.
 
@@ -593,5 +595,106 @@ Assembler pass-through (test_wavetensor_asm.py, +1 갱신 +1 신규):
 ### 16.10 진입 트리거
 
 v1.3 amendment 는 **결정된 상태 (2026-07-14)**. 사용자 지시: "특정 비트(들)의 값이 미리 정의된 terminal 상수인 EH가 나올때까지 갯수 제한없이 받아들이도록 하는 것은 어떨까? 마치, 문자열의 끝은 항상 `'\0'`이어야 한다는 C언어의 규칙처럼 말이지."
+
+구현 완료 (2026-07-14).
+
+## 17. Payload 64-bit blocker 우회 — v1.4 (input) + v1.5 (output) amendment (2026-07-14)
+
+### 17.1 배경
+
+v1.3 까지 인코딩 (EH chain) 은 확장 가능하지만 **실행측 payload 는 64-bit 고정** — 5+ axes primitive 실행이 불가한 근본 원인:
+- 3-batch matmul `abcij,abcjk->abcik` int4 packed: 32 elements × 4 bit = 128 bit (input, output 모두)
+- 64-bit payload 초과
+
+사용자 후속 통찰 두 가지 (2026-07-14):
+1. **입력측**: "EH 갯수 제한 해제를 통해 payload 64-bit 상한 blocker를 우회할 수 있지 않을까?" — 여러 IMM64 EH 를 chain 해서 wide immediate 로 payload 확장.
+2. **출력측**: "출력측의 opcode와 payload 사이에 8비트짜리 index 필드를 추가하는 건 어떨까? OSI 7계층에서 상위 레이어의 패킷이 너무 거대하면 작은 페이로드들로 쪼개어 하위 레이어의 패킷들에 담을 수 있도록 하는 것처럼..." — **IPv6 Fragment Extension Header** 스타일 fragmentation.
+
+두 발상 모두 **NoC packet 폭을 유지**하면서 넓은 논리 payload 를 처리 가능케 함. Breaking-change 없는 v1.x 확장.
+
+### 17.2 v1.4 — 입력측: Multi-IMM64 accumulation
+
+**메커니즘**: v1.3 §16 multi-SUBSCRIPT 와 동형 (isomorphic).
+
+- `acc_imm64` (64-bit) 유지 (backward compat).
+- 신규 `acc_imm64_hi` (64-bit) — 둘째 IMM64 EH body.
+- 신규 `acc_imm64_slot` (2-bit) counter — 0/1/2.
+- 첫 IMM64 → `acc_imm64` (slot 0→1).
+- 둘째 IMM64 → `acc_imm64_hi` (slot 1→2).
+- 셋째 IMM64 → `stg_chain_err`.
+- 신규 output `dec_eff_imm64_hi` (64-bit) 노출.
+
+**총 payload 용량**: A tensor input 시 `input_payload` (64) + `acc_imm64` (64) + `acc_imm64_hi` (64) = **192-bit**. B tensor 도 유사 확장 시 384-bit 까지.
+
+**활용 시나리오**:
+- 5+ axes reduction primitives (SIG_TRACE_IIJKL, SIG_SUM_IJKLM 등) — input wide, output naturally small (fits legacy 64-bit output).
+- Input-only wide 는 v1.4 만으로 실행 가능.
+
+### 17.3 v1.5 — 출력측: NoC Fragment Extension Header
+
+**메커니즘**: IPv6 Fragment Extension Header 를 wave token 에 삽입.
+
+**Token layout**:
+```
++---------+---------+-------------+-------------+
+| tag(80) | op(8)   | frag_hdr(8) | payload(64) |
++---------+---------+-------------+-------------+
+                     [7:4] fragment_index (0..15)
+                     [3:0] total_fragments-1 (0..15, meaning 1..16 fragments)
+```
+
+- `frag_hdr = 0x00` → total=1, index=0 → **legacy single-fragment** (v1.0..1.4 primitives 모두 이 값).
+- `frag_hdr = 0x1_1` → total=2, index=1 → 2 fragment 중 두번째.
+- Max 16 fragment × 64-bit = **1024-bit logical payload**.
+
+**전파 경로**: PE_Core → Cluster (per-PE frag_hdr, OR-merged) → Pod (per-cluster frag_hdr) → Top_Core (`output_frag_hdr` output).
+
+**Backward-compat**: 모든 기존 primitive 의 `output_frag_hdr` 기본값 = `8'h00`. 회귀 149 tests 통과.
+
+**재조립**: v1.5 초기 랜딩은 **인프라만** (frag_hdr 필드 신설). 실제 fragment 발행 primitive 는 v1.6 이후 (fabric buffer + reassembly 로직 필요). IPv6 destination host 재조립 관행과 동일.
+
+### 17.4 왜 두 개를 함께?
+
+- **v1.4 단독 (input only)**: reduction-heavy 5+ axes 실행 가능. Matmul 은 output blocker.
+- **v1.5 단독 (output only)**: fragmentation 인프라만 있고 payload extension 없어 실제 활용 불가.
+- **v1.4 + v1.5 함께**: WT64v1 을 **spec 상 완결** — 모든 einsum 패턴 (matmul 포함) 을 v1.x 안에서 실행 가능하도록 인프라 완비. v2 (payload 128-bit breaking change) 미룰 근거 소멸.
+
+### 17.5 실행 지원 상태 — **v1.4 부분 지원, v1.5 인프라만**
+
+v1.4 는 인코딩만 (dec_eff_imm64_hi 노출). 실제로 이를 소비하는 primitive 는 v1.6+ 로드맵. 하지만 hierarchical test 접근으로 accumulation 로직 검증 가능.
+
+v1.5 는 순수 인프라 (frag_hdr 필드 신설, 기본값 0x00). Multi-fragment 발행 primitive 및 fabric 재조립 로직은 v1.6+.
+
+즉 **v1.4 + v1.5 는 실행 primitive 랜딩을 위한 "레일 깔기"**. 실제 primitive (SIG_BMM_3 실행 등) 는 다음 amendment 에서 이 레일 위에 landing.
+
+### 17.6 Sub-conformance flags
+
+- `WT64v1/EH-MULTI-IMM64` — 2-slot IMM64 bank 지원 (v1.4 필수)
+- `WT64v1/NoC-FRAG-HDR` — output_frag_hdr 필드 준수 (v1.5 필수)
+- `WT64v1/PAYLOAD-EXT-INFRA` — 위 두 개 모두 지원 (v1.5 conformance = v1.4 + v1.5)
+
+### 17.7 회귀
+
+v1.4 신규 tests (test_isa_decoder.py, +3):
+- test_multi_imm64_single_backward_compat — 단일 IMM64, hi=0
+- test_multi_imm64_two_ehs_accumulate — 2 IMM64, hi 획득
+- test_multi_imm64_three_ehs_raises_chain_err — 3 IMM64 → chain_err
+
+v1.5 신규 tests (+2):
+- test_frag_hdr_default_zero_alu — ALU op frag_hdr=0
+- test_frag_hdr_default_zero_einsum — EINSUM op frag_hdr=0
+
+전 모듈 회귀 (149 cocotb): v1.4/v1.5 하류 (PE_Core, Cluster, Pod, Top_Core) 배선 변경 후 모두 통과.
+
+### 17.8 남은 스코프 — v1.6 이후
+
+- **wide-output primitive 실행**: PE_Core state machine 확장 (multi-cycle output_valid 발행 + frag_hdr sequencing).
+- **Fabric fragment 재조립**: Cluster 진입에 fragment buffer + tag 별 collection.
+- **Wide-input consumer**: PE_Core input path 를 확장된 payload (input_payload + IMM64 bank) 로 소비.
+- **첫 실전 primitive**: SIG_BMM_3 실행 (input via multi-IMM64, output via 2-fragment split).
+
+### 17.9 진입 트리거
+
+v1.4 + v1.5 amendment 는 **결정된 상태 (2026-07-14)**. 사용자 지시로 두 인사이트 (input EH-chain 확장 + output IPv6-style fragmentation) 가 하나의 세션에서 함께 landing. WT64v1 을 spec 상 완결시키는 마일스톤.
 
 구현 완료 (2026-07-14).

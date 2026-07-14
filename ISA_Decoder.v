@@ -35,6 +35,9 @@ module ISA_Decoder #(
     output [TAG_WIDTH-1:0]      output_tag,
     output                      output_valid,
     output [7:0]                opcode_out,
+    // v1.5 §17 — NoC wave-token fragment header. Default 8'h00 (single-
+    // fragment) for all v1.0..1.4 primitives.
+    output [7:0]                output_frag_hdr,
     output                      memory_req,
     output [ADDR_WIDTH-1:0]     mem_addr,
     output                      error_flag,
@@ -65,6 +68,10 @@ module ISA_Decoder #(
     // and future 5+ axes signature dispatch. Unused by current PE_Core (see
     // wt64v1_spec.md §16).
     wire [47:0]                dec_eff_subscript_hi;
+    // v1.4: second IMM64 EH body — 128-bit wide immediate. Exposed for
+    // hierarchical test access; PE_Core doesn't yet consume this (see
+    // wt64v1_spec.md §17).
+    wire [63:0]                dec_eff_imm64_hi;
     /* verilator lint_on UNUSEDSIGNAL */
     wire [7:0]                 dec_eff_output_port_id;
     wire [7:0]                 dec_eff_precision;
@@ -106,6 +113,7 @@ module ISA_Decoder #(
         .dec_eff_mem_offset        (dec_eff_mem_offset),
         .dec_eff_subscript         (dec_eff_subscript),
         .dec_eff_subscript_hi      (dec_eff_subscript_hi),
+        .dec_eff_imm64_hi          (dec_eff_imm64_hi),
         .dec_eff_output_port_id    (dec_eff_output_port_id),
         .dec_eff_precision         (dec_eff_precision),
         .dec_wave_number           (dec_wave_number),
@@ -149,6 +157,7 @@ module ISA_Decoder #(
         .output_tag                (output_tag),
         .output_valid              (output_valid),
         .opcode_out                (opcode_out),
+        .output_frag_hdr           (output_frag_hdr),
         .memory_req                (memory_req),
         .mem_addr                  (mem_addr),
         .error_flag                (error_flag),

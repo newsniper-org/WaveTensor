@@ -71,6 +71,7 @@ module Cluster #(
     output [TAG_WIDTH-1:0]      ext_out_tag,
     output [ADDR_WIDTH-1:0]     ext_out_payload,
     output [7:0]                ext_out_opcode,
+    output [7:0]                ext_out_frag_hdr,   // v1.5 §17
     output                      ext_out_valid,
 
     output                      mem_req,
@@ -143,6 +144,7 @@ module Cluster #(
     wire [47:0]                dec_eff_subscript;
     /* verilator lint_off UNUSEDSIGNAL */
     wire [47:0]                dec_eff_subscript_hi;   // v1.3 §16
+    wire [63:0]                dec_eff_imm64_hi;       // v1.4 §17
     /* verilator lint_on UNUSEDSIGNAL */
     wire [7:0]                 dec_eff_output_port_id;
     wire [7:0]                 dec_eff_precision;
@@ -238,6 +240,7 @@ module Cluster #(
         .dec_eff_mem_offset        (dec_eff_mem_offset),
         .dec_eff_subscript         (dec_eff_subscript),
         .dec_eff_subscript_hi      (dec_eff_subscript_hi),
+        .dec_eff_imm64_hi          (dec_eff_imm64_hi),
         .dec_eff_output_port_id    (dec_eff_output_port_id),
         .dec_eff_precision         (dec_eff_precision),
         .dec_wave_number           (dec_wave_number),
@@ -346,6 +349,7 @@ module Cluster #(
     // -------------------------------------------------------------------------
     wire [TAG_WIDTH-1:0]   pe_out_tag     [0:NUM_PES-1];
     wire [7:0]             pe_out_opcode  [0:NUM_PES-1];
+    wire [7:0]             pe_out_frag_hdr[0:NUM_PES-1];   // v1.5 §17
     wire                   pe_mem_req     [0:NUM_PES-1];
     wire [ADDR_WIDTH-1:0]  pe_mem_addr    [0:NUM_PES-1];
     wire                   pe_error       [0:NUM_PES-1];
@@ -392,6 +396,7 @@ module Cluster #(
                     .output_tag                (pe_out_tag[IDX]),
                     .output_valid              (pe_out_valid[IDX]),
                     .opcode_out                (pe_out_opcode[IDX]),
+                    .output_frag_hdr           (pe_out_frag_hdr[IDX]),
                     .memory_req                (pe_mem_req[IDX]),
                     .mem_addr                  (pe_mem_addr[IDX]),
                     .error_flag                (pe_error[IDX]),
@@ -407,6 +412,7 @@ module Cluster #(
     wire [TAG_WIDTH-1:0]  mu_out_tag;
     wire [ADDR_WIDTH-1:0] mu_out_payload;
     wire [7:0]            mu_out_opcode;
+    wire [7:0]            mu_out_frag_hdr;   // v1.5 §17
     wire                  mu_out_valid;
     wire                  mu_mem_req;
     wire [ADDR_WIDTH-1:0] mu_mem_addr;
@@ -446,6 +452,7 @@ module Cluster #(
         .output_tag                (mu_out_tag),
         .output_valid              (mu_out_valid),
         .opcode_out                (mu_out_opcode),
+        .output_frag_hdr           (mu_out_frag_hdr),
         .memory_req                (mu_mem_req),
         .mem_addr                  (mu_mem_addr),
         .error_flag                (mu_error),
@@ -460,6 +467,7 @@ module Cluster #(
     wire [TAG_WIDTH-1:0]  du_out_tag;
     wire [ADDR_WIDTH-1:0] du_out_payload;
     wire [7:0]            du_out_opcode;
+    wire [7:0]            du_out_frag_hdr;   // v1.5 §17
     wire                  du_out_valid;
     wire                  du_mem_req;
     wire [ADDR_WIDTH-1:0] du_mem_addr;
@@ -499,6 +507,7 @@ module Cluster #(
         .output_tag                (du_out_tag),
         .output_valid              (du_out_valid),
         .opcode_out                (du_out_opcode),
+        .output_frag_hdr           (du_out_frag_hdr),
         .memory_req                (du_mem_req),
         .mem_addr                  (du_mem_addr),
         .error_flag                (du_error),
@@ -610,6 +619,7 @@ module Cluster #(
     reg [TAG_WIDTH-1:0]  m_tag;
     reg [ADDR_WIDTH-1:0] m_payload;
     reg [7:0]            m_opcode;
+    reg [7:0]            m_frag_hdr;   // v1.5 §17
     reg                  m_valid;
     reg                  m_mem_req;
     reg [ADDR_WIDTH-1:0] m_mem_addr;
@@ -619,16 +629,18 @@ module Cluster #(
         m_tag       = {TAG_WIDTH{1'b0}};
         m_payload   = {ADDR_WIDTH{1'b0}};
         m_opcode    = 8'h00;
+        m_frag_hdr  = 8'h00;
         m_valid     = 1'b0;
         m_mem_req   = 1'b0;
         m_mem_addr  = {ADDR_WIDTH{1'b0}};
         m_err       = 1'b0;
         m_lwr       = 1'b0;
         if (mu_out_valid) begin
-            m_tag     = mu_out_tag;
-            m_payload = mu_out_payload;
-            m_opcode  = mu_out_opcode;
-            m_valid   = 1'b1;
+            m_tag      = mu_out_tag;
+            m_payload  = mu_out_payload;
+            m_opcode   = mu_out_opcode;
+            m_frag_hdr = mu_out_frag_hdr;
+            m_valid    = 1'b1;
         end
         if (mu_mem_req) begin
             m_mem_req  = 1'b1;
@@ -637,10 +649,11 @@ module Cluster #(
         m_err = m_err | mu_error;
         m_lwr = m_lwr | mu_lower;
         if (du_out_valid && !m_valid) begin
-            m_tag     = du_out_tag;
-            m_payload = du_out_payload;
-            m_opcode  = du_out_opcode;
-            m_valid   = 1'b1;
+            m_tag      = du_out_tag;
+            m_payload  = du_out_payload;
+            m_opcode   = du_out_opcode;
+            m_frag_hdr = du_out_frag_hdr;
+            m_valid    = 1'b1;
         end
         if (du_mem_req && !m_mem_req) begin
             m_mem_req  = 1'b1;
@@ -650,10 +663,11 @@ module Cluster #(
         m_lwr = m_lwr | du_lower;
         for (i = 0; i < NUM_PES; i = i + 1) begin
             if (pe_out_valid[i] && !m_valid) begin
-                m_tag     = pe_out_tag[i];
-                m_payload = pe_out_payload[i];
-                m_opcode  = pe_out_opcode[i];
-                m_valid   = 1'b1;
+                m_tag      = pe_out_tag[i];
+                m_payload  = pe_out_payload[i];
+                m_opcode   = pe_out_opcode[i];
+                m_frag_hdr = pe_out_frag_hdr[i];
+                m_valid    = 1'b1;
             end
             if (pe_mem_req[i] && !m_mem_req) begin
                 m_mem_req  = 1'b1;
@@ -667,6 +681,7 @@ module Cluster #(
     assign ext_out_tag        = m_tag;
     assign ext_out_payload    = m_payload;
     assign ext_out_opcode     = m_opcode;
+    assign ext_out_frag_hdr   = m_frag_hdr;
     assign ext_out_valid      = m_valid;
     assign mem_req            = m_mem_req;
     assign mem_addr           = m_mem_addr;

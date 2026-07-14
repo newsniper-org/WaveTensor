@@ -69,6 +69,15 @@ module PE_Core #(
     output reg [TAG_WIDTH-1:0]   output_tag,
     output reg                   output_valid,
     output reg [7:0]             opcode_out,
+    // v1.5 §17 — NoC wave-token fragment header (IPv6-style Fragment
+    // Extension Header analog). Layout:
+    //   [7:4] = fragment_index (this fragment's position, 0..15)
+    //   [3:0] = total_fragments_minus_1 (0..15, meaning 1..16 fragments)
+    //   0x00  = legacy single-fragment token (all v1.0..1.4 primitives).
+    // Downstream fabric collects fragments sharing tag until frag_index ==
+    // total-1 to reassemble the logical wide payload (up to 16×64 = 1024
+    // bits). See wt64v1_spec.md §17 and eh_encoding_expansion.md §12.
+    output reg [7:0]             output_frag_hdr,
     output reg                   memory_req,
     output reg [ADDR_WIDTH-1:0]  mem_addr,
     output reg                   error_flag,
@@ -573,25 +582,30 @@ module PE_Core #(
     // -------------------------------------------------------------------------
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            output_payload <= {ADDR_WIDTH{1'b0}};
-            output_tag     <= {TAG_WIDTH{1'b0}};
-            output_valid   <= 1'b0;
-            opcode_out     <= 8'h00;
-            memory_req     <= 1'b0;
-            mem_addr       <= {ADDR_WIDTH{1'b0}};
-            error_flag     <= 1'b0;
-            lower_required <= 1'b0;
+            output_payload  <= {ADDR_WIDTH{1'b0}};
+            output_tag      <= {TAG_WIDTH{1'b0}};
+            output_valid    <= 1'b0;
+            opcode_out      <= 8'h00;
+            output_frag_hdr <= 8'h00;
+            memory_req      <= 1'b0;
+            mem_addr        <= {ADDR_WIDTH{1'b0}};
+            error_flag      <= 1'b0;
+            lower_required  <= 1'b0;
             mul_valid_p1   <= 1'b0;
             mul_valid_p2   <= 1'b0;
             div_state      <= DIV_IDLE;
             div_valid_p2   <= 1'b0;
             div_b_zero_p2  <= 1'b0;
         end else begin
-            output_valid   <= 1'b0;
-            memory_req     <= 1'b0;
-            error_flag     <= 1'b0;
-            lower_required <= 1'b0;
-            opcode_out     <= dec_opcode;
+            output_valid    <= 1'b0;
+            memory_req      <= 1'b0;
+            error_flag      <= 1'b0;
+            lower_required  <= 1'b0;
+            opcode_out      <= dec_opcode;
+            // v1.5 §17 — single-fragment default. Wide-output primitives
+            // (future v1.x amendments) will drive multi-cycle fragment
+            // sequences and set this per-fragment.
+            output_frag_hdr <= 8'h00;
 
             // Multi-cycle MUL pipeline advance
             if (MUL_OPS_SUPPORTED) begin

@@ -64,6 +64,7 @@ module Pod #(
     output [TAG_WIDTH-1:0]      ext_out_tag,
     output [ADDR_WIDTH-1:0]     ext_out_payload,
     output [7:0]                ext_out_opcode,
+    output [7:0]                ext_out_frag_hdr,   // v1.5 §17
     output                      ext_out_valid,
 
     // ---- Memory side-channel (forwarded from any Cluster to a Pod-level HIU) ----
@@ -94,10 +95,11 @@ module Pod #(
     // -------------------------------------------------------------------------
     // Per-Cluster output buses
     // -------------------------------------------------------------------------
-    wire [TAG_WIDTH-1:0]   cl_out_tag     [0:NUM_CLUSTERS-1];
-    wire [ADDR_WIDTH-1:0]  cl_out_payload [0:NUM_CLUSTERS-1];
-    wire [7:0]             cl_out_opcode  [0:NUM_CLUSTERS-1];
-    wire                   cl_out_valid   [0:NUM_CLUSTERS-1];
+    wire [TAG_WIDTH-1:0]   cl_out_tag       [0:NUM_CLUSTERS-1];
+    wire [ADDR_WIDTH-1:0]  cl_out_payload   [0:NUM_CLUSTERS-1];
+    wire [7:0]             cl_out_opcode    [0:NUM_CLUSTERS-1];
+    wire [7:0]             cl_out_frag_hdr  [0:NUM_CLUSTERS-1];   // v1.5 §17
+    wire                   cl_out_valid     [0:NUM_CLUSTERS-1];
     wire                   cl_mem_req     [0:NUM_CLUSTERS-1];
     wire [ADDR_WIDTH-1:0]  cl_mem_addr    [0:NUM_CLUSTERS-1];
     wire                   cl_error       [0:NUM_CLUSTERS-1];
@@ -143,6 +145,7 @@ module Pod #(
                     .ext_out_tag         (cl_out_tag[CIDX]),
                     .ext_out_payload     (cl_out_payload[CIDX]),
                     .ext_out_opcode      (cl_out_opcode[CIDX]),
+                    .ext_out_frag_hdr    (cl_out_frag_hdr[CIDX]),
                     .ext_out_valid       (cl_out_valid[CIDX]),
                     .mem_req             (cl_mem_req[CIDX]),
                     .mem_addr            (cl_mem_addr[CIDX]),
@@ -161,6 +164,7 @@ module Pod #(
     reg [TAG_WIDTH-1:0]  m_tag;
     reg [ADDR_WIDTH-1:0] m_payload;
     reg [7:0]            m_opcode;
+    reg [7:0]            m_frag_hdr;   // v1.5 §17
     reg                  m_valid;
     reg                  m_mem_req;
     reg [ADDR_WIDTH-1:0] m_mem_addr;
@@ -170,6 +174,7 @@ module Pod #(
         m_tag      = {TAG_WIDTH{1'b0}};
         m_payload  = {ADDR_WIDTH{1'b0}};
         m_opcode   = 8'h00;
+        m_frag_hdr = 8'h00;
         m_valid    = 1'b0;
         m_mem_req  = 1'b0;
         m_mem_addr = {ADDR_WIDTH{1'b0}};
@@ -177,10 +182,11 @@ module Pod #(
         m_lwr      = 1'b0;
         for (i = 0; i < NUM_CLUSTERS; i = i + 1) begin
             if (cl_out_valid[i] && !m_valid) begin
-                m_tag     = cl_out_tag[i];
-                m_payload = cl_out_payload[i];
-                m_opcode  = cl_out_opcode[i];
-                m_valid   = 1'b1;
+                m_tag      = cl_out_tag[i];
+                m_payload  = cl_out_payload[i];
+                m_opcode   = cl_out_opcode[i];
+                m_frag_hdr = cl_out_frag_hdr[i];
+                m_valid    = 1'b1;
             end
             if (cl_mem_req[i] && !m_mem_req) begin
                 m_mem_req  = 1'b1;
@@ -194,6 +200,7 @@ module Pod #(
     assign ext_out_tag        = m_tag;
     assign ext_out_payload    = m_payload;
     assign ext_out_opcode     = m_opcode;
+    assign ext_out_frag_hdr   = m_frag_hdr;
     assign ext_out_valid      = m_valid;
     assign mem_req            = m_mem_req;
     assign mem_addr           = m_mem_addr;

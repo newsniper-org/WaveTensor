@@ -81,6 +81,11 @@ module EHDecode #(
     // v1.3: second SUBSCRIPT EH body (axes 4-7 for {A,B,O}). Zero when
     // only one SUBSCRIPT EH was emitted (backward compatible w/ v1.2 sigs).
     output reg [47:0]            dec_eff_subscript_hi,
+    // v1.4: second IMM64 EH body — 128-bit wide immediate via multi-IMM64
+    // chain. Zero when only one IMM64 EH was emitted. Enables input-side
+    // wide-tensor payload without changing the NoC packet format. See
+    // wt64v1_spec.md §17.
+    output reg [63:0]            dec_eff_imm64_hi,
     output reg [7:0]             dec_eff_output_port_id,
     output reg [7:0]             dec_eff_precision,
     output reg [31:0]            dec_wave_number,
@@ -178,7 +183,12 @@ module EHDecode #(
     reg [15:0] acc_port_body;
     reg [15:0] acc_imm16;
     reg [31:0] acc_imm32;
+    // v1.4: IMM64 bank — 2 slots for 128-bit total immediate via
+    // multi-IMM64 EH chain. First IMM64 EH lands in bank[0], second in
+    // bank[1]; third raises stg_chain_err.
     reg [63:0] acc_imm64;
+    reg [63:0] acc_imm64_hi;
+    reg [1:0]  acc_imm64_slot;
     reg [ 3:0] acc_mem_addr_mode;
     reg [11:0] acc_mem_stride;
     reg [31:0] acc_mem_offset;
@@ -255,6 +265,8 @@ module EHDecode #(
             acc_mem_offset     <= 32'h0;
             acc_subscript      <= 96'h0;
             acc_subscript_slot <= 2'd0;
+            acc_imm64_hi       <= 64'h0;
+            acc_imm64_slot     <= 2'd0;
             acc_opref_src_kind <= 4'h0;
             acc_opref_port_id  <= 4'h0;
             acc_opref_noc_route<= 8'h0;
@@ -300,6 +312,8 @@ module EHDecode #(
                 acc_mem_offset     <= 32'h0;
                 acc_subscript      <= 96'h0;
                 acc_subscript_slot <= 2'd0;
+                acc_imm64_hi       <= 64'h0;
+                acc_imm64_slot     <= 2'd0;
                 acc_opref_src_kind <= 4'h0;
                 acc_opref_port_id  <= 4'h0;
                 acc_opref_noc_route<= 8'h0;
@@ -340,8 +354,19 @@ module EHDecode #(
                         acc_any_imm32 <= 1'b1;
                     end
                     if (is_imm64_c) begin
-                        acc_imm64     <= {cur_w2, cur_w1};
-                        acc_any_imm64 <= 1'b1;
+                        // v1.4: 2-slot IMM64 bank. First IMM64 → acc_imm64
+                        // (backward compat), second → acc_imm64_hi. Third
+                        // raises chain_err (encoding overflow).
+                        if (acc_imm64_slot == 2'd0) begin
+                            acc_imm64      <= {cur_w2, cur_w1};
+                            acc_any_imm64  <= 1'b1;
+                            acc_imm64_slot <= 2'd1;
+                        end else if (acc_imm64_slot == 2'd1) begin
+                            acc_imm64_hi   <= {cur_w2, cur_w1};
+                            acc_imm64_slot <= 2'd2;
+                        end else begin
+                            stg_chain_err  <= 1'b1;
+                        end
                     end
                     if (is_mem_c) begin
                         acc_mem_addr_mode <= cur_w0[19:16];
@@ -588,6 +613,7 @@ module EHDecode #(
             dec_eff_mem_offset        <= 32'h0;
             dec_eff_subscript         <= 48'h0;
             dec_eff_subscript_hi      <= 48'h0;
+            dec_eff_imm64_hi          <= 64'h0;
             dec_eff_output_port_id    <= 8'h00;
             dec_eff_precision         <= 8'h00;
             dec_wave_number           <= 32'h0;
@@ -611,6 +637,7 @@ module EHDecode #(
                 dec_eff_mem_offset        <= acc_mem_offset;
                 dec_eff_subscript         <= acc_subscript[47:0];
                 dec_eff_subscript_hi      <= acc_subscript[95:48];
+                dec_eff_imm64_hi          <= acc_imm64_hi;
                 dec_eff_output_port_id    <= eff_output_port_id;
                 dec_eff_precision         <= eff_precision;
                 dec_wave_number           <= cb_wave_number;

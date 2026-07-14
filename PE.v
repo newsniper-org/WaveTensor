@@ -63,6 +63,7 @@ module PE #(
     output [TAG_WIDTH-1:0]      out_tag,
     output [ADDR_WIDTH-1:0]     out_payload,
     output [7:0]                out_opcode,
+    output [7:0]                out_frag_hdr,   // v1.5 §17
     output                      out_valid,
 
     // ---- Memory side-channel (forwarded by the Cluster to HIU) ----
@@ -115,6 +116,7 @@ module PE #(
         .output_tag           (out_tag),
         .output_valid         (out_valid),
         .opcode_out           (out_opcode),
+        .output_frag_hdr      (out_frag_hdr),
         .memory_req           (memory_req),
         .mem_addr             (mem_addr),
         .error_flag           (error_flag),
