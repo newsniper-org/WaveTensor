@@ -4,8 +4,13 @@
 # WaveTensor 기본 ISA v1 (WT64v1) — 사양
 
 작성일: 2026-05-03
-ISA 확정: **2026-05-03 (locked, 유효)**
+현재 버전: **v1.1** (2026-07-14 EINSUM completeness amendment)
+- v1.0 (2026-05-03): 초기 확정. 10 HW-direct EINSUM signature.
+- v1.1 (2026-07-14): SPLAT + SIG_BMM + SIG_TRACE_IIJ 추가 (기본 ISA 완결성 확보, backward-compatible). 자세한 근거는 §14 및 [`einsum_trace_broadcast_analysis.md`](./einsum_trace_broadcast_analysis.md) 참조.
+
 참조 구현 마이그레이션: **진행 중 (2026-07-12 개시)** — 참조 보드가 XCAU25P → LFE5U-85F → Avant G70 순으로 이동, 아래 §"참조 구현 마이그레이션 노트" 참조.
+
+**Backward compatibility**: v1.1 은 v1.0 의 모든 명령을 지원 + 새 opcode/signature 만 추가. v1.0 conformant 소프트웨어는 v1.1 디바이스에서 그대로 동작. 반대로 v1.1 전용 명령 (SPLAT 등) 을 v1.0 디바이스에 발사 시 `lower_required` 발사 (기존 unknown-opcode 처리 그대로).
 
 본 문서는 WaveTensor의 기본 명령어 집합 아키텍처 v1, 약칭 **WT64v1**의 정식 사양이다. 본 사양에 conformant한 디바이스는 별도 확장 없이도 단독으로 의미 있는 dataflow / scalar 워크로드를 수행할 수 있어야 한다.
 
@@ -313,8 +318,94 @@ WT64v1 lock 시점 회귀 결과 (185 tests):
 
 ## 12. 변경 정책
 
-- WT64v1 사양은 본 문서 시점에서 **freeze**된다.
-- 향후 변경은 **v1.1** (backward-compatible 추가) 또는 **WT64v2** (incompatible)로 분류.
+- WT64v1 사양의 v1.0 은 2026-05-03 lock 되었고, v1.1 amendment 는 2026-07-14 (§14 EINSUM completeness) 적용.
+- 향후 변경은 **v1.x** (backward-compatible 추가) 또는 **WT64v2** (incompatible) 로 분류.
 - 새 opcode 추가는 5장 reserved 영역에서 시작.
 - TRNG/HIU sub-spec 변경은 v1.x patch 가능.
-- Conformance test suite는 본 메모와 함께 freeze된 cocotb 회귀 (185 tests)로 정의됨.
+- Conformance test suite 는 v1.0 시점 185 tests + v1.1 amendment 후 신규 회귀 (SPLAT + BMM + TRACE-IIJ 각 5-10 tests).
+
+## 13. TBD (v1.0 시점 예약, v1.1 에서 부분 해결)
+
+*이 절은 v1.0 lock 시점에 예약된 항목. v1.1 에서 EINSUM completeness (§14) 로 부분적 해결됨.*
+
+## 14. EINSUM completeness — v1.1 amendment (2026-07-14)
+
+### 14.1 배경
+
+v1.0 lock 후 `_lower_einsum_general` (어셈블러 macro pass) 실증 결과, **base ISA 만으로 close 되지 않는 3가지 패턴 클래스** 발견:
+
+1. **Trace with kept axis** (`iij->j` 류) — WT64v1 v1.0 의 `SIG_TRACE_II` 는 순수 2D input 만 처리, kept axis 확장 불가.
+2. **Size>1 broadcast** (`i->ij` where shape[j]>1) — WT64v1 v1.0 의 ZERO/ONE 은 scalar constant 뿐, vector constant 생성 불가.
+3. **Batched matmul** (`bik,bkj->bij` 류) — WT64v1 v1.0 의 `SIG_MATMUL` 은 순수 2D×2D 만.
+
+이는 assembler-side 매크로 lowering 으로 어떤 우회도 불가능 — **base ISA 자체의 표현력 결손**. 상세 분석은 [`einsum_trace_broadcast_analysis.md`](./einsum_trace_broadcast_analysis.md).
+
+### 14.2 판단 — WT64v1-C 확장이 아닌 base ISA v1.1 amendment
+
+초기 제안은 이 3가지를 WT64v1-C (별도 확장) 로 분리하는 것이었으나, **이 3가지는 base ISA 완결성 문제** 이며 crypto / bit-permute (WT64v1-C 의 원 대상) 와 성격이 다름:
+
+- Base ISA 는 "일반적인 tensor / scalar dataflow 워크로드를 표현 가능해야 함" (§1 개요).
+- EINSUM 은 base ISA 의 핵심 표현 도구. 그 lowering 이 반복적으로 실패하는 것은 **표현력 부족**.
+- Crypto / bit-permute 는 도메인 특화 확장 — base ISA 완결성과 무관.
+
+따라서 v1.1 base 에 편입 (backward-compatible).
+
+### 14.3 신규 opcode + signature
+
+**opcode `0x26` — `SPLAT` (scalar → constant packed vector)** — v1.1 신규.
+- **Semantic**: scalar 를 payload lane 0..N-1 (N ≤ 4) 로 packed 복제.
+- **Encoding**:
+  - Base header: opcode = `0x26`, F_HAS_OPB = 0, F_DIM_OVR = 1 (target shape 은 tag 의 dimension_sizes 또는 IMM16 EH `[7:0]` 에서 읽음).
+  - IMM16 EH body: `[7:0]` = int8 scalar 값 (signed).
+  - PRECISION EH 로 target 크기 명시 (또는 tag 의 precision_mode 참조).
+- **Output**: `payload[63:0] = {int16(scalar), int16(scalar), int16(scalar), int16(scalar)}` (precision int16 default).
+- **Multi-lane packed** — precision int8 시 8 lanes.
+- **1-cycle 실행**, `output_valid <= 1'b1`.
+- **HW 비용**: ~5K LUT / Pod (16 PE × ~200 LUT + MUX broadcast + packing).
+
+**EINSUM signature 신규 — `SIG_BMM`** — v1.1 신규.
+- **Semantic**: `bik,bkj->bij` (batched matrix multiplication, batch 축 b, shape[b] ≤ 2).
+- **Subscript encoding**: `A=b,i,j B=b,j,k O=b,i,k`.
+- **HW 구현**: 기존 MATMUL_UNIT 을 batch 축으로 sequentiate (2 cycles for shape[b]=2).
+- **HW 비용**: ~2K LUT / Pod (기존 MATMUL 재사용).
+
+**EINSUM signature 신규 — `SIG_TRACE_IIJ`** — v1.1 신규.
+- **Semantic**: `iij->j` (첫 두 axis trace, j 유지, shape[i]≤4 shape[j]≤4).
+- **Subscript encoding**: `A=i,i,j B=(empty) O=j`.
+- **HW 구현**: 기존 TRACE_II 를 j slice 별로 loop.
+- **HW 비용**: ~1K LUT / Pod.
+
+### 14.4 어셈블러 매크로 lowering 활용
+
+v1.1 opcode/signature 도입 후 `_lower_einsum_general` 확장:
+
+- **Size>1 broadcast lowering** (`A=i B=j O=i,j,q` with shape[q]=N>1):
+  - `MATMUL(A,B) → SPLAT q=1 (size N) → OUTER(result, ones_vec) → USQZ/PERM`
+- **Trace with kept axis** (`iij->j`):
+  - `SIG_TRACE_IIJ` HW-direct → pass-through.
+- **Batched matmul** (`bik,bkj->bij`):
+  - `SIG_BMM` HW-direct → pass-through.
+
+### 14.5 Sub-conformance flags
+
+- `WT64v1/SPLAT` — 우선순위 1, 대부분의 broadcast lowering close
+- `WT64v1/EINSUM-BMM` — 우선순위 2
+- `WT64v1/EINSUM-TRACE-IIJ` — 우선순위 3
+- 상위 3개 모두 구현 시 `WT64v1/EINSUM-FULL` 통합 플래그 → v1.1 full conformance.
+
+**Note**: v1.1 은 sub-conformance 없이 3개 모두 구현 요구. Sub-conformance flag 는 부분 구현 프로토타입 (예: FPGA prototype 이 SPLAT 만 landing 한 상태) 을 위한 임시 marker. 상용화된 WT64v1 conformant 디바이스는 v1.1 full 이어야 함.
+
+### 14.6 회귀 확장 예정
+
+v1.1 amendment 를 실측으로 확인할 새 회귀:
+- `test_isa_decoder.py`: SPLAT 5-10 tests, SIG_BMM 3-5 tests, SIG_TRACE_IIJ 3-5 tests
+- `test_wavetensor_asm.py`: 확장된 `_lower_einsum_general` 테스트 (broadcast size>1 lowers, batched matmul lowers, trace-with-kept lowers) 5-10 tests
+
+### 14.7 진입 트리거
+
+v1.1 amendment 는 **결정된 상태 (2026-07-14)**. 구현 순서:
+1. **SPLAT** 우선 (가장 general + 저비용).
+2. **SIG_BMM** 후행 (카메라 target 시나리오 매치).
+3. **SIG_TRACE_IIJ** 최후 (실제 등장 빈도 검증 후).
+
+`wavetensor-drivers` P1 진행 중 어셈블러가 v1.1 opcode 요구 시 또는 사용자 명시적 지시 시 착수.

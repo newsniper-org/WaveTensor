@@ -118,6 +118,10 @@ WT64v1-C conformant 디바이스는 다음을 만족:
 
 ## 5. 후속 작업 트리거
 
+**Note (2026-07-14)**: 초기 검토 과정에서 EINSUM completeness (SPLAT / SIG_BMM / SIG_TRACE_IIJ) 를 WT64v1-C 로 편입하는 방안을 논의했으나, **이 3가지는 base ISA 완결성 문제** 로 판단하여 **WT64v1 v1.1 amendment** 로 이관됨. 자세한 근거는 [`wt64v1_spec.md`](./wt64v1_spec.md) §14 및 [`einsum_trace_broadcast_analysis.md`](./einsum_trace_broadcast_analysis.md) 참조. 본 메모 (WT64v1-C) 는 crypto / bit-permute 도메인 확장에만 집중.
+
+
+
 본 메모의 구현 시작은 다음 중 하나가 발생할 때:
 - 보안 워크로드 (TLS termination / disk encryption / MAC) profile 데이터 확보
 - KMVP/FIPS 인증 요구 발생
@@ -125,6 +129,6 @@ WT64v1-C conformant 디바이스는 다음을 만족:
 
 각 트리거에 대해 별도 design memo + Phase 시작.
 
-## 6. v1과의 분리 약속
+## 6. v1 base 와의 분리 약속
 
 본 확장은 **WT64v1 base의 사양을 변경하지 않는다**. v1 base는 -C 확장 유무와 무관하게 단독으로 conformant 가능. -C 확장은 v1 위에 add-on. crypto 다이가 없는 보드에서도 base v1 워크로드는 그대로 동작.
