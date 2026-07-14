@@ -639,12 +639,38 @@ class TestEinsumLowering(unittest.TestCase):
         opcodes = [(w >> 24) & 0xFF for w in insts]
         self.assertIn(0x21, opcodes)
 
-    def test_mixed_batched_raises_with_hint(self):
-        """Label in A ∩ B ∩ O (batched matmul) — raise pointing at memo."""
+    def test_bmm_v1_1_hw_direct_pass_through(self):
+        """v1.1 amendment: `bik,bkj->bij` batched matmul is now SIG_BMM,
+        HW-direct pass-through (no macro lowering)."""
         src = (
             ".default_port mask=0x01 out=0\n"
-            "EINSUM opb .subscript A=b,i,j B=b,j,k O=b,i,k .opref "
-            ".shape b=2 i=2 j=2 k=2\n"
+            "EINSUM opb .subscript A=b,i,k B=b,k,j O=b,i,j .opref "
+            ".shape b=2 i=2 k=2 j=2\n"
+        )
+        # Should pass through as a single EINSUM (opcode 0x32) rather than
+        # a lowered chain.
+        insts = assemble(src)
+        opcodes = [(w >> 24) & 0xFF for w in insts]
+        self.assertEqual(opcodes, [0x32], f"expected single EINSUM, got {[hex(o) for o in opcodes]}")
+
+    def test_trace_iij_v1_1_hw_direct_pass_through(self):
+        """v1.1 amendment: `iij->j` is now SIG_TRACE_IIJ, HW-direct."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "EINSUM opb .subscript A=i,i,j B= O=j .opref "
+            ".shape i=2 j=2\n"
+        )
+        insts = assemble(src)
+        opcodes = [(w >> 24) & 0xFF for w in insts]
+        self.assertEqual(opcodes, [0x32], f"expected single EINSUM, got {[hex(o) for o in opcodes]}")
+
+    def test_mixed_2_batch_dims_still_raises(self):
+        """Beyond v1.1: 2 batch axes (`abij,abjk->abik`) exceeds SIG_BMM's
+        single batch axis. Should raise pointing at memo."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "EINSUM opb .subscript A=a,b,i,j B=a,b,j,k O=a,b,i,k .opref "
+            ".shape a=2 b=2 i=2 j=2 k=2\n"
         )
         with self.assertRaisesRegex(AssemblerError, "batched contraction"):
             assemble(src)

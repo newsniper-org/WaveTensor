@@ -538,6 +538,10 @@ HW_DIRECT_EINSUM_SIGS = frozenset([
     (0x0011, 0x0000, 0x0001),  # SIG_DIAGONAL    'ii->i'
     (0x0001, 0x0001, 0x0000),  # SIG_DOT         'i,i->'
     (0x0021, 0x0002, 0x0001),  # SIG_MAT_VEC     'ij,j->i'
+    # v1.1 amendment (2026-07-14) — EINSUM completeness. Both int8 packed
+    # 8-lane payload. Requires dim_sizes = 0x15 (3D 2×2×2) at issue time.
+    (0x0321, 0x0431, 0x0421),  # SIG_BMM         'bik,bkj->bij'
+    (0x0211, 0x0000, 0x0002),  # SIG_TRACE_IIJ   'iij->j'
 ])
 
 

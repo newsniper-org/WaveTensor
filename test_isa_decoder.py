@@ -1527,3 +1527,173 @@ async def test_splat_forbids_subscript(dut):
     await fire(dut, instr, _STD_TAG(dim=0x00), payload_a=0)
     assert dut.error_flag.value == 1
     assert dut.output_valid.value == 0
+
+
+# =============================================================================
+# SIG_BMM (v1.1) — 'bik,bkj->bij' batched matmul at int8 packed 8-lane payload.
+# Canonicalized subscript: A=[1,2,3] B=[1,3,4] O=[1,2,4].
+# Requires dim_sizes = 0x15 (3D 2×2×2); otherwise lower_required.
+# =============================================================================
+
+def _pack8(*bytes_):
+    """Pack up to 8 int8 values into a 64-bit int (lane 0 = low byte)."""
+    v = 0
+    for i, b in enumerate(bytes_[:8]):
+        v |= (b & 0xFF) << (i * 8)
+    return v
+
+
+@cocotb.test()
+async def test_bmm_basic(dut):
+    """2 independent 2x2 int8 matmuls, batched."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # A[b][i][k] at lane b*4+i*2+k
+    # b=0: [[1,2],[3,4]], b=1: [[10,20],[30,40]]
+    a = _pack8(1, 2, 3, 4, 10, 20, 30, 40)
+    # B[b][k][j] at lane b*4+k*2+j
+    # b=0: [[5,6],[7,8]], b=1: [[1,1],[1,1]]
+    b_pl = _pack8(5, 6, 7, 8, 1, 1, 1, 1)
+    # Expected R[b][i][j] at lane b*4+i*2+j
+    # b=0: matmul=[[1*5+2*7, 1*6+2*8],[3*5+4*7, 3*6+4*8]] = [[19,22],[43,50]]
+    # b=1: matmul=[[10+20, 10+20],[30+40, 30+40]] = [[30,30],[70,70]]
+    expected = _pack8(19, 22, 43, 50, 30, 30, 70, 70)
+
+    instr = encode_instr(0x32,
+                         _STD_PORT(),
+                         eh_subscript(axes(1, 2, 3, 0), axes(1, 3, 4, 0), axes(1, 2, 4, 0)),
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    await fire(dut, instr, _STD_TAG(dim=0x15),
+               payload_a=a, payload_b=b_pl, payload_b_valid=1)
+    assert dut.error_flag.value == 0
+    assert dut.lower_required.value == 0
+    assert dut.output_valid.value == 1
+    assert int(dut.output_payload.value) == expected, \
+        f"BMM result mismatch: got 0x{int(dut.output_payload.value):016x}, expected 0x{expected:016x}"
+
+
+@cocotb.test()
+async def test_bmm_identity_yields_input(dut):
+    """A @ I = A (per batch). Confirms indexing correctness."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # A[0]=[[1,2],[3,4]], A[1]=[[5,6],[7,8]]
+    a = _pack8(1, 2, 3, 4, 5, 6, 7, 8)
+    # B = identity per batch: [[1,0],[0,1]]
+    b_pl = _pack8(1, 0, 0, 1, 1, 0, 0, 1)
+    # Expected: R[b] = A[b] since B[b] is identity.
+    expected = _pack8(1, 2, 3, 4, 5, 6, 7, 8)
+
+    instr = encode_instr(0x32,
+                         _STD_PORT(),
+                         eh_subscript(axes(1, 2, 3, 0), axes(1, 3, 4, 0), axes(1, 2, 4, 0)),
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    await fire(dut, instr, _STD_TAG(dim=0x15),
+               payload_a=a, payload_b=b_pl, payload_b_valid=1)
+    assert dut.output_valid.value == 1
+    assert int(dut.output_payload.value) == expected
+
+
+@cocotb.test()
+async def test_bmm_wrong_dim_sizes_lowers(dut):
+    """SIG_BMM requires dim_sizes = 0x15. Other shapes → lower_required."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    instr = encode_instr(0x32,
+                         _STD_PORT(),
+                         eh_subscript(axes(1, 2, 3, 0), axes(1, 3, 4, 0), axes(1, 2, 4, 0)),
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    # dim_sizes = 0x05 (2D 2x2) — wrong for SIG_BMM
+    await fire(dut, instr, _STD_TAG(dim=0x05),
+               payload_a=0, payload_b=0, payload_b_valid=1)
+    assert dut.error_flag.value == 0
+    assert dut.lower_required.value == 1
+    assert dut.output_valid.value == 0
+
+
+# =============================================================================
+# SIG_TRACE_IIJ (v1.1) — 'iij->j' 3D trace with kept axis j at int8.
+# Canonicalized subscript: A=[1,1,2] B=[] O=[2].
+# Requires dim_sizes = 0x15 (3D 2×2×2); result is 1D of size 2 (dim = 0x01).
+# =============================================================================
+
+@cocotb.test()
+async def test_trace_iij_basic(dut):
+    """r[j] = A[0][0][j] + A[1][1][j]"""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # A[i][i'][j] at lane i*4+i'*2+j
+    # A[0][0][0]=10, A[0][0][1]=20, A[0][1][0]=99 (ignored), A[0][1][1]=99 (ignored)
+    # A[1][0][0]=98 (ignored), A[1][0][1]=97 (ignored), A[1][1][0]=30, A[1][1][1]=40
+    a = _pack8(10, 20, 99, 99, 98, 97, 30, 40)
+    # Expected: r[0] = 10 + 30 = 40, r[1] = 20 + 40 = 60. Upper 6 lanes = 0.
+    expected = _pack8(40, 60, 0, 0, 0, 0, 0, 0)
+
+    instr = encode_instr(0x32,
+                         _STD_PORT(),
+                         eh_subscript(axes(1, 1, 2, 0), axes(0, 0, 0, 0), axes(2, 0, 0, 0)),
+                         eh_opref(),
+                         flags=F_HAS_OPB)  # opb needed by legality; payload_b unused
+    await fire(dut, instr, _STD_TAG(dim=0x15),
+               payload_a=a, payload_b=0, payload_b_valid=1)
+    assert dut.error_flag.value == 0
+    assert dut.lower_required.value == 0
+    assert dut.output_valid.value == 1
+    assert int(dut.output_payload.value) == expected, \
+        f"TRACE_IIJ result mismatch: got 0x{int(dut.output_payload.value):016x}, expected 0x{expected:016x}"
+    # Output tag dim_sizes = 0x01 (1D of size 2)
+    assert _tag_dim(int(dut.output_tag.value)) == 0x01
+
+
+@cocotb.test()
+async def test_trace_iij_negative_int8_signs_correctly(dut):
+    """Signed int8 addition — sum of -5 and 10 in each lane."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # A[0][0][0]=-5 (0xFB), A[0][0][1]=-3 (0xFD), others don't matter for trace
+    # A[1][1][0]=10, A[1][1][1]=13
+    a = _pack8(0xFB, 0xFD, 0, 0, 0, 0, 10, 13)
+    # r[0] = -5 + 10 = 5, r[1] = -3 + 13 = 10
+    expected = _pack8(5, 10, 0, 0, 0, 0, 0, 0)
+
+    instr = encode_instr(0x32,
+                         _STD_PORT(),
+                         eh_subscript(axes(1, 1, 2, 0), axes(0, 0, 0, 0), axes(2, 0, 0, 0)),
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    await fire(dut, instr, _STD_TAG(dim=0x15),
+               payload_a=a, payload_b=0, payload_b_valid=1)
+    assert dut.output_valid.value == 1
+    assert int(dut.output_payload.value) == expected
+
+
+@cocotb.test()
+async def test_trace_iij_wrong_dim_lowers(dut):
+    """SIG_TRACE_IIJ requires dim_sizes = 0x15. Other → lower_required."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    instr = encode_instr(0x32,
+                         _STD_PORT(),
+                         eh_subscript(axes(1, 1, 2, 0), axes(0, 0, 0, 0), axes(2, 0, 0, 0)),
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    # 2D shape 2x2 is wrong
+    await fire(dut, instr, _STD_TAG(dim=0x05),
+               payload_a=0, payload_b=0, payload_b_valid=1)
+    assert dut.lower_required.value == 1
+    assert dut.output_valid.value == 0

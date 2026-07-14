@@ -88,6 +88,16 @@ module PE_Core #(
     localparam [47:0] SIG_DIAGONAL    = {16'h0011, 16'h0000, 16'h0001};
     localparam [47:0] SIG_DOT     = {16'h0001, 16'h0001, 16'h0000};
     localparam [47:0] SIG_MAT_VEC = {16'h0021, 16'h0002, 16'h0001};
+    // v1.1 amendment (2026-07-14): EINSUM completeness.
+    // SIG_BMM: 'bik,bkj->bij' — batched matmul. Labels canonicalized in A→B→O
+    //   first-appearance order: b=1, i=2, k=3 (from A); j=4 (new in B); O uses
+    //   1,2,4. Packed: A=b,i,k → 0x0321; B=b,k,j → 0x0431; O=b,i,j → 0x0421.
+    // SIG_TRACE_IIJ: 'iij->j' — 3D trace w/ kept axis. Labels: i=1, j=2.
+    //   Packed: A=i,i,j → 0x0211; B=(empty) → 0x0000; O=j → 0x0002.
+    // Both operate on int8 packed 8-lane payload (WT64v1 v1.1 §14.3 constraint):
+    // int16 precision inputs to these signatures produce lower_required.
+    localparam [47:0] SIG_BMM       = {16'h0321, 16'h0431, 16'h0421};
+    localparam [47:0] SIG_TRACE_IIJ = {16'h0211, 16'h0000, 16'h0002};
     localparam [3:0] RED_OP_SUM = 4'h0;
     localparam [3:0] RED_OP_MAX = 4'h1;
     localparam [3:0] RED_OP_MIN = 4'h2;
@@ -201,6 +211,55 @@ module PE_Core #(
                 2'd2: axis_sz = dim[5:4];
                 2'd3: axis_sz = dim[7:6];
             endcase
+        end
+    endfunction
+
+    // -------------------------------------------------------------------------
+    // v1.1 amendment (2026-07-14) — EINSUM completeness helpers
+    // Both operate on the 64-bit payload as 8 packed signed int8 lanes.
+    // -------------------------------------------------------------------------
+
+    // SIG_BMM: 'bik,bkj->bij' — batched matrix multiplication, all axes size 2.
+    // Layout: input A[b][i][k] at bit range [(b*4+i*2+k)*8 +: 8].
+    //         input B[b][k][j] at bit range [(b*4+k*2+j)*8 +: 8].
+    //         output R[b][i][j] at bit range [(b*4+i*2+j)*8 +: 8].
+    // R[b][i][j] = sum_k A[b][i][k] * B[b][k][j], truncated to int8.
+    function [ADDR_WIDTH-1:0] einsum_bmm_int8;
+        input [ADDR_WIDTH-1:0] a;
+        input [ADDR_WIDTH-1:0] b;
+        reg signed [7:0] a000, a001, a010, a011, a100, a101, a110, a111;
+        reg signed [7:0] b000, b001, b010, b011, b100, b101, b110, b111;
+        reg signed [7:0] r000, r001, r010, r011, r100, r101, r110, r111;
+        begin
+            a000 = a[ 0 +: 8]; a001 = a[ 8 +: 8]; a010 = a[16 +: 8]; a011 = a[24 +: 8];
+            a100 = a[32 +: 8]; a101 = a[40 +: 8]; a110 = a[48 +: 8]; a111 = a[56 +: 8];
+            b000 = b[ 0 +: 8]; b001 = b[ 8 +: 8]; b010 = b[16 +: 8]; b011 = b[24 +: 8];
+            b100 = b[32 +: 8]; b101 = b[40 +: 8]; b110 = b[48 +: 8]; b111 = b[56 +: 8];
+            // batch b=0
+            r000 = a000*b000 + a001*b010;
+            r001 = a000*b001 + a001*b011;
+            r010 = a010*b000 + a011*b010;
+            r011 = a010*b001 + a011*b011;
+            // batch b=1
+            r100 = a100*b100 + a101*b110;
+            r101 = a100*b101 + a101*b111;
+            r110 = a110*b100 + a111*b110;
+            r111 = a110*b101 + a111*b111;
+            einsum_bmm_int8 = {r111, r110, r101, r100, r011, r010, r001, r000};
+        end
+    endfunction
+
+    // SIG_TRACE_IIJ: 'iij->j' — 3D trace with kept axis j. All axes size 2.
+    // Layout: input A[i][i'][j] at bit range [(i*4+i_prime*2+j)*8 +: 8].
+    //         output R[j] at bit range [j*8 +: 8].
+    // R[j] = A[0][0][j] + A[1][1][j], truncated to int8.
+    function [ADDR_WIDTH-1:0] einsum_trace_iij_int8;
+        input [ADDR_WIDTH-1:0] a;
+        reg signed [7:0] r0, r1;
+        begin
+            r0 = $signed(a[ 0 +: 8]) + $signed(a[48 +: 8]);
+            r1 = $signed(a[ 8 +: 8]) + $signed(a[56 +: 8]);
+            einsum_trace_iij_int8 = {48'h0, r1, r0};
         end
     endfunction
 
@@ -863,6 +922,31 @@ module PE_Core #(
                                 SIG_MAT_VEC: begin
                                     output_payload <= einsum_mat_vec(dec_input_payload, dec_input_payload_b);
                                     output_valid <= 1'b1;
+                                end
+                                SIG_BMM: begin
+                                    // v1.1 amendment §14.3. Batched matmul at
+                                    // int8. dim_sizes must be 0x15 (3D 2×2×2).
+                                    // Result has same shape (3D 2×2×2).
+                                    if (dec_eff_dim_sizes != 8'h15) begin
+                                        lower_required <= 1'b1; output_valid <= 1'b0;
+                                    end else begin
+                                        output_payload <= einsum_bmm_int8(dec_input_payload, dec_input_payload_b);
+                                        output_valid <= 1'b1;
+                                    end
+                                end
+                                SIG_TRACE_IIJ: begin
+                                    // v1.1 amendment §14.3. 3D trace w/ kept
+                                    // axis j at int8. A dim_sizes must be 0x15.
+                                    // Result is 1D size 2 → dim_sizes = 0x01.
+                                    if (dec_eff_dim_sizes != 8'h15) begin
+                                        lower_required <= 1'b1; output_valid <= 1'b0;
+                                    end else begin
+                                        output_payload <= einsum_trace_iij_int8(dec_input_payload);
+                                        output_tag <= {dec_wave_number, dec_thread_id,
+                                                       8'h00, dec_eff_output_port_id,
+                                                       dec_eff_precision, 8'h01};
+                                        output_valid <= 1'b1;
+                                    end
                                 end
                                 default: begin
                                     lower_required <= 1'b1; output_valid <= 1'b0;
