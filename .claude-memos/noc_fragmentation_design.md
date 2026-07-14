@@ -141,15 +141,37 @@ Fragmentation 은 **RTL 층위 인프라**이지 어셈블러 코드에 노출 �
 - 회귀: 149 tests + 신규 2 tests (test_frag_hdr_default_zero_alu / _einsum) = 154 PASS.
 - **미포함**: fragment 발행 primitive, fabric 재조립, wide-input consumer.
 
+## 11a. v1.5.1 landing (2026-07-14 완료) — Fabric fragment reassembly
+
+**Cluster.v 진입 single-slot fragment buffer** (§7-8 설계 실현):
+- `ext_frag_hdr[7:0]` input port 신설 (Cluster + Pod)
+- 16-slot `frag_data[16]` × 64-bit = 1024-bit wide payload 저장 가능
+- 상태 register: `frag_mask[15:0]`, `frag_total_m1[3:0]`, `frag_tag_reg[79:0]`, `frag_active`
+- 완결 pulse: `frag_reass_valid` (조합) + `frag_reass_wide[1023:0]` (조합)
+- Legacy 단일-fragment (frag_hdr=0x00) 완전 bypass
+
+**회귀**: 158 cocotb + 66 assembler = 224 tests PASS. 신규 4 tests:
+- `test_frag_buffer_single_fragment_bypasses`
+- `test_frag_buffer_two_fragments_assemble`
+- `test_frag_buffer_out_of_order_arrival` (§8 IPv6 준수)
+- `test_frag_buffer_four_fragments_assemble`
+
+**하드웨어 비용**: ~1.5-2K LUT + 1K FF / Cluster (LFE5U-85F 추정).
+
+**한계 (v1.5.1b/c 로 이월)**:
+- Single-slot: 동시 활성 multi-fragment wave 1개
+- Downstream 미연결 — `frag_reass_wide` 는 Cluster-internal (v1.5.2 에서 EHDecode 스레딩)
+
 ## 12. v1.6+ 로드맵 요약
 
-| 단계 | 스코프 | 예상 LUT 비용 |
-|---|---|---|
-| v1.5.1 | Fabric fragment buffer + reassembly (Cluster) | +2K LUT + 8Kbit BRAM/Cluster |
-| v1.5.2 | PE_Core wide-input consumer (128-bit dec_input_payload_wide) | +500 LUT |
-| v1.5.3 | Wide-output primitive: SIG_BMM_3 실행 (multi-fragment emit) | +3K LUT (matmul_2x2 확장) |
-| v1.5.4 | Assembler multi-IMM64 emit 자동화 (5+ axes einsum 감지 시) | Python only |
-| v1.5.5 | Multi-fragment SIG_TRACE_IIJKL 등 reduction primitive | +1K LUT each |
+| 단계 | 스코프 | 예상 LUT 비용 | 상태 |
+|---|---|---|---|
+| v1.5.1 | Fabric fragment buffer + reassembly (Cluster) | +1.5-2K LUT + 1K FF/Cluster | **완료 (2026-07-14)** |
+| v1.5.1b | Multi-slot buffer (N-slot LRU) | +8-16K LUT + 8Kbit BRAM | 대기 |
+| v1.5.2 | EHDecode.v `dec_input_payload_wide` output + PE_Core wide-input port | +500 LUT | 대기 |
+| v1.5.3 | Wide-output primitive: SIG_BMM_3 실행 (multi-fragment emit) | +3K LUT (matmul_2x2 확장) | 대기 |
+| v1.5.4 | Assembler multi-IMM64 emit 자동화 (5+ axes einsum 감지 시) | Python only | 대기 |
+| v1.5.5 | Multi-fragment SIG_TRACE_IIJKL 등 reduction primitive | +1K LUT each | 대기 |
 
 ## 13. 원리 요약
 

@@ -45,6 +45,8 @@ async def _reset(dut):
     dut.ext_tag.value = 0
     dut.ext_payload.value = 0
     dut.ext_payload_b.value = 0
+    # v1.5.1 §18 — default single-fragment for all legacy tests.
+    dut.ext_frag_hdr.value = 0
     # Phase 2: drive a stable RNG word for tests that don't exercise OPREF.
     # Tests that use src_kind=2 will override this before _fire().
     dut.rng_word.value = 0
@@ -55,12 +57,14 @@ async def _reset(dut):
     await Timer(1, units="ns")
 
 
-async def _fire(dut, instr, tag, payload_a=0, payload_b=0, payload_b_valid=0):
+async def _fire(dut, instr, tag, payload_a=0, payload_b=0, payload_b_valid=0,
+                frag_hdr=0):
     dut.ext_instruction.value = instr
     dut.ext_tag.value = tag
     dut.ext_payload.value = payload_a
     dut.ext_payload_b.value = payload_b
     dut.ext_payload_b_valid.value = payload_b_valid
+    dut.ext_frag_hdr.value = frag_hdr
     dut.ext_valid.value = 1
     await RisingEdge(dut.clk)
     dut.ext_valid.value = 0

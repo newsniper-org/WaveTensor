@@ -63,6 +63,10 @@ module Cluster #(
     input  [ADDR_WIDTH-1:0]     ext_payload,
     input  [ADDR_WIDTH-1:0]     ext_payload_b,
     input                       ext_payload_b_valid,
+    // v1.5.1 §18 — incoming wave-token fragment header. 0x00 = single-
+    // fragment (legacy); non-zero enters the reassembly buffer. See
+    // wt64v1_spec.md §18 and noc_fragmentation_design.md.
+    input  [7:0]                ext_frag_hdr,
 
     // ---- TRNG broadcast (Phase 2 — OPREF.src_kind=2 source) ----
     input  [63:0]               rng_word,
@@ -82,6 +86,109 @@ module Cluster #(
 );
 
     localparam NUM_PES = PE_ROWS * PE_COLS;
+
+    // -------------------------------------------------------------------------
+    // v1.5.1 §18 — Fragment reassembly buffer (single-slot MVP)
+    //
+    // Collects wave-token fragments and combinationally assembles them into
+    // a wide payload when the LAST fragment arrives. Legacy single-fragment
+    // (ext_frag_hdr = 0x00) bypasses the buffer entirely for zero-latency
+    // legacy path — all v1.0..1.4 primitives take this fast path.
+    //
+    // Single-slot: supports 1 concurrent multi-fragment wave. Fragment
+    // sequences from different tags cannot interleave in v1.5.1; the second
+    // wave silently displaces the first's partial state. Multi-slot buffer
+    // is a v1.5.1b extension. See wt64v1_spec.md §18 and
+    // noc_fragmentation_design.md §5.
+    //
+    // Downstream consumption (thread `frag_reass_wide` into a wide
+    // dec_input_payload path) is deferred to v1.5.2. For v1.5.1 the signals
+    // are exposed for hierarchical test access (`dut.u_cluster.frag_...`).
+    // -------------------------------------------------------------------------
+    localparam FRAG_MAX = 16;
+
+    /* verilator lint_off UNUSEDSIGNAL */
+    reg [ADDR_WIDTH-1:0] frag_data [0:FRAG_MAX-1];
+    reg [FRAG_MAX-1:0]   frag_mask;
+    reg [3:0]            frag_total_m1;
+    reg [TAG_WIDTH-1:0]  frag_tag_reg;
+    reg                  frag_active;
+    /* verilator lint_on UNUSEDSIGNAL */
+
+    wire [3:0] frag_in_idx    = ext_frag_hdr[7:4];
+    wire [3:0] frag_in_tot_m1 = ext_frag_hdr[3:0];
+    wire       frag_in_multi  = ext_valid && (ext_frag_hdr != 8'h00);
+    wire       frag_same_tag  = frag_active && (ext_tag == frag_tag_reg);
+
+    // Mask bit for the arriving fragment
+    wire [FRAG_MAX-1:0] frag_mask_add = frag_in_multi
+                                       ? ({15'h0, 1'b1} << frag_in_idx)
+                                       : {FRAG_MAX{1'b0}};
+
+    // Mask AFTER this cycle's write:
+    //   - new slot start (idle OR mismatched tag): just the arriving bit
+    //   - continue existing:                       OR into accumulated mask
+    wire [FRAG_MAX-1:0] frag_mask_after =
+        (frag_active && frag_same_tag) ? (frag_mask | frag_mask_add)
+                                       : frag_mask_add;
+
+    // Total field to compare against — from either the arriving fragment
+    // (new slot) or the stored slot (continuing).
+    wire [3:0] frag_tot_ref =
+        (frag_active && frag_same_tag) ? frag_total_m1 : frag_in_tot_m1;
+
+    // Full mask: bits [0 .. tot_ref] set.
+    wire [FRAG_MAX-1:0] frag_mask_full =
+        ({15'h0, 1'b1} << (frag_tot_ref + 4'h1)) - {{(FRAG_MAX-1){1'b0}}, 1'b1};
+
+    // Completion pulse (combinational): fires the same cycle as the last
+    // fragment arrival. Consumers must sample on this cycle.
+    /* verilator lint_off UNUSEDSIGNAL */
+    wire frag_reass_valid = frag_in_multi && (frag_mask_after == frag_mask_full);
+    /* verilator lint_on UNUSEDSIGNAL */
+
+    // Wide payload (combinational): overlays this-cycle's fragment onto
+    // stored data. On the completion cycle, this holds the fully assembled
+    // wave payload — up to 16 × 64 = 1024 bits.
+    /* verilator lint_off UNUSEDSIGNAL */
+    wire [FRAG_MAX*ADDR_WIDTH-1:0] frag_reass_wide;
+    /* verilator lint_on UNUSEDSIGNAL */
+    genvar gfw;
+    generate
+        for (gfw = 0; gfw < FRAG_MAX; gfw = gfw + 1) begin : g_frag_wide
+            assign frag_reass_wide[gfw*ADDR_WIDTH +: ADDR_WIDTH] =
+                (frag_in_multi && (frag_in_idx == gfw[3:0])) ? ext_payload
+                                                             : frag_data[gfw];
+        end
+    endgenerate
+
+    integer ffi;
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            for (ffi = 0; ffi < FRAG_MAX; ffi = ffi + 1)
+                frag_data[ffi] <= {ADDR_WIDTH{1'b0}};
+            frag_mask     <= {FRAG_MAX{1'b0}};
+            frag_total_m1 <= 4'h0;
+            frag_tag_reg  <= {TAG_WIDTH{1'b0}};
+            frag_active   <= 1'b0;
+        end else if (frag_in_multi) begin
+            frag_data[frag_in_idx] <= ext_payload;
+            if (!frag_active || !frag_same_tag) begin
+                // Allocate new slot (from idle OR displace mismatched tag)
+                frag_tag_reg  <= ext_tag;
+                frag_total_m1 <= frag_in_tot_m1;
+                frag_mask     <= frag_mask_add;
+                frag_active   <= 1'b1;
+            end else begin
+                frag_mask <= frag_mask | frag_mask_add;
+            end
+            // Deactivate on completion (last non-blocking wins)
+            if (frag_reass_valid) begin
+                frag_active <= 1'b0;
+                frag_mask   <= {FRAG_MAX{1'b0}};
+            end
+        end
+    end
 
     // ---- Compile-time geometry guard ----------------------------------------
     localparam VALID_GEOM =

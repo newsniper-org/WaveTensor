@@ -11,6 +11,7 @@
 - v1.3 (2026-07-14): EH chain 종료를 **C-string-style sentinel** (EH_END = 0x0) 로 재정의 + multi-SUBSCRIPT accumulation (5+ axes). MAX_EH 는 spec 제약이 아닌 hardware sizing hint 로 격하. §16 참조.
 - v1.4 (2026-07-14): Multi-IMM64 EH accumulation — 128-bit wide input immediate via 2-slot bank. Input payload 64-bit blocker 우회. §17 참조.
 - v1.5 (2026-07-14): NoC wave-token 에 **IPv6-style Fragment Extension Header** (8-bit `frag_hdr`) 신설. Output payload 64-bit blocker 우회 인프라. §17 참조.
+- v1.5.1 (2026-07-14): Cluster 진입에 **single-slot fragment reassembly buffer** 도입 — 조합 wide payload assembly + 완결 pulse. Downstream 소비는 v1.5.2 로. §18 참조.
 
 참조 구현 마이그레이션: **진행 중 (2026-07-12 개시)** — 참조 보드가 XCAU25P → LFE5U-85F → Avant G70 순으로 이동, 아래 §"참조 구현 마이그레이션 노트" 참조.
 
@@ -698,3 +699,104 @@ v1.5 신규 tests (+2):
 v1.4 + v1.5 amendment 는 **결정된 상태 (2026-07-14)**. 사용자 지시로 두 인사이트 (input EH-chain 확장 + output IPv6-style fragmentation) 가 하나의 세션에서 함께 landing. WT64v1 을 spec 상 완결시키는 마일스톤.
 
 구현 완료 (2026-07-14).
+
+## 18. Fragment reassembly buffer — v1.5.1 amendment (2026-07-14)
+
+### 18.1 배경
+
+v1.5 는 wave token 에 `frag_hdr[7:0]` 필드를 신설했지만 **재조립 로직은 미구현**. Fragment 는 발행 가능하지만 downstream 이 wide payload 를 볼 수 없음. v1.5.1 은 **Cluster 진입에 fragment buffer** 를 도입해 실제 재조립을 수행.
+
+사용자 지시 (2026-07-14): "v1.5.1부터 차근차근 진행". 즉 v1.5.1a → 1b → 1c 순차 landing.
+
+### 18.2 설계 — Single-slot buffer MVP
+
+**위치**: Cluster.v top 부위. 외부 `ext_*` 입력을 관측 후 fragment 를 buffer.
+
+**저장 구조** (총 16×64 + 20-bit state ≈ 1044 bit / Cluster):
+```verilog
+reg [ADDR_WIDTH-1:0] frag_data [0:15];   // 16 slot × 64-bit
+reg [15:0]           frag_mask;          // fragment 도착 bitmap
+reg [3:0]            frag_total_m1;      // sender-declared total - 1
+reg [TAG_WIDTH-1:0]  frag_tag_reg;       // owner tag
+reg                  frag_active;
+```
+
+**입력 파싱**:
+- `frag_in_idx    = ext_frag_hdr[7:4]` (fragment index 0..15)
+- `frag_in_tot_m1 = ext_frag_hdr[3:0]` (total-1, 0 == 1 fragment)
+- `frag_in_multi  = ext_valid && (ext_frag_hdr != 8'h00)` → non-zero frag_hdr
+
+**상태 전이**:
+- **Idle** → **Active**: 첫 multi-fragment 도착 시 slot 할당 (frag_tag_reg 등록).
+- **Active**: 같은 tag 의 fragment 도착 시 mask 갱신. 다른 tag 도착 시 slot 재할당 (silent displacement; multi-slot 은 v1.5.1b).
+- **Complete → Idle**: mask == mask_full 시 다음 cycle 초기화.
+
+**완결 판정** (조합):
+```verilog
+mask_full  = (1 << (tot_ref + 1)) - 1
+mask_after = (frag_active && same_tag) ? (frag_mask | new_bit) : new_bit
+frag_reass_valid = frag_in_multi && (mask_after == mask_full)
+```
+
+**Wide payload assembly** (조합):
+```verilog
+frag_reass_wide[i*64 +: 64] = 
+    (frag_in_multi && frag_in_idx == i) ? ext_payload   // 이번 cycle 도착
+                                        : frag_data[i]  // 이전 저장
+```
+
+이번 cycle 도착 fragment 를 overlay 하여 last-arriving 도 즉시 wide payload 에 포함.
+
+### 18.3 백워드 호환 (v1.5.1 필수)
+
+**Legacy 단일-fragment 경로 완전 unchanged**:
+- `ext_frag_hdr = 0x00` (default) 은 `frag_in_multi = 0` → buffer 완전 bypass.
+- 149 tests (v1.0..1.5) 100% 통과 확인.
+- `_fire()` / `_reset()` helper 에 `ext_frag_hdr = 0` 초기화 추가 (test_cluster.py, test_pod.py).
+
+### 18.4 IPv6 재조립 관행 준수
+
+- **Out-of-order arrival 지원**: fragment 는 index 순서와 무관하게 도착 가능 (`test_frag_buffer_out_of_order_arrival` 회귀).
+- **Sender-declared total**: IPv4 MF flag 방식 대비, WaveTensor 는 sender 가 `[3:0]=total-1` 로 총 갯수 명시. Receiver buffer 사이즈 예측 가능.
+
+### 18.5 한계 (v1.5.1b/c 로드맵)
+
+- **Single-slot**: 동시 활성 multi-fragment wave 1개만. 두 번째 wave 는 첫 번째의 partial state 를 displacement. 실전에서는 Fabric fragment buffer 를 **N-slot LRU** 로 확장 필요 (v1.5.1b).
+- **Downstream 미연결**: `frag_reass_wide` 는 Cluster-internal signal — EHDecode/PE_Core 미소비. v1.5.2 에서 wide `dec_input_payload_wide` 로 스레딩.
+- **Fragment drop / timeout**: 미구현. lossless NoC 가정. 향후 stuck slot detector 추가.
+
+### 18.6 신규 signals (hierarchical test 접근)
+
+Cluster.v 내부 노출:
+- `frag_active`, `frag_mask`, `frag_total_m1`, `frag_tag_reg`: 저장 상태
+- `frag_reass_valid`: 완결 pulse (조합)
+- `frag_reass_wide[1023:0]`: 조합 wide payload
+
+test_cluster.py 에서 `dut.frag_reass_valid.value`, `dut.frag_reass_wide.value` 등으로 관측.
+
+### 18.7 회귀
+
+test_cluster.py 신규 4 tests:
+- `test_frag_buffer_single_fragment_bypasses` — 단일-fragment 시 buffer idle
+- `test_frag_buffer_two_fragments_assemble` — 2-fragment sequence 완결 + wide payload 검증
+- `test_frag_buffer_out_of_order_arrival` — idx=1 → idx=0 순서로 도착해도 정확 재조립
+- `test_frag_buffer_four_fragments_assemble` — 4-fragment (total-1=3) mask 누적 + wide payload
+
+전 모듈 회귀 (158 tests + 66 assembler = 224 PASS).
+
+### 18.8 하드웨어 비용 (LFE5U-85F 예상)
+
+- Register: 16 × 64 + 32 = 1056 bit = ~1K FF
+- Combinational logic: mask compare + shift + wide payload mux ≈ 500-800 LUT
+- **총 ~1.5-2K LUT + 1K FF / Cluster** — ULX3S BRAM 없이 fabric logic 만.
+
+### 18.9 v1.5.2 로드맵 (다음 amendment)
+
+- EHDecode.v: `dec_input_payload_wide[1023:0]` output 추가 (wide 소비자 인터페이스)
+- Cluster.v: `frag_reass_wide` 를 EHDecode 로 스레딩 + valid 게이트
+- PE_Core.v: `dec_input_payload_wide` input port 추가 (unused for legacy primitives)
+- v1.5.3 에서 SIG_BMM_3 실제 실행 primitive landing.
+
+### 18.10 진입 트리거
+
+v1.5.1 amendment 는 **결정된 상태 (2026-07-14)**. 사용자 지시로 v1.5.1 부터 차근차근 sequential landing. 구현 완료 (2026-07-14).

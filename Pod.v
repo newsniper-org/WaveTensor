@@ -54,6 +54,9 @@ module Pod #(
     input  [ADDR_WIDTH-1:0]     ext_payload,
     input  [ADDR_WIDTH-1:0]     ext_payload_b,
     input                       ext_payload_b_valid,
+    // v1.5.1 §18 — Pod-level fragment header input; broadcast to selected
+    // Cluster (only one Cluster active per cycle in this routing model).
+    input  [7:0]                ext_frag_hdr,
 
     // ---- TRNG broadcast (Pod-wide; sourced from HIU one level up) ----
     // Phase 2: clusters use this to satisfy OPREF.src_kind=2 (RNG bank).
@@ -140,6 +143,7 @@ module Pod #(
                     .ext_payload         (ext_payload),
                     .ext_payload_b       (ext_payload_b),
                     .ext_payload_b_valid (cl_valid && ext_payload_b_valid),
+                    .ext_frag_hdr        (ext_frag_hdr),
                     .rng_word            (rng_word),
                     .rng_word_valid      (rng_word_valid),
                     .ext_out_tag         (cl_out_tag[CIDX]),

@@ -43,6 +43,8 @@ async def _reset(dut):
     dut.ext_tag.value = 0
     dut.ext_payload.value = 0
     dut.ext_payload_b.value = 0
+    # v1.5.1 §18 — default single-fragment for all legacy tests.
+    dut.ext_frag_hdr.value = 0
     # Phase 2 RNG broadcast inputs — tests overriding OPREF.src_kind=2
     # set rng_word/rng_word_valid before _fire().
     dut.rng_word.value = 0
@@ -53,12 +55,14 @@ async def _reset(dut):
     await Timer(1, units="ns")
 
 
-async def _fire(dut, instr, tag, payload_a=0, payload_b=0, payload_b_valid=0):
+async def _fire(dut, instr, tag, payload_a=0, payload_b=0, payload_b_valid=0,
+                frag_hdr=0):
     dut.ext_instruction.value = instr
     dut.ext_tag.value = tag
     dut.ext_payload.value = payload_a
     dut.ext_payload_b.value = payload_b
     dut.ext_payload_b_valid.value = payload_b_valid
+    dut.ext_frag_hdr.value = frag_hdr
     dut.ext_valid.value = 1
     await RisingEdge(dut.clk)
     dut.ext_valid.value = 0
@@ -319,3 +323,166 @@ async def test_cluster_src_kind_3_rejected(dut):
                 payload_a=10, payload_b=20, payload_b_valid=1)
     assert dut.any_error_flag.value == 1
     assert dut.ext_out_valid.value == 0
+
+
+# =============================================================================
+# v1.5.1 §18 — Fragment reassembly buffer
+# =============================================================================
+#
+# Cluster.v hosts a single-slot fragment buffer. Legacy single-fragment
+# (ext_frag_hdr = 0x00) bypasses; multi-fragment sequences accumulate and
+# the wide payload assembles combinationally on the last fragment's cycle.
+# Downstream is not yet consuming — v1.5.2 will thread `frag_reass_wide`
+# into EHDecode's dec_input_payload path.
+
+
+async def _drive_fragment(dut, tag, payload, frag_hdr, instruction=0):
+    """Drive one wave-token fragment for one cycle. Instruction is
+    irrelevant for the buffer under test but must be a legitimate value
+    (an ADD op) so that op-classifiers don't glitch."""
+    dut.ext_instruction.value = instruction
+    dut.ext_tag.value = tag
+    dut.ext_payload.value = payload
+    dut.ext_payload_b.value = 0
+    dut.ext_payload_b_valid.value = 0
+    dut.ext_frag_hdr.value = frag_hdr
+    dut.ext_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.ext_valid.value = 0
+
+
+@cocotb.test()
+async def test_frag_buffer_single_fragment_bypasses(dut):
+    """Legacy single-fragment (frag_hdr=0x00) must not touch the buffer.
+    frag_active must remain 0 throughout the operation."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    instr = encode_instr(0x10, eh_port(input_port_mask=0x01, output_port_id=0),
+                         eh_imm16(5))
+    await _fire(dut, instr, _tag(port_context_id=0), payload_a=10)
+    assert dut.ext_out_valid.value == 1
+    # Buffer state MUST be untouched (frag_hdr defaults to 0 in _fire)
+    assert int(dut.frag_active.value) == 0
+
+
+@cocotb.test()
+async def test_frag_buffer_two_fragments_assemble(dut):
+    """Send two fragments of a 2-fragment wave. On the second fragment's
+    cycle, frag_reass_valid must pulse and frag_reass_wide must hold
+    {frag1_payload, frag0_payload} in the low 128 bits."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    frag0 = 0x1122334455667788
+    frag1 = 0xAABBCCDDEEFF0011
+    tag = _tag(port_context_id=0)
+
+    # Fragment 0 of 2: idx=0, total-1=1 → frag_hdr = 0x01
+    await _drive_fragment(dut, tag, frag0, frag_hdr=0x01)
+    await Timer(1, units="ns")
+    # After the cycle: buffer active, mask = bit 0 set
+    assert int(dut.frag_active.value) == 1
+    assert int(dut.frag_mask.value) == 0b0001
+
+    # Fragment 1 of 2: idx=1, total-1=1 → frag_hdr = 0x11
+    dut.ext_instruction.value = 0
+    dut.ext_tag.value = tag
+    dut.ext_payload.value = frag1
+    dut.ext_payload_b.value = 0
+    dut.ext_payload_b_valid.value = 0
+    dut.ext_frag_hdr.value = 0x11
+    dut.ext_valid.value = 1
+    # Sample frag_reass_valid combinationally BEFORE the edge (it's a wire
+    # that reflects the arriving fragment). Wait a delta to settle.
+    await Timer(1, units="ns")
+    assert int(dut.frag_reass_valid.value) == 1
+    wide = int(dut.frag_reass_wide.value)
+    assert (wide & ((1 << 64) - 1)) == frag0
+    assert ((wide >> 64) & ((1 << 64) - 1)) == frag1
+    # Upper slots must be zero (unused)
+    assert (wide >> 128) == 0
+
+    await RisingEdge(dut.clk)
+    dut.ext_valid.value = 0
+    dut.ext_frag_hdr.value = 0
+    await Timer(1, units="ns")
+    # Buffer must have deactivated (slot freed for the next wave)
+    assert int(dut.frag_active.value) == 0
+    assert int(dut.frag_mask.value) == 0
+
+
+@cocotb.test()
+async def test_frag_buffer_out_of_order_arrival(dut):
+    """IPv6-style fragmentation allows out-of-order arrival. Send fragment
+    idx=1 first, then idx=0. Reassembly must still produce the correct
+    ordered payload."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    lo = 0xDEADBEEF12345678
+    hi = 0xCAFEBABE87654321
+    tag = _tag(port_context_id=0)
+
+    # Send fragment 1 (idx=1) first
+    await _drive_fragment(dut, tag, hi, frag_hdr=0x11)
+    await Timer(1, units="ns")
+    assert int(dut.frag_active.value) == 1
+    assert int(dut.frag_mask.value) == 0b0010  # bit 1 set
+
+    # Then fragment 0 — completes the wave
+    dut.ext_instruction.value = 0
+    dut.ext_tag.value = tag
+    dut.ext_payload.value = lo
+    dut.ext_frag_hdr.value = 0x01
+    dut.ext_valid.value = 1
+    await Timer(1, units="ns")
+    assert int(dut.frag_reass_valid.value) == 1
+    wide = int(dut.frag_reass_wide.value)
+    # Ordered payload: idx 0 in low, idx 1 in high
+    assert (wide & ((1 << 64) - 1)) == lo
+    assert ((wide >> 64) & ((1 << 64) - 1)) == hi
+
+    await RisingEdge(dut.clk)
+    dut.ext_valid.value = 0
+
+
+@cocotb.test()
+async def test_frag_buffer_four_fragments_assemble(dut):
+    """4-fragment wave (total-1=3) — verify the mask accumulates correctly
+    and the reassembly window opens on the 4th arrival."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    frags = [0x0000000000000000 | (i << 56) | i
+             for i in range(1, 5)]  # 4 distinctive 64-bit values
+    tag = _tag(port_context_id=0)
+
+    for idx in range(4):
+        # frag_hdr = idx << 4 | (total-1=3)
+        frag_hdr = (idx << 4) | 0x3
+        dut.ext_instruction.value = 0
+        dut.ext_tag.value = tag
+        dut.ext_payload.value = frags[idx]
+        dut.ext_payload_b.value = 0
+        dut.ext_payload_b_valid.value = 0
+        dut.ext_frag_hdr.value = frag_hdr
+        dut.ext_valid.value = 1
+        await Timer(1, units="ns")
+        if idx == 3:
+            # Last fragment: reassembly must pulse this cycle
+            assert int(dut.frag_reass_valid.value) == 1
+            wide = int(dut.frag_reass_wide.value)
+            for j in range(4):
+                slot = (wide >> (j * 64)) & ((1 << 64) - 1)
+                assert slot == frags[j], f"slot {j}: {slot:016x} != {frags[j]:016x}"
+        await RisingEdge(dut.clk)
+
+    dut.ext_valid.value = 0
+    dut.ext_frag_hdr.value = 0
+    await Timer(1, units="ns")
+    assert int(dut.frag_active.value) == 0
