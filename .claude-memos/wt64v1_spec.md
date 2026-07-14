@@ -4,9 +4,10 @@
 # WaveTensor 기본 ISA v1 (WT64v1) — 사양
 
 작성일: 2026-05-03
-현재 버전: **v1.1** (2026-07-14 EINSUM completeness amendment)
+현재 버전: **v1.2** (2026-07-14 4D int4 EINSUM extension amendment)
 - v1.0 (2026-05-03): 초기 확정. 10 HW-direct EINSUM signature.
 - v1.1 (2026-07-14): SPLAT + SIG_BMM + SIG_TRACE_IIJ 추가 (기본 ISA 완결성 확보, backward-compatible). 자세한 근거는 §14 및 [`einsum_trace_broadcast_analysis.md`](./einsum_trace_broadcast_analysis.md) 참조.
+- v1.2 (2026-07-14): SIG_BMM_2 + SIG_TRACE_IIJK 추가 (4D int4 packed 16-nibble path). §15 참조.
 
 참조 구현 마이그레이션: **진행 중 (2026-07-12 개시)** — 참조 보드가 XCAU25P → LFE5U-85F → Avant G70 순으로 이동, 아래 §"참조 구현 마이그레이션 노트" 참조.
 
@@ -409,3 +410,88 @@ v1.1 amendment 는 **결정된 상태 (2026-07-14)**. 구현 순서:
 3. **SIG_TRACE_IIJ** 최후 (실제 등장 빈도 검증 후).
 
 `wavetensor-drivers` P1 진행 중 어셈블러가 v1.1 opcode 요구 시 또는 사용자 명시적 지시 시 착수.
+
+## 15. 4D int4 EINSUM path — v1.2 amendment (2026-07-14)
+
+### 15.1 배경
+
+v1.1 landing (§14) 후 남은 두 가지 raise:
+- **2+ batch dims** (`abij,abjk->abik`) — SIG_BMM 은 단일 batch 축만.
+- **Trace with 2+ kept axes** (`iijk->jk`) — SIG_TRACE_IIJ 는 kept axis 1개만.
+
+두 케이스 모두 4D 텐서 (2×2×2×2 = 16 elements) 필요. int16 precision 시 128 bits (payload 초과), **int8 시 128 bits (여전히 초과)**, **int4 시 정확히 64 bits (payload 딱 맞음)**. 따라서 int4 packed 16-nibble path 를 EINSUM signature 층위에서 지원.
+
+### 15.2 결정 — 4D int4 EINSUM 을 base ISA 편입
+
+v1.1 과 동일한 근거 — 이 3가지가 base ISA 완결성 문제 (arbitrary tensor computation 표현력) 이지 도메인 확장이 아님. 따라서 base v1.2 amendment.
+
+### 15.3 신규 EINSUM signatures — v1.2 신규
+
+**`SIG_BMM_2` — 'abij,abjk->abik' (2-batch matmul at int4)**
+- **Semantic**: 4 independent 2×2 matmul, batch dims (a, b), contract j.
+- **Subscript encoding**: A=[a,b,i,j] B=[a,b,j,k] O=[a,b,i,k]. Canonicalized (A→B→O): a=1, b=2, i=3, j=4, k=5.
+  - A_packed = 0x4321, B_packed = 0x5421, O_packed = 0x5321.
+- **Layout**: int4 packed 16 nibbles.
+  - A[a][b][i][j] at nibble (a*8+b*4+i*2+j).
+  - B[a][b][j][k] at nibble (a*8+b*4+j*2+k).
+  - R[a][b][i][k] at nibble (a*8+b*4+i*2+k).
+- **Constraint**: dim_sizes = 0x55 (4D 2×2×2×2). 다른 shape 시 lower_required.
+- **HW 비용 예상**: ~3K LUT / Pod (matmul_2x2_int4 4번 인스턴스).
+
+**`SIG_TRACE_IIJK` — 'iijk->jk' (3D trace w/ 2 kept axes at int4)**
+- **Semantic**: R[j][k] = A[0][0][j][k] + A[1][1][j][k], truncated to int4.
+- **Subscript encoding**: A=[i,i,j,k] B=[] O=[j,k]. Canonicalized: i=1, j=2, k=3.
+  - A_packed = 0x3211, B_packed = 0x0000, O_packed = 0x0032.
+- **Layout**: int4 packed 16 nibbles.
+  - A[i][i'][j][k] at nibble (i*8+i'*4+j*2+k).
+  - R[j][k] at nibble (j*2+k), upper 12 nibbles = 0.
+- **Constraint**: dim_sizes = 0x55 (input 4D). Result dim_sizes = 0x05 (2D 2×2).
+- **HW 비용 예상**: ~1.5K LUT / Pod.
+
+### 15.4 어셈블러 매크로 lowering
+
+v1.2 opcodes 도입 후 `_lower_einsum_general`:
+- 2-batch matmul → SIG_BMM_2 HW-direct pass-through.
+- 3D trace + 2 kept axes → SIG_TRACE_IIJK pass-through.
+- 3+ batch dims 또는 더 큰 pattern → 여전히 raise (5+ axes EH 인코딩 제약).
+
+### 15.5 Sub-conformance flags
+
+- `WT64v1/EINSUM-BMM-2` — 우선순위 1 (2-batch matmul close)
+- `WT64v1/EINSUM-TRACE-IIJK` — 우선순위 2
+- v1.2 full: 위 2개 + v1.1 EINSUM-FULL 모두 구현 → `WT64v1/EINSUM-4D-INT4-FULL`.
+
+### 15.6 Precision path 노트
+
+v1.2 EINSUM signatures 는 **payload 를 int4 로 interpretation 하도록 HW 가 hardcoded** (dim_sizes = 0x55 매칭 시). Precision mode (dec_eff_precision) 는 tag 에 보존되지만 payload interpretation 은 signature-driven. int16 default precision 이더라도 SIG_BMM_2 / SIG_TRACE_IIJK 는 int4 로 처리.
+
+이는 payload 크기 (64-bit fixed) 제약 하 최선의 타협. v1.3 (또는 v2.0) 에서 정식 int4 precision mode 확장 시 재검토.
+
+### 15.7 회귀
+
+v1.2 신규 회귀 (test_isa_decoder.py):
+- test_bmm_2_identity_per_batch — 4 배치 identity matmul
+- test_bmm_2_computed_matmul — signed int4 arithmetic 확인
+- test_bmm_2_wrong_dim_lowers — dim_sizes ≠ 0x55 시 lower_required
+- test_trace_iijk_basic — R[j][k] 값 확인
+- test_trace_iijk_signed_int4 — signed 부호 처리
+- test_trace_iijk_wrong_dim_lowers
+
+Assembler pass-through (test_wavetensor_asm.py):
+- test_bmm_2_v1_2_hw_direct_pass_through
+- test_trace_iijk_v1_2_hw_direct_pass_through
+- test_3_batch_dims_still_raises_beyond_v1_2
+
+### 15.8 남은 raise — v1.3 이상 스코프
+
+**3+ batch dims** (`abcij,abcjk->abcik`) — 5+ axes, EH 인코딩 상한 (subscript body 48-bit = 4 axes × 12 bits) 초과. 이는 EH 인코딩 자체 확장 필요:
+
+- Option: **subscript body 확장** — 4 axes → 5+ axes. EH size 확장 필요.
+- Option: **MAX_EH 파라미터 relaxation** — 현재 4 → 6 이상. 파이프라인 cycle 수 증가.
+- Option: **새 EINSUM 인코딩 방식** — 별도 opcode 로 batched-with-lookup 형식.
+
+이는 별도 design memo 필요 (예: `.claude-memos/eh_encoding_expansion.md`). v1.3 amendment 후보.
+
+### 15.9 진입 트리거
+
+v1.2 amendment 는 **결정된 상태 (2026-07-14)**. 구현 완료 시점 동일 (2026-07-14).

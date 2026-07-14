@@ -98,6 +98,17 @@ module PE_Core #(
     // int16 precision inputs to these signatures produce lower_required.
     localparam [47:0] SIG_BMM       = {16'h0321, 16'h0431, 16'h0421};
     localparam [47:0] SIG_TRACE_IIJ = {16'h0211, 16'h0000, 16'h0002};
+    // v1.2 amendment (2026-07-14): int4 packed 16-lane 4D EINSUM.
+    // 64-bit payload = 16 signed int4 nibbles enables 4D 2×2×2×2 tensors.
+    // SIG_BMM_2: 'abij,abjk->abik' — 2-batch matmul (4 independent 2×2).
+    //   Canonicalized: a=1, b=2, i=3, j=4 (A→B), k=5 (new in B).
+    //   Packed: A=a,b,i,j → 0x4321; B=a,b,j,k → 0x5421; O=a,b,i,k → 0x5321.
+    // SIG_TRACE_IIJK: 'iijk->jk' — 3D trace w/ 2 kept axes.
+    //   Canonicalized: i=1, j=2, k=3.
+    //   Packed: A=i,i,j,k → 0x3211; B=(empty) → 0x0000; O=j,k → 0x0032.
+    // Both require dim_sizes = 0x55 (4D 2×2×2×2); otherwise lower_required.
+    localparam [47:0] SIG_BMM_2       = {16'h4321, 16'h5421, 16'h5321};
+    localparam [47:0] SIG_TRACE_IIJK  = {16'h3211, 16'h0000, 16'h0032};
     localparam [3:0] RED_OP_SUM = 4'h0;
     localparam [3:0] RED_OP_MAX = 4'h1;
     localparam [3:0] RED_OP_MIN = 4'h2;
@@ -260,6 +271,62 @@ module PE_Core #(
             r0 = $signed(a[ 0 +: 8]) + $signed(a[48 +: 8]);
             r1 = $signed(a[ 8 +: 8]) + $signed(a[56 +: 8]);
             einsum_trace_iij_int8 = {48'h0, r1, r0};
+        end
+    endfunction
+
+    // -------------------------------------------------------------------------
+    // v1.2 amendment (2026-07-14) — 4D EINSUM at int4 (16 packed nibbles / 64b)
+    // -------------------------------------------------------------------------
+
+    // Helper: 2x2 int4 matmul on a 16-bit sub-payload holding 4 int4 nibbles.
+    // Layout: nibbles [A00 A01 A10 A11] (row-major, low-nibble = A[0][0]).
+    // Returns 16-bit packed [R00 R01 R10 R11] with R = A × B, truncated to int4.
+    function [15:0] matmul_2x2_int4;
+        input [15:0] a;
+        input [15:0] b;
+        reg signed [3:0] a00, a01, a10, a11;
+        reg signed [3:0] b00, b01, b10, b11;
+        reg signed [7:0] r00, r01, r10, r11;
+        begin
+            a00 = a[ 0 +: 4]; a01 = a[ 4 +: 4]; a10 = a[ 8 +: 4]; a11 = a[12 +: 4];
+            b00 = b[ 0 +: 4]; b01 = b[ 4 +: 4]; b10 = b[ 8 +: 4]; b11 = b[12 +: 4];
+            r00 = a00*b00 + a01*b10;
+            r01 = a00*b01 + a01*b11;
+            r10 = a10*b00 + a11*b10;
+            r11 = a10*b01 + a11*b11;
+            matmul_2x2_int4 = {r11[3:0], r10[3:0], r01[3:0], r00[3:0]};
+        end
+    endfunction
+
+    // SIG_BMM_2: 'abij,abjk->abik' — 2-batch matmul at int4.
+    // 64-bit payload = 4 independent 2×2 matrices in 16-bit sub-payloads.
+    // Layout: sub-payload for (a,b) = payload[(a*2+b)*16 +: 16].
+    function [ADDR_WIDTH-1:0] einsum_bmm_2_int4;
+        input [ADDR_WIDTH-1:0] a;
+        input [ADDR_WIDTH-1:0] b;
+        reg [15:0] r00, r01, r10, r11;
+        begin
+            r00 = matmul_2x2_int4(a[ 0 +: 16], b[ 0 +: 16]);  // batch (0,0)
+            r01 = matmul_2x2_int4(a[16 +: 16], b[16 +: 16]);  // batch (0,1)
+            r10 = matmul_2x2_int4(a[32 +: 16], b[32 +: 16]);  // batch (1,0)
+            r11 = matmul_2x2_int4(a[48 +: 16], b[48 +: 16]);  // batch (1,1)
+            einsum_bmm_2_int4 = {r11, r10, r01, r00};
+        end
+    endfunction
+
+    // SIG_TRACE_IIJK: 'iijk->jk' — 3D trace w/ 2 kept axes at int4.
+    // Layout: A[i][i'][j][k] at nibble (i*8+i'*4+j*2+k). All size 2.
+    //         R[j][k] at nibble (j*2+k). Upper 12 nibbles = 0.
+    // R[j][k] = A[0][0][j][k] + A[1][1][j][k], truncated to int4.
+    function [ADDR_WIDTH-1:0] einsum_trace_iijk_int4;
+        input [ADDR_WIDTH-1:0] a;
+        reg signed [3:0] r0, r1, r2, r3;
+        begin
+            r0 = $signed(a[ 0 +: 4]) + $signed(a[48 +: 4]);  // A[0,0,0,0] + A[1,1,0,0]
+            r1 = $signed(a[ 4 +: 4]) + $signed(a[52 +: 4]);  // A[0,0,0,1] + A[1,1,0,1]
+            r2 = $signed(a[ 8 +: 4]) + $signed(a[56 +: 4]);  // A[0,0,1,0] + A[1,1,1,0]
+            r3 = $signed(a[12 +: 4]) + $signed(a[60 +: 4]);  // A[0,0,1,1] + A[1,1,1,1]
+            einsum_trace_iijk_int4 = {48'h0, r3, r2, r1, r0};
         end
     endfunction
 
@@ -945,6 +1012,29 @@ module PE_Core #(
                                         output_tag <= {dec_wave_number, dec_thread_id,
                                                        8'h00, dec_eff_output_port_id,
                                                        dec_eff_precision, 8'h01};
+                                        output_valid <= 1'b1;
+                                    end
+                                end
+                                SIG_BMM_2: begin
+                                    // v1.2 amendment §15. 2-batch matmul at int4.
+                                    // dim_sizes = 0x55 (4D 2×2×2×2). Same shape out.
+                                    if (dec_eff_dim_sizes != 8'h55) begin
+                                        lower_required <= 1'b1; output_valid <= 1'b0;
+                                    end else begin
+                                        output_payload <= einsum_bmm_2_int4(dec_input_payload, dec_input_payload_b);
+                                        output_valid <= 1'b1;
+                                    end
+                                end
+                                SIG_TRACE_IIJK: begin
+                                    // v1.2 amendment §15. 3D trace w/ 2 kept axes.
+                                    // A dim_sizes = 0x55. Result 2D 2×2 = 0x05.
+                                    if (dec_eff_dim_sizes != 8'h55) begin
+                                        lower_required <= 1'b1; output_valid <= 1'b0;
+                                    end else begin
+                                        output_payload <= einsum_trace_iijk_int4(dec_input_payload);
+                                        output_tag <= {dec_wave_number, dec_thread_id,
+                                                       8'h00, dec_eff_output_port_id,
+                                                       dec_eff_precision, 8'h05};
                                         output_valid <= 1'b1;
                                     end
                                 end

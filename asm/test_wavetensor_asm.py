@@ -664,15 +664,40 @@ class TestEinsumLowering(unittest.TestCase):
         opcodes = [(w >> 24) & 0xFF for w in insts]
         self.assertEqual(opcodes, [0x32], f"expected single EINSUM, got {[hex(o) for o in opcodes]}")
 
-    def test_mixed_2_batch_dims_still_raises(self):
-        """Beyond v1.1: 2 batch axes (`abij,abjk->abik`) exceeds SIG_BMM's
-        single batch axis. Should raise pointing at memo."""
+    def test_bmm_2_v1_2_hw_direct_pass_through(self):
+        """v1.2 amendment: `abij,abjk->abik` (2-batch matmul) is now
+        SIG_BMM_2, HW-direct pass-through at int4."""
         src = (
             ".default_port mask=0x01 out=0\n"
             "EINSUM opb .subscript A=a,b,i,j B=a,b,j,k O=a,b,i,k .opref "
             ".shape a=2 b=2 i=2 j=2 k=2\n"
         )
-        with self.assertRaisesRegex(AssemblerError, "batched contraction"):
+        insts = assemble(src)
+        opcodes = [(w >> 24) & 0xFF for w in insts]
+        self.assertEqual(opcodes, [0x32], f"expected single EINSUM, got {[hex(o) for o in opcodes]}")
+
+    def test_trace_iijk_v1_2_hw_direct_pass_through(self):
+        """v1.2 amendment: `iijk->jk` (3D trace + 2 kept axes) is now
+        SIG_TRACE_IIJK, HW-direct pass-through at int4."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "EINSUM opb .subscript A=i,i,j,k B= O=j,k .opref "
+            ".shape i=2 j=2 k=2\n"
+        )
+        insts = assemble(src)
+        opcodes = [(w >> 24) & 0xFF for w in insts]
+        self.assertEqual(opcodes, [0x32], f"expected single EINSUM, got {[hex(o) for o in opcodes]}")
+
+    def test_3_batch_dims_still_raises_beyond_v1_2(self):
+        """Beyond v1.2: 3 batch axes exceeds SIG_BMM_2's 2. Still raises."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "EINSUM opb .subscript A=a,b,c,i,j B=a,b,c,j,k O=a,b,c,i,k .opref "
+            ".shape a=2 b=2 c=2 i=2 j=2 k=2\n"
+        )
+        # 5-axis A/B exceeds 4-axis EH encoding limit → raises at subscript
+        # parse level or earlier legality check.
+        with self.assertRaises(AssemblerError):
             assemble(src)
 
     def test_lowered_matmul_produces_executable_bits(self):

@@ -1697,3 +1697,212 @@ async def test_trace_iij_wrong_dim_lowers(dut):
                payload_a=0, payload_b=0, payload_b_valid=1)
     assert dut.lower_required.value == 1
     assert dut.output_valid.value == 0
+
+
+# =============================================================================
+# SIG_BMM_2 (v1.2) — 'abij,abjk->abik' 2-batch matmul at int4 packed 16 nibbles.
+# Canonicalized subscript: A=[1,2,3,4] B=[1,2,4,5] O=[1,2,3,5].
+# Requires dim_sizes = 0x55 (4D 2×2×2×2); result has same shape.
+# =============================================================================
+
+def _pack4(*nibbles):
+    """Pack up to 16 int4 nibbles into a 64-bit int (lane 0 = low nibble)."""
+    v = 0
+    for i, n in enumerate(nibbles[:16]):
+        v |= (n & 0xF) << (i * 4)
+    return v
+
+
+@cocotb.test()
+async def test_bmm_2_identity_per_batch(dut):
+    """4 independent 2x2 matmuls with identity B per batch → R = A."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # A[a][b][i][j] at nibble (a*8+b*4+i*2+j), all int4.
+    # Each batch A[a][b] = [[1,2],[3,4]] → nibbles 1,2,3,4 per 4-nibble sub.
+    a_payload = _pack4(1, 2, 3, 4,   1, 2, 3, 4,   1, 2, 3, 4,   1, 2, 3, 4)
+    # B[a][b] = identity [[1,0],[0,1]] per batch → nibbles 1,0,0,1.
+    b_payload = _pack4(1, 0, 0, 1,   1, 0, 0, 1,   1, 0, 0, 1,   1, 0, 0, 1)
+    # Expected: R = A for each batch.
+    expected = a_payload
+
+    instr = encode_instr(0x32,
+                         _STD_PORT(),
+                         eh_subscript(axes(1, 2, 3, 4), axes(1, 2, 4, 5), axes(1, 2, 3, 5)),
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    await fire(dut, instr, _STD_TAG(dim=0x55),
+               payload_a=a_payload, payload_b=b_payload, payload_b_valid=1)
+    assert dut.error_flag.value == 0
+    assert dut.lower_required.value == 0
+    assert dut.output_valid.value == 1
+    assert int(dut.output_payload.value) == expected, \
+        f"BMM_2 identity mismatch: got 0x{int(dut.output_payload.value):016x}, expected 0x{expected:016x}"
+
+
+@cocotb.test()
+async def test_bmm_2_computed_matmul(dut):
+    """Known 4-batched matmul values, int4."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # Batch (0,0): A=[[1,2],[3,-1]], B=[[1,1],[1,1]]
+    #   R[0][0] = 1*1+2*1=3, R[0][1] = 1*1+2*1=3, R[1][0] = 3*1+(-1)*1=2, R[1][1] = 3*1+(-1)*1=2
+    # Batch (0,1): all zeros → R zero
+    # Batch (1,0): A=[[1,1],[1,1]], B=[[2,3],[4,5]]
+    #   R[0][0] = 1*2+1*4=6, R[0][1] = 1*3+1*5=(-8 after int4 trunc of 8), R[1][0] = 1*2+1*4=6, R[1][1] = (-8)
+    #   Wait, 8 as int4 is -8 (0x8). Let's use smaller values.
+    #   Actually 3+5=8, truncates to int4 0x8 (bit pattern), which is -8 signed.
+    #   Cleaner: use values where sum fits int4. Change to B=[[2,3],[2,3]].
+    #   R[0][0] = 1*2+1*2=4, R[0][1] = 1*3+1*3=6, R[1][0] = 1*2+1*2=4, R[1][1] = 1*3+1*3=6
+    # Batch (1,1): A=[[0,1],[2,3]], B=[[1,0],[0,1]] (identity)
+    #   R = A = [[0,1],[2,3]]
+
+    # A[a][b][i][j] at nibble (a*8+b*4+i*2+j)
+    # Nibble index: 0=A[0][0][0][0], 1=[0][0][0][1], 2=[0][0][1][0], 3=[0][0][1][1]
+    #               4=A[0][1][0][0], 5=[0][1][0][1], 6=[0][1][1][0], 7=[0][1][1][1]
+    #               8=A[1][0][0][0], 9=[1][0][0][1], 10=[1][0][1][0], 11=[1][0][1][1]
+    #               12=A[1][1][0][0], 13=[1][1][0][1], 14=[1][1][1][0], 15=[1][1][1][1]
+    a_payload = _pack4(
+        1, 2, 3, 0xF,  # batch (0,0): [[1,2],[3,-1]]
+        0, 0, 0, 0,    # batch (0,1): zero
+        1, 1, 1, 1,    # batch (1,0): [[1,1],[1,1]]
+        0, 1, 2, 3,    # batch (1,1): [[0,1],[2,3]]
+    )
+    b_payload = _pack4(
+        1, 1, 1, 1,    # batch (0,0): [[1,1],[1,1]]
+        0, 0, 0, 0,    # batch (0,1): zero
+        2, 3, 2, 3,    # batch (1,0): [[2,3],[2,3]]
+        1, 0, 0, 1,    # batch (1,1): identity
+    )
+    expected = _pack4(
+        3, 3, 2, 2,    # batch (0,0)
+        0, 0, 0, 0,    # batch (0,1)
+        4, 6, 4, 6,    # batch (1,0)
+        0, 1, 2, 3,    # batch (1,1)
+    )
+
+    instr = encode_instr(0x32,
+                         _STD_PORT(),
+                         eh_subscript(axes(1, 2, 3, 4), axes(1, 2, 4, 5), axes(1, 2, 3, 5)),
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    await fire(dut, instr, _STD_TAG(dim=0x55),
+               payload_a=a_payload, payload_b=b_payload, payload_b_valid=1)
+    assert dut.output_valid.value == 1
+    assert int(dut.output_payload.value) == expected, \
+        f"BMM_2 mismatch: got 0x{int(dut.output_payload.value):016x}, expected 0x{expected:016x}"
+
+
+@cocotb.test()
+async def test_bmm_2_wrong_dim_lowers(dut):
+    """SIG_BMM_2 requires dim_sizes = 0x55 (4D 2×2×2×2). Other → lower_required."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    instr = encode_instr(0x32,
+                         _STD_PORT(),
+                         eh_subscript(axes(1, 2, 3, 4), axes(1, 2, 4, 5), axes(1, 2, 3, 5)),
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    # 3D shape (SIG_BMM's shape 0x15) is wrong for SIG_BMM_2.
+    await fire(dut, instr, _STD_TAG(dim=0x15),
+               payload_a=0, payload_b=0, payload_b_valid=1)
+    assert dut.lower_required.value == 1
+    assert dut.output_valid.value == 0
+
+
+# =============================================================================
+# SIG_TRACE_IIJK (v1.2) — 'iijk->jk' 3D trace w/ 2 kept axes at int4.
+# Canonicalized: A=[1,1,2,3] B=[] O=[2,3]. Requires dim_sizes = 0x55.
+# Result 2D 2×2 → dim_sizes = 0x05.
+# =============================================================================
+
+@cocotb.test()
+async def test_trace_iijk_basic(dut):
+    """R[j][k] = A[0][0][j][k] + A[1][1][j][k]."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # A[0][0] (nibbles 0-3) = [[1,2],[3,4]]
+    # A[0][1] (nibbles 4-7) = don't matter (0xF garbage)
+    # A[1][0] (nibbles 8-11) = don't matter
+    # A[1][1] (nibbles 12-15) = [[1,1],[1,1]]
+    a_payload = _pack4(
+        1, 2, 3, 4,        # A[0][0]
+        0xF, 0xF, 0xF, 0xF,  # A[0][1] ignored
+        0xF, 0xF, 0xF, 0xF,  # A[1][0] ignored
+        1, 1, 1, 1,        # A[1][1]
+    )
+    # R[0][0]=1+1=2, R[0][1]=2+1=3, R[1][0]=3+1=4, R[1][1]=4+1=5
+    expected = _pack4(2, 3, 4, 5,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0)
+
+    instr = encode_instr(0x32,
+                         _STD_PORT(),
+                         eh_subscript(axes(1, 1, 2, 3), axes(0, 0, 0, 0), axes(2, 3, 0, 0)),
+                         eh_opref(),
+                         flags=F_HAS_OPB)  # opb needed by legality; payload_b unused
+    await fire(dut, instr, _STD_TAG(dim=0x55),
+               payload_a=a_payload, payload_b=0, payload_b_valid=1)
+    assert dut.error_flag.value == 0
+    assert dut.lower_required.value == 0
+    assert dut.output_valid.value == 1
+    assert int(dut.output_payload.value) == expected, \
+        f"TRACE_IIJK mismatch: got 0x{int(dut.output_payload.value):016x}, expected 0x{expected:016x}"
+    # Result tag dim_sizes = 0x05 (2D 2×2)
+    assert _tag_dim(int(dut.output_tag.value)) == 0x05
+
+
+@cocotb.test()
+async def test_trace_iijk_signed_int4(dut):
+    """int4 signed addition: -3 + 5 = 2, sum-overflow truncation."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # A[0][0] = [[-3,-1],[2,4]] → int4: -3=0xD, -1=0xF, 2=0x2, 4=0x4
+    # A[1][1] = [[5,3],[1,2]] → 5,3,1,2
+    a_payload = _pack4(
+        0xD, 0xF, 2, 4,      # A[0][0]
+        0, 0, 0, 0,          # A[0][1] ignored
+        0, 0, 0, 0,          # A[1][0] ignored
+        5, 3, 1, 2,          # A[1][1]
+    )
+    # R[0][0] = -3 + 5 = 2
+    # R[0][1] = -1 + 3 = 2
+    # R[1][0] = 2 + 1 = 3
+    # R[1][1] = 4 + 2 = 6
+    expected = _pack4(2, 2, 3, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+
+    instr = encode_instr(0x32,
+                         _STD_PORT(),
+                         eh_subscript(axes(1, 1, 2, 3), axes(0, 0, 0, 0), axes(2, 3, 0, 0)),
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    await fire(dut, instr, _STD_TAG(dim=0x55),
+               payload_a=a_payload, payload_b=0, payload_b_valid=1)
+    assert dut.output_valid.value == 1
+    assert int(dut.output_payload.value) == expected
+
+
+@cocotb.test()
+async def test_trace_iijk_wrong_dim_lowers(dut):
+    """SIG_TRACE_IIJK requires dim_sizes = 0x55."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    instr = encode_instr(0x32,
+                         _STD_PORT(),
+                         eh_subscript(axes(1, 1, 2, 3), axes(0, 0, 0, 0), axes(2, 3, 0, 0)),
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    await fire(dut, instr, _STD_TAG(dim=0x15),
+               payload_a=0, payload_b=0, payload_b_valid=1)
+    assert dut.lower_required.value == 1
+    assert dut.output_valid.value == 0

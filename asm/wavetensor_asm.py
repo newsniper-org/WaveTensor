@@ -542,6 +542,10 @@ HW_DIRECT_EINSUM_SIGS = frozenset([
     # 8-lane payload. Requires dim_sizes = 0x15 (3D 2×2×2) at issue time.
     (0x0321, 0x0431, 0x0421),  # SIG_BMM         'bik,bkj->bij'
     (0x0211, 0x0000, 0x0002),  # SIG_TRACE_IIJ   'iij->j'
+    # v1.2 amendment (2026-07-14) — 4D at int4 packed 16-nibble payload.
+    # Requires dim_sizes = 0x55 (4D 2×2×2×2) at issue time.
+    (0x4321, 0x5421, 0x5321),  # SIG_BMM_2       'abij,abjk->abik' (2-batch matmul)
+    (0x3211, 0x0000, 0x0032),  # SIG_TRACE_IIJK  'iijk->jk' (3D trace, 2 kept axes)
 ])
 
 
