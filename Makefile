@@ -138,7 +138,7 @@ LATTICE_TAG   := $(PE_ROWS)x$(PE_COLS)_$(CLUSTER_ROWS)x$(CLUSTER_COLS)
 
 synth-pod-ecp5:
 	$(YOSYS) -q -l $(LATTICE_DIR)/reports/pod_$(LATTICE_TAG)_synth.log \
-	    -c $(LATTICE_DIR)/scripts/synth_pod.ys
+	    -s $(LATTICE_DIR)/scripts/synth_pod.ys
 
 impl-pod-ecp5: synth-pod-ecp5
 	GEOM=$(LATTICE_TAG) sh $(LATTICE_DIR)/scripts/pnr_pod.sh

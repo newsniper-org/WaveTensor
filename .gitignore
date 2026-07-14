@@ -4,3 +4,14 @@ sim_build/
 .claude-assets/
 .private/
 .claude-recent-session-id
+
+# Simulation artefacts
+results.xml
+
+# Yosys/Nextpnr byproducts + huge synth artefacts
+abc.history
+synth/lattice/reports/*.json
+synth/lattice/reports/*.log
+synth/lattice/reports/*.rpt
+synth/lattice/reports/*.config
+synth/lattice/reports/*.bit

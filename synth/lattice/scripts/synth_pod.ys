@@ -35,12 +35,18 @@ hierarchy -check -top Pod
 # --- Standard synthesis flow for ECP5 -----------------------------------
 # synth_ecp5 handles opt / techmap / abc / mapping to ECP5 cell library.
 # -json emits the netlist nextpnr-ecp5 consumes.
+# NOTE: -abc9 flag removed — Yosys 0.64's bundled ABC does not recognize
+#       'ecp5' technology target when invoked with -abc9, resulting in
+#       "Unsupported technology: 'ecp5'" at ABC handoff. Standard synth_ecp5
+#       without -abc9 uses the classic ABC pass which handles ECP5 correctly.
 # TODO(Stage 1): confirm 2x2 x 2x2 geometry produces expected LUT count;
 #                 compare against Vivado XCAU25P (62K LUT baseline).
-synth_ecp5 -abc9 -json synth/lattice/reports/pod_2x2_2x2_synth.json
+synth_ecp5 -json synth/lattice/reports/pod_2x2_2x2_synth.json
 
 # --- Emit stats report --------------------------------------------------
-tee -o synth/lattice/reports/pod_2x2_2x2_synth.rpt stat -tech ecp5
+# NOTE: `stat -tech ecp5` fails on Yosys 0.64 (unknown tech name in stat).
+#       Use plain `stat` which reports LUT4 / TRELLIS_FF / etc. by cell name.
+tee -o synth/lattice/reports/pod_2x2_2x2_synth.rpt stat
 
 # TODO(Stage 1 Board bring-up):
 #   * verify TRNG ring oscillator rings survive synthesis (grep for HIU
