@@ -37,7 +37,11 @@ module PE_Core #(
     parameter TAG_WIDTH             = 80,
     parameter MUL_OPS_SUPPORTED     = 1,
     parameter DIV_OPS_SUPPORTED     = 1,
-    parameter NON_MUL_OPS_SUPPORTED = 1
+    parameter NON_MUL_OPS_SUPPORTED = 1,
+    // v1.5.2b §19 — wide input path (fragment-reassembled payload).
+    // Matched to Cluster's fragment buffer FRAG_MAX=16.
+    parameter FRAG_MAX              = 16,
+    parameter WIDE_W                = FRAG_MAX * ADDR_WIDTH
 ) (
     input                        clk,
     input                        rst,
@@ -63,6 +67,15 @@ module PE_Core #(
     input  [7:0]                 dec_eff_precision,
     input  [31:0]                dec_wave_number,
     input  [15:0]                dec_thread_id,
+    // v1.5.2b §19 — reassembled wide payload (from EHDecode wide latch).
+    // Legacy v1.0..v1.5.2 primitives ignore this signal; wide-consumer
+    // primitives (v1.5.3+, SIG_BMM_3 등) will read alongside
+    // dec_input_payload. Verilator lint suppressed since legacy dispatch
+    // has no reference.
+    /* verilator lint_off UNUSEDSIGNAL */
+    input  [WIDE_W-1:0]          dec_input_payload_wide,
+    input                        dec_input_payload_wide_valid,
+    /* verilator lint_on UNUSEDSIGNAL */
 
     // ---- Outputs ----
     output reg [ADDR_WIDTH-1:0]  output_payload,

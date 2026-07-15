@@ -195,6 +195,20 @@ wire wave_complete = ext_valid
 - PE_Core 는 wide input 아직 미소비 — `dec_input_payload_wide` 는 hierarchical 접근만
 - 실제 wide-consumer primitive (SIG_BMM_3 등) 실행은 v1.5.3
 
+## 11c. v1.5.2b landing (2026-07-15 완료) — PE_Core wide input port
+
+v1.5.2 는 Cluster-internal wire 까지만. v1.5.2b 는 **PE_Core 안까지** 배선 완비 → v1.5.3 dispatch 계층 landing zone 완성.
+
+**변경 요약**:
+- PE_Core.v: `dec_input_payload_wide[1023:0]` + `_valid` input port 추가 (legacy 미참조, lint UNUSED 처리)
+- ISA_Decoder.v: `dec_input_payload_wide` 를 internal wire 로 승격, EHDecode → PE_Core 배선, top-level output 미러
+- Cluster.v: 4개 PE_Core-family instance (L-PE gen + MU + DU) 에 wide 배선
+- PE.v / Top_Core.v: ISA_Decoder 의 wide input 을 0 으로 tie-off (fabric 없음)
+
+**회귀**: **231 PASS 유지** — 신규 회귀 없음. Legacy backward compat 검증.
+
+**HW 비용**: ~50 LUT (wire fan-out). 실제 사용 시점은 v1.5.3.
+
 ## 12. v1.6+ 로드맵 요약
 
 | 단계 | 스코프 | 예상 LUT 비용 | 상태 |
@@ -202,7 +216,7 @@ wire wave_complete = ext_valid
 | v1.5.1 | Fabric fragment buffer + reassembly (Cluster) | +1.5-2K LUT + 1K FF/Cluster | **완료 (2026-07-14)** |
 | v1.5.1b | Multi-slot buffer (N-slot LRU) | +8-16K LUT + 8Kbit BRAM | 대기 |
 | v1.5.2 | EHDecode `dec_input_payload_wide` + Cluster threading + wave_complete gate | +2K FF + 200 LUT / Cluster | **완료 (2026-07-15)** |
-| v1.5.2b | PE_Core wide input port (dispatch layer 준비) | +100 LUT | 대기 |
+| v1.5.2b | PE_Core wide input port (dispatch layer 준비) | +50 LUT | **완료 (2026-07-15)** |
 | v1.5.3 | Wide-output primitive: SIG_BMM_3 실행 (multi-fragment emit) | +3K LUT (matmul_2x2 확장) | 대기 |
 | v1.5.4 | Assembler multi-IMM64 emit 자동화 (5+ axes einsum 감지 시) | Python only | 대기 |
 | v1.5.5 | Multi-fragment SIG_TRACE_IIJKL 등 reduction primitive | +1K LUT each | 대기 |

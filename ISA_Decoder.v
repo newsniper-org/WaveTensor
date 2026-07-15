@@ -84,6 +84,11 @@ module ISA_Decoder #(
     // wt64v1_spec.md §17).
     wire [63:0]                dec_eff_imm64_hi;
     /* verilator lint_on UNUSEDSIGNAL */
+    // v1.5.2b §19 — internal wide-payload wire. EHDecode drives; PE_Core
+    // reads (via new wide-input port) AND top-level output_wide port
+    // exposes it for hierarchical test / future upstream observability.
+    wire [WIDE_W-1:0]          dec_input_payload_wide;
+    wire                       dec_input_payload_wide_valid;
     wire [7:0]                 dec_eff_output_port_id;
     wire [7:0]                 dec_eff_precision;
     wire [31:0]                dec_wave_number;
@@ -129,8 +134,8 @@ module ISA_Decoder #(
         .dec_eff_subscript         (dec_eff_subscript),
         .dec_eff_subscript_hi      (dec_eff_subscript_hi),
         .dec_eff_imm64_hi          (dec_eff_imm64_hi),
-        .dec_input_payload_wide       (dec_input_payload_wide_out),
-        .dec_input_payload_wide_valid (dec_input_payload_wide_valid_out),
+        .dec_input_payload_wide       (dec_input_payload_wide),
+        .dec_input_payload_wide_valid (dec_input_payload_wide_valid),
         .dec_eff_output_port_id    (dec_eff_output_port_id),
         .dec_eff_precision         (dec_eff_precision),
         .dec_wave_number           (dec_wave_number),
@@ -166,6 +171,8 @@ module ISA_Decoder #(
         .dec_eff_opref_kind        (dec_eff_opref_kind),
         .dec_eff_mem_offset        (dec_eff_mem_offset),
         .dec_eff_subscript         (dec_eff_subscript),
+        .dec_input_payload_wide    (dec_input_payload_wide),
+        .dec_input_payload_wide_valid (dec_input_payload_wide_valid),
         .dec_eff_output_port_id    (dec_eff_output_port_id),
         .dec_eff_precision         (dec_eff_precision),
         .dec_wave_number           (dec_wave_number),
@@ -180,5 +187,10 @@ module ISA_Decoder #(
         .error_flag                (error_flag),
         .lower_required            (lower_required)
     );
+
+    // v1.5.2b §19 — mirror the internal wide bus to the top-level output
+    // ports (kept for hierarchical test access and future upstream taps).
+    assign dec_input_payload_wide_out       = dec_input_payload_wide;
+    assign dec_input_payload_wide_valid_out = dec_input_payload_wide_valid;
 
 endmodule

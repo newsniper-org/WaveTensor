@@ -13,6 +13,7 @@
 - v1.5 (2026-07-14): NoC wave-token 에 **IPv6-style Fragment Extension Header** (8-bit `frag_hdr`) 신설. Output payload 64-bit blocker 우회 인프라. §17 참조.
 - v1.5.1 (2026-07-14): Cluster 진입에 **single-slot fragment reassembly buffer** 도입 — 조합 wide payload assembly + 완결 pulse. Downstream 소비는 v1.5.2 로. §18 참조.
 - v1.5.2 (2026-07-15): Fragment 재조립을 **EHDecode 로 스레딩** + `wave_complete` gating 도입. `dec_input_payload_wide[1023:0]` 인터페이스 확립. wide 소비 primitive 는 v1.5.3+. §19 참조.
+- v1.5.2b (2026-07-15): `dec_input_payload_wide` 를 **PE_Core input port 로 스레딩**. 모든 4개 PE_Core-family instance (L-PE + MU + DU + standalone) 가 wide bus 를 볼 수 있음. Legacy dispatch 는 무영향, v1.5.3 primitive 착수 landing zone 확보. §19.11 참조.
 
 참조 구현 마이그레이션: **진행 중 (2026-07-12 개시)** — 참조 보드가 XCAU25P → LFE5U-85F → Avant G70 순으로 이동, 아래 §"참조 구현 마이그레이션 노트" 참조.
 
@@ -899,3 +900,41 @@ test_cluster.py 신규 2 tests:
 ### 19.10 진입 트리거
 
 v1.5.2 amendment 는 **결정된 상태 (2026-07-15)**. 사용자 지시로 v1.5.1 완료 후 곧바로 v1.5.2 진행. 구현 완료 (2026-07-15).
+
+### 19.11 v1.5.2b 후속 — PE_Core wide input port (2026-07-15)
+
+v1.5.2 는 EHDecode 에서 Cluster-internal wire (`dec_input_payload_wide`) 까지만 스레딩. v1.5.2b 는 이를 **PE_Core 인스턴스 안까지** 전달하여 v1.5.3 primitive 착수 시 dispatch 계층이 즉시 접근 가능하도록 landing zone 완비.
+
+**PE_Core 변경**:
+- 신규 파라미터: `FRAG_MAX = 16`, `WIDE_W = 1024` (EHDecode/Cluster 와 일치)
+- 신규 입력: `input [WIDE_W-1:0] dec_input_payload_wide`
+- 신규 입력: `input dec_input_payload_wide_valid`
+- Legacy dispatch 는 wide 미참조 → `/* verilator lint_off UNUSEDSIGNAL */` 로 warning 억제
+- 실제 소비는 v1.5.3 wide-consumer primitive (SIG_BMM_3 등) 에서 시작
+
+**ISA_Decoder 리팩터**:
+- `dec_input_payload_wide` 를 **internal wire** 로 승격 (기존 top-level output 직결에서)
+- EHDecode 출력 → 이 internal wire → PE_Core input AND top-level `dec_input_payload_wide_out`
+- 관찰용 top-level output 유지 (hierarchical test 접근 편의)
+
+**Cluster 배선** (4개 PE_Core 인스턴스 모두):
+- L-PE (generate block, PE_ROWS × PE_COLS 개)
+- MATMUL_UNIT (mul-only PE_Core)
+- DIV_UNIT (div/mod-only PE_Core)
+- 각각에 `dec_input_payload_wide` + `_valid` 연결
+
+**PE.v** (single-PE wrapper): ISA_Decoder 의 wide input 을 `1024'h0` + `1'b0` 로 tie-off (fabric 없음). 내부 배선은 ISA_Decoder 가 처리.
+
+**Top_Core.v** (single-cluster demo): 동일한 tie-off 유지.
+
+**회귀**: **231 PASS 유지** — 신규 회귀 없음 (인프라만 landing, dispatch 무변경). Legacy backward compat 검증됨.
+
+**HW 비용**: **~50 LUT** (wire fan-out 만; PE_Core 는 wide 를 소비하지 않으므로 실제 LUT 사용은 v1.5.3 에서 발생).
+
+**남은 v1.5.3 스코프**:
+- PE_Core dispatch 에 wide-consumer case 추가 (예: SIG_BMM_3, SIG_TRACE_IIJKL)
+- Wide primitive computation 함수 (128/256-bit int4 packed)
+- Fragmented output emit state machine (multi-cycle output_valid + frag_hdr sequencing)
+- Cluster fabric fragment collection at ext_out_* boundary (자체 fragment 발행 시)
+
+v1.5.2b amendment 는 **결정된 상태 (2026-07-15)**. 사용자 지시로 v1.5.2 완료 후 곧바로 진행. 구현 완료 (2026-07-15).
