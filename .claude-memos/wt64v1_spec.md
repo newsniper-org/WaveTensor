@@ -20,6 +20,8 @@
 - v1.6.1a (2026-07-15): **Group A** — 12 reduction einsum primitives (SIG_SUM/MAX/MIN/ARGMAX/ARGMIN/L1/L2SQ_IJKLM, SIG_SUM/MAX/MEAN/L2SQ_5D_TO_4D, SIG_TRACE_IJJKL). op_marker convention (HI.O_hi[3:0]) 도입. MIN/ARGMIN 은 사용자 통찰: Fréchet medoid, k-means assignment, KNN classifier, VQ-VAE codebook lookup 등 metric-based ML 필수. §22.1 참조.
 - v1.6.1b (2026-07-15): **Group B+C** — 6 broadcast SIMD (0x60-65: ADD/SUB/MUL WIDE_SCALAR + WIDE_VEC) + SCALAR_RSQRT_APPROX (0x66). Normalization 조합에 필요한 building blocks. §22.2 참조.
 - v1.6.1c (2026-07-15): **§22 RISC-ish normalization decomposition** — LayerNorm/BatchNorm/RMSNorm/InstanceNorm/GroupNorm 을 Groups A+B+C primitives 로 분해하는 recipes. Compositional decomposition philosophy 정식화. §22 참조.
+- v1.6.2 (2026-07-15): **4D→3D reduction family** (SUM/MAX/MIN/L2SQ/MEAN) — InstanceNorm/GroupNorm gap closure. A_hi=0x0004 을 family discriminator 로 (adversarial review 발견 bug 방지). SIG_MIN_5D_TO_4D 대칭 backfill. §22.13 참조.
+- v1.6.3 (2026-07-15): **rsqrt mantissa LUT** — 기존 power-of-2 baseline → 16-entry Q0.15 LUT 로 정밀도 ~4-bit 향상. LUT[0]=0x8000 로 기존 3 tests 완전 backward-compat. §22.13 참조.
 
 참조 구현 마이그레이션: **진행 중 (2026-07-12 개시)** — 참조 보드가 XCAU25P → LFE5U-85F → Avant G70 순으로 이동, 아래 §"참조 구현 마이그레이션 노트" 참조.
 
@@ -1443,7 +1445,7 @@ Then per inference:
 
 **Mitigation options** (spec-level):
 - SDK 는 중간 `xc` 를 int8 "guard tile" 로 저장 가능 (NoC bandwidth 2배 사용, MSE ~15% 회복). RTL 변경 불필요 (int8 precision mode 는 v1.1 부터 존재).
-- v1.6.2 에서 5-bit interpolated rsqrt LUT 로 rsqrt 정밀도 향상 가능.
+- **v1.6.3 에서 16-entry Q0.15 mantissa LUT 로 rsqrt 정밀도 ~4-bit 확보** (v1.6.1c 미리 계획한 5-bit interpolated variant 대신 landing).
 
 ### 22.8 Latency comparison
 
@@ -1506,14 +1508,117 @@ Groups A+B+C 회귀 (v1.6.1a + v1.6.1b commits 참조):
 - **276 tests PASS** (194 cocotb + 71 assembler; 신규 24 tests over v1.5.5's 252)
 - 이 §22 문서는 **spec-only landing** — RTL 무변경, 회귀 유지
 
-### 22.13 남은 v1.6.2+ 스코프
+### 22.13 v1.6.2 + v1.6.3 landing (2026-07-15)
 
-- **v1.6.2**: SIG_MEAN/SUM/L2SQ_4D_TO_3D (InstanceNorm partial support 완성)
-- **v1.6.3**: rsqrt mantissa LUT refinement (16-entry Q1.15) → ~4-bit precision
+Ultracode 세션에서 병행 landing. Design workflow (3 research + 3 verify, ~336K tokens) 로 사전 검증 — **critical dispatch bug 발견 및 수정** 이후 진행.
+
+#### 22.13.1 v1.6.2 — 4D→3D reduction family
+
+**목적**: InstanceNorm / GroupNorm 이 요구하는 다축 reduction chain 의 마지막 단계. 5D→4D reduction 이후 남은 4D 텐서를 3D 로 축약.
+
+**Primitives (5개)**:
+| op_marker | Name | Math | 예상 LUT |
+|---|---|---|---|
+| 0x0 | SIG_SUM_4D_TO_3D | pair-sum over l | ~40 |
+| 0x1 | SIG_MAX_4D_TO_3D | pair-max | ~80 |
+| 0x6 | SIG_MIN_4D_TO_3D | pair-min | ~80 |
+| 0x4 | SIG_L2SQ_4D_TO_3D | sum-of-squares (int4 truncated) | ~300 |
+| 0x5 | SIG_MEAN_4D_TO_3D | (A0+A1)>>1 ASR | ~50 |
+
+**Signature encoding**:
+- SIG_4D3D_FAMILY_LO = `{16'h4321, 16'h0000, 16'h0321}` (4D A, 3D O)
+- SIG_4D3D_FAMILY_HI_BASE = `{16'h0004, 16'h0000, 12'h000}`
+- **A_hi = 0x0004** 는 family discriminator ★ — 5D4D 의 A_hi=0x0005 대칭. `subscript_hi != 48'h0` 항상 보장 → OP_SUM (marker=0x0) 시 legacy fall-through 방지.
+
+**입력 경로**:
+- 4D 2×2×2×2 = 16 nibbles = 64-bit → `dec_input_payload` (legacy)
+- Fragment reassembly / wide_valid 사용 안 함
+- Fabric contract: caller 는 wide 를 zero-pad 하거나 wide_valid=0 설정 가능
+
+**출력 경로**:
+- 32-bit result → 64-bit `output_payload` low half
+- `output_frag_hdr = 0x00` (single fragment, no FSM)
+- Output tag `dim_sizes = 0x15` (3D 2×2×2)
+
+**Guards**:
+- `dec_eff_dim_sizes == 8'h55` 검증 (아니면 lower_required)
+- Compound drain gate 재사용 (§20.6 pattern)
+- wide_valid check **의도적 skip** (§22.13.1 fabric contract)
+
+**Additional**: **SIG_MIN_5D_TO_4D 대칭 backfill** (op_marker=0x6) — 5D→4D family 도 이제 SUM/MAX/MIN/MEAN/L2SQ 대칭.
+
+**Adversarial review 발견 및 수정 사항**:
+1. **BLOCKING BUG**: 초기 design 은 SIG_4D3D_FAMILY_HI_BASE=44'h0 (all-zero) 였음 → OP_SUM 시 subscript_hi=48'h0 → wide-consumer gate `subscript_hi != 48'h0` (line 1568) FAIL → legacy dispatch fall-through → silent lower_required. **A_hi=0x0004 로 fix**.
+2. `dim_sizes` validation 미비 → guard 추가
+3. Explicit `output_frag_hdr <= 8'h00` in each arm (defensive)
+4. SIG_MIN_5D_TO_4D backfill (family symmetry)
+
+#### 22.13.2 v1.6.3 — rsqrt mantissa LUT
+
+**목적**: v1.6.1b baseline (~1-2 bit power-of-2 precision) → ~4-bit mantissa precision.
+
+**Algorithm** (workflow research):
+1. Priority encoder finds MSB position `m` in [0, 30]
+2. Extract 3-bit mantissa: `mant = x[msb-1 -: 3]` (guard msb<3 with zero-pad)
+3. LUT index = `{m[0] parity, mant[2:0]}` — 4-bit → 16 entries
+4. LUT[0..7] = `rsqrt(1 + f/8)` × 2^15 in Q0.15 (even m)
+5. LUT[8..15] = `1/√2 · rsqrt(1 + f/8)` × 2^15 in Q0.15 (odd m, absorbs √2)
+6. Shift = `9 - (msb >> 1)` (range [-6, +9])
+7. Output = `LUT_val << shift` (or right-shift with round-to-nearest for shift < 0)
+8. Saturate 0x7FFF_FFFF on overflow
+
+**LUT 값** (Q0.15 unsigned, precision ≤6.25% relative):
+```
+LUT[0..7]:  0x8000 0x78AE 0x727D 0x6D2B  0x6886 0x646D 0x60C5 0x5D7E
+LUT[8..15]: 0x5A82 0x5555 0x50F4 0x4D2E  0x49E6 0x46FF 0x446A 0x4218
+```
+
+**Backward compat 검증**:
+- rsqrt(1.0) = 0x0001_0000 → msb=16 even mant=0 → LUT[0]=0x8000, shift=+1 → **0x1_0000** (bit-identical to v1.6.1b)
+- rsqrt(4.0) = 0x0004_0000 → msb=18 even mant=0 → shift=0 → **0x8000** (bit-identical)
+- rsqrt(0) → saturate **0x7FFF_FFFF** (bit-identical)
+
+**신규 정밀도 tests**:
+- rsqrt(2.0) → ~0xB504 (odd m=17)
+- rsqrt(0.5) → ~0x16A09 (√2, shift=+2)
+- rsqrt(0.25) → 0x20000 (exact, m=14)
+- rsqrt(1.5) → ~0xD10C (mantissa refinement, m=16 mant=4)
+- rsqrt(6.0) → ~0x6886 (m=18 mant=4)
+
+**HW 비용**: ~200-250 LUT (priority encoder ~50 + LUT ROM ~40 + barrel shift ~80 + round-to-nearest logic ~30). 기존 baseline ~100 LUT 대비 +100-150 LUT.
+
+**Adversarial review 발견**:
+- Right-shift 시 truncation bias → round-to-nearest 로 수정 (`(val + (1<<(sh-1))) >> sh`)
+- `Q0.15` nomenclature 정확화 (LUT[0]=0x8000 은 1.0 을 표현, Q1.15 magnitude 인 unsigned 16-bit)
+- 기존 3 tests 재작성 불필요 (LUT[0]=0x8000 로 bit-identical)
+
+#### 22.13.3 회귀 (288 tests PASS)
+
+- Cocotb 217 (기존 194 + 12 신규 + 5D→4D MIN 1개):
+  * ISA_Decoder: 138 → 150 (+12)
+    - reduce_sum/max/min/mean/l2sq_4d_to_3d (5)
+    - reduce_4d_to_3d_wrong_dim_lowers (guard)
+    - reduce_min_5d_to_4d (symmetric backfill)
+    - rsqrt_lut_two/half/quarter/one_point_five/six (5 precision tests)
+- 기타 모듈 67 무변경
+- Assembler 71 무변경
+
+#### 22.13.4 HW 비용 (v1.6.2 + v1.6.3 누적)
+
+- v1.6.2 4D→3D: ~550 LUT
+- v1.6.2 SIG_MIN_5D_TO_4D backfill: ~80 LUT
+- v1.6.3 rsqrt LUT refinement: +100-150 LUT (기존 rsqrt 대체)
+- 총 **~700 LUT / Cluster**. v1.6.1 누적 (~4.6K) + v1.6.2/1.6.3 = **~5.3K LUT / Cluster**.
+
+### 22.14 남은 v1.6.4+ 스코프
+
 - **v1.6.4**: SDK `_lower_norm_*` macro pass 구현 + assembler 정합성 tests
 - **v1.6.5**: Multi-slot fragment buffer (동시 wave 다수, latency amortization)
 - **v1.6.6**: PE_Core `pe_ready` back-pressure (norm chain stall 대응)
+- **v1.7**: Non-normalization RISC-ish extension — activation function 계열 (softmax/gelu/silu). exp/log approximation primitives 추가 후보.
 
-### 22.14 진입 트리거
+### 22.15 진입 트리거 (기존 22.14 재번호)
 
-v1.6.1c amendment 는 **결정된 상태 (2026-07-15)**. 사용자 지시 (ultracode mode, RISC-ish 원칙): "어떤 정규화 기법이든 상관없이, 덩어리째로 가속시키는 것 대신에 유한한 가지수의 연산들로 분해하고 그 '유한한 가지수의 연산들'을 가속시키는 쪽으로 정규화 기법 가속 방안 모색". v1.6.1a → v1.6.1b → v1.6.1c 3-commit 순차 landing 으로 primitive basis + broadcast + rsqrt + 문서화 완비. 구현 완료 (2026-07-15).
+v1.6.1c amendment 는 **결정된 상태 (2026-07-15)**. 사용자 지시 (ultracode mode, RISC-ish 원칙): "어떤 정규화 기법이든 상관없이, 덩어리째로 가속시키는 것 대신에 유한한 가지수의 연산들로 분해하고 그 '유한한 가지수의 연산들'을 가속시키는 쪽으로 정규화 기법 가속 방안 모색". v1.6.1a → v1.6.1b → v1.6.1c → v1.6.2 + v1.6.3 5-commit 순차 landing 으로 primitive basis + broadcast + rsqrt + 문서화 + 4D→3D 완비. 구현 완료 (2026-07-15).
+
+### 22.14 [reserved — 22.15 로 이동, 위 §22.13.3 참조]

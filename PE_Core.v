@@ -191,6 +191,14 @@ module PE_Core #(
     localparam [43:0] SIG_5D4D_FAMILY_HI_BASE   = {16'h0005, 16'h0000, 12'h000};
     localparam [47:0] SIG_TRACE_IJJKL_LO        = {16'h3221, 16'h0000, 16'h0431};
     localparam [47:0] SIG_TRACE_IJJKL_HI        = {16'h0004, 16'h0000, 16'h0000};
+    // v1.6.2 §22.13 — 4D→3D reduction family. Input via legacy 64-bit
+    // dec_input_payload (zero-padded wide[63:0] on fabric side; wide_valid
+    // guard skipped in dispatch). A_hi = 0x0004 as family discriminator
+    // (mirrors 5D4D's A_hi=0x0005) — guarantees subscript_hi != 48'h0 for
+    // any 4D-family wave, preventing OP_SUM (marker=0x0) legacy fall-through
+    // bug (workflow adversarial review, wi87dl8lh).
+    localparam [47:0] SIG_4D3D_FAMILY_LO      = {16'h4321, 16'h0000, 16'h0321};
+    localparam [43:0] SIG_4D3D_FAMILY_HI_BASE = {16'h0004, 16'h0000, 12'h000};
     // Op-marker constants (family-local nibbles)
     localparam [3:0] OP_SUM     = 4'h0;
     localparam [3:0] OP_MAX     = 4'h1;
@@ -706,6 +714,131 @@ module PE_Core #(
         end
     endfunction
 
+    // v1.6.2 §22.13 — 5D→4D MIN (symmetric backfill for op-marker family).
+    // op_marker=0x6 mirrors 5D→scalar MIN. Pair-min over axis m.
+    function [ADDR_WIDTH-1:0] einsum_min_5d_to_4d_int4;
+        input [127:0] a;
+        reg signed [3:0] a0, a1, rm;
+        reg [3:0] r [0:15];
+        reg [63:0] out;
+        integer idx;
+        begin
+            for (idx = 0; idx < 16; idx = idx + 1) begin
+                a0 = $signed(a[idx*8 +: 4]);
+                a1 = $signed(a[idx*8 + 4 +: 4]);
+                rm = (a0 <= a1) ? a0 : a1;
+                r[idx] = rm[3:0];
+            end
+            out = 64'h0;
+            for (idx = 0; idx < 16; idx = idx + 1)
+                out[idx*4 +: 4] = r[idx];
+            einsum_min_5d_to_4d_int4 = out;
+        end
+    endfunction
+
+    // v1.6.2 §22.13 — 4D→3D reduction primitives.
+    // Input 4D 2×2×2×2 = 16 nibbles = 64-bit via dec_input_payload (legacy).
+    // Output 3D 2×2×2 = 8 nibbles = 32-bit single-fragment (no FSM).
+    // Nibble layout: A[i][j][k][l] at nibble (i*8 + j*4 + k*2 + l).
+    // Reduce pair over axis l → R[i][j][k] at nibble (i*4 + j*2 + k).
+
+    function [ADDR_WIDTH-1:0] einsum_sum_4d_to_3d_int4;
+        input [63:0] a;
+        reg [3:0] r [0:7];
+        reg [31:0] out;
+        integer idx;
+        begin
+            for (idx = 0; idx < 8; idx = idx + 1)
+                r[idx] = a[idx*8 +: 4] + a[idx*8 + 4 +: 4];
+            out = 32'h0;
+            for (idx = 0; idx < 8; idx = idx + 1)
+                out[idx*4 +: 4] = r[idx];
+            einsum_sum_4d_to_3d_int4 = {32'h0, out};
+        end
+    endfunction
+
+    function [ADDR_WIDTH-1:0] einsum_max_4d_to_3d_int4;
+        input [63:0] a;
+        reg signed [3:0] a0, a1, rm;
+        reg [3:0] r [0:7];
+        reg [31:0] out;
+        integer idx;
+        begin
+            for (idx = 0; idx < 8; idx = idx + 1) begin
+                a0 = $signed(a[idx*8 +: 4]);
+                a1 = $signed(a[idx*8 + 4 +: 4]);
+                rm = (a0 >= a1) ? a0 : a1;
+                r[idx] = rm[3:0];
+            end
+            out = 32'h0;
+            for (idx = 0; idx < 8; idx = idx + 1)
+                out[idx*4 +: 4] = r[idx];
+            einsum_max_4d_to_3d_int4 = {32'h0, out};
+        end
+    endfunction
+
+    function [ADDR_WIDTH-1:0] einsum_min_4d_to_3d_int4;
+        input [63:0] a;
+        reg signed [3:0] a0, a1, rm;
+        reg [3:0] r [0:7];
+        reg [31:0] out;
+        integer idx;
+        begin
+            for (idx = 0; idx < 8; idx = idx + 1) begin
+                a0 = $signed(a[idx*8 +: 4]);
+                a1 = $signed(a[idx*8 + 4 +: 4]);
+                rm = (a0 <= a1) ? a0 : a1;
+                r[idx] = rm[3:0];
+            end
+            out = 32'h0;
+            for (idx = 0; idx < 8; idx = idx + 1)
+                out[idx*4 +: 4] = r[idx];
+            einsum_min_4d_to_3d_int4 = {32'h0, out};
+        end
+    endfunction
+
+    function [ADDR_WIDTH-1:0] einsum_mean_4d_to_3d_int4;
+        input [63:0] a;
+        reg signed [4:0] sum5;
+        reg [3:0] r [0:7];
+        reg [31:0] out;
+        integer idx;
+        begin
+            for (idx = 0; idx < 8; idx = idx + 1) begin
+                sum5 = $signed(a[idx*8 +: 4]) + $signed(a[idx*8 + 4 +: 4]);
+                r[idx] = sum5[4:1];
+            end
+            out = 32'h0;
+            for (idx = 0; idx < 8; idx = idx + 1)
+                out[idx*4 +: 4] = r[idx];
+            einsum_mean_4d_to_3d_int4 = {32'h0, out};
+        end
+    endfunction
+
+    function [ADDR_WIDTH-1:0] einsum_l2sq_4d_to_3d_int4;
+        input [63:0] a;
+        reg signed [3:0] a0, a1;
+        reg signed [7:0] sq0, sq1;
+        reg [7:0]  sum8;
+        reg [3:0] r [0:7];
+        reg [31:0] out;
+        integer idx;
+        begin
+            for (idx = 0; idx < 8; idx = idx + 1) begin
+                a0   = $signed(a[idx*8 +: 4]);
+                a1   = $signed(a[idx*8 + 4 +: 4]);
+                sq0  = a0 * a0;
+                sq1  = a1 * a1;
+                sum8 = sq0[7:0] + sq1[7:0];
+                r[idx] = sum8[3:0];
+            end
+            out = 32'h0;
+            for (idx = 0; idx < 8; idx = idx + 1)
+                out[idx*4 +: 4] = r[idx];
+            einsum_l2sq_4d_to_3d_int4 = {32'h0, out};
+        end
+    endfunction
+
     // 5D→3D SIG_TRACE_IJJKL: 'ijjkl->ikl' — trace over j (symmetric to
     // SIG_TRACE_IIJKL which traces over i). Nibble layout: A[i][j][j2][k][l]
     // at (i*16 + j*8 + j2*4 + k*2 + l). Diagonal j==j2 contributes:
@@ -837,30 +970,49 @@ module PE_Core #(
     endfunction
 
     // =========================================================================
-    // v1.6.1b §22 — Group C scalar rsqrt approximation (Q16.16 fixed-point)
+    // v1.6.3 §22.13 — Group C scalar rsqrt with 16-entry mantissa LUT
     // =========================================================================
-    // Simplified power-of-2 log-scale approximation (~4-bit precision).
-    //   Input:  Q16.16 unsigned variance value (typically from SIG_L2SQ_IJKLM
-    //           multiplied by 1/N)
+    // Refinement of v1.6.1b baseline (power-of-2 → mantissa LUT ~4-bit precision).
+    //
+    //   Input:  Q16.16 unsigned variance (bits [30:0] valid; bit 31 = caller error)
     //   Output: Q16.16 approximation of 1/sqrt(input)
-    //   Method: find MSB position, output ≈ 2^((48-msb)/2)
-    //   Special: x=0 → saturate to 0x7FFF_FFFF; x<0 (bit 31) → caller error
-    //   Precision: ~power-of-2. Adequate for downstream int4 SIMD_MUL chain
-    //     (int4 quantization dominates error budget anyway).
-    //   v1.6.1c/v1.6.2 candidate: refined mantissa LUT for ~4-bit precision.
+    //
+    // Method (workflow wi87dl8lh design):
+    //   1. Priority encoder: find MSB position m in [0, 30]
+    //   2. Extract 3-bit mantissa below MSB (guard msb<3 with zero-pad)
+    //   3. LUT index = {m[0] parity, mantissa[2:0]} — 4-bit
+    //   4. LUT[0..7] = rsqrt(1 + f/8) * 2^15  (Q0.15, even m)
+    //      LUT[8..15] = 1/sqrt(2) * rsqrt(1 + f/8) * 2^15  (Q0.15, odd m,
+    //                                                       absorbs sqrt(2))
+    //   5. Output = LUT_val << (9 - (m >> 1))  for shift >= 0
+    //             = (LUT_val + round_bit) >> |shift|  for shift < 0 (round-to-nearest)
+    //   6. Saturate 0x7FFF_FFFF on left-shift overflow
+    //
+    //   Backward compat: LUT[0]=0x8000 → for x=0x10000 (m=16, mant=0)
+    //     shift = 9-8 = 1, output = 0x8000 << 1 = 0x10000 (bit-identical to v1.6.1b)
+    //     for x=0x40000 (m=18): shift=0, output=0x8000 (bit-identical)
+    //     for x=0: saturate 0x7FFF_FFFF (bit-identical)
+    //     → v1.6.1b's 3 tests pass unchanged.
+    //
+    //   Special: x=0 → saturate; x[31]=1 → caller error (undefined; per §22.7 contract)
+    //   Precision: ~4-bit mantissa (LUT bin ≤ 6.25% relative error)
 
     function [31:0] scalar_rsqrt_approx_q16_16;
         input [31:0] x;
-        reg [5:0] msb;
-        reg [5:0] shift;
+        reg [5:0]  msb;
+        reg        found;
+        reg [3:0]  mant;
+        reg [3:0]  lut_idx;
+        reg [15:0] lut_val;
+        reg signed [6:0] shift_signed;   // shift = 9 - (msb>>1), range [-6, +9]
+        reg [4:0]  right_shift;
+        reg [31:0] out;
         integer i;
-        reg found;
         begin
             if (x == 32'h0) begin
                 scalar_rsqrt_approx_q16_16 = 32'h7FFF_FFFF;
             end else begin
                 // Priority encoder: find highest set bit in bits 30..0
-                // (bit 31 reserved for sign; caller shouldn't set for variance).
                 msb   = 6'd0;
                 found = 1'b0;
                 for (i = 30; i >= 0; i = i - 1) begin
@@ -869,18 +1021,60 @@ module PE_Core #(
                         found = 1'b1;
                     end
                 end
-                // Output ≈ 2^((48-msb)/2) in Q16.16
-                if ((6'd48 - msb) >= 6'd62) begin
-                    // Overflow: saturate
-                    scalar_rsqrt_approx_q16_16 = 32'h7FFF_FFFF;
+                // Extract 3-bit mantissa below MSB with zero-pad for small msb
+                if (msb >= 6'd3) begin
+                    mant = {1'b0, x[msb - 6'd1 -: 3]};
+                end else if (msb == 6'd2) begin
+                    mant = {1'b0, x[1:0], 1'b0};
+                end else if (msb == 6'd1) begin
+                    mant = {1'b0, x[0], 2'b00};
                 end else begin
-                    shift = (6'd48 - msb) >> 1;
-                    if (shift >= 6'd31) begin
-                        scalar_rsqrt_approx_q16_16 = 32'h7FFF_FFFF;
+                    mant = 4'h0;
+                end
+                // LUT index: {msb parity, mantissa[2:0]}
+                lut_idx = {msb[0], mant[2:0]};
+                // 16-entry Q0.15 LUT
+                //   Even m (LUT[0..7]): rsqrt(1 + f/8), f=0..7
+                //   Odd m (LUT[8..15]): 1/sqrt(2) * rsqrt(1 + f/8)
+                case (lut_idx)
+                    4'h0: lut_val = 16'h8000;  // rsqrt(1.0)   = 1.0000
+                    4'h1: lut_val = 16'h78AE;  // rsqrt(1.125) = 0.9428
+                    4'h2: lut_val = 16'h727D;  // rsqrt(1.25)  = 0.8944
+                    4'h3: lut_val = 16'h6D2B;  // rsqrt(1.375) = 0.8528
+                    4'h4: lut_val = 16'h6886;  // rsqrt(1.5)   = 0.8165
+                    4'h5: lut_val = 16'h646D;  // rsqrt(1.625) = 0.7845
+                    4'h6: lut_val = 16'h60C5;  // rsqrt(1.75)  = 0.7559
+                    4'h7: lut_val = 16'h5D7E;  // rsqrt(1.875) = 0.7303
+                    4'h8: lut_val = 16'h5A82;  // 1/√2 · 1.0000 = 0.7071
+                    4'h9: lut_val = 16'h5555;  // 1/√2 · 0.9428 = 0.6667
+                    4'hA: lut_val = 16'h50F4;  // 1/√2 · 0.8944 = 0.6325
+                    4'hB: lut_val = 16'h4D2E;  // 1/√2 · 0.8528 = 0.6030
+                    4'hC: lut_val = 16'h49E6;  // 1/√2 · 0.8165 = 0.5774
+                    4'hD: lut_val = 16'h46FF;  // 1/√2 · 0.7845 = 0.5547
+                    4'hE: lut_val = 16'h446A;  // 1/√2 · 0.7559 = 0.5345
+                    4'hF: lut_val = 16'h4218;  // 1/√2 · 0.7303 = 0.5164
+                    default: lut_val = 16'h8000;
+                endcase
+                // shift = 9 - (msb >> 1). Range: [9-15, 9-0] = [-6, +9].
+                shift_signed = $signed({1'b0, 6'd9}) - $signed({2'b00, msb[5:1]});
+                if (shift_signed >= 7'sd16) begin
+                    // Saturate on extreme left-shift overflow (msb too small)
+                    out = 32'h7FFF_FFFF;
+                end else if (shift_signed >= 7'sd0) begin
+                    // Left shift: value grows
+                    out = {16'h0, lut_val} << shift_signed[4:0];
+                    if (out[31]) out = 32'h7FFF_FFFF;   // signed overflow → saturate
+                end else begin
+                    // Right shift with round-to-nearest
+                    right_shift = (~shift_signed[4:0]) + 5'd1;   // abs value
+                    if (right_shift >= 5'd16) begin
+                        out = 32'h0;   // underflow to zero
                     end else begin
-                        scalar_rsqrt_approx_q16_16 = 32'h1 << shift;
+                        out = ({16'h0, lut_val} + ({16'h0, 15'h0, 1'b1} << (right_shift - 5'd1)))
+                              >> right_shift;
                     end
                 end
+                scalar_rsqrt_approx_q16_16 = out;
             end
         end
     endfunction
@@ -1723,6 +1917,78 @@ module PE_Core #(
                                                            8'h00, dec_eff_output_port_id,
                                                            dec_eff_precision, 8'h55};
                                             output_valid <= 1'b1;
+                                        end
+                                        OP_MIN: begin
+                                            // v1.6.2 §22.13 — 5D→4D MIN symmetric backfill.
+                                            output_payload <= einsum_min_5d_to_4d_int4(dec_input_payload_wide[127:0]);
+                                            output_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h55};
+                                            output_valid <= 1'b1;
+                                        end
+                                        default: begin
+                                            lower_required <= 1'b1;
+                                            output_valid   <= 1'b0;
+                                        end
+                                    endcase
+                                end else if ((dec_eff_subscript == SIG_4D3D_FAMILY_LO)
+                                             && (dec_eff_subscript_hi[47:4] == SIG_4D3D_FAMILY_HI_BASE)) begin
+                                    // v1.6.2 §22.13 — 4D→3D reduction family.
+                                    // Legacy 64-bit input via dec_input_payload
+                                    // (fabric zero-pads wide[127:64]). wide_valid
+                                    // check intentionally omitted — no fragment
+                                    // reassembly required for 64-bit A. dim_sizes
+                                    // must be 0x55 (4D 2×2×2×2). Compound drain
+                                    // gate reused (shared output regs).
+                                    if (dec_eff_dim_sizes != 8'h55) begin
+                                        lower_required <= 1'b1;
+                                        output_valid   <= 1'b0;
+                                    end else if (!((frag_state == FRAG_IDLE)
+                                                && !mul_valid_p1 && !mul_valid_p2
+                                                && (div_state == DIV_IDLE)
+                                                && !div_valid_p2 && !div_b_zero_p2)) begin
+                                        lower_required <= 1'b1;
+                                        output_valid   <= 1'b0;
+                                    end else case (dec_eff_subscript_hi[3:0])
+                                        OP_SUM: begin
+                                            output_payload <= einsum_sum_4d_to_3d_int4(dec_input_payload);
+                                            output_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h15};
+                                            output_valid    <= 1'b1;
+                                            output_frag_hdr <= 8'h00;
+                                        end
+                                        OP_MAX: begin
+                                            output_payload <= einsum_max_4d_to_3d_int4(dec_input_payload);
+                                            output_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h15};
+                                            output_valid    <= 1'b1;
+                                            output_frag_hdr <= 8'h00;
+                                        end
+                                        OP_MIN: begin
+                                            output_payload <= einsum_min_4d_to_3d_int4(dec_input_payload);
+                                            output_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h15};
+                                            output_valid    <= 1'b1;
+                                            output_frag_hdr <= 8'h00;
+                                        end
+                                        OP_L2SQ: begin
+                                            output_payload <= einsum_l2sq_4d_to_3d_int4(dec_input_payload);
+                                            output_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h15};
+                                            output_valid    <= 1'b1;
+                                            output_frag_hdr <= 8'h00;
+                                        end
+                                        OP_MEAN: begin
+                                            output_payload <= einsum_mean_4d_to_3d_int4(dec_input_payload);
+                                            output_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h15};
+                                            output_valid    <= 1'b1;
+                                            output_frag_hdr <= 8'h00;
                                         end
                                         default: begin
                                             lower_required <= 1'b1;

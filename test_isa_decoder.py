@@ -3051,6 +3051,249 @@ async def test_scalar_rsqrt_zero_saturates(dut):
 
 
 # =============================================================================
+# v1.6.2 §22.13 — 4D→3D reduction primitives (InstanceNorm/GroupNorm gap)
+# =============================================================================
+#
+# 4D input (16 int4 nibbles = 64-bit legacy dec_input_payload) → 3D output
+# (8 nibbles = 32-bit single fragment). op_marker in dec_eff_subscript_hi[3:0].
+# A_hi=0x0004 as family discriminator (prevents OP_SUM=0x0 legacy fall-through
+# bug — see workflow wi87dl8lh verify).
+
+
+async def _fire_4d_to_3d_reduction(dut, a_64, op_marker):
+    """Fire a 4D→3D reduction. Input via legacy 64-bit dec_input_payload."""
+    instr = encode_instr(0x32, _STD_PORT(),
+                         eh_subscript(0x4321, 0x0000, 0x0321),   # SIG_4D3D_FAMILY_LO
+                         eh_subscript(0x0004, 0x0000, op_marker & 0xF),  # A_hi=0x0004 + marker
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    await fire(dut, instr, _STD_TAG(dim=0x55),
+               payload_a=a_64 & ((1 << 64) - 1),
+               payload_b=0, payload_b_valid=1)
+
+
+def _pack_int4_64(*nibbles):
+    """Pack up to 16 int4 nibbles into 64-bit."""
+    v = 0
+    for i, n in enumerate(nibbles[:16]):
+        v |= (n & 0xF) << (i * 4)
+    return v
+
+
+@cocotb.test()
+async def test_reduce_sum_4d_to_3d(dut):
+    """v1.6.2: 4D→3D SUM (op_marker=0x0). Critical: verifies A_hi=0x0004
+    discriminator prevents legacy fall-through for marker=0."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    nibbles = [((i + 1) & 0xF) for i in range(16)]
+    a_64 = _pack_int4_64(*nibbles)
+    await _fire_4d_to_3d_reduction(dut, a_64, 0x0)  # SUM
+    assert dut.output_valid.value == 1
+    assert dut.lower_required.value == 0, "SUM marker=0x0 must NOT fall through legacy dispatch"
+    payload = int(dut.output_payload.value)
+    for idx in range(8):
+        exp = (nibbles[idx * 2] + nibbles[idx * 2 + 1]) & 0xF
+        got = (payload >> (idx * 4)) & 0xF
+        assert got == exp, f"idx {idx}: {got:x} != {exp:x}"
+    assert (payload >> 32) == 0
+    assert (int(dut.output_tag.value) & 0xFF) == 0x15  # 3D 2×2×2
+
+
+@cocotb.test()
+async def test_reduce_max_4d_to_3d(dut):
+    """v1.6.2: 4D→3D MAX (op_marker=0x1)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    nibbles = [((i * 3 + 1) & 0xF) for i in range(16)]
+    a_64 = _pack_int4_64(*nibbles)
+    await _fire_4d_to_3d_reduction(dut, a_64, 0x1)
+    assert dut.output_valid.value == 1
+    payload = int(dut.output_payload.value)
+    for idx in range(8):
+        a0, a1 = _s4(nibbles[idx * 2]), _s4(nibbles[idx * 2 + 1])
+        exp = max(a0, a1) & 0xF
+        got = (payload >> (idx * 4)) & 0xF
+        assert got == exp, f"idx {idx}: {got:x} != {exp:x}"
+
+
+@cocotb.test()
+async def test_reduce_min_4d_to_3d(dut):
+    """v1.6.2: 4D→3D MIN (op_marker=0x6). Fréchet medoid, k-means axis."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    nibbles = [((i * 3 + 1) & 0xF) for i in range(16)]
+    a_64 = _pack_int4_64(*nibbles)
+    await _fire_4d_to_3d_reduction(dut, a_64, 0x6)
+    assert dut.output_valid.value == 1
+    payload = int(dut.output_payload.value)
+    for idx in range(8):
+        a0, a1 = _s4(nibbles[idx * 2]), _s4(nibbles[idx * 2 + 1])
+        exp = min(a0, a1) & 0xF
+        got = (payload >> (idx * 4)) & 0xF
+        assert got == exp, f"idx {idx}: {got:x} != {exp:x}"
+
+
+@cocotb.test()
+async def test_reduce_mean_4d_to_3d(dut):
+    """v1.6.2: 4D→3D MEAN (op_marker=0x5). (A0+A1)>>1 ASR."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    nibbles = [0x4] * 16   # (4+4)/2 = 4 all lanes
+    a_64 = _pack_int4_64(*nibbles)
+    await _fire_4d_to_3d_reduction(dut, a_64, 0x5)
+    assert dut.output_valid.value == 1
+    payload = int(dut.output_payload.value)
+    for idx in range(8):
+        got = (payload >> (idx * 4)) & 0xF
+        assert got == 0x4
+
+
+@cocotb.test()
+async def test_reduce_l2sq_4d_to_3d(dut):
+    """v1.6.2: 4D→3D L2SQ (op_marker=0x4). InstanceNorm variance base."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    nibbles = [0x2] * 16   # 2²+2² = 8 all lanes
+    a_64 = _pack_int4_64(*nibbles)
+    await _fire_4d_to_3d_reduction(dut, a_64, 0x4)
+    assert dut.output_valid.value == 1
+    payload = int(dut.output_payload.value)
+    for idx in range(8):
+        got = (payload >> (idx * 4)) & 0xF
+        assert got == 0x8
+
+
+@cocotb.test()
+async def test_reduce_min_5d_to_4d(dut):
+    """v1.6.2: 5D→4D MIN symmetric backfill (op_marker=0x6). Family
+    completeness: 5D→4D now supports MIN alongside SUM/MAX/MEAN/L2SQ."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    nibbles = [((i * 5 + 2) & 0xF) for i in range(32)]
+    a_128 = _pack_int4_128(*nibbles)
+    await _fire_5d_to_4d_reduction(dut, a_128, 0x6)  # MIN
+    assert dut.output_valid.value == 1
+    payload = int(dut.output_payload.value)
+    for idx in range(16):
+        a0, a1 = _s4(nibbles[idx * 2]), _s4(nibbles[idx * 2 + 1])
+        exp = min(a0, a1) & 0xF
+        got = (payload >> (idx * 4)) & 0xF
+        assert got == exp, f"idx {idx}: {got:x} != {exp:x}"
+
+
+@cocotb.test()
+async def test_reduce_4d_to_3d_wrong_dim_lowers(dut):
+    """v1.6.2: 4D→3D with wrong dim_sizes (≠0x55) → lower_required."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    instr = encode_instr(0x32, _STD_PORT(),
+                         eh_subscript(0x4321, 0x0000, 0x0321),
+                         eh_subscript(0x0004, 0x0000, 0x0),  # SUM
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    await fire(dut, instr, _STD_TAG(dim=0x11),  # wrong shape (3D)
+               payload_a=0, payload_b=0, payload_b_valid=1)
+    assert dut.lower_required.value == 1
+    assert dut.output_valid.value == 0
+
+
+# =============================================================================
+# v1.6.3 §22.13 — rsqrt mantissa LUT precision improvement
+# =============================================================================
+#
+# 16-entry Q0.15 LUT + priority encoder + barrel shift → ~4-bit mantissa
+# precision. Backward compat: LUT[0]=0x8000 preserves rsqrt(1.0/4.0/0)
+# tests bit-identical.
+
+
+async def _fire_rsqrt(dut, x):
+    """Fire SCALAR_RSQRT_APPROX with x in Q16.16 and return result."""
+    instr = encode_instr(0x66, _STD_PORT())
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = x & 0xFFFFFFFFFFFFFFFF
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide_valid.value = 0
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    for _ in range(20):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value):
+            return int(dut.output_payload.value) & 0xFFFFFFFF
+    return None
+
+
+@cocotb.test()
+async def test_scalar_rsqrt_lut_two(dut):
+    """v1.6.3: rsqrt(2.0 Q16.16) ≈ 1/√2 = 0.7071. Expected ~0xB504.
+    Odd-msb path (m=17 → parity=1 → LUT[8]=0x5A82)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    result = await _fire_rsqrt(dut, 0x0002_0000)   # 2.0
+    # Expected 0xB504 (1/√2 × 65536 = 46340). Allow small LUT error.
+    assert abs(result - 0xB504) <= 4, f"rsqrt(2.0) = 0x{result:08x}, expected ~0xB504"
+
+
+@cocotb.test()
+async def test_scalar_rsqrt_lut_half(dut):
+    """v1.6.3: rsqrt(0.5 Q16.16) = √2 ≈ 1.414. Expected ~0x16A09.
+    Left-shift +2 for m=15 (even parity=1)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    result = await _fire_rsqrt(dut, 0x0000_8000)   # 0.5
+    # Expected ~0x16A09 (√2 × 65536 = 92682)
+    assert abs(result - 0x16A09) <= 8, f"rsqrt(0.5) = 0x{result:08x}, expected ~0x16A09"
+
+
+@cocotb.test()
+async def test_scalar_rsqrt_lut_quarter(dut):
+    """v1.6.3: rsqrt(0.25 Q16.16) = 2.0. Expected 0x20000.
+    Left-shift +2 for m=14 (even, mant=0)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    result = await _fire_rsqrt(dut, 0x0000_4000)   # 0.25
+    assert abs(result - 0x20000) <= 2, f"rsqrt(0.25) = 0x{result:08x}, expected 0x20000"
+
+
+@cocotb.test()
+async def test_scalar_rsqrt_lut_one_point_five(dut):
+    """v1.6.3: rsqrt(1.5 Q16.16) ≈ 0.8165. Mantissa refinement test —
+    LUT[4] = 0x6886. Left-shift +1 for m=16, mant=4."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    result = await _fire_rsqrt(dut, 0x0001_8000)   # 1.5
+    # Expected ~0xD10C (0.8165 × 65536 ≈ 53510)
+    exact = 53510
+    assert abs(result - exact) <= 32, f"rsqrt(1.5) = 0x{result:08x} ({result}), expected ~{exact:x} ({exact})"
+
+
+@cocotb.test()
+async def test_scalar_rsqrt_lut_six(dut):
+    """v1.6.3: rsqrt(6.0 Q16.16) ≈ 0.4082. m=18 mant=4 → LUT[4]=0x6886,
+    shift=0. Expected ~0x6886."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    result = await _fire_rsqrt(dut, 0x0006_0000)   # 6.0
+    exact = 0x6886
+    assert abs(result - exact) <= 32, f"rsqrt(6.0) = 0x{result:08x}, expected ~{exact:x}"
+
+
+# =============================================================================
 # v1.5.3 §20 — adversarial review bug 5 fix: MUL/DIV in-flight collision tests
 # =============================================================================
 #
