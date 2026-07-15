@@ -2933,6 +2933,78 @@ async def test_simd_mul_wide_vec(dut):
 
 
 @cocotb.test()
+async def test_simd_wide_vec_opref_legal(dut):
+    """v1.6.5c §22.16: MUST-FIX-FIRST regression. Before this fix,
+    EHDecode.v's 0x63/64/65 case forbade BOTH imm_any and opref
+    unconditionally, so LAYERNORM's step 2/5 (0x64 with an OPREF EH for
+    mu_opref) always decode-errored. Confirm 0x64 + OPREF now decodes
+    clean (V's actual value still arrives via input_payload_b — the
+    OPREF EH is legality/encoding-only, per EHDecode.v's comment)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    a_128 = _pack_int4_128(*[0x7] * 32)
+    v_64 = 0
+    for i in range(16):
+        v_64 |= (0x2 & 0xF) << (i * 4)
+    wide = a_128 & ((1 << 128) - 1)
+    instr = encode_instr(0x64, _STD_PORT(), eh_opref(), flags=F_HAS_OPB)
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0
+    dut.input_payload_b.value = v_64
+    dut.input_payload_b_valid.value = 1
+    dut.input_payload_wide.value = wide
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    for _ in range(30):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value) == 1:
+            break
+        assert int(dut.error_flag.value) == 0, "0x64+OPREF must not decode-error (v1.6.5c fix)"
+    assert dut.output_valid.value == 1
+    expected = 0x5555_5555_5555_5555
+    assert int(dut.output_payload.value) == expected
+
+
+@cocotb.test()
+async def test_simd_wide_vec_imm64_legal(dut):
+    """v1.6.5c §22.16: companion regression — 0x65/0x63 with an IMM64 EH
+    (LAYERNORM step 7/8's shape) must also decode clean, not just OPREF."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    a_128 = _pack_int4_128(*[0x2] * 32)
+    v_64 = 0
+    for i in range(16):
+        v_64 |= (0x3 & 0xF) << (i * 4)
+    wide = a_128 & ((1 << 128) - 1)
+    instr = encode_instr(0x65, _STD_PORT(), eh_imm64(0), flags=F_HAS_OPB)
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0
+    dut.input_payload_b.value = v_64
+    dut.input_payload_b_valid.value = 1
+    dut.input_payload_wide.value = wide
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    for _ in range(30):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value) == 1:
+            break
+        assert int(dut.error_flag.value) == 0, "0x65+IMM64 must not decode-error (v1.6.5c fix)"
+    assert dut.output_valid.value == 1
+    expected = 0x6666_6666_6666_6666
+    assert int(dut.output_payload.value) == expected
+
+
+@cocotb.test()
 async def test_simd_wide_scalar_frag_hdr_sequence(dut):
     """v1.6.1b: verify frag_hdr sequence 0x01 → 0x11 for wide-output ops."""
     clock = Clock(dut.clk, 10, units="ns")
@@ -3384,6 +3456,82 @@ async def test_pe_ready_low_during_bmm3_emit(dut):
     await RisingEdge(dut.clk)
     await Timer(1, units="ns")
     assert int(dut.pe_ready.value) == 1
+
+
+# =============================================================================
+# v1.6.5c §22.16 — CACHE_LOAD_WIDE (0x68) passthrough
+#
+# ISA_Decoder ties input_payload_wide/valid directly to the testbench (no
+# Cluster CAM at this level), so these tests exercise PE_Core's case arm in
+# isolation: pure passthrough on a "hit" (wide_valid=1), and the existing
+# error_flag guard on a "miss" (wide_valid=0) — the same guard 0x60-0x67
+# already share.
+# =============================================================================
+
+
+@cocotb.test()
+async def test_cache_load_wide_passthrough_hit(dut):
+    """v1.6.5c: CACHE_LOAD_WIDE with wide_valid=1 must pass the wide bus
+    through unmodified (no arithmetic), emitting it as 2 fragments."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    lo = 0x1122334455667788
+    hi = 0x99AABBCCDDEEFF00
+    wide = (hi << 64) | lo
+    instr = encode_instr(0x68, _STD_PORT())
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide.value = wide
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    saw = []
+    for _ in range(30):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value) == 1:
+            saw.append({'payload': int(dut.output_payload.value),
+                       'frag_hdr': int(dut.output_frag_hdr.value)})
+            break
+        assert int(dut.error_flag.value) == 0
+    assert saw and saw[0]['payload'] == lo
+    assert saw[0]['frag_hdr'] == 0x01
+    await RisingEdge(dut.clk)
+    await Timer(1, units="ns")
+    assert int(dut.output_valid.value) == 1
+    assert int(dut.output_payload.value) == hi
+    assert int(dut.output_frag_hdr.value) == 0x11
+
+
+@cocotb.test()
+async def test_cache_load_wide_miss_raises_error(dut):
+    """v1.6.5c: CACHE_LOAD_WIDE with wide_valid=0 (Cluster-level cache
+    miss) must raise error_flag, not emit stale/garbage data — the same
+    guard the 0x60-0x67 wide-consumer group already shares."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    instr = encode_instr(0x68, _STD_PORT())
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide.value = 0
+    dut.input_payload_wide_valid.value = 0
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    for _ in range(30):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.error_flag.value) == 1 or int(dut.output_valid.value) == 1:
+            break
+    assert int(dut.error_flag.value) == 1
+    assert int(dut.output_valid.value) == 0
 
 
 @cocotb.test()

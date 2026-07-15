@@ -25,6 +25,7 @@
 - v1.6.4 (2026-07-15): **assembler norm macros** — 7 primitive mnemonics (0x60-66) + BATCHNORM_INFER / RMSNORM / LAYERNORM macros. Assembler-only landing (RTL 무변경). LAYERNORM 은 xc-fanout 처리를 위한 SDK-side re-emission 전략 채택. §22.11 참조.
 - v1.6.5a (2026-07-15): **SIMD_MUL_WIDE_Q4_4_SCALAR (0x67)** — B lane widening (int4 → signed Q4.4). RMSNORM/LAYERNORM 매크로가 scale 곱셈 단계에서 0x62 대신 0x67 사용 → ~4-bit 정밀도 회복 (v1.6.4 부터 남아있던 ~12-bit loss 완화). §22.14a 참조.
 - v1.6.6 (2026-07-15): **pe_ready back-pressure signal** — PE_Core FSM+pipeline 상태 통합 combinational output. Cluster→Pod→Top_Core 계층으로 aggregate (AND-reduce). MVP observe-only (ext_valid gate 안 함). §22.14b 참조.
+- v1.6.5c (2026-07-15): **multi-slot fragment buffer + CACHE_LOAD_WIDE (0x68)** — Cluster.v `FRAG_SLOTS` parameter (N-way full-tag CAM + monotonic-timestamp LRU + persistence), LAYERNORM step 5 가 xc 재발행 대신 캐시 재로드. Tag-stability 를 위한 PRECISION-EH guard (dim=0x55). 부수적으로 EHDecode.v 0x63/64/65 legality 선행 버그 (LAYERNORM 이 실제로는 무조건 decode-error 나던 상태) 발견 및 수정. §22.16 참조.
 
 참조 구현 마이그레이션: **진행 중 (2026-07-12 개시)** — 참조 보드가 XCAU25P → LFE5U-85F → Avant G70 순으로 이동, 아래 §"참조 구현 마이그레이션 노트" 참조.
 
@@ -1781,13 +1782,94 @@ pe_ready = (frag_state == FRAG_IDLE)
 - v1.6.6 pe_ready: ~10 LUT (combinational, wire fan-out만)
 - 총 **~360-510 LUT / Cluster** (누적 v1.6 = ~5.6-5.8K LUT)
 
-### 22.15 남은 v1.6.5c + v1.6.7+ 스코프
+### 22.15 남은 v1.6.5c + v1.6.7+ 스코프 (v1.6.5c 는 §22.16 으로 landing 완료)
 
-- **v1.6.5c** (병행 workflow 로 설계 완료, 별도 commit 예정): multi-slot fragment buffer (N=4 LRU + persistent) + CACHE_LOAD_WIDE (0x68) — LAYERNORM 매크로의 xc 재발행 대신 on-Cluster caching
 - **v1.6.5d** (v1.6.5c 후속): FRAG_INVAL opcode — SDK explicit slot eviction
-- **v1.6.7**: pe_ready 기반 ext_valid auto-gating (현 observe-only → 자동 STALL)
-- **v1.7**: Activation function RISC-ish (softmax/gelu/silu, exp/log approximation)
+- **v1.6.7**: Q8.8 wide-scalar mul (0x69) — 0x67 이후 남은 정밀도 손실 추가 회복 (precision-zero-loss-research workflow whro79brj 결과, 별도 landing 예정)
+- **v1.6.7 후속**: pe_ready 기반 ext_valid auto-gating (현 observe-only → 자동 STALL)
+- **v1.7**: Q4.4-WIDEN (0x6A) + REQUANTIZE (0x6B) — output-side rounding 완전 제거. Activation function RISC-ish (softmax/gelu/silu, exp/log approximation)
 
-### 22.16 진입 트리거 (기존 22.15 재번호)
+### 22.16 v1.6.5c landing (2026-07-15) — multi-slot fragment buffer + CACHE_LOAD_WIDE
 
-v1.6.5a + v1.6.6 amendment 는 **결정된 상태 (2026-07-15)**. Design workflow 로 Q4.4 arithmetic 및 pe_ready semantics 사전 검증 완료. 구현 완료 (2026-07-15).
+Ultracode 세션. Design workflow 2회 (`we8k5ib2j`/`wf_ee5bdedf-968` 최초 시도 — Verify phase 중 hung, TaskStop 후 `wf_94e698a4-521`/`wor4e34du` 로 처음부터 전체 재실행하여 완주; `w91wntdpk`/`wf_b81096c0-007` tag-stability 별도 검증) 로 설계.
+
+#### 22.16.0 MUST-FIX-FIRST — EHDecode.v 0x63/64/65 legality 선행 버그
+
+tag-stability 검증 workflow (`w91wntdpk`) 가 RTL 직접 재추적으로 발견, 사용자 세션에서 직접 재검증 완료: EHDecode.v 의 8'h63/64/65 (SIMD_ADD/SUB/MUL_WIDE_VEC) case 가 `forbid_imm_any=1 && forbid_opref=1` 로 되어 있어, LAYERNORM step 2/5 (opref 로 V 전달) 와 step 7/8 (imm64 로 V 전달) 이 **현재 무조건 decode-error** 나는 상태였음 — asm.py 의 `_set_legal([0x63,0x64,0x65], ..., allow_imm_xor_opref=True, require_opb_flag=True)` 모델과 모순.
+
+증거: `dec_input_payload_b` 는 `input_payload_b` 의 순수 pass-through (EHDecode.v 는 IMM64/OPREF 를 여기에 resolve 하지 않음) — 즉 IMM64/OPREF EH 는 SDK 인코딩/legality 목적으로만 필요하고 RTL data path 는 영향받지 않음. 기존 test_simd_add/sub/mul_wide_vec 테스트들은 opref/imm64 EH 없이 (F_HAS_OPB 만으로) 발사하므로 이 버그에 걸리지 않았고, LAYERNORM/RMSNORM 은 end-to-end RTL 테스트가 아예 없어 (assembler-level opcode-sequence 테스트만 존재) 지금까지 발견되지 않음.
+
+**Fix**: 0x63/64/65 legality 를 0x60/61/62/67 shape 로 통일 (forbid_imm_any/forbid_opref 제거).
+
+**Regression**: `test_simd_wide_vec_opref_legal`, `test_simd_wide_vec_imm64_legal` (신규, test_isa_decoder.py) — 0x64+OPREF, 0x65+IMM64 가 decode-error 없이 통과함을 증명.
+
+#### 22.16.1 Cluster.v multi-slot fragment buffer
+
+`FRAG_SLOTS` 모듈 parameter (default 1). 단일 코드패스로 N-way CAM + LRU + persistence 구현 — dual-branch 대신, FRAG_SLOTS=1 일 때 정확히 기존 동작으로 reduce 됨을 직접 증명:
+- `frag_ready[0]` 은 FRAG_SLOTS=1 에서 영원히 0 (persistence 분기가 gate 되어 있음) → `hit_ready`/`any_ready_hit` 항상 false → 4-way alloc 우선순위가 continue-vs-fresh-allocate 이진 선택으로 축소, 원본 `frag_active && frag_same_tag` 조건과 동일
+- completion 분기의 `if (FRAG_SLOTS > 1) frag_ready<=1 else 원본 unconditional clear` 가 N=1 에서 원본과 동일
+
+**설계**:
+- Full 80-bit tag CAM (해싱 없음)
+- LRU: rank-permutation 대신 **공유 monotonic timestamp counter** (`frag_age_ctr`, 매 touch 마다 +1, per-slot 로 snapshot) — cold-fill 에서 모든 슬롯이 age=0 이 되는 rank-permutation 버그 구조적으로 불가능
+- Persistence: `FRAG_SLOTS>1` 일 때만 completion 시 `frag_ready<=1` (no clear); `FRAG_SLOTS==1` 은 기존 197-200줄 그대로
+- Tag-reuse collision: 이미 ready 인 슬롯에 같은 tag 의 새 fragment 가 도착하면 **안전한 재할당** (mask fresh, ready→0) — 절대 stale 데이터에 OR-merge 하지 않음
+- Alloc 우선순위: continue > ready-hit(재할당) > free-slot > LRU-evict
+
+**하위 호환**: `frag_mask`/`frag_data`/`frag_total_m1`/`frag_tag_reg` 가 flat reg → per-slot array 로 변경되어, 기존 cocotb 테스트의 `dut.frag_mask.value` 직접 접근이 `dut.frag_mask[0].value` 로 변경 필요 (hierarchical array-vs-packed-vector 접근 차이 — `frag_active`/`frag_ready` 는 packed vector 라 인덱싱 대신 bit-mask 로 접근: `(int(dut.frag_active.value) >> i) & 1`).
+
+**Makefile**: `make MOD=Cluster FRAG_SLOTS=4` 로 override (Verilator `-G` generic 플래그).
+
+#### 22.16.2 CACHE_LOAD_WIDE (0x68)
+
+**목적**: LAYERNORM step 5 가 xc 를 재발행(SIMD_SUB_WIDE_VEC 재실행)하는 대신, step 2 가 Cluster buffer 에 caching 한 xc 를 직접 재로드.
+
+**Legality** (EHDecode.v + asm.py): req_port only, 모든 data EH forbidden (0x66 SCALAR_RSQRT 와 동일 shape) — B operand 자체가 없음. Cache lookup key 는 EH-carried operand 가 아니라 **인스트럭션 자신의 tag bus** (`ext_tag`). PRECISION EH 는 `_ALL_DATA_EHS` 에 없으므로 영향받지 않음.
+
+**PE_Core.v**: 기존 0x60-67 wide-consumer case group 에 편입 (동일 `FRAG_IDLE`/`FRAG_EMIT_HI` FSM 재사용). Body 는 순수 passthrough (`output_payload <= dec_input_payload_wide[63:0]`, `frag_hi_pending <= [127:64]`) — 산술 없음. `output_tag` 는 override 하지 않고 기본 `dec_forwarded_tag` 그대로 사용 (아래 tag-stability 참조).
+
+**Cluster.v**: `cache_load_req = ext_valid && (ext_frag_hdr==0x00) && (ext_opcode==0x68)`. Hit 시 `final_wide`/`final_wide_valid` 가 매칭된 슬롯의 `frag_data`/`frag_ready` 로 mux. Miss (`cache_load_req && !any_ready_hit`) 시 `final_wide_valid=0` → PE_Core 의 기존 `dec_input_payload_wide_valid` guard 가 `error_flag` 로 전환 — **조용한 오염이 아닌 loud-safe-miss**.
+
+#### 22.16.3 Tag-stability (§22.16.2 의 핵심 난제)
+
+두 번째 design workflow (`w91wntdpk`) 로 별도 검증. 최초 가설("기존 tag-forwarding 으로 충분")은 **반증됨** — RTL 직접 재추적으로 확인:
+
+- Step 1 (EINSUM/OP_MEAN, PE_Core.v) 은 자신의 output tag 의 dim_sizes 를 리터럴 `8'h55` 로 하드코딩. Step 2 (SIMD_SUB_WIDE_VEC) 는 override 없이 그대로 상속 → step2 의 저장된 tag 도 dim_sizes=0x55.
+- Step 4 (SCALAR_RSQRT, opcode 0x66) 는 자신의 output tag 의 dim_sizes 를 리터럴 `8'h00` (scalar) 로 하드코딩.
+- Step 5 (CACHE_LOAD_WIDE) 가 기본 forwarding 경로로 dispatch 되면 step4 의 출력 tag 를 상속 → dim_sizes=0x00 상속 → **step2 의 저장된 tag (0x55) 와 8-bit 불일치, 확정적 miss**.
+- wave_number/thread_id/precision 은 이 레시피의 어떤 case arm 도 건드리지 않음 (WADV opcode 0x01 미사용) — 이 필드들은 문제 없음. Port 도 모든 8-step 이 동일 `port_eh` 객체 재사용 (asm.py) 이라 문제 없음.
+
+**Fix**: CACHE_LOAD_WIDE (step 5) 에 `.precision dim=0x55` EH + `dim_ovr` flag 추가 — `eff_dim_sizes` 를 corrupted forwarding chain 과 무관하게 0x55 로 고정. `_encode_eh` 의 precision branch: `word[31:24]=dim, word[23:16]=mode` — EHDecode.v 의 `acc_prec_dim <= cur_w0[31:24]` 캡처와 일치.
+
+**Rejected 대안**:
+- Q16.16 explicit tagref EH: 새 EH kind 필요, ISA 최초 IMM-width-specific opcode 될 위험, 첫 verify pass 에서 구체적 치명 버그 발견 (opcode_supported 미등록, opb+B-source 모순, 존재하지 않는 output_payload_wide 신호 참조)
+- frag_tag_held 재사용: 이 LAYERNORM 8-step 시퀀스에 한해 RTL-검증상 correct 하지만 "우연히" 맞음 — single-slot last-write-wins latch 라 concurrent 한 다른 wave 의 SIG_BMM_3/wide-vec 이 같은 PE_Core 에 끼어들면 silently clobber. pe_ready/cluster_ready 가 observe-only (enforced stall 아님) 라 이 risk 는 실재.
+
+**asm.py**: `_lower_layernorm` step 5 를 `CACHE_LOAD_WIDE` + `.precision dim=0x55` + `dim_ovr` flag 로 교체. `mu_opref`/`opb` flag 는 CACHE_LOAD_WIDE 에 불필요 (cache key 가 tag bus 자체이므로) — 이전 design workflow 초안의 "opb+mu_opref 유지" 제안은 실제 Cluster CAM 구현(§22.16.1, ext_tag 직접 매칭) 확정 후 불필요함이 판명되어 채택하지 않음.
+
+#### 22.16.4 회귀
+
+- Cocotb: 221 → **230** (+9)
+  * ISA_Decoder: 154 → 158 (+4: opref/imm64 선행버그 regression ×2, cache_load_wide passthrough hit/miss ×2)
+  * Cluster: 22 → 27 (+5: cache_load_wide roundtrip, never-cached miss, persistent-no-clear, coldfill-monotonic-age+lru-eviction, tag-reuse-collision-safe-realloc) — **양쪽 build (FRAG_SLOTS=1 default, FRAG_SLOTS=4) 모두 27/27 통과**
+- Assembler: 80 → **85** (+5: layernorm_expansion 갱신 없이 신규 opcode 순서만 반영, layernorm step5 precision guard, encode_precision_eh_word, cache_load_wide legality ×2 legal/reject-imm/dim_ovr-requires-precision)
+
+**Backward compat 검증**: FRAG_SLOTS=1 (default) 에서 기존 297 tests 전부 무변경 통과 (단 `test_frag_buffer_two/four_fragments_assemble` 의 마지막 assertion 은 `len(dut.frag_active.value)==1` 가드 추가 — FRAG_SLOTS>1 에서는 persistent 이므로 해당 assertion 자체가 의미 없어짐, skip 이 아니라 조건부 분기).
+
+#### 22.16.5 HW 비용 (LFE5U-85F 추정, FRAG_SLOTS=4 vs N=1 baseline)
+
+- FF: per-slot 1024(payload)+16(mask)+4(total_m1)+80(tag)+32(age) ≈ 1156 bits/slot × 4 = 4624 + packed active/ready(8) + 공유 age_ctr(32) ≈ **~4664 FF** (순증 ~3539, 대부분 1024-bit payload 4배 복제)
+- LUT: 4-way 80-bit tag comparator(~56) + free-slot encoder(~10) + age-argmin(~30-40) + **1024-bit 4:1 select mux (~1024-1100, dominant, timing-critical path)** ≈ **~1120-1200 LUT** (LUT-only 추정, DSP48 inference 시 상이할 수 있음 — 실제 synth 필요)
+- CACHE_LOAD_WIDE PE_Core case arm: 기존 FSM 재사용이라 위 mux 비용에 이미 포함, 추가 LUT 거의 0
+
+#### 22.16.6 남은 residual risk
+
+- **SDK 측 tag-stability 인프라 미해결**: `.precision dim=0x55` 는 이 특정 8-step LAYERNORM 레시피에 맞춘 hand-maintained 리터럴 — PE_Core.v 의 OP_MEAN 하드코딩과 소스 링크 없이 독립적으로 유지되어야 함 (한쪽만 바뀌면 조용히 desync)
+- **FRAG_INVAL 없음** (v1.6.5d): LAYERNORM 매크로가 step 2 이후, step 5 이전에 중단되면 캐시 슬롯이 LRU 로 자연 회수될 때까지 leak
+- **Eviction-under-concurrency**: FRAG_SLOTS 개 이상의 동시 multi-fragment wave 가 LAYERNORM 의 xc 슬롯을 evict 가능 — SDK 가 concurrent wave 수를 FRAG_SLOTS 미만으로 bound 해야 함 (§18.5/§19.9 의 no-drop/timeout 과는 다른 risk 카테고리)
+- **Capability-gating 미구현**: SDK 가 FRAG_SLOTS=1 타겟엔 legacy recompute, FRAG_SLOTS>1 타겟엔 CACHE_LOAD_WIDE 를 선택하는 메커니즘이 아직 없음 (RTL 은 안전 — FRAG_SLOTS=1 대상에 실수로 CACHE_LOAD_WIDE 를 쏘면 항상 안전하게 miss)
+- 모든 FF/LUT 수치는 hand-count 추정, 실제 synthesis 검증 필요
+
+### 22.17 진입 트리거 (기존 22.16 재번호)
+
+v1.6.5c amendment 는 **결정된 상태 (2026-07-15)**. Design workflow 2회 + 사용자 세션 직접 RTL 재검증으로 tag-stability 근본 원인 및 선행 버그 확정. 구현 완료 (2026-07-15).

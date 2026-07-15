@@ -52,7 +52,12 @@ module Cluster #(
     parameter MAX_EH      = 4,
     parameter INSTR_WIDTH = 32 + MAX_EH*96,    // = 416
     parameter PE_ROWS     = 2,
-    parameter PE_COLS     = 2
+    parameter PE_COLS     = 2,
+    // v1.6.5c §22.16 — fragment-buffer slot count. FRAG_SLOTS=1 (default)
+    // reproduces v1.5.1/v1.6.5b single-slot behavior bit-for-bit (see
+    // proof in the buffer section below). FRAG_SLOTS>1 enables persistent
+    // multi-slot caching for CACHE_LOAD_WIDE (0x68).
+    parameter FRAG_SLOTS  = 1
 ) (
     input                       clk,
     input                       rst,
@@ -98,38 +103,130 @@ module Cluster #(
 
     localparam NUM_PES = PE_ROWS * PE_COLS;
 
+    // Opcode extracted combinationally up-front — needed by both the
+    // fragment/cache buffer below (CACHE_LOAD_WIDE detection) and the
+    // op-class classifiers further down.
+    wire [7:0] ext_opcode = ext_instruction[31:24];
+
     // -------------------------------------------------------------------------
-    // v1.5.1 §18 — Fragment reassembly buffer (single-slot MVP)
+    // v1.5.1/v1.6.5c §18/§22.16 — Fragment reassembly + persistent cache
+    // buffer (N-way).
     //
     // Collects wave-token fragments and combinationally assembles them into
     // a wide payload when the LAST fragment arrives. Legacy single-fragment
     // (ext_frag_hdr = 0x00) bypasses the buffer entirely for zero-latency
     // legacy path — all v1.0..1.4 primitives take this fast path.
     //
-    // Single-slot: supports 1 concurrent multi-fragment wave. Fragment
-    // sequences from different tags cannot interleave in v1.5.1; the second
-    // wave silently displaces the first's partial state. Multi-slot buffer
-    // is a v1.5.1b extension. See wt64v1_spec.md §18 and
-    // noc_fragmentation_design.md §5.
+    // FRAG_SLOTS-way full-80-bit-tag CAM with monotonic-timestamp LRU
+    // eviction. At FRAG_SLOTS=1 this reduces to EXACTLY the v1.5.1/v1.6.5b
+    // single-slot semantics (proof: frag_ready never latches 1 when
+    // FRAG_SLOTS=1 since the persistence branch below is gated off, so
+    // hit_ready/any_ready_hit are permanently false, collapsing the
+    // 4-way alloc priority to a pure continue-vs-fresh-allocate binary
+    // identical to the original `frag_active && frag_same_tag` check, and
+    // the completion branch takes the unconditional-clear path — see
+    // wt64v1_spec.md §22.16 for the full derivation). FRAG_SLOTS>1 adds:
+    //   - persistent (non-destructive) completed-slot storage
+    //     (frag_ready), enabling CACHE_LOAD_WIDE (0x68) to re-read a
+    //     completed wave without recompute/re-fanout;
+    //   - LRU eviction via a shared monotonic touch counter (frag_age_ctr)
+    //     snapshotted per-slot on every touch — correct-by-construction on
+    //     cold-fill (every touch gets a strictly larger, hence unique,
+    //     timestamp; no rank-permutation tie is possible), unlike a
+    //     per-slot-rank scheme;
+    //   - safe reallocation (not silent merge) when a NEW fragment's tag
+    //     collides with an already-cached (ready) slot.
     //
-    // Downstream consumption (thread `frag_reass_wide` into a wide
-    // dec_input_payload path) is deferred to v1.5.2. For v1.5.1 the signals
-    // are exposed for hierarchical test access (`dut.u_cluster.frag_...`).
+    // See wt64v1_spec.md §18 (legacy) and §22.16 (v1.6.5c) and
+    // noc_fragmentation_design.md §5.
     // -------------------------------------------------------------------------
     localparam FRAG_MAX = 16;
+    localparam AGE_W    = 32;
+    localparam SLOT_W   = (FRAG_SLOTS <= 1) ? 1 : $clog2(FRAG_SLOTS);
 
     /* verilator lint_off UNUSEDSIGNAL */
-    reg [ADDR_WIDTH-1:0] frag_data [0:FRAG_MAX-1];
-    reg [FRAG_MAX-1:0]   frag_mask;
-    reg [3:0]            frag_total_m1;
-    reg [TAG_WIDTH-1:0]  frag_tag_reg;
-    reg                  frag_active;
+    reg [ADDR_WIDTH-1:0] frag_data     [0:FRAG_SLOTS-1][0:FRAG_MAX-1];
+    reg [FRAG_MAX-1:0]   frag_mask     [0:FRAG_SLOTS-1];
+    reg [3:0]            frag_total_m1 [0:FRAG_SLOTS-1];
+    reg [TAG_WIDTH-1:0]  frag_tag_reg  [0:FRAG_SLOTS-1];
+    reg [FRAG_SLOTS-1:0] frag_active;
+    // v1.6.5c — persistent-complete flag. Stays 0 forever at FRAG_SLOTS=1
+    // (persistence branch below is gated off), so hit_ready is always
+    // false and the tag-reuse-collision / cache-hit paths never engage —
+    // exactly reproducing pre-v1.6.5c behavior.
+    reg [FRAG_SLOTS-1:0] frag_ready;
+    reg [AGE_W-1:0]      frag_age      [0:FRAG_SLOTS-1];
+    reg [AGE_W-1:0]      frag_age_ctr;
     /* verilator lint_on UNUSEDSIGNAL */
 
     wire [3:0] frag_in_idx    = ext_frag_hdr[7:4];
     wire [3:0] frag_in_tot_m1 = ext_frag_hdr[3:0];
     wire       frag_in_multi  = ext_valid && (ext_frag_hdr != 8'h00);
-    wire       frag_same_tag  = frag_active && (ext_tag == frag_tag_reg);
+    // v1.6.5c §22.16 — CACHE_LOAD_WIDE (0x68) request: a normal (non-
+    // fragment) dispatch whose own ext_tag IS the cache lookup key (see
+    // §22.16's tag-stability derivation for why this equals the producer's
+    // stored tag once the assembler's PRECISION-EH dim_sizes guard is in
+    // place).
+    wire cache_load_req = ext_valid && (ext_frag_hdr == 8'h00)
+                                     && (ext_opcode == 8'h68);
+
+    // Per-slot hit classification (combinational). At most one of
+    // hit_continue[s]/hit_ready[s] can be true for a given s (mutually
+    // exclusive on frag_ready[s]).
+    reg hit_continue [0:FRAG_SLOTS-1];
+    reg hit_ready    [0:FRAG_SLOTS-1];
+    integer ghi;
+    always @(*) begin
+        for (ghi = 0; ghi < FRAG_SLOTS; ghi = ghi + 1) begin
+            hit_continue[ghi] = frag_active[ghi] && !frag_ready[ghi]
+                              && (ext_tag == frag_tag_reg[ghi]);
+            hit_ready[ghi]    = frag_active[ghi] &&  frag_ready[ghi]
+                              && (ext_tag == frag_tag_reg[ghi]);
+        end
+    end
+
+    // Priority-encoded slot selection (combinational): continue > cached-
+    // tag-collision/cache-hit > free slot > LRU-eviction victim.
+    reg                 any_continue;
+    reg [SLOT_W-1:0]    continue_idx;
+    reg                 any_ready_hit;
+    reg [SLOT_W-1:0]    ready_idx;
+    reg                 any_free;
+    reg [SLOT_W-1:0]    free_idx;
+    reg [SLOT_W-1:0]    evict_idx;
+    reg [AGE_W-1:0]     evict_age;
+    integer si;
+    always @(*) begin
+        any_continue  = 1'b0; continue_idx = {SLOT_W{1'b0}};
+        any_ready_hit = 1'b0; ready_idx    = {SLOT_W{1'b0}};
+        any_free      = 1'b0; free_idx     = {SLOT_W{1'b0}};
+        evict_idx     = {SLOT_W{1'b0}};
+        evict_age     = {AGE_W{1'b1}};
+        for (si = 0; si < FRAG_SLOTS; si = si + 1) begin
+            if (hit_continue[si] && !any_continue) begin
+                any_continue = 1'b1; continue_idx = si[SLOT_W-1:0];
+            end
+            if (hit_ready[si] && !any_ready_hit) begin
+                any_ready_hit = 1'b1; ready_idx = si[SLOT_W-1:0];
+            end
+            if (!frag_active[si] && !any_free) begin
+                any_free = 1'b1; free_idx = si[SLOT_W-1:0];
+            end
+            if (frag_active[si] && (frag_age[si] < evict_age)) begin
+                evict_age = frag_age[si]; evict_idx = si[SLOT_W-1:0];
+            end
+        end
+    end
+
+    // Target slot for an incoming fragment beat: continue the in-progress
+    // wave, safely reallocate over a collided cached slot, take a free
+    // slot, or evict the LRU victim — in that priority order.
+    wire alloc_is_continue = any_continue;
+    wire [SLOT_W-1:0] alloc_idx =
+        any_continue  ? continue_idx :
+        any_ready_hit ? ready_idx    :
+        any_free      ? free_idx     :
+                        evict_idx;
 
     // Mask bit for the arriving fragment
     wire [FRAG_MAX-1:0] frag_mask_add = frag_in_multi
@@ -137,16 +234,17 @@ module Cluster #(
                                        : {FRAG_MAX{1'b0}};
 
     // Mask AFTER this cycle's write:
-    //   - new slot start (idle OR mismatched tag): just the arriving bit
-    //   - continue existing:                       OR into accumulated mask
+    //   - continue existing:                  OR into accumulated mask
+    //   - new slot start (free OR evicted OR collided-reallocated):
+    //     just the arriving bit
     wire [FRAG_MAX-1:0] frag_mask_after =
-        (frag_active && frag_same_tag) ? (frag_mask | frag_mask_add)
-                                       : frag_mask_add;
+        alloc_is_continue ? (frag_mask[alloc_idx] | frag_mask_add)
+                          : frag_mask_add;
 
     // Total field to compare against — from either the arriving fragment
     // (new slot) or the stored slot (continuing).
     wire [3:0] frag_tot_ref =
-        (frag_active && frag_same_tag) ? frag_total_m1 : frag_in_tot_m1;
+        alloc_is_continue ? frag_total_m1[alloc_idx] : frag_in_tot_m1;
 
     // Full mask: bits [0 .. tot_ref] set.
     wire [FRAG_MAX-1:0] frag_mask_full =
@@ -159,8 +257,8 @@ module Cluster #(
     /* verilator lint_on UNUSEDSIGNAL */
 
     // Wide payload (combinational): overlays this-cycle's fragment onto
-    // stored data. On the completion cycle, this holds the fully assembled
-    // wave payload — up to 16 × 64 = 1024 bits.
+    // the selected slot's stored data. On the completion cycle, this holds
+    // the fully assembled wave payload — up to 16 × 64 = 1024 bits.
     /* verilator lint_off UNUSEDSIGNAL */
     wire [FRAG_MAX*ADDR_WIDTH-1:0] frag_reass_wide;
     /* verilator lint_on UNUSEDSIGNAL */
@@ -169,37 +267,80 @@ module Cluster #(
         for (gfw = 0; gfw < FRAG_MAX; gfw = gfw + 1) begin : g_frag_wide
             assign frag_reass_wide[gfw*ADDR_WIDTH +: ADDR_WIDTH] =
                 (frag_in_multi && (frag_in_idx == gfw[3:0])) ? ext_payload
-                                                             : frag_data[gfw];
+                                                             : frag_data[alloc_idx][gfw];
         end
     endgenerate
 
-    integer ffi;
+    // v1.6.5c — CACHE_LOAD_WIDE hit data (combinational): the matched
+    // ready slot's stored payload, exposed independent of frag_reass_wide
+    // since a cache-load request is never a fragment beat.
+    wire cache_hit = cache_load_req && any_ready_hit;
+    /* verilator lint_off UNUSEDSIGNAL */
+    wire [FRAG_MAX*ADDR_WIDTH-1:0] cache_hit_wide;
+    /* verilator lint_on UNUSEDSIGNAL */
+    genvar gch;
+    generate
+        for (gch = 0; gch < FRAG_MAX; gch = gch + 1) begin : g_cache_wide
+            assign cache_hit_wide[gch*ADDR_WIDTH +: ADDR_WIDTH] = frag_data[ready_idx][gch];
+        end
+    endgenerate
+
+    integer ffi, ffs;
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            for (ffi = 0; ffi < FRAG_MAX; ffi = ffi + 1)
-                frag_data[ffi] <= {ADDR_WIDTH{1'b0}};
-            frag_mask     <= {FRAG_MAX{1'b0}};
-            frag_total_m1 <= 4'h0;
-            frag_tag_reg  <= {TAG_WIDTH{1'b0}};
-            frag_active   <= 1'b0;
+            for (ffs = 0; ffs < FRAG_SLOTS; ffs = ffs + 1) begin
+                for (ffi = 0; ffi < FRAG_MAX; ffi = ffi + 1)
+                    frag_data[ffs][ffi] <= {ADDR_WIDTH{1'b0}};
+                frag_mask[ffs]     <= {FRAG_MAX{1'b0}};
+                frag_total_m1[ffs] <= 4'h0;
+                frag_tag_reg[ffs]  <= {TAG_WIDTH{1'b0}};
+                frag_age[ffs]      <= {AGE_W{1'b0}};
+            end
+            frag_active  <= {FRAG_SLOTS{1'b0}};
+            frag_ready   <= {FRAG_SLOTS{1'b0}};
+            frag_age_ctr <= {AGE_W{1'b0}};
         end else if (frag_in_multi) begin
-            frag_data[frag_in_idx] <= ext_payload;
-            if (!frag_active || !frag_same_tag) begin
-                // Allocate new slot (from idle OR displace mismatched tag)
-                frag_tag_reg  <= ext_tag;
-                frag_total_m1 <= frag_in_tot_m1;
-                frag_mask     <= frag_mask_add;
-                frag_active   <= 1'b1;
+            frag_data[alloc_idx][frag_in_idx] <= ext_payload;
+            if (!alloc_is_continue) begin
+                // Fresh allocation at alloc_idx: free slot, LRU-evicted
+                // slot, or safe reallocation over a tag-collided cached
+                // (ready) slot — never a silent merge into stale data.
+                frag_tag_reg[alloc_idx]  <= ext_tag;
+                frag_total_m1[alloc_idx] <= frag_in_tot_m1;
+                frag_mask[alloc_idx]     <= frag_mask_add;
+                frag_active[alloc_idx]   <= 1'b1;
+                frag_ready[alloc_idx]    <= 1'b0;
             end else begin
-                frag_mask <= frag_mask | frag_mask_add;
+                frag_mask[alloc_idx] <= frag_mask[alloc_idx] | frag_mask_add;
             end
-            // Deactivate on completion (last non-blocking wins)
+            // Touch: every beat (allocate or continue) refreshes this
+            // slot's monotonic timestamp.
+            frag_age_ctr        <= frag_age_ctr + 1'b1;
+            frag_age[alloc_idx] <= frag_age_ctr + 1'b1;
+            // Completion: gate persistence by FRAG_SLOTS. FRAG_SLOTS=1
+            // reproduces the original unconditional clear exactly.
             if (frag_reass_valid) begin
-                frag_active <= 1'b0;
-                frag_mask   <= {FRAG_MAX{1'b0}};
+                if (FRAG_SLOTS > 1) begin
+                    frag_ready[alloc_idx] <= 1'b1;
+                end else begin
+                    frag_active[alloc_idx] <= 1'b0;
+                    frag_mask[alloc_idx]   <= {FRAG_MAX{1'b0}};
+                end
             end
+        end else if (cache_hit) begin
+            // Non-destructive read: still a "touch" for LRU purposes so a
+            // hot cached value doesn't get evicted while in active use.
+            frag_age_ctr            <= frag_age_ctr + 1'b1;
+            frag_age[ready_idx]      <= frag_age_ctr + 1'b1;
         end
     end
+
+    // v1.6.5c — CACHE_LOAD_WIDE hit/miss mux feeding EHDecode's wide-input
+    // port. A miss (cache_load_req && !cache_hit) yields wide_valid=0,
+    // which PE_Core's 0x68 case arm turns into the existing error_flag
+    // guard — a loud, safe miss rather than a silent wrong-data hit.
+    wire                            final_wide_valid = cache_load_req ? cache_hit : frag_reass_valid;
+    wire [FRAG_MAX*ADDR_WIDTH-1:0]  final_wide        = cache_load_req ? cache_hit_wide : frag_reass_wide;
 
     // ---- Compile-time geometry guard ----------------------------------------
     localparam VALID_GEOM =
@@ -218,8 +359,9 @@ module Cluster #(
     // L-PE handles the simple integer/shape ops; MATMUL_UNIT handles the
     // mul-heavy ops; DIV-UNIT handles the 64-bit divide/modulo ops. Each
     // op-class group routes to exactly ONE unit per cluster.
+    // (ext_opcode itself is declared up in the fragment/cache buffer
+    // section above, since cache_load_req also needs it.)
     // -------------------------------------------------------------------------
-    wire [7:0] ext_opcode = ext_instruction[31:24];
     wire is_mul_op = (ext_opcode == 8'h12)
                   || (ext_opcode == 8'h30)
                   || (ext_opcode == 8'h32)
@@ -358,8 +500,8 @@ module Cluster #(
         .input_payload             (ehdec_input_payload),
         .input_payload_b           (cluster_b_payload),
         .input_payload_b_valid     (cluster_b_valid),
-        .input_payload_wide        (frag_reass_wide),
-        .input_payload_wide_valid  (frag_reass_valid),
+        .input_payload_wide        (final_wide),
+        .input_payload_wide_valid  (final_wide_valid),
         .dec_valid                 (dec_valid),
         .dec_opcode                (dec_opcode),
         .dec_decode_error          (dec_decode_error),

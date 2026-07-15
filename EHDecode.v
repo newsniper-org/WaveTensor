@@ -556,15 +556,35 @@ module EHDecode #(
                 forbid_subscript = 1'b1; forbid_mem = 1'b1;
             end
             // 0x63/0x64/0x65: SIMD_ADD/SUB/MUL_WIDE_VEC — A via wide,
-            //   V (4D) via input_payload_b (require F_HAS_OPB).
+            //   V (4D) via input_payload_b (require F_HAS_OPB). V's
+            //   compile-time origin (IMM64 literal or OPREF bank route) is
+            //   carried as an EH for the SDK's static schedule/encoding —
+            //   dec_input_payload_b itself is a pure input_payload_b
+            //   pass-through (EHDecode.v does not resolve IMM64/OPREF onto
+            //   it), so the EH must be LEGAL here even though the RTL data
+            //   path ignores its content. v1.6.5c §22.16 — fixes a landed
+            //   bug where this case unconditionally forbade imm/opref,
+            //   which made every LAYERNORM/RMSNORM dispatch on these
+            //   opcodes (all of which carry opref or imm64) decode-error.
             8'h63, 8'h64, 8'h65: begin
                 req_port         = 1'b1;
                 forbid_subscript = 1'b1; forbid_mem = 1'b1;
-                forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
             end
             // 0x66 SCALAR_RSQRT_APPROX — single-value primitive on payload_a,
             //   no B (no IMM/OPREF), single-cycle, no wide needed.
             8'h66: begin
+                req_port         = 1'b1;
+                forbid_subscript = 1'b1; forbid_mem = 1'b1;
+                forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
+            end
+            // v1.6.5c §22.16 — CACHE_LOAD_WIDE: pure Cluster-buffer CAM
+            // passthrough, no B operand at all (the cache lookup key is
+            // the instruction's own tag bus, not an EH-carried operand) —
+            // same no-B shape as 0x66. A PRECISION EH (dim_ovr flag) IS
+            // expected on this opcode for tag-stability (see §22.16), but
+            // PRECISION is a separate EH kind unaffected by forbid_imm_any/
+            // forbid_opref, so no accommodation is needed here.
+            8'h68: begin
                 req_port         = 1'b1;
                 forbid_subscript = 1'b1; forbid_mem = 1'b1;
                 forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
@@ -626,7 +646,9 @@ module EHDecode #(
          (cb_opcode == 8'h63) || (cb_opcode == 8'h64) || (cb_opcode == 8'h65) ||
          (cb_opcode == 8'h66) ||
          // v1.6.5a §22.14 — SIMD_MUL_WIDE_Q4_4_SCALAR
-         (cb_opcode == 8'h67);
+         (cb_opcode == 8'h67) ||
+         // v1.6.5c §22.16 — CACHE_LOAD_WIDE
+         (cb_opcode == 8'h68);
 
     wire bh_len_mismatch = (cb_bh_len != {{(8-OFF_W){1'b0}}, stg_off});
     wire reserved_nonzero = (cb_reserved != 8'h00);

@@ -2204,7 +2204,23 @@ module PE_Core #(
                         //   (requires F_HAS_OPB flag)
                         // 0x67 Q4.4 SCALAR (v1.6.5a): B via dec_eff_b_value[7:0]
                         //   as signed Q4.4 — precision recovery for norm scale.
-                        8'h60, 8'h61, 8'h62, 8'h63, 8'h64, 8'h65, 8'h67: begin
+                        // 0x68 CACHE_LOAD_WIDE (v1.6.5c §22.16): pure
+                        //   passthrough of a persisted Cluster-buffer slot
+                        //   (Cluster.v resolves the CAM lookup and drives
+                        //   dec_input_payload_wide/valid; a cache MISS
+                        //   surfaces as dec_input_payload_wide_valid=0,
+                        //   which the guard below turns into error_flag —
+                        //   no separate miss signal needed). output_tag is
+                        //   deliberately left at its default
+                        //   dec_forwarded_tag (set above, before this case
+                        //   statement) — the assembler's PRECISION-EH
+                        //   dim_sizes guard on the CACHE_LOAD_WIDE
+                        //   instruction is what makes that tag equal the
+                        //   producer's stored frag_tag_reg; adding a
+                        //   second override here would be redundant and
+                        //   risks reintroducing the exact literal-drift
+                        //   bug the guard fixes.
+                        8'h60, 8'h61, 8'h62, 8'h63, 8'h64, 8'h65, 8'h67, 8'h68: begin
                             if (!dec_input_payload_wide_valid) begin
                                 error_flag   <= 1'b1;
                                 output_valid <= 1'b0;
@@ -2274,6 +2290,14 @@ module PE_Core #(
                                         frag_hi_pending  <= simd_mul_wide_q4_4_scalar_128(
                                             dec_input_payload_wide[127:0],
                                             dec_eff_b_value[7:0])[127:64];
+                                    end
+                                    8'h68: begin
+                                        // v1.6.5c §22.16 — CACHE_LOAD_WIDE:
+                                        // pure passthrough of the resolved
+                                        // wide bus (Cluster.v already muxed
+                                        // in the cached slot on a hit).
+                                        output_payload   <= dec_input_payload_wide[63:0];
+                                        frag_hi_pending  <= dec_input_payload_wide[127:64];
                                     end
                                     default: ;
                                 endcase

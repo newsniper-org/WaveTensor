@@ -385,7 +385,9 @@ async def test_frag_buffer_two_fragments_assemble(dut):
     await Timer(1, units="ns")
     # After the cycle: buffer active, mask = bit 0 set
     assert int(dut.frag_active.value) == 1
-    assert int(dut.frag_mask.value) == 0b0001
+    # v1.6.5c: frag_mask is now a per-slot array (FRAG_SLOTS-indexed);
+    # slot 0 at the default FRAG_SLOTS=1.
+    assert int(dut.frag_mask[0].value) == 0b0001
 
     # Fragment 1 of 2: idx=1, total-1=1 → frag_hdr = 0x11
     dut.ext_instruction.value = 0
@@ -409,9 +411,13 @@ async def test_frag_buffer_two_fragments_assemble(dut):
     dut.ext_valid.value = 0
     dut.ext_frag_hdr.value = 0
     await Timer(1, units="ns")
-    # Buffer must have deactivated (slot freed for the next wave)
-    assert int(dut.frag_active.value) == 0
-    assert int(dut.frag_mask.value) == 0
+    # v1.6.5c §22.16: at FRAG_SLOTS=1 (default) completion still
+    # unconditionally clears (byte-for-byte v1.5.1 behavior). At
+    # FRAG_SLOTS>1 the slot instead persists (frag_ready) — see
+    # test_frag_slots_persistent_no_clear for that assertion.
+    if len(dut.frag_active.value) == 1:
+        assert int(dut.frag_active.value) == 0
+        assert int(dut.frag_mask[0].value) == 0
 
 
 @cocotb.test()
@@ -431,7 +437,7 @@ async def test_frag_buffer_out_of_order_arrival(dut):
     await _drive_fragment(dut, tag, hi, frag_hdr=0x11)
     await Timer(1, units="ns")
     assert int(dut.frag_active.value) == 1
-    assert int(dut.frag_mask.value) == 0b0010  # bit 1 set
+    assert int(dut.frag_mask[0].value) == 0b0010  # bit 1 set
 
     # Then fragment 0 — completes the wave
     dut.ext_instruction.value = 0
@@ -485,7 +491,11 @@ async def test_frag_buffer_four_fragments_assemble(dut):
     dut.ext_valid.value = 0
     dut.ext_frag_hdr.value = 0
     await Timer(1, units="ns")
-    assert int(dut.frag_active.value) == 0
+    # v1.6.5c §22.16: FRAG_SLOTS=1-specific destructive-clear; at
+    # FRAG_SLOTS>1 the slot persists instead (see
+    # test_frag_slots_persistent_no_clear).
+    if len(dut.frag_active.value) == 1:
+        assert int(dut.frag_active.value) == 0
 
 
 # =============================================================================
@@ -927,3 +937,237 @@ async def test_bmm_3_lpe_collision_raises_output_collision(dut):
     # this simple 2-PE cluster geometry). If not seen, that's not a
     # failure — the atomic OR-merge still atomically bound data + mem
     # to a single winner, which was the primary bug 4 fix.
+
+
+# =============================================================================
+# v1.6.5c §22.16 — multi-slot fragment buffer + CACHE_LOAD_WIDE (0x68)
+#
+# Tests below run under BOTH the default (`make MOD=Cluster`, FRAG_SLOTS=1)
+# and the multi-slot (`make MOD=Cluster FRAG_SLOTS=4`) builds. Persistence/
+# LRU/cold-fill tests only apply at FRAG_SLOTS>1 and self-skip (trivial
+# pass) otherwise, proven via the actual elaborated width of frag_active
+# rather than a hardcoded assumption. The cache-load roundtrip test
+# exercises BOTH regimes: safe MISS at FRAG_SLOTS=1 (no persistence to
+# hit), real HIT at FRAG_SLOTS>1.
+# =============================================================================
+
+
+def _slots(dut):
+    """Number of elaborated fragment-buffer slots (FRAG_SLOTS build param)."""
+    return len(dut.frag_active.value)
+
+
+async def _complete_wide_wave(dut, tag, lo, hi, consumer_instr):
+    """Drive a 2-fragment wide-consumer wave (idx0=lo, idx1=hi); the real
+    consumer instruction is presented on the completing (idx1) beat, per
+    the existing single-slot convention (see test_fragment_completion_
+    feeds_ehdecode_wide). Leaves ext_valid/ext_frag_hdr deasserted on
+    return, one cycle after the completion pulse."""
+    dut.ext_instruction.value = 0
+    dut.ext_tag.value = tag
+    dut.ext_payload.value = lo
+    dut.ext_payload_b.value = 0
+    dut.ext_payload_b_valid.value = 0
+    dut.ext_frag_hdr.value = 0x01
+    dut.ext_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.ext_instruction.value = consumer_instr
+    dut.ext_payload.value = hi
+    dut.ext_frag_hdr.value = 0x11
+    await RisingEdge(dut.clk)
+    dut.ext_valid.value = 0
+    dut.ext_frag_hdr.value = 0
+    await Timer(1, units="ns")
+
+
+async def _drain_output(dut, cycles=20):
+    """Advance until ext_out_valid pulses (producer's own output), so it
+    doesn't linger and confuse a subsequent dispatch's observation window."""
+    for _ in range(cycles):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.ext_out_valid.value) == 1:
+            break
+
+
+async def _fire_cache_load_wide(dut, tag, port_context_id=0):
+    """Fire a single-beat CACHE_LOAD_WIDE (0x68) dispatch with the given
+    tag and wait for the pipeline to produce an output or error."""
+    instr = encode_instr(0x68, eh_port(input_port_mask=(1 << port_context_id),
+                                       output_port_id=port_context_id))
+    dut.ext_instruction.value = instr
+    dut.ext_tag.value = tag
+    dut.ext_payload.value = 0
+    dut.ext_payload_b.value = 0
+    dut.ext_payload_b_valid.value = 0
+    dut.ext_frag_hdr.value = 0
+    dut.ext_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.ext_valid.value = 0
+    for _ in range(30):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.ext_out_valid.value) == 1 or int(dut.any_error_flag.value) == 1:
+            break
+
+
+@cocotb.test()
+async def test_cache_load_wide_roundtrip(dut):
+    """v1.6.5c §22.16: cache a 2-fragment wide wave via a real wide-
+    consumer op (SIMD_ADD_WIDE_SCALAR), then reload the RAW cached INPUT
+    (not the arithmetic result) via CACHE_LOAD_WIDE with the same tag.
+
+    FRAG_SLOTS=1 (default): no persistence exists — completion clears the
+    slot immediately, so this MUST miss (error_flag, no output) — proving
+    the capability-gated safe-miss behavior for legacy/non-caching
+    targets.
+
+    FRAG_SLOTS>1: MUST hit and return the exact original input bytes,
+    unprocessed by SIMD_ADD_WIDE_SCALAR's own arithmetic."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    tag = _tag(port_context_id=0)
+    lo = 0x1111111111111111
+    hi = 0x2222222222222222
+    consumer = encode_instr(0x60, eh_port(input_port_mask=0x01, output_port_id=0),
+                            eh_imm16(5))
+    await _complete_wide_wave(dut, tag, lo, hi, consumer)
+    await _drain_output(dut)
+
+    await _fire_cache_load_wide(dut, tag)
+
+    if _slots(dut) == 1:
+        assert int(dut.any_error_flag.value) == 1, \
+            "FRAG_SLOTS=1 must MISS (no persistence) — got no error"
+        assert int(dut.ext_out_valid.value) == 0
+    else:
+        assert int(dut.any_error_flag.value) == 0, "unexpected miss/error at FRAG_SLOTS>1"
+        assert int(dut.ext_out_valid.value) == 1
+        got_lo = int(dut.ext_out_payload.value)
+        assert int(dut.ext_out_frag_hdr.value) == 0x01
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        got_hi = int(dut.ext_out_payload.value)
+        assert int(dut.ext_out_frag_hdr.value) == 0x11
+        assert got_lo == lo, f"lo: {got_lo:016x} != {lo:016x}"
+        assert got_hi == hi, f"hi: {got_hi:016x} != {hi:016x}"
+
+
+@cocotb.test()
+async def test_cache_load_wide_never_cached_misses(dut):
+    """v1.6.5c §22.16: CACHE_LOAD_WIDE against a tag that was never
+    produced anywhere must always miss — regardless of FRAG_SLOTS."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    never_used_tag = _tag(port_context_id=0)
+    await _fire_cache_load_wide(dut, never_used_tag)
+    assert int(dut.any_error_flag.value) == 1
+    assert int(dut.ext_out_valid.value) == 0
+
+
+@cocotb.test()
+async def test_frag_slots_persistent_no_clear(dut):
+    """v1.6.5c §22.16: at FRAG_SLOTS>1, wave completion sets frag_ready
+    (persistent, non-destructive) instead of clearing frag_active — the
+    opposite of FRAG_SLOTS=1's unconditional clear. Trivially passes
+    (self-skips) at the default FRAG_SLOTS=1 build."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+    if _slots(dut) == 1:
+        return
+
+    tag = _tag(port_context_id=0)
+    consumer = encode_instr(0x60, eh_port(input_port_mask=0x01, output_port_id=0),
+                            eh_imm16(1))
+    await _complete_wide_wave(dut, tag, 0x1, 0x2, consumer)
+
+    found = None
+    for i in range(_slots(dut)):
+        if int(dut.frag_tag_reg[i].value) == tag:
+            found = i
+            break
+    assert found is not None, "producer tag not resident in any slot"
+    # frag_active/frag_ready are PACKED vectors (not unpacked arrays like
+    # frag_tag_reg/frag_age) — cocotb requires bit-slicing the whole value
+    # rather than handle indexing.
+    active_bits = int(dut.frag_active.value)
+    ready_bits  = int(dut.frag_ready.value)
+    assert (active_bits >> found) & 1 == 1, "slot must stay active (persistent)"
+    assert (ready_bits >> found) & 1 == 1, "slot must be marked ready (cacheable)"
+
+
+@cocotb.test()
+async def test_frag_slots_coldfill_monotonic_age_and_lru_eviction(dut):
+    """v1.6.5c §22.16: sequential cold-fill from reset gets strictly
+    increasing, pairwise-distinct ages — a regression guard against a
+    rank-permutation LRU scheme's cold-fill tie (every never-touched slot
+    at age=0 is ambiguous with a valid rank of 0). A subsequent wave
+    beyond capacity must evict the TRUE oldest slot, not an arbitrary one.
+    Trivially passes (self-skips) at the default FRAG_SLOTS=1 build."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+    n = _slots(dut)
+    if n <= 1:
+        return
+
+    consumer = encode_instr(0x60, eh_port(input_port_mask=0x01, output_port_id=0),
+                            eh_imm16(1))
+    tags = [make_tag(wave_number=i + 1, port_context_id=0) for i in range(n)]
+    for i, t in enumerate(tags):
+        await _complete_wide_wave(dut, t, 0x10 + i, 0x20 + i, consumer)
+        await _drain_output(dut)
+
+    ages = [int(dut.frag_age[i].value) for i in range(n)]
+    assert len(set(ages)) == n, f"ages not pairwise distinct: {ages}"
+    assert ages == sorted(ages), \
+        f"ages not monotonically increasing in allocation order: {ages}"
+
+    # One more distinct wave forces eviction of the truly oldest slot
+    # (the one holding tags[0], allocated first).
+    evictor_tag = make_tag(wave_number=99, port_context_id=0)
+    await _complete_wide_wave(dut, evictor_tag, 0x99, 0x9A, consumer)
+    await _drain_output(dut)
+
+    tag_regs = [int(dut.frag_tag_reg[i].value) for i in range(n)]
+    assert evictor_tag in tag_regs, "evictor wave not resident anywhere after eviction"
+    assert tags[0] not in tag_regs, "oldest slot should have been evicted, but survived"
+    for i in range(1, n):
+        assert tags[i] in tag_regs, f"younger slot tags[{i}] should survive eviction"
+
+
+@cocotb.test()
+async def test_frag_slots_tag_reuse_collision_safe_realloc(dut):
+    """v1.6.5c §22.16: a NEW fragment beat whose tag matches an already-
+    cached (ready) slot must safely REALLOCATE (fresh mask, new data) —
+    never silently OR-merge stale cached bits into the new wave.
+    Trivially passes (self-skips) at the default FRAG_SLOTS=1 build,
+    since persistence (and hence a collidable ready slot) doesn't exist
+    there."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+    if _slots(dut) == 1:
+        return
+
+    tag = _tag(port_context_id=0)
+    consumer = encode_instr(0x60, eh_port(input_port_mask=0x01, output_port_id=0),
+                            eh_imm16(1))
+    await _complete_wide_wave(dut, tag, 0xAAAAAAAAAAAAAAAA, 0xBBBBBBBBBBBBBBBB, consumer)
+    await _drain_output(dut)
+
+    # Reuse the SAME tag with DIFFERENT payload data.
+    await _complete_wide_wave(dut, tag, 0xCCCCCCCCCCCCCCCC, 0xDDDDDDDDDDDDDDDD, consumer)
+    await _drain_output(dut)
+
+    await _fire_cache_load_wide(dut, tag)
+    assert int(dut.any_error_flag.value) == 0
+    assert int(dut.ext_out_valid.value) == 1
+    got_lo = int(dut.ext_out_payload.value)
+    assert got_lo == 0xCCCCCCCCCCCCCCCC, \
+        f"expected NEW data (safe realloc), got {got_lo:016x} — stale merge bug"

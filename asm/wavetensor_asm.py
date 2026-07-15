@@ -92,6 +92,9 @@ MNEMONIC_TO_OPCODE: Dict[str, int] = {
     'SCALAR_RSQRT':         0x66,
     # v1.6.5a §22.14 — Q4.4 wide-scalar mul (precision recovery for norm scale).
     'SIMD_MUL_WIDE_Q4_4_SCALAR': 0x67,
+    # v1.6.5c §22.16 — persistent Cluster-buffer cache reload (replaces
+    # LAYERNORM's xc re-emission with a direct on-Cluster reload).
+    'CACHE_LOAD_WIDE': 0x68,
 }
 OPCODE_TO_MNEMONIC: Dict[int, str] = {v: k for k, v in MNEMONIC_TO_OPCODE.items()}
 
@@ -783,26 +786,42 @@ def _lower_rmsnorm(inst: Instruction) -> List[Instruction]:
 
 
 def _lower_layernorm(inst: Instruction) -> List[Instruction]:
-    """LAYERNORM(x, γ, β, eps) → 6-primitive sequence (spec §22.3 abridged).
+    """LAYERNORM(x, γ, β, eps) → 8-primitive sequence (spec §22.3/§22.16).
 
     SDK CONTRACT (fanout hazard, per workflow wsvd6rl41 verify):
       Step 2 emits `xc = x - μ` which is consumed BOTH by step 3 (L2SQ for
-      variance) AND step 4 (final scaling). Wave-tokens are single-use, so
+      variance) AND step 5 (final scaling). Wave-tokens are single-use, so
       the SDK/runtime must:
-        (a) Re-issue x on step 4's fabric route (fanout via NoC broadcast),
+        (a) Re-issue x on step 5's fabric route (fanout via NoC broadcast),
             OR
-        (b) Buffer xc on-Cluster (multi-slot fragment buffer, v1.6.5+),
-            OR
-        (c) Recompute xc via a second SIMD_SUB_WIDE_VEC dispatch (this
-            macro's current strategy — emits SUB twice, cheapest for MVP).
+        (b) Buffer xc on-Cluster and reload it via CACHE_LOAD_WIDE
+            (v1.6.5c strategy — this macro's current strategy), OR
+        (c) Recompute xc via a second SIMD_SUB_WIDE_VEC dispatch (legacy
+            v1.6.4 MVP strategy, cheapest but wastes the L2 pass).
+
+    v1.6.5c §22.16 TAG-STABILITY NOTE: step 5's CACHE_LOAD_WIDE reloads
+    step 2's persisted xc from the Cluster buffer by tag match. By
+    default, tag-forwarding would NOT reproduce step 2's stored tag at
+    step 5's dispatch — step 1's EINSUM/OP_MEAN hardcodes its own output
+    tag's dim_sizes to the literal 0x55 (PE_Core.v's 5D→4D-family case),
+    which step 2 inherits unmodified into ITS OWN stored tag; but step 4
+    (SCALAR_RSQRT) unconditionally hardcodes ITS OWN output tag's
+    dim_sizes to 0x00 (scalar), which step 5 would otherwise inherit by
+    default forwarding — an 8-bit mismatch against step 2's 0x55. The
+    `.precision dim=0x55` EH + `dim_ovr` flag below pins step 5's
+    dim_sizes back to 0x55 independent of that corrupted chain, closing
+    the gap (verified via workflow w91wntdpk's adversarial RTL re-trace).
+    wave_number/thread_id/port/precision are all untouched across every
+    step in this recipe (no WADV; no case arm here overrides precision),
+    so no further guard is needed for those fields.
 
     Recipe (MVP — SDK responsibility for eps/1_N folding into rsqrt seed):
       1) MEAN_5D_TO_4D    x            →  μ[abcd]
-      2) SIMD_SUB_WIDE_VEC  x, μ       →  xc[abcde]   (first emission)
+      2) SIMD_SUB_WIDE_VEC  x, μ       →  xc[abcde]   (first emission, cached)
       3) L2SQ_IJKLM       xc           →  sq_scalar   (variance sum)
       4) SCALAR_RSQRT     sq_scalar    →  scale       (Q16.16)
-      5) SIMD_SUB_WIDE_VEC  x, μ       →  xc[abcde]   (re-emission — SDK strat (c))
-      6) SIMD_MUL_WIDE_SCALAR  xc, scale[3:0]  →  nrm
+      5) CACHE_LOAD_WIDE                →  xc[abcde]  (reload step 2's cached xc)
+      6) SIMD_MUL_WIDE_Q4_4_SCALAR  xc, scale[3:0]  →  nrm
       7) SIMD_MUL_WIDE_VEC  nrm, γ     →  sc
       8) SIMD_ADD_WIDE_VEC  sc, β      →  y
 
@@ -862,11 +881,18 @@ def _lower_layernorm(inst: Instruction) -> List[Instruction]:
             eh_list=[port_eh],
             line=inst.line,
         ),
-        # 5) SIMD_SUB_WIDE_VEC: x - μ (re-emission — SDK strategy c)
+        # 5) CACHE_LOAD_WIDE: reload step 2's persisted xc (v1.6.5c §22.16
+        # on-Cluster caching — replaces the v1.6.4 SUB re-emission). The
+        # `.precision dim=0x55` + `dim_ovr` flag pin dim_sizes so this
+        # instruction's dispatch tag matches step 2's stored producer tag
+        # bit-for-bit (see the tag-stability note in this function's
+        # docstring). No B operand, no opref — the cache lookup key is
+        # this instruction's own tag bus, resolved entirely by Cluster.v's
+        # CAM.
         Instruction(
-            mnemonic='SIMD_SUB_WIDE_VEC',
-            flags=set(inst.flags) | {'opb'},
-            eh_list=[port_eh, mu_opref],
+            mnemonic='CACHE_LOAD_WIDE',
+            flags=set(inst.flags) | {'dim_ovr'},
+            eh_list=[port_eh, _make_eh('precision', {'dim': 0x55}, inst.line)],
             line=inst.line,
         ),
         # 6) SIMD_MUL_WIDE_Q4_4_SCALAR: xc × scale (v1.6.5a precision recovery).
@@ -1299,6 +1325,13 @@ _set_legal([0x63, 0x64, 0x65],
 # v1.6.1b §22 — SCALAR_RSQRT (0x66): pure unary scalar on dec_input_payload
 # (Q16.16 fixed-point). No B, no imm, no opref (mirrors 0x1B NEG shape).
 _set_legal([0x66], required={'port'}, forbidden=_ALL_DATA_EHS)
+# v1.6.5c §22.16 — CACHE_LOAD_WIDE (0x68): pure Cluster-buffer CAM
+# passthrough. No B operand at all — the cache lookup key is the
+# instruction's own tag bus, not an EH-carried operand — same no-data-EH
+# shape as 0x66. A PRECISION EH (dim_ovr flag) is expected for tag-
+# stability (see _lower_layernorm) but 'precision' is not in
+# _ALL_DATA_EHS, so it is unaffected by this forbidden set.
+_set_legal([0x68], required={'port'}, forbidden=_ALL_DATA_EHS)
 
 
 def _check_no_unresolved_aliases(inst: Instruction) -> None:

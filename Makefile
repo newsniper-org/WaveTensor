@@ -50,6 +50,12 @@ else ifeq ($(MOD),Cluster)
     VERILOG_SOURCES = $(PWD)/Cluster.v $(PWD)/PE.v $(PWD)/ISA_Decoder.v $(PWD)/EHDecode.v $(PWD)/PE_Core.v
     COCOTB_TOPLEVEL = Cluster
     COCOTB_TEST_MODULES = test_cluster
+    # v1.6.5c §22.16 — override the fragment/cache buffer slot count for
+    # multi-slot persistence tests (default 1 = v1.5.1/v1.6.5b compat).
+    # e.g. `make MOD=Cluster FRAG_SLOTS=4`
+    ifdef FRAG_SLOTS
+        COMPILE_ARGS += -GFRAG_SLOTS=$(FRAG_SLOTS)
+    endif
 else ifeq ($(MOD),Pod)
     VERILOG_SOURCES = $(PWD)/Pod.v $(PWD)/Cluster.v $(PWD)/PE.v $(PWD)/ISA_Decoder.v $(PWD)/EHDecode.v $(PWD)/PE_Core.v
     COCOTB_TOPLEVEL = Pod

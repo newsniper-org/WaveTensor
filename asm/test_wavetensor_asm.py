@@ -812,7 +812,9 @@ class TestNormMacros(unittest.TestCase):
                          f"expected [EINSUM=0x32, SCALAR_RSQRT=0x66, MUL_WIDE_Q4_4_SCALAR=0x67, MUL_WIDE_VEC=0x65], got {[hex(o) for o in opcodes]}")
 
     def test_layernorm_expansion(self):
-        """LAYERNORM → 8-primitive chain per §22.3 (with xc re-emission for fanout)."""
+        """LAYERNORM → 8-primitive chain per §22.3/§22.16 (v1.6.5c:
+        CACHE_LOAD_WIDE reload of step 2's cached xc instead of re-
+        emission)."""
         src = (
             ".default_port mask=0x01 out=0\n"
             "LAYERNORM opb .gamma 0x1111_2222_3333_4444 "
@@ -821,10 +823,40 @@ class TestNormMacros(unittest.TestCase):
         insts = wta.assemble(src)
         opcodes = [(w >> 24) & 0xFF for w in insts]
         # Expected sequence: EINSUM(MEAN), SUB_VEC, EINSUM(L2SQ), RSQRT,
-        # SUB_VEC (re-emission), MUL_SCALAR, MUL_VEC, ADD_VEC
-        expected = [0x32, 0x64, 0x32, 0x66, 0x64, 0x67, 0x65, 0x63]
+        # CACHE_LOAD_WIDE (v1.6.5c reload), MUL_SCALAR, MUL_VEC, ADD_VEC
+        expected = [0x32, 0x64, 0x32, 0x66, 0x68, 0x67, 0x65, 0x63]
         self.assertEqual(opcodes, expected,
                          f"expected {[hex(o) for o in expected]}, got {[hex(o) for o in opcodes]}")
+
+    def test_layernorm_step5_cache_load_wide_precision_guard(self):
+        """v1.6.5c §22.16 tag-stability: step 5 (CACHE_LOAD_WIDE) must carry
+        a .precision dim=0x55 EH + dim_ovr flag, pinning its dispatch tag's
+        dim_sizes to match step 2's stored producer tag (which inherits
+        0x55 from step 1's OP_MEAN) independent of step 4's SCALAR_RSQRT
+        hardcoding its own output dim_sizes to 0x00."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "LAYERNORM opb .gamma 0x1111_2222_3333_4444 "
+            ".beta 0x5555_6666_7777_8888\n"
+        )
+        insts = wta.assemble(src)
+        step5 = insts[4]
+        opcode = (step5 >> 24) & 0xFF
+        self.assertEqual(opcode, 0x68)
+        # Base header flags nibble is bits [19:16]; dim_ovr = bit 0.
+        flags_nibble = (step5 >> 16) & 0xF
+        self.assertEqual(flags_nibble & 0x1, 0x1, "dim_ovr flag must be set")
+
+    def test_encode_precision_eh_word_dim_0x55(self):
+        """Pure encoder unit test (mirrors EHDecode.v's is_precision_c
+        capture: acc_prec_dim <= cur_w0[31:24]): _encode_eh on a
+        .precision dim=0x55 EH must produce a word whose bits[31:24] ==
+        0x55, matching CACHE_LOAD_WIDE's tag-stability guard literal."""
+        eh = wta.ExtensionHeader('precision', {'dim': 0x55}, 0)
+        type_code, words = wta._encode_eh(eh)
+        self.assertEqual(type_code, wta.EH_PRECISION)
+        self.assertEqual(len(words), 1)
+        self.assertEqual((words[0] >> 24) & 0xFF, 0x55)
 
     def test_layernorm_missing_beta_raises(self):
         """LAYERNORM missing .beta raises."""
@@ -872,6 +904,37 @@ class TestNormMacros(unittest.TestCase):
         )
         insts = wta.assemble(src)
         self.assertEqual((insts[0] >> 24) & 0xFF, 0x67)
+
+    def test_primitive_cache_load_wide_legality(self):
+        """v1.6.5c §22.16: CACHE_LOAD_WIDE (0x68) — pure Cluster-buffer CAM
+        passthrough, no B operand (mirrors SCALAR_RSQRT's no-data-EH
+        shape). A .precision EH is legal (not in _ALL_DATA_EHS)."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "CACHE_LOAD_WIDE .precision dim=0x55\n"
+        )
+        insts = wta.assemble(src)
+        self.assertEqual((insts[0] >> 24) & 0xFF, 0x68)
+
+    def test_primitive_cache_load_wide_rejects_imm(self):
+        """CACHE_LOAD_WIDE with .imm16 must raise (no B operand at all)."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "CACHE_LOAD_WIDE .imm16 5\n"
+        )
+        with self.assertRaises(wta.AssemblerError):
+            wta.assemble(src)
+
+    def test_primitive_cache_load_wide_dim_ovr_requires_precision_eh(self):
+        """dim_ovr flag without a .precision EH must raise at compile time
+        (mirrors the existing prec/dim_ovr-without-EH check)."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "CACHE_LOAD_WIDE dim_ovr\n"
+        )
+        with self.assertRaises(wta.AssemblerError) as ctx:
+            wta.assemble(src)
+        self.assertIn('dim_ovr', str(ctx.exception))
 
 
 class TestWaveFragments(unittest.TestCase):
