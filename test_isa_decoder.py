@@ -3419,6 +3419,92 @@ async def test_simd_mul_wide_q4_4_scalar_negative(dut):
     assert int(dut.output_payload.value) == 0xCCCC_CCCC_CCCC_CCCC
 
 
+@cocotb.test()
+async def test_simd_mul_wide_q8_8_scalar_basic(dut):
+    """v1.6.7: SIMD_MUL_WIDE_Q8_8_SCALAR (0x69). Q8.8 broadcast to 32 int4
+    lanes with round-half-up, 16x finer B granularity than 0x67's Q4.4.
+    Test: A[i]=+2, B=Q8.8(0.5)=0x0080 -> p=2*128=256 (Q4.8), round:
+    (256+128)>>8 = 1."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    a_128 = _pack_int4_128(*[0x2] * 32)
+    instr = encode_instr(0x69, _STD_PORT(), eh_imm16(0x0080))
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide.value = a_128
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    for _ in range(30):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value) == 1:
+            break
+    assert dut.output_valid.value == 1
+    assert int(dut.output_payload.value) == 0x1111_1111_1111_1111
+
+
+@cocotb.test()
+async def test_simd_mul_wide_q8_8_scalar_negative(dut):
+    """v1.6.7: Q8.8 signed handling. A=+4, B=Q8.8(-1.0)=0xFF00.
+    p=4*(-256)=-1024 (Q4.8). round: (-1024+128)>>8 = -896>>8 = -4 = 0xC."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    a_128 = _pack_int4_128(*[0x4] * 32)
+    instr = encode_instr(0x69, _STD_PORT(), eh_imm16(0xFF00))
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide.value = a_128
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    for _ in range(30):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value) == 1:
+            break
+    assert dut.output_valid.value == 1
+    assert int(dut.output_payload.value) == 0xCCCC_CCCC_CCCC_CCCC
+
+
+@cocotb.test()
+async def test_simd_mul_wide_q8_8_scalar_precision_vs_q4_4(dut):
+    """v1.6.7: demonstrate Q8.8's finer granularity vs Q4.4 for a value
+    that Q4.4 cannot represent exactly. B=Q8.8(0.25)=0x0040 has no exact
+    Q4.4 equivalent at this magnitude combined with a large A (rounds
+    differently at Q4.4's coarser 1/16 LSB vs Q8.8's 1/256 LSB).
+    A[i]=+7, B=Q8.8(0.25): p=7*64=448 (Q4.8), round:(448+128)>>8=2."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    a_128 = _pack_int4_128(*[0x7] * 32)
+    instr = encode_instr(0x69, _STD_PORT(), eh_imm16(0x0040))
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide.value = a_128
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    for _ in range(30):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value) == 1:
+            break
+    assert dut.output_valid.value == 1
+    assert int(dut.output_payload.value) == 0x2222_2222_2222_2222
+
+
 # =============================================================================
 # v1.6.6 §22.14 — pe_ready back-pressure signal
 # =============================================================================

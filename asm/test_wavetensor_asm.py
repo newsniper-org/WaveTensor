@@ -801,20 +801,21 @@ class TestNormMacros(unittest.TestCase):
         self.assertIn('k1', str(ctx.exception))
 
     def test_rmsnorm_expansion(self):
-        """RMSNORM → 4-primitive chain: EINSUM(L2SQ)+SCALAR_RSQRT+MUL_WIDE_SCALAR+MUL_WIDE_VEC."""
+        """RMSNORM → 4-primitive chain: EINSUM(L2SQ)+SCALAR_RSQRT+MUL_WIDE_SCALAR+MUL_WIDE_VEC.
+        v1.6.7: scale mul now uses Q8.8 (0x69), not Q4.4 (0x67)."""
         src = (
             ".default_port mask=0x01 out=0\n"
             "RMSNORM opb .gamma 0xDEAD_BEEF_CAFE_BABE\n"
         )
         insts = wta.assemble(src)
         opcodes = [(w >> 24) & 0xFF for w in insts]
-        self.assertEqual(opcodes, [0x32, 0x66, 0x67, 0x65],
-                         f"expected [EINSUM=0x32, SCALAR_RSQRT=0x66, MUL_WIDE_Q4_4_SCALAR=0x67, MUL_WIDE_VEC=0x65], got {[hex(o) for o in opcodes]}")
+        self.assertEqual(opcodes, [0x32, 0x66, 0x69, 0x65],
+                         f"expected [EINSUM=0x32, SCALAR_RSQRT=0x66, MUL_WIDE_Q8_8_SCALAR=0x69, MUL_WIDE_VEC=0x65], got {[hex(o) for o in opcodes]}")
 
     def test_layernorm_expansion(self):
         """LAYERNORM → 8-primitive chain per §22.3/§22.16 (v1.6.5c:
         CACHE_LOAD_WIDE reload of step 2's cached xc instead of re-
-        emission)."""
+        emission; v1.6.7: scale mul now uses Q8.8 (0x69), not Q4.4 (0x67))."""
         src = (
             ".default_port mask=0x01 out=0\n"
             "LAYERNORM opb .gamma 0x1111_2222_3333_4444 "
@@ -823,8 +824,8 @@ class TestNormMacros(unittest.TestCase):
         insts = wta.assemble(src)
         opcodes = [(w >> 24) & 0xFF for w in insts]
         # Expected sequence: EINSUM(MEAN), SUB_VEC, EINSUM(L2SQ), RSQRT,
-        # CACHE_LOAD_WIDE (v1.6.5c reload), MUL_SCALAR, MUL_VEC, ADD_VEC
-        expected = [0x32, 0x64, 0x32, 0x66, 0x68, 0x67, 0x65, 0x63]
+        # CACHE_LOAD_WIDE (v1.6.5c reload), MUL_Q8_8_SCALAR (v1.6.7), MUL_VEC, ADD_VEC
+        expected = [0x32, 0x64, 0x32, 0x66, 0x68, 0x69, 0x65, 0x63]
         self.assertEqual(opcodes, expected,
                          f"expected {[hex(o) for o in expected]}, got {[hex(o) for o in opcodes]}")
 
@@ -904,6 +905,17 @@ class TestNormMacros(unittest.TestCase):
         )
         insts = wta.assemble(src)
         self.assertEqual((insts[0] >> 24) & 0xFF, 0x67)
+
+    def test_primitive_simd_mul_wide_q8_8_scalar_legality(self):
+        """v1.6.7: SIMD_MUL_WIDE_Q8_8_SCALAR (0x69) — same legality as
+        SIMD_MUL_WIDE_SCALAR (binary-ALU IMM XOR OPREF); full 16-bit IMM16
+        maps directly onto the Q8.8 B operand (dec_eff_b_value[15:0])."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "SIMD_MUL_WIDE_Q8_8_SCALAR .imm16 0x0180\n"   # Q8.8 = 1.5
+        )
+        insts = wta.assemble(src)
+        self.assertEqual((insts[0] >> 24) & 0xFF, 0x69)
 
     def test_primitive_cache_load_wide_legality(self):
         """v1.6.5c §22.16: CACHE_LOAD_WIDE (0x68) — pure Cluster-buffer CAM

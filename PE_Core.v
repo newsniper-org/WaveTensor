@@ -954,6 +954,38 @@ module PE_Core #(
         end
     endfunction
 
+    // v1.6.7 §22.14c — Q8.8 wide-scalar mul (further precision recovery
+    // beyond 0x67's Q4.4). B is signed Q8.8 (dec_eff_b_value[15:0]):
+    // sign + 7 int + 8 frac bits. LSB = 1/256 — 16x finer than Q4.4,
+    // pushing B-side quantization noise below the rsqrt LUT's own ~6.25%
+    // relative-error floor (workflow whro79brj precision analysis).
+    // Per-lane: p = signed(A[3:0]) * signed(B[15:0]) → 20-bit signed (Q4.8)
+    //           output = (p + 128) >>> 8 → int4 (round-half-up; half of
+    //           one output-LSB = 128 Q8.8 ticks)
+    // Mathematical bound |A|<=8, |B|<=8 → |A*B/256|<=4 fits int4 (same
+    // saturation-free bound as 0x67, just at finer B granularity).
+    function [127:0] simd_mul_wide_q8_8_scalar_128;
+        input [127:0] a;
+        input [15:0]  b;
+        reg [127:0] out;
+        reg signed [3:0]  ai;
+        reg signed [15:0] bi;
+        reg signed [19:0] p;
+        reg signed [19:0] p_round;
+        integer i;
+        begin
+            out = 128'h0;
+            for (i = 0; i < 32; i = i + 1) begin
+                ai      = $signed(a[i*4 +: 4]);
+                bi      = $signed(b);
+                p       = ai * bi;                    // Q4.8 signed (20-bit)
+                p_round = p + 20'sd128;                // round-half-up bias
+                out[i*4 +: 4] = p_round[11:8];         // arith shift right 8, low 4 bits
+            end
+            simd_mul_wide_q8_8_scalar_128 = out;
+        end
+    endfunction
+
     function [127:0] simd_add_wide_vec_128;
         input [127:0] a;
         input [ 63:0] v;
@@ -2220,7 +2252,9 @@ module PE_Core #(
                         //   second override here would be redundant and
                         //   risks reintroducing the exact literal-drift
                         //   bug the guard fixes.
-                        8'h60, 8'h61, 8'h62, 8'h63, 8'h64, 8'h65, 8'h67, 8'h68: begin
+                        // 0x69 Q8.8 SCALAR (v1.6.7): B via dec_eff_b_value[15:0]
+                        //   as signed Q8.8 — further precision recovery beyond 0x67.
+                        8'h60, 8'h61, 8'h62, 8'h63, 8'h64, 8'h65, 8'h67, 8'h68, 8'h69: begin
                             if (!dec_input_payload_wide_valid) begin
                                 error_flag   <= 1'b1;
                                 output_valid <= 1'b0;
@@ -2298,6 +2332,16 @@ module PE_Core #(
                                         // in the cached slot on a hit).
                                         output_payload   <= dec_input_payload_wide[63:0];
                                         frag_hi_pending  <= dec_input_payload_wide[127:64];
+                                    end
+                                    8'h69: begin
+                                        // v1.6.7 §22.14c — Q8.8 wide-scalar mul.
+                                        // B via dec_eff_b_value[15:0] as signed Q8.8.
+                                        output_payload   <= simd_mul_wide_q8_8_scalar_128(
+                                            dec_input_payload_wide[127:0],
+                                            dec_eff_b_value[15:0])[63:0];
+                                        frag_hi_pending  <= simd_mul_wide_q8_8_scalar_128(
+                                            dec_input_payload_wide[127:0],
+                                            dec_eff_b_value[15:0])[127:64];
                                     end
                                     default: ;
                                 endcase

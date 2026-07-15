@@ -26,6 +26,7 @@
 - v1.6.5a (2026-07-15): **SIMD_MUL_WIDE_Q4_4_SCALAR (0x67)** — B lane widening (int4 → signed Q4.4). RMSNORM/LAYERNORM 매크로가 scale 곱셈 단계에서 0x62 대신 0x67 사용 → ~4-bit 정밀도 회복 (v1.6.4 부터 남아있던 ~12-bit loss 완화). §22.14a 참조.
 - v1.6.6 (2026-07-15): **pe_ready back-pressure signal** — PE_Core FSM+pipeline 상태 통합 combinational output. Cluster→Pod→Top_Core 계층으로 aggregate (AND-reduce). MVP observe-only (ext_valid gate 안 함). §22.14b 참조.
 - v1.6.5c (2026-07-15): **multi-slot fragment buffer + CACHE_LOAD_WIDE (0x68)** — Cluster.v `FRAG_SLOTS` parameter (N-way full-tag CAM + monotonic-timestamp LRU + persistence), LAYERNORM step 5 가 xc 재발행 대신 캐시 재로드. Tag-stability 를 위한 PRECISION-EH guard (dim=0x55). 부수적으로 EHDecode.v 0x63/64/65 legality 선행 버그 (LAYERNORM 이 실제로는 무조건 decode-error 나던 상태) 발견 및 수정. §22.16 참조.
+- v1.6.7 (2026-07-16): **SIMD_MUL_WIDE_Q8_8_SCALAR (0x69)** — B lane 추가 widening (Q4.4 → Q8.8, LSB 1/16 → 1/256). RMSNORM/LAYERNORM scale 곱셈이 0x67 대신 0x69 사용 → B-side quantization 을 rsqrt LUT 의 ~6.25% floor 아래로 완전히 밀어냄 (precision-zero-loss-research workflow whro79brj 결과). §22.14e 참조.
 
 참조 구현 마이그레이션: **진행 중 (2026-07-12 개시)** — 참조 보드가 XCAU25P → LFE5U-85F → Avant G70 순으로 이동, 아래 §"참조 구현 마이그레이션 노트" 참조.
 
@@ -1781,6 +1782,35 @@ pe_ready = (frag_state == FRAG_IDLE)
 - v1.6.5a Q4.4 mult array: ~350-500 LUT (기존 0x62 마출 대체가 아닌 새 함수)
 - v1.6.6 pe_ready: ~10 LUT (combinational, wire fan-out만)
 - 총 **~360-510 LUT / Cluster** (누적 v1.6 = ~5.6-5.8K LUT)
+
+#### 22.14e v1.6.7 — SIMD_MUL_WIDE_Q8_8_SCALAR (0x69) landing (2026-07-16)
+
+precision-zero-loss-research workflow (`whro79brj`, 2026-07-15, 24 agents) 의 v1.6.7 pick 을 그대로 landing. §22.14a 의 Q4.4 (0x67) 이후 남은 B-side 정밀도 손실을 16× 추가 회복.
+
+**목적**: rsqrt LUT 자체가 ~6.25% relative error 를 갖는 근본 floor 임이 밝혀짐 (whro79brj Investigator 0). Q4.4 quantization (~3.13% @ r=1) 은 이미 LUT floor 근처지만 여전히 비교 가능한 자릿수 — Q8.8 (~0.20% @ r=1) 은 LUT floor 대비 확실히 sub-noise 로 밀어냄.
+
+**Q8.8 arithmetic**:
+- B interpretation: signed 16-bit, sign + 7 int + 8 frac bits (range 근사 [-128.0, +127.996], LSB = 1/256)
+- Per lane: `p = signed(A[3:0]) * signed(B[15:0])` → 20-bit signed Q4.8 intermediate
+- Round-half-up: `(p + 128) >>> 8` → int4
+- Mathematical bound: 0x67 와 동일 (|A|≤8 라는 LAYERNORM/RMSNORM 사용 맥락에서 int4 output 이 saturation 없이 fit)
+
+**Legality**: 0x60/61/62/67 legality entry 에 0x69 편입 (동일 binary-ALU IMM XOR OPREF shape). `is_alu_binary`, `_LEGAL[0x60,61,62,67,69]`, `opcode_supported` 모두 갱신.
+
+**Assembler mnemonic**: `SIMD_MUL_WIDE_Q8_8_SCALAR = 0x69`. 16-bit IMM16 EH 가 dec_eff_b_value[15:0] 에 그대로 매핑 (별도 EH 확장 불필요 — whro79brj 의 핵심 발견: IMM16 EH 가 이미 16-bit 전체를 실어 나름).
+
+**RMSNORM/LAYERNORM 매크로 갱신**: scale 곱셈 단계에서 0x67 → 0x69 로 교체. SDK 는 `q8_8 = clamp_saturate((rsqrt_q16_16 + 0x80) >> 8, INT16_MIN, INT16_MAX)` 로 Q16.16 → Q8.8 변환.
+
+**Test vectors**:
+- A=+2, B=Q8.8(+0.5)=0x0080 → (2×128+128)>>8 = 1 — verified
+- A=+4, B=Q8.8(-1.0)=0xFF00 → (4×(-256)+128)>>8 = -4 (0xC) — verified
+- A=+7, B=Q8.8(+0.25)=0x0040 → (7×64+128)>>8 = 2 — verified (Q4.4 로는 표현 불가능한 세분도 시연)
+
+**회귀**: Cocotb 230→236(+6: Q8.8 기본/signed/precision-demo ×3 @ ISA_Decoder), Assembler 86→86 순증분은 test_rmsnorm/layernorm_expansion opcode 시퀀스 갱신(0x67→0x69) + 신규 legality 테스트 1개.
+
+**HW 비용**: Q8.8 곱셈 array ~2.2-2.9× Q4.4 baseline (곱셈기 폭이 8-bit→16-bit) — hand-count 추정치, 실제 synthesis 미검증. DSP48 inference 시 LUT 비용은 훨씬 낮아질 수 있음 (whro79brj 잔여 리스크 항목).
+
+**남은 스코프**: rsqrt LUT ~6.25% floor 는 이 landing 으로도 해소 안 됨 — v1.8 후보 (LUT bin 해상도 확장 또는 Newton-Raphson refinement). v1.7 Q4.4-WIDEN(output-side rounding 제거)은 별도 landing 대상.
 
 ### 22.15 남은 v1.6.5c + v1.6.7+ 스코프 (v1.6.5c 는 §22.16 으로 landing 완료)
 

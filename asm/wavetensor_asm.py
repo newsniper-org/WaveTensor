@@ -95,6 +95,10 @@ MNEMONIC_TO_OPCODE: Dict[str, int] = {
     # v1.6.5c §22.16 — persistent Cluster-buffer cache reload (replaces
     # LAYERNORM's xc re-emission with a direct on-Cluster reload).
     'CACHE_LOAD_WIDE': 0x68,
+    # v1.6.7 §22.14c — Q8.8 wide-scalar mul (further precision recovery
+    # beyond 0x67's Q4.4; pushes B-side quantization below the rsqrt LUT's
+    # own ~6.25% relative-error floor).
+    'SIMD_MUL_WIDE_Q8_8_SCALAR': 0x69,
 }
 OPCODE_TO_MNEMONIC: Dict[int, str] = {v: k for k, v in MNEMONIC_TO_OPCODE.items()}
 
@@ -766,12 +770,14 @@ def _lower_rmsnorm(inst: Instruction) -> List[Instruction]:
             eh_list=[port_eh],
             line=inst.line,
         ),
-        # v1.6.5a §22.14 — scale is Q16.16; use Q4.4 wide-scalar mul (0x67)
-        # for precision recovery. SDK routes bits [11:4] of the Q16.16
-        # rsqrt output as signed Q4.4 broadcast, recovering ~4-bit precision
-        # vs the earlier int4-truncated form (0x62).
+        # v1.6.7 §22.14c — scale is Q16.16; use Q8.8 wide-scalar mul (0x69)
+        # for precision recovery beyond 0x67's Q4.4. SDK computes
+        # q8_8 = clamp_saturate((rsqrt_q16_16 + 0x80) >> 8, INT16_MIN,
+        # INT16_MAX) and routes that 16-bit signed Q8.8 value as B,
+        # pushing B-side quantization noise below the rsqrt LUT's own
+        # ~6.25% relative-error floor (workflow whro79brj analysis).
         Instruction(
-            mnemonic='SIMD_MUL_WIDE_Q4_4_SCALAR',
+            mnemonic='SIMD_MUL_WIDE_Q8_8_SCALAR',
             flags=set(inst.flags),
             eh_list=[port_eh, _make_eh('opref', {}, inst.line)],
             line=inst.line,
@@ -821,7 +827,7 @@ def _lower_layernorm(inst: Instruction) -> List[Instruction]:
       3) L2SQ_IJKLM       xc           →  sq_scalar   (variance sum)
       4) SCALAR_RSQRT     sq_scalar    →  scale       (Q16.16)
       5) CACHE_LOAD_WIDE                →  xc[abcde]  (reload step 2's cached xc)
-      6) SIMD_MUL_WIDE_Q4_4_SCALAR  xc, scale[3:0]  →  nrm
+      6) SIMD_MUL_WIDE_Q8_8_SCALAR  xc, scale[15:0]  →  nrm
       7) SIMD_MUL_WIDE_VEC  nrm, γ     →  sc
       8) SIMD_ADD_WIDE_VEC  sc, β      →  y
 
@@ -895,9 +901,11 @@ def _lower_layernorm(inst: Instruction) -> List[Instruction]:
             eh_list=[port_eh, _make_eh('precision', {'dim': 0x55}, inst.line)],
             line=inst.line,
         ),
-        # 6) SIMD_MUL_WIDE_Q4_4_SCALAR: xc × scale (v1.6.5a precision recovery).
+        # 6) SIMD_MUL_WIDE_Q8_8_SCALAR: xc × scale (v1.6.7 precision recovery
+        # beyond v1.6.5a's Q4.4 — see the tag-stability-adjacent note in
+        # _lower_rmsnorm for the SDK's Q16.16→Q8.8 conversion).
         Instruction(
-            mnemonic='SIMD_MUL_WIDE_Q4_4_SCALAR',
+            mnemonic='SIMD_MUL_WIDE_Q8_8_SCALAR',
             flags=set(inst.flags),
             eh_list=[port_eh, _make_eh('opref', {}, inst.line)],
             line=inst.line,
@@ -1311,8 +1319,9 @@ _set_legal([0x32], required={'port', 'subscript', 'opref'},
 _set_legal([0x40, 0x41, 0x42, 0x43, 0x44],
            required={'port'}, forbidden=_ALL_DATA_EHS)
 # v1.6.1b §22 — SIMD_ADD/SUB/MUL_WIDE_SCALAR (0x60/61/62): binary-ALU
-# style, B_scalar via imm16 XOR opref (dec_eff_b_value[3:0]).
-_set_legal([0x60, 0x61, 0x62, 0x67],
+# style, B_scalar via imm16 XOR opref (dec_eff_b_value[3:0]). 0x67/0x69
+# (v1.6.5a/v1.6.7) share the same shape at finer B precision (Q4.4/Q8.8).
+_set_legal([0x60, 0x61, 0x62, 0x67, 0x69],
            required={'port'}, forbidden={'subscript', 'mem'},
            allow_imm_xor_opref=True)
 # v1.6.1b §22 — SIMD_ADD/SUB/MUL_WIDE_VEC (0x63/64/65): V (64-bit 4D

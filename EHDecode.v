@@ -551,7 +551,9 @@ module EHDecode #(
             //   B_scalar via IMM XOR OPREF (like ALU binary).
             // 0x67: SIMD_MUL_WIDE_Q4_4_SCALAR (v1.6.5a) — B via 8-bit
             //   Q4.4 slice of dec_eff_b_value[7:0]; same legality shape.
-            8'h60, 8'h61, 8'h62, 8'h67: begin
+            // 0x69: SIMD_MUL_WIDE_Q8_8_SCALAR (v1.6.7) — B via 16-bit
+            //   Q8.8 slice of dec_eff_b_value[15:0]; same legality shape.
+            8'h60, 8'h61, 8'h62, 8'h67, 8'h69: begin
                 req_port         = 1'b1;
                 forbid_subscript = 1'b1; forbid_mem = 1'b1;
             end
@@ -612,7 +614,9 @@ module EHDecode #(
                          (cb_opcode == 8'h60) || (cb_opcode == 8'h61) ||
                          (cb_opcode == 8'h62) ||
                          // v1.6.5a §22.14 — Q4.4 wide-scalar mul same shape.
-                         (cb_opcode == 8'h67);
+                         (cb_opcode == 8'h67) ||
+                         // v1.6.7 §22.14c — Q8.8 wide-scalar mul same shape.
+                         (cb_opcode == 8'h69);
     wire alu_binary_xor_err = is_alu_binary && (any_imm == acc_any_opref);
 
     wire missing_eh   = (req_port      && !acc_any_port)
@@ -648,7 +652,9 @@ module EHDecode #(
          // v1.6.5a §22.14 — SIMD_MUL_WIDE_Q4_4_SCALAR
          (cb_opcode == 8'h67) ||
          // v1.6.5c §22.16 — CACHE_LOAD_WIDE
-         (cb_opcode == 8'h68);
+         (cb_opcode == 8'h68) ||
+         // v1.6.7 §22.14c — SIMD_MUL_WIDE_Q8_8_SCALAR
+         (cb_opcode == 8'h69);
 
     wire bh_len_mismatch = (cb_bh_len != {{(8-OFF_W){1'b0}}, stg_off});
     wire reserved_nonzero = (cb_reserved != 8'h00);
