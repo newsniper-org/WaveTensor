@@ -82,7 +82,14 @@ module Cluster #(
     output [ADDR_WIDTH-1:0]     mem_addr,
 
     output                      any_error_flag,
-    output                      any_lower_required
+    output                      any_lower_required,
+    // v1.5.3 §20 (adversarial review bug 3+4): dedicated output-collision
+    // pulse — asserts on any cycle where >1 unit (MU / DU / L-PE) drove
+    // output_valid or mem_req simultaneously. Losers are silently dropped
+    // by atomic per-source arbitration; software should observe this flag
+    // to detect and recover. Also folded into any_error_flag so legacy
+    // consumers surface it as a generic error.
+    output                      any_output_collision
 );
 
     localparam NUM_PES = PE_ROWS * PE_COLS;
@@ -515,6 +522,8 @@ module Cluster #(
                     .dec_eff_opref_kind        (dec_eff_opref_kind),
                     .dec_eff_mem_offset        (dec_eff_mem_offset),
                     .dec_eff_subscript         (dec_eff_subscript),
+                    .dec_eff_subscript_hi      (dec_eff_subscript_hi),
+                    .dec_eff_imm64_hi          (dec_eff_imm64_hi),
                     .dec_input_payload_wide    (dec_input_payload_wide),
                     .dec_input_payload_wide_valid (dec_input_payload_wide_valid),
                     .dec_eff_output_port_id    (dec_eff_output_port_id),
@@ -573,6 +582,8 @@ module Cluster #(
         .dec_eff_opref_kind        (dec_eff_opref_kind),
         .dec_eff_mem_offset        (dec_eff_mem_offset),
         .dec_eff_subscript         (dec_eff_subscript),
+        .dec_eff_subscript_hi      (dec_eff_subscript_hi),
+        .dec_eff_imm64_hi          (dec_eff_imm64_hi),
         .dec_input_payload_wide    (dec_input_payload_wide),
         .dec_input_payload_wide_valid (dec_input_payload_wide_valid),
         .dec_eff_output_port_id    (dec_eff_output_port_id),
@@ -630,6 +641,8 @@ module Cluster #(
         .dec_eff_opref_kind        (dec_eff_opref_kind),
         .dec_eff_mem_offset        (dec_eff_mem_offset),
         .dec_eff_subscript         (dec_eff_subscript),
+        .dec_eff_subscript_hi      (dec_eff_subscript_hi),
+        .dec_eff_imm64_hi          (dec_eff_imm64_hi),
         .dec_input_payload_wide    (dec_input_payload_wide),
         .dec_input_payload_wide_valid (dec_input_payload_wide_valid),
         .dec_eff_output_port_id    (dec_eff_output_port_id),
@@ -757,58 +770,100 @@ module Cluster #(
     reg                  m_mem_req;
     reg [ADDR_WIDTH-1:0] m_mem_addr;
     reg                  m_err, m_lwr;
+    reg                  m_output_collision;  // v1.5.3 §20 bug-3/4 fix
+    reg                  claimed;             // per-cycle "winner already picked"
+    reg [NUM_PES-1:0]    pe_any_req;
+
+    // v1.5.3 §20 fix (adversarial review bug 3+4):
+    //
+    // Legacy OR-merge treated the data channel (tag/payload/opcode/frag_hdr/
+    // valid) and the memory channel (mem_req/mem_addr) as INDEPENDENT priority
+    // chains. On collision cycles a downstream consumer would receive one
+    // source's tag paired with another source's mem_req/mem_addr — a corrupted
+    // tuple. Worse, MU multi-cycle SIG_BMM_3 emit (2 sequential mu_out_valid
+    // cycles) doubled the L-PE-drop window with no error indication.
+    //
+    // Fix: ATOMIC per-source arbitration. Whichever source wins the cycle
+    // contributes BOTH its data-channel fields AND its memory-channel fields
+    // (or neither). Losing sources raise `m_output_collision` so downstream
+    // fabric knows a fragment/mem_req was silently dropped.
+    //
+    // Longer-term (v1.6+): add per-source ready/valid handshake + skid buffer.
+    // For now `any_output_collision` surfaces as an error signal so software
+    // can detect the drop.
 
     always @(*) begin
-        m_tag       = {TAG_WIDTH{1'b0}};
-        m_payload   = {ADDR_WIDTH{1'b0}};
-        m_opcode    = 8'h00;
-        m_frag_hdr  = 8'h00;
-        m_valid     = 1'b0;
-        m_mem_req   = 1'b0;
-        m_mem_addr  = {ADDR_WIDTH{1'b0}};
-        m_err       = 1'b0;
-        m_lwr       = 1'b0;
-        if (mu_out_valid) begin
+        m_tag              = {TAG_WIDTH{1'b0}};
+        m_payload          = {ADDR_WIDTH{1'b0}};
+        m_opcode           = 8'h00;
+        m_frag_hdr         = 8'h00;
+        m_valid            = 1'b0;
+        m_mem_req          = 1'b0;
+        m_mem_addr         = {ADDR_WIDTH{1'b0}};
+        m_err              = 1'b0;
+        m_lwr              = 1'b0;
+        m_output_collision = 1'b0;
+        claimed            = 1'b0;
+
+        // Precompute per-PE any-request bits for collision detection.
+        for (i = 0; i < NUM_PES; i = i + 1) begin
+            pe_any_req[i] = pe_out_valid[i] | pe_mem_req[i];
+        end
+
+        // Priority: MU > DU > L-PE[0..N-1]. Winner is ATOMIC (data + mem
+        // from same source). Losers with any_req=1 raise output_collision.
+        if (mu_out_valid || mu_mem_req) begin
             m_tag      = mu_out_tag;
             m_payload  = mu_out_payload;
             m_opcode   = mu_out_opcode;
             m_frag_hdr = mu_out_frag_hdr;
-            m_valid    = 1'b1;
-        end
-        if (mu_mem_req) begin
-            m_mem_req  = 1'b1;
+            m_valid    = mu_out_valid;
+            m_mem_req  = mu_mem_req;
             m_mem_addr = mu_mem_addr;
+            claimed    = 1'b1;
         end
-        m_err = m_err | mu_error;
-        m_lwr = m_lwr | mu_lower;
-        if (du_out_valid && !m_valid) begin
-            m_tag      = du_out_tag;
-            m_payload  = du_out_payload;
-            m_opcode   = du_out_opcode;
-            m_frag_hdr = du_out_frag_hdr;
-            m_valid    = 1'b1;
+        // DU: take if MU didn't claim; otherwise flag collision.
+        if (du_out_valid || du_mem_req) begin
+            if (!claimed) begin
+                m_tag      = du_out_tag;
+                m_payload  = du_out_payload;
+                m_opcode   = du_out_opcode;
+                m_frag_hdr = du_out_frag_hdr;
+                m_valid    = du_out_valid;
+                m_mem_req  = du_mem_req;
+                m_mem_addr = du_mem_addr;
+                claimed    = 1'b1;
+            end else begin
+                m_output_collision = 1'b1;
+            end
         end
-        if (du_mem_req && !m_mem_req) begin
-            m_mem_req  = 1'b1;
-            m_mem_addr = du_mem_addr;
-        end
-        m_err = m_err | du_error;
-        m_lwr = m_lwr | du_lower;
+        // L-PE grid: same priority + collision detection.
         for (i = 0; i < NUM_PES; i = i + 1) begin
-            if (pe_out_valid[i] && !m_valid) begin
-                m_tag      = pe_out_tag[i];
-                m_payload  = pe_out_payload[i];
-                m_opcode   = pe_out_opcode[i];
-                m_frag_hdr = pe_out_frag_hdr[i];
-                m_valid    = 1'b1;
+            if (pe_any_req[i]) begin
+                if (!claimed) begin
+                    m_tag      = pe_out_tag[i];
+                    m_payload  = pe_out_payload[i];
+                    m_opcode   = pe_out_opcode[i];
+                    m_frag_hdr = pe_out_frag_hdr[i];
+                    m_valid    = pe_out_valid[i];
+                    m_mem_req  = pe_mem_req[i];
+                    m_mem_addr = pe_mem_addr[i];
+                    claimed    = 1'b1;
+                end else begin
+                    m_output_collision = 1'b1;
+                end
             end
-            if (pe_mem_req[i] && !m_mem_req) begin
-                m_mem_req  = 1'b1;
-                m_mem_addr = pe_mem_addr[i];
-            end
+        end
+
+        // OR-reduce error/lower across all sources (unchanged).
+        m_err = mu_error | du_error;
+        m_lwr = mu_lower | du_lower;
+        for (i = 0; i < NUM_PES; i = i + 1) begin
             m_err = m_err | pe_error[i];
             m_lwr = m_lwr | pe_lower[i];
         end
+        // Fold collision into the error flag so existing consumers surface it.
+        m_err = m_err | m_output_collision;
     end
 
     assign ext_out_tag        = m_tag;
@@ -820,5 +875,6 @@ module Cluster #(
     assign mem_addr           = m_mem_addr;
     assign any_error_flag     = m_err;
     assign any_lower_required = m_lwr;
+    assign any_output_collision = m_output_collision;   // v1.5.3 §20 bug-3/4
 
 endmodule

@@ -171,6 +171,8 @@ module ISA_Decoder #(
         .dec_eff_opref_kind        (dec_eff_opref_kind),
         .dec_eff_mem_offset        (dec_eff_mem_offset),
         .dec_eff_subscript         (dec_eff_subscript),
+        .dec_eff_subscript_hi      (dec_eff_subscript_hi),
+        .dec_eff_imm64_hi          (dec_eff_imm64_hi),
         .dec_input_payload_wide    (dec_input_payload_wide),
         .dec_input_payload_wide_valid (dec_input_payload_wide_valid),
         .dec_eff_output_port_id    (dec_eff_output_port_id),

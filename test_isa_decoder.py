@@ -2201,3 +2201,384 @@ async def test_wide_payload_zero_when_invalid(dut):
     assert dut.output_valid.value == 1
     assert int(dut.output_payload.value) == 15  # legacy ADD unaffected
     assert int(dut.dec_input_payload_wide_valid_out.value) == 0
+
+
+# =============================================================================
+# v1.5.3 §20 — SIG_BMM_3 first wide-consumer primitive
+# =============================================================================
+#
+# 'abcij,abcjk->abcik' — 3-batch matmul at int4, 5D 2×2×2×2×2 = 32 nibbles
+# per tensor = 128-bit A/B/O. Input via dec_input_payload_wide (A at
+# wide[127:0], B at wide[255:128]). Output split into 2 wave tokens with
+# frag_hdr = 0x01, 0x11.
+#
+# Legacy signatures (SIG_BMM, SIG_MATMUL, etc.) are guarded by
+# `dec_eff_subscript_hi == 48'h0` — a wave with nonzero subscript_hi that
+# doesn't match SIG_BMM_3 lands in lower_required, not a legacy arm.
+
+
+def _pack_int4_128(*nibbles):
+    """Pack 32 int4 nibbles into a 128-bit value (little-endian).
+    Position 0 = bits [3:0], position 31 = bits [127:124]."""
+    if len(nibbles) != 32:
+        raise ValueError(f"expected 32 nibbles, got {len(nibbles)}")
+    v = 0
+    for i, n in enumerate(nibbles):
+        v |= (n & 0xF) << (i * 4)
+    return v
+
+
+def _pack_int4_wide(a_128, b_128):
+    """Pack A||B into the 256-bit low half of dec_input_payload_wide.
+    A at wide[127:0], B at wide[255:128]."""
+    return (a_128 & ((1 << 128) - 1)) | ((b_128 & ((1 << 128) - 1)) << 128)
+
+
+def _matmul_2x2_int4_sim(a, b):
+    """Python reference for matmul_2x2_int4 (mirror of Verilog function).
+    a, b: 16-bit values holding 4 signed int4 nibbles."""
+    def s4(x):
+        x &= 0xF
+        return x - 16 if x & 0x8 else x
+    a00, a01, a10, a11 = s4(a & 0xF), s4((a >> 4) & 0xF), s4((a >> 8) & 0xF), s4((a >> 12) & 0xF)
+    b00, b01, b10, b11 = s4(b & 0xF), s4((b >> 4) & 0xF), s4((b >> 8) & 0xF), s4((b >> 12) & 0xF)
+    r00 = (a00 * b00 + a01 * b10) & 0xF
+    r01 = (a00 * b01 + a01 * b11) & 0xF
+    r10 = (a10 * b00 + a11 * b10) & 0xF
+    r11 = (a10 * b01 + a11 * b11) & 0xF
+    return (r11 << 12) | (r10 << 8) | (r01 << 4) | r00
+
+
+def _bmm_3_sim(a_128, b_128):
+    """Python reference for SIG_BMM_3. Returns (lo_64, hi_64) matching the
+    two wave-token fragments the HW emits."""
+    def sub(v, batch_idx):
+        # sub-payload for batch (a,b,c) at (a*4+b*2+c)*16
+        return (v >> (batch_idx * 16)) & 0xFFFF
+    r = [_matmul_2x2_int4_sim(sub(a_128, i), sub(b_128, i)) for i in range(8)]
+    # fragment 0 = a=0 batches (0..3), fragment 1 = a=1 batches (4..7)
+    lo = r[0] | (r[1] << 16) | (r[2] << 32) | (r[3] << 48)
+    hi = r[4] | (r[5] << 16) | (r[6] << 32) | (r[7] << 48)
+    return lo, hi
+
+
+# SIG_BMM_3 subscript encoding (mirrors PE_Core.v localparams).
+# eh_subscript packs into 48-bit body: {A_pack[15:0], B_pack[15:0], O_pack[15:0]}.
+_BMM3_A_LO = 0x4321
+_BMM3_B_LO = 0x5321
+_BMM3_O_LO = 0x4321
+_BMM3_A_HI = 0x0005
+_BMM3_B_HI = 0x0006
+_BMM3_O_HI = 0x0006
+
+
+async def _fire_bmm_3(dut, a_128, b_128, dim=0x55, wide_valid=1):
+    """Helper: fire a SIG_BMM_3 instruction with A/B packed into wide input.
+    Returns after the SECOND output_valid pulse or timeout."""
+    wide = _pack_int4_wide(a_128, b_128)
+    # 2 SUBSCRIPT EHs (lo + hi) + PORT + OPREF (opcode 0x32 requires OPREF)
+    instr = encode_instr(0x32, _STD_PORT(),
+                         eh_subscript(_BMM3_A_LO, _BMM3_B_LO, _BMM3_O_LO),
+                         eh_subscript(_BMM3_A_HI, _BMM3_B_HI, _BMM3_O_HI),
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG(dim=dim)
+    dut.input_payload.value = 0
+    dut.input_payload_b.value = 0
+    dut.input_payload_b_valid.value = 1
+    dut.input_payload_wide.value = wide
+    dut.input_payload_wide_valid.value = wide_valid
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    # Poll — first output_valid (frag 0)
+    saw_frag0 = None
+    for _ in range(80):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value) == 1:
+            saw_frag0 = {
+                'payload': int(dut.output_payload.value),
+                'frag_hdr': int(dut.output_frag_hdr.value),
+                'tag': int(dut.output_tag.value),
+            }
+            break
+        if int(dut.error_flag.value) or int(dut.lower_required.value):
+            return {'fail': True,
+                    'error': int(dut.error_flag.value),
+                    'lower': int(dut.lower_required.value)}
+    if saw_frag0 is None:
+        return {'timeout': True}
+    # Next cycle: frag 1
+    await RisingEdge(dut.clk)
+    await Timer(1, units="ns")
+    saw_frag1 = {
+        'payload': int(dut.output_payload.value),
+        'frag_hdr': int(dut.output_frag_hdr.value),
+        'valid': int(dut.output_valid.value),
+        'tag': int(dut.output_tag.value),
+    }
+    # Cycle N+2: should return to idle
+    await RisingEdge(dut.clk)
+    await Timer(1, units="ns")
+    saw_after = {
+        'valid': int(dut.output_valid.value),
+        'frag_hdr': int(dut.output_frag_hdr.value),
+    }
+    return {'frag0': saw_frag0, 'frag1': saw_frag1, 'after': saw_after}
+
+
+@cocotb.test()
+async def test_bmm_3_identity_per_batch(dut):
+    """v1.5.3: SIG_BMM_3 with A = identity per each of 8 batches → R = B."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # int4 identity per 2x2 batch: nibble packing is [a11 a10 a01 a00]
+    # from MSB to LSB (matmul_2x2_int4 reads a[0 +: 4] = a00). Identity
+    # matrix = [[1,0],[0,1]] → a00=1, a01=0, a10=0, a11=1 → 0x1001.
+    identity = 0x1001
+    a_128 = 0
+    for i in range(8):
+        a_128 |= identity << (i * 16)
+    # B: distinctive per batch
+    b_batches = [0x1234, 0x5678, 0x9ABC, 0xDEF0,
+                 0x0FED, 0xCBA9, 0x8765, 0x4321]
+    b_128 = 0
+    for i, x in enumerate(b_batches):
+        b_128 |= (x & 0xFFFF) << (i * 16)
+
+    r = await _fire_bmm_3(dut, a_128, b_128)
+    assert 'fail' not in r and 'timeout' not in r, f"got {r}"
+    # Identity × B = B → both frags equal expected halves of b_128
+    exp_lo = b_128 & ((1 << 64) - 1)
+    exp_hi = (b_128 >> 64) & ((1 << 64) - 1)
+    assert r['frag0']['payload'] == exp_lo, f"frag0 {r['frag0']['payload']:016x} != {exp_lo:016x}"
+    assert r['frag0']['frag_hdr'] == 0x01
+    assert r['frag1']['payload'] == exp_hi, f"frag1 {r['frag1']['payload']:016x} != {exp_hi:016x}"
+    assert r['frag1']['frag_hdr'] == 0x11
+    assert r['frag1']['valid'] == 1
+
+
+@cocotb.test()
+async def test_bmm_3_computed_matmul(dut):
+    """v1.5.3: SIG_BMM_3 with concrete non-trivial A and B — result matches
+    Python reference."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # Distinctive A and B per batch
+    a_128 = 0
+    b_128 = 0
+    for i in range(8):
+        a_128 |= (0x1234 + i) << (i * 16)
+        b_128 |= (0x2345 + i * 2) << (i * 16)
+    r = await _fire_bmm_3(dut, a_128, b_128)
+    assert 'fail' not in r, f"got {r}"
+    exp_lo, exp_hi = _bmm_3_sim(a_128, b_128)
+    assert r['frag0']['payload'] == exp_lo
+    assert r['frag1']['payload'] == exp_hi
+
+
+@cocotb.test()
+async def test_bmm_3_two_fragment_output_sequence(dut):
+    """v1.5.3a: verify frag_hdr sequence is exactly 0x01 → 0x11 and
+    output_frag_hdr returns to 0x00 the cycle AFTER (NRZ hazard test)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    a_128 = _pack_int4_128(*([0] * 32))
+    b_128 = _pack_int4_128(*([1] * 32))
+    r = await _fire_bmm_3(dut, a_128, b_128)
+    assert 'fail' not in r
+    assert r['frag0']['frag_hdr'] == 0x01
+    assert r['frag1']['frag_hdr'] == 0x11
+    # NRZ hazard: cycle N+2 must snap back to output_valid=0, frag_hdr=0x00
+    assert r['after']['valid'] == 0
+    assert r['after']['frag_hdr'] == 0x00
+
+
+@cocotb.test()
+async def test_bmm_3_wide_valid_gate_error_flag(dut):
+    """v1.5.3 §20: SIG_BMM_3 with wide_valid=0 is illegal (fabric contract
+    violation) — raises error_flag, not lower_required."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    a_128 = _pack_int4_128(*([1] * 32))
+    b_128 = _pack_int4_128(*([1] * 32))
+    r = await _fire_bmm_3(dut, a_128, b_128, wide_valid=0)
+    assert r.get('fail') is True
+    assert r['error'] == 1
+
+
+@cocotb.test()
+async def test_bmm_3_tag_stability_across_fragments(dut):
+    """v1.5.3a: output_tag is bit-exact across the two fragments (only
+    frag_hdr differs)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    a_128 = _pack_int4_128(*[(i & 0xF) for i in range(32)])
+    b_128 = _pack_int4_128(*[((i + 3) & 0xF) for i in range(32)])
+    r = await _fire_bmm_3(dut, a_128, b_128)
+    assert 'fail' not in r
+    assert r['frag0']['tag'] == r['frag1']['tag']
+
+
+@cocotb.test()
+async def test_legacy_sig_with_subscript_hi_nonzero_lowers(dut):
+    """v1.5.3 §20 regression guard: legacy signature (e.g. SIG_MATMUL) with
+    NONZERO subscript_hi must NOT execute — the two-level dispatch rejects it
+    as an unknown wide-consumer signature."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # SIG_MATMUL subscript = (A=ij=0x0021, B=jk=0x0032, O=ik=0x0031)
+    # + a spurious second SUBSCRIPT EH — hi should not be zero.
+    instr = encode_instr(0x32, _STD_PORT(),
+                         eh_subscript(0x0021, 0x0032, 0x0031),
+                         eh_subscript(0x0007, 0x0000, 0x0000),  # spurious hi
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    await fire(dut, instr, _STD_TAG(dim=0x05),
+               payload_a=pack16(1, 2, 3, 4), payload_b=pack16(5, 6, 7, 8),
+               payload_b_valid=1)
+    # Must NOT execute as SIG_MATMUL — falls into unknown wide-consumer arm
+    assert dut.output_valid.value == 0
+    assert dut.lower_required.value == 1
+
+
+@cocotb.test()
+async def test_bmm_3_unknown_wide_sig_lowers(dut):
+    """v1.5.3 §20: nonzero subscript_hi that isn't SIG_BMM_3_HI must
+    lower_required (no matching wide-consumer primitive)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # SIG_BMM_3_LO but garbage HI
+    instr = encode_instr(0x32, _STD_PORT(),
+                         eh_subscript(_BMM3_A_LO, _BMM3_B_LO, _BMM3_O_LO),
+                         eh_subscript(0xABCD, 0xEF01, 0x2345),
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    dut.input_payload_wide.value = 0
+    dut.input_payload_wide_valid.value = 1
+    await fire(dut, instr, _STD_TAG(dim=0x55),
+               payload_a=0, payload_b=0, payload_b_valid=1)
+    assert dut.output_valid.value == 0
+    assert dut.lower_required.value == 1
+
+
+# =============================================================================
+# v1.5.3 §20 — adversarial review bug 5 fix: MUL/DIV in-flight collision tests
+# =============================================================================
+#
+# PE_Core.v drain gate (line ~1118) blocks SIG_BMM_3 dispatch when any
+# MUL/DIV pulse would collide with fragment 0 or fragment 1. PE_Core.v
+# MUL launch gate (line ~721) blocks a new MUL from entering the pipeline
+# during FRAG_EMIT_HI. Both must be regression-tested — the review agent
+# noted zero MUL/DIV+SIG_BMM_3 co-schedule coverage in the existing suite.
+
+
+@cocotb.test()
+async def test_mul_then_bmm3_drain_gate(dut):
+    """v1.5.3 §20 bug-5: fire MUL (0x12) at cycle N, SIG_BMM_3 at N+1.
+    MUL's 2-stage pipeline (p1 → p2) has mul_valid_p2 pulsing at N+2 —
+    exactly where SIG_BMM_3's fragment 0 would land absent the gate.
+    Compound drain gate must reject SIG_BMM_3 with lower_required so the
+    MUL result surfaces cleanly."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # MUL (0x12) legality: PORT required, IMM_XOR_OPREF (need exactly one).
+    # Use IMM64 for the multiplier — dec_eff_b_value picks it up.
+    mul_instr = encode_instr(0x12, _STD_PORT(), eh_imm64(2))
+    dut.instruction.value = mul_instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0xDEADBEEF
+    dut.input_payload_b.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide.value = 0
+    dut.input_payload_wide_valid.value = 0
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+
+    # Poll for MUL result — should surface cleanly (2-stage pipe + register)
+    saw_mul = False
+    for _ in range(20):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value) == 1 and int(dut.opcode_out.value) == 0x12:
+            assert int(dut.output_payload.value) == 0xDEADBEEF * 2
+            assert int(dut.output_frag_hdr.value) == 0x00
+            saw_mul = True
+            break
+    assert saw_mul, "MUL result did not surface"
+
+
+@cocotb.test()
+async def test_bmm3_then_mul_launch_gate(dut):
+    """v1.5.3 §20 bug-5: fire SIG_BMM_3 at cycle N; MUL at cycle N+1
+    during FRAG_EMIT_HI must be prevented from entering the pipeline.
+    Verify via hierarchical probe: mul_valid_p1 stays 0 on the emit cycle."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    a_128 = _pack_int4_128(*([1] * 32))
+    b_128 = _pack_int4_128(*([1] * 32))
+    wide = _pack_int4_wide(a_128, b_128)
+    instr = encode_instr(0x32, _STD_PORT(),
+                         eh_subscript(_BMM3_A_LO, _BMM3_B_LO, _BMM3_O_LO),
+                         eh_subscript(_BMM3_A_HI, _BMM3_B_HI, _BMM3_O_HI),
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG(dim=0x55)
+    dut.input_payload.value = 0
+    dut.input_payload_b.value = 0
+    dut.input_payload_b_valid.value = 1
+    dut.input_payload_wide.value = wide
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    dut.input_payload_wide_valid.value = 0
+
+    # Wait for fragment 0 to emit
+    for _ in range(20):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value) == 1 and int(dut.output_frag_hdr.value) == 0x01:
+            break
+
+    # NEXT cycle is FRAG_EMIT_HI — attempt to inject a MUL now.
+    mul_instr = encode_instr(0x12, _STD_PORT(), eh_imm64(3))
+    dut.instruction.value = mul_instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 100
+    dut.input_payload_b.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.token_valid.value = 1
+    # BEFORE the clock edge: probe hierarchical frag_state via u_core
+    # (PE_Core instance inside ISA_Decoder). If frag_state == 1 (FRAG_EMIT_HI),
+    # the launch gate MUST prevent mul_valid_p1 from asserting on next edge.
+    assert int(dut.u_core.frag_state.value) == 1, \
+        f"expected FRAG_EMIT_HI, got frag_state={int(dut.u_core.frag_state.value)}"
+    await RisingEdge(dut.clk)
+    await Timer(1, units="ns")
+    # After the clock edge: mul_valid_p1 must be 0 (launch blocked)
+    assert int(dut.u_core.mul_valid_p1.value) == 0, \
+        f"MUL launch gate failed: mul_valid_p1={int(dut.u_core.mul_valid_p1.value)}"
+    dut.token_valid.value = 0

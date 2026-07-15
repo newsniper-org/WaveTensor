@@ -14,6 +14,7 @@
 - v1.5.1 (2026-07-14): Cluster 진입에 **single-slot fragment reassembly buffer** 도입 — 조합 wide payload assembly + 완결 pulse. Downstream 소비는 v1.5.2 로. §18 참조.
 - v1.5.2 (2026-07-15): Fragment 재조립을 **EHDecode 로 스레딩** + `wave_complete` gating 도입. `dec_input_payload_wide[1023:0]` 인터페이스 확립. wide 소비 primitive 는 v1.5.3+. §19 참조.
 - v1.5.2b (2026-07-15): `dec_input_payload_wide` 를 **PE_Core input port 로 스레딩**. 모든 4개 PE_Core-family instance (L-PE + MU + DU + standalone) 가 wide bus 를 볼 수 있음. Legacy dispatch 는 무영향, v1.5.3 primitive 착수 landing zone 확보. §19.11 참조.
+- v1.5.3 (2026-07-15): 첫 wide-consumer primitive **SIG_BMM_3** (`abcij,abcjk->abcik`, 3-batch matmul at int4). 5D 2^5 = 128-bit A/B/O. Input 은 4-fragment wave (A_lo, A_hi, B_lo, B_hi) 로 Cluster 재조립 → wide[255:0]. Output 은 2-fragment (frag_hdr 0x01, 0x11) 로 emit. Multi-cycle emit FSM (`frag_state`) + 2-level SUBSCRIPT dispatch guard + MUL/DIV in-flight collision 방지. WT64v1 spec 상 완결 달성. §20 참조.
 
 참조 구현 마이그레이션: **진행 중 (2026-07-12 개시)** — 참조 보드가 XCAU25P → LFE5U-85F → Avant G70 순으로 이동, 아래 §"참조 구현 마이그레이션 노트" 참조.
 
@@ -938,3 +939,212 @@ v1.5.2 는 EHDecode 에서 Cluster-internal wire (`dec_input_payload_wide`) 까�
 - Cluster fabric fragment collection at ext_out_* boundary (자체 fragment 발행 시)
 
 v1.5.2b amendment 는 **결정된 상태 (2026-07-15)**. 사용자 지시로 v1.5.2 완료 후 곧바로 진행. 구현 완료 (2026-07-15).
+
+## 20. SIG_BMM_3 wide-consumer primitive — v1.5.3 amendment (2026-07-15)
+
+### 20.1 배경
+
+v1.5.2b 까지 완비된 wide payload 파이프라인 (NoC → Cluster fragment buffer → EHDecode wide latch → PE_Core input port) 위에서 **첫 wide-consumer primitive** 실행. SIG_BMM_3 는 3-batch matmul (`abcij,abcjk->abcik`) 로 payload 64-bit blocker 를 실제로 우회하는 데모.
+
+사용자 지시 (ultracode 2026-07-15): "v1.5.3* 한꺼번에 진행하도록" → v1.5.3 primitive + v1.5.3a output FSM + v1.5.3b fabric propagation 을 단일 세션에 landing. Design research + adversarial verify workflow 로 사전 검증.
+
+### 20.2 SIG_BMM_3 수학
+
+**Einsum**: `abcij,abcjk->abcik` — 8-batch matrix multiplication (a×b×c = 2×2×2 batches).
+
+**정식화**:
+$$R[a][b][c][i][k] = \left(\sum_{j=0}^{1} A[a][b][c][i][j] \cdot B[a][b][c][j][k]\right) \mod 2^4$$
+
+**Tensor shape**: 5D 2×2×2×2×2 = 32 elements per tensor.
+
+**int4 packing (128-bit per tensor)**:
+- `A[a][b][c][i][j]` at nibble `(a*16 + b*8 + c*4 + i*2 + j)`
+- Per-batch 16-bit sub-payload = `payload[(a*4 + b*2 + c)*16 +: 16]`
+- 8 non-overlapping 16-bit windows, direct row-major extension of SIG_BMM_2
+
+**연산**: `matmul_2x2_int4` × 8 (v1.2 함수 재사용, 새 산술 없음).
+
+### 20.3 Signature encoding
+
+Multi-SUBSCRIPT (v1.3 §16) 2-tuple:
+- **SIG_BMM_3_LO** = `{16'h4321, 16'h5321, 16'h4321}` (lo 48-bit, axes 0-3)
+  - A: [a=1, b=2, c=3, i=4]
+  - B: [a=1, b=2, c=3, j=5]
+  - O: [a=1, b=2, c=3, i=4]
+- **SIG_BMM_3_HI** = `{16'h0005, 16'h0006, 16'h0006}` (hi 48-bit, axes 4-7)
+  - A: [j=5]
+  - B: [k=6]
+  - O: [k=6]
+
+Verilog concat order `{A_pack, B_pack, O_pack}` with A at MSB (matches SIG_BMM_2 convention).
+
+**Two-level dispatch guard** (PE_Core `case (dec_eff_subscript)`):
+```verilog
+if (dec_eff_subscript_hi != 48'h0) begin
+    // v1.5.3 wide-consumer path
+    if ((dec_eff_subscript == SIG_BMM_3_LO)
+         && (dec_eff_subscript_hi == SIG_BMM_3_HI)) begin
+        // SIG_BMM_3 dispatch
+    end else lower_required;
+end else case (dec_eff_subscript)
+    // legacy v1.0..v1.2 signatures
+endcase
+```
+
+Legacy signatures 는 `dec_eff_subscript_hi == 0` 을 요구 → wide-signature-alias 방지.
+
+### 20.4 Input/output layout
+
+**Input (Cluster fragment buffer, 4-fragment wave)**:
+```
+frag_hdr = (idx << 4) | 0x3     // total-1 = 3 → 4 fragments
+idx 0 → wide[63:0]   = A[63:0]   (a=0: batches 000..011)
+idx 1 → wide[127:64] = A[127:64] (a=1: batches 100..111)
+idx 2 → wide[191:128] = B[63:0]
+idx 3 → wide[255:192] = B[127:64]
+```
+
+PE_Core reads A = `dec_input_payload_wide[127:0]`, B = `dec_input_payload_wide[255:128]`.
+
+**Output (PE_Core → NoC, 2-fragment wave)**:
+```
+frag_hdr = 0x01  // idx=0 total-1=1 → cycle N, R[a=0 batches]
+frag_hdr = 0x11  // idx=1           → cycle N+1, R[a=1 batches]
+```
+
+Output split by outermost axis `a` (a=0 → fragment 0, a=1 → fragment 1). Clean 64-bit boundary — no cross-lane shuffling.
+
+### 20.5 Fragment emit FSM (§20.5a)
+
+**1-bit Moore FSM** mirroring `div_state` idiom:
+```verilog
+localparam FRAG_IDLE    = 1'b0;
+localparam FRAG_EMIT_HI = 1'b1;
+reg        frag_state;
+reg [63:0] frag_hi_pending;   // fragment 1 payload held for cycle N+1
+reg [79:0] frag_tag_held;
+reg [ 7:0] frag_opcode_held;
+```
+
+**State transitions**:
+- **FRAG_IDLE**: SIG_BMM_3 dispatch → fragment 0 emit (cycle N), latch hi payload/tag/opcode, transition to FRAG_EMIT_HI
+- **FRAG_EMIT_HI**: absolute-priority override at output mux top → fragment 1 emit (cycle N+1), return to FRAG_IDLE
+
+**Absolute-priority output override** (before MUL/DIV mux):
+```verilog
+if (frag_state == FRAG_EMIT_HI) begin
+    output_payload  <= frag_hi_pending;
+    output_frag_hdr <= 8'h11;
+    output_valid    <= 1'b1;
+    output_tag      <= frag_tag_held;
+    opcode_out      <= frag_opcode_held;
+    frag_state      <= FRAG_IDLE;
+end else if (mul_valid_p2) ...
+```
+
+### 20.6 MUL/DIV in-flight collision mitigation
+
+**Compound drain gate** (SIG_BMM_3 dispatch precondition):
+```verilog
+output_regs_free = (frag_state == FRAG_IDLE)
+                && !mul_valid_p1 && !mul_valid_p2
+                && (div_state == DIV_IDLE)
+                && !div_valid_p2 && !div_b_zero_p2
+```
+
+- Prevents fragment 0 (cycle N) from colliding with any MUL/DIV pulse.
+- Prevents fragment 1 (cycle N+1) from colliding with a MUL launched on N.
+
+**MUL/DIV launch gates** (`frag_state == FRAG_IDLE` requirement):
+- `mul_valid_p1 <= ... && (frag_state == FRAG_IDLE)`
+- DIV_IDLE → DIV_ITER transition gated on `frag_state == FRAG_IDLE`
+
+Combined: no new MUL/DIV can enter pipeline during fragment emit AND SIG_BMM_3 cannot dispatch during any in-flight MUL/DIV.
+
+### 20.7 Wide-valid guard
+
+SIG_BMM_3 with `dec_input_payload_wide_valid == 0` is an **illegal wave** (fabric contract violation — Cluster's `wave_complete` guarantees wide_valid=1 for multi-fragment waves). PE_Core raises `error_flag` on this case.
+
+Distinct from `lower_required`: this is a HARD contract error, not a stall / lowering hint.
+
+### 20.8 Backward compatibility
+
+**dec_eff_subscript_hi guard** on all legacy case arms:
+- Legacy v1.0..v1.2 signatures (SIG_MATMUL, SIG_BMM_2, etc.) only dispatch when `dec_eff_subscript_hi == 48'h0`.
+- Regression test `test_legacy_sig_with_subscript_hi_nonzero_lowers` catches accidental wide-signature-aliasing.
+
+**Legacy 회귀 100%**: 231 tests (v1.0..v1.5.2b) pre-existing all pass. Zero legacy regression.
+
+### 20.9 Assembler infrastructure
+
+`wavetensor_asm.py` (v1.3 §16) `HW_DIRECT_EINSUM_SIGS_MULTI` already contains the SIG_BMM_3 candidate 6-tuple:
+```python
+(0x4321, 0x5321, 0x4321, 0x0005, 0x0006, 0x0006)
+```
+No assembler change required — `_encode_subscript_eh_multi` emits 2 SUBSCRIPT EHs automatically.
+
+**Missing**: input-side fragment emission (assembler needs to emit A + B as 4-fragment wave). Currently users must construct fragments manually via test harness. v1.5.4 task.
+
+### 20.10 회귀 (240 tests PASS)
+
+test_isa_decoder.py 신규 9 tests (99 → 108):
+- `test_bmm_3_identity_per_batch` — A=identity → R=B, verify both fragments
+- `test_bmm_3_computed_matmul` — concrete values, Python reference match
+- `test_bmm_3_two_fragment_output_sequence` — frag_hdr 0x01→0x11 + NRZ return-to-zero
+- `test_bmm_3_wide_valid_gate_error_flag` — wide_valid=0 → error_flag
+- `test_bmm_3_tag_stability_across_fragments` — both fragments share tag
+- `test_legacy_sig_with_subscript_hi_nonzero_lowers` — regression guard
+- `test_bmm_3_unknown_wide_sig_lowers` — unknown wide-sig → lower_required
+- `test_mul_then_bmm3_drain_gate` — MUL→SIG_BMM_3 drain gate coverage (bug 5)
+- `test_bmm3_then_mul_launch_gate` — SIG_BMM_3→MUL launch gate coverage (bug 5)
+
+test_cluster.py 신규 3 tests (18 → 21):
+- `test_bmm_3_end_to_end_via_cluster` — 4-frag input → 2-frag output through fabric
+- `test_bmm_3_cluster_frag_hdr_returns_to_zero` — NRZ hazard at cluster boundary
+- `test_bmm_3_lpe_collision_raises_output_collision` — bug 3+4 collision detection
+
+전체: 174 cocotb + 66 assembler = **240 PASS** (기존 231 + 9 신규 tests).
+
+### 20.10a Adversarial review findings — landed fixes (2026-07-15)
+
+Post-implementation adversarial review workflow (5 dimensions × 20 refute agents, 25 subagents total, ~1.3M tokens) 발견 5 confirmed bugs / 23 findings. 모두 landing:
+
+**Bug 1+2 (LOW/MED) — Stale port comment for `dec_eff_imm64_hi`**:
+- `PE_Core.v:72-82`: 원 comment 는 SIG_BMM_3 가 IMM64 를 소비한다고 서술했으나 실제로는 wide[255:128] 사용
+- Fix: comment 재작성 + `/* verilator lint_off UNUSEDSIGNAL */` pragma 로 dead-wire 상태 machine-visible
+
+**Bug 3 (HIGH) — MU frag-1 cycle silently drops L-PE outputs**:
+- `Cluster.v:757+`: 기존 OR-merge 는 MU>DU>L-PE 우선순위로 `!m_valid` guard 만. MU 의 2-cycle emit 창에서 L-PE 출력이 silent drop.
+- Fix: **Atomic per-source arbitration** — winner 는 data channel + memory channel 을 함께 획득. 잃은 source 는 `m_output_collision` 를 raise.
+
+**Bug 4 (HIGH) — `m_mem_req` independent of `m_valid` (corrupted tuple)**:
+- 기존: data 채널과 memory 채널이 independent priority chain → collision 시 MU tag 와 L-PE mem_req 가 wrong tuple 로 결합
+- Fix: bug 3 fix 와 통합 — atomic 병합으로 tuple 원자성 보장. 신규 output `any_output_collision` (Cluster) 로 fabric 이 drop 인지 가능
+
+**Bug 5 (HIGH) — MUL/DIV in-flight collision path 미테스트**:
+- 3 신규 regression tests 추가 (위 목록):
+  * MUL → SIG_BMM_3 drain gate 커버
+  * SIG_BMM_3 → MUL launch gate 커버 (hierarchical probe: `dut.u_core.mul_valid_p1`)
+  * Cluster-level MU/L-PE collision → `any_output_collision` fire 확인
+
+**Refuted findings (18/23)**: legacy dispatch guard, assembler regression, precision handling 등 — 조사 결과 non-issue 또는 이미 존재하는 안전장치로 커버됨.
+
+### 20.11 HW 비용 (LFE5U-85F 추정)
+
+- `einsum_bmm_3_int4_lo/hi` functions: 8 × matmul_2x2_int4 각 = 8 × ~120 LUT = **~960 LUT** (int4 mul array)
+- FSM registers: `frag_state` (1) + `frag_hi_pending` (64) + `frag_tag_held` (80) + `frag_opcode_held` (8) = **153 FF**
+- Compound drain gate: ~10 LUT
+- Absolute-priority override mux: ~20 LUT (5 signal 64-bit mux extension)
+- Cluster atomic OR-merge (bug 3+4 fix): ~100 LUT (기존 대비 +50 LUT for collision detection)
+- 총 **~990 LUT + 153 FF / PE_Core (MU 인스턴스) + ~50 LUT / Cluster (collision detector)**.
+
+### 20.12 남은 v1.5.x 스코프
+
+- **v1.5.4**: Assembler input-side fragment emitter — 5+ axes einsum 감지 시 자동으로 4-fragment 시퀀스 emit
+- **v1.5.5**: 추가 wide-consumer primitives — SIG_TRACE_IIJKL (5D trace + 3 kept axes), SIG_LAYERNORM_5D, SIG_SOFTMAX_HEAD 등
+- **v1.6**: Fragment buffer 다중-slot LRU 확장 (동시 wave 다수 지원)
+- **v1.6+**: PE_Core `pe_ready` back-pressure signal (in-flight collision 을 rejection 대신 stall 로)
+
+### 20.13 진입 트리거
+
+v1.5.3 amendment 는 **결정된 상태 (2026-07-15)**. 사용자 지시 (ultracode mode) 로 v1.5.3 primitive + v1.5.3a output FSM + v1.5.3b fabric propagation 을 단일 세션 landing. Design research workflow (8 agents) → 구현 → adversarial review workflow (5+20 agents) 로 검증. 구현 완료 (2026-07-15).

@@ -63,6 +63,24 @@ module PE_Core #(
     input  [3:0]                 dec_eff_opref_kind,
     input  [31:0]                dec_eff_mem_offset,
     input  [47:0]                dec_eff_subscript,
+    // v1.5.3 §20 — second SUBSCRIPT EH body (axes 4-7 for {A,B,O}).
+    // For v1.0..v1.2 signatures MUST be 48'h0 (guarded at dispatch);
+    // for v1.5.3+ wide-consumer primitives (SIG_BMM_3) it carries the
+    // hi-half of the multi-SUBSCRIPT chain.
+    input  [47:0]                dec_eff_subscript_hi,
+    // v1.5.3 §20 — second IMM64 EH body slot (upper 64 bits of the
+    // v1.4 multi-IMM64 chain). RESERVED / currently UNUSED inside
+    // PE_Core: no v1.5.3 primitive consumes it. SIG_BMM_3 CANNOT use
+    // this chain because EINSUM (opcode 0x32) is `forbid_imm_any` at
+    // EHDecode legality (see dispatch note at ~L1107); it sources its
+    // 128-bit B operand from `dec_input_payload_wide[255:128]` via
+    // the v1.5.1/1.5.2 fragment reassembly path instead. Wire is kept
+    // live in the port list + Cluster/ISA_Decoder routing so a future
+    // NON-EINSUM wide-consumer primitive that opts back into IMM64
+    // dual-slot needs no re-wiring surgery.
+    /* verilator lint_off UNUSEDSIGNAL */
+    input  [63:0]                dec_eff_imm64_hi,
+    /* verilator lint_on UNUSEDSIGNAL */
     input  [7:0]                 dec_eff_output_port_id,
     input  [7:0]                 dec_eff_precision,
     input  [31:0]                dec_wave_number,
@@ -131,6 +149,17 @@ module PE_Core #(
     // Both require dim_sizes = 0x55 (4D 2×2×2×2); otherwise lower_required.
     localparam [47:0] SIG_BMM_2       = {16'h4321, 16'h5421, 16'h5321};
     localparam [47:0] SIG_TRACE_IIJK  = {16'h3211, 16'h0000, 16'h0032};
+    // v1.5.3 §20 — SIG_BMM_3: 'abcij,abcjk->abcik' (3-batch matmul at int4).
+    // Labels canonicalized in A→B→O first-appearance: a=1, b=2, c=3, i=4, j=5, k=6.
+    // Multi-SUBSCRIPT (v1.3 §16.5) split: lo half = axes 0-3, hi half = axes 4-7.
+    //   A = [a,b,c,i,j] → lo=0x4321, hi=0x0005
+    //   B = [a,b,c,j,k] → lo=0x5321, hi=0x0006
+    //   O = [a,b,c,i,k] → lo=0x4321, hi=0x0006
+    // Verilog concat order {A_pack, B_pack, O_pack} with A at MSB (matches SIG_BMM_2).
+    // 5D 2×2×2×2×2 = 32 elements × int4 = 128-bit A/B/O.
+    // Signature-only dispatch (dim_sizes ignored) — assembler validates shape.
+    localparam [47:0] SIG_BMM_3_LO    = {16'h4321, 16'h5321, 16'h4321};
+    localparam [47:0] SIG_BMM_3_HI    = {16'h0005, 16'h0006, 16'h0006};
     localparam [3:0] RED_OP_SUM = 4'h0;
     localparam [3:0] RED_OP_MAX = 4'h1;
     localparam [3:0] RED_OP_MIN = 4'h2;
@@ -349,6 +378,48 @@ module PE_Core #(
             r2 = $signed(a[ 8 +: 4]) + $signed(a[56 +: 4]);  // A[0,0,1,0] + A[1,1,1,0]
             r3 = $signed(a[12 +: 4]) + $signed(a[60 +: 4]);  // A[0,0,1,1] + A[1,1,1,1]
             einsum_trace_iijk_int4 = {48'h0, r3, r2, r1, r0};
+        end
+    endfunction
+
+    // v1.5.3 §20 — SIG_BMM_3: 'abcij,abcjk->abcik' (3-batch matmul at int4).
+    // 128-bit A/B/O payloads = 8 independent 2×2 matmuls (one per (a,b,c) batch).
+    // Layout: A[a][b][c][i][j] at nibble (a*16 + b*8 + c*4 + i*2 + j).
+    // Per-batch 16-bit sub-payload = payload[(a*4 + b*2 + c)*16 +: 16].
+    // Reuses matmul_2x2_int4 × 8 — no new arithmetic.
+    //
+    // Output split by outermost axis a (per §20 verify:math finding):
+    //   fragment 0 = batches (0,0,0), (0,0,1), (0,1,0), (0,1,1) = a=0
+    //   fragment 1 = batches (1,0,0), (1,0,1), (1,1,0), (1,1,1) = a=1
+    // No cross-lane shuffling needed since a stride is exactly 64 bits.
+    //
+    // Split into _lo (fragment 0, a=0) and _hi (fragment 1, a=1) functions
+    // to let dispatch call each independently — supports timing hedge where
+    // compute is spread across cycles if needed (currently both fire cycle N).
+    function [ADDR_WIDTH-1:0] einsum_bmm_3_int4_lo;
+        input [127:0] a;   // 128-bit A tensor
+        input [127:0] b;   // 128-bit B tensor
+        reg [15:0] r000, r001, r010, r011;
+        begin
+            // a=0 batches: (0,0,0)=slot 0, (0,0,1)=slot 1, (0,1,0)=slot 2, (0,1,1)=slot 3
+            r000 = matmul_2x2_int4(a[  0 +: 16], b[  0 +: 16]);
+            r001 = matmul_2x2_int4(a[ 16 +: 16], b[ 16 +: 16]);
+            r010 = matmul_2x2_int4(a[ 32 +: 16], b[ 32 +: 16]);
+            r011 = matmul_2x2_int4(a[ 48 +: 16], b[ 48 +: 16]);
+            einsum_bmm_3_int4_lo = {r011, r010, r001, r000};
+        end
+    endfunction
+
+    function [ADDR_WIDTH-1:0] einsum_bmm_3_int4_hi;
+        input [127:0] a;
+        input [127:0] b;
+        reg [15:0] r100, r101, r110, r111;
+        begin
+            // a=1 batches: (1,0,0)=slot 4, (1,0,1)=slot 5, (1,1,0)=slot 6, (1,1,1)=slot 7
+            r100 = matmul_2x2_int4(a[ 64 +: 16], b[ 64 +: 16]);
+            r101 = matmul_2x2_int4(a[ 80 +: 16], b[ 80 +: 16]);
+            r110 = matmul_2x2_int4(a[ 96 +: 16], b[ 96 +: 16]);
+            r111 = matmul_2x2_int4(a[112 +: 16], b[112 +: 16]);
+            einsum_bmm_3_int4_hi = {r111, r110, r101, r100};
         end
     endfunction
 
@@ -591,6 +662,28 @@ module PE_Core #(
     reg                  div_b_zero_p2;
 
     // -------------------------------------------------------------------------
+    // v1.5.3a §20 — fragment-emit FSM. 1-bit Moore machine mirroring the
+    // div_state idiom. On SIG_BMM_3 dispatch (frag_state=FRAG_IDLE cycle N):
+    //   - drives output_valid=1, output_payload=lo, output_frag_hdr=8'h01
+    //   - latches result[127:64] into frag_hi_pending + tag/opcode holds
+    //   - transitions to FRAG_EMIT_HI
+    // On cycle N+1 (FRAG_EMIT_HI): absolute-priority override at the top of
+    // the output mux drives fragment 1 (frag_hdr=8'h11) and returns to IDLE.
+    //
+    // Backpressure: the compound `output_regs_free` wire (derived below in
+    // the always block) gates SIG_BMM_3 dispatch when ANY output-mux source
+    // is in flight (MUL p1/p2, DIV any-state, DIV b_zero pulse). This closes
+    // the MUL/DIV drain hazard the verify:fsm agent flagged.
+    // -------------------------------------------------------------------------
+    localparam           FRAG_IDLE    = 1'b0;
+    localparam           FRAG_EMIT_HI = 1'b1;
+
+    reg                  frag_state;
+    reg [ADDR_WIDTH-1:0] frag_hi_pending;
+    reg [TAG_WIDTH-1:0]  frag_tag_held;
+    reg [7:0]            frag_opcode_held;
+
+    // -------------------------------------------------------------------------
     // Stage-2 sequential dispatch
     // -------------------------------------------------------------------------
     always @(posedge clk or posedge rst) begin
@@ -609,6 +702,10 @@ module PE_Core #(
             div_state      <= DIV_IDLE;
             div_valid_p2   <= 1'b0;
             div_b_zero_p2  <= 1'b0;
+            frag_state       <= FRAG_IDLE;
+            frag_hi_pending  <= {ADDR_WIDTH{1'b0}};
+            frag_tag_held    <= {TAG_WIDTH{1'b0}};
+            frag_opcode_held <= 8'h00;
         end else begin
             output_valid    <= 1'b0;
             memory_req      <= 1'b0;
@@ -620,13 +717,16 @@ module PE_Core #(
             // sequences and set this per-fragment.
             output_frag_hdr <= 8'h00;
 
-            // Multi-cycle MUL pipeline advance
+            // Multi-cycle MUL pipeline advance. v1.5.3a: launch gated on
+            // frag_state == FRAG_IDLE so a MUL cannot enter the pipeline
+            // during a fragment-emit cycle and collide with FRAG_EMIT_HI.
             if (MUL_OPS_SUPPORTED) begin
                 mul_a_p1     <= dec_input_payload;
                 mul_b_p1     <= dec_eff_b_value;
                 mul_tag_p1   <= dec_forwarded_tag;
                 mul_valid_p1 <= pe_active && dec_valid && !dec_decode_error
-                              && dec_tag_match && (dec_opcode == 8'h12);
+                              && dec_tag_match && (dec_opcode == 8'h12)
+                              && (frag_state == FRAG_IDLE);
                 mul_result_p2 <= mul_a_p1 * mul_b_p1;
                 mul_tag_p2    <= mul_tag_p1;
                 mul_valid_p2  <= mul_valid_p1;
@@ -640,11 +740,16 @@ module PE_Core #(
                 div_valid_p2 <= 1'b0;
                 case (div_state)
                     DIV_IDLE: begin
+                        // v1.5.3a: gate DIV launch on frag_state == FRAG_IDLE
+                        // — a new DIV entering ITER during FRAG_EMIT_HI would
+                        // land its FINISH pulse 64+ cycles later during ANY
+                        // subsequent fragment emit, silently dropping DIV.
                         if (pe_active && dec_valid && !dec_decode_error
                                 && dec_tag_match
                                 && ((dec_opcode == 8'h13) ||
                                     (dec_opcode == 8'h1C) ||
-                                    (dec_opcode == 8'h1D))) begin
+                                    (dec_opcode == 8'h1D))
+                                && (frag_state == FRAG_IDLE)) begin
                             div_b_zero    <= (dec_eff_b_value == 64'h0);
                             div_is_mod    <= (dec_opcode == 8'h1C);
                             div_is_divmod <= (dec_opcode == 8'h1D);
@@ -716,8 +821,23 @@ module PE_Core #(
                 endcase
             end
 
+            // v1.5.3a §20 — ABSOLUTE-PRIORITY fragment-emit override.
+            // Placed at the very top of the output priority chain so
+            // fragment 1 lands EXACTLY on cycle N+1 after SIG_BMM_3
+            // dispatch. The launch-gate below prevents MUL/DIV from
+            // starting new operations while frag_state == FRAG_EMIT_HI,
+            // so this override never collides with a mul_valid_p2 or
+            // div_valid_p2 pulse (compound gate closes the drain window).
+            if (frag_state == FRAG_EMIT_HI) begin
+                output_payload  <= frag_hi_pending;
+                output_tag      <= frag_tag_held;
+                opcode_out      <= frag_opcode_held;
+                output_frag_hdr <= 8'h11;   // idx=1, total-1=1
+                output_valid    <= 1'b1;
+                frag_state      <= FRAG_IDLE;
+            end
             // Output priority: MUL > DIV pipeline > case dispatch.
-            if (MUL_OPS_SUPPORTED && mul_valid_p2) begin
+            else if (MUL_OPS_SUPPORTED && mul_valid_p2) begin
                 output_payload <= mul_result_p2;
                 output_tag     <= mul_tag_p2;
                 output_valid   <= 1'b1;
@@ -974,8 +1094,66 @@ module PE_Core #(
                             output_valid <= 1'b1;
                         end
                         8'h32: begin
+                            // v1.5.3 §20 — two-level SUBSCRIPT dispatch.
+                            // Legacy v1.0..v1.2 signatures (SUM_I..TRACE_IIJK)
+                            // require `dec_eff_subscript_hi == 48'h0` (no
+                            // second SUBSCRIPT EH); v1.5.3+ wide-consumer
+                            // signatures (SIG_BMM_3) require non-zero hi.
+                            // This guards against a malformed wave whose
+                            // lo-half accidentally aliases a legacy sig.
                             if (!MUL_OPS_SUPPORTED) begin
                                 lower_required <= 1'b1; output_valid <= 1'b0;
+                            end else if (dec_eff_subscript_hi != 48'h0) begin
+                                // v1.5.3 wide-consumer path
+                                if ((dec_eff_subscript == SIG_BMM_3_LO)
+                                     && (dec_eff_subscript_hi == SIG_BMM_3_HI)) begin
+                                    // SIG_BMM_3: 'abcij,abcjk->abcik' at int4.
+                                    // Input A + B both packed into
+                                    // dec_input_payload_wide (v1.5.2 fragment
+                                    // reassembly): A at wide[127:0], B at
+                                    // wide[255:128] — 4-fragment wave
+                                    // (frag_hdr indices 0..3). Cannot use
+                                    // IMM64 chain because EINSUM (0x32) is
+                                    // forbid_imm_any at EHDecode legality.
+                                    // Output 128-bit split into 2 wave tokens
+                                    // with frag_hdr = 8'h01, 8'h11.
+                                    if (!dec_input_payload_wide_valid) begin
+                                        // Illegal per §20 contract — Cluster's
+                                        // wave_complete guarantees wide_valid=1
+                                        // for any wide-consumer wave.
+                                        error_flag   <= 1'b1;
+                                        output_valid <= 1'b0;
+                                    end else if (!((frag_state == FRAG_IDLE)
+                                                && !mul_valid_p1 && !mul_valid_p2
+                                                && (div_state == DIV_IDLE)
+                                                && !div_valid_p2 && !div_b_zero_p2)) begin
+                                        // Compound drain gate (per verify:fsm):
+                                        // reject if any MUL/DIV pulse would
+                                        // collide with fragment 0 (cycle N) or
+                                        // fragment 1 (cycle N+1).
+                                        lower_required <= 1'b1;
+                                        output_valid   <= 1'b0;
+                                    end else begin
+                                        // Fragment 0 emit (a=0 batches, 4×2×2)
+                                        output_payload  <= einsum_bmm_3_int4_lo(
+                                            dec_input_payload_wide[127:0],
+                                            dec_input_payload_wide[255:128]);
+                                        output_valid    <= 1'b1;
+                                        output_frag_hdr <= 8'h01;   // idx=0 total-1=1
+                                        opcode_out      <= dec_opcode;
+                                        // Latch fragment 1 (a=1 batches) +
+                                        // tag/opcode for the N+1 override.
+                                        frag_hi_pending  <= einsum_bmm_3_int4_hi(
+                                            dec_input_payload_wide[127:0],
+                                            dec_input_payload_wide[255:128]);
+                                        frag_tag_held    <= dec_forwarded_tag;
+                                        frag_opcode_held <= dec_opcode;
+                                        frag_state       <= FRAG_EMIT_HI;
+                                    end
+                                end else begin
+                                    lower_required <= 1'b1;
+                                    output_valid   <= 1'b0;
+                                end
                             end else case (dec_eff_subscript)
                                 SIG_SUM_I: begin
                                     output_payload <= einsum_sum_i(dec_input_payload);

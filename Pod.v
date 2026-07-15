@@ -103,6 +103,12 @@ module Pod #(
     wire [7:0]             cl_out_opcode    [0:NUM_CLUSTERS-1];
     wire [7:0]             cl_out_frag_hdr  [0:NUM_CLUSTERS-1];   // v1.5 §17
     wire                   cl_out_valid     [0:NUM_CLUSTERS-1];
+    /* verilator lint_off UNUSEDSIGNAL */
+    // v1.5.3 §20 — Cluster's dedicated output-collision pulse. Currently
+    // absorbed here (also folded into cl_error[]); v1.6+ may bubble it to
+    // Pod's external interface for explicit fabric-collision reporting.
+    wire                   cl_collision     [0:NUM_CLUSTERS-1];
+    /* verilator lint_on UNUSEDSIGNAL */
     wire                   cl_mem_req     [0:NUM_CLUSTERS-1];
     wire [ADDR_WIDTH-1:0]  cl_mem_addr    [0:NUM_CLUSTERS-1];
     wire                   cl_error       [0:NUM_CLUSTERS-1];
@@ -154,7 +160,8 @@ module Pod #(
                     .mem_req             (cl_mem_req[CIDX]),
                     .mem_addr            (cl_mem_addr[CIDX]),
                     .any_error_flag      (cl_error[CIDX]),
-                    .any_lower_required  (cl_lower[CIDX])
+                    .any_lower_required  (cl_lower[CIDX]),
+                    .any_output_collision (cl_collision[CIDX])
                 );
             end
         end

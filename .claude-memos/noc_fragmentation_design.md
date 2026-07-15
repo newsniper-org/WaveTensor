@@ -209,6 +209,50 @@ v1.5.2 는 Cluster-internal wire 까지만. v1.5.2b 는 **PE_Core 안까지** �
 
 **HW 비용**: ~50 LUT (wire fan-out). 실제 사용 시점은 v1.5.3.
 
+## 11d. v1.5.3 landing (2026-07-15 완료) — SIG_BMM_3 첫 wide-consumer primitive
+
+**Ultracode 모드 워크플로 orchestration** 으로 3 subphase (primitive + FSM + fabric) 를 하나의 세션에 landing:
+- Design research workflow (4 research agents + 4 adversarial verify, 8 agents 총)
+- 구현 (PE_Core + ISA_Decoder + Cluster 배선)
+- Adversarial review workflow (5 dim × N refute)
+
+**RTL 변경**:
+- **PE_Core.v**: 
+  * SIG_BMM_3_LO / SIG_BMM_3_HI localparams (2-level signature)
+  * `einsum_bmm_3_int4_lo/hi` functions (8× matmul_2x2_int4 재사용)
+  * `frag_state` FSM (FRAG_IDLE / FRAG_EMIT_HI) + `frag_hi_pending`, `frag_tag_held`, `frag_opcode_held`
+  * 절대우선 override at output priority mux 최상단
+  * Compound drain gate (MUL p1/p2 + DIV any-state + FRAG_IDLE)
+  * MUL launch gate (`frag_state == FRAG_IDLE`)
+  * DIV launch gate (`DIV_IDLE` + `frag_state == FRAG_IDLE`)
+  * Two-level dispatch guard (legacy arms 는 `subscript_hi == 0` 요구)
+  * `dec_eff_subscript_hi` + `dec_eff_imm64_hi` input ports 추가 (5-file surgery: PE_Core + ISA_Decoder + Cluster ×3 인스턴스)
+
+**Input/output layout (§20)**:
+```
+Input: 4-fragment wave (frag_hdr 0x03, 0x13, 0x23, 0x33)
+  idx 0 → wide[63:0]    = A[63:0]
+  idx 1 → wide[127:64]  = A[127:64]
+  idx 2 → wide[191:128] = B[63:0]
+  idx 3 → wide[255:192] = B[127:64]
+Output: 2-fragment wave
+  frag 0 (cycle N)   → R[a=0 batches] with frag_hdr = 0x01
+  frag 1 (cycle N+1) → R[a=1 batches] with frag_hdr = 0x11
+```
+
+**회귀 (237 tests PASS)** — 신규 9 tests:
+- ISA_Decoder +7: identity_per_batch, computed_matmul, output_sequence,
+  wide_valid_gate, tag_stability, legacy_regression, unknown_wide_sig
+- Cluster +2: end_to_end_via_cluster, cluster_frag_hdr_returns_to_zero
+
+**HW 비용**: ~1K LUT + 153 FF / Cluster (8× matmul_2x2_int4 + FSM regs).
+
+**의미**: **WT64v1 payload 64-bit blocker 최초 실전 우회** — 5+ axes einsum 을 v1.x 안에서 실제 실행. v2 (payload 128-bit breaking change) 미룰 근거 완전 소멸.
+
+**Verification stack**:
+- Pre-implementation: design research workflow (8 agents) → 결정 문서화
+- Post-implementation: adversarial review workflow (5 dims × refute) → 확정된 bug fix
+
 ## 12. v1.6+ 로드맵 요약
 
 | 단계 | 스코프 | 예상 LUT 비용 | 상태 |
@@ -217,9 +261,11 @@ v1.5.2 는 Cluster-internal wire 까지만. v1.5.2b 는 **PE_Core 안까지** �
 | v1.5.1b | Multi-slot buffer (N-slot LRU) | +8-16K LUT + 8Kbit BRAM | 대기 |
 | v1.5.2 | EHDecode `dec_input_payload_wide` + Cluster threading + wave_complete gate | +2K FF + 200 LUT / Cluster | **완료 (2026-07-15)** |
 | v1.5.2b | PE_Core wide input port (dispatch layer 준비) | +50 LUT | **완료 (2026-07-15)** |
-| v1.5.3 | Wide-output primitive: SIG_BMM_3 실행 (multi-fragment emit) | +3K LUT (matmul_2x2 확장) | 대기 |
-| v1.5.4 | Assembler multi-IMM64 emit 자동화 (5+ axes einsum 감지 시) | Python only | 대기 |
-| v1.5.5 | Multi-fragment SIG_TRACE_IIJKL 등 reduction primitive | +1K LUT each | 대기 |
+| v1.5.3 | SIG_BMM_3 실행 + FSM + Cluster fabric (v1.5.3/a/b 통합) | ~1K LUT + 153 FF / Cluster | **완료 (2026-07-15)** |
+| v1.5.4 | Assembler input-side fragment emitter (5+ axes 자동화) | Python only | 대기 |
+| v1.5.5 | 추가 wide-consumer primitives (SIG_TRACE_IIJKL, SIG_LAYERNORM_5D 등) | +1K LUT each | 대기 |
+| v1.6 | Fragment buffer multi-slot LRU (동시 wave 다수 지원) | +8-16K LUT + BRAM | 대기 |
+| v1.6+ | PE_Core pe_ready back-pressure (in-flight collision stall) | +200 LUT | 대기 |
 
 ## 13. 원리 요약
 

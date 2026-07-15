@@ -5,3 +5,4 @@
 - [WaveTensor memo spin-off scaffold pattern](spinoff_pattern.md) — when extracting a .claude-memos/ idea into a sibling repo, apply Y4/Dasima scaffold pattern (Apache-2.0, docs, memory seeds, mirror-memory, forward pointer).
 - [CC memory backup + session-resume infrastructure](memory_backup_pattern.md) — mirror-memory Makefile targets + SessionEnd hook + pre-commit hook; standard across WaveTensor / Y4 / Dasima.
 - [Use $(CURDIR) not $(PWD) in Makefiles](makefile_curdir_rule.md) — `make -C <dir>` exposes the $(PWD) bug; $(CURDIR) is GNU Make's per-invocation cwd. Fixed on 2026-05-07.
+- [frama-c invocation via opam switch](frama_c_invocation.md) — always call as `opam exec --switch="frama-c" -- frama-c <args>`; never use system PATH frama-c directly.
