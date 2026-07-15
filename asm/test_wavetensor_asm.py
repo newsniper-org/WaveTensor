@@ -771,6 +771,99 @@ class TestMultiInstruction(unittest.TestCase):
         self.assertEqual((insts[2] >> 24) & 0xFF, 0x32)
 
 
+class TestNormMacros(unittest.TestCase):
+    """v1.6.4 §22.11 — RISC-ish normalization macros.
+
+    Compositional decomposition of BatchNorm/RMSNorm/LayerNorm into
+    Group A/B/C primitives (v1.6.1a/b + v1.6.2/3). Macro-level unit tests
+    verify expansion count, opcode sequence, and constant propagation."""
+
+    def test_batchnorm_infer_expansion(self):
+        """BATCHNORM_INFER → 2 primitives (SIMD_MUL_WIDE_VEC + SIMD_ADD_WIDE_VEC)."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "BATCHNORM_INFER opb .k1 0x1234_5678_9ABC_DEF0 "
+            ".k2 0x0FED_CBA9_8765_4321\n"
+        )
+        insts = wta.assemble(src)
+        opcodes = [(w >> 24) & 0xFF for w in insts]
+        self.assertEqual(opcodes, [0x65, 0x63],
+                         f"expected [SIMD_MUL_WIDE_VEC=0x65, SIMD_ADD_WIDE_VEC=0x63], got {[hex(o) for o in opcodes]}")
+
+    def test_batchnorm_infer_missing_k1_raises(self):
+        """Missing .k1 directive raises clear error."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "BATCHNORM_INFER opb .k2 0xAAAA\n"
+        )
+        with self.assertRaises(wta.AssemblerError) as ctx:
+            wta.assemble(src)
+        self.assertIn('k1', str(ctx.exception))
+
+    def test_rmsnorm_expansion(self):
+        """RMSNORM → 4-primitive chain: EINSUM(L2SQ)+SCALAR_RSQRT+MUL_WIDE_SCALAR+MUL_WIDE_VEC."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "RMSNORM opb .gamma 0xDEAD_BEEF_CAFE_BABE\n"
+        )
+        insts = wta.assemble(src)
+        opcodes = [(w >> 24) & 0xFF for w in insts]
+        self.assertEqual(opcodes, [0x32, 0x66, 0x62, 0x65],
+                         f"expected [EINSUM=0x32, SCALAR_RSQRT=0x66, MUL_WIDE_SCALAR=0x62, MUL_WIDE_VEC=0x65], got {[hex(o) for o in opcodes]}")
+
+    def test_layernorm_expansion(self):
+        """LAYERNORM → 8-primitive chain per §22.3 (with xc re-emission for fanout)."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "LAYERNORM opb .gamma 0x1111_2222_3333_4444 "
+            ".beta 0x5555_6666_7777_8888\n"
+        )
+        insts = wta.assemble(src)
+        opcodes = [(w >> 24) & 0xFF for w in insts]
+        # Expected sequence: EINSUM(MEAN), SUB_VEC, EINSUM(L2SQ), RSQRT,
+        # SUB_VEC (re-emission), MUL_SCALAR, MUL_VEC, ADD_VEC
+        expected = [0x32, 0x64, 0x32, 0x66, 0x64, 0x62, 0x65, 0x63]
+        self.assertEqual(opcodes, expected,
+                         f"expected {[hex(o) for o in expected]}, got {[hex(o) for o in opcodes]}")
+
+    def test_layernorm_missing_beta_raises(self):
+        """LAYERNORM missing .beta raises."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "LAYERNORM opb .gamma 0xAAAA\n"
+        )
+        with self.assertRaises(wta.AssemblerError) as ctx:
+            wta.assemble(src)
+        self.assertIn('beta', str(ctx.exception))
+
+    def test_primitive_simd_add_wide_scalar_legality(self):
+        """SIMD_ADD_WIDE_SCALAR: binary-ALU (IMM XOR OPREF)."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "SIMD_ADD_WIDE_SCALAR .imm16 5\n"
+        )
+        insts = wta.assemble(src)
+        self.assertEqual((insts[0] >> 24) & 0xFF, 0x60)
+
+    def test_primitive_scalar_rsqrt_legality(self):
+        """SCALAR_RSQRT: pure unary, no imm/opref."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "SCALAR_RSQRT\n"
+        )
+        insts = wta.assemble(src)
+        self.assertEqual((insts[0] >> 24) & 0xFF, 0x66)
+
+    def test_primitive_scalar_rsqrt_rejects_imm(self):
+        """SCALAR_RSQRT with .imm16 must raise (pure unary)."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "SCALAR_RSQRT .imm16 5\n"
+        )
+        with self.assertRaises(wta.AssemblerError):
+            wta.assemble(src)
+
+
 class TestWaveFragments(unittest.TestCase):
     """v1.5.4 §21 — wave-token fragment emitter helper.
 

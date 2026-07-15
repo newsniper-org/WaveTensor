@@ -83,11 +83,19 @@ MNEMONIC_TO_OPCODE: Dict[str, int] = {
     'MATMUL': 0x30,  'TADD':   0x31,  'EINSUM': 0x32,
     'FLOOR':  0x40,  'ROUND':  0x41,  'CEIL':   0x42,  'ENORM':  0x43,
     'CONJ':   0x44,
+    # v1.6.1b §22 — SIMD broadcast wide-consumer opcodes (RISC-ish norm).
+    'SIMD_ADD_WIDE_SCALAR': 0x60, 'SIMD_SUB_WIDE_SCALAR': 0x61,
+    'SIMD_MUL_WIDE_SCALAR': 0x62,
+    'SIMD_ADD_WIDE_VEC':    0x63, 'SIMD_SUB_WIDE_VEC':    0x64,
+    'SIMD_MUL_WIDE_VEC':    0x65,
+    # v1.6.1b §22 — Scalar transcendental (rsqrt approximation).
+    'SCALAR_RSQRT':         0x66,
 }
 OPCODE_TO_MNEMONIC: Dict[int, str] = {v: k for k, v in MNEMONIC_TO_OPCODE.items()}
 
 # HL-only mnemonics (macro expansions take care of these)
-HL_ONLY_MNEMONICS = {'RESHAPE'}
+# v1.6.4 §22.11 — RISC-ish normalization macros (SDK compositional decomp).
+HL_ONLY_MNEMONICS = {'RESHAPE', 'BATCHNORM_INFER', 'RMSNORM', 'LAYERNORM'}
 
 # Flag mnemonic → bit position in the base header's 4-bit `flags` field
 FLAG_BITS: Dict[str, int] = {
@@ -609,7 +617,276 @@ def _expand_macro(inst: Instruction) -> List[Instruction]:
         return _expand_reshape(inst)
     if inst.mnemonic == 'EINSUM':
         return _maybe_lower_einsum(inst)
+    # v1.6.4 §22.11 — RISC-ish normalization macros.
+    if inst.mnemonic == 'BATCHNORM_INFER':
+        return _lower_batchnorm_infer(inst)
+    if inst.mnemonic == 'RMSNORM':
+        return _lower_rmsnorm(inst)
+    if inst.mnemonic == 'LAYERNORM':
+        return _lower_layernorm(inst)
     return [inst]
+
+
+# =============================================================================
+# v1.6.4 §22.11 — RISC-ish normalization macro expansion pass
+# =============================================================================
+#
+# Compositional decomposition of common normalization techniques into the
+# Group A/B/C primitives landed in v1.6.1a/b + v1.6.2/3. SDK-level macro
+# expansion (no new HW opcode). Users write ONE line; assembler emits the
+# multi-primitive sequence.
+#
+# Design (workflow wsvd6rl41):
+#   - Monolithic single-line macro syntax (mirrors RESHAPE .from/.to,
+#     EINSUM .subscript style).
+#   - Wide vector constants (γ, β, K1, K2 — 64-bit 4D int4) → .imm64.
+#   - Scalar constants (eps, inv_n — Q16.16) → .imm32.
+#   - Port EH carried from macro invocation to each expanded instruction.
+#
+# Dataflow note (spec §22.11): each expanded primitive fires as its own
+# wave dispatch. Intermediate tensor flow (μ, xc, sq, scale) is a
+# runtime/fabric concern. For LAYERNORM specifically, `xc` is consumed
+# twice (steps 3+6) which requires SDK-side re-issuance (wave-token
+# single-use rule). LAYERNORM landing documents this as an SDK contract.
+
+
+def _get_macro_arg(inst: Instruction, kind: str, name: str) -> int:
+    """Extract a scalar constant from a macro's EH list by kind+name.
+    Raises AssemblerError if missing or ill-typed. Used for macro args
+    that carry ONE numeric value per EH (e.g. .gamma <val>)."""
+    for eh in inst.eh_list:
+        if eh.kind == kind:
+            v = _take_immediate(eh)
+            return v
+    raise AssemblerError(
+        f"line {inst.line}: {inst.mnemonic} missing required .{kind} directive"
+    )
+
+
+def _macro_port_eh(inst: Instruction) -> ExtensionHeader:
+    """Extract the PORT EH from a macro's EH list.
+    Every macro requires exactly one .port directive to route the output
+    (mirrors non-macro instruction convention)."""
+    for eh in inst.eh_list:
+        if eh.kind == 'port':
+            return eh
+    raise AssemblerError(
+        f"line {inst.line}: {inst.mnemonic} missing required .port directive"
+    )
+
+
+def _make_eh(kind: str, args: dict, line: int) -> ExtensionHeader:
+    """Convenience: build an ExtensionHeader with sane defaults."""
+    return ExtensionHeader(kind=kind, args=args, line=line)
+
+
+def _lower_batchnorm_infer(inst: Instruction) -> List[Instruction]:
+    """BATCHNORM_INFER(x, K1, K2) → 2-primitive sequence (spec §22.5).
+
+    Inference-path BatchNorm with SDK-precomputed constants:
+      K1[e] = running_scale[e] · γ[e]   (per-feature scale, 4D int4 = 64-bit)
+      K2[e] = β[e] - running_mean[e] · K1[e]   (per-feature bias)
+
+    Recipe:
+      1) SIMD_MUL_WIDE_VEC   x, K1  →  t   (opcode 0x65)
+      2) SIMD_ADD_WIDE_VEC   t, K2  →  y   (opcode 0x63)
+
+    Args: .k1 <64-bit int>, .k2 <64-bit int>, .port <mask/out>.
+    """
+    k1 = _get_macro_arg(inst, 'k1', 'k1')
+    k2 = _get_macro_arg(inst, 'k2', 'k2')
+    port_eh = _macro_port_eh(inst)
+    return [
+        Instruction(
+            mnemonic='SIMD_MUL_WIDE_VEC',
+            flags=set(inst.flags) | {'opb'},
+            eh_list=[port_eh, _make_eh('imm64', {'value': k1}, inst.line)],
+            line=inst.line,
+        ),
+        Instruction(
+            mnemonic='SIMD_ADD_WIDE_VEC',
+            flags=set(inst.flags) | {'opb'},
+            eh_list=[port_eh, _make_eh('imm64', {'value': k2}, inst.line)],
+            line=inst.line,
+        ),
+    ]
+
+
+def _lower_rmsnorm(inst: Instruction) -> List[Instruction]:
+    """RMSNORM(x, γ, eps) → 5-primitive sequence (spec §22.4 simplified).
+
+    RMSNorm: y = γ · x / √(mean(x²) + eps). No centering step (LLaMA-style).
+
+    Recipe (SDK pre-computes 1/N × eps offset so we can drop the separate
+    scalar add; the scale is pre-baked):
+      1) SIG_L2SQ_IJKLM         x          →  sq (int32 scalar)
+      2) [SDK offline] eps and 1/N folded into the pre-computed rsqrt seed —
+         omitted from emitted primitives for MVP simplicity.
+      3) SCALAR_RSQRT           sq         →  scale (Q16.16)
+      4) SIMD_MUL_WIDE_SCALAR   x, scale[3:0]  →  nrm (broadcast int4 scale)
+      5) SIMD_MUL_WIDE_VEC      nrm, γ     →  y
+
+    KNOWN PRECISION LOSS: step 4 truncates Q16.16 scale to int4 (dec_eff_b_value[3:0]).
+    ~12-bit precision loss at exactly the multiplication step. Mitigation
+    is a v1.6.5+ SIMD_MUL_WIDE_SCALAR variant that widens B to Q4.4 or int8.
+
+    Args: .gamma <64-bit int>, .port <mask/out>. eps + inv_n are SDK-side
+    (pre-folded into the rsqrt seed).
+    """
+    gamma = _get_macro_arg(inst, 'gamma', 'gamma')
+    port_eh = _macro_port_eh(inst)
+    # SIG_L2SQ_IJKLM: 5D→scalar, op_marker=0x4 in HI.O_hi[3:0].
+    # 5D subscript with A_hi=0x0005 discriminator, O empty (scalar).
+    #   A = [i,j,k,l,m] canonicalized: i=1,j=2,k=3,l=4,m=5
+    #   Packed: A_lo = 0x4321, A_hi = 0x0005; B = O = 0; O_hi[3:0] = 0x4 (L2SQ)
+    return [
+        Instruction(
+            mnemonic='EINSUM',
+            flags=set(inst.flags) | {'opb'},
+            eh_list=[
+                port_eh,
+                _make_eh('subscript',
+                         {'A': ['i', 'j', 'k', 'l'], 'B': [], 'O': []},
+                         inst.line),
+                _make_eh('subscript',
+                         {'A': ['m'], 'B': [], 'O': [0x4]},  # op_marker at position 0
+                         inst.line),
+                _make_eh('opref', {}, inst.line),
+            ],
+            line=inst.line,
+        ),
+        Instruction(
+            mnemonic='SCALAR_RSQRT',
+            flags=set(inst.flags),
+            eh_list=[port_eh],
+            line=inst.line,
+        ),
+        # scale is Q16.16; broadcast to int4 via SIMD_MUL_WIDE_SCALAR opref
+        # (SDK routes the low nibble of the rsqrt output as B_scalar).
+        Instruction(
+            mnemonic='SIMD_MUL_WIDE_SCALAR',
+            flags=set(inst.flags),
+            eh_list=[port_eh, _make_eh('opref', {}, inst.line)],
+            line=inst.line,
+        ),
+        Instruction(
+            mnemonic='SIMD_MUL_WIDE_VEC',
+            flags=set(inst.flags) | {'opb'},
+            eh_list=[port_eh, _make_eh('imm64', {'value': gamma}, inst.line)],
+            line=inst.line,
+        ),
+    ]
+
+
+def _lower_layernorm(inst: Instruction) -> List[Instruction]:
+    """LAYERNORM(x, γ, β, eps) → 6-primitive sequence (spec §22.3 abridged).
+
+    SDK CONTRACT (fanout hazard, per workflow wsvd6rl41 verify):
+      Step 2 emits `xc = x - μ` which is consumed BOTH by step 3 (L2SQ for
+      variance) AND step 4 (final scaling). Wave-tokens are single-use, so
+      the SDK/runtime must:
+        (a) Re-issue x on step 4's fabric route (fanout via NoC broadcast),
+            OR
+        (b) Buffer xc on-Cluster (multi-slot fragment buffer, v1.6.5+),
+            OR
+        (c) Recompute xc via a second SIMD_SUB_WIDE_VEC dispatch (this
+            macro's current strategy — emits SUB twice, cheapest for MVP).
+
+    Recipe (MVP — SDK responsibility for eps/1_N folding into rsqrt seed):
+      1) MEAN_5D_TO_4D    x            →  μ[abcd]
+      2) SIMD_SUB_WIDE_VEC  x, μ       →  xc[abcde]   (first emission)
+      3) L2SQ_IJKLM       xc           →  sq_scalar   (variance sum)
+      4) SCALAR_RSQRT     sq_scalar    →  scale       (Q16.16)
+      5) SIMD_SUB_WIDE_VEC  x, μ       →  xc[abcde]   (re-emission — SDK strat (c))
+      6) SIMD_MUL_WIDE_SCALAR  xc, scale[3:0]  →  nrm
+      7) SIMD_MUL_WIDE_VEC  nrm, γ     →  sc
+      8) SIMD_ADD_WIDE_VEC  sc, β      →  y
+
+    Args: .gamma, .beta (64-bit int4 vectors), .port.
+    """
+    gamma = _get_macro_arg(inst, 'gamma', 'gamma')
+    beta = _get_macro_arg(inst, 'beta', 'beta')
+    port_eh = _macro_port_eh(inst)
+    # Placeholder for μ — SDK-provided vector reference. For MVP macro,
+    # we emit the primitive with an .opref that the SDK later resolves.
+    mu_opref = _make_eh('opref', {}, inst.line)
+    return [
+        # 1) MEAN_5D_TO_4D via EINSUM with op_marker=0x5 (5D→4D family)
+        Instruction(
+            mnemonic='EINSUM',
+            flags=set(inst.flags) | {'opb'},
+            eh_list=[
+                port_eh,
+                _make_eh('subscript',
+                         {'A': ['i', 'j', 'k', 'l'], 'B': [],
+                          'O': ['i', 'j', 'k', 'l']},
+                         inst.line),
+                _make_eh('subscript',
+                         {'A': ['m'], 'B': [], 'O': [0x5]},  # MEAN op_marker at position 0
+                         inst.line),
+                _make_eh('opref', {}, inst.line),
+            ],
+            line=inst.line,
+        ),
+        # 2) SIMD_SUB_WIDE_VEC: x - μ (first emission)
+        Instruction(
+            mnemonic='SIMD_SUB_WIDE_VEC',
+            flags=set(inst.flags) | {'opb'},
+            eh_list=[port_eh, mu_opref],
+            line=inst.line,
+        ),
+        # 3) L2SQ_IJKLM: 5D→scalar sum of squares
+        Instruction(
+            mnemonic='EINSUM',
+            flags=set(inst.flags) | {'opb'},
+            eh_list=[
+                port_eh,
+                _make_eh('subscript',
+                         {'A': ['i', 'j', 'k', 'l'], 'B': [], 'O': []},
+                         inst.line),
+                _make_eh('subscript',
+                         {'A': ['m'], 'B': [], 'O': [0, 0, 0, 0x4]},  # L2SQ marker
+                         inst.line),
+                _make_eh('opref', {}, inst.line),
+            ],
+            line=inst.line,
+        ),
+        # 4) SCALAR_RSQRT
+        Instruction(
+            mnemonic='SCALAR_RSQRT',
+            flags=set(inst.flags),
+            eh_list=[port_eh],
+            line=inst.line,
+        ),
+        # 5) SIMD_SUB_WIDE_VEC: x - μ (re-emission — SDK strategy c)
+        Instruction(
+            mnemonic='SIMD_SUB_WIDE_VEC',
+            flags=set(inst.flags) | {'opb'},
+            eh_list=[port_eh, mu_opref],
+            line=inst.line,
+        ),
+        # 6) SIMD_MUL_WIDE_SCALAR: xc × scale
+        Instruction(
+            mnemonic='SIMD_MUL_WIDE_SCALAR',
+            flags=set(inst.flags),
+            eh_list=[port_eh, _make_eh('opref', {}, inst.line)],
+            line=inst.line,
+        ),
+        # 7) SIMD_MUL_WIDE_VEC: nrm × γ
+        Instruction(
+            mnemonic='SIMD_MUL_WIDE_VEC',
+            flags=set(inst.flags) | {'opb'},
+            eh_list=[port_eh, _make_eh('imm64', {'value': gamma}, inst.line)],
+            line=inst.line,
+        ),
+        # 8) SIMD_ADD_WIDE_VEC: sc + β
+        Instruction(
+            mnemonic='SIMD_ADD_WIDE_VEC',
+            flags=set(inst.flags) | {'opb'},
+            eh_list=[port_eh, _make_eh('imm64', {'value': beta}, inst.line)],
+            line=inst.line,
+        ),
+    ]
 
 
 # -----------------------------------------------------------------------------
@@ -1003,6 +1280,21 @@ _set_legal([0x32], required={'port', 'subscript', 'opref'},
 # 0x40..0x44 unary FP
 _set_legal([0x40, 0x41, 0x42, 0x43, 0x44],
            required={'port'}, forbidden=_ALL_DATA_EHS)
+# v1.6.1b §22 — SIMD_ADD/SUB/MUL_WIDE_SCALAR (0x60/61/62): binary-ALU
+# style, B_scalar via imm16 XOR opref (dec_eff_b_value[3:0]).
+_set_legal([0x60, 0x61, 0x62],
+           required={'port'}, forbidden={'subscript', 'mem'},
+           allow_imm_xor_opref=True)
+# v1.6.1b §22 — SIMD_ADD/SUB/MUL_WIDE_VEC (0x63/64/65): V (64-bit 4D
+# vector) via imm64 XOR opref. F_HAS_OPB flag required — V arrives on
+# input_payload_b (either as compile-time IMM64 constant or as a prior
+# wave via OPREF bank routing).
+_set_legal([0x63, 0x64, 0x65],
+           required={'port'}, forbidden={'subscript', 'mem', 'imm16', 'imm32'},
+           allow_imm_xor_opref=True, require_opb_flag=True)
+# v1.6.1b §22 — SCALAR_RSQRT (0x66): pure unary scalar on dec_input_payload
+# (Q16.16 fixed-point). No B, no imm, no opref (mirrors 0x1B NEG shape).
+_set_legal([0x66], required={'port'}, forbidden=_ALL_DATA_EHS)
 
 
 def _check_no_unresolved_aliases(inst: Instruction) -> None:

@@ -22,6 +22,7 @@
 - v1.6.1c (2026-07-15): **§22 RISC-ish normalization decomposition** — LayerNorm/BatchNorm/RMSNorm/InstanceNorm/GroupNorm 을 Groups A+B+C primitives 로 분해하는 recipes. Compositional decomposition philosophy 정식화. §22 참조.
 - v1.6.2 (2026-07-15): **4D→3D reduction family** (SUM/MAX/MIN/L2SQ/MEAN) — InstanceNorm/GroupNorm gap closure. A_hi=0x0004 을 family discriminator 로 (adversarial review 발견 bug 방지). SIG_MIN_5D_TO_4D 대칭 backfill. §22.13 참조.
 - v1.6.3 (2026-07-15): **rsqrt mantissa LUT** — 기존 power-of-2 baseline → 16-entry Q0.15 LUT 로 정밀도 ~4-bit 향상. LUT[0]=0x8000 로 기존 3 tests 완전 backward-compat. §22.13 참조.
+- v1.6.4 (2026-07-15): **assembler norm macros** — 7 primitive mnemonics (0x60-66) + BATCHNORM_INFER / RMSNORM / LAYERNORM macros. Assembler-only landing (RTL 무변경). LAYERNORM 은 xc-fanout 처리를 위한 SDK-side re-emission 전략 채택. §22.11 참조.
 
 참조 구현 마이그레이션: **진행 중 (2026-07-12 개시)** — 참조 보드가 XCAU25P → LFE5U-85F → Avant G70 순으로 이동, 아래 §"참조 구현 마이그레이션 노트" 참조.
 
@@ -1478,29 +1479,114 @@ Then per inference:
 - **Amortization 12×** (workflow research 계산)
 - 유연성: SDK 가 norm 조합 (예: `LayerNorm(RMSNorm(x))` 하이브리드) 자유롭게 표현
 
-### 22.11 SDK composition pattern
+### 22.11 SDK composition pattern (v1.6.4 landing)
 
-`wavetensor_asm.py` 또는 상위 SDK 는 `_lower_norm_*` macro pass 를 통해 norm 을 primitive 시퀀스로 lowering. 예시 골격:
+**v1.6.4 landing (2026-07-15)**: `wavetensor_asm.py` 에 정규화 macro 3개 정식 구현 (BATCHNORM_INFER, RMSNORM, LAYERNORM). Assembler-only 변경 (RTL 무변경, 288→296 tests).
 
+#### 22.11.1 Primitive mnemonics 등록 (0x60-0x66)
+
+이전에는 opcode 만 존재. v1.6.4 에서 assembler-side mnemonic 추가:
 ```python
-def _lower_layernorm(inst: Instruction) -> List[Instruction]:
-    """LayerNorm macro expansion into RISC-ish primitive sequence."""
-    # Read γ, β, eps, N from macro args
-    # Emit 8-primitive chain per §22.3
-    return [
-        make_sig_mean_5d_to_4d(x_tag),
-        make_simd_sub_wide_vec(x_tag, mu_tag),
-        make_sig_l2sq_5d_to_4d(xc_tag),
-        make_simd_mul_wide_scalar(sq_tag, inv_N),
-        make_simd_add_wide_scalar(var_tag, eps),
-        make_scalar_rsqrt_approx(vare_scalar_tag),
-        make_simd_mul_wide_scalar(xc_tag, scale_tag),
-        make_simd_mul_wide_vec(nrm_tag, gamma_tag),
-        make_simd_add_wide_vec(sc_tag, beta_tag),
-    ]
+'SIMD_ADD_WIDE_SCALAR': 0x60, 'SIMD_SUB_WIDE_SCALAR': 0x61,
+'SIMD_MUL_WIDE_SCALAR': 0x62,
+'SIMD_ADD_WIDE_VEC':    0x63, 'SIMD_SUB_WIDE_VEC':    0x64,
+'SIMD_MUL_WIDE_VEC':    0x65,
+'SCALAR_RSQRT':         0x66,
 ```
 
-**미탑재 (v1.6.1c 는 spec only)**: 실제 macro pass 구현은 assembler / SDK 별도 후속 작업. `wavetensor_asm.py` 에 `NORM_MACROS` 등록 + `macro_pass` 확장이 후속 amendment.
+Legality (Section 8 `_LEGAL` 확장):
+- 0x60/61/62: binary-ALU 패턴 (req_port + IMM XOR OPREF, no subscript/mem)
+- 0x63/64/65: req_port + F_HAS_OPB (V via imm64 or opref, 64-bit)
+- 0x66: pure unary (req_port, all data EHs forbidden)
+
+#### 22.11.2 Macro 3개 (HL_ONLY_MNEMONICS 등록)
+
+```python
+HL_ONLY_MNEMONICS = {'RESHAPE', 'BATCHNORM_INFER', 'RMSNORM', 'LAYERNORM'}
+```
+
+**Syntax (monolithic single-line)**:
+```
+BATCHNORM_INFER opb .k1 <64-bit K1> .k2 <64-bit K2>
+RMSNORM         opb .gamma <64-bit γ>
+LAYERNORM       opb .gamma <64-bit γ> .beta <64-bit β>
+```
+
+#### 22.11.3 BATCHNORM_INFER expansion (2 primitives)
+
+Recipe (§22.5 pre-computed constants):
+```
+1) SIMD_MUL_WIDE_VEC   x, K1  →  t   (opcode 0x65)
+2) SIMD_ADD_WIDE_VEC   t, K2  →  y   (opcode 0x63)
+```
+
+K1, K2 는 SDK 사전 계산 (running_scale · γ, β − running_mean · K1).
+
+#### 22.11.4 RMSNORM expansion (4 primitives)
+
+Recipe (§22.4 simplified, eps/1_N 는 SDK rsqrt seed 사전 folding):
+```
+1) EINSUM (L2SQ_IJKLM)   x        →  sq_scalar   (opcode 0x32, op_marker=0x4)
+2) SCALAR_RSQRT          sq       →  scale        (opcode 0x66)
+3) SIMD_MUL_WIDE_SCALAR  x, scale →  nrm         (opcode 0x62, scale[3:0])
+4) SIMD_MUL_WIDE_VEC     nrm, γ   →  y           (opcode 0x65)
+```
+
+**KNOWN PRECISION LOSS (spec §22.7 재확인)**: 단계 3 에서 Q16.16 rsqrt scale 이 int4 로 truncate 됨. ~12-bit precision 손실. v1.6.5+ 후보: SIMD_MUL_WIDE_SCALAR B lane 을 Q4.4 또는 int8 로 widening.
+
+#### 22.11.5 LAYERNORM expansion (8 primitives)
+
+Recipe (§22.3, xc-fanout SDK 재발행 전략):
+```
+1) EINSUM (MEAN_5D_TO_4D)  x         →  μ[abcd]    (op_marker=0x5)
+2) SIMD_SUB_WIDE_VEC       x, μ      →  xc (첫 emission)
+3) EINSUM (L2SQ_IJKLM)     xc        →  sq_scalar
+4) SCALAR_RSQRT            sq        →  scale
+5) SIMD_SUB_WIDE_VEC       x, μ      →  xc (재발행 — SDK 전략 C)
+6) SIMD_MUL_WIDE_SCALAR    xc, scale →  nrm
+7) SIMD_MUL_WIDE_VEC       nrm, γ    →  sc
+8) SIMD_ADD_WIDE_VEC       sc, β     →  y
+```
+
+**xc-fanout 해결 (workflow wsvd6rl41 verify 발견)**:
+- 스펙 §22.3 은 `xc` 를 step 3+step 6 에 재사용하지만 wave-token 은 single-use
+- SDK 옵션: (a) NoC broadcast fanout, (b) on-Cluster buffer (v1.6.5+ multi-slot), (c) **SUB 재발행 (v1.6.4 채택)**
+- MVP 는 옵션 (c) — SIMD_SUB_WIDE_VEC 두 번 emit. 추가 primitive 1개 dispatch overhead, 상대적으로 저렴 (§20 SUB ~200 LUT).
+
+#### 22.11.6 Op_marker encoding via subscript
+
+Macro 는 EINSUM 을 emit 시 2-slot SUBSCRIPT chain 으로 op_marker 를 O_hi[3:0] 에 실음:
+```python
+_make_eh('subscript', {'A': ['i','j','k','l'], 'B': [], 'O': ['i','j','k','l']}),  # lo
+_make_eh('subscript', {'A': ['m'], 'B': [], 'O': [0x5]}),  # hi, O_hi=MEAN marker
+```
+
+`_canonicalize_subscript` 는 **integer input 을 label code 로 pass-through** — op_marker 를 integer 로 넘기면 canonicalization 우회하여 정확한 nibble 값 유지.
+
+#### 22.11.7 회귀 (296 tests PASS, +8 신규)
+
+test_wavetensor_asm.py 신규 `TestNormMacros` class (8 tests):
+- `test_batchnorm_infer_expansion` — 2-primitive opcode sequence 검증
+- `test_batchnorm_infer_missing_k1_raises` — clear error
+- `test_rmsnorm_expansion` — 4-primitive sequence
+- `test_layernorm_expansion` — 8-primitive sequence (xc 재발행 포함)
+- `test_layernorm_missing_beta_raises` — clear error
+- `test_primitive_simd_add_wide_scalar_legality` — 0x60 legality
+- `test_primitive_scalar_rsqrt_legality` — 0x66 pure unary
+- `test_primitive_scalar_rsqrt_rejects_imm` — 0x66 imm rejection
+
+전체: 217 cocotb + 79 assembler = **296 PASS** (기존 288 + 8 신규).
+
+#### 22.11.8 남은 v1.6.4+ 스코프
+
+- **v1.6.4+**: HL-only reduction mnemonics (MEAN_5D_TO_4D, L2SQ_IJKLM 등) — 현 macro 는 EINSUM opcode 를 직접 emit 하지만, 별도 mnemonic 도입 시 syntax 명확화 가능. 후속 refactor 후보.
+- **v1.6.4+**: `.eps`, `.inv_n` directive 실 사용 — 현재는 SDK 사전 folding 을 가정. RTL 이 4D→scalar reduction 을 지원하는 v1.6.5 이후 macro 확장.
+
+### 22.12 회귀
+
+Groups A+B+C 회귀 (v1.6.1a + v1.6.1b commits 참조):
+- **276 tests PASS** (194 cocotb + 71 assembler; 신규 24 tests over v1.5.5's 252)
+- 이 §22 문서는 **spec-only landing** — RTL 무변경, 회귀 유지
 
 ### 22.12 회귀
 
