@@ -2479,6 +2479,278 @@ async def test_bmm_3_unknown_wide_sig_lowers(dut):
 
 
 # =============================================================================
+# v1.6.1 §22 — Group A reduction primitives
+# =============================================================================
+#
+# 12 reduction primitives sharing wide-input path with SIG_TRACE_IIJKL (v1.5.5).
+# Families:
+#   5D→scalar (A_lo=0x4321, A_hi=0x0005, B/O=0): op_marker in O_hi[3:0].
+#     0=SUM, 1=MAX, 2=ARGMAX, 3=L1, 4=L2SQ, 6=MIN, 7=ARGMIN
+#   5D→4D (A_lo=0x4321, A_hi=0x0005, O_lo=0x4321): op_marker in O_hi[3:0].
+#     0=SUM, 1=MAX, 4=L2SQ, 5=MEAN
+#   5D→3D SIG_TRACE_IJJKL (A_lo=0x3221, O_lo=0x0431, A_hi=0x0004): unique.
+
+
+def _reduce_sig(a_lo_pack, o_lo_pack, a_hi_pack, op_marker):
+    """Build (lo_48, hi_48) SUBSCRIPT bodies for a reduction primitive.
+    Reduction family: B_lo/B_hi/O_hi always zero except O_hi[3:0] = op_marker."""
+    lo = (a_lo_pack & 0xFFFF) << 32 | (0 & 0xFFFF) << 16 | (o_lo_pack & 0xFFFF)
+    hi = (a_hi_pack & 0xFFFF) << 32 | (0 & 0xFFFF) << 16 | (op_marker & 0xF)
+    return lo, hi
+
+
+async def _fire_scalar_reduction(dut, a_128, op_marker, dim=0x55, wide_valid=1):
+    """Fire a 5D→scalar reduction with given op_marker."""
+    a_lo_hex, hi = _reduce_sig(0x4321, 0x0000, 0x0005, op_marker)
+    wide = a_128 & ((1 << 128) - 1)
+    instr = encode_instr(0x32, _STD_PORT(),
+                         eh_subscript(0x4321, 0x0000, 0x0000),
+                         eh_subscript(0x0005, 0x0000, op_marker & 0xF),
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    await fire(dut, instr, _STD_TAG(dim=dim),
+               payload_a=0, payload_b=0, payload_b_valid=1,
+               payload_wide=wide, payload_wide_valid=wide_valid)
+
+
+async def _fire_5d_to_4d_reduction(dut, a_128, op_marker, dim=0x55, wide_valid=1):
+    """Fire a 5D→4D reduction with given op_marker."""
+    wide = a_128 & ((1 << 128) - 1)
+    instr = encode_instr(0x32, _STD_PORT(),
+                         eh_subscript(0x4321, 0x0000, 0x4321),
+                         eh_subscript(0x0005, 0x0000, op_marker & 0xF),
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    await fire(dut, instr, _STD_TAG(dim=dim),
+               payload_a=0, payload_b=0, payload_b_valid=1,
+               payload_wide=wide, payload_wide_valid=wide_valid)
+
+
+def _s4(x):
+    x &= 0xF
+    return x - 16 if x & 0x8 else x
+
+
+@cocotb.test()
+async def test_reduce_sum_ijklm(dut):
+    """v1.6.1: 5D→scalar SUM. Distinctive nibbles, verify mod-2^4 wrap."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    nibbles = [((i + 1) & 0xF) for i in range(32)]  # 1,2,...,15,0,1,...
+    a_128 = _pack_int4_128(*nibbles)
+    await _fire_scalar_reduction(dut, a_128, 0x0)  # SUM
+    assert dut.output_valid.value == 1
+    expected = sum(nibbles) & 0xF
+    assert int(dut.output_payload.value) & 0xF == expected
+    assert (int(dut.output_tag.value) & 0xFF) == 0x00  # scalar
+
+
+@cocotb.test()
+async def test_reduce_max_ijklm(dut):
+    """v1.6.1: 5D→scalar MAX. Signed int4 max."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    # place +7 (max positive int4) at position 15, negatives elsewhere
+    nibbles = [0xF] * 32   # -1
+    nibbles[15] = 0x7      # +7
+    a_128 = _pack_int4_128(*nibbles)
+    await _fire_scalar_reduction(dut, a_128, 0x1)  # MAX
+    assert dut.output_valid.value == 1
+    assert (int(dut.output_payload.value) & 0xF) == 0x7
+
+
+@cocotb.test()
+async def test_reduce_min_ijklm(dut):
+    """v1.6.1: 5D→scalar MIN. Fréchet medoid / k-means core."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    nibbles = [0x1] * 32   # +1
+    nibbles[10] = 0x8      # -8 (min int4)
+    a_128 = _pack_int4_128(*nibbles)
+    await _fire_scalar_reduction(dut, a_128, 0x6)  # MIN
+    assert dut.output_valid.value == 1
+    assert (int(dut.output_payload.value) & 0xF) == 0x8
+
+
+@cocotb.test()
+async def test_reduce_argmax_ijklm(dut):
+    """v1.6.1: 5D→scalar ARGMAX. Returns position (0..31)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    nibbles = [0x0] * 32
+    nibbles[22] = 0x7      # max at position 22
+    a_128 = _pack_int4_128(*nibbles)
+    await _fire_scalar_reduction(dut, a_128, 0x2)  # ARGMAX
+    assert dut.output_valid.value == 1
+    assert (int(dut.output_payload.value) & 0x1F) == 22
+
+
+@cocotb.test()
+async def test_reduce_argmin_ijklm(dut):
+    """v1.6.1: 5D→scalar ARGMIN. Fréchet medoid, k-means assignment,
+    KNN classifier, VQ-VAE codebook lookup — all argmin patterns."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    nibbles = [0x1] * 32
+    nibbles[7] = 0x8       # -8 (min) at position 7
+    a_128 = _pack_int4_128(*nibbles)
+    await _fire_scalar_reduction(dut, a_128, 0x7)  # ARGMIN
+    assert dut.output_valid.value == 1
+    assert (int(dut.output_payload.value) & 0x1F) == 7
+
+
+@cocotb.test()
+async def test_reduce_l1_ijklm(dut):
+    """v1.6.1: 5D→scalar L1 = Σ |A|. int32 accumulator."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    # 16 × +3 + 16 × -5 → L1 = 16*3 + 16*5 = 128
+    nibbles = [0x3] * 16 + [0xB] * 16   # 0xB = -5 signed
+    a_128 = _pack_int4_128(*nibbles)
+    await _fire_scalar_reduction(dut, a_128, 0x3)  # L1
+    assert dut.output_valid.value == 1
+    expected = 16 * 3 + 16 * 5
+    assert (int(dut.output_payload.value) & 0xFFFFFFFF) == expected
+
+
+@cocotb.test()
+async def test_reduce_l2sq_ijklm(dut):
+    """v1.6.1: 5D→scalar L2SQ = Σ A². Central for LayerNorm variance."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    # 32 × +2 → L2SQ = 32 * 4 = 128
+    nibbles = [0x2] * 32
+    a_128 = _pack_int4_128(*nibbles)
+    await _fire_scalar_reduction(dut, a_128, 0x4)  # L2SQ
+    assert dut.output_valid.value == 1
+    expected = 32 * 4
+    assert (int(dut.output_payload.value) & 0xFFFFFFFF) == expected
+
+
+@cocotb.test()
+async def test_reduce_sum_5d_to_4d(dut):
+    """v1.6.1: 5D→4D SUM (reduce over m)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    # For each of 16 output positions: pair (a,b) → sum
+    nibbles = [((i & 0x7) + 1) & 0xF for i in range(32)]
+    a_128 = _pack_int4_128(*nibbles)
+    await _fire_5d_to_4d_reduction(dut, a_128, 0x0)  # SUM
+    assert dut.output_valid.value == 1
+    payload = int(dut.output_payload.value)
+    for idx in range(16):
+        exp = (nibbles[idx * 2] + nibbles[idx * 2 + 1]) & 0xF
+        got = (payload >> (idx * 4)) & 0xF
+        assert got == exp, f"idx {idx}: {got:x} != {exp:x}"
+    assert (int(dut.output_tag.value) & 0xFF) == 0x55  # 4D 2×2×2×2
+
+
+@cocotb.test()
+async def test_reduce_max_5d_to_4d(dut):
+    """v1.6.1: 5D→4D MAX (pairwise max over m). Max-pool CNN core."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    nibbles = [((i * 3 + 1) & 0xF) for i in range(32)]
+    a_128 = _pack_int4_128(*nibbles)
+    await _fire_5d_to_4d_reduction(dut, a_128, 0x1)  # MAX
+    assert dut.output_valid.value == 1
+    payload = int(dut.output_payload.value)
+    for idx in range(16):
+        a0, a1 = _s4(nibbles[idx * 2]), _s4(nibbles[idx * 2 + 1])
+        exp = (max(a0, a1)) & 0xF
+        got = (payload >> (idx * 4)) & 0xF
+        assert got == exp, f"idx {idx}: {got:x} != {exp:x}"
+
+
+@cocotb.test()
+async def test_reduce_mean_5d_to_4d(dut):
+    """v1.6.1: 5D→4D MEAN. (A0+A1) >> 1 (ASR)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    # All +4 → mean=+4
+    nibbles = [0x4] * 32
+    a_128 = _pack_int4_128(*nibbles)
+    await _fire_5d_to_4d_reduction(dut, a_128, 0x5)  # MEAN
+    assert dut.output_valid.value == 1
+    payload = int(dut.output_payload.value)
+    for idx in range(16):
+        got = (payload >> (idx * 4)) & 0xF
+        assert got == 0x4, f"idx {idx}: {got:x} != 4"
+
+
+@cocotb.test()
+async def test_reduce_l2sq_5d_to_4d(dut):
+    """v1.6.1: 5D→4D L2SQ (sum of squares, int4 truncated). LayerNorm variance base."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    # All +2 → A²+A² = 4+4 = 8 truncated
+    nibbles = [0x2] * 32
+    a_128 = _pack_int4_128(*nibbles)
+    await _fire_5d_to_4d_reduction(dut, a_128, 0x4)  # L2SQ
+    assert dut.output_valid.value == 1
+    payload = int(dut.output_payload.value)
+    for idx in range(16):
+        got = (payload >> (idx * 4)) & 0xF
+        assert got == 0x8, f"idx {idx}: {got:x} != 8"
+
+
+@cocotb.test()
+async def test_reduce_trace_ijjkl(dut):
+    """v1.6.1: 5D→3D SIG_TRACE_IJJKL (trace over j, variant of IIJKL)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    # Diagonal only: place +3 at diagonal positions, poison elsewhere
+    nibbles = [0xF] * 32  # -1
+    # i-block 0: diag (0,0) offsets 0-3, diag (1,1) offsets 12-15
+    # i-block 1: diag (0,0) offsets 16-19, diag (1,1) offsets 28-31
+    for k in range(2):
+        for l in range(2):
+            nibbles[0 * 16 + 0 + k * 2 + l] = 0x3
+            nibbles[0 * 16 + 12 + k * 2 + l] = 0x3
+            nibbles[1 * 16 + 0 + k * 2 + l] = 0x3
+            nibbles[1 * 16 + 12 + k * 2 + l] = 0x3
+    a_128 = _pack_int4_128(*nibbles)
+    wide = a_128 & ((1 << 128) - 1)
+    instr = encode_instr(0x32, _STD_PORT(),
+                         eh_subscript(0x3221, 0x0000, 0x0431),   # SIG_TRACE_IJJKL_LO
+                         eh_subscript(0x0004, 0x0000, 0x0000),   # SIG_TRACE_IJJKL_HI
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    await fire(dut, instr, _STD_TAG(dim=0x55),
+               payload_a=0, payload_b=0, payload_b_valid=1,
+               payload_wide=wide, payload_wide_valid=1)
+    assert dut.output_valid.value == 1
+    payload = int(dut.output_payload.value)
+    # Each output cell = 3 + 3 = 6
+    for idx in range(8):
+        got = (payload >> (idx * 4)) & 0xF
+        assert got == 0x6, f"idx {idx}: {got:x} != 6"
+    assert (int(dut.output_tag.value) & 0xFF) == 0x15  # 3D 2×2×2
+
+
+@cocotb.test()
+async def test_reduce_wide_valid_gate_error(dut):
+    """v1.6.1: reduction with wide_valid=0 raises error_flag."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    await _fire_scalar_reduction(dut, 0, 0x0, wide_valid=0)  # SUM w/o wide
+    assert dut.error_flag.value == 1
+
+
+# =============================================================================
 # v1.5.3 §20 — adversarial review bug 5 fix: MUL/DIV in-flight collision tests
 # =============================================================================
 #

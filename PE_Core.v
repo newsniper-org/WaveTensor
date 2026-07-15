@@ -171,6 +171,35 @@ module PE_Core #(
     // Output tag dim_sizes = 0x15 (3D 2×2×2 result).
     localparam [47:0] SIG_TRACE_IIJKL_LO = {16'h3211, 16'h0000, 16'h0432};
     localparam [47:0] SIG_TRACE_IIJKL_HI = {16'h0004, 16'h0000, 16'h0000};
+    // v1.6.1 §22 — reduction primitive families with op_marker convention.
+    //
+    // Families that share the same SUBSCRIPT einsum shape are disambiguated
+    // by an op_marker nibble at `dec_eff_subscript_hi[3:0]` (= O_hi[3:0]).
+    // O_hi is naturally zero for scalar / 4D outputs, so the low nibble
+    // repurposes as a discriminator without conflict.
+    //
+    // FAMILY: 5D→scalar (A_lo=0x4321, A_hi=0x0005, B/O_lo/hi=0, marker in O_hi[3:0])
+    //   0x0=SUM, 0x1=MAX, 0x2=ARGMAX, 0x3=L1, 0x4=L2SQ, 0x6=MIN, 0x7=ARGMIN
+    //   (0x5 reserved to keep 4D family's MEAN marker consistent)
+    // FAMILY: 5D→4D (A_lo=0x4321, A_hi=0x0005, O_lo=0x4321, marker in O_hi[3:0])
+    //   0x0=SUM_5D_TO_4D, 0x1=MAX_5D_TO_4D, 0x4=L2SQ_5D_TO_4D, 0x5=MEAN_5D_TO_4D
+    // 5D→3D SIG_TRACE_IJJKL has unique shape (A_lo=0x3221, O_lo=0x0431) →
+    //   no marker needed (single-slot dispatch like SIG_TRACE_IIJKL).
+    localparam [47:0] SIG_SCALAR_FAMILY_LO      = {16'h4321, 16'h0000, 16'h0000};
+    localparam [43:0] SIG_SCALAR_FAMILY_HI_BASE = {16'h0005, 16'h0000, 12'h000};
+    localparam [47:0] SIG_5D4D_FAMILY_LO        = {16'h4321, 16'h0000, 16'h4321};
+    localparam [43:0] SIG_5D4D_FAMILY_HI_BASE   = {16'h0005, 16'h0000, 12'h000};
+    localparam [47:0] SIG_TRACE_IJJKL_LO        = {16'h3221, 16'h0000, 16'h0431};
+    localparam [47:0] SIG_TRACE_IJJKL_HI        = {16'h0004, 16'h0000, 16'h0000};
+    // Op-marker constants (family-local nibbles)
+    localparam [3:0] OP_SUM     = 4'h0;
+    localparam [3:0] OP_MAX     = 4'h1;
+    localparam [3:0] OP_ARGMAX  = 4'h2;
+    localparam [3:0] OP_L1      = 4'h3;
+    localparam [3:0] OP_L2SQ    = 4'h4;
+    localparam [3:0] OP_MEAN    = 4'h5;
+    localparam [3:0] OP_MIN     = 4'h6;
+    localparam [3:0] OP_ARGMIN  = 4'h7;
     localparam [3:0] RED_OP_SUM = 4'h0;
     localparam [3:0] RED_OP_MAX = 4'h1;
     localparam [3:0] RED_OP_MIN = 4'h2;
@@ -457,6 +486,247 @@ module PE_Core #(
             r6 = $signed(a[ 24 +: 4]) + $signed(a[120 +: 4]);
             r7 = $signed(a[ 28 +: 4]) + $signed(a[124 +: 4]);
             einsum_trace_iijkl_int4 = {32'h0, r7, r6, r5, r4, r3, r2, r1, r0};
+        end
+    endfunction
+
+    // v1.6.1 §22 — Group A reduction primitives.
+    // All take 128-bit A (via dec_input_payload_wide[127:0]) and return
+    // ≤64-bit result. No FSM engagement — single output_valid pulse with
+    // output_frag_hdr=0x00.
+
+    // 5D→scalar SUM: R = Σ_all A[idx] mod 2^4.  Output: int4 in bits[3:0].
+    function [ADDR_WIDTH-1:0] einsum_sum_ijklm_int4;
+        input [127:0] a;
+        reg [3:0] acc;
+        integer i;
+        begin
+            acc = 4'h0;
+            for (i = 0; i < 32; i = i + 1)
+                acc = acc + a[i*4 +: 4];
+            einsum_sum_ijklm_int4 = {60'h0, acc};
+        end
+    endfunction
+
+    // 5D→scalar MAX/MIN helpers: tournament-tree of 31 signed compare-selects.
+    function [ADDR_WIDTH-1:0] einsum_max_ijklm_int4;
+        input [127:0] a;
+        reg signed [3:0] mx, x;
+        integer i;
+        begin
+            mx = $signed(a[0 +: 4]);
+            for (i = 1; i < 32; i = i + 1) begin
+                x = $signed(a[i*4 +: 4]);
+                if (x > mx) mx = x;
+            end
+            einsum_max_ijklm_int4 = {{60{mx[3]}}, mx};
+        end
+    endfunction
+
+    function [ADDR_WIDTH-1:0] einsum_min_ijklm_int4;
+        input [127:0] a;
+        reg signed [3:0] mn, x;
+        integer i;
+        begin
+            mn = $signed(a[0 +: 4]);
+            for (i = 1; i < 32; i = i + 1) begin
+                x = $signed(a[i*4 +: 4]);
+                if (x < mn) mn = x;
+            end
+            einsum_min_ijklm_int4 = {{60{mn[3]}}, mn};
+        end
+    endfunction
+
+    // 5D→scalar ARGMAX: return 5-bit index (0..31) of max value.
+    // Tie-break: earlier index wins.
+    function [ADDR_WIDTH-1:0] einsum_argmax_ijklm_int4;
+        input [127:0] a;
+        reg signed [3:0] mx, x;
+        reg [4:0] idx;
+        integer i;
+        begin
+            mx  = $signed(a[0 +: 4]);
+            idx = 5'd0;
+            for (i = 1; i < 32; i = i + 1) begin
+                x = $signed(a[i*4 +: 4]);
+                if (x > mx) begin
+                    mx  = x;
+                    idx = i[4:0];
+                end
+            end
+            einsum_argmax_ijklm_int4 = {59'h0, idx};
+        end
+    endfunction
+
+    // 5D→scalar ARGMIN: return index of min value. Central for Fréchet
+    // medoid, k-means assignment step, KNN classifier, VQ-VAE codebook.
+    function [ADDR_WIDTH-1:0] einsum_argmin_ijklm_int4;
+        input [127:0] a;
+        reg signed [3:0] mn, x;
+        reg [4:0] idx;
+        integer i;
+        begin
+            mn  = $signed(a[0 +: 4]);
+            idx = 5'd0;
+            for (i = 1; i < 32; i = i + 1) begin
+                x = $signed(a[i*4 +: 4]);
+                if (x < mn) begin
+                    mn  = x;
+                    idx = i[4:0];
+                end
+            end
+            einsum_argmin_ijklm_int4 = {59'h0, idx};
+        end
+    endfunction
+
+    // 5D→scalar L1: Σ |A[i]|. int4 |x| ∈ [0,8] → 4-bit unsigned. 32 lanes → sum
+    // fits in 9 bits. Output int32 accumulator for future consumer flexibility.
+    // 2's complement negation: -x = ~x + 1 (avoids unsigned underflow bug).
+    function [ADDR_WIDTH-1:0] einsum_l1_ijklm_int4;
+        input [127:0] a;
+        reg [3:0]  x;
+        reg [4:0]  abs_x;
+        reg [31:0] acc;
+        integer i;
+        begin
+            acc = 32'h0;
+            for (i = 0; i < 32; i = i + 1) begin
+                x     = a[i*4 +: 4];
+                // x[3]=1 → negative int4; abs = ~x + 1 (2's complement).
+                // Zero-extend to 5-bit (needed since |-8|=8 = 5'b01000).
+                abs_x = x[3] ? {1'b0, (~x + 4'h1)} : {1'b0, x};
+                acc   = acc + {27'h0, abs_x};
+            end
+            einsum_l1_ijklm_int4 = {32'h0, acc};
+        end
+    endfunction
+
+    // 5D→scalar L2SQ: Σ A[i]². int4² ∈ [0,64] → 7-bit. 32 lanes → sum fits in
+    // 12 bits. Output int32 accumulator. Central for LayerNorm variance.
+    function [ADDR_WIDTH-1:0] einsum_l2sq_ijklm_int4;
+        input [127:0] a;
+        reg signed [3:0] x;
+        reg signed [7:0] sq;
+        reg [31:0] acc;
+        integer i;
+        begin
+            acc = 32'h0;
+            for (i = 0; i < 32; i = i + 1) begin
+                x   = $signed(a[i*4 +: 4]);
+                sq  = x * x;   // always ≥0 (x*x)
+                acc = acc + {24'h0, sq[7:0]};
+            end
+            einsum_l2sq_ijklm_int4 = {32'h0, acc};
+        end
+    endfunction
+
+    // 5D→4D SUM: reduce over axis m. R[idx4] = A[idx4*2] + A[idx4*2+1] mod 2^4.
+    // idx4 = i*8 + j*4 + k*2 + l (16 output nibbles = 64-bit).
+    function [ADDR_WIDTH-1:0] einsum_sum_5d_to_4d_int4;
+        input [127:0] a;
+        reg [3:0] r [0:15];
+        reg [63:0] out;
+        integer idx;
+        begin
+            for (idx = 0; idx < 16; idx = idx + 1) begin
+                r[idx] = a[idx*8 +: 4] + a[idx*8 + 4 +: 4];
+            end
+            out = 64'h0;
+            for (idx = 0; idx < 16; idx = idx + 1)
+                out[idx*4 +: 4] = r[idx];
+            einsum_sum_5d_to_4d_int4 = out;
+        end
+    endfunction
+
+    // 5D→4D MAX: signed pairwise max over m. Tie: prefer m=0.
+    function [ADDR_WIDTH-1:0] einsum_max_5d_to_4d_int4;
+        input [127:0] a;
+        reg signed [3:0] a0, a1, rm;
+        reg [3:0] r [0:15];
+        reg [63:0] out;
+        integer idx;
+        begin
+            for (idx = 0; idx < 16; idx = idx + 1) begin
+                a0 = $signed(a[idx*8 +: 4]);
+                a1 = $signed(a[idx*8 + 4 +: 4]);
+                rm = (a0 >= a1) ? a0 : a1;
+                r[idx] = rm[3:0];
+            end
+            out = 64'h0;
+            for (idx = 0; idx < 16; idx = idx + 1)
+                out[idx*4 +: 4] = r[idx];
+            einsum_max_5d_to_4d_int4 = out;
+        end
+    endfunction
+
+    // 5D→4D MEAN: (A[m=0] + A[m=1]) arithmetically right-shifted by 1.
+    // Uses 5-bit signed sum then bits[4:1] → floor((A0+A1)/2).
+    function [ADDR_WIDTH-1:0] einsum_mean_5d_to_4d_int4;
+        input [127:0] a;
+        reg signed [4:0] sum5;
+        reg [3:0] r [0:15];
+        reg [63:0] out;
+        integer idx;
+        begin
+            for (idx = 0; idx < 16; idx = idx + 1) begin
+                sum5 = $signed(a[idx*8 +: 4]) + $signed(a[idx*8 + 4 +: 4]);
+                r[idx] = sum5[4:1];   // ASR by 1
+            end
+            out = 64'h0;
+            for (idx = 0; idx < 16; idx = idx + 1)
+                out[idx*4 +: 4] = r[idx];
+            einsum_mean_5d_to_4d_int4 = out;
+        end
+    endfunction
+
+    // 5D→4D L2SQ: sum of squares over m. Each pair contributes A0²+A1² ∈ [0,128].
+    // Truncate to int4 for downstream chaining (SDK expects int4 or handles overflow).
+    // For LayerNorm variance: SDK typically wants int8 accumulation; this int4
+    // form is the naive baseline. v1.6.2 candidate: int8-widened variant.
+    function [ADDR_WIDTH-1:0] einsum_l2sq_5d_to_4d_int4;
+        input [127:0] a;
+        reg signed [3:0] a0, a1;
+        reg signed [7:0] sq0, sq1;
+        reg [7:0]  sum8;
+        reg [3:0] r [0:15];
+        reg [63:0] out;
+        integer idx;
+        begin
+            for (idx = 0; idx < 16; idx = idx + 1) begin
+                a0   = $signed(a[idx*8 +: 4]);
+                a1   = $signed(a[idx*8 + 4 +: 4]);
+                sq0  = a0 * a0;
+                sq1  = a1 * a1;
+                sum8 = sq0[7:0] + sq1[7:0];
+                r[idx] = sum8[3:0];   // truncate to int4 (spec §22 caveat)
+            end
+            out = 64'h0;
+            for (idx = 0; idx < 16; idx = idx + 1)
+                out[idx*4 +: 4] = r[idx];
+            einsum_l2sq_5d_to_4d_int4 = out;
+        end
+    endfunction
+
+    // 5D→3D SIG_TRACE_IJJKL: 'ijjkl->ikl' — trace over j (symmetric to
+    // SIG_TRACE_IIJKL which traces over i). Nibble layout: A[i][j][j2][k][l]
+    // at (i*16 + j*8 + j2*4 + k*2 + l). Diagonal j==j2 contributes:
+    //   (j=0,j2=0) offset within i: 0
+    //   (j=1,j2=1) offset within i: 12 nibbles (=48 bits within i-block)
+    // R[i][k][l] at nibble idx = i*4 + k*2 + l (8 output nibbles).
+    function [ADDR_WIDTH-1:0] einsum_trace_ijjkl_int4;
+        input [127:0] a;
+        reg signed [3:0] r0, r1, r2, r3, r4, r5, r6, r7;
+        begin
+            // i=0 block (bits 0-63):   diag (0,0) offset 0, diag (1,1) offset 48
+            r0 = $signed(a[  0 +: 4]) + $signed(a[ 48 +: 4]);
+            r1 = $signed(a[  4 +: 4]) + $signed(a[ 52 +: 4]);
+            r2 = $signed(a[  8 +: 4]) + $signed(a[ 56 +: 4]);
+            r3 = $signed(a[ 12 +: 4]) + $signed(a[ 60 +: 4]);
+            // i=1 block (bits 64-127): diag (0,0) offset 64, diag (1,1) offset 112
+            r4 = $signed(a[ 64 +: 4]) + $signed(a[112 +: 4]);
+            r5 = $signed(a[ 68 +: 4]) + $signed(a[116 +: 4]);
+            r6 = $signed(a[ 72 +: 4]) + $signed(a[120 +: 4]);
+            r7 = $signed(a[ 76 +: 4]) + $signed(a[124 +: 4]);
+            einsum_trace_ijjkl_int4 = {32'h0, r7, r6, r5, r4, r3, r2, r1, r0};
         end
     endfunction
 
@@ -1186,6 +1456,142 @@ module PE_Core #(
                                         frag_tag_held    <= dec_forwarded_tag;
                                         frag_opcode_held <= dec_opcode;
                                         frag_state       <= FRAG_EMIT_HI;
+                                    end
+                                end else if ((dec_eff_subscript == SIG_SCALAR_FAMILY_LO)
+                                             && (dec_eff_subscript_hi[47:4] == SIG_SCALAR_FAMILY_HI_BASE)) begin
+                                    // v1.6.1 §22 — 5D→scalar reduction family.
+                                    // Op marker in dec_eff_subscript_hi[3:0]:
+                                    //   0=SUM, 1=MAX, 2=ARGMAX, 3=L1, 4=L2SQ, 6=MIN, 7=ARGMIN.
+                                    // (0x5 reserved for MEAN in 5D→4D family; unused here.)
+                                    if (!dec_input_payload_wide_valid) begin
+                                        error_flag   <= 1'b1;
+                                        output_valid <= 1'b0;
+                                    end else if (!((frag_state == FRAG_IDLE)
+                                                && !mul_valid_p1 && !mul_valid_p2
+                                                && (div_state == DIV_IDLE)
+                                                && !div_valid_p2 && !div_b_zero_p2)) begin
+                                        lower_required <= 1'b1;
+                                        output_valid   <= 1'b0;
+                                    end else case (dec_eff_subscript_hi[3:0])
+                                        OP_SUM: begin
+                                            output_payload <= einsum_sum_ijklm_int4(dec_input_payload_wide[127:0]);
+                                            output_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h00};
+                                            output_valid <= 1'b1;
+                                        end
+                                        OP_MAX: begin
+                                            output_payload <= einsum_max_ijklm_int4(dec_input_payload_wide[127:0]);
+                                            output_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h00};
+                                            output_valid <= 1'b1;
+                                        end
+                                        OP_ARGMAX: begin
+                                            output_payload <= einsum_argmax_ijklm_int4(dec_input_payload_wide[127:0]);
+                                            output_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h00};
+                                            output_valid <= 1'b1;
+                                        end
+                                        OP_L1: begin
+                                            output_payload <= einsum_l1_ijklm_int4(dec_input_payload_wide[127:0]);
+                                            output_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h00};
+                                            output_valid <= 1'b1;
+                                        end
+                                        OP_L2SQ: begin
+                                            output_payload <= einsum_l2sq_ijklm_int4(dec_input_payload_wide[127:0]);
+                                            output_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h00};
+                                            output_valid <= 1'b1;
+                                        end
+                                        OP_MIN: begin
+                                            output_payload <= einsum_min_ijklm_int4(dec_input_payload_wide[127:0]);
+                                            output_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h00};
+                                            output_valid <= 1'b1;
+                                        end
+                                        OP_ARGMIN: begin
+                                            output_payload <= einsum_argmin_ijklm_int4(dec_input_payload_wide[127:0]);
+                                            output_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h00};
+                                            output_valid <= 1'b1;
+                                        end
+                                        default: begin
+                                            lower_required <= 1'b1;
+                                            output_valid   <= 1'b0;
+                                        end
+                                    endcase
+                                end else if ((dec_eff_subscript == SIG_5D4D_FAMILY_LO)
+                                             && (dec_eff_subscript_hi[47:4] == SIG_5D4D_FAMILY_HI_BASE)) begin
+                                    // v1.6.1 §22 — 5D→4D reduction family (reduce over axis m).
+                                    // Op marker: 0=SUM, 1=MAX, 4=L2SQ, 5=MEAN.
+                                    if (!dec_input_payload_wide_valid) begin
+                                        error_flag   <= 1'b1;
+                                        output_valid <= 1'b0;
+                                    end else if (!((frag_state == FRAG_IDLE)
+                                                && !mul_valid_p1 && !mul_valid_p2
+                                                && (div_state == DIV_IDLE)
+                                                && !div_valid_p2 && !div_b_zero_p2)) begin
+                                        lower_required <= 1'b1;
+                                        output_valid   <= 1'b0;
+                                    end else case (dec_eff_subscript_hi[3:0])
+                                        OP_SUM: begin
+                                            output_payload <= einsum_sum_5d_to_4d_int4(dec_input_payload_wide[127:0]);
+                                            output_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h55};
+                                            output_valid <= 1'b1;
+                                        end
+                                        OP_MAX: begin
+                                            output_payload <= einsum_max_5d_to_4d_int4(dec_input_payload_wide[127:0]);
+                                            output_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h55};
+                                            output_valid <= 1'b1;
+                                        end
+                                        OP_L2SQ: begin
+                                            output_payload <= einsum_l2sq_5d_to_4d_int4(dec_input_payload_wide[127:0]);
+                                            output_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h55};
+                                            output_valid <= 1'b1;
+                                        end
+                                        OP_MEAN: begin
+                                            output_payload <= einsum_mean_5d_to_4d_int4(dec_input_payload_wide[127:0]);
+                                            output_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h55};
+                                            output_valid <= 1'b1;
+                                        end
+                                        default: begin
+                                            lower_required <= 1'b1;
+                                            output_valid   <= 1'b0;
+                                        end
+                                    endcase
+                                end else if ((dec_eff_subscript == SIG_TRACE_IJJKL_LO)
+                                             && (dec_eff_subscript_hi == SIG_TRACE_IJJKL_HI)) begin
+                                    // v1.6.1 §22 — SIG_TRACE_IJJKL: 5D trace over j (variant of IIJKL).
+                                    if (!dec_input_payload_wide_valid) begin
+                                        error_flag   <= 1'b1;
+                                        output_valid <= 1'b0;
+                                    end else if (!((frag_state == FRAG_IDLE)
+                                                && !mul_valid_p1 && !mul_valid_p2
+                                                && (div_state == DIV_IDLE)
+                                                && !div_valid_p2 && !div_b_zero_p2)) begin
+                                        lower_required <= 1'b1;
+                                        output_valid   <= 1'b0;
+                                    end else begin
+                                        output_payload <= einsum_trace_ijjkl_int4(dec_input_payload_wide[127:0]);
+                                        output_tag <= {dec_wave_number, dec_thread_id,
+                                                       8'h00, dec_eff_output_port_id,
+                                                       dec_eff_precision, 8'h15};
+                                        output_valid <= 1'b1;
                                     end
                                 end else if ((dec_eff_subscript == SIG_TRACE_IIJKL_LO)
                                              && (dec_eff_subscript_hi == SIG_TRACE_IIJKL_HI)) begin
