@@ -1011,6 +1011,27 @@ async def _fire_cache_load_wide(dut, tag, port_context_id=0):
             break
 
 
+async def _fire_frag_inval(dut, tag, port_context_id=0):
+    """v1.6.5d §22.17: fire a single-beat FRAG_INVAL (0x6A) dispatch with
+    the given tag and wait for an ack or error."""
+    instr = encode_instr(0x6A, eh_port(input_port_mask=(1 << port_context_id),
+                                       output_port_id=port_context_id))
+    dut.ext_instruction.value = instr
+    dut.ext_tag.value = tag
+    dut.ext_payload.value = 0
+    dut.ext_payload_b.value = 0
+    dut.ext_payload_b_valid.value = 0
+    dut.ext_frag_hdr.value = 0
+    dut.ext_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.ext_valid.value = 0
+    for _ in range(30):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.ext_out_valid.value) == 1 or int(dut.any_error_flag.value) == 1:
+            break
+
+
 @cocotb.test()
 async def test_cache_load_wide_roundtrip(dut):
     """v1.6.5c §22.16: cache a 2-fragment wide wave via a real wide-
@@ -1171,3 +1192,140 @@ async def test_frag_slots_tag_reuse_collision_safe_realloc(dut):
     got_lo = int(dut.ext_out_payload.value)
     assert got_lo == 0xCCCCCCCCCCCCCCCC, \
         f"expected NEW data (safe realloc), got {got_lo:016x} — stale merge bug"
+
+
+@cocotb.test()
+async def test_frag_inval_hit_frees_slot_immediately(dut):
+    """v1.6.5d §22.17: caching a wave then FRAG_INVAL-ing its tag acks
+    successfully, clears that slot's frag_active bit, and a subsequent
+    CACHE_LOAD_WIDE on the same tag now misses. Trivially passes (self-
+    skips) at the default FRAG_SLOTS=1 build (no persistence to
+    invalidate there)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+    if _slots(dut) == 1:
+        return
+
+    tag = _tag(port_context_id=0)
+    consumer = encode_instr(0x60, eh_port(input_port_mask=0x01, output_port_id=0),
+                            eh_imm16(1))
+    await _complete_wide_wave(dut, tag, 0x1, 0x2, consumer)
+    await _drain_output(dut)
+
+    found = None
+    for i in range(_slots(dut)):
+        if int(dut.frag_tag_reg[i].value) == tag:
+            found = i
+            break
+    assert found is not None, "producer tag not resident in any slot"
+
+    await _fire_frag_inval(dut, tag)
+    assert int(dut.any_error_flag.value) == 0, "FRAG_INVAL on a cached tag must ack, not miss"
+    assert int(dut.ext_out_valid.value) == 1
+
+    active_bits = int(dut.frag_active.value)
+    assert (active_bits >> found) & 1 == 0, "slot must be freed (frag_active cleared)"
+
+    await _fire_cache_load_wide(dut, tag)
+    assert int(dut.any_error_flag.value) == 1, "CACHE_LOAD_WIDE on an invalidated tag must miss"
+    assert int(dut.ext_out_valid.value) == 0
+
+
+@cocotb.test()
+async def test_frag_inval_never_cached_misses(dut):
+    """v1.6.5d §22.17: FRAG_INVAL against a tag that was never produced
+    anywhere must always miss — regardless of FRAG_SLOTS."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    never_used_tag = _tag(port_context_id=0)
+    await _fire_frag_inval(dut, never_used_tag)
+    assert int(dut.any_error_flag.value) == 1
+    assert int(dut.ext_out_valid.value) == 0
+
+
+@cocotb.test()
+async def test_frag_inval_freed_slot_reclaimed_by_free_priority_not_evict(dut):
+    """v1.6.5d §22.17: after filling all slots and invalidating a non-LRU
+    (youngest) slot, the next new wave reuses the freed slot rather than
+    triggering an LRU-evict of the true oldest slot — proves any_free is
+    checked ahead of evict_idx for an invalidate-freed slot, not just by
+    inspection. Trivially passes (self-skips) at FRAG_SLOTS=1."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+    n = _slots(dut)
+    if n <= 1:
+        return
+
+    consumer = encode_instr(0x60, eh_port(input_port_mask=0x01, output_port_id=0),
+                            eh_imm16(1))
+    tags = [make_tag(wave_number=i + 1, port_context_id=0) for i in range(n)]
+    for i, t in enumerate(tags):
+        await _complete_wide_wave(dut, t, 0x10 + i, 0x20 + i, consumer)
+        await _drain_output(dut)
+
+    # Invalidate the YOUNGEST (last-allocated, i.e. non-LRU) slot's tag.
+    await _fire_frag_inval(dut, tags[-1])
+    assert int(dut.any_error_flag.value) == 0
+
+    # One more distinct wave should reclaim the just-freed slot, NOT evict
+    # the true oldest (tags[0]).
+    newcomer_tag = make_tag(wave_number=100, port_context_id=0)
+    await _complete_wide_wave(dut, newcomer_tag, 0xAA, 0xBB, consumer)
+    await _drain_output(dut)
+
+    tag_regs = [int(dut.frag_tag_reg[i].value) for i in range(n)]
+    assert newcomer_tag in tag_regs, "newcomer wave not resident anywhere"
+    assert tags[0] in tag_regs, \
+        "true LRU-oldest slot must survive — newcomer should reuse the freed slot, not evict it"
+    for i in range(1, n - 1):
+        assert tags[i] in tag_regs, f"unrelated slot tags[{i}] should be undisturbed"
+
+
+@cocotb.test()
+async def test_frag_inval_midassembly_slot_reports_miss_not_cancel(dut):
+    """v1.6.5d §22.17: FRAG_INVAL against a tag whose slot is mid-assembly
+    (frag_active && !frag_ready, i.e. not all fragments have arrived yet)
+    must report a miss (error_flag), not a cancel — this is the
+    documented scope limit: FRAG_INVAL reclaims a completed cached slot,
+    it is not an in-flight-fragment-abort primitive. Trivially passes
+    (self-skips) at FRAG_SLOTS=1."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+    if _slots(dut) == 1:
+        return
+
+    tag = _tag(port_context_id=0)
+    # Send only fragment 0 of a 2-fragment wave — never completes.
+    dut.ext_instruction.value = 0
+    dut.ext_tag.value = tag
+    dut.ext_payload.value = 0x1
+    dut.ext_payload_b.value = 0
+    dut.ext_payload_b_valid.value = 0
+    dut.ext_frag_hdr.value = 0x01
+    dut.ext_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.ext_valid.value = 0
+    dut.ext_frag_hdr.value = 0
+    await Timer(1, units="ns")
+
+    found = None
+    for i in range(_slots(dut)):
+        if int(dut.frag_tag_reg[i].value) == tag:
+            found = i
+            break
+    assert found is not None, "mid-assembly slot not found"
+    active_before = (int(dut.frag_active.value) >> found) & 1
+    assert active_before == 1, "slot must be active (allocated) but not yet complete"
+
+    await _fire_frag_inval(dut, tag)
+    assert int(dut.any_error_flag.value) == 1, \
+        "FRAG_INVAL on a mid-assembly (not-yet-ready) slot must miss, not cancel"
+    assert int(dut.ext_out_valid.value) == 0
+
+    active_after = (int(dut.frag_active.value) >> found) & 1
+    assert active_after == 1, "mid-assembly slot must be UNCHANGED after a miss"

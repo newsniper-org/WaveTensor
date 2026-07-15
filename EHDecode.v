@@ -591,6 +591,16 @@ module EHDecode #(
                 forbid_subscript = 1'b1; forbid_mem = 1'b1;
                 forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
             end
+            // v1.6.5d §22.17 — FRAG_INVAL: explicit Cluster-buffer slot
+            // invalidate-by-tag (SDK reclaims a completed cached
+            // CACHE_LOAD_WIDE slot after an aborted macro). Same no-B
+            // shape as 0x66/0x68 — the invalidate key is the instruction's
+            // own tag bus, not an EH-carried operand.
+            8'h6A: begin
+                req_port         = 1'b1;
+                forbid_subscript = 1'b1; forbid_mem = 1'b1;
+                forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
+            end
             default: begin
                 forbid_subscript = 1'b1; forbid_mem = 1'b1;
                 forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
@@ -654,7 +664,9 @@ module EHDecode #(
          // v1.6.5c §22.16 — CACHE_LOAD_WIDE
          (cb_opcode == 8'h68) ||
          // v1.6.7 §22.14c — SIMD_MUL_WIDE_Q8_8_SCALAR
-         (cb_opcode == 8'h69);
+         (cb_opcode == 8'h69) ||
+         // v1.6.5d §22.17 — FRAG_INVAL
+         (cb_opcode == 8'h6A);
 
     wire bh_len_mismatch = (cb_bh_len != {{(8-OFF_W){1'b0}}, stg_off});
     wire reserved_nonzero = (cb_reserved != 8'h00);

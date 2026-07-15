@@ -2686,6 +2686,13 @@ async def test_reduce_mean_5d_to_4d(dut):
     for idx in range(16):
         got = (payload >> (idx * 4)) & 0xF
         assert got == 0x4, f"idx {idx}: {got:x} != 4"
+    # v1.6.5d §22.17 tag-stability-literal pin: OP_MEAN's output tag
+    # dim_sizes must be 0x55 — this is the literal LAYERNORM step 1
+    # produces and step 2 inherits into its cached tag, which
+    # CACHE_LOAD_WIDE's .precision dim=0x55 guard (asm.py) must match.
+    # See test_op_mean_and_cache_load_wide_dim_sizes_consistency for the
+    # cross-file check that catches a one-sided edit to either literal.
+    assert (int(dut.output_tag.value) & 0xFF) == 0x55
 
 
 @cocotb.test()
@@ -3602,6 +3609,153 @@ async def test_cache_load_wide_miss_raises_error(dut):
     cocotb.start_soon(clock.start())
     await reset(dut)
     instr = encode_instr(0x68, _STD_PORT())
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide.value = 0
+    dut.input_payload_wide_valid.value = 0
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    for _ in range(30):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.error_flag.value) == 1 or int(dut.output_valid.value) == 1:
+            break
+    assert int(dut.error_flag.value) == 1
+    assert int(dut.output_valid.value) == 0
+
+
+@cocotb.test()
+async def test_cache_load_wide_dim_ovr_precision_guard(dut):
+    """v1.6.5d §22.17 tag-stability-literal pin: CACHE_LOAD_WIDE with a
+    real .precision dim=0x55 EH + F_DIM_OVR must force output_tag's
+    dim_sizes to 0x55, independent of whatever the input tag carried —
+    closes the previously-untested RTL dim_ovr forwarding path for this
+    specific opcode (mirrors test_dim_override_changes_output_tag_dim)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    wide = 0x1122334455667788 | (0x99AABBCCDDEEFF00 << 64)
+    instr = encode_instr(0x68, _STD_PORT(), eh_precision(mode=0, dim=0x55),
+                         flags=F_DIM_OVR)
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide.value = wide
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    for _ in range(30):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value) == 1:
+            break
+    assert dut.output_valid.value == 1
+    out_tag = int(dut.output_tag.value)
+    assert (out_tag & 0xFF) == 0x55, \
+        f"output_tag dim_sizes = 0x{out_tag & 0xFF:02x}, expected 0x55"
+
+
+def _asm_layernorm_cache_load_dim():
+    """v1.6.5d §22.17 tag-stability-literal cross-file check: call the
+    REAL production _lower_layernorm() (the same function assemble()
+    invokes) and extract the actual live 'dim' value from its
+    CACHE_LOAD_WIDE step's precision EH — not a hand-typed literal. A
+    future one-sided edit to asm.py's dim literal changes THIS value."""
+    from wavetensor_asm import _lower_layernorm, Instruction, ExtensionHeader
+    port_eh = ExtensionHeader(kind='port', args={'mask': 1, 'out': 0}, line=0)
+    inst = Instruction(
+        mnemonic='LAYERNORM',
+        flags={'opb'},
+        eh_list=[
+            port_eh,
+            ExtensionHeader(kind='gamma', args={'_pos': [0x1111_2222_3333_4444]}, line=0),
+            ExtensionHeader(kind='beta', args={'_pos': [0x5555_6666_7777_8888]}, line=0),
+        ],
+        line=0,
+    )
+    steps = _lower_layernorm(inst)
+    cache_load_step = steps[4]
+    assert cache_load_step.mnemonic == 'CACHE_LOAD_WIDE', \
+        f"expected step 4 to be CACHE_LOAD_WIDE, got {cache_load_step.mnemonic}"
+    prec_eh = next(eh for eh in cache_load_step.eh_list if eh.kind == 'precision')
+    return prec_eh.args['dim']
+
+
+@cocotb.test()
+async def test_op_mean_and_cache_load_wide_dim_sizes_consistency(dut):
+    """v1.6.5d §22.17 — the actual §22.16.6 tag-stability-literal fix.
+    Fires a REAL OP_MEAN dispatch and reads its ACTUAL RTL output_tag
+    dim_sizes byte, then compares against the value LIVE-extracted from
+    asm.py's real _lower_layernorm() (not a re-typed literal on either
+    side). A future one-sided edit to PE_Core.v's OP_MEAN 8'h55 hardcode
+    OR asm.py's _lower_layernorm dim literal breaks this test."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    nibbles = [0x4] * 32
+    a_128 = _pack_int4_128(*nibbles)
+    await _fire_5d_to_4d_reduction(dut, a_128, 0x5)  # MEAN
+    assert dut.output_valid.value == 1
+    dim_sizes_rtl = int(dut.output_tag.value) & 0xFF
+    dim_sizes_asm = _asm_layernorm_cache_load_dim()
+    assert dim_sizes_rtl == dim_sizes_asm, (
+        f"DESYNC: PE_Core.v's OP_MEAN output_tag dim_sizes=0x{dim_sizes_rtl:02x} "
+        f"!= asm.py's _lower_layernorm CACHE_LOAD_WIDE precision-guard "
+        f"dim=0x{dim_sizes_asm:02x} -- one side was edited without the other"
+    )
+
+
+@cocotb.test()
+async def test_frag_inval_hit_ack(dut):
+    """v1.6.5d §22.17: FRAG_INVAL (0x6A) with wide_valid=1 (Cluster-level
+    CAM hit) must ack (output_valid=1, error_flag=0) and must NOT enter
+    FRAG_EMIT_HI (no second fragment beat follows) -- proves the
+    standalone-arm design avoids the confirmed garbage-second-fragment
+    hazard that folding into the shared 0x60-0x69 wide-emit group would
+    cause (that group's epilogue unconditionally drives
+    frag_state<=FRAG_EMIT_HI)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    instr = encode_instr(0x6A, _STD_PORT())
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide.value = 0
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    for _ in range(30):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value) == 1:
+            break
+        assert int(dut.error_flag.value) == 0
+    assert int(dut.output_valid.value) == 1
+    assert int(dut.output_frag_hdr.value) == 0x00
+    # Confirm no second fragment follows (would indicate the FRAG_EMIT_HI
+    # hazard reintroduced).
+    await RisingEdge(dut.clk)
+    await Timer(1, units="ns")
+    assert int(dut.output_valid.value) == 0
+
+
+@cocotb.test()
+async def test_frag_inval_miss_raises_error(dut):
+    """v1.6.5d §22.17: FRAG_INVAL with wide_valid=0 (Cluster-level miss —
+    tag never cached, or slot still mid-assembly) must raise error_flag,
+    mirroring CACHE_LOAD_WIDE's existing miss guard."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    instr = encode_instr(0x6A, _STD_PORT())
     dut.instruction.value = instr
     dut.input_tag.value = _STD_TAG()
     dut.input_payload.value = 0

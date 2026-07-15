@@ -18,12 +18,12 @@ adversarial verification 완료.
   을 Q4.4 → Q8.8 로 widening. IMM16 EH 이미 dec_eff_b_value[15:0] 로 배선됨
   (16-bit 폭이 정확히 일치). FSM 무변경, output 여전히 int4 2-fragment.
   RMSNORM/LAYERNORM scale 곱셈이 0x67 → 0x69 로 전환됨. spec §22.14e 참조.
-- **v1.7**: `SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN` + `SIMD_REQUANTIZE_
-  Q4_4_TO_INT4` (반드시 함께 landing). Output int8/Q4.4 4-fragment 방출. FSM
-  1-bit → 2-bit 확장 필요. Output rounding exact zero in-range.
-  **opcode 재조정 필요**: 원래 0x6A/0x6B 예약이었으나, v1.6.5d (FRAG_INVAL)
-  가 같은 세션에서 0x69 충돌을 피해 0x6A 이후로 배정받음 — v1.7 착수 전
-  실제 landed opcode 를 spec §22.15/22.16 에서 재확인할 것.
+- **v1.7**: `SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN` (0x6B) + `SIMD_REQUANTIZE_
+  Q4_4_TO_INT4` (0x6C) (반드시 함께 landing). Output int8/Q4.4 4-fragment
+  방출. FSM 1-bit → 2-bit 확장 필요. Output rounding exact zero in-range.
+  **opcode 재조정 완료 (2026-07-16)**: v1.6.5d (FRAG_INVAL) 가 0x6A 로
+  landing 되어, 원래 0x6A/0x6B 예약이던 WIDEN/REQUANTIZE 는 0x6B/0x6C 로
+  확정 이동. spec §22.17.0 참조.
 
 **Why:** 곱셈 정밀도가 아니라 rsqrt LUT (≤6.25% rel) 이 실제 bottleneck.
 Q8.8 로 B-side quant 을 LUT floor 훨씬 아래로 밀어내는 것이 v1.6.7 스코프.

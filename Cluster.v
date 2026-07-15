@@ -169,6 +169,13 @@ module Cluster #(
     // place).
     wire cache_load_req = ext_valid && (ext_frag_hdr == 8'h00)
                                      && (ext_opcode == 8'h68);
+    // v1.6.5d §22.17 — FRAG_INVAL (0x6A) request: mirrors cache_load_req's
+    // shape exactly. Mutually exclusive with cache_load_req since
+    // ext_opcode is a single 8-bit value per cycle (0x68 vs 0x6A cannot
+    // both be true), so inval_hit/cache_hit are automatically disjoint
+    // with zero extra interlock logic.
+    wire inval_req = ext_valid && (ext_frag_hdr == 8'h00)
+                                && (ext_opcode == 8'h6A);
 
     // Per-slot hit classification (combinational). At most one of
     // hit_continue[s]/hit_ready[s] can be true for a given s (mutually
@@ -275,6 +282,14 @@ module Cluster #(
     // ready slot's stored payload, exposed independent of frag_reass_wide
     // since a cache-load request is never a fragment beat.
     wire cache_hit = cache_load_req && any_ready_hit;
+    // v1.6.5d §22.17 — FRAG_INVAL hit: reuses the SAME hit_ready/
+    // any_ready_hit CAM match as cache_hit, zero new comparator logic.
+    // Only matches READY (persisted/complete) slots — a slot mid-
+    // assembly (frag_active && !frag_ready) reports a miss, not a
+    // cancel. This is deliberate, minimal scope: FRAG_INVAL reclaims a
+    // completed cached slot, it is not an in-flight-fragment-abort
+    // primitive.
+    wire inval_hit = inval_req && any_ready_hit;
     /* verilator lint_off UNUSEDSIGNAL */
     wire [FRAG_MAX*ADDR_WIDTH-1:0] cache_hit_wide;
     /* verilator lint_on UNUSEDSIGNAL */
@@ -332,15 +347,32 @@ module Cluster #(
             // hot cached value doesn't get evicted while in active use.
             frag_age_ctr            <= frag_age_ctr + 1'b1;
             frag_age[ready_idx]      <= frag_age_ctr + 1'b1;
+        end else if (inval_hit) begin
+            // v1.6.5d §22.17 — explicit invalidate: clear active+ready so
+            // the slot immediately qualifies for any_free (checked ahead
+            // of evict_idx in the alloc_idx priority mux above) rather
+            // than lingering as an LRU-eviction candidate. frag_age is
+            // deliberately left untouched (irrelevant once inactive).
+            frag_active[ready_idx] <= 1'b0;
+            frag_ready[ready_idx]  <= 1'b0;
         end
     end
 
-    // v1.6.5c — CACHE_LOAD_WIDE hit/miss mux feeding EHDecode's wide-input
-    // port. A miss (cache_load_req && !cache_hit) yields wide_valid=0,
-    // which PE_Core's 0x68 case arm turns into the existing error_flag
-    // guard — a loud, safe miss rather than a silent wrong-data hit.
-    wire                            final_wide_valid = cache_load_req ? cache_hit : frag_reass_valid;
-    wire [FRAG_MAX*ADDR_WIDTH-1:0]  final_wide        = cache_load_req ? cache_hit_wide : frag_reass_wide;
+    // v1.6.5c/v1.6.5d — CACHE_LOAD_WIDE / FRAG_INVAL hit/miss mux feeding
+    // EHDecode's wide-input port. A miss (cache_load_req && !cache_hit,
+    // or inval_req && !inval_hit) yields wide_valid=0, which PE_Core's
+    // 0x68/0x6A case arms turn into the existing error_flag guard — a
+    // loud, safe miss rather than a silent wrong-data hit or a silent
+    // no-op invalidate. FRAG_INVAL's payload is never read by PE_Core's
+    // 0x6A arm (it only checks wide_valid), so the zero fill is inert.
+    wire                            final_wide_valid =
+        cache_load_req ? cache_hit  :
+        inval_req      ? inval_hit :
+                          frag_reass_valid;
+    wire [FRAG_MAX*ADDR_WIDTH-1:0]  final_wide =
+        cache_load_req ? cache_hit_wide                    :
+        inval_req      ? {(FRAG_MAX*ADDR_WIDTH){1'b0}}      :
+                          frag_reass_wide;
 
     // ---- Compile-time geometry guard ----------------------------------------
     localparam VALID_GEOM =

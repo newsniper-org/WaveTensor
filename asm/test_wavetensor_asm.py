@@ -948,6 +948,25 @@ class TestNormMacros(unittest.TestCase):
             wta.assemble(src)
         self.assertIn('dim_ovr', str(ctx.exception))
 
+    def test_primitive_frag_inval_legality(self):
+        """v1.6.5d §22.17: FRAG_INVAL (0x6A) — explicit Cluster-buffer
+        slot invalidate-by-tag, same no-B shape as 0x66/0x68."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "FRAG_INVAL\n"
+        )
+        insts = wta.assemble(src)
+        self.assertEqual((insts[0] >> 24) & 0xFF, 0x6A)
+
+    def test_primitive_frag_inval_rejects_imm(self):
+        """FRAG_INVAL with .imm16 must raise (no B operand at all)."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "FRAG_INVAL .imm16 5\n"
+        )
+        with self.assertRaises(wta.AssemblerError):
+            wta.assemble(src)
+
 
 class TestWaveFragments(unittest.TestCase):
     """v1.5.4 §21 — wave-token fragment emitter helper.

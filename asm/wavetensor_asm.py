@@ -99,6 +99,11 @@ MNEMONIC_TO_OPCODE: Dict[str, int] = {
     # beyond 0x67's Q4.4; pushes B-side quantization below the rsqrt LUT's
     # own ~6.25% relative-error floor).
     'SIMD_MUL_WIDE_Q8_8_SCALAR': 0x69,
+    # v1.6.5d §22.17 — explicit Cluster-buffer slot invalidate-by-tag (SDK
+    # explicit eviction of a cached CACHE_LOAD_WIDE slot after an aborted
+    # macro). Wiring this into an actual abort/exception path is an SDK-
+    # runtime concern, deferred out of this ISA-level landing.
+    'FRAG_INVAL': 0x6A,
 }
 OPCODE_TO_MNEMONIC: Dict[int, str] = {v: k for k, v in MNEMONIC_TO_OPCODE.items()}
 
@@ -1341,6 +1346,10 @@ _set_legal([0x66], required={'port'}, forbidden=_ALL_DATA_EHS)
 # stability (see _lower_layernorm) but 'precision' is not in
 # _ALL_DATA_EHS, so it is unaffected by this forbidden set.
 _set_legal([0x68], required={'port'}, forbidden=_ALL_DATA_EHS)
+# v1.6.5d §22.17 — FRAG_INVAL (0x6A): explicit Cluster-buffer slot
+# invalidate-by-tag. Same no-B shape as 0x66/0x68 — the invalidate key
+# is the instruction's own tag bus, not an EH-carried operand.
+_set_legal([0x6A], required={'port'}, forbidden=_ALL_DATA_EHS)
 
 
 def _check_no_unresolved_aliases(inst: Instruction) -> None:

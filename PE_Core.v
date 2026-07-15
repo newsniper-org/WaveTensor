@@ -2363,6 +2363,32 @@ module PE_Core #(
                                            8'h00, dec_eff_output_port_id,
                                            dec_eff_precision, 8'h00};
                         end
+                        // v1.6.5d §22.17 — FRAG_INVAL: single-cycle ack of
+                        // a Cluster-buffer slot invalidate. Deliberately
+                        // STANDALONE (outside the 8'h60-69 shared wide-emit
+                        // case-item group above) rather than "mirroring
+                        // 0x68" into that group: the shared group's
+                        // epilogue unconditionally drives output_frag_hdr
+                        // and frag_state<=FRAG_EMIT_HI, which would emit a
+                        // SECOND (garbage) fragment on the next cycle from
+                        // frag_hi_pending/frag_tag_held — registers
+                        // FRAG_INVAL never writes. Reusing
+                        // dec_input_payload_wide_valid as the hit/miss
+                        // signal is intentional: Cluster.v's inval_hit
+                        // (mirroring cache_hit's CAM reuse) drives it, and
+                        // this signal is opcode-independent — latched and
+                        // forwarded unconditionally by EHDecode regardless
+                        // of dec_opcode. output_tag/output_frag_hdr are
+                        // left at their pre-case defaults (dec_forwarded_tag,
+                        // 8'h00) since an ack carries no payload of its own.
+                        8'h6A: begin
+                            if (!dec_input_payload_wide_valid) begin
+                                error_flag   <= 1'b1;
+                                output_valid <= 1'b0;
+                            end else begin
+                                output_valid <= 1'b1;
+                            end
+                        end
                         default: begin
                             output_valid <= 1'b0;
                             error_flag <= 1'b1;

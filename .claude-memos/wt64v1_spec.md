@@ -27,6 +27,7 @@
 - v1.6.6 (2026-07-15): **pe_ready back-pressure signal** — PE_Core FSM+pipeline 상태 통합 combinational output. Cluster→Pod→Top_Core 계층으로 aggregate (AND-reduce). MVP observe-only (ext_valid gate 안 함). §22.14b 참조.
 - v1.6.5c (2026-07-15): **multi-slot fragment buffer + CACHE_LOAD_WIDE (0x68)** — Cluster.v `FRAG_SLOTS` parameter (N-way full-tag CAM + monotonic-timestamp LRU + persistence), LAYERNORM step 5 가 xc 재발행 대신 캐시 재로드. Tag-stability 를 위한 PRECISION-EH guard (dim=0x55). 부수적으로 EHDecode.v 0x63/64/65 legality 선행 버그 (LAYERNORM 이 실제로는 무조건 decode-error 나던 상태) 발견 및 수정. §22.16 참조.
 - v1.6.7 (2026-07-16): **SIMD_MUL_WIDE_Q8_8_SCALAR (0x69)** — B lane 추가 widening (Q4.4 → Q8.8, LSB 1/16 → 1/256). RMSNORM/LAYERNORM scale 곱셈이 0x67 대신 0x69 사용 → B-side quantization 을 rsqrt LUT 의 ~6.25% floor 아래로 완전히 밀어냄 (precision-zero-loss-research workflow whro79brj 결과). §22.14e 참조.
+- v1.6.5d (2026-07-16): **FRAG_INVAL (0x6A)** — SDK 명시적 캐시 슬롯 회수 (LRU 자연 회수 대기 없이). Design workflow 가 "0x68 mirror" 원안의 PE_Core.v 배치 버그(공유 wide-emit 그룹에 넣으면 FRAG_EMIT_HI 가 다음 cycle 에 가비지 2번째 fragment 를 무조건 방출)를 발견 — standalone case arm (0x66 shape) 으로 수정. **Tag-stability 리터럴 유지보수** 동시 landing: `_lower_layernorm()` 실함수를 직접 호출해 live 값을 비교하는 cross-file consistency test 로 OP_MEAN↔CACHE_LOAD_WIDE dim_sizes 리터럴 desync 를 자동 검출. §22.17 참조.
 
 참조 구현 마이그레이션: **진행 중 (2026-07-12 개시)** — 참조 보드가 XCAU25P → LFE5U-85F → Avant G70 순으로 이동, 아래 §"참조 구현 마이그레이션 노트" 참조.
 
@@ -1894,12 +1895,67 @@ tag-stability 검증 workflow (`w91wntdpk`) 가 RTL 직접 재추적으로 발�
 
 #### 22.16.6 남은 residual risk
 
-- **SDK 측 tag-stability 인프라 미해결**: `.precision dim=0x55` 는 이 특정 8-step LAYERNORM 레시피에 맞춘 hand-maintained 리터럴 — PE_Core.v 의 OP_MEAN 하드코딩과 소스 링크 없이 독립적으로 유지되어야 함 (한쪽만 바뀌면 조용히 desync)
-- **FRAG_INVAL 없음** (v1.6.5d): LAYERNORM 매크로가 step 2 이후, step 5 이전에 중단되면 캐시 슬롯이 LRU 로 자연 회수될 때까지 leak
-- **Eviction-under-concurrency**: FRAG_SLOTS 개 이상의 동시 multi-fragment wave 가 LAYERNORM 의 xc 슬롯을 evict 가능 — SDK 가 concurrent wave 수를 FRAG_SLOTS 미만으로 bound 해야 함 (§18.5/§19.9 의 no-drop/timeout 과는 다른 risk 카테고리)
+- **SDK 측 tag-stability 인프라**: ~~미해결~~ **부분 해결 (§22.17.2)** — OP_MEAN↔CACHE_LOAD_WIDE 쌍은 cross-file consistency test 로 desync 시 즉시 CI 실패. PE_Core.v 의 다른 독립적 0x55 guard 리터럴(4D→3D reduction family, SIG_BMM_2, SIG_TRACE_IIJK) 은 여전히 미연결 (§22.17.2 residual risk 참조)
+- **FRAG_INVAL 없음** (v1.6.5d): ~~미해결~~ **해결 (§22.17.1)** — opcode 0x6A 로 landing. 단, SDK/runtime 이 실제로 매크로 abort 시 FRAG_INVAL 을 발행하는 wiring 은 여전히 out of scope (§22.17.1 residual risk 참조)
+- **Eviction-under-concurrency**: FRAG_SLOTS 개 이상의 동시 multi-fragment wave 가 LAYERNORM 의 xc 슬롯을 evict 가능 — SDK 가 concurrent wave 수를 FRAG_SLOTS 미만으로 bound 해야 함 (§18.5/§19.9 의 no-drop/timeout 과는 다른 risk 카테고리). FRAG_INVAL 로도 미해결.
 - **Capability-gating 미구현**: SDK 가 FRAG_SLOTS=1 타겟엔 legacy recompute, FRAG_SLOTS>1 타겟엔 CACHE_LOAD_WIDE 를 선택하는 메커니즘이 아직 없음 (RTL 은 안전 — FRAG_SLOTS=1 대상에 실수로 CACHE_LOAD_WIDE 를 쏘면 항상 안전하게 miss)
 - 모든 FF/LUT 수치는 hand-count 추정, 실제 synthesis 검증 필요
 
-### 22.17 진입 트리거 (기존 22.16 재번호)
+### 22.17 v1.6.5d landing (2026-07-16) — FRAG_INVAL + tag-stability 리터럴 유지보수
 
-v1.6.5c amendment 는 **결정된 상태 (2026-07-15)**. Design workflow 2회 + 사용자 세션 직접 RTL 재검증으로 tag-stability 근본 원인 및 선행 버그 확정. 구현 완료 (2026-07-15).
+Ultracode 세션, v1.6.7 과 병행 진행. Design workflow (`frag-inval-and-tag-literal-maintenance`, task `w3w0q0mt0`/`wf_88066d7f-9fa`, 16 agents, 1.09M tokens) 로 설계 — 3개 원안 중 하나(minimal-detect)의 PE_Core.v 배치가 **실제 데이터 오염 버그**를 유발함을 adversarial verify 가 발견, 직접 RTL 재확인 후 수정하여 채택.
+
+#### 22.17.0 opcode 재배정
+
+v1.6.7 (SIMD_MUL_WIDE_Q8_8_SCALAR) 가 같은 세션에서 0x69 를 선점 — 이전 로드맵의 "0x69/6A/6B 예약" 계획과 충돌. FRAG_INVAL 은 **0x6A** 로 배정, v1.7 의 Q4.4-WIDEN/REQUANTIZE 는 0x6B/0x6C 로 밀림 (roadmap memory 파일에도 반영).
+
+#### 22.17.1 FRAG_INVAL (0x6A)
+
+**목적**: SDK 가 LAYERNORM 매크로 abort 등으로 더 이상 필요 없어진 CACHE_LOAD_WIDE 캐시 슬롯을 명시적으로 회수 (LRU 자연 회수를 기다리지 않고 즉시 free 화).
+
+**핵심 발견 — PE_Core.v 배치 버그**: 최초 원안("0x68 을 mirror") 대로 FRAG_INVAL 을 기존 `8'h60,61,62,63,64,65,67,68,69` 공유 wide-emit case-item 그룹에 편입시키면, 그 그룹의 epilogue 가 무조건 `output_frag_hdr<=8'h01; frag_state<=FRAG_EMIT_HI;` 를 실행 — 다음 cycle 에 절대 우선순위 override (PE_Core.v:1556-1563) 가 `frag_hi_pending`/`frag_tag_held` 로부터 **가비지 2번째 fragment 를 무조건 방출**한다. FRAG_INVAL 은 이 레지스터들을 쓰지 않으므로 이전의 무관한 wide op 가 남긴 stale 값이 그대로 방출되는 실제 데이터 무결성 버그. 세션에서 직접 RTL 재확인으로 검증.
+
+**Fix — standalone case arm**: 0x66 (SCALAR_RSQRT) 과 동일하게 공유 그룹 **밖에** 별도 case arm 으로 배치. `frag_state` 를 건드리지 않으므로 FRAG_EMIT_HI 충돌 원천 차단. 이 case 에서 hit/miss 판정은 `dec_input_payload_wide_valid` 재사용 (opcode 무관하게 EHDecode 가 매 dispatch 마다 latch/forward 하는 generic 신호 — 별도 배선 불필요).
+
+**Cluster.v**: `inval_req = ext_valid && (ext_frag_hdr==0x00) && (ext_opcode==0x6A)` — `cache_load_req` 와 동일 shape, ext_opcode 단일 8-bit 값이라 자동으로 상호 배타적 (별도 interlock 불필요). `inval_hit = inval_req && any_ready_hit` — 기존 `hit_ready`/`any_ready_hit` CAM 을 그대로 재사용 (새 비교기 없음). Sequential block 에 `else if (inval_hit) begin frag_active[ready_idx]<=0; frag_ready[ready_idx]<=0; end` 추가 (frag_age 는 미변경 — inactive 슬롯엔 무의미). `final_wide_valid`/`final_wide` 를 3-way ternary 로 확장.
+
+**Free-not-evict 확인**: `frag_active` clear 는 즉시 `any_free` 를 true 로 만들고(alloc_idx 우선순위에서 evict_idx 보다 먼저 체크됨), 동시에 evict 후보에서도 제외 (evict_idx 스캔이 frag_active==1 요구). 즉 invalidate 된 슬롯은 다음 할당에서 **즉시 재사용**되며, LRU eviction 을 우회하지 않는다 — 테스트로 직접 증명 (`test_frag_inval_freed_slot_reclaimed_by_free_priority_not_evict`).
+
+**의도된 스코프 제한**: `any_ready_hit` 은 `frag_ready==1` (완료된 슬롯) 만 매치 — mid-assembly (`frag_active && !frag_ready`) 슬롯은 miss 로 응답, cancel 이 아님. FRAG_INVAL 은 "완료된 캐시 슬롯 회수" 전용이지 "진행 중인 fragment 시퀀스 중단" primitive 가 아님 — 이 경계를 테스트로 명시적으로 고정 (`test_frag_inval_midassembly_slot_reports_miss_not_cancel`).
+
+**Legality** (EHDecode.v + asm.py): 0x66/0x68 과 동일 shape — req_port only, 모든 data EH forbidden.
+
+**asm.py**: `FRAG_INVAL` mnemonic 등록. 매크로(`_lower_layernorm` 등) 에 실제로 배선하는 것은 SDK/runtime 영역이라 이번 ISA-level landing 스코프 밖 (§22.16.6 의 "LAYERNORM abort 시 캐시 leak" 시나리오는 SDK 가 실제로 FRAG_INVAL 을 발행해야 완전히 닫힘).
+
+#### 22.17.2 Tag-stability 리터럴 유지보수
+
+기존 §22.16.6 의 "hand-maintained cross-file literal, 한쪽만 바뀌면 조용히 desync" 문제에 대한 fix.
+
+**거부된 대안**: (a) YAML/JSON manifest 로 Verilog `localparam` + Python constant 동시 생성 — 이 repo 에 codegen 인프라(예: `.py` 가 `.v` 생성)가 전혀 없어 investigator 가 직접 확인, "no speculative codegen infrastructure" 제약 위반으로 기각. (b) 리터럴 위치를 서로 cross-reference 하는 주석 — 이 repo 에서 정확히 이 실패 패턴이 이미 한 번 발생했음(§22.16.0 의 0x63/64/65 legality desync, spec.md:1826-1834 참조 지점)이 확인되어 기각.
+
+**채택된 fix (2건, 순수 테스트 추가만, 신규 인프라 없음)**:
+1. `test_reduce_mean_5d_to_4d` 확장 — OP_MEAN 실제 dispatch 의 `output_tag` dim_sizes byte 가 0x55 인지 assertion 추가 (기존엔 output_payload 만 검증, RTL 쪽 리터럴이 아예 미검증 상태였음).
+2. **신규 cross-file consistency test** (`test_op_mean_and_cache_load_wide_dim_sizes_consistency`): asm.py 의 **실제** `_lower_layernorm()` 함수를 직접 호출(assemble() 이 내부적으로 쓰는 바로 그 함수)해서 CACHE_LOAD_WIDE step 의 precision EH 의 `dim` 값을 **live 로 추출** — 손으로 다시 타이핑한 리터럴이 아님. 이 값을 실제 OP_MEAN RTL dispatch 의 output_tag 와 비교. PE_Core.v 의 0x55 하드코딩이든 asm.py 의 `_lower_layernorm` dim 리터럴이든 **어느 한쪽만 바뀌어도 이 테스트가 즉시 깨짐** — §22.16.6 이 실제로 닫히는 지점.
+
+**스코프 제한 (명시)**: 이 fix 는 LAYERNORM 이 실제로 쓰는 OP_MEAN↔CACHE_LOAD_WIDE 쌍만 닫는다. PE_Core.v 는 개념적으로 동일한 0x55 dim_sizes 상수를 다른 3곳(4D→3D reduction family guard, SIG_BMM_2, SIG_TRACE_IIJK)에도 독립적으로 하드코딩 — 이들은 asm.py 쪽 대응 값이 없는 guard-check 리터럴이라 상대적으로 낮은 위험이지만 여전히 미연결 (residual risk 로 기록, exhaustive 하다고 주장하지 않음).
+
+#### 22.17.3 회귀 (241 cocotb + 88 assembler, 전부 PASS)
+
+- Cocotb: 236 → **241** (+5)
+  * ISA_Decoder: 161 → 165 (+4: cache_load_wide dim_ovr guard, op_mean/cache_load_wide dim_sizes consistency, frag_inval hit/miss ×2)
+  * Cluster: 27 → 31 (+4: frag_inval hit-frees-slot, never-cached-miss, freed-slot-reclaimed-by-free-priority, midassembly-miss-not-cancel) — **양쪽 build (FRAG_SLOTS=1 default, FRAG_SLOTS=4) 모두 31/31 통과**
+- Assembler: 86 → **88** (+2: frag_inval legality, frag_inval rejects-imm)
+- 나머지 전 모듈 무변경 통과
+
+#### 22.17.4 남은 residual risk
+
+- FRAG_INVAL 은 mid-assembly 슬롯을 구조적으로 invalidate 불가 (의도된 설계, §22.17.1 참조) — 진행 중인 multi-fragment wave 를 중단하는 용도로는 쓸 수 없음
+- Tag-stability literal fix 는 OP_MEAN↔CACHE_LOAD_WIDE 쌍만 커버 — PE_Core.v 의 다른 3개 독립 0x55 guard 사이트는 미연결
+- FRAG_INVAL 은 ISA primitive 로만 landing — `_lower_layernorm`/`_lower_rmsnorm` 등 매크로에 실제로 배선(abort 시 자동 발행)하는 것은 SDK/runtime 영역, 여전히 out of scope. §22.16.6 의 "캐시 leak" 시나리오는 SDK 가 실제로 이 opcode 를 발행해야 완전히 닫힘
+- Eviction-under-concurrency 는 FRAG_INVAL 로도 미해결 (별도 risk 카테고리, §22.16.6 참조)
+- `dec_input_payload_wide_valid` 를 FRAG_INVAL 의 ack 채널로 재사용 — 원래 의미("캐시 데이터 valid")와 다른 의미("invalidate 성공")를 겹쳐 쓰는 것은 경미한 가독성 부채 (PE_Core.v 주석으로 완화, 완전히 제거되지는 않음)
+- 매 opcode 추가마다 EHDecode.v/PE_Core.v 의 병렬 case table 을 수동으로 lockstep 유지해야 하는 systemic risk 는 여전함 (0x63/64/65 desync 가 이미 한 번 발생) — 이번 landing 은 그 2개 리터럴만 고쳤을 뿐 systemic tooling 은 추가하지 않음
+
+### 22.18 진입 트리거 (기존 22.17 재번호)
+
+v1.6.5d amendment 는 **결정된 상태 (2026-07-16)**. Design workflow + 사용자 세션 직접 RTL 재검증(FRAG_EMIT_HI 가비지 fragment 버그 확인)으로 최종 설계 확정. 구현 완료 (2026-07-16).
