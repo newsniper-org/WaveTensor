@@ -2527,6 +2527,183 @@ async def test_mul_then_bmm3_drain_gate(dut):
     assert saw_mul, "MUL result did not surface"
 
 
+# =============================================================================
+# v1.5.5 §21 — SIG_TRACE_IIJKL: 5D trace + 3 kept axes (single-fragment output)
+# =============================================================================
+#
+# 'iijkl->jkl' — reduction primitive, 128-bit input via wide-fragment
+# reassembly, 32-bit output (fits in single 64-bit fragment — NO FSM).
+# Only diagonal i==i2 nibbles contribute; off-diagonals ignored.
+
+
+_TRIIJKL_A_LO = 0x3211
+_TRIIJKL_B_LO = 0x0000
+_TRIIJKL_O_LO = 0x0432
+_TRIIJKL_A_HI = 0x0004
+_TRIIJKL_B_HI = 0x0000
+_TRIIJKL_O_HI = 0x0000
+
+
+def _trace_iijkl_sim(a_128):
+    """Python reference for SIG_TRACE_IIJKL. Nibble layout:
+    A[i][i2][j][k][l] at nibble (i*16 + i2*8 + j*4 + k*2 + l)."""
+    def s4(x):
+        x &= 0xF
+        return x - 16 if x & 0x8 else x
+    r = [0] * 8
+    for j in range(2):
+        for k in range(2):
+            for l in range(2):
+                acc = 0
+                for i in range(2):
+                    lin = i * 16 + i * 8 + j * 4 + k * 2 + l
+                    acc += s4((a_128 >> (lin * 4)) & 0xF)
+                r[j * 4 + k * 2 + l] = acc & 0xF
+    out = 0
+    for idx, n in enumerate(r):
+        out |= (n & 0xF) << (idx * 4)
+    return out
+
+
+async def _fire_trace_iijkl(dut, a_128, wide_valid=1, dim=0x55):
+    """Helper: fire a SIG_TRACE_IIJKL wave with A packed into wide[127:0]."""
+    wide = a_128 & ((1 << 128) - 1)  # B unused, only A occupies low 128 bits
+    instr = encode_instr(0x32, _STD_PORT(),
+                         eh_subscript(_TRIIJKL_A_LO, _TRIIJKL_B_LO, _TRIIJKL_O_LO),
+                         eh_subscript(_TRIIJKL_A_HI, _TRIIJKL_B_HI, _TRIIJKL_O_HI),
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    await fire(dut, instr, _STD_TAG(dim=dim),
+               payload_a=0, payload_b=0, payload_b_valid=1,
+               payload_wide=wide, payload_wide_valid=wide_valid)
+
+
+@cocotb.test()
+async def test_trace_iijkl_zero(dut):
+    """v1.5.5: A=0 baseline — dispatch path recognizes signature, no
+    error, no lower_required."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    await _fire_trace_iijkl(dut, 0)
+    assert dut.output_valid.value == 1
+    assert int(dut.output_payload.value) == 0
+    assert int(dut.output_frag_hdr.value) == 0x00
+    assert dut.error_flag.value == 0
+    assert dut.lower_required.value == 0
+
+
+@cocotb.test()
+async def test_trace_iijkl_computed(dut):
+    """v1.5.5: distinctive nibbles — result matches Python reference."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    nibbles = [((i * 7 + 3) & 0xF) for i in range(32)]
+    a_128 = _pack_int4_128(*nibbles)
+    await _fire_trace_iijkl(dut, a_128)
+    expected = _trace_iijkl_sim(a_128)
+    assert dut.output_valid.value == 1
+    assert int(dut.output_payload.value) == expected
+    assert (int(dut.output_payload.value) >> 32) == 0  # only low 32 used
+    assert int(dut.output_frag_hdr.value) == 0x00
+
+
+@cocotb.test()
+async def test_trace_iijkl_signed_int4(dut):
+    """v1.5.5: negative int4 with sign extension. Diagonal a[0,0,·]=5,
+    a[1,1,·]=-3 (=0xD) → each output cell = 2. Off-diagonal a[·]=0xF
+    (=-1) proves they are ignored (result would differ if they were)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    nibbles = [0xF] * 32   # fill off-diagonals with -1 (would poison result)
+    for j in range(2):
+        for k in range(2):
+            for l in range(2):
+                # a[0,0,j,k,l] = 5 (positive)
+                lin0 = 0 * 16 + 0 * 8 + j * 4 + k * 2 + l
+                nibbles[lin0] = 0x5
+                # a[1,1,j,k,l] = 0xD = -3 (signed)
+                lin1 = 1 * 16 + 1 * 8 + j * 4 + k * 2 + l
+                nibbles[lin1] = 0xD
+    a_128 = _pack_int4_128(*nibbles)
+    await _fire_trace_iijkl(dut, a_128)
+    assert dut.output_valid.value == 1
+    # Each of 8 output cells = 5 + (-3) = 2
+    expected = 0x22222222
+    assert (int(dut.output_payload.value) & 0xFFFFFFFF) == expected
+
+
+@cocotb.test()
+async def test_trace_iijkl_single_output_fragment(dut):
+    """v1.5.5: SINGLE output_valid pulse (no fragment FSM engaged unlike
+    SIG_BMM_3). frag_state must never leave FRAG_IDLE, output_frag_hdr
+    must stay 0x00 throughout, and cycle N+1 must be idle."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    a_128 = _pack_int4_128(*[(i & 0xF) for i in range(32)])
+    await _fire_trace_iijkl(dut, a_128)
+    # Cycle N: output valid, frag_hdr=0
+    assert dut.output_valid.value == 1
+    assert int(dut.output_frag_hdr.value) == 0x00
+    # Hierarchical: FSM never engaged
+    assert int(dut.u_core.frag_state.value) == 0
+    # Cycle N+1: idle (no fragment 1 emit)
+    await RisingEdge(dut.clk)
+    await Timer(1, units="ns")
+    assert dut.output_valid.value == 0
+    assert int(dut.output_frag_hdr.value) == 0x00
+
+
+@cocotb.test()
+async def test_trace_iijkl_wide_valid_gate_error(dut):
+    """v1.5.5: SIG_TRACE_IIJKL with wide_valid=0 → error_flag (§20.7
+    wide-consumer contract). Consistent with SIG_BMM_3 semantics."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    a_128 = _pack_int4_128(*[1] * 32)
+    await _fire_trace_iijkl(dut, a_128, wide_valid=0)
+    assert dut.output_valid.value == 0
+    assert dut.error_flag.value == 1
+
+
+@cocotb.test()
+async def test_trace_iijkl_output_tag_dim_sizes(dut):
+    """v1.5.5: reduction changes tag shape from 5D input → 3D output.
+    Output tag dim_sizes MUST be 0x15 (3D 2×2×2). wave_number,
+    thread_id, port preserved."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    a_128 = _pack_int4_128(*[(i & 0xF) for i in range(32)])
+    tag = make_tag(wave_number=0xDEADBEEF, thread_id=0xCAFE,
+                   port_context_id=0, dimension_sizes=0x55)
+    wide = a_128 & ((1 << 128) - 1)
+    instr = encode_instr(0x32, _STD_PORT(),
+                         eh_subscript(_TRIIJKL_A_LO, _TRIIJKL_B_LO, _TRIIJKL_O_LO),
+                         eh_subscript(_TRIIJKL_A_HI, _TRIIJKL_B_HI, _TRIIJKL_O_HI),
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    await fire(dut, instr, tag, payload_a=0, payload_b=0, payload_b_valid=1,
+               payload_wide=wide, payload_wide_valid=1)
+    assert dut.output_valid.value == 1
+    out_tag = int(dut.output_tag.value)
+    assert (out_tag & 0xFF) == 0x15, f"dim_sizes: 0x{out_tag & 0xFF:02x}"
+    # wave_number at [79:48]
+    assert ((out_tag >> 48) & 0xFFFFFFFF) == 0xDEADBEEF
+    # thread_id at [47:32]
+    assert ((out_tag >> 32) & 0xFFFF) == 0xCAFE
+
+
 @cocotb.test()
 async def test_bmm3_then_mul_launch_gate(dut):
     """v1.5.3 §20 bug-5: fire SIG_BMM_3 at cycle N; MUL at cycle N+1

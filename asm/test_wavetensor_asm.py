@@ -771,5 +771,89 @@ class TestMultiInstruction(unittest.TestCase):
         self.assertEqual((insts[2] >> 24) & 0xFF, 0x32)
 
 
+class TestWaveFragments(unittest.TestCase):
+    """v1.5.4 §21 — wave-token fragment emitter helper.
+
+    Splits a logical wide payload into 64-bit fragments with frag_hdr =
+    (idx << 4) | (total - 1). Backs all v1.5.x wide-consumer primitives.
+    """
+
+    def test_wave_fragments_bmm3_layout(self):
+        """SIG_BMM_3 (256-bit wide) → 4 fragments in emission order.
+        Layout matches PE_Core.v SIG_BMM_3 dispatch: A at wide[127:0],
+        B at wide[255:128]."""
+        a_128 = 0xFEDCBA9876543210_0123456789ABCDEF
+        b_128 = 0x5555555555555555_AAAAAAAAAAAAAAAA
+        wide  = (a_128 & ((1 << 128) - 1)) | ((b_128 & ((1 << 128) - 1)) << 128)
+        frags = wta.wave_fragments(wide, 256)
+        self.assertEqual(len(frags), 4)
+        self.assertEqual(frags[0], (a_128 & ((1 << 64) - 1),        0x03))
+        self.assertEqual(frags[1], ((a_128 >> 64) & ((1 << 64) - 1), 0x13))
+        self.assertEqual(frags[2], (b_128 & ((1 << 64) - 1),        0x23))
+        self.assertEqual(frags[3], ((b_128 >> 64) & ((1 << 64) - 1), 0x33))
+        # frag_hdr low nibble = total-1 = 3 uniformly
+        self.assertTrue(all((h & 0x0F) == 0x03 for _, h in frags))
+        # frag_hdr high nibble = strictly increasing index
+        self.assertEqual([h >> 4 for _, h in frags], [0, 1, 2, 3])
+
+    def test_wave_fragments_bmm3_convenience(self):
+        """wave_fragments_bmm3(A, B) is a thin wrapper around
+        wave_fragments(wide, 256) — verify layout agreement."""
+        a_128 = 0x1111222233334444_5555666677778888
+        b_128 = 0x9999AAAABBBBCCCC_DDDDEEEEFFFF0000
+        via_helper  = wta.wave_fragments_bmm3(a_128, b_128)
+        wide        = (a_128 & ((1 << 128) - 1)) | ((b_128 & ((1 << 128) - 1)) << 128)
+        via_generic = wta.wave_fragments(wide, 256)
+        self.assertEqual(via_helper, via_generic)
+
+    def test_wave_fragments_trace_iijkl_layout(self):
+        """SIG_TRACE_IIJKL (128-bit A, no B) → 2 fragments."""
+        a_128 = 0x0011223344556677_8899AABBCCDDEEFF
+        frags = wta.wave_fragments(a_128, 128)
+        self.assertEqual(len(frags), 2)
+        self.assertEqual(frags[0], (a_128 & ((1 << 64) - 1),        0x01))
+        self.assertEqual(frags[1], ((a_128 >> 64) & ((1 << 64) - 1), 0x11))
+        self.assertTrue(all((h & 0x0F) == 0x01 for _, h in frags))
+        self.assertEqual([h >> 4 for _, h in frags], [0, 1])
+        # Convenience helper agrees
+        self.assertEqual(wta.wave_fragments_trace_iijkl(a_128), frags)
+
+    def test_wave_fragments_legacy_single(self):
+        """Legacy 64-bit payload → 1 fragment, frag_hdr=0x00 (Cluster
+        bypass path). Empty wave (wide_bits=0) → []."""
+        frags = wta.wave_fragments(0xDEADBEEFCAFEBABE, 64)
+        self.assertEqual(len(frags), 1)
+        self.assertEqual(frags[0], (0xDEADBEEFCAFEBABE, 0x00))
+        # Empty wave
+        self.assertEqual(wta.wave_fragments(0, 0), [])
+        # Invalid wide_bits raises
+        with self.assertRaises(wta.AssemblerError):
+            wta.wave_fragments(0, 96)   # not in {0,64,128,192,256}
+        with self.assertRaises(wta.AssemblerError):
+            wta.wave_fragments(0, 512)  # too large
+
+    def test_wave_fragments_bmm3_reassembly_matches_pe_core(self):
+        """Round-trip: split with wave_fragments_bmm3, reassemble in the
+        exact way Cluster.v's fragment buffer does (idx * 64 shift into
+        1024-bit wide bus). Result must equal the input's expected wide
+        layout: A at wide[127:0], B at wide[255:128]."""
+        a_128 = 0
+        b_128 = 0
+        for i in range(32):
+            a_128 |= ((i * 3 + 1) & 0xF) << (i * 4)
+            b_128 |= ((i * 5 + 7) & 0xF) << (i * 4)
+        expected = (a_128 & ((1 << 128) - 1)) | ((b_128 & ((1 << 128) - 1)) << 128)
+
+        frags = wta.wave_fragments_bmm3(a_128, b_128)
+        reassembled = 0
+        for payload, hdr in frags:
+            idx = hdr >> 4
+            reassembled |= (payload & ((1 << 64) - 1)) << (idx * 64)
+        self.assertEqual(reassembled, expected)
+        # Sanity: A/B halves recover cleanly
+        self.assertEqual(reassembled & ((1 << 128) - 1), a_128)
+        self.assertEqual((reassembled >> 128) & ((1 << 128) - 1), b_128)
+
+
 if __name__ == '__main__':
     unittest.main()

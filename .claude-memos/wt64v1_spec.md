@@ -15,6 +15,8 @@
 - v1.5.2 (2026-07-15): Fragment 재조립을 **EHDecode 로 스레딩** + `wave_complete` gating 도입. `dec_input_payload_wide[1023:0]` 인터페이스 확립. wide 소비 primitive 는 v1.5.3+. §19 참조.
 - v1.5.2b (2026-07-15): `dec_input_payload_wide` 를 **PE_Core input port 로 스레딩**. 모든 4개 PE_Core-family instance (L-PE + MU + DU + standalone) 가 wide bus 를 볼 수 있음. Legacy dispatch 는 무영향, v1.5.3 primitive 착수 landing zone 확보. §19.11 참조.
 - v1.5.3 (2026-07-15): 첫 wide-consumer primitive **SIG_BMM_3** (`abcij,abcjk->abcik`, 3-batch matmul at int4). 5D 2^5 = 128-bit A/B/O. Input 은 4-fragment wave (A_lo, A_hi, B_lo, B_hi) 로 Cluster 재조립 → wide[255:0]. Output 은 2-fragment (frag_hdr 0x01, 0x11) 로 emit. Multi-cycle emit FSM (`frag_state`) + 2-level SUBSCRIPT dispatch guard + MUL/DIV in-flight collision 방지. WT64v1 spec 상 완결 달성. §20 참조.
+- v1.5.4 (2026-07-15): **Assembler wave-fragment emitter** (`wavetensor_asm.py:wave_fragments`) — 128-bit / 256-bit logical payload 을 64-bit fragment 시퀀스로 자동 분할, `frag_hdr = (idx << 4) | (total-1)` 인코딩. Legacy single-fragment (wide_bits=64) 는 frag_hdr=0x00. Convenience helpers `wave_fragments_bmm3`, `wave_fragments_trace_iijkl`. §21 참조.
+- v1.5.5 (2026-07-15): **SIG_TRACE_IIJKL** (`iijkl->jkl`, 5D trace + 3 kept axes at int4) — reduction primitive. 128-bit input via 2-fragment wave, 32-bit output single-fragment (no FSM engagement). 대칭 편입 완료 — WT64v1 의 dominant CV/AI reduction workload (layernorm/softmax 기반) landing zone. §21 참조.
 
 참조 구현 마이그레이션: **진행 중 (2026-07-12 개시)** — 참조 보드가 XCAU25P → LFE5U-85F → Avant G70 순으로 이동, 아래 §"참조 구현 마이그레이션 노트" 참조.
 
@@ -1148,3 +1150,125 @@ Post-implementation adversarial review workflow (5 dimensions × 20 refute agent
 ### 20.13 진입 트리거
 
 v1.5.3 amendment 는 **결정된 상태 (2026-07-15)**. 사용자 지시 (ultracode mode) 로 v1.5.3 primitive + v1.5.3a output FSM + v1.5.3b fabric propagation 을 단일 세션 landing. Design research workflow (8 agents) → 구현 → adversarial review workflow (5+20 agents) 로 검증. 구현 완료 (2026-07-15).
+
+## 21. Assembler wave-fragment emitter + SIG_TRACE_IIJKL — v1.5.4 + v1.5.5 amendment (2026-07-15)
+
+### 21.1 배경
+
+v1.5.3 SIG_BMM_3 landing 후 사용자 코드 (driver / SDK / testbench) 는 여전히 wave-token fragment 시퀀스를 **수동으로 조립**해야 함. v1.5.4 는 이를 assembler layer helper 로 정식화. v1.5.5 는 SIG_BMM_3 (matmul, output FSM 필요) 와 대비되는 **reduction primitive** (SIG_TRACE_IIJKL, output 32-bit single-fragment) landing.
+
+사용자 지시 (ultracode 2026-07-15): "v1.5.4와 v1.5.5를 한꺼번에 진행하도록".
+
+### 21.2 v1.5.4 — `wave_fragments()` API
+
+**Location**: `wavetensor_asm.py` §9b (Section 10 Public API 직전).
+
+**Signature**:
+```python
+def wave_fragments(wide_payload: int, wide_bits: int) -> List[Tuple[int, int]]:
+    """Split a logical wide payload into 64-bit NoC wave-token fragments.
+    Returns [(payload_64, frag_hdr), ...] in emission order.
+    frag_hdr = (idx << 4) | (total - 1) per §17."""
+```
+
+**Supported wide_bits**:
+- `0` → 빈 wave `[]`
+- `64` → 1 fragment, frag_hdr=0x00 (**legacy Cluster bypass path**)
+- `128` → 2 fragments, frag_hdr [0x01, 0x11] (SIG_TRACE_IIJKL A-only)
+- `192` → 3 fragments (reserved for future)
+- `256` → 4 fragments, frag_hdr [0x03, 0x13, 0x23, 0x33] (SIG_BMM_3 A+B)
+- 기타 → `AssemblerError`
+
+**Convenience helpers**:
+```python
+def wave_fragments_bmm3(a_128, b_128) -> List[Tuple[int, int]]
+def wave_fragments_trace_iijkl(a_128) -> List[Tuple[int, int]]
+```
+
+**Design 원칙**:
+- **Wire-level**: integer 입출력. Tensor-shape validation 은 caller 책임 (기존 `_pack_int4_128` helper 사용).
+- **Uniform API**: v1.0..v1.5.x 전 primitive 지원 (legacy 는 wide_bits=64).
+- **Round-trip 보장**: `wave_fragments_bmm3` 출력을 Cluster fragment buffer 재조립 규칙 (idx * 64 shift into 1024-bit wide bus) 대로 재조립 시 bit-exact 원본 payload 복원.
+
+### 21.3 v1.5.5 — SIG_TRACE_IIJKL primitive
+
+**Einsum**: `iijkl->jkl` (5D trace + 3 kept axes at int4).
+
+**Formula**:
+$$R[j][k][l] = \left(\sum_{i=0}^{1} A[i][i][j][k][l]\right) \mod 2^4$$
+
+Only diagonal `i==i2` contributes. Off-diagonal nibbles (8-23) 은 wide bus 에서 읽히지만 dispatch 계산에서 무시.
+
+**Signature (v1.3 §16.5)**:
+- **SIG_TRACE_IIJKL_LO** = `{16'h3211, 16'h0000, 16'h0432}`
+  - A = [i,i,j,k]: axes 0-3, packed = 0x3211
+  - B = empty
+  - O = [j,k,l]: 3 axes fit in lo, packed = 0x0432
+- **SIG_TRACE_IIJKL_HI** = `{16'h0004, 16'h0000, 16'h0000}`
+  - A hi: axis 4 (l) = 0x0004
+  - B hi: 0
+  - O hi: 0
+
+**Input layout** (128-bit A via 2-fragment wave):
+```
+A[i][i'][j][k][l] at nibble (i*16 + i'*8 + j*4 + k*2 + l)
+Diagonal 0 base: nibble 0  (bits [0 +: 32])
+Diagonal 1 base: nibble 24 (bits [96 +: 32])
+```
+
+**Output**: 32-bit result (8 int4 nibbles) fits in single 64-bit fragment. `output_frag_hdr = 0x00` — **no FSM engagement** (unlike SIG_BMM_3).
+
+**Output tag `dim_sizes`**: `0x15` (3D 2×2×2).
+
+**PE_Core dispatch** (inside 2-level SUBSCRIPT else-if chain):
+- Wide-valid guard (§20.7): error_flag if `dec_input_payload_wide_valid==0`
+- Reused compound drain gate (§20.6): lower_required if MUL/DIV in flight
+- Single-cycle emit, `output_frag_hdr` default 0x00 유지 (no explicit write)
+- NO changes to MUL/DIV launch gates (no cycle-N+1 hazard since single-fragment output)
+
+### 21.4 회귀 (252 tests PASS)
+
+test_isa_decoder.py 신규 6 tests (108 → 114):
+- `test_trace_iijkl_zero` — A=0 baseline
+- `test_trace_iijkl_computed` — Python reference match
+- `test_trace_iijkl_signed_int4` — signed wrap + off-diagonal ignore proof
+- `test_trace_iijkl_single_output_fragment` — 확인: FSM 미진입, output_frag_hdr 0x00 유지
+- `test_trace_iijkl_wide_valid_gate_error` — wide_valid=0 → error_flag
+- `test_trace_iijkl_output_tag_dim_sizes` — tag dim_sizes=0x15, wave/thread preserved
+
+test_cluster.py 신규 1 test (21 → 22):
+- `test_trace_iijkl_end_to_end_via_cluster` — 2-frag input → 1-frag output through fabric + NRZ
+
+test_wavetensor_asm.py 신규 5 tests (66 → 71) — new TestWaveFragments class:
+- `test_wave_fragments_bmm3_layout` — 4-frag layout + hdr encoding
+- `test_wave_fragments_bmm3_convenience` — helper vs generic equivalence
+- `test_wave_fragments_trace_iijkl_layout` — 2-frag layout
+- `test_wave_fragments_legacy_single` — legacy 1-frag with 0x00 + invalid wide_bits error
+- `test_wave_fragments_bmm3_reassembly_matches_pe_core` — round-trip via Cluster reassembly rule
+
+전체: 181 cocotb + 71 assembler = **252 PASS** (기존 240 + 12 신규).
+
+### 21.5 HW 비용 증분 (LFE5U-85F 추정)
+
+- `einsum_trace_iijkl_int4`: 8 signed 4-bit adds → **~60 LUT** (int4 add is cheaper than int4 mul)
+- Dispatch else-if arm 확장: ~30 LUT
+- Cluster: 변경 없음
+- 총 **~90 LUT / Cluster** (SIG_BMM_3 의 ~1K LUT 대비 훨씬 저렴)
+
+### 21.6 v1.5.4/v1.5.5 두 통합의 의미
+
+- v1.5.4: **user ergonomics** — driver / SDK / test author 가 wave 조립을 직접 하지 않아도 됨
+- v1.5.5: **primitive diversity** — reduction (small-output) 패턴은 FSM 없이 landing 가능함을 실증. 향후 SIG_LAYERNORM_5D, SIG_SOFTMAX_HEAD, SIG_SUM_5D 등도 동일 패턴 재활용.
+
+Wide-consumer primitive landing 부담이 SIG_BMM_3 (~1K LUT + FSM) → SIG_TRACE_IIJKL (~90 LUT, no FSM) 로 극감. **Reduction-heavy CV/AI workload** (activation function 계열) v1.5.5 계기로 대량 landing 가능.
+
+### 21.7 남은 v1.6 스코프
+
+- **v1.6.1**: 추가 reduction primitives (SIG_LAYERNORM_5D, SIG_SOFTMAX_HEAD, SIG_SUM_5D)
+- **v1.6.2**: Multi-slot fragment buffer (동시 wave 다수 지원, LRU 정책)
+- **v1.6.3**: PE_Core `pe_ready` back-pressure (collision 을 rejection 대신 stall)
+- **v1.6.4**: Assembler에서 wide-consumer instruction 을 자동으로 wave sequence 로 확장하는 higher-level API
+
+### 21.8 진입 트리거
+
+v1.5.4 + v1.5.5 amendment 는 **결정된 상태 (2026-07-15)**. 사용자 지시 (ultracode mode) 로 단일 세션 landing. Design research workflow (3 research + 3 verify agents) → 구현 → 회귀 → spec. 구현 완료 (2026-07-15).

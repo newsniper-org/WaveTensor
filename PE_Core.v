@@ -160,6 +160,17 @@ module PE_Core #(
     // Signature-only dispatch (dim_sizes ignored) — assembler validates shape.
     localparam [47:0] SIG_BMM_3_LO    = {16'h4321, 16'h5321, 16'h4321};
     localparam [47:0] SIG_BMM_3_HI    = {16'h0005, 16'h0006, 16'h0006};
+    // v1.5.5 §21 — SIG_TRACE_IIJKL: 'iijkl->jkl' (5D trace + 3 kept axes at int4).
+    // Labels canonicalized: i=1, j=2, k=3, l=4. B is empty.
+    // Multi-SUBSCRIPT split:
+    //   A = [i,i,j,k,l] → lo=0x3211 (axes 0-3), hi=0x0004 (axis 4)
+    //   B = []          → lo=0x0000, hi=0x0000
+    //   O = [j,k,l]     → lo=0x0432 (3 axes fit in lo), hi=0x0000
+    // Input via wide[127:0] (2-fragment wave, A only — no B). Output 32-bit
+    // reduces to 8 int4 nibbles → single-fragment (no FSM engagement).
+    // Output tag dim_sizes = 0x15 (3D 2×2×2 result).
+    localparam [47:0] SIG_TRACE_IIJKL_LO = {16'h3211, 16'h0000, 16'h0432};
+    localparam [47:0] SIG_TRACE_IIJKL_HI = {16'h0004, 16'h0000, 16'h0000};
     localparam [3:0] RED_OP_SUM = 4'h0;
     localparam [3:0] RED_OP_MAX = 4'h1;
     localparam [3:0] RED_OP_MIN = 4'h2;
@@ -420,6 +431,32 @@ module PE_Core #(
             r110 = matmul_2x2_int4(a[ 96 +: 16], b[ 96 +: 16]);
             r111 = matmul_2x2_int4(a[112 +: 16], b[112 +: 16]);
             einsum_bmm_3_int4_hi = {r111, r110, r101, r100};
+        end
+    endfunction
+
+    // v1.5.5 §21 — SIG_TRACE_IIJKL: 'iijkl->jkl' (5D trace + 3 kept axes).
+    // 128-bit A payload, 32-bit output (single-fragment, no FSM).
+    // Nibble layout: A[i][i2][j][k][l] at nibble (i*16 + i2*8 + j*4 + k*2 + l).
+    // Only diagonal i==i2 contributes:
+    //   (i=0, i2=0) base = nibble 0  (bits [0 +: 32])
+    //   (i=1, i2=1) base = nibble 24 (bits [96 +: 32])
+    // Off-diagonal nibbles 8..23 read but discarded.
+    // R[j][k][l] = A[0][0][j][k][l] + A[1][1][j][k][l], signed int4 wrap.
+    function [ADDR_WIDTH-1:0] einsum_trace_iijkl_int4;
+        input [127:0] a;
+        reg signed [3:0] r0, r1, r2, r3, r4, r5, r6, r7;
+        begin
+            // Output nibble idx = j*4 + k*2 + l. Diagonal-0 offset = idx*4 bits,
+            // diagonal-1 offset = 96 + idx*4 bits (24 nibbles = 96 bits).
+            r0 = $signed(a[  0 +: 4]) + $signed(a[ 96 +: 4]);
+            r1 = $signed(a[  4 +: 4]) + $signed(a[100 +: 4]);
+            r2 = $signed(a[  8 +: 4]) + $signed(a[104 +: 4]);
+            r3 = $signed(a[ 12 +: 4]) + $signed(a[108 +: 4]);
+            r4 = $signed(a[ 16 +: 4]) + $signed(a[112 +: 4]);
+            r5 = $signed(a[ 20 +: 4]) + $signed(a[116 +: 4]);
+            r6 = $signed(a[ 24 +: 4]) + $signed(a[120 +: 4]);
+            r7 = $signed(a[ 28 +: 4]) + $signed(a[124 +: 4]);
+            einsum_trace_iijkl_int4 = {32'h0, r7, r6, r5, r4, r3, r2, r1, r0};
         end
     endfunction
 
@@ -1149,6 +1186,36 @@ module PE_Core #(
                                         frag_tag_held    <= dec_forwarded_tag;
                                         frag_opcode_held <= dec_opcode;
                                         frag_state       <= FRAG_EMIT_HI;
+                                    end
+                                end else if ((dec_eff_subscript == SIG_TRACE_IIJKL_LO)
+                                             && (dec_eff_subscript_hi == SIG_TRACE_IIJKL_HI)) begin
+                                    // v1.5.5 §21 — SIG_TRACE_IIJKL: 5D trace.
+                                    // Input A via dec_input_payload_wide[127:0]
+                                    // (2-fragment wave). B unused. Output 32-bit
+                                    // single-fragment (no FSM engagement).
+                                    if (!dec_input_payload_wide_valid) begin
+                                        // §20.7 wide-consumer contract violation.
+                                        error_flag   <= 1'b1;
+                                        output_valid <= 1'b0;
+                                    end else if (!((frag_state == FRAG_IDLE)
+                                                && !mul_valid_p1 && !mul_valid_p2
+                                                && (div_state == DIV_IDLE)
+                                                && !div_valid_p2 && !div_b_zero_p2)) begin
+                                        // Reuse §20.6 compound drain gate — no
+                                        // cycle-N+1 hazard (single-fragment
+                                        // emit) but a MUL/DIV pulse on cycle N
+                                        // would still clobber the output.
+                                        lower_required <= 1'b1;
+                                        output_valid   <= 1'b0;
+                                    end else begin
+                                        output_payload <= einsum_trace_iijkl_int4(
+                                            dec_input_payload_wide[127:0]);
+                                        output_tag     <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h15};
+                                        output_valid   <= 1'b1;
+                                        // output_frag_hdr default = 0x00 already
+                                        // set at line ~705 — no explicit write.
                                     end
                                 end else begin
                                     lower_required <= 1'b1;

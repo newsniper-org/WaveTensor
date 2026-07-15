@@ -741,6 +741,119 @@ async def test_bmm_3_cluster_frag_hdr_returns_to_zero(dut):
     assert int(dut.ext_out_frag_hdr.value) == 0x00
 
 
+# =============================================================================
+# v1.5.5 §21 — SIG_TRACE_IIJKL end-to-end via Cluster fabric
+# =============================================================================
+#
+# 2 input fragments (A_lo, A_hi) → Cluster fragment buffer reassembles
+# into wide[127:0] → PE_Core (MU) dispatches SIG_TRACE_IIJKL → 1 output
+# fragment (frag_hdr=0x00, no FSM). Result payload is 32-bit (upper 32
+# bits = 0), output_tag carries dim_sizes=0x15 (3D 2×2×2).
+
+
+_TRIIJKL_A_LO_S = 0x3211
+_TRIIJKL_B_LO_S = 0x0000
+_TRIIJKL_O_LO_S = 0x0432
+_TRIIJKL_A_HI_S = 0x0004
+_TRIIJKL_B_HI_S = 0x0000
+_TRIIJKL_O_HI_S = 0x0000
+
+
+def _trace_iijkl_expected(a_128):
+    """Python reference for SIG_TRACE_IIJKL (mirror of PE_Core.v)."""
+    def s4(x):
+        x &= 0xF
+        return x - 16 if x & 0x8 else x
+    r = [0] * 8
+    for j in range(2):
+        for k in range(2):
+            for l in range(2):
+                acc = 0
+                for i in range(2):
+                    lin = i * 16 + i * 8 + j * 4 + k * 2 + l
+                    acc += s4((a_128 >> (lin * 4)) & 0xF)
+                r[j * 4 + k * 2 + l] = acc & 0xF
+    out = 0
+    for idx, n in enumerate(r):
+        out |= (n & 0xF) << (idx * 4)
+    return out
+
+
+@cocotb.test()
+async def test_trace_iijkl_end_to_end_via_cluster(dut):
+    """v1.5.5: send 2 input fragments (A_lo, A_hi) carrying the 128-bit
+    5D A tensor. Cluster reassembles, MU dispatches SIG_TRACE_IIJKL,
+    output emerges as SINGLE ext_out fragment (frag_hdr=0x00) with
+    32-bit reduction result and dim_sizes=0x15 in the tag."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    # Distinctive nibbles across 128-bit A
+    a_128 = 0
+    for lin in range(32):
+        a_128 |= ((lin * 5 + 2) & 0xF) << (lin * 4)
+
+    tag = _tag(port_context_id=0)
+    instr = encode_instr(0x32,
+                         eh_port(input_port_mask=0x01, output_port_id=0),
+                         eh_subscript(_TRIIJKL_A_LO_S, _TRIIJKL_B_LO_S, _TRIIJKL_O_LO_S),
+                         eh_subscript(_TRIIJKL_A_HI_S, _TRIIJKL_B_HI_S, _TRIIJKL_O_HI_S),
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+
+    # Emit 2 fragments (idx 0..1, total-1 = 1):
+    #   idx 0 → wide[63:0]   = A[63:0]
+    #   idx 1 → wide[127:64] = A[127:64]
+    payloads = [a_128 & ((1 << 64) - 1), (a_128 >> 64) & ((1 << 64) - 1)]
+    for idx in range(2):
+        dut.ext_instruction.value = instr
+        dut.ext_tag.value = tag
+        dut.ext_payload.value = payloads[idx]
+        dut.ext_payload_b.value = 0
+        dut.ext_payload_b_valid.value = 1
+        dut.ext_frag_hdr.value = (idx << 4) | 0x1   # total-1 = 1
+        dut.ext_valid.value = 1
+        await RisingEdge(dut.clk)
+    dut.ext_valid.value = 0
+    dut.ext_frag_hdr.value = 0
+
+    # Wait for the SINGLE output fragment
+    saw = None
+    for _ in range(30):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.ext_out_valid.value) == 1:
+            saw = {
+                'payload':  int(dut.ext_out_payload.value),
+                'frag_hdr': int(dut.ext_out_frag_hdr.value),
+                'tag':      int(dut.ext_out_tag.value),
+            }
+            break
+
+    assert saw is not None, "no ext_out fragment observed"
+    # Single-fragment output — NOT 0x01 (that would indicate FSM engagement)
+    assert saw['frag_hdr'] == 0x00, f"expected single frag_hdr 0x00, got 0x{saw['frag_hdr']:02x}"
+    # Math matches Python reference
+    expected = _trace_iijkl_expected(a_128)
+    assert (saw['payload'] & 0xFFFFFFFF) == expected, \
+        f"payload {saw['payload'] & 0xFFFFFFFF:08x} != {expected:08x}"
+    # Only low 32 bits used
+    assert (saw['payload'] >> 32) == 0
+    # Output tag carries 3D dim_sizes = 0x15
+    assert (saw['tag'] & 0xFF) == 0x15
+
+    # NRZ: cycle N+1 must snap back to idle (no phantom fragment 1)
+    await RisingEdge(dut.clk)
+    await Timer(1, units="ns")
+    assert int(dut.ext_out_valid.value) == 0
+    assert int(dut.ext_out_frag_hdr.value) == 0x00
+
+    # Cluster diagnostics clean (no error, no lower)
+    assert int(dut.any_error_flag.value) == 0
+    assert int(dut.any_lower_required.value) == 0
+
+
 @cocotb.test()
 async def test_bmm_3_lpe_collision_raises_output_collision(dut):
     """v1.5.3 §20 (adversarial review bug 3+4): fire SIG_BMM_3 to MU, then

@@ -1366,6 +1366,70 @@ def print_program(prog: Program) -> str:
 
 
 # =============================================================================
+# Section 9b — v1.5.4 wave-token fragment emitter (wt64v1_spec §21)
+# =============================================================================
+#
+# Since v1.5.1/1.5.2 the Cluster fragment buffer reassembles a wide input
+# payload from multiple NoC wave tokens carrying `frag_hdr` = (idx << 4) |
+# (total - 1). Wide-consumer primitives (SIG_BMM_3, SIG_TRACE_IIJKL, ...)
+# rely on this — but user code (drivers, tests, SDK codegen) has had to
+# hand-construct the fragment sequences.
+#
+# `wave_fragments(wide_payload, wide_bits)` is the canonical splitter:
+# given a logical wide payload and its bit-width, it returns the ordered
+# list of `(payload_64, frag_hdr)` tuples the fabric expects. Legacy
+# single-fragment ops (wide_bits=64) get one element with frag_hdr=0x00
+# (Cluster bypass path), so callers have ONE uniform API across all
+# v1.0..v1.5.x primitives.
+#
+# API is intentionally wire-level (integer in, integers out). Tensor-shape
+# validation is the caller's responsibility — tests already bit-pack via
+# `_pack_int4_128` and similar helpers.
+
+
+def wave_fragments(wide_payload: int, wide_bits: int) -> List[Tuple[int, int]]:
+    """Split a logical wide payload into 64-bit NoC wave-token fragments.
+
+    Returns a list of ``(payload_64, frag_hdr)`` tuples in emission order.
+    ``frag_hdr = (idx << 4) | (total - 1)`` per wt64v1_spec.md §17.
+
+    Legacy single-fragment ops: ``wide_bits=64`` returns one tuple with
+    ``frag_hdr=0x00`` (Cluster fragment buffer bypasses on this value).
+
+    Supported ``wide_bits``: 0 (empty wave), 64 (legacy), 128 (SIG_TRACE_IIJKL
+    A-only), 192 (unused today), 256 (SIG_BMM_3 A+B).
+    """
+    if wide_bits == 0:
+        return []
+    if wide_bits not in (64, 128, 192, 256):
+        raise AssemblerError(
+            f"wave_fragments: wide_bits must be in {{0,64,128,192,256}}, "
+            f"got {wide_bits}"
+        )
+    total_frags   = wide_bits // 64
+    total_minus_1 = total_frags - 1
+    result: List[Tuple[int, int]] = []
+    for idx in range(total_frags):
+        payload  = (wide_payload >> (idx * 64)) & ((1 << 64) - 1)
+        frag_hdr = ((idx & 0xF) << 4) | (total_minus_1 & 0xF)
+        result.append((payload, frag_hdr))
+    return result
+
+
+def wave_fragments_bmm3(a_128: int, b_128: int) -> List[Tuple[int, int]]:
+    """Convenience: emit the 4-fragment SIG_BMM_3 wave (v1.5.3 §20.4).
+    Layout: A at wide[127:0], B at wide[255:128]."""
+    wide = (a_128 & ((1 << 128) - 1)) | ((b_128 & ((1 << 128) - 1)) << 128)
+    return wave_fragments(wide, 256)
+
+
+def wave_fragments_trace_iijkl(a_128: int) -> List[Tuple[int, int]]:
+    """Convenience: emit the 2-fragment SIG_TRACE_IIJKL wave (v1.5.5 §21).
+    Layout: A at wide[127:0], B unused."""
+    return wave_fragments(a_128 & ((1 << 128) - 1), 128)
+
+
+# =============================================================================
 # Section 10 — Public API
 # =============================================================================
 
