@@ -76,7 +76,9 @@ module Pod #(
 
     // ---- Aggregated diagnostics ----
     output                      any_error_flag,
-    output                      any_lower_required
+    output                      any_lower_required,
+    // v1.6.6 §22.14 — pod_ready = AND across all clusters' ready.
+    output                      pod_ready
 );
 
     localparam NUM_CLUSTERS = CLUSTER_ROWS * CLUSTER_COLS;
@@ -113,6 +115,7 @@ module Pod #(
     wire [ADDR_WIDTH-1:0]  cl_mem_addr    [0:NUM_CLUSTERS-1];
     wire                   cl_error       [0:NUM_CLUSTERS-1];
     wire                   cl_lower       [0:NUM_CLUSTERS-1];
+    wire                   cl_ready       [0:NUM_CLUSTERS-1];   // v1.6.6
 
     // -------------------------------------------------------------------------
     // Cluster index from port_context_id[7:4]; PE index within each
@@ -161,7 +164,8 @@ module Pod #(
                     .mem_addr            (cl_mem_addr[CIDX]),
                     .any_error_flag      (cl_error[CIDX]),
                     .any_lower_required  (cl_lower[CIDX]),
-                    .any_output_collision (cl_collision[CIDX])
+                    .any_output_collision (cl_collision[CIDX]),
+                    .cluster_ready       (cl_ready[CIDX])
                 );
             end
         end
@@ -217,5 +221,18 @@ module Pod #(
     assign mem_addr           = m_mem_addr;
     assign any_error_flag     = m_err;
     assign any_lower_required = m_lwr;
+    // v1.6.6 §22.14 — pod_ready = AND across all clusters' ready.
+    generate
+        if (NUM_CLUSTERS > 0) begin : g_pod_ready
+            integer pri;
+            reg     pod_ready_r;
+            always @(*) begin
+                pod_ready_r = 1'b1;
+                for (pri = 0; pri < NUM_CLUSTERS; pri = pri + 1)
+                    pod_ready_r = pod_ready_r & cl_ready[pri];
+            end
+            assign pod_ready = pod_ready_r;
+        end
+    endgenerate
 
 endmodule

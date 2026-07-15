@@ -44,6 +44,10 @@ module ISA_Decoder #(
     // v1.5 §17 — NoC wave-token fragment header. Default 8'h00 (single-
     // fragment) for all v1.0..1.4 primitives.
     output [7:0]                output_frag_hdr,
+    // v1.6.6 §22.14 — pe_ready back-pressure signal (combinational).
+    // Exposed for upstream fabric observation. High when PE_Core can
+    // accept a new dispatch; low during FSM emit or MUL/DIV in-flight.
+    output                      pe_ready,
     // v1.5.2 §19 — reassembled wide payload latched into the dec_* stage.
     // Exposed at the ISA_Decoder boundary for hierarchical test access
     // and downstream (PE.v / Cluster.v / Top_Core.v) legacy tie-off.
@@ -184,6 +188,7 @@ module ISA_Decoder #(
         .output_valid              (output_valid),
         .opcode_out                (opcode_out),
         .output_frag_hdr           (output_frag_hdr),
+        .pe_ready                  (pe_ready),
         .memory_req                (memory_req),
         .mem_addr                  (mem_addr),
         .error_flag                (error_flag),

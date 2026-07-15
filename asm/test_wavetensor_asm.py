@@ -808,8 +808,8 @@ class TestNormMacros(unittest.TestCase):
         )
         insts = wta.assemble(src)
         opcodes = [(w >> 24) & 0xFF for w in insts]
-        self.assertEqual(opcodes, [0x32, 0x66, 0x62, 0x65],
-                         f"expected [EINSUM=0x32, SCALAR_RSQRT=0x66, MUL_WIDE_SCALAR=0x62, MUL_WIDE_VEC=0x65], got {[hex(o) for o in opcodes]}")
+        self.assertEqual(opcodes, [0x32, 0x66, 0x67, 0x65],
+                         f"expected [EINSUM=0x32, SCALAR_RSQRT=0x66, MUL_WIDE_Q4_4_SCALAR=0x67, MUL_WIDE_VEC=0x65], got {[hex(o) for o in opcodes]}")
 
     def test_layernorm_expansion(self):
         """LAYERNORM → 8-primitive chain per §22.3 (with xc re-emission for fanout)."""
@@ -822,7 +822,7 @@ class TestNormMacros(unittest.TestCase):
         opcodes = [(w >> 24) & 0xFF for w in insts]
         # Expected sequence: EINSUM(MEAN), SUB_VEC, EINSUM(L2SQ), RSQRT,
         # SUB_VEC (re-emission), MUL_SCALAR, MUL_VEC, ADD_VEC
-        expected = [0x32, 0x64, 0x32, 0x66, 0x64, 0x62, 0x65, 0x63]
+        expected = [0x32, 0x64, 0x32, 0x66, 0x64, 0x67, 0x65, 0x63]
         self.assertEqual(opcodes, expected,
                          f"expected {[hex(o) for o in expected]}, got {[hex(o) for o in opcodes]}")
 
@@ -862,6 +862,16 @@ class TestNormMacros(unittest.TestCase):
         )
         with self.assertRaises(wta.AssemblerError):
             wta.assemble(src)
+
+    def test_primitive_simd_mul_wide_q4_4_scalar_legality(self):
+        """v1.6.5a: SIMD_MUL_WIDE_Q4_4_SCALAR (0x67) — same legality as
+        SIMD_MUL_WIDE_SCALAR (binary-ALU IMM XOR OPREF)."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "SIMD_MUL_WIDE_Q4_4_SCALAR .imm16 0x18\n"   # Q4.4 = 1.5
+        )
+        insts = wta.assemble(src)
+        self.assertEqual((insts[0] >> 24) & 0xFF, 0x67)
 
 
 class TestWaveFragments(unittest.TestCase):

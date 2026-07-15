@@ -100,6 +100,13 @@ module PE_Core #(
     output reg [TAG_WIDTH-1:0]   output_tag,
     output reg                   output_valid,
     output reg [7:0]             opcode_out,
+    // v1.6.6 §22.14 — pe_ready back-pressure signal (combinational).
+    // High when PE_Core can accept a new dispatch. Same compound expression
+    // as the internal drain gate (§20.6, §22.13.1) but exposed as an
+    // observable output. External (Cluster/upstream fabric) can either
+    // gate ext_valid on this or observe only (MVP: observe-only, no
+    // ext_valid gating change).
+    output                       pe_ready,
     // v1.5 §17 — NoC wave-token fragment header (IPv6-style Fragment
     // Extension Header analog). Layout:
     //   [7:4] = fragment_index (this fragment's position, 0..15)
@@ -914,6 +921,36 @@ module PE_Core #(
                 out[i*4 +: 4] = p[3:0];   // int4 truncation (spec §22 caveat)
             end
             simd_mul_wide_scalar_128 = out;
+        end
+    endfunction
+
+    // v1.6.5a §22.14 — Q4.4 wide-scalar mul (precision improvement over 0x62).
+    // B is signed Q4.4 (dec_eff_b_value[7:0]): sign + 3 int + 4 frac bits.
+    // Range [-8.0, +7.9375], LSB = 1/16.
+    // Per-lane: p = signed(A[3:0]) * signed(B[7:0])  → 12-bit signed (Q8.4)
+    //           output = (p + 8) >>> 4 → int4 (round-half-up)
+    // Mathematical bound |A|<=8, |B|<=8 → |A*B/16|<=4 fits int4, no saturation.
+    // Recovers ~4-bit precision at the RMSNORM/LAYERNORM scale-multiplication
+    // step vs the int4 truncation in 0x62 (workflow wj6ewzd50 analysis).
+    function [127:0] simd_mul_wide_q4_4_scalar_128;
+        input [127:0] a;
+        input [7:0]   b;
+        reg [127:0] out;
+        reg signed [3:0]  ai;
+        reg signed [7:0]  bi;
+        reg signed [11:0] p;
+        reg signed [11:0] p_round;
+        integer i;
+        begin
+            out = 128'h0;
+            for (i = 0; i < 32; i = i + 1) begin
+                ai      = $signed(a[i*4 +: 4]);
+                bi      = $signed(b);
+                p       = ai * bi;                    // Q8.4 signed (12-bit)
+                p_round = p + 12'sd8;                  // round-half-up bias
+                out[i*4 +: 4] = p_round[7:4];          // arith shift right 4, low 4 bits
+            end
+            simd_mul_wide_q4_4_scalar_128 = out;
         end
     endfunction
 
@@ -2165,7 +2202,9 @@ module PE_Core #(
                         // 0x60/61/62 SCALAR: B via dec_eff_b_value[3:0]
                         // 0x63/64/65 VEC:    V via dec_input_payload_b[63:0]
                         //   (requires F_HAS_OPB flag)
-                        8'h60, 8'h61, 8'h62, 8'h63, 8'h64, 8'h65: begin
+                        // 0x67 Q4.4 SCALAR (v1.6.5a): B via dec_eff_b_value[7:0]
+                        //   as signed Q4.4 — precision recovery for norm scale.
+                        8'h60, 8'h61, 8'h62, 8'h63, 8'h64, 8'h65, 8'h67: begin
                             if (!dec_input_payload_wide_valid) begin
                                 error_flag   <= 1'b1;
                                 output_valid <= 1'b0;
@@ -2226,6 +2265,16 @@ module PE_Core #(
                                             dec_input_payload_wide[127:0],
                                             dec_input_payload_b)[127:64];
                                     end
+                                    8'h67: begin
+                                        // v1.6.5a — Q4.4 wide-scalar mul.
+                                        // B via dec_eff_b_value[7:0] as signed Q4.4.
+                                        output_payload   <= simd_mul_wide_q4_4_scalar_128(
+                                            dec_input_payload_wide[127:0],
+                                            dec_eff_b_value[7:0])[63:0];
+                                        frag_hi_pending  <= simd_mul_wide_q4_4_scalar_128(
+                                            dec_input_payload_wide[127:0],
+                                            dec_eff_b_value[7:0])[127:64];
+                                    end
                                     default: ;
                                 endcase
                                 output_valid     <= 1'b1;
@@ -2255,6 +2304,15 @@ module PE_Core #(
             end
         end
     end
+
+    // v1.6.6 §22.14 — pe_ready back-pressure signal (combinational).
+    // Same 6-term compound as internal drain gate. Upstream fabric can
+    // observe this to STALL new dispatches instead of retrying after
+    // lower_required. MVP: observe-only, no ext_valid gating change.
+    assign pe_ready = (frag_state == FRAG_IDLE)
+                   && !mul_valid_p1 && !mul_valid_p2
+                   && (div_state == DIV_IDLE)
+                   && !div_valid_p2 && !div_b_zero_p2;
 
 endmodule
 

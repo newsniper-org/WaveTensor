@@ -64,6 +64,7 @@ module PE #(
     output [ADDR_WIDTH-1:0]     out_payload,
     output [7:0]                out_opcode,
     output [7:0]                out_frag_hdr,   // v1.5 §17
+    output                      out_pe_ready,   // v1.6.6 §22.14
     output                      out_valid,
 
     // ---- Memory side-channel (forwarded by the Cluster to HIU) ----
@@ -127,6 +128,7 @@ module PE #(
         .output_valid         (out_valid),
         .opcode_out           (out_opcode),
         .output_frag_hdr      (out_frag_hdr),
+        .pe_ready             (out_pe_ready),
         .dec_input_payload_wide_out       (pe_dec_input_payload_wide_out),
         .dec_input_payload_wide_valid_out (pe_dec_input_payload_wide_valid_out),
         .memory_req           (memory_req),

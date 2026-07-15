@@ -63,6 +63,7 @@ module Top_Core #(
     output [7:0]                       opcode_out,
     // v1.5 §17 — NoC wave-token fragment header. 0x00 = single-fragment.
     output [7:0]                       output_frag_hdr,
+    output                             pe_ready,   // v1.6.6 §22.14
     output                             error_flag,
     output                             lower_required,
 
@@ -140,6 +141,7 @@ module Top_Core #(
         .output_valid         (output_valid),
         .opcode_out           (opcode_out),
         .output_frag_hdr      (output_frag_hdr),
+        .pe_ready             (pe_ready),
         .dec_input_payload_wide_out       (tc_dec_input_payload_wide_out),
         .dec_input_payload_wide_valid_out (tc_dec_input_payload_wide_valid_out),
         .memory_req           (dec_memory_req),

@@ -89,7 +89,11 @@ module Cluster #(
     // by atomic per-source arbitration; software should observe this flag
     // to detect and recover. Also folded into any_error_flag so legacy
     // consumers surface it as a generic error.
-    output                      any_output_collision
+    output                      any_output_collision,
+    // v1.6.6 §22.14 — Cluster-level back-pressure aggregate. AND-reduce
+    // of all PE_Core pe_ready signals. High only when EVERY PE can accept
+    // a new dispatch. Upstream fabric can observe (MVP: observe-only).
+    output                      cluster_ready
 );
 
     localparam NUM_PES = PE_ROWS * PE_COLS;
@@ -484,6 +488,7 @@ module Cluster #(
     wire [TAG_WIDTH-1:0]   pe_out_tag     [0:NUM_PES-1];
     wire [7:0]             pe_out_opcode  [0:NUM_PES-1];
     wire [7:0]             pe_out_frag_hdr[0:NUM_PES-1];   // v1.5 §17
+    wire                   pe_ready_lpe   [0:NUM_PES-1];   // v1.6.6 §22.14
     wire                   pe_mem_req     [0:NUM_PES-1];
     wire [ADDR_WIDTH-1:0]  pe_mem_addr    [0:NUM_PES-1];
     wire                   pe_error       [0:NUM_PES-1];
@@ -535,6 +540,7 @@ module Cluster #(
                     .output_valid              (pe_out_valid[IDX]),
                     .opcode_out                (pe_out_opcode[IDX]),
                     .output_frag_hdr           (pe_out_frag_hdr[IDX]),
+                    .pe_ready                  (pe_ready_lpe[IDX]),
                     .memory_req                (pe_mem_req[IDX]),
                     .mem_addr                  (pe_mem_addr[IDX]),
                     .error_flag                (pe_error[IDX]),
@@ -551,6 +557,7 @@ module Cluster #(
     wire [ADDR_WIDTH-1:0] mu_out_payload;
     wire [7:0]            mu_out_opcode;
     wire [7:0]            mu_out_frag_hdr;   // v1.5 §17
+    wire                  mu_pe_ready;       // v1.6.6 §22.14
     wire                  mu_out_valid;
     wire                  mu_mem_req;
     wire [ADDR_WIDTH-1:0] mu_mem_addr;
@@ -595,6 +602,7 @@ module Cluster #(
         .output_valid              (mu_out_valid),
         .opcode_out                (mu_out_opcode),
         .output_frag_hdr           (mu_out_frag_hdr),
+        .pe_ready                  (mu_pe_ready),
         .memory_req                (mu_mem_req),
         .mem_addr                  (mu_mem_addr),
         .error_flag                (mu_error),
@@ -610,6 +618,7 @@ module Cluster #(
     wire [ADDR_WIDTH-1:0] du_out_payload;
     wire [7:0]            du_out_opcode;
     wire [7:0]            du_out_frag_hdr;   // v1.5 §17
+    wire                  du_pe_ready;       // v1.6.6 §22.14
     wire                  du_out_valid;
     wire                  du_mem_req;
     wire [ADDR_WIDTH-1:0] du_mem_addr;
@@ -654,6 +663,7 @@ module Cluster #(
         .output_valid              (du_out_valid),
         .opcode_out                (du_out_opcode),
         .output_frag_hdr           (du_out_frag_hdr),
+        .pe_ready                  (du_pe_ready),
         .memory_req                (du_mem_req),
         .mem_addr                  (du_mem_addr),
         .error_flag                (du_error),
@@ -876,5 +886,19 @@ module Cluster #(
     assign any_error_flag     = m_err;
     assign any_lower_required = m_lwr;
     assign any_output_collision = m_output_collision;   // v1.5.3 §20 bug-3/4
+    // v1.6.6 §22.14 — Cluster back-pressure: AND-reduce over MU/DU/L-PE ready.
+    // High only when ALL PE_Core instances can accept new dispatch this cycle.
+    generate
+        if (NUM_PES > 0) begin : g_ready_agg
+            integer pr_i;
+            reg     pe_ready_and;
+            always @(*) begin
+                pe_ready_and = 1'b1;
+                for (pr_i = 0; pr_i < NUM_PES; pr_i = pr_i + 1)
+                    pe_ready_and = pe_ready_and & pe_ready_lpe[pr_i];
+            end
+            assign cluster_ready = mu_pe_ready & du_pe_ready & pe_ready_and;
+        end
+    endgenerate
 
 endmodule

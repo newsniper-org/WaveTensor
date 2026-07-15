@@ -90,6 +90,8 @@ MNEMONIC_TO_OPCODE: Dict[str, int] = {
     'SIMD_MUL_WIDE_VEC':    0x65,
     # v1.6.1b §22 — Scalar transcendental (rsqrt approximation).
     'SCALAR_RSQRT':         0x66,
+    # v1.6.5a §22.14 — Q4.4 wide-scalar mul (precision recovery for norm scale).
+    'SIMD_MUL_WIDE_Q4_4_SCALAR': 0x67,
 }
 OPCODE_TO_MNEMONIC: Dict[int, str] = {v: k for k, v in MNEMONIC_TO_OPCODE.items()}
 
@@ -761,10 +763,12 @@ def _lower_rmsnorm(inst: Instruction) -> List[Instruction]:
             eh_list=[port_eh],
             line=inst.line,
         ),
-        # scale is Q16.16; broadcast to int4 via SIMD_MUL_WIDE_SCALAR opref
-        # (SDK routes the low nibble of the rsqrt output as B_scalar).
+        # v1.6.5a §22.14 — scale is Q16.16; use Q4.4 wide-scalar mul (0x67)
+        # for precision recovery. SDK routes bits [11:4] of the Q16.16
+        # rsqrt output as signed Q4.4 broadcast, recovering ~4-bit precision
+        # vs the earlier int4-truncated form (0x62).
         Instruction(
-            mnemonic='SIMD_MUL_WIDE_SCALAR',
+            mnemonic='SIMD_MUL_WIDE_Q4_4_SCALAR',
             flags=set(inst.flags),
             eh_list=[port_eh, _make_eh('opref', {}, inst.line)],
             line=inst.line,
@@ -865,9 +869,9 @@ def _lower_layernorm(inst: Instruction) -> List[Instruction]:
             eh_list=[port_eh, mu_opref],
             line=inst.line,
         ),
-        # 6) SIMD_MUL_WIDE_SCALAR: xc × scale
+        # 6) SIMD_MUL_WIDE_Q4_4_SCALAR: xc × scale (v1.6.5a precision recovery).
         Instruction(
-            mnemonic='SIMD_MUL_WIDE_SCALAR',
+            mnemonic='SIMD_MUL_WIDE_Q4_4_SCALAR',
             flags=set(inst.flags),
             eh_list=[port_eh, _make_eh('opref', {}, inst.line)],
             line=inst.line,
@@ -1282,7 +1286,7 @@ _set_legal([0x40, 0x41, 0x42, 0x43, 0x44],
            required={'port'}, forbidden=_ALL_DATA_EHS)
 # v1.6.1b §22 — SIMD_ADD/SUB/MUL_WIDE_SCALAR (0x60/61/62): binary-ALU
 # style, B_scalar via imm16 XOR opref (dec_eff_b_value[3:0]).
-_set_legal([0x60, 0x61, 0x62],
+_set_legal([0x60, 0x61, 0x62, 0x67],
            required={'port'}, forbidden={'subscript', 'mem'},
            allow_imm_xor_opref=True)
 # v1.6.1b §22 — SIMD_ADD/SUB/MUL_WIDE_VEC (0x63/64/65): V (64-bit 4D

@@ -23,6 +23,8 @@
 - v1.6.2 (2026-07-15): **4D→3D reduction family** (SUM/MAX/MIN/L2SQ/MEAN) — InstanceNorm/GroupNorm gap closure. A_hi=0x0004 을 family discriminator 로 (adversarial review 발견 bug 방지). SIG_MIN_5D_TO_4D 대칭 backfill. §22.13 참조.
 - v1.6.3 (2026-07-15): **rsqrt mantissa LUT** — 기존 power-of-2 baseline → 16-entry Q0.15 LUT 로 정밀도 ~4-bit 향상. LUT[0]=0x8000 로 기존 3 tests 완전 backward-compat. §22.13 참조.
 - v1.6.4 (2026-07-15): **assembler norm macros** — 7 primitive mnemonics (0x60-66) + BATCHNORM_INFER / RMSNORM / LAYERNORM macros. Assembler-only landing (RTL 무변경). LAYERNORM 은 xc-fanout 처리를 위한 SDK-side re-emission 전략 채택. §22.11 참조.
+- v1.6.5a (2026-07-15): **SIMD_MUL_WIDE_Q4_4_SCALAR (0x67)** — B lane widening (int4 → signed Q4.4). RMSNORM/LAYERNORM 매크로가 scale 곱셈 단계에서 0x62 대신 0x67 사용 → ~4-bit 정밀도 회복 (v1.6.4 부터 남아있던 ~12-bit loss 완화). §22.14a 참조.
+- v1.6.6 (2026-07-15): **pe_ready back-pressure signal** — PE_Core FSM+pipeline 상태 통합 combinational output. Cluster→Pod→Top_Core 계층으로 aggregate (AND-reduce). MVP observe-only (ext_valid gate 안 함). §22.14b 참조.
 
 참조 구현 마이그레이션: **진행 중 (2026-07-12 개시)** — 참조 보드가 XCAU25P → LFE5U-85F → Avant G70 순으로 이동, 아래 §"참조 구현 마이그레이션 노트" 참조.
 
@@ -1707,4 +1709,85 @@ LUT[8..15]: 0x5A82 0x5555 0x50F4 0x4D2E  0x49E6 0x46FF 0x446A 0x4218
 
 v1.6.1c amendment 는 **결정된 상태 (2026-07-15)**. 사용자 지시 (ultracode mode, RISC-ish 원칙): "어떤 정규화 기법이든 상관없이, 덩어리째로 가속시키는 것 대신에 유한한 가지수의 연산들로 분해하고 그 '유한한 가지수의 연산들'을 가속시키는 쪽으로 정규화 기법 가속 방안 모색". v1.6.1a → v1.6.1b → v1.6.1c → v1.6.2 + v1.6.3 5-commit 순차 landing 으로 primitive basis + broadcast + rsqrt + 문서화 + 4D→3D 완비. 구현 완료 (2026-07-15).
 
-### 22.14 [reserved — 22.15 로 이동, 위 §22.13.3 참조]
+### 22.14 v1.6.5a + v1.6.6 landing (2026-07-15)
+
+Ultracode 세션 병행 landing. Design workflow (task wj6ewzd50, 2 research + 2 verify, ~253K tokens) 로 사전 검증.
+
+#### 22.14a v1.6.5a — SIMD_MUL_WIDE_Q4_4_SCALAR (0x67) 정밀도 회복
+
+**목적**: 기존 0x62 SIMD_MUL_WIDE_SCALAR 는 B lane 을 `dec_eff_b_value[3:0]` (int4) 만 사용 — Q16.16 rsqrt 결과가 int4 로 truncated → ~12-bit 손실. 0x67 은 B lane 을 `dec_eff_b_value[7:0]` (Q4.4 signed) 로 widening → ~4-bit 정밀도 회복.
+
+**Q4.4 arithmetic**:
+- B interpretation: signed 8-bit, sign + 3 int + 4 frac bits (range [-8.0, +7.9375], LSB = 1/16)
+- Per lane: `p = signed(A[3:0]) * signed(B[7:0])` → 12-bit signed Q8.4 intermediate
+- Round-half-up: `(p + 8) >>> 4` → int4
+- Mathematical bound: `|A|≤8, |B|≤8 → |A*B/16|≤4` fits int4, **no saturation needed**
+- LUT ~350-500 / Cluster (32 lanes × 4×8 signed mult)
+
+**Legality**: same as 0x60-62 (binary-ALU IMM XOR OPREF). Added to `is_alu_binary`, `_LEGAL[0x60,0x61,0x62,0x67]`, `opcode_supported`.
+
+**Assembler mnemonic**: `SIMD_MUL_WIDE_Q4_4_SCALAR = 0x67`.
+
+**RMSNORM/LAYERNORM 매크로 갱신**:
+- RMSNORM step 3 (scale × x): 0x62 → 0x67
+- LAYERNORM step 6 (scale × xc): 0x62 → 0x67
+
+SDK 는 Q16.16 rsqrt 결과의 bits [11:4] 를 signed Q4.4 로 broadcast (즉 상위 8-bit 마감).
+
+**Test vectors**:
+- A=+2, B=Q4.4(+0.5)=0x08 → (2×8+8)>>4 = 1 (int4) — verified
+- A=+4, B=Q4.4(-1.0)=0xF0 → (4×(-16)+8)>>4 = -4 (int4 0xC) — verified
+
+#### 22.14b v1.6.6 — pe_ready back-pressure signal
+
+**목적**: 기존 compound drain gate 는 `lower_required` (REJECTION) 로 upstream 이 retry 해야 함. `pe_ready` 는 STALL 신호 — upstream 이 backpressure 로 대기 가능.
+
+**Signal definition** (combinational, 새 latch 없음):
+```verilog
+pe_ready = (frag_state == FRAG_IDLE)
+        && !mul_valid_p1 && !mul_valid_p2
+        && (div_state == DIV_IDLE)
+        && !div_valid_p2 && !div_b_zero_p2
+```
+
+**Propagation 계층**:
+- PE_Core.pe_ready → ISA_Decoder pass-through → PE.v (out_pe_ready)
+- Cluster: cluster_ready = mu_pe_ready & du_pe_ready & AND(pe_ready_lpe[0..N-1])
+- Pod: pod_ready = AND(cl_ready[0..N-1])
+- Top_Core: pe_ready 로 top-level 노출
+
+**MVP: observe-only** — `ext_valid` gating 안 함. External fabric 이 관찰해서 STALL 여부 결정 (v1.6.7+ 후보: 자동 gating).
+
+**Tests**:
+- `test_pe_ready_defaults_high` — 리셋 후 idle → pe_ready=1
+- `test_pe_ready_low_during_bmm3_emit` — SIG_BMM_3 fire 시 FRAG_EMIT_HI cycle 에서 pe_ready=0, 이후 다시 1
+
+#### 22.14c 회귀 (301 tests PASS, +4 신규)
+
+- Cocotb: 217 → 221 (+4)
+  * ISA_Decoder: 150 → 154 (+4)
+    - test_simd_mul_wide_q4_4_scalar_basic (Q4.4 positive)
+    - test_simd_mul_wide_q4_4_scalar_negative (Q4.4 signed)
+    - test_pe_ready_defaults_high (reset state)
+    - test_pe_ready_low_during_bmm3_emit (during FSM emit)
+- Assembler: 79 → 80 (+1)
+  * test_primitive_simd_mul_wide_q4_4_scalar_legality
+
+**Backward compat**: 기존 296 tests 100% 통과 유지. RMSNORM/LAYERNORM 매크로가 0x62 → 0x67 로 바뀌었지만 기존 test_rmsnorm_expansion / test_layernorm_expansion 는 예상 opcode 시퀀스 갱신하여 재통과.
+
+#### 22.14d HW 비용 (LFE5U-85F 추정)
+
+- v1.6.5a Q4.4 mult array: ~350-500 LUT (기존 0x62 마출 대체가 아닌 새 함수)
+- v1.6.6 pe_ready: ~10 LUT (combinational, wire fan-out만)
+- 총 **~360-510 LUT / Cluster** (누적 v1.6 = ~5.6-5.8K LUT)
+
+### 22.15 남은 v1.6.5c + v1.6.7+ 스코프
+
+- **v1.6.5c** (병행 workflow 로 설계 완료, 별도 commit 예정): multi-slot fragment buffer (N=4 LRU + persistent) + CACHE_LOAD_WIDE (0x68) — LAYERNORM 매크로의 xc 재발행 대신 on-Cluster caching
+- **v1.6.5d** (v1.6.5c 후속): FRAG_INVAL opcode — SDK explicit slot eviction
+- **v1.6.7**: pe_ready 기반 ext_valid auto-gating (현 observe-only → 자동 STALL)
+- **v1.7**: Activation function RISC-ish (softmax/gelu/silu, exp/log approximation)
+
+### 22.16 진입 트리거 (기존 22.15 재번호)
+
+v1.6.5a + v1.6.6 amendment 는 **결정된 상태 (2026-07-15)**. Design workflow 로 Q4.4 arithmetic 및 pe_ready semantics 사전 검증 완료. 구현 완료 (2026-07-15).
