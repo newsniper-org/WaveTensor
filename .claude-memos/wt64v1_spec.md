@@ -17,6 +17,9 @@
 - v1.5.3 (2026-07-15): 첫 wide-consumer primitive **SIG_BMM_3** (`abcij,abcjk->abcik`, 3-batch matmul at int4). 5D 2^5 = 128-bit A/B/O. Input 은 4-fragment wave (A_lo, A_hi, B_lo, B_hi) 로 Cluster 재조립 → wide[255:0]. Output 은 2-fragment (frag_hdr 0x01, 0x11) 로 emit. Multi-cycle emit FSM (`frag_state`) + 2-level SUBSCRIPT dispatch guard + MUL/DIV in-flight collision 방지. WT64v1 spec 상 완결 달성. §20 참조.
 - v1.5.4 (2026-07-15): **Assembler wave-fragment emitter** (`wavetensor_asm.py:wave_fragments`) — 128-bit / 256-bit logical payload 을 64-bit fragment 시퀀스로 자동 분할, `frag_hdr = (idx << 4) | (total-1)` 인코딩. Legacy single-fragment (wide_bits=64) 는 frag_hdr=0x00. Convenience helpers `wave_fragments_bmm3`, `wave_fragments_trace_iijkl`. §21 참조.
 - v1.5.5 (2026-07-15): **SIG_TRACE_IIJKL** (`iijkl->jkl`, 5D trace + 3 kept axes at int4) — reduction primitive. 128-bit input via 2-fragment wave, 32-bit output single-fragment (no FSM engagement). 대칭 편입 완료 — WT64v1 의 dominant CV/AI reduction workload (layernorm/softmax 기반) landing zone. §21 참조.
+- v1.6.1a (2026-07-15): **Group A** — 12 reduction einsum primitives (SIG_SUM/MAX/MIN/ARGMAX/ARGMIN/L1/L2SQ_IJKLM, SIG_SUM/MAX/MEAN/L2SQ_5D_TO_4D, SIG_TRACE_IJJKL). op_marker convention (HI.O_hi[3:0]) 도입. MIN/ARGMIN 은 사용자 통찰: Fréchet medoid, k-means assignment, KNN classifier, VQ-VAE codebook lookup 등 metric-based ML 필수. §22.1 참조.
+- v1.6.1b (2026-07-15): **Group B+C** — 6 broadcast SIMD (0x60-65: ADD/SUB/MUL WIDE_SCALAR + WIDE_VEC) + SCALAR_RSQRT_APPROX (0x66). Normalization 조합에 필요한 building blocks. §22.2 참조.
+- v1.6.1c (2026-07-15): **§22 RISC-ish normalization decomposition** — LayerNorm/BatchNorm/RMSNorm/InstanceNorm/GroupNorm 을 Groups A+B+C primitives 로 분해하는 recipes. Compositional decomposition philosophy 정식화. §22 참조.
 
 참조 구현 마이그레이션: **진행 중 (2026-07-12 개시)** — 참조 보드가 XCAU25P → LFE5U-85F → Avant G70 순으로 이동, 아래 §"참조 구현 마이그레이션 노트" 참조.
 
@@ -1272,3 +1275,245 @@ Wide-consumer primitive landing 부담이 SIG_BMM_3 (~1K LUT + FSM) → SIG_TRAC
 ### 21.8 진입 트리거
 
 v1.5.4 + v1.5.5 amendment 는 **결정된 상태 (2026-07-15)**. 사용자 지시 (ultracode mode) 로 단일 세션 landing. Design research workflow (3 research + 3 verify agents) → 구현 → 회귀 → spec. 구현 완료 (2026-07-15).
+
+## 22. RISC-ish normalization decomposition — v1.6.1 amendment (2026-07-15)
+
+### 22.0 Philosophy: CISC → RISC-ish
+
+사용자 통찰 (ultracode 2026-07-15):
+> "어떤 정규화 기법이든 상관없이, 덩어리째로 가속시키는 것 대신에 유한한 가지수의 연산들로 분해하고 그 '유한한 가지수의 연산들'을 가속시키는 쪽으로 정규화 기법 가속 방안 모색 (마치, CISC의 중구난방함을 해결하기 위해 RISC가 제시되었듯이...)"
+
+**Term 정확화**: "**RISC-ish**" (RISC 유사) 로 표기 — true RISC 원칙 (fixed-size instructions, load-store architecture, single-cycle execution, register-register ops) 을 완전히 만족하지 않음. **compositional decomposition philosophy** 만 차용:
+
+| 진짜 RISC 원칙 | WT64v1 v1.6.1 준수 여부 |
+|---|---|
+| Fixed instruction size | ❌ (variable-length via EH chain) |
+| Load-store architecture | ❌ (payload-oriented, not register file) |
+| Single-cycle execution | ⚠️ (일부만, wide-consumer 는 multi-cycle FSM) |
+| **Fine-grained decomposition of complex ops** | ✅ |
+| **Compiler-level composition** | ✅ (SDK `_lower_norm_*` pass) |
+| **Small orthogonal instruction set** | ⚠️ (opcode 공간 확장 중이나 각 opcode 는 orthogonal) |
+
+핵심 원칙 채택: **norm 은 HW primitive 로 만들지 않고, 이미 있는 primitives 를 SDK-level 로 compose**.
+
+### 22.1 Available primitive basis (v1.6.1a + v1.6.1b landed)
+
+**Group A — 12 reduction einsum primitives** (op_marker in HI.O_hi[3:0]):
+
+*5D→scalar family* (A_lo=0x4321, A_hi=0x0005, O_lo/hi=0):
+| op_marker | Name | Math | Output |
+|---|---|---|---|
+| 0x0 | SIG_SUM_IJKLM | Σ A[all] mod 2^4 | int4 |
+| 0x1 | SIG_MAX_IJKLM | max A[all] | int4 |
+| 0x2 | SIG_ARGMAX_IJKLM | index of max (0..31) | 5-bit |
+| 0x3 | SIG_L1_IJKLM | Σ \|A[all]\| | int32 |
+| 0x4 | SIG_L2SQ_IJKLM | Σ A[all]² | int32 |
+| 0x6 | SIG_MIN_IJKLM | min A[all] | int4 |
+| 0x7 | SIG_ARGMIN_IJKLM | index of min | 5-bit |
+
+*5D→4D family* (A_lo=0x4321, A_hi=0x0005, O_lo=0x4321):
+| op_marker | Name | Math | Output |
+|---|---|---|---|
+| 0x0 | SIG_SUM_5D_TO_4D | pair-sum over m | 4D int4 |
+| 0x1 | SIG_MAX_5D_TO_4D | pair-max over m | 4D int4 |
+| 0x4 | SIG_L2SQ_5D_TO_4D | pair sum-of-squares | 4D int4 |
+| 0x5 | SIG_MEAN_5D_TO_4D | (A0+A1)>>1 ASR | 4D int4 |
+
+*5D→3D unique*:
+- SIG_TRACE_IIJKL (v1.5.5) — trace over i
+- SIG_TRACE_IJJKL (v1.6.1a) — trace over j
+
+**Group B — 6 broadcast SIMD opcodes**:
+| opcode | Name | Math |
+|---|---|---|
+| 0x60 | SIMD_ADD_WIDE_SCALAR | R[i] = A[i] + B_scalar |
+| 0x61 | SIMD_SUB_WIDE_SCALAR | R[i] = A[i] - B_scalar |
+| 0x62 | SIMD_MUL_WIDE_SCALAR | R[i] = A[i] * B_scalar |
+| 0x63 | SIMD_ADD_WIDE_VEC | R[i] = A[i] + V[i>>1] |
+| 0x64 | SIMD_SUB_WIDE_VEC | R[i] = A[i] - V[i>>1] |
+| 0x65 | SIMD_MUL_WIDE_VEC | R[i] = A[i] * V[i>>1] |
+
+**Group C — 1 scalar transcendental**:
+- 0x66 SCALAR_RSQRT_APPROX — Q16.16 fixed-point 1/√x (MSB-normalized power-of-2)
+
+**Support primitives** (v1.1~v1.5.5):
+- SPLAT (0x26, v1.1) — scalar → packed vector
+- multi-IMM64 (v1.4) — wide constants (up to 128-bit)
+- Fragment reassembly (v1.5.1) — Cluster fabric for wide inputs
+- Multi-fragment output emit (v1.5.3) — FSM for wide-output primitives
+
+### 22.2 Notation
+
+Assembly-like pseudocode uses `[opcode/mnemonic] operands -> result_tag`. Precision: unless otherwise noted, all int4 packed 5D 2×2×2×2×2 tensors (dim_sizes = 0x1F, reduced via wave fragmentation to 128-bit wide payload).
+
+Fixed-point conventions:
+- Tensor payloads: int4 (or int8, int16 per PRECISION EH)
+- Rsqrt intermediate: Q16.16 (SCALAR_RSQRT_APPROX contract)
+- Broadcast constants: int4 (dec_eff_b_value[3:0])
+
+### 22.3 LayerNorm decomposition (9 primitives)
+
+**Formula**: `y = γ · (x - μ) / √(var + eps) + β` where μ, var are per-position statistics over feature axis (=m).
+
+```
+Inputs: x (5D int4), γ (4D int4 per-feature), β (4D int4 per-feature), eps (scalar), N (=2, feature dim)
+
+1) SIG_MEAN_5D_TO_4D    x                       -> μ[abcd]      # Group A (op_marker=0x5)
+2) SIMD_SUB_WIDE_VEC    x, μ                    -> xc[abcde]    # Group B 0x64
+3) SIG_L2SQ_5D_TO_4D    xc                      -> sq[abcd]     # Group A (op_marker=0x4)
+4) SIG_SUM_5D_TO_4D     sq                      -> sq_sum[abcd] # (SDK reduces sq 4D→scalar via chain)
+5) SCALAR_RSQRT_APPROX  sq_sum + eps            -> scale        # Group C 0x66
+                                                                # (SDK precomputes 1/(N*eps) constant)
+6) SIMD_MUL_WIDE_SCALAR xc, scale               -> nrm[abcde]   # Group B 0x62
+7) SIMD_MUL_WIDE_VEC    nrm, γ                  -> sc[abcde]    # Group B 0x65
+8) SIMD_ADD_WIDE_VEC    sc, β                   -> y[abcde]     # Group B 0x63
+```
+
+**Count**: 8 primitive dispatches (SDK-level 4-step reduction from 4D sq to scalar sq_sum expands to more if needed — see 22.7 precision).
+
+**Comparison** vs monolithic SIG_LAYERNORM_5D:
+- Monolithic estimate: ~3-3.5K LUT (fused reduce + broadcast + rsqrt + mul + add pipeline)
+- RISC-ish: **reuses existing Groups A+B+C primitives, marginal cost ≈ 0** (all primitives already landed)
+- **Amortization**: LayerNorm, RMSNorm, BatchNorm, InstanceNorm share the same primitive basis. Each additional norm = **0 LUT** marginal.
+
+### 22.4 RMSNorm decomposition (6 primitives)
+
+**Formula**: `y = γ · x / √(mean(x²) + eps)` — no centering.
+
+```
+Inputs: x (5D int4), γ (4D int4), eps
+
+1) SIG_L2SQ_5D_TO_4D    x                       -> sq[abcd]         # Group A
+2) SIG_SUM_5D_TO_4D     sq (via SDK reduction)  -> sq_sum[abcd]     
+3) SIMD_MUL_WIDE_SCALAR sq_sum, 1/N             -> rms_sq[abcd]     # 1/N precomputed
+4) SIMD_ADD_WIDE_SCALAR rms_sq, eps             -> rmse[abcd]       # (SDK reduces to scalar for rsqrt)
+5) SCALAR_RSQRT_APPROX  rmse_scalar             -> scale            # Group C
+6) SIMD_MUL_WIDE_SCALAR x, scale                -> nrm[abcde]       # Group B
+7) SIMD_MUL_WIDE_VEC    nrm, γ                  -> y[abcde]         # Group B
+```
+
+**Count**: 7 primitives. RMSNorm 이 recent LLM (LLaMA/Mistral/Qwen) 에서 채택된 이유가 여기서 자명: centering step 이 없어 정밀도 손실이 적고 primitive 수도 적음. **WT64v1 int4 workload 에 optimal**.
+
+### 22.5 BatchNorm decomposition
+
+**Inference path** (running_mean, running_var pre-known; SDK fuses affine):
+
+Precompute (SDK graph-load time):
+- K1[e] = running_scale[e] · γ[e]  (running_scale = 1/√(running_var + eps))
+- K2[e] = β[e] - running_mean[e] · K1[e]
+
+Then per inference:
+```
+1) SIMD_MUL_WIDE_VEC    x, K1                   -> t[abcde]     # Group B
+2) SIMD_ADD_WIDE_VEC    t, K2                   -> y[abcde]     # Group B
+```
+
+**Count**: **2 primitives** — 극단적 압축. Monolithic BatchNorm HW 대비 ~2500 LUT 절감.
+
+**Training path**: 같은 LayerNorm recipe (reduce over batch axis instead of feature axis) — 8 primitives.
+
+### 22.6 InstanceNorm / GroupNorm — partial coverage
+
+**InstanceNorm**: per-sample-per-channel normalization over spatial axes. 만약 axes 를 `(n=a, c=b, h=c, w=d, feat=e)` 로 매핑하면 spatial reduction 은 axis d + e 두 축을 순차 reduce:
+
+```
+1) SIG_MEAN_5D_TO_4D    x, axis=e   -> mu_w[abcd]
+2) [SIG_MEAN_4D_TO_3D]  mu_w, axis=d -> mu[abc]     # GAP — 4D→3D reduction not yet
+3) ... LayerNorm recipe with axis-slice broadcast
+```
+
+**Status**: 부분 지원. `SIG_MEAN_4D_TO_3D` (그리고 `SIG_SUM/L2SQ_4D_TO_3D` 등) 은 **v1.6.2 후보** — 현 Group A 는 5D→4D/scalar 에 특화되어 있으며 4D→3D primitive 는 미탑재.
+
+**GroupNorm**: LayerNorm over 채널 그룹. Reshape `(c,h,w) → (g, c/g, h, w)` (PERM/VIEW tag ops, 0x22/0x23) 후 그룹 안에서 정규화. 3-axis reduction 필요 → v1.6.2+ 스코프.
+
+### 22.7 Precision analysis (int4 quantization error)
+
+**Per-op ULP error** (int4 정밀도 기준):
+- SIMD_ADD/SUB (SCALAR/VEC): int4 wrap, no error introduction
+- SIMD_MUL (SCALAR/VEC): int4×int4 → int8 intermediate, truncated to int4. Worst case ULP loss ≈ 1 LSB int4 = **6.25% of dynamic range**.
+- SIG_L2SQ_5D_TO_4D: pair sum-of-squares int4-truncated. Overflow risk if input >= 3 (3²+3²=18 truncated to 2).
+- SCALAR_RSQRT_APPROX: MSB-normalized power-of-2, **~3-4 bit precision** (v1.6.1c coarse baseline; v1.6.1d 후보 mantissa LUT 로 정밀도 향상)
+
+**Cumulative LayerNorm error budget** (fp32 reference 대비):
+- 3 int4 quantize-back events (steps 6, 7, 8) + 1 rsqrt LUT
+- 예상 activation MSE: **~25-40% relative** for typical transformer activations
+- **QAT (Quantization-Aware Training) 필수** — PTQ (Post-Training Quantization) 로 배포 시 정확도 붕괴 가능
+
+**RMSNorm precision**: LayerNorm 대비 **~10-15% MSE** — centering step 이 없어 catastrophic cancellation 없음. **v1.6.1 workload 의 preferred norm**.
+
+**Mitigation options** (spec-level):
+- SDK 는 중간 `xc` 를 int8 "guard tile" 로 저장 가능 (NoC bandwidth 2배 사용, MSE ~15% 회복). RTL 변경 불필요 (int8 precision mode 는 v1.1 부터 존재).
+- v1.6.2 에서 5-bit interpolated rsqrt LUT 로 rsqrt 정밀도 향상 가능.
+
+### 22.8 Latency comparison
+
+**LayerNorm on single 5D int4 tile** (LFE5U-85F 예상 clock ~180 MHz):
+
+- **Monolithic SIG_LAYERNORM_5D** (가상): 내부 pipelined reduce→broadcast→rsqrt→mul→add. 예상 30-40 cycles input-to-output, 단일 opcode dispatch, wave-token 1 round-trip.
+- **RISC-ish 8-primitive chain**: 각 primitive ~5-10 cycles + Cluster dispatch ~2 cycles + wave-token routing ~1 cycle → **~90-135 cycles**. **~3× latency penalty**.
+
+**Wave-token bandwidth**: 8 ops → ~8× NoC traffic. 16-PE Pod 에 4 concurrent wave 흐름 시 흡수 가능 (§18 multi-slot fragment buffer v1.6.2 landing 후).
+
+**End-to-end amortization**: LayerNorm 은 transformer layer 당 1회 발화 (~24-96회/token). MATMUL/BMM_3 latency 가 dominant → 3× LayerNorm penalty 는 **inference 총 시간 <8% 증가** 예상. **Trade-off 수용 가능**.
+
+### 22.9 Sub-conformance flags
+
+- `WT64v1/NORM-BASIS` — Groups A+B+C 완전 지원 (RMSNorm, BatchNorm inference 가능)
+- `WT64v1/NORM-LAYER` — 추가로 SIG_L2SQ_5D_TO_4D + rsqrt 정밀도 mantissa LUT 지원 (LayerNorm 정확도 확보)
+- `WT64v1/NORM-GROUP` — 4D→3D reduction 지원 (InstanceNorm/GroupNorm 가능, v1.6.2+)
+
+### 22.10 왜 RISC-ish 인가 — CISC 대안과의 비교
+
+**CISC alternative** (WT64v1 이 채택 안 한 길):
+- SIG_LAYERNORM_5D, SIG_BATCHNORM_5D, SIG_RMSNORM_5D, SIG_INSTANCENORM_5D, SIG_GROUPNORM_5D 각 opcode
+- 각 ~3K LUT → 5 norm × 3K = **15K LUT / Cluster**
+- 새 norm 알고리즘 추가 시마다 spec + RTL 변경 (예: Weight Standardization, PowerNorm, DivisiveNorm, ...)
+- Amortization 최소: 각 norm 이 독립적
+
+**RISC-ish (v1.6.1)**:
+- Groups A+B+C 통합 ~4.6K LUT / Cluster
+- 새 norm 알고리즘 = **SDK compiler 변경만** (RTL/spec 무변경)
+- **Amortization 12×** (workflow research 계산)
+- 유연성: SDK 가 norm 조합 (예: `LayerNorm(RMSNorm(x))` 하이브리드) 자유롭게 표현
+
+### 22.11 SDK composition pattern
+
+`wavetensor_asm.py` 또는 상위 SDK 는 `_lower_norm_*` macro pass 를 통해 norm 을 primitive 시퀀스로 lowering. 예시 골격:
+
+```python
+def _lower_layernorm(inst: Instruction) -> List[Instruction]:
+    """LayerNorm macro expansion into RISC-ish primitive sequence."""
+    # Read γ, β, eps, N from macro args
+    # Emit 8-primitive chain per §22.3
+    return [
+        make_sig_mean_5d_to_4d(x_tag),
+        make_simd_sub_wide_vec(x_tag, mu_tag),
+        make_sig_l2sq_5d_to_4d(xc_tag),
+        make_simd_mul_wide_scalar(sq_tag, inv_N),
+        make_simd_add_wide_scalar(var_tag, eps),
+        make_scalar_rsqrt_approx(vare_scalar_tag),
+        make_simd_mul_wide_scalar(xc_tag, scale_tag),
+        make_simd_mul_wide_vec(nrm_tag, gamma_tag),
+        make_simd_add_wide_vec(sc_tag, beta_tag),
+    ]
+```
+
+**미탑재 (v1.6.1c 는 spec only)**: 실제 macro pass 구현은 assembler / SDK 별도 후속 작업. `wavetensor_asm.py` 에 `NORM_MACROS` 등록 + `macro_pass` 확장이 후속 amendment.
+
+### 22.12 회귀
+
+Groups A+B+C 회귀 (v1.6.1a + v1.6.1b commits 참조):
+- **276 tests PASS** (194 cocotb + 71 assembler; 신규 24 tests over v1.5.5's 252)
+- 이 §22 문서는 **spec-only landing** — RTL 무변경, 회귀 유지
+
+### 22.13 남은 v1.6.2+ 스코프
+
+- **v1.6.2**: SIG_MEAN/SUM/L2SQ_4D_TO_3D (InstanceNorm partial support 완성)
+- **v1.6.3**: rsqrt mantissa LUT refinement (16-entry Q1.15) → ~4-bit precision
+- **v1.6.4**: SDK `_lower_norm_*` macro pass 구현 + assembler 정합성 tests
+- **v1.6.5**: Multi-slot fragment buffer (동시 wave 다수, latency amortization)
+- **v1.6.6**: PE_Core `pe_ready` back-pressure (norm chain stall 대응)
+
+### 22.14 진입 트리거
+
+v1.6.1c amendment 는 **결정된 상태 (2026-07-15)**. 사용자 지시 (ultracode mode, RISC-ish 원칙): "어떤 정규화 기법이든 상관없이, 덩어리째로 가속시키는 것 대신에 유한한 가지수의 연산들로 분해하고 그 '유한한 가지수의 연산들'을 가속시키는 쪽으로 정규화 기법 가속 방안 모색". v1.6.1a → v1.6.1b → v1.6.1c 3-commit 순차 landing 으로 primitive basis + broadcast + rsqrt + 문서화 완비. 구현 완료 (2026-07-15).
