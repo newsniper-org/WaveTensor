@@ -546,6 +546,27 @@ module EHDecode #(
                 forbid_subscript = 1'b1; forbid_mem = 1'b1;
                 forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
             end
+            // v1.6.1b §22 — SIMD broadcast wide-consumer ops (RISC-ish norm).
+            // 0x60/0x61/0x62: SIMD_ADD/SUB/MUL_WIDE_SCALAR — A via wide,
+            //   B_scalar via IMM XOR OPREF (like ALU binary).
+            8'h60, 8'h61, 8'h62: begin
+                req_port         = 1'b1;
+                forbid_subscript = 1'b1; forbid_mem = 1'b1;
+            end
+            // 0x63/0x64/0x65: SIMD_ADD/SUB/MUL_WIDE_VEC — A via wide,
+            //   V (4D) via input_payload_b (require F_HAS_OPB).
+            8'h63, 8'h64, 8'h65: begin
+                req_port         = 1'b1;
+                forbid_subscript = 1'b1; forbid_mem = 1'b1;
+                forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
+            end
+            // 0x66 SCALAR_RSQRT_APPROX — single-value primitive on payload_a,
+            //   no B (no IMM/OPREF), single-cycle, no wide needed.
+            8'h66: begin
+                req_port         = 1'b1;
+                forbid_subscript = 1'b1; forbid_mem = 1'b1;
+                forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
+            end
             default: begin
                 forbid_subscript = 1'b1; forbid_mem = 1'b1;
                 forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
@@ -561,7 +582,13 @@ module EHDecode #(
                          (cb_opcode == 8'h16) ||
                          (cb_opcode == 8'h1C) || (cb_opcode == 8'h1D) ||
                          (cb_opcode == 8'h51) || (cb_opcode == 8'h52) ||
-                         (cb_opcode == 8'h53);
+                         (cb_opcode == 8'h53) ||
+                         // v1.6.1b §22 — SCALAR broadcast wide-consumer ops
+                         // share ALU-binary IMM XOR OPREF semantics (B via
+                         // dec_eff_b_value); XOR check prevents nondeterministic
+                         // B source silently.
+                         (cb_opcode == 8'h60) || (cb_opcode == 8'h61) ||
+                         (cb_opcode == 8'h62);
     wire alu_binary_xor_err = is_alu_binary && (any_imm == acc_any_opref);
 
     wire missing_eh   = (req_port      && !acc_any_port)
@@ -589,7 +616,11 @@ module EHDecode #(
          (cb_opcode == 8'h42) || (cb_opcode == 8'h43) || (cb_opcode == 8'h44) ||
          (cb_opcode == 8'h50) || (cb_opcode == 8'h51) || (cb_opcode == 8'h52) ||
          (cb_opcode == 8'h53) || (cb_opcode == 8'h54) || (cb_opcode == 8'h55) ||
-         (cb_opcode == 8'h56);
+         (cb_opcode == 8'h56) ||
+         // v1.6.1b §22 — SIMD broadcast wide-consumer ops (RISC-ish norm)
+         (cb_opcode == 8'h60) || (cb_opcode == 8'h61) || (cb_opcode == 8'h62) ||
+         (cb_opcode == 8'h63) || (cb_opcode == 8'h64) || (cb_opcode == 8'h65) ||
+         (cb_opcode == 8'h66);
 
     wire bh_len_mismatch = (cb_bh_len != {{(8-OFF_W){1'b0}}, stg_off});
     wire reserved_nonzero = (cb_reserved != 8'h00);

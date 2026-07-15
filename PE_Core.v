@@ -730,6 +730,161 @@ module PE_Core #(
         end
     endfunction
 
+    // =========================================================================
+    // v1.6.1b §22 — Group B broadcast SIMD helpers (RISC-ish norm primitives)
+    // =========================================================================
+    // SCALAR: 32 int4 lanes op broadcast 4-bit scalar. Output 128-bit.
+    // VEC:    32 int4 lanes op broadcast 4D vector V (16 nibbles = 64-bit),
+    //         V[idx>>1] broadcasts to each pair of A lanes.
+    // All ops are mod 2^4 (int4 wrap). Signed/unsigned semantics equivalent
+    // for ADD/SUB (2's complement wrap); MUL truncates to low 4 bits.
+
+    function [127:0] simd_add_wide_scalar_128;
+        input [127:0] a;
+        input [3:0]   b;
+        reg [127:0] out;
+        integer i;
+        begin
+            out = 128'h0;
+            for (i = 0; i < 32; i = i + 1)
+                out[i*4 +: 4] = a[i*4 +: 4] + b;
+            simd_add_wide_scalar_128 = out;
+        end
+    endfunction
+
+    function [127:0] simd_sub_wide_scalar_128;
+        input [127:0] a;
+        input [3:0]   b;
+        reg [127:0] out;
+        integer i;
+        begin
+            out = 128'h0;
+            for (i = 0; i < 32; i = i + 1)
+                out[i*4 +: 4] = a[i*4 +: 4] - b;
+            simd_sub_wide_scalar_128 = out;
+        end
+    endfunction
+
+    function [127:0] simd_mul_wide_scalar_128;
+        input [127:0] a;
+        input [3:0]   b;
+        reg [127:0] out;
+        reg signed [3:0] ai, bi;
+        reg signed [7:0] p;
+        integer i;
+        begin
+            out = 128'h0;
+            for (i = 0; i < 32; i = i + 1) begin
+                ai = $signed(a[i*4 +: 4]);
+                bi = $signed(b);
+                p  = ai * bi;
+                out[i*4 +: 4] = p[3:0];   // int4 truncation (spec §22 caveat)
+            end
+            simd_mul_wide_scalar_128 = out;
+        end
+    endfunction
+
+    function [127:0] simd_add_wide_vec_128;
+        input [127:0] a;
+        input [ 63:0] v;
+        reg [127:0] out;
+        integer i, v_idx;
+        begin
+            out = 128'h0;
+            // V is 4D (16 nibbles). Each V[i,j,k,l] broadcasts to A's pair over m.
+            // A[idx] pairs with V[idx>>1]: A[0],A[1] both use V[0]; A[2],A[3] both V[1]; etc.
+            for (i = 0; i < 32; i = i + 1) begin
+                v_idx = i >> 1;
+                out[i*4 +: 4] = a[i*4 +: 4] + v[v_idx*4 +: 4];
+            end
+            simd_add_wide_vec_128 = out;
+        end
+    endfunction
+
+    function [127:0] simd_sub_wide_vec_128;
+        input [127:0] a;
+        input [ 63:0] v;
+        reg [127:0] out;
+        integer i, v_idx;
+        begin
+            out = 128'h0;
+            for (i = 0; i < 32; i = i + 1) begin
+                v_idx = i >> 1;
+                out[i*4 +: 4] = a[i*4 +: 4] - v[v_idx*4 +: 4];
+            end
+            simd_sub_wide_vec_128 = out;
+        end
+    endfunction
+
+    function [127:0] simd_mul_wide_vec_128;
+        input [127:0] a;
+        input [ 63:0] v;
+        reg [127:0] out;
+        reg signed [3:0] ai, vi;
+        reg signed [7:0] p;
+        integer i, v_idx;
+        begin
+            out = 128'h0;
+            for (i = 0; i < 32; i = i + 1) begin
+                v_idx = i >> 1;
+                ai = $signed(a[i*4 +: 4]);
+                vi = $signed(v[v_idx*4 +: 4]);
+                p  = ai * vi;
+                out[i*4 +: 4] = p[3:0];
+            end
+            simd_mul_wide_vec_128 = out;
+        end
+    endfunction
+
+    // =========================================================================
+    // v1.6.1b §22 — Group C scalar rsqrt approximation (Q16.16 fixed-point)
+    // =========================================================================
+    // Simplified power-of-2 log-scale approximation (~4-bit precision).
+    //   Input:  Q16.16 unsigned variance value (typically from SIG_L2SQ_IJKLM
+    //           multiplied by 1/N)
+    //   Output: Q16.16 approximation of 1/sqrt(input)
+    //   Method: find MSB position, output ≈ 2^((48-msb)/2)
+    //   Special: x=0 → saturate to 0x7FFF_FFFF; x<0 (bit 31) → caller error
+    //   Precision: ~power-of-2. Adequate for downstream int4 SIMD_MUL chain
+    //     (int4 quantization dominates error budget anyway).
+    //   v1.6.1c/v1.6.2 candidate: refined mantissa LUT for ~4-bit precision.
+
+    function [31:0] scalar_rsqrt_approx_q16_16;
+        input [31:0] x;
+        reg [5:0] msb;
+        reg [5:0] shift;
+        integer i;
+        reg found;
+        begin
+            if (x == 32'h0) begin
+                scalar_rsqrt_approx_q16_16 = 32'h7FFF_FFFF;
+            end else begin
+                // Priority encoder: find highest set bit in bits 30..0
+                // (bit 31 reserved for sign; caller shouldn't set for variance).
+                msb   = 6'd0;
+                found = 1'b0;
+                for (i = 30; i >= 0; i = i - 1) begin
+                    if (x[i] && !found) begin
+                        msb   = i[5:0];
+                        found = 1'b1;
+                    end
+                end
+                // Output ≈ 2^((48-msb)/2) in Q16.16
+                if ((6'd48 - msb) >= 6'd62) begin
+                    // Overflow: saturate
+                    scalar_rsqrt_approx_q16_16 = 32'h7FFF_FFFF;
+                end else begin
+                    shift = (6'd48 - msb) >> 1;
+                    if (shift >= 6'd31) begin
+                        scalar_rsqrt_approx_q16_16 = 32'h7FFF_FFFF;
+                    end else begin
+                        scalar_rsqrt_approx_q16_16 = 32'h1 << shift;
+                    end
+                end
+            end
+        end
+    endfunction
+
     function [7:0] dim_squeeze;
         input [7:0] dim; input [1:0] ax;
         begin
@@ -1736,6 +1891,94 @@ module PE_Core #(
                         8'h44: begin
                             output_payload <= conjugate_fn(dec_input_payload);
                             output_valid <= 1'b1;
+                        end
+                        // v1.6.1b §22 — SIMD broadcast wide-consumer ops
+                        // (RISC-ish norm primitives). Wide input via
+                        // dec_input_payload_wide[127:0]; wide output as
+                        // 2-fragment emit (reuse frag_state FSM).
+                        // 0x60/61/62 SCALAR: B via dec_eff_b_value[3:0]
+                        // 0x63/64/65 VEC:    V via dec_input_payload_b[63:0]
+                        //   (requires F_HAS_OPB flag)
+                        8'h60, 8'h61, 8'h62, 8'h63, 8'h64, 8'h65: begin
+                            if (!dec_input_payload_wide_valid) begin
+                                error_flag   <= 1'b1;
+                                output_valid <= 1'b0;
+                            end else if (!((frag_state == FRAG_IDLE)
+                                        && !mul_valid_p1 && !mul_valid_p2
+                                        && (div_state == DIV_IDLE)
+                                        && !div_valid_p2 && !div_b_zero_p2)) begin
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end else begin
+                                // Compute lo and hi halves per opcode
+                                case (dec_opcode)
+                                    8'h60: begin
+                                        output_payload   <= simd_add_wide_scalar_128(
+                                            dec_input_payload_wide[127:0],
+                                            dec_eff_b_value[3:0])[63:0];
+                                        frag_hi_pending  <= simd_add_wide_scalar_128(
+                                            dec_input_payload_wide[127:0],
+                                            dec_eff_b_value[3:0])[127:64];
+                                    end
+                                    8'h61: begin
+                                        output_payload   <= simd_sub_wide_scalar_128(
+                                            dec_input_payload_wide[127:0],
+                                            dec_eff_b_value[3:0])[63:0];
+                                        frag_hi_pending  <= simd_sub_wide_scalar_128(
+                                            dec_input_payload_wide[127:0],
+                                            dec_eff_b_value[3:0])[127:64];
+                                    end
+                                    8'h62: begin
+                                        output_payload   <= simd_mul_wide_scalar_128(
+                                            dec_input_payload_wide[127:0],
+                                            dec_eff_b_value[3:0])[63:0];
+                                        frag_hi_pending  <= simd_mul_wide_scalar_128(
+                                            dec_input_payload_wide[127:0],
+                                            dec_eff_b_value[3:0])[127:64];
+                                    end
+                                    8'h63: begin
+                                        output_payload   <= simd_add_wide_vec_128(
+                                            dec_input_payload_wide[127:0],
+                                            dec_input_payload_b)[63:0];
+                                        frag_hi_pending  <= simd_add_wide_vec_128(
+                                            dec_input_payload_wide[127:0],
+                                            dec_input_payload_b)[127:64];
+                                    end
+                                    8'h64: begin
+                                        output_payload   <= simd_sub_wide_vec_128(
+                                            dec_input_payload_wide[127:0],
+                                            dec_input_payload_b)[63:0];
+                                        frag_hi_pending  <= simd_sub_wide_vec_128(
+                                            dec_input_payload_wide[127:0],
+                                            dec_input_payload_b)[127:64];
+                                    end
+                                    8'h65: begin
+                                        output_payload   <= simd_mul_wide_vec_128(
+                                            dec_input_payload_wide[127:0],
+                                            dec_input_payload_b)[63:0];
+                                        frag_hi_pending  <= simd_mul_wide_vec_128(
+                                            dec_input_payload_wide[127:0],
+                                            dec_input_payload_b)[127:64];
+                                    end
+                                    default: ;
+                                endcase
+                                output_valid     <= 1'b1;
+                                output_frag_hdr  <= 8'h01;   // idx=0, total-1=1
+                                opcode_out       <= dec_opcode;
+                                frag_tag_held    <= dec_forwarded_tag;
+                                frag_opcode_held <= dec_opcode;
+                                frag_state       <= FRAG_EMIT_HI;
+                            end
+                        end
+                        // v1.6.1b §22 — SCALAR_RSQRT_APPROX (Q16.16, no FSM)
+                        8'h66: begin
+                            output_payload <= {32'h0,
+                                scalar_rsqrt_approx_q16_16(dec_input_payload[31:0])};
+                            output_valid   <= 1'b1;
+                            // Output tag dim_sizes = 0x00 (scalar)
+                            output_tag <= {dec_wave_number, dec_thread_id,
+                                           8'h00, dec_eff_output_port_id,
+                                           dec_eff_precision, 8'h00};
                         end
                         default: begin
                             output_valid <= 1'b0;

@@ -2751,6 +2751,306 @@ async def test_reduce_wide_valid_gate_error(dut):
 
 
 # =============================================================================
+# v1.6.1b §22 — Group B broadcast SIMD ops (0x60-65) + Group C rsqrt (0x66)
+# =============================================================================
+#
+# SCALAR: A via wide[127:0], B_scalar via dec_eff_b_value[3:0] (IMM or OPREF).
+# VEC:    A via wide[127:0], V via dec_input_payload_b (F_HAS_OPB).
+# Both wide-output → 2-fragment emit (FSM engagement).
+# RSQRT: Q16.16 scalar rsqrt, no wide, single-fragment output.
+
+
+async def _fire_simd_wide_scalar(dut, opcode, a_128, b_scalar):
+    """Fire SIMD_[ADD/SUB/MUL]_WIDE_SCALAR (0x60/61/62). B_scalar via IMM16."""
+    wide = a_128 & ((1 << 128) - 1)
+    instr = encode_instr(opcode, _STD_PORT(), eh_imm16(b_scalar & 0xF))
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0
+    dut.input_payload_b.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide.value = wide
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    # First frag
+    saw = []
+    for _ in range(30):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value) == 1:
+            saw.append({'payload': int(dut.output_payload.value),
+                        'frag_hdr': int(dut.output_frag_hdr.value)})
+            break
+        if int(dut.error_flag.value) or int(dut.lower_required.value):
+            return {'fail': True, 'error': int(dut.error_flag.value)}
+    # Cycle N+1: frag 1
+    await RisingEdge(dut.clk)
+    await Timer(1, units="ns")
+    saw.append({'payload': int(dut.output_payload.value),
+                'frag_hdr': int(dut.output_frag_hdr.value),
+                'valid': int(dut.output_valid.value)})
+    return {'frags': saw}
+
+
+async def _fire_simd_wide_vec(dut, opcode, a_128, v_64):
+    """Fire SIMD_[ADD/SUB/MUL]_WIDE_VEC (0x63/64/65). V via input_payload_b."""
+    wide = a_128 & ((1 << 128) - 1)
+    instr = encode_instr(opcode, _STD_PORT(), flags=F_HAS_OPB)
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0
+    dut.input_payload_b.value = v_64 & ((1 << 64) - 1)
+    dut.input_payload_b_valid.value = 1
+    dut.input_payload_wide.value = wide
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    saw = []
+    for _ in range(30):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value) == 1:
+            saw.append({'payload': int(dut.output_payload.value),
+                        'frag_hdr': int(dut.output_frag_hdr.value)})
+            break
+        if int(dut.error_flag.value):
+            return {'fail': True, 'error': 1}
+    await RisingEdge(dut.clk)
+    await Timer(1, units="ns")
+    saw.append({'payload': int(dut.output_payload.value),
+                'frag_hdr': int(dut.output_frag_hdr.value),
+                'valid': int(dut.output_valid.value)})
+    return {'frags': saw}
+
+
+@cocotb.test()
+async def test_simd_add_wide_scalar(dut):
+    """v1.6.1b: SIMD_ADD_WIDE_SCALAR (0x60). All 32 nibbles += 3."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    a_128 = _pack_int4_128(*[0x1] * 32)
+    r = await _fire_simd_wide_scalar(dut, 0x60, a_128, 0x3)
+    assert 'fail' not in r, f"got {r}"
+    # All lanes: 1+3=4 → both fragments filled with 0x4444_4444_4444_4444
+    expected = 0x4444_4444_4444_4444
+    assert r['frags'][0]['payload'] == expected
+    assert r['frags'][0]['frag_hdr'] == 0x01
+    assert r['frags'][1]['payload'] == expected
+    assert r['frags'][1]['frag_hdr'] == 0x11
+
+
+@cocotb.test()
+async def test_simd_sub_wide_scalar(dut):
+    """v1.6.1b: SIMD_SUB_WIDE_SCALAR (0x61). x - 2 mod 2^4."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    a_128 = _pack_int4_128(*[0x5] * 32)
+    r = await _fire_simd_wide_scalar(dut, 0x61, a_128, 0x2)
+    assert 'fail' not in r
+    # 5-2=3 all lanes
+    expected = 0x3333_3333_3333_3333
+    assert r['frags'][0]['payload'] == expected
+    assert r['frags'][1]['payload'] == expected
+
+
+@cocotb.test()
+async def test_simd_mul_wide_scalar(dut):
+    """v1.6.1b: SIMD_MUL_WIDE_SCALAR (0x62). x * 2 mod 2^4."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    a_128 = _pack_int4_128(*[0x3] * 32)
+    r = await _fire_simd_wide_scalar(dut, 0x62, a_128, 0x2)
+    assert 'fail' not in r
+    # 3*2=6 all lanes
+    expected = 0x6666_6666_6666_6666
+    assert r['frags'][0]['payload'] == expected
+
+
+@cocotb.test()
+async def test_simd_add_wide_vec(dut):
+    """v1.6.1b: SIMD_ADD_WIDE_VEC (0x63). V broadcasts to A pairs."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    # A: 32 nibbles, all 0x1
+    a_128 = _pack_int4_128(*[0x1] * 32)
+    # V: 16 nibbles, position i has value i
+    v_nibbles = [(i & 0xF) for i in range(16)]
+    v_64 = 0
+    for i, n in enumerate(v_nibbles):
+        v_64 |= (n & 0xF) << (i * 4)
+    r = await _fire_simd_wide_vec(dut, 0x63, a_128, v_64)
+    assert 'fail' not in r
+    # Expected: A[i] + V[i>>1] mod 2^4
+    # Reassemble 128-bit result
+    got = r['frags'][0]['payload'] | (r['frags'][1]['payload'] << 64)
+    for i in range(32):
+        v_idx = i >> 1
+        exp = (1 + v_nibbles[v_idx]) & 0xF
+        actual = (got >> (i * 4)) & 0xF
+        assert actual == exp, f"lane {i}: {actual:x} != {exp:x}"
+
+
+@cocotb.test()
+async def test_simd_sub_wide_vec(dut):
+    """v1.6.1b: SIMD_SUB_WIDE_VEC (0x64). Central for LayerNorm centering."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    a_128 = _pack_int4_128(*[0x7] * 32)
+    v_64 = 0
+    for i in range(16):
+        v_64 |= (0x2 & 0xF) << (i * 4)   # V all 2
+    r = await _fire_simd_wide_vec(dut, 0x64, a_128, v_64)
+    assert 'fail' not in r
+    # 7 - 2 = 5 all lanes
+    expected = 0x5555_5555_5555_5555
+    assert r['frags'][0]['payload'] == expected
+    assert r['frags'][1]['payload'] == expected
+
+
+@cocotb.test()
+async def test_simd_mul_wide_vec(dut):
+    """v1.6.1b: SIMD_MUL_WIDE_VEC (0x65). Central for LayerNorm scaling."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    a_128 = _pack_int4_128(*[0x2] * 32)
+    v_64 = 0
+    for i in range(16):
+        v_64 |= (0x3 & 0xF) << (i * 4)   # V all 3
+    r = await _fire_simd_wide_vec(dut, 0x65, a_128, v_64)
+    assert 'fail' not in r
+    # 2 * 3 = 6 all lanes (truncated to int4)
+    expected = 0x6666_6666_6666_6666
+    assert r['frags'][0]['payload'] == expected
+
+
+@cocotb.test()
+async def test_simd_wide_scalar_frag_hdr_sequence(dut):
+    """v1.6.1b: verify frag_hdr sequence 0x01 → 0x11 for wide-output ops."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    a_128 = _pack_int4_128(*[0x0] * 32)
+    r = await _fire_simd_wide_scalar(dut, 0x60, a_128, 0x5)
+    assert 'fail' not in r
+    assert r['frags'][0]['frag_hdr'] == 0x01
+    assert r['frags'][1]['frag_hdr'] == 0x11
+    assert r['frags'][1]['valid'] == 1
+
+
+@cocotb.test()
+async def test_simd_wide_valid_gate_error(dut):
+    """v1.6.1b: SIMD wide op with wide_valid=0 raises error_flag."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    instr = encode_instr(0x60, _STD_PORT(), eh_imm16(0x1))
+    # Fire with wide_valid=0
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0
+    dut.input_payload_b.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide.value = 0
+    dut.input_payload_wide_valid.value = 0
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    for _ in range(20):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.error_flag.value):
+            break
+    assert dut.error_flag.value == 1
+
+
+@cocotb.test()
+async def test_scalar_rsqrt_approx_one(dut):
+    """v1.6.1b: SCALAR_RSQRT_APPROX (0x66). rsqrt(1.0 Q16.16) ≈ 1.0."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    # Input Q16.16 = 0x00010000 (=1.0). rsqrt(1) = 1 → output 0x00010000.
+    instr = encode_instr(0x66, _STD_PORT())
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0x0001_0000
+    dut.input_payload_b.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide.value = 0
+    dut.input_payload_wide_valid.value = 0
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    for _ in range(20):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value):
+            break
+    assert dut.output_valid.value == 1
+    # Power-of-2 approx: msb of 0x00010000 = 16, output = 2^((48-16)/2) = 2^16 = 0x10000
+    assert (int(dut.output_payload.value) & 0xFFFF_FFFF) == 0x0001_0000
+    assert int(dut.output_frag_hdr.value) == 0x00
+
+
+@cocotb.test()
+async def test_scalar_rsqrt_approx_four(dut):
+    """v1.6.1b: rsqrt(4.0 Q16.16) = 0.5 Q16.16 = 0x0000_8000."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    instr = encode_instr(0x66, _STD_PORT())
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0x0004_0000    # 4.0 Q16.16
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide_valid.value = 0
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    for _ in range(20):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value):
+            break
+    assert dut.output_valid.value == 1
+    # msb=18, output = 2^((48-18)/2) = 2^15 = 0x8000
+    assert (int(dut.output_payload.value) & 0xFFFF_FFFF) == 0x0000_8000
+
+
+@cocotb.test()
+async def test_scalar_rsqrt_zero_saturates(dut):
+    """v1.6.1b: rsqrt(0) saturates to 0x7FFF_FFFF (graceful degrade)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    instr = encode_instr(0x66, _STD_PORT())
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide_valid.value = 0
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    for _ in range(20):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value):
+            break
+    assert dut.output_valid.value == 1
+    assert (int(dut.output_payload.value) & 0xFFFF_FFFF) == 0x7FFF_FFFF
+
+
+# =============================================================================
 # v1.5.3 §20 — adversarial review bug 5 fix: MUL/DIV in-flight collision tests
 # =============================================================================
 #
