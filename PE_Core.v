@@ -1070,85 +1070,140 @@ module PE_Core #(
     // contract, no formal work.
     // -------------------------------------------------------------------------
 
+    // v1.8.0c Gate-4 fix (2026-07-17): the v1.8.0b linear accumulation
+    // loops (acc = acc + lane[i]) synthesized as 16-32 SERIAL carry-chain
+    // adds — a ~1,000-logic-stage ripple in the MU dispatch cone that
+    // halved Cluster Fmax (10.85 → 5.88 MHz). All six reductions are now
+    // balanced trees with minimal per-stage widths. Bit-exact with the
+    // 32-bit-wrap linear form: every true partial magnitude fits its
+    // stage width (bounds below), so no wrap can occur at any node and
+    // reassociation cannot change the value (max is associative too).
+
     // 32-lane int4 dot: |dot| <= 32*8*8 = 2^11 — cannot wrap int32.
+    // Products fit signed 8-bit ([-56, 64]); +1 bit per tree level.
     function signed [31:0] vdot_int4_256;
         input [127:0] a;
         input [127:0] b;
-        reg signed [31:0] acc;
+        reg signed [7:0]  s0 [0:31];
+        reg signed [8:0]  s1 [0:15];
+        reg signed [9:0]  s2 [0:7];
+        reg signed [10:0] s3 [0:3];
+        reg signed [11:0] s4 [0:1];
+        reg signed [12:0] r13;
         integer i;
         begin
-            acc = 32'sd0;
             for (i = 0; i < 32; i = i + 1)
-                acc = acc + ($signed(a[i*4 +: 4]) * $signed(b[i*4 +: 4]));
-            vdot_int4_256 = acc;
+                s0[i] = $signed(a[i*4 +: 4]) * $signed(b[i*4 +: 4]);
+            for (i = 0; i < 16; i = i + 1) s1[i] = s0[2*i] + s0[2*i+1];
+            for (i = 0; i < 8;  i = i + 1) s2[i] = s1[2*i] + s1[2*i+1];
+            for (i = 0; i < 4;  i = i + 1) s3[i] = s2[2*i] + s2[2*i+1];
+            for (i = 0; i < 2;  i = i + 1) s4[i] = s3[2*i] + s3[2*i+1];
+            r13 = s4[0] + s4[1];
+            vdot_int4_256 = {{19{r13[12]}}, r13};
         end
     endfunction
 
     // 16-lane int8 dot: |dot| <= 16*128*128 = 2^18 — cannot wrap int32.
+    // Products fit signed 16-bit ([-16256, 16384]); +1 bit per level.
     function signed [31:0] vdot_int8_256;
         input [127:0] a;
         input [127:0] b;
-        reg signed [31:0] acc;
+        reg signed [15:0] s0 [0:15];
+        reg signed [16:0] s1 [0:7];
+        reg signed [17:0] s2 [0:3];
+        reg signed [18:0] s3 [0:1];
+        reg signed [19:0] r20;
         integer i;
         begin
-            acc = 32'sd0;
             for (i = 0; i < 16; i = i + 1)
-                acc = acc + ($signed(a[i*8 +: 8]) * $signed(b[i*8 +: 8]));
-            vdot_int8_256 = acc;
+                s0[i] = $signed(a[i*8 +: 8]) * $signed(b[i*8 +: 8]);
+            for (i = 0; i < 8; i = i + 1) s1[i] = s0[2*i] + s0[2*i+1];
+            for (i = 0; i < 4; i = i + 1) s2[i] = s1[2*i] + s1[2*i+1];
+            for (i = 0; i < 2; i = i + 1) s3[i] = s2[2*i] + s2[2*i+1];
+            r20 = s3[0] + s3[1];
+            vdot_int8_256 = {{12{r20[19]}}, r20};
         end
     endfunction
 
+    // |sum| <= 32*8 = 256 — fits signed 10-bit at the root.
     function signed [31:0] vsum_int4_128;
         input [127:0] a;
-        reg signed [31:0] acc;
+        reg signed [4:0] s0 [0:31];
+        reg signed [5:0] s1 [0:15];
+        reg signed [6:0] s2 [0:7];
+        reg signed [7:0] s3 [0:3];
+        reg signed [8:0] s4 [0:1];
+        reg signed [9:0] r10;
         integer i;
         begin
-            acc = 32'sd0;
             for (i = 0; i < 32; i = i + 1)
-                acc = acc + {{28{a[i*4+3]}}, a[i*4 +: 4]};
-            vsum_int4_128 = acc;
+                s0[i] = {a[i*4+3], a[i*4 +: 4]};
+            for (i = 0; i < 16; i = i + 1) s1[i] = s0[2*i] + s0[2*i+1];
+            for (i = 0; i < 8;  i = i + 1) s2[i] = s1[2*i] + s1[2*i+1];
+            for (i = 0; i < 4;  i = i + 1) s3[i] = s2[2*i] + s2[2*i+1];
+            for (i = 0; i < 2;  i = i + 1) s4[i] = s3[2*i] + s3[2*i+1];
+            r10 = s4[0] + s4[1];
+            vsum_int4_128 = {{22{r10[9]}}, r10};
         end
     endfunction
 
+    // |sum| <= 16*128 = 2^11 — fits signed 13-bit at the root.
     function signed [31:0] vsum_int8_128;
         input [127:0] a;
-        reg signed [31:0] acc;
+        reg signed [8:0]  s0 [0:15];
+        reg signed [9:0]  s1 [0:7];
+        reg signed [10:0] s2 [0:3];
+        reg signed [11:0] s3 [0:1];
+        reg signed [12:0] r13;
         integer i;
         begin
-            acc = 32'sd0;
             for (i = 0; i < 16; i = i + 1)
-                acc = acc + {{24{a[i*8+7]}}, a[i*8 +: 8]};
-            vsum_int8_128 = acc;
+                s0[i] = {a[i*8+7], a[i*8 +: 8]};
+            for (i = 0; i < 8; i = i + 1) s1[i] = s0[2*i] + s0[2*i+1];
+            for (i = 0; i < 4; i = i + 1) s2[i] = s1[2*i] + s1[2*i+1];
+            for (i = 0; i < 2; i = i + 1) s3[i] = s2[2*i] + s2[2*i+1];
+            r13 = s3[0] + s3[1];
+            vsum_int8_128 = {{19{r13[12]}}, r13};
         end
     endfunction
 
     function signed [31:0] vmax_int4_128;
         input [127:0] a;
-        reg signed [31:0] m;
-        reg signed [31:0] v;
+        reg signed [3:0] m0 [0:31];
+        reg signed [3:0] m1 [0:15];
+        reg signed [3:0] m2 [0:7];
+        reg signed [3:0] m3 [0:3];
+        reg signed [3:0] m4 [0:1];
+        reg signed [3:0] r4;
         integer i;
         begin
-            m = {{28{a[3]}}, a[3:0]};
-            for (i = 1; i < 32; i = i + 1) begin
-                v = {{28{a[i*4+3]}}, a[i*4 +: 4]};
-                if (v > m) m = v;
-            end
-            vmax_int4_128 = m;
+            for (i = 0; i < 32; i = i + 1)
+                m0[i] = a[i*4 +: 4];
+            for (i = 0; i < 16; i = i + 1) m1[i] = (m0[2*i] > m0[2*i+1]) ? m0[2*i] : m0[2*i+1];
+            for (i = 0; i < 8;  i = i + 1) m2[i] = (m1[2*i] > m1[2*i+1]) ? m1[2*i] : m1[2*i+1];
+            for (i = 0; i < 4;  i = i + 1) m3[i] = (m2[2*i] > m2[2*i+1]) ? m2[2*i] : m2[2*i+1];
+            for (i = 0; i < 2;  i = i + 1) m4[i] = (m3[2*i] > m3[2*i+1]) ? m3[2*i] : m3[2*i+1];
+            r4 = (m4[0] > m4[1]) ? m4[0] : m4[1];
+            vmax_int4_128 = {{28{r4[3]}}, r4};
         end
     endfunction
 
     function signed [31:0] vmax_int8_128;
         input [127:0] a;
-        reg signed [31:0] m;
-        reg signed [31:0] v;
+        reg signed [7:0] m0 [0:15];
+        reg signed [7:0] m1 [0:7];
+        reg signed [7:0] m2 [0:3];
+        reg signed [7:0] m3 [0:1];
+        reg signed [7:0] r8;
         integer i;
         begin
-            m = {{24{a[7]}}, a[7:0]};
-            for (i = 1; i < 16; i = i + 1) begin
-                v = {{24{a[i*8+7]}}, a[i*8 +: 8]};
-                if (v > m) m = v;
-            end
-            vmax_int8_128 = m;
+            for (i = 0; i < 16; i = i + 1)
+                m0[i] = a[i*8 +: 8];
+            for (i = 0; i < 8; i = i + 1) m1[i] = (m0[2*i] > m0[2*i+1]) ? m0[2*i] : m0[2*i+1];
+            for (i = 0; i < 4; i = i + 1) m2[i] = (m1[2*i] > m1[2*i+1]) ? m1[2*i] : m1[2*i+1];
+            for (i = 0; i < 2; i = i + 1) m3[i] = (m2[2*i] > m2[2*i+1]) ? m2[2*i] : m2[2*i+1];
+            r8 = (m3[0] > m3[1]) ? m3[0] : m3[1];
+            vmax_int8_128 = {{24{r8[7]}}, r8};
         end
     endfunction
 

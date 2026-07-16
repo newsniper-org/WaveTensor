@@ -100,6 +100,15 @@ v1.7 은 (parity 수준으로) output-side 를 추가 개선하나 완전 제거
 - synth gate 가 적발한 잠복 버그: v1.6.1b 함수호출 인덱싱(yosys 불법),
   v1.7 frag_pending 범위 밖 인덱스, 스크립트 AUTONAME/whitebox 처리.
 - 문헌 추정치를 절대 신뢰하지 말 것 — 이 프로젝트에서 3연속 실측 반박됨.
+- **v1.8.0c Gate 4 사건 (2026-07-17)**: v1.8.0b 의 "MU MAC-tree
+  per-operator synth gate = merge blocker" 가 실행되지 않은 채 commit 됨
+  → 5 commit 뒤 Gate 4 에서 Fmax 10.85→5.88 MHz 반토막으로 발각. 원인:
+  선형 누산 루프 (acc = acc + lane[i]) 가 32개 직렬 carry-chain ripple
+  (~1,000 logic stages) 로 합성. 수정: 6개 reduction 함수 전부 최소 폭
+  balanced tree 로 재작성 (참값 범위가 stage 폭에 수용 → 재결합 불변,
+  bit-exact — regression 전체 green 으로 입증). **교훈 2건: (1) RTL 의
+  reduction 루프는 반드시 tree 로 쓸 것, (2) merge blocker 로 선언한
+  gate 는 task 로 만들어 commit 전 완료 확인할 것.**
 
 ## Cross-repo 파급
 

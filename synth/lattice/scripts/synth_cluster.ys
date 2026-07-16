@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# synth_cluster.ys — Cluster-standalone ECP5 synthesis (Gate 4 / timing gate)
+#
+# Cluster alone fits LFE5U-85F (pod 2x2_2x2 does not — MULT 3.2x over);
+# this is the unit used for the project's Fmax measurements (§23.8,
+# §23.10.7 Gate 4). Same flow notes as synth_pod.ys (AUTONAME bypass,
+# whitebox conversion) — see that file for rationale.
+#
+# Invoke: yosys -q -s synth/lattice/scripts/synth_cluster.ys
+#         (-s, NOT -c — .ys is a yosys script; -c invokes the TCL
+#          interpreter, which rejects read_verilog)
+# Output: synth/lattice/reports/cluster_2x2_v180c_synth.{rpt,json}
+
+read_verilog -defer -sv \
+    -DWT_VENDOR_LATTICE_YOSYS \
+    -I include \
+    Cluster.v \
+    PE.v \
+    ISA_Decoder.v \
+    EHDecode.v \
+    PE_Core.v \
+    FP_StepSeq.v \
+    FP_Mul36.v \
+    FP_AddWide.v
+
+hierarchy -check -top Cluster
+
+synth_ecp5 -run :check
+
+hierarchy -check
+check -noinit
+blackbox =A:whitebox
+
+tee -o synth/lattice/reports/cluster_2x2_v180c_synth.rpt stat
+
+write_json synth/lattice/reports/cluster_2x2_v180c_synth.json
