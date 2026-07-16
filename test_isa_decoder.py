@@ -4984,3 +4984,84 @@ async def test_store_quant_clamp_rne_shift(dut):
     for mode in (0x12, 0x13):
         r = await _fire_v180b(dut, 0x7C, mode, [], 0, payload=1)
         assert (r['err'], r['lwr'], r['out']) == (0, 1, 0), f"mode={mode:#x}: {r}"
+
+
+@cocotb.test()
+async def test_orderfree_chain_vs_tree_property(dut):
+    """v1.8.0b §23.4 THE order-free bit-exactness property: K=128 int4
+    dot computed three ways — (a) serial carry-in chain, (b) VDOT
+    partials + scalar ADD 0x10 tree, (c) tree with permuted
+    chunk-to-dispatch assignment — all bit-identical; low 32 bits ==
+    int32-wrap golden (operands cast to wide BEFORE multiply — the numpy
+    int8-input-dtype wrap trap pinned in the golden helper); full 64 ==
+    exact python-int sum."""
+    import random
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    rng = random.Random(0x1807)   # deterministic seed (no live entropy)
+
+    K = 128
+    a_lanes = [rng.randint(-8, 7) for _ in range(K)]
+    b_lanes = [rng.randint(-8, 7) for _ in range(K)]
+    seed = 0x0000_0123_4567_89AB
+
+    exact = (seed + sum(x * y for x, y in zip(a_lanes, b_lanes))) % (1 << 64)
+    # int32-wrap (IMMA) golden: exact products, sum reduced mod 2^32 signed
+    wrap32 = (seed + sum(x * y for x, y in zip(a_lanes, b_lanes))) % (1 << 32)
+
+    def chunk(vals, i):
+        return _pack_int4_128(*[v & 0xF for v in vals[i * 32:(i + 1) * 32]])
+
+    async def vdot(i, carry):
+        wide = chunk(a_lanes, i) | (chunk(b_lanes, i) << 128)
+        r = await _fire_v180b(dut, 0x71, 0x10, [eh_imm64(carry)], wide)
+        assert (r['err'], r['lwr'], r['out']) == (0, 0, 1), f"chunk {i}: {r}"
+        return r['payload']
+
+    async def scalar_add(x, y):
+        instr = encode_instr(0x10, _STD_PORT(), eh_imm64(y))
+        dut.instruction.value = instr
+        dut.input_tag.value = _STD_TAG()
+        dut.input_payload.value = x
+        dut.input_payload_b_valid.value = 0
+        dut.input_payload_wide.value = 0
+        dut.input_payload_wide_valid.value = 0
+        dut.token_valid.value = 1
+        await RisingEdge(dut.clk)
+        dut.token_valid.value = 0
+        for _ in range(10):
+            await RisingEdge(dut.clk)
+            await Timer(1, units="ns")
+            if int(dut.output_valid.value) == 1:
+                break
+        assert int(dut.output_valid.value) == 1
+        return int(dut.output_payload.value)
+
+    # (a) serial carry-in chain (fixed order — data dependency)
+    acc = seed
+    for i in range(4):
+        acc = await vdot(i, acc)
+    result_chain = acc
+
+    # (b) partials + ADD tree
+    parts = [await vdot(i, 0) for i in range(4)]
+    s01 = await scalar_add(parts[0], parts[1])
+    s23 = await scalar_add(parts[2], parts[3])
+    s = await scalar_add(s01, s23)
+    result_tree = await scalar_add(s, seed)
+
+    # (c) permuted chunk issue order for the tree
+    order = [2, 0, 3, 1]
+    parts_p = {}
+    for i in order:
+        parts_p[i] = await vdot(i, 0)
+    s01p = await scalar_add(parts_p[3], parts_p[0])
+    s23p = await scalar_add(parts_p[1], parts_p[2])
+    sp = await scalar_add(seed, s01p)
+    result_tree_perm = await scalar_add(sp, s23p)
+
+    assert result_chain == exact, f"chain {result_chain:016x} != {exact:016x}"
+    assert result_tree == exact, f"tree {result_tree:016x} != {exact:016x}"
+    assert result_tree_perm == exact, f"perm-tree {result_tree_perm:016x} != {exact:016x}"
+    assert (result_chain & 0xFFFFFFFF) == wrap32
