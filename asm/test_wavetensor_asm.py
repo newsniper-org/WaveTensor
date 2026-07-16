@@ -1352,7 +1352,10 @@ class TestFpBlockModeLegality(unittest.TestCase):
         for code, mnem in self._FP_OPS.items():
             self.assertEqual(wta.MNEMONIC_TO_OPCODE[mnem], code)
         self.assertEqual(set(FP_MODE_LEGAL), set(self._FP_OPS))
-        self.assertEqual(STUB_OPS_V18, frozenset(self._FP_OPS))
+        # v1.8.0b: 0x71 VDOT_ACC / 0x72 ACC_REDUCE / 0x7C STORE_QUANT
+        # graduated from stubs to real datapaths.
+        self.assertEqual(STUB_OPS_V18,
+                         frozenset(self._FP_OPS) - {0x71, 0x72, 0x7C})
         # Shape spot-checks: 0x70 is ALU-binary-like, 0x7E is no-data-EH.
         self.assertTrue(wta._LEGAL[0x70]['allow_imm_xor_opref'])
         self.assertEqual(wta._LEGAL[0x7E]['forbidden'], wta._ALL_DATA_EHS)

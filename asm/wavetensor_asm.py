@@ -77,6 +77,7 @@ from generated_isa_tables import (  # noqa: F401
     MNEMONIC_TO_OPCODE, OPCODE_TO_MNEMONIC, HL_ONLY_MNEMONICS, FLAG_BITS,
     EH_END, EH_PORT, EH_IMM16, EH_IMM32, EH_IMM64, EH_MEM, EH_SUBSCRIPT,
     EH_OPREF, EH_PRECISION, EH_NOP_PAD, EH_NAME_TO_CODE, REDUCE_OP_CODE,
+    ACC_REDUCE_OP_CODE,
 )
 from generated_isa_tables import LEGAL as _LEGAL              # noqa: F401
 from generated_isa_tables import ALL_DATA_EHS as _ALL_DATA_EHS  # noqa: F401
@@ -1705,6 +1706,39 @@ def wave_fragments_bmm3(a_128: int, b_128: int) -> List[Tuple[int, int]]:
     Layout: A at wide[127:0], B at wide[255:128]."""
     wide = (a_128 & ((1 << 128) - 1)) | ((b_128 & ((1 << 128) - 1)) << 128)
     return wave_fragments(wide, 256)
+
+
+def wave_fragments_vdot(a_128: int, b_128: int) -> List[Tuple[int, int]]:
+    """v1.8.0b §23.6a — emit the 4-fragment VDOT_ACC (0x71) wave. Same
+    256-bit layout as SIG_BMM_3: A at wide[127:0], B at wide[255:128].
+
+    SDK CONTRACT (hardware-unenforced): the INSTRUCTION + full EH chain
+    must be replicated on EVERY fragment — only the completing fragment's
+    chain is parsed and completion order is arbitrary, so non-replication
+    is a silent order-dependent carry-in bug. Emit EXACTLY 4 fragments:
+    a short wave reads stale slot data as B (SIG_BMM_3-parity exposure)."""
+    return wave_fragments_bmm3(a_128, b_128)
+
+
+def acc_reduce_subop_imm16(subop: str) -> int:
+    """v1.8.0b §23.6a — encode an ACC_REDUCE (0x72) sub-op name into its
+    imm16 value (sub-op nibble at [7:4], [3:0] reserved-zero). Always go
+    through the generated ACC_REDUCE_OP_CODE table — the RED (0x25) and
+    einsum op-marker namespaces already collide on MIN (2 vs 6), which is
+    exactly why MIN is absent here."""
+    if subop not in ACC_REDUCE_OP_CODE:
+        raise AssemblerError(
+            f"ACC_REDUCE sub-op {subop!r} unknown — legal: "
+            f"{sorted(ACC_REDUCE_OP_CODE)} (MIN deliberately unsupported)")
+    return ACC_REDUCE_OP_CODE[subop] << 4
+
+
+def store_quant_imm16(shift: int) -> int:
+    """v1.8.0b §23.6a — encode a STORE_QUANT (0x7C) arithmetic-shift
+    amount into imm16 (s at [5:0], [15:6] reserved-zero)."""
+    if not (0 <= shift <= 63):
+        raise AssemblerError(f"STORE_QUANT shift must be 0..63, got {shift}")
+    return shift & 0x3F
 
 
 def wave_fragments_trace_iijkl(a_128: int) -> List[Tuple[int, int]]:

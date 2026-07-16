@@ -46,6 +46,7 @@ ARTIFACTS = {
     "eh_codes":  REPO / "include" / "generated" / "isa_eh_codes.vh",
     "case_body": REPO / "include" / "generated" / "isa_ehshape_case_body.vh",
     "wires":     REPO / "include" / "generated" / "isa_opcode_wires.vh",
+    "subops":    REPO / "include" / "generated" / "isa_subop_codes.vh",
     "pytables":  REPO / "asm" / "generated_isa_tables.py",
     "specfrag":  REPO / ".claude-memos" / "generated" / "isa_tables_frag.md",
 }
@@ -74,8 +75,8 @@ class SchemaError(Exception):
 
 _TOP_KEYS = {"_doc", "_schema_version", "eh_codes", "eh_name_to_code",
              "flag_bits", "all_data_ehs", "hl_only_mnemonics",
-             "reduce_op_codes", "opcodes", "fp_block", "einsum_signatures",
-             "eh_body_layouts", "dim_literals"}
+             "reduce_op_codes", "acc_reduce_op_codes", "opcodes", "fp_block",
+             "einsum_signatures", "eh_body_layouts", "dim_literals"}
 _OPCODE_KEYS = {"mnemonic", "code", "desc", "notes", "asm_legality",
                 "rtl_legality", "rtl_alu_binary", "stub_v18"}
 _ASM_LEG_KEYS = {"required", "forbidden", "allow_imm_xor_opref",
@@ -251,6 +252,15 @@ def emit_pytables(src, src_sha):
         L.append(f"    {name!r}: {code},")
     L.append("}")
     L.append("")
+    L.append("# v1.8.0b — 0x72 ACC_REDUCE sub-op nibble (imm16[7:4]). A deliberately")
+    L.append("# SEPARATE namespace from REDUCE_OP_CODE (RED 0x25): the two shipped")
+    L.append("# spaces already collide on MIN (RED=2 vs einsum op_marker=6), so MIN")
+    L.append("# is deliberately absent here. Always go through this table.")
+    L.append("ACC_REDUCE_OP_CODE = {")
+    for name, code in src["acc_reduce_op_codes"].items():
+        L.append(f"    {name!r}: {code},")
+    L.append("}")
+    L.append("")
     L.append("ALL_DATA_EHS = " + _set_literal(src["all_data_ehs"]))
     L.append("")
     L.append("# int keys, mutable-set values — exact schema of the historical")
@@ -317,6 +327,17 @@ def emit_specfrag(src, src_sha):
     return "\n".join(L) + "\n"
 
 
+def emit_subops(src, src_sha):
+    lines = [_hdr_vh(src_sha)]
+    lines.append("// v1.8.0b — sub-op code localparams consumed by PE_Core.v dispatch arms.")
+    lines.append("// ACC_REDUCE (0x72) sub-op nibble (imm16[7:4]), from the single-source")
+    lines.append("// acc_reduce_op_codes table. MIN deliberately absent (RED=2 vs einsum=6")
+    lines.append("// namespace collision — see spec section 23.6a).")
+    for name, code in src["acc_reduce_op_codes"].items():
+        lines.append(f"    localparam [3:0] ACC_RED_OP_{name.upper():<5} = 4'h{code:X};")
+    return "\n".join(lines) + "\n"
+
+
 def _wrap(text, width):
     words, lines, cur = text.split(), [], ""
     for w in words:
@@ -343,6 +364,7 @@ def render_all():
         "eh_codes":  emit_eh_codes(src, sha),
         "case_body": emit_case_body(src, sha),
         "wires":     emit_wires(src, sha),
+        "subops":    emit_subops(src, sha),
         "pytables":  emit_pytables(src, sha),
         "specfrag":  emit_specfrag(src, sha),
     }

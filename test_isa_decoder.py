@@ -4680,18 +4680,24 @@ async def _fp_run_point(dut, op, mode, via_eh):
 
 
 def _fp_expected(op, mode):
-    """Golden-model expectation from the generated tables. Oracle
-    equivalence holds BECAUSE stubs are unconditional; rewrite against the
-    internal decode signal if v1.8.0b adds conditional stub paths."""
-    from generated_isa_tables import FP_MODE_LEGAL
+    """Golden-model expectation from the generated tables (v1.8.0b
+    rewrite anticipated by the original docstring): stubs (STUB_OPS_V18)
+    predict lower_required; implemented ops predict execution — with the
+    one documented conditional path: 0x7C dtype 0x2/0x3 (f16/bf16
+    destination) is decode-legal but lower_required until v1.8.0d."""
+    from generated_isa_tables import FP_MODE_LEGAL, STUB_OPS_V18
     legal = FP_MODE_LEGAL.get(op)
     if legal is None:
         return (1, 0, 0)   # unassigned -> decode_error (whitelist omission)
     dtype, acc, rnd = mode & 0xF, (mode >> 4) & 0x3, (mode >> 6) & 0x3
     if (dtype in legal['legal_dtypes'] and acc in legal['legal_acc']
             and rnd in legal['legal_rnd']):
-        return (0, 1, 0)   # decode-legal stub -> lower_required
-    return (1, 0, 0)       # illegal mode -> decode_error
+        if op in STUB_OPS_V18:
+            return (0, 1, 0)   # decode-legal stub -> lower_required
+        if op == 0x7C and dtype in (2, 3):
+            return (0, 1, 0)   # f16/bf16 dest deferred to v1.8.0d
+        return (0, 0, 1)       # implemented -> executes, emits output
+    return (1, 0, 0)           # illegal mode -> decode_error
 
 
 @cocotb.test()
@@ -4740,11 +4746,15 @@ async def test_fp_block_stub_lower_required_all_ops(dut):
     lower_required=1, output_valid=0. Adding an op to isa/wt64v1_isa.json
     without its PE_Core case-arm membership falls to the case default
     (error_flag) and fails here — the PE_Core-membership pin."""
-    from generated_isa_tables import FP_MODE_LEGAL
+    from generated_isa_tables import FP_MODE_LEGAL, STUB_OPS_V18
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
     await reset(dut)
-    for op in sorted(FP_MODE_LEGAL):
+    # v1.8.0b: iterate the generated STUB set — 0x71/0x72/0x7C graduated
+    # to real datapaths (their own directed tests below); membership pin
+    # still holds: a NEW stub op added to the JSON without a PE_Core arm
+    # falls to the case default and fails here.
+    for op in sorted(STUB_OPS_V18):
         legal = FP_MODE_LEGAL[op]
         mode = (legal['legal_rnd'][0] << 6) | (legal['legal_acc'][0] << 4) \
              | legal['legal_dtypes'][0]
@@ -4765,3 +4775,212 @@ async def test_fp_block_unassigned_opcodes_still_error(dut):
             got = await _fp_run_point(dut, op, mode, via_eh=False)
             assert got == (1, 0, 0), \
                 f"unassigned op=0x{op:02X} mode=0x{mode:02X}: got {got}"
+
+
+# =============================================================================
+# v1.8.0b §23.9 — stateless int datapath: VDOT_ACC (0x71), ACC_REDUCE (0x72),
+# STORE_QUANT (0x7C). Golden models are plain python ints (exact), with the
+# low-32 IMMA-wrap channel computed per the §23.4 contract.
+# =============================================================================
+
+
+def _s4(v):
+    v &= 0xF
+    return v - 16 if v & 0x8 else v
+
+
+def _s8(v):
+    v &= 0xFF
+    return v - 256 if v & 0x80 else v
+
+
+def _pack_int8_128(*vals):
+    x = 0
+    for i, v in enumerate(vals):
+        x |= (v & 0xFF) << (i * 8)
+    return x
+
+
+async def _fire_v180b(dut, op, mode, ehs_extra, wide, payload=0, window=12):
+    ehs = [_STD_PORT(), eh_precision(mode, 0)] + ehs_extra
+    instr = encode_instr(op, *ehs, flags=(1 << 2))   # F_PRECISION_OVR
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = payload
+    dut.input_payload_b.value = 0
+    dut.input_payload_b_valid.value = 1
+    dut.input_payload_wide.value = wide
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    for _ in range(window):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value) == 1 or int(dut.error_flag.value) == 1 \
+                or int(dut.lower_required.value) == 1:
+            break
+    return {'err': int(dut.error_flag.value),
+            'lwr': int(dut.lower_required.value),
+            'out': int(dut.output_valid.value),
+            'payload': int(dut.output_payload.value),
+            'tag': int(dut.output_tag.value)}
+
+
+@cocotb.test()
+async def test_vdot_int4_single_dispatch_exact(dut):
+    """v1.8.0b: 32-lane int4 dot incl. most-negative (-8) both sides,
+    carry-in IMM16=1. payload == (sext64(exact dot) + 1) mod 2^64 vs
+    python-int golden; sext (not zero-extend) checked via a negative case
+    separately."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    a_lanes = [(-8 if i % 5 == 0 else (i % 15) - 7) for i in range(32)]
+    b_lanes = [(-8 if i % 7 == 0 else ((i * 3) % 15) - 7) for i in range(32)]
+    a = _pack_int4_128(*[v & 0xF for v in a_lanes])
+    b = _pack_int4_128(*[v & 0xF for v in b_lanes])
+    wide = a | (b << 128)
+    golden = (sum(x * y for x, y in zip(a_lanes, b_lanes)) + 1) % (1 << 64)
+    r = await _fire_v180b(dut, 0x71, 0x10, [eh_imm16(1)], wide)
+    assert (r['err'], r['lwr'], r['out']) == (0, 0, 1), f"got {r}"
+    assert r['payload'] == golden, f"{r['payload']:016x} != {golden:016x}"
+    assert (r['tag'] & 0xFF) == 0x00   # scalar dim_sizes
+
+
+@cocotb.test()
+async def test_vdot_int8_single_dispatch_exact(dut):
+    """v1.8.0b: 16-lane int8 dot incl. ±127/-128 lanes, dtype mode 0x11."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    a_lanes = [(-128 if i == 0 else (127 if i == 1 else (i * 17) % 255 - 127)) for i in range(16)]
+    b_lanes = [(127 if i == 0 else (-128 if i == 2 else (i * 29) % 255 - 127)) for i in range(16)]
+    a = _pack_int8_128(*a_lanes)
+    b = _pack_int8_128(*b_lanes)
+    wide = a | (b << 128)
+    golden = (sum(x * y for x, y in zip(a_lanes, b_lanes)) + 0) % (1 << 64)
+    r = await _fire_v180b(dut, 0x71, 0x11, [eh_imm16(0)], wide)
+    assert (r['err'], r['lwr'], r['out']) == (0, 0, 1), f"got {r}"
+    assert r['payload'] == golden, f"{r['payload']:016x} != {golden:016x}"
+
+
+@cocotb.test()
+async def test_vdot_negative_result_sext64_payload(dut):
+    """v1.8.0b §23.6a payload-format pin: negative dot → payload[63:32]
+    == all-ones (sext64 convention, NOT the legacy {32'h0,acc} idiom)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    a = _pack_int4_128(*([0x8] * 32))   # -8 every lane
+    b = _pack_int4_128(*([0x7] * 32))   # +7 every lane
+    wide = a | (b << 128)
+    golden = (32 * (-8 * 7)) % (1 << 64)   # -1792 mod 2^64
+    r = await _fire_v180b(dut, 0x71, 0x10, [eh_imm16(0)], wide)
+    assert r['out'] == 1
+    assert r['payload'] == golden
+    assert (r['payload'] >> 32) == 0xFFFFFFFF
+
+
+@cocotb.test()
+async def test_acc_reduce_subops_golden(dut):
+    """v1.8.0b: SUM/MAX/L2SQ/MEAN vs python goldens (int4 mode),
+    absent-imm16 == SUM, MEAN RNE ties-to-even directed vectors."""
+    import sys as _sys
+    _sys.path.insert(0, os.path.join(_REPO, 'asm'))
+    from generated_isa_tables import ACC_REDUCE_OP_CODE
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    lanes = [(-8 if i == 3 else (i % 15) - 7) for i in range(32)]
+    a = _pack_int4_128(*[v & 0xF for v in lanes])
+    goldens = {
+        'sum':  sum(lanes),
+        'max':  max(lanes),
+        'l2sq': sum(v * v for v in lanes),
+    }
+    s = sum(lanes)
+    # python RNE(s/32) ties-to-even
+    t, rem = s >> 5, s - ((s >> 5) << 5)
+    if rem > 16: t += 1
+    elif rem == 16: t += (t & 1)
+    goldens['mean'] = t
+
+    for name, exp in goldens.items():
+        imm = ACC_REDUCE_OP_CODE[name] << 4
+        r = await _fire_v180b(dut, 0x72, 0x10, [eh_imm16(imm)], a)
+        assert (r['err'], r['lwr'], r['out']) == (0, 0, 1), f"{name}: {r}"
+        assert r['payload'] == exp % (1 << 64), \
+            f"{name}: {r['payload']:016x} != {exp % (1 << 64):016x}"
+
+    # absent imm16 == SUM (port-only encoding keeps decoding, gains SUM)
+    r = await _fire_v180b(dut, 0x72, 0x10, [], a)
+    assert (r['err'], r['lwr'], r['out']) == (0, 0, 1), f"absent-imm16: {r}"
+    assert r['payload'] == goldens['sum'] % (1 << 64)
+
+    # MEAN directed: sum=-97, N=32 → RNE(-3.03) = -3 (NOT the ASR floor -4)
+    lanes97 = [-4] * 24 + [0] * 7 + [-1]
+    assert sum(lanes97) == -97
+    a97 = _pack_int4_128(*[v & 0xF for v in lanes97])
+    r = await _fire_v180b(dut, 0x72, 0x10,
+                          [eh_imm16(ACC_REDUCE_OP_CODE['mean'] << 4)], a97)
+    assert r['payload'] == (-3) % (1 << 64), \
+        f"MEAN(-97/32) = {r['payload']:016x}, expected -3 (RNE, not ASR floor -4)"
+
+
+@cocotb.test()
+async def test_acc_reduce_reserved_and_unknown_lower_required(dut):
+    """v1.8.0b: imm16[3:0]!=0 → lower_required; unknown sub-op nibbles —
+    specifically 0x2 and 0x6, the RED/einsum MIN collision codes — →
+    lower_required (never error_flag). Pins that MIN is unshipped."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    a = _pack_int4_128(*([1] * 32))
+    for imm in (0x0001, 0x0008):        # reserved [3:0] violations
+        r = await _fire_v180b(dut, 0x72, 0x10, [eh_imm16(imm)], a)
+        assert (r['err'], r['lwr'], r['out']) == (0, 1, 0), f"imm={imm:#x}: {r}"
+    for imm in (0x2 << 4, 0x6 << 4, 0xF << 4):   # unknown sub-ops (incl. both MIN codes)
+        r = await _fire_v180b(dut, 0x72, 0x10, [eh_imm16(imm)], a)
+        assert (r['err'], r['lwr'], r['out']) == (0, 1, 0), f"imm={imm:#x}: {r}"
+
+
+@cocotb.test()
+async def test_store_quant_clamp_rne_shift(dut):
+    """v1.8.0b: 0x7C boundary clamps, absent-imm16 == pure clamp, RNE
+    shift incl. ties-to-even, reserved-bit violation → lower_required,
+    f16/bf16 dest → lower_required, memory_req never asserted."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    M = 1 << 64
+    # (payload, mode, imm16 or None, expected sext64)
+    cases = [
+        (7,            0x10, None, 7),           # int4 in-range
+        (9,            0x10, None, 7),           # int4 clamp hi
+        ((-9) % M,     0x10, None, (-8) % M),    # int4 clamp lo
+        (129,          0x11, None, 127),         # int8 clamp hi
+        ((-129) % M,   0x11, None, (-128) % M),  # int8 clamp lo
+        ((1 << 40),    0x11, None, 127),         # large positive clamps
+        (24,           0x10, 4,    2),           # RNE(24/16)=1.5 → ties-to-even → 2
+        (40,           0x10, 4,    2),           # RNE(2.5) → 2 (even)
+        (44,           0x10, 4,    3),           # RNE(2.75) → 3
+    ]
+    for payload, mode, shift, exp in cases:
+        ehs = [eh_imm16(shift)] if shift is not None else []
+        r = await _fire_v180b(dut, 0x7C, mode, ehs, 0, payload=payload)
+        assert (r['err'], r['lwr'], r['out']) == (0, 0, 1), \
+            f"x={payload:#x} mode={mode:#x} s={shift}: {r}"
+        assert r['payload'] == exp % M, \
+            f"x={payload:#x} s={shift}: {r['payload']:016x} != {exp % M:016x}"
+        assert int(dut.memory_req.value) == 0
+
+    # reserved imm16[15:6] violation
+    r = await _fire_v180b(dut, 0x7C, 0x10, [eh_imm16(0x0040)], 0, payload=1)
+    assert (r['err'], r['lwr'], r['out']) == (0, 1, 0), f"reserved: {r}"
+    # f16/bf16 destination → lower_required until v1.8.0d
+    for mode in (0x12, 0x13):
+        r = await _fire_v180b(dut, 0x7C, mode, [], 0, payload=1)
+        assert (r['err'], r['lwr'], r['out']) == (0, 1, 0), f"mode={mode:#x}: {r}"

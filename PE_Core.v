@@ -215,6 +215,8 @@ module PE_Core #(
     localparam [3:0] OP_MEAN    = 4'h5;
     localparam [3:0] OP_MIN     = 4'h6;
     localparam [3:0] OP_ARGMIN  = 4'h7;
+    // v1.8.0b — generated sub-op codes (single source isa/wt64v1_isa.json)
+    `include "generated/isa_subop_codes.vh"
     localparam [3:0] RED_OP_SUM = 4'h0;
     localparam [3:0] RED_OP_MAX = 4'h1;
     localparam [3:0] RED_OP_MIN = 4'h2;
@@ -1055,6 +1057,154 @@ module PE_Core #(
         end
     endfunction
 
+    // -------------------------------------------------------------------------
+    // v1.8.0b §23.9 — stateless int accumulate datapath (workflow wwov1b5i3).
+    // NO architectural state: every op below is a pure function of one
+    // dispatch's inputs; K-loop accumulation is SDK dataflow (serial
+    // carry-in chains or VDOT partials + scalar ADD 0x10 trees), whose
+    // low-32 channel equals numpy int32 wrap (IMMA semantics) and whose
+    // full-64 channel is exact for any realistic K — order-free by
+    // commutativity/associativity of mod-2^64 addition, no ordering
+    // contract, no formal work.
+    // -------------------------------------------------------------------------
+
+    // 32-lane int4 dot: |dot| <= 32*8*8 = 2^11 — cannot wrap int32.
+    function signed [31:0] vdot_int4_256;
+        input [127:0] a;
+        input [127:0] b;
+        reg signed [31:0] acc;
+        integer i;
+        begin
+            acc = 32'sd0;
+            for (i = 0; i < 32; i = i + 1)
+                acc = acc + ($signed(a[i*4 +: 4]) * $signed(b[i*4 +: 4]));
+            vdot_int4_256 = acc;
+        end
+    endfunction
+
+    // 16-lane int8 dot: |dot| <= 16*128*128 = 2^18 — cannot wrap int32.
+    function signed [31:0] vdot_int8_256;
+        input [127:0] a;
+        input [127:0] b;
+        reg signed [31:0] acc;
+        integer i;
+        begin
+            acc = 32'sd0;
+            for (i = 0; i < 16; i = i + 1)
+                acc = acc + ($signed(a[i*8 +: 8]) * $signed(b[i*8 +: 8]));
+            vdot_int8_256 = acc;
+        end
+    endfunction
+
+    function signed [31:0] vsum_int4_128;
+        input [127:0] a;
+        reg signed [31:0] acc;
+        integer i;
+        begin
+            acc = 32'sd0;
+            for (i = 0; i < 32; i = i + 1)
+                acc = acc + {{28{a[i*4+3]}}, a[i*4 +: 4]};
+            vsum_int4_128 = acc;
+        end
+    endfunction
+
+    function signed [31:0] vsum_int8_128;
+        input [127:0] a;
+        reg signed [31:0] acc;
+        integer i;
+        begin
+            acc = 32'sd0;
+            for (i = 0; i < 16; i = i + 1)
+                acc = acc + {{24{a[i*8+7]}}, a[i*8 +: 8]};
+            vsum_int8_128 = acc;
+        end
+    endfunction
+
+    function signed [31:0] vmax_int4_128;
+        input [127:0] a;
+        reg signed [31:0] m;
+        reg signed [31:0] v;
+        integer i;
+        begin
+            m = {{28{a[3]}}, a[3:0]};
+            for (i = 1; i < 32; i = i + 1) begin
+                v = {{28{a[i*4+3]}}, a[i*4 +: 4]};
+                if (v > m) m = v;
+            end
+            vmax_int4_128 = m;
+        end
+    endfunction
+
+    function signed [31:0] vmax_int8_128;
+        input [127:0] a;
+        reg signed [31:0] m;
+        reg signed [31:0] v;
+        integer i;
+        begin
+            m = {{24{a[7]}}, a[7:0]};
+            for (i = 1; i < 16; i = i + 1) begin
+                v = {{24{a[i*8+7]}}, a[i*8 +: 8]};
+                if (v > m) m = v;
+            end
+            vmax_int8_128 = m;
+        end
+    endfunction
+
+    // RNE (ties-to-even) division by 2^k. >>> floors, so rem is always in
+    // [0, 2^k) even for negative s; ties round toward the even quotient —
+    // explicitly NOT the retired 5D->4D MEAN ASR floor (spec §23.6a).
+    function signed [31:0] rne_shr32;
+        input signed [31:0] s;
+        input [5:0]  k;
+        reg signed [31:0] t;
+        reg [31:0] rem;
+        reg [31:0] half;
+        begin
+            if (k == 6'd0) rne_shr32 = s;
+            else begin
+                t    = s >>> k;
+                rem  = s - (t <<< k);
+                half = 32'd1 << (k - 1);
+                if (rem > half)       rne_shr32 = t + 32'sd1;
+                else if (rem == half) rne_shr32 = t + {31'b0, t[0]};
+                else                  rne_shr32 = t;
+            end
+        end
+    endfunction
+
+    function signed [63:0] rne_shr64;
+        input signed [63:0] s;
+        input [5:0]  k;
+        reg signed [63:0] t;
+        reg [63:0] rem;
+        reg [63:0] half;
+        begin
+            if (k == 6'd0) rne_shr64 = s;
+            else begin
+                t    = s >>> k;
+                rem  = s - (t <<< k);
+                half = 64'd1 << (k - 1);
+                if (rem > half)       rne_shr64 = t + 64'sd1;
+                else if (rem == half) rne_shr64 = t + {63'b0, t[0]};
+                else                  rne_shr64 = t;
+            end
+        end
+    endfunction
+
+    // Saturating clamp of a signed 64-bit value into a signed dtype range,
+    // sign-extended back to 64 bits. The explicit clamp is a mandatory
+    // structural stage (v1.7 §22.18 REQUANTIZE lesson).
+    function signed [63:0] clamp_sext64;
+        input signed [63:0] x;
+        input signed [63:0] lo;
+        input signed [63:0] hi;
+        begin
+            if (x > hi)      clamp_sext64 = hi;
+            else if (x < lo) clamp_sext64 = lo;
+            else             clamp_sext64 = x;
+        end
+    endfunction
+
     function [127:0] simd_add_wide_vec_128;
         input [127:0] a;
         input [ 63:0] v;
@@ -1398,8 +1548,14 @@ module PE_Core #(
     // -------------------------------------------------------------------------
     // Op-class classifiers
     // -------------------------------------------------------------------------
+    // v1.8.0b §23.9 — TWIN CLASSIFIER invariant: this list and Cluster.v's
+    // is_mul_op must stay in lockstep. 0x71 VDOT_ACC / 0x72 ACC_REDUCE are
+    // MU-hosted (MAC tree lives only where MUL_OPS_SUPPORTED); without the
+    // PE_Core half, the MU gate below lowers both ops forever and no L-PE
+    // ever receives them (verified dead-end in the design workflow).
     wire dec_is_mul_op = (dec_opcode == 8'h12) || (dec_opcode == 8'h30)
-                      || (dec_opcode == 8'h32) || (dec_opcode == 8'h43);
+                      || (dec_opcode == 8'h32) || (dec_opcode == 8'h43)
+                      || (dec_opcode == 8'h71) || (dec_opcode == 8'h72);
     wire dec_is_div_op = (dec_opcode == 8'h13)   // DIV
                       || (dec_opcode == 8'h1C)   // MOD
                       || (dec_opcode == 8'h1D);  // DIVMOD
@@ -1542,6 +1698,49 @@ module PE_Core #(
         dec_input_payload_wide[127:0], dec_eff_b_value[7:0]);
     wire [127:0] wres_requantize = simd_requantize_q4_4_to_int4_256(
         dec_input_payload_wide[255:0]);
+
+    // v1.8.0b — stateless int-path hoisted results. MU-gated generate:
+    // the MAC/reduce trees synthesize ONLY where MUL_OPS_SUPPORTED (the
+    // 0x71/0x72 arms are unreachable elsewhere — dec_is_mul_op routes
+    // them, and the !MUL_OPS_SUPPORTED prologue lowers on direct
+    // dispatch) so the 16 L-PEs pay zero area for them.
+    wire v180b_int8_mode = (dec_eff_precision[3:0] == 4'h1);
+    wire signed [31:0] wres_vdot32;
+    wire signed [31:0] wres_acc_sum;
+    wire signed [31:0] wres_acc_max;
+    wire signed [31:0] wres_acc_l2sq;
+    wire signed [31:0] wres_acc_mean;
+    generate if (MUL_OPS_SUPPORTED) begin : g_v180b_mac
+        assign wres_vdot32 = v180b_int8_mode
+            ? vdot_int8_256(dec_input_payload_wide[127:0], dec_input_payload_wide[255:128])
+            : vdot_int4_256(dec_input_payload_wide[127:0], dec_input_payload_wide[255:128]);
+        assign wres_acc_sum = v180b_int8_mode
+            ? vsum_int8_128(dec_input_payload_wide[127:0])
+            : vsum_int4_128(dec_input_payload_wide[127:0]);
+        assign wres_acc_max = v180b_int8_mode
+            ? vmax_int8_128(dec_input_payload_wide[127:0])
+            : vmax_int4_128(dec_input_payload_wide[127:0]);
+        assign wres_acc_l2sq = v180b_int8_mode
+            ? vdot_int8_256(dec_input_payload_wide[127:0], dec_input_payload_wide[127:0])
+            : vdot_int4_256(dec_input_payload_wide[127:0], dec_input_payload_wide[127:0]);
+        assign wres_acc_mean = rne_shr32(wres_acc_sum, v180b_int8_mode ? 6'd4 : 6'd5);
+    end else begin : g_v180b_mac_off
+        assign wres_vdot32   = 32'sd0;
+        assign wres_acc_sum  = 32'sd0;
+        assign wres_acc_max  = 32'sd0;
+        assign wres_acc_l2sq = 32'sd0;
+        assign wres_acc_mean = 32'sd0;
+    end endgenerate
+    // VDOT result: r = (sext64(dot) + carry_in) mod 2^64. Full 64-bit
+    // payload convention (spec §23.6a payload-format table) — NOT the
+    // legacy {32'h0, acc} zero-extend.
+    wire [63:0] wres_vdot_r = {{32{wres_vdot32[31]}}, wres_vdot32} + dec_eff_b_value;
+
+    // STORE_QUANT (L-PE hosted — no multipliers, hence ungated):
+    // out = clamp_dtype(RNE(x >>_arith s)), s = imm16[5:0].
+    wire signed [63:0] wres_sq_shifted = rne_shr64($signed(dec_input_payload), dec_eff_imm16[5:0]);
+    wire [63:0] wres_sq_int4 = clamp_sext64(wres_sq_shifted, -64'sd8,   64'sd7);
+    wire [63:0] wres_sq_int8 = clamp_sext64(wres_sq_shifted, -64'sd128, 64'sd127);
 
     // -------------------------------------------------------------------------
     // Stage-2 sequential dispatch
@@ -2570,8 +2769,9 @@ module PE_Core #(
                                 frag_idx             <= FRAG_EMIT_1;
                             end
                         end
-                        // v1.8.0a COMMIT 2 §23.9 — 0x70-0x7F WIDE-ACC block
-                        // STUBS. Decode-legal (opcode_supported + EH shape +
+                        // v1.8.0a/0b §23.9 — remaining WIDE-ACC block STUBS
+                        // (0x71/0x72/0x7C graduated to real datapaths in
+                        // v1.8.0b — see their standalone arms below). Decode-legal (opcode_supported + EH shape +
                         // mode-byte ROM all pass at EHDecode) but not yet
                         // implemented — capability absence, so this arm is
                         // exactly the shipped BCAST 0x24 body: lower_required,
@@ -2587,9 +2787,132 @@ module PE_Core #(
                         // datapaths land in v1.8.0b (int32 acc) / v1.8.0c
                         // (fp32 pipeline) / v1.8.0d (CVT/DEQUANT/STORE_QUANT)
                         // as pure monotonic stub-body replacements.
-                        8'h70, 8'h71, 8'h72, 8'h73, 8'h74, 8'h75, 8'h76,
-                        8'h77, 8'h78, 8'h79, 8'h7C, 8'h7D, 8'h7E: begin
+                        8'h70, 8'h73, 8'h74, 8'h75, 8'h76,
+                        8'h77, 8'h78, 8'h79, 8'h7D, 8'h7E: begin
                             lower_required <= 1'b1; output_valid <= 1'b0;
+                        end
+                        // v1.8.0b §23.9 — VDOT_ACC: stateless 4-fragment
+                        // wide dot. A=wide[127:0], B=wide[255:128]
+                        // (SIG_BMM_3 input pattern), carry-in =
+                        // dec_eff_b_value (IMM XOR OPREF, alu_binary).
+                        // Emits r=(sext64(dot)+c) mod 2^64 immediately —
+                        // full 64-bit payload, scalar tag rebuild. NO
+                        // accumulator state anywhere.
+                        8'h71: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                // MAC tree lives on MATMUL_UNITs only.
+                                lower_required <= 1'b1; output_valid <= 1'b0;
+                            end else if (!dec_input_payload_wide_valid) begin
+                                error_flag   <= 1'b1;
+                                output_valid <= 1'b0;
+                            end else if (!((frag_idx == FRAG_IDLE)
+                                        && !mul_valid_p1 && !mul_valid_p2
+                                        && (div_state == DIV_IDLE)
+                                        && !div_valid_p2 && !div_b_zero_p2)) begin
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end else begin
+                                output_payload <= wres_vdot_r;
+                                output_valid   <= 1'b1;
+                                output_tag <= {dec_wave_number, dec_thread_id,
+                                               8'h00, dec_eff_output_port_id,
+                                               dec_eff_precision, 8'h00};
+                            end
+                        end
+                        // v1.8.0b §23.9 — ACC_REDUCE: stateless reduction
+                        // over wide[127:0]. Sub-op = imm16[7:4] per the
+                        // generated acc_reduce_op_codes (absent imm16 =
+                        // 0 = SUM — the monotonic loosening default);
+                        // imm16[3:0] reserved-zero; unknown sub-op →
+                        // lower_required, never error_flag. MEAN =
+                        // RNE(sum/N) ties-to-even, full lane set only.
+                        8'h72: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                lower_required <= 1'b1; output_valid <= 1'b0;
+                            end else if (!dec_input_payload_wide_valid) begin
+                                error_flag   <= 1'b1;
+                                output_valid <= 1'b0;
+                            end else if (!((frag_idx == FRAG_IDLE)
+                                        && !mul_valid_p1 && !mul_valid_p2
+                                        && (div_state == DIV_IDLE)
+                                        && !div_valid_p2 && !div_b_zero_p2)) begin
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end else if (dec_eff_imm16[3:0] != 4'h0) begin
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end else begin
+                                case (dec_eff_imm16[7:4])
+                                    ACC_RED_OP_SUM: begin
+                                        output_payload <= {{32{wres_acc_sum[31]}}, wres_acc_sum};
+                                        output_valid   <= 1'b1;
+                                    end
+                                    ACC_RED_OP_MAX: begin
+                                        output_payload <= {{32{wres_acc_max[31]}}, wres_acc_max};
+                                        output_valid   <= 1'b1;
+                                    end
+                                    ACC_RED_OP_L2SQ: begin
+                                        output_payload <= {{32{wres_acc_l2sq[31]}}, wres_acc_l2sq};
+                                        output_valid   <= 1'b1;
+                                    end
+                                    ACC_RED_OP_MEAN: begin
+                                        output_payload <= {{32{wres_acc_mean[31]}}, wres_acc_mean};
+                                        output_valid   <= 1'b1;
+                                    end
+                                    default: begin
+                                        lower_required <= 1'b1;
+                                        output_valid   <= 1'b0;
+                                    end
+                                endcase
+                                if (dec_eff_imm16[7:4] == ACC_RED_OP_SUM
+                                 || dec_eff_imm16[7:4] == ACC_RED_OP_MAX
+                                 || dec_eff_imm16[7:4] == ACC_RED_OP_L2SQ
+                                 || dec_eff_imm16[7:4] == ACC_RED_OP_MEAN) begin
+                                    output_tag <= {dec_wave_number, dec_thread_id,
+                                                   8'h00, dec_eff_output_port_id,
+                                                   dec_eff_precision, 8'h00};
+                                end
+                            end
+                        end
+                        // v1.8.0b §23.9 — STORE_QUANT: scalar int-dest
+                        // requant, out = clamp_dtype(RNE(x >> s)),
+                        // s = imm16[5:0] (absent = 0 = pure clamp).
+                        // L-PE hosted (no multipliers, no MUL prologue),
+                        // single-fragment op (NO wide_valid guard — that
+                        // would error every legal dispatch). mem EH
+                        // (if present) is IGNORED in v1.8.0b — reserved
+                        // for the v1.8.0d memory-destination store form;
+                        // memory_req is NEVER asserted here. dtype
+                        // 0x2/0x3 (f16/bf16) lower_required until 0d.
+                        // output_payload assigned EXPLICITLY (the 0x05
+                        // stale-payload copy trap).
+                        8'h7C: begin
+                            if (!((frag_idx == FRAG_IDLE)
+                                        && !mul_valid_p1 && !mul_valid_p2
+                                        && (div_state == DIV_IDLE)
+                                        && !div_valid_p2 && !div_b_zero_p2)) begin
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end else if (dec_eff_imm16[15:6] != 10'h0) begin
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end else if (dec_eff_precision[3:0] == 4'h0) begin
+                                output_payload <= wres_sq_int4;
+                                output_valid   <= 1'b1;
+                                output_tag <= {dec_wave_number, dec_thread_id,
+                                               8'h00, dec_eff_output_port_id,
+                                               dec_eff_precision, 8'h00};
+                            end else if (dec_eff_precision[3:0] == 4'h1) begin
+                                output_payload <= wres_sq_int8;
+                                output_valid   <= 1'b1;
+                                output_tag <= {dec_wave_number, dec_thread_id,
+                                               8'h00, dec_eff_output_port_id,
+                                               dec_eff_precision, 8'h00};
+                            end else begin
+                                // f16/bf16 destination — v1.8.0d.
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end
                         end
                         default: begin
                             output_valid <= 1'b0;

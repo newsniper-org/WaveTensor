@@ -394,10 +394,19 @@ module Cluster #(
     // (ext_opcode itself is declared up in the fragment/cache buffer
     // section above, since cache_load_req also needs it.)
     // -------------------------------------------------------------------------
+    // v1.8.0b §23.9 — TWIN CLASSIFIER invariant: this list and PE_Core.v's
+    // dec_is_mul_op must stay in lockstep. 0x71 VDOT_ACC / 0x72 ACC_REDUCE
+    // route to the MATMUL_UNIT (MAC tree lives only there); 0x7C
+    // STORE_QUANT deliberately NOT listed — no multipliers, runs on L-PEs.
+    // SDK rule for OPREF kind-1 carry-in chaining: no intervening
+    // mul-class dispatch on the hosting MU between chained VDOTs (the
+    // NoC bank is positional, not tag-matched).
     wire is_mul_op = (ext_opcode == 8'h12)
                   || (ext_opcode == 8'h30)
                   || (ext_opcode == 8'h32)
-                  || (ext_opcode == 8'h43);
+                  || (ext_opcode == 8'h43)
+                  || (ext_opcode == 8'h71)
+                  || (ext_opcode == 8'h72);
     wire is_div_op = (ext_opcode == 8'h13)   // DIV
                   || (ext_opcode == 8'h1C)   // MOD
                   || (ext_opcode == 8'h1D);  // DIVMOD

@@ -1329,3 +1329,90 @@ async def test_frag_inval_midassembly_slot_reports_miss_not_cancel(dut):
 
     active_after = (int(dut.frag_active.value) >> found) & 1
     assert active_after == 1, "mid-assembly slot must be UNCHANGED after a miss"
+
+
+# =============================================================================
+# v1.8.0b §23.9 — VDOT_ACC (0x71) MU routing + fragment-order permutations
+# =============================================================================
+
+
+def _v180b_pack_int4(*vals):
+    x = 0
+    for i, v in enumerate(vals):
+        x |= (v & 0xF) << (i * 4)
+    return x
+
+
+async def _fire_vdot_wave(dut, a_128, b_128, carry_in, frag_order=(0, 1, 2, 3)):
+    """Drive one 4-fragment VDOT_ACC wave in the given fragment arrival
+    order. Instruction + EH chain (incl. PRECISION mode + IMM16 carry-in)
+    replicated on EVERY fragment per the §23.6a SDK contract."""
+    from test_isa_decoder import eh_precision as _ehp
+    wide = (a_128 & ((1 << 128) - 1)) | ((b_128 & ((1 << 128) - 1)) << 128)
+    payloads = [(wide >> (64 * i)) & ((1 << 64) - 1) for i in range(4)]
+    instr = encode_instr(0x71,
+                         eh_port(input_port_mask=0x01, output_port_id=0),
+                         _ehp(0x10, 0),          # mode: dtype=int4, acc=1, rnd=0
+                         eh_imm16(carry_in),
+                         flags=(1 << 2))          # F_PRECISION_OVR
+    tag = _tag(port_context_id=0)
+    for idx in frag_order:
+        dut.ext_instruction.value = instr
+        dut.ext_tag.value = tag
+        dut.ext_payload.value = payloads[idx]
+        dut.ext_payload_b.value = 0
+        dut.ext_payload_b_valid.value = 1
+        dut.ext_frag_hdr.value = (idx << 4) | 0x3
+        dut.ext_valid.value = 1
+        await RisingEdge(dut.clk)
+    dut.ext_valid.value = 0
+    dut.ext_frag_hdr.value = 0
+    for _ in range(30):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.ext_out_valid.value) == 1 or int(dut.any_error_flag.value) == 1:
+            break
+    return {'out': int(dut.ext_out_valid.value),
+            'err': int(dut.any_error_flag.value),
+            'payload': int(dut.ext_out_payload.value)}
+
+
+@cocotb.test()
+async def test_vdot_mu_routing_end_to_end(dut):
+    """v1.8.0b twin-classifier check: a 0x71 wave routes to the
+    MATMUL_UNIT via is_mul_op and EXECUTES (emits the dot) — kills the
+    single-list dead-end where only one classifier is updated and the op
+    lowers forever."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+    a_lanes = [(i % 15) - 7 for i in range(32)]
+    b_lanes = [((i * 3) % 15) - 7 for i in range(32)]
+    a = _v180b_pack_int4(*[v & 0xF for v in a_lanes])
+    b = _v180b_pack_int4(*[v & 0xF for v in b_lanes])
+    golden = (sum(x * y for x, y in zip(a_lanes, b_lanes)) + 5) % (1 << 64)
+    r = await _fire_vdot_wave(dut, a, b, carry_in=5)
+    assert r['err'] == 0 and r['out'] == 1, f"got {r}"
+    assert r['payload'] == golden, f"{r['payload']:016x} != {golden:016x}"
+
+
+@cocotb.test()
+async def test_vdot_fragment_order_permutations_with_carry_in(dut):
+    """v1.8.0b §23.4 order-free property at the fragment level: all 24
+    arrival permutations of one 4-fragment 0x71 wave, NONZERO carry-in
+    replicated on every fragment — bit-identical result for every
+    permutation (extends the shipped out-of-order-arrival precedent)."""
+    from itertools import permutations
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+    a_lanes = [(-8 if i % 6 == 0 else (i % 15) - 7) for i in range(32)]
+    b_lanes = [((i * 7) % 15) - 7 for i in range(32)]
+    a = _v180b_pack_int4(*[v & 0xF for v in a_lanes])
+    b = _v180b_pack_int4(*[v & 0xF for v in b_lanes])
+    golden = (sum(x * y for x, y in zip(a_lanes, b_lanes)) + 0x1234) % (1 << 64)
+    for order in permutations(range(4)):
+        r = await _fire_vdot_wave(dut, a, b, carry_in=0x1234, frag_order=order)
+        assert r['err'] == 0 and r['out'] == 1, f"order={order}: {r}"
+        assert r['payload'] == golden, \
+            f"order={order}: {r['payload']:016x} != {golden:016x}"
