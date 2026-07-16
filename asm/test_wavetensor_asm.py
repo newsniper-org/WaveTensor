@@ -23,6 +23,67 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 
 import wavetensor_asm as wta
+
+# v1.8.0a COMMIT 1 — frozen from pre-migration HEAD (042f08e), keep forever.
+_PREMIGRATION_LEGAL_SNAPSHOT = {
+    0x00: {'required': [], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x01: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x02: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x03: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x04: {'required': ['mem', 'port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x05: {'required': ['mem', 'port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x10: {'required': ['port'], 'forbidden': ['mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': False, 'require_imm16': False},
+    0x11: {'required': ['port'], 'forbidden': ['mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': False, 'require_imm16': False},
+    0x12: {'required': ['port'], 'forbidden': ['mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': False, 'require_imm16': False},
+    0x13: {'required': ['port'], 'forbidden': ['mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': False, 'require_imm16': False},
+    0x14: {'required': ['port'], 'forbidden': ['mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': False, 'require_imm16': False},
+    0x15: {'required': ['port'], 'forbidden': ['mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': False, 'require_imm16': False},
+    0x16: {'required': ['port'], 'forbidden': ['mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': False, 'require_imm16': False},
+    0x17: {'required': ['port'], 'forbidden': ['imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': True},
+    0x18: {'required': ['port'], 'forbidden': ['imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': True},
+    0x19: {'required': ['port'], 'forbidden': ['imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': True},
+    0x1A: {'required': ['port'], 'forbidden': ['imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': True},
+    0x1B: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x1C: {'required': ['port'], 'forbidden': ['mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': False, 'require_imm16': False},
+    0x1D: {'required': ['port'], 'forbidden': ['mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': False, 'require_imm16': False},
+    0x1E: {'required': ['port'], 'forbidden': ['imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': True},
+    0x1F: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x20: {'required': ['imm16', 'port'], 'forbidden': ['imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x21: {'required': ['imm16', 'port'], 'forbidden': ['imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x22: {'required': ['imm16', 'port'], 'forbidden': ['imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x23: {'required': ['imm16', 'port'], 'forbidden': ['imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x24: {'required': ['imm16', 'port'], 'forbidden': ['imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x25: {'required': ['imm16', 'port'], 'forbidden': ['imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x26: {'required': ['imm16', 'port'], 'forbidden': ['imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x30: {'required': ['opref', 'port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': True, 'require_imm16': False},
+    0x31: {'required': ['opref', 'port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': True, 'require_imm16': False},
+    0x32: {'required': ['opref', 'port', 'subscript'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem'], 'allow_imm_xor_opref': False, 'require_opb_flag': True, 'require_imm16': False},
+    0x40: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x41: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x42: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x43: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x44: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x50: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x51: {'required': ['port'], 'forbidden': ['mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': False, 'require_imm16': False},
+    0x52: {'required': ['port'], 'forbidden': ['mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': False, 'require_imm16': False},
+    0x53: {'required': ['port'], 'forbidden': ['mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': False, 'require_imm16': False},
+    0x54: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x55: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x56: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x60: {'required': ['port'], 'forbidden': ['mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': False, 'require_imm16': False},
+    0x61: {'required': ['port'], 'forbidden': ['mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': False, 'require_imm16': False},
+    0x62: {'required': ['port'], 'forbidden': ['mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': False, 'require_imm16': False},
+    0x63: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': True, 'require_imm16': False},
+    0x64: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': True, 'require_imm16': False},
+    0x65: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': True, 'require_imm16': False},
+    0x66: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x67: {'required': ['port'], 'forbidden': ['mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': False, 'require_imm16': False},
+    0x68: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x69: {'required': ['port'], 'forbidden': ['mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': False, 'require_imm16': False},
+    0x6A: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    0x6B: {'required': ['port'], 'forbidden': ['mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': False, 'require_imm16': False},
+    0x6C: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+}
 from wavetensor_asm import (
     AssemblerError, Instruction, ExtensionHeader, AliasDecl, DefaultDecl,
     parse, alias_pass, default_pass, macro_pass, legality_pass, encode_pass,
@@ -1169,3 +1230,97 @@ class TestWaveFragments(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestGeneratedIsaTables(unittest.TestCase):
+    """v1.8.0a §23.9 COMMIT 1 — single-source ISA codegen enforcement.
+
+    These tests ride the commit-mandated `python -m unittest -q
+    asm.test_wavetensor_asm` suite (CONTRIBUTING §), making them the
+    strongest enforcement channel this no-CI repo has.
+    """
+
+    @staticmethod
+    def _gen_module():
+        import importlib.util
+        repo = os.path.dirname(_HERE)
+        spec = importlib.util.spec_from_file_location(
+            "gen_isa_tables", os.path.join(repo, "scripts", "gen_isa_tables.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_generated_isa_tables_fresh(self):
+        """Regenerate all five artifacts in-memory and byte-compare against
+        the committed files — fails with a diff on drift in EITHER
+        direction (JSON edited without regen, or artifact hand-edited)."""
+        gen = self._gen_module()
+        rendered = gen.render_all()
+        for key, content in rendered.items():
+            path = gen.ARTIFACTS[key]
+            self.assertTrue(path.exists(), f"missing generated artifact {path}")
+            committed = path.read_text()
+            self.assertEqual(
+                committed, content,
+                f"STALE generated artifact {path} — edit isa/wt64v1_isa.json, "
+                f"run scripts/gen_isa_tables.py generate, commit both")
+
+    def test_generation_deterministic(self):
+        """Two consecutive renders must be byte-identical (pins the
+        sorted-iteration / fixed-formatting / no-timestamp contract the
+        freshness check depends on)."""
+        gen = self._gen_module()
+        self.assertEqual(gen.render_all(), gen.render_all())
+
+    def test_json_schema_strictness(self):
+        """The generator must REJECT malformed sources: unknown keys,
+        duplicate opcodes/mnemonics, fp_block cross-inconsistency, and
+        all-illegal fp ops — closing the silent-permissive-generator hole
+        (self-consistent wrong legality across all five artifacts)."""
+        import copy
+        import json as _json
+        gen = self._gen_module()
+        good = _json.loads(gen.SOURCE.read_text())
+
+        bad = copy.deepcopy(good)
+        bad["opcodes"][0]["legal_dtyes"] = []          # typo'd unknown key
+        with self.assertRaises(gen.SchemaError):
+            gen.validate(bad)
+
+        bad = copy.deepcopy(good)
+        bad["opcodes"][1]["code"] = bad["opcodes"][0]["code"]   # dup code
+        with self.assertRaises(gen.SchemaError):
+            gen.validate(bad)
+
+        bad = copy.deepcopy(good)
+        bad["opcodes"][1]["mnemonic"] = bad["opcodes"][0]["mnemonic"]
+        with self.assertRaises(gen.SchemaError):
+            gen.validate(bad)
+
+        bad = copy.deepcopy(good)
+        bad["fp_block"]["ops"].append(dict(
+            code=0x7A, mnemonic="GHOST", legal_dtypes=[4],
+            legal_acc=[1], legal_rnd=[0]))              # fp op w/o opcodes[] row
+        with self.assertRaises(gen.SchemaError):
+            gen.validate(bad)
+
+    def test_legacy_legality_snapshot_equivalence(self):
+        """Frozen literal snapshot of all 57 legacy ops' legality shapes,
+        transcribed ONCE from pre-migration HEAD (042f08e) — the migration
+        gate. Kept forever as the third independent leg (hand-pinned
+        literal <- generated table -> JSON source). Compares exact set
+        CONTENTS and key/value TYPES."""
+        self.assertEqual(set(wta._LEGAL), set(_PREMIGRATION_LEGAL_SNAPSHOT))
+        for code, frozen in _PREMIGRATION_LEGAL_SNAPSHOT.items():
+            live = wta._LEGAL[code]
+            self.assertIsInstance(code, int)
+            self.assertIsInstance(live["required"], set)
+            self.assertIsInstance(live["forbidden"], set)
+            self.assertEqual(sorted(live["required"]), frozen["required"],
+                             f"required drift at 0x{code:02X}")
+            self.assertEqual(sorted(live["forbidden"]), frozen["forbidden"],
+                             f"forbidden drift at 0x{code:02X}")
+            for k in ("allow_imm_xor_opref", "require_opb_flag", "require_imm16"):
+                self.assertEqual(live[k], frozen[k], f"{k} drift at 0x{code:02X}")
+
+

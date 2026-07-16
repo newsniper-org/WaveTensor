@@ -111,126 +111,14 @@
 
 ## 3. Opcode 표 (WT64v1 base)
 
-> **대체 예고 (v1.8.0a COMMIT 0, 2026-07-16)**: 이 §3 의 hand-written opcode/legality 표들은 v1.8.0a COMMIT 1 에서 `isa/wt64v1_isa.json` 단일 소스로부터 생성되는 `.claude-memos/generated/isa_tables_frag.md` 로 **대체**된다 (spec 에는 include-by-reference 한 줄만 남김). 그때까지 이 표를 hand-edit 하지 말 것 — §22.16.0 desync 클래스의 잔존 doc-drift 표면이며, JSON 이관 시 emitter-faithful 하게 흡수된다. §23.6a/§23.9 참조.
-
-### 3.1 Control / memory
-
-| Op | Mnemonic | 의미 | 인자 |
-|---|---|---|---|
-| 0x00 | NOP | no-op | — |
-| 0x01 | WADV | Wave-advance (wave_number+=1) | port |
-| 0x02 | STEER | Pass-through with new tag | port |
-| 0x03 | MERGE | Merge alias of STEER | port |
-| 0x04 | LD | Memory load via HIU | port + mem |
-| 0x05 | ST | Memory store via HIU | port + mem |
-
-### 3.2 Arithmetic / bitwise (binary)
-
-`port + (imm XOR opref)` legality.
-
-| Op | Mnemonic | Action |
-|---|---|---|
-| 0x10 | ADD | a + b |
-| 0x11 | SUB | a − b |
-| 0x12 | MUL | a × b (multi-cycle, M-UNIT) |
-| 0x13 | DIV | a / b (bit-serial, DIV-UNIT, 64 cycles) |
-| 0x14 | AND | a & b |
-| 0x15 | OR  | a \| b |
-| 0x16 | XOR | a ^ b |
-| 0x1C | REM | a % b (bit-serial, DIV-UNIT) |
-| 0x1D | DIVREM | {a/b, a%b} 32-bit halves (bit-serial, 32 cycles) |
-| 0x51 | NAND | ~(a & b) |
-| 0x52 | NOR  | ~(a \| b) |
-| 0x53 | XNOR | ~(a ^ b) |
-
-### 3.3 Shift / rotate (require IMM16)
-
-`port + imm16` legality, `forbid opref`.
-
-| Op | Mnemonic | Action |
-|---|---|---|
-| 0x17 | SHL | a << imm6 (logical) |
-| 0x18 | SHR | a >> imm6 (logical) |
-| 0x19 | SAR | $signed(a) >>> imm6 (arithmetic) |
-| 0x1A | ROR | rotate_right_64(a, imm6) |
-| 0x1E | ROL | rotate_left_64(a, imm6) |
-
-### 3.4 Unary scalar
-
-`port` only.
-
-| Op | Mnemonic | Action |
-|---|---|---|
-| 0x1B | NEG | ~a + 1 (two's complement) |
-| 0x1F | BITREV | bit-reverse 64-bit |
-| 0x50 | NOT | ~a (1's complement) |
-| 0x54 | POPCNT | hamming weight (0..64) |
-| 0x55 | CLZ | leading zero count (0..64) |
-| 0x56 | CTZ | trailing zero count (0..64) |
-
-### 3.5 Shape ops
-
-`port + imm16` legality.
-
-| Op | Mnemonic | Action |
-|---|---|---|
-| 0x20 | SQZ | squeeze (tag-only) |
-| 0x21 | USQZ | unsqueeze (tag-only) |
-| 0x22 | VIEW | shape view (tag-only) |
-| 0x23 | PERM | permute (2×2 transpose는 PE-local; 그 외 lower_required) |
-| 0x24 | BCAST | broadcast (모두 lower_required) |
-| 0x25 | RED | reduce_axis (axis=0, dim=0x03 + sum/max/min만 PE-local) |
-
-### 3.6 Tensor binary
-
-`port + opref` (require), `F_HAS_OPB=1`.
-
-| Op | Mnemonic | Action |
-|---|---|---|
-| 0x30 | MATMUL | 2×2 × 2×2 matmul (M-UNIT, MATMUL_UNIT 패턴) |
-| 0x31 | TADD | element-wise tensor add |
-
-### 3.7 EINSUM
-
-`port + subscript + opref` (require), `F_HAS_OPB=1`. HW-direct 10 패턴:
-
-| Pattern | Mnemonic 형 |
-|---|---|
-| `i->` (sum) | SIG_SUM_I |
-| `ii->` (trace) | SIG_TRACE_II |
-| `ij->ji` (transpose) | SIG_TRANSPOSE |
-| `ij,jk->ik` (matmul) | SIG_MATMUL |
-| `ij,ij->ij` (hadamard) | SIG_HADAMARD |
-| `i,j->ij` (outer) | SIG_OUTER |
-| `ijk->ij` (partial sum) | SIG_PARTIAL_IJK |
-| `ii->i` (diagonal) | SIG_DIAGONAL |
-| `i,i->` (dot) | SIG_DOT |
-| `ij,j->i` (mat-vec) | SIG_MAT_VEC |
-
-지원 외 패턴 → `lower_required`. opcode `0x32`, mnemonic `EINSUM`.
-
-### 3.8 Unary FP
-
-`port` only.
-
-| Op | Mnemonic | Action |
-|---|---|---|
-| 0x40 | FLOOR | floor |
-| 0x41 | ROUND | round-to-nearest |
-| 0x42 | CEIL | ceil |
-| 0x43 | ENORM | euclid_norm (re² + im²) |
-| 0x44 | CONJ | complex conjugate |
-
-### 3.9 Reserved
-
-| Range | 상태 |
-|---|---|
-| `0x06..0x0F` | 미할당 (장래 control/memory 확장) |
-| `0x26..0x2F` | 미할당 (binary scalar MIN/MAX 후보 — 별도 논의) |
-| `0x33..0x3F` | 미할당 (텐서 확장) |
-| `0x45..0x4F` | 미할당 (FP unary 확장) |
-| `0x57..0x5F` | 미할당 (bitwise 확장) |
-| `0x60..0xFF` | **WT64v1-C 확장 영역** (crypto / PEXT-PDEP) |
+> **v1.8.0a COMMIT 1 (2026-07-16)**: 이 섹션의 hand-written opcode/legality
+> 표들은 단일 기계가독 소스 `isa/wt64v1_isa.json` 으로 이관 완료. 표 전문은
+> 생성물 **`.claude-memos/generated/isa_tables_frag.md`** 참조 (asm/RTL 양쪽
+> legality shape + 설명 포함, `scripts/gen_isa_tables.py` 가 생성 —
+> hand-edit 금지, freshness 는 `make lint` 와 unittest 스위트가 강제).
+> ISA 를 바꾸려면 JSON 을 편집하고 재생성해서 함께 commit 한다 (§23.9).
+> 알려진 asm-vs-RTL 비대칭 2건은 emitter-faithful 하게 보존되어 JSON _doc
+> 에 문서화됨 — 통일은 명시적 v1.8.0b 결정 사항.
 
 ## 4. PE 내부 hetero 구성 (참조 구현)
 

@@ -4464,3 +4464,158 @@ async def test_bmm3_then_mul_launch_gate(dut):
     assert int(dut.u_core.mul_valid_p1.value) == 0, \
         f"MUL launch gate failed: mul_valid_p1={int(dut.u_core.mul_valid_p1.value)}"
     dut.token_valid.value = 0
+
+
+# =============================================================================
+# v1.8.0a §23.9 COMMIT 1 — pre-migration RTL truth table (THE CIRCULARITY
+# BREAKER for the single-source ISA migration)
+#
+# The EH-subset sweep below was run ONCE on pre-migration HEAD (the commit
+# before EHDecode.v's hand-written legality moved into generated includes)
+# and its full outcome table — (error_flag_ever, lower_required_ever,
+# output_valid_ever) per point — was committed as literal data at
+# isa/truth_table_premigration.json. Post-migration RTL must reproduce it
+# bit-for-bit. Because the oracle is RTL-DERIVED (not human-derived, not
+# generator-derived), a JSON transcription error that is self-consistent
+# between the generator and the golden model still fails here.
+#
+# Domain (fixed, generator-independent — never derived from the JSON
+# source): opcodes = the 57 supported (0x00-0x6C era) + 12 unsupported
+# probes BELOW 0x70; data-EH subsets = all subsets of the 6 data-EH kinds
+# with |S| <= 3 (chain capacity: MAX_EH=4 slots, port occupies one), each
+# with the standard PORT EH present, PLUS one bare no-port point; flags in
+# {0x0, 0x8 (F_HAS_OPB)}. 0x70-0x7F is EXCLUDED deliberately: that block is
+# scheduled to change in v1.8.0a COMMIT 2 (decode skeleton), and freezing
+# it here would make the intended change look like a regression; its
+# staying-unassigned encodings are pinned by
+# test_fp_block_unassigned_opcodes_still_error instead.
+#
+# Capture mode: WT_CAPTURE_TRUTH_TABLE=1 rewrites the committed file from
+# the live RTL instead of comparing (used exactly once, on pre-migration
+# HEAD; any later capture must be a reviewed, deliberate act).
+# =============================================================================
+
+_TT_SUPPORTED_OPCODES = (
+    list(range(0x00, 0x06)) + list(range(0x10, 0x20)) +
+    list(range(0x20, 0x27)) + list(range(0x30, 0x33)) +
+    list(range(0x40, 0x45)) + list(range(0x50, 0x57)) +
+    list(range(0x60, 0x6D))
+)
+_TT_UNSUPPORTED_PROBES = [0x06, 0x0F, 0x27, 0x2F, 0x33, 0x45, 0x4F,
+                          0x57, 0x5F, 0x6D, 0x6E, 0x6F]
+_TT_DATA_EH_KINDS = ['imm16', 'imm32', 'imm64', 'mem', 'subscript', 'opref']
+_TT_FLAGS = [0x0, 0x8]
+_TT_WINDOW = 100
+
+_TT_PATH = os.path.join(_REPO, 'isa', 'truth_table_premigration.json')
+
+
+def _tt_eh_builders():
+    return {
+        'imm16':     lambda: eh_imm16(1),
+        'imm32':     lambda: eh_imm32(1),
+        'imm64':     lambda: eh_imm64(1),
+        'mem':       lambda: eh_mem(0),
+        'subscript': lambda: eh_subscript(0, 0, 0),
+        'opref':     lambda: eh_opref(),
+    }
+
+
+def _tt_domain():
+    """Deterministic point enumeration: (opcode, subset-tuple, flags,
+    port_present). Yields in fixed sorted order."""
+    from itertools import combinations
+    subsets = [()]
+    for k in (1, 2, 3):
+        subsets.extend(combinations(_TT_DATA_EH_KINDS, k))
+    for op in sorted(_TT_SUPPORTED_OPCODES + _TT_UNSUPPORTED_PROBES):
+        for fl in _TT_FLAGS:
+            for sub in subsets:
+                yield (op, sub, fl, True)
+            yield (op, (), fl, False)   # bare no-port point
+
+
+async def _tt_run_point(dut, op, subset, flags, port_present):
+    builders = _tt_eh_builders()
+    ehs = ([_STD_PORT()] if port_present else []) + \
+          [builders[k]() for k in subset]
+    instr = encode_instr(op, *ehs, flags=flags)
+    a_128 = _pack_int4_128(*[0x1] * 32)
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 1
+    dut.input_payload_b.value = 1
+    dut.input_payload_b_valid.value = 1
+    dut.input_payload_wide.value = a_128
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    err = lwr = out = 0
+    for i in range(_TT_WINDOW):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        err |= int(dut.error_flag.value)
+        lwr |= int(dut.lower_required.value)
+        out |= int(dut.output_valid.value)
+        # Early exit once an outcome landed AND the PE is drained
+        # (pe_ready covers frag drain + MUL/DIV pipelines) — outcome
+        # bits are monotonic, so early exit never changes the result,
+        # only the wall time.
+        if i >= 8 and (err or lwr or out) and int(dut.pe_ready.value) == 1:
+            break
+    # Drain to idle so the next point starts clean (DIV takes ~66 cycles).
+    for _ in range(_TT_WINDOW):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.pe_ready.value) == 1 and int(dut.output_valid.value) == 0:
+            break
+    return (err, lwr, out)
+
+
+def _tt_key(op, subset, flags, port_present):
+    return f"0x{op:02X}|{','.join(subset)}|0x{flags:X}|{'P' if port_present else '-'}"
+
+
+@cocotb.test()
+async def test_pre_migration_rtl_truth_table_differential(dut):
+    """v1.8.0a COMMIT 1 zero-behavior-change gate: the full EH-subset sweep
+    outcome table must be bit-identical to the frozen pre-migration
+    capture (isa/truth_table_premigration.json). Set
+    WT_CAPTURE_TRUTH_TABLE=1 to (re)write the capture instead — a
+    deliberate, reviewed act, never part of a normal run."""
+    import json as _json
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    capture_mode = os.environ.get('WT_CAPTURE_TRUTH_TABLE', '') == '1'
+    results = {}
+    for (op, sub, fl, pp) in _tt_domain():
+        outcome = await _tt_run_point(dut, op, sub, fl, pp)
+        results[_tt_key(op, sub, fl, pp)] = list(outcome)
+
+    if capture_mode:
+        os.makedirs(os.path.dirname(_TT_PATH), exist_ok=True)
+        with open(_TT_PATH, 'w') as f:
+            _json.dump({'domain_version': 1, 'points': results}, f,
+                       indent=0, sort_keys=True)
+            f.write('\n')
+        return
+
+    assert os.path.exists(_TT_PATH), (
+        f"frozen truth table missing at {_TT_PATH} — run once with "
+        f"WT_CAPTURE_TRUTH_TABLE=1 on pre-migration HEAD")
+    with open(_TT_PATH) as f:
+        frozen = _json.load(f)
+    assert frozen['domain_version'] == 1
+    mismatches = []
+    for key, expected in frozen['points'].items():
+        got = results.get(key)
+        if got != expected:
+            mismatches.append(f"{key}: frozen={expected} got={got}")
+    extra = set(results) - set(frozen['points'])
+    assert not extra, f"domain drift — new points not in frozen table: {sorted(extra)[:5]}"
+    assert not mismatches, (
+        "RTL behavior diverged from pre-migration capture "
+        f"({len(mismatches)} points):\n" + "\n".join(mismatches[:20]))

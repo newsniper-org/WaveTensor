@@ -128,16 +128,11 @@ module EHDecode #(
     // preserve backward compat when MAX_EH=4 ($clog2(32)=5, $clog2(5)=3).
     localparam OFF_W  = $clog2(INSTR_WORDS);
     localparam IDX_W  = $clog2(MAX_EH + 1);
-    localparam [3:0] EH_END        = 4'h0;
-    localparam [3:0] EH_PORT       = 4'h1;
-    localparam [3:0] EH_IMM16      = 4'h2;
-    localparam [3:0] EH_IMM32      = 4'h3;
-    localparam [3:0] EH_IMM64      = 4'h4;
-    localparam [3:0] EH_MEM        = 4'h5;
-    localparam [3:0] EH_SUBSCRIPT  = 4'h6;
-    localparam [3:0] EH_OPREF      = 4'h7;
-    localparam [3:0] EH_PRECISION  = 4'h8;
-    localparam [3:0] EH_NOP_PAD    = 4'hF;
+    // v1.8.0a §23.9 — EH type codes come from the single machine-readable
+    // ISA source (isa/wt64v1_isa.json) via scripts/gen_isa_tables.py.
+    // This was the THIRD hand copy (after asm.py and the spec table) —
+    // exactly the drift surface the single-source migration kills.
+    `include "generated/isa_eh_codes.vh"
 
     // -------------------------------------------------------------------------
     // Latch the inputs once in_valid pulses so the chain walk reads stable
@@ -488,164 +483,21 @@ module EHDecode #(
         forbid_imm_any   = 1'b0;
         forbid_opref     = 1'b0;
         case (cb_opcode)
-            8'h00: begin
-                forbid_subscript = 1'b1; forbid_mem = 1'b1;
-                forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
-            end
-            8'h01, 8'h02, 8'h03: begin
-                req_port         = 1'b1;
-                forbid_subscript = 1'b1; forbid_mem = 1'b1;
-                forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
-            end
-            8'h04, 8'h05: begin
-                req_port      = 1'b1; req_mem = 1'b1;
-                forbid_subscript = 1'b1;
-                forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
-            end
-            // ALU binary (IMM XOR OPREF): ADD/SUB/MUL/DIV/MOD/DIVMOD +
-            // bitwise binary (AND/OR/XOR/NAND/NOR/XNOR).
-            8'h10, 8'h11, 8'h12, 8'h13, 8'h14, 8'h15, 8'h16,
-            8'h1C, 8'h1D,
-            8'h51, 8'h52, 8'h53: begin
-                req_port         = 1'b1;
-                forbid_subscript = 1'b1; forbid_mem = 1'b1;
-            end
-            // Shift / rotate (require IMM16 for the shift amount).
-            8'h17, 8'h18, 8'h19, 8'h1A, 8'h1E: begin
-                req_port = 1'b1; req_imm16 = 1'b1;
-                forbid_subscript = 1'b1; forbid_mem = 1'b1;
-                forbid_opref     = 1'b1;
-            end
-            // Pure unary (no immediate, no operand-ref): NEG / BITREV /
-            // NOT / POPCOUNT / CLZ / CTZ.
-            8'h1B, 8'h1F,
-            8'h50, 8'h54, 8'h55, 8'h56: begin
-                req_port         = 1'b1;
-                forbid_subscript = 1'b1; forbid_mem = 1'b1;
-                forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
-            end
-            8'h20, 8'h21, 8'h22, 8'h23, 8'h24, 8'h25, 8'h26: begin
-                // 0x26 = SPLAT (v1.1 amendment). Same legality shape as
-                // other shape ops: PORT required, IMM16 required (holds
-                // the scalar in [7:0]), no subscript / mem / opref.
-                req_port = 1'b1; req_imm16 = 1'b1;
-                forbid_subscript = 1'b1; forbid_mem = 1'b1;
-                forbid_opref     = 1'b1;
-            end
-            8'h30, 8'h31: begin
-                req_port = 1'b1; req_opref = 1'b1;
-                forbid_subscript = 1'b1; forbid_mem = 1'b1;
-                forbid_imm_any   = 1'b1;
-            end
-            8'h32: begin
-                req_port = 1'b1; req_subscript = 1'b1; req_opref = 1'b1;
-                forbid_mem = 1'b1; forbid_imm_any = 1'b1;
-            end
-            8'h40, 8'h41, 8'h42, 8'h43, 8'h44: begin
-                req_port         = 1'b1;
-                forbid_subscript = 1'b1; forbid_mem = 1'b1;
-                forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
-            end
-            // v1.6.1b §22 — SIMD broadcast wide-consumer ops (RISC-ish norm).
-            // 0x60/0x61/0x62: SIMD_ADD/SUB/MUL_WIDE_SCALAR — A via wide,
-            //   B_scalar via IMM XOR OPREF (like ALU binary).
-            // 0x67: SIMD_MUL_WIDE_Q4_4_SCALAR (v1.6.5a) — B via 8-bit
-            //   Q4.4 slice of dec_eff_b_value[7:0]; same legality shape.
-            // 0x69: SIMD_MUL_WIDE_Q8_8_SCALAR (v1.6.7) — B via 16-bit
-            //   Q8.8 slice of dec_eff_b_value[15:0]; same legality shape.
-            8'h60, 8'h61, 8'h62, 8'h67, 8'h69: begin
-                req_port         = 1'b1;
-                forbid_subscript = 1'b1; forbid_mem = 1'b1;
-            end
-            // 0x63/0x64/0x65: SIMD_ADD/SUB/MUL_WIDE_VEC — A via wide,
-            //   V (4D) via input_payload_b (require F_HAS_OPB). V's
-            //   compile-time origin (IMM64 literal or OPREF bank route) is
-            //   carried as an EH for the SDK's static schedule/encoding —
-            //   dec_input_payload_b itself is a pure input_payload_b
-            //   pass-through (EHDecode.v does not resolve IMM64/OPREF onto
-            //   it), so the EH must be LEGAL here even though the RTL data
-            //   path ignores its content. v1.6.5c §22.16 — fixes a landed
-            //   bug where this case unconditionally forbade imm/opref,
-            //   which made every LAYERNORM/RMSNORM dispatch on these
-            //   opcodes (all of which carry opref or imm64) decode-error.
-            8'h63, 8'h64, 8'h65: begin
-                req_port         = 1'b1;
-                forbid_subscript = 1'b1; forbid_mem = 1'b1;
-            end
-            // 0x66 SCALAR_RSQRT_APPROX — single-value primitive on payload_a,
-            //   no B (no IMM/OPREF), single-cycle, no wide needed.
-            8'h66: begin
-                req_port         = 1'b1;
-                forbid_subscript = 1'b1; forbid_mem = 1'b1;
-                forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
-            end
-            // v1.6.5c §22.16 — CACHE_LOAD_WIDE: pure Cluster-buffer CAM
-            // passthrough, no B operand at all (the cache lookup key is
-            // the instruction's own tag bus, not an EH-carried operand) —
-            // same no-B shape as 0x66. A PRECISION EH (dim_ovr flag) IS
-            // expected on this opcode for tag-stability (see §22.16), but
-            // PRECISION is a separate EH kind unaffected by forbid_imm_any/
-            // forbid_opref, so no accommodation is needed here.
-            8'h68: begin
-                req_port         = 1'b1;
-                forbid_subscript = 1'b1; forbid_mem = 1'b1;
-                forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
-            end
-            // v1.6.5d §22.17 — FRAG_INVAL: explicit Cluster-buffer slot
-            // invalidate-by-tag (SDK reclaims a completed cached
-            // CACHE_LOAD_WIDE slot after an aborted macro). Same no-B
-            // shape as 0x66/0x68 — the invalidate key is the instruction's
-            // own tag bus, not an EH-carried operand.
-            8'h6A: begin
-                req_port         = 1'b1;
-                forbid_subscript = 1'b1; forbid_mem = 1'b1;
-                forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
-            end
-            // v1.7 §22.18 — SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN: same
-            // ALU-binary shape as 0x60/61/62/67/69 (B via IMM16 XOR OPREF,
-            // dec_eff_b_value[7:0] as signed Q4.4) — joins is_alu_binary.
-            8'h6B: begin
-                req_port         = 1'b1;
-                forbid_subscript = 1'b1; forbid_mem = 1'b1;
-            end
-            // v1.7 §22.18 — SIMD_REQUANTIZE_Q4_4_TO_INT4: no B operand at
-            // all (input is the 256-bit wide bus only) — same no-B shape
-            // as 0x66/0x68/0x6A, NOT the ALU-binary shape (corrected from
-            // an earlier draft that wrongly proposed IMM-XOR-OPREF here).
-            8'h6C: begin
-                req_port         = 1'b1;
-                forbid_subscript = 1'b1; forbid_mem = 1'b1;
-                forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
-            end
-            default: begin
-                forbid_subscript = 1'b1; forbid_mem = 1'b1;
-                forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
-            end
+            // v1.8.0a §23.9 — legality case body is GENERATED from
+            // isa/wt64v1_isa.json (scripts/gen_isa_tables.py). Historical
+            // per-group commentary (v1.6.5c 0x63/64/65 bugfix rationale,
+            // CACHE_LOAD_WIDE precision-EH note, ...) now lives in the
+            // JSON desc/notes fields and is emitted into the include.
+            `include "generated/isa_ehshape_case_body.vh"
         endcase
     end
 
     wire any_imm = acc_any_imm16 | acc_any_imm32 | acc_any_imm64;
 
-    wire is_alu_binary = (cb_opcode == 8'h10) || (cb_opcode == 8'h11) ||
-                         (cb_opcode == 8'h12) || (cb_opcode == 8'h13) ||
-                         (cb_opcode == 8'h14) || (cb_opcode == 8'h15) ||
-                         (cb_opcode == 8'h16) ||
-                         (cb_opcode == 8'h1C) || (cb_opcode == 8'h1D) ||
-                         (cb_opcode == 8'h51) || (cb_opcode == 8'h52) ||
-                         (cb_opcode == 8'h53) ||
-                         // v1.6.1b §22 — SCALAR broadcast wide-consumer ops
-                         // share ALU-binary IMM XOR OPREF semantics (B via
-                         // dec_eff_b_value); XOR check prevents nondeterministic
-                         // B source silently.
-                         (cb_opcode == 8'h60) || (cb_opcode == 8'h61) ||
-                         (cb_opcode == 8'h62) ||
-                         // v1.6.5a §22.14 — Q4.4 wide-scalar mul same shape.
-                         (cb_opcode == 8'h67) ||
-                         // v1.6.7 §22.14c — Q8.8 wide-scalar mul same shape.
-                         (cb_opcode == 8'h69) ||
-                         // v1.7 §22.18 — WIDEN same shape (0x6C REQUANTIZE
-                         // has no B operand, deliberately excluded here).
-                         (cb_opcode == 8'h6B);
+    // v1.8.0a §23.9 — is_alu_binary + opcode_supported are GENERATED
+    // (single-source). See isa/wt64v1_isa.json.
+    `include "generated/isa_opcode_wires.vh"
+
     wire alu_binary_xor_err = is_alu_binary && (any_imm == acc_any_opref);
 
     wire missing_eh   = (req_port      && !acc_any_port)
@@ -657,37 +509,6 @@ module EHDecode #(
                       | (forbid_mem       && acc_any_mem)
                       | (forbid_imm_any   && any_imm)
                       | (forbid_opref     && acc_any_opref);
-
-    wire opcode_supported =
-         (cb_opcode == 8'h00) || (cb_opcode == 8'h01) || (cb_opcode == 8'h02) ||
-         (cb_opcode == 8'h03) || (cb_opcode == 8'h04) || (cb_opcode == 8'h05) ||
-         (cb_opcode == 8'h10) || (cb_opcode == 8'h11) || (cb_opcode == 8'h12) ||
-         (cb_opcode == 8'h13) || (cb_opcode == 8'h14) || (cb_opcode == 8'h15) ||
-         (cb_opcode == 8'h16) || (cb_opcode == 8'h17) || (cb_opcode == 8'h18) ||
-         (cb_opcode == 8'h19) || (cb_opcode == 8'h1A) || (cb_opcode == 8'h1B) ||
-         (cb_opcode == 8'h1C) || (cb_opcode == 8'h1D) || (cb_opcode == 8'h1E) ||
-         (cb_opcode == 8'h1F) || (cb_opcode == 8'h20) || (cb_opcode == 8'h21) ||
-         (cb_opcode == 8'h22) || (cb_opcode == 8'h23) || (cb_opcode == 8'h24) ||
-         (cb_opcode == 8'h25) || (cb_opcode == 8'h26) || (cb_opcode == 8'h30) || (cb_opcode == 8'h31) ||
-         (cb_opcode == 8'h32) || (cb_opcode == 8'h40) || (cb_opcode == 8'h41) ||
-         (cb_opcode == 8'h42) || (cb_opcode == 8'h43) || (cb_opcode == 8'h44) ||
-         (cb_opcode == 8'h50) || (cb_opcode == 8'h51) || (cb_opcode == 8'h52) ||
-         (cb_opcode == 8'h53) || (cb_opcode == 8'h54) || (cb_opcode == 8'h55) ||
-         (cb_opcode == 8'h56) ||
-         // v1.6.1b §22 — SIMD broadcast wide-consumer ops (RISC-ish norm)
-         (cb_opcode == 8'h60) || (cb_opcode == 8'h61) || (cb_opcode == 8'h62) ||
-         (cb_opcode == 8'h63) || (cb_opcode == 8'h64) || (cb_opcode == 8'h65) ||
-         (cb_opcode == 8'h66) ||
-         // v1.6.5a §22.14 — SIMD_MUL_WIDE_Q4_4_SCALAR
-         (cb_opcode == 8'h67) ||
-         // v1.6.5c §22.16 — CACHE_LOAD_WIDE
-         (cb_opcode == 8'h68) ||
-         // v1.6.7 §22.14c — SIMD_MUL_WIDE_Q8_8_SCALAR
-         (cb_opcode == 8'h69) ||
-         // v1.6.5d §22.17 — FRAG_INVAL
-         (cb_opcode == 8'h6A) ||
-         // v1.7 §22.18 — WIDEN + REQUANTIZE
-         (cb_opcode == 8'h6B) || (cb_opcode == 8'h6C);
 
     wire bh_len_mismatch = (cb_bh_len != {{(8-OFF_W){1'b0}}, stg_off});
     wire reserved_nonzero = (cb_reserved != 8'h00);

@@ -68,89 +68,18 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 # Section 1 — Mnemonics, EH catalogue, flag bits, encoding constants
 # =============================================================================
 
-MNEMONIC_TO_OPCODE: Dict[str, int] = {
-    'NOP':    0x00,  'WADV':   0x01,  'STEER':  0x02,  'MERGE':  0x03,
-    'LD':     0x04,  'ST':     0x05,
-    'ADD':    0x10,  'SUB':    0x11,  'MUL':    0x12,  'DIV':    0x13,
-    'AND':    0x14,  'OR':     0x15,  'XOR':    0x16,
-    'SHL':    0x17,  'SHR':    0x18,  'SAR':    0x19,  'ROR':    0x1A,
-    'NEG':    0x1B,  'REM':    0x1C,  'DIVREM': 0x1D,  'ROL':    0x1E,
-    'BITREV': 0x1F,
-    'NOT':    0x50,  'NAND':   0x51,  'NOR':    0x52,  'XNOR':   0x53,
-    'POPCNT': 0x54,  'CLZ':    0x55,  'CTZ':    0x56,
-    'SQZ':    0x20,  'USQZ':   0x21,  'VIEW':   0x22,  'PERM':   0x23,
-    'BCAST':  0x24,  'RED':    0x25,  'SPLAT':  0x26,  # v1.1 amendment
-    'MATMUL': 0x30,  'TADD':   0x31,  'EINSUM': 0x32,
-    'FLOOR':  0x40,  'ROUND':  0x41,  'CEIL':   0x42,  'ENORM':  0x43,
-    'CONJ':   0x44,
-    # v1.6.1b §22 — SIMD broadcast wide-consumer opcodes (RISC-ish norm).
-    'SIMD_ADD_WIDE_SCALAR': 0x60, 'SIMD_SUB_WIDE_SCALAR': 0x61,
-    'SIMD_MUL_WIDE_SCALAR': 0x62,
-    'SIMD_ADD_WIDE_VEC':    0x63, 'SIMD_SUB_WIDE_VEC':    0x64,
-    'SIMD_MUL_WIDE_VEC':    0x65,
-    # v1.6.1b §22 — Scalar transcendental (rsqrt approximation).
-    'SCALAR_RSQRT':         0x66,
-    # v1.6.5a §22.14 — Q4.4 wide-scalar mul (precision recovery for norm scale).
-    'SIMD_MUL_WIDE_Q4_4_SCALAR': 0x67,
-    # v1.6.5c §22.16 — persistent Cluster-buffer cache reload (replaces
-    # LAYERNORM's xc re-emission with a direct on-Cluster reload).
-    'CACHE_LOAD_WIDE': 0x68,
-    # v1.6.7 §22.14c — Q8.8 wide-scalar mul (further precision recovery
-    # beyond 0x67's Q4.4; pushes B-side quantization below the rsqrt LUT's
-    # own ~6.25% relative-error floor).
-    'SIMD_MUL_WIDE_Q8_8_SCALAR': 0x69,
-    # v1.6.5d §22.17 — explicit Cluster-buffer slot invalidate-by-tag (SDK
-    # explicit eviction of a cached CACHE_LOAD_WIDE slot after an aborted
-    # macro). Wiring this into an actual abort/exception path is an SDK-
-    # runtime concern, deferred out of this ISA-level landing.
-    'FRAG_INVAL': 0x6A,
-    # v1.7 §22.18 — WIDEN: A (int4) x B (signed Q4.4) -> signed 8-bit Q4.4,
-    # 32 lanes = 256 bits / 4 fragments. REQUANTIZE: narrows WIDEN's
-    # 256-bit Q4.4-int8 output back to 128-bit int4 (round-half-up +
-    # saturate) for existing int4-only consumers.
-    'SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN': 0x6B,
-    'SIMD_REQUANTIZE_Q4_4_TO_INT4': 0x6C,
-}
-OPCODE_TO_MNEMONIC: Dict[int, str] = {v: k for k, v in MNEMONIC_TO_OPCODE.items()}
-
-# HL-only mnemonics (macro expansions take care of these)
-# v1.6.4 §22.11 — RISC-ish normalization macros (SDK compositional decomp).
-HL_ONLY_MNEMONICS = {'RESHAPE', 'BATCHNORM_INFER', 'RMSNORM', 'LAYERNORM'}
-
-# Flag mnemonic → bit position in the base header's 4-bit `flags` field
-FLAG_BITS: Dict[str, int] = {
-    'opb':       3,  # F_HAS_OPB           — second operand on input_payload_b
-    'prec':      2,  # F_PRECISION_OVR    — PRECISION EH overrides precision_mode
-    'mem_hint':  1,  # F_MEM               — opcode performs memory access
-    'dim_ovr':   0,  # F_DIM_OVR          — PRECISION EH overrides dim_sizes
-}
-
-# EH type codes (must mirror ISA_Decoder.v)
-EH_END        = 0x0
-EH_PORT       = 0x1
-EH_IMM16      = 0x2
-EH_IMM32      = 0x3
-EH_IMM64      = 0x4
-EH_MEM        = 0x5
-EH_SUBSCRIPT  = 0x6
-EH_OPREF      = 0x7
-EH_PRECISION  = 0x8
-EH_NOP_PAD    = 0xF
-
-EH_NAME_TO_CODE: Dict[str, int] = {
-    'port':       EH_PORT,
-    'imm16':      EH_IMM16,
-    'imm32':      EH_IMM32,
-    'imm64':      EH_IMM64,
-    'mem':        EH_MEM,
-    'subscript':  EH_SUBSCRIPT,
-    'opref':      EH_OPREF,
-    'precision':  EH_PRECISION,
-    'nop_pad':    EH_NOP_PAD,
-}
-
-# Reduce-op codes embedded in RED .imm16[7:4]
-REDUCE_OP_CODE: Dict[str, int] = {'sum': 0, 'max': 1, 'min': 2}
+# v1.8.0a §23.9 — Section-1 ISA constants come from the single machine-
+# readable source (isa/wt64v1_isa.json) via the generated module. Edit the
+# JSON, run scripts/gen_isa_tables.py, commit source + artifacts together.
+# All three entry points (this file's importers) insert asm/ on sys.path
+# before importing, so the bare import resolves in every context.
+from generated_isa_tables import (  # noqa: F401
+    MNEMONIC_TO_OPCODE, OPCODE_TO_MNEMONIC, HL_ONLY_MNEMONICS, FLAG_BITS,
+    EH_END, EH_PORT, EH_IMM16, EH_IMM32, EH_IMM64, EH_MEM, EH_SUBSCRIPT,
+    EH_OPREF, EH_PRECISION, EH_NOP_PAD, EH_NAME_TO_CODE, REDUCE_OP_CODE,
+)
+from generated_isa_tables import LEGAL as _LEGAL              # noqa: F401
+from generated_isa_tables import ALL_DATA_EHS as _ALL_DATA_EHS  # noqa: F401
 
 INSTR_WORDS_REAL = 13
 INSTR_WIDTH_BITS = INSTR_WORDS_REAL * 32   # = 416
@@ -1322,96 +1251,11 @@ def _take_singleton(eh: ExtensionHeader, name: str, line: int) -> int:
 # Section 7 — Stage 5: legality / structural validation
 # =============================================================================
 
-# Per-opcode legality table (mirrors ISA_Decoder.v)
-#   required:  EH names that MUST be present
-#   forbidden: EH names that MUST NOT be present
-#   allow_imm_xor_opref: True for binary ALU opcodes (one of {imm*, opref})
-_LEGAL: Dict[int, Dict[str, object]] = {}
-
-
-def _set_legal(opcodes, required=(), forbidden=(), allow_imm_xor_opref=False,
-               require_opb_flag=False, require_imm16=False):
-    for op in opcodes:
-        _LEGAL[op] = dict(
-            required=set(required), forbidden=set(forbidden),
-            allow_imm_xor_opref=allow_imm_xor_opref,
-            require_opb_flag=require_opb_flag,
-            require_imm16=require_imm16,
-        )
-
-
-_ALL_DATA_EHS = {'imm16', 'imm32', 'imm64', 'mem', 'subscript', 'opref'}
-
-# 0x00 NOP — everything forbidden
-_set_legal([0x00], required=(), forbidden=_ALL_DATA_EHS)
-# 0x01-0x03 control
-_set_legal([0x01, 0x02, 0x03], required={'port'}, forbidden=_ALL_DATA_EHS)
-# 0x04/0x05 LOAD/STORE
-_set_legal([0x04, 0x05], required={'port', 'mem'},
-           forbidden={'imm16', 'imm32', 'imm64', 'subscript', 'opref'})
-# Binary ALU (XOR of imm/opref): arithmetic + bitwise binary.
-_set_legal([0x10, 0x11, 0x12, 0x13,        # ADD/SUB/MUL/DIV
-            0x14, 0x15, 0x16,              # AND/OR/XOR
-            0x1C, 0x1D,                    # REM/DIVREM
-            0x51, 0x52, 0x53],             # NAND/NOR/XNOR
-           required={'port'}, forbidden={'subscript', 'mem'},
-           allow_imm_xor_opref=True)
-# Shift / rotate (require IMM16 for the shift amount).
-_set_legal([0x17, 0x18, 0x19, 0x1A, 0x1E], required={'port'},
-           forbidden={'subscript', 'mem', 'opref', 'imm32', 'imm64'},
-           require_imm16=True)
-# Pure unary scalar: NEG/BITREV + NOT/POPCOUNT/CLZ/CTZ.
-_set_legal([0x1B, 0x1F,
-            0x50, 0x54, 0x55, 0x56],
-           required={'port'}, forbidden=_ALL_DATA_EHS)
-# 0x20..0x26 shape ops (0x26 = SPLAT, v1.1 amendment)
-_set_legal([0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26],
-           required={'port', 'imm16'},
-           forbidden={'subscript', 'mem', 'opref', 'imm32', 'imm64'})
-# 0x30/0x31 MATMUL/TENSOR_ADD
-_set_legal([0x30, 0x31], required={'port', 'opref'},
-           forbidden={'subscript', 'mem', 'imm16', 'imm32', 'imm64'},
-           require_opb_flag=True)
-# 0x32 EINSUM
-_set_legal([0x32], required={'port', 'subscript', 'opref'},
-           forbidden={'mem', 'imm16', 'imm32', 'imm64'},
-           require_opb_flag=True)
-# 0x40..0x44 unary FP
-_set_legal([0x40, 0x41, 0x42, 0x43, 0x44],
-           required={'port'}, forbidden=_ALL_DATA_EHS)
-# v1.6.1b §22 — SIMD_ADD/SUB/MUL_WIDE_SCALAR (0x60/61/62): binary-ALU
-# style, B_scalar via imm16 XOR opref (dec_eff_b_value[3:0]). 0x67/0x69
-# (v1.6.5a/v1.6.7) share the same shape at finer B precision (Q4.4/Q8.8).
-# 0x6B (v1.7 WIDEN) shares this shape too (B is Q4.4, same as 0x67) —
-# only its OUTPUT width/fragment-count differs, which legality doesn't see.
-_set_legal([0x60, 0x61, 0x62, 0x67, 0x69, 0x6B],
-           required={'port'}, forbidden={'subscript', 'mem'},
-           allow_imm_xor_opref=True)
-# v1.6.1b §22 — SIMD_ADD/SUB/MUL_WIDE_VEC (0x63/64/65): V (64-bit 4D
-# vector) via imm64 XOR opref. F_HAS_OPB flag required — V arrives on
-# input_payload_b (either as compile-time IMM64 constant or as a prior
-# wave via OPREF bank routing).
-_set_legal([0x63, 0x64, 0x65],
-           required={'port'}, forbidden={'subscript', 'mem', 'imm16', 'imm32'},
-           allow_imm_xor_opref=True, require_opb_flag=True)
-# v1.6.1b §22 — SCALAR_RSQRT (0x66): pure unary scalar on dec_input_payload
-# (Q16.16 fixed-point). No B, no imm, no opref (mirrors 0x1B NEG shape).
-_set_legal([0x66], required={'port'}, forbidden=_ALL_DATA_EHS)
-# v1.6.5c §22.16 — CACHE_LOAD_WIDE (0x68): pure Cluster-buffer CAM
-# passthrough. No B operand at all — the cache lookup key is the
-# instruction's own tag bus, not an EH-carried operand — same no-data-EH
-# shape as 0x66. A PRECISION EH (dim_ovr flag) is expected for tag-
-# stability (see _lower_layernorm) but 'precision' is not in
-# _ALL_DATA_EHS, so it is unaffected by this forbidden set.
-_set_legal([0x68], required={'port'}, forbidden=_ALL_DATA_EHS)
-# v1.6.5d §22.17 — FRAG_INVAL (0x6A): explicit Cluster-buffer slot
-# invalidate-by-tag. Same no-B shape as 0x66/0x68 — the invalidate key
-# is the instruction's own tag bus, not an EH-carried operand.
-_set_legal([0x6A], required={'port'}, forbidden=_ALL_DATA_EHS)
-# v1.7 §22.18 — SIMD_REQUANTIZE_Q4_4_TO_INT4 (0x6C): no B operand at all
-# (input is WIDEN's 256-bit wide bus only) — same no-data-EH shape as
-# 0x66/0x68/0x6A, NOT the ALU-binary shape 0x6B (WIDEN) uses.
-_set_legal([0x6C], required={'port'}, forbidden=_ALL_DATA_EHS)
+# Per-opcode legality table: _LEGAL and _ALL_DATA_EHS are imported from
+# generated_isa_tables (single source: isa/wt64v1_isa.json) at the top of
+# this file. The historical _set_legal builder and its 17 hand-written
+# call groups were removed in v1.8.0a COMMIT 1 — the exact same shapes
+# (values AND types) are pinned by test_legacy_legality_snapshot_equivalence.
 
 
 def _check_no_unresolved_aliases(inst: Instruction) -> None:

@@ -207,15 +207,22 @@ Target: AMD/Xilinx FPGA, pure Verilog RTL (no HLS), 2-Pod scale (512 PEs) protot
 ### Makefile (모듈별 회귀 실행)
 ```
 make MOD=HIU            #  1 test
-make MOD=ISA_Decoder    # 52 tests (어셈블러 e2e 포함)
+make MOD=ISA_Decoder    # 177 tests (truth-table differential 포함)
 make MOD=Tensor_ALU     #  1 test
 make MOD=SIMD_ALU       #  9 tests
 make MOD=ALU_Extended   # 16 tests
 make MOD=Top_Core       #  5 tests (HIU + ISA_Decoder 통합)
 make MOD=PE             #  4 tests (PE wrapper)
-make MOD=Cluster        # 10 tests (4-PE grid + NoC routing)
+make MOD=Cluster        # 31 tests (4-PE grid + NoC + frag cache; FRAG_SLOTS=4 로도 실행)
 make MOD=Pod            #  7 tests (4-Cluster grid)
-python -m unittest asm.test_wavetensor_asm   # 어셈블러 단위 52 tests
+python -m unittest asm.test_wavetensor_asm   # 어셈블러 단위 99 tests
+make lint                                    # ISA 테이블 freshness + frag FSM 불변식
+
+# ISA 정의 수정 워크플로 (v1.8.0a 단일 소스, spec §23.9):
+#   1. isa/wt64v1_isa.json 편집 (opcode/legality 의 유일한 소스)
+#   2. python3 scripts/gen_isa_tables.py generate
+#   3. JSON + 생성된 artifacts 5종을 함께 commit
+# 생성물을 직접 편집하면 make lint / unittest 가 실패한다.
 ```
 
 ## 9. 어셈블러 — High-Level / Low-Level / Machine Code

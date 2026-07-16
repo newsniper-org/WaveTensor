@@ -157,6 +157,20 @@ lattice-clean:
 	       $(LATTICE_DIR)/reports/pod_*.bit
 
 # =============================================================================
+# Lint targets — v1.8.0a §23.9. `make lint` is the future CI entrypoint.
+#   * lint_isa_tables_fresh   — generated ISA artifacts match isa/wt64v1_isa.json
+#   * lint_frag_total_m1_held — frag-drain FSM invariant (v1.7 §22.18)
+# Both are stdlib-only Python; runnable directly without cocotb:
+#   python3 scripts/lint_isa_tables_fresh.py
+# =============================================================================
+
+.PHONY: lint
+
+lint:
+	python3 $(CURDIR)/scripts/lint_isa_tables_fresh.py
+	python3 $(CURDIR)/scripts/lint_frag_total_m1_held.py
+
+# =============================================================================
 # Claude Code memory mirror — copies the per-project memory directory
 #   ~/.claude/projects/-home-ybi-WaveTensor/memory/
 # into the repo's `.claude-memories/` so the memory state can be backed up,
@@ -173,7 +187,6 @@ lattice-clean:
 #   * Session-end hook: see `.claude/settings.local.json` Stop hook to call
 #     `make mirror-memory` automatically when the CC session ends.
 # =============================================================================
-
 CC_MEMORY_SRC := $(HOME)/.claude/projects/-home-ybi-WaveTensor/memory
 CC_MEMORY_DST := $(CURDIR)/.claude-memories
 

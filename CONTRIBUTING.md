@@ -92,11 +92,22 @@ will be rejected.
 
 ## 3. Code review bar
 
-* **Hardware (RTL)**: Verilator `--lint-only -Wall -Wno-fatal` must be
-  clean (warnings allowed only with documented `lint_off` and rationale).
-  cocotb regression must pass on the affected module.
+* **Hardware (RTL)**: Verilator `--lint-only -Wall -Wno-fatal -Iinclude`
+  must be clean (warnings allowed only with documented `lint_off` and
+  rationale; `-Iinclude` is required since v1.8.0a — EHDecode.v reads
+  generated includes). cocotb regression must pass on the affected module.
 * **Software**: All cocotb tests must continue to pass. Assembler unit
   tests (`python -m unittest -q asm.test_wavetensor_asm`) must pass.
+* **Lint**: `make lint` must pass (ISA-table freshness + frag-FSM
+  invariant). Fallback without cocotb installed (Makefile parse needs
+  cocotb-config): run `python3 scripts/lint_isa_tables_fresh.py` and
+  `python3 scripts/lint_frag_total_m1_held.py` directly.
+* **ISA single source (v1.8.0a §23.9)**: opcode identity / EH legality
+  facts live ONLY in `isa/wt64v1_isa.json`. To change them: edit the
+  JSON, run `python3 scripts/gen_isa_tables.py generate`, commit the
+  source and all five generated artifacts together. Never hand-edit a
+  `generated/` file. Merge-conflict protocol: resolve conflicts in the
+  JSON only, regenerate, never hand-merge generated artifacts.
 * **Documentation**: Markdown files should remain valid CommonMark and
   use UTF-8.
 * **Synthesis impact**: Changes to RTL that cross the EHDecode / PE_Core

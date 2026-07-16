@@ -1,0 +1,1944 @@
+{
+  "_doc": "WT64v1 single machine-readable ISA source (v1.8.0a COMMIT 1, spec \u00a723.9). Edit THIS file, run scripts/gen_isa_tables.py generate, commit source + generated artifacts together. asm_legality and rtl_legality are DELIBERATELY separate: two documented asymmetries are preserved emitter-faithfully (asm skips required-port under allow_imm_xor_opref; asm fine-grained imm forbids vs RTL collapsed forbid_imm_any; RTL is_alu_binary excludes 0x63/64/65). Unification is an explicit v1.8.0b decision \u2014 do not silently \"fix\" one emitter.",
+  "_schema_version": 1,
+  "eh_codes": {
+    "END": 0,
+    "PORT": 1,
+    "IMM16": 2,
+    "IMM32": 3,
+    "IMM64": 4,
+    "MEM": 5,
+    "SUBSCRIPT": 6,
+    "OPREF": 7,
+    "PRECISION": 8,
+    "NOP_PAD": 15
+  },
+  "eh_name_to_code": {
+    "port": 1,
+    "imm16": 2,
+    "imm32": 3,
+    "imm64": 4,
+    "mem": 5,
+    "subscript": 6,
+    "opref": 7,
+    "precision": 8,
+    "nop_pad": 15
+  },
+  "flag_bits": {
+    "opb": 3,
+    "prec": 2,
+    "mem_hint": 1,
+    "dim_ovr": 0
+  },
+  "all_data_ehs": [
+    "imm16",
+    "imm32",
+    "imm64",
+    "mem",
+    "opref",
+    "subscript"
+  ],
+  "hl_only_mnemonics": [
+    "BATCHNORM_INFER",
+    "LAYERNORM",
+    "RESHAPE",
+    "RMSNORM"
+  ],
+  "reduce_op_codes": {
+    "sum": 0,
+    "max": 1,
+    "min": 2
+  },
+  "opcodes": [
+    {
+      "mnemonic": "NOP",
+      "code": 0,
+      "desc": "NOP \u2014 no-op",
+      "notes": "",
+      "asm_legality": {
+        "required": [],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": false,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "WADV",
+      "code": 1,
+      "desc": "WADV \u2014 wave-advance (wave_number+=1)",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "STEER",
+      "code": 2,
+      "desc": "STEER \u2014 pass-through with new tag",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "MERGE",
+      "code": 3,
+      "desc": "MERGE \u2014 merge alias of STEER",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "LD",
+      "code": 4,
+      "desc": "LD \u2014 memory load via HIU",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "mem",
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": true,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": false,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "ST",
+      "code": 5,
+      "desc": "ST \u2014 memory store via HIU",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "mem",
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": true,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": false,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "ADD",
+      "code": 16,
+      "desc": "ADD 64-bit",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": true
+    },
+    {
+      "mnemonic": "SUB",
+      "code": 17,
+      "desc": "SUB 64-bit",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": true
+    },
+    {
+      "mnemonic": "MUL",
+      "code": 18,
+      "desc": "MUL 64-bit (low half, pipelined)",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": true
+    },
+    {
+      "mnemonic": "DIV",
+      "code": 19,
+      "desc": "DIV 64-bit (bit-serial)",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": true
+    },
+    {
+      "mnemonic": "AND",
+      "code": 20,
+      "desc": "AND",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": true
+    },
+    {
+      "mnemonic": "OR",
+      "code": 21,
+      "desc": "OR",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": true
+    },
+    {
+      "mnemonic": "XOR",
+      "code": 22,
+      "desc": "XOR",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": true
+    },
+    {
+      "mnemonic": "SHL",
+      "code": 23,
+      "desc": "SHL (imm16[5:0])",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": true
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": true,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "SHR",
+      "code": 24,
+      "desc": "SHR",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": true
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": true,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "SAR",
+      "code": 25,
+      "desc": "SAR",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": true
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": true,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "ROR",
+      "code": 26,
+      "desc": "ROR",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": true
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": true,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "NEG",
+      "code": 27,
+      "desc": "NEG",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "REM",
+      "code": 28,
+      "desc": "REM 64-bit",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": true
+    },
+    {
+      "mnemonic": "DIVREM",
+      "code": 29,
+      "desc": "DIVREM 32-bit packed",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": true
+    },
+    {
+      "mnemonic": "ROL",
+      "code": 30,
+      "desc": "ROL",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": true
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": true,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "BITREV",
+      "code": 31,
+      "desc": "BITREV",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "SQZ",
+      "code": 32,
+      "desc": "SQZ",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "imm16",
+          "port"
+        ],
+        "forbidden": [
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": true,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "USQZ",
+      "code": 33,
+      "desc": "USQZ",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "imm16",
+          "port"
+        ],
+        "forbidden": [
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": true,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "VIEW",
+      "code": 34,
+      "desc": "VIEW",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "imm16",
+          "port"
+        ],
+        "forbidden": [
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": true,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "PERM",
+      "code": 35,
+      "desc": "PERM",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "imm16",
+          "port"
+        ],
+        "forbidden": [
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": true,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "BCAST",
+      "code": 36,
+      "desc": "BCAST",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "imm16",
+          "port"
+        ],
+        "forbidden": [
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": true,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "RED",
+      "code": 37,
+      "desc": "RED (op in imm16[7:4])",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "imm16",
+          "port"
+        ],
+        "forbidden": [
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": true,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "SPLAT",
+      "code": 38,
+      "desc": "SPLAT (v1.1)",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "imm16",
+          "port"
+        ],
+        "forbidden": [
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": true,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "MATMUL",
+      "code": 48,
+      "desc": "MATMUL 2x2 int16",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "opref",
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": true,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": true,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "TADD",
+      "code": 49,
+      "desc": "TADD tensor add",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "opref",
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": true,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": true,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "EINSUM",
+      "code": 50,
+      "desc": "EINSUM (SUBSCRIPT-dispatched)",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "opref",
+          "port",
+          "subscript"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": true,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": true,
+        "req_opref": true,
+        "req_imm16": false,
+        "forbid_subscript": false,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "FLOOR",
+      "code": 64,
+      "desc": "FLOOR (int passthrough)",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "ROUND",
+      "code": 65,
+      "desc": "ROUND",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "CEIL",
+      "code": 66,
+      "desc": "CEIL",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "ENORM",
+      "code": 67,
+      "desc": "ENORM squared euclidean norm",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "CONJ",
+      "code": 68,
+      "desc": "CONJ",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "NOT",
+      "code": 80,
+      "desc": "NOT",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "NAND",
+      "code": 81,
+      "desc": "NAND",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": true
+    },
+    {
+      "mnemonic": "NOR",
+      "code": 82,
+      "desc": "NOR",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": true
+    },
+    {
+      "mnemonic": "XNOR",
+      "code": 83,
+      "desc": "XNOR",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": true
+    },
+    {
+      "mnemonic": "POPCNT",
+      "code": 84,
+      "desc": "POPCNT",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "CLZ",
+      "code": 85,
+      "desc": "CLZ",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "CTZ",
+      "code": 86,
+      "desc": "CTZ",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "SIMD_ADD_WIDE_SCALAR",
+      "code": 96,
+      "desc": "SIMD_ADD_WIDE_SCALAR 32xint4 lanes (v1.6.1b)",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": true
+    },
+    {
+      "mnemonic": "SIMD_SUB_WIDE_SCALAR",
+      "code": 97,
+      "desc": "SIMD_SUB_WIDE_SCALAR",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": true
+    },
+    {
+      "mnemonic": "SIMD_MUL_WIDE_SCALAR",
+      "code": 98,
+      "desc": "SIMD_MUL_WIDE_SCALAR (p[3:0] truncation)",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": true
+    },
+    {
+      "mnemonic": "SIMD_ADD_WIDE_VEC",
+      "code": 99,
+      "desc": "SIMD_ADD_WIDE_VEC (V via input_payload_b)",
+      "notes": "v1.6.5c \u00a722.16.0 bugfix preserved: IMM64/OPREF EHs are LEGAL here even though the RTL data path reads only input_payload_b \u2014 the EH carries the SDK static-schedule origin. RTL is_alu_binary EXCLUDES 0x63/64/65 (no XOR check) while asm enforces imm64-XOR-opref: documented asymmetry, asm-legal is a subset of RTL-legal.",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": true,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "SIMD_SUB_WIDE_VEC",
+      "code": 100,
+      "desc": "SIMD_SUB_WIDE_VEC",
+      "notes": "see 0x63 note",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": true,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "SIMD_MUL_WIDE_VEC",
+      "code": 101,
+      "desc": "SIMD_MUL_WIDE_VEC",
+      "notes": "see 0x63 note",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": true,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "SCALAR_RSQRT",
+      "code": 102,
+      "desc": "SCALAR_RSQRT_APPROX Q16.16 (LUT, <=6.25% rel)",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "SIMD_MUL_WIDE_Q4_4_SCALAR",
+      "code": 103,
+      "desc": "SIMD_MUL_WIDE_Q4_4_SCALAR (v1.6.5a, round-half-up)",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": true
+    },
+    {
+      "mnemonic": "CACHE_LOAD_WIDE",
+      "code": 104,
+      "desc": "CACHE_LOAD_WIDE \u2014 persistent Cluster-buffer reload (v1.6.5c)",
+      "notes": "PRECISION EH (dim_ovr) expected for tag-stability (\u00a722.16.3) \u2014 precision is not a data EH, so forbid flags do not affect it.",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "SIMD_MUL_WIDE_Q8_8_SCALAR",
+      "code": 105,
+      "desc": "SIMD_MUL_WIDE_Q8_8_SCALAR (v1.6.7)",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": true
+    },
+    {
+      "mnemonic": "FRAG_INVAL",
+      "code": 106,
+      "desc": "FRAG_INVAL \u2014 explicit cache-slot invalidate-by-tag (v1.6.5d)",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN",
+      "code": 107,
+      "desc": "SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN \u2014 4-fragment Q4.4-int8 out (v1.7)",
+      "notes": "",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": true
+    },
+    {
+      "mnemonic": "SIMD_REQUANTIZE_Q4_4_TO_INT4",
+      "code": 108,
+      "desc": "SIMD_REQUANTIZE_Q4_4_TO_INT4 \u2014 round-half-up + saturate (v1.7)",
+      "notes": "unary no-B shape \u2014 NOT the ALU-binary shape 0x6B uses (corrected from an earlier draft).",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false
+    }
+  ],
+  "fp_block": {
+    "_doc": "v1.8.0a COMMIT 2 scope \u2014 0x70-0x7F mode-byte legality. Empty until COMMIT 2.",
+    "mode_byte_fields": {
+      "dtype": [
+        3,
+        0
+      ],
+      "acc": [
+        5,
+        4
+      ],
+      "rnd": [
+        7,
+        6
+      ]
+    },
+    "dtype_codes": {
+      "int4": 0,
+      "int8": 1,
+      "f16": 2,
+      "bf16": 3,
+      "f32": 4,
+      "f64_reserved_Lf": 5,
+      "q4_4": 6,
+      "q8_8": 7
+    },
+    "ops": []
+  },
+  "einsum_signatures": {
+    "_doc": "RESERVED \u2014 v1.8.0b scope: SIG_* localparams currently duplicated across PE_Core.v/asm.py HW_DIRECT_EINSUM_SIGS."
+  },
+  "eh_body_layouts": {
+    "_doc": "RESERVED \u2014 v1.8.0b scope: per-EH word/bit layouts currently duplicated across _encode_eh and EHDecode slot walker."
+  },
+  "dim_literals": {
+    "_doc": "RESERVED \u2014 v1.8.0b scope: the 8 dim_sizes guard literals (0x55/0x15/...) currently hand-duplicated in PE_Core.v; only the OP_MEAN<->CACHE_LOAD_WIDE pair is test-linked today (\u00a722.17.2)."
+  }
+}
