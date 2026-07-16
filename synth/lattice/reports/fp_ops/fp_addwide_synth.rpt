@@ -1,0 +1,20 @@
+
+6. Printing statistics.
+
+=== FP_AddWide_gate_top ===
+
+        +----------Local Count, excluding submodules.
+        | 
+      939 wires
+     3444 wire bits
+      939 public wires
+     3444 public wire bits
+       13 ports
+      216 port bits
+     1642 cells
+        1   $scopeinfo
+      161   CCU2C
+      894   LUT4
+       89   PFUMX
+      497   TRELLIS_FF
+

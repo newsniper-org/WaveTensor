@@ -1,0 +1,163 @@
+
+
+Info: Logic utilisation before packing:
+Info:     Total LUT4s:       144/83640     0%
+Info:         logic LUTs:     72/83640     0%
+Info:         carry LUTs:     72/83640     0%
+Info:           RAM LUTs:      0/10455     0%
+Info:          RAMW LUTs:      0/20910     0%
+
+Info:      Total DFFs:       360/83640     0%
+
+Info: Packing IOs..
+Info: Packing constants..
+Info: Packing carries...
+Info: Packing LUTs...
+Info: Packing LUT5-7s...
+Info: Packing FFs...
+Info:     54 FFs paired with LUTs.
+Info: Generating derived timing constraints...
+Info: Promoting globals...
+Info: Checksum: 0x44d0965f
+
+Info: Device utilisation:
+Info: 	          TRELLIS_IO:       0/    365     0%
+Info: 	                DCCA:       0/     56     0%
+Info: 	              DP16KD:       0/    208     0%
+Info: 	          MULT18X18D:       4/    156     2%
+Info: 	              ALU54B:       0/     78     0%
+Info: 	             EHXPLLL:       0/      4     0%
+Info: 	             EXTREFB:       0/      2     0%
+Info: 	                DCUA:       0/      2     0%
+Info: 	           PCSCLKDIV:       0/      2     0%
+Info: 	             IOLOGIC:       0/    224     0%
+Info: 	            SIOLOGIC:       0/    141     0%
+Info: 	                 GSR:       0/      1     0%
+Info: 	               JTAGG:       0/      1     0%
+Info: 	                OSCG:       0/      1     0%
+Info: 	               SEDGA:       0/      1     0%
+Info: 	                 DTR:       0/      1     0%
+Info: 	             USRMCLK:       0/      1     0%
+Info: 	             CLKDIVF:       0/      4     0%
+Info: 	           ECLKSYNCB:       0/     10     0%
+Info: 	             DLLDELD:       0/      8     0%
+Info: 	              DDRDLL:       0/      4     0%
+Info: 	             DQSBUFM:       0/     14     0%
+Info: 	     TRELLIS_ECLKBUF:       0/      8     0%
+Info: 	        ECLKBRIDGECS:       0/      2     0%
+Info: 	                DCSC:       0/      2     0%
+Info: 	          TRELLIS_FF:     360/  83640     0%
+Info: 	        TRELLIS_COMB:     150/  83640     0%
+Info: 	        TRELLIS_RAMW:       0/  10455     0%
+
+Info: Placed 0 cells based on constraints.
+Info: Creating initial analytic placement for 384 cells, random placement wirelen = 42680.
+Info:     at initial placer iter 0, wirelen = 260
+Info:     at initial placer iter 1, wirelen = 259
+Info:     at initial placer iter 2, wirelen = 299
+Info:     at initial placer iter 3, wirelen = 257
+Info: Running main analytical placer, max placement attempts per cell = 33024.
+Info:     at iteration #1, type ALL: wirelen solved = 299, spread = 4605, legal = 5446; time = 0.02s
+Info:     at iteration #2, type ALL: wirelen solved = 247, spread = 2240, legal = 3404; time = 0.01s
+Info:     at iteration #3, type ALL: wirelen solved = 269, spread = 2732, legal = 3819; time = 0.01s
+Info:     at iteration #4, type ALL: wirelen solved = 323, spread = 2476, legal = 3991; time = 0.01s
+Info:     at iteration #5, type ALL: wirelen solved = 337, spread = 2556, legal = 4084; time = 0.01s
+Info:     at iteration #6, type ALL: wirelen solved = 360, spread = 2520, legal = 3975; time = 0.01s
+Info:     at iteration #7, type ALL: wirelen solved = 352, spread = 2503, legal = 4071; time = 0.01s
+Info: HeAP Placer Time: 0.14s
+Info:   of which solving equations: 0.04s
+Info:   of which spreading cells: 0.02s
+Info:   of which strict legalisation: 0.00s
+
+Info: Running simulated annealing placer for refinement.
+Info:   at iteration #1: temp = 0.000000, timing cost = 234, wirelen = 3404
+Info:   at iteration #5: temp = 0.000000, timing cost = 188, wirelen = 2104
+Info:   at iteration #10: temp = 0.000000, timing cost = 148, wirelen = 1942
+Info:   at iteration #15: temp = 0.000000, timing cost = 182, wirelen = 1792
+Info:   at iteration #20: temp = 0.000000, timing cost = 184, wirelen = 1769
+Info:   at iteration #22: temp = 0.000000, timing cost = 165, wirelen = 1757 
+Info: SA placement time 0.32s
+
+Info: Max frequency for clock 'clk': 137.89 MHz (PASS at 40.00 MHz)
+
+Info: Slack histogram:
+Info:  legend: * represents 1 endpoint(s)
+Info:          + represents [1,1) endpoint(s)
+Info: [ 17748,  18061) |************+
+Info: [ 18061,  18374) |************************************************************ 
+Info: [ 18374,  18687) |****************+
+Info: [ 18687,  19000) |+
+Info: [ 19000,  19313) |*****+
+Info: [ 19313,  19626) |*****+
+Info: [ 19626,  19939) |*****+
+Info: [ 19939,  20252) |****+
+Info: [ 20252,  20565) |*****+
+Info: [ 20565,  20878) |****+
+Info: [ 20878,  21191) |+
+Info: [ 21191,  21504) | 
+Info: [ 21504,  21817) | 
+Info: [ 21817,  22130) | 
+Info: [ 22130,  22443) | 
+Info: [ 22443,  22756) |****+
+Info: [ 22756,  23069) |***+
+Info: [ 23069,  23382) |***+
+Info: [ 23382,  23695) |*+
+Info: [ 23695,  24008) |*******************************************+
+Info: Checksum: 0x5ad25aca
+Info: Routing globals...
+
+Info: Routing..
+Info: Setting up routing queue.
+Info: Routing 848 arcs.
+Info:            |   (re-)routed arcs  |   delta    | remaining|       time spent     |
+Info:    IterCnt |  w/ripup   wo/ripup |  w/r  wo/r |      arcs| batch(sec) total(sec)|
+Info:       1000 |      497        502 |  497   502 |       417|       2.36       2.36|
+Info:       2000 |     1023        938 |  526   436 |        16|       0.75       3.11|
+Info:       2015 |     1023        954 |    0    16 |         0|       0.00       3.11|
+Info: Routing complete.
+Info: Router1 time 3.11s
+Info: Checksum: 0xa1d6affd
+
+Info: Critical path report for clock 'clk' (posedge -> posedge):
+Info:       type curr  total name
+Info:   clk-to-q  0.52  0.52 Source a_q_TRELLIS_FF_Q_13.Q
+Info:    routing  1.54  2.07 Net a_q[13] (61,11) -> (63,10)
+Info:                          Sink b_q_MULT18X18D_B9_2.A13
+Info:                          Defined in:
+Info:                               FP_Mul36.v:49.23-49.24
+Info:      logic  3.93  5.99 Source b_q_MULT18X18D_B9_2.P11
+Info:    routing  1.45  7.44 Net u_core.pp_lh_p1_TRELLIS_FF_Q_DI[11] (63,10) -> (63,9)
+Info:                          Sink u_core.pp_lh_p1_TRELLIS_FF_Q_11.M
+Info:                          Defined in:
+Info:                               FP_Mul36.v:66.21-66.40
+Info:                               /usr/bin/../share/yosys/mul2dsp.v:65.23-65.24
+Info:      setup  0.00  7.44 Source u_core.pp_lh_p1_TRELLIS_FF_Q_11.M
+Info: 4.45 ns logic, 2.99 ns routing
+
+Info: Max frequency for clock 'clk': 134.34 MHz (PASS at 40.00 MHz)
+
+Info: Slack histogram:
+Info:  legend: * represents 1 endpoint(s)
+Info:          + represents [1,1) endpoint(s)
+Info: [ 17556,  17881) |**********************+
+Info: [ 17881,  18206) |************************************************************ 
+Info: [ 18206,  18531) |**************************+
+Info: [ 18531,  18856) |+
+Info: [ 18856,  19181) |******+
+Info: [ 19181,  19506) |******+
+Info: [ 19506,  19831) |******+
+Info: [ 19831,  20156) |******+
+Info: [ 20156,  20481) |******+
+Info: [ 20481,  20806) |****+
+Info: [ 20806,  21131) |**+
+Info: [ 21131,  21456) | 
+Info: [ 21456,  21781) | 
+Info: [ 21781,  22106) | 
+Info: [ 22106,  22431) | 
+Info: [ 22431,  22756) | 
+Info: [ 22756,  23081) |**+
+Info: [ 23081,  23406) |*********+
+Info: [ 23406,  23731) |***************+
+Info: [ 23731,  24056) |******************************************+
+
+Info: Program finished normally.

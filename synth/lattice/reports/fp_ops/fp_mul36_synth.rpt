@@ -1,0 +1,20 @@
+
+6. Printing statistics.
+
+=== FP_Mul36_gate_top ===
+
+        +----------Local Count, excluding submodules.
+        | 
+      146 wires
+      920 wire bits
+      146 public wires
+      920 public wire bits
+        4 ports
+      145 port bits
+      473 cells
+        1   $scopeinfo
+       36   CCU2C
+       72   LUT4
+        4   MULT18X18D
+      360   TRELLIS_FF
+

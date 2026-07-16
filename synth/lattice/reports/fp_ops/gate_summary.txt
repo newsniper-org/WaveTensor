@@ -1,0 +1,16 @@
+GATE 1 — fp_mul36 (LFE5UM-85F CABGA381 -6, out-of-context, yosys synth_ecp5 + nextpnr-ecp5, wrapper-top incl. I/O regs):
+    LUT4       =    72   (limit 300)   -> PASS
+    MULT18X18D =     4   (limit 4)   -> PASS
+    TRELLIS_FF =   360   (informational)
+    CCU2C      =    36   (informational, carry cells)
+    Fmax       =   134.34 MHz (target >= 40.0)   -> PASS
+    GATE 1 RESULT: PASS
+
+GATE 2 — fp_addwide (LFE5UM-85F CABGA381 -6, out-of-context, yosys synth_ecp5 + nextpnr-ecp5, wrapper-top incl. I/O regs):
+    LUT4       =   894   (limit 900)   -> PASS
+    MULT18X18D =     0   (limit 0)   -> PASS
+    TRELLIS_FF =   497   (informational)
+    CCU2C      =   161   (informational, carry cells)
+    Fmax       =    41.08 MHz (target >= 40.0)   -> PASS
+    GATE 2 RESULT: PASS
+
