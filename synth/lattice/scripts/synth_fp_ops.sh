@@ -10,6 +10,11 @@
 #   GATE 1 — FP_Mul36   : <=4 MULT18X18D (hard fail on more), <=300 LUT4,
 #                         Fmax >= 40 MHz
 #   GATE 2 — FP_AddWide : <=900 LUT4, 0 MULT18X18D, Fmax >= 40 MHz
+#   GATE 3 — FP_StepSeq : whole unit incl. both operator blocks + seed/coeff
+#                         ROMs — <=2000 LUT4, EXACTLY 4 MULT18X18D, <=900 FF
+#                         (net of the 143 wrapper I/O flops), 0 EBR
+#                         (distributed ROM; documented 1-EBR fallback only),
+#                         Fmax >= 40 MHz
 #
 # Invoke from the repo root:
 #     sh synth/lattice/scripts/synth_fp_ops.sh
@@ -82,6 +87,12 @@ run_gate fp_mul36 FP_Mul36_gate_top \
 
 run_gate fp_addwide FP_AddWide_gate_top \
     "FP_AddWide.v synth/lattice/fp_ops/FP_AddWide_gate_top.v"
+
+# Gate 3 reads the generated ROM/coefficient sidecars through the same
+# -I include path (include/generated/*.vh — localparam bit vectors, so
+# they synthesize as distributed LUT ROM, never EBR).
+run_gate fp_stepseq FP_StepSeq_gate_top \
+    "FP_StepSeq.v FP_Mul36.v FP_AddWide.v synth/lattice/fp_ops/FP_StepSeq_gate_top.v"
 
 # --- Evaluate the gate criteria from the measured reports -----------------
 python3 synth/lattice/fp_ops/gate_check.py "$RPT"

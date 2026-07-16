@@ -63,9 +63,9 @@ Info:     at iteration #3, type ALL: wirelen solved = 269, spread = 2732, legal 
 Info:     at iteration #4, type ALL: wirelen solved = 323, spread = 2476, legal = 3991; time = 0.01s
 Info:     at iteration #5, type ALL: wirelen solved = 337, spread = 2556, legal = 4084; time = 0.01s
 Info:     at iteration #6, type ALL: wirelen solved = 360, spread = 2520, legal = 3975; time = 0.01s
-Info:     at iteration #7, type ALL: wirelen solved = 352, spread = 2503, legal = 4071; time = 0.01s
+Info:     at iteration #7, type ALL: wirelen solved = 352, spread = 2503, legal = 4071; time = 0.00s
 Info: HeAP Placer Time: 0.14s
-Info:   of which solving equations: 0.04s
+Info:   of which solving equations: 0.03s
 Info:   of which spreading cells: 0.02s
 Info:   of which strict legalisation: 0.00s
 
@@ -76,7 +76,7 @@ Info:   at iteration #10: temp = 0.000000, timing cost = 148, wirelen = 1942
 Info:   at iteration #15: temp = 0.000000, timing cost = 182, wirelen = 1792
 Info:   at iteration #20: temp = 0.000000, timing cost = 184, wirelen = 1769
 Info:   at iteration #22: temp = 0.000000, timing cost = 165, wirelen = 1757 
-Info: SA placement time 0.32s
+Info: SA placement time 0.19s
 
 Info: Max frequency for clock 'clk': 137.89 MHz (PASS at 40.00 MHz)
 
@@ -111,11 +111,11 @@ Info: Setting up routing queue.
 Info: Routing 848 arcs.
 Info:            |   (re-)routed arcs  |   delta    | remaining|       time spent     |
 Info:    IterCnt |  w/ripup   wo/ripup |  w/r  wo/r |      arcs| batch(sec) total(sec)|
-Info:       1000 |      497        502 |  497   502 |       417|       2.36       2.36|
-Info:       2000 |     1023        938 |  526   436 |        16|       0.75       3.11|
-Info:       2015 |     1023        954 |    0    16 |         0|       0.00       3.11|
+Info:       1000 |      497        502 |  497   502 |       417|       1.68       1.68|
+Info:       2000 |     1023        938 |  526   436 |        16|       0.67       2.35|
+Info:       2015 |     1023        954 |    0    16 |         0|       0.00       2.35|
 Info: Routing complete.
-Info: Router1 time 3.11s
+Info: Router1 time 2.35s
 Info: Checksum: 0xa1d6affd
 
 Info: Critical path report for clock 'clk' (posedge -> posedge):

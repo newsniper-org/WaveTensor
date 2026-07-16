@@ -1,0 +1,21 @@
+
+8. Printing statistics.
+
+=== FP_StepSeq_gate_top ===
+
+        +----------Local Count, excluding submodules.
+        | 
+     3918 wires
+    15913 wire bits
+     3918 public wires
+    15913 public wire bits
+       10 ports
+      144 port bits
+     5035 cells
+        3   $scopeinfo
+      432   CCU2C
+     3345   LUT4
+        4   MULT18X18D
+      341   PFUMX
+      910   TRELLIS_FF
+

@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later OR BSD-2-Clause OR Apache-2.0
 # SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
 """run_fp_ops_tests.py — self-contained cocotb runner for the v1.8.0c fp32
-operator blocks (FP_Mul36 / FP_AddWide), the mandatory correctness sanity
-BEFORE synth Gates 1 and 2 (spec §23.10.7).
+operator blocks (FP_Mul36 / FP_AddWide) and the assembled step-sequencer
+unit (FP_StepSeq), the mandatory correctness sanity BEFORE synth Gates
+1-3 (spec §23.10.7).
 
 Deliberately separate from the repo's main cocotb Makefile (MOD=... flow):
 these blocks gate on standalone synthesis before any PE_Core wiring
@@ -11,7 +12,8 @@ exists, so the harness lives here with them. Uses the cocotb 2.x Python
 runner API with the same verilator backend as the main flow.
 
 Usage:
-    python3 synth/lattice/fp_ops/run_fp_ops_tests.py [FP_Mul36|FP_AddWide]
+    python3 synth/lattice/fp_ops/run_fp_ops_tests.py \
+        [FP_Mul36|FP_AddWide|FP_StepSeq]
 
 Build artifacts go to $WT_FP_OPS_BUILD (default: a fresh temp dir).
 """
@@ -35,6 +37,11 @@ TESTS = {
     "FP_AddWide": {
         "sources": [REPO / "FP_AddWide.v"],
         "test_module": "tb_fp_addwide",
+    },
+    "FP_StepSeq": {
+        "sources": [REPO / "FP_StepSeq.v", REPO / "FP_Mul36.v",
+                    REPO / "FP_AddWide.v"],
+        "test_module": "tb_fp_stepseq",
     },
 }
 
