@@ -1507,6 +1507,39 @@ module PE_Core #(
     reg [7:0]            frag_opcode_held;
 
     // -------------------------------------------------------------------------
+    // v1.8 §23.8 synth-gate fix (2026-07-16) — yosys (Verilog-2005) does not
+    // allow indexing a function-call result directly (func(...)[63:0]);
+    // the simulator accepted the old form as a SystemVerilog extension,
+    // so the incompatibility sat latent since v1.6.1b until the first
+    // yosys run of the §23.8 hard gate hit it (PE_Core.v syntax error).
+    // Standard fix: hoist each wide-op result into a combinational wire and
+    // slice the WIRE at the dispatch site. Bit-identical behavior (the
+    // function calls in the always block were already evaluated
+    // combinationally each cycle); unused results for a given dispatch are
+    // pruned by synthesis exactly as before.
+    // -------------------------------------------------------------------------
+    wire [127:0] wres_add_wide_scalar = simd_add_wide_scalar_128(
+        dec_input_payload_wide[127:0], dec_eff_b_value[3:0]);
+    wire [127:0] wres_sub_wide_scalar = simd_sub_wide_scalar_128(
+        dec_input_payload_wide[127:0], dec_eff_b_value[3:0]);
+    wire [127:0] wres_mul_wide_scalar = simd_mul_wide_scalar_128(
+        dec_input_payload_wide[127:0], dec_eff_b_value[3:0]);
+    wire [127:0] wres_add_wide_vec = simd_add_wide_vec_128(
+        dec_input_payload_wide[127:0], dec_input_payload_b);
+    wire [127:0] wres_sub_wide_vec = simd_sub_wide_vec_128(
+        dec_input_payload_wide[127:0], dec_input_payload_b);
+    wire [127:0] wres_mul_wide_vec = simd_mul_wide_vec_128(
+        dec_input_payload_wide[127:0], dec_input_payload_b);
+    wire [127:0] wres_mul_q4_4 = simd_mul_wide_q4_4_scalar_128(
+        dec_input_payload_wide[127:0], dec_eff_b_value[7:0]);
+    wire [127:0] wres_mul_q8_8 = simd_mul_wide_q8_8_scalar_128(
+        dec_input_payload_wide[127:0], dec_eff_b_value[15:0]);
+    wire [255:0] wres_widen = simd_mul_wide_q4_4_scalar_128_widen(
+        dec_input_payload_wide[127:0], dec_eff_b_value[7:0]);
+    wire [127:0] wres_requantize = simd_requantize_q4_4_to_int4_256(
+        dec_input_payload_wide[255:0]);
+
+    // -------------------------------------------------------------------------
     // Stage-2 sequential dispatch
     // -------------------------------------------------------------------------
     always @(posedge clk or posedge rst) begin
@@ -2389,62 +2422,34 @@ module PE_Core #(
                                 // Compute lo and hi halves per opcode
                                 case (dec_opcode)
                                     8'h60: begin
-                                        output_payload   <= simd_add_wide_scalar_128(
-                                            dec_input_payload_wide[127:0],
-                                            dec_eff_b_value[3:0])[63:0];
-                                        frag_pending[1]  <= simd_add_wide_scalar_128(
-                                            dec_input_payload_wide[127:0],
-                                            dec_eff_b_value[3:0])[127:64];
+                                        output_payload   <= wres_add_wide_scalar[63:0];
+                                        frag_pending[1]  <= wres_add_wide_scalar[127:64];
                                     end
                                     8'h61: begin
-                                        output_payload   <= simd_sub_wide_scalar_128(
-                                            dec_input_payload_wide[127:0],
-                                            dec_eff_b_value[3:0])[63:0];
-                                        frag_pending[1]  <= simd_sub_wide_scalar_128(
-                                            dec_input_payload_wide[127:0],
-                                            dec_eff_b_value[3:0])[127:64];
+                                        output_payload   <= wres_sub_wide_scalar[63:0];
+                                        frag_pending[1]  <= wres_sub_wide_scalar[127:64];
                                     end
                                     8'h62: begin
-                                        output_payload   <= simd_mul_wide_scalar_128(
-                                            dec_input_payload_wide[127:0],
-                                            dec_eff_b_value[3:0])[63:0];
-                                        frag_pending[1]  <= simd_mul_wide_scalar_128(
-                                            dec_input_payload_wide[127:0],
-                                            dec_eff_b_value[3:0])[127:64];
+                                        output_payload   <= wres_mul_wide_scalar[63:0];
+                                        frag_pending[1]  <= wres_mul_wide_scalar[127:64];
                                     end
                                     8'h63: begin
-                                        output_payload   <= simd_add_wide_vec_128(
-                                            dec_input_payload_wide[127:0],
-                                            dec_input_payload_b)[63:0];
-                                        frag_pending[1]  <= simd_add_wide_vec_128(
-                                            dec_input_payload_wide[127:0],
-                                            dec_input_payload_b)[127:64];
+                                        output_payload   <= wres_add_wide_vec[63:0];
+                                        frag_pending[1]  <= wres_add_wide_vec[127:64];
                                     end
                                     8'h64: begin
-                                        output_payload   <= simd_sub_wide_vec_128(
-                                            dec_input_payload_wide[127:0],
-                                            dec_input_payload_b)[63:0];
-                                        frag_pending[1]  <= simd_sub_wide_vec_128(
-                                            dec_input_payload_wide[127:0],
-                                            dec_input_payload_b)[127:64];
+                                        output_payload   <= wres_sub_wide_vec[63:0];
+                                        frag_pending[1]  <= wres_sub_wide_vec[127:64];
                                     end
                                     8'h65: begin
-                                        output_payload   <= simd_mul_wide_vec_128(
-                                            dec_input_payload_wide[127:0],
-                                            dec_input_payload_b)[63:0];
-                                        frag_pending[1]  <= simd_mul_wide_vec_128(
-                                            dec_input_payload_wide[127:0],
-                                            dec_input_payload_b)[127:64];
+                                        output_payload   <= wres_mul_wide_vec[63:0];
+                                        frag_pending[1]  <= wres_mul_wide_vec[127:64];
                                     end
                                     8'h67: begin
                                         // v1.6.5a — Q4.4 wide-scalar mul.
                                         // B via dec_eff_b_value[7:0] as signed Q4.4.
-                                        output_payload   <= simd_mul_wide_q4_4_scalar_128(
-                                            dec_input_payload_wide[127:0],
-                                            dec_eff_b_value[7:0])[63:0];
-                                        frag_pending[1]  <= simd_mul_wide_q4_4_scalar_128(
-                                            dec_input_payload_wide[127:0],
-                                            dec_eff_b_value[7:0])[127:64];
+                                        output_payload   <= wres_mul_q4_4[63:0];
+                                        frag_pending[1]  <= wres_mul_q4_4[127:64];
                                     end
                                     8'h68: begin
                                         // v1.6.5c §22.16 — CACHE_LOAD_WIDE:
@@ -2457,12 +2462,8 @@ module PE_Core #(
                                     8'h69: begin
                                         // v1.6.7 §22.14c — Q8.8 wide-scalar mul.
                                         // B via dec_eff_b_value[15:0] as signed Q8.8.
-                                        output_payload   <= simd_mul_wide_q8_8_scalar_128(
-                                            dec_input_payload_wide[127:0],
-                                            dec_eff_b_value[15:0])[63:0];
-                                        frag_pending[1]  <= simd_mul_wide_q8_8_scalar_128(
-                                            dec_input_payload_wide[127:0],
-                                            dec_eff_b_value[15:0])[127:64];
+                                        output_payload   <= wres_mul_q8_8[63:0];
+                                        frag_pending[1]  <= wres_mul_q8_8[127:64];
                                     end
                                     8'h6C: begin
                                         // v1.7 §22.18 — REQUANTIZE: narrows
@@ -2475,10 +2476,8 @@ module PE_Core #(
                                         // failure mode vs 0x67/0x69, which
                                         // are provably non-saturating by
                                         // construction).
-                                        output_payload   <= simd_requantize_q4_4_to_int4_256(
-                                            dec_input_payload_wide[255:0])[63:0];
-                                        frag_pending[1]  <= simd_requantize_q4_4_to_int4_256(
-                                            dec_input_payload_wide[255:0])[127:64];
+                                        output_payload   <= wres_requantize[63:0];
+                                        frag_pending[1]  <= wres_requantize[127:64];
                                     end
                                     default: ;
                                 endcase
@@ -2553,18 +2552,10 @@ module PE_Core #(
                                 lower_required <= 1'b1;
                                 output_valid   <= 1'b0;
                             end else begin
-                                output_payload     <= simd_mul_wide_q4_4_scalar_128_widen(
-                                    dec_input_payload_wide[127:0],
-                                    dec_eff_b_value[7:0])[63:0];
-                                frag_pending[1]     <= simd_mul_wide_q4_4_scalar_128_widen(
-                                    dec_input_payload_wide[127:0],
-                                    dec_eff_b_value[7:0])[127:64];
-                                frag_pending[2]     <= simd_mul_wide_q4_4_scalar_128_widen(
-                                    dec_input_payload_wide[127:0],
-                                    dec_eff_b_value[7:0])[191:128];
-                                frag_pending[3]     <= simd_mul_wide_q4_4_scalar_128_widen(
-                                    dec_input_payload_wide[127:0],
-                                    dec_eff_b_value[7:0])[255:192];
+                                output_payload     <= wres_widen[63:0];
+                                frag_pending[1]     <= wres_widen[127:64];
+                                frag_pending[2]     <= wres_widen[191:128];
+                                frag_pending[3]     <= wres_widen[255:192];
                                 output_valid        <= 1'b1;
                                 output_frag_hdr      <= 8'h03;   // idx=0, total_m1=3
                                 opcode_out           <= dec_opcode;
