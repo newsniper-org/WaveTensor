@@ -7,3 +7,4 @@
 - [Use $(CURDIR) not $(PWD) in Makefiles](makefile_curdir_rule.md) — `make -C <dir>` exposes the $(PWD) bug; $(CURDIR) is GNU Make's per-invocation cwd. Fixed on 2026-05-07.
 - [frama-c invocation via opam switch](frama_c_invocation.md) — always call as `opam exec --switch="frama-c" -- frama-c <args>`; never use system PATH frama-c directly.
 - [WT64v1 precision recovery roadmap](wt64v1_precision_recovery_roadmap.md) — v1.6.7 Q8.8 (0x69) + v1.7 WIDEN/REQUANTIZE (0x6B/0x6C) landed; v1.7 restores parity, does NOT eliminate output rounding; rsqrt LUT 6.25% is the true floor.
+- [fp32 unit = "스텝 시퀀서" 용어](fp32_step_sequencer_terminology.md) — "마이크로코드" 지칭 금지 (사용자 지시 2026-07-16); spec/RTL/commit/테스트 전부 "step sequencer"/"step" 사용.

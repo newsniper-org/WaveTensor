@@ -2063,7 +2063,7 @@ Phase 1 인벤토리로 확정한 현행 사실:
 
 **illegal mode byte 의 semantics**: EHDecode 단계의 **decode_error** (→ PE_Core error_flag, output_valid=0) — lower_required 가 절대 아님. decode/execute 경계 보존: malformed(EH shape 위반, illegal mode, 미배정 opcode) = decode_error; capability 부재(합법이나 미구현) = lower_required.
 
-**EH shape (restrictive-first)**: 0x70/0x71/0x73/0x79 = ALU-binary 형 (port + IMM XOR OPREF); 0x72/0x74/0x75/0x76/0x77/0x78 = port-only (모든 data EH forbidden); 0x7C/0x7D = port+mem; 0x7E = no-data-EH forbid-all.
+**EH shape (restrictive-first)**: 0x70/0x71/0x73/0x79 = ALU-binary 형 (port + IMM XOR OPREF); 0x72/0x74/0x75/0x76/0x77/0x78 = port-only (모든 data EH forbidden) — **단, v1.8.0c carve-out (§23.10): 0x74 FSCALAR 는 imm16 optional (absent = FS_ADD), imm32/imm64 는 asm-forbidden 이되 RTL-tolerated (0x72 의미론 verbatim — RTL 의 forbid_imm_any 는 단일 비트라 per-size 분리가 불가하고, FSCALAR 는 eff_b_value 를 읽지 않아 무해); 0x75/0x76 은 strictly port-only 유지**; 0x7C/0x7D = port+mem; 0x7E = no-data-EH forbid-all.
 
 **v1.8.0b EH-shape loosening (2026-07-16, 전부 monotonic — 어떤 합법 인코딩도 불법이 되지 않음)**:
 - 0x72 ACC_REDUCE: forbid_imm_any → false (RTL) / imm16 forbidden → optional (asm). **absent imm16 = SUM** (dec_eff_imm16=0 ⇒ sub-op 0x0) — 기존 port-only 인코딩은 전부 계속 decode 되며 SUM 의미를 획득 (표준 stub→real 전환). sub-op = imm16[7:4] ∈ **acc_reduce_op_codes {sum:0x0, max:0x1, l2sq:0x4, mean:0x5}** (신규 JSON 테이블 — einsum op_marker 공간과 코드 일치; **MIN 은 의도적 미탑재**: RED 는 min=2, einsum 은 min=6 으로 이미 충돌하는 공간이라 회피). imm16[3:0] reserved-zero 위반 / 미지 sub-op → lower_required (error_flag 아님). **MEAN = RNE(sum/N), ties-to-even, N ∈ {32,16} full lane set 만** — zero-padding 된 부분 벡터는 sum/N ≠ sum/K bias (normative 금지, SDK 강제).
@@ -2088,7 +2088,7 @@ Phase 1 인벤토리로 확정한 현행 사실:
 2. 어떤 타깃에서도 timing 데이터 없음 (base pod 조차 nextpnr PnR 미완). 5-6-stage fused FMA @100MHz 미증명 — v2.0 첫 마일스톤은 Fmax 산출.
 3. ACC bank 는 순수 tagged-wave 모델 밖의 신규 architectural state — tag-keyed bank aliasing 은 silent-gradient-corruption 클래스. **RTL 전에 TLA+/formal 선행** (wavetensor-drivers formal-first 관례).
 4. xczu3eg 는 synth report 0건 + board plan 부재 + FP-UNIT 미탑재 확정 — Makefile default 에서 은퇴하거나 int4-inference-only 로 명시 강등할 것.
-5. 검증 공수가 RTL 공수를 초과할 전망 (~16 opcodes, fused-FMA pipe, NR microcode, SR, ACC state, canonical-order equivalence) — v2.0 의 지배적 일정 리스크.
+5. 검증 공수가 RTL 공수를 초과할 전망 (~16 opcodes, fused-FMA pipe, NR step-sequence, SR, ACC state, canonical-order equivalence) — v2.0 의 지배적 일정 리스크.
 6. "training-capable ≠ training-competitive" — 포지셔닝 규율 자체가 리스크.
 
 ### 23.8 진입 트리거
@@ -2098,7 +2098,7 @@ Phase 1 인벤토리로 확정한 현행 사실:
 - v1.8 선행 조건 처리: (1) per-operator synth gate — v1.8.0c (FP-UNIT) 착수 전 완료 필수 (v1.8.0b 의 MU MAC tree 도 merge blocker 로 적용), (2) base pod nextpnr Fmax — 착수와 병렬 진행, (3) legality-ROM **JSON** codegen (~~YAML~~, §23.6 치환 기록 참조) — v1.8.0a 의 첫 산출물, (4) ACC bank TLA+ — v2.0 전 (v1.8 스코프 아님).
 - **hard gate #2 실측 결과 (2026-07-16, 4차 실행에서 synth 최초 통과)**: 게이트가 잠복 결함 3건을 적발 — ① 함수호출 인덱싱 yosys 비호환 (v1.6.1b 잠복, commit 0afcf81), ② frag_pending[1:3] 범위 밖 동적 인덱스 (v1.7 잠복, commit d1b2739), ③ synth 스크립트 자체 (AUTONAME 30분+ → -run :check 우회; cell 라이브러리 whitebox 모델 → blackbox =A:whitebox 필수 — -nolutram 오진 정정 포함). **pod 2x2_2x2 실측 (yosys 0.64, synth_ecp5)**: LUT4 **70,235**/84K (84%), TRELLIS_FF **25,992**, CCU2C 5,165, PFUMX 10,526, **MULT18X18D 497 vs LFE5U-85F 보유 156 — 3.2× 초과예산 확정** (§23.7 리스크 1이 추정이 아닌 실측 사실이 됨). 결론: 현 geometry 의 base pod 는 Stage-1 부품에 곱셈기 기준으로 들어가지 않음 — v1.8.0b 이후 multiplier 공유/LUT 강제 매핑/geometry 축소 중 택일 필요. nextpnr PnR 결과 (2026-07-16 완결):
   - **pod 2x2_2x2**: MULT18X18D placement 실패 (497 > 156) + TRELLIS_COMB 101% (84,781/83,640) — 두 축 초과로 배치 불가 확정.
-  - **Cluster 단독 (2x2 PE, out-of-context)**: 로직은 수용 (COMB 25%, MULT 128/156 = 82%, FF 7%) — IO 핀 초과라 --out-of-context 로 측정. **Fmax = 10.85 MHz** (100 MHz 제약 대비 **9.2× 미달**, worst slack ≈ -81 ns). Critical path 는 **470 LUT 레벨**의 조합논리 체인 — 단일 사이클 dispatch 아키텍처(거대 einsum/MAC 함수 + 1024-bit wide mux + 우선순위 체인이 전부 한 클럭에 평가됨)의 구조적 귀결.
+  - **Cluster 단독 (2x2 PE, out-of-context)**: 로직은 수용 (COMB 25%, MULT 128/156 = 82%, FF 7%) — IO 핀 초과라 --out-of-context 로 측정. **Fmax = 10.85 MHz** (100 MHz 제약 대비 **9.2× 미달**, worst slack ≈ -81 ns). Critical path: "**470 LUT 레벨**" 은 synth 단계(pre-PnR) 추정치로 기록을 유지하고, 잔존 PnR report (synth/lattice/reports/cluster_2x2_pnr.rpt, nextpnr JSON) 의 실측 critical path 는 **116 logic stage / 총 92.13 ns** (routing hop 117 포함, fmax achieved 10.8546 MHz) — 측정 단계가 달라 수치는 다르나 결론은 동일: 단일 사이클 dispatch 아키텍처(거대 einsum/MAC 함수 + 1024-bit wide mux + 우선순위 체인이 전부 한 클럭에 평가됨)의 구조적 귀결.
   - **결론 (v1.8.0c+ 설계 입력)**: §23.7 리스크 2 ("100MHz 미검증") 이 실측으로 최악 방향 확정. 100 MHz 는 현 조합 구조로는 불가능 — dispatch 파이프라이닝(wide 입력 레지스터링, 함수 평가 스테이지 분할, 출력 mux 단 분리)이 v1.8.0c FP-UNIT 설계와 함께 다뤄져야 할 아키텍처 항목. §23.5 처리량 정직성 수치(0.4-1.6 GFLOP/s @ 100MHz 가정)는 현 실측으론 ~10× 하향 — "정확성/재현성 우선, 속도는 Stage-2" 포지셔닝이 더더욱 필수.
 - **enforcement plan (v1.8.0a 설계 workflow 확정)**: freshness 검사(gen_isa_tables.py --check 재생성+byte-diff)는 commit 필수인 `python -m unittest asm.test_wavetensor_asm` 스위트에 test 로 탑승 (no-CI repo 에서 가장 강한 채널); `make lint` 신설 (isa freshness + frag_total_m1_held, 향후 CI entrypoint); 전수 곱집합 decode-legality sweep (`WT_FULL_ISA_SWEEP=1`) 은 **release gate** 로 지정 — per-commit 은 equivalence-class 축약 실행.
 
@@ -2106,5 +2106,183 @@ Phase 1 인벤토리로 확정한 현행 사실:
 
 - **v1.8.0a**: ISA foundation — 단일 **JSON** 소스 codegen (legality ROM + asm.py 테이블 + golden model + spec 표 + lint 생성), 0x70-0x7F decode skeleton, mode byte field 파싱 (dtype[3:0]/acc[5:4]/rnd[7:6]). **3-commit staging** (설계 workflow w8gmgeokm 확정): COMMIT 0 = spec 선행 (§23.6a normative 표 저작 — 독립 리뷰로 same-author 순환 차단), COMMIT 1 = 무동작변경 legacy 이관 (isa/wt64v1_isa.json 47 opcodes 를 emitter-faithful 하게 — 알려진 asm-vs-RTL 비대칭 2건도 bit-for-bit 보존, EHDecode.v 의 legality case/is_alu_binary/opcode_supported/EH_* 를 generated include 4종으로 대체, asm.py Section-1 상수를 generated 모듈 import 로 대체, **사전-이관 RTL-derived frozen truth table + EH-subset sweep** 로 zero-behavior-change 증명), COMMIT 2 = 0x70-block skeleton (13 opcodes whitelist 편입, FP_LEGAL_ROM 4096-bit localparam — 21 legal rows, mode-byte wire 3종 + decode_error 11번째 항, PE_Core stub arm — BCAST 0x24 형 lower_required, asm require_precision_eh). **전 commit landing 완료 (2026-07-16)**: COMMIT 0=042f08e, COMMIT 1=c8213d6 (5934-point 이관 전 truth-table differential 로 무동작변경 증명), COMMIT 2 검증 = ROM sweep 4096점×2 (tag-path/PRECISION-EH-path 양쪽 eff_precision mux arm) golden model 과 bit-일치, stub all-ops live-extraction, 미배정 0x7A/7B/7F decode_error 유지, asm 13×256 mode 검사 equivalence — cocotb 181 (ISA_Decoder) + asm 104 + 전 모듈 무변경
 - **v1.8.0b**: stateless int 경로 — VDOT_ACC(0x71, 4-fragment wide dot + carry-in) + ACC_REDUCE(0x72, wide 입력 stateless SUM/MAX/L2SQ/MEAN) + scalar int-dest STORE_QUANT(0x7C) (FP 하드웨어 불요, "벡터 정수 = 스칼라급 신뢰성" 을 가장 먼저 배달). **명시적 staging 양보 (설계 workflow wwov1b5i3 확정)**: VFMA_ACC(0x70) → v1.8.0c 로 이연 (stateless 형은 16-fragment 출력 FSM 필요, stateful 형은 누산기 설계 필요 — 양쪽 다 열린 상태로 stub 유지), vector STORE_QUANT → 0c/0d, f16/bf16 destination → 0d. per-pe-acc 안은 adversarial verify 에서 refuted (forbidden→required EH 전환 = spec 자기 정책 위반 breaking + LUT/MULT 예산 초과에 uncosted)
-- **v1.8.0c**: FP-UNIT fp32 scalar pipeline (FSCALAR/FRSQRT32/FEXP2_32) — per-operator synth gate 통과 후
+- **v1.8.0c**: FP-UNIT fp32 scalar pipeline (FSCALAR/FRSQRT32/FEXP2_32) — per-operator synth gate 통과 후 (normative 의미론·게이트·리스크 전문은 §23.10). **dispatch 파이프라이닝(shuttle)은 v1.8.0c 에서 명시적으로 descope — 전용 v1.9 timing release 로 이관** (§23.8 의 co-design 문구는 "pipelining-compatible 축조 + hoist 선지불" 로 이행). 0c 가 선지불하는 호환성 조치 3종: ① 모든 fp arithmetic 은 fp-local flop 뒤 (fp unit 자체가 pipelining-compatible), ② launch arm 은 register-load-only, ③ output_regs_free hoist 는 v1.9 shuttle 이 그대로 재사용
 - **v1.8.0d**: CVT/I2F/F2I + DEQUANT + FP 대상 STORE_QUANT + norm 매크로 fp32 재구축
+
+### 23.10 v1.8.0c — fp32 scalar step-sequencer unit (normative)
+
+**당선 설계 "MU-hosted fp32 step sequencer (amended)" (설계 workflow 내부 명칭 sequential-microcode-mu) (2026-07-16 설계 workflow, adversarial verify 의 필수 amendment 7건 반영).** 본 절이 v1.8.0c 의 normative source 다 — spec-before-code FIRST COMMIT. IEEE specials 는 언제나 DATA (qNaN/Inf/zero) 를 산출하며 error_flag 가 절대 아니다; 유일한 fp error_flag 는 FSCALAR missing-B (아래). 결과 tag[15:8] 은 mode byte 를 verbatim 운반 (0x70 block 밖에선 inert, 기존 관례).
+
+#### 23.10.1 아키텍처
+
+- **MU-hosted fp_state FSM**: FP_IDLE / FP_CLASSIFY / FP_EXEC / FP_FINISH + fp_step[5:0] microprogram counter — 클럭당 정확히 1 registered micro-step. 0x74/0x75/0x76 은 **양쪽 twin classifier** (Cluster.v is_mul_op + PE_Core.v dec_is_mul_op) 에 동시 추가되어 기존 ext_to_mu 로 routing (한쪽 누락 = silent permanent lower_required dead-end — lockstep 테스트를 같은 commit 에 탑승).
+- **공유 fp32 multiplier 1기**: 24×24 mantissa product, 4× MULT18X18D + `(* WT_USE_DSP *)`, registered stage 2단 (product 단 / exponent·normalize·RNE 단).
+- **공유 wide FMA-capable adder 1기**: registered stage 2단. datapath 는 FMA 기준으로 sizing — 48-bit unrounded product 를 wide 로 유지, addend 는 **~76-bit sticky-preserving alignment** 경로에서 정렬, **~50-bit LZC**, **단일 final RNE**. 이 wide path 는 fused-FMA 계약과 FS_DIV Markstein correction 양쪽에 load-bearing; plain FADD 는 같은 하드웨어에 2nd operand zero-extend 로 통과.
+- **generate gating**: 전체 datapath 는 `generate if (MUL_OPS_SUPPORTED) begin : g_v180c_fp`; **제어 state (fp_state[1:0], fp_step[5:0], fp_valid_p2) 는 generate 밖 unconditional 선언 (div_state 패턴)** 후 parameter 하에서만 구동 — pe_ready 와 drain gate 가 19 instance 전부에서 elaborate 되도록. data wire 는 g_v180c_fp_off 에서 zero-tied.
+
+**Launch ladder (real case arm — stub arm 아님, DIV silent-swallow 아님; 4 rungs 순서 normative)**:
+1. `!MUL_OPS_SUPPORTED` → **lower_required** (0x71/0x72 prologue 선례)
+2. `!output_regs_free` → **lower_required** (VDOT busy-reject 패턴) — 5-34 cycle fp op 진행 중 도착하는 2번째 fp op, 또는 어떤 gated op 이든 **lower_required 를 받는다. silent drop 절대 금지.**
+3. op별 decode guard (각 opcode 절 참조)
+4. else launch: operand + sub-op latch, `fp_tag_held <= {dec_wave_number, dec_thread_id, 8'h00, dec_eff_output_port_id, dec_eff_precision, 8'h00}` (scalar dim=0x00 rebuild 관례), `fp_opcode_held <= dec_opcode`, `fp_state <= FP_CLASSIFY`
+
+**output_regs_free (hoisted 단일 named wire, 8-term으로 widen; pe_ready = 동일 식)**:
+```
+(frag_idx==FRAG_IDLE) && !mul_valid_p1 && !mul_valid_p2
+&& (div_state==DIV_IDLE) && !div_valid_p2 && !div_b_zero_p2
+&& (fp_state==FP_IDLE)  && !fp_valid_p2
+```
+
+**MANDATORY MUL-launch fp-idle guard**: 0x12 MUL launch predicate (PE_Core.v:1790-1792) 에 `&& (fp_state==FP_IDLE) && !fp_valid_p2` 추가. 이것이 없으면 mul_valid_p2 pulse 가 1-cycle fp_valid_p2 FINISH pulse 와 겹치는 순간 fp 결과가 **조용히 유실**된다 (priority chain 에서 MUL 이 FP 상위).
+
+**FINISH / output priority chain**: fp_valid_p2 / fp_result_p2(`{32'h0, packed_fp32}`) / fp_tag_p2 를 정확히 1 cycle pulse (div_valid_p2 처럼 default-clear). output priority chain 은 DIV 뒤에 registered arm 1개 추가 — **frag-drain > MUL p2 > DIV p2 > FP p2 > case dispatch**. 이 arm 은 `opcode_out <= fp_opcode_held` 도 설정: **DIV 의 stale-opcode quirk 로부터의 의도적 divergence** (테스트로 pin).
+
+**SDK positional-bank 규칙 확장 (Cluster.v:401-403 주석 확장)**: fp 결과는 mu_out_* 를 경유해 mu_bank_reg 에 positional 하게 쓰이므로, **fp op 과 그에 의존하는 OPREF kind-1 read 사이에 개입 mul-class dispatch 금지** — DIV 의 64-cycle 잠복 hazard 와 동일 클래스 (하드웨어 fix 는 v1.9 로 deferred, §23.10.9).
+
+#### 23.10.2 0x74 FSCALAR
+
+**Operands**: A = payload_a[31:0] (dec_input_payload); B = payload_b[31:0] (dec_input_payload_b) — **F_HAS_OPB (cb_flags[3]) 가 모든 sub-op 에 필수**; C (FS_FMA 전용) = **payload_a[63:32]** — fp32 scalar 는 64-bit slot 의 절반이라 FMA 에 신규 EH channel 불요. non-FMA sub-op 의 payload_a[63:32] 는 reserved (하드웨어 무시, assembler zero-fill). eff_b_value 는 **미소비** (B 는 payload_b port 로 오고 imm/opref mux 가 아님) → EHDecode.v:501 의 alu_binary XOR trap 은 영구 dormant: rtl_alu_binary=false, forbid_opref=true 유지 (양쪽 다 load-bearing).
+
+**Missing-B guard (dispatch-side)**: `!dec_input_payload_b_valid` → **error_flag** (malformed program, deterministic; PE_Core.v:59 input 의 첫 소비자). opb_required_invalid 는 "opcode 가 flag 를 요구함" 을 표현할 수 없어 dispatch 측 검사가 필수.
+
+**Sub-op**: imm16[7:4] ∈ 신규 single-source JSON 테이블 **fscalar_op_codes {FS_ADD:0x0, FS_SUB:0x1, FS_MUL:0x2, FS_FMA:0x3, FS_DIV:0x4}** → isa_subop_codes.vh 로 codegen (ACC_REDUCE 0x72 패턴 verbatim). imm16 은 forbidden→**optional** loosening; **absent = 0x0 = FS_ADD**. imm16[3:0] reserved-zero 위반 → lower_required; 미지 sub-op (0x5-0xF) → lower_required.
+
+**imm-forbid**: rtl_legality 의 imm forbid 는 전면 삭제 (0x72 의미론 verbatim — forbid_imm_any 단일 비트뿐, per-size split 이 없음); **imm32/imm64 는 ASM-FORBIDDEN 이되 RTL-TOLERATED** — FSCALAR 가 eff_b_value 를 읽지 않으므로 무해함을 명기.
+
+**Sub-op 알고리즘**: FS_ADD/FS_SUB/FS_MUL = 공유 adder/multiplier 1 pass; FS_FMA = wide fused microstep (exact 48-bit product 유지, 단일 RNE); FS_DIV = 아래 pinned 알고리즘.
+
+**FS_DIV (pinned — scale-invariant unpacked-significand Newton)**:
+1. unpack: a = ma·2^ea, b = mb·2^eb, ma,mb ∈ [1,2)
+2. reciprocal seed: 256×9 ROM, index mb[22:15]
+3. NR **3회**: r' = r·(2 − mb·r) — unpacked significand 위, safe binade
+4. q0 = ma·r
+5. **Markstein correction**: e = ma − q0·mb, q = q0 + e·r — fused wide microstep 경유
+6. exponent eq = ea − eb + normalize 는 **pack 에서 1회만** 조립; overflow/underflow 도 pack 에서만 처리 (q0-overflows-to-Inf hazard 제거)
+
+**Markstein precondition 논증 (sketch)**: 256×9 seed 의 초기 상대오차 ≲2⁻⁹; NR 은 오차를 제곱하므로 3회 후 exact 산술 기준 ~2⁻⁷²급 — widened round-to-odd 중간값의 rounding noise 를 보수적으로 반영해도 r 의 1/mb 대비 상대오차는 2⁻²⁷ 이하로, fp32 (p=24) 의 Markstein 전제 (r 이 1/b 를 p bit 이상 근사) 를 여유 있게 충족. 그러면 q0 = RN(ma·r) 은 ma/mb 의 1 ulp 이내이고, residual e = ma − q0·mb 는 wide fused path (48-bit product 무반올림) 에서 **exact**. Markstein 정리에 의해 q = RN(q0 + e·r) 은 correctly-rounded RNE quotient. scale-invariant 형이므로 이 전제는 고정 binade [1,2) 안에서 성립하며 지수 범위(overflow/underflow)와의 간섭이 구조적으로 없다. **내부 micro-step 은 DAZ/FTZ-EXEMPT** — 아니면 underflow 근방에서 Markstein residual 이 flush 되어 misround (§23.10.5 정책 표에 pin).
+
+#### 23.10.3 0x75 FRSQRT32
+
+**Strictly port-only unary** (EH shape 는 v1.8.0a 와 byte-identical); A = payload_a[31:0].
+
+**Range reduction — 구조적으로 PINNED**: rsqrt(4x) = rsqrt(x)/2 (exact) 를 이용해 datapath 가 x 를 x' ∈ [1,4) (mantissa + exponent parity) 와 even exponent shift 로 분해; **모든 NR iteration 은 x' 의 unpacked widened significand (27-30 bit, round-to-odd 중간값, DAZ/FTZ-exempt) 위에서** 실행; exponent 는 final pack 에서만 조립. 이로써 2²⁴ equivalence-class collapse 가 valid RTL property 가 되고 (scale covariance by construction), large-x FTZ divergence 가 제거된다.
+
+**Seed**: 256-entry × 9-bit ROM, index **{exp[0], mant[22:16]}**, pinned script `scripts/gen_frsqrt_seed_rom.py` 생성 (midpoint-of-segment, 9-bit RNE quantization). exhaustive sweep 은 **shipped ROM 실물**에 대해 재실행 (reference 재구성 아님).
+
+**Schedule**: h = 0.5·x' (exact exponent decrement) 후 **NR 3회 (THREE — normative)**: y' = y·(1.5 − h·y·y) = multiplier 3 pass + adder 1 pass / iteration; 단일 final RNE pack. (2회는 2.205 ulp 실측 — FAIL; 3회는 1.731 ulp — PASS.)
+
+**계약**: **≤2 ulp** — 근거는 model 상 2²⁴ class 전수 sweep (proof, not sample) 이며, RTL 로의 유효성은 pinned range reduction + RTL scale-covariance property test + RTL-vs-model lockstep sample 로 이월. **기록된 margin: worst-case 1.731 ulp @ 3 iterations — 여유 0.27 ulp** (§23.10.9 리스크 참조). **Monotonicity (non-increasing) 는 NORMATIVE** — exhaustive sweep 내 monotonicity assertion 으로 discharge.
+
+**Specials**: rsqrt(+0)=+Inf; rsqrt(−0)=−Inf; rsqrt(x<0)=qNaN; rsqrt(+Inf)=+0; rsqrt(NaN)=qNaN; **x=4^k → bit-exact 2^−k** (sweep 에서 별도 bit-equality 로 assert — ≤2 ulp 로 함의되지 않음).
+
+#### 23.10.4 0x76 FEXP2_32
+
+**Strictly port-only unary.**
+
+**FP_CLASSIFY**: NaN → qNaN; **x ≥ 128 → +Inf** (fast path, exact — 2¹²⁸ 은 RNE overflow threshold 초과); **x 가 정수 n ∈ [−126,127] → exact exponent assembly 로 2^n BIT-EXACT BY CONSTRUCTION** (integer bypass — 계약이 polynomial fit 에 걸리지 않음); 정수 n ≤ −127 → +0 (FTZ); exp2(±0) = 1.0 exact (integer bypass 가 커버).
+
+**Non-special path**: exact split x = n + f, f ∈ [0,1) (shift/compare, exact); 2^f 는 **DEGREE-6 minimax Horner** (degree-4 는 33.4 ulp 로 REFUTED; degree-5 는 1.47 ulp 로 thin; degree-6 실측 0.56 ulp — safe) = multiplier 6 pass + adder 6 pass; 계수 7개는 `scripts/gen_fexp2_coeffs.py` 산출로 **c0 를 정확히 1.0f 로 CONSTRAIN** (integer bypass 와 belt-and-suspenders), JSON single-source 에 frozen; exponent assembly 로 n 가산 (exact); final pack = unbounded-exponent RNE 후 FTZ.
+
+**Underflow boundary — 올바르게 PINNED**: normative cell 은 **result = FTZ(RN_unbounded(2^x))** 이지 'x < −126 → +0' **comparator 가 아니다** — −126 바로 아래 sliver 에서 RN 이 min_normal 로 올림하면 결과는 **min_normal** (양 경계 ±1 ulp 에 directed vector). 하방 comparator fast path 는 **x ≤ −150 (무조건 +0)** 뿐.
+
+**Overflow**: (127.99999991, 128) 구간 입력은 comparator 가 아닌 **pack 의 RNE overflow** 로 +Inf 도달.
+
+**계약**: non-special domain 에서 **≤2 ulp**; **monotonicity (non-decreasing) 는 NORMATIVE** — model-exhaustive sweep (chunked 2³², offline 수 시간) 으로 discharge; RTL 측은 정직하게 SAMPLED (directed boundary + 10⁵ lockstep) — rsqrt 와의 커버리지 비대칭을 명기.
+
+#### 23.10.5 normative IEEE 표
+
+**정책 (전 op 공통, 각 항이 directed vector 를 생성)**:
+
+| 정책 | normative 내용 |
+|---|---|
+| rounding | **RNE only** — fp_block ROM 행 불변 (dtype [0x4], acc [1], rnd [0]); rnd nibble 1/2/3 은 ILLEGAL 유지 |
+| DAZ | denormal operand 는 **operand load 시에만** same-signed zero 로 flush; **min_normal 0x00800000 은 절대 flush 안 됨**; flush 된 부호 보존 |
+| FTZ | **flush-AFTER-round with unbounded-exponent rounding**: exact result 의 RN 을 unbounded exponent 로 계산 → \|result\| < min_normal 이면 same-signed zero 로 치환 |
+| 내부 micro-step | widened internal format 에서 **DAZ/FTZ-EXEMPT** (pinned — 아니면 Markstein residual flush 로 FDIV 가 underflow 근방 misround) |
+| NaN | 모든 NaN-producing case 에 **단일 canonical qNaN 0x7FC00000**; sNaN 은 canonical 패턴으로 quiet, trap 없음 (§23.4 항목 5 bit-reproducibility 계약에 필수; sticky-invalid 는 0x7E 예약) |
+| ulp 정의 | **ulp(x) = 2^(e−23)**, e 는 infinitely-precise result 의 binade exponent (Goldberg 관례; binade edge 에선 smaller binade) |
+
+**Special-case 행 (각 행 = directed test vector 1개; 완전성이 계약)**:
+
+| # | op | 입력/조건 | 결과 (normative) |
+|---|---|---|---|
+| A1 | add | Inf + Inf (동부호) | 동부호 Inf |
+| A2 | add | (+Inf) + (−Inf) | qNaN 0x7FC00000 |
+| A3 | add | (+0) + (−0) | +0 |
+| A4 | add | x + (−x), x finite | +0 |
+| A5 | add/mul | NaN operand (sNaN 포함) | canonical qNaN (sNaN quieted) |
+| A6 | add/mul | RNE overflow | ±Inf |
+| M1 | mul | Inf × 0 | qNaN |
+| M2 | mul | Inf × finite≠0 | sign-XOR Inf |
+| M3 | mul | 부호는 항상 XOR, zero 결과 포함 — (−0)×(+3) | −0 |
+| Z1 | DAZ | denormal operand | same-signed zero 로 flush (부호 보존); min_normal 은 통과 |
+| F1 | FMA | fused **단일 rounding** (48-bit product 무반올림 유지 후 1회 RNE) | normative |
+| F2 | FMA | Inf×0 + c, 모든 c (**c=NaN 포함 — NaN operand 가 있으면 canonical qNaN 이 우선**) | qNaN |
+| F3 | FMA | (+Inf×x) + (−Inf) | qNaN |
+| F4 | FMA | exact cancellation a·b = −c | +0 (RNE) |
+| F5 | FMA | product 가 −0 인 경우의 부호 | XOR rule 이 add 까지 관통 |
+| V1 | FDIV | finite≠0 / (±0) | sign-XOR Inf |
+| V2 | FDIV | 0 / 0 | qNaN |
+| V3 | FDIV | Inf / Inf | qNaN |
+| V4 | FDIV | finite / Inf | sign-XOR 0 |
+| V5 | FDIV | Inf / finite | sign-XOR Inf |
+| V6 | FDIV | quotient 부호 | 항상 sign-XOR (explicit row) |
+| V7 | FDIV | x / denormal (**DAZ 귀결 — 자체 행으로 pin**) | x/(±0) 과 동일 = sign-XOR Inf |
+| R1 | rsqrt | +0 | +Inf |
+| R2 | rsqrt | −0 | −Inf |
+| R3 | rsqrt | x < 0 | qNaN |
+| R4 | rsqrt | +Inf | +0 |
+| R5 | rsqrt | NaN | qNaN |
+| R6 | rsqrt | x = 4^k | **bit-exact 2^−k** |
+| E1 | exp2 | NaN | qNaN |
+| E2 | exp2 | x ≥ 128 | +Inf (fast path) |
+| E3 | exp2 | 정수 n ∈ [−126,127] | **bit-exact 2^n** (integer bypass) |
+| E4 | exp2 | 정수 n ≤ −127 | +0 (FTZ) |
+| E5 | exp2 | ±0 | 1.0 exact |
+| E6 | exp2 | underflow sliver (x 가 −126 바로 아래) | **FTZ(RN_unbounded(2^x))** — RN 이 min_normal 로 올림하면 min_normal, 아니면 +0 |
+| E7 | exp2 | x ≤ −150 | +0 (fast path) |
+| E8 | exp2 | x ∈ (127.99999991, 128) | +Inf — **pack 의 RNE overflow 경유** (comparator 아님) |
+
+#### 23.10.6 cycle maxima 표 (normative)
+
+**maxima 다 — 테스트는 bound 내 완료(completion-within-bound)를 assert 하고, exact cycle count 는 절대 assert 하지 않는다** (Gate 2 fallback 인 +1 cycle/adder-pass 흡수 여유 포함).
+
+| op | 최대 cycles |
+|---|---|
+| FS_ADD / FS_SUB | ≤6 |
+| FS_MUL | ≤6 |
+| FS_FMA | ≤10 |
+| FS_DIV | ≤32 |
+| FRSQRT32 | ≤34 |
+| FEXP2_32 | ≤30 |
+
+#### 23.10.7 per-operator synth gate (merge blocker)
+
+§23.8(1) 의 hard gate 를 fp 에 적용 — 동기는 repo 자신의 Vivado-35-DSP vs yosys-497-MULT 괴리. **어떤 fp RTL 도 해당 operator 가 standalone yosys+nextpnr gate 를 정확한 타깃 (LFE5UM-85F, CABGA381, --speed 6, out-of-context, synth/lattice/scripts/pnr_pod.sh 와 동일 flow) 에서 통과하기 전에는 PE_Core.v 에 merge 되지 않는다.** 신규 harness: `synth/lattice/scripts/synth_fp_ops.sh` + per-operator wrapper top (synth/lattice/fp_ops/).
+
+- **GATE 1 — fp32 shared multiplier** (24×24 mantissa product, registered product stage + registered exponent/normalize/RNE stage, `(* WT_USE_DSP *)` — PE_Core.v:1569 선례). **Pass: ≤4 MULT18X18D (yosys 가 더 많이 decompose 하면 hard fail — 이 gate 가 존재하는 바로 그 괴리 클래스), ≤300 LUT4, standalone Fmax ≥ 40 MHz per registered stage.**
+- **GATE 2 — wide fp32 adder / FMA-align datapath** (registered stage 2단: 76-bit sticky-preserving alignment; wide add + ~50-bit LZC + normalize + RNE). fat 하게 synth 될 가능성이 가장 높은 operator (FMA-capable 이라 plain fp32 adder 의 1.5-2× — **정직하게 500-900 LUT4 로 가격 책정**, 300-500 plain-adder 수치 아님). **Pass: ≤900 LUT4, 0 MULT, standalone Fmax ≥ 40 MHz per stage**; stage 2 (add+LZC+normalize+RNE) 가 40 MHz 미달 시 pre-approved fallback 은 **adder pass 당 +1 sequencer cycle** (FSM step-count 변경만 — cycle maxima 표에 이미 headroom) 이지 datapath 재설계가 아님.
+- **GATE 3 — 전체 g_v180c_fp unit standalone** (FSM + step-sequence case + source mux + temp reg + fp_tag_held + seed/coeff ROM + operator 양쪽). **Pass: 총 ≤ +2000 LUT4, 정확히 +4 MULT18X18D, ≤ +900 FF, distributed ROM 으로 0 EBR (문서화된 1-EBR fallback 허용), Fmax ≥ 40 MHz.** Gates 1-3 은 **PE_Core merge commit 이전에** 실행.
+- **GATE 4 — 통합 후 full Cluster (2×2) synth+PnR 재실행.** **Pass: MULT18X18D ≤ 140/156; TRELLIS_COMB ≤ 30%; Fmax ≥ 10.5 MHz (실측 10.8546 MHz 대비 ~3% noise 이상 regression 없음); 그리고 critical-path diff** — worst-path endpoint report 를 cluster_2x2_pnr.rpt 와 diff. 정직한 주장은 "**u_matmul_unit.output_payload endpoint 에서 ≤1 mux level, dispatch cone 심화 zero**" 이며 이 diff 가 그것을 강제하는 CI 검사다 (기존 "zero added depth" 문구는 은퇴). Gate 4 는 **release tag 이전에** 실행.
+
+**Ordering**: Gate 1+2 → operator RTL 파일 merge (unwired); Gate 3 → PE_Core g_v180c_fp commit; Gate 4 → release. 모든 gate 의 report 는 `synth/lattice/reports/fp_ops/` 에 archive — spec 의 hw_cost 표가 문헌이 아닌 실측을 인용하도록.
+
+#### 23.10.8 stub dispositions (v1.8.0c 에서 stub 유지: {0x70, 0x73, 0x77, 0x78, 0x79, 0x7D, 0x7E} — lower_required)
+
+- **0x70 VFMA** → v1.8.0d: scalar wide-FMA microstep 의 MU 상 sequential per-lane 재사용으로 vector FMA; bf16 dtype widening 은 v2.0 이연.
+- **0x73 ACC_ELEMWISE** → v1.8.0d: 기존 MAC/adder 인프라 위 elementwise acc op, sub-op 표는 0x72/0x74 패턴.
+- **0x77/0x78** → 빨라야 v1.8.0d: port-only shape 불변; **pure monotonic stub-body replacement 로만** 착지.
+- **0x79 FMAX/FMIN** → 구현은 v1.8.0d, **의미론은 지금 (v1.8.0c spec commit 에서) PIN**: **IEEE754-2019 minimumNumber/maximumNumber** — **−0 < +0**; **NaN 은 number 에 패배** (한쪽 NaN → number 반환); **양쪽 NaN → canonical qNaN 0x7FC00000**; **signed-int compare tree 재사용 금지** (§23.6). 0d 는 frozen 계약에 대고 구현.
+- **0x7D** → v2.0.
+- **0x7E FP_STATUS** → v1.8.0d/v2.0: sticky flag register (invalid / overflow / underflow-flushed). **v1.8.0c 는 semantics 를 prose 로만 예약하고 레지스터를 추가하지 않는다** — fp special-case 표가 deterministic 이므로 flag 는 이후 어떤 result bit 도 바꾸지 않고 추가 가능.
+
+#### 23.10.9 residual risks (v1.8.0c)
+
+1. **모든 area/Fmax 수치는 synth Gates 1-3 실행 전까지 문헌 추정** — FMA-capable wide adder (500-900 LUT4 책정) 가 fat synth 또는 40 MHz stage 미달 가능성 최고; pre-approved fallback (+1 sequencer cycle/adder pass) 은 cycle 표 변경이지 재설계가 아니나, Gate 2 가 EBR 강제나 partitioning 결정을 spec 에 역주입할 수 있음.
+2. **mu_bank_reg positional hazard 는 SDK-rule 확장 + directed test 로 완화될 뿐 하드웨어 fix 아님**: 긴 fp op 중 개입 mul-class dispatch 는 여전히 fp 결과를 잘못된 bank slot 에 쓴다. DIV 의 64-cycle 잠복 hazard 와 선례 일치하나 fp op 이 노출면을 넓힘; 제대로 된 fix (launch 시 bank target latch) 는 deferred — **v1.9 arbitration rework 에 탑승**.
+3. **MU serialization 은 당선 설계에 내재**: cluster 당 scalar fp op 동시 1개, op 당 5-34 cycle (**10.85 MHz 에서 ~0.5-3 µs**) 동안 cluster_ready 가 cluster-wide deassert. Stage-1 accuracy-first vehicle + observe-only 인 오늘은 수용 가능하나, cluster_ready 의 미래 소비자와 fp-throughput-sensitive Stage-2 워크로드가 이를 상속 — **fp throughput 이 중요해지면 이 설계는 확장이 아니라 대체 대상**.
+4. **dispatch 파이프라이닝은 §23.8 co-design 문구에도 불구하고 v1.9 로 의도적 이연** — 여기서는 "pipelining-compatible 축조 + output_regs_free hoist" 로 이행; fabric 은 v1.8.0c 내내 ~10.85 MHz 이고 v1.9 shuttle 은 소수의 cycle-exact pe_ready-window 테스트를 재유도해야 함; v1.9 가 밀리면 fp wall-clock latency (~3 µs worst) 지속.
+5. **FRSQRT32 margin 이 얇음 (1.731 vs 2.0 ulp — 여유 0.27)** 이고 seed 구성·step 순서에 민감: 구현 RTL 의 step 순서가 모델 순서 (x·y-first, widened round-to-odd 중간값) 에서 이탈하면 margin 을 조용히 잠식 — shipped artifact 에 대한 exhaustive sweep 재실행이 backstop 이나, RTL-vs-model lockstep sample 과 scale-covariance test 가 실제로 CI 에 유지될 때만 유효; FEXP2 의 RTL coverage 는 필연적으로 sampled (2³² RTL-exhaustive 불가).
+6. **twin-classifier lockstep 과 stub-membership 은 이번 release 가 편집하는 cross-file invariant**: 보호 대상 failure mode (silent permanent lower_required dead-end) 는 확장된 lockstep/reachability 테스트가 RTL 편집과 **같은 commit** 에 착지할 때만 잡힘 — 설계 리스크가 아닌 process 리스크이며, 이 codebase 를 이미 문 적 있음 (v1.5.3 arbitration bugs).
+7. **pod-scale placement 는 여전히 실패** (MULT 497>156, COMB 101%) 이고 이번 release 는 pod 수요를 더 늘림 (cluster 당 +4 MULT); 단일-Cluster Stage-1 vehicle 에선 명시적 scope 밖이나, **모든 v1.8.0c 수치는 cluster-OOC 한정 — 어떤 pod 주장도 여기서 유도 금지**.
+8. **IEEE sticky exception flag 는 0x7E FP_STATUS 착지 전까지 갈 곳이 없음**: 초기 소프트웨어는 invalid/overflow 를 전혀 관측 불가; spec 은 semantics 만 예약하며, 0x7E 의 최종 설계가 per-op flag capture 를 원하면 fp FSM 에 (results-invariant) sticky-latch retrofit 필요.

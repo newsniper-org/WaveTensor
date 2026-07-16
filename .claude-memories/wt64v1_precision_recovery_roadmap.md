@@ -89,6 +89,18 @@ v1.7 은 (parity 수준으로) output-side 를 추가 개선하나 완전 제거
 - **|A×r|>7.5 saturation wrap** — variance→0 degenerate case. SDK range check
   로 처리 (HW-side telemetry 없음)
 
+## v1.8 hard gate 실측 (2026-07-16 — 이후 모든 HW 논의의 기준)
+
+- **Cluster Fmax = 10.85 MHz** (nextpnr-ecp5 OOC, LFE5U-85F speed 6) —
+  100 MHz 가정 대비 9.2× 미달. Critical path 470 LUT 레벨 (단일 사이클
+  dispatch 조합논리 구조의 귀결). dispatch 파이프라이닝이 v1.8.0c 의
+  필수 아키텍처 항목.
+- **pod 2x2_2x2 는 LFE5U-85F 에 배치 불가**: MULT18X18D 497 vs 156
+  (3.2×) + TRELLIS_COMB 101%. Cluster 단독은 수용 (COMB 25%, MULT 82%).
+- synth gate 가 적발한 잠복 버그: v1.6.1b 함수호출 인덱싱(yosys 불법),
+  v1.7 frag_pending 범위 밖 인덱스, 스크립트 AUTONAME/whitebox 처리.
+- 문헌 추정치를 절대 신뢰하지 말 것 — 이 프로젝트에서 3연속 실측 반박됨.
+
 ## Cross-repo 파급
 
 v1.6.7 landing 시 5곳 동시 update: WaveTensor RTL/asm/spec, wavetensor-sdk 
