@@ -2051,7 +2051,7 @@
       "mnemonic": "FSCALAR",
       "code": 116,
       "desc": "FSCALAR \u2014 fp32 scalar A op B (B via F_HAS_OPB payload_b): sub-op imm16[7:4] per fscalar_op_codes (absent imm16 = FS_ADD); imm16[3:0] reserved-zero else lower_required; FS_FMA addend C = payload_a[63:32]; RNE-only, DAZ/FTZ; MU-hosted",
-      "notes": "v1.8.0c sub-op encoding \u2014 stub_v18 stays true until the RTL-integration commit (PE_Core still raises lower_required). Monotonic loosening: imm16 forbidden->optional (absent=FS_ADD keeps every previously-legal encoding decoding). imm32/imm64 stay asm-forbidden but are RTL-tolerated (0x72 semantics verbatim \u2014 one forbid_imm_any bit, no per-size split; harmless because FSCALAR never reads eff_b_value: B arrives on the payload_b port, so forbid_opref stays true and rtl_alu_binary stays false, keeping the EHDecode alu-binary XOR trap dormant).",
+      "notes": "v1.8.0c IMPLEMENTED (COMMIT F \u2014 MU-hosted FP_StepSeq step sequencer, spec \u00a723.10.2). Monotonic loosening kept: imm16 forbidden->optional (absent=FS_ADD keeps every previously-legal encoding decoding). imm32/imm64 stay asm-forbidden but are RTL-tolerated (0x72 semantics verbatim \u2014 one forbid_imm_any bit, no per-size split; harmless because FSCALAR never reads eff_b_value: B arrives on the payload_b port, so forbid_opref stays true and rtl_alu_binary stays false, keeping the EHDecode alu-binary XOR trap dormant). Launch ladder: MU gate -> busy-reject (lower_required) -> imm16[3:0] reserved-zero / sub-op>0x4 lower_required -> missing payload_b error_flag (dispatch-side, \u00a723.10.2) -> launch. IEEE specials always produce DATA, never error_flag.",
       "asm_legality": {
         "required": [
           "port"
@@ -2080,13 +2080,13 @@
         "forbid_opref": true
       },
       "rtl_alu_binary": false,
-      "stub_v18": true
+      "stub_v18": false
     },
     {
       "mnemonic": "FRSQRT32",
       "code": 117,
       "desc": "fp32 rsqrt: LUT seed + 3 Newton iterations, <=2 ulp normative",
-      "notes": "v1.8.0a COMMIT 2 stub: decode-legal, PE_Core raises lower_required (capability absence, not malformation). Mode-byte legality per the normative spec \u00a723.6a table \u2014 restrictive-first, later loosening only.",
+      "notes": "v1.8.0c IMPLEMENTED (COMMIT F \u2014 MU-hosted FP_StepSeq step sequencer, spec \u00a723.10.3: pinned range reduction, 256x9 seed ROM, 3 NR iterations, <=2 ulp + monotonicity normative, x=4^k bit-exact). Strictly port-only unary; launch ladder: MU gate -> busy-reject (lower_required) -> launch. IEEE specials always produce DATA, never error_flag.",
       "asm_legality": {
         "required": [
           "port"
@@ -2116,13 +2116,13 @@
         "forbid_opref": true
       },
       "rtl_alu_binary": false,
-      "stub_v18": true
+      "stub_v18": false
     },
     {
       "mnemonic": "FEXP2_32",
       "code": 118,
       "desc": "fp32 exp2, <=2 ulp normative",
-      "notes": "v1.8.0a COMMIT 2 stub: decode-legal, PE_Core raises lower_required (capability absence, not malformation). Mode-byte legality per the normative spec \u00a723.6a table \u2014 restrictive-first, later loosening only.",
+      "notes": "v1.8.0c IMPLEMENTED (COMMIT F \u2014 MU-hosted FP_StepSeq step sequencer, spec \u00a723.10.4: exact n+f split, degree-6 minimax Horner, integer bypass 2^n bit-exact, FTZ(RN_unbounded) underflow boundary, <=2 ulp + monotonicity normative). Strictly port-only unary; launch ladder: MU gate -> busy-reject (lower_required) -> launch. IEEE specials always produce DATA, never error_flag.",
       "asm_legality": {
         "required": [
           "port"
@@ -2152,7 +2152,7 @@
         "forbid_opref": true
       },
       "rtl_alu_binary": false,
-      "stub_v18": true
+      "stub_v18": false
     },
     {
       "mnemonic": "CVT",

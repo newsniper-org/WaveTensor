@@ -27,7 +27,10 @@ read_verilog -defer -sv \
     PE.v \
     ISA_Decoder.v \
     EHDecode.v \
-    PE_Core.v
+    PE_Core.v \
+    FP_StepSeq.v \
+    FP_Mul36.v \
+    FP_AddWide.v
 
 # --- Hierarchy + elaboration --------------------------------------------
 hierarchy -check -top Pod

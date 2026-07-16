@@ -1382,7 +1382,9 @@ async def test_vdot_mu_routing_end_to_end(dut):
     """v1.8.0b twin-classifier check: a 0x71 wave routes to the
     MATMUL_UNIT via is_mul_op and EXECUTES (emits the dot) — kills the
     single-list dead-end where only one classifier is updated and the op
-    lowers forever."""
+    lowers forever. v1.8.0c extends the same reachability pin to the
+    three fp opcodes 0x74/0x75/0x76 in test_fp_mu_routing_end_to_end
+    below (same failure mode, same commit as the classifier edit)."""
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
     await _reset(dut)
@@ -1416,3 +1418,135 @@ async def test_vdot_fragment_order_permutations_with_carry_in(dut):
         assert r['err'] == 0 and r['out'] == 1, f"order={order}: {r}"
         assert r['payload'] == golden, \
             f"order={order}: {r['payload']:016x} != {golden:016x}"
+
+
+# =============================================================================
+# v1.8.0c §23.10 — fp32 scalar ops (0x74 FSCALAR / 0x75 FRSQRT32 / 0x76
+# FEXP2_32) MU routing. Twin-classifier reachability: each op must return
+# a RESULT through the full Cluster — a missed classifier side (Cluster
+# is_mul_op OR PE_Core dec_is_mul_op) shows up here as either a
+# lower_required dead-end (L-PE got it / MU prologue lowered it) or a
+# silent timeout, never as a wrong-value pass. Golden authority is
+# scripts/golden_fp32.py (imported, never retyped).
+# =============================================================================
+
+import struct as _struct
+
+sys.path.insert(0, os.path.join(_REPO, 'scripts'))
+import golden_fp32 as _G  # noqa: E402
+
+_FS = _G.FSCALAR_OP_CODE
+_FP_MODE = 0x14   # the single legal fp mode byte: rnd=0, acc=1, dtype=4
+
+
+def _f2b(x):
+    return int.from_bytes(_struct.pack(">f", float(x)), "big")
+
+
+def _fp_cluster_instr(op, subop=None):
+    from test_isa_decoder import eh_precision as _ehp
+    ehs = [eh_port(input_port_mask=0x01, output_port_id=0), _ehp(_FP_MODE, 0)]
+    if subop is not None:
+        ehs.append(eh_imm16((subop & 0xF) << 4))
+    return encode_instr(op, *ehs, flags=(1 << 2))   # F_PRECISION_OVR
+
+
+async def _fire_fp_cluster(dut, op, payload_a, payload_b=0, b_valid=0,
+                           subop=None):
+    await _fire(dut, _fp_cluster_instr(op, subop), _tag(port_context_id=0),
+                payload_a=payload_a, payload_b=payload_b,
+                payload_b_valid=b_valid)
+    return {'out': int(dut.ext_out_valid.value),
+            'err': int(dut.any_error_flag.value),
+            'lwr': int(dut.any_lower_required.value),
+            'payload': int(dut.ext_out_payload.value),
+            'opcode': int(dut.ext_out_opcode.value)}
+
+
+@cocotb.test()
+async def test_fp_mu_routing_end_to_end(dut):
+    """v1.8.0c twin-classifier reachability: 0x74 (with opb), 0x75 and
+    0x76 each route to the MATMUL_UNIT via is_mul_op, EXECUTE on the fp
+    step sequencer, and return a bit-exact RESULT ({32'h0, fp32}) at the
+    Cluster boundary with opcode_out preserved."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    # 0x74 FSCALAR FS_MUL with B on the payload_b port
+    a, b = _f2b(3.0), _f2b(1.5)
+    exp = _G.micro_fscalar(_FS['FS_MUL'], a, b)
+    r = await _fire_fp_cluster(dut, 0x74, a, payload_b=b, b_valid=1,
+                               subop=_FS['FS_MUL'])
+    assert (r['err'], r['lwr'], r['out']) == (0, 0, 1), f"0x74: {r}"
+    assert r['payload'] == exp, f"0x74: {r['payload']:016x} != {exp:08x}"
+    assert r['opcode'] == 0x74, f"0x74: opcode_out {r['opcode']:#x}"
+
+    # 0x75 FRSQRT32 (strictly port-only unary)
+    a = _f2b(4.0)
+    exp = _G.micro_rsqrt(a)
+    r = await _fire_fp_cluster(dut, 0x75, a)
+    assert (r['err'], r['lwr'], r['out']) == (0, 0, 1), f"0x75: {r}"
+    assert r['payload'] == exp, f"0x75: {r['payload']:016x} != {exp:08x}"
+    assert r['opcode'] == 0x75, f"0x75: opcode_out {r['opcode']:#x}"
+
+    # 0x76 FEXP2_32 (strictly port-only unary)
+    a = _f2b(7.0)
+    exp = _G.micro_exp2(a)
+    r = await _fire_fp_cluster(dut, 0x76, a)
+    assert (r['err'], r['lwr'], r['out']) == (0, 0, 1), f"0x76: {r}"
+    assert r['payload'] == exp, f"0x76: {r['payload']:016x} != {exp:08x}"
+    assert r['opcode'] == 0x76, f"0x76: opcode_out {r['opcode']:#x}"
+
+
+@cocotb.test()
+async def test_fp_lpe_direct_dispatch_lower_required(dut):
+    """v1.8.0c launch-ladder rung 1 at the L-PE (MUL_OPS_SUPPORTED=0):
+    the Cluster classifier never routes an fp opcode to an L-PE, so the
+    test forces the scenario by depositing a 1-cycle pulse on the
+    pe_active_lpe_s6 pipeline register during the fp wave's dec_valid
+    cycle — the L-PE then sees an active 0x76 dispatch and must raise
+    lower_required (capability absence), NEVER error_flag, while the
+    MATMUL_UNIT (activated by the real routing) still returns the
+    correct result."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    a = _f2b(7.0)
+    exp = _G.micro_exp2(a)
+    dut.ext_instruction.value = _fp_cluster_instr(0x76)
+    dut.ext_tag.value = _tag(port_context_id=0)
+    dut.ext_payload.value = a
+    dut.ext_payload_b.value = 0
+    dut.ext_payload_b_valid.value = 0
+    dut.ext_frag_hdr.value = 0
+    dut.ext_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.ext_valid.value = 0
+
+    forced = False
+    saw_lwr = saw_err = saw_out = 0
+    payload = opcode = None
+    for _ in range(80):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if (not forced and int(dut.dec_valid.value) == 1
+                and int(dut.dec_opcode.value) == 0x76):
+            # deposit: L-PE 0 active for exactly this dispatch cycle (the
+            # register is rewritten from s5 at the next edge)
+            dut.pe_active_lpe_s6.value = 1
+            forced = True
+        saw_lwr |= int(dut.any_lower_required.value)
+        saw_err |= int(dut.any_error_flag.value)
+        if int(dut.ext_out_valid.value) == 1:
+            saw_out = 1
+            payload = int(dut.ext_out_payload.value)
+            opcode = int(dut.ext_out_opcode.value)
+            break
+    assert forced, "fp dec_valid cycle never observed"
+    assert saw_lwr == 1, "L-PE did not raise lower_required for the fp op"
+    assert saw_err == 0, "L-PE raised error_flag instead of lower_required"
+    assert saw_out == 1 and payload == exp and opcode == 0x76, \
+        f"MU result corrupted by the forced L-PE dispatch: " \
+        f"out={saw_out} payload={payload} opcode={opcode}"

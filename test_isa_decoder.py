@@ -4647,7 +4647,16 @@ def _fp_scaffold(op):
 
 async def _fp_run_point(dut, op, mode, via_eh):
     """Dispatch one fp-block point; mode via PRECISION EH (prec flag) or
-    via input_tag[15:8]. Returns (err, lwr, out) ever-bits."""
+    via input_tag[15:8]. Returns (err, lwr, out) ever-bits.
+
+    v1.8.0c: the scaffold DELIBERATELY supplies payload_b
+    (input_payload_b_valid=1, matching the port default every legacy test
+    uses), so a legal-mode 0x74 FSCALAR point EXECUTES here rather than
+    tripping the missing-B error_flag guard; that guard is pinned
+    separately by test_fscalar_subop_decode_guards. The poll window is
+    sized for the slowest sweep point (0x74 absent-imm16 = FS_ADD, a
+    real 5-6 cycle step-sequencer launch + decode/finish overhead), not
+    just the old combinational single-cycle arms."""
     ehs = _fp_scaffold(op)
     flags = 0
     tag_mode = 0
@@ -4668,7 +4677,7 @@ async def _fp_run_point(dut, op, mode, via_eh):
     await RisingEdge(dut.clk)
     dut.token_valid.value = 0
     err = lwr = out = 0
-    for _ in range(10):
+    for _ in range(24):
         await RisingEdge(dut.clk)
         await Timer(1, units="ns")
         err |= int(dut.error_flag.value)
@@ -4684,7 +4693,12 @@ def _fp_expected(op, mode):
     rewrite anticipated by the original docstring): stubs (STUB_OPS_V18)
     predict lower_required; implemented ops predict execution — with the
     one documented conditional path: 0x7C dtype 0x2/0x3 (f16/bf16
-    destination) is decode-legal but lower_required until v1.8.0d."""
+    destination) is decode-legal but lower_required until v1.8.0d.
+
+    v1.8.0c: 0x74/0x75/0x76 graduated out of STUB_OPS_V18 and now predict
+    execution on their single legal mode (0x14). The sweep scaffold
+    supplies payload_b_valid=1 (see _fp_run_point), so 0x74 launches
+    FS_ADD (absent imm16 default) rather than erroring on missing B."""
     from generated_isa_tables import FP_MODE_LEGAL, STUB_OPS_V18
     legal = FP_MODE_LEGAL.get(op)
     if legal is None:
@@ -4754,6 +4768,8 @@ async def test_fp_block_stub_lower_required_all_ops(dut):
     # to real datapaths (their own directed tests below); membership pin
     # still holds: a NEW stub op added to the JSON without a PE_Core arm
     # falls to the case default and fails here.
+    # v1.8.0c: 0x74/0x75/0x76 graduated too (fp32 step-sequencer arms;
+    # directed coverage in the v1.8.0c section at the end of this file).
     for op in sorted(STUB_OPS_V18):
         legal = FP_MODE_LEGAL[op]
         mode = (legal['legal_rnd'][0] << 6) | (legal['legal_acc'][0] << 4) \
@@ -5065,3 +5081,617 @@ async def test_orderfree_chain_vs_tree_property(dut):
     assert result_tree == exact, f"tree {result_tree:016x} != {exact:016x}"
     assert result_tree_perm == exact, f"perm-tree {result_tree_perm:016x} != {exact:016x}"
     assert (result_chain & 0xFFFFFFFF) == wrap32
+
+
+# =============================================================================
+# v1.8.0c §23.10 — fp32 scalar step-sequencer integration: FSCALAR (0x74),
+# FRSQRT32 (0x75), FEXP2_32 (0x76) through the FULL decode -> launch ->
+# finish path. Golden authority is scripts/golden_fp32.py (imported, never
+# retyped): micro_fscalar / micro_rsqrt / micro_exp2 — the same entry
+# points the pre-integration FP_StepSeq TB proved bit-exact on 169,514
+# vectors (synth/lattice/fp_ops/tb_fp_stepseq.py).
+# =============================================================================
+
+import struct as _struct
+
+sys.path.insert(0, os.path.join(_REPO, 'scripts'))
+import golden_fp32 as _G  # noqa: E402
+
+_FS = _G.FSCALAR_OP_CODE
+_FP_MODE = 0x14   # the single legal fp mode byte: rnd=0, acc=1, dtype=4 (f32)
+
+
+def _f2b(x):
+    return int.from_bytes(_struct.pack(">f", float(x)), "big")
+
+
+def _fp_instr(op, subop=None, imm16=None, out_port=0):
+    """Encode an fp-block instruction: PORT + PRECISION(0x14, via
+    F_PRECISION_OVR) + optional IMM16 (sub-op nibble in [7:4]). The
+    F_HAS_OPB flag is deliberately NOT set: dec_input_payload_b_valid
+    mirrors the input port directly, so the v1.8.0c dispatch-side
+    missing-B guard (not EHDecode's opb_required_invalid) is what these
+    tests exercise."""
+    ehs = [eh_port(input_port_mask=0x01, output_port_id=out_port),
+           eh_precision(_FP_MODE, 0)]
+    if imm16 is not None:
+        ehs.append(eh_imm16(imm16))
+    elif subop is not None:
+        ehs.append(eh_imm16((subop & 0xF) << 4))
+    return encode_instr(op, *ehs, flags=F_PRECISION_OVR)
+
+
+async def _fp_fire_token(dut, instr, payload_a, payload_b=0, b_valid=1,
+                         tag=None, wide=0, wide_valid=0):
+    """Present one token for exactly one clock edge (no polling)."""
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG() if tag is None else tag
+    dut.input_payload.value = payload_a
+    dut.input_payload_b.value = payload_b
+    dut.input_payload_b_valid.value = b_valid
+    dut.input_payload_wide.value = wide
+    dut.input_payload_wide_valid.value = wide_valid
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+
+
+async def _fp_collect_events(dut, cycles):
+    """Sample the outcome strobes for `cycles` cycles (post-edge settle);
+    every output_valid / error_flag / lower_required pulse becomes one
+    event dict, in order."""
+    events = []
+    for i in range(cycles):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value):
+            events.append({'kind': 'out', 'cycle': i,
+                           'payload': int(dut.output_payload.value),
+                           'tag': int(dut.output_tag.value),
+                           'opcode': int(dut.opcode_out.value),
+                           'frag_hdr': int(dut.output_frag_hdr.value)})
+        if int(dut.error_flag.value):
+            events.append({'kind': 'err', 'cycle': i})
+        if int(dut.lower_required.value):
+            events.append({'kind': 'lwr', 'cycle': i})
+    return events
+
+
+async def _fp_run(dut, op, payload_a, payload_b=0, b_valid=1, subop=None,
+                  imm16=None, tag=None, out_port=0, window=60):
+    """Fire one fp op and return its FIRST outcome event (err/lwr/out
+    ever-bits + payload/tag/opcode + token->outcome cycle count)."""
+    await _fp_fire_token(dut, _fp_instr(op, subop, imm16, out_port),
+                         payload_a, payload_b, b_valid, tag)
+    for i in range(window):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        err = int(dut.error_flag.value)
+        lwr = int(dut.lower_required.value)
+        out = int(dut.output_valid.value)
+        if err or lwr or out:
+            return {'err': err, 'lwr': lwr, 'out': out,
+                    'payload': int(dut.output_payload.value),
+                    'tag': int(dut.output_tag.value),
+                    'opcode': int(dut.opcode_out.value),
+                    'cycles': i + 1}
+    raise AssertionError(f"op 0x{op:02X}: no outcome within {window} cycles")
+
+
+async def _fp_drain(dut, cycles=120):
+    """Wait until the PE is idle (pe_ready high, no output pulse)."""
+    for _ in range(cycles):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.pe_ready.value) == 1 and int(dut.output_valid.value) == 0:
+            return
+    raise AssertionError("PE did not drain to idle")
+
+
+def _fp_exp_tag(wave=0, thread=0, out_port=0, mode=_FP_MODE):
+    """The scalar tag the fp arms rebuild: {wave, thread, 8'h00,
+    output_port_id, precision, 8'h00} (dim byte 0x00 — scalar)."""
+    return ((wave & 0xFFFFFFFF) << 48) | ((thread & 0xFFFF) << 32) \
+         | ((out_port & 0xFF) << 16) | ((mode & 0xFF) << 8)
+
+
+_QNAN, _PINF, _NINF = 0x7FC00000, 0x7F800000, 0xFF800000
+
+
+@cocotb.test()
+async def test_fp_ieee_directed_cells_e2e(dut):
+    """v1.8.0c: 14 representative §23.10.5 IEEE cells through the FULL
+    decode->launch->finish path, bit-exact vs golden_fp32 — including the
+    {32'h0, fp32} upper-32-zero scalar payload convention (the 64-bit
+    compare below IS that pin) and opcode_out == the fp opcode."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # FMA fused-vs-double-rounding discriminator (spec F1): prove the
+    # vector discriminates before driving it.
+    f1 = (0x3F800001, 0x3F800001, 0xBF800002)
+    fused = _G.micro_fscalar(_FS['FS_FMA'], *f1)
+    double_rounded = _G.micro_fscalar(
+        _FS['FS_ADD'], _G.micro_fscalar(_FS['FS_MUL'], f1[0], f1[1]), f1[2])
+    assert fused != double_rounded, "F1 vector no longer discriminates"
+
+    cells = [
+        # (label, op, subop, a, b, c)
+        ("A2 canonical qNaN Inf+(-Inf)", 0x74, _FS['FS_ADD'], _PINF, _NINF, 0),
+        ("M2 Inf arithmetic (-Inf)*3",   0x74, _FS['FS_MUL'], _NINF, _f2b(3.0), 0),
+        ("M3 signed zero (-0)*(+3)",     0x74, _FS['FS_MUL'], 0x80000000, _f2b(3.0), 0),
+        ("Z1 DAZ denorm+1.0",            0x74, _FS['FS_ADD'], 0x00000001, _f2b(1.0), 0),
+        ("FTZ boundary min_normal*0.5",  0x74, _FS['FS_MUL'], 0x00800000, _f2b(0.5), 0),
+        ("RNE tie 1.0+2^-24",            0x74, _FS['FS_ADD'], _f2b(1.0), 0x33800000, 0),
+        ("F1 FMA fused single-rounding", 0x74, _FS['FS_FMA'], f1[0], f1[1], f1[2]),
+        ("F2 FMA Inf*0+c qNaN",          0x74, _FS['FS_FMA'], _PINF, 0x00000000, _f2b(5.0)),
+        ("V6 FDIV sign-XOR -6/2",        0x74, _FS['FS_DIV'], _f2b(-6.0), _f2b(2.0), 0),
+        ("V1 FDIV 3/(+0) -> +Inf",       0x74, _FS['FS_DIV'], _f2b(3.0), 0x00000000, 0),
+        ("R3 rsqrt(-1) qNaN",            0x75, None, _f2b(-1.0), 0, 0),
+        ("R6 rsqrt(4) bit-exact 0.5",    0x75, None, _f2b(4.0), 0, 0),
+        ("E3 exp2 integer bypass 2^7",   0x76, None, _f2b(7.0), 0, 0),
+        ("E2 exp2 x>=128 -> +Inf",       0x76, None, _f2b(128.0), 0, 0),
+    ]
+    for label, op, sub, a, b, c in cells:
+        if op == 0x74:
+            exp = _G.micro_fscalar(sub, a, b, c)
+            payload_a = ((c & 0xFFFFFFFF) << 32) | a
+            r = await _fp_run(dut, op, payload_a, payload_b=b, subop=sub)
+        elif op == 0x75:
+            exp = _G.micro_rsqrt(a)
+            r = await _fp_run(dut, op, a)
+        else:
+            exp = _G.micro_exp2(a)
+            r = await _fp_run(dut, op, a)
+        assert (r['err'], r['lwr'], r['out']) == (0, 0, 1), f"{label}: {r}"
+        # FULL 64-bit compare — pins the {32'h0, fp32} payload convention.
+        assert r['payload'] == exp, \
+            f"{label}: payload {r['payload']:016x} != {exp:08x}"
+        assert r['opcode'] == op, f"{label}: opcode_out {r['opcode']:#x}"
+        await _fp_drain(dut)
+    dut._log.info("fp IEEE directed cells: %d bit-exact end-to-end", len(cells))
+
+
+@cocotb.test()
+async def test_fscalar_subop_decode_guards(dut):
+    """v1.8.0c §23.10.2 FSCALAR decode ladder: absent imm16 = FS_ADD;
+    every sub-op 0-4 correct; imm16[3:0] != 0 -> lower_required; sub-op
+    5-15 -> lower_required (and outranks the missing-B check — rung
+    order); missing payload_b -> error_flag (dispatch-side guard, F_HAS_OPB
+    deliberately unset); FS_FMA reads C from payload_a[63:32]; non-FMA
+    ignores payload_a[63:32]."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    a, b, c = _f2b(3.5), _f2b(2.25), _f2b(-7.5)
+
+    # absent imm16 -> FS_ADD (monotonic loosening default)
+    exp_add = _G.micro_fscalar(_FS['FS_ADD'], a, b)
+    r = await _fp_run(dut, 0x74, a, payload_b=b)
+    assert (r['err'], r['lwr'], r['out']) == (0, 0, 1), f"absent-imm16: {r}"
+    assert r['payload'] == exp_add and r['opcode'] == 0x74
+    await _fp_drain(dut)
+
+    # every sub-op 0-4 (FMA gets C via payload_a[63:32])
+    for name, sub in sorted(_FS.items(), key=lambda kv: kv[1]):
+        use_c = (sub == _FS['FS_FMA'])
+        exp = _G.micro_fscalar(sub, a, b, c if use_c else 0)
+        payload_a = ((c << 32) | a) if use_c else a
+        r = await _fp_run(dut, 0x74, payload_a, payload_b=b, subop=sub)
+        assert (r['err'], r['lwr'], r['out']) == (0, 0, 1), f"{name}: {r}"
+        assert r['payload'] == exp, \
+            f"{name}: {r['payload']:016x} != {exp:08x}"
+        await _fp_drain(dut)
+
+    # FS_FMA really consumed C (differs from the C=0 result)
+    assert _G.micro_fscalar(_FS['FS_FMA'], a, b, c) != \
+        _G.micro_fscalar(_FS['FS_FMA'], a, b, 0)
+
+    # imm16[3:0] reserved-zero violations -> lower_required (never error)
+    for imm in (0x0001, 0x0018, 0x004F):
+        r = await _fp_run(dut, 0x74, a, payload_b=b, imm16=imm)
+        assert (r['err'], r['lwr'], r['out']) == (0, 1, 0), f"imm={imm:#x}: {r}"
+
+    # unknown sub-op 0x5-0xF -> lower_required (never error)
+    for sub in range(5, 16):
+        r = await _fp_run(dut, 0x74, a, payload_b=b, subop=sub)
+        assert (r['err'], r['lwr'], r['out']) == (0, 1, 0), f"sub={sub}: {r}"
+
+    # rung order: unknown sub-op outranks missing-B (lower, not error)
+    r = await _fp_run(dut, 0x74, a, payload_b=0, b_valid=0, subop=7)
+    assert (r['err'], r['lwr'], r['out']) == (0, 1, 0), f"order: {r}"
+
+    # missing payload_b -> error_flag (malformed program, deterministic)
+    r = await _fp_run(dut, 0x74, a, payload_b=0, b_valid=0)
+    assert (r['err'], r['lwr'], r['out']) == (1, 0, 0), f"missing-B: {r}"
+
+    # non-FMA ignores payload_a[63:32] (garbage upper == clean result)
+    exp_mul = _G.micro_fscalar(_FS['FS_MUL'], a, b)
+    r1 = await _fp_run(dut, 0x74, a, payload_b=b, subop=_FS['FS_MUL'])
+    await _fp_drain(dut)
+    r2 = await _fp_run(dut, 0x74, (0xDEADBEEF << 32) | a, payload_b=b,
+                       subop=_FS['FS_MUL'])
+    await _fp_drain(dut)
+    assert r1['payload'] == exp_mul and r2['payload'] == exp_mul, \
+        f"upper-32 not ignored: {r1['payload']:016x} vs {r2['payload']:016x}"
+
+
+@cocotb.test()
+async def test_fp_mul_collision_fp_result_preserved(dut):
+    """v1.8.0c amendment-1 regression: sweep a 0x12 MUL dispatch over 7
+    consecutive token offsets so its (calibrated) output cycle lands
+    -3..+3 cycles around the fp op's finish. For EVERY offset the fp
+    result + rebuilt tag arrive intact — without the MUL-launch fp-idle
+    guard the offset-0 collision silently drops the fp result (MUL
+    outranks FP in the output priority chain)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    a = _f2b(2.0)
+    exp_fp = _G.micro_rsqrt(a)
+    exp_tag = _fp_exp_tag()
+    fp_instr = _fp_instr(0x75)
+    mul_instr = encode_instr(0x12, _STD_PORT(), eh_imm16(3))
+
+    # calibrate F: fp token -> output cycle count
+    r = await _fp_run(dut, 0x75, a)
+    assert r['out'] == 1 and r['payload'] == exp_fp
+    F = r['cycles']
+    await _fp_drain(dut)
+
+    # calibrate M: MUL token -> output cycle count
+    await _fp_fire_token(dut, mul_instr, 5)
+    M = None
+    for i in range(40):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value):
+            assert int(dut.output_payload.value) == 15
+            M = i + 1
+            break
+    assert M is not None, "MUL calibration timed out"
+    await _fp_drain(dut)
+
+    for delta in range(-3, 4):
+        gap = F - M + delta   # MUL token offset so MUL-out = fp-out + delta
+        assert gap >= 1, f"geometry broke: F={F} M={M} delta={delta}"
+        await _fp_fire_token(dut, fp_instr, a)
+        for _ in range(gap - 1):
+            await RisingEdge(dut.clk)
+        await _fp_fire_token(dut, mul_instr, 5)
+        events = await _fp_collect_events(dut, F + M + 16)
+        fp_ev = [e for e in events if e['kind'] == 'out' and e['opcode'] == 0x75]
+        assert len(fp_ev) == 1, f"delta={delta}: fp result lost/dup: {events}"
+        assert fp_ev[0]['payload'] == exp_fp, \
+            f"delta={delta}: {fp_ev[0]['payload']:016x} != {exp_fp:08x}"
+        assert fp_ev[0]['tag'] == exp_tag, f"delta={delta}: tag {fp_ev[0]['tag']:#x}"
+        assert not [e for e in events if e['kind'] == 'err'], \
+            f"delta={delta}: stray error: {events}"
+        await _fp_drain(dut)
+    dut._log.info("fp/MUL collision sweep: fp result intact at all 7 offsets "
+                  "(F=%d, M=%d)", F, M)
+
+
+@cocotb.test()
+async def test_fp_busy_reject_is_lower_required(dut):
+    """v1.8.0c launch-ladder rung 2 (VDOT busy-reject pattern, NEVER the
+    DIV silent-swallow): during a long FS_DIV flight a second fp op, a
+    0x71 VDOT and a wide SIMD 0x6B WIDEN each get lower_required; the
+    in-flight FS_DIV still lands bit-exact; every probe succeeds on
+    retry after the drain."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    a, b = _f2b(1.0), _f2b(3.0)
+    exp_div = _G.micro_fscalar(_FS['FS_DIV'], a, b)
+    div_instr = _fp_instr(0x74, subop=_FS['FS_DIV'])
+
+    async def launch_div_wait_busy():
+        await _fp_fire_token(dut, div_instr, a, payload_b=b)
+        for _ in range(12):
+            await RisingEdge(dut.clk)
+            await Timer(1, units="ns")
+            if int(dut.u_core.fp_busy.value) == 1:
+                return
+        raise AssertionError("FS_DIV never went busy")
+
+    # probe encodings (all fully legal — only the busy gate rejects them)
+    vdot_instr = encode_instr(0x71, _STD_PORT(), eh_precision(0x10, 0),
+                              eh_imm16(0), flags=F_PRECISION_OVR)
+    vdot_wide = (_pack_int4_128(*([1] * 32))
+                 | (_pack_int4_128(*([2] * 32)) << 128))
+    exp_vdot = 32 * (1 * 2)
+    widen_instr = encode_instr(0x6B, _STD_PORT(), eh_imm16(0x08))
+    widen_wide = _pack_int4_128(*([0x1] * 32))
+
+    probes = [
+        ("second fp op 0x75",
+         dict(instr=_fp_instr(0x75), payload_a=_f2b(2.0))),
+        ("0x71 VDOT",
+         dict(instr=vdot_instr, payload_a=0, wide=vdot_wide, wide_valid=1)),
+        ("wide SIMD 0x6B WIDEN",
+         dict(instr=widen_instr, payload_a=0, wide=widen_wide, wide_valid=1)),
+    ]
+
+    for label, kw in probes:
+        await launch_div_wait_busy()
+        await _fp_fire_token(dut, kw['instr'], kw['payload_a'],
+                             wide=kw.get('wide', 0),
+                             wide_valid=kw.get('wide_valid', 0))
+        events = await _fp_collect_events(dut, 50)
+        lwr_ev = [e for e in events if e['kind'] == 'lwr']
+        assert lwr_ev, f"{label}: no lower_required during fp flight: {events}"
+        assert not [e for e in events if e['kind'] == 'err'], \
+            f"{label}: error instead of busy-reject: {events}"
+        div_ev = [e for e in events if e['kind'] == 'out' and e['opcode'] == 0x74]
+        assert len(div_ev) == 1 and div_ev[0]['payload'] == exp_div, \
+            f"{label}: in-flight FS_DIV corrupted: {events}"
+        assert lwr_ev[0]['cycle'] < div_ev[0]['cycle'], \
+            f"{label}: reject did not precede the fp finish"
+        await _fp_drain(dut)
+
+    # retries after drain all succeed
+    r = await _fp_run(dut, 0x75, _f2b(2.0))
+    assert r['out'] == 1 and r['payload'] == _G.micro_rsqrt(_f2b(2.0))
+    await _fp_drain(dut)
+
+    await _fp_fire_token(dut, vdot_instr, 0, wide=vdot_wide, wide_valid=1)
+    events = await _fp_collect_events(dut, 20)
+    out_ev = [e for e in events if e['kind'] == 'out']
+    assert out_ev and out_ev[0]['payload'] == exp_vdot, f"VDOT retry: {events}"
+    await _fp_drain(dut)
+
+    await _fp_fire_token(dut, widen_instr, 0, wide=widen_wide, wide_valid=1)
+    events = await _fp_collect_events(dut, 20)
+    frags = [e for e in events if e['kind'] == 'out']
+    assert len(frags) == 4, f"WIDEN retry did not emit 4 fragments: {events}"
+    await _fp_drain(dut)
+
+
+@cocotb.test()
+async def test_fp_drain_gate_and_frag_interaction(dut):
+    """v1.8.0c fp <-> fragment-drain interaction, three directions:
+    (a) an fp op fired at a multi-fragment einsum's frag-0 emit cycle is
+        HELD until the drain completes (EHDecode's >=3-cycle walk lands
+        the fp dispatch strictly after the 2-beat SIG_BMM_3 drain by
+        construction) — both fragments AND the fp result arrive intact;
+    (b) a frag-emitting op (SIG_BMM_3) dispatched during an fp flight
+        gets lower_required (busy-reject, not silent) and the fp result
+        still lands; the einsum succeeds on retry;
+    (c) pe_ready is low for the whole fp flight and recovers within the
+        §23.10.6 bound + fixed overhead (bounds-based — never an exact
+        cycle count)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # identity-A SIG_BMM_3: result halves == B halves (reuses the shipped
+    # test_bmm_3_identity_per_batch construction)
+    identity = 0x1001
+    a_128 = 0
+    for i in range(8):
+        a_128 |= identity << (i * 16)
+    b_batches = [0x1234, 0x5678, 0x9ABC, 0xDEF0,
+                 0x0FED, 0xCBA9, 0x8765, 0x4321]
+    b_128 = 0
+    for i, x in enumerate(b_batches):
+        b_128 |= (x & 0xFFFF) << (i * 16)
+    bmm3_wide = _pack_int4_wide(a_128, b_128)
+    exp_lo = b_128 & ((1 << 64) - 1)
+    exp_hi = (b_128 >> 64) & ((1 << 64) - 1)
+    bmm3_instr = encode_instr(0x32, _STD_PORT(),
+                              eh_subscript(_BMM3_A_LO, _BMM3_B_LO, _BMM3_O_LO),
+                              eh_subscript(_BMM3_A_HI, _BMM3_B_HI, _BMM3_O_HI),
+                              eh_opref(),
+                              flags=F_HAS_OPB)
+
+    async def fire_bmm3():
+        dut.instruction.value = bmm3_instr
+        dut.input_tag.value = _STD_TAG(dim=0x55)
+        dut.input_payload.value = 0
+        dut.input_payload_b.value = 0
+        dut.input_payload_b_valid.value = 1
+        dut.input_payload_wide.value = bmm3_wide
+        dut.input_payload_wide_valid.value = 1
+        dut.token_valid.value = 1
+        await RisingEdge(dut.clk)
+        dut.token_valid.value = 0
+
+    # ---- (a) fp op fired AT the frag-0 emit cycle -------------------------
+    exp_fp = _G.micro_exp2(_f2b(3.0))
+    await fire_bmm3()
+    saw_frag0 = False
+    for _ in range(30):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value):
+            assert int(dut.output_payload.value) == exp_lo
+            assert int(dut.output_frag_hdr.value) == 0x01
+            # drain is active THIS cycle — the compound gate must be closed
+            assert int(dut.pe_ready.value) == 0, "pe_ready high mid-drain"
+            saw_frag0 = True
+            break
+    assert saw_frag0, "SIG_BMM_3 frag 0 never appeared"
+    # Fire the fp token AT the frag-1 emit edge (the token edge IS the
+    # frag-1 output cycle, so sample it immediately after the edge).
+    dut.instruction.value = _fp_instr(0x76)
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = _f2b(3.0)
+    dut.input_payload_b.value = 0
+    dut.input_payload_b_valid.value = 1
+    dut.input_payload_wide.value = 0
+    dut.input_payload_wide_valid.value = 0
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    await Timer(1, units="ns")
+    assert int(dut.output_valid.value) == 1 \
+        and int(dut.output_payload.value) == exp_hi \
+        and int(dut.output_frag_hdr.value) == 0x11, "frag 1 corrupted"
+    events = await _fp_collect_events(dut, 40)
+    fp_ev = [e for e in events if e['kind'] == 'out' and e['opcode'] == 0x76]
+    assert len(fp_ev) == 1 and fp_ev[0]['payload'] == exp_fp, \
+        f"fp op not held-then-executed across the drain: {events}"
+    assert not [e for e in events if e['kind'] in ('err', 'lwr')], \
+        f"stray flag: {events}"
+    await _fp_drain(dut)
+
+    # ---- (b) frag-emitting op during fp flight -> lower_required ----------
+    a, b = _f2b(1.0), _f2b(3.0)
+    exp_div = _G.micro_fscalar(_FS['FS_DIV'], a, b)
+    await _fp_fire_token(dut, _fp_instr(0x74, subop=_FS['FS_DIV']), a,
+                         payload_b=b)
+    for _ in range(12):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.u_core.fp_busy.value) == 1:
+            break
+    assert int(dut.u_core.fp_busy.value) == 1
+    await fire_bmm3()
+    events = await _fp_collect_events(dut, 50)
+    assert [e for e in events if e['kind'] == 'lwr'], \
+        f"frag-emitter not busy-rejected: {events}"
+    assert not [e for e in events if e['kind'] == 'err'], f"stray error: {events}"
+    div_ev = [e for e in events if e['kind'] == 'out' and e['opcode'] == 0x74]
+    assert len(div_ev) == 1 and div_ev[0]['payload'] == exp_div, \
+        f"in-flight FS_DIV corrupted: {events}"
+    frag_ev = [e for e in events if e['kind'] == 'out' and e['frag_hdr'] != 0]
+    assert not frag_ev, f"fragments emitted during fp flight: {events}"
+    await _fp_drain(dut)
+    # einsum retry succeeds
+    await fire_bmm3()
+    events = await _fp_collect_events(dut, 30)
+    outs = [e for e in events if e['kind'] == 'out']
+    assert len(outs) == 2 and outs[0]['payload'] == exp_lo \
+        and outs[1]['payload'] == exp_hi, f"BMM3 retry failed: {events}"
+    await _fp_drain(dut)
+
+    # ---- (c) pe_ready low across the fp flight (bounds-based) -------------
+    await _fp_fire_token(dut, _fp_instr(0x75), _f2b(2.0))
+    low_cycles = 0
+    recovered = None
+    for i in range(60):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        busy = int(dut.u_core.fp_busy.value) or int(dut.u_core.fp_valid_p2.value)
+        ready = int(dut.pe_ready.value)
+        if busy:
+            assert ready == 0, f"pe_ready high while fp unit busy (cycle {i})"
+            low_cycles += 1
+        if low_cycles > 0 and ready == 1:
+            recovered = i
+            break
+    assert low_cycles >= 3, "fp flight never deasserted pe_ready"
+    assert recovered is not None and recovered <= 34 + 12, \
+        "pe_ready did not recover within the FRSQRT32 bound + overhead"
+    await _fp_drain(dut)
+
+
+@cocotb.test()
+async def test_fp_tag_and_opcode_out_preservation(dut):
+    """v1.8.0c: across a 25-cycle FS_DIV whose dec_* bus is CLOBBERED
+    mid-flight by an unrelated ADD dispatch, the fp result cycle carries
+    (1) the tag rebuilt AT LAUNCH — wave/thread from the launch token,
+    dim byte 0x00 scalar rebuild (input dim 0x77 discarded), tag[15:8]
+    = the mode byte 0x14 VERBATIM from the PRECISION EH (input tag mode
+    byte deliberately 0x00), output_port_id from the PORT EH — and
+    (2) opcode_out == the fp opcode (fp_opcode_held), the deliberate
+    divergence from DIV's stale-opcode quirk."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    a, b = _f2b(355.0), _f2b(113.0)
+    exp = _G.micro_fscalar(_FS['FS_DIV'], a, b)
+    tag_in = make_tag(wave_number=0xAABBCCDD, thread_id=0x1234,
+                      port_context_id=0, precision_mode=0x00,
+                      dimension_sizes=0x77)
+    instr = _fp_instr(0x74, subop=_FS['FS_DIV'], out_port=0x5A)
+    await _fp_fire_token(dut, instr, a, payload_b=b, tag=tag_in)
+    for _ in range(12):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.u_core.fp_busy.value) == 1:
+            break
+    assert int(dut.u_core.fp_busy.value) == 1
+
+    # clobber dec_* mid-flight with an ADD under a DIFFERENT tag
+    add_instr = encode_instr(0x10, _STD_PORT(), eh_imm16(1))
+    await _fp_fire_token(dut, add_instr, 41,
+                         tag=make_tag(wave_number=1, thread_id=2,
+                                      port_context_id=0))
+    events = await _fp_collect_events(dut, 60)
+    add_ev = [e for e in events if e['kind'] == 'out' and e['opcode'] == 0x10]
+    assert add_ev and add_ev[0]['payload'] == 42, \
+        f"mid-flight ADD clobber never executed: {events}"
+    fp_ev = [e for e in events if e['kind'] == 'out' and e['opcode'] == 0x74]
+    assert len(fp_ev) == 1, f"fp result missing: {events}"
+    assert fp_ev[0]['payload'] == exp
+    exp_tag = _fp_exp_tag(wave=0xAABBCCDD, thread=0x1234, out_port=0x5A)
+    assert fp_ev[0]['tag'] == exp_tag, \
+        f"tag {fp_ev[0]['tag']:020x} != {exp_tag:020x}"
+    await _fp_drain(dut)
+
+
+@cocotb.test()
+async def test_fp_cycle_bounds(dut):
+    """v1.8.0c §23.10.6: each fp op COMPLETES WITHIN its normative cycle
+    maximum, measured at the unit level (consecutive fp_busy cycles ==
+    start->done). Bounds only — never an exact-count assertion (Gate-2
+    fallback headroom is part of the contract). The end-to-end window
+    adds a fixed +12 decode/finish overhead allowance (EHDecode chain
+    walk + launch + p2/output stages), which is NOT normative."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    cases = [
+        ("FS_ADD",   0x74, _FS['FS_ADD'], _f2b(1.5), _f2b(2.5), 0.0,       6),
+        ("FS_SUB",   0x74, _FS['FS_SUB'], _f2b(1.5), _f2b(2.5), 0.0,       6),
+        ("FS_MUL",   0x74, _FS['FS_MUL'], _f2b(1.5), _f2b(2.5), 0.0,       6),
+        ("FS_FMA",   0x74, _FS['FS_FMA'], _f2b(1.5), _f2b(2.5), _f2b(3.5), 10),
+        ("FS_DIV",   0x74, _FS['FS_DIV'], _f2b(1.0), _f2b(3.0), 0.0,       32),
+        ("FRSQRT32", 0x75, None,          _f2b(2.0), 0,         0.0,       34),
+        ("FEXP2_32", 0x76, None,          _f2b(1.3), 0,         0.0,       30),
+    ]
+    for label, op, sub, va, vb, vc, bound in cases:
+        c = _f2b(vc)
+        if op == 0x74:
+            use_c = (sub == _FS['FS_FMA'])
+            exp = _G.micro_fscalar(sub, va, vb, c if use_c else 0)
+            payload_a = ((c << 32) | va) if use_c else va
+        elif op == 0x75:
+            exp = _G.micro_rsqrt(va)
+            payload_a = va
+        else:
+            exp = _G.micro_exp2(va)
+            payload_a = va
+        await _fp_fire_token(dut, _fp_instr(op, subop=sub), payload_a,
+                             payload_b=vb)
+        busy_cycles = 0
+        done = False
+        for i in range(bound + 12):
+            await RisingEdge(dut.clk)
+            await Timer(1, units="ns")
+            if int(dut.u_core.fp_busy.value):
+                busy_cycles += 1
+            if int(dut.output_valid.value):
+                assert int(dut.output_payload.value) == exp, \
+                    f"{label}: {int(dut.output_payload.value):016x} != {exp:08x}"
+                done = True
+                break
+        assert done, f"{label}: no result within bound {bound} + 12 overhead"
+        # fp_busy spans the start cycle THROUGH the done cycle inclusive,
+        # so busy_cycles == start->done latency + 1 (the pre-integration
+        # TB counts latency as edges AFTER the start cycle — same
+        # convention as §23.10.6).
+        lat = busy_cycles - 1
+        assert 1 <= lat <= bound, \
+            f"{label}: start->done latency {lat} > normative max {bound}"
+        await _fp_drain(dut)
+        dut._log.info("%s: completed within bound (latency %d <= %d)",
+                      label, lat, bound)

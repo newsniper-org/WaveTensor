@@ -40,6 +40,9 @@ set ::POD_SOURCES [list \
     [file join $REPO_ROOT ISA_Decoder.v] \
     [file join $REPO_ROOT EHDecode.v] \
     [file join $REPO_ROOT PE_Core.v] \
+    [file join $REPO_ROOT FP_StepSeq.v] \
+    [file join $REPO_ROOT FP_Mul36.v] \
+    [file join $REPO_ROOT FP_AddWide.v] \
 ]
 
 # ---- Helpers ------------------------------------------------------------

@@ -1354,8 +1354,11 @@ class TestFpBlockModeLegality(unittest.TestCase):
         self.assertEqual(set(FP_MODE_LEGAL), set(self._FP_OPS))
         # v1.8.0b: 0x71 VDOT_ACC / 0x72 ACC_REDUCE / 0x7C STORE_QUANT
         # graduated from stubs to real datapaths.
+        # v1.8.0c: 0x74 FSCALAR / 0x75 FRSQRT32 / 0x76 FEXP2_32 graduated
+        # too (MU-hosted fp32 step sequencer, spec section 23.10).
         self.assertEqual(STUB_OPS_V18,
-                         frozenset(self._FP_OPS) - {0x71, 0x72, 0x7C})
+                         frozenset(self._FP_OPS)
+                         - {0x71, 0x72, 0x74, 0x75, 0x76, 0x7C})
         # Shape spot-checks: 0x70 is ALU-binary-like, 0x7E is no-data-EH.
         self.assertTrue(wta._LEGAL[0x70]['allow_imm_xor_opref'])
         self.assertEqual(wta._LEGAL[0x7E]['forbidden'], wta._ALL_DATA_EHS)
@@ -1437,8 +1440,9 @@ class TestFpBlockModeLegality(unittest.TestCase):
 
 class TestFscalarV180cEncoding(unittest.TestCase):
     """v1.8.0c §23.10 — asm-layer encoding for 0x74 FSCALAR / 0x75
-    FRSQRT32 / 0x76 FEXP2_32. Encoding-level only: the RTL datapath is
-    still stubbed (lower_required), which is expected at this stage.
+    FRSQRT32 / 0x76 FEXP2_32. Encoding-level only; the RTL datapath
+    landed in the COMMIT F integration (MU-hosted FP_StepSeq) and is
+    covered by the ISA_Decoder / Cluster testbenches.
     """
 
     # Only legal mode byte for 0x74/0x75/0x76: dtype=4 (f32), acc=1, rnd=0.

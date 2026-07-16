@@ -23,7 +23,7 @@ ifeq ($(MOD),HIU)
     COCOTB_TOPLEVEL = HIU
     COCOTB_TEST_MODULES = test_hiu
 else ifeq ($(MOD),ISA_Decoder)
-    VERILOG_SOURCES = $(PWD)/ISA_Decoder.v $(PWD)/EHDecode.v $(PWD)/PE_Core.v
+    VERILOG_SOURCES = $(PWD)/ISA_Decoder.v $(PWD)/EHDecode.v $(PWD)/PE_Core.v $(PWD)/FP_StepSeq.v $(PWD)/FP_Mul36.v $(PWD)/FP_AddWide.v
     COCOTB_TOPLEVEL = ISA_Decoder
     COCOTB_TEST_MODULES = test_isa_decoder
 else ifeq ($(MOD),Tensor_ALU)
@@ -39,15 +39,15 @@ else ifeq ($(MOD),ALU_Extended)
     COCOTB_TOPLEVEL = ALU_Extended
     COCOTB_TEST_MODULES = test_alu_extended
 else ifeq ($(MOD),Top_Core)
-    VERILOG_SOURCES = $(PWD)/Top_Core.v $(PWD)/ISA_Decoder.v $(PWD)/EHDecode.v $(PWD)/PE_Core.v $(PWD)/HIU.v
+    VERILOG_SOURCES = $(PWD)/Top_Core.v $(PWD)/ISA_Decoder.v $(PWD)/EHDecode.v $(PWD)/PE_Core.v $(PWD)/FP_StepSeq.v $(PWD)/FP_Mul36.v $(PWD)/FP_AddWide.v $(PWD)/HIU.v
     COCOTB_TOPLEVEL = Top_Core
     COCOTB_TEST_MODULES = test_top_core
 else ifeq ($(MOD),PE)
-    VERILOG_SOURCES = $(PWD)/PE.v $(PWD)/ISA_Decoder.v $(PWD)/EHDecode.v $(PWD)/PE_Core.v
+    VERILOG_SOURCES = $(PWD)/PE.v $(PWD)/ISA_Decoder.v $(PWD)/EHDecode.v $(PWD)/PE_Core.v $(PWD)/FP_StepSeq.v $(PWD)/FP_Mul36.v $(PWD)/FP_AddWide.v
     COCOTB_TOPLEVEL = PE
     COCOTB_TEST_MODULES = test_pe
 else ifeq ($(MOD),Cluster)
-    VERILOG_SOURCES = $(PWD)/Cluster.v $(PWD)/PE.v $(PWD)/ISA_Decoder.v $(PWD)/EHDecode.v $(PWD)/PE_Core.v
+    VERILOG_SOURCES = $(PWD)/Cluster.v $(PWD)/PE.v $(PWD)/ISA_Decoder.v $(PWD)/EHDecode.v $(PWD)/PE_Core.v $(PWD)/FP_StepSeq.v $(PWD)/FP_Mul36.v $(PWD)/FP_AddWide.v
     COCOTB_TOPLEVEL = Cluster
     COCOTB_TEST_MODULES = test_cluster
     # v1.6.5c §22.16 — override the fragment/cache buffer slot count for
@@ -57,7 +57,7 @@ else ifeq ($(MOD),Cluster)
         COMPILE_ARGS += -GFRAG_SLOTS=$(FRAG_SLOTS)
     endif
 else ifeq ($(MOD),Pod)
-    VERILOG_SOURCES = $(PWD)/Pod.v $(PWD)/Cluster.v $(PWD)/PE.v $(PWD)/ISA_Decoder.v $(PWD)/EHDecode.v $(PWD)/PE_Core.v
+    VERILOG_SOURCES = $(PWD)/Pod.v $(PWD)/Cluster.v $(PWD)/PE.v $(PWD)/ISA_Decoder.v $(PWD)/EHDecode.v $(PWD)/PE_Core.v $(PWD)/FP_StepSeq.v $(PWD)/FP_Mul36.v $(PWD)/FP_AddWide.v
     COCOTB_TOPLEVEL = Pod
     COCOTB_TEST_MODULES = test_pod
 else

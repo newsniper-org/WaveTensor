@@ -398,15 +398,29 @@ module Cluster #(
     // dec_is_mul_op must stay in lockstep. 0x71 VDOT_ACC / 0x72 ACC_REDUCE
     // route to the MATMUL_UNIT (MAC tree lives only there); 0x7C
     // STORE_QUANT deliberately NOT listed — no multipliers, runs on L-PEs.
+    // v1.8.0c §23.10 — 0x74 FSCALAR / 0x75 FRSQRT32 / 0x76 FEXP2_32 route
+    // to the MATMUL_UNIT too (the fp32 step sequencer lives only there);
+    // a missed twin side is a silent permanent lower_required dead-end,
+    // pinned by test_fp_mu_routing_end_to_end in the same commit.
     // SDK rule for OPREF kind-1 carry-in chaining: no intervening
     // mul-class dispatch on the hosting MU between chained VDOTs (the
-    // NoC bank is positional, not tag-matched).
+    // NoC bank is positional, not tag-matched). v1.8.0c extension: fp
+    // results also ride mu_out_* into mu_bank_reg POSITIONALLY, so the
+    // same rule covers 0x74-0x76 — no intervening mul-class dispatch
+    // between an fp op and a dependent OPREF kind-1 read. This is the
+    // same latent-hazard class as DIV's 64-cycle window (an intervening
+    // dispatch during the 5-34 cycle fp flight retargets the bank slot);
+    // the hardware fix (bank target latched at launch) is deferred to the
+    // v1.9 arbitration rework (§23.10.9 risk 2).
     wire is_mul_op = (ext_opcode == 8'h12)
                   || (ext_opcode == 8'h30)
                   || (ext_opcode == 8'h32)
                   || (ext_opcode == 8'h43)
                   || (ext_opcode == 8'h71)
-                  || (ext_opcode == 8'h72);
+                  || (ext_opcode == 8'h72)
+                  || (ext_opcode == 8'h74)
+                  || (ext_opcode == 8'h75)
+                  || (ext_opcode == 8'h76);
     wire is_div_op = (ext_opcode == 8'h13)   // DIV
                   || (ext_opcode == 8'h1C)   // MOD
                   || (ext_opcode == 8'h1D);  // DIVMOD

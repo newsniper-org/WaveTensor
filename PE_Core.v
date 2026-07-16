@@ -17,10 +17,12 @@
 // duplication (~5 K LUT/PE × N saved).
 //
 // Parameter semantics:
-//   MUL_OPS_SUPPORTED      — when 0, MUL/MATMUL/EINSUM/EUCLID_NORM
-//                            short-circuit to lower_required and Vivado
+//   MUL_OPS_SUPPORTED      — when 0, MUL/MATMUL/EINSUM/EUCLID_NORM (plus
+//                            the v1.8.0b MU-hosted 0x71/0x72 and the
+//                            v1.8.0c fp32 scalar ops 0x74/0x75/0x76)
+//                            short-circuit to lower_required and synthesis
 //                            DCEs the matmul/einsum-mul helpers + 64-bit
-//                            mul pipeline.
+//                            mul pipeline + MAC trees + FP_StepSeq.
 //   DIV_OPS_SUPPORTED      — when 0, DIV/MOD/DIVMOD short-circuit to
 //                            lower_required so Vivado DCEs the 64-bit
 //                            fabric divider/modulo (the LUT hog: each
@@ -1553,9 +1555,16 @@ module PE_Core #(
     // MU-hosted (MAC tree lives only where MUL_OPS_SUPPORTED); without the
     // PE_Core half, the MU gate below lowers both ops forever and no L-PE
     // ever receives them (verified dead-end in the design workflow).
+    // v1.8.0c §23.10 — 0x74 FSCALAR / 0x75 FRSQRT32 / 0x76 FEXP2_32 are
+    // MU-hosted too (the fp32 step sequencer lives only where
+    // MUL_OPS_SUPPORTED); same lockstep rule, same silent-dead-end failure
+    // mode if either twin misses them (pinned by the Cluster reachability
+    // test test_fp_mu_routing_end_to_end).
     wire dec_is_mul_op = (dec_opcode == 8'h12) || (dec_opcode == 8'h30)
                       || (dec_opcode == 8'h32) || (dec_opcode == 8'h43)
-                      || (dec_opcode == 8'h71) || (dec_opcode == 8'h72);
+                      || (dec_opcode == 8'h71) || (dec_opcode == 8'h72)
+                      || (dec_opcode == 8'h74) || (dec_opcode == 8'h75)
+                      || (dec_opcode == 8'h76);
     wire dec_is_div_op = (dec_opcode == 8'h13)   // DIV
                       || (dec_opcode == 8'h1C)   // MOD
                       || (dec_opcode == 8'h1D);  // DIVMOD
@@ -1612,6 +1621,42 @@ module PE_Core #(
     reg                  div_b_zero_p2;
 
     // -------------------------------------------------------------------------
+    // v1.8.0c §23.10 — fp32 scalar step-sequencer unit (FP_StepSeq) hosting
+    // state. Declared UNCONDITIONALLY (the div_state pattern): the hoisted
+    // output_regs_free / pe_ready expression below references fp_busy and
+    // fp_valid_p2 in every PE_Core flavor, so these signals must elaborate
+    // in all instances. They are DRIVEN only under MUL_OPS_SUPPORTED — the
+    // launch/finish clauses in the dispatch block sit behind the parameter
+    // (constant-folded away on L-PEs / DIV-UNIT) and the FP_StepSeq
+    // instance itself lives in the g_v180c_fp generate; the else-branch
+    // (g_v180c_fp_off) zero-ties the data wires (wres_vdot32 idiom).
+    //
+    // fp_start is a REGISTERED 1-cycle pulse set by the launch arm (the
+    // dispatch is register-load only, §23.10.1). FP_StepSeq's busy output
+    // is combinational `start | (state != FP_IDLE)`, so fp_busy is already
+    // 1 during the whole first cycle after the launch edge — there is NO
+    // 1-cycle double-dispatch window and fp_start needs no separate term
+    // in output_regs_free (fp_busy covers it; verified by
+    // test_fp_busy_reject_is_lower_required back-to-back retry).
+    //
+    // fp_armed guards the done capture: FP_StepSeq is reset-free, so a
+    // parent rst mid-op lets the in-flight op self-complete; fp_armed
+    // (cleared by rst) makes the parent ignore that stray done pulse
+    // instead of emitting a stale result with a zeroed tag.
+    reg         fp_start;                       // 1-cycle launch pulse
+    reg         fp_armed;                       // launch..done ownership flag
+    reg  [31:0] fp_a_q, fp_b_q, fp_c_q;         // operands latched at launch
+    reg  [3:0]  fp_subop_q;                     // FSCALAR sub-op (imm16[7:4])
+    reg  [7:0]  fp_opcode_held;                 // opcode_out at result cycle
+    reg  [TAG_WIDTH-1:0]  fp_tag_held;          // scalar tag rebuilt at launch
+    reg                   fp_valid_p2;          // output strobe (div_valid_p2 idiom)
+    reg  [ADDR_WIDTH-1:0] fp_result_p2;         // {32'h0, fp32} payload
+    reg  [TAG_WIDTH-1:0]  fp_tag_p2;
+    wire        fp_busy;                        // FP_StepSeq busy (see above)
+    wire        fp_done;                        // 1-cycle done pulse
+    wire [31:0] fp_result_w;                    // valid exactly during done
+
+    // -------------------------------------------------------------------------
     // v1.5.3a §20 — fragment-emit FSM. Originally a 1-bit Moore machine
     // mirroring the div_state idiom (frag_state: FRAG_IDLE/FRAG_EMIT_HI,
     // one pending 64-bit fragment). On SIG_BMM_3 dispatch (frag_idx=
@@ -1666,9 +1711,15 @@ module PE_Core #(
     reg [TAG_WIDTH-1:0]  frag_tag_held;
     reg [7:0]            frag_opcode_held;
 
+    // v1.8.0c §23.10 — widened to the 8-term compound of the spec: the fp
+    // step sequencer holds the output stage from launch (fp_busy rises
+    // WITH the registered start pulse — no gap cycle, see the fp state
+    // declaration comment) through the fp_valid_p2 result strobe.
+    // pe_ready follows automatically (same wire, assigned at the bottom).
     wire output_regs_free = (frag_idx == FRAG_IDLE)
         && !mul_valid_p1 && !mul_valid_p2
-        && (div_state == DIV_IDLE) && !div_valid_p2 && !div_b_zero_p2;
+        && (div_state == DIV_IDLE) && !div_valid_p2 && !div_b_zero_p2
+        && !fp_busy && !fp_valid_p2;
 
     // -------------------------------------------------------------------------
     // v1.8 §23.8 synth-gate fix (2026-07-16) — yosys (Verilog-2005) does not
@@ -1735,6 +1786,34 @@ module PE_Core #(
         assign wres_acc_l2sq = 32'sd0;
         assign wres_acc_mean = 32'sd0;
     end endgenerate
+
+    // -------------------------------------------------------------------------
+    // v1.8.0c §23.10 — MU-hosted fp32 step-sequencer unit. One shared
+    // FP_StepSeq per MU walks the 0x74/0x75/0x76 step programs (5-34
+    // cycles); operands/opcode/sub-op are sampled on the fp_start edge and
+    // held stable until the next launch (the launch ladder guarantees
+    // start only fires while busy == 0). Synthesizes ONLY on the
+    // MATMUL_UNIT (Gate 3 §23.10.7: 3,345 LUT4 / 4 MULT18X18D — amended
+    // budget); the off-branch zero-ties the data wires so the 16 L-PEs +
+    // DIV-UNIT pay zero area (wres_vdot32 idiom).
+    generate if (MUL_OPS_SUPPORTED) begin : g_v180c_fp
+        FP_StepSeq u_fp_stepseq (
+            .clk       (clk),
+            .start     (fp_start),
+            .opcode_in (fp_opcode_held),
+            .subop_in  (fp_subop_q),
+            .a_in      (fp_a_q),
+            .b_in      (fp_b_q),
+            .c_in      (fp_c_q),
+            .busy      (fp_busy),
+            .done      (fp_done),
+            .result    (fp_result_w)
+        );
+    end else begin : g_v180c_fp_off
+        assign fp_busy     = 1'b0;
+        assign fp_done     = 1'b0;
+        assign fp_result_w = 32'h0;
+    end endgenerate
     // VDOT result: r = (sext64(dot) + carry_in) mod 2^64. Full 64-bit
     // payload convention (spec §23.6a payload-format table) — NOT the
     // legacy {32'h0, acc} zero-extend.
@@ -1765,6 +1844,12 @@ module PE_Core #(
             div_state      <= DIV_IDLE;
             div_valid_p2   <= 1'b0;
             div_b_zero_p2  <= 1'b0;
+            // v1.8.0c fp control bits (FP_StepSeq itself is reset-free; a
+            // mid-op rst clears fp_armed so the stray done pulse of the
+            // self-completing op is ignored — see the declaration block).
+            fp_start       <= 1'b0;
+            fp_armed       <= 1'b0;
+            fp_valid_p2    <= 1'b0;
             frag_idx            <= FRAG_IDLE;
             frag_total_m1_held  <= 2'b00;
             frag_pending[0]     <= {ADDR_WIDTH{1'b0}};
@@ -1791,9 +1876,18 @@ module PE_Core #(
                 mul_a_p1     <= dec_input_payload;
                 mul_b_p1     <= dec_eff_b_value;
                 mul_tag_p1   <= dec_forwarded_tag;
+                // v1.8.0c §23.10 MANDATORY MUL-launch fp-idle guard
+                // (amendment 1): without !fp_busy && !fp_valid_p2 a
+                // mul_valid_p2 pulse can coincide with the 1-cycle
+                // fp_valid_p2 FINISH pulse and, because MUL outranks FP in
+                // the output priority chain, SILENTLY drop the fp result.
+                // Same silent-drop-on-busy semantics as the existing
+                // frag_idx gate (pinned by
+                // test_fp_mul_collision_fp_result_preserved).
                 mul_valid_p1 <= pe_active && dec_valid && !dec_decode_error
                               && dec_tag_match && (dec_opcode == 8'h12)
-                              && (frag_idx == FRAG_IDLE);
+                              && (frag_idx == FRAG_IDLE)
+                              && !fp_busy && !fp_valid_p2;
                 mul_result_p2 <= mul_a_p1 * mul_b_p1;
                 mul_tag_p2    <= mul_tag_p1;
                 mul_valid_p2  <= mul_valid_p1;
@@ -1888,6 +1982,28 @@ module PE_Core #(
                 endcase
             end
 
+            // v1.8.0c §23.10 — fp step-sequencer launch/finish strobes.
+            // fp_start default-clears here (1-cycle pulse; the launch arms
+            // in the case dispatch below override it on the launch edge —
+            // last-assignment-wins within the block). On done: capture the
+            // result into a 1-cycle fp_valid_p2 output strobe with the
+            // default-clear pattern of div_valid_p2. The {32'h0, fp32}
+            // upper-32-zero scalar payload convention is pinned by
+            // test_fp_ieee_directed_cells_e2e.
+            if (MUL_OPS_SUPPORTED) begin
+                fp_start    <= 1'b0;
+                fp_valid_p2 <= 1'b0;
+                if (fp_done && fp_armed) begin
+                    fp_armed     <= 1'b0;
+                    fp_valid_p2  <= 1'b1;
+                    fp_result_p2 <= {32'h0, fp_result_w};
+                    fp_tag_p2    <= fp_tag_held;
+                end
+            end else begin
+                fp_start    <= 1'b0;
+                fp_valid_p2 <= 1'b0;
+            end
+
             // v1.5.3a/v1.7 §20/§22.18 — ABSOLUTE-PRIORITY fragment-emit
             // override. Placed at the very top of the output priority
             // chain so fragment 1 lands EXACTLY on cycle N+1 after
@@ -1932,6 +2048,18 @@ module PE_Core #(
                 // Divide-by-zero pulse from the FSM's FINISH stage.
                 error_flag   <= 1'b1;
                 output_valid <= 1'b0;
+            end
+            // v1.8.0c §23.10 — fp32 result arm. Priority chain is
+            // frag-drain > MUL p2 > DIV p2 > FP p2 > case dispatch.
+            // opcode_out <= fp_opcode_held is a DELIBERATE divergence from
+            // DIV's stale-opcode quirk (the DIV arm leaves the default
+            // `opcode_out <= dec_opcode` assignment standing); pinned by
+            // test_fp_tag_and_opcode_out_preservation.
+            else if (MUL_OPS_SUPPORTED && fp_valid_p2) begin
+                output_payload <= fp_result_p2;   // {32'h0, fp32}
+                output_tag     <= fp_tag_p2;
+                output_valid   <= 1'b1;
+                opcode_out     <= fp_opcode_held;
             end
             else if (pe_active && dec_valid) begin
                 if (dec_decode_error) begin
@@ -2767,7 +2895,7 @@ module PE_Core #(
                         // datapaths land in v1.8.0b (int32 acc) / v1.8.0c
                         // (fp32 pipeline) / v1.8.0d (CVT/DEQUANT/STORE_QUANT)
                         // as pure monotonic stub-body replacements.
-                        8'h70, 8'h73, 8'h74, 8'h75, 8'h76,
+                        8'h70, 8'h73,
                         8'h77, 8'h78, 8'h79, 8'h7D, 8'h7E: begin
                             lower_required <= 1'b1; output_valid <= 1'b0;
                         end
@@ -2848,6 +2976,106 @@ module PE_Core #(
                                 end
                             end
                         end
+                        // v1.8.0c §23.10 — FSCALAR: fp32 scalar A op B,
+                        // sub-op imm16[7:4] per the generated
+                        // fscalar_op_codes (absent imm16 = 0 = FS_ADD —
+                        // monotonic loosening default); B = payload_b
+                        // (eff_b_value is NEVER read); FS_FMA addend C =
+                        // payload_a[63:32]. Launch ladder (4 rungs, order
+                        // normative §23.10.1): MU gate -> busy-reject
+                        // (VDOT pattern — a gated op arriving during a
+                        // 5-34 cycle fp flight gets lower_required, NEVER
+                        // the DIV silent-swallow) -> decode guards ->
+                        // launch (register-load only; FP_StepSeq walks the
+                        // step program and fp_valid_p2 returns the result
+                        // through the output priority chain above).
+                        8'h74: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                // fp step sequencer lives on the MU only.
+                                lower_required <= 1'b1; output_valid <= 1'b0;
+                            end else if (!output_regs_free) begin
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end else if (dec_eff_imm16[3:0] != 4'h0) begin
+                                // imm16[3:0] reserved-zero (0x72 precedent)
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end else if (dec_eff_imm16[7:4] > 4'h4) begin
+                                // unknown sub-op 0x5-0xF -> lower_required,
+                                // never error_flag (capability absence).
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end else if (!dec_input_payload_b_valid) begin
+                                // Missing-B: malformed program — a
+                                // deterministic error_flag, NOT capability
+                                // absence (§23.10.2 dispatch-side guard;
+                                // first consumer of the
+                                // dec_input_payload_b_valid input).
+                                error_flag   <= 1'b1;
+                                output_valid <= 1'b0;
+                            end else begin
+                                fp_start       <= 1'b1;
+                                fp_a_q         <= dec_input_payload[31:0];
+                                fp_c_q         <= dec_input_payload[63:32];
+                                fp_b_q         <= dec_input_payload_b[31:0];
+                                fp_subop_q     <= dec_eff_imm16[7:4];
+                                fp_armed       <= 1'b1;
+                                fp_opcode_held <= dec_opcode;
+                                // scalar dim=0x00 tag rebuild (VDOT arm
+                                // convention); tag[15:8] carries the mode
+                                // byte verbatim.
+                                fp_tag_held <= {dec_wave_number, dec_thread_id,
+                                                8'h00, dec_eff_output_port_id,
+                                                dec_eff_precision, 8'h00};
+                                output_valid   <= 1'b0;
+                            end
+                        end
+                        // v1.8.0c §23.10.3 — FRSQRT32: strictly port-only
+                        // unary fp32 rsqrt (LUT seed + 3 NR iterations,
+                        // <=2 ulp). Same ladder, no extra decode guards.
+                        8'h75: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                lower_required <= 1'b1; output_valid <= 1'b0;
+                            end else if (!output_regs_free) begin
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end else begin
+                                fp_start       <= 1'b1;
+                                fp_a_q         <= dec_input_payload[31:0];
+                                fp_b_q         <= 32'h0;
+                                fp_c_q         <= 32'h0;
+                                fp_subop_q     <= 4'h0;
+                                fp_armed       <= 1'b1;
+                                fp_opcode_held <= dec_opcode;
+                                fp_tag_held <= {dec_wave_number, dec_thread_id,
+                                                8'h00, dec_eff_output_port_id,
+                                                dec_eff_precision, 8'h00};
+                                output_valid   <= 1'b0;
+                            end
+                        end
+                        // v1.8.0c §23.10.4 — FEXP2_32: strictly port-only
+                        // unary fp32 exp2 (degree-6 Horner + integer
+                        // bypass, <=2 ulp). Same ladder, no extra guards.
+                        8'h76: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                lower_required <= 1'b1; output_valid <= 1'b0;
+                            end else if (!output_regs_free) begin
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end else begin
+                                fp_start       <= 1'b1;
+                                fp_a_q         <= dec_input_payload[31:0];
+                                fp_b_q         <= 32'h0;
+                                fp_c_q         <= 32'h0;
+                                fp_subop_q     <= 4'h0;
+                                fp_armed       <= 1'b1;
+                                fp_opcode_held <= dec_opcode;
+                                fp_tag_held <= {dec_wave_number, dec_thread_id,
+                                                8'h00, dec_eff_output_port_id,
+                                                dec_eff_precision, 8'h00};
+                                output_valid   <= 1'b0;
+                            end
+                        end
                         // v1.8.0b §23.9 — STORE_QUANT: scalar int-dest
                         // requant, out = clamp_dtype(RNE(x >> s)),
                         // s = imm16[5:0] (absent = 0 = pure clamp).
@@ -2896,9 +3124,11 @@ module PE_Core #(
     end
 
     // v1.6.6 §22.14 — pe_ready back-pressure signal (combinational).
-    // Same 6-term compound as internal drain gate. Upstream fabric can
-    // observe this to STALL new dispatches instead of retrying after
-    // lower_required. MVP: observe-only, no ext_valid gating change.
+    // Same compound as the internal drain gate (8-term since v1.8.0c: the
+    // fp step sequencer's fp_busy/fp_valid_p2 joined the expression, so
+    // pe_ready deasserts for the whole 5-34 cycle fp flight). Upstream
+    // fabric can observe this to STALL new dispatches instead of retrying
+    // after lower_required. MVP: observe-only, no ext_valid gating change.
     assign pe_ready = output_regs_free;
 
 endmodule
