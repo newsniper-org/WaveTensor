@@ -111,6 +111,8 @@
 
 ## 3. Opcode 표 (WT64v1 base)
 
+> **대체 예고 (v1.8.0a COMMIT 0, 2026-07-16)**: 이 §3 의 hand-written opcode/legality 표들은 v1.8.0a COMMIT 1 에서 `isa/wt64v1_isa.json` 단일 소스로부터 생성되는 `.claude-memos/generated/isa_tables_frag.md` 로 **대체**된다 (spec 에는 include-by-reference 한 줄만 남김). 그때까지 이 표를 hand-edit 하지 말 것 — §22.16.0 desync 클래스의 잔존 doc-drift 표면이며, JSON 이관 시 emitter-faithful 하게 흡수된다. §23.6a/§23.9 참조.
+
 ### 3.1 Control / memory
 
 | Op | Mnemonic | 의미 | 인자 |
@@ -2131,9 +2133,49 @@ Phase 1 인벤토리로 확정한 현행 사실:
 
 - mode byte (field-structured): [3:0] dtype (0x0 int4 … 0x4 f32, 0x5 f64-reserved→decode_error, 0x6 Q4.4, 0x7 Q8.8), [5:4] accumulate policy (0 same-width — bf16 은 ILLEGAL, 1 wide), [7:6] rounding (0 RNE, 1 stochastic, 2 RTZ).
 - opcodes: 0x70 VFMA_ACC, 0x71 VDOT_ACC, 0x72 ACC_REDUCE{SUM,MEAN,L2SQ,MAX}, 0x73 ACC_ELEMWISE, 0x74 FSCALAR, 0x75 FRSQRT32, 0x76 FEXP2_32, 0x77 CVT/I2F/F2I, 0x78 DEQUANT, 0x79 FMAX/FMIN (IEEE minNum/maxNum — signed-int compare tree 재사용 금지, 3안 공통 미처리 hazard 였음), 0x7C STORE_QUANT, 0x7D ACC_SPILL/FILL, 0x7E FP_ACC_ZERO/FP_STATUS, 0x7F reserved.
-- legality ROM (op-class × dtype × acc × rnd) — **ROM/spec 표/golden model/lint 를 단일 기계가독 YAML 소스에서 생성** (PE_Core.v:144-145 형 doc/RTL drift 의 구조적 해독제; 이 repo 최초의 codegen 도입 지점).
+- legality ROM (op-class × dtype × acc × rnd) — **ROM/spec 표/golden model/lint 를 단일 기계가독 JSON 소스에서 생성** (PE_Core.v:144-145 형 doc/RTL drift 의 구조적 해독제; 이 repo 최초의 codegen 도입 지점). ~~YAML~~→**JSON 으로 확정 (2026-07-16 v1.8.0a 설계 workflow)**: PyYAML 은 이 repo 의 최초 서드파티 non-cocotb 의존성이 되는 반면 json 은 stdlib — 조사 원문의 "YAML" 은 형식 예시였고 요구사항의 본질("단일 기계가독 소스")은 JSON 이 더 엄격히 충족. 사용자 승인된 치환으로 기록.
 - 기존 0x67/0x69/0x6B/0x6C 는 first-class 유지하되 **frozen** — alias-collapse 주장은 반증됨 (혼합 A/B/out-format 이라 단일 dtype nibble 로 인코딩 불가).
 - FP 결과를 0x68 로 캐싱하는 recipe 는 PRECISION EH 로 precision byte 를 pin 해야 함 (dim=0x55 pin 과 동일 패턴) — 아니면 결정론적 CAM miss.
+
+#### 23.6a v1.8.0a normative mode-byte legality 표 (2026-07-16 저작 — COMMIT 0)
+
+이 표가 **normative source of review** 다: isa/wt64v1_isa.json 의 fp_block 섹션은 이 표의 전사(transcription)이고, asm 테스트의 spec-row pin 들은 이 표에서 문자 그대로 옮긴다 (별도 commit 에서 선행 리뷰됨으로써 same-author-same-commit 순환을 끊는 독립 anchor).
+
+**정책 (restrictive-first + monotonic loosening)**: 아래 표에 명시되지 않은 모든 (op, dtype, acc, rnd) 조합은 **ILLEGAL (decode_error)**. 이후 버전에서 합법화(loosening)는 non-breaking — 어떤 코드도 거부되던 인코딩에 의존할 수 없기 때문. 역방향(합법→불법)은 breaking 이므로 금지. 불확실하면 ILLEGAL 로 남긴다.
+
+**mode byte 필드**: dtype = eff_precision[3:0], acc = eff_precision[5:4], rnd = eff_precision[7:6]. 이 의미론은 **opcode 0x70-0x7F 안에서만** 활성 (in_fp_block = cb_opcode[7:4]==4'h7 로 self-gate) — 0x00-0x6C 에서 precision byte 는 지금처럼 inert metadata.
+
+**전역 불변식 (모든 op 공통, generator 와 무관한 hand-pinned 테스트 4종의 대상)**:
+1. dtype 0x5 (f64) — **Lf 확장 예약**, 모든 op/acc/rnd 에서 ILLEGAL
+2. dtype > 0x7 — ILLEGAL
+3. rnd == 3 (reserved) — ILLEGAL. rnd == 1 (stochastic) 은 v1.8 전체에서 ILLEGAL (v2.0 이 STORE_QUANT downcast 에서 합법화). rnd == 2 (RTZ) 는 v1.8.0a 에서 ILLEGAL (필요 시 후속 loosening)
+4. acc == 0 (same-width) — v1.8.0a 에서 전면 ILLEGAL (f16 opt-in same-width 는 v2.0 결정; bf16+acc==0 은 **영구** ILLEGAL). acc ∈ {2,3} — ILLEGAL
+
+**per-op 표 (v1.8.0a 합법 행 전체 — 총 21 행 / 4096)**:
+
+| opcode | mnemonic | legal dtype | legal acc | legal rnd | 비고 |
+|---|---|---|---|---|---|
+| 0x70 | VFMA_ACC | 0x0 int4, 0x1 int8 | 1 (wide→int32) | 0 RNE | FP dtype (f16/bf16) 는 v2.0 에서 loosening |
+| 0x71 | VDOT_ACC | 0x0, 0x1 | 1 | 0 | 동상 |
+| 0x72 | ACC_REDUCE | 0x0, 0x1 | 1 | 0 | int32 누산기 대상; fp32 reduce 는 v1.8.0c+ loosening |
+| 0x73 | ACC_ELEMWISE | 0x4 f32 | 1 | 0 | fp32 scalar scale/shift (γ/β 단계) |
+| 0x74 | FSCALAR | 0x4 | 1 | 0 | add/sub/mul/FMA/sequential-div |
+| 0x75 | FRSQRT32 | 0x4 | 1 | 0 | LUT seed + NR 3회, ≤2 ulp normative |
+| 0x76 | FEXP2_32 | 0x4 | 1 | 0 | ≤2 ulp normative |
+| 0x77 | CVT | 0x2 f16, 0x3 bf16 | 1 | 0 | **conversion-dtype 규칙** 참조; I2F/F2I 의 sub-op 인코딩은 v1.8.0b 결정 |
+| 0x78 | DEQUANT | 0x0, 0x1 | 1 | 0 | dtype = **source** (int4/int8 × fp32 scale → bf16/f32) |
+| 0x79 | FMAX/FMIN | 0x4 | 1 | 0 | IEEE minNum/maxNum — signed-int compare tree 재사용 금지 |
+| 0x7C | STORE_QUANT | 0x0, 0x1, 0x2, 0x3 | 1 | 0 | dtype = **destination**; rnd=1(SR) 은 v2.0 loosening |
+| 0x7D | ACC_SPILL/FILL | 0x4 | 1 | 0 | v1.8.0b 에서 int32 spill 필요 시 loosening |
+| 0x7E | FP_ACC_ZERO / FP_STATUS | 0x4 | 1 | 0 | 제어 op — dtype 은 관례적 (fp32) |
+
+미배정 0x7A/0x7B 와 reserved 0x7F 는 opcode_supported whitelist 미포함 → 모든 mode byte 에서 decode_error (오늘과 동일).
+
+**conversion-dtype 규칙 (0x77 CVT / 0x78 DEQUANT / 0x7C STORE_QUANT)**: dtype nibble 은 **비-누산기-폭 endpoint** 를 명명한다 — DEQUANT/I2F 는 source, STORE_QUANT/F2I 는 destination — 반대편 endpoint 는 int32/fp32 로 고정. 이 규칙으로 표현 불가능한 쌍은 v1.8.0a 에서 ILLEGAL (2번째 dtype 인코딩은 v1.8.0b 결정 사항).
+
+**illegal mode byte 의 semantics**: EHDecode 단계의 **decode_error** (→ PE_Core error_flag, output_valid=0) — lower_required 가 절대 아님. decode/execute 경계 보존: malformed(EH shape 위반, illegal mode, 미배정 opcode) = decode_error; capability 부재(합법이나 미구현) = lower_required.
+
+**EH shape (restrictive-first)**: 0x70/0x71/0x73/0x79 = ALU-binary 형 (port + IMM XOR OPREF); 0x72/0x74/0x75/0x76/0x77/0x78 = port-only (모든 data EH forbidden); 0x7C/0x7D = port+mem; 0x7E = no-data-EH forbid-all. 모든 0x70-block mnemonic 은 assembler 에서 `.precision` EH + `prec` flag **필수** (asm 정적 mode 검사를 exact 하게 만듦). RTL 은 추가로 runtime tag-driven mode byte (input_tag[15:8], flags[2]=0) 를 수용 — 의도된 기록된 비대칭, 불변식 방향은 **asm-legal ⊆ RTL-legal** (equivalence 테스트로 기계 검증).
 
 ### 23.7 주요 residual risk (전문은 workflow 산출물)
 
@@ -2148,11 +2190,12 @@ Phase 1 인벤토리로 확정한 현행 사실:
 
 **v1.8 결정됨 (2026-07-16).** 사용자 지시: "f64는 별도의 확장(접미사 Lf)에서 본격적으로 다루는 게 좋겠어. 일단은 v1.8 진행해."
 - f64 → optional extension **Lf** 로 이관 (§23.2 갱신). base 의 dtype nibble 0x5 는 decode_error 예약 유지, Lf 가 나중에 이 인코딩을 claim.
-- v1.8 선행 조건 처리: (1) per-operator synth gate — v1.8.0c (FP-UNIT) 착수 전 완료 필수, (2) base pod nextpnr Fmax — 착수와 병렬 진행 (yosys/nextpnr-ecp5 로컬 설치 확인 완료, make synth-pod-ecp5/impl-pod-ecp5 flow 기존재), (3) legality-ROM YAML codegen — v1.8.0a 의 첫 산출물, (4) ACC bank TLA+ — v2.0 전 (v1.8 스코프 아님).
+- v1.8 선행 조건 처리: (1) per-operator synth gate — v1.8.0c (FP-UNIT) 착수 전 완료 필수, (2) base pod nextpnr Fmax — 착수와 병렬 진행 (yosys/nextpnr-ecp5 로컬 설치 확인 완료, make synth-pod-ecp5/impl-pod-ecp5 flow 기존재. **첫 실행이 즉시 성과**: 함수호출 인덱싱 yosys 비호환이 v1.6.1b 부터 잠복해 있었음을 적발 — commit 0afcf81 로 수정), (3) legality-ROM **JSON** codegen (~~YAML~~, §23.6 치환 기록 참조) — v1.8.0a 의 첫 산출물, (4) ACC bank TLA+ — v2.0 전 (v1.8 스코프 아님).
+- **enforcement plan (v1.8.0a 설계 workflow 확정)**: freshness 검사(gen_isa_tables.py --check 재생성+byte-diff)는 commit 필수인 `python -m unittest asm.test_wavetensor_asm` 스위트에 test 로 탑승 (no-CI repo 에서 가장 강한 채널); `make lint` 신설 (isa freshness + frag_total_m1_held, 향후 CI entrypoint); 전수 곱집합 decode-legality sweep (`WT_FULL_ISA_SWEEP=1`) 은 **release gate** 로 지정 — per-commit 은 equivalence-class 축약 실행.
 
 ### 23.9 v1.8 구현 staging
 
-- **v1.8.0a**: ISA foundation — 단일 YAML 소스 codegen (legality ROM + asm.py 테이블 + golden model + spec 표 + lint 생성), 0x70-0x7F decode skeleton, mode byte field 파싱 (dtype[3:0]/acc[5:4]/rnd[7:6])
+- **v1.8.0a**: ISA foundation — 단일 **JSON** 소스 codegen (legality ROM + asm.py 테이블 + golden model + spec 표 + lint 생성), 0x70-0x7F decode skeleton, mode byte field 파싱 (dtype[3:0]/acc[5:4]/rnd[7:6]). **3-commit staging** (설계 workflow w8gmgeokm 확정): COMMIT 0 = spec 선행 (§23.6a normative 표 저작 — 독립 리뷰로 same-author 순환 차단), COMMIT 1 = 무동작변경 legacy 이관 (isa/wt64v1_isa.json 47 opcodes 를 emitter-faithful 하게 — 알려진 asm-vs-RTL 비대칭 2건도 bit-for-bit 보존, EHDecode.v 의 legality case/is_alu_binary/opcode_supported/EH_* 를 generated include 4종으로 대체, asm.py Section-1 상수를 generated 모듈 import 로 대체, **사전-이관 RTL-derived frozen truth table + EH-subset sweep** 로 zero-behavior-change 증명), COMMIT 2 = 0x70-block skeleton (13 opcodes whitelist 편입, FP_LEGAL_ROM 4096-bit localparam, mode-byte wire 3종 + decode_error 11번째 항, PE_Core stub arm — BCAST 0x24 형 lower_required, asm require_precision_eh)
 - **v1.8.0b**: int32 누산 경로 — VDOT_ACC/VFMA_ACC/ACC_REDUCE + int 대상 STORE_QUANT (FP 하드웨어 불요, "벡터 정수 = 스칼라급 신뢰성" 을 가장 먼저 배달)
 - **v1.8.0c**: FP-UNIT fp32 scalar pipeline (FSCALAR/FRSQRT32/FEXP2_32) — per-operator synth gate 통과 후
 - **v1.8.0d**: CVT/I2F/F2I + DEQUANT + FP 대상 STORE_QUANT + norm 매크로 fp32 재구축
