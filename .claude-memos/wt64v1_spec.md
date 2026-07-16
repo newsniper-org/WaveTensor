@@ -1970,7 +1970,7 @@ Phase 1 인벤토리로 확정한 현행 사실:
 **v1.8 "WIDE-ACC"** — 추론 GPU-parity (ECP5 Stage-1). 학습 불가 명시.
 - 신규 opcode block **0x70-0x7F** (virgin 확인 — opcode_supported whitelist 라 미지 opcode 는 이미 decode_error). precision_mode 는 **이 block 안에서만** format selector 의미론 획득, 밖에서는 영원히 inert metadata (feature gate 없음, legacy flip 없음).
 - per-Cluster **FP-UNIT** = MATMUL_UNIT/DIV_UNIT 에 이은 3번째 stripped-PE peer. fp32 scalar pipeline (FSCALAR add/sub/mul/fused-FMA, sequential div), FRSQRT32 (LUT seed + **3회** Newton — 2회 주장은 수렴 산술에서 반증됨, ≤2 ulp normative), FEXP2_32 (≤2 ulp), CVT f16/bf16/f32 + I2F/F2I.
-- int4/int8 **VDOT_ACC/VFMA_ACC → int32 누산기** — order-free bit-exact (NVIDIA IMMA semantics).
+- int4/int8 **VDOT_ACC — stateless 4-fragment wide dot** (v1.8.0b 설계 확정, workflow wwov1b5i3): v1.8 의 int 경로는 **하드웨어 누산기 상태를 갖지 않는다**. A=wide[127:0], B=wide[255:128] (SIG_BMM_3 패턴), 64-bit carry-in 은 IMM-XOR-OPREF. 결과 r = (sext64(Σ sext32(aᵢ)·sext32(bᵢ)) + c) mod 2^64 즉시 방출 — dispatch 내 dot 은 int32 에서 wrap 불가능한 bound (|dot| ≤ 2^11 int4 / 2^18 int8). **IMMA order-free bit-exact 계약 = mod-2^64 소프트웨어 체인(직렬 carry-in 또는 VDOT partial + ADD 0x10 트리)의 low-32 채널**; full-64 는 현실적인 어떤 K 에서도 exact (int8 최대 크기 기준 overflow 까지 >2^45 dispatch ≈ 2^49 elements). 누산기 서사(VFMA/ACC bank)는 v1.8.0c+/v2.0 으로 이동.
 - **STORE_QUANT** (int32/fp32 → int4/int8/f16/bf16, RNE+saturate, ≤256-bit — 기존 2-bit frag FSM 과 lint 그대로 생존), **DEQUANT** (slice-select 로 기존 wide int4 wave 수용).
 - LayerNorm/RMSNorm/Softmax 매크로를 fp32 통계로 재구축, 종단 1회 양자화 — 기존 문서화된 4개 numerics 버그 (MEAN ASR floor, x-µ mod-16 wrap, gamma p[3:0] truncation, rsqrt 6.25% floor) 전부 은퇴.
 
@@ -2063,7 +2063,24 @@ Phase 1 인벤토리로 확정한 현행 사실:
 
 **illegal mode byte 의 semantics**: EHDecode 단계의 **decode_error** (→ PE_Core error_flag, output_valid=0) — lower_required 가 절대 아님. decode/execute 경계 보존: malformed(EH shape 위반, illegal mode, 미배정 opcode) = decode_error; capability 부재(합법이나 미구현) = lower_required.
 
-**EH shape (restrictive-first)**: 0x70/0x71/0x73/0x79 = ALU-binary 형 (port + IMM XOR OPREF); 0x72/0x74/0x75/0x76/0x77/0x78 = port-only (모든 data EH forbidden); 0x7C/0x7D = port+mem; 0x7E = no-data-EH forbid-all. 모든 0x70-block mnemonic 은 assembler 에서 `.precision` EH + `prec` flag **필수** (asm 정적 mode 검사를 exact 하게 만듦). RTL 은 추가로 runtime tag-driven mode byte (input_tag[15:8], flags[2]=0) 를 수용 — 의도된 기록된 비대칭, 불변식 방향은 **asm-legal ⊆ RTL-legal** (equivalence 테스트로 기계 검증).
+**EH shape (restrictive-first)**: 0x70/0x71/0x73/0x79 = ALU-binary 형 (port + IMM XOR OPREF); 0x72/0x74/0x75/0x76/0x77/0x78 = port-only (모든 data EH forbidden); 0x7C/0x7D = port+mem; 0x7E = no-data-EH forbid-all.
+
+**v1.8.0b EH-shape loosening (2026-07-16, 전부 monotonic — 어떤 합법 인코딩도 불법이 되지 않음)**:
+- 0x72 ACC_REDUCE: forbid_imm_any → false (RTL) / imm16 forbidden → optional (asm). **absent imm16 = SUM** (dec_eff_imm16=0 ⇒ sub-op 0x0) — 기존 port-only 인코딩은 전부 계속 decode 되며 SUM 의미를 획득 (표준 stub→real 전환). sub-op = imm16[7:4] ∈ **acc_reduce_op_codes {sum:0x0, max:0x1, l2sq:0x4, mean:0x5}** (신규 JSON 테이블 — einsum op_marker 공간과 코드 일치; **MIN 은 의도적 미탑재**: RED 는 min=2, einsum 은 min=6 으로 이미 충돌하는 공간이라 회피). imm16[3:0] reserved-zero 위반 / 미지 sub-op → lower_required (error_flag 아님). **MEAN = RNE(sum/N), ties-to-even, N ∈ {32,16} full lane set 만** — zero-padding 된 부분 벡터는 sum/N ≠ sum/K bias (normative 금지, SDK 강제).
+- 0x7C STORE_QUANT: req_mem → false (RTL; mem-present 는 여전히 합법이되 v1.8.0b 에서 offset **무시** — v1.8.0d memory-destination form 예약), forbid_imm_any → false. out = clamp_dtype(RNE(x >>ₐ s)), s = imm16[5:0], absent = 0 (순수 saturating clamp). imm16[15:6] reserved-zero → lower_required. dtype 0x2/0x3 (f16/bf16) → lower_required (0d 까지).
+
+**Scalar-in-64 payload 포맷 표 (normative)**:
+| 관례 | 사용처 |
+|---|---|
+| {32'h0, x} zero-extend | legacy einsum L1/L2SQ, SCALAR_RSQRT (변경 없음) |
+| **sext64(int32)** | 0x72 ACC_REDUCE, 0x7C STORE_QUANT 결과 |
+| full 64-bit r | 0x71 VDOT_ACC (r = sext64(dot)+c mod 2^64) |
+
+**v1.8.0b SDK 계약 (하드웨어 미강제 — asm/SDK 인코더가 보장)**:
+1. 0x71 은 정확히 4-fragment, 0x72 는 정확히 2-fragment wave 로 발행 — 짧은 wave 는 stale slot 데이터를 읽음 (SIG_BMM_3 과 동일한 기존 노출면, dec_* bus 에 fragment 수가 없어 PE 에서 감지 불가)
+2. instruction+EH chain 은 **모든 fragment 에 복제** — 완결 fragment 의 chain 만 파싱되고 완결 순서는 임의이므로, 미복제는 조용한 순서 의존 carry-in 버그
+3. OPREF kind-1 carry-in 체이닝 중 같은 MU 에 개입하는 mul-class dispatch 금지 (positional bank clobber) — IMM 기반 트리 체이닝이 안전 기본값
+4. MEAN 은 full lane set 에서만 모든 0x70-block mnemonic 은 assembler 에서 `.precision` EH + `prec` flag **필수** (asm 정적 mode 검사를 exact 하게 만듦). RTL 은 추가로 runtime tag-driven mode byte (input_tag[15:8], flags[2]=0) 를 수용 — 의도된 기록된 비대칭, 불변식 방향은 **asm-legal ⊆ RTL-legal** (equivalence 테스트로 기계 검증).
 
 ### 23.7 주요 residual risk (전문은 workflow 산출물)
 
@@ -2085,6 +2102,6 @@ Phase 1 인벤토리로 확정한 현행 사실:
 ### 23.9 v1.8 구현 staging
 
 - **v1.8.0a**: ISA foundation — 단일 **JSON** 소스 codegen (legality ROM + asm.py 테이블 + golden model + spec 표 + lint 생성), 0x70-0x7F decode skeleton, mode byte field 파싱 (dtype[3:0]/acc[5:4]/rnd[7:6]). **3-commit staging** (설계 workflow w8gmgeokm 확정): COMMIT 0 = spec 선행 (§23.6a normative 표 저작 — 독립 리뷰로 same-author 순환 차단), COMMIT 1 = 무동작변경 legacy 이관 (isa/wt64v1_isa.json 47 opcodes 를 emitter-faithful 하게 — 알려진 asm-vs-RTL 비대칭 2건도 bit-for-bit 보존, EHDecode.v 의 legality case/is_alu_binary/opcode_supported/EH_* 를 generated include 4종으로 대체, asm.py Section-1 상수를 generated 모듈 import 로 대체, **사전-이관 RTL-derived frozen truth table + EH-subset sweep** 로 zero-behavior-change 증명), COMMIT 2 = 0x70-block skeleton (13 opcodes whitelist 편입, FP_LEGAL_ROM 4096-bit localparam — 21 legal rows, mode-byte wire 3종 + decode_error 11번째 항, PE_Core stub arm — BCAST 0x24 형 lower_required, asm require_precision_eh). **전 commit landing 완료 (2026-07-16)**: COMMIT 0=042f08e, COMMIT 1=c8213d6 (5934-point 이관 전 truth-table differential 로 무동작변경 증명), COMMIT 2 검증 = ROM sweep 4096점×2 (tag-path/PRECISION-EH-path 양쪽 eff_precision mux arm) golden model 과 bit-일치, stub all-ops live-extraction, 미배정 0x7A/7B/7F decode_error 유지, asm 13×256 mode 검사 equivalence — cocotb 181 (ISA_Decoder) + asm 104 + 전 모듈 무변경
-- **v1.8.0b**: int32 누산 경로 — VDOT_ACC/VFMA_ACC/ACC_REDUCE + int 대상 STORE_QUANT (FP 하드웨어 불요, "벡터 정수 = 스칼라급 신뢰성" 을 가장 먼저 배달)
+- **v1.8.0b**: stateless int 경로 — VDOT_ACC(0x71, 4-fragment wide dot + carry-in) + ACC_REDUCE(0x72, wide 입력 stateless SUM/MAX/L2SQ/MEAN) + scalar int-dest STORE_QUANT(0x7C) (FP 하드웨어 불요, "벡터 정수 = 스칼라급 신뢰성" 을 가장 먼저 배달). **명시적 staging 양보 (설계 workflow wwov1b5i3 확정)**: VFMA_ACC(0x70) → v1.8.0c 로 이연 (stateless 형은 16-fragment 출력 FSM 필요, stateful 형은 누산기 설계 필요 — 양쪽 다 열린 상태로 stub 유지), vector STORE_QUANT → 0c/0d, f16/bf16 destination → 0d. per-pe-acc 안은 adversarial verify 에서 refuted (forbidden→required EH 전환 = spec 자기 정책 위반 breaking + LUT/MULT 예산 초과에 uncosted)
 - **v1.8.0c**: FP-UNIT fp32 scalar pipeline (FSCALAR/FRSQRT32/FEXP2_32) — per-operator synth gate 통과 후
 - **v1.8.0d**: CVT/I2F/F2I + DEQUANT + FP 대상 STORE_QUANT + norm 매크로 fp32 재구축
