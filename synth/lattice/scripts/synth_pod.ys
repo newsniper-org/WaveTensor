@@ -45,21 +45,23 @@ hierarchy -check -top Pod
 #       does not need renamed cells. Yosys 0.64 offers no -noautoname
 #       flag, so the real checks + stat + JSON emission run manually
 #       below instead.
-# NOTE(v1.8.0a): -nolutram — LUTRAM inference mapped the fragment-buffer
-#       arrays onto DPR16X4C primitives whose behavioral model still
-#       contains processes at write_json time ("Module DPR16X4C contains
-#       processes" — JSON backend refuses). Stage-1 pragmatic choice: keep
-#       those small arrays as FF+mux fabric (the spec §23 HW estimates
-#       assumed FF anyway); revisit LUTRAM mapping when the Stage-1 LUT
-#       budget actually tightens.
 # TODO(Stage 1): confirm 2x2 x 2x2 geometry produces expected LUT count;
 #                 compare against Vivado XCAU25P (62K LUT baseline).
-synth_ecp5 -nolutram -run :check
+synth_ecp5 -run :check
 
 # --- Manual tail of the flow (replaces the skipped `check` step minus
 # --- AUTONAME, plus the -json emission that -run suppressed) -------------
+# NOTE: `blackbox =A:whitebox` is ESSENTIAL, not cosmetic — the skipped
+#       stock `check` step performs it. The cell library
+#       (cells_sim_ecp5.v) is read as WHITEBOX models (behavioral,
+#       process-bearing — e.g. DPR16X4C) for abc9 timing; without the
+#       conversion, write_json refuses with "Module DPR16X4C contains
+#       processes". (An earlier -nolutram workaround misdiagnosed this as
+#       LUTRAM inference of our own arrays — the library whitebox was the
+#       real source; -nolutram removed again.)
 hierarchy -check
 check -noinit
+blackbox =A:whitebox
 
 # --- Emit stats report --------------------------------------------------
 # NOTE: `stat -tech ecp5` fails on Yosys 0.64 (unknown tech name in stat).

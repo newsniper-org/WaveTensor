@@ -40,10 +40,15 @@ if [ ! -f "$JSON_IN" ]; then
 fi
 
 # --- Place and route ----------------------------------------------------
+# NOTE(v1.8.0a hard gate, 2026-07-16): --lpf-allow-unconstrained — the Pod
+# top has 930 port bits and the ULX3S LPF only pins the board-facing
+# subset; for the Fmax/utilization gate run, unpinned IOs are acceptable
+# (they float to arbitrary pins). Board bring-up must pin them properly.
 nextpnr-ecp5 \
     $DEVICE_ARGS \
     --json "$JSON_IN" \
     --lpf "$LPF" \
+    --lpf-allow-unconstrained \
     --textcfg "$CONFIG_OUT" \
     --report "$REPORT" \
     --freq 100 \
