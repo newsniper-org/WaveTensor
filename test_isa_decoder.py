@@ -3513,6 +3513,400 @@ async def test_simd_mul_wide_q8_8_scalar_precision_vs_q4_4(dut):
 
 
 # =============================================================================
+# v1.7 §22.18 — SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN (0x6B) +
+# SIMD_REQUANTIZE_Q4_4_TO_INT4 (0x6C)
+#
+# WIDEN emits 4 fragments (256 bits: 32 lanes x signed 8-bit Q4.4) via the
+# newly-widened frag_idx (1-bit -> 2-bit) drain FSM. REQUANTIZE narrows a
+# 256-bit Q4.4-int8 wide input back to 128-bit int4 via round-half-up +
+# saturating clamp (a genuinely new failure mode vs 0x67/0x69).
+# =============================================================================
+
+
+async def _fire_widen(dut, a_128, b_q4_4):
+    """Fire SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN (0x6B) and collect all 4
+    output fragments in order."""
+    instr = encode_instr(0x6B, _STD_PORT(), eh_imm16(b_q4_4 & 0xFF))
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide.value = a_128
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    frags = []
+    for _ in range(30):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value) == 1:
+            frags.append({'payload': int(dut.output_payload.value),
+                          'frag_hdr': int(dut.output_frag_hdr.value)})
+            if len(frags) == 1:
+                break
+    # Collect the remaining 3 drain beats.
+    for _ in range(3):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        frags.append({'payload': int(dut.output_payload.value),
+                      'frag_hdr': int(dut.output_frag_hdr.value),
+                      'valid': int(dut.output_valid.value)})
+    return frags
+
+
+@cocotb.test()
+async def test_widen_dispatch_emits_four_fragments(dut):
+    """v1.7: WIDEN (0x6B) emits exactly 4 sequential fragments with
+    headers 0x03/0x13/0x23/0x33, correct opcode_out/output_tag held
+    constant, and lane values matching the exact (rounding-free) Q4.4
+    product. A[i]=+2, B=Q4.4(0.5)=0x08: p=2*8=16 (fits in 8-bit signed,
+    no saturation) -> every lane byte = 0x10."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    a_128 = _pack_int4_128(*[0x2] * 32)
+    frags = await _fire_widen(dut, a_128, 0x08)
+    assert len(frags) == 4
+    assert frags[0]['frag_hdr'] == 0x03
+    assert frags[1]['frag_hdr'] == 0x13
+    assert frags[2]['frag_hdr'] == 0x23
+    assert frags[3]['frag_hdr'] == 0x33
+    assert frags[3]['valid'] == 1
+    expected_lane_byte = 0x10  # exact, no rounding (A is integer)
+    expected_frag = 0
+    for j in range(8):
+        expected_frag |= expected_lane_byte << (j * 8)
+    for f in frags:
+        assert f['payload'] == expected_frag, \
+            f"got {f['payload']:016x}, expected {expected_frag:016x}"
+
+
+@cocotb.test()
+async def test_widen_saturates_on_magnitude_overflow(dut):
+    """v1.7: WIDEN's saturating clamp is REQUIRED (not defensive) --
+    |A|<=8,|B|<=8 gives |A*B|<=64, exceeding the 8-bit Q4.4 format's own
+    representable range (~+-8.0). A[i]=+7, B=Q4.4(+7.9375)=0x7F:
+    p=7*127=889, saturates to +127 (0x7F)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    a_128 = _pack_int4_128(*[0x7] * 32)
+    frags = await _fire_widen(dut, a_128, 0x7F)
+    expected_lane_byte = 0x7F  # saturated
+    expected_frag = 0
+    for j in range(8):
+        expected_frag |= expected_lane_byte << (j * 8)
+    for f in frags:
+        assert f['payload'] == expected_frag, \
+            f"got {f['payload']:016x}, expected {expected_frag:016x} (saturated)"
+
+
+async def _fire_requantize(dut, wide_256):
+    instr = encode_instr(0x6C, _STD_PORT())
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide.value = wide_256
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    frags = []
+    for _ in range(30):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value) == 1:
+            frags.append({'payload': int(dut.output_payload.value),
+                          'frag_hdr': int(dut.output_frag_hdr.value)})
+            break
+    await RisingEdge(dut.clk)
+    await Timer(1, units="ns")
+    frags.append({'payload': int(dut.output_payload.value),
+                  'frag_hdr': int(dut.output_frag_hdr.value),
+                  'valid': int(dut.output_valid.value)})
+    return frags
+
+
+@cocotb.test()
+async def test_requantize_parity_with_q4_4_direct(dut):
+    """v1.7: REQUANTIZE(WIDEN(A,B)) must equal 0x67's direct int4 result
+    for the same (A,B) in the non-saturating case -- confirms parity
+    (not regression) versus today's existing 0.5-output-LSB bound.
+    A=+2, B=Q4.4(0.5)=0x08: WIDEN produces byte 0x10 per lane;
+    REQUANTIZE(0x10) = round-half-up((16+8)>>4) = 1 -- matches 0x67's
+    own test_simd_mul_wide_q4_4_scalar_basic result for the same inputs."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    lane_byte = 0x10  # WIDEN(A=2, B=Q4.4(0.5)) per-lane result
+    wide_256 = 0
+    for j in range(32):
+        wide_256 |= (lane_byte & 0xFF) << (j * 8)
+    frags = await _fire_requantize(dut, wide_256)
+    assert len(frags) == 2
+    assert frags[0]['frag_hdr'] == 0x01
+    assert frags[1]['frag_hdr'] == 0x11
+    assert frags[1]['valid'] == 1
+    expected = 0x1111_1111_1111_1111  # every lane rounds to 1
+    assert frags[0]['payload'] == expected
+    assert frags[1]['payload'] == expected
+
+
+@cocotb.test()
+async def test_requantize_saturates_on_round_overflow(dut):
+    """v1.7: REQUANTIZE's saturating clamp is a genuinely NEW failure
+    mode vs 0x67/0x69 (which are provably non-saturating by
+    construction): a Q4.4 lane at its own max magnitude rounds UP past
+    int4's representable range. ri=127 (max, ~7.9375): round-half-up
+    (127+8)>>4 = 8, which exceeds int4 max(7) -- must saturate to 7, not
+    wrap to a negative value."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    lane_byte = 0x7F  # +127, max positive Q4.4-int8
+    wide_256 = 0
+    for j in range(32):
+        wide_256 |= (lane_byte & 0xFF) << (j * 8)
+    frags = await _fire_requantize(dut, wide_256)
+    expected = 0x7777_7777_7777_7777  # saturated to +7, NOT wrapped to -8
+    assert frags[0]['payload'] == expected
+    assert frags[1]['payload'] == expected
+
+
+@cocotb.test()
+async def test_requantize_min_value_exact_no_saturation(dut):
+    """v1.7: ri=-128 (min, -8.0) rounds to exactly -8 -- representable in
+    int4 without saturating (mathematically, negative saturation can
+    never actually trigger for a full-range 8-bit signed input: min
+    round-half-up result is floor((-128+8)/16) = -8, exactly at the int4
+    floor, never below it)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    lane_byte = 0x80  # -128
+    wide_256 = 0
+    for j in range(32):
+        wide_256 |= (lane_byte & 0xFF) << (j * 8)
+    frags = await _fire_requantize(dut, wide_256)
+    expected = 0x8888_8888_8888_8888  # -8 in every int4 lane
+    assert frags[0]['payload'] == expected
+    assert frags[1]['payload'] == expected
+
+
+@cocotb.test()
+async def test_legacy_op_immediately_after_widen_no_stale_total_m1(dut):
+    """v1.7: THE canary test for the FSM-extension's one real hazard.
+    Dispatch WIDEN (4-fragment drain), then on the very first cycle
+    frag_idx returns to FRAG_IDLE, dispatch a legacy 2-fragment op
+    (0x60). The legacy op must emit EXACTLY 2 fragments (0x01, 0x11) --
+    no spurious 3rd/4th fragment from a stale frag_total_m1_held=3 left
+    over from WIDEN."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    a_128 = _pack_int4_128(*[0x2] * 32)
+    await _fire_widen(dut, a_128, 0x08)
+    # frag_idx should now be back at FRAG_IDLE (hierarchical probe).
+    assert int(dut.u_core.frag_idx.value) == 0, "WIDEN drain did not return to FRAG_IDLE"
+
+    legacy_a = _pack_int4_128(*[0x1] * 32)
+    legacy_instr = encode_instr(0x60, _STD_PORT(), eh_imm16(3))
+    dut.instruction.value = legacy_instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide.value = legacy_a
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    legacy_frags = []
+    for _ in range(10):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value) == 1:
+            legacy_frags.append({'payload': int(dut.output_payload.value),
+                                 'frag_hdr': int(dut.output_frag_hdr.value)})
+    assert len(legacy_frags) == 2, \
+        f"expected EXACTLY 2 fragments, got {len(legacy_frags)}: {legacy_frags}"
+    assert legacy_frags[0]['frag_hdr'] == 0x01
+    assert legacy_frags[1]['frag_hdr'] == 0x11
+    expected = 0x4444_4444_4444_4444  # 1+3=4 every lane
+    assert legacy_frags[0]['payload'] == expected
+    assert legacy_frags[1]['payload'] == expected
+
+
+@cocotb.test()
+async def test_pe_ready_widen_drain_is_three_cycles(dut):
+    """v1.7: WIDEN's drain takes 3 additional cycles (fragments 1-3)
+    beyond the dispatch cycle, so pe_ready deasserts for exactly 3
+    cycles -- an accepted throughput tradeoff vs every other wide-
+    consumer op's 1-cycle bound, explicitly locked in here."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    a_128 = _pack_int4_128(*[0x1] * 32)
+    instr = encode_instr(0x6B, _STD_PORT(), eh_imm16(0x08))
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide.value = a_128
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    # Wait for dispatch (fragment 0) to land.
+    for _ in range(20):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value) == 1 and int(dut.output_frag_hdr.value) == 0x03:
+            break
+    not_ready_cycles = 0
+    for _ in range(6):
+        if int(dut.pe_ready.value) == 0:
+            not_ready_cycles += 1
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+    assert not_ready_cycles == 3, f"expected 3 not-ready cycles, got {not_ready_cycles}"
+
+
+@cocotb.test()
+async def test_mul_during_widen_drain_blocked_then_launches_correctly(dut):
+    """v1.7: attempt a MUL dispatch during WIDEN's 3-cycle drain window.
+    Per the pre-existing v1.5.3a launch-gate design (PE_Core.v:1743-1746
+    -- confirmed directly, MUL's own case arm does NOT assert
+    lower_required when blocked by frag state; it is silently NOT
+    launched via the separate mul_valid_p1 pipeline gate), the MUL simply
+    fails to enter the pipeline during the drain (no corrupted output),
+    then launches correctly once frag_idx returns to FRAG_IDLE and the
+    SAME dispatch is retried."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    a_128 = _pack_int4_128(*[0x1] * 32)
+    widen_instr = encode_instr(0x6B, _STD_PORT(), eh_imm16(0x08))
+    dut.instruction.value = widen_instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide.value = a_128
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    for _ in range(20):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value) == 1 and int(dut.output_frag_hdr.value) == 0x03:
+            break
+
+    # Now mid-drain: attempt MUL. Must not corrupt the ongoing drain
+    # (no output with opcode_out==0x12 appears while frag_idx != FRAG_IDLE).
+    mul_instr = encode_instr(0x12, _STD_PORT(), eh_imm64(5))
+    dut.instruction.value = mul_instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 10
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide_valid.value = 0
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    await Timer(1, units="ns")
+    assert int(dut.u_core.mul_valid_p1.value) == 0, \
+        "MUL must not enter the pipeline while frag_idx != FRAG_IDLE"
+
+    # Retry after the drain completes.
+    for _ in range(10):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.u_core.frag_idx.value) == 0:
+            break
+    dut.instruction.value = mul_instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 10
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    saw_mul = False
+    for _ in range(10):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value) == 1 and int(dut.opcode_out.value) == 0x12:
+            assert int(dut.output_payload.value) == 50
+            saw_mul = True
+            break
+    assert saw_mul, "MUL did not launch correctly after WIDEN drain completed"
+
+
+@cocotb.test()
+async def test_reset_clears_widen_fsm_state(dut):
+    """v1.7: reset must drive frag_idx=FRAG_IDLE(0) and
+    frag_total_m1_held=0 (hierarchical probe)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    assert int(dut.u_core.frag_idx.value) == 0
+    assert int(dut.u_core.frag_total_m1_held.value) == 0
+
+
+@cocotb.test()
+async def test_requantize_legality_rejects_imm_and_opref(dut):
+    """v1.7: REQUANTIZE (0x6C) has no B operand at all -- an IMM16 or
+    OPREF EH must decode-error (forbidden_eh), regression-guarding the
+    corrected unary/no-B legality shape."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    instr = encode_instr(0x6C, _STD_PORT(), eh_imm16(5))
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide.value = 0
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    for _ in range(10):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.error_flag.value) == 1 or int(dut.output_valid.value) == 1:
+            break
+    assert int(dut.error_flag.value) == 1
+    assert int(dut.output_valid.value) == 0
+
+
+@cocotb.test()
+async def test_widen_legality_requires_imm_xor_opref(dut):
+    """v1.7: WIDEN (0x6B) requires exactly one of {IMM16/32/64, OPREF} --
+    mirrors existing 0x67/0x69 legality (bare dispatch with neither must
+    decode-error)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    instr = encode_instr(0x6B, _STD_PORT())
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide.value = 0
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    for _ in range(10):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.error_flag.value) == 1 or int(dut.output_valid.value) == 1:
+            break
+    assert int(dut.error_flag.value) == 1
+    assert int(dut.output_valid.value) == 0
+
+
+# =============================================================================
 # v1.6.6 §22.14 — pe_ready back-pressure signal
 # =============================================================================
 
@@ -3714,11 +4108,11 @@ async def test_op_mean_and_cache_load_wide_dim_sizes_consistency(dut):
 async def test_frag_inval_hit_ack(dut):
     """v1.6.5d §22.17: FRAG_INVAL (0x6A) with wide_valid=1 (Cluster-level
     CAM hit) must ack (output_valid=1, error_flag=0) and must NOT enter
-    FRAG_EMIT_HI (no second fragment beat follows) -- proves the
+    the drain FSM (no second fragment beat follows) -- proves the
     standalone-arm design avoids the confirmed garbage-second-fragment
-    hazard that folding into the shared 0x60-0x69 wide-emit group would
+    hazard that folding into the shared 0x60-0x6C wide-emit group would
     cause (that group's epilogue unconditionally drives
-    frag_state<=FRAG_EMIT_HI)."""
+    frag_idx<=FRAG_EMIT_1)."""
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
     await reset(dut)
@@ -3949,7 +4343,7 @@ async def test_trace_iijkl_signed_int4(dut):
 @cocotb.test()
 async def test_trace_iijkl_single_output_fragment(dut):
     """v1.5.5: SINGLE output_valid pulse (no fragment FSM engaged unlike
-    SIG_BMM_3). frag_state must never leave FRAG_IDLE, output_frag_hdr
+    SIG_BMM_3). frag_idx must never leave FRAG_IDLE, output_frag_hdr
     must stay 0x00 throughout, and cycle N+1 must be idle."""
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
@@ -3960,8 +4354,9 @@ async def test_trace_iijkl_single_output_fragment(dut):
     # Cycle N: output valid, frag_hdr=0
     assert dut.output_valid.value == 1
     assert int(dut.output_frag_hdr.value) == 0x00
-    # Hierarchical: FSM never engaged
-    assert int(dut.u_core.frag_state.value) == 0
+    # Hierarchical: FSM never engaged (v1.7 §22.18: frag_state -> frag_idx,
+    # widened 1-bit -> 2-bit; FRAG_IDLE is still 0 either way)
+    assert int(dut.u_core.frag_idx.value) == 0
     # Cycle N+1: idle (no fragment 1 emit)
     await RisingEdge(dut.clk)
     await Timer(1, units="ns")
@@ -4056,11 +4451,13 @@ async def test_bmm3_then_mul_launch_gate(dut):
     dut.input_payload_b.value = 0
     dut.input_payload_b_valid.value = 0
     dut.token_valid.value = 1
-    # BEFORE the clock edge: probe hierarchical frag_state via u_core
-    # (PE_Core instance inside ISA_Decoder). If frag_state == 1 (FRAG_EMIT_HI),
-    # the launch gate MUST prevent mul_valid_p1 from asserting on next edge.
-    assert int(dut.u_core.frag_state.value) == 1, \
-        f"expected FRAG_EMIT_HI, got frag_state={int(dut.u_core.frag_state.value)}"
+    # BEFORE the clock edge: probe hierarchical frag_idx via u_core
+    # (PE_Core instance inside ISA_Decoder). If frag_idx == 1 (FRAG_EMIT_1,
+    # v1.7 §22.18: frag_state -> frag_idx, widened 1-bit -> 2-bit; the old
+    # FRAG_EMIT_HI value of 1 is now FRAG_EMIT_1), the launch gate MUST
+    # prevent mul_valid_p1 from asserting on next edge.
+    assert int(dut.u_core.frag_idx.value) == 1, \
+        f"expected FRAG_EMIT_1, got frag_idx={int(dut.u_core.frag_idx.value)}"
     await RisingEdge(dut.clk)
     await Timer(1, units="ns")
     # After the clock edge: mul_valid_p1 must be 0 (launch blocked)

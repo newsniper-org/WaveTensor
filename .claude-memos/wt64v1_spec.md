@@ -27,7 +27,8 @@
 - v1.6.6 (2026-07-15): **pe_ready back-pressure signal** — PE_Core FSM+pipeline 상태 통합 combinational output. Cluster→Pod→Top_Core 계층으로 aggregate (AND-reduce). MVP observe-only (ext_valid gate 안 함). §22.14b 참조.
 - v1.6.5c (2026-07-15): **multi-slot fragment buffer + CACHE_LOAD_WIDE (0x68)** — Cluster.v `FRAG_SLOTS` parameter (N-way full-tag CAM + monotonic-timestamp LRU + persistence), LAYERNORM step 5 가 xc 재발행 대신 캐시 재로드. Tag-stability 를 위한 PRECISION-EH guard (dim=0x55). 부수적으로 EHDecode.v 0x63/64/65 legality 선행 버그 (LAYERNORM 이 실제로는 무조건 decode-error 나던 상태) 발견 및 수정. §22.16 참조.
 - v1.6.7 (2026-07-16): **SIMD_MUL_WIDE_Q8_8_SCALAR (0x69)** — B lane 추가 widening (Q4.4 → Q8.8, LSB 1/16 → 1/256). RMSNORM/LAYERNORM scale 곱셈이 0x67 대신 0x69 사용 → B-side quantization 을 rsqrt LUT 의 ~6.25% floor 아래로 완전히 밀어냄 (precision-zero-loss-research workflow whro79brj 결과). §22.14e 참조.
-- v1.6.5d (2026-07-16): **FRAG_INVAL (0x6A)** — SDK 명시적 캐시 슬롯 회수 (LRU 자연 회수 대기 없이). Design workflow 가 "0x68 mirror" 원안의 PE_Core.v 배치 버그(공유 wide-emit 그룹에 넣으면 FRAG_EMIT_HI 가 다음 cycle 에 가비지 2번째 fragment 를 무조건 방출)를 발견 — standalone case arm (0x66 shape) 으로 수정. **Tag-stability 리터럴 유지보수** 동시 landing: `_lower_layernorm()` 실함수를 직접 호출해 live 값을 비교하는 cross-file consistency test 로 OP_MEAN↔CACHE_LOAD_WIDE dim_sizes 리터럴 desync 를 자동 검출. §22.17 참조.
+- v1.6.5d (2026-07-16): **FRAG_INVAL (0x6A)** — SDK 명시적 캐시 슬롯 회수 (LRU 자연 회수 대기 없이). Design workflow 가 "0x68 mirror" 원안의 PE_Core.v 배치 버그(공유 wide-emit 그룹에 넣으면 FRAG_EMIT_HI 가 다음 cycle 에 가비지 2번째 fragment 를 무조건 방출)를 발견 — standalone case arm (0x66 shape) 으로 수정. **Tag-stability 리터럴 유지보수** 동시 landing: `_lower_layernorm()` 실함수를 직접 호출해 live 값을 비교하는 cross-file consistency test 로 OP_MEAN↔CACHE_LOAD_WIDE dim_sizes 리터럴 desync 를 자동 검출. §22.17 참조. `make_layernorm_abort_cleanup()` SDK contract 를 같은 날 amendment 로 추가 (§22.17.1a).
+- v1.7 (2026-07-16): **SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN (0x6B) + SIMD_REQUANTIZE_Q4_4_TO_INT4 (0x6C)** — PE_Core.v 의 공유 fragment-drain FSM 을 1-bit(frag_state)→2-bit(frag_idx up-counter)로 확장, 4-fragment(256-bit) WIDEN 출력 지원. 세션 최고 위험도 RTL 변경(9개+ opcode 가 공유하는 FSM)이었으나 전 계층 무손상 확인. **정밀도 주장 정정**: 원래 로드맵의 "output-side rounding 완전 제거" 주장은 틀림 — WIDEN 자신은 rounding-free 이나 REQUANTIZE(기존 int4 소비자 호환 필수)가 round-half-up+saturate 를 다시 수행해 실제로는 parity 복원일 뿐. §22.18 참조.
 
 참조 구현 마이그레이션: **진행 중 (2026-07-12 개시)** — 참조 보드가 XCAU25P → LFE5U-85F → Avant G70 순으로 이동, 아래 §"참조 구현 마이그레이션 노트" 참조.
 
@@ -1968,11 +1969,97 @@ def make_layernorm_abort_cleanup(inst: Instruction) -> Instruction:
 
 - FRAG_INVAL 은 mid-assembly 슬롯을 구조적으로 invalidate 불가 (의도된 설계, §22.17.1 참조) — 진행 중인 multi-fragment wave 를 중단하는 용도로는 쓸 수 없음
 - Tag-stability literal fix 는 OP_MEAN↔CACHE_LOAD_WIDE 쌍만 커버 — PE_Core.v 의 다른 3개 독립 0x55 guard 사이트는 미연결
-- FRAG_INVAL 은 ISA primitive 로만 landing — `_lower_layernorm`/`_lower_rmsnorm` 등 매크로에 실제로 배선(abort 시 자동 발행)하는 것은 SDK/runtime 영역, 여전히 out of scope. §22.16.6 의 "캐시 leak" 시나리오는 SDK 가 실제로 이 opcode 를 발행해야 완전히 닫힘
+- FRAG_INVAL 은 ISA primitive 로만 landing — ~~`_lower_layernorm`/`_lower_rmsnorm` 등 매크로에 실제로 배선(abort 시 자동 발행)하는 것은 SDK/runtime 영역, 여전히 out of scope~~ **WaveTensor 쪽 절반 해결 (2026-07-16, §22.17.1a)**: `make_layernorm_abort_cleanup()` + `_layernorm_xc_slot_addressing()` 공유 헬퍼로 "올바른 인스트럭션을 어떻게 만드는가" 는 완료. "언제 실제로 abort 를 감지해서 발행하는가"는 여전히 wavetensor-sdk repo 의 실제 runtime 영역 (해당 repo 는 아직 Phase A scaffold 라 코드 작성 대상 없음 — docs/phase_plan.md 에 열린 설계 질문으로 기록, commit c4d76e9)
 - Eviction-under-concurrency 는 FRAG_INVAL 로도 미해결 (별도 risk 카테고리, §22.16.6 참조)
 - `dec_input_payload_wide_valid` 를 FRAG_INVAL 의 ack 채널로 재사용 — 원래 의미("캐시 데이터 valid")와 다른 의미("invalidate 성공")를 겹쳐 쓰는 것은 경미한 가독성 부채 (PE_Core.v 주석으로 완화, 완전히 제거되지는 않음)
 - 매 opcode 추가마다 EHDecode.v/PE_Core.v 의 병렬 case table 을 수동으로 lockstep 유지해야 하는 systemic risk 는 여전함 (0x63/64/65 desync 가 이미 한 번 발생) — 이번 landing 은 그 2개 리터럴만 고쳤을 뿐 systemic tooling 은 추가하지 않음
 
-### 22.18 진입 트리거 (기존 22.17 재번호)
+### 22.18 v1.7 landing (2026-07-16) — SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN (0x6B) + SIMD_REQUANTIZE_Q4_4_TO_INT4 (0x6C)
 
-v1.6.5d amendment 는 **결정된 상태 (2026-07-16)**. Design workflow + 사용자 세션 직접 RTL 재검증(FRAG_EMIT_HI 가비지 fragment 버그 확인)으로 최종 설계 확정. 구현 완료 (2026-07-16).
+Ultracode 세션, FRAG_INVAL SDK wiring 과 병행 진행. Design workflow (`v1-7-widen-requantize-design`, task `wgcq5jc68`/`wf_960cb526-029`, 16 agents, 985K tokens) 로 설계 — 사용자 세션에서 PE_Core.v 현재 상태(FSM/gate/frag_hi_pending 정확한 line number)를 직접 재확인 후 구현.
+
+#### 22.18.0 ⚠️ 정밀도 주장 정정 (기존 로드맵 메모리 오류 수정)
+
+**기존 `wt64v1_precision_recovery_roadmap.md`/spec §22.15 가 v1.7 을 "output-side rounding 완전 제거" 로 기술한 것은 틀렸다.** Adversarial verify 가 발견, 아래로 정정:
+
+- **WIDEN 자신의 Q4.4-int8 출력은 정확히 rounding-free** — A 가 정수(소수부 없음)이므로 raw product `p = A × B_raw` 는 이미 정확히 Q4.4 grid 위에 있음. 반올림이 필요 없고 saturating cast 만 필요.
+- **하지만 REQUANTIZE (기존 int4-only 소비자와 호환하기 위해 반드시 필요)는 round-half-up + saturate 를 다시 수행** — 즉 REQUANTIZE(WIDEN(A,B)) 의 최종 int4 출력은 여전히 기존 0x67/0x69 과 동일한 ~0.5 output-LSB rounding bound 를 가짐.
+- **올바른 주장**: "WIDEN 은 rounding-free 이나, 이를 소비하는 REQUANTIZE 가 기존 int4 소비자 대비 **parity 를 복원**할 뿐, output-side rounding 병목을 **완전히 제거하지는 않는다**. 진짜 zero-rounding 이득은 네이티브 Q4.4-int8 을 직접 받아들이는 다운스트림 소비자가 있어야 실현되는데, **그런 소비자는 아직 ISA 에 존재하지 않는다.**"
+- 이 정정은 `wt64v1_precision_recovery_roadmap.md` 메모리 파일과 이 spec 양쪽 모두 반영 (§22.18.4 참조).
+
+#### 22.18.1 opcode 재배정 (기존 예약 갱신)
+
+FRAG_INVAL 이 같은 세션에서 0x6A 를 선점 — WIDEN=**0x6B**, REQUANTIZE=**0x6C** 로 확정 (원래 계획했던 0x6A/0x6B 에서 한 칸씩 밀림, 이미 §22.17.0/roadmap memory 에 반영됨).
+
+#### 22.18.2 채택된 설계 — full-fsm-extension (frag_state 1비트 → frag_idx 2비트)
+
+**Rejected 대안** (adversarial verify):
+- **16-lane-no-fsm-change**: 헤드라인 장점("CACHE_LOAD_WIDE 를 그대로 재사용")이 반증됨 — CACHE_LOAD_WIDE 는 매칭된 슬롯 **전체**를 mux-out 하는 구조라 128-bit 캐시된 xc 의 절반(16-lane)만 재로드하는 메커니즘이 없음 → step 2(xc 생산) 자체도 결국 2-dispatch 로 쪼개야 해서 "WIDEN/REQUANTIZE 만 분할" 이라는 자신의 호환성 주장이 깨짐. FRAG_SLOTS 동시성 압박도 배가 (§22.16.6 의 미해결 eviction-under-concurrency risk 를 오히려 악화).
+- **two-dispatch-half-select**: 자체 요약이 스스로의 cons 와 모순(목표 달성했다면서 실제 dispatch 수는 2가 아니라 4). 두 개의 독립적으로 태그된 128-bit half 가 "논리적으로 하나의 값"이라는 것을 하드웨어가 전혀 인지하지 못함 — correlation/ordering/scale 일치가 전부 SDK 쪽 미검증 불변식이 되어, 실패 모드가 **조용한 데이터 오염** (byte/lane-swap, tag 충돌, false hazard-aliasing).
+
+**full-fsm-extension** 이 채택된 이유: FSM 리스크를 정면으로 분석한 결과 "accepted with caveats" 이지 "refuted" 인 적이 없었음 — 인용된 모든 line number 가 실제와 일치, drain loop pseudocode 가 모든 legacy 2-fragment producer 의 정확한 0x11 헤더/타이밍을 재현, compound gate 의 7곳 중 5곳은 `==FRAG_IDLE` 만 검사(busy encoding 은 검사 안 함)이라 폭 확장이 기계적, MUL/DIV launch gate 는 애초에 모든 wide-consumer dispatch 와 상호 배타적이었으므로 드레인 길이와 무관하게 새 충돌이 생길 수 없음 — 유일한 real hazard(stale frag_total_m1_held)는 이름 붙일 수 있고 lint 로 검증 가능한 종류.
+
+**설계 3곳 교정** (raw 원안 대비):
+1. REQUANTIZE(0x6C)를 WIDEN 자신의 standalone item 이 아니라 **기존 공유 8'h60-69 case-item 그룹의 10번째 멤버**로 편입 — write-site 개수를 열린 카운트에서 정확히 3곳(SIG_BMM_3 epilogue, 공유 그룹 epilogue, WIDEN 자신의 신규 epilogue)으로 축소.
+2. REQUANTIZE 의 EHDecode.v legality 를 raw 초안의 (틀린) ALU-binary shape 에서 0x66/0x68/0x6A 와 동일한 **unary no-B shape** 로 수정 (REQUANTIZE 는 B operand 자체가 없음).
+3. REQUANTIZE 의 narrowing 공식에 **명시적 saturating clamp** 추가 (round-half-up-then-shift 만으로는 "rounding 오차를 조용히 2배로 만드는" 갭이 adversarial review 에서 발견됨).
+
+#### 22.18.3 RTL 메커니즘
+
+**PE_Core.v** — `frag_state`(1-bit)→`frag_idx`(2-bit up-counter: FRAG_IDLE/FRAG_EMIT_1/FRAG_EMIT_2/FRAG_EMIT_3), `frag_hi_pending`(단일 64-bit)→`frag_pending[1:3]`(3-slot 64-bit array), 신규 `frag_total_m1_held`(2-bit, 이 wave 의 실제 fragment 개수 기록). `frag_tag_held`/`frag_opcode_held` 는 미변경(fragment 전체에 걸쳐 상수이므로 폭 확장 불필요, workflow investigator0 확인).
+
+절대 우선순위 override 일반화:
+```verilog
+if (frag_idx != FRAG_IDLE) begin
+    output_payload  <= frag_pending[frag_idx];
+    output_frag_hdr <= {2'b00, frag_idx, 2'b00, frag_total_m1_held};
+    output_valid    <= 1'b1;
+    if (frag_idx == frag_total_m1_held) frag_idx <= FRAG_IDLE;
+    else                                frag_idx <= frag_idx + 2'b01;
+end
+```
+
+**MANDATORY 불변식** (CI-enforced): `frag_idx<=FRAG_EMIT_1` 를 쓰는 모든 블록은 같은 블록에서 `frag_total_m1_held` 도 써야 함 — `scripts/lint_frag_total_m1_held.py` 로 강제 (indentation 기반 case-arm 경계 탐지, false negative 를 실제 위반 제거 시뮬레이션으로 검증).
+
+**WIDEN (0x6B)**: A(int4) × B(signed Q4.4, `dec_eff_b_value[7:0]`) → 32-lane × signed 8-bit Q4.4 = 256-bit/4-fragment (헤더 0x03/0x13/0x23/0x33). Standalone case item (공유 그룹 밖 — 그룹은 2-fragment epilogue 하드코딩이라 4-fragment 드레인과 안 맞음).
+
+**REQUANTIZE (0x6C)**: 256-bit Q4.4-int8 (`dec_input_payload_wide[255:0]`) → 128-bit int4, round-half-up + saturate. 공유 8'h60-69+6C 그룹의 10번째 멤버.
+
+**Cluster.v**: 변경 없음 — FRAG_MAX=16(1024-bit) 이 이미 generic, 4-fragment(tot_m1=3) 재조립도 이미 SIG_BMM_3/`test_frag_buffer_four_fragments_assemble` 로 production-검증됨.
+
+**EHDecode.v**: 0x6B 는 0x60/61/62/67/69 와 동일 shape(is_alu_binary 편입), 0x6C 는 0x66/68/6A 와 동일 shape(unary no-B).
+
+**asm.py**: `SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN`=0x6B(기존 IMM-XOR-OPREF 그룹 편입), `SIMD_REQUANTIZE_Q4_4_TO_INT4`=0x6C(별도 `_set_legal`, 0x6A 패턴).
+
+#### 22.18.4 회귀 (252 cocotb + 95 assembler, 전부 PASS)
+
+- Cocotb: 241 → **252** (+11, ISA_Decoder 165→176): widen 4-fragment emit, widen saturation, requantize parity-with-0x67, requantize saturation, requantize min-value-exact, **canary test**(legacy op 직후 WIDEN 이 stale total_m1 남기지 않음 증명), pe_ready 3-cycle, mul-during-drain(blocked-then-launches), reset, requantize/widen legality ×2
+- Assembler: 90 → **95** (+5): widen/requantize legality ×2, widen requires-imm-xor-opref, requantize rejects-imm-and-opref, opcode-table-matches-hardware(0x63/64/65 desync 재발 방지 직접 회귀)
+- **Cluster: FRAG_SLOTS=1(default)/FRAG_SLOTS=4 양쪽 build 모두 31/31 무변경 통과** (FSM 확장이 Cluster 레벨 동작에 영향 없음을 확인)
+- 나머지 전 모듈(HIU/Tensor_ALU/SIMD_ALU/ALU_Extended/Top_Core/PE/Pod) 무변경 통과
+- `scripts/lint_frag_total_m1_held.py`: 통과 확인 + 실제 위반 시뮬레이션(임시로 한 assignment 제거)으로 lint 자체가 진짜로 잡아내는지 sanity-check 완료
+
+**핵심 검증**: 이 FSM 확장은 세션 전체에서 가장 위험도 높은 RTL 변경(9개 이상 opcode 가 공유하는 core FSM touch)이었으나, PE→ISA_Decoder→PE→Top_Core→Pod→Cluster(양쪽 build) 전 계층에서 무손상 확인.
+
+#### 22.18.5 HW 비용
+
+- Per-PE: frag_idx +1 FF, frag_total_m1_held +2 FF, frag_pending 64-bit→192-bit(+128 FF) = **+131 FF/PE**. frag_tag_held/frag_opcode_held 미변경.
+- Combinational: override 분기가 1-way bypass → 3:1 64-bit mux + 2-bit 비교기 + 2-bit incrementer (~200 mux-equivalent + ~10 gate, 기존 1024-bit wide bus 대비 미미).
+- 기본 Cluster(NUM_PES=4) 기준 cluster-wide ~+524 FF.
+- EHDecode.v: is_alu_binary OR-term 1개 + unary shape 1개 + opcode_supported OR-term 2개 — combinational decode 로직 소폭 증가.
+- Cluster.v/BRAM/NoC 변경 없음.
+- Timing: override 분기의 critical path 가 3:1 mux + 2-bit 비교 1단 증가 — 기존에 더 큰 mux(1024-bit wide bus)가 이미 있어 critical path 될 가능성은 낮으나, **post-synthesis STA 검증 권장** (residual risk).
+
+#### 22.18.6 남은 residual risk
+
+- Stale `frag_total_m1_held` hazard 는 정확히 3개 write-site 로 스코프 축소 + lint + canary test 로 backstop 되었으나 **구조적으로 완전히 제거되지는 않음** — 향후 opcode 가 FRAG_EMIT_1 tail 을 재사용하면서 frag_total_m1_held 갱신을 잊으면 여전히 실패 가능 (lint 가 잡아냄)
+- MUL/DIV throughput regression: WIDEN 직후 MUL/DIV 가 오면 1-cycle → 최대 3-cycle stall. SDK scheduler 에 통지 필요
+- pe_ready 최악 deassertion 이 1→3 cycle 로 변경 — "observe-only" 문서화되어 있으나 실제 상류 fabric 이 1-cycle 을 가정했다면 재검증 필요
+- REQUANTIZE 의 saturating clamp 은 0x67/0x69 에 없던 새 실패 클래스 — 이번 landing 에서 전용 edge-case 검증 완료했으나 향후 변형에서 재검증 필요
+- wavetensor-sdk (Phase B/C) 가 4-fragment 제네릭성을 자동 상속하는지, 별도 구현이 필요한지 미확인 (repo 자체가 아직 fragment 처리 코드 없음)
+- Timing/STA 미검증 (§22.18.5)
+- REQUANTIZE(WIDEN(A,B)) 와 미래의 다른 연산 시퀀스 간 "같은 논리값" 에 대한 범용 bit-exactness 계약은 없음 — 이번 테스트는 0x67 대비 parity 만 확인
+
+### 22.19 진입 트리거 (기존 22.18 재번호)
+
+v1.6.5d + v1.7 amendment 는 **결정된 상태 (2026-07-16)**. 세 workflow(FRAG_INVAL+tag-literal, v1.7 FSM) + 사용자 세션 직접 RTL 재검증(FRAG_EMIT_HI 가비지 fragment 버그, MUL 차단이 lower_required 아닌 silent gate 임을 직접 확인)으로 최종 설계 확정. 구현 완료 (2026-07-16).

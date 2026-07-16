@@ -986,6 +986,75 @@ module PE_Core #(
         end
     endfunction
 
+    // v1.7 §22.18 — WIDEN: A (int4) x B (signed Q4.4, dec_eff_b_value[7:0])
+    // -> signed 8-bit Q4.4 output, 32 lanes = 256 bits. A is integer (no
+    // fractional bits), so the raw product p is ALREADY an exact Q4.4
+    // value (same scale as B) -- no rounding is needed or performed here,
+    // unlike 0x67/0x69 which must round when narrowing to int4. The
+    // saturating clamp is REQUIRED (not just defensive): realistic
+    // |A|<=8, |B_real|<=8 gives |A*B_real|<=64, which exceeds the 8-bit
+    // Q4.4 format's own representable range (~±8.0) -- this is a real,
+    // reachable saturation case, not a theoretical one.
+    function [255:0] simd_mul_wide_q4_4_scalar_128_widen;
+        input [127:0] a;
+        input [7:0]   b;
+        reg [255:0] out;
+        reg signed [3:0]  ai;
+        reg signed [7:0]  bi;
+        reg signed [11:0] p;
+        integer i;
+        begin
+            out = 256'h0;
+            for (i = 0; i < 32; i = i + 1) begin
+                ai = $signed(a[i*4 +: 4]);
+                bi = $signed(b);
+                p  = ai * bi;                  // exact Q4.4 product (Q8.4, 12-bit signed)
+                if (p > 12'sd127)
+                    out[i*8 +: 8] = 8'sd127;
+                else if (p < -12'sd128)
+                    out[i*8 +: 8] = -8'sd128;
+                else
+                    out[i*8 +: 8] = p[7:0];
+            end
+            simd_mul_wide_q4_4_scalar_128_widen = out;
+        end
+    endfunction
+
+    // v1.7 §22.18 — REQUANTIZE: 32 lanes of signed 8-bit Q4.4 (256 bits,
+    // WIDEN's output format) narrowed to 32 lanes of int4 (128 bits) via
+    // round-half-up (mirrors 0x67/0x69's existing p_round pattern) PLUS a
+    // saturating clamp to [-8,7] -- a genuinely NEW failure-mode class
+    // versus 0x67/0x69 (which are provably non-saturating by
+    // construction, per their own "mathematical bound" comments): a
+    // Q4.4 value near WIDEN's own saturation edge (±7.9375) can round up
+    // past int4's representable range, so an explicit clamp is mandatory
+    // here to avoid silently wrapping into a large-magnitude sign-flip.
+    function [127:0] simd_requantize_q4_4_to_int4_256;
+        input [255:0] r;
+        reg [127:0] out;
+        reg signed [7:0] ri;
+        reg signed [8:0] ri_ext;
+        reg signed [8:0] ri_round;
+        reg signed [8:0] shifted;
+        integer i;
+        begin
+            out = 128'h0;
+            for (i = 0; i < 32; i = i + 1) begin
+                ri       = $signed(r[i*8 +: 8]);
+                ri_ext   = {ri[7], ri};        // sign-extend to 9 bits
+                ri_round = ri_ext + 9'sd8;     // round-half-up bias (half of one int4 LSB = 8 raw Q4.4 ticks)
+                shifted  = ri_round >>> 4;     // arithmetic shift right 4
+                if (shifted > 9'sd7)
+                    out[i*4 +: 4] = 4'sd7;
+                else if (shifted < -9'sd8)
+                    out[i*4 +: 4] = -4'sd8;
+                else
+                    out[i*4 +: 4] = shifted[3:0];
+            end
+            simd_requantize_q4_4_to_int4_256 = out;
+        end
+    endfunction
+
     function [127:0] simd_add_wide_vec_128;
         input [127:0] a;
         input [ 63:0] v;
@@ -1387,24 +1456,53 @@ module PE_Core #(
     reg                  div_b_zero_p2;
 
     // -------------------------------------------------------------------------
-    // v1.5.3a §20 — fragment-emit FSM. 1-bit Moore machine mirroring the
-    // div_state idiom. On SIG_BMM_3 dispatch (frag_state=FRAG_IDLE cycle N):
+    // v1.5.3a §20 — fragment-emit FSM. Originally a 1-bit Moore machine
+    // mirroring the div_state idiom (frag_state: FRAG_IDLE/FRAG_EMIT_HI,
+    // one pending 64-bit fragment). On SIG_BMM_3 dispatch (frag_idx=
+    // FRAG_IDLE cycle N):
     //   - drives output_valid=1, output_payload=lo, output_frag_hdr=8'h01
-    //   - latches result[127:64] into frag_hi_pending + tag/opcode holds
-    //   - transitions to FRAG_EMIT_HI
-    // On cycle N+1 (FRAG_EMIT_HI): absolute-priority override at the top of
-    // the output mux drives fragment 1 (frag_hdr=8'h11) and returns to IDLE.
+    //   - latches result[127:64] into frag_pending[1] + tag/opcode holds
+    //   - transitions to FRAG_EMIT_1
+    // On cycle N+1 (FRAG_EMIT_1): absolute-priority override at the top of
+    // the output mux drives fragment 1 (frag_hdr=8'h11) and returns to IDLE
+    // (since frag_total_m1_held==1 for every 2-fragment emitter).
+    //
+    // v1.7 §22.18 — widened from 1-bit {IDLE,EMIT_HI} to a 2-bit up-counter
+    // {IDLE, EMIT_1, EMIT_2, EMIT_3} supporting up to 4 sequential fragment
+    // emissions, needed for SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN's 256-bit/
+    // 4-fragment output (0x6B). frag_pending widens from a single 64-bit
+    // register to a 3-slot array (fragments 1-3; fragment 0 emits
+    // immediately at dispatch, same as before). frag_total_m1_held is NEW:
+    // it records how many fragments THIS wave actually has (1 for every
+    // existing 2-fragment emitter, 3 for WIDEN), so the drain loop knows
+    // when to stop. frag_tag_held/frag_opcode_held are UNCHANGED (tag/
+    // opcode are constant across all fragments of one wave — confirmed no
+    // widening needed, workflow wgcq5jc68 investigator 0).
+    //
+    // MANDATORY INVARIANT (CI-enforced, scripts/lint_frag_total_m1_held.py):
+    // every dispatch site that writes `frag_idx <= FRAG_EMIT_1` (entering
+    // the drain) MUST also write `frag_total_m1_held` in the SAME begin/end
+    // block. Violating this leaves a stale total_m1_held from a PRIOR
+    // dispatch, causing the drain loop to emit the wrong number of
+    // fragments (either truncating a real multi-fragment wave, or emitting
+    // spurious extra fragments from garbage frag_pending[] slots).
     //
     // Backpressure: the compound `output_regs_free` wire (derived below in
-    // the always block) gates SIG_BMM_3 dispatch when ANY output-mux source
-    // is in flight (MUL p1/p2, DIV any-state, DIV b_zero pulse). This closes
-    // the MUL/DIV drain hazard the verify:fsm agent flagged.
+    // the always block) gates SIG_BMM_3/WIDEN dispatch when ANY output-mux
+    // source is in flight (MUL p1/p2, DIV any-state, DIV b_zero pulse).
+    // This closes the MUL/DIV drain hazard the verify:fsm agent flagged.
+    // pe_ready's worst-case deassertion window is now 3 cycles (during a
+    // WIDEN drain) instead of 1 — an accepted throughput tradeoff, not a
+    // correctness hazard (see test_pe_ready_widen_drain_is_three_cycles).
     // -------------------------------------------------------------------------
-    localparam           FRAG_IDLE    = 1'b0;
-    localparam           FRAG_EMIT_HI = 1'b1;
+    localparam [1:0]      FRAG_IDLE    = 2'b00;
+    localparam [1:0]      FRAG_EMIT_1  = 2'b01;
+    localparam [1:0]      FRAG_EMIT_2  = 2'b10;
+    localparam [1:0]      FRAG_EMIT_3  = 2'b11;
 
-    reg                  frag_state;
-    reg [ADDR_WIDTH-1:0] frag_hi_pending;
+    reg [1:0]             frag_idx;
+    reg [1:0]             frag_total_m1_held;
+    reg [ADDR_WIDTH-1:0]  frag_pending [1:3];
     reg [TAG_WIDTH-1:0]  frag_tag_held;
     reg [7:0]            frag_opcode_held;
 
@@ -1427,8 +1525,11 @@ module PE_Core #(
             div_state      <= DIV_IDLE;
             div_valid_p2   <= 1'b0;
             div_b_zero_p2  <= 1'b0;
-            frag_state       <= FRAG_IDLE;
-            frag_hi_pending  <= {ADDR_WIDTH{1'b0}};
+            frag_idx            <= FRAG_IDLE;
+            frag_total_m1_held  <= 2'b00;
+            frag_pending[1]     <= {ADDR_WIDTH{1'b0}};
+            frag_pending[2]     <= {ADDR_WIDTH{1'b0}};
+            frag_pending[3]     <= {ADDR_WIDTH{1'b0}};
             frag_tag_held    <= {TAG_WIDTH{1'b0}};
             frag_opcode_held <= 8'h00;
         end else begin
@@ -1443,7 +1544,7 @@ module PE_Core #(
             output_frag_hdr <= 8'h00;
 
             // Multi-cycle MUL pipeline advance. v1.5.3a: launch gated on
-            // frag_state == FRAG_IDLE so a MUL cannot enter the pipeline
+            // frag_idx == FRAG_IDLE so a MUL cannot enter the pipeline
             // during a fragment-emit cycle and collide with FRAG_EMIT_HI.
             if (MUL_OPS_SUPPORTED) begin
                 mul_a_p1     <= dec_input_payload;
@@ -1451,7 +1552,7 @@ module PE_Core #(
                 mul_tag_p1   <= dec_forwarded_tag;
                 mul_valid_p1 <= pe_active && dec_valid && !dec_decode_error
                               && dec_tag_match && (dec_opcode == 8'h12)
-                              && (frag_state == FRAG_IDLE);
+                              && (frag_idx == FRAG_IDLE);
                 mul_result_p2 <= mul_a_p1 * mul_b_p1;
                 mul_tag_p2    <= mul_tag_p1;
                 mul_valid_p2  <= mul_valid_p1;
@@ -1465,7 +1566,7 @@ module PE_Core #(
                 div_valid_p2 <= 1'b0;
                 case (div_state)
                     DIV_IDLE: begin
-                        // v1.5.3a: gate DIV launch on frag_state == FRAG_IDLE
+                        // v1.5.3a: gate DIV launch on frag_idx == FRAG_IDLE
                         // — a new DIV entering ITER during FRAG_EMIT_HI would
                         // land its FINISH pulse 64+ cycles later during ANY
                         // subsequent fragment emit, silently dropping DIV.
@@ -1474,7 +1575,7 @@ module PE_Core #(
                                 && ((dec_opcode == 8'h13) ||
                                     (dec_opcode == 8'h1C) ||
                                     (dec_opcode == 8'h1D))
-                                && (frag_state == FRAG_IDLE)) begin
+                                && (frag_idx == FRAG_IDLE)) begin
                             div_b_zero    <= (dec_eff_b_value == 64'h0);
                             div_is_mod    <= (dec_opcode == 8'h1C);
                             div_is_divmod <= (dec_opcode == 8'h1D);
@@ -1546,20 +1647,33 @@ module PE_Core #(
                 endcase
             end
 
-            // v1.5.3a §20 — ABSOLUTE-PRIORITY fragment-emit override.
-            // Placed at the very top of the output priority chain so
-            // fragment 1 lands EXACTLY on cycle N+1 after SIG_BMM_3
-            // dispatch. The launch-gate below prevents MUL/DIV from
-            // starting new operations while frag_state == FRAG_EMIT_HI,
-            // so this override never collides with a mul_valid_p2 or
+            // v1.5.3a/v1.7 §20/§22.18 — ABSOLUTE-PRIORITY fragment-emit
+            // override. Placed at the very top of the output priority
+            // chain so fragment 1 lands EXACTLY on cycle N+1 after
+            // dispatch (and fragments 2/3 on N+2/N+3 for a 4-fragment
+            // WIDEN wave). The launch-gate below prevents MUL/DIV from
+            // starting new operations while frag_idx != FRAG_IDLE, so
+            // this override never collides with a mul_valid_p2 or
             // div_valid_p2 pulse (compound gate closes the drain window).
-            if (frag_state == FRAG_EMIT_HI) begin
-                output_payload  <= frag_hi_pending;
+            //
+            // frag_idx counts UP from FRAG_EMIT_1 and returns to FRAG_IDLE
+            // once it reaches frag_total_m1_held (1 for every existing
+            // 2-fragment emitter's single drain beat; 3 for WIDEN's 3
+            // remaining drain beats after its own immediate fragment 0).
+            // output_frag_hdr = {idx, total_m1} zero-extended to nibbles,
+            // reproducing today's exact 8'h11 header for 2-fragment waves
+            // (idx=1,total_m1=1) and the 8'h13/0x23/0x33 sequence for
+            // WIDEN (total_m1=3).
+            if (frag_idx != FRAG_IDLE) begin
+                output_payload  <= frag_pending[frag_idx];
                 output_tag      <= frag_tag_held;
                 opcode_out      <= frag_opcode_held;
-                output_frag_hdr <= 8'h11;   // idx=1, total-1=1
+                output_frag_hdr <= {2'b00, frag_idx, 2'b00, frag_total_m1_held};
                 output_valid    <= 1'b1;
-                frag_state      <= FRAG_IDLE;
+                if (frag_idx == frag_total_m1_held)
+                    frag_idx <= FRAG_IDLE;
+                else
+                    frag_idx <= frag_idx + 2'b01;
             end
             // Output priority: MUL > DIV pipeline > case dispatch.
             else if (MUL_OPS_SUPPORTED && mul_valid_p2) begin
@@ -1848,7 +1962,7 @@ module PE_Core #(
                                         // for any wide-consumer wave.
                                         error_flag   <= 1'b1;
                                         output_valid <= 1'b0;
-                                    end else if (!((frag_state == FRAG_IDLE)
+                                    end else if (!((frag_idx == FRAG_IDLE)
                                                 && !mul_valid_p1 && !mul_valid_p2
                                                 && (div_state == DIV_IDLE)
                                                 && !div_valid_p2 && !div_b_zero_p2)) begin
@@ -1868,12 +1982,13 @@ module PE_Core #(
                                         opcode_out      <= dec_opcode;
                                         // Latch fragment 1 (a=1 batches) +
                                         // tag/opcode for the N+1 override.
-                                        frag_hi_pending  <= einsum_bmm_3_int4_hi(
+                                        frag_pending[1]  <= einsum_bmm_3_int4_hi(
                                             dec_input_payload_wide[127:0],
                                             dec_input_payload_wide[255:128]);
-                                        frag_tag_held    <= dec_forwarded_tag;
-                                        frag_opcode_held <= dec_opcode;
-                                        frag_state       <= FRAG_EMIT_HI;
+                                        frag_tag_held      <= dec_forwarded_tag;
+                                        frag_opcode_held   <= dec_opcode;
+                                        frag_total_m1_held <= 2'd1;
+                                        frag_idx           <= FRAG_EMIT_1;
                                     end
                                 end else if ((dec_eff_subscript == SIG_SCALAR_FAMILY_LO)
                                              && (dec_eff_subscript_hi[47:4] == SIG_SCALAR_FAMILY_HI_BASE)) begin
@@ -1884,7 +1999,7 @@ module PE_Core #(
                                     if (!dec_input_payload_wide_valid) begin
                                         error_flag   <= 1'b1;
                                         output_valid <= 1'b0;
-                                    end else if (!((frag_state == FRAG_IDLE)
+                                    end else if (!((frag_idx == FRAG_IDLE)
                                                 && !mul_valid_p1 && !mul_valid_p2
                                                 && (div_state == DIV_IDLE)
                                                 && !div_valid_p2 && !div_b_zero_p2)) begin
@@ -1952,7 +2067,7 @@ module PE_Core #(
                                     if (!dec_input_payload_wide_valid) begin
                                         error_flag   <= 1'b1;
                                         output_valid <= 1'b0;
-                                    end else if (!((frag_state == FRAG_IDLE)
+                                    end else if (!((frag_idx == FRAG_IDLE)
                                                 && !mul_valid_p1 && !mul_valid_p2
                                                 && (div_state == DIV_IDLE)
                                                 && !div_valid_p2 && !div_b_zero_p2)) begin
@@ -2012,7 +2127,7 @@ module PE_Core #(
                                     if (dec_eff_dim_sizes != 8'h55) begin
                                         lower_required <= 1'b1;
                                         output_valid   <= 1'b0;
-                                    end else if (!((frag_state == FRAG_IDLE)
+                                    end else if (!((frag_idx == FRAG_IDLE)
                                                 && !mul_valid_p1 && !mul_valid_p2
                                                 && (div_state == DIV_IDLE)
                                                 && !div_valid_p2 && !div_b_zero_p2)) begin
@@ -2070,7 +2185,7 @@ module PE_Core #(
                                     if (!dec_input_payload_wide_valid) begin
                                         error_flag   <= 1'b1;
                                         output_valid <= 1'b0;
-                                    end else if (!((frag_state == FRAG_IDLE)
+                                    end else if (!((frag_idx == FRAG_IDLE)
                                                 && !mul_valid_p1 && !mul_valid_p2
                                                 && (div_state == DIV_IDLE)
                                                 && !div_valid_p2 && !div_b_zero_p2)) begin
@@ -2093,7 +2208,7 @@ module PE_Core #(
                                         // §20.7 wide-consumer contract violation.
                                         error_flag   <= 1'b1;
                                         output_valid <= 1'b0;
-                                    end else if (!((frag_state == FRAG_IDLE)
+                                    end else if (!((frag_idx == FRAG_IDLE)
                                                 && !mul_valid_p1 && !mul_valid_p2
                                                 && (div_state == DIV_IDLE)
                                                 && !div_valid_p2 && !div_b_zero_p2)) begin
@@ -2254,11 +2369,17 @@ module PE_Core #(
                         //   bug the guard fixes.
                         // 0x69 Q8.8 SCALAR (v1.6.7): B via dec_eff_b_value[15:0]
                         //   as signed Q8.8 — further precision recovery beyond 0x67.
-                        8'h60, 8'h61, 8'h62, 8'h63, 8'h64, 8'h65, 8'h67, 8'h68, 8'h69: begin
+                        // 0x6C REQUANTIZE (v1.7 §22.18): 256-bit/4-fragment
+                        //   Q4.4-int8 input (dec_input_payload_wide[255:0])
+                        //   narrowed to 128-bit/2-fragment int4 output —
+                        //   joins THIS group (not WIDEN's own standalone
+                        //   0x6B item) since its output is 2-fragment, same
+                        //   as every other member here.
+                        8'h60, 8'h61, 8'h62, 8'h63, 8'h64, 8'h65, 8'h67, 8'h68, 8'h69, 8'h6C: begin
                             if (!dec_input_payload_wide_valid) begin
                                 error_flag   <= 1'b1;
                                 output_valid <= 1'b0;
-                            end else if (!((frag_state == FRAG_IDLE)
+                            end else if (!((frag_idx == FRAG_IDLE)
                                         && !mul_valid_p1 && !mul_valid_p2
                                         && (div_state == DIV_IDLE)
                                         && !div_valid_p2 && !div_b_zero_p2)) begin
@@ -2271,7 +2392,7 @@ module PE_Core #(
                                         output_payload   <= simd_add_wide_scalar_128(
                                             dec_input_payload_wide[127:0],
                                             dec_eff_b_value[3:0])[63:0];
-                                        frag_hi_pending  <= simd_add_wide_scalar_128(
+                                        frag_pending[1]  <= simd_add_wide_scalar_128(
                                             dec_input_payload_wide[127:0],
                                             dec_eff_b_value[3:0])[127:64];
                                     end
@@ -2279,7 +2400,7 @@ module PE_Core #(
                                         output_payload   <= simd_sub_wide_scalar_128(
                                             dec_input_payload_wide[127:0],
                                             dec_eff_b_value[3:0])[63:0];
-                                        frag_hi_pending  <= simd_sub_wide_scalar_128(
+                                        frag_pending[1]  <= simd_sub_wide_scalar_128(
                                             dec_input_payload_wide[127:0],
                                             dec_eff_b_value[3:0])[127:64];
                                     end
@@ -2287,7 +2408,7 @@ module PE_Core #(
                                         output_payload   <= simd_mul_wide_scalar_128(
                                             dec_input_payload_wide[127:0],
                                             dec_eff_b_value[3:0])[63:0];
-                                        frag_hi_pending  <= simd_mul_wide_scalar_128(
+                                        frag_pending[1]  <= simd_mul_wide_scalar_128(
                                             dec_input_payload_wide[127:0],
                                             dec_eff_b_value[3:0])[127:64];
                                     end
@@ -2295,7 +2416,7 @@ module PE_Core #(
                                         output_payload   <= simd_add_wide_vec_128(
                                             dec_input_payload_wide[127:0],
                                             dec_input_payload_b)[63:0];
-                                        frag_hi_pending  <= simd_add_wide_vec_128(
+                                        frag_pending[1]  <= simd_add_wide_vec_128(
                                             dec_input_payload_wide[127:0],
                                             dec_input_payload_b)[127:64];
                                     end
@@ -2303,7 +2424,7 @@ module PE_Core #(
                                         output_payload   <= simd_sub_wide_vec_128(
                                             dec_input_payload_wide[127:0],
                                             dec_input_payload_b)[63:0];
-                                        frag_hi_pending  <= simd_sub_wide_vec_128(
+                                        frag_pending[1]  <= simd_sub_wide_vec_128(
                                             dec_input_payload_wide[127:0],
                                             dec_input_payload_b)[127:64];
                                     end
@@ -2311,7 +2432,7 @@ module PE_Core #(
                                         output_payload   <= simd_mul_wide_vec_128(
                                             dec_input_payload_wide[127:0],
                                             dec_input_payload_b)[63:0];
-                                        frag_hi_pending  <= simd_mul_wide_vec_128(
+                                        frag_pending[1]  <= simd_mul_wide_vec_128(
                                             dec_input_payload_wide[127:0],
                                             dec_input_payload_b)[127:64];
                                     end
@@ -2321,7 +2442,7 @@ module PE_Core #(
                                         output_payload   <= simd_mul_wide_q4_4_scalar_128(
                                             dec_input_payload_wide[127:0],
                                             dec_eff_b_value[7:0])[63:0];
-                                        frag_hi_pending  <= simd_mul_wide_q4_4_scalar_128(
+                                        frag_pending[1]  <= simd_mul_wide_q4_4_scalar_128(
                                             dec_input_payload_wide[127:0],
                                             dec_eff_b_value[7:0])[127:64];
                                     end
@@ -2331,7 +2452,7 @@ module PE_Core #(
                                         // wide bus (Cluster.v already muxed
                                         // in the cached slot on a hit).
                                         output_payload   <= dec_input_payload_wide[63:0];
-                                        frag_hi_pending  <= dec_input_payload_wide[127:64];
+                                        frag_pending[1]  <= dec_input_payload_wide[127:64];
                                     end
                                     8'h69: begin
                                         // v1.6.7 §22.14c — Q8.8 wide-scalar mul.
@@ -2339,18 +2460,35 @@ module PE_Core #(
                                         output_payload   <= simd_mul_wide_q8_8_scalar_128(
                                             dec_input_payload_wide[127:0],
                                             dec_eff_b_value[15:0])[63:0];
-                                        frag_hi_pending  <= simd_mul_wide_q8_8_scalar_128(
+                                        frag_pending[1]  <= simd_mul_wide_q8_8_scalar_128(
                                             dec_input_payload_wide[127:0],
                                             dec_eff_b_value[15:0])[127:64];
                                     end
+                                    8'h6C: begin
+                                        // v1.7 §22.18 — REQUANTIZE: narrows
+                                        // WIDEN's 256-bit Q4.4-int8 output
+                                        // (dec_input_payload_wide[255:0],
+                                        // already-generic 1024-bit wide bus,
+                                        // no width change needed) back to
+                                        // 128-bit int4 via round-half-up +
+                                        // saturating clamp (a genuinely NEW
+                                        // failure mode vs 0x67/0x69, which
+                                        // are provably non-saturating by
+                                        // construction).
+                                        output_payload   <= simd_requantize_q4_4_to_int4_256(
+                                            dec_input_payload_wide[255:0])[63:0];
+                                        frag_pending[1]  <= simd_requantize_q4_4_to_int4_256(
+                                            dec_input_payload_wide[255:0])[127:64];
+                                    end
                                     default: ;
                                 endcase
-                                output_valid     <= 1'b1;
-                                output_frag_hdr  <= 8'h01;   // idx=0, total-1=1
-                                opcode_out       <= dec_opcode;
-                                frag_tag_held    <= dec_forwarded_tag;
-                                frag_opcode_held <= dec_opcode;
-                                frag_state       <= FRAG_EMIT_HI;
+                                output_valid       <= 1'b1;
+                                output_frag_hdr    <= 8'h01;   // idx=0, total_m1=1
+                                opcode_out         <= dec_opcode;
+                                frag_tag_held      <= dec_forwarded_tag;
+                                frag_opcode_held   <= dec_opcode;
+                                frag_total_m1_held <= 2'd1;
+                                frag_idx           <= FRAG_EMIT_1;
                             end
                         end
                         // v1.6.1b §22 — SCALAR_RSQRT_APPROX (Q16.16, no FSM)
@@ -2389,6 +2527,53 @@ module PE_Core #(
                                 output_valid <= 1'b1;
                             end
                         end
+                        // v1.7 §22.18 — SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN:
+                        // A (32 int4 lanes, 128-bit/2-fragment input) x B
+                        // (signed Q4.4, dec_eff_b_value[7:0] — same shape
+                        // as 0x67) -> 32 lanes x signed 8-bit Q4.4 = 256
+                        // bits / 4 fragments (headers 0x03/0x13/0x23/0x33).
+                        // A is integer (no fractional bits), so the
+                        // product already lands exactly on the Q4.4 grid —
+                        // no rounding needed, only a saturating cast on
+                        // magnitude overflow. STANDALONE case item (own
+                        // compound-gate check) rather than folded into the
+                        // shared 8'h60-69+6C group above: that group's
+                        // epilogue is hardcoded to a 2-fragment drain
+                        // (frag_total_m1_held<=1); WIDEN needs a 4-fragment
+                        // drain (frag_total_m1_held<=3), so it drives its
+                        // own epilogue explicitly instead.
+                        8'h6B: begin
+                            if (!dec_input_payload_wide_valid) begin
+                                error_flag   <= 1'b1;
+                                output_valid <= 1'b0;
+                            end else if (!((frag_idx == FRAG_IDLE)
+                                        && !mul_valid_p1 && !mul_valid_p2
+                                        && (div_state == DIV_IDLE)
+                                        && !div_valid_p2 && !div_b_zero_p2)) begin
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end else begin
+                                output_payload     <= simd_mul_wide_q4_4_scalar_128_widen(
+                                    dec_input_payload_wide[127:0],
+                                    dec_eff_b_value[7:0])[63:0];
+                                frag_pending[1]     <= simd_mul_wide_q4_4_scalar_128_widen(
+                                    dec_input_payload_wide[127:0],
+                                    dec_eff_b_value[7:0])[127:64];
+                                frag_pending[2]     <= simd_mul_wide_q4_4_scalar_128_widen(
+                                    dec_input_payload_wide[127:0],
+                                    dec_eff_b_value[7:0])[191:128];
+                                frag_pending[3]     <= simd_mul_wide_q4_4_scalar_128_widen(
+                                    dec_input_payload_wide[127:0],
+                                    dec_eff_b_value[7:0])[255:192];
+                                output_valid        <= 1'b1;
+                                output_frag_hdr      <= 8'h03;   // idx=0, total_m1=3
+                                opcode_out           <= dec_opcode;
+                                frag_tag_held        <= dec_forwarded_tag;
+                                frag_opcode_held     <= dec_opcode;
+                                frag_total_m1_held   <= 2'd3;
+                                frag_idx             <= FRAG_EMIT_1;
+                            end
+                        end
                         default: begin
                             output_valid <= 1'b0;
                             error_flag <= 1'b1;
@@ -2403,7 +2588,7 @@ module PE_Core #(
     // Same 6-term compound as internal drain gate. Upstream fabric can
     // observe this to STALL new dispatches instead of retrying after
     // lower_required. MVP: observe-only, no ext_valid gating change.
-    assign pe_ready = (frag_state == FRAG_IDLE)
+    assign pe_ready = (frag_idx == FRAG_IDLE)
                    && !mul_valid_p1 && !mul_valid_p2
                    && (div_state == DIV_IDLE)
                    && !div_valid_p2 && !div_b_zero_p2;

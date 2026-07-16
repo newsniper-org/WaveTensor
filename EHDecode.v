@@ -601,6 +601,22 @@ module EHDecode #(
                 forbid_subscript = 1'b1; forbid_mem = 1'b1;
                 forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
             end
+            // v1.7 §22.18 — SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN: same
+            // ALU-binary shape as 0x60/61/62/67/69 (B via IMM16 XOR OPREF,
+            // dec_eff_b_value[7:0] as signed Q4.4) — joins is_alu_binary.
+            8'h6B: begin
+                req_port         = 1'b1;
+                forbid_subscript = 1'b1; forbid_mem = 1'b1;
+            end
+            // v1.7 §22.18 — SIMD_REQUANTIZE_Q4_4_TO_INT4: no B operand at
+            // all (input is the 256-bit wide bus only) — same no-B shape
+            // as 0x66/0x68/0x6A, NOT the ALU-binary shape (corrected from
+            // an earlier draft that wrongly proposed IMM-XOR-OPREF here).
+            8'h6C: begin
+                req_port         = 1'b1;
+                forbid_subscript = 1'b1; forbid_mem = 1'b1;
+                forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
+            end
             default: begin
                 forbid_subscript = 1'b1; forbid_mem = 1'b1;
                 forbid_imm_any   = 1'b1; forbid_opref = 1'b1;
@@ -626,7 +642,10 @@ module EHDecode #(
                          // v1.6.5a §22.14 — Q4.4 wide-scalar mul same shape.
                          (cb_opcode == 8'h67) ||
                          // v1.6.7 §22.14c — Q8.8 wide-scalar mul same shape.
-                         (cb_opcode == 8'h69);
+                         (cb_opcode == 8'h69) ||
+                         // v1.7 §22.18 — WIDEN same shape (0x6C REQUANTIZE
+                         // has no B operand, deliberately excluded here).
+                         (cb_opcode == 8'h6B);
     wire alu_binary_xor_err = is_alu_binary && (any_imm == acc_any_opref);
 
     wire missing_eh   = (req_port      && !acc_any_port)
@@ -666,7 +685,9 @@ module EHDecode #(
          // v1.6.7 §22.14c — SIMD_MUL_WIDE_Q8_8_SCALAR
          (cb_opcode == 8'h69) ||
          // v1.6.5d §22.17 — FRAG_INVAL
-         (cb_opcode == 8'h6A);
+         (cb_opcode == 8'h6A) ||
+         // v1.7 §22.18 — WIDEN + REQUANTIZE
+         (cb_opcode == 8'h6B) || (cb_opcode == 8'h6C);
 
     wire bh_len_mismatch = (cb_bh_len != {{(8-OFF_W){1'b0}}, stg_off});
     wire reserved_nonzero = (cb_reserved != 8'h00);

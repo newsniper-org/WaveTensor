@@ -1023,6 +1023,65 @@ class TestNormMacros(unittest.TestCase):
         with self.assertRaises(wta.AssemblerError):
             wta.assemble(src)
 
+    def test_primitive_widen_legality(self):
+        """v1.7 §22.18: SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN (0x6B) — same
+        ALU-binary (IMM XOR OPREF) shape as 0x67/0x69."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN .imm16 0x08\n"
+        )
+        insts = wta.assemble(src)
+        self.assertEqual((insts[0] >> 24) & 0xFF, 0x6B)
+
+    def test_primitive_widen_requires_imm_xor_opref(self):
+        """WIDEN with neither IMM nor OPREF must raise."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN\n"
+        )
+        with self.assertRaises(wta.AssemblerError):
+            wta.assemble(src)
+
+    def test_primitive_requantize_legality(self):
+        """v1.7 §22.18: SIMD_REQUANTIZE_Q4_4_TO_INT4 (0x6C) — no B
+        operand at all, same no-data-EH shape as 0x66/0x68/0x6A (NOT the
+        ALU-binary shape 0x6B uses)."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "SIMD_REQUANTIZE_Q4_4_TO_INT4\n"
+        )
+        insts = wta.assemble(src)
+        self.assertEqual((insts[0] >> 24) & 0xFF, 0x6C)
+
+    def test_primitive_requantize_rejects_imm_and_opref(self):
+        """REQUANTIZE with .imm16 or .opref must raise (no B operand)."""
+        src_imm = (
+            ".default_port mask=0x01 out=0\n"
+            "SIMD_REQUANTIZE_Q4_4_TO_INT4 .imm16 5\n"
+        )
+        with self.assertRaises(wta.AssemblerError):
+            wta.assemble(src_imm)
+        src_opref = (
+            ".default_port mask=0x01 out=0\n"
+            "SIMD_REQUANTIZE_Q4_4_TO_INT4 opb .opref\n"
+        )
+        with self.assertRaises(wta.AssemblerError):
+            wta.assemble(src_opref)
+
+    def test_widen_requantize_opcode_table_matches_hardware(self):
+        """v1.7 §22.18: direct regression guard against the exact class
+        of asm.py-vs-EHDecode.v drift that silently broke 0x63/64/65
+        previously (wt64v1_spec.md §22.16.0) -- pins the opcode numbers
+        and legality shapes asm.py assigns to WIDEN/REQUANTIZE."""
+        self.assertEqual(wta.MNEMONIC_TO_OPCODE['SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN'], 0x6B)
+        self.assertEqual(wta.MNEMONIC_TO_OPCODE['SIMD_REQUANTIZE_Q4_4_TO_INT4'], 0x6C)
+        widen_rules = wta._LEGAL[0x6B]
+        self.assertTrue(widen_rules['allow_imm_xor_opref'])
+        self.assertEqual(widen_rules['forbidden'], {'subscript', 'mem'})
+        requantize_rules = wta._LEGAL[0x6C]
+        self.assertFalse(requantize_rules['allow_imm_xor_opref'])
+        self.assertEqual(requantize_rules['forbidden'], wta._ALL_DATA_EHS)
+
 
 class TestWaveFragments(unittest.TestCase):
     """v1.5.4 §21 — wave-token fragment emitter helper.

@@ -104,6 +104,12 @@ MNEMONIC_TO_OPCODE: Dict[str, int] = {
     # macro). Wiring this into an actual abort/exception path is an SDK-
     # runtime concern, deferred out of this ISA-level landing.
     'FRAG_INVAL': 0x6A,
+    # v1.7 §22.18 — WIDEN: A (int4) x B (signed Q4.4) -> signed 8-bit Q4.4,
+    # 32 lanes = 256 bits / 4 fragments. REQUANTIZE: narrows WIDEN's
+    # 256-bit Q4.4-int8 output back to 128-bit int4 (round-half-up +
+    # saturate) for existing int4-only consumers.
+    'SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN': 0x6B,
+    'SIMD_REQUANTIZE_Q4_4_TO_INT4': 0x6C,
 }
 OPCODE_TO_MNEMONIC: Dict[int, str] = {v: k for k, v in MNEMONIC_TO_OPCODE.items()}
 
@@ -1376,7 +1382,9 @@ _set_legal([0x40, 0x41, 0x42, 0x43, 0x44],
 # v1.6.1b §22 — SIMD_ADD/SUB/MUL_WIDE_SCALAR (0x60/61/62): binary-ALU
 # style, B_scalar via imm16 XOR opref (dec_eff_b_value[3:0]). 0x67/0x69
 # (v1.6.5a/v1.6.7) share the same shape at finer B precision (Q4.4/Q8.8).
-_set_legal([0x60, 0x61, 0x62, 0x67, 0x69],
+# 0x6B (v1.7 WIDEN) shares this shape too (B is Q4.4, same as 0x67) —
+# only its OUTPUT width/fragment-count differs, which legality doesn't see.
+_set_legal([0x60, 0x61, 0x62, 0x67, 0x69, 0x6B],
            required={'port'}, forbidden={'subscript', 'mem'},
            allow_imm_xor_opref=True)
 # v1.6.1b §22 — SIMD_ADD/SUB/MUL_WIDE_VEC (0x63/64/65): V (64-bit 4D
@@ -1400,6 +1408,10 @@ _set_legal([0x68], required={'port'}, forbidden=_ALL_DATA_EHS)
 # invalidate-by-tag. Same no-B shape as 0x66/0x68 — the invalidate key
 # is the instruction's own tag bus, not an EH-carried operand.
 _set_legal([0x6A], required={'port'}, forbidden=_ALL_DATA_EHS)
+# v1.7 §22.18 — SIMD_REQUANTIZE_Q4_4_TO_INT4 (0x6C): no B operand at all
+# (input is WIDEN's 256-bit wide bus only) — same no-data-EH shape as
+# 0x66/0x68/0x6A, NOT the ALU-binary shape 0x6B (WIDEN) uses.
+_set_legal([0x6C], required={'port'}, forbidden=_ALL_DATA_EHS)
 
 
 def _check_no_unresolved_aliases(inst: Instruction) -> None:
