@@ -75,7 +75,8 @@ class SchemaError(Exception):
 
 _TOP_KEYS = {"_doc", "_schema_version", "eh_codes", "eh_name_to_code",
              "flag_bits", "all_data_ehs", "hl_only_mnemonics",
-             "reduce_op_codes", "acc_reduce_op_codes", "opcodes", "fp_block",
+             "reduce_op_codes", "acc_reduce_op_codes", "fscalar_op_codes",
+             "opcodes", "fp_block",
              "einsum_signatures", "eh_body_layouts", "dim_literals"}
 _OPCODE_KEYS = {"mnemonic", "code", "desc", "notes", "asm_legality",
                 "rtl_legality", "rtl_alu_binary", "stub_v18"}
@@ -120,6 +121,13 @@ def validate(src):
             bad = set(op["asm_legality"][k]) - _EH_NAMES
             if bad:
                 raise SchemaError(f"{where}.asm_legality.{k}: unknown EH {sorted(bad)}")
+
+    fsc = src["fscalar_op_codes"]
+    if len(set(fsc.values())) != len(fsc):
+        raise SchemaError("fscalar_op_codes: duplicate sub-op code")
+    for name, code in fsc.items():
+        if not isinstance(code, int) or not (0 <= code <= 0xF):
+            raise SchemaError(f"fscalar_op_codes.{name}: bad nibble {code!r}")
 
     fp = src["fp_block"]
     _reject_unknown(fp, _FP_BLOCK_KEYS, "fp_block")
@@ -261,6 +269,12 @@ def emit_pytables(src, src_sha):
         L.append(f"    {name!r}: {code},")
     L.append("}")
     L.append("")
+    L.append("# v1.8.0c — 0x74 FSCALAR sub-op nibble (imm16[7:4]). Absent imm16 = FS_ADD.")
+    L.append("FSCALAR_OP_CODE = {")
+    for name, code in src["fscalar_op_codes"].items():
+        L.append(f"    {name!r}: {code},")
+    L.append("}")
+    L.append("")
     L.append("ALL_DATA_EHS = " + _set_literal(src["all_data_ehs"]))
     L.append("")
     L.append("# int keys, mutable-set values — exact schema of the historical")
@@ -335,6 +349,10 @@ def emit_subops(src, src_sha):
     lines.append("// namespace collision — see spec section 23.6a).")
     for name, code in src["acc_reduce_op_codes"].items():
         lines.append(f"    localparam [3:0] ACC_RED_OP_{name.upper():<5} = 4'h{code:X};")
+    lines.append("// v1.8.0c — FSCALAR (0x74) sub-op nibble (imm16[7:4]), from the")
+    lines.append("// single-source fscalar_op_codes table (names already carry FS_).")
+    for name, code in src["fscalar_op_codes"].items():
+        lines.append(f"    localparam [3:0] {name:<6} = 4'h{code:X};")
     return "\n".join(lines) + "\n"
 
 

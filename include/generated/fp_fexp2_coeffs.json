@@ -1,0 +1,19 @@
+{
+ "_doc": "v1.8.0c FEXP2_32 degree-6 minimax coefficients \u2014 exact integers shared by RTL (fp_fexp2_coeffs.vh) and the golden model (scripts/golden_fp32.py). coeffs_q30[i] is the f^i coefficient.",
+ "_generator": "scripts/gen_fexp2_coeffs.py",
+ "_generator_sha256": "9bb4b08c72e52c8e5572e0a8d440deacda87f782e390367285e07c0b3dabd902",
+ "degree": 6,
+ "scale_bits": 30,
+ "domain": "[0,1)",
+ "c0_exact_one": true,
+ "fit_max_abs_err": 2.879017e-09,
+ "coeffs_q30": [
+  1073741824,
+  744260928,
+  257944889,
+  59573866,
+  10395076,
+  1333042,
+  234018
+ ]
+}
