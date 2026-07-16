@@ -77,9 +77,9 @@ _TOP_KEYS = {"_doc", "_schema_version", "eh_codes", "eh_name_to_code",
              "reduce_op_codes", "opcodes", "fp_block", "einsum_signatures",
              "eh_body_layouts", "dim_literals"}
 _OPCODE_KEYS = {"mnemonic", "code", "desc", "notes", "asm_legality",
-                "rtl_legality", "rtl_alu_binary"}
+                "rtl_legality", "rtl_alu_binary", "stub_v18"}
 _ASM_LEG_KEYS = {"required", "forbidden", "allow_imm_xor_opref",
-                 "require_opb_flag", "require_imm16"}
+                 "require_opb_flag", "require_imm16", "require_precision_eh"}
 _RTL_LEG_KEYS = {"req_port", "req_mem", "req_subscript", "req_opref",
                  "req_imm16", "forbid_subscript", "forbid_mem",
                  "forbid_imm_any", "forbid_opref"}
@@ -192,6 +192,20 @@ def emit_wires(src, src_sha):
     lines.append("    wire opcode_supported =")
     lines.append("        " + " ||\n        ".join(
         f"(cb_opcode == 8'h{c:02X})" for c in supported) + ";")
+    lines.append("")
+    lines.append("    // v1.8.0a COMMIT 2 — FP-block mode-byte legality ROM (spec §23.6a).")
+    lines.append("    // Index = {cb_opcode[3:0], dtype[3:0], acc[1:0], rnd[1:0]} (12 bits).")
+    lines.append("    // Unlisted (op, dtype, acc, rnd) combinations are ILLEGAL")
+    lines.append("    // (restrictive-first; loosening later is non-breaking).")
+    rom = 0
+    for fop in src["fp_block"]["ops"]:
+        for dt in fop["legal_dtypes"]:
+            for ac in fop["legal_acc"]:
+                for rn in fop["legal_rnd"]:
+                    idx = ((fop["code"] & 0xF) << 8) | (dt << 4) | (ac << 2) | rn
+                    rom |= 1 << idx
+    lines.append(f"    localparam [4095:0] FP_LEGAL_ROM = 4096'h{rom:01024X};")
+    lines.append("    wire in_fp_block = (cb_opcode[7:4] == 4'h7);")
     return "\n".join(lines) + "\n"
 
 
@@ -252,8 +266,13 @@ def emit_pytables(src, src_sha):
         L.append(f"        allow_imm_xor_opref={a['allow_imm_xor_opref']!r},")
         L.append(f"        require_opb_flag={a['require_opb_flag']!r},")
         L.append(f"        require_imm16={a['require_imm16']!r},")
+        L.append(f"        require_precision_eh={a.get('require_precision_eh', False)!r},")
         L.append("    ),")
     L.append("}")
+    L.append("")
+    stubs = sorted(op["code"] for op in src["opcodes"] if op.get("stub_v18"))
+    L.append("STUB_OPS_V18 = frozenset([" +
+             ", ".join(f"0x{c:02X}" for c in stubs) + "])")
     L.append("")
     L.append("FP_MODE_LEGAL = {")
     for fop in sorted(src["fp_block"]["ops"], key=lambda o: o["code"]):

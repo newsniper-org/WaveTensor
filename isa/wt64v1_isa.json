@@ -1902,10 +1902,462 @@
         "forbid_opref": true
       },
       "rtl_alu_binary": false
+    },
+    {
+      "mnemonic": "VFMA_ACC",
+      "code": 112,
+      "desc": "int4/int8 lanes x broadcast B, int32 accumulate (v1.8 WIDE-ACC; fp dtypes are v2.0 loosening)",
+      "notes": "v1.8.0a COMMIT 2 stub: decode-legal, PE_Core raises lower_required (capability absence, not malformation). Mode-byte legality per the normative spec \u00a723.6a table \u2014 restrictive-first, later loosening only.",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": false,
+        "require_imm16": false,
+        "require_precision_eh": true
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": true,
+      "stub_v18": true
+    },
+    {
+      "mnemonic": "VDOT_ACC",
+      "code": 113,
+      "desc": "K-loop dot-product primitive into int32 accumulator",
+      "notes": "v1.8.0a COMMIT 2 stub: decode-legal, PE_Core raises lower_required (capability absence, not malformation). Mode-byte legality per the normative spec \u00a723.6a table \u2014 restrictive-first, later loosening only.",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": false,
+        "require_imm16": false,
+        "require_precision_eh": true
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": true,
+      "stub_v18": true
+    },
+    {
+      "mnemonic": "ACC_REDUCE",
+      "code": 114,
+      "desc": "accumulator reduce {SUM,MEAN,L2SQ,MAX} \u2014 sub-op encoding v1.8.0b",
+      "notes": "v1.8.0a COMMIT 2 stub: decode-legal, PE_Core raises lower_required (capability absence, not malformation). Mode-byte legality per the normative spec \u00a723.6a table \u2014 restrictive-first, later loosening only.",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false,
+        "require_precision_eh": true
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false,
+      "stub_v18": true
+    },
+    {
+      "mnemonic": "ACC_ELEMWISE",
+      "code": 115,
+      "desc": "fp32 scalar scale/shift on accumulator (gamma/beta step)",
+      "notes": "v1.8.0a COMMIT 2 stub: decode-legal, PE_Core raises lower_required (capability absence, not malformation). Mode-byte legality per the normative spec \u00a723.6a table \u2014 restrictive-first, later loosening only.",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": false,
+        "require_imm16": false,
+        "require_precision_eh": true
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": true,
+      "stub_v18": true
+    },
+    {
+      "mnemonic": "FSCALAR",
+      "code": 116,
+      "desc": "fp32 scalar add/sub/mul/FMA/sequential-div \u2014 sub-op encoding v1.8.0b",
+      "notes": "v1.8.0a COMMIT 2 stub: decode-legal, PE_Core raises lower_required (capability absence, not malformation). Mode-byte legality per the normative spec \u00a723.6a table \u2014 restrictive-first, later loosening only.",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false,
+        "require_precision_eh": true
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false,
+      "stub_v18": true
+    },
+    {
+      "mnemonic": "FRSQRT32",
+      "code": 117,
+      "desc": "fp32 rsqrt: LUT seed + 3 Newton iterations, <=2 ulp normative",
+      "notes": "v1.8.0a COMMIT 2 stub: decode-legal, PE_Core raises lower_required (capability absence, not malformation). Mode-byte legality per the normative spec \u00a723.6a table \u2014 restrictive-first, later loosening only.",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false,
+        "require_precision_eh": true
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false,
+      "stub_v18": true
+    },
+    {
+      "mnemonic": "FEXP2_32",
+      "code": 118,
+      "desc": "fp32 exp2, <=2 ulp normative",
+      "notes": "v1.8.0a COMMIT 2 stub: decode-legal, PE_Core raises lower_required (capability absence, not malformation). Mode-byte legality per the normative spec \u00a723.6a table \u2014 restrictive-first, later loosening only.",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false,
+        "require_precision_eh": true
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false,
+      "stub_v18": true
+    },
+    {
+      "mnemonic": "CVT",
+      "code": 119,
+      "desc": "f16/bf16 <-> f32 + I2F/F2I \u2014 dtype names the NARROW endpoint (conversion-dtype rule \u00a723.6a); sub-op encoding v1.8.0b",
+      "notes": "v1.8.0a COMMIT 2 stub: decode-legal, PE_Core raises lower_required (capability absence, not malformation). Mode-byte legality per the normative spec \u00a723.6a table \u2014 restrictive-first, later loosening only.",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false,
+        "require_precision_eh": true
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false,
+      "stub_v18": true
+    },
+    {
+      "mnemonic": "DEQUANT",
+      "code": 120,
+      "desc": "int4/int8 x fp32 scale -> bf16/f32; dtype names the SOURCE (conversion-dtype rule)",
+      "notes": "v1.8.0a COMMIT 2 stub: decode-legal, PE_Core raises lower_required (capability absence, not malformation). Mode-byte legality per the normative spec \u00a723.6a table \u2014 restrictive-first, later loosening only.",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false,
+        "require_precision_eh": true
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false,
+      "stub_v18": true
+    },
+    {
+      "mnemonic": "FMINMAX",
+      "code": 121,
+      "desc": "vector IEEE minNum/maxNum \u2014 the signed-int compare tree is NEVER reused for FP; sub-op encoding v1.8.0b",
+      "notes": "v1.8.0a COMMIT 2 stub: decode-legal, PE_Core raises lower_required (capability absence, not malformation). Mode-byte legality per the normative spec \u00a723.6a table \u2014 restrictive-first, later loosening only.",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": false,
+        "require_imm16": false,
+        "require_precision_eh": true
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": true,
+      "stub_v18": true
+    },
+    {
+      "mnemonic": "STORE_QUANT",
+      "code": 124,
+      "desc": "accumulator -> {int4,int8,f16,bf16}; dtype names the DESTINATION; rnd=SR is v2.0 loosening",
+      "notes": "v1.8.0a COMMIT 2 stub: decode-legal, PE_Core raises lower_required (capability absence, not malformation). Mode-byte legality per the normative spec \u00a723.6a table \u2014 restrictive-first, later loosening only.",
+      "asm_legality": {
+        "required": [
+          "mem",
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false,
+        "require_precision_eh": true
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": true,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": false,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false,
+      "stub_v18": true
+    },
+    {
+      "mnemonic": "ACC_SPILL_FILL",
+      "code": 125,
+      "desc": "accumulator spill/fill quarter-ops \u2014 frag FSM untouched; sub-op encoding v1.8.0b",
+      "notes": "v1.8.0a COMMIT 2 stub: decode-legal, PE_Core raises lower_required (capability absence, not malformation). Mode-byte legality per the normative spec \u00a723.6a table \u2014 restrictive-first, later loosening only.",
+      "asm_legality": {
+        "required": [
+          "mem",
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false,
+        "require_precision_eh": true
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": true,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": false,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false,
+      "stub_v18": true
+    },
+    {
+      "mnemonic": "FP_ACC_CTRL",
+      "code": 126,
+      "desc": "FP_ACC_ZERO / FP_STATUS (sticky IEEE flags, atomic read-and-clear) \u2014 sub-op encoding v1.8.0b",
+      "notes": "v1.8.0a COMMIT 2 stub: decode-legal, PE_Core raises lower_required (capability absence, not malformation). Mode-byte legality per the normative spec \u00a723.6a table \u2014 restrictive-first, later loosening only.",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "imm16",
+          "imm32",
+          "imm64",
+          "mem",
+          "opref",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": false,
+        "require_opb_flag": false,
+        "require_imm16": false,
+        "require_precision_eh": true
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": true,
+        "forbid_opref": true
+      },
+      "rtl_alu_binary": false,
+      "stub_v18": true
     }
   ],
   "fp_block": {
-    "_doc": "v1.8.0a COMMIT 2 scope \u2014 0x70-0x7F mode-byte legality. Empty until COMMIT 2.",
+    "_doc": "0x70-0x7F mode-byte legality \u2014 transcription of the NORMATIVE spec \u00a723.6a table (COMMIT 0, independently reviewed). dtype=eff_precision[3:0], acc=[5:4], rnd=[7:6]; semantics active ONLY inside this block (in_fp_block self-gate). Global invariants (hand-pinned in tests, generator-independent): dtype 0x5 = f64/Lf-reserved illegal everywhere; dtype>0x7 illegal; rnd!=0 illegal in v1.8.0a (SR=1 is a v2.0 loosening at STORE_QUANT); acc!=1 illegal in v1.8.0a (bf16+acc0 permanently).",
     "mode_byte_fields": {
       "dtype": [
         3,
@@ -1930,7 +2382,185 @@
       "q4_4": 6,
       "q8_8": 7
     },
-    "ops": []
+    "ops": [
+      {
+        "code": 112,
+        "mnemonic": "VFMA_ACC",
+        "legal_dtypes": [
+          0,
+          1
+        ],
+        "legal_acc": [
+          1
+        ],
+        "legal_rnd": [
+          0
+        ]
+      },
+      {
+        "code": 113,
+        "mnemonic": "VDOT_ACC",
+        "legal_dtypes": [
+          0,
+          1
+        ],
+        "legal_acc": [
+          1
+        ],
+        "legal_rnd": [
+          0
+        ]
+      },
+      {
+        "code": 114,
+        "mnemonic": "ACC_REDUCE",
+        "legal_dtypes": [
+          0,
+          1
+        ],
+        "legal_acc": [
+          1
+        ],
+        "legal_rnd": [
+          0
+        ]
+      },
+      {
+        "code": 115,
+        "mnemonic": "ACC_ELEMWISE",
+        "legal_dtypes": [
+          4
+        ],
+        "legal_acc": [
+          1
+        ],
+        "legal_rnd": [
+          0
+        ]
+      },
+      {
+        "code": 116,
+        "mnemonic": "FSCALAR",
+        "legal_dtypes": [
+          4
+        ],
+        "legal_acc": [
+          1
+        ],
+        "legal_rnd": [
+          0
+        ]
+      },
+      {
+        "code": 117,
+        "mnemonic": "FRSQRT32",
+        "legal_dtypes": [
+          4
+        ],
+        "legal_acc": [
+          1
+        ],
+        "legal_rnd": [
+          0
+        ]
+      },
+      {
+        "code": 118,
+        "mnemonic": "FEXP2_32",
+        "legal_dtypes": [
+          4
+        ],
+        "legal_acc": [
+          1
+        ],
+        "legal_rnd": [
+          0
+        ]
+      },
+      {
+        "code": 119,
+        "mnemonic": "CVT",
+        "legal_dtypes": [
+          2,
+          3
+        ],
+        "legal_acc": [
+          1
+        ],
+        "legal_rnd": [
+          0
+        ]
+      },
+      {
+        "code": 120,
+        "mnemonic": "DEQUANT",
+        "legal_dtypes": [
+          0,
+          1
+        ],
+        "legal_acc": [
+          1
+        ],
+        "legal_rnd": [
+          0
+        ]
+      },
+      {
+        "code": 121,
+        "mnemonic": "FMINMAX",
+        "legal_dtypes": [
+          4
+        ],
+        "legal_acc": [
+          1
+        ],
+        "legal_rnd": [
+          0
+        ]
+      },
+      {
+        "code": 124,
+        "mnemonic": "STORE_QUANT",
+        "legal_dtypes": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "legal_acc": [
+          1
+        ],
+        "legal_rnd": [
+          0
+        ]
+      },
+      {
+        "code": 125,
+        "mnemonic": "ACC_SPILL_FILL",
+        "legal_dtypes": [
+          4
+        ],
+        "legal_acc": [
+          1
+        ],
+        "legal_rnd": [
+          0
+        ]
+      },
+      {
+        "code": 126,
+        "mnemonic": "FP_ACC_CTRL",
+        "legal_dtypes": [
+          4
+        ],
+        "legal_acc": [
+          1
+        ],
+        "legal_rnd": [
+          0
+        ]
+      }
+    ]
   },
   "einsum_signatures": {
     "_doc": "RESERVED \u2014 v1.8.0b scope: SIG_* localparams currently duplicated across PE_Core.v/asm.py HW_DIRECT_EINSUM_SIGS."

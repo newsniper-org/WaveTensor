@@ -1353,6 +1353,37 @@ def legality_pass(prog: Program) -> Program:
                 f"line {stmt.line}: 'dim_ovr' flag (F_DIM_OVR) requires "
                 f"a .precision EH supplying dim=...; add `.precision dim=N`"
             )
+        # v1.8.0a COMMIT 2 §23.6a — FP-block (0x70-0x7F) static mode check.
+        # These opcodes REQUIRE a .precision EH + 'prec' flag so the mode
+        # byte is assembly-visible, making this static check exact for all
+        # asm-emitted code. The RTL additionally accepts runtime tag-driven
+        # mode bytes (input_tag[15:8], flags[2]=0) invisible here — an
+        # intentional, spec-recorded asymmetry; invariant direction is
+        # asm-legal ⊆ RTL-legal (machine-checked by the equivalence test).
+        if rules.get('require_precision_eh'):
+            if 'precision' not in eh_kinds or 'prec' not in stmt.flags:
+                raise AssemblerError(
+                    f"line {stmt.line}: {stmt.mnemonic} (0x{opcode:02X}, FP "
+                    f"block) requires a .precision EH carrying the mode byte "
+                    f"AND the 'prec' flag (F_PRECISION_OVR)"
+                )
+            from generated_isa_tables import FP_MODE_LEGAL
+            prec_eh = next(eh for eh in stmt.eh_list if eh.kind == 'precision')
+            mode = prec_eh.args.get('mode', 0)
+            if not isinstance(mode, int):
+                raise AssemblerError(
+                    f"line {stmt.line}: .precision mode must be numeric")
+            dtype, acc, rnd = mode & 0xF, (mode >> 4) & 0x3, (mode >> 6) & 0x3
+            legal = FP_MODE_LEGAL[opcode]
+            if (dtype not in legal['legal_dtypes']
+                    or acc not in legal['legal_acc']
+                    or rnd not in legal['legal_rnd']):
+                raise AssemblerError(
+                    f"line {stmt.line}: {stmt.mnemonic} mode byte 0x{mode:02X} "
+                    f"illegal (dtype={dtype}, acc={acc}, rnd={rnd}) — legal: "
+                    f"dtypes={legal['legal_dtypes']}, acc={legal['legal_acc']}, "
+                    f"rnd={legal['legal_rnd']} (spec §23.6a, restrictive-first)"
+                )
     return prog
 
 

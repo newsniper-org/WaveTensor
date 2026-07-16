@@ -2565,6 +2565,27 @@ module PE_Core #(
                                 frag_idx             <= FRAG_EMIT_1;
                             end
                         end
+                        // v1.8.0a COMMIT 2 §23.9 — 0x70-0x7F WIDE-ACC block
+                        // STUBS. Decode-legal (opcode_supported + EH shape +
+                        // mode-byte ROM all pass at EHDecode) but not yet
+                        // implemented — capability absence, so this arm is
+                        // exactly the shipped BCAST 0x24 body: lower_required,
+                        // error_flag untouched. An EXPLICIT arm, never
+                        // fall-through: the case default below raises
+                        // error_flag, which would misclassify
+                        // legal-but-unimplemented as malformed (the invariant
+                        // the suite encodes: unsupported-but-legal =>
+                        // lower_required). Membership is pinned by the
+                        // all-ops live-extraction test — adding an op to
+                        // isa/wt64v1_isa.json without listing it here falls
+                        // to the default arm and fails that test. Real
+                        // datapaths land in v1.8.0b (int32 acc) / v1.8.0c
+                        // (fp32 pipeline) / v1.8.0d (CVT/DEQUANT/STORE_QUANT)
+                        // as pure monotonic stub-body replacements.
+                        8'h70, 8'h71, 8'h72, 8'h73, 8'h74, 8'h75, 8'h76,
+                        8'h77, 8'h78, 8'h79, 8'h7C, 8'h7D, 8'h7E: begin
+                            lower_required <= 1'b1; output_valid <= 1'b0;
+                        end
                         default: begin
                             output_valid <= 1'b0;
                             error_flag <= 1'b1;

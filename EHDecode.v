@@ -500,6 +500,22 @@ module EHDecode #(
 
     wire alu_binary_xor_err = is_alu_binary && (any_imm == acc_any_opref);
 
+    // v1.8.0a COMMIT 2 §23.6a — FP-block mode-byte legality. The precision
+    // byte (eff_precision: tag[15:8], or PRECISION-EH byte0 under
+    // F_PRECISION_OVR — the pre-existing mux at line ~461, no new pipeline
+    // state, no new ports) acquires format-selector SEMANTICS only inside
+    // opcode block 0x70-0x7F (in_fp_block self-gate from the generated
+    // wires include). For every 0x00-0x6C opcode the byte stays inert
+    // metadata — bit-identical legacy behavior regardless of its value,
+    // proven by the pre-migration truth-table differential.
+    // An illegal mode byte is DECODE_ERROR (malformation), never
+    // lower_required (capability absence) — decode/execute boundary.
+    wire [3:0] mode_dtype = eff_precision[3:0];
+    wire [1:0] mode_acc   = eff_precision[5:4];
+    wire [1:0] mode_rnd   = eff_precision[7:6];
+    wire fp_block_illegal = in_fp_block
+        && !FP_LEGAL_ROM[{cb_opcode[3:0], mode_dtype, mode_acc, mode_rnd}];
+
     wire missing_eh   = (req_port      && !acc_any_port)
                       | (req_mem       && !acc_any_mem)
                       | (req_subscript && !acc_any_subscript)
@@ -522,7 +538,9 @@ module EHDecode #(
                       | missing_eh    | forbidden_eh
                       | alu_binary_xor_err
                       | opb_required_invalid | opref_kind_unsupported
-                      | prec_flag_without_eh;
+                      | prec_flag_without_eh
+                      // v1.8.0a COMMIT 2 — 11th term, self-gated to 0x70-0x7F.
+                      | fp_block_illegal;
 
     wire [7:0] pcid_one_hot = 8'h01 << cb_port_context_id[2:0];
     wire tag_match = (cb_opcode != 8'h00)

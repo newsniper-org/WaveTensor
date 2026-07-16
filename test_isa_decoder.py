@@ -4619,3 +4619,149 @@ async def test_pre_migration_rtl_truth_table_differential(dut):
     assert not mismatches, (
         "RTL behavior diverged from pre-migration capture "
         f"({len(mismatches)} points):\n" + "\n".join(mismatches[:20]))
+
+
+# =============================================================================
+# v1.8.0a §23.9 COMMIT 2 — 0x70-0x7F WIDE-ACC decode skeleton + FP_LEGAL_ROM
+# =============================================================================
+
+_FP_ASSIGNED = [0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76,
+                0x77, 0x78, 0x79, 0x7C, 0x7D, 0x7E]
+_FP_UNASSIGNED = [0x7A, 0x7B, 0x7F]
+
+
+def _fp_scaffold(op):
+    """Minimal legal EH scaffold for an fp-block op, derived LIVE from the
+    generated tables (never hand-typed shapes)."""
+    from generated_isa_tables import LEGAL
+    ehs = [_STD_PORT()]
+    leg = LEGAL.get(op)
+    if leg is None:
+        return ehs
+    if leg['allow_imm_xor_opref']:
+        ehs.append(eh_imm16(1))
+    elif 'mem' in leg['required']:
+        ehs.append(eh_mem(0))
+    return ehs
+
+
+async def _fp_run_point(dut, op, mode, via_eh):
+    """Dispatch one fp-block point; mode via PRECISION EH (prec flag) or
+    via input_tag[15:8]. Returns (err, lwr, out) ever-bits."""
+    ehs = _fp_scaffold(op)
+    flags = 0
+    tag_mode = 0
+    if via_eh:
+        ehs.append(eh_precision(mode, 0))
+        flags |= 1 << 2   # F_PRECISION_OVR
+    else:
+        tag_mode = mode
+    instr = encode_instr(op, *ehs, flags=flags)
+    dut.instruction.value = instr
+    dut.input_tag.value = make_tag(port_context_id=0, precision_mode=tag_mode)
+    dut.input_payload.value = 1
+    dut.input_payload_b.value = 1
+    dut.input_payload_b_valid.value = 1
+    dut.input_payload_wide.value = 1
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    err = lwr = out = 0
+    for _ in range(10):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        err |= int(dut.error_flag.value)
+        lwr |= int(dut.lower_required.value)
+        out |= int(dut.output_valid.value)
+        if err or lwr or out:
+            break
+    return (err, lwr, out)
+
+
+def _fp_expected(op, mode):
+    """Golden-model expectation from the generated tables. Oracle
+    equivalence holds BECAUSE stubs are unconditional; rewrite against the
+    internal decode signal if v1.8.0b adds conditional stub paths."""
+    from generated_isa_tables import FP_MODE_LEGAL
+    legal = FP_MODE_LEGAL.get(op)
+    if legal is None:
+        return (1, 0, 0)   # unassigned -> decode_error (whitelist omission)
+    dtype, acc, rnd = mode & 0xF, (mode >> 4) & 0x3, (mode >> 6) & 0x3
+    if (dtype in legal['legal_dtypes'] and acc in legal['legal_acc']
+            and rnd in legal['legal_rnd']):
+        return (0, 1, 0)   # decode-legal stub -> lower_required
+    return (1, 0, 0)       # illegal mode -> decode_error
+
+
+@cocotb.test()
+async def test_fp_mode_rom_sweep_tag_path(dut):
+    """v1.8.0a COMMIT 2: all 16 fp-block slots x 256 mode bytes via
+    input_tag[15:8] (flags[2]=0 — the cb_precision_mode mux arm), RTL vs
+    the generated golden model, bit-compared."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    mismatches = []
+    for op in _FP_ASSIGNED + _FP_UNASSIGNED:
+        for mode in range(256):
+            got = await _fp_run_point(dut, op, mode, via_eh=False)
+            exp = _fp_expected(op, mode)
+            if got != exp:
+                mismatches.append(f"op=0x{op:02X} mode=0x{mode:02X}: got={got} exp={exp}")
+    assert not mismatches, (
+        f"{len(mismatches)} ROM/tag-path divergences:\n" + "\n".join(mismatches[:10]))
+
+
+@cocotb.test()
+async def test_fp_mode_rom_sweep_precision_eh_path(dut):
+    """v1.8.0a COMMIT 2: the same 16x256 points via PRECISION EH +
+    flags[2]=1 (the acc_prec_mode mux arm). Together with the tag-path
+    sweep this covers BOTH arms of the eff_precision mux, killing the
+    wired-to-the-wrong-mux-arm bug class a single-path sweep is blind to."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    mismatches = []
+    for op in _FP_ASSIGNED + _FP_UNASSIGNED:
+        for mode in range(256):
+            got = await _fp_run_point(dut, op, mode, via_eh=True)
+            exp = _fp_expected(op, mode)
+            if got != exp:
+                mismatches.append(f"op=0x{op:02X} mode=0x{mode:02X}: got={got} exp={exp}")
+    assert not mismatches, (
+        f"{len(mismatches)} ROM/EH-path divergences:\n" + "\n".join(mismatches[:10]))
+
+
+@cocotb.test()
+async def test_fp_block_stub_lower_required_all_ops(dut):
+    """v1.8.0a COMMIT 2: live-extraction over ALL generated fp ops (not a
+    hand list): for each, a fully-legal encoding must yield error_flag=0,
+    lower_required=1, output_valid=0. Adding an op to isa/wt64v1_isa.json
+    without its PE_Core case-arm membership falls to the case default
+    (error_flag) and fails here — the PE_Core-membership pin."""
+    from generated_isa_tables import FP_MODE_LEGAL
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    for op in sorted(FP_MODE_LEGAL):
+        legal = FP_MODE_LEGAL[op]
+        mode = (legal['legal_rnd'][0] << 6) | (legal['legal_acc'][0] << 4) \
+             | legal['legal_dtypes'][0]
+        got = await _fp_run_point(dut, op, mode, via_eh=True)
+        assert got == (0, 1, 0), \
+            f"op=0x{op:02X} legal-mode stub expected lower_required, got {got}"
+
+
+@cocotb.test()
+async def test_fp_block_unassigned_opcodes_still_error(dut):
+    """v1.8.0a COMMIT 2: 0x7A/0x7B (unassigned) and 0x7F (reserved) stay
+    decode_error via whitelist omission across representative mode bytes."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    for op in _FP_UNASSIGNED:
+        for mode in (0x00, 0x10, 0x14, 0x55, 0xFF):
+            got = await _fp_run_point(dut, op, mode, via_eh=False)
+            assert got == (1, 0, 0), \
+                f"unassigned op=0x{op:02X} mode=0x{mode:02X}: got {got}"

@@ -1310,7 +1310,10 @@ class TestGeneratedIsaTables(unittest.TestCase):
         gate. Kept forever as the third independent leg (hand-pinned
         literal <- generated table -> JSON source). Compares exact set
         CONTENTS and key/value TYPES."""
-        self.assertEqual(set(wta._LEGAL), set(_PREMIGRATION_LEGAL_SNAPSHOT))
+        # New (post-0x6C) opcodes may be ADDED (v1.8.0a COMMIT 2 fp block);
+        # the frozen 57 legacy keys must all still exist unchanged.
+        self.assertTrue(set(_PREMIGRATION_LEGAL_SNAPSHOT) <= set(wta._LEGAL),
+                        "a frozen legacy opcode disappeared from _LEGAL")
         for code, frozen in _PREMIGRATION_LEGAL_SNAPSHOT.items():
             live = wta._LEGAL[code]
             self.assertIsInstance(code, int)
@@ -1324,3 +1327,104 @@ class TestGeneratedIsaTables(unittest.TestCase):
                 self.assertEqual(live[k], frozen[k], f"{k} drift at 0x{code:02X}")
 
 
+
+
+class TestFpBlockModeLegality(unittest.TestCase):
+    """v1.8.0a COMMIT 2 §23.6a — FP-block (0x70-0x7F) mode-byte legality.
+
+    The spec-row pins below are transcribed character-for-character from
+    the NORMATIVE §23.6a table, which landed and was reviewed in a
+    SEPARATE prior commit (042f08e) — a genuinely independent anchor, not
+    a same-author-same-commit circular check.
+    """
+
+    _FP_OPS = {
+        0x70: 'VFMA_ACC', 0x71: 'VDOT_ACC', 0x72: 'ACC_REDUCE',
+        0x73: 'ACC_ELEMWISE', 0x74: 'FSCALAR', 0x75: 'FRSQRT32',
+        0x76: 'FEXP2_32', 0x77: 'CVT', 0x78: 'DEQUANT', 0x79: 'FMINMAX',
+        0x7C: 'STORE_QUANT', 0x7D: 'ACC_SPILL_FILL', 0x7E: 'FP_ACC_CTRL',
+    }
+
+    def test_fp_block_opcode_pins(self):
+        """All 13 mnemonic->opcode literal pins — catches careless JSON
+        renumbering that regen-and-diff structurally cannot."""
+        from generated_isa_tables import FP_MODE_LEGAL, STUB_OPS_V18
+        for code, mnem in self._FP_OPS.items():
+            self.assertEqual(wta.MNEMONIC_TO_OPCODE[mnem], code)
+        self.assertEqual(set(FP_MODE_LEGAL), set(self._FP_OPS))
+        self.assertEqual(STUB_OPS_V18, frozenset(self._FP_OPS))
+        # Shape spot-checks: 0x70 is ALU-binary-like, 0x7E is no-data-EH.
+        self.assertTrue(wta._LEGAL[0x70]['allow_imm_xor_opref'])
+        self.assertEqual(wta._LEGAL[0x7E]['forbidden'], wta._ALL_DATA_EHS)
+        self.assertTrue(all(wta._LEGAL[c].get('require_precision_eh')
+                            for c in self._FP_OPS))
+
+    def test_fp_rom_global_invariants_literal(self):
+        """Hand-pinned literals INDEPENDENT of the generator (closing the
+        common-mode oracle gap): dtype 0x5 (f64, Lf-reserved) illegal for
+        every op; dtype>0x7 illegal; rnd!=0 illegal in v1.8.0a (SR is a
+        v2.0 loosening); acc!=1 illegal in v1.8.0a."""
+        from generated_isa_tables import FP_MODE_LEGAL
+        for code, legal in FP_MODE_LEGAL.items():
+            self.assertNotIn(5, legal['legal_dtypes'],
+                             f"0x{code:02X}: f64/Lf dtype must be illegal")
+            self.assertTrue(all(d <= 7 for d in legal['legal_dtypes']))
+            self.assertEqual(legal['legal_rnd'], [0],
+                             f"0x{code:02X}: only RNE legal in v1.8.0a")
+            self.assertEqual(legal['legal_acc'], [1],
+                             f"0x{code:02X}: only wide-acc legal in v1.8.0a")
+
+    def test_fp_mode_legality_matches_spec_rows(self):
+        """Per-op legal-dtype rows transcribed from the §23.6a normative
+        table (21 legal rows / 4096 total)."""
+        from generated_isa_tables import FP_MODE_LEGAL
+        SPEC_ROWS = {
+            0x70: [0, 1], 0x71: [0, 1], 0x72: [0, 1], 0x73: [4],
+            0x74: [4], 0x75: [4], 0x76: [4], 0x77: [2, 3], 0x78: [0, 1],
+            0x79: [4], 0x7C: [0, 1, 2, 3], 0x7D: [4], 0x7E: [4],
+        }
+        for code, dtypes in SPEC_ROWS.items():
+            self.assertEqual(FP_MODE_LEGAL[code]['legal_dtypes'], dtypes,
+                             f"0x{code:02X} dtype row diverged from spec §23.6a")
+        total = sum(len(l['legal_dtypes']) * len(l['legal_acc']) * len(l['legal_rnd'])
+                    for l in FP_MODE_LEGAL.values())
+        self.assertEqual(total, 21, "legal-row count diverged from spec §23.6a")
+
+    def test_asm_requires_precision_eh_on_fp_block(self):
+        """Every fp-block mnemonic without .precision EH + prec flag must
+        raise at assembly time."""
+        for code, mnem in self._FP_OPS.items():
+            scaffold = ''
+            if wta._LEGAL[code]['allow_imm_xor_opref']:
+                scaffold = ' .imm16 1'
+            elif 'mem' in wta._LEGAL[code]['required']:
+                scaffold = ' .mem offset=0'
+            with self.assertRaises(wta.AssemblerError, msg=mnem):
+                wta.assemble(f".default_port mask=0x01 out=0\n{mnem}{scaffold}\n")
+
+    def test_asm_mode_check_equivalence_with_golden_table(self):
+        """Exhaustive 13x256: assembler accept <=> FP_MODE_LEGAL legal.
+        Catches implementation bugs in legality_pass's bit split (the RTL
+        sweep separately validates ROM == FP_MODE_LEGAL, so together these
+        machine-check asm-legal ⊆ RTL-legal)."""
+        from generated_isa_tables import FP_MODE_LEGAL
+        for code, mnem in self._FP_OPS.items():
+            legal = FP_MODE_LEGAL[code]
+            scaffold = ''
+            if wta._LEGAL[code]['allow_imm_xor_opref']:
+                scaffold = ' .imm16 1'
+            elif 'mem' in wta._LEGAL[code]['required']:
+                scaffold = ' .mem offset=0'
+            for mode in range(256):
+                dtype, acc, rnd = mode & 0xF, (mode >> 4) & 0x3, (mode >> 6) & 0x3
+                expect_ok = (dtype in legal['legal_dtypes']
+                             and acc in legal['legal_acc']
+                             and rnd in legal['legal_rnd'])
+                src = (f".default_port mask=0x01 out=0\n"
+                       f"{mnem} prec{scaffold} .precision mode={mode}\n")
+                if expect_ok:
+                    wta.assemble(src)   # must not raise
+                else:
+                    with self.assertRaises(wta.AssemblerError,
+                                           msg=f"{mnem} mode=0x{mode:02X}"):
+                        wta.assemble(src)
