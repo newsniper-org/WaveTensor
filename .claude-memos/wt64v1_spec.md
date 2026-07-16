@@ -2099,7 +2099,7 @@ Phase 1 인벤토리로 확정한 현행 사실:
 | f16 | SHIP (v1.8 storage/CVT, v2.0 compute) | bf16 과 11-bit mantissa 곱셈기 공유로 near-free; f16×f16→fp32 가 실제 GPU 계약; f16-accumulate 미제공 |
 | bf16 | SHIP (v2.0) | THE training dtype; 8-bit exponent 가 loss-scaling 하드웨어 자체를 삭제 |
 | f32 | SHIP (v1.8 scalar + accumulator, v2.0 master weights) | 누산기/master/Adam/통계/rsqrt/exp 의 정밀도 천장 — DL 에서 이 위는 무가치 |
-| f64 | **CUT** (encoding 만 예약, dtype nibble 0x5 → decode_error) | TPU/Trainium/Cerebras/Graphcore/Dojo 어디에도 없음; Stage-1 물리적 불가 (pod-wide 잔여 multiplier 로 부족); 과학계산 ML 피벗 시에만 재론 — 그건 다른 제품 |
+| f64 | **별도 확장 `Lf` 로 분리** (2026-07-16 사용자 결정; base 에서는 dtype nibble 0x5 → decode_error 로 예약 유지) | TPU/Trainium/Cerebras/Graphcore/Dojo 어디에도 없어 base DL roadmap 에서는 제외하되, 완전 컷이 아니라 **WT64v1 의 optional extension "Lf"** (RISC-V 확장 문자 관례 유사 — 구현 명칭 예: WT64v1Lf) 로 본격 설계를 이관. Lf 착수 시점/스코프는 미정 — Stage-2 (Avant G70) 이상에서만 물리적으로 가능 |
 
 ### 23.3 스칼라/벡터 일관성 해결 (사용자 질문 3 직답)
 
@@ -2146,4 +2146,13 @@ Phase 1 인벤토리로 확정한 현행 사실:
 
 ### 23.8 진입 트리거
 
-**미결정.** 사용자가 이 조사를 읽고 v1.8 착수 여부를 결정. 착수 시 선행 조건: (1) per-operator synth gate (FloPoCo+yosys/nextpnr), (2) base pod nextpnr Fmax 산출, (3) legality-ROM YAML codegen 인프라 설계, (4) ACC bank TLA+ 모델 (v2.0 전).
+**v1.8 결정됨 (2026-07-16).** 사용자 지시: "f64는 별도의 확장(접미사 Lf)에서 본격적으로 다루는 게 좋겠어. 일단은 v1.8 진행해."
+- f64 → optional extension **Lf** 로 이관 (§23.2 갱신). base 의 dtype nibble 0x5 는 decode_error 예약 유지, Lf 가 나중에 이 인코딩을 claim.
+- v1.8 선행 조건 처리: (1) per-operator synth gate — v1.8.0c (FP-UNIT) 착수 전 완료 필수, (2) base pod nextpnr Fmax — 착수와 병렬 진행 (yosys/nextpnr-ecp5 로컬 설치 확인 완료, make synth-pod-ecp5/impl-pod-ecp5 flow 기존재), (3) legality-ROM YAML codegen — v1.8.0a 의 첫 산출물, (4) ACC bank TLA+ — v2.0 전 (v1.8 스코프 아님).
+
+### 23.9 v1.8 구현 staging
+
+- **v1.8.0a**: ISA foundation — 단일 YAML 소스 codegen (legality ROM + asm.py 테이블 + golden model + spec 표 + lint 생성), 0x70-0x7F decode skeleton, mode byte field 파싱 (dtype[3:0]/acc[5:4]/rnd[7:6])
+- **v1.8.0b**: int32 누산 경로 — VDOT_ACC/VFMA_ACC/ACC_REDUCE + int 대상 STORE_QUANT (FP 하드웨어 불요, "벡터 정수 = 스칼라급 신뢰성" 을 가장 먼저 배달)
+- **v1.8.0c**: FP-UNIT fp32 scalar pipeline (FSCALAR/FRSQRT32/FEXP2_32) — per-operator synth gate 통과 후
+- **v1.8.0d**: CVT/I2F/F2I + DEQUANT + FP 대상 STORE_QUANT + norm 매크로 fp32 재구축

@@ -58,7 +58,12 @@ v1.7 은 (parity 수준으로) output-side 를 추가 개선하나 완전 제거
   fp32 ACC bank + canonical accumulation order(bit-reproducible), fp32
   master weights, counter-based stochastic rounding (non-default).
 - **v2.1 "SCALE"**: Avant G70 에서 FP_LANES=8+, FP8, 16-fragment FSM.
-- **f64 CUT** (encoding 예약만): DL 학습 가속기 중 탑재 사례 0.
+- **f64 → 별도 optional extension "Lf" 로 이관** (2026-07-16 사용자 결정,
+  완전 컷 아님): base 는 dtype nibble 0x5 를 decode_error 로 예약, Lf 가
+  나중에 claim. Lf 본격 설계는 Stage-2 이상에서.
+- **v1.8 착수 결정됨 (2026-07-16)**: staging 은 v1.8.0a(YAML codegen +
+  decode skeleton) → 0b(int32 누산) → 0c(FP-UNIT, synth gate 후) →
+  0d(CVT/DEQUANT/norm 재구축). spec §23.9 참조.
 - precision_mode(tag[15:8]) 는 현재 순수 메타데이터 (PE_Core 29곳 전부
   output_tag 조립) — 0x70 block 안에서만 dtype selector 로 승격.
 - 차별점은 속도가 아니라 **bit-reproducibility** (run/lane/part 간 비트
