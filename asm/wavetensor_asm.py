@@ -796,6 +796,53 @@ def _lower_rmsnorm(inst: Instruction) -> List[Instruction]:
     ]
 
 
+# v1.6.5d §22.17 tag-stability + SDK abort-cleanup contract — single
+# source of truth for addressing LAYERNORM step 2's cached xc slot.
+# Used by BOTH the normal CACHE_LOAD_WIDE reload (step 5, below) and
+# make_layernorm_abort_cleanup()'s FRAG_INVAL. Factoring this out avoids
+# the exact class of bug the OP_MEAN<->CACHE_LOAD_WIDE dim=0x55 literal
+# had before its cross-file consistency test: two independent call
+# sites hand-typing the same tag-addressing shape would drift silently.
+_LAYERNORM_XC_SLOT_DIM = 0x55
+
+
+def _layernorm_xc_slot_addressing(port_eh: ExtensionHeader, line: int):
+    """Returns (flags, eh_list) for addressing LAYERNORM step 2's cached
+    xc slot — the PRECISION dim=0x55 guard + dim_ovr flag that makes an
+    instruction's dispatch tag match step 2's stored producer tag (see
+    wt64v1_spec.md §22.16.3 for the tag-stability derivation)."""
+    return (
+        {'dim_ovr'},
+        [port_eh, _make_eh('precision', {'dim': _LAYERNORM_XC_SLOT_DIM}, line)],
+    )
+
+
+def make_layernorm_abort_cleanup(inst: Instruction) -> Instruction:
+    """v1.6.5d §22.17 — SDK/runtime CONTRACT (WaveTensor-side half; the
+    Rust runtime wiring itself is out of scope for this repo — see
+    wavetensor-sdk's docs/phase_plan.md Phase C1).
+
+    If a LAYERNORM macro call is aborted AFTER step 2 has completed
+    (xc cached on-Cluster) but BEFORE step 5 (CACHE_LOAD_WIDE) has
+    consumed it, the runtime MUST issue the FRAG_INVAL instruction this
+    function returns to reclaim the cached slot — otherwise it leaks
+    until naturally LRU-evicted (spec §22.16.6/§22.15).
+
+    PRECONDITION: this instruction must be dispatched in the SAME wave/
+    thread continuity as the aborted LAYERNORM call (no WADV between
+    step 2's completion and this dispatch) — identical to step 5's own
+    tag-stability requirement, since this reuses the exact same
+    addressing shape (see _layernorm_xc_slot_addressing).
+
+    `inst` is the ORIGINAL LAYERNORM macro-call Instruction (the same
+    one passed to _lower_layernorm) — only its .port EH is needed, since
+    FRAG_INVAL carries no other operand.
+    """
+    port_eh = _macro_port_eh(inst)
+    flags, ehs = _layernorm_xc_slot_addressing(port_eh, inst.line)
+    return Instruction(mnemonic='FRAG_INVAL', flags=set(flags), eh_list=ehs, line=inst.line)
+
+
 def _lower_layernorm(inst: Instruction) -> List[Instruction]:
     """LAYERNORM(x, γ, β, eps) → 8-primitive sequence (spec §22.3/§22.16).
 
@@ -844,6 +891,7 @@ def _lower_layernorm(inst: Instruction) -> List[Instruction]:
     # Placeholder for μ — SDK-provided vector reference. For MVP macro,
     # we emit the primitive with an .opref that the SDK later resolves.
     mu_opref = _make_eh('opref', {}, inst.line)
+    _xc_slot_flags, _xc_slot_ehs = _layernorm_xc_slot_addressing(port_eh, inst.line)
     return [
         # 1) MEAN_5D_TO_4D via EINSUM with op_marker=0x5 (5D→4D family)
         Instruction(
@@ -894,16 +942,18 @@ def _lower_layernorm(inst: Instruction) -> List[Instruction]:
         ),
         # 5) CACHE_LOAD_WIDE: reload step 2's persisted xc (v1.6.5c §22.16
         # on-Cluster caching — replaces the v1.6.4 SUB re-emission). The
-        # `.precision dim=0x55` + `dim_ovr` flag pin dim_sizes so this
-        # instruction's dispatch tag matches step 2's stored producer tag
-        # bit-for-bit (see the tag-stability note in this function's
+        # `.precision dim=0x55` + `dim_ovr` flag (via the shared
+        # _layernorm_xc_slot_addressing helper — same shape
+        # make_layernorm_abort_cleanup's FRAG_INVAL uses) pin dim_sizes so
+        # this instruction's dispatch tag matches step 2's stored producer
+        # tag bit-for-bit (see the tag-stability note in this function's
         # docstring). No B operand, no opref — the cache lookup key is
         # this instruction's own tag bus, resolved entirely by Cluster.v's
         # CAM.
         Instruction(
             mnemonic='CACHE_LOAD_WIDE',
-            flags=set(inst.flags) | {'dim_ovr'},
-            eh_list=[port_eh, _make_eh('precision', {'dim': 0x55}, inst.line)],
+            flags=set(inst.flags) | _xc_slot_flags,
+            eh_list=_xc_slot_ehs,
             line=inst.line,
         ),
         # 6) SIMD_MUL_WIDE_Q8_8_SCALAR: xc × scale (v1.6.7 precision recovery

@@ -859,6 +859,62 @@ class TestNormMacros(unittest.TestCase):
         self.assertEqual(len(words), 1)
         self.assertEqual((words[0] >> 24) & 0xFF, 0x55)
 
+    def test_layernorm_abort_cleanup_matches_step5_shape(self):
+        """v1.6.5d §22.17 SDK abort-cleanup contract: make_layernorm_
+        abort_cleanup() must produce a FRAG_INVAL instruction with the
+        EXACT SAME tag-addressing shape (flags + precision EH) as step
+        5's CACHE_LOAD_WIDE — both now derive from the SAME shared
+        _layernorm_xc_slot_addressing() helper, so this test also locks
+        in that the refactor didn't silently diverge the two call sites."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "LAYERNORM opb .gamma 0x1111_2222_3333_4444 "
+            ".beta 0x5555_6666_7777_8888\n"
+        )
+        prog = wta.parse(src)
+        prog = wta.alias_pass(prog)
+        prog = wta.default_pass(prog)
+        layernorm_call = next(
+            s for s in prog.stmts
+            if isinstance(s, wta.Instruction) and s.mnemonic == 'LAYERNORM'
+        )
+        cleanup_inst = wta.make_layernorm_abort_cleanup(layernorm_call)
+        self.assertEqual(cleanup_inst.mnemonic, 'FRAG_INVAL')
+        self.assertIn('dim_ovr', cleanup_inst.flags)
+        prec_eh = next(eh for eh in cleanup_inst.eh_list if eh.kind == 'precision')
+        self.assertEqual(prec_eh.args['dim'], 0x55)
+
+        # Compare against step 5's actual emitted shape from the same
+        # LAYERNORM call, via the real _lower_layernorm().
+        steps = wta._lower_layernorm(layernorm_call)
+        step5 = steps[4]
+        self.assertEqual(step5.mnemonic, 'CACHE_LOAD_WIDE')
+        step5_prec = next(eh for eh in step5.eh_list if eh.kind == 'precision')
+        self.assertEqual(prec_eh.args['dim'], step5_prec.args['dim'],
+                         "abort-cleanup dim literal diverged from step 5's")
+        self.assertEqual('dim_ovr' in cleanup_inst.flags, 'dim_ovr' in step5.flags)
+
+    def test_layernorm_abort_cleanup_assembles_to_frag_inval(self):
+        """The abort-cleanup instruction must actually assemble (legality-
+        pass + encode) to opcode 0x6A, end to end through encode_pass."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "LAYERNORM opb .gamma 0x1111_2222_3333_4444 "
+            ".beta 0x5555_6666_7777_8888\n"
+        )
+        prog = wta.parse(src)
+        prog = wta.alias_pass(prog)
+        prog = wta.default_pass(prog)
+        layernorm_call = next(
+            s for s in prog.stmts
+            if isinstance(s, wta.Instruction) and s.mnemonic == 'LAYERNORM'
+        )
+        cleanup_inst = wta.make_layernorm_abort_cleanup(layernorm_call)
+        checked = wta.legality_pass(wta.Program(stmts=[cleanup_inst]))
+        encoded = wta.encode_pass(checked)
+        self.assertEqual(len(encoded), 1)
+        self.assertEqual((encoded[0] >> 24) & 0xFF, 0x6A)
+
     def test_layernorm_missing_beta_raises(self):
         """LAYERNORM missing .beta raises."""
         src = (

@@ -1927,6 +1927,23 @@ v1.6.7 (SIMD_MUL_WIDE_Q8_8_SCALAR) 가 같은 세션에서 0x69 를 선점 — �
 
 **asm.py**: `FRAG_INVAL` mnemonic 등록. 매크로(`_lower_layernorm` 등) 에 실제로 배선하는 것은 SDK/runtime 영역이라 이번 ISA-level landing 스코프 밖 (§22.16.6 의 "LAYERNORM abort 시 캐시 leak" 시나리오는 SDK 가 실제로 FRAG_INVAL 을 발행해야 완전히 닫힘).
 
+#### 22.17.1a SDK abort-cleanup contract (2026-07-16 amendment, WaveTensor 쪽 절반)
+
+§22.17.1 의 "SDK 가 실제로 FRAG_INVAL 을 발행해야" 를 두 절반으로 분리: (1) **어떻게 올바른 인스트럭션을 만드는가** (WaveTensor asm.py 의 책임 — 이번에 해결), (2) **언제 abort 를 감지해서 호출하는가** (실제 runtime/scheduler 의 책임 — wavetensor-sdk repo, 아직 Phase A scaffold 라 실질적 구현 대상 없음, §22.17.6 참조).
+
+**설계**: step 5 (CACHE_LOAD_WIDE) 의 tag-addressing shape (`.precision dim=0x55` + `dim_ovr` flag) 을 `_layernorm_xc_slot_addressing(port_eh, line)` 공유 헬퍼로 추출 — step 5 emission 과 신규 `make_layernorm_abort_cleanup()` 양쪽이 **동일 함수**를 호출. 이는 §22.16.6 이 고치기 전의 OP_MEAN↔CACHE_LOAD_WIDE 리터럴 중복과 정확히 같은 클래스의 버그(두 곳에 손으로 같은 값을 타이핑하면 desync)를 애초에 원천 차단하는 설계 — cross-file test 로 사후 검출하는 대신 **단일 소스**로 애초에 불가능하게 만듦.
+
+```python
+def make_layernorm_abort_cleanup(inst: Instruction) -> Instruction:
+    """원본 LAYERNORM macro-call Instruction 을 받아 FRAG_INVAL 인스트럭션을
+    반환. Runtime 이 step 2 완료 후 ~ step 5 소비 전 사이에 LAYERNORM 을
+    abort 하면 이 인스트럭션을 발행해야 캐시 슬롯이 leak 되지 않음."""
+```
+
+**Precondition** (문서화): abort-cleanup FRAG_INVAL 은 원본 LAYERNORM 호출과 **동일한 wave/thread 연속성**으로 dispatch 되어야 함 (step 2 완료 이후 WADV 없이) — step 5 자신의 tag-stability 요구사항과 완전히 동일 (같은 addressing shape 를 재사용하므로 당연히 같은 precondition 상속).
+
+**Test**: `test_layernorm_abort_cleanup_matches_step5_shape` (abort-cleanup 과 step5 가 동일 shape 산출 확인 — 리팩터가 두 호출처를 몰래 갈라놓지 않았음을 lock), `test_layernorm_abort_cleanup_assembles_to_frag_inval` (실제 legality_pass+encode_pass 통과해서 0x6A 로 인코딩되는지 end-to-end 확인).
+
 #### 22.17.2 Tag-stability 리터럴 유지보수
 
 기존 §22.16.6 의 "hand-maintained cross-file literal, 한쪽만 바뀌면 조용히 desync" 문제에 대한 fix.
@@ -1944,7 +1961,7 @@ v1.6.7 (SIMD_MUL_WIDE_Q8_8_SCALAR) 가 같은 세션에서 0x69 를 선점 — �
 - Cocotb: 236 → **241** (+5)
   * ISA_Decoder: 161 → 165 (+4: cache_load_wide dim_ovr guard, op_mean/cache_load_wide dim_sizes consistency, frag_inval hit/miss ×2)
   * Cluster: 27 → 31 (+4: frag_inval hit-frees-slot, never-cached-miss, freed-slot-reclaimed-by-free-priority, midassembly-miss-not-cancel) — **양쪽 build (FRAG_SLOTS=1 default, FRAG_SLOTS=4) 모두 31/31 통과**
-- Assembler: 86 → **88** (+2: frag_inval legality, frag_inval rejects-imm)
+- Assembler: 86 → 88 (+2: frag_inval legality, frag_inval rejects-imm) → **90** (+2 abort-cleanup contract, §22.17.1a)
 - 나머지 전 모듈 무변경 통과
 
 #### 22.17.4 남은 residual risk
