@@ -42,9 +42,30 @@ adversarial verification 완료.
 Q8.8 로 B-side quant 을 LUT floor 훨씬 아래로 밀어내는 것이 v1.6.7 스코프.
 v1.7 은 (parity 수준으로) output-side 를 추가 개선하나 완전 제거는 아님.
 
-**How to apply:** v1.6.7, v1.7 모두 landed. 다음은 v1.8 (rsqrt LUT
-densification 또는 Newton-Raphson refinement) 또는 네이티브 Q4.4-int8
-소비자 도입 (진짜 zero-rounding 이 필요하면).
+**How to apply:** v1.6.7, v1.7 모두 landed. 후속은 FP-native 설계 조사
+(spec §23) 가 대체 — v1.8 "WIDE-ACC" 가 rsqrt/norm 체인을 fp32 로 재구축
+하므로 "LUT densification / 네이티브 Q4.4-int8 소비자" 계획은 §23 roadmap
+에 흡수됨.
+
+## FP-native compute path 설계 조사 (2026-07-16, spec §23 — 미결정)
+
+학습 가속이 주요 제품 목표임이 명시되어 수행한 조사. 핵심 결론:
+- **v1.8 "WIDE-ACC"**: opcode block 0x70-0x7F, per-Cluster FP-UNIT (3번째
+  stripped-PE peer), int32 누산 VDOT/VFMA, fp32 scalar pipeline +
+  FRSQRT32(NR 3회)/FEXP2_32, STORE_QUANT/DEQUANT, norm 매크로 fp32 재구축
+  → 추론 GPU-parity. 학습 불가 명시.
+- **v2.0 "TRAIN"**: 최초 학습 가능 — 통합 f16/bf16 fused-FMA(fp32 누산),
+  fp32 ACC bank + canonical accumulation order(bit-reproducible), fp32
+  master weights, counter-based stochastic rounding (non-default).
+- **v2.1 "SCALE"**: Avant G70 에서 FP_LANES=8+, FP8, 16-fragment FSM.
+- **f64 CUT** (encoding 예약만): DL 학습 가속기 중 탑재 사례 0.
+- precision_mode(tag[15:8]) 는 현재 순수 메타데이터 (PE_Core 29곳 전부
+  output_tag 조립) — 0x70 block 안에서만 dtype selector 로 승격.
+- 차별점은 속도가 아니라 **bit-reproducibility** (run/lane/part 간 비트
+  동일 — GPU 는 못 줌). Stage-1 ECP5 는 GPU 대비 수 자릿수 느림, 속도
+  주장은 Stage-2 Avant G70 부터.
+- 착수 전 hard gate: per-operator synth (FloPoCo+yosys/nextpnr), base pod
+  Fmax, legality-ROM YAML codegen, ACC bank TLA+ (v2.0 전).
 
 ## Rejected 대안 (다시 제안 금지)
 

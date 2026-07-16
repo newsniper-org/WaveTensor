@@ -2063,3 +2063,87 @@ end
 ### 22.19 진입 트리거 (기존 22.18 재번호)
 
 v1.6.5d + v1.7 amendment 는 **결정된 상태 (2026-07-16)**. 세 workflow(FRAG_INVAL+tag-literal, v1.7 FSM) + 사용자 세션 직접 RTL 재검증(FRAG_EMIT_HI 가비지 fragment 버그, MUL 차단이 lower_required 아닌 silent gate 임을 직접 확인)으로 최종 설계 확정. 구현 완료 (2026-07-16).
+
+## 23. FP-native compute path 설계 조사 — v1.8/v2.0/v2.1 roadmap (2026-07-16, 조사 완료 · 미결정)
+
+**상태: 설계 조사 완료, 사용자 결정 대기.** Design study workflow (`fp-native-compute-path-study`, task `wul707ze7`/`wf_3208c8ae-396`, 16 agents, 1.04M tokens; 최초 launch 는 추론 전용 프레이밍이었으나 사용자가 "학습 가속도 주요 목표" 를 명시하여 TaskStop 후 학습 요구사항 주입하고 resume). 3개 설계안(dtype-orthogonal / accumulator-first / full-fp-v2) × 3-lens adversarial verify — 전원 accepted-with-caveats, refuted 없음. 단 각 안의 개별 주장 다수가 반증되어 hybrid 로 수렴.
+
+### 23.0 조사의 출발점 — 스칼라/벡터 정밀도 비대칭 (사용자 지적)
+
+Phase 1 인벤토리로 확정한 현행 사실:
+- **스칼라 ops (0x10-0x1F, 0x50-0x56)**: 전부 64-bit 정수 exact (mod-2^64). 예외 2개 — MUL(0x12) 은 128-bit 곱의 하위 64-bit 만 (표준 정수 semantics), DIVMOD(0x1D) 는 32-bit 한정.
+- **벡터/SIMD ops**: 모든 경로에 양자화 이벤트 존재 — 0x62/0x65 는 `p[3:0]` hard truncation, 0x60/61/63/64 는 mod-2^4 wrap, EINSUM 16-bit 계열은 mod-2^16 곱 truncation, SIG_BMM int8 은 mod-2^8, 5D→4D L2SQ 는 int4 truncation (worst 18→2), MEAN 은 ASR floor. **유일한 exact 벡터 누산은 5D→scalar L1/L2SQ (32-bit acc) 와 EUCLID_NORM (64-bit)**.
+- **`precision_mode` (tag[15:8]) 는 순수 메타데이터**: PE_Core.v 에서 정확히 29곳 등장, 전부 output_tag 조립 — 조건/케이스 선택자/산술 피연산자로 쓰인 적 0회. 즉 compute 의미론에 영향을 주지 않는 free 8-bit dtype-selector hook. (PE_Core.v:144-145 주석은 precision 의미론이 있는 것처럼 서술 — doc/RTL drift 의 실사례.)
+
+### 23.1 권고 roadmap (hybrid: accumulator-first spine + dtype-orthogonal 의 field-structured selector + full-fp-v2 의 fused-FMA/결정론 계약)
+
+**v1.8 "WIDE-ACC"** — 추론 GPU-parity (ECP5 Stage-1). 학습 불가 명시.
+- 신규 opcode block **0x70-0x7F** (virgin 확인 — opcode_supported whitelist 라 미지 opcode 는 이미 decode_error). precision_mode 는 **이 block 안에서만** format selector 의미론 획득, 밖에서는 영원히 inert metadata (feature gate 없음, legacy flip 없음).
+- per-Cluster **FP-UNIT** = MATMUL_UNIT/DIV_UNIT 에 이은 3번째 stripped-PE peer. fp32 scalar pipeline (FSCALAR add/sub/mul/fused-FMA, sequential div), FRSQRT32 (LUT seed + **3회** Newton — 2회 주장은 수렴 산술에서 반증됨, ≤2 ulp normative), FEXP2_32 (≤2 ulp), CVT f16/bf16/f32 + I2F/F2I.
+- int4/int8 **VDOT_ACC/VFMA_ACC → int32 누산기** — order-free bit-exact (NVIDIA IMMA semantics).
+- **STORE_QUANT** (int32/fp32 → int4/int8/f16/bf16, RNE+saturate, ≤256-bit — 기존 2-bit frag FSM 과 lint 그대로 생존), **DEQUANT** (slice-select 로 기존 wide int4 wave 수용).
+- LayerNorm/RMSNorm/Softmax 매크로를 fp32 통계로 재구축, 종단 1회 양자화 — 기존 문서화된 4개 numerics 버그 (MEAN ASR floor, x-µ mod-16 wrap, gamma p[3:0] truncation, rsqrt 6.25% floor) 전부 은퇴.
+
+**v2.0 "TRAIN"** — 최초 학습 가능 버전 (training triple: bf16 multiply / fused fp32 accumulate / fp32-master-or-SR update).
+- 통합 f16/bf16 **fused-FMA** lane (11-bit mantissa 곱셈기 하나로 양쪽 커버; 곱은 wide-exponent 내부 포맷으로 exact 유지, fp32 누산에서 단 1회 RNE). bf16-accumulate 는 구조적으로 금지 (업계 전례 없음). ECP5 에서 FP_LANES=2 가 한계.
+- **fp32 ACC bank** (2 × 32 lanes × 32b/cluster, tag pcid[1:0] 로 bank 선택 + 명시적 ownership/drain 계약 + ACC_SPILL/FILL) — "requester ID" 식 암묵 계약은 반증되어 폐기.
+- **normative canonical accumulation order**: 32-lane balanced 5-level tree + ascending wave-order K. 모든 FP_LANES 구성이 이 순서와 serially-equivalent 해야 함 → run/lane-config/part 간 bit-identical fp32 누산.
+- fp32 master weights + Adam (fp32 scalar pipeline 재사용). **Stochastic rounding 은 탑재하되 non-default**: counter-based RNG keyed on (wave_number, thread_id, lane_index), ≥16 random bits — free-running LFSR(재현 불가)과 8-bit/correlated-lane(bias) 방식 둘 다 반증됨. fp32→bf16 STORE_QUANT downcast 에서만 적용 (Trainium/Graphcore 지점).
+
+**v2.1 "SCALE"** — Stage-2 Avant G70 (~700K LUT): FP_LANES=8+, output frag FSM 16-fragment 확장(전용 lint 동반), FP8 E4M3/E5M2 GEMM + per-block fp32 scale, SR 을 in-house 수렴 검증 후 default 승격 검토, f64 는 `WT_ENABLE_F64` 뒤 sequential-scalar 옵션으로만 (기본: 영구 미빌드).
+
+### 23.2 dtype 판정
+
+| dtype | 판정 | 근거 |
+|---|---|---|
+| f16 | SHIP (v1.8 storage/CVT, v2.0 compute) | bf16 과 11-bit mantissa 곱셈기 공유로 near-free; f16×f16→fp32 가 실제 GPU 계약; f16-accumulate 미제공 |
+| bf16 | SHIP (v2.0) | THE training dtype; 8-bit exponent 가 loss-scaling 하드웨어 자체를 삭제 |
+| f32 | SHIP (v1.8 scalar + accumulator, v2.0 master weights) | 누산기/master/Adam/통계/rsqrt/exp 의 정밀도 천장 — DL 에서 이 위는 무가치 |
+| f64 | **CUT** (encoding 만 예약, dtype nibble 0x5 → decode_error) | TPU/Trainium/Cerebras/Graphcore/Dojo 어디에도 없음; Stage-1 물리적 불가 (pod-wide 잔여 multiplier 로 부족); 과학계산 ML 피벗 시에만 재론 — 그건 다른 제품 |
+
+### 23.3 스칼라/벡터 일관성 해결 (사용자 질문 3 직답)
+
+**단일 규칙**: "레지스터/누산기는 무손실(정수) 또는 step 당 1회 반올림(FP); wave 는 양자화된 저장 포맷; 좁히기는 명명된 program-visible opcode (STORE_QUANT/CVT) 에서만."
+- 스칼라 정수: 지금처럼 mod-2^64 exact.
+- 벡터 정수: int4/int8 dot 이 int32 로 exact 누산 → 스칼라 64-bit ADD 체인과 동급의 신뢰성 (둘 다 "wide 로 들고 있다가 프로그래머가 의도적으로 좁힘").
+- FP: 스칼라/벡터가 **같은 물리 FP-UNIT datapath** 를 통과 → 스칼라 fp32 op 와 벡터 fp32 op 의 lane 하나가 구조적으로 bitwise identical.
+- 남는 비대칭은 문서화된 3개 carve-out: (a) 정수 exact vs FP correctly-rounded (모든 CPU ISA 와 동일한, 유일하게 정합적인 비대칭), (b) bitwise/shift 는 dtype-transparent raw bits, (c) 기존 truncating int4 벡터 opcode (0x60-0x6C 산술) 는 호환용으로 실행 가능하되 **"compute op" 에서 "storage-format op" 로 재분류** — frozen, 권장 매크로에서 제외, silent loss 명시.
+
+### 23.4 "정밀도 무변동" 의 정직한 정의 (사용자 질문 1 직답) + acceptance criteria
+
+**보장하는 것** (cocotb + numpy/mpmath golden 으로 검증 가능한 normative 계약):
+1. exact narrow products (int 은 구조상, f16/bf16 은 wide-exponent 내부 포맷)
+2. wide accumulation — int32 는 order-free bit-exact; fp32 는 canonical order 에서 step 당 정확히 1회 RNE
+3. 종단 1회 좁히기 (STORE_QUANT/CVT 에서만; norm 매크로 end-to-end MSE ≤ 1.05× 출력 dtype 의 이론 양자화 floor)
+4. per-op IEEE 계약 (elementwise RNE; FRSQRT32/FEXP2_32 ≤2 ulp; DAZ+FTZ/NaN/Inf/-0 표가 normative)
+5. **bit-reproducibility**: 같은 프로그램+데이터+시드 → run/FP_LANES/part 불문 bit-identical (SR 포함 — counter-based RNG 라 재현됨)
+6. training epsilon test: 소형 MLP N-step 학습 궤적이 golden bf16/fp32 소프트웨어 파이프라인과 bit-for-bit 일치
+
+**영원히 약속 불가능한 것** (spec 에 명기): 타 GPU/CPU 결과와의 bitwise 동일성. FP 덧셈은 비결합적이라 누산 순서가 다른 머신은 다른 비트를 냄 — GPU 자신도 kernel config 간 비트 동일성을 보장 않음. WT 의 차별점은 반대로 **GPU 가 못 주는 축의 결정론** (run/config/part 간 bit-identical).
+
+### 23.5 시장 평가 (사용자 질문 2 직답)
+
+- GPU bar — 추론: exact int8 곱 → int32 누산 → fp32 per-channel dequant + norm/softmax 는 fp16/fp32. 학습: bf16 곱 → fused fp32 누산 → fp32 master + fp32 Adam (또는 HW-SR 16-bit master).
+- **v1.8 이 추론 계약 도달, v2.0 이 최초 학습 가능 버전.** 추론 전용 dtype set 은 제품 목표 미달 — v1.8 을 학습 가능한 것처럼 마케팅 금지.
+- **처리량 정직성 (모든 포지셔닝에 필수)**: Stage-1 ECP5 는 pod-wide ~0.4-1.6 GFLOP/s bf16 — GPU 대비 수 자릿수 아래. v2.0 은 학습-**정확성** parity + GPU 가 못 주는 차별점(bit-reproducibility: 디버깅/인증/감사 니치 + 이 repo 의 formal-first 문화)이지, 학습-**가속** parity 가 아님. 속도 주장은 Stage-2 Avant G70 (v2.1) 부터.
+
+### 23.6 ISA 인코딩 계획 (요지)
+
+- mode byte (field-structured): [3:0] dtype (0x0 int4 … 0x4 f32, 0x5 f64-reserved→decode_error, 0x6 Q4.4, 0x7 Q8.8), [5:4] accumulate policy (0 same-width — bf16 은 ILLEGAL, 1 wide), [7:6] rounding (0 RNE, 1 stochastic, 2 RTZ).
+- opcodes: 0x70 VFMA_ACC, 0x71 VDOT_ACC, 0x72 ACC_REDUCE{SUM,MEAN,L2SQ,MAX}, 0x73 ACC_ELEMWISE, 0x74 FSCALAR, 0x75 FRSQRT32, 0x76 FEXP2_32, 0x77 CVT/I2F/F2I, 0x78 DEQUANT, 0x79 FMAX/FMIN (IEEE minNum/maxNum — signed-int compare tree 재사용 금지, 3안 공통 미처리 hazard 였음), 0x7C STORE_QUANT, 0x7D ACC_SPILL/FILL, 0x7E FP_ACC_ZERO/FP_STATUS, 0x7F reserved.
+- legality ROM (op-class × dtype × acc × rnd) — **ROM/spec 표/golden model/lint 를 단일 기계가독 YAML 소스에서 생성** (PE_Core.v:144-145 형 doc/RTL drift 의 구조적 해독제; 이 repo 최초의 codegen 도입 지점).
+- 기존 0x67/0x69/0x6B/0x6C 는 first-class 유지하되 **frozen** — alias-collapse 주장은 반증됨 (혼합 A/B/out-format 이라 단일 dtype nibble 로 인코딩 불가).
+- FP 결과를 0x68 로 캐싱하는 recipe 는 PRECISION EH 로 precision byte 를 pin 해야 함 (dim=0x55 pin 과 동일 패턴) — 아니면 결정론적 CAM miss.
+
+### 23.7 주요 residual risk (전문은 workflow 산출물)
+
+1. 모든 HW 비용이 문헌 추정 — repo 자신의 Vivado 35-DSP vs yosys 123-MULT18X18D 괴리가 증명하듯, **per-operator FloPoCo + yosys/nextpnr synth 가 예산 확정 전 hard gate**. v2.0 의 ECP5 multiplier 여유는 사실상 0.
+2. 어떤 타깃에서도 timing 데이터 없음 (base pod 조차 nextpnr PnR 미완). 5-6-stage fused FMA @100MHz 미증명 — v2.0 첫 마일스톤은 Fmax 산출.
+3. ACC bank 는 순수 tagged-wave 모델 밖의 신규 architectural state — tag-keyed bank aliasing 은 silent-gradient-corruption 클래스. **RTL 전에 TLA+/formal 선행** (wavetensor-drivers formal-first 관례).
+4. xczu3eg 는 synth report 0건 + board plan 부재 + FP-UNIT 미탑재 확정 — Makefile default 에서 은퇴하거나 int4-inference-only 로 명시 강등할 것.
+5. 검증 공수가 RTL 공수를 초과할 전망 (~16 opcodes, fused-FMA pipe, NR microcode, SR, ACC state, canonical-order equivalence) — v2.0 의 지배적 일정 리스크.
+6. "training-capable ≠ training-competitive" — 포지셔닝 규율 자체가 리스크.
+
+### 23.8 진입 트리거
+
+**미결정.** 사용자가 이 조사를 읽고 v1.8 착수 여부를 결정. 착수 시 선행 조건: (1) per-operator synth gate (FloPoCo+yosys/nextpnr), (2) base pod nextpnr Fmax 산출, (3) legality-ROM YAML codegen 인프라 설계, (4) ACC bank TLA+ 모델 (v2.0 전).
