@@ -1418,16 +1418,207 @@ class TestFpBlockModeLegality(unittest.TestCase):
                 scaffold = ' .imm16 1'
             elif 'mem' in wta._LEGAL[code]['required']:
                 scaffold = ' .mem offset=0'
+            # v1.8.0c §23.10.2: FSCALAR requires F_HAS_OPB on every sub-op.
+            flags = ' prec opb' if code == 0x74 else ' prec'
             for mode in range(256):
                 dtype, acc, rnd = mode & 0xF, (mode >> 4) & 0x3, (mode >> 6) & 0x3
                 expect_ok = (dtype in legal['legal_dtypes']
                              and acc in legal['legal_acc']
                              and rnd in legal['legal_rnd'])
                 src = (f".default_port mask=0x01 out=0\n"
-                       f"{mnem} prec{scaffold} .precision mode={mode}\n")
+                       f"{mnem}{flags}{scaffold} .precision mode={mode}\n")
                 if expect_ok:
                     wta.assemble(src)   # must not raise
                 else:
                     with self.assertRaises(wta.AssemblerError,
                                            msg=f"{mnem} mode=0x{mode:02X}"):
                         wta.assemble(src)
+
+
+class TestFscalarV180cEncoding(unittest.TestCase):
+    """v1.8.0c §23.10 — asm-layer encoding for 0x74 FSCALAR / 0x75
+    FRSQRT32 / 0x76 FEXP2_32. Encoding-level only: the RTL datapath is
+    still stubbed (lower_required), which is expected at this stage.
+    """
+
+    # Only legal mode byte for 0x74/0x75/0x76: dtype=4 (f32), acc=1, rnd=0.
+    _MODE_F32 = 0x14
+
+    def test_fscalar_op_code_table_pin(self):
+        """Literal pin of the generated fscalar_op_codes table (single
+        source isa/wt64v1_isa.json) — catches careless renumbering that
+        regen-and-diff structurally cannot."""
+        from generated_isa_tables import FSCALAR_OP_CODE
+        self.assertEqual(FSCALAR_OP_CODE, {
+            'FS_ADD': 0, 'FS_SUB': 1, 'FS_MUL': 2, 'FS_FMA': 3, 'FS_DIV': 4,
+        })
+
+    def test_fscalar_subop_imm16_roundtrip(self):
+        """All five FS_* sub-ops, by name AND by code: nibble lands at
+        imm16[7:4], [3:0] stays reserved-zero. FS_ADD encodes to imm16 ==
+        0x0000, matching the documented absent-imm16 default (an FSCALAR
+        with NO imm16 EH decodes as FS_ADD)."""
+        from generated_isa_tables import FSCALAR_OP_CODE
+        for name, code in FSCALAR_OP_CODE.items():
+            for subop in (name, code):
+                imm16 = wta.fscalar_subop_imm16(subop)
+                self.assertEqual((imm16 >> 4) & 0xF, code, subop)
+                self.assertEqual(imm16 & 0xF, 0, "reserved [3:0] must be 0")
+                self.assertEqual(imm16 & ~0xFF, 0)
+        # absent imm16 == sub-op 0x0 == FS_ADD: pinned via the table.
+        self.assertEqual(wta.fscalar_subop_imm16('FS_ADD'), 0x0000)
+
+    def test_fscalar_subop_imm16_rejects_unknown(self):
+        """Unknown names/codes are rejected — incl. a pre-shifted imm16
+        (0x20) passed where a sub-op code belongs, and namespace strays
+        from the ACC_REDUCE table."""
+        for bad in ('FS_MIN', 'sum', 'fs_add', 5, 0xF, -1, 0x20, 1.0, None):
+            with self.assertRaises(wta.AssemblerError, msg=repr(bad)):
+                wta.fscalar_subop_imm16(bad)
+
+    def test_fscalar_imm16_now_legal(self):
+        """v1.8.0c loosening: imm16 forbidden -> optional on 0x74. Each
+        sub-op assembles through the generic emit path with the helper-
+        built imm16, F_HAS_OPB set in the flags nibble."""
+        from generated_isa_tables import FSCALAR_OP_CODE, FLAG_BITS
+        for name in FSCALAR_OP_CODE:
+            imm16 = wta.fscalar_subop_imm16(name)
+            src = (f".default_port mask=0x01 out=0\n"
+                   f"FSCALAR opb prec .imm16 {imm16} "
+                   f".precision mode={self._MODE_F32}\n")
+            inst = wta.assemble_one(src)
+            self.assertEqual((inst >> 24) & 0xFF, 0x74, name)
+            flags_nibble = (inst >> 16) & 0xF
+            self.assertTrue(flags_nibble & (1 << FLAG_BITS['opb']),
+                            "F_HAS_OPB must be set")
+
+    def test_fscalar_absent_imm16_assembles(self):
+        """No imm16 EH at all is legal and documents FS_ADD (sub-op 0x0)."""
+        src = (f".default_port mask=0x01 out=0\n"
+               f"FSCALAR opb prec .precision mode={self._MODE_F32}\n")
+        inst = wta.assemble_one(src)
+        self.assertEqual((inst >> 24) & 0xFF, 0x74)
+
+    def test_fscalar_requires_opb_flag(self):
+        """§23.10.2: F_HAS_OPB is required for EVERY sub-op — B arrives on
+        input_payload_b; missing B is a dispatch-side error_flag in RTL,
+        so the assembler rejects it textually up front."""
+        src = (f".default_port mask=0x01 out=0\n"
+               f"FSCALAR prec .precision mode={self._MODE_F32}\n")
+        with self.assertRaises(wta.AssemblerError) as ctx:
+            wta.assemble(src)
+        self.assertIn('opb', str(ctx.exception))
+
+    def test_fscalar_reserved_low_nibble_rejected(self):
+        """imm16[3:0] != 0 (RTL: lower_required) is an assembly-time error."""
+        src = (f".default_port mask=0x01 out=0\n"
+               f"FSCALAR opb prec .imm16 0x21 "
+               f".precision mode={self._MODE_F32}\n")
+        with self.assertRaises(wta.AssemblerError) as ctx:
+            wta.assemble(src)
+        self.assertIn('reserved', str(ctx.exception))
+
+    def test_fscalar_unknown_subop_nibble_rejected(self):
+        """Sub-op nibbles 0x5..0xF (RTL: lower_required) are assembly-time
+        errors."""
+        for nibble in (0x5, 0x9, 0xF):
+            src = (f".default_port mask=0x01 out=0\n"
+                   f"FSCALAR opb prec .imm16 {nibble << 4} "
+                   f".precision mode={self._MODE_F32}\n")
+            with self.assertRaises(wta.AssemblerError, msg=hex(nibble)):
+                wta.assemble(src)
+
+    def _data_eh_reject_check(self, mnemonic, kinds):
+        """AST-level: each data EH kind alone must fail legality_pass."""
+        for kind in kinds:
+            inst = wta.Instruction(
+                mnemonic=mnemonic, flags={'opb', 'prec'},
+                eh_list=[
+                    wta.ExtensionHeader('port', {'mask': 1, 'out': 0}, 1),
+                    wta.ExtensionHeader('precision',
+                                        {'mode': self._MODE_F32}, 1),
+                    wta.ExtensionHeader(kind, {'_pos': [0]}, 1),
+                ], line=1)
+            with self.assertRaises(wta.AssemblerError,
+                                   msg=f"{mnemonic} .{kind}"):
+                wta.legality_pass(wta.Program(stmts=[inst]))
+
+    def test_fscalar_imm32_imm64_stay_asm_forbidden(self):
+        """Pin the JSON forbidden list: imm32/imm64 stay ASM-FORBIDDEN on
+        0x74 (RTL-tolerated per §23.10.2 — 0x72 forbid_imm_any semantics
+        verbatim), and mem/opref/subscript stay forbidden too."""
+        self.assertEqual(
+            wta._LEGAL[0x74]['forbidden'],
+            {'imm32', 'imm64', 'mem', 'opref', 'subscript'})
+        self._data_eh_reject_check(
+            'FSCALAR', ('imm32', 'imm64', 'mem', 'opref', 'subscript'))
+
+    def test_frsqrt32_fexp2_32_strictly_port_only(self):
+        """0x75/0x76: generic emit path assembles them (decode-legal since
+        v1.8.0a — no bespoke encoder, matching sibling unary ops like
+        SCALAR_RSQRT), and EVERY data EH is rejected."""
+        for mnem, code in (('FRSQRT32', 0x75), ('FEXP2_32', 0x76)):
+            src = (f".default_port mask=0x01 out=0\n"
+                   f"{mnem} prec .precision mode={self._MODE_F32}\n")
+            inst = wta.assemble_one(src)
+            self.assertEqual((inst >> 24) & 0xFF, code, mnem)
+            self.assertEqual(
+                wta._LEGAL[code]['forbidden'], wta._ALL_DATA_EHS, mnem)
+            self._data_eh_reject_check(
+                mnem, ('imm16', 'imm32', 'imm64', 'mem', 'opref',
+                       'subscript'))
+
+    def test_pack_fscalar_payload_layout(self):
+        """A at [31:0], C at [63:32]; C defaults to zero-fill (reserved
+        for every non-FMA sub-op — hardware ignores [63:32] there)."""
+        self.assertEqual(wta.pack_fscalar_payload(0x3F800000),
+                         0x0000_0000_3F80_0000)
+        self.assertEqual(
+            wta.pack_fscalar_payload(0x40490FDB, c_fp32_bits=0xC0000000),
+            0xC000_0000_4049_0FDB)
+
+    def test_pack_fscalar_payload_bits_pass_through_untouched(self):
+        """The assembler never interprets fp bits: negative zero and an
+        sNaN pattern (quiet bit clear, nonzero payload) survive
+        bit-exactly — no host-FPU round trip is involved."""
+        neg_zero = 0x80000000
+        snan = 0x7FA00001          # exp all-ones, MSB of mantissa clear
+        self.assertEqual(wta.pack_fscalar_payload(neg_zero), neg_zero)
+        self.assertEqual(wta.pack_fscalar_payload(snan, c_fp32_bits=snan),
+                         (snan << 32) | snan)
+        self.assertEqual(wta.pack_fscalar_payload(0, c_fp32_bits=neg_zero),
+                         neg_zero << 32)
+
+    def test_pack_fscalar_payload_rejects_non_bit_patterns(self):
+        """Out-of-range ints and floats are rejected — inputs are raw
+        binary32 bit patterns, not values (use fp32_to_bits first)."""
+        for bad_a in (-1, 1 << 32, 1.0, None, True):
+            with self.assertRaises(wta.AssemblerError, msg=repr(bad_a)):
+                wta.pack_fscalar_payload(bad_a)
+        with self.assertRaises(wta.AssemblerError):
+            wta.pack_fscalar_payload(0, c_fp32_bits=1 << 32)
+
+    def test_fp32_bit_conversion_utilities(self):
+        """fp32_to_bits / bits_to_fp32: exact on canonical anchors incl.
+        the sign of negative zero; asm stays self-contained (no import
+        from scripts/)."""
+        import math
+        self.assertEqual(wta.fp32_to_bits(1.0), 0x3F800000)
+        self.assertEqual(wta.fp32_to_bits(-2.0), 0xC0000000)
+        self.assertEqual(wta.fp32_to_bits(0.0), 0x00000000)
+        self.assertEqual(wta.fp32_to_bits(-0.0), 0x80000000)
+        self.assertEqual(wta.fp32_to_bits(float('inf')), 0x7F800000)
+        self.assertEqual(wta.bits_to_fp32(0x3F800000), 1.0)
+        neg0 = wta.bits_to_fp32(0x80000000)
+        self.assertEqual(neg0, 0.0)
+        self.assertEqual(math.copysign(1.0, neg0), -1.0)
+        # binary32 -> double is exact, so bits -> float -> bits round-trips
+        # for every non-NaN pattern; spot-check across binades.
+        for bits in (0x00000001, 0x00800000, 0x3DCCCCCD, 0x40490FDB,
+                     0x7F7FFFFF, 0xFF800000):
+            self.assertEqual(wta.fp32_to_bits(wta.bits_to_fp32(bits)), bits,
+                             hex(bits))
+        with self.assertRaises(wta.AssemblerError):
+            wta.bits_to_fp32(1 << 32)
+        with self.assertRaises(wta.AssemblerError):
+            wta.bits_to_fp32(-1)

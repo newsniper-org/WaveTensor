@@ -61,6 +61,7 @@ Entry points
 from __future__ import annotations
 
 import re
+import struct
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple, Union
 
@@ -77,7 +78,7 @@ from generated_isa_tables import (  # noqa: F401
     MNEMONIC_TO_OPCODE, OPCODE_TO_MNEMONIC, HL_ONLY_MNEMONICS, FLAG_BITS,
     EH_END, EH_PORT, EH_IMM16, EH_IMM32, EH_IMM64, EH_MEM, EH_SUBSCRIPT,
     EH_OPREF, EH_PRECISION, EH_NOP_PAD, EH_NAME_TO_CODE, REDUCE_OP_CODE,
-    ACC_REDUCE_OP_CODE,
+    ACC_REDUCE_OP_CODE, FSCALAR_OP_CODE,
 )
 from generated_isa_tables import LEGAL as _LEGAL              # noqa: F401
 from generated_isa_tables import ALL_DATA_EHS as _ALL_DATA_EHS  # noqa: F401
@@ -1334,11 +1335,42 @@ def legality_pass(prog: Program) -> Program:
             raise AssemblerError(
                 f"line {stmt.line}: {stmt.mnemonic} requires .imm16"
             )
-        if rules['require_opb_flag'] and 'opb' not in stmt.flags:
+        # v1.8.0c §23.10.2 — FSCALAR (0x74) requires F_HAS_OPB for EVERY
+        # sub-op (B arrives on input_payload_b). The generated
+        # require_opb_flag bit deliberately stays False in the JSON: the
+        # RTL decode ROM cannot express "opcode requires flag" (missing B
+        # is a dispatch-side error_flag via dec_input_payload_b_valid),
+        # so the assembler-side requirement is hardcoded here, reusing
+        # the 0x63/0x64/0x65 check + error message verbatim.
+        if ((rules['require_opb_flag'] or opcode == 0x74)
+                and 'opb' not in stmt.flags):
             raise AssemblerError(
                 f"line {stmt.line}: {stmt.mnemonic} requires the 'opb' flag "
                 f"(F_HAS_OPB) — its second operand is on input_payload_b"
             )
+        # v1.8.0c §23.10.2 — FSCALAR imm16 value check: sub-op nibble at
+        # [7:4] must come from the generated fscalar_op_codes table and
+        # [3:0] is reserved-zero (an ABSENT imm16 decodes as FS_ADD).
+        # The RTL answers violations with lower_required; reject here so
+        # the user sees a textual error instead of a silent runtime
+        # dead-end (same asm-stricter-than-RTL stance as the asm-only
+        # imm32/imm64 forbid on this opcode).
+        if opcode == 0x74 and 'imm16' in eh_kinds:
+            imm_eh = next(eh for eh in stmt.eh_list if eh.kind == 'imm16')
+            v = _take_immediate(imm_eh)
+            if v & 0xF:
+                raise AssemblerError(
+                    f"line {stmt.line}: {stmt.mnemonic} imm16[3:0] is "
+                    f"reserved-zero (got 0x{v:04X}) — build the imm16 via "
+                    f"fscalar_subop_imm16()"
+                )
+            subop_nibble = (v >> 4) & 0xF
+            if subop_nibble not in FSCALAR_OP_CODE.values():
+                raise AssemblerError(
+                    f"line {stmt.line}: {stmt.mnemonic} sub-op nibble "
+                    f"0x{subop_nibble:X} unknown — legal: "
+                    f"{sorted(FSCALAR_OP_CODE.items())}"
+                )
         # F_PRECISION_OVR / F_DIM_OVR draw their override values from the
         # PRECISION EH; without it, eff_prec_* default to zero and would
         # silently corrupt the instruction. Reject that combination at
@@ -1739,6 +1771,85 @@ def store_quant_imm16(shift: int) -> int:
     if not (0 <= shift <= 63):
         raise AssemblerError(f"STORE_QUANT shift must be 0..63, got {shift}")
     return shift & 0x3F
+
+
+def fscalar_subop_imm16(subop: Union[str, int]) -> int:
+    """v1.8.0c §23.10.2 — encode an FSCALAR (0x74) sub-op into its imm16
+    value (sub-op nibble at [7:4], [3:0] reserved-zero). `subop` is
+    either a name or a code from the generated FSCALAR_OP_CODE table
+    (single-source: isa/wt64v1_isa.json fscalar_op_codes); anything else
+    is rejected. An ABSENT imm16 EH decodes as sub-op 0x0 = FS_ADD, so a
+    plain fp32 add needs no imm16 at all.
+
+    Encoding contract (enforced by legality_pass, mirrored here for
+    discoverability): every FSCALAR sub-op requires the 'opb' flag
+    (F_HAS_OPB) — operand B arrives on input_payload_b, and a missing B
+    is a deterministic dispatch-side error_flag in RTL. imm32/imm64
+    remain assembler-forbidden on 0x74 (RTL-tolerated, 0x72 semantics
+    verbatim)."""
+    if isinstance(subop, str):
+        if subop not in FSCALAR_OP_CODE:
+            raise AssemblerError(
+                f"FSCALAR sub-op {subop!r} unknown — legal: "
+                f"{sorted(FSCALAR_OP_CODE)}")
+        code = FSCALAR_OP_CODE[subop]
+    elif isinstance(subop, int) and not isinstance(subop, bool) \
+            and subop in FSCALAR_OP_CODE.values():
+        code = subop
+    else:
+        raise AssemblerError(
+            f"FSCALAR sub-op {subop!r} unknown — legal names "
+            f"{sorted(FSCALAR_OP_CODE)}, legal codes "
+            f"{sorted(FSCALAR_OP_CODE.values())} (pass the sub-op code, "
+            f"not a pre-shifted imm16)")
+    return code << 4
+
+
+def fp32_to_bits(value: float) -> int:
+    """IEEE-754 binary32 bit pattern of `value` (round-to-nearest-even
+    narrowing from the Python double; raises OverflowError beyond fp32
+    range). For bit-exact payloads (sNaN, specific NaN payloads) build
+    the 32-bit pattern directly and hand it to pack_fscalar_payload —
+    converting through a Python float can quiet an sNaN on the host FPU,
+    whereas the assembler itself never interprets fp bits."""
+    return struct.unpack('<I', struct.pack('<f', float(value)))[0]
+
+
+def bits_to_fp32(bits: int) -> float:
+    """Python float holding the value of the IEEE-754 binary32 pattern
+    `bits` (exact — every binary32 value is representable as a double).
+    Same sNaN caveat as fp32_to_bits: the widening conversion may quiet
+    an sNaN, so keep payloads in bit-pattern (int) form when exact NaN
+    bits matter."""
+    if not (isinstance(bits, int) and not isinstance(bits, bool)
+            and 0 <= bits <= 0xFFFFFFFF):
+        raise AssemblerError(
+            f"bits_to_fp32: bits must be a 32-bit unsigned bit pattern, "
+            f"got {bits!r}")
+    return struct.unpack('<f', struct.pack('<I', bits))[0]
+
+
+def pack_fscalar_payload(a_fp32_bits: int, c_fp32_bits: int = 0) -> int:
+    """v1.8.0c §23.10.2 — build the 64-bit FSCALAR (0x74) payload_a word:
+    operand A at [31:0], FMA addend C at [63:32].
+
+    C is meaningful ONLY for FS_FMA; for every other sub-op
+    payload_a[63:32] is reserved (hardware ignores it) and the assembler
+    zero-fills — leave c_fp32_bits at its default 0. Operand B is NOT in
+    this word: it arrives on the payload_b port via F_HAS_OPB.
+
+    Both inputs are raw binary32 bit patterns (ints) and pass through
+    untouched — the assembler never interprets fp bits, so -0.0, sNaN
+    and arbitrary NaN payloads survive bit-exactly. Use fp32_to_bits()
+    to build patterns from Python floats."""
+    for name, v in (('a_fp32_bits', a_fp32_bits),
+                    ('c_fp32_bits', c_fp32_bits)):
+        if not (isinstance(v, int) and not isinstance(v, bool)
+                and 0 <= v <= 0xFFFFFFFF):
+            raise AssemblerError(
+                f"pack_fscalar_payload: {name} must be a 32-bit unsigned "
+                f"bit pattern, got {v!r}")
+    return (c_fp32_bits << 32) | a_fp32_bits
 
 
 def wave_fragments_trace_iijkl(a_128: int) -> List[Tuple[int, int]]:
