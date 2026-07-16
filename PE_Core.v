@@ -1643,8 +1643,8 @@ module PE_Core #(
     // fragments (either truncating a real multi-fragment wave, or emitting
     // spurious extra fragments from garbage frag_pending[] slots).
     //
-    // Backpressure: the compound `output_regs_free` wire (derived below in
-    // the always block) gates SIG_BMM_3/WIDEN dispatch when ANY output-mux
+    // Backpressure: the compound `output_regs_free` wire (declared below)
+    // gates SIG_BMM_3/WIDEN dispatch when ANY output-mux
     // source is in flight (MUL p1/p2, DIV any-state, DIV b_zero pulse).
     // This closes the MUL/DIV drain hazard the verify:fsm agent flagged.
     // pe_ready's worst-case deassertion window is now 3 cycles (during a
@@ -1665,6 +1665,10 @@ module PE_Core #(
     reg [ADDR_WIDTH-1:0]  frag_pending [0:3];
     reg [TAG_WIDTH-1:0]  frag_tag_held;
     reg [7:0]            frag_opcode_held;
+
+    wire output_regs_free = (frag_idx == FRAG_IDLE)
+        && !mul_valid_p1 && !mul_valid_p2
+        && (div_state == DIV_IDLE) && !div_valid_p2 && !div_b_zero_p2;
 
     // -------------------------------------------------------------------------
     // v1.8 §23.8 synth-gate fix (2026-07-16) — yosys (Verilog-2005) does not
@@ -2199,10 +2203,7 @@ module PE_Core #(
                                         // for any wide-consumer wave.
                                         error_flag   <= 1'b1;
                                         output_valid <= 1'b0;
-                                    end else if (!((frag_idx == FRAG_IDLE)
-                                                && !mul_valid_p1 && !mul_valid_p2
-                                                && (div_state == DIV_IDLE)
-                                                && !div_valid_p2 && !div_b_zero_p2)) begin
+                                    end else if (!output_regs_free) begin
                                         // Compound drain gate (per verify:fsm):
                                         // reject if any MUL/DIV pulse would
                                         // collide with fragment 0 (cycle N) or
@@ -2236,10 +2237,7 @@ module PE_Core #(
                                     if (!dec_input_payload_wide_valid) begin
                                         error_flag   <= 1'b1;
                                         output_valid <= 1'b0;
-                                    end else if (!((frag_idx == FRAG_IDLE)
-                                                && !mul_valid_p1 && !mul_valid_p2
-                                                && (div_state == DIV_IDLE)
-                                                && !div_valid_p2 && !div_b_zero_p2)) begin
+                                    end else if (!output_regs_free) begin
                                         lower_required <= 1'b1;
                                         output_valid   <= 1'b0;
                                     end else case (dec_eff_subscript_hi[3:0])
@@ -2304,10 +2302,7 @@ module PE_Core #(
                                     if (!dec_input_payload_wide_valid) begin
                                         error_flag   <= 1'b1;
                                         output_valid <= 1'b0;
-                                    end else if (!((frag_idx == FRAG_IDLE)
-                                                && !mul_valid_p1 && !mul_valid_p2
-                                                && (div_state == DIV_IDLE)
-                                                && !div_valid_p2 && !div_b_zero_p2)) begin
+                                    end else if (!output_regs_free) begin
                                         lower_required <= 1'b1;
                                         output_valid   <= 1'b0;
                                     end else case (dec_eff_subscript_hi[3:0])
@@ -2364,10 +2359,7 @@ module PE_Core #(
                                     if (dec_eff_dim_sizes != 8'h55) begin
                                         lower_required <= 1'b1;
                                         output_valid   <= 1'b0;
-                                    end else if (!((frag_idx == FRAG_IDLE)
-                                                && !mul_valid_p1 && !mul_valid_p2
-                                                && (div_state == DIV_IDLE)
-                                                && !div_valid_p2 && !div_b_zero_p2)) begin
+                                    end else if (!output_regs_free) begin
                                         lower_required <= 1'b1;
                                         output_valid   <= 1'b0;
                                     end else case (dec_eff_subscript_hi[3:0])
@@ -2422,10 +2414,7 @@ module PE_Core #(
                                     if (!dec_input_payload_wide_valid) begin
                                         error_flag   <= 1'b1;
                                         output_valid <= 1'b0;
-                                    end else if (!((frag_idx == FRAG_IDLE)
-                                                && !mul_valid_p1 && !mul_valid_p2
-                                                && (div_state == DIV_IDLE)
-                                                && !div_valid_p2 && !div_b_zero_p2)) begin
+                                    end else if (!output_regs_free) begin
                                         lower_required <= 1'b1;
                                         output_valid   <= 1'b0;
                                     end else begin
@@ -2445,10 +2434,7 @@ module PE_Core #(
                                         // §20.7 wide-consumer contract violation.
                                         error_flag   <= 1'b1;
                                         output_valid <= 1'b0;
-                                    end else if (!((frag_idx == FRAG_IDLE)
-                                                && !mul_valid_p1 && !mul_valid_p2
-                                                && (div_state == DIV_IDLE)
-                                                && !div_valid_p2 && !div_b_zero_p2)) begin
+                                    end else if (!output_regs_free) begin
                                         // Reuse §20.6 compound drain gate — no
                                         // cycle-N+1 hazard (single-fragment
                                         // emit) but a MUL/DIV pulse on cycle N
@@ -2616,10 +2602,7 @@ module PE_Core #(
                             if (!dec_input_payload_wide_valid) begin
                                 error_flag   <= 1'b1;
                                 output_valid <= 1'b0;
-                            end else if (!((frag_idx == FRAG_IDLE)
-                                        && !mul_valid_p1 && !mul_valid_p2
-                                        && (div_state == DIV_IDLE)
-                                        && !div_valid_p2 && !div_b_zero_p2)) begin
+                            end else if (!output_regs_free) begin
                                 lower_required <= 1'b1;
                                 output_valid   <= 1'b0;
                             end else begin
@@ -2749,10 +2732,7 @@ module PE_Core #(
                             if (!dec_input_payload_wide_valid) begin
                                 error_flag   <= 1'b1;
                                 output_valid <= 1'b0;
-                            end else if (!((frag_idx == FRAG_IDLE)
-                                        && !mul_valid_p1 && !mul_valid_p2
-                                        && (div_state == DIV_IDLE)
-                                        && !div_valid_p2 && !div_b_zero_p2)) begin
+                            end else if (!output_regs_free) begin
                                 lower_required <= 1'b1;
                                 output_valid   <= 1'b0;
                             end else begin
@@ -2805,10 +2785,7 @@ module PE_Core #(
                             end else if (!dec_input_payload_wide_valid) begin
                                 error_flag   <= 1'b1;
                                 output_valid <= 1'b0;
-                            end else if (!((frag_idx == FRAG_IDLE)
-                                        && !mul_valid_p1 && !mul_valid_p2
-                                        && (div_state == DIV_IDLE)
-                                        && !div_valid_p2 && !div_b_zero_p2)) begin
+                            end else if (!output_regs_free) begin
                                 lower_required <= 1'b1;
                                 output_valid   <= 1'b0;
                             end else begin
@@ -2832,10 +2809,7 @@ module PE_Core #(
                             end else if (!dec_input_payload_wide_valid) begin
                                 error_flag   <= 1'b1;
                                 output_valid <= 1'b0;
-                            end else if (!((frag_idx == FRAG_IDLE)
-                                        && !mul_valid_p1 && !mul_valid_p2
-                                        && (div_state == DIV_IDLE)
-                                        && !div_valid_p2 && !div_b_zero_p2)) begin
+                            end else if (!output_regs_free) begin
                                 lower_required <= 1'b1;
                                 output_valid   <= 1'b0;
                             end else if (dec_eff_imm16[3:0] != 4'h0) begin
@@ -2887,10 +2861,7 @@ module PE_Core #(
                         // output_payload assigned EXPLICITLY (the 0x05
                         // stale-payload copy trap).
                         8'h7C: begin
-                            if (!((frag_idx == FRAG_IDLE)
-                                        && !mul_valid_p1 && !mul_valid_p2
-                                        && (div_state == DIV_IDLE)
-                                        && !div_valid_p2 && !div_b_zero_p2)) begin
+                            if (!output_regs_free) begin
                                 lower_required <= 1'b1;
                                 output_valid   <= 1'b0;
                             end else if (dec_eff_imm16[15:6] != 10'h0) begin
@@ -2928,10 +2899,7 @@ module PE_Core #(
     // Same 6-term compound as internal drain gate. Upstream fabric can
     // observe this to STALL new dispatches instead of retrying after
     // lower_required. MVP: observe-only, no ext_valid gating change.
-    assign pe_ready = (frag_idx == FRAG_IDLE)
-                   && !mul_valid_p1 && !mul_valid_p2
-                   && (div_state == DIV_IDLE)
-                   && !div_valid_p2 && !div_b_zero_p2;
+    assign pe_ready = output_regs_free;
 
 endmodule
 
