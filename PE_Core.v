@@ -1502,7 +1502,11 @@ module PE_Core #(
 
     reg [1:0]             frag_idx;
     reg [1:0]             frag_total_m1_held;
-    reg [ADDR_WIDTH-1:0]  frag_pending [1:3];
+    // Index 0 exists only so the dynamic read frag_pending[frag_idx]
+    // never references an undeclared row (frag_idx==FRAG_IDLE==0 is
+    // gated out of the drain path, but the read MUX still sees the
+    // index) — kept reset-driven, never written by any dispatch.
+    reg [ADDR_WIDTH-1:0]  frag_pending [0:3];
     reg [TAG_WIDTH-1:0]  frag_tag_held;
     reg [7:0]            frag_opcode_held;
 
@@ -1560,6 +1564,7 @@ module PE_Core #(
             div_b_zero_p2  <= 1'b0;
             frag_idx            <= FRAG_IDLE;
             frag_total_m1_held  <= 2'b00;
+            frag_pending[0]     <= {ADDR_WIDTH{1'b0}};
             frag_pending[1]     <= {ADDR_WIDTH{1'b0}};
             frag_pending[2]     <= {ADDR_WIDTH{1'b0}};
             frag_pending[3]     <= {ADDR_WIDTH{1'b0}};

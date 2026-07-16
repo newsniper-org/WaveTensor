@@ -34,19 +34,39 @@ hierarchy -check -top Pod
 
 # --- Standard synthesis flow for ECP5 -----------------------------------
 # synth_ecp5 handles opt / techmap / abc / mapping to ECP5 cell library.
-# -json emits the netlist nextpnr-ecp5 consumes.
 # NOTE: -abc9 flag removed — Yosys 0.64's bundled ABC does not recognize
 #       'ecp5' technology target when invoked with -abc9, resulting in
 #       "Unsupported technology: 'ecp5'" at ABC handoff. Standard synth_ecp5
 #       without -abc9 uses the classic ABC pass which handles ECP5 correctly.
+# NOTE(v1.8.0a, 2026-07-16): -run :check stops BEFORE synth_lattice's
+#       `check` step, whose unconditional AUTONAME pass took >30 min on
+#       this ~2.5M-wire netlist (observed: the first full-pod run had to
+#       be killed inside 9.47 AUTONAME) and is purely cosmetic — nextpnr
+#       does not need renamed cells. Yosys 0.64 offers no -noautoname
+#       flag, so the real checks + stat + JSON emission run manually
+#       below instead.
+# NOTE(v1.8.0a): -nolutram — LUTRAM inference mapped the fragment-buffer
+#       arrays onto DPR16X4C primitives whose behavioral model still
+#       contains processes at write_json time ("Module DPR16X4C contains
+#       processes" — JSON backend refuses). Stage-1 pragmatic choice: keep
+#       those small arrays as FF+mux fabric (the spec §23 HW estimates
+#       assumed FF anyway); revisit LUTRAM mapping when the Stage-1 LUT
+#       budget actually tightens.
 # TODO(Stage 1): confirm 2x2 x 2x2 geometry produces expected LUT count;
 #                 compare against Vivado XCAU25P (62K LUT baseline).
-synth_ecp5 -json synth/lattice/reports/pod_2x2_2x2_synth.json
+synth_ecp5 -nolutram -run :check
+
+# --- Manual tail of the flow (replaces the skipped `check` step minus
+# --- AUTONAME, plus the -json emission that -run suppressed) -------------
+hierarchy -check
+check -noinit
 
 # --- Emit stats report --------------------------------------------------
 # NOTE: `stat -tech ecp5` fails on Yosys 0.64 (unknown tech name in stat).
 #       Use plain `stat` which reports LUT4 / TRELLIS_FF / etc. by cell name.
 tee -o synth/lattice/reports/pod_2x2_2x2_synth.rpt stat
+
+write_json synth/lattice/reports/pod_2x2_2x2_synth.json
 
 # TODO(Stage 1 Board bring-up):
 #   * verify TRNG ring oscillator rings survive synthesis (grep for HIU
