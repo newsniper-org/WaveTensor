@@ -2278,8 +2278,9 @@ Phase 1 인벤토리로 확정한 현행 사실:
 #### 23.10.8 stub dispositions (v1.8.0c 에서 stub 유지: {0x70, 0x73, 0x77, 0x78, 0x79, 0x7D, 0x7E} — lower_required)
 
 - **0x70 VFMA** → v1.8.0d: scalar wide-FMA microstep 의 MU 상 sequential per-lane 재사용으로 vector FMA; bf16 dtype widening 은 v2.0 이연.
-- **0x73 ACC_ELEMWISE** → v1.8.0d: 기존 MAC/adder 인프라 위 elementwise acc op, sub-op 표는 0x72/0x74 패턴.
-- **0x77/0x78** → 빨라야 v1.8.0d: port-only shape 불변; **pure monotonic stub-body replacement 로만** 착지.
+- **0x73 ACC_ELEMWISE** → v1.8.0d: 기존 MAC/adder 인프라 위 elementwise acc op, ~~sub-op 표는 0x72/0x74 패턴~~. **AMENDMENT (2026-07-24, v1.8.0d COMMIT 0)**: v1.8.0d 에서 **OPREF form 전용으로 graduate** — 원안의 sub-op 표는 **삭제** (EHDecode.v:501 의 alu_binary XOR trap 하에서 imm carve-out 이 decode_error 없이는 구현 불가 — invariant 를 amend 하는 대신 존중). **어떤 imm 이든 존재 (dec_eff_opref_kind==0) → lower_required** (capability absence). 전문은 §23.10.10(c).
+- **0x77/0x78** → 빨라야 v1.8.0d: port-only shape 불변; **pure monotonic stub-body replacement 로만** 착지. **AMENDMENT (2026-07-24, v1.8.0d COMMIT 0)**: **0x77 CVT 는 v1.8.0d 에서 graduate** 하되 "port-only shape 불변" 문구를 완화 — imm16 은 forbidden→**optional** 로 loosening (0x72/0x74 의 정확한 선례, sub-op nibble imm16[7:4] 운반; imm32/imm64 는 FSCALAR 처럼 ASM-FORBIDDEN/RTL-TOLERATED). **이 loosening 이 intent-preserving 인 논증 (명시 기록)**: 원 문구의 의도는 "신규 EH data channel 을 열지 않는다" 였고, CVT 는 **eff_b_value 를 절대 읽지 않으므로** imm16 은 data 가 아니라 sub-op selector 로만 기능한다 — 0x74 FSCALAR 가 같은 shape 으로 이미 착지한 정확한 패턴이며, FP_LEGAL_ROM legal_dtypes [2,3]→[0,1,2,3,4] 확장도 monotonic illegal→legal 이므로 stub-body-replacement 계열의 monotonic 성질은 보존된다. **0x78 DEQUANT 는 v1.8.0e 로 이연** (전 form; §23.10.10(a) deferral 표). 전문은 §23.10.10(b).
+- **0x7C STORE_QUANT fp-dest (dtype 0x2/0x3)** — **AMENDMENT (2026-07-24)**: STUB_OPS 집합 밖의 execute-side stub (PE_Core.v:3165-3169 else-arm) 이었던 fp-dest 팔이 **v1.8.0d 에서 graduate** — pure execute-side stub-body replacement, decode 불변, twin classifier 불변 (전 dtype L-PE 유지). 전문은 §23.10.10(d).
 - **0x79 FMAX/FMIN** → 구현은 v1.8.0d, **의미론은 지금 (v1.8.0c spec commit 에서) PIN**: **IEEE754-2019 minimumNumber/maximumNumber** — **−0 < +0**; **NaN 은 number 에 패배** (한쪽 NaN → number 반환); **양쪽 NaN → canonical qNaN 0x7FC00000**; **signed-int compare tree 재사용 금지** (§23.6). 0d 는 frozen 계약에 대고 구현.
 - **0x7D** → v2.0.
 - **0x7E FP_STATUS** → v1.8.0d/v2.0: sticky flag register (invalid / overflow / underflow-flushed). **v1.8.0c 는 semantics 를 prose 로만 예약하고 레지스터를 추가하지 않는다** — fp special-case 표가 deterministic 이므로 flag 는 이후 어떤 result bit 도 바꾸지 않고 추가 가능.
@@ -2294,3 +2295,135 @@ Phase 1 인벤토리로 확정한 현행 사실:
 6. **twin-classifier lockstep 과 stub-membership 은 이번 release 가 편집하는 cross-file invariant**: 보호 대상 failure mode (silent permanent lower_required dead-end) 는 확장된 lockstep/reachability 테스트가 RTL 편집과 **같은 commit** 에 착지할 때만 잡힘 — 설계 리스크가 아닌 process 리스크이며, 이 codebase 를 이미 문 적 있음 (v1.5.3 arbitration bugs).
 7. **pod-scale placement 는 여전히 실패** (MULT 497>156, COMB 101%) 이고 이번 release 는 pod 수요를 더 늘림 (cluster 당 +4 MULT); 단일-Cluster Stage-1 vehicle 에선 명시적 scope 밖이나, **모든 v1.8.0c 수치는 cluster-OOC 한정 — 어떤 pod 주장도 여기서 유도 금지**.
 8. **IEEE sticky exception flag 는 0x7E FP_STATUS 착지 전까지 갈 곳이 없음**: 초기 소프트웨어는 invalid/overflow 를 전혀 관측 불가; spec 은 semantics 만 예약하며, 0x7E 의 최종 설계가 per-op flag capture 를 원하면 fp FSM 에 (results-invariant) sticky-latch retrofit 필요.
+
+#### 23.10.10 v1.8.0d — scalar conversion 층 (normative)
+
+**당선 설계 "split-scalar-first" (2026-07-24 설계 workflow, adversarial verify 의 확정 수정 전건 반영).** 본 절이 v1.8.0d 의 normative source 다 — spec-before-code COMMIT 0. 골자: **scalar-only 0d** — 0x77 CVT (6종 scalar 변환) + 0x73 ACC_ELEMWISE (OPREF form) + 0x7C STORE_QUANT fp-dest packer + hybrid fp-scalar/int-wide norm 매크로 재구축. 핵심 판단 근거 3: (1) release 의 존재 이유인 **rsqrt LUT 6.25% floor kill** 은 FRSQRT32(≤2 ulp) 를 세 norm 매크로 안에 CVT→FSCALAR→FRSQRT32→F2I insert 로 삽입하는 것만으로 달성 — full-fp application 경로 (DEQUANT/VFMA) 는 floor kill 에 불요하고 MSE≤1.05× 계약에만 필요하므로 후자는 0e 로 정직하게 re-scope; (2) 본 설계는 **2-bit emit FSM (v1.7 이 flag 한 최고위험 공유 구조) 을 일절 건드리지 않는 유일한 안** — 모든 0d 결과는 단일 64-bit fragment 이고 `lint_frag_total_m1_held.py` 가 무수정 통과 (테스트로 pin); (3) 최악 추정 × 실측 overrun 계수 1.67 로도 단일 pre-priced gate (40.82% < 41.0%) 아래 수납되는 유일한 안. MULT wall (≤140 ceiling 아래 여유 6) 이 모든 wide op 을 어차피 sequential 로 강제하므로 wide package 의 0e 이연은 어떤 아키텍처 선택지도 봉쇄하지 않는다.
+
+##### 23.10.10(a) Scope — 착지 항목과 deferral 전건
+
+**v1.8.0d 에 착지 (6건)**:
+
+1. **0x77 CVT** — MU-hosted FP_StepSeq step 프로그램 (신규 op class **OPS_CVT**), scalar 변환 6종: f16→f32 · bf16→f32 (widen, sub-op 0x0 = imm16-absent default), f32→f16 · f32→bf16 (narrow, sub-op 0x1), I2F int4/int8 exact 및 int64-sext64 (dtype 0x4, int32 포괄) → f32, F2I f32 → int4/int8/int32 RNE-saturate. ISA 변경: FP_LEGAL_ROM legal_dtypes **[2,3] → [0,1,2,3,4]** (monotonic illegal→legal); forbid_imm_any → **imm16-optional** (0x72/0x74 선례, §23.10.8 amendment — CVT 가 eff_b_value 를 절대 읽지 않으므로 intent-preserving); imm16[3:0]/[15:8] reserved-zero 및 미지 sub-op → lower_required.
+2. **0x73 ACC_ELEMWISE, OPREF form 전용** — FS_FMA-shape step 프로그램에 탑승하는 fused single-rounding fp32 **a·B[63:32] + B[31:0]** (신규 op class **OPS_ACCEW**); **어떤 imm 이든 존재 (dec_eff_opref_kind==0) → lower_required** (capability absence — 초안의 sub-op 표는 alu_binary_xor_err 하에서 구현 불가로 **삭제**).
+3. **0x7C STORE_QUANT fp-dest** — PE_Core.v:3165-3169 else-arm 의 pure execute-side stub-body replacement, L-PE hosted combinational (×4 instance + MU), CVT 와 narrow 함수 1개 공유, **양쪽 site 에 DAZ-at-source pin**; dtype 0x2/0x3 에서 imm16[5:0] reserved-zero → lower_required; ROM row 이미 legal, decode 불변; **twin classifier 0x7C 무변경 (전 dtype L-PE)**.
+4. **golden_fp32.py 확장 (COMMIT 1, 어떤 RTL 보다 선행)** — f16/bf16 codec, ref_cvt/ref_i2f/ref_f2i/ref_narrow_f32/ref_acc_elemwise, sequencer-faithful step layer, named sweep plan + independent-oracle cross-check.
+5. **asm/wavetensor_asm.py hybrid norm 재구축** — fp32 scalar insert 가 0x66 SCALAR_RSQRT 를 대체; int wide tail (0x69 또는 0x6B/0x6C) 불변; **eps ≥ 2⁻¹³ assembler guard** + int-scalar clamp fallback; FSCALAR B-constant producer dispatch 명시 계상.
+6. **Pre-priced amended COMB gate 41.0% 를 COMMIT 0 에서 — 구현 이전에 — 공표** (§23.10.10(g)); per-operator synth gate = merge blocker (§23.10.7 normative).
+
+**Deferral — 전건, 각각 destination 명시 (normative)**:
+
+| 이연 항목 | destination | 근거/조건 |
+|---|---|---|
+| 0x70 VFMA_ACC | **v1.8.0e** | frag-FSM widening + result-accumulation buffer 필요 (stateless form = 16 fragments) |
+| 0x78 DEQUANT (slice-select 포함 전 form) | **v1.8.0e** | 같은 package; sliced form 도 output-side 구조 필요, 전용 shift-add 경로 재가격 |
+| 0x79 FMINMAX vector | **v1.8.0e** | §23.10.8 의 frozen IEEE-2019 minimumNumber/maximumNumber 의미론이 **무수정 이월**; clamp 소비자 출현 시 scalar K_INT FMIN/FMAX fallback 검토 |
+| frag emit-FSM 2-bit→4-bit widening + buffer-then-drain | **v1.8.0e** | 위 3개 소비자를 전부 알고 **한 번에 하나의 coordinated work package 로** 축조 (VFMA + DEQUANT + vector FMINMAX + widening + buffer = 단일 단위) |
+| end-to-end MSE ≤1.05× dtype-floor 계약 | **v1.8.0e** | 0d 의 normative 계약은: rsqrt 기여 ≤2 ulp, 오차는 Q8.8-application-dominated ≤2⁻⁹ scale-relative |
+| 0x73 imm-B/bf16-immediate form | **0e-또는-이후** loosening | EHDecode per-opcode exemption 기구 결정 필요 |
+| FTZ-at-f16-destination 재검토 | **v1.8.0e**, 0e MSE gate 실패 시에만 | §23.10.10(f) pin (5) |
+| positional-bank 하드웨어 fix (latency shuttle) | **v1.9** | §23.10.9 risk 2 와 동일 노선 |
+| lane-wise-B FMINMAX (VDOT packing) | **post-0e** | — |
+| stochastic rounding | **v2.0** (frozen) | fp32→bf16 STORE_QUANT 한정 |
+| dtype 0x5 f64 | **decode_error 유지** | — |
+| pod scale | **scope 밖** | 전 주장 cluster-OOC 한정 |
+
+##### 23.10.10(b) 0x77 CVT (MU, OPS_CVT)
+
+**Operand**: scalar-in-64 를 payload_a 로 수취; **eff_b_value 는 절대 미소비** — imm32/imm64 는 FSCALAR 처럼 ASM-FORBIDDEN/RTL-TOLERATED.
+
+**Sub-op**: imm16[7:4] ∈ 신규 single-source JSON 생성 테이블 **cvt_op_codes {0x0 WIDEN_TO_F32 (imm16-absent default), 0x1 NARROW_FROM_F32}**; imm16[3:0]/[15:8] nonzero 또는 sub-op >0x1 → **lower_required** (0x72 의 정확한 rung).
+
+**MANDATORY RTL RULE (confirmed-bug fix) — op-class-conditional DAZ bypass**: FP_StepSeq 의 operand-load DAZ 는 **OPS_CVT 의 non-fp32-format source (모든 WIDEN 방향과 모든 I2F) 에 대해 BYPASS** 된다 — capture mux 의 op-class-conditional 항으로 구현. CVT 는 raw narrow bit 를 그대로 봐야 한다 (무조건 DAZ 는 I2F(5) 를 포함해 모든 non-fp32 source 를 0 으로 flush 하는 확정 버그). 반대로 **NARROW/F2I 의 fp32 SOURCE 는 DAZ-flush 된다** (pin) — 그리고 **0x7C site 에서도 동일하게 pin** (§23.10.10(d) bit-identity 전제).
+
+**WIDEN (sub-op 0x0)**:
+- dtype 0x2 f16→f32: **EXACT, f16 subnormal 포함** (FP_AddWide 의 LZC/normalize 를 K_ADD 1 pass 로 경유).
+- dtype 0x3 bf16→f32: normals/zeros/Inf 는 exact bit-splice; **bf16-subnormal 입력 → CVT 출력에서 signed zero** (DAZ-consistent pin — splice 하면 fp32-subnormal 공간에 착지하므로).
+- dtype 0x0/0x1 I2F int4/int8: exact.
+- dtype 0x4 I2F signed int64 (sext64 payload): **ingress pinned — payload[63:32] → c_in, payload[31:0] → a_in (FSCALAR-style split)** → f32 RNE, overflow 불가능; **two-pass normalize PINNED: pass-1 은 RTO/sticky-preserving (rto_jam 경로), pass-2 가 final RNE — double rounding 금지.**
+- **Widen-NaN row (normative)**: f16/bf16 의 **어떤 NaN 이든** → fp32 canonical qNaN 0x7FC00000 (sNaN quieted); exact-injection E-row 는 non-NaN 입력에 한정.
+
+**NARROW (sub-op 0x1)** — round/sticky 는 어디서나 **disjoint 하게** 기술한다 (확정 off-by-one 방지: "dropped bits 전체의 sticky" 표현 금지):
+- dtype 0x2 f32→f16: RNE, **round R = dropped bit 12, sticky S = OR(dropped bits [11:0]), increment ⇔ R & (S | kept-LSB)**; rebias 127→15; overflow → ±Inf; **FTZ-at-destination** (unbounded-exponent round 후 2⁻¹⁴ 미만 결과는 signed zero 로 flush).
+- dtype 0x3 f32→bf16: RNE, **R = bit 15, S = OR(bits [14:0]), increment ⇔ R & (S | bit 16)**.
+- **NaN narrow (양 format) → destination canonical qNaN (f16 0x7E00, bf16 0x7FC0), 부호 drop, payload 폐기 — 단일 규칙** (mantissa-MSB-forced vs canonical 모호성을 canonical 로 해소, fp32 선례 정합).
+
+**F2I**: **RNE 후 saturate** — dtype 0x0/0x1 → [−8,7]/[−128,127], dtype 0x4 → int32 RNE-saturate; **NaN → 0** (deterministic DATA — **GPU-parity 근거: CUDA cvt.sat 선례를 명시 label** — F2I 의 NaN 이 error 가 아니라 결정론적 데이터여야 GPU-lockstep oracle 과 정합); **±Inf → dest min/max**; int 결과는 sext64.
+
+**결과 payload row**: f16/bf16 = {48'h0, h} zero-extend; f32 = {32'h0, f}; int = sext64.
+
+**Round-trip identity E-row — RE-SCOPED (normative)**: half→f32→half identity 는 **normal f16/bf16, ±0, ±Inf, canonical qNaN 에 한해** 성립. f16 subnormal 은 FTZ pin 에 의해 **설계상** 실패한다 — E-row 의 범위 밖.
+
+**Launch ladder**: 0x77 은 shipped 0x74/0x75 arm 을 rung-for-rung mirror — MU gate → output_regs_free busy-reject = lower_required → reserved-field/sub-op rung → launch; 어떤 신규 result pulse 도 fp_valid_p2 를 우회하지 않으므로 MUL-launch fp-idle guard (§23.10.1) 는 불변.
+
+##### 23.10.10(c) 0x73 ACC_ELEMWISE (MU, OPS_ACCEW)
+
+- alu-binary, dtype [4]. **OPREF form ONLY**: a = payload[31:0] fp32, B 는 dec_eff_b_value (OPREF) 로 수취; 결과 = **round-once fp32 FMA(a · B[63:32] + B[31:0])**, golden 의 **ref_fma / micro_fscalar(FS_FMA)** 에 bit-exact (존재하지 않는 micro_fma 아님 — bit-match target 정정).
+- **어떤 imm16/imm32/imm64 든 존재 → lower_required** (decode_error 아님, silent 아님). 초안의 sub-op 표는 **삭제** — EHDecode 의 alu_binary XOR invariant (§23.10.2 의 alu_binary XOR trap 과 동일 기구) 하에서 imm carve-out 은 decode_error 가 되므로, invariant 를 amend 하지 않고 capability absence 로 기술한다. 미래의 imm-B/bf16-immediate loosening 은 per-opcode exemption 기구 결정과 함께 0e-이후 (§23.10.10(a) 표).
+- twin classifier (Cluster.v is_mul_op + PE_Core.v dec_is_mul_op) 가 **0x73 항을 opcode-only 로** 획득 (MU fp op; dtype 조건 없음); lockstep 테스트 같은 commit 탑승 (§23.10.9 risk 6).
+- Launch ladder 는 0x77 과 동일하게 0x74/0x75 mirror + OPREF-only rung (dec_eff_opref_kind).
+
+##### 23.10.10(d) 0x7C STORE_QUANT fp-dest packer
+
+- source = fp32 payload[31:0], **source 에서 DAZ-flush** (bit-identity pin); dtype 0x2/0x3 에서 imm16[5:0] nonzero → lower_required (PE_Core.v:3150 의 imm16[15:6] rung 을 mirror); 결과 {48'h0, h} zero-extend; **int4/int8 arm 은 bit-불변**; emit-FSM/drain-override 변경 전무.
+- **Bit-identity 조항 (normative)**: 0x7C fp-dest narrow 는 **0x77 NARROW_FROM_F32 와 전 2³² 입력에 대해 bit-identical — DAZ pre-stage 포함**. 시행 기제: **공유 Verilog 함수 1개** (신규 공통 include `include/fp_narrow_f32.vh`) + **golden 함수 1개 (ref_narrow_f32)**; golden 에서 chunked exhaustive 2³², RTL 에서 양 site (L-PE arm / MU step) directed+sampled.
+- **0 added cycles** (contingency, pre-approved: packer 를 register 하면 fp-dest form 에 한해 +1 cy).
+
+##### 23.10.10(e) cycle maxima 표 (normative — completion-within-bound, §23.10.6 관례 동일)
+
+| op | 최대 cycles | 비고 |
+|---|---|---|
+| CVT widen / narrow / I2F-small / F2I | ≤8 | target 3-6; 8 은 Gate-2 fallback 패턴의 2번째 K_INT 가능성 흡수 |
+| CVT I2F int64 | ≤10 | target 6-8 |
+| ACC_ELEMWISE | ≤10 | target ~6 (FS_FMA shape) |
+| 0x7C fp-dest | +0 | registered-packer contingency 시 +1 |
+
+##### 23.10.10(f) f16/bf16 format 정책 (normative)
+
+**상속 — 재론 금지**: RNE-only (rnd=[0]; SR 은 v2.0 fp32→bf16 STORE_QUANT 한정); acc 는 [1] 유지 (**bf16+acc==0 은 영구 illegal; acc 는 direction channel 이 아니다** — acc loosening 안은 frozen-pin 충돌로 기각); fp32 canonical qNaN 0x7FC00000, sNaN quieted, IEEE specials 는 DATA·절대 error_flag 아님; DAZ = operand-load flush 부호 보존; FTZ = flush-after-round with unbounded-exponent RNE; 내부 step 은 DAZ/FTZ-exempt; illegal mode byte = decode_error, unimplemented-legal = lower_required; frozen 0x79 minimumNumber/maximumNumber 계약은 0e 로 무수정 이월.
+
+**신규 PIN (COMMIT 0, normative — 각 pin 이 directed vector 를 생성)**:
+
+1. **Per-format canonical qNaN**: f16 **0x7E00**, bf16 **0x7FC0** (= fp32 상위 16 bit, truncation-consistent), f32 0x7FC00000. NaN narrow → destination canonical qNaN, 부호 drop — **NaN 은 절대 Inf 로 격하될 수 없다.**
+2. **Widen-NaN row**: f16/bf16 NaN → fp32 canonical qNaN 0x7FC00000; exact-injection E-row 는 non-NaN 에 한정.
+3. **Sticky 는 어디서나 disjoint 로 기술**: dropped field D 에 대해 round R = MSB(D), sticky S = OR(D − R), increment ⇔ R & (S | LSB_kept) — "dropped bits 전체의 sticky" 표현 금지 (확정 off-by-one 의 근원).
+4. **Narrow overflow → ±Inf** (A6-row 정합), saturate-to-max-finite 절대 금지.
+5. **f32→f16 은 FTZ-at-destination** (subnormal shifter 삭제); **문서화된 GPU divergence**: CUDA cvt.rn.f16.f32 는 f16 subnormal 을 보존 — 모든 GPU-lockstep/oracle harness 는 (0, 2⁻¹⁴) 결과 band 를 mask; bounded abs error < 2⁻¹⁴; 0e 재검토 가능. **이 기계는 f16 subnormal 을 ingest 하되 절대 produce 하지 않는다 (write-only range).**
+6. f16 subnormal **입력**은 widen 에서 honored (exact, no DAZ); bf16 subnormal 입력 → CVT widen 출력에서 signed zero (splice-vs-flush 모호성을 DAZ-consistent 로 해소).
+7. **DAZ 는 CVT-narrow/F2I 와 0x7C fp-dest 의 fp32 source operand 양쪽에 적용** (bit-identity 전제조건); sliver 0x007FFF80-0x007FFFFF 는 directed test.
+8. I2F int4/int8 exact; int64/int32 는 RNE, **pass-1-RTO / pass-2-RNE pin** (double rounding 금지).
+9. F2I: RNE 후 saturate; ±Inf → min/max; **NaN → 0** (deterministic DATA; knowledge-based CUDA cvt.sat 선례, label 명기).
+10. **Conversion-dtype 규칙 확장**: 0x77 의 dtype 0x4 는 accumulator-format integer endpoint (int32/int64 ↔ fp32) 를 지명하고 방향은 sub-op 이 결정 — v1.8.0b 에서 미결이던 결정의 해소; **dtype 0x5 는 decode_error 유지**.
+11. 16-bit fp scalar 결과는 [15:0] zero-extend (신규 scalar-in-64 row).
+12. **Bit-identity 조항**: 0x7C fp-dest narrow == 0x77 NARROW_FROM_F32, 전 2³² 입력, DAZ pre-stage 포함 (RTL 함수 1개 + golden 함수 1개, golden exhaustive-chunked + RTL directed).
+13. **Independent-oracle 규칙**: golden 의 narrow/widen/F2I 는 golden 이 단독 authority 가 되기 **전에** numpy float16 / ml_dtypes bfloat16 (boundary + sampled set, 명시적 FTZ/canonicalization post-pass) 와 cross-check — 공유 함수가 동일하게-틀리는 구멍의 방어.
+14. **Single-narrowing 규칙 불변**: narrowing 은 STORE_QUANT/CVT 에서만.
+
+##### 23.10.10(g) synth gate plan — pre-priced, 구현 이전 공표
+
+**Pre-priced gate 는 구현 전 COMMIT 0 에서 SET 된다 (locked constraint)**: amended cluster **COMB gate = 41.0%** (34,292 LUT4 / 83,640). 도출 근거를 함께 공표: 실측 base 30,968 (37.02%); 구 38% gate 아래 정확한 headroom = **815 LUT4** ("~840" 아님); nominal 추정 +0.9-1.9k → 38.10-39.30%; 최악 추정 × 프로젝트의 유일한 실측 overrun 계수 (Gate 3: 3,345/2,000 = **1.67×**) → 30,968 + 3,173 = 34,141 = **40.82% < 41.0%**. **gate 수치는 C3/C4 실측 후 하향으로만 개정 가능, 상향 절대 불가**; 실측이 41.0% 를 위협하면 3번째 ad-hoc amendment 대신 **pre-declared cut ladder 가 집행된다**:
+
+- **(cut 1)** int64 I2F 를 int32-only ingress 로 축소 (a_in 단독, single normalize pass, two-pass 기구 삭제 — norm 매크로는 int32 만 필요하므로 무영향)
+- **(cut 2)** 0x7C packer 를 register (+1 cy, fp-dest form 한정)
+- **(cut 3)** 0x73 을 0e 로 drop (norm 은 FSCALAR 2-dispatch 로 fallback — 정확성 보존)
+
+**Per-operator synth gate = merge blocker — merge 전 실행 필수 (§23.10.7 normative). v1.8.0b 의 gate-skip — 자신이 선언한 merge blocker 를 건너뛰고 merge 되어 5.88 MHz / 1,015-stage 결함을 5 commit 뒤 Gate 4 에서 발각시킨 사건 (§23.10.7 GATE 4 실측 참조) — 이 구속력 있는 교훈이다: gate log 가 commit 에 첨부되지 않은 RTL commit 은 merge 금지.**
+
+- **GATE C3 (FP_StepSeq — OPS_CVT+OPS_ACCEW 및 op_sel 3→4b 확장 후)**: standalone OOC synth. Pass: **신규 MULT18X18D 0 (hard)**; FF ≤ 900 line 재확인 (scalar 설계는 FF 소량; int64 ingress reg 계상); standalone Fmax 40 MHz 유지; 실측 LUT4 delta 를 +300-700 추정 대비 기록, **+1.2k 초과 시 cut ladder 로 hard escalation**. **추가 필수: 기존 6개 step 프로그램의 Gate-2 bit-exactness 증명 전건 재실행** (op_sel widening 이 모든 case tree 를 건드림).
+- **GATE C4 (0x7C packer — ×4 L-PE + ×1 MU instantiation)**: cluster-level synth. critical-path 검사는 **익명화된 whole-cluster logic-stage-count diff** (Gate 4 의 실제 기제 — endpoint 단위 "u_matmul_unit.output_payload ≤1 mux" 문구는 L-PE cone 을 놓치므로 사용 금지); dispatch cone 심화 zero; pre-approved contingency = registered packer.
+- **GATE C6 = Gate 5 (asm 재구축 후 full cluster OOC)**: COMB ≤ **41.0%** (또는 C3/C4 가 하향한 수치); MULT **정확히 134/156** (≤140 ceiling, hard); Fmax ≥ **10.51 MHz** (무회귀); stage-count diff clean; `lint_frag_total_m1_held.py` **무수정 통과** (테스트로 pin); cycle-maxima TB row 전부 green; **norm-row wall-clock 실측 기록** (기대 ~7-10 µs/row end-to-end, dispatch overhead ~6회 포함 — 정직한 수치이며 fp-cycles-only 4.8 µs 수치가 아님).
+
+전 주장 cluster-OOC 한정; pod 는 failed/scope 밖 유지.
+
+##### 23.10.10(h) residual risks (v1.8.0d)
+
+1. **추정 리스크 (문헌 추정 0-for-3 전적)**: 41.0% pre-priced gate 는 최고 추정에 1.67× 역사적 overrun 을 흡수 (40.82%) 하나 **여유는 ~150 LUT4 뿐**; C3 가 FP_StepSeq 에서 +1.2k 초과를 실측하면 pre-declared cut ladder (int64→int32-only I2F, registered packer, 0x73→0e) 가 집행된다 — **3번째 ad-hoc COMB amendment 는 본 spec 이 금지.**
+2. **headline MSE ≤1.05× dtype-floor 계약은 0e 로 공개적으로 이월**: 0d norm 출력은 Q8.8-application-limited (~2⁻⁹ scale-relative) 로 남는다. 6.25% floor 대비 ~30× 개선이며 roadmap 의 declared true-floor 항목을 kill 하지만 fp-grade 출력은 아니다 — "0d = norm rebuild" 로 읽는 누구든 이 COMMIT 0 re-scope 문구를 봐야 한다.
+3. **Cluster-visible scalar-fp serialization**: norm insert 는 ~6 fp dispatch (~50 fp cycles + dispatch overhead ~6회 = 10.51 MHz 에서 현실적 **7-10 µs/row**), 각각이 output_regs_free/pe_ready 를 cluster-wide 로 점유; v1.9 latency shuttle 까지 §23.10.9 risk 4 와 같은 수용 가격 클래스; weight folding 없는 per-channel gamma/beta 는 0e VFMA/DEQUANT 까지 scalar crawl.
+4. **op_sel 3→4-bit widening 은 FP_StepSeq 의 모든 (op_sel, fp_step) case 를 건드린다** — 이번 release 의 단일 최고 회귀위험 편집; Gate C3 의 기존 6개 프로그램 전건 재증명이 완화책이나, capture-mux 의 미묘한 회귀는 shipped 0c op 의 **silent wrong-data** 가 된다.
+5. **FTZ-at-f16-destination 은 영구적·문서화된 GPU divergence** ((0, 2⁻¹⁴) 결과 band; CUDA 는 f16 subnormal 보존): 기계는 f16 subnormal 을 ingest 하되 절대 produce 하지 않음; 미래의 모든 GPU-lockstep harness 는 band 를 mask 하거나 통째로 fail; 0e 재검토는 MSE gate 실패 시에만.
+6. **0x73 의 sub-op channel 은 alu_binary XOR invariant 에 의해 이 opcode 의 OPREF form 에서 영구 폐쇄**; 미래의 imm-B/bf16-immediate loosening 은 EHDecode per-opcode exemption 기구 (0e 결정) 필요 — 착지된 0d 실리콘은 fixed-function FMA 1개이며, norm flow 에서의 실용 가치는 OPREF {gamma,beta} constant staging 확인에 의존 (shipped fallback 은 two-FSCALAR baseline).
+7. **eps ≥ 2⁻¹³ assembler 제약은 흔한 eps=1e-5 default 를 거부**; int-scalar clamp fallback 은 매크로 길이를 늘리고 그 자체는 emitter-tested 일 뿐 hardware-assisted 가 아니다.
+8. **0e wide package (VFMA_ACC + DEQUANT + vector FMINMAX + 2→4-bit frag-FSM widening + buffer-then-drain) 는 미설계 하드웨어로 남으며 v1.7 의 "최고위험 공유 구조" label 을 계승**; 0d 는 선택지를 봉쇄하지 않으나 (MULT wall: ≤140 ceiling 아래 여유 6 이 sequential 설계를 어차피 강제) 리스크는 **이연이지 은퇴가 아니다**.
+9. **×4-replicated L-PE packer 는 이미 −3.1% Fmax 인 cluster 위 이번 release 의 유일한 신규 output-cone logic**; Gate C4 의 whole-cluster stage-count diff 가 유일한 검사이고, pre-approved contingency 는 fp-dest form +1 cycle 의 비용.
+10. **전 주장 cluster-OOC 한정**; pod scale 은 여전히 실패 (MULT 497>156, COMB 101%) 이며 0d 의 어떤 것도 이를 움직이지 않는다.
