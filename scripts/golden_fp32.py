@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: LGPL-2.1-or-later OR BSD-2-Clause OR Apache-2.0
 # SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
-"""v1.8.0c — bit-exact fp32 golden model (the single reference for all fp
-tests: directed vectors, random sweeps, release-gate exhaustive sweeps).
+"""v1.8.0c core + v1.8.0d format layer — bit-exact fp32 golden model (the
+single reference for all fp tests: directed vectors, random sweeps,
+release-gate exhaustive sweeps).
 
 TWO cleanly separated layers, all entry points take/return fp32 bit
 patterns (python ints):
@@ -41,6 +42,43 @@ is bit-predictive of RTL:
                correctly-rounded reference. FS_DIV is micro_div.
 INTERNAL micro-steps are exempt from DAZ/FTZ (pinned — otherwise
 Markstein residuals flush and FDIV misrounds near underflow).
+
+v1.8.0d FORMAT LAYER (COMMIT 1, golden-before-RTL) — reference semantics
+for 0x77 CVT, 0x73 ACC_ELEMWISE (OPREF form) and the 0x7C STORE_QUANT
+fp-dest packer, under the COMMIT-0 pins of the v1.8.0d spec:
+  ref_widen_f16 / ref_widen_bf16   exact injections; widen of ANY f16/bf16
+                                   NaN -> fp32 canonical qNaN 0x7FC00000
+                                   (sNaN quieted); f16 subnormal inputs
+                                   honored exactly (DAZ BYPASSED for
+                                   non-fp32 CVT sources, op-class-
+                                   conditional capture pin); bf16
+                                   subnormal inputs -> SIGNED ZERO at the
+                                   CVT output (DAZ-consistent pin).
+  ref_narrow_f32                   THE single f32->f16/bf16 narrowing
+                                   authority (0x7C == 0x77 bit-identity
+                                   clause true BY CONSTRUCTION): disjoint
+                                   round/sticky RNE, rebias, overflow ->
+                                   +/-Inf (never max-finite), FTZ-at-f16-
+                                   destination, per-format canonical qNaN
+                                   (f16 0x7E00 / bf16 0x7FC0, sign
+                                   dropped), DAZ pre-stage folded in
+                                   (pinned identically at both RTL sites).
+  ref_i2f / micro_i2f_acc          I2F int4/int8 exact; dtype-0x4 sext64
+                                   (int32/int64) single-RNE reference plus
+                                   the sequencer-faithful two-pass
+                                   pass-1-RTO / pass-2-RNE ingress model.
+  ref_f2i                          F2I RNE-then-saturate; NaN -> 0
+                                   (deterministic DATA, CUDA cvt.sat
+                                   precedent, knowledge-based label);
+                                   +/-Inf -> dtype min/max; results sext64.
+  cvt / micro_cvt                  0x77 entry point keyed by sub-op+dtype,
+                                   64-bit payload rows in/out (f16/bf16
+                                   {48'h0,h}; f32 {32'h0,f}; ints sext64).
+  accew / micro_accew              0x73 fused single-rounding fp32
+                                   a*B[63:32]+B[31:0] riding ref_fma /
+                                   micro_fscalar(FS_FMA) verbatim.
+  store_quant                      0x7C fp-dest {48'h0, narrow(f32)} —
+                                   a direct call into ref_narrow_f32.
 
 Pinned policy (spec v1.8.0c normative table):
   RNE only. DAZ: denormal OPERANDS flush to same-signed zero at load
@@ -502,3 +540,379 @@ def micro_fscalar(subop, a, b, c=0):
     """FS_ADD/SUB/MUL/FMA: the RTL wide path is exact-then-round-once, so
     the reference IS the micro model. FS_DIV: Newton+Markstein step sequence."""
     return _MICRO_FSCALAR[subop](a, b, c)
+
+
+# ===========================================================================
+# v1.8.0d FORMAT LAYER — 0x77 CVT / 0x73 ACC_ELEMWISE / 0x7C fp-dest packer
+# ===========================================================================
+
+F16_QNAN = 0x7E00      # per-format canonical qNaN = fp32 0x7FC00000 top 16b
+F16_PINF = 0x7C00
+BF16_QNAN = 0x7FC0     # = fp32 canonical qNaN top 16 bits (truncation-
+BF16_PINF = 0x7F80     #   consistent, COMMIT-0 pin 1)
+
+# dtype codes — single-source transcription of isa/wt64v1_isa.json
+# fp_block.dtype_codes. NOTE: the general table names 0x4 "f32"; AT 0x77 the
+# pinned conversion-dtype rule extension (COMMIT-0 pin 10) makes dtype 0x4
+# name the accumulator-format INTEGER endpoint (int32/int64 <-> fp32),
+# direction from the sub-op. dtype 0x5 (f64) stays decode_error.
+DT_INT4 = 0x0
+DT_INT8 = 0x1
+DT_F16 = 0x2
+DT_BF16 = 0x3
+DT_ACC_INT = 0x4
+
+# 0x77 CVT sub-op codes (imm16[7:4]; absent imm16 defaults to WIDEN_TO_F32).
+# COMMIT 2 emits these as the generated cvt_op_codes table (single-source in
+# isa/wt64v1_isa.json); until then this is the pinned transcription and the
+# freshness test of COMMIT 2 must assert equality against it.
+CVT_WIDEN_TO_F32 = 0x0
+CVT_NARROW_FROM_F32 = 0x1
+
+# Golden intermediate width for the two-pass dtype-0x4 I2F ingress (see
+# micro_i2f_acc): the a_in/c_in 32-bit FSCALAR-style split. Any RTL
+# intermediate width >= 26 with a sticky-preserving pass-1 jam is
+# bit-equivalent (both equal the single RNE from the exact integer).
+I2F_PASS1_BITS = 32
+
+F2I_BOUNDS = {
+    DT_INT4: (-8, 7),
+    DT_INT8: (-128, 127),
+    DT_ACC_INT: (-(1 << 31), (1 << 31) - 1),   # F2I dtype 0x4 = int32
+}
+
+_M64 = (1 << 64) - 1
+
+
+# ---------------------------------------------------------------------------
+# widen (CVT sub-op 0x0): exact injections, DAZ bypassed at operand capture
+# ---------------------------------------------------------------------------
+
+
+def ref_widen_f16(h):
+    """f16 -> f32 EXACT injection (CVT WIDEN, dtype 0x2). The FP_StepSeq
+    operand-load DAZ is BYPASSED for non-fp32 CVT sources (op-class-
+    conditional capture pin — the confirmed I2F(5)-flushes-to-zero bug
+    fix), so f16 subnormals are honored and inject exactly: every f16
+    value is fp32-representable (min subnormal 2^-24 >> fp32 min normal
+    2^-126). Widen of ANY NaN (sNaN quieted) -> fp32 canonical qNaN
+    0x7FC00000, sign dropped (COMMIT-0 pin 2)."""
+    h &= 0xFFFF
+    s = (h >> 15) & 1
+    e = (h >> 10) & 0x1F
+    m = h & 0x3FF
+    if e == 0x1F:
+        return F32_QNAN if m else _inf(s)
+    if e == 0:
+        if m == 0:
+            return _zero(s)
+        bl = m.bit_length()                  # value = m * 2^-24 exactly;
+        return (s << 31) | ((bl + 102) << 23) | ((m << (24 - bl)) - (1 << 23))
+    return (s << 31) | ((e + 112) << 23) | (m << 13)     # rebias 15 -> 127
+
+
+def ref_widen_bf16(b):
+    """bf16 -> f32 (CVT WIDEN, dtype 0x3): exact bit-splice for
+    normals/zeros/Inf. bf16-subnormal input -> SIGNED ZERO at the CVT
+    output (COMMIT-0 pin 6: the splice would land in fp32-subnormal
+    space, and the machine is DAZ-consistent about fp32 subnormals —
+    resolves the splice-vs-flush ambiguity; 254 such patterns). Any NaN
+    -> fp32 canonical qNaN 0x7FC00000."""
+    b &= 0xFFFF
+    s = (b >> 15) & 1
+    e = (b >> 7) & 0xFF
+    m = b & 0x7F
+    if e == 0xFF:
+        return F32_QNAN if m else _inf(s)
+    if e == 0:
+        return _zero(s)                      # true zero and the 254 subnormals
+    return b << 16
+
+
+# ---------------------------------------------------------------------------
+# narrow (CVT sub-op 0x1 dtype 0x2/0x3 == 0x7C fp-dest): the single authority
+# ---------------------------------------------------------------------------
+
+
+def ref_narrow_f32(bits, dtype):
+    """THE single f32 -> f16/bf16 narrowing authority. The 0x7C == 0x77
+    bit-identity clause (COMMIT-0 pin 12) is true BY CONSTRUCTION: both
+    golden entry points (cvt NARROW_FROM_F32 and store_quant fp-dest)
+    call this one function, mirroring the one shared Verilog function in
+    include/fp_narrow_f32.vh. The DAZ pre-stage is pinned IDENTICALLY at
+    both RTL capture sites (COMMIT-0 pin 7) and is therefore folded in
+    here (fp32 denormal source -> same-signed zero; the visible
+    discriminator is the 0x007FFF80-0x007FFFFF sliver, which would
+    otherwise RNE up to bf16 min-normal 0x0080).
+
+    RNE via the DISJOINT round/sticky formulation (COMMIT-0 pin 3): for
+    the dropped field D with round bit R = MSB(D), sticky S = OR(D minus
+    R); increment iff R & (S | kept-LSB) — never "sticky of all dropped
+    bits" (the confirmed off-by-one).
+
+      f16  R = source bit 12, S = OR(bits[11:0]), kept-LSB = bit 13;
+           rebias 127 -> 15; overflow (unbounded-RNE exponent > 15, i.e.
+           |x| >= 65520) -> +/-Inf, never max-finite (pin 4);
+           FTZ-at-destination (pin 5): |RN_unbounded| < 2^-14 -> signed
+           zero AFTER the unbounded-exponent round (round-up-to-min-
+           normal survivors at binade -15 carry to -14 and live).
+           DOCUMENTED GPU DIVERGENCE: CUDA cvt.rn.f16.f32 preserves f16
+           subnormals — oracle harnesses mask the (0, 2^-14) result band.
+      bf16 R = bit 15, S = OR(bits[14:0]), kept-LSB = bit 16; the
+           increment ripples mantissa -> exponent so max-finite rounds
+           to Inf natively; no bf16-subnormal result is reachable from a
+           DAZ-flushed source (fp32 and bf16 share the exponent range),
+           so bf16 needs no destination flush.
+
+    NaN of any payload -> DESTINATION canonical qNaN, sign dropped
+    (f16 0x7E00 / bf16 0x7FC0) — a NaN can never degrade to Inf (pin 1).
+    Returns the 16-bit pattern (caller zero-extends per the result row)."""
+    bits &= 0xFFFFFFFF
+    s = (bits >> 31) & 1
+    e_f = (bits >> 23) & 0xFF
+    m_f = bits & 0x7FFFFF
+    if dtype == DT_F16:
+        if e_f == 0xFF:
+            return F16_QNAN if m_f else (s << 15) | F16_PINF
+        if e_f == 0:
+            return s << 15                   # DAZ pre-stage (+ true zero)
+        m24 = (1 << 23) | m_f
+        r_bit = (m24 >> 12) & 1              # R = MSB of the 13 dropped bits
+        s_bit = 1 if (m24 & 0xFFF) else 0    # S = OR of dropped minus R
+        l_bit = (m24 >> 13) & 1              # kept-LSB
+        m11 = (m24 >> 13) + (r_bit & (s_bit | l_bit))
+        e = e_f - 127
+        if m11 == (1 << 11):                 # significand carry
+            m11 = 1 << 10
+            e += 1
+        if e > 15:
+            return (s << 15) | F16_PINF      # overflow -> Inf (pin 4)
+        if e < -14:
+            return s << 15                   # FTZ-at-destination (pin 5)
+        return (s << 15) | ((e + 15) << 10) | (m11 - (1 << 10))
+    if dtype == DT_BF16:
+        if e_f == 0xFF:
+            return BF16_QNAN if m_f else (s << 15) | BF16_PINF
+        if e_f == 0:
+            return s << 15                   # DAZ pre-stage (+ true zero)
+        r_bit = (bits >> 15) & 1
+        s_bit = 1 if (bits & 0x7FFF) else 0
+        l_bit = (bits >> 16) & 1
+        # increment ripples through mantissa into the exponent field:
+        # 0x7F7F.. -> 0x7F80 = Inf; NaN unreachable (carry clears mantissa)
+        return ((bits >> 16) + (r_bit & (s_bit | l_bit))) & 0xFFFF
+    raise ValueError("narrow dtype must be 0x2/0x3, got 0x%X" % dtype)
+
+
+# ---------------------------------------------------------------------------
+# I2F (CVT sub-op 0x0 dtype 0x0/0x1/0x4)
+# ---------------------------------------------------------------------------
+
+
+def _i2f_operand(payload, dtype):
+    """Signed source extraction from the scalar-in-64 payload_a row."""
+    if dtype == DT_INT4:
+        v = payload & 0xF
+        return v - 16 if v & 0x8 else v
+    if dtype == DT_INT8:
+        v = payload & 0xFF
+        return v - 256 if v & 0x80 else v
+    if dtype == DT_ACC_INT:
+        v = payload & _M64
+        return v - (1 << 64) if v >> 63 else v
+    raise ValueError("I2F dtype must be 0x0/0x1/0x4, got 0x%X" % dtype)
+
+
+def ref_i2f(payload, dtype):
+    """I2F reference: signed int -> f32, ONE correctly-rounded RNE from
+    the exact integer. int4/int8 always exact (|v| <= 128 < 2^24); dtype
+    0x4 takes the sext64 payload and covers int32 (exact below 2^24, RNE
+    above) and int64. Overflow impossible: |v| <= 2^63 <= 2^127 (pinned).
+    DAZ bypassed by construction — the source is not fp32-format."""
+    v = _i2f_operand(payload, dtype)
+    if v == 0:
+        return 0                             # +0
+    s = 1 if v < 0 else 0
+    a = -v if s else v
+    bl = a.bit_length()
+    e = bl - 1
+    if bl <= 24:
+        m24 = a << (24 - bl)                 # exact
+    else:
+        m24 = _rne_shift(a, bl - 24)
+        if m24 == (1 << 24):
+            m24 = 1 << 23
+            e += 1
+    return (s << 31) | ((e + 127) << 23) | (m24 - (1 << 23))
+
+
+def micro_i2f_acc(payload):
+    """SEQUENCER-FAITHFUL dtype-0x4 I2F ingress: payload[63:32] -> c_in,
+    payload[31:0] -> a_in (FSCALAR-style split), then the PINNED two-pass
+    normalize — pass 1 RTO (round-to-odd / sticky-preserving jam, the
+    rto_jam path) into the 32-bit intermediate significand, pass 2 final
+    RNE to 24 bits. No double rounding, by the round-to-odd theorem.
+
+    WHY NOT RNE-THEN-RNE (the defect this pin exists to exclude):
+    a first-pass RNE can round a value that lies strictly BELOW the
+    24-bit rounding midpoint UP onto the midpoint exactly; pass 2 then
+    resolves a manufactured tie and rounds up a second time — 1 ulp high
+    vs the correct single rounding. Concrete counterexample (a directed
+    discriminator in fp_release_sweep.py):
+        v = 2^40 + 2^17 + 0xFFFF        (41 bits; pass 1 drops 9 bits)
+      true 24-bit RNE:  dropped field bits[16:0] = 0x0FFFF < 0x10000
+                        (midpoint) -> round DOWN -> m24 = 0x800001.
+      RNE-32 pass 1:    dropped bits[8:0] = 0x1FF > 0x100 -> round UP ->
+                        the intermediate's low 8 bits become 0x80 ==
+                        exactly the 24-bit midpoint.
+      RNE-24 pass 2:    tie; kept-LSB (bit 17 of v) = 1 (odd) -> round
+                        UP -> m24 = 0x800002 (WRONG, +1 ulp).
+      RTO pass 1:       truncate bits[8:0], jam their OR into the
+                        intermediate LSB -> low 8 bits stay 0x7F < 0x80
+                        -> pass 2 rounds DOWN -> m24 = 0x800001 (right).
+    RTO into >= 24+2 bits preserves the below/at/above-midpoint class of
+    every 24-bit rounding decision (the jam bit sits strictly below the
+    pass-2 round bit and never carries), so RNE_24(RTO_32(v)) ==
+    RNE_24(v) for ALL v — asserted bit-exactly against ref_i2f over the
+    directed discriminator set and a 2^20 random sample in
+    fp_release_sweep.py. Any RTL intermediate width >= 26 with the same
+    sticky-preserving jam is bit-equivalent."""
+    v = _i2f_operand(payload, DT_ACC_INT)
+    if v == 0:
+        return 0
+    s = 1 if v < 0 else 0
+    a = -v if s else v
+    bl = a.bit_length()
+    e = bl - 1
+    if bl > I2F_PASS1_BITS:                  # pass 1: RTO jam (never carries)
+        inter, bl_i = _rto(a, bl - I2F_PASS1_BITS), I2F_PASS1_BITS
+    else:
+        inter, bl_i = a, bl                  # exact, pass 1 is a no-op
+    if bl_i <= 24:
+        m24 = inter << (24 - bl_i)           # pass 2 exact
+    else:
+        m24 = _rne_shift(inter, bl_i - 24)   # pass 2: final RNE
+        if m24 == (1 << 24):
+            m24 = 1 << 23
+            e += 1
+    return (s << 31) | ((e + 127) << 23) | (m24 - (1 << 23))
+
+
+# ---------------------------------------------------------------------------
+# F2I (CVT sub-op 0x1 dtype 0x0/0x1/0x4)
+# ---------------------------------------------------------------------------
+
+
+def ref_f2i(bits, dtype):
+    """F2I: fp32 -> signed int, RNE then saturate (COMMIT-0 pin 9). The
+    fp32 SOURCE is DAZ-flushed (pin 7 — same load rule as CVT narrow).
+    NaN -> 0 (deterministic DATA, never error_flag; knowledge-based CUDA
+    cvt.sat precedent, labeled). +/-Inf -> dtype min/max. Clamp bounds:
+    int4 [-8,7], int8 [-128,127], dtype 0x4 int32 [-2^31, 2^31-1].
+    Returns the sext64 result payload row."""
+    lo, hi = F2I_BOUNDS[dtype]
+    s, k, v = decode(bits & 0xFFFFFFFF)      # DAZ at operand load (pinned)
+    if k == "nan":
+        return 0
+    if k == "zero":
+        return 0
+    if k == "inf":
+        n = lo if s else hi
+    else:
+        a = -v if s else v
+        n = _rne_rat(a.numerator, a.denominator)
+        n = -n if s else n
+        n = lo if n < lo else (hi if n > hi else n)
+    return n & _M64
+
+
+# ---------------------------------------------------------------------------
+# 0x77 CVT entry points (64-bit payload rows in/out)
+# ---------------------------------------------------------------------------
+
+
+def cvt(subop, dtype, payload):
+    """0x77 CVT REFERENCE entry point, keyed by sub-op (imm16[7:4],
+    absent-imm16 default = WIDEN_TO_F32) + dtype. Takes the 64-bit
+    payload_a row, returns the 64-bit result payload row: f16/bf16
+    {48'h0, h} zero-extend; f32 {32'h0, f}; ints sext64. Sub-op/dtype
+    combinations outside the six pinned directions are lower_required at
+    launch (capability absence — reserved-field rung, 0x72 semantics) and
+    never reach the datapath; modeled here as ValueError."""
+    payload &= _M64
+    if subop == CVT_WIDEN_TO_F32:
+        if dtype == DT_F16:
+            return ref_widen_f16(payload & 0xFFFF)
+        if dtype == DT_BF16:
+            return ref_widen_bf16(payload & 0xFFFF)
+        if dtype in (DT_INT4, DT_INT8, DT_ACC_INT):
+            return ref_i2f(payload, dtype)
+        raise ValueError("lower_required: CVT WIDEN dtype 0x%X" % dtype)
+    if subop == CVT_NARROW_FROM_F32:
+        if dtype in (DT_F16, DT_BF16):
+            return ref_narrow_f32(payload & 0xFFFFFFFF, dtype)
+        if dtype in (DT_INT4, DT_INT8, DT_ACC_INT):
+            return ref_f2i(payload & 0xFFFFFFFF, dtype)
+        raise ValueError("lower_required: CVT NARROW dtype 0x%X" % dtype)
+    raise ValueError("lower_required: CVT sub-op 0x%X" % subop)
+
+
+ref_cvt = cvt   # file-plan name; one object, no second implementation
+
+
+def micro_cvt(subop, dtype, payload):
+    """SEQUENCER-FAITHFUL 0x77: every conversion except the dtype-0x4 I2F
+    is a single exact pass through the step program (K_INT/K_ADD only,
+    zero multiplier passes), so the reference IS the micro model — same
+    convention as FS_ADD/SUB/MUL/FMA. The int64/int32 ingress is the only
+    CVT with a distinct step model (micro_i2f_acc two-pass)."""
+    if subop == CVT_WIDEN_TO_F32 and dtype == DT_ACC_INT:
+        return micro_i2f_acc(payload & _M64)
+    return cvt(subop, dtype, payload)
+
+
+# ---------------------------------------------------------------------------
+# 0x73 ACC_ELEMWISE (OPREF form only)
+# ---------------------------------------------------------------------------
+
+
+def accew(a, b_payload):
+    """0x73 ACC_ELEMWISE reference: fused SINGLE-ROUNDING fp32
+    a * B[63:32] + B[31:0] with B via OPREF (any imm present ->
+    lower_required, capability absence — not modeled here). Rides
+    ref_fma verbatim: the golden bit-match target is
+    micro_fscalar(FS_FMA) == ref_fma (NOT a separate FMA model)."""
+    b_payload &= _M64
+    return ref_fma(a, (b_payload >> 32) & 0xFFFFFFFF, b_payload & 0xFFFFFFFF)
+
+
+ref_acc_elemwise = accew    # file-plan name
+
+
+def micro_accew(a, b_payload):
+    """Sequencer-faithful 0x73: the FS_FMA-shaped step program — the RTL
+    wide datapath holds the exact product+addend and rounds ONCE, so the
+    reference is the micro model (micro_fscalar(FS_FMA) verbatim)."""
+    b_payload &= _M64
+    return micro_fscalar(FSCALAR_OP_CODE["FS_FMA"], a,
+                         (b_payload >> 32) & 0xFFFFFFFF,
+                         b_payload & 0xFFFFFFFF)
+
+
+# ---------------------------------------------------------------------------
+# 0x7C STORE_QUANT fp-dest packer
+# ---------------------------------------------------------------------------
+
+
+def store_quant(bits, dtype):
+    """0x7C STORE_QUANT fp-dest (dtype 0x2/0x3): {48'h0, narrow(f32)}.
+    The bit-identity clause (0x7C fp-dest == 0x77 NARROW_FROM_F32 for all
+    2^32 inputs INCLUDING the DAZ pre-stage) is true BY CONSTRUCTION:
+    this is a direct call into ref_narrow_f32, the same single authority
+    the CVT narrow path uses — one golden function, mirroring the one
+    shared Verilog function (include/fp_narrow_f32.vh) instantiated at
+    both RTL sites. The int4/int8 arms are the shipped v1.8.0b integer
+    requant path, bit-unchanged and out of the fp format layer's scope."""
+    if dtype not in (DT_F16, DT_BF16):
+        raise ValueError("store_quant fp-dest dtype must be 0x2/0x3")
+    return ref_narrow_f32(bits & 0xFFFFFFFF, dtype)
