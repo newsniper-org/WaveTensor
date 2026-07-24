@@ -29,6 +29,7 @@
 - v1.6.7 (2026-07-16): **SIMD_MUL_WIDE_Q8_8_SCALAR (0x69)** — B lane 추가 widening (Q4.4 → Q8.8, LSB 1/16 → 1/256). RMSNORM/LAYERNORM scale 곱셈이 0x67 대신 0x69 사용 → B-side quantization 을 rsqrt LUT 의 ~6.25% floor 아래로 완전히 밀어냄 (precision-zero-loss-research workflow whro79brj 결과). §22.14e 참조.
 - v1.6.5d (2026-07-16): **FRAG_INVAL (0x6A)** — SDK 명시적 캐시 슬롯 회수 (LRU 자연 회수 대기 없이). Design workflow 가 "0x68 mirror" 원안의 PE_Core.v 배치 버그(공유 wide-emit 그룹에 넣으면 FRAG_EMIT_HI 가 다음 cycle 에 가비지 2번째 fragment 를 무조건 방출)를 발견 — standalone case arm (0x66 shape) 으로 수정. **Tag-stability 리터럴 유지보수** 동시 landing: `_lower_layernorm()` 실함수를 직접 호출해 live 값을 비교하는 cross-file consistency test 로 OP_MEAN↔CACHE_LOAD_WIDE dim_sizes 리터럴 desync 를 자동 검출. §22.17 참조. `make_layernorm_abort_cleanup()` SDK contract 를 같은 날 amendment 로 추가 (§22.17.1a).
 - v1.7 (2026-07-16): **SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN (0x6B) + SIMD_REQUANTIZE_Q4_4_TO_INT4 (0x6C)** — PE_Core.v 의 공유 fragment-drain FSM 을 1-bit(frag_state)→2-bit(frag_idx up-counter)로 확장, 4-fragment(256-bit) WIDEN 출력 지원. 세션 최고 위험도 RTL 변경(9개+ opcode 가 공유하는 FSM)이었으나 전 계층 무손상 확인. **정밀도 주장 정정**: 원래 로드맵의 "output-side rounding 완전 제거" 주장은 틀림 — WIDEN 자신은 rounding-free 이나 REQUANTIZE(기존 int4 소비자 호환 필수)가 round-half-up+saturate 를 다시 수행해 실제로는 parity 복원일 뿐. §22.18 참조.
+- v1.7.1 (2026-07-24): **Pre-stable dead-opcode removal** — 0x66 SCALAR_RSQRT_APPROX / 0x67 SIMD_MUL_WIDE_Q4_4_SCALAR / 0x6B WIDEN / 0x6C REQUANTIZE 제거 (reserved · decode_error 복귀) + einsum reduce 미사용 9개 변형 un-whitelist (SIG_4D3D family 전체 + SIG_5D4D 의 SUM/MAX/L2SQ/MIN — MEAN 만 잔존). 전부 audit 로 asm/SDK 소비자 0 확정. Truth-table `domain_version` 1→2 로 의도적 recapture. 근거 정책은 §12a (pre-stable 호환성 정책, 2026-07-24 사용자 지시 성문화), 상세는 §24 참조.
 
 참조 구현 마이그레이션: **진행 중 (2026-07-12 개시)** — 참조 보드가 XCAU25P → LFE5U-85F → Avant G70 순으로 이동, 아래 §"참조 구현 마이그레이션 노트" 참조.
 
@@ -38,7 +39,7 @@
 
 확장은 v1 사양에 conformance를 가지는 위에서 추가된다 — 첫 번째 정의된 확장은 `WT64v1-C` (crypto + bit-permute, 별도 메모 참조).
 
-**중요**: ISA 자체 (opcode / EH / tag / payload 정의) 는 확정 상태에서 **변경 없음**. 참조 구현 사양의 리소스 / timing / power 값만 새 벤더 실측 데이터로 순차 갱신된다.
+**중요**: 보드 마이그레이션 자체는 ISA (opcode / EH / tag / payload 정의) 를 **변경하지 않는다** — 참조 구현 사양의 리소스 / timing / power 값만 새 벤더 실측 데이터로 순차 갱신된다. 단, ISA 의 변경 가능성 일반에 대해서는 §12a pre-stable 호환성 정책이 우선한다 (stable release 전 dead-opcode 제거는 정규 개발 행위 — 첫 사례 §24).
 
 ## 1. 개요
 
@@ -119,6 +120,14 @@
 > ISA 를 바꾸려면 JSON 을 편집하고 재생성해서 함께 commit 한다 (§23.9).
 > 알려진 asm-vs-RTL 비대칭 2건은 emitter-faithful 하게 보존되어 JSON _doc
 > 에 문서화됨 — 통일은 명시적 v1.8.0b 결정 사항.
+
+**Reserved 복귀 (2026-07-24, §12a 정책 첫 적용 — §24)**: 다음 4개 opcode 는 pre-stable dead-opcode 제거로 **reserved (decode_error)** 로 복귀했다 (JSON 에서 행 삭제 후 재생성):
+
+- **0x66 SCALAR_RSQRT_APPROX** — fp path 의 **FRSQRT32 (0x75, ≤2 ulp)** 가 supersede. v1.8.0d norm 재구축(0d) 이 rsqrt 를 fp32 insert 로 대체하며 은퇴 (rsqrt LUT 6.25% floor kill 의 본체).
+- **0x67 SIMD_MUL_WIDE_Q4_4_SCALAR** — v1.6.7 부터 **0x69 (Q8.8)** 가 supersede. 매크로가 0x67→0x69 로 이행 완료한 이후 소비자 0.
+- **0x6B SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN / 0x6C SIMD_REQUANTIZE_Q4_4_TO_INT4** — Q4.4-int8 WIDEN/REQUANTIZE 쌍. Native 소비자가 끝내 착지하지 않았고, **v1.8 fp32+CVT 경로** 가 supersede.
+
+0x68 CACHE_LOAD_WIDE, **0x69** (live norm tail), 0x6A FRAG_INVAL 은 유지.
 
 ## 4. PE 내부 hetero 구성 (참조 구현)
 
@@ -235,6 +244,20 @@ WT64v1 lock 시점 회귀 결과 (185 tests):
 - 새 opcode 추가는 5장 reserved 영역에서 시작.
 - TRNG/HIU sub-spec 변경은 v1.x patch 가능.
 - Conformance test suite 는 v1.0 시점 185 tests + v1.1 amendment 후 신규 회귀 (SPLAT + BMM + TRACE-IIJ 각 5-10 tests).
+
+## 12a. Pre-stable 호환성 정책 (2026-07-24 사용자 지시, 본 amendment 에서 성문화)
+
+**Freeze 보장은 STABLE RELEASE 시점부터 발효된다.** 구체적으로 다음 세 보장 — (1) **frozen first-class 유지** (한번 landing 한 opcode 는 영구 유지), (2) **truth-table keep-forever** (사전-이관 frozen truth table 행의 영구 보존), (3) **snapshot 등가성** (`_PREMIGRATION_LEGAL_SNAPSHOT` 류의 "kept forever" 스냅샷 계약) — 은 stable release 선언 이전에는 발효된 계약이 아니라 **regression-safety 를 위한 개발 편의 장치**다.
+
+Pre-stable 기간 (현재) 의 규칙:
+
+1. **Dead-opcode 제거는 정규 개발 행위다.** Audit 로 asm/SDK 소비자 0 을 확정한 opcode/signature 는 제거할 수 있다.
+2. **Truth-table 의 의도적 recapture 는 정규 개발 행위다.** 단 반드시 (a) **spec-first** — 본 문서 amendment 가 선행하고, (b) `domain_version` 을 monotonic 하게 bump 하며, (c) `WT_CAPTURE_TRUTH_TABLE=1` 재캡처를 리뷰된 의도적 행위로 수행한다. 암묵적·무기록 recapture 는 여전히 금지 — 이 정책이 완화하는 것은 "불변성" 이지 "감사 가능성" 이 아니다.
+3. **모든 제거는 spec-first 순서를 따른다**: 본 문서 amendment (changelog + 제거 섹션) → `isa/wt64v1_isa.json` 편집 → 생성물 재생성 → RTL/테스트 갱신 → truth-table 재캡처.
+4. 제거된 opcode 인코딩은 **reserved (decode_error)** 로 복귀하며, 후속 버전이 재사용할 수 있다 (§12 "새 opcode 추가는 reserved 영역에서 시작" 과 정합).
+5. Superseded 된 spec 절은 삭제하지 않고 **superseded history** 로 보존한다 (배너 표기).
+
+Stable release 선언 시점부터는 위 세 보장이 전부 발효되어, 이후 opcode 제거는 **WT64v2** (incompatible) 분류로만 가능하다. 첫 적용 사례: §24 (2026-07-24 dead-opcode removal, truth-table domain_version 2).
 
 ## 13. TBD (v1.0 시점 예약, v1.1 에서 부분 해결)
 
@@ -1197,6 +1220,8 @@ v1.5.4 + v1.5.5 amendment 는 **결정된 상태 (2026-07-15)**. 사용자 지�
 
 ### 22.1 Available primitive basis (v1.6.1a + v1.6.1b landed)
 
+> **[2026-07-24 부분 supersede — §24]** 아래 basis 는 v1.6.1 시점 기록. 이후 pre-stable dead-opcode 제거로 **0x66 (→ fp32 FRSQRT32 경로)** 이 제거되었고, **5D→4D family 는 MEAN (op_marker 0x5) 만** hardware whitelist 에 잔존한다 (SUM/MAX/L2SQ 및 v1.6.2 backfill MIN 은 un-whitelist). 본 절과 §22.3-22.6 recipes 의 해당 사용례는 superseded history 로 보존.
+
 **Group A — 12 reduction einsum primitives** (op_marker in HI.O_hi[3:0]):
 
 *5D→scalar family* (A_lo=0x4321, A_hi=0x0005, O_lo/hi=0):
@@ -1381,6 +1406,8 @@ Then per inference:
 
 #### 22.11.1 Primitive mnemonics 등록 (0x60-0x66)
 
+> **[2026-07-24 부분 supersede — §24]** `SCALAR_RSQRT` (0x66) mnemonic 및 legality 행은 dead-opcode 제거로 삭제됨. 0x60-0x65 는 유지.
+
 이전에는 opcode 만 존재. v1.6.4 에서 assembler-side mnemonic 추가:
 ```python
 'SIMD_ADD_WIDE_SCALAR': 0x60, 'SIMD_SUB_WIDE_SCALAR': 0x61,
@@ -1496,6 +1523,8 @@ Ultracode 세션에서 병행 landing. Design workflow (3 research + 3 verify, ~
 
 #### 22.13.1 v1.6.2 — 4D→3D reduction family
 
+> **[superseded 2026-07-24 — §24]** SIG_4D3D family 전체 (5개 marker) 는 audit 결과 asm 소비자 0 으로 확인되어 un-whitelist 됨 — 해당 signature 는 다시 "HW-direct EINSUM 미지원 패턴" 으로 `lower_required` (§8). SIG_MIN_5D_TO_4D backfill 도 함께 제거. 본 절은 superseded history 로 보존 (A_hi=0x0004 discriminator 교훈 포함).
+
 **목적**: InstanceNorm / GroupNorm 이 요구하는 다축 reduction chain 의 마지막 단계. 5D→4D reduction 이후 남은 4D 텐서를 3D 로 축약.
 
 **Primitives (5개)**:
@@ -1608,6 +1637,8 @@ v1.6.1c amendment 는 **결정된 상태 (2026-07-15)**. 사용자 지시 (ultra
 Ultracode 세션 병행 landing. Design workflow (task wj6ewzd50, 2 research + 2 verify, ~253K tokens) 로 사전 검증.
 
 #### 22.14a v1.6.5a — SIMD_MUL_WIDE_Q4_4_SCALAR (0x67) 정밀도 회복
+
+> **[superseded 2026-07-24 — §24]** 0x67 은 v1.6.7 의 0x69 (Q8.8) 에 superseded 된 뒤 소비자 0 → dead-opcode 제거 (reserved 복귀). 본 절은 superseded history 로 보존.
 
 **목적**: 기존 0x62 SIMD_MUL_WIDE_SCALAR 는 B lane 을 `dec_eff_b_value[3:0]` (int4) 만 사용 — Q16.16 rsqrt 결과가 int4 로 truncated → ~12-bit 손실. 0x67 은 B lane 을 `dec_eff_b_value[7:0]` (Q4.4 signed) 로 widening → ~4-bit 정밀도 회복.
 
@@ -1866,6 +1897,8 @@ def make_layernorm_abort_cleanup(inst: Instruction) -> Instruction:
 
 ### 22.18 v1.7 landing (2026-07-16) — SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN (0x6B) + SIMD_REQUANTIZE_Q4_4_TO_INT4 (0x6C)
 
+> **[superseded 2026-07-24 — §24]** 0x6B/0x6C 는 native 소비자가 끝내 착지하지 않은 채 v1.8 fp32+CVT 경로에 superseded → dead-opcode 제거 (reserved 복귀). 단, 본 절이 도입한 frag FSM 확장 (frag_idx 2-bit up-counter, FRAG_EMIT_2/3) 은 **v1.8.0e wide package 예약** 으로 존치 — >2-fragment writer 만 일시 부재. 본 절은 superseded history 로 보존.
+
 Ultracode 세션, FRAG_INVAL SDK wiring 과 병행 진행. Design workflow (`v1-7-widen-requantize-design`, task `wgcq5jc68`/`wf_960cb526-029`, 16 agents, 985K tokens) 로 설계 — 사용자 세션에서 PE_Core.v 현재 상태(FSM/gate/frag_hi_pending 정확한 line number)를 직접 재확인 후 구현.
 
 #### 22.18.0 ⚠️ 정밀도 주장 정정 (기존 로드맵 메모리 오류 수정)
@@ -1997,7 +2030,7 @@ Phase 1 인벤토리로 확정한 현행 사실:
 - 스칼라 정수: 지금처럼 mod-2^64 exact.
 - 벡터 정수: int4/int8 dot 이 int32 로 exact 누산 → 스칼라 64-bit ADD 체인과 동급의 신뢰성 (둘 다 "wide 로 들고 있다가 프로그래머가 의도적으로 좁힘").
 - FP: 스칼라/벡터가 **같은 물리 FP-UNIT datapath** 를 통과 → 스칼라 fp32 op 와 벡터 fp32 op 의 lane 하나가 구조적으로 bitwise identical.
-- 남는 비대칭은 문서화된 3개 carve-out: (a) 정수 exact vs FP correctly-rounded (모든 CPU ISA 와 동일한, 유일하게 정합적인 비대칭), (b) bitwise/shift 는 dtype-transparent raw bits, (c) 기존 truncating int4 벡터 opcode (0x60-0x6C 산술) 는 호환용으로 실행 가능하되 **"compute op" 에서 "storage-format op" 로 재분류** — frozen, 권장 매크로에서 제외, silent loss 명시.
+- 남는 비대칭은 문서화된 3개 carve-out: (a) 정수 exact vs FP correctly-rounded (모든 CPU ISA 와 동일한, 유일하게 정합적인 비대칭), (b) bitwise/shift 는 dtype-transparent raw bits, (c) 기존 truncating int4 벡터 opcode (잔존분: 0x60-0x65 산술 + 0x69) 는 호환용으로 실행 가능하되 **"compute op" 에서 "storage-format op" 로 재분류** — 권장 매크로에서 제외, silent loss 명시. *(2026-07-24 개정: 원문의 "0x60-0x6C 산술 frozen" 은 §12a pre-stable 정책으로 대체 — stable release 전 dead-opcode 제거는 정규 행위이며, 실제로 0x66/0x67/0x6B/0x6C 는 제거됨, §24.)*
 
 ### 23.4 "정밀도 무변동" 의 정직한 정의 (사용자 질문 1 직답) + acceptance criteria
 
@@ -2022,7 +2055,7 @@ Phase 1 인벤토리로 확정한 현행 사실:
 - mode byte (field-structured): [3:0] dtype (0x0 int4 … 0x4 f32, 0x5 f64-reserved→decode_error, 0x6 Q4.4, 0x7 Q8.8), [5:4] accumulate policy (0 same-width — bf16 은 ILLEGAL, 1 wide), [7:6] rounding (0 RNE, 1 stochastic, 2 RTZ).
 - opcodes: 0x70 VFMA_ACC, 0x71 VDOT_ACC, 0x72 ACC_REDUCE{SUM,MEAN,L2SQ,MAX}, 0x73 ACC_ELEMWISE, 0x74 FSCALAR, 0x75 FRSQRT32, 0x76 FEXP2_32, 0x77 CVT/I2F/F2I, 0x78 DEQUANT, 0x79 FMAX/FMIN (IEEE minNum/maxNum — signed-int compare tree 재사용 금지, 3안 공통 미처리 hazard 였음), 0x7C STORE_QUANT, 0x7D ACC_SPILL/FILL, 0x7E FP_ACC_ZERO/FP_STATUS, 0x7F reserved.
 - legality ROM (op-class × dtype × acc × rnd) — **ROM/spec 표/golden model/lint 를 단일 기계가독 JSON 소스에서 생성** (PE_Core.v:144-145 형 doc/RTL drift 의 구조적 해독제; 이 repo 최초의 codegen 도입 지점). ~~YAML~~→**JSON 으로 확정 (2026-07-16 v1.8.0a 설계 workflow)**: PyYAML 은 이 repo 의 최초 서드파티 non-cocotb 의존성이 되는 반면 json 은 stdlib — 조사 원문의 "YAML" 은 형식 예시였고 요구사항의 본질("단일 기계가독 소스")은 JSON 이 더 엄격히 충족. 사용자 승인된 치환으로 기록.
-- 기존 0x67/0x69/0x6B/0x6C 는 first-class 유지하되 **frozen** — alias-collapse 주장은 반증됨 (혼합 A/B/out-format 이라 단일 dtype nibble 로 인코딩 불가).
+- alias-collapse 주장 (기존 wide-mul 계열을 0x70-block 의 dtype nibble 로 흡수) 은 여전히 **반증됨** — 혼합 A/B/out-format 이라 단일 dtype nibble 로 인코딩 불가하므로 collapse 는 수행하지 않는다. 다만 원문의 "기존 0x67/0x69/0x6B/0x6C first-class 유지하되 frozen" 은 §12a pre-stable 정책으로 **개정** (2026-07-24): 소비자 0 인 **0x67/0x6B/0x6C 는 dead-opcode 제거로 reserved 복귀** (§24), **0x69 는 live norm tail 로 first-class 유지**.
 - FP 결과를 0x68 로 캐싱하는 recipe 는 PRECISION EH 로 precision byte 를 pin 해야 함 (dim=0x55 pin 과 동일 패턴) — 아니면 결정론적 CAM miss.
 
 #### 23.6a v1.8.0a normative mode-byte legality 표 (2026-07-16 저작 — COMMIT 0)
@@ -2031,7 +2064,7 @@ Phase 1 인벤토리로 확정한 현행 사실:
 
 **정책 (restrictive-first + monotonic loosening)**: 아래 표에 명시되지 않은 모든 (op, dtype, acc, rnd) 조합은 **ILLEGAL (decode_error)**. 이후 버전에서 합법화(loosening)는 non-breaking — 어떤 코드도 거부되던 인코딩에 의존할 수 없기 때문. 역방향(합법→불법)은 breaking 이므로 금지. 불확실하면 ILLEGAL 로 남긴다.
 
-**mode byte 필드**: dtype = eff_precision[3:0], acc = eff_precision[5:4], rnd = eff_precision[7:6]. 이 의미론은 **opcode 0x70-0x7F 안에서만** 활성 (in_fp_block = cb_opcode[7:4]==4'h7 로 self-gate) — 0x00-0x6C 에서 precision byte 는 지금처럼 inert metadata.
+**mode byte 필드**: dtype = eff_precision[3:0], acc = eff_precision[5:4], rnd = eff_precision[7:6]. 이 의미론은 **opcode 0x70-0x7F 안에서만** 활성 (in_fp_block = cb_opcode[7:4]==4'h7 로 self-gate) — 0x70 미만의 모든 opcode 에서 precision byte 는 지금처럼 inert metadata. *(원문 "0x00-0x6C" 는 2026-07-24 제거 (§24) 이후 range 끝점이 무의미해져 표현만 갱신 — 의미론 무변경.)*
 
 **전역 불변식 (모든 op 공통, generator 와 무관한 hand-pinned 테스트 4종의 대상)**:
 1. dtype 0x5 (f64) — **Lf 확장 예약**, 모든 op/acc/rnd 에서 ILLEGAL
@@ -2072,7 +2105,7 @@ Phase 1 인벤토리로 확정한 현행 사실:
 **Scalar-in-64 payload 포맷 표 (normative)**:
 | 관례 | 사용처 |
 |---|---|
-| {32'h0, x} zero-extend | legacy einsum L1/L2SQ, SCALAR_RSQRT (변경 없음) |
+| {32'h0, x} zero-extend | legacy einsum L1/L2SQ (변경 없음; SCALAR_RSQRT 0x66 은 2026-07-24 제거 — §24) |
 | **sext64(int32)** | 0x72 ACC_REDUCE, 0x7C STORE_QUANT 결과 |
 | full 64-bit r | 0x71 VDOT_ACC (r = sext64(dot)+c mod 2^64) |
 
@@ -2308,7 +2341,7 @@ Phase 1 인벤토리로 확정한 현행 사실:
 2. **0x73 ACC_ELEMWISE, OPREF form 전용** — FS_FMA-shape step 프로그램에 탑승하는 fused single-rounding fp32 **a·B[63:32] + B[31:0]** (신규 op class **OPS_ACCEW**); **어떤 imm 이든 존재 (dec_eff_opref_kind==0) → lower_required** (capability absence — 초안의 sub-op 표는 alu_binary_xor_err 하에서 구현 불가로 **삭제**).
 3. **0x7C STORE_QUANT fp-dest** — PE_Core.v:3165-3169 else-arm 의 pure execute-side stub-body replacement, L-PE hosted combinational (×4 instance + MU), CVT 와 narrow 함수 1개 공유, **양쪽 site 에 DAZ-at-source pin**; dtype 0x2/0x3 에서 imm16[5:0] reserved-zero → lower_required; ROM row 이미 legal, decode 불변; **twin classifier 0x7C 무변경 (전 dtype L-PE)**.
 4. **golden_fp32.py 확장 (COMMIT 1, 어떤 RTL 보다 선행)** — f16/bf16 codec, ref_cvt/ref_i2f/ref_f2i/ref_narrow_f32/ref_acc_elemwise, sequencer-faithful step layer, named sweep plan + independent-oracle cross-check.
-5. **asm/wavetensor_asm.py hybrid norm 재구축** — fp32 scalar insert 가 0x66 SCALAR_RSQRT 를 대체; int wide tail (0x69 또는 0x6B/0x6C) 불변; **eps ≥ 2⁻¹³ assembler guard** + int-scalar clamp fallback; FSCALAR B-constant producer dispatch 명시 계상.
+5. **asm/wavetensor_asm.py hybrid norm 재구축** — fp32 scalar insert 가 0x66 SCALAR_RSQRT 를 대체 (0x66 자체는 2026-07-24 dead-opcode 제거로 reserved 복귀, §24); int wide tail (**0x69** — 0x6B/0x6C 는 소비자 없이 제거됨, §24) 불변; **eps ≥ 2⁻¹³ assembler guard** + int-scalar clamp fallback; FSCALAR B-constant producer dispatch 명시 계상.
 6. **Pre-priced amended COMB gate 41.0% 를 COMMIT 0 에서 — 구현 이전에 — 공표** (§23.10.10(g)); per-operator synth gate = merge blocker (§23.10.7 normative).
 
 **Deferral — 전건, 각각 destination 명시 (normative)**:
@@ -2429,3 +2462,43 @@ Phase 1 인벤토리로 확정한 현행 사실:
 8. **0e wide package (VFMA_ACC + DEQUANT + vector FMINMAX + 2→4-bit frag-FSM widening + buffer-then-drain) 는 미설계 하드웨어로 남으며 v1.7 의 "최고위험 공유 구조" label 을 계승**; 0d 는 선택지를 봉쇄하지 않으나 (MULT wall: ≤140 ceiling 아래 여유 6 이 sequential 설계를 어차피 강제) 리스크는 **이연이지 은퇴가 아니다**.
 9. **×4-replicated L-PE packer 는 이미 −3.1% Fmax 인 cluster 위 이번 release 의 유일한 신규 output-cone logic**; Gate C4 의 whole-cluster stage-count diff 가 유일한 검사이고, pre-approved contingency 는 fp-dest form +1 cycle 의 비용.
 10. **전 주장 cluster-OOC 한정**; pod scale 은 여전히 실패 (MULT 497>156, COMB 101%) 이며 0d 의 어떤 것도 이를 움직이지 않는다.
+
+## 24. Pre-stable dead-opcode removal — v1.7.1 amendment (2026-07-24, truth-table domain_version 2)
+
+**§12a 정책의 첫 적용.** Audit (2026-07-24) 로 아래 전 항목의 **asm/SDK 소비자 0** 을 확정한 뒤 제거한다 (wavetensor-sdk 저장소 grep 포함 — zero match 확인, `asm/wavetensor_asm.py` 는 제거 이후 removal-set emission 을 일절 포함하지 않으며 bit-equivalence reference 지위 유지). 기록 순서는 spec-first (§12a 규칙 3): **본 절 → `isa/wt64v1_isa.json` 행 삭제 → 생성물 재생성 (`scripts/gen_isa_tables.py`) → RTL/테스트 갱신 → truth-table 의도적 재캡처**. §3 의 opcode 표는 생성물이므로 직접 편집하지 않는다.
+
+### 24.1 제거 opcode (4개 → reserved, decode_error)
+
+| opcode | mnemonic | 은퇴 사유 / 행선지 |
+|---|---|---|
+| 0x66 | SCALAR_RSQRT_APPROX | fp path 의 **FRSQRT32 (0x75, ≤2 ulp)** 가 supersede — v1.8.0d norm 재구축이 rsqrt 를 fp32 insert (CVT→FSCALAR→FRSQRT32→F2I) 로 대체하며 은퇴 (rsqrt LUT 6.25% floor kill 의 본체). |
+| 0x67 | SIMD_MUL_WIDE_Q4_4_SCALAR | v1.6.7 부터 **0x69 (Q8.8)** 가 supersede — RMSNORM/LAYERNORM 매크로가 0x67→0x69 이행을 완료한 뒤 소비자 0. |
+| 0x6B | SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN | Q4.4-int8 WIDEN/REQUANTIZE 쌍 — native 소비자가 끝내 착지하지 않음. **v1.8 fp32+CVT 경로** 가 supersede. |
+| 0x6C | SIMD_REQUANTIZE_Q4_4_TO_INT4 | 동상 (0x6B 과 쌍으로 도입·쌍으로 은퇴). |
+
+**유지**: 0x68 CACHE_LOAD_WIDE, **0x69 SIMD_MUL_WIDE_Q8_8_SCALAR** (live norm tail — 유일하게 emit 되는 wide-mul), 0x6A FRAG_INVAL. 제거된 인코딩의 semantics 는 여타 미배정 opcode 와 동일한 **decode_error** (opcode_supported whitelist 탈락).
+
+### 24.2 einsum signature whitelist 축소 (reduce 10개 변형 중 9개 제거)
+
+Audit 사실: **10개 reduce 변형 중 9개가 asm 소비자 0** 이었고, 전부 단일 사이클 dispatch 의 **Fmax-critical cone** (§23.8 실측: cluster critical path 116 logic stage / 92.13 ns) 위에 앉아 있었다.
+
+- **SIG_4D3D family (§22.13.1) 전체 un-whitelist** — SUM/MAX/MIN/MEAN/L2SQ 5개 marker 모두 (SIG_4D3D_FAMILY_LO/HI_BASE dispatch 제거).
+- **SIG_5D4D family 는 op_marker 0x5 MEAN 만 잔존** — 유일한 live 소비자 (rmsnorm/layernorm 의 mean step lowering). SUM/MAX/L2SQ + v1.6.2 backfill MIN 제거.
+- **5D→scalar ijklm family 는 무변경** — SIG_L2SQ_IJKLM 등은 별개 함수이며 live.
+- **`reduce_op_codes` / op_marker 인코딩 공간은 무변경** — marker 는 live ijklm family 와 공유되므로 JSON 의 해당 키는 건드리지 않는다 (`einsum_signatures` 는 reserved stub — 역시 무변경).
+
+제거된 signature 의 dispatch semantics: opcode 제거 (decode_error) 와 달리 기존 §8 분류 그대로 **"HW-direct EINSUM 미지원 패턴" → `lower_required`**.
+
+### 24.3 Truth-table governance — domain_version 2 선언
+
+- `isa/truth_table_premigration.json` 의 **`domain_version` 1 → 2** (post-cleanup baseline).
+- 0x66/0x67/0x6B/0x6C 로 key 되는 행들은 outcome class 가 supported → **error-probe (decode_error)** 로 전이.
+- Recapture 는 `WT_CAPTURE_TRUTH_TABLE=1` 로 수행하는 **의도적·리뷰된 행위** 이며, domain_version bump 없는 recapture 는 금지 (§12a 규칙 2). Keep-forever 보장은 stable release 부터 발효.
+- `_PREMIGRATION_LEGAL_SNAPSHOT` (asm 테스트의 "kept forever" 스냅샷) 도 동일 정책 하에 편집 — pre-stable 에서는 스냅샷 등가성 계약 미발효, 편집은 본 절이 spec-first 기록.
+- EHDecode 의 "0x00-0x6C inert" 류 range-endpoint 문구는 truth-table differential 을 참조하므로 recapture 와 함께 갱신 (§23.6a 갱신 완료).
+
+### 24.4 잔존 구조물 (제거하지 않는 것)
+
+- **frag FSM 확장분** (frag_idx 2-bit up-counter, FRAG_EMIT_2/3, frag_pending[0:3], frag_total_m1_held) — **v1.8.0e wide package 예약** 으로 존치. 0x6B 제거로 >2-fragment writer 가 일시 부재하나 (writer-dead), §23.10.10(a) deferral 표의 coordinated work package 가 재사용한다. `lint_frag_total_m1_held.py` co-location 불변식은 잔존 2-fragment site 에 대해 계속 성립.
+- OP_SUM/OP_MAX/OP_MIN/OP_L2SQ/OP_MEAN localparam — live 5D→scalar ijklm arms 가 사용, 유지.
+- Superseded history 로 보존되는 절: §22.11.1 (0x66 mnemonic), §22.13.1 (4D3D family), §22.14a (0x67), §22.18 (0x6B/0x6C), §22.1/§22.3-22.6 recipes 의 0x66/0x67/5D4D 사용례 — 전부 배너 표기 완료, 삭제하지 않음 (§12a 규칙 5).

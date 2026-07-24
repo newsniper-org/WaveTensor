@@ -110,6 +110,25 @@ v1.7 은 (parity 수준으로) output-side 를 추가 개선하나 완전 제거
   reduction 루프는 반드시 tree 로 쓸 것, (2) merge blocker 로 선언한
   gate 는 task 로 만들어 commit 전 완료 확인할 것.**
 
+## v1.8.0c/0d 완결 상태 (2026-07-24)
+
+- **v1.8.0c landed**: MU-hosted fp32 step sequencer (FSCALAR 5 sub-op /
+  FRSQRT32 0.617ulp / FEXP2_32 0.569ulp), Gate 1-4 전부 실측 통과
+  (amended: Gate3 LUT 3500, Gate4 COMB 38%). 용어: "스텝 시퀀서"
+  ([[fp32-step-sequencer-terminology]]).
+- **v1.8.0d landed**: 0x77 CVT 6종 (f16/bf16 widen/narrow, 2-pass I2F,
+  F2I NaN→0), 0x73 ACC_ELEMWISE OPREF 전용, 0x7C fp-dest
+  (fp_narrow_f32.vh 단일 함수 공유 = bit-identity 구조 성립),
+  **norm 매크로 하이브리드 재구축 — rsqrt LUT ≤6.25% floor 가 실전
+  RMSNORM/LAYERNORM 흐름에서 제거됨** (이 roadmap 의 종착).
+  C6: COMB 39.48%/41%, Fmax 10.23-10.36 (0d 로직 경로 부재 증명).
+- **0e 패키지 (미착수)**: frag FSM 2→4-bit 확폭 + buffer-then-drain +
+  VFMA_ACC/DEQUANT/FMINMAX-vector 3 소비자 단일 조율 landing.
+- **v1.9 (미착수)**: dispatch 파이프라이닝 — einsum wide cone 이 여전히
+  critical path (97ns), Fmax 10.3 의 근본 해소는 여기 소관.
+- 장기 활용처: .claude-memos/future_applications.md (PLL-DSP,
+  WT64v1CLf GPGPU — 트리거 조건 충족 전 착수 금지).
+
 ## Cross-repo 파급
 
 v1.6.7 landing 시 5곳 동시 update: WaveTensor RTL/asm/spec, wavetensor-sdk 
