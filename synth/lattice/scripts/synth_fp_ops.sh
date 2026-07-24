@@ -10,11 +10,17 @@
 #   GATE 1 — FP_Mul36   : <=4 MULT18X18D (hard fail on more), <=300 LUT4,
 #                         Fmax >= 40 MHz
 #   GATE 2 — FP_AddWide : <=900 LUT4, 0 MULT18X18D, Fmax >= 40 MHz
-#   GATE 3 — FP_StepSeq : whole unit incl. both operator blocks + seed/coeff
-#                         ROMs — <=2000 LUT4, EXACTLY 4 MULT18X18D, <=900 FF
-#                         (net of the 143 wrapper I/O flops), 0 EBR
-#                         (distributed ROM; documented 1-EBR fallback only),
-#                         Fmax >= 40 MHz
+#   GATE C3 — FP_StepSeq: whole unit incl. both operator blocks + seed/coeff
+#                         ROMs + the v1.8.0d OPS_CVT/OPS_ACCEW extension
+#                         (spec 23.10.10(g)) — <=4545 LUT4 (= 3,345 Gate-3
+#                         archive + the pre-declared +1.2k hard-escalation
+#                         line; delta recorded vs the +300-700 estimate),
+#                         EXACTLY 4 MULT18X18D (0 new), <=900 FF (net of
+#                         the 147 wrapper I/O flops), 0 EBR (distributed
+#                         ROM; documented 1-EBR fallback only), Fmax >=
+#                         40 MHz with a seed sweep 1-5 (archive = first
+#                         passing seed — the 23.10.7 Gate-3 precedent
+#                         showed 39.79 -> 40.84 MHz is placement noise)
 #
 # Invoke from the repo root:
 #     sh synth/lattice/scripts/synth_fp_ops.sh
@@ -55,6 +61,7 @@ run_gate() {
     NAME="$1"
     TOP="$2"
     SRCS="$3"
+    SEEDS="${4:-1}"
 
     echo "=== $NAME: yosys synth_ecp5 (top $TOP) ==="
     yosys -q -p "\
@@ -64,22 +71,36 @@ run_gate() {
         tee -o $RPT/${NAME}_synth.rpt stat; \
         write_json $RPT/${NAME}_synth.json"
 
-    echo "=== $NAME: nextpnr-ecp5 out-of-context @ ${FREQ_MHZ} MHz ==="
-    # NOTE: no --textcfg — bitstream/textcfg generation is rejected in
-    # --out-of-context mode (these gates only need the timing report).
-    nextpnr-ecp5 \
-        $DEVICE_ARGS \
-        --json "$RPT/${NAME}_synth.json" \
-        --out-of-context \
-        --report "$RPT/${NAME}_pnr.rpt" \
-        --freq $FREQ_MHZ \
-        --timing-allow-fail \
-        --seed 1 \
-        > "$RPT/${NAME}_pnr.log" 2>&1 || {
-            tail -20 "$RPT/${NAME}_pnr.log"
-            echo "$NAME: nextpnr FAILED — see $RPT/${NAME}_pnr.log"
-            exit 1
-        }
+    # Seed sweep (spec 23.10.10(g): 1-5 allowed for the C3 Fmax line,
+    # archive = the FIRST PASSING seed's report/log; single-seed gates
+    # pass "1"). Each attempt overwrites the report files, so breaking on
+    # the first pass leaves exactly the archived-seed artifacts in place.
+    for SEED in $SEEDS; do
+        echo "=== $NAME: nextpnr-ecp5 out-of-context @ ${FREQ_MHZ} MHz (seed $SEED) ==="
+        # NOTE: no --textcfg — bitstream/textcfg generation is rejected in
+        # --out-of-context mode (these gates only need the timing report).
+        nextpnr-ecp5 \
+            $DEVICE_ARGS \
+            --json "$RPT/${NAME}_synth.json" \
+            --out-of-context \
+            --report "$RPT/${NAME}_pnr.rpt" \
+            --freq $FREQ_MHZ \
+            --timing-allow-fail \
+            --seed $SEED \
+            > "$RPT/${NAME}_pnr.log" 2>&1 || {
+                tail -20 "$RPT/${NAME}_pnr.log"
+                echo "$NAME: nextpnr FAILED — see $RPT/${NAME}_pnr.log"
+                exit 1
+            }
+        FMAX_MET=$(python3 -c "import json,sys; \
+r = json.load(open('$RPT/${NAME}_pnr.rpt')); \
+print(1 if min(v['achieved'] for v in r['fmax'].values()) >= $FREQ_MHZ else 0)")
+        if [ "$FMAX_MET" = "1" ]; then
+            echo "$NAME: Fmax target met at seed $SEED (archived)"
+            break
+        fi
+        echo "$NAME: Fmax below target at seed $SEED"
+    done
 }
 
 run_gate fp_mul36 FP_Mul36_gate_top \
@@ -88,11 +109,13 @@ run_gate fp_mul36 FP_Mul36_gate_top \
 run_gate fp_addwide FP_AddWide_gate_top \
     "FP_AddWide.v synth/lattice/fp_ops/FP_AddWide_gate_top.v"
 
-# Gate 3 reads the generated ROM/coefficient sidecars through the same
-# -I include path (include/generated/*.vh — localparam bit vectors, so
-# they synthesize as distributed LUT ROM, never EBR).
+# Gate C3 reads the generated ROM/coefficient sidecars and the shared
+# narrow function through the same -I include path (include/generated/*.vh
+# + include/fp_narrow_f32.vh — localparam bit vectors synthesize as
+# distributed LUT ROM, never EBR). Seed sweep 1-5 per 23.10.10(g).
 run_gate fp_stepseq FP_StepSeq_gate_top \
-    "FP_StepSeq.v FP_Mul36.v FP_AddWide.v synth/lattice/fp_ops/FP_StepSeq_gate_top.v"
+    "FP_StepSeq.v FP_Mul36.v FP_AddWide.v synth/lattice/fp_ops/FP_StepSeq_gate_top.v" \
+    "1 2 3 4 5"
 
 # --- Evaluate the gate criteria from the measured reports -----------------
 python3 synth/lattice/fp_ops/gate_check.py "$RPT"

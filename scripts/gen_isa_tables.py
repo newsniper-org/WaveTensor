@@ -76,7 +76,7 @@ class SchemaError(Exception):
 _TOP_KEYS = {"_doc", "_schema_version", "eh_codes", "eh_name_to_code",
              "flag_bits", "all_data_ehs", "hl_only_mnemonics",
              "reduce_op_codes", "acc_reduce_op_codes", "fscalar_op_codes",
-             "opcodes", "fp_block",
+             "cvt_op_codes", "opcodes", "fp_block",
              "einsum_signatures", "eh_body_layouts", "dim_literals"}
 _OPCODE_KEYS = {"mnemonic", "code", "desc", "notes", "asm_legality",
                 "rtl_legality", "rtl_alu_binary", "stub_v18"}
@@ -122,12 +122,13 @@ def validate(src):
             if bad:
                 raise SchemaError(f"{where}.asm_legality.{k}: unknown EH {sorted(bad)}")
 
-    fsc = src["fscalar_op_codes"]
-    if len(set(fsc.values())) != len(fsc):
-        raise SchemaError("fscalar_op_codes: duplicate sub-op code")
-    for name, code in fsc.items():
-        if not isinstance(code, int) or not (0 <= code <= 0xF):
-            raise SchemaError(f"fscalar_op_codes.{name}: bad nibble {code!r}")
+    for tbl in ("fscalar_op_codes", "cvt_op_codes"):
+        sub = src[tbl]
+        if len(set(sub.values())) != len(sub):
+            raise SchemaError(f"{tbl}: duplicate sub-op code")
+        for name, code in sub.items():
+            if not isinstance(code, int) or not (0 <= code <= 0xF):
+                raise SchemaError(f"{tbl}.{name}: bad nibble {code!r}")
 
     fp = src["fp_block"]
     _reject_unknown(fp, _FP_BLOCK_KEYS, "fp_block")
@@ -275,6 +276,14 @@ def emit_pytables(src, src_sha):
         L.append(f"    {name!r}: {code},")
     L.append("}")
     L.append("")
+    L.append("# v1.8.0d — 0x77 CVT sub-op nibble (imm16[7:4]), spec section")
+    L.append("# 23.10.10(b). Absent imm16 = WIDEN_TO_F32; imm16[3:0]/[15:8]")
+    L.append("# reserved-zero and sub-op > NARROW_FROM_F32 -> lower_required.")
+    L.append("CVT_OP_CODE = {")
+    for name, code in src["cvt_op_codes"].items():
+        L.append(f"    {name!r}: {code},")
+    L.append("}")
+    L.append("")
     L.append("ALL_DATA_EHS = " + _set_literal(src["all_data_ehs"]))
     L.append("")
     L.append("# int keys, mutable-set values — exact schema of the historical")
@@ -353,6 +362,11 @@ def emit_subops(src, src_sha):
     lines.append("// single-source fscalar_op_codes table (names already carry FS_).")
     for name, code in src["fscalar_op_codes"].items():
         lines.append(f"    localparam [3:0] {name:<6} = 4'h{code:X};")
+    lines.append("// v1.8.0d — CVT (0x77) sub-op nibble (imm16[7:4]), from the")
+    lines.append("// single-source cvt_op_codes table (spec section 23.10.10(b);")
+    lines.append("// absent imm16 = WIDEN_TO_F32).")
+    for name, code in src["cvt_op_codes"].items():
+        lines.append(f"    localparam [3:0] CVT_{name:<15} = 4'h{code:X};")
     return "\n".join(lines) + "\n"
 
 

@@ -87,6 +87,16 @@ module EHDecode #(
     output reg [ADDR_WIDTH-1:0]  dec_eff_b_value,
     output reg [15:0]            dec_eff_imm16,
     output reg [7:0]             dec_eff_dim_sizes,
+    // v1.8.0d §23.10.10(c) — encoding {presence, src_kind[2:0]}: bit 3 =
+    // "an OPREF EH was present" (acc_any_opref), bits [2:0] = src_kind
+    // (0 direct payload_b / 1 NoC bank / 2 TRNG; 3+ is decode_error via
+    // opref_kind_unsupported, so the 3-bit truncation is lossless).
+    // Rationale: without the presence bit, an OPREF EH with src_kind 0
+    // (the COMMON direct-payload_b form) is indistinguishable from the
+    // no-OPREF/imm form at the execute stage — both would read 4'h0.
+    // The 0x73 ACC_ELEMWISE OPREF-only launch rung keys on bit 3.
+    // (Cluster's NoC/TRNG B-side routing uses the SEPARATE combinational
+    // opref_src_kind_out tap below, which keeps the raw kind encoding.)
     output reg [3:0]             dec_eff_opref_kind,
     output reg [31:0]            dec_eff_mem_offset,
     output reg [47:0]            dec_eff_subscript,
@@ -596,7 +606,9 @@ module EHDecode #(
                 dec_eff_b_value           <= eff_b_value;
                 dec_eff_imm16             <= acc_imm16;
                 dec_eff_dim_sizes         <= eff_dim_sizes;
-                dec_eff_opref_kind        <= acc_opref_src_kind;
+                // v1.8.0d §23.10.10(c) — presence bit 3 (see port comment)
+                dec_eff_opref_kind        <= {acc_any_opref,
+                                              acc_opref_src_kind[2:0]};
                 dec_eff_mem_offset           <= acc_mem_offset;
                 dec_eff_subscript            <= acc_subscript[47:0];
                 dec_eff_subscript_hi         <= acc_subscript[95:48];

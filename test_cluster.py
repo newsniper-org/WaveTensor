@@ -1443,17 +1443,21 @@ def _f2b(x):
     return int.from_bytes(_struct.pack(">f", float(x)), "big")
 
 
-def _fp_cluster_instr(op, subop=None):
-    from test_isa_decoder import eh_precision as _ehp
-    ehs = [eh_port(input_port_mask=0x01, output_port_id=0), _ehp(_FP_MODE, 0)]
+def _fp_cluster_instr(op, subop=None, mode=None, opref=False):
+    from test_isa_decoder import eh_precision as _ehp, eh_opref as _eho
+    ehs = [eh_port(input_port_mask=0x01, output_port_id=0),
+           _ehp(_FP_MODE if mode is None else mode, 0)]
     if subop is not None:
         ehs.append(eh_imm16((subop & 0xF) << 4))
+    if opref:
+        ehs.append(_eho())   # src_kind 0 — direct payload_b (0x73 B channel)
     return encode_instr(op, *ehs, flags=(1 << 2))   # F_PRECISION_OVR
 
 
 async def _fire_fp_cluster(dut, op, payload_a, payload_b=0, b_valid=0,
-                           subop=None):
-    await _fire(dut, _fp_cluster_instr(op, subop), _tag(port_context_id=0),
+                           subop=None, mode=None, opref=False):
+    await _fire(dut, _fp_cluster_instr(op, subop, mode, opref),
+                _tag(port_context_id=0),
                 payload_a=payload_a, payload_b=payload_b,
                 payload_b_valid=b_valid)
     return {'out': int(dut.ext_out_valid.value),
@@ -1497,6 +1501,71 @@ async def test_fp_mu_routing_end_to_end(dut):
     assert (r['err'], r['lwr'], r['out']) == (0, 0, 1), f"0x76: {r}"
     assert r['payload'] == exp, f"0x76: {r['payload']:016x} != {exp:08x}"
     assert r['opcode'] == 0x76, f"0x76: opcode_out {r['opcode']:#x}"
+
+    # v1.8.0d — 0x77 CVT (I2F dtype 0x4: also crosses the DAZ-bypass pin
+    # end-to-end — a flushing capture would emit 0.0f, not 5.0f)
+    _CVT = _G.CVT_OP_CODE
+    exp = _G.micro_cvt(_CVT['WIDEN_TO_F32'], _G.DT_ACC_INT, 5)
+    r = await _fire_fp_cluster(dut, 0x77, 5,
+                               subop=_CVT['WIDEN_TO_F32'], mode=0x14)
+    assert (r['err'], r['lwr'], r['out']) == (0, 0, 1), f"0x77: {r}"
+    assert r['payload'] == exp, f"0x77: {r['payload']:016x} != {exp:08x}"
+    assert r['opcode'] == 0x77, f"0x77: opcode_out {r['opcode']:#x}"
+
+    # v1.8.0d — 0x77 CVT narrow f32->f16 (mode dtype nibble 0x2 rides the
+    # same MU route: the classifier term is OPCODE-ONLY, no dtype leg)
+    a = _f2b(1.5)
+    exp = _G.micro_cvt(_CVT['NARROW_FROM_F32'], _G.DT_F16, a)
+    r = await _fire_fp_cluster(dut, 0x77, a,
+                               subop=_CVT['NARROW_FROM_F32'], mode=0x12)
+    assert (r['err'], r['lwr'], r['out']) == (0, 0, 1), f"0x77 narrow: {r}"
+    assert r['payload'] == exp, \
+        f"0x77 narrow: {r['payload']:016x} != {exp:04x}"
+
+    # v1.8.0d — 0x73 ACC_ELEMWISE, OPREF form (src_kind 0 direct payload_b:
+    # B = {gamma, beta} on the payload_b port)
+    a, g, b = _f2b(3.0), _f2b(2.0), _f2b(-1.5)
+    bpack = (g << 32) | b
+    exp = _G.micro_accew(a, bpack)
+    r = await _fire_fp_cluster(dut, 0x73, a, payload_b=bpack, b_valid=1,
+                               opref=True)
+    assert (r['err'], r['lwr'], r['out']) == (0, 0, 1), f"0x73: {r}"
+    assert r['payload'] == exp == _f2b(4.5), \
+        f"0x73: {r['payload']:016x} != {exp:08x}"
+    assert r['opcode'] == 0x73, f"0x73: opcode_out {r['opcode']:#x}"
+
+
+@cocotb.test()
+async def test_twin_classifier_lockstep_static(dut):
+    """v1.8.0d §23.10.10(c) twin-classifier lockstep pin, STATIC side
+    (the e2e side is test_fp_mu_routing_end_to_end above): the opcode
+    literal sets inside Cluster.v `is_mul_op` and PE_Core.v
+    `dec_is_mul_op` are extracted from the RTL TEXT and must be EQUAL —
+    a one-sided edit is the silent permanent lower_required dead-end the
+    v1.8.0b design workflow verified. Also pins 0x73/0x77 IN and 0x7C
+    OUT (the no-dtype-conditionality clause of §23.10.10(d))."""
+    import re
+
+    def _classifier_set(path, anchor):
+        text = open(path).read()
+        idx = text.index(anchor)
+        # the classifier is one continuous wire assignment ending at ';'
+        expr = text[idx:text.index(';', idx)]
+        return set(int(m, 16) for m in re.findall(r"8'h([0-9A-Fa-f]{2})",
+                                                  expr))
+    here = os.path.dirname(os.path.abspath(__file__))
+    clu = _classifier_set(os.path.join(here, 'Cluster.v'),
+                          'wire is_mul_op')
+    pec = _classifier_set(os.path.join(here, 'PE_Core.v'),
+                          'wire dec_is_mul_op')
+    assert clu == pec, \
+        f"twin classifiers diverged: Cluster-only " \
+        f"{sorted(hex(x) for x in clu - pec)}, PE_Core-only " \
+        f"{sorted(hex(x) for x in pec - clu)}"
+    assert {0x73, 0x77} <= clu, "0x73/0x77 missing from the twin classifiers"
+    assert 0x7C not in clu, \
+        "0x7C entered is_mul_op — violates the §23.10.10(d) " \
+        "twin-classifier-untouched clause (L-PE for ALL dtypes)"
 
 
 @cocotb.test()

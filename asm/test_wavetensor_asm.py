@@ -861,22 +861,130 @@ class TestNormMacros(unittest.TestCase):
             wta.assemble(src)
         self.assertIn('k1', str(ctx.exception))
 
+    # v1.8.0d §23.10.10 — the hybrid norm rebuild's expected opcode chains.
+    # The fp32 scalar insert (replacing SCALAR_RSQRT 0x66): CVT(I2F) ->
+    # ADD(1/N producer) -> FSCALAR(FS_MUL) -> [ADD(eps producer) ->
+    # FSCALAR(FS_ADD)] -> FRSQRT32 -> ADD(256 producer) -> FSCALAR(FS_MUL)
+    # -> CVT(F2I). eps=0 selects the int-scalar clamp fallback (OR 0x15
+    # before the CVT, fp-eps pair dropped).
+    _INSERT_FP = [0x77, 0x10, 0x74, 0x10, 0x74, 0x75, 0x10, 0x74, 0x77]
+    _INSERT_CLAMP = [0x15, 0x77, 0x10, 0x74, 0x75, 0x10, 0x74, 0x77]
+
     def test_rmsnorm_expansion(self):
-        """RMSNORM → 4-primitive chain: EINSUM(L2SQ)+SCALAR_RSQRT+MUL_WIDE_SCALAR+MUL_WIDE_VEC.
-        v1.6.7: scale mul now uses Q8.8 (0x69), not Q4.4 (0x67)."""
+        """RMSNORM → v1.8.0d hybrid chain: EINSUM(L2SQ) + the fp32 scalar
+        insert (SCALAR_RSQRT 0x66 is RETIRED from this recipe) + the
+        bit-unchanged int wide tail (Q8.8 0x69 + MUL_WIDE_VEC). The three
+        FSCALAR B-constant producer dispatches (ADD .imm64) are
+        explicitly emitted and counted here."""
         src = (
             ".default_port mask=0x01 out=0\n"
             "RMSNORM opb .gamma 0xDEAD_BEEF_CAFE_BABE\n"
         )
         insts = wta.assemble(src)
         opcodes = [(w >> 24) & 0xFF for w in insts]
-        self.assertEqual(opcodes, [0x32, 0x66, 0x69, 0x65],
-                         f"expected [EINSUM=0x32, SCALAR_RSQRT=0x66, MUL_WIDE_Q8_8_SCALAR=0x69, MUL_WIDE_VEC=0x65], got {[hex(o) for o in opcodes]}")
+        expected = [0x32] + self._INSERT_FP + [0x69, 0x65]
+        self.assertEqual(opcodes, expected,
+                         f"expected {[hex(o) for o in expected]}, got "
+                         f"{[hex(o) for o in opcodes]}")
+        self.assertNotIn(0x66, opcodes, "SCALAR_RSQRT must be retired")
+        self.assertEqual(opcodes.count(0x10), 3,
+                         "3 B-constant producer dispatches on the fp path")
+
+    def test_rmsnorm_eps_zero_clamp_fallback(self):
+        """RMSNORM .eps 0 → the int-scalar clamp fallback: OR .imm64 1
+        pins the L2SQ sum away from 0 (no Inf out of FRSQRT32) and the
+        fp-eps producer/FS_ADD pair is dropped (2 producers remain)."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "RMSNORM opb .gamma 0xDEAD_BEEF_CAFE_BABE .eps 0\n"
+        )
+        insts = wta.assemble(src)
+        opcodes = [(w >> 24) & 0xFF for w in insts]
+        expected = [0x32] + self._INSERT_CLAMP + [0x69, 0x65]
+        self.assertEqual(opcodes, expected,
+                         f"expected {[hex(o) for o in expected]}, got "
+                         f"{[hex(o) for o in opcodes]}")
+        self.assertEqual(opcodes.count(0x10), 2,
+                         "2 B-constant producers on the clamp path")
+
+    def test_rmsnorm_eps_guard_rejects_sub_2e13(self):
+        """The eps >= 2^-13 assembler guard (spec §23.10.10 residual risk
+        7): the common eps=1e-5 default is REJECTED with a textual error
+        naming both escapes (raise eps / .eps 0 clamp fallback)."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "RMSNORM opb .gamma 1 .eps %d\n" % wta.fp32_to_bits(1e-5)
+        )
+        with self.assertRaises(wta.AssemblerError) as ctx:
+            wta.assemble(src)
+        self.assertIn('2^-13', str(ctx.exception))
+        self.assertIn('.eps 0', str(ctx.exception))
+        # boundary: exactly 2^-13 passes
+        ok = (
+            ".default_port mask=0x01 out=0\n"
+            "RMSNORM opb .gamma 1 .eps %d\n" % wta.fp32_to_bits(2.0 ** -13)
+        )
+        wta.assemble(ok)   # must not raise
+        # non-finite / negative eps bits rejected
+        for bad in (0x7F800000, 0x7FC00000, 0x80000000 | wta.fp32_to_bits(0.5)):
+            with self.assertRaises(wta.AssemblerError):
+                wta.assemble(
+                    ".default_port mask=0x01 out=0\n"
+                    "RMSNORM opb .gamma 1 .eps %d\n" % bad)
+
+    def test_norm_insert_fp_steps_carry_precision_mode_0x14(self):
+        """Every fp-block step of the insert (CVT/FSCALAR/FRSQRT32) must
+        carry .precision mode=0x14 + the 'prec' flag (require_precision_eh
+        — the fp ops would otherwise be assembler-rejected), and the
+        FSCALAR steps the 'opb' flag (B on payload_b from the producers).
+        The 1/N producer's imm64 must be bits(1.0/n) — .n plumbed through
+        (n=4 => 0.25f)."""
+        src = (
+            ".default_port mask=0x01 out=0\n"
+            "RMSNORM opb .gamma 1 .n 4\n"
+        )
+        prog = wta.parse(src)
+        prog = wta.alias_pass(prog)
+        prog = wta.default_pass(prog)
+        prog = wta.macro_pass(prog)
+        insts = [s for s in prog.stmts if isinstance(s, wta.Instruction)]
+        fp_steps = [i for i in insts
+                    if i.mnemonic in ('CVT', 'FSCALAR', 'FRSQRT32')]
+        self.assertEqual(len(fp_steps), 6)   # 2 CVT + 3 FSCALAR + 1 FRSQRT
+        for step in fp_steps:
+            self.assertIn('prec', step.flags, step.mnemonic)
+            prec = next(eh for eh in step.eh_list if eh.kind == 'precision')
+            self.assertEqual(prec.args['mode'], 0x14, step.mnemonic)
+            if step.mnemonic == 'FSCALAR':
+                self.assertIn('opb', step.flags)
+        producers = [i for i in insts if i.mnemonic == 'ADD']
+        self.assertEqual(len(producers), 3)
+        inv_n = next(eh for eh in producers[0].eh_list if eh.kind == 'imm64')
+        self.assertEqual(inv_n.args['value'], wta.fp32_to_bits(0.25))
+        x256 = next(eh for eh in producers[2].eh_list if eh.kind == 'imm64')
+        self.assertEqual(x256.args['value'], wta.fp32_to_bits(256.0))
+        # sub-op nibbles: FS_MUL, FS_ADD, FS_MUL in emission order; the
+        # second CVT carries NARROW_FROM_F32, the first none (WIDEN default)
+        fsc_subops = []
+        for i in insts:
+            if i.mnemonic == 'FSCALAR':
+                imm = next(eh for eh in i.eh_list if eh.kind == 'imm16')
+                fsc_subops.append((imm.args['value'] >> 4) & 0xF)
+        FS = wta.FSCALAR_OP_CODE
+        self.assertEqual(fsc_subops,
+                         [FS['FS_MUL'], FS['FS_ADD'], FS['FS_MUL']])
+        cvts = [i for i in insts if i.mnemonic == 'CVT']
+        self.assertFalse(any(eh.kind == 'imm16' for eh in cvts[0].eh_list),
+                         "I2F CVT rides the absent-imm16 WIDEN default")
+        imm = next(eh for eh in cvts[1].eh_list if eh.kind == 'imm16')
+        self.assertEqual(imm.args['value'],
+                         wta.cvt_subop_imm16('NARROW_FROM_F32'))
 
     def test_layernorm_expansion(self):
-        """LAYERNORM → 8-primitive chain per §22.3/§22.16 (v1.6.5c:
-        CACHE_LOAD_WIDE reload of step 2's cached xc instead of re-
-        emission; v1.6.7: scale mul now uses Q8.8 (0x69), not Q4.4 (0x67))."""
+        """LAYERNORM → v1.8.0d hybrid chain per §22.3/§22.16/§23.10.10:
+        MEAN + SUB_VEC + L2SQ, then the SAME fp32 scalar insert RMSNORM
+        uses (shared helper — drift-proof), then the v1.6.5c xc-reload
+        tail bit-unchanged (CACHE_LOAD_WIDE + Q8.8 + MUL_VEC + ADD_VEC)."""
         src = (
             ".default_port mask=0x01 out=0\n"
             "LAYERNORM opb .gamma 0x1111_2222_3333_4444 "
@@ -884,11 +992,12 @@ class TestNormMacros(unittest.TestCase):
         )
         insts = wta.assemble(src)
         opcodes = [(w >> 24) & 0xFF for w in insts]
-        # Expected sequence: EINSUM(MEAN), SUB_VEC, EINSUM(L2SQ), RSQRT,
-        # CACHE_LOAD_WIDE (v1.6.5c reload), MUL_Q8_8_SCALAR (v1.6.7), MUL_VEC, ADD_VEC
-        expected = [0x32, 0x64, 0x32, 0x66, 0x68, 0x69, 0x65, 0x63]
+        expected = [0x32, 0x64, 0x32] + self._INSERT_FP \
+                 + [0x68, 0x69, 0x65, 0x63]
         self.assertEqual(opcodes, expected,
-                         f"expected {[hex(o) for o in expected]}, got {[hex(o) for o in opcodes]}")
+                         f"expected {[hex(o) for o in expected]}, got "
+                         f"{[hex(o) for o in opcodes]}")
+        self.assertNotIn(0x66, opcodes, "SCALAR_RSQRT must be retired")
 
     def test_layernorm_step5_cache_load_wide_precision_guard(self):
         """v1.6.5c §22.16 tag-stability: step 5 (CACHE_LOAD_WIDE) must carry
@@ -902,9 +1011,11 @@ class TestNormMacros(unittest.TestCase):
             ".beta 0x5555_6666_7777_8888\n"
         )
         insts = wta.assemble(src)
-        step5 = insts[4]
-        opcode = (step5 >> 24) & 0xFF
-        self.assertEqual(opcode, 0x68)
+        # v1.8.0d: the fp32 scalar insert shifted the reload's position —
+        # locate it by opcode (exactly one CACHE_LOAD_WIDE in the chain).
+        reloads = [w for w in insts if ((w >> 24) & 0xFF) == 0x68]
+        self.assertEqual(len(reloads), 1)
+        step5 = reloads[0]
         # Base header flags nibble is bits [19:16]; dim_ovr = bit 0.
         flags_nibble = (step5 >> 16) & 0xF
         self.assertEqual(flags_nibble & 0x1, 0x1, "dim_ovr flag must be set")
@@ -946,10 +1057,10 @@ class TestNormMacros(unittest.TestCase):
         self.assertEqual(prec_eh.args['dim'], 0x55)
 
         # Compare against step 5's actual emitted shape from the same
-        # LAYERNORM call, via the real _lower_layernorm().
+        # LAYERNORM call, via the real _lower_layernorm(). v1.8.0d: locate
+        # by mnemonic (the fp32 scalar insert shifted the index).
         steps = wta._lower_layernorm(layernorm_call)
-        step5 = steps[4]
-        self.assertEqual(step5.mnemonic, 'CACHE_LOAD_WIDE')
+        step5 = next(s for s in steps if s.mnemonic == 'CACHE_LOAD_WIDE')
         step5_prec = next(eh for eh in step5.eh_list if eh.kind == 'precision')
         self.assertEqual(prec_eh.args['dim'], step5_prec.args['dim'],
                          "abort-cleanup dim literal diverged from step 5's")
@@ -1356,9 +1467,14 @@ class TestFpBlockModeLegality(unittest.TestCase):
         # graduated from stubs to real datapaths.
         # v1.8.0c: 0x74 FSCALAR / 0x75 FRSQRT32 / 0x76 FEXP2_32 graduated
         # too (MU-hosted fp32 step sequencer, spec section 23.10).
+        # v1.8.0d: 0x73 ACC_ELEMWISE / 0x77 CVT graduated (spec section
+        # 23.10.10); the remaining set {0x70, 0x78, 0x79} is the v1.8.0e
+        # wide package, 0x7D/0x7E unscheduled.
         self.assertEqual(STUB_OPS_V18,
                          frozenset(self._FP_OPS)
-                         - {0x71, 0x72, 0x74, 0x75, 0x76, 0x7C})
+                         - {0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x7C})
+        self.assertEqual(STUB_OPS_V18,
+                         frozenset({0x70, 0x78, 0x79, 0x7D, 0x7E}))
         # Shape spot-checks: 0x70 is ALU-binary-like, 0x7E is no-data-EH.
         self.assertTrue(wta._LEGAL[0x70]['allow_imm_xor_opref'])
         self.assertEqual(wta._LEGAL[0x7E]['forbidden'], wta._ALL_DATA_EHS)
@@ -1384,9 +1500,13 @@ class TestFpBlockModeLegality(unittest.TestCase):
         """Per-op legal-dtype rows transcribed from the §23.6a normative
         table (21 legal rows / 4096 total)."""
         from generated_isa_tables import FP_MODE_LEGAL
+        # v1.8.0d §23.10.10(b): 0x77 CVT legal_dtypes [2,3] -> [0,1,2,3,4]
+        # (monotonic illegal->legal loosening; dtype 0x4 = accumulator-format
+        # integer endpoint per COMMIT-0 pin 10, dtype 0x5 stays decode_error).
         SPEC_ROWS = {
             0x70: [0, 1], 0x71: [0, 1], 0x72: [0, 1], 0x73: [4],
-            0x74: [4], 0x75: [4], 0x76: [4], 0x77: [2, 3], 0x78: [0, 1],
+            0x74: [4], 0x75: [4], 0x76: [4], 0x77: [0, 1, 2, 3, 4],
+            0x78: [0, 1],
             0x79: [4], 0x7C: [0, 1, 2, 3], 0x7D: [4], 0x7E: [4],
         }
         for code, dtypes in SPEC_ROWS.items():
@@ -1394,7 +1514,7 @@ class TestFpBlockModeLegality(unittest.TestCase):
                              f"0x{code:02X} dtype row diverged from spec §23.6a")
         total = sum(len(l['legal_dtypes']) * len(l['legal_acc']) * len(l['legal_rnd'])
                     for l in FP_MODE_LEGAL.values())
-        self.assertEqual(total, 21, "legal-row count diverged from spec §23.6a")
+        self.assertEqual(total, 24, "legal-row count diverged from spec §23.6a/§23.10.10")
 
     def test_asm_requires_precision_eh_on_fp_block(self):
         """Every fp-block mnemonic without .precision EH + prec flag must
@@ -1418,7 +1538,10 @@ class TestFpBlockModeLegality(unittest.TestCase):
             legal = FP_MODE_LEGAL[code]
             scaffold = ''
             if wta._LEGAL[code]['allow_imm_xor_opref']:
-                scaffold = ' .imm16 1'
+                # v1.8.0d: 0x73 is OPREF-form only (imm forms are asm-
+                # rejected as execute-side dead-ends), so its XOR
+                # scaffold must be the .opref side.
+                scaffold = ' .opref' if code == 0x73 else ' .imm16 1'
             elif 'mem' in wta._LEGAL[code]['required']:
                 scaffold = ' .mem offset=0'
             # v1.8.0c §23.10.2: FSCALAR requires F_HAS_OPB on every sub-op.
@@ -1568,6 +1691,106 @@ class TestFscalarV180cEncoding(unittest.TestCase):
             self.assertEqual((inst >> 24) & 0xFF, code, mnem)
             self.assertEqual(
                 wta._LEGAL[code]['forbidden'], wta._ALL_DATA_EHS, mnem)
+
+    # -------------------------------------------------------------------
+    # v1.8.0d §23.10.10 — CVT (0x77) / ACC_ELEMWISE (0x73)
+    # -------------------------------------------------------------------
+
+    def test_cvt_op_code_table_pin(self):
+        """Literal pin of the generated cvt_op_codes table (single source
+        isa/wt64v1_isa.json)."""
+        from generated_isa_tables import CVT_OP_CODE
+        self.assertEqual(CVT_OP_CODE,
+                         {'WIDEN_TO_F32': 0, 'NARROW_FROM_F32': 1})
+
+    def test_cvt_subop_imm16_roundtrip(self):
+        """Both CVT sub-ops, by name AND by code: nibble at imm16[7:4],
+        [3:0] and [15:8] reserved-zero. WIDEN_TO_F32 encodes to 0x0000,
+        matching the documented absent-imm16 default."""
+        from generated_isa_tables import CVT_OP_CODE
+        for name, code in CVT_OP_CODE.items():
+            for subop in (name, code):
+                imm16 = wta.cvt_subop_imm16(subop)
+                self.assertEqual((imm16 >> 4) & 0xF, code, subop)
+                self.assertEqual(imm16 & 0xF, 0)
+                self.assertEqual(imm16 & 0xFF00, 0)
+        self.assertEqual(wta.cvt_subop_imm16('WIDEN_TO_F32'), 0x0000)
+
+    def test_cvt_subop_imm16_rejects_unknown(self):
+        for bad in ('FS_ADD', 'widen', 2, 0xF, -1, 0x10, 1.0, None):
+            with self.assertRaises(wta.AssemblerError, msg=repr(bad)):
+                wta.cvt_subop_imm16(bad)
+
+    def test_cvt_assembles_all_legal_dtypes(self):
+        """0x77 assembles through the generic emit path for every legal
+        dtype x both sub-ops (absent imm16 = WIDEN default too); the mode
+        byte must carry the dtype nibble."""
+        from generated_isa_tables import CVT_OP_CODE, FP_MODE_LEGAL
+        for dtype in FP_MODE_LEGAL[0x77]['legal_dtypes']:
+            mode = 0x10 | dtype
+            for name in CVT_OP_CODE:
+                imm16 = wta.cvt_subop_imm16(name)
+                src = (f".default_port mask=0x01 out=0\n"
+                       f"CVT prec .imm16 {imm16} .precision mode={mode}\n")
+                inst = wta.assemble_one(src)
+                self.assertEqual((inst >> 24) & 0xFF, 0x77, (dtype, name))
+            src = (f".default_port mask=0x01 out=0\n"
+                   f"CVT prec .precision mode={mode}\n")
+            self.assertEqual((wta.assemble_one(src) >> 24) & 0xFF, 0x77)
+
+    def test_cvt_reserved_imm16_fields_rejected(self):
+        """imm16[3:0] or [15:8] nonzero and unknown sub-op nibbles (RTL:
+        lower_required) are assembly-time errors."""
+        for imm in (0x0001, 0x0100, 0x8000, 0x0011):
+            src = (f".default_port mask=0x01 out=0\n"
+                   f"CVT prec .imm16 {imm} "
+                   f".precision mode={self._MODE_F32}\n")
+            with self.assertRaises(wta.AssemblerError, msg=hex(imm)):
+                wta.assemble(src)
+        for nib in (0x2, 0x9, 0xF):
+            src = (f".default_port mask=0x01 out=0\n"
+                   f"CVT prec .imm16 {nib << 4} "
+                   f".precision mode={self._MODE_F32}\n")
+            with self.assertRaises(wta.AssemblerError, msg=hex(nib)):
+                wta.assemble(src)
+
+    def test_cvt_imm32_imm64_opref_stay_asm_forbidden(self):
+        """Pin the JSON forbidden list on 0x77: imm32/imm64 asm-forbidden
+        (RTL-tolerated, FSCALAR semantics — CVT never reads eff_b_value),
+        opref/mem/subscript forbidden outright."""
+        self.assertEqual(
+            wta._LEGAL[0x77]['forbidden'],
+            {'imm32', 'imm64', 'mem', 'opref', 'subscript'})
+        self._data_eh_reject_check(
+            'CVT', ('imm32', 'imm64', 'mem', 'opref', 'subscript'))
+
+    def test_acc_elemwise_opref_form_assembles(self):
+        """0x73 OPREF form (the only implemented form, §23.10.10(c))
+        assembles; dtype row is [4] so mode 0x14."""
+        src = (f".default_port mask=0x01 out=0\n"
+               f"ACC_ELEMWISE opb prec .opref "
+               f".precision mode={self._MODE_F32}\n")
+        inst = wta.assemble_one(src)
+        self.assertEqual((inst >> 24) & 0xFF, 0x73)
+
+    def test_acc_elemwise_imm_forms_asm_rejected(self):
+        """v1.8.0d asm-stricter-than-RTL: every imm form on 0x73 would be
+        an execute-side lower_required dead-end (OPREF-only capability),
+        so the assembler rejects it textually. Neither-imm-nor-opref is
+        already the generic XOR error."""
+        for imm_directive in ('.imm16 16', '.imm32 5', '.imm64 5'):
+            src = (f".default_port mask=0x01 out=0\n"
+                   f"ACC_ELEMWISE opb prec {imm_directive} "
+                   f".precision mode={self._MODE_F32}\n")
+            with self.assertRaises(wta.AssemblerError,
+                                   msg=imm_directive) as ctx:
+                wta.assemble(src)
+            self.assertIn('OPREF-form only', str(ctx.exception))
+        src = (f".default_port mask=0x01 out=0\n"
+               f"ACC_ELEMWISE opb prec "
+               f".precision mode={self._MODE_F32}\n")
+        with self.assertRaises(wta.AssemblerError):
+            wta.assemble(src)
             self._data_eh_reject_check(
                 mnem, ('imm16', 'imm32', 'imm64', 'mem', 'opref',
                        'subscript'))

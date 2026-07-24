@@ -78,7 +78,7 @@ from generated_isa_tables import (  # noqa: F401
     MNEMONIC_TO_OPCODE, OPCODE_TO_MNEMONIC, HL_ONLY_MNEMONICS, FLAG_BITS,
     EH_END, EH_PORT, EH_IMM16, EH_IMM32, EH_IMM64, EH_MEM, EH_SUBSCRIPT,
     EH_OPREF, EH_PRECISION, EH_NOP_PAD, EH_NAME_TO_CODE, REDUCE_OP_CODE,
-    ACC_REDUCE_OP_CODE, FSCALAR_OP_CODE,
+    ACC_REDUCE_OP_CODE, FSCALAR_OP_CODE, CVT_OP_CODE,
 )
 from generated_isa_tables import LEGAL as _LEGAL              # noqa: F401
 from generated_isa_tables import ALL_DATA_EHS as _ALL_DATA_EHS  # noqa: F401
@@ -614,6 +614,15 @@ def _get_macro_arg(inst: Instruction, kind: str, name: str) -> int:
     )
 
 
+def _get_macro_arg_opt(inst: Instruction, kind: str, default: int) -> int:
+    """Optional-arg variant of _get_macro_arg: absent directive returns
+    `default` (v1.8.0d — .eps / .n on the norm macros)."""
+    for eh in inst.eh_list:
+        if eh.kind == kind:
+            return _take_immediate(eh)
+    return default
+
+
 def _macro_port_eh(inst: Instruction) -> ExtensionHeader:
     """Extract the PORT EH from a macro's EH list.
     Every macro requires exactly one .port directive to route the output
@@ -663,26 +672,166 @@ def _lower_batchnorm_infer(inst: Instruction) -> List[Instruction]:
     ]
 
 
+# =============================================================================
+# v1.8.0d §23.10.10 — hybrid fp32-scalar / int-wide norm rebuild
+# =============================================================================
+#
+# The fp32 scalar insert REPLACES SCALAR_RSQRT (0x66, ~6.25% LUT relative
+# error — the roadmap's declared true floor) inside RMSNORM/LAYERNORM with
+# the FRSQRT32 (<=2 ulp) path:
+#
+#   L2SQ (int32 sext64, unchanged)
+#     -> [OR .imm64 1]          int-scalar clamp — eps-fallback path only
+#     -> CVT  I2F dtype 0x4     sq -> f32 (exact below 2^24, RNE above)
+#     -> ADD  .imm64 bits(1/N)  B-constant producer dispatch  ┐
+#     -> FSCALAR FS_MUL         mean(x^2) = sq * (1/N)        ┘
+#     -> ADD  .imm64 bits(eps)  B-constant producer dispatch  ┐ fp-eps
+#     -> FSCALAR FS_ADD         mean + eps                    ┘ path only
+#     -> FRSQRT32               scale_f = 1/sqrt(...)  (<=2 ulp)
+#     -> ADD  .imm64 bits(256)  B-constant producer dispatch  ┐
+#     -> FSCALAR FS_MUL         scale_f * 256  (Q8.8 pre-scale)┘
+#     -> CVT  F2I dtype 0x4     RNE-saturate int32 -> Q8.8 scale (sext64)
+#   -> existing int wide tail (0x69 SIMD_MUL_WIDE_Q8_8_SCALAR ...), UNCHANGED.
+#
+# B-CONSTANT PRODUCER DISPATCHES (explicitly emitted and counted): FSCALAR's
+# B operand is payload_b-only (no imm, no OPREF — 0x74 shape), so each fp
+# constant is materialized by its own ADD .imm64 <bits> dispatch whose
+# output the SDK/runtime routes to the following FSCALAR's payload_b port.
+# SDK CONTRACT: the producer's own input payload token must be ZERO (ADD
+# emits payload + imm64 = the constant). 3 producers on the fp-eps path,
+# 2 on the clamp-fallback path — all counted in the macro length tests.
+#
+# EPS GUARD (assembler-enforced, §23.10.10 residual risk 7): .eps carries
+# fp32 BITS (build via fp32_to_bits). eps >= 2^-13 -> fp-eps path;
+# .eps 0 -> the INT-SCALAR CLAMP FALLBACK (OR .imm64 1 pins the L2SQ sum
+# to >= 1 before I2F — rsqrt input can never be 0 -> no Inf; the <= 1-LSB
+# distortion of the int32 sum sits far below the Q8.8 application floor);
+# 0 < eps < 2^-13 (the common 1e-5 default!) -> AssemblerError naming both
+# escapes. Absent .eps defaults to bits(2^-13), the smallest guard-passing
+# value. The fallback is emitter-tested only, not hardware-assisted.
+#
+# The Q16.16->Q8.8 SDK conversion contract of the retired 0x66 recipe is
+# DELETED from these fp32 recipes (the F2I of scale_f*256 IS the Q8.8
+# conversion, exact to the <=2 ulp rsqrt); the int recipes elsewhere
+# (BATCHNORM_INFER, the 0x69/0x6B/0x6C tails) are retained verbatim.
+#
+# Error contract (0d normative): rsqrt contribution <= 2 ulp; end-to-end
+# error Q8.8-application-dominated, <= 2^-9 scale-relative. The MSE <=
+# 1.05x dtype-floor contract is a v1.8.0e obligation, NOT this macro's.
+
+_NORM_FP_MODE = 0x14           # fp-block mode byte: rnd=0, acc=1, dtype=4
+_NORM_EPS_MIN = 2.0 ** -13     # assembler guard threshold (value domain)
+_NORM_X256_BITS = 0x43800000   # 256.0f — the Q8.8 pre-scale constant
+
+
+def _norm_b_const_producer(inst: Instruction, port_eh: ExtensionHeader,
+                           bits: int) -> Instruction:
+    """One FSCALAR B-constant producer dispatch: ADD .imm64 <bits> (see
+    the SDK zero-payload contract in the section comment above)."""
+    return Instruction(
+        mnemonic='ADD',
+        flags=set(inst.flags),
+        eh_list=[port_eh, _make_eh('imm64', {'value': bits}, inst.line)],
+        line=inst.line,
+    )
+
+
+def _norm_fp_step(inst: Instruction, port_eh: ExtensionHeader,
+                  mnemonic: str, imm16: Optional[int] = None) -> Instruction:
+    """One fp-block step of the insert: PORT + PRECISION(mode=0x14) +
+    'prec' flag (require_precision_eh); FSCALAR additionally gets 'opb'
+    (B on payload_b — the preceding producer's routed output)."""
+    ehs = [port_eh,
+           _make_eh('precision', {'mode': _NORM_FP_MODE}, inst.line)]
+    if imm16 is not None:
+        ehs.append(_make_eh('imm16', {'value': imm16}, inst.line))
+    flags = set(inst.flags) | {'prec'}
+    if mnemonic == 'FSCALAR':
+        flags |= {'opb'}
+    return Instruction(mnemonic=mnemonic, flags=flags, eh_list=ehs,
+                       line=inst.line)
+
+
+def _norm_fp_scalar_insert(inst: Instruction,
+                           port_eh: ExtensionHeader) -> List[Instruction]:
+    """The shared RMSNORM/LAYERNORM fp32 scalar insert (section comment
+    above): consumes the int32 L2SQ scalar, produces the Q8.8 int scale
+    for the unchanged 0x69 wide tail. Reads the .eps / .n macro args off
+    `inst` and applies the eps >= 2^-13 guard with the int-scalar clamp
+    fallback."""
+    n = _get_macro_arg_opt(inst, 'n', 16)   # dim=0x55 recipes: 16 elements
+    if not (isinstance(n, int) and n >= 1):
+        raise AssemblerError(
+            f"line {inst.line}: {inst.mnemonic} .n must be a positive "
+            f"element count, got {n!r}")
+    eps_bits = _get_macro_arg_opt(inst, 'eps',
+                                  fp32_to_bits(_NORM_EPS_MIN))
+    if not (isinstance(eps_bits, int) and 0 <= eps_bits <= 0xFFFFFFFF):
+        raise AssemblerError(
+            f"line {inst.line}: {inst.mnemonic} .eps must be fp32 BITS "
+            f"(use fp32_to_bits), got {eps_bits!r}")
+    clamp_fallback = (eps_bits == 0)
+    if not clamp_fallback:
+        eps_val = bits_to_fp32(eps_bits)
+        # NaN fails 0 < x; Inf fails x < inf; -0/negative fail 0 < x.
+        if not (0.0 < eps_val < float('inf')):
+            raise AssemblerError(
+                f"line {inst.line}: {inst.mnemonic} .eps bits "
+                f"0x{eps_bits:08X} is not a positive finite fp32 value")
+        if eps_val < _NORM_EPS_MIN:
+            raise AssemblerError(
+                f"line {inst.line}: {inst.mnemonic} .eps {eps_val:g} < "
+                f"2^-13 (spec section 23.10.10 assembler guard: smaller "
+                f"eps is absorbed below the Q8.8 application floor) — "
+                f"either raise .eps to >= 2^-13, or pass .eps 0 to select "
+                f"the int-scalar clamp fallback (OR 1 on the L2SQ sum)")
+    out: List[Instruction] = []
+    if clamp_fallback:
+        # int-scalar clamp: sq |= 1 — pins the rsqrt input away from 0
+        # with <= 1-LSB distortion of the int32 sum-of-squares.
+        out.append(Instruction(
+            mnemonic='OR',
+            flags=set(inst.flags),
+            eh_list=[port_eh, _make_eh('imm64', {'value': 1}, inst.line)],
+            line=inst.line,
+        ))
+    out.append(_norm_fp_step(inst, port_eh, 'CVT'))   # I2F (absent = WIDEN)
+    out.append(_norm_b_const_producer(inst, port_eh,
+                                      fp32_to_bits(1.0 / n)))
+    out.append(_norm_fp_step(inst, port_eh, 'FSCALAR',
+                             fscalar_subop_imm16('FS_MUL')))
+    if not clamp_fallback:
+        out.append(_norm_b_const_producer(inst, port_eh, eps_bits))
+        out.append(_norm_fp_step(inst, port_eh, 'FSCALAR',
+                                 fscalar_subop_imm16('FS_ADD')))
+    out.append(_norm_fp_step(inst, port_eh, 'FRSQRT32'))
+    out.append(_norm_b_const_producer(inst, port_eh, _NORM_X256_BITS))
+    out.append(_norm_fp_step(inst, port_eh, 'FSCALAR',
+                             fscalar_subop_imm16('FS_MUL')))
+    out.append(_norm_fp_step(inst, port_eh, 'CVT',
+                             cvt_subop_imm16('NARROW_FROM_F32')))
+    return out
+
+
 def _lower_rmsnorm(inst: Instruction) -> List[Instruction]:
-    """RMSNORM(x, γ, eps) → 5-primitive sequence (spec §22.4 simplified).
+    """RMSNORM(x, γ, eps) → hybrid fp-scalar/int-wide chain (v1.8.0d
+    §23.10.10 rebuild; the v1.6.4-1.6.7 SCALAR_RSQRT recipe is retired).
 
     RMSNorm: y = γ · x / √(mean(x²) + eps). No centering step (LLaMA-style).
 
-    Recipe (SDK pre-computes 1/N × eps offset so we can drop the separate
-    scalar add; the scale is pre-baked):
-      1) SIG_L2SQ_IJKLM         x          →  sq (int32 scalar)
-      2) [SDK offline] eps and 1/N folded into the pre-computed rsqrt seed —
-         omitted from emitted primitives for MVP simplicity.
-      3) SCALAR_RSQRT           sq         →  scale (Q16.16)
-      4) SIMD_MUL_WIDE_SCALAR   x, scale[3:0]  →  nrm (broadcast int4 scale)
-      5) SIMD_MUL_WIDE_VEC      nrm, γ     →  y
+    Recipe:
+      1) SIG_L2SQ_IJKLM  x  →  sq (int32 scalar, sext64)
+      2) the fp32 scalar insert (_norm_fp_scalar_insert — CVT I2F,
+         1/N + eps FSCALAR steps with their B-constant producers,
+         FRSQRT32, ×256, CVT F2I → Q8.8 int scale)
+      3) SIMD_MUL_WIDE_Q8_8_SCALAR  x, scale[15:0]  →  nrm (int tail,
+         bit-unchanged from v1.6.7 — the F2I output routes as B via the
+         same .opref the retired rsqrt output used)
+      4) SIMD_MUL_WIDE_VEC  nrm, γ  →  y
 
-    KNOWN PRECISION LOSS: step 4 truncates Q16.16 scale to int4 (dec_eff_b_value[3:0]).
-    ~12-bit precision loss at exactly the multiplication step. Mitigation
-    is a v1.6.5+ SIMD_MUL_WIDE_SCALAR variant that widens B to Q4.4 or int8.
-
-    Args: .gamma <64-bit int>, .port <mask/out>. eps + inv_n are SDK-side
-    (pre-folded into the rsqrt seed).
+    Args: .gamma <64-bit int>, .port <mask/out>; optional .eps <fp32
+    bits, default bits(2^-13)>, .n <element count, default 16> — see the
+    eps-guard/fallback contract in the section comment above.
     """
     gamma = _get_macro_arg(inst, 'gamma', 'gamma')
     port_eh = _macro_port_eh(inst)
@@ -706,18 +855,7 @@ def _lower_rmsnorm(inst: Instruction) -> List[Instruction]:
             ],
             line=inst.line,
         ),
-        Instruction(
-            mnemonic='SCALAR_RSQRT',
-            flags=set(inst.flags),
-            eh_list=[port_eh],
-            line=inst.line,
-        ),
-        # v1.6.7 §22.14c — scale is Q16.16; use Q8.8 wide-scalar mul (0x69)
-        # for precision recovery beyond 0x67's Q4.4. SDK computes
-        # q8_8 = clamp_saturate((rsqrt_q16_16 + 0x80) >> 8, INT16_MIN,
-        # INT16_MAX) and routes that 16-bit signed Q8.8 value as B,
-        # pushing B-side quantization noise below the rsqrt LUT's own
-        # ~6.25% relative-error floor (workflow whro79brj analysis).
+        *_norm_fp_scalar_insert(inst, port_eh),
         Instruction(
             mnemonic='SIMD_MUL_WIDE_Q8_8_SCALAR',
             flags=set(inst.flags),
@@ -794,33 +932,42 @@ def _lower_layernorm(inst: Instruction) -> List[Instruction]:
         (c) Recompute xc via a second SIMD_SUB_WIDE_VEC dispatch (legacy
             v1.6.4 MVP strategy, cheapest but wastes the L2 pass).
 
-    v1.6.5c §22.16 TAG-STABILITY NOTE: step 5's CACHE_LOAD_WIDE reloads
-    step 2's persisted xc from the Cluster buffer by tag match. By
-    default, tag-forwarding would NOT reproduce step 2's stored tag at
-    step 5's dispatch — step 1's EINSUM/OP_MEAN hardcodes its own output
-    tag's dim_sizes to the literal 0x55 (PE_Core.v's 5D→4D-family case),
-    which step 2 inherits unmodified into ITS OWN stored tag; but step 4
-    (SCALAR_RSQRT) unconditionally hardcodes ITS OWN output tag's
-    dim_sizes to 0x00 (scalar), which step 5 would otherwise inherit by
-    default forwarding — an 8-bit mismatch against step 2's 0x55. The
-    `.precision dim=0x55` EH + `dim_ovr` flag below pins step 5's
-    dim_sizes back to 0x55 independent of that corrupted chain, closing
-    the gap (verified via workflow w91wntdpk's adversarial RTL re-trace).
-    wave_number/thread_id/port/precision are all untouched across every
-    step in this recipe (no WADV; no case arm here overrides precision),
-    so no further guard is needed for those fields.
+    v1.6.5c §22.16 TAG-STABILITY NOTE: the xc-reload CACHE_LOAD_WIDE
+    reloads step 2's persisted xc from the Cluster buffer by tag match.
+    By default, tag-forwarding would NOT reproduce step 2's stored tag
+    at the reload's dispatch — step 1's EINSUM/OP_MEAN hardcodes its own
+    output tag's dim_sizes to the literal 0x55 (PE_Core.v's 5D→4D-family
+    case), which step 2 inherits unmodified into ITS OWN stored tag; but
+    the scale-producing scalar steps unconditionally hardcode THEIR OWN
+    output tags' dim_sizes to 0x00 (scalar — true of the retired
+    SCALAR_RSQRT and equally of every v1.8.0d fp/CVT step, whose fp arms
+    all rebuild the scalar dim=0x00 tag), which the reload would
+    otherwise inherit by default forwarding — an 8-bit mismatch against
+    step 2's 0x55. The `.precision dim=0x55` EH + `dim_ovr` flag below
+    pins the reload's dim_sizes back to 0x55 independent of that
+    corrupted chain, closing the gap (verified via workflow w91wntdpk's
+    adversarial RTL re-trace; the v1.8.0d insert does not change the
+    argument — PRESERVED VERBATIM, same shared helper). wave_number/
+    thread_id/port are untouched across every step in this recipe (no
+    WADV); the fp steps' F_PRECISION_OVR affects only their OWN dispatch
+    tags, not the reload's.
 
-    Recipe (MVP — SDK responsibility for eps/1_N folding into rsqrt seed):
+    Recipe (v1.8.0d §23.10.10 hybrid rebuild — the fp32 scalar insert
+    replaces the retired SCALAR_RSQRT step between L2SQ and the reload;
+    the int wide tail is bit-unchanged):
       1) MEAN_5D_TO_4D    x            →  μ[abcd]
       2) SIMD_SUB_WIDE_VEC  x, μ       →  xc[abcde]   (first emission, cached)
-      3) L2SQ_IJKLM       xc           →  sq_scalar   (variance sum)
-      4) SCALAR_RSQRT     sq_scalar    →  scale       (Q16.16)
+      3) L2SQ_IJKLM       xc           →  sq_scalar   (variance sum, int32)
+      4) _norm_fp_scalar_insert(...)   →  Q8.8 int scale (CVT I2F →
+         [1/N, eps] FSCALAR steps + B-constant producers → FRSQRT32 →
+         ×256 → CVT F2I; eps guard/fallback per the section comment)
       5) CACHE_LOAD_WIDE                →  xc[abcde]  (reload step 2's cached xc)
       6) SIMD_MUL_WIDE_Q8_8_SCALAR  xc, scale[15:0]  →  nrm
       7) SIMD_MUL_WIDE_VEC  nrm, γ     →  sc
       8) SIMD_ADD_WIDE_VEC  sc, β      →  y
 
-    Args: .gamma, .beta (64-bit int4 vectors), .port.
+    Args: .gamma, .beta (64-bit int4 vectors), .port; optional .eps
+    <fp32 bits, default bits(2^-13)>, .n <element count, default 16>.
     """
     gamma = _get_macro_arg(inst, 'gamma', 'gamma')
     beta = _get_macro_arg(inst, 'beta', 'beta')
@@ -870,13 +1017,9 @@ def _lower_layernorm(inst: Instruction) -> List[Instruction]:
             ],
             line=inst.line,
         ),
-        # 4) SCALAR_RSQRT
-        Instruction(
-            mnemonic='SCALAR_RSQRT',
-            flags=set(inst.flags),
-            eh_list=[port_eh],
-            line=inst.line,
-        ),
+        # 4) v1.8.0d §23.10.10 — the fp32 scalar insert (replaces the
+        # retired SCALAR_RSQRT; see the hybrid-rebuild section comment).
+        *_norm_fp_scalar_insert(inst, port_eh),
         # 5) CACHE_LOAD_WIDE: reload step 2's persisted xc (v1.6.5c §22.16
         # on-Cluster caching — replaces the v1.6.4 SUB re-emission). The
         # `.precision dim=0x55` + `dim_ovr` flag (via the shared
@@ -1371,6 +1514,42 @@ def legality_pass(prog: Program) -> Program:
                     f"0x{subop_nibble:X} unknown — legal: "
                     f"{sorted(FSCALAR_OP_CODE.items())}"
                 )
+        # v1.8.0d §23.10.10(b) — CVT (0x77) imm16 value check: sub-op
+        # nibble at [7:4] from the generated cvt_op_codes table; [3:0]
+        # AND [15:8] reserved-zero (an ABSENT imm16 decodes as
+        # WIDEN_TO_F32). Same asm-stricter-than-RTL stance as 0x74: the
+        # RTL answers violations with lower_required, the assembler with
+        # a textual error.
+        if opcode == 0x77 and 'imm16' in eh_kinds:
+            imm_eh = next(eh for eh in stmt.eh_list if eh.kind == 'imm16')
+            v = _take_immediate(imm_eh)
+            if (v & 0xF) or (v & 0xFF00):
+                raise AssemblerError(
+                    f"line {stmt.line}: {stmt.mnemonic} imm16[3:0]/[15:8] "
+                    f"are reserved-zero (got 0x{v:04X}) — build the imm16 "
+                    f"via cvt_subop_imm16()"
+                )
+            subop_nibble = (v >> 4) & 0xF
+            if subop_nibble not in CVT_OP_CODE.values():
+                raise AssemblerError(
+                    f"line {stmt.line}: {stmt.mnemonic} sub-op nibble "
+                    f"0x{subop_nibble:X} unknown — legal: "
+                    f"{sorted(CVT_OP_CODE.items())}"
+                )
+        # v1.8.0d §23.10.10(c) — ACC_ELEMWISE (0x73) is OPREF-form ONLY
+        # in landed silicon: any imm form still DECODES cleanly (the
+        # alu-binary XOR trap is satisfied) but hits the execute-side
+        # capability rung as lower_required — a silent runtime dead-end
+        # the assembler rejects textually instead (asm-stricter-than-RTL;
+        # the generic XOR check above already demanded exactly-one-of, so
+        # rejecting imm here effectively requires .opref).
+        if opcode == 0x73 and (eh_kinds & {'imm16', 'imm32', 'imm64'}):
+            raise AssemblerError(
+                f"line {stmt.line}: {stmt.mnemonic} is OPREF-form only in "
+                f"v1.8.0d (spec section 23.10.10(c)) — an immediate B "
+                f"would be lower_required at execute; supply .opref (B = "
+                f"{{gamma, beta}} on the payload_b route)"
+            )
         # F_PRECISION_OVR / F_DIM_OVR draw their override values from the
         # PRECISION EH; without it, eff_prec_* default to zero and would
         # silently corrupt the instruction. Reject that combination at
@@ -1801,6 +1980,37 @@ def fscalar_subop_imm16(subop: Union[str, int]) -> int:
             f"FSCALAR sub-op {subop!r} unknown — legal names "
             f"{sorted(FSCALAR_OP_CODE)}, legal codes "
             f"{sorted(FSCALAR_OP_CODE.values())} (pass the sub-op code, "
+            f"not a pre-shifted imm16)")
+    return code << 4
+
+
+def cvt_subop_imm16(subop: Union[str, int]) -> int:
+    """v1.8.0d §23.10.10(b) — encode a CVT (0x77) sub-op into its imm16
+    value (sub-op nibble at [7:4]; [3:0] AND [15:8] reserved-zero).
+    `subop` is either a name or a code from the generated CVT_OP_CODE
+    table (single-source: isa/wt64v1_isa.json cvt_op_codes); anything
+    else is rejected. An ABSENT imm16 EH decodes as sub-op 0x0 =
+    WIDEN_TO_F32, so a plain widen needs no imm16 at all.
+
+    The conversion DIRECTION is (sub-op, mode-byte dtype): WIDEN_TO_F32
+    x dtype {0x0 int4, 0x1 int8, 0x4 int32/int64-sext} = I2F, x {0x2 f16,
+    0x3 bf16} = fp widen; NARROW_FROM_F32 x the same dtypes = F2I /
+    fp narrow. CVT never reads eff_b_value — imm32/imm64 remain
+    assembler-forbidden (RTL-tolerated, FSCALAR semantics verbatim)."""
+    if isinstance(subop, str):
+        if subop not in CVT_OP_CODE:
+            raise AssemblerError(
+                f"CVT sub-op {subop!r} unknown — legal: "
+                f"{sorted(CVT_OP_CODE)}")
+        code = CVT_OP_CODE[subop]
+    elif isinstance(subop, int) and not isinstance(subop, bool) \
+            and subop in CVT_OP_CODE.values():
+        code = subop
+    else:
+        raise AssemblerError(
+            f"CVT sub-op {subop!r} unknown — legal names "
+            f"{sorted(CVT_OP_CODE)}, legal codes "
+            f"{sorted(CVT_OP_CODE.values())} (pass the sub-op code, "
             f"not a pre-shifted imm16)")
     return code << 4
 

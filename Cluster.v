@@ -412,15 +412,24 @@ module Cluster #(
     // dispatch during the 5-34 cycle fp flight retargets the bank slot);
     // the hardware fix (bank target latched at launch) is deferred to the
     // v1.9 arbitration rework (§23.10.9 risk 2).
+    // v1.8.0d §23.10.10 — 0x73 ACC_ELEMWISE / 0x77 CVT join OPCODE-ONLY
+    // (MU-hosted OPS_ACCEW/OPS_CVT step programs; same commit as the
+    // PE_Core dec_is_mul_op edit + the lockstep/reachability tests). NO
+    // dtype conditionality anywhere in this classifier: 0x7C STORE_QUANT
+    // stays L-PE-routed for ALL dtypes including the new fp-dest forms
+    // (§23.10.10(d) twin-classifier-untouched clause — the narrow packer
+    // is combinational on the L-PEs, no multipliers).
     wire is_mul_op = (ext_opcode == 8'h12)
                   || (ext_opcode == 8'h30)
                   || (ext_opcode == 8'h32)
                   || (ext_opcode == 8'h43)
                   || (ext_opcode == 8'h71)
                   || (ext_opcode == 8'h72)
+                  || (ext_opcode == 8'h73)
                   || (ext_opcode == 8'h74)
                   || (ext_opcode == 8'h75)
-                  || (ext_opcode == 8'h76);
+                  || (ext_opcode == 8'h76)
+                  || (ext_opcode == 8'h77);
     wire is_div_op = (ext_opcode == 8'h13)   // DIV
                   || (ext_opcode == 8'h1C)   // MOD
                   || (ext_opcode == 8'h1D);  // DIVMOD

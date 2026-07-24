@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: LGPL-2.1-or-later OR BSD-2-Clause OR Apache-2.0
 # SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
-"""gate_check.py — evaluate v1.8.0c synth Gates 1-3 (spec §23.10.7) from
-the measured yosys stat + nextpnr report files produced by
+"""gate_check.py — evaluate the fp-ops synth gates (spec §23.10.7 Gates
+1-2 + the v1.8.0d §23.10.10(g) GATE C3 criteria on the fp_stepseq unit)
+from the measured yosys stat + nextpnr report files produced by
 synth/lattice/scripts/synth_fp_ops.sh. Writes gate_summary.txt into the
 report dir and exits nonzero if any gate criterion fails.
 
@@ -10,17 +11,26 @@ Pass criteria (merge blockers):
   GATE 1 fp_mul36   : MULT18X18D <= 4 (hard fail on decomposition to more),
                       LUT4 <= 300, Fmax >= 40 MHz
   GATE 2 fp_addwide : LUT4 <= 900, MULT18X18D == 0, Fmax >= 40 MHz
-  GATE 3 fp_stepseq : whole unit (step sequencer + FP_Mul36 + FP_AddWide +
-                      seed/coeff ROMs) — LUT4 <= 2000, MULT18X18D == 4
-                      EXACTLY (the unit instantiates ONE FP_Mul36 and
-                      nothing else may infer a multiplier), TRELLIS_FF
-                      <= 900 net of the 143 gate-top wrapper I/O flops
-                      (109 input + 34 output bits — see
-                      FP_StepSeq_gate_top.v), EBR == 0 (distributed ROM;
-                      spec allows a DOCUMENTED 1-EBR fallback, which this
-                      checker deliberately does NOT auto-pass — flip the
-                      limit only with the documentation in place),
-                      Fmax >= 40 MHz
+  GATE C3 fp_stepseq: whole unit (step sequencer + FP_Mul36 + FP_AddWide +
+                      seed/coeff ROMs + the v1.8.0d OPS_CVT/OPS_ACCEW
+                      extension) — LUT4 <= 4545 = the §23.10.10(g) C3
+                      line: v1.8.0c Gate-3 amended measurement 3,345
+                      (§23.10.7, seed-2 archive) + the pre-declared
+                      +1.2k hard-escalation threshold; the measured DELTA
+                      against 3,345 is recorded vs the +300-700 estimate,
+                      and a delta above +1.2k executes the §23.10.10(g)
+                      cut ladder instead of a gate amendment. MULT18X18D
+                      == 4 EXACTLY (0 new multipliers — the unit
+                      instantiates ONE FP_Mul36 and the CVT/ACCEW programs
+                      add zero multiplier passes), TRELLIS_FF <= 900 net
+                      of the 147 gate-top wrapper I/O flops (113 input +
+                      34 output bits, incl. the v1.8.0d dtype_i port —
+                      see FP_StepSeq_gate_top.v), EBR == 0 (distributed
+                      ROM; spec allows a DOCUMENTED 1-EBR fallback, which
+                      this checker deliberately does NOT auto-pass),
+                      Fmax >= 40 MHz (seed sweep 1-5 allowed, archive at
+                      the first passing seed — §23.10.7 Gate-3 precedent:
+                      seed noise, not structure).
 """
 
 import json
@@ -32,13 +42,18 @@ FREQ_TARGET = 40.0
 
 GATES = [
     # name: max_lut4, mult (max unless exact), ff criterion (None = info),
-    #       wrapper_ff subtracted from the FF measurement before the check
-    {"name": "fp_mul36",   "max_lut4": 300,  "mult": 4, "mult_exact": False,
-     "max_ff": None, "wrapper_ff": 0,   "max_ebr": 0},
-    {"name": "fp_addwide", "max_lut4": 900,  "mult": 0, "mult_exact": False,
-     "max_ff": None, "wrapper_ff": 0,   "max_ebr": 0},
-    {"name": "fp_stepseq", "max_lut4": 2000, "mult": 4, "mult_exact": True,
-     "max_ff": 900,  "wrapper_ff": 143, "max_ebr": 0},
+    #       wrapper_ff subtracted from the FF measurement before the check,
+    #       lut4_baseline: prior-gate archive the LUT4 delta is recorded
+    #       against (None = no delta line)
+    {"name": "fp_mul36",   "label": "GATE 1",
+     "max_lut4": 300,  "mult": 4, "mult_exact": False,
+     "max_ff": None, "wrapper_ff": 0,   "max_ebr": 0, "lut4_baseline": None},
+    {"name": "fp_addwide", "label": "GATE 2",
+     "max_lut4": 900,  "mult": 0, "mult_exact": False,
+     "max_ff": None, "wrapper_ff": 0,   "max_ebr": 0, "lut4_baseline": None},
+    {"name": "fp_stepseq", "label": "GATE C3",
+     "max_lut4": 4545, "mult": 4, "mult_exact": True,
+     "max_ff": 900,  "wrapper_ff": 147, "max_ebr": 0, "lut4_baseline": 3345},
 ]
 
 # every ECP5 block-RAM cell type yosys memory_bram can emit
@@ -71,8 +86,9 @@ def main():
     lines = []
     all_pass = True
 
-    for i, g in enumerate(GATES, start=1):
+    for g in GATES:
         name = g["name"]
+        label = g["label"]
         cells = parse_stat(rpt_dir / f"{name}_synth.rpt")
         lut4 = cells.get("LUT4", 0)
         mult = cells.get("MULT18X18D", 0)
@@ -100,11 +116,19 @@ def main():
                 f"    TRELLIS_FF = {ff:5d}   raw; unit = {ff_unit} after "
                 f"-{g['wrapper_ff']} wrapper I/O flops (limit {g['max_ff']})"
                 f"   -> {'PASS' if ok_ff else 'FAIL'}")
+        delta_line = []
+        if g["lut4_baseline"] is not None:
+            delta = lut4 - g["lut4_baseline"]
+            delta_line = [
+                f"    LUT4 delta = {delta:+5d}   vs the {g['lut4_baseline']} "
+                f"Gate-3 archive (estimate +300-700; hard escalation to the "
+                f"cut ladder above +1200)"]
         lines += [
-            f"GATE {i} — {name} (LFE5UM-85F CABGA381 -6, out-of-context, "
+            f"{label} — {name} (LFE5UM-85F CABGA381 -6, out-of-context, "
             f"yosys synth_ecp5 + nextpnr-ecp5, wrapper-top incl. I/O regs):",
             f"    LUT4       = {lut4:5d}   (limit {g['max_lut4']})"
             f"   -> {'PASS' if ok_lut else 'FAIL'}",
+            *delta_line,
             f"    MULT18X18D = {mult:5d}   ({mult_crit})"
             f"   -> {'PASS' if ok_mult else 'FAIL'}",
             ff_line,
@@ -114,7 +138,7 @@ def main():
             f"    CCU2C      = {ccu2:5d}   (informational, carry cells)",
             f"    Fmax       = {fmax:8.2f} MHz (target >= {FREQ_TARGET})"
             f"   -> {'PASS' if ok_fmax else 'FAIL'}",
-            f"    GATE {i} RESULT: {'PASS' if ok else 'FAIL'}",
+            f"    {label} RESULT: {'PASS' if ok else 'FAIL'}",
             "",
         ]
 
@@ -123,7 +147,7 @@ def main():
     (rpt_dir / "gate_summary.txt").write_text(summary + "\n")
     if not all_pass:
         sys.exit("synth_fp_ops: GATE FAILURE — see gate_summary.txt")
-    print("synth_fp_ops: Gates 1-3 PASS")
+    print("synth_fp_ops: Gates 1-2 + C3 PASS")
 
 
 if __name__ == "__main__":

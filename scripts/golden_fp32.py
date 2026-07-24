@@ -563,11 +563,16 @@ DT_BF16 = 0x3
 DT_ACC_INT = 0x4
 
 # 0x77 CVT sub-op codes (imm16[7:4]; absent imm16 defaults to WIDEN_TO_F32).
-# COMMIT 2 emits these as the generated cvt_op_codes table (single-source in
-# isa/wt64v1_isa.json); until then this is the pinned transcription and the
-# freshness test of COMMIT 2 must assert equality against it.
+# COMMIT 2 landed the generated cvt_op_codes table (single-source in
+# isa/wt64v1_isa.json -> asm/generated_isa_tables.py CVT_OP_CODE); the
+# pinned transcription below is asserted against it, per the COMMIT-1
+# freshness clause.
 CVT_WIDEN_TO_F32 = 0x0
 CVT_NARROW_FROM_F32 = 0x1
+from generated_isa_tables import CVT_OP_CODE  # noqa: E402
+assert CVT_OP_CODE == {"WIDEN_TO_F32": CVT_WIDEN_TO_F32,
+                       "NARROW_FROM_F32": CVT_NARROW_FROM_F32}, (
+    "generated cvt_op_codes diverged from the golden pinned transcription")
 
 # Golden intermediate width for the two-pass dtype-0x4 I2F ingress (see
 # micro_i2f_acc): the a_in/c_in 32-bit FSCALAR-style split. Any RTL

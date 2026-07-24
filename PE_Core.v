@@ -219,6 +219,11 @@ module PE_Core #(
     localparam [3:0] OP_ARGMIN  = 4'h7;
     // v1.8.0b — generated sub-op codes (single source isa/wt64v1_isa.json)
     `include "generated/isa_subop_codes.vh"
+    // v1.8.0d §23.10.10(d) — THE single f32 -> f16/bf16 narrow function,
+    // shared with FP_StepSeq's CVT NARROW step (bit-identity clause:
+    // 0x7C fp-dest == 0x77 NARROW_FROM_F32 for all 2^32 inputs incl. the
+    // DAZ pre-stage). Module-body include, isa_subop_codes.vh convention.
+    `include "fp_narrow_f32.vh"
     localparam [3:0] RED_OP_SUM = 4'h0;
     localparam [3:0] RED_OP_MAX = 4'h1;
     localparam [3:0] RED_OP_MIN = 4'h2;
@@ -1615,11 +1620,17 @@ module PE_Core #(
     // MUL_OPS_SUPPORTED); same lockstep rule, same silent-dead-end failure
     // mode if either twin misses them (pinned by the Cluster reachability
     // test test_fp_mu_routing_end_to_end).
+    // v1.8.0d §23.10.10 — 0x77 CVT / 0x73 ACC_ELEMWISE join OPCODE-ONLY
+    // (both ride the MU's FP_StepSeq: OPS_CVT / OPS_ACCEW). 0x7C is
+    // DELIBERATELY absent for ALL dtypes including the new fp-dest forms
+    // (no multipliers — the shared narrow packer is combinational on the
+    // L-PEs; §23.10.10(d) twin-classifier-untouched clause).
     wire dec_is_mul_op = (dec_opcode == 8'h12) || (dec_opcode == 8'h30)
                       || (dec_opcode == 8'h32) || (dec_opcode == 8'h43)
                       || (dec_opcode == 8'h71) || (dec_opcode == 8'h72)
-                      || (dec_opcode == 8'h74) || (dec_opcode == 8'h75)
-                      || (dec_opcode == 8'h76);
+                      || (dec_opcode == 8'h73) || (dec_opcode == 8'h74)
+                      || (dec_opcode == 8'h75) || (dec_opcode == 8'h76)
+                      || (dec_opcode == 8'h77);
     wire dec_is_div_op = (dec_opcode == 8'h13)   // DIV
                       || (dec_opcode == 8'h1C)   // MOD
                       || (dec_opcode == 8'h1D);  // DIVMOD
@@ -1701,7 +1712,12 @@ module PE_Core #(
     reg         fp_start;                       // 1-cycle launch pulse
     reg         fp_armed;                       // launch..done ownership flag
     reg  [31:0] fp_a_q, fp_b_q, fp_c_q;         // operands latched at launch
-    reg  [3:0]  fp_subop_q;                     // FSCALAR sub-op (imm16[7:4])
+    reg  [3:0]  fp_subop_q;                     // FSCALAR/CVT sub-op (imm16[7:4])
+    // v1.8.0d §23.10.10(b) — CVT dtype (eff_precision[3:0]) latched at the
+    // 0x77 launch only; FP_StepSeq ignores dtype_in for every other op
+    // class, and the sext-vs-zext result capture below additionally keys
+    // on fp_opcode_held == 8'h77, so a stale value is harmless.
+    reg  [3:0]  fp_dtype_q;
     reg  [7:0]  fp_opcode_held;                 // opcode_out at result cycle
     reg  [TAG_WIDTH-1:0]  fp_tag_held;          // scalar tag rebuilt at launch
     reg                   fp_valid_p2;          // output strobe (div_valid_p2 idiom)
@@ -1857,6 +1873,9 @@ module PE_Core #(
             .start     (fp_start),
             .opcode_in (fp_opcode_held),
             .subop_in  (fp_subop_q),
+            // v1.8.0d §23.10.10(b) — dtype feeds the OPS_CVT programs
+            // (latched by the 0x77 launch arm; don't-care elsewhere).
+            .dtype_in  (fp_dtype_q),
             .a_in      (fp_a_q),
             .b_in      (fp_b_q),
             .c_in      (fp_c_q),
@@ -1869,6 +1888,18 @@ module PE_Core #(
         assign fp_done     = 1'b0;
         assign fp_result_w = 32'h0;
     end endgenerate
+
+    // v1.8.0d §23.10.10(b) — CVT F2I results are int32-patterned and the
+    // result payload row is SEXT64 (ints sext64; everything else keeps the
+    // {32'h0, low32} zero-extend: f32 rows and the {48'h0, h} f16/bf16
+    // rows, whose FP_StepSeq low-32 word is already {16'h0, h}). The held
+    // launch registers identify the F2I forms: opcode 0x77, sub-op
+    // NARROW_FROM_F32, dtype not f16/bf16. fp_subop_q/fp_dtype_q are only
+    // meaningful when fp_opcode_held selects them (same held-register
+    // convention as the FSCALAR sub-op).
+    wire fp_res_int_sext = (fp_opcode_held == 8'h77)
+                        && (fp_subop_q == CVT_NARROW_FROM_F32)
+                        && (fp_dtype_q != 4'h2) && (fp_dtype_q != 4'h3);
     // VDOT result: r = (sext64(dot) + carry_in) mod 2^64. Full 64-bit
     // payload convention (spec §23.6a payload-format table) — NOT the
     // legacy {32'h0, acc} zero-extend.
@@ -1879,6 +1910,18 @@ module PE_Core #(
     wire signed [63:0] wres_sq_shifted = rne_shr64($signed(dec_input_payload), dec_eff_imm16[5:0]);
     wire [63:0] wres_sq_int4 = clamp_sext64(wres_sq_shifted, -64'sd8,   64'sd7);
     wire [63:0] wres_sq_int8 = clamp_sext64(wres_sq_shifted, -64'sd128, 64'sd127);
+    // v1.8.0d §23.10.10(d) — STORE_QUANT fp-dest packer (dtype 0x2/0x3):
+    // source = fp32 payload[31:0], DAZ-flushed AT SOURCE (pinned
+    // identically to the FP_StepSeq CVT-narrow capture site — the
+    // bit-identity precondition; the shared function's e==0 arm makes the
+    // result caller-DAZ-agnostic, but the pin is kept explicit so the two
+    // sites read the same). Function-call results are hoisted to wires
+    // and consumed whole (§23.8 — no function-call result indexing).
+    wire [31:0] wres_sq_fp_src = (dec_input_payload[30:23] == 8'h00)
+                               ? {dec_input_payload[31], 31'h0}
+                               : dec_input_payload[31:0];
+    wire [15:0] wres_sq_f16  = fp_narrow_f32(wres_sq_fp_src, 1'b0);
+    wire [15:0] wres_sq_bf16 = fp_narrow_f32(wres_sq_fp_src, 1'b1);
 
     // -------------------------------------------------------------------------
     // Stage-2 sequential dispatch
@@ -2051,7 +2094,12 @@ module PE_Core #(
                 if (fp_done && fp_armed) begin
                     fp_armed     <= 1'b0;
                     fp_valid_p2  <= 1'b1;
-                    fp_result_p2 <= {32'h0, fp_result_w};
+                    // v1.8.0d §23.10.10(b) — result payload rows: ints
+                    // (CVT F2I) sext64; f32 {32'h0, f}; f16/bf16
+                    // {48'h0, h} (low32 already {16'h0, h}).
+                    fp_result_p2 <= fp_res_int_sext
+                                  ? {{32{fp_result_w[31]}}, fp_result_w}
+                                  : {32'h0, fp_result_w};
                     fp_tag_p2    <= fp_tag_held;
                 end
             end else begin
@@ -2934,7 +2982,8 @@ module PE_Core #(
                         end
                         // v1.8.0a/0b §23.9 — remaining WIDE-ACC block STUBS
                         // (0x71/0x72/0x7C graduated to real datapaths in
-                        // v1.8.0b — see their standalone arms below). Decode-legal (opcode_supported + EH shape +
+                        // v1.8.0b, 0x74/0x75/0x76 in v1.8.0c, 0x73/0x77 in
+                        // v1.8.0d — see their standalone arms below). Decode-legal (opcode_supported + EH shape +
                         // mode-byte ROM all pass at EHDecode) but not yet
                         // implemented — capability absence, so this arm is
                         // exactly the shipped BCAST 0x24 body: lower_required,
@@ -2946,12 +2995,12 @@ module PE_Core #(
                         // lower_required). Membership is pinned by the
                         // all-ops live-extraction test — adding an op to
                         // isa/wt64v1_isa.json without listing it here falls
-                        // to the default arm and fails that test. Real
-                        // datapaths land in v1.8.0b (int32 acc) / v1.8.0c
-                        // (fp32 pipeline) / v1.8.0d (CVT/DEQUANT/STORE_QUANT)
-                        // as pure monotonic stub-body replacements.
-                        8'h70, 8'h73,
-                        8'h77, 8'h78, 8'h79, 8'h7D, 8'h7E: begin
+                        // to the default arm and fails that test. The
+                        // remaining set {0x70, 0x78, 0x79} is the v1.8.0e
+                        // wide package (frag-FSM widening + buffer-then-
+                        // drain, §23.10.10(a) deferral table); 0x7D/0x7E
+                        // stay unscheduled.
+                        8'h70, 8'h78, 8'h79, 8'h7D, 8'h7E: begin
                             lower_required <= 1'b1; output_valid <= 1'b0;
                         end
                         // v1.8.0b §23.9 — VDOT_ACC: stateless 4-fragment
@@ -3131,6 +3180,90 @@ module PE_Core #(
                                 output_valid   <= 1'b0;
                             end
                         end
+                        // v1.8.0d §23.10.10(c) — ACC_ELEMWISE: fused
+                        // round-once fp32 FMA a*B[63:32]+B[31:0], OPREF
+                        // form ONLY (OPS_ACCEW rides the FS_FMA-shaped
+                        // step program). Launch ladder = the 0x74/0x75
+                        // mirror + the OPREF-only rung: ANY imm present
+                        // -> lower_required (capability absence — the
+                        // sub-op table was deleted; an imm carve-out
+                        // under EHDecode's alu_binary XOR trap would be
+                        // decode_error, and this is NOT that). OPREF
+                        // presence = dec_eff_opref_kind[3] (the v1.8.0d
+                        // {presence, src_kind} packing — kind 0 direct-
+                        // payload_b OPREF would otherwise alias the imm
+                        // form's 4'h0). Under the XOR trap, a clean
+                        // decode of this alu-binary opcode has EXACTLY
+                        // one of {imm, OPREF}, so !bit3 == imm present.
+                        8'h73: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                lower_required <= 1'b1; output_valid <= 1'b0;
+                            end else if (!output_regs_free) begin
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end else if (!dec_eff_opref_kind[3]) begin
+                                // imm16/imm32/imm64 form — implemented
+                                // capability is OPREF-only (§23.10.10(c)).
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end else begin
+                                fp_start       <= 1'b1;
+                                fp_a_q         <= dec_input_payload[31:0];
+                                fp_b_q         <= dec_eff_b_value[63:32];
+                                fp_c_q         <= dec_eff_b_value[31:0];
+                                fp_subop_q     <= 4'h0;
+                                fp_dtype_q     <= dec_eff_precision[3:0];
+                                fp_armed       <= 1'b1;
+                                fp_opcode_held <= dec_opcode;
+                                fp_tag_held <= {dec_wave_number, dec_thread_id,
+                                                8'h00, dec_eff_output_port_id,
+                                                dec_eff_precision, 8'h00};
+                                output_valid   <= 1'b0;
+                            end
+                        end
+                        // v1.8.0d §23.10.10(b) — CVT: six scalar
+                        // conversions on the MU step sequencer (OPS_CVT).
+                        // Sub-op = imm16[7:4] from the generated
+                        // cvt_op_codes (absent imm16 = WIDEN_TO_F32, the
+                        // monotonic default); dtype = the mode byte's
+                        // dtype nibble (ROM-legal set {0,1,2,3,4}; 0x4 =
+                        // accumulator-format integer endpoint, direction
+                        // from the sub-op — pin 10). eff_b_value is NEVER
+                        // read (imm32/imm64 asm-forbidden/RTL-tolerated,
+                        // FSCALAR semantics). Ladder rungs are 0x72's
+                        // exactly: imm16[3:0]/[15:8] reserved-zero and
+                        // sub-op > NARROW_FROM_F32 -> lower_required,
+                        // never error_flag. int64 I2F ingress is the
+                        // pinned FSCALAR-style split: payload[63:32] ->
+                        // c_in, payload[31:0] -> a_in.
+                        8'h77: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                lower_required <= 1'b1; output_valid <= 1'b0;
+                            end else if (!output_regs_free) begin
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end else if (dec_eff_imm16[3:0] != 4'h0
+                                      || dec_eff_imm16[15:8] != 8'h0) begin
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end else if (dec_eff_imm16[7:4] > CVT_NARROW_FROM_F32) begin
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end else begin
+                                fp_start       <= 1'b1;
+                                fp_a_q         <= dec_input_payload[31:0];
+                                fp_b_q         <= 32'h0;
+                                fp_c_q         <= dec_input_payload[63:32];
+                                fp_subop_q     <= dec_eff_imm16[7:4];
+                                fp_dtype_q     <= dec_eff_precision[3:0];
+                                fp_armed       <= 1'b1;
+                                fp_opcode_held <= dec_opcode;
+                                fp_tag_held <= {dec_wave_number, dec_thread_id,
+                                                8'h00, dec_eff_output_port_id,
+                                                dec_eff_precision, 8'h00};
+                                output_valid   <= 1'b0;
+                            end
+                        end
                         // v1.8.0b §23.9 — STORE_QUANT: scalar int-dest
                         // requant, out = clamp_dtype(RNE(x >> s)),
                         // s = imm16[5:0] (absent = 0 = pure clamp).
@@ -3162,10 +3295,33 @@ module PE_Core #(
                                 output_tag <= {dec_wave_number, dec_thread_id,
                                                8'h00, dec_eff_output_port_id,
                                                dec_eff_precision, 8'h00};
-                            end else begin
-                                // f16/bf16 destination — v1.8.0d.
+                            end else if (dec_eff_imm16[5:0] != 6'h0) begin
+                                // v1.8.0d §23.10.10(d) — fp-dest reserved
+                                // rung: the int forms' shift field s =
+                                // imm16[5:0] is meaningless for an fp
+                                // destination, so nonzero bits there are
+                                // reserved -> lower_required (mirrors the
+                                // imm16[15:6] rung above; together the
+                                // fp-dest forms require imm16 == 0/absent).
                                 lower_required <= 1'b1;
                                 output_valid   <= 1'b0;
+                            end else begin
+                                // v1.8.0d §23.10.10(d) — fp-dest packer
+                                // (dtype 0x2 f16 / 0x3 bf16; the mode-byte
+                                // ROM admits no other dtype here). One
+                                // shared narrow function + DAZ-at-source
+                                // (wres_sq_* wires above) == 0x77
+                                // NARROW_FROM_F32 bit-identity, all 2^32
+                                // inputs. Result row {48'h0, h}; 0 added
+                                // cycles (combinational, same-cycle emit
+                                // as the int arms).
+                                output_payload <= {48'h0,
+                                    (dec_eff_precision[3:0] == 4'h3)
+                                        ? wres_sq_bf16 : wres_sq_f16};
+                                output_valid   <= 1'b1;
+                                output_tag <= {dec_wave_number, dec_thread_id,
+                                               8'h00, dec_eff_output_port_id,
+                                               dec_eff_precision, 8'h00};
                             end
                         end
                         default: begin

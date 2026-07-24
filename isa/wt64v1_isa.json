@@ -62,6 +62,10 @@
     "FS_FMA": 3,
     "FS_DIV": 4
   },
+  "cvt_op_codes": {
+    "WIDEN_TO_F32": 0,
+    "NARROW_FROM_F32": 1
+  },
   "opcodes": [
     {
       "mnemonic": "NOP",
@@ -2018,8 +2022,8 @@
     {
       "mnemonic": "ACC_ELEMWISE",
       "code": 115,
-      "desc": "fp32 scalar scale/shift on accumulator (gamma/beta step)",
-      "notes": "v1.8.0a COMMIT 2 stub: decode-legal, PE_Core raises lower_required (capability absence, not malformation). Mode-byte legality per the normative spec \u00a723.6a table \u2014 restrictive-first, later loosening only.",
+      "desc": "ACC_ELEMWISE \u2014 round-once fp32 FMA a*B[63:32]+B[31:0], OPREF form ONLY (B via dec_eff_b_value); any imm present -> lower_required; MU-hosted",
+      "notes": "v1.8.0d IMPLEMENTED (integration commit, spec section 23.10.10(c)): OPREF-form-only graduation \u2014 stub_v18 dropped with the 0x73 launch arm in the same commit. The alu-binary DECODE shape is deliberately UNTOUCHED: EHDecode's alu_binary XOR trap (exactly-one-of {IMM*, OPREF}) means an imm-form 0x73 still DECODES cleanly; the any-imm-present -> lower_required guard is EXECUTE-side (capability absence, never decode_error, never silent). OPREF-present discrimination: EHDecode packs dec_eff_opref_kind as {acc_any_opref, src_kind[2:0]} (presence bit 3 \u2014 without it a kind-0 direct-payload_b OPREF is indistinguishable from the imm form at the execute stage, since both read 4'h0); the PE_Core rung lowers when dec_eff_opref_kind[3]==0. The draft sub-op table is DELETED: an imm16 carve-out under the XOR invariant would be decode_error, so the invariant is honored instead of amended. Future imm-B/bf16-immediate loosening needs the per-opcode exemption machinery (0e-or-later).",
       "asm_legality": {
         "required": [
           "port"
@@ -2045,7 +2049,7 @@
         "forbid_opref": false
       },
       "rtl_alu_binary": true,
-      "stub_v18": true
+      "stub_v18": false
     },
     {
       "mnemonic": "FSCALAR",
@@ -2157,14 +2161,13 @@
     {
       "mnemonic": "CVT",
       "code": 119,
-      "desc": "f16/bf16 <-> f32 + I2F/F2I \u2014 dtype names the NARROW endpoint (conversion-dtype rule \u00a723.6a); sub-op encoding v1.8.0b",
-      "notes": "v1.8.0a COMMIT 2 stub: decode-legal, PE_Core raises lower_required (capability absence, not malformation). Mode-byte legality per the normative spec \u00a723.6a table \u2014 restrictive-first, later loosening only.",
+      "desc": "CVT \u2014 scalar f16/bf16 <-> f32 widen/narrow + I2F/F2I (dtype 0x4 = accumulator-format integer endpoint, pin 10): sub-op imm16[7:4] per cvt_op_codes (absent imm16 = WIDEN_TO_F32); imm16[3:0]/[15:8] reserved-zero and sub-op >0x1 lower_required; MU-hosted",
+      "notes": "v1.8.0d IMPLEMENTED (integration commit, spec section 23.10.10(b)): stub_v18 dropped with the 0x77 launch arm in the same commit. Launch ladder (0x74/0x75 mirror): MU gate -> busy-reject (lower_required) -> imm16[3:0]/[15:8] reserved-zero and sub-op > NARROW_FROM_F32 -> lower_required -> launch OPS_CVT (dtype_in = eff_precision[3:0]; F2I int results sext64 at the PE_Core result capture). Monotonic loosenings, both argued intent-preserving in the section 23.10.8 amendment: (1) legal_dtypes [2,3] -> [0,1,2,3,4] (illegal->legal only; dtype 0x4 names the int32/int64 endpoint, direction from sub-op; dtype 0x5 stays decode_error); (2) imm16 forbidden -> optional (0x72/0x74 precedent \u2014 CVT never reads eff_b_value, so imm16 is a sub-op selector, not a data channel; absent imm16 = WIDEN_TO_F32 keeps every previously-legal encoding decoding). imm32/imm64 stay asm-forbidden but RTL-tolerated (FSCALAR semantics verbatim \u2014 one forbid_imm_any bit, no per-size split; harmless because eff_b_value is never consumed, so forbid_opref stays true and rtl_alu_binary stays false, keeping the EHDecode alu-binary XOR trap dormant).",
       "asm_legality": {
         "required": [
           "port"
         ],
         "forbidden": [
-          "imm16",
           "imm32",
           "imm64",
           "mem",
@@ -2184,11 +2187,11 @@
         "req_imm16": false,
         "forbid_subscript": true,
         "forbid_mem": true,
-        "forbid_imm_any": true,
+        "forbid_imm_any": false,
         "forbid_opref": true
       },
       "rtl_alu_binary": false,
-      "stub_v18": true
+      "stub_v18": false
     },
     {
       "mnemonic": "DEQUANT",
@@ -2490,8 +2493,11 @@
         "code": 119,
         "mnemonic": "CVT",
         "legal_dtypes": [
+          0,
+          1,
           2,
-          3
+          3,
+          4
         ],
         "legal_acc": [
           1

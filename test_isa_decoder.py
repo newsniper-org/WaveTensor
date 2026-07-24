@@ -4073,9 +4073,12 @@ def _asm_layernorm_cache_load_dim():
         line=0,
     )
     steps = _lower_layernorm(inst)
-    cache_load_step = steps[4]
-    assert cache_load_step.mnemonic == 'CACHE_LOAD_WIDE', \
-        f"expected step 4 to be CACHE_LOAD_WIDE, got {cache_load_step.mnemonic}"
+    # v1.8.0d: the fp32 scalar insert shifted the reload's index — locate
+    # by mnemonic (there is exactly one CACHE_LOAD_WIDE in the chain).
+    reloads = [s for s in steps if s.mnemonic == 'CACHE_LOAD_WIDE']
+    assert len(reloads) == 1, \
+        f"expected exactly one CACHE_LOAD_WIDE, got {len(reloads)}"
+    cache_load_step = reloads[0]
     prec_eh = next(eh for eh in cache_load_step.eh_list if eh.kind == 'precision')
     return prec_eh.args['dim']
 
@@ -4632,14 +4635,25 @@ _FP_UNASSIGNED = [0x7A, 0x7B, 0x7F]
 
 def _fp_scaffold(op):
     """Minimal legal EH scaffold for an fp-block op, derived LIVE from the
-    generated tables (never hand-typed shapes)."""
+    generated tables (never hand-typed shapes).
+
+    v1.8.0d DOCUMENTED DECISION (0x73 ACC_ELEMWISE): the generic
+    allow_imm_xor_opref arm would satisfy the alu-binary XOR trap with an
+    IMM16 — which still decodes cleanly but is now the OPREF-only launch
+    rung's lower_required leg (§23.10.10(c)), turning every legal-mode
+    sweep point into a rung test instead of an execute test. The sweep's
+    job is to prove the ROM x execute boundary, so the scaffold supplies
+    the OPREF form (src_kind 0, direct payload_b — _fp_run_point already
+    drives payload_b) and legal-mode 0x73 points EXECUTE; the imm-form
+    lower_required rung is pinned separately by
+    test_accew_opref_only_directed_e2e."""
     from generated_isa_tables import LEGAL
     ehs = [_STD_PORT()]
     leg = LEGAL.get(op)
     if leg is None:
         return ehs
     if leg['allow_imm_xor_opref']:
-        ehs.append(eh_imm16(1))
+        ehs.append(eh_opref() if op == 0x73 else eh_imm16(1))
     elif 'mem' in leg['required']:
         ehs.append(eh_mem(0))
     return ehs
@@ -4698,7 +4712,22 @@ def _fp_expected(op, mode):
     v1.8.0c: 0x74/0x75/0x76 graduated out of STUB_OPS_V18 and now predict
     execution on their single legal mode (0x14). The sweep scaffold
     supplies payload_b_valid=1 (see _fp_run_point), so 0x74 launches
-    FS_ADD (absent imm16 default) rather than erroring on missing B."""
+    FS_ADD (absent imm16 default) rather than erroring on missing B.
+
+    v1.8.0d: 0x73/0x77 graduated too, and the 0x7C dtype-0x2/0x3
+    conditional lower_required arm is GONE (fp-dest packer landed).
+    Execution predictions for the new rows, per §23.10.10:
+      * 0x77 x dtype {0,1,2,3,4}: absent imm16 = WIDEN_TO_F32, so dtype
+        0/1/4 sweep points run I2F on payload=1 (the op-class-conditional
+        DAZ bypass is what makes I2F(1) emit 1.0f instead of a flushed
+        zero — value-level proof in test_cvt_directed_cells_e2e; the
+        sweep asserts the ever-bits) and dtype 2/3 run f16/bf16 widen of
+        the raw pattern 0x0001 (f16 subnormal honored / bf16 subnormal
+        flushed — again value-pinned in the directed cells).
+      * 0x73 x dtype {4}: the scaffold supplies OPREF (see _fp_scaffold),
+        so legal-mode points execute the FS_FMA-shaped program.
+      * 0x7C x dtype {2,3}: absent imm16 -> both reserved rungs pass ->
+        the packer emits {48'h0, narrow(DAZ(payload))} same-cycle."""
     from generated_isa_tables import FP_MODE_LEGAL, STUB_OPS_V18
     legal = FP_MODE_LEGAL.get(op)
     if legal is None:
@@ -4708,8 +4737,6 @@ def _fp_expected(op, mode):
             and rnd in legal['legal_rnd']):
         if op in STUB_OPS_V18:
             return (0, 1, 0)   # decode-legal stub -> lower_required
-        if op == 0x7C and dtype in (2, 3):
-            return (0, 1, 0)   # f16/bf16 dest deferred to v1.8.0d
         return (0, 0, 1)       # implemented -> executes, emits output
     return (1, 0, 0)           # illegal mode -> decode_error
 
@@ -4996,10 +5023,20 @@ async def test_store_quant_clamp_rne_shift(dut):
     # reserved imm16[15:6] violation
     r = await _fire_v180b(dut, 0x7C, 0x10, [eh_imm16(0x0040)], 0, payload=1)
     assert (r['err'], r['lwr'], r['out']) == (0, 1, 0), f"reserved: {r}"
-    # f16/bf16 destination → lower_required until v1.8.0d
-    for mode in (0x12, 0x13):
-        r = await _fire_v180b(dut, 0x7C, mode, [], 0, payload=1)
-        assert (r['err'], r['lwr'], r['out']) == (0, 1, 0), f"mode={mode:#x}: {r}"
+    # v1.8.0d §23.10.10(d): the f16/bf16 destinations GRADUATED — the
+    # packer executes (payload 1 = fp32 denormal -> DAZ -> +0 -> h 0x0000;
+    # a non-trivial value cell too). Bit-level coverage lives in
+    # test_store_quant_fp_dest_bit_identity_directed.
+    import golden_fp32 as _G7C
+    for mode, dt in ((0x12, 2), (0x13, 3)):
+        for payload in (1, 0x3FC00000):     # denorm-DAZ cell + 1.5f
+            exp = _G7C.store_quant(payload, dt)
+            r = await _fire_v180b(dut, 0x7C, mode, [], 0, payload=payload)
+            assert (r['err'], r['lwr'], r['out']) == (0, 0, 1), \
+                f"mode={mode:#x} x={payload:#x}: {r}"
+            assert r['payload'] == exp, \
+                f"mode={mode:#x} x={payload:#x}: " \
+                f"{r['payload']:016x} != {exp:04x}"
 
 
 @cocotb.test()
@@ -5105,19 +5142,31 @@ def _f2b(x):
     return int.from_bytes(_struct.pack(">f", float(x)), "big")
 
 
-def _fp_instr(op, subop=None, imm16=None, out_port=0):
-    """Encode an fp-block instruction: PORT + PRECISION(0x14, via
-    F_PRECISION_OVR) + optional IMM16 (sub-op nibble in [7:4]). The
-    F_HAS_OPB flag is deliberately NOT set: dec_input_payload_b_valid
-    mirrors the input port directly, so the v1.8.0c dispatch-side
-    missing-B guard (not EHDecode's opb_required_invalid) is what these
-    tests exercise."""
+def _fp_instr(op, subop=None, imm16=None, out_port=0, mode=None,
+              opref=False, imm32=None, imm64=None):
+    """Encode an fp-block instruction: PORT + PRECISION(mode, via
+    F_PRECISION_OVR; default 0x14) + optional IMM16 (sub-op nibble in
+    [7:4]). The F_HAS_OPB flag is deliberately NOT set:
+    dec_input_payload_b_valid mirrors the input port directly, so the
+    v1.8.0c dispatch-side missing-B guard (not EHDecode's
+    opb_required_invalid) is what these tests exercise.
+
+    v1.8.0d additions: `mode` selects the dtype nibble for the CVT /
+    STORE_QUANT fp-dest forms; `opref` appends a src_kind-0 OPREF EH
+    (the 0x73 ACC_ELEMWISE B channel); `imm32`/`imm64` build the
+    RTL-tolerated / rung-exercising immediate forms."""
     ehs = [eh_port(input_port_mask=0x01, output_port_id=out_port),
-           eh_precision(_FP_MODE, 0)]
+           eh_precision(_FP_MODE if mode is None else mode, 0)]
     if imm16 is not None:
         ehs.append(eh_imm16(imm16))
     elif subop is not None:
         ehs.append(eh_imm16((subop & 0xF) << 4))
+    if imm32 is not None:
+        ehs.append(eh_imm32(imm32))
+    if imm64 is not None:
+        ehs.append(eh_imm64(imm64))
+    if opref:
+        ehs.append(eh_opref())
     return encode_instr(op, *ehs, flags=F_PRECISION_OVR)
 
 
@@ -5158,10 +5207,12 @@ async def _fp_collect_events(dut, cycles):
 
 
 async def _fp_run(dut, op, payload_a, payload_b=0, b_valid=1, subop=None,
-                  imm16=None, tag=None, out_port=0, window=60):
+                  imm16=None, tag=None, out_port=0, window=60, mode=None,
+                  opref=False, imm32=None, imm64=None):
     """Fire one fp op and return its FIRST outcome event (err/lwr/out
     ever-bits + payload/tag/opcode + token->outcome cycle count)."""
-    await _fp_fire_token(dut, _fp_instr(op, subop, imm16, out_port),
+    await _fp_fire_token(dut, _fp_instr(op, subop, imm16, out_port, mode,
+                                        opref, imm32, imm64),
                          payload_a, payload_b, b_valid, tag)
     for i in range(window):
         await RisingEdge(dut.clk)
@@ -5689,6 +5740,417 @@ async def test_fp_cycle_bounds(dut):
         # so busy_cycles == start->done latency + 1 (the pre-integration
         # TB counts latency as edges AFTER the start cycle — same
         # convention as §23.10.6).
+        lat = busy_cycles - 1
+        assert 1 <= lat <= bound, \
+            f"{label}: start->done latency {lat} > normative max {bound}"
+        await _fp_drain(dut)
+        dut._log.info("%s: completed within bound (latency %d <= %d)",
+                      label, lat, bound)
+
+
+# =============================================================================
+# v1.8.0d §23.10.10 — scalar conversion layer integration: CVT (0x77) /
+# ACC_ELEMWISE (0x73) through the MU step sequencer, STORE_QUANT (0x7C)
+# fp-dest packer on the combinational path. Golden authority remains
+# scripts/golden_fp32.py (imported, never retyped): micro_cvt / micro_accew /
+# store_quant — the same entry points the pre-integration FP_StepSeq TB
+# proved bit-exact (22/22 suites, synth/lattice/fp_ops/tb_fp_stepseq.py).
+# =============================================================================
+
+_CVT = _G.CVT_OP_CODE
+_CW, _CN = _CVT['WIDEN_TO_F32'], _CVT['NARROW_FROM_F32']
+
+
+def _cvt_mode(dtype):
+    """fp-block mode byte for a CVT/STORE_QUANT dtype: rnd=0, acc=1."""
+    return 0x10 | (dtype & 0xF)
+
+
+def _i2f_rne_rne_defect(payload):
+    """The EXCLUDED dtype-0x4 I2F model: pass-1 RNE into 32 bits, pass-2
+    RNE to 24 (double rounding). Exists only to prove the directed
+    discriminator vector still discriminates against the pinned
+    RTO-then-RNE two-pass (§23.10.10(f) pin 8) before asserting RTL."""
+    v = payload & ((1 << 64) - 1)
+    v = v - (1 << 64) if v >> 63 else v
+    if v == 0:
+        return 0
+    s = 1 if v < 0 else 0
+    a = -v if s else v
+    bl = a.bit_length()
+    e = bl - 1
+    if bl > 32:
+        inter = _G._rne_shift(a, bl - 32)
+        if inter == (1 << 32):
+            inter >>= 1
+            e += 1
+        bl_i = 32
+    else:
+        inter, bl_i = a, bl
+    if bl_i <= 24:
+        m24 = inter << (24 - bl_i)
+    else:
+        m24 = _G._rne_shift(inter, bl_i - 24)
+        if m24 == (1 << 24):
+            m24 = 1 << 23
+            e += 1
+    return (s << 31) | ((e + 127) << 23) | (m24 - (1 << 23))
+
+
+@cocotb.test()
+async def test_cvt_directed_cells_e2e(dut):
+    """v1.8.0d §23.10.10(b): the COMMIT-0 pin cells through the FULL
+    decode->launch->finish path, bit-exact vs golden micro_cvt — full
+    64-bit payload compares (pins the result rows: f16/bf16 {48'h0, h},
+    f32 {32'h0, f}, ints SEXT64) and opcode_out == 0x77. Covers: widen
+    NaN canonicalization + sNaN quieting (pin 2), f16-subnormal-honored /
+    bf16-subnormal-flushed widen (pin 6), the observable DAZ bypass
+    (I2F(5) — the confirmed unconditional-DAZ bug — plus the fp32-source
+    converse incl. the 0x007FFF80-0x007FFFFF sliver), narrow RNE ties
+    with the disjoint round/sticky formulation (pin 3), narrow overflow
+    -> Inf (pin 4) incl. the bf16 max-finite ripple, FTZ-at-destination
+    band + round-up-to-min-normal survivor (pin 5), NaN narrow -> per-
+    format canonical qNaN sign-dropped (pin 1), the int64 I2F two-pass
+    RTO-then-RNE discriminator (pin 8, proven discriminating in-test),
+    and F2I ties/rails/Inf/NaN->0 (pin 9)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    disc = (1 << 40) + (1 << 17) + 0xFFFF
+    # prove the two-pass discriminators discriminate BEFORE driving them
+    assert _i2f_rne_rne_defect(disc) != _G.micro_i2f_acc(disc), \
+        "int64 I2F discriminator no longer discriminates"
+    assert _G.micro_i2f_acc(disc) == _G.ref_i2f(disc, _G.DT_ACC_INT), \
+        "golden two-pass diverged from the single-RNE reference"
+    # narrow-tie discriminators: on the exact-tie/even-kept pattern RNE
+    # truncates (a round-half-up defect would emit 0x3C01); on the
+    # odd-kept tie it increments (0x3C01 truncation -> 0x3C02)
+    tie_f16_stay, tie_f16_up = 0x3F801000, 0x3F803000
+    assert _G.ref_narrow_f32(tie_f16_stay, _G.DT_F16) == 0x3C00, \
+        "f16 tie-to-even cell drifted"
+    assert _G.ref_narrow_f32(tie_f16_up, _G.DT_F16) == 0x3C02, \
+        "f16 tie-up cell drifted"
+    tie_bf_stay, tie_bf_up = 0x3F808000, 0x3F818000
+    assert _G.ref_narrow_f32(tie_bf_stay, _G.DT_BF16) == 0x3F80, \
+        "bf16 tie-to-even cell drifted"
+    assert _G.ref_narrow_f32(tie_bf_up, _G.DT_BF16) == 0x3F82, \
+        "bf16 tie-up cell drifted"
+
+    W, N = _CW, _CN
+    D = _G
+    cells = [
+        # (label, dtype, subop, payload)
+        ("widen f16 qNaN canon",        D.DT_F16, W, 0x7E01),
+        ("widen f16 sNaN quieted",      D.DT_F16, W, 0x7C01),
+        ("widen f16 -NaN sign dropped", D.DT_F16, W, 0xFE00),
+        ("widen bf16 NaN canon",        D.DT_BF16, W, 0xFF81),
+        ("widen f16 min subnormal (DAZ bypass)", D.DT_F16, W, 0x0001),
+        ("widen f16 -max subnormal",    D.DT_F16, W, 0x83FF),
+        ("widen f16 one",               D.DT_F16, W, 0x3C00),
+        ("widen f16 -Inf",              D.DT_F16, W, 0xFC00),
+        ("widen bf16 subnormal -> signed zero", D.DT_BF16, W, 0x8001),
+        ("widen bf16 splice",           D.DT_BF16, W, 0xC2F7),
+        ("I2F(5) int8 — the confirmed DAZ bug", D.DT_INT8, W, 5),
+        ("I2F int4 -8",                 D.DT_INT4, W, 0xFFFFFFFFFFFFFFF8),
+        ("I2F int64 two-pass discriminator", D.DT_ACC_INT, W, disc),
+        ("I2F int64 negative",          D.DT_ACC_INT, W,
+         (-disc) & 0xFFFFFFFFFFFFFFFF),
+        ("I2F int32 2^24+1 (RNE leg)",  D.DT_ACC_INT, W, (1 << 24) + 1),
+        ("narrow f16 tie stays even",   D.DT_F16, N, tie_f16_stay),
+        ("narrow f16 tie rounds up",    D.DT_F16, N, tie_f16_up),
+        ("narrow bf16 tie stays even",  D.DT_BF16, N, tie_bf_stay),
+        ("narrow bf16 tie rounds up",   D.DT_BF16, N, tie_bf_up),
+        ("narrow f16 overflow -> Inf",  D.DT_F16, N, _f2b(65520.0)),
+        ("narrow bf16 max-finite ripple -> Inf", D.DT_BF16, N, 0x7F7FFFFF),
+        ("narrow f16 NaN -> 0x7E00 sign dropped", D.DT_F16, N, 0xFFC00001),
+        ("narrow bf16 NaN -> 0x7FC0 sign dropped", D.DT_BF16, N, 0xFFC00001),
+        ("narrow bf16 DAZ sliver top",  D.DT_BF16, N, 0x007FFFFF),
+        ("narrow bf16 DAZ sliver base", D.DT_BF16, N, 0x007FFF80),
+        ("narrow f16 -denormal source (DAZ converse)", D.DT_F16, N,
+         0x80000001),
+        ("narrow f16 FTZ band 2^-15",   D.DT_F16, N, 0x38000000),
+        ("narrow f16 FTZ survivor just under 2^-14", D.DT_F16, N,
+         0x387FFFFF),
+        ("F2I int32 tie +0.5 -> 0",     D.DT_ACC_INT, N, _f2b(0.5)),
+        ("F2I int32 tie +1.5 -> 2",     D.DT_ACC_INT, N, _f2b(1.5)),
+        ("F2I int32 tie -0.5 -> 0",     D.DT_ACC_INT, N, _f2b(-0.5)),
+        ("F2I int32 -2.0 sext64",       D.DT_ACC_INT, N, _f2b(-2.0)),
+        ("F2I int4 +Inf -> 7",          D.DT_INT4, N, _PINF),
+        ("F2I int4 -Inf -> -8 sext64",  D.DT_INT4, N, _NINF),
+        ("F2I int8 200.0 saturates",    D.DT_INT8, N, _f2b(200.0)),
+        ("F2I int8 -200.0 saturates",   D.DT_INT8, N, _f2b(-200.0)),
+        ("F2I int32 NaN -> 0",          D.DT_ACC_INT, N, _QNAN),
+        ("F2I int32 fp32-denorm source DAZ -> 0", D.DT_ACC_INT, N,
+         0x007FFFFF),
+    ]
+    for label, dtype, subop, payload in cells:
+        exp = _G.micro_cvt(subop, dtype, payload)
+        r = await _fp_run(dut, 0x77, payload, subop=subop,
+                          mode=_cvt_mode(dtype))
+        assert (r['err'], r['lwr'], r['out']) == (0, 0, 1), f"{label}: {r}"
+        assert r['payload'] == exp, \
+            f"{label}: payload {r['payload']:016x} != {exp:016x}"
+        assert r['opcode'] == 0x77, f"{label}: opcode_out {r['opcode']:#x}"
+        await _fp_drain(dut)
+
+    # absent imm16 == WIDEN_TO_F32 (monotonic default): same result as the
+    # explicit sub-op for a non-trivial widen
+    exp = _G.micro_cvt(_CW, _G.DT_F16, 0x3C01)
+    r = await _fp_run(dut, 0x77, 0x3C01, mode=_cvt_mode(_G.DT_F16))
+    assert (r['err'], r['lwr'], r['out']) == (0, 0, 1) and r['payload'] == exp
+    await _fp_drain(dut)
+
+    # round-trip identity E-row, RE-SCOPED (§23.10.10(b)): normal f16,
+    # +/-0, +/-Inf, canonical qNaN only (f16 subnormals fail BY DESIGN —
+    # the FTZ pin — and stay outside this loop).
+    for h in (0x3C00, 0xBC00, 0x7BFF, 0x0400, 0x0000, 0x8000,
+              0x7C00, 0xFC00, 0x7E00):
+        r1 = await _fp_run(dut, 0x77, h, subop=_CW, mode=_cvt_mode(_G.DT_F16))
+        await _fp_drain(dut)
+        r2 = await _fp_run(dut, 0x77, r1['payload'], subop=_CN,
+                           mode=_cvt_mode(_G.DT_F16))
+        await _fp_drain(dut)
+        assert r2['payload'] == h, \
+            f"f16 round-trip 0x{h:04X} -> {r1['payload']:08x} -> " \
+            f"{r2['payload']:04x}"
+    dut._log.info("CVT directed cells: %d bit-exact end-to-end", len(cells))
+
+
+@cocotb.test()
+async def test_cvt_reserved_field_rungs(dut):
+    """v1.8.0d §23.10.10(b)/(d) reserved rungs — every one lower_required,
+    never error_flag (capability absence, the 0x72 rung semantics):
+    0x77 imm16[3:0] != 0, imm16[15:8] != 0, sub-op > 0x1; 0x7C fp-dest
+    imm16[5:0] != 0 (the new rung) and imm16[15:6] != 0 (the shipped
+    v1.8.0b rung, unchanged); plus the int4/int8 0x7C arms bit-unchanged
+    under a nonzero shift (the fp rung must not leak into them)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # 0x77 rungs
+    for imm in (0x0001, 0x000F, 0x0100, 0xFF00, 0x0011):
+        r = await _fp_run(dut, 0x77, 0x3C00, imm16=imm,
+                          mode=_cvt_mode(_G.DT_F16))
+        assert (r['err'], r['lwr'], r['out']) == (0, 1, 0), \
+            f"0x77 imm16=0x{imm:04X}: {r}"
+    for sub in range(2, 16):
+        r = await _fp_run(dut, 0x77, 0x3C00, subop=sub,
+                          mode=_cvt_mode(_G.DT_F16))
+        assert (r['err'], r['lwr'], r['out']) == (0, 1, 0), \
+            f"0x77 sub-op {sub}: {r}"
+
+    # 0x7C fp-dest rungs: [5:0] nonzero (new) and [15:6] nonzero (shipped)
+    for dt in (_G.DT_F16, _G.DT_BF16):
+        for imm in (0x0001, 0x003F, 0x0040, 0x8000):
+            r = await _fp_run(dut, 0x7C, _f2b(1.5), imm16=imm,
+                              mode=_cvt_mode(dt))
+            assert (r['err'], r['lwr'], r['out']) == (0, 1, 0), \
+                f"0x7C dtype {dt} imm16=0x{imm:04X}: {r}"
+
+    # int4/int8 arms bit-unchanged: shift still works below [15:6], and the
+    # fp-only [5:0] rung must NOT fire for int dtypes
+    for dt, clamp_lo, clamp_hi in ((0, -8, 7), (1, -128, 127)):
+        val = 0x1234
+        r = await _fp_run(dut, 0x7C, val, imm16=store_quant_imm16_py(4),
+                          mode=_cvt_mode(dt))
+        exp = max(clamp_lo, min(clamp_hi, _rne_shr_py(val, 4)))
+        assert (r['err'], r['lwr'], r['out']) == (0, 0, 1), \
+            f"0x7C int dtype {dt} shift=4: {r}"
+        assert r['payload'] == exp & 0xFFFFFFFFFFFFFFFF, \
+            f"0x7C int dtype {dt}: {r['payload']:016x} != {exp:#x}"
+        await _fp_drain(dut)
+
+
+def store_quant_imm16_py(shift):
+    """imm16 for the 0x7C int forms: s at [5:0] (mirror of the asm helper,
+    kept local so the RTL test doesn't import the assembler)."""
+    return shift & 0x3F
+
+
+def _rne_shr_py(x, s):
+    """RNE(x >> s) on a Python int — the v1.8.0b STORE_QUANT int model."""
+    if s == 0:
+        return x
+    q, dropped = x >> s, x & ((1 << s) - 1)
+    half = 1 << (s - 1)
+    if dropped > half or (dropped == half and (q & 1)):
+        q += 1
+    return q
+
+
+@cocotb.test()
+async def test_accew_opref_only_directed_e2e(dut):
+    """v1.8.0d §23.10.10(c) ACC_ELEMWISE: OPREF form bit-exact vs golden
+    micro_accew (== micro_fscalar(FS_FMA) == ref_fma — the corrected
+    bit-match target), gamma/beta identity rows, the F1 fused-single-
+    rounding discriminator re-proven on the B-packing, specials; and the
+    OPREF-only rung: EVERY imm form (imm16/imm32/imm64) -> lower_required
+    (never decode_error, never silent), while imm+OPREF together stays
+    the alu-binary XOR decode_error."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    def bpack(gamma, beta):
+        return ((gamma & 0xFFFFFFFF) << 32) | (beta & 0xFFFFFFFF)
+
+    one, zero = _f2b(1.0), 0
+    # identity: FMA(a*1.0 + 0) == a for normals
+    for a in (_f2b(-2.5), _f2b(3.14159), _f2b(1e-30)):
+        exp = _G.micro_accew(a, bpack(one, zero))
+        r = await _fp_run(dut, 0x73, a, payload_b=bpack(one, zero),
+                          opref=True)
+        assert (r['err'], r['lwr'], r['out']) == (0, 0, 1), f"id {a:#x}: {r}"
+        assert r['payload'] == exp == a, \
+            f"identity: {r['payload']:016x} != {exp:08x}"
+        assert r['opcode'] == 0x73
+        await _fp_drain(dut)
+
+    # F1 fused-vs-double-rounded discriminator on the B packing
+    a, g, b = 0x3F800001, 0x3F800001, 0xBF800002
+    fused = _G.micro_accew(a, bpack(g, b))
+    dbl = _G.micro_fscalar(_FS['FS_ADD'],
+                           _G.micro_fscalar(_FS['FS_MUL'], a, g), b)
+    assert fused != dbl, "F1 vector no longer discriminates"
+    r = await _fp_run(dut, 0x73, a, payload_b=bpack(g, b), opref=True)
+    assert (r['err'], r['lwr'], r['out']) == (0, 0, 1) \
+        and r['payload'] == fused, f"F1: {r} exp {fused:08x}"
+    await _fp_drain(dut)
+
+    # gamma/beta both live: 3.0*2.0 + (-1.5)
+    exp = _G.micro_accew(_f2b(3.0), bpack(_f2b(2.0), _f2b(-1.5)))
+    r = await _fp_run(dut, 0x73, _f2b(3.0),
+                      payload_b=bpack(_f2b(2.0), _f2b(-1.5)), opref=True)
+    assert r['payload'] == exp == _f2b(4.5)
+    await _fp_drain(dut)
+
+    # specials: Inf*0 + 5 -> canonical qNaN (DATA, never error_flag)
+    exp = _G.micro_accew(_PINF, bpack(0, _f2b(5.0)))
+    r = await _fp_run(dut, 0x73, _PINF, payload_b=bpack(0, _f2b(5.0)),
+                      opref=True)
+    assert (r['err'], r['lwr'], r['out']) == (0, 0, 1) \
+        and r['payload'] == exp == _QNAN, f"Inf*0: {r}"
+    await _fp_drain(dut)
+
+    # OPREF-only rung: any imm present -> lower_required (0x73 is
+    # alu-binary, so imm-XOR-opref DECODES cleanly; the guard is the
+    # EXECUTE-side capability rung, §23.10.10(c))
+    for kw in ({'imm16': 0x0010}, {'imm32': _f2b(2.0)},
+               {'imm64': bpack(one, zero)}):
+        r = await _fp_run(dut, 0x73, _f2b(3.0), payload_b=0, **kw)
+        assert (r['err'], r['lwr'], r['out']) == (0, 1, 0), \
+            f"imm form {kw}: {r}"
+
+    # imm + OPREF together is still the XOR-trap decode_error (malformed)
+    r = await _fp_run(dut, 0x73, _f2b(3.0), payload_b=bpack(one, zero),
+                      imm16=0x0010, opref=True)
+    assert (r['err'], r['lwr'], r['out']) == (1, 0, 0), f"XOR trap: {r}"
+
+
+@cocotb.test()
+async def test_store_quant_fp_dest_bit_identity_directed(dut):
+    """v1.8.0d §23.10.10(d) bit-identity clause, RTL side: 0x7C fp-dest ==
+    0x77 NARROW_FROM_F32 at BOTH sites (L-PE combinational arm / MU step
+    program) for a directed + stratified-random set, both equal to the
+    single golden authority ref_narrow_f32 (via store_quant / micro_cvt —
+    themselves one function by construction; the exhaustive 2^32 proof is
+    golden-side per the sweep plan). Also pins the +0-added-cycles clause:
+    the fp-dest form emits with the same token->output latency as the
+    shipped int arms."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    import random as _random
+    rng = _random.Random(0x180D)
+    bits_set = [0x3F801000, 0x3F803000, 0x007FFFFF, 0x007FFF80, 0x00000001,
+                0x80000001, 0x477FF000, 0x7F7FFFFF, 0xFFC00001, 0x7FC00000,
+                0x7F800000, 0xFF800000, 0x00000000, 0x80000000, 0x38000000,
+                0x387FFFFF, 0x33000000, 0x477FEFFF]
+    bits_set += [rng.getrandbits(32) for _ in range(48)]
+
+    int_lat = None
+    r = await _fp_run(dut, 0x7C, 0x12, imm16=None, mode=_cvt_mode(0))
+    assert (r['err'], r['lwr'], r['out']) == (0, 0, 1)
+    int_lat = r['cycles']
+    await _fp_drain(dut)
+
+    for dt in (_G.DT_F16, _G.DT_BF16):
+        for bits in bits_set:
+            exp = _G.store_quant(bits, dt)
+            assert exp == _G.micro_cvt(_CN, dt, bits), \
+                "golden twin split — single-authority violation"
+            r7c = await _fp_run(dut, 0x7C, bits, mode=_cvt_mode(dt))
+            assert (r7c['err'], r7c['lwr'], r7c['out']) == (0, 0, 1), \
+                f"0x7C dt{dt} bits {bits:08x}: {r7c}"
+            assert r7c['payload'] == exp, \
+                f"0x7C dt{dt} {bits:08x}: {r7c['payload']:016x} != {exp:04x}"
+            assert r7c['cycles'] == int_lat, \
+                f"fp-dest added cycles: {r7c['cycles']} != {int_lat} " \
+                f"(the +0 clause)"
+            await _fp_drain(dut)
+            r77 = await _fp_run(dut, 0x77, bits, subop=_CN,
+                                mode=_cvt_mode(dt))
+            assert r77['payload'] == exp == r7c['payload'], \
+                f"bit-identity broke at {bits:08x} dt{dt}: " \
+                f"7C={r7c['payload']:04x} 77={r77['payload']:016x} " \
+                f"golden={exp:04x}"
+            await _fp_drain(dut)
+    dut._log.info("0x7C == 0x77 narrow bit-identity: %d points x 2 dtypes",
+                  len(bits_set))
+
+
+@cocotb.test()
+async def test_fp_cycle_bounds_v180d(dut):
+    """v1.8.0d §23.10.10(e): the new ops COMPLETE WITHIN their normative
+    cycle maxima, measured at the unit level (consecutive fp_busy cycles
+    == start->done, the v1.8.0c convention): CVT widen/narrow/I2F-small/
+    F2I <= 8, CVT I2F int64 <= 10, ACC_ELEMWISE <= 10. Bounds only —
+    never exact counts (Gate-2 fallback headroom is contractual)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    cases = [
+        ("CVT widen f16",   0x77, dict(subop=_CW, mode=_cvt_mode(2)),
+         0x3C01, _G.micro_cvt(_CW, 2, 0x3C01), 8),
+        ("CVT widen bf16",  0x77, dict(subop=_CW, mode=_cvt_mode(3)),
+         0x3F81, _G.micro_cvt(_CW, 3, 0x3F81), 8),
+        ("CVT narrow f16",  0x77, dict(subop=_CN, mode=_cvt_mode(2)),
+         _f2b(1.5), _G.micro_cvt(_CN, 2, _f2b(1.5)), 8),
+        ("CVT narrow bf16", 0x77, dict(subop=_CN, mode=_cvt_mode(3)),
+         _f2b(-3.25), _G.micro_cvt(_CN, 3, _f2b(-3.25)), 8),
+        ("CVT I2F int4",    0x77, dict(subop=_CW, mode=_cvt_mode(0)),
+         5, _G.micro_cvt(_CW, 0, 5), 8),
+        ("CVT I2F int8",    0x77, dict(subop=_CW, mode=_cvt_mode(1)),
+         0x7F, _G.micro_cvt(_CW, 1, 0x7F), 8),
+        ("CVT I2F int64",   0x77, dict(subop=_CW, mode=_cvt_mode(4)),
+         (1 << 62) + 12345, _G.micro_cvt(_CW, 4, (1 << 62) + 12345), 10),
+        ("CVT F2I int32",   0x77, dict(subop=_CN, mode=_cvt_mode(4)),
+         _f2b(123456.7), _G.micro_cvt(_CN, 4, _f2b(123456.7)), 8),
+        ("ACC_ELEMWISE",    0x73, dict(opref=True),
+         _f2b(3.0), _G.micro_accew(_f2b(3.0),
+                                   (_f2b(2.0) << 32) | _f2b(-1.5)), 10),
+    ]
+    for label, op, kw, payload, exp, bound in cases:
+        pb = ((_f2b(2.0) << 32) | _f2b(-1.5)) if op == 0x73 else 0
+        await _fp_fire_token(dut, _fp_instr(op, **kw), payload, payload_b=pb)
+        busy_cycles = 0
+        done = False
+        for i in range(bound + 12):
+            await RisingEdge(dut.clk)
+            await Timer(1, units="ns")
+            if int(dut.u_core.fp_busy.value):
+                busy_cycles += 1
+            if int(dut.output_valid.value):
+                assert int(dut.output_payload.value) == exp, \
+                    f"{label}: {int(dut.output_payload.value):016x} " \
+                    f"!= {exp:016x}"
+                done = True
+                break
+        assert done, f"{label}: no result within bound {bound} + 12 overhead"
         lat = busy_cycles - 1
         assert 1 <= lat <= bound, \
             f"{label}: start->done latency {lat} > normative max {bound}"

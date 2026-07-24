@@ -5,7 +5,32 @@
 
 // =============================================================================
 // FP_StepSeq.v — v1.8.0c MU-hosted fp32 step-sequencer unit (spec §23.10,
-// synth Gate 3 of §23.10.7).
+// synth Gate 3 of §23.10.7) + v1.8.0d OPS_CVT / OPS_ACCEW extension
+// (spec §23.10.10, synth Gate C3 of §23.10.10(g)).
+//
+// v1.8.0d adds two op classes (op_sel widened 3 -> 4 bits — every
+// (op_sel, fp_step) case tree touched consistently, all six 0c programs
+// re-proven at Gate C3):
+//   OPS_CVT   0x77 CVT — six scalar conversions as a uniform K_INT-only
+//             3-step program (zero multiplier / FP_AddWide passes):
+//             f16/bf16 -> f32 widen (exact injection incl. f16
+//             subnormals; bf16-subnormal -> signed zero pin; any NaN ->
+//             canonical qNaN), f32 -> f16/bf16 narrow through the ONE
+//             shared include/fp_narrow_f32.vh function (bit-identity
+//             clause with the PE_Core 0x7C fp-dest arm), I2F int4/int8/
+//             int64-sext64 (dtype 0x4, covers int32) with the PINNED
+//             two-pass pass-1-RTO / pass-2-RNE normalize, and F2I
+//             RNE-then-saturate (NaN -> 0, +/-Inf -> rails).
+//             MANDATORY RTL RULE (§23.10.10(b), confirmed-bug fix):
+//             operand-load DAZ is BYPASSED for OPS_CVT sources that are
+//             not fp32-format (all WIDEN directions and all I2F) — an
+//             op-class-conditional term in the capture mux; the fp32
+//             sources of NARROW/F2I ARE DAZ-flushed (pinned identically
+//             at the 0x7C site).
+//   OPS_ACCEW 0x73 ACC_ELEMWISE — fused single-rounding fp32
+//             a*B[63:32] + B[31:0] riding the FS_FMA step program
+//             verbatim (a = a_in, B_hi = b_in, B_lo = c_in); bit-exact
+//             to golden ref_fma == micro_fscalar(FS_FMA).
 //
 // The self-contained fp32 scalar unit: one shared FP_Mul36 (raw 36x36
 // integer multiplier, latency exactly 2) and one shared FP_AddWide (wide
@@ -36,13 +61,20 @@
 //   done       1-cycle pulse; result is valid exactly during that cycle.
 //              Back-to-back operation: busy is 0 in the cycle after done
 //              and a new start may be asserted immediately in that cycle.
-//   opcode_in  0x74 FSCALAR / 0x75 FRSQRT32 / 0x76 FEXP2_32.
-//   subop_in   FSCALAR sub-op (imm16[7:4], generated single-source table
-//              in include/generated/isa_subop_codes.vh); ignored by the
-//              unary ops.
+//   opcode_in  0x74 FSCALAR / 0x75 FRSQRT32 / 0x76 FEXP2_32 /
+//              0x73 ACC_ELEMWISE / 0x77 CVT (v1.8.0d).
+//   subop_in   FSCALAR or CVT sub-op (imm16[7:4], generated single-source
+//              tables in include/generated/isa_subop_codes.vh); ignored
+//              by the unary ops. Absent imm16 decodes as 0 upstream =
+//              FS_ADD / CVT WIDEN_TO_F32 defaults.
+//   dtype_in   CVT dtype (eff_precision[3:0]): 0x0 int4 / 0x1 int8 /
+//              0x2 f16 / 0x3 bf16 / 0x4 accumulator-format integer
+//              endpoint (int32/int64, direction from the sub-op);
+//              ignored by every other op class.
 //
-//   DON'T-CARE INPUTS: PE_Core's decode guards ensure an unknown opcode
-//   or an FSCALAR sub-op > 0x4 is never presented. If presented anyway,
+//   DON'T-CARE INPUTS: PE_Core's decode guards ensure an unknown opcode,
+//   an FSCALAR sub-op > 0x4, a CVT sub-op > 0x1 or a CVT dtype > 0x4
+//   (reserved-field rungs -> lower_required) is never presented. If presented anyway,
 //   this implementation deterministically returns the canonical qNaN
 //   after 2 cycles (chosen to keep simulation X-free); that behavior is
 //   NOT contractual and may change.
@@ -93,6 +125,11 @@
 //   FRSQRT32     classify, 9xMUL, INT(pack)               = 21  (<= 34)
 //   FEXP2_32     classify, INT(split), 6xMUL, INT(pack)   = 16  (<= 30)
 //                integer bypass: classify, INT            =  3
+//   CVT (all)    classify, 3xINT                          =  5  (<= 8;
+//                int64 I2F <= 10 — §23.10.10(e); the uniform 3-step
+//                program exists FOR the int64 two-pass, the simple
+//                conversions just compute combinationally at the pack)
+//   ACC_ELEMWISE = FS_FMA shape                           =  6  (<= 10)
 //
 // -----------------------------------------------------------------------------
 // FS_DIV MARKSTEIN PACK — analyzed FP_AddWide usage (documented deviation
@@ -153,6 +190,7 @@ module FP_StepSeq (
     input             start,
     input      [7:0]  opcode_in,
     input      [3:0]  subop_in,
+    input      [3:0]  dtype_in,
     input      [31:0] a_in,
     input      [31:0] b_in,
     input      [31:0] c_in,
@@ -165,11 +203,14 @@ module FP_StepSeq (
     `include "generated/fp_frsqrt_seed_rom.vh"
     `include "generated/fp_fdiv_seed_rom.vh"
     `include "generated/fp_fexp2_coeffs.vh"
+    `include "fp_narrow_f32.vh"
 
     // ---- opcodes (spec §23.10 block 0x70) ----
+    localparam [7:0] OPC_ACCEW   = 8'h73;    // v1.8.0d §23.10.10(c)
     localparam [7:0] OPC_FSCALAR = 8'h74;
     localparam [7:0] OPC_FRSQRT  = 8'h75;
     localparam [7:0] OPC_FEXP2   = 8'h76;
+    localparam [7:0] OPC_CVT     = 8'h77;    // v1.8.0d §23.10.10(b)
 
     // ---- FSM ----
     localparam [1:0] FP_IDLE     = 2'd0;
@@ -182,14 +223,18 @@ module FP_StepSeq (
     localparam [1:0] K_MUL = 2'd1;
     localparam [1:0] K_ADD = 2'd2;
 
-    // internal op selector (FS_MUL/FS_FMA share one step table)
-    localparam [2:0] OPS_FSADD = 3'd0;   // FS_ADD / FS_SUB (B sign-flipped)
-    localparam [2:0] OPS_FSMUL = 3'd1;
-    localparam [2:0] OPS_FSFMA = 3'd2;
-    localparam [2:0] OPS_FSDIV = 3'd3;
-    localparam [2:0] OPS_RSQRT = 3'd4;
-    localparam [2:0] OPS_FEXP2 = 3'd5;
-    localparam [2:0] OPS_BAD   = 3'd6;   // don't-care inputs (see header)
+    // internal op selector (FS_MUL/FS_FMA share one step table).
+    // v1.8.0d: widened 3 -> 4 bits for the two new classes (§23.10.10;
+    // Gate C3 re-proves all six 0c programs against this widening).
+    localparam [3:0] OPS_FSADD = 4'd0;   // FS_ADD / FS_SUB (B sign-flipped)
+    localparam [3:0] OPS_FSMUL = 4'd1;
+    localparam [3:0] OPS_FSFMA = 4'd2;
+    localparam [3:0] OPS_FSDIV = 4'd3;
+    localparam [3:0] OPS_RSQRT = 4'd4;
+    localparam [3:0] OPS_FEXP2 = 4'd5;
+    localparam [3:0] OPS_BAD   = 4'd6;   // don't-care inputs (see header)
+    localparam [3:0] OPS_CVT   = 4'd7;   // v1.8.0d 0x77 (3x K_INT program)
+    localparam [3:0] OPS_ACCEW = 4'd8;   // v1.8.0d 0x73 (FS_FMA shape)
 
     localparam [31:0] QNAN = 32'h7FC0_0000;
     localparam [31:0] PINF = 32'h7F80_0000;
@@ -205,7 +250,13 @@ module FP_StepSeq (
     reg        fp_first = 1'b0;
 
     reg [31:0] a_q, b_q, c_q;            // operands, DAZ applied at load
-    reg [2:0]  op_sel;
+                                         // (BYPASSED for CVT widen/I2F —
+                                         // op-class-conditional, §23.10.10(b))
+    reg [3:0]  op_sel;
+
+    reg        cvt_nar_q;                // CVT sub-op: 0 widen / 1 narrow
+    reg [2:0]  cvt_dt_q;                 // CVT dtype (low 3 bits, 0x0-0x4)
+    reg [63:0] i64_q;                    // CVT I2F |sext64 source| (step 0)
 
     reg [29:0] h_q;                      // rsqrt h = x'/2, Q2.28 (exact)
     reg [31:0] y_r;                      // rsqrt y / div r / exp2 f (Q2.30)
@@ -285,17 +336,27 @@ module FP_StepSeq (
     //               9 INT(pack, last)
     //   OPS_FEXP2 : 0 INT (n+f split / integer bypass), 1..6 MUL (Horner),
     //               7 INT(pack, last)
+    //   OPS_CVT   : 0 INT (I2F |sext64| capture), 1 INT (I2F LZC/normalize
+    //               + pass-1 RTO jam | F2I shift/round pre-stage into y_r),
+    //               2 INT (pack, last — pass-2 RNE for I2F, F2I saturate/
+    //               negate, pure comb select for widen/narrow). Uniform
+    //               3-step shape for every direction (§23.10.10(e) bounds
+    //               have headroom; a per-dtype 1-step variant would buy 2
+    //               cycles nobody needs, cost a dtype leg in this table,
+    //               and put the measured-28.4ns F2I cone back in 1 cycle).
+    //   OPS_ACCEW : rides the FS_FMA rows verbatim (0 INT mul tail, 1 ADD)
     reg [2:0] info_cur, info_nxt, info_ent;   // {last, kind}
 
     function [2:0] f_step_info;
-        input [2:0] sel;
+        input [3:0] sel;
         input [5:0] st;
         begin
             f_step_info = {1'b1, K_INT};      // default: terminate
             case (sel)
                 OPS_FSADD: f_step_info = {1'b1, K_ADD};
                 OPS_FSMUL,
-                OPS_FSFMA: f_step_info = (st == 6'd0) ? {1'b0, K_INT}
+                OPS_FSFMA,
+                OPS_ACCEW: f_step_info = (st == 6'd0) ? {1'b0, K_INT}
                                                       : {1'b1, K_ADD};
                 OPS_FSDIV: case (st)
                     6'd7, 6'd9: f_step_info = {1'b0, K_INT};
@@ -309,6 +370,8 @@ module FP_StepSeq (
                     6'd7:    f_step_info = {1'b1, K_INT};
                     default: f_step_info = {1'b0, K_MUL};
                 endcase
+                OPS_CVT: f_step_info = (st == 6'd2) ? {1'b1, K_INT}
+                                                    : {1'b0, K_INT};
                 default: ;
             endcase
         end
@@ -426,6 +489,174 @@ module FP_StepSeq (
                             : {1'b0, e2_ebias, e2_m[22:0]};
 
     // -------------------------------------------------------------------------
+    // v1.8.0d OPS_CVT datapath (§23.10.10(b)) — K_INT-only, no multiplier or
+    // FP_AddWide pass. Sources arrive RAW for WIDEN/I2F (op-class-conditional
+    // DAZ bypass at the capture mux — the confirmed I2F(5)-flushes-to-zero
+    // bug fix); the fp32 sources of NARROW/F2I are DAZ-flushed at capture
+    // (pinned identically at the PE_Core 0x7C site — bit-identity clause).
+    // Golden twins: ref_widen_f16 / ref_widen_bf16 / ref_narrow_f32 /
+    // micro_i2f_acc / ref_f2i (scripts/golden_fp32.py).
+    // -------------------------------------------------------------------------
+
+    // ---- WIDEN dtype 0x2: f16 -> f32 exact injection (subnormals honored:
+    //      value = m * 2^-24, normalized via a 10-bit priority encode) ----
+    wire        wf16_s = a_q[15];
+    wire [4:0]  wf16_e = a_q[14:10];
+    wire [9:0]  wf16_m = a_q[9:0];
+    reg  [3:0]  wf16_bl;                     // bit_length(m), m != 0 path only
+    always @* casez (wf16_m)
+        10'b1?????????: wf16_bl = 4'd10;
+        10'b01????????: wf16_bl = 4'd9;
+        10'b001???????: wf16_bl = 4'd8;
+        10'b0001??????: wf16_bl = 4'd7;
+        10'b00001?????: wf16_bl = 4'd6;
+        10'b000001????: wf16_bl = 4'd5;
+        10'b0000001???: wf16_bl = 4'd4;
+        10'b00000001??: wf16_bl = 4'd3;
+        10'b000000001?: wf16_bl = 4'd2;
+        default:        wf16_bl = 4'd1;
+    endcase
+    // m << (24 - bl) with the leading 1 landing at bit 23; fp32 exponent
+    // field = bl + 102 (= (bl - 25) + 127, value m * 2^-24 in binade bl-25)
+    wire [23:0] wf16_sub = {wf16_m, 14'b0} << (4'd10 - wf16_bl);
+    reg  [31:0] wf16_res;
+    always @* begin
+        if (wf16_e == 5'h1F)
+            wf16_res = (|wf16_m) ? QNAN : {wf16_s, 8'hFF, 23'b0};
+        else if (wf16_e == 5'h00)
+            wf16_res = (|wf16_m)
+                     ? {wf16_s, ({4'b0, wf16_bl} + 8'd102), wf16_sub[22:0]}
+                     : {wf16_s, 31'b0};
+        else
+            wf16_res = {wf16_s, ({3'b0, wf16_e} + 8'd112), wf16_m, 13'b0};
+    end
+
+    // ---- WIDEN dtype 0x3: bf16 -> f32 exact splice; subnormal input ->
+    //      signed zero (§23.10.10(f) pin 6); any NaN -> canonical qNaN ----
+    reg [31:0] wbf_res;
+    always @* begin
+        if (a_q[14:7] == 8'hFF)
+            wbf_res = (|a_q[6:0]) ? QNAN : {a_q[15], 8'hFF, 23'b0};
+        else if (a_q[14:7] == 8'h00)
+            wbf_res = {a_q[15], 31'b0};      // true zero + the 254 subnormals
+        else
+            wbf_res = {a_q[15:0], 16'b0};
+    end
+
+    // ---- I2F step 0: signed source -> sign + |magnitude|. int4/int8 ride
+    //      the same 64-bit two-pass path (both passes exact for them, so
+    //      bit-identical to golden ref_i2f); dtype 0x4 ingress is PINNED
+    //      payload[63:32] -> c_in, payload[31:0] -> a_in (FSCALAR split) ----
+    reg [63:0] i2f_src;
+    always @* case (cvt_dt_q)
+        3'd0:    i2f_src = {{60{a_q[3]}}, a_q[3:0]};
+        3'd1:    i2f_src = {{56{a_q[7]}}, a_q[7:0]};
+        default: i2f_src = {c_q, a_q};
+    endcase
+    wire        i2f_sgn = i2f_src[63];
+    wire [63:0] i2f_mag = i2f_sgn ? (~i2f_src + 64'd1) : i2f_src;
+
+    // ---- I2F step 1: LZC64 + normalize (log-stage shifter — §23.8 tree
+    //      shapes, no linear mux chain), then pass-1 RTO into the 32-bit
+    //      intermediate: jam = OR of the dropped low half (sticky-
+    //      preserving; golden micro_i2f_acc, I2F_PASS1_BITS = 32) ----
+    wire        i2f_z32 = ~|i64_q[63:32];
+    wire [63:0] i2f_n0  = i2f_z32 ? {i64_q[31:0], 32'b0} : i64_q;
+    wire        i2f_z16 = ~|i2f_n0[63:48];
+    wire [63:0] i2f_n1  = i2f_z16 ? {i2f_n0[47:0], 16'b0} : i2f_n0;
+    wire        i2f_z8  = ~|i2f_n1[63:56];
+    wire [63:0] i2f_n2  = i2f_z8 ? {i2f_n1[55:0], 8'b0} : i2f_n1;
+    wire        i2f_z4  = ~|i2f_n2[63:60];
+    wire [63:0] i2f_n3  = i2f_z4 ? {i2f_n2[59:0], 4'b0} : i2f_n2;
+    wire        i2f_z2  = ~|i2f_n3[63:62];
+    wire [63:0] i2f_n4  = i2f_z2 ? {i2f_n3[61:0], 2'b0} : i2f_n3;
+    wire        i2f_z1  = ~i2f_n4[63];
+    wire [63:0] i2f_n5  = i2f_z1 ? {i2f_n4[62:0], 1'b0} : i2f_n4;
+    wire [5:0]  i2f_lzc = {i2f_z32, i2f_z16, i2f_z8, i2f_z4, i2f_z2, i2f_z1};
+    wire [31:0] i2f_inter = i2f_n5[63:32] | {31'b0, |i2f_n5[31:0]};
+    wire signed [8:0] i2f_exp = 9'sd63 - $signed({3'b0, i2f_lzc});
+
+    // ---- I2F step 2: pass-2 final RNE (32 -> 24 bits, disjoint R/S; the
+    //      +1 carry only fires off an all-ones field, so the carried
+    //      mantissa bits are already zero — rsqrt rs_m[24] precedent).
+    //      y_r[31] == 0 iff the source was 0 (normalize pins the MSB). ----
+    wire [24:0] i2f_m25  = {1'b0, y_r[31:8]}
+                         + {24'b0, (y_r[7] & ((|y_r[6:0]) | y_r[8]))};
+    wire [7:0]  i2f_ebia = n_q[7:0] + 8'd127 + {7'b0, i2f_m25[24]};
+    wire [31:0] i2f_pack = y_r[31] ? {sres_q, i2f_ebia, i2f_m25[22:0]}
+                                   : 32'h0;
+
+    // ---- F2I (NARROW sub-op, dtype 0x0/0x1/0x4): RNE then saturate
+    //      (§23.10.10(f) pin 9): NaN -> 0 (deterministic DATA, CUDA
+    //      cvt.sat precedent), +/-Inf -> rails; a_q is post-DAZ.
+    //      TWO-staged across the uniform program (single-cycle the
+    //      shift+round+saturate+negate cone measured 28.4 ns at the C3
+    //      seed sweep — re-staged, not redesigned; cycle count and
+    //      §23.10.10(e) bounds unchanged): STEP 1 registers {big, RNE
+    //      magnitude} into y_r — free on the NARROW sub-op, I2F owns
+    //      y_r only on WIDEN — and STEP 2 saturates/negates/selects. ----
+    wire signed [9:0] f2i_shl = ex_a - 10'sd23;        // 23 <= e <= 30 leg
+    wire [30:0] f2i_ls = {7'b0, ma} << f2i_shl[2:0];
+    wire signed [9:0] f2i_shr_raw = 10'sd23 - ex_a;    // e < 23 leg, >= 1
+    wire [4:0]  f2i_shr = (f2i_shr_raw >= 10'sd26) ? 5'd26 : f2i_shr_raw[4:0];
+    wire [49:0] f2i_fx  = {ma, 26'b0} >> f2i_shr;      // Q24.26 fixed point
+    wire [24:0] f2i_rn  = {1'b0, f2i_fx[49:26]}
+                        + {24'b0, (f2i_fx[25] & ((|f2i_fx[24:0]) | f2i_fx[26]))};
+    wire [30:0] f2i_mag = (ex_a >= 10'sd23) ? f2i_ls : {6'b0, f2i_rn};
+    // big covers +/-Inf too (e field 0xFF => ex_a = 128); NaN wins first
+    wire        f2i_big = (ex_a >= 10'sd31);           // |RNE(x)| >= 2^31
+    reg  [31:0] f2i_rail_hi, f2i_rail_lo;
+    reg  [30:0] f2i_mag_hi, f2i_mag_lo;
+    always @* case (cvt_dt_q)
+        3'd0: begin                                    // int4 [-8, 7]
+            f2i_rail_hi = 32'd7;   f2i_rail_lo = 32'hFFFF_FFF8;
+            f2i_mag_hi  = 31'd7;   f2i_mag_lo  = 31'd8;
+        end
+        3'd1: begin                                    // int8 [-128, 127]
+            f2i_rail_hi = 32'd127; f2i_rail_lo = 32'hFFFF_FF80;
+            f2i_mag_hi  = 31'd127; f2i_mag_lo  = 31'd128;
+        end
+        default: begin                                 // int32 (dtype 0x4)
+            // in-range magnitudes cap at 0x7FFFFF80 (m24 << 7), so the
+            // magnitude compares never fire — only f2i_big rails
+            f2i_rail_hi = 32'h7FFF_FFFF; f2i_rail_lo = 32'h8000_0000;
+            f2i_mag_hi  = 31'h7FFF_FFFF; f2i_mag_lo  = 31'h7FFF_FFFF;
+        end
+    endcase
+    // step-2 leg, from the step-1 capture (y_r = {big, mag31})
+    wire        f2i_big_q = y_r[31];
+    wire [30:0] f2i_mag_q = y_r[30:0];
+    reg  [31:0] f2i_res;
+    always @* begin
+        if (a_nan | a_zero)
+            f2i_res = 32'h0;                           // NaN -> 0; DAZ/zero
+        else if (sa)
+            f2i_res = (f2i_big_q | (f2i_mag_q > f2i_mag_lo))
+                    ? f2i_rail_lo : (32'h0 - {1'b0, f2i_mag_q});
+        else
+            f2i_res = (f2i_big_q | (f2i_mag_q > f2i_mag_hi))
+                    ? f2i_rail_hi : {1'b0, f2i_mag_q};
+    end
+
+    // ---- NARROW dtype 0x2/0x3: the ONE shared function (bit-identity
+    //      clause §23.10.10(d)) — result consumed whole, never indexed ----
+    wire [15:0] nar_h = fp_narrow_f32(a_q, cvt_dt_q[0]);
+
+    // ---- step-2 result select (result-row low 32 bits: f16/bf16 zero-
+    //      extend, f32 verbatim, ints int32-pattern — PE_Core builds the
+    //      sext64 payload row at the integration stage) ----
+    reg [31:0] cvt_res;
+    always @* begin
+        if (cvt_nar_q)
+            cvt_res = (cvt_dt_q == 3'd2 || cvt_dt_q == 3'd3)
+                    ? {16'h0, nar_h} : f2i_res;
+        else
+            cvt_res = (cvt_dt_q == 3'd2) ? wf16_res
+                    : (cvt_dt_q == 3'd3) ? wbf_res
+                    : i2f_pack;
+    end
+
+    // -------------------------------------------------------------------------
     // multiplier operand mux (held constant per step; fp_first legs consume
     // the previous pass live, temps take over from cycle 2 with the same
     // value). Default (ma, mb) also serves as the CLASSIFY-cycle launch of
@@ -539,12 +770,13 @@ module FP_StepSeq (
                         aw_csig  = {mb, 24'b0};
                     end
                 end
-                OPS_FSMUL, OPS_FSFMA: if (fp_step == 6'd1) begin
+                OPS_FSMUL, OPS_FSFMA,
+                OPS_ACCEW: if (fp_step == 6'd1) begin
                     aw_mode  = PACK_FINAL;
                     aw_psign = sa ^ sb;
                     aw_pexp  = ex_ab1;
                     aw_psig  = fp_first ? p[47:0] : t_prod;
-                    if (op_sel == OPS_FSFMA && !c_zero) begin
+                    if (op_sel != OPS_FSMUL && !c_zero) begin
                         aw_csign = sc;
                         aw_cexp  = {ex_c[9], ex_c};
                         aw_csig  = {mc, 24'b0};
@@ -620,7 +852,8 @@ module FP_StepSeq (
                 else if (a_zero | b_zero)   spec_res = zero_ab;
                 else                        spec_hit = 1'b0;
             end
-            OPS_FSFMA: begin                           // F2/F3/F5 + NaN rule
+            OPS_FSFMA,
+            OPS_ACCEW: begin                           // F2/F3/F5 + NaN rule
                 if (a_nan | b_nan | c_nan)  spec_res = QNAN;
                 else if (a_inf | b_inf)
                     spec_res = (a_zero | b_zero) ? QNAN
@@ -656,6 +889,10 @@ module FP_StepSeq (
                 else if ( sa && (a_q >= 32'hC316_0000)) spec_res = 32'h0;
                 else              spec_hit = 1'b0;
             end
+            OPS_CVT: spec_hit = 1'b0;                  // no classify specials:
+                                                       // NaN/Inf/zero are DATA
+                                                       // inside each conversion
+                                                       // (golden ref_cvt order)
             default: ;                                 // OPS_BAD: qNaN
         endcase
     end
@@ -679,12 +916,13 @@ module FP_StepSeq (
     wire [31:0] daz_b = f_daz(b_in);
     wire [31:0] daz_c = f_daz(c_in);
 
-    reg [2:0] op_sel_in;
+    reg [3:0] op_sel_in;
     always @* begin
         op_sel_in = OPS_BAD;
         case (opcode_in)
             OPC_FRSQRT:  op_sel_in = OPS_RSQRT;
             OPC_FEXP2:   op_sel_in = OPS_FEXP2;
+            OPC_ACCEW:   op_sel_in = OPS_ACCEW;
             OPC_FSCALAR: case (subop_in)
                 FS_ADD, FS_SUB: op_sel_in = OPS_FSADD;
                 FS_MUL:         op_sel_in = OPS_FSMUL;
@@ -692,9 +930,22 @@ module FP_StepSeq (
                 FS_DIV:         op_sel_in = OPS_FSDIV;
                 default:        op_sel_in = OPS_BAD;
             endcase
+            // reserved sub-op / dtype rungs are lower_required upstream and
+            // never presented; don't-care fallback = OPS_BAD (see header)
+            OPC_CVT: if (subop_in <= CVT_NARROW_FROM_F32 && dtype_in <= 4'd4)
+                op_sel_in = OPS_CVT;
             default: ;
         endcase
     end
+
+    // MANDATORY RTL RULE (§23.10.10(b), confirmed-bug fix): operand-load
+    // DAZ is BYPASSED for OPS_CVT sources that are not fp32-format — ALL
+    // WIDEN directions (f16/bf16 widen and every I2F, whose raw narrow /
+    // integer bits an unconditional DAZ would flush to 0, e.g. I2F(5)).
+    // The fp32 sources of NARROW/F2I keep the DAZ flush (pin 7 — and the
+    // same rule is pinned at the PE_Core 0x7C site, bit-identity clause).
+    wire cvt_daz_bypass = (op_sel_in == OPS_CVT)
+                       && (subop_in == CVT_WIDEN_TO_F32);
 
     // -------------------------------------------------------------------------
     // the sequencer
@@ -702,11 +953,13 @@ module FP_StepSeq (
     always @(posedge clk) begin
         case (fp_state)
             FP_IDLE: if (start) begin
-                a_q      <= daz_a;
-                b_q      <= daz_b ^ {is_sub_in, 31'b0};
-                c_q      <= daz_c;
-                op_sel   <= op_sel_in;
-                fp_state <= FP_CLASSIFY;
+                a_q       <= cvt_daz_bypass ? a_in : daz_a;
+                b_q       <= daz_b ^ {is_sub_in, 31'b0};
+                c_q       <= cvt_daz_bypass ? c_in : daz_c;
+                op_sel    <= op_sel_in;
+                cvt_nar_q <= (subop_in == CVT_NARROW_FROM_F32);
+                cvt_dt_q  <= dtype_in[2:0];
+                fp_state  <= FP_CLASSIFY;
             end
 
             FP_CLASSIFY: begin
@@ -720,7 +973,8 @@ module FP_StepSeq (
                     fp_first <= 1'b1;
                     fp_wait  <= ent_kind;
                     useaw_q  <= (op_sel == OPS_FSADD) || (op_sel == OPS_FSMUL)
-                             || (op_sel == OPS_FSFMA) || (op_sel == OPS_FSDIV);
+                             || (op_sel == OPS_FSFMA) || (op_sel == OPS_FSDIV)
+                             || (op_sel == OPS_ACCEW);
                     orsign_q <= (op_sel == OPS_FSDIV) & mul_sign;
                     case (op_sel)
                         OPS_RSQRT: begin
@@ -745,8 +999,26 @@ module FP_StepSeq (
                 // ---- first-cycle captures / K_INT step actions ----
                 if (fp_first) begin
                     case (op_sel)
-                        OPS_FSMUL, OPS_FSFMA:
+                        OPS_FSMUL, OPS_FSFMA, OPS_ACCEW:
                             if (fp_step == 6'd1) t_prod <= p[47:0];
+                        OPS_CVT: case (fp_step)
+                            6'd0: begin    // I2F |sext64| capture (widen/
+                                           // narrow legs park don't-cares)
+                                i64_q  <= i2f_mag;
+                                sres_q <= i2f_sgn;
+                            end
+                            6'd1: if (cvt_nar_q)
+                                // F2I round pre-stage (f16/bf16 narrow
+                                // parks a don't-care in y_r)
+                                y_r <= {f2i_big, f2i_mag};
+                            else begin
+                                // I2F normalize + pass-1 RTO jam
+                                y_r <= i2f_inter;
+                                n_q <= i2f_exp;
+                            end
+                            6'd2: res_reg <= cvt_res;   // pack (all forms)
+                            default: ;
+                        endcase
                         OPS_FSDIV: case (fp_step)
                             6'd1, 6'd3, 6'd5: t_u <= {3'b0, rto23_w};
                             6'd2, 6'd4, 6'd6: y_r <= rto30_w;

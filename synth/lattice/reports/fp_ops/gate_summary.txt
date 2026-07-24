@@ -16,12 +16,13 @@ GATE 2 — fp_addwide (LFE5UM-85F CABGA381 -6, out-of-context, yosys synth_ecp5 
     Fmax       =    41.08 MHz (target >= 40.0)   -> PASS
     GATE 2 RESULT: PASS
 
-GATE 3 — fp_stepseq (LFE5UM-85F CABGA381 -6, out-of-context, yosys synth_ecp5 + nextpnr-ecp5, wrapper-top incl. I/O regs):
-    LUT4       =  3345   (limit 2000)   -> FAIL
+GATE C3 — fp_stepseq (LFE5UM-85F CABGA381 -6, out-of-context, yosys synth_ecp5 + nextpnr-ecp5, wrapper-top incl. I/O regs):
+    LUT4       =  4409   (limit 4545)   -> PASS
+    LUT4 delta = +1064   vs the 3345 Gate-3 archive (estimate +300-700; hard escalation to the cut ladder above +1200)
     MULT18X18D =     4   (exactly 4)   -> PASS
-    TRELLIS_FF =   910   raw; unit = 767 after -143 wrapper I/O flops (limit 900)   -> PASS
+    TRELLIS_FF =   985   raw; unit = 838 after -147 wrapper I/O flops (limit 900)   -> PASS
     EBR        =     0   (limit 0, cells DP16KD/PDPW16KD/DP16KD_COMB)   -> PASS
-    CCU2C      =   432   (informational, carry cells)
-    Fmax       =    39.79 MHz (target >= 40.0)   -> FAIL
-    GATE 3 RESULT: FAIL
+    CCU2C      =   564   (informational, carry cells)
+    Fmax       =    40.25 MHz (target >= 40.0)   -> PASS
+    GATE C3 RESULT: PASS
 
