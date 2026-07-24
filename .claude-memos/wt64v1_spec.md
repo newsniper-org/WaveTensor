@@ -2502,3 +2502,16 @@ Audit 사실: **10개 reduce 변형 중 9개가 asm 소비자 0** 이었고, 전
 - **frag FSM 확장분** (frag_idx 2-bit up-counter, FRAG_EMIT_2/3, frag_pending[0:3], frag_total_m1_held) — **v1.8.0e wide package 예약** 으로 존치. 0x6B 제거로 >2-fragment writer 가 일시 부재하나 (writer-dead), §23.10.10(a) deferral 표의 coordinated work package 가 재사용한다. `lint_frag_total_m1_held.py` co-location 불변식은 잔존 2-fragment site 에 대해 계속 성립.
 - OP_SUM/OP_MAX/OP_MIN/OP_L2SQ/OP_MEAN localparam — live 5D→scalar ijklm arms 가 사용, 유지.
 - Superseded history 로 보존되는 절: §22.11.1 (0x66 mnemonic), §22.13.1 (4D3D family), §22.14a (0x67), §22.18 (0x6B/0x6C), §22.1/§22.3-22.6 recipes 의 0x66/0x67/5D4D 사용례 — 전부 배너 표기 완료, 삭제하지 않음 (§12a 규칙 5).
+
+### 24.5 cleanup 후 Cluster 실측 (2026-07-24, synth+PnR seed 1)
+
+| 지표 | cleanup 전 (0d C6) | cleanup 후 | delta |
+|---|---|---|---|
+| Fmax | 10.23-10.36 MHz | **10.93 MHz** | **+5.5-6.8%** — 최초 실측 10.85 도 상회 (프로젝트 신기록) |
+| TRELLIS_COMB | 39.48% (33,024) | **34.26% (28,659)** | **-5.2%p (-4,365 LUT)** |
+| MULT18X18D | 135/156 | **122/156** | **-13** (Q4.4 곱셈기 군 이탈 — 0e/v2.0 예산 대폭 회복) |
+| critical path | 128 stages / 97.4 ns | **113 stages / 91.5 ns** | cone 실축소 (-15 stages) |
+
+dead 코드가 critical cone 과 MULT 예산을 실질 점유하고 있었음이 실측
+으로 확정 — cleanup 은 미용이 아니라 v1.8.0e/v1.9 의 선행 투자였다.
+0e 의 선공표 COMB gate 는 이 34.26% 를 새 기준선으로 도출할 것.
