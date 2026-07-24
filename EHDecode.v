@@ -515,9 +515,10 @@ module EHDecode #(
     // F_PRECISION_OVR — the pre-existing mux at line ~461, no new pipeline
     // state, no new ports) acquires format-selector SEMANTICS only inside
     // opcode block 0x70-0x7F (in_fp_block self-gate from the generated
-    // wires include). For every 0x00-0x6C opcode the byte stays inert
-    // metadata — bit-identical legacy behavior regardless of its value,
-    // proven by the pre-migration truth-table differential.
+    // wires include). For every supported sub-0x70 opcode (0x00-0x6A era
+    // post opcode-cleanup) the byte stays inert metadata — bit-identical
+    // legacy behavior regardless of its value, proven by the frozen
+    // truth-table differential (domain_version 2 recapture).
     // An illegal mode byte is DECODE_ERROR (malformation), never
     // lower_required (capability absence) — decode/execute boundary.
     wire [3:0] mode_dtype = eff_precision[3:0];

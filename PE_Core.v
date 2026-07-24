@@ -200,14 +200,9 @@ module PE_Core #(
     localparam [43:0] SIG_5D4D_FAMILY_HI_BASE   = {16'h0005, 16'h0000, 12'h000};
     localparam [47:0] SIG_TRACE_IJJKL_LO        = {16'h3221, 16'h0000, 16'h0431};
     localparam [47:0] SIG_TRACE_IJJKL_HI        = {16'h0004, 16'h0000, 16'h0000};
-    // v1.6.2 §22.13 — 4D→3D reduction family. Input via legacy 64-bit
-    // dec_input_payload (zero-padded wide[63:0] on fabric side; wide_valid
-    // guard skipped in dispatch). A_hi = 0x0004 as family discriminator
-    // (mirrors 5D4D's A_hi=0x0005) — guarantees subscript_hi != 48'h0 for
-    // any 4D-family wave, preventing OP_SUM (marker=0x0) legacy fall-through
-    // bug (workflow adversarial review, wi87dl8lh).
-    localparam [47:0] SIG_4D3D_FAMILY_LO      = {16'h4321, 16'h0000, 16'h0321};
-    localparam [43:0] SIG_4D3D_FAMILY_HI_BASE = {16'h0004, 16'h0000, 12'h000};
+    // (4D→3D reduction family SIG_4D3D_* removed pre-stable in the
+    // opcode cleanup — zero asm/SDK consumers; unknown-A_hi waves fall
+    // to the einsum lower_required tail. See spec removal record.)
     // Op-marker constants (family-local nibbles)
     localparam [3:0] OP_SUM     = 4'h0;
     localparam [3:0] OP_MAX     = 4'h1;
@@ -643,44 +638,9 @@ module PE_Core #(
         end
     endfunction
 
-    // 5D→4D SUM: reduce over axis m. R[idx4] = A[idx4*2] + A[idx4*2+1] mod 2^4.
-    // idx4 = i*8 + j*4 + k*2 + l (16 output nibbles = 64-bit).
-    function [ADDR_WIDTH-1:0] einsum_sum_5d_to_4d_int4;
-        input [127:0] a;
-        reg [3:0] r [0:15];
-        reg [63:0] out;
-        integer idx;
-        begin
-            for (idx = 0; idx < 16; idx = idx + 1) begin
-                r[idx] = a[idx*8 +: 4] + a[idx*8 + 4 +: 4];
-            end
-            out = 64'h0;
-            for (idx = 0; idx < 16; idx = idx + 1)
-                out[idx*4 +: 4] = r[idx];
-            einsum_sum_5d_to_4d_int4 = out;
-        end
-    endfunction
-
-    // 5D→4D MAX: signed pairwise max over m. Tie: prefer m=0.
-    function [ADDR_WIDTH-1:0] einsum_max_5d_to_4d_int4;
-        input [127:0] a;
-        reg signed [3:0] a0, a1, rm;
-        reg [3:0] r [0:15];
-        reg [63:0] out;
-        integer idx;
-        begin
-            for (idx = 0; idx < 16; idx = idx + 1) begin
-                a0 = $signed(a[idx*8 +: 4]);
-                a1 = $signed(a[idx*8 + 4 +: 4]);
-                rm = (a0 >= a1) ? a0 : a1;
-                r[idx] = rm[3:0];
-            end
-            out = 64'h0;
-            for (idx = 0; idx < 16; idx = idx + 1)
-                out[idx*4 +: 4] = r[idx];
-            einsum_max_5d_to_4d_int4 = out;
-        end
-    endfunction
+    // (5D→4D SUM/MAX/L2SQ/MIN variants removed pre-stable in the opcode
+    // cleanup — zero asm/SDK consumers. MEAN below is the one live member:
+    // rmsnorm/layernorm mean step, asm/wavetensor_asm.py.)
 
     // 5D→4D MEAN: (A[m=0] + A[m=1]) arithmetically right-shifted by 1.
     // Uses 5-bit signed sum then bits[4:1] → floor((A0+A1)/2).
@@ -699,159 +659,6 @@ module PE_Core #(
             for (idx = 0; idx < 16; idx = idx + 1)
                 out[idx*4 +: 4] = r[idx];
             einsum_mean_5d_to_4d_int4 = out;
-        end
-    endfunction
-
-    // 5D→4D L2SQ: sum of squares over m. Each pair contributes A0²+A1² ∈ [0,128].
-    // Truncate to int4 for downstream chaining (SDK expects int4 or handles overflow).
-    // For LayerNorm variance: SDK typically wants int8 accumulation; this int4
-    // form is the naive baseline. v1.6.2 candidate: int8-widened variant.
-    function [ADDR_WIDTH-1:0] einsum_l2sq_5d_to_4d_int4;
-        input [127:0] a;
-        reg signed [3:0] a0, a1;
-        reg signed [7:0] sq0, sq1;
-        reg [7:0]  sum8;
-        reg [3:0] r [0:15];
-        reg [63:0] out;
-        integer idx;
-        begin
-            for (idx = 0; idx < 16; idx = idx + 1) begin
-                a0   = $signed(a[idx*8 +: 4]);
-                a1   = $signed(a[idx*8 + 4 +: 4]);
-                sq0  = a0 * a0;
-                sq1  = a1 * a1;
-                sum8 = sq0[7:0] + sq1[7:0];
-                r[idx] = sum8[3:0];   // truncate to int4 (spec §22 caveat)
-            end
-            out = 64'h0;
-            for (idx = 0; idx < 16; idx = idx + 1)
-                out[idx*4 +: 4] = r[idx];
-            einsum_l2sq_5d_to_4d_int4 = out;
-        end
-    endfunction
-
-    // v1.6.2 §22.13 — 5D→4D MIN (symmetric backfill for op-marker family).
-    // op_marker=0x6 mirrors 5D→scalar MIN. Pair-min over axis m.
-    function [ADDR_WIDTH-1:0] einsum_min_5d_to_4d_int4;
-        input [127:0] a;
-        reg signed [3:0] a0, a1, rm;
-        reg [3:0] r [0:15];
-        reg [63:0] out;
-        integer idx;
-        begin
-            for (idx = 0; idx < 16; idx = idx + 1) begin
-                a0 = $signed(a[idx*8 +: 4]);
-                a1 = $signed(a[idx*8 + 4 +: 4]);
-                rm = (a0 <= a1) ? a0 : a1;
-                r[idx] = rm[3:0];
-            end
-            out = 64'h0;
-            for (idx = 0; idx < 16; idx = idx + 1)
-                out[idx*4 +: 4] = r[idx];
-            einsum_min_5d_to_4d_int4 = out;
-        end
-    endfunction
-
-    // v1.6.2 §22.13 — 4D→3D reduction primitives.
-    // Input 4D 2×2×2×2 = 16 nibbles = 64-bit via dec_input_payload (legacy).
-    // Output 3D 2×2×2 = 8 nibbles = 32-bit single-fragment (no FSM).
-    // Nibble layout: A[i][j][k][l] at nibble (i*8 + j*4 + k*2 + l).
-    // Reduce pair over axis l → R[i][j][k] at nibble (i*4 + j*2 + k).
-
-    function [ADDR_WIDTH-1:0] einsum_sum_4d_to_3d_int4;
-        input [63:0] a;
-        reg [3:0] r [0:7];
-        reg [31:0] out;
-        integer idx;
-        begin
-            for (idx = 0; idx < 8; idx = idx + 1)
-                r[idx] = a[idx*8 +: 4] + a[idx*8 + 4 +: 4];
-            out = 32'h0;
-            for (idx = 0; idx < 8; idx = idx + 1)
-                out[idx*4 +: 4] = r[idx];
-            einsum_sum_4d_to_3d_int4 = {32'h0, out};
-        end
-    endfunction
-
-    function [ADDR_WIDTH-1:0] einsum_max_4d_to_3d_int4;
-        input [63:0] a;
-        reg signed [3:0] a0, a1, rm;
-        reg [3:0] r [0:7];
-        reg [31:0] out;
-        integer idx;
-        begin
-            for (idx = 0; idx < 8; idx = idx + 1) begin
-                a0 = $signed(a[idx*8 +: 4]);
-                a1 = $signed(a[idx*8 + 4 +: 4]);
-                rm = (a0 >= a1) ? a0 : a1;
-                r[idx] = rm[3:0];
-            end
-            out = 32'h0;
-            for (idx = 0; idx < 8; idx = idx + 1)
-                out[idx*4 +: 4] = r[idx];
-            einsum_max_4d_to_3d_int4 = {32'h0, out};
-        end
-    endfunction
-
-    function [ADDR_WIDTH-1:0] einsum_min_4d_to_3d_int4;
-        input [63:0] a;
-        reg signed [3:0] a0, a1, rm;
-        reg [3:0] r [0:7];
-        reg [31:0] out;
-        integer idx;
-        begin
-            for (idx = 0; idx < 8; idx = idx + 1) begin
-                a0 = $signed(a[idx*8 +: 4]);
-                a1 = $signed(a[idx*8 + 4 +: 4]);
-                rm = (a0 <= a1) ? a0 : a1;
-                r[idx] = rm[3:0];
-            end
-            out = 32'h0;
-            for (idx = 0; idx < 8; idx = idx + 1)
-                out[idx*4 +: 4] = r[idx];
-            einsum_min_4d_to_3d_int4 = {32'h0, out};
-        end
-    endfunction
-
-    function [ADDR_WIDTH-1:0] einsum_mean_4d_to_3d_int4;
-        input [63:0] a;
-        reg signed [4:0] sum5;
-        reg [3:0] r [0:7];
-        reg [31:0] out;
-        integer idx;
-        begin
-            for (idx = 0; idx < 8; idx = idx + 1) begin
-                sum5 = $signed(a[idx*8 +: 4]) + $signed(a[idx*8 + 4 +: 4]);
-                r[idx] = sum5[4:1];
-            end
-            out = 32'h0;
-            for (idx = 0; idx < 8; idx = idx + 1)
-                out[idx*4 +: 4] = r[idx];
-            einsum_mean_4d_to_3d_int4 = {32'h0, out};
-        end
-    endfunction
-
-    function [ADDR_WIDTH-1:0] einsum_l2sq_4d_to_3d_int4;
-        input [63:0] a;
-        reg signed [3:0] a0, a1;
-        reg signed [7:0] sq0, sq1;
-        reg [7:0]  sum8;
-        reg [3:0] r [0:7];
-        reg [31:0] out;
-        integer idx;
-        begin
-            for (idx = 0; idx < 8; idx = idx + 1) begin
-                a0   = $signed(a[idx*8 +: 4]);
-                a1   = $signed(a[idx*8 + 4 +: 4]);
-                sq0  = a0 * a0;
-                sq1  = a1 * a1;
-                sum8 = sq0[7:0] + sq1[7:0];
-                r[idx] = sum8[3:0];
-            end
-            out = 32'h0;
-            for (idx = 0; idx < 8; idx = idx + 1)
-                out[idx*4 +: 4] = r[idx];
-            einsum_l2sq_4d_to_3d_int4 = {32'h0, out};
         end
     endfunction
 
@@ -933,46 +740,18 @@ module PE_Core #(
         end
     endfunction
 
-    // v1.6.5a §22.14 — Q4.4 wide-scalar mul (precision improvement over 0x62).
-    // B is signed Q4.4 (dec_eff_b_value[7:0]): sign + 3 int + 4 frac bits.
-    // Range [-8.0, +7.9375], LSB = 1/16.
-    // Per-lane: p = signed(A[3:0]) * signed(B[7:0])  → 12-bit signed (Q8.4)
-    //           output = (p + 8) >>> 4 → int4 (round-half-up)
-    // Mathematical bound |A|<=8, |B|<=8 → |A*B/16|<=4 fits int4, no saturation.
-    // Recovers ~4-bit precision at the RMSNORM/LAYERNORM scale-multiplication
-    // step vs the int4 truncation in 0x62 (workflow wj6ewzd50 analysis).
-    function [127:0] simd_mul_wide_q4_4_scalar_128;
-        input [127:0] a;
-        input [7:0]   b;
-        reg [127:0] out;
-        reg signed [3:0]  ai;
-        reg signed [7:0]  bi;
-        reg signed [11:0] p;
-        reg signed [11:0] p_round;
-        integer i;
-        begin
-            out = 128'h0;
-            for (i = 0; i < 32; i = i + 1) begin
-                ai      = $signed(a[i*4 +: 4]);
-                bi      = $signed(b);
-                p       = ai * bi;                    // Q8.4 signed (12-bit)
-                p_round = p + 12'sd8;                  // round-half-up bias
-                out[i*4 +: 4] = p_round[7:4];          // arith shift right 4, low 4 bits
-            end
-            simd_mul_wide_q4_4_scalar_128 = out;
-        end
-    endfunction
-
     // v1.6.7 §22.14c — Q8.8 wide-scalar mul (further precision recovery
-    // beyond 0x67's Q4.4). B is signed Q8.8 (dec_eff_b_value[15:0]):
-    // sign + 7 int + 8 frac bits. LSB = 1/256 — 16x finer than Q4.4,
-    // pushing B-side quantization noise below the rsqrt LUT's own ~6.25%
-    // relative-error floor (workflow whro79brj precision analysis).
+    // beyond the retired 0x67 Q4.4 form — removed pre-stable in the
+    // opcode cleanup along with 0x66/0x6B/0x6C). B is signed Q8.8
+    // (dec_eff_b_value[15:0]): sign + 7 int + 8 frac bits. LSB = 1/256 —
+    // fine enough to push B-side quantization noise below the retired
+    // rsqrt LUT's ~6.25% relative-error floor (workflow whro79brj
+    // precision analysis).
     // Per-lane: p = signed(A[3:0]) * signed(B[15:0]) → 20-bit signed (Q4.8)
     //           output = (p + 128) >>> 8 → int4 (round-half-up; half of
     //           one output-LSB = 128 Q8.8 ticks)
-    // Mathematical bound |A|<=8, |B|<=8 → |A*B/256|<=4 fits int4 (same
-    // saturation-free bound as 0x67, just at finer B granularity).
+    // Mathematical bound |A|<=8, |B|<=8 → |A*B/256|<=4 fits int4
+    // (saturation-free by construction).
     function [127:0] simd_mul_wide_q8_8_scalar_128;
         input [127:0] a;
         input [15:0]  b;
@@ -995,74 +774,10 @@ module PE_Core #(
         end
     endfunction
 
-    // v1.7 §22.18 — WIDEN: A (int4) x B (signed Q4.4, dec_eff_b_value[7:0])
-    // -> signed 8-bit Q4.4 output, 32 lanes = 256 bits. A is integer (no
-    // fractional bits), so the raw product p is ALREADY an exact Q4.4
-    // value (same scale as B) -- no rounding is needed or performed here,
-    // unlike 0x67/0x69 which must round when narrowing to int4. The
-    // saturating clamp is REQUIRED (not just defensive): realistic
-    // |A|<=8, |B_real|<=8 gives |A*B_real|<=64, which exceeds the 8-bit
-    // Q4.4 format's own representable range (~±8.0) -- this is a real,
-    // reachable saturation case, not a theoretical one.
-    function [255:0] simd_mul_wide_q4_4_scalar_128_widen;
-        input [127:0] a;
-        input [7:0]   b;
-        reg [255:0] out;
-        reg signed [3:0]  ai;
-        reg signed [7:0]  bi;
-        reg signed [11:0] p;
-        integer i;
-        begin
-            out = 256'h0;
-            for (i = 0; i < 32; i = i + 1) begin
-                ai = $signed(a[i*4 +: 4]);
-                bi = $signed(b);
-                p  = ai * bi;                  // exact Q4.4 product (Q8.4, 12-bit signed)
-                if (p > 12'sd127)
-                    out[i*8 +: 8] = 8'sd127;
-                else if (p < -12'sd128)
-                    out[i*8 +: 8] = -8'sd128;
-                else
-                    out[i*8 +: 8] = p[7:0];
-            end
-            simd_mul_wide_q4_4_scalar_128_widen = out;
-        end
-    endfunction
-
-    // v1.7 §22.18 — REQUANTIZE: 32 lanes of signed 8-bit Q4.4 (256 bits,
-    // WIDEN's output format) narrowed to 32 lanes of int4 (128 bits) via
-    // round-half-up (mirrors 0x67/0x69's existing p_round pattern) PLUS a
-    // saturating clamp to [-8,7] -- a genuinely NEW failure-mode class
-    // versus 0x67/0x69 (which are provably non-saturating by
-    // construction, per their own "mathematical bound" comments): a
-    // Q4.4 value near WIDEN's own saturation edge (±7.9375) can round up
-    // past int4's representable range, so an explicit clamp is mandatory
-    // here to avoid silently wrapping into a large-magnitude sign-flip.
-    function [127:0] simd_requantize_q4_4_to_int4_256;
-        input [255:0] r;
-        reg [127:0] out;
-        reg signed [7:0] ri;
-        reg signed [8:0] ri_ext;
-        reg signed [8:0] ri_round;
-        reg signed [8:0] shifted;
-        integer i;
-        begin
-            out = 128'h0;
-            for (i = 0; i < 32; i = i + 1) begin
-                ri       = $signed(r[i*8 +: 8]);
-                ri_ext   = {ri[7], ri};        // sign-extend to 9 bits
-                ri_round = ri_ext + 9'sd8;     // round-half-up bias (half of one int4 LSB = 8 raw Q4.4 ticks)
-                shifted  = ri_round >>> 4;     // arithmetic shift right 4
-                if (shifted > 9'sd7)
-                    out[i*4 +: 4] = 4'sd7;
-                else if (shifted < -9'sd8)
-                    out[i*4 +: 4] = -4'sd8;
-                else
-                    out[i*4 +: 4] = shifted[3:0];
-            end
-            simd_requantize_q4_4_to_int4_256 = out;
-        end
-    endfunction
+    // (v1.7 §22.18 WIDEN/REQUANTIZE helper functions removed pre-stable in
+    // the opcode cleanup — 0x6B/0x6C had zero asm/SDK consumers. The
+    // 4-fragment frag-emit FSM they motivated STAYS: reserved for the
+    // v1.8.0e wide package.)
 
     // -------------------------------------------------------------------------
     // v1.8.0b §23.9 — stateless int accumulate datapath (workflow wwov1b5i3).
@@ -1319,115 +1034,10 @@ module PE_Core #(
         end
     endfunction
 
-    // =========================================================================
-    // v1.6.3 §22.13 — Group C scalar rsqrt with 16-entry mantissa LUT
-    // =========================================================================
-    // Refinement of v1.6.1b baseline (power-of-2 → mantissa LUT ~4-bit precision).
-    //
-    //   Input:  Q16.16 unsigned variance (bits [30:0] valid; bit 31 = caller error)
-    //   Output: Q16.16 approximation of 1/sqrt(input)
-    //
-    // Method (workflow wi87dl8lh design):
-    //   1. Priority encoder: find MSB position m in [0, 30]
-    //   2. Extract 3-bit mantissa below MSB (guard msb<3 with zero-pad)
-    //   3. LUT index = {m[0] parity, mantissa[2:0]} — 4-bit
-    //   4. LUT[0..7] = rsqrt(1 + f/8) * 2^15  (Q0.15, even m)
-    //      LUT[8..15] = 1/sqrt(2) * rsqrt(1 + f/8) * 2^15  (Q0.15, odd m,
-    //                                                       absorbs sqrt(2))
-    //   5. Output = LUT_val << (9 - (m >> 1))  for shift >= 0
-    //             = (LUT_val + round_bit) >> |shift|  for shift < 0 (round-to-nearest)
-    //   6. Saturate 0x7FFF_FFFF on left-shift overflow
-    //
-    //   Backward compat: LUT[0]=0x8000 → for x=0x10000 (m=16, mant=0)
-    //     shift = 9-8 = 1, output = 0x8000 << 1 = 0x10000 (bit-identical to v1.6.1b)
-    //     for x=0x40000 (m=18): shift=0, output=0x8000 (bit-identical)
-    //     for x=0: saturate 0x7FFF_FFFF (bit-identical)
-    //     → v1.6.1b's 3 tests pass unchanged.
-    //
-    //   Special: x=0 → saturate; x[31]=1 → caller error (undefined; per §22.7 contract)
-    //   Precision: ~4-bit mantissa (LUT bin ≤ 6.25% relative error)
-
-    function [31:0] scalar_rsqrt_approx_q16_16;
-        input [31:0] x;
-        reg [5:0]  msb;
-        reg        found;
-        reg [3:0]  mant;
-        reg [3:0]  lut_idx;
-        reg [15:0] lut_val;
-        reg signed [6:0] shift_signed;   // shift = 9 - (msb>>1), range [-6, +9]
-        reg [4:0]  right_shift;
-        reg [31:0] out;
-        integer i;
-        begin
-            if (x == 32'h0) begin
-                scalar_rsqrt_approx_q16_16 = 32'h7FFF_FFFF;
-            end else begin
-                // Priority encoder: find highest set bit in bits 30..0
-                msb   = 6'd0;
-                found = 1'b0;
-                for (i = 30; i >= 0; i = i - 1) begin
-                    if (x[i] && !found) begin
-                        msb   = i[5:0];
-                        found = 1'b1;
-                    end
-                end
-                // Extract 3-bit mantissa below MSB with zero-pad for small msb
-                if (msb >= 6'd3) begin
-                    mant = {1'b0, x[msb - 6'd1 -: 3]};
-                end else if (msb == 6'd2) begin
-                    mant = {1'b0, x[1:0], 1'b0};
-                end else if (msb == 6'd1) begin
-                    mant = {1'b0, x[0], 2'b00};
-                end else begin
-                    mant = 4'h0;
-                end
-                // LUT index: {msb parity, mantissa[2:0]}
-                lut_idx = {msb[0], mant[2:0]};
-                // 16-entry Q0.15 LUT
-                //   Even m (LUT[0..7]): rsqrt(1 + f/8), f=0..7
-                //   Odd m (LUT[8..15]): 1/sqrt(2) * rsqrt(1 + f/8)
-                case (lut_idx)
-                    4'h0: lut_val = 16'h8000;  // rsqrt(1.0)   = 1.0000
-                    4'h1: lut_val = 16'h78AE;  // rsqrt(1.125) = 0.9428
-                    4'h2: lut_val = 16'h727D;  // rsqrt(1.25)  = 0.8944
-                    4'h3: lut_val = 16'h6D2B;  // rsqrt(1.375) = 0.8528
-                    4'h4: lut_val = 16'h6886;  // rsqrt(1.5)   = 0.8165
-                    4'h5: lut_val = 16'h646D;  // rsqrt(1.625) = 0.7845
-                    4'h6: lut_val = 16'h60C5;  // rsqrt(1.75)  = 0.7559
-                    4'h7: lut_val = 16'h5D7E;  // rsqrt(1.875) = 0.7303
-                    4'h8: lut_val = 16'h5A82;  // 1/√2 · 1.0000 = 0.7071
-                    4'h9: lut_val = 16'h5555;  // 1/√2 · 0.9428 = 0.6667
-                    4'hA: lut_val = 16'h50F4;  // 1/√2 · 0.8944 = 0.6325
-                    4'hB: lut_val = 16'h4D2E;  // 1/√2 · 0.8528 = 0.6030
-                    4'hC: lut_val = 16'h49E6;  // 1/√2 · 0.8165 = 0.5774
-                    4'hD: lut_val = 16'h46FF;  // 1/√2 · 0.7845 = 0.5547
-                    4'hE: lut_val = 16'h446A;  // 1/√2 · 0.7559 = 0.5345
-                    4'hF: lut_val = 16'h4218;  // 1/√2 · 0.7303 = 0.5164
-                    default: lut_val = 16'h8000;
-                endcase
-                // shift = 9 - (msb >> 1). Range: [9-15, 9-0] = [-6, +9].
-                shift_signed = $signed({1'b0, 6'd9}) - $signed({2'b00, msb[5:1]});
-                if (shift_signed >= 7'sd16) begin
-                    // Saturate on extreme left-shift overflow (msb too small)
-                    out = 32'h7FFF_FFFF;
-                end else if (shift_signed >= 7'sd0) begin
-                    // Left shift: value grows
-                    out = {16'h0, lut_val} << shift_signed[4:0];
-                    if (out[31]) out = 32'h7FFF_FFFF;   // signed overflow → saturate
-                end else begin
-                    // Right shift with round-to-nearest
-                    right_shift = (~shift_signed[4:0]) + 5'd1;   // abs value
-                    if (right_shift >= 5'd16) begin
-                        out = 32'h0;   // underflow to zero
-                    end else begin
-                        out = ({16'h0, lut_val} + ({16'h0, 15'h0, 1'b1} << (right_shift - 5'd1)))
-                              >> right_shift;
-                    end
-                end
-                scalar_rsqrt_approx_q16_16 = out;
-            end
-        end
-    endfunction
+    // (v1.6.3 §22.13 Group C scalar rsqrt LUT function removed pre-stable
+    // in the opcode cleanup — 0x66 had zero asm/SDK consumers; its ~6.25%
+    // LUT relative-error floor analysis remains recorded in the spec and
+    // the precision-recovery roadmap memo.)
 
     function [7:0] dim_squeeze;
         input [7:0] dim; input [1:0] ax;
@@ -1741,15 +1351,17 @@ module PE_Core #(
     //
     // v1.7 §22.18 — widened from 1-bit {IDLE,EMIT_HI} to a 2-bit up-counter
     // {IDLE, EMIT_1, EMIT_2, EMIT_3} supporting up to 4 sequential fragment
-    // emissions, needed for SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN's 256-bit/
-    // 4-fragment output (0x6B). frag_pending widens from a single 64-bit
-    // register to a 3-slot array (fragments 1-3; fragment 0 emits
-    // immediately at dispatch, same as before). frag_total_m1_held is NEW:
-    // it records how many fragments THIS wave actually has (1 for every
-    // existing 2-fragment emitter, 3 for WIDEN), so the drain loop knows
-    // when to stop. frag_tag_held/frag_opcode_held are UNCHANGED (tag/
-    // opcode are constant across all fragments of one wave — confirmed no
-    // widening needed, workflow wgcq5jc68 investigator 0).
+    // emissions. Originally motivated by the retired 0x6B WIDEN 256-bit/
+    // 4-fragment output (removed pre-stable in the opcode cleanup); the
+    // widened FSM STAYS — reserved for the v1.8.0e wide package
+    // ({0x70, 0x78, 0x79} buffer-then-drain, §23.10.10(a)). frag_pending
+    // is a 3-slot array (fragments 1-3; fragment 0 emits immediately at
+    // dispatch). frag_total_m1_held records how many fragments THIS wave
+    // actually has (1 for every live 2-fragment emitter; >1 is currently
+    // writer-dead, reserved for v1.8.0e), so the drain loop knows when to
+    // stop. frag_tag_held/frag_opcode_held are UNCHANGED (tag/opcode are
+    // constant across all fragments of one wave — confirmed no widening
+    // needed, workflow wgcq5jc68 investigator 0).
     //
     // MANDATORY INVARIANT (CI-enforced, scripts/lint_frag_total_m1_held.py):
     // every dispatch site that writes `frag_idx <= FRAG_EMIT_1` (entering
@@ -1760,12 +1372,13 @@ module PE_Core #(
     // spurious extra fragments from garbage frag_pending[] slots).
     //
     // Backpressure: the compound `output_regs_free` wire (declared below)
-    // gates SIG_BMM_3/WIDEN dispatch when ANY output-mux
+    // gates SIG_BMM_3/wide-emit dispatch when ANY output-mux
     // source is in flight (MUL p1/p2, DIV any-state, DIV b_zero pulse).
     // This closes the MUL/DIV drain hazard the verify:fsm agent flagged.
-    // pe_ready's worst-case deassertion window is now 3 cycles (during a
-    // WIDEN drain) instead of 1 — an accepted throughput tradeoff, not a
-    // correctness hazard (see test_pe_ready_widen_drain_is_three_cycles).
+    // pe_ready's worst-case deassertion window is 1 cycle for the live
+    // 2-fragment emitters (up to 3 cycles again once a v1.8.0e 4-fragment
+    // emitter lands — an accepted throughput tradeoff, not a correctness
+    // hazard).
     // -------------------------------------------------------------------------
     localparam [1:0]      FRAG_IDLE    = 2'b00;
     localparam [1:0]      FRAG_EMIT_1  = 2'b01;
@@ -1816,14 +1429,8 @@ module PE_Core #(
         dec_input_payload_wide[127:0], dec_input_payload_b);
     wire [127:0] wres_mul_wide_vec = simd_mul_wide_vec_128(
         dec_input_payload_wide[127:0], dec_input_payload_b);
-    wire [127:0] wres_mul_q4_4 = simd_mul_wide_q4_4_scalar_128(
-        dec_input_payload_wide[127:0], dec_eff_b_value[7:0]);
     wire [127:0] wres_mul_q8_8 = simd_mul_wide_q8_8_scalar_128(
         dec_input_payload_wide[127:0], dec_eff_b_value[15:0]);
-    wire [255:0] wres_widen = simd_mul_wide_q4_4_scalar_128_widen(
-        dec_input_payload_wide[127:0], dec_eff_b_value[7:0]);
-    wire [127:0] wres_requantize = simd_requantize_q4_4_to_int4_256(
-        dec_input_payload_wide[255:0]);
 
     // v1.8.0b — stateless int-path hoisted results. MU-gated generate:
     // the MAC/reduce trees synthesize ONLY where MUL_OPS_SUPPORTED (the
@@ -2110,20 +1717,20 @@ module PE_Core #(
             // v1.5.3a/v1.7 §20/§22.18 — ABSOLUTE-PRIORITY fragment-emit
             // override. Placed at the very top of the output priority
             // chain so fragment 1 lands EXACTLY on cycle N+1 after
-            // dispatch (and fragments 2/3 on N+2/N+3 for a 4-fragment
-            // WIDEN wave). The launch-gate below prevents MUL/DIV from
-            // starting new operations while frag_idx != FRAG_IDLE, so
-            // this override never collides with a mul_valid_p2 or
-            // div_valid_p2 pulse (compound gate closes the drain window).
+            // dispatch (and fragments 2/3 on N+2/N+3 for a future
+            // 4-fragment v1.8.0e wave). The launch-gate below prevents
+            // MUL/DIV from starting new operations while
+            // frag_idx != FRAG_IDLE, so this override never collides with
+            // a mul_valid_p2 or div_valid_p2 pulse (compound gate closes
+            // the drain window).
             //
             // frag_idx counts UP from FRAG_EMIT_1 and returns to FRAG_IDLE
-            // once it reaches frag_total_m1_held (1 for every existing
-            // 2-fragment emitter's single drain beat; 3 for WIDEN's 3
-            // remaining drain beats after its own immediate fragment 0).
-            // output_frag_hdr = {idx, total_m1} zero-extended to nibbles,
-            // reproducing today's exact 8'h11 header for 2-fragment waves
-            // (idx=1,total_m1=1) and the 8'h13/0x23/0x33 sequence for
-            // WIDEN (total_m1=3).
+            // once it reaches frag_total_m1_held (1 for every live
+            // 2-fragment emitter's single drain beat; the 4-fragment
+            // total_m1=3 path is writer-dead since the 0x6B WIDEN removal,
+            // reserved for v1.8.0e). output_frag_hdr = {idx, total_m1}
+            // zero-extended to nibbles, reproducing today's exact 8'h11
+            // header for 2-fragment waves (idx=1,total_m1=1).
             if (frag_idx != FRAG_IDLE) begin
                 output_payload  <= frag_pending[frag_idx];
                 output_tag      <= frag_tag_held;
@@ -2529,7 +2136,12 @@ module PE_Core #(
                                 end else if ((dec_eff_subscript == SIG_5D4D_FAMILY_LO)
                                              && (dec_eff_subscript_hi[47:4] == SIG_5D4D_FAMILY_HI_BASE)) begin
                                     // v1.6.1 §22 — 5D→4D reduction family (reduce over axis m).
-                                    // Op marker: 0=SUM, 1=MAX, 4=L2SQ, 5=MEAN.
+                                    // Op marker: 5=MEAN is the ONLY live member (rmsnorm/
+                                    // layernorm mean step). SUM/MAX/L2SQ/MIN markers were
+                                    // removed pre-stable in the opcode cleanup — they now
+                                    // fall to the default lower_required arm, same as any
+                                    // other unknown marker. The 4D→3D family (SIG_4D3D_*)
+                                    // was removed entirely in the same cleanup.
                                     if (!dec_input_payload_wide_valid) begin
                                         error_flag   <= 1'b1;
                                         output_valid <= 1'b0;
@@ -2537,102 +2149,12 @@ module PE_Core #(
                                         lower_required <= 1'b1;
                                         output_valid   <= 1'b0;
                                     end else case (dec_eff_subscript_hi[3:0])
-                                        OP_SUM: begin
-                                            output_payload <= einsum_sum_5d_to_4d_int4(dec_input_payload_wide[127:0]);
-                                            output_tag <= {dec_wave_number, dec_thread_id,
-                                                           8'h00, dec_eff_output_port_id,
-                                                           dec_eff_precision, 8'h55};
-                                            output_valid <= 1'b1;
-                                        end
-                                        OP_MAX: begin
-                                            output_payload <= einsum_max_5d_to_4d_int4(dec_input_payload_wide[127:0]);
-                                            output_tag <= {dec_wave_number, dec_thread_id,
-                                                           8'h00, dec_eff_output_port_id,
-                                                           dec_eff_precision, 8'h55};
-                                            output_valid <= 1'b1;
-                                        end
-                                        OP_L2SQ: begin
-                                            output_payload <= einsum_l2sq_5d_to_4d_int4(dec_input_payload_wide[127:0]);
-                                            output_tag <= {dec_wave_number, dec_thread_id,
-                                                           8'h00, dec_eff_output_port_id,
-                                                           dec_eff_precision, 8'h55};
-                                            output_valid <= 1'b1;
-                                        end
                                         OP_MEAN: begin
                                             output_payload <= einsum_mean_5d_to_4d_int4(dec_input_payload_wide[127:0]);
                                             output_tag <= {dec_wave_number, dec_thread_id,
                                                            8'h00, dec_eff_output_port_id,
                                                            dec_eff_precision, 8'h55};
                                             output_valid <= 1'b1;
-                                        end
-                                        OP_MIN: begin
-                                            // v1.6.2 §22.13 — 5D→4D MIN symmetric backfill.
-                                            output_payload <= einsum_min_5d_to_4d_int4(dec_input_payload_wide[127:0]);
-                                            output_tag <= {dec_wave_number, dec_thread_id,
-                                                           8'h00, dec_eff_output_port_id,
-                                                           dec_eff_precision, 8'h55};
-                                            output_valid <= 1'b1;
-                                        end
-                                        default: begin
-                                            lower_required <= 1'b1;
-                                            output_valid   <= 1'b0;
-                                        end
-                                    endcase
-                                end else if ((dec_eff_subscript == SIG_4D3D_FAMILY_LO)
-                                             && (dec_eff_subscript_hi[47:4] == SIG_4D3D_FAMILY_HI_BASE)) begin
-                                    // v1.6.2 §22.13 — 4D→3D reduction family.
-                                    // Legacy 64-bit input via dec_input_payload
-                                    // (fabric zero-pads wide[127:64]). wide_valid
-                                    // check intentionally omitted — no fragment
-                                    // reassembly required for 64-bit A. dim_sizes
-                                    // must be 0x55 (4D 2×2×2×2). Compound drain
-                                    // gate reused (shared output regs).
-                                    if (dec_eff_dim_sizes != 8'h55) begin
-                                        lower_required <= 1'b1;
-                                        output_valid   <= 1'b0;
-                                    end else if (!output_regs_free) begin
-                                        lower_required <= 1'b1;
-                                        output_valid   <= 1'b0;
-                                    end else case (dec_eff_subscript_hi[3:0])
-                                        OP_SUM: begin
-                                            output_payload <= einsum_sum_4d_to_3d_int4(dec_input_payload);
-                                            output_tag <= {dec_wave_number, dec_thread_id,
-                                                           8'h00, dec_eff_output_port_id,
-                                                           dec_eff_precision, 8'h15};
-                                            output_valid    <= 1'b1;
-                                            output_frag_hdr <= 8'h00;
-                                        end
-                                        OP_MAX: begin
-                                            output_payload <= einsum_max_4d_to_3d_int4(dec_input_payload);
-                                            output_tag <= {dec_wave_number, dec_thread_id,
-                                                           8'h00, dec_eff_output_port_id,
-                                                           dec_eff_precision, 8'h15};
-                                            output_valid    <= 1'b1;
-                                            output_frag_hdr <= 8'h00;
-                                        end
-                                        OP_MIN: begin
-                                            output_payload <= einsum_min_4d_to_3d_int4(dec_input_payload);
-                                            output_tag <= {dec_wave_number, dec_thread_id,
-                                                           8'h00, dec_eff_output_port_id,
-                                                           dec_eff_precision, 8'h15};
-                                            output_valid    <= 1'b1;
-                                            output_frag_hdr <= 8'h00;
-                                        end
-                                        OP_L2SQ: begin
-                                            output_payload <= einsum_l2sq_4d_to_3d_int4(dec_input_payload);
-                                            output_tag <= {dec_wave_number, dec_thread_id,
-                                                           8'h00, dec_eff_output_port_id,
-                                                           dec_eff_precision, 8'h15};
-                                            output_valid    <= 1'b1;
-                                            output_frag_hdr <= 8'h00;
-                                        end
-                                        OP_MEAN: begin
-                                            output_payload <= einsum_mean_4d_to_3d_int4(dec_input_payload);
-                                            output_tag <= {dec_wave_number, dec_thread_id,
-                                                           8'h00, dec_eff_output_port_id,
-                                                           dec_eff_precision, 8'h15};
-                                            output_valid    <= 1'b1;
-                                            output_frag_hdr <= 8'h00;
                                         end
                                         default: begin
                                             lower_required <= 1'b1;
@@ -2803,8 +2325,8 @@ module PE_Core #(
                         // 0x60/61/62 SCALAR: B via dec_eff_b_value[3:0]
                         // 0x63/64/65 VEC:    V via dec_input_payload_b[63:0]
                         //   (requires F_HAS_OPB flag)
-                        // 0x67 Q4.4 SCALAR (v1.6.5a): B via dec_eff_b_value[7:0]
-                        //   as signed Q4.4 — precision recovery for norm scale.
+                        // (0x67 Q4.4 SCALAR removed pre-stable in the opcode
+                        //   cleanup — superseded by 0x69 Q8.8.)
                         // 0x68 CACHE_LOAD_WIDE (v1.6.5c §22.16): pure
                         //   passthrough of a persisted Cluster-buffer slot
                         //   (Cluster.v resolves the CAM lookup and drives
@@ -2822,14 +2344,10 @@ module PE_Core #(
                         //   risks reintroducing the exact literal-drift
                         //   bug the guard fixes.
                         // 0x69 Q8.8 SCALAR (v1.6.7): B via dec_eff_b_value[15:0]
-                        //   as signed Q8.8 — further precision recovery beyond 0x67.
-                        // 0x6C REQUANTIZE (v1.7 §22.18): 256-bit/4-fragment
-                        //   Q4.4-int8 input (dec_input_payload_wide[255:0])
-                        //   narrowed to 128-bit/2-fragment int4 output —
-                        //   joins THIS group (not WIDEN's own standalone
-                        //   0x6B item) since its output is 2-fragment, same
-                        //   as every other member here.
-                        8'h60, 8'h61, 8'h62, 8'h63, 8'h64, 8'h65, 8'h67, 8'h68, 8'h69, 8'h6C: begin
+                        //   as signed Q8.8 — the surviving precision-recovery
+                        //   scale mul (0x67/0x6B/0x6C removed pre-stable in
+                        //   the opcode cleanup).
+                        8'h60, 8'h61, 8'h62, 8'h63, 8'h64, 8'h65, 8'h68, 8'h69: begin
                             if (!dec_input_payload_wide_valid) begin
                                 error_flag   <= 1'b1;
                                 output_valid <= 1'b0;
@@ -2863,12 +2381,6 @@ module PE_Core #(
                                         output_payload   <= wres_mul_wide_vec[63:0];
                                         frag_pending[1]  <= wres_mul_wide_vec[127:64];
                                     end
-                                    8'h67: begin
-                                        // v1.6.5a — Q4.4 wide-scalar mul.
-                                        // B via dec_eff_b_value[7:0] as signed Q4.4.
-                                        output_payload   <= wres_mul_q4_4[63:0];
-                                        frag_pending[1]  <= wres_mul_q4_4[127:64];
-                                    end
                                     8'h68: begin
                                         // v1.6.5c §22.16 — CACHE_LOAD_WIDE:
                                         // pure passthrough of the resolved
@@ -2883,20 +2395,6 @@ module PE_Core #(
                                         output_payload   <= wres_mul_q8_8[63:0];
                                         frag_pending[1]  <= wres_mul_q8_8[127:64];
                                     end
-                                    8'h6C: begin
-                                        // v1.7 §22.18 — REQUANTIZE: narrows
-                                        // WIDEN's 256-bit Q4.4-int8 output
-                                        // (dec_input_payload_wide[255:0],
-                                        // already-generic 1024-bit wide bus,
-                                        // no width change needed) back to
-                                        // 128-bit int4 via round-half-up +
-                                        // saturating clamp (a genuinely NEW
-                                        // failure mode vs 0x67/0x69, which
-                                        // are provably non-saturating by
-                                        // construction).
-                                        output_payload   <= wres_requantize[63:0];
-                                        frag_pending[1]  <= wres_requantize[127:64];
-                                    end
                                     default: ;
                                 endcase
                                 output_valid       <= 1'b1;
@@ -2908,16 +2406,9 @@ module PE_Core #(
                                 frag_idx           <= FRAG_EMIT_1;
                             end
                         end
-                        // v1.6.1b §22 — SCALAR_RSQRT_APPROX (Q16.16, no FSM)
-                        8'h66: begin
-                            output_payload <= {32'h0,
-                                scalar_rsqrt_approx_q16_16(dec_input_payload[31:0])};
-                            output_valid   <= 1'b1;
-                            // Output tag dim_sizes = 0x00 (scalar)
-                            output_tag <= {dec_wave_number, dec_thread_id,
-                                           8'h00, dec_eff_output_port_id,
-                                           dec_eff_precision, 8'h00};
-                        end
+                        // (8'h66 SCALAR_RSQRT arm removed pre-stable in the
+                        // opcode cleanup — 0x66 is now a decode_error at
+                        // EHDecode via the regenerated opcode_supported.)
                         // v1.6.5d §22.17 — FRAG_INVAL: single-cycle ack of
                         // a Cluster-buffer slot invalidate. Deliberately
                         // STANDALONE (outside the 8'h60-69 shared wide-emit
@@ -2944,42 +2435,13 @@ module PE_Core #(
                                 output_valid <= 1'b1;
                             end
                         end
-                        // v1.7 §22.18 — SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN:
-                        // A (32 int4 lanes, 128-bit/2-fragment input) x B
-                        // (signed Q4.4, dec_eff_b_value[7:0] — same shape
-                        // as 0x67) -> 32 lanes x signed 8-bit Q4.4 = 256
-                        // bits / 4 fragments (headers 0x03/0x13/0x23/0x33).
-                        // A is integer (no fractional bits), so the
-                        // product already lands exactly on the Q4.4 grid —
-                        // no rounding needed, only a saturating cast on
-                        // magnitude overflow. STANDALONE case item (own
-                        // compound-gate check) rather than folded into the
-                        // shared 8'h60-69+6C group above: that group's
-                        // epilogue is hardcoded to a 2-fragment drain
-                        // (frag_total_m1_held<=1); WIDEN needs a 4-fragment
-                        // drain (frag_total_m1_held<=3), so it drives its
-                        // own epilogue explicitly instead.
-                        8'h6B: begin
-                            if (!dec_input_payload_wide_valid) begin
-                                error_flag   <= 1'b1;
-                                output_valid <= 1'b0;
-                            end else if (!output_regs_free) begin
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else begin
-                                output_payload     <= wres_widen[63:0];
-                                frag_pending[1]     <= wres_widen[127:64];
-                                frag_pending[2]     <= wres_widen[191:128];
-                                frag_pending[3]     <= wres_widen[255:192];
-                                output_valid        <= 1'b1;
-                                output_frag_hdr      <= 8'h03;   // idx=0, total_m1=3
-                                opcode_out           <= dec_opcode;
-                                frag_tag_held        <= dec_forwarded_tag;
-                                frag_opcode_held     <= dec_opcode;
-                                frag_total_m1_held   <= 2'd3;
-                                frag_idx             <= FRAG_EMIT_1;
-                            end
-                        end
+                        // (8'h6B WIDEN 4-fragment arm removed pre-stable in
+                        // the opcode cleanup, along with its 8'h6C
+                        // REQUANTIZE companion — both now decode_error at
+                        // EHDecode. The 4-fragment drain machinery it drove
+                        // — frag_pending[2:3], FRAG_EMIT_2/3,
+                        // frag_total_m1_held>1 — STAYS, reserved for the
+                        // v1.8.0e wide package.)
                         // v1.8.0a/0b §23.9 — remaining WIDE-ACC block STUBS
                         // (0x71/0x72/0x7C graduated to real datapaths in
                         // v1.8.0b, 0x74/0x75/0x76 in v1.8.0c, 0x73/0x77 in

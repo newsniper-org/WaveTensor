@@ -676,9 +676,11 @@ def _lower_batchnorm_infer(inst: Instruction) -> List[Instruction]:
 # v1.8.0d §23.10.10 — hybrid fp32-scalar / int-wide norm rebuild
 # =============================================================================
 #
-# The fp32 scalar insert REPLACES SCALAR_RSQRT (0x66, ~6.25% LUT relative
+# The fp32 scalar insert REPLACED SCALAR_RSQRT (0x66, ~6.25% LUT relative
 # error — the roadmap's declared true floor) inside RMSNORM/LAYERNORM with
-# the FRSQRT32 (<=2 ulp) path:
+# the FRSQRT32 (<=2 ulp) path. (0x66 — along with 0x67/0x6B/0x6C — was
+# subsequently deleted from the ISA entirely in the pre-stable opcode
+# cleanup; no verified recipe ever emitted those four opcodes.)
 #
 #   L2SQ (int32 sext64, unchanged)
 #     -> [OR .imm64 1]          int-scalar clamp — eps-fallback path only
@@ -713,7 +715,10 @@ def _lower_batchnorm_infer(inst: Instruction) -> List[Instruction]:
 # The Q16.16->Q8.8 SDK conversion contract of the retired 0x66 recipe is
 # DELETED from these fp32 recipes (the F2I of scale_f*256 IS the Q8.8
 # conversion, exact to the <=2 ulp rsqrt); the int recipes elsewhere
-# (BATCHNORM_INFER, the 0x69/0x6B/0x6C tails) are retained verbatim.
+# (BATCHNORM_INFER, the 0x69 Q8.8 tail and the einsum MEAN-marker step)
+# are retained verbatim — 0x69 is the ONLY wide-mul tail the verified
+# recipes emit (the old wording claiming 0x6B/0x6C tails was inaccurate;
+# those opcodes are now removed from the ISA).
 #
 # Error contract (0d normative): rsqrt contribution <= 2 ulp; end-to-end
 # error Q8.8-application-dominated, <= 2^-9 scale-relative. The MSE <=

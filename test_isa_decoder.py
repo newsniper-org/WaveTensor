@@ -2635,43 +2635,6 @@ async def test_reduce_l2sq_ijklm(dut):
 
 
 @cocotb.test()
-async def test_reduce_sum_5d_to_4d(dut):
-    """v1.6.1: 5D→4D SUM (reduce over m)."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    # For each of 16 output positions: pair (a,b) → sum
-    nibbles = [((i & 0x7) + 1) & 0xF for i in range(32)]
-    a_128 = _pack_int4_128(*nibbles)
-    await _fire_5d_to_4d_reduction(dut, a_128, 0x0)  # SUM
-    assert dut.output_valid.value == 1
-    payload = int(dut.output_payload.value)
-    for idx in range(16):
-        exp = (nibbles[idx * 2] + nibbles[idx * 2 + 1]) & 0xF
-        got = (payload >> (idx * 4)) & 0xF
-        assert got == exp, f"idx {idx}: {got:x} != {exp:x}"
-    assert (int(dut.output_tag.value) & 0xFF) == 0x55  # 4D 2×2×2×2
-
-
-@cocotb.test()
-async def test_reduce_max_5d_to_4d(dut):
-    """v1.6.1: 5D→4D MAX (pairwise max over m). Max-pool CNN core."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    nibbles = [((i * 3 + 1) & 0xF) for i in range(32)]
-    a_128 = _pack_int4_128(*nibbles)
-    await _fire_5d_to_4d_reduction(dut, a_128, 0x1)  # MAX
-    assert dut.output_valid.value == 1
-    payload = int(dut.output_payload.value)
-    for idx in range(16):
-        a0, a1 = _s4(nibbles[idx * 2]), _s4(nibbles[idx * 2 + 1])
-        exp = (max(a0, a1)) & 0xF
-        got = (payload >> (idx * 4)) & 0xF
-        assert got == exp, f"idx {idx}: {got:x} != {exp:x}"
-
-
-@cocotb.test()
 async def test_reduce_mean_5d_to_4d(dut):
     """v1.6.1: 5D→4D MEAN. (A0+A1) >> 1 (ASR)."""
     clock = Clock(dut.clk, 10, units="ns")
@@ -2696,20 +2659,20 @@ async def test_reduce_mean_5d_to_4d(dut):
 
 
 @cocotb.test()
-async def test_reduce_l2sq_5d_to_4d(dut):
-    """v1.6.1: 5D→4D L2SQ (sum of squares, int4 truncated). LayerNorm variance base."""
+async def test_reduce_5d_to_4d_removed_markers_lower(dut):
+    """Opcode cleanup (pre-stable, spec removal record): the 5D→4D
+    SUM/MAX/L2SQ/MIN variants (op_markers 0x0/0x1/0x4/0x6) were removed —
+    zero asm/SDK consumers. Those markers now fall to the family's
+    default lower_required arm, exactly like any never-assigned marker
+    (0x7 probed alongside). MEAN (0x5) remains the only live member."""
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
     await reset(dut)
-    # All +2 → A²+A² = 4+4 = 8 truncated
-    nibbles = [0x2] * 32
-    a_128 = _pack_int4_128(*nibbles)
-    await _fire_5d_to_4d_reduction(dut, a_128, 0x4)  # L2SQ
-    assert dut.output_valid.value == 1
-    payload = int(dut.output_payload.value)
-    for idx in range(16):
-        got = (payload >> (idx * 4)) & 0xF
-        assert got == 0x8, f"idx {idx}: {got:x} != 8"
+    a_128 = _pack_int4_128(*([0x2] * 32))
+    for marker in (0x0, 0x1, 0x4, 0x6, 0x7):
+        await _fire_5d_to_4d_reduction(dut, a_128, marker)
+        assert dut.lower_required.value == 1, f"marker 0x{marker:X}"
+        assert dut.output_valid.value == 0, f"marker 0x{marker:X}"
 
 
 @cocotb.test()
@@ -2758,13 +2721,14 @@ async def test_reduce_wide_valid_gate_error(dut):
 
 
 # =============================================================================
-# v1.6.1b §22 — Group B broadcast SIMD ops (0x60-65) + Group C rsqrt (0x66)
+# v1.6.1b §22 — Group B broadcast SIMD ops (0x60-65)
 # =============================================================================
 #
 # SCALAR: A via wide[127:0], B_scalar via dec_eff_b_value[3:0] (IMM or OPREF).
 # VEC:    A via wide[127:0], V via dec_input_payload_b (F_HAS_OPB).
 # Both wide-output → 2-fragment emit (FSM engagement).
-# RSQRT: Q16.16 scalar rsqrt, no wide, single-fragment output.
+# (Group C rsqrt 0x66 was removed pre-stable in the opcode cleanup — see
+# test_removed_opcode_0x66_rsqrt_decode_errors below.)
 
 
 async def _fire_simd_wide_scalar(dut, opcode, a_128, b_scalar):
@@ -3051,385 +3015,113 @@ async def test_simd_wide_valid_gate_error(dut):
     assert dut.error_flag.value == 1
 
 
-@cocotb.test()
-async def test_scalar_rsqrt_approx_one(dut):
-    """v1.6.1b: SCALAR_RSQRT_APPROX (0x66). rsqrt(1.0 Q16.16) ≈ 1.0."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    # Input Q16.16 = 0x00010000 (=1.0). rsqrt(1) = 1 → output 0x00010000.
-    instr = encode_instr(0x66, _STD_PORT())
+async def _fire_removed_opcode(dut, instr):
+    """Fire a removed-opcode encoding and poll for the decode outcome."""
     dut.instruction.value = instr
     dut.input_tag.value = _STD_TAG()
     dut.input_payload.value = 0x0001_0000
     dut.input_payload_b.value = 0
     dut.input_payload_b_valid.value = 0
-    dut.input_payload_wide.value = 0
-    dut.input_payload_wide_valid.value = 0
-    dut.token_valid.value = 1
-    await RisingEdge(dut.clk)
-    dut.token_valid.value = 0
-    for _ in range(20):
-        await RisingEdge(dut.clk)
-        await Timer(1, units="ns")
-        if int(dut.output_valid.value):
-            break
-    assert dut.output_valid.value == 1
-    # Power-of-2 approx: msb of 0x00010000 = 16, output = 2^((48-16)/2) = 2^16 = 0x10000
-    assert (int(dut.output_payload.value) & 0xFFFF_FFFF) == 0x0001_0000
-    assert int(dut.output_frag_hdr.value) == 0x00
-
-
-@cocotb.test()
-async def test_scalar_rsqrt_approx_four(dut):
-    """v1.6.1b: rsqrt(4.0 Q16.16) = 0.5 Q16.16 = 0x0000_8000."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    instr = encode_instr(0x66, _STD_PORT())
-    dut.instruction.value = instr
-    dut.input_tag.value = _STD_TAG()
-    dut.input_payload.value = 0x0004_0000    # 4.0 Q16.16
-    dut.input_payload_b_valid.value = 0
-    dut.input_payload_wide_valid.value = 0
-    dut.token_valid.value = 1
-    await RisingEdge(dut.clk)
-    dut.token_valid.value = 0
-    for _ in range(20):
-        await RisingEdge(dut.clk)
-        await Timer(1, units="ns")
-        if int(dut.output_valid.value):
-            break
-    assert dut.output_valid.value == 1
-    # msb=18, output = 2^((48-18)/2) = 2^15 = 0x8000
-    assert (int(dut.output_payload.value) & 0xFFFF_FFFF) == 0x0000_8000
-
-
-@cocotb.test()
-async def test_scalar_rsqrt_zero_saturates(dut):
-    """v1.6.1b: rsqrt(0) saturates to 0x7FFF_FFFF (graceful degrade)."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    instr = encode_instr(0x66, _STD_PORT())
-    dut.instruction.value = instr
-    dut.input_tag.value = _STD_TAG()
-    dut.input_payload.value = 0
-    dut.input_payload_b_valid.value = 0
-    dut.input_payload_wide_valid.value = 0
-    dut.token_valid.value = 1
-    await RisingEdge(dut.clk)
-    dut.token_valid.value = 0
-    for _ in range(20):
-        await RisingEdge(dut.clk)
-        await Timer(1, units="ns")
-        if int(dut.output_valid.value):
-            break
-    assert dut.output_valid.value == 1
-    assert (int(dut.output_payload.value) & 0xFFFF_FFFF) == 0x7FFF_FFFF
-
-
-# =============================================================================
-# v1.6.2 §22.13 — 4D→3D reduction primitives (InstanceNorm/GroupNorm gap)
-# =============================================================================
-#
-# 4D input (16 int4 nibbles = 64-bit legacy dec_input_payload) → 3D output
-# (8 nibbles = 32-bit single fragment). op_marker in dec_eff_subscript_hi[3:0].
-# A_hi=0x0004 as family discriminator (prevents OP_SUM=0x0 legacy fall-through
-# bug — see workflow wi87dl8lh verify).
-
-
-async def _fire_4d_to_3d_reduction(dut, a_64, op_marker):
-    """Fire a 4D→3D reduction. Input via legacy 64-bit dec_input_payload."""
-    instr = encode_instr(0x32, _STD_PORT(),
-                         eh_subscript(0x4321, 0x0000, 0x0321),   # SIG_4D3D_FAMILY_LO
-                         eh_subscript(0x0004, 0x0000, op_marker & 0xF),  # A_hi=0x0004 + marker
-                         eh_opref(),
-                         flags=F_HAS_OPB)
-    await fire(dut, instr, _STD_TAG(dim=0x55),
-               payload_a=a_64 & ((1 << 64) - 1),
-               payload_b=0, payload_b_valid=1)
-
-
-def _pack_int4_64(*nibbles):
-    """Pack up to 16 int4 nibbles into 64-bit."""
-    v = 0
-    for i, n in enumerate(nibbles[:16]):
-        v |= (n & 0xF) << (i * 4)
-    return v
-
-
-@cocotb.test()
-async def test_reduce_sum_4d_to_3d(dut):
-    """v1.6.2: 4D→3D SUM (op_marker=0x0). Critical: verifies A_hi=0x0004
-    discriminator prevents legacy fall-through for marker=0."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    nibbles = [((i + 1) & 0xF) for i in range(16)]
-    a_64 = _pack_int4_64(*nibbles)
-    await _fire_4d_to_3d_reduction(dut, a_64, 0x0)  # SUM
-    assert dut.output_valid.value == 1
-    assert dut.lower_required.value == 0, "SUM marker=0x0 must NOT fall through legacy dispatch"
-    payload = int(dut.output_payload.value)
-    for idx in range(8):
-        exp = (nibbles[idx * 2] + nibbles[idx * 2 + 1]) & 0xF
-        got = (payload >> (idx * 4)) & 0xF
-        assert got == exp, f"idx {idx}: {got:x} != {exp:x}"
-    assert (payload >> 32) == 0
-    assert (int(dut.output_tag.value) & 0xFF) == 0x15  # 3D 2×2×2
-
-
-@cocotb.test()
-async def test_reduce_max_4d_to_3d(dut):
-    """v1.6.2: 4D→3D MAX (op_marker=0x1)."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    nibbles = [((i * 3 + 1) & 0xF) for i in range(16)]
-    a_64 = _pack_int4_64(*nibbles)
-    await _fire_4d_to_3d_reduction(dut, a_64, 0x1)
-    assert dut.output_valid.value == 1
-    payload = int(dut.output_payload.value)
-    for idx in range(8):
-        a0, a1 = _s4(nibbles[idx * 2]), _s4(nibbles[idx * 2 + 1])
-        exp = max(a0, a1) & 0xF
-        got = (payload >> (idx * 4)) & 0xF
-        assert got == exp, f"idx {idx}: {got:x} != {exp:x}"
-
-
-@cocotb.test()
-async def test_reduce_min_4d_to_3d(dut):
-    """v1.6.2: 4D→3D MIN (op_marker=0x6). Fréchet medoid, k-means axis."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    nibbles = [((i * 3 + 1) & 0xF) for i in range(16)]
-    a_64 = _pack_int4_64(*nibbles)
-    await _fire_4d_to_3d_reduction(dut, a_64, 0x6)
-    assert dut.output_valid.value == 1
-    payload = int(dut.output_payload.value)
-    for idx in range(8):
-        a0, a1 = _s4(nibbles[idx * 2]), _s4(nibbles[idx * 2 + 1])
-        exp = min(a0, a1) & 0xF
-        got = (payload >> (idx * 4)) & 0xF
-        assert got == exp, f"idx {idx}: {got:x} != {exp:x}"
-
-
-@cocotb.test()
-async def test_reduce_mean_4d_to_3d(dut):
-    """v1.6.2: 4D→3D MEAN (op_marker=0x5). (A0+A1)>>1 ASR."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    nibbles = [0x4] * 16   # (4+4)/2 = 4 all lanes
-    a_64 = _pack_int4_64(*nibbles)
-    await _fire_4d_to_3d_reduction(dut, a_64, 0x5)
-    assert dut.output_valid.value == 1
-    payload = int(dut.output_payload.value)
-    for idx in range(8):
-        got = (payload >> (idx * 4)) & 0xF
-        assert got == 0x4
-
-
-@cocotb.test()
-async def test_reduce_l2sq_4d_to_3d(dut):
-    """v1.6.2: 4D→3D L2SQ (op_marker=0x4). InstanceNorm variance base."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    nibbles = [0x2] * 16   # 2²+2² = 8 all lanes
-    a_64 = _pack_int4_64(*nibbles)
-    await _fire_4d_to_3d_reduction(dut, a_64, 0x4)
-    assert dut.output_valid.value == 1
-    payload = int(dut.output_payload.value)
-    for idx in range(8):
-        got = (payload >> (idx * 4)) & 0xF
-        assert got == 0x8
-
-
-@cocotb.test()
-async def test_reduce_min_5d_to_4d(dut):
-    """v1.6.2: 5D→4D MIN symmetric backfill (op_marker=0x6). Family
-    completeness: 5D→4D now supports MIN alongside SUM/MAX/MEAN/L2SQ."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    nibbles = [((i * 5 + 2) & 0xF) for i in range(32)]
-    a_128 = _pack_int4_128(*nibbles)
-    await _fire_5d_to_4d_reduction(dut, a_128, 0x6)  # MIN
-    assert dut.output_valid.value == 1
-    payload = int(dut.output_payload.value)
-    for idx in range(16):
-        a0, a1 = _s4(nibbles[idx * 2]), _s4(nibbles[idx * 2 + 1])
-        exp = min(a0, a1) & 0xF
-        got = (payload >> (idx * 4)) & 0xF
-        assert got == exp, f"idx {idx}: {got:x} != {exp:x}"
-
-
-@cocotb.test()
-async def test_reduce_4d_to_3d_wrong_dim_lowers(dut):
-    """v1.6.2: 4D→3D with wrong dim_sizes (≠0x55) → lower_required."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    instr = encode_instr(0x32, _STD_PORT(),
-                         eh_subscript(0x4321, 0x0000, 0x0321),
-                         eh_subscript(0x0004, 0x0000, 0x0),  # SUM
-                         eh_opref(),
-                         flags=F_HAS_OPB)
-    await fire(dut, instr, _STD_TAG(dim=0x11),  # wrong shape (3D)
-               payload_a=0, payload_b=0, payload_b_valid=1)
-    assert dut.lower_required.value == 1
-    assert dut.output_valid.value == 0
-
-
-# =============================================================================
-# v1.6.3 §22.13 — rsqrt mantissa LUT precision improvement
-# =============================================================================
-#
-# 16-entry Q0.15 LUT + priority encoder + barrel shift → ~4-bit mantissa
-# precision. Backward compat: LUT[0]=0x8000 preserves rsqrt(1.0/4.0/0)
-# tests bit-identical.
-
-
-async def _fire_rsqrt(dut, x):
-    """Fire SCALAR_RSQRT_APPROX with x in Q16.16 and return result."""
-    instr = encode_instr(0x66, _STD_PORT())
-    dut.instruction.value = instr
-    dut.input_tag.value = _STD_TAG()
-    dut.input_payload.value = x & 0xFFFFFFFFFFFFFFFF
-    dut.input_payload_b_valid.value = 0
-    dut.input_payload_wide_valid.value = 0
-    dut.token_valid.value = 1
-    await RisingEdge(dut.clk)
-    dut.token_valid.value = 0
-    for _ in range(20):
-        await RisingEdge(dut.clk)
-        await Timer(1, units="ns")
-        if int(dut.output_valid.value):
-            return int(dut.output_payload.value) & 0xFFFFFFFF
-    return None
-
-
-@cocotb.test()
-async def test_scalar_rsqrt_lut_two(dut):
-    """v1.6.3: rsqrt(2.0 Q16.16) ≈ 1/√2 = 0.7071. Expected ~0xB504.
-    Odd-msb path (m=17 → parity=1 → LUT[8]=0x5A82)."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    result = await _fire_rsqrt(dut, 0x0002_0000)   # 2.0
-    # Expected 0xB504 (1/√2 × 65536 = 46340). Allow small LUT error.
-    assert abs(result - 0xB504) <= 4, f"rsqrt(2.0) = 0x{result:08x}, expected ~0xB504"
-
-
-@cocotb.test()
-async def test_scalar_rsqrt_lut_half(dut):
-    """v1.6.3: rsqrt(0.5 Q16.16) = √2 ≈ 1.414. Expected ~0x16A09.
-    Left-shift +2 for m=15 (even parity=1)."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    result = await _fire_rsqrt(dut, 0x0000_8000)   # 0.5
-    # Expected ~0x16A09 (√2 × 65536 = 92682)
-    assert abs(result - 0x16A09) <= 8, f"rsqrt(0.5) = 0x{result:08x}, expected ~0x16A09"
-
-
-@cocotb.test()
-async def test_scalar_rsqrt_lut_quarter(dut):
-    """v1.6.3: rsqrt(0.25 Q16.16) = 2.0. Expected 0x20000.
-    Left-shift +2 for m=14 (even, mant=0)."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    result = await _fire_rsqrt(dut, 0x0000_4000)   # 0.25
-    assert abs(result - 0x20000) <= 2, f"rsqrt(0.25) = 0x{result:08x}, expected 0x20000"
-
-
-@cocotb.test()
-async def test_scalar_rsqrt_lut_one_point_five(dut):
-    """v1.6.3: rsqrt(1.5 Q16.16) ≈ 0.8165. Mantissa refinement test —
-    LUT[4] = 0x6886. Left-shift +1 for m=16, mant=4."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    result = await _fire_rsqrt(dut, 0x0001_8000)   # 1.5
-    # Expected ~0xD10C (0.8165 × 65536 ≈ 53510)
-    exact = 53510
-    assert abs(result - exact) <= 32, f"rsqrt(1.5) = 0x{result:08x} ({result}), expected ~{exact:x} ({exact})"
-
-
-# =============================================================================
-# v1.6.5a §22.14 — SIMD_MUL_WIDE_Q4_4_SCALAR (0x67) precision recovery
-# =============================================================================
-
-
-@cocotb.test()
-async def test_simd_mul_wide_q4_4_scalar_basic(dut):
-    """v1.6.5a: SIMD_MUL_WIDE_Q4_4_SCALAR (0x67). Q4.4 broadcast to 32 int4
-    lanes with round-half-up. Test: A[i]=+2, B=Q4.4(0.5)=0x08 → each
-    lane = round((2 * 0.5)) = 1. Verifies Q4.4 fractional interpretation."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    a_128 = _pack_int4_128(*[0x2] * 32)   # +2 all lanes
-    # B = 0x08 as Q4.4 = 0.5
-    instr = encode_instr(0x67, _STD_PORT(), eh_imm16(0x08))
-    dut.instruction.value = instr
-    dut.input_tag.value = _STD_TAG()
-    dut.input_payload.value = 0
-    dut.input_payload_b_valid.value = 0
-    dut.input_payload_wide.value = a_128
+    dut.input_payload_wide.value = _pack_int4_128(*([0x2] * 32))
     dut.input_payload_wide_valid.value = 1
     dut.token_valid.value = 1
     await RisingEdge(dut.clk)
     dut.token_valid.value = 0
-    for _ in range(30):
+    for _ in range(20):
         await RisingEdge(dut.clk)
         await Timer(1, units="ns")
-        if int(dut.output_valid.value) == 1:
+        if (int(dut.error_flag.value) == 1
+                or int(dut.output_valid.value) == 1
+                or int(dut.lower_required.value) == 1):
             break
-    assert dut.output_valid.value == 1
-    # Per lane: p = 2 * 8 = 16 (Q8.4). (16 + 8) >> 4 = 24 >> 4 = 1.
-    # Expected: all lanes = 1.
-    # Fragment 0 = 16 lanes of nibble 1 → 0x1111_1111_1111_1111.
-    assert int(dut.output_payload.value) == 0x1111_1111_1111_1111
+    assert int(dut.error_flag.value) == 1, "removed opcode must decode_error"
+    assert int(dut.output_valid.value) == 0
+    assert int(dut.lower_required.value) == 0, \
+        "removed opcode is a malformation (decode_error), not a capability absence"
 
 
 @cocotb.test()
-async def test_simd_mul_wide_q4_4_scalar_negative(dut):
-    """v1.6.5a: Q4.4 signed handling. A=+4, B=Q4.4(-1.0)=0xF0 (=-1.0 in Q4.4).
-    Per lane: 4 * -16 = -64 (Q8.4). (-64 + 8) >> 4 = -3.5 → -4 → int4 = 0xC."""
+async def test_removed_opcode_0x66_rsqrt_decode_errors(dut):
+    """Opcode cleanup (pre-stable): SCALAR_RSQRT (0x66) was deleted from
+    isa/wt64v1_isa.json, so the regenerated opcode_supported whitelist
+    decode-errors its previously-legal bare-PORT shape."""
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
     await reset(dut)
-    a_128 = _pack_int4_128(*[0x4] * 32)
-    # B = 0xF0 as Q4.4 signed = -1.0 (bit pattern 1111 0000 = -16 / 16 = -1)
-    instr = encode_instr(0x67, _STD_PORT(), eh_imm16(0xF0))
-    dut.instruction.value = instr
-    dut.input_tag.value = _STD_TAG()
-    dut.input_payload.value = 0
-    dut.input_payload_b_valid.value = 0
-    dut.input_payload_wide.value = a_128
-    dut.input_payload_wide_valid.value = 1
-    dut.token_valid.value = 1
-    await RisingEdge(dut.clk)
-    dut.token_valid.value = 0
-    for _ in range(30):
-        await RisingEdge(dut.clk)
-        await Timer(1, units="ns")
-        if int(dut.output_valid.value) == 1:
-            break
-    assert dut.output_valid.value == 1
-    # A=+4, B=-16 (Q8.4). p=4*(-16)=-64. round: (-64+8)>>4 = -56>>4 = -4 = 0xC
-    assert int(dut.output_payload.value) == 0xCCCC_CCCC_CCCC_CCCC
+    await _fire_removed_opcode(dut, encode_instr(0x66, _STD_PORT()))
+
+
+# =============================================================================
+# Opcode cleanup (pre-stable) — removed 4D→3D reduction family + removed
+# opcodes 0x66/0x67/0x6B/0x6C regression pins
+# =============================================================================
+
+
+@cocotb.test()
+async def test_reduce_4d_to_3d_family_removed_lowers(dut):
+    """Opcode cleanup (pre-stable): the entire 4D→3D reduction family
+    (SIG_4D3D_*, markers SUM/MAX/L2SQ/MEAN/MIN) was removed — zero
+    asm/SDK consumers. Its old signature (A=0x4321/O=0x0321,
+    A_hi=0x0004) matches no dispatch arm any more and falls to the
+    einsum unknown-signature lower_required tail for every
+    previously-live marker."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    for marker in (0x0, 0x1, 0x4, 0x5, 0x6):
+        instr = encode_instr(0x32, _STD_PORT(),
+                             eh_subscript(0x4321, 0x0000, 0x0321),
+                             eh_subscript(0x0004, 0x0000, marker),
+                             eh_opref(),
+                             flags=F_HAS_OPB)
+        await fire(dut, instr, _STD_TAG(dim=0x55),
+                   payload_a=0, payload_b=0, payload_b_valid=1)
+        assert dut.lower_required.value == 1, f"marker 0x{marker:X}"
+        assert dut.output_valid.value == 0, f"marker 0x{marker:X}"
+
+
+@cocotb.test()
+async def test_removed_opcode_0x67_q4_4_decode_errors(dut):
+    """Opcode cleanup (pre-stable): SIMD_MUL_WIDE_Q4_4_SCALAR (0x67, the
+    Q4.4 predecessor of the live 0x69 Q8.8) decode-errors with its
+    previously-legal PORT+IMM16 shape."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    await _fire_removed_opcode(dut, encode_instr(0x67, _STD_PORT(),
+                                                 eh_imm16(0x08)))
+
+
+@cocotb.test()
+async def test_removed_opcode_0x6B_widen_decode_errors(dut):
+    """Opcode cleanup (pre-stable): SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN
+    (0x6B, the only 4-fragment emitter) decode-errors with its
+    previously-legal PORT+IMM16 shape. NOTE: with 0x6B gone the frag FSM's
+    FRAG_EMIT_2/3 states are writer-dead and untested until the v1.8.0e
+    wide package re-populates them."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    await _fire_removed_opcode(dut, encode_instr(0x6B, _STD_PORT(),
+                                                 eh_imm16(0x08)))
+
+
+@cocotb.test()
+async def test_removed_opcode_0x6C_requantize_decode_errors(dut):
+    """Opcode cleanup (pre-stable): SIMD_REQUANTIZE_Q4_4_TO_INT4 (0x6C,
+    WIDEN's narrowing companion) decode-errors with its previously-legal
+    bare-PORT unary shape."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    await _fire_removed_opcode(dut, encode_instr(0x6C, _STD_PORT()))
 
 
 @cocotb.test()
 async def test_simd_mul_wide_q8_8_scalar_basic(dut):
     """v1.6.7: SIMD_MUL_WIDE_Q8_8_SCALAR (0x69). Q8.8 broadcast to 32 int4
-    lanes with round-half-up, 16x finer B granularity than 0x67's Q4.4.
+    lanes with round-half-up (16x finer B granularity than the retired
+    0x67 Q4.4 form, removed pre-stable in the opcode cleanup).
     Test: A[i]=+2, B=Q8.8(0.5)=0x0080 -> p=2*128=256 (Q4.8), round:
     (256+128)>>8 = 1."""
     clock = Clock(dut.clk, 10, units="ns")
@@ -3484,11 +3176,12 @@ async def test_simd_mul_wide_q8_8_scalar_negative(dut):
 
 @cocotb.test()
 async def test_simd_mul_wide_q8_8_scalar_precision_vs_q4_4(dut):
-    """v1.6.7: demonstrate Q8.8's finer granularity vs Q4.4 for a value
-    that Q4.4 cannot represent exactly. B=Q8.8(0.25)=0x0040 has no exact
-    Q4.4 equivalent at this magnitude combined with a large A (rounds
-    differently at Q4.4's coarser 1/16 LSB vs Q8.8's 1/256 LSB).
-    A[i]=+7, B=Q8.8(0.25): p=7*64=448 (Q4.8), round:(448+128)>>8=2."""
+    """v1.6.7: demonstrate Q8.8's finer granularity vs the Q4.4 format
+    (as a NUMBER FORMAT — the 0x67 opcode itself was removed pre-stable
+    in the opcode cleanup; this test fires only the live 0x69).
+    B=Q8.8(0.25)=0x0040 rounds differently at Q4.4's coarser 1/16 LSB vs
+    Q8.8's 1/256 LSB. A[i]=+7, B=Q8.8(0.25): p=7*64=448 (Q4.8),
+    round:(448+128)>>8=2."""
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
     await reset(dut)
@@ -3510,400 +3203,6 @@ async def test_simd_mul_wide_q8_8_scalar_precision_vs_q4_4(dut):
             break
     assert dut.output_valid.value == 1
     assert int(dut.output_payload.value) == 0x2222_2222_2222_2222
-
-
-# =============================================================================
-# v1.7 §22.18 — SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN (0x6B) +
-# SIMD_REQUANTIZE_Q4_4_TO_INT4 (0x6C)
-#
-# WIDEN emits 4 fragments (256 bits: 32 lanes x signed 8-bit Q4.4) via the
-# newly-widened frag_idx (1-bit -> 2-bit) drain FSM. REQUANTIZE narrows a
-# 256-bit Q4.4-int8 wide input back to 128-bit int4 via round-half-up +
-# saturating clamp (a genuinely new failure mode vs 0x67/0x69).
-# =============================================================================
-
-
-async def _fire_widen(dut, a_128, b_q4_4):
-    """Fire SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN (0x6B) and collect all 4
-    output fragments in order."""
-    instr = encode_instr(0x6B, _STD_PORT(), eh_imm16(b_q4_4 & 0xFF))
-    dut.instruction.value = instr
-    dut.input_tag.value = _STD_TAG()
-    dut.input_payload.value = 0
-    dut.input_payload_b_valid.value = 0
-    dut.input_payload_wide.value = a_128
-    dut.input_payload_wide_valid.value = 1
-    dut.token_valid.value = 1
-    await RisingEdge(dut.clk)
-    dut.token_valid.value = 0
-    frags = []
-    for _ in range(30):
-        await RisingEdge(dut.clk)
-        await Timer(1, units="ns")
-        if int(dut.output_valid.value) == 1:
-            frags.append({'payload': int(dut.output_payload.value),
-                          'frag_hdr': int(dut.output_frag_hdr.value)})
-            if len(frags) == 1:
-                break
-    # Collect the remaining 3 drain beats.
-    for _ in range(3):
-        await RisingEdge(dut.clk)
-        await Timer(1, units="ns")
-        frags.append({'payload': int(dut.output_payload.value),
-                      'frag_hdr': int(dut.output_frag_hdr.value),
-                      'valid': int(dut.output_valid.value)})
-    return frags
-
-
-@cocotb.test()
-async def test_widen_dispatch_emits_four_fragments(dut):
-    """v1.7: WIDEN (0x6B) emits exactly 4 sequential fragments with
-    headers 0x03/0x13/0x23/0x33, correct opcode_out/output_tag held
-    constant, and lane values matching the exact (rounding-free) Q4.4
-    product. A[i]=+2, B=Q4.4(0.5)=0x08: p=2*8=16 (fits in 8-bit signed,
-    no saturation) -> every lane byte = 0x10."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    a_128 = _pack_int4_128(*[0x2] * 32)
-    frags = await _fire_widen(dut, a_128, 0x08)
-    assert len(frags) == 4
-    assert frags[0]['frag_hdr'] == 0x03
-    assert frags[1]['frag_hdr'] == 0x13
-    assert frags[2]['frag_hdr'] == 0x23
-    assert frags[3]['frag_hdr'] == 0x33
-    assert frags[3]['valid'] == 1
-    expected_lane_byte = 0x10  # exact, no rounding (A is integer)
-    expected_frag = 0
-    for j in range(8):
-        expected_frag |= expected_lane_byte << (j * 8)
-    for f in frags:
-        assert f['payload'] == expected_frag, \
-            f"got {f['payload']:016x}, expected {expected_frag:016x}"
-
-
-@cocotb.test()
-async def test_widen_saturates_on_magnitude_overflow(dut):
-    """v1.7: WIDEN's saturating clamp is REQUIRED (not defensive) --
-    |A|<=8,|B|<=8 gives |A*B|<=64, exceeding the 8-bit Q4.4 format's own
-    representable range (~+-8.0). A[i]=+7, B=Q4.4(+7.9375)=0x7F:
-    p=7*127=889, saturates to +127 (0x7F)."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    a_128 = _pack_int4_128(*[0x7] * 32)
-    frags = await _fire_widen(dut, a_128, 0x7F)
-    expected_lane_byte = 0x7F  # saturated
-    expected_frag = 0
-    for j in range(8):
-        expected_frag |= expected_lane_byte << (j * 8)
-    for f in frags:
-        assert f['payload'] == expected_frag, \
-            f"got {f['payload']:016x}, expected {expected_frag:016x} (saturated)"
-
-
-async def _fire_requantize(dut, wide_256):
-    instr = encode_instr(0x6C, _STD_PORT())
-    dut.instruction.value = instr
-    dut.input_tag.value = _STD_TAG()
-    dut.input_payload.value = 0
-    dut.input_payload_b_valid.value = 0
-    dut.input_payload_wide.value = wide_256
-    dut.input_payload_wide_valid.value = 1
-    dut.token_valid.value = 1
-    await RisingEdge(dut.clk)
-    dut.token_valid.value = 0
-    frags = []
-    for _ in range(30):
-        await RisingEdge(dut.clk)
-        await Timer(1, units="ns")
-        if int(dut.output_valid.value) == 1:
-            frags.append({'payload': int(dut.output_payload.value),
-                          'frag_hdr': int(dut.output_frag_hdr.value)})
-            break
-    await RisingEdge(dut.clk)
-    await Timer(1, units="ns")
-    frags.append({'payload': int(dut.output_payload.value),
-                  'frag_hdr': int(dut.output_frag_hdr.value),
-                  'valid': int(dut.output_valid.value)})
-    return frags
-
-
-@cocotb.test()
-async def test_requantize_parity_with_q4_4_direct(dut):
-    """v1.7: REQUANTIZE(WIDEN(A,B)) must equal 0x67's direct int4 result
-    for the same (A,B) in the non-saturating case -- confirms parity
-    (not regression) versus today's existing 0.5-output-LSB bound.
-    A=+2, B=Q4.4(0.5)=0x08: WIDEN produces byte 0x10 per lane;
-    REQUANTIZE(0x10) = round-half-up((16+8)>>4) = 1 -- matches 0x67's
-    own test_simd_mul_wide_q4_4_scalar_basic result for the same inputs."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    lane_byte = 0x10  # WIDEN(A=2, B=Q4.4(0.5)) per-lane result
-    wide_256 = 0
-    for j in range(32):
-        wide_256 |= (lane_byte & 0xFF) << (j * 8)
-    frags = await _fire_requantize(dut, wide_256)
-    assert len(frags) == 2
-    assert frags[0]['frag_hdr'] == 0x01
-    assert frags[1]['frag_hdr'] == 0x11
-    assert frags[1]['valid'] == 1
-    expected = 0x1111_1111_1111_1111  # every lane rounds to 1
-    assert frags[0]['payload'] == expected
-    assert frags[1]['payload'] == expected
-
-
-@cocotb.test()
-async def test_requantize_saturates_on_round_overflow(dut):
-    """v1.7: REQUANTIZE's saturating clamp is a genuinely NEW failure
-    mode vs 0x67/0x69 (which are provably non-saturating by
-    construction): a Q4.4 lane at its own max magnitude rounds UP past
-    int4's representable range. ri=127 (max, ~7.9375): round-half-up
-    (127+8)>>4 = 8, which exceeds int4 max(7) -- must saturate to 7, not
-    wrap to a negative value."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    lane_byte = 0x7F  # +127, max positive Q4.4-int8
-    wide_256 = 0
-    for j in range(32):
-        wide_256 |= (lane_byte & 0xFF) << (j * 8)
-    frags = await _fire_requantize(dut, wide_256)
-    expected = 0x7777_7777_7777_7777  # saturated to +7, NOT wrapped to -8
-    assert frags[0]['payload'] == expected
-    assert frags[1]['payload'] == expected
-
-
-@cocotb.test()
-async def test_requantize_min_value_exact_no_saturation(dut):
-    """v1.7: ri=-128 (min, -8.0) rounds to exactly -8 -- representable in
-    int4 without saturating (mathematically, negative saturation can
-    never actually trigger for a full-range 8-bit signed input: min
-    round-half-up result is floor((-128+8)/16) = -8, exactly at the int4
-    floor, never below it)."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    lane_byte = 0x80  # -128
-    wide_256 = 0
-    for j in range(32):
-        wide_256 |= (lane_byte & 0xFF) << (j * 8)
-    frags = await _fire_requantize(dut, wide_256)
-    expected = 0x8888_8888_8888_8888  # -8 in every int4 lane
-    assert frags[0]['payload'] == expected
-    assert frags[1]['payload'] == expected
-
-
-@cocotb.test()
-async def test_legacy_op_immediately_after_widen_no_stale_total_m1(dut):
-    """v1.7: THE canary test for the FSM-extension's one real hazard.
-    Dispatch WIDEN (4-fragment drain), then on the very first cycle
-    frag_idx returns to FRAG_IDLE, dispatch a legacy 2-fragment op
-    (0x60). The legacy op must emit EXACTLY 2 fragments (0x01, 0x11) --
-    no spurious 3rd/4th fragment from a stale frag_total_m1_held=3 left
-    over from WIDEN."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    a_128 = _pack_int4_128(*[0x2] * 32)
-    await _fire_widen(dut, a_128, 0x08)
-    # frag_idx should now be back at FRAG_IDLE (hierarchical probe).
-    assert int(dut.u_core.frag_idx.value) == 0, "WIDEN drain did not return to FRAG_IDLE"
-
-    legacy_a = _pack_int4_128(*[0x1] * 32)
-    legacy_instr = encode_instr(0x60, _STD_PORT(), eh_imm16(3))
-    dut.instruction.value = legacy_instr
-    dut.input_tag.value = _STD_TAG()
-    dut.input_payload.value = 0
-    dut.input_payload_b_valid.value = 0
-    dut.input_payload_wide.value = legacy_a
-    dut.input_payload_wide_valid.value = 1
-    dut.token_valid.value = 1
-    await RisingEdge(dut.clk)
-    dut.token_valid.value = 0
-    legacy_frags = []
-    for _ in range(10):
-        await RisingEdge(dut.clk)
-        await Timer(1, units="ns")
-        if int(dut.output_valid.value) == 1:
-            legacy_frags.append({'payload': int(dut.output_payload.value),
-                                 'frag_hdr': int(dut.output_frag_hdr.value)})
-    assert len(legacy_frags) == 2, \
-        f"expected EXACTLY 2 fragments, got {len(legacy_frags)}: {legacy_frags}"
-    assert legacy_frags[0]['frag_hdr'] == 0x01
-    assert legacy_frags[1]['frag_hdr'] == 0x11
-    expected = 0x4444_4444_4444_4444  # 1+3=4 every lane
-    assert legacy_frags[0]['payload'] == expected
-    assert legacy_frags[1]['payload'] == expected
-
-
-@cocotb.test()
-async def test_pe_ready_widen_drain_is_three_cycles(dut):
-    """v1.7: WIDEN's drain takes 3 additional cycles (fragments 1-3)
-    beyond the dispatch cycle, so pe_ready deasserts for exactly 3
-    cycles -- an accepted throughput tradeoff vs every other wide-
-    consumer op's 1-cycle bound, explicitly locked in here."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    a_128 = _pack_int4_128(*[0x1] * 32)
-    instr = encode_instr(0x6B, _STD_PORT(), eh_imm16(0x08))
-    dut.instruction.value = instr
-    dut.input_tag.value = _STD_TAG()
-    dut.input_payload.value = 0
-    dut.input_payload_b_valid.value = 0
-    dut.input_payload_wide.value = a_128
-    dut.input_payload_wide_valid.value = 1
-    dut.token_valid.value = 1
-    await RisingEdge(dut.clk)
-    dut.token_valid.value = 0
-    # Wait for dispatch (fragment 0) to land.
-    for _ in range(20):
-        await RisingEdge(dut.clk)
-        await Timer(1, units="ns")
-        if int(dut.output_valid.value) == 1 and int(dut.output_frag_hdr.value) == 0x03:
-            break
-    not_ready_cycles = 0
-    for _ in range(6):
-        if int(dut.pe_ready.value) == 0:
-            not_ready_cycles += 1
-        await RisingEdge(dut.clk)
-        await Timer(1, units="ns")
-    assert not_ready_cycles == 3, f"expected 3 not-ready cycles, got {not_ready_cycles}"
-
-
-@cocotb.test()
-async def test_mul_during_widen_drain_blocked_then_launches_correctly(dut):
-    """v1.7: attempt a MUL dispatch during WIDEN's 3-cycle drain window.
-    Per the pre-existing v1.5.3a launch-gate design (PE_Core.v:1743-1746
-    -- confirmed directly, MUL's own case arm does NOT assert
-    lower_required when blocked by frag state; it is silently NOT
-    launched via the separate mul_valid_p1 pipeline gate), the MUL simply
-    fails to enter the pipeline during the drain (no corrupted output),
-    then launches correctly once frag_idx returns to FRAG_IDLE and the
-    SAME dispatch is retried."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    a_128 = _pack_int4_128(*[0x1] * 32)
-    widen_instr = encode_instr(0x6B, _STD_PORT(), eh_imm16(0x08))
-    dut.instruction.value = widen_instr
-    dut.input_tag.value = _STD_TAG()
-    dut.input_payload.value = 0
-    dut.input_payload_b_valid.value = 0
-    dut.input_payload_wide.value = a_128
-    dut.input_payload_wide_valid.value = 1
-    dut.token_valid.value = 1
-    await RisingEdge(dut.clk)
-    dut.token_valid.value = 0
-    for _ in range(20):
-        await RisingEdge(dut.clk)
-        await Timer(1, units="ns")
-        if int(dut.output_valid.value) == 1 and int(dut.output_frag_hdr.value) == 0x03:
-            break
-
-    # Now mid-drain: attempt MUL. Must not corrupt the ongoing drain
-    # (no output with opcode_out==0x12 appears while frag_idx != FRAG_IDLE).
-    mul_instr = encode_instr(0x12, _STD_PORT(), eh_imm64(5))
-    dut.instruction.value = mul_instr
-    dut.input_tag.value = _STD_TAG()
-    dut.input_payload.value = 10
-    dut.input_payload_b_valid.value = 0
-    dut.input_payload_wide_valid.value = 0
-    dut.token_valid.value = 1
-    await RisingEdge(dut.clk)
-    dut.token_valid.value = 0
-    await Timer(1, units="ns")
-    assert int(dut.u_core.mul_valid_p1.value) == 0, \
-        "MUL must not enter the pipeline while frag_idx != FRAG_IDLE"
-
-    # Retry after the drain completes.
-    for _ in range(10):
-        await RisingEdge(dut.clk)
-        await Timer(1, units="ns")
-        if int(dut.u_core.frag_idx.value) == 0:
-            break
-    dut.instruction.value = mul_instr
-    dut.input_tag.value = _STD_TAG()
-    dut.input_payload.value = 10
-    dut.token_valid.value = 1
-    await RisingEdge(dut.clk)
-    dut.token_valid.value = 0
-    saw_mul = False
-    for _ in range(10):
-        await RisingEdge(dut.clk)
-        await Timer(1, units="ns")
-        if int(dut.output_valid.value) == 1 and int(dut.opcode_out.value) == 0x12:
-            assert int(dut.output_payload.value) == 50
-            saw_mul = True
-            break
-    assert saw_mul, "MUL did not launch correctly after WIDEN drain completed"
-
-
-@cocotb.test()
-async def test_reset_clears_widen_fsm_state(dut):
-    """v1.7: reset must drive frag_idx=FRAG_IDLE(0) and
-    frag_total_m1_held=0 (hierarchical probe)."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    assert int(dut.u_core.frag_idx.value) == 0
-    assert int(dut.u_core.frag_total_m1_held.value) == 0
-
-
-@cocotb.test()
-async def test_requantize_legality_rejects_imm_and_opref(dut):
-    """v1.7: REQUANTIZE (0x6C) has no B operand at all -- an IMM16 or
-    OPREF EH must decode-error (forbidden_eh), regression-guarding the
-    corrected unary/no-B legality shape."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    instr = encode_instr(0x6C, _STD_PORT(), eh_imm16(5))
-    dut.instruction.value = instr
-    dut.input_tag.value = _STD_TAG()
-    dut.input_payload.value = 0
-    dut.input_payload_b_valid.value = 0
-    dut.input_payload_wide.value = 0
-    dut.input_payload_wide_valid.value = 1
-    dut.token_valid.value = 1
-    await RisingEdge(dut.clk)
-    dut.token_valid.value = 0
-    for _ in range(10):
-        await RisingEdge(dut.clk)
-        await Timer(1, units="ns")
-        if int(dut.error_flag.value) == 1 or int(dut.output_valid.value) == 1:
-            break
-    assert int(dut.error_flag.value) == 1
-    assert int(dut.output_valid.value) == 0
-
-
-@cocotb.test()
-async def test_widen_legality_requires_imm_xor_opref(dut):
-    """v1.7: WIDEN (0x6B) requires exactly one of {IMM16/32/64, OPREF} --
-    mirrors existing 0x67/0x69 legality (bare dispatch with neither must
-    decode-error)."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    instr = encode_instr(0x6B, _STD_PORT())
-    dut.instruction.value = instr
-    dut.input_tag.value = _STD_TAG()
-    dut.input_payload.value = 0
-    dut.input_payload_b_valid.value = 0
-    dut.input_payload_wide.value = 0
-    dut.input_payload_wide_valid.value = 1
-    dut.token_valid.value = 1
-    await RisingEdge(dut.clk)
-    dut.token_valid.value = 0
-    for _ in range(10):
-        await RisingEdge(dut.clk)
-        await Timer(1, units="ns")
-        if int(dut.error_flag.value) == 1 or int(dut.output_valid.value) == 1:
-            break
-    assert int(dut.error_flag.value) == 1
-    assert int(dut.output_valid.value) == 0
 
 
 # =============================================================================
@@ -3951,8 +3250,8 @@ async def test_pe_ready_low_during_bmm3_emit(dut):
 # ISA_Decoder ties input_payload_wide/valid directly to the testbench (no
 # Cluster CAM at this level), so these tests exercise PE_Core's case arm in
 # isolation: pure passthrough on a "hit" (wide_valid=1), and the existing
-# error_flag guard on a "miss" (wide_valid=0) — the same guard 0x60-0x67
-# already share.
+# error_flag guard on a "miss" (wide_valid=0) — the same guard the
+# 0x60-0x65/0x69 wide consumers already share.
 # =============================================================================
 
 
@@ -3998,7 +3297,7 @@ async def test_cache_load_wide_passthrough_hit(dut):
 async def test_cache_load_wide_miss_raises_error(dut):
     """v1.6.5c: CACHE_LOAD_WIDE with wide_valid=0 (Cluster-level cache
     miss) must raise error_flag, not emit stale/garbage data — the same
-    guard the 0x60-0x67 wide-consumer group already shares."""
+    guard the 0x60-0x65/0x69 wide-consumer group already shares."""
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
     await reset(dut)
@@ -4113,7 +3412,7 @@ async def test_frag_inval_hit_ack(dut):
     CAM hit) must ack (output_valid=1, error_flag=0) and must NOT enter
     the drain FSM (no second fragment beat follows) -- proves the
     standalone-arm design avoids the confirmed garbage-second-fragment
-    hazard that folding into the shared 0x60-0x6C wide-emit group would
+    hazard that folding into the shared wide-emit group would
     cause (that group's epilogue unconditionally drives
     frag_idx<=FRAG_EMIT_1)."""
     clock = Clock(dut.clk, 10, units="ns")
@@ -4169,18 +3468,6 @@ async def test_frag_inval_miss_raises_error(dut):
             break
     assert int(dut.error_flag.value) == 1
     assert int(dut.output_valid.value) == 0
-
-
-@cocotb.test()
-async def test_scalar_rsqrt_lut_six(dut):
-    """v1.6.3: rsqrt(6.0 Q16.16) ≈ 0.4082. m=18 mant=4 → LUT[4]=0x6886,
-    shift=0. Expected ~0x6886."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await reset(dut)
-    result = await _fire_rsqrt(dut, 0x0006_0000)   # 6.0
-    exact = 0x6886
-    assert abs(result - exact) <= 32, f"rsqrt(6.0) = 0x{result:08x}, expected ~{exact:x}"
 
 
 # =============================================================================
@@ -4473,39 +3760,56 @@ async def test_bmm3_then_mul_launch_gate(dut):
 # v1.8.0a §23.9 COMMIT 1 — pre-migration RTL truth table (THE CIRCULARITY
 # BREAKER for the single-source ISA migration)
 #
-# The EH-subset sweep below was run ONCE on pre-migration HEAD (the commit
-# before EHDecode.v's hand-written legality moved into generated includes)
-# and its full outcome table — (error_flag_ever, lower_required_ever,
+# The EH-subset sweep below was captured on a frozen baseline commit and
+# its full outcome table — (error_flag_ever, lower_required_ever,
 # output_valid_ever) per point — was committed as literal data at
-# isa/truth_table_premigration.json. Post-migration RTL must reproduce it
+# isa/truth_table_premigration.json. Later RTL must reproduce it
 # bit-for-bit. Because the oracle is RTL-DERIVED (not human-derived, not
 # generator-derived), a JSON transcription error that is self-consistent
 # between the generator and the golden model still fails here.
 #
+# Baseline history:
+#   domain_version 1 — captured ONCE on pre-migration HEAD (the commit
+#     before EHDecode.v's hand-written legality moved into generated
+#     includes), the §23.9 single-source-migration circularity breaker.
+#   domain_version 2 — recaptured on the pre-stable opcode-cleanup commit
+#     (0x66/0x67/0x6B/0x6C removal, 2026-07-24): per the pre-stable compat
+#     policy, freeze guarantees bind only from STABLE RELEASE, so
+#     dead-opcode removal is a regular development event recorded
+#     spec-first with this deliberate, reviewed recapture. The four
+#     removed opcodes moved from the supported list to the unsupported
+#     probes (domain point set unchanged; their outcome class flipped
+#     supported → decode_error).
+#
 # Domain (fixed, generator-independent — never derived from the JSON
-# source): opcodes = the 57 supported (0x00-0x6C era) + 12 unsupported
-# probes BELOW 0x70; data-EH subsets = all subsets of the 6 data-EH kinds
-# with |S| <= 3 (chain capacity: MAX_EH=4 slots, port occupies one), each
-# with the standard PORT EH present, PLUS one bare no-port point; flags in
-# {0x0, 0x8 (F_HAS_OPB)}. 0x70-0x7F is EXCLUDED deliberately: that block is
-# scheduled to change in v1.8.0a COMMIT 2 (decode skeleton), and freezing
-# it here would make the intended change look like a regression; its
-# staying-unassigned encodings are pinned by
+# source): opcodes = the 53 supported (post-cleanup 0x00-0x6A era) + 16
+# unsupported probes BELOW 0x70; data-EH subsets = all subsets of the 6
+# data-EH kinds with |S| <= 3 (chain capacity: MAX_EH=4 slots, port
+# occupies one), each with the standard PORT EH present, PLUS one bare
+# no-port point; flags in {0x0, 0x8 (F_HAS_OPB)}. 0x70-0x7F is EXCLUDED
+# deliberately: that block is scheduled to change in v1.8.0a COMMIT 2
+# (decode skeleton), and freezing it here would make the intended change
+# look like a regression; its staying-unassigned encodings are pinned by
 # test_fp_block_unassigned_opcodes_still_error instead.
 #
 # Capture mode: WT_CAPTURE_TRUTH_TABLE=1 rewrites the committed file from
-# the live RTL instead of comparing (used exactly once, on pre-migration
-# HEAD; any later capture must be a reviewed, deliberate act).
+# the live RTL instead of comparing (used once per baseline listed above;
+# any later capture must be a reviewed, deliberate act).
 # =============================================================================
 
 _TT_SUPPORTED_OPCODES = (
     list(range(0x00, 0x06)) + list(range(0x10, 0x20)) +
     list(range(0x20, 0x27)) + list(range(0x30, 0x33)) +
     list(range(0x40, 0x45)) + list(range(0x50, 0x57)) +
-    list(range(0x60, 0x6D))
+    list(range(0x60, 0x66)) + [0x68, 0x69, 0x6A]
 )
 _TT_UNSUPPORTED_PROBES = [0x06, 0x0F, 0x27, 0x2F, 0x33, 0x45, 0x4F,
-                          0x57, 0x5F, 0x6D, 0x6E, 0x6F]
+                          0x57, 0x5F,
+                          # pre-stable opcode cleanup: removed 0x66/0x67/
+                          # 0x6B/0x6C stay IN the domain as error probes
+                          # (point set unchanged vs domain_version 1)
+                          0x66, 0x67, 0x6B, 0x6C,
+                          0x6D, 0x6E, 0x6F]
 _TT_DATA_EH_KINDS = ['imm16', 'imm32', 'imm64', 'mem', 'subscript', 'opref']
 _TT_FLAGS = [0x0, 0x8]
 _TT_WINDOW = 100
@@ -4601,17 +3905,18 @@ async def test_pre_migration_rtl_truth_table_differential(dut):
     if capture_mode:
         os.makedirs(os.path.dirname(_TT_PATH), exist_ok=True)
         with open(_TT_PATH, 'w') as f:
-            _json.dump({'domain_version': 1, 'points': results}, f,
+            _json.dump({'domain_version': 2, 'points': results}, f,
                        indent=0, sort_keys=True)
             f.write('\n')
         return
 
     assert os.path.exists(_TT_PATH), (
         f"frozen truth table missing at {_TT_PATH} — run once with "
-        f"WT_CAPTURE_TRUTH_TABLE=1 on pre-migration HEAD")
+        f"WT_CAPTURE_TRUTH_TABLE=1 on the current frozen baseline "
+        f"(domain_version 2: the pre-stable opcode-cleanup commit)")
     with open(_TT_PATH) as f:
         frozen = _json.load(f)
-    assert frozen['domain_version'] == 1
+    assert frozen['domain_version'] == 2
     mismatches = []
     for key, expected in frozen['points'].items():
         got = results.get(key)
@@ -4620,7 +3925,7 @@ async def test_pre_migration_rtl_truth_table_differential(dut):
     extra = set(results) - set(frozen['points'])
     assert not extra, f"domain drift — new points not in frozen table: {sorted(extra)[:5]}"
     assert not mismatches, (
-        "RTL behavior diverged from pre-migration capture "
+        "RTL behavior diverged from the frozen baseline capture "
         f"({len(mismatches)} points):\n" + "\n".join(mismatches[:20]))
 
 
@@ -5430,9 +4735,11 @@ async def test_fp_mul_collision_fp_result_preserved(dut):
 async def test_fp_busy_reject_is_lower_required(dut):
     """v1.8.0c launch-ladder rung 2 (VDOT busy-reject pattern, NEVER the
     DIV silent-swallow): during a long FS_DIV flight a second fp op, a
-    0x71 VDOT and a wide SIMD 0x6B WIDEN each get lower_required; the
+    0x71 VDOT and a wide SIMD 0x69 Q8.8 each get lower_required; the
     in-flight FS_DIV still lands bit-exact; every probe succeeds on
-    retry after the drain."""
+    retry after the drain. (The wide-SIMD probe vehicle was 0x6B WIDEN
+    until its pre-stable removal in the opcode cleanup; 0x69 exercises
+    the same shared wide-emit busy gate.)"""
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
     await reset(dut)
@@ -5456,16 +4763,17 @@ async def test_fp_busy_reject_is_lower_required(dut):
     vdot_wide = (_pack_int4_128(*([1] * 32))
                  | (_pack_int4_128(*([2] * 32)) << 128))
     exp_vdot = 32 * (1 * 2)
-    widen_instr = encode_instr(0x6B, _STD_PORT(), eh_imm16(0x08))
-    widen_wide = _pack_int4_128(*([0x1] * 32))
+    # A[i]=+2, B=Q8.8(0.5)=0x0080 -> every int4 lane rounds to 1.
+    q88_instr = encode_instr(0x69, _STD_PORT(), eh_imm16(0x0080))
+    q88_wide = _pack_int4_128(*([0x2] * 32))
 
     probes = [
         ("second fp op 0x75",
          dict(instr=_fp_instr(0x75), payload_a=_f2b(2.0))),
         ("0x71 VDOT",
          dict(instr=vdot_instr, payload_a=0, wide=vdot_wide, wide_valid=1)),
-        ("wide SIMD 0x6B WIDEN",
-         dict(instr=widen_instr, payload_a=0, wide=widen_wide, wide_valid=1)),
+        ("wide SIMD 0x69 Q8.8",
+         dict(instr=q88_instr, payload_a=0, wide=q88_wide, wide_valid=1)),
     ]
 
     for label, kw in probes:
@@ -5496,10 +4804,12 @@ async def test_fp_busy_reject_is_lower_required(dut):
     assert out_ev and out_ev[0]['payload'] == exp_vdot, f"VDOT retry: {events}"
     await _fp_drain(dut)
 
-    await _fp_fire_token(dut, widen_instr, 0, wide=widen_wide, wide_valid=1)
+    await _fp_fire_token(dut, q88_instr, 0, wide=q88_wide, wide_valid=1)
     events = await _fp_collect_events(dut, 20)
     frags = [e for e in events if e['kind'] == 'out']
-    assert len(frags) == 4, f"WIDEN retry did not emit 4 fragments: {events}"
+    assert len(frags) == 2, f"0x69 retry did not emit 2 fragments: {events}"
+    assert all(e['payload'] == 0x1111_1111_1111_1111 for e in frags), \
+        f"0x69 retry payload mismatch: {events}"
     await _fp_drain(dut)
 
 

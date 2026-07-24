@@ -24,7 +24,14 @@ sys.path.insert(0, _HERE)
 
 import wavetensor_asm as wta
 
-# v1.8.0a COMMIT 1 — frozen from pre-migration HEAD (042f08e), keep forever.
+# v1.8.0a COMMIT 1 — frozen from pre-migration HEAD (042f08e).
+# Pre-stable edit (opcode cleanup, 2026-07-24): the original "keep forever"
+# wording predates the pre-stable compat policy being codified — freeze
+# guarantees (frozen first-class, truth-table keep-forever, snapshot) bind
+# only from STABLE RELEASE. Removing dead opcodes from this snapshot is
+# therefore a regular development event, recorded spec-first (see
+# wt64v1_spec.md removal record): 57 -> 53 keys, the four removed rows are
+# annotated in place below.
 _PREMIGRATION_LEGAL_SNAPSHOT = {
     0x00: {'required': [], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
     0x01: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
@@ -76,13 +83,15 @@ _PREMIGRATION_LEGAL_SNAPSHOT = {
     0x63: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': True, 'require_imm16': False},
     0x64: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': True, 'require_imm16': False},
     0x65: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': True, 'require_imm16': False},
-    0x66: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
-    0x67: {'required': ['port'], 'forbidden': ['mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': False, 'require_imm16': False},
+    # 0x66 SCALAR_RSQRT — removed in the pre-stable opcode cleanup (zero
+    #   asm/SDK consumers; the norm recipes moved to the fp32 insert).
+    # 0x67 SIMD_MUL_WIDE_Q4_4_SCALAR — removed (superseded by 0x69 Q8.8).
     0x68: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
     0x69: {'required': ['port'], 'forbidden': ['mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': False, 'require_imm16': False},
     0x6A: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
-    0x6B: {'required': ['port'], 'forbidden': ['mem', 'subscript'], 'allow_imm_xor_opref': True, 'require_opb_flag': False, 'require_imm16': False},
-    0x6C: {'required': ['port'], 'forbidden': ['imm16', 'imm32', 'imm64', 'mem', 'opref', 'subscript'], 'allow_imm_xor_opref': False, 'require_opb_flag': False, 'require_imm16': False},
+    # 0x6B SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN — removed (v1.7 WIDEN pair
+    #   had zero consumers; frag FSM widening stays for v1.8.0e).
+    # 0x6C SIMD_REQUANTIZE_Q4_4_TO_INT4 — removed (WIDEN's companion).
 }
 from wavetensor_asm import (
     AssemblerError, Instruction, ExtensionHeader, AliasDecl, DefaultDecl,
@@ -862,7 +871,9 @@ class TestNormMacros(unittest.TestCase):
         self.assertIn('k1', str(ctx.exception))
 
     # v1.8.0d §23.10.10 — the hybrid norm rebuild's expected opcode chains.
-    # The fp32 scalar insert (replacing SCALAR_RSQRT 0x66): CVT(I2F) ->
+    # The fp32 scalar insert (replacing SCALAR_RSQRT 0x66, which was later
+    # fully removed from the ISA in the pre-stable opcode cleanup — the
+    # NotIn(0x66) retirement asserts below remain valid): CVT(I2F) ->
     # ADD(1/N producer) -> FSCALAR(FS_MUL) -> [ADD(eps producer) ->
     # FSCALAR(FS_ADD)] -> FRSQRT32 -> ADD(256 producer) -> FSCALAR(FS_MUL)
     # -> CVT(F2I). eps=0 selects the int-scalar clamp fallback (OR 0x15
@@ -1106,33 +1117,9 @@ class TestNormMacros(unittest.TestCase):
         insts = wta.assemble(src)
         self.assertEqual((insts[0] >> 24) & 0xFF, 0x60)
 
-    def test_primitive_scalar_rsqrt_legality(self):
-        """SCALAR_RSQRT: pure unary, no imm/opref."""
-        src = (
-            ".default_port mask=0x01 out=0\n"
-            "SCALAR_RSQRT\n"
-        )
-        insts = wta.assemble(src)
-        self.assertEqual((insts[0] >> 24) & 0xFF, 0x66)
-
-    def test_primitive_scalar_rsqrt_rejects_imm(self):
-        """SCALAR_RSQRT with .imm16 must raise (pure unary)."""
-        src = (
-            ".default_port mask=0x01 out=0\n"
-            "SCALAR_RSQRT .imm16 5\n"
-        )
-        with self.assertRaises(wta.AssemblerError):
-            wta.assemble(src)
-
-    def test_primitive_simd_mul_wide_q4_4_scalar_legality(self):
-        """v1.6.5a: SIMD_MUL_WIDE_Q4_4_SCALAR (0x67) — same legality as
-        SIMD_MUL_WIDE_SCALAR (binary-ALU IMM XOR OPREF)."""
-        src = (
-            ".default_port mask=0x01 out=0\n"
-            "SIMD_MUL_WIDE_Q4_4_SCALAR .imm16 0x18\n"   # Q4.4 = 1.5
-        )
-        insts = wta.assemble(src)
-        self.assertEqual((insts[0] >> 24) & 0xFF, 0x67)
+    # (test_primitive_scalar_rsqrt_* and test_primitive_simd_mul_wide_
+    # q4_4_scalar_legality deleted in the pre-stable opcode cleanup —
+    # see TestRemovedOpcodes for the replacement rejection pins.)
 
     def test_primitive_simd_mul_wide_q8_8_scalar_legality(self):
         """v1.6.7: SIMD_MUL_WIDE_Q8_8_SCALAR (0x69) — same legality as
@@ -1147,8 +1134,9 @@ class TestNormMacros(unittest.TestCase):
 
     def test_primitive_cache_load_wide_legality(self):
         """v1.6.5c §22.16: CACHE_LOAD_WIDE (0x68) — pure Cluster-buffer CAM
-        passthrough, no B operand (mirrors SCALAR_RSQRT's no-data-EH
-        shape). A .precision EH is legal (not in _ALL_DATA_EHS)."""
+        passthrough, no B operand (the no-data-EH shape, shared with
+        FRAG_INVAL 0x6A). A .precision EH is legal (not in
+        _ALL_DATA_EHS)."""
         src = (
             ".default_port mask=0x01 out=0\n"
             "CACHE_LOAD_WIDE .precision dim=0x55\n"
@@ -1178,7 +1166,7 @@ class TestNormMacros(unittest.TestCase):
 
     def test_primitive_frag_inval_legality(self):
         """v1.6.5d §22.17: FRAG_INVAL (0x6A) — explicit Cluster-buffer
-        slot invalidate-by-tag, same no-B shape as 0x66/0x68."""
+        slot invalidate-by-tag, same no-B shape as 0x68."""
         src = (
             ".default_port mask=0x01 out=0\n"
             "FRAG_INVAL\n"
@@ -1195,64 +1183,45 @@ class TestNormMacros(unittest.TestCase):
         with self.assertRaises(wta.AssemblerError):
             wta.assemble(src)
 
-    def test_primitive_widen_legality(self):
-        """v1.7 §22.18: SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN (0x6B) — same
-        ALU-binary (IMM XOR OPREF) shape as 0x67/0x69."""
-        src = (
-            ".default_port mask=0x01 out=0\n"
-            "SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN .imm16 0x08\n"
-        )
-        insts = wta.assemble(src)
-        self.assertEqual((insts[0] >> 24) & 0xFF, 0x6B)
+    # (test_primitive_widen_*, test_primitive_requantize_* and
+    # test_widen_requantize_opcode_table_matches_hardware deleted in the
+    # pre-stable opcode cleanup — see TestRemovedOpcodes.)
 
-    def test_primitive_widen_requires_imm_xor_opref(self):
-        """WIDEN with neither IMM nor OPREF must raise."""
-        src = (
-            ".default_port mask=0x01 out=0\n"
-            "SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN\n"
-        )
+
+class TestRemovedOpcodes(unittest.TestCase):
+    """Pre-stable opcode cleanup (spec removal record, 2026-07-24):
+    0x66/0x67/0x6B/0x6C were deleted from isa/wt64v1_isa.json. The
+    assembler consumes the regenerated tables, so each removed mnemonic
+    must now be REJECTED (the asm-side mirror of the RTL decode_error the
+    truth-table domain_version-2 capture pins), and the opcode numbers
+    must be absent from every generated table."""
+
+    def _assert_rejected(self, line):
+        src = ".default_port mask=0x01 out=0\n" + line + "\n"
         with self.assertRaises(wta.AssemblerError):
             wta.assemble(src)
 
-    def test_primitive_requantize_legality(self):
-        """v1.7 §22.18: SIMD_REQUANTIZE_Q4_4_TO_INT4 (0x6C) — no B
-        operand at all, same no-data-EH shape as 0x66/0x68/0x6A (NOT the
-        ALU-binary shape 0x6B uses)."""
-        src = (
-            ".default_port mask=0x01 out=0\n"
-            "SIMD_REQUANTIZE_Q4_4_TO_INT4\n"
-        )
-        insts = wta.assemble(src)
-        self.assertEqual((insts[0] >> 24) & 0xFF, 0x6C)
+    def test_removed_scalar_rsqrt_rejected(self):
+        self._assert_rejected("SCALAR_RSQRT")
+        self.assertNotIn(0x66, wta._LEGAL)
+        self.assertNotIn('SCALAR_RSQRT', wta.MNEMONIC_TO_OPCODE)
 
-    def test_primitive_requantize_rejects_imm_and_opref(self):
-        """REQUANTIZE with .imm16 or .opref must raise (no B operand)."""
-        src_imm = (
-            ".default_port mask=0x01 out=0\n"
-            "SIMD_REQUANTIZE_Q4_4_TO_INT4 .imm16 5\n"
-        )
-        with self.assertRaises(wta.AssemblerError):
-            wta.assemble(src_imm)
-        src_opref = (
-            ".default_port mask=0x01 out=0\n"
-            "SIMD_REQUANTIZE_Q4_4_TO_INT4 opb .opref\n"
-        )
-        with self.assertRaises(wta.AssemblerError):
-            wta.assemble(src_opref)
+    def test_removed_simd_mul_wide_q4_4_scalar_rejected(self):
+        self._assert_rejected("SIMD_MUL_WIDE_Q4_4_SCALAR .imm16 0x18")
+        self.assertNotIn(0x67, wta._LEGAL)
+        self.assertNotIn('SIMD_MUL_WIDE_Q4_4_SCALAR', wta.MNEMONIC_TO_OPCODE)
 
-    def test_widen_requantize_opcode_table_matches_hardware(self):
-        """v1.7 §22.18: direct regression guard against the exact class
-        of asm.py-vs-EHDecode.v drift that silently broke 0x63/64/65
-        previously (wt64v1_spec.md §22.16.0) -- pins the opcode numbers
-        and legality shapes asm.py assigns to WIDEN/REQUANTIZE."""
-        self.assertEqual(wta.MNEMONIC_TO_OPCODE['SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN'], 0x6B)
-        self.assertEqual(wta.MNEMONIC_TO_OPCODE['SIMD_REQUANTIZE_Q4_4_TO_INT4'], 0x6C)
-        widen_rules = wta._LEGAL[0x6B]
-        self.assertTrue(widen_rules['allow_imm_xor_opref'])
-        self.assertEqual(widen_rules['forbidden'], {'subscript', 'mem'})
-        requantize_rules = wta._LEGAL[0x6C]
-        self.assertFalse(requantize_rules['allow_imm_xor_opref'])
-        self.assertEqual(requantize_rules['forbidden'], wta._ALL_DATA_EHS)
+    def test_removed_widen_rejected(self):
+        self._assert_rejected("SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN .imm16 0x08")
+        self.assertNotIn(0x6B, wta._LEGAL)
+        self.assertNotIn('SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN',
+                         wta.MNEMONIC_TO_OPCODE)
+
+    def test_removed_requantize_rejected(self):
+        self._assert_rejected("SIMD_REQUANTIZE_Q4_4_TO_INT4")
+        self.assertNotIn(0x6C, wta._LEGAL)
+        self.assertNotIn('SIMD_REQUANTIZE_Q4_4_TO_INT4',
+                         wta.MNEMONIC_TO_OPCODE)
 
 
 class TestWaveFragments(unittest.TestCase):
@@ -1416,15 +1385,20 @@ class TestGeneratedIsaTables(unittest.TestCase):
             gen.validate(bad)
 
     def test_legacy_legality_snapshot_equivalence(self):
-        """Frozen literal snapshot of all 57 legacy ops' legality shapes,
-        transcribed ONCE from pre-migration HEAD (042f08e) — the migration
-        gate. Kept forever as the third independent leg (hand-pinned
-        literal <- generated table -> JSON source). Compares exact set
-        CONTENTS and key/value TYPES."""
-        # New (post-0x6C) opcodes may be ADDED (v1.8.0a COMMIT 2 fp block);
-        # the frozen 57 legacy keys must all still exist unchanged.
+        """Frozen literal snapshot of the legacy ops' legality shapes,
+        transcribed ONCE from pre-migration HEAD (042f08e) as 57 keys —
+        the migration gate's third independent leg (hand-pinned literal
+        <- generated table -> JSON source). Pre-stable edit (opcode
+        cleanup, 2026-07-24, recorded spec-first per the pre-stable
+        compat policy): the 0x66/0x67/0x6B/0x6C rows were removed with
+        their opcodes, 57 -> 53 keys. Compares exact set CONTENTS and
+        key/value TYPES."""
+        # New (post-cleanup) opcodes may be ADDED (v1.8.0a COMMIT 2 fp
+        # block); the 53 remaining legacy keys must all still exist
+        # unchanged.
         self.assertTrue(set(_PREMIGRATION_LEGAL_SNAPSHOT) <= set(wta._LEGAL),
                         "a frozen legacy opcode disappeared from _LEGAL")
+        self.assertEqual(len(_PREMIGRATION_LEGAL_SNAPSHOT), 53)
         for code, frozen in _PREMIGRATION_LEGAL_SNAPSHOT.items():
             live = wta._LEGAL[code]
             self.assertIsInstance(code, int)

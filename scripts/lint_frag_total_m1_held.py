@@ -9,8 +9,11 @@ dispatch site that enters the drain (frag_idx <= FRAG_EMIT_1) MUST also
 write frag_total_m1_held in the SAME begin/end block, so the drain loop
 knows how many fragments to emit. A dispatch site that forgets this
 leaves a STALE frag_total_m1_held from whatever the PREVIOUS drain wrote,
-silently corrupting the fragment count of the next legacy op that
-immediately follows a WIDEN dispatch (or vice versa).
+silently corrupting the fragment count of the next op that immediately
+follows a multi-fragment dispatch (or vice versa). Originally motivated
+by the retired 0x6B WIDEN 4-fragment emitter (removed pre-stable in the
+opcode cleanup); the invariant still binds every remaining 2-fragment
+site and any future v1.8.0e wide-package emitter.
 
 This script scans PE_Core.v for every syntactic block assigning
 `frag_idx <= FRAG_EMIT_1` and asserts the SAME block also assigns
