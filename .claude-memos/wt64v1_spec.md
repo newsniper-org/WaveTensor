@@ -2713,3 +2713,17 @@ Locked 항목 전건 준수 확인: 실측-anchor 예산 (34.26%/122/10.93); gat
 8. **Round-once 정의 (a) 는 golden/TB bit-equivalence + directed tie vector 로만 시행 가능** — MSE gate 는 수학적으로 blind; TB tie vector 가 약화되면 pin 은 소리 없이 미검증 상태가 된다.
 9. **atomic frag0_hold handoff** (busy-clear 와 frag_idx<=FRAG_EMIT_1 이 같은 completion cycle) 와 **fp_armed loop 억제** 는 PE_Core 의 불변식 밀도가 가장 높은 영역에 착지: 양쪽 다 전용 테스트로 pin 되나 이 package 최고접촉 제어 편집 — verify:fsm re-proof 가 drain-entry timing 을 전수 커버해야 한다.
 10. **VFMA 의 stateless acc-via-B[63:32] 는 누산을 broadcast addend 로 한정**: 진짜 per-lane accumulate chain 은 여전히 partial sum 을 SDK 로 round-trip 하며, stateful-accumulator 문제는 fp lane 과 함께 v2.0 에서 재부상 — **의도된 재이연**.
+
+### 25.8 0e1 C-gate 실측 최종 (2026-07-25, PASS 전 항목)
+
+| 지표 | 기준선 (§24.5) | 0e1 실측 | gate | 판정 |
+|---|---|---|---|---|
+| TRELLIS_COMB | 34.26% | **37.76%** (31,585) | ≤40.0% | PASS (마진 2.24%p) |
+| MULT18X18D | 122 | **122** | 정확히 122 (신규 0) | PASS |
+| Fmax | 10.93 MHz | **11.16 MHz** | ≤3% 회귀 | PASS — **+2.1% 개선, 신기록** |
+| critical path | 113 stages / 91.5 ns | 119 stages / **89.6 ns** | attribution | 절대 지연 개선 |
+
+frag 16 확폭 + 3 opcode + lane loop 를 추가하고도 Fmax 가 오른 것은
+cleanup 이 만든 배치 여유의 지속 효과. unit gate (4,721 ≤ 4,909 /
+40.37 MHz) 와 함께 0e1 의 모든 실측 gate 닫힘. MSE 계약은 모델·asm
+방출 체인 양쪽에서 ratio 1.000 으로 이행 (§25.5 MSE gate).
