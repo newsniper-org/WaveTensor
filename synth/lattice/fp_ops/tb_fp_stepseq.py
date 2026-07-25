@@ -3,7 +3,26 @@
 """tb_fp_stepseq — bit-exactness + protocol validation of FP_StepSeq (the
 v1.8.0c MU-hosted fp32 step-sequencer unit, spec §23.10) BEFORE synth
 Gate 3, extended for the v1.8.0d OPS_CVT / OPS_ACCEW op classes (spec
-§23.10.10) BEFORE synth Gate C3.
+§23.10.10) BEFORE synth Gate C3, and for the v1.8.0e OPS_DEQ fused
+per-lane DEQUANT program (spec §25.2.2, 0e1) BEFORE the re-run of the
+fp_stepseq unit synth gate.
+
+v1.8.0e coverage plan (§25.2.2 + the 0e test plan): 20,000 random
+vectors PER source dtype (int4/int8 — full-32-bit garbage lane words,
+only the low nibble/byte may matter) vs golden ref_dequant_lane ==
+micro_dequant_lane, directed enumerated specials cells (scale NaN/sNaN/
+Inf/zero/denormal-DAZ x k = 0/+max/-min, overflow -> Inf never
+max-finite, sign-XOR signed zeros), oracle-free EXACTNESS cells (every
+lane value x power-of-two scales, value-level Fraction identity), and
+the ROUND-ONCE discriminator/exact-tie cells (the dequant_tie_cells
+constructive generator reproduced from scripts/mse_sweep.py with
+attribution — that module needs mpmath which this venv lacks; a local
+double-round twin composed from golden primitives proves every
+discriminator has power, then RTL must match round-once). ALL existing
+suites re-run unchanged in the same module — the locked full re-proof
+of the 8 pre-0e step programs (§25.1 item 9). OPS_DEQ per-launch cycle
+bound = 8 (the §25.4 L=8 ceiling; the measured count is logged so the
+cycle table graduates estimate -> measured).
 
 Bit-exactness authority: scripts/golden_fp32.py —
   * FSCALAR sub-ops vs micro_fscalar (FS_ADD/SUB/MUL/FMA are the
@@ -82,6 +101,7 @@ OPC_FSCALAR = 0x74
 OPC_FRSQRT = 0x75
 OPC_FEXP2 = 0x76
 OPC_CVT = 0x77                  # v1.8.0d §23.10.10(b)
+OPC_DEQUANT = 0x78              # v1.8.0e §25.2.2 (0e1)
 
 FS = G.FSCALAR_OP_CODE          # {'FS_ADD':0,...} single-source table
 CVT_WID = G.CVT_WIDEN_TO_F32    # golden pins == generated cvt_op_codes
@@ -95,6 +115,9 @@ MAXC = {OPC_FSCALAR: MAXC_FSCALAR, OPC_FRSQRT: 34, OPC_FEXP2: 30,
         OPC_ACCEW: 10}
 MAXC_CVT = 8                    # widen / narrow / I2F-small / F2I
 MAXC_CVT_I64 = 10               # I2F dtype 0x4 (int64 two-pass)
+MAXC_DEQ = 8                    # §25.4 per-lane L=8 ceiling (estimate
+                                # L=6-7; measured count logged, never
+                                # asserted exact)
 
 NUM_RANDOM_PER_OP = 20_000
 
@@ -107,6 +130,8 @@ def _bound_of(opcode, subop, dtype):
     if opcode == OPC_CVT:
         return (MAXC_CVT_I64 if (subop == CVT_WID and dtype == 4)
                 else MAXC_CVT)
+    if opcode == OPC_DEQUANT:
+        return MAXC_DEQ
     return MAXC[opcode]
 
 
@@ -159,6 +184,8 @@ async def launch(dut, opcode, subop, a, b=0, c=0, label="", dtype=0):
         key = (opcode, subop)
     elif opcode == OPC_CVT:
         key = (opcode, (subop << 4) | dtype)
+    elif opcode == OPC_DEQUANT:
+        key = (opcode, dtype)
     else:
         key = (opcode, 0)
     _worst_lat[key] = max(_worst_lat.get(key, 0), lat)
@@ -228,6 +255,27 @@ async def check_accew(dut, a, b_payload, label=""):
                        b_payload & 0xFFFFFFFF, label=label)
     assert got == exp, (f"{label}: ACCEW a={a:#010x} B={b_payload:#018x} "
                         f"got {got:#010x} expected {exp:#010x}")
+    return got
+
+
+async def check_dequant(dut, dtype, a_raw, scale, label=""):
+    """0x78 OPS_DEQ one lane vs golden ref_dequant_lane (== the
+    micro_dequant_lane sequencer twin — asserted in lockstep so the TB
+    itself re-proves the model-side bit-equivalence on every vector).
+    a_raw is the full 32-bit a_in word: only the low nibble/byte is the
+    lane field, everything above is garbage the RTL must ignore. The
+    result row is {16'h0, bf16} — the upper halfword is asserted zero."""
+    field = a_raw & (0xF if dtype == 0 else 0xFF)
+    exp = G.ref_dequant_lane(field, scale, dtype)
+    assert G.micro_dequant_lane(field, scale, dtype) == exp, \
+        f"{label}: golden micro/ref divergence (model bug)"
+    got = await launch(dut, OPC_DEQUANT, 0, a_raw, scale, 0, label=label,
+                       dtype=dtype)
+    assert (got >> 16) == 0, (
+        f"{label}: DEQ result upper halfword nonzero: {got:#010x}")
+    assert got == exp, (f"{label}: DEQ dt={dtype} a={a_raw:#010x} "
+                        f"scale={scale:#010x} got {got:#06x} "
+                        f"expected {exp:#06x}")
     return got
 
 
@@ -531,7 +579,8 @@ async def back_to_back_mixed(dut):
     ops = ([("FS", s) for s in FS.values()]
            + [("RSQRT", 0), ("EXP2", 0), ("ACCEW", 0)]
            + [("CVT", (CVT_WID, dt)) for dt in (0, 1, 2, 3, 4)]
-           + [("CVT", (CVT_NAR, dt)) for dt in (0, 1, 2, 3, 4)])
+           + [("CVT", (CVT_NAR, dt)) for dt in (0, 1, 2, 3, 4)]
+           + [("DEQ", 0), ("DEQ", 1)])       # v1.8.0e OPS_DEQ joins the mix
     for i in range(3_000):
         kind, sel = rng.choice(ops)
         a, b = rand_fp(rng), rand_fp(rng)
@@ -544,6 +593,9 @@ async def back_to_back_mixed(dut):
             await check_exp2(dut, a, label=f"b2b[{i}]")
         elif kind == "ACCEW":
             await check_accew(dut, a, (b << 32) | c, label=f"b2b[{i}]")
+        elif kind == "DEQ":
+            await check_dequant(dut, sel, rng.getrandbits(32), b,
+                                label=f"b2b[{i}]")
         else:
             sub, dt = sel
             await check_cvt(dut, sub, dt, (c << 32) | a, label=f"b2b[{i}]")
@@ -936,6 +988,185 @@ async def accew_random_and_directed(dut):
         n += 1
     dut._log.info("accew: %d random + %d directed bit-exact",
                   NUM_RANDOM_PER_OP, n)
+
+
+# ===========================================================================
+# v1.8.0e — 0x78 OPS_DEQ suites (spec §25.2.2, 0e1 sequencer-side commit)
+# ===========================================================================
+
+
+@cocotb.test()
+async def dequant_random(dut):
+    """20,000 random per source dtype: full-32-bit garbage lane words
+    (only a_in[3:0]/[7:0] may matter) x rand_fp scales (specials/denormal/
+    boundary-binade biased — every §25.2.2 specials row is hit at random
+    density on top of the enumerated directed suite below)."""
+    await _start_clock(dut)
+    rng = random.Random(0xDE04)
+    for i in range(NUM_RANDOM_PER_OP):
+        await check_dequant(dut, 0, rng.getrandbits(32), rand_fp(rng),
+                            label=f"deq4_rand[{i}]")
+    for i in range(NUM_RANDOM_PER_OP):
+        await check_dequant(dut, 1, rng.getrandbits(32), rand_fp(rng),
+                            label=f"deq8_rand[{i}]")
+    dut._log.info("dequant_random: 2 x %d random bit-exact (worst "
+                  "latency int4 %d / int8 %d)", NUM_RANDOM_PER_OP,
+                  _worst_lat[(OPC_DEQUANT, 0)], _worst_lat[(OPC_DEQUANT, 1)])
+
+
+@cocotb.test()
+async def dequant_directed_specials_and_exact(dut):
+    """Enumerated §25.2.2 cells, every pinned row by name:
+      * scale NaN (qNaN/sNaN, both signs, payload spread) -> bf16 qNaN
+        0x7FC0 for EVERY k (canonical, sign dropped);
+      * scale +-Inf: k == 0 -> qNaN; k != 0 -> SIGNED bf16 Inf by
+        sign-XOR;
+      * scale +-0 and every DAZ'd denormal scale -> SIGNED zero by
+        sign-XOR (k = 0 rows included — 0 x 0 keeps the XOR sign rule);
+      * k == 0 x finite scales -> signed zero;
+      * overflow -> +-Inf NEVER max-finite: |k| >= 2 x max-finite scale
+        (e_u > 127 substitute path) AND |k| == 1 x max-finite scale (the
+        narrow's own 0x7F7F -> 0x7F80 ripple path);
+      * scale min-normal x every k (the FTZ-at-dest vacuity boundary:
+        results stay >= bf16 min-normal);
+      * EXACTNESS (oracle-free, value-level): every int4 field and a
+        stratified int8 set x power-of-two scales — bf16_to_frac(got)
+        must equal k * 2^e EXACTLY (|k| <= 128 fits the 8-bit bf16
+        significand, so the product is representable and round-once
+        must return it exactly)."""
+    await _start_clock(dut)
+    from fractions import Fraction as Fr
+    n = 0
+    nan_pool = [0x7FC00000, 0xFFC00000, 0x7F800001, 0xFF800001,
+                0x7FFFFFFF, 0x7FBFFFFF]
+    k4 = list(range(16))                          # all int4 fields
+    k8 = [0x00, 0x01, 0x7F, 0x80, 0x81, 0xFF, 0x05, 0xFB, 0x40, 0xC0]
+    for dt, ks in ((0, k4), (1, k8)):
+        for f in ks:
+            for s in nan_pool:
+                got = await check_dequant(dut, dt, f, s,
+                                          label=f"deq_nan[{dt}/{f:#x}]")
+                assert got == 0x7FC0, "scale NaN must give canonical bf16 qNaN"
+                n += 1
+            for s in (0x7F800000, 0xFF800000):    # +-Inf
+                await check_dequant(dut, dt, f, s,
+                                    label=f"deq_inf[{dt}/{f:#x}]")
+                n += 1
+            for s in (0x00000000, 0x80000000,     # +-0
+                      0x00000001, 0x80000001,     # +-min denormal (DAZ)
+                      0x007FFFFF, 0x807FFFFF):    # +-max denormal (DAZ)
+                got = await check_dequant(dut, dt, f, s,
+                                          label=f"deq_zero[{dt}/{f:#x}]")
+                assert got & 0x7FFF == 0, "zero/DAZ scale must give a zero"
+                n += 1
+            for s in (0x7F7FFFFF, 0xFF7FFFFF):    # +-max normal (overflow
+                await check_dequant(dut, dt, f, s,  # + ripple-to-Inf rows)
+                                    label=f"deq_maxf[{dt}/{f:#x}]")
+                n += 1
+            for s in (0x00800000, 0x80800000):    # +-min normal
+                await check_dequant(dut, dt, f, s,
+                                    label=f"deq_minn[{dt}/{f:#x}]")
+                n += 1
+    # exactness: k x 2^e value-level identity (never consults golden)
+    for dt, ks in ((0, k4), (1, k8)):
+        for f in ks:
+            if dt == 0:
+                k = f - 16 if f >= 8 else f
+            else:
+                k = f - 256 if f >= 128 else f
+            for e in (-100, -50, -7, 0, 1, 8, 63, 100, 112):
+                s = (e + 127) << 23
+                got = await check_dequant(dut, dt, f, s,
+                                          label=f"deq_exact[{dt}/{f:#x}/{e}]")
+                if k == 0:
+                    assert got in (0x0000, 0x8000)
+                else:
+                    assert G.bf16_to_frac(got) == Fr(k) * Fr(2) ** e, (
+                        f"k={k} 2^{e}: {got:#06x} not the exact product")
+                n += 1
+    dut._log.info("dequant_directed: %d specials/exactness cells bit-exact", n)
+
+
+def _dequant_tie_cells():
+    """The constructive ROUND-ONCE tie cells, reproduced with attribution
+    from scripts/mse_sweep.py dequant_tie_cells() (that module imports
+    mpmath, which this cocotb venv lacks — the fp_release_sweep numpy
+    precedent). Returns (discriminators, exact_ties) as (field,
+    scale_bits, dtype) with dtype in TB encoding {0: int4, 1: int8}.
+    See the mse_sweep docstring for the below/above-midpoint
+    construction; delta is forced by P ≡ 0 (mod |k|)."""
+    disc, ties = [], []
+    for dtype, ks in ((0, (3, 5, 7, -3, -5, -7)),
+                      (1, (3, 5, 7, 11, 25, 89, 127, -3, -89, -127))):
+        mask = 0xF if dtype == 0 else 0xFF
+        for k in ks:
+            ka = abs(k)
+            got_dn = got_up = got_tie = 0
+            for q in range(128, 256):
+                m_mid = (q << 16) | 0x8000
+                for d in (ka.bit_length() - 1, ka.bit_length()):
+                    if d < 1:
+                        continue
+                    base = m_mid << d
+                    half = 1 << (d - 1)
+                    delta = base % ka
+                    if (q & 1) and 1 <= delta < half and got_dn < 3:
+                        ms = (base - delta) // ka
+                        if (1 << 23) <= ms < (1 << 24):
+                            disc.append((k & mask,
+                                         0x3F800000 | (ms - (1 << 23)), dtype))
+                            got_dn += 1
+                    delta2 = (-base) % ka
+                    if not (q & 1) and 1 <= delta2 < half and got_up < 3:
+                        ms = (base + delta2) // ka
+                        if (1 << 23) <= ms < (1 << 24):
+                            disc.append((k & mask,
+                                         0x3F800000 | (ms - (1 << 23)), dtype))
+                            got_up += 1
+                    if delta == 0 and got_tie < 3:
+                        ms = base // ka
+                        if (1 << 23) <= ms < (1 << 24):
+                            ties.append((k & mask,
+                                         0x3F800000 | (ms - (1 << 23)), dtype))
+                            got_tie += 1
+    disc += [(f, G.f32_exp_shift(s, dk), dt)
+             for (f, s, dt) in disc[:4] for dk in (-120, 90)]
+    ties += [(f, G.f32_exp_shift(s, dk), dt)
+             for (f, s, dt) in ties[:2] for dk in (-120, 90)]
+    return disc, ties
+
+
+@cocotb.test()
+async def dequant_round_once_ties(dut):
+    """THE enforcement point of rounding definition (a) — the MSE gate is
+    provably blind to round-once-vs-double-round (§25.5.2), so the
+    directed tie vectors run as golden/TB BIT-EQUIVALENCE here. Every
+    discriminator is first proven to HAVE POWER: a double-round twin
+    composed from golden primitives (RNE the exact product to fp32
+    first, then narrow — the FORBIDDEN ref_mul-then-narrow composition)
+    must differ from ref_dequant_lane on it; then the RTL must match
+    round-once. Exact ties (product ON the midpoint, sticky 0) pin
+    ties-to-even and must agree across all three."""
+    await _start_clock(dut)
+    disc, ties = _dequant_tie_cells()
+    assert len(disc) >= 40 and len(ties) >= 6, "tie generator lost power"
+    for f, s, dt in disc:
+        r = G.ref_dequant_lane(f, s, dt)
+        dbl = G.ref_narrow_f32(G.ref_mul(G.ref_i2f(f, dt), s), G.DT_BF16)
+        assert dbl != r, (
+            f"discriminator lost power: f={f:#x} s={s:#010x} dt={dt}")
+        got = await check_dequant(dut, dt, f, s,
+                                  label=f"deq_disc[{f:#x}/{s:#010x}]")
+        assert got == r and got != dbl, "RTL rounded twice (definition (b))"
+    for f, s, dt in ties:
+        r = G.ref_dequant_lane(f, s, dt)
+        dbl = G.ref_narrow_f32(G.ref_mul(G.ref_i2f(f, dt), s), G.DT_BF16)
+        assert dbl == r, "exact tie must coincide by construction"
+        await check_dequant(dut, dt, f, s,
+                            label=f"deq_tie[{f:#x}/{s:#010x}]")
+    dut._log.info("dequant_round_once: %d discriminators (all with proven "
+                  "power) + %d exact ties bit-exact — definition (a) held",
+                  len(disc), len(ties))
 
 
 @cocotb.test()

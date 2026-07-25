@@ -78,7 +78,7 @@ from generated_isa_tables import (  # noqa: F401
     MNEMONIC_TO_OPCODE, OPCODE_TO_MNEMONIC, HL_ONLY_MNEMONICS, FLAG_BITS,
     EH_END, EH_PORT, EH_IMM16, EH_IMM32, EH_IMM64, EH_MEM, EH_SUBSCRIPT,
     EH_OPREF, EH_PRECISION, EH_NOP_PAD, EH_NAME_TO_CODE, REDUCE_OP_CODE,
-    ACC_REDUCE_OP_CODE, FSCALAR_OP_CODE, CVT_OP_CODE,
+    ACC_REDUCE_OP_CODE, FSCALAR_OP_CODE, CVT_OP_CODE, FMINMAX_OP_CODE,
 )
 from generated_isa_tables import LEGAL as _LEGAL              # noqa: F401
 from generated_isa_tables import ALL_DATA_EHS as _ALL_DATA_EHS  # noqa: F401
@@ -674,59 +674,120 @@ def _lower_batchnorm_infer(inst: Instruction) -> List[Instruction]:
 
 # =============================================================================
 # v1.8.0d §23.10.10 — hybrid fp32-scalar / int-wide norm rebuild
+# v1.8.0e §25.1 item 7 — RMSNORM fp-exact rewrite (LAYERNORM/BATCHNORM
+# deliberately stay on the 0d Q8.8 form — see the deferral note below)
 # =============================================================================
 #
 # The fp32 scalar insert REPLACED SCALAR_RSQRT (0x66, ~6.25% LUT relative
 # error — the roadmap's declared true floor) inside RMSNORM/LAYERNORM with
 # the FRSQRT32 (<=2 ulp) path. (0x66 — along with 0x67/0x6B/0x6C — was
 # subsequently deleted from the ISA entirely in the pre-stable opcode
-# cleanup; no verified recipe ever emitted those four opcodes.)
+# cleanup; the 0x6B code point was then REALLOCATED pre-stable to
+# GAMMA_MUL_W in v1.8.0e — §12a rule 4, slot reuse recorded.)
+#
+# ---- v1.8.0e RMSNORM recipe (MSE-contract form, §25.5.2 golden twin:
+#      scripts/golden_fp32.py rmsnorm_chain_0e — the asm-emitted chain
+#      MUST match it op-for-op; proven by the bit-equivalence test) ----
 #
 #   L2SQ (int32 sext64, unchanged)
 #     -> [OR .imm64 1]          int-scalar clamp — eps-fallback path only
-#     -> CVT  I2F dtype 0x4     sq -> f32 (exact below 2^24, RNE above)
-#     -> ADD  .imm64 bits(1/N)  B-constant producer dispatch  ┐
-#     -> FSCALAR FS_MUL         mean(x^2) = sq * (1/N)        ┘
-#     -> ADD  .imm64 bits(eps)  B-constant producer dispatch  ┐ fp-eps
-#     -> FSCALAR FS_ADD         mean + eps                    ┘ path only
-#     -> FRSQRT32               scale_f = 1/sqrt(...)  (<=2 ulp)
+#     -> CVT  I2F dtype 0x4     sq -> f32 (EXACT: ssq <= 2048 < 2^24)
+#     -> ADD  .imm64 c'         B-constant producer  ┐  c' = bits(4^k/N)
+#     -> FSCALAR FS_MUL         sq * c'              ┘
+#     -> ADD  .imm64 eps'       B-constant producer  ┐ fp-eps path only,
+#     -> FSCALAR FS_ADD         + eps'               ┘ eps' = eps << 2k exp
+#     -> FRSQRT32               s = 1/sqrt(...)  (<=2 ulp) — the fp
+#                               insert STOPS at the fp32 scale s
+#   -> per 16-lane row half:
+#     -> GAMMA_MUL_W .imm64 γ   w = x (.) γ  — exact int4xint4->int8
+#     -> DEQUANT (int8-16, opb) y = RNE_bf16(w * s) — the ONE output
+#                               narrowing (round-once definition (a));
+#                               s rides payload_b on the completing beat
+#
+# GAMMA EXPONENT FOLD (§25.2.3 "folds free" pin): gamma int4 carries an
+# implicit 2^-k (.gfrac, default 3 = Q1.3). The required DEQUANT scale is
+# rsqrt(mean+eps) * 2^-k; instead of an extra FSCALAR step, 4^k is folded
+# into BOTH existing insert constants (c' = 4^k/N, eps' = eps * 4^k) —
+# power-of-two rescaling commutes BIT-EXACTLY through FS_MUL/FS_ADD RNE
+# and through the exponent-parity-faithful FRSQRT32 (even shift 2k keeps
+# the seed row), so FRSQRT32's output IS r * 2^-k with zero extra
+# dispatches and zero extra roundings. Proven bit-equal to the golden
+# chain's post-rsqrt f32_exp_shift by test_rmsnorm_gamma_fold_bit_equiv.
+# The x256/F2I/Q8.8/int-gamma tail of the 0d recipe is DELETED from
+# RMSNORM: the broadcast-gamma refutation (s_c = s*gamma_c cannot honor
+# the per-lane gamma contract) is repaired by the 0x6B stage instead.
+#
+# ---- v1.8.0d recipe (LAYERNORM keeps it VERBATIM, incl. the tail) ----
+#
+#     ... insert as above but with base constants (1/N, eps) ...
 #     -> ADD  .imm64 bits(256)  B-constant producer dispatch  ┐
 #     -> FSCALAR FS_MUL         scale_f * 256  (Q8.8 pre-scale)┘
 #     -> CVT  F2I dtype 0x4     RNE-saturate int32 -> Q8.8 scale (sext64)
-#   -> existing int wide tail (0x69 SIMD_MUL_WIDE_Q8_8_SCALAR ...), UNCHANGED.
+#   -> existing int wide tail (0x69 SIMD_MUL_WIDE_Q8_8_SCALAR ...).
+#
+# DEFERRAL (§25.1 CLOSED-DEFERRED table, §25.7 risk 7): LAYERNORM/
+# BATCHNORM_INFER stay 0d Q8.8 form — beta has NO fp-vector-add home in
+# 0e, so the 1.05x MSE contract is RMSNORM-scoped only (stated, not
+# hidden; revisited when a vector fp add lands, v2.0).
 #
 # B-CONSTANT PRODUCER DISPATCHES (explicitly emitted and counted): FSCALAR's
 # B operand is payload_b-only (no imm, no OPREF — 0x74 shape), so each fp
 # constant is materialized by its own ADD .imm64 <bits> dispatch whose
 # output the SDK/runtime routes to the following FSCALAR's payload_b port.
 # SDK CONTRACT: the producer's own input payload token must be ZERO (ADD
-# emits payload + imm64 = the constant). 3 producers on the fp-eps path,
-# 2 on the clamp-fallback path — all counted in the macro length tests.
+# emits payload + imm64 = the constant). RMSNORM-0e: 2 producers on the
+# fp-eps path, 1 on the clamp path; LAYERNORM-0d: 3 / 2. The FRSQRT32
+# output routes to EVERY DEQUANT tail dispatch's payload_b (N=32 = two
+# 0x6B+DEQUANT pairs SHARING one s — SDK re-issuance, wave-token
+# single-use rule; same contract class as LAYERNORM's xc fanout). The
+# SDK no-intervening-mul-dispatch rule (§23.6a contract 3) extends to
+# 0x6B/0x70/0x78/0x79 (§25.6 item 4).
 #
-# EPS GUARD (assembler-enforced, §23.10.10 residual risk 7): .eps carries
-# fp32 BITS (build via fp32_to_bits). eps >= 2^-13 -> fp-eps path;
-# .eps 0 -> the INT-SCALAR CLAMP FALLBACK (OR .imm64 1 pins the L2SQ sum
-# to >= 1 before I2F — rsqrt input can never be 0 -> no Inf; the <= 1-LSB
-# distortion of the int32 sum sits far below the Q8.8 application floor);
-# 0 < eps < 2^-13 (the common 1e-5 default!) -> AssemblerError naming both
-# escapes. Absent .eps defaults to bits(2^-13), the smallest guard-passing
-# value. The fallback is emitter-tested only, not hardware-assisted.
+# EPS GUARD (assembler-enforced; §25.6 item 3 RESTATED RATIONALE): .eps
+# carries fp32 BITS (build via fp32_to_bits). eps >= 2^-13 -> fp-eps
+# path; .eps 0 -> the INT-SCALAR CLAMP FALLBACK (OR .imm64 1 pins the
+# L2SQ sum to >= 1 before I2F — rsqrt input can never be 0 -> no Inf);
+# 0 < eps < 2^-13 (the common 1e-5 default!) -> AssemblerError naming
+# both escapes. Absent .eps defaults to bits(2^-13). The old rationale
+# ("smaller eps is absorbed below the Q8.8 application floor") is
+# RETIRED with the Q8.8 tail: the 0e exact reference is eps-INCLUSIVE
+# (mse_sweep.py), so the guard is a numeric-stability floor for the
+# fp32 insert (and the fallback's 1-LSB clamp), not an error-hiding
+# device. The guard value itself is UNCHANGED.
 #
-# The Q16.16->Q8.8 SDK conversion contract of the retired 0x66 recipe is
-# DELETED from these fp32 recipes (the F2I of scale_f*256 IS the Q8.8
-# conversion, exact to the <=2 ulp rsqrt); the int recipes elsewhere
-# (BATCHNORM_INFER, the 0x69 Q8.8 tail and the einsum MEAN-marker step)
-# are retained verbatim — 0x69 is the ONLY wide-mul tail the verified
-# recipes emit (the old wording claiming 0x6B/0x6C tails was inaccurate;
-# those opcodes are now removed from the ISA).
-#
-# Error contract (0d normative): rsqrt contribution <= 2 ulp; end-to-end
-# error Q8.8-application-dominated, <= 2^-9 scale-relative. The MSE <=
-# 1.05x dtype-floor contract is a v1.8.0e obligation, NOT this macro's.
+# Error contract: RMSNORM-0e is under the §25.5.2 MSE release gate
+# (per-tensor <= 1.05x the bf16 dtype floor, per-lane gamma honored,
+# round-once enforced by golden/TB bit-equivalence — the ratio is blind
+# to it). LAYERNORM keeps the 0d contract: rsqrt <= 2 ulp, end-to-end
+# Q8.8-application-dominated, <= 2^-9 scale-relative.
 
 _NORM_FP_MODE = 0x14           # fp-block mode byte: rnd=0, acc=1, dtype=4
 _NORM_EPS_MIN = 2.0 ** -13     # assembler guard threshold (value domain)
 _NORM_X256_BITS = 0x43800000   # 256.0f — the Q8.8 pre-scale constant
+# v1.8.0e §25.2.3/§25.2.2 — the RMSNORM-0e tail mode bytes: GAMMA_MUL_W
+# consumes int4 lanes (dtype 0x0), DEQUANT names its SOURCE int8 (dtype
+# 0x1; dest is pinned bf16-ONLY — no dest carrier exists). acc=1, rnd=0.
+_GAMMA_MODE = 0x10
+_DEQ_INT8_MODE = 0x11
+_RMSNORM_GFRAC_DEFAULT = 3     # Q1.3 int4 gamma — the pinned convention
+
+
+def _f32_exp_shift_bits(bits: int, dk: int, line: int, what: str) -> int:
+    """EXACT power-of-two rescale of a NORMAL fp32 bit pattern (exponent-
+    field add) — the assembler twin of golden f32_exp_shift. Leaving the
+    normal range would make the gamma-exponent fold inexact, so it is an
+    AssemblerError, never rounded or flushed."""
+    e = (bits >> 23) & 0xFF
+    if not (0 < e < 0xFF):
+        raise AssemblerError(
+            f"line {line}: {what}: exp-shift input 0x{bits:08X} is not a "
+            f"normal fp32 pattern")
+    e += dk
+    if not (0 < e < 0xFF):
+        raise AssemblerError(
+            f"line {line}: {what}: exponent fold by 2^{dk} leaves the "
+            f"normal fp32 range (the fold must stay EXACT)")
+    return (bits & 0x807FFFFF) | (e << 23)
 
 
 def _norm_b_const_producer(inst: Instruction, port_eh: ExtensionHeader,
@@ -758,12 +819,29 @@ def _norm_fp_step(inst: Instruction, port_eh: ExtensionHeader,
 
 
 def _norm_fp_scalar_insert(inst: Instruction,
-                           port_eh: ExtensionHeader) -> List[Instruction]:
+                           port_eh: ExtensionHeader,
+                           stop_at_scale: bool = False,
+                           fold_exp2: int = 0) -> List[Instruction]:
     """The shared RMSNORM/LAYERNORM fp32 scalar insert (section comment
-    above): consumes the int32 L2SQ scalar, produces the Q8.8 int scale
-    for the unchanged 0x69 wide tail. Reads the .eps / .n macro args off
-    `inst` and applies the eps >= 2^-13 guard with the int-scalar clamp
-    fallback."""
+    above): consumes the int32 L2SQ scalar. Reads the .eps / .n macro
+    args off `inst` and applies the eps >= 2^-13 guard with the
+    int-scalar clamp fallback.
+
+    Two callers, two shapes (v1.8.0e §25.1 item 7):
+      * LAYERNORM (0d form, verbatim): stop_at_scale=False, fold_exp2=0
+        — produces the Q8.8 int scale for the unchanged 0x69 wide tail
+        (x256 producer + FS_MUL + CVT F2I retained).
+      * RMSNORM (0e form): stop_at_scale=True, fold_exp2=2k — the insert
+        STOPS at the FRSQRT32 fp32 scale s, and the gamma fixed-point
+        exponent 2^-k is folded EXACTLY into both existing constants
+        (c' = bits(1/N) << 2k exp, eps' = eps << 2k exp) so s already
+        carries the 2^-k (the "folds free" pin — no extra FSCALAR, no
+        extra rounding; bit-equal to golden rmsnorm_chain_0e's
+        post-rsqrt f32_exp_shift by the even-shift commutation of
+        RNE and the parity-faithful rsqrt seed).
+
+    The eps >= 2^-13 guard applies to the REAL-domain (unfolded) eps —
+    the fold rescales the already-guarded constant."""
     n = _get_macro_arg_opt(inst, 'n', 16)   # dim=0x55 recipes: 16 elements
     if not (isinstance(n, int) and n >= 1):
         raise AssemblerError(
@@ -786,10 +864,19 @@ def _norm_fp_scalar_insert(inst: Instruction,
         if eps_val < _NORM_EPS_MIN:
             raise AssemblerError(
                 f"line {inst.line}: {inst.mnemonic} .eps {eps_val:g} < "
-                f"2^-13 (spec section 23.10.10 assembler guard: smaller "
-                f"eps is absorbed below the Q8.8 application floor) — "
-                f"either raise .eps to >= 2^-13, or pass .eps 0 to select "
-                f"the int-scalar clamp fallback (OR 1 on the L2SQ sum)")
+                f"2^-13 (assembler guard, rationale restated in v1.8.0e "
+                f"spec section 25.6 item 3: the guard is a numeric-"
+                f"stability floor — the 0e exact reference is eps-"
+                f"INCLUSIVE, so nothing is hidden by it) — either raise "
+                f".eps to >= 2^-13, or pass .eps 0 to select the "
+                f"int-scalar clamp fallback (OR 1 on the L2SQ sum)")
+    inv_n_bits = fp32_to_bits(1.0 / n)
+    if fold_exp2:
+        inv_n_bits = _f32_exp_shift_bits(inv_n_bits, fold_exp2, inst.line,
+                                         f"{inst.mnemonic} 1/N constant")
+        if not clamp_fallback:
+            eps_bits = _f32_exp_shift_bits(eps_bits, fold_exp2, inst.line,
+                                           f"{inst.mnemonic} eps constant")
     out: List[Instruction] = []
     if clamp_fallback:
         # int-scalar clamp: sq |= 1 — pins the rsqrt input away from 0
@@ -801,8 +888,7 @@ def _norm_fp_scalar_insert(inst: Instruction,
             line=inst.line,
         ))
     out.append(_norm_fp_step(inst, port_eh, 'CVT'))   # I2F (absent = WIDEN)
-    out.append(_norm_b_const_producer(inst, port_eh,
-                                      fp32_to_bits(1.0 / n)))
+    out.append(_norm_b_const_producer(inst, port_eh, inv_n_bits))
     out.append(_norm_fp_step(inst, port_eh, 'FSCALAR',
                              fscalar_subop_imm16('FS_MUL')))
     if not clamp_fallback:
@@ -810,6 +896,11 @@ def _norm_fp_scalar_insert(inst: Instruction,
         out.append(_norm_fp_step(inst, port_eh, 'FSCALAR',
                                  fscalar_subop_imm16('FS_ADD')))
     out.append(_norm_fp_step(inst, port_eh, 'FRSQRT32'))
+    if stop_at_scale:
+        # v1.8.0e RMSNORM: the fp insert stops at the fp32 scale s (the
+        # x256/F2I Q8.8 tail is deleted; s routes to the DEQUANT tail's
+        # payload_b — SDK contract in the section comment).
+        return out
     out.append(_norm_b_const_producer(inst, port_eh, _NORM_X256_BITS))
     out.append(_norm_fp_step(inst, port_eh, 'FSCALAR',
                              fscalar_subop_imm16('FS_MUL')))
@@ -819,32 +910,55 @@ def _norm_fp_scalar_insert(inst: Instruction,
 
 
 def _lower_rmsnorm(inst: Instruction) -> List[Instruction]:
-    """RMSNORM(x, γ, eps) → hybrid fp-scalar/int-wide chain (v1.8.0d
-    §23.10.10 rebuild; the v1.6.4-1.6.7 SCALAR_RSQRT recipe is retired).
+    """RMSNORM(x, γ, eps) → the v1.8.0e §25.1-item-7 fp-exact chain (the
+    0d x256/F2I/Q8.8/int-gamma tail is DELETED; golden twin:
+    scripts/golden_fp32.py rmsnorm_chain_0e — op-for-op).
 
     RMSNorm: y = γ · x / √(mean(x²) + eps). No centering step (LLaMA-style).
 
     Recipe:
-      1) SIG_L2SQ_IJKLM  x  →  sq (int32 scalar, sext64)
-      2) the fp32 scalar insert (_norm_fp_scalar_insert — CVT I2F,
-         1/N + eps FSCALAR steps with their B-constant producers,
-         FRSQRT32, ×256, CVT F2I → Q8.8 int scale)
-      3) SIMD_MUL_WIDE_Q8_8_SCALAR  x, scale[15:0]  →  nrm (int tail,
-         bit-unchanged from v1.6.7 — the F2I output routes as B via the
-         same .opref the retired rsqrt output used)
-      4) SIMD_MUL_WIDE_VEC  nrm, γ  →  y
+      1) SIG_L2SQ_IJKLM  x  →  sq (int32 scalar, sext64; exact — the
+         int4 sum of squares is <= 2048)
+      2) the fp32 scalar insert in 0e form (_norm_fp_scalar_insert with
+         stop_at_scale=True, fold_exp2=2k — CVT I2F, folded-1/N + folded-
+         eps FSCALAR steps with their B-constant producers, FRSQRT32)
+         →  fp32 scale s ALREADY carrying the gamma 2^-k (fold pin)
+      3) per 16-lane row half h:
+           GAMMA_MUL_W .imm64 γ_h  →  w_h (16 int8 lanes, EXACT — the
+             per-lane gamma contract honored, broadcast-gamma repaired)
+           DEQUANT (int8-16, 'opb')  w_h, s  →  y_h (16 bf16 lanes; the
+             ONE output narrowing, round-once definition (a); s rides
+             payload_b on the wave-completing beat — SDK routes the
+             FRSQRT32 output to BOTH pairs at N=32, sharing one s)
 
-    Args: .gamma <64-bit int>, .port <mask/out>; optional .eps <fp32
-    bits, default bits(2^-13)>, .n <element count, default 16> — see the
-    eps-guard/fallback contract in the section comment above.
-    """
+    Args: .gamma <64-bit int (N=16) / 128-bit int (N=32, low half =
+    lanes 0-15)>, .port <mask/out>; optional .eps <fp32 bits, default
+    bits(2^-13)>, .n <16 (default) or 32>, .gfrac <gamma fractional
+    bits k, default 3 = Q1.3> — see the eps-guard/fallback and fold
+    contracts in the section comment above."""
     gamma = _get_macro_arg(inst, 'gamma', 'gamma')
     port_eh = _macro_port_eh(inst)
+    n = _get_macro_arg_opt(inst, 'n', 16)
+    if n not in (16, 32):
+        raise AssemblerError(
+            f"line {inst.line}: RMSNORM .n must be 16 or 32 (the 0e "
+            f"16-lane 0x6B/DEQUANT tail quantum; N=32 lowers as two "
+            f"pairs), got {n!r}")
+    gfrac = _get_macro_arg_opt(inst, 'gfrac', _RMSNORM_GFRAC_DEFAULT)
+    if not (isinstance(gfrac, int) and 0 <= gfrac <= 8):
+        raise AssemblerError(
+            f"line {inst.line}: RMSNORM .gfrac (gamma fractional bits) "
+            f"must be an int in 0..8, got {gfrac!r}")
+    if not (isinstance(gamma, int) and 0 <= gamma < (1 << (4 * n))):
+        raise AssemblerError(
+            f"line {inst.line}: RMSNORM .gamma must be the packed int4 "
+            f"lane vector for .n {n} (< 2^{4 * n} raw fields), got "
+            f"{gamma!r}")
     # SIG_L2SQ_IJKLM: 5D→scalar, op_marker=0x4 in HI.O_hi[3:0].
     # 5D subscript with A_hi=0x0005 discriminator, O empty (scalar).
     #   A = [i,j,k,l,m] canonicalized: i=1,j=2,k=3,l=4,m=5
     #   Packed: A_lo = 0x4321, A_hi = 0x0005; B = O = 0; O_hi[3:0] = 0x4 (L2SQ)
-    return [
+    out = [
         Instruction(
             mnemonic='EINSUM',
             flags=set(inst.flags) | {'opb'},
@@ -860,20 +974,28 @@ def _lower_rmsnorm(inst: Instruction) -> List[Instruction]:
             ],
             line=inst.line,
         ),
-        *_norm_fp_scalar_insert(inst, port_eh),
-        Instruction(
-            mnemonic='SIMD_MUL_WIDE_Q8_8_SCALAR',
-            flags=set(inst.flags),
-            eh_list=[port_eh, _make_eh('opref', {}, inst.line)],
-            line=inst.line,
-        ),
-        Instruction(
-            mnemonic='SIMD_MUL_WIDE_VEC',
-            flags=set(inst.flags) | {'opb'},
-            eh_list=[port_eh, _make_eh('imm64', {'value': gamma}, inst.line)],
-            line=inst.line,
-        ),
+        *_norm_fp_scalar_insert(inst, port_eh, stop_at_scale=True,
+                                fold_exp2=2 * gfrac),
     ]
+    for h in range(n // 16):
+        gamma_h = (gamma >> (64 * h)) & ((1 << 64) - 1)
+        out.append(Instruction(
+            mnemonic='GAMMA_MUL_W',
+            flags=set(inst.flags) | {'prec'},
+            eh_list=[port_eh,
+                     _make_eh('precision', {'mode': _GAMMA_MODE}, inst.line),
+                     _make_eh('imm64', {'value': gamma_h}, inst.line)],
+            line=inst.line,
+        ))
+        out.append(Instruction(
+            mnemonic='DEQUANT',
+            flags=set(inst.flags) | {'prec', 'opb'},
+            eh_list=[port_eh,
+                     _make_eh('precision', {'mode': _DEQ_INT8_MODE},
+                              inst.line)],
+            line=inst.line,
+        ))
+    return out
 
 
 # v1.6.5d §22.17 tag-stability + SDK abort-cleanup contract — single
@@ -1490,7 +1612,12 @@ def legality_pass(prog: Program) -> Program:
         # is a dispatch-side error_flag via dec_input_payload_b_valid),
         # so the assembler-side requirement is hardcoded here, reusing
         # the 0x63/0x64/0x65 check + error message verbatim.
-        if ((rules['require_opb_flag'] or opcode == 0x74)
+        # v1.8.0e §25.2.1/§25.2.2 — 0x79 FMINMAX (FSCALAR legality clone:
+        # broadcast B on the payload_b port ONLY) and 0x78 DEQUANT (the
+        # fp32 scale rides ext_payload_b + valid on the wave-COMPLETING
+        # fragment beat — the pinned SDK/NoC scale-beat contract; missing
+        # scale is a dispatch-side error_flag) join the hardcoded set.
+        if ((rules['require_opb_flag'] or opcode in (0x74, 0x78, 0x79))
                 and 'opb' not in stmt.flags):
             raise AssemblerError(
                 f"line {stmt.line}: {stmt.mnemonic} requires the 'opb' flag "
@@ -1540,6 +1667,28 @@ def legality_pass(prog: Program) -> Program:
                     f"line {stmt.line}: {stmt.mnemonic} sub-op nibble "
                     f"0x{subop_nibble:X} unknown — legal: "
                     f"{sorted(CVT_OP_CODE.items())}"
+                )
+        # v1.8.0e §25.2.1 — FMINMAX (0x79) imm16 value check: sub-op
+        # nibble at [7:4] from the generated fminmax_op_codes table;
+        # [3:0] AND [15:8] reserved-zero (an ABSENT imm16 decodes as
+        # MINIMUMNUM). Same asm-stricter-than-RTL stance as 0x74/0x77:
+        # the RTL answers violations with lower_required, the assembler
+        # with a textual error.
+        if opcode == 0x79 and 'imm16' in eh_kinds:
+            imm_eh = next(eh for eh in stmt.eh_list if eh.kind == 'imm16')
+            v = _take_immediate(imm_eh)
+            if (v & 0xF) or (v & 0xFF00):
+                raise AssemblerError(
+                    f"line {stmt.line}: {stmt.mnemonic} imm16[3:0]/[15:8] "
+                    f"are reserved-zero (got 0x{v:04X}) — build the imm16 "
+                    f"via fminmax_subop_imm16()"
+                )
+            subop_nibble = (v >> 4) & 0xF
+            if subop_nibble not in FMINMAX_OP_CODE.values():
+                raise AssemblerError(
+                    f"line {stmt.line}: {stmt.mnemonic} sub-op nibble "
+                    f"0x{subop_nibble:X} unknown — legal: "
+                    f"{sorted(FMINMAX_OP_CODE.items())}"
                 )
         # v1.8.0d §23.10.10(c) — ACC_ELEMWISE (0x73) is OPREF-form ONLY
         # in landed silicon: any imm form still DECODES cleanly (the
@@ -1591,7 +1740,21 @@ def legality_pass(prog: Program) -> Program:
                 raise AssemblerError(
                     f"line {stmt.line}: .precision mode must be numeric")
             dtype, acc, rnd = mode & 0xF, (mode >> 4) & 0x3, (mode >> 6) & 0x3
-            legal = FP_MODE_LEGAL[opcode]
+            # v1.8.0e §25.2.3 — 0x6B GAMMA_MUL_W sits OUTSIDE the
+            # 0x70-0x7F in_fp_block gate (no EHDecode mode-byte ROM row,
+            # hence no generated FP_MODE_LEGAL entry), but its asm row
+            # still requires the precision EH so the mode byte stays
+            # assembly-visible. The legal set is hand-pinned here
+            # (asm-stricter-than-RTL): int4 lanes only, acc=1, rnd=0 —
+            # mode 0x10, matching the golden/SDK int4 lane contract.
+            legal = FP_MODE_LEGAL.get(opcode)
+            if legal is None:
+                if opcode != 0x6B:
+                    raise AssemblerError(
+                        f"line {stmt.line}: opcode 0x{opcode:02X} requires "
+                        f"a precision EH but has no mode-legality entry")
+                legal = {'legal_dtypes': [0], 'legal_acc': [1],
+                         'legal_rnd': [0]}
             if (dtype not in legal['legal_dtypes']
                     or acc not in legal['legal_acc']
                     or rnd not in legal['legal_rnd']):
@@ -2016,6 +2179,39 @@ def cvt_subop_imm16(subop: Union[str, int]) -> int:
             f"CVT sub-op {subop!r} unknown — legal names "
             f"{sorted(CVT_OP_CODE)}, legal codes "
             f"{sorted(CVT_OP_CODE.values())} (pass the sub-op code, "
+            f"not a pre-shifted imm16)")
+    return code << 4
+
+
+def fminmax_subop_imm16(subop: Union[str, int]) -> int:
+    """v1.8.0e §25.2.1 — encode an FMINMAX (0x79) sub-op into its imm16
+    value (sub-op nibble at [7:4]; [3:0] AND [15:8] reserved-zero, the
+    CVT field discipline verbatim). `subop` is either a name or a code
+    from the generated FMINMAX_OP_CODE table (single-source:
+    isa/wt64v1_isa.json fminmax_op_codes); anything else is rejected.
+    An ABSENT imm16 EH decodes as sub-op 0x0 = MINIMUMNUM, so a plain
+    minimumNumber needs no imm16 at all.
+
+    Encoding contract (enforced by legality_pass, mirrored here for
+    discoverability): FMINMAX is the 0x74 FSCALAR legality clone — the
+    broadcast B arrives on input_payload_b ONLY ('opb' flag required;
+    missing B is a deterministic dispatch-side error_flag in RTL; OPREF
+    is forbidden — the recorded post-0e loosening). imm32/imm64 remain
+    assembler-forbidden (RTL-tolerated, 0x74 semantics verbatim)."""
+    if isinstance(subop, str):
+        if subop not in FMINMAX_OP_CODE:
+            raise AssemblerError(
+                f"FMINMAX sub-op {subop!r} unknown — legal: "
+                f"{sorted(FMINMAX_OP_CODE)}")
+        code = FMINMAX_OP_CODE[subop]
+    elif isinstance(subop, int) and not isinstance(subop, bool) \
+            and subop in FMINMAX_OP_CODE.values():
+        code = subop
+    else:
+        raise AssemblerError(
+            f"FMINMAX sub-op {subop!r} unknown — legal names "
+            f"{sorted(FMINMAX_OP_CODE)}, legal codes "
+            f"{sorted(FMINMAX_OP_CODE.values())} (pass the sub-op code, "
             f"not a pre-shifted imm16)")
     return code << 4
 

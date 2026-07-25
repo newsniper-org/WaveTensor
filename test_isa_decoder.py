@@ -3093,17 +3093,38 @@ async def test_removed_opcode_0x67_q4_4_decode_errors(dut):
 
 
 @cocotb.test()
-async def test_removed_opcode_0x6B_widen_decode_errors(dut):
-    """Opcode cleanup (pre-stable): SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN
-    (0x6B, the only 4-fragment emitter) decode-errors with its
-    previously-legal PORT+IMM16 shape. NOTE: with 0x6B gone the frag FSM's
-    FRAG_EMIT_2/3 states are writer-dead and untested until the v1.8.0e
-    wide package re-populates them."""
+async def test_reallocated_opcode_0x6B_gamma_mul_w(dut):
+    """v1.8.0e 0e1 (was test_removed_opcode_0x6B_widen_decode_errors):
+    the 0x6B code point, retired with WIDEN in the opcode cleanup, was
+    REALLOCATED pre-stable to GAMMA_MUL_W (spec §25.2.3, §12a rule 4 —
+    slot reuse recorded; this test is the mandatory retired-0x6B
+    stale-consumer resync). The old PORT+IMM16 decode_error pin flips:
+    that shape now satisfies the alu-binary XOR (IMM class present, no
+    OPREF) and EXECUTES on this MUL_OPS_SUPPORTED harness — gamma =
+    zext(imm16) with all upper gamma lanes 0, so lanes 4..15 of the
+    exact widening product are 0 x a4 = 0 and lanes 0..3 multiply by the
+    imm nibbles. The XOR-VIOLATING shapes stay decode_error (bare PORT =
+    neither source; IMM16+OPREF = both), pinning the legality row.
+    Value-level 0x6B coverage is the FP_CombArms unit TB + the 0e1
+    integration e2e test (test_gamma_widen_exact)."""
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
     await reset(dut)
-    await _fire_removed_opcode(dut, encode_instr(0x6B, _STD_PORT(),
-                                                 eh_imm16(0x08)))
+    # XOR-satisfied imm form: decodes and executes (2-fragment emit)
+    await fire(dut, encode_instr(0x6B, _STD_PORT(), eh_imm16(0x08)),
+               _STD_TAG(), payload_a=0x1111, payload_b=0)
+    assert dut.error_flag.value == 0, "reallocated 0x6B must decode"
+    assert dut.lower_required.value == 0, "0x6B arm must execute on the MU"
+    assert dut.output_valid.value == 1, "0x6B must emit fragment 0"
+    # XOR violations: neither source / both sources -> decode_error
+    for bad in (encode_instr(0x6B, _STD_PORT()),
+                encode_instr(0x6B, _STD_PORT(), eh_imm16(0x08), eh_opref(),
+                             flags=F_HAS_OPB)):
+        await fire(dut, bad, _STD_TAG(), payload_a=0, payload_b=0,
+                   payload_b_valid=1)
+        assert dut.error_flag.value == 1, \
+            "0x6B alu-binary XOR violation must stay decode_error"
+        assert dut.output_valid.value == 0
 
 
 @cocotb.test()
@@ -3780,6 +3801,18 @@ async def test_bmm3_then_mul_launch_gate(dut):
 #     removed opcodes moved from the supported list to the unsupported
 #     probes (domain point set unchanged; their outcome class flipped
 #     supported → decode_error).
+#   domain_version 3 — recaptured on the v1.8.0e 0e1 sequencer-side
+#     commit (spec §25.6 item 7): the 0x6B code point was REALLOCATED
+#     pre-stable to GAMMA_MUL_W (§25.2.3, §12a rule 4 — slot reuse
+#     recorded; the mandatory retired-0x6B stale-consumer resync). The
+#     reviewed differential vs domain_version 2 is EXACTLY the 16
+#     0x6B points whose EH shape satisfies the alu-binary XOR (one class
+#     of {IMM*} XOR OPREF, x 2 flags): decode_error → executes; every
+#     other point — including 0x6B's XOR-violating shapes and all
+#     frag-FSM-widened emitters — is bit-identical. (The §25.2.1 0x79
+#     legality re-row also forces this bump by policy, but 0x70-0x7F is
+#     outside this domain, so it contributes no visible delta here; its
+#     decode shape is pinned by the fp-block sweeps instead.)
 #
 # Domain (fixed, generator-independent — never derived from the JSON
 # source): opcodes = the 53 supported (post-cleanup 0x00-0x6A era) + 16
@@ -3807,7 +3840,12 @@ _TT_UNSUPPORTED_PROBES = [0x06, 0x0F, 0x27, 0x2F, 0x33, 0x45, 0x4F,
                           0x57, 0x5F,
                           # pre-stable opcode cleanup: removed 0x66/0x67/
                           # 0x6B/0x6C stay IN the domain as error probes
-                          # (point set unchanged vs domain_version 1)
+                          # (point set unchanged vs domain_version 1).
+                          # v1.8.0e: 0x6B was REALLOCATED to GAMMA_MUL_W
+                          # — it stays in THIS enumeration list (the
+                          # point set is fixed) but its captured outcome
+                          # class is now supported-executes on the
+                          # XOR-satisfying shapes (domain_version 3).
                           0x66, 0x67, 0x6B, 0x6C,
                           0x6D, 0x6E, 0x6F]
 _TT_DATA_EH_KINDS = ['imm16', 'imm32', 'imm64', 'mem', 'subscript', 'opref']
@@ -3905,7 +3943,7 @@ async def test_pre_migration_rtl_truth_table_differential(dut):
     if capture_mode:
         os.makedirs(os.path.dirname(_TT_PATH), exist_ok=True)
         with open(_TT_PATH, 'w') as f:
-            _json.dump({'domain_version': 2, 'points': results}, f,
+            _json.dump({'domain_version': 3, 'points': results}, f,
                        indent=0, sort_keys=True)
             f.write('\n')
         return
@@ -3913,10 +3951,10 @@ async def test_pre_migration_rtl_truth_table_differential(dut):
     assert os.path.exists(_TT_PATH), (
         f"frozen truth table missing at {_TT_PATH} — run once with "
         f"WT_CAPTURE_TRUTH_TABLE=1 on the current frozen baseline "
-        f"(domain_version 2: the pre-stable opcode-cleanup commit)")
+        f"(domain_version 3: the v1.8.0e 0e1 0x6B-reallocation commit)")
     with open(_TT_PATH) as f:
         frozen = _json.load(f)
-    assert frozen['domain_version'] == 2
+    assert frozen['domain_version'] == 3
     mismatches = []
     for key, expected in frozen['points'].items():
         got = results.get(key)
@@ -3996,13 +4034,28 @@ async def _fp_run_point(dut, op, mode, via_eh):
     await RisingEdge(dut.clk)
     dut.token_valid.value = 0
     err = lwr = out = 0
-    for _ in range(24):
+    # v1.8.0e 0e1 integration — window sizing: a legal-mode 0x78 point
+    # now launches the REAL DEQUANT lane loop (16 or 32 OPS_DEQ passes,
+    # ~6-7 cy/lane at the measured L=5), so its first output pulse (the
+    # loop-completion fragment 0) lands ~100-230 cycles after dispatch;
+    # every other point resolves within the old 24-cycle window.
+    window = 320 if op == 0x78 else 24
+    for _ in range(window):
         await RisingEdge(dut.clk)
         await Timer(1, units="ns")
         err |= int(dut.error_flag.value)
         lwr |= int(dut.lower_required.value)
         out |= int(dut.output_valid.value)
         if err or lwr or out:
+            break
+    # Drain to idle before the caller's next point: the v1.8.0e widened
+    # frag FSM keeps emitting rows 1..N-1 for up to 7 cycles after the
+    # break above (8-fragment int4 DEQUANT) — a next point dispatched
+    # mid-drain would sample those pulses as its own ever-bits.
+    for _ in range(24):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.pe_ready.value) == 1 and int(dut.output_valid.value) == 0:
             break
     return (err, lwr, out)
 
@@ -4018,6 +4071,22 @@ def _fp_expected(op, mode):
     execution on their single legal mode (0x14). The sweep scaffold
     supplies payload_b_valid=1 (see _fp_run_point), so 0x74 launches
     FS_ADD (absent imm16 default) rather than erroring on missing B.
+
+    v1.8.0e 0e1 (sequencer-side commit): 0x79 FMINMAX graduated — its
+    comb arm executes here (the FSCALAR-clone re-row means the live
+    scaffold no longer appends an imm16, so legal-mode points run the
+    absent-imm16 = minimumNumber default against the scaffold's
+    payload_b/wide payloads).
+
+    v1.8.0e 0e1 (integration commit — THIS one): 0x78 DEQUANT's PE_Core
+    lane-loop launch arm landed, so legal-mode 0x78 points now EXECUTE:
+    the sweep's scaffold payloads (wide=1, payload_b=1) launch a real
+    16- or 32-lane OPS_DEQ loop whose fragment-0 emit arrives only at
+    loop completion — _fp_run_point sizes its poll window and drains
+    the multi-fragment tail accordingly. The transitional
+    _V180E_PENDING_INTEGRATION set is DELETED with this commit as
+    pinned; the directed e2e DEQUANT tests below bind bit-exact
+    execution.
 
     v1.8.0d: 0x73/0x77 graduated too, and the 0x7C dtype-0x2/0x3
     conditional lower_required arm is GONE (fp-dest packer landed).
@@ -5467,3 +5536,384 @@ async def test_fp_cycle_bounds_v180d(dut):
         await _fp_drain(dut)
         dut._log.info("%s: completed within bound (latency %d <= %d)",
                       label, lat, bound)
+
+
+# =============================================================================
+# v1.8.0e §25.2.2/§25.3 0e1 INTEGRATION — 0x78 DEQUANT lane-loop e2e +
+# frag-widening drain invariants + loop occupancy/suppression pins.
+# Golden authority: scripts/golden_fp32.py dequant_frags / ref_dequant
+# (imported, never retyped). The unit-level OPS_DEQ program was proven at
+# the FP_StepSeq TB (round-once cells, specials, 2x20k random); these
+# tests bind the PE_Core loop: launch-capture, per-lane relaunch, lane->
+# fragment packing, loop-completion frag0_hold handoff, 4/8-fragment
+# drain, and the §25.3 interlocks.
+# =============================================================================
+
+def _deq_instr(dtype):
+    """0x78 DEQUANT: port-only legality (no imm, no OPREF) + PRECISION
+    mode (dtype names the SOURCE; dest pinned bf16-only)."""
+    return _fp_instr(0x78, mode=0x10 | (dtype & 0xF))
+
+
+def _deq_pack_lanes(lanes, dtype):
+    """Pack raw lane fields into the 128-bit A (the golden lane-map pin:
+    int4 lane i at [4i+3:4i], int8 lane i at [8i+7:8i])."""
+    lb = 4 if dtype == _G.DT_INT4 else 8
+    frags = _G.lanes_to_frags(lanes, lb)
+    assert len(frags) == 2
+    return frags[0] | (frags[1] << 64), frags
+
+
+async def _deq_run_wave(dut, lanes, scale, dtype, window=340):
+    """Fire one DEQUANT wave (wide A + scale on payload_b) and collect
+    EVERY output pulse until the PE drains back to idle. Returns
+    (events, pe_ready_ever_high_during_flight, launch_to_frag0_cycles)."""
+    wide, _ = _deq_pack_lanes(lanes, dtype)
+    await _fp_fire_token(dut, _deq_instr(dtype), 0, payload_b=scale,
+                         b_valid=1, wide=wide, wide_valid=1)
+    events = []
+    ready_high_mid = False
+    frag0_cycle = None
+    launched = False
+    idle_after = 0
+    for i in range(window):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.error_flag.value):
+            events.append({'kind': 'err', 'cycle': i})
+        if int(dut.lower_required.value):
+            events.append({'kind': 'lwr', 'cycle': i})
+        if int(dut.output_valid.value):
+            if frag0_cycle is None:
+                frag0_cycle = i
+            events.append({'kind': 'out', 'cycle': i,
+                           'payload': int(dut.output_payload.value),
+                           'opcode': int(dut.opcode_out.value),
+                           'tag': int(dut.output_tag.value),
+                           'frag_hdr': int(dut.output_frag_hdr.value)})
+        ready = int(dut.pe_ready.value)
+        if not launched and ready == 0:
+            launched = True          # loop entered (pe_ready dropped)
+        if launched and frag0_cycle is None and ready == 1:
+            ready_high_mid = True    # §25.3 violation: gap in occupancy
+        if launched and ready == 1 and int(dut.output_valid.value) == 0:
+            idle_after += 1
+            if idle_after >= 3 and frag0_cycle is not None:
+                break
+        else:
+            idle_after = 0
+    return events, ready_high_mid, frag0_cycle
+
+
+def _deq_expect_frags(lanes, scale, dtype):
+    _, a_frags = _deq_pack_lanes(lanes, dtype)
+    return _G.dequant_frags(a_frags, scale, dtype)
+
+
+@cocotb.test()
+async def test_dequant_e2e_int8_4frag_bit_exact(dut):
+    """int8-16 -> 16 bf16 = 4 fragments, FULL-WAVE bit-exact vs golden
+    dequant_frags across scale classes (normal / denormal-DAZ / NaN /
+    +-Inf / overflow-to-Inf / negative), incl. the §25.3 header-sequence
+    pin {idx, total_m1} = 0x03,0x13,0x23,0x33, opcode_out preservation,
+    tag stability across all fragments, and the 1-fragment/cycle drain
+    contiguity."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    import random as _rnd
+    rng = _rnd.Random(0x0E78)
+    lane_sets = [
+        [rng.randrange(256) for _ in range(16)],
+        [0x00, 0x80, 0x7F, 0xFF, 0x01, 0x81, 0x40, 0xC0,
+         0x02, 0xFE, 0x55, 0xAA, 0x10, 0xF0, 0x33, 0xCD],
+    ]
+    scales = [
+        _f2b(1.5), _f2b(-0.375), _f2b(2.0 ** -100),
+        0x00000001,          # denormal -> DAZ -> signed-zero rows
+        0x80000001,          # negative denormal
+        _QNAN, _PINF, _NINF,
+        0x7F000000,          # 2^127: k>=2 overflows bf16 -> +-Inf pin
+    ]
+    for lanes in lane_sets:
+        for scale in scales:
+            events, ready_mid, frag0 = await _deq_run_wave(
+                dut, lanes, scale, _G.DT_INT8)
+            outs = [e for e in events if e['kind'] == 'out']
+            errs = [e for e in events if e['kind'] != 'out']
+            assert not errs, f"scale=0x{scale:08X}: {errs}"
+            assert len(outs) == 4, \
+                f"scale=0x{scale:08X}: {len(outs)} fragments != 4"
+            exp = _deq_expect_frags(lanes, scale, _G.DT_INT8)
+            got = [e['payload'] for e in outs]
+            assert got == exp, \
+                f"scale=0x{scale:08X}: {[hex(x) for x in got]} != " \
+                f"{[hex(x) for x in exp]}"
+            hdrs = [e['frag_hdr'] for e in outs]
+            assert hdrs == [0x03, 0x13, 0x23, 0x33], \
+                f"scale=0x{scale:08X}: header sequence {hdrs}"
+            assert all(e['opcode'] == 0x78 for e in outs), \
+                f"opcode_out not preserved: {[e['opcode'] for e in outs]}"
+            assert len({e['tag'] for e in outs}) == 1, \
+                "tag must be constant across all fragments of one wave"
+            cycles = [e['cycle'] for e in outs]
+            assert cycles == list(range(cycles[0], cycles[0] + 4)), \
+                f"drain not 1 fragment/cycle: {cycles}"
+            assert not ready_mid, \
+                "pe_ready glitched high inside the lane loop (§25.3)"
+
+
+@cocotb.test()
+async def test_dequant_e2e_int4_8frag_bit_exact(dut):
+    """int4-32 -> 32 bf16 = 8 fragments: full-wave bit-exact vs golden,
+    16-frag-capable header nibbles 0x07..0x77 in sequence, contiguous
+    8-beat drain, and the row-0-dummy invariant — a 2-fragment wide op
+    dispatched immediately after the wave is bit-identical (the widened
+    FSM leaves no residue)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    import random as _rnd
+    rng = _rnd.Random(0x0E32)
+    for scale in (_f2b(3.0), _f2b(-2.0 ** -80), 0x00400000, _QNAN):
+        lanes = [rng.randrange(16) for _ in range(32)]
+        events, ready_mid, _ = await _deq_run_wave(
+            dut, lanes, scale, _G.DT_INT4)
+        outs = [e for e in events if e['kind'] == 'out']
+        errs = [e for e in events if e['kind'] != 'out']
+        assert not errs, f"scale=0x{scale:08X}: {errs}"
+        assert len(outs) == 8, f"{len(outs)} fragments != 8"
+        exp = _deq_expect_frags(lanes, scale, _G.DT_INT4)
+        got = [e['payload'] for e in outs]
+        assert got == exp, \
+            f"scale=0x{scale:08X}: {[hex(x) for x in got]} != " \
+            f"{[hex(x) for x in exp]}"
+        hdrs = [e['frag_hdr'] for e in outs]
+        assert hdrs == [(i << 4) | 0x7 for i in range(8)], f"headers {hdrs}"
+        cycles = [e['cycle'] for e in outs]
+        assert cycles == list(range(cycles[0], cycles[0] + 8)), \
+            f"drain not 1 fragment/cycle: {cycles}"
+        assert not ready_mid, "pe_ready glitched high inside the lane loop"
+
+    # row-0-dummy / no-residue invariant: an existing 2-fragment emitter
+    # right after the 8-fragment wave must be bit-identical (fragment 0
+    # direct-emit + exactly one drained row, hdr 0x01/0x11).
+    lo, hi = 0x1111222233334444, 0x5555666677778888
+    instr = encode_instr(0x60, _STD_PORT(), eh_imm16(3))
+    await _fp_fire_token(dut, instr, 0, wide=lo | (hi << 64), wide_valid=1)
+    outs = []
+    for i in range(20):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value):
+            outs.append((int(dut.output_payload.value),
+                         int(dut.output_frag_hdr.value)))
+        if len(outs) == 2:
+            break
+    exp_lo = sum(((((lo >> (4 * i)) & 0xF) + 3) & 0xF) << (4 * i)
+                 for i in range(16))
+    exp_hi = sum(((((hi >> (4 * i)) & 0xF) + 3) & 0xF) << (4 * i)
+                 for i in range(16))
+    assert outs == [(exp_lo, 0x01), (exp_hi, 0x11)], \
+        f"2-frag emitter corrupted after the 8-frag wave: " \
+        f"{[(hex(p), hex(h)) for p, h in outs]}"
+
+
+@cocotb.test()
+async def test_dequant_round_once_discriminators_e2e(dut):
+    """Rounding definition (a) END-TO-END: directed discriminator cells
+    (from the mse_sweep constructive generator, embedded as literals —
+    the sim venv has no mpmath) whose exact product sits within one
+    RNE24 step of a bf16 midpoint, so a double-rounding implementation
+    provably differs by 1 ulp; plus exact-tie cells pinning
+    ties-to-even. Power is re-proven in-test against a golden-built
+    double-round twin before driving the RTL. The MSE gate is blind to
+    this defect — THESE cells are the enforcement point (§25.5.2)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # (field, scale_bits, dtype, is_discriminator)
+    cells = [
+        (0x03, 0x3FAF5555, _G.DT_INT8, True),
+        (0x03, 0x3FB0AAAB, _G.DT_INT8, True),
+        (0x03, 0x3FB75555, _G.DT_INT8, True),
+        (0x03, 0x3FB8AAAB, _G.DT_INT8, True),
+        (0x03, 0x3FAF5555, _G.DT_INT4, True),
+        (0x03, 0x3FB0AAAB, _G.DT_INT4, True),
+        (0x03, 0x3FAE0000, _G.DT_INT8, False),   # exact ties (round bit 1,
+        (0x03, 0x3FB20000, _G.DT_INT8, False),   #  sticky 0 -> to even)
+    ]
+    for field, scale, dtype, disc in cells:
+        ref = _G.ref_dequant_lane(field, scale, dtype)
+        # the FORBIDDEN definition (b): RNE to fp32 first, then narrow
+        dbl = _G.ref_narrow_f32(_G.ref_mul(_G.ref_i2f(field, dtype), scale),
+                                _G.DT_BF16)
+        if disc:
+            assert dbl != ref, \
+                f"cell (0x{field:02X}, 0x{scale:08X}) lost its power"
+        else:
+            assert dbl == ref, "exact tie must coincide by construction"
+        n = _G.DEQUANT_LANES[dtype]
+        lanes = [field] * n
+        events, _, _ = await _deq_run_wave(dut, lanes, scale, dtype)
+        outs = [e for e in events if e['kind'] == 'out']
+        exp = _deq_expect_frags(lanes, scale, dtype)
+        got = [e['payload'] for e in outs]
+        assert got == exp, \
+            f"ROUND-ONCE violated at (0x{field:02X}, 0x{scale:08X}, " \
+            f"dtype={dtype}): {[hex(x) for x in got]} != " \
+            f"{[hex(x) for x in exp]}"
+
+
+@cocotb.test()
+async def test_dequant_missing_scale_and_wide_guards(dut):
+    """Launch-ladder rungs: missing scale (payload_b_valid=0) ->
+    error_flag (the §25.2.2 pin — the scale rides the wave-completing
+    beat; its absence is a malformed program, not capability absence);
+    missing wide A -> error_flag (§20 wave contract). Neither launches
+    the loop (pe_ready stays high, no output)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    for b_valid, wide_valid in ((0, 1), (1, 0), (0, 0)):
+        await _fp_fire_token(dut, _deq_instr(_G.DT_INT8), 0,
+                             payload_b=_f2b(1.0), b_valid=b_valid,
+                             wide=0x1234, wide_valid=wide_valid)
+        err = out = 0
+        for _ in range(20):
+            await RisingEdge(dut.clk)
+            await Timer(1, units="ns")
+            err |= int(dut.error_flag.value)
+            out |= int(dut.output_valid.value)
+        assert err == 1 and out == 0, \
+            f"(b_valid={b_valid}, wide_valid={wide_valid}): " \
+            f"err={err} out={out}"
+        assert int(dut.pe_ready.value) == 1, "guarded launch left PE busy"
+
+
+@cocotb.test()
+async def test_dequant_loop_suppression_and_busy_reject(dut):
+    """§25.3 interlocks, all in ONE int8 wave flight:
+      (1) fp_armed loop suppression — NO output pulse fires before the
+          loop-completion fragment 0 (per-lane fp_done pulses diverted;
+          exactly 4 pulses total, all at the drain);
+      (2) a mul-class dispatch with a busy-reject rung (0x74 FSCALAR)
+          landing mid-loop is LOUDLY lower_required — never launched,
+          never silently swallowed;
+      (3) a 0x12 MUL dispatch mid-loop is never launched (the launch
+          gate's !fp_busy term covers the whole loop) and the DEQUANT
+          result is preserved bit-exactly — no output corruption;
+      (4) pe_ready stays low from launch through the final drain beat
+          (the §25.4 occupancy contract, observe-only)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    lanes = [((i * 37) ^ 0x5A) & 0xFF for i in range(16)]
+    scale = _f2b(0.75)
+    wide, a_frags = _deq_pack_lanes(lanes, _G.DT_INT8)
+    exp = _G.dequant_frags(a_frags, scale, _G.DT_INT8)
+
+    await _fp_fire_token(dut, _deq_instr(_G.DT_INT8), 0, payload_b=scale,
+                         b_valid=1, wide=wide, wide_valid=1)
+    outs = []
+    lwr_seen = 0
+    err_seen = 0
+    intruded_74 = intruded_12 = False
+    for i in range(340):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        # two intruders, well inside the ~100-cycle loop window
+        if i == 30 and not intruded_74:
+            intruded_74 = True
+            await _fp_fire_token(dut, _fp_instr(0x74, subop=_FS['FS_MUL']),
+                                 _f2b(2.0), payload_b=_f2b(3.0), b_valid=1)
+        if i == 45 and not intruded_12:
+            intruded_12 = True
+            instr12 = encode_instr(0x12, _STD_PORT(), eh_imm16(5))
+            dut.instruction.value = instr12
+            dut.input_tag.value = _STD_TAG()
+            dut.input_payload.value = 7
+            dut.input_payload_b_valid.value = 1
+            dut.token_valid.value = 1
+            await RisingEdge(dut.clk)
+            dut.token_valid.value = 0
+        await Timer(1, units="ns")
+        err_seen |= int(dut.error_flag.value)
+        lwr_seen |= int(dut.lower_required.value)
+        if int(dut.output_valid.value):
+            outs.append({'cycle': i, 'payload': int(dut.output_payload.value),
+                         'opcode': int(dut.opcode_out.value),
+                         'frag_hdr': int(dut.output_frag_hdr.value)})
+        if len(outs) >= 4 and int(dut.pe_ready.value) == 1:
+            break
+    assert intruded_74 and intruded_12, "intruders never dispatched"
+    assert err_seen == 0, "unexpected error_flag during the loop"
+    assert lwr_seen == 1, \
+        "mid-loop mul-class dispatch (0x74) was not LOUDLY busy-rejected"
+    # (1) exactly 4 output pulses, contiguous, all DEQUANT fragments —
+    # no per-lane spurious emit, no 0x74/0x12 result ever surfaced
+    assert len(outs) == 4, f"{len(outs)} output pulses != 4: {outs}"
+    assert all(o['opcode'] == 0x78 for o in outs), \
+        f"foreign result surfaced: {[hex(o['opcode']) for o in outs]}"
+    got = [o['payload'] for o in outs]
+    assert got == exp, \
+        f"DEQUANT corrupted by mid-loop intruders: " \
+        f"{[hex(x) for x in got]} != {[hex(x) for x in exp]}"
+    cycles = [o['cycle'] for o in outs]
+    assert cycles == list(range(cycles[0], cycles[0] + 4)), \
+        f"drain not contiguous: {cycles}"
+    assert cycles[0] > 45, "fragment 0 emitted before loop completion"
+
+
+@cocotb.test()
+async def test_gamma_mul_w_directed_e2e(dut):
+    """v1.8.0e §25.2.3 — 0x6B GAMMA_MUL_W exhaustive-ish directed e2e:
+    ALL 256 (a4, g4) operand pairs cross the full decode -> MU-arm ->
+    2-fragment emit path (wave w carries a4 = w on every lane against
+    g4 = lane index — 16 waves cover the full product table), plus one
+    distinct-lanes wave pinning the lane order (lane i at out bits
+    [8i+7:8i]) end-to-end. Bit-exact vs golden gamma_mul_w_frags; the
+    value-level exhaustive + 20k-random proof lives at the FP_CombArms
+    unit TB — this binds the dispatch/emit integration."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    async def run_wave(a_lanes, g_lanes):
+        a_frag = sum(v << (4 * i) for i, v in enumerate(a_lanes))
+        g_imm = sum(v << (4 * i) for i, v in enumerate(g_lanes))
+        instr = encode_instr(0x6B, _STD_PORT(), eh_precision(0x10, 0),
+                             eh_imm64(g_imm), flags=F_PRECISION_OVR)
+        await _fp_fire_token(dut, instr, a_frag, b_valid=0)
+        outs = []
+        for _ in range(30):
+            await RisingEdge(dut.clk)
+            await Timer(1, units="ns")
+            assert int(dut.error_flag.value) == 0
+            assert int(dut.lower_required.value) == 0
+            if int(dut.output_valid.value):
+                outs.append({'payload': int(dut.output_payload.value),
+                             'frag_hdr': int(dut.output_frag_hdr.value),
+                             'opcode': int(dut.opcode_out.value)})
+            if len(outs) == 2:
+                break
+        exp = _G.gamma_mul_w_frags(a_frag, g_imm)
+        assert [o['payload'] for o in outs] == exp, \
+            f"a={a_lanes} g={g_lanes}: " \
+            f"{[hex(o['payload']) for o in outs]} != {[hex(x) for x in exp]}"
+        assert [o['frag_hdr'] for o in outs] == [0x01, 0x11]
+        assert all(o['opcode'] == 0x6B for o in outs)
+        await _fp_drain(dut, cycles=12)
+
+    # all 256 pairs across 16 waves
+    for w in range(16):
+        await run_wave([w] * 16, list(range(16)))
+    # lane-order pin: distinct per-lane products with sign flips
+    await run_wave([((3 * i) + 1) & 0xF for i in range(16)],
+                   [((-i) & 0xF) for i in range(16)])
+    await run_wave([0x8] * 16, [0x8] * 16)   # all (-8)*(-8) = +64 rows

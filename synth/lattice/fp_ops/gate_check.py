@@ -13,24 +13,36 @@ Pass criteria (merge blockers):
   GATE 2 fp_addwide : LUT4 <= 900, MULT18X18D == 0, Fmax >= 40 MHz
   GATE C3 fp_stepseq: whole unit (step sequencer + FP_Mul36 + FP_AddWide +
                       seed/coeff ROMs + the v1.8.0d OPS_CVT/OPS_ACCEW
-                      extension) — LUT4 <= 4545 = the §23.10.10(g) C3
-                      line: v1.8.0c Gate-3 amended measurement 3,345
-                      (§23.10.7, seed-2 archive) + the pre-declared
-                      +1.2k hard-escalation threshold; the measured DELTA
-                      against 3,345 is recorded vs the +300-700 estimate,
-                      and a delta above +1.2k executes the §23.10.10(g)
-                      cut ladder instead of a gate amendment. MULT18X18D
-                      == 4 EXACTLY (0 new multipliers — the unit
-                      instantiates ONE FP_Mul36 and the CVT/ACCEW programs
-                      add zero multiplier passes), TRELLIS_FF <= 900 net
-                      of the 147 gate-top wrapper I/O flops (113 input +
-                      34 output bits, incl. the v1.8.0d dtype_i port —
-                      see FP_StepSeq_gate_top.v), EBR == 0 (distributed
-                      ROM; spec allows a DOCUMENTED 1-EBR fallback, which
-                      this checker deliberately does NOT auto-pass),
-                      Fmax >= 40 MHz (seed sweep 1-5 allowed, archive at
-                      the first passing seed — §23.10.7 Gate-3 precedent:
-                      seed noise, not structure).
+                      extension + the v1.8.0e OPS_DEQ fused DEQUANT
+                      program) — LUT4 <= 4909 = the 0e1 unit line derived
+                      mechanically from the published spec §25.5.1
+                      itemization: the v1.8.0d C3 archived measurement
+                      4,409 (the committed gate_summary baseline; the
+                      historical 0d line was 3,345 + 1.2k escalation =
+                      4,545) + the §25.5.1 "OPS_DEQ case rows + bf16
+                      round-once pack" nominal CEILING of +500 (the
+                      itemization row's 250-500 band — its lane-counter /
+                      32:1-lane-extract share is PE_Core-side and lands
+                      with the 0e1 integration commit's gates, not here).
+                      The measured DELTA against 4,409 is recorded vs the
+                      +250-500 band, and a delta above +500 executes
+                      §25.5.1 cut-ladder rung 3 (fused OPS_DEQ ->
+                      two-pass CVT+FS_MUL reuse, pre-priced, MSE-neutral)
+                      instead of a gate amendment. MULT18X18D == 4
+                      EXACTLY (0 new multipliers — the §25.5.1 MULT pin:
+                      the unit instantiates ONE FP_Mul36 and the fused
+                      OPS_DEQ rides it with zero new passes; hard-fail on
+                      any 0e-cone multiplier attribution), TRELLIS_FF <=
+                      900 net of the 147 gate-top wrapper I/O flops (113
+                      input + 34 output bits, incl. the v1.8.0d dtype_i
+                      port — see FP_StepSeq_gate_top.v), EBR == 0
+                      (distributed ROM; spec allows a DOCUMENTED 1-EBR
+                      fallback, which this checker deliberately does NOT
+                      auto-pass), Fmax >= 40 MHz (seed sweep 1-5 allowed,
+                      archive at the first passing seed — §23.10.7 Gate-3
+                      precedent: seed noise, not structure; the 0e re-run
+                      confirms it, the failing-seed paths sit entirely
+                      inside the untouched FP_AddWide stage).
 """
 
 import json
@@ -52,8 +64,10 @@ GATES = [
      "max_lut4": 900,  "mult": 0, "mult_exact": False,
      "max_ff": None, "wrapper_ff": 0,   "max_ebr": 0, "lut4_baseline": None},
     {"name": "fp_stepseq", "label": "GATE C3",
-     "max_lut4": 4545, "mult": 4, "mult_exact": True,
-     "max_ff": 900,  "wrapper_ff": 147, "max_ebr": 0, "lut4_baseline": 3345},
+     "max_lut4": 4909, "mult": 4, "mult_exact": True,
+     "max_ff": 900,  "wrapper_ff": 147, "max_ebr": 0, "lut4_baseline": 4409,
+     "delta_note": "estimate +250-500, the spec 25.5.1 OPS_DEQ itemization "
+                   "band; hard escalation to cut-ladder rung 3 above +500"},
 ]
 
 # every ECP5 block-RAM cell type yosys memory_bram can emit
@@ -121,8 +135,7 @@ def main():
             delta = lut4 - g["lut4_baseline"]
             delta_line = [
                 f"    LUT4 delta = {delta:+5d}   vs the {g['lut4_baseline']} "
-                f"Gate-3 archive (estimate +300-700; hard escalation to the "
-                f"cut ladder above +1200)"]
+                f"C3 archive ({g['delta_note']})"]
         lines += [
             f"{label} — {name} (LFE5UM-85F CABGA381 -6, out-of-context, "
             f"yosys synth_ecp5 + nextpnr-ecp5, wrapper-top incl. I/O regs):",

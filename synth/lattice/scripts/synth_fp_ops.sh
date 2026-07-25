@@ -12,15 +12,21 @@
 #   GATE 2 — FP_AddWide : <=900 LUT4, 0 MULT18X18D, Fmax >= 40 MHz
 #   GATE C3 — FP_StepSeq: whole unit incl. both operator blocks + seed/coeff
 #                         ROMs + the v1.8.0d OPS_CVT/OPS_ACCEW extension
-#                         (spec 23.10.10(g)) — <=4545 LUT4 (= 3,345 Gate-3
-#                         archive + the pre-declared +1.2k hard-escalation
-#                         line; delta recorded vs the +300-700 estimate),
-#                         EXACTLY 4 MULT18X18D (0 new), <=900 FF (net of
-#                         the 147 wrapper I/O flops), 0 EBR (distributed
-#                         ROM; documented 1-EBR fallback only), Fmax >=
-#                         40 MHz with a seed sweep 1-5 (archive = first
-#                         passing seed — the 23.10.7 Gate-3 precedent
-#                         showed 39.79 -> 40.84 MHz is placement noise)
+#                         (spec 23.10.10(g)) + the v1.8.0e OPS_DEQ fused
+#                         DEQUANT program (spec 25.2.2) — <=4909 LUT4
+#                         (= 4,409 v1.8.0d C3 archive + the spec-25.5.1
+#                         OPS_DEQ itemization nominal ceiling +500; delta
+#                         recorded vs the +250-500 band, above +500 ->
+#                         cut-ladder rung 3 two-pass reuse), EXACTLY 4
+#                         MULT18X18D (0 new — the fused program rides the
+#                         ONE FP_Mul36), <=900 FF (net of the 147 wrapper
+#                         I/O flops), 0 EBR (distributed ROM; documented
+#                         1-EBR fallback only), Fmax >= 40 MHz with a
+#                         seed sweep 1-5 (archive = first passing seed —
+#                         the 23.10.7 Gate-3 precedent showed 39.79 ->
+#                         40.84 MHz is placement noise; the 0e re-run's
+#                         failing-seed paths sit inside untouched
+#                         FP_AddWide stages)
 #
 # Invoke from the repo root:
 #     sh synth/lattice/scripts/synth_fp_ops.sh

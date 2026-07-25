@@ -1563,6 +1563,15 @@ async def test_twin_classifier_lockstep_static(dut):
         f"{sorted(hex(x) for x in clu - pec)}, PE_Core-only " \
         f"{sorted(hex(x) for x in pec - clu)}"
     assert {0x73, 0x77} <= clu, "0x73/0x77 missing from the twin classifiers"
+    # v1.8.0e §25.6 item 6 — 0x6B GAMMA_MUL_W / 0x78 DEQUANT / 0x79
+    # FMINMAX joined in lockstep with the 0e1 integration commit. 0x70
+    # VFMA_ACC joins with its 0e2 arm, not before (staged — until then
+    # it stays L-PE-routed into the explicit lower_required stub arm).
+    assert {0x6B, 0x78, 0x79} <= clu, \
+        "0x6B/0x78/0x79 missing from the twin classifiers (v1.8.0e 0e1)"
+    assert 0x70 not in clu, \
+        "0x70 entered is_mul_op before its 0e2 arm — staging violation " \
+        "(spec §25.1: VFMA_ACC is 0e2)"
     assert 0x7C not in clu, \
         "0x7C entered is_mul_op — violates the §23.10.10(d) " \
         "twin-classifier-untouched clause (L-PE for ALL dtypes)"
@@ -1619,3 +1628,229 @@ async def test_fp_lpe_direct_dispatch_lower_required(dut):
     assert saw_out == 1 and payload == exp and opcode == 0x76, \
         f"MU result corrupted by the forced L-PE dispatch: " \
         f"out={saw_out} payload={payload} opcode={opcode}"
+
+
+# =============================================================================
+# v1.8.0e §25.3/§25.2 0e1 INTEGRATION — twin-classifier reachability for
+# the 0e opcodes (0x6B/0x78/0x79), the frag_mask_full 5-bit-shift
+# latent-bug fix regression (16-fragment reassembly), and the widened
+# 4-fragment DEQUANT drain through the full Cluster merge. Golden
+# authority: scripts/golden_fp32.py fragment-level wrappers (imported,
+# never retyped).
+# =============================================================================
+
+
+async def _fire_frag_wave(dut, instr, tag, payloads, payload_b=0,
+                          b_valid_last=0):
+    """Drive one multi-fragment input wave in index order, instruction +
+    EH chain replicated on EVERY beat (the §23.6a SDK contract); the
+    payload_b (+valid) rides ONLY the wave-completing beat (the 0x63-65
+    / DEQUANT scale-beat contract). len(payloads) = fragment count."""
+    tot_m1 = len(payloads) - 1
+    assert 1 <= tot_m1 <= 15
+    for idx, pl in enumerate(payloads):
+        last = (idx == tot_m1)
+        dut.ext_instruction.value = instr
+        dut.ext_tag.value = tag
+        dut.ext_payload.value = pl
+        dut.ext_payload_b.value = payload_b if last else 0
+        dut.ext_payload_b_valid.value = (b_valid_last if last else 0)
+        dut.ext_frag_hdr.value = (idx << 4) | tot_m1
+        dut.ext_valid.value = 1
+        await RisingEdge(dut.clk)
+    dut.ext_valid.value = 0
+    dut.ext_frag_hdr.value = 0
+    dut.ext_payload_b_valid.value = 0
+
+
+async def _collect_out_beats(dut, n_beats, window):
+    """Collect up to n_beats output pulses (payload/opcode/frag_hdr/tag)
+    within `window` cycles; also OR-accumulates the error/lower flags."""
+    beats, err, lwr = [], 0, 0
+    for i in range(window):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        err |= int(dut.any_error_flag.value)
+        lwr |= int(dut.any_lower_required.value)
+        if int(dut.ext_out_valid.value):
+            beats.append({'cycle': i,
+                          'payload': int(dut.ext_out_payload.value),
+                          'opcode': int(dut.ext_out_opcode.value),
+                          'frag_hdr': int(dut.ext_out_frag_hdr.value),
+                          'tag': int(dut.ext_out_tag.value)})
+            if len(beats) == n_beats:
+                break
+    return beats, err, lwr
+
+
+@cocotb.test()
+async def test_cluster_frag_reass_16(dut):
+    """v1.8.0e §25.3 mask-fix pin (mandatory repair 2): fragment
+    reassembly completes at tot_m1 = 7, 14 AND 15. Pre-fix, the 4-bit
+    self-determined shift wrapped 15+1 to 0 (frag_mask_full = 0x0000),
+    so a 16-fragment wave NEVER completed — silent CAM-slot rot; the
+    widened 5-bit shift yields 0xFFFF. Consumer is a plain ADD .imm16
+    (instruction replicated per beat; the completing beat's payload is
+    the one dispatched), and intermediate beats must produce NO
+    output/error."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    instr = encode_instr(0x10, eh_port(input_port_mask=0x01,
+                                       output_port_id=0), eh_imm16(5))
+    for wave_no, tot_m1 in ((1, 7), (2, 14), (3, 15)):
+        tag = make_tag(wave_number=wave_no, port_context_id=0)
+        payloads = [0x1000 * (i + 1) for i in range(tot_m1 + 1)]
+        await _fire_frag_wave(dut, instr, tag, payloads)
+        beats, err, lwr = await _collect_out_beats(dut, 1, 40)
+        assert err == 0 and lwr == 0, \
+            f"tot_m1={tot_m1}: err={err} lwr={lwr}"
+        assert len(beats) == 1, \
+            f"tot_m1={tot_m1}: wave never completed (the pre-fix " \
+            f"tot_m1=15 silent-rot signature) — beats={beats}"
+        exp = payloads[0] + 5
+        assert beats[0]['payload'] == exp, \
+            f"tot_m1={tot_m1}: {beats[0]['payload']:#x} != {exp:#x}"
+
+
+@cocotb.test()
+async def test_fp_mu_routing_end_to_end_0e(dut):
+    """v1.8.0e §25.3 twin-classifier reachability (the 0e1 lockstep
+    edit): 0x6B GAMMA_MUL_W, 0x79 FMINMAX and 0x78 DEQUANT each route
+    to the MATMUL_UNIT via is_mul_op and EXECUTE end-to-end through the
+    Cluster, bit-exact vs the golden fragment wrappers — a missed twin
+    side shows up as a lower_required dead-end or a silent timeout,
+    never a wrong-value pass. The FMINMAX cells cross frozen rows 1/2/6
+    (-0 vs +0, NaN loses, denormal B bit-preserved DAZ-exempt)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+    from test_isa_decoder import eh_precision as _ehp, eh_imm64 as _ehi64
+
+    # ---- 0x6B GAMMA_MUL_W: single-beat, gamma via IMM64, 2 frags out
+    x_lanes = [((i * 7) + 3) & 0xF for i in range(16)]
+    g_lanes = [((-i) & 0xF) for i in range(16)]
+    a_frag = sum(v << (4 * i) for i, v in enumerate(x_lanes))
+    g_imm = sum(v << (4 * i) for i, v in enumerate(g_lanes))
+    instr = encode_instr(0x6B,
+                         eh_port(input_port_mask=0x01, output_port_id=0),
+                         _ehp(0x10, 0), _ehi64(g_imm),
+                         flags=(1 << 2))
+    dut.ext_instruction.value = instr
+    dut.ext_tag.value = _tag(port_context_id=0)
+    dut.ext_payload.value = a_frag
+    dut.ext_payload_b.value = 0
+    dut.ext_payload_b_valid.value = 0
+    dut.ext_frag_hdr.value = 0
+    dut.ext_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.ext_valid.value = 0
+    beats, err, lwr = await _collect_out_beats(dut, 2, 40)
+    exp = _G.gamma_mul_w_frags(a_frag, g_imm)
+    assert (err, lwr) == (0, 0), f"0x6B: err={err} lwr={lwr}"
+    assert [b['payload'] for b in beats] == exp, \
+        f"0x6B: {[hex(b['payload']) for b in beats]} != " \
+        f"{[hex(x) for x in exp]}"
+    assert [b['frag_hdr'] for b in beats] == [0x01, 0x11]
+    assert all(b['opcode'] == 0x6B for b in beats)
+
+    # ---- 0x79 FMINMAX: 2-frag A wave, broadcast B on the completing
+    # beat, sub-op MINIMUMNUM (absent imm16 default), 2 frags out
+    lanes = [0x80000000, 0x00000000, 0x00000001, 0x7FC00000]
+    b_bits = 0x00000001            # +denormal B — row-6 DAZ-exempt probe
+    a_frags = _G.lanes_to_frags(lanes, 32)
+    instr = encode_instr(0x79,
+                         eh_port(input_port_mask=0x01, output_port_id=0),
+                         _ehp(0x14, 0),
+                         flags=(1 << 3) | (1 << 2))   # opb | prec
+    tag = make_tag(wave_number=7, port_context_id=0)
+    await _fire_frag_wave(dut, instr, tag, a_frags,
+                          payload_b=b_bits, b_valid_last=1)
+    beats, err, lwr = await _collect_out_beats(dut, 2, 40)
+    exp = _G.fminmax_frags(a_frags, b_bits,
+                           _G.FMINMAX_OP_CODE['MINIMUMNUM'])
+    assert (err, lwr) == (0, 0), f"0x79: err={err} lwr={lwr}"
+    assert [b['payload'] for b in beats] == exp, \
+        f"0x79: {[hex(b['payload']) for b in beats]} != " \
+        f"{[hex(x) for x in exp]}"
+    assert [b['frag_hdr'] for b in beats] == [0x01, 0x11]
+    assert all(b['opcode'] == 0x79 for b in beats)
+
+    # ---- 0x78 DEQUANT int8-16: 2-frag A wave, fp32 scale on the
+    # completing beat (the pinned scale-beat contract), 4 frags out
+    lanes8 = [((i * 29) ^ 0xA5) & 0xFF for i in range(16)]
+    a_frags = _G.lanes_to_frags(lanes8, 8)
+    scale = _f2b(1.25)
+    instr = encode_instr(0x78,
+                         eh_port(input_port_mask=0x01, output_port_id=0),
+                         _ehp(0x11, 0),
+                         flags=(1 << 2))
+    tag = make_tag(wave_number=9, port_context_id=0)
+    await _fire_frag_wave(dut, instr, tag, a_frags,
+                          payload_b=scale, b_valid_last=1)
+    beats, err, lwr = await _collect_out_beats(dut, 4, 340)
+    exp = _G.dequant_frags(a_frags, scale, _G.DT_INT8)
+    assert (err, lwr) == (0, 0), f"0x78: err={err} lwr={lwr}"
+    assert len(beats) == 4, f"0x78: {len(beats)} fragments != 4"
+    assert [b['payload'] for b in beats] == exp, \
+        f"0x78: {[hex(b['payload']) for b in beats]} != " \
+        f"{[hex(x) for x in exp]}"
+    assert [b['frag_hdr'] for b in beats] == [0x03, 0x13, 0x23, 0x33]
+    assert all(b['opcode'] == 0x78 for b in beats)
+    # drain contiguity survives the Cluster output merge (1 beat/cycle)
+    cyc = [b['cycle'] for b in beats]
+    assert cyc == list(range(cyc[0], cyc[0] + 4)), \
+        f"0x78 drain not contiguous through the merge: {cyc}"
+
+
+@cocotb.test()
+async def test_dequant_cluster_int4_8frag_drain(dut):
+    """v1.8.0e §25.3 widened-drain invariants through the FULL Cluster:
+    the int4-32 DEQUANT form emits 8 fragments with the 4-bit header
+    nibbles 0x07..0x77 in order, 1 beat/cycle through the output merge,
+    bit-exact vs golden; tag constant across the wave; and a subsequent
+    2-fragment wide op is bit-identical (no FSM residue downstream of
+    an 8-beat drain)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+    from test_isa_decoder import eh_precision as _ehp
+
+    lanes4 = [((i * 5) + 1) & 0xF for i in range(32)]
+    a_frags = _G.lanes_to_frags(lanes4, 4)
+    scale = _f2b(-0.5)
+    instr = encode_instr(0x78,
+                         eh_port(input_port_mask=0x01, output_port_id=0),
+                         _ehp(0x10, 0),
+                         flags=(1 << 2))
+    tag = make_tag(wave_number=11, port_context_id=0)
+    await _fire_frag_wave(dut, instr, tag, a_frags,
+                          payload_b=scale, b_valid_last=1)
+    beats, err, lwr = await _collect_out_beats(dut, 8, 400)
+    exp = _G.dequant_frags(a_frags, scale, _G.DT_INT4)
+    assert (err, lwr) == (0, 0), f"err={err} lwr={lwr}"
+    assert len(beats) == 8, f"{len(beats)} fragments != 8"
+    assert [b['payload'] for b in beats] == exp, \
+        f"{[hex(b['payload']) for b in beats]} != {[hex(x) for x in exp]}"
+    assert [b['frag_hdr'] for b in beats] == \
+        [(i << 4) | 0x7 for i in range(8)]
+    assert len({b['tag'] for b in beats}) == 1
+    cyc = [b['cycle'] for b in beats]
+    assert cyc == list(range(cyc[0], cyc[0] + 8)), f"drain gap: {cyc}"
+
+    # no-residue: an existing 2-fragment emitter right after
+    lo, hi = 0x0123456789ABCDEF, 0xFEDCBA9876543210
+    consumer = encode_instr(0x60, eh_port(input_port_mask=0x01,
+                                          output_port_id=0), eh_imm16(2))
+    tag2 = make_tag(wave_number=12, port_context_id=0)
+    await _complete_wide_wave(dut, tag2, lo, hi, consumer)
+    beats2, err, lwr = await _collect_out_beats(dut, 2, 30)
+    exp_lo = sum(((((lo >> (4 * i)) & 0xF) + 2) & 0xF) << (4 * i)
+                 for i in range(16))
+    exp_hi = sum(((((hi >> (4 * i)) & 0xF) + 2) & 0xF) << (4 * i)
+                 for i in range(16))
+    assert (err, lwr) == (0, 0)
+    assert [(b['payload'], b['frag_hdr']) for b in beats2] == \
+        [(exp_lo, 0x01), (exp_hi, 0x11)], \
+        "2-frag emitter corrupted after the 8-beat drain"

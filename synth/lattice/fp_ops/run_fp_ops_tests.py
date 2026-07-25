@@ -43,6 +43,13 @@ TESTS = {
                     REPO / "FP_AddWide.v"],
         "test_module": "tb_fp_stepseq",
     },
+    # v1.8.0e 0e1 — the 0x79/0x6B combinational MU-arm datapaths (the
+    # single-source include/fp_comb_arms.vh functions, unit-proven here
+    # exactly as PE_Core dispatches them; spec §25.2.1/§25.2.3).
+    "FP_CombArms": {
+        "sources": [FP_OPS / "FP_CombArms.v"],
+        "test_module": "tb_fp_combarms",
+    },
 }
 
 

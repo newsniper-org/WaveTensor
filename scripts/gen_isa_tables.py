@@ -76,7 +76,7 @@ class SchemaError(Exception):
 _TOP_KEYS = {"_doc", "_schema_version", "eh_codes", "eh_name_to_code",
              "flag_bits", "all_data_ehs", "hl_only_mnemonics",
              "reduce_op_codes", "acc_reduce_op_codes", "fscalar_op_codes",
-             "cvt_op_codes", "opcodes", "fp_block",
+             "cvt_op_codes", "fminmax_op_codes", "opcodes", "fp_block",
              "einsum_signatures", "eh_body_layouts", "dim_literals"}
 _OPCODE_KEYS = {"mnemonic", "code", "desc", "notes", "asm_legality",
                 "rtl_legality", "rtl_alu_binary", "stub_v18"}
@@ -122,7 +122,7 @@ def validate(src):
             if bad:
                 raise SchemaError(f"{where}.asm_legality.{k}: unknown EH {sorted(bad)}")
 
-    for tbl in ("fscalar_op_codes", "cvt_op_codes"):
+    for tbl in ("fscalar_op_codes", "cvt_op_codes", "fminmax_op_codes"):
         sub = src[tbl]
         if len(set(sub.values())) != len(sub):
             raise SchemaError(f"{tbl}: duplicate sub-op code")
@@ -284,6 +284,16 @@ def emit_pytables(src, src_sha):
         L.append(f"    {name!r}: {code},")
     L.append("}")
     L.append("")
+    L.append("# v1.8.0e — 0x79 FMINMAX sub-op nibble (imm16[7:4]), spec section")
+    L.append("# 25.2.1. Absent imm16 = MINIMUMNUM; imm16[3:0]/[15:8] reserved-zero")
+    L.append("# and sub-op > MAXIMUMNUM -> lower_required. Asserted against the")
+    L.append("# golden pinned transcription in scripts/golden_fp32.py (the")
+    L.append("# COMMIT-1 freshness clause).")
+    L.append("FMINMAX_OP_CODE = {")
+    for name, code in src["fminmax_op_codes"].items():
+        L.append(f"    {name!r}: {code},")
+    L.append("}")
+    L.append("")
     L.append("ALL_DATA_EHS = " + _set_literal(src["all_data_ehs"]))
     L.append("")
     L.append("# int keys, mutable-set values — exact schema of the historical")
@@ -367,6 +377,11 @@ def emit_subops(src, src_sha):
     lines.append("// absent imm16 = WIDEN_TO_F32).")
     for name, code in src["cvt_op_codes"].items():
         lines.append(f"    localparam [3:0] CVT_{name:<15} = 4'h{code:X};")
+    lines.append("// v1.8.0e — FMINMAX (0x79) sub-op nibble (imm16[7:4]), from the")
+    lines.append("// single-source fminmax_op_codes table (spec section 25.2.1;")
+    lines.append("// absent imm16 = MINIMUMNUM).")
+    for name, code in src["fminmax_op_codes"].items():
+        lines.append(f"    localparam [3:0] FMM_{name:<10} = 4'h{code:X};")
     return "\n".join(lines) + "\n"
 
 

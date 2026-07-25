@@ -66,6 +66,10 @@
     "WIDEN_TO_F32": 0,
     "NARROW_FROM_F32": 1
   },
+  "fminmax_op_codes": {
+    "MINIMUMNUM": 0,
+    "MAXIMUMNUM": 1
+  },
   "opcodes": [
     {
       "mnemonic": "NOP",
@@ -1793,6 +1797,38 @@
       "rtl_alu_binary": false
     },
     {
+      "mnemonic": "GAMMA_MUL_W",
+      "code": 107,
+      "desc": "GAMMA_MUL_W — MU-hosted exact widening per-lane int4 x int4 -> int8: A = 16 int4 lanes (64b single-fragment payload_a), gamma = 16 int4 lanes via IMM64 XOR OPREF; out[i] = sext8(a4[i]) * sext8(g4[i]) at bits [8i+7:8i] (lane order pinned spec+golden+SDK), 128b out = 2 fragments; gamma carries an implicit 2^-k folded into the DEQUANT broadcast scale as an exact exponent shift",
+      "notes": "v1.8.0e 0e1 IMPLEMENTED (spec section 25.2.3): pre-stable REALLOCATION of the retired 0x6B code point (section 12a rule 4 — reserved-return encoding reuse, slot reuse explicitly recorded here; the mandatory retired-0x6B stale-consumer grep ran at this commit: the 0x66/67/6B/6C removal regression pins and the frozen truth-table domain_version were resynced with it). Exists to repair the fatal broadcast-gamma refutation: s_c = s*gamma_c cannot implement the documented per-lane gamma contract, and 0x6B makes criterion 3 genuinely met end-to-end for RMSNORM. EXACT: int4 products lie in [-56, +64], inside int8 — rounding-free and saturation-free. Combinational 1-cycle MU arm inside the parameter-gated region (16 L-PEs synthesize nothing); multipliers built LUT-structural (shift-add, no DSP inference); 2-fragment emit via the widened frag FSM. alu-binary XOR satisfied by exactly one of {IMM*, OPREF} (both/neither = alu_binary_xor_err at EHDecode); asm canonical form is IMM64 (imm16/imm32 zero-extend through eff_b_value — upper gamma lanes 0, RTL-tolerated). MU routing rides the twin-classifier lockstep edit (Cluster.v is_mul_op + PE_Core.v dec_is_mul_op, spec section 25.3) landing with the 0e1 integration commit.",
+      "asm_legality": {
+        "required": [
+          "port"
+        ],
+        "forbidden": [
+          "mem",
+          "subscript"
+        ],
+        "allow_imm_xor_opref": true,
+        "require_opb_flag": false,
+        "require_imm16": false,
+        "require_precision_eh": true
+      },
+      "rtl_legality": {
+        "req_port": true,
+        "req_mem": false,
+        "req_subscript": false,
+        "req_opref": false,
+        "req_imm16": false,
+        "forbid_subscript": true,
+        "forbid_mem": true,
+        "forbid_imm_any": false,
+        "forbid_opref": false
+      },
+      "rtl_alu_binary": true,
+      "stub_v18": false
+    },
+    {
       "mnemonic": "VFMA_ACC",
       "code": 112,
       "desc": "int4/int8 lanes x broadcast B, int32 accumulate (v1.8 WIDE-ACC; fp dtypes are v2.0 loosening)",
@@ -2068,8 +2104,8 @@
     {
       "mnemonic": "DEQUANT",
       "code": 120,
-      "desc": "int4/int8 x fp32 scale -> bf16/f32; dtype names the SOURCE (conversion-dtype rule)",
-      "notes": "v1.8.0a COMMIT 2 stub: decode-legal, PE_Core raises lower_required (capability absence, not malformation). Mode-byte legality per the normative spec \u00a723.6a table \u2014 restrictive-first, later loosening only.",
+      "desc": "DEQUANT \u2014 int4/int8 lanes x fp32 broadcast scale -> bf16 (destination bf16-ONLY in 0e; dtype names the SOURCE per the conversion-dtype rule \u2014 no dest-dtype carrier exists and 0e adds none): int4 32-lane (128b, 2-frag A) -> 32 bf16 = 8 fragments; int8 16-lane -> 16 bf16 = 4 fragments; fp32 scale rides ext_payload_b on the wave-COMPLETING fragment beat; ROUND-ONCE RNE definition (a); MU-hosted",
+      "notes": "v1.8.0e 0e1 (spec section 25.2.2): stub_v18 dropped with the fused FP_StepSeq step program OPS_DEQ = 4'd9 (sequencer-side commit; the PE_Core lane-loop launch arm + deq_loop_active/fp_armed occupancy interlocks + loop-completion frag0_hold handoff land with the 0e1 integration commit). Port-only legality UNCHANGED (forbid_imm_any + forbid_opref stand \u2014 mandatory repair 4 closes the no-dest-dtype-carrier refutation by pinning dest bf16-ONLY; the 16-frag DEQUANT form is deleted by that pin). CLOSED-DEFERRED carriers (single future forbidden->optional imm16 loosening event, CVT precedent): slice-select = imm16[7:4], f32-dest = imm16[3:0] \u2014 this field map resolves the double-booking. Compute: exact I2F folded into an FS_MUL-shape tail through FP_Mul36 (|k| enters as an unnormalized significand; product <= 31 bits held exactly), then the bf16 ROUND-ONCE pack THROUGH the one shared narrow authority (RTO-24 intermediate -> include/fp_narrow_f32.vh; narrow(RTO24(v)) == RNE_bf16(v) for all v \u2014 pin-3 disjoint round/sticky, golden ref_dequant/micro_dequant twins). Specials pinned: scale denormal -> DAZ at operand load; scale NaN/Inf propagate through mul then narrow (k=0 vs Inf -> qNaN); k=0 or scale zero -> SIGNED zero, sign = sign(k) XOR sign(scale); product overflow -> +/-Inf never max-finite; product below bf16 min-normal -> FTZ signed zero at destination pack (proven vacuous for nonzero operands). Missing scale -> error_flag; launch-cycle capture of A(128b)+B(64b)+tag into MU-local regs (0x74 idiom). Measured OPS_DEQ start->done = 5 cycles/lane (spec estimate L=6-7, ceiling 8 \u2014 graduates estimate->measured at the C-gate TB). MU routing rides the twin-classifier lockstep edit (spec section 25.3) with the integration commit.",
       "asm_legality": {
         "required": [
           "port"
@@ -2099,22 +2135,25 @@
         "forbid_opref": true
       },
       "rtl_alu_binary": false,
-      "stub_v18": true
+      "stub_v18": false
     },
     {
       "mnemonic": "FMINMAX",
       "code": 121,
-      "desc": "vector IEEE minNum/maxNum \u2014 the signed-int compare tree is NEVER reused for FP; sub-op encoding v1.8.0b",
-      "notes": "v1.8.0a COMMIT 2 stub: decode-legal, PE_Core raises lower_required (capability absence, not malformation). Mode-byte legality per the normative spec \u00a723.6a table \u2014 restrictive-first, later loosening only.",
+      "desc": "FMINMAX \u2014 vector frozen IEEE-2019 minimumNumber/maximumNumber, f32-only: 4 f32 lanes (128b = 2-fragment wave) vs ONE broadcast B (F_HAS_OPB payload_b port ONLY); sub-op imm16[7:4] per fminmax_op_codes (absent imm16 = MINIMUMNUM); imm16[3:0]/[15:8] reserved-zero else lower_required; the signed-int compare tree is NEVER reused for FP \u2014 dedicated offset-key comparator; MU-hosted; 128b out = 2 fragments",
+      "notes": "v1.8.0e 0e1 IMPLEMENTED (spec section 25.2.1). LEGALITY RE-ROW recorded (mandatory repair 3): the original pin (imm16 sub-op + OPREF-B required together) was UNDECODABLE under EHDecode's alu-binary XOR invariant \u2014 an encoding requiring imm AND OPREF simultaneously dies as alu_binary_xor_err, so no legal encoding existed in that shape. Re-rowed as an 0x74 FSCALAR legality clone verbatim: rtl_alu_binary true->false, forbid_opref->true, imm16 optional as CONTROL only (sub-op imm16[7:4]: 0x0=minimumNumber, 0x1=maximumNumber; [3:0]/[15:8] reserved-zero -> lower_required); B arrives on the dec_input_payload_b port ONLY, keeping the EHDecode alu-binary XOR trap dormant (the recorded 0x74/0x77 maneuver); missing-B -> error_flag (0x74 idiom); OPREF-B is a recorded post-0e loosening. SEMANTICS (frozen IEEE-2019, six pinned rows, section 23.10.8 pins carried unmodified): (1) -0 < +0 natively; (2) one NaN -> the number, bit pattern unchanged; (3) both NaN -> canonical qNaN 0x7FC00000; (4) sNaN quieted to canonical; (5) offset-transform total order via the dedicated comparator key a[31] ? ~a : (a ^ 0x80000000), ONE unsigned 32b compare per lane; (6) denormal cells BIT-PATTERN-PRESERVING, DAZ-EXEMPT (golden ref_fminmax operates on raw bit patterns, never decode()). Combinational PE_Core arm inside the MUL_OPS_SUPPORTED-gated dispatch (einsum-arm pattern), zero FP_StepSeq contact; 2-fragment output via the widened frag FSM. MU routing rides the twin-classifier lockstep edit (spec section 25.3) landing with the 0e1 integration commit. This re-row forces the frozen truth-table differential recapture + domain_version bump recorded in the same commit (section 25.6 item 7; 0x70-0x7F is outside the truth-table domain, so the visible recapture delta is the 0x6B reallocation).",
       "asm_legality": {
         "required": [
           "port"
         ],
         "forbidden": [
+          "imm32",
+          "imm64",
           "mem",
+          "opref",
           "subscript"
         ],
-        "allow_imm_xor_opref": true,
+        "allow_imm_xor_opref": false,
         "require_opb_flag": false,
         "require_imm16": false,
         "require_precision_eh": true
@@ -2128,10 +2167,10 @@
         "forbid_subscript": true,
         "forbid_mem": true,
         "forbid_imm_any": false,
-        "forbid_opref": false
+        "forbid_opref": true
       },
-      "rtl_alu_binary": true,
-      "stub_v18": true
+      "rtl_alu_binary": false,
+      "stub_v18": false
     },
     {
       "mnemonic": "STORE_QUANT",

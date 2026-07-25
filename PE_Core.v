@@ -219,6 +219,12 @@ module PE_Core #(
     // 0x7C fp-dest == 0x77 NARROW_FROM_F32 for all 2^32 inputs incl. the
     // DAZ pre-stage). Module-body include, isa_subop_codes.vh convention.
     `include "fp_narrow_f32.vh"
+    // v1.8.0e §25.2.1/§25.2.3 — the 0x79 FMINMAX / 0x6B GAMMA_MUL_W
+    // combinational MU-arm datapaths. Single-source function include
+    // (fp_narrow_f32.vh convention): the SAME functions are instantiated
+    // by the standalone unit-test top synth/lattice/fp_ops/FP_CombArms.v,
+    // so the unit TB proves exactly the cells these arms dispatch.
+    `include "fp_comb_arms.vh"
     localparam [3:0] RED_OP_SUM = 4'h0;
     localparam [3:0] RED_OP_MAX = 4'h1;
     localparam [3:0] RED_OP_MIN = 4'h2;
@@ -1235,12 +1241,20 @@ module PE_Core #(
     // DELIBERATELY absent for ALL dtypes including the new fp-dest forms
     // (no multipliers — the shared narrow packer is combinational on the
     // L-PEs; §23.10.10(d) twin-classifier-untouched clause).
+    // v1.8.0e §25.3/§25.6 item 6 — 0x6B GAMMA_MUL_W / 0x78 DEQUANT /
+    // 0x79 FMINMAX join OPCODE-ONLY in lockstep with Cluster.v's
+    // is_mul_op (all three arms are MU-hosted; a one-sided edit is the
+    // silent permanent lower_required dead-end — pinned by the static
+    // lockstep test + test_fp_mu_routing_end_to_end_0e in this commit).
+    // 0x70 VFMA_ACC joins with its 0e2 arm, not before (staged).
     wire dec_is_mul_op = (dec_opcode == 8'h12) || (dec_opcode == 8'h30)
                       || (dec_opcode == 8'h32) || (dec_opcode == 8'h43)
+                      || (dec_opcode == 8'h6B)
                       || (dec_opcode == 8'h71) || (dec_opcode == 8'h72)
                       || (dec_opcode == 8'h73) || (dec_opcode == 8'h74)
                       || (dec_opcode == 8'h75) || (dec_opcode == 8'h76)
-                      || (dec_opcode == 8'h77);
+                      || (dec_opcode == 8'h77) || (dec_opcode == 8'h78)
+                      || (dec_opcode == 8'h79);
     wire dec_is_div_op = (dec_opcode == 8'h13)   // DIV
                       || (dec_opcode == 8'h1C)   // MOD
                       || (dec_opcode == 8'h1D);  // DIVMOD
@@ -1352,16 +1366,27 @@ module PE_Core #(
     // v1.7 §22.18 — widened from 1-bit {IDLE,EMIT_HI} to a 2-bit up-counter
     // {IDLE, EMIT_1, EMIT_2, EMIT_3} supporting up to 4 sequential fragment
     // emissions. Originally motivated by the retired 0x6B WIDEN 256-bit/
-    // 4-fragment output (removed pre-stable in the opcode cleanup); the
-    // widened FSM STAYS — reserved for the v1.8.0e wide package
-    // ({0x70, 0x78, 0x79} buffer-then-drain, §23.10.10(a)). frag_pending
-    // is a 3-slot array (fragments 1-3; fragment 0 emits immediately at
-    // dispatch). frag_total_m1_held records how many fragments THIS wave
-    // actually has (1 for every live 2-fragment emitter; >1 is currently
-    // writer-dead, reserved for v1.8.0e), so the drain loop knows when to
-    // stop. frag_tag_held/frag_opcode_held are UNCHANGED (tag/opcode are
-    // constant across all fragments of one wave — confirmed no widening
-    // needed, workflow wgcq5jc68 investigator 0).
+    // 4-fragment output (removed pre-stable in the opcode cleanup).
+    //
+    // v1.8.0e §25.3 — EMIT-SIDE 2 -> 4-bit widening (0e1 groundwork,
+    // edit list (a)-(g)): frag_idx/frag_total_m1_held are now [3:0]
+    // (the FSM stays a plain up-counter, FRAG_IDLE = 4'd0) and
+    // frag_pending is [0:15] (+768 FF), so up to 16 sequential fragment
+    // emissions drain 1/cycle (the 0x78 DEQUANT 8-frag and 0e2 0x70
+    // VFMA 16-frag consumers; Cluster CAM storage is already 16-deep —
+    // receive parsing unchanged). The drain read frag_pending[frag_idx]
+    // is a genuine 16:1 x 64b reg-array mux (NOT the Gate-3
+    // constant-array pathology). Row 0 REMAINS the reset-only dummy:
+    // frag_idx == 0 aliases fragment 0, which is ALWAYS emitted
+    // directly at the arm cycle and never drained (loop-form ops emit
+    // fragment 0 from a dedicated frag0_hold at LOOP COMPLETION — the
+    // §25.3 invariant; that writer lands with the 0e1 integration
+    // commit). frag_total_m1_held records how many fragments THIS wave
+    // actually has (1 for every live 2-fragment emitter incl. the new
+    // 0x79/0x6B comb arms; >3 becomes writer-live with the DEQUANT
+    // loop). frag_tag_held/frag_opcode_held are UNCHANGED (tag/opcode
+    // are constant across all fragments of one wave — confirmed no
+    // widening needed, workflow wgcq5jc68 investigator 0).
     //
     // MANDATORY INVARIANT (CI-enforced, scripts/lint_frag_total_m1_held.py):
     // every dispatch site that writes `frag_idx <= FRAG_EMIT_1` (entering
@@ -1376,34 +1401,78 @@ module PE_Core #(
     // source is in flight (MUL p1/p2, DIV any-state, DIV b_zero pulse).
     // This closes the MUL/DIV drain hazard the verify:fsm agent flagged.
     // pe_ready's worst-case deassertion window is 1 cycle for the live
-    // 2-fragment emitters (up to 3 cycles again once a v1.8.0e 4-fragment
-    // emitter lands — an accepted throughput tradeoff, not a correctness
-    // hazard).
+    // 2-fragment emitters; a 16-fragment result drains rows 1..15 at
+    // 1/cycle after the arm-cycle fragment 0, so the worst deassertion
+    // window becomes ~15 cycles (v1.8.0e §25.3 amendment — an accepted
+    // throughput tradeoff, not a correctness hazard).
     // -------------------------------------------------------------------------
-    localparam [1:0]      FRAG_IDLE    = 2'b00;
-    localparam [1:0]      FRAG_EMIT_1  = 2'b01;
-    localparam [1:0]      FRAG_EMIT_2  = 2'b10;
-    localparam [1:0]      FRAG_EMIT_3  = 2'b11;
+    localparam [3:0]      FRAG_IDLE    = 4'd0;
+    localparam [3:0]      FRAG_EMIT_1  = 4'd1;
+    localparam [3:0]      FRAG_EMIT_2  = 4'd2;
+    localparam [3:0]      FRAG_EMIT_3  = 4'd3;
 
-    reg [1:0]             frag_idx;
-    reg [1:0]             frag_total_m1_held;
+    reg [3:0]             frag_idx;
+    reg [3:0]             frag_total_m1_held;
     // Index 0 exists only so the dynamic read frag_pending[frag_idx]
     // never references an undeclared row (frag_idx==FRAG_IDLE==0 is
     // gated out of the drain path, but the read MUX still sees the
     // index) — kept reset-driven, never written by any dispatch.
-    reg [ADDR_WIDTH-1:0]  frag_pending [0:3];
+    reg [ADDR_WIDTH-1:0]  frag_pending [0:15];
     reg [TAG_WIDTH-1:0]  frag_tag_held;
     reg [7:0]            frag_opcode_held;
+
+    // -------------------------------------------------------------------------
+    // v1.8.0e §25.2.2/§25.3 — 0x78 DEQUANT lane-loop state (0e1
+    // integration). Declared UNCONDITIONALLY (the fp-reg pattern):
+    // output_regs_free below references deq_loop_active in every PE_Core
+    // flavor; all writers sit behind MUL_OPS_SUPPORTED (constant-folded
+    // away on L-PEs / DIV-UNIT).
+    //
+    // Loop shape (one FP_StepSeq OPS_DEQ launch per lane, strictly
+    // serial): the 0x78 arm captures A(128b)+scale+tag into MU-local
+    // regs at launch (0x74 idiom — EHDecode is cluster-shared) and
+    // fires lane 0. Each per-lane fp_done is DIVERTED from the fp
+    // output arm (fp_armed stays LOW for the whole loop — no spurious
+    // per-lane emits, the confirmed 1701/1768-class hazard) into the
+    // lane-loop advance block: the bf16 result packs into a 64-bit
+    // staging word (4 bf16 lanes/word — the §25.3 packing pin), word 0
+    // goes to the dedicated frag0_hold (row-0-dummy invariant
+    // preserved), words >= 1 go to frag_pending[word] — THE
+    // accumulation buffer IS the widened frag_pending, no second
+    // structure. The registered relaunch (fp_start <= 1 at the done
+    // edge) lands in FP_StepSeq's first idle cycle, so fp_busy holds
+    // output_regs_free low continuously across lane turnarounds;
+    // deq_loop_active additionally covers the pack/arm window
+    // (belt-and-braces per the spec pin). Fragment 0 emits at LOOP
+    // COMPLETION, not dispatch (§25.6 item 8 invariant) — the atomic
+    // frag0_hold handoff block after the dispatch chain below.
+    // -------------------------------------------------------------------------
+    reg               deq_loop_active;   // launch .. final-lane done cycle
+    reg [4:0]         deq_lane;          // lane in flight (0..N-1)
+    reg               deq_is_int8;       // form: 0 = int4-32, 1 = int8-16
+    reg [47:0]        deq_stage;         // lanes 4w+0..4w+2 of the open word
+    reg [127:0]       deq_a_q;           // launch-captured A (128b wide)
+    reg [63:0]        frag0_hold;        // fragment 0 word (§25.3 pin)
+    wire [3:0]        deq_total_m1  = deq_is_int8 ? 4'd3  : 4'd7;
+    wire [4:0]        deq_lane_last = deq_is_int8 ? 5'd15 : 5'd31;
+    wire [4:0]        deq_lane_nxt  = deq_lane + 5'd1;
+    // Next-lane operand extract (32:1x4b / 16:1x8b mux — priced in the
+    // §25.5.1 OPS_DEQ itemization; a reg read, NOT a ROM part-select).
+    // Assigned inside the MU-gated generate below (wres_vdot32 idiom).
+    wire [31:0]       deq_fp_a_nxt;
 
     // v1.8.0c §23.10 — widened to the 8-term compound of the spec: the fp
     // step sequencer holds the output stage from launch (fp_busy rises
     // WITH the registered start pulse — no gap cycle, see the fp state
     // declaration comment) through the fp_valid_p2 result strobe.
     // pe_ready follows automatically (same wire, assigned at the bottom).
+    // v1.8.0e §25.3 — + the deq_loop_active occupancy term (the DEQUANT
+    // lane loop's pack/arm window; fp_busy already covers every lane
+    // flight and turnaround cycle, the extra term is the pinned cover).
     wire output_regs_free = (frag_idx == FRAG_IDLE)
         && !mul_valid_p1 && !mul_valid_p2
         && (div_state == DIV_IDLE) && !div_valid_p2 && !div_b_zero_p2
-        && !fp_busy && !fp_valid_p2;
+        && !fp_busy && !fp_valid_p2 && !deq_loop_active;
 
     // -------------------------------------------------------------------------
     // v1.8 §23.8 synth-gate fix (2026-07-16) — yosys (Verilog-2005) does not
@@ -1496,6 +1565,47 @@ module PE_Core #(
         assign fp_result_w = 32'h0;
     end endgenerate
 
+    // v1.8.0e §25.2.1/§25.2.3 — 0x79 FMINMAX + 0x6B GAMMA_MUL_W hoisted
+    // combinational results (einsum-arm pattern: functions -> wres_
+    // wires sliced at the dispatch site, §23.8 — never index a function
+    // call). MU-GATED generate (wres_vdot32 idiom): the compare cells
+    // and the LUT-structural gamma shift-adds synthesize ONLY where
+    // MUL_OPS_SUPPORTED, so the 16 L-PEs + DIV-UNIT pay zero area
+    // (§25.2.3 MU-hosting pin; L-PE zero-growth is a unit-gate proof).
+    // FMINMAX: lane i of A at wide[32i+31:32i] vs the ONE broadcast B in
+    // payload_b[31:0] (the 0x74 low-word convention, cloned); sub-op
+    // imm16[7:4] via the generated FMM_* localparams (absent imm16 = 0 =
+    // minimumNumber). GAMMA: A = 16 int4 lanes in payload_a[63:0], gamma
+    // = eff_b_value (IMM64 XOR OPREF, alu-binary XOR enforced at
+    // EHDecode); both emit 128b = 2 fragments through the widened FSM.
+    wire [127:0] wres_fminmax;
+    wire [127:0] wres_gamma_w;
+    generate if (MUL_OPS_SUPPORTED) begin : g_v180e_comb
+        wire fmm_is_max = (dec_eff_imm16[7:4] == FMM_MAXIMUMNUM);
+        assign wres_fminmax = {
+            fminmax_lane_f32(dec_input_payload_wide[127:96],
+                             dec_input_payload_b[31:0], fmm_is_max),
+            fminmax_lane_f32(dec_input_payload_wide[95:64],
+                             dec_input_payload_b[31:0], fmm_is_max),
+            fminmax_lane_f32(dec_input_payload_wide[63:32],
+                             dec_input_payload_b[31:0], fmm_is_max),
+            fminmax_lane_f32(dec_input_payload_wide[31:0],
+                             dec_input_payload_b[31:0], fmm_is_max)};
+        assign wres_gamma_w = gamma_mul_w_128(dec_input_payload[63:0],
+                                              dec_eff_b_value);
+        // v1.8.0e §25.2.2 — DEQUANT next-lane operand extract from the
+        // launch-captured A: int4 lane at [4i+3:4i], int8 lane at
+        // [8i+7:8i] (the golden dequant_frags lane-map pin); upper a_in
+        // bits are ignored by FP_StepSeq's OPS_DEQ field select.
+        assign deq_fp_a_nxt = deq_is_int8
+            ? {24'h0, deq_a_q[{deq_lane_nxt[3:0], 3'b000} +: 8]}
+            : {28'h0, deq_a_q[{deq_lane_nxt, 2'b00} +: 4]};
+    end else begin : g_v180e_comb_off
+        assign wres_fminmax = 128'h0;
+        assign wres_gamma_w = 128'h0;
+        assign deq_fp_a_nxt = 32'h0;
+    end endgenerate
+
     // v1.8.0d §23.10.10(b) — CVT F2I results are int32-patterned and the
     // result payload row is SEXT64 (ints sext64; everything else keeps the
     // {32'h0, low32} zero-extend: f32 rows and the {48'h0, h} f16/bf16
@@ -1555,12 +1665,33 @@ module PE_Core #(
             fp_start       <= 1'b0;
             fp_armed       <= 1'b0;
             fp_valid_p2    <= 1'b0;
+            // v1.8.0e §25.3 — a mid-loop rst abandons the DEQUANT lane
+            // loop: the in-flight lane self-completes inside FP_StepSeq
+            // and its done pulse is ignored (deq_loop_active cleared,
+            // fp_armed already low) — the fp_armed mid-op-rst contract
+            // extended to the loop. Data regs (deq_a_q/deq_stage/
+            // frag0_hold) are reset-free like the fp operand regs.
+            deq_loop_active <= 1'b0;
             frag_idx            <= FRAG_IDLE;
-            frag_total_m1_held  <= 2'b00;
+            frag_total_m1_held  <= 4'd0;
+            // v1.8.0e §25.3 (c): all 16 rows reset-written (row 0 is the
+            // reset-only dummy — see the frag FSM declaration block).
             frag_pending[0]     <= {ADDR_WIDTH{1'b0}};
             frag_pending[1]     <= {ADDR_WIDTH{1'b0}};
             frag_pending[2]     <= {ADDR_WIDTH{1'b0}};
             frag_pending[3]     <= {ADDR_WIDTH{1'b0}};
+            frag_pending[4]     <= {ADDR_WIDTH{1'b0}};
+            frag_pending[5]     <= {ADDR_WIDTH{1'b0}};
+            frag_pending[6]     <= {ADDR_WIDTH{1'b0}};
+            frag_pending[7]     <= {ADDR_WIDTH{1'b0}};
+            frag_pending[8]     <= {ADDR_WIDTH{1'b0}};
+            frag_pending[9]     <= {ADDR_WIDTH{1'b0}};
+            frag_pending[10]    <= {ADDR_WIDTH{1'b0}};
+            frag_pending[11]    <= {ADDR_WIDTH{1'b0}};
+            frag_pending[12]    <= {ADDR_WIDTH{1'b0}};
+            frag_pending[13]    <= {ADDR_WIDTH{1'b0}};
+            frag_pending[14]    <= {ADDR_WIDTH{1'b0}};
+            frag_pending[15]    <= {ADDR_WIDTH{1'b0}};
             frag_tag_held    <= {TAG_WIDTH{1'b0}};
             frag_opcode_held <= 8'h00;
         end else begin
@@ -1709,6 +1840,40 @@ module PE_Core #(
                                   : {32'h0, fp_result_w};
                     fp_tag_p2    <= fp_tag_held;
                 end
+                // v1.8.0e §25.3 — DEQUANT lane-loop advance. fp_armed is
+                // LOW for the whole loop, so per-lane done pulses land
+                // HERE and never in the fp output arm (fp_valid_p2 stays
+                // 0 — no spurious per-lane emits). Pack the completed
+                // lane's bf16 (fp_result_w[15:0], the {16'h0, h} low-32
+                // row) into the staging word; on each word's 4th lane
+                // commit the assembled 64 bits (word 0 -> frag0_hold,
+                // words >= 1 -> frag_pending[word] — the accumulation
+                // buffer IS frag_pending). Non-final lanes relaunch with
+                // a REGISTERED fp_start that lands in FP_StepSeq's first
+                // idle cycle (no fp_busy gap — verified); the final
+                // lane's completion cycle clears deq_loop_active and the
+                // atomic handoff block below emits fragment 0.
+                if (fp_done && deq_loop_active) begin
+                    case (deq_lane[1:0])
+                        2'd0: deq_stage[15:0]  <= fp_result_w[15:0];
+                        2'd1: deq_stage[31:16] <= fp_result_w[15:0];
+                        2'd2: deq_stage[47:32] <= fp_result_w[15:0];
+                        2'd3: begin
+                            if (deq_lane[4:2] == 3'd0)
+                                frag0_hold <= {fp_result_w[15:0], deq_stage};
+                            else
+                                frag_pending[{1'b0, deq_lane[4:2]}]
+                                    <= {fp_result_w[15:0], deq_stage};
+                        end
+                    endcase
+                    if (deq_lane == deq_lane_last) begin
+                        deq_loop_active <= 1'b0;   // handoff cycle
+                    end else begin
+                        deq_lane <= deq_lane_nxt;
+                        fp_start <= 1'b1;          // registered relaunch
+                        fp_a_q   <= deq_fp_a_nxt;
+                    end
+                end
             end else begin
                 fp_start    <= 1'b0;
                 fp_valid_p2 <= 1'b0;
@@ -1726,21 +1891,23 @@ module PE_Core #(
             //
             // frag_idx counts UP from FRAG_EMIT_1 and returns to FRAG_IDLE
             // once it reaches frag_total_m1_held (1 for every live
-            // 2-fragment emitter's single drain beat; the 4-fragment
-            // total_m1=3 path is writer-dead since the 0x6B WIDEN removal,
-            // reserved for v1.8.0e). output_frag_hdr = {idx, total_m1}
-            // zero-extended to nibbles, reproducing today's exact 8'h11
-            // header for 2-fragment waves (idx=1,total_m1=1).
+            // 2-fragment emitter's single drain beat; up to 15 once the
+            // v1.8.0e loop-form emitters populate rows 2..15).
+            // v1.8.0e §25.3 (e): output_frag_hdr = {frag_idx,
+            // frag_total_m1_held} — both nibbles now carry the full
+            // 4-bit fields (the nibble positions were already reserved;
+            // bit-identical to the old zero-padded pack for every
+            // existing 2-fragment wave, e.g. 8'h11 at idx=1/total_m1=1).
             if (frag_idx != FRAG_IDLE) begin
                 output_payload  <= frag_pending[frag_idx];
                 output_tag      <= frag_tag_held;
                 opcode_out      <= frag_opcode_held;
-                output_frag_hdr <= {2'b00, frag_idx, 2'b00, frag_total_m1_held};
+                output_frag_hdr <= {frag_idx, frag_total_m1_held};
                 output_valid    <= 1'b1;
                 if (frag_idx == frag_total_m1_held)
                     frag_idx <= FRAG_IDLE;
                 else
-                    frag_idx <= frag_idx + 2'b01;
+                    frag_idx <= frag_idx + 4'd1;
             end
             // Output priority: MUL > DIV pipeline > case dispatch.
             else if (MUL_OPS_SUPPORTED && mul_valid_p2) begin
@@ -2063,7 +2230,7 @@ module PE_Core #(
                                             dec_input_payload_wide[255:128]);
                                         frag_tag_held      <= dec_forwarded_tag;
                                         frag_opcode_held   <= dec_opcode;
-                                        frag_total_m1_held <= 2'd1;
+                                        frag_total_m1_held <= 4'd1;
                                         frag_idx           <= FRAG_EMIT_1;
                                     end
                                 end else if ((dec_eff_subscript == SIG_SCALAR_FAMILY_LO)
@@ -2402,7 +2569,7 @@ module PE_Core #(
                                 opcode_out         <= dec_opcode;
                                 frag_tag_held      <= dec_forwarded_tag;
                                 frag_opcode_held   <= dec_opcode;
-                                frag_total_m1_held <= 2'd1;
+                                frag_total_m1_held <= 4'd1;
                                 frag_idx           <= FRAG_EMIT_1;
                             end
                         end
@@ -2435,17 +2602,57 @@ module PE_Core #(
                                 output_valid <= 1'b1;
                             end
                         end
-                        // (8'h6B WIDEN 4-fragment arm removed pre-stable in
-                        // the opcode cleanup, along with its 8'h6C
-                        // REQUANTIZE companion — both now decode_error at
-                        // EHDecode. The 4-fragment drain machinery it drove
-                        // — frag_pending[2:3], FRAG_EMIT_2/3,
-                        // frag_total_m1_held>1 — STAYS, reserved for the
-                        // v1.8.0e wide package.)
+                        // (The old 8'h6B WIDEN 4-fragment arm — with its
+                        // 8'h6C REQUANTIZE companion — was removed
+                        // pre-stable in the opcode cleanup; 0x6C stays
+                        // decode_error at EHDecode.)
+                        // v1.8.0e §25.2.3 — 0x6B GAMMA_MUL_W: pre-stable
+                        // REALLOCATION of the retired code point (§12a
+                        // rule 4, slot reuse recorded in the isa JSON
+                        // notes + the domain_version-3 truth-table
+                        // recapture). MU-hosted exact widening per-lane
+                        // int4 x int4 -> int8: A = 16 int4 lanes in
+                        // payload_a (single-fragment op — NO wide_valid
+                        // guard, the STORE_QUANT precedent), gamma = 16
+                        // int4 lanes via IMM64 XOR OPREF (dec_eff_b_value
+                        // — the alu-binary XOR trap at EHDecode
+                        // guarantees exactly one source, so there is no
+                        // missing-B rung). EXACT (|p| <= 64 ⊂ int8):
+                        // rounding-free, saturation-free, combinational
+                        // 1-cycle (wres_gamma_w, LUT-structural
+                        // shift-adds — the §25.5.1 DSP-suppression
+                        // mechanism); 128b out = 2 fragments via the
+                        // widened frag FSM (the 0x60-69 emit epilogue
+                        // verbatim). Launch ladder: MU gate ->
+                        // busy-reject (lower_required, VDOT rung) ->
+                        // emit. Reachability rides the twin-classifier
+                        // lockstep edit (is_mul_op/dec_is_mul_op +=
+                        // {0x6B, 0x70, 0x78, 0x79}, §25.3) landing with
+                        // the 0e1 integration commit.
+                        8'h6B: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                lower_required <= 1'b1; output_valid <= 1'b0;
+                            end else if (!output_regs_free) begin
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end else begin
+                                output_payload     <= wres_gamma_w[63:0];
+                                output_valid       <= 1'b1;
+                                output_frag_hdr    <= 8'h01;  // idx=0 total_m1=1
+                                opcode_out         <= dec_opcode;
+                                frag_pending[1]    <= wres_gamma_w[127:64];
+                                frag_tag_held      <= dec_forwarded_tag;
+                                frag_opcode_held   <= dec_opcode;
+                                frag_total_m1_held <= 4'd1;
+                                frag_idx           <= FRAG_EMIT_1;
+                            end
+                        end
                         // v1.8.0a/0b §23.9 — remaining WIDE-ACC block STUBS
                         // (0x71/0x72/0x7C graduated to real datapaths in
                         // v1.8.0b, 0x74/0x75/0x76 in v1.8.0c, 0x73/0x77 in
-                        // v1.8.0d — see their standalone arms below). Decode-legal (opcode_supported + EH shape +
+                        // v1.8.0d, 0x79 in v1.8.0e 0e1 — see their
+                        // standalone arms below). Decode-legal
+                        // (opcode_supported + EH shape +
                         // mode-byte ROM all pass at EHDecode) but not yet
                         // implemented — capability absence, so this arm is
                         // exactly the shipped BCAST 0x24 body: lower_required,
@@ -2457,12 +2664,13 @@ module PE_Core #(
                         // lower_required). Membership is pinned by the
                         // all-ops live-extraction test — adding an op to
                         // isa/wt64v1_isa.json without listing it here falls
-                        // to the default arm and fails that test. The
-                        // remaining set {0x70, 0x78, 0x79} is the v1.8.0e
-                        // wide package (frag-FSM widening + buffer-then-
-                        // drain, §23.10.10(a) deferral table); 0x7D/0x7E
-                        // stay unscheduled.
-                        8'h70, 8'h78, 8'h79, 8'h7D, 8'h7E: begin
+                        // to the default arm and fails that test.
+                        // v1.8.0e 0e1 INTEGRATION: 0x78 DEQUANT
+                        // graduated to its lane-loop launch arm below
+                        // (the sequencer-side OPS_DEQ program landed one
+                        // commit earlier). 0x70 VFMA_ACC is 0e2;
+                        // 0x7D/0x7E stay unscheduled.
+                        8'h70, 8'h7D, 8'h7E: begin
                             lower_required <= 1'b1; output_valid <= 1'b0;
                         end
                         // v1.8.0b §23.9 — VDOT_ACC: stateless 4-fragment
@@ -2726,6 +2934,120 @@ module PE_Core #(
                                 output_valid   <= 1'b0;
                             end
                         end
+                        // v1.8.0e §25.2.2 — 0x78 DEQUANT: int4/int8
+                        // lanes x the fp32 broadcast scale -> bf16
+                        // (dest bf16-ONLY in 0e; the mode dtype names
+                        // the SOURCE — int4-32 form emits 8 fragments,
+                        // int8-16 form emits 4). LAUNCH ARM ONLY: the
+                        // per-lane compute is the fused FP_StepSeq
+                        // OPS_DEQ program (one launch per lane, round-
+                        // once bf16 pack inside the sequencer); the
+                        // lane-loop advance lives in the fp strobe
+                        // block above and the loop-completion frag0
+                        // handoff in the atomic block below (§25.3).
+                        // Launch ladder (0x79 mirror): MU gate ->
+                        // missing-wide error (§20 wave contract — A is
+                        // a 2-fragment 128b wave for BOTH forms) ->
+                        // busy-reject (lower_required, VDOT rung) ->
+                        // missing-scale error_flag (the fp32 scale
+                        // rides ext_payload_b + valid on the wave-
+                        // COMPLETING fragment beat, 0x63-65 precedent;
+                        // beat placement is an SDK/NoC contract pin) ->
+                        // launch (register-load only: A(128b) + scale +
+                        // tag captured into MU-local regs — the 0x74
+                        // idiom, EHDecode is cluster-shared). fp_armed
+                        // deliberately NOT set: per-lane done pulses
+                        // are diverted from the fp output arm (§25.3
+                        // loop suppression). Legal source dtypes {int4,
+                        // int8} are ROM-enforced at EHDecode, so the
+                        // int8/int4 select below is total. Reachability
+                        // rides the twin-classifier lockstep edit.
+                        8'h78: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                lower_required <= 1'b1; output_valid <= 1'b0;
+                            end else if (!dec_input_payload_wide_valid) begin
+                                error_flag   <= 1'b1;
+                                output_valid <= 1'b0;
+                            end else if (!output_regs_free) begin
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end else if (!dec_input_payload_b_valid) begin
+                                error_flag   <= 1'b1;   // missing scale
+                                output_valid <= 1'b0;
+                            end else begin
+                                fp_start   <= 1'b1;     // lane 0 launch
+                                fp_a_q     <= (dec_eff_precision[3:0] == 4'h1)
+                                            ? {24'h0, dec_input_payload_wide[7:0]}
+                                            : {28'h0, dec_input_payload_wide[3:0]};
+                                fp_b_q     <= dec_input_payload_b[31:0];
+                                fp_c_q     <= 32'h0;
+                                fp_subop_q <= 4'h0;
+                                fp_dtype_q <= dec_eff_precision[3:0];
+                                fp_opcode_held <= dec_opcode;
+                                // loop-diverted: fp_armed stays 0
+                                deq_a_q         <= dec_input_payload_wide[127:0];
+                                deq_is_int8     <= (dec_eff_precision[3:0] == 4'h1);
+                                deq_lane        <= 5'd0;
+                                deq_loop_active <= 1'b1;
+                                // tag/opcode capture at launch is safe:
+                                // every frag-emitting dispatch is
+                                // busy-rejected while deq_loop_active
+                                // (output_regs_free covers the loop).
+                                frag_tag_held    <= dec_forwarded_tag;
+                                frag_opcode_held <= dec_opcode;
+                                output_valid   <= 1'b0;
+                            end
+                        end
+                        // v1.8.0e §25.2.1 — 0x79 FMINMAX: frozen
+                        // IEEE-2019 minimumNumber/maximumNumber, 4 f32
+                        // lanes (128b = 2-fragment wave in) vs the ONE
+                        // broadcast B on dec_input_payload_b (FSCALAR-
+                        // clone legality re-row: B port ONLY — the
+                        // alu-binary XOR trap stays dormant; OPREF-B is
+                        // a recorded post-0e loosening). Combinational
+                        // arm (wres_fminmax — the dedicated offset-key
+                        // comparator cells, one unsigned 32b compare per
+                        // lane, signed-int-tree reuse forbidden), zero
+                        // FP_StepSeq contact; 128b out = 2 fragments via
+                        // the widened frag FSM. Launch ladder (0x74
+                        // mirror + the wide-input guard): MU gate ->
+                        // missing-wide error (§20 wave contract) ->
+                        // busy-reject -> imm16[3:0]/[15:8] reserved-zero
+                        // and sub-op > MAXIMUMNUM -> lower_required ->
+                        // missing-B error_flag (0x74 idiom) -> emit.
+                        // Reachability rides the twin-classifier
+                        // lockstep edit (§25.3, 0e1 integration commit).
+                        8'h79: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                lower_required <= 1'b1; output_valid <= 1'b0;
+                            end else if (!dec_input_payload_wide_valid) begin
+                                error_flag   <= 1'b1;
+                                output_valid <= 1'b0;
+                            end else if (!output_regs_free) begin
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end else if (dec_eff_imm16[3:0] != 4'h0
+                                      || dec_eff_imm16[15:8] != 8'h0) begin
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end else if (dec_eff_imm16[7:4] > FMM_MAXIMUMNUM) begin
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end else if (!dec_input_payload_b_valid) begin
+                                error_flag   <= 1'b1;
+                                output_valid <= 1'b0;
+                            end else begin
+                                output_payload     <= wres_fminmax[63:0];
+                                output_valid       <= 1'b1;
+                                output_frag_hdr    <= 8'h01;  // idx=0 total_m1=1
+                                opcode_out         <= dec_opcode;
+                                frag_pending[1]    <= wres_fminmax[127:64];
+                                frag_tag_held      <= dec_forwarded_tag;
+                                frag_opcode_held   <= dec_opcode;
+                                frag_total_m1_held <= 4'd1;
+                                frag_idx           <= FRAG_EMIT_1;
+                            end
+                        end
                         // v1.8.0b §23.9 — STORE_QUANT: scalar int-dest
                         // requant, out = clamp_dtype(RNE(x >> s)),
                         // s = imm16[5:0] (absent = 0 = pure clamp).
@@ -2793,13 +3115,52 @@ module PE_Core #(
                     endcase
                 end
             end
+
+            // -----------------------------------------------------------------
+            // v1.8.0e §25.3 — DEQUANT loop-completion frag0_hold handoff
+            // (ATOMIC, pinned). On the FINAL lane's completion cycle —
+            // while deq_loop_active still holds output_regs_free low, so
+            // this cycle has NO dispatch-launch window — emit fragment 0
+            // from frag0_hold with hdr {4'd0, total_m1} and enter the
+            // drain by writing frag_idx <= FRAG_EMIT_1 (the SYMBOL — the
+            // lint enforces discoverability) + frag_total_m1_held in
+            // this same begin/end block (lint co-location). Rows 1..N-1
+            // then drain 1/cycle through the untouched priority
+            // override. Loop-form fragment 0 emits at LOOP COMPLETION,
+            // never at dispatch (§25.6 item 8 invariant; row 0 of
+            // frag_pending stays the reset-only dummy).
+            //
+            // Placed AFTER the dispatch chain DELIBERATELY (last-
+            // assignment-wins): a mul-class dispatch landing on this
+            // exact cycle still walks its busy-reject rung above
+            // (loudly lower_required — never launched, output_regs_free
+            // is low), and this block then reclaims the output regs for
+            // the fragment-0 beat. The drain override cannot be active
+            // this cycle (frag_idx is FRAG_IDLE throughout the loop)
+            // and no MUL/DIV/FP pulse can coincide (their launches are
+            // all busy-rejected during the loop; fp_valid_p2 never
+            // fires with fp_armed low).
+            // -----------------------------------------------------------------
+            if (MUL_OPS_SUPPORTED && fp_done && deq_loop_active
+                    && (deq_lane == deq_lane_last)) begin
+                output_payload  <= frag0_hold;
+                output_tag      <= frag_tag_held;
+                opcode_out      <= frag_opcode_held;
+                output_frag_hdr <= {4'd0, deq_total_m1};
+                output_valid    <= 1'b1;
+                frag_total_m1_held <= deq_total_m1;
+                frag_idx           <= FRAG_EMIT_1;
+            end
         end
     end
 
     // v1.6.6 §22.14 — pe_ready back-pressure signal (combinational).
     // Same compound as the internal drain gate (8-term since v1.8.0c: the
     // fp step sequencer's fp_busy/fp_valid_p2 joined the expression, so
-    // pe_ready deasserts for the whole 5-34 cycle fp flight). Upstream
+    // pe_ready deasserts for the whole 5-34 cycle fp flight; 9-term since
+    // v1.8.0e: deq_loop_active covers the DEQUANT lane loop, so pe_ready
+    // stays low for the whole ~100-300 cycle loop + drain window — the
+    // §25.4 MU-occupancy re-acceptance, observe-only as before). Upstream
     // fabric can observe this to STALL new dispatches instead of retrying
     // after lower_required. MVP: observe-only, no ext_valid gating change.
     assign pe_ready = output_regs_free;

@@ -877,46 +877,58 @@ class TestNormMacros(unittest.TestCase):
     # ADD(1/N producer) -> FSCALAR(FS_MUL) -> [ADD(eps producer) ->
     # FSCALAR(FS_ADD)] -> FRSQRT32 -> ADD(256 producer) -> FSCALAR(FS_MUL)
     # -> CVT(F2I). eps=0 selects the int-scalar clamp fallback (OR 0x15
-    # before the CVT, fp-eps pair dropped).
+    # before the CVT, fp-eps pair dropped). LAYERNORM keeps this 0d form
+    # VERBATIM (spec section 25.1 CLOSED-DEFERRED: beta has no
+    # fp-vector-add home in 0e).
     _INSERT_FP = [0x77, 0x10, 0x74, 0x10, 0x74, 0x75, 0x10, 0x74, 0x77]
     _INSERT_CLAMP = [0x15, 0x77, 0x10, 0x74, 0x75, 0x10, 0x74, 0x77]
+    # v1.8.0e §25.1 item 7 — the RMSNORM 0e insert STOPS at the FRSQRT32
+    # fp32 scale (x256/F2I tail deleted); constants carry the gamma
+    # exponent fold. Tail per 16-lane half: GAMMA_MUL_W(0x6B) +
+    # DEQUANT(0x78).
+    _INSERT_FP_0E = [0x77, 0x10, 0x74, 0x10, 0x74, 0x75]
+    _INSERT_CLAMP_0E = [0x15, 0x77, 0x10, 0x74, 0x75]
 
     def test_rmsnorm_expansion(self):
-        """RMSNORM → v1.8.0d hybrid chain: EINSUM(L2SQ) + the fp32 scalar
-        insert (SCALAR_RSQRT 0x66 is RETIRED from this recipe) + the
-        bit-unchanged int wide tail (Q8.8 0x69 + MUL_WIDE_VEC). The three
-        FSCALAR B-constant producer dispatches (ADD .imm64) are
-        explicitly emitted and counted here."""
+        """RMSNORM → v1.8.0e fp-exact chain: EINSUM(L2SQ) + the 0e fp32
+        scalar insert (stops at the FRSQRT32 scale — the 0d x256/F2I/
+        Q8.8/int-gamma tail is DELETED) + the GAMMA_MUL_W/DEQUANT tail
+        (one pair at .n 16). The two FSCALAR B-constant producer
+        dispatches (ADD .imm64) are explicitly emitted and counted."""
         src = (
             ".default_port mask=0x01 out=0\n"
-            "RMSNORM opb .gamma 0xDEAD_BEEF_CAFE_BABE\n"
+            "RMSNORM opb .gamma 0xDEADBEEFCAFEBABE\n"
         )
         insts = wta.assemble(src)
         opcodes = [(w >> 24) & 0xFF for w in insts]
-        expected = [0x32] + self._INSERT_FP + [0x69, 0x65]
+        expected = [0x32] + self._INSERT_FP_0E + [0x6B, 0x78]
         self.assertEqual(opcodes, expected,
                          f"expected {[hex(o) for o in expected]}, got "
                          f"{[hex(o) for o in opcodes]}")
         self.assertNotIn(0x66, opcodes, "SCALAR_RSQRT must be retired")
-        self.assertEqual(opcodes.count(0x10), 3,
-                         "3 B-constant producer dispatches on the fp path")
+        for gone, name in ((0x69, "Q8.8 tail"), (0x65, "int-gamma tail")):
+            self.assertNotIn(gone, opcodes,
+                             f"0d {name} must be deleted from RMSNORM-0e")
+        self.assertEqual(opcodes.count(0x10), 2,
+                         "2 B-constant producer dispatches on the fp path")
 
     def test_rmsnorm_eps_zero_clamp_fallback(self):
         """RMSNORM .eps 0 → the int-scalar clamp fallback: OR .imm64 1
         pins the L2SQ sum away from 0 (no Inf out of FRSQRT32) and the
-        fp-eps producer/FS_ADD pair is dropped (2 producers remain)."""
+        fp-eps producer/FS_ADD pair is dropped (1 producer remains on
+        the 0e insert)."""
         src = (
             ".default_port mask=0x01 out=0\n"
-            "RMSNORM opb .gamma 0xDEAD_BEEF_CAFE_BABE .eps 0\n"
+            "RMSNORM opb .gamma 0xDEADBEEFCAFEBABE .eps 0\n"
         )
         insts = wta.assemble(src)
         opcodes = [(w >> 24) & 0xFF for w in insts]
-        expected = [0x32] + self._INSERT_CLAMP + [0x69, 0x65]
+        expected = [0x32] + self._INSERT_CLAMP_0E + [0x6B, 0x78]
         self.assertEqual(opcodes, expected,
                          f"expected {[hex(o) for o in expected]}, got "
                          f"{[hex(o) for o in opcodes]}")
-        self.assertEqual(opcodes.count(0x10), 2,
-                         "2 B-constant producers on the clamp path")
+        self.assertEqual(opcodes.count(0x10), 1,
+                         "1 B-constant producer on the 0e clamp path")
 
     def test_rmsnorm_eps_guard_rejects_sub_2e13(self):
         """The eps >= 2^-13 assembler guard (spec §23.10.10 residual risk
@@ -943,25 +955,31 @@ class TestNormMacros(unittest.TestCase):
                     ".default_port mask=0x01 out=0\n"
                     "RMSNORM opb .gamma 1 .eps %d\n" % bad)
 
+    @staticmethod
+    def _expand(src):
+        prog = wta.parse(src)
+        prog = wta.alias_pass(prog)
+        prog = wta.default_pass(prog)
+        prog = wta.macro_pass(prog)
+        return [s for s in prog.stmts if isinstance(s, wta.Instruction)]
+
     def test_norm_insert_fp_steps_carry_precision_mode_0x14(self):
         """Every fp-block step of the insert (CVT/FSCALAR/FRSQRT32) must
         carry .precision mode=0x14 + the 'prec' flag (require_precision_eh
         — the fp ops would otherwise be assembler-rejected), and the
         FSCALAR steps the 'opb' flag (B on payload_b from the producers).
-        The 1/N producer's imm64 must be bits(1.0/n) — .n plumbed through
-        (n=4 => 0.25f)."""
-        src = (
+        RMSNORM (0e insert, .n 16 default gfrac=3): 1 CVT + 2 FSCALAR +
+        1 FRSQRT, and the folded 1/N producer carries bits(4^3/16) =
+        bits(4.0) — the gamma-exponent fold. LAYERNORM (0d insert
+        verbatim, .n 4): 2 CVT + 3 FSCALAR + 1 FRSQRT with the UNFOLDED
+        bits(0.25) — .n plumbed through, no fold on the 0d path."""
+        insts = self._expand(
             ".default_port mask=0x01 out=0\n"
-            "RMSNORM opb .gamma 1 .n 4\n"
+            "RMSNORM opb .gamma 1 .n 16\n"
         )
-        prog = wta.parse(src)
-        prog = wta.alias_pass(prog)
-        prog = wta.default_pass(prog)
-        prog = wta.macro_pass(prog)
-        insts = [s for s in prog.stmts if isinstance(s, wta.Instruction)]
         fp_steps = [i for i in insts
                     if i.mnemonic in ('CVT', 'FSCALAR', 'FRSQRT32')]
-        self.assertEqual(len(fp_steps), 6)   # 2 CVT + 3 FSCALAR + 1 FRSQRT
+        self.assertEqual(len(fp_steps), 4)   # 1 CVT + 2 FSCALAR + 1 FRSQRT
         for step in fp_steps:
             self.assertIn('prec', step.flags, step.mnemonic)
             prec = next(eh for eh in step.eh_list if eh.kind == 'precision')
@@ -969,27 +987,183 @@ class TestNormMacros(unittest.TestCase):
             if step.mnemonic == 'FSCALAR':
                 self.assertIn('opb', step.flags)
         producers = [i for i in insts if i.mnemonic == 'ADD']
+        self.assertEqual(len(producers), 2)
+        inv_n = next(eh for eh in producers[0].eh_list if eh.kind == 'imm64')
+        self.assertEqual(inv_n.args['value'], wta.fp32_to_bits(4.0),
+                         "1/16 folded by 4^3 (default .gfrac 3) = 4.0f")
+        eps_p = next(eh for eh in producers[1].eh_list if eh.kind == 'imm64')
+        self.assertEqual(eps_p.args['value'],
+                         wta.fp32_to_bits((2.0 ** -13) * 64.0),
+                         "default eps folded by 4^3")
+        fsc_subops = [
+            (next(eh for eh in i.eh_list if eh.kind == 'imm16')
+             .args['value'] >> 4) & 0xF
+            for i in insts if i.mnemonic == 'FSCALAR']
+        FS = wta.FSCALAR_OP_CODE
+        self.assertEqual(fsc_subops, [FS['FS_MUL'], FS['FS_ADD']])
+        cvts = [i for i in insts if i.mnemonic == 'CVT']
+        self.assertEqual(len(cvts), 1, "the F2I CVT is deleted in 0e")
+        self.assertFalse(any(eh.kind == 'imm16' for eh in cvts[0].eh_list),
+                         "I2F CVT rides the absent-imm16 WIDEN default")
+
+        # LAYERNORM: the 0d insert VERBATIM (deferral pin) — unfolded
+        # constants, x256 producer + F2I retained, .n plumbed through.
+        insts = self._expand(
+            ".default_port mask=0x01 out=0\n"
+            "LAYERNORM opb .gamma 1 .beta 2 .n 4\n"
+        )
+        fp_steps = [i for i in insts
+                    if i.mnemonic in ('CVT', 'FSCALAR', 'FRSQRT32')]
+        self.assertEqual(len(fp_steps), 6)   # 2 CVT + 3 FSCALAR + 1 FRSQRT
+        producers = [i for i in insts if i.mnemonic == 'ADD']
         self.assertEqual(len(producers), 3)
         inv_n = next(eh for eh in producers[0].eh_list if eh.kind == 'imm64')
         self.assertEqual(inv_n.args['value'], wta.fp32_to_bits(0.25))
         x256 = next(eh for eh in producers[2].eh_list if eh.kind == 'imm64')
         self.assertEqual(x256.args['value'], wta.fp32_to_bits(256.0))
-        # sub-op nibbles: FS_MUL, FS_ADD, FS_MUL in emission order; the
-        # second CVT carries NARROW_FROM_F32, the first none (WIDEN default)
-        fsc_subops = []
-        for i in insts:
-            if i.mnemonic == 'FSCALAR':
-                imm = next(eh for eh in i.eh_list if eh.kind == 'imm16')
-                fsc_subops.append((imm.args['value'] >> 4) & 0xF)
-        FS = wta.FSCALAR_OP_CODE
-        self.assertEqual(fsc_subops,
-                         [FS['FS_MUL'], FS['FS_ADD'], FS['FS_MUL']])
         cvts = [i for i in insts if i.mnemonic == 'CVT']
-        self.assertFalse(any(eh.kind == 'imm16' for eh in cvts[0].eh_list),
-                         "I2F CVT rides the absent-imm16 WIDEN default")
         imm = next(eh for eh in cvts[1].eh_list if eh.kind == 'imm16')
         self.assertEqual(imm.args['value'],
                          wta.cvt_subop_imm16('NARROW_FROM_F32'))
+
+    def test_rmsnorm_tail_shape(self):
+        """v1.8.0e §25.2.3/§25.2.2 — the RMSNORM tail pair: GAMMA_MUL_W
+        carries 'prec' + .precision mode=0x10 (int4/acc=1/rnd=0) + the
+        gamma .imm64 (IMM64 XOR OPREF — imm is the canonical asm form);
+        DEQUANT carries 'prec' + mode=0x11 (SOURCE int8 — dest is pinned
+        bf16-only, no dest carrier) + 'opb' (the scale rides payload_b
+        on the completing beat) and NO imm/opref EH (port-only
+        legality)."""
+        insts = self._expand(
+            ".default_port mask=0x01 out=0\n"
+            "RMSNORM opb .gamma 0xDEADBEEFCAFEBABE\n"
+        )
+        gam = [i for i in insts if i.mnemonic == 'GAMMA_MUL_W']
+        deq = [i for i in insts if i.mnemonic == 'DEQUANT']
+        self.assertEqual((len(gam), len(deq)), (1, 1))
+        g = gam[0]
+        self.assertIn('prec', g.flags)
+        prec = next(eh for eh in g.eh_list if eh.kind == 'precision')
+        self.assertEqual(prec.args['mode'], 0x10)
+        imm = next(eh for eh in g.eh_list if eh.kind == 'imm64')
+        self.assertEqual(imm.args['value'], 0xDEAD_BEEF_CAFE_BABE)
+        self.assertFalse(any(eh.kind == 'opref' for eh in g.eh_list),
+                         "imm64 XOR opref — the macro emits the imm form")
+        d = deq[0]
+        self.assertIn('prec', d.flags)
+        self.assertIn('opb', d.flags)
+        prec = next(eh for eh in d.eh_list if eh.kind == 'precision')
+        self.assertEqual(prec.args['mode'], 0x11)
+        self.assertFalse(any(eh.kind in ('imm16', 'imm32', 'imm64', 'opref')
+                             for eh in d.eh_list),
+                         "DEQUANT is port-only (forbid_imm_any + "
+                         "forbid_opref stand)")
+        # whole-macro legality: the expansion must pass assemble() whole
+        wta.assemble(".default_port mask=0x01 out=0\n"
+                     "RMSNORM opb .gamma 0xDEADBEEFCAFEBABE\n")
+
+    def test_rmsnorm_n32_two_pairs_share_scale(self):
+        """.n 32 lowers as TWO 16-lane GAMMA_MUL_W/DEQUANT pairs (spec
+        §25.2.3: the 32-lane 0x6B form is CLOSED-DEFERRED — N=32 = two
+        16-lane dispatches sharing one s), gamma imm64 halves in lane
+        order (low half = lanes 0-15). .n outside {16, 32} and oversized
+        .gamma are textual errors."""
+        gamma = (0xAAAA_BBBB_CCCC_DDDD << 64) | 0x1111_2222_3333_4444
+        insts = self._expand(
+            ".default_port mask=0x01 out=0\n"
+            "RMSNORM opb .gamma 0x%x .n 32\n" % gamma
+        )
+        opcodes = [wta.MNEMONIC_TO_OPCODE[i.mnemonic] for i in insts]
+        self.assertEqual(opcodes,
+                         [0x32] + self._INSERT_FP_0E + [0x6B, 0x78,
+                                                        0x6B, 0x78])
+        gam = [i for i in insts if i.mnemonic == 'GAMMA_MUL_W']
+        halves = [next(eh for eh in g.eh_list if eh.kind == 'imm64')
+                  .args['value'] for g in gam]
+        self.assertEqual(halves, [0x1111_2222_3333_4444,
+                                  0xAAAA_BBBB_CCCC_DDDD])
+        with self.assertRaises(wta.AssemblerError):
+            wta.assemble(".default_port mask=0x01 out=0\n"
+                         "RMSNORM opb .gamma 1 .n 8\n")
+        with self.assertRaises(wta.AssemblerError):
+            wta.assemble(".default_port mask=0x01 out=0\n"
+                         "RMSNORM opb .gamma 0x%x .n 16\n" % (1 << 64))
+        with self.assertRaises(wta.AssemblerError):
+            wta.assemble(".default_port mask=0x01 out=0\n"
+                         "RMSNORM opb .gamma 1 .gfrac 9\n")
+
+    def test_rmsnorm_gamma_fold_bit_equiv(self):
+        """v1.8.0e §25.2.3 'folds free' pin — THE op-for-op match proof:
+        simulating the macro-emitted chain (with ITS folded constants)
+        through the golden primitives must be BIT-EQUAL to golden
+        rmsnorm_chain_0e (which applies the gamma exponent as a
+        post-rsqrt f32_exp_shift). Divergence here = the emitted chain
+        no longer matches the model that proved MSE ratio 1.0 =
+        release-blocked. Sweeps .gfrac (incl. 0), eps values, both N,
+        and the clamp-fallback path."""
+        import random
+        sys.path.insert(0, os.path.join(_HERE, '..', 'scripts'))
+        import golden_fp32 as g
+        rng = random.Random(0xE0E1)
+        checked = 0
+        for n in (16, 32):
+            for k in (0, 1, 3, 5):
+                for eps in (0, g.RMSNORM_EPS_DEFAULT_BITS, 0x3C800000,
+                            0x42800000):
+                    x = [rng.randint(0, 15) for _ in range(n)]
+                    gam = [rng.randint(0, 15) for _ in range(n)]
+                    insts = self._expand(
+                        ".default_port mask=0x01 out=0\n"
+                        "RMSNORM opb .gamma 1 .n %d .gfrac %d .eps %d\n"
+                        % (n, k, eps))
+                    consts = [
+                        next(eh for eh in i.eh_list
+                             if eh.kind == 'imm64').args['value']
+                        for i in insts if i.mnemonic == 'ADD']
+                    clamp = any(i.mnemonic == 'OR' for i in insts)
+                    self.assertEqual(clamp, eps == 0)
+                    # replay the EMITTED chain through golden primitives
+                    ssq = sum(g._i2f_operand(f, g.DT_INT4) ** 2 for f in x)
+                    if clamp:
+                        ssq |= 1
+                    sq_f = g.ref_i2f(ssq, g.DT_ACC_INT)
+                    m = g.ref_mul(sq_f, consts[0])
+                    me = g.ref_add(m, consts[1]) if len(consts) > 1 else m
+                    s = g.micro_rsqrt(me)
+                    y_macro = []
+                    for h in range(n // 16):
+                        w = g.ref_gamma_mul_w(x[16 * h:16 * h + 16],
+                                              gam[16 * h:16 * h + 16])
+                        y_macro += g.ref_dequant(w, s, g.DT_INT8)
+                    # golden model of the same call (clamp path: golden
+                    # has no OR step — emulate via the eps=2^-13-default
+                    # equivalence only on the fp-eps rows)
+                    if clamp:
+                        x_or = list(x)
+                        ssq_g = ssq  # already OR'd — feed golden the
+                        # identical post-clamp integer via a 1-lane tweak:
+                        # rmsnorm_chain_0e recomputes ssq from lanes, so
+                        # compare against the primitive replay with the
+                        # UNFOLDED constant + post-shift instead.
+                        c0 = g.f32_exp_shift(consts[0], -2 * k) if k else consts[0]
+                        m2 = g.ref_mul(sq_f, c0)
+                        s2 = g.f32_exp_shift(g.micro_rsqrt(m2), -k) \
+                            if k else g.micro_rsqrt(m2)
+                        y_gold = []
+                        for h in range(n // 16):
+                            w = g.ref_gamma_mul_w(x[16 * h:16 * h + 16],
+                                                  gam[16 * h:16 * h + 16])
+                            y_gold += g.ref_dequant(w, s2, g.DT_INT8)
+                    else:
+                        y_gold, _ = g.rmsnorm_chain_0e(
+                            x, gam, gamma_frac_bits=k, eps_bits=eps,
+                            scale_exp=0)
+                    self.assertEqual(
+                        y_macro, y_gold,
+                        f"macro chain diverged from golden at n={n} "
+                        f"k={k} eps=0x{eps:08X}")
+                    checked += 1
+        self.assertEqual(checked, 32)
 
     def test_layernorm_expansion(self):
         """LAYERNORM → v1.8.0d hybrid chain per §22.3/§22.16/§23.10.10:
@@ -1212,8 +1386,15 @@ class TestRemovedOpcodes(unittest.TestCase):
         self.assertNotIn('SIMD_MUL_WIDE_Q4_4_SCALAR', wta.MNEMONIC_TO_OPCODE)
 
     def test_removed_widen_rejected(self):
+        # v1.8.0e 0e1: the 0x6B CODE POINT was reallocated pre-stable to
+        # GAMMA_MUL_W (spec section 25.2.3, section 12a rule 4 — slot
+        # reuse recorded; this is the mandatory retired-0x6B
+        # stale-consumer resync). The removed WIDEN MNEMONIC stays
+        # rejected forever; the code point is live again under the new
+        # name.
         self._assert_rejected("SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN .imm16 0x08")
-        self.assertNotIn(0x6B, wta._LEGAL)
+        self.assertIn(0x6B, wta._LEGAL)
+        self.assertEqual(wta.MNEMONIC_TO_OPCODE['GAMMA_MUL_W'], 0x6B)
         self.assertNotIn('SIMD_MUL_WIDE_Q4_4_SCALAR_128_WIDEN',
                          wta.MNEMONIC_TO_OPCODE)
 
@@ -1442,13 +1623,17 @@ class TestFpBlockModeLegality(unittest.TestCase):
         # v1.8.0c: 0x74 FSCALAR / 0x75 FRSQRT32 / 0x76 FEXP2_32 graduated
         # too (MU-hosted fp32 step sequencer, spec section 23.10).
         # v1.8.0d: 0x73 ACC_ELEMWISE / 0x77 CVT graduated (spec section
-        # 23.10.10); the remaining set {0x70, 0x78, 0x79} is the v1.8.0e
-        # wide package, 0x7D/0x7E unscheduled.
+        # 23.10.10).
+        # v1.8.0e 0e1: 0x78 DEQUANT / 0x79 FMINMAX graduated (spec
+        # section 25 — dropped spec-first with the OPS_DEQ program and
+        # the FMINMAX comb arm); 0x70 VFMA_ACC stays the 0e2 stub,
+        # 0x7D/0x7E unscheduled.
         self.assertEqual(STUB_OPS_V18,
                          frozenset(self._FP_OPS)
-                         - {0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x7C})
+                         - {0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77,
+                            0x78, 0x79, 0x7C})
         self.assertEqual(STUB_OPS_V18,
-                         frozenset({0x70, 0x78, 0x79, 0x7D, 0x7E}))
+                         frozenset({0x70, 0x7D, 0x7E}))
         # Shape spot-checks: 0x70 is ALU-binary-like, 0x7E is no-data-EH.
         self.assertTrue(wta._LEGAL[0x70]['allow_imm_xor_opref'])
         self.assertEqual(wta._LEGAL[0x7E]['forbidden'], wta._ALL_DATA_EHS)
@@ -1519,7 +1704,10 @@ class TestFpBlockModeLegality(unittest.TestCase):
             elif 'mem' in wta._LEGAL[code]['required']:
                 scaffold = ' .mem offset=0'
             # v1.8.0c §23.10.2: FSCALAR requires F_HAS_OPB on every sub-op.
-            flags = ' prec opb' if code == 0x74 else ' prec'
+            # v1.8.0e §25.2.1/§25.2.2: FMINMAX (FSCALAR legality clone)
+            # and DEQUANT (fp32 scale on payload_b, completing-beat SDK
+            # contract) joined the hardcoded opb-required set.
+            flags = ' prec opb' if code in (0x74, 0x78, 0x79) else ' prec'
             for mode in range(256):
                 dtype, acc, rnd = mode & 0xF, (mode >> 4) & 0x3, (mode >> 6) & 0x3
                 expect_ok = (dtype in legal['legal_dtypes']
@@ -1823,3 +2011,130 @@ class TestFscalarV180cEncoding(unittest.TestCase):
             wta.bits_to_fp32(1 << 32)
         with self.assertRaises(wta.AssemblerError):
             wta.bits_to_fp32(-1)
+
+
+class TestV180e0e1Encoding(unittest.TestCase):
+    """v1.8.0e 0e1 — 0x79 FMINMAX / 0x78 DEQUANT / 0x6B GAMMA_MUL_W
+    assembler-side encoders and legality (spec sections 25.2.1-25.2.3):
+    the fminmax_subop_imm16 helper, the hardcoded opb requirements (B /
+    the fp32 scale ride input_payload_b), the 0x79 imm16 reserved-field
+    checks, the 0x78 port-only legality and the 0x6B imm64-XOR-opref +
+    hand-pinned mode-byte legality (0x6B sits outside the 0x70-0x7F
+    in_fp_block gate, so it has no generated FP_MODE_LEGAL row)."""
+
+    def test_fminmax_subop_imm16_helper(self):
+        self.assertEqual(wta.fminmax_subop_imm16('MINIMUMNUM'), 0x00)
+        self.assertEqual(wta.fminmax_subop_imm16('MAXIMUMNUM'), 0x10)
+        self.assertEqual(wta.fminmax_subop_imm16(0), 0x00)
+        self.assertEqual(wta.fminmax_subop_imm16(1), 0x10)
+        for bad in ('MIN', 'FS_ADD', 2, 0x10, True, None):
+            with self.assertRaises(wta.AssemblerError, msg=repr(bad)):
+                wta.fminmax_subop_imm16(bad)
+
+    def test_fminmax_legality(self):
+        """0x79 is the FSCALAR legality clone: 'opb' required (B on
+        payload_b ONLY), imm16 optional as CONTROL (reserved fields
+        zero, sub-op from the generated table), imm32/imm64/opref
+        forbidden."""
+        ok = (".default_port mask=0x01 out=0\n"
+              "FMINMAX opb prec .precision mode=0x14 .imm16 %d\n"
+              % wta.fminmax_subop_imm16('MAXIMUMNUM'))
+        wta.assemble(ok)   # must not raise
+        # absent imm16 = MINIMUMNUM default — also legal
+        wta.assemble(".default_port mask=0x01 out=0\n"
+                     "FMINMAX opb prec .precision mode=0x14\n")
+        # missing opb -> textual error
+        with self.assertRaises(wta.AssemblerError) as ctx:
+            wta.assemble(".default_port mask=0x01 out=0\n"
+                         "FMINMAX prec .precision mode=0x14\n")
+        self.assertIn('opb', str(ctx.exception))
+        # reserved-zero fields
+        for bad_imm in (0x0001, 0x0100, 0x0011):
+            with self.assertRaises(wta.AssemblerError, msg=hex(bad_imm)):
+                wta.assemble(".default_port mask=0x01 out=0\n"
+                             "FMINMAX opb prec .precision mode=0x14 "
+                             ".imm16 %d\n" % bad_imm)
+        # unknown sub-op nibble (2..15)
+        with self.assertRaises(wta.AssemblerError):
+            wta.assemble(".default_port mask=0x01 out=0\n"
+                         "FMINMAX opb prec .precision mode=0x14 "
+                         ".imm16 0x20\n")
+        # opref-B is a recorded post-0e loosening — forbidden today
+        with self.assertRaises(wta.AssemblerError):
+            wta.assemble(".default_port mask=0x01 out=0\n"
+                         "FMINMAX opb prec .precision mode=0x14 .opref\n")
+        # only mode 0x14 (f32/acc=1/rnd=0) is ROM-legal
+        with self.assertRaises(wta.AssemblerError):
+            wta.assemble(".default_port mask=0x01 out=0\n"
+                         "FMINMAX opb prec .precision mode=0x10\n")
+
+    def test_dequant_legality(self):
+        """0x78 port-only legality UNCHANGED (forbid_imm_any +
+        forbid_opref stand); 'opb' hardcoded-required (the fp32 scale
+        rides ext_payload_b on the wave-completing beat — the pinned
+        SDK/NoC scale-beat contract); source dtypes int4/int8 only."""
+        for mode in (0x10, 0x11):
+            wta.assemble(".default_port mask=0x01 out=0\n"
+                         "DEQUANT opb prec .precision mode=0x%02X\n" % mode)
+        with self.assertRaises(wta.AssemblerError) as ctx:
+            wta.assemble(".default_port mask=0x01 out=0\n"
+                         "DEQUANT prec .precision mode=0x11\n")
+        self.assertIn('opb', str(ctx.exception))
+        for bad_eh in ('.imm16 1', '.imm32 1', '.imm64 1', '.opref'):
+            with self.assertRaises(wta.AssemblerError, msg=bad_eh):
+                wta.assemble(".default_port mask=0x01 out=0\n"
+                             "DEQUANT opb prec .precision mode=0x11 "
+                             "%s\n" % bad_eh)
+        # dest-dtype carriers do not exist in 0e: f16/bf16/f32 source
+        # nibbles are mode-ROM-illegal
+        for bad_mode in (0x12, 0x13, 0x14):
+            with self.assertRaises(wta.AssemblerError, msg=hex(bad_mode)):
+                wta.assemble(".default_port mask=0x01 out=0\n"
+                             "DEQUANT opb prec .precision mode=0x%02X\n"
+                             % bad_mode)
+
+    def test_gamma_mul_w_legality(self):
+        """0x6B: gamma via IMM64 XOR OPREF (alu-binary — both/neither
+        rejected); precision EH required with the hand-pinned mode 0x10
+        (int4/acc=1/rnd=0 — no generated FP_MODE_LEGAL row since 0x6B is
+        outside the in_fp_block gate; the asm check must NOT KeyError)."""
+        wta.assemble(".default_port mask=0x01 out=0\n"
+                     "GAMMA_MUL_W prec .precision mode=0x10 "
+                     ".imm64 0x123456789ABCDEF0\n")
+        wta.assemble(".default_port mask=0x01 out=0\n"
+                     "GAMMA_MUL_W prec .precision mode=0x10 .opref\n")
+        # XOR violations: neither / both
+        with self.assertRaises(wta.AssemblerError):
+            wta.assemble(".default_port mask=0x01 out=0\n"
+                         "GAMMA_MUL_W prec .precision mode=0x10\n")
+        with self.assertRaises(wta.AssemblerError):
+            wta.assemble(".default_port mask=0x01 out=0\n"
+                         "GAMMA_MUL_W prec .precision mode=0x10 "
+                         ".imm64 1 .opref\n")
+        # mode-byte pins: dtype must be int4, acc=1, rnd=0
+        for bad_mode in (0x11, 0x14, 0x00, 0x50):
+            with self.assertRaises(wta.AssemblerError, msg=hex(bad_mode)):
+                wta.assemble(".default_port mask=0x01 out=0\n"
+                             "GAMMA_MUL_W prec .precision mode=0x%02X "
+                             ".imm64 1\n" % bad_mode)
+        # precision EH + prec flag are required (asm row)
+        with self.assertRaises(wta.AssemblerError):
+            wta.assemble(".default_port mask=0x01 out=0\n"
+                         "GAMMA_MUL_W .imm64 1\n")
+
+    def test_v180e_encoding_roundtrip(self):
+        """Encoder roundtrip vs the mirror decoder: the three new-op
+        encodings carry the expected opcode byte, flags nibble and EH
+        chain kinds."""
+        insts = wta.assemble(
+            ".default_port mask=0x01 out=0\n"
+            "GAMMA_MUL_W prec .precision mode=0x10 .imm64 0xAB\n"
+            "DEQUANT opb prec .precision mode=0x11\n"
+            "FMINMAX opb prec .precision mode=0x14 .imm16 0x10\n")
+        ops = [(w >> 24) & 0xFF for w in insts]
+        self.assertEqual(ops, [0x6B, 0x78, 0x79])
+        # flags nibble at [19:16]: prec = F_PRECISION_OVR bit 2,
+        # opb = F_HAS_OPB bit 3
+        self.assertEqual((insts[0] >> 16) & 0xF, 0b0100)
+        self.assertEqual((insts[1] >> 16) & 0xF, 0b1100)
+        self.assertEqual((insts[2] >> 16) & 0xF, 0b1100)

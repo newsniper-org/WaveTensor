@@ -254,8 +254,19 @@ module Cluster #(
         alloc_is_continue ? frag_total_m1[alloc_idx] : frag_in_tot_m1;
 
     // Full mask: bits [0 .. tot_ref] set.
+    // v1.8.0e §25.3 — LATENT-BUG FIX, recorded as a repair (mandatory
+    // repair 2): the shift amount is widened to 5 bits. The old form
+    // `frag_tot_ref + 4'h1` is a SELF-DETERMINED 4-bit addition inside
+    // the shift-amount context, so tot_m1 = 15 wrapped 15+1 to 0 —
+    // mask 0x0000, frag_mask_after never equals frag_mask_full, and a
+    // 16-fragment wave was permanently unreassemblable (silent CAM-slot
+    // rot; verilator-confirmed). With the 5-bit amount, a shift by 16
+    // of the 16-bit one-hot yields 0 and 0 - 1 = 0xFFFF — the correct
+    // full mask. Precondition for the 0e2 16-fragment VFMA emit; pinned
+    // by test_cluster_frag_reass_16 (tot_m1 = 7 / 14 / 15).
+    wire [4:0] frag_tot_p1 = {1'b0, frag_tot_ref} + 5'd1;
     wire [FRAG_MAX-1:0] frag_mask_full =
-        ({15'h0, 1'b1} << (frag_tot_ref + 4'h1)) - {{(FRAG_MAX-1){1'b0}}, 1'b1};
+        ({15'h0, 1'b1} << frag_tot_p1) - {{(FRAG_MAX-1){1'b0}}, 1'b1};
 
     // Completion pulse (combinational): fires the same cycle as the last
     // fragment arrival. Consumers must sample on this cycle.
@@ -419,17 +430,33 @@ module Cluster #(
     // stays L-PE-routed for ALL dtypes including the new fp-dest forms
     // (§23.10.10(d) twin-classifier-untouched clause — the narrow packer
     // is combinational on the L-PEs, no multipliers).
+    // v1.8.0e §25.3/§25.6 item 6 — 0x6B GAMMA_MUL_W / 0x78 DEQUANT /
+    // 0x79 FMINMAX join OPCODE-ONLY in lockstep with PE_Core's
+    // dec_is_mul_op (their arms are all MU-hosted: the gamma shift-add
+    // arm and the FMINMAX comparator live in the parameter-gated region,
+    // DEQUANT rides the MU's FP_StepSeq OPS_DEQ lane loop). 0x70
+    // VFMA_ACC joins with its 0e2 arm, not before (staged; until then it
+    // stays L-PE-routed into the explicit lower_required stub arm).
+    // §25.6 item 4 SDK-rule EXTENSION: the no-intervening-mul-dispatch
+    // rule above now covers 0x6B/0x70/0x78/0x79 too — DEQUANT's lane
+    // loop occupies the MU for up to ~300 cycles (int4-32 form, ~4.5x
+    // the accepted DIV-66 window) and the positional NoC-bank hazard
+    // gains proportional exposure until the v1.9 arbitration rework
+    // (§23.10.9 risk-2/3 re-acceptance, restated in the spec delta).
     wire is_mul_op = (ext_opcode == 8'h12)
                   || (ext_opcode == 8'h30)
                   || (ext_opcode == 8'h32)
                   || (ext_opcode == 8'h43)
+                  || (ext_opcode == 8'h6B)
                   || (ext_opcode == 8'h71)
                   || (ext_opcode == 8'h72)
                   || (ext_opcode == 8'h73)
                   || (ext_opcode == 8'h74)
                   || (ext_opcode == 8'h75)
                   || (ext_opcode == 8'h76)
-                  || (ext_opcode == 8'h77);
+                  || (ext_opcode == 8'h77)
+                  || (ext_opcode == 8'h78)
+                  || (ext_opcode == 8'h79);
     wire is_div_op = (ext_opcode == 8'h13)   // DIV
                   || (ext_opcode == 8'h1C)   // MOD
                   || (ext_opcode == 8'h1D);  // DIVMOD

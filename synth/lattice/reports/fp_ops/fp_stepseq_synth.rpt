@@ -5,17 +5,17 @@
 
         +----------Local Count, excluding submodules.
         | 
-     4877 wires
-    19016 wire bits
-     4877 public wires
-    19016 public wire bits
+     5186 wires
+    19891 wire bits
+     5186 public wires
+    19891 public wire bits
        11 ports
       148 port bits
-     6322 cells
+     6707 cells
         3   $scopeinfo
-      564   CCU2C
-     4409   LUT4
+      588   CCU2C
+     4721   LUT4
         4   MULT18X18D
-      357   PFUMX
-      985   TRELLIS_FF
+      405   PFUMX
+      986   TRELLIS_FF
 
