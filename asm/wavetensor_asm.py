@@ -1690,6 +1690,34 @@ def legality_pass(prog: Program) -> Program:
                     f"0x{subop_nibble:X} unknown — legal: "
                     f"{sorted(FMINMAX_OP_CODE.items())}"
                 )
+        # v1.8.0e 0e2 §25.2.4 — VFMA_ACC (0x70) B-split imm lint: b_mul
+        # is sext32 from B[3:0] (int4) / B[7:0] (int8) and the datapath
+        # reads ONLY those low bits, so an imm encoding with nonzero
+        # LOW-WORD bits above the lane width would silently truncate at
+        # execute — the spec pin demands a LOUD reject instead (build
+        # the imm via pack_vfma_b). The upper word B[63:32] is c_acc and
+        # is free (imm16/imm32 zero-fill it -> c_acc = 0). The lane
+        # width comes from the .precision mode byte's dtype nibble —
+        # required on every fp-block op (checked below), so a missing/
+        # non-numeric mode falls through to that check's own error.
+        if opcode == 0x70 and (eh_kinds & {'imm16', 'imm32', 'imm64'}):
+            imm_eh = next(eh for eh in stmt.eh_list
+                          if eh.kind in ('imm16', 'imm32', 'imm64'))
+            v = _take_immediate(imm_eh)
+            prec_eh = next((eh for eh in stmt.eh_list
+                            if eh.kind == 'precision'), None)
+            mode = prec_eh.args.get('mode', 0) if prec_eh else 0
+            if isinstance(mode, int):
+                lane_bits = 8 if (mode & 0xF) == 0x1 else 4
+                if (v & 0xFFFFFFFF) >> lane_bits:
+                    raise AssemblerError(
+                        f"line {stmt.line}: {stmt.mnemonic} b_mul field "
+                        f"overflows the lane width — the RTL reads ONLY "
+                        f"B[{lane_bits - 1}:0] (dtype 0x{mode & 0xF:X}) "
+                        f"and B[31:{lane_bits}] must be zero (got low "
+                        f"word 0x{v & 0xFFFFFFFF:08X}; no silent "
+                        f"truncation — build the imm via pack_vfma_b())"
+                    )
         # v1.8.0d §23.10.10(c) — ACC_ELEMWISE (0x73) is OPREF-form ONLY
         # in landed silicon: any imm form still DECODES cleanly (the
         # alu-binary XOR trap is satisfied) but hits the execute-side
@@ -2261,6 +2289,42 @@ def pack_fscalar_payload(a_fp32_bits: int, c_fp32_bits: int = 0) -> int:
                 f"pack_fscalar_payload: {name} must be a 32-bit unsigned "
                 f"bit pattern, got {v!r}")
     return (c_fp32_bits << 32) | a_fp32_bits
+
+
+def pack_vfma_b(b_mul: int, c_acc: int = 0, dtype: int = 0x0) -> int:
+    """v1.8.0e 0e2 §25.2.4 — build the 64-bit VFMA_ACC (0x70) B word
+    (the canonical .imm64 body): b_mul's RAW lane-width field at the low
+    bits (B[3:0] for dtype 0x0 int4 / B[7:0] for 0x1 int8 — the RTL
+    sign-extends from exactly that field and reads NOTHING above it),
+    c_acc (the ONE broadcast int32 addend) at B[63:32].
+
+    Range checks are LOUD (the §25.2.4 no-silent-truncation pin):
+      * b_mul must be a signed value inside the LANE width —
+        [-8, 7] for int4, [-128, 127] for int8;
+      * c_acc accepts a signed int32 [-2^31, 2^31-1] OR a raw unsigned
+        32-bit pattern (the assembler never interprets it — c_acc can
+        sit exactly at the mod-2^32 wrap boundary, by contract).
+    imm16/imm32 encodings zero-fill the upper word -> c_acc = 0; use
+    this helper (with c_acc) only for the .imm64 form."""
+    if dtype not in (0x0, 0x1):
+        raise AssemblerError(
+            f"pack_vfma_b: dtype must be 0x0 (int4) or 0x1 (int8), "
+            f"got {dtype!r}")
+    lane_bits = 4 if dtype == 0x0 else 8
+    lo, hi = -(1 << (lane_bits - 1)), (1 << (lane_bits - 1)) - 1
+    if not (isinstance(b_mul, int) and not isinstance(b_mul, bool)
+            and lo <= b_mul <= hi):
+        raise AssemblerError(
+            f"pack_vfma_b: b_mul must be a signed int in [{lo}, {hi}] "
+            f"for dtype 0x{dtype:X} (lane width {lane_bits}b), "
+            f"got {b_mul!r} — the RTL reads ONLY B[{lane_bits - 1}:0] "
+            f"and asm-lint loudly rejects wider encodings")
+    if not (isinstance(c_acc, int) and not isinstance(c_acc, bool)
+            and -(1 << 31) <= c_acc <= (1 << 32) - 1):
+        raise AssemblerError(
+            f"pack_vfma_b: c_acc must be a signed int32 or a raw 32-bit "
+            f"pattern, got {c_acc!r}")
+    return ((c_acc & 0xFFFFFFFF) << 32) | (b_mul & ((1 << lane_bits) - 1))
 
 
 def wave_fragments_trace_iijkl(a_128: int) -> List[Tuple[int, int]]:

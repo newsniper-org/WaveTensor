@@ -434,20 +434,25 @@ module Cluster #(
     // 0x79 FMINMAX join OPCODE-ONLY in lockstep with PE_Core's
     // dec_is_mul_op (their arms are all MU-hosted: the gamma shift-add
     // arm and the FMINMAX comparator live in the parameter-gated region,
-    // DEQUANT rides the MU's FP_StepSeq OPS_DEQ lane loop). 0x70
-    // VFMA_ACC joins with its 0e2 arm, not before (staged; until then it
-    // stays L-PE-routed into the explicit lower_required stub arm).
+    // DEQUANT rides the MU's FP_StepSeq OPS_DEQ lane loop). v1.8.0e 0e2
+    // — 0x70 VFMA_ACC joins WITH its lane-loop launch arm (spec
+    // §25.2.4; the shared MAC step is MU-gated, so L-PEs synthesize
+    // nothing — the static lockstep test flips 0x70 from staged-out to
+    // IN in this same commit).
     // §25.6 item 4 SDK-rule EXTENSION: the no-intervening-mul-dispatch
     // rule above now covers 0x6B/0x70/0x78/0x79 too — DEQUANT's lane
     // loop occupies the MU for up to ~300 cycles (int4-32 form, ~4.5x
-    // the accepted DIV-66 window) and the positional NoC-bank hazard
-    // gains proportional exposure until the v1.9 arbitration rework
-    // (§23.10.9 risk-2/3 re-acceptance, restated in the spec delta).
+    // the accepted DIV-66 window), the 0x70 int4 form adds the ~90-cycle
+    // ceiling window incl. a worst-case 16-fragment drain, and the
+    // positional NoC-bank hazard gains proportional exposure until the
+    // v1.9 arbitration rework (§23.10.9 risk-2/3 re-acceptance, restated
+    // in the spec delta).
     wire is_mul_op = (ext_opcode == 8'h12)
                   || (ext_opcode == 8'h30)
                   || (ext_opcode == 8'h32)
                   || (ext_opcode == 8'h43)
                   || (ext_opcode == 8'h6B)
+                  || (ext_opcode == 8'h70)
                   || (ext_opcode == 8'h71)
                   || (ext_opcode == 8'h72)
                   || (ext_opcode == 8'h73)

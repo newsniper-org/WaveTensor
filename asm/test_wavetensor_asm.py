@@ -1626,14 +1626,16 @@ class TestFpBlockModeLegality(unittest.TestCase):
         # 23.10.10).
         # v1.8.0e 0e1: 0x78 DEQUANT / 0x79 FMINMAX graduated (spec
         # section 25 — dropped spec-first with the OPS_DEQ program and
-        # the FMINMAX comb arm); 0x70 VFMA_ACC stays the 0e2 stub,
-        # 0x7D/0x7E unscheduled.
+        # the FMINMAX comb arm).
+        # v1.8.0e 0e2: 0x70 VFMA_ACC graduated (spec section 25.2.4 —
+        # stub_v18 dropped with the lane-loop launch arm in the same
+        # commit); only 0x7D/0x7E remain, both unscheduled.
         self.assertEqual(STUB_OPS_V18,
                          frozenset(self._FP_OPS)
-                         - {0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77,
-                            0x78, 0x79, 0x7C})
+                         - {0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76,
+                            0x77, 0x78, 0x79, 0x7C})
         self.assertEqual(STUB_OPS_V18,
-                         frozenset({0x70, 0x7D, 0x7E}))
+                         frozenset({0x7D, 0x7E}))
         # Shape spot-checks: 0x70 is ALU-binary-like, 0x7E is no-data-EH.
         self.assertTrue(wta._LEGAL[0x70]['allow_imm_xor_opref'])
         self.assertEqual(wta._LEGAL[0x7E]['forbidden'], wta._ALL_DATA_EHS)
@@ -2138,3 +2140,140 @@ class TestV180e0e1Encoding(unittest.TestCase):
         self.assertEqual((insts[0] >> 16) & 0xF, 0b0100)
         self.assertEqual((insts[1] >> 16) & 0xF, 0b1100)
         self.assertEqual((insts[2] >> 16) & 0xF, 0b1100)
+
+
+class TestV180e0e2Vfma(unittest.TestCase):
+    """v1.8.0e 0e2 — 0x70 VFMA_ACC assembler-side encoder + legality
+    (spec section 25.2.4): the pack_vfma_b B-split helper, the LOUD
+    b_mul lane-width lint (no silent truncation), the IMM-XOR-OPREF
+    alu-binary legality and the ROM mode-byte pins (dtype {int4, int8},
+    acc=1 wide-acc OUTPUT form marker, rnd=0)."""
+
+    def test_pack_vfma_b_layout(self):
+        """B split pin: c_acc at B[63:32], b_mul's RAW lane-width field
+        at the low bits, NOTHING between (the RTL sign-extends from the
+        field, so negative b_mul carries no sign bits above it)."""
+        self.assertEqual(wta.pack_vfma_b(1), 0x1)
+        self.assertEqual(wta.pack_vfma_b(7, 0, 0x0), 0x7)
+        self.assertEqual(wta.pack_vfma_b(-1, 0, 0x0), 0xF)      # sext field
+        self.assertEqual(wta.pack_vfma_b(-8, 0, 0x0), 0x8)
+        self.assertEqual(wta.pack_vfma_b(-1, 0, 0x1), 0xFF)
+        self.assertEqual(wta.pack_vfma_b(-128, 0, 0x1), 0x80)
+        self.assertEqual(wta.pack_vfma_b(127, 0, 0x1), 0x7F)
+        # c_acc: signed and raw forms, incl. the wrap-boundary cells
+        self.assertEqual(wta.pack_vfma_b(1, -1, 0x0),
+                         0xFFFFFFFF_00000001)
+        self.assertEqual(wta.pack_vfma_b(1, 0x7FFFFFFF, 0x0),
+                         0x7FFFFFFF_00000001)
+        self.assertEqual(wta.pack_vfma_b(1, -(1 << 31), 0x0),
+                         0x80000000_00000001)
+        self.assertEqual(wta.pack_vfma_b(1, 0x80000000, 0x0),
+                         0x80000000_00000001)   # raw == signed alias
+
+    def test_pack_vfma_b_range_rejects(self):
+        """LOUD rejects: b_mul outside the lane width, bad dtype, c_acc
+        outside int32/raw-32 — never a silent mask."""
+        for bad in (8, -9, 0x10, 128, True, None, 1.5):
+            with self.assertRaises(wta.AssemblerError, msg=repr(bad)):
+                wta.pack_vfma_b(bad, 0, 0x0)
+        for bad in (128, -129, 0x100):
+            with self.assertRaises(wta.AssemblerError, msg=repr(bad)):
+                wta.pack_vfma_b(bad, 0, 0x1)
+        with self.assertRaises(wta.AssemblerError):
+            wta.pack_vfma_b(1, 1 << 32, 0x0)
+        with self.assertRaises(wta.AssemblerError):
+            wta.pack_vfma_b(1, -(1 << 31) - 1, 0x0)
+        with self.assertRaises(wta.AssemblerError):
+            wta.pack_vfma_b(1, 0, 0x4)
+
+    def test_vfma_legality(self):
+        """0x70 alu-binary legality: B via exactly one of {.imm*,
+        .opref}; precision EH + prec flag required (fp block); ROM
+        modes 0x10/0x11 only (acc=1 is the wide-acc OUTPUT-form marker
+        — acc=0 modes are decode_error, the corrected polarity)."""
+        for mode in (0x10, 0x11):
+            wta.assemble(".default_port mask=0x01 out=0\n"
+                         "VFMA_ACC prec .precision mode=0x%02X "
+                         ".imm64 %d\n"
+                         % (mode, wta.pack_vfma_b(1, 5, mode & 0xF)))
+        wta.assemble(".default_port mask=0x01 out=0\n"
+                     "VFMA_ACC prec .precision mode=0x10 .opref\n")
+        # XOR violations: neither / both
+        with self.assertRaises(wta.AssemblerError):
+            wta.assemble(".default_port mask=0x01 out=0\n"
+                         "VFMA_ACC prec .precision mode=0x10\n")
+        with self.assertRaises(wta.AssemblerError):
+            wta.assemble(".default_port mask=0x01 out=0\n"
+                         "VFMA_ACC prec .precision mode=0x10 "
+                         ".imm64 1 .opref\n")
+        # mode-byte ROM pins: acc=0 forms, fp/f32 dtypes, rnd!=0 all
+        # reject (dtype {0,1} x acc=1 x rnd=0 is the whole legal set)
+        for bad_mode in (0x00, 0x01, 0x14, 0x12, 0x50, 0x20):
+            with self.assertRaises(wta.AssemblerError, msg=hex(bad_mode)):
+                wta.assemble(".default_port mask=0x01 out=0\n"
+                             "VFMA_ACC prec .precision mode=0x%02X "
+                             ".imm16 1\n" % bad_mode)
+        # precision EH + prec flag are required (fp-block asm row)
+        with self.assertRaises(wta.AssemblerError):
+            wta.assemble(".default_port mask=0x01 out=0\n"
+                         "VFMA_ACC .imm16 1\n")
+
+    def test_vfma_b_mul_range_lint(self):
+        """The §25.2.4 asm-lint pin: imm encodings with nonzero LOW-WORD
+        bits above the lane width are LOUDLY rejected (the RTL reads
+        only B[3:0]/B[7:0] — silent truncation forbidden); the c_acc
+        word B[63:32] is free."""
+        # int4: B[3:0] legal, bit 4 and up loud
+        wta.assemble(".default_port mask=0x01 out=0\n"
+                     "VFMA_ACC prec .precision mode=0x10 .imm16 0xF\n")
+        for bad in ("imm16 0x10", "imm16 0xFF", "imm32 0x100",
+                    "imm64 0x10"):
+            with self.assertRaises(wta.AssemblerError, msg=bad) as ctx:
+                wta.assemble(".default_port mask=0x01 out=0\n"
+                             "VFMA_ACC prec .precision mode=0x10 "
+                             ".%s\n" % bad)
+            self.assertIn('lane width', str(ctx.exception))
+        # int8: B[7:0] legal, bit 8 and up loud
+        wta.assemble(".default_port mask=0x01 out=0\n"
+                     "VFMA_ACC prec .precision mode=0x11 .imm16 0xFF\n")
+        for bad in ("imm16 0x100", "imm32 0x8000", "imm64 0x100"):
+            with self.assertRaises(wta.AssemblerError, msg=bad):
+                wta.assemble(".default_port mask=0x01 out=0\n"
+                             "VFMA_ACC prec .precision mode=0x11 "
+                             ".%s\n" % bad)
+        # c_acc rides B[63:32] untouched — a full-scale imm64 upper word
+        # with an in-range b_mul field is legal at both dtypes
+        wta.assemble(".default_port mask=0x01 out=0\n"
+                     "VFMA_ACC prec .precision mode=0x10 .imm64 %d\n"
+                     % wta.pack_vfma_b(-8, 0xFFFFFFFF, 0x0))
+        wta.assemble(".default_port mask=0x01 out=0\n"
+                     "VFMA_ACC prec .precision mode=0x11 .imm64 %d\n"
+                     % wta.pack_vfma_b(-128, -(1 << 31), 0x1))
+
+    def test_vfma_encoding_roundtrip(self):
+        """Encoder roundtrip: opcode byte 0x70, prec-only flags nibble
+        (B is an immediate, NOT payload_b — no opb), and the .imm64
+        body words carry the pack_vfma_b split {lo32 = b_mul field,
+        hi32 = c_acc} verbatim as consecutive 32-bit words."""
+        b64 = wta.pack_vfma_b(-3, 0x8000_0001, 0x0)
+        insts = wta.assemble(
+            ".default_port mask=0x01 out=0\n"
+            "VFMA_ACC prec .precision mode=0x10 .imm64 %d\n"
+            "VFMA_ACC prec .precision mode=0x11 .imm16 0x7F\n" % b64)
+        ops = [(w >> 24) & 0xFF for w in insts]
+        self.assertEqual(ops, [0x70, 0x70])
+        self.assertEqual((insts[0] >> 16) & 0xF, 0b0100)   # prec only
+        self.assertEqual((insts[1] >> 16) & 0xF, 0b0100)
+        # the imm64 EH body {lo32, hi32} rides verbatim (b_mul raw
+        # field 0xD = -3 sext source, c_acc pattern untouched)
+        words = [(insts[0] >> (32 * i)) & 0xFFFFFFFF for i in range(13)]
+        lo, hi = b64 & 0xFFFFFFFF, b64 >> 32
+        self.assertEqual((lo, hi), (0x0000000D, 0x80000001))
+        self.assertIn((lo, hi), list(zip(words, words[1:])),
+                      f"imm64 body words not found: {words}")
+        # the imm16 form's EH body carries the raw 0x7F field at the
+        # imm16 body position (upper 16 bits of its EH word)
+        words1 = [(insts[1] >> (32 * i)) & 0xFFFFFFFF for i in range(13)]
+        self.assertTrue(any((w >> 16) == 0x007F and ((w >> 8) & 0xF) == 0x2
+                            for w in words1),
+                        f"imm16 body word not found: {words1}")

@@ -1831,8 +1831,8 @@
     {
       "mnemonic": "VFMA_ACC",
       "code": 112,
-      "desc": "int4/int8 lanes x broadcast B, int32 accumulate (v1.8 WIDE-ACC; fp dtypes are v2.0 loosening)",
-      "notes": "v1.8.0a COMMIT 2 stub: decode-legal, PE_Core raises lower_required (capability absence, not malformation). Mode-byte legality per the normative spec \u00a723.6a table \u2014 restrictive-first, later loosening only. v1.8.0b: stays stub \u2014 deferred to v1.8.0c (stateless form needs 16-fragment output FSM; stateful form needs the accumulator design; both remain open). SDK covers dot-shaped uses via VDOT chains.",
+      "desc": "VFMA_ACC \u2014 STATELESS per-lane int32 wrap FMA: out[i] = (sext32(a[i]) * b_mul + c_acc) mod 2^32 at bits [32i+31:32i] (2 int32 lanes/word); A = 128b wide (2-frag wave): dtype 0x0 = 32 int4 lanes -> 16 fragments (the frag-widening + Cluster mask-fix consumer), 0x1 = 16 int8 lanes -> 8 fragments; B 64b split {c_acc = B[63:32] broadcast int32 addend, b_mul = sext32(B[3:0]) int4 / sext32(B[7:0]) int8} via IMM-XOR-OPREF; acc=1 marks the wide-acc OUTPUT form, NOT stateful accumulation (fp dtypes + stateful accumulator are v2.0)",
+      "notes": "v1.8.0e 0e2 IMPLEMENTED (spec section 25.2.4): stub_v18 dropped with the 0x70 launch arm in the same commit (stub set is now {0x7D, 0x7E}). Decode legality UNCHANGED from the v1.8.0a COMMIT 2 skeleton \u2014 the EH row and the mode-byte ROM row (legal_dtypes [0,1], acc [1], rnd [0]) ship as-pinned; the stub drop touches no generated decode table except the STUB_OPS_V18 python set (truth-table domain excludes 0x70-0x7F \u2014 zero recapture). STATELESS pin: acc=1 is the wide-acc OUTPUT-form marker (the lane-engine polarity misread is corrected on record); c_acc can sit exactly at the wrap boundary \u2014 mod 2^32 is EXPLICIT and golden-pinned (ref_vfma_lane). B split: imm16/imm32 zero-fill the upper word -> c_acc = 0; the datapath reads ONLY B[3:0] (int4) / B[7:0] (int8) for b_mul \u2014 asm-lint LOUDLY rejects imm encodings with nonzero low-word bits above the lane width (pack_vfma_b helper; no silent truncation is observable from legal programs). Compute: ONE shared sequential LUT-mapped signed 8x8 MAC step (fp_comb_arms.vh vfma_mac_lane32, shift-add LUT-structural \u2014 the section 25.5.1 DSP-suppression mechanism, 0 new MULT18), 1 cy/lane, launch-cycle capture of A(128b)+B-split+tag into MU-local regs (0x74 idiom); never FP_StepSeq. Emit: lane pairs pack 2 int32/word \u2014 word 0 -> frag0_hold, words >= 1 -> frag_pending[1..15]; fragment 0 emits at LOOP COMPLETION (section 25.6 item 8 invariant) then rows drain 1/cycle through the widened FSM \u2014 the int4 form is the FIRST 16-fragment emitter (tot_m1 = 15, the Cluster frag_mask_full 5-bit-shift fix consumer). Occupancy: vfma_busy joins output_regs_free (10th term) AND the 0x12 MUL launch gate; mid-flight mul-class dispatches busy-reject loudly (lower_required, VDOT rung). Cycle ceilings (section 25.4): int4 90, int8 48. instruction+EH chain replicated on every fragment (VDOT contract). MU routing rides the twin-classifier lockstep edit (Cluster.v is_mul_op + PE_Core.v dec_is_mul_op += 0x70) landing with this 0e2 commit.",
       "asm_legality": {
         "required": [
           "port"
@@ -1858,7 +1858,7 @@
         "forbid_opref": false
       },
       "rtl_alu_binary": true,
-      "stub_v18": true
+      "stub_v18": false
     },
     {
       "mnemonic": "VDOT_ACC",

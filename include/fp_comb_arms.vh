@@ -1,22 +1,26 @@
 // SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
 // SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
 //
-// fp_comb_arms.vh — the v1.8.0e 0e1 combinational MU-arm datapaths
-// (spec §25.2.1 / §25.2.3): 0x79 FMINMAX per-lane frozen-IEEE compare
-// cell and the 0x6B GAMMA_MUL_W 16-lane exact widening multiply.
+// fp_comb_arms.vh — the v1.8.0e combinational MU-arm datapaths
+// (spec §25.2.1 / §25.2.3 / §25.2.4): 0x79 FMINMAX per-lane frozen-IEEE
+// compare cell, the 0x6B GAMMA_MUL_W 16-lane exact widening multiply,
+// and (0e2) the 0x70 VFMA_ACC shared sequential MAC step.
 //
 // SINGLE-SOURCE FUNCTION INCLUDE (the fp_narrow_f32.vh convention,
-// `include`d inside the module body): the same two functions are
+// `include`d inside the module body): the same functions are
 // instantiated by the PE_Core.v MU-gated dispatch arms AND by the
 // standalone unit-test top synth/lattice/fp_ops/FP_CombArms.v, so the
 // unit TB proves exactly the cells the MU arm dispatches. Golden twins:
-// scripts/golden_fp32.py ref_fminmax_lane / ref_gamma_mul_w_lane.
+// scripts/golden_fp32.py ref_fminmax_lane / ref_gamma_mul_w_lane /
+// ref_vfma_lane.
 //
-// Both arms are combinational, single-cycle, and NEVER touch the fp
-// step sequencer (§25 staging pin). Neither may infer a multiplier:
-// FMINMAX is compare-only; the GAMMA products are built LUT-STRUCTURAL
-// as signed shift-adds (the §25.5.1 MULT-pin suppression mechanism —
-// the named C6 +1-drift lesson; a bare `*` could tempt DSP inference).
+// All arms are combinational cells that NEVER touch the fp step
+// sequencer (§25 staging pin) — FMINMAX/GAMMA emit single-cycle, the
+// VFMA cell is the per-cycle step of the PE_Core lane loop. None may
+// infer a multiplier: FMINMAX is compare-only; the GAMMA and VFMA
+// products are built LUT-STRUCTURAL as signed shift-adds (the §25.5.1
+// MULT-pin suppression mechanism — the named C6 +1-drift lesson; a
+// bare `*` could tempt DSP inference).
 //
 // yosys note (§23.8): callers assign each function result to a wire and
 // consume the WIRE — no function-call result indexing.
@@ -92,5 +96,43 @@ function [127:0] gamma_mul_w_128;
                    - (gmw_g4[3] ? {gmw_va[4:0], 3'b0} : 8'h0);
             gamma_mul_w_128[8*gmw_i +: 8] = gmw_p;
         end
+    end
+endfunction
+
+// ---------------------------------------------------------------------------
+// 0x70 VFMA_ACC — the ONE shared sequential MAC step (§25.2.4, 0e2):
+// the PE_Core lane loop presents one sign-extended 8-bit lane slice per
+// cycle (int4 lanes arrive pre-extended to 8 bits) against the held
+// b_mul byte (sext8 of B[3:0] / B[7:0] — the launch-captured B split);
+//     out = (sext32(a8 * b8) + c_acc) mod 2^32   — EXPLICIT wrap.
+// EXACTNESS: |a8 * b8| <= 128 * 128 = 2^14 ⊂ int16, so the mod-2^16
+// shift-add sum below IS the true signed product; sext32 + the 32-bit
+// add then wraps exactly per the golden ref_vfma_lane pin (c_acc can
+// sit exactly at the wrap boundary).
+//
+// LUT-STRUCTURAL product (DSP-inference suppression by construction,
+// the §25.5.1 MULT-pin mechanism — 0 new MULT18, never FP_Mul36): with
+// b = Σ_{k=0..6} 2^k·b[k] − 128·b[7] (two's-complement bit weights of
+// the signed 8-bit b_mul), the 16-bit product is the shift-add
+//     Σ_{k=0..6} (b[k] ? va<<k : 0) − (b[7] ? va<<7 : 0)
+// over the sign-extended va. ONE instance per MU — the lane loop
+// reuses it 1 lane/cycle (STATELESS: no cross-lane state anywhere).
+// ---------------------------------------------------------------------------
+function [31:0] vfma_mac_lane32;
+    input [7:0]  vml_a;       // sext8 lane slice (int4 pre-extended)
+    input [7:0]  vml_b;       // held b_mul byte (sext8 of B[3:0]/B[7:0])
+    input [31:0] vml_c;       // broadcast c_acc = B[63:32]
+    reg [15:0]   vml_va, vml_p;
+    begin
+        vml_va = {{8{vml_a[7]}}, vml_a};            // sext16(a8)
+        vml_p  = (vml_b[0] ? vml_va : 16'h0)
+               + (vml_b[1] ? {vml_va[14:0], 1'b0} : 16'h0)
+               + (vml_b[2] ? {vml_va[13:0], 2'b00} : 16'h0)
+               + (vml_b[3] ? {vml_va[12:0], 3'b000} : 16'h0)
+               + (vml_b[4] ? {vml_va[11:0], 4'b0000} : 16'h0)
+               + (vml_b[5] ? {vml_va[10:0], 5'b00000} : 16'h0)
+               + (vml_b[6] ? {vml_va[9:0],  6'b000000} : 16'h0)
+               - (vml_b[7] ? {vml_va[8:0],  7'b0000000} : 16'h0);
+        vfma_mac_lane32 = {{16{vml_p[15]}}, vml_p} + vml_c;
     end
 endfunction

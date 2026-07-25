@@ -1564,14 +1564,15 @@ async def test_twin_classifier_lockstep_static(dut):
         f"{sorted(hex(x) for x in pec - clu)}"
     assert {0x73, 0x77} <= clu, "0x73/0x77 missing from the twin classifiers"
     # v1.8.0e §25.6 item 6 — 0x6B GAMMA_MUL_W / 0x78 DEQUANT / 0x79
-    # FMINMAX joined in lockstep with the 0e1 integration commit. 0x70
-    # VFMA_ACC joins with its 0e2 arm, not before (staged — until then
-    # it stays L-PE-routed into the explicit lower_required stub arm).
+    # FMINMAX joined in lockstep with the 0e1 integration commit.
+    # v1.8.0e 0e2 — 0x70 VFMA_ACC joined WITH its lane-loop arm (this
+    # commit; spec §25.2.4): the staged-out pin flips to IN.
     assert {0x6B, 0x78, 0x79} <= clu, \
         "0x6B/0x78/0x79 missing from the twin classifiers (v1.8.0e 0e1)"
-    assert 0x70 not in clu, \
-        "0x70 entered is_mul_op before its 0e2 arm — staging violation " \
-        "(spec §25.1: VFMA_ACC is 0e2)"
+    assert 0x70 in clu, \
+        "0x70 missing from the twin classifiers — the 0e2 arm landed, " \
+        "so a staged-out 0x70 is now the silent lower_required " \
+        "dead-end (spec §25.2.4 / §25.3 lockstep pin)"
     assert 0x7C not in clu, \
         "0x7C entered is_mul_op — violates the §23.10.10(d) " \
         "twin-classifier-untouched clause (L-PE for ALL dtypes)"
@@ -1854,3 +1855,99 @@ async def test_dequant_cluster_int4_8frag_drain(dut):
     assert [(b['payload'], b['frag_hdr']) for b in beats2] == \
         [(exp_lo, 0x01), (exp_hi, 0x11)], \
         "2-frag emitter corrupted after the 8-beat drain"
+
+
+# =============================================================================
+# v1.8.0e §25.2.4/§25.3 0e2 — 0x70 VFMA_ACC through the FULL Cluster:
+# twin-classifier reachability (the 0e2 lockstep edit), the FIRST
+# 16-fragment emit through the output merge, and the 16-fragment
+# REASSEMBLY round-trip — the emitted wave fed back as an input wave
+# closes the loop on the frag_mask_full 5-bit-shift fix (pre-fix,
+# tot_m1=15 input waves silently rotted in the CAM). Golden authority:
+# scripts/golden_fp32.py vfma_frags (imported, never retyped).
+# =============================================================================
+
+
+@cocotb.test()
+async def test_vfma_cluster_16frag_roundtrip(dut):
+    """v1.8.0e 0e2: (a) a 0x70 int4 wave (2-frag A in, B via IMM64
+    replicated per beat — the VDOT instruction-replication contract)
+    routes to the MATMUL_UNIT via is_mul_op, runs the lane loop, and
+    emits 16 fragments through the Cluster merge — bit-exact vs golden
+    vfma_frags, headers 0x0F..0xFF in order, 1 beat/cycle contiguous,
+    tag constant; (b) the EMITTED 16-fragment wave is fed back as an
+    input wave to a plain ADD .imm16 consumer and REASSEMBLES (the
+    tot_m1=15 mask-fix consumer round-trip — this dispatch never
+    completes on pre-fix RTL); (c) an int8 0x70 wave then emits 8
+    fragments bit-exact (both forms cross the merge)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+    from test_isa_decoder import eh_precision as _ehp, eh_imm64 as _ehi64
+
+    # ---- (a) int4-32: 2-frag A wave in -> 16 fragments out
+    lanes4 = [((i * 11) + 3) & 0xF for i in range(32)]
+    a_frags = _G.lanes_to_frags(lanes4, 4)
+    b64 = ((0x7FFFFFF0 & 0xFFFFFFFF) << 32) | 0xE     # b=-2, c near MAX
+    instr = encode_instr(0x70,
+                         eh_port(input_port_mask=0x01, output_port_id=0),
+                         _ehp(0x10, 0), _ehi64(b64),
+                         flags=(1 << 2))              # prec (B is imm)
+    tag = make_tag(wave_number=21, port_context_id=0)
+    await _fire_frag_wave(dut, instr, tag, a_frags)
+    beats, err, lwr = await _collect_out_beats(dut, 16, 200)
+    exp = _G.vfma_frags(a_frags, b64, _G.DT_INT4)
+    assert (err, lwr) == (0, 0), f"0x70 int4: err={err} lwr={lwr}"
+    assert len(beats) == 16, \
+        f"0x70 int4: {len(beats)} fragments != 16 (twin-classifier " \
+        f"dead-end or drain truncation)"
+    assert [b['payload'] for b in beats] == exp, \
+        f"0x70 int4: {[hex(b['payload']) for b in beats]} != " \
+        f"{[hex(x) for x in exp]}"
+    assert [b['frag_hdr'] for b in beats] == \
+        [(i << 4) | 0xF for i in range(16)], \
+        f"header sequence {[hex(b['frag_hdr']) for b in beats]}"
+    assert all(b['opcode'] == 0x70 for b in beats)
+    assert len({b['tag'] for b in beats}) == 1
+    cyc = [b['cycle'] for b in beats]
+    assert cyc == list(range(cyc[0], cyc[0] + 16)), \
+        f"16-frag drain not contiguous through the merge: {cyc}"
+
+    # ---- (b) ROUND-TRIP: the emitted 16-fragment wave becomes an
+    # INPUT wave (tot_m1 = 15) to a plain ADD .imm16 — reassembly at
+    # the fixed frag_mask_full completes and dispatches (fragment 0's
+    # payload is the dispatched word, the frag-reass contract pinned by
+    # test_cluster_frag_reass_16)
+    payloads = [b['payload'] for b in beats]
+    consumer = encode_instr(0x10, eh_port(input_port_mask=0x01,
+                                          output_port_id=0), eh_imm16(5))
+    tag2 = make_tag(wave_number=22, port_context_id=0)
+    await _fire_frag_wave(dut, consumer, tag2, payloads)
+    beats2, err, lwr = await _collect_out_beats(dut, 1, 40)
+    assert (err, lwr) == (0, 0), f"round-trip: err={err} lwr={lwr}"
+    assert len(beats2) == 1, \
+        "16-fragment VFMA output wave never reassembled on re-entry " \
+        "(the pre-fix tot_m1=15 silent-CAM-rot signature)"
+    exp_rt = (payloads[0] + 5) & ((1 << 64) - 1)
+    assert beats2[0]['payload'] == exp_rt, \
+        f"round-trip: {beats2[0]['payload']:#x} != {exp_rt:#x}"
+
+    # ---- (c) int8-16 -> 8 fragments through the same path
+    lanes8 = [((i * 29) ^ 0x5C) & 0xFF for i in range(16)]
+    a8_frags = _G.lanes_to_frags(lanes8, 8)
+    b64_8 = ((0x80000000 & 0xFFFFFFFF) << 32) | 0x80  # b=-128, c=MIN
+    instr8 = encode_instr(0x70,
+                          eh_port(input_port_mask=0x01, output_port_id=0),
+                          _ehp(0x11, 0), _ehi64(b64_8),
+                          flags=(1 << 2))
+    tag3 = make_tag(wave_number=23, port_context_id=0)
+    await _fire_frag_wave(dut, instr8, tag3, a8_frags)
+    beats3, err, lwr = await _collect_out_beats(dut, 8, 120)
+    exp8 = _G.vfma_frags(a8_frags, b64_8, _G.DT_INT8)
+    assert (err, lwr) == (0, 0), f"0x70 int8: err={err} lwr={lwr}"
+    assert len(beats3) == 8, f"0x70 int8: {len(beats3)} fragments != 8"
+    assert [b['payload'] for b in beats3] == exp8, \
+        f"0x70 int8: {[hex(b['payload']) for b in beats3]} != " \
+        f"{[hex(x) for x in exp8]}"
+    assert [b['frag_hdr'] for b in beats3] == \
+        [(i << 4) | 0x7 for i in range(8)]

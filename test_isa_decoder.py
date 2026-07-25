@@ -4039,7 +4039,13 @@ async def _fp_run_point(dut, op, mode, via_eh):
     # ~6-7 cy/lane at the measured L=5), so its first output pulse (the
     # loop-completion fragment 0) lands ~100-230 cycles after dispatch;
     # every other point resolves within the old 24-cycle window.
-    window = 320 if op == 0x78 else 24
+    # v1.8.0e 0e2 — a legal-mode 0x70 point now launches the REAL VFMA
+    # lane loop (16 or 32 MAC steps at 1 cy/lane): the scaffold's
+    # wide=1 + imm16(1) supply A and the B split (b_mul = 1, c_acc = 0
+    # — the imm16 zero-fill pin), so fragment 0 lands ~20-40 cycles
+    # after dispatch and the 16-fragment drain rides the post-loop
+    # drain below.
+    window = 320 if op == 0x78 else (64 if op == 0x70 else 24)
     for _ in range(window):
         await RisingEdge(dut.clk)
         await Timer(1, units="ns")
@@ -4087,6 +4093,14 @@ def _fp_expected(op, mode):
     _V180E_PENDING_INTEGRATION set is DELETED with this commit as
     pinned; the directed e2e DEQUANT tests below bind bit-exact
     execution.
+
+    v1.8.0e 0e2 (THIS commit): 0x70 VFMA_ACC graduated — its lane-loop
+    launch arm landed, so legal-mode 0x70 points now EXECUTE: the
+    scaffold's wide=1 (A) + imm16(1) (B: b_mul = 1 after the lane-width
+    sext, c_acc = 0 via the zero-fill pin) launch a real 32- or 16-lane
+    MAC loop whose fragment-0 emit arrives at loop completion, followed
+    by the 16- or 8-fragment drain — the int4 form is the first
+    tot_m1=15 walker. STUB_OPS_V18 regenerated to {0x7D, 0x7E}.
 
     v1.8.0d: 0x73/0x77 graduated too, and the 0x7C dtype-0x2/0x3
     conditional lower_required arm is GONE (fp-dest packer landed).
@@ -4171,6 +4185,11 @@ async def test_fp_block_stub_lower_required_all_ops(dut):
     # falls to the case default and fails here.
     # v1.8.0c: 0x74/0x75/0x76 graduated too (fp32 step-sequencer arms;
     # directed coverage in the v1.8.0c section at the end of this file).
+    # v1.8.0e 0e2 — the stub set is now EXACTLY {0x7D, 0x7E} (0x70
+    # VFMA_ACC graduated with its lane-loop arm; both survivors stay
+    # unscheduled). Pinned literally so a JSON stub-bit drift is loud.
+    assert STUB_OPS_V18 == frozenset({0x7D, 0x7E}), \
+        f"stub set drifted from the 0e2 pin: {sorted(STUB_OPS_V18)}"
     for op in sorted(STUB_OPS_V18):
         legal = FP_MODE_LEGAL[op]
         mode = (legal['legal_rnd'][0] << 6) | (legal['legal_acc'][0] << 4) \
@@ -5917,3 +5936,410 @@ async def test_gamma_mul_w_directed_e2e(dut):
     await run_wave([((3 * i) + 1) & 0xF for i in range(16)],
                    [((-i) & 0xF) for i in range(16)])
     await run_wave([0x8] * 16, [0x8] * 16)   # all (-8)*(-8) = +64 rows
+
+
+# =============================================================================
+# v1.8.0e §25.2.4/§25.3 0e2 — 0x70 VFMA_ACC lane-loop e2e: the FIRST
+# 16-fragment emitter (tot_m1 = 15 — the consumer of the 0e1 frag
+# widening + Cluster mask fix), the B-split pins, the explicit mod-2^32
+# wrap, the vfma_busy interlocks and the §25.4 cycle ceilings. Golden
+# authority: scripts/golden_fp32.py vfma_frags / ref_vfma (imported,
+# never retyped).
+# =============================================================================
+
+
+def _vfma_instr(dtype, imm64=None, imm16=None, imm32=None):
+    """0x70 VFMA_ACC: PRECISION mode 0x10|dtype (acc=1 — the wide-acc
+    OUTPUT-form marker, NOT stateful accumulation) + B via IMM (the
+    canonical form is imm64 carrying the {c_acc, b_mul} split; imm16/
+    imm32 zero-fill the upper word -> c_acc = 0)."""
+    return _fp_instr(0x70, imm16=imm16, mode=0x10 | (dtype & 0xF),
+                     imm32=imm32, imm64=imm64)
+
+
+def _vfma_pack_a(lanes, dtype):
+    """Pack raw lane fields into the 128-bit A (the golden lane-map pin:
+    int4 lane i at [4i+3:4i], int8 lane i at [8i+7:8i])."""
+    lb = 4 if dtype == _G.DT_INT4 else 8
+    frags = _G.lanes_to_frags(lanes, lb)
+    assert len(frags) == 2
+    return frags[0] | (frags[1] << 64), frags
+
+
+async def _vfma_run_wave(dut, lanes, b_payload, dtype, window=120,
+                         imm_kind='imm64'):
+    """Fire one VFMA wave (wide A + B via the chosen IMM kind;
+    payload_b deliberately INVALID — the arm must never read the port)
+    and collect EVERY outcome pulse until the PE drains back to idle.
+    Returns (events, pe_ready_ever_high_during_flight)."""
+    wide, _ = _vfma_pack_a(lanes, dtype)
+    kw = {imm_kind: b_payload}
+    await _fp_fire_token(dut, _vfma_instr(dtype, **kw), 0,
+                         payload_b=0, b_valid=0, wide=wide, wide_valid=1)
+    events = []
+    ready_high_mid = False
+    frag0_cycle = None
+    launched = False
+    idle_after = 0
+    for i in range(window):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.error_flag.value):
+            events.append({'kind': 'err', 'cycle': i})
+        if int(dut.lower_required.value):
+            events.append({'kind': 'lwr', 'cycle': i})
+        if int(dut.output_valid.value):
+            if frag0_cycle is None:
+                frag0_cycle = i
+            events.append({'kind': 'out', 'cycle': i,
+                           'payload': int(dut.output_payload.value),
+                           'opcode': int(dut.opcode_out.value),
+                           'tag': int(dut.output_tag.value),
+                           'frag_hdr': int(dut.output_frag_hdr.value)})
+        ready = int(dut.pe_ready.value)
+        if not launched and ready == 0:
+            launched = True          # loop entered (pe_ready dropped)
+        if launched and frag0_cycle is None and ready == 1:
+            ready_high_mid = True    # §25.3 violation: gap in occupancy
+        if launched and ready == 1 and int(dut.output_valid.value) == 0:
+            idle_after += 1
+            if idle_after >= 3 and frag0_cycle is not None:
+                break
+        else:
+            idle_after = 0
+    return events, ready_high_mid
+
+
+def _vfma_expect_frags(lanes, b_payload, dtype):
+    _, a_frags = _vfma_pack_a(lanes, dtype)
+    return _G.vfma_frags(a_frags, b_payload, dtype)
+
+
+def _vfma_b64(b_field, c_acc):
+    """Raw B word: b_mul lane field at the low bits (the RTL sext
+    source), c_acc pattern at [63:32] — mirrors asm pack_vfma_b."""
+    return ((c_acc & 0xFFFFFFFF) << 32) | b_field
+
+
+@cocotb.test()
+async def test_vfma_e2e_int4_16frag_bit_exact(dut):
+    """int4-32 -> 32 int32 = 16 fragments, FULL-WAVE bit-exact vs golden
+    vfma_frags across b_mul/c_acc classes — THE first tot_m1=15 walk:
+    header nibble sequence {idx, total_m1} = 0x0F, 0x1F, .., 0xFF (all
+    16 in order), 1-fragment/cycle drain contiguity, opcode_out
+    preservation, tag stability, and the §25.3 occupancy pin (pe_ready
+    low from launch to fragment 0). Also re-checks the row-0-dummy
+    invariant: a 2-fragment wide op straight after the 16-beat wave is
+    bit-identical (no FSM residue at the widest drain)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    import random as _rnd
+    rng = _rnd.Random(0x0E70)
+    lane_sets = [
+        [rng.randrange(16) for _ in range(32)],
+        [0x8, 0x7, 0x0, 0xF, 0x1, 0x9, 0x4, 0xC] * 4,   # extremes incl. -8
+    ]
+    b_words = [
+        _vfma_b64(0x3, 100),                 # b=+3, small positive c
+        _vfma_b64(0x8, -1),                  # b=-8 (sext pin), c=-1
+        _vfma_b64(0xF, 0x7FFFFFFF),          # b=-1, c=INT32_MAX (wrap)
+        _vfma_b64(0x0, 0x80000000),          # b=0, c=INT32_MIN pattern
+    ]
+    for lanes in lane_sets:
+        for b64 in b_words:
+            events, ready_mid = await _vfma_run_wave(
+                dut, lanes, b64, _G.DT_INT4)
+            outs = [e for e in events if e['kind'] == 'out']
+            errs = [e for e in events if e['kind'] != 'out']
+            assert not errs, f"B=0x{b64:016X}: {errs}"
+            assert len(outs) == 16, \
+                f"B=0x{b64:016X}: {len(outs)} fragments != 16"
+            exp = _vfma_expect_frags(lanes, b64, _G.DT_INT4)
+            got = [e['payload'] for e in outs]
+            assert got == exp, \
+                f"B=0x{b64:016X}: {[hex(x) for x in got]} != " \
+                f"{[hex(x) for x in exp]}"
+            hdrs = [e['frag_hdr'] for e in outs]
+            assert hdrs == [(i << 4) | 0xF for i in range(16)], \
+                f"B=0x{b64:016X}: header sequence {hdrs}"
+            assert all(e['opcode'] == 0x70 for e in outs), \
+                f"opcode_out not preserved: {[e['opcode'] for e in outs]}"
+            assert len({e['tag'] for e in outs}) == 1, \
+                "tag must be constant across all fragments of one wave"
+            cycles = [e['cycle'] for e in outs]
+            assert cycles == list(range(cycles[0], cycles[0] + 16)), \
+                f"drain not 1 fragment/cycle: {cycles}"
+            assert not ready_mid, \
+                "pe_ready glitched high inside the lane loop (§25.3)"
+
+    # row-0-dummy / no-residue invariant after the WIDEST drain
+    lo, hi = 0x1111222233334444, 0x5555666677778888
+    instr = encode_instr(0x60, _STD_PORT(), eh_imm16(3))
+    await _fp_fire_token(dut, instr, 0, wide=lo | (hi << 64), wide_valid=1)
+    outs = []
+    for i in range(20):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value):
+            outs.append((int(dut.output_payload.value),
+                         int(dut.output_frag_hdr.value)))
+        if len(outs) == 2:
+            break
+    exp_lo = sum(((((lo >> (4 * i)) & 0xF) + 3) & 0xF) << (4 * i)
+                 for i in range(16))
+    exp_hi = sum(((((hi >> (4 * i)) & 0xF) + 3) & 0xF) << (4 * i)
+                 for i in range(16))
+    assert outs == [(exp_lo, 0x01), (exp_hi, 0x11)], \
+        f"2-frag emitter corrupted after the 16-frag wave: " \
+        f"{[(hex(p), hex(h)) for p, h in outs]}"
+
+
+@cocotb.test()
+async def test_vfma_e2e_int8_8frag_bit_exact(dut):
+    """int8-16 -> 16 int32 = 8 fragments: full-wave bit-exact vs golden
+    across the int8 b_mul extremes (sext32 from B[7:0] — 0x80 = -128,
+    0x7F = +127), headers 0x07..0x77 in sequence, contiguous drain."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    import random as _rnd
+    rng = _rnd.Random(0x0E71)
+    lane_sets = [
+        [rng.randrange(256) for _ in range(16)],
+        [0x80, 0x7F, 0x00, 0xFF, 0x01, 0x81, 0x40, 0xC0,
+         0x02, 0xFE, 0x55, 0xAA, 0x10, 0xF0, 0x33, 0xCD],
+    ]
+    b_words = [
+        _vfma_b64(0x80, 12345),              # b=-128 (sext pin)
+        _vfma_b64(0x7F, -100000),            # b=+127
+        _vfma_b64(0xFF, 0xFFFFC000),         # b=-1, c=-16384
+        _vfma_b64(0x01, 0),                  # identity-ish row
+    ]
+    for lanes in lane_sets:
+        for b64 in b_words:
+            events, ready_mid = await _vfma_run_wave(
+                dut, lanes, b64, _G.DT_INT8)
+            outs = [e for e in events if e['kind'] == 'out']
+            errs = [e for e in events if e['kind'] != 'out']
+            assert not errs, f"B=0x{b64:016X}: {errs}"
+            assert len(outs) == 8, \
+                f"B=0x{b64:016X}: {len(outs)} fragments != 8"
+            exp = _vfma_expect_frags(lanes, b64, _G.DT_INT8)
+            got = [e['payload'] for e in outs]
+            assert got == exp, \
+                f"B=0x{b64:016X}: {[hex(x) for x in got]} != " \
+                f"{[hex(x) for x in exp]}"
+            hdrs = [e['frag_hdr'] for e in outs]
+            assert hdrs == [(i << 4) | 0x7 for i in range(8)], \
+                f"headers {hdrs}"
+            assert all(e['opcode'] == 0x70 for e in outs)
+            cycles = [e['cycle'] for e in outs]
+            assert cycles == list(range(cycles[0], cycles[0] + 8)), \
+                f"drain not 1 fragment/cycle: {cycles}"
+            assert not ready_mid, "pe_ready glitched high inside the loop"
+
+
+@cocotb.test()
+async def test_vfma_wrap_edge_and_b_split_pins(dut):
+    """§25.2.4 directed pins, all golden-cross-checked AND literal:
+      (1) explicit mod-2^32 — INT32_MIN/MAX boundary products: int8
+          (-128)*(-128) + 0x7FFFC000 = 0x80000000 EXACTLY (positive
+          product wraps to the INT32_MIN pattern, never saturates);
+          int4 (-8)*(-8) + INT32_MAX wraps to 0x8000003F;
+      (2) b_mul sext width pin — int4 reads ONLY B[3:0] (0x8 -> -8),
+          int8 reads ONLY B[7:0] (0x80 -> -128): the SAME raw B word
+          gives dtype-dependent lanes;
+      (3) imm16/imm32 encodings zero-fill the upper word -> c_acc = 0
+          (bit-identical to the imm64 form with c_acc = 0)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # (1a) int8 INT32_MIN wrap literal
+    lanes8 = [0x80] * 16                     # all lanes -128
+    b64 = _vfma_b64(0x80, 0x7FFFC000)        # b=-128, c=INT32_MAX-16383
+    events, _ = await _vfma_run_wave(dut, lanes8, b64, _G.DT_INT8)
+    outs = [e for e in events if e['kind'] == 'out']
+    assert [e for e in events if e['kind'] != 'out'] == []
+    exp = _vfma_expect_frags(lanes8, b64, _G.DT_INT8)
+    got = [e['payload'] for e in outs]
+    assert got == exp
+    # literal: (-128)*(-128) = 16384; 0x7FFFC000 + 0x4000 = 0x80000000
+    assert got[0] == 0x80000000_80000000, \
+        f"INT32_MIN wrap literal violated: {got[0]:016x}"
+
+    # (1b) int4 INT32_MAX wrap literal
+    lanes4 = [0x8] * 32                      # all lanes -8
+    b64 = _vfma_b64(0x8, 0x7FFFFFFF)         # b=-8, c=INT32_MAX
+    events, _ = await _vfma_run_wave(dut, lanes4, b64, _G.DT_INT4)
+    outs = [e for e in events if e['kind'] == 'out']
+    got = [e['payload'] for e in outs]
+    assert got == _vfma_expect_frags(lanes4, b64, _G.DT_INT4)
+    # literal: 64 + 0x7FFFFFFF = 0x8000003F mod 2^32
+    assert got[0] == 0x8000003F_8000003F, \
+        f"INT32_MAX wrap literal violated: {got[0]:016x}"
+
+    # (2) the SAME raw B word at both dtypes: B = {c=0, low word 0x88}
+    # int8 reads 0x88 -> b = -120; int4 must read ONLY [3:0] = 0x8 ->
+    # b = -8 (an int4 imm 0x88 is asm-lint-rejected, but the RTL pin is
+    # dtype-driven and tag-mode dispatches can carry it — assert the
+    # narrowing is exact, never a silent [7:0] read)
+    raw = _vfma_b64(0x88, 0)
+    events, _ = await _vfma_run_wave(dut, [0x1] * 32, raw, _G.DT_INT4)
+    got4 = [e['payload'] for e in events if e['kind'] == 'out']
+    assert got4 == _vfma_expect_frags([0x1] * 32, raw, _G.DT_INT4)
+    assert got4[0] == 0xFFFFFFF8_FFFFFFF8, \
+        f"int4 b_mul read beyond B[3:0]: {got4[0]:016x}"
+    events, _ = await _vfma_run_wave(dut, [0x01] * 16, raw, _G.DT_INT8)
+    got8 = [e['payload'] for e in events if e['kind'] == 'out']
+    assert got8 == _vfma_expect_frags([0x01] * 16, raw, _G.DT_INT8)
+    assert got8[0] == 0xFFFFFF88_FFFFFF88, \
+        f"int8 b_mul != sext32(B[7:0]): {got8[0]:016x}"
+
+    # (3) imm16/imm32 zero-fill -> c_acc = 0 == the imm64 c_acc=0 form
+    lanes = [((i * 7) + 2) & 0xF for i in range(32)]
+    exp0 = _vfma_expect_frags(lanes, _vfma_b64(0xF, 0), _G.DT_INT4)
+    for kind in ('imm16', 'imm32'):
+        events, _ = await _vfma_run_wave(dut, lanes, 0xF, _G.DT_INT4,
+                                         imm_kind=kind)
+        outs = [e for e in events if e['kind'] == 'out']
+        assert [e['payload'] for e in outs] == exp0, \
+            f"{kind} zero-fill pin violated (c_acc != 0)"
+
+    # missing-wide guard (§20 wave contract): error_flag, no launch
+    await _fp_fire_token(dut, _vfma_instr(_G.DT_INT4, imm64=1), 0,
+                         b_valid=0, wide=0x1234, wide_valid=0)
+    err = out = 0
+    for _ in range(20):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        err |= int(dut.error_flag.value)
+        out |= int(dut.output_valid.value)
+    assert err == 1 and out == 0, f"missing-wide: err={err} out={out}"
+    assert int(dut.pe_ready.value) == 1, "guarded launch left PE busy"
+
+
+@cocotb.test()
+async def test_vfma_busy_reject_and_mul_gate(dut):
+    """§25.3 vfma_busy interlocks, all in ONE int4 wave flight (the
+    DEQUANT interlock test's shape at the VFMA loop):
+      (1) a mul-class dispatch with a busy-reject rung (0x74 FSCALAR)
+          landing mid-loop is LOUDLY lower_required — never launched,
+          never silently swallowed;
+      (2) a 0x12 MUL dispatch mid-loop never launches (the launch
+          gate's new !vfma_busy term — the confirmed output_regs_free
+          hole) and no 0x12 result ever surfaces;
+      (3) the VFMA result is preserved bit-exactly across both
+          intruders — 16 fragments, contiguous, all opcode 0x70;
+      (4) fragment 0 emits only at loop completion (after both
+          intruder cycles); pe_ready stays low from launch through
+          the final drain beat."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    lanes = [((i * 5) ^ 0x9) & 0xF for i in range(32)]
+    b64 = _vfma_b64(0x5, -3)
+    wide, a_frags = _vfma_pack_a(lanes, _G.DT_INT4)
+    exp = _G.vfma_frags(a_frags, b64, _G.DT_INT4)
+
+    await _fp_fire_token(dut, _vfma_instr(_G.DT_INT4, imm64=b64), 0,
+                         payload_b=0, b_valid=0, wide=wide, wide_valid=1)
+    outs = []
+    lwr_seen = 0
+    err_seen = 0
+    intruded_74 = intruded_12 = False
+    for i in range(160):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        # two intruders, well inside the ~32-cycle lane loop
+        if i == 8 and not intruded_74:
+            intruded_74 = True
+            await _fp_fire_token(dut, _fp_instr(0x74, subop=_FS['FS_MUL']),
+                                 _f2b(2.0), payload_b=_f2b(3.0), b_valid=1)
+        if i == 16 and not intruded_12:
+            intruded_12 = True
+            instr12 = encode_instr(0x12, _STD_PORT(), eh_imm16(5))
+            dut.instruction.value = instr12
+            dut.input_tag.value = _STD_TAG()
+            dut.input_payload.value = 7
+            dut.input_payload_b_valid.value = 1
+            dut.token_valid.value = 1
+            await RisingEdge(dut.clk)
+            dut.token_valid.value = 0
+        await Timer(1, units="ns")
+        err_seen |= int(dut.error_flag.value)
+        lwr_seen |= int(dut.lower_required.value)
+        if int(dut.output_valid.value):
+            outs.append({'cycle': i, 'payload': int(dut.output_payload.value),
+                         'opcode': int(dut.opcode_out.value),
+                         'frag_hdr': int(dut.output_frag_hdr.value)})
+        if len(outs) >= 16 and int(dut.pe_ready.value) == 1:
+            break
+    assert intruded_74 and intruded_12, "intruders never dispatched"
+    assert err_seen == 0, "unexpected error_flag during the loop"
+    assert lwr_seen == 1, \
+        "mid-loop mul-class dispatch (0x74) was not LOUDLY busy-rejected"
+    # (2)+(3): exactly 16 output pulses, contiguous, all VFMA fragments
+    # — no 0x12/0x74 result ever surfaced, no per-lane spurious emit
+    assert len(outs) == 16, f"{len(outs)} output pulses != 16: {outs}"
+    assert all(o['opcode'] == 0x70 for o in outs), \
+        f"foreign result surfaced: {[hex(o['opcode']) for o in outs]}"
+    got = [o['payload'] for o in outs]
+    assert got == exp, \
+        f"VFMA corrupted by mid-loop intruders: " \
+        f"{[hex(x) for x in got]} != {[hex(x) for x in exp]}"
+    cycles = [o['cycle'] for o in outs]
+    assert cycles == list(range(cycles[0], cycles[0] + 16)), \
+        f"drain not contiguous: {cycles}"
+    assert cycles[0] > 16, "fragment 0 emitted before loop completion"
+
+
+@cocotb.test()
+async def test_vfma_cycle_bounds(dut):
+    """§25.4 ceilings, completion-within-bound convention (assert the
+    ceiling, NEVER the exact count): token -> FINAL fragment beat
+    within 90 cycles for int4-32/16-frag and 48 for int8-16/8-frag —
+    measured at the unit level incl. decode overhead, so the margin
+    over the ~51/~27 estimates is real headroom, not slack in the
+    assertion."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    cases = [
+        ("int4 16-frag", _G.DT_INT4, 32, 16, 90),
+        ("int8 8-frag",  _G.DT_INT8, 16, 8,  48),
+    ]
+    import random as _rnd
+    rng = _rnd.Random(0x0E72)
+    for label, dtype, n_lanes, n_frags, ceiling in cases:
+        lb_max = 16 if dtype == _G.DT_INT4 else 256
+        lanes = [rng.randrange(lb_max) for _ in range(n_lanes)]
+        b64 = _vfma_b64(0x7 if dtype == _G.DT_INT4 else 0x7F, 999)
+        wide, a_frags = _vfma_pack_a(lanes, dtype)
+        exp = _G.vfma_frags(a_frags, b64, dtype)
+        await _fp_fire_token(dut, _vfma_instr(dtype, imm64=b64), 0,
+                             b_valid=0, wide=wide, wide_valid=1)
+        outs = []
+        last_cycle = None
+        for i in range(ceiling):
+            await RisingEdge(dut.clk)
+            await Timer(1, units="ns")
+            assert int(dut.error_flag.value) == 0
+            assert int(dut.lower_required.value) == 0
+            if int(dut.output_valid.value):
+                outs.append(int(dut.output_payload.value))
+                last_cycle = i
+                if len(outs) == n_frags:
+                    break
+        assert len(outs) == n_frags, \
+            f"{label}: only {len(outs)}/{n_frags} fragments within the " \
+            f"{ceiling}-cycle ceiling (§25.4)"
+        assert outs == exp, f"{label}: wave corrupted under timing run"
+        dut._log.info("%s: completed within ceiling (last beat at "
+                      "cycle %d <= %d)", label, last_cycle, ceiling)
+        await _fp_drain(dut)

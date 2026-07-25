@@ -1246,10 +1246,13 @@ module PE_Core #(
     // is_mul_op (all three arms are MU-hosted; a one-sided edit is the
     // silent permanent lower_required dead-end — pinned by the static
     // lockstep test + test_fp_mu_routing_end_to_end_0e in this commit).
-    // 0x70 VFMA_ACC joins with its 0e2 arm, not before (staged).
+    // v1.8.0e 0e2 — 0x70 VFMA_ACC joins WITH its lane-loop launch arm
+    // (spec §25.2.4; the MAC step lives in the MU-gated generate, so
+    // the L-PEs still synthesize nothing — the same commit flips the
+    // static lockstep test from staged-out to IN).
     wire dec_is_mul_op = (dec_opcode == 8'h12) || (dec_opcode == 8'h30)
                       || (dec_opcode == 8'h32) || (dec_opcode == 8'h43)
-                      || (dec_opcode == 8'h6B)
+                      || (dec_opcode == 8'h6B) || (dec_opcode == 8'h70)
                       || (dec_opcode == 8'h71) || (dec_opcode == 8'h72)
                       || (dec_opcode == 8'h73) || (dec_opcode == 8'h74)
                       || (dec_opcode == 8'h75) || (dec_opcode == 8'h76)
@@ -1461,6 +1464,50 @@ module PE_Core #(
     // Assigned inside the MU-gated generate below (wres_vdot32 idiom).
     wire [31:0]       deq_fp_a_nxt;
 
+    // -------------------------------------------------------------------------
+    // v1.8.0e §25.2.4/§25.3 — 0x70 VFMA_ACC lane-loop state (0e2).
+    // Declared UNCONDITIONALLY (the deq_/fp-reg pattern):
+    // output_regs_free below references vfma_busy in every PE_Core
+    // flavor; all writers sit behind MUL_OPS_SUPPORTED (constant-folded
+    // away on L-PEs / DIV-UNIT).
+    //
+    // Loop shape (STATELESS — out_lane = a_lane*b_mul + c_acc mod 2^32,
+    // no cross-lane state): the 0x70 arm captures A(128b) + the B split
+    // {c_acc = B[63:32], b_mul = sext8(B[3:0]/B[7:0])} + tag into
+    // MU-local regs at launch (0x74 idiom — dec_eff_b_value is the
+    // IMM-XOR-OPREF channel, so there is no missing-B rung) and the
+    // loop walks ONE shared LUT-mapped MAC step (vfma_mac_lane32, in
+    // the MU-gated generate) at 1 lane/cycle. Completed lanes pack 2
+    // int32/word (the §25.3 packing pin): the even lane stages in
+    // vfma_stage, the odd lane commits the 64-bit word — word 0 to the
+    // dedicated frag0_hold (row-0-dummy invariant preserved, shared
+    // with the DEQUANT loop: the two loops are mutually excluded by
+    // output_regs_free), words >= 1 to frag_pending[word] — THE
+    // accumulation buffer IS the widened frag_pending, no second
+    // structure. No per-lane output beat exists anywhere (the shipped
+    // loop-suppression idiom: results only ever stage into
+    // frag0_hold/frag_pending, so there is nothing to divert). Fragment
+    // 0 emits at LOOP COMPLETION, not dispatch (§25.6 item 8) — the
+    // atomic frag0_hold handoff block after the dispatch chain below,
+    // while vfma_busy still holds output_regs_free low. int4 = 32
+    // lanes -> 16 fragments (tot_m1 = 15 — the FIRST 16-fragment
+    // emitter, consuming the 0e1 frag widening + Cluster mask fix);
+    // int8 = 16 lanes -> 8 fragments.
+    // -------------------------------------------------------------------------
+    reg               vfma_busy;         // launch .. final-lane completion cycle
+    reg [4:0]         vfma_lane;         // lane in flight (0..N-1)
+    reg               vfma_is_int8;      // form: 0 = int4-32, 1 = int8-16
+    reg [127:0]       vfma_a_q;          // launch-captured A (128b wide)
+    reg [7:0]         vfma_b_q;          // b_mul byte (sext8 of B[3:0]/B[7:0])
+    reg [31:0]        vfma_c_q;          // broadcast c_acc = B[63:32]
+    reg [31:0]        vfma_stage;        // even lane of the open int32 pair
+    wire [3:0]        vfma_total_m1  = vfma_is_int8 ? 4'd7  : 4'd15;
+    wire [4:0]        vfma_lane_last = vfma_is_int8 ? 5'd15 : 5'd31;
+    // Current-lane MAC result (the deq_fp_a_nxt idiom: lane extract +
+    // the shared vfma_mac_lane32 step live in the MU-gated generate
+    // below — wres_vdot32 zero-tie on L-PEs / DIV-UNIT).
+    wire [31:0]       wres_vfma_lane;
+
     // v1.8.0c §23.10 — widened to the 8-term compound of the spec: the fp
     // step sequencer holds the output stage from launch (fp_busy rises
     // WITH the registered start pulse — no gap cycle, see the fp state
@@ -1469,10 +1516,16 @@ module PE_Core #(
     // v1.8.0e §25.3 — + the deq_loop_active occupancy term (the DEQUANT
     // lane loop's pack/arm window; fp_busy already covers every lane
     // flight and turnaround cycle, the extra term is the pinned cover).
+    // v1.8.0e 0e2 §25.3 — + the vfma_busy occupancy term (10th term):
+    // the VFMA lane loop has no fp_busy cover of its own, so vfma_busy
+    // holds the output stage from launch through the final lane's
+    // completion cycle (the atomic frag0 handoff), then frag_idx covers
+    // the drain — no gap cycle (the two-term busy||drain form mirrors
+    // the fp busy||valid precedent).
     wire output_regs_free = (frag_idx == FRAG_IDLE)
         && !mul_valid_p1 && !mul_valid_p2
         && (div_state == DIV_IDLE) && !div_valid_p2 && !div_b_zero_p2
-        && !fp_busy && !fp_valid_p2 && !deq_loop_active;
+        && !fp_busy && !fp_valid_p2 && !deq_loop_active && !vfma_busy;
 
     // -------------------------------------------------------------------------
     // v1.8 §23.8 synth-gate fix (2026-07-16) — yosys (Verilog-2005) does not
@@ -1600,10 +1653,22 @@ module PE_Core #(
         assign deq_fp_a_nxt = deq_is_int8
             ? {24'h0, deq_a_q[{deq_lane_nxt[3:0], 3'b000} +: 8]}
             : {28'h0, deq_a_q[{deq_lane_nxt, 2'b00} +: 4]};
+        // v1.8.0e 0e2 §25.2.4 — VFMA current-lane extract (same lane-map
+        // pin as DEQUANT, but for the lane IN FLIGHT: the MAC step is
+        // combinational, so the loop consumes lane vfma_lane on the
+        // cycle it advances) + the ONE shared LUT-mapped MAC step. int4
+        // lanes are sign-extended to 8 bits HERE so vfma_mac_lane32
+        // sees a uniform sext8 slice (b_mul was sext8'd at launch).
+        wire [7:0] vfma_a_byte = vfma_a_q[{vfma_lane[3:0], 3'b000} +: 8];
+        wire [3:0] vfma_a_nib  = vfma_a_q[{vfma_lane, 2'b00} +: 4];
+        assign wres_vfma_lane = vfma_mac_lane32(
+            vfma_is_int8 ? vfma_a_byte : {{4{vfma_a_nib[3]}}, vfma_a_nib},
+            vfma_b_q, vfma_c_q);
     end else begin : g_v180e_comb_off
         assign wres_fminmax = 128'h0;
         assign wres_gamma_w = 128'h0;
         assign deq_fp_a_nxt = 32'h0;
+        assign wres_vfma_lane = 32'h0;
     end endgenerate
 
     // v1.8.0d §23.10.10(b) — CVT F2I results are int32-patterned and the
@@ -1672,6 +1737,11 @@ module PE_Core #(
             // extended to the loop. Data regs (deq_a_q/deq_stage/
             // frag0_hold) are reset-free like the fp operand regs.
             deq_loop_active <= 1'b0;
+            // v1.8.0e 0e2 — a mid-loop rst abandons the VFMA lane loop
+            // outright (fully local — no in-flight engine to wait out).
+            // Data regs (vfma_a_q/b_q/c_q/stage/lane/is_int8) are
+            // reset-free like the deq/fp operand regs.
+            vfma_busy       <= 1'b0;
             frag_idx            <= FRAG_IDLE;
             frag_total_m1_held  <= 4'd0;
             // v1.8.0e §25.3 (c): all 16 rows reset-written (row 0 is the
@@ -1720,10 +1790,18 @@ module PE_Core #(
                 // Same silent-drop-on-busy semantics as the existing
                 // frag_idx gate (pinned by
                 // test_fp_mul_collision_fp_result_preserved).
+                // v1.8.0e 0e2 §25.3 — + !vfma_busy: output_regs_free does
+                // NOT cover this inline gate (the confirmed hole), so
+                // without the term a 0x12 landing mid-VFMA-loop would
+                // pipeline and its p2 pulse could collide with the frag0
+                // handoff / drain beats. vfma_busy covers launch through
+                // the handoff cycle, frag_idx covers the drain — the
+                // two-term (busy || drain) form, no gap-cycle sneak
+                // (pinned by test_vfma_busy_reject_and_mul_gate).
                 mul_valid_p1 <= pe_active && dec_valid && !dec_decode_error
                               && dec_tag_match && (dec_opcode == 8'h12)
                               && (frag_idx == FRAG_IDLE)
-                              && !fp_busy && !fp_valid_p2;
+                              && !fp_busy && !fp_valid_p2 && !vfma_busy;
                 mul_result_p2 <= mul_a_p1 * mul_b_p1;
                 mul_tag_p2    <= mul_tag_p1;
                 mul_valid_p2  <= mul_valid_p1;
@@ -1877,6 +1955,33 @@ module PE_Core #(
             end else begin
                 fp_start    <= 1'b0;
                 fp_valid_p2 <= 1'b0;
+            end
+
+            // v1.8.0e 0e2 §25.2.4/§25.3 — VFMA lane-loop advance: ONE
+            // lane per cycle through the shared MAC step
+            // (wres_vfma_lane — combinational on the launch-captured
+            // regs, so lane 0 completes on the first cycle after the
+            // launch edge). Packing pin: 2 int32/word — the even lane
+            // stages, the odd lane commits {odd, even}; word 0 ->
+            // frag0_hold, words >= 1 -> frag_pending[word] (the
+            // accumulation buffer IS frag_pending; row 0 stays the
+            // reset-only dummy). No per-lane output beat exists — the
+            // shipped loop-suppression idiom by construction. The final
+            // lane's completion cycle clears vfma_busy and the atomic
+            // handoff block below emits fragment 0 (the covering busy
+            // term is still high THIS cycle — no dispatch window).
+            if (MUL_OPS_SUPPORTED && vfma_busy) begin
+                if (!vfma_lane[0])
+                    vfma_stage <= wres_vfma_lane;
+                else if (vfma_lane[4:1] == 4'd0)
+                    frag0_hold <= {wres_vfma_lane, vfma_stage};
+                else
+                    frag_pending[vfma_lane[4:1]]
+                        <= {wres_vfma_lane, vfma_stage};
+                if (vfma_lane == vfma_lane_last)
+                    vfma_busy <= 1'b0;             // handoff cycle
+                else
+                    vfma_lane <= vfma_lane + 5'd1;
             end
 
             // v1.5.3a/v1.7 §20/§22.18 — ABSOLUTE-PRIORITY fragment-emit
@@ -2668,10 +2773,69 @@ module PE_Core #(
                         // v1.8.0e 0e1 INTEGRATION: 0x78 DEQUANT
                         // graduated to its lane-loop launch arm below
                         // (the sequencer-side OPS_DEQ program landed one
-                        // commit earlier). 0x70 VFMA_ACC is 0e2;
-                        // 0x7D/0x7E stay unscheduled.
-                        8'h70, 8'h7D, 8'h7E: begin
+                        // commit earlier). v1.8.0e 0e2: 0x70 VFMA_ACC
+                        // graduated to its lane-loop launch arm below
+                        // (stub set now {0x7D, 0x7E} — both stay
+                        // unscheduled).
+                        8'h7D, 8'h7E: begin
                             lower_required <= 1'b1; output_valid <= 1'b0;
+                        end
+                        // v1.8.0e 0e2 §25.2.4 — 0x70 VFMA_ACC: int4/int8
+                        // lanes x the broadcast B split, STATELESS
+                        // int32-wrap FMA (acc=1 in the mode byte marks
+                        // the wide-acc OUTPUT form, never stateful
+                        // accumulation). LAUNCH ARM ONLY (register-load,
+                        // the 0x74 idiom): A(128b wide) + the B split
+                        // {c_acc = B[63:32], b_mul = sext8(B[3:0]) int4
+                        // / B[7:0] int8 — the datapath reads ONLY those
+                        // low bits, asm-lint owns the loud range reject}
+                        // + tag captured into MU-local regs; the 1
+                        // cy/lane MAC loop lives in the advance block
+                        // above and the loop-completion frag0 handoff in
+                        // the atomic block below (§25.3). B rides
+                        // dec_eff_b_value (IMM-XOR-OPREF, alu-binary —
+                        // EHDecode's XOR trap guarantees exactly one
+                        // source, so there is no missing-B rung; imm16/
+                        // imm32 zero-extend -> c_acc = 0). Launch ladder
+                        // (0x78 mirror minus the scale rung): MU gate ->
+                        // missing-wide error (§20 wave contract — A is a
+                        // 2-fragment 128b wave for BOTH forms) ->
+                        // busy-reject (lower_required, VDOT rung) ->
+                        // launch. Legal dtypes {int4, int8} are
+                        // ROM-enforced at EHDecode, so the int8/int4
+                        // select below is total. Output: int4 -> 16
+                        // fragments (tot_m1 = 15 — the FIRST 16-frag
+                        // emitter, the mask-fix consumer), int8 -> 8;
+                        // instruction+EH replicated per fragment (VDOT
+                        // contract). Reachability rides the 0e2
+                        // twin-classifier lockstep edit.
+                        8'h70: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                lower_required <= 1'b1; output_valid <= 1'b0;
+                            end else if (!dec_input_payload_wide_valid) begin
+                                error_flag   <= 1'b1;
+                                output_valid <= 1'b0;
+                            end else if (!output_regs_free) begin
+                                lower_required <= 1'b1;
+                                output_valid   <= 1'b0;
+                            end else begin
+                                vfma_a_q     <= dec_input_payload_wide[127:0];
+                                vfma_b_q     <= (dec_eff_precision[3:0] == 4'h1)
+                                              ? dec_eff_b_value[7:0]
+                                              : {{4{dec_eff_b_value[3]}},
+                                                 dec_eff_b_value[3:0]};
+                                vfma_c_q     <= dec_eff_b_value[63:32];
+                                vfma_is_int8 <= (dec_eff_precision[3:0] == 4'h1);
+                                vfma_lane    <= 5'd0;
+                                vfma_busy    <= 1'b1;
+                                // tag/opcode capture at launch is safe:
+                                // every frag-emitting dispatch is
+                                // busy-rejected while vfma_busy
+                                // (output_regs_free covers the loop).
+                                frag_tag_held    <= dec_forwarded_tag;
+                                frag_opcode_held <= dec_opcode;
+                                output_valid <= 1'b0;
+                            end
                         end
                         // v1.8.0b §23.9 — VDOT_ACC: stateless 4-fragment
                         // wide dot. A=wide[127:0], B=wide[255:128]
@@ -3151,6 +3315,43 @@ module PE_Core #(
                 frag_total_m1_held <= deq_total_m1;
                 frag_idx           <= FRAG_EMIT_1;
             end
+
+            // -----------------------------------------------------------------
+            // v1.8.0e 0e2 §25.3 — VFMA loop-completion frag0_hold handoff
+            // (ATOMIC, pinned — the DEQUANT handoff idiom verbatim with
+            // vfma_busy as the covering busy term). On the FINAL lane's
+            // completion cycle — while vfma_busy still holds
+            // output_regs_free low, so this cycle has NO dispatch-launch
+            // window — emit fragment 0 from frag0_hold with hdr
+            // {4'd0, total_m1} and enter the drain by writing frag_idx
+            // <= FRAG_EMIT_1 (the SYMBOL) + frag_total_m1_held in this
+            // same begin/end block (lint co-location). Rows 1..N-1 then
+            // drain 1/cycle through the untouched priority override —
+            // int4 walks the FULL tot_m1=15 path (rows 1..15), the
+            // first consumer the 0e1 mask fix enabled. The advance
+            // block's frag_pending[N-1] write lands this same edge
+            // (nonblocking, disjoint targets) and is read 15 cycles
+            // later at most. Placed AFTER the dispatch chain
+            // DELIBERATELY (last-assignment-wins): a mul-class dispatch
+            // landing on this exact cycle still walks its busy-reject
+            // rung above (loudly lower_required — never launched), and
+            // this block then reclaims the output regs for the
+            // fragment-0 beat. The drain override cannot be active this
+            // cycle (frag_idx is FRAG_IDLE throughout the loop) and no
+            // MUL/DIV/FP pulse can coincide (their launches are all
+            // busy-rejected during the loop — 0x12 via the !vfma_busy
+            // launch-gate term).
+            // -----------------------------------------------------------------
+            if (MUL_OPS_SUPPORTED && vfma_busy
+                    && (vfma_lane == vfma_lane_last)) begin
+                output_payload  <= frag0_hold;
+                output_tag      <= frag_tag_held;
+                opcode_out      <= frag_opcode_held;
+                output_frag_hdr <= {4'd0, vfma_total_m1};
+                output_valid    <= 1'b1;
+                frag_total_m1_held <= vfma_total_m1;
+                frag_idx           <= FRAG_EMIT_1;
+            end
         end
     end
 
@@ -3160,7 +3361,10 @@ module PE_Core #(
     // pe_ready deasserts for the whole 5-34 cycle fp flight; 9-term since
     // v1.8.0e: deq_loop_active covers the DEQUANT lane loop, so pe_ready
     // stays low for the whole ~100-300 cycle loop + drain window — the
-    // §25.4 MU-occupancy re-acceptance, observe-only as before). Upstream
+    // §25.4 MU-occupancy re-acceptance, observe-only as before; 10-term
+    // since v1.8.0e 0e2: vfma_busy covers the 0x70 lane loop — up to
+    // ~33 loop cycles + a worst-case 15-cycle 16-fragment drain under
+    // the §25.4 ceilings, same re-acceptance). Upstream
     // fabric can observe this to STALL new dispatches instead of retrying
     // after lower_required. MVP: observe-only, no ext_valid gating change.
     assign pe_ready = output_regs_free;
