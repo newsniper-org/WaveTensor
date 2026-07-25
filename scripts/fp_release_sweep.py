@@ -72,6 +72,44 @@ named merge-blocking sweep obligations of the v1.8.0d design):
               ONLY); subnormals asserted to flush (FTZ pin, by design) and
               non-canonical NaNs asserted to canonicalize.
 
+v1.8.0e WIDE-VECTOR LAYER SWEEPS (COMMIT 1, golden-before-RTL — the
+directed sets of the "hybrid-minimal (repaired)" test plan, run at MODEL
+level before any 0e RTL exists; the same cells re-run as golden/TB
+bit-equivalence when the RTL lands):
+
+  FMINMAX 0x79  ALL frozen cells: the 16-pattern pinned total-order
+                ladder (incl. -0/+0 and four denormal patterns), all
+                256 pairs x both sub-ops (rows 1/5/6); one-NaN x every
+                ladder number x both orders (row 2 — number returned
+                BIT-PRESERVED incl. denormals, the DAZ-EXEMPT proof);
+                both-NaN -> 0x7FC00000 and sNaN quieting (rows 3/4);
+                offset-comparator key asserted strictly monotone over
+                the ladder; 10^5 random pairs vs an INDEPENDENT exact-
+                Fraction value-level oracle (no DAZ, -0<+0 tie rule).
+  DEQUANT 0x78  int4 ALL 16 fields x 2^13 pinned scales (specials +
+                exponent-stratified all 256 binades both signs +
+                random) and int8 sampled — every point ref == micro ==
+                independent exact-Fraction oracle; the ROUND-ONCE
+                discriminator/tie cells from mse_sweep (the double-
+                rounding twin PROVABLY differs on every discriminator);
+                enumerated specials cells (sign-XOR zero, DAZ scale,
+                k=0 x Inf -> qNaN, overflow -> Inf never max-finite,
+                FTZ-at-dest vacuity); lane->fragment order pins.
+  GAMMA_MUL_W   exhaustive 256 (a4, g4) pairs vs an independent sext
+  0x6B          oracle, exact range [-56, +64] asserted (int8 proof);
+                16-lane order pin lane i = bits [8i+7:8i].
+  VFMA 0x70     B-split pin rows (b_mul sext from B[3:0]/B[7:0], c_acc
+  (0e2 golden)  = B[63:32], imm zero-fill -> c_acc = 0); mod-2^32 wrap
+                edges (c_acc at both int32 rails, products straddling
+                2^31) vs an independent int64-truncation oracle;
+                int4 exhaustive a x b_mul x directed c_acc; 1.2x10^5
+                random lanes; 16/8-fragment count pins.
+  MSE GATE      scripts/mse_sweep.run_gate() (the repaired 0e1 release
+                gate: eps-inclusive exact reference, denominator-floor
+                rule, gamma-variation tensors, pinned int-lane tensor
+                generation) — its machine-readable report is embedded
+                as the norm_mse_gate_0e1 section.
+
 Vectorized (numpy int64) models are used for volume; they are cross-
 checked bit-exactly against the scalar golden models in
 scripts/golden_fp32.py on random subsets, so the shipped scalar reference
@@ -95,6 +133,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import golden_fp32 as g  # noqa: E402
+import mse_sweep  # noqa: E402  (0e1 MSE release gate + shared tie-cell generators)
 
 REPO = Path(__file__).resolve().parent.parent
 REPORT = REPO / "include" / "generated" / "fp_validation_report.json"
@@ -1139,6 +1178,528 @@ def sweep_roundtrip():
     return ok, reps
 
 
+# ===========================================================================
+# v1.8.0e wide-vector layer sweeps (COMMIT 1, golden-before-RTL)
+# ===========================================================================
+
+# The pinned FMINMAX total-order ladder: 16 patterns spanning the full
+# monotone chain {-Inf .. +Inf} INCLUDING -0/+0 (frozen row 1) and four
+# denormal patterns (frozen row 6, DAZ-EXEMPT bit-pattern-preserving).
+FMM_LADDER = [
+    0xFF800000,  # -Inf
+    0xFF7FFFFF,  # -max normal
+    0xC0490FDB,  # -pi
+    0xBF800000,  # -1
+    0x80800000,  # -min normal
+    0x807FFFFF,  # -max denormal   (row-6 cell)
+    0x80000001,  # -min denormal   (row-6 cell)
+    0x80000000,  # -0              (row-1 cell)
+    0x00000000,  # +0              (row-1 cell)
+    0x00000001,  # +min denormal   (row-6 cell)
+    0x007FFFFF,  # +max denormal   (row-6 cell)
+    0x00800000,  # +min normal
+    0x3F800000,  # +1
+    0x40490FDB,  # +pi
+    0x7F7FFFFF,  # +max normal
+    0x7F800000,  # +Inf
+]
+
+FMM_NAN_POOL = [0x7FC00000, 0xFFC00000,   # canonical qNaN both signs
+                0x7F800001, 0xFF800001,   # sNaN min payload both signs
+                0x7FFFFFFF,               # qNaN max payload
+                0x7FBFFFFF]               # sNaN max payload
+
+_FMM_MIN = g.FMINMAX_OP_CODE["MINIMUMNUM"]
+_FMM_MAX = g.FMINMAX_OP_CODE["MAXIMUMNUM"]
+
+
+def _fmm_is_nan(bits):
+    return (bits & 0x7F800000) == 0x7F800000 and (bits & 0x7FFFFF) != 0
+
+
+def _fmm_value_oracle(a, b, subop):
+    """INDEPENDENT value-level FMINMAX oracle: exact Fraction compare
+    with NO DAZ (denormals exact via bits_to_frac), +-Inf as sentinels
+    beyond the finite range, the -0 < +0 rule applied at value ties
+    (the ONLY distinct-pattern value tie in fp32), NaN rows from the
+    frozen table — no bit tricks shared with the offset-comparator key."""
+    an, bn = _fmm_is_nan(a), _fmm_is_nan(b)
+    if an and bn:
+        return g.F32_QNAN
+    if an:
+        return b
+    if bn:
+        return a
+
+    def val(bits):
+        if (bits & 0x7F800000) == 0x7F800000:            # +-Inf
+            return Fraction(2) ** 200 * (-1 if bits >> 31 else 1)
+        return g.bits_to_frac(bits)                      # exact, NO DAZ
+
+    va, vb = val(a), val(b)
+    if va != vb:
+        lo, hi = (a, b) if va < vb else (b, a)
+    elif a == b:
+        lo = hi = a
+    else:                                                # +-0: -0 < +0
+        lo = a if a >> 31 else b
+        hi = b if a >> 31 else a
+    return lo if subop == _FMM_MIN else hi
+
+
+def sweep_fminmax_0e():
+    print("[fminmax 0x79] frozen-row cells (ladder/NaN/denormal) + 10^5 random...")
+    # offset-comparator key strictly monotone over the pinned ladder (row 5)
+    keys = [g.f32_total_order_key(x) for x in FMM_LADDER]
+    key_mono = all(keys[i] < keys[i + 1] for i in range(len(keys) - 1))
+
+    # rows 1 + 5 + 6: all 256 ladder pairs x both sub-ops; expected result is
+    # the ladder-lower/upper pattern RETURNED BIT-EXACTLY (denormal pairs are
+    # the row-6 DAZ-EXEMPT proof; the -0/+0 pair is row 1 both directions)
+    order_bad = 0
+    denorm_preserved = 0
+    for i, a in enumerate(FMM_LADDER):
+        for j, b in enumerate(FMM_LADDER):
+            lo = FMM_LADDER[min(i, j)]
+            hi = FMM_LADDER[max(i, j)]
+            got_min = g.ref_fminmax_lane(a, b, _FMM_MIN)
+            got_max = g.ref_fminmax_lane(a, b, _FMM_MAX)
+            if got_min != lo or got_max != hi:
+                order_bad += 1
+            if (lo & 0x7F800000) == 0 and (lo & 0x7FFFFF) != 0 and got_min == lo:
+                denorm_preserved += 1
+    order_cells = len(FMM_LADDER) ** 2 * 2
+
+    # row 2 (one NaN -> the number, bit-preserved) — every NaN x every ladder
+    # number x both orders x both sub-ops; sNaN against a number still loses
+    one_nan_bad = 0
+    for nn in FMM_NAN_POOL:
+        for x in FMM_LADDER:
+            for sub in (_FMM_MIN, _FMM_MAX):
+                if g.ref_fminmax_lane(nn, x, sub) != x:
+                    one_nan_bad += 1
+                if g.ref_fminmax_lane(x, nn, sub) != x:
+                    one_nan_bad += 1
+    one_nan_cells = len(FMM_NAN_POOL) * len(FMM_LADDER) * 4
+
+    # rows 3 + 4 (both-NaN -> canonical 0x7FC00000; sNaN quieted to canonical)
+    both_nan_bad = 0
+    for na in FMM_NAN_POOL:
+        for nb in FMM_NAN_POOL:
+            for sub in (_FMM_MIN, _FMM_MAX):
+                if g.ref_fminmax_lane(na, nb, sub) != g.F32_QNAN:
+                    both_nan_bad += 1
+    both_nan_cells = len(FMM_NAN_POOL) ** 2 * 2
+
+    # random sweep vs the independent value-level oracle
+    rng = random.Random(0xF79)
+    pool = FMM_LADDER + FMM_NAN_POOL + [0x00000005, 0x80000005]
+
+    def rnd32():
+        return rng.choice(pool) if rng.random() < 0.15 else rng.getrandbits(32)
+
+    rnd_bad = 0
+    rnd_n = 100000
+    for _ in range(rnd_n):
+        a, b, sub = rnd32(), rnd32(), rng.choice((_FMM_MIN, _FMM_MAX))
+        if g.ref_fminmax_lane(a, b, sub) != _fmm_value_oracle(a, b, sub):
+            rnd_bad += 1
+
+    # vector entry + fragment wrapper: 4 lanes vs broadcast B, lane i at
+    # flat bits [32i+31:32i], 2 fragments in = 2 fragments out (today's FSM)
+    lanes = [0x80000000, 0x7FC00000, 0x00000001, 0xC0490FDB]
+    b_bc = 0x00000000
+    frags_in = g.lanes_to_frags(lanes, 32)
+    out = g.fminmax_frags(frags_in, b_bc, _FMM_MIN)
+    vec_ok = (len(frags_in) == 2 and len(out) == 2
+              and g.frags_to_lanes(out, 32, 4)
+              == [g.ref_fminmax_lane(a, b_bc, _FMM_MIN) for a in lanes])
+
+    ok = (key_mono and order_bad == 0 and one_nan_bad == 0
+          and both_nan_bad == 0 and rnd_bad == 0 and vec_ok)
+    print(f"  key monotone {key_mono}, order cells bad {order_bad}/{order_cells}, "
+          f"one-NaN bad {one_nan_bad}/{one_nan_cells}, both-NaN bad "
+          f"{both_nan_bad}/{both_nan_cells}, random bad {rnd_bad}/{rnd_n}")
+    return ok, {
+        "semantics": "frozen IEEE-2019 minimumNumber/maximumNumber, six "
+                     "pinned rows; comparator key a[31] ? ~a : a^0x80000000, "
+                     "ONE unsigned 32b compare; DATA functions only (the "
+                     "FSCALAR-clone legality re-row is decode-level)",
+        "comparator_key_strictly_monotone_on_ladder": key_mono,
+        "total_order_cells": order_cells, "total_order_bad": order_bad,
+        "ladder_patterns": len(FMM_LADDER),
+        "denormal_min_cells_bit_preserved": denorm_preserved,
+        "one_nan_cells": one_nan_cells, "one_nan_bad": one_nan_bad,
+        "both_nan_cells": both_nan_cells, "both_nan_bad": both_nan_bad,
+        "canonical_qnan": "0x7FC00000 (sNaN quieted to canonical)",
+        "random": rnd_n, "random_bad": rnd_bad,
+        "oracle": "independent exact-Fraction value-level compare, NO DAZ, "
+                  "-0<+0 tie rule (disjoint from the offset-key formulation)",
+        "vector_2frag_lane_order_pin": vec_ok,
+        "daz_exempt_note": "ref_fminmax operates on RAW bit patterns, never "
+                           "golden decode() — denormal cells returned "
+                           "bit-identically (pinned row 6)",
+        "seed": "0xF79",
+    }
+
+
+def _dequant_scale_set():
+    """The pinned 2^13-scale set: directed specials, exponent-stratified
+    coverage of ALL 256 exponent fields at both signs (mantissa 0 / 1 /
+    max / random), the rest fixed-seed random bit patterns."""
+    scales = [
+        0x00000000, 0x80000000,              # +-0
+        0x00000001, 0x80000001,              # +-min denormal (DAZ)
+        0x007FFFFF, 0x807FFFFF,              # +-max denormal (DAZ)
+        0x00800000, 0x80800000,              # +-min normal (never flushed)
+        0x7F7FFFFF, 0xFF7FFFFF,              # +-max normal
+        0x7F800000, 0xFF800000,              # +-Inf
+        0x7FC00000, 0xFFC00000,              # +-canonical qNaN
+        0x7F800001, 0xFF800001,              # +-sNaN
+        0x7FFFFFFF,                          # qNaN max payload
+        0x3F800000, 0xBF800000,              # +-1.0
+        0x3F7FFFFF, 0x3F800001,              # 1.0 +- 1 ulp
+    ]
+    rng = random.Random(0xDE05)
+    for e in range(256):
+        for s in (0, 1):
+            for m in (0, 1, 0x7FFFFF, rng.getrandbits(23)):
+                scales.append((s << 31) | (e << 23) | m)
+    while len(scales) < (1 << 13):
+        scales.append(rng.getrandbits(32))
+    return scales[:1 << 13]
+
+
+def sweep_dequant_0e():
+    print("[dequant 0x78] int4 exhaustive x 2^13 scales + int8 sampled + "
+          "round-once cells...")
+    scales = _dequant_scale_set()
+
+    # int4: ALL 16 fields x all 2^13 scales — ref == micro == independent
+    # exact-Fraction oracle on every point
+    i4_rm = i4_ro = 0
+    for f in range(16):
+        for s in scales:
+            r = g.ref_dequant_lane(f, s, g.DT_INT4)
+            if g.micro_dequant_lane(f, s, g.DT_INT4) != r:
+                i4_rm += 1
+            if mse_sweep.dequant_exact_oracle(f, s, g.DT_INT4) != r:
+                i4_ro += 1
+    i4_n = 16 * len(scales)
+
+    # int8: all 256 fields x a 128-scale stratified subsample, plus 2^15
+    # random (field, scale) pairs
+    sub = scales[::64]
+    i8_rm = i8_ro = 0
+    for f in range(256):
+        for s in sub:
+            r = g.ref_dequant_lane(f, s, g.DT_INT8)
+            if g.micro_dequant_lane(f, s, g.DT_INT8) != r:
+                i8_rm += 1
+            if mse_sweep.dequant_exact_oracle(f, s, g.DT_INT8) != r:
+                i8_ro += 1
+    rng = random.Random(0xDE08)
+    for _ in range(1 << 15):
+        f, s = rng.getrandbits(8), rng.getrandbits(32)
+        r = g.ref_dequant_lane(f, s, g.DT_INT8)
+        if g.micro_dequant_lane(f, s, g.DT_INT8) != r:
+            i8_rm += 1
+        if mse_sweep.dequant_exact_oracle(f, s, g.DT_INT8) != r:
+            i8_ro += 1
+    i8_n = 256 * len(sub) + (1 << 15)
+
+    # ROUND-ONCE narrow-tie cells (shared generators with mse_sweep — the
+    # enforcement point of rounding definition (a); MSE ratio is blind)
+    tie_rep, tie_ok = mse_sweep.check_round_once_cells()
+
+    # enumerated specials cells (every pinned row exercised by name)
+    sp = [
+        # k = 0: signed zero by sign-XOR; k=0 x Inf -> qNaN
+        (0x0, 0x3F800000, g.DT_INT4, 0x0000),
+        (0x0, 0xBF800000, g.DT_INT4, 0x8000),
+        (0x0, 0x7F800000, g.DT_INT4, g.BF16_QNAN),
+        (0x0, 0xFF800000, g.DT_INT4, g.BF16_QNAN),
+        # scale +-0 with k nonzero: signed zero by sign-XOR
+        (0x7, 0x80000000, g.DT_INT4, 0x8000),
+        (0x8, 0x00000000, g.DT_INT4, 0x8000),   # k=-8 x +0 -> -0
+        (0x8, 0x80000000, g.DT_INT4, 0x0000),   # k=-8 x -0 -> +0
+        # scale denormal -> DAZ at operand load -> signed-zero rows
+        (0x7, 0x007FFFFF, g.DT_INT4, 0x0000),
+        (0x7, 0x807FFFFF, g.DT_INT4, 0x8000),
+        (0x80, 0x00000001, g.DT_INT8, 0x8000),  # k=-128 x DAZ(+denorm) -> -0
+        # scale NaN (incl. sNaN) -> canonical bf16 qNaN
+        (0x7, 0x7FC00000, g.DT_INT4, g.BF16_QNAN),
+        (0x7, 0x7F800001, g.DT_INT4, g.BF16_QNAN),
+        (0x0, 0xFFC00000, g.DT_INT4, g.BF16_QNAN),
+        # scale +-Inf with k nonzero: sign-XOR Inf
+        (0x1, 0x7F800000, g.DT_INT4, 0x7F80),
+        (0x1, 0xFF800000, g.DT_INT4, 0xFF80),
+        (0x9, 0x7F800000, g.DT_INT4, 0xFF80),   # k=-7 x +Inf -> -Inf
+        # product overflow -> +-Inf, NEVER max-finite
+        (0x7F, 0x7F000000, g.DT_INT8, 0x7F80),  # 127 * 2^127 -> +Inf
+        (0x80, 0x7F000000, g.DT_INT8, 0xFF80),  # -128 * 2^127 -> -Inf
+        (0x2, 0x7F7FFFFF, g.DT_INT4, 0x7F80),   # 2 * maxnormal -> +Inf
+        # near-overflow max-finite kept (RNE does not overflow)
+        (0x1, 0x7F7F0000, g.DT_INT8, 0x7F7F),
+        # FTZ-at-dest vacuity: min nonzero product == bf16 min-normal
+        (0x1, 0x00800000, g.DT_INT4, 0x0080),
+        (0xF, 0x00800000, g.DT_INT4, 0x8080),   # k=-1 -> -min-normal
+    ]
+    sp_bad = 0
+    for f, s, dt, want in sp:
+        if (g.ref_dequant_lane(f, s, dt) != want
+                or g.micro_dequant_lane(f, s, dt) != want):
+            sp_bad += 1
+
+    # vector forms + lane->fragment order pins (bf16 4 lanes/word):
+    # int4 32-lane = 2 frags in -> 8 frags out; int8 16-lane -> 4 frags out
+    rngv = random.Random(0xDEF2)
+    vec_ok = True
+    for dt, lb in ((g.DT_INT4, 4), (g.DT_INT8, 8)):
+        n = g.DEQUANT_LANES[dt]
+        lanes = [rngv.getrandbits(lb) for _ in range(n)]
+        s = 0x3E99999A                        # 0.3, forces rounding activity
+        out = g.dequant_frags(g.lanes_to_frags(lanes, lb), s, dt)
+        vec_ok &= len(out) == g.DEQUANT_OUT_FRAGS[dt]
+        got = g.frags_to_lanes(out, 16, n)
+        vec_ok &= got == [g.ref_dequant_lane(f, s, dt) for f in lanes]
+
+    ok = (i4_rm == 0 and i4_ro == 0 and i8_rm == 0 and i8_ro == 0
+          and tie_ok and sp_bad == 0 and vec_ok)
+    print(f"  int4 {i4_n} pts (ref-vs-micro bad {i4_rm}, oracle bad {i4_ro}), "
+          f"int8 {i8_n} pts (bad {i8_rm}/{i8_ro}), ties: "
+          f"{tie_rep['discriminators']} disc caught "
+          f"{tie_rep['double_round_caught']}, specials bad {sp_bad}/{len(sp)}")
+    return ok, {
+        "semantics": "int4/int8 x fp32 broadcast scale -> bf16-ONLY (0e pin), "
+                     "ROUND-ONCE definition (a): one RNE from the exact "
+                     "<= 31-bit product (|k| <= 128 and m_s < 2^24 both fit "
+                     "the wide product exactly — nothing rounds before the "
+                     "single RNE-to-bf16)",
+        "narrow_authority": "ref reuses ref_narrow_f32 (THE single f32->bf16 "
+                            "authority) through a sticky-preserving round-to-"
+                            "odd 24-bit intermediate — bit-identity with the "
+                            "CVT narrow path by construction; micro is the "
+                            "independent OPS_DEQ disjoint-round/sticky "
+                            "bf16-pack twin",
+        "int4_points": i4_n, "int4_scales": len(scales),
+        "int4_ref_vs_micro_bad": i4_rm, "int4_vs_exact_oracle_bad": i4_ro,
+        "int8_points": i8_n,
+        "int8_ref_vs_micro_bad": i8_rm, "int8_vs_exact_oracle_bad": i8_ro,
+        "scale_set": "pinned 2^13: directed specials + all 256 exponent "
+                     "fields x both signs x {0,1,max,random} mantissas + "
+                     "fixed-seed random fill (seeds 0xDE05/0xDE08)",
+        "round_once_cells": tie_rep,
+        "specials_cells": len(sp), "specials_bad": sp_bad,
+        "ftz_at_dest_vacuity": "min nonzero |product| = 1 x 2^-126 = bf16 "
+                               "min-normal exactly (asserted 0x0080/0x8080) "
+                               "— the FTZ cell is pinned for the pack logic "
+                               "and unreachable from valid operands",
+        "vector_frag_pins_ok": vec_ok,
+        "out_frags": {"int4_32": 8, "int8_16": 4},
+    }
+
+
+def sweep_gamma_mul_w_0e():
+    print("[gamma_mul_w 0x6B] exhaustive 256 pairs + 16-lane order pin...")
+
+    def sext4(v):
+        v &= 0xF
+        return v - 16 if v & 0x8 else v
+
+    exh_bad = 0
+    lo = hi = 0
+    for a in range(16):
+        for gm in range(16):
+            p = sext4(a) * sext4(gm)          # independent formulation
+            lo, hi = min(lo, p), max(hi, p)
+            if g.ref_gamma_mul_w_lane(a, gm) != (p & 0xFF):
+                exh_bad += 1
+    range_ok = lo == -56 and hi == 64         # the int8 range proof, measured
+
+    # 16-lane vector + the lane order pin (lane i at bits [8i+7:8i], 2 frags)
+    a_lanes = list(range(16))                 # ramp: -8..-1 map to 0x8..0xF
+    g_lanes = [(5 * i + 3) & 0xF for i in range(16)]
+    a_frag = g.lanes_to_frags(a_lanes, 4)[0]
+    g_imm = g.lanes_to_frags(g_lanes, 4)[0]
+    out = g.gamma_mul_w_frags(a_frag, g_imm)
+    order_ok = len(out) == 2
+    flat = out[0] | (out[1] << 64)
+    for i in range(16):
+        want = g.ref_gamma_mul_w_lane(a_lanes[i], g_lanes[i])
+        if (flat >> (8 * i)) & 0xFF != want:
+            order_ok = False
+
+    ok = exh_bad == 0 and range_ok and order_ok
+    print(f"  exhaustive bad {exh_bad}/256, range [{lo},{hi}] "
+          f"(int8 proof ok={range_ok}), lane-order pin ok={order_ok}")
+    return ok, {
+        "semantics": "out[i] = sext8(a4[i]) * sext8(g4[i]) — EXACT widening "
+                     "int4 x int4 -> int8, MU-hosted (0e1, pre-stable "
+                     "reallocation of the retired 0x6B code point)",
+        "exhaustive_pairs": 256, "exhaustive_bad": exh_bad,
+        "measured_range": [lo, hi],
+        "int8_range_proof": "products in [-56, +64] subset [-128, 127] — "
+                            "rounding-free AND saturation-free (measured "
+                            "over all 256 cells, matches the docstring "
+                            "proof: min (-8)*7 = -56, max (-8)*(-8) = +64)",
+        "lane_order_pin_ok": order_ok,
+        "lane_order": "lane i = bits [8i+7:8i] of the 128b output (2 frags), "
+                      "pinned in spec + golden + SDK together",
+        "gamma_transport": "imm64 XOR OPREF (legality rung, decode-level — "
+                           "not modeled by the DATA functions)",
+        "oracle": "independent inline sext4 multiply",
+    }
+
+
+def _wrap32_oracle(a_val, b_mul, c_acc):
+    """Independent mod-2^32 formulation: int64 little-endian truncation
+    (struct), no shared code with ref_vfma_lane's mask."""
+    return struct.unpack("<I", struct.pack("<q", a_val * b_mul + c_acc)[:4])[0]
+
+
+def sweep_vfma_0e2():
+    print("[vfma 0x70 (0e2 golden)] B-split pins + wrap edges + 1.2x10^5 "
+          "random lanes...")
+    # B-split pin rows: b_mul = sext32(B[3:0]) int4 / sext32(B[7:0]) int8;
+    # c_acc = B[63:32]; imm16/imm32 zero-fill -> c_acc = 0
+    split_rows = [
+        # (B payload, dtype, want_b_mul, want_c_acc)
+        (0x80, g.DT_INT4, 0, 0),              # int4 reads [3:0] of 0x80 = 0
+        (0x80, g.DT_INT8, -128, 0),
+        (0x7F, g.DT_INT4, -1, 0),             # [3:0] = 0xF
+        (0x7F, g.DT_INT8, 127, 0),
+        (0xF8, g.DT_INT4, -8, 0),             # [3:0] = 0x8
+        (0xF8, g.DT_INT8, -8, 0),
+        (0x07, g.DT_INT4, 7, 0),
+        ((0x7FFFFFFF << 32) | 0x01, g.DT_INT4, 1, (1 << 31) - 1),
+        ((0x80000000 << 32) | 0x01, g.DT_INT8, 1, -(1 << 31)),
+        ((0xFFFFFFFF << 32) | 0x02, g.DT_INT4, 2, -1),
+        ((0xDEADBEEF << 32) | 0xF8, g.DT_INT8, -8, 0xDEADBEEF - (1 << 32)),
+    ]
+    split_bad = sum(1 for b, dt, wm, wc in split_rows
+                    if g.vfma_b_split(b, dt) != (wm, wc))
+
+    # explicit mod-2^32 wrap edges (c_acc at the rails, product straddling)
+    wrap_rows = [
+        # (a_field, b_mul, c_acc, dtype)
+        (0x7, 1, (1 << 31) - 7, g.DT_INT4),          # lands exactly on 2^31
+        (0x7, 1, (1 << 31) - 8, g.DT_INT4),          # one below the rail
+        (0x8, -8, (1 << 31) - 1, g.DT_INT4),         # 64 + max -> wrap
+        (0x1, -1, -(1 << 31), g.DT_INT4),            # -1 + min -> wrap down
+        (0x8, (1 << 31) - 1, 0, g.DT_INT4),          # -8 * max
+        (0x80, -(1 << 31), 0, g.DT_INT8),            # -128 * min (positive)
+        (0x80, (1 << 31) - 1, -(1 << 31), g.DT_INT8),
+        (0x7F, (1 << 31) - 1, (1 << 31) - 1, g.DT_INT8),
+        (0x0, 0, -(1 << 31), g.DT_INT8),             # 0*0 + min
+    ]
+    wrap_bad = 0
+    for f, bm, ca, dt in wrap_rows:
+        a_val = g._i2f_operand(f, dt)
+        if g.ref_vfma_lane(f, bm, ca, dt) != _wrap32_oracle(a_val, bm, ca):
+            wrap_bad += 1
+
+    # int4 exhaustive: 16 a-fields x 16 b_mul nibbles x directed c_acc rail set
+    rails = [0, 1, -1, (1 << 31) - 1, -(1 << 31), (1 << 31) - 64,
+             -(1 << 31) + 63, 0x55555555]
+    exh_bad = 0
+    for f in range(16):
+        a_val = g._i2f_operand(f, g.DT_INT4)
+        for bn in range(16):
+            bm = bn - 16 if bn & 0x8 else bn
+            for ca in rails:
+                if g.ref_vfma_lane(f, bm, ca, g.DT_INT4) != \
+                        _wrap32_oracle(a_val, bm, ca):
+                    exh_bad += 1
+    exh_n = 16 * 16 * len(rails)
+
+    # 1.2 x 10^5 random full-path lanes (vfma_frags -> per-lane oracle),
+    # both dtypes, incl. the 16-fragment int4 form (the mask-fix consumer)
+    rng = random.Random(0x0E70)
+    rnd_bad = 0
+    frag_ok = True
+    for dt, lb in ((g.DT_INT4, 4), (g.DT_INT8, 8)):
+        n = g.VFMA_LANES[dt]
+        for _ in range(2500):
+            lanes = [rng.getrandbits(lb) for _ in range(n)]
+            B = rng.getrandbits(64)
+            out = g.vfma_frags(g.lanes_to_frags(lanes, lb), B, dt)
+            frag_ok &= len(out) == g.VFMA_OUT_FRAGS[dt]
+            bm, ca = g.vfma_b_split(B, dt)
+            got = g.frags_to_lanes(out, 32, n)
+            for i in range(n):
+                if got[i] != _wrap32_oracle(g._i2f_operand(lanes[i], dt),
+                                            bm, ca):
+                    rnd_bad += 1
+    rnd_n = 2500 * (g.VFMA_LANES[g.DT_INT4] + g.VFMA_LANES[g.DT_INT8])
+
+    ok = (split_bad == 0 and wrap_bad == 0 and exh_bad == 0
+          and rnd_bad == 0 and frag_ok)
+    print(f"  B-split bad {split_bad}/{len(split_rows)}, wrap edges bad "
+          f"{wrap_bad}/{len(wrap_rows)}, int4 exhaustive bad {exh_bad}/{exh_n}, "
+          f"random lanes bad {rnd_bad}/{rnd_n}, frag counts ok={frag_ok}")
+    return ok, {
+        "staging": "0x70 is a 0e2 op — golden authored NOW (golden-before-"
+                   "RTL), consumed by the 0e2 RTL commit",
+        "semantics": "out[i] = (sext32(a[i]) * b_mul + c_acc) mod 2^32 "
+                     "EXPLICIT; STATELESS (acc bit = 1 marks the wide-acc "
+                     "OUTPUT form, not stateful accumulation)",
+        "b_split_rows": len(split_rows), "b_split_bad": split_bad,
+        "b_split_pin": "c_acc = B[63:32] broadcast int32; b_mul = "
+                       "sext32(B[3:0]) int4 / sext32(B[7:0]) int8; "
+                       "imm16/imm32 zero-fill -> c_acc = 0 (asm-lint "
+                       "loudly rejects out-of-range b_mul imm encodings "
+                       "— lint rule, not datapath)",
+        "wrap_edge_rows": len(wrap_rows), "wrap_edge_bad": wrap_bad,
+        "int4_exhaustive": exh_n, "int4_exhaustive_bad": exh_bad,
+        "random_lanes": rnd_n, "random_bad": rnd_bad,
+        "oracle": "independent int64 little-endian struct truncation "
+                  "(no shared mask code)",
+        "out_frags": {"int4_32": 16, "int8_16": 8},
+        "frag_note": "int4 form = 16 fragments — the first consumer of the "
+                     "frag-FSM widening + Cluster frag_mask_full fix",
+        "seed": "0x0E70",
+    }
+
+
+def sweep_lane_frag_packing_0e():
+    print("[lane<->frag packing] pinned map round-trips, all 0e shapes...")
+    rng = random.Random(0x0EFA)
+    shapes = [(4, 32), (4, 16), (8, 16), (8, 32), (16, 32), (16, 16),
+              (32, 4), (32, 32), (32, 16)]
+    bad = 0
+    trips = 0
+    for lb, n in shapes:
+        for _ in range(500):
+            lanes = [rng.getrandbits(lb) for _ in range(n)]
+            frags = g.lanes_to_frags(lanes, lb)
+            trips += 1
+            if (len(frags) != n * lb // 64
+                    or g.frags_to_lanes(frags, lb, n) != lanes):
+                bad += 1
+    # directed word-position pin: lane j of word f sits at bits
+    # [lb*j +: lb] of frag f — spot-checked at every lane width
+    directed_ok = (g.lanes_to_frags([0xA, 0xB] + [0] * 14, 4)[0] == 0xBA
+                   and g.lanes_to_frags([0x11, 0x22] + [0] * 6, 8)[0] == 0x2211
+                   and g.lanes_to_frags([0x1234, 0x5678] + [0] * 2, 16)[0]
+                   == 0x56781234
+                   and g.lanes_to_frags([0xDEADBEEF, 0xCAFEF00D], 32)[0]
+                   == 0xCAFEF00DDEADBEEF)
+    ok = bad == 0 and directed_ok
+    print(f"  round-trips bad {bad}/{trips}, directed word-position pin "
+          f"ok={directed_ok}")
+    return ok, {
+        "pin": "lane i at flat bits [lane_bits*i +: lane_bits]; fragment f "
+               "= flat[64f +: 64] low-first; 16 int4 / 8 int8 / 4 bf16 / "
+               "2 int32-or-f32 lanes per 64b word (spec+golden+SDK pin; "
+               "the '2 bf16/word' prose error is corrected to 4)",
+        "round_trips": trips, "round_trip_bad": bad,
+        "directed_word_position_ok": directed_ok,
+        "shapes": [f"{lb}b x {n}" for lb, n in shapes],
+        "seed": "0x0EFA",
+    }
+
+
 def main():
     full = os.environ.get("WT_FULL_FP_SWEEP") == "1"
     ok1, rep1 = sweep_frsqrt()
@@ -1158,13 +1719,22 @@ def main():
     ok9, rep9 = sweep_f2i()
     ok10, rep10 = sweep_accew()
     ok11, rep11 = sweep_roundtrip()
-    all_ok = all((ok1, ok2, ok3, ok4, ok5, ok6, ok7, ok8, ok9, ok10, ok11))
+    ok12, rep12 = sweep_fminmax_0e()
+    ok13, rep13 = sweep_dequant_0e()
+    ok14, rep14 = sweep_gamma_mul_w_0e()
+    ok15, rep15 = sweep_vfma_0e2()
+    ok16, rep16 = sweep_lane_frag_packing_0e()
+    ok17, rep17 = mse_sweep.run_gate()
+    all_ok = all((ok1, ok2, ok3, ok4, ok5, ok6, ok7, ok8, ok9, ok10, ok11,
+                  ok12, ok13, ok14, ok15, ok16, ok17))
     report = {
-        "_doc": "v1.8.0c core + v1.8.0d format-layer fp golden-model "
-                "validation — generated by scripts/fp_release_sweep.py "
-                "against the SHIPPED include/generated fp artifacts "
-                "(model-only sweeps, COMMIT 1 golden-before-RTL; RTL "
-                "lockstep tests land with the v1.8.0d RTL commits).",
+        "_doc": "v1.8.0c core + v1.8.0d format layer + v1.8.0e wide-vector "
+                "layer fp golden-model validation — generated by "
+                "scripts/fp_release_sweep.py against the SHIPPED "
+                "include/generated fp artifacts (model-only sweeps, "
+                "COMMIT 1 golden-before-RTL; RTL lockstep tests land "
+                "with the respective RTL commits; the 0e sections rerun "
+                "as golden/TB bit-equivalence at the 0e1/0e2 RTL gates).",
         "frsqrt32": rep1,
         "fexp2_32": rep2,
         "fdiv": rep3,
@@ -1176,6 +1746,12 @@ def main():
         "f2i": rep9,
         "acc_elemwise": rep10,
         "roundtrip_e_row": rep11,
+        "fminmax_0e": rep12,
+        "dequant_0e": rep13,
+        "gamma_mul_w_0e": rep14,
+        "vfma_0e2": rep15,
+        "lane_frag_packing_0e": rep16,
+        "norm_mse_gate_0e1": rep17,
         "bit_identity_0x7C_eq_0x77": "true by construction — one golden "
                                      "ref_narrow_f32 is the single authority "
                                      "called by both cvt(NARROW_FROM_F32) and "

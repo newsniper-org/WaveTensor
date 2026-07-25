@@ -80,6 +80,29 @@ fp-dest packer, under the COMMIT-0 pins of the v1.8.0d spec:
   store_quant                      0x7C fp-dest {48'h0, narrow(f32)} —
                                    a direct call into ref_narrow_f32.
 
+v1.8.0e WIDE-VECTOR LAYER (COMMIT 1, golden-before-RTL) — reference
+semantics for the 0e wide package under the "hybrid-minimal (repaired)"
+design pins (0x70 is 0e2: authored now, consumed by RTL later):
+  ref_fminmax[_lane]           0x79 frozen IEEE-2019 minimumNumber/
+                               maximumNumber, six pinned rows, offset-
+                               comparator key, DAZ-EXEMPT raw-bit rows.
+  ref_dequant[_lane] /         0x78 int4/int8 x fp32 scale -> bf16,
+  micro_dequant[_lane]         ROUND-ONCE definition (a) — one RNE from
+                               the exact <= 31-bit product; ref reuses
+                               the single narrow authority through a
+                               sticky-preserving (round-to-odd) 24-bit
+                               intermediate, micro is the OPS_DEQ
+                               disjoint-round/sticky bf16-pack twin.
+  ref_gamma_mul_w[_lane]       0x6B exact widening int4 x int4 -> int8
+                               (range [-56, 64] — proof in docstring).
+  ref_vfma[_lane] /            0x70 per-lane (sext32(a)*b_mul + c_acc)
+  vfma_b_split                 mod 2^32 explicit, B-split pin.
+  lanes_to_frags / frags_to_lanes  THE lane<->fragment packing pin.
+  rmsnorm_chain_0e             the FULL rewritten RMSNORM macro chain
+                               (L2SQ -> fp insert -> 0x6B -> DEQUANT),
+                               model-level target of the MSE release
+                               gate (scripts/mse_sweep.py).
+
 Pinned policy (spec v1.8.0c normative table):
   RNE only. DAZ: denormal OPERANDS flush to same-signed zero at load
   (min_normal 0x00800000 never flushed). FTZ: flush-AFTER-round with
@@ -921,3 +944,480 @@ def store_quant(bits, dtype):
     if dtype not in (DT_F16, DT_BF16):
         raise ValueError("store_quant fp-dest dtype must be 0x2/0x3")
     return ref_narrow_f32(bits & 0xFFFFFFFF, dtype)
+
+
+# ===========================================================================
+# v1.8.0e WIDE-VECTOR LAYER (COMMIT 1, golden-before-RTL) — 0x79 FMINMAX /
+# 0x78 DEQUANT / 0x6B GAMMA_MUL_W / 0x70 VFMA_ACC (0e2) + the pinned
+# lane<->fragment packing + the rewritten RMSNORM macro chain model
+# ===========================================================================
+#
+# Authoritative design: v1.8.0e "hybrid-minimal (repaired)" — all semantics
+# below transcribe its opcode_semantics_final pins. Every function here is
+# authored and swept BEFORE any RTL exists (golden-before-RTL, locked).
+# 0x70 VFMA is a 0e2 op — its golden is authored NOW (this commit) and
+# consumed by the 0e2 RTL later.
+
+BF16_MIN_NORMAL = 0x0080
+
+# 0x79 FMINMAX sub-op nibble (imm16[7:4]; [3:0] and [15:8] reserved-zero ->
+# lower_required at decode — a legality rung, not modeled by these DATA
+# functions). Pinned transcription; asserted against the generated table
+# the moment the 0e ISA regen lands (COMMIT-1 freshness clause — the exact
+# CVT_OP_CODE precedent above).
+FMINMAX_OP_CODE = {"MINIMUMNUM": 0x0, "MAXIMUMNUM": 0x1}
+try:
+    from generated_isa_tables import FMINMAX_OP_CODE as _GEN_FMINMAX  # noqa: E402
+    assert _GEN_FMINMAX == FMINMAX_OP_CODE, (
+        "generated fminmax sub-op table diverged from the golden pinned "
+        "transcription")
+except ImportError:
+    pass          # 0e ISA regen not landed yet — golden-before-RTL ordering
+
+FMINMAX_LANES = 4                        # 4 f32 = 128b in = 2 frags; out same
+GAMMA_LANES = 16                         # 16 int4 in (1 frag) -> 16 int8 (2)
+DEQUANT_LANES = {DT_INT4: 32, DT_INT8: 16}
+DEQUANT_OUT_FRAGS = {DT_INT4: 8, DT_INT8: 4}   # bf16-ONLY dest in 0e (pin)
+VFMA_LANES = {DT_INT4: 32, DT_INT8: 16}
+VFMA_OUT_FRAGS = {DT_INT4: 16, DT_INT8: 8}     # int4 form = the 16-frag consumer
+
+
+# ---------------------------------------------------------------------------
+# lane <-> fragment packing (pinned in spec + golden + SDK TOGETHER)
+# ---------------------------------------------------------------------------
+
+
+def lanes_to_frags(lanes, lane_bits):
+    """THE lane->fragment packing pin: lane i occupies bits
+    [lane_bits*i +: lane_bits] of the flat result vector; fragment f is
+    flat[64*f +: 64] (low fragment first), so one 64-bit fragment word
+    holds 64/lane_bits consecutive lanes — 16 int4/word, 8 int8/word,
+    4 bf16/word, 2 int32-or-f32/word (the hybrid submission's '2 bf16/
+    word' prose error is corrected to 4 here, per the repaired design).
+    Fragment 0 is the frag0_hold word (always emitted directly at the arm
+    cycle); words 1..N-1 are the frag_pending rows drained 1/cycle."""
+    assert 64 % lane_bits == 0
+    per = 64 // lane_bits
+    assert len(lanes) % per == 0
+    frags = []
+    for f in range(len(lanes) // per):
+        w = 0
+        for j, lane in enumerate(lanes[f * per:(f + 1) * per]):
+            assert 0 <= lane < (1 << lane_bits), "lane must be a raw field"
+            w |= lane << (lane_bits * j)
+        frags.append(w)
+    return frags
+
+
+def frags_to_lanes(frags, lane_bits, n_lanes):
+    """Inverse of lanes_to_frags (same pin), for unpacking payload_a
+    fragment words into raw lane fields."""
+    per = 64 // lane_bits
+    assert len(frags) * per == n_lanes
+    lanes = []
+    for w in frags:
+        assert 0 <= w <= _M64
+        for j in range(per):
+            lanes.append((w >> (lane_bits * j)) & ((1 << lane_bits) - 1))
+    return lanes
+
+
+# ---------------------------------------------------------------------------
+# 0x79 FMINMAX (0e1) — frozen IEEE-2019 minimumNumber / maximumNumber
+# ---------------------------------------------------------------------------
+
+
+def f32_total_order_key(bits):
+    """The pinned 0x79 comparator key: a[31] ? ~a : (a ^ 0x80000000), then
+    ONE unsigned 32-bit compare (signed-int-tree reuse stays forbidden).
+    Gives the IEEE-754 total order on ALL non-NaN patterns: frozen row 5
+    (offset-transform total order), row 1 (-0 < +0 natively: key(-0) =
+    0x7FFFFFFF < key(+0) = 0x80000000) and row 6 (denormals ordered by
+    raw bit pattern). DAZ-EXEMPT by construction — never touches
+    decode()."""
+    bits &= 0xFFFFFFFF
+    return (~bits) & 0xFFFFFFFF if bits >> 31 else bits ^ 0x80000000
+
+
+def _f32_nan(bits):
+    return (bits & 0x7F800000) == 0x7F800000 and (bits & 0x7FFFFF) != 0
+
+
+def ref_fminmax_lane(a, b, subop):
+    """One 0x79 lane — frozen IEEE-2019 semantics, six pinned rows:
+      (1) -0 < +0 natively (via the offset key);
+      (2) one NaN -> the NUMBER (NaN loses), the number's bit pattern
+          returned UNCHANGED — including denormal numbers (row 6);
+      (3) both NaN -> canonical qNaN 0x7FC00000;
+      (4) sNaN quieted to canonical (any NaN-producing cell emits the
+          canonical pattern; no trap, DATA — and a lone sNaN against a
+          number still loses per row 2);
+      (5) offset-transform total order (f32_total_order_key, one
+          unsigned compare);
+      (6) denormal cells BIT-PATTERN-PRESERVING and DAZ-EXEMPT — this
+          function is NOT built on golden decode() (pinned).
+    B legality (missing-B -> error_flag, imm16 reserved-zero ->
+    lower_required, FSCALAR-clone re-row) is decode-level, not data."""
+    a &= 0xFFFFFFFF
+    b &= 0xFFFFFFFF
+    an, bn = _f32_nan(a), _f32_nan(b)
+    if an and bn:
+        return F32_QNAN                       # rows 3+4
+    if an:
+        return b                              # row 2 (b bit-preserved)
+    if bn:
+        return a
+    ka, kb = f32_total_order_key(a), f32_total_order_key(b)
+    if subop == FMINMAX_OP_CODE["MINIMUMNUM"]:
+        return a if ka <= kb else b
+    if subop == FMINMAX_OP_CODE["MAXIMUMNUM"]:
+        return a if ka >= kb else b
+    raise ValueError("lower_required: FMINMAX sub-op 0x%X" % subop)
+
+
+def ref_fminmax(a_lanes, b, subop):
+    """0x79 vector entry: 4 f32 lanes (128b = 2-frag wave) against ONE
+    broadcast B scalar (f32 bits from dec_input_payload_b[31:0] — the
+    0x74 FSCALAR low-word convention, cloned verbatim). Returns the 4
+    result lanes (128b out = 2 frags via today's FSM)."""
+    assert len(a_lanes) == FMINMAX_LANES
+    return [ref_fminmax_lane(a, b, subop) for a in a_lanes]
+
+
+def fminmax_frags(a_frags, b, subop):
+    """Fragment-level 0x79 wrapper pinning the 32-bit lane map (lane i at
+    flat bits [32i+31:32i], 2 lanes/word, 2 fragments in/out)."""
+    lanes = frags_to_lanes(a_frags, 32, FMINMAX_LANES)
+    return lanes_to_frags(ref_fminmax(lanes, b, subop), 32)
+
+
+# ---------------------------------------------------------------------------
+# 0x78 DEQUANT (0e1) — int4/int8 x fp32 broadcast scale -> bf16, ROUND-ONCE
+# ---------------------------------------------------------------------------
+
+
+def ref_dequant_lane(field, scale, dtype):
+    """One 0x78 DEQUANT lane: signed int lane k (int4/int8 raw field —
+    dtype names the SOURCE per the conversion-dtype rule; dest is pinned
+    bf16-ONLY in 0e) times the fp32 broadcast scale, ROUND-ONCE
+    definition (a): ONE RNE from the exact product directly to bf16.
+
+    EXACTNESS PROOF (the reason one rounding suffices): |k| <= 128 = 2^7
+    fits the 24-bit fp32 significand trivially (int4/int8 magnitudes are
+    exact fp32 values), and the scale's significand m_s < 2^24, so the
+    integer product P = |k| * m_s < 2^31 is held EXACTLY (<= 31 bits) —
+    nothing is rounded before the single RNE-to-bf16.
+
+    ROUND-ONCE VIA THE SINGLE NARROW AUTHORITY: the exact product is
+    packed to a 24-bit fp32-format intermediate with ROUND-TO-ODD
+    (sticky-preserving jam — never carries), then handed to
+    ref_narrow_f32, THE one f32->bf16 authority — so bit-identity with
+    the CVT narrow path holds BY CONSTRUCTION. RTO into 24 bits
+    preserves the below/at/above-midpoint class of every 8-bit rounding
+    decision (the jam bit sits 15 positions below the bf16 round bit and
+    never carries — the micro_i2f_acc theorem, margin 24 >= 8+2), so
+    narrow(RTO24(v)) == RNE_bf16(v) for ALL v. What is FORBIDDEN is
+    ref_mul-then-ref_narrow_f32: a first-pass RNE24 can land the product
+    exactly ON a bf16 midpoint and the second rounding resolves the
+    manufactured tie to even — ±1 ulp off definition (a). The MSE gate
+    is provably blind to that defect; golden/TB BIT-EQUIVALENCE on the
+    directed tie vectors is the enforcement point.
+
+    Pinned specials cells (all enumerated in the directed sweep):
+      scale denormal    -> DAZ at operand load (-> signed-zero rows);
+      scale NaN         -> canonical bf16 qNaN (propagates mul->narrow);
+      scale +-Inf       -> +-Inf by sign XOR; k == 0 against Inf -> qNaN;
+      k == 0 / scale 0  -> SIGNED zero, sign = sign(k) XOR sign(scale);
+      product overflow  -> +-Inf, never max-finite;
+      product < bf16 min-normal -> FTZ to signed zero at destination
+        pack — UNREACHABLE for nonzero operands (|k| >= 1 and the DAZ'd
+        |scale| >= 2^-126 give |product| >= 2^-126 = bf16 min-normal;
+        the cell is pinned for the pack logic, asserted vacuous here).
+
+    Transport (not modeled): the fp32 scale rides ext_payload_b WITH
+    ext_payload_b_valid on the wave-COMPLETING fragment beat (0x63-65
+    precedent); missing scale -> error_flag; launch-cycle capture of
+    A(128b)+B(64b)+tag into MU-local regs (0x74 idiom)."""
+    if dtype not in (DT_INT4, DT_INT8):
+        raise ValueError("DEQUANT source dtype must be 0x0/0x1")
+    k = _i2f_operand(field, dtype)
+    s_sign, s_kind, _ = decode(scale)         # DAZ at operand load (pinned)
+    sign = (1 if k < 0 else 0) ^ s_sign
+    if s_kind == "nan":
+        return BF16_QNAN
+    if s_kind == "inf":
+        return BF16_QNAN if k == 0 else (sign << 15) | BF16_PINF
+    if s_kind == "zero" or k == 0:
+        return sign << 15                     # signed zero (sign-XOR pin)
+    m_s = (scale & 0x7FFFFF) | (1 << 23)
+    e_s = ((scale >> 23) & 0xFF) - 127
+    P = abs(k) * m_s                          # EXACT, <= 31 bits (see proof)
+    bl = P.bit_length()                       # >= 24 (|k| >= 1)
+    e_u = e_s + bl - 24                       # binade exponent of the product
+    if e_u > 127:
+        # product >= 2^128: max-finite-with-sticky substitute — the narrow
+        # authority's increment ripples 0x7F7F -> 0x7F80 = Inf (overflow ->
+        # Inf, never max-finite, pinned)
+        inter = (sign << 31) | 0x7F7FFFFF
+    else:
+        assert e_u >= -126                    # FTZ-at-dest cell vacuous (pin)
+        m24 = _rto(P, bl - 24) if bl > 24 else P << (24 - bl)
+        inter = (sign << 31) | ((e_u + 127) << 23) | (m24 - (1 << 23))
+    return ref_narrow_f32(inter, DT_BF16)
+
+
+def ref_dequant(lanes, scale_fp32, src_dtype):
+    """0x78 vector entry — the two pinned 0e forms ONLY: int4 32-lane
+    (128b = 2-frag A) -> 32 bf16 = 512b = 8 frags; int8 16-lane -> 16
+    bf16 = 256b = 4 frags (dest bf16-ONLY; the 16-frag DEQUANT form is
+    deleted by the bf16 pin). Slice-select imm16[7:4] and f32-dest
+    imm16[3:0] are CLOSED-DEFERRED carriers, not 0e semantics."""
+    assert len(lanes) == DEQUANT_LANES[src_dtype]
+    return [ref_dequant_lane(f, scale_fp32, src_dtype) for f in lanes]
+
+
+def dequant_frags(a_frags, scale_fp32, src_dtype):
+    """Fragment-level 0x78 wrapper pinning the lane maps: int4 lane i at
+    A-flat [4i+3:4i] (2 frags), int8 lane i at [8i+7:8i] (2 frags); bf16
+    result lane i at flat [16i+15:16i] (4 lanes/word -> 8 or 4 frags)."""
+    n = DEQUANT_LANES[src_dtype]
+    lanes = frags_to_lanes(a_frags, 4 if src_dtype == DT_INT4 else 8, n)
+    out = lanes_to_frags(ref_dequant(lanes, scale_fp32, src_dtype), 16)
+    assert len(out) == DEQUANT_OUT_FRAGS[src_dtype]
+    return out
+
+
+def micro_dequant_lane(field, scale, dtype):
+    """SEQUENCER-FAITHFUL 0x78 twin — models the fused OPS_DEQ step
+    program (OPS_DEQ = 4'd9): launch-captured operands, exact I2F folded
+    into the FS_MUL-shape tail through FP_Mul36 (|k| enters as an
+    UNNORMALIZED significand — the product register holds <= 31
+    significant bits of the 48-bit product, unrounded), then the bf16-
+    pack variant of the pin-3 DISJOINT round/sticky epilogue: round bit
+    R = MSB of the dropped field, sticky S = OR(dropped minus R),
+    increment iff R & (S | kept-LSB); significand carry bumps the
+    exponent; overflow -> Inf at pack; FTZ-at-destination cell vacuous
+    (same proof as ref_dequant_lane). Bit-equivalence micro == ref over
+    lanes x scales INCLUDING the round-once discriminator ties is THE
+    enforcement point of rounding definition (a)."""
+    if dtype not in (DT_INT4, DT_INT8):
+        raise ValueError("DEQUANT source dtype must be 0x0/0x1")
+    k = _i2f_operand(field, dtype)
+    s_sign, s_kind, _ = decode(scale)
+    sign = (1 if k < 0 else 0) ^ s_sign
+    if s_kind == "nan":
+        return BF16_QNAN
+    if s_kind == "inf":
+        return BF16_QNAN if k == 0 else (sign << 15) | BF16_PINF
+    if s_kind == "zero" or k == 0:
+        return sign << 15
+    m_s = (scale & 0x7FFFFF) | (1 << 23)
+    e_s = ((scale >> 23) & 0xFF) - 127
+    P = abs(k) * m_s
+    bl = P.bit_length()
+    e_u = e_s + bl - 24
+    sh = bl - 8                               # >= 16: dropped-field width
+    q = P >> sh
+    r_bit = (P >> (sh - 1)) & 1
+    s_bit = 1 if P & ((1 << (sh - 1)) - 1) else 0
+    q += r_bit & (s_bit | (q & 1))
+    if q == (1 << 8):
+        q = 1 << 7
+        e_u += 1
+    if e_u > 127:
+        return (sign << 15) | BF16_PINF       # overflow -> Inf, never max-finite
+    assert e_u >= -126
+    return (sign << 15) | ((e_u + 127) << 7) | (q - (1 << 7))
+
+
+def micro_dequant(lanes, scale_fp32, src_dtype):
+    assert len(lanes) == DEQUANT_LANES[src_dtype]
+    return [micro_dequant_lane(f, scale_fp32, src_dtype) for f in lanes]
+
+
+# ---------------------------------------------------------------------------
+# 0x6B GAMMA_MUL_W (0e1) — exact widening int4 x int4 -> int8, MU-hosted
+# ---------------------------------------------------------------------------
+
+
+def ref_gamma_mul_w_lane(a4, g4):
+    """out = sext8(a4) * sext8(g4) — EXACT widening per lane. RANGE
+    PROOF: int4 operands lie in [-8, 7], so products lie in [-56, +64]
+    (minimum (-8)*7 = 7*(-8) = -56; maximum (-8)*(-8) = +64; positive-
+    operand maximum 7*7 = 49) — trivially inside int8 [-128, 127]:
+    rounding-free AND saturation-free. Returns the int8 result field."""
+    va = _i2f_operand(a4, DT_INT4)
+    vg = _i2f_operand(g4, DT_INT4)
+    return (va * vg) & 0xFF
+
+
+def ref_gamma_mul_w(x_lanes_int4, gamma_lanes_int4):
+    """0x6B GAMMA_MUL_W vector entry (0e1, NEW — pre-stable reallocation
+    of the retired WIDEN code): A = 16 int4 lanes = 64b single-fragment
+    payload_a; gamma = 16 int4 lanes via imm64 XOR OPREF (alu-binary XOR
+    satisfied — both/neither is decode_error, a legality rung). Result
+    lane i at bits [8i+7:8i] of the 128-bit output (2 frags) — the lane
+    order pin, held in spec + golden + SDK together. MU-HOSTED: the arm
+    lives inside the parameter-gated region so 16 L-PEs synthesize
+    nothing (~200-300 LUT once, not 16x). Gamma fixed-point convention:
+    gamma int4 carries an implicit 2^-k; the 2^-k folds into the DEQUANT
+    broadcast scale as an EXACT exponent shift (see rmsnorm_chain_0e)."""
+    assert len(x_lanes_int4) == GAMMA_LANES
+    assert len(gamma_lanes_int4) == GAMMA_LANES
+    return [ref_gamma_mul_w_lane(a, gg)
+            for a, gg in zip(x_lanes_int4, gamma_lanes_int4)]
+
+
+def gamma_mul_w_frags(a_frag, gamma_imm64):
+    """Fragment-level 0x6B wrapper: one 64-bit A fragment + the 64-bit
+    gamma vector -> the 2 output fragment words (8 int8 lanes/word)."""
+    a_lanes = frags_to_lanes([a_frag], 4, GAMMA_LANES)
+    g_lanes = frags_to_lanes([gamma_imm64], 4, GAMMA_LANES)
+    return lanes_to_frags(ref_gamma_mul_w(a_lanes, g_lanes), 8)
+
+
+# ---------------------------------------------------------------------------
+# 0x70 VFMA_ACC (0e2 — authored now, golden-before-RTL) — int32 wrap FMA
+# ---------------------------------------------------------------------------
+
+
+def vfma_b_split(b_payload, dtype):
+    """The 0x70 B-split pin (spec-first): c_acc = B[63:32], ONE broadcast
+    int32 addend; b_mul = sext32 from B[3:0] (int4 dtype) / B[7:0]
+    (int8). The datapath reads ONLY those low bits — asm-lint (not this
+    model) LOUDLY rejects imm encodings with nonzero bits in b_mul above
+    the lane width, so no silent truncation is observable from legal
+    programs. imm16/imm32 encodings zero-fill the upper word -> c_acc=0.
+    STATELESS pin: the ROM-shipped mode-byte acc bit = 1 marks the
+    wide-acc OUTPUT form, NOT stateful accumulation (the lane-engine
+    polarity error is corrected). Returns (b_mul, c_acc) as signed ints."""
+    if dtype not in (DT_INT4, DT_INT8):
+        raise ValueError("VFMA dtype must be 0x0/0x1")
+    b_payload &= _M64
+    c = (b_payload >> 32) & 0xFFFFFFFF
+    c_acc = c - (1 << 32) if c >> 31 else c
+    return _i2f_operand(b_payload, dtype), c_acc
+
+
+def ref_vfma_lane(a_field, b_mul, c_acc, dtype):
+    """One 0x70 lane: out = (sext32(a) * b_mul + c_acc) mod 2^32 —
+    EXPLICIT wrap (c_acc can sit exactly at the wrap boundary). Returns
+    the int32 result lane pattern."""
+    if dtype not in (DT_INT4, DT_INT8):
+        raise ValueError("VFMA dtype must be 0x0/0x1")
+    return (_i2f_operand(a_field, dtype) * b_mul + c_acc) & 0xFFFFFFFF
+
+
+def ref_vfma(lanes, b_mul, c_acc, dtype):
+    """0x70 vector entry: int4 -> 32 lanes -> 32 int32 = 16 frags (the
+    frag-widening + Cluster mask-fix consumer); int8 -> 16 lanes -> 8
+    frags. Result lane i at flat bits [32i+31:32i] (2 lanes/word).
+    Compute is a shared sequential LUT-mapped signed 8x8 MAC (never the
+    fp step sequencer, 0 MULT18) — irrelevant to the exact semantics."""
+    assert len(lanes) == VFMA_LANES[dtype]
+    return [ref_vfma_lane(a, b_mul, c_acc, dtype) for a in lanes]
+
+
+def vfma_frags(a_frags, b_payload, dtype):
+    """Fragment-level 0x70 wrapper: A fragment words -> result fragment
+    words (16 for int4 / 8 for int8), B split per vfma_b_split."""
+    n = VFMA_LANES[dtype]
+    lanes = frags_to_lanes(a_frags, 4 if dtype == DT_INT4 else 8, n)
+    b_mul, c_acc = vfma_b_split(b_payload, dtype)
+    out = lanes_to_frags(ref_vfma(lanes, b_mul, c_acc, dtype), 32)
+    assert len(out) == VFMA_OUT_FRAGS[dtype]
+    return out
+
+
+# ---------------------------------------------------------------------------
+# the rewritten RMSNORM macro chain (0e1) — golden model
+# ---------------------------------------------------------------------------
+
+RMSNORM_EPS_DEFAULT_BITS = 0x39000000     # 2^-13 — the assembler guard floor
+
+
+def bf16_to_frac(h):
+    """Exact Fraction value of a finite bf16 pattern (subnormals exact —
+    measurement helper for the MSE harness, not an operand loader)."""
+    h &= 0xFFFF
+    s = (h >> 15) & 1
+    e = (h >> 7) & 0xFF
+    m = h & 0x7F
+    assert e != 0xFF
+    if e == 0:
+        v = Fraction(m, 1 << 7) * Fraction(2) ** (-126)
+    else:
+        v = Fraction((1 << 7) + m, 1 << 7) * Fraction(2) ** (e - 127)
+    return -v if s else v
+
+
+def f32_exp_shift(bits, dk):
+    """EXACT power-of-two rescale of a NORMAL fp32 pattern (exponent-
+    field add). The gamma fixed-point 2^-k fold and the per-tensor-scale
+    fold are pinned as exact exponent shifts — leaving the normal range
+    would make the fold inexact, so it is asserted, never rounded or
+    flushed."""
+    e = (bits >> 23) & 0xFF
+    assert 0 < e < 0xFF, "exp-shift input must be a normal fp32 pattern"
+    e += dk
+    assert 0 < e < 0xFF, "exp-shift fold left the normal range"
+    return (bits & 0x807FFFFF) | (e << 23)
+
+
+def rmsnorm_chain_0e(x_lanes, gamma_lanes, gamma_frac_bits=3,
+                     eps_bits=RMSNORM_EPS_DEFAULT_BITS, scale_exp=0):
+    """GOLDEN MODEL of the FULL rewritten v1.8.0e RMSNORM macro chain
+    (the _lower_rmsnorm rewrite: the x256/F2I/Q8.8/int-gamma tail is
+    deleted). Numerically relevant dispatches only (the FSCALAR
+    B-constant producers carry constants and do not round):
+
+      1) SIG_L2SQ   ssq = sum(x_i^2)          exact int (<= 32*64 = 2048)
+      2) CVT I2F    sq_f = f32(ssq)           EXACT (< 2^24)
+      3) FS_MUL     m  = RNE(sq_f * c)        c = 4^scale_exp / N: the
+         harness tensor convention is x_real = x_int * 2^scale_exp, so
+         mean(x_real^2) = ssq * 4^scale_exp / N — folding 4^scale_exp
+         into the EXISTING 1/N producer constant is an exact exponent
+         shift (N a power of two), no extra dispatch
+      4) FS_ADD     me = RNE(m + eps)         eps REAL-domain, assembler
+         guard eps >= 2^-13 retained (rationale restated in 0e: the
+         mpmath exact reference is eps-INCLUSIVE — the old Q8.8-
+         absorption rationale is retired)
+      5) FRSQRT32   r  = micro_rsqrt(me)      <= 2 ulp, step-faithful
+      6) (fold)     s  = r * 2^(scale_exp - k) EXACT exponent shift —
+         the gamma fixed-point 2^-k and the tensor scale fold into the
+         DEQUANT broadcast scale; the FSCALAR gamma-fold step of the
+         as-submitted hybrid is deleted (gamma exponent folds free)
+      7) 0x6B       w  = x (.) gamma          exact int8, per 16-lane row
+      8) 0x78       y_i = RNE_bf16(w_i * s)   int8-16 DEQUANT — the ONE
+         output narrowing, round-once definition (a)
+
+    Steps 3+4 ride the v1.8.0c wide-exact-round-once step programs, so
+    ref IS micro for them; total roundings after the exact integer core:
+    one FS_MUL RNE, one FS_ADD RNE, the <= 2-ulp rsqrt, ONE output RNE
+    per lane — chain relative RMS ~2^-21.9 against the exact reference,
+    which the MSE release gate measures (must be <= 1.05x the bf16
+    dtype floor per tensor).
+
+    N = 16 or 32 int4 lanes; N = 32 lowers as two 16-lane 0x6B + DEQUANT
+    pairs sharing one s (same lane map). LAYERNORM/BATCHNORM stay 0d
+    Q8.8 form in 0e (beta has no fp-vector-add home) — scoped, not
+    hidden. Returns (bf16_lanes, trace-dict)."""
+    n = len(x_lanes)
+    assert n in (16, 32) and len(gamma_lanes) == n
+    ssq = 0
+    for x in x_lanes:
+        v = _i2f_operand(x, DT_INT4)
+        ssq += v * v
+    sq_f = ref_i2f(ssq & _M64, DT_ACC_INT)                # exact
+    c_bits = f32_exp_shift((127 - (n.bit_length() - 1)) << 23, 2 * scale_exp)
+    m = ref_mul(sq_f, c_bits)                             # FS_MUL == micro
+    me = ref_add(m, eps_bits)                             # FS_ADD == micro
+    r = micro_rsqrt(me)                                   # FRSQRT32
+    s_deq = f32_exp_shift(r, scale_exp - gamma_frac_bits)
+    y = []
+    for h in range(n // 16):
+        w = ref_gamma_mul_w(x_lanes[16 * h:16 * h + 16],
+                            gamma_lanes[16 * h:16 * h + 16])
+        y += ref_dequant(w, s_deq, DT_INT8)
+    return y, {"ssq": ssq, "mean_eps_bits": me, "rsqrt_bits": r,
+               "scale_bits": s_deq}
