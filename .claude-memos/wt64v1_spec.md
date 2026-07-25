@@ -2515,3 +2515,201 @@ Audit 사실: **10개 reduce 변형 중 9개가 asm 소비자 0** 이었고, 전
 dead 코드가 critical cone 과 MULT 예산을 실질 점유하고 있었음이 실측
 으로 확정 — cleanup 은 미용이 아니라 v1.8.0e/v1.9 의 선행 투자였다.
 0e 의 선공표 COMB gate 는 이 34.26% 를 새 기준선으로 도출할 것.
+
+## 25. v1.8.0e — MSE-contract wide package — amendment (2026-07-24, COMMIT 0 · normative)
+
+**당선 설계 "hybrid-minimal (repaired)" (2026-07-24 설계 workflow, adversarial verify 기록에서 합성된 mandatory repair 7건 반영).** 본 절이 v1.8.0e 의 normative source 다 — spec-before-code COMMIT 0 (§12a pre-stable 정책 하, 아래 나열된 모든 계약 변경의 spec-first 기록). 기준선 anchor 는 §24.5 cleanup 후 실측: **COMB 34.26% (28,659/83,640) · MULT18X18D 122/156 · Fmax 10.93 MHz / 113 stages**.
+
+Mandatory repair 7건 (전부 본 절에 성문화): ① twin-classifier 편집 (Cluster.v is_mul_op + PE_Core.v dec_is_mul_op 에 0x70/0x78/0x79 + 신규 0x6B) + lockstep/reachability 테스트 (§25.3); ② Cluster.v:257-258 frag_mask_full 4-bit shift wrap 수정 — **잠복 버그 수리로 기록** (16-fragment 재조립은 오늘 tot_m1=15 에서 깨져 있음, §25.3); ③ 0x79 FMINMAX 를 FSCALAR-clone legality 로 re-row (원 pin 은 alu_binary_xor_err 하 decode 불가 — §25.2.1); ④ DEQUANT destination 을 0e 에서 bf16-ONLY 로 pin (no-dest-dtype-carrier 반증 폐쇄 + 16-frag DEQUANT form 삭제 — §25.2.2); ⑤ 신규 opcode 0x6B GAMMA_MUL_W — MU-hosted exact widening per-lane int4×int4→int8 곱 (치명적 broadcast-gamma 반증의 수리, criterion 3 의 진짜 end-to-end 충족 — §25.2.3); ⑥ vfma_busy 점유 항 + fp_valid_p2 lane-loop 억제 + atomic frag0_hold handoff pin (§25.3); ⑦ MSE harness 수리 (eps-inclusive exact reference, denominator-floor 규칙, gamma-variation tensors, round-once 는 MSE ratio 아닌 bit-equivalence 로 시행 — §25.5.2).
+
+Staging: **0e1** (MSE-contract release) → **0e2** (0x70 VFMA). 신규 산술은 전부 step sequencer (FP_StepSeq) 뒤 또는 registered launch-capture 뒤 — FMINMAX/VFMA/0x6B 는 step sequencer 에 진입하지 않고, FP_StepSeq 는 OPS_DEQ 행 추가로만 접촉된다.
+
+### 25.1 Scope — 0e1/0e2 staging + CLOSED-DEFERRED 표
+
+**0e1 (MSE-contract release)**:
+
+1. **COMMIT 0** = 본 절 (전 pin + gate 선공표 + cut ladder + amendments §25.6).
+2. **COMMIT 1** = golden-before-RTL: `scripts/golden_fp32.py` 에 ref_dequant (round-once 정의 (a), 전 specials cell), ref_fminmax (**raw bit pattern 위에서 6 frozen 행 전사 — golden decode() 위 축조 금지, DAZ-exempt**), ref_gamma_mul_w (exact int, lane order pin), ref_vfma_lane (explicit mod 2³², b_mul 폭 pin), micro_dequant (sequencer-faithful twin — ref_dequant 와 bit-equivalent), lane→fragment packing layer (spec/SDK 공유); bf16 codec 은 golden 이 단독 authority 가 되기 **전에** ml_dtypes cross-check (§23.10.10(f) pin 13 규칙).
+3. frag FSM **2→4-bit emit-side widening** + Cluster frag_mask_full fix + twin-classifier 추가 (§25.3).
+4. **0x79 FMINMAX** — comb arm, FSCALAR-clone legality (§25.2.1).
+5. **0x78 DEQUANT** — fused **OPS_DEQ = 4'd9**, bf16-dest-only: int4-32→bf16 8 frags / int8-16→bf16 4 frags (§25.2.2).
+6. **0x6B GAMMA_MUL_W** — MU-hosted, 16-lane, 단일-frag A + imm64/OPREF gamma, 2-frag int8 out (§25.2.3).
+7. `_lower_rmsnorm` 재작성: ×256/F2I/Q8.8/int-gamma tail 삭제; fp insert 는 fp32 scale s 에서 정지하되 gamma 고정소수점 지수를 기존 상수에 **exact 폴딩** (추가 FSCALAR 없음); 0x6B gamma 단계; DEQUANT tail 에서 **정확히 1회 좁히기**.
+8. **MSE release-gate sweep** (§25.5.2).
+9. **op_sel 기존 8개 step 프로그램 전건 re-proof — 0e1 에서 1회 mandatory (locked)**; fused OPS_DEQ 는 이미 locked 된 이 re-proof 에 편승하므로 fused 프로그램의 한계 증명 비용은 선지불됨.
+
+**0e2**: **0x70 VFMA_ACC** (stateless, sequential LUT-mapped MAC, B split {c_acc[63:32], b_mul[31:0]} — §25.2.4) + vfma_busy interlock + **16-fragment emit (frag_mask_full fix 의 첫 소비자)**.
+
+**CLOSED-DEFERRED 표 (normative — designated carrier 명시; imm16 forbidden→optional 완화는 CVT 선례를 따르는 단일 미래 loosening event 1회로 통합)**:
+
+| 이연 항목 | designated carrier / destination | 비고 |
+|---|---|---|
+| DEQUANT slice-select | **imm16[7:4]** | f32-dest 와 같은 단일 loosening event 에 동승 |
+| DEQUANT f32-dest | **imm16[3:0]** | 이 field map 이 double-booking 을 해소 |
+| lane-wise-B FMINMAX/DEQUANT | post-0e | — |
+| VFMA stateful accumulator + fp dtypes | **v2.0** | §25.7 risk 10 |
+| 32-lane GAMMA_MUL_W form | post-0e | N=32 row = 16-lane dispatch 2회로 표현 가능 |
+| LAYERNORM/BATCHNORM fp-grade 승격 | vector fp add 착지 시까지 deferred | **사유: beta 가 0e 에 fp-vector-add home 부재** — 두 매크로는 0d Q8.8 form 유지 (§25.6 항 2) |
+
+Locked 항목 전건 준수 확인: 실측-anchor 예산 (34.26%/122/10.93); gate 는 구현 이전 선공표 + cut ladder (§25.5); golden-before-RTL; per-operator+unit+cluster gate **전부 실행**; op_sel re-proof; frozen FMINMAX IEEE 의미론 (§23.10.8 pin 무수정 이월); 본 절의 모든 계약 변경에 pre-stable spec-first 정책 적용.
+
+### 25.2 Opcode 의미론 (normative)
+
+#### 25.2.1 0x79 FMINMAX (0e1)
+
+**f32-only, 4 lanes vs broadcast B; 입력 128b = 2-fragment wave, 출력 128b = 2 fragments** — 오늘의 FSM 에 수납.
+
+**LEGALITY RE-ROW (spec-first — 확정된 alu_binary_xor_err dead-end 의 폐쇄)**: 원 pin (imm16 sub-op + OPREF-B 동시 요구) 은 EHDecode 의 alu-binary XOR invariant 하에서 **decode 불가** 였다 — imm 과 OPREF 를 동시에 요구하는 인코딩은 alu_binary_xor_err 로 즉사하므로, 그 형태로는 어떤 합법 인코딩도 존재하지 않는다. 따라서 **0x74 FSCALAR clone verbatim** 으로 re-row: isa JSON `rtl_alu_binary` true→**false**, `forbid_opref`→**true**, imm16 optional 은 **CONTROL 로만** (sub-op imm16[7:4]: 0x0=minimumNumber, 0x1=maximumNumber; [3:0]/[15:8] reserved-zero 위반 → lower_required); B 는 **dec_input_payload_b port 로만** 수취 ("EHDecode alu-binary XOR trap 을 dormant 하게 유지" — 0x74/0x77 의 기록된 maneuver); missing-B → **error_flag** (0x74 idiom); OPREF-B 는 기록된 post-0e loosening. isa_opcode_wires.vh/isa_ehshape_case_body.vh 재생성 → **frozen truth-table differential recapture + domain_version bump** (§25.6 항 7).
+
+**SEMANTICS (frozen IEEE-2019 — §23.10.8 의 pin 이월, 6행 normative)**: lane 별 NaN-detect classify 후, ordering 은 **신규 전용 comparator key = a[31] ? ~a : (a ^ 0x80000000)** 에 대한 **unsigned 32b 비교 정확히 1회** (signed-int compare tree 재사용 금지 유지):
+
+1. **−0 < +0** natively
+2. 한쪽 NaN → number 반환
+3. 양쪽 NaN → canonical qNaN **0x7FC00000**
+4. sNaN 은 canonical 로 quiet
+5. offset-transform 이 주는 total order (전 monotone chain {−Inf..+Inf})
+6. denormal cell 은 **bit-pattern-preserving (DAZ-EXEMPT)** — **ref_fminmax 를 golden decode() 위에 축조 금지** (decode 의 DAZ 가 이 행을 조용히 위반한다)
+
+구현: **MUL_OPS_SUPPORTED-gated dispatch 내부의 combinational PE_Core arm** (einsum-arm 패턴) — **step sequencer 무접촉**.
+
+#### 25.2.2 0x78 DEQUANT (0e1)
+
+**port-only legality 불변** (forbid_imm_any + forbid_opref 존치). **Destination 은 0e 에서 bf16-ONLY pin** — 근거 명기: mode dtype 은 conversion-dtype 규칙 (§23.6a) 대로 **source** 를 명명하며, **dest 를 나를 carrier 가 존재하지 않고 0e 는 어떤 것도 추가하지 않는다** (no-dest-dtype-carrier 반증의 해소; f32-dest 는 §25.1 표의 imm16[3:0] carrier 로 이연). Forms: **int4 32-lane** (128b, 2-frag in) → 32 bf16 = 512b = **8 fragments**; **int8 16-lane** → 16 bf16 = 256b = **4 fragments**. 16-frag DEQUANT form 은 **삭제**.
+
+- fp32 scale 은 **ext_payload_b + ext_payload_b_valid** 로, **wave-완결 fragment beat** 에 탑승 (0x63-65 선례; **beat 배치는 SDK/NoC 계약으로 pin**); missing scale → error_flag.
+- Launch-cycle 에 A(128b)+B(64b)+tag 를 **MU-local reg 로 capture** (0x74 idiom — EHDecode 는 cluster-shared).
+- Compute: **fused step-sequencer 프로그램 OPS_DEQ = 4'd9** (op_sel 은 이미 4-bit — widening 불요): exact I2F 를 FP_Mul36 경유 FS_MUL-shape tail 에 폴딩. **L = 6-7 은 ESTIMATE** — 비정규화 significand 폴딩이 +1 normalize step (L=8) 을 요구할 수 있음; §25.4 의 규율대로 C-gate TB 에서 실측 졸업.
+- **Rounding pin — 정의 (a) ROUND-ONCE**: 미반올림 48-bit product 에서 **직접 bf16 로 RNE 1회** — §23.10.10(f) pin 3 의 disjoint round/sticky 논리의 bf16-pack 변형; sign = sign(k) XOR sign(scale); k=0 → signed zero. **Exactness 논증**: int lane 의 I2F 는 exact, 곱은 미반올림 wide 로 유지 → 체인 전체에서 RNE 정확히 1회 (선행 0x6B 단계는 int-exact — RMSNORM 체인 rel-rms ~2⁻²¹·⁹, MSE ratio 1+~5×10⁻⁸).
+- Specials pin: scale denormal → operand-load DAZ; scale NaN/Inf 는 mul 관통 후 narrow; product overflow → **±Inf, max-finite 절대 금지**; product 가 bf16 min-normal 미만 → destination pack 에서 **FTZ signed zero**. 전 cell 은 ref_dequant + directed vector 로 열거.
+
+#### 25.2.3 0x6B GAMMA_MUL_W (0e1, 신규)
+
+**§24 에서 은퇴한 0x6B code point 의 pre-stable 재배정** (§12a 규칙 4 — reserved 복귀 인코딩의 재사용; **slot 재사용임을 명시 기록**). **Retired-0x6B stale-consumer grep 이 commit 시 mandatory** — 제거 근거가 소비자 0 이었어도 검사는 의무.
+
+존재 이유 (반증 기록): broadcast s_c = s·γ_c 는 문서화된 **per-lane gamma 계약** (asm/wavetensor_asm.py:835-877; §22.4) 을 구현할 수 없고, 제출된 전 설계가 이 지점에서 반증되었다. zero-RTL 우회도 부재 — 구 0x6B/0x6C 는 은퇴했고 (§24) 0x65 는 product 를 int4 로 절단하며, per-channel DEQUANT dispatch 는 cycle 예산의 16×. **0x6B 가 이 반증을 수리하여 criterion 3 이 per-lane gamma 포함 end-to-end 로 진짜 충족된다.**
+
+- **MU-HOSTED**: 양쪽 twin classifier 등재 (§25.3); arm 은 **parameter-gated 영역 내부 — L-PE 는 아무것도 합성하지 않는다** (MU 1기 ~200-300 LUT vs 전 L-PE 전개 시 ~3-5k; 어차피 같은 unit 에서 DEQUANT 에 선행하는 op).
+- A = **16 int4 lanes = 64b 단일-fragment payload_a**; gamma = 16 int4 lanes, **imm64 XOR OPREF** (alu-binary XOR 충족: 정확히 하나).
+- **out[i] = sext8(a4[i]) × sext8(g4[i]) — EXACT (|p| ≤ 64 ⊂ int8)**; 출력 16 int8 lanes = 128b = **2 fragments** (오늘의 FSM). Combinational, 1-cycle. **lane order pin: lane i = bits [8i+7:8i]** — spec+golden+SDK 3자 동시 pin.
+- **Gamma 고정소수점 관례**: gamma int4 는 implicit 2⁻ᵏ 를 운반; 이 2⁻ᵏ 는 후속 DEQUANT 의 broadcast scale 에 **exact 지수 shift** 로 폴딩된다.
+
+#### 25.2.4 0x70 VFMA_ACC (0e2, int4/int8 only)
+
+- **STATELESS pin**; mode-byte acc bit = 1 은 ROM-shipped 그대로 (legal_acc [1]) — **acc=1 은 wide-acc OUTPUT form 의 표기이지 stateful 누산이 아니다** (lane-engine 안의 polarity 역독 오류를 정정하여 기록).
+- **B 64b split (spec-first)**: **B[63:32] = broadcast int32 addend c_acc**; **b_mul = sext32(B[3:0])** (int4 dtype) / **sext32(B[7:0])** (int8). **asm-lint 는 lane 폭 위 비트가 nonzero 인 b_mul imm 인코딩을 LOUDLY 거부** (silent truncation 금지); imm16/imm32 는 상위 word 를 zero-fill → c_acc=0.
+- **out[i] = (sext32(a[i]) × b_mul + c_acc) mod 2³² — EXPLICIT** (c_acc 가 wrap 경계에 앉을 수 있다). 출력 int32 lanes [32i+31:32i]: int4 → **16 fragments** (widening + mask-fix 의 소비자), int8 → **8 fragments**.
+- Compute: **공유 sequential LUT-mapped signed 8×8 MAC**, 1-2 cy/lane, **step sequencer 무접촉, MULT18 0**. instruction+EH chain 은 **전 fragment 에 복제** (VDOT 계약 그대로).
+- vfma_busy interlock 은 §25.3.
+
+### 25.3 Fragment widening + accumulation buffer (normative)
+
+**Emit-side 2→4-bit widening (0e1; Cluster CAM 저장은 이미 16-deep — 수신 파싱 무변경)** — PE_Core.v 편집 목록:
+
+- (a) localparam + frag_idx/frag_total_m1_held **[1:0]→[3:0]** (1383-1389; FSM 은 plain up-counter 유지, FRAG_IDLE=4'd0)
+- (b) frag_pending **[0:3]→[0:15]** (1394, +768 FF; **row 0 은 reset-only dummy 유지** — frag_idx==0 은 fragment 0 을 alias 하며, **fragment 0 은 언제나 arm cycle 에 직접 emit 되고 절대 drain 되지 않는다** — 불변식)
+- (c) reset write (1558-1563) → 16 rows
+- (d) drain read (1735) → **16:1×64b mux** (진성 reg-array read — Gate-3 상수-배열 pathology 아님; ~250-350 LUT)
+- (e) header pack (1738) → {frag_idx, frag_total_m1_held} (nibble 은 이미 예약 — 기존 2-frag wave 는 bit-identical)
+- (f) live total_m1 literal 2건 **2'd1→4'd1** (2066, 2405)
+- (g) 폭-literal 위생: 1743 `frag_idx + 2'b01`, 1559 `2'b00` 을 4-bit 로 정규화 (zero-extension 하 benign 이나 lint-culture 대상)
+
+**수신측 수정 — 잠복 버그 수리로 기록**: Cluster.v:257-258 frag_mask_full 의 shift 량을 **5-bit 로 확장** (`wire [4:0] = {1'b0,frag_tot_ref}+5'd1`). 현행 RTL 은 tot_m1=15 에서 4-bit self-determined shift 가 0 으로 wrap → mask 0x0000 → **16-fragment wave 는 오늘 영구 재조립 불가** (verilator 확정; silent CAM-slot rot). 1행 수정이며 0e2 16-frag emit 의 전제조건.
+
+**Twin classifier**: Cluster.v:422-432 `is_mul_op` + PE_Core.v:1238-1243 `dec_is_mul_op` 가 **0x6B/0x70/0x78/0x79 를 lockstep 으로** 획득 (한쪽 누락 = silent permanent lower_required dead-end — in-RTL invariant 주석 403-417 갱신, lockstep 테스트 같은 commit 탑승); stub arm 2465-2467 은 같은 commit 에서 0x70/0x78/0x79 trio graduate (0x6B 는 stub 이력 없음); all-ops live-extraction membership 테스트 flip.
+
+**BUFFER — 누산 버퍼는 widened frag_pending 그 자체다 (제2 구조 없음)**: loop writer 는 완료 lane 을 64b staging word 로 pack — **word 당 bf16 4 lanes 또는 int32 2 lanes** (hybrid 제출본의 "2 bf16/word" prose 오류 정정); word ≥1 → frag_pending[word_idx]; **word 0 → 전용 64b frag0_hold reg** (row-0-dummy 불변식 보존).
+
+**DRAIN ENTRY — atomic handoff PIN**: 마지막 lane 의 completion cycle 에 — **covering busy 항이 아직 high 인 동안** — arm 이 frag0_hold 를 hdr {4'd0, total_m1} 로 emit 하고, **기존 writer 들과 같은 clocked block** (lint co-location) 에서 frag_idx <= **FRAG_EMIT_1 (SYMBOL — 4'd1 literal 금지, lint 발견성)** + frag_total_m1_held <= N-1 을 기록; rows 1..N-1 은 무변경 priority override (1734-1744) 를 통해 **정확히 1 fragment/cycle drain**. **Spec-delta 불변식: loop 형 op 의 fragment 0 은 dispatch 시점이 아니라 loop 완료 시점에 emit 된다.**
+
+**pe_ready worst-case 주석 amendment (PE_Core.v:1378-1381)**: 16-fragment 결과의 drain 은 최악 **~15 cycle 의 pe_ready deassert** (fragment 0 은 arm cycle 직접 emit + rows 1..15 가 1/cycle) — 기존 2-frag 가정 수치를 대체.
+
+**점유 interlock**: DEQUANT loop — fp_busy 가 output_regs_free 를 연속 low 유지 (registered relaunch 가 첫 idle cycle 에 착지함은 검증 완료) **+ pack/arm window 를 덮는 deq_loop_active 항**; per-lane fp_done pulse 는 fp output arm 에서 **DIVERT** (loop 중 fp_armed 를 low 유지) — lane 별 spurious emit 없음 (1701/1768 의 확정 hazard). VFMA loop (0e2) — 신규 **vfma_busy** 항을 output_regs_free (1403) **와** 0x12 MUL launch gate (1592-1595 — output_regs_free 가 덮지 않는 확정 구멍) 양쪽에 OR; fp 선례의 **2-항 (busy || valid) form** 으로 gap-cycle dispatch sneak 차단. Mid-flight mul-class dispatch 는 **loudly busy-reject (lower_required, VDOT rung)**; L-PE/DIV traffic 무영향; 전 readiness 신호 observe-only 유지.
+
+**lint_frag_total_m1_held.py 확장 — 첫 신규 writer 와 같은 commit**: 현행 case-arm indentation heuristic 은 generate-region writer 에 대해 vacuous pass (확정 blind spot) — non-case-arm writer block 발견으로 확장 + FRAG_EMIT_1 SYMBOL 강제 (4'd1 literal flag) + 잔존 2-frag writer 2곳과 신규 loop-completion/comb-arm writer 의 same-block co-location 검증.
+
+### 25.4 cycle maxima 표 (normative — 추정→실측 졸업 규율)
+
+10.93 MHz (91.5 ns/cy) 기준; 공식 = N_lanes × (L+1) + 고정 ~3 + fragment 당 drain 1 cy. **OPS_DEQ L=6-7 은 ESTIMATE** (비정규화 significand 폴딩 시 +1 → L=8) — 표는 **ceiling** 을 운반하고 **C-gate TB 에서 estimate→measured 로 졸업**한다 (§23.10.6 completion-within-bound 관례 동일: ceiling 을 assert, exact count 는 절대 assert 금지).
+
+| op / form | 추정 cycles | ceiling |
+|---|---|---|
+| 0x79 FMINMAX | ~3-4 (comb + frag0 + drain 1) | **6** |
+| 0x6B GAMMA_MUL_W | ~3-4 (comb + 2-frag emit) | **6** |
+| 0x78 int8-16→bf16 | 16×(7..8)+3+4 = ~119-135 (~11-12 µs) | **160** (L=8 시 147) |
+| 0x78 int4-32→bf16 | 32×(7..8)+3+8 = ~235-267 (~21-24 µs) | **300** (L=8 시 299) |
+| 0x70 int4 (0e2) | 32×(1..2)+3+16 = ~51-83 | **90** |
+| 0x70 int8 (0e2) | ~27-43 | **48** |
+| RMSNORM row N=16 (int4) | L2SQ + fp insert ~32 (TB 실측, 불변) + 0x6B ~4-6 + DEQUANT-int8-16 ~123-139 + dispatch ~6-10 = ~165-190 (~15-17 µs) | **210 cy/row** |
+| RMSNORM row N=32 | (0x6B+DEQUANT) 쌍 2회 = ~300-340 | **380** |
+
+**정직한 regression — spec delta 에서 명시 RE-ACCEPT**: 0d Q8.8 row (60-100 cy = 5.8-9.7 µs, §23.10.10(g) C6 합성 실측) 대비 **~1.9-2.9× wall-clock** — exactness 를 cycle 로 산 것. 제출본 hybrid (~3×) 보다 개선: FSCALAR gamma-fold step 삭제 (gamma 지수는 무료 폴딩, §25.2.3) + 매크로 경로가 int4-32 대신 **int8-16 DEQUANT** 사용.
+
+**MU 점유**: in-scope 최악 window = DEQUANT int4-32 (weight-dequant form) ~235-300 cy = 수용된 DIV-66 선례의 **~3.6-4.5×**, 현행 최악 fp op 의 ~7-9×; 그동안 pe_ready/cluster_ready/pod_ready 는 observe-only low; mid-flight mul-class dispatch 전건 loudly busy-reject; 16-frag VFMA drain 이 최악 ~16 cy 의 dispatch 차단 추가; **기지의 positional NoC-bank hazard (Cluster.v:408-417 — fix 는 v1.9 arbitration rework)** 의 노출이 **~4× 증가** — §23.10.9 risk-2/3 수용에 대고 재진술 (§25.6 항 4). **v1.9 까지 아무것도 pipeline 되지 않는다** (lane compute · pack · drain 엄격 직렬).
+
+### 25.5 Gates — pre-priced, 구현 이전 공표 (locked)
+
+#### 25.5.1 COMB / MULT / Fmax gate + cut ladder
+
+실측 anchor (§24.5): COMB 34.26% (28,659/83,640), MULT 122/156, Fmax 10.93 MHz / 113 stages.
+
+**Nominal 항목별 견적 (합산 일치 의무 — all-sequential 안의 itemization/ceiling 불일치 교훈)**:
+
+| 항목 | LUT4 |
+|---|---|
+| frag widening + 16:1 drain mux + write decode | 350-500 |
+| FMINMAX comb arm | 350-500 |
+| OPS_DEQ case rows + lane counter + 32:1 lane extract + bf16 round-once pack | 250-500 |
+| VFMA sequential MAC (0e2) | 300-600 |
+| 0x6B gamma arm (16× signed 4×4 + pack, MU 단일 instance) | 200-300 |
+| decode/legality/twin-classifier/asm-visible control | 200-400 |
+| **nominal 계** | **+1.65-2.8k** |
+
+**COMB GATE ≤ 40.0% (33,456 LUT4)** — 도출을 함께 공표: 최악 nominal 2,800 × **1.67** (Gate-3 실측 overrun 계수 — §23.10.10(g) 의 방법, 0d 를 당선시킨 그 기준) = 4,676 → 28,659 + 4,676 = 33,335 = **39.86%**; margin **121 LUT** (0d 의 ~150-LUT-class margin). **하향 개정만 가능.** 명시 기록: 40.0% 는 cleanup 전 실측 39.48% 보다 **위** 이고 구 0d gate 41.0% 보다 1.0%p 아래 — 제출본 hybrid 의 "39.5% 는 39.48% 아래" 문장은 사실 오류로 폐기. **0e1 착지 후 interim check**: nominal 1.35-2.2k → projection ≤39.0%.
+
+**MULT pin (C6-amended form — ceiling + unit-증명 delta, total-count pin 아님)**: cluster gate 기대치 **정확히 122 (0e 신규 0)** — 형식은 **≤140 hard ceiling + 0e cone 신규 곱셈기 0 을 per-operator/unit gate 에서 증명**. 억제 기제를 명명한다 (C6 +1-drift 교훈): **VFMA MAC · 0x6B 곱셈기 · FMINMAX comparator 는 LUT-structural + 명시적 DSP-inference 억제 attribute 로 축조**; unit gate 는 0e cone 에 귀속되는 신규 곱셈기 발견 시 **hard-fail** (legacy-cone remap ±1 은 C6 관례대로 기록-비실패).
+
+**Fmax pin (C6-amended criterion)**: **netlist 귀속으로 0e 로직의 critical path 부재 증명 + 전역 drift ≤3%**. 기지 노출면: output cone 의 16:1 drain mux, 확장된 dispatch case tree — 양쪽 다 축조상 오늘의 113-stage 경로 밖 (전 산술이 step sequencer 뒤 또는 registered launch-capture 뒤).
+
+**Gate 실행 (v1.8.0b 교훈 normative — 3 레벨 전부 mandatory-run, merge blocker)**: per-operator synth — **0x79 / 0x78+OPS_DEQ / 0x6B / 0x70 각각 착지 후**; unit gate — PE_Core MU-parameterization + **L-PE parameterization 으로 MU-gated arm 의 L-PE 성장 0 증명**; cluster gate — full.
+
+**Pre-declared cut ladder (구현 중 집행 가능, 순서 고정)**:
+
+1. FMINMAX comb arm → FP_StepSeq operand reg 를 공유하는 1-step K_INT 프로그램 (−300-400 LUT)
+2. VFMA int4-slice-only, int8 arm 이연 (−150-250)
+3. OPS_DEQ fused → two-pass CVT+FS_MUL 재사용 (−200-300; cycle 비용: int4 DEQUANT 267→427 cy — 선가격 완료, 수용, MSE-중립)
+4. 0x70 전체를 0e3 으로 이연 (−500-900; MSE 계약 무영향 — **0e1 은 criterion 3 에 self-sufficient**)
+
+#### 25.5.2 MSE release gate (신규 `scripts/mse_sweep.py` — harness 수리 반영)
+
+- **eps-INCLUSIVE exact reference**: mpmath 로 exact_i = γ_i·x_i/√(mean(x²)+eps) — eps 를 포함한 채 exact (reference 의 eps 누락 수리).
+- per-tensor ratio **MSE(chain, exact) / MSE(RNE_bf16(exact), exact) ≤ 1.05**, 단 **denominator-floor 규칙**: 경험적 bf16 floor 가 ~0 이거나 exactly-representable 인 row 는 ratio 대신 절대 기준으로 fallback (0/0 금지).
+- **Tensor 생성 pin**: int4/int8 lane + per-tensor fp32 scale — **고정 int-lane 분포에 대해 scale 을 binade 2⁻⁸..2⁸ 로 sweep** (data-binade sweep 단독은 all-zero row 로 양자화되는 확정 함정).
+- Families: Gaussian, lognormal heavy-tail, outlier-injected, near-constant, eps-boundary rows, **그리고 per-lane GAMMA-VARIATION tensors (부호 flip 포함 random int4 gamma — broadcast-gamma 구현을 잡아내는 클래스)**.
+- **Round-once 는 MSE ratio 로 증명 불가 (증명적으로 blind)** — directed tie vector 를 **golden/TB bit-equivalence** 검사로 실행한다 (round-once vs double-round 를 구별하는 유일한 시행 지점; §25.7 risk 8).
+- end-to-end 검사는 RMSNORM 매크로 체인 (L2SQ → fp insert → 0x6B → DEQUANT) 을 mpmath exact 에 대고 실행.
+
+전 사이클/면적 주장 cluster-OOC 한정, pod 주장 금지 (§23.10 관례).
+
+### 25.6 Amendments (COMMIT 0 성문화)
+
+1. **§23.10.10(f) pin 14 개정**: single-narrowing 규칙이 **DEQUANT 를 sanctioned narrowing site 로 획득** — "narrowing 은 STORE_QUANT/CVT/**DEQUANT** 에서만".
+2. **§23.4 criterion 3 re-scope**: "종단 1회 좁히기 + norm 매크로 MSE ≤1.05×" 는 **narrowed 출력 dtype (bf16)** 과 **RMSNORM 매크로 end-to-end (per-lane gamma 완전 이행 포함)** 로 scope 된다 — 0x6B 가 이를 진짜로 충족시킨다. **LAYERNORM/BATCHNORM 은 명시 제외**: beta 가 0e 에 fp-vector-add home 이 없어 두 매크로는 0d Q8.8 form 잔류, 1.05× 계약 밖 — **은폐가 아닌 명기** (§25.7 risk 7, v2.0 재론).
+3. **eps ≥ 2⁻¹³ assembler guard 존치, 근거 재진술**: 구 Q8.8-absorption 근거는 은퇴; 새 근거 — exact reference 가 **eps-inclusive** (§25.5.2) 이므로 guard 는 수치 안정 하한이지 오차 은폐 장치가 아니다.
+4. **MU-점유 + NoC positional-bank hazard 노출 증가의 명시 RE-ACCEPT** (§23.10.9 risk-2/3 에 대고): §25.4 의 수치 (~4.5× DIV-66 window, hazard 노출 ~4×) 로 재진술하고 수용을 갱신; **SDK no-intervening-mul-dispatch 규칙 (§23.6a SDK 계약 3) 을 0x6B/0x70/0x78/0x79 로 확장**.
+5. **pe_ready worst-case 주석 amendment** (PE_Core.v:1378-1381): 16-frag drain 최악 ~15 cy deassert (§25.3).
+6. **Twin-classifier 등재**: is_mul_op / dec_is_mul_op += **{0x6B, 0x70, 0x78, 0x79}** lockstep (§25.3; §23.10.9 risk 6 의 process 규칙 — lockstep 테스트 같은 commit).
+7. **Frozen truth-table governance**: 0x79 legality re-row + 0x6B 재배정이 differential recapture + **domain_version 2 → 3** bump 를 강제 (§24.3/§12a 규칙 2 동일 — 의도적·리뷰된 recapture 만; 구표에 pin 된 downstream 도구는 같은 commit 재동기; retired-0x6B stale-consumer grep 필수).
+8. **Loop 형 op 의 fragment-0-at-loop-completion 불변식 + lane→fragment packing pin** (§25.3) 을 normative 로 성문화.
+
+### 25.7 residual risks (v1.8.0e)
+
+1. **OPS_DEQ latency 가 유일한 미실측 수치**: fused I2F 가 FP_Mul36 에 비정규화 significand 를 공급하고 epilogue 가 더 넓은 LZC normalize 를 요구할 수 있음 (+1 step → L=8, int4 DEQUANT ~299 cy); cycle 표는 estimate-flag + ceiling 으로 출하되고 C-gate TB 에서 졸업 — **L>8 이 실현되면 cut-ladder rung 3 (two-pass 재사용, 427 cy) 이 pre-declared fallback, MSE-중립**.
+2. **COMB gate margin 이 얇다**: 1.67×-inflated 최악 nominal 위 **121 LUT** (39.86% vs 40.0%) — 0d 의 ~150-LUT-class margin 이나, itemization creep 은 구현 중 cut ladder 집행을 강제; rung 1 (FMINMAX → K_INT 프로그램) 단독으로 300-400 LUT 회수.
+3. **yosys DSP-inference drift** (C6 선례: legacy cone +1 MULT): 억제 기제가 명명되고 unit gate 가 0e-cone 곱셈기 귀속에 hard-fail 하나, legacy-cone remap ±1 은 여전히 출현 가능하며 C6 의 기록-비실패 처분이 필요 — pin form (ceiling + unit-증명 delta) 이 설계상 이를 관용한다.
+4. **Fmax 전역 drift**: 0e 는 ~+5.6%p COMB 를 추가 (0d 의 +2.46%p 가 congestion 으로 −2.7% 전역 drift 를 실측한 전례); 0e 로직이 경로에 증명적으로 부재해도 ≤3% pin 이 근접될 수 있음 — pre-declared 대응은 cut ladder, 그 다음 C6-식 pin amendment 이며 **silent acceptance 는 절대 금지**.
+5. **Frozen truth-table churn**: 0x79 legality re-row + 0x6B 배정이 differential recapture + domain_version bump 를 강제; 구표에 pin 된 downstream 도구는 같은 commit 에서 재동기해야 하고, retired code 0x6B 의 pre-stable 재배정은 stale-consumer grep clean 이 필수 (제거 근거가 소비자 0 이었어도 검사는 mandatory).
+6. **Norm-macro wall-clock ~1.9-2.9× 와 MU 점유 최대 ~4.5× DIV-66 window 는 RE-ACCEPT 이지 fix 가 아니다**: positional NoC-bank hazard (Cluster.v:408-417) 는 v1.9 arbitration rework 까지 비례 노출 증가를 얻고, SDK no-intervening-mul-dispatch 규칙은 확장된 opcode set 에서 준수가 더 어려워진다 — §23.10.9 risk-2/3 에 대고 spec delta 에서 명시 재진술.
+7. **Criterion 3 은 RMSNORM 에 한해 end-to-end 충족**: LAYERNORM/BATCHNORM beta 는 0e 에 fp-vector-add home 이 없어 두 매크로는 0d Q8.8 form 으로 남고 v2.0 까지 1.05× 계약 밖 — 0e 에서 fp-grade layernorm 을 기대하는 소비자는 얻지 못한다.
+8. **Round-once 정의 (a) 는 golden/TB bit-equivalence + directed tie vector 로만 시행 가능** — MSE gate 는 수학적으로 blind; TB tie vector 가 약화되면 pin 은 소리 없이 미검증 상태가 된다.
+9. **atomic frag0_hold handoff** (busy-clear 와 frag_idx<=FRAG_EMIT_1 이 같은 completion cycle) 와 **fp_armed loop 억제** 는 PE_Core 의 불변식 밀도가 가장 높은 영역에 착지: 양쪽 다 전용 테스트로 pin 되나 이 package 최고접촉 제어 편집 — verify:fsm re-proof 가 drain-entry timing 을 전수 커버해야 한다.
+10. **VFMA 의 stateless acc-via-B[63:32] 는 누산을 broadcast addend 로 한정**: 진짜 per-lane accumulate chain 은 여전히 partial sum 을 SDK 로 round-trip 하며, stateful-accumulator 문제는 fp lane 과 함께 v2.0 에서 재부상 — **의도된 재이연**.
