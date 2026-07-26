@@ -2741,3 +2741,142 @@ VFMA_ACC 추가로 COMB 예산을 사실상 소진 (여유 0.14%p) — **v1.8.0e
 추가 opcode는 이 예산 안에서 불가**, 다음 폭 확장은 v1.9 dispatch
 파이프라이닝(Fmax 상한 재정의) 또는 v2.0 이후 예산 재산정이 선행돼야
 한다. v1.8.0e (0e1+0e2) 전 gate 최종 PASS로 마감.
+
+## 26. v1.9 — dispatch 파이프라인 2단 분할 (case_result_s2) — amendment (2026-07-26, COMMIT 0 · normative)
+
+**당선 설계 "corrected uniform 2-stage split" (2026-07-26 설계 workflow, cross-analysis 합성 결과 — 세 편의 제출 설계 및 6회 adversarial verification pass 전체가 수렴한 지점이며, 어느 한 제출본의 문자 그대로의 채택이 아니다).** 본 절이 v1.9 의 normative source 다 — spec-before-code COMMIT 0 (§12a pre-stable 정책 하, 아래 나열된 dispatch latency-contract 변경 전건의 spec-first 기록). 기준선 anchor 는 v1.8.0e 최종 실측 (§25.9): **TRELLIS_COMB 39.86% (33,335/83,640) · MULT18X18D 122/156 · Fmax 10.93 MHz / 122 stages / 91.5 ns**.
+
+### 26.1 배경 및 동기
+
+§25.9 는 0e2 착지 시점에 이미 "**v1.8.0e 계열 추가 opcode는 이 예산 안에서 불가**, 다음 폭 확장은 **v1.9 dispatch 파이프라이닝**(Fmax 상한 재정의) 또는 v2.0 이후 예산 재산정이 선행돼야 한다" 고 명시했다. §23.10.9 risk 2/4 와 §25.6 항 4 / §25.7 risk 6 은 각각 mu_bank_reg positional hazard 하드웨어 fix 와 dispatch 파이프라이닝 자체를 "v1.9 arbitration rework" 로 반복 이연해 왔다. 본 절은 그 이연의 이행이다: COMB 여유가 사실상 소진된(0.14%p) 상태에서 Fmax 상한을 높이는 유일한 정직한 경로는 **논리 깊이를 자르는 파이프라인 레지스터 삽입**이지 추가 COMB 확보가 아니라는 것이 mandate 의 제1 우선순위였다.
+
+### 26.2 당선 아키텍처 — `case_result_s2` (신규 register bank)
+
+**단 하나의 신규 register bank.** 이름 `case_result_s2`, PE_Core.v 내부, 위치는 기존 `case (dec_opcode)` 조합 블록(현재 PE_Core.v:2065) **직후**, 기존 8-level/18-site **출력 우선순위 체인**(현재 PE_Core.v:2006-3354) **직전**이다. wres_*/einsum/vdot 함수 평가는 이 블록 안에서 오늘과 동일하게 일어나며, 그 결과가 새 레지스터로 커밋된다.
+
+**기각된 대안 1 — pre-case-select 배치 ("2-stage-minimal-split" 설계의 문자 그대로의 안):** `case(dec_opcode)` **앞**에 레지스터를 놓는 배치는 degenerate 로 확정 기각한다. 근거: EHDecode 의 `dec_*` 버스(`dec_opcode`/`dec_valid`/`dec_forwarded_tag`/`dec_input_payload(_b)`/`dec_input_payload_wide`)는 **이미 EHDecode 단에서 레지스터로 잡혀 있고 그 사이에 개입하는 조합 로직이 0** 이다 — 즉 이 지점에 레지스터를 하나 더 놓아도 어떤 조합 경로도 잘리지 않는다. 이 사실은 phase-1 조사(finding 3, finding 5)와 해당 설계 자신의 timing-realism verification 양쪽에서 독립적으로 확인됐다.
+
+**기각된 대안 2 — "Boundary A" ("operand-registered-3-stage" 설계의 두 번째 pre-case-select 레지스터):** 동일한 이유로 기각한다 — dec_* 버스가 이미 레지스터로 잡혀 있어 이 지점의 레지스터도 아무것도 사지 않는다는 사실이 그 설계 자신의 timing-realism verification 에서 재차 확인됐고, 그 설계의 hw_cost 서술 자체도 Boundary A 가 아무 일도 하지 않음을 암묵적으로 인정하고 있다. Boundary A 를 제거하면 그 설계의 3-stage 아키텍처는 정확히 본 절이 채택하는 2-stage 아키텍처로 붕괴한다 — 즉 "3단"은 실제로는 "쓸모없는 레지스터가 하나 앞에 덧붙은 2단"이었다.
+
+**기각된 대안 3 — decode-result-cache/class-split (전면 기각):** 이 설계는 세 가지 검증 렌즈 전부에서 반증됐다:
+1. 이 설계의 stage_boundary 서술은 fat opcode 에 대해 **전 계산을 stage2 로 미룬다(분할하지 않는다)**고 스스로 말하면서, 그로부터 나오지 않는 **~2x Fmax** 를 주장한다 — 자신이 서술한 메커니즘으로부터 자신이 주장하는 결론이 따라 나오지 않는 내적 모순이다.
+2. 이 설계는 depth-1 `CLS_REG` occupancy invariant 를 bank_fix_design 절에서 주장하지만, 그 invariant 는 그 설계 **자신의 stage_boundary 메커니즘에 의해 실제로 구현되지 않는다** — 주장과 구현이 어긋난다.
+3. 이 설계는 "다음 dispatch 가 도착했을 때 `CLS_REG` 가 아직 점유 중"이라는 hazard 를 상정하지만, 이는 **phantom hazard** 다 — 사이클당 dispatch 1건, 레지스터는 그 다음 사이클에 overwrite 되기 전에 이미 소비되는 평범한 단일-레지스터 파이프라인에는 애초에 존재하지 않는 종류의 위험이다.
+
+이상 세 가지 기각을 거쳐 남는 유일한, 세 설계 문서와 여섯 번의 adversarial verification pass 전부가 구조적으로 의미 있다고 수렴한 경계가 `case_result_s2` 다 (investigator-0 finding 5 자신이 권고한 삽입점과 일치).
+
+### 26.3 pipeline_architecture_final (normative)
+
+**Stage 1 (comb, cycle T) — 입력·case 평가는 무변경.** `dec_opcode`/`dec_valid`/`dec_forwarded_tag`/`dec_input_payload(_b)`/`dec_input_payload_wide` 는 EHDecode 가 이미 레지스터로 잡은 값을 live 로 읽으며, 이 앞에 신규 레지스터를 두지 않는다(§26.2 의 기각 근거 그대로 — degenerate 배치를 두 설계 계열에서 반복 배제한 뒤 남은, non-degenerate 한 경계). `case` 문 자체는 오늘과 동일하게 평가된다 — 동일한 55 case-item / 67 opcode, 동일한 wres_*/einsum/vdot 함수 호출. 다만 그 OUTPUT 은 더 이상 `output_payload`/`frag_pending`/`fp_start`/`lower_required` 등을 직접 구동하지 않고, `case_result_s2` 의 필드를 구동한다:
+
+- **13개 compute-inline arm** (0x32 wide sub-tree ×5, 0x60-0x65/0x68/0x69 공유 wide-SIMD, 0x6B, 0x71, 0x72, 0x73, 0x77, 0x79, 0x7C): 계산된 결과 값(narrow, arm 당 약 32-256b, 또는 multi-fragment arm 의 경우 frag_pending-preimage 배열), tag, opcode_out, frag_total_m1, error_flag intent 를 캡처.
+- **5개 FSM-launch arm** (0x70, 0x74, 0x75, 0x76, 0x78): launch-intent 플래그 + 오늘 `fp_a_q`/`fp_b_q`/`fp_c_q`/`fp_subop_q`/`fp_tag_held`, `vfma_a_q`/`b_q`/`c_q`, `deq_a_q`/lane-config 를 채우는 바로 그 operand 들을 캡처 — 오늘의 register-load 가 하는 일과 동일하되, 종착지가 `fp_start`/`vfma_busy`/`deq_loop_active` 가 아니라 `case_result_s2` 라는 점만 다르다.
+- **~40개 architecturally-cheap opcode** (단순 ALU, legacy narrow einsum, 0x6A FRAG_INVAL 등, 오늘 output_regs_free 게이트가 걸려 있지 않은 것들): 이들도 결과/제어 필드를 **동일한 방식으로 균일하게** 캡처한다 — 이 arm 들은 이 분할에서 타이밍 이득을 전혀 얻지 못함에도, contract 를 단일하게 유지하기 위해 균일 캡처한다(§26.4 의 uniform +1 계약과 짝을 이루는 설계 선택).
+
+T→T+1 edge 에서 커밋되며, 이 edge 에는 순수 register-load 외의 신규 조합 로직이 없다.
+
+**Stage 2 (comb, cycle T+1) — 우선순위 체인은 종류상 무변경, 입력만 재배선.** frag-drain absolute-priority override(2006-2016, 자신의 `frag_idx` state 를 읽음, 무변경) > MUL p2(무변경) > DIV p2(무변경) > DIV b_zero p2(무변경) > FP p2(무변경) > **[신규] `case_result_s2` arbitration** — 이제 live case-block wire 대신 캡처된 레지스터를 읽는다 > DEQUANT frag0 handoff(무변경) > VFMA frag0 handoff(무변경). 신규 arbitration 단계에서:
+- `output_regs_free` 는 **T+1 시점에 LIVE 로 재평가**한다 — T 시점 값을 그대로 들고 오는 stale carry 가 아니다. 이는 우연이 아니라 correctness 렌즈가 요구하는 **의도적 re-homing** 이다.
+- 5개 launch arm 의 실제 register-load(`fp_start<=1`, `vfma_busy<=1`, `deq_loop_active<=1` 등)는 이제 stage 1 이 아니라 **stage 2 에서** 일어난다.
+- 승자는 오늘과 동일한 기존 출력측 레지스터(`output_payload`, `frag_pending[]`, `frag_idx`, `output_tag`, `opcode_out`, `output_valid`, `error_flag`, `lower_required`)에 T+1→T+2 edge 에서 커밋된다.
+
+MUL 발사(`mul_valid_p1`, PE_Core.v:1781-1811), bit-serial DIV FSM(1814-1897), frag-drain override(2006-2016) 는 구조적으로 무변경이다 — 이들은 `dec_opcode`/`dec_valid` 또는 자신의 state 를 case 블록과 병렬·독립적으로 직접 읽는다(finding 4) — 0-cycle 변경이며, 이 사실이 §26.5 bank-fix 를 리터럴 MUL/DIV opcode 에 대해 본 변경과 직교하게 만드는 메커니즘이다.
+
+추정 조합 깊이: stage 1 은 case-select mux(깊이 phase-1 미측정 — Fmax 추정의 최대 불확실성 원천) + wres_*/einsum 평가(0-6 단, `vdot_int4_256`/`vdot_int8_256` 의 ~5-6 레벨 가산 트리에서 최심)를 보유. stage 2 는 wide result-select mux + 8-level 우선순위 체인을 보유 — 두 adversarial pass 모두 tail-loaded/heavy 로 별도 지적한 부분이다. 어느 쪽도 서로의 깨끗한 절반이 아니다 — 이 비대칭이 §26.6 Fmax 사전가격의 불확실폭을 만든다.
+
+### 26.4 latency_contract_final (normative)
+
+**균일(uniform), 평탄(flat), opcode-class 무관.** `case(dec_opcode)` 블록을 경유해 dispatch 되는 **모든 opcode**(약 67개 전부, output_regs_free 게이트가 걸린 "fat" arm 과 게이트가 없는 ~40개 architecturally-cheap arm 양쪽 모두)는 dispatch(EHDecode `dec_valid`, cycle T)로부터 최초 출력측 register commit 까지 **정확히 +1 cycle**을 얻는다: T+1(기준선) → T+2(v1.9). **MUL, DIV, frag-drain absolute-priority override 는 변경 없음(0 cycle)** — 이들은 case 블록을 완전히 우회한다(finding 4).
+
+5개 FSM-launch arm(0x70 VFMA, 0x74-0x76 FP, 0x78 DEQUANT)의 경우 register-load launch 동작(`fp_start<=1` 등)도 다른 모든 것과 균일하게 +1 cycle 이동한다 — 이것이 안전한 이유는, 이들의 downstream FSM(FP_StepSeq, VFMA/DEQUANT lane-loop advance)이 이미 **자신이 캡처한 레지스터만** 읽고 `dec_*` 를 직접 읽지 않기 때문이다(PRE-PAID 조치 #2, finding 4) — 따라서 이들은 임의로 지연된 launch 를 내부 재작업 없이 그대로 수용한다. 이들 자신의 완결 latency(5-34 cycle `fp_busy` bound, VFMA/DEQUANT lane-loop bound)는 크기 자체는 무영향이고 시작 시점만 +1 이동한다 — 즉 이 opcode 들의 dispatch-to-completion 총합은 정확히 +1 만큼 커지고 **+2 가 아니다**.
+
+`output_regs_free`/busy-reject 는 case-dispatch 되는 모든 arm 에 대해 **신규 commit cycle(T+1)에 LIVE 로 재평가**한다 — T 시점에서 그대로 들고 오는 stale carry 가 아니다. 이것도 §26.3 과 동일하게 의도적 re-homing 이며, 신규 test B(§26.7)로 강제된다.
+
+**Frag-drain fragment-cadence 문서 갱신:** "fragment 1 이 dispatch 후 정확히 cycle N+1 에 착지한다"는 불변식은, compute-inline multi-fragment case arm 에 한해 **N+2 로 변경**된다(N+3 이 아니다 — 레지스터가 하나만 추가됐지 둘이 추가된 게 아니기 때문이다). grep 으로 직접 확인된 **6개 stale comment site** 전부를 같은 commit 에서 수정해야 한다 — **PE_Core.v:1365, 1366, 1989, 2320, 2332, 2464**(mandate 자체의 단일 라인 인용은 이 범위를 5개 site 만큼 과소 산정하고 있었다). 아울러 `lint_frag_total_m1_held.py` 가 이 offset 을 hardcode 하고 있는지 점검하고, hardcode 되어 있다면 stage-agnostic 하게(절대 상수가 아니라 `frag_idx` 가 최초로 non-IDLE 이 되는 cycle 기준 상대 카덴스로) 갱신해야 한다.
+
+본 계약은 §12a(pre-stable 호환성 정책, .claude-memos/wt64v1_spec.md §12a / line 248 에서 확정된, 바로 이런 종류의 contract-breaking 변경을 "정규 개발 행위"로 규율하며 spec-before-code 순서를 요구하는 정책) 하에 spec-first 로 기록되며, 기존 opcode-latency 표 및 SDK 대상 생성 latency 문서(`isa/wt64v1_isa.json` 파생 문서) 전부가 같은 commit 에서 bump 된다. Cycle-exact 테스트 breakage 는 **예상되고 요구되는** 것이며, 보존이 아니라 재유도(re-derive) 대상이다(§26.9, §26.7).
+
+### 26.5 bank_fix_final (normative) — tag-indexed launch-time latch table
+
+Cluster.v 의 두 positional shift-tap 메커니즘을 tag-indexed launch-time latch table 로 교체한다(unit 당 1개).
+
+**MU table (depth 2, `mu_target_pipe_s2`/`s3`/`s4` 교체 — s3/s4 는 오늘 이미 dead code, Cluster.v:923-927 주석):** op 이 M-UNIT 에 LAUNCH 되는 cycle(`mul_valid_p1` 최초 assert, 또는 오늘 `mu_out_valid`/`mu_bank_reg` 를 positional 하게 타는 opcode — v1.8.0c/0e SDK-rule 확장에 따라 §25.6 amendment 4/6 으로 확인된 {0x74-0x76 FP, 0x6B, 0x70, 0x78, 0x79} — 의 register-load launch)에 `{target_idx}` 를 `launch_tag` 로 키잉된 빈 table row 에 기록한다 — 기존 `mu_out_tag`/`output_tag` wire(Cluster.v:794)를 재사용하며 **신규 tag namespace 는 만들지 않는다**. 완결 시(`mu_out_valid`) `mu_bank_reg[bank_target_by_tag[mu_out_tag]] <= mu_out_payload` 를 tag match 로(positional-shift-depth match 가 아니라) 읽고, 해당 row 를 해제한다.
+
+**depth-2 근거(단순히 "p1/p2 와 맞춘다"가 아니다):** `output_regs_free` 의 복합 조건은 PE_Core 인스턴스당 **동시에 최대 1개의 fat op**(MUL 또는 DIV 또는 FP 또는 VFMA 또는 DEQUANT 또는 frag-drain wave)만 진행 중일 수 있음을 보장한다 — 따라서 2개의 동시 MU-table row 가 필요한 유일한 시나리오는 **MUL 자신의 고정 p1/p2 sub-pipeline** 뿐이다. MUL 이 아닌, `mu_out_valid` 를 타는 그 밖의 모든 opcode 는 (구조상 MUL 과 상호배타적이므로) 언제나 row 1개만 필요하다 — 즉 depth 2 는 MUL 하나만이 아니라 `mu_out_valid` 를 타는 **전체 opcode 집합**에 대해 충분함이 증명적으로 성립한다.
+
+**DU table (depth 1, `du_target_pipe_s2` 교체):** DIV 는 엄격한 single-flight FSM(DIV_IDLE/DIV_ITER/DIV_FINISH)이므로 row 1개로 자명하게 충분하다.
+
+**busy-bit interlock — 반드시 실제 synthesizable 하드웨어 fault 여야 한다.** row 마다 busy bit 를 두어 write 시 set, matching completion 시 clear 한다. 아직 busy 인 row 의 tag 를 재사용하려는 launch 시도는 **synthesizable 한 sticky `bank_tag_collision_error` status bit**(cluster 측에서 읽을 수 있는)로 나타나야 하며, simulation-only `$error`/assertion 이어서는 안 된다 — correctness 렌즈가 지적한 간극(sim-only assertion 은 silent corruption 을 시끄러운 테스트 실패로 바꿀 뿐 production 보장은 남기지 않는다)을 닫는다.
+
+**merge 전 directed test 가 필요한 scope 배제 항목(추론만으로 출하하지 말 것):**
+- **(a)** 0x71 VDOT_ACC / 0x72 ACC_REDUCE 는 `mu_out_valid`/`mu_bank_reg` 를 **타지 않고** PE_Core 자신의 `output_payload`/`frag_pending` 경로 안에서 전부 해소된다 — **확인하되 가정하지 말 것**.
+- **(b) TWIN-CLASSIFIER GAP(NORMATIVE FIX):** 0x74-0x76 은 §25.6 amendment 4 에 의해 SDK "no-intervening-mul-dispatch" 규칙 텍스트에는 들어가 있으나, §25.6 amendment 6 의 `is_mul_op`/`dec_is_mul_op` classifier 집합(`{0x6B, 0x70, 0x78, 0x79}`)에는 **빠져 있다** — mu_out_valid 를 실제로 타는 opcode 이면서 classifier 집합에 없는 이 gap 은 MU table 이 실제 소비자에 대해 채워지지 않을 수 있는 silent 위험이다. **본 release 는 이 gap 을 note 가 아니라 NORMATIVE FIX 로 닫는다**: `is_mul_op`(Cluster.v) / `dec_is_mul_op`(PE_Core.v) 양쪽에 **0x74-0x76 을 lockstep 으로 추가**하여 classifier 집합을 `{0x6B, 0x70, 0x74, 0x75, 0x76, 0x78, 0x79}` 로 확정한다 — 같은 commit 에 lockstep/membership 테스트(§26.7 test O)를 동반한다.
+
+**SDK-rule 은퇴 후보:** "no intervening mul-class dispatch" 소프트웨어 규칙(Cluster.v:416-449, §23.6a 계약 3, §25.6 amendment 4 로 확장)은, 위 depth-2/depth-1 table 근거가 directed test 로 확인되면 **완전 은퇴(축소가 아니라 폐기) 후보**다 — 단, 규칙 텍스트는 "v1.9 하드웨어-fix 확인 대기 중 superseded" 로 유지되다가, 같은 release 안에서 해당 테스트가 green 이 된 **바로 그 commit** 에서 함께 삭제한다(미검증 RTL 과 나란히 선제적으로 삭제하지 않는다).
+
+### 26.6 Gates V9-1~V9-4 — pre-priced, 구현 이전 공표 (locked)
+
+이 project 자신의 Gate 1-4 방법론(op_sel widening / frag-FSM widening 선례, §23.10.7·§25.5 의 그것)을 그대로 미러링한다 — **"선언된 merge-blocker gate 를 건너뛰면 5 commit 뒤 silent regression 으로 발각된다"는 교훈**(v1.8.0b 사건, §23.10.7 GATE 4 실측·§23.10.10(g)·§25.5 에서 이미 3회 확인)이 본 절로 **4번째 확인**을 얻는다. 전 게이트는 merge 전 실행·기록이 의무이며 예외 없음.
+
+**GATE V9-1 (`case_result_s2` register, 격리 stage1/stage2 경계의 standalone OOC synth):** 레지스터 자체가 순수 FF 로 합성되는지(~18개 이형 case arm 에 걸친 필드 packing/폭 정렬로부터의 예기치 않은 comb bloat 없음)를 확인한다. Pass: 신규 MULT18X18D 0; FF count 는 문헌 추정(~1-2K, finding 5 선례대로 13개 hoisted wres_* wire 중 12개가 MU-gated 인 만큼 MU-hosted 인스턴스에 집중) 범위 내; 이 레지스터의 feeder/consumer 로직에서 신규 comb LUT 가 인스턴스당 ~150 LUT 를 넘으면 flag(hard-fail 아님).
+
+**GATE V9-2 (bank-fix tag-latch table, Cluster-level standalone OOC synth):** MU table(depth 2)과 DU table(depth 1)의 tag-comparator + busy-bit interlock 로직을 확인한다. Pass: 신규 MULT18X18D 0; nominal LUT 추정 인스턴스당 20-40 × 해당 MU-capable 인스턴스 수, cluster 전체 nominal ~200-400 LUT.
+
+**GATE V9-3 (full PE_Core 인스턴스, MU-hosted `generate if (MUL_OPS_SUPPORTED)` geometry 와 16개 L-PE narrow geometry 양쪽 — 이 project 의 per-operator-gate 선례대로 standalone OOC):** 두 인스턴스 형태 양쪽에서 2단 분할이 in situ 로 정확히 동작함을 확인하고, phase-1 이 측정한 적 없는 case-select-mux-depth 불확실성을 해소하는 **최초의 실제 stage1 vs stage2 조합 분할 수치**를 준다.
+
+**GATE V9-4 (full cluster, 구속력 있는 수치 — 역사적 Gate 4 패턴과 동일):**
+
+| 지표 | 사전가격(pre-priced) | 근거 |
+|---|---|---|
+| **Fmax** | **목표 17.0 MHz** (58.8 ns, 1.556× 기준선) · **floor 14.2 MHz** (70.4 ns, 1.30×) · **stretch 20.5 MHz** (48.8 ns, 1.88×) | 두 독립 adversarial pass 가 같은 finding-5 경계에 대해 서로 다른 추론 경로로 [15,18] MHz / [16,22] MHz 에 수렴, 교집합 [16,18] MHz. 17.0 MHz 는 이 교집합의 **중간값**이지 낙관적 상단이 아니다 — (a) case-select mux 깊이가 미가격(stage1 을 두 추정 모두보다 무겁게 만들 수 있음), (b) 이 project 의 congestion 선례(0d: +2.46%p COMB → 로직이 critical path 부재로 증명됐음에도 -2.7% 전역 Fmax drift) 때문에 의도적으로 보수적으로 잡았다. floor 미달 시 **merge 하지 않고** stage-boundary 질문을 재개(case-select mux 자체 일부를 경계 너머로 옮기는 진짜 균형 분할이 필요할 수 있음). |
+| **COMB** | **불변 hard gate ≤40.0% (33,456 LUT4)** — gate 상향 요청 없음 | nominal 신규 COMB 추정 300-600 LUT(`case_result_s2` 필드 packing/제어보관 + bank-fix comparator, Gate V9-1/V9-2 기준). 이 project 고유의 실측 overrun 계수 **1.67×**(Gate-3 실측 overrun 계수 — §23.10.10(g) 의 방법, 0d 를 당선시킨 그 기준)를 적용하면 worst-case 신규분 500-1002 LUT → **33,835-34,337 LUT (40.44%-41.05%)** — 이 honest worst-case 는 **불변 40.0% gate 를 breach 할 수 있다**. 출발 마진이 121 LUT(§26.6 아래 참조)뿐이므로 이는 형식이 아니라 실질 위험이다: V9-4 실측이 33,456 을 넘으면 **3번째 ad-hoc gate amendment 를 검토하기 전에**(§23.10.10(g) 가 명시적으로 금지) pre-declared cut ladder rung 1(FMINMAX → K_INT, 300-400 LUT 회수)을 먼저 집행한다. Breach 를 silent 하게 수용하지 않는다. |
+| **MULT18X18D** | **정확히 122, 무관용(zero tolerance)** | register-only 파이프라인 분할 + comparator 기반 bank-fix 는 신규 곱셈 구조를 도입하지 않는다 — 편차는 그 자체로 버그 신호다. |
+| **FF** | **추적만, gate 아님** | 역사적으로 여유 풍부; low-thousands 증가 예상, 예상 밖 자릿수 급증이 아닌 한 blocking 하지 않고 report 만 한다. |
+
+COMB 121-LUT 출발 마진의 맥락: v1.8.0e 0e2 착지 실측이 이미 **39.86%/40.0%, 마진 0.14%p**(§25.9)였고, 이는 §25.5.1 이 구현 이전 공표한 nominal worst-case 도출(2,800×1.67=33,335, margin **121 LUT**)과 정확히 일치했다. v1.9 는 이 이미 razor-thin 한 COMB 예산 위에서 시작한다 — 이것이 위 COMB gate 항목이 형식적 반복이 아니라 실질적으로 breach 가능하다고 취급되는 이유다.
+
+**226-test 전체 suite**(186 `test_isa_decoder.py` + 40 `test_cluster.py`) 재실행은 gate 결과와 무관하게 필수이며, §26.7 신규 테스트와 함께 gate log 를 merge commit 에 첨부한다 — gate log 미첨부 RTL commit 은 이 project 자신의 구속력 있는 프로세스 규칙(post-v1.8.0b)에 의해 merge 금지다.
+
+### 26.7 test_plan (15개 항목)
+
+1. **`test_bmm3_then_mul_launch_gate`(기존, SURVIVES 예상)** — fragment-0 대기가 bounded 20-cycle poll(신규 +1 cycle 흡수)이고, 정확-edge assertion 이 `frag_idx`(frag-drain, 무변경) 대 `mul_valid_p1`(MUL bypass, 무변경)을 probe — 둘 다 `case_result_s2` 무영향. 그대로 실행하고 실패는 진짜 버그로 취급(합성 당시 "가장 명백한 breaking 사례"라는 오분류를 정정).
+2. **`test_mul_then_bmm3_drain_gate`(기존, SURVIVES 예상)** — assertion 본체는 `output_valid`/`opcode_out` 만 bounded poll; docstring 의 N/N+1/N+2 서술은 문서일 뿐 강제 assertion 아님. 그대로 실행, 변경된 절대 cycle 을 인용하는 docstring 만 갱신.
+3. **`test_trace_iijkl_single_output_fragment`(기존, 재유도)** — TRACE_IIJKL 은 compute-inline output_regs_free-gated arm; 3개 probe site 전부 개별 검토 후 재유도.
+4. **`test_fp_busy_reject_is_lower_required` / `test_fp_drain_gate_and_frag_interaction` / `test_fp_tag_and_opcode_out_preservation`(기존, 재유도)** — FP-family launch 가 이제 `case_result_s2` 를 거쳐 T+1 에 커밋; 절대-edge assertion +1 재유도. `test_fp_tag_and_opcode_out_preservation` 은 tag/opcode_out/frag_total_m1 이 신규 레지스터 hop 을 무변형으로 통과함을 보강 assertion 으로 추가하는 자리로도 삼는다.
+5. **`test_dequant_loop_suppression_and_busy_reject` / `test_gamma_mul_w_directed_e2e`(기존, 재유도)** — DEQUANT(0x78, launch-arm)와 GAMMA_MUL_W(0x6B, compute-inline) 모두 균일 +1 이동; 절대-edge assertion 재유도.
+6. **`test_vfma_busy_reject_and_mul_gate`(기존, 재유도 + directed cross-class-skew regression 으로 재목적화)** — 절대치 재유도와 별개로, VFMA 의 case-dispatch +1 이동이 `mul_valid_p1` 타이밍(정확히 0-cycle 변경이어야 함)으로 누출되지 않음을 확인하는 directed check 로 명시 활용(test-migration-completeness verification 이 지적한, 기존에 누락돼 있던 연결고리).
+7. **`test_frag_inval_hit_ack`(기존, 재유도)** — 0x6A FRAG_INVAL 은 case-dispatched 이나 output_regs_free-gated 아님; 균일 계약 하에서도 +1 이동. probe site 1개 재유도.
+8. **phase-1 인용 범위 밖에서 발견된 4개 bit-exact lane-cadence 테스트(기존, confirm-only)** — `test_dequant_e2e_int8_4frag_bit_exact`, `test_dequant_e2e_int4_8frag_bit_exact`, `test_vfma_e2e_int4_16frag_bit_exact`, `test_vfma_e2e_int8_8frag_bit_exact` 는 `cycles[0]`(최초 관측 이벤트) 상대로 cycle 을 assert — cadence 자체가 무변경 lane-loop 로직에 의해 구동되므로 생존 예상; 가정하지 말고 실행해서 확인.
+9. **NEW `test_uniform_case_dispatch_plus1_sweep`(구조적)** — case 표의 모든 영역(compute-inline, FSM-launch, simple-ALU, legacy-narrow-einsum, 0x6A)을 대표하는 opcode 에 대한 parametrized sweep 으로 dispatch-to-commit 이 **정확히 +1** cycle 임을 각각 assert, MUL/DIV/frag-drain 트리거 opcode 에 대해서는 별도 sweep 으로 **정확히 0-cycle** 변경임을 assert — priority #2("무엇도 소리 없이 오배선되지 않는다")를 지키는 가장 중요한 신규 테스트.
+10. **NEW `test_output_regs_free_live_at_stage2`** — case-dispatch op 이 in-flight 인 동안 MU/DU/FP/VFMA/DEQUANT occupancy state 를 stage1(T)과 stage2(T+1) 사이에서 뒤집어, busy-reject 판정이 stage1-stale 복사본이 아니라 **더 나중(T+1) state** 를 반영함을 assert — correctness 렌즈가 지적한 race 에 대한 직접 회귀 테스트.
+11. **NEW `test_bank_tag_latch_no_intervening_hazard`(positive proof, MU depth-2 · DU depth-1 각각)** — 서로 다른 target bank 를 갖는 MUL-class(또는 mu_out_valid-routed) op 2개를 SDK-rule 간격 없이 연속 dispatch; 둘 다 tag match 로 올바르게 라우팅됨을 확인 — "hazard 회피" 테스트 계열을 "hazard 소거 증명" 테스트로 대체.
+12. **NEW `test_bank_tag_collision_interlock`** — table row 가 아직 busy 인 동안 tag 재사용을 강제; synthesizable `bank_tag_collision_error` sticky fault 가 assert 됨(단순 sim-only `$error` 아님)을 확인 — interlock 이 실제 하드웨어 보장인지에 대한 correctness 렌즈 간극을 닫는다.
+13. **NEW `test_vdot_acc_reduce_bypass_mu_bank`(0x71/0x72 scope-check)** — VDOT_ACC/ACC_REDUCE 결과가 전적으로 PE_Core 로컬 `output_payload`/`frag_pending` 안에서 해소되고 Cluster 의 `mu_bank_reg` 를 향해 `mu_out_valid` 를 결코 assert 하지 않음을 확인 — 추론만으로 출하하지 않고 merge 전 명시 플래그된 open scope 질문을 닫는다.
+14. **NEW `test_frag_drain_priority_unaffected_by_case_result_s2`(mandate 자신이 지목한 open question 의 재증명)** — case-dispatch 된 multi-fragment op 의 결과가 stage2 의 `case_result_s2` 에 앉아 있는 상태에서 동시/중첩하는 frag-drain wave 가 활성일 때, `frag_idx != FRAG_IDLE` 인 매 cycle frag-drain 이 오늘과 동일하게 **무조건 승리**함을 assert — 세 원 설계 문서 중 어느 것도 실제로 증명하지 않은 유일한 질문이며, 미검증 assertion 으로 출하하지 않는다.
+15. **NEW `test_twin_classifier_mu_bank_coverage`** — 확장된 `is_mul_op`/`dec_is_mul_op` 집합(`{MUL, 0x6B, 0x70, 0x74-0x76, 0x78, 0x79}`)을 RTL 에서 실제로 `mu_out_valid` 를 assert 하는 모든 opcode 와 대조; classifier 집합에 없이 `mu_out_valid` 를 타는 opcode 가 하나라도 있으면 fail — MU-table 미충원(silent gap)에 대한 최종 방어선.
+
+### 26.8 residual risks (v1.9)
+
+이 설계는 이례적으로 자기비판적이며, 그 정직함을 그대로 보존한다:
+
+1. **COMB 예산이 razor-thin 하다**: 1.67×-inflated worst-case nominal 위 마진이 **121 LUT**(39.86% vs 40.0%)뿐이다 — pre-staged cut ladder(rung 1: FMINMAX → K_INT, 300-400 LUT 회수)가 구현 중 즉석 고안이 아니라 준비된 상태로 있어야 한다.
+2. **case-select mux 깊이(55-arm/67-opcode dispatch mux 자체)는 phase-1 어디에도 측정치가 없다** — 14.2-20.5 MHz 예측 범위 배후의 가장 큰 미가격 변수다. GATE V9-3 이 이것이 처음 측정되는 지점이며, 그 게이트가 실행되기 전까지 17.0 MHz 를 증거가 뒷받침하는 것보다 더 확실한 것으로 취급하지 않는다.
+3. **Congestion-driven Fmax drift 는 이 project 에서 이미 실현된 실패 모드다**(0d: +2.46%p COMB 가 추가 로직이 critical path 에 없음이 증명됐음에도 congestion 을 통해 -2.7% Fmax 를 실측으로 일으킴) — 로직-깊이-절단만으로 얻는 1.556× 이득이 `case_result_s2` 와 bank-fix comparator 의 증분 COMB 에 의해, critical path 위에 있는지 여부와 무관하게, 부분적으로 잠식될 수 있다.
+4. **균일 +1-cycle 선택은 의도적 trade-off 다**: ~40개 architecturally-cheap opcode(critical path 위에 있던 적 없음, finding 1b 기준 0-1 comb stage)가 구조적으로 필요 없는 latency 1 cycle 을 지불하는 대신, 비대칭 계약의 오배선 위험과 class-split 검증 표면의 약 절반을 제거한다. 향후 release 에서 이 1 cycle 이 실제 워크로드에 실질적으로 해롭다고 판명되면, 올바르게 scope 된 class-split(decode-result-cache-class-split 의 두 치명적 결함을 고쳐서 — operand 아닌 **결과**를 캡처하고, 평범한 파이프라인 레지스터에는 multi-cycle occupancy hazard 가 없음을 인정하고) 이 v1.9.x/v2.0 후보로 남는다.
+5. **MU bank-table 충원 범위는 twin-classifier 집합이 `mu_out_valid` 를 assert 하는 모든 opcode 와 정확히 일치하는 데 전적으로 의존한다**; 이번 synthesis 에서 식별된 0x74-0x76 gap(§25.6 amendment 4 의 SDK-rule 텍스트에는 있으나 amendment 6 의 classifier 집합에는 없던)은 같은 commit 에서 닫혀야 하고(§26.5 NORMATIVE FIX), `test_twin_classifier_mu_bank_coverage` 가 수동 감사에 의존하지 않고 다른 어떤 gap 도 잡아내야 한다.
+6. **busy-bit tag-collision interlock 의 가치는 그것이 실제 synthesizable 하드웨어 fault 로 구현되는가에 전적으로 달려 있다**; sim-only 로 구현되면 "hazard 소거" 라는 주장은 "hazard 가 시끄러운 simulation 실패로 변환됨"으로 격하되고 production 보장은 없다.
+7. **신규 2단 case-dispatch 경로 하 frag-drain 의 1-frag/cycle absolute-priority 보장**은 분석적으로는 유지될 것으로 예상되나(구조적으로 병렬, 무변경, 여전히 최상위) mandate 가 명명한 유일한 질문 — 세 원 설계 문서 중 어느 것도 실제로 증명하지 않았다 — 이며, `test_frag_drain_priority_unaffected_by_case_result_s2`(§26.7 항 14) 뒤에 게이트된 채 출하되지, 가정으로 출하되지 않는다.
+8. **0x71/0x72 의 Cluster-level bank hazard 제외는 phase-1 추론을 상속한 것**이지 본 synthesis 에서 독립 재도출된 것이 아니다(merge 전 directed test 요구를 재진술하는 것 이상은 아님) — 어느 방향이든 오분류는 silent-corruption 위험이다.
+9. **phase-1 이 검증한 cycle-exact 테스트 수(12개, adversarial review 로 인용 범위 밖 4개가 추가 발견되어 최소 16개)는 mandate 의 20-40개 추정보다 작다** — 구현 시점에 phase-1 목록이나 본 synthesis 목록 어느 쪽도 exhaustive 하다고 신뢰하지 말고 전체 재스캔을 새로 수행해야 한다.
+10. **SDK no-intervening-mul-dispatch 규칙 은퇴는 test C/D/E/F(§26.7 항 9-12에 상당) 통과 뒤로 sequencing 된다**; 그 테스트들이 depth-2/depth-1 table 로 커버할 수 없는 잔여 케이스를 드러내면, 규칙은 죽은 문서로 조용히 남기지 말고 **narrowing(축소)** 해야 한다(삭제 아님).
+
+### 26.9 §12a 기록 — pre-stable 정규 개발 행위
+
+본 절 전체(§26.2-26.6 의 아키텍처·latency-contract·bank-fix·gate 변경)는 **§12a 하의 정규 개발 행위(regular development act)**로 기록한다 — dispatch latency contract 변경은 §12a 가 예시하는 "frozen 계약이 stable release 이전에는 발효되지 않는" 종류의 변경이며, freeze 보장 3종(frozen first-class 유지·truth-table keep-forever·snapshot 등가성) 중 어느 것도 아직 발효되지 않은 상태에서 이루어진다. §12a 규칙 3의 순서(spec amendment → `isa/wt64v1_isa.json` 편집 → 생성물 재생성 → RTL/테스트 갱신)를 그대로 따른다: 본 절이 spec-first 기록이고, RTL(PE_Core.v/Cluster.v) 및 `test_isa_decoder.py`/`test_cluster.py`/`lint_frag_total_m1_held.py` 갱신은 이후 commit 에서 뒤따른다.
+
+**의도적 test-breakage/재유도 입장을 명시한다**: §26.4 의 균일 +1-cycle 계약은 cycle-exact 절대치를 assert 하는 기존 테스트 다수를 고의로 깨뜨린다. 이는 사고가 아니라 §12a 정책이 규정하는 정규 개발 행위의 직접적 결과이며, 이 정책 하에서 cycle-exact breakage 는 **보존 대상이 아니라 재유도(re-derive) 대상**이다 — §26.7 의 test_plan 이 그 재유도의 완전한 목록이다(생존 2건, 재유도 7건[grouped], confirm-only 4건, 신규 directed test 6건). Stable release 선언 전까지는 이 세 가지 freeze 보장이 개발 편의 장치일 뿐 발효된 계약이 아니므로, 본 release 는 그 편의를 명시적으로 행사한다.
+
+---
+
+**TODO(다음 commit, parent 세션 확인 필요) — 본 session 이 편집하지 않음:** §23.10.9(risk 2/4, 특히 line 2324/2326 의 "v1.9 arbitration rework"/"v1.9 로 의도적 이연" 문구)와 §25.6 항 4 / §25.7 risk 6(positional NoC-bank hazard 노출 증가의 RE-ACCEPT 서술, "fix 는 v1.9 arbitration rework")은 본 절 착지 이후 **stale 해질 가능성이 있다** — 본 절(§26)이 바로 그 v1.9 하드웨어 fix 이므로, 위 절들의 "v1.9 로 이연" 서술을 "§26 에서 이행됨"으로 소급 갱신할지, 아니면 superseded-history 배너(§12a 규칙 5)로 표기할지는 이 절의 scope 밖이며 별도 commit 에서 검토가 필요하다. 본 session 은 mandate 지시대로 §23.10.9/2291/2325 인근 절을 편집하지 않았다.
+
