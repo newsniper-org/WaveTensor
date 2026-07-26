@@ -110,6 +110,11 @@ module Pod #(
     // absorbed here (also folded into cl_error[]); v1.6+ may bubble it to
     // Pod's external interface for explicit fabric-collision reporting.
     wire                   cl_collision     [0:NUM_CLUSTERS-1];
+    // v1.9 §26.5 — Cluster's bank tag-collision sticky fault. Already
+    // folded into cl_error[] (Cluster.v's own any_error_flag), same
+    // absorption pattern as cl_collision above; kept as its own wire for
+    // the same future-bubble-to-Pod's-external-interface reason.
+    wire                   cl_bank_collision [0:NUM_CLUSTERS-1];
     /* verilator lint_on UNUSEDSIGNAL */
     wire                   cl_mem_req     [0:NUM_CLUSTERS-1];
     wire [ADDR_WIDTH-1:0]  cl_mem_addr    [0:NUM_CLUSTERS-1];
@@ -165,7 +170,8 @@ module Pod #(
                     .any_error_flag      (cl_error[CIDX]),
                     .any_lower_required  (cl_lower[CIDX]),
                     .any_output_collision (cl_collision[CIDX]),
-                    .cluster_ready       (cl_ready[CIDX])
+                    .cluster_ready       (cl_ready[CIDX]),
+                    .bank_tag_collision_error (cl_bank_collision[CIDX])
                 );
             end
         end

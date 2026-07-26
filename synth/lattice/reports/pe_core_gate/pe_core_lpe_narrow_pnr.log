@@ -1,0 +1,205 @@
+
+
+Info: Logic utilisation before packing:
+Info:     Total LUT4s:      6430/83640     7%
+Info:         logic LUTs:   5240/83640     6%
+Info:         carry LUTs:   1190/83640     1%
+Info:           RAM LUTs:      0/10455     0%
+Info:          RAMW LUTs:      0/20910     0%
+
+Info:      Total DFFs:       670/83640     0%
+
+Info: Packing IOs..
+Info: Packing constants..
+Info: Packing carries...
+Info: Packing LUTs...
+Info: Packing LUT5-7s...
+Info: Packing FFs...
+Info:     405 FFs paired with LUTs.
+Info: Generating derived timing constraints...
+Info: Promoting globals...
+Info: Checksum: 0x5f5768a9
+
+Info: Device utilisation:
+Info: 	          TRELLIS_IO:       0/    365     0%
+Info: 	                DCCA:       0/     56     0%
+Info: 	              DP16KD:       0/    208     0%
+Info: 	          MULT18X18D:      70/    156    44%
+Info: 	              ALU54B:       0/     78     0%
+Info: 	             EHXPLLL:       0/      4     0%
+Info: 	             EXTREFB:       0/      2     0%
+Info: 	                DCUA:       0/      2     0%
+Info: 	           PCSCLKDIV:       0/      2     0%
+Info: 	             IOLOGIC:       0/    224     0%
+Info: 	            SIOLOGIC:       0/    141     0%
+Info: 	                 GSR:       0/      1     0%
+Info: 	               JTAGG:       0/      1     0%
+Info: 	                OSCG:       0/      1     0%
+Info: 	               SEDGA:       0/      1     0%
+Info: 	                 DTR:       0/      1     0%
+Info: 	             USRMCLK:       0/      1     0%
+Info: 	             CLKDIVF:       0/      4     0%
+Info: 	           ECLKSYNCB:       0/     10     0%
+Info: 	             DLLDELD:       0/      8     0%
+Info: 	              DDRDLL:       0/      4     0%
+Info: 	             DQSBUFM:       0/     14     0%
+Info: 	     TRELLIS_ECLKBUF:       0/      8     0%
+Info: 	        ECLKBRIDGECS:       0/      2     0%
+Info: 	                DCSC:       0/      2     0%
+Info: 	          TRELLIS_FF:     670/  83640     0%
+Info: 	        TRELLIS_COMB:    6756/  83640     8%
+Info: 	        TRELLIS_RAMW:       0/  10455     0%
+
+Info: Placed 0 cells based on constraints.
+Info: Creating initial analytic placement for 5297 cells, random placement wirelen = 520642.
+Info:     at initial placer iter 0, wirelen = 1685
+Info:     at initial placer iter 1, wirelen = 1472
+Info:     at initial placer iter 2, wirelen = 1567
+Info:     at initial placer iter 3, wirelen = 1492
+Info: Running main analytical placer, max placement attempts per cell = 7023752.
+Info:     at iteration #1, type ALL: wirelen solved = 1593, spread = 105159, legal = 105187; time = 0.08s
+Info:     at iteration #2, type ALL: wirelen solved = 5501, spread = 51707, legal = 52388; time = 0.07s
+Info:     at iteration #3, type ALL: wirelen solved = 11107, spread = 42473, legal = 43250; time = 0.07s
+Info:     at iteration #4, type ALL: wirelen solved = 13572, spread = 40164, legal = 41521; time = 0.07s
+Info:     at iteration #5, type ALL: wirelen solved = 14681, spread = 37871, legal = 39814; time = 0.09s
+Info:     at iteration #6, type ALL: wirelen solved = 15386, spread = 36621, legal = 37726; time = 0.09s
+Info:     at iteration #7, type ALL: wirelen solved = 15971, spread = 35876, legal = 37059; time = 0.08s
+Info:     at iteration #8, type ALL: wirelen solved = 15603, spread = 35328, legal = 37856; time = 0.10s
+Info:     at iteration #9, type ALL: wirelen solved = 15910, spread = 35281, legal = 37545; time = 0.08s
+Info:     at iteration #10, type ALL: wirelen solved = 16191, spread = 35693, legal = 38253; time = 0.09s
+Info:     at iteration #11, type ALL: wirelen solved = 16694, spread = 34923, legal = 37490; time = 0.10s
+Info:     at iteration #12, type ALL: wirelen solved = 16588, spread = 35297, legal = 37602; time = 0.08s
+Info: HeAP Placer Time: 1.50s
+Info:   of which solving equations: 0.72s
+Info:   of which spreading cells: 0.17s
+Info:   of which strict legalisation: 0.23s
+
+Info: Running simulated annealing placer for refinement.
+Info:   at iteration #1: temp = 0.000000, timing cost = 116, wirelen = 37059
+Info:   at iteration #5: temp = 0.000000, timing cost = 158, wirelen = 30012
+Info:   at iteration #10: temp = 0.000000, timing cost = 83, wirelen = 28258
+Info:   at iteration #15: temp = 0.000000, timing cost = 117, wirelen = 27530
+Info:   at iteration #20: temp = 0.000000, timing cost = 112, wirelen = 26652
+Info:   at iteration #25: temp = 0.000000, timing cost = 112, wirelen = 26339
+Info:   at iteration #30: temp = 0.000000, timing cost = 116, wirelen = 26205
+Info:   at iteration #30: temp = 0.000000, timing cost = 110, wirelen = 26214 
+Info: SA placement time 11.49s
+
+Info: Max frequency for clock 'clk': 133.96 MHz (PASS at 17.00 MHz)
+
+Info: Slack histogram:
+Info:  legend: * represents 1 endpoint(s)
+Info:          + represents [1,1) endpoint(s)
+Info: [ 51358,  51694) |******************+
+Info: [ 51694,  52030) |************************************************************ 
+Info: [ 52030,  52366) |********************+
+Info: [ 52366,  52702) | 
+Info: [ 52702,  53038) |**************+
+Info: [ 53038,  53374) |**********************************************************+
+Info: [ 53374,  53710) |************************************************+
+Info: [ 53710,  54046) |***************+
+Info: [ 54046,  54382) |******+
+Info: [ 54382,  54718) |*****+
+Info: [ 54718,  55054) |***+
+Info: [ 55054,  55390) |***************+
+Info: [ 55390,  55726) |***********************************+
+Info: [ 55726,  56062) |***********************+
+Info: [ 56062,  56398) |************************************+
+Info: [ 56398,  56734) |***************************+
+Info: [ 56734,  57070) |************************************+
+Info: [ 57070,  57406) |****************************+
+Info: [ 57406,  57742) |************************+
+Info: [ 57742,  58078) |*+
+Info: Checksum: 0x1a80531b
+Info: Routing globals...
+
+Info: Routing..
+Info: Setting up routing queue.
+Info: Routing 17414 arcs.
+Info:            |   (re-)routed arcs  |   delta    | remaining|       time spent     |
+Info:    IterCnt |  w/ripup   wo/ripup |  w/r  wo/r |      arcs| batch(sec) total(sec)|
+Info:       1000 |       85        906 |   85   906 |     16512|       0.29       0.29|
+Info:       2000 |      125       1814 |   40   908 |     15554|       0.12       0.41|
+Info:       3000 |      126       2735 |    1   921 |     14555|       0.14       0.56|
+Info:       4000 |      130       3666 |    4   931 |     13559|       0.12       0.68|
+Info:       5000 |      137       4599 |    7   933 |     12566|       0.12       0.80|
+Info:       6000 |      146       5524 |    9   925 |     11575|       0.11       0.91|
+Info:       7000 |      154       6446 |    8   922 |     10583|       0.12       1.03|
+Info:       8000 |      166       7380 |   12   934 |      9595|       0.13       1.16|
+Info:       9000 |      196       8283 |   30   903 |      8625|       0.12       1.28|
+Info:      10000 |      219       9187 |   23   904 |      7648|       0.13       1.40|
+Info:      11000 |      247      10092 |   28   905 |      6676|       0.12       1.53|
+Info:      12000 |      292      10973 |   45   881 |      5721|       0.12       1.65|
+Info:      13000 |      324      11869 |   32   896 |      4753|       0.12       1.77|
+Info:      14000 |      370      12752 |   46   883 |      3807|       0.15       1.91|
+Info:      15000 |      444      13618 |   74   866 |      2887|       0.15       2.06|
+Info:      16000 |      493      14510 |   49   892 |      1936|       0.16       2.22|
+Info:      17000 |      559      15386 |   66   876 |      1003|       0.16       2.38|
+Info:      18000 |      638      16248 |   79   862 |        86|       0.16       2.54|
+Info:      18096 |      649      16331 |   11    83 |         0|       0.02       2.56|
+Info: Routing complete.
+Info: Router1 time 2.56s
+Info: Checksum: 0xae0b96c4
+
+Info: Critical path report for clock 'clk' (posedge -> posedge):
+Info:       type curr  total name
+Info:   clk-to-q  0.52  0.52 Source $auto$ff.cc:337:slice$60232.Q
+Info:    routing  0.95  1.48 Net cr_decode_error (51,24) -> (50,25)
+Info:                          Sink $abc$229156$lut$aiger229155$4965.D
+Info:                          Defined in:
+Info:                               PE_Core.v:1551.27-1551.42
+Info:      logic  0.24  1.71 Source $abc$229156$lut$aiger229155$4965.F
+Info:    routing  0.04  1.75 Net $techmap231871$abc$229156$lut$aiger229155$4966.A[1] (50,25) -> (50,25)
+Info:                          Sink $abc$229156$lut$aiger229155$4966.D
+Info:                          Defined in:
+Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
+Info:      logic  0.24  1.99 Source $abc$229156$lut$aiger229155$4966.F
+Info:    routing  1.56  3.55 Net $auto$abc9_ops.cc:1613:reintegrate$229172.A[4] (50,25) -> (58,17)
+Info:                          Sink $abc$229156$lut$auto$opt_dff.cc:251:make_patterns_logic$49330.D
+Info:                          Defined in:
+Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
+Info:      logic  0.24  3.79 Source $abc$229156$lut$auto$opt_dff.cc:251:make_patterns_logic$49330.F
+Info:    routing  1.09  4.88 Net $techmap234537$abc$229156$lut$auto$opt_dff.cc:251:make_patterns_logic$49370.A[1] (58,17) -> (57,21)
+Info:                          Sink $abc$229156$lut$auto$opt_dff.cc:251:make_patterns_logic$49370.D
+Info:                          Defined in:
+Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
+Info:      logic  0.24  5.12 Source $abc$229156$lut$auto$opt_dff.cc:251:make_patterns_logic$49370.F
+Info:    routing  0.99  6.11 Net $techmap234538$auto$abc9_ops.cc:1613:reintegrate$229171.A[2] (57,21) -> (54,20)
+Info:                          Sink $auto$abc9_ops.cc:1613:reintegrate$229171.D
+Info:                          Defined in:
+Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
+Info:      logic  0.24  6.35 Source $auto$abc9_ops.cc:1613:reintegrate$229171.F
+Info:    routing  0.13  6.48 Net $0\output_frag_hdr[7:0][0] (54,20) -> (54,20)
+Info:                          Sink $auto$ff.cc:337:slice$51835.DI
+Info:                          Defined in:
+Info:                               PE_Core.v:1775.5-3528.8
+Info:      setup  0.00  6.48 Source $auto$ff.cc:337:slice$51835.DI
+Info: 1.71 ns logic, 4.77 ns routing
+
+Info: Max frequency for clock 'clk': 154.37 MHz (PASS at 17.00 MHz)
+
+Info: Slack histogram:
+Info:  legend: * represents 2 endpoint(s)
+Info:          + represents [1,2) endpoint(s)
+Info: [ 52345,  52620) |+
+Info: [ 52620,  52895) |************+
+Info: [ 52895,  53170) |****************************************************+
+Info: [ 53170,  53445) |*+
+Info: [ 53445,  53720) | 
+Info: [ 53720,  53995) | 
+Info: [ 53995,  54270) |**************+
+Info: [ 54270,  54545) |************************************************************ 
+Info: [ 54545,  54820) |***************+
+Info: [ 54820,  55095) |*******+
+Info: [ 55095,  55370) |***************+
+Info: [ 55370,  55645) |*******************************+
+Info: [ 55645,  55920) |***************+
+Info: [ 55920,  56195) |******+
+Info: [ 56195,  56470) |***+
+Info: [ 56470,  56745) |***+
+Info: [ 56745,  57020) |**************+
+Info: [ 57020,  57295) |*********************************+
+Info: [ 57295,  57570) |*******************************+
+Info: [ 57570,  57845) |*******+
+
+Info: Program finished normally.

@@ -1951,3 +1951,577 @@ async def test_vfma_cluster_16frag_roundtrip(dut):
         f"{[hex(x) for x in exp8]}"
     assert [b['frag_hdr'] for b in beats3] == \
         [(i << 4) | 0x7 for i in range(8)]
+
+
+# =============================================================================
+# v1.9 §26.7 — new directed tests for the tag-indexed MU/DU bank-fix
+# (test_plan items 11, 12, 13, 15).
+# =============================================================================
+
+# eh_imm64 isn't in this module's top-level import list; pull it in once.
+from test_isa_decoder import eh_imm64 as eh_imm64_local  # noqa: E402
+
+
+def _mul_instr(mask, pcid, imm64):
+    return encode_instr(0x12, eh_port(input_port_mask=mask, output_port_id=pcid),
+                        eh_imm64_local(imm64))
+
+
+def _div_instr(mask, pcid, imm64):
+    return encode_instr(0x13, eh_port(input_port_mask=mask, output_port_id=pcid),
+                        eh_imm64_local(imm64))
+
+
+@cocotb.test()
+async def test_bank_tag_latch_no_intervening_hazard(dut):
+    """NEW v1.9 §26.7 item 11 (positive proof, MU depth-2 / DU depth-1):
+    dispatch 2 DIFFERENT-target mu_out_valid-routed ops in close
+    succession — tighter than the retired SDK "no intervening mul-class
+    dispatch" software rule ever required — and confirm BOTH route to
+    their OWN target bank via TAG MATCH, with zero cross-contamination.
+    This is the replacement design's core regression: the OLD positional
+    shift-tap assumed a fixed dispatch-to-completion latency and would
+    silently misroute a later dispatch's target onto an earlier
+    dispatch's completion (or vice versa) once case_result_s2's own +1
+    cycle broke that fixed-latency assumption.
+
+    (a) DU (depth-1): fire DIV0 (pcid=0), let it fully drain, then fire
+    DIV1 (pcid=1) immediately (no artificial extra idle padding) —
+    confirm DIV1 lands in bank 1 with the RIGHT value, not bank 0's
+    stale residue.
+
+    (b) MU (depth-2): fire two 0x12 MUL dispatches to DIFFERENT targets
+    (pcid=0, pcid=1) as close together as the shared EHDecode's own
+    accept-timing allows (empirically the earliest a second token is
+    reliably accepted, NOT an arbitrarily generous gap) — confirm BOTH
+    results land bit-exact in their OWN target bank, in the OWN arrival
+    order, with no swap/cross-write. (Genuine simultaneous ROW occupancy
+    for two MULs was checked separately and found NOT reachable via
+    front-door dispatch with this EHDecode's actual timing — MUL's own
+    busy window, ~3 cycles, clears before the shared EHDecode can accept
+    a second token, ~9-10 cycles minimum — so this sub-test instead
+    proves the achievable, and actually regression-relevant, property:
+    correct tag-keyed routing under back-to-back dispatch, not stale
+    positional bleed.)"""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+
+    # ---- (a) DU depth-1 ---------------------------------------------------
+    await _reset(dut)
+    dut.ext_instruction.value = _div_instr(0x01, 0, 3)
+    dut.ext_tag.value = _tag(port_context_id=0)
+    dut.ext_payload.value = 100
+    dut.ext_payload_b_valid.value = 0
+    dut.ext_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.ext_valid.value = 0
+    beats0, err0, lwr0 = await _collect_out_beats(dut, 1, 90)
+    assert (err0, lwr0) == (0, 0) and len(beats0) == 1, \
+        f"DIV0 (pcid=0) did not drain cleanly: err={err0} lwr={lwr0} {beats0}"
+    assert beats0[0]['payload'] == 100 // 3
+
+    dut.ext_instruction.value = _div_instr(0x02, 1, 7)
+    dut.ext_tag.value = _tag(port_context_id=1)
+    dut.ext_payload.value = 200
+    dut.ext_payload_b_valid.value = 0
+    dut.ext_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.ext_valid.value = 0
+    beats1, err1, lwr1 = await _collect_out_beats(dut, 1, 90)
+    assert (err1, lwr1) == (0, 0) and len(beats1) == 1, \
+        f"DIV1 (pcid=1) did not drain cleanly: err={err1} lwr={lwr1} {beats1}"
+    assert beats1[0]['payload'] == 200 // 7, \
+        f"DIV1 misrouted/corrupted: {beats1[0]['payload']} != {200 // 7} " \
+        f"-- stale DU-row residue from DIV0 would show up here"
+
+    # ---- (b) MU depth-2, back-to-back different-target MUL dispatch ------
+    await _reset(dut)
+    dut.ext_instruction.value = _mul_instr(0x01, 0, 2)
+    dut.ext_tag.value = _tag(port_context_id=0)
+    dut.ext_payload.value = 100
+    dut.ext_payload_b_valid.value = 0
+    dut.ext_valid.value = 1
+    await RisingEdge(dut.clk)   # P0 -- MUL0's own token pulse edge
+    # Empirically the earliest the shared EHDecode reliably accepts a
+    # SECOND, independent token after this one (see session notes: the
+    # standalone ISA_Decoder chain-walk needs ~5 edges before dec_valid,
+    # and the Cluster-level EHDecode frees up ~1 edge ahead of its own
+    # dec_valid) -- firing any earlier silently drops the second token.
+    for _ in range(4):
+        await RisingEdge(dut.clk)
+    dut.ext_instruction.value = _mul_instr(0x02, 1, 3)
+    dut.ext_tag.value = _tag(port_context_id=1)
+    dut.ext_payload.value = 200
+    dut.ext_valid.value = 1
+    await RisingEdge(dut.clk)   # P1 -- MUL1's own token pulse edge
+    dut.ext_valid.value = 0
+    beats, err, lwr = await _collect_out_beats(dut, 2, 30)
+    assert (err, lwr) == (0, 0), f"err={err} lwr={lwr} beats={beats}"
+    assert len(beats) == 2, f"expected 2 MUL results, got {beats}"
+    exp0, exp1 = 100 * 2, 200 * 3
+    assert beats[0]['payload'] == exp0, \
+        f"MUL0 (pcid=0): {beats[0]['payload']} != {exp0}"
+    assert beats[1]['payload'] == exp1, \
+        f"MUL1 (pcid=1): {beats[1]['payload']} != {exp1} " \
+        f"-- stale MU-row residue from MUL0 would show up here"
+    assert ((beats[0]['tag'] >> 16) & 0xFFFF) != ((beats[1]['tag'] >> 16) & 0xFFFF), \
+        "both results carry the same port_context_id in the forwarded " \
+        "tag -- routing collapsed"
+
+
+@cocotb.test()
+async def test_bank_tag_collision_interlock(dut):
+    """NEW v1.9 §26.7 item 12: force a table row to be reused while still
+    busy and confirm the synthesizable STICKY `bank_tag_collision_error`
+    status bit fires -- a real hardware fault, not a sim-only assertion
+    (closing exactly the correctness-lens gap the spec names).
+
+    (a) DU (depth-1, the clean/unambiguous case): fire a long DIV0
+    (pcid=0), and WHILE it is still busy (DIV's ~68-cycle bit-serial FSM
+    vastly outlasts the shared EHDecode's own ~5-10 cycle re-accept
+    latency, so this is trivially reachable — unlike MU-MUL/MU-MUL
+    overlap) fire a second DIV1 (pcid=1). Assert: the collision bit
+    fires: it stays STICKY well past DIV0's own natural completion (does
+    NOT self-clear); and DIV0's own result is still delivered bit-exact
+    to its own (pcid=0) bank, undisturbed by the rejected DIV1 attempt.
+
+    (b) MU (depth-2, exhaustion): fire three long MU-hosted ops (0x74
+    FSCALAR FS_DIV, pcid=0/1/2) in succession, each timed to land while
+    the previous one(s) are still busy -- ops 1 and 2 fill both table
+    rows, op 3 finds none free. Assert the collision bit fires and stays
+    sticky. NOTE (residual finding, not asserted/fixed here — out of
+    this test's scope, reported instead): this construction incidentally
+    demonstrates that Cluster's `mu_launch` detection does not gate on
+    PE_Core-internal busy state (fp_busy), so a table row can be
+    allocated for a launch PE_Core itself never internally executes;
+    with 2 such rows simultaneously busy the depth-2 completion
+    resolution's own documented invariant ("at most one busy non-MUL
+    row") is violated, and this sub-test therefore does NOT assert
+    anything about which specific payload lands in which bank for ops 1
+    and 2 -- only that the FAULT BIT correctly fires and stays sticky."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+
+    # ---- (a) DU depth-1 collision ------------------------------------------
+    await _reset(dut)
+    dut.ext_instruction.value = _div_instr(0x01, 0, 3)
+    dut.ext_tag.value = _tag(port_context_id=0)
+    dut.ext_payload.value = 100
+    dut.ext_payload_b_valid.value = 0
+    dut.ext_valid.value = 1
+    fired1 = False
+    pending = [True, False]
+    saw_collision = False
+    saw_out0 = None
+    for i in range(90):
+        await RisingEdge(dut.clk)
+        for k in range(2):
+            if pending[k]:
+                dut.ext_valid.value = 0
+                pending[k] = False
+        await Timer(1, units="ns")
+        if i == 9 and not fired1:
+            fired1 = True
+            dut.ext_instruction.value = _div_instr(0x02, 1, 7)
+            dut.ext_tag.value = _tag(port_context_id=1)
+            dut.ext_payload.value = 999
+            dut.ext_payload_b_valid.value = 0
+            dut.ext_valid.value = 1
+            pending[1] = True
+        if int(dut.bank_tag_collision_error.value):
+            saw_collision = True
+        if int(dut.ext_out_valid.value):
+            saw_out0 = int(dut.ext_out_payload.value)
+    assert saw_collision, "DU depth-1 collision never fired"
+    assert int(dut.bank_tag_collision_error.value) == 1, \
+        "bank_tag_collision_error did not stay sticky through the end of " \
+        "the run (well past both ops' natural busy windows)"
+    assert saw_out0 == 100 // 3, \
+        f"DIV0's own result corrupted by the rejected DIV1 attempt: {saw_out0}"
+
+    # ---- (b) MU depth-2 exhaustion -----------------------------------------
+    await _reset(dut)
+    from test_isa_decoder import eh_precision as _ehp
+
+    def _fs_div_instr(mask, pcid):
+        return encode_instr(0x74, eh_port(input_port_mask=mask, output_port_id=pcid),
+                            _ehp(0x14, 0), eh_imm16((_FS['FS_DIV'] & 0xF) << 4),
+                            flags=(1 << 2))
+
+    a, b = _f2b(355.0), _f2b(113.0)
+    dut.ext_instruction.value = _fs_div_instr(0x01, 0)
+    dut.ext_tag.value = _tag(port_context_id=0)
+    dut.ext_payload.value = a
+    dut.ext_payload_b.value = b
+    dut.ext_payload_b_valid.value = 1
+    dut.ext_valid.value = 1
+    fired = [False, False]
+    pending = [True, False, False]
+    saw_collision = False
+    for i in range(60):
+        await RisingEdge(dut.clk)
+        for k in range(3):
+            if pending[k]:
+                dut.ext_valid.value = 0
+                pending[k] = False
+        await Timer(1, units="ns")
+        if i == 10 and not fired[0]:
+            fired[0] = True
+            dut.ext_instruction.value = _fs_div_instr(0x02, 1)
+            dut.ext_tag.value = _tag(port_context_id=1)
+            dut.ext_payload.value = a
+            dut.ext_payload_b.value = b
+            dut.ext_payload_b_valid.value = 1
+            dut.ext_valid.value = 1
+            pending[1] = True
+        if i == 20 and not fired[1]:
+            fired[1] = True
+            dut.ext_instruction.value = _fs_div_instr(0x04, 2)
+            dut.ext_tag.value = _tag(port_context_id=2)
+            dut.ext_payload.value = a
+            dut.ext_payload_b.value = b
+            dut.ext_payload_b_valid.value = 1
+            dut.ext_valid.value = 1
+            pending[2] = True
+        if int(dut.bank_tag_collision_error.value):
+            saw_collision = True
+    assert saw_collision, "MU depth-2 exhaustion collision never fired"
+    assert int(dut.bank_tag_collision_error.value) == 1, \
+        "bank_tag_collision_error (MU) did not stay sticky"
+
+
+@cocotb.test()
+async def test_vdot_acc_reduce_rides_mu_bank(dut):
+    """NEW v1.9 §26.7 item 13 (0x71/0x72 scope-check): confirm --directly,
+    not by inference-- WHICH path VDOT_ACC (0x71) and ACC_REDUCE (0x72)
+    actually take through Cluster.v.
+
+    This test's assertion direction is the OPPOSITE of what spec §26.5's
+    scope-exclusion item (a) and the mandate's own item 2(c) phrasing
+    ("bank-table exclusion OR inclusion, per whatever the RTL stage
+    found") both flag as unresolved-by-inference: Cluster.v's own §26.5
+    comment block (this repo, "Independently verified (not assumed)")
+    already determined, by direct RTL inspection, that 0x71/0x72 ARE
+    ordinary MU-hosted compute-inline case arms whose PE_Core
+    output_payload/output_valid IS literally what Cluster.v renames to
+    mu_out_payload/mu_out_valid for the MU instance -- there is no
+    alternate "stays inside PE_Core, never surfaces" path for them to
+    take. This test re-confirms that RTL-level finding dynamically
+    (not by re-reading the comment) and, since it means 0x71/0x72 DO
+    consume MU-table capacity like every other MU-hosted opcode, also
+    confirms the bank-fix routes their (non-MUL, single-flight) rows
+    correctly."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+
+    # ---- 0x71 VDOT_ACC ------------------------------------------------
+    await _reset(dut)
+    a_lanes = [(i % 15) - 7 for i in range(32)]
+    b_lanes = [((i * 3) % 15) - 7 for i in range(32)]
+    a = _v180b_pack_int4(*[v & 0xF for v in a_lanes])
+    b = _v180b_pack_int4(*[v & 0xF for v in b_lanes])
+    golden = (sum(x * y for x, y in zip(a_lanes, b_lanes)) + 5) % (1 << 64)
+    wide = (a & ((1 << 128) - 1)) | ((b & ((1 << 128) - 1)) << 128)
+    payloads = [(wide >> (64 * i)) & ((1 << 64) - 1) for i in range(4)]
+    from test_isa_decoder import eh_precision as _ehp
+    instr71 = encode_instr(0x71, eh_port(input_port_mask=0x01, output_port_id=0),
+                           _ehp(0x10, 0), eh_imm16(5), flags=(1 << 2))
+    tag71 = _tag(port_context_id=0)
+    mu_out_valid_seen_71 = False
+    mu_row_is_mul_71 = None
+    for idx in range(4):
+        dut.ext_instruction.value = instr71
+        dut.ext_tag.value = tag71
+        dut.ext_payload.value = payloads[idx]
+        dut.ext_payload_b.value = 0
+        dut.ext_payload_b_valid.value = 1
+        dut.ext_frag_hdr.value = (idx << 4) | 0x3
+        dut.ext_valid.value = 1
+        await RisingEdge(dut.clk)
+        if int(dut.mu_row0_busy.value):
+            mu_row_is_mul_71 = int(dut.mu_row0_is_mul.value)
+        if int(dut.mu_out_valid.value):
+            mu_out_valid_seen_71 = True
+    dut.ext_valid.value = 0
+    dut.ext_frag_hdr.value = 0
+    out71 = None
+    for _ in range(30):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.mu_row0_busy.value) and mu_row_is_mul_71 is None:
+            mu_row_is_mul_71 = int(dut.mu_row0_is_mul.value)
+        if int(dut.mu_out_valid.value):
+            mu_out_valid_seen_71 = True
+        if int(dut.ext_out_valid.value) == 1:
+            out71 = int(dut.ext_out_payload.value)
+            break
+    assert out71 == golden, f"0x71 VDOT_ACC: {out71} != {golden}"
+    assert mu_out_valid_seen_71, \
+        "0x71 VDOT_ACC never asserted mu_out_valid -- contradicts the " \
+        "RTL-verified finding (Cluster.v §26.5 comment) that it rides " \
+        "the same MU path as every other MU-hosted opcode"
+    assert mu_row_is_mul_71 == 0, \
+        "0x71 VDOT_ACC's MU-table row was tagged row_is_mul=1 -- it " \
+        "must be classified non-MUL (dec_opcode != 8'h12 at launch)"
+
+    # ---- 0x72 ACC_REDUCE (SUM) -----------------------------------------
+    await _reset(dut)
+    lanes = [(-8 if i == 3 else (i % 15) - 7) for i in range(32)]
+    a_wide = _v180b_pack_int4(*[v & 0xF for v in lanes])
+    exp_sum = sum(lanes) % (1 << 64)
+    payloads72 = [(a_wide >> (64 * i)) & ((1 << 64) - 1) for i in range(2)]
+    from generated_isa_tables import ACC_REDUCE_OP_CODE
+    instr72 = encode_instr(0x72, eh_port(input_port_mask=0x01, output_port_id=0),
+                           _ehp(0x10, 0), eh_imm16(ACC_REDUCE_OP_CODE['sum'] << 4),
+                           flags=(1 << 2))
+    tag72 = _tag(port_context_id=0)
+    mu_out_valid_seen_72 = False
+    for idx, pl in enumerate(payloads72):
+        dut.ext_instruction.value = instr72
+        dut.ext_tag.value = tag72
+        dut.ext_payload.value = pl
+        dut.ext_payload_b_valid.value = 0
+        dut.ext_frag_hdr.value = (idx << 4) | 0x1
+        dut.ext_valid.value = 1
+        await RisingEdge(dut.clk)
+        if int(dut.mu_out_valid.value):
+            mu_out_valid_seen_72 = True
+    dut.ext_valid.value = 0
+    dut.ext_frag_hdr.value = 0
+    out72 = None
+    for _ in range(30):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.mu_out_valid.value):
+            mu_out_valid_seen_72 = True
+        if int(dut.ext_out_valid.value) == 1:
+            out72 = int(dut.ext_out_payload.value)
+            break
+    assert out72 == exp_sum, f"0x72 ACC_REDUCE: {out72} != {exp_sum}"
+    assert mu_out_valid_seen_72, \
+        "0x72 ACC_REDUCE never asserted mu_out_valid -- contradicts the " \
+        "RTL-verified finding (Cluster.v §26.5 comment) that it rides " \
+        "the same MU path as every other MU-hosted opcode"
+
+
+@cocotb.test()
+async def test_twin_classifier_mu_bank_coverage(dut):
+    """NEW v1.9 §26.7 item 15: the final defense line against a silent MU
+    bank-table under-fill. Two halves:
+
+    (a) POSITIVE — every opcode the twin classifier (extracted from
+    Cluster.v `is_mul_op`, same technique as
+    test_twin_classifier_lockstep_static) actually claims MUST really
+    assert mu_out_valid at some point when dispatched -- a classified-
+    but-unreachable opcode would be just as dangerous a gap as an
+    unclassified-but-reachable one (dead table capacity masking a real
+    miss elsewhere). This also directly confirms (not assumes) that
+    is_mul_op routes 0x32 EINSUM on the RAW OPCODE ALONE, before any
+    EH/subscript decode -- so even a narrow, non-wide signature
+    (SIG_MATMUL_2X2) is unconditionally sent to the MU-hosted PE and
+    consumes table capacity, same as the wide sub-tree forms.
+
+    (b) NEGATIVE — a representative sample of opcodes NOT in the
+    classifier set (plain ALU, the wide-SIMD family via 0x69, and 0x7C
+    -- which test_twin_classifier_lockstep_static already pins OUT by
+    name) must NEVER assert mu_out_valid — a full 0x00-0xFF sweep is not
+    attempted here (most encodings would only exercise decode-error
+    paths, not the dispatch logic this test actually cares about); this
+    is a targeted, not exhaustive, negative check."""
+    import re
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(here, 'Cluster.v')) as _f:
+        text = _f.read()
+    idx = text.index('wire is_mul_op')
+    expr = text[idx:text.index(';', idx)]
+    classified = set(int(m, 16) for m in re.findall(r"8'h([0-9A-Fa-f]{2})", expr))
+    assert classified, "failed to extract is_mul_op from Cluster.v"
+
+    from test_isa_decoder import eh_precision as _ehp
+
+    async def _saw_mu(dut, drive_coro):
+        """Run `drive_coro` (an async callable taking dut) concurrently
+        with a 400-cycle mu_out_valid watcher and report whether it ever
+        pulsed. The watcher is JOINED (awaited to completion), not merely
+        started-then-killed-early -- the full 400 cycles covers even the
+        slowest classified op (0x78 DEQUANT int8-16, mu_out_valid doesn't
+        pulse until ~100+ cycles in; a short post-drive grace period
+        would silently under-cover it and misreport it as unreachable)."""
+        seen = False
+
+        async def _watch():
+            nonlocal seen
+            for _ in range(400):
+                await RisingEdge(dut.clk)
+                if int(dut.mu_out_valid.value):
+                    seen = True
+        watcher = cocotb.start_soon(_watch())
+        await drive_coro(dut)
+        await watcher
+        return seen
+
+    # ---- (a) positive: every classified opcode reaches mu_out_valid ------
+    async def _drive_mul(dut):
+        await _reset(dut)
+        dut.ext_instruction.value = _mul_instr(0x01, 0, 2)
+        dut.ext_tag.value = _tag(port_context_id=0)
+        dut.ext_payload.value = 5
+        dut.ext_payload_b_valid.value = 0
+        dut.ext_valid.value = 1
+        await RisingEdge(dut.clk)
+        dut.ext_valid.value = 0
+
+    async def _drive_fp(op):
+        async def _inner(dut):
+            await _reset(dut)
+            instr = encode_instr(op, eh_port(input_port_mask=0x01, output_port_id=0),
+                                 _ehp(0x14, 0), flags=(1 << 2))
+            dut.ext_instruction.value = instr
+            dut.ext_tag.value = _tag(port_context_id=0)
+            dut.ext_payload.value = _f2b(2.0)
+            dut.ext_payload_b.value = _f2b(3.0)
+            dut.ext_payload_b_valid.value = 1
+            dut.ext_valid.value = 1
+            await RisingEdge(dut.clk)
+            dut.ext_valid.value = 0
+        return _inner
+
+    checks = {0x12: _drive_mul}
+    for op in (0x74, 0x75, 0x76):
+        if op in classified:
+            checks[op] = await _drive_fp(op)
+    if 0x6B in classified:
+        # 0x6B carries gamma via IMM64 not a wide fragment payload -- use
+        # the same direct single-beat construction the e2e test uses.
+        async def _drive_gamma(dut):
+            await _reset(dut)
+            x_lanes = [((i * 7) + 3) & 0xF for i in range(16)]
+            g_lanes = [((-i) & 0xF) for i in range(16)]
+            a_frag = sum(v << (4 * i) for i, v in enumerate(x_lanes))
+            g_imm = sum(v << (4 * i) for i, v in enumerate(g_lanes))
+            instr = encode_instr(0x6B, eh_port(input_port_mask=0x01, output_port_id=0),
+                                 _ehp(0x10, 0), eh_imm64_local(g_imm),
+                                 flags=(1 << 2))
+            dut.ext_instruction.value = instr
+            dut.ext_tag.value = _tag(port_context_id=0)
+            dut.ext_payload.value = a_frag
+            dut.ext_payload_b_valid.value = 0
+            dut.ext_valid.value = 1
+            await RisingEdge(dut.clk)
+            dut.ext_valid.value = 0
+        checks[0x6B] = _drive_gamma
+    if 0x79 in classified:
+        # 0x79 FMINMAX needs the F_HAS_OPB B-channel (broadcast operand) on
+        # the wave-completing beat.
+        async def _drive_fminmax(dut):
+            await _reset(dut)
+            lanes = [0x80000000, 0x00000000, 0x00000001, 0x7FC00000]
+            a_frags = _G.lanes_to_frags(lanes, 32)
+            instr = encode_instr(0x79, eh_port(input_port_mask=0x01, output_port_id=0),
+                                 _ehp(0x14, 0), flags=(1 << 3) | (1 << 2))
+            await _fire_frag_wave(dut, instr, _tag(port_context_id=0), a_frags,
+                                  payload_b=0x00000001, b_valid_last=1)
+        checks[0x79] = _drive_fminmax
+    if 0x78 in classified:
+        # 0x78 DEQUANT needs the fp32 scale on the completing beat via the
+        # same B-channel contract.
+        async def _drive_dequant(dut):
+            await _reset(dut)
+            lanes8 = [((i * 29) ^ 0xA5) & 0xFF for i in range(16)]
+            a_frags = _G.lanes_to_frags(lanes8, 8)
+            instr = encode_instr(0x78, eh_port(input_port_mask=0x01, output_port_id=0),
+                                 _ehp(0x11, 0), flags=(1 << 2))
+            await _fire_frag_wave(dut, instr, _tag(port_context_id=0), a_frags,
+                                  payload_b=_f2b(1.25), b_valid_last=1)
+        checks[0x78] = _drive_dequant
+    if 0x70 in classified:
+        async def _drive_vfma(dut):
+            await _reset(dut)
+            from test_isa_decoder import eh_imm64 as _ehi64
+            lanes4 = [((i * 11) + 3) & 0xF for i in range(32)]
+            a_frags = _G.lanes_to_frags(lanes4, 4)
+            b64 = ((0x7FFFFFF0 & 0xFFFFFFFF) << 32) | 0xE
+            instr = encode_instr(0x70, eh_port(input_port_mask=0x01, output_port_id=0),
+                                 _ehp(0x10, 0), _ehi64(b64), flags=(1 << 2))
+            await _fire_frag_wave(dut, instr, _tag(port_context_id=0), a_frags)
+        checks[0x70] = _drive_vfma
+    if 0x32 in classified:
+        # 0x32 EINSUM: is_mul_op routes it on the RAW opcode alone (before
+        # any EH/subscript decode), so even a narrow, non-wide signature
+        # (SIG_MATMUL_2X2 here) is unconditionally sent to the MU-hosted
+        # PE and consumes MU-table capacity -- worth confirming directly
+        # rather than assuming only the wide sub-tree forms do.
+        async def _drive_matmul2x2(dut):
+            await _reset(dut)
+            instr = encode_instr(0x32, eh_port(input_port_mask=0x01, output_port_id=0),
+                                 eh_subscript(axes(1, 2, 0, 0), axes(2, 3, 0, 0),
+                                              axes(1, 3, 0, 0)),
+                                 eh_opref(), flags=(1 << 3))
+            dut.ext_instruction.value = instr
+            dut.ext_tag.value = _tag(port_context_id=0, dim=0x11)
+            dut.ext_payload.value = 0x0001000200030004
+            dut.ext_payload_b.value = 0x0005000600070008
+            dut.ext_payload_b_valid.value = 1
+            dut.ext_valid.value = 1
+            await RisingEdge(dut.clk)
+            dut.ext_valid.value = 0
+        checks[0x32] = _drive_matmul2x2
+
+    for op, drive in checks.items():
+        seen = await _saw_mu(dut, drive)
+        assert seen, \
+            f"classified opcode 0x{op:02X} never asserted mu_out_valid " \
+            f"-- classified-but-unreachable, a dead-capacity gap in the " \
+            f"MU bank table"
+
+    # ---- (b) negative: representative non-classified opcodes never do ----
+    async def _drive_add(dut):
+        await _reset(dut)
+        instr = encode_instr(0x10, eh_port(input_port_mask=0x01, output_port_id=0),
+                             eh_imm16(5))
+        dut.ext_instruction.value = instr
+        dut.ext_tag.value = _tag(port_context_id=0)
+        dut.ext_payload.value = 7
+        dut.ext_payload_b_valid.value = 0
+        dut.ext_valid.value = 1
+        await RisingEdge(dut.clk)
+        dut.ext_valid.value = 0
+
+    async def _drive_7c(dut):
+        # 0x7C: pinned OUT of is_mul_op by test_twin_classifier_lockstep_static
+        # (L-PE for ALL dtypes, no dtype-conditionality clause). Fire it
+        # with a generous encoding; a decode-error/lower_required outcome
+        # is fine -- only mu_out_valid reachability is under test here.
+        await _reset(dut)
+        instr = encode_instr(0x7C, eh_port(input_port_mask=0x01, output_port_id=0),
+                             _ehp(0x14, 0), flags=(1 << 2))
+        dut.ext_instruction.value = instr
+        dut.ext_tag.value = _tag(port_context_id=0)
+        dut.ext_payload.value = _f2b(1.0)
+        dut.ext_payload_b.value = _f2b(1.0)
+        dut.ext_payload_b_valid.value = 1
+        dut.ext_valid.value = 1
+        await RisingEdge(dut.clk)
+        dut.ext_valid.value = 0
+
+    async def _drive_simd_wide_0x69(dut):
+        # 0x69 SIMD_MUL_WIDE (Q8.8): representative of the wide-SIMD
+        # 0x60-0x69 family, NOT in is_mul_op -- always L-PE hosted.
+        await _reset(dut)
+        instr = encode_instr(0x69, eh_port(input_port_mask=0x01, output_port_id=0),
+                             eh_imm16(0x0080))
+        wide = _v180b_pack_int4(*([0x2] * 32))
+        payloads = [(wide >> (64 * i)) & ((1 << 64) - 1) for i in range(2)]
+        await _fire_frag_wave(dut, instr, _tag(port_context_id=0), payloads)
+
+    negative_checks = {0x10: _drive_add, 0x69: _drive_simd_wide_0x69}
+    if 0x7C not in classified:
+        negative_checks[0x7C] = _drive_7c
+    for op, drive in negative_checks.items():
+        seen = await _saw_mu(dut, drive)
+        assert not seen, \
+            f"UNCLASSIFIED opcode 0x{op:02X} asserted mu_out_valid -- " \
+            f"a real silent MU-table under-fill gap"

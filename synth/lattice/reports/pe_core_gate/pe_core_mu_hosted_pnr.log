@@ -1,0 +1,441 @@
+
+
+Info: Logic utilisation before packing:
+Info:     Total LUT4s:     26359/83640    31%
+Info:         logic LUTs:  22597/83640    27%
+Info:         carry LUTs:   3762/83640     4%
+Info:           RAM LUTs:      0/10455     0%
+Info:          RAMW LUTs:      0/20910     0%
+
+Info:      Total DFFs:      3979/83640     4%
+
+Info: Packing IOs..
+Info: Packing constants..
+Info: Packing carries...
+Info: Packing LUTs...
+Info: Packing LUT5-7s...
+Info: Packing FFs...
+Info:     1248 FFs paired with LUTs.
+Info: Generating derived timing constraints...
+Info: Promoting globals...
+Info: Checksum: 0x9516be58
+
+Info: Device utilisation:
+Info: 	          TRELLIS_IO:       0/    365     0%
+Info: 	                DCCA:       0/     56     0%
+Info: 	              DP16KD:       0/    208     0%
+Info: 	          MULT18X18D:     122/    156    78%
+Info: 	              ALU54B:       0/     78     0%
+Info: 	             EHXPLLL:       0/      4     0%
+Info: 	             EXTREFB:       0/      2     0%
+Info: 	                DCUA:       0/      2     0%
+Info: 	           PCSCLKDIV:       0/      2     0%
+Info: 	             IOLOGIC:       0/    224     0%
+Info: 	            SIOLOGIC:       0/    141     0%
+Info: 	                 GSR:       0/      1     0%
+Info: 	               JTAGG:       0/      1     0%
+Info: 	                OSCG:       0/      1     0%
+Info: 	               SEDGA:       0/      1     0%
+Info: 	                 DTR:       0/      1     0%
+Info: 	             USRMCLK:       0/      1     0%
+Info: 	             CLKDIVF:       0/      4     0%
+Info: 	           ECLKSYNCB:       0/     10     0%
+Info: 	             DLLDELD:       0/      8     0%
+Info: 	              DDRDLL:       0/      4     0%
+Info: 	             DQSBUFM:       0/     14     0%
+Info: 	     TRELLIS_ECLKBUF:       0/      8     0%
+Info: 	        ECLKBRIDGECS:       0/      2     0%
+Info: 	                DCSC:       0/      2     0%
+Info: 	          TRELLIS_FF:    3979/  83640     4%
+Info: 	        TRELLIS_COMB:   27311/  83640    32%
+Info: 	        TRELLIS_RAMW:       0/  10455     0%
+
+Info: Placed 0 cells based on constraints.
+Info: Creating initial analytic placement for 22823 cells, random placement wirelen = 2430686.
+Info:     at initial placer iter 0, wirelen = 5709
+Info:     at initial placer iter 1, wirelen = 6295
+Info:     at initial placer iter 2, wirelen = 6345
+Info:     at initial placer iter 3, wirelen = 6516
+Info: Running main analytical placer, max placement attempts per cell = 123339218.
+Info:     at iteration #1, type ALL: wirelen solved = 6287, spread = 863690, legal = 888852; time = 1.84s
+Info:     at iteration #2, type ALL: wirelen solved = 45741, spread = 287522, legal = 302781; time = 1.87s
+Info:     at iteration #3, type ALL: wirelen solved = 84633, spread = 223993, legal = 243755; time = 1.86s
+Info:     at iteration #4, type ALL: wirelen solved = 96825, spread = 205057, legal = 225750; time = 1.86s
+Info:     at iteration #5, type ALL: wirelen solved = 103109, spread = 197993, legal = 217530; time = 1.85s
+Info:     at iteration #6, type ALL: wirelen solved = 107726, spread = 189994, legal = 212623; time = 1.84s
+Info:     at iteration #7, type ALL: wirelen solved = 111771, spread = 185972, legal = 208542; time = 1.83s
+Info:     at iteration #8, type ALL: wirelen solved = 113102, spread = 183619, legal = 205449; time = 1.82s
+Info:     at iteration #9, type ALL: wirelen solved = 114850, spread = 181135, legal = 202103; time = 1.82s
+Info:     at iteration #10, type ALL: wirelen solved = 116103, spread = 179276, legal = 203973; time = 1.82s
+Info:     at iteration #11, type ALL: wirelen solved = 117833, spread = 179742, legal = 205666; time = 1.83s
+Info:     at iteration #12, type ALL: wirelen solved = 119240, spread = 177563, legal = 204259; time = 1.82s
+Info:     at iteration #13, type ALL: wirelen solved = 120565, spread = 177867, legal = 205358; time = 1.81s
+Info:     at iteration #14, type ALL: wirelen solved = 120907, spread = 175046, legal = 200242; time = 1.83s
+Info:     at iteration #15, type ALL: wirelen solved = 121735, spread = 176973, legal = 199981; time = 1.82s
+Info:     at iteration #16, type ALL: wirelen solved = 122462, spread = 176656, legal = 208874; time = 1.82s
+Info:     at iteration #17, type ALL: wirelen solved = 123169, spread = 175690, legal = 201359; time = 1.82s
+Info:     at iteration #18, type ALL: wirelen solved = 124461, spread = 175630, legal = 198859; time = 1.81s
+Info:     at iteration #19, type ALL: wirelen solved = 124230, spread = 175693, legal = 202574; time = 1.81s
+Info:     at iteration #20, type ALL: wirelen solved = 124290, spread = 173286, legal = 197131; time = 1.82s
+Info:     at iteration #21, type ALL: wirelen solved = 124841, spread = 173957, legal = 200914; time = 1.82s
+Info:     at iteration #22, type ALL: wirelen solved = 126014, spread = 175539, legal = 206884; time = 1.82s
+Info:     at iteration #23, type ALL: wirelen solved = 127421, spread = 174640, legal = 200987; time = 1.83s
+Info:     at iteration #24, type ALL: wirelen solved = 127520, spread = 174548, legal = 201488; time = 1.81s
+Info:     at iteration #25, type ALL: wirelen solved = 128258, spread = 172621, legal = 201371; time = 1.84s
+Info: HeAP Placer Time: 50.19s
+Info:   of which solving equations: 8.13s
+Info:   of which spreading cells: 1.99s
+Info:   of which strict legalisation: 36.28s
+
+Info: Running simulated annealing placer for refinement.
+Info:   at iteration #1: temp = 0.000000, timing cost = 2476, wirelen = 197131
+Info:   at iteration #5: temp = 0.000000, timing cost = 2303, wirelen = 182081
+Info:   at iteration #10: temp = 0.000000, timing cost = 2374, wirelen = 178031
+Info:   at iteration #15: temp = 0.000000, timing cost = 2601, wirelen = 177017
+Info:   at iteration #20: temp = 0.000000, timing cost = 2179, wirelen = 176646
+Info:   at iteration #23: temp = 0.000000, timing cost = 2147, wirelen = 176574 
+Info: SA placement time 51.63s
+
+Info: Max frequency for clock 'clk': 36.38 MHz (PASS at 17.00 MHz)
+
+Info: Slack histogram:
+Info:  legend: * represents 13 endpoint(s)
+Info:          + represents [1,13) endpoint(s)
+Info: [ 31333,  32670) |********+
+Info: [ 32670,  34007) |**********+
+Info: [ 34007,  35344) |*************+
+Info: [ 35344,  36681) |******+
+Info: [ 36681,  38018) |*****************+
+Info: [ 38018,  39355) |************+
+Info: [ 39355,  40692) |************+
+Info: [ 40692,  42029) |**********************+
+Info: [ 42029,  43366) |*****************+
+Info: [ 43366,  44703) |*********************+
+Info: [ 44703,  46040) |*****************+
+Info: [ 46040,  47377) |************************+
+Info: [ 47377,  48714) |*****************************+
+Info: [ 48714,  50051) |****************+
+Info: [ 50051,  51388) |*********************+
+Info: [ 51388,  52725) |******************+
+Info: [ 52725,  54062) |***********+
+Info: [ 54062,  55399) |*****************+
+Info: [ 55399,  56736) |*******+
+Info: [ 56736,  58073) |************************************************************ 
+Info: Checksum: 0xe4b9d748
+Info: Routing globals...
+
+Info: Routing..
+Info: Setting up routing queue.
+Info: Routing 83946 arcs.
+Info:            |   (re-)routed arcs  |   delta    | remaining|       time spent     |
+Info:    IterCnt |  w/ripup   wo/ripup |  w/r  wo/r |      arcs| batch(sec) total(sec)|
+Info:       1000 |      233        766 |  233   766 |     83407|       1.00       1.00|
+Info:       2000 |      378       1621 |  145   855 |     82919|       0.19       1.19|
+Info:       3000 |      511       2488 |  133   867 |     82221|       0.23       1.42|
+Info:       4000 |      687       3312 |  176   824 |     81847|       0.23       1.65|
+Info:       5000 |      877       4122 |  190   810 |     81362|       0.21       1.86|
+Info:       6000 |     1000       4999 |  123   877 |     80729|       0.19       2.04|
+Info:       7000 |     1151       5848 |  151   849 |     80237|       0.18       2.22|
+Info:       8000 |     1274       6725 |  123   877 |     79724|       0.20       2.42|
+Info:       9000 |     1453       7546 |  179   821 |     79129|       0.18       2.60|
+Info:      10000 |     1593       8406 |  140   860 |     78466|       0.19       2.78|
+Info:      11000 |     1777       9222 |  184   816 |     78034|       0.20       2.99|
+Info:      12000 |     1959      10040 |  182   818 |     77402|       0.19       3.17|
+Info:      13000 |     2163      10836 |  204   796 |     76959|       0.23       3.40|
+Info:      14000 |     2393      11606 |  230   770 |     76558|       0.24       3.65|
+Info:      15000 |     2595      12404 |  202   798 |     75984|       0.24       3.89|
+Info:      16000 |     2830      13169 |  235   765 |     75520|       0.26       4.14|
+Info:      17000 |     3046      13953 |  216   784 |     74908|       0.28       4.42|
+Info:      18000 |     3251      14748 |  205   795 |     74364|       0.23       4.65|
+Info:      19000 |     3443      15556 |  192   808 |     73805|       0.24       4.89|
+Info:      20000 |     3688      16311 |  245   755 |     73528|       0.21       5.10|
+Info:      21000 |     3968      17031 |  280   720 |     72996|       0.21       5.31|
+Info:      22000 |     4230      17769 |  262   738 |     72466|       0.24       5.55|
+Info:      23000 |     4443      18556 |  213   787 |     71976|       0.24       5.79|
+Info:      24000 |     4717      19282 |  274   726 |     71356|       0.20       5.98|
+Info:      25000 |     5039      19960 |  322   678 |     70786|       0.23       6.22|
+Info:      26000 |     5366      20633 |  327   673 |     70271|       0.20       6.42|
+Info:      27000 |     5680      21319 |  314   686 |     69831|       0.20       6.61|
+Info:      28000 |     5959      22040 |  279   721 |     69273|       0.22       6.83|
+Info:      29000 |     6293      22706 |  334   666 |     68763|       0.21       7.04|
+Info:      30000 |     6678      23321 |  385   615 |     68330|       0.22       7.26|
+Info:      31000 |     7033      23966 |  355   645 |     67859|       0.18       7.44|
+Info:      32000 |     7354      24645 |  321   679 |     67555|       0.27       7.71|
+Info:      33000 |     7676      25323 |  322   678 |     67025|       0.20       7.91|
+Info:      34000 |     8070      25929 |  394   606 |     66584|       0.22       8.13|
+Info:      35000 |     8355      26644 |  285   715 |     66237|       0.26       8.38|
+Info:      36000 |     8643      27356 |  288   712 |     65625|       0.18       8.56|
+Info:      37000 |     9007      27992 |  364   636 |     65397|       0.32       8.88|
+Info:      38000 |     9368      28631 |  361   639 |     64893|       0.28       9.15|
+Info:      39000 |     9647      29336 |  279   705 |     64350|       0.24       9.40|
+Info:      40000 |    10082      29894 |  435   558 |     63934|       0.17       9.57|
+Info:      41000 |    10536      30394 |  454   500 |     63472|       0.17       9.74|
+Info:      42000 |    11007      30909 |  471   515 |     62979|       0.14       9.88|
+Info:      43000 |    11485      31392 |  478   483 |     62520|       0.17      10.04|
+Info:      44000 |    11931      31943 |  446   551 |     62083|       0.18      10.22|
+Info:      45000 |    12339      32517 |  408   574 |     61583|       0.15      10.38|
+Info:      46000 |    12642      33138 |  303   621 |     60936|       0.15      10.53|
+Info:      47000 |    12969      33731 |  327   593 |     60330|       0.19      10.72|
+Info:      48000 |    13306      34370 |  337   639 |     59809|       0.18      10.90|
+Info:      49000 |    13680      34959 |  374   589 |     59263|       0.17      11.07|
+Info:      50000 |    14012      35575 |  332   616 |     58686|       0.21      11.28|
+Info:      51000 |    14316      36194 |  304   619 |     58070|       0.17      11.46|
+Info:      52000 |    14616      36790 |  300   596 |     57515|       0.22      11.68|
+Info:      53000 |    14824      37425 |  208   635 |     56943|       0.19      11.87|
+Info:      54000 |    15075      38063 |  251   638 |     56346|       0.17      12.04|
+Info:      55000 |    15338      38670 |  263   607 |     55701|       0.17      12.21|
+Info:      56000 |    15602      39266 |  264   596 |     55106|       0.19      12.39|
+Info:      57000 |    15874      39841 |  272   575 |     54466|       0.16      12.55|
+Info:      58000 |    16137      40472 |  263   631 |     53778|       0.20      12.76|
+Info:      59000 |    16359      41163 |  222   691 |     53045|       0.17      12.92|
+Info:      60000 |    16622      41880 |  263   717 |     52934|       0.28      13.20|
+Info:      61000 |    16845      42613 |  223   733 |     52224|       0.20      13.40|
+Info:      62000 |    17086      43278 |  241   665 |     51652|       0.26      13.66|
+Info:      63000 |    17318      43953 |  232   675 |     51066|       0.25      13.91|
+Info:      64000 |    17486      44774 |  168   821 |     50305|       0.18      14.09|
+Info:      65000 |    17617      45643 |  131   869 |     49450|       0.16      14.25|
+Info:      66000 |    17780      46480 |  163   837 |     48644|       0.18      14.43|
+Info:      67000 |    17938      47315 |  158   835 |     47873|       0.14      14.57|
+Info:      68000 |    17996      48193 |   58   878 |     47038|       0.21      14.78|
+Info:      69000 |    18001      49130 |    5   937 |     46044|       0.18      14.96|
+Info:      70000 |    18010      50042 |    9   912 |     45058|       0.15      15.11|
+Info:      71000 |    18079      50919 |   69   877 |     44257|       0.23      15.33|
+Info:      72000 |    18089      51826 |   10   907 |     43273|       0.13      15.47|
+Info:      73000 |    18093      52731 |    4   905 |     42278|       0.17      15.63|
+Info:      74000 |    18098      53657 |    5   926 |     41286|       0.16      15.80|
+Info:      75000 |    18106      54577 |    8   920 |     40295|       0.16      15.95|
+Info:      76000 |    18124      55492 |   18   915 |     39338|       0.18      16.13|
+Info:      77000 |    18134      56399 |   10   907 |     38348|       0.15      16.28|
+Info:      78000 |    18177      57281 |   43   882 |     37432|       0.17      16.44|
+Info:      79000 |    18188      58212 |   11   931 |     36445|       0.17      16.61|
+Info:      80000 |    18258      59081 |   70   869 |     35621|       0.22      16.83|
+Info:      81000 |    18270      60001 |   12   920 |     34633|       0.15      16.98|
+Info:      82000 |    18279      60910 |    9   909 |     33642|       0.16      17.14|
+Info:      83000 |    18295      61822 |   16   912 |     32662|       0.17      17.30|
+Info:      84000 |    18313      62725 |   18   903 |     31683|       0.14      17.44|
+Info:      85000 |    18322      63660 |    9   935 |     30699|       0.20      17.64|
+Info:      86000 |    18348      64566 |   26   906 |     29734|       0.19      17.83|
+Info:      87000 |    18380      65474 |   32   908 |     28771|       0.18      18.01|
+Info:      88000 |    18403      66368 |   23   894 |     27815|       0.22      18.24|
+Info:      89000 |    18428      67262 |   25   894 |     26851|       0.16      18.40|
+Info:      90000 |    18459      68167 |   31   905 |     25884|       0.18      18.58|
+Info:      91000 |    18496      69058 |   37   891 |     24922|       0.17      18.74|
+Info:      92000 |    18519      69974 |   23   916 |     23956|       0.20      18.94|
+Info:      93000 |    18542      70884 |   23   910 |     22985|       0.19      19.13|
+Info:      94000 |    18581      71783 |   39   899 |     22037|       0.22      19.35|
+Info:      95000 |    18659      72624 |   78   841 |     21145|       0.21      19.56|
+Info:      96000 |    18712      73497 |   53   873 |     20216|       0.20      19.76|
+Info:      97000 |    18746      74401 |   34   904 |     19271|       0.21      19.97|
+Info:      98000 |    18795      75296 |   49   895 |     18326|       0.22      20.19|
+Info:      99000 |    18863      76154 |   68   858 |     17414|       0.20      20.39|
+Info:     100000 |    18909      77045 |   46   891 |     16509|       0.22      20.61|
+Info:     101000 |    18972      77922 |   63   877 |     15587|       0.22      20.83|
+Info:     102000 |    19038      78791 |   66   869 |     14665|       0.22      21.05|
+Info:     103000 |    19102      79654 |   64   863 |     13769|       0.24      21.29|
+Info:     104000 |    19175      80526 |   73   872 |     12892|       0.25      21.54|
+Info:     105000 |    19243      81389 |   68   863 |     11986|       0.20      21.74|
+Info:     106000 |    19313      82245 |   70   856 |     11071|       0.27      22.02|
+Info:     107000 |    19398      83099 |   85   854 |     10187|       0.27      22.28|
+Info:     108000 |    19491      83939 |   93   840 |      9315|       0.27      22.55|
+Info:     109000 |    19588      84778 |   97   839 |      8483|       0.27      22.83|
+Info:     110000 |    19694      85618 |  106   840 |      7641|       0.23      23.05|
+Info:     111000 |    19805      86454 |  111   836 |      6796|       0.36      23.42|
+Info:     112000 |    19917      87293 |  112   839 |      6008|       0.28      23.70|
+Info:     113000 |    20019      88135 |  102   842 |      5156|       0.31      24.01|
+Info:     114000 |    20174      88924 |  155   789 |      4512|       0.35      24.36|
+Info:     115000 |    20303      89748 |  129   824 |      3742|       0.37      24.72|
+Info:     116000 |    20440      90548 |  137   800 |      2952|       0.27      24.99|
+Info:     117000 |    20621      91324 |  181   776 |      2275|       0.42      25.41|
+Info:     118000 |    20770      92106 |  149   782 |      1488|       0.28      25.68|
+Info:     119000 |    20945      92885 |  175   779 |       766|       0.40      26.08|
+Info:     120000 |    21118      93668 |  173   783 |        48|       0.38      26.46|
+Info:     120058 |    21127      93714 |    9    46 |         0|       0.03      26.48|
+Info: Routing complete.
+Info: Router1 time 26.48s
+Info: Checksum: 0xbfacb920
+
+Info: Critical path report for clock 'clk' (posedge -> posedge):
+Info:       type curr  total name
+Info:   clk-to-q  0.52  0.52 Source $auto$ff.cc:337:slice$192885.Q
+Info:    routing  1.73  2.26 Net g_v180c_fp.u_fp_stepseq.a_q[25] (76,27) -> (65,26)
+Info:                          Sink $auto$alumacc.cc:512:replace_alu$172273.slice[2].ccu2c_i$CCU2_COMB0.A
+Info:                          Defined in:
+Info:                               FP_StepSeq.v:322.17-322.21
+Info:      logic  0.45  2.70 Source $auto$alumacc.cc:512:replace_alu$172273.slice[2].ccu2c_i$CCU2_COMB0.FCO
+Info:    routing  0.00  2.70 Net $auto$alumacc.cc:512:replace_alu$172273.slice[2].ccu2c_i$CCU2_FCI_INT (65,26) -> (65,26)
+Info:                          Sink $auto$alumacc.cc:512:replace_alu$172273.slice[2].ccu2c_i$CCU2_COMB1.FCI
+Info:      logic  0.00  2.70 Source $auto$alumacc.cc:512:replace_alu$172273.slice[2].ccu2c_i$CCU2_COMB1.FCO
+Info:    routing  0.00  2.70 Net $techmap880007$auto$alumacc.cc:512:replace_alu$172273.slice[2].ccu2c_i.COUT (65,26) -> (65,26)
+Info:                          Sink $auto$alumacc.cc:512:replace_alu$172273.slice[4].ccu2c_i$CCU2_COMB0.FCI
+Info:                          Defined in:
+Info:                               FP_StepSeq.v:341.30-341.63
+Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
+Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
+Info:      logic  0.44  3.15 Source $auto$alumacc.cc:512:replace_alu$172273.slice[4].ccu2c_i$CCU2_COMB0.F
+Info:    routing  1.34  4.48 Net $techmap887141$abc$876981$lut$aiger876980$21126.A[0] (65,26) -> (62,26)
+Info:                          Sink $auto$alumacc.cc:512:replace_alu$172051.slice[4].ccu2c_i$CCU2_COMB0.B
+Info:                          Defined in:
+Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
+Info:      logic  0.45  4.93 Source $auto$alumacc.cc:512:replace_alu$172051.slice[4].ccu2c_i$CCU2_COMB0.FCO
+Info:    routing  0.00  4.93 Net $auto$alumacc.cc:512:replace_alu$172051.slice[4].ccu2c_i$CCU2_FCI_INT (62,26) -> (62,26)
+Info:                          Sink $auto$alumacc.cc:512:replace_alu$172051.slice[4].ccu2c_i$CCU2_COMB1.FCI
+Info:      logic  0.40  5.33 Source $auto$alumacc.cc:512:replace_alu$172051.slice[4].ccu2c_i$CCU2_COMB1.F
+Info:    routing  1.16  6.49 Net $abc$876981$aiger876980$8997 (62,26) -> (61,25)
+Info:                          Sink $auto$alumacc.cc:512:replace_alu$172048.slice[4].ccu2c_i$CCU2_COMB1.B
+Info:      logic  0.45  6.94 Source $auto$alumacc.cc:512:replace_alu$172048.slice[4].ccu2c_i$CCU2_COMB1.FCO
+Info:    routing  0.00  6.94 Net $techmap880909$auto$alumacc.cc:512:replace_alu$172048.slice[4].ccu2c_i.COUT (61,25) -> (62,25)
+Info:                          Sink $auto$alumacc.cc:512:replace_alu$172048.slice[6].ccu2c_i$CCU2_COMB0.FCI
+Info:                          Defined in:
+Info:                               FP_StepSeq.v:878.34-878.76
+Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
+Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
+Info:      logic  0.07  7.01 Source $auto$alumacc.cc:512:replace_alu$172048.slice[6].ccu2c_i$CCU2_COMB0.FCO
+Info:    routing  0.00  7.01 Net $auto$alumacc.cc:512:replace_alu$172048.slice[6].ccu2c_i$CCU2_FCI_INT (62,25) -> (62,25)
+Info:                          Sink $auto$alumacc.cc:512:replace_alu$172048.slice[6].ccu2c_i$CCU2_COMB1.FCI
+Info:      logic  0.40  7.42 Source $auto$alumacc.cc:512:replace_alu$172048.slice[6].ccu2c_i$CCU2_COMB1.F
+Info:    routing  1.14  8.56 Net $techmap892403$abc$876981$lut$aiger876980$21254.A[3] (62,25) -> (61,27)
+Info:                          Sink $abc$876981$lut$aiger876980$21254.D
+Info:                          Defined in:
+Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
+Info:      logic  0.24  8.79 Source $abc$876981$lut$aiger876980$21254.F
+Info:    routing  0.42  9.21 Net $techmap892404$abc$876981$lut$aiger876980$21257.A[3] (61,27) -> (61,27)
+Info:                          Sink $abc$876981$lut$aiger876980$21257.D
+Info:                          Defined in:
+Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
+Info:      logic  0.24  9.45 Source $abc$876981$lut$aiger876980$21257.F
+Info:    routing  1.34  10.79 Net $techmap892405$abc$876981$lut\g_v180c_fp.u_fp_stepseq.u_add.exp_ref[7].A[1] (61,27) -> (59,25)
+Info:                          Sink $auto$alumacc.cc:512:replace_alu$172039.slice[6].ccu2c_i$CCU2_COMB1.A
+Info:                          Defined in:
+Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
+Info:      logic  0.45  11.24 Source $auto$alumacc.cc:512:replace_alu$172039.slice[6].ccu2c_i$CCU2_COMB1.FCO
+Info:    routing  0.00  11.24 Net $techmap880926$auto$alumacc.cc:512:replace_alu$172039.slice[6].ccu2c_i.COUT (59,25) -> (59,25)
+Info:                          Sink $auto$alumacc.cc:512:replace_alu$172039.slice[8].ccu2c_i$CCU2_COMB0.FCI
+Info:                          Defined in:
+Info:                               FP_AddWide.v:149.35-149.74
+Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
+Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
+Info:      logic  0.44  11.68 Source $auto$alumacc.cc:512:replace_alu$172039.slice[8].ccu2c_i$CCU2_COMB0.F
+Info:    routing  1.07  12.75 Net $abc$876981$aiger876980$9059 (59,25) -> (59,26)
+Info:                          Sink $auto$alumacc.cc:512:replace_alu$171908.slice[6].ccu2c_i$CCU2_COMB1.A
+Info:      logic  0.45  13.20 Source $auto$alumacc.cc:512:replace_alu$171908.slice[6].ccu2c_i$CCU2_COMB1.FCO
+Info:    routing  0.00  13.20 Net $techmap881232$auto$alumacc.cc:512:replace_alu$171908.slice[6].ccu2c_i.COUT (59,26) -> (59,26)
+Info:                          Sink $auto$alumacc.cc:512:replace_alu$171908.slice[8].ccu2c_i$CCU2_COMB0.FCI
+Info:                          Defined in:
+Info:                               FP_AddWide.v:166.40-166.60
+Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
+Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
+Info:      logic  0.07  13.27 Source $auto$alumacc.cc:512:replace_alu$171908.slice[8].ccu2c_i$CCU2_COMB0.FCO
+Info:    routing  0.00  13.27 Net $auto$alumacc.cc:512:replace_alu$171908.slice[8].ccu2c_i$CCU2_FCI_INT (59,26) -> (59,26)
+Info:                          Sink $auto$alumacc.cc:512:replace_alu$171908.slice[8].ccu2c_i$CCU2_COMB1.FCI
+Info:      logic  0.00  13.27 Source $auto$alumacc.cc:512:replace_alu$171908.slice[8].ccu2c_i$CCU2_COMB1.FCO
+Info:    routing  0.00  13.27 Net $techmap881233$auto$alumacc.cc:512:replace_alu$171908.slice[8].ccu2c_i.COUT (59,26) -> (59,26)
+Info:                          Sink $auto$alumacc.cc:512:replace_alu$171908.slice[10].ccu2c_i$CCU2_COMB0.FCI
+Info:                          Defined in:
+Info:                               FP_AddWide.v:166.40-166.60
+Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
+Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
+Info:      logic  0.44  13.71 Source $auto$alumacc.cc:512:replace_alu$171908.slice[10].ccu2c_i$CCU2_COMB0.F
+Info:    routing  1.19  14.90 Net $techmap887307$abc$876981$lut$aiger876980$21356.A[3] (59,26) -> (59,23)
+Info:                          Sink $abc$876981$lut$aiger876980$21356.D
+Info:                          Defined in:
+Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
+Info:      logic  0.24  15.14 Source $abc$876981$lut$aiger876980$21356.F
+Info:    routing  1.03  16.17 Net $techmap887493$auto$abc9_ops.cc:1613:reintegrate$878051.A[1] (59,23) -> (59,18)
+Info:                          Sink $abc$876981$lut$aiger876980$21357.D
+Info:                          Defined in:
+Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
+Info:      logic  0.24  16.40 Source $abc$876981$lut$aiger876980$21357.F
+Info:    routing  0.94  17.34 Net $techmap887309$abc$876981$lut$aiger876980$22599.A[1] (59,18) -> (57,15)
+Info:                          Sink $abc$876981$lut$aiger876980$21382.D
+Info:                          Defined in:
+Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
+Info:      logic  0.24  17.58 Source $abc$876981$lut$aiger876980$21382.F
+Info:    routing  0.62  18.20 Net $techmap887613$abc$876981$lut$aiger876980$21671.A[1] (57,15) -> (57,15)
+Info:                          Sink $abc$876981$lut$aiger876980$21671.C
+Info:                          Defined in:
+Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
+Info:      logic  0.24  18.44 Source $abc$876981$lut$aiger876980$21671.F
+Info:    routing  0.96  19.39 Net $techmap887617$abc$876981$lut$aiger876980$21674.A[1] (57,15) -> (60,18)
+Info:                          Sink $abc$876981$lut$aiger876980$21674.C
+Info:                          Defined in:
+Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
+Info:      logic  0.24  19.63 Source $abc$876981$lut$aiger876980$21674.F
+Info:    routing  0.66  20.29 Net $techmap887618$abc$876981$lut$aiger876980$22753.A[1] (60,18) -> (58,18)
+Info:                          Sink $abc$876981$lut$aiger876980$21686.D
+Info:                          Defined in:
+Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
+Info:      logic  0.24  20.53 Source $abc$876981$lut$aiger876980$21686.F
+Info:    routing  0.63  21.16 Net $techmap887704$abc$876981$lut$aiger876980$22762.A[1] (58,18) -> (58,18)
+Info:                          Sink $abc$876981$lut$aiger876980$21744.C
+Info:                          Defined in:
+Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
+Info:      logic  0.24  21.40 Source $abc$876981$lut$aiger876980$21744.F
+Info:    routing  0.72  22.12 Net $abc$876981$lut$aiger876980$21823.A[4] (58,18) -> (58,16)
+Info:                          Sink $abc$876981$lut$aiger876980$21823.genblk1.genblk1.genblk1.genblk1.genblk1.lut0.M
+Info:                          Defined in:
+Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
+Info:      logic  0.26  22.37 Source $abc$876981$lut$aiger876980$21823.genblk1.genblk1.genblk1.genblk1.genblk1.lut0.OFX
+Info:    routing  0.68  23.05 Net $techmap887767$abc$876981$lut$aiger876980$21870.A[3] (58,16) -> (59,17)
+Info:                          Sink $abc$876981$lut$aiger876980$21870.D
+Info:                          Defined in:
+Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
+Info:      logic  0.24  23.29 Source $abc$876981$lut$aiger876980$21870.F
+Info:    routing  0.04  23.33 Net $techmap887768$abc$876981$lut$aiger876980$22023.A[3] (59,17) -> (59,17)
+Info:                          Sink $abc$876981$lut$aiger876980$22023.D
+Info:                          Defined in:
+Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
+Info:      logic  0.24  23.56 Source $abc$876981$lut$aiger876980$22023.F
+Info:    routing  0.50  24.06 Net $techmap887769$abc$876981$lut$aiger876980$22045.A[3] (59,17) -> (59,17)
+Info:                          Sink $abc$876981$lut$aiger876980$22045.D
+Info:                          Defined in:
+Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
+Info:      logic  0.24  24.29 Source $abc$876981$lut$aiger876980$22045.F
+Info:    routing  1.12  25.41 Net $techmap887770$abc$876981$lut$aiger876980$22056.A[3] (59,17) -> (58,19)
+Info:                          Sink $abc$876981$lut$aiger876980$22056.D
+Info:                          Defined in:
+Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
+Info:      logic  0.24  25.65 Source $abc$876981$lut$aiger876980$22056.F
+Info:    routing  0.04  25.69 Net $techmap887771$abc$876981$lut$aiger876980$22862.A[3] (58,19) -> (58,19)
+Info:                          Sink $abc$876981$lut$aiger876980$22862.D
+Info:                          Defined in:
+Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
+Info:      logic  0.24  25.92 Source $abc$876981$lut$aiger876980$22862.F
+Info:    routing  0.42  26.34 Net $techmap887772$auto$abc9_ops.cc:1613:reintegrate$878050.A[2] (58,19) -> (58,19)
+Info:                          Sink $auto$abc9_ops.cc:1613:reintegrate$878050.D
+Info:                          Defined in:
+Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
+Info:      logic  0.24  26.58 Source $auto$abc9_ops.cc:1613:reintegrate$878050.F
+Info:    routing  0.13  26.71 Net g_v180c_fp.u_fp_stepseq.u_add.sticky_w (58,19) -> (58,19)
+Info:                          Sink $auto$ff.cc:337:slice$219581.DI
+Info:                          Defined in:
+Info:                               FP_AddWide.v:189.17-189.25
+Info:      setup  0.00  26.71 Source $auto$ff.cc:337:slice$219581.DI
+Info: 8.83 ns logic, 17.87 ns routing
+
+Info: Max frequency for clock 'clk': 37.44 MHz (PASS at 17.00 MHz)
+
+Info: Slack histogram:
+Info:  legend: * represents 14 endpoint(s)
+Info:          + represents [1,14) endpoint(s)
+Info: [ 32117,  33406) |+
+Info: [ 33406,  34695) |+
+Info: [ 34695,  35984) |*************+
+Info: [ 35984,  37273) |*****************+
+Info: [ 37273,  38562) |**********+
+Info: [ 38562,  39851) |*************+
+Info: [ 39851,  41140) |*****+
+Info: [ 41140,  42429) |****+
+Info: [ 42429,  43718) |*****+
+Info: [ 43718,  45007) |*****************+
+Info: [ 45007,  46296) |*************************+
+Info: [ 46296,  47585) |************************+
+Info: [ 47585,  48874) |***************************+
+Info: [ 48874,  50163) |*************************+
+Info: [ 50163,  51452) |**********************+
+Info: [ 51452,  52741) |*****************************+
+Info: [ 52741,  54030) |*******************+
+Info: [ 54030,  55319) |***********+
+Info: [ 55319,  56608) |****************+
+Info: [ 56608,  57897) |************************************************************ 
+
+Info: Program finished normally.

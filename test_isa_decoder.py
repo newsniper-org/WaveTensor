@@ -6236,7 +6236,19 @@ async def test_vfma_busy_reject_and_mul_gate(dut):
           intruders — 16 fragments, contiguous, all opcode 0x70;
       (4) fragment 0 emits only at loop completion (after both
           intruder cycles); pe_ready stays low from launch through
-          the final drain beat."""
+          the final drain beat.
+
+    v1.9 §26.7 item 6 (repurposed as a directed cross-class-skew
+    regression, test-migration-completeness verification's finding): (5)
+    directly probes the hierarchical mul_valid_p1 signal every cycle of
+    the whole flight and asserts it is NEVER 1 -- confirming VFMA's own
+    case-dispatch +1 cycle shift (case_result_s2) does not leak into
+    MUL's structurally-unchanged (0-cycle) p1/p2 pipeline timing. This is
+    a stronger, more direct check than (2)'s "no 0x12 result ever
+    surfaces" alone -- it proves the 0x12 intruder was blocked exactly at
+    its own launch gate (mul_valid_p1 itself never asserts) rather than
+    merely failing to surface an output for some other, unrelated
+    reason."""
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
     await reset(dut)
@@ -6251,6 +6263,7 @@ async def test_vfma_busy_reject_and_mul_gate(dut):
     outs = []
     lwr_seen = 0
     err_seen = 0
+    mul_valid_p1_seen = 0
     intruded_74 = intruded_12 = False
     for i in range(160):
         await RisingEdge(dut.clk)
@@ -6273,6 +6286,7 @@ async def test_vfma_busy_reject_and_mul_gate(dut):
         await Timer(1, units="ns")
         err_seen |= int(dut.error_flag.value)
         lwr_seen |= int(dut.lower_required.value)
+        mul_valid_p1_seen |= int(dut.u_core.mul_valid_p1.value)
         if int(dut.output_valid.value):
             outs.append({'cycle': i, 'payload': int(dut.output_payload.value),
                          'opcode': int(dut.opcode_out.value),
@@ -6296,6 +6310,14 @@ async def test_vfma_busy_reject_and_mul_gate(dut):
     assert cycles == list(range(cycles[0], cycles[0] + 16)), \
         f"drain not contiguous: {cycles}"
     assert cycles[0] > 16, "fragment 0 emitted before loop completion"
+    # (5) v1.9 item 6: mul_valid_p1 (structurally 0-cycle-changed, bypasses
+    # case_result_s2 -- finding 4) never once asserted across the whole
+    # flight, proving VFMA's own case-dispatch timing shift did not skew
+    # or leak into MUL's independent pipeline.
+    assert mul_valid_p1_seen == 0, \
+        "mul_valid_p1 asserted during the VFMA flight -- the 0x12 " \
+        "intruder was NOT cleanly blocked at its own launch gate, or " \
+        "case_result_s2's timing shift leaked into MUL's pipeline"
 
 
 @cocotb.test()
@@ -6343,3 +6365,364 @@ async def test_vfma_cycle_bounds(dut):
         dut._log.info("%s: completed within ceiling (last beat at "
                       "cycle %d <= %d)", label, last_cycle, ceiling)
         await _fp_drain(dut)
+
+
+# =============================================================================
+# v1.9 §26.7 — new directed tests for the case_result_s2 dispatch split
+# (test_plan items 9, 10, 14; item 6 repurposed in place above). Empirical
+# grounding for every cycle-offset assertion below was established via a
+# side-by-side probe against git HEAD (pre-v1.9 RTL) using the identical
+# dec_valid-to-commit measurement methodology BEFORE this test was written
+# (not merely asserted post-hoc against whatever v1.9 happens to produce):
+#   0x10 ADD (simple-ALU, ungated):        pre=1  post=2  (+1, uniform)
+#   0x74 FSCALAR launch (FSM-launch):      pre=1  post=2  (+1, uniform)
+#   0x12 MUL (bypasses case_result_s2):    pre=3  post=3  (0-cycle, finding 4)
+#   0x13 DIV (bit-serial FSM, bypasses):   pre=68 post=68 (0-cycle, finding 4)
+# =============================================================================
+
+
+async def _measure_dispatch_offset(dut, instr, tag=None, payload_a=0,
+                                    payload_b=0, payload_b_valid=0,
+                                    payload_wide=0, payload_wide_valid=0,
+                                    window=90, watch=None):
+    """Fire one token and return the cycle offset from dec_valid (dispatch,
+    cycle D) to the first post-dispatch commit event. `watch`, if given, is
+    a zero-arg callable sampling an alternate "commit" signal (e.g. the
+    fp_busy rising edge) instead of the default
+    output_valid/error_flag/lower_required OR -- used for FSM-launch arms,
+    whose eventual RESULT lands many cycles later via fp_valid_p2 and would
+    not measure the case_result_s2 hop at all."""
+    dut.instruction.value = instr
+    dut.input_tag.value = _STD_TAG() if tag is None else tag
+    dut.input_payload.value = payload_a
+    dut.input_payload_b.value = payload_b
+    dut.input_payload_b_valid.value = payload_b_valid
+    dut.input_payload_wide.value = payload_wide
+    dut.input_payload_wide_valid.value = payload_wide_valid
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    dispatch = None
+    for i in range(window):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if dispatch is None and int(dut.dec_valid.value) == 1:
+            dispatch = i
+            continue
+        if dispatch is None:
+            continue
+        hit = (watch() if watch is not None else (
+            int(dut.output_valid.value) or int(dut.error_flag.value)
+            or int(dut.lower_required.value)))
+        if hit:
+            return i - dispatch
+    raise AssertionError(
+        f"dispatch (dec_valid seen={dispatch is not None}) never "
+        f"committed within a {window}-cycle window")
+
+
+@cocotb.test()
+async def test_uniform_case_dispatch_plus1_sweep(dut):
+    """NEW v1.9 §26.7 item 9 (structural, "the single most important new
+    test" per spec §26.7.9): sweep a representative opcode from every
+    case(dec_opcode) dispatch class named in §26.3 and assert the
+    dispatch(dec_valid, cycle D)-to-commit distance is EXACTLY 2 cycles
+    post-v1.9 (uniformly +1 vs the pre-v1.9 baseline of 1, verified above
+    the class) -- while MUL/DIV, which bypass case_result_s2 entirely
+    (finding 4), keep their OWN unchanged distances (3 and 68
+    respectively). Priority #2 ("nothing is silently misrouted") is what
+    this test stands guard over."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # ---- case-dispatched classes: uniformly +1 (dispatch-to-commit == 2) --
+
+    # simple-ALU (ungated, ~40-arm "architecturally-cheap" class): 0x10 ADD
+    off = await _measure_dispatch_offset(
+        dut, encode_instr(0x10, _STD_PORT(), eh_imm64(5)))
+    assert off == 2, f"0x10 ADD (simple-ALU): offset={off}, want 2"
+    await reset(dut)
+
+    # compute-inline, single-beat: 0x6B GAMMA_MUL_W
+    x_lanes = [((i * 7) + 3) & 0xF for i in range(16)]
+    g_lanes = [((-i) & 0xF) for i in range(16)]
+    a_frag = sum(v << (4 * i) for i, v in enumerate(x_lanes))
+    g_imm = sum(v << (4 * i) for i, v in enumerate(g_lanes))
+    instr = encode_instr(0x6B, _STD_PORT(), eh_precision(0x10, 0),
+                         eh_imm64(g_imm), flags=F_PRECISION_OVR)
+    off = await _measure_dispatch_offset(dut, instr, payload_a=a_frag)
+    assert off == 2, f"0x6B GAMMA_MUL_W (compute-inline): offset={off}, want 2"
+    await reset(dut)
+
+    # compute-inline, 2-fragment emit (exercises cr_is_frag_emit specifically):
+    # SIG_BMM_3 frag 0
+    a_128 = 0
+    for i in range(8):
+        a_128 |= 0x1001 << (i * 16)
+    b_128 = 0
+    for i in range(8):
+        b_128 |= (0x1234 + i) << (i * 16)
+    wide = _pack_int4_wide(a_128, b_128)
+    instr = encode_instr(0x32, _STD_PORT(),
+                         eh_subscript(_BMM3_A_LO, _BMM3_B_LO, _BMM3_O_LO),
+                         eh_subscript(_BMM3_A_HI, _BMM3_B_HI, _BMM3_O_HI),
+                         eh_opref(), flags=F_HAS_OPB)
+    off = await _measure_dispatch_offset(dut, instr, tag=_STD_TAG(dim=0x55),
+                                         payload_b_valid=1, payload_wide=wide,
+                                         payload_wide_valid=1)
+    assert off == 2, \
+        f"0x32 SIG_BMM_3 frag0 (compute-inline, 2-frag emit): offset={off}, want 2"
+    await reset(dut)
+
+    # legacy narrow einsum (no wide/subscript-hi involved): SIG_MATMUL_2X2
+    instr = encode_instr(0x32, _STD_PORT(),
+                         eh_subscript(axes(1, 2, 0, 0), axes(2, 3, 0, 0),
+                                      axes(1, 3, 0, 0)),
+                         eh_opref(), flags=F_HAS_OPB)
+    off = await _measure_dispatch_offset(dut, instr, tag=_STD_TAG(dim=0x11),
+                                         payload_a=pack16(1, 2, 3, 4),
+                                         payload_b=pack16(5, 6, 7, 8),
+                                         payload_b_valid=1)
+    assert off == 2, \
+        f"SIG_MATMUL_2X2 (legacy narrow einsum): offset={off}, want 2"
+    await reset(dut)
+
+    # 0x6A FRAG_INVAL: case-dispatched, NOT output_regs_free-gated (§26.7.7)
+    instr = encode_instr(0x6A, _STD_PORT())
+    off = await _measure_dispatch_offset(dut, instr, payload_wide_valid=1)
+    assert off == 2, f"0x6A FRAG_INVAL: offset={off}, want 2"
+    await reset(dut)
+
+    # FSM-launch (0x70/0x74-0x76/0x78): 0x74 FSCALAR. Commit = the
+    # fp_start/fp_busy rising edge (the register-load launch stage-2 now
+    # performs), NOT the eventual fp32 result -- that lands many cycles
+    # later via fp_valid_p2 and would not isolate the case_result_s2 hop.
+    instr = _fp_instr(0x74, subop=_FS['FS_MUL'])
+    off = await _measure_dispatch_offset(
+        dut, instr, payload_a=_f2b(2.0), payload_b=_f2b(3.0),
+        payload_b_valid=1, watch=lambda: int(dut.u_core.fp_busy.value))
+    assert off == 2, f"0x74 FSCALAR launch (FSM-launch): offset={off}, want 2"
+    await reset(dut)
+
+    # ---- MUL/DIV bypass case_result_s2 entirely: exactly 0-cycle change --
+
+    off = await _measure_dispatch_offset(
+        dut, encode_instr(0x12, _STD_PORT(), eh_imm64(2)))
+    assert off == 3, \
+        f"0x12 MUL: offset={off}, want 3 (structurally unchanged pre/post v1.9)"
+    await reset(dut)
+
+    off = await _measure_dispatch_offset(
+        dut, encode_instr(0x13, _STD_PORT(), eh_imm64(3)), payload_a=100,
+        window=90)
+    assert off == 68, \
+        f"0x13 DIV: offset={off}, want 68 (structurally unchanged pre/post v1.9)"
+
+
+@cocotb.test()
+async def test_output_regs_free_live_at_stage2(dut):
+    """NEW v1.9 §26.7 item 10: prove output_regs_free is re-evaluated LIVE
+    at stage 2 (cycle T+1, the commit cycle) and NOT carried stale from
+    stage 1 (cycle T, the case_result_s2 capture cycle) -- the correctness
+    lens's race per §26.4.
+
+    Construction: fire a long bit-serial 0x13 DIV first (its busy window
+    -- div_state != DIV_IDLE || div_valid_p2 -- is known to release EXACTLY
+    on the same cycle its own output_valid commits, calibrated by phase 1
+    below rather than hardcoded, so this test stays correct even if
+    ADDR_WIDTH/iteration-count parameters ever change). Then dispatch a
+    gated FSM-launch op (0x74 FSCALAR, cr_needs_regs_free=1) timed so its
+    OWN dec_valid (stage-1 capture cycle T) lands on DIV's LAST BUSY cycle
+    (output_regs_free(T)=0) while its stage-2 commit cycle (T+1) lands
+    exactly on DIV's release cycle (output_regs_free(T+1)=1). A stale-carry
+    regression would busy-reject this (T's value was busy); the correct
+    live-at-T+1 implementation must instead SUCCEED (fp_start fires, no
+    lower_required) -- because T+1's value is free."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+
+    # ---- phase 1: calibrate DIV's own dec_valid-to-output_valid latency L
+    await reset(dut)
+    div_instr = encode_instr(0x13, _STD_PORT(), eh_imm64(3))
+    dut.instruction.value = div_instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 100
+    dut.input_payload_b_valid.value = 0
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    L = None
+    for i in range(90):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.output_valid.value) == 1:
+            L = i
+            break
+    assert L is not None, "calibration DIV never completed"
+
+    # ---- phase 2: the actual collision, timed off the calibrated L -------
+    await reset(dut)
+    dut.instruction.value = div_instr
+    dut.input_tag.value = _STD_TAG()
+    dut.input_payload.value = 100
+    dut.input_payload_b_valid.value = 0
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+
+    fire_at_i = L - 7   # see the module-level derivation in the session notes:
+                        # pulse edge lands at iteration fire_at_i+1, dec_valid
+                        # 5 edges later (fire_at_i+6) == L-1 (DIV's last busy
+                        # cycle), cr_dispatch_valid/stage-2 the cycle after.
+    fired = False
+    pending_clear = False
+    saw_dec_valid_intruder = False
+    busy_at_dispatch = None    # pe_ready sampled at the intruder's OWN
+                                # dec_valid cycle (T, stage-1 capture time)
+    free_at_commit = None      # pe_ready sampled at the intruder's
+                                # cr_dispatch_valid cycle (T+1, stage-2
+                                # commit/arbitration time)
+    fp_started = False
+    saw_lwr = False
+    for i in range(90):
+        await RisingEdge(dut.clk)
+        if pending_clear:
+            dut.token_valid.value = 0
+            pending_clear = False
+        await Timer(1, units="ns")
+        if i == fire_at_i and not fired:
+            fired = True
+            fs_instr = _fp_instr(0x74, subop=_FS['FS_MUL'])
+            dut.instruction.value = fs_instr
+            dut.input_tag.value = make_tag(wave_number=0xABCDEF,
+                                           port_context_id=0,
+                                           dimension_sizes=0)
+            dut.input_payload.value = _f2b(2.0)
+            dut.input_payload_b.value = _f2b(3.0)
+            dut.input_payload_b_valid.value = 1
+            dut.token_valid.value = 1
+            pending_clear = True
+        # dec_valid pulses exactly once for the intruder (fired is already
+        # True by construction, so this can only be the intruder's own).
+        if fired and int(dut.dec_valid.value) and not saw_dec_valid_intruder:
+            saw_dec_valid_intruder = True
+            busy_at_dispatch = (int(dut.pe_ready.value) == 0)
+        if (int(dut.u_core.cr_dispatch_valid.value)
+                and int(dut.u_core.cr_needs_regs_free.value)):
+            free_at_commit = (int(dut.pe_ready.value) == 1)
+        if int(dut.u_core.fp_start.value):
+            fp_started = True
+        if int(dut.lower_required.value):
+            saw_lwr = True
+        if fp_started or (saw_lwr and free_at_commit is not None):
+            break
+
+    assert saw_dec_valid_intruder and free_at_commit is not None, \
+        "FSCALAR intruder's dec_valid/cr_dispatch_valid never captured " \
+        "-- the intended DIV-busy/free-at-commit collision was not " \
+        "constructed; recalibrate fire_at_i"
+    assert busy_at_dispatch, \
+        "construction check: DIV must still be busy at the intruder's " \
+        "own dispatch (stage-1, T) cycle for this to be a meaningful " \
+        "test of live-vs-stale re-evaluation"
+    assert free_at_commit, \
+        "construction check: DIV must have released (output_regs_free=1) " \
+        "by the intruder's stage-2 commit (T+1) cycle"
+    assert fp_started and not saw_lwr, \
+        "output_regs_free was evaluated STALE (from stage-1/dispatch " \
+        "time, when DIV was still busy) instead of LIVE at stage-2 " \
+        "commit time (when DIV had already released) -- the intruder " \
+        "was busy-rejected when it should have succeeded"
+
+
+@cocotb.test()
+async def test_frag_drain_priority_unaffected_by_case_result_s2(dut):
+    """NEW v1.9 §26.7 item 14 -- re-proves the ONE question the mandate
+    itself named as open and that none of the three original design
+    documents actually proved (§26.8 risk 7): does the frag-drain
+    ABSOLUTE-PRIORITY override still win EVERY cycle frag_idx != FRAG_IDLE,
+    even while a case_result_s2 capture for a completely DIFFERENT,
+    unrelated op is concurrently mid-pipeline (stage 1 done, stage-2
+    arbitration pending) that same cycle?
+
+    Construction: fire a 16-fragment int4 VFMA wave (0x70) -- its own
+    lane-loop-then-drain sequence gives a long (16-cycle) frag_idx-drain
+    window, unlike a 2-fragment compute-inline arm's 1-cycle window, which
+    is too narrow for the shared single-token EHDecode to interleave a
+    second, independent dispatch into. On the very first VFMA fragment
+    (idx=0), fire an UNGATED ("architecturally-cheap", cr_needs_regs_free=0)
+    0x10 ADD intruder -- EHDecode is free to accept it immediately (VFMA's
+    OWN decode completed long ago; only its internal lane-loop/drain FSM
+    is still running), and its case_result_s2 stage-1 capture lands mid-
+    drain (confirmed below via the cr_dispatch_valid/frag_idx hierarchical
+    probe -- this is checked, not assumed). Assert: (1) all 16 VFMA
+    fragments land contiguous and bit-exact, completely undisturbed; (2)
+    the ADD intruder's result NEVER appears anywhere in the output stream
+    -- frag-drain silently but correctly out-prioritized it every single
+    cycle it contended, exactly as it did pre-v1.9."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    lanes = [((i * 5) ^ 0x9) & 0xF for i in range(32)]
+    b64 = _vfma_b64(0x5, -3)
+    wide, a_frags = _vfma_pack_a(lanes, _G.DT_INT4)
+    exp = _G.vfma_frags(a_frags, b64, _G.DT_INT4)
+
+    await _fp_fire_token(dut, _vfma_instr(_G.DT_INT4, imm64=b64), 0,
+                         payload_b=0, b_valid=0, wide=wide, wide_valid=1)
+
+    outs = []
+    intruded = False
+    pending_clear = False
+    collided = False   # true once we've CONFIRMED the intruder's stage-1
+                        # capture landed while frag_idx != FRAG_IDLE
+    for i in range(200):
+        await RisingEdge(dut.clk)
+        if pending_clear:
+            dut.token_valid.value = 0
+            pending_clear = False
+        await Timer(1, units="ns")
+        if (int(dut.u_core.cr_dispatch_valid.value)
+                and int(dut.u_core.frag_idx.value) != 0):
+            collided = True
+        if int(dut.output_valid.value):
+            outs.append({'cycle': i,
+                        'payload': int(dut.output_payload.value),
+                        'opcode': int(dut.opcode_out.value),
+                        'frag_hdr': int(dut.output_frag_hdr.value)})
+            if len(outs) == 1 and not intruded:
+                intruded = True
+                add_instr = encode_instr(0x10, _STD_PORT(), eh_imm64(0x999))
+                dut.instruction.value = add_instr
+                dut.input_tag.value = make_tag(wave_number=0xABCD1234,
+                                               port_context_id=0,
+                                               dimension_sizes=0)
+                dut.input_payload.value = 0x7777
+                dut.input_payload_b_valid.value = 0
+                dut.token_valid.value = 1
+                pending_clear = True
+        if len(outs) >= 16:
+            break
+
+    assert len(outs) == 16, f"{len(outs)} VFMA output pulses != 16: {outs}"
+    assert all(o['opcode'] == 0x70 for o in outs), \
+        f"foreign result surfaced mid-drain: {[hex(o['opcode']) for o in outs]}"
+    got = [o['payload'] for o in outs]
+    assert got == exp, "VFMA drain corrupted by the concurrent intruder"
+    cycles = [o['cycle'] for o in outs]
+    assert cycles == list(range(cycles[0], cycles[0] + 16)), \
+        f"frag-drain lost absolute priority somewhere -- not contiguous: {cycles}"
+    frag_hdrs = [o['frag_hdr'] for o in outs]
+    assert frag_hdrs == [((idx << 4) | 0xF) for idx in range(16)], \
+        f"frag_hdr cadence corrupted: {[hex(h) for h in frag_hdrs]}"
+    assert collided, \
+        "the ADD intruder's case_result_s2 stage-1 capture never actually " \
+        "landed during frag_idx != FRAG_IDLE -- this run did not exercise " \
+        "the mandate's open question at all (construction failure, not a " \
+        "pass)"
+    assert not any(o['opcode'] == 0x10 for o in outs), \
+        "ADD intruder result illegally surfaced during the VFMA drain " \
+        "-- frag-drain absolute priority did NOT hold against a " \
+        "concurrent case_result_s2 arbitration"

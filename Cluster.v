@@ -98,7 +98,13 @@ module Cluster #(
     // v1.6.6 §22.14 — Cluster-level back-pressure aggregate. AND-reduce
     // of all PE_Core pe_ready signals. High only when EVERY PE can accept
     // a new dispatch. Upstream fabric can observe (MVP: observe-only).
-    output                      cluster_ready
+    output                      cluster_ready,
+    // v1.9 §26.5 — sticky synthesizable fault: a launch into the MU or DU
+    // tag-indexed bank table found no free row (both MU rows busy, or the
+    // DU row busy). Reset-clearable only — see the bank-table section
+    // below for the interlock this closes (a real hardware fault, not a
+    // sim-only assertion).
+    output                      bank_tag_collision_error
 );
 
     localparam NUM_PES = PE_ROWS * PE_COLS;
@@ -909,40 +915,168 @@ module Cluster #(
     );
 
     // -------------------------------------------------------------------------
-    // M-UNIT bank tracking — output is associated with the original target_idx.
-    // We pipeline mu_target_p through a few extra stages to align with the
-    // PE_Core's 2-cycle (dispatch + output reg) latency. The M-UNIT also has
-    // up to a 4-cycle latency for MUL via its multi-cycle pipeline; for that
-    // case the original target index is captured at the same time as the
-    // pe_active_mu_p flag, so we just delay it by the same number of stages.
+    // v1.9 §26.5 — MU/DU bank tag-indexed launch-time latch tables, replacing
+    // the positional shift-tap mechanism above (mu_target_pipe_s2/s3/s4 —
+    // s3/s4 already dead code per the comment this section replaces —, and
+    // du_target_pipe_s2). The positional shift-tap assumed a FIXED
+    // dispatch-to-completion latency for every opcode sharing it; v1.9's
+    // case_result_s2 split breaks that assumption for the case-dispatched
+    // MU-hosted opcodes (compute-inline arms now land 2 cycles after
+    // dispatch instead of 1), so a later dispatch could silently overwrite
+    // the positional register before an earlier dispatch's completion reads
+    // it back. Fix: latch {target_idx} at LAUNCH time into a small table
+    // row keyed by a launch tag, and look the row up by TAG MATCH (not
+    // shift depth) at completion.
     //
-    // For simplicity (mul-heavy ops are rare and pipeline depth varies
-    // across opcodes), we track the most recent target_idx that fired into
-    // the M-UNIT and update mu_bank_reg whenever mu_out_valid asserts.
+    // Depth: MU=2, DU=1 — see spec §26.5 for the full proof (MUL's own
+    // fixed p1/p2 sub-pipeline is the only scenario needing 2 concurrent
+    // MU-table rows; every other MU-hosted opcode is single-flight and
+    // mutually exclusive with MUL, per output_regs_free in PE_Core.v. DIV
+    // is a strict single-flight FSM, so DU needs exactly 1 row.)
+    //
+    // Tag-value caveat, verified against PE_Core.v (not assumed): 0x12 MUL
+    // preserves dec_forwarded_tag verbatim into its eventual output_tag
+    // (mul_tag_p1/p2 never rebuild it) and DIV/MOD/DIVMOD do likewise
+    // (div_tag_held/div_tag_p2), so an exact launch-tag == out_tag compare
+    // is exact for both. Several OTHER MU-hosted opcodes (0x71 VDOT_ACC,
+    // 0x72 ACC_REDUCE, the 0x73/0x74/0x75/0x76/0x77 fp-family via
+    // fp_tag_held, and a subset of 0x32 EINSUM's sub-signatures) REBUILD
+    // output_tag from {dec_wave_number, dec_thread_id, ..., a per-opcode
+    // fixed dim byte} instead of preserving dec_forwarded_tag verbatim.
+    // Replicating each of those per-opcode rebuild formulas here would
+    // duplicate PE_Core's internal tag-construction logic — a
+    // maintenance/drift risk this project avoids elsewhere — and isn't
+    // necessary for correctness: output_regs_free guarantees at most ONE
+    // non-MUL MU-table row is ever busy at a time, so that row's identity
+    // needs no tag disambiguation at all once no MUL row's tag matches —
+    // it is unconditionally the completing row. Each row therefore also
+    // carries a `row_is_mul` bit (captured at launch from the literal
+    // dec_opcode == 8'h12 check, which Cluster already has visibility
+    // into) and completion resolves as: prefer an exact tag match among
+    // busy MUL rows; otherwise take the (at most one) busy non-MUL row.
+    // This is still entirely tag-indexed (reuses the existing
+    // dec_forwarded_tag / mu_out_tag wire — Cluster.v:794 — no new tag
+    // namespace) and is a strict superset of a literal always-tag-match
+    // design's correctness.
+    //
+    // Residual timing risk (reported, not silently assumed away — see the
+    // deviation report): for the MU-hosted opcodes now routed through
+    // case_result_s2 (everything except 0x12 MUL itself), PE_Core's stage-2
+    // arbitration decides ACCEPT-vs-busy-reject one cycle AFTER the
+    // externally-visible dispatch this table keys its launch off of
+    // (output_regs_free, the signal that decision depends on, is
+    // PE_Core-internal and not exposed to Cluster). `mu_launch` below
+    // filters out the two externally-visible rejection causes
+    // (dec_decode_error, tag mismatch); the busy-reject case is NOT
+    // independently observable from Cluster and is expected, by the §26.5
+    // depth-2 proof, to stay in lockstep with this table's own row
+    // occupancy (a launch PE_Core will busy-reject is exactly a launch
+    // that finds this table's rows already full) — but that lockstep is
+    // argued, not measured. Spec §26.7 test items 11/12
+    // (test_bank_tag_latch_no_intervening_hazard /
+    // test_bank_tag_collision_interlock) are the directed tests that must
+    // confirm it before this table ships in a merged state.
     // -------------------------------------------------------------------------
+    reg                  mu_row0_busy,   mu_row1_busy;
+    reg [TAG_WIDTH-1:0]  mu_row0_tag,    mu_row1_tag;
+    reg [3:0]            mu_row0_target, mu_row1_target;
+    reg                  mu_row0_is_mul, mu_row1_is_mul;
+
+    reg                  du_row_busy;
+    // du_row_tag is captured (dec_forwarded_tag at launch) for structural
+    // symmetry with the MU table and future debug visibility, but is never
+    // READ: DIV is single-flight (depth 1, at most one busy row), so
+    // completion attribution needs no tag comparison — see the header note.
     /* verilator lint_off UNUSEDSIGNAL */
-    // s3/s4 stages reserved for future MUL-pipeline alignment (currently
-    // mu_out_valid lands at s2 for case-dispatch path; the multi-cycle
-    // MUL path reaches s4 but writes to mu_bank_reg via s2 because
-    // target_idx is held stable across the wait).
-    reg [3:0] mu_target_pipe_s2, mu_target_pipe_s3, mu_target_pipe_s4;
-    reg       mu_active_pipe_s2, mu_active_pipe_s3, mu_active_pipe_s4;
+    reg [TAG_WIDTH-1:0]  du_row_tag;
     /* verilator lint_on UNUSEDSIGNAL */
+    reg [3:0]            du_row_target;
+
+    // v1.9 §26.5 — synthesizable sticky fault: a launch finds no free row.
+    // NOT sim-only — a real status bit exposed on the bank_tag_collision_error
+    // output port. Sticky: reset-clearable only, so a collision cannot be
+    // silently absorbed by the next idle cycle.
+    reg bank_tag_collision_error_r;
+
+    // Launch detection: dispatch reaching the unit's dec_valid cycle, with
+    // the two rejection causes Cluster can observe from outside PE_Core
+    // (decode error / tag mismatch) filtered out — see the residual-risk
+    // note above for the one cause that can't be filtered this way.
+    wire mu_launch = pe_active_mu_p && dec_valid && !dec_decode_error && dec_tag_match;
+    wire du_launch = pe_active_du_p && dec_valid && !dec_decode_error && dec_tag_match;
+
+    // Completion match — see the header note for the tag-hit / non-MUL
+    // fallback rule. Cross-referencing only tag_hit wires (not the other
+    // row's match wire) avoids a combinational self-reference.
+    wire mu_r0_tag_hit     = mu_row0_busy && mu_row0_is_mul && (mu_row0_tag == mu_out_tag);
+    wire mu_r1_tag_hit     = mu_row1_busy && mu_row1_is_mul && (mu_row1_tag == mu_out_tag);
+    wire mu_r0_nonmul_busy = mu_row0_busy && !mu_row0_is_mul;
+    wire mu_r1_nonmul_busy = mu_row1_busy && !mu_row1_is_mul;
+    wire mu_match0 = mu_out_valid && (mu_r0_tag_hit
+                        || (!mu_r0_tag_hit && !mu_r1_tag_hit && mu_r0_nonmul_busy));
+    wire mu_match1 = mu_out_valid && (mu_r1_tag_hit
+                        || (!mu_r0_tag_hit && !mu_r1_tag_hit && mu_r1_nonmul_busy));
+    wire [3:0] mu_resolved_target = mu_match0 ? mu_row0_target :
+                                     mu_match1 ? mu_row1_target : 4'h0;
+
+    wire du_match = du_out_valid && du_row_busy;
+    wire [3:0] du_resolved_target = du_row_target;
+
+    // Row-free-for-allocation, accounting for a completion vacating the row
+    // THIS SAME cycle (so sustained back-to-back MUL dispatch never falsely
+    // collides — the launch write below is textually after the completion
+    // clear, so a same-cycle free-then-reallocate lands the new occupant).
+    wire mu_row0_free = !mu_row0_busy || mu_match0;
+    wire mu_row1_free = !mu_row1_busy || mu_match1;
+    wire du_row_free  = !du_row_busy  || du_match;
+
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            mu_target_pipe_s2 <= 4'h0;
-            mu_target_pipe_s3 <= 4'h0;
-            mu_target_pipe_s4 <= 4'h0;
-            mu_active_pipe_s2 <= 1'b0;
-            mu_active_pipe_s3 <= 1'b0;
-            mu_active_pipe_s4 <= 1'b0;
+            mu_row0_busy   <= 1'b0;
+            mu_row1_busy   <= 1'b0;
+            mu_row0_tag    <= {TAG_WIDTH{1'b0}};
+            mu_row1_tag    <= {TAG_WIDTH{1'b0}};
+            mu_row0_target <= 4'h0;
+            mu_row1_target <= 4'h0;
+            mu_row0_is_mul <= 1'b0;
+            mu_row1_is_mul <= 1'b0;
+            du_row_busy    <= 1'b0;
+            du_row_tag     <= {TAG_WIDTH{1'b0}};
+            du_row_target  <= 4'h0;
+            bank_tag_collision_error_r <= 1'b0;
         end else begin
-            mu_target_pipe_s2 <= mu_target_p;
-            mu_target_pipe_s3 <= mu_target_pipe_s2;
-            mu_target_pipe_s4 <= mu_target_pipe_s3;
-            mu_active_pipe_s2 <= pe_active_mu_p;
-            mu_active_pipe_s3 <= mu_active_pipe_s2;
-            mu_active_pipe_s4 <= mu_active_pipe_s3;
+            // Completions clear their matched row first (program order —
+            // the launch writes below win last-assignment-wins if a launch
+            // targets the same row a completion frees this cycle).
+            if (mu_match0) mu_row0_busy <= 1'b0;
+            if (mu_match1) mu_row1_busy <= 1'b0;
+            if (du_match)  du_row_busy  <= 1'b0;
+
+            if (mu_launch) begin
+                if (mu_row0_free) begin
+                    mu_row0_busy   <= 1'b1;
+                    mu_row0_tag    <= dec_forwarded_tag;
+                    mu_row0_target <= mu_target_p;
+                    mu_row0_is_mul <= (dec_opcode == 8'h12);
+                end else if (mu_row1_free) begin
+                    mu_row1_busy   <= 1'b1;
+                    mu_row1_tag    <= dec_forwarded_tag;
+                    mu_row1_target <= mu_target_p;
+                    mu_row1_is_mul <= (dec_opcode == 8'h12);
+                end else begin
+                    bank_tag_collision_error_r <= 1'b1;
+                end
+            end
+
+            if (du_launch) begin
+                if (du_row_free) begin
+                    du_row_busy   <= 1'b1;
+                    du_row_tag    <= dec_forwarded_tag;
+                    du_row_target <= du_target_p;
+                end else begin
+                    bank_tag_collision_error_r <= 1'b1;
+                end
+            end
         end
     end
 
@@ -952,24 +1086,12 @@ module Cluster #(
             for (mb = 0; mb < NUM_PES; mb = mb + 1)
                 mu_bank_reg[mb] <= {ADDR_WIDTH{1'b0}};
         end else if (mu_out_valid) begin
-            // Track the M-UNIT result by whichever pipelined target_idx is
-            // currently aligned with mu_out_valid. For simplicity we use s2
-            // (matches the case-dispatch path); MUL pipeline (s4) results are
-            // also valid against the s2 target since target_idx changes only
-            // when a new mul-heavy op fires, which would re-prime the chain.
             /* verilator lint_off WIDTHTRUNC */
-            mu_bank_reg[mu_target_pipe_s2] <= mu_out_payload;
+            mu_bank_reg[mu_resolved_target] <= mu_out_payload;
             /* verilator lint_on WIDTHTRUNC */
         end
     end
 
-    // DIV-UNIT bank tracking (mirror of M-UNIT). DIV/MOD pipeline = 2 cycles,
-    // so use du_target_p which already aligns at s6 with dec_valid.
-    reg [3:0] du_target_pipe_s2;
-    always @(posedge clk or posedge rst) begin
-        if (rst) du_target_pipe_s2 <= 4'h0;
-        else     du_target_pipe_s2 <= du_target_p;
-    end
     integer db;
     always @(posedge clk or posedge rst) begin
         if (rst) begin
@@ -977,7 +1099,7 @@ module Cluster #(
                 du_bank_reg[db] <= {ADDR_WIDTH{1'b0}};
         end else if (du_out_valid) begin
             /* verilator lint_off WIDTHTRUNC */
-            du_bank_reg[du_target_pipe_s2] <= du_out_payload;
+            du_bank_reg[du_resolved_target] <= du_out_payload;
             /* verilator lint_on WIDTHTRUNC */
         end
     end
@@ -992,10 +1114,10 @@ module Cluster #(
             last_was_du <= {NUM_PES{1'b0}};
         end else begin
             for (ksrc = 0; ksrc < NUM_PES; ksrc = ksrc + 1) begin
-                if (mu_out_valid && {4'h0, mu_target_pipe_s2} == ksrc[7:0]) begin
+                if (mu_out_valid && {4'h0, mu_resolved_target} == ksrc[7:0]) begin
                     last_was_mu[ksrc] <= 1'b1;
                     last_was_du[ksrc] <= 1'b0;
-                end else if (du_out_valid && {4'h0, du_target_pipe_s2} == ksrc[7:0]) begin
+                end else if (du_out_valid && {4'h0, du_resolved_target} == ksrc[7:0]) begin
                     last_was_du[ksrc] <= 1'b1;
                     last_was_mu[ksrc] <= 1'b0;
                 end else if (pe_out_valid[ksrc]) begin
@@ -1110,6 +1232,11 @@ module Cluster #(
             m_err = m_err | pe_error[i];
             m_lwr = m_lwr | pe_lower[i];
         end
+        // v1.9 §26.5 — fold the bank tag-collision fault into the error
+        // flag too, mirroring the any_output_collision precedent
+        // immediately below, so existing any_error_flag consumers see it
+        // without needing to know about the dedicated port.
+        m_err = m_err | bank_tag_collision_error_r;
         // Fold collision into the error flag so existing consumers surface it.
         m_err = m_err | m_output_collision;
     end
@@ -1124,6 +1251,7 @@ module Cluster #(
     assign any_error_flag     = m_err;
     assign any_lower_required = m_lwr;
     assign any_output_collision = m_output_collision;   // v1.5.3 §20 bug-3/4
+    assign bank_tag_collision_error = bank_tag_collision_error_r;  // v1.9 §26.5
     // v1.6.6 §22.14 — Cluster back-pressure: AND-reduce over MU/DU/L-PE ready.
     // High only when ALL PE_Core instances can accept new dispatch this cycle.
     generate

@@ -1357,14 +1357,18 @@ module PE_Core #(
     // -------------------------------------------------------------------------
     // v1.5.3a §20 — fragment-emit FSM. Originally a 1-bit Moore machine
     // mirroring the div_state idiom (frag_state: FRAG_IDLE/FRAG_EMIT_HI,
-    // one pending 64-bit fragment). On SIG_BMM_3 dispatch (frag_idx=
-    // FRAG_IDLE cycle N):
+    // one pending 64-bit fragment). On SIG_BMM_3 dispatch (cycle N):
+    //   - v1.9 §26.3/26.4: the case_result_s2 split moves the commit of
+    //     this arm's result to cycle N+1 (stage 2), not N — see the
+    //     case_result_s2 register bank and stage-2 arbitration block
+    //     below. What lands at N+1 is unchanged in kind:
     //   - drives output_valid=1, output_payload=lo, output_frag_hdr=8'h01
     //   - latches result[127:64] into frag_pending[1] + tag/opcode holds
     //   - transitions to FRAG_EMIT_1
-    // On cycle N+1 (FRAG_EMIT_1): absolute-priority override at the top of
-    // the output mux drives fragment 1 (frag_hdr=8'h11) and returns to IDLE
-    // (since frag_total_m1_held==1 for every 2-fragment emitter).
+    // On cycle N+2 (FRAG_EMIT_1, was N+1 pre-v1.9): absolute-priority
+    // override at the top of the output mux drives fragment 1
+    // (frag_hdr=8'h11) and returns to IDLE (since frag_total_m1_held==1
+    // for every 2-fragment emitter).
     //
     // v1.7 §22.18 — widened from 1-bit {IDLE,EMIT_HI} to a 2-bit up-counter
     // {IDLE, EMIT_1, EMIT_2, EMIT_3} supporting up to 4 sequential fragment
@@ -1526,6 +1530,66 @@ module PE_Core #(
         && !mul_valid_p1 && !mul_valid_p2
         && (div_state == DIV_IDLE) && !div_valid_p2 && !div_b_zero_p2
         && !fp_busy && !fp_valid_p2 && !deq_loop_active && !vfma_busy;
+
+    // -------------------------------------------------------------------------
+    // v1.9 §26.2 — case_result_s2: the single new register bank that splits
+    // case-dispatch into two pipeline stages (§26.3/§26.4 normative). Stage 1
+    // (below, in the main always block, cycle T) evaluates the SAME
+    // case(dec_opcode) block as pre-v1.9 (same 55 case items / 67 opcodes,
+    // same wres_*/einsum/vdot calls) and captures its outcome here instead
+    // of driving output_payload/frag_pending/fp_start/lower_required/etc
+    // directly. Stage 2 (in the output priority chain) reads these fields
+    // one cycle later (T+1), re-evaluates output_regs_free LIVE at that
+    // cycle, and commits to the real output/launch registers at the T+1->T+2
+    // edge. This bank mirrors, one-for-one, the registers the case block
+    // used to drive: output_payload/output_tag/output_valid/opcode_out/
+    // error_flag/lower_required/memory_req/mem_addr/frag_pending[1]/
+    // frag_total_m1_held/fp_*/vfma_*/deq_* (see the case-block transform
+    // report for the exact mapping).
+    // -------------------------------------------------------------------------
+    reg                   cr_dispatch_valid; // pe_active && dec_valid sampled at T
+    reg                   cr_decode_error;   // dec_decode_error sampled at T
+    reg                   cr_tag_mismatch;   // !dec_tag_match sampled at T
+    reg                   cr_module_lower;   // !NON_MUL_OPS_SUPPORTED && !dec_is_mul_op && !dec_is_div_op at T
+
+    reg                   cr_hard_error;     // unconditional error_flag intent (independent of output_regs_free)
+    reg                   cr_hard_lower;     // unconditional lower_required intent (independent of output_regs_free)
+    reg                   cr_needs_regs_free;// success path is gated on LIVE output_regs_free at stage 2
+    reg                   cr_valid_out;      // success path's output_valid intent (0 for the FSM-launch arms)
+
+    reg [ADDR_WIDTH-1:0]  cr_payload;
+    reg [ADDR_WIDTH-1:0]  cr_payload_hi;     // frag_pending[1] preimage (2-fragment emit arms)
+    reg [TAG_WIDTH-1:0]   cr_tag;
+    reg [7:0]             cr_opcode_out;
+    reg [3:0]             cr_frag_total_m1;
+    reg                   cr_is_frag_emit;   // success path also performs the 2-fragment emit
+    reg [ADDR_WIDTH-1:0]  cr_mem_addr;
+    reg                   cr_memory_req;
+
+    // FSM-launch capture. Deviation note (see report): spec §26.3 names
+    // only {0x70,0x74,0x75,0x76,0x78} as the "5 FSM-launch arm" set; 0x73
+    // ACC_ELEMWISE and 0x77 CVT are ALSO register-load-only fp_start/
+    // fp_armed launches in the actual RTL (byte-identical mechanism to
+    // 0x74-0x76) and are treated as FSM-launch arms here too (7 total) —
+    // the spec text's "13 compute-inline" listing of 0x73/0x77 does not
+    // match current RTL behavior.
+    reg                   cr_launch_fp;      // 0x73-0x77: fp_start<=1 (+ fp_armed per cr_fp_armed)
+    reg                   cr_fp_armed;       // whether to also pulse fp_armed<=1 (0x78 leaves this clear)
+    reg [31:0]            cr_fp_a, cr_fp_b, cr_fp_c;
+    reg [3:0]             cr_fp_subop;
+    reg [3:0]             cr_fp_dtype;
+    reg [7:0]             cr_fp_opcode_held;
+    reg [TAG_WIDTH-1:0]   cr_fp_tag_held;
+
+    reg                   cr_launch_vfma;    // 0x70
+    reg [127:0]           cr_vfma_a;
+    reg [7:0]             cr_vfma_b;
+    reg [31:0]            cr_vfma_c;
+    reg                   cr_vfma_is_int8;
+
+    reg                   cr_launch_deq;     // 0x78
+    reg [127:0]           cr_deq_a;
+    reg                   cr_deq_is_int8;
 
     // -------------------------------------------------------------------------
     // v1.8 §23.8 synth-gate fix (2026-07-16) — yosys (Verilog-2005) does not
@@ -1775,6 +1839,29 @@ module PE_Core #(
             // sequences and set this per-fragment.
             output_frag_hdr <= 8'h00;
 
+            // v1.9 §26.2 — case_result_s2 stage-1 per-cycle defaults,
+            // mirroring the output-register defaults directly above one
+            // pipeline stage earlier. cr_opcode_out shadows opcode_out's
+            // unconditional default the same way; cr_tag is NOT defaulted
+            // here (mirrors output_tag, which pre-v1.9 is only ever driven
+            // from inside the dispatch-reachable branch, never at this
+            // unconditional top level).
+            cr_dispatch_valid  <= 1'b0;
+            cr_decode_error    <= 1'b0;
+            cr_tag_mismatch    <= 1'b0;
+            cr_module_lower    <= 1'b0;
+            cr_hard_error      <= 1'b0;
+            cr_hard_lower      <= 1'b0;
+            cr_needs_regs_free <= 1'b0;
+            cr_valid_out       <= 1'b0;
+            cr_is_frag_emit    <= 1'b0;
+            cr_memory_req      <= 1'b0;
+            cr_launch_fp       <= 1'b0;
+            cr_fp_armed        <= 1'b0;
+            cr_launch_vfma     <= 1'b0;
+            cr_launch_deq      <= 1'b0;
+            cr_opcode_out      <= dec_opcode;
+
             // Multi-cycle MUL pipeline advance. v1.5.3a: launch gated on
             // frag_idx == FRAG_IDLE so a MUL cannot enter the pipeline
             // during a fragment-emit cycle and collide with FRAG_EMIT_HI.
@@ -1983,11 +2070,1238 @@ module PE_Core #(
                 else
                     vfma_lane <= vfma_lane + 5'd1;
             end
+            // -------------------------------------------------------------
+            // v1.9 §26.2/§26.3 — Stage 1: case_result_s2 capture (comb,
+            // cycle T). This block runs in PARALLEL with (and independently
+            // of) the MUL pipeline / DIV FSM / FP strobe / VFMA advance
+            // blocks above and the output priority chain below — the same
+            // "parallel/independent" relationship those blocks already have
+            // with each other (spec §26.3 finding 4: MUL launch, the DIV
+            // FSM, and the frag-drain override read dec_opcode/dec_valid or
+            // their own state directly and are structurally UNCHANGED by
+            // this split). It is what used to be the
+            // `else if (pe_active && dec_valid) begin ... case (dec_opcode)
+            // ... end` arm of the OUTPUT PRIORITY CHAIN; it is deliberately
+            // NOT gated on frag_idx/mul_valid_p2/div_state/fp_busy the way
+            // that arm used to be, because commit no longer happens this
+            // same cycle. Stage 2 (in the priority chain below) is the only
+            // place output_regs_free is (still) checked, and it checks it
+            // LIVE at T+1 — see the stage-2 arbitration block and spec
+            // §26.3/§26.4 for the full contract.
+            //
+            // The case(dec_opcode) body itself is UNCHANGED from pre-v1.9:
+            // same 55 case items / 67 opcodes, same wres_*/einsum/vdot
+            // calls. The one structural change every output_regs_free-gated
+            // arm required: the `!output_regs_free` branch itself is
+            // removed from stage 1 (evaluating it here would be a cycle too
+            // early — see §26.4) and replaced by the `cr_needs_regs_free`
+            // flag, which stage 2 checks against LIVE output_regs_free at
+            // commit time. Every other guard (missing-wide/missing-B
+            // errors, dim/subop-range lower_required, etc.) is untouched
+            // and still evaluated here at stage 1, since those depend only
+            // on the stable per-instruction dec_* bus, not on runtime
+            // busy-state.
+            // -------------------------------------------------------------
+            if (pe_active && dec_valid) begin
+                cr_dispatch_valid <= 1'b1;
+                if (dec_decode_error) begin
+                    cr_decode_error <= 1'b1;
+                end else if (!dec_tag_match) begin
+                    cr_tag_mismatch <= 1'b1;
+                end else if (!NON_MUL_OPS_SUPPORTED && !dec_is_mul_op
+                                                     && !dec_is_div_op) begin
+                    cr_module_lower <= 1'b1;
+                end
+                else begin
+                    cr_tag <= dec_forwarded_tag;
+                    case (dec_opcode)
+                        8'h00: cr_valid_out <=  1'b0;
+                        8'h01: begin
+                            cr_tag     <= dec_wave_advanced_tag;
+                            cr_payload <= dec_input_payload;
+                            cr_valid_out   <=  1'b1;
+                        end
+                        8'h02, 8'h03: begin
+                            cr_payload <= dec_input_payload;
+                            cr_valid_out   <=  1'b1;
+                        end
+                        8'h04: begin
+                            cr_mem_addr   <= dec_input_payload + {32'h0, dec_eff_mem_offset};
+                            cr_memory_req <=  1'b1;
+                            cr_valid_out <=  1'b0;
+                        end
+                        8'h05: begin
+                            cr_mem_addr   <= dec_input_payload + {32'h0, dec_eff_mem_offset};
+                            cr_memory_req <=  1'b1;
+                            cr_valid_out <=  1'b1;
+                        end
+                        8'h10: begin
+                            cr_payload <= dec_input_payload + dec_eff_b_value;
+                            cr_valid_out   <=  1'b1;
+                        end
+                        8'h11: begin
+                            cr_payload <= dec_input_payload - dec_eff_b_value;
+                            cr_valid_out   <=  1'b1;
+                        end
+                        8'h12: begin // MUL — handled by pipeline
+                            if (!MUL_OPS_SUPPORTED) cr_hard_lower <=  1'b1;
+                            cr_valid_out <=  1'b0;
+                        end
+                        8'h13: begin // DIV — handled by pipeline
+                            if (!DIV_OPS_SUPPORTED) cr_hard_lower <=  1'b1;
+                            cr_valid_out <=  1'b0;
+                        end
+                        8'h14: begin // AND
+                            cr_payload <= dec_input_payload & dec_eff_b_value;
+                            cr_valid_out   <=  1'b1;
+                        end
+                        8'h15: begin // OR
+                            cr_payload <= dec_input_payload | dec_eff_b_value;
+                            cr_valid_out   <=  1'b1;
+                        end
+                        8'h16: begin // XOR
+                            cr_payload <= dec_input_payload ^ dec_eff_b_value;
+                            cr_valid_out   <=  1'b1;
+                        end
+                        8'h17: begin // SHL (logical shift left)
+                            cr_payload <= dec_input_payload << dec_eff_imm16[5:0];
+                            cr_valid_out <=  1'b1;
+                        end
+                        8'h18: begin // SHR (logical shift right)
+                            cr_payload <= dec_input_payload >> dec_eff_imm16[5:0];
+                            cr_valid_out   <=  1'b1;
+                        end
+                        8'h19: begin // SAR (arithmetic shift right)
+                            cr_payload <= $signed(dec_input_payload) >>> dec_eff_imm16[5:0];
+                            cr_valid_out   <=  1'b1;
+                        end
+                        8'h1A: begin // ROR
+                            cr_payload <= rotate_right_64(dec_input_payload, dec_eff_imm16[5:0]);
+                            cr_valid_out <=  1'b1;
+                        end
+                        8'h1B: begin // NEG (two's complement)
+                            cr_payload <= ~dec_input_payload + 64'd1;
+                            cr_valid_out <=  1'b1;
+                        end
+                        8'h1C: begin // MOD — handled by pipeline
+                            if (!DIV_OPS_SUPPORTED) cr_hard_lower <=  1'b1;
+                            cr_valid_out <=  1'b0;
+                        end
+                        8'h1D: begin // DIVMOD — handled by pipeline
+                            if (!DIV_OPS_SUPPORTED) cr_hard_lower <=  1'b1;
+                            cr_valid_out <=  1'b0;
+                        end
+                        8'h1E: begin // ROL
+                            cr_payload <= rotate_left_64(dec_input_payload, dec_eff_imm16[5:0]);
+                            cr_valid_out   <=  1'b1;
+                        end
+                        8'h1F: begin // BITREV
+                            cr_payload <= bit_reverse(dec_input_payload);
+                            cr_valid_out <=  1'b1;
+                        end
+                        8'h50: begin // NOT (bitwise complement)
+                            cr_payload <= ~dec_input_payload;
+                            cr_valid_out   <=  1'b1;
+                        end
+                        8'h51: begin // NAND
+                            cr_payload <= ~(dec_input_payload & dec_eff_b_value);
+                            cr_valid_out   <=  1'b1;
+                        end
+                        8'h52: begin // NOR
+                            cr_payload <= ~(dec_input_payload | dec_eff_b_value);
+                            cr_valid_out   <=  1'b1;
+                        end
+                        8'h53: begin // XNOR
+                            cr_payload <= ~(dec_input_payload ^ dec_eff_b_value);
+                            cr_valid_out   <=  1'b1;
+                        end
+                        8'h54: begin // POPCOUNT
+                            cr_payload <= popcount_64(dec_input_payload);
+                            cr_valid_out   <=  1'b1;
+                        end
+                        8'h55: begin // CLZ (Count Leading Zeros)
+                            cr_payload <= clz_64(dec_input_payload);
+                            cr_valid_out   <=  1'b1;
+                        end
+                        8'h56: begin // CTZ (Count Trailing Zeros)
+                            cr_payload <= ctz_64(dec_input_payload);
+                            cr_valid_out   <=  1'b1;
+                        end
+                        8'h20: begin
+                            if (axis_sz(dec_eff_dim_sizes, dec_eff_imm16[1:0]) != 2'b00) begin
+                                cr_hard_error <=  1'b1; cr_valid_out <=  1'b0;
+                            end else begin
+                                cr_tag <= {dec_wave_number, dec_thread_id,
+                                               8'h00, dec_eff_output_port_id,
+                                               dec_eff_precision,
+                                               dim_squeeze(dec_eff_dim_sizes, dec_eff_imm16[1:0])};
+                                cr_payload <= dec_input_payload;
+                                cr_valid_out <=  1'b1;
+                            end
+                        end
+                        8'h21: begin
+                            if (dec_eff_dim_sizes[7:6] != 2'b00) begin
+                                cr_hard_error <=  1'b1; cr_valid_out <=  1'b0;
+                            end else begin
+                                cr_tag <= {dec_wave_number, dec_thread_id,
+                                               8'h00, dec_eff_output_port_id,
+                                               dec_eff_precision,
+                                               dim_unsqueeze(dec_eff_dim_sizes, dec_eff_imm16[1:0])};
+                                cr_payload <= dec_input_payload;
+                                cr_valid_out <=  1'b1;
+                            end
+                        end
+                        8'h22: begin
+                            if (elem_count(dec_eff_dim_sizes) != elem_count(dec_eff_imm16[7:0])) begin
+                                cr_hard_error <=  1'b1; cr_valid_out <=  1'b0;
+                            end else begin
+                                cr_tag <= {dec_wave_number, dec_thread_id,
+                                               8'h00, dec_eff_output_port_id,
+                                               dec_eff_precision,
+                                               dec_eff_imm16[7:0]};
+                                cr_payload <= dec_input_payload;
+                                cr_valid_out <=  1'b1;
+                            end
+                        end
+                        8'h23: begin
+                            if ((dec_eff_imm16[7:0] == 8'h01) && (dec_eff_dim_sizes == 8'h05)) begin
+                                cr_payload <= permute_2x2_transpose(dec_input_payload);
+                                cr_tag <= {dec_wave_number, dec_thread_id,
+                                               8'h00, dec_eff_output_port_id,
+                                               dec_eff_precision, dec_eff_dim_sizes};
+                                cr_valid_out <=  1'b1;
+                            end else begin
+                                cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                            end
+                        end
+                        8'h24: begin
+                            cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                        end
+                        8'h25: begin
+                            if ((dec_eff_imm16[3:0] == 4'd0) && (dec_eff_dim_sizes == 8'h03)
+                                && ((dec_eff_imm16[7:4] == RED_OP_SUM)
+                                    || (dec_eff_imm16[7:4] == RED_OP_MAX)
+                                    || (dec_eff_imm16[7:4] == RED_OP_MIN))) begin
+                                cr_payload <= reduce_axis0_1d(dec_eff_imm16[7:4], dec_input_payload);
+                                cr_tag <= {dec_wave_number, dec_thread_id,
+                                               8'h00, dec_eff_output_port_id,
+                                               dec_eff_precision,
+                                               dim_squeeze(dec_eff_dim_sizes, 2'd0)};
+                                cr_valid_out <=  1'b1;
+                            end else begin
+                                cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                            end
+                        end
+                        8'h26: begin
+                            // SPLAT (v1.1 amendment, 2026-07-14). Sign-extend
+                            // the 8-bit signed scalar in dec_eff_imm16[7:0]
+                            // to int16, then replicate across all 4 lanes of
+                            // the 64-bit payload. Result tensor is 1-D of
+                            // size 4 (dim_sizes = 8'h03 → first axis = 3+1 = 4
+                            // elements, others = size 1).
+                            //
+                            // Input tensor semantics: N/A — SPLAT is a source
+                            // op that generates a constant. The input payload
+                            // is ignored; forwarded_tag's non-dim fields are
+                            // preserved (wave_number, thread_id, port,
+                            // precision).
+                            //
+                            // Primary use case: broadcast lowering. See
+                            // `.claude-memos/einsum_trace_broadcast_analysis.md`
+                            // and `wt64v1_spec.md` §14.
+                            cr_tag <= {dec_wave_number, dec_thread_id,
+                                           8'h00, dec_eff_output_port_id,
+                                           dec_eff_precision,
+                                           8'h03};
+                            cr_payload <= {4{ {{8{dec_eff_imm16[7]}}, dec_eff_imm16[7:0]} }};
+                            cr_valid_out <=  1'b1;
+                        end
+                        8'h30: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                            end else if (dec_eff_dim_sizes != 8'h05) begin
+                                cr_hard_error <=  1'b1; cr_valid_out <=  1'b0;
+                            end else begin
+                                cr_payload <= matmul_func(dec_input_payload, dec_input_payload_b);
+                                cr_valid_out <=  1'b1;
+                            end
+                        end
+                        8'h31: begin
+                            cr_payload <= {
+                                dec_input_payload[63:48] + dec_input_payload_b[63:48],
+                                dec_input_payload[47:32] + dec_input_payload_b[47:32],
+                                dec_input_payload[31:16] + dec_input_payload_b[31:16],
+                                dec_input_payload[15: 0] + dec_input_payload_b[15: 0]
+                            };
+                            cr_valid_out <=  1'b1;
+                        end
+                        8'h32: begin
+                            // v1.5.3 §20 — two-level SUBSCRIPT dispatch.
+                            // Legacy v1.0..v1.2 signatures (SUM_I..TRACE_IIJK)
+                            // require `dec_eff_subscript_hi == 48'h0` (no
+                            // second SUBSCRIPT EH); v1.5.3+ wide-consumer
+                            // signatures (SIG_BMM_3) require non-zero hi.
+                            // This guards against a malformed wave whose
+                            // lo-half accidentally aliases a legacy sig.
+                            if (!MUL_OPS_SUPPORTED) begin
+                                cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                            end else if (dec_eff_subscript_hi != 48'h0) begin
+                                // v1.5.3 wide-consumer path
+                                if ((dec_eff_subscript == SIG_BMM_3_LO)
+                                     && (dec_eff_subscript_hi == SIG_BMM_3_HI)) begin
+                                    // SIG_BMM_3: 'abcij,abcjk->abcik' at int4.
+                                    // Input A + B both packed into
+                                    // dec_input_payload_wide (v1.5.2 fragment
+                                    // reassembly): A at wide[127:0], B at
+                                    // wide[255:128] — 4-fragment wave
+                                    // (frag_hdr indices 0..3). Cannot use
+                                    // IMM64 chain because EINSUM (0x32) is
+                                    // forbid_imm_any at EHDecode legality.
+                                    // Output 128-bit split into 2 wave tokens
+                                    // with frag_hdr = 8'h01, 8'h11.
+                                    if (!dec_input_payload_wide_valid) begin
+                                        // Illegal per §20 contract — Cluster's
+                                        // wave_complete guarantees wide_valid=1
+                                        // for any wide-consumer wave.
+                                        cr_hard_error   <=  1'b1;
+                                        cr_valid_out <=  1'b0;
+                                    end else begin
+                                        // v1.9 §26.3/26.4: busy-reject (the
+                                        // former "Compound drain gate" check)
+                                        // is re-homed to stage 2, evaluated
+                                        // LIVE against output_regs_free at the
+                                        // T+1 commit cycle instead of the
+                                        // stale T-time sample.
+                                        cr_needs_regs_free <= 1'b1;
+                                        // Fragment 0 emit (a=0 batches, 4×2×2)
+                                        cr_payload  <= einsum_bmm_3_int4_lo(
+                                            dec_input_payload_wide[127:0],
+                                            dec_input_payload_wide[255:128]);
+                                        cr_valid_out    <=  1'b1;
+                                        cr_is_frag_emit    <= 1'b1;   // idx=0 total-1=1
+                                        cr_opcode_out      <= dec_opcode;
+                                        // Latch fragment 1 (a=1 batches) +
+                                        // tag/opcode for the frag-drain
+                                        // override, which (v1.9 §26.4)
+                                        // lands on cycle N+2 now that
+                                        // fragment 0 itself commits at
+                                        // N+1 via case_result_s2, not N.
+                                        cr_payload_hi  <= einsum_bmm_3_int4_hi(
+                                            dec_input_payload_wide[127:0],
+                                            dec_input_payload_wide[255:128]);
+                                        cr_frag_total_m1 <= 4'd1;
+                                    end
+                                end else if ((dec_eff_subscript == SIG_SCALAR_FAMILY_LO)
+                                             && (dec_eff_subscript_hi[47:4] == SIG_SCALAR_FAMILY_HI_BASE)) begin
+                                    // v1.6.1 §22 — 5D→scalar reduction family.
+                                    // Op marker in dec_eff_subscript_hi[3:0]:
+                                    //   0=SUM, 1=MAX, 2=ARGMAX, 3=L1, 4=L2SQ, 6=MIN, 7=ARGMIN.
+                                    // (0x5 reserved for MEAN in 5D→4D family; unused here.)
+                                    if (!dec_input_payload_wide_valid) begin
+                                        cr_hard_error   <=  1'b1;
+                                        cr_valid_out <=  1'b0;
+                                    end else case (dec_eff_subscript_hi[3:0])
+                                        OP_SUM: begin
+                                            cr_needs_regs_free <= 1'b1;
+                                            cr_payload <= einsum_sum_ijklm_int4(dec_input_payload_wide[127:0]);
+                                            cr_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h00};
+                                            cr_valid_out <=  1'b1;
+                                        end
+                                        OP_MAX: begin
+                                            cr_needs_regs_free <= 1'b1;
+                                            cr_payload <= einsum_max_ijklm_int4(dec_input_payload_wide[127:0]);
+                                            cr_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h00};
+                                            cr_valid_out <=  1'b1;
+                                        end
+                                        OP_ARGMAX: begin
+                                            cr_needs_regs_free <= 1'b1;
+                                            cr_payload <= einsum_argmax_ijklm_int4(dec_input_payload_wide[127:0]);
+                                            cr_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h00};
+                                            cr_valid_out <=  1'b1;
+                                        end
+                                        OP_L1: begin
+                                            cr_needs_regs_free <= 1'b1;
+                                            cr_payload <= einsum_l1_ijklm_int4(dec_input_payload_wide[127:0]);
+                                            cr_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h00};
+                                            cr_valid_out <=  1'b1;
+                                        end
+                                        OP_L2SQ: begin
+                                            cr_needs_regs_free <= 1'b1;
+                                            cr_payload <= einsum_l2sq_ijklm_int4(dec_input_payload_wide[127:0]);
+                                            cr_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h00};
+                                            cr_valid_out <=  1'b1;
+                                        end
+                                        OP_MIN: begin
+                                            cr_needs_regs_free <= 1'b1;
+                                            cr_payload <= einsum_min_ijklm_int4(dec_input_payload_wide[127:0]);
+                                            cr_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h00};
+                                            cr_valid_out <=  1'b1;
+                                        end
+                                        OP_ARGMIN: begin
+                                            cr_needs_regs_free <= 1'b1;
+                                            cr_payload <= einsum_argmin_ijklm_int4(dec_input_payload_wide[127:0]);
+                                            cr_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h00};
+                                            cr_valid_out <=  1'b1;
+                                        end
+                                        default: begin
+                                            cr_hard_lower <=  1'b1;
+                                            cr_valid_out   <=  1'b0;
+                                        end
+                                    endcase
+                                end else if ((dec_eff_subscript == SIG_5D4D_FAMILY_LO)
+                                             && (dec_eff_subscript_hi[47:4] == SIG_5D4D_FAMILY_HI_BASE)) begin
+                                    // v1.6.1 §22 — 5D→4D reduction family (reduce over axis m).
+                                    // Op marker: 5=MEAN is the ONLY live member (rmsnorm/
+                                    // layernorm mean step). SUM/MAX/L2SQ/MIN markers were
+                                    // removed pre-stable in the opcode cleanup — they now
+                                    // fall to the default lower_required arm, same as any
+                                    // other unknown marker. The 4D→3D family (SIG_4D3D_*)
+                                    // was removed entirely in the same cleanup.
+                                    if (!dec_input_payload_wide_valid) begin
+                                        cr_hard_error   <=  1'b1;
+                                        cr_valid_out <=  1'b0;
+                                    end else case (dec_eff_subscript_hi[3:0])
+                                        OP_MEAN: begin
+                                            cr_needs_regs_free <= 1'b1;
+                                            cr_payload <= einsum_mean_5d_to_4d_int4(dec_input_payload_wide[127:0]);
+                                            cr_tag <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h55};
+                                            cr_valid_out <=  1'b1;
+                                        end
+                                        default: begin
+                                            cr_hard_lower <=  1'b1;
+                                            cr_valid_out   <=  1'b0;
+                                        end
+                                    endcase
+                                end else if ((dec_eff_subscript == SIG_TRACE_IJJKL_LO)
+                                             && (dec_eff_subscript_hi == SIG_TRACE_IJJKL_HI)) begin
+                                    // v1.6.1 §22 — SIG_TRACE_IJJKL: 5D trace over j (variant of IIJKL).
+                                    if (!dec_input_payload_wide_valid) begin
+                                        cr_hard_error   <=  1'b1;
+                                        cr_valid_out <=  1'b0;
+                                    end else begin
+                                        cr_needs_regs_free <= 1'b1;
+                                        cr_payload <= einsum_trace_ijjkl_int4(dec_input_payload_wide[127:0]);
+                                        cr_tag <= {dec_wave_number, dec_thread_id,
+                                                       8'h00, dec_eff_output_port_id,
+                                                       dec_eff_precision, 8'h15};
+                                        cr_valid_out <=  1'b1;
+                                    end
+                                end else if ((dec_eff_subscript == SIG_TRACE_IIJKL_LO)
+                                             && (dec_eff_subscript_hi == SIG_TRACE_IIJKL_HI)) begin
+                                    // v1.5.5 §21 — SIG_TRACE_IIJKL: 5D trace.
+                                    // Input A via dec_input_payload_wide[127:0]
+                                    // (2-fragment wave). B unused. Output 32-bit
+                                    // single-fragment (no FSM engagement).
+                                    if (!dec_input_payload_wide_valid) begin
+                                        // §20.7 wide-consumer contract violation.
+                                        cr_hard_error   <=  1'b1;
+                                        cr_valid_out <=  1'b0;
+                                    end else begin
+                                        // v1.9 §26.3/26.4: busy-reject
+                                        // re-homed to stage 2 (LIVE
+                                        // output_regs_free at T+1), see the
+                                        // SIG_BMM_3 arm's note above.
+                                        cr_needs_regs_free <= 1'b1;
+                                        cr_payload <= einsum_trace_iijkl_int4(
+                                            dec_input_payload_wide[127:0]);
+                                        cr_tag     <= {dec_wave_number, dec_thread_id,
+                                                           8'h00, dec_eff_output_port_id,
+                                                           dec_eff_precision, 8'h15};
+                                        cr_valid_out   <=  1'b1;
+                                        // output_frag_hdr default = 0x00 already
+                                        // set at line ~705 — no explicit write.
+                                    end
+                                end else begin
+                                    cr_hard_lower <=  1'b1;
+                                    cr_valid_out   <=  1'b0;
+                                end
+                            end else case (dec_eff_subscript)
+                                SIG_SUM_I: begin
+                                    cr_payload <= einsum_sum_i(dec_input_payload);
+                                    cr_valid_out <=  1'b1;
+                                end
+                                SIG_TRACE_II: begin
+                                    cr_payload <= einsum_trace_ii(dec_input_payload);
+                                    cr_valid_out <=  1'b1;
+                                end
+                                SIG_TRANSPOSE: begin
+                                    cr_payload <= einsum_transpose_ij(dec_input_payload);
+                                    cr_valid_out <=  1'b1;
+                                end
+                                SIG_MATMUL: begin
+                                    cr_payload <= matmul_func(dec_input_payload, dec_input_payload_b);
+                                    cr_valid_out <=  1'b1;
+                                end
+                                SIG_HADAMARD: begin
+                                    cr_payload <= einsum_hadamard(dec_input_payload, dec_input_payload_b);
+                                    cr_valid_out <=  1'b1;
+                                end
+                                SIG_OUTER: begin
+                                    cr_payload <= einsum_outer(dec_input_payload, dec_input_payload_b);
+                                    cr_valid_out <=  1'b1;
+                                end
+                                SIG_PARTIAL_IJK: begin
+                                    cr_payload <= einsum_partial_ijk(dec_input_payload);
+                                    cr_valid_out <=  1'b1;
+                                end
+                                SIG_DIAGONAL: begin
+                                    cr_payload <= einsum_diagonal(dec_input_payload);
+                                    cr_valid_out <=  1'b1;
+                                end
+                                SIG_DOT: begin
+                                    cr_payload <= einsum_dot(dec_input_payload, dec_input_payload_b);
+                                    cr_valid_out <=  1'b1;
+                                end
+                                SIG_MAT_VEC: begin
+                                    cr_payload <= einsum_mat_vec(dec_input_payload, dec_input_payload_b);
+                                    cr_valid_out <=  1'b1;
+                                end
+                                SIG_BMM: begin
+                                    // v1.1 amendment §14.3. Batched matmul at
+                                    // int8. dim_sizes must be 0x15 (3D 2×2×2).
+                                    // Result has same shape (3D 2×2×2).
+                                    if (dec_eff_dim_sizes != 8'h15) begin
+                                        cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                                    end else begin
+                                        cr_payload <= einsum_bmm_int8(dec_input_payload, dec_input_payload_b);
+                                        cr_valid_out <=  1'b1;
+                                    end
+                                end
+                                SIG_TRACE_IIJ: begin
+                                    // v1.1 amendment §14.3. 3D trace w/ kept
+                                    // axis j at int8. A dim_sizes must be 0x15.
+                                    // Result is 1D size 2 → dim_sizes = 0x01.
+                                    if (dec_eff_dim_sizes != 8'h15) begin
+                                        cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                                    end else begin
+                                        cr_payload <= einsum_trace_iij_int8(dec_input_payload);
+                                        cr_tag <= {dec_wave_number, dec_thread_id,
+                                                       8'h00, dec_eff_output_port_id,
+                                                       dec_eff_precision, 8'h01};
+                                        cr_valid_out <=  1'b1;
+                                    end
+                                end
+                                SIG_BMM_2: begin
+                                    // v1.2 amendment §15. 2-batch matmul at int4.
+                                    // dim_sizes = 0x55 (4D 2×2×2×2). Same shape out.
+                                    if (dec_eff_dim_sizes != 8'h55) begin
+                                        cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                                    end else begin
+                                        cr_payload <= einsum_bmm_2_int4(dec_input_payload, dec_input_payload_b);
+                                        cr_valid_out <=  1'b1;
+                                    end
+                                end
+                                SIG_TRACE_IIJK: begin
+                                    // v1.2 amendment §15. 3D trace w/ 2 kept axes.
+                                    // A dim_sizes = 0x55. Result 2D 2×2 = 0x05.
+                                    if (dec_eff_dim_sizes != 8'h55) begin
+                                        cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                                    end else begin
+                                        cr_payload <= einsum_trace_iijk_int4(dec_input_payload);
+                                        cr_tag <= {dec_wave_number, dec_thread_id,
+                                                       8'h00, dec_eff_output_port_id,
+                                                       dec_eff_precision, 8'h05};
+                                        cr_valid_out <=  1'b1;
+                                    end
+                                end
+                                default: begin
+                                    cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                                end
+                            endcase
+                        end
+                        8'h40, 8'h41, 8'h42: begin
+                            cr_payload <= dec_input_payload;
+                            cr_valid_out <=  1'b1;
+                        end
+                        8'h43: begin
+                            if (MUL_OPS_SUPPORTED) begin
+                                cr_payload <= euclid_norm_sq(dec_input_payload);
+                                cr_valid_out <=  1'b1;
+                            end else begin
+                                cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                            end
+                        end
+                        8'h44: begin
+                            cr_payload <= conjugate_fn(dec_input_payload);
+                            cr_valid_out <=  1'b1;
+                        end
+                        // v1.6.1b §22 — SIMD broadcast wide-consumer ops
+                        // (RISC-ish norm primitives). Wide input via
+                        // dec_input_payload_wide[127:0]; wide output as
+                        // 2-fragment emit (reuse frag_state FSM).
+                        // 0x60/61/62 SCALAR: B via dec_eff_b_value[3:0]
+                        // 0x63/64/65 VEC:    V via dec_input_payload_b[63:0]
+                        //   (requires F_HAS_OPB flag)
+                        // (0x67 Q4.4 SCALAR removed pre-stable in the opcode
+                        //   cleanup — superseded by 0x69 Q8.8.)
+                        // 0x68 CACHE_LOAD_WIDE (v1.6.5c §22.16): pure
+                        //   passthrough of a persisted Cluster-buffer slot
+                        //   (Cluster.v resolves the CAM lookup and drives
+                        //   dec_input_payload_wide/valid; a cache MISS
+                        //   surfaces as dec_input_payload_wide_valid=0,
+                        //   which the guard below turns into error_flag —
+                        //   no separate miss signal needed). output_tag is
+                        //   deliberately left at its default
+                        //   dec_forwarded_tag (set above, before this case
+                        //   statement) — the assembler's PRECISION-EH
+                        //   dim_sizes guard on the CACHE_LOAD_WIDE
+                        //   instruction is what makes that tag equal the
+                        //   producer's stored frag_tag_reg; adding a
+                        //   second override here would be redundant and
+                        //   risks reintroducing the exact literal-drift
+                        //   bug the guard fixes.
+                        // 0x69 Q8.8 SCALAR (v1.6.7): B via dec_eff_b_value[15:0]
+                        //   as signed Q8.8 — the surviving precision-recovery
+                        //   scale mul (0x67/0x6B/0x6C removed pre-stable in
+                        //   the opcode cleanup).
+                        8'h60, 8'h61, 8'h62, 8'h63, 8'h64, 8'h65, 8'h68, 8'h69: begin
+                            if (!dec_input_payload_wide_valid) begin
+                                cr_hard_error   <=  1'b1;
+                                cr_valid_out <=  1'b0;
+                            end else begin
+                                cr_needs_regs_free <= 1'b1;
+                                // Compute lo and hi halves per opcode
+                                case (dec_opcode)
+                                    8'h60: begin
+                                        cr_payload   <= wres_add_wide_scalar[63:0];
+                                        cr_payload_hi  <= wres_add_wide_scalar[127:64];
+                                    end
+                                    8'h61: begin
+                                        cr_payload   <= wres_sub_wide_scalar[63:0];
+                                        cr_payload_hi  <= wres_sub_wide_scalar[127:64];
+                                    end
+                                    8'h62: begin
+                                        cr_payload   <= wres_mul_wide_scalar[63:0];
+                                        cr_payload_hi  <= wres_mul_wide_scalar[127:64];
+                                    end
+                                    8'h63: begin
+                                        cr_payload   <= wres_add_wide_vec[63:0];
+                                        cr_payload_hi  <= wres_add_wide_vec[127:64];
+                                    end
+                                    8'h64: begin
+                                        cr_payload   <= wres_sub_wide_vec[63:0];
+                                        cr_payload_hi  <= wres_sub_wide_vec[127:64];
+                                    end
+                                    8'h65: begin
+                                        cr_payload   <= wres_mul_wide_vec[63:0];
+                                        cr_payload_hi  <= wres_mul_wide_vec[127:64];
+                                    end
+                                    8'h68: begin
+                                        // v1.6.5c §22.16 — CACHE_LOAD_WIDE:
+                                        // pure passthrough of the resolved
+                                        // wide bus (Cluster.v already muxed
+                                        // in the cached slot on a hit).
+                                        cr_payload   <= dec_input_payload_wide[63:0];
+                                        cr_payload_hi  <= dec_input_payload_wide[127:64];
+                                    end
+                                    8'h69: begin
+                                        // v1.6.7 §22.14c — Q8.8 wide-scalar mul.
+                                        // B via dec_eff_b_value[15:0] as signed Q8.8.
+                                        cr_payload   <= wres_mul_q8_8[63:0];
+                                        cr_payload_hi  <= wres_mul_q8_8[127:64];
+                                    end
+                                    default: ;
+                                endcase
+                                cr_valid_out       <=  1'b1;
+                                cr_is_frag_emit    <= 1'b1;   // idx=0, total_m1=1
+                                cr_opcode_out         <= dec_opcode;
+                                cr_frag_total_m1 <= 4'd1;
+                            end
+                        end
+                        // (8'h66 SCALAR_RSQRT arm removed pre-stable in the
+                        // opcode cleanup — 0x66 is now a decode_error at
+                        // EHDecode via the regenerated opcode_supported.)
+                        // v1.6.5d §22.17 — FRAG_INVAL: single-cycle ack of
+                        // a Cluster-buffer slot invalidate. Deliberately
+                        // STANDALONE (outside the 8'h60-69 shared wide-emit
+                        // case-item group above) rather than "mirroring
+                        // 0x68" into that group: the shared group's
+                        // epilogue unconditionally drives output_frag_hdr
+                        // and frag_state<=FRAG_EMIT_HI, which would emit a
+                        // SECOND (garbage) fragment on the next cycle from
+                        // frag_hi_pending/frag_tag_held — registers
+                        // FRAG_INVAL never writes. Reusing
+                        // dec_input_payload_wide_valid as the hit/miss
+                        // signal is intentional: Cluster.v's inval_hit
+                        // (mirroring cache_hit's CAM reuse) drives it, and
+                        // this signal is opcode-independent — latched and
+                        // forwarded unconditionally by EHDecode regardless
+                        // of dec_opcode. output_tag/output_frag_hdr are
+                        // left at their pre-case defaults (dec_forwarded_tag,
+                        // 8'h00) since an ack carries no payload of its own.
+                        8'h6A: begin
+                            if (!dec_input_payload_wide_valid) begin
+                                cr_hard_error   <=  1'b1;
+                                cr_valid_out <=  1'b0;
+                            end else begin
+                                cr_valid_out <=  1'b1;
+                            end
+                        end
+                        // (The old 8'h6B WIDEN 4-fragment arm — with its
+                        // 8'h6C REQUANTIZE companion — was removed
+                        // pre-stable in the opcode cleanup; 0x6C stays
+                        // decode_error at EHDecode.)
+                        // v1.8.0e §25.2.3 — 0x6B GAMMA_MUL_W: pre-stable
+                        // REALLOCATION of the retired code point (§12a
+                        // rule 4, slot reuse recorded in the isa JSON
+                        // notes + the domain_version-3 truth-table
+                        // recapture). MU-hosted exact widening per-lane
+                        // int4 x int4 -> int8: A = 16 int4 lanes in
+                        // payload_a (single-fragment op — NO wide_valid
+                        // guard, the STORE_QUANT precedent), gamma = 16
+                        // int4 lanes via IMM64 XOR OPREF (dec_eff_b_value
+                        // — the alu-binary XOR trap at EHDecode
+                        // guarantees exactly one source, so there is no
+                        // missing-B rung). EXACT (|p| <= 64 ⊂ int8):
+                        // rounding-free, saturation-free, combinational
+                        // 1-cycle (wres_gamma_w, LUT-structural
+                        // shift-adds — the §25.5.1 DSP-suppression
+                        // mechanism); 128b out = 2 fragments via the
+                        // widened frag FSM (the 0x60-69 emit epilogue
+                        // verbatim). Launch ladder: MU gate ->
+                        // busy-reject (lower_required, VDOT rung) ->
+                        // emit. Reachability rides the twin-classifier
+                        // lockstep edit (is_mul_op/dec_is_mul_op +=
+                        // {0x6B, 0x70, 0x78, 0x79}, §25.3) landing with
+                        // the 0e1 integration commit.
+                        8'h6B: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                            end else begin
+                                cr_needs_regs_free <= 1'b1;
+                                cr_payload     <= wres_gamma_w[63:0];
+                                cr_valid_out       <=  1'b1;
+                                cr_is_frag_emit    <= 1'b1;  // idx=0 total_m1=1
+                                cr_opcode_out         <= dec_opcode;
+                                cr_payload_hi    <= wres_gamma_w[127:64];
+                                cr_frag_total_m1 <= 4'd1;
+                            end
+                        end
+                        // v1.8.0a/0b §23.9 — remaining WIDE-ACC block STUBS
+                        // (0x71/0x72/0x7C graduated to real datapaths in
+                        // v1.8.0b, 0x74/0x75/0x76 in v1.8.0c, 0x73/0x77 in
+                        // v1.8.0d, 0x79 in v1.8.0e 0e1 — see their
+                        // standalone arms below). Decode-legal
+                        // (opcode_supported + EH shape +
+                        // mode-byte ROM all pass at EHDecode) but not yet
+                        // implemented — capability absence, so this arm is
+                        // exactly the shipped BCAST 0x24 body: lower_required,
+                        // error_flag untouched. An EXPLICIT arm, never
+                        // fall-through: the case default below raises
+                        // error_flag, which would misclassify
+                        // legal-but-unimplemented as malformed (the invariant
+                        // the suite encodes: unsupported-but-legal =>
+                        // lower_required). Membership is pinned by the
+                        // all-ops live-extraction test — adding an op to
+                        // isa/wt64v1_isa.json without listing it here falls
+                        // to the default arm and fails that test.
+                        // v1.8.0e 0e1 INTEGRATION: 0x78 DEQUANT
+                        // graduated to its lane-loop launch arm below
+                        // (the sequencer-side OPS_DEQ program landed one
+                        // commit earlier). v1.8.0e 0e2: 0x70 VFMA_ACC
+                        // graduated to its lane-loop launch arm below
+                        // (stub set now {0x7D, 0x7E} — both stay
+                        // unscheduled).
+                        8'h7D, 8'h7E: begin
+                            cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                        end
+                        // v1.8.0e 0e2 §25.2.4 — 0x70 VFMA_ACC: int4/int8
+                        // lanes x the broadcast B split, STATELESS
+                        // int32-wrap FMA (acc=1 in the mode byte marks
+                        // the wide-acc OUTPUT form, never stateful
+                        // accumulation). LAUNCH ARM ONLY (register-load,
+                        // the 0x74 idiom): A(128b wide) + the B split
+                        // {c_acc = B[63:32], b_mul = sext8(B[3:0]) int4
+                        // / B[7:0] int8 — the datapath reads ONLY those
+                        // low bits, asm-lint owns the loud range reject}
+                        // + tag captured into MU-local regs; the 1
+                        // cy/lane MAC loop lives in the advance block
+                        // above and the loop-completion frag0 handoff in
+                        // the atomic block below (§25.3). B rides
+                        // dec_eff_b_value (IMM-XOR-OPREF, alu-binary —
+                        // EHDecode's XOR trap guarantees exactly one
+                        // source, so there is no missing-B rung; imm16/
+                        // imm32 zero-extend -> c_acc = 0). Launch ladder
+                        // (0x78 mirror minus the scale rung): MU gate ->
+                        // missing-wide error (§20 wave contract — A is a
+                        // 2-fragment 128b wave for BOTH forms) ->
+                        // busy-reject (lower_required, VDOT rung) ->
+                        // launch. Legal dtypes {int4, int8} are
+                        // ROM-enforced at EHDecode, so the int8/int4
+                        // select below is total. Output: int4 -> 16
+                        // fragments (tot_m1 = 15 — the FIRST 16-frag
+                        // emitter, the mask-fix consumer), int8 -> 8;
+                        // instruction+EH replicated per fragment (VDOT
+                        // contract). Reachability rides the 0e2
+                        // twin-classifier lockstep edit.
+                        8'h70: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                            end else if (!dec_input_payload_wide_valid) begin
+                                cr_hard_error   <=  1'b1;
+                                cr_valid_out <=  1'b0;
+                            end else begin
+                                cr_needs_regs_free <= 1'b1;
+                                cr_launch_vfma <= 1'b1;
+                                cr_vfma_a     <= dec_input_payload_wide[127:0];
+                                cr_vfma_b     <= (dec_eff_precision[3:0] == 4'h1)
+                                              ? dec_eff_b_value[7:0]
+                                              : {{4{dec_eff_b_value[3]}},
+                                                 dec_eff_b_value[3:0]};
+                                cr_vfma_c     <= dec_eff_b_value[63:32];
+                                cr_vfma_is_int8 <= (dec_eff_precision[3:0] == 4'h1);
+                                // tag/opcode capture at launch is safe:
+                                // every frag-emitting dispatch is
+                                // busy-rejected while vfma_busy
+                                // (output_regs_free covers the loop).
+                                cr_valid_out <=  1'b0;
+                            end
+                        end
+                        // v1.8.0b §23.9 — VDOT_ACC: stateless 4-fragment
+                        // wide dot. A=wide[127:0], B=wide[255:128]
+                        // (SIG_BMM_3 input pattern), carry-in =
+                        // dec_eff_b_value (IMM XOR OPREF, alu_binary).
+                        // Emits r=(sext64(dot)+c) mod 2^64 immediately —
+                        // full 64-bit payload, scalar tag rebuild. NO
+                        // accumulator state anywhere.
+                        8'h71: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                // MAC tree lives on MATMUL_UNITs only.
+                                cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                            end else if (!dec_input_payload_wide_valid) begin
+                                cr_hard_error   <=  1'b1;
+                                cr_valid_out <=  1'b0;
+                            end else begin
+                                cr_needs_regs_free <= 1'b1;
+                                cr_payload <= wres_vdot_r;
+                                cr_valid_out   <=  1'b1;
+                                cr_tag <= {dec_wave_number, dec_thread_id,
+                                               8'h00, dec_eff_output_port_id,
+                                               dec_eff_precision, 8'h00};
+                            end
+                        end
+                        // v1.8.0b §23.9 — ACC_REDUCE: stateless reduction
+                        // over wide[127:0]. Sub-op = imm16[7:4] per the
+                        // generated acc_reduce_op_codes (absent imm16 =
+                        // 0 = SUM — the monotonic loosening default);
+                        // imm16[3:0] reserved-zero; unknown sub-op →
+                        // lower_required, never error_flag. MEAN =
+                        // RNE(sum/N) ties-to-even, full lane set only.
+                        8'h72: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                            end else if (!dec_input_payload_wide_valid) begin
+                                cr_hard_error   <=  1'b1;
+                                cr_valid_out <=  1'b0;
+                            end else if (dec_eff_imm16[3:0] != 4'h0) begin
+                                cr_hard_lower <=  1'b1;
+                                cr_valid_out   <=  1'b0;
+                            end else begin
+                                cr_needs_regs_free <= 1'b1;
+                                case (dec_eff_imm16[7:4])
+                                    ACC_RED_OP_SUM: begin
+                                        cr_payload <= {{32{wres_acc_sum[31]}}, wres_acc_sum};
+                                        cr_valid_out   <=  1'b1;
+                                    end
+                                    ACC_RED_OP_MAX: begin
+                                        cr_payload <= {{32{wres_acc_max[31]}}, wres_acc_max};
+                                        cr_valid_out   <=  1'b1;
+                                    end
+                                    ACC_RED_OP_L2SQ: begin
+                                        cr_payload <= {{32{wres_acc_l2sq[31]}}, wres_acc_l2sq};
+                                        cr_valid_out   <=  1'b1;
+                                    end
+                                    ACC_RED_OP_MEAN: begin
+                                        cr_payload <= {{32{wres_acc_mean[31]}}, wres_acc_mean};
+                                        cr_valid_out   <=  1'b1;
+                                    end
+                                    default: begin
+                                        cr_hard_lower <=  1'b1;
+                                        cr_valid_out   <=  1'b0;
+                                    end
+                                endcase
+                                if (dec_eff_imm16[7:4] == ACC_RED_OP_SUM
+                                 || dec_eff_imm16[7:4] == ACC_RED_OP_MAX
+                                 || dec_eff_imm16[7:4] == ACC_RED_OP_L2SQ
+                                 || dec_eff_imm16[7:4] == ACC_RED_OP_MEAN) begin
+                                    cr_tag <= {dec_wave_number, dec_thread_id,
+                                                   8'h00, dec_eff_output_port_id,
+                                                   dec_eff_precision, 8'h00};
+                                end
+                            end
+                        end
+                        // v1.8.0c §23.10 — FSCALAR: fp32 scalar A op B,
+                        // sub-op imm16[7:4] per the generated
+                        // fscalar_op_codes (absent imm16 = 0 = FS_ADD —
+                        // monotonic loosening default); B = payload_b
+                        // (eff_b_value is NEVER read); FS_FMA addend C =
+                        // payload_a[63:32]. Launch ladder (4 rungs, order
+                        // normative §23.10.1): MU gate -> busy-reject
+                        // (VDOT pattern — a gated op arriving during a
+                        // 5-34 cycle fp flight gets lower_required, NEVER
+                        // the DIV silent-swallow) -> decode guards ->
+                        // launch (register-load only; FP_StepSeq walks the
+                        // step program and fp_valid_p2 returns the result
+                        // through the output priority chain above).
+                        8'h74: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                // fp step sequencer lives on the MU only.
+                                cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                            end else if (dec_eff_imm16[3:0] != 4'h0) begin
+                                // imm16[3:0] reserved-zero (0x72 precedent)
+                                cr_hard_lower <=  1'b1;
+                                cr_valid_out   <=  1'b0;
+                            end else if (dec_eff_imm16[7:4] > 4'h4) begin
+                                // unknown sub-op 0x5-0xF -> lower_required,
+                                // never error_flag (capability absence).
+                                cr_hard_lower <=  1'b1;
+                                cr_valid_out   <=  1'b0;
+                            end else if (!dec_input_payload_b_valid) begin
+                                // Missing-B: malformed program — a
+                                // deterministic error_flag, NOT capability
+                                // absence (§23.10.2 dispatch-side guard;
+                                // first consumer of the
+                                // dec_input_payload_b_valid input).
+                                cr_hard_error   <=  1'b1;
+                                cr_valid_out <=  1'b0;
+                            end else begin
+                                cr_needs_regs_free <= 1'b1;
+                                cr_launch_fp       <= 1'b1;
+                                cr_fp_a         <= dec_input_payload[31:0];
+                                cr_fp_c         <= dec_input_payload[63:32];
+                                cr_fp_b         <= dec_input_payload_b[31:0];
+                                cr_fp_subop     <= dec_eff_imm16[7:4];
+                                cr_fp_armed       <= 1'b1;
+                                cr_fp_opcode_held <= dec_opcode;
+                                // scalar dim=0x00 tag rebuild (VDOT arm
+                                // convention); tag[15:8] carries the mode
+                                // byte verbatim.
+                                cr_fp_tag_held <= {dec_wave_number, dec_thread_id,
+                                                8'h00, dec_eff_output_port_id,
+                                                dec_eff_precision, 8'h00};
+                                cr_valid_out   <=  1'b0;
+                            end
+                        end
+                        // v1.8.0c §23.10.3 — FRSQRT32: strictly port-only
+                        // unary fp32 rsqrt (LUT seed + 3 NR iterations,
+                        // <=2 ulp). Same ladder, no extra decode guards.
+                        8'h75: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                            end else begin
+                                cr_needs_regs_free <= 1'b1;
+                                cr_launch_fp       <= 1'b1;
+                                cr_fp_a         <= dec_input_payload[31:0];
+                                cr_fp_b         <= 32'h0;
+                                cr_fp_c         <= 32'h0;
+                                cr_fp_subop     <= 4'h0;
+                                cr_fp_armed       <= 1'b1;
+                                cr_fp_opcode_held <= dec_opcode;
+                                cr_fp_tag_held <= {dec_wave_number, dec_thread_id,
+                                                8'h00, dec_eff_output_port_id,
+                                                dec_eff_precision, 8'h00};
+                                cr_valid_out   <=  1'b0;
+                            end
+                        end
+                        // v1.8.0c §23.10.4 — FEXP2_32: strictly port-only
+                        // unary fp32 exp2 (degree-6 Horner + integer
+                        // bypass, <=2 ulp). Same ladder, no extra guards.
+                        8'h76: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                            end else begin
+                                cr_needs_regs_free <= 1'b1;
+                                cr_launch_fp       <= 1'b1;
+                                cr_fp_a         <= dec_input_payload[31:0];
+                                cr_fp_b         <= 32'h0;
+                                cr_fp_c         <= 32'h0;
+                                cr_fp_subop     <= 4'h0;
+                                cr_fp_armed       <= 1'b1;
+                                cr_fp_opcode_held <= dec_opcode;
+                                cr_fp_tag_held <= {dec_wave_number, dec_thread_id,
+                                                8'h00, dec_eff_output_port_id,
+                                                dec_eff_precision, 8'h00};
+                                cr_valid_out   <=  1'b0;
+                            end
+                        end
+                        // v1.8.0d §23.10.10(c) — ACC_ELEMWISE: fused
+                        // round-once fp32 FMA a*B[63:32]+B[31:0], OPREF
+                        // form ONLY (OPS_ACCEW rides the FS_FMA-shaped
+                        // step program). Launch ladder = the 0x74/0x75
+                        // mirror + the OPREF-only rung: ANY imm present
+                        // -> lower_required (capability absence — the
+                        // sub-op table was deleted; an imm carve-out
+                        // under EHDecode's alu_binary XOR trap would be
+                        // decode_error, and this is NOT that). OPREF
+                        // presence = dec_eff_opref_kind[3] (the v1.8.0d
+                        // {presence, src_kind} packing — kind 0 direct-
+                        // payload_b OPREF would otherwise alias the imm
+                        // form's 4'h0). Under the XOR trap, a clean
+                        // decode of this alu-binary opcode has EXACTLY
+                        // one of {imm, OPREF}, so !bit3 == imm present.
+                        8'h73: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                            end else if (!dec_eff_opref_kind[3]) begin
+                                // imm16/imm32/imm64 form — implemented
+                                // capability is OPREF-only (§23.10.10(c)).
+                                cr_hard_lower <=  1'b1;
+                                cr_valid_out   <=  1'b0;
+                            end else begin
+                                cr_needs_regs_free <= 1'b1;
+                                cr_launch_fp       <= 1'b1;
+                                cr_fp_a         <= dec_input_payload[31:0];
+                                cr_fp_b         <= dec_eff_b_value[63:32];
+                                cr_fp_c         <= dec_eff_b_value[31:0];
+                                cr_fp_subop     <= 4'h0;
+                                cr_fp_dtype     <= dec_eff_precision[3:0];
+                                cr_fp_armed       <= 1'b1;
+                                cr_fp_opcode_held <= dec_opcode;
+                                cr_fp_tag_held <= {dec_wave_number, dec_thread_id,
+                                                8'h00, dec_eff_output_port_id,
+                                                dec_eff_precision, 8'h00};
+                                cr_valid_out   <=  1'b0;
+                            end
+                        end
+                        // v1.8.0d §23.10.10(b) — CVT: six scalar
+                        // conversions on the MU step sequencer (OPS_CVT).
+                        // Sub-op = imm16[7:4] from the generated
+                        // cvt_op_codes (absent imm16 = WIDEN_TO_F32, the
+                        // monotonic default); dtype = the mode byte's
+                        // dtype nibble (ROM-legal set {0,1,2,3,4}; 0x4 =
+                        // accumulator-format integer endpoint, direction
+                        // from the sub-op — pin 10). eff_b_value is NEVER
+                        // read (imm32/imm64 asm-forbidden/RTL-tolerated,
+                        // FSCALAR semantics). Ladder rungs are 0x72's
+                        // exactly: imm16[3:0]/[15:8] reserved-zero and
+                        // sub-op > NARROW_FROM_F32 -> lower_required,
+                        // never error_flag. int64 I2F ingress is the
+                        // pinned FSCALAR-style split: payload[63:32] ->
+                        // c_in, payload[31:0] -> a_in.
+                        8'h77: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                            end else if (dec_eff_imm16[3:0] != 4'h0
+                                      || dec_eff_imm16[15:8] != 8'h0) begin
+                                cr_hard_lower <=  1'b1;
+                                cr_valid_out   <=  1'b0;
+                            end else if (dec_eff_imm16[7:4] > CVT_NARROW_FROM_F32) begin
+                                cr_hard_lower <=  1'b1;
+                                cr_valid_out   <=  1'b0;
+                            end else begin
+                                cr_needs_regs_free <= 1'b1;
+                                cr_launch_fp       <= 1'b1;
+                                cr_fp_a         <= dec_input_payload[31:0];
+                                cr_fp_b         <= 32'h0;
+                                cr_fp_c         <= dec_input_payload[63:32];
+                                cr_fp_subop     <= dec_eff_imm16[7:4];
+                                cr_fp_dtype     <= dec_eff_precision[3:0];
+                                cr_fp_armed       <= 1'b1;
+                                cr_fp_opcode_held <= dec_opcode;
+                                cr_fp_tag_held <= {dec_wave_number, dec_thread_id,
+                                                8'h00, dec_eff_output_port_id,
+                                                dec_eff_precision, 8'h00};
+                                cr_valid_out   <=  1'b0;
+                            end
+                        end
+                        // v1.8.0e §25.2.2 — 0x78 DEQUANT: int4/int8
+                        // lanes x the fp32 broadcast scale -> bf16
+                        // (dest bf16-ONLY in 0e; the mode dtype names
+                        // the SOURCE — int4-32 form emits 8 fragments,
+                        // int8-16 form emits 4). LAUNCH ARM ONLY: the
+                        // per-lane compute is the fused FP_StepSeq
+                        // OPS_DEQ program (one launch per lane, round-
+                        // once bf16 pack inside the sequencer); the
+                        // lane-loop advance lives in the fp strobe
+                        // block above and the loop-completion frag0
+                        // handoff in the atomic block below (§25.3).
+                        // Launch ladder (0x79 mirror): MU gate ->
+                        // missing-wide error (§20 wave contract — A is
+                        // a 2-fragment 128b wave for BOTH forms) ->
+                        // busy-reject (lower_required, VDOT rung) ->
+                        // missing-scale error_flag (the fp32 scale
+                        // rides ext_payload_b + valid on the wave-
+                        // COMPLETING fragment beat, 0x63-65 precedent;
+                        // beat placement is an SDK/NoC contract pin) ->
+                        // launch (register-load only: A(128b) + scale +
+                        // tag captured into MU-local regs — the 0x74
+                        // idiom, EHDecode is cluster-shared). fp_armed
+                        // deliberately NOT set: per-lane done pulses
+                        // are diverted from the fp output arm (§25.3
+                        // loop suppression). Legal source dtypes {int4,
+                        // int8} are ROM-enforced at EHDecode, so the
+                        // int8/int4 select below is total. Reachability
+                        // rides the twin-classifier lockstep edit.
+                        8'h78: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                            end else if (!dec_input_payload_wide_valid) begin
+                                cr_hard_error   <=  1'b1;
+                                cr_valid_out <=  1'b0;
+                            end else if (!dec_input_payload_b_valid) begin
+                                cr_hard_error   <=  1'b1;   // missing scale
+                                cr_valid_out <=  1'b0;
+                            end else begin
+                                cr_needs_regs_free <= 1'b1;
+                                cr_launch_fp   <= 1'b1;     // lane 0 launch
+                                cr_fp_a     <= (dec_eff_precision[3:0] == 4'h1)
+                                            ? {24'h0, dec_input_payload_wide[7:0]}
+                                            : {28'h0, dec_input_payload_wide[3:0]};
+                                cr_fp_b     <= dec_input_payload_b[31:0];
+                                cr_fp_c     <= 32'h0;
+                                cr_fp_subop <= 4'h0;
+                                cr_fp_dtype <= dec_eff_precision[3:0];
+                                cr_fp_opcode_held <= dec_opcode;
+                                // loop-diverted: fp_armed stays 0
+                                cr_deq_a         <= dec_input_payload_wide[127:0];
+                                cr_deq_is_int8     <= (dec_eff_precision[3:0] == 4'h1);
+                                cr_launch_deq <= 1'b1;
+                                // tag/opcode capture at launch is safe:
+                                // every frag-emitting dispatch is
+                                // busy-rejected while deq_loop_active
+                                // (output_regs_free covers the loop).
+                                cr_valid_out   <=  1'b0;
+                            end
+                        end
+                        // v1.8.0e §25.2.1 — 0x79 FMINMAX: frozen
+                        // IEEE-2019 minimumNumber/maximumNumber, 4 f32
+                        // lanes (128b = 2-fragment wave in) vs the ONE
+                        // broadcast B on dec_input_payload_b (FSCALAR-
+                        // clone legality re-row: B port ONLY — the
+                        // alu-binary XOR trap stays dormant; OPREF-B is
+                        // a recorded post-0e loosening). Combinational
+                        // arm (wres_fminmax — the dedicated offset-key
+                        // comparator cells, one unsigned 32b compare per
+                        // lane, signed-int-tree reuse forbidden), zero
+                        // FP_StepSeq contact; 128b out = 2 fragments via
+                        // the widened frag FSM. Launch ladder (0x74
+                        // mirror + the wide-input guard): MU gate ->
+                        // missing-wide error (§20 wave contract) ->
+                        // busy-reject -> imm16[3:0]/[15:8] reserved-zero
+                        // and sub-op > MAXIMUMNUM -> lower_required ->
+                        // missing-B error_flag (0x74 idiom) -> emit.
+                        // Reachability rides the twin-classifier
+                        // lockstep edit (§25.3, 0e1 integration commit).
+                        8'h79: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                            end else if (!dec_input_payload_wide_valid) begin
+                                cr_hard_error   <=  1'b1;
+                                cr_valid_out <=  1'b0;
+                            end else if (dec_eff_imm16[3:0] != 4'h0
+                                      || dec_eff_imm16[15:8] != 8'h0) begin
+                                cr_hard_lower <=  1'b1;
+                                cr_valid_out   <=  1'b0;
+                            end else if (dec_eff_imm16[7:4] > FMM_MAXIMUMNUM) begin
+                                cr_hard_lower <=  1'b1;
+                                cr_valid_out   <=  1'b0;
+                            end else if (!dec_input_payload_b_valid) begin
+                                cr_hard_error   <=  1'b1;
+                                cr_valid_out <=  1'b0;
+                            end else begin
+                                cr_needs_regs_free <= 1'b1;
+                                cr_payload     <= wres_fminmax[63:0];
+                                cr_valid_out       <=  1'b1;
+                                cr_is_frag_emit    <= 1'b1;  // idx=0 total_m1=1
+                                cr_opcode_out         <= dec_opcode;
+                                cr_payload_hi    <= wres_fminmax[127:64];
+                                cr_frag_total_m1 <= 4'd1;
+                            end
+                        end
+                        // v1.8.0b §23.9 — STORE_QUANT: scalar int-dest
+                        // requant, out = clamp_dtype(RNE(x >> s)),
+                        // s = imm16[5:0] (absent = 0 = pure clamp).
+                        // L-PE hosted (no multipliers, no MUL prologue),
+                        // single-fragment op (NO wide_valid guard — that
+                        // would error every legal dispatch). mem EH
+                        // (if present) is IGNORED in v1.8.0b — reserved
+                        // for the v1.8.0d memory-destination store form;
+                        // memory_req is NEVER asserted here. dtype
+                        // 0x2/0x3 (f16/bf16) lower_required until 0d.
+                        // output_payload assigned EXPLICITLY (the 0x05
+                        // stale-payload copy trap).
+                        8'h7C: begin
+                            if (dec_eff_imm16[15:6] != 10'h0) begin
+                                cr_hard_lower <=  1'b1;
+                                cr_valid_out   <=  1'b0;
+                            end else if (dec_eff_precision[3:0] == 4'h0) begin
+                                cr_needs_regs_free <= 1'b1;
+                                cr_payload <= wres_sq_int4;
+                                cr_valid_out   <=  1'b1;
+                                cr_tag <= {dec_wave_number, dec_thread_id,
+                                               8'h00, dec_eff_output_port_id,
+                                               dec_eff_precision, 8'h00};
+                            end else if (dec_eff_precision[3:0] == 4'h1) begin
+                                cr_needs_regs_free <= 1'b1;
+                                cr_payload <= wres_sq_int8;
+                                cr_valid_out   <=  1'b1;
+                                cr_tag <= {dec_wave_number, dec_thread_id,
+                                               8'h00, dec_eff_output_port_id,
+                                               dec_eff_precision, 8'h00};
+                            end else if (dec_eff_imm16[5:0] != 6'h0) begin
+                                // v1.8.0d §23.10.10(d) — fp-dest reserved
+                                // rung: the int forms' shift field s =
+                                // imm16[5:0] is meaningless for an fp
+                                // destination, so nonzero bits there are
+                                // reserved -> lower_required (mirrors the
+                                // imm16[15:6] rung above; together the
+                                // fp-dest forms require imm16 == 0/absent).
+                                cr_hard_lower <=  1'b1;
+                                cr_valid_out   <=  1'b0;
+                            end else begin
+                                // v1.8.0d §23.10.10(d) — fp-dest packer
+                                // (dtype 0x2 f16 / 0x3 bf16; the mode-byte
+                                // ROM admits no other dtype here). One
+                                // shared narrow function + DAZ-at-source
+                                // (wres_sq_* wires above) == 0x77
+                                // NARROW_FROM_F32 bit-identity, all 2^32
+                                // inputs. Result row {48'h0, h}; 0 added
+                                // cycles (combinational, same-cycle emit
+                                // as the int arms).
+                                cr_needs_regs_free <= 1'b1;
+                                cr_payload <= {48'h0,
+                                    (dec_eff_precision[3:0] == 4'h3)
+                                        ? wres_sq_bf16 : wres_sq_f16};
+                                cr_valid_out   <=  1'b1;
+                                cr_tag <= {dec_wave_number, dec_thread_id,
+                                               8'h00, dec_eff_output_port_id,
+                                               dec_eff_precision, 8'h00};
+                            end
+                        end
+                        default: begin
+                            cr_valid_out <=  1'b0;
+                            cr_hard_error <=  1'b1;
+                        end
+                    endcase
+                end
+            end
 
             // v1.5.3a/v1.7 §20/§22.18 — ABSOLUTE-PRIORITY fragment-emit
             // override. Placed at the very top of the output priority
-            // chain so fragment 1 lands EXACTLY on cycle N+1 after
-            // dispatch (and fragments 2/3 on N+2/N+3 for a future
+            // chain so fragment 1 lands EXACTLY 1 cycle after fragment 0
+            // (frag_idx entering FRAG_EMIT_1) — UNCHANGED by v1.9, this
+            // block is structurally untouched (spec §26.3 finding 4). For
+            // the compute-inline case_result_s2 arms, fragment 0 itself
+            // now lands on cycle N+1 after dispatch (cycle N), not N —
+            // see the case_result_s2 register bank and stage-2
+            // arbitration block above — so fragment 1 lands on N+2, not
+            // N+1 (spec §26.4; and fragments 2/3 on N+3/N+4 for a future
             // 4-fragment v1.8.0e wave). The launch-gate below prevents
             // MUL/DIV from starting new operations while
             // frag_idx != FRAG_IDLE, so this override never collides with
@@ -2043,1240 +3357,98 @@ module PE_Core #(
                 output_valid   <= 1'b1;
                 opcode_out     <= fp_opcode_held;
             end
-            else if (pe_active && dec_valid) begin
-                if (dec_decode_error) begin
+            // -----------------------------------------------------------------
+            // v1.9 §26.3/§26.4 — Stage 2: case_result_s2 arbitration (comb,
+            // cycle T+1). Same position in the priority chain the old case-
+            // dispatch arm held (frag-drain > MUL p2 > DIV p2 > DIV b_zero p2
+            // > FP p2 > HERE > DEQUANT frag0 handoff > VFMA frag0 handoff),
+            // UNCHANGED in kind — it now reads case_result_s2's stage-1
+            // capture (from cycle T) instead of live case-block wires.
+            //
+            // output_regs_free is evaluated LIVE at this T+1 cycle (a plain
+            // reference to the comb `output_regs_free` wire below, using
+            // whatever mul_valid_p1/p2, div_state, fp_busy, deq_loop_active,
+            // vfma_busy, frag_idx currently hold during THIS priority-chain
+            // evaluation — the same live values frag-drain/MUL-p2/DIV-p2/
+            // FP-p2 above already use) — NOT a stale value carried from the
+            // T-time stage-1 capture. This is the deliberate re-homing
+            // §26.3/§26.4 mandates: cr_needs_regs_free-gated arms defer
+            // their busy-reject decision to this cycle so a collision with
+            // any higher-priority committer active THIS cycle is resolved
+            // correctly (see the stage-1 block's header comment).
+            // -----------------------------------------------------------------
+            else if (cr_dispatch_valid) begin
+                if (cr_decode_error) begin
                     error_flag   <= 1'b1;
                     output_valid <= 1'b0;
-                end else if (!dec_tag_match) begin
+                end else if (cr_tag_mismatch) begin
                     output_valid <= 1'b0;
-                end
-                else if (!NON_MUL_OPS_SUPPORTED && !dec_is_mul_op
-                                                 && !dec_is_div_op) begin
-                    // M-UNIT (mul-only) and DIV-UNIT (div-only) both have
-                    // NON_MUL_OPS_SUPPORTED=0; the unit that owns the
-                    // current op-class still needs to handle dispatch via
-                    // its own pipeline (MUL or DIV). Only opcodes that
-                    // belong to NEITHER class are lowered here.
+                end else if (cr_module_lower) begin
                     lower_required <= 1'b1;
                     output_valid   <= 1'b0;
-                end
-                else begin
-                    output_tag <= dec_forwarded_tag;
-                    case (dec_opcode)
-                        8'h00: output_valid <= 1'b0;
-                        8'h01: begin
-                            output_tag     <= dec_wave_advanced_tag;
-                            output_payload <= dec_input_payload;
-                            output_valid   <= 1'b1;
-                        end
-                        8'h02, 8'h03: begin
-                            output_payload <= dec_input_payload;
-                            output_valid   <= 1'b1;
-                        end
-                        8'h04: begin
-                            mem_addr   <= dec_input_payload + {32'h0, dec_eff_mem_offset};
-                            memory_req <= 1'b1;
-                            output_valid <= 1'b0;
-                        end
-                        8'h05: begin
-                            mem_addr   <= dec_input_payload + {32'h0, dec_eff_mem_offset};
-                            memory_req <= 1'b1;
-                            output_valid <= 1'b1;
-                        end
-                        8'h10: begin
-                            output_payload <= dec_input_payload + dec_eff_b_value;
-                            output_valid   <= 1'b1;
-                        end
-                        8'h11: begin
-                            output_payload <= dec_input_payload - dec_eff_b_value;
-                            output_valid   <= 1'b1;
-                        end
-                        8'h12: begin // MUL — handled by pipeline
-                            if (!MUL_OPS_SUPPORTED) lower_required <= 1'b1;
-                            output_valid <= 1'b0;
-                        end
-                        8'h13: begin // DIV — handled by pipeline
-                            if (!DIV_OPS_SUPPORTED) lower_required <= 1'b1;
-                            output_valid <= 1'b0;
-                        end
-                        8'h14: begin // AND
-                            output_payload <= dec_input_payload & dec_eff_b_value;
-                            output_valid   <= 1'b1;
-                        end
-                        8'h15: begin // OR
-                            output_payload <= dec_input_payload | dec_eff_b_value;
-                            output_valid   <= 1'b1;
-                        end
-                        8'h16: begin // XOR
-                            output_payload <= dec_input_payload ^ dec_eff_b_value;
-                            output_valid   <= 1'b1;
-                        end
-                        8'h17: begin // SHL (logical shift left)
-                            output_payload <= dec_input_payload << dec_eff_imm16[5:0];
-                            output_valid <= 1'b1;
-                        end
-                        8'h18: begin // SHR (logical shift right)
-                            output_payload <= dec_input_payload >> dec_eff_imm16[5:0];
-                            output_valid   <= 1'b1;
-                        end
-                        8'h19: begin // SAR (arithmetic shift right)
-                            output_payload <= $signed(dec_input_payload) >>> dec_eff_imm16[5:0];
-                            output_valid   <= 1'b1;
-                        end
-                        8'h1A: begin // ROR
-                            output_payload <= rotate_right_64(dec_input_payload, dec_eff_imm16[5:0]);
-                            output_valid <= 1'b1;
-                        end
-                        8'h1B: begin // NEG (two's complement)
-                            output_payload <= ~dec_input_payload + 64'd1;
-                            output_valid <= 1'b1;
-                        end
-                        8'h1C: begin // MOD — handled by pipeline
-                            if (!DIV_OPS_SUPPORTED) lower_required <= 1'b1;
-                            output_valid <= 1'b0;
-                        end
-                        8'h1D: begin // DIVMOD — handled by pipeline
-                            if (!DIV_OPS_SUPPORTED) lower_required <= 1'b1;
-                            output_valid <= 1'b0;
-                        end
-                        8'h1E: begin // ROL
-                            output_payload <= rotate_left_64(dec_input_payload, dec_eff_imm16[5:0]);
-                            output_valid   <= 1'b1;
-                        end
-                        8'h1F: begin // BITREV
-                            output_payload <= bit_reverse(dec_input_payload);
-                            output_valid <= 1'b1;
-                        end
-                        8'h50: begin // NOT (bitwise complement)
-                            output_payload <= ~dec_input_payload;
-                            output_valid   <= 1'b1;
-                        end
-                        8'h51: begin // NAND
-                            output_payload <= ~(dec_input_payload & dec_eff_b_value);
-                            output_valid   <= 1'b1;
-                        end
-                        8'h52: begin // NOR
-                            output_payload <= ~(dec_input_payload | dec_eff_b_value);
-                            output_valid   <= 1'b1;
-                        end
-                        8'h53: begin // XNOR
-                            output_payload <= ~(dec_input_payload ^ dec_eff_b_value);
-                            output_valid   <= 1'b1;
-                        end
-                        8'h54: begin // POPCOUNT
-                            output_payload <= popcount_64(dec_input_payload);
-                            output_valid   <= 1'b1;
-                        end
-                        8'h55: begin // CLZ (Count Leading Zeros)
-                            output_payload <= clz_64(dec_input_payload);
-                            output_valid   <= 1'b1;
-                        end
-                        8'h56: begin // CTZ (Count Trailing Zeros)
-                            output_payload <= ctz_64(dec_input_payload);
-                            output_valid   <= 1'b1;
-                        end
-                        8'h20: begin
-                            if (axis_sz(dec_eff_dim_sizes, dec_eff_imm16[1:0]) != 2'b00) begin
-                                error_flag <= 1'b1; output_valid <= 1'b0;
-                            end else begin
-                                output_tag <= {dec_wave_number, dec_thread_id,
-                                               8'h00, dec_eff_output_port_id,
-                                               dec_eff_precision,
-                                               dim_squeeze(dec_eff_dim_sizes, dec_eff_imm16[1:0])};
-                                output_payload <= dec_input_payload;
-                                output_valid <= 1'b1;
-                            end
-                        end
-                        8'h21: begin
-                            if (dec_eff_dim_sizes[7:6] != 2'b00) begin
-                                error_flag <= 1'b1; output_valid <= 1'b0;
-                            end else begin
-                                output_tag <= {dec_wave_number, dec_thread_id,
-                                               8'h00, dec_eff_output_port_id,
-                                               dec_eff_precision,
-                                               dim_unsqueeze(dec_eff_dim_sizes, dec_eff_imm16[1:0])};
-                                output_payload <= dec_input_payload;
-                                output_valid <= 1'b1;
-                            end
-                        end
-                        8'h22: begin
-                            if (elem_count(dec_eff_dim_sizes) != elem_count(dec_eff_imm16[7:0])) begin
-                                error_flag <= 1'b1; output_valid <= 1'b0;
-                            end else begin
-                                output_tag <= {dec_wave_number, dec_thread_id,
-                                               8'h00, dec_eff_output_port_id,
-                                               dec_eff_precision,
-                                               dec_eff_imm16[7:0]};
-                                output_payload <= dec_input_payload;
-                                output_valid <= 1'b1;
-                            end
-                        end
-                        8'h23: begin
-                            if ((dec_eff_imm16[7:0] == 8'h01) && (dec_eff_dim_sizes == 8'h05)) begin
-                                output_payload <= permute_2x2_transpose(dec_input_payload);
-                                output_tag <= {dec_wave_number, dec_thread_id,
-                                               8'h00, dec_eff_output_port_id,
-                                               dec_eff_precision, dec_eff_dim_sizes};
-                                output_valid <= 1'b1;
-                            end else begin
-                                lower_required <= 1'b1; output_valid <= 1'b0;
-                            end
-                        end
-                        8'h24: begin
-                            lower_required <= 1'b1; output_valid <= 1'b0;
-                        end
-                        8'h25: begin
-                            if ((dec_eff_imm16[3:0] == 4'd0) && (dec_eff_dim_sizes == 8'h03)
-                                && ((dec_eff_imm16[7:4] == RED_OP_SUM)
-                                    || (dec_eff_imm16[7:4] == RED_OP_MAX)
-                                    || (dec_eff_imm16[7:4] == RED_OP_MIN))) begin
-                                output_payload <= reduce_axis0_1d(dec_eff_imm16[7:4], dec_input_payload);
-                                output_tag <= {dec_wave_number, dec_thread_id,
-                                               8'h00, dec_eff_output_port_id,
-                                               dec_eff_precision,
-                                               dim_squeeze(dec_eff_dim_sizes, 2'd0)};
-                                output_valid <= 1'b1;
-                            end else begin
-                                lower_required <= 1'b1; output_valid <= 1'b0;
-                            end
-                        end
-                        8'h26: begin
-                            // SPLAT (v1.1 amendment, 2026-07-14). Sign-extend
-                            // the 8-bit signed scalar in dec_eff_imm16[7:0]
-                            // to int16, then replicate across all 4 lanes of
-                            // the 64-bit payload. Result tensor is 1-D of
-                            // size 4 (dim_sizes = 8'h03 → first axis = 3+1 = 4
-                            // elements, others = size 1).
-                            //
-                            // Input tensor semantics: N/A — SPLAT is a source
-                            // op that generates a constant. The input payload
-                            // is ignored; forwarded_tag's non-dim fields are
-                            // preserved (wave_number, thread_id, port,
-                            // precision).
-                            //
-                            // Primary use case: broadcast lowering. See
-                            // `.claude-memos/einsum_trace_broadcast_analysis.md`
-                            // and `wt64v1_spec.md` §14.
-                            output_tag <= {dec_wave_number, dec_thread_id,
-                                           8'h00, dec_eff_output_port_id,
-                                           dec_eff_precision,
-                                           8'h03};
-                            output_payload <= {4{ {{8{dec_eff_imm16[7]}}, dec_eff_imm16[7:0]} }};
-                            output_valid <= 1'b1;
-                        end
-                        8'h30: begin
-                            if (!MUL_OPS_SUPPORTED) begin
-                                lower_required <= 1'b1; output_valid <= 1'b0;
-                            end else if (dec_eff_dim_sizes != 8'h05) begin
-                                error_flag <= 1'b1; output_valid <= 1'b0;
-                            end else begin
-                                output_payload <= matmul_func(dec_input_payload, dec_input_payload_b);
-                                output_valid <= 1'b1;
-                            end
-                        end
-                        8'h31: begin
-                            output_payload <= {
-                                dec_input_payload[63:48] + dec_input_payload_b[63:48],
-                                dec_input_payload[47:32] + dec_input_payload_b[47:32],
-                                dec_input_payload[31:16] + dec_input_payload_b[31:16],
-                                dec_input_payload[15: 0] + dec_input_payload_b[15: 0]
-                            };
-                            output_valid <= 1'b1;
-                        end
-                        8'h32: begin
-                            // v1.5.3 §20 — two-level SUBSCRIPT dispatch.
-                            // Legacy v1.0..v1.2 signatures (SUM_I..TRACE_IIJK)
-                            // require `dec_eff_subscript_hi == 48'h0` (no
-                            // second SUBSCRIPT EH); v1.5.3+ wide-consumer
-                            // signatures (SIG_BMM_3) require non-zero hi.
-                            // This guards against a malformed wave whose
-                            // lo-half accidentally aliases a legacy sig.
-                            if (!MUL_OPS_SUPPORTED) begin
-                                lower_required <= 1'b1; output_valid <= 1'b0;
-                            end else if (dec_eff_subscript_hi != 48'h0) begin
-                                // v1.5.3 wide-consumer path
-                                if ((dec_eff_subscript == SIG_BMM_3_LO)
-                                     && (dec_eff_subscript_hi == SIG_BMM_3_HI)) begin
-                                    // SIG_BMM_3: 'abcij,abcjk->abcik' at int4.
-                                    // Input A + B both packed into
-                                    // dec_input_payload_wide (v1.5.2 fragment
-                                    // reassembly): A at wide[127:0], B at
-                                    // wide[255:128] — 4-fragment wave
-                                    // (frag_hdr indices 0..3). Cannot use
-                                    // IMM64 chain because EINSUM (0x32) is
-                                    // forbid_imm_any at EHDecode legality.
-                                    // Output 128-bit split into 2 wave tokens
-                                    // with frag_hdr = 8'h01, 8'h11.
-                                    if (!dec_input_payload_wide_valid) begin
-                                        // Illegal per §20 contract — Cluster's
-                                        // wave_complete guarantees wide_valid=1
-                                        // for any wide-consumer wave.
-                                        error_flag   <= 1'b1;
-                                        output_valid <= 1'b0;
-                                    end else if (!output_regs_free) begin
-                                        // Compound drain gate (per verify:fsm):
-                                        // reject if any MUL/DIV pulse would
-                                        // collide with fragment 0 (cycle N) or
-                                        // fragment 1 (cycle N+1).
-                                        lower_required <= 1'b1;
-                                        output_valid   <= 1'b0;
-                                    end else begin
-                                        // Fragment 0 emit (a=0 batches, 4×2×2)
-                                        output_payload  <= einsum_bmm_3_int4_lo(
-                                            dec_input_payload_wide[127:0],
-                                            dec_input_payload_wide[255:128]);
-                                        output_valid    <= 1'b1;
-                                        output_frag_hdr <= 8'h01;   // idx=0 total-1=1
-                                        opcode_out      <= dec_opcode;
-                                        // Latch fragment 1 (a=1 batches) +
-                                        // tag/opcode for the N+1 override.
-                                        frag_pending[1]  <= einsum_bmm_3_int4_hi(
-                                            dec_input_payload_wide[127:0],
-                                            dec_input_payload_wide[255:128]);
-                                        frag_tag_held      <= dec_forwarded_tag;
-                                        frag_opcode_held   <= dec_opcode;
-                                        frag_total_m1_held <= 4'd1;
-                                        frag_idx           <= FRAG_EMIT_1;
-                                    end
-                                end else if ((dec_eff_subscript == SIG_SCALAR_FAMILY_LO)
-                                             && (dec_eff_subscript_hi[47:4] == SIG_SCALAR_FAMILY_HI_BASE)) begin
-                                    // v1.6.1 §22 — 5D→scalar reduction family.
-                                    // Op marker in dec_eff_subscript_hi[3:0]:
-                                    //   0=SUM, 1=MAX, 2=ARGMAX, 3=L1, 4=L2SQ, 6=MIN, 7=ARGMIN.
-                                    // (0x5 reserved for MEAN in 5D→4D family; unused here.)
-                                    if (!dec_input_payload_wide_valid) begin
-                                        error_flag   <= 1'b1;
-                                        output_valid <= 1'b0;
-                                    end else if (!output_regs_free) begin
-                                        lower_required <= 1'b1;
-                                        output_valid   <= 1'b0;
-                                    end else case (dec_eff_subscript_hi[3:0])
-                                        OP_SUM: begin
-                                            output_payload <= einsum_sum_ijklm_int4(dec_input_payload_wide[127:0]);
-                                            output_tag <= {dec_wave_number, dec_thread_id,
-                                                           8'h00, dec_eff_output_port_id,
-                                                           dec_eff_precision, 8'h00};
-                                            output_valid <= 1'b1;
-                                        end
-                                        OP_MAX: begin
-                                            output_payload <= einsum_max_ijklm_int4(dec_input_payload_wide[127:0]);
-                                            output_tag <= {dec_wave_number, dec_thread_id,
-                                                           8'h00, dec_eff_output_port_id,
-                                                           dec_eff_precision, 8'h00};
-                                            output_valid <= 1'b1;
-                                        end
-                                        OP_ARGMAX: begin
-                                            output_payload <= einsum_argmax_ijklm_int4(dec_input_payload_wide[127:0]);
-                                            output_tag <= {dec_wave_number, dec_thread_id,
-                                                           8'h00, dec_eff_output_port_id,
-                                                           dec_eff_precision, 8'h00};
-                                            output_valid <= 1'b1;
-                                        end
-                                        OP_L1: begin
-                                            output_payload <= einsum_l1_ijklm_int4(dec_input_payload_wide[127:0]);
-                                            output_tag <= {dec_wave_number, dec_thread_id,
-                                                           8'h00, dec_eff_output_port_id,
-                                                           dec_eff_precision, 8'h00};
-                                            output_valid <= 1'b1;
-                                        end
-                                        OP_L2SQ: begin
-                                            output_payload <= einsum_l2sq_ijklm_int4(dec_input_payload_wide[127:0]);
-                                            output_tag <= {dec_wave_number, dec_thread_id,
-                                                           8'h00, dec_eff_output_port_id,
-                                                           dec_eff_precision, 8'h00};
-                                            output_valid <= 1'b1;
-                                        end
-                                        OP_MIN: begin
-                                            output_payload <= einsum_min_ijklm_int4(dec_input_payload_wide[127:0]);
-                                            output_tag <= {dec_wave_number, dec_thread_id,
-                                                           8'h00, dec_eff_output_port_id,
-                                                           dec_eff_precision, 8'h00};
-                                            output_valid <= 1'b1;
-                                        end
-                                        OP_ARGMIN: begin
-                                            output_payload <= einsum_argmin_ijklm_int4(dec_input_payload_wide[127:0]);
-                                            output_tag <= {dec_wave_number, dec_thread_id,
-                                                           8'h00, dec_eff_output_port_id,
-                                                           dec_eff_precision, 8'h00};
-                                            output_valid <= 1'b1;
-                                        end
-                                        default: begin
-                                            lower_required <= 1'b1;
-                                            output_valid   <= 1'b0;
-                                        end
-                                    endcase
-                                end else if ((dec_eff_subscript == SIG_5D4D_FAMILY_LO)
-                                             && (dec_eff_subscript_hi[47:4] == SIG_5D4D_FAMILY_HI_BASE)) begin
-                                    // v1.6.1 §22 — 5D→4D reduction family (reduce over axis m).
-                                    // Op marker: 5=MEAN is the ONLY live member (rmsnorm/
-                                    // layernorm mean step). SUM/MAX/L2SQ/MIN markers were
-                                    // removed pre-stable in the opcode cleanup — they now
-                                    // fall to the default lower_required arm, same as any
-                                    // other unknown marker. The 4D→3D family (SIG_4D3D_*)
-                                    // was removed entirely in the same cleanup.
-                                    if (!dec_input_payload_wide_valid) begin
-                                        error_flag   <= 1'b1;
-                                        output_valid <= 1'b0;
-                                    end else if (!output_regs_free) begin
-                                        lower_required <= 1'b1;
-                                        output_valid   <= 1'b0;
-                                    end else case (dec_eff_subscript_hi[3:0])
-                                        OP_MEAN: begin
-                                            output_payload <= einsum_mean_5d_to_4d_int4(dec_input_payload_wide[127:0]);
-                                            output_tag <= {dec_wave_number, dec_thread_id,
-                                                           8'h00, dec_eff_output_port_id,
-                                                           dec_eff_precision, 8'h55};
-                                            output_valid <= 1'b1;
-                                        end
-                                        default: begin
-                                            lower_required <= 1'b1;
-                                            output_valid   <= 1'b0;
-                                        end
-                                    endcase
-                                end else if ((dec_eff_subscript == SIG_TRACE_IJJKL_LO)
-                                             && (dec_eff_subscript_hi == SIG_TRACE_IJJKL_HI)) begin
-                                    // v1.6.1 §22 — SIG_TRACE_IJJKL: 5D trace over j (variant of IIJKL).
-                                    if (!dec_input_payload_wide_valid) begin
-                                        error_flag   <= 1'b1;
-                                        output_valid <= 1'b0;
-                                    end else if (!output_regs_free) begin
-                                        lower_required <= 1'b1;
-                                        output_valid   <= 1'b0;
-                                    end else begin
-                                        output_payload <= einsum_trace_ijjkl_int4(dec_input_payload_wide[127:0]);
-                                        output_tag <= {dec_wave_number, dec_thread_id,
-                                                       8'h00, dec_eff_output_port_id,
-                                                       dec_eff_precision, 8'h15};
-                                        output_valid <= 1'b1;
-                                    end
-                                end else if ((dec_eff_subscript == SIG_TRACE_IIJKL_LO)
-                                             && (dec_eff_subscript_hi == SIG_TRACE_IIJKL_HI)) begin
-                                    // v1.5.5 §21 — SIG_TRACE_IIJKL: 5D trace.
-                                    // Input A via dec_input_payload_wide[127:0]
-                                    // (2-fragment wave). B unused. Output 32-bit
-                                    // single-fragment (no FSM engagement).
-                                    if (!dec_input_payload_wide_valid) begin
-                                        // §20.7 wide-consumer contract violation.
-                                        error_flag   <= 1'b1;
-                                        output_valid <= 1'b0;
-                                    end else if (!output_regs_free) begin
-                                        // Reuse §20.6 compound drain gate — no
-                                        // cycle-N+1 hazard (single-fragment
-                                        // emit) but a MUL/DIV pulse on cycle N
-                                        // would still clobber the output.
-                                        lower_required <= 1'b1;
-                                        output_valid   <= 1'b0;
-                                    end else begin
-                                        output_payload <= einsum_trace_iijkl_int4(
-                                            dec_input_payload_wide[127:0]);
-                                        output_tag     <= {dec_wave_number, dec_thread_id,
-                                                           8'h00, dec_eff_output_port_id,
-                                                           dec_eff_precision, 8'h15};
-                                        output_valid   <= 1'b1;
-                                        // output_frag_hdr default = 0x00 already
-                                        // set at line ~705 — no explicit write.
-                                    end
-                                end else begin
-                                    lower_required <= 1'b1;
-                                    output_valid   <= 1'b0;
-                                end
-                            end else case (dec_eff_subscript)
-                                SIG_SUM_I: begin
-                                    output_payload <= einsum_sum_i(dec_input_payload);
-                                    output_valid <= 1'b1;
-                                end
-                                SIG_TRACE_II: begin
-                                    output_payload <= einsum_trace_ii(dec_input_payload);
-                                    output_valid <= 1'b1;
-                                end
-                                SIG_TRANSPOSE: begin
-                                    output_payload <= einsum_transpose_ij(dec_input_payload);
-                                    output_valid <= 1'b1;
-                                end
-                                SIG_MATMUL: begin
-                                    output_payload <= matmul_func(dec_input_payload, dec_input_payload_b);
-                                    output_valid <= 1'b1;
-                                end
-                                SIG_HADAMARD: begin
-                                    output_payload <= einsum_hadamard(dec_input_payload, dec_input_payload_b);
-                                    output_valid <= 1'b1;
-                                end
-                                SIG_OUTER: begin
-                                    output_payload <= einsum_outer(dec_input_payload, dec_input_payload_b);
-                                    output_valid <= 1'b1;
-                                end
-                                SIG_PARTIAL_IJK: begin
-                                    output_payload <= einsum_partial_ijk(dec_input_payload);
-                                    output_valid <= 1'b1;
-                                end
-                                SIG_DIAGONAL: begin
-                                    output_payload <= einsum_diagonal(dec_input_payload);
-                                    output_valid <= 1'b1;
-                                end
-                                SIG_DOT: begin
-                                    output_payload <= einsum_dot(dec_input_payload, dec_input_payload_b);
-                                    output_valid <= 1'b1;
-                                end
-                                SIG_MAT_VEC: begin
-                                    output_payload <= einsum_mat_vec(dec_input_payload, dec_input_payload_b);
-                                    output_valid <= 1'b1;
-                                end
-                                SIG_BMM: begin
-                                    // v1.1 amendment §14.3. Batched matmul at
-                                    // int8. dim_sizes must be 0x15 (3D 2×2×2).
-                                    // Result has same shape (3D 2×2×2).
-                                    if (dec_eff_dim_sizes != 8'h15) begin
-                                        lower_required <= 1'b1; output_valid <= 1'b0;
-                                    end else begin
-                                        output_payload <= einsum_bmm_int8(dec_input_payload, dec_input_payload_b);
-                                        output_valid <= 1'b1;
-                                    end
-                                end
-                                SIG_TRACE_IIJ: begin
-                                    // v1.1 amendment §14.3. 3D trace w/ kept
-                                    // axis j at int8. A dim_sizes must be 0x15.
-                                    // Result is 1D size 2 → dim_sizes = 0x01.
-                                    if (dec_eff_dim_sizes != 8'h15) begin
-                                        lower_required <= 1'b1; output_valid <= 1'b0;
-                                    end else begin
-                                        output_payload <= einsum_trace_iij_int8(dec_input_payload);
-                                        output_tag <= {dec_wave_number, dec_thread_id,
-                                                       8'h00, dec_eff_output_port_id,
-                                                       dec_eff_precision, 8'h01};
-                                        output_valid <= 1'b1;
-                                    end
-                                end
-                                SIG_BMM_2: begin
-                                    // v1.2 amendment §15. 2-batch matmul at int4.
-                                    // dim_sizes = 0x55 (4D 2×2×2×2). Same shape out.
-                                    if (dec_eff_dim_sizes != 8'h55) begin
-                                        lower_required <= 1'b1; output_valid <= 1'b0;
-                                    end else begin
-                                        output_payload <= einsum_bmm_2_int4(dec_input_payload, dec_input_payload_b);
-                                        output_valid <= 1'b1;
-                                    end
-                                end
-                                SIG_TRACE_IIJK: begin
-                                    // v1.2 amendment §15. 3D trace w/ 2 kept axes.
-                                    // A dim_sizes = 0x55. Result 2D 2×2 = 0x05.
-                                    if (dec_eff_dim_sizes != 8'h55) begin
-                                        lower_required <= 1'b1; output_valid <= 1'b0;
-                                    end else begin
-                                        output_payload <= einsum_trace_iijk_int4(dec_input_payload);
-                                        output_tag <= {dec_wave_number, dec_thread_id,
-                                                       8'h00, dec_eff_output_port_id,
-                                                       dec_eff_precision, 8'h05};
-                                        output_valid <= 1'b1;
-                                    end
-                                end
-                                default: begin
-                                    lower_required <= 1'b1; output_valid <= 1'b0;
-                                end
-                            endcase
-                        end
-                        8'h40, 8'h41, 8'h42: begin
-                            output_payload <= dec_input_payload;
-                            output_valid <= 1'b1;
-                        end
-                        8'h43: begin
-                            if (MUL_OPS_SUPPORTED) begin
-                                output_payload <= euclid_norm_sq(dec_input_payload);
-                                output_valid <= 1'b1;
-                            end else begin
-                                lower_required <= 1'b1; output_valid <= 1'b0;
-                            end
-                        end
-                        8'h44: begin
-                            output_payload <= conjugate_fn(dec_input_payload);
-                            output_valid <= 1'b1;
-                        end
-                        // v1.6.1b §22 — SIMD broadcast wide-consumer ops
-                        // (RISC-ish norm primitives). Wide input via
-                        // dec_input_payload_wide[127:0]; wide output as
-                        // 2-fragment emit (reuse frag_state FSM).
-                        // 0x60/61/62 SCALAR: B via dec_eff_b_value[3:0]
-                        // 0x63/64/65 VEC:    V via dec_input_payload_b[63:0]
-                        //   (requires F_HAS_OPB flag)
-                        // (0x67 Q4.4 SCALAR removed pre-stable in the opcode
-                        //   cleanup — superseded by 0x69 Q8.8.)
-                        // 0x68 CACHE_LOAD_WIDE (v1.6.5c §22.16): pure
-                        //   passthrough of a persisted Cluster-buffer slot
-                        //   (Cluster.v resolves the CAM lookup and drives
-                        //   dec_input_payload_wide/valid; a cache MISS
-                        //   surfaces as dec_input_payload_wide_valid=0,
-                        //   which the guard below turns into error_flag —
-                        //   no separate miss signal needed). output_tag is
-                        //   deliberately left at its default
-                        //   dec_forwarded_tag (set above, before this case
-                        //   statement) — the assembler's PRECISION-EH
-                        //   dim_sizes guard on the CACHE_LOAD_WIDE
-                        //   instruction is what makes that tag equal the
-                        //   producer's stored frag_tag_reg; adding a
-                        //   second override here would be redundant and
-                        //   risks reintroducing the exact literal-drift
-                        //   bug the guard fixes.
-                        // 0x69 Q8.8 SCALAR (v1.6.7): B via dec_eff_b_value[15:0]
-                        //   as signed Q8.8 — the surviving precision-recovery
-                        //   scale mul (0x67/0x6B/0x6C removed pre-stable in
-                        //   the opcode cleanup).
-                        8'h60, 8'h61, 8'h62, 8'h63, 8'h64, 8'h65, 8'h68, 8'h69: begin
-                            if (!dec_input_payload_wide_valid) begin
-                                error_flag   <= 1'b1;
-                                output_valid <= 1'b0;
-                            end else if (!output_regs_free) begin
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else begin
-                                // Compute lo and hi halves per opcode
-                                case (dec_opcode)
-                                    8'h60: begin
-                                        output_payload   <= wres_add_wide_scalar[63:0];
-                                        frag_pending[1]  <= wres_add_wide_scalar[127:64];
-                                    end
-                                    8'h61: begin
-                                        output_payload   <= wres_sub_wide_scalar[63:0];
-                                        frag_pending[1]  <= wres_sub_wide_scalar[127:64];
-                                    end
-                                    8'h62: begin
-                                        output_payload   <= wres_mul_wide_scalar[63:0];
-                                        frag_pending[1]  <= wres_mul_wide_scalar[127:64];
-                                    end
-                                    8'h63: begin
-                                        output_payload   <= wres_add_wide_vec[63:0];
-                                        frag_pending[1]  <= wres_add_wide_vec[127:64];
-                                    end
-                                    8'h64: begin
-                                        output_payload   <= wres_sub_wide_vec[63:0];
-                                        frag_pending[1]  <= wres_sub_wide_vec[127:64];
-                                    end
-                                    8'h65: begin
-                                        output_payload   <= wres_mul_wide_vec[63:0];
-                                        frag_pending[1]  <= wres_mul_wide_vec[127:64];
-                                    end
-                                    8'h68: begin
-                                        // v1.6.5c §22.16 — CACHE_LOAD_WIDE:
-                                        // pure passthrough of the resolved
-                                        // wide bus (Cluster.v already muxed
-                                        // in the cached slot on a hit).
-                                        output_payload   <= dec_input_payload_wide[63:0];
-                                        frag_pending[1]  <= dec_input_payload_wide[127:64];
-                                    end
-                                    8'h69: begin
-                                        // v1.6.7 §22.14c — Q8.8 wide-scalar mul.
-                                        // B via dec_eff_b_value[15:0] as signed Q8.8.
-                                        output_payload   <= wres_mul_q8_8[63:0];
-                                        frag_pending[1]  <= wres_mul_q8_8[127:64];
-                                    end
-                                    default: ;
-                                endcase
-                                output_valid       <= 1'b1;
-                                output_frag_hdr    <= 8'h01;   // idx=0, total_m1=1
-                                opcode_out         <= dec_opcode;
-                                frag_tag_held      <= dec_forwarded_tag;
-                                frag_opcode_held   <= dec_opcode;
-                                frag_total_m1_held <= 4'd1;
-                                frag_idx           <= FRAG_EMIT_1;
-                            end
-                        end
-                        // (8'h66 SCALAR_RSQRT arm removed pre-stable in the
-                        // opcode cleanup — 0x66 is now a decode_error at
-                        // EHDecode via the regenerated opcode_supported.)
-                        // v1.6.5d §22.17 — FRAG_INVAL: single-cycle ack of
-                        // a Cluster-buffer slot invalidate. Deliberately
-                        // STANDALONE (outside the 8'h60-69 shared wide-emit
-                        // case-item group above) rather than "mirroring
-                        // 0x68" into that group: the shared group's
-                        // epilogue unconditionally drives output_frag_hdr
-                        // and frag_state<=FRAG_EMIT_HI, which would emit a
-                        // SECOND (garbage) fragment on the next cycle from
-                        // frag_hi_pending/frag_tag_held — registers
-                        // FRAG_INVAL never writes. Reusing
-                        // dec_input_payload_wide_valid as the hit/miss
-                        // signal is intentional: Cluster.v's inval_hit
-                        // (mirroring cache_hit's CAM reuse) drives it, and
-                        // this signal is opcode-independent — latched and
-                        // forwarded unconditionally by EHDecode regardless
-                        // of dec_opcode. output_tag/output_frag_hdr are
-                        // left at their pre-case defaults (dec_forwarded_tag,
-                        // 8'h00) since an ack carries no payload of its own.
-                        8'h6A: begin
-                            if (!dec_input_payload_wide_valid) begin
-                                error_flag   <= 1'b1;
-                                output_valid <= 1'b0;
-                            end else begin
-                                output_valid <= 1'b1;
-                            end
-                        end
-                        // (The old 8'h6B WIDEN 4-fragment arm — with its
-                        // 8'h6C REQUANTIZE companion — was removed
-                        // pre-stable in the opcode cleanup; 0x6C stays
-                        // decode_error at EHDecode.)
-                        // v1.8.0e §25.2.3 — 0x6B GAMMA_MUL_W: pre-stable
-                        // REALLOCATION of the retired code point (§12a
-                        // rule 4, slot reuse recorded in the isa JSON
-                        // notes + the domain_version-3 truth-table
-                        // recapture). MU-hosted exact widening per-lane
-                        // int4 x int4 -> int8: A = 16 int4 lanes in
-                        // payload_a (single-fragment op — NO wide_valid
-                        // guard, the STORE_QUANT precedent), gamma = 16
-                        // int4 lanes via IMM64 XOR OPREF (dec_eff_b_value
-                        // — the alu-binary XOR trap at EHDecode
-                        // guarantees exactly one source, so there is no
-                        // missing-B rung). EXACT (|p| <= 64 ⊂ int8):
-                        // rounding-free, saturation-free, combinational
-                        // 1-cycle (wres_gamma_w, LUT-structural
-                        // shift-adds — the §25.5.1 DSP-suppression
-                        // mechanism); 128b out = 2 fragments via the
-                        // widened frag FSM (the 0x60-69 emit epilogue
-                        // verbatim). Launch ladder: MU gate ->
-                        // busy-reject (lower_required, VDOT rung) ->
-                        // emit. Reachability rides the twin-classifier
-                        // lockstep edit (is_mul_op/dec_is_mul_op +=
-                        // {0x6B, 0x70, 0x78, 0x79}, §25.3) landing with
-                        // the 0e1 integration commit.
-                        8'h6B: begin
-                            if (!MUL_OPS_SUPPORTED) begin
-                                lower_required <= 1'b1; output_valid <= 1'b0;
-                            end else if (!output_regs_free) begin
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else begin
-                                output_payload     <= wres_gamma_w[63:0];
-                                output_valid       <= 1'b1;
-                                output_frag_hdr    <= 8'h01;  // idx=0 total_m1=1
-                                opcode_out         <= dec_opcode;
-                                frag_pending[1]    <= wres_gamma_w[127:64];
-                                frag_tag_held      <= dec_forwarded_tag;
-                                frag_opcode_held   <= dec_opcode;
-                                frag_total_m1_held <= 4'd1;
-                                frag_idx           <= FRAG_EMIT_1;
-                            end
-                        end
-                        // v1.8.0a/0b §23.9 — remaining WIDE-ACC block STUBS
-                        // (0x71/0x72/0x7C graduated to real datapaths in
-                        // v1.8.0b, 0x74/0x75/0x76 in v1.8.0c, 0x73/0x77 in
-                        // v1.8.0d, 0x79 in v1.8.0e 0e1 — see their
-                        // standalone arms below). Decode-legal
-                        // (opcode_supported + EH shape +
-                        // mode-byte ROM all pass at EHDecode) but not yet
-                        // implemented — capability absence, so this arm is
-                        // exactly the shipped BCAST 0x24 body: lower_required,
-                        // error_flag untouched. An EXPLICIT arm, never
-                        // fall-through: the case default below raises
-                        // error_flag, which would misclassify
-                        // legal-but-unimplemented as malformed (the invariant
-                        // the suite encodes: unsupported-but-legal =>
-                        // lower_required). Membership is pinned by the
-                        // all-ops live-extraction test — adding an op to
-                        // isa/wt64v1_isa.json without listing it here falls
-                        // to the default arm and fails that test.
-                        // v1.8.0e 0e1 INTEGRATION: 0x78 DEQUANT
-                        // graduated to its lane-loop launch arm below
-                        // (the sequencer-side OPS_DEQ program landed one
-                        // commit earlier). v1.8.0e 0e2: 0x70 VFMA_ACC
-                        // graduated to its lane-loop launch arm below
-                        // (stub set now {0x7D, 0x7E} — both stay
-                        // unscheduled).
-                        8'h7D, 8'h7E: begin
-                            lower_required <= 1'b1; output_valid <= 1'b0;
-                        end
-                        // v1.8.0e 0e2 §25.2.4 — 0x70 VFMA_ACC: int4/int8
-                        // lanes x the broadcast B split, STATELESS
-                        // int32-wrap FMA (acc=1 in the mode byte marks
-                        // the wide-acc OUTPUT form, never stateful
-                        // accumulation). LAUNCH ARM ONLY (register-load,
-                        // the 0x74 idiom): A(128b wide) + the B split
-                        // {c_acc = B[63:32], b_mul = sext8(B[3:0]) int4
-                        // / B[7:0] int8 — the datapath reads ONLY those
-                        // low bits, asm-lint owns the loud range reject}
-                        // + tag captured into MU-local regs; the 1
-                        // cy/lane MAC loop lives in the advance block
-                        // above and the loop-completion frag0 handoff in
-                        // the atomic block below (§25.3). B rides
-                        // dec_eff_b_value (IMM-XOR-OPREF, alu-binary —
-                        // EHDecode's XOR trap guarantees exactly one
-                        // source, so there is no missing-B rung; imm16/
-                        // imm32 zero-extend -> c_acc = 0). Launch ladder
-                        // (0x78 mirror minus the scale rung): MU gate ->
-                        // missing-wide error (§20 wave contract — A is a
-                        // 2-fragment 128b wave for BOTH forms) ->
-                        // busy-reject (lower_required, VDOT rung) ->
-                        // launch. Legal dtypes {int4, int8} are
-                        // ROM-enforced at EHDecode, so the int8/int4
-                        // select below is total. Output: int4 -> 16
-                        // fragments (tot_m1 = 15 — the FIRST 16-frag
-                        // emitter, the mask-fix consumer), int8 -> 8;
-                        // instruction+EH replicated per fragment (VDOT
-                        // contract). Reachability rides the 0e2
-                        // twin-classifier lockstep edit.
-                        8'h70: begin
-                            if (!MUL_OPS_SUPPORTED) begin
-                                lower_required <= 1'b1; output_valid <= 1'b0;
-                            end else if (!dec_input_payload_wide_valid) begin
-                                error_flag   <= 1'b1;
-                                output_valid <= 1'b0;
-                            end else if (!output_regs_free) begin
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else begin
-                                vfma_a_q     <= dec_input_payload_wide[127:0];
-                                vfma_b_q     <= (dec_eff_precision[3:0] == 4'h1)
-                                              ? dec_eff_b_value[7:0]
-                                              : {{4{dec_eff_b_value[3]}},
-                                                 dec_eff_b_value[3:0]};
-                                vfma_c_q     <= dec_eff_b_value[63:32];
-                                vfma_is_int8 <= (dec_eff_precision[3:0] == 4'h1);
-                                vfma_lane    <= 5'd0;
-                                vfma_busy    <= 1'b1;
-                                // tag/opcode capture at launch is safe:
-                                // every frag-emitting dispatch is
-                                // busy-rejected while vfma_busy
-                                // (output_regs_free covers the loop).
-                                frag_tag_held    <= dec_forwarded_tag;
-                                frag_opcode_held <= dec_opcode;
-                                output_valid <= 1'b0;
-                            end
-                        end
-                        // v1.8.0b §23.9 — VDOT_ACC: stateless 4-fragment
-                        // wide dot. A=wide[127:0], B=wide[255:128]
-                        // (SIG_BMM_3 input pattern), carry-in =
-                        // dec_eff_b_value (IMM XOR OPREF, alu_binary).
-                        // Emits r=(sext64(dot)+c) mod 2^64 immediately —
-                        // full 64-bit payload, scalar tag rebuild. NO
-                        // accumulator state anywhere.
-                        8'h71: begin
-                            if (!MUL_OPS_SUPPORTED) begin
-                                // MAC tree lives on MATMUL_UNITs only.
-                                lower_required <= 1'b1; output_valid <= 1'b0;
-                            end else if (!dec_input_payload_wide_valid) begin
-                                error_flag   <= 1'b1;
-                                output_valid <= 1'b0;
-                            end else if (!output_regs_free) begin
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else begin
-                                output_payload <= wres_vdot_r;
-                                output_valid   <= 1'b1;
-                                output_tag <= {dec_wave_number, dec_thread_id,
-                                               8'h00, dec_eff_output_port_id,
-                                               dec_eff_precision, 8'h00};
-                            end
-                        end
-                        // v1.8.0b §23.9 — ACC_REDUCE: stateless reduction
-                        // over wide[127:0]. Sub-op = imm16[7:4] per the
-                        // generated acc_reduce_op_codes (absent imm16 =
-                        // 0 = SUM — the monotonic loosening default);
-                        // imm16[3:0] reserved-zero; unknown sub-op →
-                        // lower_required, never error_flag. MEAN =
-                        // RNE(sum/N) ties-to-even, full lane set only.
-                        8'h72: begin
-                            if (!MUL_OPS_SUPPORTED) begin
-                                lower_required <= 1'b1; output_valid <= 1'b0;
-                            end else if (!dec_input_payload_wide_valid) begin
-                                error_flag   <= 1'b1;
-                                output_valid <= 1'b0;
-                            end else if (!output_regs_free) begin
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else if (dec_eff_imm16[3:0] != 4'h0) begin
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else begin
-                                case (dec_eff_imm16[7:4])
-                                    ACC_RED_OP_SUM: begin
-                                        output_payload <= {{32{wres_acc_sum[31]}}, wres_acc_sum};
-                                        output_valid   <= 1'b1;
-                                    end
-                                    ACC_RED_OP_MAX: begin
-                                        output_payload <= {{32{wres_acc_max[31]}}, wres_acc_max};
-                                        output_valid   <= 1'b1;
-                                    end
-                                    ACC_RED_OP_L2SQ: begin
-                                        output_payload <= {{32{wres_acc_l2sq[31]}}, wres_acc_l2sq};
-                                        output_valid   <= 1'b1;
-                                    end
-                                    ACC_RED_OP_MEAN: begin
-                                        output_payload <= {{32{wres_acc_mean[31]}}, wres_acc_mean};
-                                        output_valid   <= 1'b1;
-                                    end
-                                    default: begin
-                                        lower_required <= 1'b1;
-                                        output_valid   <= 1'b0;
-                                    end
-                                endcase
-                                if (dec_eff_imm16[7:4] == ACC_RED_OP_SUM
-                                 || dec_eff_imm16[7:4] == ACC_RED_OP_MAX
-                                 || dec_eff_imm16[7:4] == ACC_RED_OP_L2SQ
-                                 || dec_eff_imm16[7:4] == ACC_RED_OP_MEAN) begin
-                                    output_tag <= {dec_wave_number, dec_thread_id,
-                                                   8'h00, dec_eff_output_port_id,
-                                                   dec_eff_precision, 8'h00};
-                                end
-                            end
-                        end
-                        // v1.8.0c §23.10 — FSCALAR: fp32 scalar A op B,
-                        // sub-op imm16[7:4] per the generated
-                        // fscalar_op_codes (absent imm16 = 0 = FS_ADD —
-                        // monotonic loosening default); B = payload_b
-                        // (eff_b_value is NEVER read); FS_FMA addend C =
-                        // payload_a[63:32]. Launch ladder (4 rungs, order
-                        // normative §23.10.1): MU gate -> busy-reject
-                        // (VDOT pattern — a gated op arriving during a
-                        // 5-34 cycle fp flight gets lower_required, NEVER
-                        // the DIV silent-swallow) -> decode guards ->
-                        // launch (register-load only; FP_StepSeq walks the
-                        // step program and fp_valid_p2 returns the result
-                        // through the output priority chain above).
-                        8'h74: begin
-                            if (!MUL_OPS_SUPPORTED) begin
-                                // fp step sequencer lives on the MU only.
-                                lower_required <= 1'b1; output_valid <= 1'b0;
-                            end else if (!output_regs_free) begin
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else if (dec_eff_imm16[3:0] != 4'h0) begin
-                                // imm16[3:0] reserved-zero (0x72 precedent)
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else if (dec_eff_imm16[7:4] > 4'h4) begin
-                                // unknown sub-op 0x5-0xF -> lower_required,
-                                // never error_flag (capability absence).
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else if (!dec_input_payload_b_valid) begin
-                                // Missing-B: malformed program — a
-                                // deterministic error_flag, NOT capability
-                                // absence (§23.10.2 dispatch-side guard;
-                                // first consumer of the
-                                // dec_input_payload_b_valid input).
-                                error_flag   <= 1'b1;
-                                output_valid <= 1'b0;
-                            end else begin
-                                fp_start       <= 1'b1;
-                                fp_a_q         <= dec_input_payload[31:0];
-                                fp_c_q         <= dec_input_payload[63:32];
-                                fp_b_q         <= dec_input_payload_b[31:0];
-                                fp_subop_q     <= dec_eff_imm16[7:4];
-                                fp_armed       <= 1'b1;
-                                fp_opcode_held <= dec_opcode;
-                                // scalar dim=0x00 tag rebuild (VDOT arm
-                                // convention); tag[15:8] carries the mode
-                                // byte verbatim.
-                                fp_tag_held <= {dec_wave_number, dec_thread_id,
-                                                8'h00, dec_eff_output_port_id,
-                                                dec_eff_precision, 8'h00};
-                                output_valid   <= 1'b0;
-                            end
-                        end
-                        // v1.8.0c §23.10.3 — FRSQRT32: strictly port-only
-                        // unary fp32 rsqrt (LUT seed + 3 NR iterations,
-                        // <=2 ulp). Same ladder, no extra decode guards.
-                        8'h75: begin
-                            if (!MUL_OPS_SUPPORTED) begin
-                                lower_required <= 1'b1; output_valid <= 1'b0;
-                            end else if (!output_regs_free) begin
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else begin
-                                fp_start       <= 1'b1;
-                                fp_a_q         <= dec_input_payload[31:0];
-                                fp_b_q         <= 32'h0;
-                                fp_c_q         <= 32'h0;
-                                fp_subop_q     <= 4'h0;
-                                fp_armed       <= 1'b1;
-                                fp_opcode_held <= dec_opcode;
-                                fp_tag_held <= {dec_wave_number, dec_thread_id,
-                                                8'h00, dec_eff_output_port_id,
-                                                dec_eff_precision, 8'h00};
-                                output_valid   <= 1'b0;
-                            end
-                        end
-                        // v1.8.0c §23.10.4 — FEXP2_32: strictly port-only
-                        // unary fp32 exp2 (degree-6 Horner + integer
-                        // bypass, <=2 ulp). Same ladder, no extra guards.
-                        8'h76: begin
-                            if (!MUL_OPS_SUPPORTED) begin
-                                lower_required <= 1'b1; output_valid <= 1'b0;
-                            end else if (!output_regs_free) begin
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else begin
-                                fp_start       <= 1'b1;
-                                fp_a_q         <= dec_input_payload[31:0];
-                                fp_b_q         <= 32'h0;
-                                fp_c_q         <= 32'h0;
-                                fp_subop_q     <= 4'h0;
-                                fp_armed       <= 1'b1;
-                                fp_opcode_held <= dec_opcode;
-                                fp_tag_held <= {dec_wave_number, dec_thread_id,
-                                                8'h00, dec_eff_output_port_id,
-                                                dec_eff_precision, 8'h00};
-                                output_valid   <= 1'b0;
-                            end
-                        end
-                        // v1.8.0d §23.10.10(c) — ACC_ELEMWISE: fused
-                        // round-once fp32 FMA a*B[63:32]+B[31:0], OPREF
-                        // form ONLY (OPS_ACCEW rides the FS_FMA-shaped
-                        // step program). Launch ladder = the 0x74/0x75
-                        // mirror + the OPREF-only rung: ANY imm present
-                        // -> lower_required (capability absence — the
-                        // sub-op table was deleted; an imm carve-out
-                        // under EHDecode's alu_binary XOR trap would be
-                        // decode_error, and this is NOT that). OPREF
-                        // presence = dec_eff_opref_kind[3] (the v1.8.0d
-                        // {presence, src_kind} packing — kind 0 direct-
-                        // payload_b OPREF would otherwise alias the imm
-                        // form's 4'h0). Under the XOR trap, a clean
-                        // decode of this alu-binary opcode has EXACTLY
-                        // one of {imm, OPREF}, so !bit3 == imm present.
-                        8'h73: begin
-                            if (!MUL_OPS_SUPPORTED) begin
-                                lower_required <= 1'b1; output_valid <= 1'b0;
-                            end else if (!output_regs_free) begin
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else if (!dec_eff_opref_kind[3]) begin
-                                // imm16/imm32/imm64 form — implemented
-                                // capability is OPREF-only (§23.10.10(c)).
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else begin
-                                fp_start       <= 1'b1;
-                                fp_a_q         <= dec_input_payload[31:0];
-                                fp_b_q         <= dec_eff_b_value[63:32];
-                                fp_c_q         <= dec_eff_b_value[31:0];
-                                fp_subop_q     <= 4'h0;
-                                fp_dtype_q     <= dec_eff_precision[3:0];
-                                fp_armed       <= 1'b1;
-                                fp_opcode_held <= dec_opcode;
-                                fp_tag_held <= {dec_wave_number, dec_thread_id,
-                                                8'h00, dec_eff_output_port_id,
-                                                dec_eff_precision, 8'h00};
-                                output_valid   <= 1'b0;
-                            end
-                        end
-                        // v1.8.0d §23.10.10(b) — CVT: six scalar
-                        // conversions on the MU step sequencer (OPS_CVT).
-                        // Sub-op = imm16[7:4] from the generated
-                        // cvt_op_codes (absent imm16 = WIDEN_TO_F32, the
-                        // monotonic default); dtype = the mode byte's
-                        // dtype nibble (ROM-legal set {0,1,2,3,4}; 0x4 =
-                        // accumulator-format integer endpoint, direction
-                        // from the sub-op — pin 10). eff_b_value is NEVER
-                        // read (imm32/imm64 asm-forbidden/RTL-tolerated,
-                        // FSCALAR semantics). Ladder rungs are 0x72's
-                        // exactly: imm16[3:0]/[15:8] reserved-zero and
-                        // sub-op > NARROW_FROM_F32 -> lower_required,
-                        // never error_flag. int64 I2F ingress is the
-                        // pinned FSCALAR-style split: payload[63:32] ->
-                        // c_in, payload[31:0] -> a_in.
-                        8'h77: begin
-                            if (!MUL_OPS_SUPPORTED) begin
-                                lower_required <= 1'b1; output_valid <= 1'b0;
-                            end else if (!output_regs_free) begin
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else if (dec_eff_imm16[3:0] != 4'h0
-                                      || dec_eff_imm16[15:8] != 8'h0) begin
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else if (dec_eff_imm16[7:4] > CVT_NARROW_FROM_F32) begin
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else begin
-                                fp_start       <= 1'b1;
-                                fp_a_q         <= dec_input_payload[31:0];
-                                fp_b_q         <= 32'h0;
-                                fp_c_q         <= dec_input_payload[63:32];
-                                fp_subop_q     <= dec_eff_imm16[7:4];
-                                fp_dtype_q     <= dec_eff_precision[3:0];
-                                fp_armed       <= 1'b1;
-                                fp_opcode_held <= dec_opcode;
-                                fp_tag_held <= {dec_wave_number, dec_thread_id,
-                                                8'h00, dec_eff_output_port_id,
-                                                dec_eff_precision, 8'h00};
-                                output_valid   <= 1'b0;
-                            end
-                        end
-                        // v1.8.0e §25.2.2 — 0x78 DEQUANT: int4/int8
-                        // lanes x the fp32 broadcast scale -> bf16
-                        // (dest bf16-ONLY in 0e; the mode dtype names
-                        // the SOURCE — int4-32 form emits 8 fragments,
-                        // int8-16 form emits 4). LAUNCH ARM ONLY: the
-                        // per-lane compute is the fused FP_StepSeq
-                        // OPS_DEQ program (one launch per lane, round-
-                        // once bf16 pack inside the sequencer); the
-                        // lane-loop advance lives in the fp strobe
-                        // block above and the loop-completion frag0
-                        // handoff in the atomic block below (§25.3).
-                        // Launch ladder (0x79 mirror): MU gate ->
-                        // missing-wide error (§20 wave contract — A is
-                        // a 2-fragment 128b wave for BOTH forms) ->
-                        // busy-reject (lower_required, VDOT rung) ->
-                        // missing-scale error_flag (the fp32 scale
-                        // rides ext_payload_b + valid on the wave-
-                        // COMPLETING fragment beat, 0x63-65 precedent;
-                        // beat placement is an SDK/NoC contract pin) ->
-                        // launch (register-load only: A(128b) + scale +
-                        // tag captured into MU-local regs — the 0x74
-                        // idiom, EHDecode is cluster-shared). fp_armed
-                        // deliberately NOT set: per-lane done pulses
-                        // are diverted from the fp output arm (§25.3
-                        // loop suppression). Legal source dtypes {int4,
-                        // int8} are ROM-enforced at EHDecode, so the
-                        // int8/int4 select below is total. Reachability
-                        // rides the twin-classifier lockstep edit.
-                        8'h78: begin
-                            if (!MUL_OPS_SUPPORTED) begin
-                                lower_required <= 1'b1; output_valid <= 1'b0;
-                            end else if (!dec_input_payload_wide_valid) begin
-                                error_flag   <= 1'b1;
-                                output_valid <= 1'b0;
-                            end else if (!output_regs_free) begin
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else if (!dec_input_payload_b_valid) begin
-                                error_flag   <= 1'b1;   // missing scale
-                                output_valid <= 1'b0;
-                            end else begin
-                                fp_start   <= 1'b1;     // lane 0 launch
-                                fp_a_q     <= (dec_eff_precision[3:0] == 4'h1)
-                                            ? {24'h0, dec_input_payload_wide[7:0]}
-                                            : {28'h0, dec_input_payload_wide[3:0]};
-                                fp_b_q     <= dec_input_payload_b[31:0];
-                                fp_c_q     <= 32'h0;
-                                fp_subop_q <= 4'h0;
-                                fp_dtype_q <= dec_eff_precision[3:0];
-                                fp_opcode_held <= dec_opcode;
-                                // loop-diverted: fp_armed stays 0
-                                deq_a_q         <= dec_input_payload_wide[127:0];
-                                deq_is_int8     <= (dec_eff_precision[3:0] == 4'h1);
-                                deq_lane        <= 5'd0;
-                                deq_loop_active <= 1'b1;
-                                // tag/opcode capture at launch is safe:
-                                // every frag-emitting dispatch is
-                                // busy-rejected while deq_loop_active
-                                // (output_regs_free covers the loop).
-                                frag_tag_held    <= dec_forwarded_tag;
-                                frag_opcode_held <= dec_opcode;
-                                output_valid   <= 1'b0;
-                            end
-                        end
-                        // v1.8.0e §25.2.1 — 0x79 FMINMAX: frozen
-                        // IEEE-2019 minimumNumber/maximumNumber, 4 f32
-                        // lanes (128b = 2-fragment wave in) vs the ONE
-                        // broadcast B on dec_input_payload_b (FSCALAR-
-                        // clone legality re-row: B port ONLY — the
-                        // alu-binary XOR trap stays dormant; OPREF-B is
-                        // a recorded post-0e loosening). Combinational
-                        // arm (wres_fminmax — the dedicated offset-key
-                        // comparator cells, one unsigned 32b compare per
-                        // lane, signed-int-tree reuse forbidden), zero
-                        // FP_StepSeq contact; 128b out = 2 fragments via
-                        // the widened frag FSM. Launch ladder (0x74
-                        // mirror + the wide-input guard): MU gate ->
-                        // missing-wide error (§20 wave contract) ->
-                        // busy-reject -> imm16[3:0]/[15:8] reserved-zero
-                        // and sub-op > MAXIMUMNUM -> lower_required ->
-                        // missing-B error_flag (0x74 idiom) -> emit.
-                        // Reachability rides the twin-classifier
-                        // lockstep edit (§25.3, 0e1 integration commit).
-                        8'h79: begin
-                            if (!MUL_OPS_SUPPORTED) begin
-                                lower_required <= 1'b1; output_valid <= 1'b0;
-                            end else if (!dec_input_payload_wide_valid) begin
-                                error_flag   <= 1'b1;
-                                output_valid <= 1'b0;
-                            end else if (!output_regs_free) begin
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else if (dec_eff_imm16[3:0] != 4'h0
-                                      || dec_eff_imm16[15:8] != 8'h0) begin
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else if (dec_eff_imm16[7:4] > FMM_MAXIMUMNUM) begin
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else if (!dec_input_payload_b_valid) begin
-                                error_flag   <= 1'b1;
-                                output_valid <= 1'b0;
-                            end else begin
-                                output_payload     <= wres_fminmax[63:0];
-                                output_valid       <= 1'b1;
-                                output_frag_hdr    <= 8'h01;  // idx=0 total_m1=1
-                                opcode_out         <= dec_opcode;
-                                frag_pending[1]    <= wres_fminmax[127:64];
-                                frag_tag_held      <= dec_forwarded_tag;
-                                frag_opcode_held   <= dec_opcode;
-                                frag_total_m1_held <= 4'd1;
-                                frag_idx           <= FRAG_EMIT_1;
-                            end
-                        end
-                        // v1.8.0b §23.9 — STORE_QUANT: scalar int-dest
-                        // requant, out = clamp_dtype(RNE(x >> s)),
-                        // s = imm16[5:0] (absent = 0 = pure clamp).
-                        // L-PE hosted (no multipliers, no MUL prologue),
-                        // single-fragment op (NO wide_valid guard — that
-                        // would error every legal dispatch). mem EH
-                        // (if present) is IGNORED in v1.8.0b — reserved
-                        // for the v1.8.0d memory-destination store form;
-                        // memory_req is NEVER asserted here. dtype
-                        // 0x2/0x3 (f16/bf16) lower_required until 0d.
-                        // output_payload assigned EXPLICITLY (the 0x05
-                        // stale-payload copy trap).
-                        8'h7C: begin
-                            if (!output_regs_free) begin
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else if (dec_eff_imm16[15:6] != 10'h0) begin
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else if (dec_eff_precision[3:0] == 4'h0) begin
-                                output_payload <= wres_sq_int4;
-                                output_valid   <= 1'b1;
-                                output_tag <= {dec_wave_number, dec_thread_id,
-                                               8'h00, dec_eff_output_port_id,
-                                               dec_eff_precision, 8'h00};
-                            end else if (dec_eff_precision[3:0] == 4'h1) begin
-                                output_payload <= wres_sq_int8;
-                                output_valid   <= 1'b1;
-                                output_tag <= {dec_wave_number, dec_thread_id,
-                                               8'h00, dec_eff_output_port_id,
-                                               dec_eff_precision, 8'h00};
-                            end else if (dec_eff_imm16[5:0] != 6'h0) begin
-                                // v1.8.0d §23.10.10(d) — fp-dest reserved
-                                // rung: the int forms' shift field s =
-                                // imm16[5:0] is meaningless for an fp
-                                // destination, so nonzero bits there are
-                                // reserved -> lower_required (mirrors the
-                                // imm16[15:6] rung above; together the
-                                // fp-dest forms require imm16 == 0/absent).
-                                lower_required <= 1'b1;
-                                output_valid   <= 1'b0;
-                            end else begin
-                                // v1.8.0d §23.10.10(d) — fp-dest packer
-                                // (dtype 0x2 f16 / 0x3 bf16; the mode-byte
-                                // ROM admits no other dtype here). One
-                                // shared narrow function + DAZ-at-source
-                                // (wres_sq_* wires above) == 0x77
-                                // NARROW_FROM_F32 bit-identity, all 2^32
-                                // inputs. Result row {48'h0, h}; 0 added
-                                // cycles (combinational, same-cycle emit
-                                // as the int arms).
-                                output_payload <= {48'h0,
-                                    (dec_eff_precision[3:0] == 4'h3)
-                                        ? wres_sq_bf16 : wres_sq_f16};
-                                output_valid   <= 1'b1;
-                                output_tag <= {dec_wave_number, dec_thread_id,
-                                               8'h00, dec_eff_output_port_id,
-                                               dec_eff_precision, 8'h00};
-                            end
-                        end
-                        default: begin
-                            output_valid <= 1'b0;
-                            error_flag <= 1'b1;
-                        end
-                    endcase
+                end else if (cr_hard_error) begin
+                    error_flag   <= 1'b1;
+                    output_valid <= 1'b0;
+                end else if (cr_hard_lower) begin
+                    lower_required <= 1'b1;
+                    output_valid   <= 1'b0;
+                end else if (cr_needs_regs_free && !output_regs_free) begin
+                    lower_required <= 1'b1;
+                    output_valid   <= 1'b0;
+                end else begin
+                    // Success: commit the stage-1 capture to the real
+                    // output-side registers. output_frag_hdr's default
+                    // (8'h00, set at the top of this always block) stands
+                    // unless cr_is_frag_emit overrides it below — mirrors
+                    // the pre-v1.9 case block exactly (only the 2-fragment
+                    // emit arms ever wrote output_frag_hdr).
+                    output_tag     <= cr_tag;
+                    opcode_out     <= cr_opcode_out;
+                    output_payload <= cr_payload;
+                    output_valid   <= cr_valid_out;
+                    memory_req     <= cr_memory_req;
+                    mem_addr       <= cr_mem_addr;
+                    if (cr_is_frag_emit) begin
+                        output_frag_hdr    <= 8'h01;   // idx=0 total_m1=1
+                        frag_pending[1]    <= cr_payload_hi;
+                        frag_tag_held      <= cr_tag;
+                        frag_opcode_held   <= cr_opcode_out;
+                        frag_total_m1_held <= cr_frag_total_m1;
+                        frag_idx           <= FRAG_EMIT_1;
+                    end
+                    // v1.9 §26.3 — the 5 (7, see stage-1 deviation note)
+                    // FSM-launch arms' actual register-load now happens
+                    // HERE at stage 2 instead of stage 1, reading
+                    // case_result_s2's captured launch-intent + operands.
+                    if (MUL_OPS_SUPPORTED && cr_launch_fp) begin
+                        fp_start       <= 1'b1;
+                        fp_armed       <= cr_fp_armed;
+                        fp_a_q         <= cr_fp_a;
+                        fp_b_q         <= cr_fp_b;
+                        fp_c_q         <= cr_fp_c;
+                        fp_subop_q     <= cr_fp_subop;
+                        fp_dtype_q     <= cr_fp_dtype;
+                        fp_opcode_held <= cr_fp_opcode_held;
+                        fp_tag_held    <= cr_fp_tag_held;
+                    end
+                    if (MUL_OPS_SUPPORTED && cr_launch_vfma) begin
+                        vfma_a_q         <= cr_vfma_a;
+                        vfma_b_q         <= cr_vfma_b;
+                        vfma_c_q         <= cr_vfma_c;
+                        vfma_is_int8     <= cr_vfma_is_int8;
+                        vfma_lane        <= 5'd0;
+                        vfma_busy        <= 1'b1;
+                        frag_tag_held    <= cr_tag;
+                        frag_opcode_held <= cr_opcode_out;
+                    end
+                    if (MUL_OPS_SUPPORTED && cr_launch_deq) begin
+                        deq_a_q          <= cr_deq_a;
+                        deq_is_int8      <= cr_deq_is_int8;
+                        deq_lane         <= 5'd0;
+                        deq_loop_active  <= 1'b1;
+                        frag_tag_held    <= cr_tag;
+                        frag_opcode_held <= cr_opcode_out;
+                    end
                 end
             end
 

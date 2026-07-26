@@ -1,0 +1,20 @@
+
+12. Printing statistics.
+
+=== PE_Core ===
+
+        +----------Local Count, excluding submodules.
+        | 
+     5168 wires
+    23141 wire bits
+      165 public wires
+     7249 public wire bits
+       36 ports
+     1905 port bits
+     6934 cells
+      595   CCU2C
+     5240   LUT4
+       70   MULT18X18D
+      359   PFUMX
+      670   TRELLIS_FF
+
