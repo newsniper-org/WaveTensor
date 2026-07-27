@@ -419,16 +419,30 @@ module Cluster #(
     // to the MATMUL_UNIT too (the fp32 step sequencer lives only there);
     // a missed twin side is a silent permanent lower_required dead-end,
     // pinned by test_fp_mu_routing_end_to_end in the same commit.
-    // SDK rule for OPREF kind-1 carry-in chaining: no intervening
-    // mul-class dispatch on the hosting MU between chained VDOTs (the
-    // NoC bank is positional, not tag-matched). v1.8.0c extension: fp
-    // results also ride mu_out_* into mu_bank_reg POSITIONALLY, so the
-    // same rule covers 0x74-0x76 — no intervening mul-class dispatch
-    // between an fp op and a dependent OPREF kind-1 read. This is the
-    // same latent-hazard class as DIV's 64-cycle window (an intervening
-    // dispatch during the 5-34 cycle fp flight retargets the bank slot);
-    // the hardware fix (bank target latched at launch) is deferred to the
-    // v1.9 arbitration rework (§23.10.9 risk 2).
+    // RETIRED (v1.9 §26.5/§26.8 item 10, closed in the residual-risk-11
+    // fix commit): the former SDK software rule "no intervening mul-class
+    // dispatch on the hosting MU between a chained VDOT/OPREF kind-1 read
+    // (or a dependent fp/DEQUANT/VFMA/... read) and its producer" — the
+    // NoC bank used to be positional (mu_target_pipe_s2/s3/s4), so an
+    // intervening dispatch during a producer's multi-cycle flight would
+    // retarget the shared shift-register slot before the read landed.
+    // §26.5's tag-indexed launch-time latch table (MU depth-2, DU
+    // depth-1, keyed by launch tag + `row_is_mul`, not shift depth)
+    // replaced the positional mechanism outright, and the residual-risk-11
+    // fix (this commit, Cluster.v `mu_launch_mul`/`mu_launch_other_now`
+    // above) closed the one gap that table shipped with: a busy-rejected
+    // non-MUL dispatch could still phantom-allocate a row, which could —
+    // in principle — exhaust the depth-2 table exactly during a chained
+    // read's window. With that gap closed and directed-test-confirmed
+    // (test_bank_tag_latch_no_intervening_hazard,
+    // test_bank_tag_collision_interlock, test_mu_busy_reject_no_phantom_row,
+    // test_output_regs_free_live_at_stage2, test_uniform_case_dispatch_
+    // plus1_sweep — spec §26.7 items 9-12), back-to-back dispatch with NO
+    // gap is provably hazard-free by tag match, not merely
+    // hazard-avoided by a software spacing discipline — so the rule text
+    // is deleted rather than kept as dead documentation (§26.5's own
+    // retirement plan: delete in the same commit the closing tests go
+    // green, not preemptively alongside unverified RTL).
     // v1.8.0d §23.10.10 — 0x73 ACC_ELEMWISE / 0x77 CVT join OPCODE-ONLY
     // (MU-hosted OPS_ACCEW/OPS_CVT step programs; same commit as the
     // PE_Core dec_is_mul_op edit + the lockstep/reachability tests). NO
@@ -445,14 +459,9 @@ module Cluster #(
     // §25.2.4; the shared MAC step is MU-gated, so L-PEs synthesize
     // nothing — the static lockstep test flips 0x70 from staged-out to
     // IN in this same commit).
-    // §25.6 item 4 SDK-rule EXTENSION: the no-intervening-mul-dispatch
-    // rule above now covers 0x6B/0x70/0x78/0x79 too — DEQUANT's lane
-    // loop occupies the MU for up to ~300 cycles (int4-32 form, ~4.5x
-    // the accepted DIV-66 window), the 0x70 int4 form adds the ~90-cycle
-    // ceiling window incl. a worst-case 16-fragment drain, and the
-    // positional NoC-bank hazard gains proportional exposure until the
-    // v1.9 arbitration rework (§23.10.9 risk-2/3 re-acceptance, restated
-    // in the spec delta).
+    // (§25.6 item 4's SDK-rule extension to 0x6B/0x70/0x78/0x79 is RETIRED
+    // along with the base rule above — see the RETIRED note preceding
+    // this comment block.)
     wire is_mul_op = (ext_opcode == 8'h12)
                   || (ext_opcode == 8'h30)
                   || (ext_opcode == 8'h32)
@@ -959,23 +968,51 @@ module Cluster #(
     // namespace) and is a strict superset of a literal always-tag-match
     // design's correctness.
     //
-    // Residual timing risk (reported, not silently assumed away — see the
-    // deviation report): for the MU-hosted opcodes now routed through
-    // case_result_s2 (everything except 0x12 MUL itself), PE_Core's stage-2
-    // arbitration decides ACCEPT-vs-busy-reject one cycle AFTER the
-    // externally-visible dispatch this table keys its launch off of
-    // (output_regs_free, the signal that decision depends on, is
-    // PE_Core-internal and not exposed to Cluster). `mu_launch` below
-    // filters out the two externally-visible rejection causes
-    // (dec_decode_error, tag mismatch); the busy-reject case is NOT
-    // independently observable from Cluster and is expected, by the §26.5
-    // depth-2 proof, to stay in lockstep with this table's own row
-    // occupancy (a launch PE_Core will busy-reject is exactly a launch
-    // that finds this table's rows already full) — but that lockstep is
-    // argued, not measured. Spec §26.7 test items 11/12
-    // (test_bank_tag_latch_no_intervening_hazard /
-    // test_bank_tag_collision_interlock) are the directed tests that must
-    // confirm it before this table ships in a merged state.
+    // RESOLVED (was: residual risk 11, §26.8 item 11) — timing-class fix.
+    // For the MU-hosted opcodes routed through case_result_s2 (everything
+    // in is_mul_op except literal 0x12 MUL), PE_Core's stage-2 arbitration
+    // decides ACCEPT-vs-busy-reject one cycle AFTER the externally-visible
+    // dispatch (cycle T): the busy-check (`cr_needs_regs_free &&
+    // !output_regs_free`, PE_Core.v ~3395) reads output_regs_free LIVE at
+    // T+1, not T. A launch-time row allocation keyed off the T-time
+    // dispatch alone therefore allocates a row for every attempt
+    // regardless of whether PE_Core will actually accept it at T+1 — a
+    // busy-rejected dispatch (PASSES dec_decode_error/dec_tag_match at T,
+    // but loses the T+1 busy-check) would consume a table row that no
+    // completion ever frees: a permanent phantom-occupied row.
+    //
+    // Fix (TIMING alignment, not a new cross-module signal — Cluster
+    // already has `mu_pe_ready`, wired straight from PE_Core's own
+    // `pe_ready = output_regs_free` port, Cluster.v ~849): split the
+    // launch signal by opcode class.
+    //   - MUL (0x12): launches from PE_Core's own always-block
+    //     (mul_valid_p1, PE_Core.v ~1888), structurally parallel to
+    //     case_result_s2 and UNCHANGED by v1.9 (spec §26.3 finding 4) —
+    //     its accept/reject decision is still made live at T, the SAME
+    //     cycle `mu_launch_mul` fires below. T-timed, unconditional
+    //     allocation (today's behavior, untouched) still matches exactly.
+    //   - every other is_mul_op opcode: `mu_launch_other_now` fires at T
+    //     (same detection as before), but the table-row COMMIT is
+    //     deferred one cycle into `mu_pending_other` and only lands at
+    //     T+1 if `mu_pe_ready` reads true THEN — the identical cycle and
+    //     the identical signal (mu_pe_ready IS output_regs_free) PE_Core's
+    //     own stage-2 arbitration checks. A busy-rejected dispatch
+    //     (mu_pe_ready false at T+1) allocates nothing: no phantom row.
+    //
+    // du_launch needs NO such fix, confirmed by reading PE_Core.v's DIV
+    // FSM (not assumed): the DIV_IDLE launch check (PE_Core.v ~1909) is
+    // entirely T-time-local (dec_opcode literal + frag_idx==FRAG_IDLE) —
+    // DIV bypasses case_result_s2 exactly like MUL (spec §26.3 finding 4,
+    // "MUL, DIV ... unchanged, 0 cycles"), so its accept/reject decision
+    // was never re-homed to T+1 and du_launch's existing T-timed
+    // unconditional allocation already matches it.
+    //
+    // MUL-vs-non-MUL same-cycle overlap: `mu_launch_mul` (a brand-new T-
+    // time MUL dispatch) and a pending non-MUL commit resolving THIS same
+    // T (dispatched at T-1) are ordinary back-to-back dispatch, not a
+    // hazard, and CAN legitimately coincide — the row-claim wires below
+    // resolve this combinationally (MUL preferred for row0) so neither
+    // path's non-blocking write silently clobbers the other's.
     // -------------------------------------------------------------------------
     reg                  mu_row0_busy,   mu_row1_busy;
     reg [TAG_WIDTH-1:0]  mu_row0_tag,    mu_row1_tag;
@@ -998,11 +1035,22 @@ module Cluster #(
     // silently absorbed by the next idle cycle.
     reg bank_tag_collision_error_r;
 
+    // v1.9 residual-risk-11 fix — deferred-commit staging for the non-MUL
+    // launch class (see the header note above). Captured every cycle from
+    // `mu_launch_other_now`; consumed exactly one cycle later, gated on
+    // live `mu_pe_ready`.
+    reg                  mu_pending_other;
+    reg [TAG_WIDTH-1:0]  mu_pending_tag;
+    reg [3:0]            mu_pending_target;
+
     // Launch detection: dispatch reaching the unit's dec_valid cycle, with
     // the two rejection causes Cluster can observe from outside PE_Core
-    // (decode error / tag mismatch) filtered out — see the residual-risk
-    // note above for the one cause that can't be filtered this way.
-    wire mu_launch = pe_active_mu_p && dec_valid && !dec_decode_error && dec_tag_match;
+    // (decode error / tag mismatch) filtered out. Split by opcode timing
+    // class — see the header note above.
+    wire mu_launch_mul       = pe_active_mu_p && dec_valid && !dec_decode_error
+                             && dec_tag_match && (dec_opcode == 8'h12);
+    wire mu_launch_other_now = pe_active_mu_p && dec_valid && !dec_decode_error
+                             && dec_tag_match && (dec_opcode != 8'h12);
     wire du_launch = pe_active_du_p && dec_valid && !dec_decode_error && dec_tag_match;
 
     // Completion match — see the header note for the tag-hit / non-MUL
@@ -1030,6 +1078,33 @@ module Cluster #(
     wire mu_row1_free = !mu_row1_busy || mu_match1;
     wire du_row_free  = !du_row_busy  || du_match;
 
+    // v1.9 residual-risk-11 fix — row-claim resolution, combinational.
+    // `mu_launch_mul` (T-timed, unconditional) and the deferred non-MUL
+    // commit `mu_pending_other && mu_pe_ready` (checked live at T+1) are
+    // two INDEPENDENT triggers that can legitimately coincide on the same
+    // cycle (see the header note). Resolving row assignment here, instead
+    // of as two separate sequential `if` blocks both reading the same
+    // (this-cycle-constant) mu_row*_free wires, avoids a same-cycle
+    // write race where both triggers would see the row as free and both
+    // try to claim it (last-nonblocking-assignment-wins silently drops
+    // one). MUL is given priority for row0 by construction below; this
+    // tie-break is arbitrary and not load-bearing — output_regs_free
+    // mutual exclusion means the cases spec §26.5 reasons about never
+    // actually contend for the same row.
+    wire mu_pending_commit_now = mu_pending_other && mu_pe_ready;
+
+    wire mu_mul_takes_row0    = mu_launch_mul && mu_row0_free;
+    wire mu_mul_takes_row1    = mu_launch_mul && !mu_row0_free && mu_row1_free;
+    wire mu_mul_collision     = mu_launch_mul && !mu_row0_free && !mu_row1_free;
+
+    wire mu_nonmul_row0_avail = mu_row0_free && !mu_mul_takes_row0;
+    wire mu_nonmul_row1_avail = mu_row1_free && !mu_mul_takes_row1;
+    wire mu_nonmul_takes_row0 = mu_pending_commit_now && mu_nonmul_row0_avail;
+    wire mu_nonmul_takes_row1 = mu_pending_commit_now && !mu_nonmul_row0_avail
+                              && mu_nonmul_row1_avail;
+    wire mu_nonmul_collision  = mu_pending_commit_now && !mu_nonmul_row0_avail
+                              && !mu_nonmul_row1_avail;
+
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             mu_row0_busy   <= 1'b0;
@@ -1044,6 +1119,9 @@ module Cluster #(
             du_row_tag     <= {TAG_WIDTH{1'b0}};
             du_row_target  <= 4'h0;
             bank_tag_collision_error_r <= 1'b0;
+            mu_pending_other  <= 1'b0;
+            mu_pending_tag    <= {TAG_WIDTH{1'b0}};
+            mu_pending_target <= 4'h0;
         end else begin
             // Completions clear their matched row first (program order —
             // the launch writes below win last-assignment-wins if a launch
@@ -1052,21 +1130,46 @@ module Cluster #(
             if (mu_match1) mu_row1_busy <= 1'b0;
             if (du_match)  du_row_busy  <= 1'b0;
 
-            if (mu_launch) begin
-                if (mu_row0_free) begin
-                    mu_row0_busy   <= 1'b1;
-                    mu_row0_tag    <= dec_forwarded_tag;
-                    mu_row0_target <= mu_target_p;
-                    mu_row0_is_mul <= (dec_opcode == 8'h12);
-                end else if (mu_row1_free) begin
-                    mu_row1_busy   <= 1'b1;
-                    mu_row1_tag    <= dec_forwarded_tag;
-                    mu_row1_target <= mu_target_p;
-                    mu_row1_is_mul <= (dec_opcode == 8'h12);
-                end else begin
-                    bank_tag_collision_error_r <= 1'b1;
-                end
+            // MUL: T-timed, unconditional — exactly today's (pre-fix)
+            // behavior, untouched. PE_Core's own accept/reject for MUL is
+            // still made live at this same T (mul_valid_p1), so this
+            // still matches exactly.
+            if (mu_mul_takes_row0) begin
+                mu_row0_busy   <= 1'b1;
+                mu_row0_tag    <= dec_forwarded_tag;
+                mu_row0_target <= mu_target_p;
+                mu_row0_is_mul <= 1'b1;
+            end else if (mu_mul_takes_row1) begin
+                mu_row1_busy   <= 1'b1;
+                mu_row1_tag    <= dec_forwarded_tag;
+                mu_row1_target <= mu_target_p;
+                mu_row1_is_mul <= 1'b1;
             end
+
+            // Non-MUL: deferred commit at T+1, gated on live mu_pe_ready
+            // — the residual-risk-11 fix itself. A busy-rejected dispatch
+            // (mu_pe_ready false here) allocates nothing: no phantom row.
+            if (mu_nonmul_takes_row0) begin
+                mu_row0_busy   <= 1'b1;
+                mu_row0_tag    <= mu_pending_tag;
+                mu_row0_target <= mu_pending_target;
+                mu_row0_is_mul <= 1'b0;
+            end else if (mu_nonmul_takes_row1) begin
+                mu_row1_busy   <= 1'b1;
+                mu_row1_tag    <= mu_pending_tag;
+                mu_row1_target <= mu_pending_target;
+                mu_row1_is_mul <= 1'b0;
+            end
+
+            if (mu_mul_collision || mu_nonmul_collision) begin
+                bank_tag_collision_error_r <= 1'b1;
+            end
+
+            // Stage this cycle's non-MUL launch-intent (if any) for the
+            // T+1 check above, next cycle.
+            mu_pending_other  <= mu_launch_other_now;
+            mu_pending_tag    <= dec_forwarded_tag;
+            mu_pending_target <= mu_target_p;
 
             if (du_launch) begin
                 if (du_row_free) begin

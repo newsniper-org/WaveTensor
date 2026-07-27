@@ -2084,21 +2084,29 @@ async def test_bank_tag_collision_interlock(dut):
     fires: it stays STICKY well past DIV0's own natural completion (does
     NOT self-clear); and DIV0's own result is still delivered bit-exact
     to its own (pcid=0) bank, undisturbed by the rejected DIV1 attempt.
+    du_launch is untouched by the residual-risk-11 fix (DIV bypasses
+    case_result_s2, confirmed via PE_Core.v's DIV_IDLE launch check —
+    see the Cluster.v header comment), so this sub-test's behavior is
+    unchanged from the original v1.9 landing.
 
-    (b) MU (depth-2, exhaustion): fire three long MU-hosted ops (0x74
-    FSCALAR FS_DIV, pcid=0/1/2) in succession, each timed to land while
-    the previous one(s) are still busy -- ops 1 and 2 fill both table
-    rows, op 3 finds none free. Assert the collision bit fires and stays
-    sticky. NOTE (residual finding, not asserted/fixed here — out of
-    this test's scope, reported instead): this construction incidentally
-    demonstrates that Cluster's `mu_launch` detection does not gate on
-    PE_Core-internal busy state (fp_busy), so a table row can be
-    allocated for a launch PE_Core itself never internally executes;
-    with 2 such rows simultaneously busy the depth-2 completion
-    resolution's own documented invariant ("at most one busy non-MUL
-    row") is violated, and this sub-test therefore does NOT assert
-    anything about which specific payload lands in which bank for ops 1
-    and 2 -- only that the FAULT BIT correctly fires and stays sticky."""
+    (b) MU, residual-risk-11 CLOSING PROOF (§26.8 item 11): this is the
+    EXACT scenario that originally revealed the gap -- three long
+    MU-hosted ops (0x74 FSCALAR FS_DIV, pcid=0/1/2), each timed to land
+    while the previous one(s) are still busy. Pre-fix, Cluster's
+    un-gated `mu_launch` allocated a table row for ops 1 and 2 even
+    though PE_Core's own T+1 stage-2 busy-check (`cr_needs_regs_free &&
+    !output_regs_free`) silently rejected both (fp_busy from op0 still
+    held) -- 2 PHANTOM rows, so this test's original assertion
+    (`saw_collision`) passed, but for the WRONG reason (table exhaustion
+    from phantom occupancy, not a genuine tag reuse). Post-fix,
+    `mu_launch_other_now`'s row commit is deferred one cycle and gated
+    on live `mu_pe_ready`, so a busy-rejected dispatch allocates
+    NOTHING. Re-running this UNCHANGED stimulus must therefore show: NO
+    collision at all; `mu_row1` never goes busy (row0, held by op0, is
+    the only row ever touched); both rejected attempts (op1, op2) raise
+    `lower_required`; and op0's own result is delivered undisturbed.
+    This IS the closing proof for residual risk 11 — the phantom-row
+    exhaustion this scenario used to trigger no longer occurs."""
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
 
@@ -2139,7 +2147,7 @@ async def test_bank_tag_collision_interlock(dut):
     assert saw_out0 == 100 // 3, \
         f"DIV0's own result corrupted by the rejected DIV1 attempt: {saw_out0}"
 
-    # ---- (b) MU depth-2 exhaustion -----------------------------------------
+    # ---- (b) MU residual-risk-11 closing proof (unchanged stimulus) -------
     await _reset(dut)
     from test_isa_decoder import eh_precision as _ehp
 
@@ -2158,6 +2166,9 @@ async def test_bank_tag_collision_interlock(dut):
     fired = [False, False]
     pending = [True, False, False]
     saw_collision = False
+    row1_ever_busy = False
+    saw_lower = False
+    out0 = None
     for i in range(60):
         await RisingEdge(dut.clk)
         for k in range(3):
@@ -2185,9 +2196,129 @@ async def test_bank_tag_collision_interlock(dut):
             pending[2] = True
         if int(dut.bank_tag_collision_error.value):
             saw_collision = True
-    assert saw_collision, "MU depth-2 exhaustion collision never fired"
-    assert int(dut.bank_tag_collision_error.value) == 1, \
-        "bank_tag_collision_error (MU) did not stay sticky"
+        if int(dut.mu_row1_busy.value):
+            row1_ever_busy = True
+        if int(dut.any_lower_required.value):
+            saw_lower = True
+        if int(dut.ext_out_valid.value) and out0 is None:
+            out0 = int(dut.ext_out_payload.value)
+    assert not saw_collision, \
+        "bank_tag_collision_error fired -- residual risk 11 regressed: " \
+        "a busy-rejected FS_DIV dispatch phantom-allocated a table row"
+    assert not row1_ever_busy, \
+        "mu_row1 went busy at some point during this run -- a " \
+        "busy-rejected dispatch (op1 pcid=1 or op2 pcid=2) consumed a " \
+        "table row it never should have touched (op0 alone should hold " \
+        "row0 for the entire run)"
+    assert saw_lower, \
+        "neither busy-rejected FS_DIV dispatch (pcid=1/2) ever raised " \
+        "any_lower_required -- PE_Core's own T+1 busy-check should still " \
+        "fire for each even though Cluster no longer allocates for them"
+    exp0 = _G.micro_fscalar(_FS['FS_DIV'], a, b)
+    assert out0 == exp0, \
+        f"op0's own FS_DIV result corrupted: {out0:#x} != {exp0:#x}"
+
+
+@cocotb.test()
+async def test_mu_busy_reject_no_phantom_row(dut):
+    """NEW residual-risk-11 closing fix (§26.8 item 11 / Cluster.v
+    `mu_launch_mul` + `mu_launch_other_now` timing split): a non-MUL
+    dispatch that PE_Core busy-rejects at its real T+1 stage-2 decision
+    must NOT consume a MU-table row.
+
+    Fire op0 (0x74 FSCALAR FS_DIV, pcid=0) -- takes row0 for its fp
+    flight. WHILE op0 is still busy, fire op1 (a DIFFERENT non-MUL
+    dispatch, another FS_DIV, pcid=1) -- PE_Core busy-rejects it
+    (lower_required); row1 must NEVER go busy in response (asserted by
+    direct per-cycle polling, not inferred from a later side effect).
+    AFTER op0 fully drains, fire op2 (a third, DIFFERENT-target FS_DIV,
+    pcid=2) as corroborating evidence: it lands in row0, not row1 -- the
+    proof the task calls for that row1 was never phantom-occupied by
+    op1's rejected attempt (this alone is not conclusive, since row0 is
+    always preferred when free either way, which is exactly why the
+    direct per-cycle poll above is the primary assertion)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+    from test_isa_decoder import eh_precision as _ehp
+
+    def _fs_div_instr(mask, pcid):
+        return encode_instr(0x74, eh_port(input_port_mask=mask, output_port_id=pcid),
+                            _ehp(0x14, 0), eh_imm16((_FS['FS_DIV'] & 0xF) << 4),
+                            flags=(1 << 2))
+
+    a, b = _f2b(355.0), _f2b(113.0)
+    dut.ext_instruction.value = _fs_div_instr(0x01, 0)
+    dut.ext_tag.value = _tag(port_context_id=0)
+    dut.ext_payload.value = a
+    dut.ext_payload_b.value = b
+    dut.ext_payload_b_valid.value = 1
+    dut.ext_valid.value = 1
+    fired1 = False
+    pending = [True, False]
+    row1_ever_busy = False
+    saw_lower_op1 = False
+    out0 = None
+    for i in range(60):
+        await RisingEdge(dut.clk)
+        for k in range(2):
+            if pending[k]:
+                dut.ext_valid.value = 0
+                pending[k] = False
+        await Timer(1, units="ns")
+        if i == 5 and not fired1:
+            fired1 = True
+            dut.ext_instruction.value = _fs_div_instr(0x02, 1)
+            dut.ext_tag.value = _tag(port_context_id=1)
+            dut.ext_payload.value = a
+            dut.ext_payload_b.value = b
+            dut.ext_payload_b_valid.value = 1
+            dut.ext_valid.value = 1
+            pending[1] = True
+        if int(dut.mu_row1_busy.value):
+            row1_ever_busy = True
+        if int(dut.any_lower_required.value):
+            saw_lower_op1 = True
+        if int(dut.ext_out_valid.value) and out0 is None:
+            out0 = int(dut.ext_out_payload.value)
+    assert saw_lower_op1, \
+        "the busy-rejected op1 (FS_DIV pcid=1, dispatched mid-flight) " \
+        "never raised any_lower_required -- PE_Core's own T+1 busy-check " \
+        "should still fire"
+    assert not row1_ever_busy, \
+        "mu_row1 went busy in response to a busy-rejected dispatch -- " \
+        "phantom row allocated (residual risk 11 regression)"
+    exp0 = _G.micro_fscalar(_FS['FS_DIV'], a, b)
+    assert out0 == exp0, \
+        f"op0's own FS_DIV result corrupted by op1's rejected attempt: " \
+        f"{out0:#x} != {exp0:#x}"
+
+    # ---- corroborating: a subsequent, genuinely-free-MU dispatch fills
+    # row0, not row1 (same run, no reset — op0 has fully drained by now,
+    # op1's rejected attempt left nothing behind to collide with).
+    dut.ext_instruction.value = _fs_div_instr(0x04, 2)
+    dut.ext_tag.value = _tag(port_context_id=2)
+    dut.ext_payload.value = a
+    dut.ext_payload_b.value = b
+    dut.ext_payload_b_valid.value = 1
+    dut.ext_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.ext_valid.value = 0
+    used_row0, used_row1, out2 = False, False, None
+    for _ in range(80):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.mu_row0_busy.value):
+            used_row0 = True
+        if int(dut.mu_row1_busy.value):
+            used_row1 = True
+        if int(dut.ext_out_valid.value):
+            out2 = int(dut.ext_out_payload.value)
+            break
+    assert used_row0 and not used_row1, \
+        f"op2 (pcid=2) should land in row0 (row1 free but unused) -- " \
+        f"used_row0={used_row0} used_row1={used_row1}"
+    assert out2 == exp0, f"op2's FS_DIV result: {out2:#x} != {exp0:#x}"
 
 
 @cocotb.test()

@@ -739,9 +739,12 @@ def _lower_batchnorm_infer(inst: Instruction) -> List[Instruction]:
 # fp-eps path, 1 on the clamp path; LAYERNORM-0d: 3 / 2. The FRSQRT32
 # output routes to EVERY DEQUANT tail dispatch's payload_b (N=32 = two
 # 0x6B+DEQUANT pairs SHARING one s — SDK re-issuance, wave-token
-# single-use rule; same contract class as LAYERNORM's xc fanout). The
-# SDK no-intervening-mul-dispatch rule (§23.6a contract 3) extends to
-# 0x6B/0x70/0x78/0x79 (§25.6 item 4).
+# single-use rule; same contract class as LAYERNORM's xc fanout).
+# (The former SDK no-intervening-mul-dispatch rule (§23.6a contract 3,
+# extended to 0x6B/0x70/0x78/0x79 by §25.6 item 4) is RETIRED — Cluster.v
+# §26.5's tag-indexed launch-time latch table plus the residual-risk-11
+# timing fix make back-to-back MU/DU dispatch hazard-free by tag match,
+# so this macro's GAMMA_MUL_W/DEQUANT pairs need no spacing discipline.)
 #
 # EPS GUARD (assembler-enforced; §25.6 item 3 RESTATED RATIONALE): .eps
 # carries fp32 BITS (build via fp32_to_bits). eps >= 2^-13 -> fp-eps
