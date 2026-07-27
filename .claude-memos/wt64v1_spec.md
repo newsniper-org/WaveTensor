@@ -2842,6 +2842,19 @@ COMB 121-LUT 출발 마진의 맥락: v1.8.0e 0e2 착지 실측이 이미 **39.8
 
 **226-test 전체 suite**(186 `test_isa_decoder.py` + 40 `test_cluster.py`) 재실행은 gate 결과와 무관하게 필수이며, §26.7 신규 테스트와 함께 gate log 를 merge commit 에 첨부한다 — gate log 미첨부 RTL commit 은 이 project 자신의 구속력 있는 프로세스 규칙(post-v1.8.0b)에 의해 merge 금지다.
 
+**GATE V9-4 실측 최종 (2026-07-27, commit 618def9 — residual-risk-11 수리 반영된 clean 상태, 재synth+재PnR):**
+
+| 지표 | 실측 | 사전가격 | 판정 |
+|---|---|---|---|
+| **Fmax** | **11.34 MHz** (critical path 117 logic stage/28.1 ns + 118 routing/59.6 ns = 88.1 ns) | floor 14.2 / target 17.0 / stretch 20.5 MHz | **FAIL — floor 미달**. 기준선(10.93 MHz) 대비 **+3.75%** 뿐 — 사전가격이 예견한 1.30-1.88× 이득의 거의 전부가 실측에서 증발했다. |
+| **COMB** | **39.56%** (33,089/83,640) | ≤40.0% (33,456) | PASS (마진 367 LUT). |
+| **MULT18X18D** | **103** | 정확히 122, 무관용 선언 | **원 pin 자체가 틀린 전제 위에 있었음이 조사로 확정** — 아래 참조. |
+| **FF** | 10,607 (12.7%) | 추적만 | 문제 없음. |
+
+**MULT 편차 조사 (완결, 버그 아님으로 확정):** 122→103 은 "신규 곱셈 구조 도입"이 아니다. `git worktree` 로 최종 known-good 지점(0e2, commit 6b97f83)을 분리 체크아웃해 **동일 yosys 버전·동일 흐름**으로 독립 재synth 하고, techmap(DSP 매핑) **이전** 단계(`read_verilog+hierarchy+proc+opt_clean`, `stat`)에서 각 PE_Core 파라미터화 인스턴스(MU-hosted/DU/L-PE-narrow)의 원시 `$mul` 연산자 개수를 비교했다: **0e2 와 v1.9 양쪽 모두 정확히 377/102/102/4/891 로 완전 일치**(FP_Mul36/EHDecode 포함) — 즉 곱셈 연산 자체는 한 개도 늘거나 줄지 않았다. 차이는 yosys `synth_ecp5` 의 DSP-inference 공유 패스(`share.cc:669:make_supercell`)가 `case_result_s2` 도입으로 달라진 인접 로직 형태를 보고 **더 많은 논리적 곱셈을 더 적은 물리 MULT18X18D 로 시분할 공유**하기로 재결정한 것 — COMB 이 오히려 소폭 낮아진 사실(39.56% vs 이전 39.86%)과도 정합된다(LUT-fallback 이었다면 COMB 급증이 따랐을 것). **원 pin 의 전제("편차 = 버그 신호")는 반증됐다** — 실제 불변식은 "MULT18X18D 개수 고정"이 아니라 "premap `\$mul` 연산자 개수 고정"이어야 했음을 이번 조사가 확정했고, 이 amendment 를 pin 문구에 반영한다: **"MULT18X18D 절대 개수는 gate 대상이 아니다(합성 도구의 리소스 공유 재량); 대신 premap `\$mul` 연산자 개수가 baseline 과 정확히 일치해야 한다(신규/제거된 곱셈 로직 없음의 증거) — 이 release 에서 377/102/102/4/891 로 실측 일치 확인, 문서화된 baseline 으로 확정."**
+
+**Fmax FAIL 의 정책적 결론 (§26.6 원문 자신의 gate policy 적용):** 원문이 명시한 대로 — "floor 미달 시 merge 하지 않고 stage-boundary 질문을 재개(case-select mux 자체 일부를 경계 너머로 옮기는 진짜 균형 분할이 필요할 수 있음)". GATE V9-3(standalone: MU-hosted 37.44 MHz, LPE-narrow 154.37 MHz)이 낙관적으로 보였던 것과 정반대로, **congestion-drift 가 이번 release 에서 이 project 최악의 사례로 실현됐다** — 0d 선례(+2.46%p COMB → -2.7% Fmax)보다 압도적으로 크다: standalone 수치가 시사한 1.3-2.2× 잠재 이득이 routed full-Cluster 문맥에서 사실상 전부(96% 이상) 잠식됐다. 이는 **case_result_s2 단일 레지스터 경계만으로는 부족하며, case-select mux 자체의 물리적 배치·라우팅이 실제 병목**이라는 뜻으로 읽힌다(비교: 두 standalone geometry 모두 짧은 critical path 를 보였는데 — MU-hosted 는 아예 case_result_s2 를 안 거쳤고 LPE-narrow 는 4 LUT level 뿐이었다 — full Cluster 문맥에서 배치·라우팅 혼잡이 지배적 요인이 됐다는 뜻). **본 release 는 자신이 선언한 gate 를 충족하지 못했으며, 이 사실을 silent 하게 수용하지 않는다** — 재설계(stage-boundary 재검토, 혹은 배치 제약 추가)가 필요한 상태로 기록하고 후속 판단을 상위 결정권자에게 넘긴다.
+
 ### 26.7 test_plan (15개 항목)
 
 1. **`test_bmm3_then_mul_launch_gate`(기존, SURVIVES 예상)** — fragment-0 대기가 bounded 20-cycle poll(신규 +1 cycle 흡수)이고, 정확-edge assertion 이 `frag_idx`(frag-drain, 무변경) 대 `mul_valid_p1`(MUL bypass, 무변경)을 probe — 둘 다 `case_result_s2` 무영향. 그대로 실행하고 실패는 진짜 버그로 취급(합성 당시 "가장 명백한 breaking 사례"라는 오분류를 정정).
