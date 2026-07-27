@@ -2889,7 +2889,61 @@ COMB 121-LUT 출발 마진의 맥락: v1.8.0e 0e2 착지 실측이 이미 **39.8
 10. **[해소됨]** SDK no-intervening-mul-dispatch 규칙(§23.6a 계약 3, §25.6 amendment 4 확장분 포함)은 test C/D/E/F(`test_bank_tag_latch_no_intervening_hazard`/`test_bank_tag_collision_interlock` 등, §26.7 항 9-12에 상당) 통과 뒤 **완전 은퇴(삭제)** 됐다(618def9) — risk 11 이 드러낸 잔여 케이스(non-MUL busy-reject 의 phantom row)를 그 commit 이 직접 닫았으므로, narrowing 이 아니라 폐기가 최종 결론이다. Cluster.v ~422-463 의 규칙 주석 블록은 RETIRED 로 표시·보존됐고, asm 의 대응 주석(GAMMA_MUL_W/DEQUANT 쌍 spacing 근거)도 은퇴 사유와 함께 갱신됐다.
 11. **[해소됨]** `test_bank_tag_collision_interlock` 구성 도중 발견된 `mu_launch`/PE_Core `fp_busy`(정확히는 `output_regs_free`, MUL 을 제외한 전 is_mul_op class) 타이밍 격차 — case_result_s2 재-homing 이후 실제 accept/reject 결정이 T+1 인데 `mu_launch` 는 T 시점에 무조건 row 를 할당해 busy-reject 된 dispatch 가 영구 phantom row 를 남길 수 있던 결함 — 은 commit 618def9 에서 닫혔다: MUL(0x12)은 T-시점 무조건 할당 그대로 유지(case_result_s2 를 안 타므로 정확), 그 외 class 는 row commit 을 T+1 로 이연해 Cluster 에 이미 배선된 `mu_pe_ready`(=PE_Core `output_regs_free`)를 그 시점에 live 로 게이트 — busy-reject 시 row 를 아예 할당하지 않는다. `test_mu_busy_reject_no_phantom_row`(신규) + `test_bank_tag_collision_interlock` 재실행(원인이 됐던 시나리오에서 phantom-row exhaustion 재현 안 됨)으로 폐곡선 확인.
 
-### 26.9 §12a 기록 — pre-stable 정규 개발 행위
+### 26.9 congestion 원인 진단 (2026-07-27, 사용자 지시 — 재설계 전 진단 전용)
+
+Gate V9-4 의 Fmax FAIL(§26.6) 을 받아들고 재설계에 착수하기 전에, 원인
+자체를 먼저 규명했다(3-lens 독립 조사, read-only, RTL/spec 무편집).
+
+**핵심 재발견 — "collapse" 는 실측 대비 착시였다:** 최근 5개 세대의
+full-Cluster Fmax(동일 flow, 동일 geometry 2×2 = MU+DU+4×L-PE, 6
+인스턴스 — "18 인스턴스"는 이번 진단 이전 필자의 착오였음, PE_ROWS=
+PE_COLS=2 로 확인): cleanup=10.93 · 0e1=11.16 · 0e2=10.93 · v1.9(수리
+전)=11.00 · **v1.9(618def9, 수리 후)=11.34 MHz**. v1.9 는 이 5개 중
+**최고치**이며 직전 세대 대비 **+3.8% 개선**이다 — 회귀가 아니다.
+"collapse" 로 보인 것은 오직 §26.6 이 사전가격한 floor(14.2 MHz)·
+GATE V9-3 standalone 수치(37.44/154.37 MHz) 대비로만 성립한다.
+
+**진짜 원인 (high confidence, 3-lens 수렴):** full-Cluster critical
+path 는 5세대 내내 **u_matmul_unit 내부의 case(dec_opcode) 조합 로직
+자체**(PE_Core.v:2117-3291, 55-arm, v1.9 가 "오늘과 완전 동일 평가"
+라고 명시 선언한 바로 그 본체)에서 발생하며, routing:logic 지연 비
+(v1.9b 2.124 vs 0e2 2.127, delta 0.15%)가 사실상 불변인 채 5세대 동안
+고정돼 왔다 — v1.9 는 이 병목의 성격을 전혀 바꾸지 못했다(악화도
+개선도 아님). GATE V9-3 standalone 이 낙관적이었던 이유는 **애초에
+이 병목을 측정하지 못하는 구성**이었기 때문: MU-hosted 표준형은
+critical path 가 `case_result_s2` 를 아예 안 거치고(기존 FP32 adder
+경로), LPE-narrow 는 거치되 겨우 4 LUT level 얕다 — 둘 다 case 본체의
+전체 조합 깊이 + multi-instance 배치 경합을 동시에 겪지 않는다(실제로
+v1.9b 의 logic-only 지연(28.05ns)만으로 이미 MU-hosted standalone 의
+전체 주기(26.71ns)를 초과한다). **§26.6 의 floor/target 자체가 이
+병목을 볼 수 없는 gate 위에 세워진 것이었다.**
+
+**v1.9 에 실제로 귀속되는 결함 (작고, 실재함):** critical path 상
+최대 단일 routing hop(1.53ns, 전체 routing 지연의 2.6%)이 `case_
+result_s2` 수신 register 를 55-arm fanin 군집으로부터 물리적으로
+~13열 떨어진 곳에 배치한 결과로 확인됨 — 실재하나 gap 규모를 설명
+하기엔 턱없이 작다.
+
+**정직한 미해결 (seed=1 단발 실측의 한계):** 이번 5개 세대 실측 전부
+**seed=1 단발**이다 — 이 project 자신이 Gate 3/0d 에서 확립한 "seed
+sweep 없이는 noise 와 signal 을 구분 못한다"는 원칙이 이번 진단
+대상 자체에는 적용되지 않았다(진단 세션은 read-only 라 새 seed sweep
+을 수행하지 않음). 11.34 MHz 대 10.93 MHz 의 +3.75% 가 진짜 신호인지
+seed noise 인지는 **미확정**.
+
+**권고 (진단 세션 결론, 재설계 아님):**
+1. v1.9b·0e2 양쪽에 **seed 1-5 sweep** — 저비용, 이 project 기존
+   관행 그대로, "+3.8%"의 신호/잡음 여부를 가장 싸게 확정.
+2. `case_result_s2` register 에 **경량 RLOC/LOC 힌트** 하나 — fanin
+   군집에 인접 배치를 시도, 확인된 유일한 v1.9-귀속 결함(1.53ns hop)
+   을 격리 검증. 재설계가 아니라 PnR 배치 힌트 실험.
+3. **진짜 구조적 개선이 필요하다면 표적은 `case_result_s2` 경계가
+   아니라 case(dec_opcode) 본체 자체의 조합 깊이(55-arm)** — v1.9 의
+   가정("경계 하나면 충분")이 5세대 불변 병목 앞에서 반증됐다.
+4. cluster_v19b_synth.json(누락) 재생성 — 향후 분석이 log 의 소스
+   주석이 아니라 netlist 직접 대조를 쓸 수 있도록.
+
+### 26.10 §12a 기록 — pre-stable 정규 개발 행위
 
 본 절 전체(§26.2-26.6 의 아키텍처·latency-contract·bank-fix·gate 변경)는 **§12a 하의 정규 개발 행위(regular development act)**로 기록한다 — dispatch latency contract 변경은 §12a 가 예시하는 "frozen 계약이 stable release 이전에는 발효되지 않는" 종류의 변경이며, freeze 보장 3종(frozen first-class 유지·truth-table keep-forever·snapshot 등가성) 중 어느 것도 아직 발효되지 않은 상태에서 이루어진다. §12a 규칙 3의 순서(spec amendment → `isa/wt64v1_isa.json` 편집 → 생성물 재생성 → RTL/테스트 갱신)를 그대로 따른다: 본 절이 spec-first 기록이고, RTL(PE_Core.v/Cluster.v) 및 `test_isa_decoder.py`/`test_cluster.py`/`lint_frag_total_m1_held.py` 갱신은 이후 commit 에서 뒤따른다.
 
