@@ -15,3 +15,11 @@ synth/lattice/reports/*.log
 synth/lattice/reports/*.rpt
 synth/lattice/reports/*.config
 synth/lattice/reports/*.bit
+
+# Vivado byproducts + huge checkpoints (2026-08-13)
+# .dcp are 129 MB of binary; regenerate with `make synth-pod/impl-pod PART=...`
+# (see .claude-memos/cross_vendor_fabric_evidence.md §6)
+synth/checkpoints/*.dcp
+# Router congestion dumps — kept locally as evidence, too bulky/noisy to track
+cong/
+iter_*_CongestedCLBsAndNets.txt

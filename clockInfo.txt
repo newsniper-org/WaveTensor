@@ -1,10 +1,68 @@
 -------------------------------------
 | Tool Version : Vivado v.2025.2.1
-| Date         : Sun May  3 13:59:54 2026
+| Date         : Thu Aug 13 23:43:59 2026
 | Host         : cachyos-ybi-tuf
 | Design       : checkpoint_pod_2x2_2x2_synth
-| Device       : xcau25p-ffvb676-2-E-
+| Device       : xcu55c-fsvh2892-2L-E-
 -------------------------------------
 
 For more information on clockInfo.txt clock routing debug file see https://support.xilinx.com/s/article/000035660?language=en_US
+
+***********************
+Running Pre-CRP Checker
+***********************
+Number of global clocks: 1
+	Number of BUFGCE: 1
+	Number of BUFGCE_HDIO: 0
+	Number of BUFG_CTRL: 0
+	Number of BUFGCE_DIV: 0
+	Number of BUFG_GT: 0
+	Number of BUFG_PS: 0
+	Number of BUFG_FABRIC: 0
+	Running suboptimal placement checker for 1 clocks (and their loads) which do not have the CLOCK_LOW_FANOUT property but have a fanout less than 2000...
+**************************************
+Clock Nets/Source Overview (CRP Input)
+**************************************
+Clock 1: g_crow[1].g_ccol[0].u_cluster/u_ehdec/done_d1_reg_n_0_bufg_place
+	Clock source type: BUFGCE
+	Clock source region: X4Y6
+	Clock regions with locked loads: X0Y6 X0Y7 X1Y6 X1Y7 X2Y6 X2Y7 X3Y6 
+	initial rect ((0, 6), (4, 7))
+
+
+
+*****************************
+Clocks With User Constraints:
+*****************************
+No clocks with user constraints found
+
+
+***********************
+Running Pre-CRP Checker
+***********************
+Number of global clocks: 1
+	Number of BUFGCE: 1
+	Number of BUFGCE_HDIO: 0
+	Number of BUFG_CTRL: 0
+	Number of BUFGCE_DIV: 0
+	Number of BUFG_GT: 0
+	Number of BUFG_PS: 0
+	Number of BUFG_FABRIC: 0
+	Running suboptimal placement checker for 1 clocks (and their loads) which do not have the CLOCK_LOW_FANOUT property but have a fanout less than 2000...
+**************************************
+Clock Nets/Source Overview (CRP Input)
+**************************************
+Clock 1: g_crow[1].g_ccol[0].u_cluster/u_ehdec/done_d1_reg_n_0
+	Clock source type: BUFGCE
+	Clock source region: X4Y6
+	Clock regions with locked loads: X0Y6 X0Y7 X1Y6 X1Y7 X2Y6 X2Y7 X3Y6 
+	initial rect ((0, 6), (4, 7))
+
+
+
+*****************************
+Clocks With User Constraints:
+*****************************
+No clocks with user constraints found
+
 

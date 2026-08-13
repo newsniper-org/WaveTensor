@@ -1,12 +1,12 @@
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
 --------------------------------------------------------------------------------------------------------------------------------------------------
 | Tool Version      : Vivado v.2025.2.1 (lin64) Build 6403652 Thu Mar 19 13:47:00 MDT 2026
-| Date              : Sun May  3 13:58:27 2026
+| Date              : Thu Aug 13 23:41:18 2026
 | Host              : cachyos-ybi-tuf running 64-bit CachyOS
 | Command           : report_timing_summary -file /home/ybi/WaveTensor/synth/reports/pod_2x2_2x2_synth_timing.rpt
 | Design            : Pod
-| Device            : xcau25p-ffvb676
-| Speed File        : -2  PRODUCTION 1.29 05-01-2022
+| Device            : xcu55c-fsvh2892
+| Speed File        : -2L  PRODUCTION 1.30 05-01-2022
 | Design State      : Synthesized
 | Temperature Grade : E
 --------------------------------------------------------------------------------------------------------------------------------------------------
@@ -54,8 +54,8 @@ Table of Contents
 2. checking constant_clock (0)
 3. checking pulse_width_clock (0)
 4. checking unconstrained_internal_endpoints (0)
-5. checking no_input_delay (619)
-6. checking no_output_delay (212)
+5. checking no_input_delay (700)
+6. checking no_output_delay (228)
 7. checking multiple_clock (0)
 8. checking generated_clocks (0)
 9. checking loops (0)
@@ -85,16 +85,16 @@ Table of Contents
  There are 0 pins that are not constrained for maximum delay due to constant clock.
 
 
-5. checking no_input_delay (619)
+5. checking no_input_delay (700)
 --------------------------------
- There are 618 input ports with no input delay specified. (HIGH)
+ There are 699 input ports with no input delay specified. (HIGH)
 
  There is 1 input port with no input delay but user has a false path constraint. (MEDIUM)
 
 
-6. checking no_output_delay (212)
+6. checking no_output_delay (228)
 ---------------------------------
- There are 212 ports with no output delay specified. (HIGH)
+ There are 228 ports with no output delay specified. (HIGH)
 
  There are 0 ports with no output delay but user has a false path constraint
 
@@ -139,10 +139,10 @@ Table of Contents
 
     WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
     -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
-      4.778        0.000                      0                26872        0.057        0.000                      0                26872        4.468        0.000                       0                 14340  
+     -1.800     -323.862                    256                75173        0.056        0.000                      0                75173        4.458        0.000                       0                 39856  
 
 
-All user specified timing constraints are met.
+Timing constraints are not met.
 
 
 ------------------------------------------------------------------------------------------------
@@ -162,7 +162,7 @@ clk    {0.000 5.000}      10.000          100.000
 
 Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
 -----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
-clk                 4.778        0.000                      0                26872        0.057        0.000                      0                26872        4.468        0.000                       0                 14340  
+clk                -1.800     -323.862                    256                75173        0.056        0.000                      0                75173        4.458        0.000                       0                 39856  
 
 
 ------------------------------------------------------------------------------------------------
@@ -193,27 +193,27 @@ Path Group    From Clock    To Clock          WNS(ns)      TNS(ns)  TNS Failing 
 From Clock:  clk
   To Clock:  clk
 
-Setup :            0  Failing Endpoints,  Worst Slack        4.778ns,  Total Violation        0.000ns
-Hold  :            0  Failing Endpoints,  Worst Slack        0.057ns,  Total Violation        0.000ns
-PW    :            0  Failing Endpoints,  Worst Slack        4.468ns,  Total Violation        0.000ns
+Setup :          256  Failing Endpoints,  Worst Slack       -1.800ns,  Total Violation     -323.862ns
+Hold  :            0  Failing Endpoints,  Worst Slack        0.056ns,  Total Violation        0.000ns
+PW    :            0  Failing Endpoints,  Worst Slack        4.458ns,  Total Violation        0.000ns
 ---------------------------------------------------------------------------------------------------
 
 
 Max Delay Paths
 --------------------------------------------------------------------------------------
-Slack (MET) :             4.778ns  (required time - arrival time)
-  Source:                 g_crow[0].g_ccol[0].u_cluster/u_ehdec/dec_input_payload_reg[55]/C
+Slack (VIOLATED) :        -1.800ns  (required time - arrival time)
+  Source:                 g_crow[1].g_ccol[0].u_cluster/u_ehdec/dec_input_payload_wide_reg[0]/C
                             (rising edge-triggered cell FDCE clocked by clk  {rise@0.000ns fall@5.000ns period=10.000ns})
-  Destination:            g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/output_payload_reg[2]/D
-                            (rising edge-triggered cell FDCE clocked by clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload_reg[32]/D
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@5.000ns period=10.000ns})
   Path Group:             clk
   Path Type:              Setup (Max at Slow Process Corner)
   Requirement:            10.000ns  (clk rise@10.000ns - clk rise@0.000ns)
-  Data Path Delay:        5.203ns  (logic 3.934ns (75.610%)  route 1.269ns (24.390%))
-  Logic Levels:           17  (DSP_A_B_DATA=1 DSP_ALU=4 DSP_M_DATA=1 DSP_MULTIPLIER=1 DSP_OUTPUT=4 DSP_PREADD_DATA=1 LUT3=1 LUT5=1 LUT6=3)
-  Clock Path Skew:        -0.009ns (DCD - SCD + CPR)
-    Destination Clock Delay (DCD):    0.021ns = ( 10.021 - 10.000 ) 
-    Source Clock Delay      (SCD):    0.030ns
+  Data Path Delay:        11.782ns  (logic 2.677ns (22.721%)  route 9.105ns (77.279%))
+  Logic Levels:           48  (LUT3=2 LUT5=10 LUT6=35 MUXF7=1)
+  Clock Path Skew:        -0.008ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.020ns = ( 10.020 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.028ns
     Clock Pessimism Removal (CPR):    0.000ns
   Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
     Total System Jitter     (TSJ):    0.071ns
@@ -225,72 +225,122 @@ Slack (MET) :             4.778ns  (required time - arrival time)
   -------------------------------------------------------------------    -------------------
                          (clock clk rise edge)        0.000     0.000 r  
                                                       0.000     0.000 r  clk (IN)
-                         net (fo=14579, unset)        0.030     0.030    g_crow[0].g_ccol[0].u_cluster/u_ehdec/clk
-                         FDCE                                         r  g_crow[0].g_ccol[0].u_cluster/u_ehdec/dec_input_payload_reg[55]/C
+                         net (fo=40175, unset)        0.028     0.028    g_crow[1].g_ccol[0].u_cluster/u_ehdec/clk
+                         FDCE                                         r  g_crow[1].g_ccol[0].u_cluster/u_ehdec/dec_input_payload_wide_reg[0]/C
   -------------------------------------------------------------------    -------------------
-                         FDCE (Prop_FDCE_C_Q)         0.077     0.107 f  g_crow[0].g_ccol[0].u_cluster/u_ehdec/dec_input_payload_reg[55]/Q
-                         net (fo=303, unplaced)       0.314     0.421    g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/matmul_func_return1__3/A[7]
-                         DSP_A_B_DATA (Prop_DSP_A_B_DATA_A[7]_A2_DATA[7])
-                                                      0.192     0.613 r  g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/matmul_func_return1__3/DSP_A_B_DATA_INST/A2_DATA[7]
-                         net (fo=1, unplaced)         0.000     0.613    g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/matmul_func_return1__3/DSP_A_B_DATA.A2_DATA<7>
-                         DSP_PREADD_DATA (Prop_DSP_PREADD_DATA_A2_DATA[7]_A2A1[7])
-                                                      0.076     0.689 r  g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/matmul_func_return1__3/DSP_PREADD_DATA_INST/A2A1[7]
-                         net (fo=1, unplaced)         0.000     0.689    g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/matmul_func_return1__3/DSP_PREADD_DATA.A2A1<7>
-                         DSP_MULTIPLIER (Prop_DSP_MULTIPLIER_A2A1[7]_U[28])
-                                                      0.505     1.194 f  g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/matmul_func_return1__3/DSP_MULTIPLIER_INST/U[28]
-                         net (fo=1, unplaced)         0.000     1.194    g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/matmul_func_return1__3/DSP_MULTIPLIER.U<28>
-                         DSP_M_DATA (Prop_DSP_M_DATA_U[28]_U_DATA[28])
-                                                      0.047     1.241 r  g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/matmul_func_return1__3/DSP_M_DATA_INST/U_DATA[28]
-                         net (fo=1, unplaced)         0.000     1.241    g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/matmul_func_return1__3/DSP_M_DATA.U_DATA<28>
-                         DSP_ALU (Prop_DSP_ALU_U_DATA[28]_ALU_OUT[47])
-                                                      0.585     1.826 f  g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/matmul_func_return1__3/DSP_ALU_INST/ALU_OUT[47]
-                         net (fo=1, unplaced)         0.000     1.826    g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/matmul_func_return1__3/DSP_ALU.ALU_OUT<47>
-                         DSP_OUTPUT (Prop_DSP_OUTPUT_ALU_OUT[47]_PCOUT[47])
-                                                      0.122     1.948 r  g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/matmul_func_return1__3/DSP_OUTPUT_INST/PCOUT[47]
-                         net (fo=1, unplaced)         0.014     1.962    g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/einsum_dot_return0/PCIN[47]
-                         DSP_ALU (Prop_DSP_ALU_PCIN[47]_ALU_OUT[47])
-                                                      0.546     2.508 f  g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/einsum_dot_return0/DSP_ALU_INST/ALU_OUT[47]
-                         net (fo=1, unplaced)         0.000     2.508    g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/einsum_dot_return0/DSP_ALU.ALU_OUT<47>
-                         DSP_OUTPUT (Prop_DSP_OUTPUT_ALU_OUT[47]_PCOUT[47])
-                                                      0.122     2.630 r  g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/einsum_dot_return0/DSP_OUTPUT_INST/PCOUT[47]
-                         net (fo=1, unplaced)         0.014     2.644    g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/einsum_dot_return0__0/PCIN[47]
-                         DSP_ALU (Prop_DSP_ALU_PCIN[47]_ALU_OUT[47])
-                                                      0.546     3.190 f  g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/einsum_dot_return0__0/DSP_ALU_INST/ALU_OUT[47]
-                         net (fo=1, unplaced)         0.000     3.190    g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/einsum_dot_return0__0/DSP_ALU.ALU_OUT<47>
-                         DSP_OUTPUT (Prop_DSP_OUTPUT_ALU_OUT[47]_PCOUT[47])
-                                                      0.122     3.312 r  g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/einsum_dot_return0__0/DSP_OUTPUT_INST/PCOUT[47]
-                         net (fo=1, unplaced)         0.014     3.326    g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/einsum_dot_return0__1/PCIN[47]
-                         DSP_ALU (Prop_DSP_ALU_PCIN[47]_ALU_OUT[2])
-                                                      0.546     3.872 f  g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/einsum_dot_return0__1/DSP_ALU_INST/ALU_OUT[2]
-                         net (fo=1, unplaced)         0.000     3.872    g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/einsum_dot_return0__1/DSP_ALU.ALU_OUT<2>
-                         DSP_OUTPUT (Prop_DSP_OUTPUT_ALU_OUT[2]_P[2])
-                                                      0.109     3.981 r  g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/einsum_dot_return0__1/DSP_OUTPUT_INST/P[2]
-                         net (fo=1, unplaced)         0.166     4.147    g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/einsum_dot_return0__1_n_103
-                         LUT5 (Prop_LUT5_I0_O)        0.125     4.272 r  g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/output_payload[2]_i_52/O
-                         net (fo=1, unplaced)         0.186     4.458    g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/output_payload[2]_i_52_n_0
-                         LUT6 (Prop_LUT6_I5_O)        0.038     4.496 r  g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/output_payload[2]_i_30/O
-                         net (fo=1, unplaced)         0.186     4.682    g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/output_payload[2]_i_30_n_0
-                         LUT3 (Prop_LUT3_I0_O)        0.038     4.720 r  g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/output_payload[2]_i_13/O
-                         net (fo=1, unplaced)         0.141     4.861    g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/output_payload[2]_i_13_n_0
-                         LUT6 (Prop_LUT6_I5_O)        0.100     4.961 r  g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/output_payload[2]_i_4/O
-                         net (fo=1, unplaced)         0.186     5.147    g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/output_payload[2]_i_4_n_0
-                         LUT6 (Prop_LUT6_I5_O)        0.038     5.185 r  g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/output_payload[2]_i_1/O
-                         net (fo=1, unplaced)         0.048     5.233    g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/output_payload[2]_i_1_n_0
-                         FDCE                                         r  g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/output_payload_reg[2]/D
+                         FDCE (Prop_FDCE_C_Q)         0.077     0.105 r  g_crow[1].g_ccol[0].u_cluster/u_ehdec/dec_input_payload_wide_reg[0]/Q
+                         net (fo=325, unplaced)       0.266     0.371    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/dec_input_payload_wide[0]
+                         LUT6 (Prop_LUT6_I0_O)        0.150     0.521 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[61]_i_160/O
+                         net (fo=1, unplaced)         0.185     0.706    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[61]_i_160_n_0
+                         LUT3 (Prop_LUT3_I0_O)        0.038     0.744 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[61]_i_101/O
+                         net (fo=10, unplaced)        0.218     0.962    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[61]_i_101_n_0
+                         LUT3 (Prop_LUT3_I1_O)        0.038     1.000 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[2]_i_269/O
+                         net (fo=8, unplaced)         0.213     1.213    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[2]_i_269_n_0
+                         LUT6 (Prop_LUT6_I4_O)        0.038     1.251 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[2]_i_272/O
+                         net (fo=2, unplaced)         0.185     1.436    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[2]_i_272_n_0
+                         LUT5 (Prop_LUT5_I4_O)        0.038     1.474 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[2]_i_267/O
+                         net (fo=13, unplaced)        0.179     1.653    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[2]_i_267_n_0
+                         LUT6 (Prop_LUT6_I1_O)        0.090     1.743 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[2]_i_262/O
+                         net (fo=1, unplaced)         0.141     1.884    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[2]_i_262_n_0
+                         LUT6 (Prop_LUT6_I1_O)        0.100     1.984 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[2]_i_238/O
+                         net (fo=6, unplaced)         0.207     2.191    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[2]_i_238_n_0
+                         LUT6 (Prop_LUT6_I2_O)        0.038     2.229 f  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_323/O
+                         net (fo=9, unplaced)         0.171     2.400    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_323_n_0
+                         LUT6 (Prop_LUT6_I0_O)        0.090     2.490 f  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[2]_i_258/O
+                         net (fo=2, unplaced)         0.185     2.675    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[2]_i_258_n_0
+                         LUT5 (Prop_LUT5_I2_O)        0.038     2.713 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[2]_i_236/O
+                         net (fo=11, unplaced)        0.220     2.933    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[2]_i_236_n_0
+                         LUT6 (Prop_LUT6_I2_O)        0.038     2.971 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_255/O
+                         net (fo=3, unplaced)         0.146     3.117    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_255_n_0
+                         LUT6 (Prop_LUT6_I2_O)        0.090     3.207 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_208/O
+                         net (fo=5, unplaced)         0.203     3.410    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_208_n_0
+                         LUT6 (Prop_LUT6_I4_O)        0.038     3.448 f  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_310/O
+                         net (fo=9, unplaced)         0.171     3.619    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_310_n_0
+                         LUT6 (Prop_LUT6_I0_O)        0.090     3.709 f  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_314/O
+                         net (fo=2, unplaced)         0.185     3.894    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_314_n_0
+                         LUT5 (Prop_LUT5_I2_O)        0.038     3.932 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_250/O
+                         net (fo=11, unplaced)        0.220     4.152    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_250_n_0
+                         LUT6 (Prop_LUT6_I3_O)        0.038     4.190 f  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_238/O
+                         net (fo=1, unplaced)         0.141     4.331    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_238_n_0
+                         LUT6 (Prop_LUT6_I1_O)        0.100     4.431 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_202/O
+                         net (fo=5, unplaced)         0.203     4.634    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_202_n_0
+                         LUT6 (Prop_LUT6_I4_O)        0.038     4.672 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_247/O
+                         net (fo=9, unplaced)         0.216     4.888    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_247_n_0
+                         LUT6 (Prop_LUT6_I4_O)        0.038     4.926 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_249/O
+                         net (fo=2, unplaced)         0.185     5.111    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_249_n_0
+                         LUT5 (Prop_LUT5_I4_O)        0.038     5.149 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_205/O
+                         net (fo=12, unplaced)        0.222     5.371    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_205_n_0
+                         LUT6 (Prop_LUT6_I3_O)        0.038     5.409 f  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[4]_i_565/O
+                         net (fo=1, unplaced)         0.141     5.550    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[4]_i_565_n_0
+                         LUT6 (Prop_LUT6_I1_O)        0.100     5.650 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[4]_i_377/O
+                         net (fo=6, unplaced)         0.207     5.857    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[4]_i_377_n_0
+                         LUT6 (Prop_LUT6_I2_O)        0.038     5.895 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[4]_i_376/O
+                         net (fo=9, unplaced)         0.216     6.111    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[4]_i_376_n_0
+                         LUT6 (Prop_LUT6_I4_O)        0.038     6.149 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_1146/O
+                         net (fo=2, unplaced)         0.185     6.334    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_1146_n_0
+                         LUT5 (Prop_LUT5_I4_O)        0.038     6.372 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[4]_i_370/O
+                         net (fo=11, unplaced)        0.175     6.547    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[4]_i_370_n_0
+                         LUT6 (Prop_LUT6_I1_O)        0.090     6.637 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_199/O
+                         net (fo=1, unplaced)         0.141     6.778    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_199_n_0
+                         LUT6 (Prop_LUT6_I1_O)        0.100     6.878 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_167/O
+                         net (fo=6, unplaced)         0.207     7.085    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_167_n_0
+                         LUT6 (Prop_LUT6_I2_O)        0.038     7.123 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_196/O
+                         net (fo=9, unplaced)         0.216     7.339    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_196_n_0
+                         LUT6 (Prop_LUT6_I4_O)        0.038     7.377 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_808/O
+                         net (fo=2, unplaced)         0.185     7.562    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_808_n_0
+                         LUT5 (Prop_LUT5_I2_O)        0.038     7.600 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_165/O
+                         net (fo=12, unplaced)        0.222     7.822    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[3]_i_165_n_0
+                         LUT6 (Prop_LUT6_I3_O)        0.038     7.860 f  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_812/O
+                         net (fo=1, unplaced)         0.140     8.000    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_812_n_0
+                         LUT6 (Prop_LUT6_I2_O)        0.090     8.090 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_550/O
+                         net (fo=7, unplaced)         0.210     8.300    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_550_n_0
+                         LUT6 (Prop_LUT6_I2_O)        0.038     8.338 f  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_548/O
+                         net (fo=9, unplaced)         0.216     8.554    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_548_n_0
+                         LUT6 (Prop_LUT6_I4_O)        0.038     8.592 f  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_320/O
+                         net (fo=2, unplaced)         0.185     8.777    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_320_n_0
+                         LUT5 (Prop_LUT5_I4_O)        0.038     8.815 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_556/O
+                         net (fo=13, unplaced)        0.224     9.039    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_556_n_0
+                         LUT6 (Prop_LUT6_I2_O)        0.038     9.077 f  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_323/O
+                         net (fo=3, unplaced)         0.147     9.224    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_323_n_0
+                         LUT6 (Prop_LUT6_I1_O)        0.100     9.324 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_192/O
+                         net (fo=6, unplaced)         0.207     9.531    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_192_n_0
+                         LUT6 (Prop_LUT6_I2_O)        0.038     9.569 f  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_194/O
+                         net (fo=5, unplaced)         0.203     9.772    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_194_n_0
+                         LUT6 (Prop_LUT6_I4_O)        0.038     9.810 f  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_195/O
+                         net (fo=1, unplaced)         0.185     9.995    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_195_n_0
+                         LUT5 (Prop_LUT5_I4_O)        0.038    10.033 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_110/O
+                         net (fo=7, unplaced)         0.210    10.243    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_110_n_0
+                         LUT6 (Prop_LUT6_I4_O)        0.038    10.281 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_52/O
+                         net (fo=7, unplaced)         0.162    10.443    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[7]_i_52_n_0
+                         LUT5 (Prop_LUT5_I2_O)        0.053    10.496 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[46]_i_54/O
+                         net (fo=51, unplaced)        0.255    10.751    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[46]_i_54_n_0
+                         LUT6 (Prop_LUT6_I0_O)        0.038    10.789 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[32]_i_73/O
+                         net (fo=1, unplaced)         0.185    10.974    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[32]_i_73_n_0
+                         LUT5 (Prop_LUT5_I4_O)        0.038    11.012 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[32]_i_56/O
+                         net (fo=1, unplaced)         0.185    11.197    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[32]_i_56_n_0
+                         LUT6 (Prop_LUT6_I1_O)        0.038    11.235 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[32]_i_26/O
+                         net (fo=1, unplaced)         0.018    11.253    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[32]_i_26_n_0
+                         MUXF7 (Prop_MUXF7_I1_O)      0.065    11.318 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload_reg[32]_i_12/O
+                         net (fo=1, unplaced)         0.183    11.501    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload_reg[32]_i_12_n_0
+                         LUT6 (Prop_LUT6_I5_O)        0.038    11.539 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[32]_i_5/O
+                         net (fo=1, unplaced)         0.185    11.724    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[32]_i_5_n_0
+                         LUT6 (Prop_LUT6_I5_O)        0.038    11.762 r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[32]_i_1/O
+                         net (fo=1, unplaced)         0.048    11.810    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload[32]_i_1_n_0
+                         FDRE                                         r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload_reg[32]/D
   -------------------------------------------------------------------    -------------------
 
                          (clock clk rise edge)       10.000    10.000 r  
                                                       0.000    10.000 r  clk (IN)
-                         net (fo=14579, unset)        0.021    10.021    g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/clk
-                         FDCE                                         r  g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/output_payload_reg[2]/C
-                         clock pessimism              0.000    10.021    
-                         clock uncertainty           -0.035     9.986    
-                         FDCE (Setup_FDCE_C_D)        0.025    10.011    g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/output_payload_reg[2]
+                         net (fo=40175, unset)        0.020    10.020    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/clk
+                         FDRE                                         r  g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload_reg[32]/C
+                         clock pessimism              0.000    10.020    
+                         clock uncertainty           -0.035     9.985    
+                         FDRE (Setup_FDRE_C_D)        0.025    10.010    g_crow[1].g_ccol[0].u_cluster/u_matmul_unit/cr_payload_reg[32]
   -------------------------------------------------------------------
-                         required time                         10.011    
-                         arrival time                          -5.233    
+                         required time                         10.010    
+                         arrival time                         -11.810    
   -------------------------------------------------------------------
-                         slack                                  4.778    
+                         slack                                 -1.800    
 
 
 
@@ -298,7 +348,7 @@ Slack (MET) :             4.778ns  (required time - arrival time)
 
 Min Delay Paths
 --------------------------------------------------------------------------------------
-Slack (MET) :             0.057ns  (arrival time - required time)
+Slack (MET) :             0.056ns  (arrival time - required time)
   Source:                 g_crow[0].g_ccol[0].u_cluster/u_ehdec/cb_wave_number_reg[2]/C
                             (rising edge-triggered cell FDCE clocked by clk  {rise@0.000ns fall@5.000ns period=10.000ns})
   Destination:            g_crow[0].g_ccol[0].u_cluster/u_ehdec/dec_wave_advanced_tag_reg[50]/D
@@ -308,37 +358,37 @@ Slack (MET) :             0.057ns  (arrival time - required time)
   Requirement:            0.000ns  (clk rise@0.000ns - clk rise@0.000ns)
   Data Path Delay:        0.109ns  (logic 0.056ns (51.376%)  route 0.053ns (48.624%))
   Logic Levels:           1  (CARRY8=1)
-  Clock Path Skew:        0.006ns (DCD - SCD - CPR)
+  Clock Path Skew:        0.007ns (DCD - SCD - CPR)
     Destination Clock Delay (DCD):    0.019ns
-    Source Clock Delay      (SCD):    0.013ns
+    Source Clock Delay      (SCD):    0.012ns
     Clock Pessimism Removal (CPR):    -0.000ns
 
     Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
   -------------------------------------------------------------------    -------------------
                          (clock clk rise edge)        0.000     0.000 r  
                                                       0.000     0.000 r  clk (IN)
-                         net (fo=14579, unset)        0.013     0.013    g_crow[0].g_ccol[0].u_cluster/u_ehdec/clk
+                         net (fo=40175, unset)        0.012     0.012    g_crow[0].g_ccol[0].u_cluster/u_ehdec/clk
                          FDCE                                         r  g_crow[0].g_ccol[0].u_cluster/u_ehdec/cb_wave_number_reg[2]/C
   -------------------------------------------------------------------    -------------------
-                         FDCE (Prop_FDCE_C_Q)         0.038     0.051 r  g_crow[0].g_ccol[0].u_cluster/u_ehdec/cb_wave_number_reg[2]/Q
-                         net (fo=2, unplaced)         0.046     0.097    g_crow[0].g_ccol[0].u_cluster/u_ehdec/cb_wave_number[2]
+                         FDCE (Prop_FDCE_C_Q)         0.038     0.050 r  g_crow[0].g_ccol[0].u_cluster/u_ehdec/cb_wave_number_reg[2]/Q
+                         net (fo=2, unplaced)         0.046     0.096    g_crow[0].g_ccol[0].u_cluster/u_ehdec/cb_wave_number[2]
                          CARRY8 (Prop_CARRY8_S[1]_O[1])
-                                                      0.018     0.115 r  g_crow[0].g_ccol[0].u_cluster/u_ehdec/dec_wave_advanced_tag_reg[56]_i_1/O[1]
-                         net (fo=1, unplaced)         0.007     0.122    g_crow[0].g_ccol[0].u_cluster/u_ehdec/wave_advanced_tag_c0[2]
+                                                      0.018     0.114 r  g_crow[0].g_ccol[0].u_cluster/u_ehdec/dec_wave_advanced_tag_reg[56]_i_1/O[1]
+                         net (fo=1, unplaced)         0.007     0.121    g_crow[0].g_ccol[0].u_cluster/u_ehdec/wave_advanced_tag_c0[2]
                          FDCE                                         r  g_crow[0].g_ccol[0].u_cluster/u_ehdec/dec_wave_advanced_tag_reg[50]/D
   -------------------------------------------------------------------    -------------------
 
                          (clock clk rise edge)        0.000     0.000 r  
                                                       0.000     0.000 r  clk (IN)
-                         net (fo=14579, unset)        0.019     0.019    g_crow[0].g_ccol[0].u_cluster/u_ehdec/clk
+                         net (fo=40175, unset)        0.019     0.019    g_crow[0].g_ccol[0].u_cluster/u_ehdec/clk
                          FDCE                                         r  g_crow[0].g_ccol[0].u_cluster/u_ehdec/dec_wave_advanced_tag_reg[50]/C
                          clock pessimism              0.000     0.019    
                          FDCE (Hold_FDCE_C_D)         0.046     0.065    g_crow[0].g_ccol[0].u_cluster/u_ehdec/dec_wave_advanced_tag_reg[50]
   -------------------------------------------------------------------
                          required time                         -0.065    
-                         arrival time                           0.122    
+                         arrival time                           0.121    
   -------------------------------------------------------------------
-                         slack                                  0.057    
+                         slack                                  0.056    
 
 
 
@@ -351,10 +401,10 @@ Waveform(ns):       { 0.000 5.000 }
 Period(ns):         10.000
 Sources:            { clk }
 
-Check Type        Corner  Lib Pin     Reference Pin  Required(ns)  Actual(ns)  Slack(ns)  Location  Pin
-Min Period        n/a     SRL16E/CLK  n/a            1.064         10.000      8.936                g_crow[0].g_ccol[0].u_cluster/mu_target_s5_reg[0]_srl5_mu_target_s5_reg_c/CLK
-Low Pulse Width   Slow    SRL16E/CLK  n/a            0.532         5.000       4.468                g_crow[0].g_ccol[0].u_cluster/mu_target_s5_reg[0]_srl5_mu_target_s5_reg_c/CLK
-High Pulse Width  Slow    SRL16E/CLK  n/a            0.532         5.000       4.468                g_crow[0].g_ccol[0].u_cluster/mu_target_s5_reg[0]_srl5_mu_target_s5_reg_c/CLK
+Check Type        Corner  Lib Pin             Reference Pin  Required(ns)  Actual(ns)  Slack(ns)  Location  Pin
+Min Period        n/a     RAMB18E2/CLKARDCLK  n/a            1.355         10.000      8.645                g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/g_v180c_fp.u_fp_stepseq/sel/CLKARDCLK
+Low Pulse Width   Slow    RAMB18E2/CLKARDCLK  n/a            0.542         5.000       4.458                g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/g_v180c_fp.u_fp_stepseq/sel/CLKARDCLK
+High Pulse Width  Slow    RAMB18E2/CLKARDCLK  n/a            0.542         5.000       4.458                g_crow[0].g_ccol[0].u_cluster/u_matmul_unit/g_v180c_fp.u_fp_stepseq/sel/CLKARDCLK
 
 
 

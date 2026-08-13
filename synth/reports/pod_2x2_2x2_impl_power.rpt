@@ -1,11 +1,11 @@
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
 -------------------------------------------------------------------------------------------------------------------------------------------------
 | Tool Version     : Vivado v.2025.2.1 (lin64) Build 6403652 Thu Mar 19 13:47:00 MDT 2026
-| Date             : Sun May  3 14:03:38 2026
+| Date             : Thu Aug 13 23:58:30 2026
 | Host             : cachyos-ybi-tuf running 64-bit CachyOS
 | Command          : report_power -file /home/ybi/WaveTensor/synth/reports/pod_2x2_2x2_impl_power.rpt
 | Design           : Pod
-| Device           : xcau25p-ffvb676-2-e
+| Device           : xcu55c-fsvh2892-2L-e
 | Design State     : routed
 | Grade            : extended
 | Process          : typical
@@ -30,14 +30,16 @@ Table of Contents
 ----------
 
 +--------------------------+--------------+
-| Total On-Chip Power (W)  | 0.623        |
+| Total On-Chip Power (W)  | 3.674        |
+|   FPGA Power (W)         | 3.288        |
+|   HBM Power (W)          | 0.386        |
 | Design Power Budget (W)  | Unspecified* |
 | Power Budget Margin (W)  | NA           |
-| Dynamic (W)              | 0.171        |
-| Device Static (W)        | 0.452        |
-| Effective TJA (C/W)      | 1.7          |
-| Max Ambient (C)          | 98.9         |
-| Junction Temperature (C) | 26.1         |
+| Dynamic (W)              | 0.394        |
+| Device Static (W)        | 3.281        |
+| Effective TJA (C/W)      | 0.4          |
+| Max Ambient (C)          | 98.4         |
+| Junction Temperature (C) | 26.6         |
 | Confidence Level         | Medium       |
 | Setting File             | ---          |
 | Simulation Activity File | ---          |
@@ -52,18 +54,20 @@ Table of Contents
 +-------------------------+-----------+----------+-----------+-----------------+
 | On-Chip                 | Power (W) | Used     | Available | Utilization (%) |
 +-------------------------+-----------+----------+-----------+-----------------+
-| Clocks                  |     0.035 |        3 |       --- |             --- |
-| CLB Logic               |     0.057 |    86793 |       --- |             --- |
-|   LUT as Logic          |     0.053 |    61874 |    141000 |           43.88 |
-|   CARRY8                |     0.002 |     1252 |     27120 |            4.62 |
-|   Register              |     0.001 |    14300 |    282000 |            5.07 |
-|   LUT as Shift Register |    <0.001 |       40 |     99840 |            0.04 |
-|   Others                |     0.000 |       93 |       --- |             --- |
-|   F7/F8 Muxes           |     0.000 |      432 |    216960 |            0.20 |
-| Signals                 |     0.058 |    82713 |       --- |             --- |
-| DSPs                    |     0.021 |      140 |      1200 |           11.67 |
-| Static Power            |     0.452 |          |           |                 |
-| Total                   |     0.623 |          |           |                 |
+| Clocks                  |     0.105 |        3 |       --- |             --- |
+| CLB Logic               |     0.131 |   261162 |       --- |             --- |
+|   LUT as Logic          |     0.122 |   170810 |   1303680 |           13.10 |
+|   CARRY8                |     0.006 |     7064 |    162960 |            4.33 |
+|   Register              |     0.003 |    41563 |   2607360 |            1.59 |
+|   LUT as Shift Register |    <0.001 |       40 |    600960 |           <0.01 |
+|   BUFG                  |    <0.001 |        3 |        96 |            3.13 |
+|   Others                |     0.000 |      137 |       --- |             --- |
+|   F7/F8 Muxes           |     0.000 |     6577 |   1303680 |            0.50 |
+| Signals                 |     0.134 |   215478 |       --- |             --- |
+| Block RAM               |    <0.001 |        4 |      2016 |            0.20 |
+| DSPs                    |     0.023 |      156 |      9024 |            1.73 |
+| Static Power            |     3.281 |          |           |                 |
+| Total                   |     3.674 |          |           |                 |
 +-------------------------+-----------+----------+-----------+-----------------+
 
 
@@ -73,11 +77,11 @@ Table of Contents
 +------------------+-------------+-----------+-------------+------------+-------------+-------------+------------+
 | Source           | Voltage (V) | Total (A) | Dynamic (A) | Static (A) | Powerup (A) | Budget (A)  | Margin (A) |
 +------------------+-------------+-----------+-------------+------------+-------------+-------------+------------+
-| Vccint           |       0.850 |     0.340 |       0.201 |      0.139 |       NA    | Unspecified | NA         |
-| Vccint_io        |       0.850 |     0.035 |       0.000 |      0.035 |       NA    | Unspecified | NA         |
-| Vccbram          |       0.850 |     0.002 |       0.000 |      0.002 |       NA    | Unspecified | NA         |
-| Vccaux           |       1.800 |     0.128 |       0.000 |      0.128 |       NA    | Unspecified | NA         |
-| Vccaux_io        |       1.800 |     0.031 |       0.000 |      0.031 |       NA    | Unspecified | NA         |
+| Vccint           |       0.850 |     1.733 |       0.463 |      1.270 |       NA    | Unspecified | NA         |
+| Vccint_io        |       0.850 |     0.238 |       0.000 |      0.238 |       NA    | Unspecified | NA         |
+| Vccbram          |       0.850 |     0.030 |       0.000 |      0.030 |       NA    | Unspecified | NA         |
+| Vccaux           |       1.800 |     0.822 |       0.000 |      0.822 |       NA    | Unspecified | NA         |
+| Vccaux_io        |       1.800 |     0.035 |       0.000 |      0.035 |       NA    | Unspecified | NA         |
 | Vcco33           |       3.300 |     0.000 |       0.000 |      0.000 |       NA    | Unspecified | NA         |
 | Vcco25           |       2.500 |     0.000 |       0.000 |      0.000 |       NA    | Unspecified | NA         |
 | Vcco18           |       1.800 |     0.000 |       0.000 |      0.000 |       NA    | Unspecified | NA         |
@@ -85,7 +89,10 @@ Table of Contents
 | Vcco135          |       1.350 |     0.000 |       0.000 |      0.000 |       NA    | Unspecified | NA         |
 | Vcco12           |       1.200 |     0.000 |       0.000 |      0.000 |       NA    | Unspecified | NA         |
 | Vcco10           |       1.000 |     0.000 |       0.000 |      0.000 |       NA    | Unspecified | NA         |
-| Vccadc           |       1.800 |     0.008 |       0.000 |      0.008 |       NA    | Unspecified | NA         |
+| Vccadc           |       1.800 |     0.024 |       0.000 |      0.024 |       NA    | Unspecified | NA         |
+| VCC_IO_HBM       |       1.200 |     0.082 |       0.000 |      0.082 |       NA    | Unspecified | NA         |
+| VCC_HBM          |       1.200 |     0.152 |       0.000 |      0.152 |       NA    | Unspecified | NA         |
+| VCCAUX_HBM       |       2.500 |     0.043 |       0.000 |      0.043 |       NA    | Unspecified | NA         |
 | VMGTAVCC (GTY)   |       0.900 |     0.000 |       0.000 |      0.000 |       NA    | Unspecified | NA         |
 | VMGTAVTT (GTY)   |       1.200 |     0.000 |       0.000 |      0.000 |       NA    | Unspecified | NA         |
 | VMGTVCCAUX (GTY) |       1.800 |     0.000 |       0.000 |      0.000 |       NA    | Unspecified | NA         |
@@ -116,10 +123,10 @@ Table of Contents
 
 +-----------------------+--------------------------+
 | Ambient Temp (C)      | 25.0                     |
-| ThetaJA (C/W)         | 1.7                      |
+| ThetaJA (C/W)         | 0.4                      |
 | Airflow (LFM)         | 250                      |
 | Heat Sink             | medium (Medium Profile)  |
-| ThetaSA (C/W)         | 2.8                      |
+| ThetaSA (C/W)         | 0.5                      |
 | Board Selection       | medium (10"x10")         |
 | # of Board Layers     | 12to15 (12 to 15 Layers) |
 | Board Temperature (C) | 25.0                     |
@@ -145,39 +152,43 @@ Table of Contents
 +---------------------------------+-----------+
 | Name                            | Power (W) |
 +---------------------------------+-----------+
-| Pod                             |     0.171 |
-|   g_crow[0].g_ccol[0].u_cluster |     0.043 |
-|     g_row[0].g_col[0].u_lpe     |     0.002 |
-|     g_row[0].g_col[1].u_lpe     |     0.002 |
-|     g_row[1].g_col[0].u_lpe     |     0.002 |
-|     g_row[1].g_col[1].u_lpe     |     0.002 |
+| Pod                             |     0.394 |
+|   g_crow[0].g_ccol[0].u_cluster |     0.097 |
+|     g_row[0].g_col[0].u_lpe     |     0.006 |
+|     g_row[0].g_col[1].u_lpe     |     0.006 |
+|     g_row[1].g_col[0].u_lpe     |     0.006 |
+|     g_row[1].g_col[1].u_lpe     |     0.006 |
 |     u_div_unit                  |     0.004 |
 |     u_ehdec                     |     0.013 |
-|     u_matmul_unit               |     0.013 |
-|   g_crow[0].g_ccol[1].u_cluster |     0.042 |
-|     g_row[0].g_col[0].u_lpe     |     0.002 |
-|     g_row[0].g_col[1].u_lpe     |     0.002 |
-|     g_row[1].g_col[0].u_lpe     |     0.002 |
-|     g_row[1].g_col[1].u_lpe     |     0.002 |
+|     u_matmul_unit               |     0.045 |
+|       g_v180c_fp.u_fp_stepseq   |     0.013 |
+|   g_crow[0].g_ccol[1].u_cluster |     0.097 |
+|     g_row[0].g_col[0].u_lpe     |     0.006 |
+|     g_row[0].g_col[1].u_lpe     |     0.006 |
+|     g_row[1].g_col[0].u_lpe     |     0.006 |
+|     g_row[1].g_col[1].u_lpe     |     0.006 |
+|     u_div_unit                  |     0.003 |
+|     u_ehdec                     |     0.012 |
+|     u_matmul_unit               |     0.047 |
+|       g_v180c_fp.u_fp_stepseq   |     0.013 |
+|   g_crow[1].g_ccol[0].u_cluster |     0.099 |
+|     g_row[0].g_col[0].u_lpe     |     0.006 |
+|     g_row[0].g_col[1].u_lpe     |     0.006 |
+|     g_row[1].g_col[0].u_lpe     |     0.006 |
+|     g_row[1].g_col[1].u_lpe     |     0.006 |
 |     u_div_unit                  |     0.004 |
 |     u_ehdec                     |     0.013 |
-|     u_matmul_unit               |     0.013 |
-|   g_crow[1].g_ccol[0].u_cluster |     0.042 |
-|     g_row[0].g_col[0].u_lpe     |     0.002 |
-|     g_row[0].g_col[1].u_lpe     |     0.002 |
-|     g_row[1].g_col[0].u_lpe     |     0.002 |
-|     g_row[1].g_col[1].u_lpe     |     0.002 |
-|     u_div_unit                  |     0.004 |
-|     u_ehdec                     |     0.013 |
-|     u_matmul_unit               |     0.013 |
-|   g_crow[1].g_ccol[1].u_cluster |     0.043 |
-|     g_row[0].g_col[0].u_lpe     |     0.002 |
-|     g_row[0].g_col[1].u_lpe     |     0.002 |
-|     g_row[1].g_col[0].u_lpe     |     0.002 |
-|     g_row[1].g_col[1].u_lpe     |     0.002 |
+|     u_matmul_unit               |     0.049 |
+|       g_v180c_fp.u_fp_stepseq   |     0.016 |
+|   g_crow[1].g_ccol[1].u_cluster |     0.098 |
+|     g_row[0].g_col[0].u_lpe     |     0.006 |
+|     g_row[0].g_col[1].u_lpe     |     0.006 |
+|     g_row[1].g_col[0].u_lpe     |     0.006 |
+|     g_row[1].g_col[1].u_lpe     |     0.006 |
 |     u_div_unit                  |     0.004 |
 |     u_ehdec                     |     0.012 |
-|     u_matmul_unit               |     0.013 |
+|     u_matmul_unit               |     0.049 |
+|       g_v180c_fp.u_fp_stepseq   |     0.016 |
 +---------------------------------+-----------+
 
 
