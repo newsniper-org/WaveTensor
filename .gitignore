@@ -23,3 +23,7 @@ synth/checkpoints/*.dcp
 # Router congestion dumps — kept locally as evidence, too bulky/noisy to track
 cong/
 iter_*_CongestedCLBsAndNets.txt
+
+# TLC model checker scratch (proofs/tla/)
+proofs/tla/states/
+proofs/tla/*.old
