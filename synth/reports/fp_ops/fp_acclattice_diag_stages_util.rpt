@@ -1,0 +1,166 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2025.2.1 (lin64) Build 6403652 Thu Mar 19 13:47:00 MDT 2026
+| Date         : Sat Aug 15 20:48:56 2026
+| Host         : cachyos-ybi-tuf running 64-bit CachyOS
+| Command      : report_utilization -file /home/ybi/WaveTensor/synth/reports/fp_ops/fp_acclattice_diag_stages_util.rpt -hierarchical
+| Design       : fp_acclattice_diag_stages_top
+| Device       : xcu55c-fsvh2892-2L-e
+| Speed File   : -2L
+| Design State : Synthesized
+---------------------------------------------------------------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++-----------------------------------+--------------------+------------+------------+---------+------+-------+--------+--------+------+------------+
+|              Instance             |       Module       | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs  | RAMB36 | RAMB18 | URAM | DSP Blocks |
++-----------------------------------+--------------------+------------+------------+---------+------+-------+--------+--------+------+------------+
+| fp_acclattice_diag_stages_top     |              (top) |      88377 |      88377 |       0 |    0 | 14375 |      0 |      0 |    0 |          0 |
+|   (fp_acclattice_diag_stages_top) |              (top) |          9 |          9 |       0 |    0 |  5153 |      0 |      0 |    0 |          0 |
+|   g_place[0].u_place              |  diag_place_one__1 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[0].u_place)          |  diag_place_one__1 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      |  diag_barrel112__1 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |   diag_demux576__1 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[10].u_place             | diag_place_one__13 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[10].u_place)         | diag_place_one__13 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      | diag_barrel112__13 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |  diag_demux576__13 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[11].u_place             | diag_place_one__12 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[11].u_place)         | diag_place_one__12 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      | diag_barrel112__12 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |  diag_demux576__12 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[12].u_place             | diag_place_one__16 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[12].u_place)         | diag_place_one__16 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      | diag_barrel112__16 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |  diag_demux576__16 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[13].u_place             | diag_place_one__15 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[13].u_place)         | diag_place_one__15 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      | diag_barrel112__15 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |  diag_demux576__15 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[14].u_place             | diag_place_one__14 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[14].u_place)         | diag_place_one__14 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      | diag_barrel112__14 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |  diag_demux576__14 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[15].u_place             | diag_place_one__20 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[15].u_place)         | diag_place_one__20 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      | diag_barrel112__20 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |  diag_demux576__20 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[16].u_place             | diag_place_one__19 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[16].u_place)         | diag_place_one__19 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      | diag_barrel112__19 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |  diag_demux576__19 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[17].u_place             | diag_place_one__17 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[17].u_place)         | diag_place_one__17 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      | diag_barrel112__17 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |  diag_demux576__17 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[18].u_place             | diag_place_one__18 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[18].u_place)         | diag_place_one__18 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      | diag_barrel112__18 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |  diag_demux576__18 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[19].u_place             | diag_place_one__24 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[19].u_place)         | diag_place_one__24 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      | diag_barrel112__24 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |  diag_demux576__24 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[1].u_place              |  diag_place_one__2 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[1].u_place)          |  diag_place_one__2 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      |  diag_barrel112__2 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |   diag_demux576__2 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[20].u_place             | diag_place_one__23 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[20].u_place)         | diag_place_one__23 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      | diag_barrel112__23 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |  diag_demux576__23 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[21].u_place             | diag_place_one__21 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[21].u_place)         | diag_place_one__21 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      | diag_barrel112__21 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |  diag_demux576__21 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[22].u_place             | diag_place_one__22 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[22].u_place)         | diag_place_one__22 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      | diag_barrel112__22 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |  diag_demux576__22 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[23].u_place             | diag_place_one__30 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[23].u_place)         | diag_place_one__30 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      | diag_barrel112__30 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |  diag_demux576__30 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[24].u_place             | diag_place_one__29 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[24].u_place)         | diag_place_one__29 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      | diag_barrel112__29 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |  diag_demux576__29 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[25].u_place             | diag_place_one__25 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[25].u_place)         | diag_place_one__25 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      | diag_barrel112__25 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |  diag_demux576__25 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[26].u_place             | diag_place_one__26 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[26].u_place)         | diag_place_one__26 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      | diag_barrel112__26 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |  diag_demux576__26 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[27].u_place             | diag_place_one__27 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[27].u_place)         | diag_place_one__27 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      | diag_barrel112__27 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |  diag_demux576__27 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[28].u_place             | diag_place_one__28 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[28].u_place)         | diag_place_one__28 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      | diag_barrel112__28 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |  diag_demux576__28 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[29].u_place             | diag_place_one__11 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[29].u_place)         | diag_place_one__11 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      | diag_barrel112__11 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |  diag_demux576__11 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[2].u_place              |  diag_place_one__3 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[2].u_place)          |  diag_place_one__3 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      |  diag_barrel112__3 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |   diag_demux576__3 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[30].u_place             |     diag_place_one |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[30].u_place)         |     diag_place_one |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      |     diag_barrel112 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |      diag_demux576 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[31].u_place             | diag_place_one__31 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[31].u_place)         | diag_place_one__31 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      | diag_barrel112__31 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |  diag_demux576__31 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[32].u_place             | diag_place_one__32 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[32].u_place)         | diag_place_one__32 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      | diag_barrel112__32 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |  diag_demux576__32 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[3].u_place              |  diag_place_one__4 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[3].u_place)          |  diag_place_one__4 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      |  diag_barrel112__4 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |   diag_demux576__4 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[4].u_place              |  diag_place_one__5 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[4].u_place)          |  diag_place_one__5 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      |  diag_barrel112__5 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |   diag_demux576__5 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[5].u_place              |  diag_place_one__6 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[5].u_place)          |  diag_place_one__6 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      |  diag_barrel112__6 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |   diag_demux576__6 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[6].u_place              |  diag_place_one__7 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[6].u_place)          |  diag_place_one__7 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      |  diag_barrel112__7 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |   diag_demux576__7 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[7].u_place              |  diag_place_one__8 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[7].u_place)          |  diag_place_one__8 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      |  diag_barrel112__8 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |   diag_demux576__8 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[8].u_place              |  diag_place_one__9 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[8].u_place)          |  diag_place_one__9 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      |  diag_barrel112__9 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |   diag_demux576__9 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   g_place[9].u_place              | diag_place_one__10 |        763 |        763 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     (g_place[9].u_place)          | diag_place_one__10 |         63 |         63 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_barrel                      | diag_barrel112__10 |        188 |        188 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     u_demux                       |  diag_demux576__10 |        512 |        512 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   u_encode                        |        diag_encode |        438 |        438 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   u_extract                       |       diag_extract |       1721 |       1721 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   u_resolve                       |       diag_resolve |       1307 |       1307 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   u_tree                          |        diag_tree34 |      25279 |      25279 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|   u_x_ternary                     |    diag_ternary576 |      34412 |      34412 |       0 |    0 |  9222 |      0 |      0 |    0 |          0 |
++-----------------------------------+--------------------+------------+------------+---------+------+-------+--------+--------+------+------------+
+
+

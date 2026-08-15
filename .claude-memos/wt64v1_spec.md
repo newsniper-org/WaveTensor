@@ -3041,18 +3041,19 @@ seed noise 인지는 **미확정**.
 - **전 병렬 (`FP_AccLattice` 그대로, LFE5UM-85F)**: yosys LUT4 **102,871** = COMB fabric (83,640) 의 **123%** → nextpnr **배치 불가** (`ERROR: no BELs remaining`, placement 중단) — **infeasible 분류**. 이는 사전 선언된 off-ramp 의 발동이며 **유효한 측정이다** — 실패가 아니라 예정된 분기. off-ramp 대로 ECP5 는 at-speed dot path 를 제외한 검증 역할을 전부 유지한다.
 - **beat-serial 변형 `FP_AccLatticeBeat2.v` (측정 전용 변형 — 2 products/beat × 16 beats + carry beat, 9-cycle serial resolve)**: LUT4 **9,374** / Fmax **19.55 MHz** / PnR **완주** / verilator 로 golden 벡터 **4001/4001 bit-exact** — **ECP5 는 beat-serial 형상으로 lattice 검증 역할을 수행 가능함이 실측 확인됐다** (Fmax 는 fp_ops 관례 참조점 40 MHz 미달 — 계약이 아니므로 기록만). 리포트: `synth/lattice/reports/fp_ops/fp_acclattice_*` (전 병렬) / `fp_acclattice_beat2_*` (beat-serial).
 
-**FAIL 원인 진단 (2026-08-15, 진단 전용 3-run — 신규 출하 RTL 없음; 방법: (R1) Beat2 를 동일 하네스로 xcu55c 전 flow 실측, (R3) 출하 top 재-synth 후 전 LUT cell 67,766 을 이름-cone 분류로 스테이지 귀속 — `synth/reports/fp_ops/fp_acclattice_diag_flat_attribution.txt`):**
+**FAIL 원인 진단 (2026-08-15, 진단 전용 3-run — 신규 출하 RTL 없음; 방법: (R1) Beat2 를 동일 하네스로 xcu55c 전 flow 실측, (R3) 출하 top 재-synth 후 전 LUT cell 67,766 을 이름-cone 분류로 스테이지 귀속 — `synth/reports/fp_ops/fp_acclattice_diag_flat_attribution.txt`, (R2) 스테이지 경계 keep_hierarchy 분리 synth — `fp_acclattice_diag_stages_util.rpt`, 진단 하네스는 `synth/scripts/diag/` 보존):**
 
-| # | 성분 | LUT (site 환산) | 비중 | 근거 |
+| # | 성분 | LUT | 비중 | 근거 |
 |---|---|---|---|---|
-| S1-a | **배치 33×** — per-addend decode + 112-bit 6-stage barrel + 2-of-9 segment demux 의 576-bit 필드 형성. 지배 비용은 barrel (~336 LUT/addend) 이 아니라 **addend 당 576-bit demux 출력 형성 (~520 LUT/addend) 의 33× 복제** | 29,000 | 54.3% | estimated |
-| S1-b | **34-row 3:2 compressor tree** (8 level × 576 column; ones'-complement `~field` 반전은 level-1 XOR LUT 에 흡수 — 분리 cell 0 확인). 전 column 정적 밀도는 부호확장이 아니라 **dynamic 배치 범위** (어느 addend 든 576 column 어디든 착지 가능) 기인 | 18,900 | 35.4% | estimated |
-| S1-c | per-addend fault/decode cone — fault (a)-(e) 검사 | 2,591 | 4.85% | measured |
-| S2 | resolve — 576-bit carry-propagate 가산 + 정렬검사 | 1,148 | 2.15% | measured |
-| S3 | 추출 전반부 — 528-bit negate + chunk 분해 + coarse 우선순위 + 128-bit window + CLZ + sticky | 1,426 | 2.67% | measured |
-| S4 | 추출 후반부 + 인코딩 — 128-bit normalize barrel + RTO-48 + wide/bank/fp32 인코딩 + 출력 | 353 | 0.66% | measured |
+| S1-a | **배치 33×** — per-addend decode/fault + 112-bit 6-stage barrel + 2-of-9 segment demux 의 576-bit 필드 형성. addend 당 **763 = demux 512 + barrel 188 + decode 63** (R2 실측) — demux 지배 확인, barrel 은 추정 ~336 대비 실측 188 | 25,179 | 46.7% | **measured (R2)** |
+| S1-b | **34-row 3:2 compressor tree** (8 level × 576 column; ones'-complement `~field` 반전은 level-1 XOR LUT 에 흡수 — 분리 cell 0 확인). 전 column 정적 밀도는 부호확장이 아니라 **dynamic 배치 범위** (어느 addend 든 576 column 어디든 착지 가능) 기인 | 25,279 | 46.9% | **measured (R2)** |
+| S2 | resolve — 576-bit carry-propagate 가산 + 정렬검사 (CARRY 126+66) | 1,307 | 2.4% | measured (R2) |
+| S3 | 추출 전반부 — 528-bit negate + chunk 분해 + coarse 우선순위 + 128-bit window + CLZ + sticky (CARRY 68) | 1,721 | 3.2% | measured (R2) |
+| S4 | 추출 후반부 + 인코딩 — 128-bit normalize barrel + RTO-48 + wide/bank/fp32 인코딩 + 출력 | 438 | 0.8% | measured (R2) |
 
-**핵심 판정**: FAIL 의 **94.5% (실측) 는 S1 한 스테이지** — 배치 33× 복제 + 34×576 compressor tree — 이고 S2-S4 합계는 5.5% 뿐이라 **추출/인코딩 최적화는 무의미하다**. 초기 가설 2건은 정정됐다: H1 "full 528-bit barrel" 은 부존재 — 출하 RTL 은 이미 fine-shift × 창 + demux 구조 (`FP_AccLattice.v:160-187`); H2 "부호확장 밀도" 도 반증 — 밀도 원인은 dynamic 배치 범위다. Fmax 는 문제가 아니며 (+1.807 ns 여유), **53,418 은 이 마이크로아키텍처 (full-parallel 33-addend, II=1) 의 구조적 비용으로 판정한다**. 근거 기준 주의: S1 합산 94.5% 는 flat netlist 이름-cone 분류 실측이나, **S1 내부 배치-vs-tree 분할 (54.3/35.4) 은 추정** (flat netlist 에서 두 cone 이 병합됨 — Beat2 실측 차분 + 구조 계수로 도출); 이를 measured 로 졸업시킬 stage-분리 재synth (R2) 는 보고 시점 **메모리 thrashing 으로 중단·미착지** — 재실행 시 `fp_acclattice_diag_stages_util.rpt` 로 착지해 대조할 것.
+(R2 기준: keep_hierarchy 분리 synth 합계 53,933 — 출하 flat netlist 53,418 sites 와 1% 이내 정합. R3 flat 이름-cone 분류에서는 fault cone 2,591 이 별도 계수되고 S1 합산 94.5% — R2 분할과 정합. 최초 보고의 S1 내부 추정 분할 29,000/54.3% vs 18,900/35.4% 는 **R2 로 정정 졸업**: 배치는 과대, tree 는 과소 추정이었고 실측은 **사실상 동률 지배**다.)
+
+**핵심 판정 (R2 졸업 후 불변)**: FAIL 의 **93.6% (R2 실측) 는 S1 한 스테이지** — 배치 33× 복제 (46.7%) + 34×576 compressor tree (46.9%), 동률 지배 — 이고 S2-S4 합계는 6.4% 뿐이라 **추출/인코딩 최적화는 무의미하다**. 초기 가설 2건은 정정됐다: H1 "full 528-bit barrel" 은 부존재 — 출하 RTL 은 이미 fine-shift × 창 + demux 구조 (`FP_AccLattice.v:160-187`); H2 "부호확장 밀도" 도 반증 — 밀도 원인은 dynamic 배치 범위다. Fmax 는 문제가 아니며 (+1.807 ns 여유), **53,418 은 이 마이크로아키텍처 (full-parallel 33-addend, II=1) 의 구조적 비용으로 판정한다**.
 
 **beat-serial xcu55c 실측점 (진단 R1)**: `FP_AccLatticeBeat2_gate_top` 을 동일 하네스 전 flow 로 — LUT **6,075 sites** (raw cells 6,951) / FF 3,806 (wrapper I/O 761 + core 3,045) / DSP 0 / CARRY 85 / WNS **+2.698 ns** → **Fmax 136.95 MHz** / DRC clean-class. full-parallel 대비 **8.8× 작음** — ceiling 20,040 의 30%, nominal 하단 8k 도 하회. 비용: **II = 28 cycle/wave-step** (acc 17 + serial resolve 9 + extract 2) vs full-parallel II=1. 리포트: `synth/reports/fp_ops/fp_acclattice_diag_beat2_*`. (Beat2 의 golden 4001/4001 bit-exact 은 ECP5 verilator 세션에서 기실증 — verilator 재검증 없이 xcu55c netlist 의 기능 동일성까지 본 진단이 주장하지는 않는다.)
 
@@ -3063,7 +3064,7 @@ seed noise 인지는 **미확정**.
 | **L1 beat-serial N 조정** | 배치 demux + compressor rows 를 시간 재사용 — beat 당 rows 를 N+2(carry-save 상태)+1(nrow) 로 제한해 S1 의 89.7% 를 N/33 로 축소 | N=2: **6,075 (실측)** · N=4 ≈ 9-12k (II≈20) · N=8 ≈ 14-18k (II≈16; 병렬 576-bit resolve +~1.1k 추가 시 II≈8) · N=16 ≈ 22-26k — **ceiling 초과** | **measured** (N=2) | throughput II=1 → 28(N=2)/≈20(N=4)/≈8-16(N=8); latency 4 → 28 cycle; 상류 dispatch 가 wave-step 당 N-operand 씩 인가하는 스케줄 변경 필요. Fmax 는 오히려 상승 (136.95 vs 122.06 MHz) |
 | L2 부호확장 붕괴 (constant-row/Baugh-Wooley 류) | **가설 반증** — tree 밀도는 dynamic 배치 범위 기인; `~field` 반전은 이미 XOR3 LUT 에 흡수 (분리 cell 0, 한계비용 이미 낮음); constant-row 는 배치 위치가 dynamic 이라 컴파일타임 상수로 붕괴하지 않음 | ≈52-53.4k — 실질 무변화 (±2% 이내) | high | RTL churn + re-proof 만 발생, 이득 없음 — **비권고** |
 | L3 barrel → fine-shift × 창 + segment demux 재구성 | **전제 오류 — 출하 RTL 이 이미 정확히 이 구조** (`FP_AccLattice.v:160-187`), delta 0 | 53,418 (불변) | measured | 없음 — 이 형태로도 배치가 최대 성분 (demux 의 576-bit 폭 × 33 복제) |
-| L4a row-reduction → CARRY8 ternary adder tree | 34→1 을 17개의 576-bit ternary add (~576 LUT/add) 로 대체 — tree ~18.9k → ~10k | ≈43-48k — **여전히 ceiling 2.2× 초과, 단독 해소 불가** | low | +1-2 cycle latency (다단 CPA 는 10 ns 단일 cycle 불가), +~1.2k CARRY8, carry-chain 배치 congestion 위험 |
+| L4a row-reduction → CARRY8 ternary adder tree | 34→1 을 17개의 576-bit ternary add 로 대체 시도 — **R2 실측 반증**: ternary576 실험 인스턴스 = **34,412 LUT + 2,016 CARRY8**, 대체 대상 tree (25,279 LUT / CARRY 0) 보다 **+9.1k 더 큼** | ≈63k — **악화. measured 로 기각** (최초 추정 ≈43-48k 폐기) | **measured (R2)** | 이득 없음 — **기각 확정** |
 | L4b PHYS 하위 48 column 상수화 | fault (e) 전제 (PHYS[47:0]==0) 를 배치 전에 정적 강제 → demux segment 0 하위 + tree 하위 48 column 상수화 (~8% 절감) | ≈51-52.5k | low | fault (e) 검사를 배치 전 검사로 이동 (loud-fault 계약 유지 필요), 이득 소폭 — 단독 무의미 |
 
 **정책적 결론 — 후속 결정은 사용자 소관이며 spec 은 선점하지 않는다.** 진단이 확정한 제약: full-parallel II=1 을 유지하려면 ~50k 는 구조적 비용이므로 **ceiling 재anchor 없이는 도달 불가** (L2/L3/L4 로는 20,040 미달 불가); ceiling 을 유지하려면 **beat-serial N≤8 이 유일한 measured 경로**다. 기록하는 옵션:

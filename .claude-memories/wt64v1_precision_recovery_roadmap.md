@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 09e02def-fe68-4449-8866-9db15ac81932
-  modified: 2026-08-15T08:26:39.228Z
+  modified: 2026-08-15T10:56:06.903Z
 ---
 
 # WT64v1 RMSNORM/LAYERNORM scale multiplication 정밀도 roadmap
@@ -155,8 +155,18 @@ v1.7 은 (parity 수준으로) output-side 를 추가 개선하나 완전 제거
   equivalence 증명 의무가 exact 구조로 소멸. 재현: scripts/
   acc_format_study.py (고정 seed). PACK_WIDE 형식 폐쇄 (c21092a):
   canonical zero (0,-1024,0), I/O 폐쇄성, 전 gate 재측정 PASS.
-  **다음: GATE V20-2 (lattice unit gate) — binding 은 xcu55c 만,
-  ECP5 는 feasibility measurement (불가여도 FAIL 아님, 사용자 지시)**.
+- **GATE V20-2 실측 완료 (2026-08-15, 903351c+42130e2)**: golden
+  (적대 2렌즈 무반증, 4001 벡터+fuzz 30k) + FP_AccLattice.v (4001/4001
+  bit-exact, 변이 3종 적발) 착지. **xcu55c binding FAIL — LUT 53,418 >
+  ceiling 20,040** (기준 b/c 는 PASS: $mul 0, Fmax 122.06 MHz,
+  resolve-1-cycle 졸업). 귀속: 94.5% 가 S1 (배치 33× demux 복제 +
+  34×576 tree, dynamic 배치 범위 기인) — full-parallel II=1 의 구조적
+  비용. beat-serial Beat2 xcu55c 실측 6,075 LUT / 136.95 MHz / II=28.
+  ECP5: 전 병렬 배치 불가 = 예정된 off-ramp 발동 (측정, FAIL 아님 —
+  사용자 지시); beat-serial 9,374 LUT4 / 19.55 MHz 완주.
+  **사용자 결정 대기: (A) beat-serial N≤8 재설계 / (B) ceiling 재anchor
+  (§12a, 53,418 = device 4.10%/unit, v1.x cluster 의 ~125%) / (C) 혼합
+  — 하류 ③ bank RTL 착수 전 결정 필요 (spec §27.6 기록).**
 - 장기 활용처: .claude-memos/future_applications.md (PLL-DSP,
   WT64v1CLf GPGPU — 트리거 조건 충족 전 착수 금지).
 

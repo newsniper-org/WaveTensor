@@ -1,0 +1,8 @@
+u_tree CARRY=0
+u_resolve CARRY=126
+u_extract CARRY=68
+u_encode CARRY=5
+u_ncnt CARRY=0
+u_x_ternary CARRY=2016
+place_all CARRY=66
+total CARRY=2281
