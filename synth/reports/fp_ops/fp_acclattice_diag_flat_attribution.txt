@@ -1,0 +1,9 @@
+total LUT cells: 67766
+  S1_place           0  ( 0.00%)
+  S1_ncnt            0  ( 0.00%)
+  S1_tree        60769  (89.67%)
+  S1_fault        3284  ( 4.85%)
+  S2_resolve      1455  ( 2.15%)
+  S3_extract      1808  ( 2.67%)
+  S4_encode        450  ( 0.66%)
+  OTHER              0  ( 0.00%)

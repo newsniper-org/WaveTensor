@@ -2981,7 +2981,7 @@ seed noise 인지는 **미확정**.
 - **입력**: dispatch 당 32개 곱 (bf16: 8×8→16-bit significand 곱 / f16: 11×11→22-bit — 출하된 C2 계약대로 48-bit wide 포맷에서 **exact**, 곱 지점 반올림 없음) + **ACC bank carry-in 을 33번째 EXACT addend 로 융합**.
 - **lattice**: **528-bit two's-complement segmented carry-save lattice** — weight 2^-266..2^260 (527 자리) + sign 1 = **528**. 도출 (JSON `lattice_width`): bf16 곱 LSB weight 2^-266 (최소 곱 2^-252 의 significand LSB), 곱 상한 <2^256, span 522 + carry 헤드룸 log2(32)=5 + sign 1 = 528; **32× 최대 곱 <2^261, exponent 260 은 signed-11 에 수납** — 전부 in-run assert 로 검사됨. 529 는 1 bit 과잉으로 판명; **528 이 fused carry-in 포함으로 충분**. f16 단독이면 86 bit (span 80+5+1) 이나 통합 lattice 528 이 양 dtype 을 커버한다.
 - **적재**: **static 6-stage barrel + 2-of-9 segment demux** — `FP_AddWide.v:179-194` 의 static-barrel idiom 그대로 (**dynamic part-select 금지 — project law**). segment 기하는 golden model/RTL 에서 확정하되 idiom pin 은 본 절이 한다.
-- **합산**: 정수 3:2/4:2 compressor — **exact, 따라서 dot 내부는 순서-무관 (association-free)**. dot 당 **resolve 정확히 1회** (xcu55c: ~66 CARRY8, ~4 ns; ECP5: 9-cycle serial — **양쪽 다 ESTIMATE, §27.6 unit gate 에서 실측 졸업**, §25.4 규율).
+- **합산**: 정수 3:2/4:2 compressor — **exact, 따라서 dot 내부는 순서-무관 (association-free)**. dot 당 **resolve 정확히 1회** (xcu55c: ~66 CARRY8, ~4 ns; ECP5: 9-cycle serial — **양쪽 다 ESTIMATE, §27.6 unit gate 에서 실측 졸업**, §25.4 규율). **[실측 졸업 2026-08-15, GATE V20-2 — §27.6]**: xcu55c 에서 resolve 1 cycle @ 10 ns 수납 실측 확인 (WNS +1.807 ns; worst path 는 resolve 가 아니라 S1 compressor tree 진입) — 단 unit 전체는 LUT ceiling FAIL (§27.6 실측 블록). ECP5 는 전 병렬 배치 불가, beat-serial 형상에서만 PnR 완주 (§27.6 feasibility 블록).
 - **추출 = 그 wave-step 의 유일한 반올림**: resolve 결과에 LZC/normalize 후 **top-48 + sticky-jam = exact 33-항 합의 RTO_48** 을 bank 에 store 한다.
 - **정당성 정리 (본 아키텍처를 sound 하게 만드는 단 하나의 정리)**: **RNE_24(RTO_48(exact)) == RNE_24(exact)** — 단일 값에 대한 Boldo-Melquiond 의 유일하게 정당한 적용 (q ≥ p+2 = 26 필요; 48 은 **22 bit 마진**). 재생성 실측 (JSON `extraction_theorem`): directed tie x = 1+2^-24+2^-60 에서 q25 실패/q26·48·50 통과; random sweep 200k (tie-인접 생성기) 에서 **q25 는 82,237/200k = 41.12% 실패, q26/q48/q50 은 0 mismatch**; 별도 composition sweep 200k (RNE24∘RTO48) 도 0. **store 가 RNE-48 이 아니라 RTO-48 인 이유** (JSON `rto48_vs_rne48_composition`): directed 반례 x = 2^48+2^24+1 에서 RNE24(RNE48(x)) = 2^48 (1 ulp 낮음 — double rounding), RNE24(RTO48(x)) = 2^48+2^25 (정답) — assert 로 고정. random 200k 에서 RNE-48 도 0 hit 이지만 이는 이벤트 확률 ~2^-24 의 **예상된 표본 결과이지 안전성이 아니다** — directed 반례가 판정이다.
 
@@ -3024,6 +3024,60 @@ seed noise 인지는 **미확정**.
 - **xcu55c (성능 판정 fabric — kickoff §5.2)**: nominal **8-12k LUT + 2-3k FF/cluster** (Pod 투영 nominal ≤ +3.8%). **LUT gate ceiling = 12,000 × 1.67 (이 project 의 실측 overrun 계수 — §23.10.10(g) 방법, 0d/0e/v1.9 를 관통한 그 기준) = 20,040 LUT/cluster-상당 unit — hard ceiling, 초과 시 merge 금지.** FF 는 추적만 (V9-4 관례). 곱셈기: lattice 는 adder/compressor 만이므로 **premap `$mul` 연산자 delta 0** (§26.6 amendment 의 pin form — 물리 DSP/MULT 절대 개수는 gate 대상 아님). resolve 는 1 cycle @ 100 MHz 목표에 수납되어야 함 (~66 CARRY8 / ~4 ns 는 ESTIMATE — gate 에서 실측 졸업). Pod 투영은 unit 실측 후 재산정 의무.
 - **ECP5 (feasibility measurement — gate 판정 대상이 아님, 사용자 지시 2026-08-15)**: **GATE V20-2 의 merge-blocker binding 은 xcu55c 반쪽에만 있다. ECP5 반쪽은 실현성 측정이며, 어떤 결과가 나와도 — 어렵다·비싸다·불가능하다 포함 — gate FAIL 을 구성하지 않는다.** 유일한 의무는 측정의 실행과 정직한 기록이다. 대상 설계는 **beat-serialized 2-products/beat × 16 beats + 9-cycle serial resolve**. nominal 면적 추정이 존재하지 않으므로 LUT ceiling 을 선공표하지 않으며, 아래는 pass/fail 이 아니라 **판정 분류 기준**(feasible/infeasible 의 기록 형식)이다: (i) standalone OOC synth+PnR 완주 여부, (ii) Fmax (기존 fp_ops 관례값 40 MHz 는 비교 참조점일 뿐 계약 아님), (iii) MULT18X18D 신규 0 / premap `$mul` delta 0 여부. **명시 off-ramp (사전 선언 — 발동은 실패가 아니라 예정된 분기다)**: ECP5 가 infeasible (미완주 또는 cluster 통합 불가) 로 분류되면 **ECP5 는 at-speed dot path 를 제외한 검증 역할 (TRNG 실리콘 검증·UsbCdcTransport·FOSS bitstream) 을 전부 유지**하고, dot-path 검증은 cocotb + xcu55c 로 수행한다 — cross_vendor_fabric_evidence.md 의 "ECP5 는 FOSS 검증 vehicle, 성능 타겟 아님" 포지셔닝의 직접 적용.
 - **하류 gate 순서 (선공표)**: ① **golden lattice model** (§27.4 — RTL 이전, golden-before-RTL law) → ② GATE V20-2 (본 gate) → ③ bank RTL + TLA+ 유도 directed test (ownership loud-fault 경로 포함 — TLC 반례 trace 가 시나리오) → ④ full-cluster gate (COMB/Fmax/premap-`$mul` — 기준 수치는 ③ 착지 후 별도 COMMIT 에서 V9-4 형식으로 선공표). **FDOT32_CR 관련 gate 전부는 3a 로 이연** (§27.7).
+
+**GATE V20-2 실측 최종 (2026-08-15, `FP_AccLattice.v` — Vivado 2025.2.1 / xcu55c-fsvh2892-2L-e / OOC / 10 ns clock, 전 flow synth+place+route):**
+
+| 지표 | 실측 | 사전가격 | 판정 |
+|---|---|---|---|
+| **LUT** | **53,418 sites** (raw LUT cells 67,696) | nominal 8-12k, **hard ceiling 20,040** (12,000 × 1.67) | **FAIL — ceiling 의 2.67×, nominal 상단 12,000 의 4.45×. "초과 시 merge 금지" 규정 발동.** |
+| **premap `$mul`** | **0** (`$add` 368 / `$sub` 2) | delta 0 | PASS |
+| **Fmax / resolve** | WNS **+1.807 ns** @ 10 ns → **Fmax 122.06 MHz**, WHS +0.042 ns, CARRY8 265 | resolve 1 cycle @ 100 MHz 목표 (~66 CARRY8 / ~4 ns 는 ESTIMATE) | **PASS — resolve-1-cycle ESTIMATE 실측 졸업.** worst path 는 resolve 가 아니라 **S1 compressor tree 진입** (route 지연 82.7%). |
+| **FF** | 5,729 (core 2,986 — 나머지는 gate_top wrapper I/O) | 추적만 (V9-4 관례) | 기록 — core 는 nominal 2-3k 범위 하단. |
+| DSP / DRC | DSP 0 / DRC errors 0 | — | 기록 |
+
+리포트: `synth/reports/fp_ops/fp_acclattice_{impl_summary.json,impl_util.rpt,impl_timing.rpt,impl_drc.rpt,premap_mul.log}`. **본 gate 는 자신이 선언한 ceiling 을 충족하지 못했으며, 이 사실을 silent 하게 수용하지 않는다** — §26.6 GATE V9-4 FAIL 기록의 형식과 정책을 그대로 따른다: FAIL 원인을 귀속하고, 옵션을 기록하고, 결정을 상위 결정권자에게 넘긴다 (아래).
+
+**ECP5 feasibility 측정 (판정 아님 — 본 절 원문 그대로 반복한다: "어떤 결과가 나와도 — 어렵다·비싸다·불가능하다 포함 — gate FAIL 을 구성하지 않는다"; 이행된 의무는 측정의 실행과 정직한 기록이다):**
+- **전 병렬 (`FP_AccLattice` 그대로, LFE5UM-85F)**: yosys LUT4 **102,871** = COMB fabric (83,640) 의 **123%** → nextpnr **배치 불가** (`ERROR: no BELs remaining`, placement 중단) — **infeasible 분류**. 이는 사전 선언된 off-ramp 의 발동이며 **유효한 측정이다** — 실패가 아니라 예정된 분기. off-ramp 대로 ECP5 는 at-speed dot path 를 제외한 검증 역할을 전부 유지한다.
+- **beat-serial 변형 `FP_AccLatticeBeat2.v` (측정 전용 변형 — 2 products/beat × 16 beats + carry beat, 9-cycle serial resolve)**: LUT4 **9,374** / Fmax **19.55 MHz** / PnR **완주** / verilator 로 golden 벡터 **4001/4001 bit-exact** — **ECP5 는 beat-serial 형상으로 lattice 검증 역할을 수행 가능함이 실측 확인됐다** (Fmax 는 fp_ops 관례 참조점 40 MHz 미달 — 계약이 아니므로 기록만). 리포트: `synth/lattice/reports/fp_ops/fp_acclattice_*` (전 병렬) / `fp_acclattice_beat2_*` (beat-serial).
+
+**FAIL 원인 진단 (2026-08-15, 진단 전용 3-run — 신규 출하 RTL 없음; 방법: (R1) Beat2 를 동일 하네스로 xcu55c 전 flow 실측, (R3) 출하 top 재-synth 후 전 LUT cell 67,766 을 이름-cone 분류로 스테이지 귀속 — `synth/reports/fp_ops/fp_acclattice_diag_flat_attribution.txt`):**
+
+| # | 성분 | LUT (site 환산) | 비중 | 근거 |
+|---|---|---|---|---|
+| S1-a | **배치 33×** — per-addend decode + 112-bit 6-stage barrel + 2-of-9 segment demux 의 576-bit 필드 형성. 지배 비용은 barrel (~336 LUT/addend) 이 아니라 **addend 당 576-bit demux 출력 형성 (~520 LUT/addend) 의 33× 복제** | 29,000 | 54.3% | estimated |
+| S1-b | **34-row 3:2 compressor tree** (8 level × 576 column; ones'-complement `~field` 반전은 level-1 XOR LUT 에 흡수 — 분리 cell 0 확인). 전 column 정적 밀도는 부호확장이 아니라 **dynamic 배치 범위** (어느 addend 든 576 column 어디든 착지 가능) 기인 | 18,900 | 35.4% | estimated |
+| S1-c | per-addend fault/decode cone — fault (a)-(e) 검사 | 2,591 | 4.85% | measured |
+| S2 | resolve — 576-bit carry-propagate 가산 + 정렬검사 | 1,148 | 2.15% | measured |
+| S3 | 추출 전반부 — 528-bit negate + chunk 분해 + coarse 우선순위 + 128-bit window + CLZ + sticky | 1,426 | 2.67% | measured |
+| S4 | 추출 후반부 + 인코딩 — 128-bit normalize barrel + RTO-48 + wide/bank/fp32 인코딩 + 출력 | 353 | 0.66% | measured |
+
+**핵심 판정**: FAIL 의 **94.5% (실측) 는 S1 한 스테이지** — 배치 33× 복제 + 34×576 compressor tree — 이고 S2-S4 합계는 5.5% 뿐이라 **추출/인코딩 최적화는 무의미하다**. 초기 가설 2건은 정정됐다: H1 "full 528-bit barrel" 은 부존재 — 출하 RTL 은 이미 fine-shift × 창 + demux 구조 (`FP_AccLattice.v:160-187`); H2 "부호확장 밀도" 도 반증 — 밀도 원인은 dynamic 배치 범위다. Fmax 는 문제가 아니며 (+1.807 ns 여유), **53,418 은 이 마이크로아키텍처 (full-parallel 33-addend, II=1) 의 구조적 비용으로 판정한다**. 근거 기준 주의: S1 합산 94.5% 는 flat netlist 이름-cone 분류 실측이나, **S1 내부 배치-vs-tree 분할 (54.3/35.4) 은 추정** (flat netlist 에서 두 cone 이 병합됨 — Beat2 실측 차분 + 구조 계수로 도출); 이를 measured 로 졸업시킬 stage-분리 재synth (R2) 는 보고 시점 **메모리 thrashing 으로 중단·미착지** — 재실행 시 `fp_acclattice_diag_stages_util.rpt` 로 착지해 대조할 것.
+
+**beat-serial xcu55c 실측점 (진단 R1)**: `FP_AccLatticeBeat2_gate_top` 을 동일 하네스 전 flow 로 — LUT **6,075 sites** (raw cells 6,951) / FF 3,806 (wrapper I/O 761 + core 3,045) / DSP 0 / CARRY 85 / WNS **+2.698 ns** → **Fmax 136.95 MHz** / DRC clean-class. full-parallel 대비 **8.8× 작음** — ceiling 20,040 의 30%, nominal 하단 8k 도 하회. 비용: **II = 28 cycle/wave-step** (acc 17 + serial resolve 9 + extract 2) vs full-parallel II=1. 리포트: `synth/reports/fp_ops/fp_acclattice_diag_beat2_*`. (Beat2 의 golden 4001/4001 bit-exact 은 ECP5 verilator 세션에서 기실증 — verilator 재검증 없이 xcu55c netlist 의 기능 동일성까지 본 진단이 주장하지는 않는다.)
+
+**감축 레버 (진단 결론 — 어느 레버의 채택도 본 절이 결정하지 않는다):**
+
+| 레버 | 기전 | 기대 LUT | 신뢰도 | 비용 |
+|---|---|---|---|---|
+| **L1 beat-serial N 조정** | 배치 demux + compressor rows 를 시간 재사용 — beat 당 rows 를 N+2(carry-save 상태)+1(nrow) 로 제한해 S1 의 89.7% 를 N/33 로 축소 | N=2: **6,075 (실측)** · N=4 ≈ 9-12k (II≈20) · N=8 ≈ 14-18k (II≈16; 병렬 576-bit resolve +~1.1k 추가 시 II≈8) · N=16 ≈ 22-26k — **ceiling 초과** | **measured** (N=2) | throughput II=1 → 28(N=2)/≈20(N=4)/≈8-16(N=8); latency 4 → 28 cycle; 상류 dispatch 가 wave-step 당 N-operand 씩 인가하는 스케줄 변경 필요. Fmax 는 오히려 상승 (136.95 vs 122.06 MHz) |
+| L2 부호확장 붕괴 (constant-row/Baugh-Wooley 류) | **가설 반증** — tree 밀도는 dynamic 배치 범위 기인; `~field` 반전은 이미 XOR3 LUT 에 흡수 (분리 cell 0, 한계비용 이미 낮음); constant-row 는 배치 위치가 dynamic 이라 컴파일타임 상수로 붕괴하지 않음 | ≈52-53.4k — 실질 무변화 (±2% 이내) | high | RTL churn + re-proof 만 발생, 이득 없음 — **비권고** |
+| L3 barrel → fine-shift × 창 + segment demux 재구성 | **전제 오류 — 출하 RTL 이 이미 정확히 이 구조** (`FP_AccLattice.v:160-187`), delta 0 | 53,418 (불변) | measured | 없음 — 이 형태로도 배치가 최대 성분 (demux 의 576-bit 폭 × 33 복제) |
+| L4a row-reduction → CARRY8 ternary adder tree | 34→1 을 17개의 576-bit ternary add (~576 LUT/add) 로 대체 — tree ~18.9k → ~10k | ≈43-48k — **여전히 ceiling 2.2× 초과, 단독 해소 불가** | low | +1-2 cycle latency (다단 CPA 는 10 ns 단일 cycle 불가), +~1.2k CARRY8, carry-chain 배치 congestion 위험 |
+| L4b PHYS 하위 48 column 상수화 | fault (e) 전제 (PHYS[47:0]==0) 를 배치 전에 정적 강제 → demux segment 0 하위 + tree 하위 48 column 상수화 (~8% 절감) | ≈51-52.5k | low | fault (e) 검사를 배치 전 검사로 이동 (loud-fault 계약 유지 필요), 이득 소폭 — 단독 무의미 |
+
+**정책적 결론 — 후속 결정은 사용자 소관이며 spec 은 선점하지 않는다.** 진단이 확정한 제약: full-parallel II=1 을 유지하려면 ~50k 는 구조적 비용이므로 **ceiling 재anchor 없이는 도달 불가** (L2/L3/L4 로는 20,040 미달 불가); ceiling 을 유지하려면 **beat-serial N≤8 이 유일한 measured 경로**다. 기록하는 옵션:
+- **(A) 재설계로 ceiling 충족** — 레버 조합, 실질적으로 L1 beat-serial N≤8 (필요시 L4a 병용). throughput 계약 (II=1) 의 완화와 상류 dispatch 스케줄 변경을 수반.
+- **(B) ceiling 재anchor** — nominal 8-12k 는 구현 이전 pre-priced 공표 추정이고 (도출 artifact 는 spec 에 없음 — pre-priced 선공표 자체가 §23.10.10(g) 방법론), pre-stable 에서 gate 기준 재anchor 는 **§12a 정규 이벤트**다. 재anchor 판단용 맥락 실측: 53,418 = xcu55c 전체 1,303,680 LUT (Vivado part DB 실측 질의) 의 **4.10%/unit**; v1.x full cluster 실측 42,538-42,731 LUT (`pod_2x2_2x2_impl_util.rpt`, xcu55c routed) 의 **~125%** — unit 하나가 v1.x cluster 전체보다 크다; cluster 당 1 unit + pod 2×2 가정 시 4 unit = +213,672 LUT = device 의 +16.4%p (v1.x pod 실측 170,850 = 13.1% 위에 추가 → 합 ~29.5%).
+- **(C) 혼합** — 부분 직렬화 (예: N=8) + ceiling 소폭 재anchor.
+어느 옵션이든 **하류 ③ (bank RTL) 착수 이전에 결정되어야 한다** — lattice unit 의 최종 형상 (II, carry-in 인가 시점) 이 bank 인터페이스를 결정하기 때문이다.
+
+**하류 ③ (bank RTL COMMIT) pin 등재 — 검증 렌즈가 발견한 minor 2건 + 기존 미결 1건 (`include/generated/lattice_vec_contract.md` §7 과 정합 확인 완료):**
+1. **합 == 정확히 −2^261 corner 의 fault 클래스 배정 (신규 — 검증 렌즈)**: 33-항 합이 signed 표현 하한 −2^261 에 정확히 떨어지는 corner 를 golden 은 현재 bare assert 로만 차단한다 — ③ 에서 `LatticeFault` 로 승격하거나 수용 하한 LAT_MIN+1 을 규범화하는 양자택일 pin 이 필요하다.
+2. **carry-in slot 의 normalized 전제 명문화 (신규 — 검증 렌즈)**: 벡터 계약 §4 는 "carry-in 은 normalized (sig[47]==1) 또는 canonical zero" 를 전제로 운반하나 본 절 (§27.2) normative 본문에는 미명문 — ③ 에서 normative 화한다.
+3. **lattice-비표현 carry 의 RTL fault 클래스 배정 (기존 — 벡터 계약 §7 미결 pin 재확인)**: FILL-valid 한 fp64 bank word 는 |v| ≤ ~2^1024 까지 담지만 lattice 는 |v| < 2^261 만 수용 — golden 은 loud fault (`LatticeFault`) 로 고정했고, RTL 의 sticky-fault 클래스 배정은 ③ COMMIT 몫이다.
+
+**검증 체계 실적 (gate 시점 요약)**: golden lattice model 은 적대 2렌즈 검증에서 무반증 — 독립 Fraction 재계산으로 4001 벡터 전량 + fuzz 30k 교차검증 불일치 0. RTL TB 는 변이 4종 중 3종을 적발했고, 미적발 1종 (fault 경로 변이) 은 계약상 벡터가 회피하는 영역 (벡터 계약 §4/§7) 임을 문서화했다. 추출 정리 (RNE_24(RTO_48(exact)) == RNE_24(exact)) 의 반례는 0건으로 유지된다.
 
 ### 27.7 FDOT32_CR 예약 — opcode 0x7A (옵션 3a, committed follow-up)
 

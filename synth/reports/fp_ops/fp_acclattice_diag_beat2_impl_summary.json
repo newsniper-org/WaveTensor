@@ -1,0 +1,16 @@
+{
+  "tag": "fp_acclattice_diag_beat2",
+  "top": "FP_AccLatticeBeat2_gate_top",
+  "part": "xcu55c-fsvh2892-2L-e",
+  "period_ns": 10.000,
+  "lut_cells": 6951,
+  "ff": 3806,
+  "dsp48": 0,
+  "dsp_split_cells": 0,
+  "carry": 85,
+  "bram": 0,
+  "srl": 0,
+  "wns_ns": 2.698,
+  "whs_ns": 0.042,
+  "fmax_mhz": 136.95
+}
