@@ -1,0 +1,1247 @@
+{
+ "_doc": "v2.0 wave-step-atomic accumulation (Option 3: exact-integer in-dot lattice + wide ACC bank, RTO-48 store per wave-step, single RNE-24 at drain; Option 3a FDOT32_CR 0x7A committed follow-up) \u2014 COMMIT-0 design-study numbers, regenerated with FIXED seeds by scripts/acc_format_study.py (consolidates the session /tmp harnesses). Ground truth is exact integer/Fraction arithmetic; fp32 semantics from scripts/golden_fp32.py. Deterministic: byte-identical across runs, no timestamps.",
+ "determinism": {
+  "seeds": {
+   "theorem_sweep": 20260815,
+   "composition_me": 42,
+   "kulisch_check": 7,
+   "posit_selftest": 5,
+   "fam_cancellation": 707585,
+   "fam_tie_straddle": 707586,
+   "fam_rand_wide": 707587,
+   "stream_S1_K32": 707601,
+   "stream_S1_K1024": 707602,
+   "stream_S4_K32": 707603,
+   "stream_S4_K1024": 707604,
+   "stream_S5_K32": 707605,
+   "stream_S5_K1024": 707606,
+   "noise_gauss": 707617,
+   "noise_relu": 707618,
+   "noise_gradcancel": 707619
+  },
+  "note": "seeds theorem_sweep/composition_me/kulisch_check/posit_selftest are bit-identical to the session harnesses (their numbers reproduce exactly); family/stream/noise seeds replace the session's salted-hash seeds, so those counts are regenerated (direction-confirming) rather than bit-identical"
+ },
+ "rto_tree": {
+  "deterministic": {
+   "leaves": "[1x1, 2^-30 x 2^-30, 1x(-1), 0 x 29] \u2014 realizable bf16 products; exact sum = 2^-60",
+   "per_step_rne_A": "0x00000000",
+   "rto48_tree": "0x28000000",
+   "rto50_tree": "0x27000000",
+   "exact_single_rne": "0x21800000",
+   "width_q_ladder": [
+    {
+     "q": 48,
+     "K": 0,
+     "tree": "0x28000000",
+     "exact": "0x21800000",
+     "diverges": true
+    },
+    {
+     "q": 50,
+     "K": 0,
+     "tree": "0x27000000",
+     "exact": "0x20800000",
+     "diverges": true
+    },
+    {
+     "q": 64,
+     "K": 0,
+     "tree": "0x20000000",
+     "exact": "0x19800000",
+     "diverges": true
+    },
+    {
+     "q": 128,
+     "K": 14,
+     "tree": "0x07000000",
+     "exact": "0x00800000",
+     "diverges": true
+    },
+    {
+     "q": 254,
+     "K": 140,
+     "tree": "0x07000000",
+     "exact": "0x00800000",
+     "diverges": true
+    },
+    {
+     "q": 368,
+     "K": 254,
+     "tree": "0x07000000",
+     "exact": "0x00800000",
+     "diverges": true
+    }
+   ],
+   "width_q_ladder_leaves": "[2^K, 2^(K-q-12), -2^K] realizable bf16 products, K = max(0, q-114)",
+   "f16_product_leaves": [
+    {
+     "q": 48,
+     "tree": "0x28000000",
+     "exact": "0x27800000",
+     "diverges": true
+    },
+    {
+     "q": 50,
+     "tree": "0x36000000",
+     "exact": "0x27800000",
+     "diverges": true
+    }
+   ],
+   "verdict": "RTO-tree DIVERGES at every tested width (48/50/64/128/254/368) for bf16 leaves and at 48/50 for f16 leaves"
+  },
+  "random_families_q48_q50": {
+   "cancellation": {
+    "N": 10000,
+    "seed": 707585,
+    "per_step_rne_A_diverge": 9993,
+    "rto48_tree_diverge": 10000,
+    "rto48_tree_diverge_pct": 100.0,
+    "rto50_tree_diverge": 10000,
+    "rto50_tree_diverge_pct": 100.0,
+    "rto48_tree_worst_ulp_of_exact": 1.5111572745182865e+23,
+    "exact_rto48_store_equals_true_B_asserted_trials": 10000
+   },
+   "tie_straddle": {
+    "N": 10000,
+    "seed": 707586,
+    "per_step_rne_A_diverge": 3938,
+    "rto48_tree_diverge": 1245,
+    "rto48_tree_diverge_pct": 12.45,
+    "rto50_tree_diverge": 711,
+    "rto50_tree_diverge_pct": 7.11,
+    "rto48_tree_worst_ulp_of_exact": 0.5000001048915976,
+    "exact_rto48_store_equals_true_B_asserted_trials": 10000
+   },
+   "rand_bf16_wide": {
+    "N": 10000,
+    "seed": 707587,
+    "per_step_rne_A_diverge": 836,
+    "rto48_tree_diverge": 20,
+    "rto48_tree_diverge_pct": 0.2,
+    "rto50_tree_diverge": 19,
+    "rto50_tree_diverge_pct": 0.19,
+    "rto48_tree_worst_ulp_of_exact": 0.5000000386999801,
+    "exact_rto48_store_equals_true_B_asserted_trials": 10000
+   }
+  },
+  "kulisch_safe_width": {
+   "q": 527,
+   "family": "cancellation",
+   "trials": 2000,
+   "seed": 7,
+   "diverge": 0,
+   "verdict": "PASS",
+   "note": "bf16 full-lattice span: q >= 527 is exact in any order (the jam never fires) \u2014 the width at which the RTO tree stops being a tree of roundings and IS the exact (Kulisch) accumulator. Tree-interior nodes sum <= 16 products (span <= 526) so q >= 526 is exact for THIS topology; q = 525 is analytically still unsafe. f16: q >= 85 (tree-interior 84)."
+  }
+ },
+ "extraction_theorem": {
+  "statement": "RNE_24(RTO_q(x)) == RNE_24(x) for a SINGLE value x; Boldo-Melquiond threshold q >= p+2 = 26 (PACK_WIDE q = 48 carries 22 bits of margin)",
+  "deterministic_tie_x": "1 + 2^-24 + 2^-60",
+  "deterministic_tie_rows": [
+   {
+    "q": 25,
+    "rne_of_rto_q": "0x3F800000",
+    "single_rne": "0x3F800001",
+    "equal": false
+   },
+   {
+    "q": 26,
+    "rne_of_rto_q": "0x3F800001",
+    "single_rne": "0x3F800001",
+    "equal": true
+   },
+   {
+    "q": 48,
+    "rne_of_rto_q": "0x3F800001",
+    "single_rne": "0x3F800001",
+    "equal": true
+   },
+   {
+    "q": 50,
+    "rne_of_rto_q": "0x3F800001",
+    "single_rne": "0x3F800001",
+    "equal": true
+   }
+  ],
+  "random_sweep": {
+   "N": 200000,
+   "nonzero_sums": 200000,
+   "seed": 20260815,
+   "generator": "exact sums of 4 random bf16 products (long significands, tie-adjacent), fp32 RNE+FTZ pack",
+   "mismatches": {
+    "q25": 82237,
+    "q26": 0,
+    "q48": 0,
+    "q50": 0
+   },
+   "q25_fail_pct": 41.1185
+  },
+  "verdict": "PASS"
+ },
+ "rto48_vs_rne48_composition": {
+  "N": 200000,
+  "seed": 42,
+  "generator": "random wide values, significand 1..80 bits, exponent -40..40",
+  "rne24_of_rto48_mismatches": 0,
+  "rne24_of_rne48_mismatches": 0,
+  "rne48_random_rate_note": "an RNE-48 double-rounding event needs a manufactured exact 24-bit tie (~2^-24 per random value): 0 hits in 200k is the expected sampling outcome, not safety",
+  "rne48_directed_counterexample": {
+   "x": "2^48 + 2^24 + 1",
+   "single_rne24": "2^48 + 2^25",
+   "rne24_of_rne48": "2^48 (1 ulp LOW \u2014 double rounding)",
+   "rne24_of_rto48": "2^48 + 2^25 (correct)",
+   "asserted": true
+  },
+  "verdict": "PASS"
+ },
+ "bank_chains": {
+  "products": "random-sign bf16 x bf16 exact products, per-factor exponent spread +-4 around the band center",
+  "chains_doc": {
+   "A24": "per-step RNE-24 bank chain (reading A)",
+   "RTO48": "per-step RTO-48 wide-bank chain (one store per product \u2014 option 2 shape)",
+   "OPT3": "exact 32-term wave dot, ONE RTO-48 bank store per wave-step, final RNE-24 (wave-step-atomic contract)",
+   "P64e*": "per-step posit64(es) bank chain"
+  },
+  "comparison": "final values compared exactly vs true (B) = exact sum + single RNE-24; unbounded-exponent domain (accumulator fidelity, before the fp32 drain pack)",
+  "sampling_note": "zero measured divergence for the 48-bit-store chains at these K matches the ~K x 2^-24 divergence-rate scaling and is NOT a formal (B) claim across waves \u2014 the bank_store_jam_families section proves the cross-wave limitation constructively",
+  "scenarios": [
+   {
+    "stream": "S1_near1",
+    "band": "values ~2^0 (posit sweet spot)",
+    "center_2exp": -14,
+    "K": 32,
+    "trials": 2000,
+    "seed": 707601,
+    "chains": {
+     "A24": {
+      "diverge": 1098,
+      "diverge_pct": 54.9,
+      "max_ulp_of_B": 800.0,
+      "zero_or_sign_class": 0
+     },
+     "RTO48": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     },
+     "OPT3": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     },
+     "P64e2": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     },
+     "P64e3": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     },
+     "P64e5": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     }
+    },
+    "opt3_single_wave_equals_true_B_asserted": 2000
+   },
+   {
+    "stream": "S1_near1",
+    "band": "values ~2^0 (posit sweet spot)",
+    "center_2exp": -14,
+    "K": 1024,
+    "trials": 300,
+    "seed": 707602,
+    "chains": {
+     "A24": {
+      "diverge": 284,
+      "diverge_pct": 94.6667,
+      "max_ulp_of_B": 4182.0,
+      "zero_or_sign_class": 0
+     },
+     "RTO48": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     },
+     "OPT3": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     },
+     "P64e2": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     },
+     "P64e3": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     },
+     "P64e5": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     }
+    },
+    "opt3_single_wave_equals_true_B_asserted": 0
+   },
+   {
+    "stream": "S4_hi_band",
+    "band": "values ~2^230 (bf16 headroom band)",
+    "center_2exp": 230,
+    "K": 32,
+    "trials": 2000,
+    "seed": 707603,
+    "chains": {
+     "A24": {
+      "diverge": 1100,
+      "diverge_pct": 55.0,
+      "max_ulp_of_B": 352.0,
+      "zero_or_sign_class": 0
+     },
+     "RTO48": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     },
+     "OPT3": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     },
+     "P64e2": {
+      "diverge": 2000,
+      "diverge_pct": 100.0,
+      "max_ulp_of_B": 552425744.0,
+      "zero_or_sign_class": 0
+     },
+     "P64e3": {
+      "diverge": 66,
+      "diverge_pct": 3.3,
+      "max_ulp_of_B": 4.0,
+      "zero_or_sign_class": 0
+     },
+     "P64e5": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     }
+    },
+    "opt3_single_wave_equals_true_B_asserted": 2000
+   },
+   {
+    "stream": "S4_hi_band",
+    "band": "values ~2^230 (bf16 headroom band)",
+    "center_2exp": 230,
+    "K": 1024,
+    "trials": 300,
+    "seed": 707604,
+    "chains": {
+     "A24": {
+      "diverge": 284,
+      "diverge_pct": 94.6667,
+      "max_ulp_of_B": 10408.0,
+      "zero_or_sign_class": 0
+     },
+     "RTO48": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     },
+     "OPT3": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     },
+     "P64e2": {
+      "diverge": 300,
+      "diverge_pct": 100.0,
+      "max_ulp_of_B": 549866328.0,
+      "zero_or_sign_class": 0
+     },
+     "P64e3": {
+      "diverge": 89,
+      "diverge_pct": 29.6667,
+      "max_ulp_of_B": 40.0,
+      "zero_or_sign_class": 0
+     },
+     "P64e5": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     }
+    },
+    "opt3_single_wave_equals_true_B_asserted": 0
+   },
+   {
+    "stream": "S5_mid_band",
+    "band": "values ~2^90",
+    "center_2exp": 90,
+    "K": 32,
+    "trials": 2000,
+    "seed": 707605,
+    "chains": {
+     "A24": {
+      "diverge": 1064,
+      "diverge_pct": 53.2,
+      "max_ulp_of_B": 416.0,
+      "zero_or_sign_class": 0
+     },
+     "RTO48": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     },
+     "OPT3": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     },
+     "P64e2": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     },
+     "P64e3": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     },
+     "P64e5": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     }
+    },
+    "opt3_single_wave_equals_true_B_asserted": 2000
+   },
+   {
+    "stream": "S5_mid_band",
+    "band": "values ~2^90",
+    "center_2exp": 90,
+    "K": 1024,
+    "trials": 300,
+    "seed": 707606,
+    "chains": {
+     "A24": {
+      "diverge": 286,
+      "diverge_pct": 95.3333,
+      "max_ulp_of_B": 1100.0,
+      "zero_or_sign_class": 0
+     },
+     "RTO48": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     },
+     "OPT3": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     },
+     "P64e2": {
+      "diverge": 6,
+      "diverge_pct": 2.0,
+      "max_ulp_of_B": 10.0,
+      "zero_or_sign_class": 0
+     },
+     "P64e3": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     },
+     "P64e5": {
+      "diverge": 0,
+      "diverge_pct": 0.0,
+      "max_ulp_of_B": 0.0,
+      "zero_or_sign_class": 0
+     }
+    },
+    "opt3_single_wave_equals_true_B_asserted": 0
+   }
+  ]
+ },
+ "bank_store_jam_families": {
+  "doc": "per-write wide-bank chains (each product = one bank store): the granularity that exposes the RTO-48 store jam under cross-wave cancellation \u2014 the honest limitation of the wave-step-atomic contract (formal single-rounding holds WITHIN a wave-step, not across the full K horizon). F3 shows RNE-48 double-rounding on a single store (why the store is RTO); F5b/F6 show the jam-parking limitation of RTO-48 itself.",
+  "families": [
+   {
+    "family": "F1_cancellation",
+    "products": "[+1, +2^-60, -1] (true 2^-60)",
+    "true_B": {
+     "m": 16384,
+     "e": -74
+    },
+    "A24": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 16777216.0
+    },
+    "RTO48": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 137422176256.0
+    },
+    "RNE48": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 16777216.0
+    },
+    "OPT3_single_wave": {
+     "equals_true_B": true,
+     "by": "extraction theorem"
+    }
+   },
+   {
+    "family": "F2_tie_straddler",
+    "products": "[+1, +2^-24, +2^-70] (true 1+2^-23)",
+    "true_B": {
+     "m": 8388609,
+     "e": -23
+    },
+    "A24": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 1.0
+    },
+    "RTO48": {
+     "equals_true_B": true
+    },
+    "RNE48": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 1.0
+    },
+    "OPT3_single_wave": {
+     "equals_true_B": true,
+     "by": "extraction theorem"
+    }
+   },
+   {
+    "family": "F3_double_round",
+    "products": "[+1, +2^-24, +2^-49] (true 1+2^-23)",
+    "true_B": {
+     "m": 8388609,
+     "e": -23
+    },
+    "A24": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 1.0
+    },
+    "RTO48": {
+     "equals_true_B": true
+    },
+    "RNE48": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 1.0
+    },
+    "OPT3_single_wave": {
+     "equals_true_B": true,
+     "by": "extraction theorem"
+    }
+   },
+   {
+    "family": "F4_park_plus_cancel",
+    "products": "[+1, +2^-60, -1, +2^-47] (true 2^-47+2^-60)",
+    "true_B": {
+     "m": 8389632,
+     "e": -70
+    },
+    "A24": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 1024.0
+    },
+    "RTO48": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 8387584.0
+    },
+    "RNE48": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 1024.0
+    },
+    "OPT3_single_wave": {
+     "equals_true_B": true,
+     "by": "extraction theorem"
+    }
+   },
+   {
+    "family": "F5a_tie_true_above",
+    "products": "[+1, +2^-24, +2^-70, +2^-70] (true above tie)",
+    "true_B": {
+     "m": 8388609,
+     "e": -23
+    },
+    "A24": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 1.0
+    },
+    "RTO48": {
+     "equals_true_B": true
+    },
+    "RNE48": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 1.0
+    },
+    "OPT3_single_wave": {
+     "equals_true_B": true,
+     "by": "extraction theorem"
+    }
+   },
+   {
+    "family": "F5b_tie_net_zero",
+    "products": "[+1, +2^-24, +2^-70, -2^-70] (true = exact tie)",
+    "true_B": {
+     "m": 8388608,
+     "e": -23
+    },
+    "A24": {
+     "equals_true_B": true
+    },
+    "RTO48": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 2.0
+    },
+    "RNE48": {
+     "equals_true_B": true
+    },
+    "OPT3_single_wave": {
+     "equals_true_B": true,
+     "by": "extraction theorem"
+    }
+   },
+   {
+    "family": "F6_tie_net_negative",
+    "products": "[+1, +2^-24, +2^-70, -2^-69] (true below tie)",
+    "true_B": {
+     "m": 8388608,
+     "e": -23
+    },
+    "A24": {
+     "equals_true_B": true
+    },
+    "RTO48": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 2.0
+    },
+    "RNE48": {
+     "equals_true_B": true
+    },
+    "OPT3_single_wave": {
+     "equals_true_B": true,
+     "by": "extraction theorem"
+    }
+   }
+  ]
+ },
+ "posit": {
+  "codec_selftest": {
+   "roundtrip_idempotence_trials": 20000,
+   "seed": 5,
+   "known_patterns_ok": true,
+   "taper_spot_checks_ok": true,
+   "verdict": "PASS"
+  },
+  "taper_table": {
+   "doc": "effective significand bits (incl. hidden) of posit64 vs binade; PACK_WIDE is flat 48 over the whole signed-11 exponent range; exact regime arithmetic, no sampling",
+   "rows": [
+    {
+     "binade": -992,
+     "posit64_es2": 1,
+     "posit64_es3": 1,
+     "posit64_es4": 1,
+     "posit64_es5": 27,
+     "pack_wide": 48
+    },
+    {
+     "binade": -266,
+     "posit64_es2": 1,
+     "posit64_es3": 26,
+     "posit64_es4": 42,
+     "posit64_es5": 49,
+     "pack_wide": 48
+    },
+    {
+     "binade": -252,
+     "posit64_es2": 1,
+     "posit64_es3": 28,
+     "posit64_es4": 43,
+     "posit64_es5": 50,
+     "pack_wide": 48
+    },
+    {
+     "binade": -128,
+     "posit64_es2": 29,
+     "posit64_es3": 44,
+     "posit64_es4": 51,
+     "posit64_es5": 54,
+     "pack_wide": 48
+    },
+    {
+     "binade": -64,
+     "posit64_es2": 45,
+     "posit64_es3": 52,
+     "posit64_es4": 55,
+     "posit64_es5": 56,
+     "pack_wide": 48
+    },
+    {
+     "binade": -32,
+     "posit64_es2": 53,
+     "posit64_es3": 56,
+     "posit64_es4": 57,
+     "posit64_es5": 57,
+     "pack_wide": 48
+    },
+    {
+     "binade": -16,
+     "posit64_es2": 57,
+     "posit64_es3": 58,
+     "posit64_es4": 58,
+     "posit64_es5": 57,
+     "pack_wide": 48
+    },
+    {
+     "binade": -1,
+     "posit64_es2": 60,
+     "posit64_es3": 59,
+     "posit64_es4": 58,
+     "posit64_es5": 57,
+     "pack_wide": 48
+    },
+    {
+     "binade": 0,
+     "posit64_es2": 60,
+     "posit64_es3": 59,
+     "posit64_es4": 58,
+     "posit64_es5": 57,
+     "pack_wide": 48
+    },
+    {
+     "binade": 16,
+     "posit64_es2": 56,
+     "posit64_es3": 57,
+     "posit64_es4": 57,
+     "posit64_es5": 57,
+     "pack_wide": 48
+    },
+    {
+     "binade": 32,
+     "posit64_es2": 52,
+     "posit64_es3": 55,
+     "posit64_es4": 56,
+     "posit64_es5": 56,
+     "pack_wide": 48
+    },
+    {
+     "binade": 64,
+     "posit64_es2": 44,
+     "posit64_es3": 51,
+     "posit64_es4": 54,
+     "posit64_es5": 55,
+     "pack_wide": 48
+    },
+    {
+     "binade": 96,
+     "posit64_es2": 36,
+     "posit64_es3": 47,
+     "posit64_es4": 52,
+     "posit64_es5": 54,
+     "pack_wide": 48
+    },
+    {
+     "binade": 128,
+     "posit64_es2": 28,
+     "posit64_es3": 43,
+     "posit64_es4": 50,
+     "posit64_es5": 53,
+     "pack_wide": 48
+    },
+    {
+     "binade": 230,
+     "posit64_es2": 3,
+     "posit64_es3": 31,
+     "posit64_es4": 44,
+     "posit64_es5": 50,
+     "pack_wide": 48
+    },
+    {
+     "binade": 255,
+     "posit64_es2": 1,
+     "posit64_es3": 28,
+     "posit64_es4": 43,
+     "posit64_es5": 50,
+     "pack_wide": 48
+    },
+    {
+     "binade": 279,
+     "posit64_es2": 1,
+     "posit64_es3": 25,
+     "posit64_es4": 41,
+     "posit64_es5": 49,
+     "pack_wide": 48
+    }
+   ],
+   "posit64_es2_bits_at_bf16_product_extremes": {
+    "binade_-252": 1,
+    "binade_+255": 1
+   }
+  },
+  "adversarial_families": [
+   {
+    "family": "F1_cancellation",
+    "products": "[+1, +2^-60, -1] (true 2^-60)",
+    "true_B": {
+     "m": 16384,
+     "e": -74
+    },
+    "A24": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 16777216.0
+    },
+    "RTO48": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 137422176256.0
+    },
+    "P64e2": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 16777216.0
+    },
+    "P64e3": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 16777216.0
+    },
+    "P64e5": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 16777216.0
+    },
+    "OPT3_single_wave": {
+     "equals_true_B": true,
+     "by": "extraction theorem"
+    }
+   },
+   {
+    "family": "F2_tie_straddler",
+    "products": "[+1, +2^-24, +2^-70] (true 1+2^-23)",
+    "true_B": {
+     "m": 8388609,
+     "e": -23
+    },
+    "A24": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 1.0
+    },
+    "RTO48": {
+     "equals_true_B": true
+    },
+    "P64e2": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 1.0
+    },
+    "P64e3": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 1.0
+    },
+    "P64e5": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 1.0
+    },
+    "OPT3_single_wave": {
+     "equals_true_B": true,
+     "by": "extraction theorem"
+    }
+   },
+   {
+    "family": "F3_double_round",
+    "products": "[+1, +2^-24, +2^-49] (true 1+2^-23)",
+    "true_B": {
+     "m": 8388609,
+     "e": -23
+    },
+    "A24": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 1.0
+    },
+    "RTO48": {
+     "equals_true_B": true
+    },
+    "P64e2": {
+     "equals_true_B": true
+    },
+    "P64e3": {
+     "equals_true_B": true
+    },
+    "P64e5": {
+     "equals_true_B": true
+    },
+    "OPT3_single_wave": {
+     "equals_true_B": true,
+     "by": "extraction theorem"
+    }
+   },
+   {
+    "family": "F7_tie_at_2p96",
+    "products": "[+2^96, +2^72, +2^47] (true 2^96+2^73)",
+    "true_B": {
+     "m": 8388609,
+     "e": 73
+    },
+    "A24": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 1.0
+    },
+    "RTO48": {
+     "equals_true_B": true
+    },
+    "P64e2": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 1.0
+    },
+    "P64e3": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 1.0
+    },
+    "P64e5": {
+     "equals_true_B": true
+    },
+    "OPT3_single_wave": {
+     "equals_true_B": true,
+     "by": "extraction theorem"
+    }
+   },
+   {
+    "family": "F8_range_extreme_cancel",
+    "products": "[+2^250, +1, -2^250] (true 1)",
+    "true_B": {
+     "m": 16384,
+     "e": -14
+    },
+    "A24": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 16777216.0
+    },
+    "RTO48": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 2.156795733372051e+68
+    },
+    "P64e2": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 7.588550360256754e+81
+    },
+    "P64e3": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 16777216.0
+    },
+    "P64e5": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 16777216.0
+    },
+    "OPT3_single_wave": {
+     "equals_true_B": true,
+     "by": "extraction theorem"
+    }
+   },
+   {
+    "family": "F9_taper_tie_at_2p230",
+    "products": "[+2^230, +2^206, +2^181] (true 2^230+2^207)",
+    "true_B": {
+     "m": 8388609,
+     "e": 207
+    },
+    "A24": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 1.0
+    },
+    "RTO48": {
+     "equals_true_B": true
+    },
+    "P64e2": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 1.0
+    },
+    "P64e3": {
+     "equals_true_B": false,
+     "delta_ulp_of_B": 1.0
+    },
+    "P64e5": {
+     "equals_true_B": true
+    },
+    "OPT3_single_wave": {
+     "equals_true_B": true,
+     "by": "extraction theorem"
+    }
+   }
+  ],
+  "quire_arithmetic": {
+   "posit64_quire_bits_per_lane": 1024,
+   "quarter_op_spill_bits": 8192,
+   "quarter_op_spill_fragments_64b": 128,
+   "frag_max": 16,
+   "pack_wide_bank_quarter_op_bits": 512,
+   "pack_wide_bank_quarter_op_fragments": 8,
+   "note": "the quire (Kulisch register) is the posit ecosystem's own exact-accumulation answer; its spill image is 8x over FRAG_MAX where the fp64-encoded PACK_WIDE bank word is 8 fragments (within FRAG_MAX)"
+  }
+ },
+ "input_noise_dominance": {
+  "doc": "paired per-dot comparison on the SAME dot: bf16 input-quantization noise |dot(f64) - dot(bf16)| vs the WORSE of the two accumulation errors (schedule-A tree+bank vs Option 3), both in ulp24 of the exact bf16-product dot; stdlib Gaussian streams (regenerated \u2014 the session run used numpy + salted-hash seeds)",
+  "scenarios": [
+   {
+    "dist": "gauss",
+    "K": 32,
+    "trials": 400,
+    "seed": 707649,
+    "A_ne_trueB": 48,
+    "OPT3_ne_trueB": 0,
+    "err_A_mean_ulp": 0.6570263671875,
+    "err_A_max_ulp": 56.0,
+    "err_OPT3_mean_ulp": 0.1061474609375,
+    "err_OPT3_max_ulp": 0.5,
+    "bf16_quant_noise_mean_ulp": 104400.54267040873,
+    "pairs": 400,
+    "pairs_quant_noise_dominates": 400,
+    "pairs_violating_dominance": 0,
+    "min_finite_ratio": 786.0805761588852,
+    "median_finite_ratio": 54393.43638563318,
+    "pairs_accumulation_exact": 235
+   },
+   {
+    "dist": "gauss",
+    "K": 256,
+    "trials": 200,
+    "seed": 707873,
+    "A_ne_trueB": 120,
+    "OPT3_ne_trueB": 0,
+    "err_A_mean_ulp": 4.753424377441406,
+    "err_A_max_ulp": 344.0,
+    "err_OPT3_mean_ulp": 0.24222320556640625,
+    "err_OPT3_max_ulp": 0.5,
+    "bf16_quant_noise_mean_ulp": 199538.8174784029,
+    "pairs": 200,
+    "pairs_quant_noise_dominates": 200,
+    "pairs_violating_dominance": 0,
+    "min_finite_ratio": 116.64022040926254,
+    "median_finite_ratio": 43559.90355969715,
+    "pairs_accumulation_exact": 3
+   },
+   {
+    "dist": "gauss",
+    "K": 4096,
+    "trials": 40,
+    "seed": 711713,
+    "A_ne_trueB": 35,
+    "OPT3_ne_trueB": 0,
+    "err_A_mean_ulp": 3.527621936798096,
+    "err_A_max_ulp": 34.029296875,
+    "err_OPT3_mean_ulp": 0.21870660781860352,
+    "err_OPT3_max_ulp": 0.498046875,
+    "bf16_quant_noise_mean_ulp": 48123.51950565279,
+    "pairs": 40,
+    "pairs_quant_noise_dominates": 40,
+    "pairs_violating_dominance": 0,
+    "min_finite_ratio": 505.93898207319234,
+    "median_finite_ratio": 11217.996441953921,
+    "pairs_accumulation_exact": 0
+   },
+   {
+    "dist": "relu",
+    "K": 32,
+    "trials": 400,
+    "seed": 707650,
+    "A_ne_trueB": 55,
+    "OPT3_ne_trueB": 0,
+    "err_A_mean_ulp": 0.735994873046875,
+    "err_A_max_ulp": 52.0,
+    "err_OPT3_mean_ulp": 0.115799560546875,
+    "err_OPT3_max_ulp": 0.5,
+    "bf16_quant_noise_mean_ulp": 124411.73067260878,
+    "pairs": 400,
+    "pairs_quant_noise_dominates": 400,
+    "pairs_violating_dominance": 0,
+    "min_finite_ratio": 142.1737601005297,
+    "median_finite_ratio": 57512.68103280943,
+    "pairs_accumulation_exact": 234
+   },
+   {
+    "dist": "relu",
+    "K": 256,
+    "trials": 200,
+    "seed": 707874,
+    "A_ne_trueB": 114,
+    "OPT3_ne_trueB": 0,
+    "err_A_mean_ulp": 4.8952256774902345,
+    "err_A_max_ulp": 768.0,
+    "err_OPT3_mean_ulp": 0.24343124389648438,
+    "err_OPT3_max_ulp": 0.5,
+    "bf16_quant_noise_mean_ulp": 376549.10091128125,
+    "pairs": 200,
+    "pairs_quant_noise_dominates": 200,
+    "pairs_violating_dominance": 0,
+    "min_finite_ratio": 336.8505483195934,
+    "median_finite_ratio": 44293.972700290346,
+    "pairs_accumulation_exact": 4
+   },
+   {
+    "dist": "relu",
+    "K": 4096,
+    "trials": 40,
+    "seed": 711714,
+    "A_ne_trueB": 33,
+    "OPT3_ne_trueB": 0,
+    "err_A_mean_ulp": 5.727161478996277,
+    "err_A_max_ulp": 58.3828125,
+    "err_OPT3_mean_ulp": 0.24676826000213622,
+    "err_OPT3_max_ulp": 0.478515625,
+    "bf16_quant_noise_mean_ulp": 99452.44109842659,
+    "pairs": 40,
+    "pairs_quant_noise_dominates": 40,
+    "pairs_violating_dominance": 0,
+    "min_finite_ratio": 263.98021327923095,
+    "median_finite_ratio": 8176.035221422839,
+    "pairs_accumulation_exact": 0
+   },
+   {
+    "dist": "gradcancel",
+    "K": 32,
+    "trials": 400,
+    "seed": 707651,
+    "A_ne_trueB": 91,
+    "OPT3_ne_trueB": 0,
+    "err_A_mean_ulp": 0.3389576882123947,
+    "err_A_max_ulp": 1.1875,
+    "err_OPT3_mean_ulp": 0.23698594748973847,
+    "err_OPT3_max_ulp": 0.5,
+    "bf16_quant_noise_mean_ulp": 8894.540246889595,
+    "pairs": 400,
+    "pairs_quant_noise_dominates": 400,
+    "pairs_violating_dominance": 0,
+    "min_finite_ratio": 69.73569710850484,
+    "median_finite_ratio": 22875.950723285914,
+    "pairs_accumulation_exact": 22
+   },
+   {
+    "dist": "gradcancel",
+    "K": 256,
+    "trials": 200,
+    "seed": 707875,
+    "A_ne_trueB": 76,
+    "OPT3_ne_trueB": 0,
+    "err_A_mean_ulp": 0.44585153719875964,
+    "err_A_max_ulp": 2.1380462646484375,
+    "err_OPT3_mean_ulp": 0.23848377807531507,
+    "err_OPT3_max_ulp": 0.4991455078125,
+    "bf16_quant_noise_mean_ulp": 3420.472473506627,
+    "pairs": 200,
+    "pairs_quant_noise_dominates": 200,
+    "pairs_violating_dominance": 0,
+    "min_finite_ratio": 56.454833697052855,
+    "median_finite_ratio": 7203.095321961896,
+    "pairs_accumulation_exact": 0
+   },
+   {
+    "dist": "gradcancel",
+    "K": 4096,
+    "trials": 40,
+    "seed": 711715,
+    "A_ne_trueB": 31,
+    "OPT3_ne_trueB": 0,
+    "err_A_mean_ulp": 1.5985136243369198,
+    "err_A_max_ulp": 5.569432123564184,
+    "err_OPT3_mean_ulp": 0.27666532920266035,
+    "err_OPT3_max_ulp": 0.49538378440774977,
+    "bf16_quant_noise_mean_ulp": 961.2011752064136,
+    "pairs": 40,
+    "pairs_quant_noise_dominates": 40,
+    "pairs_violating_dominance": 0,
+    "min_finite_ratio": 64.76155394683845,
+    "median_finite_ratio": 476.62750610421773,
+    "pairs_accumulation_exact": 0
+   }
+  ],
+  "total_pairs": 1920,
+  "pairs_quant_noise_dominates": 1920,
+  "pairs_violating_dominance": 0,
+  "min_finite_ratio_overall": 56.454833697052855,
+  "verdict": "PASS",
+  "conclusion": "input quantization noise exceeds every measured accumulation scheme's error on every paired dot \u2014 Option 3 is adopted for contract strength + throughput + verification-surface reduction, not raw accuracy"
+ },
+ "lattice_width": {
+  "bf16": {
+   "product_lsb_weight_2exp": -266,
+   "product_msb_bound_2exp": 256,
+   "span_bits": 522,
+   "carry_bits_log2_32": 5,
+   "sign_bits": 1,
+   "total_bits": 528
+  },
+  "f16": {
+   "product_lsb_weight_2exp": -48,
+   "product_msb_bound_2exp": 32,
+   "span_bits": 80,
+   "carry_bits_log2_32": 5,
+   "sign_bits": 1,
+   "total_bits": 86
+  },
+  "adopted_lattice": "528-bit two's-complement segmented carry-save lattice, weights 2^-266..2^260 (527) + sign = 528; 529 was 1 bit over-provisioned",
+  "checks": {
+   "min_bf16_product_is_2^-252": true,
+   "32x_max_bf16_product_below_2^261": true,
+   "exponent_260_fits_signed_11": true,
+   "32x_max_f16_product_below_2^37": true
+  },
+  "acc_bank_state_bits_2banks_x_32lanes": {
+   "fp32_bank": 2048,
+   "pack_wide_fp64_encoded_bank": 4096,
+   "f16_kulisch": 5504,
+   "bf16_kulisch": 33792
+  }
+ },
+ "rounding_events": {
+  "schedule_A_per_dispatch": {
+   "tree_node_rne24": 31,
+   "bank_store_rne24": 1,
+   "total": 32
+  },
+  "option3_per_dispatch": {
+   "in_dot": 0,
+   "bank_store_rto48": 1,
+   "total": 1
+  },
+  "drain": {
+   "pack_final_rne24": 1
+  },
+  "correction": "the kickoff memo's '(A) = 6 RNE per dot' confused path DEPTH (5 tree levels + bank) with EVENT count: a 32-leaf tree performs 31 node roundings + 1 bank store = 32 rounding events per dispatch"
+ },
+ "verdicts": {
+  "rto_tree_diverges_at_all_tested_widths": true,
+  "extraction_theorem_q26_and_48_zero_mismatch": true,
+  "rne48_store_double_rounds_rto48_does_not": true,
+  "exact_dot_plus_rto48_store_equals_true_B_within_wave": true,
+  "posit_es5_loses_F2_sticky_tie": true,
+  "input_noise_dominates_all_paired_dots": true,
+  "lattice_width_bits": {
+   "bf16": 528,
+   "f16": 86
+  }
+ }
+}

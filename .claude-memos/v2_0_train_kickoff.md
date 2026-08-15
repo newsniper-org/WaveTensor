@@ -5,10 +5,12 @@
 
 작성일: 2026-08-15
 상태: **plan-only** — RTL 없음, spec 편집 없음. 본 메모는 v2.0 의 **COMMIT 0 (spec 선행) 에 들어갈 원료**이지 규범 문서가 아니다. 규범이 되는 시점은 §23.x 하위 절로 전사(transcribe)될 때이며, 그 전까지 본 문서의 어떤 문장도 계약이 아니다.
+상태 갱신 (2026-08-15, 같은 날 후속): **v2.0 COMMIT 0 이 spec §27 (신규 top-level 절) 로 착지** — 누산 아키텍처는 사용자 결정으로 **옵션 3 (wave-step-atomic accumulation)** 채택, 본 메모의 G6 (§6.4/§7 항 1) 종결. 본 메모의 해당 절들은 in-place RESOLVED 표기로 갱신됐고, 미결로 남긴 나머지 (G7 ownership, bank selector arity, drain opcode, SR 시드 등) 는 여전히 열려 있다.
 전제 commit: `0249536` (xcu55c 실측 기준선 채택) 시점
 
 > **연관 메모**
 > - [`cross_vendor_fabric_evidence.md`](./cross_vendor_fabric_evidence.md) — 2026-08-13 실측. §5 의 risk register 재작성이 전적으로 이 문서에 의존한다.
+> - [`../scripts/acc_format_study.py`](../scripts/acc_format_study.py) + [`../include/generated/acc_format_study_report.json`](../include/generated/acc_format_study_report.json) — **§27 결정의 재현 artifact** (2026-08-15): 누산 포맷 설계 조사 전 실험의 고정-seed 재생성 (stdlib-only, 재실행 byte-identical). §1.2 C3 판정·"(A) 6회" 정정·소거 근거 수치의 normative 출처.
 > - [`wt64v1_spec.md`](./wt64v1_spec.md) §23 (roadmap 원문), §23.6a (mode-byte legality 표), §23.7 (residual risk 1-6), §23.10.8 (stub disposition), §26.5/§26.8 (v1.9 bank-fix 선례)
 > - [`../proofs/tla/README.md`](../proofs/tla/README.md) — ACC bank TLA+ 모델 (Stage-4 산출물 1). 본 메모 초고 시점(2026-08-15)에는 미착지였으나 **형제 산출물로 같은 commit 에 착지**했다.
 > - [`board_hw_plan.md`](./board_hw_plan.md) — Stage-1/2 부품 판정 (cross-vendor 실측으로 §5 갱신됨)
@@ -46,7 +48,7 @@
 |---|---|---|
 | C1 | 곱셈기 **1개**, 11-bit mantissa, f16·bf16 양쪽 커버 | §23.1, §23.2 ("bf16 과 11-bit mantissa 곱셈기 공유로 near-free") |
 | C2 | 곱은 wide-exponent 내부 포맷에서 **exact** — 곱 지점에 반올림 없음 | §23.1, §23.4 항목 1 |
-| C3 | RNE 는 fp32 누산에서 **단 1회** | §23.1 |
+| C3 | RNE 는 fp32 누산에서 **단 1회** | §23.1 — **✅ RESOLVED 2026-08-15**: per-FMA fusion 계약으로 한정 재구속 (spec §23.1 in-place 개정); 누산 스케줄은 spec §27 이 규범 (아래 RESOLVED 블록) |
 | C4 | bf16-accumulate **구조적 금지** (acc==0 은 bf16 에서 **영구** ILLEGAL) | §23.1, §23.6a 전역 불변식 4 |
 | C5 | ECP5 에서 FP_LANES=2 가 한계 | §23.1 — **본 메모 §5.1 에서 재검토 대상으로 지정** |
 
@@ -67,12 +69,18 @@
 
 (B) 를 택하면 tree 중간값을 PACK_WIDE(48-bit round-to-odd)로 들고 root 에서만 PACK_FINAL 하는 우회가 떠오르지만 **기본값으로 안전하지 않다**: round-to-odd 중간값 + fp32 RNE 의 single-rounding 등가는 중간 폭 ≥ 2p+2 = **50 bit** 를 요구하는데 `FP_AddWide` 의 내부 폭은 **48** 이다. 모듈 헤더가 주장하는 것은 RTO 합성성(`rto_n(rto_48(x)) == rto_n(x)`, n < 48)뿐이고 이는 다른·더 약한 성질이며, 현재 이 성질은 golden `micro_*` 모델과 bit-match 가 증명된 step sequence **내부**에서만 쓰이지 누산 트리의 double-rounding 우회로 쓰인 적이 없다. 따라서 **(B) 를 택하면 48-bit 가 재검토 대상이 되고 Gate 2 가 재개된다.** (A) 를 택하는 것이 기존 실측 자산을 보존한다. **판정은 사용자 결정 사항으로 남긴다** (§7).
 
+> **✅ RESOLVED (2026-08-15, 사용자 결정 — spec §27 로 성문화, G6 종결).** 판정은 (A) 도 (B)-via-RTO-tree 도 아닌 **옵션 3 "wave-step-atomic accumulation"** 이다: in-dot 528-bit exact-integer lattice 가 dot 내부 반올림을 **0회** 로 만들고, wave-step 당 반올림은 **bank store 의 RTO-48 1회**, drain 에서 **RNE-24 1회** 뿐이다 — 즉 (B) 가 원하던 "dot 당 단일 반올림" 을 wide 포맷에 대해 달성하되, tree 가 아니라 **exact 합** 으로 달성하므로 위 50-bit 논증이 적용될 cascade 자체가 없다. **`FP_AddWide` 는 48-bit byte-untouched 존치, Gate 2 는 영구 폐쇄** — "50 bit 필요" 명제는 category error 로 은퇴했다 (RTO tree 는 50 포함 전 폭에서 실패하고, 폭이 중요한 유일한 지점인 최종 추출은 q ≥ 26 만 요구 — 48 은 22 bit 마진; spec §27.5 항 6).
+>
+> **아울러 위 표의 "(A) = 6회" 는 오류로 정정한다**: 6 은 경로 **깊이** (곱 1 + 5-level tree) 이지 이벤트 **수** 가 아니다. 32-leaf tree 의 dot 당 반올림 이벤트는 node 31 + bank store 1 = **32회/dispatch** 다 (`include/generated/acc_format_study_report.json` `rounding_events.correction`). 옵션 비교의 올바른 대비는 32 (option A/2 스케줄) vs **1** (옵션 3) 이다.
+
 ### 1.3 fp32 ACC bank + canonical accumulation order (§23.1)
 
 > "**fp32 ACC bank** (2 × 32 lanes × 32b/cluster, tag pcid[1:0] 로 bank 선택 + 명시적 ownership/drain 계약 + ACC_SPILL/FILL) — "requester ID" 식 암묵 계약은 반증되어 폐기." (§23.1)
 > "**normative canonical accumulation order**: 32-lane balanced 5-level tree + ascending wave-order K. 모든 FP_LANES 구성이 이 순서와 serially-equivalent 해야 함 → run/lane-config/part 간 bit-identical fp32 누산." (§23.1)
 
 **위 인용문 2개가 ACC bank 에 관한 규범 텍스트의 전부다.** repo 전체에서 `pcid` 는 spec 에 정확히 1회 등장하고(위 문장), 정의는 spec 어디에도 없다 — RTL 에서만 `port_context_id = tag[31:16]` 로 정의된다(`EHDecode.v:363-367`).
+
+> **[2026-08-15 갱신 — spec §27.2.2 가 bank 의 normative source 로 착지]** 위 "규범 텍스트의 전부" 서술은 이 시점부로 stale 다: bank word 는 **32b fp32 가 아니라 64b (PACK_WIDE 값의 IEEE binary64 무손실 재인코딩)** 로 확정됐고 (2 banks × 32 lanes × 64b/cluster; canonical zero = commit c21092a pin; SPILL image fp64, quarter-op 8 fragments; FILL validation — NaN/Inf sticky fault, ±0 canonicalize), 전 규범은 `wt64v1_spec.md` §27.2.2 다. **본 절의 pcid arity 모순·ownership/identity 질문과 TLA+ 선행 의무는 그대로 유효** — §27 은 그것을 닫지 않았다 (잔존 검증 표면으로 §27.4 에 등재).
 
 **왜 이 한 줄이 TLA+ 를 강제하는가** (§23.7 리스크 3):
 
@@ -513,7 +521,7 @@ R1 이 중요한 이유: SR 을 넣으면서 STORE_QUANT 의 RNE 경로를 건�
 | G3 | GATE V20-1 이 **양 fabric 에서 실행**되고 수치가 archive 됐다 | **필수** |
 | G4 | UltraScale+ 에서 FMA lane 이 **≥100 MHz** | **필수 (조건부)** — 미달 시 no-go 가 아니라 **파이프라인 단수 재설계**로 되돌아감 (v1.9 가 dispatch 파이프라이닝으로 한 것과 동형). 단 **미달을 미달로 기록**할 것 (§26.6 이 Fmax FAIL 을 정직 기록한 선례) |
 | G5 | 반증 항목 3개(free-running LFSR, 8-bit/correlated-lane, per-pe-acc)가 **사유와 함께** spec 에 기록됐다 | **필수** — 본 메모 §2.2/§3.5 를 전사 |
-| G6 | §1.2 의 RNE 횟수 판정(A per-step vs B per-dot)이 **사용자 결정으로 확정** | **필수** — B 를 택하면 `FP_AddWide` 48-bit 재검토가 열리므로 순서상 여기서 닫아야 한다 |
+| G6 | §1.2 의 RNE 횟수 판정(A per-step vs B per-dot)이 **사용자 결정으로 확정** | **✅ CLOSED (2026-08-15)** — 옵션 3 채택으로 종결 (§1.2 RESOLVED 블록, spec §27.1): dot 내부 반올림 0회 + bank store RTO-48 1회 + drain RNE-24 1회; `FP_AddWide` 48-bit 무수정, Gate 2 영구 폐쇄 |
 | G7 | ACC bank ownership 이 **하드웨어 강제인지 SDK 규율인지** 사용자 결정 | **필수** — §3.5-2 |
 
 **v2.0 전체 → release (S8 완료)**
@@ -535,7 +543,7 @@ R1 이 중요한 이유: SR 을 넣으면서 STORE_QUANT 의 RNE 경로를 건�
 
 본 메모는 아래를 **의도적으로 미결로 남긴다**. 임의 결정이 나중에 breaking change 를 만드는 항목들이다.
 
-1. **RNE 횟수 (§1.2 C3)** — (A) per-step 6회(GPU 통상, 기존 실측 자산 보존) vs (B) per-dot 1회(§23.1 문자 그대로, `FP_AddWide` 48-bit 재검토 유발). **G6.**
+1. ~~**RNE 횟수 (§1.2 C3)** — (A) per-step 6회(GPU 통상, 기존 실측 자산 보존) vs (B) per-dot 1회(§23.1 문자 그대로, `FP_AddWide` 48-bit 재검토 유발). **G6.**~~ **✅ RESOLVED (2026-08-15, 사용자 결정 — spec §27)**: 옵션 3 wave-step-atomic accumulation — (A)/(B) 양자택일이 아닌 in-dot exact lattice (dot 내부 0회 + bank RTO-48 1회 + drain RNE-24 1회). "(A) 6회" 표기는 깊이/이벤트 혼동 오류였음 (올바른 값 32회/dispatch — §1.2 정정 블록). G6 종결.
 2. **ACC bank ownership 이 하드웨어 강제인가 SDK 규율인가 (§3.5)** — §26.8 이 마지막 SDK 규칙을 삭제하고 하드웨어로 대체한 방향, 그리고 SDK 계약이 하드웨어에서 감지 불가하다는 §23.6a 사실은 **하드웨어 강제**를 가리킨다. 그러나 비용이 측정되지 않았다. **G7.**
 3. **bank selector arity (§1.3)** — `pcid[1:0]` 은 4 값인데 bank 는 2 개다. bank 를 4 개로? `bank = pcid[0]`? 2:1 사상 + collision fault? **TLA+ 모델이 세 안을 비교할 수 있으나 선택은 설계 결정이다.**
 4. **drain opcode (§3.5)** — 0x72 ACC_REDUCE / 0x7C STORE_QUANT / 0x7D SPILL 중 미지정. **SR key 귀속(§2.3 Q5)과 얽혀 있어 독립적으로 고를 수 없다.**

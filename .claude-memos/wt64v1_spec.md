@@ -2008,8 +2008,8 @@ Phase 1 인벤토리로 확정한 현행 사실:
 - LayerNorm/RMSNorm/Softmax 매크로를 fp32 통계로 재구축, 종단 1회 양자화 — 기존 문서화된 4개 numerics 버그 (MEAN ASR floor, x-µ mod-16 wrap, gamma p[3:0] truncation, rsqrt 6.25% floor) 전부 은퇴.
 
 **v2.0 "TRAIN"** — 최초 학습 가능 버전 (training triple: bf16 multiply / fused fp32 accumulate / fp32-master-or-SR update).
-- 통합 f16/bf16 **fused-FMA** lane (11-bit mantissa 곱셈기 하나로 양쪽 커버; 곱은 wide-exponent 내부 포맷으로 exact 유지, fp32 누산에서 단 1회 RNE). bf16-accumulate 는 구조적으로 금지 (업계 전례 없음). ECP5 에서 FP_LANES=2 가 한계.
-- **fp32 ACC bank** (2 × 32 lanes × 32b/cluster, tag pcid[1:0] 로 bank 선택 + 명시적 ownership/drain 계약 + ACC_SPILL/FILL) — "requester ID" 식 암묵 계약은 반증되어 폐기.
+- 통합 f16/bf16 **fused-FMA** lane (11-bit mantissa 곱셈기 하나로 양쪽 커버; 곱은 wide-exponent 내부 포맷으로 exact 유지, fp32 누산에서 단 1회 RNE). bf16-accumulate 는 구조적으로 금지 (업계 전례 없음). ECP5 에서 FP_LANES=2 가 한계. *(2026-08-15 개정 — §27: "fp32 누산에서 단 1회 RNE" 는 **per-FMA fusion 계약** — 개별 fused multiply-add 1건이 곱 지점 무반올림 + 융합 반올림 1회 — 에 한정 재구속된다. dot/누산 스케줄의 반올림 이벤트 수는 이 문장이 아니라 §27 wave-step-atomic 계약이 규범이다: in-dot exact lattice 로 dot 내부 반올림 0회, bank store 에서 RTO-48 1회, drain 에서 RNE-24 1회. 이 문장을 누산 트리의 "dot 당 1회 RNE" 로 읽는 해석은 kickoff memo §1.2 C3 충돌로 등재됐다가 §27.1 로 판정 종결.)*
+- **fp32 ACC bank** (2 × 32 lanes × 32b/cluster, tag pcid[1:0] 로 bank 선택 + 명시적 ownership/drain 계약 + ACC_SPILL/FILL) — "requester ID" 식 암묵 계약은 반증되어 폐기. *(2026-08-15 개정 — §27.2.2: bank word 는 32b fp32 가 아니라 **64b — PACK_WIDE 값의 IEEE binary64 무손실 재인코딩** — 로 확정, 즉 **2 banks × 32 lanes × 64b/cluster**. SPILL image = fp64, FILL validation (NaN/Inf sticky fault, ±0 canonicalize) 포함 전 규범은 §27.2.2. pcid arity/ownership 미결과 TLA+ 선행 의무는 무변경 유효.)*
 - **normative canonical accumulation order**: 32-lane balanced 5-level tree + ascending wave-order K. 모든 FP_LANES 구성이 이 순서와 serially-equivalent 해야 함 → run/lane-config/part 간 bit-identical fp32 누산.
 - fp32 master weights + Adam (fp32 scalar pipeline 재사용). **Stochastic rounding 은 탑재하되 non-default**: counter-based RNG keyed on (wave_number, thread_id, lane_index), ≥16 random bits — free-running LFSR(재현 불가)과 8-bit/correlated-lane(bias) 방식 둘 다 반증됨. fp32→bf16 STORE_QUANT downcast 에서만 적용 (Trainium/Graphcore 지점).
 
@@ -2036,7 +2036,7 @@ Phase 1 인벤토리로 확정한 현행 사실:
 
 **보장하는 것** (cocotb + numpy/mpmath golden 으로 검증 가능한 normative 계약):
 1. exact narrow products (int 은 구조상, f16/bf16 은 wide-exponent 내부 포맷)
-2. wide accumulation — int32 는 order-free bit-exact; fp32 는 canonical order 에서 step 당 정확히 1회 RNE
+2. wide accumulation — int32 는 order-free bit-exact; fp32 는 canonical order 에서 step 당 정확히 1회 RNE *(2026-08-15 개정 — §27: int32 는 무변경. fp32 는 "step 당 1회 RNE" 가 아니라 — 그 서술은 option-A 스케줄의 것으로 superseded — **in-dot exact (order-free, dispatch 내부 반올림 0회) + bank store 에서만 RTO-48 1회 + drain 에서 RNE-24 1회** 다. 이로써 fp32 누산도 dot 내부에서는 int32 와 같은 order-free 성질을 얻는다.)*
 3. 종단 1회 좁히기 (STORE_QUANT/CVT 에서만; norm 매크로 end-to-end MSE ≤ 1.05× 출력 dtype 의 이론 양자화 floor)
 4. per-op IEEE 계약 (elementwise RNE; FRSQRT32/FEXP2_32 ≤2 ulp; DAZ+FTZ/NaN/Inf/-0 표가 normative)
 5. **bit-reproducibility**: 같은 프로그램+데이터+시드 → run/FP_LANES/part 불문 bit-identical (SR 포함 — counter-based RNG 라 재현됨)
@@ -2952,4 +2952,87 @@ seed noise 인지는 **미확정**.
 ---
 
 **TODO(다음 commit, parent 세션 확인 필요) — 본 session 이 편집하지 않음:** §23.10.9(risk 2/4, 특히 line 2324/2326 의 "v1.9 arbitration rework"/"v1.9 로 의도적 이연" 문구)와 §25.6 항 4 / §25.7 risk 6(positional NoC-bank hazard 노출 증가의 RE-ACCEPT 서술, "fix 는 v1.9 arbitration rework")은 본 절 착지 이후 **stale 해질 가능성이 있다** — 본 절(§26)이 바로 그 v1.9 하드웨어 fix 이므로, 위 절들의 "v1.9 로 이연" 서술을 "§26 에서 이행됨"으로 소급 갱신할지, 아니면 superseded-history 배너(§12a 규칙 5)로 표기할지는 이 절의 scope 밖이며 별도 commit 에서 검토가 필요하다. 본 session 은 mandate 지시대로 §23.10.9/2291/2325 인근 절을 편집하지 않았다.
+
+## 27. v2.0 TRAIN 누산 아키텍처 — 옵션 3 채택 (2026-08-15, COMMIT 0 · normative)
+
+**사용자 결정 (2026-08-15, binding): v2.0 누산은 옵션 3 — exact-integer in-dot lattice + wide ACC bank — 를 채택하고, 옵션 3 의 gate 전건 통과 즉시 옵션 3a (FDOT32_CR audit opcode 추가, §27.7) 로 이행한다.** 계약 명칭: **"wave-step-atomic accumulation"**. 본 절이 v2.0 누산 아키텍처의 normative source 다 — spec-before-code COMMIT 0 (§12a). 세 편의 완결된 실측 분석 (RTO-tree 전 폭 반증 / 포맷 사다리·posit 실측 / input-noise dominance) 이 본 결정의 근거이며, **재현 artifact 는 `scripts/acc_format_study.py` + `include/generated/acc_format_study_report.json`** (stdlib-only, 고정 seed, 재실행 byte-identical, rounding core 는 `scripts/golden_fp32.py` 에서 import) 이다. **인용 규율**: 설계 세션의 일부 수치는 salted-hash seed 로 생성되어 normative 인용 불가 — 본 절의 모든 수치는 고정-seed 재생성본 (위 JSON) 에서 가져왔고, 세션값과 다른 곳은 본문에 명기한다.
+
+### 27.1 결정 기록 — 옵션 2/3/2a/3a 비교 판정
+
+비교 대상 4안 (전부 wide ACC bank 공유; 차이는 in-dot 경로와 audit opcode 유무):
+
+| 안 | in-dot 경로 | dispatch 당 반올림 이벤트 | FP_LANES serial-equivalence 증명 의무 | audit opcode |
+|---|---|---|---|---|
+| 2 | RTO-48 tree (FP_AddWide 31회 pass) | **32** (tree node RNE/RTO 31 + bank store 1) | **영구 부담** (순서가 결과에 개입) | 없음 |
+| 2a | 옵션 2 + FDOT32_CR | 32 | 영구 부담 | 있음 — 단 main path 와 **불일치가 정상** (근사 비교만 가능) |
+| **3 (채택)** | **exact-integer 528-bit lattice** | **1** (bank store RTO-48; in-dot 0) | **구조적으로 소거** (exact = 결합 순서 무관) | 없음 (3a 로 이행 예약) |
+| 3a (committed follow-up) | 옵션 3 + FDOT32_CR (0x7A) | 1 | 소거 | 있음 — **single-wave 즉시 drain 에서 main path 와 bit-exact 일치가 정리로 보장** (§27.7) |
+
+**판정**: 옵션 3 이 옵션 2 를 3개 축 전부에서 지배한다 — (i) 반올림 이벤트 32→1, (ii) 처리량 (31회 순차 adder pass vs 정수 compressor tree + resolve 1회), (iii) 검증 표면 (serial-equivalence 세금 소거, §27.4). 옵션 3a 는 옵션 3 위에서만 성립하는 자기검증 불변식 (dual-datapath bit-match) 을 추가하므로, **순서는 3 → gate 통과 → 3a** 로 확정한다 (op_sel 격리 근거는 §27.7).
+
+**"wave-step-atomic accumulation" 의 정의**: 한 wave-step (= 한 dispatch 의 32-lane dot + bank carry-in) 이 bank 상태에 기여하는 반올림 이벤트는 **정확히 1회** (RTO-48 store) 이고, 그 1회는 **exact 한 33-항 합** (32 곱 + carry-in) 의 함수다. 즉 wave-step 내부에는 반올림도 순서 민감성도 없으며, store 후 bank word 는 (직전 bank word, 32 곱) 만의 결정적 함수다 — 형식적 single-rounding (B) 가 **wave-step 단위로** 성립한다 (한계는 §27.3).
+
+**정확성만으로는 어떤 안도 정당화되지 않았음을 기록한다** (§27.5 항 5, input-noise dominance): 옵션 3 채택 사유는 **계약 강도 + 처리량 + 검증 표면 축소**이지 raw accuracy 가 아니다.
+
+### 27.2 normative 아키텍처
+
+#### 27.2.1 in-dot 경로 — 528-bit exact-integer lattice
+
+- **입력**: dispatch 당 32개 곱 (bf16: 8×8→16-bit significand 곱 / f16: 11×11→22-bit — 출하된 C2 계약대로 48-bit wide 포맷에서 **exact**, 곱 지점 반올림 없음) + **ACC bank carry-in 을 33번째 EXACT addend 로 융합**.
+- **lattice**: **528-bit two's-complement segmented carry-save lattice** — weight 2^-266..2^260 (527 자리) + sign 1 = **528**. 도출 (JSON `lattice_width`): bf16 곱 LSB weight 2^-266 (최소 곱 2^-252 의 significand LSB), 곱 상한 <2^256, span 522 + carry 헤드룸 log2(32)=5 + sign 1 = 528; **32× 최대 곱 <2^261, exponent 260 은 signed-11 에 수납** — 전부 in-run assert 로 검사됨. 529 는 1 bit 과잉으로 판명; **528 이 fused carry-in 포함으로 충분**. f16 단독이면 86 bit (span 80+5+1) 이나 통합 lattice 528 이 양 dtype 을 커버한다.
+- **적재**: **static 6-stage barrel + 2-of-9 segment demux** — `FP_AddWide.v:179-194` 의 static-barrel idiom 그대로 (**dynamic part-select 금지 — project law**). segment 기하는 golden model/RTL 에서 확정하되 idiom pin 은 본 절이 한다.
+- **합산**: 정수 3:2/4:2 compressor — **exact, 따라서 dot 내부는 순서-무관 (association-free)**. dot 당 **resolve 정확히 1회** (xcu55c: ~66 CARRY8, ~4 ns; ECP5: 9-cycle serial — **양쪽 다 ESTIMATE, §27.6 unit gate 에서 실측 졸업**, §25.4 규율).
+- **추출 = 그 wave-step 의 유일한 반올림**: resolve 결과에 LZC/normalize 후 **top-48 + sticky-jam = exact 33-항 합의 RTO_48** 을 bank 에 store 한다.
+- **정당성 정리 (본 아키텍처를 sound 하게 만드는 단 하나의 정리)**: **RNE_24(RTO_48(exact)) == RNE_24(exact)** — 단일 값에 대한 Boldo-Melquiond 의 유일하게 정당한 적용 (q ≥ p+2 = 26 필요; 48 은 **22 bit 마진**). 재생성 실측 (JSON `extraction_theorem`): directed tie x = 1+2^-24+2^-60 에서 q25 실패/q26·48·50 통과; random sweep 200k (tie-인접 생성기) 에서 **q25 는 82,237/200k = 41.12% 실패, q26/q48/q50 은 0 mismatch**; 별도 composition sweep 200k (RNE24∘RTO48) 도 0. **store 가 RNE-48 이 아니라 RTO-48 인 이유** (JSON `rto48_vs_rne48_composition`): directed 반례 x = 2^48+2^24+1 에서 RNE24(RNE48(x)) = 2^48 (1 ulp 낮음 — double rounding), RNE24(RTO48(x)) = 2^48+2^25 (정답) — assert 로 고정. random 200k 에서 RNE-48 도 0 hit 이지만 이는 이벤트 확률 ~2^-24 의 **예상된 표본 결과이지 안전성이 아니다** — directed 반례가 판정이다.
+
+#### 27.2.2 wide ACC bank — 2 × 32 lanes × 64b/cluster
+
+- **word 포맷**: 내부 datapath 값 = PACK_WIDE 형 (sign / signed 11-bit exp / 48-bit sig, unit at bit 47 — `FP_AddWide.v` 인터페이스 그대로). 저장/spill word = 그 값의 **IEEE binary64 무손실 재인코딩** — 48-bit sig 는 fp64 의 53-bit precision 에 정확히 수납되며, 변환은 상수 배선 + bias 가산 + 2-case corner shift 로 **exact 검증 완료**. bank 상태 = 2 × 32 × 64b = **4,096 bit/cluster** (비교: bf16 Kulisch bank 는 33,792 bit — §27.5 항 4).
+- **canonical zero**: PACK_WIDE 의 정준 zero (**sign=0, exp=-1024, sig=0**) 는 commit **c21092a** 에서 pin + 전 gate 재실측 완료 — bank 의 zero 표현도 이것 하나다 (fp64 인코딩상 +0).
+- **SPILL**: image = fp64 (numpy-native; SDK 는 `np.float64` 로 직독). quarter-op = **8 lanes × 64b = 512b = 8 fragments** — FRAG_MAX=16 내 수납 (§25.3 확폭의 소비자).
+- **FILL validation (normative — loud fault, never silent)**: ingest 시 (i) **NaN/Inf (fp64 E=2047) → sticky fault** (v1.9 `bank_tag_collision_error` 와 같은 등급의 합성 가능한 sticky status bit 클래스 — sim-only assertion 금지, §26.5 선례); (ii) **PACK_WIDE-representable 집합 밖의 어떤 값도 → 동일 fault**; (iii) **fp64 −0 과 +0 은 양쪽 다 수용하되 ingest 에서 내부 canonical +0 으로 canonicalize** — §23.10.5 특례표의 A4/F4 +0 pin 과 정합. bank ingest/egress 는 무손실 변환이므로 이 검증을 통과한 값은 round-trip bit-exact 다.
+
+#### 27.2.3 drain
+
+**PACK_FINAL — 정확히 1회 RNE-24 + flush-after-round FTZ** (출하된 pin 그대로). wave-step store 의 RTO-48 과 합성하면, 위 정리에 의해 **단일 wave-step 의 dot 을 즉시 drain 한 결과는 RNE_24(exact 33-항 합) 과 bit-exact** 다 — 이것이 §27.7 FDOT32_CR 불변식의 기반이다.
+
+### 27.3 계약의 한계 (honest — normative 로 명기)
+
+- **full-K 단일 반올림은 형식적으로 보장하지 않는다.** 보장되는 형식적 (B) 는 **각 wave-step 내부** (dot + carry-in → wide 포맷으로의 단일 반올림) 다. wave 경계를 넘으면 bank 에 park 된 RTO-48 값의 jam (odd 로 밀린 최하위 bit) 이 **후속 wave 의 cancellation 으로 노출**될 수 있다 — 구성적 증거는 JSON `bank_store_jam_families` 의 **F5b/F6 (exact-tie 경계에서 true (B) 대비 2 ulp)** 와 **F1/F4 (park-plus-cancel 계열)** 다. **주의 — 인용 규율**: 옵션 3 의 실제 wave-step 단위 store 는 전 표본 (모든 K, 전 stream) 에서 cross-wave 발산 0 으로 실측됐으나, 이 0 은 **표본 결과이지 증명이 아니다** — 한계를 인용할 때는 jam family 반례를 인용하고 **표본률을 인용하지 말 것** (JSON `sampling_note` 가 이 규율을 운반).
+- **보장하는 것**: (i) per-wave-step atomicity (dispatch 당 bank 반올림 이벤트 정확히 1); (ii) 결정론 — bank 궤적은 (프로그램, 데이터, wave-order) 만의 함수; (iii) **run/FP_LANES/part 불문 bit-identity** — dot 내부가 exact 라 lane 접기/스케줄이 결과에 개입할 수 없고, 잔존 순서 자유도는 wave-order K 시퀀싱뿐이다 (ascending wave-order K 는 §23.1 대로 normative 유지).
+- 타 GPU/CPU 와의 bitwise 동일성 비약속 (§23.4) 은 그대로다.
+
+### 27.4 검증 표면 변화
+
+- **소거**: §23.1 의 "모든 FP_LANES 구성이 canonical order 와 serially-equivalent 해야 함" 증명 의무는 **dot 내부에 한해 구조로 대체된다** — exact 정수 합은 결합 순서가 없으므로 증명할 명제 자체가 소멸한다 (kickoff memo TP-2 의 serial-equivalence 테스트군은 wave-order 시퀀싱 검사로 축소). §23.1 의 canonical order 문장에서 살아남는 부분은 **wave-order K 시퀀싱** 하나다.
+- **잔존**: (i) wave-order K 시퀀싱의 결정론 테스트; (ii) **bank ownership — `proofs/tla/` TLA+ 모델이 RTL 을 선행** (formal-first, §23.7-3); (iii) **golden lattice model — RTL 이전에 착지** (golden-before-RTL law, §25.1 선례): 33-항 exact dot + RTO-48 추출 + fp64 codec + FILL validation 의 reference 를 `scripts/golden_fp32.py` 계열로 저작, 독립 oracle (mpmath/ml_dtypes) 교차검증 포함 (§23.10.5 pin 13 규칙).
+- `scripts/acc_format_study.py` 는 **설계 판정의 재현 artifact** 로 존치한다 (golden model 의 대체물이 아니다 — golden 은 sequencer/RTL-faithful 층을 별도로 요구한다).
+
+### 27.5 소거 근거 (전부 고정-seed 재생성 수치 — JSON 인용)
+
+1. **RTO-tree 는 모든 폭에서 죽었다.** realizable-leaf 반례 [1×1, 2^-30×2^-30, 1×(-1)]: RTO_48-tree **0x28000000** / RTO_50-tree **0x27000000** vs true **0x21800000**; 스케일 구성으로 q=48/50/64/128/254/368 전부 발산 (f16 leaf 도 48/50 발산); **tie-straddle family 는 catastrophic cancellation 전무한데도 q48 12.45% / q50 7.11% 발산** (재생성값 — 세션값 13.4/7.9 대체); cancellation family 100%/100% (worst 1.5e23 ulp), rand-wide 0.20%/0.19%. **안전 폭 == Kulisch 폭** (bf16 527 / f16 85; q=527 에서 0/2000) — 그 폭에서 tree 는 더 이상 반올림 tree 가 아니라 **exact 누산기 그 자체**다. 즉 "충분히 넓은 RTO tree" 의 극한이 곧 옵션 3 이다.
+2. **옵션 2 기각.** dispatch 당 반올림 이벤트 **32 vs 1** (tree node 31 + bank store 1 — JSON `rounding_events`); 31회 순차 adder pass 로 더 느림; FP_LANES serial-equivalence 검증 세금 영구 부담. **정정 기록**: kickoff memo 의 "(A) = dot 당 6회 RNE" 는 **오류** — 경로 깊이 (곱 1 + tree 5-level) 를 이벤트 수와 혼동했다. 32-leaf tree 의 이벤트 수는 node 31 + bank 1 = **32/dispatch** 다 (memo 측 정정은 같은 commit 에 동반).
+3. **bf-exponent ladder 붕괴.** bf48(1+8+39): bf16 곱의 exponent 범위가 8-bit exp 를 overflow — 즉사. (1+11+36): write 당 PACK_WIDE 보다 좁고 K-horizon ~2^11 로 부족 — 지배됨. ladder 의 끝점 == PACK_WIDE — 신규 포맷이 아니라 이미 출하된 포맷이다.
+4. **posit 실측 기각 (exact-arithmetic codec, roundtrip 20k idempotence 자가검증 통과).** 표준 posit64es2 는 bf16-곱 극단 binade (−252/+255) 에서 **significand 1 bit 로 붕괴** — 2^230 band 에서 100% 발산, max **5.52e8 ulp** (재생성값 — 세션값 4.3e9 와 같은 클래스); es=5 튜닝은 최선에서 option-C 동급이나 **F2 sticky-tie family 를 전 구간에서 패배** (sticky 가 폭을 이긴다 — JSON `posit_adv` F2); 튜닝 gradient 는 fixed-field 포맷으로 수렴 (그 시점에 posit 이 아니다); **quire 의 자백**: posit 생태계 자신의 exact 누산 답인 quire 는 posit64 에서 1,024 bit/lane — quarter-op spill 8,192 bit = **128 fragments = FRAG_MAX 16 의 8×** (PACK_WIDE bank 는 8 fragments), bank 상태 33,792 bit (bf16 Kulisch) vs **4,096 bit**.
+5. **input-noise dominance — 정확성 논증의 종결.** 같은 dot 에 대한 쌍대 비교에서 bf16 입력 양자화 noise 가 어떤 누산 방식의 오차보다도 큼: **1,920/1,920 쌍 전부 dominance, 최소 유한 비 56.45× (재생성값 — 세션 3.9× 보다 유리), median 477×–57,513×**. 따라서 옵션 3 의 채택 사유는 계약 강도/처리량/검증 표면이다 (§27.1).
+6. **"FP_AddWide 는 50 bit 가 필요하다 / Gate 2 재개" 명제의 영구 은퇴.** 이 명제는 category error 다 — 문제는 폭이 아니라 **cascade** 다: RTO tree 는 50 포함 전 폭에서 실패하고 (항 1; tie-straddle 은 50 bit 에서도 7.11%), 폭이 실제로 중요한 유일한 지점 (최종 추출) 은 q ≥ 26 만 요구하며 48 은 22 bit 마진을 갖는다 (§27.2.1 정리). **FP_AddWide 는 48-bit 로 byte-untouched 존치, Gate 2 영구 폐쇄.**
+
+### 27.6 Gates — pre-priced, 구현 이전 공표 (locked)
+
+**GATE V20-2 (528-bit lattice unit gate, dual-fabric) 가 v2.0 의 첫 hard gate 다.** (번호 부여: GATE V20-1 = bf16 FMA lane pre-synth gate — kickoff memo §6.3 이 정의, GATE F1/F1-US 로 이미 실행·PASS.) 방법론은 §23.10.7/§25.5/§26.6 의 그것 — merge-blocker, 기준 수치는 측정 전 공표, gate log 는 merge commit 첨부, "선언된 gate 건너뛰면 5 commit 뒤 발각" 교훈은 이미 4회 확인됐다.
+
+- **xcu55c (성능 판정 fabric — kickoff §5.2)**: nominal **8-12k LUT + 2-3k FF/cluster** (Pod 투영 nominal ≤ +3.8%). **LUT gate ceiling = 12,000 × 1.67 (이 project 의 실측 overrun 계수 — §23.10.10(g) 방법, 0d/0e/v1.9 를 관통한 그 기준) = 20,040 LUT/cluster-상당 unit — hard ceiling, 초과 시 merge 금지.** FF 는 추적만 (V9-4 관례). 곱셈기: lattice 는 adder/compressor 만이므로 **premap `$mul` 연산자 delta 0** (§26.6 amendment 의 pin form — 물리 DSP/MULT 절대 개수는 gate 대상 아님). resolve 는 1 cycle @ 100 MHz 목표에 수납되어야 함 (~66 CARRY8 / ~4 ns 는 ESTIMATE — gate 에서 실측 졸업). Pod 투영은 unit 실측 후 재산정 의무.
+- **ECP5 (feasibility measurement — gate 판정 대상이 아님, 사용자 지시 2026-08-15)**: **GATE V20-2 의 merge-blocker binding 은 xcu55c 반쪽에만 있다. ECP5 반쪽은 실현성 측정이며, 어떤 결과가 나와도 — 어렵다·비싸다·불가능하다 포함 — gate FAIL 을 구성하지 않는다.** 유일한 의무는 측정의 실행과 정직한 기록이다. 대상 설계는 **beat-serialized 2-products/beat × 16 beats + 9-cycle serial resolve**. nominal 면적 추정이 존재하지 않으므로 LUT ceiling 을 선공표하지 않으며, 아래는 pass/fail 이 아니라 **판정 분류 기준**(feasible/infeasible 의 기록 형식)이다: (i) standalone OOC synth+PnR 완주 여부, (ii) Fmax (기존 fp_ops 관례값 40 MHz 는 비교 참조점일 뿐 계약 아님), (iii) MULT18X18D 신규 0 / premap `$mul` delta 0 여부. **명시 off-ramp (사전 선언 — 발동은 실패가 아니라 예정된 분기다)**: ECP5 가 infeasible (미완주 또는 cluster 통합 불가) 로 분류되면 **ECP5 는 at-speed dot path 를 제외한 검증 역할 (TRNG 실리콘 검증·UsbCdcTransport·FOSS bitstream) 을 전부 유지**하고, dot-path 검증은 cocotb + xcu55c 로 수행한다 — cross_vendor_fabric_evidence.md 의 "ECP5 는 FOSS 검증 vehicle, 성능 타겟 아님" 포지셔닝의 직접 적용.
+- **하류 gate 순서 (선공표)**: ① **golden lattice model** (§27.4 — RTL 이전, golden-before-RTL law) → ② GATE V20-2 (본 gate) → ③ bank RTL + TLA+ 유도 directed test (ownership loud-fault 경로 포함 — TLC 반례 trace 가 시나리오) → ④ full-cluster gate (COMB/Fmax/premap-`$mul` — 기준 수치는 ③ 착지 후 별도 COMMIT 에서 V9-4 형식으로 선공표). **FDOT32_CR 관련 gate 전부는 3a 로 이연** (§27.7).
+
+### 27.7 FDOT32_CR 예약 — opcode 0x7A (옵션 3a, committed follow-up)
+
+- **0x7A 를 FDOT32_CR 로 예약한다.** 3a 착지 전까지 0x7A 는 오늘처럼 opcode_supported whitelist 미포함 → **decode_error** (§23.6a) — 본 예약은 다른 소비자의 선점을 금지하는 배정 기록이다.
+- **semantics sketch (3a COMMIT 0 에서 확정)**: 순차 2Sum/EFT (error-free transformation) 기반 **correctly-rounded 32-term dot** — audit 전용, ~9,000 cycles (처리량 경로 아님). 설계 조사에서 66k+ trials 0 mismatch 로 검증됨.
+- **옵션 3 하에서 FDOT32_CR 의 가치는 불변식이다**: 단일 wave 의 dot 을 즉시 drain 하면 **FDOT32_CR == main path BIT-EXACT** — 양쪽 다 RNE_24(exact) 이기 때문 (§27.2.3 정리; JSON 의 OPT3 single-wave == true B in-run assert 6,000+ trials). 즉 3a 는 **on-silicon dual-datapath 자기검증** 을 제공한다 — 두 경로의 불일치는 그 자체로 결함 신호다 (프로그램 레벨 검사; runtime fault 아님).
+- **sequencing 근거 (왜 lattice release 와 격리하는가)**: op_sel 확장은 이 repo 의 상존 최고 회귀 위험 편집이다 — §25.1 항 9 가 op_sel 접촉 1회에 기존 8개 step 프로그램 전건 re-proof 를 강제한 선례. FDOT32_CR 을 lattice release 에 동승시키면 그 re-proof 비용과 회귀 표면이 첫 hard gate 에 얹힌다. **따라서 0x7A 는 옵션 3 의 gate 전건 PASS 이후 별도 release 로만 착지한다.**
+
+### 27.8 §12a 기록
+
+본 절은 §12a 하의 정규 개발 행위다 — §23.1 의 v2.0 bullet (fused-FMA "단 1회 RNE" 문구, 32b ACC bank, canonical-order serial-equivalence) 과 §23.4 항 2 는 본 절이 supersede 하며, 해당 원문은 삭제하지 않고 amendment 표기로 보존한다 (§12a 규칙 5; 편집 기록은 각 절 in-place). `isa/wt64v1_isa.json` 편집 (0x7A 예약 주석 포함) · golden model · RTL 은 §12a 규칙 3 의 순서대로 후속 commit 에서 뒤따른다 — 본 COMMIT 0 은 spec 과 kickoff memo 정리만 편집한다.
 
