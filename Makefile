@@ -138,6 +138,12 @@ FP_OP_PERIOD ?= 10.000
 FP_OP_TOP_fp_fmalane_bf16  := FP_FmaLaneBf16_gate_top
 FP_OP_SRCS_fp_fmalane_bf16 := FP_FmaLaneBf16.v,FP_AddWide.v,synth/lattice/fp_ops/FP_FmaLaneBf16_gate_top.v
 
+# GATE V20-2 — 528-bit exact-integer lattice unit (spec §27.6; xcu55c 반쪽이
+# 유일한 merge-blocker binding):
+#   make synth-fp-op FP_OP=fp_acclattice PART=xcu55c-fsvh2892-2L-e
+FP_OP_TOP_fp_acclattice  := FP_AccLattice_gate_top
+FP_OP_SRCS_fp_acclattice := FP_AccLattice.v,synth/lattice/fp_ops/FP_AccLattice_gate_top.v
+
 .PHONY: synth-fp-op fp-op-report
 
 synth-fp-op:

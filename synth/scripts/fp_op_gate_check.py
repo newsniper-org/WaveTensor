@@ -73,7 +73,47 @@ GATES = [
         "max_dsp48": 1,
         "dsp_note": "one 11x11 significand multiply = at most ONE DSP48E2",
     },
+    {
+        # GATE V20-2 (spec §27.6) — the xcu55c half is the gate's ONLY
+        # merge-blocker binding (user directive 2026-08-15; the ECP5 half is
+        # a feasibility MEASUREMENT and can never constitute gate FAIL).
+        # Binding criteria: (a) LUT hard ceiling, (b) DSP48 == 0 AND premap
+        # $mul == 0. Fmax/WNS at the 100 MHz harness clock are RECORDED —
+        # §27.6's "resolve fits 1 cycle @ 100 MHz" graduates from ESTIMATE
+        # to measurement here, but the merge verdict rides on (a)/(b).
+        "tag": "fp_acclattice",
+        "label": "GATE V20-2/US",
+        "desc": "v2.0 528-bit exact-integer lattice unit "
+                "(spec §27.2/§27.6) — xcu55c half = the ONLY merge-blocker "
+                "binding of GATE V20-2",
+        "max_dsp48": 0,
+        "dsp_note": "lattice is add/shift/compare ONLY — any DSP48 means "
+                    "the mapper found a multiply that must not exist",
+        "max_lut_sites": 20040,
+        "lut_note": "hard ceiling = 12,000 nominal x 1.67 measured overrun "
+                    "factor (spec §27.6, §23.10.10(g) method)",
+        "fmax_hard": False,
+        "premap_mul_log": "fp_acclattice_premap_mul.log",
+    },
 ]
+
+
+def parse_premap_mul(fname):
+    """Count premap $mul operator cells in an archived yosys stat log
+    (§26.6 pin form: read_verilog + hierarchy + proc + opt_clean, stat).
+    Missing log is a hard error — the premap evidence is part of the gate,
+    not an optional nicety."""
+    p = RPT_DIR / fname
+    if not p.exists():
+        sys.exit(f"{p}: missing — regenerate with\n"
+                 "  yosys -p 'read_verilog -I include FP_AccLattice.v; "
+                 "hierarchy -top FP_AccLattice; proc; opt_clean; stat' "
+                 f"> {p}")
+    text = p.read_text()
+    if "Printing statistics" not in text:
+        sys.exit(f"{p}: not a yosys stat log (no statistics section)")
+    return sum(int(m.group(1)) for m in
+               re.finditer(r"^\s+\$mul\s+(\d+)\s*$", text, re.M))
 
 
 def parse_summary(tag):
@@ -161,13 +201,35 @@ def main():
                       if d[1].lower() not in ("warning", "advisory")]
         drc_warnings = [d for d in drc if d[1].lower() == "warning"]
 
-        ok_fmax = fmax >= FMAX_TARGET
+        fmax_hard = g.get("fmax_hard", True)
+        lut_limit = g.get("max_lut_sites")
+        mul_count = (parse_premap_mul(g["premap_mul_log"])
+                     if "premap_mul_log" in g else None)
+
+        ok_fmax = (fmax >= FMAX_TARGET) if fmax_hard else True
         ok_dsp = dsp <= g["max_dsp48"]
+        ok_lut = (top["total_luts"] <= lut_limit) if lut_limit else True
+        ok_mul = (mul_count == 0) if mul_count is not None else True
         ok_bram = bram == 0
         ok_hold = whs >= 0.0
         ok_drc = not drc_errors
-        ok = ok_fmax and ok_dsp and ok_bram and ok_hold and ok_drc
+        ok = (ok_fmax and ok_dsp and ok_lut and ok_mul and ok_bram
+              and ok_hold and ok_drc)
         all_pass &= ok
+
+        if fmax_hard:
+            fmax_line = (f"    Fmax       = {fmax:8.2f} MHz  "
+                         f"(WNS {wns:+.3f} ns; HARD target >= "
+                         f"{FMAX_TARGET} MHz — spec risk 2)"
+                         f"   -> {'PASS' if ok_fmax else 'FAIL'}")
+        else:
+            fmax_line = (f"    Fmax       = {fmax:8.2f} MHz  "
+                         f"(WNS {wns:+.3f} ns @ {s['period_ns']} ns; "
+                         f"MEASUREMENT — §27.6 resolve-in-1-cycle context; "
+                         f">= {FMAX_TARGET} MHz: "
+                         f"{'yes' if fmax >= FMAX_TARGET else 'NO'}; "
+                         f"binding verdict rides on LUT/DSP/premap-$mul "
+                         f"only)   -> RECORDED")
 
         sub = [r for r in rows[1:] if r["module"] not in ("(top)",)]
         lines += [
@@ -177,12 +239,18 @@ def main():
             f"    constraint = {s['period_ns']} ns "
             f"({1000.0 / float(s['period_ns']):.2f} MHz)",
             "",
-            f"    Fmax       = {fmax:8.2f} MHz  (WNS {wns:+.3f} ns; "
-            f"HARD target >= {FMAX_TARGET} MHz — spec risk 2)"
-            f"   -> {'PASS' if ok_fmax else 'FAIL'}",
+            fmax_line,
+            *([f"    LUT sites  = {top['total_luts']:5d}      "
+               f"(HARD ceiling {lut_limit} — {g['lut_note']})"
+               f"   -> {'PASS' if ok_lut else 'FAIL'}"]
+              if lut_limit else []),
             f"    DSP48      = {dsp:5d}      (limit {g['max_dsp48']} — "
             f"{g['dsp_note']})"
             f"   -> {'PASS' if ok_dsp else 'FAIL'}",
+            *([f"    premap $mul= {mul_count:5d}      (limit 0 — §26.6 pin "
+               f"form; evidence: {g['premap_mul_log']})"
+               f"   -> {'PASS' if ok_mul else 'FAIL'}"]
+              if mul_count is not None else []),
             f"    BRAM       = {bram:5d}      (limit 0)"
             f"   -> {'PASS' if ok_bram else 'FAIL'}",
             f"    WHS        = {whs:+8.3f} ns (hold, limit >= 0)"
@@ -195,7 +263,8 @@ def main():
               + (f" — {DRC_NOTES[rule]}" if rule in DRC_NOTES else "")
               for rule, sev, desc, cnt in drc],
             "",
-            f"    LUT sites  = {top['total_luts']:5d}      (informational; "
+            f"    LUT sites  = {top['total_luts']:5d}      "
+            f"({'see HARD line above; ' if lut_limit else 'informational; '}"
             f"{top['logic_luts']} logic + {top['srls']} SRL; raw LUT cells "
             f"{s['lut_cells']} before LUT-combining)",
             f"    FF         = {top['ffs']:5d}      (informational; incl. "

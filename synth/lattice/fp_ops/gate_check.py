@@ -100,6 +100,26 @@ GATES = [
 # every ECP5 block-RAM cell type yosys memory_bram can emit
 EBR_CELLS = ("DP16KD", "PDPW16KD", "DP16KD_COMB")
 
+# GATE V20-2 ECP5 half (spec §27.6): feasibility MEASUREMENTS, not gates.
+# User directive 2026-08-15 (spec-normative): the ECP5 half constitutes NO
+# gate FAIL whatever it measures — including "does not fit" / "PnR did not
+# complete". These rows therefore (i) never touch the exit status, (ii)
+# tolerate missing reports (a not-yet-run or died-in-PnR measurement is
+# reported as such, not treated as an error), (iii) record the §27.6
+# classification data: completion, Fmax vs the 40 MHz reference point
+# (reference only — NOT a target here), MULT18X18D == 0 expectation and
+# the premap $mul count from <name>_premap.rpt.
+MEASUREMENTS = [
+    {"name": "fp_acclattice", "label": "MEAS V20-2/ECP5 full-parallel",
+     "desc": "FP_AccLattice 33-addend full-parallel unit (xcu55c-target "
+             "base form) measured as-is on the 85F",
+     "wrapper_ff": 2801},   # 2112 in + 689 out gate-top I/O flops
+    {"name": "fp_acclattice_beat2", "label": "MEAS V20-2/ECP5 beat-serial",
+     "desc": "spec 27.6 ECP5 target shape: 2 products/beat x 16 beats "
+             "(+1 carry-in beat) + 9-cycle serial resolve",
+     "wrapper_ff": 819},    # 129 in + 690 out gate-top I/O flops
+]
+
 
 def parse_stat(path):
     """yosys `stat` report -> {cell_type: count}."""
@@ -179,6 +199,57 @@ def main():
             f"    Fmax       = {fmax:8.2f} MHz (target >= {FREQ_TARGET})"
             f"   -> {'PASS' if ok_fmax else 'FAIL'}",
             f"    {label} RESULT: {'PASS' if ok else 'FAIL'}",
+            "",
+        ]
+
+    # ---- GATE V20-2 ECP5-half measurement rows (never gate the exit) ----
+    for m in MEASUREMENTS:
+        name = m["name"]
+        synth_rpt = rpt_dir / f"{name}_synth.rpt"
+        if not synth_rpt.exists():
+            continue        # measurement not run — nothing to report
+        cells = parse_stat(synth_rpt)
+        lut4 = cells.get("LUT4", 0)
+        mult = cells.get("MULT18X18D", 0)
+        ff = cells.get("TRELLIS_FF", 0)
+        ccu2 = cells.get("CCU2C", 0)
+        ebr = sum(cells.get(c, 0) for c in EBR_CELLS)
+        premap_rpt = rpt_dir / f"{name}_premap.rpt"
+        premap_mul = (parse_stat(premap_rpt).get("$mul", 0)
+                      if premap_rpt.exists() else None)
+        pnr_rpt = rpt_dir / f"{name}_pnr.rpt"
+        fmax = parse_fmax(pnr_rpt) if pnr_rpt.exists() else None
+        mul_line = ("    premap $mul= " + (
+            f"{premap_mul:5d}   (pin expects 0 — adder/compressor only)"
+            if premap_mul is not None else
+            "  n/a   (no premap report archived)"))
+        if fmax is None:
+            pnr_lines = [
+                "    PnR        = DID NOT COMPLETE — that outcome is the "
+                "measurement; see the archived _pnr.log for the stage/reason",
+            ]
+        else:
+            pnr_lines = [
+                f"    Fmax       = {fmax:8.2f} MHz (40 MHz is a reference "
+                f"point only — NOT a target here, spec 27.6)",
+                "    PnR        = completed",
+            ]
+        lines += [
+            f"{m['label']} — {name} (LFE5UM-85F CABGA381 -6, out-of-context,"
+            f" yosys synth_ecp5 + nextpnr-ecp5, wrapper-top incl. I/O regs):",
+            f"    [{m['desc']}]",
+            f"    LUT4       = {lut4:5d}   (85F budget 83,640 — utilization "
+            f"{lut4 / 83640 * 100:.1f}%; no ceiling declared, spec 27.6)",
+            f"    MULT18X18D = {mult:5d}   (pin expects 0)",
+            mul_line,
+            f"    TRELLIS_FF = {ff:5d}   raw; unit = {ff - m['wrapper_ff']} "
+            f"after -{m['wrapper_ff']} wrapper I/O flops (informational)",
+            f"    EBR        = {ebr:5d}   (informational, "
+            f"cells {'/'.join(EBR_CELLS)})",
+            f"    CCU2C      = {ccu2:5d}   (informational, carry cells)",
+            *pnr_lines,
+            f"    {m['label']} RESULT: MEASUREMENT (recorded — the ECP5 half"
+            f" constitutes no gate verdict, spec 27.6)",
             "",
         ]
 

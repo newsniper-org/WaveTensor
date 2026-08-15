@@ -28,7 +28,7 @@ GATE C3 — fp_stepseq (LFE5UM-85F CABGA381 -6, out-of-context, yosys synth_ecp5
 
 GATE F1 — fp_fmalane_bf16 (LFE5UM-85F CABGA381 -6, out-of-context, yosys synth_ecp5 + nextpnr-ecp5, wrapper-top incl. I/O regs):
     LUT4       =   930   (limit 1300)   -> PASS
-    LUT4 delta =   +36   vs the 894 Gate-2 FP_AddWide archive (the lane instantiates FP_AddWide VERBATIM, so the delta against its 894 LUT4 Gate-2 archive IS the cost of the narrow front end (unpack/classify, f16 subnormal normalizer, static align mux, IEEE special injector) NET of the PACK_WIDE cone that constant-folds away here; nominal ceiling +406)
+    LUT4 delta =   +32   vs the 898 Gate-2 FP_AddWide archive (the lane instantiates FP_AddWide VERBATIM, so the delta against its 898 LUT4 Gate-2 archive (post format-closure) IS the cost of the narrow front end (unpack/classify, f16 subnormal normalizer, static align mux, IEEE special injector) NET of the PACK_WIDE cone that constant-folds away here; nominal ceiling +406)
     MULT18X18D =     1   (limit 1)   -> PASS
     TRELLIS_FF =   478   raw; unit = 381 after -97 wrapper I/O flops (limit 520)   -> PASS
     EBR        =     0   (limit 0, cells DP16KD/PDPW16KD/DP16KD_COMB)   -> PASS
@@ -36,29 +36,26 @@ GATE F1 — fp_fmalane_bf16 (LFE5UM-85F CABGA381 -6, out-of-context, yosys synth
     Fmax       =    40.90 MHz (target >= 40.0)   -> PASS
     GATE F1 RESULT: PASS
 
---- RE-MEASUREMENT NOTE (2026-08-15, PACK_WIDE format closure) --------------
-Gates 2 / C3 / F1 re-measured after the FP_AddWide canonical-zero change
-(wide_zero==1 now emits the NORMATIVE canonical zero sign=0 / exp=-1024 /
-sig=0 — the module's own zero-operand convention — instead of UNSPECIFIED
-fields; implemented as FF synchronous-set/reset constants, TRELLIS_FF
-LSR_OVER_CE + per-bit REGSET on the 61 wide-group FFs, ZERO added logic
-depth on the packing D-paths). Gate 1 untouched (archived report).
-    GATE 2  : 894 -> 898 LUT4 (+4, the LSR-net fanout), 497 FF (+-0),
-              41.08 -> 41.78 MHz (seed 1). The only gate whose netlist
-              carries the new cone.
-    GATE C3 : 4721 -> 4666 LUT4 (-55), 986 FF (+-0), 4 MULT (+-0),
-              40.37 -> 40.61 MHz at seed 4 (seeds 1-3 below 40 — the
-              23.10.10(g) sweep; per-seed logs overwritten by design).
-              The wide output group is UNCONSUMED in this unit and sweeps
-              away; a control synth of the BASELINE FP_AddWide through the
-              same yosys 0.64 reproduced 4721 LUT4 / 588 CCU2C / 405 PFUMX
-              exactly, so the -55 is abc mapping perturbation from the
-              (dead) added structure — not tool drift, not new logic.
-    GATE F1 : 924 -> 930 LUT4 (+6), 478 FF (+-0), 1 MULT (+-0),
-              42.53 -> 40.90 MHz (seed 1). pack_mode is tied to PACK_FINAL
-              here so the override constant-folds; same perturbation class
-              as C3. The "+36 vs 894" delta line above still references the
-              PRE-closure Gate-2 archive constant in gate_check.py; against
-              the re-measured 898 the front-end delta is +32.
-------------------------------------------------------------------------------
+MEAS V20-2/ECP5 full-parallel — fp_acclattice (LFE5UM-85F CABGA381 -6, out-of-context, yosys synth_ecp5 + nextpnr-ecp5, wrapper-top incl. I/O regs):
+    [FP_AccLattice 33-addend full-parallel unit (xcu55c-target base form) measured as-is on the 85F]
+    LUT4       = 102871   (85F budget 83,640 — utilization 123.0%; no ceiling declared, spec 27.6)
+    MULT18X18D =     0   (pin expects 0)
+    premap $mul=     0   (pin expects 0 — adder/compressor only)
+    TRELLIS_FF =  5723   raw; unit = 2922 after -2801 wrapper I/O flops (informational)
+    EBR        =     0   (informational, cells DP16KD/PDPW16KD/DP16KD_COMB)
+    CCU2C      =  1188   (informational, carry cells)
+    PnR        = DID NOT COMPLETE — that outcome is the measurement; see the archived _pnr.log for the stage/reason
+    MEAS V20-2/ECP5 full-parallel RESULT: MEASUREMENT (recorded — the ECP5 half constitutes no gate verdict, spec 27.6)
+
+MEAS V20-2/ECP5 beat-serial — fp_acclattice_beat2 (LFE5UM-85F CABGA381 -6, out-of-context, yosys synth_ecp5 + nextpnr-ecp5, wrapper-top incl. I/O regs):
+    [spec 27.6 ECP5 target shape: 2 products/beat x 16 beats (+1 carry-in beat) + 9-cycle serial resolve]
+    LUT4       =  9374   (85F budget 83,640 — utilization 11.2%; no ceiling declared, spec 27.6)
+    MULT18X18D =     0   (pin expects 0)
+    premap $mul=     0   (pin expects 0 — adder/compressor only)
+    TRELLIS_FF =  3799   raw; unit = 2980 after -819 wrapper I/O flops (informational)
+    EBR        =     0   (informational, cells DP16KD/PDPW16KD/DP16KD_COMB)
+    CCU2C      =   376   (informational, carry cells)
+    Fmax       =    19.55 MHz (40 MHz is a reference point only — NOT a target here, spec 27.6)
+    PnR        = completed
+    MEAS V20-2/ECP5 beat-serial RESULT: MEASUREMENT (recorded — the ECP5 half constitutes no gate verdict, spec 27.6)
 

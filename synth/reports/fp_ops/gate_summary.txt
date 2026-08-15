@@ -38,6 +38,25 @@ GATE F1-US/xcu50 — fp_fmalane_bf16_xcu50: same lane, speed-grade cross-check o
       u_addwide      FP_AddWide       LUT   617  FF   193  DSP   0
     GATE F1-US/xcu50 RESULT: PASS
 
+GATE V20-2/US — fp_acclattice: v2.0 528-bit exact-integer lattice unit (spec §27.2/§27.6) — xcu55c half = the ONLY merge-blocker binding of GATE V20-2
+    device     = xcu55c-fsvh2892-2L-e  (Vivado out-of-context, synth + opt + place + phys_opt + route)
+    constraint = 10.0 ns (100.00 MHz)
+
+    Fmax       =   122.06 MHz  (WNS +1.807 ns @ 10.0 ns; MEASUREMENT — §27.6 resolve-in-1-cycle context; >= 100.0 MHz: yes; binding verdict rides on LUT/DSP/premap-$mul only)   -> RECORDED
+    LUT sites  = 53418      (HARD ceiling 20040 — hard ceiling = 12,000 nominal x 1.67 measured overrun factor (spec §27.6, §23.10.10(g) method))   -> FAIL
+    DSP48      =     0      (limit 0 — lattice is add/shift/compare ONLY — any DSP48 means the mapper found a multiply that must not exist)   -> PASS
+    premap $mul=     0      (limit 0 — §26.6 pin form; evidence: fp_acclattice_premap_mul.log)   -> PASS
+    BRAM       =     0      (limit 0)   -> PASS
+    WHS        =   +0.042 ns (hold, limit >= 0)   -> PASS
+    DRC        = 0 errors, 0 warnings (limit: 0 errors; warnings are listed, NOT 'clean')   -> PASS
+
+    LUT sites  = 53418      (see HARD line above; 53418 logic + 0 SRL; raw LUT cells 67696 before LUT-combining)
+    FF         =  5729      (informational; incl. the gate-top wrapper I/O flops)
+    CARRY8     =   265      (informational)
+      u_core         FP_AccLattice    LUT 53418  FF  2986  DSP   0
+    GATE V20-2/US RESULT: FAIL
+
+
 --- RE-MEASUREMENT NOTE (2026-08-15, PACK_WIDE format closure) --------------
 F1-US (xcu55c) re-run after the FP_AddWide canonical-zero change (wide_zero
 ==1 now emits the normative canonical zero sign=0/exp=-1024/sig=0 instead

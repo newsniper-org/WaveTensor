@@ -175,5 +175,81 @@ if want fp_fmalane_bf16; then
         "1 2 3 4 5"
 fi
 
+# --- GATE V20-2 ECP5 half — feasibility MEASUREMENTS, NOT gates (§27.6) ---
+# The ECP5 half of GATE V20-2 carries no merge-blocker binding: whatever
+# these runs measure — including "does not fit" or "PnR did not finish" —
+# is a valid recorded result, never a gate FAIL (user directive 2026-08-15,
+# spec §27.6; the merge-blocker binding of GATE V20-2 sits entirely on the
+# xcu55c half). Consequences for the harness:
+#   * they run ONLY when named explicitly, so the default all-gates
+#     invocation keeps its runtime;
+#   * nextpnr failure is RECORDED (log archived) instead of aborting the
+#     script — run_meas below, unlike run_gate, must not exit 1 on a
+#     placement/routing death, because that death IS the measurement;
+#   * a premap stat is archived (<name>_premap.rpt) so the §27.6 "premap
+#     $mul delta 0" pin is measured on the operator-level netlist, before
+#     techmap can hide an inferred multiply;
+#   * gate_check.py reports them as MEASUREMENT rows that never affect the
+#     exit status.
+# Targets:
+#   fp_acclattice       — full-parallel 33-addend unit (FP_AccLattice.v,
+#                         the xcu55c-target base form) measured as-is.
+#   fp_acclattice_beat2 — the §27.6-declared ECP5 target shape: beat-
+#                         serialized 2 products/beat x 16 beats (+1 carry-
+#                         in beat) + 9-cycle serial resolve
+#                         (synth/lattice/fp_ops/FP_AccLatticeBeat2.v,
+#                         measurement-only variant).
+
+run_meas() {
+    NAME="$1"
+    TOP="$2"
+    SRCS="$3"
+    SEED=1   # single-seed convention of the non-sweep gates (fp_mul36/
+             # fp_addwide): no pass target exists here, so no sweep either.
+
+    echo "=== $NAME: yosys premap stat (operator-level, pre-techmap) ==="
+    yosys -q -p "\
+        read_verilog -defer -DWT_VENDOR_LATTICE_YOSYS -I include $SRCS; \
+        hierarchy -check -top $TOP; \
+        proc; flatten; opt_clean; \
+        tee -o $RPT/${NAME}_premap.rpt stat"
+
+    echo "=== $NAME: yosys synth_ecp5 (top $TOP) ==="
+    yosys -q -p "\
+        read_verilog -defer -DWT_VENDOR_LATTICE_YOSYS -I include $SRCS; \
+        hierarchy -check -top $TOP; \
+        synth_ecp5; \
+        tee -o $RPT/${NAME}_synth.rpt stat; \
+        write_json $RPT/${NAME}_synth.json"
+
+    echo "=== $NAME: nextpnr-ecp5 out-of-context @ ${FREQ_MHZ} MHz (seed $SEED, measurement) ==="
+    if nextpnr-ecp5 \
+            $DEVICE_ARGS \
+            --json "$RPT/${NAME}_synth.json" \
+            --out-of-context \
+            --report "$RPT/${NAME}_pnr.rpt" \
+            --freq $FREQ_MHZ \
+            --timing-allow-fail \
+            --seed $SEED \
+            > "$RPT/${NAME}_pnr.log" 2>&1; then
+        echo "$NAME: nextpnr completed (measurement archived)"
+    else
+        tail -20 "$RPT/${NAME}_pnr.log"
+        echo "$NAME: nextpnr DID NOT COMPLETE — that outcome is itself the"
+        echo "$NAME: measurement (spec 27.6); log archived at $RPT/${NAME}_pnr.log"
+        rm -f "$RPT/${NAME}_pnr.rpt"   # never leave a stale/partial report
+    fi
+}
+
+if [ -n "$WANT" ] && want fp_acclattice; then
+    run_meas fp_acclattice FP_AccLattice_gate_top \
+        "FP_AccLattice.v synth/lattice/fp_ops/FP_AccLattice_gate_top.v"
+fi
+
+if [ -n "$WANT" ] && want fp_acclattice_beat2; then
+    run_meas fp_acclattice_beat2 FP_AccLatticeBeat2_gate_top \
+        "synth/lattice/fp_ops/FP_AccLatticeBeat2.v synth/lattice/fp_ops/FP_AccLatticeBeat2_gate_top.v"
+fi
+
 # --- Evaluate the gate criteria from the measured reports -----------------
 python3 synth/lattice/fp_ops/gate_check.py "$RPT"

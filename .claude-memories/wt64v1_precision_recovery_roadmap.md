@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 09e02def-fe68-4449-8866-9db15ac81932
-  modified: 2026-08-15T06:03:26.946Z
+  modified: 2026-08-15T08:26:39.228Z
 ---
 
 # WT64v1 RMSNORM/LAYERNORM scale multiplication 정밀도 roadmap
@@ -141,9 +141,22 @@ v1.7 은 (parity 수준으로) output-side 를 추가 개선하나 완전 제거
   상설화된 실측형 모델), bf16 FMA lane 양대 fabric gate PASS (ECP5
   42.53 MHz / xcu55c **255.30 MHz**, lane 당 MULT/DSP 1개 — spec risk
   1 반증·risk 2 입증), v2_0_train_kickoff.md.
-  **v2.0 착수 차단 항목: spec §23.1 vs §23.4 rounding 횟수 충돌**
-  (COMMIT 0 사용자 결정 — "dot 당 RNE 1회" 규범이면 FP_AddWide 48-bit
-  내부 폭 부족으로 Gate 2 재개봉).
+- **v2.0 COMMIT 0 확정 (2026-08-15, ca98604, spec §27)**: §23.1 vs
+  §23.4 rounding 충돌은 사용자 결정으로 해소 — **옵션 3 채택:
+  "wave-step-atomic accumulation"** (exact 528-bit lattice in-dot +
+  wide 64b fp64-encoded bank, wave-step 당 RTO-48 1회 + drain RNE
+  1회). 성공 시 옵션 3a (FDOT32_CR audit opcode, **0x7A 예약**) 즉시
+  이행 약속. 핵심 사실: RTO-tree 는 전 폭(48-368)에서 사망 (반례
+  가족), "FP_AddWide 50-bit 필요설"은 범주 오류로 영구 폐기 (Gate 2
+  재개봉 없음 — 추출 정리 RNE₂₄(RTO₄₈(exact))==RNE₂₄(exact), q≥26
+  이면 충분), bf-사다리·posit 전부 실측 기각 (posit 표준의 quire 가
+  Kulisch 필요성의 자백), 입력노이즈 지배 (paired 전승 — 정확도
+  아닌 계약강도·처리량·검증표면이 채택 근거). FP_LANES serial-
+  equivalence 증명 의무가 exact 구조로 소멸. 재현: scripts/
+  acc_format_study.py (고정 seed). PACK_WIDE 형식 폐쇄 (c21092a):
+  canonical zero (0,-1024,0), I/O 폐쇄성, 전 gate 재측정 PASS.
+  **다음: GATE V20-2 (lattice unit gate) — binding 은 xcu55c 만,
+  ECP5 는 feasibility measurement (불가여도 FAIL 아님, 사용자 지시)**.
 - 장기 활용처: .claude-memos/future_applications.md (PLL-DSP,
   WT64v1CLf GPGPU — 트리거 조건 충족 전 착수 금지).
 

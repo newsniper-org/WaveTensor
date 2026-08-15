@@ -1,0 +1,32 @@
+
+8. Printing statistics.
+
+=== FP_AccLatticeBeat2_gate_top ===
+
+        +----------Local Count, excluding submodules.
+        | 
+      411 wires
+    38546 wire bits
+      188 public wires
+    21340 public wire bits
+       10 ports
+      820 port bits
+      371 cells
+       30   $add
+       28   $and
+       30   $dff
+       64   $eq
+        3   $gt
+        2   $logic_and
+       17   $logic_not
+        3   $lt
+      112   $mux
+        2   $ne
+       11   $not
+       31   $or
+        3   $pmux
+       26   $reduce_or
+        1   $scopeinfo
+        2   $sub
+        6   $xor
+

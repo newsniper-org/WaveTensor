@@ -1,0 +1,510 @@
+{
+ "_doc": "v2.0 wave-step-atomic accumulation — 528-bit exact-integer lattice golden model (spec §27.2) 의 자기검증 결과 + RTL TB 벡터 명세. 생성기: scripts/golden_lattice.py (stdlib-only, 고정 seed, 재실행 byte-identical, rounding core 는 scripts/golden_fp32.py). 벡터 계약: include/generated/lattice_vec_contract.md.",
+ "normative_source": "wt64v1_spec.md §27.2 (+ §23.10.1 PACK_WIDE / FP_AddWide.v 인터페이스 계약)",
+ "determinism": {
+  "seeds": {
+   "theorem_sweep": 27753985,
+   "perm": 27753986,
+   "codec": 27753987,
+   "vec_rand_wide": 27754001,
+   "vec_cancel": 27754002,
+   "vec_tie": 27754003,
+   "vec_f16": 27754004,
+   "vec_chain_s1": 27754005,
+   "vec_chain_s4": 27754006,
+   "vec_chain_s5": 27754007,
+   "vec_parkcancel": 27754008,
+   "vec_sparse": 27754009
+  },
+  "note": "고정 정수 seed 외 난수원/timestamp 없음 — 산출물 3종 (hex/md/json) 전부 byte-identical 재생성"
+ },
+ "lattice_constants": {
+  "width_bits": 528,
+  "lsb_weight_2exp": -266,
+  "top_weight_2exp": 260,
+  "addends": 33,
+  "extraction": "RTO_48 (round-to-odd, top-48 + sticky-jam)",
+  "drain": "RNE-24 + flush-after-round FTZ (PACK_FINAL)",
+  "canonical_zero": "(sign=0, exp=-1024, sig=0)",
+  "segment_geometry": {
+   "phys_bits": 576,
+   "segments": 9,
+   "seg_width": 64,
+   "value_lsb_phys_bit": 48,
+   "max_segments_touched_per_addend": 2
+  }
+ },
+ "checks": {
+  "extraction_theorem_identity": {
+   "N": 20000,
+   "seed": 27753985,
+   "generators": [
+    "wave_rand_wide",
+    "wave_tie",
+    "wave_cancel",
+    "wave_sparse",
+    "wave_f16"
+   ],
+   "statement": "RNE_24(RTO_48(exact)) == RNE_24(exact) — lattice 경로 vs Fraction 참조 비트 비교 (drain/wide/resolve 3층 전부)",
+   "mismatches": 0,
+   "f32_struct_oracle_checked": 17089,
+   "f32_struct_oracle_skipped_nonnormal": 2911,
+   "verdict": "PASS"
+  },
+  "permutation_invariance": {
+   "trials": 400,
+   "orders_per_trial": 7,
+   "seed": 27753986,
+   "mismatches": 0,
+   "verdict": "PASS"
+  },
+  "jam_family_study_mirror": {
+   "families": [
+    {
+     "family": "F1_cancellation",
+     "products": "[+1, +2^-60, -1] (true 2^-60)",
+     "perwrite_chain_matches_study": true,
+     "perwrite_chain_equals_true_B": false,
+     "single_wave_equals_true_B": true
+    },
+    {
+     "family": "F2_tie_straddler",
+     "products": "[+1, +2^-24, +2^-70] (true 1+2^-23)",
+     "perwrite_chain_matches_study": true,
+     "perwrite_chain_equals_true_B": true,
+     "single_wave_equals_true_B": true
+    },
+    {
+     "family": "F3_double_round",
+     "products": "[+1, +2^-24, +2^-49] (true 1+2^-23)",
+     "perwrite_chain_matches_study": true,
+     "perwrite_chain_equals_true_B": true,
+     "single_wave_equals_true_B": true
+    },
+    {
+     "family": "F4_park_plus_cancel",
+     "products": "[+1, +2^-60, -1, +2^-47] (true 2^-47+2^-60)",
+     "perwrite_chain_matches_study": true,
+     "perwrite_chain_equals_true_B": false,
+     "single_wave_equals_true_B": true
+    },
+    {
+     "family": "F5a_tie_true_above",
+     "products": "[+1, +2^-24, +2^-70, +2^-70] (true above tie)",
+     "perwrite_chain_matches_study": true,
+     "perwrite_chain_equals_true_B": true,
+     "single_wave_equals_true_B": true
+    },
+    {
+     "family": "F5b_tie_net_zero",
+     "products": "[+1, +2^-24, +2^-70, -2^-70] (true = exact tie)",
+     "perwrite_chain_matches_study": true,
+     "perwrite_chain_equals_true_B": false,
+     "single_wave_equals_true_B": true
+    },
+    {
+     "family": "F6_tie_net_negative",
+     "products": "[+1, +2^-24, +2^-70, -2^-69] (true below tie)",
+     "perwrite_chain_matches_study": true,
+     "perwrite_chain_equals_true_B": false,
+     "single_wave_equals_true_B": true
+    },
+    {
+     "family": "F7_tie_at_2p96",
+     "products": "[+2^96, +2^72, +2^47] (true 2^96+2^73)",
+     "perwrite_chain_matches_study": true,
+     "perwrite_chain_equals_true_B": true,
+     "single_wave_equals_true_B": true
+    },
+    {
+     "family": "F8_range_extreme_cancel",
+     "products": "[+2^250, +1, -2^250] (true 1)",
+     "perwrite_chain_matches_study": true,
+     "perwrite_chain_equals_true_B": false,
+     "single_wave_equals_true_B": true
+    },
+    {
+     "family": "F9_taper_tie_at_2p230",
+     "products": "[+2^230, +2^206, +2^181] (true 2^230+2^207)",
+     "perwrite_chain_matches_study": true,
+     "perwrite_chain_equals_true_B": true,
+     "single_wave_equals_true_B": true
+    }
+   ],
+   "deterministic_leaf_1_2m60_m1_exact": true,
+   "note": "발산 가족 (perwrite_chain_equals_true_B=false) 은 §27.3 의 정직한 한계 재현 — 인용 시 표본률이 아니라 이 반례를 인용할 것 (study sampling_note 규율)",
+   "verdict": "PASS"
+  },
+  "boundary_directed": {
+   "cases": [
+    {
+     "case": "b_min_lsb_pos",
+     "doc": "weight 2^-266 하단끝: 129x129 @ E=-252, 홀수 s16 — lattice bit 0 사용; drain 은 FTZ 로 +0, bank 는 nonzero",
+     "wide": [
+      0,
+      -252,
+      "0x820200000000"
+     ],
+     "bank": "0x3030404000000000",
+     "drain": "0x00000000"
+    },
+    {
+     "case": "b_min_lsb_neg",
+     "doc": "위의 음수판 — drain 은 FTZ 로 -0 (0x80000000)",
+     "wide": [
+      1,
+      -252,
+      "0x820200000000"
+     ],
+     "bank": "0xB030404000000000",
+     "drain": "0x80000000"
+    },
+    {
+     "case": "b_top_pos",
+     "doc": "weight 2^260 상단끝: 32 x 최대곱, resolve bit 526 사용, drain 은 overflow 로 +Inf",
+     "wide": [
+      0,
+      260,
+      "0xFE0100000000"
+     ],
+     "bank": "0x503FC02000000000",
+     "drain": "0x7F800000"
+    },
+    {
+     "case": "b_top_neg",
+     "doc": "전부 음수 최대곱 — two's-complement sign bit 527 행사, drain -Inf",
+     "wide": [
+      1,
+      260,
+      "0xFE0100000000"
+     ],
+     "bank": "0xD03FC02000000000",
+     "drain": "0xFF800000"
+    },
+    {
+     "case": "b_cancel_zero",
+     "doc": "대규모 상쇄 -> exact 0: canonical zero (0,-1024,0), bank +0, drain +0",
+     "wide": [
+      0,
+      -1024,
+      "0x000000000000"
+     ],
+     "bank": "0x0000000000000000",
+     "drain": "0x00000000"
+    },
+    {
+     "case": "b_cancel_with_carry",
+     "doc": "carry 2^100 을 곱 -2^99 x2 로 정확히 상쇄 -> canonical zero",
+     "wide": [
+      0,
+      -1024,
+      "0x000000000000"
+     ],
+     "bank": "0x0000000000000000",
+     "drain": "0x00000000"
+    },
+    {
+     "case": "b_carry_dominant_jam",
+     "doc": "carry 지배 + 최하단 dust -> RTO sticky-jam 이 LSB 를 세움",
+     "wide": [
+      0,
+      250,
+      "0x800000000001"
+     ],
+     "bank": "0x4F90000000000020",
+     "drain": "0x7F800000"
+    },
+    {
+     "case": "b_carry_dominant_borrow",
+     "doc": "carry 지배 - dust -> binade 하강 + 전비트 borrow + jam",
+     "wide": [
+      0,
+      249,
+      "0xFFFFFFFFFFFF"
+     ],
+     "bank": "0x4F8FFFFFFFFFFFE0",
+     "drain": "0x7F800000"
+    },
+    {
+     "case": "b_carry_negligible",
+     "doc": "carry 미미 (2^-250, exp < -219 의 표현 가능 케이스)",
+     "wide": [
+      1,
+      54,
+      "0xA0B900000031"
+     ],
+     "bank": "0xC354172000000620",
+     "drain": "0xDAA0B900"
+    },
+    {
+     "case": "b_carry_identity_min",
+     "doc": "곱 전부 0 + 최소 양의 lattice 값 carry -> wide == carry bit-identical (48-bit 값은 RTO exact)",
+     "wide": [
+      0,
+      -266,
+      "0x800000000000"
+     ],
+     "bank": "0x2F50000000000000",
+     "drain": "0x00000000"
+    },
+    {
+     "case": "b_rne48_discriminator",
+     "doc": "x = 2^48+2^24+1: RTO-48 store -> drain 0x57800001 (정답). RNE-48 store 로 잘못 구현된 RTL 은 0x57800000 (1 ulp low, double rounding) — store 반올림 모드 판별 벡터 (§27.2.1)",
+     "wide": [
+      0,
+      48,
+      "0x800000800001"
+     ],
+     "bank": "0x42F0000010000020",
+     "drain": "0x57800001"
+    },
+    {
+     "case": "b_tie_q25_killer",
+     "doc": "x = 1+2^-24+2^-60 (정리의 directed tie): 정답 0x3F800001 — q=25 급 추출이면 tie 를 놓친다",
+     "wide": [
+      0,
+      0,
+      "0x800000800001"
+     ],
+     "bank": "0x3FF0000010000020",
+     "drain": "0x3F800001"
+    },
+    {
+     "case": "b_f16_min_subnormal_sq",
+     "doc": "f16 최소 subnormal 곱 (2^-24)^2 = 2^-48 — f16 하단끝 (값-충실 normalized 인코딩)",
+     "wide": [
+      0,
+      -48,
+      "0x800000000000"
+     ],
+     "bank": "0x3CF0000000000000",
+     "drain": "0x27800000"
+    },
+    {
+     "case": "b_f16_max_sq",
+     "doc": "f16 최대 normal 곱 (65504)^2 x32 — f16 상단끝, lane raw 형식",
+     "wide": [
+      0,
+      36,
+      "0xFFC004000000"
+     ],
+     "bank": "0x423FF80080000000",
+     "drain": "0x51FFC004"
+    },
+    {
+     "case": "b_neg_exact_pow2",
+     "doc": "정확한 음의 2의 거듭제곱 (-2^100): 음수 normalize/추출 경로",
+     "wide": [
+      1,
+      100,
+      "0x800000000000"
+     ],
+     "bank": "0xC630000000000000",
+     "drain": "0xF1800000"
+    },
+    {
+     "case": "b_all_neg_mixed",
+     "doc": "전부 음수 곱 + 음수 carry (jam LSB 보유) — 음수 경로 종합",
+     "wide": [
+      1,
+      62,
+      "0x84D003F80401"
+     ],
+     "bank": "0xC3D09A007F008020",
+     "drain": "0xDE84D004"
+    }
+   ],
+   "n_cases": 16,
+   "verdict": "PASS"
+  },
+  "fault_contract": {
+   "probes": [
+    {
+     "probe": "FILL qNaN -> sticky fault",
+     "loud_fault": true
+    },
+    {
+     "probe": "FILL sNaN -> sticky fault",
+     "loud_fault": true
+    },
+    {
+     "probe": "FILL +Inf -> sticky fault",
+     "loud_fault": true
+    },
+    {
+     "probe": "FILL -Inf -> sticky fault",
+     "loud_fault": true
+    },
+    {
+     "probe": "FILL 48-bit 초과 정밀도 (1+2^-52) -> fault",
+     "loud_fault": true
+    },
+    {
+     "probe": "FILL 2^-1074 (binade < -1024) -> fault",
+     "loud_fault": true
+    },
+    {
+     "probe": "FILL subnormal bl=50 -> fault",
+     "loud_fault": true
+    },
+    {
+     "probe": "FILL subnormal 정밀도 초과 -> fault",
+     "loud_fault": true
+    },
+    {
+     "probe": "lattice 비표현 addend (LSB < 2^-266) -> fault",
+     "loud_fault": true
+    },
+    {
+     "probe": "lattice 범위 초과 addend (2^300) -> fault",
+     "loud_fault": true
+    },
+    {
+     "probe": "resolve overflow (>= 2^261) -> fault",
+     "loud_fault": true
+    },
+    {
+     "probe": "비-canonical zero (exp!=-1024) -> fault",
+     "loud_fault": true
+    },
+    {
+     "probe": "비-canonical zero (sign=1) -> fault",
+     "loud_fault": true
+    },
+    {
+     "probe": "leading zero > 1 operand -> fault",
+     "loud_fault": true
+    },
+    {
+     "probe": "비정규화 bank word encode -> fault",
+     "loud_fault": true
+    },
+    {
+     "probe": "FILL-valid 이나 lattice 밖 carry (2^300) -> accumulate fault",
+     "loud_fault": true
+    }
+   ],
+   "n_probes": 16,
+   "minus_zero_canonicalized": true,
+   "subnormal_corners_accepted": true,
+   "verdict": "PASS"
+  },
+  "bank_codec_roundtrip": {
+   "N": 20000,
+   "seed": 27753987,
+   "corners": 11,
+   "struct_oracle_mismatches": 0,
+   "roundtrip_mismatches": 0,
+   "verdict": "PASS"
+  },
+  "vector_file_self_verify": {
+   "lines": 4001,
+   "mismatches": 0,
+   "verdict": "PASS"
+  }
+ },
+ "vector_file": {
+  "path": "include/generated/lattice_wave_vectors.hex",
+  "n_vectors": 4001,
+  "bits_per_line": 2800,
+  "hex_chars_per_line": 700,
+  "families": [
+   {
+    "family": "det_leaf",
+    "doc": "[1x1, 2^-30 x 2^-30, 1x(-1)] — RTO-tree 전 폭 반증 leaf 의 single-wave (exact 라 정답 2^-60)",
+    "start": 0,
+    "count": 1
+   },
+   {
+    "family": "jam_single_wave",
+    "doc": "F1..F9 전 곱을 1 wave 로 — 정리에 의해 true B 와 bit-exact (drain 까지)",
+    "start": 1,
+    "count": 10
+   },
+   {
+    "family": "jam_perwrite_chain",
+    "doc": "F1..F9 곱 1개 = wave 1개 (carry 체이닝) — RTO-48 store jam 의 정직한 한계 재현 (§27.3)",
+    "start": 11,
+    "count": 34
+   },
+   {
+    "family": "boundary",
+    "doc": "경계 directed — check_boundaries 와 동일 구성 (설명은 report 의 boundary_directed.cases)",
+    "start": 45,
+    "count": 16
+   },
+   {
+    "family": "rand_bf16_wide",
+    "doc": "전 지수역 임의 bf16 곱 32개 + 임의 carry (zero 35% / 임의 lattice 값의 RTO-48)",
+    "start": 61,
+    "count": 1200
+   },
+   {
+    "family": "cancellation",
+    "doc": "X, -X + 수십 binade 아래 dust — 대규모 상쇄 + park 계열",
+    "start": 1261,
+    "count": 700
+   },
+   {
+    "family": "tie_straddle",
+    "doc": "1 + half-ulp24 + bit-48 아래 dust — tie/jam/sticky 집중",
+    "start": 1961,
+    "count": 700
+   },
+   {
+    "family": "f16_rand",
+    "doc": "f16 normal 곱 (11x11 -> 22-bit, sig=s22<<26) — 통합 lattice 의 f16 커버",
+    "start": 2661,
+    "count": 400
+   },
+   {
+    "family": "chain_S1_near1",
+    "doc": "K=1024 accumulate chain x6 (32 wave/chain, carry 체이닝) — factor exp [-4,4]",
+    "start": 3061,
+    "count": 192
+   },
+   {
+    "family": "chain_S4_hi_band",
+    "doc": "K=1024 accumulate chain x6 (32 wave/chain, carry 체이닝) — factor exp [118,126]",
+    "start": 3253,
+    "count": 192
+   },
+   {
+    "family": "chain_S5_mid_band",
+    "doc": "K=1024 accumulate chain x6 (32 wave/chain, carry 체이닝) — factor exp [48,56]",
+    "start": 3445,
+    "count": 192
+   },
+   {
+    "family": "chain_parkcancel",
+    "doc": "cross-wave park-plus-cancel chain x2 — F1/F4 계열의 확률적 확장 (carry 체이닝)",
+    "start": 3637,
+    "count": 64
+   },
+   {
+    "family": "sparse",
+    "doc": "nonzero 0..32개 (첫 5개: 전-zero+zero-carry -> canonical zero; 다음 5개: 전-zero+carry -> 항등)",
+    "start": 3701,
+    "count": 300
+   }
+  ],
+  "sha256": "7325a8471d28bc756e919c2a9f3740c487849b4fd60795dd02ab8ecdee8b1e46"
+ },
+ "contract": {
+  "path": "include/generated/lattice_vec_contract.md",
+  "sha256": "189966260a4b8cbf53f9baab50a88cff7c5cf7966946db871a1f10b44dcf8e2e"
+ },
+ "spec_gap_notes": [
+  "FILL-valid (fp64/PACK_WIDE 표현 가능) 이나 lattice-표현 밖 (|v| >= 2^261 또는 2^-266 미만 정밀도) 인 carry-in 의 RTL fault 배선은 §27.2 미명시 — golden 은 loud fault 로 고정, GATE V20-2 하류 ③ bank RTL COMMIT 에서 sticky-fault 클래스 배정 필요",
+  "fp64 -0 FILL 은 수용 + canonical +0 화 — round-trip bit-exact 보증의 유일한 수용-후-재작성 예외",
+  "f16 subnormal 곱의 lane-측 raw operand 형태는 RTL C2 경로 확정 사항 — 본 벡터는 값-충실 normalized 인코딩 사용"
+ ],
+ "verdicts": {
+  "all_checks_pass": true,
+  "theorem_identity_zero_mismatch": true,
+  "permutation_bit_identical": true,
+  "jam_families_match_study_exactly": true,
+  "canonical_zero_on_exact_zero": true,
+  "segment_2_of_9_never_exceeded": true
+ }
+}

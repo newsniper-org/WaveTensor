@@ -1,0 +1,16 @@
+{
+  "tag": "fp_acclattice",
+  "top": "FP_AccLattice_gate_top",
+  "part": "xcu55c-fsvh2892-2L-e",
+  "period_ns": 10.000,
+  "lut_cells": 67696,
+  "ff": 5729,
+  "dsp48": 0,
+  "dsp_split_cells": 0,
+  "carry": 265,
+  "bram": 0,
+  "srl": 0,
+  "wns_ns": 1.807,
+  "whs_ns": 0.042,
+  "fmax_mhz": 122.06
+}
