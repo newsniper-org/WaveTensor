@@ -1,0 +1,32 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2025.2.1 (lin64) Build 6403652 Thu Mar 19 13:47:00 MDT 2026
+| Date         : Sat Aug 15 13:46:17 2026
+| Host         : cachyos-ybi-tuf running 64-bit CachyOS
+| Command      : report_utilization -file /home/ybi/WaveTensor/synth/reports/fp_ops/fp_fmalane_bf16_synth_util.rpt -hierarchical
+| Design       : FP_FmaLaneBf16_gate_top
+| Device       : xcu55c-fsvh2892-2L-e
+| Speed File   : -2L
+| Design State : Synthesized
+---------------------------------------------------------------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++-----------------------------+----------------+------------+------------+---------+------+-----+--------+--------+------+------------+
+|           Instance          |     Module     | Total LUTs | Logic LUTs | LUTRAMs | SRLs | FFs | RAMB36 | RAMB18 | URAM | DSP Blocks |
++-----------------------------+----------------+------------+------------+---------+------+-----+--------+--------+------+------------+
+| FP_FmaLaneBf16_gate_top     |          (top) |        783 |        780 |       0 |    3 | 421 |      0 |      0 |    0 |          1 |
+|   (FP_FmaLaneBf16_gate_top) |          (top) |          0 |          0 |       0 |    0 |  97 |      0 |      0 |    0 |          0 |
+|   u_core                    | FP_FmaLaneBf16 |        783 |        780 |       0 |    3 | 324 |      0 |      0 |    0 |          1 |
+|     (u_core)                | FP_FmaLaneBf16 |        162 |        159 |       0 |    3 | 131 |      0 |      0 |    0 |          1 |
+|     u_addwide               |     FP_AddWide |        621 |        621 |       0 |    0 | 193 |      0 |      0 |    0 |          0 |
++-----------------------------+----------------+------------+------------+---------+------+-----+--------+--------+------+------------+
+
+

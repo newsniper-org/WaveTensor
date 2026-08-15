@@ -946,6 +946,84 @@ def store_quant(bits, dtype):
     return ref_narrow_f32(bits & 0xFFFFFFFF, dtype)
 
 
+# ---------------------------------------------------------------------------
+# v2.0 TRAIN — unified bf16/f16 fused-FMA lane (spec §23.1; FP_FmaLaneBf16.v)
+# ---------------------------------------------------------------------------
+#
+# The lane's numeric contract is a COMPOSITION of two already-normative
+# pieces, deliberately so: it is defined to be bit-identical to "CVT WIDEN
+# to fp32, then fused fp32 FMA". Nothing new is rounded, flushed or pinned
+# here, which is what closes the WIDEN-then-FMA vs fused-FMA drift hole.
+#
+#   * the operand-load policy IS ref_widen_f16 / ref_widen_bf16 — including
+#     their deliberate ASYMMETRY (f16 subnormals honored exactly, bf16
+#     subnormals flushed to signed zero per COMMIT-0 pin 6) and the
+#     NaN -> canonical qNaN rule (pin 2);
+#   * the arithmetic IS ref_fma — exact product held in Fraction, a SINGLE
+#     RNE, flush-after-round FTZ, RNE overflow to +/-Inf, and the whole
+#     IEEE special-case table in ref_fma's own order;
+#   * the fp32 addend's DAZ comes for free: ref_fma decodes c through
+#     `decode`, which flushes fp32 denormals to same-signed zero (pin 7).
+#     Every f16 subnormal widens to an fp32 NORMAL, so the widened
+#     multiplicands are never re-flushed by that same DAZ.
+#
+# NO SEPARATE micro_* TWIN IS NEEDED. The FP_StepSeq argument
+# (micro_fscalar(FS_FMA) == ref_fma verbatim, because the wide datapath
+# holds the exact value and rounds once) extends to narrow inputs without
+# an extra rounding: the RTL's static left-align by 26 (f16) / 32 (bf16)
+# is EXACT, so the sequencer-faithful model and the reference coincide.
+# tb_fp_fmalane_bf16.py asserts that rather than assuming it.
+#
+# DISCRIMINATION BOUND (stated so the round-once claim is not overstated):
+# a narrow x narrow product has at most 22 (f16) / 16 (bf16) significand
+# bits and is therefore EXACTLY fp32-representable whenever its exponent is
+# in fp32's normal range. In that band ref_fma_bf16(a,b,c) is provably
+# equal to ref_add(ref_mul(widen(a),widen(b)), c) and no vector separates
+# fused from multiply-then-round-then-add. The contract is observationally
+# discriminated ONLY where a separate fp32 multiply would lose the product:
+# product UNDERFLOW below fp32 min normal (bf16 product exponents reach
+# -251, f16 -47) where the naive path FTZ-flushes it, and product OVERFLOW
+# at or above 2^128 (bf16 reaches +255) where the naive path saturates to
+# +/-Inf and can no longer be pulled back by an opposite-signed addend.
+
+
+def ref_fma_bf16(a, b, c):
+    """v2.0 bf16 lane: RN(widen_bf16(a) * widen_bf16(b) + DAZ(c)), ONE RNE.
+    a, b are 16-bit bf16 patterns; c and the result are fp32 patterns."""
+    return ref_fma(ref_widen_bf16(a), ref_widen_bf16(b), c & 0xFFFFFFFF)
+
+
+def ref_fma_f16(a, b, c):
+    """v2.0 f16 lane: RN(widen_f16(a) * widen_f16(b) + DAZ(c)), ONE RNE.
+    Same lane, same 11-bit multiplier; f16 subnormals are honored exactly
+    (they widen to fp32 normals), unlike bf16's."""
+    return ref_fma(ref_widen_f16(a), ref_widen_f16(b), c & 0xFFFFFFFF)
+
+
+def ref_fma_narrow(a, b, c, dtype):
+    """Dtype-dispatched form (dtype 0x2 = f16, 0x3 = bf16)."""
+    if dtype == DT_BF16:
+        return ref_fma_bf16(a, b, c)
+    if dtype == DT_F16:
+        return ref_fma_f16(a, b, c)
+    raise ValueError("fma lane dtype must be 0x2 (f16) or 0x3 (bf16)")
+
+
+def naive_fma_narrow(a, b, c, dtype):
+    """THE DISCRIMINATOR REFERENCE — deliberately WRONG for v2.0.
+    Multiply-then-round-then-add: the narrow product is rounded (and,
+    decisively, FTZ-flushed / overflow-saturated) into fp32 BEFORE the
+    accumulate. Used only to prove that the RTL implements the fused
+    single-rounding contract and not this one."""
+    if dtype == DT_BF16:
+        wa, wb = ref_widen_bf16(a), ref_widen_bf16(b)
+    elif dtype == DT_F16:
+        wa, wb = ref_widen_f16(a), ref_widen_f16(b)
+    else:
+        raise ValueError("fma lane dtype must be 0x2 (f16) or 0x3 (bf16)")
+    return ref_add(ref_mul(wa, wb), c & 0xFFFFFFFF)
+
+
 # ===========================================================================
 # v1.8.0e WIDE-VECTOR LAYER (COMMIT 1, golden-before-RTL) — 0x79 FMINMAX /
 # 0x78 DEQUANT / 0x6B GAMMA_MUL_W / 0x70 VFMA_ACC (0e2) + the pinned

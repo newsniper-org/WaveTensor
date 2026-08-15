@@ -1,0 +1,40 @@
+GATE F1-US — fp_fmalane_bf16: v2.0 TRAIN unified bf16/f16 fused-FMA lane (spec §23.1) — PRIMARY: xcu55c is EC2 F2's exact silicon
+    device     = xcu55c-fsvh2892-2L-e  (Vivado out-of-context, synth + opt + place + phys_opt + route)
+    constraint = 10.0 ns (100.00 MHz)
+
+    Fmax       =   255.30 MHz  (WNS +6.083 ns; HARD target >= 100.0 MHz — spec risk 2)   -> PASS
+    DSP48      =     1      (limit 1 — one 11x11 significand multiply = at most ONE DSP48E2)   -> PASS
+    BRAM       =     0      (limit 0)   -> PASS
+    WHS        =   +0.040 ns (hold, limit >= 0)   -> PASS
+    DRC        = 0 errors, 2 warnings (limit: 0 errors; warnings are listed, NOT 'clean')   -> PASS
+                 DPOP-4 (Warning x1): MREG Output pipelining — DSP multiplier not pipelined (MREG=0) — enabling MREG in a later pipeline rebalance is an unclaimed free Fmax upside
+                 RTSTAT-10 (Warning x1): No routable loads — OOC top-level output nets have no routable loads — structural to out-of-context runs
+
+    LUT sites  =   776      (informational; 773 logic + 3 SRL; raw LUT cells 935 before LUT-combining)
+    FF         =   421      (informational; incl. the gate-top wrapper I/O flops)
+    CARRY8     =    30      (informational)
+      u_core         FP_FmaLaneBf16   LUT   776  FF   324  DSP   1
+      (u_core)       FP_FmaLaneBf16   LUT   159  FF   131  DSP   1
+      u_addwide      FP_AddWide       LUT   617  FF   193  DSP   0
+    GATE F1-US RESULT: PASS
+
+GATE F1-US/xcu50 — fp_fmalane_bf16_xcu50: same lane, speed-grade cross-check on xcu50 (-2)
+    device     = xcu50-fsvh2104-2-e  (Vivado out-of-context, synth + opt + place + phys_opt + route)
+    constraint = 10.0 ns (100.00 MHz)
+
+    Fmax       =   221.73 MHz  (WNS +5.490 ns; HARD target >= 100.0 MHz — spec risk 2)   -> PASS
+    DSP48      =     1      (limit 1 — one 11x11 significand multiply = at most ONE DSP48E2)   -> PASS
+    BRAM       =     0      (limit 0)   -> PASS
+    WHS        =   +0.050 ns (hold, limit >= 0)   -> PASS
+    DRC        = 0 errors, 2 warnings (limit: 0 errors; warnings are listed, NOT 'clean')   -> PASS
+                 DPOP-4 (Warning x1): MREG Output pipelining — DSP multiplier not pipelined (MREG=0) — enabling MREG in a later pipeline rebalance is an unclaimed free Fmax upside
+                 RTSTAT-10 (Warning x1): No routable loads — OOC top-level output nets have no routable loads — structural to out-of-context runs
+
+    LUT sites  =   776      (informational; 773 logic + 3 SRL; raw LUT cells 935 before LUT-combining)
+    FF         =   421      (informational; incl. the gate-top wrapper I/O flops)
+    CARRY8     =    30      (informational)
+      u_core         FP_FmaLaneBf16   LUT   776  FF   324  DSP   1
+      (u_core)       FP_FmaLaneBf16   LUT   159  FF   131  DSP   1
+      u_addwide      FP_AddWide       LUT   617  FF   193  DSP   0
+    GATE F1-US/xcu50 RESULT: PASS
+

@@ -26,3 +26,13 @@ GATE C3 — fp_stepseq (LFE5UM-85F CABGA381 -6, out-of-context, yosys synth_ecp5
     Fmax       =    40.37 MHz (target >= 40.0)   -> PASS
     GATE C3 RESULT: PASS
 
+GATE F1 — fp_fmalane_bf16 (LFE5UM-85F CABGA381 -6, out-of-context, yosys synth_ecp5 + nextpnr-ecp5, wrapper-top incl. I/O regs):
+    LUT4       =   924   (limit 1300)   -> PASS
+    LUT4 delta =   +30   vs the 894 Gate-2 FP_AddWide archive (the lane instantiates FP_AddWide VERBATIM, so the delta against its 894 LUT4 Gate-2 archive IS the cost of the narrow front end (unpack/classify, f16 subnormal normalizer, static align mux, IEEE special injector) NET of the PACK_WIDE cone that constant-folds away here; nominal ceiling +406)
+    MULT18X18D =     1   (limit 1)   -> PASS
+    TRELLIS_FF =   478   raw; unit = 381 after -97 wrapper I/O flops (limit 520)   -> PASS
+    EBR        =     0   (limit 0, cells DP16KD/PDPW16KD/DP16KD_COMB)   -> PASS
+    CCU2C      =   168   (informational, carry cells)
+    Fmax       =    42.53 MHz (target >= 40.0)   -> PASS
+    GATE F1 RESULT: PASS
+

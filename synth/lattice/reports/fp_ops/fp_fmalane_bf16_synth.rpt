@@ -1,0 +1,21 @@
+
+7. Printing statistics.
+
+=== FP_FmaLaneBf16_gate_top ===
+
+        +----------Local Count, excluding submodules.
+        | 
+     1116 wires
+     4231 wire bits
+     1116 public wires
+     4231 public wire bits
+        6 ports
+       98 port bits
+     1667 cells
+        2   $scopeinfo
+      168   CCU2C
+      924   LUT4
+        1   MULT18X18D
+       94   PFUMX
+      478   TRELLIS_FF
+

@@ -50,6 +50,14 @@ TESTS = {
         "sources": [FP_OPS / "FP_CombArms.v"],
         "test_module": "tb_fp_combarms",
     },
+    # v2.0 TRAIN — the unified bf16/f16 fused-FMA lane (spec §23.1). It
+    # reuses FP_AddWide verbatim for the single-RNE fp32 accumulate, so the
+    # source list carries both. Mandatory correctness sanity BEFORE the
+    # per-operator ECP5 / UltraScale+ Fmax gates.
+    "FP_FmaLaneBf16": {
+        "sources": [REPO / "FP_FmaLaneBf16.v", REPO / "FP_AddWide.v"],
+        "test_module": "tb_fp_fmalane_bf16",
+    },
 }
 
 

@@ -81,7 +81,7 @@ include $(shell cocotb-config --makefiles)/Makefile.sim
 VIVADO_VERSION ?= 2025.2.1
 VIVADO ?= /opt/Xilinx/$(VIVADO_VERSION)/Vivado/bin/vivado
 VIVADO_FLAGS := -mode batch -nolog -nojournal
-SYNTH_DIR := $(PWD)/synth
+SYNTH_DIR := $(CURDIR)/synth
 
 # Geometry knobs (override on the command line, e.g. `make synth-pod PE_ROWS=4 PE_COLS=4`)
 PE_ROWS      ?= 2
@@ -113,6 +113,42 @@ synth-report:
 synth-clean:
 	rm -rf $(SYNTH_DIR)/reports/* $(SYNTH_DIR)/checkpoints/* \
 	       vivado*.jou vivado*.log .Xil
+
+# -----------------------------------------------------------------------------
+# Per-operator UltraScale+ gates (v2.0) — the Vivado counterpart of
+# `sh synth/lattice/scripts/synth_fp_ops.sh`. Out-of-context synth + place +
+# route of ONE operator core through its shared *_gate_top wrapper, so the
+# ECP5 and UltraScale+ numbers measure an identical netlist boundary.
+#
+#   make synth-fp-op FP_OP=fp_fmalane_bf16 PART=xcu55c-fsvh2892-2L-e
+#   make synth-fp-op FP_OP=fp_fmalane_bf16 PART=xcu50-fsvh2104-2-e \
+#                    FP_OP_TAG=fp_fmalane_bf16_xcu50
+#   make fp-op-report
+#
+# PART MUST be passed explicitly — the common.tcl default is a small Zynq
+# part. xcu55c-fsvh2892-2L-e (= EC2 F2 silicon, conservative -2L) and
+# xcu50-fsvh2104-2-e synthesize under the license-free Vivado 2025.2;
+# xcvu47p does not. Do NOT upgrade Vivado past 2025.2.
+# -----------------------------------------------------------------------------
+
+FP_OP        ?= fp_fmalane_bf16
+FP_OP_TAG    ?= $(FP_OP)
+FP_OP_PERIOD ?= 10.000
+
+FP_OP_TOP_fp_fmalane_bf16  := FP_FmaLaneBf16_gate_top
+FP_OP_SRCS_fp_fmalane_bf16 := FP_FmaLaneBf16.v,FP_AddWide.v,synth/lattice/fp_ops/FP_FmaLaneBf16_gate_top.v
+
+.PHONY: synth-fp-op fp-op-report
+
+synth-fp-op:
+	$(VIVADO) $(VIVADO_FLAGS) -source $(CURDIR)/synth/scripts/synth_fp_op.tcl \
+	          -tclargs TAG=$(FP_OP_TAG) \
+	                   TOP=$(FP_OP_TOP_$(FP_OP)) \
+	                   SRCS=$(FP_OP_SRCS_$(FP_OP)) \
+	                   PART=$(PART) PERIOD=$(FP_OP_PERIOD)
+
+fp-op-report:
+	@python3 $(CURDIR)/synth/scripts/fp_op_gate_check.py
 
 # =============================================================================
 # Lattice ECP5 synthesis flow — Stage 1 target (ULX3S / LFE5U-85F).

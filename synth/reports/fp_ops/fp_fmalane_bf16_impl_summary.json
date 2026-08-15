@@ -1,0 +1,16 @@
+{
+  "tag": "fp_fmalane_bf16",
+  "top": "FP_FmaLaneBf16_gate_top",
+  "part": "xcu55c-fsvh2892-2L-e",
+  "period_ns": 10.000,
+  "lut_cells": 935,
+  "ff": 421,
+  "dsp48": 1,
+  "dsp_split_cells": 8,
+  "carry": 30,
+  "bram": 0,
+  "srl": 3,
+  "wns_ns": 6.083,
+  "whs_ns": 0.040,
+  "fmax_mhz": 255.30
+}

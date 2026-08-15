@@ -43,6 +43,20 @@ Pass criteria (merge blockers):
                       precedent: seed noise, not structure; the 0e re-run
                       confirms it, the failing-seed paths sit entirely
                       inside the untouched FP_AddWide stage).
+  GATE F1 fp_fmalane_bf16
+                    : the v2.0 TRAIN unified bf16/f16 fused-FMA lane
+                      (spec §23.1; FP_FmaLaneBf16.v) — LUT4 <= 1300
+                      (= the 894 LUT4 Gate-2 FP_AddWide archive, which the
+                      lane instantiates VERBATIM, + a 406 nominal ceiling
+                      for the narrow front end), MULT18X18D <= 1 (an 11x11
+                      needs AT MOST one; 0 is a PASS and means yosys
+                      LUT-mapped it — that measurement is what re-derives
+                      the per-fabric FP_LANES ceiling, so it is recorded
+                      whichever way it lands), TRELLIS_FF <= 520 net of
+                      the 97 gate-top wrapper I/O flops (65 input + 32
+                      output bits), EBR == 0, Fmax >= 40 MHz with the same
+                      1-5 seed sweep. Criteria pre-declared BEFORE the
+                      first run per the §23.8 merge-blocker lesson.
 """
 
 import json
@@ -66,8 +80,19 @@ GATES = [
     {"name": "fp_stepseq", "label": "GATE C3",
      "max_lut4": 4909, "mult": 4, "mult_exact": True,
      "max_ff": 900,  "wrapper_ff": 147, "max_ebr": 0, "lut4_baseline": 4409,
+     "baseline_label": "C3 archive",
      "delta_note": "estimate +250-500, the spec 25.5.1 OPS_DEQ itemization "
                    "band; hard escalation to cut-ladder rung 3 above +500"},
+    {"name": "fp_fmalane_bf16", "label": "GATE F1",
+     "max_lut4": 1300, "mult": 1, "mult_exact": False,
+     "max_ff": 520,  "wrapper_ff": 97,  "max_ebr": 0, "lut4_baseline": 894,
+     "baseline_label": "Gate-2 FP_AddWide archive",
+     "delta_note": "the lane instantiates FP_AddWide VERBATIM, so the "
+                   "delta against its 894 LUT4 Gate-2 archive IS the cost "
+                   "of the narrow front end (unpack/classify, f16 "
+                   "subnormal normalizer, static align mux, IEEE special "
+                   "injector) NET of the PACK_WIDE cone that constant-"
+                   "folds away here; nominal ceiling +406"},
 ]
 
 # every ECP5 block-RAM cell type yosys memory_bram can emit
@@ -135,7 +160,7 @@ def main():
             delta = lut4 - g["lut4_baseline"]
             delta_line = [
                 f"    LUT4 delta = {delta:+5d}   vs the {g['lut4_baseline']} "
-                f"C3 archive ({g['delta_note']})"]
+                f"{g.get('baseline_label', 'archive')} ({g['delta_note']})"]
         lines += [
             f"{label} — {name} (LFE5UM-85F CABGA381 -6, out-of-context, "
             f"yosys synth_ecp5 + nextpnr-ecp5, wrapper-top incl. I/O regs):",
@@ -160,7 +185,7 @@ def main():
     (rpt_dir / "gate_summary.txt").write_text(summary + "\n")
     if not all_pass:
         sys.exit("synth_fp_ops: GATE FAILURE — see gate_summary.txt")
-    print("synth_fp_ops: Gates 1-2 + C3 PASS")
+    print("synth_fp_ops: " + " + ".join(g["label"] for g in GATES) + " PASS")
 
 
 if __name__ == "__main__":
