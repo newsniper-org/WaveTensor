@@ -43,9 +43,16 @@
 //     (rto_n(rto_48(x)) == rto_n(x) for any n < 48), so the sequencer may
 //     re-jam this result down to its Q2.28/Q2.30 step widths and stay
 //     bit-identical to the golden micro_* models. wide_zero flags exact
-//     cancellation; when wide_zero==1 the wide_sign/wide_exp/wide_sig
-//     values are UNSPECIFIED (a normalized significand cannot represent
-//     zero — the sequencer must branch on wide_zero first).
+//     cancellation; when wide_zero==1 the wide fields carry the CANONICAL
+//     ZERO encoding (NORMATIVE — v2.0 format closure, was UNSPECIFIED):
+//     wide_sign=0, wide_exp=-1024 (12'hC00; its low 11 bits are the
+//     11-bit -1024), wide_sig=0 — exactly this module's own zero-OPERAND
+//     convention (PRECONDITIONS below). The PACK_WIDE format is thereby
+//     CLOSED under the module's I/O: a PACK_WIDE zero result feeds back
+//     as a zero operand with NO translation and satisfies the alignment-
+//     anchor precondition (exp=-1024, NOT 0 — an exp-0 zero could anchor
+//     alignment above tiny negative-exponent operands and corrupt
+//     results). wide_zero is kept as a flag for consumers that branch.
 //   * PACK_FINAL (1'b1) — final fp32 pack: a SINGLE RNE with
 //     unbounded-exponent semantics, then flush-after-round FTZ
 //     (|RN_unbounded(x)| < 2^-126 -> same-signed zero), overflow to
@@ -137,7 +144,8 @@ module FP_AddWide (
     output reg signed [11:0]  wide_exp,      // exponent of wide_sig[47]
     output reg    [47:0]      wide_sig,      // normalized, wide_sig[47]==1
     output reg                wide_zero      // exact cancellation; when set,
-                                             // wide_sign/exp/sig unspecified
+                                             // wide_sign/exp/sig hold the
+                                             // canonical zero (0, -1024, 0)
 );
 
     localparam PACK_WIDE  = 1'b0;
@@ -294,16 +302,31 @@ module FP_AddWide (
       :               {res_sign_p2, biased, m24r[22:0]};
 
     // ---- Stage B2 output registers (per-group pack_mode enable) ----
+    // Canonical-zero override (v2.0 format closure): on exact cancellation
+    // the wide group loads sign=0 / exp=-1024 / sig=0, the module's own
+    // zero-operand input convention, closing PACK_WIDE under this I/O.
+    // Written as a CONSTANT load with priority ABOVE the pack_mode enable
+    // so it maps onto the FF synchronous set/reset pins (TRELLIS_FF LSR /
+    // UltraScale+ FDRE/FDSE R-S — sync-SR-over-CE is the native priority
+    // on both): ZERO added logic depth on the packing D-paths; the SR net
+    // is one LUT of two already-registered B1 signals. Priority above the
+    // enable is safe because the condition implies pack_mode_p2 ==
+    // PACK_WIDE, so the FINAL-mode hold contract is untouched.
+    wire wide_canon_zero = mag_zero_p2 & (pack_mode_p2 == PACK_WIDE);
+
     always @(posedge clk) begin
         if (pack_mode_p2 == PACK_FINAL) begin
             final_fp32 <= final_w;
         end else begin
-            // on wide_zero the remaining wide_* values are unspecified
-            // (contract) — no zero-muxes spent on them
             wide_zero <= mag_zero_p2;
             wide_sign <= res_sign_p2;
             wide_exp  <= e_res_p2[11:0];
             wide_sig  <= wide_sig_w;
+        end
+        if (wide_canon_zero) begin             // last assignment wins
+            wide_sign <= 1'b0;
+            wide_exp  <= -12'sd1024;           // 12'hC00; [10:0] = 11'h400
+            wide_sig  <= 48'b0;
         end
     end
 

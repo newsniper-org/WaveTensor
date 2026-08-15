@@ -5,6 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 09e02def-fe68-4449-8866-9db15ac81932
+  modified: 2026-08-15T06:03:26.946Z
 ---
 
 # WT64v1 RMSNORM/LAYERNORM scale multiplication 정밀도 roadmap
@@ -122,10 +123,27 @@ v1.7 은 (parity 수준으로) output-side 를 추가 개선하나 완전 제거
   **norm 매크로 하이브리드 재구축 — rsqrt LUT ≤6.25% floor 가 실전
   RMSNORM/LAYERNORM 흐름에서 제거됨** (이 roadmap 의 종착).
   C6: COMB 39.48%/41%, Fmax 10.23-10.36 (0d 로직 경로 부재 증명).
-- **0e 패키지 (미착수)**: frag FSM 2→4-bit 확폭 + buffer-then-drain +
-  VFMA_ACC/DEQUANT/FMINMAX-vector 3 소비자 단일 조율 landing.
-- **v1.9 (미착수)**: dispatch 파이프라이닝 — einsum wide cone 이 여전히
-  critical path (97ns), Fmax 10.3 의 근본 해소는 여기 소관.
+- **cleanup + 0e + v1.9 전부 landed (2026-07-24~27)**: dead opcode 4종
+  제거(Fmax 10.93 신기록), 0e1/0e2(MSE ratio 1.000, frag 16 확폭),
+  v1.9 case_result_s2 — 단 v1.9 는 자기 Fmax gate FAIL (11.34 vs floor
+  14.2, spec §26.6 정직 기록).
+- **cross-vendor 실측 (2026-08-13, 결정적)**: 동일 RTL 이 ECP5 11.34
+  MHz vs xcu55c(=EC2 F2 실리콘) ~98 MHz — **8.7배, v1.9 FAIL 은 설계가
+  아니라 fabric**. ECP5 는 "FOSS 검증 vehicle, 성능 타겟 아님" 으로
+  재포지셔닝. **xcu55c/xcu50 은 무료 Vivado 2025.2 로 합성 가능**
+  (xcvu47p 만 차단 — device 문자열 라이선싱). ⚠️ **Vivado 2025.2 가
+  마지막 라이선스-프리 — 절대 업그레이드 금지**. Avant G70 폐기(52주
+  리드, $6,476), F2 는 비긴급(AWS 가 조합 루프 금지 → TRNG 불가),
+  ULX3S 는 TRNG 실측 유일 경로로 유지.
+  .claude-memos/cross_vendor_fabric_evidence.md 참조.
+- **Stage 4 / v2.0 준비 landed (2026-08-15)**: ACC bank TLA+ (일가
+  최초 형식 산출물, proofs/tla/ — guard 별 삭제 실험이 run.sh 에
+  상설화된 실측형 모델), bf16 FMA lane 양대 fabric gate PASS (ECP5
+  42.53 MHz / xcu55c **255.30 MHz**, lane 당 MULT/DSP 1개 — spec risk
+  1 반증·risk 2 입증), v2_0_train_kickoff.md.
+  **v2.0 착수 차단 항목: spec §23.1 vs §23.4 rounding 횟수 충돌**
+  (COMMIT 0 사용자 결정 — "dot 당 RNE 1회" 규범이면 FP_AddWide 48-bit
+  내부 폭 부족으로 Gate 2 재개봉).
 - 장기 활용처: .claude-memos/future_applications.md (PLL-DSP,
   WT64v1CLf GPGPU — 트리거 조건 충족 전 착수 금지).
 

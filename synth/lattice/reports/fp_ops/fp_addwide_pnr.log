@@ -1,8 +1,8 @@
 
 
 Info: Logic utilisation before packing:
-Info:     Total LUT4s:      1216/83640     1%
-Info:         logic LUTs:    894/83640     1%
+Info:     Total LUT4s:      1220/83640     1%
+Info:         logic LUTs:    898/83640     1%
 Info:         carry LUTs:    322/83640     0%
 Info:           RAM LUTs:      0/10455     0%
 Info:          RAMW LUTs:      0/20910     0%
@@ -15,10 +15,10 @@ Info: Packing carries...
 Info: Packing LUTs...
 Info: Packing LUT5-7s...
 Info: Packing FFs...
-Info:     200 FFs paired with LUTs.
+Info:     205 FFs paired with LUTs.
 Info: Generating derived timing constraints...
 Info: Promoting globals...
-Info: Checksum: 0x5a059177
+Info: Checksum: 0x771fc85a
 
 Info: Device utilisation:
 Info: 	          TRELLIS_IO:       0/    365     0%
@@ -47,520 +47,520 @@ Info: 	     TRELLIS_ECLKBUF:       0/      8     0%
 Info: 	        ECLKBRIDGECS:       0/      2     0%
 Info: 	                DCSC:       0/      2     0%
 Info: 	          TRELLIS_FF:     497/  83640     0%
-Info: 	        TRELLIS_COMB:    1274/  83640     1%
+Info: 	        TRELLIS_COMB:    1278/  83640     1%
 Info: 	        TRELLIS_RAMW:       0/  10455     0%
 
 Info: Placed 0 cells based on constraints.
-Info: Creating initial analytic placement for 1118 cells, random placement wirelen = 128837.
-Info:     at initial placer iter 0, wirelen = 533
-Info:     at initial placer iter 1, wirelen = 476
-Info:     at initial placer iter 2, wirelen = 595
-Info:     at initial placer iter 3, wirelen = 505
-Info: Running main analytical placer, max placement attempts per cell = 392055.
-Info:     at iteration #1, type ALL: wirelen solved = 592, spread = 12534, legal = 12615; time = 0.03s
-Info:     at iteration #2, type ALL: wirelen solved = 596, spread = 8374, legal = 8606; time = 0.01s
-Info:     at iteration #3, type ALL: wirelen solved = 898, spread = 6936, legal = 7191; time = 0.02s
-Info:     at iteration #4, type ALL: wirelen solved = 1164, spread = 6280, legal = 6461; time = 0.01s
-Info:     at iteration #5, type ALL: wirelen solved = 1326, spread = 6360, legal = 6490; time = 0.01s
-Info:     at iteration #6, type ALL: wirelen solved = 1611, spread = 6343, legal = 6604; time = 0.01s
-Info:     at iteration #7, type ALL: wirelen solved = 1760, spread = 5980, legal = 6406; time = 0.01s
-Info:     at iteration #8, type ALL: wirelen solved = 2182, spread = 6143, legal = 6499; time = 0.01s
-Info:     at iteration #9, type ALL: wirelen solved = 2145, spread = 6273, legal = 6514; time = 0.02s
-Info:     at iteration #10, type ALL: wirelen solved = 2421, spread = 5493, legal = 5779; time = 0.01s
-Info:     at iteration #11, type ALL: wirelen solved = 2529, spread = 5392, legal = 5806; time = 0.01s
-Info:     at iteration #12, type ALL: wirelen solved = 2661, spread = 5884, legal = 6209; time = 0.01s
-Info:     at iteration #13, type ALL: wirelen solved = 2889, spread = 5522, legal = 5851; time = 0.01s
-Info:     at iteration #14, type ALL: wirelen solved = 2951, spread = 5890, legal = 6075; time = 0.01s
-Info:     at iteration #15, type ALL: wirelen solved = 3057, spread = 5906, legal = 6371; time = 0.02s
-Info: HeAP Placer Time: 0.38s
-Info:   of which solving equations: 0.16s
+Info: Creating initial analytic placement for 1120 cells, random placement wirelen = 137501.
+Info:     at initial placer iter 0, wirelen = 558
+Info:     at initial placer iter 1, wirelen = 507
+Info:     at initial placer iter 2, wirelen = 551
+Info:     at initial placer iter 3, wirelen = 524
+Info: Running main analytical placer, max placement attempts per cell = 393828.
+Info:     at iteration #1, type ALL: wirelen solved = 615, spread = 12468, legal = 12635; time = 0.03s
+Info:     at iteration #2, type ALL: wirelen solved = 597, spread = 8492, legal = 8801; time = 0.02s
+Info:     at iteration #3, type ALL: wirelen solved = 965, spread = 6405, legal = 6647; time = 0.01s
+Info:     at iteration #4, type ALL: wirelen solved = 1185, spread = 5890, legal = 6129; time = 0.02s
+Info:     at iteration #5, type ALL: wirelen solved = 1305, spread = 6155, legal = 6358; time = 0.02s
+Info:     at iteration #6, type ALL: wirelen solved = 1618, spread = 6098, legal = 6544; time = 0.02s
+Info:     at iteration #7, type ALL: wirelen solved = 1896, spread = 6191, legal = 6615; time = 0.02s
+Info:     at iteration #8, type ALL: wirelen solved = 2084, spread = 5472, legal = 6037; time = 0.02s
+Info:     at iteration #9, type ALL: wirelen solved = 2077, spread = 5791, legal = 6028; time = 0.02s
+Info:     at iteration #10, type ALL: wirelen solved = 2256, spread = 5489, legal = 5916; time = 0.02s
+Info:     at iteration #11, type ALL: wirelen solved = 2685, spread = 5281, legal = 5907; time = 0.01s
+Info:     at iteration #12, type ALL: wirelen solved = 2753, spread = 5775, legal = 6088; time = 0.02s
+Info:     at iteration #13, type ALL: wirelen solved = 2934, spread = 5712, legal = 6078; time = 0.02s
+Info:     at iteration #14, type ALL: wirelen solved = 2995, spread = 5674, legal = 6123; time = 0.01s
+Info:     at iteration #15, type ALL: wirelen solved = 3104, spread = 5583, legal = 6037; time = 0.01s
+Info:     at iteration #16, type ALL: wirelen solved = 3095, spread = 5839, legal = 6337; time = 0.02s
+Info: HeAP Placer Time: 0.44s
+Info:   of which solving equations: 0.20s
 Info:   of which spreading cells: 0.05s
 Info:   of which strict legalisation: 0.02s
 
 Info: Running simulated annealing placer for refinement.
-Info:   at iteration #1: temp = 0.000000, timing cost = 639, wirelen = 5779
-Info:   at iteration #5: temp = 0.000000, timing cost = 397, wirelen = 4860
-Info:   at iteration #10: temp = 0.000000, timing cost = 445, wirelen = 4630
-Info:   at iteration #15: temp = 0.000000, timing cost = 429, wirelen = 4489
-Info:   at iteration #20: temp = 0.000000, timing cost = 410, wirelen = 4408
-Info:   at iteration #24: temp = 0.000000, timing cost = 398, wirelen = 4368 
-Info: SA placement time 1.56s
+Info:   at iteration #1: temp = 0.000000, timing cost = 523, wirelen = 5907
+Info:   at iteration #5: temp = 0.000000, timing cost = 452, wirelen = 4927
+Info:   at iteration #10: temp = 0.000000, timing cost = 378, wirelen = 4656
+Info:   at iteration #15: temp = 0.000000, timing cost = 350, wirelen = 4539
+Info:   at iteration #20: temp = 0.000000, timing cost = 380, wirelen = 4401
+Info:   at iteration #25: temp = 0.000000, timing cost = 323, wirelen = 4346
+Info:   at iteration #30: temp = 0.000000, timing cost = 327, wirelen = 4322
+Info:   at iteration #31: temp = 0.000000, timing cost = 326, wirelen = 4322 
+Info: SA placement time 2.83s
 
-Info: Max frequency for clock 'clk': 42.10 MHz (PASS at 40.00 MHz)
+Info: Max frequency for clock 'clk': 42.21 MHz (PASS at 40.00 MHz)
 
 Info: Slack histogram:
 Info:  legend: * represents 1 endpoint(s)
 Info:          + represents [1,1) endpoint(s)
-Info: [  1249,   2387) |******+
-Info: [  2387,   3525) |************+
-Info: [  3525,   4663) | 
-Info: [  4663,   5801) |**+
-Info: [  5801,   6939) |**+
-Info: [  6939,   8077) |*+
-Info: [  8077,   9215) |*+
-Info: [  9215,  10353) |+
-Info: [ 10353,  11491) |*****+
-Info: [ 11491,  12629) |***************+
-Info: [ 12629,  13767) |*************+
-Info: [ 13767,  14905) |*****+
-Info: [ 14905,  16043) |************************+
-Info: [ 16043,  17181) |*******************+
-Info: [ 17181,  18319) |***************+
-Info: [ 18319,  19457) |***************+
-Info: [ 19457,  20595) |********+
-Info: [ 20595,  21733) |********************************************************+
-Info: [ 21733,  22871) |***************+
-Info: [ 22871,  24009) |************************************************************ 
-Info: Checksum: 0x429a66de
+Info: [  1309,   2444) |******+
+Info: [  2444,   3579) |+
+Info: [  3579,   4714) | 
+Info: [  4714,   5849) |************ 
+Info: [  5849,   6984) |+
+Info: [  6984,   8119) |****+
+Info: [  8119,   9254) |*+
+Info: [  9254,  10389) |*+
+Info: [ 10389,  11524) |********+
+Info: [ 11524,  12659) |****+
+Info: [ 12659,  13794) |***************+
+Info: [ 13794,  14929) |*********+
+Info: [ 14929,  16064) |*****************+
+Info: [ 16064,  17199) |****************************+
+Info: [ 17199,  18334) |***********+
+Info: [ 18334,  19469) |**********************+
+Info: [ 19469,  20604) |********************************+
+Info: [ 20604,  21739) |******************************************+
+Info: [ 21739,  22874) |******************************+
+Info: [ 22874,  24009) |************************************************************ 
+Info: Checksum: 0x8283fd7a
 Info: Routing globals...
 
 Info: Routing..
 Info: Setting up routing queue.
-Info: Routing 4251 arcs.
+Info: Routing 4297 arcs.
 Info:            |   (re-)routed arcs  |   delta    | remaining|       time spent     |
 Info:    IterCnt |  w/ripup   wo/ripup |  w/r  wo/r |      arcs| batch(sec) total(sec)|
-Info:       1000 |      404        595 |  404   595 |      3699|       0.17       0.17|
-Info:       2000 |      731       1268 |  327   673 |      3159|       0.13       0.30|
-Info:       3000 |     1101       1898 |  370   630 |      2609|       0.12       0.42|
-Info:       4000 |     1471       2475 |  370   577 |      2065|       0.11       0.54|
-Info:       5000 |     1935       2982 |  464   507 |      1667|       0.15       0.68|
-Info:       6000 |     2329       3491 |  394   509 |      1087|       0.10       0.78|
-Info:       7000 |     2535       4221 |  206   730 |       315|       0.08       0.86|
-Info:       7345 |     2562       4505 |   27   284 |         0|       0.02       0.88|
+Info:       1000 |      383        616 |  383   616 |      3764|       0.23       0.23|
+Info:       2000 |      719       1280 |  336   664 |      3214|       0.19       0.43|
+Info:       3000 |     1087       1912 |  368   632 |      2669|       0.15       0.58|
+Info:       4000 |     1433       2511 |  346   599 |      2131|       0.14       0.72|
+Info:       5000 |     1799       3097 |  366   586 |      1582|       0.14       0.86|
+Info:       6000 |     2173       3626 |  374   529 |      1029|       0.12       0.98|
+Info:       7000 |     2318       4439 |  145   813 |       186|       0.12       1.09|
+Info:       7185 |     2318       4592 |    0   153 |         0|       0.01       1.10|
 Info: Routing complete.
-Info: Router1 time 0.88s
-Info: Checksum: 0x274c7179
+Info: Router1 time 1.10s
+Info: Checksum: 0x25c070f7
 
 Info: Critical path report for clock 'clk' (posedge -> posedge):
 Info:       type curr  total name
-Info:   clk-to-q  0.52  0.52 Source u_core.b_p1_TRELLIS_FF_Q_3.Q
-Info:    routing  1.77  2.29 Net u_core.b_p1[2] (42,7) -> (34,11)
-Info:                          Sink u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1$CCU2_COMB0.B
+Info:   clk-to-q  0.52  0.52 Source u_core.b_p1_TRELLIS_FF_Q_4.Q
+Info:    routing  1.47  2.00 Net u_core.b_p1[3] (58,6) -> (50,8)
+Info:                          Sink u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1$CCU2_COMB1.B
 Info:                          Defined in:
-Info:                               FP_AddWide.v:192.30-192.34
-Info:      logic  0.45  2.74 Source u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1$CCU2_COMB0.FCO
-Info:    routing  0.00  2.74 Net u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1$CCU2_FCI_INT (34,11) -> (34,11)
-Info:                          Sink u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1$CCU2_COMB1.FCI
-Info:      logic  0.00  2.74 Source u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1$CCU2_COMB1.FCO
-Info:    routing  0.00  2.74 Net u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT (34,11) -> (34,11)
+Info:                               FP_AddWide.v:200.30-200.34
+Info:      logic  0.45  2.44 Source u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1$CCU2_COMB1.FCO
+Info:    routing  0.00  2.44 Net u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT (50,8) -> (50,8)
 Info:                          Sink u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT_CCU2C_CIN$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-215.56
+Info:                               FP_AddWide.v:222.34-223.56
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  2.81 Source u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT_CCU2C_CIN$CCU2_COMB0.FCO
-Info:    routing  0.00  2.81 Net u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT_CCU2C_CIN$CCU2_FCI_INT (34,11) -> (34,11)
+Info:      logic  0.07  2.51 Source u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT_CCU2C_CIN$CCU2_COMB0.FCO
+Info:    routing  0.00  2.51 Net u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT_CCU2C_CIN$CCU2_FCI_INT (50,8) -> (50,8)
 Info:                          Sink u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT_CCU2C_CIN$CCU2_COMB1.FCI
-Info:      logic  0.00  2.81 Source u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT_CCU2C_CIN$CCU2_COMB1.FCO
-Info:    routing  0.00  2.81 Net u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT_CCU2C_CIN_COUT (34,11) -> (35,11)
+Info:      logic  0.00  2.51 Source u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT_CCU2C_CIN$CCU2_COMB1.FCO
+Info:    routing  0.00  2.51 Net u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT_CCU2C_CIN_COUT (50,8) -> (51,8)
 Info:                          Sink u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-215.56
+Info:                               FP_AddWide.v:222.34-223.56
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  2.88 Source u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCO
-Info:    routing  0.00  2.88 Net u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_FCI_INT (35,11) -> (35,11)
+Info:      logic  0.07  2.59 Source u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCO
+Info:    routing  0.00  2.59 Net u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_FCI_INT (51,8) -> (51,8)
 Info:                          Sink u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCI
-Info:      logic  0.00  2.88 Source u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCO
-Info:    routing  0.00  2.88 Net u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT (35,11) -> (35,11)
+Info:      logic  0.00  2.59 Source u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCO
+Info:    routing  0.00  2.59 Net u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT (51,8) -> (51,8)
 Info:                          Sink u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-215.56
+Info:                               FP_AddWide.v:222.34-223.56
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.44  3.33 Source u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.F
-Info:    routing  1.08  4.41 Net u_core.mag_LUT4_Z_C_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_A0 (35,11) -> (35,12)
+Info:      logic  0.44  3.03 Source u_core.mag_LUT4_Z_C_CCU2C_S0_A1_CCU2C_S1_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.F
+Info:    routing  1.08  4.11 Net u_core.mag_LUT4_Z_C_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_A0 (51,8) -> (51,9)
 Info:                          Sink u_core.mag_LUT4_Z_C_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.A
-Info:      logic  0.45  4.85 Source u_core.mag_LUT4_Z_C_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCO
-Info:    routing  0.00  4.85 Net u_core.mag_LUT4_Z_C_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_FCI_INT (35,12) -> (35,12)
+Info:      logic  0.45  4.55 Source u_core.mag_LUT4_Z_C_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCO
+Info:    routing  0.00  4.55 Net u_core.mag_LUT4_Z_C_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_FCI_INT (51,9) -> (51,9)
 Info:                          Sink u_core.mag_LUT4_Z_C_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCI
-Info:      logic  0.00  4.85 Source u_core.mag_LUT4_Z_C_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCO
-Info:    routing  0.00  4.85 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_CIN (35,12) -> (35,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0$CCU2_COMB0.FCI
+Info:      logic  0.00  4.55 Source u_core.mag_LUT4_Z_C_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCO
+Info:    routing  0.00  4.55 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_CIN (51,9) -> (51,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-216.61
+Info:                               FP_AddWide.v:222.34-224.61
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  4.92 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0$CCU2_COMB0.FCO
-Info:    routing  0.00  4.92 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0$CCU2_FCI_INT (35,12) -> (35,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0$CCU2_COMB1.FCI
-Info:      logic  0.00  4.92 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0$CCU2_COMB1.FCO
-Info:    routing  0.00  4.92 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT (35,12) -> (35,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN$CCU2_COMB0.FCI
+Info:      logic  0.07  4.63 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0$CCU2_COMB0.FCO
+Info:    routing  0.00  4.63 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0$CCU2_FCI_INT (51,9) -> (51,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0$CCU2_COMB1.FCI
+Info:      logic  0.00  4.63 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0$CCU2_COMB1.FCO
+Info:    routing  0.00  4.63 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT (51,9) -> (51,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-216.61
+Info:                               FP_AddWide.v:222.34-224.61
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  4.99 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN$CCU2_COMB0.FCO
-Info:    routing  0.00  4.99 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN$CCU2_FCI_INT (35,12) -> (35,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN$CCU2_COMB1.FCI
-Info:      logic  0.00  4.99 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN$CCU2_COMB1.FCO
-Info:    routing  0.00  4.99 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT (35,12) -> (36,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCI
+Info:      logic  0.07  4.70 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN$CCU2_COMB0.FCO
+Info:    routing  0.00  4.70 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN$CCU2_FCI_INT (51,9) -> (51,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN$CCU2_COMB1.FCI
+Info:      logic  0.00  4.70 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN$CCU2_COMB1.FCO
+Info:    routing  0.00  4.70 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT (51,9) -> (52,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-216.61
+Info:                               FP_AddWide.v:222.34-224.61
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  5.07 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCO
-Info:    routing  0.00  5.07 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_FCI_INT (36,12) -> (36,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCI
-Info:      logic  0.00  5.07 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCO
-Info:    routing  0.00  5.07 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT (36,12) -> (36,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCI
+Info:      logic  0.07  4.77 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCO
+Info:    routing  0.00  4.77 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_FCI_INT (52,9) -> (52,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCI
+Info:      logic  0.00  4.77 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCO
+Info:    routing  0.00  4.77 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT (52,9) -> (52,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-216.61
+Info:                               FP_AddWide.v:222.34-224.61
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  5.14 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCO
-Info:    routing  0.00  5.14 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_FCI_INT (36,12) -> (36,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCI
-Info:      logic  0.00  5.14 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCO
-Info:    routing  0.00  5.14 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT (36,12) -> (36,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCI
+Info:      logic  0.07  4.84 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCO
+Info:    routing  0.00  4.84 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_FCI_INT (52,9) -> (52,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCI
+Info:      logic  0.00  4.84 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCO
+Info:    routing  0.00  4.84 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT (52,9) -> (52,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-216.61
+Info:                               FP_AddWide.v:222.34-224.61
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  5.21 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCO
-Info:    routing  0.00  5.21 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_FCI_INT (36,12) -> (36,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCI
-Info:      logic  0.00  5.21 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCO
-Info:    routing  0.00  5.21 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT (36,12) -> (36,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCI
+Info:      logic  0.07  4.91 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCO
+Info:    routing  0.00  4.91 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_FCI_INT (52,9) -> (52,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCI
+Info:      logic  0.00  4.91 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCO
+Info:    routing  0.00  4.91 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT (52,9) -> (52,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-216.61
+Info:                               FP_AddWide.v:222.34-224.61
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  5.28 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCO
-Info:    routing  0.00  5.28 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_FCI_INT (36,12) -> (36,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCI
-Info:      logic  0.00  5.28 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCO
-Info:    routing  0.00  5.28 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT (36,12) -> (37,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCI
+Info:      logic  0.07  4.98 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCO
+Info:    routing  0.00  4.98 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_FCI_INT (52,9) -> (52,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCI
+Info:      logic  0.00  4.98 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCO
+Info:    routing  0.00  4.98 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT (52,9) -> (53,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-216.61
+Info:                               FP_AddWide.v:222.34-224.61
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  5.35 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCO
-Info:    routing  0.00  5.35 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_FCI_INT (37,12) -> (37,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCI
-Info:      logic  0.00  5.35 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCO
-Info:    routing  0.00  5.35 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT (37,12) -> (37,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCI
+Info:      logic  0.07  5.05 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCO
+Info:    routing  0.00  5.05 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_FCI_INT (53,9) -> (53,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCI
+Info:      logic  0.00  5.05 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCO
+Info:    routing  0.00  5.05 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT (53,9) -> (53,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-216.61
+Info:                               FP_AddWide.v:222.34-224.61
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  5.42 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCO
-Info:    routing  0.00  5.42 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_FCI_INT (37,12) -> (37,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCI
-Info:      logic  0.00  5.42 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCO
-Info:    routing  0.00  5.42 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT (37,12) -> (37,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCI
+Info:      logic  0.07  5.12 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCO
+Info:    routing  0.00  5.12 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_FCI_INT (53,9) -> (53,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCI
+Info:      logic  0.00  5.12 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCO
+Info:    routing  0.00  5.12 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT (53,9) -> (53,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-216.61
+Info:                               FP_AddWide.v:222.34-224.61
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  5.49 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCO
-Info:    routing  0.00  5.49 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_FCI_INT (37,12) -> (37,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCI
-Info:      logic  0.00  5.49 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCO
-Info:    routing  0.00  5.49 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT (37,12) -> (37,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCI
+Info:      logic  0.07  5.19 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCO
+Info:    routing  0.00  5.19 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_FCI_INT (53,9) -> (53,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCI
+Info:      logic  0.00  5.19 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCO
+Info:    routing  0.00  5.19 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT (53,9) -> (53,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-216.61
+Info:                               FP_AddWide.v:222.34-224.61
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  5.56 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCO
-Info:    routing  0.00  5.56 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_FCI_INT (37,12) -> (37,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCI
-Info:      logic  0.00  5.56 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCO
-Info:    routing  0.00  5.56 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN (37,12) -> (38,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCI
+Info:      logic  0.07  5.26 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB0.FCO
+Info:    routing  0.00  5.26 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_FCI_INT (53,9) -> (53,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCI
+Info:      logic  0.00  5.26 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN_S0_CCU2C_S0_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN_COUT_CCU2C_CIN$CCU2_COMB1.FCO
+Info:    routing  0.00  5.26 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN (53,9) -> (54,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-216.61
+Info:                               FP_AddWide.v:222.34-224.61
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  5.63 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCO
-Info:    routing  0.00  5.63 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_FCI_INT (38,12) -> (38,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCI
-Info:      logic  0.00  5.63 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCO
-Info:    routing  0.00  5.63 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN (38,12) -> (38,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCI
+Info:      logic  0.07  5.34 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCO
+Info:    routing  0.00  5.34 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_FCI_INT (54,9) -> (54,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCI
+Info:      logic  0.00  5.34 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCO
+Info:    routing  0.00  5.34 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN (54,9) -> (54,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-216.61
+Info:                               FP_AddWide.v:222.34-224.61
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  5.70 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCO
-Info:    routing  0.00  5.70 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_FCI_INT (38,12) -> (38,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCI
-Info:      logic  0.00  5.70 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCO
-Info:    routing  0.00  5.70 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN (38,12) -> (38,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCI
+Info:      logic  0.07  5.41 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCO
+Info:    routing  0.00  5.41 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_FCI_INT (54,9) -> (54,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCI
+Info:      logic  0.00  5.41 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCO
+Info:    routing  0.00  5.41 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN (54,9) -> (54,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-216.61
+Info:                               FP_AddWide.v:222.34-224.61
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  5.78 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCO
-Info:    routing  0.00  5.78 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_FCI_INT (38,12) -> (38,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCI
-Info:      logic  0.00  5.78 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCO
-Info:    routing  0.00  5.78 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN (38,12) -> (38,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCI
+Info:      logic  0.07  5.48 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCO
+Info:    routing  0.00  5.48 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_FCI_INT (54,9) -> (54,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCI
+Info:      logic  0.00  5.48 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCO
+Info:    routing  0.00  5.48 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN (54,9) -> (54,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-216.61
+Info:                               FP_AddWide.v:222.34-224.61
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  5.85 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCO
-Info:    routing  0.00  5.85 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_FCI_INT (38,12) -> (38,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCI
-Info:      logic  0.00  5.85 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCO
-Info:    routing  0.00  5.85 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN (38,12) -> (39,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCI
+Info:      logic  0.07  5.55 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCO
+Info:    routing  0.00  5.55 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_FCI_INT (54,9) -> (54,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCI
+Info:      logic  0.00  5.55 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCO
+Info:    routing  0.00  5.55 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN (54,9) -> (55,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-216.61
+Info:                               FP_AddWide.v:222.34-224.61
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  5.92 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCO
-Info:    routing  0.00  5.92 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_FCI_INT (39,12) -> (39,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCI
-Info:      logic  0.00  5.92 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCO
-Info:    routing  0.00  5.92 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN (39,12) -> (39,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCI
+Info:      logic  0.07  5.62 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCO
+Info:    routing  0.00  5.62 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_FCI_INT (55,9) -> (55,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCI
+Info:      logic  0.00  5.62 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCO
+Info:    routing  0.00  5.62 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN (55,9) -> (55,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-216.61
+Info:                               FP_AddWide.v:222.34-224.61
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  5.99 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCO
-Info:    routing  0.00  5.99 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_FCI_INT (39,12) -> (39,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCI
-Info:      logic  0.00  5.99 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCO
-Info:    routing  0.00  5.99 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN (39,12) -> (39,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCI
+Info:      logic  0.07  5.69 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCO
+Info:    routing  0.00  5.69 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_FCI_INT (55,9) -> (55,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCI
+Info:      logic  0.00  5.69 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCO
+Info:    routing  0.00  5.69 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT_CIN (55,9) -> (55,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-216.61
+Info:                               FP_AddWide.v:222.34-224.61
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  6.06 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCO
-Info:    routing  0.00  6.06 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_FCI_INT (39,12) -> (39,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCI
-Info:      logic  0.00  6.06 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCO
-Info:    routing  0.00  6.06 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN (39,12) -> (39,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT$CCU2_COMB0.FCI
+Info:      logic  0.07  5.76 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB0.FCO
+Info:    routing  0.00  5.76 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_FCI_INT (55,9) -> (55,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCI
+Info:      logic  0.00  5.76 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN_CCU2C_COUT$CCU2_COMB1.FCO
+Info:    routing  0.00  5.76 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT_CIN (55,9) -> (55,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-216.61
+Info:                               FP_AddWide.v:222.34-224.61
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  6.13 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT$CCU2_COMB0.FCO
-Info:    routing  0.00  6.13 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT$CCU2_FCI_INT (39,12) -> (39,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT$CCU2_COMB1.FCI
-Info:      logic  0.00  6.13 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT$CCU2_COMB1.FCO
-Info:    routing  0.00  6.13 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN (39,12) -> (40,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1$CCU2_COMB0.FCI
+Info:      logic  0.07  5.83 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT$CCU2_COMB0.FCO
+Info:    routing  0.00  5.83 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT$CCU2_FCI_INT (55,9) -> (55,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT$CCU2_COMB1.FCI
+Info:      logic  0.00  5.83 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN_CCU2C_COUT$CCU2_COMB1.FCO
+Info:    routing  0.00  5.83 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1_CIN (55,9) -> (56,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-216.61
+Info:                               FP_AddWide.v:222.34-224.61
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  6.20 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1$CCU2_COMB0.FCO
-Info:    routing  0.00  6.20 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1$CCU2_FCI_INT (40,12) -> (40,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1$CCU2_COMB1.FCI
-Info:      logic  0.00  6.20 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1$CCU2_COMB1.FCO
-Info:    routing  0.00  6.20 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_CIN (40,12) -> (40,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1$CCU2_COMB0.FCI
+Info:      logic  0.07  5.90 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1$CCU2_COMB0.FCO
+Info:    routing  0.00  5.90 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1$CCU2_FCI_INT (56,9) -> (56,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1$CCU2_COMB1.FCI
+Info:      logic  0.00  5.90 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_CIN_CCU2C_COUT_S1_CCU2C_S1$CCU2_COMB1.FCO
+Info:    routing  0.00  5.90 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_CIN (56,9) -> (56,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-216.61
+Info:                               FP_AddWide.v:222.34-224.61
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  6.27 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1$CCU2_COMB0.FCO
-Info:    routing  0.00  6.27 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1$CCU2_FCI_INT (40,12) -> (40,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1$CCU2_COMB1.FCI
-Info:      logic  0.00  6.27 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1$CCU2_COMB1.FCO
-Info:    routing  0.00  6.27 Net u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT (40,12) -> (40,12)
-Info:                          Sink u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN$CCU2_COMB0.FCI
+Info:      logic  0.07  5.97 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1$CCU2_COMB0.FCO
+Info:    routing  0.00  5.97 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1$CCU2_FCI_INT (56,9) -> (56,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1$CCU2_COMB1.FCI
+Info:      logic  0.00  5.97 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1$CCU2_COMB1.FCO
+Info:    routing  0.00  5.97 Net u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT (56,9) -> (56,9)
+Info:                          Sink u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:214.34-216.61
+Info:                               FP_AddWide.v:222.34-224.61
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.44  6.72 Source u_core.mag_LUT4_Z_2_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN$CCU2_COMB0.F
-Info:    routing  1.53  8.25 Net u_core.mag_LUT4_Z_1_C[3] (40,12) -> (33,8)
-Info:                          Sink u_core.mag_LUT4_Z_1.D
+Info:      logic  0.44  6.42 Source u_core.mag_LUT4_Z_3_D_CCU2C_S0_CIN_CCU2C_COUT_S1_CCU2C_S1_1_COUT_CCU2C_CIN$CCU2_COMB0.F
+Info:    routing  1.02  7.44 Net u_core.mag_LUT4_Z_2_C[3] (56,9) -> (48,9)
+Info:                          Sink u_core.mag_LUT4_Z_2.D
 Info:                          Defined in:
 Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
-Info:      logic  0.24  8.48 Source u_core.mag_LUT4_Z_1.F
-Info:    routing  0.89  9.37 Net u_core.lzc_LUT4_Z_2_B_LUT4_Z_C[2] (33,8) -> (33,9)
+Info:      logic  0.24  7.67 Source u_core.mag_LUT4_Z_2.F
+Info:    routing  0.87  8.54 Net u_core.lzc_LUT4_Z_3_B_LUT4_Z_C[2] (48,9) -> (48,9)
 Info:                          Sink u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.C
 Info:                          Defined in:
-Info:                               FP_AddWide.v:221.24-221.27
-Info:      logic  0.24  9.61 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
-Info:    routing  0.51  10.12 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (33,9) -> (34,8)
+Info:                               FP_AddWide.v:229.24-229.27
+Info:      logic  0.24  8.78 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
+Info:    routing  0.61  9.39 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (48,9) -> (48,9)
 Info:                          Sink u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.D
 Info:                          Defined in:
 Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
-Info:      logic  0.24  10.35 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
-Info:    routing  0.62  10.98 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (34,8) -> (34,8)
+Info:      logic  0.24  9.63 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
+Info:    routing  0.90  10.53 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (48,9) -> (48,8)
 Info:                          Sink u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.D
 Info:                          Defined in:
 Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
-Info:      logic  0.24  11.21 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
-Info:    routing  0.51  11.72 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (34,8) -> (35,7)
+Info:      logic  0.24  10.77 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
+Info:    routing  0.62  11.39 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (48,8) -> (48,8)
 Info:                          Sink u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.D
 Info:                          Defined in:
 Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
-Info:      logic  0.24  11.95 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
-Info:    routing  0.42  12.37 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (35,7) -> (35,7)
+Info:      logic  0.24  11.63 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
+Info:    routing  0.51  12.13 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (48,8) -> (49,7)
 Info:                          Sink u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.D
 Info:                          Defined in:
 Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
-Info:      logic  0.24  12.61 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
-Info:    routing  0.61  13.22 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (35,7) -> (35,7)
+Info:      logic  0.24  12.37 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
+Info:    routing  0.78  13.15 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (49,7) -> (52,5)
 Info:                          Sink u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.D
 Info:                          Defined in:
 Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
-Info:      logic  0.24  13.46 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
-Info:    routing  0.21  13.67 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (35,7) -> (35,7)
+Info:      logic  0.24  13.39 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
+Info:    routing  0.41  13.80 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (52,5) -> (54,5)
 Info:                          Sink u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.D
 Info:                          Defined in:
 Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
-Info:      logic  0.24  13.91 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
-Info:    routing  0.63  14.54 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (35,7) -> (38,7)
+Info:      logic  0.24  14.04 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
+Info:    routing  0.42  14.46 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (54,5) -> (54,5)
 Info:                          Sink u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.D
 Info:                          Defined in:
 Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
-Info:      logic  0.24  14.78 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
-Info:    routing  0.51  15.29 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (38,7) -> (39,6)
+Info:      logic  0.24  14.69 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
+Info:    routing  0.66  15.35 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (54,5) -> (56,5)
 Info:                          Sink u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.D
 Info:                          Defined in:
 Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
-Info:      logic  0.24  15.52 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
-Info:    routing  0.42  15.94 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (39,6) -> (39,6)
+Info:      logic  0.24  15.59 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
+Info:    routing  0.66  16.25 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (56,5) -> (58,5)
 Info:                          Sink u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.D
 Info:                          Defined in:
 Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
-Info:      logic  0.24  16.18 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
-Info:    routing  0.99  17.17 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (39,6) -> (42,4)
+Info:      logic  0.24  16.48 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
+Info:    routing  0.04  16.52 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (58,5) -> (58,5)
 Info:                          Sink u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.D
 Info:                          Defined in:
 Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
-Info:      logic  0.24  17.41 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
-Info:    routing  0.42  17.83 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (42,4) -> (42,4)
+Info:      logic  0.24  16.76 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
+Info:    routing  0.42  17.18 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (58,5) -> (58,5)
 Info:                          Sink u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.D
 Info:                          Defined in:
 Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
-Info:      logic  0.24  18.06 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
-Info:    routing  0.21  18.27 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (42,4) -> (42,4)
+Info:      logic  0.24  17.41 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
+Info:    routing  0.48  17.89 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (58,5) -> (58,4)
 Info:                          Sink u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.D
 Info:                          Defined in:
 Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
-Info:      logic  0.24  18.51 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
-Info:    routing  0.04  18.55 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (42,4) -> (42,4)
+Info:      logic  0.24  18.12 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
+Info:    routing  0.42  18.54 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (58,4) -> (58,4)
 Info:                          Sink u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.D
 Info:                          Defined in:
 Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
-Info:      logic  0.24  18.79 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
-Info:    routing  0.21  19.00 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (42,4) -> (42,4)
+Info:      logic  0.24  18.78 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
+Info:    routing  0.04  18.82 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z_D[3] (58,4) -> (58,4)
 Info:                          Sink u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z.D
 Info:                          Defined in:
 Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
-Info:      logic  0.24  19.24 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
-Info:    routing  0.47  19.71 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D[3] (42,4) -> (42,4)
+Info:      logic  0.24  19.06 Source u_core.lzc_LUT4_Z_D_LUT4_Z_D_LUT4_Z.F
+Info:    routing  0.21  19.27 Net u_core.lzc_LUT4_Z_D_LUT4_Z_D[3] (58,4) -> (58,4)
 Info:                          Sink u_core.lzc_LUT4_Z_D_LUT4_Z.D
 Info:                          Defined in:
 Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
-Info:      logic  0.24  19.95 Source u_core.lzc_LUT4_Z_D_LUT4_Z.F
-Info:    routing  1.26  21.21 Net u_core.lzc_LUT4_Z_D[2] (42,4) -> (35,6)
+Info:      logic  0.24  19.51 Source u_core.lzc_LUT4_Z_D_LUT4_Z.F
+Info:    routing  1.03  20.54 Net u_core.lzc_LUT4_Z_D[2] (58,4) -> (50,5)
 Info:                          Sink u_core.lzc_LUT4_Z.D
 Info:                          Defined in:
 Info:                               /usr/bin/../share/yosys/lattice/cells_map_trellis.v:108.23-108.24
-Info:      logic  0.24  21.44 Source u_core.lzc_LUT4_Z.F
-Info:    routing  1.46  22.90 Net u_core.lzc[0] (35,6) -> (41,2)
+Info:      logic  0.24  20.78 Source u_core.lzc_LUT4_Z.F
+Info:    routing  1.69  22.46 Net u_core.lzc[0] (50,5) -> (60,4)
 Info:                          Sink u_core.e_res_CCU2C_S1$CCU2_COMB0.B
 Info:                          Defined in:
-Info:                               FP_AddWide.v:240.24-240.27
-Info:      logic  0.45  23.35 Source u_core.e_res_CCU2C_S1$CCU2_COMB0.FCO
-Info:    routing  0.00  23.35 Net u_core.e_res_CCU2C_S1$CCU2_FCI_INT (41,2) -> (41,2)
+Info:                               FP_AddWide.v:248.24-248.27
+Info:      logic  0.45  22.91 Source u_core.e_res_CCU2C_S1$CCU2_COMB0.FCO
+Info:    routing  0.00  22.91 Net u_core.e_res_CCU2C_S1$CCU2_FCI_INT (60,4) -> (60,4)
 Info:                          Sink u_core.e_res_CCU2C_S1$CCU2_COMB1.FCI
-Info:      logic  0.00  23.35 Source u_core.e_res_CCU2C_S1$CCU2_COMB1.FCO
-Info:    routing  0.00  23.35 Net u_core.e_res_CCU2C_S1_COUT (41,2) -> (41,2)
+Info:      logic  0.00  22.91 Source u_core.e_res_CCU2C_S1$CCU2_COMB1.FCO
+Info:    routing  0.00  22.91 Net u_core.e_res_CCU2C_S1_COUT (60,4) -> (60,4)
 Info:                          Sink u_core.e_res_CCU2C_S1_5$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:244.32-246.52
+Info:                               FP_AddWide.v:252.32-254.52
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  23.42 Source u_core.e_res_CCU2C_S1_5$CCU2_COMB0.FCO
-Info:    routing  0.00  23.42 Net u_core.e_res_CCU2C_S1_5$CCU2_FCI_INT (41,2) -> (41,2)
+Info:      logic  0.07  22.98 Source u_core.e_res_CCU2C_S1_5$CCU2_COMB0.FCO
+Info:    routing  0.00  22.98 Net u_core.e_res_CCU2C_S1_5$CCU2_FCI_INT (60,4) -> (60,4)
 Info:                          Sink u_core.e_res_CCU2C_S1_5$CCU2_COMB1.FCI
-Info:      logic  0.00  23.42 Source u_core.e_res_CCU2C_S1_5$CCU2_COMB1.FCO
-Info:    routing  0.00  23.42 Net u_core.e_res_CCU2C_S1_5_COUT (41,2) -> (41,2)
+Info:      logic  0.00  22.98 Source u_core.e_res_CCU2C_S1_5$CCU2_COMB1.FCO
+Info:    routing  0.00  22.98 Net u_core.e_res_CCU2C_S1_5_COUT (60,4) -> (60,4)
 Info:                          Sink u_core.e_res_CCU2C_S1_3$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:244.32-246.52
+Info:                               FP_AddWide.v:252.32-254.52
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  23.49 Source u_core.e_res_CCU2C_S1_3$CCU2_COMB0.FCO
-Info:    routing  0.00  23.49 Net u_core.e_res_CCU2C_S1_3$CCU2_FCI_INT (41,2) -> (41,2)
+Info:      logic  0.07  23.05 Source u_core.e_res_CCU2C_S1_3$CCU2_COMB0.FCO
+Info:    routing  0.00  23.05 Net u_core.e_res_CCU2C_S1_3$CCU2_FCI_INT (60,4) -> (60,4)
 Info:                          Sink u_core.e_res_CCU2C_S1_3$CCU2_COMB1.FCI
-Info:      logic  0.00  23.49 Source u_core.e_res_CCU2C_S1_3$CCU2_COMB1.FCO
-Info:    routing  0.00  23.49 Net u_core.e_res_CCU2C_S1_3_COUT (41,2) -> (42,2)
+Info:      logic  0.00  23.05 Source u_core.e_res_CCU2C_S1_3$CCU2_COMB1.FCO
+Info:    routing  0.00  23.05 Net u_core.e_res_CCU2C_S1_3_COUT (60,4) -> (61,4)
 Info:                          Sink u_core.e_res_CCU2C_S1_1$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:244.32-246.52
+Info:                               FP_AddWide.v:252.32-254.52
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  23.56 Source u_core.e_res_CCU2C_S1_1$CCU2_COMB0.FCO
-Info:    routing  0.00  23.56 Net u_core.e_res_CCU2C_S1_1$CCU2_FCI_INT (42,2) -> (42,2)
+Info:      logic  0.07  23.12 Source u_core.e_res_CCU2C_S1_1$CCU2_COMB0.FCO
+Info:    routing  0.00  23.12 Net u_core.e_res_CCU2C_S1_1$CCU2_FCI_INT (61,4) -> (61,4)
 Info:                          Sink u_core.e_res_CCU2C_S1_1$CCU2_COMB1.FCI
-Info:      logic  0.00  23.56 Source u_core.e_res_CCU2C_S1_1$CCU2_COMB1.FCO
-Info:    routing  0.00  23.56 Net u_core.e_res_CCU2C_S1_1_COUT (42,2) -> (42,2)
+Info:      logic  0.00  23.12 Source u_core.e_res_CCU2C_S1_1$CCU2_COMB1.FCO
+Info:    routing  0.00  23.12 Net u_core.e_res_CCU2C_S1_1_COUT (61,4) -> (61,4)
 Info:                          Sink u_core.e_res_CCU2C_S1_2$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:244.32-246.52
+Info:                               FP_AddWide.v:252.32-254.52
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  23.63 Source u_core.e_res_CCU2C_S1_2$CCU2_COMB0.FCO
-Info:    routing  0.00  23.63 Net u_core.e_res_CCU2C_S1_2$CCU2_FCI_INT (42,2) -> (42,2)
+Info:      logic  0.07  23.19 Source u_core.e_res_CCU2C_S1_2$CCU2_COMB0.FCO
+Info:    routing  0.00  23.19 Net u_core.e_res_CCU2C_S1_2$CCU2_FCI_INT (61,4) -> (61,4)
 Info:                          Sink u_core.e_res_CCU2C_S1_2$CCU2_COMB1.FCI
-Info:      logic  0.00  23.63 Source u_core.e_res_CCU2C_S1_2$CCU2_COMB1.FCO
-Info:    routing  0.00  23.63 Net u_core.e_res_CCU2C_S1_2_COUT (42,2) -> (42,2)
+Info:      logic  0.00  23.19 Source u_core.e_res_CCU2C_S1_2$CCU2_COMB1.FCO
+Info:    routing  0.00  23.19 Net u_core.e_res_CCU2C_S1_2_COUT (61,4) -> (61,4)
 Info:                          Sink u_core.e_res_CCU2C_S1_4$CCU2_COMB0.FCI
 Info:                          Defined in:
-Info:                               FP_AddWide.v:244.32-246.52
+Info:                               FP_AddWide.v:252.32-254.52
 Info:                               /usr/bin/../share/yosys/lattice/arith_map_ccu2c.v:74.7-80.4
 Info:                               /usr/bin/../share/yosys/lattice/ccu2c_sim.vh:9.9-9.13
-Info:      logic  0.07  23.70 Source u_core.e_res_CCU2C_S1_4$CCU2_COMB0.FCO
-Info:    routing  0.00  23.70 Net u_core.e_res_CCU2C_S1_4$CCU2_FCI_INT (42,2) -> (42,2)
+Info:      logic  0.07  23.26 Source u_core.e_res_CCU2C_S1_4$CCU2_COMB0.FCO
+Info:    routing  0.00  23.26 Net u_core.e_res_CCU2C_S1_4$CCU2_FCI_INT (61,4) -> (61,4)
 Info:                          Sink u_core.e_res_CCU2C_S1_4$CCU2_COMB1.FCI
-Info:      logic  0.40  24.10 Source u_core.e_res_CCU2C_S1_4$CCU2_COMB1.F
-Info:    routing  0.24  24.34 Net u_core.e_res[11] (42,2) -> (42,2)
+Info:      logic  0.40  23.67 Source u_core.e_res_CCU2C_S1_4$CCU2_COMB1.F
+Info:    routing  0.27  23.93 Net u_core.e_res[11] (61,4) -> (61,4)
 Info:                          Sink u_core.e_res_p2_TRELLIS_FF_Q_11.M
 Info:                          Defined in:
-Info:                               FP_AddWide.v:244.24-244.29
-Info:      setup  0.00  24.34 Source u_core.e_res_p2_TRELLIS_FF_Q_11.M
-Info: 9.32 ns logic, 15.02 ns routing
+Info:                               FP_AddWide.v:252.24-252.29
+Info:      setup  0.00  23.93 Source u_core.e_res_p2_TRELLIS_FF_Q_11.M
+Info: 9.32 ns logic, 14.61 ns routing
 
-Info: Max frequency for clock 'clk': 41.08 MHz (PASS at 40.00 MHz)
+Info: Max frequency for clock 'clk': 41.78 MHz (PASS at 40.00 MHz)
 
 Info: Slack histogram:
 Info:  legend: * represents 2 endpoint(s)
 Info:          + represents [1,2) endpoint(s)
-Info: [   657,   1827) |******+
-Info: [  1827,   2997) | 
-Info: [  2997,   4167) |+
-Info: [  4167,   5337) |***********+
-Info: [  5337,   6507) |**+
-Info: [  6507,   7677) |*+
-Info: [  7677,   8847) |+
-Info: [  8847,  10017) |***+
-Info: [ 10017,  11187) |********+
-Info: [ 11187,  12357) |************+
-Info: [ 12357,  13527) |***********+
-Info: [ 13527,  14697) |*+
-Info: [ 14697,  15867) |*****************+
-Info: [ 15867,  17037) |***********************+
-Info: [ 17037,  18207) |********+
-Info: [ 18207,  19377) |*************+
-Info: [ 19377,  20547) |************+
-Info: [ 20547,  21717) |*********************+
-Info: [ 21717,  22887) |*****************************************+
-Info: [ 22887,  24057) |************************************************************ 
+Info: [  1066,   2216) |*****+
+Info: [  2216,   3366) | 
+Info: [  3366,   4516) |+
+Info: [  4516,   5666) |*********+
+Info: [  5666,   6816) |**+
+Info: [  6816,   7966) |*+
+Info: [  7966,   9116) |+
+Info: [  9116,  10266) |**+
+Info: [ 10266,  11416) |********+
+Info: [ 11416,  12566) |********+
+Info: [ 12566,  13716) |***********+
+Info: [ 13716,  14866) |*+
+Info: [ 14866,  16016) |***********+
+Info: [ 16016,  17166) |***********************+
+Info: [ 17166,  18316) |**********+
+Info: [ 18316,  19466) |********+
+Info: [ 19466,  20616) |**********+
+Info: [ 20616,  21766) |******************************************+
+Info: [ 21766,  22916) |*******************************+
+Info: [ 22916,  24066) |************************************************************ 
 
 Info: Program finished normally.

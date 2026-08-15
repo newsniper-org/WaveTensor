@@ -8,31 +8,57 @@ GATE 1 — fp_mul36 (LFE5UM-85F CABGA381 -6, out-of-context, yosys synth_ecp5 + 
     GATE 1 RESULT: PASS
 
 GATE 2 — fp_addwide (LFE5UM-85F CABGA381 -6, out-of-context, yosys synth_ecp5 + nextpnr-ecp5, wrapper-top incl. I/O regs):
-    LUT4       =   894   (limit 900)   -> PASS
+    LUT4       =   898   (limit 900)   -> PASS
     MULT18X18D =     0   (limit 0)   -> PASS
     TRELLIS_FF =   497   (informational)
     EBR        =     0   (limit 0, cells DP16KD/PDPW16KD/DP16KD_COMB)   -> PASS
     CCU2C      =   161   (informational, carry cells)
-    Fmax       =    41.08 MHz (target >= 40.0)   -> PASS
+    Fmax       =    41.78 MHz (target >= 40.0)   -> PASS
     GATE 2 RESULT: PASS
 
 GATE C3 — fp_stepseq (LFE5UM-85F CABGA381 -6, out-of-context, yosys synth_ecp5 + nextpnr-ecp5, wrapper-top incl. I/O regs):
-    LUT4       =  4721   (limit 4909)   -> PASS
-    LUT4 delta =  +312   vs the 4409 C3 archive (estimate +250-500, the spec 25.5.1 OPS_DEQ itemization band; hard escalation to cut-ladder rung 3 above +500)
+    LUT4       =  4666   (limit 4909)   -> PASS
+    LUT4 delta =  +257   vs the 4409 C3 archive (estimate +250-500, the spec 25.5.1 OPS_DEQ itemization band; hard escalation to cut-ladder rung 3 above +500)
     MULT18X18D =     4   (exactly 4)   -> PASS
     TRELLIS_FF =   986   raw; unit = 839 after -147 wrapper I/O flops (limit 900)   -> PASS
     EBR        =     0   (limit 0, cells DP16KD/PDPW16KD/DP16KD_COMB)   -> PASS
-    CCU2C      =   588   (informational, carry cells)
-    Fmax       =    40.37 MHz (target >= 40.0)   -> PASS
+    CCU2C      =   592   (informational, carry cells)
+    Fmax       =    40.61 MHz (target >= 40.0)   -> PASS
     GATE C3 RESULT: PASS
 
 GATE F1 — fp_fmalane_bf16 (LFE5UM-85F CABGA381 -6, out-of-context, yosys synth_ecp5 + nextpnr-ecp5, wrapper-top incl. I/O regs):
-    LUT4       =   924   (limit 1300)   -> PASS
-    LUT4 delta =   +30   vs the 894 Gate-2 FP_AddWide archive (the lane instantiates FP_AddWide VERBATIM, so the delta against its 894 LUT4 Gate-2 archive IS the cost of the narrow front end (unpack/classify, f16 subnormal normalizer, static align mux, IEEE special injector) NET of the PACK_WIDE cone that constant-folds away here; nominal ceiling +406)
+    LUT4       =   930   (limit 1300)   -> PASS
+    LUT4 delta =   +36   vs the 894 Gate-2 FP_AddWide archive (the lane instantiates FP_AddWide VERBATIM, so the delta against its 894 LUT4 Gate-2 archive IS the cost of the narrow front end (unpack/classify, f16 subnormal normalizer, static align mux, IEEE special injector) NET of the PACK_WIDE cone that constant-folds away here; nominal ceiling +406)
     MULT18X18D =     1   (limit 1)   -> PASS
     TRELLIS_FF =   478   raw; unit = 381 after -97 wrapper I/O flops (limit 520)   -> PASS
     EBR        =     0   (limit 0, cells DP16KD/PDPW16KD/DP16KD_COMB)   -> PASS
     CCU2C      =   168   (informational, carry cells)
-    Fmax       =    42.53 MHz (target >= 40.0)   -> PASS
+    Fmax       =    40.90 MHz (target >= 40.0)   -> PASS
     GATE F1 RESULT: PASS
+
+--- RE-MEASUREMENT NOTE (2026-08-15, PACK_WIDE format closure) --------------
+Gates 2 / C3 / F1 re-measured after the FP_AddWide canonical-zero change
+(wide_zero==1 now emits the NORMATIVE canonical zero sign=0 / exp=-1024 /
+sig=0 — the module's own zero-operand convention — instead of UNSPECIFIED
+fields; implemented as FF synchronous-set/reset constants, TRELLIS_FF
+LSR_OVER_CE + per-bit REGSET on the 61 wide-group FFs, ZERO added logic
+depth on the packing D-paths). Gate 1 untouched (archived report).
+    GATE 2  : 894 -> 898 LUT4 (+4, the LSR-net fanout), 497 FF (+-0),
+              41.08 -> 41.78 MHz (seed 1). The only gate whose netlist
+              carries the new cone.
+    GATE C3 : 4721 -> 4666 LUT4 (-55), 986 FF (+-0), 4 MULT (+-0),
+              40.37 -> 40.61 MHz at seed 4 (seeds 1-3 below 40 — the
+              23.10.10(g) sweep; per-seed logs overwritten by design).
+              The wide output group is UNCONSUMED in this unit and sweeps
+              away; a control synth of the BASELINE FP_AddWide through the
+              same yosys 0.64 reproduced 4721 LUT4 / 588 CCU2C / 405 PFUMX
+              exactly, so the -55 is abc mapping perturbation from the
+              (dead) added structure — not tool drift, not new logic.
+    GATE F1 : 924 -> 930 LUT4 (+6), 478 FF (+-0), 1 MULT (+-0),
+              42.53 -> 40.90 MHz (seed 1). pack_mode is tied to PACK_FINAL
+              here so the override constant-folds; same perturbation class
+              as C3. The "+36 vs 894" delta line above still references the
+              PRE-closure Gate-2 archive constant in gate_check.py; against
+              the re-measured 898 the front-end delta is +32.
+------------------------------------------------------------------------------
 

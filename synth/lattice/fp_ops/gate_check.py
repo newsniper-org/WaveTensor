@@ -46,7 +46,8 @@ Pass criteria (merge blockers):
   GATE F1 fp_fmalane_bf16
                     : the v2.0 TRAIN unified bf16/f16 fused-FMA lane
                       (spec §23.1; FP_FmaLaneBf16.v) — LUT4 <= 1300
-                      (= the 894 LUT4 Gate-2 FP_AddWide archive, which the
+                      (= the 898 LUT4 Gate-2 FP_AddWide archive (post format-closure,
+                      2026-08-15), which the
                       lane instantiates VERBATIM, + a 406 nominal ceiling
                       for the narrow front end), MULT18X18D <= 1 (an 11x11
                       needs AT MOST one; 0 is a PASS and means yosys
@@ -85,10 +86,11 @@ GATES = [
                    "band; hard escalation to cut-ladder rung 3 above +500"},
     {"name": "fp_fmalane_bf16", "label": "GATE F1",
      "max_lut4": 1300, "mult": 1, "mult_exact": False,
-     "max_ff": 520,  "wrapper_ff": 97,  "max_ebr": 0, "lut4_baseline": 894,
+     "max_ff": 520,  "wrapper_ff": 97,  "max_ebr": 0, "lut4_baseline": 898,
      "baseline_label": "Gate-2 FP_AddWide archive",
      "delta_note": "the lane instantiates FP_AddWide VERBATIM, so the "
-                   "delta against its 894 LUT4 Gate-2 archive IS the cost "
+                   "delta against its 898 LUT4 Gate-2 archive (post format-"
+                   "closure) IS the cost "
                    "of the narrow front end (unpack/classify, f16 "
                    "subnormal normalizer, static align mux, IEEE special "
                    "injector) NET of the PACK_WIDE cone that constant-"

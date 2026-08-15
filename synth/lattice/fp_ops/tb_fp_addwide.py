@@ -11,7 +11,12 @@ Bit-exactness authority: scripts/golden_fp32.py.
     operands only (normals; DAZ is an operand-load concern upstream).
   * WIDE pack path   vs the SEQUENCER-FAITHFUL round-to-odd helper
     (golden _rto): the exact sum, normalized and jammed to the 48-bit
-    internal width, DAZ/FTZ-exempt (no exponent clamping).
+    internal width, DAZ/FTZ-exempt (no exponent clamping). Exact
+    cancellation emits the CANONICAL ZERO encoding (sign=0, exp=-1024,
+    sig=0 — the module's own zero-OPERAND convention, v2.0 format
+    closure): the fields are NORMATIVE, no longer don't-care, and a
+    PACK_WIDE zero feeds back as a zero operand with no translation
+    (asserted by wide_zero_canonical_and_closure below).
 
 Operand conventions (the pinned FP_AddWide interface contract):
   value = (-1)^sign * sig * 2^(exp-47)
@@ -80,6 +85,10 @@ def op_product(a_bits, b_bits):
 
 OP_ZERO = (0, -1024, 0)
 
+# The PACK_WIDE canonical zero ENCODING equals the zero-OPERAND convention
+# (that identity IS the v2.0 format-closure contract being tested).
+CANON_ZERO = OP_ZERO
+
 
 def rand_normal(emin=-126, emax=127):
     return ((random.getrandbits(1) << 31)
@@ -105,7 +114,8 @@ def rand_normal_pair_close(dmax):
 
 def wide_ref(p_op, c_op):
     """Exact sum -> (sign, exp, 48-bit round-to-odd significand) or None for
-    exact cancellation. The jam uses golden's sequencer-faithful _rto."""
+    exact cancellation (which _check_wide maps to the canonical zero
+    encoding). The jam uses golden's sequencer-faithful _rto."""
     (ps, pe, psig), (cs, ce, csig) = p_op, c_op
     v = ((-1 if ps else 1) * psig * Fraction(2) ** (pe - 47)
          + (-1 if cs else 1) * csig * Fraction(2) ** (ce - 47))
@@ -147,14 +157,16 @@ def _check_final(dut, exp_bits, label):
 def _check_wide(dut, exp, label):
     zero = int(dut.wide_zero.value)
     if exp is None:
-        # contract: wide_sign/exp/sig are UNSPECIFIED when wide_zero==1
+        # format-closure contract: exact cancellation emits the CANONICAL
+        # ZERO encoding — the fields are normative, no longer don't-care
         assert zero == 1, f"{label}: expected wide_zero"
-        return
+        exp = CANON_ZERO
+    else:
+        assert zero == 0, f"{label}: unexpected wide_zero"
     s, e, sig = exp
     we = int(dut.wide_exp.value)
     if we >= 2048:
         we -= 4096
-    assert zero == 0, f"{label}: unexpected wide_zero"
     assert int(dut.wide_sign.value) == s, f"{label}: wide_sign"
     assert we == e, f"{label}: wide_exp got {we} expected {e}"
     got = int(dut.wide_sig.value)
@@ -323,7 +335,7 @@ async def wide_round_to_odd(dut):
         return random.getrandbits(48) | (1 << 46)   # in [2^46, 2^48)
 
     cases = []
-    # exact cancellation -> wide_zero
+    # exact cancellation -> wide_zero + canonical zero fields
     for _ in range(20):
         s = random.getrandbits(1)
         sig, e = rand_sig(), random.randint(-140, 140)
@@ -353,6 +365,85 @@ async def wide_round_to_odd(dut):
         cases.append((p_op, c_op, wide_ref(p_op, c_op)))
 
     await _stream(dut, cases, PACK_WIDE, _check_wide, "wide_rto")
+
+
+# ---------------------------------------------------------------------------
+# WIDE path — canonical zero encoding + I/O closure (v2.0 format closure:
+# exact cancellation emits (sign=0, exp=-1024, sig=0), the module's own
+# zero-OPERAND convention, so a PACK_WIDE zero feeds back with no
+# translation and never anchors alignment)
+# ---------------------------------------------------------------------------
+
+
+@cocotb.test()
+async def wide_zero_canonical_and_closure(dut):
+    random.seed(0xC104)
+    await _start(dut)
+
+    # -- 1. directed exact cancellations a + (-a): fields must BE canonical
+    sig_extremes = (1 << 46, (1 << 46) + 1, (1 << 47) - 1, 1 << 47,
+                    (1 << 47) + 1, (1 << 48) - 2, (1 << 48) - 1)
+    cases = []
+    for sig in sig_extremes:
+        for e in (-1000, -300, -126, -1, 0, 1, 127, 300, 1000):
+            for s in (0, 1):
+                cases.append(((s, e, sig), (s ^ 1, e, sig), None))
+    # FMA-shaped exact cancellation: b a power of two makes the raw product
+    # exact, so P + (-RN(a*b) as addend) cancels exactly through alignment
+    for _ in range(50):
+        a = rand_normal(-30, 30)
+        b = ((random.getrandbits(1) << 31)
+             | ((random.randint(-30, 30) + 127) << 23))
+        q = G.ref_mul(a, b)
+        cases.append((op_product(a, b), op_addend(q ^ 0x80000000), None))
+    # zero + zero: the canonical zero is itself closed
+    cases.append((OP_ZERO, OP_ZERO, None))
+    await _stream(dut, cases, PACK_WIDE, _check_wide, "wide_canon")
+
+    # -- 2. I/O closure: capture the DUT's OWN wide-zero output fields and
+    # feed them back VERBATIM as a zero operand (no translation) — this is
+    # the closure property itself, not a re-encoding by the TB
+    x = rand_normal()
+    _apply(dut, op_addend(x), op_addend(x ^ 0x80000000), PACK_WIDE)
+    await FallingEdge(dut.clk)
+    _apply(dut, OP_ZERO, OP_ZERO, PACK_FINAL)   # don't touch the wide group
+    for _ in range(LATENCY - 1):
+        await FallingEdge(dut.clk)
+    assert int(dut.wide_zero.value) == 1, "closure: expected wide_zero"
+    we = int(dut.wide_exp.value)
+    if we >= 2048:
+        we -= 4096
+    z_op = (int(dut.wide_sign.value), we, int(dut.wide_sig.value))
+    assert z_op == CANON_ZERO, (
+        f"closure: captured wide-zero fields {z_op} != canonical "
+        f"{CANON_ZERO} (== the zero-operand input convention)")
+
+    def rand_sig():
+        return random.getrandbits(48) | (1 << 46)   # in [2^46, 2^48)
+
+    closure = []
+    # both operand slots, assorted partners across the flush-exempt range
+    for _ in range(400):
+        w = (random.getrandbits(1), random.randint(-1000, 1000), rand_sig())
+        closure.append((z_op, w, wide_ref(z_op, w)))
+        closure.append((w, z_op, wide_ref(w, z_op)))
+    # alignment-anchor hazard band: partners with TINY negative exponents —
+    # an exp-0 zero would anchor ABOVE these and corrupt the result; the
+    # canonical exp=-1024 must never anchor (strictly below every partner)
+    for e in range(-1023, -990):
+        w = (random.getrandbits(1), e, rand_sig())
+        closure.append((z_op, w, wide_ref(z_op, w)))
+        closure.append((w, z_op, wide_ref(w, z_op)))
+    closure.append((z_op, z_op, None))
+    await _stream(dut, closure, PACK_WIDE, _check_wide, "wide_closure")
+
+    # -- 3. the same fed-back zero through the FINAL pack (the FMUL
+    # pack-only operand convention): P = zero + addend c packs c verbatim
+    finals = []
+    for _ in range(100):
+        c = rand_normal()
+        finals.append((z_op, op_addend(c), G.ref_add(c, 0)))
+    await _stream(dut, finals, PACK_FINAL, _check_final, "wide_closure_final")
 
 
 # ---------------------------------------------------------------------------

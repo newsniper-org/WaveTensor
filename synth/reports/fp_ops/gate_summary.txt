@@ -38,3 +38,17 @@ GATE F1-US/xcu50 — fp_fmalane_bf16_xcu50: same lane, speed-grade cross-check o
       u_addwide      FP_AddWide       LUT   617  FF   193  DSP   0
     GATE F1-US/xcu50 RESULT: PASS
 
+--- RE-MEASUREMENT NOTE (2026-08-15, PACK_WIDE format closure) --------------
+F1-US (xcu55c) re-run after the FP_AddWide canonical-zero change (wide_zero
+==1 now emits the normative canonical zero sign=0/exp=-1024/sig=0 instead
+of UNSPECIFIED fields, via FF sync set/reset constants). Every measured
+number is IDENTICAL to the pre-change archive (935 raw LUT cells / 776 LUT
+sites / 421 FF / 1 DSP48 / WNS +6.083 ns -> 255.30 MHz / WHS +0.040 ns):
+pack_mode is tied to PACK_FINAL in this lane, so Vivado constant-folds the
+wide output group and the canonical-zero override with it. The F1-US/xcu50
+rows above are the archived pre-change reports (not re-run — same
+constant-fold argument; re-run on request). No FP_AddWide-standalone
+UltraScale+ gate exists (the Makefile defines synth-fp-op sources only for
+fp_fmalane_bf16), so Gate 2 remains ECP5-only evidence.
+------------------------------------------------------------------------------
+
