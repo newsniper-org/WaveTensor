@@ -6,7 +6,7 @@
 // 전용 beat-serial 변형) 전-벡터 bit-exact 스모크 TB.
 //
 // golden 벡터는 full-parallel TB (tb_fp_acclattice.v) 와 동일:
-//   include/generated/lattice_wave_vectors.hex (4001 벡터, 계약:
+//   include/generated/lattice_wave_vectors.hex (4081 벡터, 계약:
 //   include/generated/lattice_vec_contract.md). exact lattice 는 순서-무관
 // 이므로 (§27.2.1) 같은 33-addend 집합의 beat-serial 재생은 4층 전부
 // (RESOLVED/WIDE/BANK/FP32) bit-exact 여야 한다 — 그것이 판정이다.
@@ -17,7 +17,7 @@
 //
 // DISCRIMINATOR 자기시험 (tb_fp_acclattice.v 와 동일 규율 — tautology 방지):
 //   sticky-jam 을 뺀 truncation 오답 참조가 1개 이상의 벡터에서 실제 FAIL
-//   경로를 타야 PASS (golden 사전 계산상 1556/4001 벡터에서 갈라진다).
+//   경로를 타야 PASS (golden 사전 계산상 1636/4081 벡터에서 갈라진다).
 //
 // 실행 (repo root 에서):
 //   $ verilator --binary --timing -j 0 -Wno-fatal \
@@ -32,7 +32,7 @@
 
 module tb_fp_acclattice_beat2;
 
-    localparam integer N_VEC = 4001;
+    localparam integer N_VEC = 4081;
 
     localparam [63:0] CANON_ZERO_FIELD = 64'h0400_0000_0000_0000;
 

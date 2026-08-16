@@ -111,9 +111,23 @@ EBR_CELLS = ("DP16KD", "PDPW16KD", "DP16KD_COMB")
 # the premap $mul count from <name>_premap.rpt.
 MEASUREMENTS = [
     {"name": "fp_acclattice", "label": "MEAS V20-2/ECP5 full-parallel",
-     "desc": "FP_AccLattice 33-addend full-parallel unit (xcu55c-target "
-             "base form) measured as-is on the 85F",
+     "desc": "FROZEN 903351c archive — FP_AccLattice 33-addend "
+             "full-parallel unit measured as-is on the 85F; the v2.0 "
+             "beat-serial rewrite (spec 27.2.1 amendment 2026-08-16) "
+             "retired this shape, re-measurements land under "
+             "fp_acclattice_n8 / fp_acclattice_n2",
      "wrapper_ff": 2801},   # 2112 in + 689 out gate-top I/O flops
+    {"name": "fp_acclattice_n8", "label": "MEAS V20-2/ECP5 beat-serial N=8",
+     "desc": "v2.0 SHIPPING shape (spec 27.2.1 amendment 2026-08-16): "
+             "PRODUCTS_PER_BEAT=8 — 4 beats, beat-0 merged carry-in, "
+             "parallel 1-cycle 576-bit resolve, II=4",
+     "wrapper_ff": 1267},   # (1+512+64) in + 690 out gate-top I/O flops
+    {"name": "fp_acclattice_n2", "label": "MEAS V20-2/ECP5 beat-serial N=2",
+     "desc": "parameterization-consistency point vs the Beat2 archive "
+             "(9,374 LUT4 / 19.55 MHz): PRODUCTS_PER_BEAT=2 — 16 beats, "
+             "beat-0 merged carry-in, PARALLEL resolve (Beat2 differs: "
+             "separate carry beat + 9-cycle SERIAL resolve)",
+     "wrapper_ff": 883},    # (1+128+64) in + 690 out gate-top I/O flops
     {"name": "fp_acclattice_beat2", "label": "MEAS V20-2/ECP5 beat-serial",
      "desc": "spec 27.6 ECP5 target shape: 2 products/beat x 16 beats "
              "(+1 carry-in beat) + 9-cycle serial resolve",

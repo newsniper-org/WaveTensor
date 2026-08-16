@@ -3,19 +3,74 @@
 
 // =============================================================================
 // FP_AccLattice.v — v2.0 wave-step-atomic accumulation: 528-bit exact-integer
-// lattice unit (spec §27.2 normative; §27.6 하류 gate 순서 ② = GATE V20-2 의
-// 대상 RTL. golden: scripts/golden_lattice.py — golden-before-RTL law).
+// lattice unit, 출하 microarchitecture = beat-serial (spec §27.2 normative +
+// §27.2.1 말미 [amendment 2026-08-16] 블록이 출하 형상 normative; golden:
+// scripts/golden_lattice.py — golden-before-RTL law).
 //
 // 한 wave-step (= 1 dispatch) 의 33 addend — 32 곱 + ACC bank carry-in — 를
-// 정확(exact) 정수로 누산하고, 그 wave-step 의 유일한 반올림인 RTO-48 추출
-// 1회를 수행한다 (§27.2.1 "wave-step-atomic"). dot 내부 반올림 0회, 따라서
-// 결합 순서 개입 불가 — serial-equivalence 증명 의무의 구조적 소거 (§27.4).
+// beat 당 PRODUCTS_PER_BEAT(=N) 개씩 NUM_BEATS(=32/N) 개 beat 에 나눠
+// 인가받아 exact 정수로 누산하고, 그 wave-step 의 유일한 반올림인 RTO-48
+// 추출 1회를 수행한다 (§27.2.1 "wave-step-atomic"). beat 분할은 exact 정수
+// 부분합의 시간 분할일 뿐이므로 wave-step 결과는 full-parallel 시간 구조와
+// bit-identical — dot 내부 반올림 0회, 순서-무관 (association-free), 반올림
+// 이벤트의 수 (wave-step 당 1) 도 위치 (bank store) 도 불변 (amendment
+// "수학 계약 불변" 항 — golden·4001 벡터·추출 정리 무변경 재사용).
+//
+// -----------------------------------------------------------------------------
+// 파라미터 / 시간 계약
+// -----------------------------------------------------------------------------
+// PRODUCTS_PER_BEAT (기본 8): beat 당 곱 operand 수. 32 의 약수만 유효
+//   (1/2/4/8/16/32 — 위반 시 sim time-0 loud $fatal; N=0/음수는 그 전에
+//   part-select elaboration error 로 사망 — 어느 쪽이든 loud, silent 경로
+//   없음). N=2 구성이 기존 측정
+//   전용 변형 FP_AccLatticeBeat2 의 역할을 승계한다 (amendment 파라미터화 항;
+//   Beat2 파일·리포트는 provenance 로 유지).
+//
+// NUM_BEATS = 32/N.
+//   ** II = NUM_BEATS cycle ** — 연속 wave-step 은 마지막 beat 의 바로 다음
+//   cycle 에 다음 start_i 를 인가할 수 있다 (resolve/추출은 다음 wave-step
+//   의 beat 열과 완전 중첩되는 파이프라인 스테이지 — 아래 스테이지 표).
+//   ** LATENCY = NUM_BEATS + 3 cycle ** (beat 0 인가 cycle → done_q==1 cycle).
+//     N=8 (기본/출하): II = 4 @ 100 MHz 문맥 — amendment 의 계약 "II <= 8"
+//                      을 2 배 여유로 충족. LATENCY = 7.
+//     N=2 :            II = 16, LATENCY = 19.
+//     N=32:            II = 1,  LATENCY = 4.
+//
+// -----------------------------------------------------------------------------
+// carry-in 인가 방식 — 본 RTL 의 선택 (amendment: "RTL 이 선택하고 TB 로
+// 고정"; tb_fp_acclattice.v 가 이 선택을 봉인한다)
+// -----------------------------------------------------------------------------
+// ** beat 0 병합 ** (별도 carry beat 없음 — II 1 beat 절약, 총 NUM_BEATS beat).
+//   carry_i 는 start_i 와 같은 cycle (beat 0) 에만 샘플되며, 그 외 cycle 의
+//   carry_i 값은 완전히 무시된다 (TB 는 비-beat0 cycle 에 고의 오염값을
+//   인가해 이 격리를 검증한다). 구현: beat 0 에는 carry-save 상태 row 가
+//   아직 0 이므로 carry-in 의 576-bit 배치 기여를 s-row 초기값 자리에, 0 을
+//   c-row 자리에 주입한다 — compressor 에 인가되는 row 수는 모든 beat 에서
+//   동일한 (N field + carry-save 2 + ncnt 1) = N+3 (amendment "N+2+1 rows"
+//   구조) 이고, carry-in 병합의 compressor 추가 비용은 0 이다 (배치 lane
+//   1개 추가가 유일한 비용).
+//
+// bank 인터페이스 함의 (하류 ③ bank COMMIT 이 승계·명문화할 계약):
+//   * read-before-dispatch: bank 는 carry-in word 를 wave-step 의 beat 0
+//     cycle 에 공급해야 한다 — bank read 는 dispatch 시점에 완료.
+//   * ownership window: carry-in 은 beat 0 에서 소비 완료되므로, 같은 slot
+//     에 대한 본 wave-step 의 결과 write-back (LATENCY 후) 과 read 가
+//     겹치지 않는 창이 구조적으로 보장된다.
+//   * 같은 slot 체이닝 (이 wave-step 의 wide 결과 = 다음 wave-step 의
+//     carry-in): bank forwarding 없는 기본 계약에서 다음 start_i 는 이전
+//     start_i 로부터 >= LATENCY cycle 뒤여야 한다. 서로 다른 slot 의
+//     wave-step 은 II = NUM_BEATS 로 완전 중첩 가능. (이 두 간격이 상위
+//     dispatch 스케줄의 입력 제약으로 등재된다 — amendment "II 계약" 항.)
 //
 // -----------------------------------------------------------------------------
 // 인터페이스 계약 (pinned)
 // -----------------------------------------------------------------------------
-// 입력 addends_flat: 33 x 64-bit wide field, addend k = [64k+63 : 64k].
-//   field 인코딩 (include/generated/lattice_vec_contract.md §2 와 동일):
+// beat 스케줄: beat b (= 0..NUM_BEATS-1, 연속 cycle — 중간 stall 없음) 에
+//   ops_i[64j+63:64j] = addend N*b+j (j = 0..N-1, 오름차순 pin). start_i 는
+//   beat 0 과 같은 cycle 에 1 (beat 1..NUM_BEATS-1 중의 start_i 는 무시 —
+//   스케줄 준수는 상위 dispatch 책임). carry_i = addend 32 (bank carry-in).
+//
+// field 인코딩 (include/generated/lattice_vec_contract.md §2 와 동일):
 //     [63:60] = 4'b0000 (예약 — 반드시 0)
 //     [59]    = sign
 //     [58:48] = exp — 11-bit two's complement, -1024..+1023
@@ -23,123 +78,195 @@
 //   canonical zero = 64'h0400_0000_0000_0000 (sign=0, exp=-1024, sig=0) 이
 //   zero 의 유일한 인코딩 (§23.10.1 / FP_AddWide.v c21092a 폐쇄와 동일 규범).
 //   nonzero 는 leading zero <= 1 (sig >= 2^46 — 곱 lane raw 형식은 1-bit
-//   un-normalized 허용, FP_AddWide PRECONDITIONS 동형). addend 32 (carry-in)
-//   는 normalized (sig[47]==1) 또는 canonical zero.
+//   un-normalized 허용, FP_AddWide PRECONDITIONS 동형). carry_i 는
+//   normalized (sig[47]==1) 또는 canonical zero.
 //
-// 출력 (전부 LATENCY(4) cycle 후 유효 — 아래 스테이지 표):
+// 출력 (done_q 가 1 인 cycle 에 유효 — 다음 wave-step 의 S4 까지 유지):
 //   resolved_q [527:0] : §27.2.1 resolve 결과 — exact 33-항 합의 528-bit
 //                        two's complement (bit i 의 weight 2^(i-266),
 //                        i=0..526; bit 527 = sign).
-//   wide_q     [63:0]  : RTO-48 추출 결과, 위 wide field 인코딩. exact zero
-//                        합이면 canonical zero. 이것이 그 wave-step 의
-//                        유일한 반올림 (top-48 + sticky-jam = RTO_48).
-//   bank_q     [63:0]  : wide_q 값의 IEEE binary64 무손실 재인코딩
-//                        (§27.2.2 bank/spill word). 추출 결과의 e 는 구조상
-//                        -266..260 이므로 fp64 normal 구간만 발생한다 —
-//                        subnormal corner (e=-1023/-1024) 는 bank FILL
-//                        ingest 경로 (하류 gate ③) 전용이며 본 unit 에는
-//                        도달 불가라 구현하지 않는다 (dead logic 회피).
-//   fp32_q     [31:0]  : 즉시-drain 결과 — PACK_FINAL 정확히 1회 RNE-24 +
+//   wide_q     [63:0]  : RTO-48 추출 결과 (위 field 인코딩; exact zero 합
+//                        이면 canonical zero) — 그 wave-step 의 유일한
+//                        반올림 (top-48 + sticky-jam = RTO_48).
+//   bank_q     [63:0]  : wide_q 값의 IEEE binary64 무손실 재인코딩 (§27.2.2
+//                        bank/spill word). 추출 결과의 e 는 구조상 -266..260
+//                        이므로 fp64 normal 구간만 발생한다 — subnormal
+//                        corner 는 bank FILL ingest 경로 (하류 ③) 전용이며
+//                        본 unit 에는 도달 불가라 구현하지 않는다.
+//   fp32_q     [31:0]  : 즉시-drain — PACK_FINAL 정확히 1회 RNE-24 +
 //                        flush-after-round FTZ (§27.2.3). 정리
 //                        RNE24(RTO48(exact)) == RNE24(exact) 에 의해 single-
 //                        wave 즉시 drain 은 RNE24(exact 33-항 합) 과 bit-
 //                        exact (§27.7 FDOT32_CR 불변식의 기반).
 //   fault_q            : loud-fault, never-silent (project law) — 아래
-//                        FAULT 클래스 참조. 합성 가능한 status (sticky 화는
-//                        상위 계층 몫; §26.5 선례의 sim-only assertion 금지).
-//
-// 항상-흐르는 고정-latency 파이프라인: handshake/stall/reset 없음 — 상위가
-// cycle 을 센다 (FP_AddWide.v / PE_Core 64-bit MUL 파이프라인 계약과 동형).
+//                        FAULT 클래스의 wave-step sticky OR. 합성 가능한
+//                        status (sim-only assertion 금지 — §26.5 선례).
+//   done_q             : 1-cycle pulse — 출력 유효 표지. 항상-흐르는 고정-
+//                        latency 파이프라인 — handshake/stall/reset 없음,
+//                        상위가 cycle 을 센다 (FP_AddWide.v 계약과 동형).
 //
 // -----------------------------------------------------------------------------
-// 마이크로아키텍처 (§27.2.1 pin 준수) — 스테이지 의미
+// 마이크로아키텍처 — 스테이지 의미 (§27.2.1 pin 준수)
 // -----------------------------------------------------------------------------
 // 물리 lattice = 576 bit = 9 segment x 64 bit (golden SEGMENT GEOMETRY pin).
 // 값 비트는 PHYS[575:48] (PHYS[48] = weight 2^-266); PHYS[47:0] 은 표현성
 // 전제로 항상 0 인 정렬 여유. addend 의 48-bit sig 는 LSB 를 q = e+267 에
 // 두고 PHYS[q+47:q] 점유; o = q[5:0] 은 static 6-stage barrel, k = q[9:6]
 // 은 segment demux — 48 <= 64 이므로 인접 <= 2 segment ("2-of-9").
-// dynamic part-select 없음 — FP_AddWide.v:179-194 barrel idiom 그대로.
+// dynamic part-select 없음 — FP_AddWide.v barrel idiom 그대로.
 //
-//   S1 (comb → reg): field decode + 인코딩 fault 검사; static barrel +
-//        2-of-9 demux 로 576-bit 기여 생성; 음수는 ones' complement + 부호
-//        count 로 처리 (33개 +1 보정을 34번째 row 하나로 합산 — exact,
-//        mod 2^576); 34-row 3:2 compressor tree (8 level, linear chain
-//        없음) 로 2 row 까지 압축. 등록: row_a/row_b (2x576b), fault.
-//   S2 (comb → reg): resolve — 576-bit carry-propagate 가산 정확히 1회
-//        (§27.2.1 "resolve 1회"). PHYS[47:0]==0 정렬 검사 (loud fault).
-//        등록: 528-bit two's-complement resolve 값, fault.
-//   S3 (comb → reg): 추출 전반부 — sign/magnitude (528-bit negate; resolve
+//   B  (beat 스테이지 — wave-step 당 NUM_BEATS cycle):
+//        per-lane field decode + 인코딩/배치 fault 검사 (per-beat — 매 beat
+//        그 beat 의 lane 들을 검사, wave-step sticky 로 누적); static
+//        barrel + 2-of-9 demux 로 N 개의 576-bit 기여 생성 (음수는 ones'
+//        complement, +1 보정은 이 beat 의 ncnt row 로 — exact, mod 2^576);
+//        (N field + carry-save 2 row + ncnt row) = N+3 row 를 3:2
+//        compressor tree 로 2 row 에 되접어 s_row/c_row 갱신. beat 0 는
+//        carry-save 자리에 {carry-in 기여, 0} 주입 (위 carry-in 선택).
+//   R  (1 cycle): resolve — ** 병렬 1-cycle 576-bit carry-propagate 가산
+//        정확히 1회 ** (§27.2.1 "resolve 1회"; GATE V20-2 에서 WNS +1.807 ns
+//        로 실측 졸업한 그 구조 — amendment 가 pin). serial 9-cycle resolve
+//        는 재실측에서 LUT ceiling 위협 시의 명시 fallback 이며 본 RTL 은
+//        채택하지 않는다 (채택 시 II 계약의 §12a 재개정 동반 — amendment).
+//        PHYS[47:0]==0 정렬 검사 (fault (e) 의 resolve-후 형). 528-bit
+//        two's-complement resolve 값 등록.
+//   S3 (1 cycle): 추출 전반부 — sign/magnitude (528-bit negate; resolve
 //        가산과 별개인 추출 단계), 64-bit chunk 분해, coarse 우선순위
 //        (최상위 nonzero chunk), 128-bit window 선택 (static 9:1 mux),
 //        chunk 내 CLZ (6-stage 이진탐색 tree), window 아래 sticky 의
-//        prefix-OR. 등록: window(128b)/clz/chunk index/sticky/부호 등.
-//   S4 (comb → reg): 추출 후반부 + 인코딩 — window 를 static 6-stage
-//        barrel 로 normalize, top-48 + sticky-jam = RTO_48; exact zero 면
-//        canonical zero; bank(fp64)/drain(fp32) 인코딩. 출력 등록.
+//        prefix-OR.
+//   S4 (1 cycle): 추출 후반부 + 인코딩 — window 를 static 6-stage barrel 로
+//        normalize, top-48 + sticky-jam = RTO_48; exact zero 면 canonical
+//        zero; bank(fp64)/drain(fp32) 인코딩. 출력 + done_q 등록.
 //
-// resolved_q 는 S3/S4 를 528-bit 그대로 관통해 출력과 정렬된다 (FF 비용은
-// V9-4 관례대로 추적만 — LUT 만이 GATE V20-2 의 hard ceiling).
+// R/S3/S4 는 각 1-cycle 점유의 파이프라인 스테이지 — 마지막 beat 직후
+// cycle 에 시작하는 다음 wave-step 의 beat 열과 완전 중첩된다 (beat 0 는
+// s_row/c_row 를 읽지 않으므로 — carry 주입 mux — R 이 최종 row 를 소비하는
+// cycle 과 다음 wave-step 의 beat 0 이 같은 cycle 이어도 안전하다). II =
+// NUM_BEATS 는 이 중첩으로 성립하며 N=32 (II=1) 에서도 구조적 hazard 가
+// 없다. resolved_q 는 S3/S4 를 528-bit 그대로 관통해 출력과 정렬된다 (FF
+// 비용은 V9-4 관례대로 추적만 — LUT 만이 GATE V20-2 의 hard ceiling).
 //
 // 곱셈기 사용 0 — 본 블록은 add/shift/compare 전용이다. premap `$mul`
 // operator delta 0 이 GATE V20-2 의 pin (§27.6); 곱은 상류 lane 담당.
 //
-// FAULT 클래스 (전 벡터에서 0 이어야 함 — 벡터 전제조건 §4):
+// FAULT 클래스 (전 벡터에서 0 이어야 함 — 벡터 전제조건 계약 §4; per-beat
+// 검사 + wave-step sticky):
 //   (a) field 예약 비트 [63:60] != 0
 //   (b) sig==0 인데 canonical zero 인코딩이 아님
 //   (c) nonzero sig 의 leading zero > 1 (sig < 2^46)
 //   (d) 배치 범위 밖 — q < 1 또는 q > 528, 또는 q==528 에서 sig[47]==1
 //       (units >= 2^527: |v| >= 2^261, golden addend_units 의 lattice
 //       range fault 와 동치 지점)
-//   (e) 표현성 위반 — 배치 후 PHYS[47:0] != 0 (per-addend + resolve 후
+//   (e) 표현성 위반 — 배치 후 PHYS[47:0] != 0 (per-lane 형 + resolve 후
 //       정렬 잔여 검사; golden 의 "precision below 2^-266" fault)
 //   (f) 추출 지수 범위 밖 — e == 261 (resolve 합이 lattice 계약 범위 밖
 //       이었다는 증거; golden lattice_accumulate overflow fault 대응)
-//
-// beat-serial 변형 (ECP5 feasibility, 2-products/beat x 16 beats + 9-cycle
-// serial resolve) 은 §27.6 에 예고된 별도 구성이다 — 본 파일은 xcu55c 대상
-// full-parallel 기본형이며, beat-serial 은 후속 wrapper 로 붙인다 (본
-// 모듈의 계약 층 — 값/반올림/fault — 은 그 변형과 공유된다).
 // =============================================================================
 
 /* verilator lint_off UNUSEDSIGNAL */
 /* verilator lint_off UNUSEDPARAM */
-// (PHYS_W/LAT_W/LATENCY 는 계약 문서화 상수 — 폭 리터럴은 가독성을 위해
-//  본문에 직접 쓴다. FP_AddWide.v 의 lint_off 관례와 동일.)
+// (PHYS_W/LAT_W/II_CYC/LATENCY 는 계약 문서화 상수 — 폭 리터럴은 가독성을
+//  위해 본문에 직접 쓴다. FP_AddWide.v 의 lint_off 관례와 동일.)
+/* verilator lint_off PROCASSINIT */
+// (reg 선언 초기값 = FPGA bitstream 초기화 관례 — 본 unit 은 계약상 reset
+//  포트가 없다 (헤더 "handshake/stall/reset 없음"; FP_AccLatticeBeat2 의
+//  phase 초기값과 동일 패턴). xcu55c/ECP5 두 대상 fabric 모두 지원.)
 
-module FP_AccLattice (
+module FP_AccLattice #(
+    // beat 당 곱 operand 수 — 32 의 약수 (1/2/4/8/16/32), 기본 8 (출하 형상)
+    parameter integer PRODUCTS_PER_BEAT = 8
+) (
     input                clk,
 
-    // 33 x 64-bit wide field — addend k 는 [64*k+63 : 64*k], k=0..31 이 곱,
-    // k=32 가 bank carry-in (33번째 EXACT addend, §27.2.1)
-    input  [33*64-1:0]   addends_flat,
+    input                start_i,   // beat 0 marker (같은 cycle 에 ops/carry)
+    input  [PRODUCTS_PER_BEAT*64-1:0] ops_i,
+                                    // beat b: addend N*b+j = ops_i[64j+63:64j]
+    input  [63:0]        carry_i,   // bank carry-in — beat 0 에서만 샘플
 
-    // ---- 전 출력 LATENCY(4) cycle 후 유효 ----
+    // ---- done_q 가 1 인 cycle 에 유효 (다음 wave-step 의 S4 까지 유지) ----
     output reg [527:0]   resolved_q,
     output reg [63:0]    wide_q,
     output reg [63:0]    bank_q,
     output reg [31:0]    fp32_q,
-    output reg           fault_q
+    output reg           fault_q,
+    output reg           done_q
 );
 
-    localparam integer N_ADD  = 33;   // 32 곱 + carry-in
-    localparam integer PHYS_W = 576;  // 9 segment x 64 bit
-    localparam integer LAT_W  = 528;
-    localparam integer LATENCY = 4;   // 상위 계층이 세는 고정 latency
+    initial done_q = 1'b0;   // power-on 확정값 (FPGA init 관례 — 위 pragma 주석)
+
+    localparam integer N_PB    = PRODUCTS_PER_BEAT;
+    localparam integer NBEATS  = 32 / N_PB;
+    localparam integer ROWS0   = N_PB + 3;   // N field + carry-save 2 + ncnt 1
+    localparam integer PHYS_W  = 576;        // 9 segment x 64 bit
+    localparam integer LAT_W   = 528;
+    localparam integer II_CYC  = NBEATS;     // 계약 문서화 (헤더 참조)
+    localparam integer LATENCY = NBEATS + 3; // 계약 문서화 (헤더 참조)
 
     localparam [63:0] CANON_ZERO_FIELD = 64'h0400_0000_0000_0000;
 
+    /* verilator lint_off WIDTHTRUNC */
+    localparam [5:0] LAST_BCNT = NBEATS - 1;   // NBEATS-1 <= 31 — 6 bit 수납
+    /* verilator lint_on WIDTHTRUNC */
+    localparam       NB_IS_1   = (NBEATS == 1) ? 1'b1 : 1'b0;
+
+    // ---- 파라미터 유효성 — loud fatal (silent 금지). initial+$fatal 이므로
+    //      정확히는 sim time-0 발화다 (N=5 등 '약수 아님' 위반은 이 메시지로
+    //      깨끗하게 죽는다 — iverilog·verilator 실측). N=0/음수는 이 가드
+    //      이전에 lane_flat 등의 part-select elaboration error 가 먼저
+    //      발화한다 — 메시지는 지저분하나 역시 loud (법칙 위반 아님). ----
+    generate
+        if ((PRODUCTS_PER_BEAT < 1) || (PRODUCTS_PER_BEAT > 32)
+            || ((32 % PRODUCTS_PER_BEAT) != 0)) begin : g_bad_param
+            initial begin
+                $display("FATAL FP_AccLattice: PRODUCTS_PER_BEAT=%0d — 32 의 약수가 아님",
+                         PRODUCTS_PER_BEAT);
+                $fatal(1);
+            end
+        end
+    endgenerate
+
     // =========================================================================
-    // S1a — addend 별 decode / fault / 배치 (static barrel + 2-of-9 demux)
+    // beat 제어 — start_i = beat 0; 이후 NUM_BEATS-1 개 beat 연속 진행.
+    // 마지막 beat 직후 cycle 에 다음 start_i 허용 → II = NUM_BEATS.
     // =========================================================================
-    wire [575:0] contrib [0:N_ADD-1];   // 576-bit 물리 기여 (음수는 ~field)
-    wire [N_ADD-1:0] neg_bit;           // 음수 addend — +1 보정은 ncnt 로 합산
-    wire [N_ADD-1:0] add_fault;         // per-addend 인코딩/배치 fault
+    reg       acc_active = 1'b0;    // beat 1..NUM_BEATS-1 동안 1
+    reg [5:0] bcnt       = 6'd0;
+
+    wire beat0     = start_i & ~acc_active;
+    wire acc_en    = beat0 | acc_active;
+    wire last_beat = beat0 ? NB_IS_1 : (bcnt == LAST_BCNT);
+
+    always @(posedge clk) begin
+        if (acc_en) begin
+            if (last_beat) begin
+                acc_active <= 1'b0;
+                bcnt       <= 6'd0;
+            end
+            else begin
+                acc_active <= 1'b1;
+                bcnt       <= beat0 ? 6'd1 : (bcnt + 6'd1);
+            end
+        end
+    end
+
+    // =========================================================================
+    // B-a — lane 별 decode / fault / 배치 (static barrel + 2-of-9 demux).
+    // lane 0..N-1 = 이 beat 의 곱 addend, lane N = carry-in (beat 0 전용 —
+    // 기여는 beat 0 의 carry-save 주입 mux 로만, fault 도 beat 0 만 계수).
+    // =========================================================================
+    wire [64*(N_PB+1)-1:0] lane_flat;
+    assign lane_flat[64*N_PB-1:0]        = ops_i;
+    assign lane_flat[64*N_PB+63:64*N_PB] = carry_i;
+
+    wire [575:0]  contrib [0:N_PB];     // 576-bit 물리 기여 (음수는 ~field)
+    wire [N_PB:0] neg_bit;              // 음수 lane — +1 보정은 ncnt row 로
+    wire [N_PB:0] lane_fault;           // per-lane 인코딩/배치 fault
 
     genvar gk, gj, gi;
     generate
-        for (gk = 0; gk < N_ADD; gk = gk + 1) begin : g_addend
-            wire [63:0]        f   = addends_flat[64*gk+63 : 64*gk];
+        for (gk = 0; gk <= N_PB; gk = gk + 1) begin : g_lane
+            wire [63:0]        f   = lane_flat[64*gk+63 : 64*gk];
             wire               s   = f[59];
             wire signed [10:0] e   = f[58:48];
             wire [47:0]        sig = f[47:0];
@@ -158,8 +285,7 @@ module FP_AccLattice (
             wire [9:0] q = q_s[9:0];
 
             // static 6-stage barrel: sig << o (o = q[5:0]) — 112-bit 필드.
-            // FP_AddWide.v:179-194 idiom (좌측 shift 형) — dynamic
-            // part-select 없음.
+            // FP_AddWide.v barrel idiom — dynamic part-select 없음.
             wire [111:0] b0 = {64'b0, sig};
             wire [111:0] b1 = q[0] ? {b0[110:0],  1'b0} : b0;
             wire [111:0] b2 = q[1] ? {b1[109:0],  2'b0} : b1;
@@ -168,7 +294,7 @@ module FP_AccLattice (
             wire [111:0] b5 = q[4] ? {b4[ 95:0], 16'b0} : b4;
             wire [111:0] b6 = q[5] ? {b5[ 79:0], 32'b0} : b5;
 
-            // fault (e) per-addend 형: seg 0 에 배치될 때 PHYS[47:0] 침범
+            // fault (e) per-lane 형: seg 0 배치 시 PHYS[47:0] 침범
             wire [3:0] seg = q[9:6];
             wire bad_low = nz & (seg == 4'd0) & (|b6[47:0]);
 
@@ -188,20 +314,35 @@ module FP_AccLattice (
 
             // 음수 = ones' complement; +1 은 ncnt row 로 (exact, mod 2^576)
             wire do_neg = s & nz;
-            assign contrib[gk]   = do_neg ? ~field : field;
-            assign neg_bit[gk]   = do_neg;
-            assign add_fault[gk] = bad_resv | bad_zero | bad_lead
-                                 | bad_q | bad_low;
+            assign contrib[gk]    = do_neg ? ~field : field;
+            assign neg_bit[gk]    = do_neg;
+            assign lane_fault[gk] = bad_resv | bad_zero | bad_lead
+                                  | bad_q | bad_low;
         end
     endgenerate
 
-    // 음수 +1 보정 count — 33 x 1-bit 의 tree popcount (linear chain 금지)
+    // 이 beat 의 음수 +1 보정 count — 33-slot tree popcount (미사용 slot 은
+    // 상수 0 으로 소거; linear chain 금지 — 기존 tree 형태 재사용).
+    // slot 32 = carry lane (beat 0 에서만 계수).
+    wire [32:0] negv;
+    generate
+        for (gk = 0; gk < N_PB; gk = gk + 1) begin : g_negv
+            assign negv[gk] = neg_bit[gk];
+        end
+        if (N_PB < 32) begin : g_negz
+            for (gk = N_PB; gk < 32; gk = gk + 1) begin : g_z
+                assign negv[gk] = 1'b0;
+            end
+        end
+    endgenerate
+    assign negv[32] = beat0 & neg_bit[N_PB];
+
     wire [1:0] pc3 [0:10];
     generate
         for (gi = 0; gi < 11; gi = gi + 1) begin : g_pc3
-            assign pc3[gi] = {1'b0, neg_bit[3*gi]}
-                           + {1'b0, neg_bit[3*gi+1]}
-                           + {1'b0, neg_bit[3*gi+2]};
+            assign pc3[gi] = {1'b0, negv[3*gi]}
+                           + {1'b0, negv[3*gi+1]}
+                           + {1'b0, negv[3*gi+2]};
         end
     endgenerate
     wire [2:0] pcA0 = {1'b0, pc3[0]} + {1'b0, pc3[1]};
@@ -216,139 +357,255 @@ module FP_AccLattice (
     wire [5:0] ncnt = {1'b0, pcC0} + {2'b0, pcB2};
 
     // =========================================================================
-    // S1b — 34-row 3:2 compressor tree (34→23→16→11→8→6→4→3→2, 8 level).
-    // carry row 는 <<1 (mod 2^576 — 최상위 탈락은 two's-complement 모듈러
-    // 산술의 정의 그대로). linear adder chain 없음 — project law.
+    // B-b — (N+3)-row 3:2 compressor tree → 2 row (carry-save 갱신).
+    // level 별 row 수는 상수 함수 f_rows_after 로 파라미터 유도; level 은
+    // 각각 독립 배열 (tr0..tr8 — 기존 r0..r7 관례) 로 전개해 linear adder
+    // chain 없이 tree 로 되접는다 (project law). carry row 는 <<1 (mod
+    // 2^576 — 최상위 탈락은 two's-complement 모듈러 산술의 정의 그대로).
+    // 수렴 (row 2) 이후의 level 은 pass-through 별칭 — 로직 비용 0.
+    // beat 0: carry-save 자리에 {carry-in 기여, 0} 주입 (헤더 carry-in 선택).
     // =========================================================================
-    wire [575:0] r0 [0:33];
+    function integer f_rows_after;
+        input integer lvl;
+        integer r, i;
+        begin
+            r = ROWS0;
+            for (i = 0; i < lvl; i = i + 1)
+                r = (r > 2) ? (2 * (r / 3) + (r % 3)) : r;
+            f_rows_after = r;
+        end
+    endfunction
+
+    localparam integer RL0 = ROWS0;
+    localparam integer RL1 = f_rows_after(1);
+    localparam integer RL2 = f_rows_after(2);
+    localparam integer RL3 = f_rows_after(3);
+    localparam integer RL4 = f_rows_after(4);
+    localparam integer RL5 = f_rows_after(5);
+    localparam integer RL6 = f_rows_after(6);
+    localparam integer RL7 = f_rows_after(7);
+    localparam integer RL8 = f_rows_after(8);   // == 2 (모든 유효 N)
+
+    reg [575:0] s_row = 576'b0;
+    reg [575:0] c_row = 576'b0;
+
+    wire [575:0] s_in = beat0 ? contrib[N_PB] : s_row;
+    wire [575:0] c_in = beat0 ? 576'b0        : c_row;
+    wire [575:0] nrow = {570'b0, ncnt};
+
+    wire [575:0] tr0 [0:RL0-1];
+    wire [575:0] tr1 [0:RL1-1];
+    wire [575:0] tr2 [0:RL2-1];
+    wire [575:0] tr3 [0:RL3-1];
+    wire [575:0] tr4 [0:RL4-1];
+    wire [575:0] tr5 [0:RL5-1];
+    wire [575:0] tr6 [0:RL6-1];
+    wire [575:0] tr7 [0:RL7-1];
+    wire [575:0] tr8 [0:RL8-1];
+
     generate
-        for (gk = 0; gk < N_ADD; gk = gk + 1) begin : g_r0
-            assign r0[gk] = contrib[gk];
+        for (gk = 0; gk < N_PB; gk = gk + 1) begin : g_row0
+            assign tr0[gk] = contrib[gk];
         end
     endgenerate
-    assign r0[33] = {570'b0, ncnt};
+    assign tr0[N_PB]   = nrow;
+    assign tr0[N_PB+1] = s_in;
+    assign tr0[N_PB+2] = c_in;
 
-    wire [575:0] r1 [0:22];
+    // 3:2 reduce 1 level — 입력 RIN row 를 2*(RIN/3) + RIN%3 row 로.
+    // RIN <= 2 인 level 은 pass-through (수렴 후 별칭).
     generate
-        for (gi = 0; gi < 11; gi = gi + 1) begin : g_l1
-            wire [575:0] a = r0[3*gi], b = r0[3*gi+1], c = r0[3*gi+2];
-            wire [575:0] mj = (a & b) | (a & c) | (b & c);
-            assign r1[2*gi]   = a ^ b ^ c;
-            assign r1[2*gi+1] = {mj[574:0], 1'b0};
+        if (RL0 > 2) begin : g_t1
+            for (gi = 0; gi < RL0/3; gi = gi + 1) begin : g_csa
+                wire [575:0] mj = (tr0[3*gi] & tr0[3*gi+1])
+                                | (tr0[3*gi] & tr0[3*gi+2])
+                                | (tr0[3*gi+1] & tr0[3*gi+2]);
+                assign tr1[2*gi]   = tr0[3*gi] ^ tr0[3*gi+1] ^ tr0[3*gi+2];
+                assign tr1[2*gi+1] = {mj[574:0], 1'b0};
+            end
+            for (gi = 0; gi < RL0%3; gi = gi + 1) begin : g_pass
+                assign tr1[2*(RL0/3)+gi] = tr0[3*(RL0/3)+gi];
+            end
+        end
+        else begin : g_p1
+            for (gi = 0; gi < RL0; gi = gi + 1) begin : g_k
+                assign tr1[gi] = tr0[gi];
+            end
+        end
+
+        if (RL1 > 2) begin : g_t2
+            for (gi = 0; gi < RL1/3; gi = gi + 1) begin : g_csa
+                wire [575:0] mj = (tr1[3*gi] & tr1[3*gi+1])
+                                | (tr1[3*gi] & tr1[3*gi+2])
+                                | (tr1[3*gi+1] & tr1[3*gi+2]);
+                assign tr2[2*gi]   = tr1[3*gi] ^ tr1[3*gi+1] ^ tr1[3*gi+2];
+                assign tr2[2*gi+1] = {mj[574:0], 1'b0};
+            end
+            for (gi = 0; gi < RL1%3; gi = gi + 1) begin : g_pass
+                assign tr2[2*(RL1/3)+gi] = tr1[3*(RL1/3)+gi];
+            end
+        end
+        else begin : g_p2
+            for (gi = 0; gi < RL1; gi = gi + 1) begin : g_k
+                assign tr2[gi] = tr1[gi];
+            end
+        end
+
+        if (RL2 > 2) begin : g_t3
+            for (gi = 0; gi < RL2/3; gi = gi + 1) begin : g_csa
+                wire [575:0] mj = (tr2[3*gi] & tr2[3*gi+1])
+                                | (tr2[3*gi] & tr2[3*gi+2])
+                                | (tr2[3*gi+1] & tr2[3*gi+2]);
+                assign tr3[2*gi]   = tr2[3*gi] ^ tr2[3*gi+1] ^ tr2[3*gi+2];
+                assign tr3[2*gi+1] = {mj[574:0], 1'b0};
+            end
+            for (gi = 0; gi < RL2%3; gi = gi + 1) begin : g_pass
+                assign tr3[2*(RL2/3)+gi] = tr2[3*(RL2/3)+gi];
+            end
+        end
+        else begin : g_p3
+            for (gi = 0; gi < RL2; gi = gi + 1) begin : g_k
+                assign tr3[gi] = tr2[gi];
+            end
+        end
+
+        if (RL3 > 2) begin : g_t4
+            for (gi = 0; gi < RL3/3; gi = gi + 1) begin : g_csa
+                wire [575:0] mj = (tr3[3*gi] & tr3[3*gi+1])
+                                | (tr3[3*gi] & tr3[3*gi+2])
+                                | (tr3[3*gi+1] & tr3[3*gi+2]);
+                assign tr4[2*gi]   = tr3[3*gi] ^ tr3[3*gi+1] ^ tr3[3*gi+2];
+                assign tr4[2*gi+1] = {mj[574:0], 1'b0};
+            end
+            for (gi = 0; gi < RL3%3; gi = gi + 1) begin : g_pass
+                assign tr4[2*(RL3/3)+gi] = tr3[3*(RL3/3)+gi];
+            end
+        end
+        else begin : g_p4
+            for (gi = 0; gi < RL3; gi = gi + 1) begin : g_k
+                assign tr4[gi] = tr3[gi];
+            end
+        end
+
+        if (RL4 > 2) begin : g_t5
+            for (gi = 0; gi < RL4/3; gi = gi + 1) begin : g_csa
+                wire [575:0] mj = (tr4[3*gi] & tr4[3*gi+1])
+                                | (tr4[3*gi] & tr4[3*gi+2])
+                                | (tr4[3*gi+1] & tr4[3*gi+2]);
+                assign tr5[2*gi]   = tr4[3*gi] ^ tr4[3*gi+1] ^ tr4[3*gi+2];
+                assign tr5[2*gi+1] = {mj[574:0], 1'b0};
+            end
+            for (gi = 0; gi < RL4%3; gi = gi + 1) begin : g_pass
+                assign tr5[2*(RL4/3)+gi] = tr4[3*(RL4/3)+gi];
+            end
+        end
+        else begin : g_p5
+            for (gi = 0; gi < RL4; gi = gi + 1) begin : g_k
+                assign tr5[gi] = tr4[gi];
+            end
+        end
+
+        if (RL5 > 2) begin : g_t6
+            for (gi = 0; gi < RL5/3; gi = gi + 1) begin : g_csa
+                wire [575:0] mj = (tr5[3*gi] & tr5[3*gi+1])
+                                | (tr5[3*gi] & tr5[3*gi+2])
+                                | (tr5[3*gi+1] & tr5[3*gi+2]);
+                assign tr6[2*gi]   = tr5[3*gi] ^ tr5[3*gi+1] ^ tr5[3*gi+2];
+                assign tr6[2*gi+1] = {mj[574:0], 1'b0};
+            end
+            for (gi = 0; gi < RL5%3; gi = gi + 1) begin : g_pass
+                assign tr6[2*(RL5/3)+gi] = tr5[3*(RL5/3)+gi];
+            end
+        end
+        else begin : g_p6
+            for (gi = 0; gi < RL5; gi = gi + 1) begin : g_k
+                assign tr6[gi] = tr5[gi];
+            end
+        end
+
+        if (RL6 > 2) begin : g_t7
+            for (gi = 0; gi < RL6/3; gi = gi + 1) begin : g_csa
+                wire [575:0] mj = (tr6[3*gi] & tr6[3*gi+1])
+                                | (tr6[3*gi] & tr6[3*gi+2])
+                                | (tr6[3*gi+1] & tr6[3*gi+2]);
+                assign tr7[2*gi]   = tr6[3*gi] ^ tr6[3*gi+1] ^ tr6[3*gi+2];
+                assign tr7[2*gi+1] = {mj[574:0], 1'b0};
+            end
+            for (gi = 0; gi < RL6%3; gi = gi + 1) begin : g_pass
+                assign tr7[2*(RL6/3)+gi] = tr6[3*(RL6/3)+gi];
+            end
+        end
+        else begin : g_p7
+            for (gi = 0; gi < RL6; gi = gi + 1) begin : g_k
+                assign tr7[gi] = tr6[gi];
+            end
+        end
+
+        if (RL7 > 2) begin : g_t8
+            for (gi = 0; gi < RL7/3; gi = gi + 1) begin : g_csa
+                wire [575:0] mj = (tr7[3*gi] & tr7[3*gi+1])
+                                | (tr7[3*gi] & tr7[3*gi+2])
+                                | (tr7[3*gi+1] & tr7[3*gi+2]);
+                assign tr8[2*gi]   = tr7[3*gi] ^ tr7[3*gi+1] ^ tr7[3*gi+2];
+                assign tr8[2*gi+1] = {mj[574:0], 1'b0};
+            end
+            for (gi = 0; gi < RL7%3; gi = gi + 1) begin : g_pass
+                assign tr8[2*(RL7/3)+gi] = tr7[3*(RL7/3)+gi];
+            end
+        end
+        else begin : g_p8
+            for (gi = 0; gi < RL7; gi = gi + 1) begin : g_k
+                assign tr8[gi] = tr7[gi];
+            end
         end
     endgenerate
-    assign r1[22] = r0[33];
 
-    wire [575:0] r2 [0:15];
-    generate
-        for (gi = 0; gi < 7; gi = gi + 1) begin : g_l2
-            wire [575:0] a = r1[3*gi], b = r1[3*gi+1], c = r1[3*gi+2];
-            wire [575:0] mj = (a & b) | (a & c) | (b & c);
-            assign r2[2*gi]   = a ^ b ^ c;
-            assign r2[2*gi+1] = {mj[574:0], 1'b0};
-        end
-    endgenerate
-    assign r2[14] = r1[21];
-    assign r2[15] = r1[22];
-
-    wire [575:0] r3 [0:10];
-    generate
-        for (gi = 0; gi < 5; gi = gi + 1) begin : g_l3
-            wire [575:0] a = r2[3*gi], b = r2[3*gi+1], c = r2[3*gi+2];
-            wire [575:0] mj = (a & b) | (a & c) | (b & c);
-            assign r3[2*gi]   = a ^ b ^ c;
-            assign r3[2*gi+1] = {mj[574:0], 1'b0};
-        end
-    endgenerate
-    assign r3[10] = r2[15];
-
-    wire [575:0] r4 [0:7];
-    generate
-        for (gi = 0; gi < 3; gi = gi + 1) begin : g_l4
-            wire [575:0] a = r3[3*gi], b = r3[3*gi+1], c = r3[3*gi+2];
-            wire [575:0] mj = (a & b) | (a & c) | (b & c);
-            assign r4[2*gi]   = a ^ b ^ c;
-            assign r4[2*gi+1] = {mj[574:0], 1'b0};
-        end
-    endgenerate
-    assign r4[6] = r3[9];
-    assign r4[7] = r3[10];
-
-    wire [575:0] r5 [0:5];
-    generate
-        for (gi = 0; gi < 2; gi = gi + 1) begin : g_l5
-            wire [575:0] a = r4[3*gi], b = r4[3*gi+1], c = r4[3*gi+2];
-            wire [575:0] mj = (a & b) | (a & c) | (b & c);
-            assign r5[2*gi]   = a ^ b ^ c;
-            assign r5[2*gi+1] = {mj[574:0], 1'b0};
-        end
-    endgenerate
-    assign r5[4] = r4[6];
-    assign r5[5] = r4[7];
-
-    wire [575:0] r6 [0:3];
-    generate
-        for (gi = 0; gi < 2; gi = gi + 1) begin : g_l6
-            wire [575:0] a = r5[3*gi], b = r5[3*gi+1], c = r5[3*gi+2];
-            wire [575:0] mj = (a & b) | (a & c) | (b & c);
-            assign r6[2*gi]   = a ^ b ^ c;
-            assign r6[2*gi+1] = {mj[574:0], 1'b0};
-        end
-    endgenerate
-
-    wire [575:0] r7 [0:2];
-    generate
-        if (1) begin : g_l7
-            wire [575:0] a = r6[0], b = r6[1], c = r6[2];
-            wire [575:0] mj = (a & b) | (a & c) | (b & c);
-            assign r7[0] = a ^ b ^ c;
-            assign r7[1] = {mj[574:0], 1'b0};
-        end
-    endgenerate
-    assign r7[2] = r6[3];
-
-    wire [575:0] row_sum_w, row_carry_w;
-    generate
-        if (1) begin : g_l8
-            wire [575:0] a = r7[0], b = r7[1], c = r7[2];
-            wire [575:0] mj = (a & b) | (a & c) | (b & c);
-            assign row_sum_w   = a ^ b ^ c;
-            assign row_carry_w = {mj[574:0], 1'b0};
-        end
-    endgenerate
-
-    // ---- S1 파이프라인 레지스터 ----
-    reg [575:0] row_a_p1, row_b_p1;
-    reg         fault_p1;
+    // ---- beat 레지스터: carry-save 상태 + wave-step sticky fault ----
+    reg fault_acc = 1'b0;
 
     always @(posedge clk) begin
-        row_a_p1 <= row_sum_w;
-        row_b_p1 <= row_carry_w;
-        fault_p1 <= |add_fault;
+        if (acc_en) begin
+            s_row <= tr8[0];
+            c_row <= tr8[1];
+            // per-beat fault — 곱 lane 은 매 beat, carry lane 은 beat 0 만
+            fault_acc <= (beat0 ? 1'b0 : fault_acc)
+                       | (|lane_fault[N_PB-1:0])
+                       | (beat0 & lane_fault[N_PB]);
+        end
     end
 
     // =========================================================================
-    // S2 — resolve: 576-bit carry-propagate 가산 정확히 1회 (§27.2.1).
-    // 정렬 검사 PHYS[47:0]==0 (fault (e) 의 resolve-후 형). resolve 값 =
-    // (S mod 2^576) >> 48 의 하위 528 bit (two's complement).
+    // R — resolve: 병렬 1-cycle 576-bit carry-propagate 가산 정확히 1회
+    // (§27.2.1; amendment 가 pin 한 실측 졸업 구조 — serial fallback 미채택).
+    // 마지막 beat 직후 cycle 에 s_row/c_row 최종값을 소비한다 — 같은 cycle
+    // 의 다음 wave-step beat 0 은 s/c 를 읽지 않으므로 (carry 주입 mux)
+    // 중첩 안전. 정렬 검사 PHYS[47:0]==0 (fault (e) resolve-후 형).
+    // resolve 값 = (S mod 2^576) >> 48 의 하위 528 bit (two's complement).
     // =========================================================================
-    wire [575:0] phys_sum = row_a_p1 + row_b_p1;    // mod 2^576
+    reg v_res = 1'b0;
+    reg v_s3  = 1'b0;
+    reg v_s4  = 1'b0;
+
+    wire [575:0] phys_sum = s_row + c_row;      // mod 2^576
 
     reg [527:0] lat_p2;
     reg         fault_p2;
 
     always @(posedge clk) begin
+        v_res    <= acc_en & last_beat;
+        v_s3     <= v_res;
+        v_s4     <= v_s3;
         lat_p2   <= phys_sum[575:48];
-        fault_p2 <= fault_p1 | (|phys_sum[47:0]);
+        fault_p2 <= fault_acc | (|phys_sum[47:0]);
     end
 
     // =========================================================================
     // S3 — 추출 전반부: sign/magnitude → chunk 분해 → coarse 우선순위 →
     // 128-bit window 선택 + chunk-내 CLZ (이진탐색 tree) + prefix-OR sticky
     // =========================================================================
-    wire        lat_sign = lat_p2[527];
-    wire [527:0] mag     = lat_sign ? (~lat_p2 + 528'd1) : lat_p2;
-    wire [575:0] mag_ext = {48'b0, mag};
+    wire         lat_sign = lat_p2[527];
+    wire [527:0] mag      = lat_sign ? (~lat_p2 + 528'd1) : lat_p2;
+    wire [575:0] mag_ext  = {48'b0, mag};
 
     // 64-bit chunk (정적 슬라이스) + chunk 별 nonzero
     wire [63:0] chunk [0:8];
@@ -360,8 +617,8 @@ module FP_AccLattice (
         end
     endgenerate
 
-    // coarse: 최상위 nonzero chunk index (9-way 우선순위 — FP_AddWide 의
-    // 소형 priority 관용구 급; mag==0 이면 cs=0 + mag_zero)
+    // coarse: 최상위 nonzero chunk index (9-way 우선순위; mag==0 이면
+    // cs=0 + mag_zero)
     reg [3:0] cs;
     always @* begin
         casez (ch_any)
@@ -396,7 +653,12 @@ module FP_AccLattice (
         endcase
     end
 
-    // window 아래 (chunk cs-2 이하) sticky — prefix-OR 를 정적 mux 로 선택
+    // window 아래 (chunk cs-2 이하) sticky — prefix-OR 를 정적 mux 로 선택.
+    // (기록: 아래 pre[] 는 9-element 선형 OR 체인 — 'linear loop 대신 tree'
+    //  법칙의 자구와 표면 충돌하나, 903351c 원본 (line 404) 을 문자 그대로
+    //  승계한 GATE V20-2 졸업 구조이고, 9-bit OR 는 스테이지 지배 경로
+    //  (S3 의 528-bit negate) 대비 무시 가능 + 합성기가 자동 평탄화한다 —
+    //  승계 선례로 기록만 남긴다.)
     wire [8:0] pre;
     assign pre[0] = ch_any[0];
     generate
@@ -466,8 +728,8 @@ module FP_AccLattice (
     // RTO_48: top-48 truncate + sticky OR-jam into LSB (§27.2.1 —
     // wave-step 유일의 반올림. RNE-48 store 가 아닌 이유는 §27.2.1 의
     // directed double-rounding 반례 — b_rne48_discriminator 벡터가 적발)
-    wire [47:0] top48  = n6[127:80];
-    wire        sticky = (|n6[79:0]) | stlow_p3;
+    wire [47:0] top48   = n6[127:80];
+    wire        sticky  = (|n6[79:0]) | stlow_p3;
     wire [47:0] sig_rto = {top48[47:1], top48[0] | sticky};
 
     // leading-bit 위치 p = 64*cs + 63 - lz;  e = p - 266 (weight 규약)
@@ -508,13 +770,16 @@ module FP_AccLattice (
                        : udf     ? {sign_p3, 31'd0}
                        :           {sign_p3, biased, m25[22:0]};
 
-    // ---- S4 출력 레지스터 ----
+    // ---- S4 출력 레지스터 (v_s4 cycle 에만 갱신 — done 사이 유지) ----
     always @(posedge clk) begin
-        resolved_q <= lat_p3;
-        wide_q     <= wide_w;
-        bank_q     <= bank_w;
-        fp32_q     <= fp32_w;
-        fault_q    <= fault_p3 | fault_range;
+        done_q <= v_s4;
+        if (v_s4) begin
+            resolved_q <= lat_p3;
+            wide_q     <= wide_w;
+            bank_q     <= bank_w;
+            fp32_q     <= fp32_w;
+            fault_q    <= fault_p3 | fault_range;
+        end
     end
 
 endmodule

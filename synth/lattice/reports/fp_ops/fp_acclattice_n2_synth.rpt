@@ -1,0 +1,20 @@
+
+6. Printing statistics.
+
+=== FP_AccLattice_gate_top ===
+
+        +----------Local Count, excluding submodules.
+        | 
+     7496 wires
+    44271 wire bits
+     7496 public wires
+    44271 public wire bits
+       10 ports
+      884 port bits
+    16112 cells
+        1   $scopeinfo
+      648   CCU2C
+    11185   LUT4
+      462   PFUMX
+     3816   TRELLIS_FF
+

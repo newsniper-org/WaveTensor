@@ -398,14 +398,14 @@
    "verdict": "PASS"
   },
   "vector_file_self_verify": {
-   "lines": 4001,
+   "lines": 4081,
    "mismatches": 0,
    "verdict": "PASS"
   }
  },
  "vector_file": {
   "path": "include/generated/lattice_wave_vectors.hex",
-  "n_vectors": 4001,
+  "n_vectors": 4081,
   "bits_per_line": 2800,
   "hex_chars_per_line": 700,
   "families": [
@@ -486,13 +486,19 @@
     "doc": "nonzero 0..32개 (첫 5개: 전-zero+zero-carry -> canonical zero; 다음 5개: 전-zero+carry -> 항등)",
     "start": 3701,
     "count": 300
+   },
+   {
+    "family": "sticky_window_band",
+    "doc": "2^53 + 2^(53-d), d=48..127 — leading bit 을 chunk 상단 (lz=0, window 최대 깊이) 에 두고 leading bit 아래 d 위치의 유일 비트가 RTO sticky-jam 을 단독 결정 (top-48 LSB=0, window 아래 0) — 추출기 sticky OR 부분 절단의 위치별 적발",
+    "start": 4001,
+    "count": 80
    }
   ],
-  "sha256": "7325a8471d28bc756e919c2a9f3740c487849b4fd60795dd02ab8ecdee8b1e46"
+  "sha256": "f76947352d1857469c9a4e697ac61770277011413d5964464c023773d9c2b794"
  },
  "contract": {
   "path": "include/generated/lattice_vec_contract.md",
-  "sha256": "189966260a4b8cbf53f9baab50a88cff7c5cf7966946db871a1f10b44dcf8e2e"
+  "sha256": "2d248195cc8b64ad3115e604ffdebc1541b8ea13093aaba83ca0670e1852fcf9"
  },
  "spec_gap_notes": [
   "FILL-valid (fp64/PACK_WIDE 표현 가능) 이나 lattice-표현 밖 (|v| >= 2^261 또는 2^-266 미만 정밀도) 인 carry-in 의 RTL fault 배선은 §27.2 미명시 — golden 은 loud fault 로 고정, GATE V20-2 하류 ③ bank RTL COMMIT 에서 sticky-fault 클래스 배정 필요",

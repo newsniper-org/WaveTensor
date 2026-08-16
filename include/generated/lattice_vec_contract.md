@@ -11,7 +11,7 @@
   기대값의 산출자 — golden-before-RTL, §27.6 ①). rounding core 는
   `scripts/golden_fp32.py` 에서 import.
 - **벡터 파일**: `include/generated/lattice_wave_vectors.hex` —
-  `$readmemh` 형식, 주석 3줄 + 4001 라인. 결정적 (고정 seed, 재실행
+  `$readmemh` 형식, 주석 3줄 + 4081 라인. 결정적 (고정 seed, 재실행
   byte-identical; sha256 은 `lattice_golden_report.json`).
 
 ## 1. 라인 형식
@@ -100,8 +100,9 @@ assert 했다.
 | chain_S5_mid_band | 3445 | 192 | K=1024 accumulate chain x6 (32 wave/chain, carry 체이닝) — factor exp [48,56] |
 | chain_parkcancel | 3637 | 64 | cross-wave park-plus-cancel chain x2 — F1/F4 계열의 확률적 확장 (carry 체이닝) |
 | sparse | 3701 | 300 | nonzero 0..32개 (첫 5개: 전-zero+zero-carry -> canonical zero; 다음 5개: 전-zero+carry -> 항등) |
+| sticky_window_band | 4001 | 80 | 2^53 + 2^(53-d), d=48..127 — leading bit 을 chunk 상단 (lz=0, window 최대 깊이) 에 두고 leading bit 아래 d 위치의 유일 비트가 RTO sticky-jam 을 단독 결정 (top-48 LSB=0, window 아래 0) — 추출기 sticky OR 부분 절단의 위치별 적발 |
 
-- 총 **4001 벡터**. `jam_perwrite_chain` / `chain_*` family 는 앞 벡터의
+- 총 **4081 벡터**. `jam_perwrite_chain` / `chain_*` family 는 앞 벡터의
   `EXP_WIDE` 가 다음 벡터의 `ADDEND[32]` 로 들어가는 체인이지만, 각
   라인이 자체 carry-in 을 운반하므로 TB 는 라인 단위 독립 검증만 하면
   된다 (체인 재현은 선택).
@@ -111,13 +112,17 @@ assert 했다.
 ## 6. TB 스케치 + 판정 규칙
 
 ```verilog
-localparam integer N_VEC = 4001;
+localparam integer N_VEC = 4081;
 reg [2799:0] vec [0:N_VEC-1];
 initial $readmemh("include/generated/lattice_wave_vectors.hex", vec);
-// addend k 의 64-bit field (k 는 generate 상수 — dynamic part-select
-// 금지는 project law; TB 도 static unroll 로):
+// addend k 의 64-bit field:
 //   wire [63:0] fld_k = vec[i][2799 - 64*k -: 64];
 ```
+
+- dynamic part-select 금지 (project law) 는 **RTL 을 구속**한다. TB 의
+  driver/checker 는 행위 모델로서 벡터 슬라이싱에 behavioral loop /
+  variable shift 를 써도 좋다 — 단, TB 헤더에 행위 모델 면책 주석을
+  명시할 것 (`tb_fp_acclattice.v` 선례).
 
 - DUT resolve 출력 == `EXP_RESOLVED`, RTO-48 추출 == `EXP_WIDE`, bank
   인코딩 == `EXP_BANK`, PACK_FINAL drain == `EXP_FP32` — 4층 전부

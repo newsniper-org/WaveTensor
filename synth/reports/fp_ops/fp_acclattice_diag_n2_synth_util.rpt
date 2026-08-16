@@ -1,0 +1,30 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2025.2.1 (lin64) Build 6403652 Thu Mar 19 13:47:00 MDT 2026
+| Date         : Sun Aug 16 14:46:32 2026
+| Host         : cachyos-ybi-tuf running 64-bit CachyOS
+| Command      : report_utilization -file /home/ybi/WaveTensor/synth/reports/fp_ops/fp_acclattice_diag_n2_synth_util.rpt -hierarchical
+| Design       : FP_AccLattice_gate_top
+| Device       : xcu55c-fsvh2892-2L-e
+| Speed File   : -2L
+| Design State : Synthesized
+---------------------------------------------------------------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++----------------------------+---------------+------------+------------+---------+------+------+--------+--------+------+------------+
+|          Instance          |     Module    | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs | RAMB36 | RAMB18 | URAM | DSP Blocks |
++----------------------------+---------------+------------+------------+---------+------+------+--------+--------+------+------------+
+| FP_AccLattice_gate_top     |         (top) |       9089 |       9088 |       0 |    1 | 3821 |      0 |      0 |    0 |          0 |
+|   (FP_AccLattice_gate_top) |         (top) |          0 |          0 |       0 |    0 |  825 |      0 |      0 |    0 |          0 |
+|   u_core                   | FP_AccLattice |       9089 |       9088 |       0 |    1 | 2996 |      0 |      0 |    0 |          0 |
++----------------------------+---------------+------------+------------+---------+------+------+--------+--------+------+------------+
+
+

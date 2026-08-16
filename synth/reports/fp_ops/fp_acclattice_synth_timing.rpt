@@ -1,7 +1,7 @@
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
 --------------------------------------------------------------------------------------------------------------------------------------------------
 | Tool Version      : Vivado v.2025.2.1 (lin64) Build 6403652 Thu Mar 19 13:47:00 MDT 2026
-| Date              : Sat Aug 15 19:04:04 2026
+| Date              : Sun Aug 16 14:47:33 2026
 | Host              : cachyos-ybi-tuf running 64-bit CachyOS
 | Command           : report_timing_summary -file /home/ybi/WaveTensor/synth/reports/fp_ops/fp_acclattice_synth_timing.rpt
 | Design            : FP_AccLattice_gate_top
@@ -54,8 +54,8 @@ Table of Contents
 2. checking constant_clock (0)
 3. checking pulse_width_clock (0)
 4. checking unconstrained_internal_endpoints (0)
-5. checking no_input_delay (2112)
-6. checking no_output_delay (680)
+5. checking no_input_delay (577)
+6. checking no_output_delay (681)
 7. checking multiple_clock (0)
 8. checking generated_clocks (0)
 9. checking loops (0)
@@ -85,16 +85,16 @@ Table of Contents
  There are 0 pins that are not constrained for maximum delay due to constant clock.
 
 
-5. checking no_input_delay (2112)
----------------------------------
- There are 2112 input ports with no input delay specified. (HIGH)
+5. checking no_input_delay (577)
+--------------------------------
+ There are 577 input ports with no input delay specified. (HIGH)
 
  There are 0 input ports with no input delay but user has a false path constraint.
 
 
-6. checking no_output_delay (680)
+6. checking no_output_delay (681)
 ---------------------------------
- There are 680 ports with no output delay specified. (HIGH)
+ There are 681 ports with no output delay specified. (HIGH)
 
  There are 0 ports with no output delay but user has a false path constraint
 
@@ -139,7 +139,7 @@ Table of Contents
 
     WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
     -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
-      4.454        0.000                      0                 3723        0.069        0.000                      0                 3723        4.725        0.000                       0                  5729  
+      5.459        0.000                      0                 5523        0.071        0.000                      0                 5523        4.468        0.000                       0                  4203  
 
 
 All user specified timing constraints are met.
@@ -162,7 +162,7 @@ clk    {0.000 5.000}      10.000          100.000
 
 Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
 -----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
-clk                 4.454        0.000                      0                 3723        0.069        0.000                      0                 3723        4.725        0.000                       0                  5729  
+clk                 5.459        0.000                      0                 5523        0.071        0.000                      0                 5523        4.468        0.000                       0                  4203  
 
 
 ------------------------------------------------------------------------------------------------
@@ -193,24 +193,24 @@ Path Group    From Clock    To Clock          WNS(ns)      TNS(ns)  TNS Failing 
 From Clock:  clk
   To Clock:  clk
 
-Setup :            0  Failing Endpoints,  Worst Slack        4.454ns,  Total Violation        0.000ns
-Hold  :            0  Failing Endpoints,  Worst Slack        0.069ns,  Total Violation        0.000ns
-PW    :            0  Failing Endpoints,  Worst Slack        4.725ns,  Total Violation        0.000ns
+Setup :            0  Failing Endpoints,  Worst Slack        5.459ns,  Total Violation        0.000ns
+Hold  :            0  Failing Endpoints,  Worst Slack        0.071ns,  Total Violation        0.000ns
+PW    :            0  Failing Endpoints,  Worst Slack        4.468ns,  Total Violation        0.000ns
 ---------------------------------------------------------------------------------------------------
 
 
 Max Delay Paths
 --------------------------------------------------------------------------------------
-Slack (MET) :             4.454ns  (required time - arrival time)
-  Source:                 u_core/lat_p2_reg[2]/C
+Slack (MET) :             5.459ns  (required time - arrival time)
+  Source:                 u_core/lat_p2_reg[1]/C
                             (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@5.000ns period=10.000ns})
-  Destination:            u_core/lz_p3_reg[0]/D
+  Destination:            u_core/lz_p3_reg[4]/D
                             (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@5.000ns period=10.000ns})
   Path Group:             clk
   Path Type:              Setup (Max at Slow Process Corner)
   Requirement:            10.000ns  (clk rise@10.000ns - clk rise@0.000ns)
-  Data Path Delay:        5.526ns  (logic 2.194ns (39.703%)  route 3.332ns (60.297%))
-  Logic Levels:           35  (CARRY8=17 LUT1=1 LUT3=1 LUT4=1 LUT5=4 LUT6=11)
+  Data Path Delay:        4.521ns  (logic 1.619ns (35.811%)  route 2.902ns (64.189%))
+  Logic Levels:           31  (CARRY8=17 LUT1=1 LUT2=3 LUT3=1 LUT4=4 LUT5=2 LUT6=2 MUXF7=1)
   Clock Path Skew:        -0.010ns (DCD - SCD + CPR)
     Destination Clock Delay (DCD):    0.020ns = ( 10.020 - 10.000 ) 
     Source Clock Delay      (SCD):    0.030ns
@@ -225,113 +225,105 @@ Slack (MET) :             4.454ns  (required time - arrival time)
   -------------------------------------------------------------------    -------------------
                          (clock clk rise edge)        0.000     0.000 r  
                                                       0.000     0.000 r  clk (IN)
-                         net (fo=5728, unset)         0.030     0.030    u_core/clk
-                         FDRE                                         r  u_core/lat_p2_reg[2]/C
+                         net (fo=4202, unset)         0.030     0.030    u_core/clk
+                         FDRE                                         r  u_core/lat_p2_reg[1]/C
   -------------------------------------------------------------------    -------------------
-                         FDRE (Prop_FDRE_C_Q)         0.077     0.107 f  u_core/lat_p2_reg[2]/Q
-                         net (fo=4, unplaced)         0.149     0.256    u_core/lat_p2_reg_n_0_[2]
-                         LUT1 (Prop_LUT1_I0_O)        0.037     0.293 r  u_core/win_p3[8]_i_17/O
-                         net (fo=1, unplaced)         0.023     0.316    u_core/win_p3[8]_i_17_n_0
-                         CARRY8 (Prop_CARRY8_S[1]_CO[7])
-                                                      0.197     0.513 r  u_core/win_p3_reg[8]_i_9/CO[7]
-                         net (fo=1, unplaced)         0.005     0.518    u_core/win_p3_reg[8]_i_9_n_0
+                         FDRE (Prop_FDRE_C_Q)         0.079     0.109 f  u_core/lat_p2_reg[1]/Q
+                         net (fo=4, unplaced)         0.149     0.258    u_core/lat_p2_reg_n_0_[1]
+                         LUT1 (Prop_LUT1_I0_O)        0.038     0.296 r  u_core/win_p3[72]_i_30/O
+                         net (fo=1, unplaced)         0.020     0.316    u_core/win_p3[72]_i_30_n_0
+                         CARRY8 (Prop_CARRY8_S[0]_CO[7])
+                                                      0.199     0.515 f  u_core/win_p3_reg[72]_i_13/CO[7]
+                         net (fo=1, unplaced)         0.005     0.520    u_core/win_p3_reg[72]_i_13_n_0
                          CARRY8 (Prop_CARRY8_CI_CO[7])
-                                                      0.022     0.540 r  u_core/win_p3_reg[80]_i_11/CO[7]
-                         net (fo=1, unplaced)         0.005     0.545    u_core/win_p3_reg[80]_i_11_n_0
+                                                      0.022     0.542 f  u_core/win_p3_reg[79]_i_53/CO[7]
+                         net (fo=1, unplaced)         0.005     0.547    u_core/win_p3_reg[79]_i_53_n_0
                          CARRY8 (Prop_CARRY8_CI_CO[7])
-                                                      0.022     0.567 r  u_core/win_p3_reg[88]_i_11/CO[7]
-                         net (fo=1, unplaced)         0.005     0.572    u_core/win_p3_reg[88]_i_11_n_0
+                                                      0.022     0.569 f  u_core/win_p3_reg[24]_i_13/CO[7]
+                         net (fo=1, unplaced)         0.005     0.574    u_core/win_p3_reg[24]_i_13_n_0
                          CARRY8 (Prop_CARRY8_CI_CO[7])
-                                                      0.022     0.594 r  u_core/win_p3_reg[96]_i_11/CO[7]
-                         net (fo=1, unplaced)         0.005     0.599    u_core/win_p3_reg[96]_i_11_n_0
+                                                      0.022     0.596 f  u_core/win_p3_reg[32]_i_13/CO[7]
+                         net (fo=1, unplaced)         0.005     0.601    u_core/win_p3_reg[32]_i_13_n_0
                          CARRY8 (Prop_CARRY8_CI_CO[7])
-                                                      0.022     0.621 r  u_core/win_p3_reg[104]_i_11/CO[7]
-                         net (fo=1, unplaced)         0.005     0.626    u_core/win_p3_reg[104]_i_11_n_0
+                                                      0.022     0.623 f  u_core/win_p3_reg[40]_i_13/CO[7]
+                         net (fo=1, unplaced)         0.005     0.628    u_core/win_p3_reg[40]_i_13_n_0
                          CARRY8 (Prop_CARRY8_CI_CO[7])
-                                                      0.022     0.648 r  u_core/win_p3_reg[112]_i_11/CO[7]
-                         net (fo=1, unplaced)         0.005     0.653    u_core/win_p3_reg[112]_i_11_n_0
+                                                      0.022     0.650 f  u_core/win_p3_reg[48]_i_13/CO[7]
+                         net (fo=1, unplaced)         0.005     0.655    u_core/win_p3_reg[48]_i_13_n_0
                          CARRY8 (Prop_CARRY8_CI_CO[7])
-                                                      0.022     0.675 r  u_core/win_p3_reg[120]_i_11/CO[7]
-                         net (fo=1, unplaced)         0.005     0.680    u_core/win_p3_reg[120]_i_11_n_0
+                                                      0.022     0.677 f  u_core/win_p3_reg[56]_i_13/CO[7]
+                         net (fo=1, unplaced)         0.005     0.682    u_core/win_p3_reg[56]_i_13_n_0
                          CARRY8 (Prop_CARRY8_CI_CO[7])
-                                                      0.022     0.702 r  u_core/win_p3_reg[127]_i_40/CO[7]
-                         net (fo=1, unplaced)         0.005     0.707    u_core/win_p3_reg[127]_i_40_n_0
+                                                      0.022     0.704 f  u_core/win_p3_reg[64]_i_11/CO[7]
+                         net (fo=1, unplaced)         0.005     0.709    u_core/win_p3_reg[64]_i_11_n_0
                          CARRY8 (Prop_CARRY8_CI_CO[7])
-                                                      0.022     0.729 r  u_core/win_p3_reg[72]_i_10/CO[7]
-                         net (fo=1, unplaced)         0.005     0.734    u_core/win_p3_reg[72]_i_10_n_0
+                                                      0.022     0.731 f  u_core/win_p3_reg[72]_i_12/CO[7]
+                         net (fo=1, unplaced)         0.005     0.736    u_core/win_p3_reg[72]_i_12_n_0
                          CARRY8 (Prop_CARRY8_CI_CO[7])
-                                                      0.022     0.756 r  u_core/win_p3_reg[80]_i_12/CO[7]
-                         net (fo=1, unplaced)         0.005     0.761    u_core/win_p3_reg[80]_i_12_n_0
+                                                      0.022     0.758 f  u_core/win_p3_reg[79]_i_52/CO[7]
+                         net (fo=1, unplaced)         0.005     0.763    u_core/win_p3_reg[79]_i_52_n_0
                          CARRY8 (Prop_CARRY8_CI_CO[7])
-                                                      0.022     0.783 r  u_core/win_p3_reg[88]_i_12/CO[7]
-                         net (fo=1, unplaced)         0.005     0.788    u_core/win_p3_reg[88]_i_12_n_0
+                                                      0.022     0.785 f  u_core/win_p3_reg[24]_i_12/CO[7]
+                         net (fo=1, unplaced)         0.005     0.790    u_core/win_p3_reg[24]_i_12_n_0
                          CARRY8 (Prop_CARRY8_CI_CO[7])
-                                                      0.022     0.810 r  u_core/win_p3_reg[96]_i_12/CO[7]
-                         net (fo=1, unplaced)         0.005     0.815    u_core/win_p3_reg[96]_i_12_n_0
+                                                      0.022     0.812 f  u_core/win_p3_reg[32]_i_12/CO[7]
+                         net (fo=1, unplaced)         0.005     0.817    u_core/win_p3_reg[32]_i_12_n_0
                          CARRY8 (Prop_CARRY8_CI_CO[7])
-                                                      0.022     0.837 r  u_core/win_p3_reg[104]_i_12/CO[7]
-                         net (fo=1, unplaced)         0.005     0.842    u_core/win_p3_reg[104]_i_12_n_0
+                                                      0.022     0.839 f  u_core/win_p3_reg[40]_i_12/CO[7]
+                         net (fo=1, unplaced)         0.005     0.844    u_core/win_p3_reg[40]_i_12_n_0
                          CARRY8 (Prop_CARRY8_CI_CO[7])
-                                                      0.022     0.864 r  u_core/win_p3_reg[112]_i_12/CO[7]
-                         net (fo=1, unplaced)         0.005     0.869    u_core/win_p3_reg[112]_i_12_n_0
+                                                      0.022     0.866 f  u_core/win_p3_reg[48]_i_12/CO[7]
+                         net (fo=1, unplaced)         0.005     0.871    u_core/win_p3_reg[48]_i_12_n_0
                          CARRY8 (Prop_CARRY8_CI_CO[7])
-                                                      0.022     0.891 r  u_core/win_p3_reg[120]_i_12/CO[7]
-                         net (fo=1, unplaced)         0.005     0.896    u_core/win_p3_reg[120]_i_12_n_0
+                                                      0.022     0.893 f  u_core/win_p3_reg[56]_i_12/CO[7]
+                         net (fo=1, unplaced)         0.005     0.898    u_core/win_p3_reg[56]_i_12_n_0
                          CARRY8 (Prop_CARRY8_CI_CO[7])
-                                                      0.022     0.918 r  u_core/win_p3_reg[0]_i_6/CO[7]
-                         net (fo=1, unplaced)         0.005     0.923    u_core/win_p3_reg[0]_i_6_n_0
+                                                      0.022     0.920 f  u_core/win_p3_reg[79]_i_33/CO[7]
+                         net (fo=1, unplaced)         0.005     0.925    u_core/win_p3_reg[79]_i_33_n_0
                          CARRY8 (Prop_CARRY8_CI_CO[2])
-                                                      0.057     0.980 r  u_core/win_p3_reg[11]_i_7/CO[2]
-                         net (fo=141, unplaced)       0.278     1.258    u_core/win_p3_reg[11]_i_7_n_5
-                         LUT3 (Prop_LUT3_I1_O)        0.038     1.296 r  u_core/win_p3[127]_i_10/O
-                         net (fo=138, unplaced)       0.278     1.574    u_core/win_p3[127]_i_10_n_0
-                         LUT5 (Prop_LUT5_I4_O)        0.038     1.612 r  u_core/win_p3[119]_i_2/O
-                         net (fo=4, unplaced)         0.153     1.765    u_core/data6[55]
-                         LUT4 (Prop_LUT4_I0_O)        0.100     1.865 r  u_core/stlow_p3_i_106/O
-                         net (fo=1, unplaced)         0.105     1.970    u_core/stlow_p3_i_106_n_0
-                         LUT6 (Prop_LUT6_I0_O)        0.150     2.120 r  u_core/stlow_p3_i_48/O
-                         net (fo=1, unplaced)         0.140     2.260    u_core/stlow_p3_i_48_n_0
-                         LUT6 (Prop_LUT6_I1_O)        0.090     2.350 r  u_core/stlow_p3_i_19/O
-                         net (fo=3, unplaced)         0.191     2.541    u_core/ch_any[5]
-                         LUT5 (Prop_LUT5_I4_O)        0.038     2.579 f  u_core/cs_p3[0]_i_2/O
-                         net (fo=7, unplaced)         0.166     2.745    u_core/cs_p3[0]_i_2_n_0
-                         LUT5 (Prop_LUT5_I0_O)        0.100     2.845 f  u_core/win_p3[127]_i_19/O
-                         net (fo=128, unplaced)       0.231     3.076    u_core/win_p3[127]_i_19_n_0
-                         LUT6 (Prop_LUT6_I0_O)        0.090     3.166 f  u_core/win_p3[108]_i_5/O
-                         net (fo=1, unplaced)         0.185     3.351    u_core/win_p3[108]_i_5_n_0
-                         LUT6 (Prop_LUT6_I5_O)        0.038     3.389 f  u_core/win_p3[108]_i_1/O
-                         net (fo=4, unplaced)         0.117     3.506    u_core/v0[44]
-                         LUT6 (Prop_LUT6_I0_O)        0.150     3.656 f  u_core/lz_p3[5]_i_7/O
-                         net (fo=16, unplaced)        0.229     3.885    u_core/lz_p3[5]_i_7_n_0
-                         LUT6 (Prop_LUT6_I5_O)        0.038     3.923 r  u_core/lz_p3[5]_i_1/O
-                         net (fo=33, unplaced)        0.245     4.168    u_core/lz[5]
-                         LUT5 (Prop_LUT5_I3_O)        0.038     4.206 r  u_core/lz_p3[4]_i_2/O
-                         net (fo=1, unplaced)         0.105     4.311    u_core/lz_p3[4]_i_2_n_0
-                         LUT6 (Prop_LUT6_I0_O)        0.150     4.461 r  u_core/lz_p3[4]_i_1/O
-                         net (fo=19, unplaced)        0.233     4.694    u_core/z4
-                         LUT6 (Prop_LUT6_I4_O)        0.038     4.732 f  u_core/lz_p3[2]_i_6/O
-                         net (fo=1, unplaced)         0.105     4.837    u_core/v2__0[53]
-                         LUT6 (Prop_LUT6_I0_O)        0.150     4.987 f  u_core/lz_p3[2]_i_2/O
-                         net (fo=7, unplaced)         0.166     5.153    u_core/v3[61]
-                         LUT6 (Prop_LUT6_I2_O)        0.100     5.253 f  u_core/lz_p3[0]_i_2/O
-                         net (fo=1, unplaced)         0.105     5.358    u_core/lz_p3[0]_i_2_n_0
-                         LUT6 (Prop_LUT6_I0_O)        0.150     5.508 r  u_core/lz_p3[0]_i_1/O
-                         net (fo=1, unplaced)         0.048     5.556    u_core/lz[0]
-                         FDRE                                         r  u_core/lz_p3_reg[0]/D
+                                                      0.057     0.982 f  u_core/win_p3_reg[79]_i_8/CO[2]
+                         net (fo=140, unplaced)       0.278     1.260    u_core/win_p3_reg[79]_i_8_n_5
+                         LUT4 (Prop_LUT4_I2_O)        0.038     1.298 r  u_core/win_p3[78]_i_5/O
+                         net (fo=135, unplaced)       0.277     1.575    u_core/win_p3[78]_i_5_n_0
+                         LUT5 (Prop_LUT5_I2_O)        0.038     1.613 r  u_core/win_p3[21]_i_5/O
+                         net (fo=3, unplaced)         0.147     1.760    u_core/chunk[6][21]
+                         LUT4 (Prop_LUT4_I0_O)        0.100     1.860 r  u_core/stlow_p3_i_63/O
+                         net (fo=1, unplaced)         0.185     2.045    u_core/stlow_p3_i_63_n_0
+                         LUT5 (Prop_LUT5_I4_O)        0.038     2.083 r  u_core/stlow_p3_i_21/O
+                         net (fo=1, unplaced)         0.105     2.188    u_core/stlow_p3_i_21_n_0
+                         LUT6 (Prop_LUT6_I0_O)        0.150     2.338 r  u_core/stlow_p3_i_5/O
+                         net (fo=5, unplaced)         0.159     2.497    u_core/ch_any__0[6]
+                         LUT4 (Prop_LUT4_I0_O)        0.100     2.597 r  u_core/cs_p3[2]_i_1/O
+                         net (fo=82, unplaced)        0.266     2.863    u_core/cs_p3[2]_i_1_n_0
+                         LUT2 (Prop_LUT2_I0_O)        0.038     2.901 r  u_core/win_p3[127]_i_5/O
+                         net (fo=54, unplaced)        0.304     3.205    u_core/cs[2]
+                         MUXF7 (Prop_MUXF7_S_O)       0.076     3.281 f  u_core/win_p3_reg[112]_i_1/O
+                         net (fo=2, unplaced)         0.183     3.464    u_core/win_p3_reg[112]_i_1_n_0
+                         LUT2 (Prop_LUT2_I0_O)        0.070     3.534 f  u_core/lz_p3[2]_i_16/O
+                         net (fo=2, unplaced)         0.185     3.719    u_core/v0[48]
+                         LUT3 (Prop_LUT3_I2_O)        0.070     3.789 f  u_core/lz_p3[2]_i_12/O
+                         net (fo=2, unplaced)         0.185     3.974    u_core/lz_p3[2]_i_12_n_0
+                         LUT4 (Prop_LUT4_I3_O)        0.070     4.044 r  u_core/lz_p3[2]_i_6/O
+                         net (fo=2, unplaced)         0.185     4.229    u_core/lz_p3[2]_i_6_n_0
+                         LUT2 (Prop_LUT2_I0_O)        0.038     4.267 r  u_core/lz_p3[5]_i_4/O
+                         net (fo=3, unplaced)         0.146     4.413    u_core/lz_p3[5]_i_4_n_0
+                         LUT6 (Prop_LUT6_I0_O)        0.090     4.503 r  u_core/lz_p3[4]_i_1/O
+                         net (fo=1, unplaced)         0.048     4.551    u_core/z4
+                         FDRE                                         r  u_core/lz_p3_reg[4]/D
   -------------------------------------------------------------------    -------------------
 
                          (clock clk rise edge)       10.000    10.000 r  
                                                       0.000    10.000 r  clk (IN)
-                         net (fo=5728, unset)         0.020    10.020    u_core/clk
-                         FDRE                                         r  u_core/lz_p3_reg[0]/C
+                         net (fo=4202, unset)         0.020    10.020    u_core/clk
+                         FDRE                                         r  u_core/lz_p3_reg[4]/C
                          clock pessimism              0.000    10.020    
                          clock uncertainty           -0.035     9.985    
-                         FDRE (Setup_FDRE_C_D)        0.025    10.010    u_core/lz_p3_reg[0]
+                         FDRE (Setup_FDRE_C_D)        0.025    10.010    u_core/lz_p3_reg[4]
   -------------------------------------------------------------------
                          required time                         10.010    
-                         arrival time                          -5.556    
+                         arrival time                          -4.551    
   -------------------------------------------------------------------
-                         slack                                  4.454    
+                         slack                                  5.459    
 
 
 
@@ -339,15 +331,15 @@ Slack (MET) :             4.454ns  (required time - arrival time)
 
 Min Delay Paths
 --------------------------------------------------------------------------------------
-Slack (MET) :             0.069ns  (arrival time - required time)
-  Source:                 u_core/row_a_p1_reg[58]/C
+Slack (MET) :             0.071ns  (arrival time - required time)
+  Source:                 u_core/s_row_reg[58]/C
                             (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@5.000ns period=10.000ns})
   Destination:            u_core/lat_p2_reg[11]/D
                             (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@5.000ns period=10.000ns})
   Path Group:             clk
   Path Type:              Hold (Min at Fast Process Corner)
   Requirement:            0.000ns  (clk rise@0.000ns - clk rise@0.000ns)
-  Data Path Delay:        0.122ns  (logic 0.069ns (56.557%)  route 0.053ns (43.443%))
+  Data Path Delay:        0.124ns  (logic 0.069ns (55.645%)  route 0.055ns (44.355%))
   Logic Levels:           1  (CARRY8=1)
   Clock Path Skew:        0.007ns (DCD - SCD - CPR)
     Destination Clock Delay (DCD):    0.019ns
@@ -358,28 +350,28 @@ Slack (MET) :             0.069ns  (arrival time - required time)
   -------------------------------------------------------------------    -------------------
                          (clock clk rise edge)        0.000     0.000 r  
                                                       0.000     0.000 r  clk (IN)
-                         net (fo=5728, unset)         0.012     0.012    u_core/clk
-                         FDRE                                         r  u_core/row_a_p1_reg[58]/C
+                         net (fo=4202, unset)         0.012     0.012    u_core/clk
+                         FDRE                                         r  u_core/s_row_reg[58]/C
   -------------------------------------------------------------------    -------------------
-                         FDRE (Prop_FDRE_C_Q)         0.038     0.050 r  u_core/row_a_p1_reg[58]/Q
-                         net (fo=2, unplaced)         0.046     0.096    u_core/row_a_p1[58]
+                         FDRE (Prop_FDRE_C_Q)         0.038     0.050 r  u_core/s_row_reg[58]/Q
+                         net (fo=3, unplaced)         0.048     0.098    u_core/s_row[58]
                          CARRY8 (Prop_CARRY8_DI[0]_O[1])
-                                                      0.031     0.127 r  u_core/lat_p2_reg[17]_i_1/O[1]
-                         net (fo=1, unplaced)         0.007     0.134    u_core/p_0_in__1[11]
+                                                      0.031     0.129 r  u_core/lat_p2_reg[17]_i_1/O[1]
+                         net (fo=1, unplaced)         0.007     0.136    u_core/lat_p2_reg[17]_i_1_n_14
                          FDRE                                         r  u_core/lat_p2_reg[11]/D
   -------------------------------------------------------------------    -------------------
 
                          (clock clk rise edge)        0.000     0.000 r  
                                                       0.000     0.000 r  clk (IN)
-                         net (fo=5728, unset)         0.019     0.019    u_core/clk
+                         net (fo=4202, unset)         0.019     0.019    u_core/clk
                          FDRE                                         r  u_core/lat_p2_reg[11]/C
                          clock pessimism              0.000     0.019    
                          FDRE (Hold_FDRE_C_D)         0.046     0.065    u_core/lat_p2_reg[11]
   -------------------------------------------------------------------
                          required time                         -0.065    
-                         arrival time                           0.134    
+                         arrival time                           0.136    
   -------------------------------------------------------------------
-                         slack                                  0.069    
+                         slack                                  0.071    
 
 
 
@@ -392,10 +384,10 @@ Waveform(ns):       { 0.000 5.000 }
 Period(ns):         10.000
 Sources:            { clk }
 
-Check Type        Corner  Lib Pin  Reference Pin  Required(ns)  Actual(ns)  Slack(ns)  Location  Pin
-Min Period        n/a     FDRE/C   n/a            0.550         10.000      9.450                addends_flat_q_reg[0]/C
-Low Pulse Width   Slow    FDRE/C   n/a            0.275         5.000       4.725                addends_flat_q_reg[0]/C
-High Pulse Width  Slow    FDRE/C   n/a            0.275         5.000       4.725                addends_flat_q_reg[0]/C
+Check Type        Corner  Lib Pin     Reference Pin  Required(ns)  Actual(ns)  Slack(ns)  Location  Pin
+Min Period        n/a     SRL16E/CLK  n/a            1.064         10.000      8.936                u_core/v_s3_reg_srl2/CLK
+Low Pulse Width   Slow    SRL16E/CLK  n/a            0.532         5.000       4.468                u_core/v_s3_reg_srl2/CLK
+High Pulse Width  Slow    SRL16E/CLK  n/a            0.532         5.000       4.468                u_core/v_s3_reg_srl2/CLK
 
 
 

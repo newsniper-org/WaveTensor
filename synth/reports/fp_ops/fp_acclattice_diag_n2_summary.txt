@@ -1,0 +1,4 @@
+fp_acclattice_diag_n2 — FP_AccLattice PRODUCTS_PER_BEAT=2, synth-only
+part=xcu55c-fsvh2892-2L-e period=10.000 top=FP_AccLattice_gate_top
+lut_cells=9782 ff=3821 dsp48=0 bram=0
+(LUT SITES 는 fp_acclattice_diag_n2_synth_util.rpt 의 Total LUTs 행 — Beat2 비교 기준)

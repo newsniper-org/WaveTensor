@@ -37,7 +37,7 @@ GATE F1 — fp_fmalane_bf16 (LFE5UM-85F CABGA381 -6, out-of-context, yosys synth
     GATE F1 RESULT: PASS
 
 MEAS V20-2/ECP5 full-parallel — fp_acclattice (LFE5UM-85F CABGA381 -6, out-of-context, yosys synth_ecp5 + nextpnr-ecp5, wrapper-top incl. I/O regs):
-    [FP_AccLattice 33-addend full-parallel unit (xcu55c-target base form) measured as-is on the 85F]
+    [FROZEN 903351c archive — FP_AccLattice 33-addend full-parallel unit measured as-is on the 85F; the v2.0 beat-serial rewrite (spec 27.2.1 amendment 2026-08-16) retired this shape, re-measurements land under fp_acclattice_n8 / fp_acclattice_n2]
     LUT4       = 102871   (85F budget 83,640 — utilization 123.0%; no ceiling declared, spec 27.6)
     MULT18X18D =     0   (pin expects 0)
     premap $mul=     0   (pin expects 0 — adder/compressor only)
@@ -46,6 +46,30 @@ MEAS V20-2/ECP5 full-parallel — fp_acclattice (LFE5UM-85F CABGA381 -6, out-of-
     CCU2C      =  1188   (informational, carry cells)
     PnR        = DID NOT COMPLETE — that outcome is the measurement; see the archived _pnr.log for the stage/reason
     MEAS V20-2/ECP5 full-parallel RESULT: MEASUREMENT (recorded — the ECP5 half constitutes no gate verdict, spec 27.6)
+
+MEAS V20-2/ECP5 beat-serial N=8 — fp_acclattice_n8 (LFE5UM-85F CABGA381 -6, out-of-context, yosys synth_ecp5 + nextpnr-ecp5, wrapper-top incl. I/O regs):
+    [v2.0 SHIPPING shape (spec 27.2.1 amendment 2026-08-16): PRODUCTS_PER_BEAT=8 — 4 beats, beat-0 merged carry-in, parallel 1-cycle 576-bit resolve, II=4]
+    LUT4       = 29834   (85F budget 83,640 — utilization 35.7%; no ceiling declared, spec 27.6)
+    MULT18X18D =     0   (pin expects 0)
+    premap $mul=     0   (pin expects 0 — adder/compressor only)
+    TRELLIS_FF =  4200   raw; unit = 2933 after -1267 wrapper I/O flops (informational)
+    EBR        =     0   (informational, cells DP16KD/PDPW16KD/DP16KD_COMB)
+    CCU2C      =   758   (informational, carry cells)
+    Fmax       =    16.51 MHz (40 MHz is a reference point only — NOT a target here, spec 27.6)
+    PnR        = completed
+    MEAS V20-2/ECP5 beat-serial N=8 RESULT: MEASUREMENT (recorded — the ECP5 half constitutes no gate verdict, spec 27.6)
+
+MEAS V20-2/ECP5 beat-serial N=2 — fp_acclattice_n2 (LFE5UM-85F CABGA381 -6, out-of-context, yosys synth_ecp5 + nextpnr-ecp5, wrapper-top incl. I/O regs):
+    [parameterization-consistency point vs the Beat2 archive (9,374 LUT4 / 19.55 MHz): PRODUCTS_PER_BEAT=2 — 16 beats, beat-0 merged carry-in, PARALLEL resolve (Beat2 differs: separate carry beat + 9-cycle SERIAL resolve)]
+    LUT4       = 11185   (85F budget 83,640 — utilization 13.4%; no ceiling declared, spec 27.6)
+    MULT18X18D =     0   (pin expects 0)
+    premap $mul=     0   (pin expects 0 — adder/compressor only)
+    TRELLIS_FF =  3816   raw; unit = 2933 after -883 wrapper I/O flops (informational)
+    EBR        =     0   (informational, cells DP16KD/PDPW16KD/DP16KD_COMB)
+    CCU2C      =   648   (informational, carry cells)
+    Fmax       =    15.21 MHz (40 MHz is a reference point only — NOT a target here, spec 27.6)
+    PnR        = completed
+    MEAS V20-2/ECP5 beat-serial N=2 RESULT: MEASUREMENT (recorded — the ECP5 half constitutes no gate verdict, spec 27.6)
 
 MEAS V20-2/ECP5 beat-serial — fp_acclattice_beat2 (LFE5UM-85F CABGA381 -6, out-of-context, yosys synth_ecp5 + nextpnr-ecp5, wrapper-top incl. I/O regs):
     [spec 27.6 ECP5 target shape: 2 products/beat x 16 beats (+1 carry-in beat) + 9-cycle serial resolve]

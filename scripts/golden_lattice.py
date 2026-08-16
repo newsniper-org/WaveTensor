@@ -947,6 +947,29 @@ def gen_vectors():
         else:
             em.emit(wave_sparse(rng), rand_carry(rng))
 
+    # ---- directed: window sticky band — sticky OR 부분 절단 적발 ----
+    # (반증 폐쇄 2026-08-16: 기존 4001 벡터에는 leading bit 아래 48..127
+    #  위치 — 추출 128-bit window 의 top-48 아래 밴드 — 의 비트가 RTO
+    #  jam 을 '단독' 결정하는 벡터가 0개였고, 그 결과 추출기 sticky OR 의
+    #  부분 절단 (폭 k<=49 전부, chunk-정렬 k=48 포함) 이 TB 를 escape
+    #  했다. 본 family 는 그 밴드의 모든 위치 d 에 유일 sticky 비트를
+    #  두고 top-48 LSB=0 + window 아래(st_low) 0 을 강제한다 — 어떤 부분
+    #  절단도 해당 위치의 벡터에서 WIDE/BANK 층 FAIL 을 낸다. leading
+    #  bit 은 2^53 (lattice 물리 bit 319 = chunk 4 의 bit 63, lz=0) 에
+    #  두어 window 가 최대 깊이 (127-bit) 로 열리게 한다.)
+    em.begin("sticky_window_band",
+             "2^53 + 2^(53-d), d=48..127 — leading bit 을 chunk 상단 "
+             "(lz=0, window 최대 깊이) 에 두고 leading bit 아래 d 위치의 "
+             "유일 비트가 RTO sticky-jam 을 단독 결정 (top-48 LSB=0, "
+             "window 아래 0) — 추출기 sticky OR 부분 절단의 위치별 적발")
+    for d in range(48, 128):
+        wave = [(0, 53, 1 << 47), (0, 53 - d, 1 << 47)] \
+            + [CANON_ZERO] * (GROUP - 2)
+        w = em.emit(wave, CANON_ZERO)
+        # 판별성 pin: jam LSB 는 오직 위치 d 의 비트가 세운다 (top-48
+        # 나머지 0) — sticky 에서 d 를 빠뜨린 RTL 은 LSB=0 으로 갈라진다.
+        assert w == (0, 53, (1 << 47) | 1), (d, w)
+
     return em
 
 
@@ -1107,10 +1130,14 @@ assert 했다.
 localparam integer N_VEC = %d;
 reg [%d:0] vec [0:N_VEC-1];
 initial $readmemh("include/generated/lattice_wave_vectors.hex", vec);
-// addend k 의 64-bit field (k 는 generate 상수 — dynamic part-select
-// 금지는 project law; TB 도 static unroll 로):
+// addend k 의 64-bit field:
 //   wire [63:0] fld_k = vec[i][2799 - 64*k -: 64];
 ```
+
+- dynamic part-select 금지 (project law) 는 **RTL 을 구속**한다. TB 의
+  driver/checker 는 행위 모델로서 벡터 슬라이싱에 behavioral loop /
+  variable shift 를 써도 좋다 — 단, TB 헤더에 행위 모델 면책 주석을
+  명시할 것 (`tb_fp_acclattice.v` 선례).
 
 - DUT resolve 출력 == `EXP_RESOLVED`, RTO-48 추출 == `EXP_WIDE`, bank
   인코딩 == `EXP_BANK`, PACK_FINAL drain == `EXP_FP32` — 4층 전부

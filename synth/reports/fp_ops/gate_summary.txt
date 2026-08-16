@@ -42,32 +42,17 @@ GATE V20-2/US — fp_acclattice: v2.0 528-bit exact-integer lattice unit (spec �
     device     = xcu55c-fsvh2892-2L-e  (Vivado out-of-context, synth + opt + place + phys_opt + route)
     constraint = 10.0 ns (100.00 MHz)
 
-    Fmax       =   122.06 MHz  (WNS +1.807 ns @ 10.0 ns; MEASUREMENT — §27.6 resolve-in-1-cycle context; >= 100.0 MHz: yes; binding verdict rides on LUT/DSP/premap-$mul only)   -> RECORDED
-    LUT sites  = 53418      (HARD ceiling 20040 — hard ceiling = 12,000 nominal x 1.67 measured overrun factor (spec §27.6, §23.10.10(g) method))   -> FAIL
+    Fmax       =   143.64 MHz  (WNS +3.038 ns @ 10.0 ns; MEASUREMENT — §27.6 resolve-in-1-cycle context; >= 100.0 MHz: yes; binding verdict rides on LUT/DSP/premap-$mul only)   -> RECORDED
+    LUT sites  = 19251      (HARD ceiling 20040 — hard ceiling = 12,000 nominal x 1.67 measured overrun factor (spec §27.6, §23.10.10(g) method))   -> PASS
     DSP48      =     0      (limit 0 — lattice is add/shift/compare ONLY — any DSP48 means the mapper found a multiply that must not exist)   -> PASS
     premap $mul=     0      (limit 0 — §26.6 pin form; evidence: fp_acclattice_premap_mul.log)   -> PASS
     BRAM       =     0      (limit 0)   -> PASS
-    WHS        =   +0.042 ns (hold, limit >= 0)   -> PASS
+    WHS        =   +0.039 ns (hold, limit >= 0)   -> PASS
     DRC        = 0 errors, 0 warnings (limit: 0 errors; warnings are listed, NOT 'clean')   -> PASS
 
-    LUT sites  = 53418      (see HARD line above; 53418 logic + 0 SRL; raw LUT cells 67696 before LUT-combining)
-    FF         =  5729      (informational; incl. the gate-top wrapper I/O flops)
-    CARRY8     =   265      (informational)
-      u_core         FP_AccLattice    LUT 53418  FF  2986  DSP   0
-    GATE V20-2/US RESULT: FAIL
-
-
---- RE-MEASUREMENT NOTE (2026-08-15, PACK_WIDE format closure) --------------
-F1-US (xcu55c) re-run after the FP_AddWide canonical-zero change (wide_zero
-==1 now emits the normative canonical zero sign=0/exp=-1024/sig=0 instead
-of UNSPECIFIED fields, via FF sync set/reset constants). Every measured
-number is IDENTICAL to the pre-change archive (935 raw LUT cells / 776 LUT
-sites / 421 FF / 1 DSP48 / WNS +6.083 ns -> 255.30 MHz / WHS +0.040 ns):
-pack_mode is tied to PACK_FINAL in this lane, so Vivado constant-folds the
-wide output group and the canonical-zero override with it. The F1-US/xcu50
-rows above are the archived pre-change reports (not re-run — same
-constant-fold argument; re-run on request). No FP_AddWide-standalone
-UltraScale+ gate exists (the Makefile defines synth-fp-op sources only for
-fp_fmalane_bf16), so Gate 2 remains ECP5-only evidence.
-------------------------------------------------------------------------------
+    LUT sites  = 19251      (see HARD line above; 19250 logic + 1 SRL; raw LUT cells 21475 before LUT-combining)
+    FF         =  4202      (informational; incl. the gate-top wrapper I/O flops)
+    CARRY8     =   217      (informational)
+      u_core         FP_AccLattice    LUT 19251  FF  2993  DSP   0
+    GATE V20-2/US RESULT: PASS
 

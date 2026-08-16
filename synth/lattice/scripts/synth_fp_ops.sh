@@ -192,32 +192,45 @@ fi
 #   * gate_check.py reports them as MEASUREMENT rows that never affect the
 #     exit status.
 # Targets:
-#   fp_acclattice       — full-parallel 33-addend unit (FP_AccLattice.v,
-#                         the xcu55c-target base form) measured as-is.
-#   fp_acclattice_beat2 — the §27.6-declared ECP5 target shape: beat-
-#                         serialized 2 products/beat x 16 beats (+1 carry-
-#                         in beat) + 9-cycle serial resolve
+#   fp_acclattice_n8    — the v2.0 SHIPPING shape (spec §27.2.1 amendment
+#                         2026-08-16): beat-serial FP_AccLattice.v at
+#                         PRODUCTS_PER_BEAT=8 (4 beats, beat-0 merged
+#                         carry-in, parallel 1-cycle 576-bit resolve).
+#   fp_acclattice_n2    — the same RTL at PRODUCTS_PER_BEAT=2: the
+#                         parameterization-consistency point against the
+#                         archived Beat2 measurement (which differs
+#                         structurally: separate carry beat + 9-cycle
+#                         serial resolve).
+#   fp_acclattice_beat2 — the original §27.6-declared ECP5 target shape:
+#                         beat-serialized 2 products/beat x 16 beats (+1
+#                         carry-in beat) + 9-cycle serial resolve
 #                         (synth/lattice/fp_ops/FP_AccLatticeBeat2.v,
-#                         measurement-only variant).
+#                         measurement-only variant, kept as provenance).
+#   (the retired fp_acclattice full-parallel target's reports remain
+#   archived — the rewritten FP_AccLattice.v no longer has that shape.)
 
 run_meas() {
     NAME="$1"
     TOP="$2"
     SRCS="$3"
+    CHPARAM="$4"   # optional yosys hierarchy -chparam text, e.g.
+                   # "-chparam PRODUCTS_PER_BEAT 2" — the v2.0 beat-serial
+                   # FP_AccLattice is measured at two parameter points
+                   # through ONE wrapper (amendment 2026-08-16).
     SEED=1   # single-seed convention of the non-sweep gates (fp_mul36/
              # fp_addwide): no pass target exists here, so no sweep either.
 
     echo "=== $NAME: yosys premap stat (operator-level, pre-techmap) ==="
     yosys -q -p "\
         read_verilog -defer -DWT_VENDOR_LATTICE_YOSYS -I include $SRCS; \
-        hierarchy -check -top $TOP; \
+        hierarchy -check $CHPARAM -top $TOP; \
         proc; flatten; opt_clean; \
         tee -o $RPT/${NAME}_premap.rpt stat"
 
     echo "=== $NAME: yosys synth_ecp5 (top $TOP) ==="
     yosys -q -p "\
         read_verilog -defer -DWT_VENDOR_LATTICE_YOSYS -I include $SRCS; \
-        hierarchy -check -top $TOP; \
+        hierarchy -check $CHPARAM -top $TOP; \
         synth_ecp5; \
         tee -o $RPT/${NAME}_synth.rpt stat; \
         write_json $RPT/${NAME}_synth.json"
@@ -241,9 +254,22 @@ run_meas() {
     fi
 }
 
-if [ -n "$WANT" ] && want fp_acclattice; then
-    run_meas fp_acclattice FP_AccLattice_gate_top \
-        "FP_AccLattice.v synth/lattice/fp_ops/FP_AccLattice_gate_top.v"
+# fp_acclattice (인자 없는 옛 타깃) — 903351c full-parallel 기본형의 측정
+# 이름이었다. v2.0 amendment (2026-08-16) 로 FP_AccLattice.v 가 beat-serial
+# 로 재작성되어 그 인터페이스는 소멸 — 기존 fp_acclattice_* 리포트는
+# full-parallel provenance 로 동결 보존하고 (§27.6 재실측 선언), 재실측은
+# 아래의 새 파일명 fp_acclattice_n8 / fp_acclattice_n2 로 아카이브한다.
+
+if [ -n "$WANT" ] && want fp_acclattice_n8; then
+    run_meas fp_acclattice_n8 FP_AccLattice_gate_top \
+        "FP_AccLattice.v synth/lattice/fp_ops/FP_AccLattice_gate_top.v" \
+        "-chparam PRODUCTS_PER_BEAT 8"
+fi
+
+if [ -n "$WANT" ] && want fp_acclattice_n2; then
+    run_meas fp_acclattice_n2 FP_AccLattice_gate_top \
+        "FP_AccLattice.v synth/lattice/fp_ops/FP_AccLattice_gate_top.v" \
+        "-chparam PRODUCTS_PER_BEAT 2"
 fi
 
 if [ -n "$WANT" ] && want fp_acclattice_beat2; then
