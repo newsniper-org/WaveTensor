@@ -79,7 +79,9 @@
 //   zero 의 유일한 인코딩 (§23.10.1 / FP_AddWide.v c21092a 폐쇄와 동일 규범).
 //   nonzero 는 leading zero <= 1 (sig >= 2^46 — 곱 lane raw 형식은 1-bit
 //   un-normalized 허용, FP_AddWide PRECONDITIONS 동형). carry_i 는
-//   normalized (sig[47]==1) 또는 canonical zero.
+//   normalized (sig[47]==1) 또는 canonical zero — 위반은 fault (c) 의
+//   carry-lane 강화형으로 hw 검사된다 (§27.2.1 amendment pin 2, 아래
+//   FAULT 클래스 (c) 항; ③ 구현 의무 이행 2026-08-16).
 //
 // 출력 (done_q 가 1 인 cycle 에 유효 — 다음 wave-step 의 S4 까지 유지):
 //   resolved_q [527:0] : §27.2.1 resolve 결과 — exact 33-항 합의 528-bit
@@ -154,7 +156,11 @@
 // 검사 + wave-step sticky):
 //   (a) field 예약 비트 [63:60] != 0
 //   (b) sig==0 인데 canonical zero 인코딩이 아님
-//   (c) nonzero sig 의 leading zero > 1 (sig < 2^46)
+//   (c) nonzero sig 의 leading zero > 1 (sig < 2^46). ** carry lane
+//       (lane N, beat 0 전용) 은 강화형 **: nonzero sig 의 sig[47]==0
+//       이 곧 fault — carry-in 은 normalized 또는 canonical zero 만
+//       (§27.2.1 amendment pin 2 의 normative 승격; 곱 lane 의 1-bit
+//       un-normalized raw 허용은 불변)
 //   (d) 배치 범위 밖 — q < 1 또는 q > 528, 또는 q==528 에서 sig[47]==1
 //       (units >= 2^527: |v| >= 2^261, golden addend_units 의 lattice
 //       range fault 와 동치 지점)
@@ -272,10 +278,16 @@ module FP_AccLattice #(
             wire [47:0]        sig = f[47:0];
             wire               nz  = |sig;
 
-            // fault (a)(b)(c)
+            // fault (a)(b)(c) — (c) 는 lane 별 정적 특수화: 곱 lane
+            // (gk < N_PB) 은 leading zero > 1 검사 그대로 (raw 1-bit
+            // un-normalized 허용), carry lane (gk == N_PB) 은 강화형 —
+            // nonzero 인데 sig[47]==0 이면 곧 fault (§27.2.1 amendment
+            // pin 2 이행; 발화 게이트는 기존 fault_acc 의 beat0 전용
+            // carry-lane 항 그대로 — 배선 최소 변경).
             wire bad_resv = |f[63:60];
             wire bad_zero = ~nz & (f[59:0] != {1'b0, 11'h400, 48'b0});
-            wire bad_lead = nz & ~sig[47] & ~sig[46];
+            wire bad_lead = nz & ~sig[47]
+                          & ((gk == N_PB) ? 1'b1 : ~sig[46]);
 
             // 배치 위치 q = e + 267 (PHYS LSB), k = q[9:6], o = q[5:0]
             wire signed [12:0] q_s = {{2{e[10]}}, e} + 13'sd267;

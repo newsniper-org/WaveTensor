@@ -1,0 +1,19 @@
+
+5. Printing statistics.
+
+=== FP_AccBank ===
+
+        +----------Local Count, excluding submodules.
+        | 
+     9221 wires
+    32028 wire bits
+     9221 public wires
+    32028 public wire bits
+       29 ports
+      409 port bits
+    21611 cells
+       41   CCU2C
+    14671   LUT4
+     2050   PFUMX
+     4849   TRELLIS_FF
+

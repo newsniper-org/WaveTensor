@@ -1,0 +1,37 @@
+
+7. Printing statistics.
+
+=== FP_AccBank ===
+
+        +----------Local Count, excluding submodules.
+        | 
+     1085 wires
+     9096 wire bits
+      172 public wires
+     1293 public wire bits
+       29 ports
+      409 port bits
+        3 memories
+     4416 memory bits
+     1275 cells
+        3   $add
+       54   $and
+       85   $dff
+      135   $eq
+        2   $ge
+        2   $gt
+       64   $logic_and
+       10   $logic_not
+        1   $lt
+        9   $memrd
+      202   $memwr_v2
+      527   $mux
+        1   $ne
+       23   $not
+       19   $or
+        1   $pmux
+       68   $reduce_bool
+        3   $reduce_or
+       65   $sub
+        1   $xor
+

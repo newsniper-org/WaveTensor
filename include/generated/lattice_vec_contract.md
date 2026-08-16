@@ -135,10 +135,13 @@ initial $readmemh("include/generated/lattice_wave_vectors.hex", vec);
 
 - **FILL-valid 이나 lattice-표현 밖 carry**: bank word 는 fp64 로
   |v| <= ~2^1024 까지 담지만 lattice 는 |v| < 2^261 만 수용한다
-  (§27.2.1 폭 도출). FILL 로 그런 값을 넣고 accumulate 하는 경로의 RTL
-  fault 배선 (sticky-fault 클래스 배정) 은 §27.2 미명시 — golden 은
-  loud fault (`LatticeFault`) 로 고정했고, GATE V20-2 하류 ③ (bank
-  RTL + TLA+) COMMIT 에서 pin 해야 한다.
+  (§27.2.1 폭 도출 — 수용 구간은 pin 1 해소로 **개구간 (-2^261,
+  2^261)**). **-> 폐쇄 (2026-08-16, ③ spec COMMIT — §27.2.2 하류 ③
+  블록)**: 신규 클래스 없이 기존 **fault (d)/(e) 의 carry-lane 적용**
+  (범위 <-> (d), 정밀도 <-> (e)), 발화 지점은 bank FILL 이 아니라
+  **carry 소비 (beat 0)**. golden `LatticeFault` 2종이 그 대응이고,
+  시나리오 레벨 reference 는 `bank_scenarios_contract.md` 의
+  `carry_fault_*` family 가 운반한다.
 - **fp64 -0 FILL**: 수용 + canonical +0 화 (§27.2.2 (iii)) — "검증
   통과 값은 round-trip bit-exact" 문장의 유일한 예외 (수용-후-재작성).
 - f16 subnormal 곱의 lane-측 raw operand 형태 (§2 참조).
@@ -162,3 +165,4 @@ byte-identical (sha256 은 report).
 | `vec_chain_s5` | `0x1A77E17` |
 | `vec_parkcancel` | `0x1A77E18` |
 | `vec_sparse` | `0x1A77E19` |
+| `bank_rand_interleave` | `0x1A77E21` |

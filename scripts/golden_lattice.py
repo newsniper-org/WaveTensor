@@ -67,6 +67,21 @@ SEGMENT GEOMETRY (§27.2.1 "segment 기하는 golden model/RTL 에서 확정"):
   include/generated/lattice_wave_vectors.hex   RTL TB 벡터 ($readmemh)
   include/generated/lattice_vec_contract.md    벡터 비트 레이아웃 계약
   include/generated/lattice_golden_report.json 체크 결과·벡터 수·sha256
+  include/generated/bank_scenarios.hex         bank 상태기계 시나리오 스트림
+                                               (§27.6 하류 ③ 검증 계획 (c))
+  include/generated/bank_scenarios_contract.md 시나리오 record 형식/의미 계약
+
+BANK 상태기계 reference (§27.6 하류 ③ (c) — 2026-08-16 확장):
+  wide ACC bank (2 banks x 32 lanes x 64b/cluster) 의 slot ownership
+  (RequestOwn/CommitOwn — proofs/tla/AccBank.tla 대응) + FILL/DRAIN/ZERO
+  + wave-step 체이닝 (IF-1 read-before-dispatch / IF-2 ownership window
+  / IF-3 같은 slot >= LATENCY=7 / IF-4 canonical zero 기록 — §27.2.2
+  하류 ③ COMMIT 블록) 의 cycle-정밀 실행기. 명령 시퀀스 (cycle-태그) 를
+  받아 기대 bank 상태·sticky fault 를 산출하고, 통합 TB 용 시나리오
+  스트림을 생성한다 (같은 slot 체이닝 경계 7/8, gap 1/3/17 재시작,
+  창 경계 cycle 정밀 FILL/DRAIN/ZERO 인터리브, SPILL guard 거부/수용
+  + 미정의 opcode 6/7 PROTO_GUARD — 2026-08-16 적대 재실측 폐쇄 —,
+  랜덤 인터리브 300+).
 
 ground truth 는 exact 정수/Fraction 산술; stdlib-only. acc_format_study
 는 설계 판정의 재현 artifact 로서 교차검증 대상으로만 import 한다
@@ -88,6 +103,8 @@ GEN = REPO / "include" / "generated"
 VEC_PATH = GEN / "lattice_wave_vectors.hex"
 CONTRACT_PATH = GEN / "lattice_vec_contract.md"
 REPORT_PATH = GEN / "lattice_golden_report.json"
+BANK_HEX_PATH = GEN / "bank_scenarios.hex"
+BANK_CONTRACT_PATH = GEN / "bank_scenarios_contract.md"
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from golden_fp32 import _rto, pack_rne_ftz  # noqa: E402
@@ -132,6 +149,7 @@ SEEDS = {
     "vec_chain_s5": 0x1A77E17,
     "vec_parkcancel": 0x1A77E18,
     "vec_sparse": 0x1A77E19,
+    "bank_rand_interleave": 0x1A77E21,
 }
 
 
@@ -308,17 +326,20 @@ def addend_units(s, e, sig):
 
 def lattice_accumulate(addends):
     """33 addend 의 exact 정수 누산 (compressor tree + resolve 1회의
-    산술 등가). 총합의 528-bit two's-complement 범위 이탈 -> loud fault
-    (in-run assert, §27.2.1)."""
+    산술 등가). 수용 구간은 **개구간 (-2^261, 2^261)** (§27.2.1 amendment
+    pin 1, 2026-08-16): 총합 == 정확히 -2^261 (signed 표현 하한) 도
+    경계 도달 = lattice overflow 동일 클래스 loud fault 다 (RTL fault
+    (f) 대응)."""
     if len(addends) != N_ADDENDS:
         raise LatticeFault("exactly 33 addends required (32 products + "
                            "carry-in), got %d" % len(addends))
     total = 0
     for a in addends:
         total += addend_units(*a)
-    if not LAT_MIN <= total <= LAT_MAX:
+    if not LAT_MIN < total <= LAT_MAX:
         raise LatticeFault("lattice overflow: resolved sum outside "
-                           "[-2^261, 2^261) — precondition violation")
+                           "(-2^261, 2^261) — precondition violation "
+                           "(open interval, §27.2.1 amendment pin 1)")
     return total
 
 
@@ -330,7 +351,10 @@ def lattice_word(units):
 
 def extract_rto48(units):
     """추출 = 그 wave-step 의 유일한 반올림: LZC/normalize 후 top-48 +
-    sticky-jam = exact 합의 RTO_48. exact zero -> canonical zero."""
+    sticky-jam = exact 합의 RTO_48. exact zero -> canonical zero.
+    지수 범위 검사는 loud fault (§27.2.1 amendment pin 1 의 golden 이행:
+    e == 261 <=> |합| >= 2^261 — RTL fault (f) 대응; bare assert 에서
+    LatticeFault 로 승격, 2026-08-16)."""
     if units == 0:
         return CANON_ZERO
     s = 1 if units < 0 else 0
@@ -339,7 +363,10 @@ def extract_rto48(units):
     sh = a.bit_length() - Q48
     sig = _rto(a, sh) if sh > 0 else a << -sh
     assert (1 << 47) <= sig <= _M48
-    assert -266 <= e <= LAT_TOP_EXP         # signed-11 수납 (in-run assert)
+    if not -266 <= e <= LAT_TOP_EXP:        # fault (f) — pin 1 승격
+        raise LatticeFault(
+            "extract exponent outside lattice band (e == %d; e == 261 "
+            "<=> |sum| >= 2^261 — open-interval boundary, fault (f))" % e)
     return s, e, sig
 
 
@@ -756,6 +783,13 @@ def check_fault_contract():
         _expect_fault(lambda: lattice_accumulate(
             [(0, 260, _M48)] + [(0, 255, 65025 << 32)] * 32),
             "resolve overflow (>= 2^261) -> fault"),
+        _expect_fault(lambda: lattice_accumulate(
+            [(1, 260, 1 << 47)] * 2 + [CANON_ZERO] * 31),
+            "합 == 정확히 -2^261 (signed 하한 경계) -> fault — 개구간 "
+            "(-2^261, 2^261) 수용 (pin 1)"),
+        _expect_fault(lambda: extract_rto48(LAT_MIN),
+                      "extract e == 261 (|합| == 2^261) -> fault (f) — "
+                      "pin 1 의 bare assert 승격"),
         _expect_fault(lambda: wide_check(0, 0, 0),
                       "비-canonical zero (exp!=-1024) -> fault"),
         _expect_fault(lambda: wide_check(1, -1024, 0),
@@ -807,8 +841,1005 @@ def check_codec_roundtrip(n_trials):
 
 
 # ===========================================================================
-# 벡터 파일 생성
+# bank 상태기계 reference — §27.6 하류 ③ 검증 계획 (c) (2026-08-16 확장)
 # ===========================================================================
+# wide ACC bank 의 시나리오-레벨 golden. 규범 출처:
+#   * §27.2.2 [하류 ③ COMMIT] IF-1 read-before-dispatch / IF-2 ownership
+#     window (start..writeback, LATENCY=7 — 창 내 FILL/DRAIN/ZERO 접촉 =
+#     loud sticky fault) / IF-3 같은 slot 체이닝 >= 7, 타 slot II=4 중첩 /
+#     IF-4 0x7E = canonical zero 기록.
+#   * §27.2.1 amendment pin 1 (개구간 (-2^261, 2^261)) / pin 2 (carry
+#     normalized 전제) / §27.2.2 pin 3 (lattice-비표현 carry = fault
+#     (d)/(e) 의 carry-lane 적용, 발화 = carry 소비 beat 0).
+#   * proofs/tla/AccBank.tla — guard 군 {commit_free, commit_zero,
+#     acc_owner, drain_owner, fill_bankfree, zero_owner} 의 cycle-정밀
+#     정제 + sticky conflict. fill_owner / FillFaultForeign (외래 spill
+#     image 주소) 는 spill slot 모델을 요구하므로 본 시나리오 레벨 밖 —
+#     §27.6 검증 계획 (a) 의 TLC 반례 trace 변환이 담당 (계약 문서 §1).
+#   * SPILL guard / 미정의 opcode (2026-08-16 적대 재실측 폐쇄): RTL 의
+#     spill_ref (창 내 / 비-owner SPILL 거부) 와 cmd_unk (opcode 6/7)
+#     -> PROTO_GUARD sticky 경로가 TB 블라인드 스팟이었다 (spill_ref
+#     1'b0 절단 / cmd_unk 절단이 TB 를 escape — 변이 실측). 본 레벨이
+#     SPILL/UNK 의미론을 §27.2.2 SPILL 항 + FP_AccBank.v 헤더 계약
+#     그대로 운반한다 (spill_window / spill_owner / spill_accept /
+#     proto_unk family — 거부는 word 불변, 수용은 release + word 잔존).
+#
+# 시나리오 실행기 bank_execute: cycle-태그 명령 시퀀스를 받아 기대 bank
+# 상태·fault 를 산출한다. 형식/의미의 전 계약은 생성 문서
+# include/generated/bank_scenarios_contract.md (본 스크립트가 원자적으로
+# 동기 유지).
+
+BANK_LATENCY = 7        # N=8 출하 형상: NUM_BEATS+3 (FP_AccLattice.v 헤더)
+BANK_II = 4             # NUM_BEATS — 타 slot wave-step 최소 start 간격 (IF-3)
+BANK_NSLOTS = 4         # 시나리오 slot 주소 공간 (TB 가 bank x lane 로 사상)
+BANK_NO_OWNER = 0xFF    # owner map 인코딩의 "소유자 없음"
+
+_TAG_BEGIN, _TAG_END = 0x01, 0x0F
+_TAG_OP = {"REQ": 0x10, "WAVE": 0x11, "FILL": 0x12, "DRAIN": 0x13,
+           "ZERO": 0x14, "SPILL": 0x15, "UNK": 0x16}
+_OP_FROM_TAG = {v: k for k, v in _TAG_OP.items()}
+
+
+class ScenarioError(Exception):
+    """시나리오 구성 오류 (생성기 규율 위반 — 계약 문서 §2 형식 규율).
+    bank fault 가 아니다: fault 는 실행기의 sticky 로만 표현된다."""
+
+
+def _c(t, op, st, sl, **kw):
+    d = {"t": t, "op": op, "st": st, "sl": sl}
+    d.update(kw)
+    return d
+
+
+def bank_execute(cmds):
+    """cycle-태그 명령 시퀀스 -> 기대 bank 상태/fault (상태기계 reference).
+
+    명령에 in-place 주석을 단다:
+      refused  — ownership/window 거부 (거부 + sticky, 상태 무변경)
+      vfault   — 값 검증 fault (FILL validation / carry-lane (d)/(e))
+      why      — 원인 문자열 (coverage 집계용 — 인코딩에는 없음)
+      exp_word — 기대 slot word 스냅샷 (WAVE: cycle t+LATENCY 말;
+                 FILL/SPILL/UNK: cycle t 말) — 계약 문서 §6 의 TB 샘플
+                 시점 (SPILL/UNK 스냅샷 = word 불변/잔존의 직접 증명)
+      fp32     — DRAIN 수용 시 기대 drain 값 (RNE-24 + FTZ)
+      spill    — SPILL 수용 시 기대 spill word (fp64 raw — slot word)
+    반환: {"sticky", "owner", "words", "horizon"}.
+
+    cycle 처리 순서 (계약 §4): (1) writeback -> (2) acquire commit ->
+    (3) 그 cycle 의 명령 (slot 오름차순). 검사 우선순위: window (IF-2/
+    IF-3) -> ownership guard -> 값 검증. 모든 거부/fault 는 sticky 이며
+    silent 수용은 없다 (project law)."""
+    seen, wave_ts = set(), []
+    for c in cmds:
+        if c["t"] < 0 or not 0 <= c["sl"] < BANK_NSLOTS \
+                or not 0 <= c["st"] < 16:
+            raise ScenarioError("field out of range: %r" % c)
+        key = (c["t"], c["sl"])
+        if key in seen:
+            raise ScenarioError("two commands on one (cycle, slot): %r"
+                                % (key,))
+        seen.add(key)
+        if c["op"] == "WAVE":
+            wave_ts.append(c["t"])
+            if len(c["prods"]) != GROUP:
+                raise ScenarioError("WAVE needs %d products" % GROUP)
+    wave_ts.sort()
+    for a, b in zip(wave_ts, wave_ts[1:]):
+        if b - a < BANK_II:
+            raise ScenarioError(
+                "wave starts closer than II=%d: %d,%d" % (BANK_II, a, b))
+    by_cycle = {}
+    for c in sorted(cmds, key=lambda c: (c["t"], c["sl"])):
+        by_cycle.setdefault(c["t"], []).append(c)
+    horizon = max(c["t"] for c in cmds) + BANK_LATENCY + 2
+
+    words = [0] * BANK_NSLOTS       # power-on 정의: canonical +0 (계약 §3)
+    owner = [None] * BANK_NSLOTS
+    win = [None] * BANK_NSLOTS      # slot 별 마지막 '수용된' wave 의 start
+    sticky, pend, wb, hist = False, None, {}, []
+
+    def fdz_window_open(sl, t):
+        # IF-2: FILL/DRAIN/ZERO 의 fault 창 = [start, start+LATENCY]
+        # (writeback cycle 포함 — 창 마지막 cycle 접촉도 fault, 직후 합법)
+        return win[sl] is not None and win[sl] <= t <= win[sl] + BANK_LATENCY
+
+    for t in range(horizon + 1):
+        if t in wb:                                     # (1) writeback
+            sl_w, w_w = wb.pop(t)
+            words[sl_w] = w_w
+        if pend is not None and pend[2] == t:           # (2) acquire commit
+            p_st, p_sl, _, p_cmd = pend
+            if owner[p_sl] is None:                     # commit_free PASS
+                owner[p_sl] = p_st                      # CommitOwn
+                words[p_sl] = 0                         # commit_zero (융합)
+            else:                                       # RejectOwn
+                sticky = True
+                p_cmd["refused"] = True
+                p_cmd["why"] = "reject_own"
+            pend = None
+        for c in by_cycle.get(t, ()):                   # (3) 명령
+            op, st_id, sl = c["op"], c["st"], c["sl"]
+            c.setdefault("refused", False)
+            c.setdefault("vfault", False)
+            c.setdefault("why", None)
+            if op == "REQ":
+                if pend is not None:
+                    raise ScenarioError("pend register occupied at t=%d"
+                                        % t)
+                pend = (st_id, sl, t + 1, c)
+            elif op == "WAVE":
+                if win[sl] is not None and t - win[sl] < BANK_LATENCY:
+                    c["refused"], c["why"] = True, "window_chain"   # IF-3
+                elif owner[sl] != st_id:
+                    c["refused"], c["why"] = True, "acc_owner"
+                if c["refused"]:
+                    sticky = True
+                else:
+                    # IF-1: carry read 는 start 이전 완료 — beat 0 공급
+                    carry = fp64_to_wide(words[sl])
+                    try:
+                        addend_units(*carry)   # pin 3: carry 소비 시점 검사
+                    except LatticeFault as ex:
+                        c["vfault"] = True
+                        c["why"] = "carry_range_d" if "range" in str(ex) \
+                            else "carry_precision_e"
+                        sticky = True
+                        win[sl] = t     # 창은 점유, writeback 은 억제 (§5)
+                    else:
+                        try:
+                            _, wide, bankw, f32 = check_wave_against_fraction(
+                                c["prods"], carry)
+                        except LatticeFault as ex:
+                            raise ScenarioError(
+                                "scenario wave overflows lattice: %s" % ex)
+                        wb[t + BANK_LATENCY] = (sl, bankw)
+                        win[sl] = t
+                        c["_wave"] = (wide, bankw, f32)
+            elif op == "FILL":
+                if fdz_window_open(sl, t):
+                    c["refused"], c["why"] = True, "window_fill"     # IF-2
+                elif owner[sl] is not None:
+                    # fill_bankfree — FillFaultBusy (자기/외래 불문 busy)
+                    c["refused"], c["why"] = True, "fill_busy"
+                if c["refused"]:
+                    sticky = True
+                else:
+                    try:
+                        w = fp64_to_wide(c["word"])  # validation (i)-(iii)
+                    except LatticeFault:
+                        c["vfault"], c["why"] = True, "fill_validation"
+                        sticky = True
+                    else:
+                        owner[sl] = st_id            # acquire-by-fill
+                        words[sl] = wide_to_fp64(*w)  # ±0 -> canonical +0
+            elif op == "DRAIN":
+                if fdz_window_open(sl, t):
+                    c["refused"], c["why"] = True, "window_drain"    # IF-2
+                elif owner[sl] != st_id:
+                    c["refused"], c["why"] = True, "drain_owner"
+                if c["refused"]:
+                    sticky = True
+                else:
+                    c["fp32"] = drain_rne24_ftz(*fp64_to_wide(words[sl]))
+                    owner[sl] = None    # release — word 는 SRAM 잔존
+            elif op == "ZERO":
+                if fdz_window_open(sl, t):
+                    c["refused"], c["why"] = True, "window_zero"     # IF-2
+                elif owner[sl] != st_id:
+                    c["refused"], c["why"] = True, "zero_owner"
+                if c["refused"]:
+                    sticky = True
+                else:
+                    words[sl] = 0       # IF-4 canonical zero (owner 불변)
+            elif op == "SPILL":
+                # §27.2.2 SPILL / FP_AccBank.v 헤더: window -> owner 통과
+                # 시 word 를 spill 스트림으로 (확폭은 상위 frag FSM 몫),
+                # release, word 잔존. 위반 = 거부 + sticky (PROTO_GUARD).
+                if fdz_window_open(sl, t):
+                    c["refused"], c["why"] = True, "window_spill"    # IF-2
+                elif owner[sl] != st_id:
+                    c["refused"], c["why"] = True, "spill_owner"
+                if c["refused"]:
+                    sticky = True
+                else:
+                    c["spill"] = words[sl]  # 기대 spill_q (slot word)
+                    owner[sl] = None    # release — word 는 SRAM 잔존
+            elif op == "UNK":
+                # 미정의 opcode (6/7) — PROTO_GUARD (방어적 decode):
+                # sticky 만. 상태 무변경, 응답 없음 (RTL resp_v_q 는
+                # 정의된 비-REQ op 에만 뜬다 — loud-fault-never-silent).
+                c["refused"], c["why"] = True, "proto_unk"
+                sticky = True
+            else:
+                raise ScenarioError("unknown op %r" % op)
+        hist.append(tuple(words))
+    if wb:
+        raise ScenarioError("writeback beyond horizon")
+    for c in cmds:
+        if c["op"] == "WAVE":
+            c["exp_word"] = hist[c["t"] + BANK_LATENCY][c["sl"]]
+        elif c["op"] in ("FILL", "SPILL", "UNK"):
+            c["exp_word"] = hist[c["t"]][c["sl"]]
+    return {"sticky": sticky, "owner": list(owner), "words": list(words),
+            "horizon": horizon}
+
+
+# ---------------------------------------------------------------------------
+# 시나리오 record 인코딩 / 파일 자기증명 (형식 계약: bank_scenarios_contract.md)
+# ---------------------------------------------------------------------------
+
+
+def bank_encode_scenario(idx, fam_code, cmds, final):
+    body = []
+    for c in cmds:
+        assert c["t"] < (1 << 32)
+        h = (_TAG_OP[c["op"]] << 56) | (c["st"] << 52) \
+            | (c["sl"] << 48) | (int(c["refused"]) << 47) \
+            | (int(c["vfault"]) << 46) | c["t"]
+        if c["op"] == "UNK":
+            assert c["rawop"] in (6, 7)     # 미정의 opcode 원형 (계약 §6)
+            h |= c["rawop"] << 40
+        body.append(h)
+        if c["op"] == "WAVE":
+            body.extend(field_encode(*a) for a in c["prods"])
+            body.append(c["exp_word"])
+        elif c["op"] == "FILL":
+            body.append(c["word"])
+            body.append(c["exp_word"])
+        elif c["op"] == "DRAIN":
+            body.append(((1 << 32) | c["fp32"]) if "fp32" in c else 0)
+        elif c["op"] == "SPILL":
+            body.append(c.get("spill", 0))  # 거부 = spill 방출 없음 (0)
+            body.append(c["exp_word"])      # word 불변/잔존 스냅샷
+        elif c["op"] == "UNK":
+            body.append(c["exp_word"])      # 상태 무변경 스냅샷
+    omap = 0
+    for o in final["owner"]:
+        omap = (omap << 8) | (BANK_NO_OWNER if o is None else o)
+    n_rec = 1 + len(body) + 1 + BANK_NSLOTS
+    assert idx < (1 << 16) and n_rec < (1 << 16) and len(cmds) < (1 << 8)
+    begin = (_TAG_BEGIN << 56) | (idx << 40) | (fam_code << 32) \
+        | (n_rec << 16) | (BANK_NSLOTS << 8) | len(cmds)
+    end = (_TAG_END << 56) | (int(final["sticky"]) << 48) | (omap << 16)
+    return [begin] + body + [end] + list(final["words"])
+
+
+def bank_verify_file():
+    """파일 재독 -> record 파싱 -> 명령 재구성 -> 실행기 재실행 -> 인코딩
+    된 기대 필드 전부 재대조 (파일 자기증명 — verify_vector_file 동형)."""
+    vals = []
+    for ln in BANK_HEX_PATH.read_text().splitlines():
+        if not ln or ln.startswith("//"):
+            continue
+        assert len(ln) == 16
+        vals.append(int(ln, 16))
+    i = n_scen = 0
+    while i < len(vals):
+        begin = vals[i]
+        assert begin >> 56 == _TAG_BEGIN
+        idx = (begin >> 40) & 0xFFFF
+        n_rec = (begin >> 16) & 0xFFFF
+        n_cmds = begin & 0xFF
+        assert (begin >> 8) & 0xFF == BANK_NSLOTS
+        recs = vals[i:i + n_rec]
+        assert len(recs) == n_rec, idx
+        j, cmds, enc = 1, [], []
+        for _ in range(n_cmds):
+            h = recs[j]
+            j += 1
+            op = _OP_FROM_TAG[h >> 56]
+            c = _c(h & 0xFFFFFFFF, op, (h >> 52) & 0xF, (h >> 48) & 0xF)
+            e = {"refused": bool((h >> 47) & 1),
+                 "vfault": bool((h >> 46) & 1)}
+            if op == "UNK":
+                c["rawop"] = (h >> 40) & 0x7
+                assert c["rawop"] in (6, 7), idx
+            if op == "WAVE":
+                c["prods"] = [field_decode(recs[j + k]) for k in range(GROUP)]
+                j += GROUP
+                e["exp_word"] = recs[j]
+                j += 1
+            elif op == "FILL":
+                c["word"] = recs[j]
+                e["exp_word"] = recs[j + 1]
+                j += 2
+            elif op == "DRAIN":
+                e["drain"] = recs[j]
+                j += 1
+            elif op == "SPILL":
+                e["spill"] = recs[j]
+                e["exp_word"] = recs[j + 1]
+                j += 2
+            elif op == "UNK":
+                e["exp_word"] = recs[j]
+                j += 1
+            cmds.append(c)
+            enc.append(e)
+        endr = recs[j]
+        assert endr >> 56 == _TAG_END, idx
+        exp_words = recs[j + 1:j + 1 + BANK_NSLOTS]
+        final = bank_execute(cmds)      # 재실행 (기대는 인코딩과 독립 재산출)
+        omap = 0
+        for o in final["owner"]:
+            omap = (omap << 8) | (BANK_NO_OWNER if o is None else o)
+        assert final["sticky"] == bool((endr >> 48) & 1), idx
+        assert omap == (endr >> 16) & 0xFFFFFFFF, idx
+        assert final["words"] == exp_words, idx
+        for c, e in zip(cmds, enc):
+            assert c["refused"] == e["refused"], idx
+            assert c["vfault"] == e["vfault"], idx
+            if c["op"] in ("WAVE", "FILL", "SPILL", "UNK"):
+                assert c["exp_word"] == e["exp_word"], idx
+            if c["op"] == "SPILL":
+                assert c.get("spill", 0) == e["spill"], idx
+            elif c["op"] == "DRAIN":
+                got = ((1 << 32) | c["fp32"]) if "fp32" in c else 0
+                assert got == e["drain"], idx
+        i += n_rec
+        n_scen += 1
+    return n_scen
+
+
+# ---------------------------------------------------------------------------
+# 시나리오 생성 — directed (경계 손계산 고정점 포함) + 랜덤 인터리브
+# ---------------------------------------------------------------------------
+
+
+def _prods_const(k=1):
+    """1.0 곱 k개 + zero — 손계산 가능한 chain 값 (합 = k)."""
+    return [me_to_addend(1 << 14, -14)] * k + [CANON_ZERO] * (GROUP - k)
+
+
+def _rand_bank_prods(rng):
+    prods = [CANON_ZERO] * GROUP
+    for i in rng.sample(range(GROUP), rng.randint(1, 4)):
+        prods[i] = rand_bf16_addend(rng, -20, 20)
+    return prods
+
+
+def _rand_good_word(rng):
+    """FILL-valid 이고 lattice-표현 가능한 임의 bank word."""
+    return wide_to_fp64(rng.randint(0, 1), rng.randint(-30, 30),
+                        (1 << 47) | rng.getrandbits(47))
+
+
+_BAD_FILL_WORDS = (0x7FF8000000000000,   # qNaN        — validation (i)
+                   0x7FF0000000000001,   # sNaN        — validation (i)
+                   0x7FF0000000000000,   # +Inf        — validation (i)
+                   0xFFF0000000000000,   # -Inf        — validation (i)
+                   0x3FF0000000000001,   # 1+2^-52     — validation (ii)
+                   0x0000000000000001)   # 2^-1074     — validation (ii)
+
+
+def gen_rand_bank_scenario(rng):
+    """랜덤 인터리브 1개: 소유 준비 단계 (REQ/FILL) 후 wave 체이닝 경계
+    (delta 4..9)/창 경계 FDZ (offset 1..9 straddle)/외래 접촉/불량 FILL 을
+    섞은 본문. 형식 규율 (II, pend, (cycle,slot) 유일) 은 구성으로 보장."""
+    cmds, t = [], 0
+    last_wave = -BANK_II
+    n_st = rng.randint(2, 3)
+    slots = rng.sample(range(BANK_NSLOTS), rng.randint(2, 3))
+
+    def emit(op, st_id, sl, adv, **kw):
+        nonlocal t
+        cmds.append(_c(t, op, st_id, sl, **kw))
+        t += adv
+
+    for sl in slots:                        # 소유 준비 단계
+        st_id = rng.randrange(n_st)
+        if rng.random() < 0.5:
+            emit("REQ", st_id, sl, 2)
+        else:
+            emit("FILL", st_id, sl, rng.randint(1, 2),
+                 word=_rand_good_word(rng))
+    for _ in range(rng.randint(3, 7)):      # 인터리브 본문
+        sl = rng.choice(slots)
+        st_id = rng.randrange(n_st)
+        r = rng.random()
+        if r < 0.45:                        # wave (+ 경계 follow-up)
+            t = max(t, last_wave + BANK_II)
+            w_t = t
+            emit("WAVE", st_id, sl, 1, prods=_rand_bank_prods(rng))
+            last_wave = w_t
+            f = rng.random()
+            if f < 0.30:                    # 같은 slot 재start delta 4..9
+                t = w_t + rng.choice((4, 5, 6, 7, 7, 8, 9))
+                last_wave = t
+                emit("WAVE", rng.randrange(n_st) if rng.random() < 0.3
+                     else st_id, sl, rng.randint(1, 3),
+                     prods=_rand_bank_prods(rng))
+            elif f < 0.60:                  # 창 경계 FDZ straddle 1..9
+                t = w_t + rng.choice((1, 3, 5, 7, 7, 8, 8, 9))
+                op = rng.choice(("DRAIN", "ZERO", "FILL"))
+                kw = {"word": _rand_good_word(rng)} if op == "FILL" else {}
+                emit(op, st_id, sl, rng.randint(1, 3), **kw)
+            else:
+                t += rng.randint(1, 3)
+        elif r < 0.60:
+            emit("DRAIN", st_id, sl, rng.randint(1, 3))
+        elif r < 0.70:
+            emit("ZERO", st_id, sl, rng.randint(1, 3))
+        elif r < 0.85:
+            p = rng.random()
+            if p < 0.15:                    # FILL validation fault 주입
+                word = rng.choice(_BAD_FILL_WORDS)
+            elif p < 0.28:                  # FILL-valid, lattice 밖 —
+                word = wide_to_fp64(        # 후속 wave 의 (d)/(e) 후보
+                    rng.randint(0, 1), rng.choice((300, -280)), 1 << 47)
+            else:
+                word = _rand_good_word(rng)
+            emit("FILL", st_id, sl, rng.randint(1, 3), word=word)
+            if 0.15 <= p < 0.28:            # lattice-밖 word 의 carry
+                t = max(t, last_wave + BANK_II)     # 소비를 유도 (beat 0
+                last_wave = t                       # fault (d)/(e) 경로)
+                emit("WAVE", st_id, sl, rng.randint(1, 3),
+                     prods=_rand_bank_prods(rng))
+        else:
+            emit("REQ", st_id, sl, 2)
+    return cmds
+
+
+# family 코드/의도 (계약 문서 §7 표의 원천 — 코드는 record BEGIN 의 [39:32])
+BANK_FAM_DOCS = {
+    "chain_boundary": (1, "같은 slot 체이닝 합법 경계 — delta 정확히 7 "
+                          "그리고 8 (IF-3), 최종 drain 손계산 고정점"),
+    "chain_violation": (2, "같은 slot 재start delta 4/5/6 — 창 내 접촉 "
+                           "거부 + sticky, 거부된 wave 는 창을 열지도 "
+                           "쓰지도 않음 (복구 chain 으로 증명)"),
+    "gap_same_slot": (3, "gap-후 재시작 (같은 slot): delta = 7+gap, "
+                         "gap 1/3/17 — back-to-back 밖 커버리지 폐쇄"),
+    "gap_cross_slot": (4, "gap-후 재시작 (타 slot): delta = II+gap = "
+                          "4+gap, gap 1/3/17 — II 중첩 합법성"),
+    "window_touch_drain": (5, "DRAIN 창 접촉: offset 1/3/7 fault (7 = 창 "
+                              "마지막 cycle), offset 8 합법 (직후)"),
+    "window_touch_zero": (6, "ZERO 창 접촉: offset 1/3/7 fault, offset 8 "
+                             "합법 + zero 후 carry=+0 재시작"),
+    "window_touch_fill": (7, "FILL 창 접촉: offset 1/3/7 fault, drain 후 "
+                             "재-FILL 합법 (acquire-by-fill)"),
+    "window_prelude": (8, "창 직전 접촉 합법 — commit/FILL/ZERO 가 wave "
+                          "start 직전 cycle 에 완료"),
+    "fill_validation": (9, "FILL validation (i)/(ii) — NaN/±Inf/정밀도 "
+                           "초과/subnormal 하한 밖 -> sticky, 상태 무변경"),
+    "fill_canonicalize": (10, "FILL validation (iii) — fp64 -0 수용 + "
+                              "canonical +0 화, 후속 carry 는 +0"),
+    "carry_fault_range": (11, "FILL-valid 2^300 -> carry 소비 (beat 0) "
+                              "에서 fault (d), writeback 억제, 잔존 word "
+                              "drain = +Inf"),
+    "carry_fault_precision": (12, "FILL-valid 2^-280 -> carry 소비에서 "
+                                  "fault (e), ZERO 복구 후 정상 chain"),
+    "ownership_reject": (13, "RequestOwn 2-phase: 외래 live bank 에 "
+                             "RejectOwn + sticky, incumbent 무접촉"),
+    "ownership_foreign": (14, "외래 WAVE/DRAIN/ZERO 접촉 (창 밖) — "
+                              "acc_owner/drain_owner/zero_owner 거부"),
+    "ownership_fill_busy": (15, "외래 FILL 접촉 (live bank) — "
+                                "fill_bankfree 거부 (FillFaultBusy)"),
+    "ownership_sram_scrub": (16, "drain 후 SRAM 잔존 + 재-acquire 의 "
+                                 "commit_zero scrub — stale 값 미주입 증명"),
+    "ownership_fill_reacquire": (17, "drain release 후 타 stream 의 "
+                                     "acquire-by-fill — TLA+ Fill 대응"),
+    "rand_interleave": (18, "랜덤 인터리브 (고정 seed) — 전 명령/거부/"
+                            "fault 클래스 혼합, coverage 하한은 report"),
+    "spill_window": (19, "창 내 SPILL 거부 — offset 1/3/7 fault "
+                         "(PROTO_GUARD), offset 8 수용 대조 병치; 거부는 "
+                         "word 불변, 수용 spill 값 = 직전 writeback"),
+    "spill_owner": (20, "비-owner SPILL 거부 (외래 owner / 무소유) — "
+                        "PROTO_GUARD, incumbent word/owner 완전 불변"),
+    "spill_accept": (21, "수용 SPILL 대조 — spill 값 = slot word, "
+                         "release + word 잔존, 재-acquire scrub 로 미유출"),
+    "proto_unk": (22, "미정의 opcode 6/7 — PROTO_GUARD sticky, 상태 "
+                      "무변경, 응답 없음 (loud-fault-never-silent)"),
+}
+
+
+def gen_bank_scenarios():
+    """전 시나리오 생성 + 실행 + directed 손계산 고정점 assert.
+    반환: [(fam_name, cmds, final)] (인코딩은 호출자)."""
+    out = []
+
+    def run(fam, cmds):
+        final = bank_execute(cmds)
+        out.append((fam, cmds, final))
+        return cmds, final
+
+    P1, P2 = _prods_const(1), _prods_const(2)
+    W1 = wide_to_fp64(0, 0, 1 << 47)        # 1.0
+    W4 = wide_to_fp64(0, 2, 1 << 47)        # 4.0
+    F1, F2, F3, F5 = 0x3F800000, 0x40000000, 0x40400000, 0x40A00000
+    PINF = 0x7F800000
+
+    # ---- (i) 같은 slot 체이닝 — 합법 경계 delta 정확히 7 / 8 ----
+    cmds, fin = run("chain_boundary", [
+        _c(0, "REQ", 0, 0), _c(2, "WAVE", 0, 0, prods=P1),
+        _c(9, "WAVE", 0, 0, prods=P1),      # delta 7 — IF-3 하한
+        _c(17, "WAVE", 0, 0, prods=P1),     # delta 8
+        _c(25, "DRAIN", 0, 0)])
+    assert not fin["sticky"] and cmds[4]["fp32"] == F3      # 1+1+1 체인
+
+    # ---- (i) 위반 경계 delta 4/5/6 — 거부 + sticky + 복구 체인 ----
+    for d in (4, 5, 6):
+        t3 = max(9, 2 + d + BANK_II)
+        cmds, fin = run("chain_violation", [
+            _c(0, "REQ", 0, 0), _c(2, "WAVE", 0, 0, prods=P1),
+            _c(2 + d, "WAVE", 0, 0, prods=P1),     # 창 내 — 거부
+            _c(t3, "WAVE", 0, 0, prods=P1),        # 복구 (carry = wave1)
+            _c(t3 + 8, "DRAIN", 0, 0)])
+        assert fin["sticky"] and cmds[2]["refused"]
+        assert cmds[4]["fp32"] == F2      # 거부된 wave 는 쓰지 않았다
+
+    # ---- (ii) gap-후 재시작 — 같은 slot (delta = 7+gap) ----
+    for g in (1, 3, 17):
+        cmds, fin = run("gap_same_slot", [
+            _c(0, "REQ", 0, 0), _c(2, "WAVE", 0, 0, prods=P1),
+            _c(2 + BANK_LATENCY + g, "WAVE", 0, 0, prods=P1),
+            _c(2 + BANK_LATENCY + g + 8, "DRAIN", 0, 0)])
+        assert not fin["sticky"] and cmds[3]["fp32"] == F2
+
+    # ---- (ii) gap-후 재시작 — 타 slot (delta = II+gap) ----
+    for g in (1, 3, 17):
+        t1 = 4 + BANK_II + g
+        cmds, fin = run("gap_cross_slot", [
+            _c(0, "REQ", 0, 0), _c(2, "REQ", 0, 1),
+            _c(4, "WAVE", 0, 0, prods=P1),
+            _c(t1, "WAVE", 0, 1, prods=P2),
+            _c(12, "DRAIN", 0, 0), _c(t1 + 8, "DRAIN", 0, 1)])
+        assert not fin["sticky"]
+        assert cmds[4]["fp32"] == F1 and cmds[5]["fp32"] == F2
+
+    # ---- (iii) 창 접촉 — DRAIN: offset 1/3/7 fault, 8 합법 ----
+    for off in (1, 3, 7):
+        cmds, fin = run("window_touch_drain", [
+            _c(0, "REQ", 0, 0), _c(2, "WAVE", 0, 0, prods=P1),
+            _c(2 + off, "DRAIN", 0, 0),            # 창 내 — fault
+            _c(10, "DRAIN", 0, 0)])                # 직후 (offset 8) 합법
+        assert fin["sticky"] and cmds[2]["refused"]
+        assert "fp32" not in cmds[2] and cmds[3]["fp32"] == F1
+    cmds, fin = run("window_touch_drain", [
+        _c(0, "REQ", 0, 0), _c(2, "WAVE", 0, 0, prods=P1),
+        _c(10, "DRAIN", 0, 0)])                    # 합법 단독 (offset 8)
+    assert not fin["sticky"] and cmds[2]["fp32"] == F1
+
+    # ---- (iii) 창 접촉 — ZERO ----
+    for off in (1, 3, 7):
+        cmds, fin = run("window_touch_zero", [
+            _c(0, "REQ", 0, 0), _c(2, "WAVE", 0, 0, prods=P1),
+            _c(2 + off, "ZERO", 0, 0),             # 창 내 — fault
+            _c(10, "ZERO", 0, 0),                  # 직후 합법 -> +0
+            _c(12, "WAVE", 0, 0, prods=P1),        # carry = +0
+            _c(20, "DRAIN", 0, 0)])
+        assert fin["sticky"] and cmds[2]["refused"]
+        assert cmds[5]["fp32"] == F1               # zero 가 실제로 지웠다
+    cmds, fin = run("window_touch_zero", [
+        _c(0, "REQ", 0, 0), _c(2, "WAVE", 0, 0, prods=P1),
+        _c(10, "ZERO", 0, 0), _c(14, "WAVE", 0, 0, prods=P1),
+        _c(22, "DRAIN", 0, 0)])
+    assert not fin["sticky"] and cmds[4]["fp32"] == F1
+
+    # ---- (iii) 창 접촉 — FILL (합법 재-FILL 은 drain 후) ----
+    for off in (1, 3, 7):
+        cmds, fin = run("window_touch_fill", [
+            _c(0, "FILL", 0, 0, word=W1),          # acquire-by-fill, 1.0
+            _c(2, "WAVE", 0, 0, prods=P1),         # carry 1 -> 2.0
+            _c(2 + off, "FILL", 0, 0, word=W4),    # 창 내 — fault
+            _c(10, "DRAIN", 0, 0),                 # 2.0, release
+            _c(11, "FILL", 1, 0, word=W4),         # 합법 재-FILL (4.0)
+            _c(13, "WAVE", 1, 0, prods=P1),        # carry 4 -> 5.0
+            _c(21, "DRAIN", 1, 0)])
+        assert fin["sticky"] and cmds[2]["refused"]
+        assert cmds[3]["fp32"] == F2 and cmds[6]["fp32"] == F5
+    cmds, fin = run("window_touch_fill", [
+        _c(0, "FILL", 0, 0, word=W1), _c(2, "WAVE", 0, 0, prods=P1),
+        _c(10, "DRAIN", 0, 0), _c(11, "FILL", 0, 0, word=W4),
+        _c(12, "DRAIN", 0, 0)])
+    assert not fin["sticky"]
+    assert cmds[2]["fp32"] == F2 and cmds[4]["fp32"] == 0x40800000  # 4.0
+
+    # ---- (iii) 창 직전 접촉 합법 ----
+    cmds, fin = run("window_prelude", [
+        _c(0, "REQ", 0, 0), _c(1, "ZERO", 0, 0),   # commit 과 같은 cycle,
+        _c(2, "WAVE", 0, 0, prods=P1),             # 창 직전 — 합법
+        _c(10, "DRAIN", 0, 0)])
+    assert not fin["sticky"] and cmds[3]["fp32"] == F1
+    cmds, fin = run("window_prelude", [
+        _c(0, "FILL", 0, 0, word=W1),              # start 직전 cycle FILL
+        _c(1, "WAVE", 0, 0, prods=P1),             # carry 1 -> 2.0
+        _c(9, "DRAIN", 0, 0)])
+    assert not fin["sticky"] and cmds[2]["fp32"] == F2
+
+    # ---- FILL validation (i)/(ii) — 전 불량 word, 상태 무변경 ----
+    bad = list(_BAD_FILL_WORDS)
+    cmds, fin = run("fill_validation",
+                    [_c(i, "FILL", 0, 0, word=w) for i, w in enumerate(bad)]
+                    + [_c(6, "FILL", 0, 0, word=W1),
+                       _c(8, "WAVE", 0, 0, prods=P1),
+                       _c(16, "DRAIN", 0, 0)])
+    assert fin["sticky"]
+    assert all(c["vfault"] for c in cmds[:6])
+    assert cmds[8]["fp32"] == F2       # 불량 FILL 후에도 정상 경로 무손상
+
+    # ---- FILL validation (iii) — -0 canonicalize ----
+    cmds, fin = run("fill_canonicalize", [
+        _c(0, "FILL", 0, 0, word=0x8000000000000000),
+        _c(2, "WAVE", 0, 0, prods=P1), _c(10, "DRAIN", 0, 0)])
+    assert not fin["sticky"]
+    assert cmds[0]["exp_word"] == 0    # -0 -> canonical +0 (fp64 +0)
+    assert cmds[2]["fp32"] == F1       # carry 는 +0 이었다
+
+    # ---- carry-lane fault (d)/(e) — pin 3 (발화 = carry 소비 beat 0) ----
+    w_big = wide_to_fp64(0, 300, 1 << 47)          # FILL-valid, |v|=2^300
+    cmds, fin = run("carry_fault_range", [
+        _c(0, "FILL", 0, 0, word=w_big),
+        _c(2, "WAVE", 0, 0, prods=P1),             # fault (d), no wb
+        _c(10, "DRAIN", 0, 0)])                    # 잔존 word -> +Inf
+    assert fin["sticky"] and cmds[1]["vfault"]
+    assert cmds[1]["exp_word"] == w_big            # writeback 억제 증명
+    assert cmds[2]["fp32"] == PINF
+    w_bigneg = wide_to_fp64(1, 300, 1 << 47)       # FILL-valid, -2^300
+    cmds, fin = run("carry_fault_range", [
+        _c(0, "FILL", 0, 1, word=w_bigneg),
+        _c(2, "WAVE", 0, 1, prods=P1),             # fault (d) — 음수판
+        _c(10, "DRAIN", 0, 1)])
+    assert fin["sticky"] and cmds[1]["why"] == "carry_range_d"
+    assert cmds[2]["fp32"] == 0xFF800000           # 잔존 word -> -Inf
+    w_tiny = wide_to_fp64(0, -280, 1 << 47)        # FILL-valid, 2^-280
+    cmds, fin = run("carry_fault_precision", [
+        _c(0, "FILL", 0, 0, word=w_tiny),
+        _c(2, "WAVE", 0, 0, prods=P1),             # fault (e), no wb
+        _c(10, "ZERO", 0, 0),                      # 복구 (owner 유지)
+        _c(12, "WAVE", 0, 0, prods=P1),            # carry +0 -> 1.0
+        _c(20, "DRAIN", 0, 0)])
+    assert fin["sticky"] and cmds[1]["vfault"]
+    assert cmds[1]["why"] == "carry_precision_e"
+    assert cmds[4]["fp32"] == F1
+    w_tinyneg = wide_to_fp64(1, -300, 1 << 47)     # FILL-valid, -2^-300
+    cmds, fin = run("carry_fault_precision", [
+        _c(0, "FILL", 0, 1, word=w_tinyneg),
+        _c(2, "WAVE", 0, 1, prods=P1),             # fault (e) — 음수판
+        _c(10, "DRAIN", 0, 1)])
+    assert fin["sticky"] and cmds[1]["why"] == "carry_precision_e"
+    assert cmds[2]["fp32"] == 0x80000000           # 잔존 word FTZ -> -0
+
+    # ---- ownership — RejectOwn / 외래 접촉 / FillFaultBusy ----
+    cmds, fin = run("ownership_reject", [
+        _c(0, "REQ", 0, 0), _c(2, "REQ", 1, 0),    # commit@3 -> Reject
+        _c(4, "WAVE", 0, 0, prods=P1), _c(12, "DRAIN", 0, 0)])
+    assert fin["sticky"] and cmds[1]["refused"]
+    assert cmds[3]["fp32"] == F1                   # incumbent 무접촉
+    cmds, fin = run("ownership_foreign", [
+        _c(0, "REQ", 0, 0), _c(2, "WAVE", 0, 0, prods=P1),
+        _c(12, "WAVE", 1, 0, prods=P1),            # 창 밖 — 순수 acc_owner
+        _c(16, "DRAIN", 1, 0), _c(17, "ZERO", 1, 0),
+        _c(20, "WAVE", 0, 0, prods=P1), _c(28, "DRAIN", 0, 0)])
+    assert fin["sticky"]
+    assert [c["why"] for c in cmds[2:5]] == \
+        ["acc_owner", "drain_owner", "zero_owner"]
+    assert cmds[6]["fp32"] == F2                   # 외래 접촉 전부 무효과
+    cmds, fin = run("ownership_fill_busy", [
+        _c(0, "REQ", 0, 0), _c(2, "FILL", 1, 0, word=W1),
+        _c(4, "WAVE", 0, 0, prods=P1), _c(12, "DRAIN", 0, 0)])
+    assert fin["sticky"] and cmds[1]["why"] == "fill_busy"
+    assert cmds[3]["fp32"] == F1
+
+    # ---- ownership — SRAM 잔존 + commit_zero scrub / fill 재-acquire ----
+    cmds, fin = run("ownership_sram_scrub", [
+        _c(0, "REQ", 0, 0), _c(2, "WAVE", 0, 0, prods=P2),
+        _c(10, "DRAIN", 0, 0),                     # 2.0, word 잔존
+        _c(11, "REQ", 1, 0),                       # commit@12 zero scrub
+        _c(13, "WAVE", 1, 0, prods=P1),            # carry +0 (stale 아님)
+        _c(21, "DRAIN", 1, 0)])
+    assert not fin["sticky"]
+    assert cmds[2]["fp32"] == F2 and cmds[5]["fp32"] == F1
+    cmds, fin = run("ownership_fill_reacquire", [
+        _c(0, "REQ", 0, 0), _c(2, "WAVE", 0, 0, prods=P1),
+        _c(10, "DRAIN", 0, 0),
+        _c(11, "FILL", 1, 0, word=W4),             # free -> acquire (4.0)
+        _c(13, "WAVE", 1, 0, prods=P1),            # carry 4 -> 5.0
+        _c(21, "DRAIN", 1, 0)])
+    assert not fin["sticky"] and cmds[5]["fp32"] == F5
+
+    # ---- SPILL guard — 창 내 거부 + 수용 대조 병치 (2026-08-16 적대
+    #      재실측 폐쇄: RTL spill_ref 절단이 TB 를 escape 했던 블라인드
+    #      스팟 — 거부-SPILL 시나리오 전무가 원인) ----
+    W2 = wide_to_fp64(0, 1, 1 << 47)               # 2.0
+    for off in (1, 3, 7):
+        cmds, fin = run("spill_window", [
+            _c(0, "FILL", 0, 0, word=W1),          # acquire-by-fill, 1.0
+            _c(2, "WAVE", 0, 0, prods=P1),         # carry 1 -> 2.0 (wb@9)
+            _c(2 + off, "SPILL", 0, 0),            # 창 내 — 거부 + sticky
+            _c(10, "SPILL", 0, 0),                 # 직후 (offset 8) 수용
+            _c(11, "FILL", 1, 0, word=W4),         # release 증명 (재-acquire)
+            _c(13, "WAVE", 1, 0, prods=P1),        # carry 4 -> 5.0
+            _c(21, "DRAIN", 1, 0)])
+        assert fin["sticky"] and cmds[2]["refused"]
+        assert cmds[2]["why"] == "window_spill"
+        assert "spill" not in cmds[2]              # 거부 = spill 방출 없음
+        # 거부 SPILL 은 word 불변 (off<7: wb 전 1.0 / off=7: wb 선행 2.0)
+        assert cmds[2]["exp_word"] == (W2 if off == 7 else W1)
+        assert cmds[3]["spill"] == W2              # 수용 spill = wave1 결과
+        assert cmds[3]["exp_word"] == W2           # release 후에도 word 잔존
+        assert cmds[6]["fp32"] == F5               # 재-acquire 체인 무손상
+
+    # ---- SPILL guard — 비-owner 거부 (외래 owner / 무소유) ----
+    cmds, fin = run("spill_owner", [
+        _c(0, "FILL", 0, 0, word=W1),              # owner 0, word 1.0
+        _c(1, "SPILL", 1, 0),                      # 외래 stream — 거부
+        _c(2, "WAVE", 0, 0, prods=P1),             # incumbent 무손상
+        _c(10, "DRAIN", 0, 0)])
+    assert fin["sticky"] and cmds[1]["why"] == "spill_owner"
+    assert cmds[1]["exp_word"] == W1 and "spill" not in cmds[1]
+    assert cmds[3]["fp32"] == F2                   # word/owner 완전 불변
+    cmds, fin = run("spill_owner", [
+        _c(0, "SPILL", 0, 1),                      # 무소유 slot — 거부
+        _c(2, "FILL", 0, 1, word=W1),              # 이후 정상 acquire 가능
+        _c(4, "WAVE", 0, 1, prods=P1),
+        _c(12, "DRAIN", 0, 1)])
+    assert fin["sticky"] and cmds[0]["why"] == "spill_owner"
+    assert cmds[0]["exp_word"] == 0                # power-on +0 불변
+    assert cmds[3]["fp32"] == F2
+
+    # ---- SPILL 수용 대조 단독 — release + word 잔존 + scrub 미유출 ----
+    cmds, fin = run("spill_accept", [
+        _c(0, "FILL", 0, 0, word=W4),              # 4.0
+        _c(1, "SPILL", 0, 0),                      # 수용 — 유일한 합법 유출
+        _c(2, "REQ", 1, 0),                        # 재-acquire (commit@3)
+        _c(4, "WAVE", 1, 0, prods=P1),             # carry +0 -> 1.0
+        _c(12, "DRAIN", 1, 0)])
+    assert not fin["sticky"]
+    assert cmds[1]["spill"] == W4 and cmds[1]["exp_word"] == W4
+    assert cmds[4]["fp32"] == F1                   # scrub — 잔존값 미유출
+
+    # ---- 미정의 opcode 6/7 — PROTO_GUARD sticky, 상태 무변경 ----
+    cmds, fin = run("proto_unk", [
+        _c(0, "FILL", 0, 0, word=W1),
+        _c(1, "UNK", 1, 0, rawop=6),               # opcode 6 — sticky
+        _c(2, "UNK", 0, 1, rawop=7),               # opcode 7, 무소유 slot
+        _c(3, "WAVE", 0, 0, prods=P1),             # 정상 경로 무손상
+        _c(11, "DRAIN", 0, 0)])
+    assert fin["sticky"]
+    assert cmds[1]["why"] == "proto_unk" and cmds[2]["why"] == "proto_unk"
+    assert cmds[1]["exp_word"] == W1 and cmds[2]["exp_word"] == 0
+    assert cmds[4]["fp32"] == F2                   # UNK 는 상태 무변경
+    assert fin["owner"][1] is None                 # UNK 는 acquire 아님
+    cmds, fin = run("proto_unk", [
+        _c(0, "UNK", 0, 0, rawop=7),               # power-on 직후 단독 UNK
+        _c(2, "REQ", 0, 0),
+        _c(4, "WAVE", 0, 0, prods=P1),
+        _c(12, "DRAIN", 0, 0)])
+    assert fin["sticky"] and cmds[0]["refused"]
+    assert cmds[0]["exp_word"] == 0
+    assert cmds[3]["fp32"] == F1
+
+    # ---- (iv) 랜덤 인터리브 300 (고정 seed) ----
+    rng = random.Random(SEEDS["bank_rand_interleave"])
+    for _ in range(300):
+        run("rand_interleave", gen_rand_bank_scenario(rng))
+
+    return out
+
+
+def bank_coverage(scens):
+    """전 시나리오의 수용/거부/fault 클래스 집계 + 하한 assert (거부·경계
+    커버리지가 seed 이동으로 조용히 사라지는 것을 막는 non-vacuity 가드)."""
+    cov = {k: 0 for k in
+           ("wave_ok", "chain_delta7", "chain_delta8", "fdz_after_window",
+            "drain_ok", "zero_ok", "fill_ok", "spill_ok", "window_chain",
+            "acc_owner", "window_fill", "window_drain", "window_zero",
+            "window_spill", "fill_busy", "drain_owner", "zero_owner",
+            "spill_owner", "reject_own", "fill_validation",
+            "carry_range_d", "carry_precision_e", "proto_unk")}
+    for _, cmds, _ in scens:
+        last_acc = {}
+        for c in sorted(cmds, key=lambda c: c["t"]):
+            if c.get("why"):
+                cov[c["why"]] += 1
+            ok = not c["refused"] and not c["vfault"]
+            sl = c["sl"]
+            if c["op"] == "WAVE" and ok:
+                cov["wave_ok"] += 1
+                if sl in last_acc:
+                    d = c["t"] - last_acc[sl]
+                    if d == BANK_LATENCY:
+                        cov["chain_delta7"] += 1
+                    elif d == BANK_LATENCY + 1:
+                        cov["chain_delta8"] += 1
+                last_acc[sl] = c["t"]
+            elif c["op"] in ("DRAIN", "ZERO", "FILL", "SPILL") and ok:
+                cov[{"DRAIN": "drain_ok", "ZERO": "zero_ok",
+                     "FILL": "fill_ok", "SPILL": "spill_ok"}[c["op"]]] += 1
+                if sl in last_acc \
+                        and c["t"] - last_acc[sl] == BANK_LATENCY + 1:
+                    cov["fdz_after_window"] += 1
+    for k, v in cov.items():
+        assert v >= 2, "coverage class '%s' vacuous (%d)" % (k, v)
+    return cov
+
+
+def write_bank_file(scens):
+    """시나리오 스트림 -> bank_scenarios.hex. 반환: (n_records, fam_table)
+    — fam_table = [(name, code, n_scen, n_records)] (계약/report 공용)."""
+    lines, fam_stat = [], {}
+    for idx, (fam, cmds, final) in enumerate(scens):
+        recs = bank_encode_scenario(idx, BANK_FAM_DOCS[fam][0], cmds, final)
+        lines.extend("%016x" % r for r in recs)
+        n_s, n_r = fam_stat.get(fam, (0, 0))
+        fam_stat[fam] = (n_s + 1, n_r + len(recs))
+    fam_table = [(f, BANK_FAM_DOCS[f][0]) + fam_stat[f] for f in fam_stat]
+    hdr = [
+        "// bank_scenarios.hex — wide ACC bank 상태기계 시나리오 스트림 "
+        "(결정적, 고정 seed)",
+        "// 생성기: scripts/golden_lattice.py — record 형식/의미 계약: "
+        "include/generated/bank_scenarios_contract.md",
+        "// 1 line = 1 record = 16 hex chars = 64 bits; N_SCENARIOS = %d; "
+        "N_RECORDS = %d" % (len(scens), len(lines)),
+    ]
+    BANK_HEX_PATH.write_text("\n".join(hdr + lines) + "\n")
+    return len(lines), fam_table
+
+
+def bank_contract_text(n_scen, n_rec, fam_table, cov):
+    fam_rows = "\n".join(
+        "| `%s` | %d | %d | %d | %s |"
+        % (f, code, ns, nr, BANK_FAM_DOCS[f][1].replace("\n", " "))
+        for f, code, ns, nr in fam_table)
+    cov_rows = "\n".join("| `%s` | %d |" % kv for kv in cov.items())
+    return """<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+<!-- SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor \
+contributors -->
+<!-- GENERATED by scripts/golden_lattice.py — 손편집 금지. 재생성은 \
+`python3 scripts/golden_lattice.py` (byte-identical). -->
+
+# bank_scenarios.hex — wide ACC bank 상태기계 시나리오 계약 (하류 ③ golden)
+
+- **규범 출처**: `.claude-memos/wt64v1_spec.md` §27.2.2 [하류 ③ COMMIT]
+  블록 — 인터페이스 계약 **IF-1** (read-before-dispatch — carry read 는
+  start cycle 이전 완료, beat 0 공급), **IF-2** (ownership window =
+  start..writeback, LATENCY=%d; 창 내 FILL/DRAIN/ZERO 접촉 = loud sticky
+  fault), **IF-3** (같은 slot 체이닝 >= %d, 타 slot II=%d 중첩), **IF-4**
+  (0x7E = canonical zero 기록) + pin 3 (lattice-비표현 carry = fault
+  (d)/(e) 의 carry-lane 적용, 발화 = carry 소비 beat 0); §27.2.1
+  amendment pin 1 (수용 개구간 (-2^261, 2^261)) / pin 2 (carry-in
+  normalized 전제); `proofs/tla/AccBank.tla` guard 군.
+- **golden**: `scripts/golden_lattice.py` 의 `bank_execute` (상태기계
+  reference 실행기 — 본 문서의 생성기이자 모든 기대값의 산출자). 산술
+  기대값 (wave/drain) 은 lattice golden 경로 그대로 (Fraction 이중 검증
+  포함 — `check_wave_against_fraction`).
+- **소비자**: §27.6 하류 ③ 검증 계획 **(b) lattice-bank 통합 TB** / **(c)
+  golden 확장**. 계획 **(a)** (TLA+ TLC 반례 trace 의 directed 변환) 는
+  본 파일 밖 — `fill_owner`/FillFaultForeign (외래 spill image 주소) 는
+  spill slot 모델을 요구하므로 **본 시나리오 레벨이 다루지 않는다** (정직
+  기록; (a) 계열이 담당).
+
+## 1. 모델 — slot / stream / 상태
+
+- **slot**: 물리 bank word 주소 %d개 (0..%d) — TB 가 실제 bank x lane
+  좌표로 사상한다 (사상은 TB 의 자유; 시나리오는 slot 간 독립성만 전제).
+- **stream**: 논리 소유 주체 (AccBank.tla 의 `Streams` — 80-bit tag
+  정체성의 대역). 4-bit 인코딩 (0..15), owner map 의 `0xFF` = 무소유.
+- **slot 상태**: `word` (fp64 인코딩 bank word — §27.2.2 word 포맷),
+  `owner` (stream 또는 무소유), lattice ownership window (아래 §4).
+- **power-on 정의 (reference pin)**: 전 slot word = canonical +0, 전
+  slot 무소유. TB 는 초기화 시퀀스로 이 상태에 정렬한 뒤 스트림을 적용
+  한다.
+- **sticky fault**: 시나리오 스코프의 단일 sticky bit — 어떤 거부/검증
+  fault 도 이것을 세우고, 시나리오 안에서 절대 해제되지 않는다 (합성
+  가능한 sticky status 클래스 — v1.9 `bank_tag_collision_error` 등급,
+  §26.5 선례; TLA+ `conflict` 대응).
+
+## 2. 명령 (cycle-태그) 와 형식 규율
+
+| 명령 | 의미 | AccBank.tla 대응 |
+|---|---|---|
+| `REQ(t, st, sl)` | 2-phase acquire: t 에 등록 (pend), **t+1 에 commit 또는 reject** | RequestOwn -> CommitOwn / RejectOwn |
+| `WAVE(t, st, sl, prods[32])` | wave-step start: carry = slot word (IF-1, beat 0 소비), writeback t+%d | Accumulate / AccumulateFault |
+| `FILL(t, st, sl, word)` | fp64 word ingest (§27.2.2 FILL validation (i)-(iii)) | Fill / FillFaultBusy |
+| `DRAIN(t, st, sl)` | PACK_FINAL RNE-24 + flush-after-round FTZ (§27.2.3), **ownership release** | Drain / DrainFault |
+| `ZERO(t, st, sl)` | raw 0x7E — canonical zero 기록 (IF-4), owner 불변 | Zero / ZeroFault |
+| `SPILL(t, st, sl)` | slot word 를 spill 스트림으로 (image 8-fragment 확폭은 상위 frag FSM 몫 — §27.2.2 SPILL), **ownership release**, word 잔존; 위반 (창 내/비-owner) = 거부 + sticky (**PROTO_GUARD**) | fault 6종 밖 — loud 법칙 (FP_AccBank.v [12]) |
+| `UNK(t, st, sl, rawop∈{6,7})` | 미정의 opcode — sticky (**PROTO_GUARD**, 방어적 decode) 만; 상태 무변경, **응답 없음** (resp 무발행) | — (방어적) |
+
+**형식 규율 (시나리오 구성 제약 — 위반은 fault 가 아니라 생성기 오류)**:
+같은 (cycle, slot) 에 명령 2개 금지 (같은 cycle 두 port 의 같은 slot
+중재는 ③ RTL COMMIT 몫 — 본 레벨 밖); WAVE start 는 전 slot 통틀어
+간격 >= II=%d (lattice unit 이 1개 — 상위 dispatch 스케줄 책임, RTL 은
+beat 중 start 무시); pend register 는 1개 (REQ 는 commit 전 재발행 금지
+— v1.9 `mu_pending_other` 선례).
+
+## 3. cycle 처리 순서 (실행기 정의 — TB 판정의 기준 시각)
+
+cycle t 에서: **(1) writeback** (t == 이전 wave start + %d 인 wave 의
+bank word 기록) -> **(2) acquire commit** (t-1 의 REQ 판정: slot 무소유
+면 CommitOwn — owner 기록 + **word 를 canonical zero 로 scrub**
+(`commit_zero`, acquire 융합 zero — SRAM 잔존값이 새 소유자에게 새지
+않는 유일한 방벽); 소유 중이면 RejectOwn + sticky) -> **(3) 그 cycle 의
+명령** (slot 오름차순). 따라서 **delta=%d 체이닝에서 다음 wave 의 carry
+는 직전 wave 의 writeback 값이다** (read-before-dispatch 는 bank 구현
+의무 — IF-1).
+
+## 4. 검사 우선순위와 window 산술 (cycle-정밀)
+
+명령별 검사 순서: **window (IF-2/IF-3) -> ownership guard -> 값 검증**.
+모든 거부/fault = sticky + 상태 무변경 (silent 수용 금지).
+
+- 수용된 wave (start t0) 의 **FILL/DRAIN/ZERO/SPILL fault 창 = [t0,
+  t0+%d]** (양끝 포함 — **창 마지막 cycle (= writeback cycle) 접촉도
+  fault, 그 직후 cycle (t0+%d) 접촉은 합법**).
+- **같은 slot 다음 WAVE**: start 간격 >= LATENCY=%d 합법 (정확히 %d 부터
+  — 그 cycle 에 writeback 이 선행하므로 carry 는 새 값), 4..6 은 거부 +
+  sticky. **거부된 wave 는 창을 열지 않고 아무것도 쓰지 않는다.**
+- ownership guard (창 밖에서만 도달): WAVE `acc_owner` / DRAIN
+  `drain_owner` / ZERO `zero_owner` / SPILL `spill_owner` — owner ==
+  stream 요구 (SPILL 위반의 RTL sticky 원인은 PROTO_GUARD); FILL
+  `fill_bankfree` — **무소유 slot 에만** (수용 시 acquire-by-fill: owner
+  := stream; 소유 중 slot 은 자기/외래 불문 거부 — FillFaultBusy); REQ
+  commit `commit_free`. 미정의 opcode (`UNK` 6/7) 는 무조건 sticky
+  (PROTO_GUARD) — 상태 무변경, 응답 무발행.
+- 값 검증: FILL validation (i) NaN/Inf (ii) PACK_WIDE-비표현 -> sticky
+  + **acquire 도 하지 않음** (iii) ±0 수용 + canonical +0 화; WAVE carry
+  소비 (beat 0) 의 lattice 수용성 — 범위 밖 fault (d), 정밀도 위반
+  fault (e) (§27.2.2 pin 3; golden `LatticeFault` 2종 대응).
+
+## 5. reference pin (본 golden 이 확정하는 관측 계약 — ③ RTL 구현 의무)
+
+1. **carry-lane fault (d)/(e) 의 wave 는 writeback 을 억제한다** — slot
+   word 는 보존되고 (silent 오염 금지), fault 는 sticky. 창은 그대로
+   점유된다 (unit 은 LATENCY 동안 그 slot 소유).
+2. DRAIN 은 release 하되 word 를 **지우지 않는다** (SRAM 잔존 — TLA+
+   SRAM semantics). 잔존값의 유일한 방벽은 acquire 시 zero (§3) 다.
+3. ZERO 는 owner 를 바꾸지 않는다 (raw 0x7E — ownership-checked).
+4. 거부/검증-fault 는 어떤 것도 상태를 바꾸지 않는다 (sticky 만).
+5. SPILL 도 DRAIN 과 같은 release + word 잔존이다 — 수용 spill 값은
+   그 cycle 의 유효 slot word (같은 cycle writeback/commit 선행 후).
+   **거부-SPILL (창 내/비-owner) 와 미정의 opcode 는 PROTO_GUARD
+   sticky** — 거부-SPILL 은 spill 방출도 상태 변경도 없다 (2026-08-16
+   적대 재실측 폐쇄: 이 두 경로의 TB 시나리오 부재가 spill_ref/cmd_unk
+   변이 절단의 escape 원인이었다).
+
+## 6. record 형식 (1 line = 1 record = 64 bit) + TB 판정 규칙
+
+시나리오 = `BEGIN` + 명령 record 열 (+ 인라인 데이터/기대) + `END` +
+slot 기대 word %d개. record 태그 = `[63:56]`:
+
+| record | 레이아웃 |
+|---|---|
+| `BEGIN` (0x01) | `[55:40]` 시나리오 index, `[39:32]` family 코드, `[31:16]` 이 시나리오의 총 record 수 (BEGIN/END/기대 포함), `[15:8]` N_SLOTS, `[7:0]` 명령 수 |
+| 명령 (0x10 REQ / 0x11 WAVE / 0x12 FILL / 0x13 DRAIN / 0x14 ZERO / 0x15 SPILL / 0x16 UNK) | `[55:52]` stream, `[51:48]` slot, `[47]` **기대 refused** (거부 + sticky; REQ 는 t+1 reject; UNK 는 항상 1), `[46]` **기대 값-검증 fault** (FILL validation / carry (d)/(e)), `[42:40]` **UNK 만: 원 opcode (6/7)** — TB 는 이 값을 그대로 인가, `[31:0]` cycle t |
+| WAVE 후속 | addend record x32 (`lattice_vec_contract.md` §2 의 64-bit wide field) + **기대 slot word 1개 — cycle t+%d 말 스냅샷** |
+| FILL 후속 | fill word 1개 (fp64 raw) + **기대 slot word 1개 — cycle t 말 스냅샷** |
+| DRAIN 후속 | 기대 1개: `[32]` = 수용, `[31:0]` = 기대 fp32 (거부 시 record == 0) |
+| SPILL 후속 | 기대 spill word 1개 (fp64 raw — 수용 시 `spill_q`; 거부 시 0, `spill_v` 무발행) + **기대 slot word 1개 — cycle t 말 스냅샷** (거부 = word 불변 / 수용 = release 후 word 잔존의 직접 판정) |
+| UNK 후속 | **기대 slot word 1개 — cycle t 말 스냅샷** (상태 무변경 판정; 응답은 무발행 — TB 는 t+1 에 resp_v==0 도 판정) |
+| `END` (0x0F) | `[48]` 기대 sticky, `[47:16]` 기대 최종 owner map (slot0 `[47:40]` .. slot3 `[23:16]`; 0xFF = 무소유) |
+| 최종 기대 | slot word x%d (horizon 말 — 마지막 명령 cycle + %d + 2) |
+
+**판정**: 명령별 refused/vfault 플래그, WAVE/FILL 스냅샷 word, DRAIN
+fp32, 최종 sticky/owner/word 전부 **bit-exact**. 하나라도 불일치 = FAIL
+(표본률 논증 금지). 스냅샷 시각은 §3 의 처리 순서 기준 — 같은 cycle 의
+writeback/commit 이 명령보다 선행한 뒤의 값이다.
+
+## 7. family 배치
+
+| family | 코드 | 시나리오 | records | 의도 |
+|---|---|---|---|---|
+%s
+
+총 **%d 시나리오, %d records** (주석 3줄 제외). directed family 는 전부
+실행기 산출과 별개의 손계산 고정점 assert 를 통과했다 (생성기 내
+`gen_bank_scenarios`).
+
+## 8. coverage (non-vacuity — 생성기가 하한 assert)
+
+| class | count |
+|---|---|
+%s
+
+## 9. 결정론
+
+고정 seed `bank_rand_interleave = 0x%X` 외 난수원/timestamp 없음 —
+재실행 byte-identical (sha256 은 `lattice_golden_report.json`).
+""" % (BANK_LATENCY, BANK_LATENCY, BANK_II,
+       BANK_NSLOTS, BANK_NSLOTS - 1, BANK_LATENCY, BANK_II, BANK_LATENCY,
+       BANK_LATENCY, BANK_LATENCY, BANK_LATENCY + 1, BANK_LATENCY,
+       BANK_LATENCY, BANK_NSLOTS, BANK_LATENCY, BANK_NSLOTS, BANK_LATENCY,
+       fam_rows, n_scen, n_rec, cov_rows, SEEDS["bank_rand_interleave"])
 
 
 class VecEmitter:
@@ -1150,10 +2181,13 @@ initial $readmemh("include/generated/lattice_wave_vectors.hex", vec);
 
 - **FILL-valid 이나 lattice-표현 밖 carry**: bank word 는 fp64 로
   |v| <= ~2^1024 까지 담지만 lattice 는 |v| < 2^261 만 수용한다
-  (§27.2.1 폭 도출). FILL 로 그런 값을 넣고 accumulate 하는 경로의 RTL
-  fault 배선 (sticky-fault 클래스 배정) 은 §27.2 미명시 — golden 은
-  loud fault (`LatticeFault`) 로 고정했고, GATE V20-2 하류 ③ (bank
-  RTL + TLA+) COMMIT 에서 pin 해야 한다.
+  (§27.2.1 폭 도출 — 수용 구간은 pin 1 해소로 **개구간 (-2^261,
+  2^261)**). **-> 폐쇄 (2026-08-16, ③ spec COMMIT — §27.2.2 하류 ③
+  블록)**: 신규 클래스 없이 기존 **fault (d)/(e) 의 carry-lane 적용**
+  (범위 <-> (d), 정밀도 <-> (e)), 발화 지점은 bank FILL 이 아니라
+  **carry 소비 (beat 0)**. golden `LatticeFault` 2종이 그 대응이고,
+  시나리오 레벨 reference 는 `bank_scenarios_contract.md` 의
+  `carry_fault_*` family 가 운반한다.
 - **fp64 -0 FILL**: 수용 + canonical +0 화 (§27.2.2 (iii)) — "검증
   통과 값은 round-trip bit-exact" 문장의 유일한 예외 (수용-후-재작성).
 - f16 subnormal 곱의 lane-측 raw operand 형태 (§2 참조).
@@ -1222,6 +2256,22 @@ def main():
     assert n_verified == len(em.lines)
     stamp("vector file re-read self-verify (%d lines)" % n_verified, t0)
 
+    t0 = time.time()
+    bank_scens = gen_bank_scenarios()
+    bank_cov = bank_coverage(bank_scens)
+    n_bank_rec, bank_fams = write_bank_file(bank_scens)
+    BANK_CONTRACT_PATH.write_text(bank_contract_text(
+        len(bank_scens), n_bank_rec, bank_fams, bank_cov))
+    stamp("bank scenario generation (%d scenarios, %d records, "
+          "%d families)" % (len(bank_scens), n_bank_rec, len(bank_fams)),
+          t0)
+
+    t0 = time.time()
+    n_bank_verified = bank_verify_file()
+    assert n_bank_verified == len(bank_scens)
+    stamp("bank scenario file re-read self-verify (%d scenarios)"
+          % n_bank_verified, t0)
+
     report = {
         "_doc": "v2.0 wave-step-atomic accumulation — 528-bit exact-"
                 "integer lattice golden model (spec §27.2) 의 자기검증 "
@@ -1270,16 +2320,64 @@ def main():
             "path": "include/generated/lattice_vec_contract.md",
             "sha256": _sha256(CONTRACT_PATH),
         },
+        "bank_reference": {
+            "_doc": "wide ACC bank 상태기계 reference + 통합 TB 시나리오 "
+                    "(§27.6 하류 ③ 검증 계획 (c), 2026-08-16 확장). 형식/"
+                    "의미 계약: include/generated/bank_scenarios_"
+                    "contract.md; 실행기: bank_execute.",
+            "constants": {
+                "LATENCY": BANK_LATENCY, "II": BANK_II,
+                "n_slots": BANK_NSLOTS,
+                "fdz_fault_window": "[start, start+%d] 양끝 포함 (IF-2 — "
+                                    "창 마지막 = writeback cycle 접촉도 "
+                                    "fault, 직후 합법)" % BANK_LATENCY,
+                "same_slot_chain_min": BANK_LATENCY,
+            },
+            "pin1_amendment": {
+                "acceptance": "개구간 (-2^261, 2^261) — lattice_"
+                              "accumulate 는 LAT_MIN < total, 경계 도달 "
+                              "= LatticeFault (fault (f) 클래스)",
+                "extract_rto48": "지수 범위 검사 bare assert -> "
+                                 "LatticeFault 승격 (e == 261 <=> |합| "
+                                 ">= 2^261)",
+                "vector_file_byte_identical": True,
+            },
+            "scenario_file": {
+                "path": "include/generated/bank_scenarios.hex",
+                "n_scenarios": len(bank_scens),
+                "n_records": n_bank_rec,
+                "families": [
+                    {"family": f, "code": code, "scenarios": ns,
+                     "records": nr, "doc": BANK_FAM_DOCS[f][1]}
+                    for f, code, ns, nr in bank_fams],
+                "sha256": _sha256(BANK_HEX_PATH),
+            },
+            "contract": {
+                "path": "include/generated/bank_scenarios_contract.md",
+                "sha256": _sha256(BANK_CONTRACT_PATH),
+            },
+            "coverage": bank_cov,
+            "self_verify": {
+                "scenarios": n_bank_verified, "mismatches": 0,
+                "note": "파일 재독 -> record 파싱 -> 명령 재구성 -> "
+                        "실행기 재실행 -> 인코딩된 기대 전 필드 재대조",
+                "verdict": "PASS"},
+        },
         "spec_gap_notes": [
-            "FILL-valid (fp64/PACK_WIDE 표현 가능) 이나 lattice-표현 밖 "
-            "(|v| >= 2^261 또는 2^-266 미만 정밀도) 인 carry-in 의 RTL "
-            "fault 배선은 §27.2 미명시 — golden 은 loud fault 로 고정, "
-            "GATE V20-2 하류 ③ bank RTL COMMIT 에서 sticky-fault 클래스 "
-            "배정 필요",
+            "[폐쇄 2026-08-16 — ③ spec COMMIT, §27.2.2 하류 ③ 블록] "
+            "FILL-valid 이나 lattice-표현 밖 carry 의 RTL fault 클래스: "
+            "신규 클래스 없이 기존 fault (d)/(e) 의 carry-lane 적용 "
+            "(범위 <-> (d), 정밀도 <-> (e)), 발화 = carry 소비 (beat 0). "
+            "golden LatticeFault 2종이 그 대응이고 bank 시나리오 "
+            "carry_fault_* family 가 시나리오 레벨 reference 를 운반한다",
             "fp64 -0 FILL 은 수용 + canonical +0 화 — round-trip "
             "bit-exact 보증의 유일한 수용-후-재작성 예외",
             "f16 subnormal 곱의 lane-측 raw operand 형태는 RTL C2 경로 "
             "확정 사항 — 본 벡터는 값-충실 normalized 인코딩 사용",
+            "bank 시나리오 레벨은 fill_owner/FillFaultForeign (외래 "
+            "spill image 주소) 를 다루지 않는다 — §27.6 검증 계획 (a) "
+            "의 TLC 반례 trace 변환이 담당 (bank_scenarios_contract.md "
+            "머리말)",
         ],
         "verdicts": {
             "all_checks_pass": True,
@@ -1288,12 +2386,16 @@ def main():
             "jam_families_match_study_exactly": True,
             "canonical_zero_on_exact_zero": True,
             "segment_2_of_9_never_exceeded": em.max_span <= 2,
+            "pin1_open_interval_enforced": True,
+            "bank_scenarios_self_verified": True,
         },
     }
     REPORT_PATH.write_text(json.dumps(report, indent=1, allow_nan=False,
                                       ensure_ascii=False) + "\n")
     print("wrote %s" % VEC_PATH)
     print("wrote %s" % CONTRACT_PATH)
+    print("wrote %s" % BANK_HEX_PATH)
+    print("wrote %s" % BANK_CONTRACT_PATH)
     print("wrote %s" % REPORT_PATH)
     print("total %.1fs" % (time.time() - t_start))
     print("headlines:")
@@ -1304,6 +2406,20 @@ def main():
           % (theorem["N"], len(em.lines)))
     print("  oracle: fp64 struct %d, f32 struct %d checked"
           % (codec["N"], theorem["f32_struct_oracle_checked"]))
+    print("  bank scenarios: %d (families %d, records %d), sha256 %s"
+          % (len(bank_scens), len(bank_fams), n_bank_rec,
+             report["bank_reference"]["scenario_file"]["sha256"][:16]))
+    print("  bank coverage: chain7 %d / chain8 %d / window-fault %d / "
+          "after-window %d / reject %d / carry (d)+(e) %d"
+          % (bank_cov["chain_delta7"], bank_cov["chain_delta8"],
+             bank_cov["window_fill"] + bank_cov["window_drain"]
+             + bank_cov["window_zero"] + bank_cov["window_chain"],
+             bank_cov["fdz_after_window"], bank_cov["reject_own"],
+             bank_cov["carry_range_d"] + bank_cov["carry_precision_e"]))
+    print("  bank spill/unk guard: spill_ok %d / window_spill %d / "
+          "spill_owner %d / proto_unk %d"
+          % (bank_cov["spill_ok"], bank_cov["window_spill"],
+             bank_cov["spill_owner"], bank_cov["proto_unk"]))
 
 
 if __name__ == "__main__":

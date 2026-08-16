@@ -1,0 +1,433 @@
+{
+ "_doc": "TLA+ 유도 directed test 시나리오 — spec §27.6 하류 ③ 검증 계획 (a) 의 이행 산출물. proofs/tla/run.sh 가 고정한 guard 삭제 실험 7건 + requesterid 1건의 TLC 반례 trace, witness 6건의 도달 trace 를 bank/lattice 인터페이스의 cycle-태그 명령 시퀀스로 변환한 것이다. 변환 규칙·대응표·전제는 proofs/tla/trace_to_directed.md (본 파일과 1:1). trace 원본은 derived/traces/*.trace.txt (결정적 extract — 2회 재실행 byte-identical). 본 파일은 골든 반쪽 (§27.6 (c) — scripts/golden_lattice.py 확장) 과 별도 파일로 병존한다: 여기의 payload 토큰 (sA#1 등) 에 구체 64-bit addend 벡터를 바인딩하는 것은 골든 반쪽의 몫이며 (payload_binding 항), 본 파일은 순서·간격·fault 계약만을 고정한다.",
+ "spdx_license_identifier": "LGPL-2.1-or-later OR BSD-2-Clause OR Apache-2.0",
+ "spdx_file_copyright_text": "2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors",
+ "schema_version": 1,
+ "normative_source": ".claude-memos/wt64v1_spec.md §27.2.2 (IF-1..IF-4 + pin 3) + §27.6 하류 ③ 검증 계획 (a); proofs/tla/AccBank.tla",
+ "mapping_doc": "proofs/tla/trace_to_directed.md",
+ "provenance": {
+  "gate": "proofs/tla/run.sh — 16/16 runs behaved as declared (gate GREEN), 2026-08-16 재실행",
+  "tlc": "TLC2 2.19 (/usr/share/java/tla2tools.jar), java -workers 1 -cleanup (BFS 결정성 pin — README §2)",
+  "determinism": "MUST-FAIL 14 run 각 2회 재실행: trace extract 14/14 byte-identical; states generated 수치 README §4 표 (75/858/1250/2586/2788/487/361/363/26/24/162/489/205/23) 와 전부 일치. run.sh 는 동일 탐색을 -difftrace 로 출력하며 반례 자체는 동일하다 (difftrace 는 출력 형식만 바꾼다).",
+  "trace_sha256": "trace_to_directed.md §6 표 참조 (본 파일 재생성 시 갱신 의무 동반)"
+ },
+ "constants": {
+  "NBANKS": 2,
+  "NSLOTS": 2,
+  "K": 2,
+  "streams": {
+   "sA": {"pcid": 0, "bank": 0, "_": "80-bit tag 정체성 — pcid[1:0]=0 -> bank 0"},
+   "sB": {"pcid": 2, "bank": 0, "_": "ALIAS — pcid[1:0]=2 -> bank 0 (sA 와 영구 충돌)"},
+   "sC": {"pcid": 1, "bank": 1, "_": "비충돌 제3자 — 본 시나리오군에서는 전부 무행동 (TLC 반례가 sC 를 쓰지 않음)"}
+  },
+  "II": 4,
+  "LATENCY": 7,
+  "timing_rules": {
+   "R-T1": "ACQ_REQ @ C 이면 그 짝 ACQ_GRANT/ACQ_REJECT 는 @ C+1 (2-phase deferred commit — pend 단일 staging, v1.9 mu_pending_other 동형). cursor -> C+2.",
+   "R-T2": "WSTEP(승인)/WSTEP_STRAY(거부) @ C: ownership window = [C, C+LATENCY] (IF-2; N=8 출하 = [C, C+7], writeback/done @ C+7). 같은 slot 의 다음 chaining WSTEP 은 정확히 C+LATENCY 에 배치 (IF-3 최소 간격의 고의 실증). 같은 slot 의 다음 비-WSTEP 접촉 (DRAIN/SPILL/FILL/ZERO) 은 >= C+LATENCY+1 (창 회피 — 창 내 접촉의 cycle-정밀 변형은 검증 계획 (b)(3) 몫이며 본 (a) 시나리오는 stream-레벨 ownership-register 표면만 판정한다).",
+   "R-T3": "DRAIN/SPILL/FILL/ZERO_RAW 및 모든 거부 시도는 bank-port 추상 1 cycle. cursor -> C+1. (실 op 의 frag FSM 다주기 확폭은 ③ RTL TB 구현 몫 — 순서와 상대 간격 계약은 불변.)"
+  }
+ },
+ "op_vocabulary": {
+  "ACQ_REQ":      {"tla": "RequestOwn(s)", "meaning": "acquire handshake phase 1 (0x7E 원자 acquire 의 요청 반쪽) — claim 은 pend staging 에만 등록, bank/owner/word 무접촉 (Inv_NoPhantom)"},
+  "ACQ_GRANT":    {"tla": "CommitOwn(s)", "meaning": "phase 2 accept @ T+1 — live bank-free 재검사 (commit_free) 통과, owner[b]:=s + canonical zero 기록 (commit_zero 효과 = IF-4 의 유일 zero 표현, fp64 +0)"},
+  "ACQ_REJECT":   {"tla": "RejectOwn(s)", "meaning": "phase 2 refuse @ T+1 — bank 가 외래 owner 로 live: 거부 + sticky, 재적(incumbent) 상태 완전 불변, 재시도 가능"},
+  "WSTEP":        {"tla": "Accumulate(s)", "meaning": "wave-step dispatch 1회 (0x70 VFMA_ACC stateful 형, 32 곱 + carry-in): bank carry word read 는 start 이전 완료 (IF-1 read-before-dispatch), beat 0 에 carry 공급, beats C..C+II-1, RTO-48 writeback @ C+LATENCY"},
+  "WSTEP_STRAY":  {"tla": "AccumulateFault(s)", "meaning": "비-owner 의 wave-step dispatch 도착 (spill 후 in-flight — v1.9 pipelined dispatch 실재 표면): bank 는 carry 공급도 writeback 도 거부 + sticky, bank word 불변"},
+  "DRAIN":        {"tla": "Drain(s)", "meaning": "drain 계열 op (opcode 미지정 — README §8(i)): bank word read -> PACK_FINAL RNE-24 (§27.2.3), ownership 동일 원자 사건으로 release. SRAM word 는 잔존 (scrub 없음)"},
+  "DRAIN_STRAY":  {"tla": "DrainFault(s)", "meaning": "비-owner 의 drain 도착: 거부 + sticky, drained 값 미발행, bank word/owner 불변"},
+  "SPILL":        {"tla": "Spill(s, m)", "meaning": "0x7D ACC_SPILL: bank word -> fp64 image 를 slot m 에 (8 fragments — §27.2.2), ownership release. bank word 는 잔존. slot 선택은 소프트웨어 주소 — 하드웨어 가드 없음"},
+  "FILL":         {"tla": "Fill(s, m)", "meaning": "0x7D ACC_FILL: slot m 의 fp64 image ingest (FILL validation (i)-(iii) — §27.2.2) -> bank word, owner[b]:=s 재획득. image 소비"},
+  "FILL_FOREIGN": {"tla": "FillFaultForeign(s, m)", "meaning": "외래 image 를 주소한 fill: 거부 + sticky, image 미소비, bank/owner 불변 (leak 차단)"},
+  "FILL_BUSY":    {"tla": "FillFaultBusy(s, m)", "meaning": "자기 image 준비 완료이나 bank 가 외래 owner 로 live 인 fill: 거부 + sticky, image 미소비, incumbent 불변"},
+  "ZERO_RAW":     {"tla": "Zero(s)/ZeroFault(s)", "meaning": "raw 0x7E (acquire 융합이 아닌 형태) — ownership-checked (IF-4): GOOD 계약에서 acquire 핸드셰이크 밖 발행자는 owner 일 수 없으므로 accept 경로는 도달 불가, 항상 거부 + sticky (zero race 차단)"}
+ },
+ "sticky_contract": {
+  "classes": ["acq_reject", "stray_acc", "stray_drain", "fill_foreign", "fill_busy", "zero_race"],
+  "_": "fault 원인 후보 6종 = AccBank 의 fault 액션 6종 (README §9.9). RTL 입도 (원인별 bit vs 단일 bit) 는 ③ 구현 몫 — 최소 계약은 v1.9 bank_tag_collision_error 등급의 합성 가능한 단일 sticky status bit (sim-only assertion 금지, §26.5 선례). 본 시나리오군은 fault 시나리오당 fault op 을 정확히 1개만 갖도록 변환되어 있어 (per-guard 삭제 실험의 1-guard-1-run 귀속과 동형) 단일-bit 구현에서도 원인 귀속이 유지된다.",
+  "sticky_semantics": "sticky: 지정 cycle 에 상승, 이후 해제 없음 (wave-step sticky 가 아니라 bank-레벨 sticky). fault 시나리오 외 모든 cycle 에서 0 유지가 판정의 일부다 (loud-fault-never-silent 의 양방향)."
+ },
+ "payload_binding": {
+  "_": "토큰 sX#i = stream X 의 i번째 contribution = wave-step 1회의 32-곱 payload. 본 파일은 값을 바인딩하지 않는다 — 골든 반쪽 (§27.6 (c), scripts/golden_lattice.py 확장) 이 각 토큰에 구체 addend 벡터를 바인딩하고 기대 bank word (RTO-48 chain) / drain fp32 (RNE-24) 를 산출한다.",
+  "requirements": [
+   "모든 토큰의 wave 값은 pairwise 구별 가능해야 한다 (오염이 값으로 관측되도록) — 권장: 단일 nonzero 곱 + 31 canonical zero, 토큰별 상이한 2의 거듭제곱",
+   "체이닝 토큰 (sA#1 -> sA#2) 의 기대값은 W2 = RTO48(exact(wave(sA#2) + W1)), W1 = RTO48(exact(wave(sA#1) + 0)) — 벡터 계약 §4 의 carry normalized 전제 충족 (pin 2)",
+   "SPILL image 기대값 = 직전 writeback word 의 fp64 무손실 재인코딩; GRANT 직후 SPILL 은 canonical zero image"
+  ]
+ },
+ "ghost_prerequisites": {
+  "_": "AccBank README §8 의 ghost 2건이 본 시나리오군에 상속된다 — ③ RTL/TB 가 실물화하거나 TB scoreboard 로 대조해야 한다.",
+  "items": [
+   "(l) spill image 의 owner-tag 캐리어: FILL_FOREIGN 판정 (DT-05) 은 image 에 기록된 owner 와 filler 의 하드웨어 대조를 전제 — 캐리어가 미실물화면 TB-레벨 ghost 대조로 수행하고 그렇다고 기록한다",
+   "(h) K 완결 캐리어: DRAIN_STRAY 판정 (DT-04) 의 issued==K 전제는 TB 스케줄이 보장 (하드웨어 검사 아님)"
+  ]
+ },
+ "scenarios": [
+  {
+   "id": "DT-01",
+   "kind": "guard_deletion",
+   "run": 3,
+   "cfg": "AccBank_del_commit_free.cfg",
+   "deleted_guard": "commit_free",
+   "tlc_violated": "Inv_OwnerAgreement",
+   "trace_file": "derived/traces/del_commit_free.trace.txt",
+   "trace_states": 5,
+   "guilty_action": {"trace_state": 5, "tla": "CommitOwn(sB) — live bank 탈취"},
+   "title": "acquire claim 이 live 외래 owner 와 경합 — armed RTL 은 거부 + sticky 로 종결",
+   "ops": [
+    {"cycle": 0, "op": "ACQ_REQ",    "stream": "sA"},
+    {"cycle": 1, "op": "ACQ_GRANT",  "stream": "sA", "bank": 0},
+    {"cycle": 2, "op": "ACQ_REQ",    "stream": "sB"},
+    {"cycle": 3, "op": "ACQ_REJECT", "stream": "sB", "bank": 0, "fault": true}
+   ],
+   "expect": {
+    "sticky": {"cause": "acq_reject", "cycle": 3},
+    "invariant_state": [
+     "owner[0] == sA 전 구간 불변 (탈취 없음)",
+     "bank0 word == canonical zero 불변 (cycle 1 의 기록 이후 무접촉)",
+     "cycle 0..2 에서 sticky == 0 (거부 이전 발화 금지)",
+     "sB 는 재시도 가능 상태로 복귀 (pend 해제)"
+    ]
+   },
+   "mutation_check": "RTL 의 commit_free 대응 가드를 제거하면 본 시나리오는 owner[0] 탈취 (sA -> sB) 를 관측하며 FAIL 해야 한다 — TLC Inv_OwnerAgreement 반례의 RTL 재현"
+  },
+  {
+   "id": "DT-02",
+   "kind": "effect_check",
+   "run": 4,
+   "cfg": "AccBank_del_commit_zero.cfg",
+   "deleted_guard": "commit_zero",
+   "tlc_violated": "NoSilentAliasing",
+   "trace_file": "derived/traces/del_commit_zero.trace.txt",
+   "trace_states": 8,
+   "guilty_action": {"trace_state": 7, "tla": "CommitOwn(sB) 의 zero 효과 부재 — stale SRAM 이 새 누산에 접힘"},
+   "title": "stale-SRAM scrub: 재acquire 의 canonical zero 기록이 이전 owner 의 잔존 word 를 차단 — fault 없는 값 판정 시나리오",
+   "ops": [
+    {"cycle": 0,  "op": "ACQ_REQ",   "stream": "sA"},
+    {"cycle": 1,  "op": "ACQ_GRANT", "stream": "sA", "bank": 0},
+    {"cycle": 2,  "op": "WSTEP",     "stream": "sA", "bank": 0, "token": "sA#1", "writeback": 9},
+    {"cycle": 10, "op": "SPILL",     "stream": "sA", "bank": 0, "slot": 0},
+    {"cycle": 11, "op": "ACQ_REQ",   "stream": "sB"},
+    {"cycle": 12, "op": "ACQ_GRANT", "stream": "sB", "bank": 0, "check": "canonical zero 재기록 — SRAM 에는 sA 의 W(sA#1) 이 잔존 중"},
+    {"cycle": 13, "op": "WSTEP",     "stream": "sB", "bank": 0, "token": "sB#1", "writeback": 20}
+   ],
+   "expect": {
+    "sticky": null,
+    "invariant_state": [
+     "sticky == 0 전 구간 (본 시나리오는 fault 경로가 아니라 효과 검증)",
+     "cycle 13 의 beat-0 carry == canonical zero (sA 잔존 word 아님 — IF-1 관측점)",
+     "cycle 20 writeback word == RTO48(exact(wave(sB#1) + 0)) — sA 기여 완전 무존재",
+     "mem[0] == sA image (W(sA#1) 의 fp64 재인코딩) 불변"
+    ]
+   },
+   "mutation_check": "RTL 의 acquire-시 zero 기록을 제거하면 cycle 13 carry 가 stale W(sA#1) 이 되어 cycle 20 word 가 오염 — TLC NoSilentAliasing 반례의 RTL 재현"
+  },
+  {
+   "id": "DT-03",
+   "kind": "guard_deletion",
+   "run": 5,
+   "cfg": "AccBank_del_acc_owner.cfg",
+   "deleted_guard": "acc_owner",
+   "tlc_violated": "NoSilentAliasing",
+   "trace_file": "derived/traces/del_acc_owner.trace.txt",
+   "trace_states": 8,
+   "guilty_action": {"trace_state": 7, "tla": "Accumulate(sA) — spill 후 in-flight stray 가 외래 bank 에 착지"},
+   "title": "stray VFMA_ACC (spill 후 in-flight) 가 외래 소유 bank 에 도착 — armed RTL 은 거부 + sticky",
+   "ops": [
+    {"cycle": 0,  "op": "ACQ_REQ",     "stream": "sA"},
+    {"cycle": 1,  "op": "ACQ_GRANT",   "stream": "sA", "bank": 0},
+    {"cycle": 2,  "op": "SPILL",       "stream": "sA", "bank": 0, "slot": 0, "note": "빈 image (canonical zero) — issued 0 인 채 spill (합법: spill 은 소프트웨어 정책)"},
+    {"cycle": 3,  "op": "ACQ_REQ",     "stream": "sB"},
+    {"cycle": 4,  "op": "ACQ_GRANT",   "stream": "sB", "bank": 0},
+    {"cycle": 5,  "op": "WSTEP_STRAY", "stream": "sA", "bank": 0, "fault": true, "note": "sA 는 spilled — 비-owner 의 dispatch 도착"},
+    {"cycle": 12, "op": "WSTEP",       "stream": "sB", "bank": 0, "token": "sB#1", "writeback": 19}
+   ],
+   "expect": {
+    "sticky": {"cause": "stray_acc", "cycle": 5},
+    "invariant_state": [
+     "cycle 5 의 stray 는 carry 공급도 writeback 도 받지 못함 — bank0 word == canonical zero 유지",
+     "cycle 19 writeback word == RTO48(exact(wave(sB#1) + 0)) — sA 오염 무존재",
+     "owner[0] == sB 불변; mem[0] == sA 빈 image 불변"
+    ]
+   },
+   "mutation_check": "RTL 의 acc_owner 대응 가드를 제거하면 stray 가 착지해 cycle 19 word 가 sA+sB 혼합 — TLC NoSilentAliasing 반례의 RTL 재현"
+  },
+  {
+   "id": "DT-04",
+   "kind": "guard_deletion",
+   "run": 6,
+   "cfg": "AccBank_del_drain_owner.cfg",
+   "deleted_guard": "drain_owner",
+   "tlc_violated": "Inv_NoCrossContextLeak",
+   "trace_file": "derived/traces/del_drain_owner.trace.txt",
+   "trace_states": 10,
+   "guilty_action": {"trace_state": 10, "tla": "Drain(sA) — spill 후 in-flight stray drain 이 외래 live partial 을 읽어감"},
+   "title": "stray drain (spill 후 in-flight, issued==K) 이 외래 partial 에 도착 — armed RTL 은 거부 + sticky (leak 차단)",
+   "ops": [
+    {"cycle": 0,  "op": "ACQ_REQ",     "stream": "sA"},
+    {"cycle": 1,  "op": "ACQ_GRANT",   "stream": "sA", "bank": 0},
+    {"cycle": 2,  "op": "WSTEP",       "stream": "sA", "bank": 0, "token": "sA#1", "writeback": 9},
+    {"cycle": 9,  "op": "WSTEP",       "stream": "sA", "bank": 0, "token": "sA#2", "writeback": 16, "note": "chaining 간격 정확히 LATENCY=7 — IF-3 최소 간격의 고의 실증"},
+    {"cycle": 17, "op": "SPILL",       "stream": "sA", "bank": 0, "slot": 0, "note": "full image W(sA#1⊕sA#2)"},
+    {"cycle": 18, "op": "ACQ_REQ",     "stream": "sB"},
+    {"cycle": 19, "op": "ACQ_GRANT",   "stream": "sB", "bank": 0},
+    {"cycle": 20, "op": "WSTEP",       "stream": "sB", "bank": 0, "token": "sB#1", "writeback": 27},
+    {"cycle": 28, "op": "DRAIN_STRAY", "stream": "sA", "bank": 0, "fault": true, "note": "sA 는 spilled (issued==K) — 비-owner drain 도착"}
+   ],
+   "expect": {
+    "sticky": {"cause": "stray_drain", "cycle": 28},
+    "invariant_state": [
+     "drained(sA) 미발행 — sB 의 live partial W(sB#1) 이 유출되지 않음",
+     "owner[0] == sB 불변; bank0 word == W(sB#1) 불변",
+     "mem[0] == sA full image 불변",
+     "cycle 0..27 에서 sticky == 0"
+    ]
+   },
+   "mutation_check": "RTL 의 drain_owner 대응 가드를 제거하면 sA 가 W(sB#1) 을 drain (cross-context leak) — TLC Inv_NoCrossContextLeak 반례의 RTL 재현"
+  },
+  {
+   "id": "DT-05",
+   "kind": "guard_deletion",
+   "run": 7,
+   "cfg": "AccBank_del_fill_owner.cfg",
+   "deleted_guard": "fill_owner",
+   "tlc_violated": "Inv_NoCrossContextLeak",
+   "trace_file": "derived/traces/del_fill_owner.trace.txt",
+   "trace_states": 10,
+   "guilty_action": {"trace_state": 9, "tla": "Fill(sB <- slot 0) — 외래 (sA) image 복원"},
+   "title": "FILL 이 외래 spill image 를 주소 — armed RTL 은 거부 + sticky, image 미소비 (leak 차단)",
+   "ops": [
+    {"cycle": 0,  "op": "ACQ_REQ",      "stream": "sA"},
+    {"cycle": 1,  "op": "ACQ_GRANT",    "stream": "sA", "bank": 0},
+    {"cycle": 2,  "op": "WSTEP",        "stream": "sA", "bank": 0, "token": "sA#1", "writeback": 9},
+    {"cycle": 10, "op": "SPILL",        "stream": "sA", "bank": 0, "slot": 0, "note": "W(sA#1) image"},
+    {"cycle": 11, "op": "ACQ_REQ",      "stream": "sB"},
+    {"cycle": 12, "op": "ACQ_GRANT",    "stream": "sB", "bank": 0},
+    {"cycle": 13, "op": "SPILL",        "stream": "sB", "bank": 0, "slot": 1, "note": "빈 image — 두 context 의 image 공존 상태 구축 (NSlots>=2 의 존재 이유)"},
+    {"cycle": 14, "op": "FILL_FOREIGN", "stream": "sB", "slot": 0, "fault": true, "note": "sB 가 sA 의 image 를 주소"}
+   ],
+   "expect": {
+    "sticky": {"cause": "fill_foreign", "cycle": 14},
+    "invariant_state": [
+     "mem[0] 불변 — own == sA, image == W(sA#1): 거부는 image 를 소비하지 않는다",
+     "mem[1] 불변 — own == sB (빈 image)",
+     "owner[0] == 무주 유지 (sB 는 cycle 13 에 release); bank0 word == W(sA#1) 잔존 (SRAM) 불변",
+     "trace 꼬리 재해석: TLC state 10 의 Spill(sB) 오염 전파는 armed RTL 에서 도달 불가 — sB 는 여전히 spilled"
+    ]
+   },
+   "mutation_check": "RTL 의 fill_owner 대응 가드를 제거하면 sB 가 sA image 를 복원-재spill 해 mem 에 타 context 데이터가 실림 — TLC Inv_NoCrossContextLeak 반례의 RTL 재현. 전제: ghost (l) — spill image owner-tag 캐리어 (ghost_prerequisites)"
+  },
+  {
+   "id": "DT-06",
+   "kind": "guard_deletion",
+   "run": 8,
+   "cfg": "AccBank_del_fill_bankfree.cfg",
+   "deleted_guard": "fill_bankfree",
+   "tlc_violated": "Inv_OwnerAgreement",
+   "trace_file": "derived/traces/del_fill_bankfree.trace.txt",
+   "trace_states": 7,
+   "guilty_action": {"trace_state": 7, "tla": "Fill(sA <- slot 0) — live 외래 owner (sB) 위에 착지"},
+   "title": "자기 image 의 FILL 이 live 외래 bank 위에 도착 — armed RTL 은 거부 + sticky, incumbent 불변",
+   "ops": [
+    {"cycle": 0, "op": "ACQ_REQ",   "stream": "sA"},
+    {"cycle": 1, "op": "ACQ_GRANT", "stream": "sA", "bank": 0},
+    {"cycle": 2, "op": "SPILL",     "stream": "sA", "bank": 0, "slot": 0, "note": "빈 image"},
+    {"cycle": 3, "op": "ACQ_REQ",   "stream": "sB"},
+    {"cycle": 4, "op": "ACQ_GRANT", "stream": "sB", "bank": 0},
+    {"cycle": 5, "op": "FILL_BUSY", "stream": "sA", "bank": 0, "slot": 0, "fault": true, "note": "fill_owner 는 통과 (자기 image) — bank-free 검사가 거부"}
+   ],
+   "expect": {
+    "sticky": {"cause": "fill_busy", "cycle": 5},
+    "invariant_state": [
+     "owner[0] == sB 불변 (incumbent 탈취 없음)",
+     "bank0 word == canonical zero (sB 의 acquire 기록) 불변",
+     "mem[0] 불변 — own == sA: 거부는 image 를 소비하지 않는다",
+     "sA 는 spilled 유지 — 재시도 (bank 해방 후 FILL) 가능"
+    ]
+   },
+   "mutation_check": "RTL 의 fill_bankfree 대응 가드를 제거하면 fill 이 sB 위에 착지해 ownership register 가 stream 시각과 분기 — TLC Inv_OwnerAgreement 반례의 RTL 재현"
+  },
+  {
+   "id": "DT-07",
+   "kind": "guard_deletion",
+   "run": 9,
+   "cfg": "AccBank_del_zero_owner.cfg",
+   "deleted_guard": "zero_owner",
+   "tlc_violated": "Inv_Value",
+   "trace_file": "derived/traces/del_zero_owner.trace.txt",
+   "trace_states": 7,
+   "guilty_action": {"trace_state": 6, "tla": "Zero(sB) — 외래 raw 0x7E 가 sA 누산 도중 착지 (zero race)"},
+   "title": "zero race: 외래 raw 0x7E 가 live 누산 bank 에 도착 — armed RTL 은 거부 + sticky, drain 은 참값",
+   "ops": [
+    {"cycle": 0,  "op": "ACQ_REQ",   "stream": "sA"},
+    {"cycle": 1,  "op": "ACQ_GRANT", "stream": "sA", "bank": 0},
+    {"cycle": 2,  "op": "WSTEP",     "stream": "sA", "bank": 0, "token": "sA#1", "writeback": 9},
+    {"cycle": 9,  "op": "WSTEP",     "stream": "sA", "bank": 0, "token": "sA#2", "writeback": 16, "note": "chaining 간격 정확히 LATENCY=7 (IF-3 최소)"},
+    {"cycle": 17, "op": "ZERO_RAW",  "stream": "sB", "bank": 0, "fault": true, "note": "sB 는 acquire 핸드셰이크 밖 (idle) — raw 0x7E"},
+    {"cycle": 18, "op": "DRAIN",     "stream": "sA", "bank": 0}
+   ],
+   "expect": {
+    "sticky": {"cause": "zero_race", "cycle": 17},
+    "invariant_state": [
+     "cycle 17 에서 bank0 word == W(sA#1⊕sA#2) 불변 (zero 미착지)",
+     "cycle 18 drained fp32 == RNE24(W(sA#1⊕sA#2)) — TLC 반례의 '정상적으로 생긴 0.0' 이 아니라 참값 (§27.7 단일-wave 정리의 chain 형)",
+     "owner[0] release (drain 원자 사건); bank0 word 는 SRAM 잔존",
+     "cycle 0..16 에서 sticky == 0"
+    ]
+   },
+   "mutation_check": "RTL 의 zero_owner 대응 가드를 제거하면 cycle 17 zero 가 착지, cycle 18 drain 이 fault 없는 0.0 — TLC Inv_Value 반례 (silent-gradient-corruption 종단형) 의 RTL 재현"
+  },
+  {
+   "id": "DT-08",
+   "kind": "narrative",
+   "run": 10,
+   "cfg": "AccBank_requesterid.cfg",
+   "deleted_guard": "ALL (AllGuardsDeleted — 반증된 requester-ID 설계)",
+   "tlc_violated": "Inv_Value",
+   "trace_file": "derived/traces/requesterid.trace.txt",
+   "trace_states": 7,
+   "guilty_action": {"trace_state": 6, "tla": "Zero(sB) — 전 가드 삭제 모델에서 BFS 최단 반례는 zero race 와 동일 경로"},
+   "title": "requester-ID 서사 반증의 대응물 — 자극 열은 DT-07 과 동일 (TLC 반례가 action-열 단위로 동일함을 실측 확인), 전 가드 armed RTL 의 첫 거부는 zero_race",
+   "ops": "DT-07 과 동일 (ops 재사용 — 별도 자극 없음)",
+   "expect": {
+    "sticky": {"cause": "zero_race", "cycle": 17},
+    "invariant_state": [
+     "DT-07 의 expect 전체와 동일",
+     "서사적 의미: 개별 귀속은 DT-01..07 의 몫이고 (per-guard 1:1), 본 항목은 '전 가드 armed 실 RTL 에서 반증된 설계의 종단 반례 자극이 loud 하게 종결됨' 의 기록이다"
+    ]
+   },
+   "mutation_check": "전 가드 동시 제거 변이 (requester-ID 설계 재현) 시 본 자극은 fault 0 으로 종단 오염 drain — TLC run 10 의 RTL 재현"
+  },
+  {
+   "id": "WT-01",
+   "kind": "witness",
+   "run": 11,
+   "cfg": "AccBank_witness_reject.cfg",
+   "tlc_violated": "Witness_NoAcquireContention",
+   "trace_file": "derived/traces/witness_reject.trace.txt",
+   "trace_states": 4,
+   "arms": {"guard": "commit_free", "fault_scenario": "DT-01"},
+   "title": "도달성: acquire claim 이 live 외래 owner 와 실제로 경합하는 상태 — fault 없이 도달",
+   "ops": [
+    {"cycle": 0, "op": "ACQ_REQ",   "stream": "sA"},
+    {"cycle": 1, "op": "ACQ_GRANT", "stream": "sA", "bank": 0},
+    {"cycle": 2, "op": "ACQ_REQ",   "stream": "sB", "note": "도달 상태: pend == sB, owner[0] == sA (경합 실재)"}
+   ],
+   "expect": {
+    "sticky": null,
+    "invariant_state": [
+     "sticky == 0 전 구간 (cycle 0..2) — 도달 자체는 무-fault",
+     "cycle 2 종료 시점: owner[0] == sA, sB claim 계류 중",
+     "cycle 3 의 자동 해소 (ACQ_REJECT) 는 DT-01 의 판정 — 본 witness 는 그 직전 상태의 도달만 판정"
+    ]
+   }
+  },
+  {
+   "id": "WT-02",
+   "kind": "witness",
+   "run": 12,
+   "cfg": "AccBank_witness_stray_acc.cfg",
+   "tlc_violated": "Witness_NoStrayAccumulate",
+   "trace_file": "derived/traces/witness_stray_acc.trace.txt",
+   "trace_states": 4,
+   "arms": {"guard": "acc_owner", "fault_scenario": "DT-03"},
+   "title": "도달성: 비-owner 상태 (spilled, issued<K) 에서 accumulate 시도가 도착 가능한 상태 — fault 없이 도달",
+   "ops": [
+    {"cycle": 0, "op": "ACQ_REQ",   "stream": "sA"},
+    {"cycle": 1, "op": "ACQ_GRANT", "stream": "sA", "bank": 0},
+    {"cycle": 2, "op": "SPILL",     "stream": "sA", "bank": 0, "slot": 0, "note": "도달 상태: sA spilled (issued 0 < K), owner[0] 무주 — in-flight VFMA_ACC 도착면 개방"}
+   ],
+   "expect": {
+    "sticky": null,
+    "invariant_state": ["sticky == 0 전 구간 (cycle 0..2)", "mem[0].own == sA, owner[0] == 무주"]
+   }
+  },
+  {
+   "id": "WT-03",
+   "kind": "witness",
+   "run": 13,
+   "cfg": "AccBank_witness_stray_drain.cfg",
+   "tlc_violated": "Witness_NoStrayDrain",
+   "trace_file": "derived/traces/witness_stray_drain.trace.txt",
+   "trace_states": 6,
+   "arms": {"guard": "drain_owner", "fault_scenario": "DT-04"},
+   "title": "도달성: 비-owner 상태 (spilled, issued==K) 에서 drain 시도가 도착 가능한 상태 — fault 없이 도달",
+   "ops": [
+    {"cycle": 0,  "op": "ACQ_REQ",   "stream": "sA"},
+    {"cycle": 1,  "op": "ACQ_GRANT", "stream": "sA", "bank": 0},
+    {"cycle": 2,  "op": "WSTEP",     "stream": "sA", "bank": 0, "token": "sA#1", "writeback": 9},
+    {"cycle": 9,  "op": "WSTEP",     "stream": "sA", "bank": 0, "token": "sA#2", "writeback": 16},
+    {"cycle": 17, "op": "SPILL",     "stream": "sA", "bank": 0, "slot": 0, "note": "도달 상태: sA spilled, issued==K — stray drain 도착면 개방"}
+   ],
+   "expect": {
+    "sticky": null,
+    "invariant_state": ["sticky == 0 전 구간 (cycle 0..17)", "mem[0] == W(sA#1⊕sA#2) image, own == sA", "bank0 word == W(sA#1⊕sA#2) 잔존 (SRAM)"]
+   }
+  },
+  {
+   "id": "WT-04",
+   "kind": "witness",
+   "run": 14,
+   "cfg": "AccBank_witness_fill_foreign.cfg",
+   "tlc_violated": "Witness_NoForeignFillTarget",
+   "trace_file": "derived/traces/witness_fill_foreign.trace.txt",
+   "trace_states": 7,
+   "arms": {"guard": "fill_owner", "fault_scenario": "DT-05"},
+   "title": "도달성: 서로 다른 두 context 의 spill image 공존 + fill 가능 상태 (NSlots>=2 에서만 실재) — fault 없이 도달",
+   "ops": [
+    {"cycle": 0, "op": "ACQ_REQ",   "stream": "sA"},
+    {"cycle": 1, "op": "ACQ_GRANT", "stream": "sA", "bank": 0},
+    {"cycle": 2, "op": "SPILL",     "stream": "sA", "bank": 0, "slot": 0},
+    {"cycle": 3, "op": "ACQ_REQ",   "stream": "sB"},
+    {"cycle": 4, "op": "ACQ_GRANT", "stream": "sB", "bank": 0},
+    {"cycle": 5, "op": "SPILL",     "stream": "sB", "bank": 0, "slot": 1, "note": "도달 상태: mem[0].own==sA, mem[1].own==sB 공존 — 외래 image 주소 가능"}
+   ],
+   "expect": {
+    "sticky": null,
+    "invariant_state": ["sticky == 0 전 구간 (cycle 0..5)", "mem[0].own == sA, mem[1].own == sB, owner[0] == 무주"]
+   }
+  },
+  {
+   "id": "WT-05",
+   "kind": "witness",
+   "run": 15,
+   "cfg": "AccBank_witness_fill_busy.cfg",
+   "tlc_violated": "Witness_NoBusyFill",
+   "trace_file": "derived/traces/witness_fill_busy.trace.txt",
+   "trace_states": 6,
+   "arms": {"guard": "fill_bankfree", "fault_scenario": "DT-06"},
+   "title": "도달성: 자기 image 준비 완료 + bank 는 live 외래 owner 점유 — fault 없이 도달",
+   "ops": [
+    {"cycle": 0, "op": "ACQ_REQ",   "stream": "sA"},
+    {"cycle": 1, "op": "ACQ_GRANT", "stream": "sA", "bank": 0},
+    {"cycle": 2, "op": "SPILL",     "stream": "sA", "bank": 0, "slot": 0},
+    {"cycle": 3, "op": "ACQ_REQ",   "stream": "sB"},
+    {"cycle": 4, "op": "ACQ_GRANT", "stream": "sB", "bank": 0, "note": "도달 상태: mem[0].own==sA (image ready) + owner[0]==sB (live 외래)"}
+   ],
+   "expect": {
+    "sticky": null,
+    "invariant_state": ["sticky == 0 전 구간 (cycle 0..4)", "mem[0].own == sA, owner[0] == sB"]
+   }
+  },
+  {
+   "id": "WT-06",
+   "kind": "witness",
+   "run": 16,
+   "cfg": "AccBank_witness_zero_window.cfg",
+   "tlc_violated": "Witness_NoZeroRaceWindow",
+   "trace_file": "derived/traces/witness_zero_window.trace.txt",
+   "trace_states": 4,
+   "arms": {"guard": "zero_owner", "fault_scenario": "DT-07"},
+   "title": "도달성: 외래 owner 가 비어 있지 않은 누산을 들고 있는 bank 에 raw 0x7E 발행 가능한 창 — fault 없이 도달",
+   "ops": [
+    {"cycle": 0, "op": "ACQ_REQ",   "stream": "sA"},
+    {"cycle": 1, "op": "ACQ_GRANT", "stream": "sA", "bank": 0},
+    {"cycle": 2, "op": "WSTEP",     "stream": "sA", "bank": 0, "token": "sA#1", "writeback": 9, "note": "도달 cycle = 9 (writeback 후 bank word nonzero — TLA+ state 4 의 bank # <<>> 는 RTL 에선 writeback 이후에 성립)"}
+   ],
+   "expect": {
+    "sticky": null,
+    "invariant_state": ["sticky == 0 전 구간 (cycle 0..9)", "cycle 9: bank0 word == W(sA#1) != canonical zero, owner[0] == sA, sB idle — zero-race 창 개방 실증"]
+   }
+  }
+ ]
+}

@@ -1,0 +1,59 @@
+# witness_stray_acc — TLC 2.19 counterexample trace (deterministic extract: -workers 1, full-state print)
+# source: java -cp /usr/share/java/tla2tools.jar tlc2.TLC -nowarning -workers 1 -cleanup -config AccBank_witness_stray_acc.cfg AccBank
+# 재실행 2회 byte-identical (본 extract 기준). run.sh 는 동일 탐색을 -difftrace 로 출력한다 (반례 동일).
+Error: Invariant Witness_NoStrayAccumulate is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pend = "no_owner"
+/\ bank = (0 :> <<>> @@ 1 :> <<>>)
+/\ issued = [sA |-> 0, sB |-> 0, sC |-> 0]
+/\ conflict = FALSE
+/\ st = [sA |-> "idle", sB |-> "idle", sC |-> "idle"]
+/\ drained = [ sA |-> [has |-> FALSE, val |-> <<>>],
+  sB |-> [has |-> FALSE, val |-> <<>>],
+  sC |-> [has |-> FALSE, val |-> <<>>] ]
+/\ mem = ( 0 :> [val |-> <<>>, own |-> "no_owner"] @@
+  1 :> [val |-> <<>>, own |-> "no_owner"] )
+/\ owner = (0 :> "no_owner" @@ 1 :> "no_owner")
+
+State 2: <RequestOwn line 293, col 5 to line 297, col 66 of module AccBank>
+/\ pend = "sA"
+/\ bank = (0 :> <<>> @@ 1 :> <<>>)
+/\ issued = [sA |-> 0, sB |-> 0, sC |-> 0]
+/\ conflict = FALSE
+/\ st = [sA |-> "req", sB |-> "idle", sC |-> "idle"]
+/\ drained = [ sA |-> [has |-> FALSE, val |-> <<>>],
+  sB |-> [has |-> FALSE, val |-> <<>>],
+  sC |-> [has |-> FALSE, val |-> <<>>] ]
+/\ mem = ( 0 :> [val |-> <<>>, own |-> "no_owner"] @@
+  1 :> [val |-> <<>>, own |-> "no_owner"] )
+/\ owner = (0 :> "no_owner" @@ 1 :> "no_owner")
+
+State 3: <CommitOwn line 313, col 9 to line 322, col 49 of module AccBank>
+/\ pend = "no_owner"
+/\ bank = (0 :> <<>> @@ 1 :> <<>>)
+/\ issued = [sA |-> 0, sB |-> 0, sC |-> 0]
+/\ conflict = FALSE
+/\ st = [sA |-> "own", sB |-> "idle", sC |-> "idle"]
+/\ drained = [ sA |-> [has |-> FALSE, val |-> <<>>],
+  sB |-> [has |-> FALSE, val |-> <<>>],
+  sC |-> [has |-> FALSE, val |-> <<>>] ]
+/\ mem = ( 0 :> [val |-> <<>>, own |-> "no_owner"] @@
+  1 :> [val |-> <<>>, own |-> "no_owner"] )
+/\ owner = (0 :> "sA" @@ 1 :> "no_owner")
+
+State 4: <Spill line 411, col 9 to line 417, col 64 of module AccBank>
+/\ pend = "no_owner"
+/\ bank = (0 :> <<>> @@ 1 :> <<>>)
+/\ issued = [sA |-> 0, sB |-> 0, sC |-> 0]
+/\ conflict = FALSE
+/\ st = [sA |-> "spilled", sB |-> "idle", sC |-> "idle"]
+/\ drained = [ sA |-> [has |-> FALSE, val |-> <<>>],
+  sB |-> [has |-> FALSE, val |-> <<>>],
+  sC |-> [has |-> FALSE, val |-> <<>>] ]
+/\ mem = (0 :> [val |-> <<>>, own |-> "sA"] @@ 1 :> [val |-> <<>>, own |-> "no_owner"])
+/\ owner = (0 :> "no_owner" @@ 1 :> "no_owner")
+
+24 states generated, 13 distinct states found, 6 states left on queue.
+The depth of the complete state graph search is 4.
+The average outdegree of the complete state graph is 2 (minimum is 1, the maximum 4 and the 95th percentile is 4).

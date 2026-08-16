@@ -28,10 +28,10 @@ Removed 0 unused modules.
 Cleaned up 0 empty switches.
 
 3.2. Executing PROC_RMDEAD pass (remove dead branches from decision trees).
-Marked 1 switch rules as full_case in process $proc$FP_AccLattice.v:670$49 in module FP_AccLattice.
-Marked 1 switch rules as full_case in process $proc$FP_AccLattice.v:642$48 in module FP_AccLattice.
-Marked 1 switch rules as full_case in process $proc$FP_AccLattice.v:623$45 in module FP_AccLattice.
-Marked 1 switch rules as full_case in process $proc$FP_AccLattice.v:240$15 in module FP_AccLattice.
+Marked 1 switch rules as full_case in process $proc$FP_AccLattice.v:682$49 in module FP_AccLattice.
+Marked 1 switch rules as full_case in process $proc$FP_AccLattice.v:654$48 in module FP_AccLattice.
+Marked 1 switch rules as full_case in process $proc$FP_AccLattice.v:635$45 in module FP_AccLattice.
+Marked 1 switch rules as full_case in process $proc$FP_AccLattice.v:246$15 in module FP_AccLattice.
 Removed a total of 0 dead cases.
 
 3.3. Executing PROC_PRUNE pass (remove redundant assignments in processes).
@@ -39,23 +39,23 @@ Removed 0 redundant assignments.
 Promoted 176 assignments to connections.
 
 3.4. Executing PROC_INIT pass (extract init attributes).
-Found init rule in `\FP_AccLattice.$proc$FP_AccLattice.v:587$1068'.
+Found init rule in `\FP_AccLattice.$proc$FP_AccLattice.v:599$1067'.
   Set init value: \v_s4 = 1'0
-Found init rule in `\FP_AccLattice.$proc$FP_AccLattice.v:586$1067'.
+Found init rule in `\FP_AccLattice.$proc$FP_AccLattice.v:598$1066'.
   Set init value: \v_s3 = 1'0
-Found init rule in `\FP_AccLattice.$proc$FP_AccLattice.v:585$1066'.
+Found init rule in `\FP_AccLattice.$proc$FP_AccLattice.v:597$1065'.
   Set init value: \v_res = 1'0
-Found init rule in `\FP_AccLattice.$proc$FP_AccLattice.v:564$1065'.
+Found init rule in `\FP_AccLattice.$proc$FP_AccLattice.v:576$1064'.
   Set init value: \fault_acc = 1'0
-Found init rule in `\FP_AccLattice.$proc$FP_AccLattice.v:390$1064'.
+Found init rule in `\FP_AccLattice.$proc$FP_AccLattice.v:402$1063'.
   Set init value: \c_row = 576'000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-Found init rule in `\FP_AccLattice.$proc$FP_AccLattice.v:389$1063'.
+Found init rule in `\FP_AccLattice.$proc$FP_AccLattice.v:401$1062'.
   Set init value: \s_row = 576'000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-Found init rule in `\FP_AccLattice.$proc$FP_AccLattice.v:234$1062'.
+Found init rule in `\FP_AccLattice.$proc$FP_AccLattice.v:240$1061'.
   Set init value: \bcnt = 6'000000
-Found init rule in `\FP_AccLattice.$proc$FP_AccLattice.v:233$1061'.
+Found init rule in `\FP_AccLattice.$proc$FP_AccLattice.v:239$1060'.
   Set init value: \acc_active = 1'0
-Found init rule in `\FP_AccLattice.$proc$FP_AccLattice.v:196$1060'.
+Found init rule in `\FP_AccLattice.$proc$FP_AccLattice.v:202$1059'.
   Set init value: \done_q = 1'0
 
 3.5. Executing PROC_ARST pass (detect async resets in processes).
@@ -65,577 +65,577 @@ Converted 0 switches.
 <suppressed ~7 debug messages>
 
 3.7. Executing PROC_MUX pass (convert decision trees to multiplexers).
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:587$1068'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:586$1067'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:585$1066'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:564$1065'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:390$1064'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:389$1063'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:234$1062'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:233$1061'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:196$1060'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:615$1059'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:615$1058'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:615$1057'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:615$1056'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:615$1055'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:615$1054'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:615$1053'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:615$1052'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:615$1051'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:558$1050'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:558$1049'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:540$1048'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:540$1047'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:522$1046'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:522$1045'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:496$1044'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:495$1041'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:481$1040'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:478$1039'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:477$1036'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:460$1035'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:459$1032'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:460$1031'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:459$1028'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:445$1027'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:445$1026'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:442$1025'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:441$1022'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:442$1021'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:441$1018'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:427$1017'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:427$1016'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:424$1015'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:423$1012'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:424$1011'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:423$1008'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:424$1007'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:423$1004'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:408$1003'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:408$1002'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:408$1001'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:408$1000'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:408$999'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:408$998'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:408$997'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:408$996'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:343$993'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:343$990'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:343$987'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:343$984'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:343$981'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:343$978'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:343$975'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:343$972'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:343$969'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:343$966'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:343$963'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$960'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$954'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$948'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$942'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$936'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$930'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$924'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$918'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$912'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$906'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$903'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$897'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$891'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$885'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$879'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$873'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$867'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$861'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$855'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$849'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$846'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$840'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$834'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$828'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$822'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$816'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$810'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$804'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$798'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$792'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$789'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$783'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$777'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$771'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$765'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$759'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$753'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$747'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$741'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$735'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$732'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$726'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$720'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$714'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$708'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$702'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$696'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$690'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$684'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$678'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$675'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$669'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$663'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$657'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$651'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$645'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$639'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$633'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$627'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$621'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$618'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$612'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$606'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$600'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$594'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$588'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$582'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$576'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$570'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$564'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$561'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$555'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$549'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$543'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$537'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$531'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$525'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$519'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$513'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$507'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$504'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$498'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$492'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$486'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$480'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$474'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$468'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$462'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$456'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:305$450'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:413$449'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:412$448'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:411$447'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:774$95'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:599$1067'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:598$1066'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:597$1065'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:576$1064'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:402$1063'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:401$1062'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:240$1061'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:239$1060'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:202$1059'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:627$1058'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:627$1057'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:627$1056'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:627$1055'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:627$1054'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:627$1053'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:627$1052'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:627$1051'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:627$1050'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:570$1049'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:570$1048'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:552$1047'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:552$1046'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:534$1045'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:534$1044'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:508$1043'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:507$1040'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:493$1039'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:490$1038'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:489$1035'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:472$1034'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:471$1031'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:472$1030'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:471$1027'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:457$1026'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:457$1025'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:454$1024'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:453$1021'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:454$1020'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:453$1017'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:439$1016'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:439$1015'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:436$1014'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:435$1011'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:436$1010'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:435$1007'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:436$1006'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:435$1003'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:420$1002'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:420$1001'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:420$1000'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:420$999'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:420$998'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:420$997'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:420$996'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:420$995'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:355$992'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:355$989'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:355$986'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:355$983'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:355$980'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:355$977'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:355$974'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:355$971'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:355$968'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:355$965'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:355$962'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:329$959'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$953'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$947'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$941'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$935'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$929'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$923'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$917'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$911'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$905'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:329$902'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$896'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$890'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$884'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$878'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$872'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$866'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$860'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$854'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$848'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:329$845'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$839'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$833'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$827'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$821'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$815'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$809'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$803'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$797'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$791'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:329$788'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$782'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$776'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$770'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$764'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$758'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$752'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$746'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$740'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$734'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:329$731'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$725'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$719'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$713'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$707'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$701'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$695'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$689'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$683'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$677'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:329$674'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$668'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$662'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$656'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$650'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$644'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$638'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$632'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$626'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$620'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:329$617'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$611'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$605'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$599'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$593'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$587'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$581'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$575'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$569'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$563'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:329$560'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$554'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$548'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$542'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$536'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$530'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$524'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$518'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$512'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$506'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:329$503'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$497'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$491'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$485'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$479'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$473'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$467'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$461'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$455'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:317$449'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:425$448'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:424$447'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:423$446'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:786$95'.
      1/5: $0\fault_q[0:0]
      2/5: $0\fp32_q[31:0]
      3/5: $0\bank_q[63:0]
      4/5: $0\wide_q[63:0]
      5/5: $0\resolved_q[527:0]
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:705$66'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:670$49'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:717$66'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:682$49'.
      1/1: $1\st_low[0:0]
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:642$48'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:654$48'.
      1/1: $1\win[127:0]
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:623$45'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:635$45'.
      1/1: $1\cs[3:0]
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:594$38'.
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:566$31'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:606$38'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:578$31'.
      1/3: $0\fault_acc[0:0]
      2/3: $0\c_row[575:0]
      3/3: $0\s_row[575:0]
-Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:240$15'.
+Creating decoders for process `\FP_AccLattice.$proc$FP_AccLattice.v:246$15'.
      1/2: $0\bcnt[5:0]
      2/2: $0\acc_active[0:0]
 
 3.8. Executing PROC_DLATCH pass (convert process syncs to latches).
-No latch inferred for signal `\FP_AccLattice.\chunk[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:615$1059'.
-No latch inferred for signal `\FP_AccLattice.\chunk[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:615$1058'.
-No latch inferred for signal `\FP_AccLattice.\chunk[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:615$1057'.
-No latch inferred for signal `\FP_AccLattice.\chunk[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:615$1056'.
-No latch inferred for signal `\FP_AccLattice.\chunk[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:615$1055'.
-No latch inferred for signal `\FP_AccLattice.\chunk[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:615$1054'.
-No latch inferred for signal `\FP_AccLattice.\chunk[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:615$1053'.
-No latch inferred for signal `\FP_AccLattice.\chunk[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:615$1052'.
-No latch inferred for signal `\FP_AccLattice.\chunk[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:615$1051'.
-No latch inferred for signal `\FP_AccLattice.\tr8[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:558$1050'.
-No latch inferred for signal `\FP_AccLattice.\tr8[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:558$1049'.
-No latch inferred for signal `\FP_AccLattice.\tr7[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:540$1048'.
-No latch inferred for signal `\FP_AccLattice.\tr7[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:540$1047'.
-No latch inferred for signal `\FP_AccLattice.\tr6[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:522$1046'.
-No latch inferred for signal `\FP_AccLattice.\tr6[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:522$1045'.
-No latch inferred for signal `\FP_AccLattice.\tr5[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:496$1044'.
-No latch inferred for signal `\FP_AccLattice.\tr5[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:495$1041'.
-No latch inferred for signal `\FP_AccLattice.\tr4[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:481$1040'.
-No latch inferred for signal `\FP_AccLattice.\tr4[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:478$1039'.
-No latch inferred for signal `\FP_AccLattice.\tr4[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:477$1036'.
-No latch inferred for signal `\FP_AccLattice.\tr3[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:460$1035'.
-No latch inferred for signal `\FP_AccLattice.\tr3[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:459$1032'.
-No latch inferred for signal `\FP_AccLattice.\tr3[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:460$1031'.
-No latch inferred for signal `\FP_AccLattice.\tr3[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:459$1028'.
-No latch inferred for signal `\FP_AccLattice.\tr2[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:445$1027'.
-No latch inferred for signal `\FP_AccLattice.\tr2[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:445$1026'.
-No latch inferred for signal `\FP_AccLattice.\tr2[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:442$1025'.
-No latch inferred for signal `\FP_AccLattice.\tr2[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:441$1022'.
-No latch inferred for signal `\FP_AccLattice.\tr2[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:442$1021'.
-No latch inferred for signal `\FP_AccLattice.\tr2[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:441$1018'.
-No latch inferred for signal `\FP_AccLattice.\tr1[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:427$1017'.
-No latch inferred for signal `\FP_AccLattice.\tr1[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:427$1016'.
-No latch inferred for signal `\FP_AccLattice.\tr1[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:424$1015'.
-No latch inferred for signal `\FP_AccLattice.\tr1[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:423$1012'.
-No latch inferred for signal `\FP_AccLattice.\tr1[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:424$1011'.
-No latch inferred for signal `\FP_AccLattice.\tr1[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:423$1008'.
-No latch inferred for signal `\FP_AccLattice.\tr1[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:424$1007'.
-No latch inferred for signal `\FP_AccLattice.\tr1[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:423$1004'.
-No latch inferred for signal `\FP_AccLattice.\tr0[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:408$1003'.
-No latch inferred for signal `\FP_AccLattice.\tr0[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:408$1002'.
-No latch inferred for signal `\FP_AccLattice.\tr0[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:408$1001'.
-No latch inferred for signal `\FP_AccLattice.\tr0[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:408$1000'.
-No latch inferred for signal `\FP_AccLattice.\tr0[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:408$999'.
-No latch inferred for signal `\FP_AccLattice.\tr0[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:408$998'.
-No latch inferred for signal `\FP_AccLattice.\tr0[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:408$997'.
-No latch inferred for signal `\FP_AccLattice.\tr0[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:408$996'.
-No latch inferred for signal `\FP_AccLattice.\pc3[10]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:343$993'.
-No latch inferred for signal `\FP_AccLattice.\pc3[9]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:343$990'.
-No latch inferred for signal `\FP_AccLattice.\pc3[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:343$987'.
-No latch inferred for signal `\FP_AccLattice.\pc3[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:343$984'.
-No latch inferred for signal `\FP_AccLattice.\pc3[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:343$981'.
-No latch inferred for signal `\FP_AccLattice.\pc3[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:343$978'.
-No latch inferred for signal `\FP_AccLattice.\pc3[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:343$975'.
-No latch inferred for signal `\FP_AccLattice.\pc3[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:343$972'.
-No latch inferred for signal `\FP_AccLattice.\pc3[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:343$969'.
-No latch inferred for signal `\FP_AccLattice.\pc3[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:343$966'.
-No latch inferred for signal `\FP_AccLattice.\pc3[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:343$963'.
-No latch inferred for signal `\FP_AccLattice.\contrib[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$960'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[8].segv[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$954'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[8].segv[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$948'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[8].segv[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$942'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[8].segv[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$936'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[8].segv[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$930'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[8].segv[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$924'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[8].segv[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$918'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[8].segv[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$912'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[8].segv[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$906'.
-No latch inferred for signal `\FP_AccLattice.\contrib[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$903'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[7].segv[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$897'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[7].segv[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$891'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[7].segv[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$885'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[7].segv[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$879'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[7].segv[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$873'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[7].segv[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$867'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[7].segv[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$861'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[7].segv[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$855'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[7].segv[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$849'.
-No latch inferred for signal `\FP_AccLattice.\contrib[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$846'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[6].segv[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$840'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[6].segv[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$834'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[6].segv[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$828'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[6].segv[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$822'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[6].segv[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$816'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[6].segv[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$810'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[6].segv[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$804'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[6].segv[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$798'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[6].segv[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$792'.
-No latch inferred for signal `\FP_AccLattice.\contrib[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$789'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[5].segv[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$783'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[5].segv[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$777'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[5].segv[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$771'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[5].segv[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$765'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[5].segv[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$759'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[5].segv[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$753'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[5].segv[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$747'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[5].segv[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$741'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[5].segv[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$735'.
-No latch inferred for signal `\FP_AccLattice.\contrib[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$732'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[4].segv[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$726'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[4].segv[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$720'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[4].segv[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$714'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[4].segv[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$708'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[4].segv[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$702'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[4].segv[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$696'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[4].segv[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$690'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[4].segv[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$684'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[4].segv[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$678'.
-No latch inferred for signal `\FP_AccLattice.\contrib[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$675'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[3].segv[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$669'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[3].segv[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$663'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[3].segv[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$657'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[3].segv[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$651'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[3].segv[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$645'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[3].segv[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$639'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[3].segv[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$633'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[3].segv[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$627'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[3].segv[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$621'.
-No latch inferred for signal `\FP_AccLattice.\contrib[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$618'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[2].segv[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$612'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[2].segv[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$606'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[2].segv[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$600'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[2].segv[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$594'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[2].segv[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$588'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[2].segv[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$582'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[2].segv[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$576'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[2].segv[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$570'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[2].segv[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$564'.
-No latch inferred for signal `\FP_AccLattice.\contrib[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$561'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[1].segv[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$555'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[1].segv[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$549'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[1].segv[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$543'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[1].segv[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$537'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[1].segv[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$531'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[1].segv[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$525'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[1].segv[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$519'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[1].segv[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$513'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[1].segv[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$507'.
-No latch inferred for signal `\FP_AccLattice.\contrib[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$504'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[0].segv[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$498'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[0].segv[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$492'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[0].segv[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$486'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[0].segv[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$480'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[0].segv[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$474'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[0].segv[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$468'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[0].segv[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$462'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[0].segv[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$456'.
-No latch inferred for signal `\FP_AccLattice.\g_lane[0].segv[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:305$450'.
-No latch inferred for signal `\FP_AccLattice.\tr0[10]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:413$449'.
-No latch inferred for signal `\FP_AccLattice.\tr0[9]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:412$448'.
-No latch inferred for signal `\FP_AccLattice.\tr0[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:411$447'.
-No latch inferred for signal `\FP_AccLattice.\st_low' from process `\FP_AccLattice.$proc$FP_AccLattice.v:670$49'.
-No latch inferred for signal `\FP_AccLattice.\win' from process `\FP_AccLattice.$proc$FP_AccLattice.v:642$48'.
-No latch inferred for signal `\FP_AccLattice.\cs' from process `\FP_AccLattice.$proc$FP_AccLattice.v:623$45'.
+No latch inferred for signal `\FP_AccLattice.\chunk[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:627$1058'.
+No latch inferred for signal `\FP_AccLattice.\chunk[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:627$1057'.
+No latch inferred for signal `\FP_AccLattice.\chunk[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:627$1056'.
+No latch inferred for signal `\FP_AccLattice.\chunk[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:627$1055'.
+No latch inferred for signal `\FP_AccLattice.\chunk[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:627$1054'.
+No latch inferred for signal `\FP_AccLattice.\chunk[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:627$1053'.
+No latch inferred for signal `\FP_AccLattice.\chunk[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:627$1052'.
+No latch inferred for signal `\FP_AccLattice.\chunk[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:627$1051'.
+No latch inferred for signal `\FP_AccLattice.\chunk[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:627$1050'.
+No latch inferred for signal `\FP_AccLattice.\tr8[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:570$1049'.
+No latch inferred for signal `\FP_AccLattice.\tr8[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:570$1048'.
+No latch inferred for signal `\FP_AccLattice.\tr7[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:552$1047'.
+No latch inferred for signal `\FP_AccLattice.\tr7[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:552$1046'.
+No latch inferred for signal `\FP_AccLattice.\tr6[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:534$1045'.
+No latch inferred for signal `\FP_AccLattice.\tr6[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:534$1044'.
+No latch inferred for signal `\FP_AccLattice.\tr5[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:508$1043'.
+No latch inferred for signal `\FP_AccLattice.\tr5[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:507$1040'.
+No latch inferred for signal `\FP_AccLattice.\tr4[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:493$1039'.
+No latch inferred for signal `\FP_AccLattice.\tr4[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:490$1038'.
+No latch inferred for signal `\FP_AccLattice.\tr4[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:489$1035'.
+No latch inferred for signal `\FP_AccLattice.\tr3[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:472$1034'.
+No latch inferred for signal `\FP_AccLattice.\tr3[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:471$1031'.
+No latch inferred for signal `\FP_AccLattice.\tr3[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:472$1030'.
+No latch inferred for signal `\FP_AccLattice.\tr3[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:471$1027'.
+No latch inferred for signal `\FP_AccLattice.\tr2[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:457$1026'.
+No latch inferred for signal `\FP_AccLattice.\tr2[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:457$1025'.
+No latch inferred for signal `\FP_AccLattice.\tr2[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:454$1024'.
+No latch inferred for signal `\FP_AccLattice.\tr2[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:453$1021'.
+No latch inferred for signal `\FP_AccLattice.\tr2[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:454$1020'.
+No latch inferred for signal `\FP_AccLattice.\tr2[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:453$1017'.
+No latch inferred for signal `\FP_AccLattice.\tr1[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:439$1016'.
+No latch inferred for signal `\FP_AccLattice.\tr1[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:439$1015'.
+No latch inferred for signal `\FP_AccLattice.\tr1[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:436$1014'.
+No latch inferred for signal `\FP_AccLattice.\tr1[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:435$1011'.
+No latch inferred for signal `\FP_AccLattice.\tr1[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:436$1010'.
+No latch inferred for signal `\FP_AccLattice.\tr1[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:435$1007'.
+No latch inferred for signal `\FP_AccLattice.\tr1[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:436$1006'.
+No latch inferred for signal `\FP_AccLattice.\tr1[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:435$1003'.
+No latch inferred for signal `\FP_AccLattice.\tr0[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:420$1002'.
+No latch inferred for signal `\FP_AccLattice.\tr0[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:420$1001'.
+No latch inferred for signal `\FP_AccLattice.\tr0[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:420$1000'.
+No latch inferred for signal `\FP_AccLattice.\tr0[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:420$999'.
+No latch inferred for signal `\FP_AccLattice.\tr0[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:420$998'.
+No latch inferred for signal `\FP_AccLattice.\tr0[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:420$997'.
+No latch inferred for signal `\FP_AccLattice.\tr0[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:420$996'.
+No latch inferred for signal `\FP_AccLattice.\tr0[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:420$995'.
+No latch inferred for signal `\FP_AccLattice.\pc3[10]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:355$992'.
+No latch inferred for signal `\FP_AccLattice.\pc3[9]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:355$989'.
+No latch inferred for signal `\FP_AccLattice.\pc3[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:355$986'.
+No latch inferred for signal `\FP_AccLattice.\pc3[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:355$983'.
+No latch inferred for signal `\FP_AccLattice.\pc3[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:355$980'.
+No latch inferred for signal `\FP_AccLattice.\pc3[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:355$977'.
+No latch inferred for signal `\FP_AccLattice.\pc3[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:355$974'.
+No latch inferred for signal `\FP_AccLattice.\pc3[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:355$971'.
+No latch inferred for signal `\FP_AccLattice.\pc3[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:355$968'.
+No latch inferred for signal `\FP_AccLattice.\pc3[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:355$965'.
+No latch inferred for signal `\FP_AccLattice.\pc3[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:355$962'.
+No latch inferred for signal `\FP_AccLattice.\contrib[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:329$959'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[8].segv[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$953'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[8].segv[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$947'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[8].segv[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$941'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[8].segv[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$935'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[8].segv[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$929'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[8].segv[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$923'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[8].segv[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$917'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[8].segv[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$911'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[8].segv[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$905'.
+No latch inferred for signal `\FP_AccLattice.\contrib[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:329$902'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[7].segv[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$896'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[7].segv[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$890'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[7].segv[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$884'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[7].segv[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$878'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[7].segv[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$872'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[7].segv[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$866'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[7].segv[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$860'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[7].segv[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$854'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[7].segv[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$848'.
+No latch inferred for signal `\FP_AccLattice.\contrib[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:329$845'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[6].segv[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$839'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[6].segv[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$833'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[6].segv[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$827'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[6].segv[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$821'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[6].segv[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$815'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[6].segv[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$809'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[6].segv[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$803'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[6].segv[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$797'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[6].segv[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$791'.
+No latch inferred for signal `\FP_AccLattice.\contrib[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:329$788'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[5].segv[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$782'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[5].segv[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$776'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[5].segv[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$770'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[5].segv[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$764'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[5].segv[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$758'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[5].segv[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$752'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[5].segv[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$746'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[5].segv[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$740'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[5].segv[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$734'.
+No latch inferred for signal `\FP_AccLattice.\contrib[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:329$731'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[4].segv[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$725'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[4].segv[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$719'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[4].segv[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$713'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[4].segv[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$707'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[4].segv[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$701'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[4].segv[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$695'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[4].segv[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$689'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[4].segv[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$683'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[4].segv[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$677'.
+No latch inferred for signal `\FP_AccLattice.\contrib[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:329$674'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[3].segv[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$668'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[3].segv[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$662'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[3].segv[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$656'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[3].segv[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$650'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[3].segv[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$644'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[3].segv[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$638'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[3].segv[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$632'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[3].segv[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$626'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[3].segv[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$620'.
+No latch inferred for signal `\FP_AccLattice.\contrib[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:329$617'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[2].segv[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$611'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[2].segv[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$605'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[2].segv[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$599'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[2].segv[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$593'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[2].segv[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$587'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[2].segv[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$581'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[2].segv[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$575'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[2].segv[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$569'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[2].segv[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$563'.
+No latch inferred for signal `\FP_AccLattice.\contrib[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:329$560'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[1].segv[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$554'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[1].segv[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$548'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[1].segv[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$542'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[1].segv[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$536'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[1].segv[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$530'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[1].segv[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$524'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[1].segv[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$518'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[1].segv[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$512'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[1].segv[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$506'.
+No latch inferred for signal `\FP_AccLattice.\contrib[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:329$503'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[0].segv[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$497'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[0].segv[7]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$491'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[0].segv[6]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$485'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[0].segv[5]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$479'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[0].segv[4]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$473'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[0].segv[3]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$467'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[0].segv[2]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$461'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[0].segv[1]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$455'.
+No latch inferred for signal `\FP_AccLattice.\g_lane[0].segv[0]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:317$449'.
+No latch inferred for signal `\FP_AccLattice.\tr0[10]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:425$448'.
+No latch inferred for signal `\FP_AccLattice.\tr0[9]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:424$447'.
+No latch inferred for signal `\FP_AccLattice.\tr0[8]' from process `\FP_AccLattice.$proc$FP_AccLattice.v:423$446'.
+No latch inferred for signal `\FP_AccLattice.\st_low' from process `\FP_AccLattice.$proc$FP_AccLattice.v:682$49'.
+No latch inferred for signal `\FP_AccLattice.\win' from process `\FP_AccLattice.$proc$FP_AccLattice.v:654$48'.
+No latch inferred for signal `\FP_AccLattice.\cs' from process `\FP_AccLattice.$proc$FP_AccLattice.v:635$45'.
 
 3.9. Executing PROC_DFF pass (convert process syncs to FFs).
-Creating register for signal `\FP_AccLattice.\resolved_q' using process `\FP_AccLattice.$proc$FP_AccLattice.v:774$95'.
+Creating register for signal `\FP_AccLattice.\resolved_q' using process `\FP_AccLattice.$proc$FP_AccLattice.v:786$95'.
+  created $dff cell `$procdff$1123' with positive edge clock.
+Creating register for signal `\FP_AccLattice.\wide_q' using process `\FP_AccLattice.$proc$FP_AccLattice.v:786$95'.
   created $dff cell `$procdff$1124' with positive edge clock.
-Creating register for signal `\FP_AccLattice.\wide_q' using process `\FP_AccLattice.$proc$FP_AccLattice.v:774$95'.
+Creating register for signal `\FP_AccLattice.\bank_q' using process `\FP_AccLattice.$proc$FP_AccLattice.v:786$95'.
   created $dff cell `$procdff$1125' with positive edge clock.
-Creating register for signal `\FP_AccLattice.\bank_q' using process `\FP_AccLattice.$proc$FP_AccLattice.v:774$95'.
+Creating register for signal `\FP_AccLattice.\fp32_q' using process `\FP_AccLattice.$proc$FP_AccLattice.v:786$95'.
   created $dff cell `$procdff$1126' with positive edge clock.
-Creating register for signal `\FP_AccLattice.\fp32_q' using process `\FP_AccLattice.$proc$FP_AccLattice.v:774$95'.
+Creating register for signal `\FP_AccLattice.\fault_q' using process `\FP_AccLattice.$proc$FP_AccLattice.v:786$95'.
   created $dff cell `$procdff$1127' with positive edge clock.
-Creating register for signal `\FP_AccLattice.\fault_q' using process `\FP_AccLattice.$proc$FP_AccLattice.v:774$95'.
+Creating register for signal `\FP_AccLattice.\done_q' using process `\FP_AccLattice.$proc$FP_AccLattice.v:786$95'.
   created $dff cell `$procdff$1128' with positive edge clock.
-Creating register for signal `\FP_AccLattice.\done_q' using process `\FP_AccLattice.$proc$FP_AccLattice.v:774$95'.
+Creating register for signal `\FP_AccLattice.\win_p3' using process `\FP_AccLattice.$proc$FP_AccLattice.v:717$66'.
   created $dff cell `$procdff$1129' with positive edge clock.
-Creating register for signal `\FP_AccLattice.\win_p3' using process `\FP_AccLattice.$proc$FP_AccLattice.v:705$66'.
+Creating register for signal `\FP_AccLattice.\lz_p3' using process `\FP_AccLattice.$proc$FP_AccLattice.v:717$66'.
   created $dff cell `$procdff$1130' with positive edge clock.
-Creating register for signal `\FP_AccLattice.\lz_p3' using process `\FP_AccLattice.$proc$FP_AccLattice.v:705$66'.
+Creating register for signal `\FP_AccLattice.\cs_p3' using process `\FP_AccLattice.$proc$FP_AccLattice.v:717$66'.
   created $dff cell `$procdff$1131' with positive edge clock.
-Creating register for signal `\FP_AccLattice.\cs_p3' using process `\FP_AccLattice.$proc$FP_AccLattice.v:705$66'.
+Creating register for signal `\FP_AccLattice.\stlow_p3' using process `\FP_AccLattice.$proc$FP_AccLattice.v:717$66'.
   created $dff cell `$procdff$1132' with positive edge clock.
-Creating register for signal `\FP_AccLattice.\stlow_p3' using process `\FP_AccLattice.$proc$FP_AccLattice.v:705$66'.
+Creating register for signal `\FP_AccLattice.\sign_p3' using process `\FP_AccLattice.$proc$FP_AccLattice.v:717$66'.
   created $dff cell `$procdff$1133' with positive edge clock.
-Creating register for signal `\FP_AccLattice.\sign_p3' using process `\FP_AccLattice.$proc$FP_AccLattice.v:705$66'.
+Creating register for signal `\FP_AccLattice.\magz_p3' using process `\FP_AccLattice.$proc$FP_AccLattice.v:717$66'.
   created $dff cell `$procdff$1134' with positive edge clock.
-Creating register for signal `\FP_AccLattice.\magz_p3' using process `\FP_AccLattice.$proc$FP_AccLattice.v:705$66'.
+Creating register for signal `\FP_AccLattice.\fault_p3' using process `\FP_AccLattice.$proc$FP_AccLattice.v:717$66'.
   created $dff cell `$procdff$1135' with positive edge clock.
-Creating register for signal `\FP_AccLattice.\fault_p3' using process `\FP_AccLattice.$proc$FP_AccLattice.v:705$66'.
+Creating register for signal `\FP_AccLattice.\lat_p3' using process `\FP_AccLattice.$proc$FP_AccLattice.v:717$66'.
   created $dff cell `$procdff$1136' with positive edge clock.
-Creating register for signal `\FP_AccLattice.\lat_p3' using process `\FP_AccLattice.$proc$FP_AccLattice.v:705$66'.
+Creating register for signal `\FP_AccLattice.\v_res' using process `\FP_AccLattice.$proc$FP_AccLattice.v:606$38'.
   created $dff cell `$procdff$1137' with positive edge clock.
-Creating register for signal `\FP_AccLattice.\v_res' using process `\FP_AccLattice.$proc$FP_AccLattice.v:594$38'.
+Creating register for signal `\FP_AccLattice.\v_s3' using process `\FP_AccLattice.$proc$FP_AccLattice.v:606$38'.
   created $dff cell `$procdff$1138' with positive edge clock.
-Creating register for signal `\FP_AccLattice.\v_s3' using process `\FP_AccLattice.$proc$FP_AccLattice.v:594$38'.
+Creating register for signal `\FP_AccLattice.\v_s4' using process `\FP_AccLattice.$proc$FP_AccLattice.v:606$38'.
   created $dff cell `$procdff$1139' with positive edge clock.
-Creating register for signal `\FP_AccLattice.\v_s4' using process `\FP_AccLattice.$proc$FP_AccLattice.v:594$38'.
+Creating register for signal `\FP_AccLattice.\lat_p2' using process `\FP_AccLattice.$proc$FP_AccLattice.v:606$38'.
   created $dff cell `$procdff$1140' with positive edge clock.
-Creating register for signal `\FP_AccLattice.\lat_p2' using process `\FP_AccLattice.$proc$FP_AccLattice.v:594$38'.
+Creating register for signal `\FP_AccLattice.\fault_p2' using process `\FP_AccLattice.$proc$FP_AccLattice.v:606$38'.
   created $dff cell `$procdff$1141' with positive edge clock.
-Creating register for signal `\FP_AccLattice.\fault_p2' using process `\FP_AccLattice.$proc$FP_AccLattice.v:594$38'.
+Creating register for signal `\FP_AccLattice.\s_row' using process `\FP_AccLattice.$proc$FP_AccLattice.v:578$31'.
   created $dff cell `$procdff$1142' with positive edge clock.
-Creating register for signal `\FP_AccLattice.\s_row' using process `\FP_AccLattice.$proc$FP_AccLattice.v:566$31'.
+Creating register for signal `\FP_AccLattice.\c_row' using process `\FP_AccLattice.$proc$FP_AccLattice.v:578$31'.
   created $dff cell `$procdff$1143' with positive edge clock.
-Creating register for signal `\FP_AccLattice.\c_row' using process `\FP_AccLattice.$proc$FP_AccLattice.v:566$31'.
+Creating register for signal `\FP_AccLattice.\fault_acc' using process `\FP_AccLattice.$proc$FP_AccLattice.v:578$31'.
   created $dff cell `$procdff$1144' with positive edge clock.
-Creating register for signal `\FP_AccLattice.\fault_acc' using process `\FP_AccLattice.$proc$FP_AccLattice.v:566$31'.
+Creating register for signal `\FP_AccLattice.\acc_active' using process `\FP_AccLattice.$proc$FP_AccLattice.v:246$15'.
   created $dff cell `$procdff$1145' with positive edge clock.
-Creating register for signal `\FP_AccLattice.\acc_active' using process `\FP_AccLattice.$proc$FP_AccLattice.v:240$15'.
+Creating register for signal `\FP_AccLattice.\bcnt' using process `\FP_AccLattice.$proc$FP_AccLattice.v:246$15'.
   created $dff cell `$procdff$1146' with positive edge clock.
-Creating register for signal `\FP_AccLattice.\bcnt' using process `\FP_AccLattice.$proc$FP_AccLattice.v:240$15'.
-  created $dff cell `$procdff$1147' with positive edge clock.
 
 3.10. Executing PROC_MEMWR pass (convert process memory writes to cells).
 
 3.11. Executing PROC_CLEAN pass (remove empty switches from decision trees).
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:587$1068'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:586$1067'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:585$1066'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:564$1065'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:390$1064'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:389$1063'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:234$1062'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:233$1061'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:196$1060'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:615$1059'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:615$1058'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:615$1057'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:615$1056'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:615$1055'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:615$1054'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:615$1053'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:615$1052'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:615$1051'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:558$1050'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:558$1049'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:540$1048'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:540$1047'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:522$1046'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:522$1045'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:496$1044'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:495$1041'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:481$1040'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:478$1039'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:477$1036'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:460$1035'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:459$1032'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:460$1031'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:459$1028'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:445$1027'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:445$1026'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:442$1025'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:441$1022'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:442$1021'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:441$1018'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:427$1017'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:427$1016'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:424$1015'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:423$1012'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:424$1011'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:423$1008'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:424$1007'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:423$1004'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:408$1003'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:408$1002'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:408$1001'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:408$1000'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:408$999'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:408$998'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:408$997'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:408$996'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:343$993'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:343$990'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:343$987'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:343$984'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:343$981'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:343$978'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:343$975'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:343$972'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:343$969'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:343$966'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:343$963'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$960'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$954'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$948'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$942'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$936'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$930'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$924'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$918'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$912'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$906'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$903'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$897'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$891'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$885'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$879'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$873'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$867'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$861'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$855'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$849'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$846'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$840'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$834'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$828'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$822'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$816'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$810'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$804'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$798'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$792'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$789'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$783'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$777'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$771'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$765'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$759'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$753'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$747'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$741'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$735'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$732'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$726'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$720'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$714'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$708'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$702'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$696'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$690'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$684'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$678'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$675'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$669'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$663'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$657'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$651'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$645'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$639'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$633'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$627'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$621'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$618'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$612'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$606'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$600'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$594'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$588'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$582'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$576'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$570'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$564'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$561'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$555'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$549'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$543'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$537'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$531'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$525'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$519'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$513'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$507'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$504'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$498'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$492'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$486'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$480'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$474'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$468'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$462'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$456'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:305$450'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:413$449'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:412$448'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:411$447'.
-Found and cleaned up 1 empty switch in `\FP_AccLattice.$proc$FP_AccLattice.v:774$95'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:774$95'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:705$66'.
-Found and cleaned up 1 empty switch in `\FP_AccLattice.$proc$FP_AccLattice.v:670$49'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:670$49'.
-Found and cleaned up 1 empty switch in `\FP_AccLattice.$proc$FP_AccLattice.v:642$48'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:642$48'.
-Found and cleaned up 1 empty switch in `\FP_AccLattice.$proc$FP_AccLattice.v:623$45'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:623$45'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:594$38'.
-Found and cleaned up 1 empty switch in `\FP_AccLattice.$proc$FP_AccLattice.v:566$31'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:566$31'.
-Found and cleaned up 2 empty switches in `\FP_AccLattice.$proc$FP_AccLattice.v:240$15'.
-Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:240$15'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:599$1067'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:598$1066'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:597$1065'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:576$1064'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:402$1063'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:401$1062'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:240$1061'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:239$1060'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:202$1059'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:627$1058'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:627$1057'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:627$1056'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:627$1055'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:627$1054'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:627$1053'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:627$1052'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:627$1051'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:627$1050'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:570$1049'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:570$1048'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:552$1047'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:552$1046'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:534$1045'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:534$1044'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:508$1043'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:507$1040'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:493$1039'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:490$1038'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:489$1035'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:472$1034'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:471$1031'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:472$1030'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:471$1027'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:457$1026'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:457$1025'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:454$1024'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:453$1021'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:454$1020'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:453$1017'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:439$1016'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:439$1015'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:436$1014'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:435$1011'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:436$1010'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:435$1007'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:436$1006'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:435$1003'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:420$1002'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:420$1001'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:420$1000'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:420$999'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:420$998'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:420$997'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:420$996'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:420$995'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:355$992'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:355$989'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:355$986'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:355$983'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:355$980'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:355$977'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:355$974'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:355$971'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:355$968'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:355$965'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:355$962'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:329$959'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$953'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$947'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$941'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$935'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$929'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$923'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$917'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$911'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$905'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:329$902'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$896'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$890'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$884'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$878'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$872'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$866'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$860'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$854'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$848'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:329$845'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$839'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$833'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$827'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$821'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$815'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$809'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$803'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$797'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$791'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:329$788'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$782'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$776'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$770'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$764'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$758'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$752'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$746'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$740'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$734'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:329$731'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$725'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$719'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$713'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$707'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$701'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$695'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$689'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$683'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$677'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:329$674'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$668'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$662'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$656'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$650'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$644'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$638'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$632'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$626'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$620'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:329$617'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$611'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$605'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$599'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$593'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$587'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$581'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$575'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$569'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$563'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:329$560'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$554'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$548'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$542'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$536'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$530'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$524'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$518'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$512'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$506'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:329$503'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$497'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$491'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$485'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$479'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$473'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$467'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$461'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$455'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:317$449'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:425$448'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:424$447'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:423$446'.
+Found and cleaned up 1 empty switch in `\FP_AccLattice.$proc$FP_AccLattice.v:786$95'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:786$95'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:717$66'.
+Found and cleaned up 1 empty switch in `\FP_AccLattice.$proc$FP_AccLattice.v:682$49'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:682$49'.
+Found and cleaned up 1 empty switch in `\FP_AccLattice.$proc$FP_AccLattice.v:654$48'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:654$48'.
+Found and cleaned up 1 empty switch in `\FP_AccLattice.$proc$FP_AccLattice.v:635$45'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:635$45'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:606$38'.
+Found and cleaned up 1 empty switch in `\FP_AccLattice.$proc$FP_AccLattice.v:578$31'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:578$31'.
+Found and cleaned up 2 empty switches in `\FP_AccLattice.$proc$FP_AccLattice.v:246$15'.
+Removing empty process `FP_AccLattice.$proc$FP_AccLattice.v:246$15'.
 Cleaned up 7 empty switches.
 
 3.12. Executing OPT_EXPR pass (perform const folding).
 Optimizing module FP_AccLattice.
-<suppressed ~53 debug messages>
+<suppressed ~54 debug messages>
 
 4. Executing OPT_CLEAN pass (remove unused cells and wires).
 Finding unused cells or wires in module \FP_AccLattice..
-Removed 2 unused cells and 536 unused wires.
+Removed 2 unused cells and 537 unused wires.
 <suppressed ~3 debug messages>
 
 5. Printing statistics.
@@ -644,15 +644,15 @@ Removed 2 unused cells and 536 unused wires.
 
         +----------Local Count, excluding submodules.
         | 
-     1051 wires
-   102336 wire bits
+     1049 wires
+   102334 wire bits
       455 public wires
     62370 public wire bits
        10 ports
      1268 port bits
-      934 cells
+      932 cells
       110   $add
-      105   $and
+      104   $and
        24   $dff
       176   $eq
        10   $gt
@@ -660,13 +660,13 @@ Removed 2 unused cells and 536 unused wires.
        10   $lt
       259   $mux
         9   $ne
-       40   $not
+       39   $not
        86   $or
         3   $pmux
        47   $reduce_or
         2   $sub
        18   $xor
 
-End of script. Logfile hash: 7b434ff0c6, time: 0.34s, user: 0.29s, system: 0.07s, MEM: 77.09 MB peak
+End of script. Logfile hash: a5daba602b, time: 0.34s, user: 0.30s, system: 0.05s, MEM: 77.61 MB peak
 Yosys 0.64 (git sha1 6d2c445ae-dirty, g++ 15.2.1 -march=native -O3 -fno-plt -fexceptions -fstack-clash-protection -fcf-protection -mpclmul -ffile-prefix-map=/startdir/src=/usr/src/debug/yosys -fPIC -O3) [startdir/yosys at makepkg]
-Time spent: 39% 1x opt_clean (0 sec), 19% 2x read_verilog (0 sec), ...
+Time spent: 41% 1x opt_clean (0 sec), 19% 2x read_verilog (0 sec), ...

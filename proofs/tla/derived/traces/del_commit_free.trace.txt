@@ -1,0 +1,73 @@
+# del_commit_free — TLC 2.19 counterexample trace (deterministic extract: -workers 1, full-state print)
+# source: java -cp /usr/share/java/tla2tools.jar tlc2.TLC -nowarning -workers 1 -cleanup -config AccBank_del_commit_free.cfg AccBank
+# 재실행 2회 byte-identical (본 extract 기준). run.sh 는 동일 탐색을 -difftrace 로 출력한다 (반례 동일).
+Error: Invariant Inv_OwnerAgreement is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pend = "no_owner"
+/\ bank = (0 :> <<>> @@ 1 :> <<>>)
+/\ issued = [sA |-> 0, sB |-> 0, sC |-> 0]
+/\ conflict = FALSE
+/\ st = [sA |-> "idle", sB |-> "idle", sC |-> "idle"]
+/\ drained = [ sA |-> [has |-> FALSE, val |-> <<>>],
+  sB |-> [has |-> FALSE, val |-> <<>>],
+  sC |-> [has |-> FALSE, val |-> <<>>] ]
+/\ mem = ( 0 :> [val |-> <<>>, own |-> "no_owner"] @@
+  1 :> [val |-> <<>>, own |-> "no_owner"] )
+/\ owner = (0 :> "no_owner" @@ 1 :> "no_owner")
+
+State 2: <RequestOwn line 293, col 5 to line 297, col 66 of module AccBank>
+/\ pend = "sA"
+/\ bank = (0 :> <<>> @@ 1 :> <<>>)
+/\ issued = [sA |-> 0, sB |-> 0, sC |-> 0]
+/\ conflict = FALSE
+/\ st = [sA |-> "req", sB |-> "idle", sC |-> "idle"]
+/\ drained = [ sA |-> [has |-> FALSE, val |-> <<>>],
+  sB |-> [has |-> FALSE, val |-> <<>>],
+  sC |-> [has |-> FALSE, val |-> <<>>] ]
+/\ mem = ( 0 :> [val |-> <<>>, own |-> "no_owner"] @@
+  1 :> [val |-> <<>>, own |-> "no_owner"] )
+/\ owner = (0 :> "no_owner" @@ 1 :> "no_owner")
+
+State 3: <CommitOwn line 313, col 9 to line 322, col 49 of module AccBank>
+/\ pend = "no_owner"
+/\ bank = (0 :> <<>> @@ 1 :> <<>>)
+/\ issued = [sA |-> 0, sB |-> 0, sC |-> 0]
+/\ conflict = FALSE
+/\ st = [sA |-> "own", sB |-> "idle", sC |-> "idle"]
+/\ drained = [ sA |-> [has |-> FALSE, val |-> <<>>],
+  sB |-> [has |-> FALSE, val |-> <<>>],
+  sC |-> [has |-> FALSE, val |-> <<>>] ]
+/\ mem = ( 0 :> [val |-> <<>>, own |-> "no_owner"] @@
+  1 :> [val |-> <<>>, own |-> "no_owner"] )
+/\ owner = (0 :> "sA" @@ 1 :> "no_owner")
+
+State 4: <RequestOwn line 293, col 5 to line 297, col 66 of module AccBank>
+/\ pend = "sB"
+/\ bank = (0 :> <<>> @@ 1 :> <<>>)
+/\ issued = [sA |-> 0, sB |-> 0, sC |-> 0]
+/\ conflict = FALSE
+/\ st = [sA |-> "own", sB |-> "req", sC |-> "idle"]
+/\ drained = [ sA |-> [has |-> FALSE, val |-> <<>>],
+  sB |-> [has |-> FALSE, val |-> <<>>],
+  sC |-> [has |-> FALSE, val |-> <<>>] ]
+/\ mem = ( 0 :> [val |-> <<>>, own |-> "no_owner"] @@
+  1 :> [val |-> <<>>, own |-> "no_owner"] )
+/\ owner = (0 :> "sA" @@ 1 :> "no_owner")
+
+State 5: <CommitOwn line 313, col 9 to line 322, col 49 of module AccBank>
+/\ pend = "no_owner"
+/\ bank = (0 :> <<>> @@ 1 :> <<>>)
+/\ issued = [sA |-> 0, sB |-> 0, sC |-> 0]
+/\ conflict = FALSE
+/\ st = [sA |-> "own", sB |-> "own", sC |-> "idle"]
+/\ drained = [ sA |-> [has |-> FALSE, val |-> <<>>],
+  sB |-> [has |-> FALSE, val |-> <<>>],
+  sC |-> [has |-> FALSE, val |-> <<>>] ]
+/\ mem = ( 0 :> [val |-> <<>>, own |-> "no_owner"] @@
+  1 :> [val |-> <<>>, own |-> "no_owner"] )
+/\ owner = (0 :> "sB" @@ 1 :> "no_owner")
+
+75 states generated, 42 distinct states found, 26 states left on queue.
+The depth of the complete state graph search is 5.
+The average outdegree of the complete state graph is 3 (minimum is 0, the maximum 6 and the 95th percentile is 6).
