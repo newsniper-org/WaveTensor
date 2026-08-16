@@ -74,6 +74,8 @@
 > **아울러 위 표의 "(A) = 6회" 는 오류로 정정한다**: 6 은 경로 **깊이** (곱 1 + 5-level tree) 이지 이벤트 **수** 가 아니다. 32-leaf tree 의 dot 당 반올림 이벤트는 node 31 + bank store 1 = **32회/dispatch** 다 (`include/generated/acc_format_study_report.json` `rounding_events.correction`). 옵션 비교의 올바른 대비는 32 (option A/2 스케줄) vs **1** (옵션 3) 이다.
 >
 > **상태 갱신 (2026-08-15, GATE V20-2 실측 — spec §27.6)**: 옵션 3 의 첫 hard gate (528-bit lattice unit, xcu55c) 는 **FAIL** — LUT **53,418** > hard ceiling 20,040 (premap `$mul` 0 / Fmax 122.06 MHz 축은 통과; FAIL 의 94.5% 는 S1 배치 33× + compressor tree 귀속). ECP5 feasibility 측정 (판정 아님): 전 병렬 배치 불가 (LUT4 102,871 = fabric 123%), beat-serial 변형은 PnR 완주 + golden 4001/4001 bit-exact. 후속 방향 — (A) 재설계 (beat-serial N≤8 이 유일한 measured 경로) vs (B) ceiling 재anchor (§12a 정규 이벤트) vs (C) 혼합 — 은 **사용자 결정 대기**. 상세·귀속·레버는 spec §27.6 실측 블록.
+>
+> **상태 갱신 (2026-08-16, 사용자 결정 — spec §27.6 결정 기록)**: 위 후속 방향은 **옵션 (A) 로 착지** — L1 beat-serial N=8 재설계로 ceiling 20,040 충족, **재anchor 없음**. full-parallel II=1 은 §12a 정규 이벤트로 폐기 (원문 amendment 보존), 출하 microarchitecture 는 spec §27.2.1 amendment 가 normative (`PRODUCTS_PER_BEAT=8`, II ≤ 8, 수학 계약·golden·4001 벡터 불변 재사용). **하류 ③ (bank RTL) 착수 조건 = N=8 형상의 GATE V20-2 재실측 PASS** — lattice unit 최종 형상 (II, carry-in 인가 beat) 이 bank 인터페이스를 결정하기 때문이다 (spec §27.6 재실측 선언).
 
 ### 1.3 fp32 ACC bank + canonical accumulation order (§23.1)
 
