@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 09e02def-fe68-4449-8866-9db15ac81932
-  modified: 2026-08-15T10:56:06.903Z
+  modified: 2026-08-16T08:27:08.631Z
 ---
 
 # WT64v1 RMSNORM/LAYERNORM scale multiplication 정밀도 roadmap
@@ -164,9 +164,19 @@ v1.7 은 (parity 수준으로) output-side 를 추가 개선하나 완전 제거
   비용. beat-serial Beat2 xcu55c 실측 6,075 LUT / 136.95 MHz / II=28.
   ECP5: 전 병렬 배치 불가 = 예정된 off-ramp 발동 (측정, FAIL 아님 —
   사용자 지시); beat-serial 9,374 LUT4 / 19.55 MHz 완주.
-  **사용자 결정 대기: (A) beat-serial N≤8 재설계 / (B) ceiling 재anchor
-  (§12a, 53,418 = device 4.10%/unit, v1.x cluster 의 ~125%) / (C) 혼합
-  — 하류 ③ bank RTL 착수 전 결정 필요 (spec §27.6 기록).**
+- **옵션 (A) 채택·완결 (2026-08-16, 3d51b84/cddb4d1/0f97695)**: 사용자
+  결정 — beat-serial N=8, ceiling 재anchor 없음. FP_AccLattice.v 재작성
+  (PRODUCTS_PER_BEAT 파라미터, carry-in beat 0 병합, **II=4**, 병렬
+  1-cycle resolve). **GATE V20-2 재실측 PASS**: xcu55c LUT 19,251 ≤
+  20,040 (여유 789) / $mul 0 / Fmax 143.64 MHz — make fp-op-report
+  exit 0 복귀. ECP5 N=8 MEASUREMENT: 37.7% 수납·16.51 MHz·완주. golden
+  벡터 4081 로 확장 (sticky_window_band 80, 결정성 유지), divisor 전수
+  회귀 N∈{2,4,8,16,32} bit-exact. **하류 ③ (bank RTL) 착수 가능** —
+  입력 계약: carry-in beat 0 병합의 bank 함의 (read-before-dispatch,
+  ownership window, slot 체이닝 ≥ LATENCY=7) + spec §27.6 pin 3건
+  (−2^261 corner / carry normalized 명문화 / lattice-비표현 carry
+  fault 클래스). TB 커버리지 경계: back-to-back 전용 (gap-후 재시작은
+  ③ directed test 에서 폐쇄).
 - 장기 활용처: .claude-memos/future_applications.md (PLL-DSP,
   WT64v1CLf GPGPU — 트리거 조건 충족 전 착수 금지).
 
