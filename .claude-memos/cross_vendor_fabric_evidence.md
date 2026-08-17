@@ -86,6 +86,23 @@ Vivado part DB 대조 결과 **fabric 이 완전 동일**:
 
 패키지(`fsvh2892`)까지 동일하고 **차이는 speed grade 뿐**이다 → `xcu55c` 결과는 **보수적 하한**. speed grade 를 맞춘 데이터가 필요하면 `xcu50`(-2/-3 제공)을 쓴다. (부차 차이: `xcu55c` 는 GTY 40개 vs `xcvu47p` 96개 — 본 설계는 transceiver 미사용이라 무관.)
 
+### 4.1a 무료 `xcu*` 목록 확장 실측 (2026-08-17/18)
+
+§4.1 의 "device 문자열 기준" 틈은 `xcu55c`/`xcu50` 에 국한되지 않는다. 사용자 질의(U25 / XCVU13P / U30)에 답하는 과정에서 아래를 **각각 실제 합성으로** 확인했다 (`FP_Mul36` OOC synth, `Got license for ... device '<name>'` 로그 채증):
+
+| Alveo part | LUT | DSP | BRAM | 실리콘 | 라이선스 |
+|---|---|---|---|---|---|
+| `xcu250-figd2104-2L-e` | **1,728,000** | 12,288 | 2,688 | XCVU13P | **OK** |
+| `xcu55c-fsvh2892-2L-e` | 1,303,680 | 9,024 | 2,016 | XCVU47P (§4.1) | OK |
+| `xcu26-vsva1365-2L-e` | 1,029,600 | 1,320 | 2,112 | — | **OK** |
+| `xcu50-fsvh2104-2L-e` | 871,680 | 5,952 | 1,344 | — | OK |
+| `xcu30-fbvb900-2-e` | **230,400** | 1,728 | 312 | ZU7EV (zynquplus, **-2**) | **OK** |
+| `xcu25-ffvc1760-2L-e` | 522,720 | 1,968 | 984 | ZU19EG | **OK** |
+
+**핵심**: `xcvu13p*` 는 part DB 질의 결과 **0건** — 그 이름으로는 타겟팅 자체가 불가능한데 동일 실리콘인 `xcu250` 은 열린다. §4.1 의 `xcvu47p` 차단과 정확히 같은 패턴이며, **가장 큰 무료 fabric 은 `xcu55c` 가 아니라 `xcu250` (1.33×)** 이다. 목표 (4×4)×(2×2) ≈ 682K LUT 는 U250 에서 **39.5%**, U55C 에서 52.3%.
+
+**부수 발견 — Vitis (2026-08-17 실측)**: `/opt/Xilinx/2025.2.1/Vitis/` 가 설치돼 있고 **Verilog RTL kernel 패키징이 무료로 된다** (`ipx::package_project` → `sdx_kernel` 속성 → `package_xo` 전 과정 exit 0, `.xo` 생성 확인; HLS `v++ -c --mode hls` 도 라이선스 체크아웃 없이 완주). 막히는 것은 `.xo` → `.xclbin` **링크**로, 이는 라이선스가 아니라 **플랫폼 부재** 다 (`platforminfo -l` → `{"platforms": ""}`, `/opt/xilinx/platforms` 없음, XRT 미설치 — 셋 다 무료 배포분이나 미설치). 주의: `Vitis/scripts/vitis_hls` 는 **디렉터리**이고 실행 파일은 `Vitis/bin/unwrapped/lnx64.o/vitis_hls` 다. **Zynq 계열(U30/U25)을 택하면 이 스택 자체가 불필요** — 순수 Vivado + PS 결선으로 족하다.
+
 ### 4.2 ⚠️ Vivado 2025.2 를 절대 업그레이드하지 말 것
 
 - **2025.2 가 마지막 라이선스-프리 릴리스**다 (AMD 명시).

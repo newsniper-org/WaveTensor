@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 09e02def-fe68-4449-8866-9db15ac81932
-  modified: 2026-08-17T09:07:02.106Z
+  modified: 2026-08-17T16:03:00.722Z
 ---
 
 # WT64v1 RMSNORM/LAYERNORM scale multiplication 정밀도 roadmap
@@ -221,6 +221,30 @@ v1.7 은 (parity 수준으로) output-side 를 추가 개선하나 완전 제거
   검출. 생성기 gate 배선 정정 (mismatch → 비영 종료; 초안은 항상
   exit 0 이었음). **교훈: 검사 하네스의 exit 배선과 "졸업 지표가
   항등식이 아닌지" 를 매번 확인할 것.** 다음 = 3a-C2 (ISA JSON).
+- **GATE S1 신설 — 전체 합성 gate 계보 편입 (2026-08-18, f0d7b98,
+  spec §28; 사용자 지시)**: HIU 면적 질문 → standalone 합성 시도 →
+  Vivado 거부 → **"합성 이력 없는 모듈" 사각지대 발견**. Top_Core·HIU·
+  고아 3종(TENSOR_ALU/SIMD_ALU/ALU_Extended)이 cocotb 를 통과하면서
+  합성기를 한 번도 거친 적이 없었다. 결함 7건 (수리 4 / 이월 3).
+  **테스트가 은폐한 하드웨어 결함 2건 (같은 패턴)**: (i) HIU
+  partitioned TLB 전체 undriven — 넷리스트 cells=0 으로 소멸,
+  test_hiu.py 가 계층 강제 기입으로 통과시켜 실리콘에 없는 경로를
+  검증 중 (D4, **설계 결정 대기**); (ii) Tensor_ALU MATMUL(0x30) 이
+  k-loop nonblocking 누산 탓에 무한 램프로 축퇴 — test 가 valid 만
+  검사해 은폐. anchor 14,850 LUT / ceiling 24,799 (x1.67), area
+  binding 은 다음 commit 부터 (§28.5(c) 명문화). 하네스 자기시험이
+  false PASS 2건 적발 (get_msg_config 가 8줄 로그에서 0 반환,
+  parse_drc 가 Critical Warning 행 폐기). scripts/lint_synth_coverage.py
+  로 미분류 = make lint 실패 + 래칫. **교훈: 시뮬레이터 통과 ≠ 합성
+  가능, 그리고 합성기는 거부하지 않고 조용히 지워버릴 수도 있다.**
+- **U30 실측 (spec §28.9)**: (2x2)x(2x2) Pod+HIU 를 xcu30 에 —
+  **면적 수납 (177,793 LUT = 77.2%), 타이밍 미달** (WNS -1.450,
+  phys_opt 후 -1.017 / 90.79 MHz, failing endpoints 258 불변 =
+  구조적). -2 등급 이득이 77% 이용률 혼잡에 눌렸다.
+- **무료 xcu* 확장 (cross_vendor §4.1a)**: xcu250(**1,728,000 LUT**,
+  = XCVU13P — 최대 무료 fabric, U55C 의 1.33x) / xcu26 / xcu30 /
+  xcu25 전부 라이선스 확인. `xcvu13p*` 는 part DB 0건. Vitis 는
+  **Verilog → .xo 패키징까지 무료**, 링크만 플랫폼 부재로 막힘.
 - 장기 활용처: .claude-memos/future_applications.md (PLL-DSP,
   WT64v1CLf GPGPU — 트리거 조건 충족 전 착수 금지).
 
