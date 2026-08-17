@@ -3145,6 +3145,76 @@ RTL 실측 **II = 4** (carry-in beat 0 병합 — 4 beats, 별도 carry beat 없
 
 **검증 체계 실적 (gate 시점 요약)**: golden lattice model 은 적대 2렌즈 검증에서 무반증 — 독립 Fraction 재계산으로 4001 벡터 전량 + fuzz 30k 교차검증 불일치 0. RTL TB 는 변이 4종 중 3종을 적발했고, 미적발 1종 (fault 경로 변이) 은 계약상 벡터가 회피하는 영역 (벡터 계약 §4/§7) 임을 문서화했다. 추출 정리 (RNE_24(RTO_48(exact)) == RNE_24(exact)) 의 반례는 0건으로 유지된다.
 
+**④ GATE V20-3 기준 선공표 (2026-08-17, 별도 COMMIT — §26.6/V9-4 형식. 본 절 하류 gate 순서 ④ 의 "기준 수치는 ③ 착지 후 별도 COMMIT 에서 V9-4 형식으로 선공표" 를 이행하는 그 COMMIT 이 본 블록이다. ③ 완결 (spec 선공표 f56b907 / 구현 ab51a91 / 검증 d419458 계열) 로 전건 충족. 본 블록 작성 시점에 ④ 통합 RTL 은 존재하지 않으며, 아래 기준은 전부 측정 이전 공표다):**
+
+**명명·계보·구속력**: 본 gate 는 **GATE V20-3 (v2.0 TRAIN full-cluster datapath gate, dual-fabric)** 이다. 계보: GATE V20-1 = bf16/f16 FMA lane pre-synth (kickoff §6.3 정의, GATE F1/F1-US 로 실행·PASS) → GATE V20-2 = 528-bit lattice unit (N=8 재실측 PASS) → **GATE V20-3 = 본 gate**. **merge-blocker** — binding 기준 미충족 통합 RTL 의 merge 금지, gate log 는 merge commit 첨부 의무 (§23.10.7 교훈 — "선언된 gate 건너뛰면 5 commit 뒤 발각", 이미 4회 확인). V20-2 와 동일하게 **merge-blocker binding 은 xcu55c 반쪽에만 있고 ECP5 반쪽은 MEASUREMENT** 다 (아래). gate_check 스크립트 등재는 ④ 구현 COMMIT 몫이며 본 블록 수치의 **무수정 전사**여야 한다 (기준을 움직여서 통과하는 경로는 없다 — V20-2 재실측 선언의 그 규율).
+
+**scope 선언 (kickoff memo 의 아키텍처 계획에서 도출 — 정합 기록 병기)**: gate 대상 = v2.0 TRAIN cluster 의 **누산 datapath 구조 합성체** 단일 top:
+
+- **FMA lane × 8** (`FP_FmaLaneBf16` 계열). **lane 수 8 의 도출 (기록)**: §27.2.1 amendment 가 실측 확정한 dispatch 스케줄은 **8-operand × 4 beat** (II=4, carry-in beat 0 병합) 이고, lattice 는 beat 당 정확히 8 addend 를 소비한다 (PRODUCTS_PER_BEAT=8). lane 은 cycle 당 wide product 1개를 내므로 **FP_LANES = 8 = PRODUCTS_PER_BEAT** 에서 beat 당 8 product 가 정확히 공급되고 lane idle 이 0 이다. 기각 대안 (기록): 32 lanes 는 §12a 로 폐기된 full-parallel 시간 구조의 잔재 (lattice 가 beat 당 8 만 소비 — 3/4 idle); 8 미만 lanes 는 beat 당 8 addend 포트를 단일 clock 에서 채울 수 없다 (double-pump 는 clock 계약 밖). kickoff C5 "ECP5 에서 FP_LANES=2 가 한계" 는 fabric-specific congestion 서술 (kickoff §5.1 재진술 — 곱셈기 부족도 raw LUT 부족도 아님) 로서 xcu55c 출하 형상을 구속하지 않으며, ECP5 반쪽은 MEASUREMENT 이므로 xcu55c 와 **동일 8-lane 형상 그대로** 측정한다 (마이크로아키텍처 통일 — 본 절 사용자 결정 근거 3 의 승계). **lane 형상 주기 (honest)**: F1/F1-US 가 측정한 lane 실물은 per-lane `FP_AddWide` PACK_FINAL 후단을 포함한다 (776 중 u_addwide 617). 옵션 3 하에서 in-dot 경로가 lattice 로 공급하는 것은 lane 의 **wide-product 전단 (C1 곱셈기 + C2 exact wide 포맷 + operand-load 정책)** 이고 per-lane 후단 누산은 in-dot 경로에 없다 (§27.2.1 — in-dot 반올림 0회). ④ 통합이 전단 tap 형상을 취하든 전체 lane 을 인스턴스하든, anchor 는 측정 실물인 **전체 lane 776** 을 쓴다 — ceiling 은 상한이며, 전단 tap 채택 시 실측이 anchor 를 하회할 것이고 그 사실은 gate 기록에 남긴다. premap `$mul` = lane 당 정확히 1 은 형상 불문 불변 (`FP_FmaLaneBf16.v` "the ONE 11x11 significand multiplier" 명문).
+- **lattice × 1** (`FP_AccLattice`, beat-serial N=8 출하 형상 — GATE V20-2 재확인 PASS 실물 그대로, fault (c) carry-lane 강화형 포함).
+- **bank × 1** (`FP_AccBank` — ③ 착지 실물 그대로, IF-1..IF-4 계약 + ownership loud-fault 경로).
+- **beat dispatch 스켈레톤**: wave-step operand 보관 + 8-of-32 beat 선택 + beat counter/start 파이프 + IF-1 결선 (bank carry word 를 start cycle 의 beat 0 에 공급). "스켈레톤" 인 이유: ISA decode 로부터의 결선이 아니라 **TB-구동 가능한 dispatch 인터페이스까지**가 본 gate 의 범위다.
+- **FILL/DRAIN/ZERO 명령 경로**: bank cmd 인터페이스 레벨의 결선 (③ TB `tb_fp_accbank.v` 가 구동한 그 표면을 통합체 top 에 노출).
+
+**제외 (명시)**: (i) **FDOT32_CR (0x7A)** — 3a 이연 그대로 (§27.7 op_sel 격리 근거 불변). (ii) **TRAIN 신규 opcode 의 ISA 결선 / step sequencer 전체 통합** — 0x7D/0x7E sub-op 인코딩, 0x70 dtype loosening, decode→dispatch 결선은 후속 COMMIT 몫이다 (본 gate 는 **datapath 구조 합성 gate** — ISA 결선 완성이 아니다). kickoff 정합 확인: 이 경계는 kickoff §6.2 의 S3-S5 (lane/fold/bank) 통합 지점과 S6 이후 (0x7D/0x7E/SR/Adam) 의 분리와 일치하며 상충이 없다; kickoff 의 release-급 기준 **GATE V20-final (R-H — full v2.0 Cluster 가 xcu55c 에서 WNS ≥ 0)** 은 별도로 존속하고 본 gate 가 선점하지 않는다. (iii) SR / Adam / 0x7C rnd=1 (kickoff S7/S8 몫).
+
+**xcu55c binding 기준 (측정 전 공표 — 전 항 리포트 실물 전사, 임의 반올림 없음)**:
+
+| 축 | 기준 | 근거/출처 |
+|---|---|---|
+| **LUT** | **hard ceiling 35,377 — 초과 시 merge 금지** | 아래 산식 표 (measured-anchor 합 + 미측정 glue × 1.67) |
+| **DSP48E2** | **정확히 8** | FMA lane 당 1 (F1-US 실측) × 8 lanes; lattice 0 / bank 0 실측. 편차는 merge 금지 + 조사 (§26.6 MULT 편차 조사 선례의 방법으로 귀속 후 재판정) |
+| **premap `$mul`** | **정확히 8** (delta +8 — lattice 0 실측 / bank 0 실측 / lane 1×8) | §26.6 amendment pin form; 증거 파일은 premap 로그 archive |
+| **BRAM/URAM** | 0 | 구성 3요소 전부 0 실측 |
+| **DRC** | errors 0 (warnings 는 열거 — "clean" 아님) | F1-US 관례 |
+| Fmax/WNS | 기록 축 — binding 아님 | 아래 "Fmax/WNS 기록 축" 항 |
+| FF | 추적만 | V9-4 관례 |
+
+LUT ceiling 산식 (measured-anchor + 미측정분 1.67× 규율 — 1.67× 는 **미측정 glue 항에만** 적용된다):
+
+| 항 | 값 | 지위 | 출처 |
+|---|---|---|---|
+| lattice `FP_AccLattice` (N=8) | **19,298** | measured — xcu55c routed | `synth/reports/fp_ops/gate_summary.txt` V20-2/US 행 + `fp_acclattice_impl_util.rpt` (19,297 logic + 1 SRL) |
+| bank `FP_AccBank` | **8,368** | measured — xcu55c **synth-only smoke** (8,362 logic + 6 SRL; raw cells 8,858) | `synth/reports/fp_ops/fp_accbank_synth_util.rpt` / `fp_accbank_synth_summary.json` |
+| lane `FP_FmaLaneBf16` × 8 | **776 × 8 = 6,208** | measured — xcu55c routed, lane 단독 (776 = 773 logic + 3 SRL; raw cells 935) | `synth/reports/fp_ops/gate_summary.txt` F1-US 행 + `fp_fmalane_bf16_impl_util.rpt` |
+| **anchor 합** | **33,874** | measured | 위 3행의 합 |
+| glue (미측정 — beat dispatch 스켈레톤 + 결선) | nominal 500-900 → × 1.67 = 835-1,503 → worst **1,503** 채택 | **ESTIMATE × 1.67** (§23.10.10(g) 실측 overrun 계수 — 0d/0e/v1.9/V20-2 를 관통한 그 기준) | 아래 성분 표 |
+| **hard ceiling** | **35,377** | = 33,874 + 1,503 | — |
+
+glue nominal 성분 (전부 ESTIMATE — ceiling 에는 nominal 상단 900 의 1.67× 인 1,503 을 가산했다):
+
+| glue 성분 | nominal LUT |
+|---|---|
+| wave-step operand 보관 (32 pair × 32b FF) 의 8-of-32 beat 선택 mux (256b × 4:1) + enable 결선 | 300-450 |
+| beat counter / start 파이프 + IF-1 carry beat-0 정렬 | 50-100 |
+| FILL/DRAIN/ZERO cmd 경로 결선 (bank cmd 인터페이스 레벨) | 100-200 |
+| fault/sticky 집약 + drain 반출 결선 | 50-150 |
+| 합 | **500-900** |
+
+병기 (honest): (i) bank anchor 는 routed 가 아니라 synth-only 다 — 동일 RTL 의 synth-vs-routed 오차 실측 전례는 lattice −0.6% (synth 19,363 → routed 19,251) / Beat2 −0.3% (6,096 → 6,075) 로 무시 가능 수준이나, 통합 문맥의 cross-boundary 최적화/팽창은 glue worst-case 마진이 흡수할 몫으로 남는다. (ii) 맥락 실측: ceiling 35,377 은 v1.x full cluster 실측 **42,538-42,731** (`synth/reports/pod_2x2_2x2_impl_util.rpt` 4 인스턴스: 42,731/42,566/42,670/42,538) 의 **82.8-83.2%**, xcu55c 전체 1,303,680 LUT 의 **2.71%** 다.
+
+**Fmax/WNS 기록 축 (binding 아님 — V20-2 전례의 동일 적용을 채택·기록한다: binding 은 면적/승수/DRC 만)**: clock 제약은 기존 gate 관례 그대로 — **OOC, `create_clock` 10.000 ns (100 MHz) 단일, clock-only xdc** (fp_ops gate xdc 관례 = `fp_acclattice_gate.xdc`; pod 하네스 `synth/constraints/pod.xdc` 와 동일 주기 10 ns 이나 pod.xdc 의 `set_false_path -from rst` 는 **부적용** — fp-ops 코어는 reset-free, kickoff §6.3 함정 (i)). WNS/WHS/Fmax 는 기록·archive 한다. 기대 문맥 (기준 아님): 구성 요소 실측 Fmax 는 lattice 143.10 MHz (routed) / lane 255.30 MHz (routed) / bank synth WNS +5.106 ns (post-synth — Fmax 아님) 이나, congestion-drift 는 이 project 의 실현된 실패 모드 (§26.6 V9-4: standalone 이득의 96% 이상 잠식) 이므로 통합 Fmax 가 구성 요소 최솟값을 하회해도 그 자체는 FAIL 이 아니고 기록·귀속 대상이다. kickoff R-H (full v2.0 Cluster WNS ≥ 0 @ xcu55c) 는 release-급 기준으로 별도 존속한다.
+
+**ECP5 반쪽 (MEASUREMENT — 본 절 원문 그대로 반복한다: "어떤 결과가 나와도 — 어렵다·비싸다·불가능하다 포함 — gate FAIL 을 구성하지 않는다"; 유일한 의무는 측정의 실행과 정직한 기록이다)**: xcu55c 와 동일 8-lane 형상 (LFE5UM-85F CABGA381 -6, OOC, seed 1, 40 MHz reference — 관례 참조점일 뿐 계약 아님). **예상 규모의 정직 계산 (측정 전 기록 — LUT4 cell 과 placed TRELLIS_COMB 는 다른 단위, 혼용 금지)**:
+
+| 항 | LUT4 (yosys cell) | placed TRELLIS_COMB |
+|---|---|---|
+| lattice N=8 | 29,834 (실측) | 31,500 (실측) |
+| bank | 14,671 (실측 — synth-only) | 미측정 — LUT4→placed 팽창 실측 전례 +5.6% (lattice) ~ +46% (lane) 적용 시 15,493-21,420 추정 |
+| lane × 8 | 930 × 8 = 7,440 (실측 단가 — c21092a 재측정 후 현행 `fp_fmalane_bf16_synth.rpt`; 924 는 6e3bf3e 아카이브 단가) | 1,356 × 8 = 10,848 (실측 단가 — 현행 `fp_fmalane_bf16_pnr.log`) |
+| 합 (glue 미포함) | **51,945** = 85F COMB fabric 83,640 의 **62.1%** | 추정 **57,841-63,768 = 69.2-76.2%** |
+
+**infeasible 가능성 사전 기록**: LUT4 산술 (62.1%) 은 수납 가능 범위이나, placed 69-76% + glue 는 ECP5 라우팅 포화 실측 전례 (v1.9b full cluster 가 COMB 39.6% 에서 이미 routing-지배 11.34 MHz — `cluster_v19b_pnr.log`; lattice 단독 37.7% 에서 16.51 MHz) 의 훨씬 위다 — **PnR 미완주 (infeasible 분류) 가 현실적 결과이며, 발동은 실패가 아니라 예정된 분기다**. 발동 시 off-ramp 그대로: ECP5 는 at-speed dot path 를 제외한 검증 역할 (TRNG 실리콘 검증·UsbCdcTransport·FOSS bitstream) 전부 유지, dot-path 검증은 cocotb + xcu55c. MULT18X18D 는 기록 축 (yosys share 재량 편차 허용 — §26.6 MULT 편차 조사 선례), 판별 pin 은 premap `$mul` = 8 이다.
+
+**④ 검증 의무 (gate 와 한 몸의 merge-blocker — 전부의 실행·기록 없이 merge 금지)**:
+1. **③ 이월 커버리지 경계 3건 폐쇄**: (i) **창 offset 0** — start 와 같은 cycle 의 같은 slot 접촉 (same-cycle 2-port 중재) 을 RTL 통합 directed test 로 커버 — bank_scenarios 시나리오 형식상 표현 불가였던 그 경계 (`bank_scenarios_contract.md` §2) 이므로 통합 TB 가 직접 구동한다. (ii) **per-op×offset 교차곱 공백** — window_fill offset 6 / window_zero offset 4 / window_spill offset {2,4,5,6} directed 소량 추가로 3 클래스 × offset 1..7 전수를 완성한다. (iii) **TLC ghost 2건** — DT-05 spill image owner-tag 캐리어 (l) / DT-04 K 완결 캐리어 (h) 의 **RTL 실물화 또는 계약 재배정** (양자택일의 판정을 gate 기록에 남긴다; (h) 는 fragment 수가 dec_* bus 에 없다는 §23.6a SDK 계약 1 노출면에 걸리므로, 실물화 불가 판정 시 "hw 강제 불가" 명시 재배정이 합법 종결이다 — kickoff TP-3 이 INV_Complete 에 요구한 그 형식).
+2. **cluster 통합 TB (전 경로)**: bf16/f16 operand 주입 → lane widen/곱 (operand-load 정책 포함) → 8-operand × 4-beat dispatch → lattice → bank RTO-48 store → drain RNE-24 반출까지 **전 경로 vs golden bit-exact** (reference = `golden_fp32.py` widen/fma 계열 + `golden_lattice.py` wave_step/`bank_execute` 의 합성; 시나리오 재생성 결정성 byte-identical 은 ③ 관례 그대로). II=4 지속 (다른 slot 완전 중첩) + 같은 slot 체이닝 ≥ LATENCY=7 경계 + FILL/DRAIN/ZERO 인터리브를 **통합 문맥에서** 재판정한다.
+3. **변이 반증 의무 (③ 의 7종 전부 사멸 형식)**: 최소 5 클래스 지정 변이의 사멸 실증 — (a) lane 곱 significand 하위 절단, (b) lane→lattice 결선 lane 전치, (c) beat 선택 mux off-by-one, (d) carry-in 비-beat0 수용, (e) FILL/DRAIN/ZERO 중 1 경로 절단 (silent 수용) — + discriminator 자기시험 (tautology 방지 — ③ PHASE C 형식).
+4. **무회귀**: lattice 4097 회귀 + bank TLC 14 / directed 43 / random 300 + golden 재생성 byte-identical + `make lint` + `make fp-op-report` exit 0 유지.
+
+**리포트/실행 규정**: xcu55c — `synth/scripts/synth_fp_op.tcl` 하네스 (OOC gate_top, 전 flow synth+opt+place+phys_opt+route), 리포트 `synth/reports/fp_ops/fp_traincluster_{impl_summary.json,impl_util.rpt,impl_timing.rpt,impl_drc.rpt,premap_mul.log}` + `gate_summary.txt` 행 추가. ECP5 — `synth/lattice/reports/fp_ops/fp_traincluster_*`. gate_check 등재 (binding: LUT ceiling 35,377 / DSP48 정확히 8 / premap `$mul` 정확히 8 / BRAM 0 / DRC errors 0) 는 ④ 구현 COMMIT 에서 본 블록 수치의 무수정 전사로 수행한다.
+
 ### 27.7 FDOT32_CR 예약 — opcode 0x7A (옵션 3a, committed follow-up)
 
 - **0x7A 를 FDOT32_CR 로 예약한다.** 3a 착지 전까지 0x7A 는 오늘처럼 opcode_supported whitelist 미포함 → **decode_error** (§23.6a) — 본 예약은 다른 소비자의 선점을 금지하는 배정 기록이다.

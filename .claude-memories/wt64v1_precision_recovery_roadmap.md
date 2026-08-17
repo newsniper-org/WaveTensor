@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 09e02def-fe68-4449-8866-9db15ac81932
-  modified: 2026-08-16T08:27:08.631Z
+  modified: 2026-08-16T12:35:36.957Z
 ---
 
 # WT64v1 RMSNORM/LAYERNORM scale multiplication 정밀도 roadmap
@@ -177,6 +177,17 @@ v1.7 은 (parity 수준으로) output-side 를 추가 개선하나 완전 제거
   (−2^261 corner / carry normalized 명문화 / lattice-비표현 carry
   fault 클래스). TB 커버리지 경계: back-to-back 전용 (gap-후 재시작은
   ③ directed test 에서 폐쇄).
+- **하류 ③ 완결 (2026-08-16, f56b907/ab51a91/d419458)**: pin 3건
+  spec 해소 + IF-1..IF-4 bank 계약 확정. FP_AccBank.v (2x32x64b) +
+  FP_AccLattice pin 2 강화형 (V20-2 재확인 PASS 19,298, delta +47) +
+  TLA+ 유도 directed 14건 (TLC byte-identical 실증) + golden 343
+  시나리오 + 통합 TB 전량 bit-exact (gap 1/3/17 폐쇄, 변이 7종 사멸
+  — SPILL/UNK 블라인드 스팟은 검증 렌즈 실측 발견 후 golden-first
+  폐쇄). bank smoke: xcu55c 8,368 LUT / ECP5 14,671 LUT4 (양쪽 $mul
+  0). 커버리지 경계 3건 spec 정직 기록 (offset 0 / 교차곱 공백 /
+  TLC ghost 2건 — 전부 ④ 몫). **다음: ④ full-cluster gate 기준
+  선공표 (별도 COMMIT, V9-4 형식, anchor: lattice 19,298 + bank
+  8,368 + FMA lane + v1.x cluster 42,538-42,731) → ④ 통합 실행.**
 - 장기 활용처: .claude-memos/future_applications.md (PLL-DSP,
   WT64v1CLf GPGPU — 트리거 조건 충족 전 착수 금지).
 
