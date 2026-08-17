@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 09e02def-fe68-4449-8866-9db15ac81932
-  modified: 2026-08-17T05:29:37.823Z
+  modified: 2026-08-17T05:58:07.145Z
 ---
 
 # WT64v1 RMSNORM/LAYERNORM scale multiplication 정밀도 roadmap
@@ -199,6 +199,16 @@ v1.7 은 (parity 수준으로) output-side 를 추가 개선하나 완전 제거
   다음 = 3a FDOT32_CR (0x7A) COMMIT 0 (사용자 기결정 2026-08-15
   "성공하면 곧바로 3a" — 별도 release, §27.7 op_sel 격리) + TRAIN
   opcode ISA 결선·step sequencer 통합 후속.**
+- **3a COMMIT 0 착지 (2026-08-17, 0d7f834, spec §27.7a)**: FDOT32_CR
+  값 계약 = pack_signed(exact Σ) bit-동일; 폭-소거 순차 2Sum/EFT
+  (W=24, vacuous-RTO TwoSumExact, expansion 33, ascending RTO-48
+  fold — 정리는 golden 졸업 예정); operand = A||B 16-frag 단일 wave;
+  invariant 검사는 프로그램 레벨 (불일치 = SDK loud 승격); cycle
+  상한 10,000 hard; re-proof 전건 = 현행 9개 step 프로그램; GATE
+  V20-4 선공표 (base 선실측 anchor → LUT delta ≤ 2,200, premap $mul
+  delta 0 — FP_Mul36 공유, cut ladder 사전 선언). **착지 순서:
+  C0(완) → C1 golden (EFT 고정-seed) → C2 ISA JSON → C3 step
+  프로그램 (전건 re-proof) → C4 결선 + GATE V20-4.**
 - 장기 활용처: .claude-memos/future_applications.md (PLL-DSP,
   WT64v1CLf GPGPU — 트리거 조건 충족 전 착수 금지).
 

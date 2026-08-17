@@ -1,0 +1,1015 @@
+{
+ "_doc": "FDOT32_CR (0x7A) golden EFT twin (3a-C1) 자기검증 결과 + RTL TB 벡터 명세. 생성기: scripts/golden_fdotcr.py (stdlib-only, 고정 seed, 재실행 byte-identical; rounding core = golden_fp32, true-B 경로 = acc_format_study.pack_signed, main path = golden_lattice.wave_step). §27.7 sketch 의 salted '66k+' 는 인용 불가 — 본 report 의 고정-seed 카운트가 그 수치를 승계·졸업시킨다 (§27.7a.5 인용 규율).",
+ "normative_source": "wt64v1_spec.md §27.7a (.1 값 계약 / .2 알고리즘 / .3 invariant / .5 검증 계획)",
+ "determinism": {
+  "seeds": {
+   "eft_bf16_wide": 128827393,
+   "eft_f16_all": 128827394,
+   "eft_cancel": 128827395,
+   "eft_cancel_chain": 128827396,
+   "eft_tie": 128827397,
+   "eft_ladder": 128827398,
+   "eft_same": 128827399,
+   "eft_pack_edge": 128827400,
+   "eft_adv_residue": 128827401,
+   "eft_top_cancel": 128827402,
+   "invariant": 128827409,
+   "special_rand": 128827410,
+   "fold_synth": 128827411,
+   "special_det_bg": 128827412,
+   "spec_literal_walk": 128827413
+  },
+  "note": "고정 정수 seed 외 난수원/timestamp 없음 — 산출물 3종 (hex/md/json) 전부 byte-identical 재생성"
+ },
+ "algorithm_constants": {
+  "component_sig_width_W": 24,
+  "addwide_width": 48,
+  "expansion_capacity": 33,
+  "insertion_order": "lane 순서 (frag/lane packing pin 순)",
+  "insertion_walk": "정련 walk — 최저 2개 순서 merge (§27.7a.2 amendment-2 정식 pin; 문언의 chain 독해는 checks.spec_literal_walk_annex 에서 부정)",
+  "fold": "descending RTO-48 (pass = FP_AddWide PACK_WIDE) — §27.7a.2 amendment-1. 원 pin 'ascending' 은 C1 실측으로 부정됨 (checks.fold_theorem_general_form_annex.asc_refuted_pin)",
+  "pack_final": "단일 unbounded RNE-24 + flush-after-round FTZ (acc_format_study.pack_signed == golden_fp32.pack_rne_ftz)"
+ },
+ "checks": {
+  "value_contract": {
+   "statement": "r == pack_signed(exact Σ a·b) BIT-동일 (§27.7a.1 — acc_format_study true-B 기준)",
+   "trials": 57022,
+   "mismatches": 0,
+   "counterexamples": [],
+   "families": {
+    "eft_bf16_wide": 9000,
+    "eft_f16_all": 7000,
+    "eft_cancel": 6000,
+    "eft_cancel_chain": 4000,
+    "eft_tie": 5000,
+    "eft_ladder": 3000,
+    "eft_same": 3000,
+    "eft_pack_edge": 3000,
+    "eft_adv_residue": 2000,
+    "eft_top_cancel": 3000
+   },
+   "directed": 20,
+   "salted_66k_supersede": {
+    "_doc": "§27.7a.5 인용 규율 이행 (§27.7a.2a amendment-6). §27.7 sketch 의 salted '66k+' 는 인용 불가 — 아래 고정-seed 카운트가 승계·졸업시킨다 (재실행 byte-identical 확인).",
+    "value_contract_trials": 57022,
+    "threshold_40000_met": true,
+    "eft_path_total_trials": 80622,
+    "eft_path_total_breakdown": {
+     "value_contract": 57022,
+     "specials": 600,
+     "fold_general_form_annex_random": 20000,
+     "spec_literal_walk_density": 3000
+    },
+    "exceeds_salted_66k": true
+   },
+   "verdict": "PASS"
+  },
+  "fold_theorem_insertion_scope": {
+   "statement": "fold(expansion) == RTO_48(exact) — 삽입-생성 expansion (알고리즘의 실제 fold 입력) 전 trial 실측 (§27.7a.2 종료 (2) 의 golden 졸업). fold = **내림차순** (amendment-1)",
+   "trials": 57022,
+   "dedicated_adversarial_trials": 26022,
+   "adversarial_families": [
+    "eft_adv_residue",
+    "eft_cancel",
+    "eft_cancel_chain",
+    "eft_ladder",
+    "eft_same",
+    "eft_tie",
+    "eft_top_cancel"
+   ],
+   "mismatches": 0,
+   "counterexamples": [],
+   "graduation_metric": {
+    "_doc": "개정된 종료 (2) 의 졸업 지표. 정리상 첫 실질 jam 이후 acc 는 freeze 되고 jam 마진 top(T)-p 는 48 로 고정된다 — RNE-24 흡수 조건 (>= 25) 을 23 bit 여유로 만족. 마진이 25 미만으로 내려가는 trial 이 곧 값 계약 붕괴 지점이다 (ASC pin 의 실패 형태).",
+    "trials_with_real_jam": 33370,
+    "jam_margin_min": 48,
+    "jam_margin_histogram": {
+     "48": 33370
+    },
+    "trials_margin_lt_25": 0,
+    "freeze_violations": 0
+   },
+   "verdict": "PASS"
+  },
+  "fold_theorem_general_form_annex": {
+   "_doc": "fold 정리의 **일반형** (임의 비겹침 오름차순 열 — 삽입-생성 expansion 이 아닌 합성 열) 을 두 방향에 나란히 건 실측. ASC = §27.7a.2 원 pin (3a-C0), DESC = C1 실측 개정 pin. 반례는 삭제하지 않고 개정 근거로 존치한다 (§25.4 / 정직 보고). cex_C/D 는 값 계약 반례 2건에서 역추출한 실측 expansion — ASC 가 삽입-생성 scope 안에서도 부정됨을 보인다 (scope 축소 처방이 무효인 근거).",
+   "deterministic_cases": [
+    {
+     "case": "cex_A_jam_then_adjacent_cancel",
+     "components": [
+      [
+       1,
+       0
+      ],
+      [
+       8388609,
+       31
+      ],
+      [
+       -1,
+       55
+      ]
+     ],
+     "rto48_exact_me": [
+      -281474943156223,
+      6
+     ],
+     "pack_final_exact": "0xDA7FFFFE",
+     "asc_refuted_pin": {
+      "fold_me": [
+       -140737471578111,
+       7
+      ],
+      "fold_ne_rto48": true,
+      "pack_final": "0xDA7FFFFE",
+      "pack_final_diverges": false
+     },
+     "desc_adopted_pin": {
+      "fold_me": [
+       -281474943156223,
+       6
+      ],
+      "fold_ne_rto48": false,
+      "pack_final": "0xDA7FFFFE",
+      "pack_final_diverges": false,
+      "jam_grid_p": 6,
+      "jam_margin": 48,
+      "freeze_ok": true
+     }
+    },
+    {
+     "case": "cex_B_deep_cancel_pack_final",
+     "components": [
+      [
+       1,
+       0
+      ],
+      [
+       16777215,
+       8
+      ],
+      [
+       16777215,
+       32
+      ],
+      [
+       -1,
+       56
+      ]
+     ],
+     "rto48_exact_me": [
+      -255,
+      0
+     ],
+     "pack_final_exact": "0xC37F0000",
+     "asc_refuted_pin": {
+      "fold_me": [
+       -1,
+       8
+      ],
+      "fold_ne_rto48": true,
+      "pack_final": "0xC3800000",
+      "pack_final_diverges": true
+     },
+     "desc_adopted_pin": {
+      "fold_me": [
+       -255,
+       0
+      ],
+      "fold_ne_rto48": false,
+      "pack_final": "0xC37F0000",
+      "pack_final_diverges": false,
+      "jam_grid_p": null,
+      "jam_margin": null,
+      "freeze_ok": true
+     }
+    },
+    {
+     "case": "cex_C_c1_value_contract_cex0_expansion",
+     "components": [
+      [
+       2,
+       -28
+      ],
+      [
+       16777212,
+       -23
+      ],
+      [
+       16777215,
+       1
+      ],
+      [
+       -1,
+       25
+      ]
+     ],
+     "rto48_exact_me": [
+      -126,
+      -28
+     ],
+     "pack_final_exact": "0xB4FC0000",
+     "asc_refuted_pin": {
+      "fold_me": [
+       -3,
+       -23
+      ],
+      "fold_ne_rto48": true,
+      "pack_final": "0xB4C00000",
+      "pack_final_diverges": true
+     },
+     "desc_adopted_pin": {
+      "fold_me": [
+       -126,
+       -28
+      ],
+      "fold_ne_rto48": false,
+      "pack_final": "0xB4FC0000",
+      "pack_final_diverges": false,
+      "jam_grid_p": null,
+      "jam_margin": null,
+      "freeze_ok": true
+     }
+    },
+    {
+     "case": "cex_D_c1_value_contract_cex1_expansion",
+     "components": [
+      [
+       6,
+       -28
+      ],
+      [
+       16777206,
+       -25
+      ],
+      [
+       16777215,
+       -1
+      ],
+      [
+       -1,
+       23
+      ]
+     ],
+     "rto48_exact_me": [
+      -74,
+      -28
+     ],
+     "pack_final_exact": "0xB4940000",
+     "asc_refuted_pin": {
+      "fold_me": [
+       -9,
+       -25
+      ],
+      "fold_ne_rto48": true,
+      "pack_final": "0xB4900000",
+      "pack_final_diverges": true
+     },
+     "desc_adopted_pin": {
+      "fold_me": [
+       -74,
+       -28
+      ],
+      "fold_ne_rto48": false,
+      "pack_final": "0xB4940000",
+      "pack_final_diverges": false,
+      "jam_grid_p": null,
+      "jam_margin": null,
+      "freeze_ok": true
+     }
+    }
+   ],
+   "asc_refuted_pin": {
+    "deterministic_counterexample_found": true,
+    "deterministic_pack_final_counterexample_found": true,
+    "random_sweep": {
+     "N": 20000,
+     "seed": 128827411,
+     "fold_ne_rto48": 113,
+     "pack_final_diverges": 0
+    },
+    "verdict_general_form": "REFUTED"
+   },
+   "desc_adopted_pin": {
+    "deterministic_counterexample_found": false,
+    "random_sweep": {
+     "N": 20000,
+     "seed": 128827411,
+     "fold_ne_rto48": 0,
+     "pack_final_diverges": 0
+    },
+    "jam_margin_min": 48,
+    "jam_margin_floor_25_held": true,
+    "verdict_general_form": "PASS"
+   }
+  },
+  "spec_literal_walk_annex": {
+   "_doc": "§27.7a.2 STEP I 의 문언 walk 이 같은 절의 비겹침 invariant 를 스스로 위반한다 — 문언대로 구현하면 invariant FAIL, invariant 를 지키면 문언 이탈. 명세 자기모순이므로 정련 walk 을 정식 pin 으로 승격한다 (§27.7a.2 amendment-2). 문언 walk 은 fold 정리의 전건 (비겹침) 도 파괴하므로 채택 불가.",
+   "deterministic_case": {
+    "column": [
+     [
+      3,
+      -25
+     ],
+     [
+      265106,
+      -20
+     ]
+    ],
+    "insert_q": [
+     -8388608,
+     -1
+    ],
+    "spec_literal_result": [
+     [
+      -8388605,
+      -25
+     ],
+     [
+      -259182,
+      -20
+     ],
+     [
+      -16777213,
+      -2
+     ]
+    ],
+    "spec_literal_nonoverlap_violated": true,
+    "refined_result": [
+     [
+      3,
+      -25
+     ],
+     [
+      265106,
+      -20
+     ],
+     [
+      -8388608,
+      -1
+     ]
+    ],
+    "refined_nonoverlap_ok": true,
+    "refined_exact_sum_preserved": true
+   },
+   "density_sweep": {
+    "seed": 128827413,
+    "trials": 3000,
+    "trials_with_nonoverlap_violation": 1023,
+    "trial_violation_rate": 0.341,
+    "insertions": 44077,
+    "insertions_with_violation": 6497,
+    "insertion_violation_rate": 0.1474,
+    "violating_columns_breaking_descending_fold": 12,
+    "note": "문언 walk 산출 열은 비겹침이 아니므로 내림차순 fold 정리의 전건 밖 — 실제로 깨진다 (위 카운트)."
+   },
+   "verdict": "SPEC LITERAL WALK REFUTED — 정련 walk 정식 pin"
+  },
+  "invariant_sweep": {
+   "statement": "비-special single-wave 즉시-drain: FDOT32_CR == golden_lattice.wave_step BIT-EXACT (§27.7a.3). §27.7a.5 (c) 선공표 문언대로 **동일 operand 전 벡터 전수** — 값 계약을 받는 모든 trial 이 같은 operand 로 main path twin 대조를 받는다.",
+   "trials": 57022,
+   "equals_value_contract_trials": true,
+   "by_family": {
+    "c1_regress": 2,
+    "det": 20,
+    "eft_adv_residue": 2000,
+    "eft_bf16_wide": 9000,
+    "eft_cancel": 6000,
+    "eft_cancel_chain": 4000,
+    "eft_f16_all": 7000,
+    "eft_ladder": 3000,
+    "eft_pack_edge": 3000,
+    "eft_same": 3000,
+    "eft_tie": 5000,
+    "eft_top_cancel": 3000,
+    "invariant": 12000
+   },
+   "families_excluded": [],
+   "dedicated_stream": {
+    "trials": 12000,
+    "seed": 128827409,
+    "generators": [
+     "eft_bf16_wide",
+     "eft_f16_all",
+     "eft_cancel",
+     "eft_cancel_chain",
+     "eft_tie",
+     "eft_ladder",
+     "eft_same",
+     "eft_pack_edge",
+     "eft_adv_residue",
+     "eft_top_cancel"
+    ],
+    "_doc": "전수 대조 위에 얹는 독립 스트림. generator 는 전 가족 (FAM_GENS 10종) — 3a-C1 초안은 7종만 돌려 적대 3가족을 미공시 제외했었다 (§27.7a.2a amendment-7 이 그 사실과 정정을 기록한다)."
+   },
+   "discriminating_power": {
+    "_doc": "invariant 축이 EFT 결함을 실제로 잡는가 — 3a-C1 중간 진단 '양 경로가 같은 결함 표면을 공유해 판별력이 없다' 는 **거짓**이다. main_twin 은 golden_lattice.wave_step (lattice_accumulate -> extract_rto48 -> drain_rne24_ftz) 로 EFT fold 를 일절 쓰지 않는 독립 경로다. 아래는 같은 expansion 에 폐기된 ASC fold 를 걸었을 때 그 값 위반을 main twin 이 검출하는 비율의 고정-seed 실측 — 0 mismatch 였던 진짜 원인은 결함 표면 공유가 아니라 **가족 커버리지 결손** 이었다.",
+    "asc_value_violations": 168,
+    "caught_by_main_twin": 168
+   },
+   "mismatches": 0,
+   "counterexamples": [],
+   "verdict": "PASS"
+  },
+  "asc_detection_rate_by_family": {
+   "_doc": "폐기된 ASC pin (§27.7a.2 원 종료 (2)) 을 각 가족의 **삽입-생성 expansion** 에 재적용한 실측. §27.7a.2a amendment-5 의 표적성 주장은 본 필드를 인용한다 (본문 수치 단독 확정 금지 — §25.4). fold_violation_rate = ASC fold != RTO_48(exact) 비율; value_violations = 그 중 PACK_FINAL 까지 승격돼 값 계약을 깨는 수; caught_by_main_twin = 그 값 위반을 독립 main path 가 검출한 수 (검출력 실증).",
+   "by_family": {
+    "c1_regress": {
+     "trials": 2,
+     "fold_violations": 2,
+     "value_violations": 2,
+     "value_violations_caught_by_main_twin": 2,
+     "fold_violation_rate": 1.0
+    },
+    "det": {
+     "trials": 20,
+     "fold_violations": 0,
+     "value_violations": 0,
+     "value_violations_caught_by_main_twin": 0,
+     "fold_violation_rate": 0.0
+    },
+    "eft_adv_residue": {
+     "trials": 2000,
+     "fold_violations": 0,
+     "value_violations": 0,
+     "value_violations_caught_by_main_twin": 0,
+     "fold_violation_rate": 0.0
+    },
+    "eft_bf16_wide": {
+     "trials": 9000,
+     "fold_violations": 0,
+     "value_violations": 0,
+     "value_violations_caught_by_main_twin": 0,
+     "fold_violation_rate": 0.0
+    },
+    "eft_cancel": {
+     "trials": 6000,
+     "fold_violations": 0,
+     "value_violations": 0,
+     "value_violations_caught_by_main_twin": 0,
+     "fold_violation_rate": 0.0
+    },
+    "eft_cancel_chain": {
+     "trials": 4000,
+     "fold_violations": 2,
+     "value_violations": 2,
+     "value_violations_caught_by_main_twin": 2,
+     "fold_violation_rate": 0.0005
+    },
+    "eft_f16_all": {
+     "trials": 7000,
+     "fold_violations": 0,
+     "value_violations": 0,
+     "value_violations_caught_by_main_twin": 0,
+     "fold_violation_rate": 0.0
+    },
+    "eft_ladder": {
+     "trials": 3000,
+     "fold_violations": 0,
+     "value_violations": 0,
+     "value_violations_caught_by_main_twin": 0,
+     "fold_violation_rate": 0.0
+    },
+    "eft_pack_edge": {
+     "trials": 3000,
+     "fold_violations": 0,
+     "value_violations": 0,
+     "value_violations_caught_by_main_twin": 0,
+     "fold_violation_rate": 0.0
+    },
+    "eft_same": {
+     "trials": 3000,
+     "fold_violations": 0,
+     "value_violations": 0,
+     "value_violations_caught_by_main_twin": 0,
+     "fold_violation_rate": 0.0
+    },
+    "eft_tie": {
+     "trials": 5000,
+     "fold_violations": 0,
+     "value_violations": 0,
+     "value_violations_caught_by_main_twin": 0,
+     "fold_violation_rate": 0.0
+    },
+    "eft_top_cancel": {
+     "trials": 3000,
+     "fold_violations": 2997,
+     "value_violations": 120,
+     "value_violations_caught_by_main_twin": 120,
+     "fold_violation_rate": 0.999
+    },
+    "invariant": {
+     "trials": 12000,
+     "fold_violations": 1196,
+     "value_violations": 44,
+     "value_violations_caught_by_main_twin": 44,
+     "fold_violation_rate": 0.099667
+    }
+   },
+   "adopted_desc_fold_violations": 0
+  },
+  "special_contrast": {
+   "statement": "NaN/Inf: audit = qNaN 0x7FC00000 + 전용 sticky; main = zero 기여 + LANE_SPECIAL sticky + writeback 억제 — 대조 축 = sticky 유무 (값 비교 금지); main 은 NaN 불산출 (marker 무모호)",
+   "trials": 600,
+   "classify_agreement": "audit/main 의 special lane 수 전수 일치 (같은 S1 classify)",
+   "sample_rows": [
+    {
+     "case": "sp_bf16_qnan_s0_l0_zeros",
+     "audit": {
+      "result": "0x7FC00000",
+      "sticky": true
+     },
+     "main": {
+      "sticky": true,
+      "writeback_suppressed": true,
+      "suppressed_drain_class_not_nan": true,
+      "suppressed_drain": "0x00000000"
+     }
+    },
+    {
+     "case": "sp_bf16_qnan_s0_l0_norm",
+     "audit": {
+      "result": "0x7FC00000",
+      "sticky": true
+     },
+     "main": {
+      "sticky": true,
+      "writeback_suppressed": true,
+      "suppressed_drain_class_not_nan": true,
+      "suppressed_drain": "0xD57754D0"
+     }
+    },
+    {
+     "case": "sp_bf16_qnan_s0_l17_zeros",
+     "audit": {
+      "result": "0x7FC00000",
+      "sticky": true
+     },
+     "main": {
+      "sticky": true,
+      "writeback_suppressed": true,
+      "suppressed_drain_class_not_nan": true,
+      "suppressed_drain": "0x00000000"
+     }
+    },
+    {
+     "case": "sp_bf16_qnan_s0_l17_norm",
+     "audit": {
+      "result": "0x7FC00000",
+      "sticky": true
+     },
+     "main": {
+      "sticky": true,
+      "writeback_suppressed": true,
+      "suppressed_drain_class_not_nan": true,
+      "suppressed_drain": "0x5ACE3CBE"
+     }
+    },
+    {
+     "case": "sp_bf16_qnan_s0_l31_zeros",
+     "audit": {
+      "result": "0x7FC00000",
+      "sticky": true
+     },
+     "main": {
+      "sticky": true,
+      "writeback_suppressed": true,
+      "suppressed_drain_class_not_nan": true,
+      "suppressed_drain": "0x00000000"
+     }
+    },
+    {
+     "case": "sp_bf16_qnan_s0_l31_norm",
+     "audit": {
+      "result": "0x7FC00000",
+      "sticky": true
+     },
+     "main": {
+      "sticky": true,
+      "writeback_suppressed": true,
+      "suppressed_drain_class_not_nan": true,
+      "suppressed_drain": "0xDBB8D4B3"
+     }
+    },
+    {
+     "case": "sp_bf16_qnan_s1_l0_zeros",
+     "audit": {
+      "result": "0x7FC00000",
+      "sticky": true
+     },
+     "main": {
+      "sticky": true,
+      "writeback_suppressed": true,
+      "suppressed_drain_class_not_nan": true,
+      "suppressed_drain": "0x00000000"
+     }
+    },
+    {
+     "case": "sp_bf16_qnan_s1_l0_norm",
+     "audit": {
+      "result": "0x7FC00000",
+      "sticky": true
+     },
+     "main": {
+      "sticky": true,
+      "writeback_suppressed": true,
+      "suppressed_drain_class_not_nan": true,
+      "suppressed_drain": "0x542A32FA"
+     }
+    },
+    {
+     "case": "sp_bf16_qnan_s1_l17_zeros",
+     "audit": {
+      "result": "0x7FC00000",
+      "sticky": true
+     },
+     "main": {
+      "sticky": true,
+      "writeback_suppressed": true,
+      "suppressed_drain_class_not_nan": true,
+      "suppressed_drain": "0x00000000"
+     }
+    },
+    {
+     "case": "sp_bf16_qnan_s1_l17_norm",
+     "audit": {
+      "result": "0x7FC00000",
+      "sticky": true
+     },
+     "main": {
+      "sticky": true,
+      "writeback_suppressed": true,
+      "suppressed_drain_class_not_nan": true,
+      "suppressed_drain": "0xD6BA0131"
+     }
+    },
+    {
+     "case": "sp_bf16_qnan_s1_l31_zeros",
+     "audit": {
+      "result": "0x7FC00000",
+      "sticky": true
+     },
+     "main": {
+      "sticky": true,
+      "writeback_suppressed": true,
+      "suppressed_drain_class_not_nan": true,
+      "suppressed_drain": "0x00000000"
+     }
+    },
+    {
+     "case": "sp_bf16_qnan_s1_l31_norm",
+     "audit": {
+      "result": "0x7FC00000",
+      "sticky": true
+     },
+     "main": {
+      "sticky": true,
+      "writeback_suppressed": true,
+      "suppressed_drain_class_not_nan": true,
+      "suppressed_drain": "0xD4083C8A"
+     }
+    }
+   ],
+   "verdict": "PASS"
+  },
+  "expansion_capacity": {
+   "max_observed_components": 25,
+   "histogram": {
+    "0": 1,
+    "1": 12035,
+    "2": 4768,
+    "3": 8608,
+    "4": 6005,
+    "5": 2425,
+    "6": 3894,
+    "7": 3305,
+    "8": 1199,
+    "9": 307,
+    "10": 3023,
+    "11": 1257,
+    "12": 42,
+    "13": 185,
+    "14": 470,
+    "15": 1084,
+    "16": 1687,
+    "17": 2065,
+    "18": 1864,
+    "19": 1421,
+    "20": 814,
+    "21": 378,
+    "22": 139,
+    "23": 37,
+    "24": 8,
+    "25": 1
+   },
+   "structural_bound": "carry 없음 (bank 무접촉 32항 dot) ⇒ 자연 도달 <= 32; 용량 33 probe 는 인위 열로 fault 경로 검사",
+   "probe": {
+    "accept_33": true,
+    "overflow_34_loud_fault": true,
+    "verdict": "PASS"
+   },
+   "twosum_passes_max": 77,
+   "twosum_passes_bound_528_held": true,
+   "max_chain_single_insert": 8,
+   "fold_passes_max": 25,
+   "merge_aligned_width_max": 47,
+   "merge_count_total": 1074817,
+   "merge_aligned_width_enforced_bound": 48,
+   "merge_aligned_width_doc": "정련 walk 의 겹침 merge 정렬합 폭. **강제 경계는 Q48 (초과 = loud fault)** 이고 위 max 는 실측치다 — §27.7a.2a amendment-2 의 'vacuous-RTO 강화' 주장은 이 필드를 인용한다 (assert 로 강제되는 값이 아님을 명시; 실측 < 48 은 관측이지 계약이 아니다)."
+  },
+  "insertion_queue_cost": {
+   "_doc": "정련 walk (amendment-2) 이 새로 요구하는 (e, top) 정렬 대기열 유지 비용. **이 비교/삽입 cycle 은 twosum_passes (AddWide pass 수) 에 계상되지 않는다** — §27.7a.2a amendment-3 의 cycle 무영향 판정은 AddWide pass 축만 논거로 삼았으므로, 본 필드가 그 미계상 축을 실측으로 노출한다 (3a-C3 step 프로그램 실측 대상). step sequencer 가 비교 1회/cycle 이면 삽입 축 단독 상한 = insort_scan_steps_max cycle.",
+   "insort_scan_steps_max": 326,
+   "insort_scan_steps_total": 5023794,
+   "insort_calls_max": 158,
+   "counted_in_twosum_passes": false,
+   "resolution_axis": "3a-C3 (RTL step 프로그램 실측) — cycle <= 10,000 hard 상한은 불변"
+  },
+  "product_decode_crosscheck": {
+   "pairs_fraction_checked": 19840,
+   "note": "EFT 곱 (m,e) vs golden_lattice.operand_frac Fraction 곱 — 독립 경로 값-일치"
+  },
+  "directed_cases": [
+   {
+    "case": "det_tie_q25",
+    "result": "0x3F800001",
+    "exp_len": 3
+   },
+   {
+    "case": "det_rne48_disc",
+    "result": "0x57800001",
+    "exp_len": 3
+   },
+   {
+    "case": "det_exact_cancel",
+    "result": "0x00000000",
+    "exp_len": 1
+   },
+   {
+    "case": "det_ftz_min_normal",
+    "result": "0x00800000",
+    "exp_len": 1
+   },
+   {
+    "case": "det_ftz_under",
+    "result": "0x00000000",
+    "exp_len": 2
+   },
+   {
+    "case": "det_ftz_neg",
+    "result": "0x80000000",
+    "exp_len": 1
+   },
+   {
+    "case": "det_ovf_2p128",
+    "result": "0x7F800000",
+    "exp_len": 1
+   },
+   {
+    "case": "det_ovf_neg",
+    "result": "0xFF800000",
+    "exp_len": 1
+   },
+   {
+    "case": "det_maxfinite_24ones",
+    "result": "0x7F7FFFFF",
+    "exp_len": 1
+   },
+   {
+    "case": "det_inf_25ones",
+    "result": "0x7F800000",
+    "exp_len": 2
+   },
+   {
+    "case": "det_f16_min_sub_prod",
+    "result": "0x33800000",
+    "exp_len": 1
+   },
+   {
+    "case": "det_f16_tie_even",
+    "result": "0x3F800000",
+    "exp_len": 2
+   },
+   {
+    "case": "det_f16_tie_up",
+    "result": "0x3F800001",
+    "exp_len": 3
+   },
+   {
+    "case": "det_f16_sub_sq_all",
+    "result": "0x2A000000",
+    "exp_len": 1
+   },
+   {
+    "case": "det_f16_max_sq_all",
+    "result": "0x51FFC004",
+    "exp_len": 2
+   },
+   {
+    "case": "det_bf16_daz_zero",
+    "result": "0x00000000",
+    "exp_len": 0
+   },
+   {
+    "case": "det_bf16_daz_plus_one",
+    "result": "0x3F800000",
+    "exp_len": 1
+   },
+   {
+    "case": "det_all_same_1p5",
+    "result": "0x42900000",
+    "exp_len": 1
+   },
+   {
+    "case": "det_bf16_min_lsb",
+    "result": "0x00000000",
+    "exp_len": 1
+   },
+   {
+    "case": "det_bf16_top",
+    "result": "0x7F800000",
+    "exp_len": 1
+   }
+  ],
+  "vector_file_self_verify": {
+   "lines": 450,
+   "mismatches": 0,
+   "verdict": "PASS"
+  }
+ },
+ "vector_file": {
+  "path": "include/generated/fdotcr_vectors.hex",
+  "n_vectors": 450,
+  "bits_per_line": 1088,
+  "hex_chars_per_line": 272,
+  "operand_layout": "A||B 연접 16-frag (frag 0-7 = A 32x16b, frag 8-15 = B; lanes_to_frags pin)",
+  "families": [
+   {
+    "family": "det",
+    "code": 0,
+    "doc": "손계산 고정점 directed — tie/q-경계/FTZ/overflow/정확상쇄/DAZ/f16 subnormal/전부동일 (§27.7a.5 (b))",
+    "start": 0,
+    "count": 20
+   },
+   {
+    "family": "eft_bf16_wide",
+    "code": 1,
+    "doc": "전 지수역 임의 bf16 쌍 (±0/DAZ subnormal 산재) — cwave_bf16_rand 관례",
+    "start": 20,
+    "count": 30
+   },
+   {
+    "family": "eft_f16_all",
+    "code": 2,
+    "doc": "f16 전 클래스 (normal/subnormal 0.2-0.3/±0) — cwave_f16_rand 관례",
+    "start": 50,
+    "count": 30
+   },
+   {
+    "family": "eft_cancel",
+    "code": 3,
+    "doc": "X, -X + 수십 binade 아래 dust — 대규모 상쇄 (cwave_cancel)",
+    "start": 80,
+    "count": 30
+   },
+   {
+    "family": "eft_cancel_chain",
+    "code": 4,
+    "doc": "greedy top-8bit canceller 연쇄 — 대규모 상쇄 후 미세 잔차 (fold 적대)",
+    "start": 110,
+    "count": 30
+   },
+   {
+    "family": "eft_tie",
+    "code": 5,
+    "doc": "24-bit RNE tie 인접 + bit-48 아래 dust (bf16 1+2^-24, f16 1+2^-24 subnormal 경유)",
+    "start": 140,
+    "count": 30
+   },
+   {
+    "family": "eft_ladder",
+    "code": 6,
+    "doc": "exponent ladder 2^-252..2^255 급, gap 49-52 — expansion 최대 깊이 + 동일 지수 클러스터",
+    "start": 170,
+    "count": 30
+   },
+   {
+    "family": "eft_same",
+    "code": 7,
+    "doc": "전부동일 32쌍 — 동일 곱 32회 삽입 carry/split 체인",
+    "start": 200,
+    "count": 30
+   },
+   {
+    "family": "eft_pack_edge",
+    "code": 8,
+    "doc": "PACK_FINAL 경계 — overflow ~2^128 / FTZ ~2^-126 / 정확 상쇄 +0",
+    "start": 230,
+    "count": 30
+   },
+   {
+    "family": "eft_adv_residue",
+    "code": 9,
+    "doc": "단위 잔차 (±1) 상단 + 48-경계 gap mid + dust — fold 창-하강 표적 공격 (삽입 순서 3종)",
+    "start": 260,
+    "count": 30
+   },
+   {
+    "family": "eft_top_cancel",
+    "code": 13,
+    "doc": "C1 반례 메커니즘 표적 (신설): 8-bit 블록 사슬로 top=E0 인 24-bit component + 2^(E0-48) 아래 tail (jam 강제) + 마지막 lane 2개로 순수 -2^E0 (상단 인접 상쇄). 폐기된 ASC pin 은 여기서 정리를 상시 위반한다 — 가족별 실측률은 report 의 checks.asc_detection_rate_by_family 참조",
+    "start": 290,
+    "count": 30
+   },
+   {
+    "family": "c1_regress",
+    "code": 12,
+    "doc": "3a-C1 이 폐기된 ASC fold pin 하에서 실측한 값 계약 반례 2건 — 영구 회귀 벡터. RESULT = 값 계약 우변 pack_signed(exact); ASC 로 회귀하면 즉시 FAIL 한다.",
+    "start": 320,
+    "count": 2
+   },
+   {
+    "family": "special_det",
+    "code": 10,
+    "doc": "NaN/Inf 전 행 directed — qNaN/sNaN/±Inf × A/B × lane {0,17,31} × 배경 {zeros,normals} + Inf×0/NaN×0/양측/전-lane (§27.7a.1 (iii))",
+    "start": 322,
+    "count": 104
+   },
+   {
+    "family": "special_rand",
+    "code": 11,
+    "doc": "임의 배경 + 임의 special 주입 1-5 lane (payload NaN/부호/±0 짝 포함)",
+    "start": 426,
+    "count": 24
+   }
+  ],
+  "sha256": "0a2cc29286f8c54002002bc6ea2c90dcfc622bc39cdb3fda29f4a21544367964"
+ },
+ "contract": {
+  "path": "include/generated/fdotcr_vec_contract.md",
+  "sha256": "7c4dbfd998221cbd185b65ee05dbdba5020f9dacf74d6cd08552de8a9a980aa1"
+ },
+ "prannounced_plan_conformance": {
+  "_doc": "§27.7a.5 선공표 (locked) 대비 실제 이행. 선공표 문언에서 벗어난 항목은 **대체 사실 자체를** 여기와 §27.7a.2a amendment 에 기록한다 (§12a 규칙 5) — '하한 충족' 같은 재해석만 남기지 않는다.",
+  "a_value_contract_stream": {
+   "prannounced": "재생성 고정-seed 36,000 재사용 (families 30,000 + single-wave streams 6,000)",
+   "actual": "재사용하지 않고 golden 자체 고정 seed (0x7ADC001-00A) 로 신규 생성",
+   "substitution": true,
+   "reason": "선공표가 가리킨 36,000 은 scripts/acc_format_study.py 의 **곱 (m,e) 수준** 스트림 (rto_tree_families 30,000 + bank single-wave 6,000) 이라 §27.7a.1 의 A||B 16-bit operand 인터페이스로 그대로 투입할 수 없다 — FDOT32_CR 은 operand 쌍을 먹는다. 동일 seed 재사용 대신 같은 적대 성격 (cancellation / tie / wide) 을 operand 수준에서 재구성한 가족을 신규 고정 seed 로 생성했다.",
+   "random_family_trials": 45000,
+   "value_contract_trials_total": 57022,
+   "declared_floor_40000": 40000,
+   "prannounced_reference_36000": 36000,
+   "meets_both": true,
+   "note_36000_still_regenerated": "§27.7a.3 이 인용하는 36,000 assert 는 acc_format_study 가 여전히 자기 산출물 (fp_validation_report/acc_format_study_report) 에서 재생성한다 — 본 C1 이 그 축을 대체하는 것이 아니라 operand 수준 축을 추가한다."
+  },
+  "b_directed_and_adversarial": {
+   "directed_cases": 20,
+   "adversarial_families": [
+    "eft_adv_residue",
+    "eft_cancel",
+    "eft_cancel_chain",
+    "eft_ladder",
+    "eft_same",
+    "eft_tie",
+    "eft_top_cancel"
+   ],
+   "added_in_c1": [
+    "eft_top_cancel",
+    "c1_regress"
+   ]
+  },
+  "c_invariant_full_sweep": {
+   "prannounced": "golden lattice model (§27.4 ①) vs golden EFT 를 동일 operand 전 벡터에서 bit-equal 전수 assert",
+   "actual": "값 계약을 받는 전 trial (57022) 에 동일 operand main twin 대조 — 가족 제외 0",
+   "substitution": false,
+   "c1_draft_defect_corrected": "3a-C1 초안은 별도 스트림 12,000 만 돌리며 적대 3가족 (eft_cancel_chain / eft_adv_residue / eft_top_cancel) 을 미공시 제외했다 — 본 산출물에서 전수로 정정 (amendment-7)"
+  }
+ },
+ "spec_findings": [
+  "**C1 실측이 C0 pin 을 부정했다 (amendment-1).** §27.7a.2 종료 (2) 가 pin 한 'ascending-magnitude RTO-48 fold' 는 일반형뿐 아니라 **삽입-생성 scope 안에서도** 부정된다 — 고정-seed 42,000 급 스트림에서 값 계약 반례 2건 (전부 bf16 eft_cancel_chain; 상대오차 24%, 1 ulp 급 아님). 근거 문언 ('각 pass 의 sticky-jam 이 정확히 48-bit 창 아래 잔여를 운반') 은 거짓이다: sticky-jam 은 그 pass 시점의 창에 대해서만 표식이며, 이후 pass 가 상단 인접 상쇄로 창을 jam 아래로 끌어내리면 표식이 값으로 승격된다. 오름차순은 큰 component 가 나중에 도착하므로 상쇄가 항상 jam 이후에 일어난다 — 구조적 결함이다. ⇒ 이전 세션이 제안한 'scope 를 삽입-생성 expansion 으로 좁혀 재서술' 처방은 **무효** (좁힌 scope 안에 반례가 있다; annex 의 cex_C/cex_D 가 그 실측 expansion). 채택 수리 = **내림차순 (descending-magnitude) RTO-48 fold** — 일반형 정리가 증명과 함께 성립하므로 scope 축소가 불필요하다.",
+  "**§27.7a.2 STEP I 문언은 자기모순이다 (amendment-2).** 문언의 TwoSumExact chain 독해 (span<=48 merge, 잔차 lo 즉시 확정 방출) 는 같은 절이 pin 한 비겹침 invariant 를 스스로 위반한다 — 결정 반례 + 고정-seed 밀도 실측 (spec_literal_walk_annex). 문언대로 구현하면 invariant FAIL, invariant 를 지키면 문언 이탈이므로 완전 준수 구현이 존재하지 않는다. golden 이 쓰는 정련 walk ('최저 2개 순서 merge') 를 정식 pin 으로 승격해야 한다. 문언 walk 은 비겹침을 깨므로 내림차순 fold 정리의 전건도 파괴한다 (같은 annex 에서 계측) — 값 축에서도 대안이 아니다.",
+  "**벡터 artifact 오염 경로 차단 (구현 결함, C1 자체 감사).** 이전 emit 경로는 값 계약 위반 trial 의 EFT 산출 (bits) 을 기대 RESULT 로 벡터 파일에 박았고, self-verify 가 같은 EFT 경로를 재실행해 대조했으므로 자기확인 루프였다 — 그대로 3a-C3/C4 TB 가 소비하면 RTL 이 버그를 재현하도록 강제된다. 이제 emit 은 bits != ref_bits 를 loud fault 로 거부하고, self-verify 는 EFT 무의존 Fraction 경로로 RESULT 를 재확인 한다. 반례 2건은 삭제하지 않고 c1_regress 영구 회귀 벡터로 고정했다 (기대값 = 값 계약 우변; ASC 회귀 시 즉시 FAIL).",
+  "**§27.7a.5 (c) 선공표 미이행 — 3a-C1 초안의 계약 위반, 본 산출물에서 정정 (amendment-7).** 선공표 (c) 는 invariant sweep 을 '동일 operand **전 벡터**에서 bit-equal **전수** assert' 로 못박았는데, 초안 구현은 별도 seed 스트림 12,000 만 돌렸고 그 generator 목록에서 **적대 3가족 (eft_cancel_chain — C1 반례가 나온 바로 그 가족 — / eft_adv_residue / eft_top_cancel)** 이 빠져 있었다. 가족 sweep 과 c1_regress 는 main twin 을 아예 호출하지 않아 값 계약 trial 대부분이 invariant 검사를 받지 못했고, 이 축소는 spec·report·vec_contract 어디에도 공시되지 않았다. 정정: invariant 대조를 **값 계약 전 trial 에 전수**로 걸고 (checks.invariant_sweep.by_family 로 가족별 공시), 전용 스트림의 generator 도 FAM_GENS 전 가족으로 넓혔다. **추가로, 초안이 남긴 원인 진단 '양 경로가 같은 결함 표면을 공유해 invariant 축에 판별력이 없었다' 는 거짓이다** — main twin 은 golden_lattice.wave_step 이라 EFT fold 를 공유하지 않으며, 폐기 ASC 를 걸면 값 위반을 checks.invariant_sweep.discriminating_power 대로 검출한다. 0 mismatch 였던 진짜 원인은 **가족 커버리지 결손**이다. 원인을 잘못 적으면 '구조적 한계' 로 읽혀 최강 안전망 (독립 main-path twin × 적대 가족) 이 미배선으로 남는다.",
+  "**선공표 실측 주장은 report 필드로 고정한다 (§25.4 사각 차단).** amendment-5 의 'ASC 는 이 가족에서 정리를 거의 전부 위반' 과 amendment-2 의 '전 merge 정렬합 <= 47 bit' 는 둘 다 load-bearing 근거인데 초안 report 에 대응 필드가 없어 재실행 byte-identical 보호 밖이었다 (회귀 시 조용히 거짓이 된다). 이제 checks.asc_detection_rate_by_family 와 checks.expansion_capacity.merge_aligned_width_max 로 수록하고 spec 은 그 필드를 인용한다. 정렬합 폭의 **강제 경계는 48 (초과 = loud fault)** 이고 47 은 실측 관측치일 뿐임도 같은 필드에 명시했다.",
+  "**amendment-3 의 cycle 판정에는 미계상 축이 있다 (정직 표기).** 그 판정은 AddWide pass 수만 논거로 삼았으나, amendment-2 가 새로 pin 한 정련 walk 은 (e, top) 정렬 대기열에 임의 위치 삽입을 매 merge 조각마다 수행한다 — 이 비교/삽입 cycle 은 twosum_passes 에 전혀 계상되지 않는다. checks.insertion_queue_cost 에 실측 (스캔 step 최대/총합, 삽입 호출 최대) 을 싣고, spec amendment-3 에 '미계상 — 3a-C3 실측 축' 을 명시했다. cycle <= 10,000 hard 상한과 GATE V20-4 선공표 수치는 불변이며 판정은 ESTIMATE 유지다.",
+  "**선공표 (a) 는 '재사용' 이 아니라 '신규 생성' 으로 이행됐다 (대체 사실 기록, §12a 규칙 5).** (a) 문언은 '재생성 고정-seed 36,000 재사용' 인데, 그 36,000 은 acc_format_study 의 곱 (m,e) 수준 스트림이라 §27.7a.1 의 A||B operand 인터페이스에 그대로 투입할 수 없다. 본 C1 은 동일 성격의 적대 가족을 operand 수준에서 재구성해 자체 고정 seed 로 신규 생성했다 — '하한 충족' 재해석만 남기지 않고 대체 사실과 사유를 prannounced_plan_conformance.a_value_contract_stream 및 amendment-6 에 명기한다.",
+  "**§27.7a.5 파일명 불일치 (미해소).** 선공표는 `scripts/golden_fdot32_cr.py` 인데 실제 파일은 `scripts/golden_fdotcr.py` 다 — 둘 중 하나를 §12a amendment 로 정정해야 한다 (본 C1 은 spec 측 문언을 실제 파일명으로 맞추는 amendment-4 를 기록)."
+ ],
+ "verdicts": {
+  "value_contract_zero_mismatch": true,
+  "fold_theorem_insertion_scope_zero_mismatch": true,
+  "fold_general_form_asc_pin_refuted": true,
+  "fold_general_form_desc_pin_holds": true,
+  "spec_literal_walk_refuted": true,
+  "jam_margin_floor_25_held": true,
+  "freeze_property_held": true,
+  "invariant_bit_exact": true,
+  "invariant_full_sweep_no_family_excluded": true,
+  "invariant_axis_discriminating": true,
+  "special_contrast_axis_established": true,
+  "capacity_fault_loud": true,
+  "vector_file_self_verified": true,
+  "c0_pin_refuted_by_c1_measurement": true
+ }
+}

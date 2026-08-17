@@ -3248,6 +3248,8 @@ glue nominal 성분 (전부 ESTIMATE — ceiling 에는 nominal 상단 900 의 1
 
 #### 27.7a.2 알고리즘 pin — 순차 2Sum/EFT 의 폭-소거 형
 
+> **[2026-08-17 부분 supersede — §27.7a.2a]** 아래 종료 3단의 **(2) fold 방향 (ascending-magnitude)** 과 **STEP I 의 walk 독해**는 3a-C1 실측으로 **부정**되었다 (값 계약 위반 실측 — 상대오차 23.8% 급, 1 ulp 문제 아님). 대체 규범은 **§27.7a.2a (descending fold + freeze)** 이며, 본 절은 §12a 규칙 5 에 따라 superseded history 로 보존한다. **본 절의 (2) 를 단독 인용·미러링하지 마라** — RTL 이 오름차순 스트리밍 fold 를 구현하면 그것이 재발 경로다 (`include/generated/fdotcr_vec_contract.md` §4 의 금지 pin).
+
 내부 산술 표면은 출하 datapath 그대로다: **FP_Mul36 (곱) + FP_AddWide (합·pack) — 공유 datapath 파일 (`FP_AddWide.v`/`FP_Mul36.v`/`include/fp_narrow_f32.vh`) 은 byte-untouched 의무** (diff 로 검사, §27.5 항 6 의 "FP_AddWide 48-bit byte-untouched 존치" 승계).
 
 - **곱 단계 (exact)**: bf16 8×8→16-bit / f16 11×11→22-bit significand 곱 — **FP_Mul36 재사용** (FS_MUL launch 관례), p_exp = ea_eff + eb_eff + 1 은 signed-11 수납 (§27.2.1 lattice 와 동일 산술). 곱 지점 반올림 0회 (출하된 C2 계약 그대로).
@@ -3256,6 +3258,104 @@ glue nominal 성분 (전부 ESTIMATE — ceiling 에는 nominal 상단 900 의 1
 - **누산 = grow-expansion**: 비겹침 component 열 (용량 **33 = 32 삽입 + carry 1**) 에 곱 32개를 순차 삽입 — 삽입 i 의 TwoSumExact 체인 길이 ≤ i, 총 삽입 위치 수 Σ ≈ 528. **용량 초과 = loud fault (never silent)** — "도달 불가" 주장으로 hw 검사를 대체하지 않는다; golden 은 매 스텝 비겹침·길이·exact-합-보존 3종을 assert 한다.
 - **종료 3단**: (1) 최종 expansion 의 exact 합 == 곱 32개의 exact 합 (EFT 불변식); (2) **ascending-magnitude RTO-48 fold** — 비겹침 열의 오름차순 fold 에서 각 pass 의 sticky-jam 이 정확히 "48-bit 창 아래 잔여 ≠ 0" 를 운반하므로 fold 결과 == RTO_48(exact 합) (RTO 조성 성질 — `FP_AddWide.v` 헤더의 rto_n∘rto_48 성질과 같은 family; **이 항의 정리 지위는 golden directed family 로 이행해 졸업시킨다 — §25.4 규율, 본문 주장만으로 확정하지 않음**); (3) PACK_FINAL 1회 → §27.2.1 추출 정리 (RNE_24(RTO_48(exact)) == RNE_24(exact), 48 은 22-bit 마진) 에 의해 §27.7a.1 값 계약이 달성된다.
 - **cycle 예산**: §27.7 sketch 의 "~9,000" 과 정합하는 도출 (재구성 — 세션 harness 는 회수 불가): 삽입 위치 총수 ≈ 528 × Knuth 6-op 2Sum × 3-cycle adder pass ≈ 9,504. 채택 형 (1-pass TwoSumExact) 의 nominal = 곱 32×~6 + 삽입 ≤ 528×(3+~3) + compress/fold ≤ 66 pass ×~6 + capture/classify/pack 고정 ≈ **3,600-5,500 cycles** (per-pass 제어 오버헤드는 ESTIMATE). **상한 선언: cycle ≤ 10,000 — hard, TB 실측 졸업 (§25.4 규율), 초과 = gate FAIL** (sketch 형 9,504 를 상회 수납 + 채택 형 nominal 의 ~2× 여유).
+
+#### 27.7a.2a [AMENDMENT 2026-08-17, 3a-C1 실측] 종료 (2) 와 STEP I walk 의 개정 — **C1 실측이 C0 pin 을 부정했다**
+
+**본 절은 §12a 규칙 5 하의 amendment 다. 위 §27.7a.2 원문은 무수정 보존한다** (그 문언 중 종료 (2) 의 fold 방향과 STEP I 의 walk 독해는 본 절이 supersede 한다). 근거 artifact: `scripts/golden_fdotcr.py` + `include/generated/fdotcr_golden_report.json` (고정 seed, 재실행 byte-identical).
+
+**사실 기록 (은폐 없음)**: §27.7a.5 가 요구한 golden 졸업 절차 (3a-C1) 를 실행한 결과, **§27.7a.2 종료 (2) 가 pin 한 알고리즘이 §27.7a.1 값 계약을 위반했다**. 즉 이것은 golden 구현 버그가 아니라 **C0 (spec-first) 단계에서 pin 한 알고리즘 자체의 결함이며, C1 실측이 C0 pin 을 부정한 사건**이다. §25.4 규율 ("본문 주장만으로 확정하지 않는다") 이 설계대로 작동한 결과다 — 원 문언이 정리 지위를 golden 졸업 대상으로 남겨두었기에 RTL 착지 전에 포착됐다.
+
+##### amendment-1 — 종료 (2): **ascending → descending** RTO-48 fold
+
+**폐기되는 원 문언**: "(2) **ascending-magnitude RTO-48 fold** — 비겹침 열의 오름차순 fold 에서 각 pass 의 sticky-jam 이 정확히 '48-bit 창 아래 잔여 ≠ 0' 를 운반하므로 fold 결과 == RTO_48(exact 합)".
+
+**부정의 실측**: 고정-seed 값 계약 스트림에서 **반례 2건** (전부 bf16, `eft_cancel_chain` 가족). 첫 케이스: fold 산출 `0xB4C00000` vs 값 계약 우변 `0xB4FC0000` — **상대오차 23.8%** (1 ulp 급이 아니다). 최종 expansion `[(2,−28), (16777212,−23), (16777215,1), (−1,25)]` 은 비겹침·오름차순·용량 assert 를 전부 통과한 정상 열이다. 곱·삽입 단계는 무결하며 발산은 STEP F 에서만 발생한다.
+
+**근거 문언이 거짓인 이유**: sticky-jam 은 *그 pass 시점의* 48-bit 창에 대해서만 "아래 잔여 ≠ 0" 표식이다. 이후 pass 가 **상단 인접 상쇄** 로 결과 창을 jam 위치보다 아래로 끌어내리면, jam bit 은 표식이 아니라 **결과 그 자체**가 된다. 위 반례에서 pass 3 이 2^−23 에서 jam 하고 pass 4 의 −2^25 가 상위 26 bit 를 상쇄해 최종 창이 top=−21 로 46 binade 내려간다. RTO 조성 성질 (rto_n ∘ rto_48 = rto_n) 은 **같은 수를 다시 반올림할 때만** 성립하고, 사이에 크기를 줄이는 덧셈이 끼면 성립하지 않는다. 오름차순은 큰 component 가 나중에 도착하므로 상쇄가 **항상 jam 이후에** 일어난다 — 우연이 아니라 구조적 결함이다.
+
+**scope 축소 처방은 무효 (명시 기록)**: 3a-C1 중간 보고는 "일반형은 반례로 부정되었으니 종료 (2) 문언을 '삽입-생성 expansion' 으로 scope 를 좁혀 재서술하라" 고 제안했다. **이 처방은 채택하지 않는다 — 좁힌 scope 안에 반례가 있다.** 위 반례 2건이 바로 삽입-생성 expansion 이며, report 의 `checks.fold_theorem_general_form_annex.deterministic_cases` 의 `cex_C`/`cex_D` 가 그 실측 expansion 을 결정 반례로 고정 수록한다. scope 축소로는 정리를 구제할 수 없다.
+
+**채택 문언 (신규 pin)**: **(2) descending-magnitude RTO-48 fold** — 완성된 expansion 을 **최상위 component 부터 내려가며** 접는다. 전건은 STEP I 가 매 삽입 assert 하는 두 성질뿐이다: **저장 오름차순 + 엄격 비겹침** (top(c_i) ≤ e_{i+1}) 및 **W ≤ 24**. 정리와 증명:
+
+1. 첫 *실질 jam* 이전의 모든 pass 는 정렬폭 ≤ 48 이라 무반올림 exact ⇒ acc_k = P_k := Σ_{i≥k} c_i. 비겹침 하에서 acc 와 크기가 비견되는 상대는 항상 '바로 아래' component 이므로 **모든 상쇄가 jam 이전에 exact 로 해소된다**.
+2. index k 에서 실질 jam ⇔ P_k 가 grid p := top(P_k) − 48 의 배수가 아님 ⇒ e_k < p. 비겹침의 telescoping 합 (Σ_{i<k}(2^{top(c_i)} − 2^{e_i}) ≤ 2^{top(c_{k−1})} − 2^{e_0}) 으로 남은 꼬리 전체가 **|R| < 2^{e_k} < 2^p**.
+3. P_k 의 셀 내 offset r 은 2^{e_k} 의 배수이고 0 이 아니므로 r ∈ [2^{e_k}, 2^p − 2^{e_k}] — |R| < 2^{e_k} 로는 셀을 벗어날 수도 exact 가 될 수도 없다 ⇒ **RTO_48(Σ) == RTO_48(P_k) == acc_k**, 그리고 top(Σ) == top(P_k).
+4. acc_k 는 grid p 에서 홀수 (RTO) 이므로 이후 |c| < 2^p 의 가산은 인접 두 셀 안에 머물고, 절단 후 LSB set 이 정확히 acc_k 를 되돌린다 ⇒ **freeze** (acc 가 더 이상 변하지 않는다).
+
+∴ fold 결과 == RTO_48(exact 합) 이 **임의의 비겹침 오름차순 열에 대해** 성립한다 (일반형 — scope 축소 불요). 이어 (3) PACK_FINAL 1회 → §27.2.1 추출 정리로 §27.7a.1 값 계약이 닫힌다. 정리상 jam 마진 top(T) − p 는 항상 48 이므로 최종 RNE-24 의 흡수 조건 (마진 ≥ 25) 을 **23 bit 여유**로 만족한다 — 원문 (3) 의 "48 은 22-bit 마진" 논법과 같은 family 다.
+
+**정리 지위는 §25.4 대로 golden 졸업 대상으로 남긴다** (본문 증명만으로 확정하지 않는다 — 바로 그 규율이 원 pin 의 결함을 잡았다). 졸업 지표를 다음으로 **명시 pin** 한다: **(b) freeze (jam 이후 acc 불변) 를 loud fault 로 검사한다 — 이것이 정보를 나르는 유일한 축이다.** 실측: 실질 jam 33,370 trial 에서 freeze 위반 = 0. 보조로 (a) 첫 실질 jam 의 grid 위치 p 와 최종 top(T) 의 **마진** 을 계측해 `마진 ≥ 25` 를 검사하나, **이 지표는 항등적이다** — freeze 가 성립하는 한 최종 acc == jam 시점 acc 이고 RTO-48 의 실질 jam 산출은 정의상 48-bit significand 이므로 마진 ≡ 48 이 구조적으로 강제된다 (실측 히스토그램 단일 버킷 `{48: 33370}` 이 그 증거다). 따라서 (a) 는 정리의 **독립 확인이 아니라 freeze 의 항등 귀결**이고, §27.7a.2a amendment-8 의 `마진 < 25` hard 종료 분기는 freeze 검사를 통과하는 한 **도달 불가능한 방어선**이다 (제거하지 않고 이중 안전망으로 존치하되, 그 지위를 여기 명기한다 — §25.4 의 "본문 주장만으로 확정 금지" 규율의 자기적용). 폐기 ASC pin 의 실패 형태를 마진 축으로 대비 계측한 실측은 **없다** — ASC 경로의 반증 근거는 마진이 아니라 값 계약 위반 실측 (annex 의 REFUTED 판정) 이다.
+
+##### amendment-2 — STEP I: 문언 walk 은 자기모순, **정련 walk 을 정식 pin**
+
+**부정되는 원 문언**: §27.7a.2 의 "누산 = grow-expansion" 항이 서술한 TwoSumExact chain 독해 (오름차순 chain 에서 span ≤ 48 이면 merge, 잔차 lo 를 즉시 확정 방출).
+
+**자기모순의 실측**: 이 문언대로 구현하면 **같은 절이 pin 한 "비겹침 component 열" 과 "매 스텝 비겹침 assert" 를 스스로 위반한다** — merge 의 borrow 가 잔차를 다음 component 의 LSB 위로 확장시키기 때문이다. 결정 반례: column `[(3,−25), (265106,−20)]` 에 q = `(−2^23, −1)` 삽입. 밀도 실측 (고정-seed 3,000 trial, 8 가족): **비겹침 위반 trial 1,023 (34.1%)** — "드문 모서리" 가 아니다. 즉 **문언대로 구현하면 invariant FAIL, invariant 를 지키면 문언 이탈** 이므로 완전 준수 구현이 존재하지 않는다.
+
+**문언 walk 은 값 축의 대안도 아니다**: 그 산출 열은 비겹침이 아니므로 amendment-1 정리의 전건 밖이다 — 위반 열에 내림차순 fold 를 걸면 실제로 깨진다 (같은 sweep 에서 12건 계측). 따라서 "문언대로 되돌리기" 는 채택 불가다.
+
+**채택 문언 (신규 pin)**: STEP I 의 walk 은 **"최저 2개 순서 merge" (정련 walk)** 다 — (e, top) 오름차순 대기열에서 최저 component 가 나머지 전부와 비겹침이면 확정 방출, 겹치면 다음 최저와 exact AddWide merge 후 24|24 split 조각을 대기열에 재삽입. 산술 표면은 원문과 동일하다 (겹침 쌍의 exact merge + field-slice split — 새 원시연산 없음). 겹침 쌍은 span < 48 이 구조적이므로 **vacuous-RTO 는 원문보다 오히려 강화**된다 — 실측 인용원은 report 필드 `checks.expansion_capacity.merge_aligned_width_max` = **47 bit** (merge 1,074,817 회 전수 계측). **다만 강제 경계는 48 이다**: 코드가 loud fault 로 막는 값은 `> 48` 이고 47 은 관측치이지 계약이 아니다 (같은 필드의 `merge_aligned_width_enforced_bound` = 48 에 명기). 비겹침·오름차순은 구성적으로 성립하며 매 스텝 assert 로 재확인한다. **매 스텝 3종 assert 는 원문 그대로 유지한다** (비겹침·길이·exact-합-보존) — 이제 셋 다 실제로 성립하므로 약화가 아니다.
+
+##### amendment-3 — cycle 예산 · GATE V20-4 선공표에 대한 영향: **재선공표 불요 (알고리즘 변경에 따른 판정, 측정 후 조정 아님)**
+
+amendment-1/2 는 **선공표 수치를 변경하지 않는다.** 판정 근거를 명시한다 (§27.7a.5 선공표는 locked 이므로 무영향임을 논증할 의무가 있다):
+
+- **premap `$mul` delta 정확히 0 — 무영향.** 내림차순 fold 도 정련 walk 도 **새 산술 원시연산을 요구하지 않는다**. 곱은 FP_Mul36, 합·pack 은 FP_AddWide 그대로다.
+- **공유 datapath 3 파일 byte-untouched — 유지.** `FP_AddWide.v` / `FP_Mul36.v` / `include/fp_narrow_f32.vh` 에 변경이 없다 (datapath 변경 자체가 없다).
+- **cycle ≤ 10,000 (hard) — 무영향.** fold 는 pass 수가 바뀌지 않는다 (실측 최댓값 25 pass, 개정 전후 동일). 삽입 pass 실측 최댓값 77 ≤ 528 (원문 상한) 도 동일. 바뀌는 것은 STEP F 의 순회 index 방향 하나 (count−1 → 0) 다.
+  - **미계상 축 (정직 표기)**: 위 논거는 **AddWide pass 수만** 센다. amendment-2 가 새로 pin 한 정련 walk 은 (e, top) 정렬 대기열에 **임의 위치 삽입** 을 매 merge 조각마다 수행하며, 그 선형 스캔 비교 cycle 은 `twosum_passes` 에 **전혀 계상되지 않는다**. 실측 (report `checks.insertion_queue_cost`): trial 당 스캔 step 최대 **326**, 삽입 호출 최대 158, 전 스트림 총합 5,023,794. step sequencer 가 비교 1회/cycle 이면 삽입 축 단독으로 최대 ~326 cycle 이 nominal 위에 얹힌다 (hard 10,000 대비 여유는 유지되나 **nominal 3,600-5,500 의 내역에는 없던 항목**이다). 이 축의 확정 실측은 **3a-C3 (RTL step 프로그램)** 몫이며, 뒤집히면 §12a 개정으로 재선공표한다.
+- **LUT delta ≤ 2,200 — 무영향 (재선공표 없음).** 판정 근거는 **amendment-1 (내림차순) 단독의 delta 가 0** 이라는 것이다: 내림차순은 기존 index 카운터의 방향 하나이며 신규 상태·비교기·저장을 만들지 않는다. (amendment-2 의 대기열은 amendment-1 의 baseline 이 아니다 — 대기열 자체가 이번에 pin 된 항목이므로 "이미 materialize 되어 있다" 는 순환 논거를 쓰지 않는다. 대기열의 면적·cycle 비용은 위 bullet 대로 **3a-C3 실측 축**이다.) 원 nominal 상단 1,300 의 내역 (expansion 저장 150-250 + capture mux 200-350 + FSM/step 행 250-400 + compare/split glue 200-300) 중 어느 항목도 증가하지 않는다.
+- **정직 표기**: 위 판정은 **알고리즘·golden 레벨의 판정이며 ESTIMATE 다** — 0x7A RTL 은 아직 없으므로 (착지 순서상 3a-C3/C4) 실측 대조는 불가하다. GATE V20-4 는 선공표대로 anchor 실측 → 착지 후 재실측 → delta 판정 절차를 그대로 수행하며, 본 amendment 는 그 절차를 완화하지 않는다. **초과 시에도 ad-hoc 상향은 금지이고 pre-declared cut ladder 를 따른다** (원문 불변). 만약 3a-C3 실측이 본 판정을 뒤집으면 그때는 "측정 후 조정" 이 아니라 §12a 개정으로 재선공표한다.
+
+##### amendment-4 — §27.7a.5 golden 파일명 정정
+
+선공표 문언의 `scripts/golden_fdot32_cr.py` 는 실제 착지 파일명 **`scripts/golden_fdotcr.py`** 로 정정한다 (구현이 아니라 spec 측 문언을 실물에 맞춘다 — 파일명은 계약 축이 아니다). 원문은 §12a 규칙 5 대로 위에 보존한다.
+
+##### amendment-5 — §27.7a.5 검증 계획의 강화 (약화 아님)
+
+3a-C1 은 반례를 제거하는 방향이 아니라 **표적을 추가하는 방향**으로 닫는다:
+
+- **표적 적대 가족 `eft_top_cancel` 신설 (3,000 trial)** — 본 결함의 두 조건을 명시 구성한다: (M1) 2^(E−48) 아래 tail 로 jam 강제 + (M2) 8-bit 블록 사슬로 top=E 인 24-bit component 를 쌓고 마지막 lane 2개로 순수 −2^E 삽입 (상단 인접 상쇄). 폐기된 ASC pin 은 이 가족에서 정리를 **2,997/3,000 = 99.90% 위반**하고 그중 **120 건은 값 계약까지 깬다** — 기존 `eft_cancel_chain` 의 검출률 (2/4,000 = 0.05%) 대비 표적성을 확보했다. **표적 가족 없이는 회귀가 다시 숨는다.** 위 수치의 인용원은 본문이 아니라 고정-seed artifact 필드 `checks.asc_detection_rate_by_family` 다 (§25.4 — 본문 주장만으로 확정 금지; 회귀 시 재실행 byte-identical 이 깨지도록 report 에 싣는다).
+- **C1 영구 회귀 벡터 `c1_regress`** — 값 계약 반례 2건의 operand 를 벡터 파일에 영구 고정한다. 기대 RESULT 는 **언제나 값 계약 우변** `pack_signed(exact)` 이며, ASC 로 회귀하면 즉시 FAIL 한다. **반례를 삭제하지 않는다.**
+- **벡터 artifact 오염 경로 차단 (C1 자체 감사에서 발견한 구현 결함)** — 이전 emit 경로는 값 계약 위반 trial 의 EFT 산출을 기대 RESULT 로 벡터에 박았고, self-verify 가 같은 EFT 경로를 재실행해 대조했으므로 **자기확인 루프**였다 (그대로 3a-C3/C4 TB 가 소비하면 RTL 이 버그를 재현하도록 강제된다). 이제 emit 은 `bits != ref_bits` 를 loud fault 로 거부하고, self-verify 는 **EFT 무의존 Fraction 경로**로 RESULT 를 재확인한다.
+
+##### 3a-C1 실측 결과 (개정 후, 고정 seed · 재실행 byte-identical)
+
+| 검사 | 카운트 | mismatch |
+|---|---|---|
+| 값 계약 (§27.7a.1, `pack_signed(exact)` bit-동일) | 57,022 trial | **0** |
+| fold 정리 (삽입-생성 scope, 내림차순) | 57,022 check (적대 26,022) | **0** |
+| invariant (§27.7a.3, main twin bit-exact) — **값 계약 전 trial 전수** | 57,022 trial (가족 제외 0) | **0** |
+| fold 일반형 annex — DESC (채택) | 결정 4 + 랜덤 20,000 | **0 (PASS)** |
+| fold 일반형 annex — ASC (폐기, 근거 존치) | 결정 4 + 랜덤 20,000 | 113 (**REFUTED**) |
+| freeze (졸업 지표 — 정보 축) | 실질 jam 33,370 | freeze 위반 0 |
+| jam 마진 (freeze 의 항등 귀결 — 독립 확인 아님) | 실질 jam 33,370 | 히스토그램 단일 버킷 {48}, 마진<25 = 0 |
+| invariant 축 **검출력** (폐기 ASC 재적용 probe) | ASC 값 계약 위반 168 | main twin 검출 **168/168** |
+
+expansion 최대 25 component (용량 33), 삽입 pass 최대 77 (≤ 528), fold pass 최대 25 — 전부 원문 상한 이내. merge 정렬합 폭 최대 47 bit (강제 경계 48, merge 1,074,817 회). 대기열 스캔 step 최대 326 (미계상 cycle 축 — amendment-3). 기존 golden 산출물 (lattice 4081 / bank 349 / cluster 1234) 은 재생성 byte-identical 유지 (무회귀). **mismatch 가 하나라도 있으면 생성기는 report 를 먼저 쓴 뒤 비영 종료한다** (amendment-8).
+
+##### amendment-6 — §27.7a.5 인용 규율의 이행 완료 (salted "66k+" 승계·졸업)
+
+§27.7 sketch 의 "66k+ trials" 는 세션 salted-seed 수치로 normative 인용 불가였고, §27.7a.5 는 그 승계를 3a-C1 의 고정-seed 재생성 카운트에 위임했다. **본 C1 이 그 의무를 이행한다** — 아래 수치는 전부 고정 정수 seed 산출이며 재실행 byte-identical 이 확인됐다 (`include/generated/fdotcr_golden_report.json`).
+
+- **값 계약 trial = 57,022** — 내역: 랜덤 가족 45,000 + invariant 전용 스트림 12,000 + directed 20 + `c1_regress` 2. golden 스크립트 자체 선언 하한 (module docstring 의 "≥ 40,000 value-contract trial") 과 선공표 (a) 의 참조 규모 36,000 을 **둘 다 상회**한다.
+- **고정-seed EFT 경로 총 trial = 80,622** (값 계약 57,022 + specials 600 + fold 일반형 annex 랜덤 20,000 + 문언 walk 밀도 sweep 3,000) — salted "66k+" 를 **수치로도 상회**한다.
+
+**선공표 (a) 문언과의 차이 — 대체 사실 기록 (§12a 규칙 5)**: 선공표 (a) 는 "재생성 고정-seed 36,000 **재사용** (families 30,000 + single-wave streams 6,000)" 이었다. 본 C1 은 그 벡터를 **재사용하지 않고** 자체 고정 seed (`0x7ADC001`-`00A`) 로 **신규 생성**했다. 사유: 그 36,000 은 `scripts/acc_format_study.py` 의 **곱 (m,e) 수준** 스트림 (`rto_tree_families` 30,000 + bank single-wave 6,000) 이라, §27.7a.1 이 pin 한 A||B 16-bit **operand** 인터페이스에 그대로 투입할 수 없다 — FDOT32_CR 은 operand 쌍을 먹는다. 대신 같은 적대 성격 (cancellation / tie / wide) 을 operand 수준에서 재구성한 가족으로 대체했다. 이 대체는 "하한 충족" 이라는 재해석이 아니라 **문언 성격의 변경**이므로 여기에 사실 자체를 적는다 (report 필드 `prannounced_plan_conformance.a_value_contract_stream` 이 같은 내용을 고정-seed artifact 로 싣는다). §27.7a.3 이 인용하는 36,000 assert 는 `acc_format_study` 가 자기 산출물에서 계속 재생성하므로 그 축이 사라지는 것은 아니다.
+
+∴ 이후 본 프로젝트의 normative 인용은 위 두 수치를 쓰고, §27.7 의 salted "66k+" 는 인용하지 않는다. §27.7 원문은 §12a 규칙 5 대로 무수정 보존한다.
+
+##### amendment-7 — §27.7a.5 (c) 선공표의 **미이행 정정** + 잘못된 원인 진단의 철회
+
+**사실 기록 (은폐 없음)**: §27.7a.5 (c) 선공표 (locked) 는 invariant sweep 을 "golden lattice model (§27.4 ①) vs golden EFT 를 **동일 operand 전 벡터에서** bit-equal **전수** assert" 로 못박았다. **3a-C1 초안 구현은 이를 이행하지 않았다** — 별도 seed(`0x7ADC011`) 스트림 12,000 만 돌렸고, 그 generator 목록에서 **적대 3가족 (`eft_cancel_chain` — C1 반례가 나온 바로 그 가족 —, `eft_adv_residue`, `eft_top_cancel`)** 이 빠져 있었다. 가족 sweep 45,000 과 `c1_regress` 는 main twin 을 아예 호출하지 않아, 값 계약 trial 중 directed 20 만이 invariant 검사를 받았다. 이 축소는 spec·report·`vec_contract.md` 어디에도 **공시되지 않았고**, amendment-5 의 "검사 약화 없음 — 강화만" 과 모순이었다.
+
+**정정 (본 산출물)**: invariant 대조를 **값 계약을 받는 전 trial 에 전수**로 건다 (57,022 = 값 계약 trial 수와 동일; report `checks.invariant_sweep.equals_value_contract_trials` = true). 가족별 카운트를 `checks.invariant_sweep.by_family` 로 **공시**하고, invariant 전용 스트림의 generator 도 `FAM_GENS` **전 10가족**으로 넓혔다. 결과: 57,022 trial, mismatch **0** — 계약 (.3) 은 개정된 알고리즘에서도 성립한다.
+
+**철회되는 원인 진단**: 3a-C1 중간 보고는 잔여 리스크로 "invariant sweep 은 개정 전에도 0 mismatch 였다 — 양 경로가 같은 결함 표면을 공유해 판별력이 없었다" 고 적었다. **이 진단은 거짓이므로 철회한다.** main twin 은 `golden_lattice.wave_step` (lattice_accumulate → extract_rto48 → drain_rne24_ftz) 로 **EFT fold 를 일절 쓰지 않는 독립 경로**다. 실측 (report `checks.invariant_sweep.discriminating_power` + `checks.asc_detection_rate_by_family`): 같은 expansion 에 폐기 ASC fold 를 재적용하면 값 계약 위반 **168 건**이 발생하고 main twin 이 **168/168 전부 검출**한다 (`eft_top_cancel` 120, `eft_cancel_chain` 2, invariant 스트림 44, `c1_regress` 2). 0 mismatch 였던 진짜 원인은 결함 표면 공유가 아니라 **가족 커버리지 결손**이다. 원인을 잘못 적으면 "고칠 수 없는 구조적 한계" 로 읽혀, 실제로는 배선 가능한 최강 안전망 (독립 main-path twin × 적대 가족) 이 미배선으로 남는다.
+
+##### amendment-8 — §27.7a.5 (a) 의 "assert" 이행: mismatch = **비영 종료**
+
+선공표 (a) 는 "전 벡터에서 §27.7a.1 의 exact reference 와 bit-equal **assert**" 를 요구한다. 초안 생성기는 mismatch 를 카운터/JSON verdict 로만 떨어뜨리고 항상 exit 0 이었다 — 벡터 수록분 (가족당 앞 30행) **밖**에서 나는 실패는 종료 코드에 물린 gate 배선을 통과해버린다. 정정: 생성기는 반례를 **report 에 먼저 기록한 뒤** (은닉 금지) 비영 종료한다. 종료 실패 조건은 값 계약 / fold 정리 / invariant mismatch, jam 마진 < 25, freeze 위반, invariant 전수 미이행, invariant 축 검출력 실증 실패, **그리고 폐기 ASC pin 의 반증 근거 소실** (annex 가 더 이상 REFUTED 를 보이지 않으면 spec 인용이 붕괴하므로 hard fail) 이다.
 
 #### 27.7a.3 invariant 계약 — on-silicon dual-datapath 자기검증
 
@@ -3281,6 +3381,8 @@ glue nominal 성분 (전부 ESTIMATE — ceiling 에는 nominal 상단 900 의 1
 #### 27.7a.6 §12a 기록 (3a COMMIT 0)
 
 본 절은 §12a 하의 정규 개발 행위다 — spec-before-code COMMIT 0. §27.7 sketch 의 "~9,000 cycles" / "66k+ trials" 는 본 절이 각각 **상한 10,000 선언** / **재생성 졸업 의무** 로 정제하며 원문은 무수정 보존한다 (§12a 규칙 5). `isa/wt64v1_isa.json` (0x7A row — §23.6a 표 전사 2행) · asm · golden · RTL 은 §12a 규칙 3 의 순서대로 3a-C1..C4 에서 뒤따른다 — **본 COMMIT 0 은 spec (본 절) 과 kickoff memo 상태 갱신만 편집한다** (§27.8 의 옵션 3 COMMIT 0 선례와 동일 범위 판정).
+
+**[amendment 2026-08-17 — 3a-C1 golden 실측이 본 COMMIT 0 의 알고리즘 pin 을 부정함]** §27.7a.2 종료 (2) 의 fold 방향과 STEP I 의 walk 독해는 **§27.7a.2a 가 supersede** 한다 (원문 무수정 보존, §12a 규칙 5). 이는 §12a 하의 정규 이벤트다 — pre-stable 에서 spec 개정은 정규 개발 행위이며, C0 이 pin 한 정리의 지위를 §25.4 규율대로 golden 졸업 대상으로 남겨둔 것이 바로 RTL 착지 전에 결함을 잡아낸 이유다. **순서 판정**: 본 개정은 spec (§27.7a.2a) 과 golden (`scripts/golden_fdotcr.py` + 산출물 3종) 만 편집하며, `isa/wt64v1_isa.json` · RTL 은 여전히 3a-C2 이후 몫이다 (§12a 규칙 3 유지 — golden-before-RTL 이므로 C1 이 blocker 였고, 지금 해소됐다). **선공표 (GATE V20-4 / cycle ≤ 10,000) 는 변경하지 않는다** — 근거는 §27.7a.2a amendment-3.
 
 ### 27.8 §12a 기록
 
