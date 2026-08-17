@@ -121,6 +121,7 @@ EH_OPREF      = 0x7
 EH_PRECISION  = 0x8
 
 F_HAS_OPB        = 1 << 3
+F_PRECISION_OVR  = 1 << 2
 INSTR_WORDS_REAL = 13
 
 
@@ -169,11 +170,55 @@ def _eh_opref(src_kind=0, port_id=0, noc_route=0):
     return _EH(EH_OPREF, 1, fn)
 
 
+def _eh_precision(precision_mode, dim_override=0):
+    def fn(nh):
+        upper = ((dim_override & 0xFF) << 8) | (precision_mode & 0xFF)
+        return [(upper << 16) | (nh << 12) | (EH_PRECISION << 8) | 1]
+    return _EH(EH_PRECISION, 1, fn)
+
+
 def _axes(*labels):
     v = 0
     for i, l in enumerate(labels):
         v |= (l & 0xF) << (i * 4)
     return v
+
+
+def _decode_mirror(instr_int):
+    """Pure-python re-walk of an encoded instruction (mirror of
+    test_isa_decoder._decode_mirror) — the disassembly half of the
+    assemble -> disassemble roundtrip."""
+    iw = [(instr_int >> (i * 32)) & 0xFFFFFFFF for i in range(INSTR_WORDS_REAL)]
+    base = iw[0]
+    out = {
+        'opcode':   (base >> 24) & 0xFF,
+        'next_hdr': (base >> 20) & 0xF,
+        'flags':    (base >> 16) & 0xF,
+        'reserved': (base >> 8) & 0xFF,
+        'bh_len':   base & 0xFF,
+        'ehs':      [],
+    }
+    expect = out['next_hdr']
+    off = 1
+    safety = 0
+    while expect != EH_END and safety < 8:
+        safety += 1
+        if off >= INSTR_WORDS_REAL:
+            out['eh_overflow'] = True
+            break
+        w0 = iw[off]
+        eh_next = (w0 >> 12) & 0xF
+        eh_type = (w0 >> 8) & 0xF
+        eh_len = w0 & 0xFF
+        if eh_type != expect:
+            out['chain_break_at'] = off
+            break
+        out['ehs'].append({'type': eh_type, 'len': eh_len, 'next': eh_next,
+                           'words': iw[off:off + eh_len]})
+        off += eh_len
+        expect = eh_next
+    out['walked_words'] = off
+    return out
 
 
 def _encode_instr(opcode, *exts, flags=0):
@@ -204,8 +249,11 @@ class ref:
     eh_mem        = staticmethod(_eh_mem)
     eh_subscript  = staticmethod(_eh_subscript)
     eh_opref      = staticmethod(_eh_opref)
+    eh_precision  = staticmethod(_eh_precision)
+    decode_mirror = staticmethod(_decode_mirror)
     axes          = staticmethod(_axes)
     F_HAS_OPB     = F_HAS_OPB
+    F_PRECISION_OVR = F_PRECISION_OVR
 
 
 # =============================================================================
@@ -1460,11 +1508,16 @@ class TestWaveFragments(unittest.TestCase):
         self.assertEqual(frags[0], (0xDEADBEEFCAFEBABE, 0x00))
         # Empty wave
         self.assertEqual(wta.wave_fragments(0, 0), [])
-        # Invalid wide_bits raises
+        # Invalid wide_bits raises. v1.8.0e 3a-C2 widened the accepted
+        # set to {0,64,128,192,256,512,1024} for FDOT32_CR's 16-fragment
+        # A||B wave (§27.7a.1); 1024 is the FRAG_MAX ceiling, so the
+        # too-large pin moves up with it.
         with self.assertRaises(wta.AssemblerError):
-            wta.wave_fragments(0, 96)   # not in {0,64,128,192,256}
+            wta.wave_fragments(0, 96)    # not a listed width
         with self.assertRaises(wta.AssemblerError):
-            wta.wave_fragments(0, 512)  # too large
+            wta.wave_fragments(0, 512)   # no contract asks for 8-frag today
+        with self.assertRaises(wta.AssemblerError):
+            wta.wave_fragments(0, 2048)  # too large (FRAG_MAX = 16)
 
     def test_wave_fragments_bmm3_reassembly_matches_pe_core(self):
         """Round-trip: split with wave_fragments_bmm3, reassemble in the
@@ -1560,8 +1613,20 @@ class TestGeneratedIsaTables(unittest.TestCase):
 
         bad = copy.deepcopy(good)
         bad["fp_block"]["ops"].append(dict(
-            code=0x7A, mnemonic="GHOST", legal_dtypes=[4],
+            code=0x7B, mnemonic="GHOST", legal_dtypes=[4],
             legal_acc=[1], legal_rnd=[0]))              # fp op w/o opcodes[] row
+        with self.assertRaises(gen.SchemaError):
+            gen.validate(bad)
+
+        # v1.8.0e 3a-C2 (spec section 27.7a.4): the two staging bits are
+        # mutually exclusive. stub_v18 = decode-LEGAL, execute-side
+        # lower_required arm; decode_reserved = whitelist-omitted,
+        # decode_error. A row claiming both is incoherent (which fault?)
+        # and must be rejected, not silently resolved by emitter order.
+        bad = copy.deepcopy(good)
+        for op in bad["opcodes"]:
+            if op["code"] == 0x7A:
+                op["stub_v18"] = True
         with self.assertRaises(gen.SchemaError):
             gen.validate(bad)
 
@@ -1608,16 +1673,27 @@ class TestFpBlockModeLegality(unittest.TestCase):
         0x70: 'VFMA_ACC', 0x71: 'VDOT_ACC', 0x72: 'ACC_REDUCE',
         0x73: 'ACC_ELEMWISE', 0x74: 'FSCALAR', 0x75: 'FRSQRT32',
         0x76: 'FEXP2_32', 0x77: 'CVT', 0x78: 'DEQUANT', 0x79: 'FMINMAX',
+        0x7A: 'FDOT32_CR',
         0x7C: 'STORE_QUANT', 0x7D: 'ACC_SPILL_FILL', 0x7E: 'FP_ACC_CTRL',
     }
 
     def test_fp_block_opcode_pins(self):
-        """All 13 mnemonic->opcode literal pins — catches careless JSON
-        renumbering that regen-and-diff structurally cannot."""
-        from generated_isa_tables import FP_MODE_LEGAL, STUB_OPS_V18
+        """All 14 mnemonic->opcode literal pins — catches careless JSON
+        renumbering that regen-and-diff structurally cannot.
+
+        v1.8.0e 3a-C2 (spec section 27.7a): 0x7A FDOT32_CR joined as a
+        DECODE-RESERVED row — transcribed into every table here, omitted
+        from the RTL opcode_supported whitelist until 3a-C4."""
+        from generated_isa_tables import (DECODE_RESERVED_OPS, FP_MODE_LEGAL,
+                                          STUB_OPS_V18)
         for code, mnem in self._FP_OPS.items():
             self.assertEqual(wta.MNEMONIC_TO_OPCODE[mnem], code)
         self.assertEqual(set(FP_MODE_LEGAL), set(self._FP_OPS))
+        # 3a-C2: exactly one decode-reserved row today, and the two
+        # staging bits never overlap (a stub is decode-LEGAL with a
+        # lower_required arm; a decode-reserved op has no arm at all).
+        self.assertEqual(DECODE_RESERVED_OPS, frozenset({0x7A}))
+        self.assertEqual(DECODE_RESERVED_OPS & STUB_OPS_V18, frozenset())
         # v1.8.0b: 0x71 VDOT_ACC / 0x72 ACC_REDUCE / 0x7C STORE_QUANT
         # graduated from stubs to real datapaths.
         # v1.8.0c: 0x74 FSCALAR / 0x75 FRSQRT32 / 0x76 FEXP2_32 graduated
@@ -1630,10 +1706,13 @@ class TestFpBlockModeLegality(unittest.TestCase):
         # v1.8.0e 0e2: 0x70 VFMA_ACC graduated (spec section 25.2.4 —
         # stub_v18 dropped with the lane-loop launch arm in the same
         # commit); only 0x7D/0x7E remain, both unscheduled.
+        # v1.8.0e 3a-C2: 0x7A FDOT32_CR is NOT a stub — it is
+        # decode-reserved (whitelist-omitted -> decode_error), so it
+        # leaves the stub set untouched.
         self.assertEqual(STUB_OPS_V18,
                          frozenset(self._FP_OPS)
                          - {0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76,
-                            0x77, 0x78, 0x79, 0x7C})
+                            0x77, 0x78, 0x79, 0x7A, 0x7C})
         self.assertEqual(STUB_OPS_V18,
                          frozenset({0x7D, 0x7E}))
         # Shape spot-checks: 0x70 is ALU-binary-like, 0x7E is no-data-EH.
@@ -1664,18 +1743,24 @@ class TestFpBlockModeLegality(unittest.TestCase):
         # v1.8.0d §23.10.10(b): 0x77 CVT legal_dtypes [2,3] -> [0,1,2,3,4]
         # (monotonic illegal->legal loosening; dtype 0x4 = accumulator-format
         # integer endpoint per COMMIT-0 pin 10, dtype 0x5 stays decode_error).
+        # v1.8.0e 3a-C2 §27.7a.1: 0x7A FDOT32_CR adds EXACTLY 2 rows —
+        # dtype 0x2 (f16) / 0x3 (bf16), acc=1, rnd=0. dtype names the
+        # WAVE dtype directly (the conversion-dtype rule does not apply),
+        # and every other combination stays ILLEGAL (restrictive-first).
         SPEC_ROWS = {
             0x70: [0, 1], 0x71: [0, 1], 0x72: [0, 1], 0x73: [4],
             0x74: [4], 0x75: [4], 0x76: [4], 0x77: [0, 1, 2, 3, 4],
             0x78: [0, 1],
-            0x79: [4], 0x7C: [0, 1, 2, 3], 0x7D: [4], 0x7E: [4],
+            0x79: [4], 0x7A: [2, 3], 0x7C: [0, 1, 2, 3], 0x7D: [4],
+            0x7E: [4],
         }
         for code, dtypes in SPEC_ROWS.items():
             self.assertEqual(FP_MODE_LEGAL[code]['legal_dtypes'], dtypes,
                              f"0x{code:02X} dtype row diverged from spec §23.6a")
         total = sum(len(l['legal_dtypes']) * len(l['legal_acc']) * len(l['legal_rnd'])
                     for l in FP_MODE_LEGAL.values())
-        self.assertEqual(total, 24, "legal-row count diverged from spec §23.6a/§23.10.10")
+        self.assertEqual(total, 26,
+                         "legal-row count diverged from spec §23.6a/§23.10.10/§27.7a.1")
 
     def test_asm_requires_precision_eh_on_fp_block(self):
         """Every fp-block mnemonic without .precision EH + prec flag must
@@ -1692,8 +1777,15 @@ class TestFpBlockModeLegality(unittest.TestCase):
     def test_asm_mode_check_equivalence_with_golden_table(self):
         """Exhaustive 13x256: assembler accept <=> FP_MODE_LEGAL legal.
         Catches implementation bugs in legality_pass's bit split (the RTL
-        sweep separately validates ROM == FP_MODE_LEGAL, so together these
-        machine-check asm-legal ⊆ RTL-legal)."""
+        sweep separately validates ROM == FP_MODE_LEGAL).
+
+        SCOPE NOTE (3a-C2, spec §27.7a.4): this equivalence is about the
+        MODE ROM only.  It does NOT establish asm-legal ⊆ RTL-legal for
+        0x7A: FDOT32_CR is `decode_reserved` until 3a-C4, so the RTL
+        rejects every 0x7A mode with decode_error while the assembler
+        accepts modes 0x12/0x13.  That asymmetry is the staged landing
+        pinned by the spec, not a defect — see the third asymmetry listed
+        in isa/wt64v1_isa.json `_doc`."""
         from generated_isa_tables import FP_MODE_LEGAL
         for code, mnem in self._FP_OPS.items():
             legal = FP_MODE_LEGAL[code]
@@ -2277,3 +2369,309 @@ class TestV180e0e2Vfma(unittest.TestCase):
         self.assertTrue(any((w >> 16) == 0x007F and ((w >> 8) & 0xF) == 0x2
                             for w in words1),
                         f"imm16 body word not found: {words1}")
+
+
+class TestFdot32CrIsa3aC2(unittest.TestCase):
+    """v1.8.0e 3a-C2 — FDOT32_CR (0x7A) ISA row, spec §27.7a.
+
+    C2 lands the ISA row + generated artifacts + assembler support ONLY;
+    the RTL step program (3a-C3) and the PE_Core/EHDecode wiring +
+    opcode_supported entry (3a-C4) follow. The row is therefore
+    DECODE-RESERVED here: assembling 0x7A is legal, executing it still
+    decode_errors on silicon — the spec-pinned staging state.
+
+    Everything below is restrictive-first: exactly 2 legal mode rows
+    ((dtype 0x2 f16 | 0x3 bf16) x acc 1 x rnd 0) and a port-only EH
+    shape (forbid_imm_any + forbid_opref, the 0x78 DEQUANT precedent),
+    with EVERY other combination LOUDLY rejected.
+    """
+
+    _SRC = ".default_port mask=0x01 out=0\n"
+    _LEGAL_MODES = (0x12, 0x13)          # f16 / bf16, acc=1, rnd=0
+
+    # ---- mode-byte legality (§27.7a.1 — the §23.6a 2-row transcription)
+
+    def test_legal_rows_assemble(self):
+        """The EXACT 2 legal rows assemble: (0x7A, dtype 0x2 f16, acc 1,
+        rnd 0) and (0x7A, dtype 0x3 bf16, acc 1, rnd 0)."""
+        for mode in self._LEGAL_MODES:
+            insts = wta.assemble(self._SRC + "FDOT32_CR prec .precision "
+                                 "mode=0x%02X\n" % mode)
+            self.assertEqual(len(insts), 1)
+            self.assertEqual((insts[0] >> 24) & 0xFF, 0x7A)
+
+    def test_all_other_mode_bytes_rejected_exhaustive(self):
+        """restrictive-first, PROVEN by enumeration: all 256 mode bytes
+        are swept and exactly the 2 legal rows survive. This nails the
+        whole illegal family in one place — dtype 0x0/0x1 (int4/int8),
+        0x4 (f32), 0x5 (f64/Lf-reserved), 0x6/0x7 (q4_4/q8_8), dtype > 0x7,
+        acc != 1 and rnd != 0."""
+        accepted = []
+        for mode in range(256):
+            src = self._SRC + "FDOT32_CR prec .precision mode=%d\n" % mode
+            try:
+                wta.assemble(src)
+                accepted.append(mode)
+            except wta.AssemblerError:
+                pass
+        self.assertEqual(accepted, list(self._LEGAL_MODES),
+                         f"restrictive-first violated: accepted {accepted}")
+
+    def test_illegal_family_messages_are_loud(self):
+        """Spot-check the named illegal axes individually so a future
+        regression names the axis it broke, not just a count: dtype
+        0x0/0x1 (the conversion-dtype rule does NOT apply — dtype names
+        the WAVE dtype), acc=0, rnd != 0."""
+        cases = {
+            0x10: 'dtype 0x0 int4',
+            0x11: 'dtype 0x1 int8',
+            0x14: 'dtype 0x4 f32',
+            0x15: 'dtype 0x5 f64/Lf-reserved',
+            0x02: 'acc=0 with f16',
+            0x03: 'acc=0 with bf16',
+            0x52: 'rnd=1 (SR) with f16',
+            0x93: 'rnd=2 with bf16',
+            0xD3: 'rnd=3 with bf16',
+            0x22: 'acc=2 with f16',
+        }
+        for mode, why in cases.items():
+            with self.assertRaises(wta.AssemblerError, msg=why) as ctx:
+                wta.assemble(self._SRC + "FDOT32_CR prec .precision "
+                             "mode=0x%02X\n" % mode)
+            self.assertIn('illegal', str(ctx.exception).lower(), why)
+
+    def test_precision_eh_and_prec_flag_required(self):
+        """fp-block row: the mode byte must be assembly-visible."""
+        with self.assertRaises(wta.AssemblerError):
+            wta.assemble(self._SRC + "FDOT32_CR\n")
+        with self.assertRaises(wta.AssemblerError):
+            wta.assemble(self._SRC + "FDOT32_CR .precision mode=0x13\n")
+        with self.assertRaises(wta.AssemblerError):
+            wta.assemble(self._SRC + "FDOT32_CR prec\n")
+
+    # ---- EH shape (§27.7a.1 — port-only, the 0x78 precedent) -----------
+
+    def test_port_only_shape_rejects_every_data_eh(self):
+        """EH shape = port-only: forbid_imm_any + forbid_opref (0x78
+        DEQUANT clone). No sub-op nibble exists, and B rides the wide
+        wave rather than payload_b, so there is no imm/opref channel to
+        misuse — every data EH is LOUDLY rejected."""
+        for extra in (".imm16 1", ".imm32 1", ".imm64 1", ".opref",
+                      ".mem offset=0", ".subscript A=i,j B=j,k O=i,k"):
+            with self.assertRaises(wta.AssemblerError, msg=extra):
+                wta.assemble(self._SRC + "FDOT32_CR prec .precision "
+                             "mode=0x13 %s\n" % extra)
+
+    def test_port_eh_required(self):
+        """required=['port'] — no .default_port, no .port EH, no deal."""
+        with self.assertRaises(wta.AssemblerError):
+            wta.assemble("FDOT32_CR prec .precision mode=0x13\n")
+
+    def test_legality_row_shape_is_the_0x78_clone(self):
+        """The generated legality row IS the 0x78 DEQUANT shape (the
+        spec's named precedent), minus DEQUANT's payload_b requirement."""
+        self.assertEqual(wta._LEGAL[0x7A]['required'],
+                         wta._LEGAL[0x78]['required'])
+        self.assertEqual(wta._LEGAL[0x7A]['forbidden'],
+                         wta._LEGAL[0x78]['forbidden'])
+        self.assertFalse(wta._LEGAL[0x7A]['allow_imm_xor_opref'])
+        self.assertFalse(wta._LEGAL[0x7A]['require_imm16'])
+        self.assertTrue(wta._LEGAL[0x7A]['require_precision_eh'])
+        # port-only means EVERY data EH is out — the forbidden set is the
+        # complete data-EH catalogue, same as 0x7E FP_ACC_CTRL.
+        self.assertEqual(wta._LEGAL[0x7A]['forbidden'], wta._ALL_DATA_EHS)
+
+    def test_rtl_legality_row_is_the_0x78_clone(self):
+        """The rtl_legality half must ALSO be the 0x78 clone.
+
+        While 0x7A is `decode_reserved` (until 3a-C4) the `!supported`
+        term dominates decode_error, so these flags are invisible to the
+        RTL sweeps — a silent drift here would only surface the moment
+        C4 clears the whitelist bit and they become load-bearing.  This
+        literal pin is the net for that window (adversarial-audit
+        finding, 3a-C2)."""
+        import importlib.util as _ilu
+        import json as _json
+        _spec = _ilu.spec_from_file_location(
+            "gen_isa_tables",
+            os.path.join(os.path.dirname(_HERE), "scripts", "gen_isa_tables.py"))
+        _gen = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_gen)
+        with open(_gen.SOURCE, encoding='utf-8') as fh:
+            rows = {o['code']: o for o in _json.load(fh)['opcodes']}
+        self.assertEqual(rows[0x7A]['rtl_legality'], rows[0x78]['rtl_legality'])
+        # spell the port-only contract out so the pin survives a 0x78 edit
+        self.assertEqual(
+            {k: v for k, v in rows[0x7A]['rtl_legality'].items() if v},
+            {'req_port': True, 'forbid_subscript': True, 'forbid_mem': True,
+             'forbid_imm_any': True, 'forbid_opref': True})
+
+    # ---- encode / disassemble roundtrip --------------------------------
+
+    def test_encoding_roundtrip(self):
+        """assemble -> disassemble: opcode byte 0x7A, prec-ONLY flags
+        nibble (no F_HAS_OPB — FDOT32_CR reads no payload_b), EH chain
+        exactly [PORT, PRECISION], and bit-identical to the reference
+        encoder."""
+        for mode in self._LEGAL_MODES:
+            got = wta.assemble_one(self._SRC + "FDOT32_CR prec .precision "
+                                   "mode=0x%02X\n" % mode)
+            expected = ref.encode_instr(0x7A, ref.eh_port(0x01, 0),
+                                        ref.eh_precision(mode),
+                                        flags=ref.F_PRECISION_OVR)
+            self.assertEqual(got, expected,
+                             f"\nasm:      0x{got:0104x}"
+                             f"\nexpected: 0x{expected:0104x}")
+            m = ref.decode_mirror(got)
+            self.assertEqual(m['opcode'], 0x7A)
+            self.assertEqual(m['flags'], 0b0100)          # prec only
+            self.assertEqual([eh['type'] for eh in m['ehs']],
+                             [EH_PORT, EH_PRECISION])
+            self.assertNotIn('chain_break_at', m)
+            self.assertEqual(m['bh_len'], 1 + 1 + 1)
+            # the mode byte survives the roundtrip in the PRECISION body
+            self.assertEqual((m['ehs'][1]['words'][0] >> 16) & 0xFF, mode)
+
+    # ---- operand wave (§27.7a.1 — A||B, FRAG_MAX = 16 exactly) ---------
+
+    def test_operand_wave_is_exactly_16_fragments(self):
+        """A||B concatenated SINGLE wave: 1,024 bit = 16 fragments,
+        frag_hdr tot_m1 = 15 uniformly and indices 0..15 — FRAG_MAX = 16
+        EXACTLY consumed (the first 16-fragment INPUT wave)."""
+        a = [(0x3C00 + i) & 0xFFFF for i in range(32)]
+        b = [(0xBC00 + i) & 0xFFFF for i in range(32)]
+        frags = wta.wave_fragments_fdot32_cr(a, b)
+        self.assertEqual(len(frags), 16)
+        self.assertTrue(all((h & 0x0F) == 0x0F for _, h in frags))
+        self.assertEqual([h >> 4 for _, h in frags], list(range(16)))
+
+    def test_operand_wave_lane_packing_pin(self):
+        """§27.7a.1 / vec-contract §3: frag 0-7 = A, frag 8-15 = B, and
+        lane i reads A = payload[16*i +: 16], B = payload[512 + 16*i +:
+        16] (the golden_fp32.lanes_to_frags pin, lane_bits = 16).
+        Reassemble the way Cluster.v's fragment buffer does and read the
+        lanes back out."""
+        a = [(0x1000 + i) & 0xFFFF for i in range(32)]
+        b = [(0x2000 + i) & 0xFFFF for i in range(32)]
+        frags = wta.wave_fragments_fdot32_cr(a, b)
+        wide = 0
+        for payload, hdr in frags:
+            wide |= (payload & ((1 << 64) - 1)) << ((hdr >> 4) * 64)
+        self.assertEqual(wide, wta.pack_fdot32_cr_operands(a, b))
+        for i in range(32):
+            self.assertEqual((wide >> (16 * i)) & 0xFFFF, a[i], f"A lane {i}")
+            self.assertEqual((wide >> (512 + 16 * i)) & 0xFFFF, b[i],
+                             f"B lane {i}")
+        # halves: frag 0-7 carry A, frag 8-15 carry B
+        self.assertEqual(wide & ((1 << 512) - 1),
+                         wta.pack_fdot32_cr_operands(a, [0] * 32))
+        self.assertEqual(wide >> 512,
+                         wta.pack_fdot32_cr_operands(b, [0] * 32))
+
+    def test_operand_wave_rejects_short_or_oversized_lanes(self):
+        """LOUD rejects — a silently zero-padded short wave would make
+        the dot reassemble stale slot data as operands (the SIG_BMM_3
+        short-wave exposure), and a lane wider than 16 bit would
+        silently overwrite its neighbour."""
+        ok = [0] * 32
+        for bad in ([0] * 31, [0] * 33, []):
+            with self.assertRaises(wta.AssemblerError, msg=str(len(bad))):
+                wta.wave_fragments_fdot32_cr(bad, ok)
+            with self.assertRaises(wta.AssemblerError, msg=str(len(bad))):
+                wta.wave_fragments_fdot32_cr(ok, bad)
+        for bad_lane in (0x10000, -1, 1.5, None, True):
+            lanes = [0] * 31 + [bad_lane]
+            with self.assertRaises(wta.AssemblerError, msg=repr(bad_lane)):
+                wta.wave_fragments_fdot32_cr(lanes, ok)
+            with self.assertRaises(wta.AssemblerError, msg=repr(bad_lane)):
+                wta.wave_fragments_fdot32_cr(ok, lanes)
+
+    def test_operand_wave_matches_golden_vector_contract(self):
+        """Cross-check against the 3a-C1 golden vectors (frozen, NOT
+        touched by C2): take a directed line out of
+        include/generated/fdotcr_vectors.hex, slice its 1,024-bit
+        OPERANDS field the way the vec contract pins it, and prove the
+        assembler's wave splitter reproduces that payload bit-for-bit
+        from the lane fields. This is the C1<->C2 interface pin: if the
+        asm packer and the golden packer ever disagree, the C3/C4 TB
+        would feed the RTL a payload no assembler emits."""
+        hexfile = os.path.join(os.path.dirname(_HERE), 'include',
+                               'generated', 'fdotcr_vectors.hex')
+        if not os.path.exists(hexfile):          # pragma: no cover
+            self.skipTest('golden vectors absent')
+        with open(hexfile, encoding='utf-8') as f:
+            lines = [ln.strip() for ln in f
+                     if ln.strip() and not ln.lstrip().startswith('//')]
+        self.assertGreaterEqual(len(lines), 1)
+        checked = 0
+        for ln in lines[:8]:
+            v = int(ln, 16)
+            self.assertEqual(len(ln), 272, 'vec line width drifted')
+            payload = (v >> 32) & ((1 << 1024) - 1)
+            a = [(payload >> (16 * i)) & 0xFFFF for i in range(32)]
+            b = [(payload >> (512 + 16 * i)) & 0xFFFF for i in range(32)]
+            self.assertEqual(wta.pack_fdot32_cr_operands(a, b), payload)
+            frags = wta.wave_fragments_fdot32_cr(a, b)
+            self.assertEqual(len(frags), 16)
+            reassembled = 0
+            for p, h in frags:
+                reassembled |= (p & ((1 << 64) - 1)) << ((h >> 4) * 64)
+            self.assertEqual(reassembled, payload)
+            # dtype byte of META must be one of the 2 legal rows
+            meta = v >> (1024 + 32)
+            self.assertIn(meta & 0xFF, (0x2, 0x3))
+            checked += 1
+        self.assertEqual(checked, 8)
+
+    # ---- staging state (§27.7a.4) --------------------------------------
+
+    def test_decode_reserved_until_wiring(self):
+        """0x7A is transcribed everywhere on the asm side but OMITTED
+        from the RTL opcode_supported whitelist, so silicon still answers
+        decode_error for every mode byte (§27.7 reservation wording
+        unchanged, §27.7a.4 landing order). Flip decode_reserved in the
+        JSON at 3a-C4."""
+        from generated_isa_tables import DECODE_RESERVED_OPS, STUB_OPS_V18
+        self.assertIn(0x7A, DECODE_RESERVED_OPS)
+        self.assertNotIn(0x7A, STUB_OPS_V18)
+        self.assertIn('FDOT32_CR', wta.MNEMONIC_TO_OPCODE)
+        self.assertEqual(wta.OPCODE_TO_MNEMONIC[0x7A], 'FDOT32_CR')
+        wires = os.path.join(os.path.dirname(_HERE), 'include', 'generated',
+                             'isa_opcode_wires.vh')
+        with open(wires, encoding='utf-8') as f:
+            text = f.read()
+        supported = text.split('wire opcode_supported =')[1].split(';')[0]
+        self.assertNotIn("8'h7A", supported,
+                         "0x7A must stay out of opcode_supported until 3a-C4")
+        for other in ('8\'h79', '8\'h7C', '8\'h7E'):
+            self.assertIn(other, supported)
+
+    def test_frozen_truth_table_untouched(self):
+        """§27.7a.4 finding, quoting the isa JSON 0x79 note VERBATIM:
+        '0x70-0x7F is outside the truth-table domain'. Adding 0x7A
+        therefore forces NO differential recapture and NO domain_version
+        bump — this test proves the premise (the frozen capture really
+        contains no fp-block point) and the consequence (domain_version
+        stays 3) machine-checkably, instead of trusting the prose."""
+        import json as _json
+        root = os.path.dirname(_HERE)
+        with open(os.path.join(root, 'isa', 'wt64v1_isa.json'),
+                  encoding='utf-8') as f:
+            src = _json.load(f)
+        note_79 = next(o['notes'] for o in src['opcodes'] if o['code'] == 0x79)
+        self.assertIn('0x70-0x7F is outside the truth-table domain', note_79)
+        with open(os.path.join(root, 'isa',
+                               'truth_table_premigration.json'),
+                  encoding='utf-8') as f:
+            cap = _json.load(f)
+        # the C2 consequence: NO bump (the 0e1 baseline stands)
+        self.assertEqual(cap['domain_version'], 3)
+        # the C2 premise: point keys are '0xOP|ehs|flags|outcome' and no
+        # captured opcode lives in the fp block, so an fp-block ISA row
+        # cannot move a single frozen point.
+        ops = set()
+        for key in cap['points']:
+            ops.add(int(str(key).split('|')[0], 16))
+        self.assertGreater(len(ops), 50, 'truth-table key parse broke')
+        self.assertFalse([o for o in ops if 0x70 <= o <= 0x7F],
+                         'frozen truth table unexpectedly covers the fp block')

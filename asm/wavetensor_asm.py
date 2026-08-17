@@ -2092,14 +2092,21 @@ def wave_fragments(wide_payload: int, wide_bits: int) -> List[Tuple[int, int]]:
     ``frag_hdr=0x00`` (Cluster fragment buffer bypasses on this value).
 
     Supported ``wide_bits``: 0 (empty wave), 64 (legacy), 128 (SIG_TRACE_IIJKL
-    A-only), 192 (unused today), 256 (SIG_BMM_3 A+B).
+    A-only), 192 (unused today), 256 (SIG_BMM_3 A+B), 1024 (v1.8.0e
+    3a-C2 — FDOT32_CR's A||B wave, FRAG_MAX=16 exactly consumed; the
+    first 16-fragment INPUT wave, spec §27.7a.1).
+
+    512 is deliberately NOT allowed: no contract requires it today, and
+    widening a loud-fault guard past what the contract asks for is a
+    restrictive-first violation.  Open it explicitly when an 8-fragment
+    wave actually lands.
     """
     if wide_bits == 0:
         return []
-    if wide_bits not in (64, 128, 192, 256):
+    if wide_bits not in (64, 128, 192, 256, 1024):
         raise AssemblerError(
-            f"wave_fragments: wide_bits must be in {{0,64,128,192,256}}, "
-            f"got {wide_bits}"
+            f"wave_fragments: wide_bits must be in "
+            f"{{0,64,128,192,256,1024}}, got {wide_bits}"
         )
     total_frags   = wide_bits // 64
     total_minus_1 = total_frags - 1
@@ -2128,6 +2135,65 @@ def wave_fragments_vdot(a_128: int, b_128: int) -> List[Tuple[int, int]]:
     is a silent order-dependent carry-in bug. Emit EXACTLY 4 fragments:
     a short wave reads stale slot data as B (SIG_BMM_3-parity exposure)."""
     return wave_fragments_bmm3(a_128, b_128)
+
+
+# -----------------------------------------------------------------------------
+# v1.8.0e 3a-C2 §27.7a.1 — FDOT32_CR (0x7A) operand wave
+# -----------------------------------------------------------------------------
+#
+# FDOT32_CR eats ONE 16-fragment wave carrying BOTH operand vectors:
+# 1,024 bit = A||B, frag 0-7 = A's 32 x 16b lanes, frag 8-15 = B's. That
+# is FRAG_MAX = 16 consumed EXACTLY — the first 16-fragment INPUT-wave
+# reassembly consumer in the ISA (0x70 VFMA_ACC int4 and the §27.2.2
+# SPILL form are emit-side precedents). Lane packing is the single
+# repo-wide pin (golden_fp32.lanes_to_frags, lane_bits=16): lane i sits
+# at A[16*i +: 16] / B[16*i +: 16], so in the flat wave
+#   lane i A = payload[16*i +: 16],  lane i B = payload[512 + 16*i +: 16].
+#
+# NOTE (3a-C2 staging, spec §27.7a.4): 0x7A is decode_reserved — the ISA
+# row and these helpers ship at C2, the RTL whitelist entry at C4, so a
+# program assembled today still decode_errors on silicon. That is the
+# spec-pinned staging state, and it faults LOUDLY.
+
+
+def pack_fdot32_cr_operands(a_lanes: List[int], b_lanes: List[int]) -> int:
+    """v1.8.0e 3a-C2 §27.7a.1 — pack 32 + 32 RAW 16-bit operand fields
+    (f16 or bf16 bit patterns, NOT floats) into the 1,024-bit A||B wave
+    payload. Loudly rejects any lane count or field width other than the
+    pinned 32 x 16b — a silently zero-padded short wave would make the
+    dot read stale slot data as operands."""
+    for name, lanes in (("A", a_lanes), ("B", b_lanes)):
+        if len(lanes) != 32:
+            raise AssemblerError(
+                f"pack_fdot32_cr_operands: {name} needs EXACTLY 32 lanes "
+                f"(§27.7a.1 32-term dot), got {len(lanes)}"
+            )
+        for i, lane in enumerate(lanes):
+            if not isinstance(lane, int) or isinstance(lane, bool) \
+                    or not (0 <= lane <= 0xFFFF):
+                raise AssemblerError(
+                    f"pack_fdot32_cr_operands: {name}[{i}] must be a raw "
+                    f"16-bit field in [0, 0xFFFF], got {lane!r}"
+                )
+    wide = 0
+    for i, lane in enumerate(a_lanes):
+        wide |= lane << (16 * i)
+    for i, lane in enumerate(b_lanes):
+        wide |= lane << (512 + 16 * i)
+    return wide
+
+
+def wave_fragments_fdot32_cr(a_lanes: List[int],
+                             b_lanes: List[int]) -> List[Tuple[int, int]]:
+    """v1.8.0e 3a-C2 §27.7a.1 — emit the 16-fragment FDOT32_CR (0x7A)
+    operand wave from raw 16-bit lane fields.
+
+    SDK CONTRACT (hardware-unenforced, VDOT_ACC precedent): the
+    INSTRUCTION + full EH chain must be replicated on EVERY fragment —
+    only the completing fragment's chain is parsed and completion order
+    is arbitrary. Emit EXACTLY 16 fragments (frag_hdr tot_m1 = 15): a
+    short wave reassembles stale slot data as operands."""
+    return wave_fragments(pack_fdot32_cr_operands(a_lanes, b_lanes), 1024)
 
 
 def acc_reduce_subop_imm16(subop: str) -> int:

@@ -3973,7 +3973,17 @@ async def test_pre_migration_rtl_truth_table_differential(dut):
 
 _FP_ASSIGNED = [0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76,
                 0x77, 0x78, 0x79, 0x7C, 0x7D, 0x7E]
-_FP_UNASSIGNED = [0x7A, 0x7B, 0x7F]
+_FP_UNASSIGNED = [0x7B, 0x7F]
+# v1.8.0e 3a-C2 (spec §27.7a.4) — DECODE-RESERVED: 0x7A FDOT32_CR now has a
+# full ISA row (legality shape + FP_LEGAL_ROM rows + asm mnemonic) but is
+# DELIBERATELY omitted from the generated opcode_supported whitelist until
+# its PE_Core/EHDecode wiring lands at 3a-C4. So it must still decode_error
+# on EVERY mode byte — including its two OTHERWISE-legal rows (dtype 0x2
+# f16 / 0x3 bf16, acc 1, rnd 0), which is what separates this from the
+# 0x7B/0x7F never-assigned case: the ROM says legal, the whitelist says no,
+# and whitelist-omission WINS (decode_error dominates, §27.7 reservation
+# wording unchanged). Never a stub lower_required — there is no arm.
+_FP_DECODE_RESERVED = [0x7A]
 
 
 def _fp_scaffold(op):
@@ -4116,10 +4126,17 @@ def _fp_expected(op, mode):
         so legal-mode points execute the FS_FMA-shaped program.
       * 0x7C x dtype {2,3}: absent imm16 -> both reserved rungs pass ->
         the packer emits {48'h0, narrow(DAZ(payload))} same-cycle."""
-    from generated_isa_tables import FP_MODE_LEGAL, STUB_OPS_V18
+    from generated_isa_tables import (DECODE_RESERVED_OPS, FP_MODE_LEGAL,
+                                      STUB_OPS_V18)
     legal = FP_MODE_LEGAL.get(op)
     if legal is None:
         return (1, 0, 0)   # unassigned -> decode_error (whitelist omission)
+    # v1.8.0e 3a-C2 (§27.7a.4): a DECODE-RESERVED op carries a full ROM row
+    # but is whitelist-omitted, so decode_error dominates on EVERY mode byte
+    # — legal rows included. Derived from the generated set, never a hand
+    # list: clearing the JSON bit at 3a-C4 flips this prediction with it.
+    if op in DECODE_RESERVED_OPS:
+        return (1, 0, 0)
     dtype, acc, rnd = mode & 0xF, (mode >> 4) & 0x3, (mode >> 6) & 0x3
     if (dtype in legal['legal_dtypes'] and acc in legal['legal_acc']
             and rnd in legal['legal_rnd']):
@@ -4138,7 +4155,7 @@ async def test_fp_mode_rom_sweep_tag_path(dut):
     cocotb.start_soon(clock.start())
     await reset(dut)
     mismatches = []
-    for op in _FP_ASSIGNED + _FP_UNASSIGNED:
+    for op in _FP_ASSIGNED + _FP_DECODE_RESERVED + _FP_UNASSIGNED:
         for mode in range(256):
             got = await _fp_run_point(dut, op, mode, via_eh=False)
             exp = _fp_expected(op, mode)
@@ -4158,7 +4175,7 @@ async def test_fp_mode_rom_sweep_precision_eh_path(dut):
     cocotb.start_soon(clock.start())
     await reset(dut)
     mismatches = []
-    for op in _FP_ASSIGNED + _FP_UNASSIGNED:
+    for op in _FP_ASSIGNED + _FP_DECODE_RESERVED + _FP_UNASSIGNED:
         for mode in range(256):
             got = await _fp_run_point(dut, op, mode, via_eh=True)
             exp = _fp_expected(op, mode)
@@ -4201,8 +4218,13 @@ async def test_fp_block_stub_lower_required_all_ops(dut):
 
 @cocotb.test()
 async def test_fp_block_unassigned_opcodes_still_error(dut):
-    """v1.8.0a COMMIT 2: 0x7A/0x7B (unassigned) and 0x7F (reserved) stay
-    decode_error via whitelist omission across representative mode bytes."""
+    """v1.8.0a COMMIT 2: 0x7B (unassigned) and 0x7F (reserved) stay
+    decode_error via whitelist omission across representative mode bytes.
+
+    v1.8.0e 3a-C2: 0x7A LEFT this set — it now carries a real ISA row and
+    is pinned by test_fdot32_cr_decode_reserved_all_modes instead (same
+    outcome, different reason: whitelist omission over a POPULATED ROM
+    row, which is the stronger pin)."""
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
     await reset(dut)
@@ -4211,6 +4233,113 @@ async def test_fp_block_unassigned_opcodes_still_error(dut):
             got = await _fp_run_point(dut, op, mode, via_eh=False)
             assert got == (1, 0, 0), \
                 f"unassigned op=0x{op:02X} mode=0x{mode:02X}: got {got}"
+
+
+# =============================================================================
+# v1.8.0e 3a-C2 (spec §27.7a) — FDOT32_CR (0x7A) ISA row.
+#
+# C2 lands the ISA row + generated artifacts + assembler support ONLY. The
+# FP_StepSeq OPS_FDOTCR program is 3a-C3 and the PE_Core/EHDecode wiring +
+# opcode_supported entry is 3a-C4, so the decoder-side contract this commit
+# owes is exactly: the row exists in every table, and 0x7A still FAULTS.
+# =============================================================================
+
+
+@cocotb.test()
+async def test_fdot32_cr_decode_reserved_all_modes(dut):
+    """§27.7a.4 staging pin, exhaustive over all 256 mode bytes on BOTH
+    eff_precision mux arms: 0x7A has a POPULATED FP_LEGAL_ROM row (dtype
+    0x2 f16 / 0x3 bf16 x acc 1 x rnd 0) yet must decode_error everywhere,
+    because opcode_supported omits it until 3a-C4.
+
+    The two otherwise-legal rows are the load-bearing points: they are the
+    ones a premature whitelist entry would flip to executes/lower_required,
+    and they are the ones the ROM alone would call legal. error_flag=1 with
+    lower_required=0 is the required answer — a decode_error (malformation),
+    NOT a capability absence, because no PE_Core arm exists to lower to."""
+    from generated_isa_tables import DECODE_RESERVED_OPS, FP_MODE_LEGAL
+    assert DECODE_RESERVED_OPS == frozenset({0x7A}), \
+        f"decode-reserved set drifted from the 3a-C2 pin: {sorted(DECODE_RESERVED_OPS)}"
+    legal = FP_MODE_LEGAL[0x7A]
+    assert legal['legal_dtypes'] == [2, 3] and legal['legal_acc'] == [1] \
+        and legal['legal_rnd'] == [0], \
+        f"0x7A ROM row diverged from spec §27.7a.1: {legal}"
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    bad = []
+    for via_eh in (False, True):
+        for mode in range(256):
+            got = await _fp_run_point(dut, 0x7A, mode, via_eh=via_eh)
+            if got != (1, 0, 0):
+                bad.append(f"via_eh={via_eh} mode=0x{mode:02X}: got={got}")
+    assert not bad, (
+        f"{len(bad)} 0x7A points escaped decode_error (whitelist omission "
+        f"broken — 0x7A must not execute before 3a-C4):\n" + "\n".join(bad[:10]))
+
+
+@cocotb.test()
+async def test_fdot32_cr_16_frag_wave_still_decode_errors(dut):
+    """§27.7a.1 operand shape x §27.7a.4 staging: a fully-formed
+    FDOT32_CR dispatch — legal bf16 mode row, port-only EH chain, and the
+    complete 1,024-bit A||B payload presented on dec_input_payload_wide
+    (FRAG_MAX=16 exactly, frag 0-7 = A / frag 8-15 = B, the golden vector
+    layout) — is still rejected LOUDLY. A wide payload must not become a
+    side channel that smuggles an unwired opcode past the whitelist, and
+    the reject must be error_flag (malformation), never a silent drop."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    # A = 32 x bf16 1.0 (0x3F80), B = 32 x bf16 2.0 (0x4000): the exact
+    # dot is 64.0, so a datapath that somehow ran would be conspicuous.
+    wide = 0
+    for i in range(32):
+        wide |= 0x3F80 << (16 * i)
+        wide |= 0x4000 << (512 + 16 * i)
+    assert wide.bit_length() <= 1024
+    for mode in (0x12, 0x13):            # both legal rows: f16, bf16
+        instr = encode_instr(0x7A, _STD_PORT(), eh_precision(mode, 0),
+                             flags=(1 << 2))
+        await fire(dut, instr, make_tag(port_context_id=0),
+                   payload_wide=wide, payload_wide_valid=1)
+        assert int(dut.error_flag.value) == 1, \
+            f"0x7A mode=0x{mode:02X} with a full 16-frag wave must " \
+            f"decode_error until 3a-C4"
+        assert int(dut.output_valid.value) == 0, \
+            f"0x7A mode=0x{mode:02X} emitted data with no wiring"
+        assert int(dut.lower_required.value) == 0, \
+            f"0x7A is a decode_error (whitelist omission), not a stub " \
+            f"capability absence"
+        await reset(dut)
+
+
+@cocotb.test()
+async def test_fdot32_cr_port_only_shape_rejected_ehs(dut):
+    """§27.7a.1 EH shape = port-only (forbid_imm_any + forbid_opref — the
+    0x78 DEQUANT precedent), transcribed into the generated case body
+    AHEAD of the wiring. Today whitelist omission already fails these, so
+    the assertion is deliberately the WEAK one (fault, never execute):
+    it pins that no EH shape opens a hole, and it survives 3a-C4 flipping
+    the whitelist bit, at which point the shape flags become the reason."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    shapes = {
+        'imm16': [_STD_PORT(), eh_imm16(1), eh_precision(0x13, 0)],
+        'imm32': [_STD_PORT(), eh_imm32(1), eh_precision(0x13, 0)],
+        'imm64': [_STD_PORT(), eh_imm64(1), eh_precision(0x13, 0)],
+        'opref': [_STD_PORT(), eh_opref(), eh_precision(0x13, 0)],
+        'mem':   [_STD_PORT(), eh_mem(0), eh_precision(0x13, 0)],
+        'noport': [eh_precision(0x13, 0)],
+    }
+    for name, ehs in shapes.items():
+        instr = encode_instr(0x7A, *ehs, flags=(1 << 2))
+        await fire(dut, instr, make_tag(port_context_id=0))
+        assert int(dut.error_flag.value) == 1, \
+            f"0x7A with a forbidden {name} EH must fault"
+        assert int(dut.output_valid.value) == 0, \
+            f"0x7A with a forbidden {name} EH emitted data"
+        await reset(dut)
 
 
 # =============================================================================

@@ -26,7 +26,20 @@ reader can verify which source produced an artifact.
 Strict validation (pinned by test_json_schema_strictness): unknown keys
 rejected, opcode/mnemonic uniqueness enforced, fp_block cross-consistency
 (every 0x70-block opcode entry needs an fp_block.ops row and vice versa),
-non-reserved fp ops must have at least one legal mode combination.
+non-reserved fp ops must have at least one legal mode combination,
+decode_reserved XOR stub_v18 (the two staging bits are mutually
+exclusive — see below).
+
+decode_reserved (v1.8.0e 3a-C2, spec §27.7a.4): an opcode whose ISA row
+must ship BEFORE its execute wiring carries this bit. The row is
+transcribed everywhere (legality shape, fp_block mode ROM, asm mnemonic
++ tables) but the opcode is OMITTED from the emitted opcode_supported
+whitelist, so EHDecode keeps raising decode_error until the wiring
+commit flips the bit and regenerates. It is NOT stub_v18: a stub is
+decode-LEGAL with an execute-side lower_required arm, whereas a
+decode_reserved op has no arm at all and must fault at decode
+(loud-fault-never-silent — a decode-legal op with no dispatch arm falls
+through the case default).
 
 stdlib only — json is deliberate (not YAML): PyYAML would be this repo's
 first third-party non-cocotb dependency (spec §23.6 recorded substitution).
@@ -79,7 +92,8 @@ _TOP_KEYS = {"_doc", "_schema_version", "eh_codes", "eh_name_to_code",
              "cvt_op_codes", "fminmax_op_codes", "opcodes", "fp_block",
              "einsum_signatures", "eh_body_layouts", "dim_literals"}
 _OPCODE_KEYS = {"mnemonic", "code", "desc", "notes", "asm_legality",
-                "rtl_legality", "rtl_alu_binary", "stub_v18"}
+                "rtl_legality", "rtl_alu_binary", "stub_v18",
+                "decode_reserved"}
 _ASM_LEG_KEYS = {"required", "forbidden", "allow_imm_xor_opref",
                  "require_opb_flag", "require_imm16", "require_precision_eh"}
 _RTL_LEG_KEYS = {"req_port", "req_mem", "req_subscript", "req_opref",
@@ -115,6 +129,12 @@ def validate(src):
             raise SchemaError(f"{where}: duplicate mnemonic")
         seen_codes.add(code)
         seen_mnems.add(op["mnemonic"])
+        if op.get("decode_reserved") and op.get("stub_v18"):
+            raise SchemaError(
+                f"{where}: decode_reserved and stub_v18 are mutually "
+                f"exclusive (a stub is decode-LEGAL with a lower_required "
+                f"arm; a decode-reserved op is whitelist-omitted and "
+                f"decode_errors)")
         _reject_unknown(op["asm_legality"], _ASM_LEG_KEYS, f"{where}.asm_legality")
         _reject_unknown(op["rtl_legality"], _RTL_LEG_KEYS, f"{where}.rtl_legality")
         for k in ("required", "forbidden"):
@@ -189,7 +209,10 @@ def emit_case_body(src, src_sha):
 def emit_wires(src, src_sha):
     alu = [op["code"] for op in sorted(src["opcodes"], key=lambda o: o["code"])
            if op["rtl_alu_binary"]]
-    supported = [op["code"] for op in sorted(src["opcodes"], key=lambda o: o["code"])]
+    supported = [op["code"] for op in sorted(src["opcodes"], key=lambda o: o["code"])
+                 if not op.get("decode_reserved")]
+    reserved = [op["code"] for op in sorted(src["opcodes"], key=lambda o: o["code"])
+                if op.get("decode_reserved")]
     lines = [_hdr_vh(src_sha)]
     lines.append("    // ALU-binary membership: exactly-one-of {IMM*, OPREF} enforced")
     lines.append("    // (alu_binary_xor_err). NOTE: 0x63/64/65 are asm-side XOR-checked")
@@ -199,6 +222,13 @@ def emit_wires(src, src_sha):
     lines.append("        " + " ||\n        ".join(
         f"(cb_opcode == 8'h{c:02X})" for c in alu) + ";")
     lines.append("")
+    if reserved:
+        lines.append("    // DECODE-RESERVED (isa JSON decode_reserved=true): the ISA row")
+        lines.append("    // ships ahead of its execute wiring, so the opcode is")
+        lines.append("    // DELIBERATELY absent from opcode_supported below and keeps")
+        lines.append("    // raising decode_error. Flip the JSON bit + regenerate in the")
+        lines.append("    // wiring commit. Omitted here: " +
+                     ", ".join(f"8'h{c:02X}" for c in reserved) + ".")
     lines.append("    wire opcode_supported =")
     lines.append("        " + " ||\n        ".join(
         f"(cb_opcode == 8'h{c:02X})" for c in supported) + ";")
@@ -317,6 +347,17 @@ def emit_pytables(src, src_sha):
     L.append("STUB_OPS_V18 = frozenset([" +
              ", ".join(f"0x{c:02X}" for c in stubs) + "])")
     L.append("")
+    L.append("# v1.8.0e 3a-C2 (spec section 27.7a.4) — rows transcribed AHEAD of")
+    L.append("# their execute wiring: present in every table below, but OMITTED")
+    L.append("# from the RTL opcode_supported whitelist, so the decoder answers")
+    L.append("# decode_error (malformation) for EVERY mode byte until the wiring")
+    L.append("# commit clears the JSON bit. NOT stub_v18 (decode-legal capability")
+    L.append("# absence -> lower_required); the two bits are mutually exclusive.")
+    dec_res = sorted(op["code"] for op in src["opcodes"]
+                     if op.get("decode_reserved"))
+    L.append("DECODE_RESERVED_OPS = frozenset([" +
+             ", ".join(f"0x{c:02X}" for c in dec_res) + "])")
+    L.append("")
     L.append("FP_MODE_LEGAL = {")
     for fop in sorted(src["fp_block"]["ops"], key=lambda o: o["code"]):
         L.append(f"    0x{fop['code']:02X}: dict(")
@@ -357,6 +398,19 @@ def emit_specfrag(src, src_sha):
         for fop in sorted(src["fp_block"]["ops"], key=lambda o: o["code"]):
             L.append(f"| 0x{fop['code']:02X} | {fop['mnemonic']} | "
                      f"{fop['legal_dtypes']} | {fop['legal_acc']} | {fop['legal_rnd']} |")
+    reserved = [op for op in sorted(src["opcodes"], key=lambda o: o["code"])
+                if op.get("decode_reserved")]
+    if reserved:
+        L.append("")
+        L.append("## decode-reserved (ISA row ships ahead of the execute wiring)")
+        L.append("")
+        L.append("아래 opcode 는 위 표에 전사되어 있으나 RTL `opcode_supported`")
+        L.append("whitelist 에서 **의도적으로 누락**되어 있다 — 전 mode byte 에서")
+        L.append("`decode_error` 가 정답이며, 결선 COMMIT 이 JSON 의")
+        L.append("`decode_reserved` 를 내리고 재생성할 때 등재된다.")
+        L.append("")
+        for op in reserved:
+            L.append(f"- **0x{op['code']:02X} {op['mnemonic']}**")
     return "\n".join(L) + "\n"
 
 
