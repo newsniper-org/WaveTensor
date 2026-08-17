@@ -1,0 +1,51 @@
+
+15. Printing statistics.
+
+=== Top_Core_gate_top ===
+
+        +----------Local Count, excluding submodules.
+        | 
+    17180 wires
+   193072 wire bits
+     2303 public wires
+    54038 public wire bits
+       42 ports
+     1603 port bits
+        4 memories
+    10639 memory bits
+    15979 cells
+      900   $add
+      213   $adff
+       24   $and
+      244   $dff
+     4566   $eq
+       29   $ge
+      129   $gt
+       24   $le
+      190   $logic_and
+      253   $logic_not
+      106   $logic_or
+       92   $lt
+        1   $meminit
+       34   $memrd
+        1   $memrd_v2
+        6   $memwr_v2
+      429   $mul
+     7880   $mux
+       13   $ne
+        3   $neg
+       84   $not
+      117   $or
+      212   $pmux
+        1   $reduce_and
+       27   $reduce_bool
+      143   $reduce_or
+        9   $scopeinfo
+        5   $shiftx
+       12   $shl
+        5   $shr
+        3   $sshl
+        4   $sshr
+      134   $sub
+       86   $xor
+

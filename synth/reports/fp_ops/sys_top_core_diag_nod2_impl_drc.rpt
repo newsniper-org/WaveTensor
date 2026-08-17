@@ -1,0 +1,746 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2025.2.1 (lin64) Build 6403652 Thu Mar 19 13:47:00 MDT 2026
+| Date         : Tue Aug 18 00:20:18 2026
+| Host         : cachyos-ybi-tuf running 64-bit CachyOS
+| Command      : report_drc -file /home/ybi/WaveTensor/synth/reports/fp_ops/sys_top_core_diag_nod2_impl_drc.rpt
+| Design       : Top_Core_gate_top
+| Device       : xcu55c-fsvh2892-2L-e
+| Speed File   : -2L
+| Design State : Fully Routed
+---------------------------------------------------------------------------------------------------------------------------------------------
+
+Report DRC
+
+Table of Contents
+-----------------
+1. REPORT SUMMARY
+2. REPORT DETAILS
+
+1. REPORT SUMMARY
+-----------------
+            Netlist: Top_Core_gate_top
+          Floorplan: design_1
+      Design limits: <entire design considered>
+           Ruledeck: default
+             Max checks: <unlimited>
+             Checks found: 137
++-----------+------------------+--------------------------+--------+
+| Rule      | Severity         | Description              | Checks |
++-----------+------------------+--------------------------+--------+
+| LUTLP-1   | Critical Warning | Combinatorial Loop Alert | 8      |
+| DPIP-2    | Warning          | Input pipelining         | 66     |
+| DPOP-3    | Warning          | PREG Output pipelining   | 29     |
+| DPOP-4    | Warning          | MREG Output pipelining   | 33     |
+| RTSTAT-10 | Warning          | No routable loads        | 1      |
++-----------+------------------+--------------------------+--------+
+
+2. REPORT DETAILS
+-----------------
+LUTLP-1#1 Critical Warning
+Combinatorial Loop Alert  
+4 LUT cells form a combinatorial loop. This can create a race condition. Timing analysis may not be accurate. The preferred resolution is to modify the design to remove combinatorial logic loops. If the loop is known and understood, this DRC can be bypassed by acknowledging the condition and setting the following XDC constraint on any one of the nets in the loop: 'set_property ALLOW_COMBINATORIAL_LOOPS TRUE [get_nets <myHier/myNet>]'. One net in the loop is u_core/u_hiu/g_ro[0].ro_s1. Please evaluate your design. The cells in the loop are: u_core/u_hiu/g_ro[0].ro_s1_inferred_i_1,
+u_core/u_hiu/g_ro[0].ro_s2_inferred_i_1,
+u_core/u_hiu/g_ro[0].ro_s3_inferred_i_1, u_core/u_hiu/g_ro[0].ro_s3_inst.
+Related violations: <none>
+
+LUTLP-1#2 Critical Warning
+Combinatorial Loop Alert  
+4 LUT cells form a combinatorial loop. This can create a race condition. Timing analysis may not be accurate. The preferred resolution is to modify the design to remove combinatorial logic loops. If the loop is known and understood, this DRC can be bypassed by acknowledging the condition and setting the following XDC constraint on any one of the nets in the loop: 'set_property ALLOW_COMBINATORIAL_LOOPS TRUE [get_nets <myHier/myNet>]'. One net in the loop is u_core/u_hiu/g_ro[1].ro_s1. Please evaluate your design. The cells in the loop are: u_core/u_hiu/g_ro[1].ro_s1_inferred_i_1,
+u_core/u_hiu/g_ro[1].ro_s2_inferred_i_1,
+u_core/u_hiu/g_ro[1].ro_s3_inferred_i_1, u_core/u_hiu/g_ro[1].ro_s3_inst.
+Related violations: <none>
+
+LUTLP-1#3 Critical Warning
+Combinatorial Loop Alert  
+4 LUT cells form a combinatorial loop. This can create a race condition. Timing analysis may not be accurate. The preferred resolution is to modify the design to remove combinatorial logic loops. If the loop is known and understood, this DRC can be bypassed by acknowledging the condition and setting the following XDC constraint on any one of the nets in the loop: 'set_property ALLOW_COMBINATORIAL_LOOPS TRUE [get_nets <myHier/myNet>]'. One net in the loop is u_core/u_hiu/g_ro[2].ro_s1. Please evaluate your design. The cells in the loop are: u_core/u_hiu/g_ro[2].ro_s1_inferred_i_1,
+u_core/u_hiu/g_ro[2].ro_s2_inferred_i_1,
+u_core/u_hiu/g_ro[2].ro_s3_inferred_i_1, u_core/u_hiu/g_ro[2].ro_s3_inst.
+Related violations: <none>
+
+LUTLP-1#4 Critical Warning
+Combinatorial Loop Alert  
+4 LUT cells form a combinatorial loop. This can create a race condition. Timing analysis may not be accurate. The preferred resolution is to modify the design to remove combinatorial logic loops. If the loop is known and understood, this DRC can be bypassed by acknowledging the condition and setting the following XDC constraint on any one of the nets in the loop: 'set_property ALLOW_COMBINATORIAL_LOOPS TRUE [get_nets <myHier/myNet>]'. One net in the loop is u_core/u_hiu/g_ro[3].ro_s1. Please evaluate your design. The cells in the loop are: u_core/u_hiu/g_ro[3].ro_s1_inferred_i_1,
+u_core/u_hiu/g_ro[3].ro_s2_inferred_i_1,
+u_core/u_hiu/g_ro[3].ro_s3_inferred_i_1, u_core/u_hiu/g_ro[3].ro_s3_inst.
+Related violations: <none>
+
+LUTLP-1#5 Critical Warning
+Combinatorial Loop Alert  
+4 LUT cells form a combinatorial loop. This can create a race condition. Timing analysis may not be accurate. The preferred resolution is to modify the design to remove combinatorial logic loops. If the loop is known and understood, this DRC can be bypassed by acknowledging the condition and setting the following XDC constraint on any one of the nets in the loop: 'set_property ALLOW_COMBINATORIAL_LOOPS TRUE [get_nets <myHier/myNet>]'. One net in the loop is u_core/u_hiu/g_ro[4].ro_s1. Please evaluate your design. The cells in the loop are: u_core/u_hiu/g_ro[4].ro_s1_inferred_i_1,
+u_core/u_hiu/g_ro[4].ro_s2_inferred_i_1,
+u_core/u_hiu/g_ro[4].ro_s3_inferred_i_1, u_core/u_hiu/g_ro[4].ro_s3_inst.
+Related violations: <none>
+
+LUTLP-1#6 Critical Warning
+Combinatorial Loop Alert  
+4 LUT cells form a combinatorial loop. This can create a race condition. Timing analysis may not be accurate. The preferred resolution is to modify the design to remove combinatorial logic loops. If the loop is known and understood, this DRC can be bypassed by acknowledging the condition and setting the following XDC constraint on any one of the nets in the loop: 'set_property ALLOW_COMBINATORIAL_LOOPS TRUE [get_nets <myHier/myNet>]'. One net in the loop is u_core/u_hiu/g_ro[5].ro_s1. Please evaluate your design. The cells in the loop are: u_core/u_hiu/g_ro[5].ro_s1_inferred_i_1,
+u_core/u_hiu/g_ro[5].ro_s2_inferred_i_1,
+u_core/u_hiu/g_ro[5].ro_s3_inferred_i_1, u_core/u_hiu/g_ro[5].ro_s3_inst.
+Related violations: <none>
+
+LUTLP-1#7 Critical Warning
+Combinatorial Loop Alert  
+4 LUT cells form a combinatorial loop. This can create a race condition. Timing analysis may not be accurate. The preferred resolution is to modify the design to remove combinatorial logic loops. If the loop is known and understood, this DRC can be bypassed by acknowledging the condition and setting the following XDC constraint on any one of the nets in the loop: 'set_property ALLOW_COMBINATORIAL_LOOPS TRUE [get_nets <myHier/myNet>]'. One net in the loop is u_core/u_hiu/g_ro[6].ro_s1. Please evaluate your design. The cells in the loop are: u_core/u_hiu/g_ro[6].ro_s1_inferred_i_1,
+u_core/u_hiu/g_ro[6].ro_s2_inferred_i_1,
+u_core/u_hiu/g_ro[6].ro_s3_inferred_i_1, u_core/u_hiu/g_ro[6].ro_s3_inst.
+Related violations: <none>
+
+LUTLP-1#8 Critical Warning
+Combinatorial Loop Alert  
+4 LUT cells form a combinatorial loop. This can create a race condition. Timing analysis may not be accurate. The preferred resolution is to modify the design to remove combinatorial logic loops. If the loop is known and understood, this DRC can be bypassed by acknowledging the condition and setting the following XDC constraint on any one of the nets in the loop: 'set_property ALLOW_COMBINATORIAL_LOOPS TRUE [get_nets <myHier/myNet>]'. One net in the loop is u_core/u_hiu/g_ro[7].ro_s1. Please evaluate your design. The cells in the loop are: u_core/u_hiu/g_ro[7].ro_s1_inferred_i_1,
+u_core/u_hiu/g_ro[7].ro_s2_inferred_i_1,
+u_core/u_hiu/g_ro[7].ro_s3_inferred_i_1, u_core/u_hiu/g_ro[7].ro_s3_inst.
+Related violations: <none>
+
+DPIP-2#1 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/einsum_dot_return0 input u_core/u_decoder/u_core/einsum_dot_return0/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#2 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/einsum_dot_return0 input u_core/u_decoder/u_core/einsum_dot_return0/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#3 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/einsum_dot_return0__0 input u_core/u_decoder/u_core/einsum_dot_return0__0/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#4 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/einsum_dot_return0__0 input u_core/u_decoder/u_core/einsum_dot_return0__0/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#5 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/einsum_dot_return0__1 input u_core/u_decoder/u_core/einsum_dot_return0__1/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#6 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/einsum_dot_return0__1 input u_core/u_decoder/u_core/einsum_dot_return0__1/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#7 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/einsum_hadamard_return0 input u_core/u_decoder/u_core/einsum_hadamard_return0/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#8 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/einsum_hadamard_return0 input u_core/u_decoder/u_core/einsum_hadamard_return0/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#9 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/einsum_hadamard_return0__0 input u_core/u_decoder/u_core/einsum_hadamard_return0__0/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#10 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/einsum_hadamard_return0__0 input u_core/u_decoder/u_core/einsum_hadamard_return0__0/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#11 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/einsum_mat_vec_return0 input u_core/u_decoder/u_core/einsum_mat_vec_return0/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#12 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/einsum_mat_vec_return0 input u_core/u_decoder/u_core/einsum_mat_vec_return0/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#13 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/einsum_mat_vec_return0 input u_core/u_decoder/u_core/einsum_mat_vec_return0/C[47:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#14 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/einsum_mat_vec_return0__0 input u_core/u_decoder/u_core/einsum_mat_vec_return0__0/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#15 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/einsum_mat_vec_return0__0 input u_core/u_decoder/u_core/einsum_mat_vec_return0__0/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#16 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/einsum_mat_vec_return0__0 input u_core/u_decoder/u_core/einsum_mat_vec_return0__0/C[47:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#17 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/einsum_outer_return0 input u_core/u_decoder/u_core/einsum_outer_return0/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#18 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/einsum_outer_return0 input u_core/u_decoder/u_core/einsum_outer_return0/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#19 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0 input u_core/u_decoder/u_core/euclid_norm_sq_return0/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#20 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0 input u_core/u_decoder/u_core/euclid_norm_sq_return0/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#21 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__0 input u_core/u_decoder/u_core/euclid_norm_sq_return0__0/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#22 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__0 input u_core/u_decoder/u_core/euclid_norm_sq_return0__0/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#23 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__1 input u_core/u_decoder/u_core/euclid_norm_sq_return0__1/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#24 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__1 input u_core/u_decoder/u_core/euclid_norm_sq_return0__1/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#25 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__2 input u_core/u_decoder/u_core/euclid_norm_sq_return0__2/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#26 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__2 input u_core/u_decoder/u_core/euclid_norm_sq_return0__2/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#27 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__3 input u_core/u_decoder/u_core/euclid_norm_sq_return0__3/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#28 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__3 input u_core/u_decoder/u_core/euclid_norm_sq_return0__3/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#29 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__4 input u_core/u_decoder/u_core/euclid_norm_sq_return0__4/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#30 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__4 input u_core/u_decoder/u_core/euclid_norm_sq_return0__4/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#31 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__5 input u_core/u_decoder/u_core/euclid_norm_sq_return0__5/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#32 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__5 input u_core/u_decoder/u_core/euclid_norm_sq_return0__5/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#33 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__6 input u_core/u_decoder/u_core/euclid_norm_sq_return0__6/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#34 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__6 input u_core/u_decoder/u_core/euclid_norm_sq_return0__6/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#35 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_hh_p1_reg input u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_hh_p1_reg/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#36 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_hh_p1_reg input u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_hh_p1_reg/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#37 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_hl_p1_reg input u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_hl_p1_reg/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#38 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_hl_p1_reg input u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_hl_p1_reg/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#39 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_hl_p1_reg input u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_hl_p1_reg/C[47:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#40 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_lh_p1_reg input u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_lh_p1_reg/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#41 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_lh_p1_reg input u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_lh_p1_reg/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#42 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_ll_p1_reg input u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_ll_p1_reg/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#43 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_ll_p1_reg input u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_ll_p1_reg/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#44 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_ll_p1_reg input u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_ll_p1_reg/C[47:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#45 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return0 input u_core/u_decoder/u_core/matmul_func_return0/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#46 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return0 input u_core/u_decoder/u_core/matmul_func_return0/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#47 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return0 input u_core/u_decoder/u_core/matmul_func_return0/C[47:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#48 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return0__0 input u_core/u_decoder/u_core/matmul_func_return0__0/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#49 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return0__0 input u_core/u_decoder/u_core/matmul_func_return0__0/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#50 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return0__0 input u_core/u_decoder/u_core/matmul_func_return0__0/C[47:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#51 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return0__1 input u_core/u_decoder/u_core/matmul_func_return0__1/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#52 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return0__1 input u_core/u_decoder/u_core/matmul_func_return0__1/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#53 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return0__1 input u_core/u_decoder/u_core/matmul_func_return0__1/C[47:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#54 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return0__2 input u_core/u_decoder/u_core/matmul_func_return0__2/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#55 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return0__2 input u_core/u_decoder/u_core/matmul_func_return0__2/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#56 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return0__2 input u_core/u_decoder/u_core/matmul_func_return0__2/C[47:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#57 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return1 input u_core/u_decoder/u_core/matmul_func_return1/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#58 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return1 input u_core/u_decoder/u_core/matmul_func_return1/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#59 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return1__0 input u_core/u_decoder/u_core/matmul_func_return1__0/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#60 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return1__0 input u_core/u_decoder/u_core/matmul_func_return1__0/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#61 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return1__1 input u_core/u_decoder/u_core/matmul_func_return1__1/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#62 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return1__1 input u_core/u_decoder/u_core/matmul_func_return1__1/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#63 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return1__2 input u_core/u_decoder/u_core/matmul_func_return1__2/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#64 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return1__2 input u_core/u_decoder/u_core/matmul_func_return1__2/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#65 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return1__3 input u_core/u_decoder/u_core/matmul_func_return1__3/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#66 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return1__3 input u_core/u_decoder/u_core/matmul_func_return1__3/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPOP-3#1 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/einsum_dot_return0__1 output u_core/u_decoder/u_core/einsum_dot_return0__1/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#2 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/einsum_hadamard_return0 output u_core/u_decoder/u_core/einsum_hadamard_return0/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#3 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/einsum_hadamard_return0__0 output u_core/u_decoder/u_core/einsum_hadamard_return0__0/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#4 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/einsum_mat_vec_return0 output u_core/u_decoder/u_core/einsum_mat_vec_return0/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#5 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/einsum_mat_vec_return0__0 output u_core/u_decoder/u_core/einsum_mat_vec_return0__0/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#6 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/einsum_outer_return0 output u_core/u_decoder/u_core/einsum_outer_return0/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#7 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0 output u_core/u_decoder/u_core/euclid_norm_sq_return0/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#8 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__0 output u_core/u_decoder/u_core/euclid_norm_sq_return0__0/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#9 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__1 output u_core/u_decoder/u_core/euclid_norm_sq_return0__1/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#10 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__2 output u_core/u_decoder/u_core/euclid_norm_sq_return0__2/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#11 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__3 output u_core/u_decoder/u_core/euclid_norm_sq_return0__3/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#12 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__4 output u_core/u_decoder/u_core/euclid_norm_sq_return0__4/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#13 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__5 output u_core/u_decoder/u_core/euclid_norm_sq_return0__5/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#14 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__6 output u_core/u_decoder/u_core/euclid_norm_sq_return0__6/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#15 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return0 output u_core/u_decoder/u_core/matmul_func_return0/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#16 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return0__0 output u_core/u_decoder/u_core/matmul_func_return0__0/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#17 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return0__1 output u_core/u_decoder/u_core/matmul_func_return0__1/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#18 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return0__2 output u_core/u_decoder/u_core/matmul_func_return0__2/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#19 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return1 output u_core/u_decoder/u_core/matmul_func_return1/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#20 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return1__0 output u_core/u_decoder/u_core/matmul_func_return1__0/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#21 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return1__1 output u_core/u_decoder/u_core/matmul_func_return1__1/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#22 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return1__2 output u_core/u_decoder/u_core/matmul_func_return1__2/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#23 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return1__3 output u_core/u_decoder/u_core/matmul_func_return1__3/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#24 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__0 output u_core/u_decoder/u_core/mul_result_p20__0/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#25 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__2 output u_core/u_decoder/u_core/mul_result_p20__2/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#26 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__4 output u_core/u_decoder/u_core/mul_result_p20__4/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#27 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__5 output u_core/u_decoder/u_core/mul_result_p20__5/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#28 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__7 output u_core/u_decoder/u_core/mul_result_p20__7/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#29 Warning
+PREG Output pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__8 output u_core/u_decoder/u_core/mul_result_p20__8/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-4#1 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/einsum_dot_return0__1 multiplier stage u_core/u_decoder/u_core/einsum_dot_return0__1/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#2 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/einsum_hadamard_return0 multiplier stage u_core/u_decoder/u_core/einsum_hadamard_return0/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#3 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/einsum_hadamard_return0__0 multiplier stage u_core/u_decoder/u_core/einsum_hadamard_return0__0/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#4 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/einsum_mat_vec_return0 multiplier stage u_core/u_decoder/u_core/einsum_mat_vec_return0/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#5 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/einsum_mat_vec_return0__0 multiplier stage u_core/u_decoder/u_core/einsum_mat_vec_return0__0/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#6 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/einsum_outer_return0 multiplier stage u_core/u_decoder/u_core/einsum_outer_return0/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#7 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0 multiplier stage u_core/u_decoder/u_core/euclid_norm_sq_return0/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#8 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__0 multiplier stage u_core/u_decoder/u_core/euclid_norm_sq_return0__0/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#9 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__1 multiplier stage u_core/u_decoder/u_core/euclid_norm_sq_return0__1/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#10 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__2 multiplier stage u_core/u_decoder/u_core/euclid_norm_sq_return0__2/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#11 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__3 multiplier stage u_core/u_decoder/u_core/euclid_norm_sq_return0__3/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#12 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__4 multiplier stage u_core/u_decoder/u_core/euclid_norm_sq_return0__4/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#13 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__5 multiplier stage u_core/u_decoder/u_core/euclid_norm_sq_return0__5/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#14 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/euclid_norm_sq_return0__6 multiplier stage u_core/u_decoder/u_core/euclid_norm_sq_return0__6/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#15 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_hh_p1_reg multiplier stage u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_hh_p1_reg/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#16 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_hl_p1_reg multiplier stage u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_hl_p1_reg/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#17 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_lh_p1_reg multiplier stage u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_lh_p1_reg/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#18 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_ll_p1_reg multiplier stage u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/u_mul/pp_ll_p1_reg/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#19 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return0 multiplier stage u_core/u_decoder/u_core/matmul_func_return0/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#20 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return0__0 multiplier stage u_core/u_decoder/u_core/matmul_func_return0__0/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#21 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return0__1 multiplier stage u_core/u_decoder/u_core/matmul_func_return0__1/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#22 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return0__2 multiplier stage u_core/u_decoder/u_core/matmul_func_return0__2/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#23 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return1 multiplier stage u_core/u_decoder/u_core/matmul_func_return1/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#24 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return1__0 multiplier stage u_core/u_decoder/u_core/matmul_func_return1__0/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#25 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return1__1 multiplier stage u_core/u_decoder/u_core/matmul_func_return1__1/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#26 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return1__2 multiplier stage u_core/u_decoder/u_core/matmul_func_return1__2/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#27 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/matmul_func_return1__3 multiplier stage u_core/u_decoder/u_core/matmul_func_return1__3/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#28 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__0 multiplier stage u_core/u_decoder/u_core/mul_result_p20__0/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#29 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__2 multiplier stage u_core/u_decoder/u_core/mul_result_p20__2/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#30 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__4 multiplier stage u_core/u_decoder/u_core/mul_result_p20__4/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#31 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__5 multiplier stage u_core/u_decoder/u_core/mul_result_p20__5/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#32 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__7 multiplier stage u_core/u_decoder/u_core/mul_result_p20__7/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#33 Warning
+MREG Output pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__8 multiplier stage u_core/u_decoder/u_core/mul_result_p20__8/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+RTSTAT-10#1 Warning
+No routable loads  
+344 net(s) have no routable loads. The problem bus(es) and/or net(s) are ats_resp_o, error_flag_o, lower_required_o, mem_access_granted_o,
+mem_data_out_o[31:0], mem_dma_ack_o, mem_phys_addr_o[63:0],
+opcode_out_o[7:0], opref_noc_route_o[7:0], opref_port_id_o[3:0],
+opref_src_kind_o[3:0], output_frag_hdr_o[7:0], output_payload_o[63:0],
+output_tag_o[79:0], output_valid_o
+ (the first 15 of 22 listed nets/buses).
+Related violations: <none>
+
+

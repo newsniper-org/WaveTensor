@@ -149,6 +149,33 @@ MEASUREMENTS = [
      "wrapper_ff": 432,     # 140 in + 292 out gate-top I/O flops
      "premap_pin": 8,       # the §27.6 판별 pin — lane tap x8
      "mult_axis": "record axis — yosys share discretion allowed (§26.6)"},
+    # GATE S1 ECP5 half (spec §28.7): the system-integration top
+    # (Top_Core = ISA_Decoder + HIU). Same MEASUREMENT regime — the xcu55c
+    # half carries the entire merge-blocker binding. TWO outcomes are
+    # PRE-DECLARED in §28.7 so neither can be spun afterwards: (a) the HIU
+    # TRNG ring oscillators are an intended combinational feedback that
+    # Vivado accepts via ALLOW_COMBINATORIAL_LOOPS and the yosys/nextpnr
+    # flow has no equivalent constraint for, so a loop complaint or
+    # rejection is an EXPECTED outcome of this half; (b) the v1.9b full
+    # Cluster was already routing-dominated on the 85F at 39.6% COMB
+    # (11.34 MHz), so a low Fmax is the fabric's answer, not a regression.
+    # The load-bearing datum is the FRONT of the flow: does the same RTL
+    # elaborate and map under a NON-Vivado frontend? That is exactly what
+    # defects D1 (Vivado rejects) and D3 (Vivado tolerates) put on the
+    # table, so the archived premap stat is a valid measurement even if
+    # PnR dies. Discriminating pin: premap $mul == 429, the SAME number the
+    # xcu55c half pins — cross-frontend agreement on the multiply census.
+    {"name": "sys_top_core", "label": "MEAS S1/ECP5 system top",
+     "desc": "system-integration top (spec §28): Top_Core = ISA_Decoder "
+             "(EHDecode + PE_Core + FP_StepSeq) + HIU — the top that had "
+             "never been synthesized by anything in this repo; xcu55c half "
+             "carries the merge-blocker binding, this half is "
+             "measurement-only and 'did not complete' is a pre-declared "
+             "outcome",
+     "wrapper_ff": 1601,    # 1246 in + 355 out gate-top I/O flops
+     "premap_pin": 429,
+     "mult_axis": "record axis — yosys share discretion allowed (§26.6); "
+                  "the xcu55c half measured 39 DSP48E2"},
 ]
 
 
@@ -251,7 +278,10 @@ def main():
         pnr_rpt = rpt_dir / f"{name}_pnr.rpt"
         fmax = parse_fmax(pnr_rpt) if pnr_rpt.exists() else None
         premap_pin = m.get("premap_pin", 0)
-        pin_txt = (f"pin expects {premap_pin} — exactly 1 per lane tap"
+        pin_txt = (f"pin expects {premap_pin}"
+                   + (" — matches the xcu55c half's premap census"
+                      if premap_pin > 8 else " — exactly 1 per lane tap")
+                   + ("  MISMATCH" if premap_mul != premap_pin else "")
                    if premap_pin else "pin expects 0 — adder/compressor only")
         mul_line = ("    premap $mul= " + (
             f"{premap_mul:5d}   ({pin_txt})"

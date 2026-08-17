@@ -145,6 +145,27 @@ module EHDecode #(
     `include "generated/isa_eh_codes.vh"
 
     // -------------------------------------------------------------------------
+    // Chain-walk pipeline state — one slot per cycle.
+    // v1.3: widths parametric on MAX_EH (was hardcoded 4-bit/3-bit for
+    // MAX_EH=4). Termination is sentinel-driven; stg_index is only used
+    // as a safety cap against malformed instructions without EH_END.
+    //
+    // D3 수리: 이 블록은 원래 iw_c generate 뒤(구 라인 204-209)에 있었고,
+    // 바로 아래 입력 래치 always 블록이 `stg_active` 를 선언보다 먼저
+    // 읽고 있었다. Vivado 는 관용적으로 통과시키지만 Verilog-2001 은
+    // 선언 선행을 요구하므로 다른 합성기에서 hard error 가 될 수 있다.
+    // 선언을 사용 지점 앞으로 올린 것 외에 변경 없음 (동일 모듈 스코프
+    // 이므로 test_cluster.py:528 의 `dut.u_ehdec.stg_active` 계층 경로도
+    // 그대로 유효하다).
+    // -------------------------------------------------------------------------
+    reg [OFF_W-1:0]  stg_off;
+    reg [3:0]        stg_expect;
+    reg [IDX_W-1:0]  stg_index;
+    reg              stg_active;
+    reg              stg_chain_err;
+    reg              stg_unknown;
+
+    // -------------------------------------------------------------------------
     // Latch the inputs once in_valid pulses so the chain walk reads stable
     // data even after the upstream changes its drive. Pipeline init happens
     // on the SAME cycle (no separate walk_kick stage) — `cb_*` and SLOT 0's
@@ -195,18 +216,12 @@ module EHDecode #(
         end
     endgenerate
 
-    // -------------------------------------------------------------------------
-    // Chain-walk pipeline state — one slot per cycle.
-    // v1.3: widths parametric on MAX_EH (was hardcoded 4-bit/3-bit for
-    // MAX_EH=4). Termination is sentinel-driven; stg_index is only used
-    // as a safety cap against malformed instructions without EH_END.
-    // -------------------------------------------------------------------------
-    reg [OFF_W-1:0]  stg_off;
-    reg [3:0]        stg_expect;
-    reg [IDX_W-1:0]  stg_index;
-    reg              stg_active;
-    reg              stg_chain_err;
-    reg              stg_unknown;
+    // D3 수리 흔적: 여기 있던 chain-walk 파이프라인 상태 선언 블록
+    // (stg_off / stg_expect / stg_index / stg_active / stg_chain_err /
+    // stg_unknown) 은 위 입력 래치 always 블록 앞으로 이동했다. 그 always
+    // 블록이 `stg_active` 를 읽는데 선언이 뒤에 있어서, Vivado 의 관용에
+    // 의존하는 use-before-declare 상태였다 (다른 합성기에서는 hard error).
+    // 선언 위치만 옮겼을 뿐 폭·개수·초기화·구동 논리는 전부 그대로다.
 
     // Accumulated body fields
     reg [15:0] acc_port_body;

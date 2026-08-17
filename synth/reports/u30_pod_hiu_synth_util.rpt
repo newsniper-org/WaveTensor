@@ -1,0 +1,90 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2025.2.1 (lin64) Build 6403652 Thu Mar 19 13:47:00 MDT 2026
+| Date         : Mon Aug 17 23:37:18 2026
+| Host         : cachyos-ybi-tuf running 64-bit CachyOS
+| Command      : report_utilization -file /tmp/wt_u30/rpt/u30_pod_hiu_synth_util.rpt -hierarchical
+| Design       : Pod_HIU_gate_top
+| Device       : xcu30-fbvb900-2-e
+| Speed File   : -2
+| Design State : Synthesized
+---------------------------------------------------------------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++---------------------------------------+----------------------------+------------+------------+---------+------+-------+--------+--------+------+------------+
+|                Instance               |           Module           | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs  | RAMB36 | RAMB18 | URAM | DSP Blocks |
++---------------------------------------+----------------------------+------------+------------+---------+------+-------+--------+--------+------+------------+
+| Pod_HIU_gate_top                      |                      (top) |     180903 |     179823 |     528 |  552 | 47447 |      0 |      8 |    0 |        156 |
+|   (Pod_HIU_gate_top)                  |                      (top) |          0 |          0 |       0 |    0 |  1652 |      0 |      0 |    0 |          0 |
+|   u_hiu                               |                        HIU |       2587 |       2587 |       0 |    0 |  3621 |      0 |      0 |    0 |          0 |
+|     (u_hiu)                           |                        HIU |       2554 |       2554 |       0 |    0 |  3556 |      0 |      0 |    0 |          0 |
+|     dma_inst                          |                 dma_engine |         33 |         33 |       0 |    0 |    65 |      0 |      0 |    0 |          0 |
+|   u_pod                               |                        Pod |     178316 |     177236 |     528 |  552 | 42174 |      0 |      8 |    0 |        156 |
+|     (u_pod)                           |                        Pod |        342 |        342 |       0 |    0 |     0 |      0 |      0 |    0 |          0 |
+|     g_crow[0].g_ccol[0].u_cluster     |                 Cluster__1 |      44466 |      44196 |     132 |  138 | 10546 |      0 |      2 |    0 |         39 |
+|       (g_crow[0].g_ccol[0].u_cluster) |                 Cluster__1 |       1644 |       1634 |       0 |   10 |  1142 |      0 |      0 |    0 |          0 |
+|       g_row[0].g_col[0].u_lpe         |                 PE_Core__1 |       5478 |       5478 |       0 |    0 |   650 |      0 |      0 |    0 |          0 |
+|       g_row[0].g_col[1].u_lpe         |                 PE_Core__2 |       5478 |       5478 |       0 |    0 |   650 |      0 |      0 |    0 |          0 |
+|       g_row[1].g_col[0].u_lpe         |                 PE_Core__3 |       5478 |       5478 |       0 |    0 |   650 |      0 |      0 |    0 |          0 |
+|       g_row[1].g_col[1].u_lpe         |                 PE_Core__4 |       5478 |       5478 |       0 |    0 |   650 |      0 |      0 |    0 |          0 |
+|       u_div_unit                      | PE_Core__parameterized1__1 |        736 |        736 |       0 |    0 |   654 |      0 |      0 |    0 |          0 |
+|       u_ehdec                         |                EHDecode__5 |        990 |        990 |       0 |    0 |  1888 |      0 |      0 |    0 |          0 |
+|       u_matmul_unit                   | PE_Core__parameterized0__1 |      19184 |      18924 |     132 |  128 |  4262 |      0 |      2 |    0 |         39 |
+|         (u_matmul_unit)               | PE_Core__parameterized0__1 |      14528 |      14528 |       0 |    0 |  2965 |      0 |      0 |    0 |         35 |
+|         g_v180c_fp.u_fp_stepseq       |              FP_StepSeq__1 |       4656 |       4396 |     132 |  128 |  1297 |      0 |      2 |    0 |          4 |
+|           (g_v180c_fp.u_fp_stepseq)   |              FP_StepSeq__1 |       3820 |       3560 |     132 |  128 |   944 |      0 |      2 |    0 |          0 |
+|           u_add                       |              FP_AddWide__1 |        799 |        799 |       0 |    0 |   281 |      0 |      0 |    0 |          0 |
+|           u_mul                       |                FP_Mul36__1 |         37 |         37 |       0 |    0 |    72 |      0 |      0 |    0 |          4 |
+|     g_crow[0].g_ccol[1].u_cluster     |                 Cluster__2 |      44464 |      44194 |     132 |  138 | 10546 |      0 |      2 |    0 |         39 |
+|       (g_crow[0].g_ccol[1].u_cluster) |                 Cluster__2 |       1642 |       1632 |       0 |   10 |  1142 |      0 |      0 |    0 |          0 |
+|       g_row[0].g_col[0].u_lpe         |                 PE_Core__5 |       5478 |       5478 |       0 |    0 |   650 |      0 |      0 |    0 |          0 |
+|       g_row[0].g_col[1].u_lpe         |                 PE_Core__6 |       5478 |       5478 |       0 |    0 |   650 |      0 |      0 |    0 |          0 |
+|       g_row[1].g_col[0].u_lpe         |                 PE_Core__7 |       5478 |       5478 |       0 |    0 |   650 |      0 |      0 |    0 |          0 |
+|       g_row[1].g_col[1].u_lpe         |                 PE_Core__8 |       5478 |       5478 |       0 |    0 |   650 |      0 |      0 |    0 |          0 |
+|       u_div_unit                      | PE_Core__parameterized1__2 |        736 |        736 |       0 |    0 |   654 |      0 |      0 |    0 |          0 |
+|       u_ehdec                         |                EHDecode__6 |        990 |        990 |       0 |    0 |  1888 |      0 |      0 |    0 |          0 |
+|       u_matmul_unit                   | PE_Core__parameterized0__2 |      19184 |      18924 |     132 |  128 |  4262 |      0 |      2 |    0 |         39 |
+|         (u_matmul_unit)               | PE_Core__parameterized0__2 |      14528 |      14528 |       0 |    0 |  2965 |      0 |      0 |    0 |         35 |
+|         g_v180c_fp.u_fp_stepseq       |              FP_StepSeq__2 |       4656 |       4396 |     132 |  128 |  1297 |      0 |      2 |    0 |          4 |
+|           (g_v180c_fp.u_fp_stepseq)   |              FP_StepSeq__2 |       3820 |       3560 |     132 |  128 |   944 |      0 |      2 |    0 |          0 |
+|           u_add                       |              FP_AddWide__2 |        799 |        799 |       0 |    0 |   281 |      0 |      0 |    0 |          0 |
+|           u_mul                       |                FP_Mul36__2 |         37 |         37 |       0 |    0 |    72 |      0 |      0 |    0 |          4 |
+|     g_crow[1].g_ccol[0].u_cluster     |                 Cluster__3 |      44522 |      44252 |     132 |  138 | 10541 |      0 |      2 |    0 |         39 |
+|       (g_crow[1].g_ccol[0].u_cluster) |                 Cluster__3 |       1636 |       1626 |       0 |   10 |  1142 |      0 |      0 |    0 |          0 |
+|       g_row[0].g_col[0].u_lpe         |                 PE_Core__9 |       5478 |       5478 |       0 |    0 |   650 |      0 |      0 |    0 |          0 |
+|       g_row[0].g_col[1].u_lpe         |                PE_Core__10 |       5478 |       5478 |       0 |    0 |   650 |      0 |      0 |    0 |          0 |
+|       g_row[1].g_col[0].u_lpe         |                PE_Core__11 |       5478 |       5478 |       0 |    0 |   650 |      0 |      0 |    0 |          0 |
+|       g_row[1].g_col[1].u_lpe         |                PE_Core__12 |       5478 |       5478 |       0 |    0 |   650 |      0 |      0 |    0 |          0 |
+|       u_div_unit                      | PE_Core__parameterized1__3 |        736 |        736 |       0 |    0 |   654 |      0 |      0 |    0 |          0 |
+|       u_ehdec                         |                EHDecode__7 |        990 |        990 |       0 |    0 |  1888 |      0 |      0 |    0 |          0 |
+|       u_matmul_unit                   | PE_Core__parameterized0__3 |      19248 |      18988 |     132 |  128 |  4257 |      0 |      2 |    0 |         39 |
+|         (u_matmul_unit)               | PE_Core__parameterized0__3 |      14592 |      14592 |       0 |    0 |  2960 |      0 |      0 |    0 |         35 |
+|         g_v180c_fp.u_fp_stepseq       |              FP_StepSeq__3 |       4656 |       4396 |     132 |  128 |  1297 |      0 |      2 |    0 |          4 |
+|           (g_v180c_fp.u_fp_stepseq)   |              FP_StepSeq__3 |       3820 |       3560 |     132 |  128 |   944 |      0 |      2 |    0 |          0 |
+|           u_add                       |              FP_AddWide__3 |        799 |        799 |       0 |    0 |   281 |      0 |      0 |    0 |          0 |
+|           u_mul                       |                FP_Mul36__3 |         37 |         37 |       0 |    0 |    72 |      0 |      0 |    0 |          4 |
+|     g_crow[1].g_ccol[1].u_cluster     |                    Cluster |      44522 |      44252 |     132 |  138 | 10541 |      0 |      2 |    0 |         39 |
+|       (g_crow[1].g_ccol[1].u_cluster) |                    Cluster |       1636 |       1626 |       0 |   10 |  1142 |      0 |      0 |    0 |          0 |
+|       g_row[0].g_col[0].u_lpe         |                PE_Core__13 |       5478 |       5478 |       0 |    0 |   650 |      0 |      0 |    0 |          0 |
+|       g_row[0].g_col[1].u_lpe         |                PE_Core__14 |       5478 |       5478 |       0 |    0 |   650 |      0 |      0 |    0 |          0 |
+|       g_row[1].g_col[0].u_lpe         |                PE_Core__15 |       5478 |       5478 |       0 |    0 |   650 |      0 |      0 |    0 |          0 |
+|       g_row[1].g_col[1].u_lpe         |                    PE_Core |       5478 |       5478 |       0 |    0 |   650 |      0 |      0 |    0 |          0 |
+|       u_div_unit                      |    PE_Core__parameterized1 |        736 |        736 |       0 |    0 |   654 |      0 |      0 |    0 |          0 |
+|       u_ehdec                         |                   EHDecode |        990 |        990 |       0 |    0 |  1888 |      0 |      0 |    0 |          0 |
+|       u_matmul_unit                   |    PE_Core__parameterized0 |      19248 |      18988 |     132 |  128 |  4257 |      0 |      2 |    0 |         39 |
+|         (u_matmul_unit)               |    PE_Core__parameterized0 |      14592 |      14592 |       0 |    0 |  2960 |      0 |      0 |    0 |         35 |
+|         g_v180c_fp.u_fp_stepseq       |                 FP_StepSeq |       4656 |       4396 |     132 |  128 |  1297 |      0 |      2 |    0 |          4 |
+|           (g_v180c_fp.u_fp_stepseq)   |                 FP_StepSeq |       3820 |       3560 |     132 |  128 |   944 |      0 |      2 |    0 |          0 |
+|           u_add                       |                 FP_AddWide |        799 |        799 |       0 |    0 |   281 |      0 |      0 |    0 |          0 |
+|           u_mul                       |                   FP_Mul36 |         37 |         37 |       0 |    0 |    72 |      0 |      0 |    0 |          4 |
++---------------------------------------+----------------------------+------------+------------+---------+------+-------+--------+--------+------+------------+
+
+

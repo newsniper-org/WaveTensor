@@ -45,6 +45,29 @@ first milestone is producing an Fmax" — so the HARD criteria here are:
 
 LUT / FF are reported as INFORMATIONAL, with the lane-count arithmetic the
 numbers feed, because the spec carries no UltraScale+ area budget yet.
+
+GATE S1-US IS A DIFFERENT KIND OF GATE (spec §28)
+-------------------------------------------------
+Every gate above measures an OPERATOR. GATE S1-US measures a SYSTEM TOP,
+and it exists for a reason none of the operator gates cover: `HIU.v` and
+`Top_Core.v` had never been synthesized by anything in this repo while
+passing cocotb continuously, and the first synthesis attempt was REFUSED
+(`ERROR [Synth 8-685]`, a Verilog-2001 violation — defect D1). So the
+proposition under test is not "how fast" or "how big" but
+**"synthesizable at all, and still synthesizable tomorrow"**. Two axes are
+therefore new here:
+
+  * CRITICAL WARNING census, with an EXPLICIT whitelist. A synthesizability
+    regression shows up as a Critical Warning long before it shows up as
+    an error. The HIU TRNG ring oscillators legitimately produce
+    `[Synth 8-295] found timing loop` x8 (8 ring oscillators = 8 loops),
+    and that count — the count, not the message class — is whitelisted.
+    `set_msg_config` global demotion is FORBIDDEN by spec §28: demoting
+    the class would hide a real combinational loop elsewhere.
+  * BRAM as an EXPECTED VALUE rather than 0. An operator core inferring
+    block RAM is a defect; a system top containing PE_Core's buffers
+    legitimately infers 2 RAMB18, and pinning the exact number is what
+    detects a silent memory-inference change.
 """
 
 import json
@@ -143,6 +166,67 @@ GATES = [
         "premap_mul_log": "fp_traincluster_premap_mul.log",
         "premap_mul_expect": 8,
     },
+    {
+        # GATE S1-US (spec §28) — SYSTEM-INTEGRATION SYNTHESIZABILITY gate.
+        # A different kind of gate from every row above: see the module
+        # docstring. It was created because HIU.v and Top_Core.v had never
+        # been synthesized while passing cocotb continuously, and the first
+        # attempt was REFUSED by Vivado (defect D1).
+        #
+        # ANCHOR-GENERATING COMMIT — READ THIS BEFORE TRUSTING A PASS.
+        # No prior xcu55c measurement of this top existed, so there was
+        # nothing to price the ceilings against. Per the GATE V20-4
+        # procedure (spec §27.7a.5, "측정 anchor 부재 → gate 절차가 anchor
+        # 를 먼저 생성한다") the numbers below are derived FROM the first
+        # measurement, which means THIS commit's run cannot fail the area
+        # axis by construction: measurement == anchor <= anchor x 1.67.
+        # The binding force starts with the NEXT commit that touches this
+        # tree — from then on the ceiling is a real merge blocker and the
+        # exact-value axes (DSP/BRAM/premap $mul) fail on any drift.
+        # Everything here is transcribed from the archived reports without
+        # rounding beyond the one floor() noted on the LUT line.
+        "tag": "sys_top_core",
+        "label": "GATE S1-US",
+        "desc": "system-integration synthesizability gate (spec §28) — "
+                "Top_Core = ISA_Decoder + HIU, the top that had never been "
+                "synthesized; xcu55c half = the ONLY merge-blocker binding "
+                "of GATE S1 (the ECP5 half is a MEASUREMENT)",
+        "max_lut_sites": 24799,
+        "lut_note": "hard ceiling = anchor 14,850 (first repo-harness "
+                    "xcu55c routed measurement, this commit) x 1.67 "
+                    "(§23.10.10(g) overrun factor) = 24,799.5, floored to "
+                    "24,799; binding from the NEXT commit onward",
+        "max_dsp48": 39,
+        "dsp_exact": True,
+        "dsp_note": "anchor — 35 in PE_Core's einsum/dot path + 4 in "
+                    "FP_StepSeq's FP_Mul36; HIU 0. Any drift means the "
+                    "mapper's multiply inference moved and gets attributed "
+                    "before re-verdict (§26.6 MULT-deviation method)",
+        "max_bram": 2,
+        "bram_exact": True,
+        "bram_note": "anchor — 2 RAMB18 inside FP_StepSeq; a system top "
+                     "legitimately infers memory, so the axis pins the "
+                     "EXACT count instead of demanding 0 as the operator "
+                     "gates do. Drift = a silent memory-inference change",
+        "premap_mul_log": "sys_top_core_premap_mul.log",
+        "premap_mul_expect": 429,
+        "crit_whitelist": {"Synth 8-295": 8},
+        "crit_note": "the 8 HIU TRNG ring oscillators are an INTENDED "
+                     "combinational feedback (they are the entropy "
+                     "source), so exactly 8 timing loops are expected and "
+                     "whitelisted BY COUNT; a 9th, or any other critical "
+                     "warning id, fails. Global set_msg_config demotion is "
+                     "forbidden (spec §28) — it would hide a real loop. "
+                     "DRC LUTLP-1 must be 0: that is the "
+                     "synth/constraints/hiu_trng_ro.xdc acknowledgement "
+                     "working, and it shows up as LUTLP-2 'Combinatorial "
+                     "Loop Allowed' x8 in the DRC warning list",
+        "fmax_hard": False,
+        "fmax_note": "MEASUREMENT — §28 record axis. This top is not on "
+                     "the v2.0 datapath critical path and no Fmax contract "
+                     "has ever been declared for it; the number exists so "
+                     "the next measurement has something to drift against",
+    },
 ]
 
 
@@ -180,6 +264,38 @@ def parse_premap_mul(fname):
                 re.finditer(r"^\s+\$mul\s+(\d+)\s*$", text, re.M))
             + sum(int(m.group(1)) for m in               # COUNT-first form
                   re.finditer(r"^\s+(\d+)\s+\$mul\s*$", text, re.M)))
+
+
+def parse_msg_census(tag):
+    """CRITICAL WARNING / ERROR census from the ARCHIVED VIVADO RUN LOG
+    (`synth/reports/fp_ops/<tag>_run.log`, written by `make synth-sys-gate`
+    via Vivado's -log).
+
+    WHY THE LOG AND NOT A TCL QUERY: the obvious in-tcl form
+    `get_msg_config -count -severity {CRITICAL WARNING}` was tried and
+    MEASURED WRONG — on Vivado 2025.2.1 it returned 0 for a run whose log
+    held 8 `CRITICAL WARNING: [Synth 8-295]` lines. It reports message
+    configuration, not messages issued. A census that silently answers 0
+    is a false PASS on the one axis whose whole job is to be loud, so the
+    count is taken where it is also citable and greppable.
+
+    Returns None when no run log is archived — the caller turns that into
+    UNMEASURED (= FAIL) for any gate that declares the axis, never a pass.
+    """
+    p = RPT_DIR / f"{tag}_run.log"
+    if not p.exists():
+        return None
+    ids = {}
+    n_crit = n_err = 0
+    for line in p.read_text(errors="replace").splitlines():
+        if line.startswith("CRITICAL WARNING:"):
+            n_crit += 1
+            m = re.search(r"\[([A-Za-z]+ [\w-]+)\]", line)
+            ids[m.group(1) if m else "(unidentified)"] = \
+                ids.get(m.group(1) if m else "(unidentified)", 0) + 1
+        elif line.startswith("ERROR:"):
+            n_err += 1
+    return {"critical": n_crit, "error": n_err, "by_id": ids, "log": p.name}
 
 
 def parse_summary(tag):
@@ -227,8 +343,16 @@ def parse_drc(tag):
         sys.exit(f"{p}: missing")
     rows = []
     for line in p.read_text().splitlines():
-        m = re.match(r"\|\s*([A-Z]+-\d+)\s*\|\s*(\w+)\s*\|\s*(.+?)\s*\|"
-                     r"\s*(\d+)\s*\|", line)
+        # NOTE the severity group is `[A-Za-z ]+` and NOT `\w+`. The
+        # original `\w+` silently DROPPED every row whose severity contains
+        # a space — i.e. exactly the "Critical Warning" rows, the ones this
+        # axis exists to fail on. Found 2026-08-18 by the GATE S1
+        # discriminator self-test (spec §28.6): the D2-withheld run's DRC
+        # report carries `LUTLP-1 | Critical Warning | ... | 8` and the
+        # checker reported "0 errors" for it. A gate axis that cannot see
+        # the severity it gates on is worse than no axis.
+        m = re.match(r"\|\s*([A-Z]+-\d+)\s*\|\s*([A-Za-z][A-Za-z ]*?)\s*\|"
+                     r"\s*(.+?)\s*\|\s*(\d+)\s*\|", line)
         if m:
             rows.append((m.group(1), m.group(2), m.group(3),
                          int(m.group(4))))
@@ -240,8 +364,16 @@ def parse_drc(tag):
 DRC_NOTES = {
     "DPOP-4": "DSP multiplier not pipelined (MREG=0) — enabling MREG in a "
               "later pipeline rebalance is an unclaimed free Fmax upside",
+    "DPOP-3": "DSP output not pipelined (PREG=0) — same class as DPOP-4",
+    "DPIP-2": "DSP input not pipelined (AREG/BREG=0) — same class",
     "RTSTAT-10": "OOC top-level output nets have no routable loads — "
                  "structural to out-of-context runs",
+    "LUTLP-2": "Combinatorial Loop Allowed — this is the INTENDED HIU TRNG "
+               "ring oscillator, acknowledged by "
+               "synth/constraints/hiu_trng_ro.xdc (defect D2). Its "
+               "presence is the constraint WORKING: without it the same 8 "
+               "loops appear as LUTLP-1 Critical Warnings, which this "
+               "checker counts as DRC errors and fails on",
 }
 
 
@@ -261,6 +393,7 @@ def main():
         whs = float(s["whs_ns"])
         dsp = int(s["dsp48"])
         bram = int(s["bram"])
+        census = parse_msg_census(g["tag"])
 
         drc = parse_drc(g["tag"])
         drc_errors = [d for d in drc
@@ -281,11 +414,48 @@ def main():
                   else dsp <= g["max_dsp48"])
         ok_lut = (top["total_luts"] <= lut_limit) if lut_limit else True
         ok_mul = (mul_count == mul_expect) if mul_count is not None else True
-        ok_bram = bram == 0
+
+        # BRAM: operator gates want 0; the GATE S1-US system top wants an
+        # EXACT expected count (see the module docstring).
+        bram_limit = g.get("max_bram", 0)
+        ok_bram = (bram == bram_limit if g.get("bram_exact")
+                   else bram <= bram_limit)
+
+        # CRITICAL WARNING census (GATE S1-US axis). Gates that do not
+        # declare `crit_whitelist` are not judged on it — the axis was added
+        # with §28 and the operator gates' archived runs have no log.
+        #
+        # The criterion is deliberately TWO-SIDED rather than a bare total:
+        #   (i) every whitelisted message id is capped at its own count
+        #       (8 ring oscillators => at most 8 `Synth 8-295` timing
+        #       loops; a 9th means something else started looping), and
+        #  (ii) ANY critical warning outside the whitelist fails.
+        # A single total would let a real loop hide behind a retired RO.
+        # `set_msg_config` global demotion is forbidden by spec §28 for the
+        # same reason.
+        # (iii) ERROR lines in the archived log fail outright. This was
+        # counted but NOT judged until the 2026-08-18 adversarial audit —
+        # a census that displays a number it does not act on is decoration,
+        # and an ERROR in a run whose reports still parsed is exactly the
+        # silent-failure shape §28.4 exists to catch. There is no whitelist:
+        # a passing synthesis run has zero ERROR lines.
+        wl = g.get("crit_whitelist")
+        crit_over = []
+        log_errors = 0
+        if wl is None:
+            ok_crit = True
+        elif census is None:
+            ok_crit = False        # no run log archived: never a pass
+        else:
+            for mid, cnt in sorted(census["by_id"].items()):
+                if cnt > wl.get(mid, 0):
+                    crit_over.append((mid, cnt, wl.get(mid, 0)))
+            log_errors = census["error"]
+            ok_crit = (not crit_over) and log_errors == 0
         ok_hold = whs >= 0.0
         ok_drc = not drc_errors
         ok = (ok_fmax and ok_dsp and ok_lut and ok_mul and ok_bram
-              and ok_hold and ok_drc)
+              and ok_hold and ok_drc and ok_crit)
         all_pass &= ok
 
         if fmax_hard:
@@ -328,8 +498,29 @@ def main():
                f"evidence: {g['premap_mul_log']})"
                f"   -> {'PASS' if ok_mul else 'FAIL'}"]
               if mul_count is not None else []),
-            f"    BRAM       = {bram:5d}      (limit 0)"
+            f"    BRAM       = {bram:5d}      "
+            f"({'EXACTLY' if g.get('bram_exact') else 'limit'} {bram_limit}"
+            f"{'; ' + g['bram_note'] if 'bram_note' in g else ''})"
             f"   -> {'PASS' if ok_bram else 'FAIL'}",
+            *([("    CRIT WARN  = " + (
+                "  n/a      -> UNMEASURED (FAIL — no "
+                f"{g['tag']}_run.log archived; the census must come from a "
+                "log a reviewer can grep, see parse_msg_census)"
+                if census is None else
+                f"{census['critical']:5d}      (whitelist "
+                + ", ".join(f"{k} x{v}" for k, v in sorted(wl.items()))
+                + f" — {g['crit_note']}; evidence: {census['log']})"
+                f"   -> {'PASS' if ok_crit else 'FAIL'}"))]
+              if wl is not None else []),
+            *([f"                 issued: {mid} x{cnt}"
+               + ("  <= whitelist" if cnt <= wl.get(mid, 0)
+                  else f"  OVER whitelist {wl.get(mid, 0)}")
+               for mid, cnt in sorted(census["by_id"].items())]
+              if wl is not None and census is not None else []),
+            *([f"                 ERROR lines in log: {census['error']}"
+               f" (limit 0, BINDING)"
+               f"   -> {'PASS' if log_errors == 0 else 'FAIL'}"]
+              if wl is not None and census is not None else []),
             f"    WHS        = {whs:+8.3f} ns (hold, limit >= 0)"
             f"   -> {'PASS' if ok_hold else 'FAIL'}",
             f"    DRC        = {len(drc_errors)} errors, "

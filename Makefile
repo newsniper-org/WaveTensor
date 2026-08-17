@@ -150,7 +150,58 @@ FP_OP_SRCS_fp_acclattice := FP_AccLattice.v,synth/lattice/fp_ops/FP_AccLattice_g
 FP_OP_TOP_fp_traincluster  := FP_TrainCluster_gate_top
 FP_OP_SRCS_fp_traincluster := FP_TrainCluster.v,FP_AccLattice.v,FP_AccBank.v,synth/lattice/fp_ops/FP_TrainCluster_gate_top.v
 
-.PHONY: synth-fp-op fp-op-report
+# -----------------------------------------------------------------------------
+# GATE S1-US — system-integration SYNTHESIZABILITY gate (spec §28).
+#
+# WHY THIS GATE EXISTS. `HIU.v` and `Top_Core.v` were never synthesized by
+# anything in this repo (`grep -rn 'HIU.v|Top_Core.v' synth/` matched
+# nothing before this gate), yet both passed cocotb continuously. The first
+# synthesis attempt was REFUSED by Vivado — `ERROR [Synth 8-685]` on a
+# Verilog-2001 violation in HIU.v (defect D1). "Simulator PASS" had been
+# standing in for "synthesizable" for the entire system-integration branch
+# of the tree. This gate converts that into a standing check.
+#
+#   make synth-sys-gate SYS_GATE=sys_top_core PART=xcu55c-fsvh2892-2L-e
+#   make fp-op-report
+#
+# Two things differ from the fp-ops rows above and BOTH are per-gate opts
+# of synth/scripts/synth_fp_op.tcl (no fork of the harness):
+#   RSTFP   = 1 — these tops are async-reset designs; the fp-ops cores are
+#                 reset-free. The gate_top wrapper does not register rst,
+#                 so rst is a top-level input to every FF and needs a
+#                 false path (same position as synth/constraints/pod.xdc).
+#   POSTXDC = synth/constraints/hiu_trng_ro.xdc — defect D2. The HIU TRNG
+#                 ring oscillators are an INTENDED combinational feedback
+#                 (they are the entropy source). The constraint matches
+#                 netlist objects `g_ro[*]` and therefore must be sourced
+#                 after synth_design, which is what the tcl's POST_XDC
+#                 hook does. Without it: DRC LUTLP-1 Critical Warning x8.
+# -----------------------------------------------------------------------------
+
+FP_OP_TOP_sys_top_core     := Top_Core_gate_top
+FP_OP_SRCS_sys_top_core    := Top_Core.v,ISA_Decoder.v,EHDecode.v,PE_Core.v,FP_StepSeq.v,FP_Mul36.v,FP_AddWide.v,HIU.v,synth/gate/Top_Core_gate_top.v
+FP_OP_RSTFP_sys_top_core   := 1
+FP_OP_POSTXDC_sys_top_core := synth/constraints/hiu_trng_ro.xdc
+
+# DISCRIMINATOR SELF-TEST (tautology prevention — the §27.6 ③ PHASE C
+# convention applied to a synthesis gate). Identical to sys_top_core except
+# POST_XDC is NOT passed, i.e. the defect-D2 constraint is withheld. If the
+# gate's DRC axis is real, this run must FAIL it (LUTLP-1 Critical Warnings
+# on the 8 ring oscillators); if it passed too, the axis would be
+# vacuous. Reports land under the `_diag_` naming precedent of
+# synth/reports/fp_ops/fp_acclattice_diag_* and are archived as evidence —
+# they are NOT a gate row and never affect `make fp-op-report`.
+#
+#   make synth-sys-gate SYS_GATE=sys_top_core_diag_nod2 \
+#        PART=xcu55c-fsvh2892-2L-e
+FP_OP_TOP_sys_top_core_diag_nod2   := Top_Core_gate_top
+FP_OP_SRCS_sys_top_core_diag_nod2  := $(FP_OP_SRCS_sys_top_core)
+FP_OP_RSTFP_sys_top_core_diag_nod2 := 1
+
+SYS_GATE     ?= sys_top_core
+SYS_GATE_TAG ?= $(SYS_GATE)
+
+.PHONY: synth-fp-op synth-sys-gate fp-op-report
 
 synth-fp-op:
 	$(VIVADO) $(VIVADO_FLAGS) -source $(CURDIR)/synth/scripts/synth_fp_op.tcl \
@@ -158,6 +209,30 @@ synth-fp-op:
 	                   TOP=$(FP_OP_TOP_$(FP_OP)) \
 	                   SRCS=$(FP_OP_SRCS_$(FP_OP)) \
 	                   PART=$(PART) PERIOD=$(FP_OP_PERIOD)
+
+# Same tcl harness as synth-fp-op, plus: the per-gate RST_FALSE_PATH /
+# POST_XDC options, and an ARCHIVED Vivado log. The log is archived because
+# the CRITICAL WARNING census is a binding gate axis (spec §28) and a count
+# with no listing is not evidence — the log is where "the 8 timing loops
+# are the 8 ring oscillators and nothing else" is checkable.
+# Vivado writes clockInfo.txt / .Xil/ into its CWD. clockInfo.txt is a
+# tracked file with no consumers, so a repo-root run dirties the tree on
+# every gate invocation (adversarial audit 2026-08-18). Run from a scratch
+# CWD instead — every path handed to Vivado below is already absolute.
+SYS_GATE_SCRATCH := $(CURDIR)/synth/reports/fp_ops/.sysgate_cwd
+
+synth-sys-gate:
+	@mkdir -p $(SYS_GATE_SCRATCH)
+	cd $(SYS_GATE_SCRATCH) && $(VIVADO) -mode batch \
+	          -log     $(CURDIR)/synth/reports/fp_ops/$(SYS_GATE_TAG)_run.log \
+	          -journal $(CURDIR)/synth/reports/fp_ops/$(SYS_GATE_TAG)_run.jou \
+	          -source $(CURDIR)/synth/scripts/synth_fp_op.tcl \
+	          -tclargs TAG=$(SYS_GATE_TAG) \
+	                   TOP=$(FP_OP_TOP_$(SYS_GATE)) \
+	                   SRCS=$(FP_OP_SRCS_$(SYS_GATE)) \
+	                   PART=$(PART) PERIOD=$(FP_OP_PERIOD) \
+	                   RST_FALSE_PATH=$(or $(FP_OP_RSTFP_$(SYS_GATE)),0) \
+	                   POST_XDC=$(FP_OP_POSTXDC_$(SYS_GATE))
 
 fp-op-report:
 	@python3 $(CURDIR)/synth/scripts/fp_op_gate_check.py
@@ -208,7 +283,17 @@ lattice-clean:
 # Lint targets — v1.8.0a §23.9. `make lint` is the future CI entrypoint.
 #   * lint_isa_tables_fresh   — generated ISA artifacts match isa/wt64v1_isa.json
 #   * lint_frag_total_m1_held — frag-drain FSM invariant (v1.7 §22.18)
-# Both are stdlib-only Python; runnable directly without cocotb:
+#   * lint_synth_coverage     — every cocotb-verified module has a DECLARED
+#                               synthesis position (spec §28). This is the
+#                               standing form of "simulator PASS is not
+#                               synthesizable": HIU.v/Top_Core.v passed
+#                               cocotb for the repo's whole 3.5-month
+#                               history while no synthesis
+#                               script in the repo could even elaborate
+#                               them. Adding a module to the cocotb MOD
+#                               list without declaring where it gets
+#                               synthesized now breaks the build.
+# All three are stdlib-only Python; runnable directly without cocotb:
 #   python3 scripts/lint_isa_tables_fresh.py
 # =============================================================================
 
@@ -217,6 +302,7 @@ lattice-clean:
 lint:
 	python3 $(CURDIR)/scripts/lint_isa_tables_fresh.py
 	python3 $(CURDIR)/scripts/lint_frag_total_m1_held.py
+	python3 $(CURDIR)/scripts/lint_synth_coverage.py
 
 # =============================================================================
 # Claude Code memory mirror — copies the per-project memory directory

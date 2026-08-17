@@ -29,7 +29,13 @@ module HIU #(
     input [191:0] chacha_nonce,  // 192-bit nonce for XChaCha20
     input [255:0] chacha_key,    // 256-bit key for XChaCha20
     output reg [ADDR_WIDTH-1:0] phys_addr,
-    output reg [DATA_WIDTH-1:0] dma_data_out,
+    // D1 수리: `output reg` → `output` (암묵 wire).
+    // 이 포트는 HIU 본체의 어떤 always 블록도 구동하지 않고, 오직
+    // 서브모듈 dma_inst 의 출력에 직결된다 (아래 dma_engine 인스턴스).
+    // Verilog-2001 은 reg 를 모듈 인스턴스 출력에 연결하는 것을 금지하며
+    // Vivado 는 이것을 hard error 로 거부한다 — 계통 전체를 막던 유일한
+    // 합성 차단 결함. wire 로 바꾸는 것은 의미 보존이다 (구동원 불변).
+    output     [DATA_WIDTH-1:0] dma_data_out,
     output reg dma_ack,
     output reg access_granted,
     output reg ats_resp,
@@ -59,7 +65,11 @@ reg shadow_valid [0:MAX_REGIONS-1];
 // XChaCha20 state
 reg [31:0] chacha_state [0:15];  // Current working state
 reg [31:0] initial_state [0:15]; // Initial state for final add
-reg [31:0] chacha_stream [0:15]; // Keystream
+// D5 수리: `chacha_stream[0:15]` 삭제. 채워지기만 하고 어디서도 읽히지
+// 않는 write-only 배열이었다 (grep 결과 선언 + CHACHA_FINAL 의 대입,
+// 두 곳뿐). 주소 마스킹은 chacha_stream 을 경유하지 않고 CHACHA_FINAL
+// 에서 chacha_state/initial_state 를 직접 더해 만든다. 합성 옵티마이저는
+// 이미 이 16개 레지스터를 제거했으므로 넷리스트도 불변.
 reg [ADDR_WIDTH-1:0] masked_phys_addr;
 reg [255:0] subkey;  // HChaCha20-derived subkey (256 bits)
 
@@ -263,10 +273,10 @@ always @(posedge clk or posedge rst) begin
                 end
             end
             CHACHA_FINAL: begin
-                // Generate keystream: chacha_state + initial_state
-                for (m = 0; m < 16; m = m + 1) begin
-                    chacha_stream[m] <= chacha_state[m] + initial_state[m];
-                end
+                // D5 수리: 여기 있던 `chacha_stream[m] <= ...` 16-way 루프를
+                // 삭제했다. 키스트림 워드는 아래 마스크 계산이 직접
+                // 재현하므로 (word0/word1 = state+initial) 관측 가능한
+                // 동작은 동일하다.
                 masked_phys_addr <= phys_addr ^ {
                     chacha_state[1] + initial_state[1],
                     chacha_state[0] + initial_state[0]

@@ -45,6 +45,12 @@
 #                         40 MHz. Criteria pre-declared BEFORE the first
 #                         run, per the §23.8 merge-blocker lesson.
 #
+# The gates above are the ECP5 GATES (they gate this script's exit status).
+# Named-only MEASUREMENT targets follow them in the body and never affect
+# the verdict — spec §27.6 (V20-2/V20-3 ECP5 halves) and spec §28
+# (`sys_top_core` = the GATE S1 ECP5 half, the system-integration top
+# Top_Core = ISA_Decoder + HIU).
+#
 # Invoke from the repo root:
 #     sh synth/lattice/scripts/synth_fp_ops.sh                 # all gates
 #     sh synth/lattice/scripts/synth_fp_ops.sh fp_fmalane_bf16 # one gate
@@ -292,6 +298,36 @@ fi
 if [ -n "$WANT" ] && want fp_traincluster; then
     run_meas fp_traincluster FP_TrainCluster_gate_top \
         "FP_TrainCluster.v FP_AccLattice.v FP_AccBank.v synth/lattice/fp_ops/FP_TrainCluster_gate_top.v"
+fi
+
+# --- GATE S1 ECP5 half — MEASUREMENT, NOT a gate (spec §28) ---------------
+# The system-integration top (Top_Core = ISA_Decoder + HIU). The xcu55c
+# half carries the entire merge-blocker binding of GATE S1; this half is a
+# feasibility MEASUREMENT under the V20-2/V20-3 regime — whatever it
+# measures, INCLUDING "yosys/nextpnr rejected it" or "PnR did not
+# complete", is a recorded result and never a gate FAIL.
+#
+# Two outcomes are PRE-DECLARED as realistic here, so that neither can be
+# spun after the fact:
+#   (a) the HIU TRNG ring oscillators (`g_ro[*]`, defect D2) are a
+#       deliberate combinational feedback. Vivado accepts them once the
+#       netlist property ALLOW_COMBINATORIAL_LOOPS is set
+#       (synth/constraints/hiu_trng_ro.xdc); the yosys/nextpnr flow has NO
+#       equivalent constraint, so a loop rejection or a timing-analysis
+#       complaint is an expected, recorded outcome of this half — not a
+#       defect in either the RTL or the ECP5 flow.
+#   (b) Top_Core carries a whole PE_Core + FP_StepSeq. The v1.9b full
+#       Cluster was already routing-dominated on the 85F at 39.6% COMB
+#       (11.34 MHz — synth/lattice/reports/cluster_v19b_pnr.log), so a low
+#       Fmax here is the fabric's answer, not a regression.
+# The load-bearing datum of this half is the FRONT of the flow, not the
+# back: does the same RTL elaborate and map under a NON-Vivado frontend?
+# That is precisely the question defect D1 (Verilog-2001 violation Vivado
+# rejects) and defect D3 (use-before-declare Vivado tolerates) put on the
+# table, and it is why the archived premap stat matters even if PnR dies.
+if [ -n "$WANT" ] && want sys_top_core; then
+    run_meas sys_top_core Top_Core_gate_top \
+        "Top_Core.v ISA_Decoder.v EHDecode.v PE_Core.v FP_StepSeq.v FP_Mul36.v FP_AddWide.v HIU.v synth/gate/Top_Core_gate_top.v"
 fi
 
 # --- Evaluate the gate criteria from the measured reports -----------------
