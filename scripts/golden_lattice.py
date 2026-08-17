@@ -70,6 +70,10 @@ SEGMENT GEOMETRY (§27.2.1 "segment 기하는 golden model/RTL 에서 확정"):
   include/generated/bank_scenarios.hex         bank 상태기계 시나리오 스트림
                                                (§27.6 하류 ③ 검증 계획 (c))
   include/generated/bank_scenarios_contract.md 시나리오 record 형식/의미 계약
+  include/generated/cluster_wave_vectors.hex   ④ cluster operand-level 벡터
+                                               (bf16/f16 쌍 -> lane raw 곱 ->
+                                               4층 기대값; GATE V20-3 의무 2)
+  include/generated/cluster_vec_contract.md    operand-레벨 비트/정책 계약
 
 BANK 상태기계 reference (§27.6 하류 ③ (c) — 2026-08-16 확장):
   wide ACC bank (2 banks x 32 lanes x 64b/cluster) 의 slot ownership
@@ -135,6 +139,16 @@ _M576 = (1 << 576) - 1
 VEC_BITS = N_ADDENDS * 64 + LAT_W + 64 + 64 + 32        # 2800
 VEC_HEX = VEC_BITS // 4                                 # 700
 
+# cluster operand-level 벡터 (④ GATE V20-3 — 2026-08-17 확장):
+#   META 32 + operand pair 32x32 + 기대 raw 곱 32x64 + carry 64
+#   + RESOLVED 528 + WIDE 64 + BANK 64 + FP32 32 = 3856 bit.
+#   하위 [2799:0] 은 lattice_wave_vectors.hex 의 라인 형식과 비트 단위로
+#   동일하다 (addend 32개 = 기대 lane raw 곱) — 계약 문서 §1.
+CVEC_BITS = 32 + GROUP * 32 + GROUP * 64 + 64 + LAT_W + 64 + 64 + 32
+CVEC_HEX = CVEC_BITS // 4                               # 964
+CLUSTER_VEC_PATH = GEN / "cluster_wave_vectors.hex"
+CLUSTER_CONTRACT_PATH = GEN / "cluster_vec_contract.md"
+
 # 고정 seed — 결정론의 유일한 난수원
 SEEDS = {
     "theorem_sweep": 0x1A77E01,
@@ -150,6 +164,22 @@ SEEDS = {
     "vec_parkcancel": 0x1A77E18,
     "vec_sparse": 0x1A77E19,
     "bank_rand_interleave": 0x1A77E21,
+}
+
+# cluster operand-level 벡터 전용 seed (④ 확장). 별도 dict 인 이유:
+# SEEDS 는 lattice_vec_contract.md §8 표에 전사되므로, 거기에 키를 더하면
+# 기존 계약 문서의 byte-identity 가 깨진다 — 기존 산출물 3종 (lattice
+# hex/contract, bank 기존 record 스트림) 은 ④ 확장 후에도 byte-identical
+# 이어야 한다 (④ 검증 의무 4 무회귀).
+CLUSTER_SEEDS = {
+    "cl_bf16_rand": 0x1A77E31,
+    "cl_f16_rand": 0x1A77E32,
+    "cl_cancel": 0x1A77E33,
+    "cl_sparse": 0x1A77E34,
+    "cl_chain_bf16": 0x1A77E35,
+    "cl_chain_mixed": 0x1A77E36,
+    "cl_chain_parkcancel": 0x1A77E37,
+    "cl_daz_rand": 0x1A77E38,
 }
 
 
@@ -970,6 +1000,7 @@ def bank_execute(cmds):
             elif op == "WAVE":
                 if win[sl] is not None and t - win[sl] < BANK_LATENCY:
                     c["refused"], c["why"] = True, "window_chain"   # IF-3
+                    c["off"] = t - win[sl]  # ④ 교차곱 계측 (인코딩 밖)
                 elif owner[sl] != st_id:
                     c["refused"], c["why"] = True, "acc_owner"
                 if c["refused"]:
@@ -998,6 +1029,7 @@ def bank_execute(cmds):
             elif op == "FILL":
                 if fdz_window_open(sl, t):
                     c["refused"], c["why"] = True, "window_fill"     # IF-2
+                    c["off"] = t - win[sl]  # ④ 교차곱 계측 (인코딩 밖)
                 elif owner[sl] is not None:
                     # fill_bankfree — FillFaultBusy (자기/외래 불문 busy)
                     c["refused"], c["why"] = True, "fill_busy"
@@ -1015,6 +1047,7 @@ def bank_execute(cmds):
             elif op == "DRAIN":
                 if fdz_window_open(sl, t):
                     c["refused"], c["why"] = True, "window_drain"    # IF-2
+                    c["off"] = t - win[sl]  # ④ 교차곱 계측 (인코딩 밖)
                 elif owner[sl] != st_id:
                     c["refused"], c["why"] = True, "drain_owner"
                 if c["refused"]:
@@ -1025,6 +1058,7 @@ def bank_execute(cmds):
             elif op == "ZERO":
                 if fdz_window_open(sl, t):
                     c["refused"], c["why"] = True, "window_zero"     # IF-2
+                    c["off"] = t - win[sl]  # ④ 교차곱 계측 (인코딩 밖)
                 elif owner[sl] != st_id:
                     c["refused"], c["why"] = True, "zero_owner"
                 if c["refused"]:
@@ -1037,6 +1071,7 @@ def bank_execute(cmds):
                 # release, word 잔존. 위반 = 거부 + sticky (PROTO_GUARD).
                 if fdz_window_open(sl, t):
                     c["refused"], c["why"] = True, "window_spill"    # IF-2
+                    c["off"] = t - win[sl]  # ④ 교차곱 계측 (인코딩 밖)
                 elif owner[sl] != st_id:
                     c["refused"], c["why"] = True, "spill_owner"
                 if c["refused"]:
@@ -1293,9 +1328,11 @@ BANK_FAM_DOCS = {
     "window_touch_drain": (5, "DRAIN 창 접촉: offset 1/3/7 fault (7 = 창 "
                               "마지막 cycle), offset 8 합법 (직후)"),
     "window_touch_zero": (6, "ZERO 창 접촉: offset 1/3/7 fault, offset 8 "
-                             "합법 + zero 후 carry=+0 재시작"),
+                             "합법 + zero 후 carry=+0 재시작 (+④ append: "
+                             "offset 4 — 교차곱 폐쇄)"),
     "window_touch_fill": (7, "FILL 창 접촉: offset 1/3/7 fault, drain 후 "
-                             "재-FILL 합법 (acquire-by-fill)"),
+                             "재-FILL 합법 (acquire-by-fill) (+④ append: "
+                             "offset 6 — 교차곱 폐쇄)"),
     "window_prelude": (8, "창 직전 접촉 합법 — commit/FILL/ZERO 가 wave "
                           "start 직전 cycle 에 완료"),
     "fill_validation": (9, "FILL validation (i)/(ii) — NaN/±Inf/정밀도 "
@@ -1321,7 +1358,8 @@ BANK_FAM_DOCS = {
                             "fault 클래스 혼합, coverage 하한은 report"),
     "spill_window": (19, "창 내 SPILL 거부 — offset 1/3/7 fault "
                          "(PROTO_GUARD), offset 8 수용 대조 병치; 거부는 "
-                         "word 불변, 수용 spill 값 = 직전 writeback"),
+                         "word 불변, 수용 spill 값 = 직전 writeback (+④ "
+                         "append: offset 2/4/5/6 — 교차곱 폐쇄)"),
     "spill_owner": (20, "비-owner SPILL 거부 (외래 owner / 무소유) — "
                         "PROTO_GUARD, incumbent word/owner 완전 불변"),
     "spill_accept": (21, "수용 SPILL 대조 — spill 값 = slot word, "
@@ -1613,7 +1651,71 @@ def gen_bank_scenarios():
     for _ in range(300):
         run("rand_interleave", gen_rand_bank_scenario(rng))
 
+    # ---- ④ 이월 (ii) 교차곱 폐쇄 directed (GATE V20-3 검증 의무 1(ii),
+    #      2026-08-17): window_fill offset 6 / window_zero offset 4 /
+    #      window_spill offset {2,4,5,6} — 3 클래스 x offset 1..7 전수
+    #      완성 (bank_window_crossproduct 가 전수를 assert). 기존 343
+    #      시나리오 record 스트림의 byte-identity 를 지키기 위해 **뒤에
+    #      append** 한다 (family 는 기존 코드 재사용 — 배치 위치만 뒤). ----
+    for off in (6,):                        # window_touch_fill 과 동일 구조
+        cmds, fin = run("window_touch_fill", [
+            _c(0, "FILL", 0, 0, word=W1),
+            _c(2, "WAVE", 0, 0, prods=P1),
+            _c(2 + off, "FILL", 0, 0, word=W4),    # 창 내 offset 6 — fault
+            _c(10, "DRAIN", 0, 0),
+            _c(11, "FILL", 1, 0, word=W4),
+            _c(13, "WAVE", 1, 0, prods=P1),
+            _c(21, "DRAIN", 1, 0)])
+        assert fin["sticky"] and cmds[2]["refused"]
+        assert cmds[2]["why"] == "window_fill" and cmds[2]["off"] == off
+        assert cmds[3]["fp32"] == F2 and cmds[6]["fp32"] == F5
+    for off in (4,):                        # window_touch_zero 와 동일 구조
+        cmds, fin = run("window_touch_zero", [
+            _c(0, "REQ", 0, 0), _c(2, "WAVE", 0, 0, prods=P1),
+            _c(2 + off, "ZERO", 0, 0),             # 창 내 offset 4 — fault
+            _c(10, "ZERO", 0, 0),
+            _c(12, "WAVE", 0, 0, prods=P1),
+            _c(20, "DRAIN", 0, 0)])
+        assert fin["sticky"] and cmds[2]["refused"]
+        assert cmds[2]["why"] == "window_zero" and cmds[2]["off"] == off
+        assert cmds[5]["fp32"] == F1
+    for off in (2, 4, 5, 6):                # spill_window 와 동일 구조
+        cmds, fin = run("spill_window", [
+            _c(0, "FILL", 0, 0, word=W1),
+            _c(2, "WAVE", 0, 0, prods=P1),
+            _c(2 + off, "SPILL", 0, 0),            # 창 내 — 거부 + sticky
+            _c(10, "SPILL", 0, 0),                 # 직후 (offset 8) 수용
+            _c(11, "FILL", 1, 0, word=W4),
+            _c(13, "WAVE", 1, 0, prods=P1),
+            _c(21, "DRAIN", 1, 0)])
+        assert fin["sticky"] and cmds[2]["refused"]
+        assert cmds[2]["why"] == "window_spill" and cmds[2]["off"] == off
+        assert "spill" not in cmds[2]
+        assert cmds[2]["exp_word"] == W1           # off < 7: wb 이전 — 1.0
+        assert cmds[3]["spill"] == W2 and cmds[3]["exp_word"] == W2
+        assert cmds[6]["fp32"] == F5
+
     return out
+
+
+def bank_window_crossproduct(scens):
+    """④ 이월 (ii) 의 전수 판정: 창-거부 클래스별 offset 집합을 집계하고
+    FILL/DRAIN/ZERO/SPILL x offset 1..7 전수 + chain 4..6 전수를 assert
+    한다 (좁음이 seed 이동으로 조용히 재발하는 것을 막는 가드)."""
+    xp = {k: set() for k in ("window_fill", "window_drain", "window_zero",
+                             "window_spill", "window_chain")}
+    for _, cmds, _ in scens:
+        for c in cmds:
+            if c.get("why") in xp:
+                xp[c["why"]].add(c["off"])
+    full = set(range(1, BANK_LATENCY + 1))          # 1..7
+    for k in ("window_fill", "window_drain", "window_zero", "window_spill"):
+        assert xp[k] == full, (k, sorted(xp[k]))
+    # chain 거부는 구성상 II<=delta<LATENCY 만 도달 가능 (delta<II 는
+    # 생성기 형식 규율 위반, >=LATENCY 는 합법)
+    assert xp["window_chain"] == set(range(BANK_II, BANK_LATENCY)), \
+        sorted(xp["window_chain"])
+    return {k: sorted(v) for k, v in xp.items()}
 
 
 def bank_coverage(scens):
@@ -1675,12 +1777,14 @@ def write_bank_file(scens):
     return len(lines), fam_table
 
 
-def bank_contract_text(n_scen, n_rec, fam_table, cov):
+def bank_contract_text(n_scen, n_rec, fam_table, cov, xprod):
     fam_rows = "\n".join(
         "| `%s` | %d | %d | %d | %s |"
         % (f, code, ns, nr, BANK_FAM_DOCS[f][1].replace("\n", " "))
         for f, code, ns, nr in fam_table)
     cov_rows = "\n".join("| `%s` | %d |" % kv for kv in cov.items())
+    xp_rows = "\n".join("| `%s` | %s |" % (k, ", ".join(map(str, v)))
+                        for k, v in xprod.items())
     return """<!-- SPDX-License-Identifier: CC-BY-4.0 -->
 <!-- SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor \
 contributors -->
@@ -1835,11 +1939,67 @@ writeback/commit 이 명령보다 선행한 뒤의 값이다.
 
 고정 seed `bank_rand_interleave = 0x%X` 외 난수원/timestamp 없음 —
 재실행 byte-identical (sha256 은 `lattice_golden_report.json`).
+
+## 10. ④ GATE V20-3 이월 기록 (2026-08-17 — golden 반쪽; §27.6 ④ 검증 의무 1)
+
+**(ii) per-op x offset 교차곱 폐쇄**: directed append (window_fill
+offset 6 / window_zero offset 4 / window_spill offset {2,4,5,6} —
+family 표의 "+④ append" 표기; 기존 343 시나리오 record 스트림 뒤에
+붙여 기존 스트림 byte-identical 유지) 로 창-거부 4 클래스 x offset
+1..7 **전수**가 성립하고, 생성기 `bank_window_crossproduct` 가 전수를
+assert 한다 (seed 이동으로 조용히 좁아지는 것을 막는 가드). 집계:
+
+| 창-거부 class | 실측 offset 집합 |
+|---|---|
+%s
+
+(창 offset 0 — start 와 같은 cycle 의 같은 slot 접촉 — 은 시나리오
+형식상 표현 불가 (§2 형식 규율) 로 불변이며, ④ 통합 TB 의 직접 구동
+몫이다 — §27.6 ④ 검증 의무 1(i).)
+
+**(iii) TLC ghost 2건 처분 (검증 의무 1(iii) — RTL 실물화 vs 계약
+재배정 양자택일의 판정. 본 절이 그 판정 기록이고, gate log 전사는 ④
+merge COMMIT 몫이다)**:
+
+1. **DT-04 (h) K 완결 캐리어 — 판정: 계약 재배정 ("hw 강제 불가"
+   명시; RTL 실물화 아님)**. 근거: 캐리어 실물화는 tag / 0x70-block
+   인코딩에 "K 중 i번째 / last 마커" 를 신설하는 **ISA-레벨 편집**인데,
+   ④ 는 datapath 구조 합성 gate 로서 TRAIN ISA 결선을 명시 제외한다
+   (§27.6 ④ 제외 (ii)) — ④ 범위 안에 실물화 경로가 없다. 재배정 형식:
+   `Drain` 의 `issued == K` 전제를 §23.6a SDK 계약 1 (dec_* bus 에
+   fragment 수 부재 — proofs/tla README §8 (h) 가 "동일 노출면" 으로
+   특정한 그 항) 과 같은 급의 **SDK 계약으로 명시 등재**하고,
+   `Inv_Complete` 는 "가정 모양" 지위를 유지한다 — V20-3 블록이 사전
+   합법화한 종결 형식 (kickoff TP-3 의 INV_Complete 요구 형식).
+2. **DT-05 (l) spill image owner-tag 캐리어 — 판정: 계약 재배정
+   (`fill_owner` 의 SDK 계약 강등 + 명시; RTL 실물화 아님)**. 근거:
+   하드웨어 대조는 spill image 포맷의 owner-토큰 규범화를 전제한다 —
+   §27.2.2 SPILL image 는 순수 fp64 데이터 8 fragment 라 토큰 수납은
+   포맷 규범 편집 (또는 metadata fragment 신설 — FRAG_MAX 16 중 8
+   사용이라 공간 자체는 있다) 을 요구하고, 그 규범화는 spec COMMIT +
+   0x7D TRAIN ISA 결선의 몫이지 ④ 의 "FILL/DRAIN/ZERO 는 bank cmd
+   인터페이스 레벨 결선" scope 가 아니다. **정직 기록**: 이 재배정은
+   §23.6a contract-1 급 노출면을 **하나 더** 만든다 (README §8 (l) 의
+   그 경고 그대로) — 따라서 0x7D spill image 포맷 규범화 시점에
+   owner-토큰 필드 신설을 **재심사 의무**로 이월한다 (본 판정은 ④
+   시점의 scope 판정이지 영구 포기가 아니다).
+3. **TB 반쪽 요구사항 (판정의 이행 명세 — ④ 통합 TB 저작자 대상)**:
+   (a) 두 전제는 ③ 방식 그대로 **TB scoreboard ghost 대조**로 유지한다
+   — `issued == K` 는 TB 스케줄이 보장하고 (K 미만 조기 drain 시나리오
+   는 fault 를 기대하지 말 것 — hw 는 검사하지 않는다), 외래 spill
+   image FILL 은 scoreboard 가 image 출처를 추적해 대조하되 **RTL 이
+   잡는다고 주장하지 않는다** (hw 가 이 두 검사를 하지 않는다는 사실
+   자체가 본 판정이다); (b) hw-실재 guard 군 (window / acc_owner /
+   drain_owner / zero_owner / fill_bankfree / spill_owner / commit_zero
+   / PROTO_GUARD) 과 혼동 금지 — 변이 반증 (④ 검증 의무 3) 은 hw-실재
+   guard 에만 적용한다; (c) gate log 에 본 §10 판정 2건을 전사한다
+   (merge-blocker 의무의 일부).
 """ % (BANK_LATENCY, BANK_LATENCY, BANK_II,
        BANK_NSLOTS, BANK_NSLOTS - 1, BANK_LATENCY, BANK_II, BANK_LATENCY,
        BANK_LATENCY, BANK_LATENCY, BANK_LATENCY + 1, BANK_LATENCY,
        BANK_LATENCY, BANK_NSLOTS, BANK_LATENCY, BANK_NSLOTS, BANK_LATENCY,
-       fam_rows, n_scen, n_rec, cov_rows, SEEDS["bank_rand_interleave"])
+       fam_rows, n_scen, n_rec, cov_rows, SEEDS["bank_rand_interleave"],
+       xp_rows)
 
 
 class VecEmitter:
@@ -2205,6 +2365,606 @@ byte-identical (sha256 은 report).
 
 
 # ===========================================================================
+# cluster operand-level 벡터 — ④ GATE V20-3 (2026-08-17 확장)
+# ===========================================================================
+# §27.6 ④ 검증 의무 2 (cluster 통합 TB 전 경로) 의 golden 반쪽: bf16/f16
+# operand 쌍 (lane 8 x 4 beat = 32 쌍/wave) 에서 출발해 lane 곱 전단의
+# §27.2.1 raw product 형식 (bf16 8x8 -> s16<<32 / f16 11x11 -> s22<<26,
+# p_exp = ea_eff + eb_eff + 1) 을 거쳐 wave_step 4층 기대값 (RESOLVED/
+# WIDE/BANK/FP32) 까지를 한 라인에 담는다. 기존 lattice 벡터의 addend 를
+# 역-인수분해하지 않고 operand 부터 새로 생성한다 (별도 고정 seed).
+#
+# operand-load 정책의 규범 출처 = `FP_FmaLaneBf16.v` OPERAND-LOAD POLICY
+# (§23.10.5 widen 의미론의 승계 — lane 헤더가 pin):
+#   * bf16 exponent field 0 -> SIGNED ZERO (진짜 zero + 전 subnormal —
+#     DAZ-일관 flush). 곱은 canonical zero addend.
+#   * f16 subnormal -> EXACT 존중 (S1 leading-one scan + shift 로
+#     normalize 후 곱 — 비대칭은 §23.10.5 의 pin 된 행동). 따라서
+#     lattice 계약 §7 이 미결로 남겼던 "f16 subnormal 곱의 lane-측 raw
+#     형태" 는 lane RTL 로 확정됐다: normalize 된 m11 로 s22 = m11a*m11b
+#     ∈ [2^20, 2^22), sig = s22 << 26, p_exp = ea_eff+eb_eff+1 (ea_eff =
+#     leading bit 의 지수) — 본 확장이 그 확정을 golden 으로 운반한다.
+#   * NaN/Inf operand 는 벡터에 등장하지 않는다 — in-dot 경로는
+#     FP_CLASSIFY 가 specials 를 lattice 이전에 필터한다 (§27.2 docstring
+#     의 차단 계약 위치 (ii); lane 의 qNaN/특례 표는 후단 fp32 경로 몫).
+#   * 곱이 zero (operand ±0 또는 bf16 DAZ) -> canonical zero addend
+#     (lane 헤더: "significand forced to 0, p_exp -1024 sentinel").
+
+_BF16_EXP_BIAS, _F16_EXP_BIAS = 127, 15
+
+
+def bf16_bits(s, e, m8):
+    """bf16 normal 인코딩: e = unbiased [-126,127], m8 = [128,256)."""
+    assert s in (0, 1) and -126 <= e <= 127 and 128 <= m8 <= 255
+    return (s << 15) | ((e + _BF16_EXP_BIAS) << 7) | (m8 - 128)
+
+
+def f16_bits(s, e, m11):
+    """f16 normal 인코딩: e = unbiased [-14,15], m11 = [1024,2048)."""
+    assert s in (0, 1) and -14 <= e <= 15 and 1024 <= m11 <= 2047
+    return (s << 15) | ((e + _F16_EXP_BIAS) << 10) | (m11 - 1024)
+
+
+def f16_sub_bits(s, m10):
+    """f16 subnormal 인코딩: 값 = (-1)^s * m10 * 2^-24, m10 = [1,1023]."""
+    assert s in (0, 1) and 1 <= m10 <= 1023
+    return (s << 15) | m10
+
+
+def bf16_pow2(p, s=0):
+    """정확한 2의 거듭제곱 bf16 (p in [-126,127])."""
+    return bf16_bits(s, p, 128)
+
+
+def operand_frac(dtype, bits):
+    """operand 의 exact Fraction 값 — lane 정책 반영 (bf16 DAZ 포함).
+    specials (NaN/Inf) 는 loud fault (벡터 전제 위반)."""
+    assert 0 <= bits <= 0xFFFF
+    s = (bits >> 15) & 1
+    if dtype == 0:                          # bf16
+        E, m = (bits >> 7) & 0xFF, bits & 0x7F
+        if E == 0xFF:
+            raise LatticeFault("bf16 special operand forbidden: 0x%04X"
+                               % bits)
+        if E == 0:                          # signed zero + DAZ subnormal
+            return Fraction(0)
+        v = Fraction(128 + m) * TWO ** (E - _BF16_EXP_BIAS - 7)
+    else:                                   # f16
+        E, m = (bits >> 10) & 0x1F, bits & 0x3FF
+        if E == 0x1F:
+            raise LatticeFault("f16 special operand forbidden: 0x%04X"
+                               % bits)
+        if E == 0 and m == 0:
+            return Fraction(0)
+        if E == 0:                          # subnormal — EXACT 존중
+            v = Fraction(m) * TWO ** -24
+        else:
+            v = Fraction(1024 + m) * TWO ** (E - _F16_EXP_BIAS - 10)
+    return -v if s else v
+
+
+def _lane_sig_exp(dtype, bits):
+    """operand 의 (normalized significand, leading-bit 지수) — lane S1
+    (unpack + f16-subnormal normalize) 의 산술 모델. zero -> None."""
+    s = (bits >> 15) & 1
+    if dtype == 0:
+        E, m = (bits >> 7) & 0xFF, bits & 0x7F
+        assert E != 0xFF, "specials forbidden"
+        if E == 0:
+            return s, None, None            # DAZ signed zero
+        return s, 128 + m, E - _BF16_EXP_BIAS
+    E, m = (bits >> 10) & 0x1F, bits & 0x3FF
+    assert E != 0x1F, "specials forbidden"
+    if E == 0 and m == 0:
+        return s, None, None
+    if E == 0:                              # subnormal: leading-one scan
+        k = 11 - m.bit_length()
+        return s, m << k, -14 - k           # m<<k in [2^10,2^11)
+    return s, 1024 + m, E - _F16_EXP_BIAS
+
+
+def lane_product_addend(dtype, a_bits, b_bits):
+    """lane 곱 전단의 raw wide product (§27.2.1 / FP_FmaLaneBf16 C1+C2
+    ALIGN ALGEBRA): sig = (ma*mb) << (32|26), exp = ea_eff+eb_eff+1.
+    어느 한쪽이 zero (±0 또는 bf16 DAZ) -> canonical zero addend."""
+    sa, ma, ea = _lane_sig_exp(dtype, a_bits)
+    sb, mb, eb = _lane_sig_exp(dtype, b_bits)
+    if ma is None or mb is None:
+        return CANON_ZERO
+    sh = 32 if dtype == 0 else 26
+    add = (sa ^ sb, ea + eb + 1, (ma * mb) << sh)
+    wide_check(*add, what="lane raw product")
+    # 값-일치 교차검증: raw 형식 구성 vs 필드 직독 Fraction 곱 (독립 경로)
+    assert wide_frac(*add) == operand_frac(dtype, a_bits) \
+        * operand_frac(dtype, b_bits)
+    return add
+
+
+# ---------------------------------------------------------------------------
+# cluster wave 생성기 (전부 CLUSTER_SEEDS 고정 seed 의 rng 인자 경유)
+# ---------------------------------------------------------------------------
+
+
+def rand_bf16_operand(rng, elo=-126, ehi=127):
+    return bf16_bits(rng.randint(0, 1), rng.randint(elo, ehi),
+                     rng.randrange(128, 256))
+
+
+def rand_f16_operand(rng, p_sub=0.0):
+    if rng.random() < p_sub:
+        return f16_sub_bits(rng.randint(0, 1), rng.randint(1, 1023))
+    return f16_bits(rng.randint(0, 1), rng.randint(-14, 15),
+                    rng.randrange(1024, 2048))
+
+
+def _zeroish_operand(rng, dtype):
+    """곱을 zero 로 만드는 operand: ±0, 또는 (bf16 만) DAZ subnormal —
+    operand 는 nonzero 인데 lane 이 zero 로 flush 하는 killer 포함."""
+    r = rng.random()
+    if dtype == 0 and r < 0.5:
+        return (rng.randint(0, 1) << 15) | rng.randint(1, 127)  # DAZ sub
+    return rng.randint(0, 1) << 15                              # ±0
+
+
+def cwave_bf16_rand(rng):
+    pairs = []
+    for _ in range(GROUP):
+        if rng.random() < 0.08:             # zero/DAZ 산재
+            z = _zeroish_operand(rng, 0)
+            a, b = (z, rand_bf16_operand(rng))
+            pairs.append((a, b) if rng.random() < 0.5 else (b, a))
+        else:
+            pairs.append((rand_bf16_operand(rng), rand_bf16_operand(rng)))
+    return pairs
+
+
+def cwave_f16_rand(rng):
+    pairs = []
+    for _ in range(GROUP):
+        if rng.random() < 0.06:
+            z = _zeroish_operand(rng, 1)
+            a, b = (z, rand_f16_operand(rng, 0.3))
+            pairs.append((a, b) if rng.random() < 0.5 else (b, a))
+        else:
+            pairs.append((rand_f16_operand(rng, 0.2),
+                          rand_f16_operand(rng, 0.2)))
+    return pairs
+
+
+def cwave_cancel(rng):
+    """operand-레벨 대규모 상쇄: 쌍 (a,b) 와 (-a,b) — 곱이 정확히
+    상쇄된다 — + 수십 binade 아래 dust 쌍."""
+    Z = (0, 0)
+    pairs = [Z] * GROUP
+    a = rand_bf16_operand(rng, -20, 20)
+    b = rand_bf16_operand(rng, -20, 20)
+    pairs[0], pairs[1] = (a, b), (a ^ 0x8000, b)
+    ec = rng.randint(-60, -30)
+    for i in rng.sample(range(2, GROUP), rng.randint(2, 4)):
+        pairs[i] = (rand_bf16_operand(rng, ec // 2 - 1, ec // 2 + 1),
+                    rand_bf16_operand(rng, ec // 2 - 1, ec // 2 + 1))
+    return pairs
+
+
+def cwave_sparse(rng):
+    Z = (0, 0)
+    pairs = [Z] * GROUP
+    for i in rng.sample(range(GROUP), rng.randint(0, GROUP)):
+        pairs[i] = (rand_bf16_operand(rng, -40, 40),
+                    rand_bf16_operand(rng, -40, 40))
+    return pairs
+
+
+class ClusterEmitter:
+    """operand-레벨 벡터 누적기 — 모든 emit 은 (i) per-pair raw 곱의
+    Fraction 교차검증 (lane_product_addend 내장), (ii) wave 4층 Fraction
+    이중 검증 (check_wave_against_fraction), (iii) segment 기하 assert 를
+    통과해야 한다."""
+
+    def __init__(self):
+        self.lines = []
+        self.families = []
+        self.max_span = 0
+        self.n_pairs_checked = 0
+        self._fam = None
+
+    def begin(self, name, doc):
+        self._fam = {"family": name, "doc": doc,
+                     "start": len(self.lines), "count": 0}
+        self.families.append(self._fam)
+
+    def emit(self, dtype, pairs, carry, chained=False):
+        assert dtype in (0, 1) and len(pairs) == GROUP
+        adds = [lane_product_addend(dtype, a, b) for a, b in pairs]
+        self.n_pairs_checked += GROUP
+        units, wide, bank, f32 = check_wave_against_fraction(adds, carry)
+        self.max_span = max(self.max_span, check_segments(
+            adds + [carry], units))
+        v = (int(chained) << 1) | dtype     # META [0]=dtype, [1]=chained
+        for a, b in pairs:
+            assert 0 <= a <= 0xFFFF and 0 <= b <= 0xFFFF
+            v = (v << 32) | (a << 16) | b
+        for ad in adds:
+            v = (v << 64) | field_encode(*ad)
+        v = (v << 64) | field_encode(*carry)
+        v = (v << LAT_W) | lattice_word(units)
+        v = (v << 64) | field_encode(*wide)
+        v = (v << 64) | bank
+        v = (v << 32) | f32
+        assert v < (1 << CVEC_BITS)
+        self.lines.append("%0*x" % (CVEC_HEX, v))
+        self._fam["count"] += 1
+        return wide, adds, f32
+
+
+def gen_cluster_vectors():
+    em = ClusterEmitter()
+    Z = (0, 0)
+
+    def pad(pairs):
+        return pairs + [Z] * (GROUP - len(pairs))
+
+    def pow2_pair(p):
+        """곱 == 2^p 인 bf16 쌍 (p in [-252,254])."""
+        return (bf16_pow2(p // 2), bf16_pow2(p - p // 2))
+
+    # ---- directed ----
+    em.begin("c_raw_unnorm", "1.0x1.0 등 2^k 곱 — raw 형식의 1-bit "
+             "un-normalized (sig = 2^46) 경로 directed: normalize 를 "
+             "곱 지점에 잘못 넣은 RTL 은 EXP_ADDEND 층에서 갈라진다")
+    _, adds, _ = em.emit(0, pad([(bf16_pow2(0), bf16_pow2(0)),
+                                 pow2_pair(-100), pow2_pair(200)]),
+                         CANON_ZERO)
+    assert adds[0] == (0, 1, 1 << 46)       # 1x1: sig 하한, leading zero 1
+
+    em.begin("c_rne48_discriminator", "operand-레벨 x = 2^48+2^24+1 — "
+             "store 반올림 모드 판별 (§27.2.1; drain 0x57800001, RNE-48 "
+             "오구현 RTL 은 0x57800000)")
+    _, _, f32 = em.emit(0, pad([pow2_pair(48), pow2_pair(24),
+                                pow2_pair(0)]), CANON_ZERO)
+    assert f32 == 0x57800001
+
+    em.begin("c_tie_q25_killer", "operand-레벨 x = 1+2^-24+2^-60 — 추출 "
+             "폭 q<26 적발 (정답 0x3F800001)")
+    _, _, f32 = em.emit(0, pad([pow2_pair(0), pow2_pair(-24),
+                                pow2_pair(-60)]), CANON_ZERO)
+    assert f32 == 0x3F800001
+
+    em.begin("c_sticky_band", "2^53 + 2^(53-d), d in {48,63,64,95,127} — "
+             "lattice sticky_window_band 의 operand-레벨 재현 (전 80 위치는 "
+             "lattice 벡터가 커버; 여기는 전 경로 통과 확인 subset)")
+    for d in (48, 63, 64, 95, 127):
+        w, _, _ = em.emit(0, pad([pow2_pair(53), pow2_pair(53 - d)]),
+                          CANON_ZERO)
+        assert w == (0, 53, (1 << 47) | 1), (d, w)
+
+    em.begin("c_bf16_daz_killer", "bf16 subnormal operand -> SIGNED ZERO "
+             "flush (lane 정책 — §23.10.5 pin 6): subnormal 쌍은 곱 "
+             "canonical zero. DAZ 를 빠뜨린 RTL 은 EXP_ADDEND/합 양층에서 "
+             "갈라진다 (최대 subnormal 0x007F 포함)")
+    _, adds, f32 = em.emit(0, pad([(0x007F, bf16_pow2(120)),
+                                   (0x807F, bf16_pow2(120)),
+                                   (0x0001, 0x0001),
+                                   (bf16_pow2(0), bf16_pow2(0))]),
+                           CANON_ZERO)
+    assert adds[0] == adds[1] == adds[2] == CANON_ZERO
+    assert f32 == 0x3F800000                # 살아남는 것은 1.0 하나
+    _, adds, f32 = em.emit(0, pad([(0x0040, 0x8040)]), CANON_ZERO)
+    assert adds[0] == CANON_ZERO and f32 == 0x00000000
+
+    em.begin("c_f16_subnormal", "f16 subnormal EXACT 존중 (lane S1 "
+             "normalize — 비대칭은 §23.10.5 pin): 최소 subnormal 제곱 "
+             "2^-48 (lattice 하단), subnormal x normal, 홀수 m10 dust")
+    _, adds, _ = em.emit(1, pad([(f16_sub_bits(0, 1), f16_sub_bits(0, 1))]),
+                         CANON_ZERO)
+    assert adds[0] == (0, -47, 1 << 46)     # (2^-24)^2 — un-normalized raw
+    _, adds, _ = em.emit(1, pad([(f16_sub_bits(0, 3), f16_bits(0, 0, 1024)),
+                                 (f16_sub_bits(1, 1023),
+                                  f16_bits(0, 15, 2047))]), CANON_ZERO)
+    assert wide_frac(*adds[0]) == Fraction(3) * TWO ** -24
+    em.emit(1, pad([(f16_sub_bits(0, 2 * k + 1),
+                     f16_bits(k % 2, k - 7, 1024 + 64 * k))
+                    for k in range(8)]), CANON_ZERO)
+
+    em.begin("c_boundary", "경계 directed — 최대 곱 x32 (drain ±Inf), "
+             "f16 최대 곱 x32, bf16 최소 normal 곱 (lattice bit 0, 홀수 "
+             "significand)")
+    mx = bf16_bits(0, 127, 255)
+    _, _, f32 = em.emit(0, [(mx, mx)] * GROUP, CANON_ZERO)
+    assert f32 == 0x7F800000
+    _, _, f32 = em.emit(0, [(mx ^ 0x8000, mx)] * GROUP, CANON_ZERO)
+    assert f32 == 0xFF800000
+    fmx = f16_bits(0, 15, 2047)             # 65504.0
+    em.emit(1, [(fmx, fmx)] * GROUP, CANON_ZERO)
+    lo = bf16_bits(0, -126, 129)            # 129 홀수 — lattice bit 0
+    _, adds, f32 = em.emit(0, pad([(lo, lo)]), CANON_ZERO)
+    assert wide_frac(*adds[0]) == Fraction(16641) * TWO ** -266
+    assert f32 == 0x00000000                # drain FTZ
+    _, _, f32 = em.emit(0, pad([(lo ^ 0x8000, lo)]), CANON_ZERO)
+    assert f32 == 0x80000000
+
+    # ---- random families ----
+    rng = random.Random(CLUSTER_SEEDS["cl_bf16_rand"])
+    em.begin("c_bf16_rand", "전 지수역 임의 bf16 operand 쌍 32개 + 임의 "
+             "carry — ±0/DAZ-subnormal 산재 (8%)")
+    for _ in range(400):
+        em.emit(0, cwave_bf16_rand(rng), rand_carry(rng))
+
+    rng = random.Random(CLUSTER_SEEDS["cl_f16_rand"])
+    em.begin("c_f16_rand", "임의 f16 쌍 (subnormal operand ~20% 혼입 — "
+             "EXACT 존중 경로) + 임의 carry")
+    for _ in range(250):
+        em.emit(1, cwave_f16_rand(rng), rand_carry(rng))
+
+    rng = random.Random(CLUSTER_SEEDS["cl_cancel"])
+    em.begin("c_cancel", "operand-레벨 상쇄 (a,b) + (-a,b) + 아래 binade "
+             "dust — park/cancel 계열")
+    for _ in range(150):
+        em.emit(0, cwave_cancel(rng), rand_carry(rng))
+
+    rng = random.Random(CLUSTER_SEEDS["cl_sparse"])
+    em.begin("c_sparse", "nonzero 쌍 0..32개 — zero-쌍 슬롯 처리")
+    for _ in range(100):
+        em.emit(0, cwave_sparse(rng), rand_carry(rng))
+
+    # ---- carry 체이닝 families ----
+    rng = random.Random(CLUSTER_SEEDS["cl_chain_bf16"])
+    em.begin("c_chain_bf16", "K=1024 chain x4 (32 wave/chain, 이전 wave "
+             "의 EXP_WIDE == 다음 wave 의 ADDEND[32]) — bf16, factor exp "
+             "[-10,10]")
+    for _ in range(4):
+        carry = CANON_ZERO
+        for k in range(32):
+            carry, _, _ = em.emit(
+                0, [(rand_bf16_operand(rng, -10, 10),
+                     rand_bf16_operand(rng, -10, 10))
+                    for _ in range(GROUP)], carry, chained=k > 0)
+
+    rng = random.Random(CLUSTER_SEEDS["cl_chain_mixed"])
+    em.begin("c_chain_mixed", "bf16/f16 교대 chain x2 — dtype 이 wave "
+             "마다 바뀌어도 carry 체이닝의 수학 계약은 불변 (exact 합)")
+    for _ in range(2):
+        carry = CANON_ZERO
+        for k in range(32):
+            if k % 2 == 0:
+                pairs = [(rand_bf16_operand(rng, -8, 8),
+                          rand_bf16_operand(rng, -8, 8))
+                         for _ in range(GROUP)]
+            else:
+                pairs = cwave_f16_rand(rng)
+            carry, _, _ = em.emit(k % 2, pairs, carry, chained=k > 0)
+
+    rng = random.Random(CLUSTER_SEEDS["cl_chain_parkcancel"])
+    em.begin("c_chain_parkcancel", "cross-wave park-plus-cancel chain x2 "
+             "— 이전 wave 곱의 operand 부호 반전 재주입으로 상쇄 (F1/F4 "
+             "계열의 operand-레벨 확장)")
+    for _ in range(2):
+        carry, pending = CANON_ZERO, []
+        for k in range(32):
+            pairs, j = [Z] * GROUP, 0
+            for (a, b) in pending:
+                pairs[j] = (a ^ 0x8000, b)
+                j += 1
+            pending = []
+            for _ in range(rng.randint(1, 3)):
+                p = (rand_bf16_operand(rng, -10, 10),
+                     rand_bf16_operand(rng, -10, 10))
+                pairs[j] = p
+                j += 1
+                if rng.random() < 0.7:
+                    pending.append(p)
+            for _ in range(rng.randint(1, 4)):
+                pairs[j] = (rand_bf16_operand(rng, -20, -13),
+                            rand_bf16_operand(rng, -20, -13))
+                j += 1
+            carry, _, _ = em.emit(0, pairs, carry, chained=k > 0)
+
+    rng = random.Random(CLUSTER_SEEDS["cl_daz_rand"])
+    em.begin("c_daz_rand", "DAZ/±0 고밀도 임의 wave — 쌍의 절반가량이 "
+             "zero-곱 (bf16 subnormal/±0), 나머지 정상 — flush 대량 혼류")
+    for _ in range(60):
+        pairs = []
+        for _ in range(GROUP):
+            if rng.random() < 0.5:
+                z = _zeroish_operand(rng, 0)
+                n = rand_bf16_operand(rng, -30, 30)
+                pairs.append((z, n) if rng.random() < 0.5 else (n, z))
+            else:
+                pairs.append((rand_bf16_operand(rng, -30, 30),
+                              rand_bf16_operand(rng, -30, 30)))
+        em.emit(0, pairs, rand_carry(rng))
+
+    return em
+
+
+def write_cluster_file(em):
+    hdr = [
+        "// cluster_wave_vectors.hex — v2.0 cluster operand-level TB 벡터 "
+        "(④ GATE V20-3; 결정적, 고정 seed)",
+        "// 생성기: scripts/golden_lattice.py — 비트 레이아웃 계약: "
+        "include/generated/cluster_vec_contract.md",
+        "// 1 line = 1 wave-step = %d hex chars = %d bits; N_VEC = %d"
+        % (CVEC_HEX, CVEC_BITS, len(em.lines)),
+    ]
+    CLUSTER_VEC_PATH.write_text("\n".join(hdr + em.lines) + "\n")
+
+
+def verify_cluster_file():
+    """파일 재독 -> operand 분해 -> lane 곱/4층 golden 재계산 -> 인코딩된
+    기대 전 필드 재대조 (파일 자기증명 — verify_vector_file 동형)."""
+    n = 0
+    for ln in CLUSTER_VEC_PATH.read_text().splitlines():
+        if not ln or ln.startswith("//"):
+            continue
+        assert len(ln) == CVEC_HEX
+        v = int(ln, 16)
+        f32 = v & 0xFFFFFFFF
+        v >>= 32
+        bank = v & _M64
+        v >>= 64
+        widef = v & _M64
+        v >>= 64
+        resolved = v & _M528
+        v >>= LAT_W
+        carryf = v & _M64
+        v >>= 64
+        addf = [(v >> (64 * (GROUP - 1 - k))) & _M64 for k in range(GROUP)]
+        v >>= 64 * GROUP
+        pairs = [((v >> (32 * (GROUP - 1 - k) + 16)) & 0xFFFF,
+                  (v >> (32 * (GROUP - 1 - k))) & 0xFFFF)
+                 for k in range(GROUP)]
+        v >>= 32 * GROUP
+        assert v >> 2 == 0                  # META [31:2] 예약 0
+        dtype = v & 1
+        adds = [lane_product_addend(dtype, a, b) for a, b in pairs]
+        assert [field_encode(*a) for a in adds] == addf
+        carry = field_decode(carryf)
+        units, wide, bank_g, f32_g = wave_step(adds, carry)
+        assert lattice_word(units) == resolved
+        assert field_encode(*wide) == widef
+        assert bank_g == bank and f32_g == f32
+        n += 1
+    return n
+
+
+def cluster_contract_text(em):
+    fam_rows = "\n".join(
+        "| %s | %d | %d | %s |" % (f["family"], f["start"], f["count"],
+                                   f["doc"].replace("\n", " "))
+        for f in em.families)
+    seed_rows = "\n".join("| `%s` | `0x%X` |" % kv
+                          for kv in CLUSTER_SEEDS.items())
+    n = len(em.lines)
+    return """<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+<!-- SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor \
+contributors -->
+<!-- GENERATED by scripts/golden_lattice.py — 손편집 금지. 재생성은 \
+`python3 scripts/golden_lattice.py` (byte-identical). -->
+
+# cluster_wave_vectors.hex — operand-레벨 벡터 계약 (④ GATE V20-3)
+
+- **규범 출처**: `.claude-memos/wt64v1_spec.md` §27.6 ④ 검증 의무 2
+  (cluster 통합 TB 전 경로 — operand 주입 -> lane widen/곱 -> 8-operand
+  x 4-beat dispatch -> lattice -> bank RTO-48 -> drain RNE-24); §27.2.1
+  raw product 형식; `FP_FmaLaneBf16.v` OPERAND-LOAD POLICY + ALIGN
+  ALGEBRA (C1/C2 — §23.10.5 widen 의미론의 lane 승계 pin).
+- **golden**: `scripts/golden_lattice.py` (`lane_product_addend` +
+  `wave_step` — 모든 기대값의 산출자; 전 쌍 Fraction 값-일치 교차검증 +
+  전 wave 4층 Fraction 이중 검증 통과).
+- **벡터 파일**: `include/generated/cluster_wave_vectors.hex` —
+  `$readmemh`, 주석 3줄 + %d 라인. 결정적 (고정 seed, 재실행
+  byte-identical; sha256 은 `lattice_golden_report.json`).
+- operand 를 새로 생성했다 — 기존 lattice 벡터 addend 의 역-인수분해가
+  아니다 (④ 지시). 기존 `lattice_wave_vectors.hex` 4081 벡터는 무변경.
+
+## 1. 라인 형식
+
+1 라인 = 1 wave-step = **%d hex 문자 = %d bit** 단일 토큰.
+`CVEC[%d:0]` (MSB 먼저):
+
+| 필드 | 비트 구간 | 폭 | 의미 |
+|---|---|---|---|
+| `META` | `[%d:%d]` | 32 | `[0]` dtype (0=bf16, 1=f16 — wave 단위 단일), `[1]` chained (직전 라인의 `EXP_WIDE` 가 본 라인 `ADDEND[32]` — 정보 제공), `[31:2]` 예약 0 |
+| `OPRND[k]` | `[%d-32k : %d-32k]`, k=0..31 | 32 x32 | operand 쌍 k — `[31:16]` = A, `[15:0]` = B (bf16 또는 IEEE binary16 원시 16-bit 인코딩) |
+| `EXP_ADDEND[k]` | `[2799-64k : 2736-64k]`, k=0..31 | 64 x32 | **기대 lane raw 곱** (§3) — lane 곱 전단 tap 의 bit-exact 판정점 |
+| `ADDEND[32]` | `[751:688]` | 64 | bank carry-in (wide field) |
+| `EXP_RESOLVED` | `[687:160]` | 528 | 기대 resolve (exact 33-항 합) |
+| `EXP_WIDE` | `[159:96]` | 64 | 기대 RTO-48 추출 |
+| `EXP_BANK` | `[95:32]` | 64 | 기대 bank word (fp64 무손실 재인코딩) |
+| `EXP_FP32` | `[31:0]` | 32 | 기대 즉시-drain (RNE-24 + FTZ) |
+
+**하위 [2799:0] 은 `lattice_vec_contract.md` §1 의 라인 형식과 비트
+단위로 동일하다** (`EXP_ADDEND[0..31]` 가 그쪽 `ADDEND[0..31]` 자리) —
+TB 는 lattice-레벨 checker 를 하위 슬라이스에 그대로 재사용할 수 있다.
+
+## 2. operand 인코딩과 lane 적재 정책 (normative — lane 헤더 전사)
+
+- **bf16** = 1s + 8e + 7m. `E==0` -> **SIGNED ZERO** (진짜 zero 와 전
+  254 subnormal — DAZ-일관 flush, §23.10.5 pin 6). `E==255` (specials)
+  는 **벡터에 등장하지 않는다**.
+- **f16** = 1s + 5e + 10m. `E==0, m!=0` (subnormal) -> **EXACT 존중**
+  (lane S1 leading-one scan + shift 로 normalize — bf16 과의 비대칭은
+  pin 된 §23.10.5 행동). `E==31` 은 벡터에 등장하지 않는다.
+- **specials 차단 계약 위치** (lattice 계약 §4 와 동일): in-dot 경로는
+  FP_CLASSIFY 가 NaN/Inf 를 lattice 이전에 필터한다 — 본 벡터의
+  operand 는 전부 finite 다.
+
+## 3. `EXP_ADDEND[k]` — lane raw 곱 (§27.2.1 확정 형식)
+
+```
+zero 곱 (어느 쪽이든 ±0 또는 bf16 DAZ) -> canonical zero
+   64'h0400_0000_0000_0000
+bf16: sig = (m8a_eff * m8b_eff) << 32   (8x8 -> 16-bit),  m8 in [128,256)
+f16 : sig = (m11a_eff * m11b_eff) << 26 (11x11 -> 22-bit), m11 in [1024,2048)
+exp = ea_eff + eb_eff + 1   (ea_eff = leading significand bit 의 지수)
+sign = sa ^ sb
+```
+
+- sig 는 [2^46, 2^48) — **1-bit un-normalized (leading zero 1) 허용**이
+  raw 형식의 본질이다 (2^k 곱은 정확히 sig == 2^46). 곱 지점 normalize
+  를 넣은 RTL 은 `c_raw_unnorm` family 의 `EXP_ADDEND` 층에서 갈라진다.
+- **f16 subnormal 의 raw 형태 확정 기록**: `lattice_vec_contract.md` §7
+  이 "RTL C2 경로 확정 사항" 으로 미결 유지하던 항 — `FP_FmaLaneBf16.v`
+  S1 (f16-subnormal normalize) 착지로 확정됐다: m10 을 leading-one
+  scan 으로 normalize 한 m11_eff 와 ea_eff = -14 - (11 - bitlen(m10))
+  를 위 공식에 그대로 인가한다. 본 계약이 그 확정의 golden 운반자다.
+- p_exp 범위: bf16 [-251, 255], f16 [-47, 31] — signed-11 수납, -1024
+  zero sentinel 과 절대 비충돌 (lane ALIGN ALGEBRA 증명 전사).
+
+## 4. beat/lane 사상 (canonical drive 규약)
+
+쌍 k 의 canonical dispatch 좌표 = **beat `k>>3` (0..3), lane `k&7`
+(0..7)** — §27.2.1 amendment 의 8-operand x 4-beat 스케줄 (II=4, carry
+beat 0 병합). 단, lattice 합은 exact (association-free) 이므로 **어떤
+beat/lane 재배열도 기대값을 바꾸지 않는다** — 이 사상은 TB 의 drive
+규약이지 정답의 전제가 아니다. `EXP_ADDEND[k]` 는 언제나 `OPRND[k]` 의
+곱이다 (k 로 대응 — 사상과 무관).
+
+## 5. 전제조건 (모든 벡터가 보장)
+
+- operand 는 전부 finite (specials 없음 — §2); 33-항 합은 개구간
+  (-2^261, 2^261) 안 (§27.2.1 pin 1; 생성 시 loud-fault 로 강제).
+- carry-in 은 normalized 또는 canonical zero (§27.2.1 pin 2).
+- `EXP_FP32` 는 ±Inf/±0 가능, NaN 절대 불가.
+
+## 6. family 배치 (라인 인덱스 0-base)
+
+| family | start | count | 의도 |
+|---|---|---|---|
+%s
+
+- 총 **%d 벡터**. `c_chain_*` family 는 직전 라인 `EXP_WIDE` == 본 라인
+  `ADDEND[32]` 체인이나, 각 라인이 자체 carry 를 운반하므로 TB 는 라인
+  단위 독립 검증만으로 충분하다 (체인 재현은 선택 — META[1] 참조).
+
+## 7. TB 판정 규칙
+
+- **lane 곱 전단 tap**: beat b 의 lane l 에 `OPRND[8b+l]` 인가 시 raw
+  곱 == `EXP_ADDEND[8b+l]` — **bit-exact** (§3 형식 그대로;
+  un-normalized 보존 포함; 다른 사상 채택 시에도 `EXP_ADDEND[k]` 는
+  언제나 `OPRND[k]` 의 곱이다 — §4).
+- **wave 4층**: resolve == `EXP_RESOLVED`, 추출 == `EXP_WIDE`, bank
+  == `EXP_BANK`, drain == `EXP_FP32` — 전부 bit-exact. 하나라도
+  불일치 = FAIL (표본률 논증 금지).
+- dynamic part-select 금지는 RTL 구속 — TB behavioral 슬라이싱 면책
+  주석 관례는 `lattice_vec_contract.md` §6 그대로.
+
+## 8. 결정론
+
+고정 seed (아래, `CLUSTER_SEEDS` — 기존 `SEEDS` 와 분리: 기존 산출물
+byte-identity 유지) 외 난수원/timestamp 없음 — 재실행 byte-identical
+(sha256 은 report).
+
+| seed key | value |
+|---|---|
+%s
+""" % (n, CVEC_HEX, CVEC_BITS, CVEC_BITS - 1,
+       CVEC_BITS - 1, CVEC_BITS - 32,
+       CVEC_BITS - 33, CVEC_BITS - 64,
+       fam_rows, n, seed_rows)
+
+
+# ===========================================================================
 # main
 # ===========================================================================
 
@@ -2257,11 +3017,25 @@ def main():
     stamp("vector file re-read self-verify (%d lines)" % n_verified, t0)
 
     t0 = time.time()
+    cem = gen_cluster_vectors()
+    write_cluster_file(cem)
+    CLUSTER_CONTRACT_PATH.write_text(cluster_contract_text(cem))
+    stamp("cluster operand-level vector generation (%d vectors, "
+          "%d families)" % (len(cem.lines), len(cem.families)), t0)
+
+    t0 = time.time()
+    n_cluster_verified = verify_cluster_file()
+    assert n_cluster_verified == len(cem.lines)
+    stamp("cluster vector file re-read self-verify (%d lines)"
+          % n_cluster_verified, t0)
+
+    t0 = time.time()
     bank_scens = gen_bank_scenarios()
     bank_cov = bank_coverage(bank_scens)
+    bank_xprod = bank_window_crossproduct(bank_scens)
     n_bank_rec, bank_fams = write_bank_file(bank_scens)
     BANK_CONTRACT_PATH.write_text(bank_contract_text(
-        len(bank_scens), n_bank_rec, bank_fams, bank_cov))
+        len(bank_scens), n_bank_rec, bank_fams, bank_cov, bank_xprod))
     stamp("bank scenario generation (%d scenarios, %d records, "
           "%d families)" % (len(bank_scens), n_bank_rec, len(bank_fams)),
           t0)
@@ -2320,6 +3094,80 @@ def main():
             "path": "include/generated/lattice_vec_contract.md",
             "sha256": _sha256(CONTRACT_PATH),
         },
+        "cluster_vectors": {
+            "_doc": "④ GATE V20-3 (2026-08-17): cluster operand-level "
+                    "벡터 — bf16/f16 operand 쌍 32개/wave 에서 lane 곱 "
+                    "전단 raw 형식 (§27.2.1) 을 거쳐 wave_step 4층 "
+                    "기대값까지. operand 는 신규 생성 (기존 lattice "
+                    "벡터 역-인수분해 아님, CLUSTER_SEEDS 분리). 계약: "
+                    "include/generated/cluster_vec_contract.md.",
+            "path": "include/generated/cluster_wave_vectors.hex",
+            "n_vectors": len(cem.lines),
+            "bits_per_line": CVEC_BITS,
+            "hex_chars_per_line": CVEC_HEX,
+            "families": cem.families,
+            "seeds": CLUSTER_SEEDS,
+            "pair_fraction_crosscheck": {
+                "pairs_checked": cem.n_pairs_checked,
+                "mismatches": 0,
+                "note": "전 쌍: raw 형식 구성 (normalize+multiply) vs "
+                        "operand 필드 직독 Fraction 곱의 값-일치 — "
+                        "lane_product_addend 내장 assert",
+            },
+            "f16_subnormal_raw_form": "확정 운반 (FP_FmaLaneBf16.v S1 "
+                                      "normalize — lattice 계약 §7 의 "
+                                      "미결 항 해소; cluster 계약 §3)",
+            "self_verify": {
+                "lines": n_cluster_verified, "mismatches": 0,
+                "verdict": "PASS"},
+            "sha256": _sha256(CLUSTER_VEC_PATH),
+            "contract": {
+                "path": "include/generated/cluster_vec_contract.md",
+                "sha256": _sha256(CLUSTER_CONTRACT_PATH),
+            },
+        },
+        "gate_v20_3_carryover": {
+            "_doc": "§27.6 ④ 검증 의무 1 — ③ 이월 3건의 golden-반쪽 "
+                    "처분 기록 (gate log 전사는 ④ merge COMMIT 몫).",
+            "i_window_offset0": "시나리오 형식상 표현 불가 불변 — ④ 통합 "
+                                "TB 직접 구동 몫 (bank 계약 §2/§10)",
+            "ii_crossproduct": {
+                "added_directed": {
+                    "window_fill_offsets": [6],
+                    "window_zero_offsets": [4],
+                    "window_spill_offsets": [2, 4, 5, 6]},
+                "appended_after_existing_343": True,
+                "window_offsets_measured": bank_xprod,
+                "exhaustive_1_to_7_asserted": True,
+            },
+            "iii_ghost_disposition": {
+                "DT-04_h_K_carrier": {
+                    "disposition": "계약 재배정 — 'hw 강제 불가' 명시 "
+                                   "(RTL 실물화 아님)",
+                    "rationale": "캐리어는 tag/0x70-block ISA-레벨 편집 "
+                                 "요구 — ④ 제외 (ii) 로 범위 밖; §23.6a "
+                                 "SDK 계약 1 동일 노출면으로 명시 등재, "
+                                 "Inv_Complete 는 '가정 모양' 유지 — "
+                                 "V20-3 블록 사전 합법화 형식 (kickoff "
+                                 "TP-3)",
+                },
+                "DT-05_l_spill_owner_tag": {
+                    "disposition": "계약 재배정 — fill_owner 의 SDK 계약 "
+                                   "강등 + 명시 (RTL 실물화 아님)",
+                    "rationale": "hw 대조는 spill image 포맷 owner-토큰 "
+                                 "규범화 (spec COMMIT + 0x7D ISA 결선 "
+                                 "몫) 전제 — ④ scope 밖; §23.6a "
+                                 "contract-1 급 노출면 +1 정직 기록, "
+                                 "0x7D 포맷 규범화 시점 재심사 의무로 "
+                                 "이월",
+                },
+                "tb_requirements": "bank_scenarios_contract.md §10 항 3 "
+                                   "— scoreboard ghost 대조 유지 / "
+                                   "hw-실재 guard 와 혼동 금지 (변이 "
+                                   "반증은 hw-실재 guard 만) / gate log "
+                                   "전사",
+            },
+        },
         "bank_reference": {
             "_doc": "wide ACC bank 상태기계 reference + 통합 TB 시나리오 "
                     "(§27.6 하류 ③ 검증 계획 (c), 2026-08-16 확장). 형식/"
@@ -2357,6 +3205,7 @@ def main():
                 "sha256": _sha256(BANK_CONTRACT_PATH),
             },
             "coverage": bank_cov,
+            "window_offset_crossproduct": bank_xprod,
             "self_verify": {
                 "scenarios": n_bank_verified, "mismatches": 0,
                 "note": "파일 재독 -> record 파싱 -> 명령 재구성 -> "
@@ -2385,15 +3234,20 @@ def main():
             "permutation_bit_identical": True,
             "jam_families_match_study_exactly": True,
             "canonical_zero_on_exact_zero": True,
-            "segment_2_of_9_never_exceeded": em.max_span <= 2,
+            "segment_2_of_9_never_exceeded":
+                em.max_span <= 2 and cem.max_span <= 2,
             "pin1_open_interval_enforced": True,
             "bank_scenarios_self_verified": True,
+            "cluster_vectors_self_verified": True,
+            "window_offset_crossproduct_exhaustive": True,
         },
     }
     REPORT_PATH.write_text(json.dumps(report, indent=1, allow_nan=False,
                                       ensure_ascii=False) + "\n")
     print("wrote %s" % VEC_PATH)
     print("wrote %s" % CONTRACT_PATH)
+    print("wrote %s" % CLUSTER_VEC_PATH)
+    print("wrote %s" % CLUSTER_CONTRACT_PATH)
     print("wrote %s" % BANK_HEX_PATH)
     print("wrote %s" % BANK_CONTRACT_PATH)
     print("wrote %s" % REPORT_PATH)
@@ -2420,6 +3274,16 @@ def main():
           "spill_owner %d / proto_unk %d"
           % (bank_cov["spill_ok"], bank_cov["window_spill"],
              bank_cov["spill_owner"], bank_cov["proto_unk"]))
+    print("  cluster vectors: %d (families %d, %d operand pairs "
+          "crosschecked), sha256 %s"
+          % (len(cem.lines), len(cem.families), cem.n_pairs_checked,
+             report["cluster_vectors"]["sha256"][:16]))
+    print("  window x offset crossproduct: " + "; ".join(
+        "%s={%s}" % (k.replace("window_", ""), ",".join(map(str, v)))
+        for k, v in bank_xprod.items()))
+    print("  ghost disposition (V20-3 1(iii)): DT-04(h)/DT-05(l) 모두 "
+          "계약 재배정 — bank_scenarios_contract.md §10 / report "
+          "gate_v20_3_carryover")
 
 
 if __name__ == "__main__":

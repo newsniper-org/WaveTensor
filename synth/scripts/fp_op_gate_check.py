@@ -95,6 +95,54 @@ GATES = [
         "fmax_hard": False,
         "premap_mul_log": "fp_acclattice_premap_mul.log",
     },
+    {
+        # GATE V20-3 (spec §27.6 "④ GATE V20-3 기준 선공표" block,
+        # 2026-08-17) — v2.0 TRAIN full-cluster datapath. As with V20-2 the
+        # xcu55c half is the gate's ONLY merge-blocker binding; the ECP5
+        # half is a feasibility MEASUREMENT and can never constitute gate
+        # FAIL. Every number below is the pre-announced block transcribed
+        # VERBATIM (announced BEFORE any integrated RTL was measured —
+        # "기준을 움직여서 통과하는 경로는 없다"):
+        #   (a) LUT sites hard ceiling 35,377 = measured anchors 33,874
+        #       (lattice 19,298 + bank 8,368 + lane 776 x 8) + unmeasured
+        #       glue worst 900 x 1.67 = 1,503 (§23.10.10(g) factor);
+        #   (b) DSP48 EXACTLY 8 — 1 per lane x 8 lanes, lattice 0 / bank 0
+        #       measured; any deviation = no merge + attribution first
+        #       (§26.6 MULT-deviation investigation method);
+        #   (c) premap $mul EXACTLY 8 (delta +8) — §26.6 pin form;
+        #   (d) BRAM 0;  (e) DRC errors 0 (warnings listed, never "clean").
+        # Fmax/WNS at the 10 ns harness clock are RECORDED only:
+        # congestion-drift below the component minimum (lattice 143.10 MHz
+        # routed) is a realized failure mode on this project (§26.6 V9-4)
+        # and is recorded + attributed, not FAILED.
+        # NOTE the integrated top adopts the lane's wide-product FRONT-END
+        # tap (FP_TrainLaneTap — no per-lane FP_AddWide back-end), while
+        # the LUT anchor uses the measured WHOLE lane (776): the ceiling is
+        # an upper bound and the measurement is expected to land BELOW the
+        # anchor sum — that fact is part of the gate record (§27.6 ④
+        # "lane 형상 주기" clause).
+        "tag": "fp_traincluster",
+        "label": "GATE V20-3/US",
+        "desc": "v2.0 TRAIN full-cluster datapath (spec §27.6 ④ — FMA "
+                "lane tap x8 + lattice N=8 + bank + beat-dispatch skeleton "
+                "+ FILL/DRAIN/ZERO cmd path) — xcu55c half = the ONLY "
+                "merge-blocker binding of GATE V20-3",
+        "max_dsp48": 8,
+        "dsp_exact": True,
+        "dsp_note": "one 11x11 significand multiply per lane tap x 8 "
+                    "lanes; lattice 0 / bank 0 measured (§27.6 ④)",
+        "max_lut_sites": 35377,
+        "lut_note": "hard ceiling = anchors 33,874 (19,298 lattice + "
+                    "8,368 bank + 776x8 lane) + glue 900 x 1.67 "
+                    "(spec §27.6 ④, §23.10.10(g) method)",
+        "fmax_hard": False,
+        "fmax_note": "MEASUREMENT — §27.6 ④ record axis; integration Fmax "
+                     "below the component minimum is recorded + "
+                     "attributed (§26.6 V9-4 congestion precedent), "
+                     "never a FAIL",
+        "premap_mul_log": "fp_traincluster_premap_mul.log",
+        "premap_mul_expect": 8,
+    },
 ]
 
 
@@ -102,18 +150,36 @@ def parse_premap_mul(fname):
     """Count premap $mul operator cells in an archived yosys stat log
     (§26.6 pin form: read_verilog + hierarchy + proc + opt_clean, stat).
     Missing log is a hard error — the premap evidence is part of the gate,
-    not an optional nicety."""
+    not an optional nicety.
+
+    Format notes (measured against this repo's logs, not assumed):
+      * yosys 0.64 (/usr/bin/yosys) prints stat rows COUNT-first
+        ("        8   $mul"); older releases printed NAME-first
+        ("     $mul     8"). Both are matched.
+      * a multi-module design (fp_traincluster) prints per-module "Local
+        Count" sections followed by a "=== design hierarchy ===" section
+        whose counts are accumulated PER INSTANCE — the honest total
+        (8 tap instances x 1 $mul = 8, not the 1 of the FP_TrainLaneTap
+        module definition, and never the double-counted 1+8=9 of a
+        whole-file sum). When that section exists ONLY it is counted;
+        single-module logs (fp_acclattice) have no such section and are
+        summed whole."""
     p = RPT_DIR / fname
     if not p.exists():
         sys.exit(f"{p}: missing — regenerate with\n"
-                 "  yosys -p 'read_verilog -I include FP_AccLattice.v; "
-                 "hierarchy -top FP_AccLattice; proc; opt_clean; stat' "
+                 "  yosys -p 'read_verilog -I include <sources...>; "
+                 "hierarchy -top <core-top>; proc; opt_clean; stat' "
                  f"> {p}")
     text = p.read_text()
     if "Printing statistics" not in text:
         sys.exit(f"{p}: not a yosys stat log (no statistics section)")
-    return sum(int(m.group(1)) for m in
-               re.finditer(r"^\s+\$mul\s+(\d+)\s*$", text, re.M))
+    hier = text.find("=== design hierarchy ===")
+    if hier >= 0:
+        text = text[hier:]
+    return (sum(int(m.group(1)) for m in                 # NAME-first form
+                re.finditer(r"^\s+\$mul\s+(\d+)\s*$", text, re.M))
+            + sum(int(m.group(1)) for m in               # COUNT-first form
+                  re.finditer(r"^\s+(\d+)\s+\$mul\s*$", text, re.M)))
 
 
 def parse_summary(tag):
@@ -206,10 +272,15 @@ def main():
         mul_count = (parse_premap_mul(g["premap_mul_log"])
                      if "premap_mul_log" in g else None)
 
+        # dsp_exact / premap_mul_expect: "정확히 N" binding (GATE V20-3 —
+        # deviation in EITHER direction fails; a smaller count means the
+        # mapper split or merged a multiply the pin says must exist as-is).
+        mul_expect = g.get("premap_mul_expect", 0)
         ok_fmax = (fmax >= FMAX_TARGET) if fmax_hard else True
-        ok_dsp = dsp <= g["max_dsp48"]
+        ok_dsp = ((dsp == g["max_dsp48"]) if g.get("dsp_exact")
+                  else dsp <= g["max_dsp48"])
         ok_lut = (top["total_luts"] <= lut_limit) if lut_limit else True
-        ok_mul = (mul_count == 0) if mul_count is not None else True
+        ok_mul = (mul_count == mul_expect) if mul_count is not None else True
         ok_bram = bram == 0
         ok_hold = whs >= 0.0
         ok_drc = not drc_errors
@@ -223,9 +294,12 @@ def main():
                          f"{FMAX_TARGET} MHz — spec risk 2)"
                          f"   -> {'PASS' if ok_fmax else 'FAIL'}")
         else:
+            fmax_note = g.get("fmax_note",
+                              "MEASUREMENT — §27.6 resolve-in-1-cycle "
+                              "context")
             fmax_line = (f"    Fmax       = {fmax:8.2f} MHz  "
                          f"(WNS {wns:+.3f} ns @ {s['period_ns']} ns; "
-                         f"MEASUREMENT — §27.6 resolve-in-1-cycle context; "
+                         f"{fmax_note}; "
                          f">= {FMAX_TARGET} MHz: "
                          f"{'yes' if fmax >= FMAX_TARGET else 'NO'}; "
                          f"binding verdict rides on LUT/DSP/premap-$mul "
@@ -244,11 +318,14 @@ def main():
                f"(HARD ceiling {lut_limit} — {g['lut_note']})"
                f"   -> {'PASS' if ok_lut else 'FAIL'}"]
               if lut_limit else []),
-            f"    DSP48      = {dsp:5d}      (limit {g['max_dsp48']} — "
-            f"{g['dsp_note']})"
+            f"    DSP48      = {dsp:5d}      "
+            f"({'EXACTLY' if g.get('dsp_exact') else 'limit'} "
+            f"{g['max_dsp48']} — {g['dsp_note']})"
             f"   -> {'PASS' if ok_dsp else 'FAIL'}",
-            *([f"    premap $mul= {mul_count:5d}      (limit 0 — §26.6 pin "
-               f"form; evidence: {g['premap_mul_log']})"
+            *([f"    premap $mul= {mul_count:5d}      "
+               f"({'EXACTLY' if 'premap_mul_expect' in g else 'limit'} "
+               f"{mul_expect} — §26.6 pin form; "
+               f"evidence: {g['premap_mul_log']})"
                f"   -> {'PASS' if ok_mul else 'FAIL'}"]
               if mul_count is not None else []),
             f"    BRAM       = {bram:5d}      (limit 0)"

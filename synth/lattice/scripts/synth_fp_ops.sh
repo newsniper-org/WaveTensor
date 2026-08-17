@@ -277,5 +277,22 @@ if [ -n "$WANT" ] && want fp_acclattice_beat2; then
         "synth/lattice/fp_ops/FP_AccLatticeBeat2.v synth/lattice/fp_ops/FP_AccLatticeBeat2_gate_top.v"
 fi
 
+# --- GATE V20-3 ECP5 half — MEASUREMENT, NOT a gate (spec §27.6 "④ GATE
+# V20-3 기준 선공표" 블록) -------------------------------------------------
+# The v2.0 TRAIN full-cluster datapath (FP_TrainCluster: FMA lane wide-
+# product tap x8 + FP_AccLattice N=8 + FP_AccBank + beat dispatch skeleton
+# + FILL/DRAIN/ZERO cmd path). Same regime as the V20-2 measurements above:
+# the merge-blocker binding of GATE V20-3 sits entirely on the xcu55c half;
+# whatever this run measures — including "PnR did not complete", which the
+# §27.6 block PRE-RECORDS as the realistic outcome (placed COMB projection
+# 69-76% + glue vs the v1.9b routing-saturation precedent at 39.6%) — is a
+# recorded MEASUREMENT, never a gate FAIL. The discriminating pin here is
+# premap $mul == 8 (tap당 정확히 1 x 8 lanes; lattice 0 / bank 0);
+# MULT18X18D is a record axis (yosys share discretion allowed — §26.6).
+if [ -n "$WANT" ] && want fp_traincluster; then
+    run_meas fp_traincluster FP_TrainCluster_gate_top \
+        "FP_TrainCluster.v FP_AccLattice.v FP_AccBank.v synth/lattice/fp_ops/FP_TrainCluster_gate_top.v"
+fi
+
 # --- Evaluate the gate criteria from the measured reports -----------------
 python3 synth/lattice/fp_ops/gate_check.py "$RPT"

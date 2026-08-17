@@ -1,0 +1,21 @@
+
+8. Printing statistics.
+
+=== FP_TrainCluster_gate_top ===
+
+        +----------Local Count, excluding submodules.
+        | 
+    24859 wires
+   111156 wire bits
+    24859 public wires
+   111156 public wire bits
+       37 ports
+      433 port bits
+    55434 cells
+       11   $scopeinfo
+     1037   CCU2C
+    42972   LUT4
+        8   MULT18X18D
+     2551   PFUMX
+     8855   TRELLIS_FF
+

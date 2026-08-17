@@ -139,8 +139,8 @@ writeback/commit 이 명령보다 선행한 뒤의 값이다.
 | `gap_same_slot` | 3 | 3 | 231 | gap-후 재시작 (같은 slot): delta = 7+gap, gap 1/3/17 — back-to-back 밖 커버리지 폐쇄 |
 | `gap_cross_slot` | 4 | 3 | 240 | gap-후 재시작 (타 slot): delta = II+gap = 4+gap, gap 1/3/17 — II 중첩 합법성 |
 | `window_touch_drain` | 5 | 4 | 178 | DRAIN 창 접촉: offset 1/3/7 fault (7 = 창 마지막 cycle), offset 8 합법 (직후) |
-| `window_touch_zero` | 6 | 4 | 315 | ZERO 창 접촉: offset 1/3/7 fault, offset 8 합법 + zero 후 carry=+0 재시작 |
-| `window_touch_fill` | 7 | 4 | 311 | FILL 창 접촉: offset 1/3/7 fault, drain 후 재-FILL 합법 (acquire-by-fill) |
+| `window_touch_zero` | 6 | 5 | 394 | ZERO 창 접촉: offset 1/3/7 fault, offset 8 합법 + zero 후 carry=+0 재시작 (+④ append: offset 4 — 교차곱 폐쇄) |
+| `window_touch_fill` | 7 | 5 | 398 | FILL 창 접촉: offset 1/3/7 fault, drain 후 재-FILL 합법 (acquire-by-fill) (+④ append: offset 6 — 교차곱 폐쇄) |
 | `window_prelude` | 8 | 2 | 89 | 창 직전 접촉 합법 — commit/FILL/ZERO 가 wave start 직전 cycle 에 완료 |
 | `fill_validation` | 9 | 1 | 63 | FILL validation (i)/(ii) — NaN/±Inf/정밀도 초과/subnormal 하한 밖 -> sticky, 상태 무변경 |
 | `fill_canonicalize` | 10 | 1 | 45 | FILL validation (iii) — fp64 -0 수용 + canonical +0 화, 후속 carry 는 +0 |
@@ -151,13 +151,13 @@ writeback/commit 이 명령보다 선행한 뒤의 값이다.
 | `ownership_fill_busy` | 15 | 1 | 46 | 외래 FILL 접촉 (live bank) — fill_bankfree 거부 (FillFaultBusy) |
 | `ownership_sram_scrub` | 16 | 1 | 80 | drain 후 SRAM 잔존 + 재-acquire 의 commit_zero scrub — stale 값 미주입 증명 |
 | `ownership_fill_reacquire` | 17 | 1 | 82 | drain release 후 타 stream 의 acquire-by-fill — TLA+ Fill 대응 |
-| `spill_window` | 19 | 3 | 264 | 창 내 SPILL 거부 — offset 1/3/7 fault (PROTO_GUARD), offset 8 수용 대조 병치; 거부는 word 불변, 수용 spill 값 = 직전 writeback |
+| `spill_window` | 19 | 7 | 616 | 창 내 SPILL 거부 — offset 1/3/7 fault (PROTO_GUARD), offset 8 수용 대조 병치; 거부는 word 불변, 수용 spill 값 = 직전 writeback (+④ append: offset 2/4/5/6 — 교차곱 폐쇄) |
 | `spill_owner` | 20 | 2 | 96 | 비-owner SPILL 거부 (외래 owner / 무소유) — PROTO_GUARD, incumbent word/owner 완전 불변 |
 | `spill_accept` | 21 | 1 | 49 | 수용 SPILL 대조 — spill 값 = slot word, release + word 잔존, 재-acquire scrub 로 미유출 |
 | `proto_unk` | 22 | 2 | 94 | 미정의 opcode 6/7 — PROTO_GUARD sticky, 상태 무변경, 응답 없음 (loud-fault-never-silent) |
 | `rand_interleave` | 18 | 300 | 36360 | 랜덤 인터리브 (고정 seed) — 전 명령/거부/fault 클래스 혼합, coverage 하한은 report |
 
-총 **343 시나리오, 39360 records** (주석 3줄 제외). directed family 는 전부
+총 **349 시나리오, 39878 records** (주석 3줄 제외). directed family 는 전부
 실행기 산출과 별개의 손계산 고정점 assert 를 통과했다 (생성기 내
 `gen_bank_scenarios`).
 
@@ -165,20 +165,20 @@ writeback/commit 이 명령보다 선행한 뒤의 값이다.
 
 | class | count |
 |---|---|
-| `wave_ok` | 369 |
+| `wave_ok` | 381 |
 | `chain_delta7` | 23 |
 | `chain_delta8` | 14 |
-| `fdz_after_window` | 71 |
-| `drain_ok` | 153 |
-| `zero_ok` | 76 |
-| `fill_ok` | 404 |
-| `spill_ok` | 4 |
+| `fdz_after_window` | 83 |
+| `drain_ok` | 160 |
+| `zero_ok` | 77 |
+| `fill_ok` | 414 |
+| `spill_ok` | 8 |
 | `window_chain` | 89 |
 | `acc_owner` | 526 |
-| `window_fill` | 29 |
+| `window_fill` | 30 |
 | `window_drain` | 30 |
-| `window_zero` | 23 |
-| `window_spill` | 3 |
+| `window_zero` | 24 |
+| `window_spill` | 7 |
 | `fill_busy` | 249 |
 | `drain_owner` | 165 |
 | `zero_owner` | 93 |
@@ -193,3 +193,62 @@ writeback/commit 이 명령보다 선행한 뒤의 값이다.
 
 고정 seed `bank_rand_interleave = 0x1A77E21` 외 난수원/timestamp 없음 —
 재실행 byte-identical (sha256 은 `lattice_golden_report.json`).
+
+## 10. ④ GATE V20-3 이월 기록 (2026-08-17 — golden 반쪽; §27.6 ④ 검증 의무 1)
+
+**(ii) per-op x offset 교차곱 폐쇄**: directed append (window_fill
+offset 6 / window_zero offset 4 / window_spill offset {2,4,5,6} —
+family 표의 "+④ append" 표기; 기존 343 시나리오 record 스트림 뒤에
+붙여 기존 스트림 byte-identical 유지) 로 창-거부 4 클래스 x offset
+1..7 **전수**가 성립하고, 생성기 `bank_window_crossproduct` 가 전수를
+assert 한다 (seed 이동으로 조용히 좁아지는 것을 막는 가드). 집계:
+
+| 창-거부 class | 실측 offset 집합 |
+|---|---|
+| `window_fill` | 1, 2, 3, 4, 5, 6, 7 |
+| `window_drain` | 1, 2, 3, 4, 5, 6, 7 |
+| `window_zero` | 1, 2, 3, 4, 5, 6, 7 |
+| `window_spill` | 1, 2, 3, 4, 5, 6, 7 |
+| `window_chain` | 4, 5, 6 |
+
+(창 offset 0 — start 와 같은 cycle 의 같은 slot 접촉 — 은 시나리오
+형식상 표현 불가 (§2 형식 규율) 로 불변이며, ④ 통합 TB 의 직접 구동
+몫이다 — §27.6 ④ 검증 의무 1(i).)
+
+**(iii) TLC ghost 2건 처분 (검증 의무 1(iii) — RTL 실물화 vs 계약
+재배정 양자택일의 판정. 본 절이 그 판정 기록이고, gate log 전사는 ④
+merge COMMIT 몫이다)**:
+
+1. **DT-04 (h) K 완결 캐리어 — 판정: 계약 재배정 ("hw 강제 불가"
+   명시; RTL 실물화 아님)**. 근거: 캐리어 실물화는 tag / 0x70-block
+   인코딩에 "K 중 i번째 / last 마커" 를 신설하는 **ISA-레벨 편집**인데,
+   ④ 는 datapath 구조 합성 gate 로서 TRAIN ISA 결선을 명시 제외한다
+   (§27.6 ④ 제외 (ii)) — ④ 범위 안에 실물화 경로가 없다. 재배정 형식:
+   `Drain` 의 `issued == K` 전제를 §23.6a SDK 계약 1 (dec_* bus 에
+   fragment 수 부재 — proofs/tla README §8 (h) 가 "동일 노출면" 으로
+   특정한 그 항) 과 같은 급의 **SDK 계약으로 명시 등재**하고,
+   `Inv_Complete` 는 "가정 모양" 지위를 유지한다 — V20-3 블록이 사전
+   합법화한 종결 형식 (kickoff TP-3 의 INV_Complete 요구 형식).
+2. **DT-05 (l) spill image owner-tag 캐리어 — 판정: 계약 재배정
+   (`fill_owner` 의 SDK 계약 강등 + 명시; RTL 실물화 아님)**. 근거:
+   하드웨어 대조는 spill image 포맷의 owner-토큰 규범화를 전제한다 —
+   §27.2.2 SPILL image 는 순수 fp64 데이터 8 fragment 라 토큰 수납은
+   포맷 규범 편집 (또는 metadata fragment 신설 — FRAG_MAX 16 중 8
+   사용이라 공간 자체는 있다) 을 요구하고, 그 규범화는 spec COMMIT +
+   0x7D TRAIN ISA 결선의 몫이지 ④ 의 "FILL/DRAIN/ZERO 는 bank cmd
+   인터페이스 레벨 결선" scope 가 아니다. **정직 기록**: 이 재배정은
+   §23.6a contract-1 급 노출면을 **하나 더** 만든다 (README §8 (l) 의
+   그 경고 그대로) — 따라서 0x7D spill image 포맷 규범화 시점에
+   owner-토큰 필드 신설을 **재심사 의무**로 이월한다 (본 판정은 ④
+   시점의 scope 판정이지 영구 포기가 아니다).
+3. **TB 반쪽 요구사항 (판정의 이행 명세 — ④ 통합 TB 저작자 대상)**:
+   (a) 두 전제는 ③ 방식 그대로 **TB scoreboard ghost 대조**로 유지한다
+   — `issued == K` 는 TB 스케줄이 보장하고 (K 미만 조기 drain 시나리오
+   는 fault 를 기대하지 말 것 — hw 는 검사하지 않는다), 외래 spill
+   image FILL 은 scoreboard 가 image 출처를 추적해 대조하되 **RTL 이
+   잡는다고 주장하지 않는다** (hw 가 이 두 검사를 하지 않는다는 사실
+   자체가 본 판정이다); (b) hw-실재 guard 군 (window / acc_owner /
+   drain_owner / zero_owner / fill_bankfree / spill_owner / commit_zero
+   / PROTO_GUARD) 과 혼동 금지 — 변이 반증 (④ 검증 의무 3) 은 hw-실재
+   guard 에만 적용한다; (c) gate log 에 본 §10 판정 2건을 전사한다
+   (merge-blocker 의무의 일부).

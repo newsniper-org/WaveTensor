@@ -132,6 +132,23 @@ MEASUREMENTS = [
      "desc": "spec 27.6 ECP5 target shape: 2 products/beat x 16 beats "
              "(+1 carry-in beat) + 9-cycle serial resolve",
      "wrapper_ff": 819},    # 129 in + 690 out gate-top I/O flops
+    # GATE V20-3 ECP5 half (spec §27.6 "④ GATE V20-3 기준 선공표", dated
+    # 2026-08-17): the v2.0 TRAIN full-cluster datapath — lane wide-product
+    # tap x8 + FP_AccLattice N=8 + FP_AccBank + beat dispatch skeleton +
+    # FILL/DRAIN/ZERO cmd path. MEASUREMENT only — the pre-announcement
+    # records "PnR did not complete" as a realistic, pre-declared branch.
+    # Discriminating pin: premap $mul == 8 (exactly 1 per lane tap x 8;
+    # lattice 0 / bank 0 measured); MULT18X18D is a record axis (yosys
+    # share discretion allowed — the §26.6 MULT-variance precedent).
+    {"name": "fp_traincluster", "label": "MEAS V20-3/ECP5 full-cluster",
+     "desc": "v2.0 TRAIN full-cluster datapath (spec 27.6 ④): lane tap x8 "
+             "+ lattice N=8 + bank + dispatch skeleton + FILL/DRAIN/ZERO; "
+             "xcu55c half carries the merge-blocker binding, this half is "
+             "measurement-only and 'did not complete' is a pre-declared "
+             "outcome",
+     "wrapper_ff": 432,     # 140 in + 292 out gate-top I/O flops
+     "premap_pin": 8,       # the §27.6 판별 pin — lane tap x8
+     "mult_axis": "record axis — yosys share discretion allowed (§26.6)"},
 ]
 
 
@@ -233,10 +250,14 @@ def main():
                       if premap_rpt.exists() else None)
         pnr_rpt = rpt_dir / f"{name}_pnr.rpt"
         fmax = parse_fmax(pnr_rpt) if pnr_rpt.exists() else None
+        premap_pin = m.get("premap_pin", 0)
+        pin_txt = (f"pin expects {premap_pin} — exactly 1 per lane tap"
+                   if premap_pin else "pin expects 0 — adder/compressor only")
         mul_line = ("    premap $mul= " + (
-            f"{premap_mul:5d}   (pin expects 0 — adder/compressor only)"
+            f"{premap_mul:5d}   ({pin_txt})"
             if premap_mul is not None else
             "  n/a   (no premap report archived)"))
+        mult_txt = m.get("mult_axis", "pin expects 0")
         if fmax is None:
             pnr_lines = [
                 "    PnR        = DID NOT COMPLETE — that outcome is the "
@@ -254,7 +275,7 @@ def main():
             f"    [{m['desc']}]",
             f"    LUT4       = {lut4:5d}   (85F budget 83,640 — utilization "
             f"{lut4 / 83640 * 100:.1f}%; no ceiling declared, spec 27.6)",
-            f"    MULT18X18D = {mult:5d}   (pin expects 0)",
+            f"    MULT18X18D = {mult:5d}   ({mult_txt})",
             mul_line,
             f"    TRELLIS_FF = {ff:5d}   raw; unit = {ff - m['wrapper_ff']} "
             f"after -{m['wrapper_ff']} wrapper I/O flops (informational)",

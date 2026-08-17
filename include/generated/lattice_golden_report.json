@@ -509,6 +509,207 @@
   "path": "include/generated/lattice_vec_contract.md",
   "sha256": "3732b01c22f4c210e7bb044a815b45dbd35e996495403e463cc8ff24b2a2a539"
  },
+ "cluster_vectors": {
+  "_doc": "④ GATE V20-3 (2026-08-17): cluster operand-level 벡터 — bf16/f16 operand 쌍 32개/wave 에서 lane 곱 전단 raw 형식 (§27.2.1) 을 거쳐 wave_step 4층 기대값까지. operand 는 신규 생성 (기존 lattice 벡터 역-인수분해 아님, CLUSTER_SEEDS 분리). 계약: include/generated/cluster_vec_contract.md.",
+  "path": "include/generated/cluster_wave_vectors.hex",
+  "n_vectors": 1234,
+  "bits_per_line": 3856,
+  "hex_chars_per_line": 964,
+  "families": [
+   {
+    "family": "c_raw_unnorm",
+    "doc": "1.0x1.0 등 2^k 곱 — raw 형식의 1-bit un-normalized (sig = 2^46) 경로 directed: normalize 를 곱 지점에 잘못 넣은 RTL 은 EXP_ADDEND 층에서 갈라진다",
+    "start": 0,
+    "count": 1
+   },
+   {
+    "family": "c_rne48_discriminator",
+    "doc": "operand-레벨 x = 2^48+2^24+1 — store 반올림 모드 판별 (§27.2.1; drain 0x57800001, RNE-48 오구현 RTL 은 0x57800000)",
+    "start": 1,
+    "count": 1
+   },
+   {
+    "family": "c_tie_q25_killer",
+    "doc": "operand-레벨 x = 1+2^-24+2^-60 — 추출 폭 q<26 적발 (정답 0x3F800001)",
+    "start": 2,
+    "count": 1
+   },
+   {
+    "family": "c_sticky_band",
+    "doc": "2^53 + 2^(53-d), d in {48,63,64,95,127} — lattice sticky_window_band 의 operand-레벨 재현 (전 80 위치는 lattice 벡터가 커버; 여기는 전 경로 통과 확인 subset)",
+    "start": 3,
+    "count": 5
+   },
+   {
+    "family": "c_bf16_daz_killer",
+    "doc": "bf16 subnormal operand -> SIGNED ZERO flush (lane 정책 — §23.10.5 pin 6): subnormal 쌍은 곱 canonical zero. DAZ 를 빠뜨린 RTL 은 EXP_ADDEND/합 양층에서 갈라진다 (최대 subnormal 0x007F 포함)",
+    "start": 8,
+    "count": 2
+   },
+   {
+    "family": "c_f16_subnormal",
+    "doc": "f16 subnormal EXACT 존중 (lane S1 normalize — 비대칭은 §23.10.5 pin): 최소 subnormal 제곱 2^-48 (lattice 하단), subnormal x normal, 홀수 m10 dust",
+    "start": 10,
+    "count": 3
+   },
+   {
+    "family": "c_boundary",
+    "doc": "경계 directed — 최대 곱 x32 (drain ±Inf), f16 최대 곱 x32, bf16 최소 normal 곱 (lattice bit 0, 홀수 significand)",
+    "start": 13,
+    "count": 5
+   },
+   {
+    "family": "c_bf16_rand",
+    "doc": "전 지수역 임의 bf16 operand 쌍 32개 + 임의 carry — ±0/DAZ-subnormal 산재 (8%)",
+    "start": 18,
+    "count": 400
+   },
+   {
+    "family": "c_f16_rand",
+    "doc": "임의 f16 쌍 (subnormal operand ~20% 혼입 — EXACT 존중 경로) + 임의 carry",
+    "start": 418,
+    "count": 250
+   },
+   {
+    "family": "c_cancel",
+    "doc": "operand-레벨 상쇄 (a,b) + (-a,b) + 아래 binade dust — park/cancel 계열",
+    "start": 668,
+    "count": 150
+   },
+   {
+    "family": "c_sparse",
+    "doc": "nonzero 쌍 0..32개 — zero-쌍 슬롯 처리",
+    "start": 818,
+    "count": 100
+   },
+   {
+    "family": "c_chain_bf16",
+    "doc": "K=1024 chain x4 (32 wave/chain, 이전 wave 의 EXP_WIDE == 다음 wave 의 ADDEND[32]) — bf16, factor exp [-10,10]",
+    "start": 918,
+    "count": 128
+   },
+   {
+    "family": "c_chain_mixed",
+    "doc": "bf16/f16 교대 chain x2 — dtype 이 wave 마다 바뀌어도 carry 체이닝의 수학 계약은 불변 (exact 합)",
+    "start": 1046,
+    "count": 64
+   },
+   {
+    "family": "c_chain_parkcancel",
+    "doc": "cross-wave park-plus-cancel chain x2 — 이전 wave 곱의 operand 부호 반전 재주입으로 상쇄 (F1/F4 계열의 operand-레벨 확장)",
+    "start": 1110,
+    "count": 64
+   },
+   {
+    "family": "c_daz_rand",
+    "doc": "DAZ/±0 고밀도 임의 wave — 쌍의 절반가량이 zero-곱 (bf16 subnormal/±0), 나머지 정상 — flush 대량 혼류",
+    "start": 1174,
+    "count": 60
+   }
+  ],
+  "seeds": {
+   "cl_bf16_rand": 27754033,
+   "cl_f16_rand": 27754034,
+   "cl_cancel": 27754035,
+   "cl_sparse": 27754036,
+   "cl_chain_bf16": 27754037,
+   "cl_chain_mixed": 27754038,
+   "cl_chain_parkcancel": 27754039,
+   "cl_daz_rand": 27754040
+  },
+  "pair_fraction_crosscheck": {
+   "pairs_checked": 39488,
+   "mismatches": 0,
+   "note": "전 쌍: raw 형식 구성 (normalize+multiply) vs operand 필드 직독 Fraction 곱의 값-일치 — lane_product_addend 내장 assert"
+  },
+  "f16_subnormal_raw_form": "확정 운반 (FP_FmaLaneBf16.v S1 normalize — lattice 계약 §7 의 미결 항 해소; cluster 계약 §3)",
+  "self_verify": {
+   "lines": 1234,
+   "mismatches": 0,
+   "verdict": "PASS"
+  },
+  "sha256": "900cadc10d122bb166d656b27897869cd247b19d6c027138a60bb897428a97ef",
+  "contract": {
+   "path": "include/generated/cluster_vec_contract.md",
+   "sha256": "a9d360a846ac91e098bc6f888c2a25525b0460ff0368cf386ed55c6c55ffb157"
+  }
+ },
+ "gate_v20_3_carryover": {
+  "_doc": "§27.6 ④ 검증 의무 1 — ③ 이월 3건의 golden-반쪽 처분 기록 (gate log 전사는 ④ merge COMMIT 몫).",
+  "i_window_offset0": "시나리오 형식상 표현 불가 불변 — ④ 통합 TB 직접 구동 몫 (bank 계약 §2/§10)",
+  "ii_crossproduct": {
+   "added_directed": {
+    "window_fill_offsets": [
+     6
+    ],
+    "window_zero_offsets": [
+     4
+    ],
+    "window_spill_offsets": [
+     2,
+     4,
+     5,
+     6
+    ]
+   },
+   "appended_after_existing_343": true,
+   "window_offsets_measured": {
+    "window_fill": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "window_drain": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "window_zero": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "window_spill": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "window_chain": [
+     4,
+     5,
+     6
+    ]
+   },
+   "exhaustive_1_to_7_asserted": true
+  },
+  "iii_ghost_disposition": {
+   "DT-04_h_K_carrier": {
+    "disposition": "계약 재배정 — 'hw 강제 불가' 명시 (RTL 실물화 아님)",
+    "rationale": "캐리어는 tag/0x70-block ISA-레벨 편집 요구 — ④ 제외 (ii) 로 범위 밖; §23.6a SDK 계약 1 동일 노출면으로 명시 등재, Inv_Complete 는 '가정 모양' 유지 — V20-3 블록 사전 합법화 형식 (kickoff TP-3)"
+   },
+   "DT-05_l_spill_owner_tag": {
+    "disposition": "계약 재배정 — fill_owner 의 SDK 계약 강등 + 명시 (RTL 실물화 아님)",
+    "rationale": "hw 대조는 spill image 포맷 owner-토큰 규범화 (spec COMMIT + 0x7D ISA 결선 몫) 전제 — ④ scope 밖; §23.6a contract-1 급 노출면 +1 정직 기록, 0x7D 포맷 규범화 시점 재심사 의무로 이월"
+   },
+   "tb_requirements": "bank_scenarios_contract.md §10 항 3 — scoreboard ghost 대조 유지 / hw-실재 guard 와 혼동 금지 (변이 반증은 hw-실재 guard 만) / gate log 전사"
+  }
+ },
  "bank_reference": {
   "_doc": "wide ACC bank 상태기계 reference + 통합 TB 시나리오 (§27.6 하류 ③ 검증 계획 (c), 2026-08-16 확장). 형식/의미 계약: include/generated/bank_scenarios_contract.md; 실행기: bank_execute.",
   "constants": {
@@ -525,8 +726,8 @@
   },
   "scenario_file": {
    "path": "include/generated/bank_scenarios.hex",
-   "n_scenarios": 343,
-   "n_records": 39360,
+   "n_scenarios": 349,
+   "n_records": 39878,
    "families": [
     {
      "family": "chain_boundary",
@@ -566,16 +767,16 @@
     {
      "family": "window_touch_zero",
      "code": 6,
-     "scenarios": 4,
-     "records": 315,
-     "doc": "ZERO 창 접촉: offset 1/3/7 fault, offset 8 합법 + zero 후 carry=+0 재시작"
+     "scenarios": 5,
+     "records": 394,
+     "doc": "ZERO 창 접촉: offset 1/3/7 fault, offset 8 합법 + zero 후 carry=+0 재시작 (+④ append: offset 4 — 교차곱 폐쇄)"
     },
     {
      "family": "window_touch_fill",
      "code": 7,
-     "scenarios": 4,
-     "records": 311,
-     "doc": "FILL 창 접촉: offset 1/3/7 fault, drain 후 재-FILL 합법 (acquire-by-fill)"
+     "scenarios": 5,
+     "records": 398,
+     "doc": "FILL 창 접촉: offset 1/3/7 fault, drain 후 재-FILL 합법 (acquire-by-fill) (+④ append: offset 6 — 교차곱 폐쇄)"
     },
     {
      "family": "window_prelude",
@@ -650,9 +851,9 @@
     {
      "family": "spill_window",
      "code": 19,
-     "scenarios": 3,
-     "records": 264,
-     "doc": "창 내 SPILL 거부 — offset 1/3/7 fault (PROTO_GUARD), offset 8 수용 대조 병치; 거부는 word 불변, 수용 spill 값 = 직전 writeback"
+     "scenarios": 7,
+     "records": 616,
+     "doc": "창 내 SPILL 거부 — offset 1/3/7 fault (PROTO_GUARD), offset 8 수용 대조 병치; 거부는 word 불변, 수용 spill 값 = 직전 writeback (+④ append: offset 2/4/5/6 — 교차곱 폐쇄)"
     },
     {
      "family": "spill_owner",
@@ -683,27 +884,27 @@
      "doc": "랜덤 인터리브 (고정 seed) — 전 명령/거부/fault 클래스 혼합, coverage 하한은 report"
     }
    ],
-   "sha256": "80f7a2d32aeefe3ebe9ba7848a7ecd4dadc387405acc468ed7bd0149e9a8316e"
+   "sha256": "f8248f6219873754533f853ceb66e1d7208164ce9aaa5031b81cb16da274ccd5"
   },
   "contract": {
    "path": "include/generated/bank_scenarios_contract.md",
-   "sha256": "f1867b22d044f74430496d02203668131902b3c33b4dd72f67424a48e5562cad"
+   "sha256": "945716742bd97a5f3162dada17e38ec06b4cd96f2b189a24c8eba89745537e0d"
   },
   "coverage": {
-   "wave_ok": 369,
+   "wave_ok": 381,
    "chain_delta7": 23,
    "chain_delta8": 14,
-   "fdz_after_window": 71,
-   "drain_ok": 153,
-   "zero_ok": 76,
-   "fill_ok": 404,
-   "spill_ok": 4,
+   "fdz_after_window": 83,
+   "drain_ok": 160,
+   "zero_ok": 77,
+   "fill_ok": 414,
+   "spill_ok": 8,
    "window_chain": 89,
    "acc_owner": 526,
-   "window_fill": 29,
+   "window_fill": 30,
    "window_drain": 30,
-   "window_zero": 23,
-   "window_spill": 3,
+   "window_zero": 24,
+   "window_spill": 7,
    "fill_busy": 249,
    "drain_owner": 165,
    "zero_owner": 93,
@@ -714,8 +915,51 @@
    "carry_precision_e": 4,
    "proto_unk": 3
   },
+  "window_offset_crossproduct": {
+   "window_fill": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+   ],
+   "window_drain": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+   ],
+   "window_zero": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+   ],
+   "window_spill": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+   ],
+   "window_chain": [
+    4,
+    5,
+    6
+   ]
+  },
   "self_verify": {
-   "scenarios": 343,
+   "scenarios": 349,
    "mismatches": 0,
    "note": "파일 재독 -> record 파싱 -> 명령 재구성 -> 실행기 재실행 -> 인코딩된 기대 전 필드 재대조",
    "verdict": "PASS"
@@ -735,6 +979,8 @@
   "canonical_zero_on_exact_zero": true,
   "segment_2_of_9_never_exceeded": true,
   "pin1_open_interval_enforced": true,
-  "bank_scenarios_self_verified": true
+  "bank_scenarios_self_verified": true,
+  "cluster_vectors_self_verified": true,
+  "window_offset_crossproduct_exhaustive": true
  }
 }

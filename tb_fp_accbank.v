@@ -33,7 +33,11 @@
 //     무주 판정은 JSON 그대로다.
 //
 // PHASE B — golden 시나리오 전량 (include/generated/bank_scenarios.hex,
-//   343 시나리오 = directed 43 + rand_interleave 300; §27.6 (b)/(c)):
+//   349 시나리오 = directed 49 + rand_interleave 300; §27.6 (b)/(c) + ④
+//   GATE V20-3 교차곱 append 6건 — bank_scenarios_contract.md §10 (ii):
+//   window_fill offset 6 / window_zero offset 4 / window_spill offset
+//   {2,4,5,6} 이 기존 343 스트림 뒤에 붙어 창-거부 4 클래스 x offset 1..7
+//   전수가 성립한다; 아래 family 계수 가드가 append 소실을 loud 하게 잡는다):
 //   record 계약 (bank_scenarios_contract.md §6) 대로 파싱해 재생하고
 //   전 관측층을 bit-exact 판정한다:
 //     * 명령별 refused/vfault (resp_*_q @ t+1, REQ 는 acq_*_q @ t+2;
@@ -97,8 +101,8 @@ module tb_fp_accbank;
     localparam integer NB      = 32 / TB_N;  // = II = 4
     localparam integer LATENCY = NB + 3;     // = 7
 
-    localparam integer N_SCEN_GOLD = 343;    // bank_scenarios.hex 시나리오 수
-    localparam integer N_REC_GOLD  = 39360;  // 총 record 수 (계약 §7)
+    localparam integer N_SCEN_GOLD = 349;    // bank_scenarios.hex 시나리오 수
+    localparam integer N_REC_GOLD  = 39878;  // 총 record 수 (계약 §7)
     localparam integer N_SCEN_TLC  = 14;     // DT-01..08 + WT-01..06
 
     localparam [63:0] CANON  = 64'h0400_0000_0000_0000;  // wide canonical zero
@@ -1073,7 +1077,7 @@ module tb_fp_accbank;
     // main
     // =========================================================================
     integer did, scen, i0;
-    reg gap_ok, spillfam_ok;
+    reg gap_ok, spillfam_ok, xprod_ok;
 
     initial begin
         $readmemh("include/generated/bank_scenarios.hex", bmem);
@@ -1100,7 +1104,7 @@ module tb_fp_accbank;
         for (did = 1; did <= N_SCEN_TLC; did = did + 1)
             run_directed(did);
 
-        // ---- PHASE B: golden 시나리오 335 ----
+        // ---- PHASE B: golden 시나리오 349 (④ 교차곱 append 포함) ----
         bp = 0;
         for (scen = 0; scen < N_SCEN_GOLD; scen = scen + 1)
             run_golden;
@@ -1120,13 +1124,25 @@ module tb_fp_accbank;
 
         // ---- SPILL/UNK guard family (적대 재실측 폐쇄의 non-vacuity —
         //      이 family 들이 소실되면 spill_ref/cmd_unk 절단 변이가 다시
-        //      escape 한다) ----
-        spillfam_ok = (fam_cnt[19] == 3) && (fam_cnt[20] == 2)
+        //      escape 한다). spill_window 는 ④ 교차곱 append 후 7 (offset
+        //      1..7 전수 — 계약 §10 (ii)) ----
+        spillfam_ok = (fam_cnt[19] == 7) && (fam_cnt[20] == 2)
                    && (fam_cnt[21] == 1) && (fam_cnt[22] == 2);
         if (!spillfam_ok) begin
             errors = errors + 1;
             $display("FAIL: SPILL/UNK guard family 소실 (win=%0d own=%0d acc=%0d unk=%0d)",
                      fam_cnt[19], fam_cnt[20], fam_cnt[21], fam_cnt[22]);
+        end
+
+        // ---- ④ 교차곱 append non-vacuity (계약 §10 (ii): window_fill
+        //      offset 6 / window_zero offset 4 append 후 family 계수 5/5 —
+        //      seed 이동·append 소실로 교차곱 전수가 조용히 좁아지는 것을
+        //      TB 레벨에서도 잡는다 (생성기 assert 의 재생 측 반쪽) ----
+        xprod_ok = (fam_cnt[6] == 5) && (fam_cnt[7] == 5);
+        if (!xprod_ok) begin
+            errors = errors + 1;
+            $display("FAIL: 교차곱 append family 소실 (zero=%0d fill=%0d, 기대 5/5)",
+                     fam_cnt[6], fam_cnt[7]);
         end
 
         // ---- 최종 판정 ----
@@ -1138,8 +1154,10 @@ module tb_fp_accbank;
         $display("golden random  : %0d/%0d", rand_pass, rand_total);
         $display("gap 재시작 family: same-slot %0d / cross-slot %0d (기대 3/3)",
                  fam_cnt[3], fam_cnt[4]);
-        $display("SPILL/UNK guard family: window %0d / owner %0d / accept %0d / unk %0d (기대 3/2/1/2)",
+        $display("SPILL/UNK guard family: window %0d / owner %0d / accept %0d / unk %0d (기대 7/2/1/2)",
                  fam_cnt[19], fam_cnt[20], fam_cnt[21], fam_cnt[22]);
+        $display("교차곱 append family: zero %0d / fill %0d (기대 5/5)",
+                 fam_cnt[6], fam_cnt[7]);
         $display("disc_hits (ownership-절단 오답 모델 적발): %0d", disc_hits);
         if (errors == 0 && disc_hits > 0 && p2_ok != 0
             && tlc_pass == N_SCEN_TLC

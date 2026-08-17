@@ -56,3 +56,34 @@ GATE V20-2/US — fp_acclattice: v2.0 528-bit exact-integer lattice unit (spec �
       u_core         FP_AccLattice    LUT 19298  FF  2993  DSP   0
     GATE V20-2/US RESULT: PASS
 
+GATE V20-3/US — fp_traincluster: v2.0 TRAIN full-cluster datapath (spec §27.6 ④ — FMA lane tap x8 + lattice N=8 + bank + beat-dispatch skeleton + FILL/DRAIN/ZERO cmd path) — xcu55c half = the ONLY merge-blocker binding of GATE V20-3
+    device     = xcu55c-fsvh2892-2L-e  (Vivado out-of-context, synth + opt + place + phys_opt + route)
+    constraint = 10.0 ns (100.00 MHz)
+
+    Fmax       =   121.62 MHz  (WNS +1.778 ns @ 10.0 ns; MEASUREMENT — §27.6 ④ record axis; integration Fmax below the component minimum is recorded + attributed (§26.6 V9-4 congestion precedent), never a FAIL; >= 100.0 MHz: yes; binding verdict rides on LUT/DSP/premap-$mul only)   -> RECORDED
+    LUT sites  = 26863      (HARD ceiling 35377 — hard ceiling = anchors 33,874 (19,298 lattice + 8,368 bank + 776x8 lane) + glue 900 x 1.67 (spec §27.6 ④, §23.10.10(g) method))   -> PASS
+    DSP48      =     8      (EXACTLY 8 — one 11x11 significand multiply per lane tap x 8 lanes; lattice 0 / bank 0 measured (§27.6 ④))   -> PASS
+    premap $mul=     8      (EXACTLY 8 — §26.6 pin form; evidence: fp_traincluster_premap_mul.log)   -> PASS
+    BRAM       =     0      (limit 0)   -> PASS
+    WHS        =   +0.042 ns (hold, limit >= 0)   -> PASS
+    DRC        = 0 errors, 2 warnings (limit: 0 errors; warnings are listed, NOT 'clean')   -> PASS
+                 DPOP-4 (Warning x8): MREG Output pipelining — DSP multiplier not pipelined (MREG=0) — enabling MREG in a later pipeline rebalance is an unclaimed free Fmax upside
+                 RTSTAT-10 (Warning x1): No routable loads — OOC top-level output nets have no routable loads — structural to out-of-context runs
+
+    LUT sites  = 26863      (see HARD line above; 26856 logic + 7 SRL; raw LUT cells 31744 before LUT-combining)
+    FF         =  8478      (informational; incl. the gate-top wrapper I/O flops)
+    CARRY8     =   238      (informational)
+      u_core         FP_TrainCluster  LUT 26863  FF  8051  DSP   8
+      (u_core)       FP_TrainCluster  LUT   565  FF  1070  DSP   0
+      g_lane[0].u_tap FP_TrainLaneTap__1 LUT   193  FF    30  DSP   1
+      g_lane[1].u_tap FP_TrainLaneTap__2 LUT   194  FF    30  DSP   1
+      g_lane[2].u_tap FP_TrainLaneTap__3 LUT   194  FF    30  DSP   1
+      g_lane[3].u_tap FP_TrainLaneTap__4 LUT   194  FF    30  DSP   1
+      g_lane[4].u_tap FP_TrainLaneTap__5 LUT   194  FF    30  DSP   1
+      g_lane[5].u_tap FP_TrainLaneTap__6 LUT   193  FF    28  DSP   1
+      g_lane[6].u_tap FP_TrainLaneTap__7 LUT   194  FF    30  DSP   1
+      g_lane[7].u_tap FP_TrainLaneTap  LUT   194  FF    30  DSP   1
+      u_bank         FP_AccBank       LUT  7839  FF  4804  DSP   0
+      u_lattice      FP_AccLattice    LUT 16912  FF  1939  DSP   0
+    GATE V20-3/US RESULT: PASS
+

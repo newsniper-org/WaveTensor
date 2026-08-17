@@ -1,0 +1,16 @@
+{
+  "tag": "fp_traincluster",
+  "top": "FP_TrainCluster_gate_top",
+  "part": "xcu55c-fsvh2892-2L-e",
+  "period_ns": 10.000,
+  "lut_cells": 31744,
+  "ff": 8478,
+  "dsp48": 8,
+  "dsp_split_cells": 64,
+  "carry": 238,
+  "bram": 0,
+  "srl": 7,
+  "wns_ns": 1.778,
+  "whs_ns": 0.042,
+  "fmax_mhz": 121.62
+}

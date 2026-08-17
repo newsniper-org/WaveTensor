@@ -144,6 +144,12 @@ FP_OP_SRCS_fp_fmalane_bf16 := FP_FmaLaneBf16.v,FP_AddWide.v,synth/lattice/fp_ops
 FP_OP_TOP_fp_acclattice  := FP_AccLattice_gate_top
 FP_OP_SRCS_fp_acclattice := FP_AccLattice.v,synth/lattice/fp_ops/FP_AccLattice_gate_top.v
 
+# GATE V20-3 — v2.0 TRAIN full-cluster datapath (spec §27.6 ④ 선공표 블록;
+# xcu55c 반쪽이 유일한 merge-blocker binding, ECP5 반쪽은 MEASUREMENT):
+#   make synth-fp-op FP_OP=fp_traincluster PART=xcu55c-fsvh2892-2L-e
+FP_OP_TOP_fp_traincluster  := FP_TrainCluster_gate_top
+FP_OP_SRCS_fp_traincluster := FP_TrainCluster.v,FP_AccLattice.v,FP_AccBank.v,synth/lattice/fp_ops/FP_TrainCluster_gate_top.v
+
 .PHONY: synth-fp-op fp-op-report
 
 synth-fp-op:
