@@ -3240,6 +3240,8 @@ glue nominal 성분 (전부 ESTIMATE — ceiling 에는 nominal 상단 900 의 1
 
 #### 27.7a.1 값 계약 (semantics — normative)
 
+> **[2026-08-17 부분 supersede — §27.7a.2b amendment-9]** 아래 **operand 계약** 항의 ingress 형 ("`dec_input_payload_wide[1023:0]` 에 정확 수납 ... launch cycle 에 MU-local capture", 대체 = 2-dispatch fallback) 은 3a-C3 RTL 착지에서 **제3형 (기존 {b_in, a_in} 위 16-cycle 64b/cycle 스트리밍, 단일 dispatch, MU-local 버퍼)** 으로 실현됐다. 본 항이 요구한 §12a 재개정은 **§27.7a.2b amendment-9** 가 이행한다 (C4 의무 포함). 값 계약·operand 총량·frag 배치·dtype 2행은 무변경이다.
+
 - **FDOT32_CR (0x7A)**: 32-term narrow dot 의 correctly-rounded fp32 — **r == `pack_signed(exact Σ a_i·b_i)`** = 단일 unbounded RNE_24 정확히 1회 + flush-after-round FTZ + overflow → ±Inf (RNE 규칙) + exact-cancellation → +0 — PACK_FINAL 과 동일 의미론. **값 계약의 규범 원천 = `scripts/acc_format_study.py` 의 exact reference** (`run_variants` 의 true (B) = `pack_signed(exact)`; exact-(m,e) 기계 `add_me`/`rne_me` — rounding core 는 `golden_fp32` 에서 import): FDOT32_CR 의 정의는 이 reference 와의 **bit-동일성** 이다.
 - **operand 계약**: dtype 은 wave dtype 을 직접 명명한다 (conversion-dtype 규칙 비적용 — dot 의 narrow operand 그 자체). §23.6a 표 추가 행은 **정확히 2행**: (0x7A, dtype 0x2 f16, acc 1, rnd 0) / (0x7A, dtype 0x3 bf16, acc 1, rnd 0) — 그 외 전 조합 ILLEGAL (restrictive-first). EH shape = **port-only** (forbid_imm_any + forbid_opref — 0x78 선례). operand 총량 1,024 bit = **A||B 연접 16-fragment 단일 wave** (frag 0-7 = A 의 32×16b, frag 8-15 = B 의 32×16b) — `dec_input_payload_wide[1023:0]` 에 정확 수납, **FRAG_MAX=16 정확 소진** (frag_mask_full fix 계보의 소비자 — emit 측은 0x70 VFMA_ACC 16-frag (§25.1, 0e2 출하) 와 §27.2.2 SPILL 8-frag 이 선행; FDOT32_CR 은 **16-fragment input-wave 재조립 경로의 첫 소비자**다). launch cycle 에 MU-local capture (0x74 idiom — EHDecode 는 cluster-shared, ~9k cycle 프로그램 동안 버퍼 보존 불가). 결선 COMMIT 에서 이 형태가 실현 불가로 판명되면 fallback = 2-dispatch 형 (A-wave + B-wave, 0x70 interlock 선례) — 채택 시 본 항의 §12a 재개정 동반 의무.
 - **결과**: fp32 scalar, 표준 MU 결과 반환 (1 fragment). bank 무접촉 — FDOT32_CR 은 ACC bank 상태·ownership 에 일절 개입하지 않는다 (audit 경로는 MU 에 폐쇄; 회귀 격리 §27.7a.4 의 구조 근거).
@@ -3357,6 +3359,63 @@ expansion 최대 25 component (용량 33), 삽입 pass 최대 77 (≤ 528), fold
 
 선공표 (a) 는 "전 벡터에서 §27.7a.1 의 exact reference 와 bit-equal **assert**" 를 요구한다. 초안 생성기는 mismatch 를 카운터/JSON verdict 로만 떨어뜨리고 항상 exit 0 이었다 — 벡터 수록분 (가족당 앞 30행) **밖**에서 나는 실패는 종료 코드에 물린 gate 배선을 통과해버린다. 정정: 생성기는 반례를 **report 에 먼저 기록한 뒤** (은닉 금지) 비영 종료한다. 종료 실패 조건은 값 계약 / fold 정리 / invariant mismatch, jam 마진 < 25, freeze 위반, invariant 전수 미이행, invariant 축 검출력 실증 실패, **그리고 폐기 ASC pin 의 반증 근거 소실** (annex 가 더 이상 REFUTED 를 보이지 않으면 spec 인용이 붕괴하므로 hard fail) 이다.
 
+#### 27.7a.2b [AMENDMENT 2026-08-17, 3a-C3 RTL 실측] step 프로그램 착지에서 확정된 3건 — ingress 제3형 · component 기하 · freeze 앵커
+
+**본 절은 §12a 규칙 5 하의 amendment 다** (§27.7a.1 / §27.7a.2a 원문 무수정 보존). 근거 artifact: `FP_StepSeq.v` OPS_FDOTCR sub-sequencer + `synth/lattice/fp_ops/tb_fp_stepseq.py` (33 suite, 고정 seed). 셋 다 **RTL 착지 세션에서 발견된 사실**이며, 그중 두 번째는 초안이 검사를 약화시킨 사건이라 은폐 없이 기록한다.
+
+##### amendment-9 — §27.7a.1 operand ingress: **제3형 (16-cycle 64b streaming) 채택**, 재개정 의무 이행
+
+**원 문언**: "`dec_input_payload_wide[1023:0]` 에 정확 수납, FRAG_MAX=16 정확 소진 ... **launch cycle 에 MU-local capture**", 실현 불가 시 유일 대체 = "fallback = 2-dispatch 형 (A-wave + B-wave) — 채택 시 본 항의 **§12a 재개정 동반 의무**".
+
+**채택 형 (신규 pin, 3a-C3 한정)**: 1,024-bit A||B wave 는 **기존 포트 {b_in, a_in} 위로 16 cycle 에 걸쳐 64b/cycle 스트리밍**된다 (fragment 0 = launch edge, 1..15 = 이어지는 15 cycle). 버퍼는 §27.7a.1 이 요구한 대로 **MU-local** (`fd_asr`/`fd_bsr`, EHDecode 무접촉) 이고 dispatch 는 여전히 **1회**다 — 즉 fallback (2-dispatch) 이 **아니다**. 사유: 1,024-bit 신규 포트를 지금 추가하면 PE_Core 의 기존 instantiation 이 미결선 포트를 갖게 되어 PE_Core 포함 전 suite 가 verilator elaboration 에서 죽는다 (그 결선은 3a-C4 몫 — §27.7a.4 착지 순서). 원 문언도 fallback 도 아닌 제3형이므로 **본 항이 그 재개정 의무를 이행한다** (문언 성격 변경을 사실 그대로 기록 — §12a 규칙 5).
+
+**C4 의무 (명시 pin)**: (i) C4 는 이 스트리밍 형을 유지하거나 wide 포트로 대체할 수 있다 — **산술 sub-sequencer 는 ingress 와 독립**이라 값 축 증명 (450 벡터 + 3,000 확장 trial + 변이 사살) 은 그대로 이식된다; (ii) 그러나 **launch/busy/latency 계약은 재증명 대상**이다 (unit TB 의 프로토콜 assert 는 이 임시 형 위에 서 있다); (iii) 어느 쪽을 택하든 C4 는 그 결정을 본 항에 **재개정으로 기록**한다.
+
+##### amendment-10 — STEP I 의 component 기하: 근사 비겹침 판정이 **금지 pin 을 검사 불능으로 만들었다** (초안 결함, 정정 완료)
+
+**사실 기록 (은폐 없음)**: 3a-C3 초안 RTL 은 component 를 정규화 저장 `{sign, xe[11:0], mag[23:0]}` 으로 두고 (mag[23]==1, 값 = mag·2^(xe−23)), 비겹침 판정을 **`xe_b − xe_a >= 24`** 로 근사했다. 이 근사는 golden 의 `comp_top(a) <= e_b` 보다 **엄격**하다 (mag_b 의 trailing zero 수만큼). 결과:
+
+- 열이 뭉친다 — RTL 자신의 `fd_xp` 를 STEP F 진입 시점에 읽어 계측한 최대 열 길이가 golden 벡터 322 행에서 **17** 이다 (golden report `expansion_capacity.max_observed_components` = **25**). 같은 하네스로 잰 정정 후 값은 **25** — golden 과 일치한다.
+- 그 표현형에서는 §27.7a.2a 가 부정 근거로 삼은 **상단 인접 상쇄**가 구조적으로 불가능해져, **금지 pin 인 ASC fold 가 값 계약을 위반하는 사건 자체가 도달 불가**가 된다. 실측: ASC 변이 RTL (fold 방향만 뒤집은 사본) 이 **31 suite 전건 PASS** — 450 벡터·3,000 확장 trial 이 한 건도 잡지 못했다. 즉 초안은 "금지 pin 을 지켰음" 을 실증한 것이 아니라 **검사할 수 없게** 만들어 놓은 것이었다 (§27.7a.2a 가 `vec_contract` §4 와 함께 재발 경로로 못박은 바로 그 축의 무력화).
+
+**정정 (신규 pin)**: 정규화 저장은 golden 의 기하 두 축을 **복원해서** 쓴다 — `e = xe − 23 + tz(mag)`, `top = xe + 1` (tz 는 24-bit trailing-zero cascade, 고정 shift 만). 이로써 비겹침 판정은 golden `grow_insert` 의 `comp_top(a) <= b[1]` 과, 정렬 키는 golden `_insort` 의 `(e, top)` 과 **근사 없이 일치**한다. (golden 의 m 은 trailing zero 를 남길 수 있어 그 e 는 '선언된 scale' 이고 RTL 의 e 는 '실제 최저 set bit' 이다 — 후자 >= 전자이므로 RTL 판정이 golden 보다 **느슨해지지 않는다**. amendment-1 정리의 전건 (비겹침·오름차순) 은 실제 bit 구간 기준으로 성립하며 telescoping 상한 `|c_i| <= 2^top − 2^e` 도 그 축에서 더 타이트하다. golden-disjoint 쌍은 항상 RTL-disjoint 이고 그 역은 아니므로 RTL 열은 golden 열과 같거나 **더 잘다**.)
+
+**정정 후 실측 (전부 고정 seed, 재실행 동일)**:
+
+| 축 | 초안 (근사) | 정정 후 | golden 참조 |
+|---|---|---|---|
+| 최대 열 길이 (golden 벡터 322행, RTL 의 `fd_xp` 직접 계측) | 17 | **25** | 25 (`expansion_capacity`) |
+| merge 정렬합 폭 | 모델 미러 max 47 | 모델 미러 max **48** (== 강제 경계) — RTL 측 근거는 신설 loud fault 가 3,450 trial 에서 **0 회 발화**한 사실이다 | 47 (경계 48) |
+| ASC 가 값 계약을 깨는 벡터 행 (RTL 열 기준) | **0** / 311 | **2** / 311 (열 비지 않은 finite 행) | — |
+| ASC 가 값 계약을 깨는 신규 trial (eft_top_cancel, TB 생성) | **0** / 120 | **3** / 120 ≈ 2.5% | 4.0% (`asc_detection_rate_by_family.eft_top_cancel` value_violations 120/3,000) |
+| ASC 변이 판정 | **전건 생존** | **사살** (33 suite 중 4 FAIL) | — |
+
+즉 정정 후 RTL 의 열 통계는 golden 과 같은 급이 되었고, 금지 pin 은 다시 **반증 가능**해졌다. 값 축은 정정 전후 모두 bit-동일하다 (모든 merge 가 exact 이므로 열의 분해가 달라도 exact 합이 같다 — amendment-1 정리의 일반형).
+
+**검사의 구조도 정정한다 (약화 금지의 이행)**: unit TB 의 `fdotcr_descending_fold_discriminator` 는 golden 모델 안에서 ASC≠계약 을 보이는 자기주장형이었다 (RTL 의 fold 방향과 무관 — 구조적으로 공허). 정정본은 **RTL 자신의 열** (`fd_xp[0..fd_n−1]`, STEP F 진입 시점) 을 읽어 ① STEP I invariant (엄격 오름차순·비겹침·열의 exact 합이 값 계약으로 pack) 를 RTL 열에 대해 재확인하고 ② 그 열을 내림차순 fold 하면 RTL 산출과 일치, ③ 같은 열을 오름차순 fold 하면 값 계약과 **불일치하는 행 수**를 센다. 그 수가 0 이면 "금지 pin 이 이 RTL 에 대해 반증 불가" 이므로 **hard fail** 이다 (golden 생성기 amendment-8 의 "ASC 반증 근거 소실 = hard fail" 과 같은 지위).
+
+##### amendment-11 — freeze 축의 **jam 앵커** 정정 + STEP T vacuous-RTO 의 loud fault 신설
+
+**(a) freeze 앵커.** §27.7a.2a 는 freeze 를 "정보를 나르는 유일한 축" 으로 pin 했다. 초안 RTL 은 `acc 불변인 pass 를 먼저 관측한 뒤` 감시를 시작했는데, 이는 golden `fold_descending` (RTO 산출 vs pre-RTO exact 비교로 **첫 실질 jam 위치 자체**를 잡고 그 이후의 변화를 즉시 fault) 보다 **단방향으로 약하다**: jam 직후 **첫 번째** pass 에서 정리 (4) 가 붕괴하면 감시가 한 번도 열리지 않아 100% 놓친다 ("acc 불변 ⇒ jam 이후" 만 참이고 필요한 역방향은 미검출). 정정: pass 의 inexact 여부를 기하로 직접 판정한다 —
+
+> pass 가 inexact ⇔ **exact 합의 최저 set bit < 결과 48-bit 창 바닥 (wide_exp − 47)**.
+> 비겹침 열에서 exact 합의 최저 set bit == 그 pass 에 들어온 component 의 최저 set bit 이다 (acc 의 bit 구간이 그보다 위 — 하단 상쇄가 구조적으로 불가능; jam 이후에도 남은 component 는 전부 grid p 아래라 등식 유지). ⇒ golden 과 **같은 pass 에서** 참이 된다 (과·미검출 없음).
+
+`fd_acc_same` 는 그 특수형이므로 OR 로 존치한다 (이중 안전망). **검사는 두 축을 분리해 친다 (각 probe 가 무엇을 증명하는지 명기)**: (α) *경로* — 벡터를 자연스럽게 jam 시킨 뒤 **감시 창이 열린 직후 첫 pass** 에서만 acc 를 흔들어 (AddWide 가 피연산자를 이미 표집한 뒤라 pass 산출은 정직하고 저장 acc 만 움직인다) loud fault 가 서는 것을 실증한다; 이 probe 는 **앵커 위치를 증명하지 않는다** (늦은 앵커는 늦게 무장하고 여기서 똑같이 fault 를 낸다). (β) *앵커 위치* — 아래 실측이 그 축이며, 초안 앵커로 되돌린 변이를 죽이는 것도 이쪽이다. **실측**: golden 벡터 finite 322 행 중 **167 행이 실제로 jam** 하고, 그중 마지막 pass 가 아닌 **128 행 전부에서 RTL 의 fd_jam 이 golden 이 계산한 바로 그 pass 에 섰다** (unit TB `fdotcr_freeze_axis_jam_anchored` — RTL 자신의 열로 golden 원시함수를 돌려 대조). 초안 앵커로 되돌린 변이는 이 suite 에 **사살**된다.
+
+**(b) STEP T vacuous-RTO.** golden 은 겹침 merge 의 정렬합 폭이 48 을 넘으면 `vacuous-RTO violated` 를 던지는데 (amendment-2 의 강제 경계), 초안 RTL 에는 그 대응 검사가 **없었다** — merge 가 실제로 반올림하면 exact-합 보존이 조용히 깨진다. 정정: 같은 기하 판정 (`min(e_a, e_b) < wide_exp − 47`) 으로 loud fault (qNaN + sticky) 를 낸다. 정상 열에서는 도달 불가이지만 ("도달 불가" 주장으로 검사를 대체하지 않는다 — §27.7a.2 문언) TB 가 directed poke 로 경로 존재를 실증한다.
+
+##### amendment-12 — 3a-C3 검증 실측 기록 (선공표 변경 없음)
+
+- **전 벡터**: `include/generated/fdotcr_vectors.hex` **450 행 전량 bit-exact** (finite 322 / special 128), special 행은 qNaN + sticky 대조까지. 확장 sweep **3,000 trial** 은 EFT 무의존 Fraction oracle 대조 (자기확인 루프 차단).
+- **re-proof**: pre-3a 25 suite **byte-unchanged 재실행** (§25.1 item 9 / §27.7a.4) — 총 **33 suite PASS / 0 FAIL**.
+- **cycle 실측**: GLOBAL worst **1,167 cycle** (hard 상한 10,000 대비 8.6× 여유; 가족별 worst = eft_bf16_wide 1167 / eft_f16_all 947 / eft_same 649 / eft_pack_edge 663 / eft_ladder 506 / eft_cancel_chain 357 / eft_tie 216 / eft_adv_residue 235 / eft_top_cancel 211 / eft_cancel 144, special wave 17). 정정으로 열이 잘아졌음에도 worst 는 **1,616 → 1,167 로 감소**했다 (merge pass 1회 = 4 + 재삽입 cycle 이 fold pass 1회 = 4 보다 비싸다 — 근사 판정이 만들던 불필요한 merge 가 사라진 결과).
+- **변이 사살 (mutation battery, 14종 전건 KILLED)**: ASC fold 반전 / freeze fault 삭제 / freeze 앵커를 초안형으로 후퇴 / 용량 guard 2종 각각 삭제 / PACK_FINAL→WIDE / TwoSum 잔차 lo 폐기 / 비겹침 근사 복귀 (2형) / 정렬 키 xe 단일 복귀 / vacuous-RTO guard 삭제 / launch 의 busy 조건 삭제 / jam 창 off-by-one / 비겹침 판정 off-by-one. 용량 guard 2종은 **서로를 가려주고 있었으므로** (어느 하나를 지워도 다른 하나가 fault 를 내서 값 검사만으로는 통과) 각 probe 가 **fault 를 낸 상태 (FDS_PROD / FDS_NEXT)** 까지 pin 하도록 TB 를 강화한 뒤에야 둘 다 사살됐다.
+- **busy-interlock / 중첩 dispatch 거부** (§27.7a.1, 선공표 §27.7a.5 의 미검증 절반): 진행 중 start 재인가를 4 지점 × {타 opcode, 동일 0x7A} = 8 회 + FS_DIV 진행 중 0x7A start 1 회 실측 — 전부 **bit-for-bit 무시** (결과·cycle 수 동일, sticky/fault 0). `fd_launch` 의 IDLE 조건을 지운 변이는 동일-opcode 중첩 케이스에 사살된다 (타 opcode 중첩만으로는 fd_launch 에 닿지 않아 생존했다 — 이 사실도 기록한다).
+- **loud fault probe 5종** (전부 qNaN + sticky, 값 반환 없음): 용량 배열 guard (FDS_PROD) / 용량 assert (FDS_NEXT) / freeze 위반 (앵커 강제 주입) / STEP T vacuous-RTO / **감시 창 개방 직후 첫 pass 의 붕괴** (자연 jam 후 acc 만 교란). 각 probe 는 fault 를 **어느 상태에서** 냈는지까지 assert 한다.
+- **양 시뮬레이터 교차**: verilator 5.048 과 iverilog 12 에서 **33 suite 전건 PASS**, 로그 수치 완전 동일 (최대 열 25 / teeth 2+3 / jam 167·앵커 128 / interlock clean 116 cycle / GLOBAL worst 1,167). 신규 whitebox 축 (배열 `fd_xp` 읽기·쓰기 poke) 이 두 시뮬레이터에서 같게 동작함도 이로써 확인된다.
+- **선공표 무변경**: GATE V20-4 수치 (LUT delta ≤ 2,200 / premap `$mul` delta 0 / DSP·BRAM delta 0 / cycle ≤ 10,000) 는 변경하지 않는다. 신규 로직은 24-bit trailing-zero cascade 4개 + 13-bit 비교기 몇 개 + fault 분기 1개로, §27.7a.5 의 "compare/split glue 200-300" 항 안에 든다 (실측은 C4 의 gate 몫).
+
 #### 27.7a.3 invariant 계약 — on-silicon dual-datapath 자기검증
 
 - **정리 (§27.2.3 의 합성)**: 옵션 3 하에서 **single-wave 즉시-drain** — canonical-zero slot (0x7E 선행 또는 리셋 상태) 에 wave 정확히 1개 (carry-in = canonical zero → exact 33-항 합 == 32-항 합), IF-2/IF-3 준수 하에 개입 접촉 없이 DRAIN — 의 결과 r_main = PACK_FINAL(RTO_48(exact)) == RNE_24(exact) (§27.2.1 추출 정리). FDOT32_CR 의 r_audit == RNE_24(exact) (§27.7a.1 값 계약). ∴ **r_main == r_audit BIT-EXACT** — 양쪽이 같은 PACK_FINAL 의미론이라 FTZ/overflow/+0 경계까지 동일하다. 재생성 인용 근거 (JSON): `opt3_single_wave_equals_true_B_asserted` 6,000 + `exact_rto48_store_equals_true_B_asserted_trials` 30,000 = **36,000 assert 실패 0**.
@@ -3383,6 +3442,8 @@ expansion 최대 25 component (용량 33), 삽입 pass 최대 77 (≤ 528), fold
 본 절은 §12a 하의 정규 개발 행위다 — spec-before-code COMMIT 0. §27.7 sketch 의 "~9,000 cycles" / "66k+ trials" 는 본 절이 각각 **상한 10,000 선언** / **재생성 졸업 의무** 로 정제하며 원문은 무수정 보존한다 (§12a 규칙 5). `isa/wt64v1_isa.json` (0x7A row — §23.6a 표 전사 2행) · asm · golden · RTL 은 §12a 규칙 3 의 순서대로 3a-C1..C4 에서 뒤따른다 — **본 COMMIT 0 은 spec (본 절) 과 kickoff memo 상태 갱신만 편집한다** (§27.8 의 옵션 3 COMMIT 0 선례와 동일 범위 판정).
 
 **[amendment 2026-08-17 — 3a-C1 golden 실측이 본 COMMIT 0 의 알고리즘 pin 을 부정함]** §27.7a.2 종료 (2) 의 fold 방향과 STEP I 의 walk 독해는 **§27.7a.2a 가 supersede** 한다 (원문 무수정 보존, §12a 규칙 5). 이는 §12a 하의 정규 이벤트다 — pre-stable 에서 spec 개정은 정규 개발 행위이며, C0 이 pin 한 정리의 지위를 §25.4 규율대로 golden 졸업 대상으로 남겨둔 것이 바로 RTL 착지 전에 결함을 잡아낸 이유다. **순서 판정**: 본 개정은 spec (§27.7a.2a) 과 golden (`scripts/golden_fdotcr.py` + 산출물 3종) 만 편집하며, `isa/wt64v1_isa.json` · RTL 은 여전히 3a-C2 이후 몫이다 (§12a 규칙 3 유지 — golden-before-RTL 이므로 C1 이 blocker 였고, 지금 해소됐다). **선공표 (GATE V20-4 / cycle ≤ 10,000) 는 변경하지 않는다** — 근거는 §27.7a.2a amendment-3.
+
+**[amendment 2026-08-17 — 3a-C3 step 프로그램 착지]** RTL 착지에서 확정·정정된 3건은 **§27.7a.2b (amendment-9..12)** 가 기록한다: (i) §27.7a.1 의 ingress 재개정 의무 이행 (제3형 = 16-cycle 64b 스트리밍, 단일 dispatch, MU-local — fallback 아님), (ii) STEP I component 기하의 정정 (근사 비겹침 판정이 §27.7a.2a 의 **금지 pin 을 검사 불능**으로 만들었던 초안 결함 — 은폐 없이 기록하고 golden 판정과 근사 없이 일치시킴), (iii) freeze 축의 jam 앵커 정정 + STEP T vacuous-RTO loud fault 신설. **순서 판정**: 본 개정은 spec (§27.7a.1 supersede 배너 + §27.7a.2b) 과 `FP_StepSeq.v` + unit TB 만 편집한다 — `isa/wt64v1_isa.json` 과 생성물·asm 은 3a-C2 에서 동결됐고 (재편집 없음), golden 3종은 3a-C1 에서 동결됐으며 (재편집 없음), PE_Core/EHDecode 결선과 `decode_reserved` 해제는 여전히 3a-C4 몫이다 (§12a 규칙 3 유지). 공유 datapath 3파일 (`FP_AddWide.v` / `FP_Mul36.v` / `include/fp_narrow_f32.vh`) 은 **byte-untouched** 이며 diff 로 확인된다 (§27.7a.2 / §27.7a.4 의무). **선공표는 변경하지 않는다** — 근거는 §27.7a.2b amendment-12.
 
 ### 27.8 §12a 기록
 

@@ -1199,3 +1199,828 @@ async def cvt_accew_cycle_bounds_recorded(dut):
                   ", ".join(f"sub{k >> 4}dt{k & 0xF}:{v}"
                             for (_, k), v in sorted(worst_cvt.items())),
                   worst_ew)
+
+
+# ===========================================================================
+# v1.8.0e 3a-C3 §27.7a — OPS_FDOTCR (0x7A FDOT32_CR) suites
+# ---------------------------------------------------------------------------
+# Everything from here down is APPENDED: the 25 pre-3a suites above are
+# byte-unchanged, which is the §27.7a.4 / §25.1 item-9 full re-proof
+# evidence (an op_sel touch re-proves ALL existing step programs; the
+# capture-mux subtlety class is §23.10.10(h) item 4 — a shipped op's
+# SILENT WRONG DATA, which is exactly why the old suites must run verbatim
+# rather than "equivalently").
+#
+# Bit-exactness authority: include/generated/fdotcr_vectors.hex (450 golden
+# directed lines, fixed seed, byte-identical re-run) whose RESULT field is
+# ALWAYS the value-contract right-hand side pack_signed(exact Σ a_i·b_i) —
+# never an EFT output (the C1 self-confirmation-loop fix, spec §27.7a.2a
+# amendment-5). Layout contract: include/generated/fdotcr_vec_contract.md.
+#
+# Operand ingress (3a-C3 RTL decision, see the FP_StepSeq header and spec
+# §27.7a.2b which records it as the third form): the 1,024-bit A||B wave
+# enters ONE 64-bit fragment per cycle on {b_in, a_in} over 16 cycles —
+# frag 0 on the launch edge, frags 1..15 on the next 15.
+#
+# WHITEBOX AXIS (3a-C3 repair): the fold-direction ban of §27.7a.2a can
+# only be CHECKED if the RTL's own expansion is fine-grained enough for
+# the direction to matter. That is a property of the RTL, not of the
+# golden model, so the discriminator READS THE RTL's expansion out of
+# fd_xp at STEP F entry and re-folds THAT column both ways with golden
+# primitives. Same for the freeze axis: fd_jam is compared against the
+# first substantive jam of the captured column, so the "watch window
+# opens at the jam" claim is measured, not asserted.
+# ===========================================================================
+import golden_fdotcr as GF  # noqa: E402
+
+OPC_FDOTCR = 0x7A
+FDOT_CAP = 10_000               # §27.7a.2 hard cycle ceiling (gate V20-4)
+FDOT_VEC_PATH = REPO / "include" / "generated" / "fdotcr_vectors.hex"
+F32_QNAN = 0x7FC00000
+
+# FP_StepSeq sub-sequencer state encodings (mirrored for the directed
+# loud-fault probes below — they must poke at a KNOWN phase)
+FDS_PRIME, FDS_LANE, FDS_PROD = 1, 2, 4
+FDS_WALK, FDS_NEXT, FDS_FOLDW = 6, 9, 10
+
+_fdot_worst = {"cycles": 0, "line": -1, "fam": -1}
+
+
+# ---------------------------------------------------------------------------
+# whitebox: the RTL's own expansion / fold trace
+# ---------------------------------------------------------------------------
+def _fd_word_me(word):
+    """fd_xp word {sign, xe[11:0], mag[23:0]} -> golden component (m, e).
+    RTL stores NORMALIZED magnitudes (mag[23] == 1), value ==
+    mag * 2^(xe-23), so the golden pair is (+-mag, xe-23)."""
+    mag = word & 0xFFFFFF
+    xe = (word >> 24) & 0xFFF
+    if xe >= 0x800:
+        xe -= 0x1000
+    return (-mag if (word >> 36) & 1 else mag, xe - 23)
+
+
+def _fd_low(c):
+    """The component's TRUE lowest set bit. golden's (m, e) may keep
+    trailing zeros in m, so its e is a DECLARED scale and its non-overlap
+    test `comp_top(a) <= b[1]` is the conservative form; the RTL stores
+    normalized magnitudes, so its e is the real bit position and its
+    non-overlap test is the exact one (never looser in bit-range terms —
+    a golden-disjoint pair is always RTL-disjoint). The amendment-1
+    theorem's premises are stated on the real bit ranges (the telescoping
+    bound uses |c_i| <= 2^top - 2^e), so this is the form to check."""
+    m, e = c
+    a = abs(m)
+    return e + (a & -a).bit_length() - 1
+
+
+def _col_exact_me(col):
+    m, e = 0, 0
+    for c in col:
+        m, e = GF.STUDY.add_me(m, e, c[0], c[1])
+    return m, e
+
+
+def _fold_me(col, descending):
+    """RTO-48 fold of a captured RTL column with the GOLDEN primitives
+    (no re-implementation): returns ((m, e), first_jam_pass) where the
+    jam index is 0-based in fold order, None when no pass ever jams."""
+    am, ae = 0, 0
+    jam = None
+    order = reversed(col) if descending else col
+    for k, c in enumerate(order):
+        pm, pe = GF.STUDY.add_me(am, ae, c[0], c[1])
+        am, ae = GF.STUDY.rto_me(pm, pe, GF.Q48)
+        if jam is None and not GF.STUDY.veq_me(am, ae, pm, pe):
+            jam = k
+    return (am, ae), jam
+
+
+class _FoldWatch:
+    """Per-cycle observer for launch_fdotcr(poke=...): captures the
+    expansion the RTL hands to STEP F and the per-pass fd_jam trace."""
+
+    def __init__(self, trace_jam=False):
+        self.column = None          # [(m, e), ...] ascending, RTL's own
+        self.trace_jam = trace_jam
+        self._raw = []              # (fd_wait, fd_jam) per FDS_FOLDW cycle
+
+    def __call__(self, d, _cyc):
+        if int(d.fd_st.value) != FDS_FOLDW:
+            return
+        if self.column is None:
+            n = int(d.fd_n.value)
+            self.column = [_fd_word_me(int(d.fd_xp[i].value))
+                           for i in range(n)]
+        if self.trace_jam:
+            self._raw.append((int(d.fd_wait.value), int(d.fd_jam.value)))
+
+    def jam_pass(self):
+        """The 0-based fold pass that first raised fd_jam, as OBSERVED.
+        A pass retires on the cycle where fd_wait == 0 and the register
+        update is visible from the next cycle on, so the first sample
+        carrying fd_jam == 1 dates the raise to the pass that just
+        retired. Returns None when no FDS_FOLDW cycle ever showed it —
+        which also covers 'the jam happened on the very last pass', so
+        callers pair this with the post-run fd_jam level."""
+        passes = 0
+        for wait, jam in self._raw:
+            if jam:
+                return passes - 1
+            if wait == 0:
+                passes += 1
+        return None
+
+
+def _load_fdotcr_vectors():
+    """Read the golden vector file into dicts. Layout (vec_contract §1):
+    META[1087:1056] | OPERANDS[1055:32] | RESULT[31:0], MSB-first hex."""
+    rows = []
+    for idx, ln in enumerate(FDOT_VEC_PATH.read_text().splitlines(), 1):
+        if not ln or ln.startswith("//"):
+            continue
+        assert len(ln) == GF.VEC_HEX, (
+            f"fdotcr_vectors.hex line {idx}: {len(ln)} hex chars, "
+            f"contract says {GF.VEC_HEX}")
+        v = int(ln, 16)
+        bits = v & 0xFFFFFFFF
+        v >>= 32
+        payload = v & ((1 << 1024) - 1)
+        meta = v >> 1024
+        rows.append({
+            "line": idx,
+            "dtype": meta & 0xFF,
+            "special": (meta >> 8) & 1,
+            "n_special": (meta >> 16) & 0xFF,
+            "fam": (meta >> 24) & 0xFF,
+            "payload": payload,
+            "result": bits,
+        })
+    assert rows, "fdotcr_vectors.hex carried no vectors"
+    return rows
+
+
+def _fdot_pairs(payload):
+    """payload -> the 32 (a, b) raw 16-bit operand pairs (vec_contract §3;
+    identical to the golden generator's own reader)."""
+    frags = [(payload >> (64 * f)) & ((1 << 64) - 1) for f in range(16)]
+    a_lanes = GF.frags_to_lanes(frags[:8], 16, GF.GROUP)
+    b_lanes = GF.frags_to_lanes(frags[8:], 16, GF.GROUP)
+    return list(zip(a_lanes, b_lanes))
+
+
+async def launch_fdotcr(dut, dtype, payload, label="", cap=FDOT_CAP,
+                        poke=None):
+    """Launch one 0x7A dispatch back-to-back, stream the 16 operand
+    fragments, enforce the §27.7a.2 hard cycle ceiling + the busy/done
+    protocol, and return (result, cycles).
+
+    `poke(dut, cycle)` (optional) is called after every clock edge so the
+    directed loud-fault probes can inject at a known sub-sequencer phase.
+    """
+    assert int(dut.busy.value) == 0, f"{label}: busy before start"
+    assert int(dut.done.value) == 0, f"{label}: stray done before start"
+    frags = [(payload >> (64 * f)) & ((1 << 64) - 1) for f in range(16)]
+    dut.opcode_in.value = OPC_FDOTCR
+    dut.subop_in.value = 0
+    dut.dtype_in.value = dtype
+    dut.c_in.value = 0
+    dut.a_in.value = frags[0] & 0xFFFFFFFF
+    dut.b_in.value = (frags[0] >> 32) & 0xFFFFFFFF
+    dut.start.value = 1
+    lat = 0
+    result = None
+    while True:
+        await FallingEdge(dut.clk)
+        lat += 1
+        dut.start.value = 0
+        if lat < 16:                    # frags 1..15 on the next 15 cycles
+            dut.a_in.value = frags[lat] & 0xFFFFFFFF
+            dut.b_in.value = (frags[lat] >> 32) & 0xFFFFFFFF
+        assert int(dut.busy.value) == 1, f"{label}: busy dropped mid-op"
+        if int(dut.done.value):
+            result = int(dut.result.value)
+            break
+        assert lat <= cap, (
+            f"{label}: no done within the §27.7a.2 hard ceiling {cap}")
+        if poke is not None:
+            poke(dut, lat)
+    assert lat <= cap, f"{label}: done at {lat} > hard ceiling {cap}"
+    await FallingEdge(dut.clk)
+    assert int(dut.done.value) == 0, f"{label}: done wider than 1 cycle"
+    assert int(dut.busy.value) == 0, f"{label}: busy stuck after done"
+    return result, lat
+
+
+async def check_fdotcr(dut, row):
+    """One golden vector: bit-exact result + the §27.7a.1 (iii) sticky
+    contract (special wave -> canonical qNaN AND the dedicated sticky;
+    finite wave -> no sticky, no loud fault)."""
+    label = f"fdot L{row['line']} fam{row['fam']}"
+    got, lat = await launch_fdotcr(dut, row["dtype"], row["payload"], label)
+    if lat > _fdot_worst["cycles"]:
+        _fdot_worst.update(cycles=lat, line=row["line"], fam=row["fam"])
+    assert got == row["result"], (
+        f"{label}: dtype={row['dtype']:#x} got {got:#010x} expected "
+        f"{row['result']:#010x} (value contract pack_signed(exact))")
+    spec = int(dut.fd_spec.value)
+    fault = int(dut.fd_fault.value)
+    assert fault == 0, f"{label}: loud fault raised on a legal vector"
+    if row["special"]:
+        assert got == F32_QNAN, f"{label}: special wave result not qNaN"
+        assert spec == 1, f"{label}: special wave did not raise the sticky"
+    else:
+        assert spec == 0, f"{label}: sticky raised on a special-free wave"
+    return got, lat
+
+
+@cocotb.test()
+async def fdotcr_golden_vectors(dut):
+    """§27.7a.5 (TB, unit): the FULL golden vector file through the RTL
+    step program, bit-exact against the value contract, with the hard
+    cycle ceiling asserted on every launch and the specials/sticky rows
+    contrasted (vec_contract §5)."""
+    await _start_clock(dut)
+    rows = _load_fdotcr_vectors()
+    per_fam = {}
+    sp_lat = set()
+    for row in rows:
+        _, lat = await check_fdotcr(dut, row)
+        f = per_fam.setdefault(row["fam"], [0, 0])
+        f[0] += 1
+        f[1] = max(f[1], lat)
+        if row["special"]:
+            sp_lat.add(lat)
+    n_sp = sum(r["special"] for r in rows)
+    dut._log.info("fdotcr special-wave latencies (EFT never entered): %s",
+                  sorted(sp_lat))
+    dut._log.info("fdotcr golden vectors: %d lines bit-exact "
+                  "(%d special / %d finite), families %s",
+                  len(rows), n_sp, len(rows) - n_sp,
+                  sorted(per_fam))
+    dut._log.info("fdotcr per-family worst cycles: %s",
+                  ", ".join(f"fam{k}:{v[1]}({v[0]})"
+                            for k, v in sorted(per_fam.items())))
+    dut._log.info("fdotcr worst start->done = %d cycles (hard ceiling %d, "
+                  "line %d family %d) — §27.7a.2 measured, not estimated",
+                  _fdot_worst["cycles"], FDOT_CAP, _fdot_worst["line"],
+                  _fdot_worst["fam"])
+    assert _fdot_worst["cycles"] <= FDOT_CAP
+
+
+@cocotb.test()
+async def fdotcr_descending_fold_discriminator(dut):
+    """POWER PROOF for the §27.7a.2a fold-direction ban, measured on the
+    RTL's OWN expansion (3a-C3 repair — the first version of this suite
+    was structurally vacuous).
+
+    The ban only has teeth if the column the RTL hands to STEP F is
+    fine-grained enough for the fold direction to change the answer.
+    That is a property of the RTL's component geometry (the exact
+    `top(a) <= e_b` non-overlap test), NOT of the golden model, so
+    asserting things about golden expansions proves nothing about the
+    RTL. Here we read fd_xp[0..fd_n-1] at STEP F entry and, per row:
+
+      (i)   re-check the STEP I invariants ON THE RTL COLUMN — strictly
+            ascending, non-overlapping (golden assert (2)), and
+            pack_signed(exact sum of the column) == the value contract
+            (golden assert (3), which the RTL cannot afford in hardware);
+      (ii)  fold that very column DESCENDING with golden primitives and
+            require it to equal what the RTL returned;
+      (iii) fold it ASCENDING (the REFUTED pin) and count the rows where
+            that disagrees with the value contract. Those rows are the
+            teeth: on them an ascending RTL fails fdotcr_golden_vectors.
+
+    Zero such rows == the ban is unfalsifiable == hard fail (the same
+    stance as the golden generator's amendment-8 'ASC 반증 근거 소실'
+    exit). Measured 2026-08-17: 2 of the 311 non-empty finite columns +
+    3 of 120 fresh eft_top_cancel trials, the same order as the golden
+    report's asc_detection_rate_by_family (that family's value-violation
+    rate is 120/3,000 = 4%). Before the geometry repair BOTH counts were
+    ZERO — which is how a coarser non-overlap test hides here."""
+    await _start_clock(dut)
+    rows = [r for r in _load_fdotcr_vectors() if not r["special"]]
+    teeth = []
+    checked = 0
+    widest = (0, -1)                # (components, vector line) — RTL's own
+    for row in rows:
+        watch = _FoldWatch()
+        got, _ = await launch_fdotcr(dut, row["dtype"], row["payload"],
+                                     f"disc L{row['line']}", poke=watch)
+        assert got == row["result"], f"disc L{row['line']}: {got:#010x}"
+        col = watch.column
+        if col is None:                 # every lane zero-contributing
+            continue
+        checked += 1
+        if len(col) > widest[0]:
+            widest = (len(col), row["line"])
+        for i, c in enumerate(col):
+            # golden comp_ok + the RTL's own normalized-storage invariant
+            assert c[0] != 0 and abs(c[0]) < (1 << 24), (
+                f"L{row['line']}: component {i} out of W=24: {c!r}")
+            assert abs(c[0]) >= (1 << 23), (
+                f"L{row['line']}: component {i} is not normalized "
+                f"(mag[23] must be 1): {c!r}")
+            assert -1024 <= c[1] + 23 <= 1023, (
+                f"L{row['line']}: component {i} exponent outside "
+                f"signed-11: {c!r}")
+        for i in range(1, len(col)):
+            assert GF.comp_top(col[i - 1]) <= _fd_low(col[i]), (
+                f"L{row['line']}: RTL column overlaps/unsorted at {i}: "
+                f"{col[i - 1]!r} then {col[i]!r} — STEP I invariant")
+        assert GF.pack_final_me(*_col_exact_me(col)) == row["result"], (
+            f"L{row['line']}: the RTL column's exact sum does not pack to "
+            f"the value contract — STEP I exact-sum preservation broken")
+        (dm, de), _ = _fold_me(col, descending=True)
+        assert GF.pack_final_me(dm, de) == row["result"], (
+            f"L{row['line']}: descending fold of the RTL column != the "
+            f"value contract")
+        (am, ae), _ = _fold_me(col, descending=False)
+        asc_bits = GF.pack_final_me(am, ae)
+        if asc_bits != row["result"]:
+            teeth.append((row["line"], row["fam"], len(col), asc_bits))
+        if row["fam"] == 12:
+            # c1_regress: the GOLDEN-side refutation the spec cites must
+            # also still hold (kept verbatim from the pre-repair suite —
+            # the RTL-side proof above is additional, not a replacement)
+            ref = GF.fdotcr_ref(row["dtype"], _fdot_pairs(row["payload"]))
+            g_asc = GF.pack_final_me(*GF.fold_ascending_refuted(
+                ref["expansion"]))
+            assert g_asc != row["result"], (
+                f"L{row['line']}: the ASC refutation evaporated in the "
+                f"GOLDEN model — the spec §27.7a.2a citation collapses")
+    assert checked > 0
+    # fresh adversarial trials from the family the vector file samples
+    # only 30 lines of (the C1 counterexample mechanism, contract §6)
+    rng = random.Random(0x7ADC3D1)
+    fresh = 0
+    for _ in range(120):
+        dtype, pairs = GF.gen_top_cancel(rng)
+        payload = 0
+        for f, w in enumerate(G.lanes_to_frags([a for a, _ in pairs], 16)
+                              + G.lanes_to_frags([b for _, b in pairs], 16)):
+            payload |= w << (64 * f)
+        exp_bits, exp_sp, _ = GF._independent_expected(dtype, pairs)
+        if exp_sp:
+            continue
+        watch = _FoldWatch()
+        got, _ = await launch_fdotcr(dut, dtype, payload, "disc_fresh",
+                                     poke=watch)
+        assert got == exp_bits, f"disc_fresh: {got:#010x} != {exp_bits:#010x}"
+        if watch.column is None:
+            continue
+        (am, ae), _ = _fold_me(watch.column, descending=False)
+        if GF.pack_final_me(am, ae) != exp_bits:
+            fresh += 1
+    dut._log.info("RTL expansion granularity (its own fd_xp at STEP F): "
+                  "widest column %d components (vector line %d) of the %d "
+                  "slot capacity — golden report max_observed_components "
+                  "is 25, and a coarser non-overlap test shows up HERE "
+                  "first (draft: 17)", widest[0], widest[1], 33)
+    dut._log.info("fold-direction teeth: %d of %d finite vector rows + "
+                  "%d of 120 fresh eft_top_cancel trials FAIL under the "
+                  "REFUTED ascending fold of the RTL's own column",
+                  len(teeth), checked, fresh)
+    for line, fam, n, bits in teeth:
+        dut._log.info("  L%d fam%d: RTL column n=%d, ASC would return "
+                      "%#010x", line, fam, n, bits)
+    assert len(teeth) + fresh > 0, (
+        "the fold-direction ban is UNFALSIFIABLE against this RTL: no "
+        "vector's own expansion distinguishes ascending from descending. "
+        "That is exactly the 3a-C3 defect (a coarser non-overlap test "
+        "merges the column until the ASC failure mode is unreachable) — "
+        "spec §27.7a.2b. FIX THE GEOMETRY, DO NOT RELAX THIS ASSERT.")
+
+
+@cocotb.test()
+async def fdotcr_freeze_axis_jam_anchored(dut):
+    """§27.7a.2a pins freeze ('acc unchanged after the first substantive
+    jam') as THE information axis of the fold theorem, so the watch
+    window must open exactly where golden's does — at the jam itself.
+
+    The first 3a-C3 draft only armed the watch after OBSERVING an
+    unchanged pass, which is strictly weaker in one direction: a
+    theorem-(4) collapse on the FIRST pass after the jam was invisible.
+    fd_jam now anchors on the pass being inexact, and this suite measures
+    that: for every vector we take the RTL's own column, compute the
+    first substantive jam with the golden primitives (RTO output !=
+    pre-RTO exact sum — fold_descending's own test), and require the RTL
+    to have raised fd_jam on exactly that pass, never later."""
+    await _start_clock(dut)
+    rows = [r for r in _load_fdotcr_vectors() if not r["special"]]
+    jam_rows = 0
+    anchored = 0
+    for row in rows:
+        watch = _FoldWatch(trace_jam=True)
+        got, _ = await launch_fdotcr(dut, row["dtype"], row["payload"],
+                                     f"jam L{row['line']}", poke=watch)
+        assert got == row["result"]
+        col = watch.column
+        if col is None:
+            continue
+        _, exp_jam = _fold_me(col, descending=True)
+        rtl_level = int(dut.fd_jam.value)
+        assert rtl_level == (0 if exp_jam is None else 1), (
+            f"L{row['line']}: fd_jam={rtl_level} but the golden fold of "
+            f"the RTL's own column jams at pass {exp_jam}")
+        if exp_jam is None:
+            continue
+        jam_rows += 1
+        seen = watch.jam_pass()
+        if exp_jam == len(col) - 1:
+            # jam on the last pass: the FSM leaves FDS_FOLDW immediately,
+            # so only the post-run level is observable (asserted above)
+            assert seen is None or seen == exp_jam
+            continue
+        anchored += 1
+        assert seen == exp_jam, (
+            f"L{row['line']}: fd_jam raised after pass {seen}, golden "
+            f"jams at pass {exp_jam} of {len(col)} — the freeze watch "
+            f"window does not open at the jam (a collapse in the "
+            f"pass(es) in between would be invisible)")
+    dut._log.info("freeze axis: %d of %d finite rows jam; %d have the jam "
+                  "before the last pass and the RTL anchored fd_jam on "
+                  "the exact golden pass in every one", jam_rows,
+                  len(rows), anchored)
+    assert anchored > 0, (
+        "no row exercised the jam anchor — the freeze axis would be "
+        "asserted, not measured")
+
+
+@cocotb.test()
+async def fdotcr_busy_interlock_rejects_overlap(dut):
+    """§27.7a.1 'busy-interlock, 중첩 dispatch 거부' — the half of the
+    contract the pre-3a launch convention left unchecked. Every other
+    suite only shows busy==1 while the op runs; here start is actually
+    RE-ASSERTED mid-flight (with a different opcode and hostile
+    operands) and the dispatch must be ignored BIT-FOR-BIT: same result,
+    same cycle count, no sticky, no fault. The converse direction (a
+    0x7A start raised while a scalar op is in flight) is checked too —
+    that is the one that would corrupt a SHIPPED op (§23.10.10(h) item
+    4)."""
+    await _start_clock(dut)
+    row = [r for r in _load_fdotcr_vectors() if not r["special"]][0]
+    clean, clean_lat = await launch_fdotcr(dut, row["dtype"],
+                                           row["payload"], "interlock_ref")
+    assert clean == row["result"]
+
+    for frac in (0.02, 0.25, 0.6, 0.95):
+        at = max(1, min(clean_lat - 1, int(clean_lat * frac)))
+        # foreign-opcode overlap (generic FSM interlock) AND same-opcode
+        # overlap (the 0x7A launch guard itself — a re-dispatch would
+        # reload the fragment buffer mid-program). Only the second one
+        # reaches fd_launch, so both are needed.
+        for same_op in (False, True):
+
+            def intrude(d, cyc, _at=at, _same=same_op):
+                if cyc != _at:
+                    return
+                d.start.value = 1               # <- the illegal overlap
+                if _same:
+                    d.opcode_in.value = OPC_FDOTCR
+                    d.dtype_in.value = 3
+                else:
+                    d.opcode_in.value = OPC_FSCALAR
+                    d.subop_in.value = FS["FS_DIV"]
+                    d.c_in.value = 0xDEADBEEF
+                if _at >= 16:                   # ingress window is over
+                    d.a_in.value = 0x7F7FFFFF
+                    d.b_in.value = 0x0000_0001
+
+            got, lat = await launch_fdotcr(dut, row["dtype"], row["payload"],
+                                           f"interlock@{at}", poke=intrude)
+            dut.opcode_in.value = OPC_FDOTCR
+            dut.subop_in.value = 0
+            dut.c_in.value = 0
+            assert got == clean and lat == clean_lat, (
+                f"overlapping start at cycle {at} "
+                f"({'same' if same_op else 'foreign'} opcode) was NOT "
+                f"ignored: {got:#010x}/{lat} vs clean "
+                f"{clean:#010x}/{clean_lat}")
+            assert int(dut.fd_fault.value) == 0
+            assert int(dut.fd_spec.value) == 0
+
+    # converse: 0x7A start raised while a scalar FS_DIV is in flight
+    a, b = 0x3FC00000, 0x40490FDB
+    exp = G.micro_fscalar(FS["FS_DIV"], a, b, 0)
+    assert int(dut.busy.value) == 0
+    dut.opcode_in.value = OPC_FSCALAR
+    dut.subop_in.value = FS["FS_DIV"]
+    dut.dtype_in.value = 0
+    dut.a_in.value = a
+    dut.b_in.value = b
+    dut.c_in.value = 0
+    dut.start.value = 1
+    lat = 0
+    while True:
+        await FallingEdge(dut.clk)
+        lat += 1
+        dut.start.value = 0
+        assert int(dut.busy.value) == 1
+        if lat == 3:                            # mid-FS_DIV overlap
+            dut.start.value = 1
+            dut.opcode_in.value = OPC_FDOTCR
+            dut.dtype_in.value = 3
+            dut.a_in.value = row["payload"] & 0xFFFFFFFF
+            dut.b_in.value = (row["payload"] >> 32) & 0xFFFFFFFF
+        if int(dut.done.value):
+            got = int(dut.result.value)
+            break
+        assert lat <= 32
+    dut.opcode_in.value = OPC_FSCALAR
+    dut.dtype_in.value = 0
+    assert got == exp, (
+        f"a 0x7A start raised mid-FS_DIV corrupted the shipped op: "
+        f"{got:#010x} != {exp:#010x}")
+    await FallingEdge(dut.clk)
+    assert int(dut.busy.value) == 0 and int(dut.done.value) == 0
+    # and the unit is still healthy for a real 0x7A right after
+    got, lat = await launch_fdotcr(dut, row["dtype"], row["payload"],
+                                   "interlock_post")
+    assert got == clean and lat == clean_lat
+    dut._log.info("busy-interlock: 8 mid-flight overlaps (4 phases x "
+                  "{foreign, same} opcode) + 1 mid-FS_DIV 0x7A overlap all "
+                  "ignored bit-for-bit (clean %#010x in %d cycles)",
+                  clean, clean_lat)
+
+
+@cocotb.test()
+async def fdotcr_loud_fault_paths(dut):
+    """Directed exercise of the three loud-fault families the spec pins
+    as never-silent (§27.7a.2 capacity + STEP T vacuous-RTO / §27.7a.2a
+    freeze). Legal operands can never reach any of them (measured
+    expansion max 25 of 33; merge aligned width max 48 == the enforced
+    bound; freeze violations 0 in 33,370 golden jams), so the probes
+    inject at a known sub-sequencer phase — the point is that the PATH
+    exists, raises the sticky and substitutes the canonical qNaN marker
+    instead of returning wrong data.
+
+    Each probe also pins WHICH guard fired (the sub-sequencer state the
+    cycle before fd_fault rose). Without that the two capacity guards
+    cover for each other: deleting either one still leaves a faulting
+    dispatch, so a value-only check calls the mutant healthy."""
+    await _start_clock(dut)
+    rows = _load_fdotcr_vectors()
+    finite = [r for r in rows if not r["special"]]
+    victim = finite[0]
+
+    class _FaultPhase:
+        """Records the state fd_fault was raised FROM (registered fault =>
+        the guard ran in the previously observed state)."""
+
+        def __init__(self, inject):
+            self.inject = inject
+            self.prev = None
+            self.at = None
+
+        def __call__(self, d, cyc):
+            if self.at is None and int(d.fd_fault.value):
+                self.at = self.prev
+            self.prev = int(d.fd_st.value)
+            self.inject(d, cyc)
+
+    # (a) array guard in FDS_PROD: force the stored count past the slot
+    #     count right after the fragment window primes
+    def poke_cap(d, _cyc):
+        if int(d.fd_st.value) == FDS_PRIME:
+            d.fd_n.value = 34                       # FD_TOP
+
+    watch = _FaultPhase(poke_cap)
+    got, lat = await launch_fdotcr(dut, victim["dtype"], victim["payload"],
+                                   "fault_cap_guard", poke=watch)
+    assert int(dut.fd_fault.value) == 1, "capacity guard did not raise"
+    assert got == F32_QNAN, f"capacity fault returned {got:#010x}, not qNaN"
+    assert watch.at == FDS_PROD, (
+        f"capacity fault came from state {watch.at}, not the FDS_PROD "
+        f"array guard — the probe is being caught by another guard")
+    dut._log.info("loud fault (capacity guard, from FDS_PROD): qNaN + "
+                  "sticky at %d cycles", lat)
+
+    # (b) §27.7a.2 3-way assert (1): the post-walk capacity assert in
+    #     FDS_NEXT, reached from a skipped (zero-contribution) lane
+    zero_pay = 0
+    for i in range(GF.GROUP):                       # bf16 1.0 on every lane
+        zero_pay |= 0x3F80 << (16 * i)
+        zero_pay |= 0x3F80 << (512 + 16 * i)
+    zero_pay &= ~(0xFFFF << 16)                     # lane 1 A := +0 -> skip
+
+    def poke_next(d, _cyc):
+        # inject on the SKIPPED lane, whose FDS_LANE arm jumps straight to
+        # FDS_NEXT without passing the FDS_PROD array guard
+        if int(d.fd_st.value) == FDS_LANE and int(d.fd_cnt.value) == 1:
+            d.fd_n.value = 34
+
+    watch = _FaultPhase(poke_next)
+    got, lat = await launch_fdotcr(dut, 3, zero_pay, "fault_cap_assert",
+                                   poke=watch)
+    assert int(dut.fd_fault.value) == 1, "capacity assert did not raise"
+    assert got == F32_QNAN
+    assert watch.at == FDS_NEXT, (
+        f"capacity fault came from state {watch.at}, not the FDS_NEXT "
+        f"post-walk assert")
+    dut._log.info("loud fault (capacity assert, from FDS_NEXT): qNaN + "
+                  "sticky at %d cycles", lat)
+
+    # (c) freeze violation (§27.7a.2a graduation axis): mark the fold as
+    #     jammed before its first pass; that pass necessarily changes the
+    #     accumulator, which is exactly the theorem-(4) collapse — and it
+    #     is the FIRST post-jam pass, the case the pre-repair watch window
+    #     (armed only after an observed unchanged pass) could not see
+    def poke_jam(d, _cyc):
+        if int(d.fd_st.value) == FDS_FOLDW and int(d.fd_wait.value) != 0:
+            d.fd_jam.value = 1
+
+    got, lat = await launch_fdotcr(dut, victim["dtype"], victim["payload"],
+                                   "fault_freeze", poke=poke_jam)
+    assert int(dut.fd_fault.value) == 1, "freeze violation did not raise"
+    assert got == F32_QNAN, f"freeze fault returned {got:#010x}, not qNaN"
+    dut._log.info("loud fault (freeze): qNaN + sticky at %d cycles", lat)
+
+    # (d) STEP T vacuous-RTO collapse (golden's own `vacuous-RTO
+    #     violated` FdotFault, which had NO RTL counterpart before the
+    #     3a-C3 repair — an inexact merge silently breaks exact-sum
+    #     preservation). Legal columns cannot reach it (the merge branch
+    #     is only taken for overlapping pairs, whose aligned width is
+    #     structurally <= 48), so the probe swaps the walk's upper
+    #     partner for a component 1,000+ binades below: the pair still
+    #     reads as overlapping, but the pass now genuinely rounds.
+    fired = {"hit": False}
+
+    def poke_vacrto(d, _cyc):
+        if fired["hit"] or int(d.fd_st.value) != FDS_WALK:
+            return
+        w = int(d.fd_w.value)
+        if w + 1 >= int(d.fd_n.value):
+            return
+        fired["hit"] = True
+        d.fd_xp[w + 1].value = (0xC18 << 24) | 0x800001   # xe = -1000
+    got, lat = await launch_fdotcr(dut, victim["dtype"], victim["payload"],
+                                   "fault_vacuous_rto", poke=poke_vacrto)
+    assert fired["hit"], "the probe never reached the walk"
+    assert int(dut.fd_fault.value) == 1, "vacuous-RTO guard did not raise"
+    assert got == F32_QNAN, f"vacuous-RTO fault returned {got:#010x}"
+    dut._log.info("loud fault (vacuous-RTO merge): qNaN + sticky at %d "
+                  "cycles", lat)
+
+    # (e) a theorem-(4) collapse on the FIRST pass after the watch window
+    #     opens, reached WITHOUT poking the anchor itself: the fold runs
+    #     untouched until the RTL raises fd_jam on its own, then the
+    #     stored accumulator is corrupted one cycle before the next pass
+    #     retires (FP_AddWide sampled its operands three edges earlier,
+    #     so the pass result stays honest and only the stored acc moves).
+    #     SCOPE OF THIS PROBE, stated precisely: it proves the fault PATH
+    #     is live from the very first post-anchor pass. It does NOT prove
+    #     the anchor sits at the jam — a late anchor would simply arm
+    #     later and still fault here. That claim is measured separately,
+    #     on 128 rows, by fdotcr_freeze_axis_jam_anchored, which is what
+    #     kills the draft (acc_same-only) anchor.
+    collapse = {"armed": False}
+
+    def poke_collapse(d, _cyc):
+        if collapse["armed"] or int(d.fd_st.value) != FDS_FOLDW:
+            return
+        if int(d.fd_jam.value) == 1 and int(d.fd_wait.value) == 1:
+            d.fd_accm.value = int(d.fd_accm.value) ^ 1
+            collapse["armed"] = True
+
+    for row in finite:
+        got, lat = await launch_fdotcr(dut, row["dtype"], row["payload"],
+                                       "fault_first_post_jam",
+                                       poke=poke_collapse)
+        if collapse["armed"]:
+            break
+    assert collapse["armed"], "no vector jammed early enough to probe"
+    assert int(dut.fd_fault.value) == 1, (
+        "a collapse on the FIRST post-jam pass went unnoticed — that is "
+        "precisely the pre-repair freeze hole (§27.7a.2b amendment-11)")
+    assert got == F32_QNAN, f"first-post-jam collapse returned {got:#010x}"
+    dut._log.info("loud fault (collapse on the first post-jam pass): qNaN "
+                  "+ sticky at %d cycles", lat)
+
+    # and the clean re-launch afterwards must be unaffected (the sticky is
+    # per-dispatch state, cleared at launch)
+    got, _ = await launch_fdotcr(dut, victim["dtype"], victim["payload"],
+                                 "post_fault_clean")
+    assert int(dut.fd_fault.value) == 0 and got == victim["result"], \
+        "a faulted dispatch poisoned the next clean one"
+
+
+@cocotb.test()
+async def fdotcr_back_to_back_isolation(dut):
+    """§27.7a.5 capture-mux contamination vectors: 0x7A interleaved
+    back-to-back with EVERY pre-3a op class in both directions. A
+    non-launching op must be bit-unaffected by the new capture path and
+    vice versa (§23.10.10(h) item 4 — the subtle capture-mux regression
+    is a SILENT WRONG DATA class, so it is checked by value, not by
+    liveness)."""
+    await _start_clock(dut)
+    rng = random.Random(0x7ADC3B2)
+    rows = [r for r in _load_fdotcr_vectors() if not r["special"]]
+    payload64 = (rng.getrandbits(32) << 32) | rng.getrandbits(32)
+    for k, row in enumerate(rows[:24]):
+        got, _ = await launch_fdotcr(dut, row["dtype"], row["payload"],
+                                     f"b2b L{row['line']}")
+        assert got == row["result"], f"b2b L{row['line']}: {got:#010x}"
+        a, b, c = rand_fp(rng), rand_fp(rng), rand_fp(rng)
+        which = k % 9
+        if which == 0:
+            await check_fscalar(dut, FS["FS_ADD"], a, b, label="b2b_add")
+        elif which == 1:
+            await check_fscalar(dut, FS["FS_SUB"], a, b, label="b2b_sub")
+        elif which == 2:
+            await check_fscalar(dut, FS["FS_MUL"], a, b, label="b2b_mul")
+        elif which == 3:
+            await check_fscalar(dut, FS["FS_FMA"], a, b, c, label="b2b_fma")
+        elif which == 4:
+            await check_fscalar(dut, FS["FS_DIV"], a, b, label="b2b_div")
+        elif which == 5:
+            await check_rsqrt(dut, a, label="b2b_rsq")
+        elif which == 6:
+            await check_exp2(dut, a, label="b2b_exp2")
+        elif which == 7:
+            await check_cvt(dut, CVT_NAR, 3, payload64, label="b2b_cvt")
+            await check_accew(dut, a, payload64, label="b2b_accew")
+        else:
+            await check_dequant(dut, 1, rng.getrandbits(32), b,
+                                label="b2b_deq")
+        # and back the other way round: the just-run scalar op must not
+        # have disturbed the 0x7A path either
+        got, _ = await launch_fdotcr(dut, row["dtype"], row["payload"],
+                                     f"b2b2 L{row['line']}")
+        assert got == row["result"], f"b2b2 L{row['line']}: {got:#010x}"
+    dut._log.info("fdotcr back-to-back isolation: 24 x (0x7A, scalar op, "
+                  "0x7A) triples bit-exact in both directions")
+
+
+@cocotb.test()
+async def fdotcr_illegal_dtype_rows_terminate(dut):
+    """§27.7a.1 restrictive-first: EXACTLY two legal dtype rows (0x2 f16 /
+    0x3 bf16). Every other dtype falls to the module's don't-care arm.
+    Only LIVENESS is asserted here (no hang, no stuck busy) — the
+    don't-care return value is explicitly NON-contractual (module header),
+    so pinning it would be a spec invention."""
+    await _start_clock(dut)
+    row = _load_fdotcr_vectors()[0]
+    for dt in (0, 1, 4, 5, 8, 15):
+        _, lat = await launch_fdotcr(dut, dt, row["payload"],
+                                     f"illegal_dt{dt}", cap=64)
+        assert lat <= 8, f"dtype {dt}: don't-care arm took {lat} cycles"
+    # the legal rows still work right after
+    got, _ = await launch_fdotcr(dut, row["dtype"], row["payload"], "legal")
+    assert got == row["result"]
+    dut._log.info("fdotcr illegal dtype rows: 6 rows terminate in <= 8 "
+                  "cycles; legal row unaffected")
+
+
+@cocotb.test()
+async def fdotcr_extended_family_sweep(dut):
+    """STRENGTHENING (never a weakening — §27.7a.2a amendment-5 discipline):
+    the 450-line vector file carries only the FIRST 30 trials per family,
+    so this suite re-generates FRESH trials from the golden generators on
+    a DISTINCT fixed seed and drives them through the RTL.
+
+    Oracle = GF._independent_expected — the Fraction path that never
+    touches the EFT (golden_lattice.operand_frac x acc_format_study.
+    pack_signed). Using the EFT twin here would re-confirm the algorithm
+    with itself; the independent path is the same self-confirmation-loop
+    block the C1 audit put on the vector emitter.
+
+    This is also the measurement that §27.7a.2a amendment-3 assigned to
+    3a-C3: the refined insertion walk's queue-scan cycles were UNCOUNTED
+    in the nominal budget, so the worst start->done latency here is the
+    number that graduates the estimate."""
+    await _start_clock(dut)
+    per_fam = {}
+    n_total = 0
+    for fi, (fam, gen) in enumerate(GF.FAM_GENS):
+        rng = random.Random(0x7ADC3C0 + fi)     # fixed — deterministic re-run
+        worst = 0
+        for _ in range(300):
+            dtype, pairs = gen(rng)
+            exp_bits, exp_sp, _ = GF._independent_expected(dtype, pairs)
+            payload = 0
+            for f, w in enumerate(
+                    G.lanes_to_frags([a for a, _ in pairs], 16)
+                    + G.lanes_to_frags([b for _, b in pairs], 16)):
+                payload |= w << (64 * f)
+            got, lat = await launch_fdotcr(dut, dtype, payload, f"ext_{fam}")
+            assert got == exp_bits, (
+                f"ext_{fam}: dtype={dtype:#x} got {got:#010x} expected "
+                f"{exp_bits:#010x} (independent Fraction oracle)")
+            assert int(dut.fd_spec.value) == exp_sp, \
+                f"ext_{fam}: sticky {int(dut.fd_spec.value)} != {exp_sp}"
+            assert int(dut.fd_fault.value) == 0, f"ext_{fam}: loud fault"
+            worst = max(worst, lat)
+            n_total += 1
+        per_fam[fam] = worst
+        if worst > _fdot_worst["cycles"]:
+            _fdot_worst.update(cycles=worst, line=-1, fam=fi)
+    dut._log.info("fdotcr extended sweep: %d fresh trials bit-exact vs the "
+                  "EFT-independent oracle", n_total)
+    dut._log.info("fdotcr extended per-family worst cycles: %s",
+                  ", ".join(f"{k}:{v}" for k, v in per_fam.items()))
+    dut._log.info("fdotcr GLOBAL worst start->done = %d cycles vs the "
+                  "§27.7a.2 hard ceiling %d (headroom %.1fx)",
+                  _fdot_worst["cycles"], FDOT_CAP,
+                  FDOT_CAP / max(_fdot_worst["cycles"], 1))
+    assert _fdot_worst["cycles"] <= FDOT_CAP

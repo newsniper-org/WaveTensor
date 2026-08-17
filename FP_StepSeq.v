@@ -7,7 +7,47 @@
 // FP_StepSeq.v — v1.8.0c MU-hosted fp32 step-sequencer unit (spec §23.10,
 // synth Gate 3 of §23.10.7) + v1.8.0d OPS_CVT / OPS_ACCEW extension
 // (spec §23.10.10, synth Gate C3 of §23.10.10(g)) + v1.8.0e OPS_DEQ
-// fused per-lane DEQUANT program (spec §25.2.2, 0e1).
+// fused per-lane DEQUANT program (spec §25.2.2, 0e1) + 3a-C3 OPS_FDOTCR
+// audit dot program (spec §27.7a, GATE V20-4).
+//
+// 3a-C3 adds ONE op class (op_sel already 4-bit — no widening; the
+// standing rule §25.1 item 9 / §27.7a.4 re-proves ALL NINE existing step
+// programs at the unit TB, which the appended-only tb_fp_stepseq suites
+// do by running the pre-3a set byte-unchanged):
+//   OPS_FDOTCR 0x7A FDOT32_CR — audit-only correctly-rounded 32-term
+//             narrow dot: r == pack_signed(exact Σ a_i·b_i) as fp32.
+//             Non-pipelined, busy-interlocked, ACC bank untouched. The
+//             whole program lives in an OP-GATED sub-sequencer at the
+//             bottom of this file (its own state, its own registers);
+//             the generic (op_sel, fp_step) machinery is parked at step
+//             0 and termination is taken from fd_fin. Both shared
+//             operators are REUSED verbatim — FP_Mul36 for the exact
+//             narrow significand products (no new multiplier: the GATE
+//             V20-4 premap $mul delta == 0 criterion) and FP_AddWide for
+//             both the exact TwoSum merges (PACK_WIDE, vacuous RTO) and
+//             the descending RTO-48 fold, with exactly ONE PACK_FINAL.
+//             ALGORITHM AUTHORITY = spec §27.7a.2a (the C1-amended text):
+//             descending fold + the refined "merge the two lowest"
+//             insertion walk. The original ASCENDING fold pin was
+//             REFUTED by 3a-C1 measurement (2 value-contract
+//             counterexamples, 23.8% relative error) — an
+//             insertion-fused ascending streaming fold is the RECORDED
+//             REGRESSION PATH and is forbidden. Keeping that ban
+//             CHECKABLE constrains the component geometry: the
+//             non-overlap test must be golden's `top(a) <= e_b`
+//             EXACTLY (e restored from the stored magnitude's trailing
+//             zeros — see the datapath block), because the stricter
+//             approximation `xe_b - xe_a >= 24` merges the column so
+//             coarse that the ASC failure mode becomes unreachable and
+//             an ascending mutant survives every vector. Repaired in
+//             3a-C3 (spec §27.7a.2b);
+//             tb_fp_stepseq's fdotcr_descending_fold_discriminator now
+//             reads the RTL's OWN expansion out of fd_xp and shows the
+//             ASC fold of that very column disagrees with the value
+//             contract.
+//             Golden twin: scripts/golden_fdotcr.py +
+//             include/generated/fdotcr_vectors.hex (450 directed lines,
+//             RESULT is ALWAYS the value-contract right-hand side).
 //
 // v1.8.0e adds ONE op class (op_sel already 4-bit — no widening; the
 // standing rule re-proves ALL existing step programs at the unit TB):
@@ -95,7 +135,24 @@
 //              and a new start may be asserted immediately in that cycle.
 //   opcode_in  0x74 FSCALAR / 0x75 FRSQRT32 / 0x76 FEXP2_32 /
 //              0x73 ACC_ELEMWISE / 0x77 CVT (v1.8.0d) / 0x78 DEQUANT
-//              (v1.8.0e, one lane per launch).
+//              (v1.8.0e, one lane per launch) / 0x7A FDOT32_CR (3a-C3,
+//              see the OPERAND INGRESS note below).
+//
+//   OPERAND INGRESS, 0x7A ONLY (3a-C3 — the ONLY protocol addition):
+//              FDOT32_CR eats a 1,024-bit A||B wave, which does not fit
+//              a_in/b_in/c_in. It arrives ONE 64-bit fragment per cycle
+//              on {b_in, a_in} over 16 cycles: fragment 0 on the launch
+//              edge, fragments 1..15 on the 15 cycles that follow, then
+//              a_in/b_in/c_in are don't-care for the rest of the
+//              program. The 1,024-bit buffer is MU-LOCAL (this module)
+//              exactly as §27.7a.1 requires — EHDecode is cluster-shared
+//              and cannot hold it across the program. The port list is
+//              deliberately UNCHANGED: a new 1,024-bit port would leave
+//              PE_Core's existing instantiation with a missing pin,
+//              which is a FATAL verilator elaboration error for every
+//              PE_Core-including suite, and that wiring is 3a-C4's. C4
+//              may keep this streamed form or replace it with a wide
+//              port — the program logic is identical either way.
 //   subop_in   FSCALAR or CVT sub-op (imm16[7:4], generated single-source
 //              tables in include/generated/isa_subop_codes.vh); ignored
 //              by the unary ops and DEQUANT. Absent imm16 decodes as 0
@@ -172,6 +229,23 @@
 //                specials finish in 2)
 //                *the classify cycle doubles as the first multiplier
 //                 cycle — the FS_MUL launch trick verbatim
+//   FDOT32_CR    classify, 16x ingress, per-lane {classify, 2x mul,
+//                insert scan, walk (emit | merge+reinsert)}, descending
+//                fold, PACK_FINAL          = 1,167 measured worst
+//                                            (<= 10,000 HARD, §27.7a.2)
+//                measured over 450 golden vectors + 3,000 fresh
+//                family-generator trials (tb_fp_stepseq
+//                fdotcr_golden_vectors / fdotcr_extended_family_sweep);
+//                the draft's 1,616 predates the STEP I exact-overlap
+//                correction (§27.7a.2b amendment-12): dropping the
+//                approximate test removed merges that cost more than
+//                the fold passes they saved, so the worst case FELL.
+//                this is the number that graduates the §27.7a.2a
+//                amendment-3 UNCOUNTED insertion-queue cycle axis.
+//                specials (any NaN/Inf lane) finish in 17 (measured):
+//                the EFT is never entered, so FP_AddWide's "no special
+//                operands" precondition is preserved exactly as the
+//                other programs preserve it in FP_CLASSIFY.
 //
 // -----------------------------------------------------------------------------
 // FS_DIV MARKSTEIN PACK — analyzed FP_AddWide usage (documented deviation
@@ -280,6 +354,9 @@ module FP_StepSeq (
     localparam [3:0] OPS_ACCEW = 4'd8;   // v1.8.0d 0x73 (FS_FMA shape)
     localparam [3:0] OPS_DEQ   = 4'd9;   // v1.8.0e 0x78 (3x K_INT, fused
                                          // I2F-x-scale via FP_Mul36)
+    localparam [3:0] OPS_FDOTCR = 4'd10; // v1.8.0e 3a-C3 0x7A (spec §27.7a —
+                                         // op-gated sub-sequencer, 아래
+                                         // OPS_FDOTCR datapath 블록)
 
     localparam [31:0] QNAN = 32'h7FC0_0000;
     localparam [31:0] PINF = 32'h7F80_0000;
@@ -426,6 +503,10 @@ module FP_StepSeq (
                 OPS_CVT,
                 OPS_DEQ: f_step_info = (st == 6'd2) ? {1'b1, K_INT}
                                                     : {1'b0, K_INT};
+                // 3a-C3 §27.7a: 0x7A 는 자체 sub-sequencer 가 종료를 소유한다
+                // (generic step 기계는 step 0 에 고정 — 아래 FP_EXEC 절).
+                // last 를 절대 세우지 않아 generic 경로로는 종료 불가능.
+                OPS_FDOTCR: f_step_info = {1'b0, K_INT};
                 default: ;
             endcase
         end
@@ -779,6 +860,273 @@ module FP_StepSeq (
     // on op_sel — see the NARROW block) — bit-identity with the
     // CVT/0x7C sites by construction.
 
+    // =========================================================================
+    // v1.8.0e 3a-C3 OPS_FDOTCR datapath (spec §27.7a, 0x7A FDOT32_CR)
+    //
+    // 32-항 narrow dot 의 correctly-rounded fp32 — audit 전용, non-pipelined.
+    // 값 계약 (§27.7a.1): r == pack_signed(exact Σ a_i·b_i). 알고리즘 정본은
+    // **§27.7a.2a** (C1 실측이 C0 의 ascending pin 을 부정한 뒤의 개정본):
+    //
+    //   STEP M  classify + exact 곱 — FP_Mul36 재사용 (신규 곱셈기 금지,
+    //           GATE V20-4 의 premap $mul delta == 0 조건). bf16 8x8->16b /
+    //           f16 11x11->22b, 반올림 0회.
+    //   STEP T  TwoSumExact = FP_AddWide PACK_WIDE 1 pass. 겹침 쌍의 정렬
+    //           폭은 구조적으로 <= 48 이므로 RTO-48 이 vacuous == exact,
+    //           산출은 wide_sig 의 24|24 **field-slice** (동적 shift 없음).
+    //           그 전제가 깨지면 (pass 가 실제로 반올림하면) golden 의
+    //           `vacuous-RTO violated` 와 같은 loud fault 를 낸다.
+    //   STEP I  grow-expansion 삽입 — §27.7a.2a amendment-2 의 정련 walk
+    //           ("최저 2개 순서 merge"). 원문의 chain 독해는 비겹침 invariant
+    //           을 스스로 위반하므로 폐기됐다 (미러링 금지). 비겹침·정렬
+    //           키는 golden 판정을 **근사 없이** 미러링한다 (아래 표현 블록).
+    //   STEP F  **descending** RTO-48 fold (최상위 component 부터).
+    //           amendment-1 — ascending 은 C1 반례 2건 (상대오차 24%) 로
+    //           부정된 pin 이며 삽입-융합 스트리밍 오름차순 fold 는 **금지
+    //           경로**다. freeze (jam 이후 acc 불변) 는 정리의 정보 축이라
+    //           여기서 loud fault 로 검사한다 — 감시 창은 golden 과 같이
+    //           **첫 실질 jam 직후 첫 pass 부터** 열린다 (fd_jam).
+    //   STEP P  PACK_FINAL 1회 → §27.2.1 추출 정리로 값 계약이 닫힌다.
+    //
+    // component 표현 (REPRESENTATION 편차 — 값은 golden 과 동일, FS_DIV
+    // Markstein pack 의 선례와 같은 등급): golden 의 (m, e) 는 임의 폭 m 을
+    // 쓰지만 본 RTL 은 **정규화 저장** {sign, xe[11:0], mag[23:0]} 37b 를
+    // 쓴다 — mag[23] == 1 이 항상 성립하고 값 = mag * 2^(xe-23) 이다. 이
+    // 형이 load-bearing 인 이유: FP_AddWide 피연산자 규약 (sig 는
+    // [2^46,2^48), 단위가 bit47) 이 고정 shift {mag,24'b0} 로 충족되어
+    // 정렬용 barrel shifter 가 **불필요**하다.
+    //
+    // 정규화 저장은 golden 의 기하 두 축을 **복원해서** 써야 한다 (생략 =
+    // 다른 알고리즘):
+    //   e   (최저 set bit)  = xe - 23 + tz(mag)   — fd_tz24 로 복원
+    //   top (배타 상한)      = xe + 1
+    // 이로써 비겹침 판정은 golden grow_insert 의 `comp_top(a) <= b[1]` 과,
+    // 정렬 키는 golden _insort 의 `(e, top)` 과 **정확히** 같아진다.
+    // (golden 의 m 은 trailing zero 를 남길 수 있어 그 e 는 '선언된 scale'
+    // 이고 본 RTL 의 e 는 '실제 최저 set bit' 이다 — 후자 >= 전자이므로
+    // 판정이 golden 보다 느슨해지는 일은 없고, 정리 전건 (비겹침·오름차순)
+    // 은 실제 bit 구간 기준으로 성립한다. 열은 golden 과 같거나 더 잘다.)
+    //
+    // *** 3a-C3 정정 기록 (spec §27.7a.2b) ***: 본 프로그램의 초안은 tz 복원을
+    // 생략하고 비겹침을 `xe_b - xe_a >= 24` 로 근사했다. 그 근사는 golden
+    // 판정보다 **엄격**해서 (tz(mag_b) 만큼) 열이 뭉치고 (실측 최대 열
+    // 길이 17 vs golden 25), 그 결과 §27.7a.2a 가 **금지 pin** 으로 못박은
+    // ASC fold 실패 모드가 구조적으로 도달 불가가 됐다 — 즉 금지 pin 이
+    // 지켜졌음을 실증한 것이 아니라 **검사할 수 없게** 만든 것이다 (ASC
+    // 변이가 전 벡터를 생존). 정확 미러로 정정한 뒤의 실측 (TB 가 RTL 자신의
+    // fd_xp 를 읽어 센 값): 열이 빈 행을 뺀 finite 311 행 중 **2 행**,
+    // 신규 eft_top_cancel 120 trial 중 **3 건**에서 ASC != 값 계약 (golden
+    // report 의 asc_detection_rate_by_family eft_top_cancel 4% 와 같은 급)
+    // — ASC 변이는 이제 사살된다 (33 suite 중 4 FAIL).
+    //
+    // 최종 값이 golden 과 bit-동일한 근거는 §27.7a.2a amendment-1 정리의
+    // **일반형** (임의의 비겹침 오름차순 열에 대해 fold == RTO_48(exact))
+    // 이다 — 결과는 열의 구체적 분해가 아니라 exact 합에만 의존한다.
+    //
+    // 배열/포인터: xp[0..FD_TOP] 가 오름차순 열이고 [0, w) = 확정 방출분
+    // (golden 의 out), [w, n) = 대기열 (golden 의 pend) 이다. 두 영역이
+    // 하나의 배열에 연접 저장될 수 있는 이유는 방출된 component 가 항상
+    // 남은 전부의 아래라는 walk 불변식 그 자체다.
+    // =========================================================================
+    localparam [7:0] OPC_FDOTCR = 8'h7A;      // §27.7a.1 (C2 ISA row 0x7A)
+    localparam [5:0] FD_CAP = 6'd33;          // §27.7a.2 용량 (32 삽입 + carry 1)
+    localparam [5:0] FD_TOP = 6'd34;          // 배열 최상단 index (전이 guard 1)
+
+    localparam [3:0] FDS_LOAD  = 4'd0;        // 16-fragment 수납
+    localparam [3:0] FDS_PRIME = 4'd1;        // 첫 fragment 를 lane 창으로
+    localparam [3:0] FDS_LANE  = 4'd2;        // STEP M: classify + mul launch
+    localparam [3:0] FDS_MUL1  = 4'd3;        // FP_Mul36 latency 2 의 2번째
+    localparam [3:0] FDS_PROD  = 4'd4;        // 곱 -> component
+    localparam [3:0] FDS_INS   = 4'd5;        // STEP I: 정렬 삽입 (하강 스캔)
+    localparam [3:0] FDS_WALK  = 4'd6;        // STEP I: 최저 2개 walk
+    localparam [3:0] FDS_MRGW  = 4'd7;        // STEP T: AddWide pass + split
+    localparam [3:0] FDS_REINS = 4'd8;        // split 조각 재삽입 + 압축
+    localparam [3:0] FDS_NEXT  = 4'd9;        // lane 전진 / 용량 assert
+    localparam [3:0] FDS_FOLDW = 4'd10;       // STEP F: descending fold pass
+    localparam [3:0] FDS_PACKW = 4'd11;       // STEP P: PACK_FINAL pass
+    localparam [3:0] FDS_DONE  = 4'd12;
+
+    localparam [1:0] FDR_AW   = 2'd0;         // 결과 = FP_AddWide PACK_FINAL
+    localparam [1:0] FDR_ZERO = 2'd1;         // 결과 = +0 (exact cancellation)
+    localparam [1:0] FDR_QNAN = 2'd2;         // 결과 = canonical qNaN
+
+    // 제어 상태 (reset-free — 선언 초기화, 본 파일 헤더 규약)
+    reg  [3:0]  fd_st = FDS_DONE;
+    reg  [5:0]  fd_cnt;                       // fragment idx / lane idx
+    reg         fd_bf16;                      // dtype latch (1 = bf16)
+    reg         fd_spec = 1'b0;               // §27.7a.1 (iii) special sticky
+    reg         fd_fault = 1'b0;              // loud fault (용량/RTO/freeze)
+    reg         fd_jam;                       // 첫 실질 jam 관측 (정리 (2)(3))
+    reg  [1:0]  fd_rsel;                      // 결과 소스 선택
+    reg  [1:0]  fd_wait;                      // FP_AddWide latency 카운터
+    reg  [5:0]  fd_n, fd_w, fd_j, fd_dst;     // 열 길이 / walk / 스캔 포인터
+    reg         fd_hi_done;                   // 재삽입: hi 배치 완료
+    reg  [36:0] fd_ins, fd_hi;                // 삽입 대상 / split 상위 조각
+    reg  signed [11:0] fd_pe;                 // 곱 지수 ea+eb
+    reg         fd_ps;                        // 곱 부호 sa^sb
+
+    // capture: 1,024b operand wave (MU-local — EHDecode 는 cluster-shared 라
+    // 1,167 cycle 급 프로그램 (실측; 초안 추정 ~5k) 동안 보존 불가, §27.7a.1). 큰 두 레지스터는 **64b
+    // 하강 shift 하나**만 갖는다 (상위 64b 만 mux; 하위 448b 는 순수 shift)
+    // — 16b 소비 shift 와 64b 수납 shift 를 같은 레지스터에 얹으면 1,024b
+    // 전폭 2:1 mux 가 되어 GATE V20-4 의 LUT delta 예산을 혼자 먹는다.
+    // lane 창 (fd_fa/fd_fb) 이 fragment 안의 4 lane 을 16b 씩 소비한다.
+    reg  [511:0] fd_asr, fd_bsr;              // frag 0-7 = A / 8-15 = B
+    reg  [63:0]  fd_fa, fd_fb;                // 현재 fragment (4 lane 창)
+
+    // expansion 저장 (동기 write / 비동기 read — 분산 RAM 추론 형).
+    // 초기화 없음: 매 launch 가 fd_n <= 0 으로 논리적으로 비운다.
+    reg  [36:0] fd_xp [0:FD_TOP];
+
+    // fold accumulator = FP_AddWide PACK_WIDE 형식 그대로 (형식이 I/O 하에
+    // 닫혀 있다 — FP_AddWide 헤더의 canonical zero 규약)
+    reg         fd_accs;
+    reg  signed [11:0] fd_acce;
+    reg  [47:0] fd_accm;
+
+    // ---- STEP M: lane classify (§27.7a.1 (i)/(ii) 행 그대로) ----
+    // 반환 = {sp, zr, sign, m11, e12}: bf16 exp field 0 -> zero 기여 (DAZ),
+    // f16 subnormal -> leading-one normalize 후 exact 기여 (DAZ 아님).
+    // 값 = m11 * 2^(e - frac), frac = 7 (bf16) / 10 (f16).
+    // 결과는 WIRE 로 받아 WIRE 를 slice 한다 (§23.8 — 함수결과 인덱싱 금지).
+    function [25:0] fd_classify;
+        input        bf;
+        input [15:0] x;
+        reg   [7:0]  eb8;
+        reg   [4:0]  ef5;
+        reg   [9:0]  mf10;
+        reg   [3:0]  kk;
+        reg   [10:0] mn;
+        reg   signed [11:0] ee;
+        reg          sp, zr;
+        begin
+            eb8  = x[14:7];
+            ef5  = x[14:10];
+            mf10 = x[9:0];
+            sp = 1'b0;  zr = 1'b0;  mn = 11'd0;  ee = 12'sd0;  kk = 4'd0;
+            if (bf) begin
+                if (eb8 == 8'hFF)       sp = 1'b1;      // NaN/Inf (sNaN 포함)
+                else if (eb8 == 8'h00)  zr = 1'b1;      // zero + 254 subnormal
+                else begin
+                    mn = {3'b000, 1'b1, x[6:0]};
+                    ee = $signed({4'b0, eb8}) - 12'sd127;
+                end
+            end else begin
+                if (ef5 == 5'h1F)       sp = 1'b1;
+                else if (ef5 == 5'h00) begin
+                    if (mf10 == 10'd0)  zr = 1'b1;
+                    else begin
+                        casez (mf10)                    // k = 11 - bl(m)
+                            10'b1?????????: kk = 4'd1;
+                            10'b01????????: kk = 4'd2;
+                            10'b001???????: kk = 4'd3;
+                            10'b0001??????: kk = 4'd4;
+                            10'b00001?????: kk = 4'd5;
+                            10'b000001????: kk = 4'd6;
+                            10'b0000001???: kk = 4'd7;
+                            10'b00000001??: kk = 4'd8;
+                            10'b000000001?: kk = 4'd9;
+                            default:        kk = 4'd10;
+                        endcase
+                        mn = {1'b0, mf10} << kk;        // exact normalize
+                        ee = -12'sd14 - $signed({8'b0, kk});
+                    end
+                end else begin
+                    mn = {1'b1, mf10};
+                    ee = $signed({7'b0, ef5}) - 12'sd15;
+                end
+            end
+            fd_classify = {sp, zr, x[15], mn, ee};
+        end
+    endfunction
+
+    wire [15:0] fd_la = fd_fa[15:0];          // 현재 lane 의 A operand (RAW —
+    wire [15:0] fd_lb = fd_fb[15:0];          // DAZ 우회는 원시 tap 그 자체다)
+    wire [25:0] fd_qa = fd_classify(fd_bf16, fd_la);
+    wire [25:0] fd_qb = fd_classify(fd_bf16, fd_lb);
+    wire        fd_skip = fd_qa[25] | fd_qa[24] | fd_qb[25] | fd_qb[24];
+    wire [10:0] fd_ma = fd_qa[22:12];
+    wire [10:0] fd_mb = fd_qb[22:12];
+
+    // 곱 -> component: bl(p) 는 dtype 당 2값뿐이라 정규화가 상수 shift 다
+    // (bf16 p in [2^14,2^16) / f16 p in [2^20,2^22)); xe = ea+eb+carry.
+    wire        fd_pc1  = fd_bf16 ? p[15] : p[21];
+    wire [23:0] fd_pmag = fd_bf16 ? (p[15] ? {p[15:0], 8'b0} : {p[14:0], 9'b0})
+                                  : (p[21] ? {p[21:0], 2'b0} : {p[20:0], 3'b0});
+    wire signed [11:0] fd_pxe = fd_pe + $signed({11'b0, fd_pc1});
+
+    // ---- component 기하 복원: tz(mag) (mag[23] == 1 이라 tz <= 23) ----
+    // fd_lomag 의 leading-zero cascade 와 같은 형 (고정 shift 만 — 동적
+    // part-select 없음). 반환은 WIRE 로 받아 WIRE 를 쓴다 (§23.8).
+    function [4:0] fd_tz24;
+        input [23:0] m;
+        reg   [23:0] t0, t1, t2, t3;
+        reg          z16, z8, z4, z2, z1;
+        begin
+            z16 = ~|m[15:0];  t0 = z16 ? {16'b0, m[23:16]} : m;
+            z8  = ~|t0[7:0];  t1 = z8  ? {8'b0,  t0[23:8]} : t0;
+            z4  = ~|t1[3:0];  t2 = z4  ? {4'b0,  t1[23:4]} : t1;
+            z2  = ~|t2[1:0];  t3 = z2  ? {2'b0,  t2[23:2]} : t2;
+            z1  = ~t3[0];
+            fd_tz24 = {z16, z8, z4, z2, z1};
+        end
+    endfunction
+
+    // ---- 배열 read 포트 (2개 — 상태별 index mux; 포트를 늘리면 35:1 x 37b
+    //      mux 가 그만큼 복제된다) ----
+    wire [5:0] fd_w1  = fd_w + 6'd1;
+    wire [5:0] fd_jm1 = (fd_j == 6'd0) ? 6'd0 : (fd_j - 6'd1);
+    reg  [5:0] fd_ra;
+    always @* case (fd_st)
+        FDS_INS:   fd_ra = fd_jm1;
+        FDS_REINS: fd_ra = fd_j;
+        FDS_FOLDW: fd_ra = fd_j;
+        default:   fd_ra = fd_w;
+    endcase
+    wire [36:0] fd_ca = fd_xp[fd_ra];
+    wire [36:0] fd_cb = fd_xp[fd_w1];
+
+    wire signed [12:0] fd_xa = $signed({fd_ca[35], fd_ca[35:24]});
+    wire signed [12:0] fd_xb = $signed({fd_cb[35], fd_cb[35:24]});
+    wire signed [12:0] fd_xi = $signed({fd_ins[35], fd_ins[35:24]});
+    wire signed [12:0] fd_xh = $signed({fd_hi[35], fd_hi[35:24]});
+    wire [4:0] fd_tza = fd_tz24(fd_ca[23:0]);
+    wire [4:0] fd_tzb = fd_tz24(fd_cb[23:0]);
+    wire [4:0] fd_tzi = fd_tz24(fd_ins[23:0]);
+    wire [4:0] fd_tzh = fd_tz24(fd_hi[23:0]);
+    // e = xe - 23 + tz(mag) — golden component 의 (m,e) 중 e 축
+    wire signed [12:0] fd_ea = fd_xa - 13'sd23 + $signed({8'b0, fd_tza});
+    wire signed [12:0] fd_eb = fd_xb - 13'sd23 + $signed({8'b0, fd_tzb});
+    wire signed [12:0] fd_ei = fd_xi - 13'sd23 + $signed({8'b0, fd_tzi});
+    wire signed [12:0] fd_eh = fd_xh - 13'sd23 + $signed({8'b0, fd_tzh});
+    // 비겹침 = golden grow_insert 의 `comp_top(a) <= b[1]` 정확 미러
+    // (top(a) = xe_a + 1 이므로 xe_a < e_b). 근사 `xe_b - xe_a >= 24` 는
+    // 더 강한 판정이라 금지 pin 을 검사 불능으로 만든다 — 위 블록 주석.
+    wire fd_disj   = fd_xa < fd_eb;
+    // 정렬 키 = golden _insort 의 (e, top) 오름차순 사전식 비교
+    wire fd_ins_gt = (fd_ea > fd_ei)
+                  || ((fd_ea == fd_ei) && (fd_xa > fd_xi));  // 삽입 하강 스캔
+    wire fd_hi_ge  = (fd_ea < fd_eh)
+                  || ((fd_ea == fd_eh) && (fd_xa <= fd_xh)); // 재삽입 이동
+                                                   // (동률에서 <= 는 golden
+                                                   // insort 의 동률 처리와
+                                                   // 같은 방향)
+
+    // ---- FP_AddWide 피연산자 (전부 레지스터 함수 — pass 3 cycle 동안 불변) ----
+    wire fd_aw_act  = (fd_st == FDS_MRGW) || (fd_st == FDS_FOLDW)
+                   || (fd_st == FDS_PACKW);
+    wire fd_aw_mode = (fd_st == FDS_PACKW);        // PACK_FINAL / PACK_WIDE
+    wire        fd_p_sign = (fd_st == FDS_MRGW) ? fd_cb[36] : fd_accs;
+    wire signed [10:0] fd_p_exp = (fd_st == FDS_MRGW) ? $signed(fd_cb[34:24])
+                                                     : $signed(fd_acce[10:0]);
+    wire [47:0] fd_p_sig = (fd_st == FDS_MRGW) ? {fd_cb[23:0], 24'b0} : fd_accm;
+    wire        fd_c_sign = fd_aw_mode ? 1'b0 : fd_ca[36];
+    // PACK_FINAL 의 C 는 zero operand: exp 는 반드시 상대보다 엄격히 아래여야
+    // 하므로 FP_AddWide 규약의 -1024 을 쓴다 (아래 EXP_Z 와 같은 값 — 그
+    // localparam 은 이 블록보다 뒤에 선언되므로 리터럴로 적는다).
+    wire signed [10:0] fd_c_exp = fd_aw_mode ? -11'sd1024
+                                             : $signed(fd_ca[34:24]);
+    wire [47:0] fd_c_sig = fd_aw_mode ? 48'b0 : {fd_ca[23:0], 24'b0};
+
     // -------------------------------------------------------------------------
     // multiplier operand mux (held constant per step; fp_first legs consume
     // the previous pass live, temps take over from cycle 2 with the same
@@ -857,6 +1205,14 @@ module FP_StepSeq (
                     end
                     default: ;                         // 0/7: unused
                 endcase
+                // 3a-C3 §27.7a STEP M — narrow significand 곱을 공유
+                // FP_Mul36 에 태운다 (신규 곱셈기 금지, GATE V20-4 의
+                // premap $mul delta == 0). FDS_LANE/FDS_MUL1 두 cycle 동안
+                // lane 창이 정지해 있으므로 피연산자는 자동으로 held 다.
+                OPS_FDOTCR: begin
+                    mul_a = {25'b0, fd_ma};
+                    mul_b = {25'b0, fd_mb};
+                end
                 default: ;                             // FSADD/MUL/FMA: (ma,mb)
             endcase
         end
@@ -918,6 +1274,18 @@ module FP_StepSeq (
                     aw_cexp  = div_cxp;                // sign 0: q0 > 0
                     aw_csig  = {q24_q, 24'b0};
                 end
+                // 3a-C3 §27.7a STEP T/F/P — 공유 FP_AddWide 재사용 (merge 와
+                // fold 는 PACK_WIDE, 최종 1회만 PACK_FINAL). 비활성 cycle 은
+                // 블록 상단의 idle default 를 그대로 둔다.
+                OPS_FDOTCR: if (fd_aw_act) begin
+                    aw_mode  = fd_aw_mode;
+                    aw_psign = fd_p_sign;
+                    aw_pexp  = fd_p_exp;
+                    aw_psig  = fd_p_sig;
+                    aw_csign = fd_c_sign;
+                    aw_cexp  = fd_c_exp;
+                    aw_csig  = fd_c_sig;
+                end
                 default: ;
             endcase
         end
@@ -943,8 +1311,76 @@ module FP_StepSeq (
         .wide_sig  (aw_wsig),
         .wide_zero (aw_wzero)
     );
-    // wide outputs deliberately unconsumed: every internal fixed-point step
-    // runs on FP_Mul36 + integer jams; FP_AddWide is FINAL-pack only here.
+    // wide outputs deliberately unconsumed by the v1.8.0c/d/e scalar step
+    // programs: their internal fixed-point steps run on FP_Mul36 + integer
+    // jams and FP_AddWide is FINAL-pack only there. The 3a-C3 OPS_FDOTCR
+    // program below IS a wide-output consumer (STEP T merge + STEP F fold).
+
+    // -------------------------------------------------------------------------
+    // 3a-C3 §27.7a — STEP T 의 24|24 field-slice split + fold 계측
+    // -------------------------------------------------------------------------
+    // 겹침 쌍의 정렬 폭은 구조적으로 <= 48 이라 PACK_WIDE 의 RTO-48 은
+    // vacuous == exact 다 (§27.7a.2 (ii)). 정확 미러 판정 하의 도출: merge
+    // 는 not-disj, 즉 xe_a >= e_b = xe_b - 23 + tz_b 일 때만 일어나고 열은
+    // (e, top) 오름차순이라 e_a <= e_b 이므로 |xe_a - xe_b| <= 23 —
+    // 어느 쪽이 anchor 든 shamt <= 23 이라 shiftee 의 LSB 가 FP_AddWide
+    // 50-bit 창의 bit 3 이상에 앉아 창 밖 손실이 없고, 정렬폭 <= 47 +
+    // carry 1 = 48 이라 정규화 48b 결과가 정확합을 그대로 담는다 (실측
+    // 정렬합 폭 max 48 == 강제 경계; 초과는 아래 fd_mrg_inexact 가 loud
+    // fault 로 잡는다). 따라서 split 은 **고정 슬라이스**:
+    //   hi = wide_sig[47:24] @ xe = wide_exp        (이미 정규화됨)
+    //   lo = wide_sig[23:0]  @ e  = wide_exp-47     (정규화 필요)
+    // lo == 0 은 golden 의 "bl <= 24 -> 단일 component" 분기와 같은 사건이다.
+    wire [23:0] fd_lo_raw = aw_wsig[23:0];
+    wire        fd_lz16 = ~|fd_lo_raw[23:8];
+    wire [23:0] fd_ln0  = fd_lz16 ? {fd_lo_raw[7:0], 16'b0} : fd_lo_raw;
+    wire        fd_lz8  = ~|fd_ln0[23:16];
+    wire [23:0] fd_ln1  = fd_lz8  ? {fd_ln0[15:0], 8'b0} : fd_ln0;
+    wire        fd_lz4  = ~|fd_ln1[23:20];
+    wire [23:0] fd_ln2  = fd_lz4  ? {fd_ln1[19:0], 4'b0} : fd_ln1;
+    wire        fd_lz2  = ~|fd_ln2[23:22];
+    wire [23:0] fd_ln3  = fd_lz2  ? {fd_ln2[21:0], 2'b0} : fd_ln2;
+    wire        fd_lz1  = ~fd_ln3[23];
+    wire [23:0] fd_lomag = fd_lz1 ? {fd_ln3[22:0], 1'b0} : fd_ln3;
+    wire [4:0]  fd_lolz  = {fd_lz16, fd_lz8, fd_lz4, fd_lz2, fd_lz1};
+    wire signed [11:0] fd_loxe = aw_wexp - 12'sd24 - $signed({7'b0, fd_lolz});
+    wire        fd_lonz  = |fd_lo_raw;
+    wire [36:0] fd_hi_w  = {aw_wsign, aw_wexp, aw_wsig[47:24]};
+    wire [36:0] fd_lo_w  = {aw_wsign, fd_loxe, fd_lomag};
+
+    // ---- pass 의 무반올림 여부 (golden 의 "실질 jam" 판정과 동치) ----
+    // golden fold_descending 은 RTO 산출과 pre-RTO exact 합을 직접 비교해
+    // **첫 실질 jam 위치 자체**를 잡는다. RTL 은 exact 합을 들고 있지
+    // 않으므로 같은 사건을 기하로 판정한다:
+    //   pass 가 inexact  <=>  exact 합의 최저 set bit < 결과 48-bit 창 바닥
+    //                          (창 바닥 = wide_exp - 47)
+    // 비겹침 열에서 exact 합의 최저 set bit == **들어온 피가산 component 의
+    // 최저 set bit** 다 (acc 의 bit 구간이 그보다 위에 있어 하단 상쇄가
+    // 구조적으로 불가능 — top(c_k) <= e_{k+1} == acc 의 최저 bit). jam
+    // 이후에도 남은 component 는 전부 grid p 아래라 같은 등식이 유지된다.
+    // ⇒ 이 판정은 golden 과 **같은 pass** 에서 참이 된다 (과·미검출 없음).
+    wire signed [12:0] fd_wtop = $signed({aw_wexp[11], aw_wexp});
+    wire signed [12:0] fd_wlo  = fd_wtop - 13'sd47;   // 48-bit 창 바닥
+    wire fd_fold_inexact = fd_ea < fd_wlo;            // STEP F pass 가 jam 했나
+    // STEP T 의 vacuous-RTO 전제 (golden 의 `bl > Q48` loud fault 와 같은
+    // 사건): 겹침 merge 는 구조적으로 무반올림이어야 한다. 두 피연산자
+    // 중 낮은 쪽 최저 bit 이 창 밖이면 그 전제가 붕괴한 것이다.
+    wire signed [12:0] fd_mlo = (fd_ea < fd_eb) ? fd_ea : fd_eb;
+    wire fd_mrg_inexact = fd_mlo < fd_wlo;
+
+    // freeze (§27.7a.2a 졸업 지표): 첫 실질 jam 이후 acc 는 불변이어야 한다.
+    // 검사 창은 **jam 직후 첫 pass 부터** 열려 있어야 한다 — "acc 불변인
+    // pass 를 먼저 본 뒤에 감시 시작" 은 jam 직후 첫 pass 의 붕괴를 통째로
+    // 놓치는 단방향 약화다 (acc 불변 => jam 이후 는 참이지만 그 역이
+    // 필요하다). 그래서 위 fd_fold_inexact 가 jam 을 직접 앵커하고,
+    // fd_acc_same 는 그 특수형이라 OR 로 함께 둔다 (이중 안전망).
+    wire fd_acc_same = (aw_wsign == fd_accs) && (aw_wexp == fd_acce)
+                    && (aw_wsig == fd_accm);
+
+    wire        fd_fin = (fd_st == FDS_DONE);
+    wire [31:0] fd_res = (fd_rsel == FDR_QNAN) ? QNAN
+                       : (fd_rsel == FDR_ZERO) ? 32'h0000_0000
+                                               : aw_final;
 
     // -------------------------------------------------------------------------
     // FP_CLASSIFY — specials resolve here and skip FP_EXEC entirely
@@ -1021,6 +1457,16 @@ module FP_StepSeq (
                                                        // NaN/Inf/zero are DATA
                                                        // inside each conversion
                                                        // (golden ref_cvt order)
+            OPS_FDOTCR: spec_hit = 1'b0;               // 3a-C3 §27.7a: lane
+                                                       // special 은 32 lane
+                                                       // 전수 검사라 CLASSIFY
+                                                       // 1 cycle 에 못 끝낸다
+                                                       // — 수납 (FDS_LOAD)
+                                                       // 중 누적하고, 하나라도
+                                                       // 있으면 EFT 미진입으로
+                                                       // qNaN+sticky 종료한다
+                                                       // (FP_AddWide 의 "특수값
+                                                       // 미진입" 전제는 유지)
             OPS_DEQ: begin                             // §25.2.2 pinned cells
                                                        // on the DAZ'd scale
                                                        // (bf16 result in the
@@ -1078,6 +1524,11 @@ module FP_StepSeq (
             // (bf16-dest-only pin; other dtypes never presented)
             OPC_DEQUANT: if (dtype_in[3:1] == 3'b000)
                 op_sel_in = OPS_DEQ;
+            // 3a-C3 §27.7a.1 — FDOT32_CR 의 dtype 은 wave dtype 을 직접
+            // 명명한다: 0x2 f16 / 0x3 bf16 **정확히 2행**, 그 외 전 조합은
+            // ILLEGAL (restrictive-first) → OPS_BAD 로 남아 qNaN 을 낸다.
+            OPC_FDOTCR: if (dtype_in[3:1] == 3'b001)
+                op_sel_in = OPS_FDOTCR;
             default: ;
         endcase
     end
@@ -1243,12 +1694,306 @@ module FP_StepSeq (
                     res_reg  <= e2_bypass_res;
                     fp_state <= FP_FINISH;
                 end
+
+                // 3a-C3 §27.7a — OPS_FDOTCR 은 아래 op-gated sub-sequencer 가
+                // 소유한다: generic step 기계는 step 0 에 주차하고 종료는
+                // fd_fin 으로만 취한다 (위 FEXP2 bypass 와 같은 last-write-wins
+                // 관용구). 기존 op 의 행은 하나도 건드리지 않는다.
+                if (op_sel == OPS_FDOTCR) begin
+                    fp_step  <= 6'd0;
+                    fp_first <= 1'b0;
+                    fp_wait  <= 2'd0;
+                    fp_state <= fd_fin ? FP_FINISH : FP_EXEC;
+                    if (fd_fin) res_reg <= fd_res;
+                end
             end
 
             FP_FINISH: fp_state <= FP_IDLE;
 
             default: fp_state <= FP_IDLE;
         endcase
+    end
+
+    // =========================================================================
+    // 3a-C3 §27.7a — OPS_FDOTCR sub-sequencer (op-gated 전량)
+    //
+    // 전 분기가 fd_launch / fd_run 안에 있으므로 다른 op 의 launch 는 이
+    // 블록의 어떤 레지스터도 쓰지 않는다 (§27.7a.4 의 "신규 로직은 op-gated
+    // 영역에 격리" — capture-mux 미묘 회귀 = shipped op 의 silent wrong-data
+    // 선례 §23.10.10(h) 항 4 에 대한 구조적 격리).
+    //
+    // OPERAND INGRESS (C3 결정 — C4 확인 의무): 1,024b wave 는 **fragment
+    // 당 1 cycle, 16 cycle** 로 {b_in, a_in} 위에 실려 들어온다 (frag f =
+    // {b_in, a_in}, f = 0..15 — §27.7a.1 의 16-fragment 구조 그대로). launch
+    // edge 가 frag 0 을 먹고 이후 15 cycle 이 나머지를 먹는다. §27.7a.1 문언
+    // ("launch cycle 에 MU-local capture") 대비 차이는 **수납 창이 1 cycle 이
+    // 아니라 16 cycle** 이라는 점 하나이며, 그 문언의 근거 (EHDecode 가
+    // cluster-shared 라 1,167 cycle 급 프로그램 (실측; 초안 추정 ~5k) 동안 버퍼를 못 잡는다) 는 그대로
+    // 지켜진다 — 버퍼는 여기 MU 안에 있다. 이 형을 고른 이유는 1,024b 병렬
+    // 포트를 FP_StepSeq 경계에 새로 뚫으면 PE_Core 의 기존 instantiation 이
+    // 미결선이 되어 (PINMISSING) Cluster/PE/Pod/Top_Core/ISA_Decoder 5개
+    // 스위트가 **빌드 자체가 깨지고**, 그 결선은 3a-C4 몫이기 때문이다.
+    // 포트 목록을 byte-불변으로 두면 C4 가 (a) 이 스트리밍 수납을 그대로
+    // 쓰거나 (b) 1,024b 포트로 바꾸거나를 자유롭게 고를 수 있다 — 프로그램
+    // 로직은 어느 쪽이든 동일하다 (capture 레지스터가 같은 자리에 있다).
+    //
+    // sticky (§27.7a.1 (iii)) 와 loud fault 는 fd_spec / fd_fault 레지스터에
+    // 산다. 두 sticky 의 **포트 노출**은 §27.7a.4 가 3a-C4 (PE_Core 결과
+    // 반환 결선) 로 배정한 항목이라 여기서는 유닛 내부에 둔다 — 결과값
+    // 자체는 두 경우 모두 canonical qNaN 이라 무모호 marker 로 이미 loud 다
+    // (main drain 은 NaN 을 절대 산출하지 않는다, §27.7a.1).
+    // =========================================================================
+    wire fd_launch = (fp_state == FP_IDLE) && start
+                  && (op_sel_in == OPS_FDOTCR);
+    wire fd_run    = (fp_state != FP_IDLE) && (op_sel == OPS_FDOTCR);
+    wire fd_dtbf   = fd_launch ? (dtype_in == 4'd3) : fd_bf16;
+    // 수납 중 fragment 의 4 lane special 검사 (NaN/Inf/sNaN — exp field all-1)
+    wire fd_sp0 = fd_dtbf ? (a_in[14:7]  == 8'hFF) : (a_in[14:10]  == 5'h1F);
+    wire fd_sp1 = fd_dtbf ? (a_in[30:23] == 8'hFF) : (a_in[30:26]  == 5'h1F);
+    wire fd_sp2 = fd_dtbf ? (b_in[14:7]  == 8'hFF) : (b_in[14:10]  == 5'h1F);
+    wire fd_sp3 = fd_dtbf ? (b_in[30:23] == 8'hFF) : (b_in[30:26]  == 5'h1F);
+    wire fd_spfr = fd_sp0 | fd_sp1 | fd_sp2 | fd_sp3;
+
+    always @(posedge clk) begin
+        if (fd_launch) begin
+            // launch cycle: fragment 0 수납 + 상태 초기화
+            fd_asr    <= {b_in, a_in, fd_asr[511:64]};
+            fd_bf16   <= (dtype_in == 4'd3);
+            fd_spec   <= fd_spfr;
+            fd_fault  <= 1'b0;
+            fd_jam    <= 1'b0;
+            fd_cnt    <= 6'd1;
+            fd_n      <= 6'd0;
+            fd_w      <= 6'd0;
+            fd_rsel   <= FDR_AW;
+            fd_st     <= FDS_LOAD;
+        end else if (fd_run) begin
+            case (fd_st)
+                // ---- 수납: frag 1..15 (frag 0 은 launch edge 가 먹었다) ----
+                FDS_LOAD: begin
+                    if (fd_cnt[3]) fd_bsr <= {b_in, a_in, fd_bsr[511:64]};
+                    else           fd_asr <= {b_in, a_in, fd_asr[511:64]};
+                    fd_spec <= fd_spec | fd_spfr;
+                    if (fd_cnt == 6'd15) begin
+                        fd_cnt <= 6'd0;
+                        if (fd_spec | fd_spfr) begin
+                            // §27.7a.1 (iii): EFT 미진입 — qNaN + sticky
+                            fd_rsel <= FDR_QNAN;
+                            fd_st   <= FDS_DONE;
+                        end else
+                            fd_st <= FDS_PRIME;
+                    end else
+                        fd_cnt <= fd_cnt + 6'd1;
+                end
+
+                // ---- 첫 fragment 를 lane 창으로 (큰 레지스터는 64b 전진) ----
+                FDS_PRIME: begin
+                    fd_fa  <= fd_asr[63:0];
+                    fd_fb  <= fd_bsr[63:0];
+                    fd_asr <= {64'b0, fd_asr[511:64]};
+                    fd_bsr <= {64'b0, fd_bsr[511:64]};
+                    fd_st  <= FDS_LANE;
+                end
+
+                // ---- STEP M: lane classify + 곱 launch ----
+                FDS_LANE: begin
+                    fd_pe <= $signed(fd_qa[11:0]) + $signed(fd_qb[11:0]);
+                    fd_ps <= fd_qa[23] ^ fd_qb[23];
+                    if (fd_skip) begin
+                        // zero 기여 lane — golden 의 prods 제외 규칙 그대로
+                        // (열에 아무것도 넣지 않는다)
+                        if (fd_cnt[1:0] == 2'b11) begin
+                            fd_fa  <= fd_asr[63:0];
+                            fd_fb  <= fd_bsr[63:0];
+                            fd_asr <= {64'b0, fd_asr[511:64]};
+                            fd_bsr <= {64'b0, fd_bsr[511:64]};
+                        end else begin
+                            fd_fa <= {16'b0, fd_fa[63:16]};
+                            fd_fb <= {16'b0, fd_fb[63:16]};
+                        end
+                        fd_st <= FDS_NEXT;
+                    end else
+                        fd_st <= FDS_MUL1;
+                end
+
+                FDS_MUL1: fd_st <= FDS_PROD;
+
+                FDS_PROD: begin
+                    fd_ins <= {fd_ps, fd_pxe, fd_pmag};
+                    if (fd_cnt[1:0] == 2'b11) begin
+                        fd_fa  <= fd_asr[63:0];
+                        fd_fb  <= fd_bsr[63:0];
+                        fd_asr <= {64'b0, fd_asr[511:64]};
+                        fd_bsr <= {64'b0, fd_bsr[511:64]};
+                    end else begin
+                        fd_fa <= {16'b0, fd_fa[63:16]};
+                        fd_fb <= {16'b0, fd_fb[63:16]};
+                    end
+                    if (fd_n >= FD_TOP) begin      // 배열 guard — loud fault
+                        fd_fault <= 1'b1;
+                        fd_rsel  <= FDR_QNAN;
+                        fd_st    <= FDS_DONE;
+                    end else begin
+                        fd_j  <= fd_n;
+                        fd_st <= FDS_INS;
+                    end
+                end
+
+                // ---- STEP I (a): (e, top) 오름차순 정렬 삽입 ----
+                // 하강 스캔 = 비교와 이동을 한 cycle 에 겹친 삽입정렬 내루프.
+                // key <= key(q) 인 원소 전부의 **뒤**에 놓는다 (golden insort).
+                FDS_INS: begin
+                    if ((fd_j != 6'd0) && fd_ins_gt) begin
+                        fd_xp[fd_j] <= fd_ca;      // fd_ra == fd_jm1
+                        fd_j <= fd_jm1;
+                    end else begin
+                        fd_xp[fd_j] <= fd_ins;
+                        fd_n  <= fd_n + 6'd1;
+                        fd_w  <= 6'd0;             // walk 은 항상 바닥부터
+                        fd_st <= FDS_WALK;
+                    end
+                end
+
+                // ---- STEP I (b): "최저 2개 순서 merge" walk ----
+                FDS_WALK: begin
+                    if (fd_w1 >= fd_n)
+                        fd_st <= FDS_NEXT;         // 대기열 <= 1 — 열 확정
+                    else if (fd_disj)
+                        fd_w <= fd_w1;             // a 는 남은 전부의 아래
+                    else begin
+                        fd_wait <= 2'd3;           // 겹침 — 1 AddWide pass
+                        fd_st   <= FDS_MRGW;
+                    end
+                end
+
+                // ---- STEP T: exact merge (latency 3) + 24|24 split ----
+                FDS_MRGW: begin
+                    if (fd_wait != 2'd0) fd_wait <= fd_wait - 2'd1;
+                    else if (fd_mrg_inexact) begin
+                        // vacuous-RTO 전제 붕괴 = exact-합 보존 invariant 의
+                        // 붕괴 (golden 은 같은 사건에 FdotFault 를 던진다).
+                        // 정상 열에서는 도달 불가 (정렬폭 <= 48 이 구조적)
+                        // 이지만 "도달 불가" 주장으로 검사를 대체하지 않는다.
+                        fd_fault <= 1'b1;
+                        fd_rsel  <= FDR_QNAN;
+                        fd_st    <= FDS_DONE;
+                    end else begin
+                        if (aw_wzero) begin        // 정확 상쇄 — 둘 다 소멸
+                            fd_hi_done <= 1'b1;
+                            fd_dst     <= fd_w;
+                        end else begin
+                            fd_hi      <= fd_hi_w;
+                            fd_hi_done <= 1'b0;
+                            if (fd_lonz) begin
+                                // lo 는 남은 대기열 전부의 아래이므로 바닥
+                                // 자리가 확정된다 (재삽입 스캔 불요):
+                                // xe_lo <= max(xe_a,xe_b) - 23 이고 열이
+                                // (e, top) 오름차순이라 e_lo <= xe_lo <=
+                                // e_c, 동률이면 xe_lo <= xe_c — 어느 쪽이든
+                                // key(lo) <= key(c) 다.
+                                fd_xp[fd_w] <= fd_lo_w;
+                                fd_dst      <= fd_w1;
+                            end else
+                                fd_dst      <= fd_w;
+                        end
+                        fd_j  <= fd_w + 6'd2;
+                        fd_st <= FDS_REINS;
+                    end
+                end
+
+                // ---- STEP T (b): hi 재삽입 + 열 압축 ----
+                FDS_REINS: begin
+                    if (!fd_hi_done && (fd_j < fd_n) && fd_hi_ge) begin
+                        fd_xp[fd_dst] <= fd_ca;    // fd_ra == fd_j
+                        fd_dst <= fd_dst + 6'd1;
+                        fd_j   <= fd_j + 6'd1;
+                    end else if (!fd_hi_done) begin
+                        fd_xp[fd_dst] <= fd_hi;
+                        fd_dst     <= fd_dst + 6'd1;
+                        fd_hi_done <= 1'b1;
+                        // lo 가 있었으면 여기서 구멍이 정확히 메워진다
+                        if ((fd_dst + 6'd1) == fd_j) fd_st <= FDS_WALK;
+                    end else if (fd_j < fd_n) begin
+                        fd_xp[fd_dst] <= fd_ca;
+                        fd_dst <= fd_dst + 6'd1;
+                        fd_j   <= fd_j + 6'd1;
+                    end else begin
+                        fd_n  <= fd_dst;
+                        fd_st <= FDS_WALK;
+                    end
+                end
+
+                // ---- lane 전진 / 3종 assert ① 용량 (초과 = loud fault) ----
+                FDS_NEXT: begin
+                    if (fd_n > FD_CAP) begin
+                        fd_fault <= 1'b1;
+                        fd_rsel  <= FDR_QNAN;
+                        fd_st    <= FDS_DONE;
+                    end else if (fd_cnt != 6'd31) begin
+                        fd_cnt <= fd_cnt + 6'd1;
+                        fd_st  <= FDS_LANE;
+                    end else begin
+                        // STEP F 진입: acc = canonical zero (FP_AddWide 의
+                        // zero-operand 규약 그대로), 최상위 component 부터
+                        fd_accs   <= 1'b0;
+                        fd_acce   <= -12'sd1024;
+                        fd_accm   <= 48'b0;
+                        fd_jam    <= 1'b0;
+                        if (fd_n == 6'd0) begin
+                            fd_rsel <= FDR_ZERO;   // 전 lane zero 기여 -> +0
+                            fd_st   <= FDS_DONE;
+                        end else begin
+                            fd_j    <= fd_n - 6'd1;
+                            fd_wait <= 2'd3;
+                            fd_st   <= FDS_FOLDW;
+                        end
+                    end
+                end
+
+                // ---- STEP F: descending RTO-48 fold (§27.7a.2a amendment-1) ----
+                FDS_FOLDW: begin
+                    if (fd_wait != 2'd0) fd_wait <= fd_wait - 2'd1;
+                    else begin
+                        fd_accs <= aw_wsign;
+                        fd_acce <= aw_wexp;
+                        fd_accm <= aw_wsig;
+                        // jam 앵커 (golden 의 "첫 실질 jam" 그대로) — 이
+                        // pass 가 RTO 로 정보를 버렸으면 다음 pass 부터
+                        // freeze 감시가 열린다. fd_acc_same 는 그 특수형.
+                        if (fd_fold_inexact || fd_acc_same) fd_jam <= 1'b1;
+                        if (fd_jam && !fd_acc_same) begin
+                            // freeze 위반 = 정리 (4) 붕괴 — 절대 silent 금지
+                            fd_fault <= 1'b1;
+                            fd_rsel  <= FDR_QNAN;
+                            fd_st    <= FDS_DONE;
+                        end else if (fd_j == 6'd0) begin
+                            if (aw_wzero) begin
+                                fd_rsel <= FDR_ZERO;
+                                fd_st   <= FDS_DONE;
+                            end else begin
+                                fd_wait <= 2'd3;
+                                fd_st   <= FDS_PACKW;
+                            end
+                        end else begin
+                            fd_j    <= fd_j - 6'd1;
+                            fd_wait <= 2'd3;
+                        end
+                    end
+                end
+
+                // ---- STEP P: PACK_FINAL 1회 ----
+                FDS_PACKW: begin
+                    if (fd_wait != 2'd0) fd_wait <= fd_wait - 2'd1;
+                    else begin
+                        fd_rsel <= FDR_AW;
+                        fd_st   <= FDS_DONE;
+                    end
+                end
+
+                FDS_DONE: ;                        // 결과는 fd_res 로 확정
+                default: fd_st <= FDS_DONE;
+            endcase
+        end
     end
 
     // -------------------------------------------------------------------------
