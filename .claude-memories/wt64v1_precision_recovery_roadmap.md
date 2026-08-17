@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 09e02def-fe68-4449-8866-9db15ac81932
-  modified: 2026-08-16T12:35:36.957Z
+  modified: 2026-08-17T05:29:37.823Z
 ---
 
 # WT64v1 RMSNORM/LAYERNORM scale multiplication 정밀도 roadmap
@@ -185,9 +185,20 @@ v1.7 은 (parity 수준으로) output-side 를 추가 개선하나 완전 제거
   — SPILL/UNK 블라인드 스팟은 검증 렌즈 실측 발견 후 golden-first
   폐쇄). bank smoke: xcu55c 8,368 LUT / ECP5 14,671 LUT4 (양쪽 $mul
   0). 커버리지 경계 3건 spec 정직 기록 (offset 0 / 교차곱 공백 /
-  TLC ghost 2건 — 전부 ④ 몫). **다음: ④ full-cluster gate 기준
-  선공표 (별도 COMMIT, V9-4 형식, anchor: lattice 19,298 + bank
-  8,368 + FMA lane + v1.x cluster 42,538-42,731) → ④ 통합 실행.**
+  TLC ghost 2건 — 전부 ④ 몫).
+- **④ GATE V20-3 완결 (2026-08-17, 69c30f4/d2c1948/7f05ef3/21ad6de)**:
+  기준 선공표 (LUT ceiling 35,377 = anchor 33,874 + glue 900×1.67)
+  → FP_TrainCluster.v (lane 전단 tap ×8 → lattice N=8 → bank;
+  offset-0 중재 pin ARB_OFFSET0/ARB_PORT; NaN/Inf → canonical zero
+  + LANE_SPECIAL + writeback 억제) → **xcu55c binding PASS: LUT
+  26,863 (여유 8,514, tap 효과) / DSP·$mul 정확히 8 / DRC 0 / Fmax
+  121.62 MHz**. ECP5 MEASUREMENT: **PnR 완주 — infeasible 사전 분기
+  미발동** (COMB 54%, 18.23 MHz). e2e 1,234 wave + 변이 7종 사멸
+  (fault_o 집약 공백은 발견→폐쇄→재적용 재현). ③ 이월 3건 폐쇄.
+  **∴ §27.6 하류 ①→②→③→④ 전부 종결 — 옵션 3 gate 전건 PASS.
+  다음 = 3a FDOT32_CR (0x7A) COMMIT 0 (사용자 기결정 2026-08-15
+  "성공하면 곧바로 3a" — 별도 release, §27.7 op_sel 격리) + TRAIN
+  opcode ISA 결선·step sequencer 통합 후속.**
 - 장기 활용처: .claude-memos/future_applications.md (PLL-DSP,
   WT64v1CLf GPGPU — 트리거 조건 충족 전 착수 금지).
 
