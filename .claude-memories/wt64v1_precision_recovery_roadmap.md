@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 09e02def-fe68-4449-8866-9db15ac81932
-  modified: 2026-08-17T05:58:07.145Z
+  modified: 2026-08-17T09:07:02.106Z
 ---
 
 # WT64v1 RMSNORM/LAYERNORM scale multiplication 정밀도 roadmap
@@ -209,6 +209,18 @@ v1.7 은 (parity 수준으로) output-side 를 추가 개선하나 완전 제거
   delta 0 — FP_Mul36 공유, cut ladder 사전 선언). **착지 순서:
   C0(완) → C1 golden (EFT 고정-seed) → C2 ISA JSON → C3 step
   프로그램 (전건 re-proof) → C4 결선 + GATE V20-4.**
+- **3a-C1 착지 + C0 pin 부정 (2026-08-17, a08021d, spec §27.7a.2a)**:
+  golden-before-RTL 이 규범 결함을 RTL 이전에 포착한 사례. C0 가
+  pin 한 **ascending RTO-48 fold 가 값 계약 위반** (상대오차 23.8%
+  급 — 상단 인접 상쇄로 최종 창이 sticky-jam 위치보다 46 binade
+  아래로 내려가면 jam 이 오배치; 구현 버그 아님, 3 렌즈 독립 진단
+  일치) → **descending fold + freeze loud fault** 로 §12a 개정.
+  §27.7a.2 원문은 supersede 배너 보존 — **오름차순 스트리밍 fold 는
+  금지 pin (재발 경로)**. 실적: 값 계약/fold/invariant 각 57,022
+  trial 0 mismatch, 폐기 ASC 의 값 위반 168건을 main-twin 축이 전건
+  검출. 생성기 gate 배선 정정 (mismatch → 비영 종료; 초안은 항상
+  exit 0 이었음). **교훈: 검사 하네스의 exit 배선과 "졸업 지표가
+  항등식이 아닌지" 를 매번 확인할 것.** 다음 = 3a-C2 (ISA JSON).
 - 장기 활용처: .claude-memos/future_applications.md (PLL-DSP,
   WT64v1CLf GPGPU — 트리거 조건 충족 전 착수 금지).
 
