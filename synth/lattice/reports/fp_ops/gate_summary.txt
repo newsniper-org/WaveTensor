@@ -97,12 +97,12 @@ MEAS V20-3/ECP5 full-cluster — fp_traincluster (LFE5UM-85F CABGA381 -6, out-of
 
 MEAS S1/ECP5 system top — sys_top_core (LFE5UM-85F CABGA381 -6, out-of-context, yosys synth_ecp5 + nextpnr-ecp5, wrapper-top incl. I/O regs):
     [system-integration top (spec §28): Top_Core = ISA_Decoder (EHDecode + PE_Core + FP_StepSeq) + HIU — the top that had never been synthesized by anything in this repo; xcu55c half carries the merge-blocker binding, this half is measurement-only and 'did not complete' is a pre-declared outcome]
-    LUT4       = 17718   (85F budget 83,640 — utilization 21.2%; no ceiling declared, spec 27.6)
-    MULT18X18D =    58   (record axis — yosys share discretion allowed (§26.6); the xcu55c half measured 39 DSP48E2)
+    LUT4       = 18468   (85F budget 83,640 — utilization 22.1%; no ceiling declared, spec 27.6)
+    MULT18X18D =    64   (record axis — yosys share discretion allowed (§26.6); the xcu55c half measured 39 DSP48E2)
     premap $mul=   381   (pin expects 429 — matches the xcu55c half's premap census  MISMATCH)
     TRELLIS_FF = 10736   raw; unit = 9135 after -1601 wrapper I/O flops (informational)
     EBR        =     0   (informational, cells DP16KD/PDPW16KD/DP16KD_COMB)
-    CCU2C      =  3017   (informational, carry cells)
+    CCU2C      =  3265   (informational, carry cells)
     PnR        = DID NOT COMPLETE — that outcome is the measurement; see the archived _pnr.log for the stage/reason
     MEAS S1/ECP5 system top RESULT: MEASUREMENT (recorded — the ECP5 half constitutes no gate verdict, spec 27.6)
 

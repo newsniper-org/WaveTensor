@@ -5,15 +5,15 @@
 
         +----------Local Count, excluding submodules.
         | 
-    15594 wires
-   177819 wire bits
+    15593 wires
+   177834 wire bits
      2276 public wires
     53609 public wire bits
        49 ports
      1742 port bits
         5 memories
     10895 memory bits
-    14338 cells
+    14353 cells
       852   $add
       155   $adff
        25   $and
@@ -25,7 +25,7 @@
       182   $logic_and
       238   $logic_not
       108   $logic_or
-       95   $lt
+       94   $lt
         1   $meminit
        35   $memrd
         1   $memrd_v2
@@ -39,7 +39,7 @@
       183   $pmux
         1   $reduce_and
        29   $reduce_bool
-      143   $reduce_or
+      159   $reduce_or
         9   $scopeinfo
         2   $shift
         6   $shiftx

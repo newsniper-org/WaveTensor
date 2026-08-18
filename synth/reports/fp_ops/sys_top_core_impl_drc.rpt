@@ -1,7 +1,7 @@
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
 ---------------------------------------------------------------------------------------------------------------------------------------------
 | Tool Version : Vivado v.2025.2.1 (lin64) Build 6403652 Thu Mar 19 13:47:00 MDT 2026
-| Date         : Tue Aug 18 09:00:32 2026
+| Date         : Tue Aug 18 12:39:20 2026
 | Host         : cachyos-ybi-tuf running 64-bit CachyOS
 | Command      : report_drc -file /home/ybi/WaveTensor/synth/reports/fp_ops/sys_top_core_impl_drc.rpt
 | Design       : Top_Core_gate_top
@@ -24,13 +24,14 @@ Table of Contents
       Design limits: <entire design considered>
            Ruledeck: default
              Max checks: <unlimited>
-             Checks found: 137
+             Checks found: 205
 +-----------+----------+----------------------------+--------+
 | Rule      | Severity | Description                | Checks |
 +-----------+----------+----------------------------+--------+
-| DPIP-2    | Warning  | Input pipelining           | 66     |
-| DPOP-3    | Warning  | PREG Output pipelining     | 29     |
+| DPIP-2    | Warning  | Input pipelining           | 86     |
+| DPOP-3    | Warning  | PREG Output pipelining     | 26     |
 | DPOP-4    | Warning  | MREG Output pipelining     | 33     |
+| DPOR-2    | Warning  | Asynchronous load check    | 51     |
 | LUTLP-2   | Warning  | Combinatorial Loop Allowed | 8      |
 | RTSTAT-10 | Warning  | No routable loads          | 1      |
 +-----------+----------+----------------------------+--------+
@@ -367,6 +368,106 @@ Input pipelining
 DSP u_core/u_decoder/u_core/matmul_func_return1__3 input u_core/u_decoder/u_core/matmul_func_return1__3/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
 Related violations: <none>
 
+DPIP-2#67 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20 input u_core/u_decoder/u_core/mul_result_p20/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#68 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20 input u_core/u_decoder/u_core/mul_result_p20/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#69 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__0 input u_core/u_decoder/u_core/mul_result_p20__0/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#70 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__0 input u_core/u_decoder/u_core/mul_result_p20__0/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#71 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__1 input u_core/u_decoder/u_core/mul_result_p20__1/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#72 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__1 input u_core/u_decoder/u_core/mul_result_p20__1/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#73 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__2 input u_core/u_decoder/u_core/mul_result_p20__2/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#74 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__2 input u_core/u_decoder/u_core/mul_result_p20__2/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#75 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__3 input u_core/u_decoder/u_core/mul_result_p20__3/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#76 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__3 input u_core/u_decoder/u_core/mul_result_p20__3/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#77 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__4 input u_core/u_decoder/u_core/mul_result_p20__4/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#78 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__4 input u_core/u_decoder/u_core/mul_result_p20__4/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#79 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__5 input u_core/u_decoder/u_core/mul_result_p20__5/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#80 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__5 input u_core/u_decoder/u_core/mul_result_p20__5/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#81 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__6 input u_core/u_decoder/u_core/mul_result_p20__6/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#82 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__6 input u_core/u_decoder/u_core/mul_result_p20__6/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#83 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__7 input u_core/u_decoder/u_core/mul_result_p20__7/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#84 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__7 input u_core/u_decoder/u_core/mul_result_p20__7/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#85 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__8 input u_core/u_decoder/u_core/mul_result_p20__8/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#86 Warning
+Input pipelining  
+DSP u_core/u_decoder/u_core/mul_result_p20__8 input u_core/u_decoder/u_core/mul_result_p20__8/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
 DPOP-3#1 Warning
 PREG Output pipelining  
 DSP u_core/u_decoder/u_core/einsum_dot_return0__1 output u_core/u_decoder/u_core/einsum_dot_return0__1/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
@@ -484,32 +585,17 @@ Related violations: <none>
 
 DPOP-3#24 Warning
 PREG Output pipelining  
-DSP u_core/u_decoder/u_core/mul_result_p20__0 output u_core/u_decoder/u_core/mul_result_p20__0/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+DSP u_core/u_decoder/u_core/mul_result_p20__2 output u_core/u_decoder/u_core/mul_result_p20__2/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
 Related violations: <none>
 
 DPOP-3#25 Warning
 PREG Output pipelining  
-DSP u_core/u_decoder/u_core/mul_result_p20__2 output u_core/u_decoder/u_core/mul_result_p20__2/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+DSP u_core/u_decoder/u_core/mul_result_p20__5 output u_core/u_decoder/u_core/mul_result_p20__5/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
 Related violations: <none>
 
 DPOP-3#26 Warning
 PREG Output pipelining  
-DSP u_core/u_decoder/u_core/mul_result_p20__4 output u_core/u_decoder/u_core/mul_result_p20__4/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
-Related violations: <none>
-
-DPOP-3#27 Warning
-PREG Output pipelining  
-DSP u_core/u_decoder/u_core/mul_result_p20__5 output u_core/u_decoder/u_core/mul_result_p20__5/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
-Related violations: <none>
-
-DPOP-3#28 Warning
-PREG Output pipelining  
 DSP u_core/u_decoder/u_core/mul_result_p20__7 output u_core/u_decoder/u_core/mul_result_p20__7/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
-Related violations: <none>
-
-DPOP-3#29 Warning
-PREG Output pipelining  
-DSP u_core/u_decoder/u_core/mul_result_p20__8 output u_core/u_decoder/u_core/mul_result_p20__8/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
 Related violations: <none>
 
 DPOP-4#1 Warning
@@ -675,6 +761,261 @@ Related violations: <none>
 DPOP-4#33 Warning
 MREG Output pipelining  
 DSP u_core/u_decoder/u_core/mul_result_p20__8 multiplier stage u_core/u_decoder/u_core/mul_result_p20__8/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOR-2#1 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__2 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[0]__4). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#2 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__2 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[10]__4). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#3 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__2 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[11]__4). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#4 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__2 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[12]__4). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#5 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__2 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[13]__4). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#6 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__2 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[14]__4). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#7 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__2 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[15]__4). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#8 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__2 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[16]__4). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#9 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__2 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[1]__4). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#10 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__2 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[2]__4). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#11 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__2 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[3]__4). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#12 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__2 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[4]__4). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#13 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__2 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[5]__4). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#14 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__2 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[6]__4). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#15 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__2 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[7]__4). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#16 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__2 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[8]__4). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#17 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__2 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[9]__4). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#18 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__5 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[0]__6). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#19 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__5 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[10]__6). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#20 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__5 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[11]__6). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#21 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__5 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[12]__6). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#22 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__5 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[13]__6). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#23 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__5 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[14]__6). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#24 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__5 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[15]__6). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#25 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__5 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[16]__6). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#26 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__5 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[1]__6). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#27 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__5 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[2]__6). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#28 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__5 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[3]__6). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#29 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__5 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[4]__6). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#30 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__5 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[5]__6). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#31 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__5 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[6]__6). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#32 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__5 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[7]__6). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#33 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__5 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[8]__6). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#34 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__5 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[9]__6). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#35 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__7 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[0]__7). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#36 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__7 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[10]__7). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#37 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__7 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[11]__7). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#38 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__7 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[12]__7). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#39 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__7 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[13]__7). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#40 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__7 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[14]__7). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#41 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__7 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[15]__7). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#42 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__7 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[16]__7). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#43 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__7 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[1]__7). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#44 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__7 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[2]__7). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#45 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__7 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[3]__7). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#46 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__7 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[4]__7). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#47 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__7 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[5]__7). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#48 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__7 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[6]__7). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#49 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__7 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[7]__7). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#50 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__7 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[8]__7). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
+Related violations: <none>
+
+DPOR-2#51 Warning
+Asynchronous load check  
+DSP u_core/u_decoder/u_core/mul_result_p20__7 output is connected to registers with an asynchronous reset (u_core/u_decoder/u_core/mul_result_p2_reg[9]__7). This is preventing the possibility of merging these registers in to the DSP Block since the DSP block registers only possess synchronous reset capability.  It is suggested to recode or change these registers to remove the reset or use a synchronous reset to get the best optimization for performance, power and area.
 Related violations: <none>
 
 LUTLP-2#1 Warning
