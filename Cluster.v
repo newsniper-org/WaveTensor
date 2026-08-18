@@ -530,16 +530,21 @@ module Cluster #(
     wire [7:0]                 dec_eff_precision;
     wire [31:0]                dec_wave_number;
     wire [15:0]                dec_thread_id;
-    /* verilator lint_off UNUSEDSIGNAL */
-    wire [15:0]                dec_port_context_id;
-    /* verilator lint_on UNUSEDSIGNAL */
+    // `dec_port_context_id` 는 여기서 받지 않는다 (인스턴스에서 명시적 미접속).
+    // Cluster 의 라우팅은 dec_* 버스가 아니라 `ext_tag[31:16]` 에서 직접 뽑은
+    // 조합 신호 `in_pcid` (:498) 를 쓴다 — dec_* 는 EHDecode stage-1 만큼
+    // 늦어서 같은 에지에 필요한 target_idx 를 만들 수 없기 때문이다.
 
     // OPREF reflection (combinational from ext_instruction) — used by the
     // bank-routing combinational logic so the chosen `cluster_b_payload` is
     // ready in time for EHDecode's stage-1 latch on the same edge.
     wire [3:0] eff_opref_kind_c;
+    // `opref_port_id_out` 역시 받지 않는다 (인스턴스에서 명시적 미접속).
+    // bank 선택은 아래 :613 에서 `eff_opref_route_c[3:0]` 하나로 끝난다.
+    // route 상위 니블 [7:4] 은 spec 폭(8-bit noc_route)을 유지하기 위해
+    // 남겨둔 것이고 현 지오메트리에서는 읽히지 않는다 — 폭을 줄이면 EH
+    // 필드에서 묵시적 절단이 생기므로 줄이지 않는다.
     /* verilator lint_off UNUSEDSIGNAL */
-    wire [3:0] eff_opref_port_c;
     wire [7:0] eff_opref_route_c;
     /* verilator lint_on UNUSEDSIGNAL */
 
@@ -682,9 +687,10 @@ module Cluster #(
         .dec_eff_precision         (dec_eff_precision),
         .dec_wave_number           (dec_wave_number),
         .dec_thread_id             (dec_thread_id),
-        .dec_port_context_id       (dec_port_context_id),
+        // 미접속 2건은 의도적이다 — 위 wire 선언부의 사유 주석 참조.
+        .dec_port_context_id       (),
         .opref_src_kind_out        (eff_opref_kind_c),
-        .opref_port_id_out         (eff_opref_port_c),
+        .opref_port_id_out         (),
         .opref_noc_route_out       (eff_opref_route_c)
     );
 

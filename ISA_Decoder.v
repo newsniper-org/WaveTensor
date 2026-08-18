@@ -98,8 +98,11 @@ module ISA_Decoder #(
     wire [31:0]                dec_wave_number;
     wire [15:0]                dec_thread_id;
     /* verilator lint_off UNUSEDSIGNAL */
-    // dec_port_context_id is exposed by EHDecode for Cluster routing but
-    // unused inside the standalone wrapper.
+    // `dec_port_context_id` 는 EHDecode 가 내보내지만 **어떤 부모도 읽지
+    // 않는다** — Cluster 는 dec_* 버스가 한 사이클 늦어서 쓸 수 없고,
+    // `ext_tag[31:16]` 에서 직접 뽑은 조합 `in_pcid` 를 쓴다 (Cluster.v:498).
+    // 여기 wire 는 이 얇은 래퍼가 EHDecode 의 dec_* 버스를 **전부** 받아
+    // 형태를 증언하기 위한 것이며, 래퍼 안에서는 읽히지 않는다.
     wire [15:0]                dec_port_context_id;
     /* verilator lint_on UNUSEDSIGNAL */
 

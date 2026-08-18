@@ -62,7 +62,7 @@ FPGA 대체 후보를 다각 검토 후 (multi-FPGA 커스텀 보드, SoM+캐리
 | 예상 시간 | Stage 1 완료 후 3-4개월 |
 
 **목적**:
-- **flagship ILC ASIC 등가 스케일 실측** — (4,4)×(4,4) 최대 geometry 로 카메라 target 완결 검증 (별도 메모 `deployment_scaling_ilc.md` 참조)
+- **flagship ILC ASIC 등가 스케일 실측** — (4,4)×(4,4) 최대 geometry 로 카메라 target 완결 검증 (deployment scaling 전용 memo 는 **미작성**이다 — 2026-08-18 확인, 한 번도 생성된 적 없음. 티어별 실측 매트릭스는 아래 Stage 2 항목이 유일한 근거다)
 - **PCIe 통합** — `wavetensor-daemon` 첫 실제 하드웨어 backend, SDK Phase D 트리거
 - Geometry 파라미터 스윕: 같은 board 에서 (2,2)×(2,2) 부터 (4,4)×(4,4) 까지 각 조합 합성 → 카메라 tier (Entry / Enthusiast / Flagship) 별 실측 매트릭스 획득
 - ASIC 트랙 진입 전 최종 아키텍처 확정

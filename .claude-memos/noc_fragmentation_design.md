@@ -280,5 +280,8 @@ v1.5 는 **spec 층위 재정의** 를 v1.3 (sentinel-terminated chain) 과 동�
 
 ## 14. 후속 memo 후보
 
-- `.claude-memos/fragment_buffer_sizing.md` — 실측 fragment buffer 요구량 분석 (workload profile 기반).
-- `.claude-memos/wave_ordering_semantics.md` — fragment out-of-order arrival 시 wave 순서 보장 방식.
+아래는 **아직 쓰이지 않은 memo 의 제목 후보**다. 링크가 아니라 할 일 목록이므로
+파일이 없는 것이 정상이다 (2026-08-18 확인: 둘 다 한 번도 생성된 적 없음).
+
+- **fragment_buffer_sizing** (미작성) — 실측 fragment buffer 요구량 분석 (workload profile 기반).
+- **wave_ordering_semantics** (미작성) — fragment out-of-order arrival 시 wave 순서 보장 방식.

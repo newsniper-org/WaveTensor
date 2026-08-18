@@ -472,7 +472,7 @@ def macro_pass(prog: Program) -> Program:
       * EINSUM with non-HW-direct subscript     → PERMUTE+VIEW+EINSUM(matmul
                                                   kernel)+VIEW+PERMUTE chain.
         HW-direct patterns (those whose canonicalized signature already
-        matches one of the SIG_* localparams in ISA_Decoder.v) pass through
+        matches one of the SIG_* localparams in PE_Core.v) pass through
         unchanged.
     """
     out_stmts: List[Statement] = []
@@ -485,7 +485,9 @@ def macro_pass(prog: Program) -> Program:
 
 
 # Canonical signatures (a_axes, b_axes, o_axes) of the HW-direct EINSUM
-# kernels — must mirror ISA_Decoder.v's SIG_* localparams.
+# kernels — must mirror PE_Core.v's SIG_* localparams. (The SIG_* table lives
+# in PE_Core.v, not ISA_Decoder.v: ISA_Decoder is a thin EHDecode wrapper and
+# carries no signature constants — `grep -c SIG_ ISA_Decoder.v` == 0.)
 HW_DIRECT_EINSUM_SIGS = frozenset([
     (0x0001, 0x0000, 0x0000),  # SIG_SUM_I       'i->'
     (0x0011, 0x0000, 0x0000),  # SIG_TRACE_II    'ii->'
@@ -1806,7 +1808,7 @@ def _canonicalize_subscript(eh: ExtensionHeader) -> Dict[str, List[int]]:
     """Map textual subscript labels to the 4-bit codes used by the SUBSCRIPT
     EH body, using **first-appearance order** scanning A → B → O.
 
-    This matches the convention baked into ISA_Decoder.v's `SIG_*`
+    This matches the convention baked into PE_Core.v's `SIG_*`
     localparams: `i,j,k`-style labels in `ij,jk->ik` get codes 1, 2, 3
     regardless of the actual letters used. So `pq,qr->pr` and `ij,jk->ik`
     encode to identical bytes — they're alpha-equivalent einsum patterns."""

@@ -111,18 +111,35 @@ will be rejected.
 * **Documentation**: Markdown files should remain valid CommonMark and
   use UTF-8.
 * **Synthesis impact**: Changes to RTL that cross the EHDecode / PE_Core
-  boundary should be re-synthesized (XCAU25P reference part) and the
-  post-route LUT/FF/WNS deltas posted in the PR description.
+  boundary should be re-synthesized and the post-route LUT/FF/WNS deltas
+  posted in the PR description. The reference part is
+  **`xcu55c-fsvh2892-2L-e`** — every tracked `synth/reports/fp_ops/
+  *_summary.json` records that device, and `python3
+  synth/scripts/fp_op_gate_check.py` judges against those reports.
+  *(XCAU25P was the Stage-0 board and was retired — see
+  `wt64v1_spec.md` §"참조 구현 마이그레이션". Do not target it: the
+  current design is 173K LUT against the part's 141K, a 123% overflow,
+  so P&R cannot complete and the procedure is not reproducible.)*
 
 ---
 
 ## 4. ISA changes (WT64v1)
 
-WT64v1 is **frozen** as defined in `.claude-memos/wt64v1_spec.md`. New
-opcodes, EH types, or src_kind values require:
+WT64v1 is **pre-stable**, and the freeze guarantees are **not yet in
+force**. Per `wt64v1_spec.md` §12a, the three freeze promises — frozen
+first-class opcodes, truth-table keep-forever, and snapshot equivalence
+— take effect **at the stable release**, not before. Until then,
+removing a dead opcode or re-deriving a latency contract is a *regular*
+development act, not a policy reversal. What does bind you today is
+**spec-first** (§12a rule 3): the spec amendment lands before the JSON,
+the JSON before the regenerated artifacts, and those before RTL/tests.
+
+New opcodes, EH types, or src_kind values require:
 
 1. A new `.claude-memos/` design memo justifying the addition.
-2. Reservation in the appropriate range (see `wt64v1_spec.md` §3.9).
+2. Reservation recorded in `isa/wt64v1_isa.json` (the single source),
+   then regenerated artifacts — see `wt64v1_spec.md` §3 for the opcode
+   map and §23.9 for the staging procedure.
 3. Decision on whether the change is `WT64v1.x` (backward-compatible
    patch — additions only), `WT64v2` (incompatible), or a `WT64v1-C`
    extension (additive but separately conformant).

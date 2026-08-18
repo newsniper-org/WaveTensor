@@ -47,3 +47,28 @@ proofs/tla/*.old
 # Vivado CWD scratch for `make synth-sys-gate` (keeps clockInfo.txt/.Xil out
 # of the repo root — the gate reports themselves are tracked, this is not).
 synth/reports/fp_ops/.sysgate_cwd/
+
+# Vivado REPO-ROOT scratch (2026-08-18 clean-up). A Vivado run launched from
+# the repo root drops its journal/log and clockInfo.txt into the cwd. These
+# were tracked by accident: all 12 root vivado*.{jou,log} had exactly ONE
+# commit each (the one that added them) and zero content changes since, and
+# `grep -rn` finds no consumer for any of them. `make synth-sys-gate` now
+# runs from .sysgate_cwd/ above, so new runs never reach the root.
+#
+# !! EVERY PATTERN HERE IS ROOT-ANCHORED WITH A LEADING SLASH ON PURPOSE. !!
+# `synth/reports/fp_ops/*_run.log` is BINDING gate evidence (spec §28 — the
+# CRITICAL WARNING census must stay greppable). An unanchored `vivado.log` or
+# `*.log` would be a foot-gun the moment someone renames a report; the anchor
+# makes it structurally impossible for these five lines to reach that file.
+/clockInfo.txt
+/vivado.jou
+/vivado.log
+/vivado_*.backup.jou
+/vivado_*.backup.log
+
+# Per-user Claude Code runtime (see .claude-memories/memory_backup_pattern.md
+# §5 — this file was on that memo's prescribed ignore list but the rule was
+# never added, so a dead PID snapshot from 2026-05-02 sat in git). NOT to be
+# confused with .claude/session-end-hook.sh, which is real infrastructure and
+# stays tracked.
+.claude/scheduled_tasks.lock

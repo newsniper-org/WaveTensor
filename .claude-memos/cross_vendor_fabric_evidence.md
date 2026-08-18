@@ -160,7 +160,7 @@ grep -E "Worst Slack|Data Path Delay|Logic Levels" \
      synth/reports/pod_2x2_2x2_impl_timing.rpt
 ```
 
-**주의**: `PART` 를 명시하지 않으면 `Makefile:91` 의 기본값 `xczu3eg-sfvc784-1-i`(~71K LUT)로 떨어져 현 설계(173K LUT)가 들어가지 않는다. `make -C` 대신 저장소 루트에서 실행할 것(`Makefile:84` 가 `$(PWD)` 사용 — Lattice 쪽 `:140` 은 올바르게 `$(CURDIR)`).
+**주의**: `PART` 를 명시하지 않으면 `Makefile` 의 `PART ?=` 기본값 `xczu3eg-sfvc784-1-i`(~71K LUT)로 떨어져 현 설계(173K LUT)가 들어가지 않는다. ~~`make -C` 대신 저장소 루트에서 실행할 것 (`Makefile:84` 가 `$(PWD)` 사용)~~ — **2026-08-18 정정: 이 제약은 더 이상 없다.** `Makefile` 의 `$(PWD)` 는 전부 `$(CURDIR)` 로 이행 완료됐고 (현재 `grep -c '$(PWD)' Makefile` == 0, `$(CURDIR)` 27곳), `make -C` 로 호출해도 경로가 올바르다. 메모리 규칙 `makefile_curdir_rule.md` 참조.
 
 **보고서 파일 주의**: 본 실행이 `synth/reports/pod_2x2_2x2_impl_*.rpt` 를 덮어썼다. 2026-05 XCAU25P 베이스라인(WNS +2.058 ns, LUT 61.9K/141K, DSP 140, 0.62 W)은 `board_hw_plan.md` 와 `wt64v1_spec.md` 에 수치로 보존돼 있다.
 

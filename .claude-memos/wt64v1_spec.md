@@ -201,7 +201,7 @@ OPREF.src_kind=2가 `rng_word`를 B 피연산자로 가져옴. RNG_RD 전용 opc
 
 WT64v1 conformant 디바이스는 다음을 모두 만족해야 한다:
 
-1. 표 3.1–3.8의 모든 opcode 정상 처리.
+1. §3 이 지정하는 opcode 집합 전부 정상 처리 — 규범 소스는 `isa/wt64v1_isa.json`, 사람이 읽는 형태는 생성물 `.claude-memos/generated/isa_tables_frag.md` (v1.8.0a COMMIT 1 이 손으로 쓴 표 3.1–3.8 을 이 단일 소스로 이관했으므로 그 표 번호는 더 이상 존재하지 않는다). §3 이 reserved 로 되돌린 opcode 는 `decode_error` 를 내야 정상 처리다.
 2. EH 카탈로그 0x0–0x8 + 0xF 정상 파싱.
 3. OPREF.src_kind ∈ {0, 1, 2} 모두 지원.
 4. TRNG 인프라 (RO + von Neumann + RCT/APT + 64-bit `rng_word`) 제공.
