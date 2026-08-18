@@ -6634,3 +6634,54 @@ lint 표의 주장을 인용하지 않고 **본 절이 직접 재현**했다 (§
 - **이월 (본 절이 닫지 않는 것)**:
   1. **`ALU_Extended` 보유 정당성** — stable release 라운드. `reference` 래칫 1 이 이 판단을 조용히 영구화하지 못하게 잡고 있다.
   2. **`ISA_Decoder` standalone 합성 경로** — `uncovered` 마지막 1건. `Top_Core` 안에서는 합성되므로 "전혀 합성되지 않는 RTL" 은 아니나, D1 류의 top-level 포트 결함은 standalone 에서만 드러난다.
+
+## 34. GATE V20-4 anchor 확보 — FDOT32_CR unit base 형상 실측 (2026-08-18, 3a-C4 선행 · normative)
+
+§27.7a.5 가 GATE V20-4 를 선언하면서 **"측정 anchor 부재 → gate 절차가 anchor 를 먼저 생성한다"** 로 명시한 그 단계다. 본 절은 anchor 만 만든다 — **판정은 3a-C4 착지 후**다.
+
+### 34.1 선행 확인 — anchor 는 실제로 없었다
+
+`synth/reports/fp_ops/` · `synth/lattice/reports/` 어디에도 stepseq 계열 리포트가 **0 건**이었고, `fp_op_gate_check.GATES` 에 `fp_stepseq` tag 자체가 **없었다**. 즉 이 unit 의 xcu55c 실측은 존재한 적이 없다. 반면 gate 래퍼 `synth/lattice/fp_ops/FP_StepSeq_gate_top.v` 는 **이미 있었다** (마지막 변경 `ef90f2e`, 3a-C3 보다 앞선다) — 만들 것은 측정이지 하네스가 아니었다.
+
+### 34.2 base 형상의 정의 — "C3 직전 커밋" 이 아니라 "OPS_FDOTCR 이 없는 현행 트리" (판단 기록)
+
+3a-C3 는 `185ec42` 로 이미 착지했으므로 base 를 얻으려면 과거를 꺼내야 한다. 여기에 갈래가 둘이었고, **후자를 택했다**:
+
+| 갈래 | 내용 | 판정 |
+|---|---|---|
+| (A) `185ec42^` (= `e22e182`) 트리 **전체** | 문자열 그대로의 "C3 직전 형상" | **기각** — 그 사이 `FP_AddWide.v` 가 `c21092a`(PACK_WIDE canonical zero)로 바뀌었다. delta 에 **OPS_FDOTCR 과 무관한 변경**이 섞여 ≤ 2,200 binding 이 자기가 잰다고 주장하는 것을 재지 못한다 |
+| **(B) 현행 트리 + `FP_StepSeq.v` 만 `e22e182` 판** | §27.7a.5 의 괄호 정의 **"(OPS_FDOTCR 미포함)"** 에 정확히 대응 | **채택** — 소스 목록에서 **다른 것은 `FP_StepSeq.v` 내용 하나뿐**이므로 delta 가 FDOT32_CR 만 가리킨다 |
+
+**전건 실측 확인 (갈래 B 가 성립하는 근거)**: 3a-C3 는 `FP_StepSeq` 의 **모듈 포트를 바꾸지 않았다** (base·현행 모두 11 포트, 래퍼의 11 결선과 일치). `FP_Mul36.v` 는 `e22e182` 이후 **0 커밋**. `FP_AddWide.v` 의 `c21092a` 는 **포트 불변**(동작만 변경)이라 base `FP_StepSeq.v` 와 현행 `FP_AddWide.v` 가 함께 elaborate 된다 — 실측으로 확인했다.
+
+**소스 교체의 안전 절차 (실행 기록)**: 작업 트리의 `FP_StepSeq.v` 를 백업 → base 판으로 교체 → 측정 → 복원 → **sha256 대조로 바이트 동일 확인**(`ccf6cb9c4a44e790` 전후 일치, `git status` 무출력). base 형상은 트리에 남지 않는다.
+
+### 34.3 anchor 실측 (xcu55c-fsvh2892-2L-e, OOC synth+opt+place+phys_opt+route, 10.0 ns)
+
+tag = `fp_stepseq_base`, top = `FP_StepSeq_gate_top`, base `FP_StepSeq.v` = **1,268 줄** (현행 2,013 줄).
+
+| 축 | anchor 실측 | 성격 |
+|---|---:|---|
+| **LUT cells** | **3,809** | **delta 기준선** |
+| FF | 844 | 추적 (V9-4 관례) |
+| DSP48 | **4** | delta 0 (hard) |
+| DSP split cells | 32 | 기록 |
+| CARRY | 104 | 기록 |
+| RAMB18 | **2** | delta 0 (hard) |
+| SRL | 0 | 기록 |
+| **premap `$mul`** | **4** | delta 0 (hard) — §26.6 pin form |
+| WNS / Fmax | +3.795 ns / **161.16 MHz** | 기록 축 (binding 아님) |
+| WHS | +0.044 ns | ≥ 0 |
+| ERROR / CRITICAL WARNING | **0 / 0** | binding |
+
+**∴ GATE V20-4 의 LUT 상한은 3,809 + 2,200 = 6,009 로 확정된다** (선공표 delta ≤ 2,200 은 §27.7a.5 원문 그대로, 재선공표 없음). 이 수치는 **3a-C4 측정 전에** 여기 적힌다 — V9-4 형식(기준은 측정 전 공표)의 요구 그대로다.
+
+### 34.4 부수 소득 — premap `$mul` delta-0 binding 은 **C3 몫에 대해 이미 충족됐다**
+
+같은 pin form 으로 **현행**(C3 착지 후) `FP_StepSeq` 를 재보니 premap `$mul` = **4** — base 와 동일하다. 즉 OPS_FDOTCR step 프로그램은 **곱셈기를 하나도 새로 만들지 않았다**. §23.10 의 단일-공유-곱셈기 설계(`FP_Mul36` 재사용)가 실제로 지켜졌다는 실측 증거이며, V20-4 의 hard binding 3개 중 하나가 C4 착지 **전에** 이미 참이다. C4 는 이것을 **깨지 않기만** 하면 된다.
+
+### 34.5 이월 · 다음 단계
+
+- **`fp_op_gate_check.GATES` 의 `fp_stepseq` 항목은 3a-C4 에서 신설한다.** 지금 넣으면 `fp_stepseq_*` 리포트가 없어 gate 가 UNMEASURED = FAIL 로 끝나 트리가 붉어진다. 판정 기준의 **선공표 의무는 본 절(§34.3)의 문서 기록으로 이미 충족**되므로, 코드 등재를 C4 로 미루는 것은 기준의 이연이 아니다.
+- `Makefile` 에 `fp_stepseq` / `fp_stepseq_base` 두 FP_OP 정의를 신설했다 (소스 목록 동일 — 오직 `FP_StepSeq.v` 내용만 다르게 해서 재현 가능).
+- `fp_stepseq_base_run.log` 는 §22.14b-13 ② 가 `synth-fp-op` 에 `-log` 를 추가한 뒤 **처음으로 아카이브된 운영자-gate run log** 다. 다음 재합성부터 이 계열도 `sources+top` 강도를 받는다.

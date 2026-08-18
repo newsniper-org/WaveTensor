@@ -166,6 +166,23 @@ FP_OP_SRCS_fp_acclattice := FP_AccLattice.v,synth/lattice/fp_ops/FP_AccLattice_g
 FP_OP_TOP_fp_traincluster  := FP_TrainCluster_gate_top
 FP_OP_SRCS_fp_traincluster := FP_TrainCluster.v,FP_AccLattice.v,FP_AccBank.v,synth/lattice/fp_ops/FP_TrainCluster_gate_top.v
 
+# GATE V20-4 — FDOT32_CR (0x7A) 를 호스팅하는 step-sequencer unit
+# (spec §27.7a.5; xcu55c 반쪽이 유일한 merge-blocker binding):
+#   make synth-fp-op FP_OP=fp_stepseq PART=xcu55c-fsvh2892-2L-e
+#
+# 이 unit 의 xcu55c 실측은 존재한 적이 없다. §27.7a.5 가 선언한 anchor-부재
+# 절차대로 **anchor 를 먼저 만든다** — OPS_FDOTCR 이 없는 base 형상을 같은
+# 스크립트로 재고, 착지 후 재실측해 **delta** 로 판정한다 (binding: LUT
+# delta <= 2,200 / premap $mul delta 정확히 0 / DSP48 · BRAM delta 0).
+# base 형상 tag 는 `fp_stepseq_base` 이며 소스 목록은 아래와 동일하다 —
+# **다른 것은 FP_StepSeq.v 의 내용 하나뿐**이어야 delta 가 OPS_FDOTCR 만
+# 가리킨다 (spec §34).
+FP_OP_TOP_fp_stepseq  := FP_StepSeq_gate_top
+FP_OP_SRCS_fp_stepseq := FP_StepSeq.v,FP_Mul36.v,FP_AddWide.v,synth/lattice/fp_ops/FP_StepSeq_gate_top.v
+
+FP_OP_TOP_fp_stepseq_base  := $(FP_OP_TOP_fp_stepseq)
+FP_OP_SRCS_fp_stepseq_base := $(FP_OP_SRCS_fp_stepseq)
+
 # -----------------------------------------------------------------------------
 # GATE S1-US — system-integration SYNTHESIZABILITY gate (spec §28).
 #
