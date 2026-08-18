@@ -119,7 +119,34 @@ module Cluster #(
     // `any_error_flag` 에도 폴딩된다. `bank_tag_collision_error` 와 같은
     // 규율: **sim-only assertion 은 쓰지 않는다** — production 보장을
     // 남기지 않기 때문이다.
-    output                      input_skid_overflow_error
+    output                      input_skid_overflow_error,
+    // v1.8.0e 3a-C4 §27.7a.3/§35.3 — FDOT32_CR (0x7A) 상태 2종.
+    // **분리는 규범이다** (§35.3 pin 1). 하나로 합치면 §27.7a.3 검사 (i)
+    // 이 성립 불가가 된다.
+    //
+    //   fdotcr_special_status — **정상 데이터 이벤트**. wave 의 64 lane 중
+    //     하나라도 NaN/Inf/sNaN 이면 유닛이 EFT 에 들어가지 않고 canonical
+    //     qNaN 을 낸다 (§27.7a.1 (iii)). SDK audit 프로그램은 이런 operand
+    //     를 **일부러 투입해서** main path 와 audit path 양쪽에 sticky 가
+    //     똑같이 서는지 본다. 그래서 이 신호는 **`any_error_flag` 에 절대
+    //     폴딩하지 않는다** — 폴딩하면 (α) 정상적인 audit 수행 자체가 매번
+    //     cluster 전역 error 를 올리고 (β) 아래 OR-reduce 는 순수 OR 라
+    //     "special 이 정상 관측됐다" 와 "RTL 이 깨졌다" 를 되돌릴 수 없이
+    //     뭉갠다. 폴딩 없는 전용 관측 포트다 (`any_output_collision` 형).
+    //     등급도 다르다: **per-op** 이다 (§27.7a.3 이 (결과, sticky) 쌍을
+    //     op 단위로 회수한다). MU 유닛에서 조합적으로 통과한다.
+    //
+    //   fdotcr_unit_fault_error — **RTL 결함 (loud)**. §27.7a.2b
+    //     amendment-11 의 4 불변식 (expansion 배열 guard / STEP T
+    //     vacuous-RTO / 용량 assert / freeze 위반) 중 하나가 무너졌다.
+    //     이것만 `any_error_flag` 에 폴딩한다. 등급은 §26.5 와 같은
+    //     **reset-clearable only sticky** 이며, 그 승격이 여기서 일어나는
+    //     이유는 `FP_StepSeq` 에 `rst` 포트가 없어 (reset-free 블록) 유닛
+    //     안에서는 launch 마다 지워지는 per-op latch 밖에 만들 수 없기
+    //     때문이다. 그냥 통과시키면 "sticky 라고 이름만 붙은 pulse" 가 되어
+    //     다음 launch 에 조용히 지워진다.
+    output                      fdotcr_special_status,
+    output                      fdotcr_unit_fault_error
 );
 
     localparam NUM_PES = PE_ROWS * PE_COLS;
@@ -720,7 +747,17 @@ module Cluster #(
                   || (acc_opcode == 8'h76)
                   || (acc_opcode == 8'h77)
                   || (acc_opcode == 8'h78)
-                  || (acc_opcode == 8'h79);
+                  || (acc_opcode == 8'h79)
+    // v1.8.0e 3a-C4 §35.1 — 0x7A FDOT32_CR joins OPCODE-ONLY in lockstep
+    // with PE_Core.v's dec_is_mul_op (MU-hosted: the step program lives in
+    // the MU's FP_StepSeq). A one-sided edit is the silent permanent
+    // lower_required dead-end, and test_twin_classifier_lockstep_static
+    // pins both literal sets against each other AND against a hardcoded
+    // set. NOTE for future editors: that test extracts this expression by
+    // scanning to the first statement terminator, so a comment INSIDE the
+    // expression must not contain one — this very comment cost a debug
+    // cycle when it did.
+                  || (acc_opcode == 8'h7A);
     wire is_div_op = (acc_opcode == 8'h13)   // DIV
                   || (acc_opcode == 8'h1C)   // MOD
                   || (acc_opcode == 8'h1D);  // DIVMOD
@@ -1161,6 +1198,15 @@ module Cluster #(
     wire [ADDR_WIDTH-1:0]  pe_mem_addr    [0:NUM_PES-1];
     wire                   pe_error       [0:NUM_PES-1];
     wire                   pe_lower       [0:NUM_PES-1];
+    // v1.8.0e 3a-C4 §35.3 — FDOT32_CR sticky 2종을 **모든** PE_Core 에서
+    // 거둔다. 오늘의 형상에서 L-PE 16개는 MUL_OPS_SUPPORTED=0 이라
+    // g_v180c_fp_off 가 두 신호를 1'b0 로 zero-tie 하고, 그 상수는
+    // elaboration 에서 접혀 면적이 0 이다. 그럼에도 결선을 남기는 이유는
+    // 승격 로직이 "MU 만 결함을 낼 수 있다" 를 **하드코딩하지 않게** 하기
+    // 위해서다 — 어느 인스턴스가 FP_StepSeq 를 호스팅하는지는 파라미터의
+    // 함수이지 이 블록이 알아야 할 사실이 아니다.
+    wire                   pe_fdotcr_spec [0:NUM_PES-1];
+    wire                   pe_fdotcr_flt  [0:NUM_PES-1];
 
     // -------------------------------------------------------------------------
     // L-PE_Core grid
@@ -1212,7 +1258,12 @@ module Cluster #(
                     .memory_req                (pe_mem_req[IDX]),
                     .mem_addr                  (pe_mem_addr[IDX]),
                     .error_flag                (pe_error[IDX]),
-                    .lower_required            (pe_lower[IDX])
+                    .lower_required            (pe_lower[IDX]),
+                    // v1.8.0e 3a-C4 §35.3 — L-PE 는 MUL_OPS_SUPPORTED=0
+                    // 이라 이 두 신호가 구조적으로 상수 0 이다 (면적 0).
+                    // 그래도 결선한다 — 위 선언부의 사유 참조.
+                    .fp_special_sticky         (pe_fdotcr_spec[IDX]),
+                    .fp_unit_fault             (pe_fdotcr_flt[IDX])
                 );
             end
         end
@@ -1231,6 +1282,10 @@ module Cluster #(
     wire [ADDR_WIDTH-1:0] mu_mem_addr;
     wire                  mu_error;
     wire                  mu_lower;
+    // v1.8.0e 3a-C4 §27.7a.3/§35.3 — FDOT32_CR sticky 2종의 MU 원천.
+    // 둘 다 유닛 안에서는 **per-op latch** 다 (매 fd_launch 가 덮어쓴다).
+    wire                  mu_fdotcr_special;  // 정상 데이터 이벤트 — 폴딩 금지
+    wire                  mu_fdotcr_fault;    // RTL 결함 — 아래에서 §26.5 승격
 
     PE_Core #(
         .ADDR_WIDTH            (ADDR_WIDTH),
@@ -1274,7 +1329,11 @@ module Cluster #(
         .memory_req                (mu_mem_req),
         .mem_addr                  (mu_mem_addr),
         .error_flag                (mu_error),
-        .lower_required            (mu_lower)
+        .lower_required            (mu_lower),
+        // v1.8.0e 3a-C4 §35.3 — FDOT32_CR 는 MU 전용이다 (FP_StepSeq 를
+        // 가진 유일한 인스턴스). 두 sticky 의 실제 소스는 여기뿐이다.
+        .fp_special_sticky         (mu_fdotcr_special),
+        .fp_unit_fault             (mu_fdotcr_fault)
     );
 
     // -------------------------------------------------------------------------
@@ -1292,6 +1351,8 @@ module Cluster #(
     wire [ADDR_WIDTH-1:0] du_mem_addr;
     wire                  du_error;
     wire                  du_lower;
+    wire                  du_fdotcr_special;  // v1.8.0e 3a-C4 — 구조적 0
+    wire                  du_fdotcr_fault;    // v1.8.0e 3a-C4 — 구조적 0
 
     PE_Core #(
         .ADDR_WIDTH            (ADDR_WIDTH),
@@ -1335,7 +1396,11 @@ module Cluster #(
         .memory_req                (du_mem_req),
         .mem_addr                  (du_mem_addr),
         .error_flag                (du_error),
-        .lower_required            (du_lower)
+        .lower_required            (du_lower),
+        // v1.8.0e 3a-C4 §35.3 — DIV-UNIT 도 MUL_OPS_SUPPORTED=0 이라
+        // 구조적 상수 0 (L-PE 와 같은 사유로 그래도 결선한다).
+        .fp_special_sticky         (du_fdotcr_special),
+        .fp_unit_fault             (du_fdotcr_fault)
     );
 
     // -------------------------------------------------------------------------
@@ -1450,6 +1515,21 @@ module Cluster #(
     // silently absorbed by the next idle cycle.
     reg bank_tag_collision_error_r;
 
+    // v1.8.0e 3a-C4 §27.7a.3/§35.3 항 2 — FDOT32_CR unit fault 의 §26.5
+    // 등급 승격. `FP_StepSeq` 는 reset-free 블록이라 (rst 포트 자체가 없다)
+    // 유닛 안에서는 launch 마다 지워지는 per-op latch 밖에 만들 수 없다.
+    // 그 pulse/level 을 여기서 받아 **reset-clearable only** sticky 로
+    // 세운다 — `bank_tag_collision_error_r` 와 정확히 같은 등급이다.
+    // 승격하지 않고 그냥 포트로 통과시키면 "sticky 라고 이름만 붙은
+    // pulse" 가 되어 다음 launch 에 조용히 지워진다 (loud-fault-never-
+    // silent 위반의 전형).
+    reg fdotcr_unit_fault_r;
+    // 인스턴스 횡단 수집 결과 (아래 출력 머지 블록이 구동한다). 여기서
+    // 선언하는 이유는 Verilog 가 선언 선행을 요구하고, 바로 아래 bank-table
+    // 순차 블록이 `m_fd_fault` 를 set 조건으로 읽기 때문이다.
+    // **m_fd_spec 는 관측 전용** — `m_err` 폴딩에 절대 들어가지 않는다.
+    reg m_fd_spec, m_fd_fault;
+
     // v1.9 residual-risk-11 fix — deferred-commit staging for the non-MUL
     // launch class (see the header note above). Captured every cycle from
     // `mu_launch_other_now`; consumed exactly one cycle later, gated on
@@ -1534,6 +1614,7 @@ module Cluster #(
             du_row_tag     <= {TAG_WIDTH{1'b0}};
             du_row_target  <= 4'h0;
             bank_tag_collision_error_r <= 1'b0;
+            fdotcr_unit_fault_r        <= 1'b0;   // v1.8.0e 3a-C4 §35.3
             mu_pending_other  <= 1'b0;
             mu_pending_tag    <= {TAG_WIDTH{1'b0}};
             mu_pending_target <= 4'h0;
@@ -1578,6 +1659,14 @@ module Cluster #(
 
             if (mu_mul_collision || mu_nonmul_collision) begin
                 bank_tag_collision_error_r <= 1'b1;
+            end
+
+            // v1.8.0e 3a-C4 §35.3 — FDOT32_CR unit fault 승격. MU 의
+            // per-op latch 가 서면 여기서 리셋까지 붙잡는다. `fd_spec`
+            // (정상 데이터 이벤트) 는 **여기 들어오지 않는다** — 그것을
+            // 섞으면 §27.7a.3 검사 (i) 이 성립 불가가 된다.
+            if (m_fd_fault) begin
+                fdotcr_unit_fault_r <= 1'b1;
             end
 
             // Stage this cycle's non-MUL launch-intent (if any) for the
@@ -1746,9 +1835,15 @@ module Cluster #(
         // OR-reduce error/lower across all sources (unchanged).
         m_err = mu_error | du_error;
         m_lwr = mu_lower | du_lower;
+        // v1.8.0e 3a-C4 §35.3 — FDOT32_CR sticky 2종의 인스턴스 횡단 수집.
+        // **분리 유지**: m_fd_spec 는 아래 `m_err` 폴딩에 들어가지 않는다.
+        m_fd_spec  = mu_fdotcr_special | du_fdotcr_special;
+        m_fd_fault = mu_fdotcr_fault   | du_fdotcr_fault;
         for (i = 0; i < NUM_PES; i = i + 1) begin
             m_err = m_err | pe_error[i];
             m_lwr = m_lwr | pe_lower[i];
+            m_fd_spec  = m_fd_spec  | pe_fdotcr_spec[i];
+            m_fd_fault = m_fd_fault | pe_fdotcr_flt[i];
         end
         // v1.9 §26.5 — fold the bank tag-collision fault into the error
         // flag too, mirroring the any_output_collision precedent
@@ -1758,6 +1853,13 @@ module Cluster #(
         // v1.9.2 §22.14b-3 — 같은 이유로 입력단 skid overflow 도 폴딩한다.
         // 전용 포트를 모르는 기존 소비자도 "무언가 버려졌다" 를 본다.
         m_err = m_err | input_skid_overflow_error_r;
+        // v1.8.0e 3a-C4 §35.3 pin 1 — FDOT32_CR **unit fault 만** 폴딩한다.
+        // `fdotcr_special_status` (정상 데이터 이벤트) 는 여기 **절대**
+        // 들어오지 않는다: 이 블록은 순수 OR-reduce 라 한 번 섞이면
+        // 되돌릴 수 없고, SDK audit 이 §27.7a.3 검사 (i) 에서 special
+        // operand 를 의도적으로 투입하는 것 자체가 매번 cluster 전역
+        // error 를 올리게 된다.
+        m_err = m_err | fdotcr_unit_fault_r;
         // Fold collision into the error flag so existing consumers surface it.
         m_err = m_err | m_output_collision;
     end
@@ -1774,6 +1876,14 @@ module Cluster #(
     assign any_output_collision = m_output_collision;   // v1.5.3 §20 bug-3/4
     assign bank_tag_collision_error = bank_tag_collision_error_r;  // v1.9 §26.5
     assign input_skid_overflow_error = input_skid_overflow_error_r; // v1.9.2 §22.14b-3
+    // v1.8.0e 3a-C4 §27.7a.3/§35.3 — FDOT32_CR 상태 2종.
+    // `fdotcr_special_status` 는 MU 유닛의 per-op latch 를 **조합적으로
+    // 그대로** 낸다 (승격 금지 — op 단위 귀속이 §27.7a.3 의 요구이고,
+    // reset-clearable 로 만들면 audit 이 어느 op 의 sticky 인지 잃는다).
+    // 위 `m_err` 블록에 이 신호가 없다는 것이 pin 이다 — 음성 회귀
+    // 테스트가 그 부재를 감시한다.
+    assign fdotcr_special_status   = m_fd_spec;
+    assign fdotcr_unit_fault_error = fdotcr_unit_fault_r;
     // v1.6.6 §22.14 / v1.9.2 §22.14b-3 — Cluster back-pressure.
     //   출력단 3항 = AND-reduce over MU/DU/L-PE ready ("결과를 낼 자리가
     //   있는가"). v1.6.6 은 여기서 끝났고, 그래서 이 신호는 "지금 명령을

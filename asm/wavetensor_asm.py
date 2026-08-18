@@ -2152,10 +2152,13 @@ def wave_fragments_vdot(a_128: int, b_128: int) -> List[Tuple[int, int]]:
 # at A[16*i +: 16] / B[16*i +: 16], so in the flat wave
 #   lane i A = payload[16*i +: 16],  lane i B = payload[512 + 16*i +: 16].
 #
-# NOTE (3a-C2 staging, spec §27.7a.4): 0x7A is decode_reserved — the ISA
-# row and these helpers ship at C2, the RTL whitelist entry at C4, so a
-# program assembled today still decode_errors on silicon. That is the
-# spec-pinned staging state, and it faults LOUDLY.
+# NOTE (3a-C4, spec §27.7a.4/§35.1): the staging state is OVER. 0x7A was
+# decode_reserved from 3a-C2 (row + these helpers shipped, RTL whitelist
+# entry withheld, so an assembled program decode_errored LOUDLY on
+# silicon). 3a-C4 cleared the bit in the SAME COMMIT as the PE_Core arm,
+# the ingress driver and the twin-classifier lockstep edit, so a program
+# assembled by these helpers now EXECUTES. Legal modes are still exactly
+# two: dtype 0x2 f16 / 0x3 bf16, acc=1, rnd=0.
 
 
 def pack_fdot32_cr_operands(a_lanes: List[int], b_lanes: List[int]) -> int:

@@ -78,6 +78,18 @@ GATES = [
     {"name": "fp_addwide", "label": "GATE 2",
      "max_lut4": 900,  "mult": 0, "mult_exact": False,
      "max_ff": None, "wrapper_ff": 0,   "max_ebr": 0, "lut4_baseline": None},
+    # v1.8.0e 3a-C4 §35.4 — `wrapper_ff` STAYS 147 ON PURPOSE. The wrapper
+    # is 149 FF as of this commit (two 1-bit FDOT32_CR sticky ports), but
+    # the archive this row judges — synth/lattice/reports/fp_ops/
+    # fp_stepseq_synth.rpt — was last written by c21092a (2026-08-15),
+    # BEFORE 3a-C3 (185ec42, 2026-08-17). Moving the constant onto a stale
+    # archive is exactly the "make the evidence match" path §22.14b-13 (1)
+    # forbids: the FF axis would be corrected while LUT4/MULT/EBR keep
+    # PASSing on a measurement that predates 745 lines of OPS_FDOTCR.
+    # 147 -> 149 lands in the SAME COMMIT as an ECP5 full-flow re-run, and
+    # not before. Pre-declared (spec §35.4): that re-run may push LUT4
+    # 4,666 past the 4,909 limit — the limit does NOT move; the disposition
+    # is a user decision.
     {"name": "fp_stepseq", "label": "GATE C3",
      "max_lut4": 4909, "mult": 4, "mult_exact": True,
      "max_ff": 900,  "wrapper_ff": 147, "max_ebr": 0, "lut4_baseline": 4409,

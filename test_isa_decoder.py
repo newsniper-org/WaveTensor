@@ -4157,19 +4157,20 @@ async def test_pre_migration_rtl_truth_table_differential(dut):
 # v1.8.0a §23.9 COMMIT 2 — 0x70-0x7F WIDE-ACC decode skeleton + FP_LEGAL_ROM
 # =============================================================================
 
+# v1.8.0e 3a-C4 (spec §35.9): 0x7A FDOT32_CR moved from the (now empty)
+# decode-reserved list into _FP_ASSIGNED. From 3a-C2 to 3a-C4 it carried a
+# full ISA row (legality shape + FP_LEGAL_ROM rows + asm mnemonic) while
+# being DELIBERATELY omitted from the generated opcode_supported whitelist,
+# so it decode_errored on EVERY mode byte including its two otherwise-legal
+# rows. 3a-C4 landed the PE_Core arm + the ingress driver + the
+# twin-classifier lockstep edit and cleared the JSON bit in the same COMMIT,
+# so it is now an ordinary assigned fp-block opcode: legal rows (dtype 0x2
+# f16 / 0x3 bf16 x acc 1 x rnd 0) EXECUTE, the other 254 mode bytes still
+# decode_error. `_fp_expected` derives all of this from the generated
+# tables, so no golden-model edit was needed for the flip.
 _FP_ASSIGNED = [0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76,
-                0x77, 0x78, 0x79, 0x7C, 0x7D, 0x7E]
+                0x77, 0x78, 0x79, 0x7A, 0x7C, 0x7D, 0x7E]
 _FP_UNASSIGNED = [0x7B, 0x7F]
-# v1.8.0e 3a-C2 (spec §27.7a.4) — DECODE-RESERVED: 0x7A FDOT32_CR now has a
-# full ISA row (legality shape + FP_LEGAL_ROM rows + asm mnemonic) but is
-# DELIBERATELY omitted from the generated opcode_supported whitelist until
-# its PE_Core/EHDecode wiring lands at 3a-C4. So it must still decode_error
-# on EVERY mode byte — including its two OTHERWISE-legal rows (dtype 0x2
-# f16 / 0x3 bf16, acc 1, rnd 0), which is what separates this from the
-# 0x7B/0x7F never-assigned case: the ROM says legal, the whitelist says no,
-# and whitelist-omission WINS (decode_error dominates, §27.7 reservation
-# wording unchanged). Never a stub lower_required — there is no arm.
-_FP_DECODE_RESERVED = [0x7A]
 
 
 def _fp_scaffold(op):
@@ -4241,7 +4242,15 @@ async def _fp_run_point(dut, op, mode, via_eh):
     # — the imm16 zero-fill pin), so fragment 0 lands ~20-40 cycles
     # after dispatch and the 16-fragment drain rides the post-loop
     # drain below.
-    window = 320 if op == 0x78 else (64 if op == 0x70 else 24)
+    # v1.8.0e 3a-C4 (spec §35.9 A/C-3): a legal-mode 0x7A point launches
+    # the REAL FDOT32_CR program — 16 ingress cycles + the EFT walk. The
+    # old 24-cycle window would have timed out and reported (0,0,0).
+    # Measured on this scaffold's wide payload: 91 cycles; measured on a
+    # dense 32x32 bf16 wave: 606 cycles; the spec's hard cycle ceiling is
+    # 10,000 (unit axis worst 1,167). 2,048 covers the scaffold cases with
+    # room and still terminates loudly if the op ever hangs.
+    window = 2048 if op == 0x7A else \
+             (320 if op == 0x78 else (64 if op == 0x70 else 24))
     for _ in range(window):
         await RisingEdge(dut.clk)
         await Timer(1, units="ns")
@@ -4254,11 +4263,25 @@ async def _fp_run_point(dut, op, mode, via_eh):
     # frag FSM keeps emitting rows 1..N-1 for up to 7 cycles after the
     # break above (8-fragment int4 DEQUANT) — a next point dispatched
     # mid-drain would sample those pulses as its own ever-bits.
-    for _ in range(24):
+    #
+    # v1.8.0e 3a-C4 (spec §35.9 C-3) — THE DRAIN IS NOW ASSERTED, and the
+    # bound is sized for 0x7A. Without this the sweep develops a silent
+    # camouflage: a legal-mode 0x7A point holds pe_ready low for hundreds
+    # of cycles, so the following illegal-mode points get busy-interlock
+    # lower_required / error instead of the ROM verdict and can match the
+    # expectation BY ACCIDENT. Failing loudly here is the whole point —
+    # "the sweep was green" must mean "every point started from idle".
+    drained = False
+    for _ in range(2048):
         await RisingEdge(dut.clk)
         await Timer(1, units="ns")
         if int(dut.pe_ready.value) == 1 and int(dut.output_valid.value) == 0:
+            drained = True
             break
+    assert drained, (
+        f"op=0x{op:02X} mode=0x{mode:02X} via_eh={via_eh}: the DUT never "
+        f"returned to idle, so the NEXT sweep point would have measured a "
+        f"busy interlock instead of the ROM verdict")
     return (err, lwr, out)
 
 
@@ -4341,7 +4364,7 @@ async def test_fp_mode_rom_sweep_tag_path(dut):
     cocotb.start_soon(clock.start())
     await reset(dut)
     mismatches = []
-    for op in _FP_ASSIGNED + _FP_DECODE_RESERVED + _FP_UNASSIGNED:
+    for op in _FP_ASSIGNED + _FP_UNASSIGNED:
         for mode in range(256):
             got = await _fp_run_point(dut, op, mode, via_eh=False)
             exp = _fp_expected(op, mode)
@@ -4361,7 +4384,7 @@ async def test_fp_mode_rom_sweep_precision_eh_path(dut):
     cocotb.start_soon(clock.start())
     await reset(dut)
     mismatches = []
-    for op in _FP_ASSIGNED + _FP_DECODE_RESERVED + _FP_UNASSIGNED:
+    for op in _FP_ASSIGNED + _FP_UNASSIGNED:
         for mode in range(256):
             got = await _fp_run_point(dut, op, mode, via_eh=True)
             exp = _fp_expected(op, mode)
@@ -4432,20 +4455,26 @@ async def test_fp_block_unassigned_opcodes_still_error(dut):
 
 
 @cocotb.test()
-async def test_fdot32_cr_decode_reserved_all_modes(dut):
-    """§27.7a.4 staging pin, exhaustive over all 256 mode bytes on BOTH
-    eff_precision mux arms: 0x7A has a POPULATED FP_LEGAL_ROM row (dtype
-    0x2 f16 / 0x3 bf16 x acc 1 x rnd 0) yet must decode_error everywhere,
-    because opcode_supported omits it until 3a-C4.
+async def test_fdot32_cr_mode_rom_all_modes(dut):
+    """3a-C4 INVERSION of test_fdot32_cr_decode_reserved_all_modes.
 
-    The two otherwise-legal rows are the load-bearing points: they are the
-    ones a premature whitelist entry would flip to executes/lower_required,
-    and they are the ones the ROM alone would call legal. error_flag=1 with
-    lower_required=0 is the required answer — a decode_error (malformation),
-    NOT a capability absence, because no PE_Core arm exists to lower to."""
+    Exhaustive over all 256 mode bytes on BOTH eff_precision mux arms.
+    Until 3a-C4, 0x7A had a POPULATED FP_LEGAL_ROM row (dtype 0x2 f16 /
+    0x3 bf16 x acc 1 x rnd 0) yet had to decode_error EVERYWHERE, because
+    opcode_supported omitted it. 3a-C4 landed the whitelist entry together
+    with the PE_Core arm, so the verdict splits:
+
+      * mode 0x12 (f16) and 0x13 (bf16)  -> EXECUTE  (0, 0, 1)
+      * the other 254 mode bytes         -> decode_error (1, 0, 0)
+
+    The NEGATIVE half is the part that must not be lost in the inversion:
+    254 rejected modes is what "restrictive-first, EXACTLY 2 legal rows"
+    means, and it is the half a too-permissive ROM edit would break. The
+    expectation is derived from the generated tables, never hand-typed, so
+    a ROM regression cannot be hidden by editing this test."""
     from generated_isa_tables import DECODE_RESERVED_OPS, FP_MODE_LEGAL
-    assert DECODE_RESERVED_OPS == frozenset({0x7A}), \
-        f"decode-reserved set drifted from the 3a-C2 pin: {sorted(DECODE_RESERVED_OPS)}"
+    assert DECODE_RESERVED_OPS == frozenset(), \
+        f"3a-C4 cleared the decode-reserved set; it drifted: {sorted(DECODE_RESERVED_OPS)}"
     legal = FP_MODE_LEGAL[0x7A]
     assert legal['legal_dtypes'] == [2, 3] and legal['legal_acc'] == [1] \
         and legal['legal_rnd'] == [0], \
@@ -4454,49 +4483,507 @@ async def test_fdot32_cr_decode_reserved_all_modes(dut):
     cocotb.start_soon(clock.start())
     await reset(dut)
     bad = []
+    n_exec = 0
     for via_eh in (False, True):
         for mode in range(256):
+            exp = (0, 0, 1) if mode in (0x12, 0x13) else (1, 0, 0)
             got = await _fp_run_point(dut, 0x7A, mode, via_eh=via_eh)
-            if got != (1, 0, 0):
-                bad.append(f"via_eh={via_eh} mode=0x{mode:02X}: got={got}")
+            if exp == (0, 0, 1):
+                n_exec += 1
+            if got != exp:
+                bad.append(f"via_eh={via_eh} mode=0x{mode:02X}: "
+                           f"got={got} exp={exp}")
     assert not bad, (
-        f"{len(bad)} 0x7A points escaped decode_error (whitelist omission "
-        f"broken — 0x7A must not execute before 3a-C4):\n" + "\n".join(bad[:10]))
+        f"{len(bad)} 0x7A ROM divergences:\n" + "\n".join(bad[:10]))
+    assert n_exec == 4, "both mux arms must have exercised both legal rows"
+
+
+def _fdot_wave(a_pat, b_pat):
+    """Build the 1,024-bit A||B FDOT32_CR operand wave from two repeated
+    raw 16-bit patterns (lane i A = payload[16i +: 16], lane i B =
+    payload[512 + 16i +: 16] — the golden_fp32.lanes_to_frags pin)."""
+    w = 0
+    for i in range(32):
+        w |= (a_pat & 0xFFFF) << (16 * i)
+        w |= (b_pat & 0xFFFF) << (512 + 16 * i)
+    assert w.bit_length() <= 1024
+    return w
+
+
+async def _fdot_run(dut, mode, wide, limit=2048):
+    """Dispatch one FDOT32_CR and poll to its verdict. Returns
+    (cycles, err, lwr, out, payload)."""
+    instr = encode_instr(0x7A, _STD_PORT(), eh_precision(mode, 0),
+                         flags=(1 << 2))
+    dut.instruction.value = instr
+    dut.input_tag.value = make_tag(port_context_id=0)
+    dut.input_payload.value = 0
+    dut.input_payload_b.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide.value = wide
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    n = 0
+    while n < limit:
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        n += 1
+        if (int(dut.error_flag.value) or int(dut.lower_required.value)
+                or int(dut.output_valid.value)):
+            break
+    return (n, int(dut.error_flag.value), int(dut.lower_required.value),
+            int(dut.output_valid.value), int(dut.output_payload.value))
 
 
 @cocotb.test()
-async def test_fdot32_cr_16_frag_wave_still_decode_errors(dut):
-    """§27.7a.1 operand shape x §27.7a.4 staging: a fully-formed
-    FDOT32_CR dispatch — legal bf16 mode row, port-only EH chain, and the
-    complete 1,024-bit A||B payload presented on dec_input_payload_wide
-    (FRAG_MAX=16 exactly, frag 0-7 = A / frag 8-15 = B, the golden vector
-    layout) — is still rejected LOUDLY. A wide payload must not become a
-    side channel that smuggles an unwired opcode past the whitelist, and
-    the reject must be error_flag (malformation), never a silent drop."""
+async def test_fdot32_cr_16_frag_wave_executes(dut):
+    """3a-C4 INVERSION of test_fdot32_cr_16_frag_wave_still_decode_errors,
+    and the first VALUE-level proof that the PE_Core ingress driver feeds
+    FP_StepSeq the sixteen fragments IN ORDER.
+
+    Until 3a-C4 this asserted that a fully-formed dispatch — legal mode
+    row, port-only EH chain, complete 1,024-bit A||B wave on
+    dec_input_payload_wide — was still rejected loudly, so a wide payload
+    could not smuggle an unwired opcode past the whitelist. C4 wired it,
+    so the same stimulus must now produce the CORRECT NUMBER.
+
+    A = 32 x 1.0, B = 32 x 2.0 -> the exact dot is 64.0 = 0x42800000, and
+    the payload row is the {32'h0, f32} zero-extend (fp32 scalar result,
+    ACC bank untouched). This is a self-checking ingress test: the
+    fragment stream is 64 bits per cycle for 16 cycles and NOTHING in the
+    driver is self-confirming — a shift-counter off by one, a swapped
+    a/b half, or an A/B split at the wrong fragment all corrupt the
+    value rather than raising a flag.
+
+    The cycle count is recorded on the INTEGRATION axis (dispatch ->
+    output_valid), which is the larger of the two axes spec §35.5.3
+    defines; the binding <= 10,000 ceiling is on the unit axis."""
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
     await reset(dut)
-    # A = 32 x bf16 1.0 (0x3F80), B = 32 x bf16 2.0 (0x4000): the exact
-    # dot is 64.0, so a datapath that somehow ran would be conspicuous.
-    wide = 0
-    for i in range(32):
-        wide |= 0x3F80 << (16 * i)
-        wide |= 0x4000 << (512 + 16 * i)
-    assert wide.bit_length() <= 1024
-    for mode in (0x12, 0x13):            # both legal rows: f16, bf16
-        instr = encode_instr(0x7A, _STD_PORT(), eh_precision(mode, 0),
-                             flags=(1 << 2))
-        await fire(dut, instr, make_tag(port_context_id=0),
-                   payload_wide=wide, payload_wide_valid=1)
-        assert int(dut.error_flag.value) == 1, \
-            f"0x7A mode=0x{mode:02X} with a full 16-frag wave must " \
-            f"decode_error until 3a-C4"
-        assert int(dut.output_valid.value) == 0, \
-            f"0x7A mode=0x{mode:02X} emitted data with no wiring"
-        assert int(dut.lower_required.value) == 0, \
-            f"0x7A is a decode_error (whitelist omission), not a stub " \
-            f"capability absence"
+    # (mode, A pattern, B pattern) — 1.0 x 2.0 in each dtype.
+    for mode, a_pat, b_pat in ((0x12, 0x3C00, 0x4000),    # f16
+                               (0x13, 0x3F80, 0x4000)):   # bf16
+        cyc, err, lwr, out, pay = await _fdot_run(
+            dut, mode, _fdot_wave(a_pat, b_pat))
+        assert (err, lwr, out) == (0, 0, 1), (
+            f"0x7A mode=0x{mode:02X} with a full 16-frag wave must EXECUTE "
+            f"from 3a-C4 on: err={err} lwr={lwr} out={out}")
+        assert pay == 0x42800000, (
+            f"0x7A mode=0x{mode:02X}: 32 x (1.0 * 2.0) = 64.0 = 0x42800000, "
+            f"got 0x{pay:016X} — the ingress fragment order or the A/B "
+            f"split is wrong")
+        assert cyc <= 10000, (
+            f"0x7A mode=0x{mode:02X} took {cyc} cycles "
+            f"(spec §27.7a.2 hard ceiling 10,000). NOTE: 이 사이트의 실효 "
+            f"경계는 10,000 이 아니라 _fdot_run 의 폴링 budget 2,048 이다 — "
+            f"초과하면 이 assert 가 아니라 out/payload 검사가 먼저 loud FAIL "
+            f"한다. 10,000 상한 자체의 pin 은 test_fdot32_cr_cycle_boundaries_measured (_measure limit=10001) 가 단독 소유한다")
+        dut._log.info(f"FDOT32_CR mode=0x{mode:02X}: {cyc} cycles "
+                      f"(integration axis, dispatch -> output_valid)")
         await reset(dut)
+
+
+def _fdot_golden(dtype_code, a_lanes, b_lanes):
+    """Expected fp32 result straight out of scripts/golden_fdotcr.py — the
+    3a-C1 authority, IMPORTED never retyped. dtype_code is the mode-byte
+    nibble (0x2 f16 / 0x3 bf16)."""
+    import golden_fdotcr as _GFD
+    dt = _GFD.DT_F16 if dtype_code == 0x2 else _GFD.DT_BF16
+    r = _GFD.fdotcr_ref(dt, list(zip(a_lanes, b_lanes)))
+    return r["bits"]
+
+
+def _fdot_lanes_wave(a_lanes, b_lanes):
+    w = 0
+    for i in range(32):
+        w |= (a_lanes[i] & 0xFFFF) << (16 * i)
+        w |= (b_lanes[i] & 0xFFFF) << (512 + 16 * i)
+    assert w.bit_length() <= 1024
+    return w
+
+
+@cocotb.test()
+async def test_fdot32_cr_ingress_fragment_order_asymmetric(dut):
+    """§27.7a.2c — the ingress driver's fragment order, proved with an
+    ASYMMETRIC wave that a symmetric vector cannot prove, and scored
+    against the imported golden rather than a hand-typed constant.
+
+    test_fdot32_cr_16_frag_wave_executes uses a uniform A and a uniform B,
+    so it is blind to a permutation WITHIN A or within B. Here every lane
+    carries a distinct magnitude (bf16 2^i), so the dot is a positional
+    fingerprint of the lane map: a driver that streams the sixteen
+    fragments in the wrong order, splits A/B at the wrong fragment
+    boundary, or swaps the a_in/b_in halves of a fragment lands on a
+    different sum. Lanes 16..31 carry B = +0 (bf16 DAZ) so the total stays
+    exactly representable and every mismatch is a value mismatch, not a
+    rounding argument."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    a_lanes, b_lanes = [], []
+    for i in range(32):
+        a_lanes.append(((127 + i) & 0xFF) << 7)       # bf16 2^i
+        b_lanes.append(0x3F80 if i < 16 else 0x0000)  # 1.0 / +0 (DAZ)
+    expect = _fdot_golden(0x3, a_lanes, b_lanes)
+    cyc, err, lwr, out, pay = await _fdot_run(
+        dut, 0x13, _fdot_lanes_wave(a_lanes, b_lanes))
+    assert (err, lwr, out) == (0, 0, 1), \
+        f"asymmetric 0x7A wave did not execute: err={err} lwr={lwr} out={out}"
+    assert pay == expect, (
+        f"golden_fdotcr says 0x{expect:08X}, RTL says 0x{pay:016X} — "
+        f"fragment order / A-B split / lane map is wrong")
+    dut._log.info(f"FDOT32_CR asymmetric wave: {cyc} cycles, "
+                  f"result 0x{expect:08X} (golden-scored)")
+
+
+def _fdot_vectors():
+    """Parse include/generated/fdotcr_vectors.hex per its own contract
+    (include/generated/fdotcr_vec_contract.md): 272 hex chars = 1,088 bits
+    MSB-first, META[1087:1056] / OPERANDS[1055:32] / RESULT[31:0], with
+    META[7:0] = dtype (0x2 f16 / 0x3 bf16) and META[8] = special flag."""
+    path = os.path.join(_REPO, 'include', 'generated', 'fdotcr_vectors.hex')
+    out = []
+    with open(path, encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('//'):
+                continue
+            assert len(line) == 272, \
+                f"vector line is {len(line)} hex chars, contract says 272"
+            v = int(line, 16)
+            meta = (v >> 1056) & 0xFFFFFFFF
+            out.append({
+                'wide': (v >> 32) & ((1 << 1024) - 1),
+                'result': v & 0xFFFFFFFF,
+                'dtype': meta & 0xFF,
+                'special': (meta >> 8) & 1,
+                'family': (meta >> 24) & 0xFF,
+            })
+    return out
+
+
+@cocotb.test()
+async def test_fdot32_cr_golden_vectors_e2e(dut):
+    """§27.7a.5 / §35.9 — a directed slice of the 3a-C1 golden vector file
+    replayed through the FULL integration path (EHDecode wave -> PE_Core
+    ingress driver -> FP_StepSeq -> result), bit-exact.
+
+    C3 proved the unit against these 450 vectors with a TB that drove the
+    fragment stream ITSELF. This is the amendment-9 (ii) re-proof: the
+    stream is now produced by the PE_Core ingress driver, so the same
+    vectors must still land bit-exact. Value equality is the ONLY
+    self-check the ingress has — nothing in the driver announces a
+    mis-ordered fragment, a swapped a_in/b_in half, or an A/B split at the
+    wrong fragment boundary.
+
+    Two independent expectations are compared, so neither can drift alone:
+    the RESULT field frozen INTO the vector file, and a live call to
+    scripts/golden_fdotcr.fdotcr_ref on the same operands.
+
+    A deterministic slice (not all 450) because each point costs hundreds
+    of simulator cycles; the exhaustive sweep stays on the unit TB. The
+    slice deliberately includes the special-operand rows, whose contract
+    is canonical qNaN 0x7FC00000 (§27.7a.1 (iii)) — the sticky half of
+    that contract is observed at the Cluster boundary, since ISA_Decoder
+    leaves the sticky ports intentionally unconnected (§35.3 item 5)."""
+    import golden_fdotcr as _GFD
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    vecs = _fdot_vectors()
+    assert len(vecs) == 450, f"expected 450 golden vectors, got {len(vecs)}"
+    picked = vecs[::30]                       # 15 deterministic points
+    specials = [v for v in vecs if v['special']][:3]
+    for v in specials:
+        if v not in picked:
+            picked.append(v)
+    assert any(v['special'] for v in picked), \
+        "the slice must include special-operand rows"
+    worst = 0
+    for v in picked:
+        dt = _GFD.DT_F16 if v['dtype'] == 0x2 else _GFD.DT_BF16
+        a_lanes = [(v['wide'] >> (16 * i)) & 0xFFFF for i in range(32)]
+        b_lanes = [(v['wide'] >> (512 + 16 * i)) & 0xFFFF for i in range(32)]
+        ref = _GFD.fdotcr_ref(dt, list(zip(a_lanes, b_lanes)))
+        assert ref['bits'] == v['result'], (
+            f"golden model vs frozen vector RESULT disagree "
+            f"(0x{ref['bits']:08X} vs 0x{v['result']:08X}) — the vector "
+            f"file and scripts/golden_fdotcr.py have drifted apart")
+        mode = 0x12 if v['dtype'] == 0x2 else 0x13
+        cyc, err, lwr, out, pay = await _fdot_run(dut, mode, v['wide'])
+        assert (err, lwr, out) == (0, 0, 1), (
+            f"golden vector (family 0x{v['family']:02X}, dtype "
+            f"0x{v['dtype']:X}) did not execute: err={err} lwr={lwr} "
+            f"out={out}")
+        assert pay == v['result'], (
+            f"family 0x{v['family']:02X} dtype 0x{v['dtype']:X} "
+            f"special={v['special']}: golden 0x{v['result']:08X} vs RTL "
+            f"0x{pay:016X}")
+        assert cyc <= 10000, (
+            f"cycle ceiling (§27.7a.2): {cyc} > 10,000 "
+            f"(integration axis, dispatch -> output_valid). NOTE: 실효 경계는 "
+            f"_fdot_run budget 2,048 (더 엄격). 10,000 pin 은 test_fdot32_cr_cycle_boundaries_measured (_measure limit=10001) 가 단독 소유한다")
+        worst = max(worst, cyc)
+        await reset(dut)
+    dut._log.info(f"FDOT32_CR golden e2e: {len(picked)} vectors, worst "
+                  f"{worst} cycles (INTEGRATION axis = dispatch -> "
+                  f"output_valid; §35.5.3 binding axis is the unit axis)")
+
+
+@cocotb.test()
+async def test_fdot32_cr_missing_wide_is_loud_error(dut):
+    """§27.7a.1 wave contract: the OPERAND IS the wave. A 0x7A dispatch
+    whose 16-fragment wave never completed (wide_valid low) is a malformed
+    program — deterministic error_flag, never a silent zero-operand dot
+    and never a capability lower_required."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    instr = encode_instr(0x7A, _STD_PORT(), eh_precision(0x13, 0),
+                         flags=(1 << 2))
+    await fire(dut, instr, make_tag(port_context_id=0),
+               payload_wide=0, payload_wide_valid=0)
+    assert int(dut.error_flag.value) == 1, \
+        "0x7A without a completed wide wave must error_flag"
+    assert int(dut.output_valid.value) == 0, \
+        "0x7A without a wave emitted data"
+    assert int(dut.lower_required.value) == 0, \
+        "missing wave is malformation (error), not capability absence"
+
+
+@cocotb.test()
+async def test_fdot32_cr_stale_dtype_contamination(dut):
+    """spec §35.2 T1 — the SELECTED test for the `cr_fp_dtype` trap.
+
+    `cr_fp_dtype` has NO per-cycle default in PE_Core (the deliberate D11
+    hold(CE) structure, +778 LUT if defaulted), so an 0x7A arm that forgot
+    `cr_fp_dtype <= dec_eff_precision[3:0]` would inherit whatever the
+    PREVIOUS fp dispatch left there. FP_StepSeq then decodes OPS_BAD and
+    returns canonical qNaN with no error and no fault — a SILENT wrong
+    answer.
+
+    Detection power is attributed here on purpose (spec §35.2, and §31.9
+    item 8 on stimulus spaces that hide): row (3) — an 0x77 CVT f16
+    immediately before — would pass ANYWAY, because the inherited value
+    happens to be a legal FDOT32_CR dtype. The killing rows are (1) and
+    (2). A TB that only contained row (3) would be green against the
+    broken RTL.
+
+      (1) reset -> 0x7A          : inherited cr_fp_dtype = 4'd0 (int4)
+      (2) 0x78 DEQUANT int8 -> 0x7A : inherited 4'h1 (int8)
+      (3) 0x77 CVT f16 -> 0x7A   : inherited 4'h2 — passes either way
+    """
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    wave = _fdot_wave(0x3F80, 0x4000)    # bf16 1.0 x 2.0 -> 64.0
+
+    async def _check(label):
+        cyc, err, lwr, out, pay = await _fdot_run(dut, 0x13, wave)
+        assert (err, lwr, out) == (0, 0, 1), \
+            f"{label}: 0x7A did not execute (err={err} lwr={lwr} out={out})"
+        assert pay == 0x42800000, (
+            f"{label}: got 0x{pay:016X}, expected 0x42800000. "
+            f"0x7FC00000 means cr_fp_dtype was stale -> OPS_BAD -> "
+            f"canonical qNaN (the silent failure this test exists for)")
+
+    # (1) straight out of reset: cr_fp_dtype == 4'd0.
+    await _check("row1 reset->0x7A")
+
+    # (2) 0x78 DEQUANT int8 leaves cr_fp_dtype = 4'h1.
+    await reset(dut)
+    deq = encode_instr(0x78, _STD_PORT(), eh_precision(0x11, 0),
+                       flags=(1 << 2))
+    await fire(dut, deq, make_tag(port_context_id=0), payload_b=0x3F800000,
+               payload_b_valid=1, payload_wide=0x0102030405060708,
+               payload_wide_valid=1)
+    for _ in range(400):                 # drain the DEQUANT lane loop
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.pe_ready.value) == 1 and int(dut.output_valid.value) == 0:
+            break
+    await _check("row2 0x78(int8)->0x7A")
+
+    # (3) 0x77 CVT f16 leaves cr_fp_dtype = 4'h2 — the ACCIDENTAL PASS.
+    await reset(dut)
+    cvt = encode_instr(0x77, _STD_PORT(), eh_precision(0x12, 0),
+                       flags=(1 << 2))
+    await fire(dut, cvt, make_tag(port_context_id=0), payload_a=0x3C00)
+    for _ in range(64):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.pe_ready.value) == 1 and int(dut.output_valid.value) == 0:
+            break
+    await _check("row3 0x77(f16)->0x7A  [accidental-pass row]")
+
+
+@cocotb.test()
+async def test_fdot32_cr_back_to_back_dispatch_never_clobbers(dut):
+    """spec §35.9 C-2 / §27.7a.2c — gap-0 redispatch must not corrupt the
+    in-flight wave.
+
+    RENAMED in the 3a-C4 integration phase (§28.4 item 8). It was called
+    `..._back_to_back_dispatch_is_loud`, and that name was a promise the
+    test cannot keep: MEASURED here, `ever_lwr == 0` — a second token
+    driven on the very next beat never becomes a second `dec_valid` on
+    THIS decoder (ISA_Decoder standalone has no input skid, the
+    §22.14b-1/§22.14b-6 silent drop that only Cluster closes), so the
+    ownership rung is never even reached. A test named for a loudness it
+    never observes is a §28.4 item 8 violation on its own; the loudness
+    half lives in test_fdot32_cr_ingress_window_dispatch_is_loud, which
+    measures it at gaps 4..23.
+
+    What this test DOES pin, and what the new name advertises: at gap 0
+    the first 0x7A's result is unchanged (0x42800000, not the second
+    wave's 0x43000000 nor a mixture), nothing is emitted for the dropped
+    dispatch, and the drop is never reported as error_flag."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    first = _fdot_wave(0x3F80, 0x4000)    # 1.0 x 2.0 -> 64.0
+    second = _fdot_wave(0x4000, 0x4000)   # 2.0 x 2.0 -> 128.0 (0x43000000)
+    instr = encode_instr(0x7A, _STD_PORT(), eh_precision(0x13, 0),
+                         flags=(1 << 2))
+
+    dut.instruction.value = instr
+    dut.input_tag.value = make_tag(port_context_id=0)
+    dut.input_payload.value = 0
+    dut.input_payload_b.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide.value = first
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)
+    # Second dispatch on the very next beat, different operands.
+    dut.input_payload_wide.value = second
+    await RisingEdge(dut.clk)
+    dut.token_valid.value = 0
+    dut.input_payload_wide.value = 0
+
+    n_out = 0
+    payloads = []
+    ever_err = 0
+    ever_lwr = 0
+    for _ in range(4096):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        ever_err |= int(dut.error_flag.value)
+        ever_lwr |= int(dut.lower_required.value)
+        if int(dut.output_valid.value):
+            n_out += 1
+            payloads.append(int(dut.output_payload.value))
+        if n_out and int(dut.pe_ready.value) == 1 \
+                and int(dut.output_valid.value) == 0:
+            break
+    dut._log.info(f"back-to-back 0x7A: outputs={n_out} payloads="
+                  f"{[hex(p) for p in payloads]} ever_err={ever_err} "
+                  f"ever_lwr={ever_lwr}")
+    # MEASURED FACT, recorded rather than assumed (spec §27.7a.2c leaves
+    # this open): on THIS decoder a second token driven on the very next
+    # beat does not become a second dec_valid — ISA_Decoder standalone has
+    # no input skid (§22.14b-1/§22.14b-6, the documented silent drop that
+    # only Cluster closes), so the ownership guard is NOT what rejected it
+    # here. The reachable window is exercised by
+    # test_fdot32_cr_ingress_window_dispatch_is_loud below.
+    if ever_lwr == 0:
+        dut._log.info("back-to-back: the second dispatch never reached "
+                      "PE_Core (no dec_valid) — guard not exercised here")
+    assert n_out >= 1, "the first 0x7A produced no result at all"
+    assert payloads[0] == 0x42800000, (
+        f"the first 0x7A returned 0x{payloads[0]:016X}, expected "
+        f"0x42800000 (64.0). A value of 0x43000000 (128.0) or anything "
+        f"else means the second dispatch clobbered fd_ing_q mid-stream — "
+        f"the exact silent failure the ownership guard exists to stop")
+    assert ever_err == 0, (
+        "a back-to-back 0x7A must be rejected as lower_required "
+        "(capability/occupancy), never error_flag")
+    for p in payloads[1:]:
+        assert p == 0x42800000, (
+            f"a second result 0x{p:016X} appeared; a rejected dispatch "
+            f"must not emit")
+
+
+@cocotb.test()
+async def test_fdot32_cr_ingress_window_dispatch_is_loud(dut):
+    """spec §27.7a.2c / §35.9 C-2 — the ingress OWNERSHIP rung, exercised
+    where it is actually reachable, and the reason it cannot be replaced
+    by the ordinary busy-reject.
+
+    The clobber happens at STAGE 1 (the `fd_ing_q <= dec_input_payload_wide`
+    capture, cycle T). The ordinary busy-reject happens at STAGE 2
+    (`cr_needs_regs_free && !output_regs_free`, cycle T+1). So a second
+    0x7A arriving while the first is still streaming fragments would be
+    correctly rejected at stage 2 AND STILL have overwritten the buffer at
+    stage 1 one cycle earlier — handing the in-flight op fragments 1..15
+    of a different wave. Neither error nor fault: a normal-looking wrong
+    fp32. That is why the rung sits in stage 1, ahead of the capture.
+
+    This test sweeps the dispatch gap across (and past) the 15-cycle
+    fragment window and asserts the property that must hold at EVERY gap:
+    the first dispatch's result is unchanged, and any rejected second
+    dispatch is loud (lower_required) and emits nothing."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    instr = encode_instr(0x7A, _STD_PORT(), eh_precision(0x13, 0),
+                         flags=(1 << 2))
+    first = _fdot_wave(0x3F80, 0x4000)    # 1.0 x 2.0 -> 64.0  (0x42800000)
+    second = _fdot_wave(0x4000, 0x4000)   # 2.0 x 2.0 -> 128.0 (0x43000000)
+
+    async def _drive(wide):
+        dut.instruction.value = instr
+        dut.input_tag.value = make_tag(port_context_id=0)
+        dut.input_payload.value = 0
+        dut.input_payload_b.value = 0
+        dut.input_payload_b_valid.value = 0
+        dut.input_payload_wide.value = wide
+        dut.input_payload_wide_valid.value = 1
+        dut.token_valid.value = 1
+        await RisingEdge(dut.clk)
+        dut.token_valid.value = 0
+
+    rejected_gaps = []
+    for gap in range(0, 24):
+        await reset(dut)
+        await _drive(first)
+        for _ in range(gap):
+            await RisingEdge(dut.clk)
+        await _drive(second)
+        n_out, payloads, ever_err, ever_lwr = 0, [], 0, 0
+        for _ in range(4096):
+            await RisingEdge(dut.clk)
+            await Timer(1, units="ns")
+            ever_err |= int(dut.error_flag.value)
+            ever_lwr |= int(dut.lower_required.value)
+            if int(dut.output_valid.value):
+                n_out += 1
+                payloads.append(int(dut.output_payload.value))
+            if n_out and int(dut.pe_ready.value) == 1 \
+                    and int(dut.output_valid.value) == 0:
+                break
+        assert n_out >= 1, f"gap={gap}: the first 0x7A produced no result"
+        assert payloads[0] == 0x42800000, (
+            f"gap={gap}: first result 0x{payloads[0]:016X}, expected "
+            f"0x42800000 (64.0). 0x43000000 (128.0) or a mixture means the "
+            f"second dispatch clobbered fd_ing_q mid-stream — the silent "
+            f"wrong answer the stage-1 ownership rung exists to stop")
+        assert ever_err == 0, (
+            f"gap={gap}: a rejected in-flight 0x7A must be lower_required "
+            f"(occupancy), never error_flag")
+        for p in payloads[1:]:
+            assert p == 0x42800000, (
+                f"gap={gap}: a rejected dispatch emitted 0x{p:016X}")
+        if ever_lwr:
+            rejected_gaps.append(gap)
+    dut._log.info(f"0x7A in-flight redispatch: loud lower_required at gaps "
+                  f"{rejected_gaps} (of 0..23)")
+    assert rejected_gaps, (
+        "no gap in 0..23 produced a loud reject — either dec_valid never "
+        "lands during the ingress window on this decoder (record it) or "
+        "the reject path silently vanished")
 
 
 @cocotb.test()
@@ -4526,6 +5013,398 @@ async def test_fdot32_cr_port_only_shape_rejected_ehs(dut):
         assert int(dut.output_valid.value) == 0, \
             f"0x7A with a forbidden {name} EH emitted data"
         await reset(dut)
+
+
+# =============================================================================
+# v1.8.0e 3a-C4 INTEGRATION PHASE (spec §35.5.3) — the two axes the landing
+# commit left as claims rather than measurements:
+#
+#   (1) EXHAUSTIVE golden bit-equivalence at the integration axis. The
+#       landing commit scored 18 of the 450 vectors; a fragment-order or
+#       A/B-split defect that happens to be invisible on those 18 lands
+#       green. And every one of those 18 ran from a fresh reset, so the
+#       suite had ZERO evidence about state carried between consecutive
+#       0x7A dispatches — which is exactly where `cr_fp_dtype` (no
+#       per-cycle default), `fd_ing_q` (deliberately un-reset) and
+#       `fd_spec` (per-op latch in a reset-free block) live.
+#
+#   (2) The CYCLE measurement, with its observation points NAMED. "606
+#       cycles" is not a measurement until the two ends of the interval
+#       are written down.
+# =============================================================================
+
+
+async def _fdot_run_no_reset(dut, mode, wide, limit=4096):
+    """One FDOT32_CR dispatch that does NOT reset first and does NOT reset
+    after — it only waits for the core to become idle again. Returns
+    (cycles, err, lwr, out, payload) with `cycles` measured on the
+    INTEGRATION axis defined in the census test's docstring."""
+    instr = encode_instr(0x7A, _STD_PORT(), eh_precision(mode, 0),
+                         flags=(1 << 2))
+    dut.instruction.value = instr
+    dut.input_tag.value = make_tag(port_context_id=0)
+    dut.input_payload.value = 0
+    dut.input_payload_b.value = 0
+    dut.input_payload_b_valid.value = 0
+    dut.input_payload_wide.value = wide
+    dut.input_payload_wide_valid.value = 1
+    dut.token_valid.value = 1
+    await RisingEdge(dut.clk)              # <-- cycle 0: the dispatch beat
+    dut.token_valid.value = 0
+    # The wave is consumed from the MU-local buffer, so the bus is torn
+    # down immediately: anything still read off it afterwards is a bug.
+    dut.input_payload_wide.value = 0
+    dut.input_payload_wide_valid.value = 0
+    n, err, lwr = 0, 0, 0
+    payload = None
+    while n < limit:
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        n += 1
+        err |= int(dut.error_flag.value)
+        lwr |= int(dut.lower_required.value)
+        if int(dut.output_valid.value):
+            payload = int(dut.output_payload.value)
+            break
+        if err or lwr:
+            break
+    # settle back to idle WITHOUT a reset — the point of this helper
+    for _ in range(64):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.pe_ready.value) == 1 and int(dut.output_valid.value) == 0:
+            break
+    return n, err, lwr, payload
+
+
+@cocotb.test()
+async def test_fdot32_cr_all_450_golden_vectors_back_to_back_bit_exact(dut):
+    """3a-C4 integration phase — ALL 450 golden vectors through the full
+    integration path (EHDecode -> PE_Core ingress driver -> FP_StepSeq ->
+    result), bit-exact, dispatched BACK TO BACK WITH NO RESET BETWEEN THEM.
+
+    Two things this proves that the 18-vector slice
+    (test_fdot32_cr_golden_vectors_e2e) structurally cannot:
+
+      (a) COVERAGE. 450/450, every family and both dtypes, scored against
+          TWO independent oracles that cannot drift together: the RESULT
+          field frozen into include/generated/fdotcr_vectors.hex, and a
+          live call to scripts/golden_fdotcr.fdotcr_ref on the same
+          operands. Value equality is the ingress driver's ONLY self-check
+          — a mis-ordered fragment, a swapped a_in/b_in half or an A/B
+          split at the wrong boundary raises nothing, it just returns a
+          different number.
+
+      (b) NO RESET BETWEEN DISPATCHES. The slice test resets before every
+          vector, so it could not have observed state carried from one
+          0x7A to the next — and three C4 state elements are carried by
+          construction: `cr_fp_dtype` has no per-cycle default (the D11
+          hold(CE) structure), `fd_ing_q` is deliberately never reset (its
+          declaration says so), and `fd_spec`/`fd_fault` are per-op latches
+          in a reset-free block. Here vector k+1 sees whatever vector k
+          left behind, 449 times over, including special->finite and
+          f16->bf16 transitions in both directions.
+
+    MEASURED CAVEAT, recorded so this docstring does not overclaim: the
+    helper drives `input_payload_wide`/`_valid` to 0 right after the
+    dispatch beat, but that does NOT tear down `dec_input_payload_wide` —
+    EHDecode holds its decoded payload until the next accepted token. So
+    this test does NOT distinguish "the ingress reads its MU-local
+    `fd_ing_q`" from "the ingress reads the live `dec_input_payload_wide`".
+    That distinction was mutation-tested: rewriting the ingress mux to
+    slice `dec_input_payload_wide` directly leaves all 450 vectors here
+    bit-exact, and in the whole tree only
+    test_fdot32_cr_ingress_window_dispatch_is_loud kills it (it is the
+    only test that changes the decoded wave while a 0x7A is mid-stream).
+    The buffer's necessity therefore rests on that one test — do not
+    delete it believing this census covers it."""
+    import golden_fdotcr as _GFD
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    vecs = _fdot_vectors()
+    assert len(vecs) == 450, f"expected 450 golden vectors, got {len(vecs)}"
+    seen_dtypes, seen_families = set(), set()
+    worst = (0, None)
+    best = (10 ** 9, None)
+    fails = []
+    for i, v in enumerate(vecs):
+        dt = _GFD.DT_F16 if v['dtype'] == 0x2 else _GFD.DT_BF16
+        a_lanes = [(v['wide'] >> (16 * i2)) & 0xFFFF for i2 in range(32)]
+        b_lanes = [(v['wide'] >> (512 + 16 * i2)) & 0xFFFF for i2 in range(32)]
+        ref = _GFD.fdotcr_ref(dt, list(zip(a_lanes, b_lanes)))
+        assert ref['bits'] == v['result'], (
+            f"vector {i}: the frozen RESULT 0x{v['result']:08X} and the live "
+            f"golden model 0x{ref['bits']:08X} have drifted apart — the two "
+            f"oracles are no longer independent evidence")
+        assert bool(ref['sticky']) == bool(v['special']), (
+            f"vector {i}: golden sticky {ref['sticky']} vs META special "
+            f"{v['special']}")
+        mode = 0x12 if v['dtype'] == 0x2 else 0x13
+        cyc, err, lwr, pay = await _fdot_run_no_reset(dut, mode, v['wide'])
+        seen_dtypes.add(v['dtype'])
+        seen_families.add(v['family'])
+        if (err, lwr) != (0, 0) or pay != v['result']:
+            fails.append(
+                f"vec {i} fam=0x{v['family']:02X} dtype=0x{v['dtype']:X} "
+                f"special={v['special']}: err={err} lwr={lwr} "
+                f"payload={pay if pay is None else hex(pay)} "
+                f"expected 0x{v['result']:08X}")
+            if len(fails) >= 5:
+                break
+        assert cyc <= 10000, (
+            f"vec {i}: {cyc} cycles > the §27.7a.2 hard ceiling 10,000 "
+            f"(INTEGRATION axis — see "
+            f"test_fdot32_cr_cycle_boundaries_measured for the definition). "
+            f"NOTE: 실효 경계는 _fdot_run_no_reset budget 4,096 (더 엄격). "
+            f"10,000 pin 은 test_fdot32_cr_cycle_boundaries_measured (_measure limit=10001) 가 단독 소유한다")
+        if cyc > worst[0]:
+            worst = (cyc, (i, v['family'], v['dtype']))
+        if cyc < best[0]:
+            best = (cyc, (i, v['family'], v['dtype']))
+    assert not fails, (
+        f"{len(fails)} of 450 golden vectors diverged at the integration "
+        f"axis:\n" + "\n".join(fails))
+    assert seen_dtypes == {0x2, 0x3}, \
+        f"the vector file no longer covers both dtypes: {seen_dtypes}"
+    assert len(seen_families) >= 14, \
+        f"family coverage collapsed to {len(seen_families)} families"
+    dut._log.info(
+        f"FDOT32_CR 450/450 bit-exact, back to back, no reset between. "
+        f"INTEGRATION-axis cycles: worst {worst[0]} "
+        f"(vector {worst[1][0]}, family 0x{worst[1][1]:02X}, dtype "
+        f"0x{worst[1][2]:X}), best {best[0]} (vector {best[1][0]}, family "
+        f"0x{best[1][1]:02X}), ceiling 10,000 -> "
+        f"{10000 / worst[0]:.1f}x headroom")
+
+
+@cocotb.test()
+async def test_fdot32_cr_cycle_boundaries_measured(dut):
+    """3a-C4 integration phase (spec §35.5.3) — the cycle MEASUREMENT with
+    both ends of every interval named, and the operand-INDEPENDENT segments
+    pinned as exact constants.
+
+    OBSERVATION POINTS (all counted in `clk` rising edges; edge 0 is the
+    edge on which the dispatch beat is sampled):
+
+      n = 0   DISPATCH   `token_valid` high with the 0x7A instruction on
+                         `instruction` and the 1,024-bit wave on
+                         `input_payload_wide` — the ISA_Decoder input port.
+      n = L   LAUNCH     `u_core.g_v180c_fp.u_fp_stepseq.fd_launch` high.
+                         This is the START end of the spec §35.5.3 BINDING
+                         (unit) axis. Everything before it is EH-chain walk
+                         + the §26.4 two-stage dispatch, none of which the
+                         unit axis sees.
+      n = I   INGRESS-END `u_core.fd_ing_run` falls — fragment 15 has been
+                         placed on {b_in, a_in}; the MU-local buffer is
+                         released.
+      n = D   DONE       `u_core.g_v180c_fp.u_fp_stepseq.done` high. This is
+                         the STOP end of the binding axis.
+      n = O   RESULT     `output_valid` high at the ISA_Decoder output port.
+
+    The MEASUREMENT axis of §35.5.3 is O - 0 = O. The BINDING axis is
+    D - L (measured exhaustively at the unit boundary by the 3a-C3 TB,
+    synth/lattice/fp_ops/tb_fp_stepseq.py, whose extended family sweep
+    reaches operands this vector file does not contain).
+
+    THREE OF THE FOUR SEGMENTS ARE OPERAND-INDEPENDENT, and those are
+    pinned EXACTLY here rather than bounded:
+
+      L     = 7   dispatch -> launch (EH chain + §26.4 stage 1/stage 2)
+      I - L = 15  the 16-fragment ingress window minus the launch cycle
+                  that carries fragment 0 (§27.7a.2c amendment-13)
+      O - D = 2   done -> output_valid
+
+    An exact pin is the point: adding a pipeline stage, lengthening the
+    ingress window, or slipping the result return by a cycle are all
+    silent at a `<= 10,000` bound and loud here. The hard ceiling 10,000
+    is NOT touched — it stays the binding number, asserted on every point
+    of the 450-vector census test as well.
+
+    Only D - L is operand-dependent (it IS the step program), so it is
+    bounded, never pinned."""
+    ss = dut.u_core.g_v180c_fp.u_fp_stepseq
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    async def _measure(mode, wide, limit=10001):
+        instr = encode_instr(0x7A, _STD_PORT(), eh_precision(mode, 0),
+                             flags=(1 << 2))
+        dut.instruction.value = instr
+        dut.input_tag.value = make_tag(port_context_id=0)
+        dut.input_payload.value = 0
+        dut.input_payload_b.value = 0
+        dut.input_payload_b_valid.value = 0
+        dut.input_payload_wide.value = wide
+        dut.input_payload_wide_valid.value = 1
+        dut.token_valid.value = 1
+        await RisingEdge(dut.clk)                  # n = 0, DISPATCH
+        dut.token_valid.value = 0
+        dut.input_payload_wide.value = 0
+        dut.input_payload_wide_valid.value = 0
+        m = {'L': None, 'I': None, 'D': None, 'O': None, 'pay': None}
+        n, ing_seen = 0, False
+        while n < limit:
+            await RisingEdge(dut.clk)
+            await Timer(1, units="ns")
+            n += 1
+            if m['L'] is None and int(ss.fd_launch.value):
+                m['L'] = n
+            if int(dut.u_core.fd_ing_run.value):
+                ing_seen = True
+            elif ing_seen and m['I'] is None:
+                m['I'] = n
+            if m['D'] is None and int(ss.done.value):
+                m['D'] = n
+            if int(dut.output_valid.value):
+                m['O'] = n
+                m['pay'] = int(dut.output_payload.value)
+                break
+            assert int(dut.error_flag.value) == 0 \
+                and int(dut.lower_required.value) == 0, \
+                f"legal 0x7A rejected at n={n} while measuring"
+        return m
+
+    # Three operand classes with very different program lengths, so a
+    # constant that is only accidentally constant cannot survive:
+    #   uniform finite / the file's slowest vector / a special (early-out).
+    vecs = _fdot_vectors()
+    slowest = vecs[22]              # measured worst of the 450 (family 0x01)
+    fastest = next(v for v in vecs if v['special'])
+    points = [
+        ('f16 uniform 1.0x2.0', 0x12, _fdot_wave(0x3C00, 0x4000), 0x42800000),
+        ('bf16 uniform 1.0x2.0', 0x13, _fdot_wave(0x3F80, 0x4000), 0x42800000),
+        ('bf16 slowest vector', 0x13, slowest['wide'], slowest['result']),
+        ('special early-out',
+         0x12 if fastest['dtype'] == 0x2 else 0x13,
+         fastest['wide'], fastest['result']),
+    ]
+    rows = []
+    for label, mode, wide, expect in points:
+        m = await _measure(mode, wide)
+        assert m['O'] is not None, f"{label}: no output_valid within budget"
+        assert m['pay'] == expect, \
+            f"{label}: payload 0x{m['pay']:016X} != 0x{expect:08X}"
+        assert m['L'] == 7, (
+            f"{label}: dispatch -> fd_launch took {m['L']} cycles, pinned at "
+            f"7 (EH-chain walk + the §26.4 two-stage dispatch). A change "
+            f"here is a pipeline-depth change, which is exactly what a "
+            f"'<= 10,000' bound cannot see")
+        assert m['I'] - m['L'] == 15, (
+            f"{label}: the ingress window ran {m['I'] - m['L']} cycles after "
+            f"launch, pinned at 15 (16 fragments, fragment 0 rides the "
+            f"launch cycle — §27.7a.2c amendment-13). Off-by-one here is "
+            f"the silent wrong-value class M2")
+        assert m['O'] - m['D'] == 2, (
+            f"{label}: done -> output_valid took {m['O'] - m['D']} cycles, "
+            f"pinned at 2")
+        assert m['D'] > m['I'], (
+            f"{label}: FP_StepSeq signalled done at n={m['D']} BEFORE the "
+            f"ingress released the buffer at n={m['I']} — the result cannot "
+            f"have seen all 16 fragments")
+        assert m['O'] <= 10000, (
+            f"{label}: {m['O']} > the §27.7a.2 hard ceiling 10,000")
+        rows.append((label, m))
+    unit = [m['D'] - m['L'] for _, m in rows]
+    assert min(unit) != max(unit), (
+        "every measured point produced the SAME unit-axis latency — the "
+        "operand classes chosen here were supposed to differ, so either "
+        "the stimulus collapsed or the program stopped depending on data")
+    for label, m in rows:
+        dut._log.info(
+            f"FDOT32_CR cycle census [{label}]: DISPATCH=0 LAUNCH={m['L']} "
+            f"INGRESS_END={m['I']} DONE={m['D']} RESULT={m['O']} | "
+            f"MEASUREMENT axis (dispatch->output_valid) = {m['O']} | "
+            f"BINDING axis (fd_launch->done) = {m['D'] - m['L']} | "
+            f"hard ceiling 10,000")
+
+
+@cocotb.test()
+async def test_fdot32_cr_worst_family_replayed_at_integration_axis(dut):
+    """3a-C4 integration phase — the operand family that produced the
+    BINDING-axis global worst is replayed through the FULL integration
+    path, so the integration-axis worst is MEASURED and not derived.
+
+    Why this test has to exist. The 450-line vector file carries only the
+    first 30 trials per family, and its integration-axis worst is 957. The
+    §35.5.3 binding number 1,167 does NOT come from that file: it comes
+    from `fdotcr_extended_family_sweep` in the 3a-C3 unit TB
+    (synth/lattice/fp_ops/tb_fp_stepseq.py), whose `eft_bf16_wide` family
+    generates 300 FRESH trials on the fixed seed 0x7ADC3C0. Without this
+    test, the only statement available about the integration axis at the
+    worst-case operand would be "unit worst + the three constants I
+    measured elsewhere" — an arithmetic derivation, not a measurement.
+
+    Same generator, same fixed seed, same family index, so these are the
+    SAME operands the unit TB used — that identity is what makes the two
+    axes comparable at all.
+
+    Oracle: `golden_fdotcr._independent_expected`, the Fraction path that
+    never touches the EFT. Scoring the RTL with `fdotcr_ref` here would
+    re-confirm the algorithm with itself; the C1 audit put that
+    self-confirmation-loop ban on the vector emitter and it applies just
+    as much to a replay.
+
+    The wave construction is cross-checked against
+    `golden_fp32.lanes_to_frags` on the first trial, so a divergence
+    between this test's A||B packing and the emitter's cannot hide."""
+    import random
+    import golden_fdotcr as _GFD
+    import golden_fp32 as _GFP
+    fam_name, gen = _GFD.FAM_GENS[0]
+    assert fam_name == "eft_bf16_wide", (
+        f"FAM_GENS[0] is now {fam_name!r}; the seed 0x7ADC3C0 + 0 no longer "
+        f"reproduces the family that set the binding-axis global worst — "
+        f"re-derive the index instead of replaying the wrong operands")
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+    rng = random.Random(0x7ADC3C0 + 0)       # fi = 0, the unit TB's stream
+    worst, worst_i = 0, -1
+    n_special = 0
+    checked_packing = False
+    for i in range(300):
+        dtype, pairs = gen(rng)
+        exp_bits, exp_sp, _ = _GFD._independent_expected(dtype, pairs)
+        a_lanes = [a for a, _ in pairs]
+        b_lanes = [b for _, b in pairs]
+        wide = _fdot_lanes_wave(a_lanes, b_lanes)
+        if not checked_packing:
+            frags = (_GFP.lanes_to_frags(a_lanes, 16)
+                     + _GFP.lanes_to_frags(b_lanes, 16))
+            ref_wide = 0
+            for f, w in enumerate(frags):
+                ref_wide |= w << (64 * f)
+            assert ref_wide == wide, (
+                "this test's A||B packing diverges from "
+                "golden_fp32.lanes_to_frags — the replay would be driving "
+                "different operands than the unit TB did")
+            checked_packing = True
+        n_special += exp_sp
+        mode = 0x12 if dtype == _GFD.DT_F16 else 0x13
+        cyc, err, lwr, pay = await _fdot_run_no_reset(dut, mode, wide)
+        assert (err, lwr) == (0, 0), \
+            f"{fam_name} trial {i}: err={err} lwr={lwr}"
+        assert pay == exp_bits, (
+            f"{fam_name} trial {i} dtype=0x{dtype:X}: RTL "
+            f"0x{pay:016X} vs the EFT-INDEPENDENT Fraction oracle "
+            f"0x{exp_bits:08X}")
+        assert cyc <= 10000, (
+            f"{fam_name} trial {i}: {cyc} cycles > the §27.7a.2 hard "
+            f"ceiling 10,000 (INTEGRATION axis). NOTE: 실효 경계는 "
+            f"_fdot_run_no_reset budget 4,096 (더 엄격). 10,000 pin 은 "
+            + OWNER + "한다")
+        if cyc > worst:
+            worst, worst_i = cyc, i
+    dut._log.info(
+        f"FDOT32_CR {fam_name} (the binding-axis worst family, seed "
+        f"0x7ADC3C0+0): 300/300 trials bit-exact vs the EFT-independent "
+        f"oracle, {n_special} special. INTEGRATION-axis worst {worst} "
+        f"cycles at trial {worst_i} (dispatch beat -> output_valid); the "
+        f"BINDING (unit) axis worst for this same family is 1,167, "
+        f"measured by tb_fp_stepseq.fdotcr_extended_family_sweep. Hard "
+        f"ceiling 10,000.")
 
 
 # =============================================================================

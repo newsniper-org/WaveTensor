@@ -1,0 +1,17 @@
+{
+  "tag": "fp_stepseq",
+  "top": "FP_StepSeq_gate_top",
+  "part": "xcu55c-fsvh2892-2L-e",
+  "period_ns": 10.000,
+  "lut_cells": 5137,
+  "ff": 1452,
+  "dsp48": 4,
+  "dsp_split_cells": 32,
+  "carry": 127,
+  "bram": 2,
+  "srl": 128,
+  "wns_ns": 2.279,
+  "whs_ns": 0.023,
+  "fmax_mhz": 129.52,
+  "msg_census": "run_log"
+}

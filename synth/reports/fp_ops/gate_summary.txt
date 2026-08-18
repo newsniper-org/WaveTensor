@@ -46,7 +46,7 @@ GATE V20-2/US — fp_acclattice: v2.0 528-bit exact-integer lattice unit (spec �
     LUT sites  = 19298      (HARD ceiling 20040 — hard ceiling = 12,000 nominal x 1.67 measured overrun factor (spec §27.6, §23.10.10(g) method))   -> PASS
     DSP48      =     0      (limit 0 — lattice is add/shift/compare ONLY — any DSP48 means the mapper found a multiply that must not exist)   -> PASS
     premap $mul=     0      (limit 0 — §26.6 pin form; evidence: fp_acclattice_premap_mul.log)   -> PASS
-                 provenance: fp_acclattice_premap_mul.log: provenance OK (1 sources, sources(hash only), generated 2026-08-18T17:56:13+09:00)   -> PASS
+                 provenance: fp_acclattice_premap_mul.log: provenance OK (1 sources, sources(hash only) ⚠ wrapper+include UNVERIFIED (pre-2026-08-18 evidence), generated 2026-08-18T17:56:13+09:00)   -> PASS
     BRAM       =     0      (limit 0)   -> PASS
     WHS        =   +0.044 ns (hold, limit >= 0)   -> PASS
     DRC        = 0 errors, 0 warnings (limit: 0 errors; warnings are listed, NOT 'clean')   -> PASS
@@ -65,7 +65,7 @@ GATE V20-3/US — fp_traincluster: v2.0 TRAIN full-cluster datapath (spec §27.6
     LUT sites  = 26863      (HARD ceiling 35377 — hard ceiling = anchors 33,874 (19,298 lattice + 8,368 bank + 776x8 lane) + glue 900 x 1.67 (spec §27.6 ④, §23.10.10(g) method))   -> PASS
     DSP48      =     8      (EXACTLY 8 — one 11x11 significand multiply per lane tap x 8 lanes; lattice 0 / bank 0 measured (§27.6 ④))   -> PASS
     premap $mul=     8      (EXACTLY 8 — §26.6 pin form; evidence: fp_traincluster_premap_mul.log)   -> PASS
-                 provenance: fp_traincluster_premap_mul.log: provenance OK (3 sources, sources(hash only), generated 2026-08-18T17:56:14+09:00)   -> PASS
+                 provenance: fp_traincluster_premap_mul.log: provenance OK (3 sources, sources(hash only) ⚠ wrapper+include UNVERIFIED (pre-2026-08-18 evidence), generated 2026-08-18T17:56:14+09:00)   -> PASS
     BRAM       =     0      (limit 0)   -> PASS
     WHS        =   +0.042 ns (hold, limit >= 0)   -> PASS
     DRC        = 0 errors, 2 warnings (limit: 0 errors; warnings are listed, NOT 'clean')   -> PASS
@@ -89,15 +89,43 @@ GATE V20-3/US — fp_traincluster: v2.0 TRAIN full-cluster datapath (spec §27.6
       u_lattice      FP_AccLattice    LUT 16912  FF  1939  DSP   0
     GATE V20-3/US RESULT: PASS
 
+GATE V20-4 — fp_stepseq: v1.9 FDOT32_CR (0x7A) 32-lane bf16/f16 dot-product step sequencer (spec §27.7a) — the unit that OPS_FDOTCR added to FP_StepSeq; delta is measured against the `fp_stepseq_base` anchor of §34.3
+    device     = xcu55c-fsvh2892-2L-e  (Vivado out-of-context, synth + opt + place + phys_opt + route)
+    constraint = 10.0 ns (100.00 MHz)
+
+    Fmax       =   129.52 MHz  (WNS +2.279 ns @ 10.0 ns; MEASUREMENT — §27.7a.5 puts Fmax/WNS on the RECORD axis, not the binding one; no Fmax contract has ever been declared for this unit (anchor 161.16 MHz @ 10 ns exists so the next run has something to drift against); >= 100.0 MHz: yes; binding verdict rides on LUT/DSP/premap-$mul only)   -> RECORDED
+    LUT sites  =  4572      (HARD ceiling 5477 — HARD ceiling = anchor sites 3,277 + pre-announced delta 2,200 (§27.7a.5 figure, §35.5.1 unit correction); this is the axis the checker actually reads, so the cells-unit ceiling below is enforced SEPARATELY and neither may be traded for the other)   -> PASS
+    LUT cells  =  5137      (HARD ceiling 6009 — HARD ceiling = anchor cells 3,809 + pre-announced delta 2,200 = 6,009 (§34.3 verbatim — this is the unit §34.3 fixed))   -> PASS
+    DSP48      =     4      (EXACTLY 4 — EXACTLY the anchor's 4 — OPS_FDOTCR reuses the single shared FP_Mul36 (§23.10) and adds no arithmetic element, so the pre-announced delta is 0 in BOTH directions; a drop means the mapper merged a multiply the pin says must stay)   -> PASS
+    premap $mul=     4      (EXACTLY 4 — §26.6 pin form; evidence: fp_stepseq_premap_mul.log)   -> PASS
+                 provenance: fp_stepseq_premap_mul.log: provenance OK (3 sources, sources+top+wrapper(4)+include(6)+recipe, generated 2026-08-18T22:14:55+09:00)   -> PASS
+    BRAM       =     2      (EXACTLY 2; EXACTLY the anchor's 2 RAMB18 — delta 0 (hard). OPS_FDOTCR adds no memory element; a change means a silent memory-inference move)   -> PASS
+    CRIT WARN  =     0      (whitelist  — §34.3 pins ERROR 0 / CRITICAL WARNING 0 for this unit and the anchor run measured exactly that, so the whitelist is EMPTY — any critical warning at all fails, and an absent or truncated run log (no `[Common 17-206] Exiting Vivado` marker) is UNMEASURED, never a pass; evidence: fp_stepseq_run.log)   -> PASS
+                 ERROR lines in log: 0 (limit 0, BINDING)   -> PASS
+    WHS        =   +0.023 ns (hold, limit >= 0)   -> PASS
+    DRC        = 0 errors, 3 warnings (limit: 0 errors; warnings are listed, NOT 'clean')   -> PASS
+                 DPIP-2 (Warning x10): Input pipelining — DSP input not pipelined (AREG/BREG=0) — same class
+                 DPOP-4 (Warning x4): MREG Output pipelining — DSP multiplier not pipelined (MREG=0) — enabling MREG in a later pipeline rebalance is an unclaimed free Fmax upside
+                 RTSTAT-10 (Warning x1): No routable loads — OOC top-level output nets have no routable loads — structural to out-of-context runs
+
+    LUT sites  =  4572      (see HARD line above; 4376 logic + 64 SRL; raw LUT cells 5137 before LUT-combining)
+    FF         =  1452      (informational; incl. the gate-top wrapper I/O flops)
+    CARRY8     =   127      (informational)
+      u_core         FP_StepSeq       LUT  4572  FF  1303  DSP   4
+      (u_core)       FP_StepSeq       LUT  3741  FF   950  DSP   0
+      u_add          FP_AddWide       LUT   794  FF   281  DSP   0
+      u_mul          FP_Mul36         LUT    37  FF    72  DSP   4
+    GATE V20-4 RESULT: PASS
+
 GATE S1-US — sys_top_core: system-integration synthesizability gate (spec §28) — Top_Core = ISA_Decoder + HIU, the top that had never been synthesized; xcu55c half = the ONLY merge-blocker binding of GATE S1 (the ECP5 half is a MEASUREMENT)
     device     = xcu55c-fsvh2892-2L-e  (Vivado out-of-context, synth + opt + place + phys_opt + route)
     constraint = 10.0 ns (100.00 MHz)
 
-    Fmax       =   128.32 MHz  (WNS +2.207 ns @ 10.0 ns; MEASUREMENT — §28 record axis. This top is not on the v2.0 datapath critical path and no Fmax contract has ever been declared for it; the number exists so the next measurement has something to drift against; >= 100.0 MHz: yes; binding verdict rides on LUT/DSP/premap-$mul only)   -> RECORDED
-    LUT sites  = 15769      (HARD ceiling 24799 — hard ceiling = anchor 14,850 (first repo-harness xcu55c routed measurement, this commit) x 1.67 (§23.10.10(g) overrun factor) = 24,799.5, floored to 24,799; binding from the NEXT commit onward)   -> PASS
+    Fmax       =   114.06 MHz  (WNS +1.233 ns @ 10.0 ns; MEASUREMENT — §28 record axis. This top is not on the v2.0 datapath critical path and no Fmax contract has ever been declared for it; the number exists so the next measurement has something to drift against; >= 100.0 MHz: yes; binding verdict rides on LUT/DSP/premap-$mul only)   -> RECORDED
+    LUT sites  = 15666      (HARD ceiling 24799 — hard ceiling = anchor 14,850 (first repo-harness xcu55c routed measurement, this commit) x 1.67 (§23.10.10(g) overrun factor) = 24,799.5, floored to 24,799; binding from the NEXT commit onward)   -> PASS
     DSP48      =    39      (EXACTLY 39 — anchor — 35 in PE_Core's einsum/dot path + 4 in FP_StepSeq's FP_Mul36; HIU 0. Any drift means the mapper's multiply inference moved and gets attributed before re-verdict (§26.6 MULT-deviation method))   -> PASS
     premap $mul=   381      (EXACTLY 381 — §26.6 pin form; evidence: sys_top_core_premap_mul.log)   -> PASS
-                 provenance: sys_top_core_premap_mul.log: provenance OK (8 sources, sources+top, generated 2026-08-18T19:02:46+09:00)   -> PASS
+                 provenance: sys_top_core_premap_mul.log: provenance OK (8 sources, sources+top+wrapper(9)+include(10)+recipe, generated 2026-08-18T22:21:29+09:00)   -> PASS
     BRAM       =     2      (EXACTLY 2; anchor — 2 RAMB18 inside FP_StepSeq; a system top legitimately infers memory, so the axis pins the EXACT count instead of demanding 0 as the operator gates do. Drift = a silent memory-inference change)   -> PASS
     CRIT WARN  =     8      (whitelist Synth 8-295 x8 — the 8 HIU TRNG ring oscillators are an INTENDED combinational feedback (they are the entropy source), so exactly 8 timing loops are expected and whitelisted BY COUNT; a 9th, or any other critical warning id, fails. Global set_msg_config demotion is forbidden (spec §28) — it would hide a real loop. DRC LUTLP-1 must be 0: that is the synth/constraints/hiu_trng_ro.xdc acknowledgement working, and it shows up as LUTLP-2 'Combinatorial Loop Allowed' x8 in the DRC warning list; evidence: sys_top_core_run.log)   -> PASS
                  issued: Synth 8-295 x8  <= whitelist
@@ -111,20 +139,20 @@ GATE S1-US — sys_top_core: system-integration synthesizability gate (spec §28
                  LUTLP-2 (Warning x8): Combinatorial Loop Allowed — Combinatorial Loop Allowed — this is the INTENDED HIU TRNG ring oscillator, acknowledged by synth/constraints/hiu_trng_ro.xdc (defect D2). Its presence is the constraint WORKING: without it the same 8 loops appear as LUTLP-1 Critical Warnings, which this checker counts as DRC errors and fails on
                  RTSTAT-10 (Warning x1): No routable loads — OOC top-level output nets have no routable loads — structural to out-of-context runs
 
-    LUT sites  = 15769      (see HARD line above; 15457 logic + 64 SRL; raw LUT cells 18770 before LUT-combining)
-    FF         = 10076      (informational; incl. the gate-top wrapper I/O flops)
-    CARRY8     =   777      (informational)
-      u_core         Top_Core         LUT 15769  FF  8375  DSP  39
-      u_hiu          HIU              LUT  3398  FF  3590  DSP   0
-      (u_hiu)        HIU              LUT  3365  FF  3525  DSP   0
+    LUT sites  = 15666      (see HARD line above; 15354 logic + 64 SRL; raw LUT cells 18636 before LUT-combining)
+    FF         =  9817      (informational; incl. the gate-top wrapper I/O flops)
+    CARRY8     =   762      (informational)
+      u_core         Top_Core         LUT 15666  FF  8116  DSP  39
+      u_hiu          HIU              LUT  3403  FF  3590  DSP   0
+      (u_hiu)        HIU              LUT  3370  FF  3525  DSP   0
       dma_inst       dma_engine       LUT    33  FF    65  DSP   0
-      u_decoder      ISA_Decoder      LUT 12338  FF  4785  DSP  39
-      u_core         PE_Core          LUT 11238  FF  3137  DSP  39
-      (u_core)       PE_Core          LUT  6676  FF  1837  DSP  35
-      g_v180c_fp.u_fp_stepseq FP_StepSeq       LUT  4563  FF  1300  DSP   4
-      (g_v180c_fp.u_fp_stepseq) FP_StepSeq       LUT  3732  FF   947  DSP   0
+      u_decoder      ISA_Decoder      LUT 12230  FF  4526  DSP  39
+      u_core         PE_Core          LUT 11158  FF  3139  DSP  39
+      (u_core)       PE_Core          LUT  6588  FF  1837  DSP  35
+      g_v180c_fp.u_fp_stepseq FP_StepSeq       LUT  4571  FF  1302  DSP   4
+      (g_v180c_fp.u_fp_stepseq) FP_StepSeq       LUT  3740  FF   949  DSP   0
       u_add          FP_AddWide       LUT   794  FF   281  DSP   0
       u_mul          FP_Mul36         LUT    37  FF    72  DSP   4
-      u_ehdec        EHDecode         LUT  1100  FF  1648  DSP   0
+      u_ehdec        EHDecode         LUT  1072  FF  1387  DSP   0
     GATE S1-US RESULT: PASS
 

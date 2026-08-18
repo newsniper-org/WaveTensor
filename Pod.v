@@ -92,7 +92,23 @@ module Pod #(
     // `cl_bank_collision` 으로 **흡수만** 하고 Pod 포트로 올리지 않는다.
     // 그 결정을 여기서 바꾸지는 않되(범위 밖), 두 fault 의 노출 수준이
     // 서로 다르다는 사실은 남겨 둔다.
-    output                      any_input_skid_overflow
+    output                      any_input_skid_overflow,
+    // v1.8.0e 3a-C4 §27.7a.3/§35.3 항 4 — FDOT32_CR unit fault, Pod 전
+    // 클러스터 OR-reduce. `input_skid_overflow_error` 형을 복제한다
+    // (`bank_tag_collision_error` 형의 **흡수**는 부족하다): Cluster 가
+    // 이것을 자기 `any_error_flag` 에 폴딩하므로 그 경로만 두면
+    // "무언가 잘못됐다" 까지만 올라오고 **무엇이** 잘못됐는지는 Pod
+    // 경계에서 사라진다. reset-clearable sticky 라 OR-reduce 의 의미가
+    // 명확하다 ("이 Pod 에서 리셋 이후 FDOT32_CR 유닛 결함이 있었다").
+    //
+    // **정직 명기 — 짝이 되는 `fdotcr_special_status` 는 여기 올리지
+    // 않는다.** 그것은 sticky 가 아니라 **per-op** latch 이고 (§27.7a.3
+    // 이 (결과, sticky) 쌍을 op 단위로 회수한다), 클러스터 4개를
+    // OR-reduce 하면 어느 op 의 sticky 인지 귀속이 사라져 검사 (i) 이
+    // 오히려 못 쓰게 된다. SDK audit 은 그것을 **Cluster 포트**에서
+    // 읽는다. 흡수(absorb)조차 하지 않는 이유는 흡수할 대상이 없기
+    // 때문이다 — 이 신호는 Pod 안에서 소비되지 않는다.
+    output                      any_fdotcr_unit_fault
 );
 
     localparam NUM_CLUSTERS = CLUSTER_ROWS * CLUSTER_COLS;
@@ -134,6 +150,39 @@ module Pod #(
     // cl_collision / cl_bank_collision 과 달리 **흡수하지 않고** 아래
     // OR-reduce 로 Pod 포트까지 올린다 (fault 노출은 수동 배선).
     wire                   cl_skid_overflow [0:NUM_CLUSTERS-1];
+    // v1.8.0e 3a-C4 §35.3 — Cluster 의 FDOT32_CR unit fault sticky.
+    // cl_skid_overflow 와 같이 **흡수하지 않고** Pod 포트까지 올린다.
+    wire                   cl_fdotcr_fault  [0:NUM_CLUSTERS-1];
+    // v1.8.0e 3a-C4 §35.3 — 짝이 되는 per-op 관측 신호. Pod 안에 소비자가
+    // 없고 OR-reduce 는 op 귀속을 파괴하므로 (포트 주석 참조) 여기서
+    // 끊는다. 그래도 **결선은 남긴다** — 미접속으로 두면 Cluster 포트가
+    // Pod 계층에서 존재 자체를 잃고, 계층 테스트가 짚을 좌표가 없어진다.
+    //
+    // **verilator UNUSEDSIGNAL 억제 프래그마를 일부러 걸지 않는다**
+    // (v1.8.0e 3a-C4 적대 검수 2026-08-18). 이 주석이 그 프래그마의 철자를
+    // 그대로 적지 않는 이유도 측정이다: 감사 한 줄짜리
+    // `grep -c` census 가 주석까지 세어 있지도 않은 억제를 +1 로 보고한다.
+    // 착지 당시에는 위 두 블록(:138-148 / cl_collision·
+    // cl_bank_collision)의 파일-내 선례를 따라 프래그마 쌍으로 감쌌고, 그
+    // 상태로 "새 프래그마는 1건도 추가하지 않았다" 고 보고했다 — **그 보고가
+    // 틀렸다**. PE_Core 에서 한 쌍을 걷어내고 여기에 한 쌍을 넣어 트리
+    // 순증감이 0 이었던 것을 "추가 0" 으로 잘못 요약한 것이다.
+    //
+    // 프래그마를 도로 넣는 대신 **경고를 세워 둔다**. 실측: 프래그마를 빼면
+    // Pod 계층 `verilator -Wall` 의 UNUSEDSIGNAL 이 33 → 34 로 정확히 1건
+    // 늘고(`cl_fdotcr_special`), 다른 경고 클래스는 전부 불변이다. 억제는
+    // 이 신호가 소비되지 않는다는 사실을 **감추는** 쪽이고, 세워 두는 쪽은
+    // 그것을 계속 보이게 한다 — 같은 착지에서 `PE_Core.v:1430`
+    // (`fd_ing_q`) 의 신규 UNUSEDSIGNAL 도 억제하지 않고 보고했으므로
+    // 그쪽과 취급도 일치한다. 파일-내 선례(:138-148)와 어긋나는 것은
+    // 알면서 택한 것이다: spec §22.14b 는 "읽히는 순간 억제가 거짓이 된다"
+    // 며 프래그마 **쌍 제거**의 선례를 이미 세웠다.
+    //
+    // 경고가 서 있으므로 "경고를 없애려고 이 wire 를 지운다" 가 다음 수순의
+    // 유혹이 된다. 그것을 막는 것이 `test_pod.py` 의
+    // `test_pod_fdotcr_special_status_stops_at_cluster` 다 — 결선 존재와
+    // 비폴딩을 둘 다 assert 한다. 지우려면 그 테스트를 먼저 마주해야 한다.
+    wire                   cl_fdotcr_special[0:NUM_CLUSTERS-1];
     wire                   cl_mem_req     [0:NUM_CLUSTERS-1];
     wire [ADDR_WIDTH-1:0]  cl_mem_addr    [0:NUM_CLUSTERS-1];
     wire                   cl_error       [0:NUM_CLUSTERS-1];
@@ -190,7 +239,9 @@ module Pod #(
                     .any_output_collision (cl_collision[CIDX]),
                     .cluster_ready       (cl_ready[CIDX]),
                     .bank_tag_collision_error (cl_bank_collision[CIDX]),
-                    .input_skid_overflow_error (cl_skid_overflow[CIDX])
+                    .input_skid_overflow_error (cl_skid_overflow[CIDX]),
+                    .fdotcr_special_status     (cl_fdotcr_special[CIDX]),
+                    .fdotcr_unit_fault_error   (cl_fdotcr_fault[CIDX])
                 );
             end
         end
@@ -210,6 +261,7 @@ module Pod #(
     reg [ADDR_WIDTH-1:0] m_mem_addr;
     reg                  m_err, m_lwr;
     reg                  m_skid_overflow;   // v1.9.2 §22.14b-3
+    reg                  m_fdotcr_fault;    // v1.8.0e 3a-C4 §35.3
 
     always @(*) begin
         m_tag      = {TAG_WIDTH{1'b0}};
@@ -222,6 +274,7 @@ module Pod #(
         m_err      = 1'b0;
         m_lwr      = 1'b0;
         m_skid_overflow = 1'b0;
+        m_fdotcr_fault  = 1'b0;
         for (i = 0; i < NUM_CLUSTERS; i = i + 1) begin
             if (cl_out_valid[i] && !m_valid) begin
                 m_tag      = cl_out_tag[i];
@@ -237,6 +290,7 @@ module Pod #(
             m_err = m_err | cl_error[i];
             m_lwr = m_lwr | cl_lower[i];
             m_skid_overflow = m_skid_overflow | cl_skid_overflow[i];
+            m_fdotcr_fault  = m_fdotcr_fault  | cl_fdotcr_fault[i];
         end
     end
 
@@ -250,6 +304,7 @@ module Pod #(
     assign any_error_flag     = m_err;
     assign any_lower_required = m_lwr;
     assign any_input_skid_overflow = m_skid_overflow;   // v1.9.2 §22.14b-3
+    assign any_fdotcr_unit_fault   = m_fdotcr_fault;    // v1.8.0e 3a-C4 §35.3
     // v1.6.6 §22.14 — pod_ready = AND across all clusters' ready.
     generate
         if (NUM_CLUSTERS > 0) begin : g_pod_ready

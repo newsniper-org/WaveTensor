@@ -90,12 +90,19 @@ module PE_Core #(
     // v1.5.2b §19 — reassembled wide payload (from EHDecode wide latch).
     // Legacy v1.0..v1.5.2 primitives ignore this signal; wide-consumer
     // primitives (v1.5.3+, SIG_BMM_3 등) will read alongside
-    // dec_input_payload. Verilator lint suppressed since legacy dispatch
-    // has no reference.
-    /* verilator lint_off UNUSEDSIGNAL */
+    // dec_input_payload.
+    //
+    // v1.8.0e 3a-C4 (spec §35.11 carry-over item 4) — the verilator
+    // UNUSEDSIGNAL suppression pragma that used to wrap these two ports is
+    // REMOVED, by measurement not by guess: with 0x7A FDOT32_CR added as a
+    // consumer, `verilator --lint-only -Wall` reports ZERO warnings for
+    // either port across the whole Pod hierarchy — including the sixteen
+    // L-PE and the DIV-UNIT instances, where MUL_OPS_SUPPORTED=0 folds the
+    // MU-gated readers away. The pragma had been dead for some time (0x78
+    // / 0x79 / EINSUM already read the bus) and a suppression nobody needs
+    // is a suppression that will hide the next real finding.
     input  [WIDE_W-1:0]          dec_input_payload_wide,
     input                        dec_input_payload_wide_valid,
-    /* verilator lint_on UNUSEDSIGNAL */
 
     // ---- Outputs ----
     output reg [ADDR_WIDTH-1:0]  output_payload,
@@ -121,7 +128,29 @@ module PE_Core #(
     output reg                   memory_req,
     output reg [ADDR_WIDTH-1:0]  mem_addr,
     output reg                   error_flag,
-    output reg                   lower_required
+    output reg                   lower_required,
+    // v1.8.0e 3a-C4 §27.7a.4/§35.3 — FDOT32_CR (0x7A) sticky status,
+    // passed through from the MU's FP_StepSeq. TWO ports, deliberately
+    // NOT merged, and they are NOT the same kind of thing:
+    //
+    //   fp_special_sticky — NORMAL DATA EVENT (§27.7a.1 (iii)): the wave
+    //     carried a NaN/Inf/sNaN lane, so the unit returned canonical
+    //     qNaN instead of entering the EFT. §27.7a.3 check (i) FEEDS such
+    //     operands on purpose and compares sticky presence across the two
+    //     datapaths — folding this into error_flag/any_error_flag would
+    //     make the audit itself raise a cluster-wide error every run and
+    //     would destroy the very distinction the check needs.
+    //   fp_unit_fault — RTL DEFECT (loud): one of the four §27.7a.2b
+    //     amendment-11 invariants collapsed (expansion array guard,
+    //     STEP T vacuous-RTO, capacity assert, freeze violation). THIS is
+    //     the one an ancestor folds into any_error_flag.
+    //
+    // GRADE: both are PER-OP latches inside FP_StepSeq (reset-free block),
+    // so this port pair is per-op too. §26.5-grade reset-clearable
+    // promotion of the FAULT happens in Cluster, which owns `rst`.
+    // Zero on every non-MU instance (the g_v180c_fp_off zero-tie).
+    output                       fp_special_sticky,
+    output                       fp_unit_fault
 );
 
     // -------------------------------------------------------------------------
@@ -1257,7 +1286,14 @@ module PE_Core #(
                       || (dec_opcode == 8'h73) || (dec_opcode == 8'h74)
                       || (dec_opcode == 8'h75) || (dec_opcode == 8'h76)
                       || (dec_opcode == 8'h77) || (dec_opcode == 8'h78)
-                      || (dec_opcode == 8'h79);
+                      || (dec_opcode == 8'h79)
+    // v1.8.0e 3a-C4 §35.1 — 0x7A FDOT32_CR joins OPCODE-ONLY in lockstep
+    // with Cluster.v's is_mul_op. It is MU-hosted (the FDOT32_CR step
+    // program lives in the MU's FP_StepSeq), so a one-sided edit is the
+    // silent permanent lower_required dead-end named above: the MU has
+    // NON_MUL_OPS_SUPPORTED=0 and cuts unclassified opcodes BEFORE the
+    // case block is entered. Pinned by test_twin_classifier_lockstep_static.
+                      || (dec_opcode == 8'h7A);
     wire dec_is_div_op = (dec_opcode == 8'h13)   // DIV
                       || (dec_opcode == 8'h1C)   // MOD
                       || (dec_opcode == 8'h1D);  // DIVMOD
@@ -1353,6 +1389,48 @@ module PE_Core #(
     wire        fp_busy;                        // FP_StepSeq busy (see above)
     wire        fp_done;                        // 1-cycle done pulse
     wire [31:0] fp_result_w;                    // valid exactly during done
+    wire        fp_spec_w;                      // §27.7a.1 (iii) special latch
+    wire        fp_fault_w;                     // §27.7a.2b loud fault latch
+
+    // -------------------------------------------------------------------------
+    // v1.8.0e 3a-C4 §27.7a.2c amendment-13 — 0x7A FDOT32_CR OPERAND INGRESS.
+    //
+    // FP_StepSeq eats the 1,024-bit wave as SIXTEEN 64-bit fragments on
+    // {b_in, a_in}, one per cycle: the fd_launch edge consumes fragment 0
+    // and the next 15 cycles consume fragments 1..15 (fragment f =
+    // wide[64f +: 64], a_in = the low 32 bits). C3 landed the unit half
+    // (fd_asr/fd_bsr); THIS is the PE_Core half that feeds it.
+    //
+    // WHY A LOCAL BUFFER AT ALL — the no-buffer mux is structurally
+    // impossible, not merely expensive: EHDecode overwrites
+    // dec_input_payload_wide on the next instruction's done_d1 edge and
+    // PE_Core cannot stall EHDecode (pe_ready is observe-only, and the
+    // 0x74 arm's own comment already assumes a new dispatch can arrive
+    // mid-flight). So the wave must be captured at cycle T. §27.7a.1's
+    // "MU-local capture" is exactly this register.
+    //
+    // TIMING (derived from the two-stage dispatch, §26.4):
+    //   T    stage-1: capture the whole wave here + cr_fp_a/cr_fp_b = frag 0
+    //   T+1  stage-2: fp_start<=1, fp_a_q/fp_b_q <= frag 0, fd_ing_run<=1
+    //   T+2  FP_StepSeq's fd_launch edge eats frag 0; this driver presents
+    //        frag 1 ... T+16 presents frag 15. 16 writes total, 15 of them
+    //        from the advance block below (the 4th writer of fp_a_q).
+    //
+    // READ IDIOM IS A HARD PIN (spec §27.7a.2c): the slice MUST be the
+    // concatenation form `{fd_ing_idx, 6'b0} +: 64` (the shipped DEQUANT/
+    // VFMA lane idiom right below). Writing `fd_ing_idx*64 +: 64` makes
+    // yosys emit a `$mul`, which breaks GATE V20-4's premap-$mul delta-0
+    // (hard) and GATE S1-US's premap_mul_expect: 381 (exact) at once.
+    //
+    // fd_ing_q IS NOT RESET. It is a pure data latch that is only ever
+    // read while fd_ing_run is high, and fd_ing_run can only be set by a
+    // dispatch that captured the wave first — so no unwritten bit can
+    // reach an output. Resetting 1,024 bits would buy nothing and cost a
+    // reset control set on every one of them.
+    reg [1023:0] fd_ing_q;                      // MU-local 1,024b wave
+    reg [3:0]    fd_ing_idx;                    // 1..15 (frag 0 rides cr_fp_a/b)
+    reg          fd_ing_run;                    // active T+2..T+16
+    wire [63:0]  fd_ing_frag;                   // fd_ing_q[64*idx +: 64]
 
     // -------------------------------------------------------------------------
     // v1.5.3a §20 — fragment-emit FSM. Originally a 1-bit Moore machine
@@ -1591,6 +1669,14 @@ module PE_Core #(
     reg [127:0]           cr_deq_a;
     reg                   cr_deq_is_int8;
 
+    // v1.8.0e 3a-C4 §27.7a.2c — 0x7A ingress launch intent. Set by the
+    // 0x7A arm at stage 1 (cycle T), read at stage 2 (T+1) to arm the
+    // fragment streamer, AND read back at stage 1 as the first half of
+    // the ingress-ownership ladder rung. It is NOT redundant with
+    // cr_launch_fp: cr_launch_fp is shared by 0x73..0x78, this one names
+    // the single op that owns fd_ing_q.
+    reg                   cr_fd_launch;      // 0x7A
+
     // -------------------------------------------------------------------------
     // v1.8 §23.8 synth-gate fix (2026-07-16) — yosys (Verilog-2005) does not
     // allow indexing a function-call result directly (func(...)[63:0]);
@@ -1674,13 +1760,25 @@ module PE_Core #(
             .c_in      (fp_c_q),
             .busy      (fp_busy),
             .done      (fp_done),
-            .result    (fp_result_w)
+            .result    (fp_result_w),
+            // v1.8.0e 3a-C4 §35.3 — the two FDOT32_CR sticky ports,
+            // kept SEPARATE all the way to the Cluster boundary.
+            .fd_special_sticky (fp_spec_w),
+            .fd_unit_fault     (fp_fault_w)
         );
     end else begin : g_v180c_fp_off
         assign fp_busy     = 1'b0;
         assign fp_done     = 1'b0;
         assign fp_result_w = 32'h0;
+        // v1.8.0e 3a-C4 §35.3 항 3 — the off-branch MUST zero-tie the new
+        // outputs too (wres_vdot32 idiom). Without these two lines the 16
+        // L-PEs and the DIV-UNIT carry undriven module outputs.
+        assign fp_spec_w   = 1'b0;
+        assign fp_fault_w  = 1'b0;
     end endgenerate
+
+    assign fp_special_sticky = fp_spec_w;
+    assign fp_unit_fault     = fp_fault_w;
 
     // v1.8.0e §25.2.1/§25.2.3 — 0x79 FMINMAX + 0x6B GAMMA_MUL_W hoisted
     // combinational results (einsum-arm pattern: functions -> wres_
@@ -1728,11 +1826,19 @@ module PE_Core #(
         assign wres_vfma_lane = vfma_mac_lane32(
             vfma_is_int8 ? vfma_a_byte : {{4{vfma_a_nib[3]}}, vfma_a_nib},
             vfma_b_q, vfma_c_q);
+        // v1.8.0e 3a-C4 §27.7a.2c — the 0x7A ingress fragment read. Same
+        // MU-gated home as the DEQUANT/VFMA lane extracts above, for the
+        // same reason: the 16:1 x 64b mux must synthesize on the MU ONLY
+        // (the 16 L-PEs and the DIV-UNIT pay zero). The `{idx, 6'b0}`
+        // concatenation is the $mul-free slice idiom — do NOT rewrite it
+        // as `fd_ing_idx*64`.
+        assign fd_ing_frag = fd_ing_q[{fd_ing_idx, 6'b0} +: 64];
     end else begin : g_v180e_comb_off
         assign wres_fminmax = 128'h0;
         assign wres_gamma_w = 128'h0;
         assign deq_fp_a_nxt = 32'h0;
         assign wres_vfma_lane = 32'h0;
+        assign fd_ing_frag  = 64'h0;
     end endgenerate
 
     // v1.8.0d §23.10.10(b) — CVT F2I results are int32-patterned and the
@@ -1898,6 +2004,7 @@ module PE_Core #(
             cr_vfma_is_int8    <= 1'b0;
             cr_deq_a           <= 128'h0;
             cr_deq_is_int8     <= 1'b0;
+            cr_fd_launch       <= 1'b0;
             // 64-bit MUL 파이프라인 데이터 래치 — 5건
             mul_a_p1        <= {ADDR_WIDTH{1'b0}};
             mul_b_p1        <= {ADDR_WIDTH{1'b0}};
@@ -1938,6 +2045,10 @@ module PE_Core #(
             deq_lane        <= 5'd0;
             deq_stage       <= 48'h0;
             frag0_hold      <= 64'h0;
+            // v1.8.0e 3a-C4 — 0x7A ingress driver control state. fd_ing_q
+            // itself is deliberately NOT reset (see its declaration).
+            fd_ing_idx      <= 4'd0;
+            fd_ing_run      <= 1'b0;
         end else begin
             output_valid    <= 1'b0;
             memory_req      <= 1'b0;
@@ -1970,6 +2081,12 @@ module PE_Core #(
             cr_fp_armed        <= 1'b0;
             cr_launch_vfma     <= 1'b0;
             cr_launch_deq      <= 1'b0;
+            // v1.8.0e 3a-C4 §27.7a.2c — `cr_fd_launch` MUST have a
+            // per-cycle default. It is the T+1 half of the ingress
+            // ownership guard; a hold(CE) structure here would leave the
+            // buffer permanently claimed after the first 0x7A and turn
+            // every later 0x7A into a lower_required.
+            cr_fd_launch       <= 1'b0;
             cr_opcode_out      <= dec_opcode;
             // v1.9.1 §31.4 (D11) — `cr_payload` / `cr_mem_addr` 는 여기서
             // per-cycle 기본값을 두지 **않는다.** 두 레지스터는 64-bit 폭
@@ -2156,6 +2273,28 @@ module PE_Core #(
                         fp_start <= 1'b1;          // registered relaunch
                         fp_a_q   <= deq_fp_a_nxt;
                     end
+                end
+                // -----------------------------------------------------
+                // v1.8.0e 3a-C4 §27.7a.2c — 0x7A FDOT32_CR ingress
+                // advance. The 4th (and last) writer of fp_a_q/fp_b_q.
+                // Presents fragment fd_ing_idx on cycles T+2..T+16, i.e.
+                // exactly the cycles FP_StepSeq's FDS_LOAD state samples
+                // {b_in, a_in} for fd_cnt = 1..15 (fragment 0 was placed
+                // by the stage-2 commit one cycle earlier).
+                //
+                // No arbitration is needed against the two writers above:
+                // fp_busy is high for this entire window (start is high
+                // at T+2 and the FSM is non-IDLE afterwards), so
+                // output_regs_free is low and stage 2 cannot commit a
+                // competing launch; and deq_loop_active cannot be set,
+                // because entering the DEQUANT loop itself requires
+                // output_regs_free.
+                // -----------------------------------------------------
+                if (fd_ing_run) begin
+                    fp_a_q <= fd_ing_frag[31:0];
+                    fp_b_q <= fd_ing_frag[63:32];
+                    if (fd_ing_idx == 4'd15) fd_ing_run <= 1'b0;
+                    else                     fd_ing_idx <= fd_ing_idx + 4'd1;
                 end
             end else begin
                 fp_start    <= 1'b0;
@@ -3358,6 +3497,94 @@ module PE_Core #(
                                 cr_frag_total_m1 <= 4'd1;
                             end
                         end
+                        // v1.8.0e 3a-C4 §27.7a / §35 — 0x7A FDOT32_CR:
+                        // audit-only correctly-rounded 32-term narrow dot
+                        // over ONE 16-fragment 1,024b wave (frag 0-7 = A's
+                        // 32 x 16b, frag 8-15 = B's). Strictly port-only —
+                        // no imm, no opref, no payload_b (EHDecode's
+                        // rtl_legality row already enforces that; forbid_
+                        // imm_any + forbid_opref, an 0x78 clone) — so the
+                        // ladder here carries no imm/sub-op rungs.
+                        //
+                        // Launch ladder (0x78/0x79 mirror + the ingress
+                        // ownership rung): MU gate -> missing-wide error
+                        // (§20 wave contract; the whole operand IS the
+                        // wave) -> ingress-buffer-occupied lower_required
+                        // -> launch (register-load + the one wave capture).
+                        // The stage-2 busy-reject rung is the shared
+                        // cr_needs_regs_free one, as for every fp arm.
+                        //
+                        // dtype: 0x2 f16 / 0x3 bf16, acc=1, rnd=0 —
+                        // EXACTLY 2 legal rows, ROM-enforced at EHDecode.
+                        // `cr_fp_dtype <= dec_eff_precision[3:0]` IS
+                        // LOAD-BEARING: FP_StepSeq's op_sel_in decode for
+                        // OPC_FDOTCR admits only dtype_in[3:1] == 3'b001,
+                        // and cr_fp_dtype has NO per-cycle default (the
+                        // deliberate D11 hold(CE) structure, §31.4), so
+                        // omitting this line would inherit whatever the
+                        // previous 0x73/0x77/0x78 left behind and silently
+                        // return canonical qNaN through OPS_BAD — worse,
+                        // it would ACCIDENTALLY WORK right after an 0x77
+                        // f16/bf16. Do NOT clone the 0x74 arm here; 0x74
+                        // is dtype-agnostic and has no such assignment.
+                        // (The 0x77 arm above is the correct template.)
+                        //
+                        // fd_ing_q is written HERE, at stage 1, rather
+                        // than through a cr_* preimage: the pure-bank form
+                        // (cr_fd_wave -> fd_ing_q) costs +1,024 FF and buys
+                        // only the guard we already spell out as a ladder
+                        // rung (spec §27.7a.2c rejected-alternatives table
+                        // keeps it as the No.1 replacement form).
+                        8'h7A: begin
+                            if (!MUL_OPS_SUPPORTED) begin
+                                cr_hard_lower <=  1'b1; cr_valid_out <=  1'b0;
+                            end else if (!dec_input_payload_wide_valid) begin
+                                // The operand IS the 16-fragment wave; an
+                                // incomplete one is a malformed program.
+                                cr_hard_error   <=  1'b1;
+                                cr_valid_out <=  1'b0;
+                            end else if (cr_fd_launch || fd_ing_run) begin
+                                // INGRESS OWNERSHIP (§27.7a.2c clobber
+                                // guard, landed as a dispatch rung rather
+                                // than a capture guard — see the RTL note
+                                // in the ingress declaration block). An
+                                // earlier 0x7A already owns fd_ing_q: it
+                                // is either awaiting its stage-2 verdict
+                                // (cr_fd_launch, the cycle fp_busy cannot
+                                // yet cover) or actively streaming
+                                // fragments (fd_ing_run). Overwriting the
+                                // buffer now would hand that op fragments
+                                // 1..15 of a DIFFERENT wave — a result
+                                // that is neither error nor fault but a
+                                // normal-looking wrong fp32. Reject loudly
+                                // instead (lower_required, the VDOT/0x74
+                                // busy-reject class — never a silent
+                                // swallow).
+                                cr_hard_lower <=  1'b1;
+                                cr_valid_out   <=  1'b0;
+                            end else begin
+                                cr_needs_regs_free <= 1'b1;
+                                cr_launch_fp       <= 1'b1;
+                                cr_fd_launch       <= 1'b1;
+                                // The ONE MU-local wave capture (§27.7a.1).
+                                fd_ing_q    <= dec_input_payload_wide;
+                                // fragment 0 rides the normal operand regs;
+                                // a_in = wide[31:0], b_in = wide[63:32].
+                                cr_fp_a     <= dec_input_payload_wide[31:0];
+                                cr_fp_b     <= dec_input_payload_wide[63:32];
+                                cr_fp_c     <= 32'h0;   // unused by OPS_FDOTCR
+                                cr_fp_subop <= 4'h0;    // no sub-op nibble burned
+                                cr_fp_dtype <= dec_eff_precision[3:0];
+                                cr_fp_armed       <= 1'b1;
+                                cr_fp_opcode_held <= dec_opcode;
+                                // scalar dim=0x00 tag rebuild (0x74/0x77
+                                // convention); result = 1 fp32 fragment.
+                                cr_fp_tag_held <= {dec_wave_number, dec_thread_id,
+                                                8'h00, dec_eff_output_port_id,
+                                                dec_eff_precision, 8'h00};
+                                cr_valid_out   <=  1'b0;
+                            end
+                        end
                         // v1.8.0b §23.9 — STORE_QUANT: scalar int-dest
                         // requant, out = clamp_dtype(RNE(x >> s)),
                         // s = imm16[5:0] (absent = 0 = pure clamp).
@@ -3598,6 +3825,17 @@ module PE_Core #(
                         fp_dtype_q     <= cr_fp_dtype;
                         fp_opcode_held <= cr_fp_opcode_held;
                         fp_tag_held    <= cr_fp_tag_held;
+                    end
+                    // v1.8.0e 3a-C4 §27.7a.2c — arm the 0x7A fragment
+                    // streamer. Deliberately inside the SUCCESS branch:
+                    // if this dispatch was busy-rejected above, no
+                    // fd_launch edge ever happens in FP_StepSeq and the
+                    // streamer must not run. fd_ing_idx starts at 1
+                    // because the block right above just placed fragment
+                    // 0 into fp_a_q/fp_b_q.
+                    if (MUL_OPS_SUPPORTED && cr_fd_launch) begin
+                        fd_ing_idx <= 4'd1;
+                        fd_ing_run <= 1'b1;
                     end
                     if (MUL_OPS_SUPPORTED && cr_launch_vfma) begin
                         vfma_a_q         <= cr_vfma_a;

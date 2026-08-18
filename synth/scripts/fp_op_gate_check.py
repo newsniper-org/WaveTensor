@@ -170,6 +170,89 @@ GATES = [
         "premap_mul_expect": 8,
     },
     {
+        # GATE V20-4 (spec §27.7a.5 pre-announcement + §34.3 anchor +
+        # §35.5) — FDOT32_CR (0x7A) step-sequencer unit.
+        #
+        # EVERY NUMBER BELOW IS TRANSCRIBED, NOT CHOSEN HERE. This row was
+        # deliberately withheld from GATES until 3a-C4 (§34.5): registering
+        # it while no `fp_stepseq_*` report existed would have made the
+        # whole tree FAIL on UNMEASURED. The pre-announcement duty was
+        # discharged by the SPEC (§27.7a.5 delta figures, §34.3 anchor,
+        # §35.5.1 two-unit LUT table) BEFORE 3a-C4 was measured — deferring
+        # the code registration is not deferring the criteria.
+        #
+        # anchor (§34.3, tag `fp_stepseq_base` = current tree with ONLY
+        # FP_StepSeq.v reverted to its pre-OPS_FDOTCR revision e22e182):
+        #   LUT cells 3,809 / LUT sites 3,277 / FF 844 / DSP48 4 /
+        #   RAMB18 2 / premap $mul 4 / WNS +3.795 / WHS +0.044 /
+        #   Fmax 161.16 MHz / ERROR 0 / CRITICAL 0
+        #
+        # THE LUT AXIS CARRIES TWO UNITS AND BOTH ARE BOUND (§35.5.1).
+        # §27.7a.5 pre-announced "LUT delta <= 2,200" WITHOUT naming a
+        # unit, and this repo has two: `lut_cells` (raw LUT1..LUT6 cells,
+        # what synth_fp_op.tcl reports) and the hierarchical table's
+        # "Total LUTs" (LUT sites, AFTER LUT-combining — smaller). §34.3
+        # fixed the ceiling in the CELLS unit at 6,009. Registering that
+        # same 6,009 as `max_lut_sites` would compare sites against a
+        # cells-derived bound and loosen the gate by ~14% — a silent
+        # relaxation, and §27.7a.5 permits DOWNWARD revision only. So the
+        # SAME pre-announced delta 2,200 is applied in BOTH units and both
+        # are binding. Neither reading of the pre-announcement can now be
+        # used to pass something the other would fail.
+        "tag": "fp_stepseq",
+        "label": "GATE V20-4",
+        "desc": "v1.9 FDOT32_CR (0x7A) 32-lane bf16/f16 dot-product step "
+                "sequencer (spec §27.7a) — the unit that OPS_FDOTCR added "
+                "to FP_StepSeq; delta is measured against the "
+                "`fp_stepseq_base` anchor of §34.3",
+        "max_lut_sites": 5477,
+        "lut_note": "HARD ceiling = anchor sites 3,277 + pre-announced "
+                    "delta 2,200 (§27.7a.5 figure, §35.5.1 unit "
+                    "correction); this is the axis the checker actually "
+                    "reads, so the cells-unit ceiling below is enforced "
+                    "SEPARATELY and neither may be traded for the other",
+        "max_lut_cells": 6009,
+        "lut_cells_note": "HARD ceiling = anchor cells 3,809 + "
+                          "pre-announced delta 2,200 = 6,009 (§34.3 "
+                          "verbatim — this is the unit §34.3 fixed)",
+        "max_dsp48": 4,
+        "dsp_exact": True,
+        "dsp_note": "EXACTLY the anchor's 4 — OPS_FDOTCR reuses the single "
+                    "shared FP_Mul36 (§23.10) and adds no arithmetic "
+                    "element, so the pre-announced delta is 0 in BOTH "
+                    "directions; a drop means the mapper merged a "
+                    "multiply the pin says must stay",
+        "max_bram": 2,
+        "bram_exact": True,
+        "bram_note": "EXACTLY the anchor's 2 RAMB18 — delta 0 (hard). "
+                     "OPS_FDOTCR adds no memory element; a change means a "
+                     "silent memory-inference move",
+        "premap_mul_log": "fp_stepseq_premap_mul.log",
+        # delta 0 against the anchor's 4. §34.4 already MEASURED this true
+        # for the 3a-C3 half (current FP_StepSeq premapped to 4, same as
+        # base) — 3a-C4 only has to not break it. The classic way to break
+        # it is a variable-index slice written as `idx*64` instead of the
+        # pinned `{idx, 6'b0} +: 64` form (§27.7a.2c).
+        "premap_mul_expect": 4,
+        # §34.3 records ERROR 0 / CRITICAL WARNING 0 as BINDING for this
+        # gate. An empty whitelist is the honest encoding of that: the axis
+        # is judged (wl is not None), a missing/truncated run log is
+        # UNMEASURED = FAIL, and ANY critical warning or ERROR line fails.
+        "crit_whitelist": {},
+        "crit_note": "§34.3 pins ERROR 0 / CRITICAL WARNING 0 for this "
+                     "unit and the anchor run measured exactly that, so "
+                     "the whitelist is EMPTY — any critical warning at all "
+                     "fails, and an absent or truncated run log (no "
+                     "`[Common 17-206] Exiting Vivado` marker) is "
+                     "UNMEASURED, never a pass",
+        "fmax_hard": False,
+        "fmax_note": "MEASUREMENT — §27.7a.5 puts Fmax/WNS on the RECORD "
+                     "axis, not the binding one; no Fmax contract has "
+                     "ever been declared for this unit (anchor 161.16 "
+                     "MHz @ 10 ns exists so the next run has something to "
+                     "drift against)",
+    },
+    {
         # GATE S1-US (spec §28) — SYSTEM-INTEGRATION SYNTHESIZABILITY gate.
         # A different kind of gate from every row above: see the module
         # docstring. It was created because HIU.v and Top_Core.v had never
@@ -290,8 +373,13 @@ def parse_run_expect(tag):
         것이다 (Makefile `PREMAP_CORE_TOP` 과 같은 규칙 — 규칙이 한 벌이어야
         두 벌이 어긋나는 이 결함 자체가 재발하지 않는다).
 
-    반환: (sources, core_top). run log 가 없으면 (None, None) 이고, 그 경우
-    provenance 검증은 **해시 대조까지만** 이다.
+    반환: (core_sources, core_top, vivado_sources). run log 가 없으면 전부
+    None 이고, 그 경우 provenance 검증은 **해시 대조까지만** 이다.
+
+    `vivado_sources` 는 SRCS **전량**(gate_top 래퍼 포함) 이다 — 2026-08-18
+    적대 검수가 "래퍼만 고치고 재합성하지 않은 커밋이 provenance OK 를
+    받는다" 를 실측 재현한 뒤 추가됐다. `core_sources` 와 달리 걸러내지
+    않는다: 래퍼는 Vivado 합성의 top 그 자체다.
 
     ⚠️ 검증 강도가 gate 별로 비대칭이다 — run log 를 아카이브하는 것은
     `make synth-sys-gate` 계열뿐이고, `make synth-fp-op` 로 도는 운영자
@@ -302,18 +390,49 @@ def parse_run_expect(tag):
     """
     p = RPT_DIR / f"{tag}_run.log"
     if not p.exists():
-        return None, None
-    srcs = top = None
+        return None, None, None
+    srcs = top = vsrcs = None
     for line in p.read_text(errors="replace").splitlines()[:64]:
         m = re.search(r"\bSRCS=(\S+)", line)
         if m and srcs is None:
             srcs = premap_sources(m.group(1))
+            vsrcs = [s for s in m.group(1).split(",") if s]
         m = re.search(r"\bTOP=(\S+)", line)
         if m and top is None:
             top = re.sub(r"_gate_top$", "", m.group(1))
         if srcs is not None and top is not None:
             break
-    return srcs, top
+    return srcs, top, vsrcs
+
+
+def makefile_srcs(tag):
+    """Makefile 의 **현행** `FP_OP_SRCS_<tag>` 를 그대로 돌려준다 (없으면 None).
+
+    왜 필요한가 (2026-08-18 3a-C4 재검증이 실측으로 연 세 번째 사각지대):
+    `parse_run_expect` 가 읽는 것은 **아카이브된 run log** 다. 그래서 그것이
+    답하는 질문은 *"그 run 이 무엇을 합성했는가"* 이지 *"지금 Makefile 이
+    무엇을 합성하라고 하는가"* 가 아니다. 둘이 어긋나도 대조 상대가 서로
+    자기 자신이라 **절대 FAIL 이 나지 않는다** — 재검증이 재현했다:
+    `FP_OP_SRCS_fp_stepseq` 에 소스를 하나 끼워 넣고 재합성 없이 돌리면
+    6 gate 전건 PASS / EXIT 0.
+
+    이것은 §22.14b-10 이 닫은 두 사각지대(래퍼 / 전이 include)와 **정확히
+    같은 실패형**이다 — 증거와 현행이 어긋났는데 조용히 통과한다. 다른 것은
+    어긋나는 대상이 "소스 파일 내용" 이 아니라 "빌드 레시피" 라는 것뿐이다.
+
+    파생 정의(`:= $(FP_OP_SRCS_...)` 형태의 별칭)는 여기서 풀지 않고 None 을
+    돌려준다 — 반쪽짜리 Make 평가기를 만드는 것보다 **그 tag 는 이 축을 받지
+    않는다고 정직하게 비우는 편**이 낫고, 강도 비대칭은 아래 detail 문자열에
+    그대로 찍힌다.
+    """
+    mk = REPO / "Makefile"
+    if not mk.exists():
+        return None
+    m = re.search(rf"^FP_OP_SRCS_{re.escape(tag)}\s*:?=\s*(\S+)\s*$",
+                  mk.read_text(errors="replace"), re.M)
+    if not m or "$(" in m.group(1):
+        return None
+    return [s for s in m.group(1).split(",") if s]
 
 
 def parse_msg_census(tag):
@@ -466,6 +585,20 @@ def main():
 
         fmax_hard = g.get("fmax_hard", True)
         lut_limit = g.get("max_lut_sites")
+        # `max_lut_cells` — the SECOND LUT unit (spec §35.5.1). Until GATE
+        # V20-4 every gate declared its ceiling in the SITE unit only,
+        # because that is what the hierarchical table's "Total LUTs" column
+        # holds. But `lut_cells` (raw LUT1..LUT6 before LUT-combining) is a
+        # different, always-larger number, and a pre-announcement that does
+        # not name its unit can be satisfied by whichever unit happens to
+        # be more forgiving. Binding BOTH removes that choice. A gate that
+        # declares neither is unchanged (both axes vacuously pass).
+        lut_cells_limit = g.get("max_lut_cells")
+        lut_cells = int(s["lut_cells"])
+        lut_cells_note = g.get(
+            "lut_cells_note",
+            "raw LUT1..LUT6 cells before LUT-combining — the second unit "
+            "of the LUT axis")
         mul_count = (parse_premap_mul(g["premap_mul_log"])
                      if "premap_mul_log" in g else None)
 
@@ -477,9 +610,31 @@ def main():
         # 세지 않는다. 실패는 "숫자가 틀렸다" 가 아니라 **"재지 않았다"** 이며
         # 둘 다 gate FAIL 이다 (loud-fault-never-silent).
         if "premap_mul_log" in g:
-            run_srcs, run_top = parse_run_expect(g["tag"])
+            run_srcs, run_top, run_vsrcs = parse_run_expect(g["tag"])
             ok_prov, prov_detail = verify_provenance(
-                RPT_DIR / g["premap_mul_log"], run_srcs, run_top)
+                RPT_DIR / g["premap_mul_log"], run_srcs, run_top, run_vsrcs)
+            # 세 번째 사각지대 — 빌드 레시피 드리프트 (2026-08-18 3a-C4
+            # 재검증이 실측으로 열었다). 위 세 축은 전부 "아카이브된 run 이
+            # 무엇을 합성했는가" 안에서만 서로를 대조하므로, **Makefile 이
+            # 그 사이 바뀌었으면 아무도 모른다.** 현행 레시피와 아카이브 run
+            # 의 SRCS 를 직접 맞대 본다. 어긋나면 그 gate 는 "지금 빌드하라고
+            # 적힌 것" 이 아니라 "옛날에 빌드했던 것" 을 재고 있는 것이므로
+            # PASS 가 아니라 **재측정 필요**다.
+            mk_srcs = makefile_srcs(g["tag"])
+            if ok_prov and mk_srcs is not None and run_vsrcs is not None:
+                if sorted(mk_srcs) != sorted(run_vsrcs):
+                    ok_prov = False
+                    prov_detail = (
+                        f"{g['premap_mul_log']}: RECIPE DRIFT — Makefile 의 "
+                        f"현행 FP_OP_SRCS_{g['tag']} 가 아카이브 run 의 SRCS 와 "
+                        f"다르다. Makefile={sorted(mk_srcs)} vs "
+                        f"run.log={sorted(run_vsrcs)}. 이 gate 는 지금 빌드하라고 "
+                        f"적힌 설계가 아니라 옛날에 빌드했던 설계를 재고 있다")
+                elif prov_detail and ", generated " in prov_detail:
+                    # 강도 문자열에 축을 하나 더 노출한다 — 어느 gate 가 어느
+                    # 강도를 받는지 gate 출력 자체가 실토해야 한다 (§22.14b-13).
+                    prov_detail = prov_detail.replace(
+                        ", generated ", "+recipe, generated ", 1)
         else:
             ok_prov, prov_detail = True, None
 
@@ -491,6 +646,8 @@ def main():
         ok_dsp = ((dsp == g["max_dsp48"]) if g.get("dsp_exact")
                   else dsp <= g["max_dsp48"])
         ok_lut = (top["total_luts"] <= lut_limit) if lut_limit else True
+        ok_lut_cells = ((lut_cells <= lut_cells_limit)
+                        if lut_cells_limit else True)
         ok_mul = ((mul_count == mul_expect and ok_prov)
                   if mul_count is not None else True)
 
@@ -533,8 +690,8 @@ def main():
             ok_crit = (not crit_over) and log_errors == 0
         ok_hold = whs >= 0.0
         ok_drc = not drc_errors
-        ok = (ok_fmax and ok_dsp and ok_lut and ok_mul and ok_bram
-              and ok_hold and ok_drc and ok_crit)
+        ok = (ok_fmax and ok_dsp and ok_lut and ok_lut_cells and ok_mul
+              and ok_bram and ok_hold and ok_drc and ok_crit)
         all_pass &= ok
 
         if fmax_hard:
@@ -567,6 +724,10 @@ def main():
                f"(HARD ceiling {lut_limit} — {g['lut_note']})"
                f"   -> {'PASS' if ok_lut else 'FAIL'}"]
               if lut_limit else []),
+            *([f"    LUT cells  = {lut_cells:5d}      "
+               f"(HARD ceiling {lut_cells_limit} — {lut_cells_note})"
+               f"   -> {'PASS' if ok_lut_cells else 'FAIL'}"]
+              if lut_cells_limit else []),
             f"    DSP48      = {dsp:5d}      "
             f"({'EXACTLY' if g.get('dsp_exact') else 'limit'} "
             f"{g['max_dsp48']} — {g['dsp_note']})"

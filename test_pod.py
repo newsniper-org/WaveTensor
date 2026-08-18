@@ -17,6 +17,7 @@ demonstrating topology-independence at the binary level.
 """
 
 import os
+import re
 import sys
 
 import cocotb
@@ -260,3 +261,118 @@ async def test_pod_input_skid_overflow_reaches_pod_boundary(dut):
     await _reset(dut)
     assert int(dut.any_input_skid_overflow.value) == 0, \
         "리셋이 Pod 경계 sticky fault 를 지우지 못했다"
+
+
+# =============================================================================
+# v1.8.0e 3a-C4 §27.7a.3 / §35.3 항 4 — FDOT32_CR unit fault must REACH the
+# Pod boundary.
+#
+# Pod.v:86-89 already codified why this needs a hand-wired port: Cluster folds
+# the fault into its own any_error_flag, and that path alone carries "something
+# went wrong" upward while WHAT went wrong dies at the Pod boundary. The
+# `bank_tag_collision_error` absorption (cl_bank_collision, lint_off
+# UNUSEDSIGNAL) is the counter-example this deliberately does NOT copy.
+#
+# Without a test the new port is wiring with zero verification — the class
+# §31.9 item 8 names. The stimulus is a directed poke because the four
+# fd_fault set sites are RTL-invariant asserts, unreachable by legal input by
+# construction; their in-unit reachability is pinned at the unit axis by
+# synth/lattice/fp_ops/tb_fp_stepseq.py (fdotcr_loud_fault_paths), which also
+# asserts the sub-sequencer STATE each fault was raised from.
+# =============================================================================
+
+@cocotb.test()
+async def test_pod_fdotcr_unit_fault_reaches_pod_boundary(dut):
+    """The FDOT32_CR unit fault crosses Cluster -> Pod on its own dedicated
+    port, is reset-clearable only, and is visible in any_error_flag."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    assert int(dut.any_fdotcr_unit_fault.value) == 0, \
+        "the Pod-boundary FDOT32_CR fault is already high after reset"
+    assert int(dut.any_error_flag.value) == 0
+
+    # Cluster 1's MU (proves the OR-reduce is not hard-wired to cluster 0).
+    unit_fault = (dut.g_crow[0].g_ccol[1].u_cluster
+                  .u_matmul_unit.g_v180c_fp.u_fp_stepseq.fd_fault)
+    unit_fault.value = 1
+    await RisingEdge(dut.clk)
+    await Timer(1, units="ns")
+    assert int(dut.any_fdotcr_unit_fault.value) == 1, (
+        "the FDOT32_CR unit fault did not reach the Pod boundary — the "
+        "dedicated port is the ONLY thing that says WHAT went wrong "
+        "(Pod.v:86-89); any_error_flag alone says only THAT something did")
+    assert int(dut.any_error_flag.value) == 1, \
+        "the fault is not folded into the Pod-level any_error_flag"
+
+    # The unit's per-op latch clearing (as the next launch would clear it)
+    # must NOT take the promoted sticky down with it.
+    unit_fault.value = 0
+    for _ in range(8):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        assert int(dut.any_fdotcr_unit_fault.value) == 1, \
+            "the Pod-boundary fault followed the unit's per-op latch down"
+
+    await _reset(dut)
+    assert int(dut.any_fdotcr_unit_fault.value) == 0, \
+        "the Pod-boundary fault survived reset — §26.5 is reset-CLEARABLE"
+    assert int(dut.any_error_flag.value) == 0
+
+
+@cocotb.test()
+async def test_pod_fdotcr_special_status_stops_at_cluster(dut):
+    """The DELIBERATE asymmetry, pinned so it is a decision and not an
+    oversight (Pod.v:86-94 keeps exactly this kind of record).
+
+    `fdotcr_special_status` is a PER-OP latch, not a sticky: §27.7a.3
+    recovers (result, sticky) pairs one op at a time. OR-reducing it across
+    four clusters would destroy that attribution, so it is intentionally not
+    raised to a Pod port — the SDK audit reads it at the Cluster port. This
+    test pins the two halves of that decision: the FAULT port exists at Pod,
+    the SPECIAL port does not, and the special signal is still wired (not
+    dangling) inside Pod so the Cluster port keeps a coordinate here.
+
+    v1.8.0e 3a-C4 adversarial-repair phase — the third paragraph above USED
+    TO BE A CLAIM THIS TEST NEVER CHECKED (§28.4 item 8: a docstring that
+    advertises more than the body asserts). It matters more than usual now:
+    `cl_fdotcr_special` deliberately carries a STANDING verilator
+    UNUSEDSIGNAL warning (Pod.v — the suppression pragma was taken back out
+    after the landing report wrongly claimed none had been added), and the
+    obvious way to silence a standing warning is to delete the wire. The
+    source-scan half below is what makes that deletion fail loudly instead
+    of quietly costing the Cluster port its Pod-level coordinate."""
+    assert hasattr(dut, 'any_fdotcr_unit_fault'), \
+        "the FDOT32_CR fault port vanished from the Pod boundary"
+    assert not hasattr(dut, 'any_fdotcr_special_status'), (
+        "a Pod-level OR-reduce of the per-op special status appeared. That "
+        "destroys op attribution across clusters, which is the one thing "
+        "§27.7a.3 check (i) needs. If this is now wanted, it must be a "
+        "per-cluster vector, not an OR — and a spec amendment first.")
+
+    # ---- the half the docstring promised and did not deliver -------------
+    src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            'Pod.v'), encoding='utf-8').read()
+    body = re.sub(r'//[^\n]*', '', src)      # comments are not wiring
+    assert re.search(r'\.fdotcr_special_status\s*\(\s*cl_fdotcr_special\s*\[',
+                     body), (
+        "Cluster's `fdotcr_special_status` is no longer wired to a named "
+        "Pod-level wire. Leaving it `( )` costs the port its coordinate in "
+        "this hierarchy and trades one verilator warning class for another; "
+        "the standing UNUSEDSIGNAL on `cl_fdotcr_special` is DELIBERATE and "
+        "is not a defect to be tidied away (Pod.v, §35.3).")
+    assert 'cl_fdotcr_special' in body, \
+        "the `cl_fdotcr_special` wire was deleted from Pod.v"
+    # ...and it must stay OUT of every Pod-level reduction. `m_fdotcr_fault`
+    # and `m_err` are the two accumulators a careless edit would fold it
+    # into; folding either way is what §27.7a.3 check (i) cannot survive.
+    for line in body.splitlines():
+        if 'cl_fdotcr_special' not in line:
+            continue
+        assert not re.search(r'\b(m_err|m_lwr|m_fdotcr_fault|m_skid_overflow)'
+                             r'\b', line), (
+            f"the per-op special status got folded into a Pod-level "
+            f"reduction: {line.strip()!r}. Across four clusters an OR "
+            f"cannot say WHICH op was special, and that attribution is the "
+            f"entire content of §27.7a.3 check (i).")

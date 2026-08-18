@@ -2668,8 +2668,16 @@ async def test_twin_classifier_lockstep_static(dut):
     def _classifier_set(path, anchor):
         text = open(path).read()
         idx = text.index(anchor)
-        # the classifier is one continuous wire assignment ending at ';'
-        expr = text[idx:text.index(';', idx)]
+        # The classifier is one continuous wire assignment ending at ';'.
+        # v1.8.0e 3a-C4 — strip // comments FIRST. Without this the scan
+        # stops at any ';' that happens to sit inside an explanatory
+        # comment between two OR terms, silently truncating the extracted
+        # set and reporting a twin-classifier divergence that does not
+        # exist (observed while landing 0x7A). A test whose extractor can
+        # lie about the RTL is worse than no test.
+        body = text[idx:]
+        stripped = '\n'.join(ln.split('//')[0] for ln in body.splitlines())
+        expr = stripped[:stripped.index(';')]
         return set(int(m, 16) for m in re.findall(r"8'h([0-9A-Fa-f]{2})",
                                                   expr))
     here = os.path.dirname(os.path.abspath(__file__))
@@ -2692,6 +2700,16 @@ async def test_twin_classifier_lockstep_static(dut):
         "0x70 missing from the twin classifiers — the 0e2 arm landed, " \
         "so a staged-out 0x70 is now the silent lower_required " \
         "dead-end (spec §25.2.4 / §25.3 lockstep pin)"
+    # v1.8.0e 3a-C4 §35.1 — 0x7A FDOT32_CR joined WITH its PE_Core arm,
+    # its ingress driver and the decode_reserved flip, all in ONE commit.
+    # It is MU-hosted (the FDOT32_CR step program lives in the MU's
+    # FP_StepSeq), and the MU carries NON_MUL_OPS_SUPPORTED=0, so a
+    # missing classifier entry cuts 0x7A BEFORE the case block is entered
+    # -> permanent lower_required, silently.
+    assert 0x7A in clu, \
+        "0x7A missing from the twin classifiers — the 3a-C4 arm landed, " \
+        "so an unclassified 0x7A is the silent permanent lower_required " \
+        "dead-end (spec §35.1 intermediate-state table row (ii))"
     assert 0x7C not in clu, \
         "0x7C entered is_mul_op — violates the §23.10.10(d) " \
         "twin-classifier-untouched clause (L-PE for ALL dtypes)"
@@ -3597,25 +3615,35 @@ async def test_twin_classifier_mu_bank_coverage(dut):
     with open(os.path.join(here, 'Cluster.v')) as _f:
         text = _f.read()
     idx = text.index('wire is_mul_op')
-    expr = text[idx:text.index(';', idx)]
+    # comment-stripped scan — see _classifier_set in
+    # test_twin_classifier_lockstep_static for why.
+    _body = text[idx:]
+    _stripped = '\n'.join(ln.split('//')[0] for ln in _body.splitlines())
+    expr = _stripped[:_stripped.index(';')]
     classified = set(int(m, 16) for m in re.findall(r"8'h([0-9A-Fa-f]{2})", expr))
     assert classified, "failed to extract is_mul_op from Cluster.v"
 
     from test_isa_decoder import eh_precision as _ehp
 
-    async def _saw_mu(dut, drive_coro):
+    async def _saw_mu(dut, drive_coro, cycles=400):
         """Run `drive_coro` (an async callable taking dut) concurrently
-        with a 400-cycle mu_out_valid watcher and report whether it ever
-        pulsed. The watcher is JOINED (awaited to completion), not merely
-        started-then-killed-early -- the full 400 cycles covers even the
+        with a mu_out_valid watcher and report whether it ever pulsed.
+        The watcher is JOINED (awaited to completion), not merely
+        started-then-killed-early -- the full window covers even the
         slowest classified op (0x78 DEQUANT int8-16, mu_out_valid doesn't
         pulse until ~100+ cycles in; a short post-drive grace period
-        would silently under-cover it and misreport it as unreachable)."""
+        would silently under-cover it and misreport it as unreachable).
+
+        v1.8.0e 3a-C4 (spec §35.9 C-4): the window is now a PARAMETER.
+        0x7A FDOT32_CR runs 600-900 cycles measured (hard ceiling 10,000),
+        so the fixed 400 would have reported the newest classified opcode
+        as classified-but-unreachable -- i.e. a real FAIL for the wrong
+        reason, which is exactly how a coverage window turns into a lie."""
         seen = False
 
         async def _watch():
             nonlocal seen
-            for _ in range(400):
+            for _ in range(cycles):
                 await RisingEdge(dut.clk)
                 if int(dut.mu_out_valid.value):
                     seen = True
@@ -3651,7 +3679,9 @@ async def test_twin_classifier_mu_bank_coverage(dut):
         return _inner
 
     checks = {0x12: _drive_mul}
-    for op in (0x74, 0x75, 0x76):
+    # per-opcode watcher window; anything absent uses the 400 default.
+    windows = {}
+    for op in (0x74, 0x75, 0x76, 0x77):
         if op in classified:
             checks[op] = await _drive_fp(op)
     if 0x6B in classified:
@@ -3709,6 +3739,26 @@ async def test_twin_classifier_mu_bank_coverage(dut):
                                  _ehp(0x10, 0), _ehi64(b64), flags=(1 << 2))
             await _fire_frag_wave(dut, instr, _tag(port_context_id=0), a_frags)
         checks[0x70] = _drive_vfma
+    if 0x7A in classified:
+        # v1.8.0e 3a-C4 — 0x7A FDOT32_CR: a full 16-fragment 1,024b A||B
+        # wave (the operand IS the wave; there is no payload_b). Without
+        # this entry the `checks` dict silently skips the newest
+        # classified opcode: nothing in this test asserts
+        # `set(checks) >= classified`, so adding 0x7A to is_mul_op would
+        # have left the test green while never poking 0x7A once.
+        async def _drive_fdotcr(dut):
+            await _reset(dut)
+            wide = 0
+            for i in range(32):
+                wide |= 0x3F80 << (16 * i)          # A = bf16 1.0
+                wide |= 0x4000 << (512 + 16 * i)    # B = bf16 2.0
+            frags = [(wide >> (64 * i)) & ((1 << 64) - 1) for i in range(16)]
+            instr = encode_instr(0x7A,
+                                 eh_port(input_port_mask=0x01, output_port_id=0),
+                                 _ehp(0x13, 0), flags=(1 << 2))
+            await _fire_frag_wave(dut, instr, _tag(port_context_id=0), frags)
+        checks[0x7A] = _drive_fdotcr
+        windows[0x7A] = 1600
     if 0x32 in classified:
         # 0x32 EINSUM: is_mul_op routes it on the RAW opcode alone (before
         # any EH/subscript decode), so even a narrow, non-wide signature
@@ -3731,8 +3781,47 @@ async def test_twin_classifier_mu_bank_coverage(dut):
             dut.ext_valid.value = 0
         checks[0x32] = _drive_matmul2x2
 
+    # v1.8.0e 3a-C4 (spec §35.9 C-4) — THE MISSING INVARIANT. Until this
+    # commit nothing required `checks` to cover the classified set, so a
+    # newly classified opcode could sit unexercised behind a green test:
+    # adding it to is_mul_op changed nothing here and the coverage claim in
+    # this docstring quietly became false for it. That is exactly how 0x7A
+    # would have slipped through.
+    #
+    # Turning the invariant on EXPOSED a pre-existing gap (it did not
+    # create one): five classified opcodes have never had a driver here.
+    # They are listed BY NAME rather than waved away, so the hole is
+    # visible in the source instead of implicit in an absent assertion.
+    # Closing them is recorded carry-over, out of 3a-C4's scope.
+    #
+    #   0x30 MATMUL   — needs a 2x2 subscript + wide operand setup
+    #   0x43          — reduction family, needs its own EH shape
+    #   0x71 VDOT_ACC / 0x72 ACC_REDUCE — MU-bank reachability IS proven,
+    #                   just by a different test in this file
+    #                   (test_vdot_acc_reduce_rides_mu_bank)
+    #   0x73 ACC_ELEMWISE — needs the OPREF-only form (the imm form takes
+    #                   the §23.10.10(c) lower_required rung and never
+    #                   reaches mu_out_valid)
+    _KNOWN_UNDRIVEN = {0x30, 0x43, 0x71, 0x72, 0x73}
+    missing = sorted(classified - set(checks) - _KNOWN_UNDRIVEN)
+    assert not missing, (
+        f"classified opcodes with no driver in `checks`: "
+        f"{[hex(x) for x in missing]} — this test would have stayed GREEN "
+        f"while never dispatching them once. Add a driver, or add the "
+        f"opcode to _KNOWN_UNDRIVEN with the reason spelled out.")
+    stale = sorted(_KNOWN_UNDRIVEN - classified)
+    assert not stale, (
+        f"_KNOWN_UNDRIVEN lists opcodes that are no longer classified: "
+        f"{[hex(x) for x in stale]} — an allowlist that outlives its "
+        f"subject starts hiding the next gap")
+    both = sorted(_KNOWN_UNDRIVEN & set(checks))
+    assert not both, (
+        f"{[hex(x) for x in both]} are both allow-listed AND driven — "
+        f"drop them from _KNOWN_UNDRIVEN so the list keeps meaning "
+        f"'not covered here'")
+
     for op, drive in checks.items():
-        seen = await _saw_mu(dut, drive)
+        seen = await _saw_mu(dut, drive, cycles=windows.get(op, 400))
         assert seen, \
             f"classified opcode 0x{op:02X} never asserted mu_out_valid " \
             f"-- classified-but-unreachable, a dead-capacity gap in the " \
@@ -4127,3 +4216,640 @@ async def test_skid_inject_routes_by_held_tag_not_live_bus(dut):
         f"0b{1 << held_pcid:0{n_pes}b} (pcid {held_pcid}), 관측 "
         f"0b{seen:0{n_pes}b}. `in_pcid` 가 보류된 `ehdec_tag` 가 아니라 "
         f"투입 시점의 live `ext_tag` 를 읽고 있다")
+
+
+# =============================================================================
+# v1.8.0e 3a-C4 §27.7a.3 / §35.3 — FDOT32_CR sticky status, TWO SIGNALS THAT
+# MUST STAY SEPARATE.
+#
+#   fdotcr_special_status   = NORMAL DATA EVENT. A NaN/Inf/sNaN operand lane
+#                             was received, so the unit returned canonical
+#                             qNaN instead of entering the EFT (§27.7a.1
+#                             (iii)). The SDK audit program feeds such
+#                             operands ON PURPOSE and compares sticky
+#                             presence across the two datapaths — that is
+#                             §27.7a.3 check (i). It must NEVER reach
+#                             any_error_flag.
+#   fdotcr_unit_fault_error = RTL DEFECT. One of the four §27.7a.2b
+#                             amendment-11 invariants collapsed. THIS one is
+#                             folded into any_error_flag, and promoted here
+#                             to §26.5 grade (reset-clearable only) because
+#                             FP_StepSeq is a reset-free block and can only
+#                             hold a per-op latch.
+#
+# The negative half (special NOT in any_error_flag) is the load-bearing one:
+# a purely positive test suite would stay green if someone "simplified" the
+# two ports into one, and the loss would be irreversible — Cluster's error
+# fold is a pure OR-reduce.
+# =============================================================================
+
+def _fdotcr_wave_frags(a_lanes, b_lanes):
+    wide = 0
+    for i in range(32):
+        wide |= (a_lanes[i] & 0xFFFF) << (16 * i)
+        wide |= (b_lanes[i] & 0xFFFF) << (512 + 16 * i)
+    assert wide.bit_length() <= 1024
+    return [(wide >> (64 * i)) & ((1 << 64) - 1) for i in range(16)]
+
+
+async def _fdotcr_dispatch(dut, a_lanes, b_lanes, mode=0x13, limit=4000):
+    """Fire one FDOT32_CR through the Cluster and return
+    (payload, err, lwr, special, fault)."""
+    from test_isa_decoder import eh_precision as _ehp
+    instr = encode_instr(0x7A,
+                         eh_port(input_port_mask=0x01, output_port_id=0),
+                         _ehp(mode, 0), flags=(1 << 2))
+    await _fire_frag_wave(dut, instr, _tag(port_context_id=0),
+                          _fdotcr_wave_frags(a_lanes, b_lanes))
+    payload, err, lwr = None, 0, 0
+    for _ in range(limit):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        err |= int(dut.any_error_flag.value)
+        lwr |= int(dut.any_lower_required.value)
+        if int(dut.ext_out_valid.value):
+            payload = int(dut.ext_out_payload.value)
+            break
+        if err or lwr:
+            break
+    return (payload, err, lwr,
+            int(dut.fdotcr_special_status.value),
+            int(dut.fdotcr_unit_fault_error.value))
+
+
+@cocotb.test()
+async def test_fdotcr_special_status_is_data_not_error(dut):
+    """§27.7a.3 check (i) — the special sticky is observable at the Cluster
+    boundary AND is not an error.
+
+    Quoting §27.7a.3 verbatim: "audit 프로그램 (SDK) 이 동일 operand 로 양
+    경로를 발사하고 (결과, sticky/status) 쌍을 회수해 검사한다: (i)
+    special-sticky 유무 불일치 → 결함". So running the audit REQUIRES
+    feeding special operands and reading the sticky back. If the sticky were
+    folded into any_error_flag, (a) performing the audit would raise a
+    cluster-wide error every single run, and (b) the fold is a pure
+    OR-reduce, so "a special operand was seen" and "the RTL broke" would be
+    indistinguishable forever after.
+
+    Three points, and the NEGATIVE ones matter most:
+      clean wave  -> status 0, error 0, exact value
+      NaN lane    -> status 1, error 0 (!), canonical qNaN
+      after reset -> status back to 0 (it is per-op, not sticky-to-reset)
+    """
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    clean_a = [0x3F80] * 32          # bf16 1.0
+    clean_b = [0x4000] * 32          # bf16 2.0
+    pay, err, lwr, spec, flt = await _fdotcr_dispatch(dut, clean_a, clean_b)
+    assert (err, lwr) == (0, 0), f"clean FDOT32_CR raised err={err} lwr={lwr}"
+    assert pay == 0x42800000, \
+        f"clean bf16 32x(1.0*2.0) = 64.0 expected, got {pay!r}"
+    assert spec == 0, "clean wave set the special status"
+    assert flt == 0, "clean wave set the unit fault"
+
+    await _reset(dut)
+    assert int(dut.fdotcr_special_status.value) == 0, \
+        "special status is high straight out of reset"
+
+    nan_a = [0x7FC0] + [0x3F80] * 31   # bf16 qNaN in lane 0
+    pay, err, lwr, spec, flt = await _fdotcr_dispatch(dut, nan_a, clean_b)
+    assert pay == 0x7FC00000, (
+        f"§27.7a.1 (iii): a NaN operand must yield canonical qNaN, "
+        f"got {pay!r}")
+    assert spec == 1, \
+        "the special sticky did not reach the Cluster boundary"
+    assert flt == 0, \
+        "a special OPERAND is not an RTL fault — fd_fault must stay low"
+    assert err == 0, (
+        "REGRESSION OF THE WHOLE DESIGN: fdotcr_special_status reached "
+        "any_error_flag. §27.7a.3 check (i) becomes impossible to run — "
+        "the audit's own stimulus would raise a cluster error, and the "
+        "OR-reduce makes 'special seen' and 'RTL broke' indistinguishable")
+    assert lwr == 0, "a special-operand FDOT32_CR must still complete"
+
+    # per-op, not sticky: a clean wave after a special one clears it.
+    await _reset(dut)
+    pay, err, lwr, spec, flt = await _fdotcr_dispatch(dut, clean_a, clean_b)
+    assert spec == 0, (
+        "the special status stayed high across a subsequent clean op — it "
+        "is a PER-OP latch (§27.7a.3 recovers (result, sticky) pairs per "
+        "op); promoting it to reset-clearable would lose the attribution")
+
+
+@cocotb.test()
+async def test_fdotcr_special_status_never_folded_static(dut):
+    """Static twin of the test above: `fdotcr_special_status` /
+    `m_fd_spec` must not appear in Cluster.v's `m_err` OR-reduce.
+
+    The runtime test can only prove the fold is absent for the stimuli it
+    happens to drive. This one reads the RTL text and proves it structurally,
+    which is what makes a future "simplification" loud instead of subtle."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(here, 'Cluster.v')) as f:
+        text = f.read()
+    fold_lines = [ln for ln in text.splitlines()
+                  if 'm_err' in ln and '=' in ln and not ln.strip().startswith('//')]
+    assert fold_lines, "failed to locate the m_err OR-reduce in Cluster.v"
+    offenders = [ln.strip() for ln in fold_lines
+                 if 'm_fd_spec' in ln or 'fdotcr_special_status' in ln]
+    assert not offenders, (
+        "the FDOT32_CR special status was folded into any_error_flag "
+        f"(§35.3 pin 1 forbids this): {offenders}")
+    assert any('fdotcr_unit_fault_r' in ln for ln in fold_lines), (
+        "the FDOT32_CR unit fault is NOT folded into any_error_flag — "
+        "§35.3 pin 1 requires exactly this one of the two")
+
+
+@cocotb.test()
+async def test_fdotcr_unit_fault_promoted_and_folded(dut):
+    """§35.3 pin 2 / §26.5 — the unit fault's promotion to a
+    reset-clearable sticky, proved by directed poke.
+
+    The four `fd_fault` set sites are UNREACHABLE by legal input — that is
+    the entire point of an RTL-invariant assert. They are exercised at the
+    unit axis by the 3a-C3 TB (synth/lattice/fp_ops/tb_fp_stepseq.py
+    fdotcr_loud_fault_paths, which asserts the STATE each fault was raised
+    from). What the Cluster axis owes is different and cannot be shown
+    there: that the fault (a) reaches this boundary at all, (b) is folded
+    into any_error_flag, and (c) SURVIVES the unit latch clearing.
+
+    (c) is the load-bearing one. FP_StepSeq has no reset port, so its
+    fd_fault is a per-op latch that the next launch overwrites. If this
+    Cluster promotion register did not exist, the port would be a "sticky"
+    in name only: a pulse that the next FDOT32_CR silently erases."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+    assert int(dut.fdotcr_unit_fault_error.value) == 0
+    assert int(dut.any_error_flag.value) == 0
+
+    unit_fault = dut.u_matmul_unit.g_v180c_fp.u_fp_stepseq.fd_fault
+    unit_fault.value = 1
+    await RisingEdge(dut.clk)
+    await Timer(1, units="ns")
+    assert int(dut.fdotcr_unit_fault_error.value) == 1, \
+        "the unit fault did not reach the Cluster's dedicated port"
+    assert int(dut.any_error_flag.value) == 1, \
+        "the unit fault was not folded into any_error_flag (§35.3 pin 1)"
+
+    # (c) the unit latch clears (as a fresh launch would clear it) —
+    # the promoted sticky must NOT follow it down.
+    unit_fault.value = 0
+    for _ in range(8):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        assert int(dut.fdotcr_unit_fault_error.value) == 1, (
+            "the promoted sticky followed the unit's per-op latch down — "
+            "that is a pulse wearing the name 'sticky', and the next "
+            "FDOT32_CR would erase the evidence silently (§35.3 pin 2)")
+        assert int(dut.any_error_flag.value) == 1
+
+    # reset-clearable ONLY (§26.5 grade, bank_tag_collision_error twin).
+    await _reset(dut)
+    assert int(dut.fdotcr_unit_fault_error.value) == 0, \
+        "the sticky survived reset — §26.5 grade is reset-CLEARABLE"
+    assert int(dut.any_error_flag.value) == 0
+
+
+# =============================================================================
+# v1.8.0e 3a-C4 INTEGRATION PHASE — the FDOT32_CR VALUE axis at the CLUSTER
+# boundary.
+#
+# The landing commit proved the value axis at the ISA_Decoder boundary (450
+# golden vectors) and proved the sticky PORTS at the Cluster boundary, but it
+# never scored a Cluster-boundary RESULT against the golden model: the two
+# Cluster value checks were hand-typed constants (0x42800000 and the canonical
+# qNaN). Everything the Cluster adds on top of ISA_Decoder — the is_mul_op
+# twin classifier routing 0x7A to the MATMUL_UNIT, the fragment-reassembly
+# CAM that rebuilds the 1,024-bit wave from 16 ext beats, the output OR-merge
+# across 17 PE instances, the skid buffer — sits BETWEEN the golden model and
+# the number the SDK will actually read back. A mis-route (0x7A answered by an
+# L-PE), a reassembly permutation, or an OR-merge collision are all silent at
+# the ISA_Decoder axis and all produce a wrong fp32 here.
+# =============================================================================
+
+def _fdotcr_vectors_cluster():
+    """Parse include/generated/fdotcr_vectors.hex per its own contract
+    (include/generated/fdotcr_vec_contract.md): 272 hex chars = 1,088 bits
+    MSB-first, META[1087:1056] / OPERANDS[1055:32] / RESULT[31:0]."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        'include', 'generated', 'fdotcr_vectors.hex')
+    out = []
+    with open(path, encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('//'):
+                continue
+            assert len(line) == 272, \
+                f"vector line is {len(line)} hex chars, contract says 272"
+            v = int(line, 16)
+            meta = (v >> 1056) & 0xFFFFFFFF
+            out.append({'wide': (v >> 32) & ((1 << 1024) - 1),
+                        'result': v & 0xFFFFFFFF,
+                        'dtype': meta & 0xFF,
+                        'special': (meta >> 8) & 1,
+                        'family': (meta >> 24) & 0xFF})
+    return out
+
+
+def _fdotcr_cluster_slice(vecs):
+    """A DERIVED slice, never a hand-listed one: every 15th vector, plus the
+    first vector of any family that stride misses (family 0x0C has only two
+    rows in the whole file and a plain stride drops it). Coverage is then
+    asserted by the caller, so a regenerated vector file that reshuffles
+    families cannot silently shrink this test."""
+    picked = list(vecs[::15])
+    have = {v['family'] for v in picked}
+    for v in vecs:
+        if v['family'] not in have:
+            picked.append(v)
+            have.add(v['family'])
+    return picked
+
+
+async def _fdotcr_dispatch_no_reset(dut, wide, mode, limit=4000):
+    """One FDOT32_CR through the Cluster with NO reset before or after.
+
+    MEASUREMENT BOUNDARY (Cluster axis): cycle 0 is the `clk` rising edge
+    on which the WAVE-COMPLETING ext beat is sampled (`ext_valid` high with
+    `ext_frag_hdr` = {15, 15} — the 16th and last fragment). The stop point
+    is the rising edge on which `ext_out_valid` is first high. Returns
+    (cycles, payload, err, lwr, special, fault)."""
+    from test_isa_decoder import eh_precision as _ehp
+    instr = encode_instr(0x7A,
+                         eh_port(input_port_mask=0x01, output_port_id=0),
+                         _ehp(mode, 0), flags=(1 << 2))
+    frags = [(wide >> (64 * i)) & ((1 << 64) - 1) for i in range(16)]
+    await _fire_frag_wave(dut, instr, _tag(port_context_id=0), frags)
+    # <- the last edge inside _fire_frag_wave was cycle 0 of the boundary
+    payload, err, lwr, n = None, 0, 0, 0
+    spec, flt = 0, 0
+    while n < limit:
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        n += 1
+        err |= int(dut.any_error_flag.value)
+        lwr |= int(dut.any_lower_required.value)
+        if int(dut.ext_out_valid.value):
+            payload = int(dut.ext_out_payload.value)
+            spec = int(dut.fdotcr_special_status.value)
+            flt = int(dut.fdotcr_unit_fault_error.value)
+            break
+        if err or lwr:
+            break
+    return n, payload, err, lwr, spec, flt
+
+
+@cocotb.test()
+async def test_fdotcr_cluster_boundary_golden_bit_exact_and_sticky(dut):
+    """3a-C4 integration phase — FDOT32_CR scored against the GOLDEN MODEL
+    at the Cluster boundary, value AND sticky together, over a derived
+    all-family slice dispatched BACK TO BACK WITH NO RESET BETWEEN.
+
+    Three properties, and the third is the one no other test in the tree
+    can state:
+
+      (1) VALUE. `ext_out_payload` bit-equals the golden result. Two
+          independent oracles are cross-checked first (the RESULT field
+          frozen into the vector file vs a live
+          scripts/golden_fdotcr.fdotcr_ref call), so neither can drift
+          alone. This is the first time the Cluster's own additions —
+          is_mul_op routing to the MATMUL_UNIT, the 16-beat fragment
+          reassembly CAM, the 17-instance output OR-merge — are scored
+          against the golden model instead of against two hand-typed
+          constants.
+
+      (2) STICKY, PER OP. `fdotcr_special_status` equals the golden
+          model's own `sticky` field on every point. The landing commit
+          proved this for ONE hand-made NaN; here the classification comes
+          from the golden model over every family, including the
+          special-operand families 0x0A/0x0B and the finite families that
+          must NOT raise it.
+
+      (3) THE qNaN DISCRIMINATOR. `0x7FC00000` is the result of a special
+          operand (§27.7a.1 (iii)) AND the result of a stale-`cr_fp_dtype`
+          OPS_BAD decode AND the result of a loud unit fault. The VALUE
+          therefore cannot tell those apart — only the (value, sticky)
+          PAIR can, which is precisely why §27.7a.3 check (i) recovers
+          pairs and why §35.3 keeps the two sticky ports separate. So this
+          test asserts the biconditional in both directions:
+              payload == 0x7FC00000  <=>  fdotcr_special_status == 1
+          Verified against the golden model over all 450 rows before it is
+          asserted here (qNaN count 128 == special count 128), so it is a
+          property of the contract, not a coincidence of the slice.
+          A stale-dtype defect that returned qNaN with the sticky LOW is
+          caught by the left-to-right direction; a sticky stuck high is
+          caught by the right-to-left one.
+
+    NO RESET BETWEEN DISPATCHES is load-bearing for (2): `fd_spec` is a
+    per-op latch inside a reset-free block, so the only way to prove it
+    tracks the CURRENT op rather than sticking from an earlier one is to
+    run specials and finites interleaved without clearing anything."""
+    import sys as _sys
+    _sys.path.insert(0, os.path.join(os.path.dirname(
+        os.path.abspath(__file__)), 'scripts'))
+    import golden_fdotcr as _GFD
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    vecs = _fdotcr_vectors_cluster()
+    assert len(vecs) == 450, f"expected 450 golden vectors, got {len(vecs)}"
+    picked = _fdotcr_cluster_slice(vecs)
+    fams = {v['family'] for v in picked}
+    assert len(fams) == len({v['family'] for v in vecs}) == 14, (
+        f"the derived slice lost family coverage: {sorted(fams)}")
+    assert {v['dtype'] for v in picked} == {0x2, 0x3}, "dtype coverage lost"
+    n_special = sum(v['special'] for v in picked)
+    assert n_special >= 3 and n_special < len(picked), (
+        f"the slice must interleave special and finite waves "
+        f"(specials={n_special} of {len(picked)})")
+
+    fails = []
+    worst = 0
+    for i, v in enumerate(picked):
+        dt = _GFD.DT_F16 if v['dtype'] == 0x2 else _GFD.DT_BF16
+        a_lanes = [(v['wide'] >> (16 * k)) & 0xFFFF for k in range(32)]
+        b_lanes = [(v['wide'] >> (512 + 16 * k)) & 0xFFFF for k in range(32)]
+        ref = _GFD.fdotcr_ref(dt, list(zip(a_lanes, b_lanes)))
+        assert ref['bits'] == v['result'], (
+            f"point {i}: the frozen RESULT 0x{v['result']:08X} and the live "
+            f"golden model 0x{ref['bits']:08X} disagree — the two oracles "
+            f"are no longer independent evidence")
+        assert bool(ref['sticky']) == bool(v['special'])
+        mode = 0x12 if v['dtype'] == 0x2 else 0x13
+        cyc, pay, err, lwr, spec, flt = await _fdotcr_dispatch_no_reset(
+            dut, v['wide'], mode)
+        worst = max(worst, cyc)
+        ctx = (f"point {i} family=0x{v['family']:02X} dtype=0x{v['dtype']:X} "
+               f"special={v['special']}")
+        if (err, lwr) != (0, 0) or pay != v['result']:
+            fails.append(f"{ctx}: err={err} lwr={lwr} payload="
+                         f"{pay if pay is None else hex(pay)} expected "
+                         f"0x{v['result']:08X}")
+            if len(fails) >= 5:
+                break
+            continue
+        assert flt == 0, f"{ctx}: a legal vector raised the UNIT FAULT"
+        assert spec == int(ref['sticky']), (
+            f"{ctx}: fdotcr_special_status={spec} but the golden model says "
+            f"sticky={int(ref['sticky'])}")
+        assert (pay == 0x7FC00000) == (spec == 1), (
+            f"{ctx}: payload=0x{pay:016X} with special_status={spec}. "
+            f"A canonical qNaN with the sticky LOW is the silent-failure "
+            f"signature of §27.7a.1 (iii) — the value alone cannot "
+            f"distinguish 'special operand' from 'stale cr_fp_dtype -> "
+            f"OPS_BAD'; only the (value, sticky) pair can")
+        assert cyc <= 10000, (
+            f"{ctx}: {cyc} cycles > the §27.7a.2 hard ceiling 10,000 "
+            f"(Cluster axis — wave-completing ext beat -> ext_out_valid). "
+            f"NOTE: 실효 경계는 _fdotcr_dispatch_no_reset budget 4,000 (더 "
+            f"엄격). 10,000 pin 은 test_isa_decoder.py 의 test_fdot32_cr_cycle_boundaries_measured (_measure limit=10001) 가 단독 소유한다")
+    assert not fails, (
+        f"{len(fails)} of {len(picked)} golden points diverged at the "
+        f"Cluster boundary:\n" + "\n".join(fails))
+    dut._log.info(
+        f"FDOT32_CR Cluster boundary: {len(picked)} golden points "
+        f"({len(fams)} families, {n_special} special) bit-exact with "
+        f"matching per-op sticky, back to back with no reset. Worst "
+        f"{worst} cycles on the CLUSTER axis (wave-completing ext beat -> "
+        f"ext_out_valid), ceiling 10,000")
+
+
+@cocotb.test()
+async def test_fdotcr_cycle_measured_cluster_axis(dut):
+    """3a-C4 integration phase (spec §35.5.3) — the FDOT32_CR cycle
+    MEASUREMENT on the Cluster axis, with both ends of the interval named.
+
+    MEASUREMENT BOUNDARY, stated so the number means something:
+      START  the `clk` rising edge on which the WAVE-COMPLETING ext beat is
+             sampled — `ext_valid` high with `ext_frag_hdr` = {idx 15,
+             tot_m1 15}, i.e. the 16th of the 16 beats that carry the
+             1,024-bit A||B wave into the Cluster. The 15 earlier beats are
+             fragment transport, not execution, and are excluded on purpose:
+             including them would make the number depend on how fast the
+             SDK feeds the port rather than on the step program.
+      STOP   the rising edge on which `ext_out_valid` is first high.
+
+    This is NOT the §35.5.3 binding axis. Binding is the UNIT axis
+    (FP_StepSeq `start` -> `done`), measured exhaustively by the 3a-C3 TB at
+    synth/lattice/fp_ops/tb_fp_stepseq.py, whose extended family sweep
+    reaches operands the 450-vector file does not contain. The Cluster axis
+    is a MEASUREMENT axis: it is reported, and the hard ceiling 10,000 is
+    asserted on it, but the ceiling itself is not re-defined here.
+
+    Three operand classes are measured so a single accidental number
+    cannot pass for the whole picture: uniform finite, the slowest vector
+    in the file, and a special (which exits early)."""
+    import sys as _sys
+    _sys.path.insert(0, os.path.join(os.path.dirname(
+        os.path.abspath(__file__)), 'scripts'))
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+    vecs = _fdotcr_vectors_cluster()
+    slowest = vecs[22]                       # measured worst of the 450
+    special = next(v for v in vecs if v['special'])
+    uni = 0
+    for i in range(32):
+        uni |= 0x3F80 << (16 * i)            # A = bf16 1.0
+        uni |= 0x4000 << (512 + 16 * i)      # B = bf16 2.0
+    points = [
+        ('bf16 uniform 32x(1.0*2.0)', 0x13, uni, 0x42800000, 0),
+        ('bf16 slowest golden vector', 0x13, slowest['wide'],
+         slowest['result'], slowest['special']),
+        ('special operand (early out)',
+         0x12 if special['dtype'] == 0x2 else 0x13, special['wide'],
+         special['result'], special['special']),
+    ]
+    measured = []
+    for label, mode, wide, expect, sp in points:
+        cyc, pay, err, lwr, spec, flt = await _fdotcr_dispatch_no_reset(
+            dut, wide, mode)
+        assert (err, lwr) == (0, 0), f"{label}: err={err} lwr={lwr}"
+        assert pay == expect, \
+            f"{label}: payload {pay if pay is None else hex(pay)} != " \
+            f"0x{expect:08X}"
+        assert spec == sp, f"{label}: special_status={spec}, expected {sp}"
+        assert flt == 0, f"{label}: unit fault on a legal vector"
+        assert cyc <= 10000, (
+            f"{label}: {cyc} cycles > the §27.7a.2 hard ceiling 10,000 "
+            f"(Cluster axis: wave-completing ext beat -> ext_out_valid). "
+            f"NOTE: 실효 경계는 _fdotcr_dispatch_no_reset budget 4,000 (더 "
+            f"엄격). 10,000 pin 은 test_isa_decoder.py 의 test_fdot32_cr_cycle_boundaries_measured (_measure limit=10001) 가 단독 소유한다")
+        measured.append((label, cyc))
+        dut._log.info(
+            f"FDOT32_CR CLUSTER-axis cycles [{label}] = {cyc} "
+            f"(START = wave-completing ext beat, STOP = ext_out_valid; "
+            f"hard ceiling 10,000, headroom {10000 / cyc:.1f}x)")
+    lat = [c for _, c in measured]
+    assert min(lat) != max(lat), (
+        "all three operand classes measured the SAME latency — the step "
+        "program stopped depending on its data, or the stimulus collapsed")
+    # THE ORDERING PIN — the only assertion in the tree that can see a
+    # special operand being pushed through the EFT anyway.
+    #
+    # §27.7a.1 (iii) is not "specials return qNaN", it is "specials do NOT
+    # ENTER the EFT": FP_StepSeq leaves FDS_LOAD straight for FDS_DONE with
+    # FDR_QNAN. An RTL change that let the special wave walk the whole lane
+    # loop and only forced qNaN at the end would be BIT-IDENTICAL at every
+    # value assertion in this file and would still raise the sticky — it
+    # would only cost ~25x the cycles and expose the special lanes to the
+    # multiply/insert datapath. Latency ordering is what makes that visible.
+    uni_cyc = dict(measured)['bf16 uniform 32x(1.0*2.0)']
+    slow_cyc = dict(measured)['bf16 slowest golden vector']
+    sp_cyc = dict(measured)['special operand (early out)']
+    #
+    # HONESTY NOTE (§28.4 item 8): this pin is DEFENCE IN DEPTH, not a
+    # mutation-demonstrated kill. The minimal RTL mutation for it — sending
+    # the special wave to FDS_PRIME instead of FDS_DONE — also destroys the
+    # value (fd_rsel is overwritten downstream), so it is killed here by the
+    # payload assertion above, and no value-PRESERVING mutation of this
+    # class could be produced without writing new RTL. The pin is kept
+    # because the failure it describes is real and nothing else in the tree
+    # would see it; do not read it as a proven kill.
+    assert sp_cyc < uni_cyc < slow_cyc, (
+        f"latency ordering broke: special={sp_cyc} uniform={uni_cyc} "
+        f"slowest={slow_cyc}. A special wave that costs as much as a "
+        f"finite one has ENTERED the EFT — §27.7a.1 (iii) forbids exactly "
+        f"that, and every value/sticky assertion in this file is blind to "
+        f"it because the answer is canonical qNaN either way")
+
+
+@cocotb.test()
+async def test_fdotcr_ingress_buffer_holds_against_shared_bus_change(dut):
+    """3a-C4 adversarial-repair phase — the ONLY Cluster-axis test that can
+    see the MU-local ingress buffer (`PE_Core.fd_ing_q`, 1,024 FF) do its
+    job, and the reason the buffer is not free silicon.
+
+    WHY THIS TEST EXISTS. amendment-13 (§27.7a.2c) chose ingress form 3:
+    PE_Core latches the whole 1,024-bit A||B wave into an MU-LOCAL buffer at
+    dispatch and then streams 64 bits/cycle into FP_StepSeq for 16 cycles.
+    The cheap-looking alternative is to skip the buffer and index the live
+    `dec_input_payload_wide` bus. Adversarial verification measured that
+    that mutation
+
+        assign fd_ing_frag = dec_input_payload_wide[{fd_ing_idx, 6'b0} +: 64];
+
+    passes 327 of the tree's 328 tests — including the 450-vector bit-exact
+    census and every Cluster/Pod test — because in every other stimulus the
+    bus simply never changes during the 15-cycle streaming window. One
+    ISA_Decoder-level test killed it; the whole Cluster axis was blind.
+
+    THE MECHANISM THAT MAKES IT KILLABLE HERE. A Cluster has ONE ISA_Decoder
+    (Cluster.v:1005) whose `dec_input_payload_wide` fans out to all 17
+    PE_Cores (Cluster.v:1246 / :1317 / :1385). So a token addressed to an
+    L-PE — a plain ADD .imm16, not is_mul_op, no contention with the MU and
+    no ownership-rung rejection — rewrites the bus the MU is streaming from.
+    That is not a contrived poke: it is the normal case of two ports feeding
+    one cluster.
+
+    MEASURED STIMULUS GEOMETRY (do not treat these numbers as free
+    parameters). The wide bus is a COMPLETED-WAVE register: it updates when
+    a wave's last fragment is reassembled, ~5 cycles later, and an
+    N-fragment wave overwrites only words 0..N-1, leaving the rest holding
+    the previous wave. The MU reads word k at cycle 6+k. Measured
+    consequence: an N-fragment disturber corrupts EXACTLY word N-1. So the
+    sweep below is chosen to walk the corruption across both operand
+    halves — words 5,7 (inside A) and 9,11,13,15 (inside B) — and each
+    point independently kills the mutation with a different wrong payload.
+
+    ANTI-SILENT-WEAKENING. Because the hit index depends on that timing, the
+    test does not trust it: it watches `fd_ing_run`/`fd_ing_idx` and the bus
+    and records which word was actually read from a CHANGED bus. If timing
+    ever drifts so that nothing overlaps, the test FAILS loudly instead of
+    passing as an empty ritual, and it demands a hit in each half."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    from test_isa_decoder import eh_precision as _ehp
+    M64 = (1 << 64) - 1
+    wide = 0
+    for i in range(32):
+        wide |= 0x3F80 << (16 * i)              # A = bf16 1.0, all 32 lanes
+        wide |= 0x4000 << (512 + 16 * i)        # B = bf16 2.0, all 32 lanes
+    EXPECT = 0x42800000                          # 32 * (1.0 * 2.0) = 64.0
+    frags = [(wide >> (64 * i)) & M64 for i in range(16)]
+
+    instr_a = encode_instr(0x7A,
+                           eh_port(input_port_mask=0x01, output_port_id=0),
+                           _ehp(0x13, 0), flags=(1 << 2))
+    instr_b = encode_instr(0x10, eh_port(input_port_mask=0x01,
+                                         output_port_id=0), eh_imm16(5))
+
+    hit_words = set()
+    for nb in (6, 8, 10, 12, 14, 16):
+        await _reset(dut)
+        await _fire_frag_wave(dut, instr_a, _tag(port_context_id=0), frags)
+
+        async def _disturb(n=nb):
+            # The L-PE-addressed disturber. Its payload words are nothing
+            # like the FDOT32_CR wave, so a live read cannot coincidentally
+            # produce the right answer.
+            await _fire_frag_wave(
+                dut, instr_b, make_tag(wave_number=2, port_context_id=1),
+                [(0xDEADBEEF00000000 + i) for i in range(n)])
+
+        cocotb.start_soon(_disturb())
+
+        hot, err, lwr, payload, cyc = set(), 0, 0, None, 0
+        for c in range(1, 4000):
+            await RisingEdge(dut.clk)
+            await Timer(1, units="ns")
+            cyc = c
+            err |= int(dut.any_error_flag.value)
+            lwr |= int(dut.any_lower_required.value)
+            if int(dut.u_matmul_unit.fd_ing_run.value):
+                k = int(dut.u_matmul_unit.fd_ing_idx.value)
+                live = (int(dut.dec_input_payload_wide.value) >> (64 * k)) & M64
+                if live != frags[k]:
+                    hot.add(k)
+            if (int(dut.ext_out_valid.value)
+                    and int(dut.ext_out_opcode.value) == 0x7A):
+                payload = int(dut.ext_out_payload.value)
+                break
+
+        ctx = f"disturber={nb} fragments, corrupted-on-read words={sorted(hot)}"
+        assert (err, lwr) == (0, 0), (
+            f"{ctx}: err={err} lwr={lwr}. The disturber is a legal ADD to a "
+            f"different PE; it must not raise anything")
+        assert payload == EXPECT, (
+            f"{ctx}: FDOT32_CR returned "
+            f"{'no output' if payload is None else hex(payload)}, expected "
+            f"0x{EXPECT:08X}. A word of the in-flight wave was taken from "
+            f"the LIVE shared bus instead of the MU-local fd_ing_q buffer "
+            f"— this is exactly the amendment-13 defect, and it is silent "
+            f"everywhere else in the tree")
+        assert int(dut.fdotcr_special_status.value) == 0, \
+            f"{ctx}: a finite wave raised the special sticky"
+        assert int(dut.fdotcr_unit_fault_error.value) == 0, \
+            f"{ctx}: unit fault on a legal wave"
+        assert cyc <= 10000, \
+            f"{ctx}: {cyc} cycles > the §27.7a.2 hard ceiling 10,000 "\
+            f"(NOTE: 실효 경계는 이 루프의 range(1, 4000) budget 3,999 로 더 "\
+            f"엄격하다. 10,000 pin 은 test_isa_decoder.py 의 test_fdot32_cr_cycle_boundaries_measured (_measure limit=10001) 가 단독 소유한다)"
+        hit_words |= hot
+        dut._log.info(
+            f"FDOT32_CR ingress-buffer pin [{ctx}] payload=0x{payload:08X} "
+            f"cycles={cyc}")
+
+    # --- the test must prove it actually tested something -----------------
+    assert hit_words, (
+        "NOT ONE fragment was read from a changed bus in any of the six "
+        "points, so this test asserted nothing about fd_ing_q. The stimulus "
+        "geometry documented in the docstring has drifted (the wide bus is "
+        "a completed-wave register; an N-fragment disturber must land on "
+        "word N-1 while fd_ing_run is high). Re-tune the sweep — do NOT "
+        "delete this test, it is one of only two in the tree that can see "
+        "the 1,024-FF buffer at all.")
+    assert any(k <= 7 for k in hit_words) and any(k >= 8 for k in hit_words), (
+        f"the corruption only reached words {sorted(hit_words)}. The buffer "
+        f"holds A (words 0-7) and B (words 8-15) and both halves must be "
+        f"shown to survive; a sweep that only hits one half would pass with "
+        f"the other half wired to the live bus.")
+    dut._log.info(
+        f"FDOT32_CR ingress-buffer pin: words read from a CHANGED shared "
+        f"bus = {sorted(hit_words)} (A half 0-7, B half 8-15)")

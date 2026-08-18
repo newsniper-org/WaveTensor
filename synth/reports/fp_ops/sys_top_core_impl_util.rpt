@@ -1,7 +1,7 @@
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
 ---------------------------------------------------------------------------------------------------------------------------------------------
 | Tool Version : Vivado v.2025.2.1 (lin64) Build 6403652 Thu Mar 19 13:47:00 MDT 2026
-| Date         : Tue Aug 18 19:01:43 2026
+| Date         : Tue Aug 18 22:20:26 2026
 | Host         : cachyos-ybi-tuf running 64-bit CachyOS
 | Command      : report_utilization -file /home/ybi/WaveTensor/synth/reports/fp_ops/sys_top_core_impl_util.rpt -hierarchical
 | Design       : Top_Core_gate_top
@@ -19,24 +19,24 @@ Table of Contents
 1. Utilization by Hierarchy
 ---------------------------
 
-+-------------------------------------+-------------+------------+------------+---------+------+-------+--------+--------+------+------------+
-|               Instance              |    Module   | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs  | RAMB36 | RAMB18 | URAM | DSP Blocks |
-+-------------------------------------+-------------+------------+------------+---------+------+-------+--------+--------+------+------------+
-| Top_Core_gate_top                   |       (top) |      15769 |      15457 |     248 |   64 | 10076 |      0 |      2 |    0 |         39 |
-|   (Top_Core_gate_top)               |       (top) |          0 |          0 |       0 |    0 |  1701 |      0 |      0 |    0 |          0 |
-|   u_core                            |    Top_Core |      15769 |      15457 |     248 |   64 |  8375 |      0 |      2 |    0 |         39 |
-|     u_hiu                           |         HIU |       3398 |       3282 |     116 |    0 |  3590 |      0 |      0 |    0 |          0 |
-|       (u_hiu)                       |         HIU |       3365 |       3249 |     116 |    0 |  3525 |      0 |      0 |    0 |          0 |
-|       dma_inst                      |  dma_engine |         33 |         33 |       0 |    0 |    65 |      0 |      0 |    0 |          0 |
-|     u_decoder                       | ISA_Decoder |      12338 |      12142 |     132 |   64 |  4785 |      0 |      2 |    0 |         39 |
-|       u_core                        |     PE_Core |      11238 |      11042 |     132 |   64 |  3137 |      0 |      2 |    0 |         39 |
-|         (u_core)                    |     PE_Core |       6676 |       6676 |       0 |    0 |  1837 |      0 |      0 |    0 |         35 |
-|         g_v180c_fp.u_fp_stepseq     |  FP_StepSeq |       4563 |       4367 |     132 |   64 |  1300 |      0 |      2 |    0 |          4 |
-|           (g_v180c_fp.u_fp_stepseq) |  FP_StepSeq |       3732 |       3536 |     132 |   64 |   947 |      0 |      2 |    0 |          0 |
-|           u_add                     |  FP_AddWide |        794 |        794 |       0 |    0 |   281 |      0 |      0 |    0 |          0 |
-|           u_mul                     |    FP_Mul36 |         37 |         37 |       0 |    0 |    72 |      0 |      0 |    0 |          4 |
-|       u_ehdec                       |    EHDecode |       1100 |       1100 |       0 |    0 |  1648 |      0 |      0 |    0 |          0 |
-+-------------------------------------+-------------+------------+------------+---------+------+-------+--------+--------+------+------------+
++-------------------------------------+-------------+------------+------------+---------+------+------+--------+--------+------+------------+
+|               Instance              |    Module   | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs | RAMB36 | RAMB18 | URAM | DSP Blocks |
++-------------------------------------+-------------+------------+------------+---------+------+------+--------+--------+------+------------+
+| Top_Core_gate_top                   |       (top) |      15666 |      15354 |     248 |   64 | 9817 |      0 |      2 |    0 |         39 |
+|   (Top_Core_gate_top)               |       (top) |          0 |          0 |       0 |    0 | 1701 |      0 |      0 |    0 |          0 |
+|   u_core                            |    Top_Core |      15666 |      15354 |     248 |   64 | 8116 |      0 |      2 |    0 |         39 |
+|     u_hiu                           |         HIU |       3403 |       3287 |     116 |    0 | 3590 |      0 |      0 |    0 |          0 |
+|       (u_hiu)                       |         HIU |       3370 |       3254 |     116 |    0 | 3525 |      0 |      0 |    0 |          0 |
+|       dma_inst                      |  dma_engine |         33 |         33 |       0 |    0 |   65 |      0 |      0 |    0 |          0 |
+|     u_decoder                       | ISA_Decoder |      12230 |      12034 |     132 |   64 | 4526 |      0 |      2 |    0 |         39 |
+|       u_core                        |     PE_Core |      11158 |      10962 |     132 |   64 | 3139 |      0 |      2 |    0 |         39 |
+|         (u_core)                    |     PE_Core |       6588 |       6588 |       0 |    0 | 1837 |      0 |      0 |    0 |         35 |
+|         g_v180c_fp.u_fp_stepseq     |  FP_StepSeq |       4571 |       4375 |     132 |   64 | 1302 |      0 |      2 |    0 |          4 |
+|           (g_v180c_fp.u_fp_stepseq) |  FP_StepSeq |       3740 |       3544 |     132 |   64 |  949 |      0 |      2 |    0 |          0 |
+|           u_add                     |  FP_AddWide |        794 |        794 |       0 |    0 |  281 |      0 |      0 |    0 |          0 |
+|           u_mul                     |    FP_Mul36 |         37 |         37 |       0 |    0 |   72 |      0 |      0 |    0 |          4 |
+|       u_ehdec                       |    EHDecode |       1072 |       1072 |       0 |    0 | 1387 |      0 |      0 |    0 |          0 |
++-------------------------------------+-------------+------------+------------+---------+------+------+--------+--------+------+------------+
 * Note: The sum of lower-level cells may be larger than their parent cells total, due to cross-hierarchy LUT combining
 
 

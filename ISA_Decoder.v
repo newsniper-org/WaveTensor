@@ -216,7 +216,27 @@ module ISA_Decoder #(
         .memory_req                (memory_req),
         .mem_addr                  (mem_addr),
         .error_flag                (error_flag),
-        .lower_required            (lower_required)
+        .lower_required            (lower_required),
+        // v1.8.0e 3a-C4 §35.3 항 5 — 갈래 A (미노출), `.in_ready ()` 바로
+        // 위 관용구의 복제다. FDOT32_CR 의 두 sticky 는 여기서 **의도적으로
+        // 미접속**이다.
+        //   (1) `ISA_Decoder` 는 single-decoder demo 다. 이 계층에는 §26.5
+        //       등급의 reset-clearable 승격을 보관할 저장소도, 그것을 읽을
+        //       소비자도 없다 — 포트만 올리면 §22.14b-2 가 `cluster_ready`
+        //       에 대해 문제 삼은 "관찰은 되는데 아무도 쓰지 않는 신호" 를
+        //       하나 더 만든다. 승격은 `rst` 를 가지고 `any_error_flag` 를
+        //       실제로 소유한 `Cluster` 에서 한다.
+        //   (2) 귀결 (측정 전 공표, §35.6): `sys_top_core` 형상에서
+        //       `fd_fault` 는 **여전히 프루닝**되므로 `Synth 8-6014` 는
+        //       **15 를 유지한다.** 15 는 실패 신호가 아니다 — 14 가 나오면
+        //       누군가 갈래 B 를 택했다는 뜻이고, 그때는 갈래 변경과
+        //       `synth/gate/Top_Core_gate_top.v` 의 wrapper I/O flop 회계를
+        //       같은 COMMIT 에 기록해야 한다.
+        // **정직 명기**: 따라서 `fd_fault` 가 실리콘에 실재한다는 증거는
+        // 이 경로가 아니라 **Cluster 축**에서 얻는다 (cocotb directed poke
+        // + Cluster 합성 census).
+        .fp_special_sticky         (),
+        .fp_unit_fault             ()
     );
 
     // v1.5.2b §19 — mirror the internal wide bus to the top-level output

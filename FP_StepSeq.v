@@ -312,7 +312,25 @@ module FP_StepSeq (
     input      [31:0] c_in,
     output            busy,
     output            done,
-    output     [31:0] result
+    output     [31:0] result,
+    // v1.8.0e 3a-C4 §27.7a.4/§35.3 — FDOT32_CR sticky status, DELIBERATELY
+    // two separate ports. Merging them is forbidden: §27.7a.3 check (i)
+    // consumes `fd_special_sticky` as NORMAL audit data (the SDK feeds
+    // special operands on purpose and compares sticky presence across the
+    // two datapaths), while `fd_unit_fault` is an RTL defect signal that
+    // the parent folds into any_error_flag. One port cannot carry both —
+    // the OR-reduce upstream is irreversible.
+    //
+    // GRADE (read before rewiring): both are PER-OP latches — every
+    // `fd_launch` edge overwrites them (see the sub-sequencer's launch
+    // arm). This block has NO reset port, so a reset-clearable sticky
+    // CANNOT be built here; §26.5-grade promotion of the FAULT belongs to
+    // the first ancestor that owns `rst` (Cluster). `fd_special_sticky`
+    // MUST stay per-op — §27.7a.3 recovers (result, sticky) pairs per op.
+    // Both are valid from the fragment-0 receiving edge through the next
+    // launch, hence stable across the `done` beat.
+    output            fd_special_sticky,
+    output            fd_unit_fault
 );
 
     `include "generated/isa_subop_codes.vh"
@@ -1737,10 +1755,22 @@ module FP_StepSeq (
     // 쓰거나 (b) 1,024b 포트로 바꾸거나를 자유롭게 고를 수 있다 — 프로그램
     // 로직은 어느 쪽이든 동일하다 (capture 레지스터가 같은 자리에 있다).
     //
+    // [3a-C4 결정, §27.7a.2c amendment-13] **(a) 채택 / (b) 기각.** 이
+    // 스트리밍 수납은 그대로 남는다. PE_Core 가 `fd_ing_q` (MU-local
+    // 1,024b) 에서 fragment 를 1 cycle 에 하나씩 꺼내 {b_in, a_in} 에
+    // 실어 준다 (PE_Core 의 "0x7A ingress 드라이버" 블록). 기각 사유:
+    // (1) 1,024b 포트는 gate_top 래퍼 I/O flop 을 147 → 1,171 로 만들어
+    // GATE V20-4 anchor 의 유닛 몫 귀속을 파괴한다, (2) fd_asr/fd_bsr 가
+    // 사라지면 fd_spfr 의 per-cycle special 누적 구조가 바뀌어 값 축
+    // 재증명이 실제로 필요해진다, (3) 얻는 것은 수납 창 16 → 1 cycle
+    // 뿐인데 cycle 상한 10,000 대비 실측 worst 는 1,167 이다.
+    //
     // sticky (§27.7a.1 (iii)) 와 loud fault 는 fd_spec / fd_fault 레지스터에
-    // 산다. 두 sticky 의 **포트 노출**은 §27.7a.4 가 3a-C4 (PE_Core 결과
-    // 반환 결선) 로 배정한 항목이라 여기서는 유닛 내부에 둔다 — 결과값
-    // 자체는 두 경우 모두 canonical qNaN 이라 무모호 marker 로 이미 loud 다
+    // 산다. 두 sticky 의 **포트 노출**은 §27.7a.4 가 3a-C4 로 배정한
+    // 항목이고 **본 커밋에서 착지했다** — 모듈 포트 `fd_special_sticky` /
+    // `fd_unit_fault` (분리 유지, §35.3). 결과값 자체는 두 경우 모두
+    // canonical qNaN 이라 무모호 marker 로 이미 loud 지만, 그것만으로는
+    // §27.7a.3 검사 (i) 이 두 사건을 구분하지 못한다
     // (main drain 은 NaN 을 절대 산출하지 않는다, §27.7a.1).
     // =========================================================================
     wire fd_launch = (fp_state == FP_IDLE) && start
@@ -2005,6 +2035,15 @@ module FP_StepSeq (
     // the end (works verbatim for the Inf / FTZ-zero pack outcomes too);
     // all other FP_AddWide users carry their signs through the datapath.
     assign result = useaw_q ? (aw_final | {orsign_q, 31'b0}) : res_reg;
+    // v1.8.0e 3a-C4 §35.3 — the two FDOT32_CR sticky ports. Level, not
+    // pulse: valid from the fragment-0 receiving edge until the next
+    // `fd_launch`, so they are stable across the `done` beat that the
+    // parent captures the result on. `fd_unit_fault` had NO reader before
+    // this commit and was pruned by synthesis ([Synth 8-6014] Unused
+    // sequential element fd_fault_reg was removed) — i.e. the four loud
+    // faults of §27.7a.2b amendment-11 did not exist on silicon at all.
+    assign fd_special_sticky = fd_spec;
+    assign fd_unit_fault     = fd_fault;
 
 endmodule
 

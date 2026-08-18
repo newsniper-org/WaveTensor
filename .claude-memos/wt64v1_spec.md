@@ -3929,6 +3929,58 @@ expansion 최대 25 component (용량 33), 삽입 pass 최대 77 (≤ 528), fold
 - **양 시뮬레이터 교차**: verilator 5.048 과 iverilog 12 에서 **33 suite 전건 PASS**, 로그 수치 완전 동일 (최대 열 25 / teeth 2+3 / jam 167·앵커 128 / interlock clean 116 cycle / GLOBAL worst 1,167). 신규 whitebox 축 (배열 `fd_xp` 읽기·쓰기 poke) 이 두 시뮬레이터에서 같게 동작함도 이로써 확인된다.
 - **선공표 무변경**: GATE V20-4 수치 (LUT delta ≤ 2,200 / premap `$mul` delta 0 / DSP·BRAM delta 0 / cycle ≤ 10,000) 는 변경하지 않는다. 신규 로직은 24-bit trailing-zero cascade 4개 + 13-bit 비교기 몇 개 + fault 분기 1개로, §27.7a.5 의 "compare/split glue 200-300" 항 안에 든다 (실측은 C4 의 gate 몫).
 
+#### 27.7a.2c [AMENDMENT 2026-08-18, 3a-C4 spec-first] ingress 제3형의 **PE_Core 측 확정** — amendment-9 (iii) 의무 이행
+
+**본 절은 §12a 규칙 5 하의 amendment 다.** §27.7a.1 원문 · §27.7a.2 원문 · §27.7a.2a · §27.7a.2b (amendment-9 포함) 는 **무수정 보존**한다. 별도 소절로 여는 이유는 두 가지다: (i) §27.7a.2b 의 머리글이 `[AMENDMENT 2026-08-17, 3a-C3 RTL 실측]` 로 **세션에 귀속**돼 있어 C4 (2026-08-18) 의 결정을 그 안에 적으면 귀속이 오염된다; (ii) amendment-9 의 문언 "C4 는 그 결정을 **본 항에 재개정으로 기록**" 은 번호 승계 (amendment-13) 와 전방 포인터로 이행된다 — 원문 수정이 아니라 추가다.
+
+**착수 전제의 정정 (사실 기록)**: 본 C4 세션의 착수 지시는 "§27.7a.2b **amendment-9 신설**" 을 요구했다. 그러나 **amendment-9 는 이미 3a-C3 (`185ec42`) 가 착지시켰다** — ingress 제3형 채택 기록 그 자체다. 신설 대상은 그 항의 **C4 의무 (iii)** 을 이행하는 후속 amendment 이고, §27.7a.2a/2b 를 통틀어 amendment-12 다음이므로 번호는 **13** 이다. 전제를 그대로 따랐다면 기존 항을 덮어써 §12a 규칙 5 를 위반했을 것이므로 사실을 여기 적는다.
+
+##### amendment-13 — C4 는 제3형을 **유지**한다 (wide 포트 대체 **기각**) + PE_Core 측 드라이버 형 확정
+
+amendment-9 (i) 은 C4 에게 두 갈래를 열어 두었다: **(a)** 16-cycle 스트리밍 수납을 그대로 쓴다, **(b)** `FP_StepSeq` 경계에 1,024-bit wide 포트를 뚫어 대체한다. **(a) 를 채택하고 (b) 를 기각한다.**
+
+**기각 근거 (b) — 셋 다 독립적으로 충분하다**:
+
+| # | 근거 | 실측/문서 근거 |
+|---|---|---|
+| 1 | **GATE V20-4 anchor 가 무효화된다.** anchor (§34.3) 는 11-포트 `FP_StepSeq` + 11-결선 래퍼 위에서 측정됐다. 1,024-bit 포트를 추가하면 래퍼 I/O flop 이 147 → **1,171** 로 뛰고, 그 1,024 FF 와 그 fan-out 이 **유닛 몫과 구분 불가**하게 delta 에 섞인다. §34.2 가 "소스 목록에서 다른 것은 `FP_StepSeq.v` 내용 하나뿐" 을 anchor 성립 근거로 명시했는데 그 전제가 깨진다 | §34.2 / §34.3 / `synth/lattice/fp_ops/FP_StepSeq_gate_top.v:9-11` |
+| 2 | **값 축 재증명이 실제로 필요해진다.** amendment-9 (i) 은 "산술 sub-sequencer 는 ingress 와 독립" 이라 값 증명이 이식된다고 했으나, 그 독립성은 `fd_asr`/`fd_bsr` 가 **같은 자리에 있을 때**의 이야기다. wide 포트는 그 두 shift register 자체를 없애므로 `fd_spfr` 의 per-cycle special 누적 (`FP_StepSeq.v:1755`, 16 cycle 에 걸쳐 64 lane 전수) 구조가 바뀐다 — 450 벡터 중 special 128 행의 경로가 재작성 대상이 된다 | `FP_StepSeq.v:1751-1755` / `:1762` / `:1776` |
+| 3 | **얻는 것이 없다.** wide 포트의 유일한 이점은 수납 창 16 cycle → 1 cycle 이다. cycle 상한은 10,000 (hard) 이고 실측 GLOBAL worst 는 **1,167** 이다 (amendment-12). 15 cycle 을 사는 대가로 위 1·2 를 지불한다 | amendment-12 |
+
+**채택 형 (신규 pin — C4 RTL 이 구현할 계약)**
+
+ingress 의 **유닛 측 절반은 C3 가 이미 착지시켰다** (`fd_asr`/`fd_bsr`, `FP_StepSeq.v:973`, 각 `[511:0]`). C4 의 몫은 **PE_Core 안에서 그 16 cycle 을 먹여 주는 드라이버**이며, `FP_StepSeq` 의 **포트 목록은 ingress 축에서 한 글자도 바뀌지 않는다** (sticky 2종 노출은 별개 축 — §35.3).
+
+*수납 순서 (RTL 실측으로 확정, 추정 아님)*: `fd_launch = (fp_state==FP_IDLE) && start && (op_sel_in==OPS_FDOTCR)` (`FP_StepSeq.v:1746-1747`) 가 뜨는 **그 edge 가 fragment 0** 을 먹고, `FDS_LOAD` 가 `fd_cnt` 1..15 로 나머지를 먹는다 (`:1770-1786`). fragment f = `{b_in, a_in}` = `payload_wide[64f +: 64]` 이며 `a_in` 이 하위 32 bit 다. `fd_cnt[3]` 이 갈라 frag 0-7 → `fd_asr`, frag 8-15 → `fd_bsr` (`:1774-1775`). unit TB `synth/lattice/fp_ops/tb_fp_stepseq.py` 의 `launch_fdotcr` 가 같은 계약을 구동하고 있다.
+
+*타이밍 유도 (PE_Core 실측 좌표에서 도출)*: stage-1 = cycle T (`PE_Core.v:2223-2235`), stage-2 commit = T+1 (`:3591-3601`, `fp_start <= 1'b1` at `:3592`) → `fp_start` 는 cycle **T+2** 에 high 이므로 `fd_launch` = T+2 = frag 0. ∴ **`fp_a_q`/`fp_b_q` 는 T+1 edge 에 frag 0 (stage-2 의 `cr_fp_a`/`cr_fp_b` 가 나른다), T+2..T+16 edge 에 frag 1..15** 를 실어야 한다 — 총 16 write, 그중 **15 write 가 신규 드라이버 몫**이다. `fp_a_q` 의 현행 writer 는 3곳뿐이므로 (`PE_Core.v:1919` rst / `:2157` DEQUANT lane-loop relaunch / `:3594` stage-2 commit) 신규 드라이버는 **네 번째 writer 1개 추가**로 끝난다.
+
+*신규 상태 (형태 pin — 폭과 관용구까지)*:
+
+| 신호 | 폭 | 역할 | pin 사유 |
+|---|---|---|---|
+| `fd_ing_q` | `reg [1023:0]` | stage-1 (cycle T) 에 `dec_input_payload_wide` 를 **병렬 1회 캡처** | MU-local 버퍼 — §27.7a.1 이 요구한 그 자리 |
+| `fd_ing_idx` | `reg [3:0]` | 1..15 (0 은 `cr_fp_a/b` 가 나르므로 미사용) | — |
+| `fd_ing_run` | `reg` | cycle T+2..T+16 활성 | — |
+| `cr_fd_launch` | `reg` | cr 뱅크 신규 플래그, cycle T+1 에 high | per-cycle default clear 목록 (`PE_Core.v:1959-1972`) 에 **반드시 등재** |
+
+*읽기 관용구 (hard pin — 위반 시 gate 파괴)*: **`fd_ing_q[{fd_ing_idx, 6'b0} +: 64]`** 형만 허용한다. `fd_ing_idx*64 +: 64` 로 쓰면 yosys 가 `$mul` 을 뱉어 **premap `$mul` delta-0 (V20-4 hard) 과 S1-US 의 `premap_mul_expect: 381` (exact) 를 동시에 깬다.** 선례는 `PE_Core.v:1718-1719` / `:1726-1727` (DEQUANT lane 슬라이스) 로 이미 shipped 다. — 단, **V20-4 소스 목록에 `PE_Core.v` 가 없으므로** (`Makefile:181`) 이 위반이 실제로 터지는 곳은 S1-US 쪽이다 (§35.5 귀속 표 참조).
+
+*clobber 가드 (조용한 오답 봉쇄 — hard pin)*: stage-1 캡처는 **`!(cr_fd_launch | fd_ing_run)`** 로 가둔다. 무가드일 때의 실패형은 error 도 fault 도 아닌 **다른 wave 로 계산된 정상 형태의 fp32** 이며 (비행 중 도착한 두 번째 0x7A 의 stage-1 이 `fd_ing_q` 를 덮어써 frag 1 부터 다른 wave 를 먹인다), non-blocking 순서상 stage-1 (`:2235`) 이 stage-2 (`:3591`) 보다 앞이라 stage-1 이 이긴다. 가드 커버리지: cycle T 둘 다 0 → 캡처 / T+1 `cr_fd_launch`=1 → 차단 (이 구간은 `fp_busy` 가 아직 0 이라 busy-interlock 으로 못 막는다) / T+2..T+16 `fd_ing_run`=1 → 차단 (마지막 읽기 edge 까지 보호) / T+17 이후 `fd_ing_q` 는 더 이상 읽히지 않아 허용 무해. 이 가드는 **§26.4 위반이 아니다.** §26.4 가 금지한 것은 `output_regs_free`/busy-reject 를 **T 시점 값 그대로 T+1 로 들고 가는 stale carry** 인데, 이 가드는 그 두 신호를 **아예 읽지 않는다** — 읽는 것은 이 드라이버 자신이 T 에 세운 상태뿐이다. T-time-local FSM 자기상태 게이팅은 이미 shipped 된 등급이다 (`Cluster.v:1417-1423` 이 PE_Core DIV_IDLE launch check 를 "entirely T-time-local (dec_opcode literal + `frag_idx==FRAG_IDLE`)" 로 **읽어서 확인한 사실**로 기록한다).
+
+**미확인 (단정 금지)**: `dec_valid` 가 **연속 cycle** 에 뜰 수 있는지는 이 세션에서 **측정하지 않았다** (`EHDecode.v:670` 의 `done_d1` 구조상 가능해 보이나, `Cluster` skid buffer 와 `pe_active` 파이프가 구조적으로 막는지는 미실측). 가드는 그 가능성이 0 이어도 무해하므로 설계 판정은 바뀌지 않지만, **"두 wave 가 연속 beat 에 완성될 수 있다" 를 사실로 적지 마라.** C4 통합 TB 는 back-to-back 0x7A dispatch 를 directed 로 밀어 가드가 실제로 무엇을 막았는지 (또는 도달 불가였는지) 를 **측정으로** 기록한다.
+
+**기각한 대안 4종 (사유 동반 — 나중에 "왜 안 했나" 가 다시 열리지 않도록)**
+
+| 대안 | 기각 사유 |
+|---|---|
+| **무버퍼 mux** — `dec_input_payload_wide` 를 17 cycle 동안 직접 읽는다 | **불가능.** `EHDecode.v:691-692` 가 `if (done_d1)` (`:670`) 안에서 `dec_input_payload_wide` 를 덮어쓰고, PE_Core 는 EHDecode 를 stall 시키지 못한다 (`pe_ready` 는 `PE_Core.v:105-108` 주석대로 observe-only). 0x74 arm 주석 (`:3086-3089`) 이 "비행 중 신규 dispatch 도착" 을 명시적으로 전제한다 |
+| **shift-register 형** — `fd_ing_q` 를 64b 씩 밀어낸다 | 면적 열세. bit 당 2:1 mux (`D = load ? wide[i] : q[i+64]`) 가 강제돼 index-mux 형보다 비싸다. 병렬 load 때문에 SRL 추론도 불가 (숫자는 §35.5 의 비-실측 주의와 함께 읽을 것) |
+| **이중 버퍼** — `cr_fd_wave[1023:0]` (stage-1) → `fd_ing_q` (stage-2 복사) | 가드가 **구조적으로 불필요**해지고 `cr_deq_a→deq_a_q` (`PE_Core.v:3620`) · `cr_vfma_a→vfma_a_q` (`:3607`) 선례와 1:1 이라는 장점이 실재한다. 그러나 비용이 **+1,024 FF (총 2,048)** 다. **기각하되 폐기하지 않는다** — 가드 형이 C4 통합 TB 에서 반증되면 (즉 가드로 못 막는 도착 창이 실측되면) 이것이 **1순위 대체형**이다 |
+| **2-dispatch fallback** (A-wave + B-wave, capture 1,024→512) | §27.7a.5 의 **cut ladder rung 2** 다. 예산 초과가 실측되기 전에는 발동하지 않는다 (§35.8) |
+
+**amendment-9 (ii) 의 재증명 의무 — 이행 계획**: ingress 형을 **바꾸지 않으므로** unit TB 의 프로토콜 assert (launch/busy/latency) 는 그대로 유효하다. 그러나 그 assert 들은 지금까지 **TB 가 직접 구동한 스트림** 위에 서 있었다 — C4 이후에는 **PE_Core 드라이버가 그 스트림을 만든다.** 따라서 C4 는 통합 TB 에서 (i) 16 fragment 가 정확한 순서로 실렸는지를 **결과 bit-exactness 로** 검사하고 (frag 순서가 하나라도 어긋나면 값이 깨진다 — 자기확인 아님), (ii) busy-interlock 이 dispatch 경계에서도 성립하는지 (비행 중 0x7A/타 op 재인가) 를 실측한다. 이 두 축이 amendment-9 (ii) 의 "launch/busy/latency 계약 재증명" 이다.
+
 #### 27.7a.3 invariant 계약 — on-silicon dual-datapath 자기검증
 
 - **정리 (§27.2.3 의 합성)**: 옵션 3 하에서 **single-wave 즉시-drain** — canonical-zero slot (0x7E 선행 또는 리셋 상태) 에 wave 정확히 1개 (carry-in = canonical zero → exact 33-항 합 == 32-항 합), IF-2/IF-3 준수 하에 개입 접촉 없이 DRAIN — 의 결과 r_main = PACK_FINAL(RTO_48(exact)) == RNE_24(exact) (§27.2.1 추출 정리). FDOT32_CR 의 r_audit == RNE_24(exact) (§27.7a.1 값 계약). ∴ **r_main == r_audit BIT-EXACT** — 양쪽이 같은 PACK_FINAL 의미론이라 FTZ/overflow/+0 경계까지 동일하다. 재생성 인용 근거 (JSON): `opt3_single_wave_equals_true_B_asserted` 6,000 + `exact_rto48_store_equals_true_B_asserted_trials` 30,000 = **36,000 assert 실패 0**.
@@ -6685,3 +6737,869 @@ tag = `fp_stepseq_base`, top = `FP_StepSeq_gate_top`, base `FP_StepSeq.v` = **1,
 - **`fp_op_gate_check.GATES` 의 `fp_stepseq` 항목은 3a-C4 에서 신설한다.** 지금 넣으면 `fp_stepseq_*` 리포트가 없어 gate 가 UNMEASURED = FAIL 로 끝나 트리가 붉어진다. 판정 기준의 **선공표 의무는 본 절(§34.3)의 문서 기록으로 이미 충족**되므로, 코드 등재를 C4 로 미루는 것은 기준의 이연이 아니다.
 - `Makefile` 에 `fp_stepseq` / `fp_stepseq_base` 두 FP_OP 정의를 신설했다 (소스 목록 동일 — 오직 `FP_StepSeq.v` 내용만 다르게 해서 재현 가능).
 - `fp_stepseq_base_run.log` 는 §22.14b-13 ② 가 `synth-fp-op` 에 `-log` 를 추가한 뒤 **처음으로 아카이브된 운영자-gate run log** 다. 다음 재합성부터 이 계열도 `sources+top` 강도를 받는다.
+
+## 35. 3a-C4 착지 계획 + 검증 지표 선공표 (2026-08-18, COMMIT 0 · spec-first · normative)
+
+3a 착지 순서 (§27.7a.4) 의 **마지막 단계**다. C4 = `decode_reserved` 해제 + PE_Core 0x7A arm + ingress 드라이버 + sticky 2종 포트 노출 + 통합 TB + **GATE V20-4 실행·기록** + **GATE S1-US 동반 재측정**. 본 절은 그중 **spec 만** 편집한다 — RTL·테스트·`isa/wt64v1_isa.json`·생성물은 다음 COMMIT 몫이다 (§12a 규칙 3).
+
+**본 절이 인용하는 실측의 출처**: HEAD `6c84cc1` 트리 직접 독해 + `synth/reports/fp_ops/*_impl_summary.json` + `synth/reports/fp_ops/gate_summary.txt` + `synth/reports/fp_ops/sys_top_core_run.log`. **선공표 수치는 §27.7a.5 · §34.3 원문 그대로이며 본 절은 그것을 인용할 뿐 옮기지 않는다.**
+
+### 35.1 착지 순서 (§12a 규칙 3) — 그리고 **왜 원자적 COMMIT 인가**
+
+| # | 단계 | 접촉 | 비고 |
+|---|---|---|---|
+| 0 | **spec** | `.claude-memos/wt64v1_spec.md` (§27.7a.2c + 본 §35) | **본 COMMIT** — 다른 파일 0 |
+| 1 | ISA 원천 | `isa/wt64v1_isa.json:2210` `"decode_reserved": true → false` **1줄** | JSON 재직렬화 **금지** — round-trip 이 byte-identical 하지 않아 무관한 diff 가 대량 발생하고 6개 산출물 sha256 이 전부 흔들린다. `notes` 를 손보면 `isa_ehshape_case_body.vh:595-651` 의 축자 사본 ~57줄이 **자동으로** 움직인다 (정상 — 놀라지 마라) |
+| 2 | 생성물 재생성 | `python3 scripts/gen_isa_tables.py generate` | 의미 hunk 4개: `isa_opcode_wires.vh` DECODE-RESERVED 주석 5줄 삭제 · `(cb_opcode == 8'h7A) ||` 1줄 추가 · `asm/generated_isa_tables.py:718` `frozenset([0x7A]) → frozenset([])` · `isa_tables_frag.md` `## decode-reserved` 절 삭제. `FP_LEGAL_ROM` 은 **무변경** (0x7A → idx 0xA24/0xA34 이미 set), EH-shape case arm 도 **무변경** (`isa_ehshape_case_body.vh:594` 에 이미 실재) |
+| 3 | RTL | `PE_Core.v` (0x7A arm + ingress 드라이버 + `dec_is_mul_op` + sticky 포트) · `Cluster.v` (`is_mul_op` + sticky 승격 reg + 포트) · `Pod.v` (fault 노출) · `FP_StepSeq.v` (sticky 2 포트) · `ISA_Decoder.v` (신규 포트 등재) · `synth/lattice/fp_ops/FP_StepSeq_gate_top.v` (래퍼 11→13 결선) | `EHDecode.v` 는 **파일 무편집** — 그러나 `isa_opcode_wires.vh` 를 include 하므로 **합성 결과는 바뀐다** |
+| 4 | 테스트 | §35.9 의 목록 전량 | 6 MOD 합계 **312 PASS 감소 금지** |
+| 5 | gate | GATE V20-4 실행 (§35.5) + GATE S1-US 재측정 (§35.6) + Cluster MEASUREMENT (§35.5 귀속) | detach + done-marker 규율 (§22.14b-11) |
+
+**원자성 (hard) — 1·2·3 은 같은 COMMIT 이어야 한다.** 근거는 우리 판단이 아니라 **ISA JSON `notes` 원문의 명시 금지**다 (`isa/wt64v1_isa.json:2179`):
+
+> "no PE_Core arm exists yet and a decode-legal 0x7A without an arm would fall through the dispatch default — **loud-fault-never-silent forbids that intermediate state**, so decode_reserved and stub_v18 are mutually exclusive (generator-enforced)."
+
+중간 상태 3형 전부가 나쁘고, 나쁜 방식이 서로 다르다:
+
+| 중간 상태 | 결과 | 실측 근거 |
+|---|---|---|
+| (i) 비트만 해제, PE_Core arm 없음 | dispatch `default:` → `cr_hard_error` | `PE_Core.v:3421-3424` |
+| (ii) arm 있고 twin-classifier 없음 | MU 가 case 진입 **전에** 잘라낸다 → **영구 `lower_required`** | `PE_Core.v:2229-2232` (`!NON_MUL_OPS_SUPPORTED && !dec_is_mul_op`), MU 는 `NON_MUL_OPS_SUPPORTED=0` (`Cluster.v:1240`) |
+| (iii) classifier 있고 arm 없음 | MU case default → 위 (i) 과 같은 자리 | 동 |
+
+**정직 명기**: (i) 은 실제로는 **loud error** 다 (침묵이 아니다). 그러나 원자성 요구는 유지한다 — 금지 근거는 "조용하다" 가 아니라 **JSON note 의 명시 금지 + 어차피 전 sweep 이 RED** 라는 사실이다. "조용히 통과한다" 를 근거로 쓰지 마라.
+
+**twin-classifier lockstep (편측 편집 금지, hard)**: `PE_Core.v:1253-1260` `dec_is_mul_op` 와 `Cluster.v:709-723` `is_mul_op` 는 **같은 리터럴 집합**이어야 한다 (현행 양쪽 모두 `0x12/0x30/0x32/0x43/0x6B/0x70-0x79` — 실측 확인, 0x7A 부재). `test_cluster.py:2657` 이 두 집합을 RTL 텍스트에서 추출해 동등성을 assert 하므로 **편측 편집은 loud FAIL** 이다 (잘 작동하는 그물). 그러나 **양쪽 다 빠뜨리면 조용하다** — 그래서 여기 pin 한다.
+
+### 35.2 `cr_fp_dtype` 누락 = **조용한 qNaN** — 기전과 이를 잡는 테스트의 **선지정**
+
+**기전 (전부 실측 좌표)**:
+
+1. `cr_fp_dtype` 는 stage-1 의 **per-cycle default clear 목록에 없다** — `PE_Core.v:1959-1972` 전수 확인. writer 는 4곳뿐: rst (`:1892`, `4'd0`) / 0x73 (`:3207`) / 0x77 (`:3248`) / 0x78 (`:3303`). 이것은 실수가 아니라 **의도된 hold(CE) 구조**이며, 사유는 `:1974-1981` 에 D11 실측 (`cr_payload`/`cr_mem_addr` 에 default 를 두면 **+778 LUT**, 20,252 → 21,030) 으로 기록돼 있다.
+2. ∴ 0x7A arm 이 `cr_fp_dtype <= dec_eff_precision[3:0]` 를 빠뜨리면 **직전 dispatch 가 남긴 값을 그대로 상속**한다.
+3. `FP_StepSeq.v:1530-1531` 이 `OPC_FDOTCR` 에 대해 `dtype_in[3:1] == 3'b001` 만 통과시킨다 (f16 = `4'd2`, bf16 = `4'd3` — `FP_LEGAL_ROM` 이 0x7A 에 허용한 정확히 2행 `0xA24`/`0xA34` 와 일치). 상속값이 그 밖이면 `op_sel_in = OPS_BAD`.
+4. `OPS_BAD` → `spec_res` default (`FP_StepSeq.v:1481`) → **canonical qNaN 이 error/fault 없이 반환**된다.
+
+**최악의 성질**: 직전 dispatch 가 0x77 f16/bf16 이었으면 **우연히 맞는다.** 즉 이 결함은 **간헐 통과형**이고, 0x7A 를 단독으로만 돌리는 TB 는 **못 잡는다**.
+
+**템플릿 pin**: 복제 원본은 **0x77 (`PE_Core.v:3242-3253`) 또는 0x78 (`:3295-3304`)** 이다. **0x74 (`:3118-3131`) 를 템플릿으로 쓰지 마라** — 그 arm 에는 `cr_fp_dtype` 대입이 **아예 없다** (0x74 는 dtype 무관 op 이므로 정당하다; 틀린 것은 템플릿 선택이다).
+
+**선지정 테스트 (측정 전 공표 — C4 TB 가 반드시 포함한다)**:
+
+- **T1 stale-dtype 오염 벡터 3행** (통합 TB): ① **reset 직후 곧바로 0x7A** (`cr_fp_dtype` = `4'd0`) / ② **0x78 DEQUANT int4 또는 int8 dispatch 직후 0x7A** (`cr_fp_dtype` ← `4'h0`/`4'h1`) / ③ **0x77 CVT f16 직후 0x7A(bf16 모드)**. 세 행 전부 golden bit-exact 요구.
+- **T2 변이 사살**: 0x7A arm 의 `cr_fp_dtype` 대입 **1줄을 지운 변이**가 T1 에 **KILLED** 되어야 한다.
+- **검출력의 귀속 (반드시 기록)**: ③ 단독으로는 **사살되지 않는다** (우연히 맞는 경로). 사살 축은 **①②** 다. 이 사실을 여기 적어 두지 않으면 TB 가 ③ 만 넣고 초록이 된다 — §31.9 항 8 (값 미검사·자극 공간 미검사 은폐 방지) 이 겨냥한 바로 그 형태다.
+
+### 35.3 sticky 2종 **분리 노출** (normative) — `fd_spec` 은 `any_error_flag` 에 넣지 않는다
+
+**두 신호의 성격은 다르다 (실측)**:
+
+| 신호 | 선언 | 성격 | 발화 조건 | 현행 지위 |
+|---|---|---|---|---|
+| `fd_spec` | `FP_StepSeq.v:956` | **정상 데이터 이벤트** — §27.7a.1 (iii) special operand 수신 | 수납 16 cycle 동안 64 lane (A 32 + B 32) 중 하나라도 exp field all-ones (`:1751-1755`) | `:1779` 에서 **읽힌다** → 합성 생존 |
+| `fd_fault` | `FP_StepSeq.v:957` | **RTL 결함 (loud fault)** | 4곳: 배열 guard `fd_n >= FD_TOP` (`:1833`) / STEP T vacuous-RTO (`:1877`) / 용량 assert `fd_n > FD_CAP` (`:1929`) / freeze 위반 (`:1966`) | **읽는 곳이 0** → 오늘 **프루닝된다**: `sys_top_core_run.log:166` `[Synth 8-6014] Unused sequential element fd_fault_reg was removed` |
+
+**`fd_spec` 을 `any_error_flag` 에 폴딩하면 §27.7a.3 검사 (i) 이 성립 불가가 된다.** 원문 (`§27.7a.3`, 2번째 bullet):
+
+> "audit 프로그램 (SDK) 이 **동일 operand** 로 양 경로를 발사하고 (결과, sticky/status) 쌍을 회수해 검사한다: **(i) special-sticky 유무 불일치 → 결함**; (ii) 양쪽 special-free 인데 r_main != r_audit (bitwise) → 결함; special-set 이면 값 비교 금지"
+
+검사 (i) 은 special operand 를 **일부러 투입해서** 양쪽에 sticky 가 똑같이 서는지 보는 것이다. 그것이 `any_error_flag` 에 섞이면 (α) **정상적인 audit 수행 자체가** 매번 cluster 전역 error 를 올리고, (β) `Cluster.v:1745-1763` 은 순수 OR-reduce 라 **되돌릴 수 없이 뭉개진다** — "special 이 정상 관측됐다"(정상) 와 "RTL 이 깨졌다"(`fd_fault`) 를 구분할 수단이 사라진다.
+
+**pin (normative)**:
+
+1. **`fd_fault` 만** `any_error_flag` 에 합류시킨다 (`Cluster.v:1757` 의 `m_err = m_err | bank_tag_collision_error_r;` 옆). `fd_spec` 은 **폴딩 없는 전용 관측 포트**로만 낸다 (`any_output_collision` `Cluster.v:1774` 형).
+2. **stickiness 등급이 선례와 다르다 — 그대로 배선하면 계약이 깨진다.** `fd_spec`/`fd_fault` 는 **launch-cleared** (`FP_StepSeq.v:1762`/`:1763`) = per-op latch 인 반면, 선례 `bank_tag_collision_error_r` 는 **reset-clearable only** (`Cluster.v:1536`) 다. 그리고 **`FP_StepSeq` 에는 `rst` 포트가 없다** (11 포트, 헤더 `:174` "NO RESET ... this block is reset-free") → **유닛 안에서는 reset-clearable sticky 를 만들 수 없다.** ∴ 유닛은 per-op latch 를 내보내고, **§26.5 등급의 reset-clearable 승격은 `rst` 를 가진 상위 (`Cluster`) 에서** 한다. 이 문장이 빠지면 "sticky 라고 이름만 붙은 pulse" 가 되어 다음 launch 에 조용히 지워진다 — loud-fault-never-silent 위반의 전형.
+   - `fd_spec` 은 **per-op 이어야 한다** (§27.7a.3 이 (결과, sticky) 쌍을 **op 단위**로 회수하므로). 두 신호를 같은 등급으로 처리하면 둘 중 하나가 틀린다.
+3. **generate off-branch 의무**: `PE_Core.v:1679-1683` `g_v180c_fp_off` 에서 신규 출력도 `assign ... = 1'b0;` (`wres_vdot32` 관용구). 안 하면 L-PE 16개 + DIV-UNIT 이 undriven 출력을 갖는다.
+4. **Pod 노출 = `input_skid_overflow_error` 형** (`Pod.v:95` + `:132-136`). `bank_tag_collision_error` 형 (`Pod.v:128-131` 의 `lint_off UNUSEDSIGNAL` 흡수) 은 **부족하다** — `Pod.v:86-89` 가 그 실패형을 이미 성문화했다: "그 경로만 두면 '무언가 잘못됐다' 까지만 올라오고 **무엇이** 잘못됐는지는 Pod 경계에서 사라진다". Pod 포트 추가는 **회귀 pin 동반 의무** (`test_pod_input_skid_overflow_reaches_pod_boundary` 선례).
+5. **`ISA_Decoder.v:177` / `Top_Core` 방향 = 갈래 A (미노출).** `ISA_Decoder` 의 PE_Core 인스턴스에서 `.fd_unit_fault ()` **의도적 미접속 + 사유 주석** (`.in_ready ()` `ISA_Decoder.v:174` 관용구 복제). 근거는 §22.14b-6 이 `in_ready` 에 대해 확립한 그대로다 — 보류할 저장소도 소비자도 없는 계층에 포트만 올리면 §22.14b-2 가 문제 삼은 "관찰은 되는데 아무도 쓰지 않는 신호" 를 하나 더 만든다. **귀결 (선공표)**: `sys_top_core` 형상에서 `fd_fault` 는 **여전히 프루닝**되므로 **`Synth 8-6014` 는 15 를 유지한다** (§35.6). **15 는 실패 신호가 아니다** — 14 가 나오면 그것은 누군가 갈래 B 를 택했다는 뜻이고, 그때는 갈래 변경을 gate log 와 함께 기록하고 `synth/gate/Top_Core_gate_top.v` 의 wrapper I/O flop 회계 (`:32-48`, 현행 1,740) 도 같은 COMMIT 에서 옮긴다.
+6. **`fd_fault` 가 실리콘에 실재한다는 증거는 Cluster 축에서 얻는다** — 5 의 귀결로 S1-US 는 이 축을 재지 않는다. 증거 2종: (a) cocotb directed poke (4개 set site 각각에 대해, `fault 를 낸 상태` 까지 assert — amendment-12 의 loud fault probe 5종 형식), (b) §35.5 의 Cluster MEASUREMENT 합성 census 에 `fd_fault_reg` 가 **없을 것**.
+
+### 35.4 gate_top 래퍼 변경 판정 — **anchor 재측정은 불요**, 단 반증자를 함께 공표한다
+
+**이것이 본 절에서 가장 중요한 판단이다.** §35.3 대로 `fd_spec`/`fd_fault` 를 포트로 내면 `FP_StepSeq` 의 포트 목록이 **11 → 13** 으로 바뀌고, GATE V20-4 의 래퍼 `synth/lattice/fp_ops/FP_StepSeq_gate_top.v` 도 함께 바뀐다. §34.2 는 anchor 성립 근거를 "소스 목록에서 **다른 것은 `FP_StepSeq.v` 내용 하나뿐**" 으로 적었으므로, 이 변경이 anchor 비교 가능성을 깨는지 **판정할 의무**가 있다.
+
+**실측 (판정의 근거)** — `synth/reports/fp_ops/fp_stepseq_base_impl_util.rpt` 계층표:
+
+```
+| FP_StepSeq_gate_top     |  (top)     | Total LUTs 3277 | FF 844 | RAMB18 2 | DSP 4 |
+|   (FP_StepSeq_gate_top) |  (top)     |             0   |    147 |        0 |     0 |   <- 래퍼 자체
+|   u_core                | FP_StepSeq |          3277   |    697 |        2 |     4 |
+```
+
+래퍼 자체 = **LUT 0 / FF 147 / RAMB18 0 / DSP 0**. 래퍼는 `clk` 를 뺀 전 I/O 를 정확히 1회 flop 에 등록할 뿐이므로 (헤더 `:9-11` 의 "113 input bits + 34 output bits = 147" 과 정확히 일치), **비트당 FF 1개, LUT 0개**다.
+
+**∴ 포트 2개 (각 1 bit) 추가의 래퍼 몫**:
+
+| V20-4 축 | 성격 | 래퍼 delta | 판정 |
+|---|---|---:|---|
+| LUT | **binding** | **0** | anchor 비교 유지 |
+| DSP48 | hard (== 4) | **0** | 유지 |
+| RAMB18 | hard (== 2) | **0** | 유지 |
+| premap `$mul` | hard (== 4) | **0** | flop 추가는 `$mul` 을 만들지 않는다 (premap = yosys read+hierarchy+proc+opt_clean 단계) |
+| WHS | binding (≥ 0) | 0 (신규 경로 = reg → top port 직결) | 유지 |
+| FF | **추적만** | **+2** (147 → 149) | binding 아님 — §27.7a.5 가 "FF 는 추적만 (V9-4 관례)" 로 **이미 binding 에서 뺀 축** |
+
+**판정: anchor (§34.3) 재측정 불요.** binding 축 전건에서 래퍼 몫 delta 가 0 이고, 오염되는 유일한 축이 binding 이 아니다.
+
+**반증자 (falsifier — 측정 전 공표)**: C4 측정 리포트의 계층표 `(FP_StepSeq_gate_top)` 행이 **LUT 0 이 아니면** 위 논증이 깨진 것이다. 그때는 **anchor 를 재측정한다** — 13-포트 래퍼 + base `FP_StepSeq` 에 sticky 2 포트를 `1'b0` 로 tie 한 stub 을 만들고, 그 stub 자체를 §34.2 형식으로 기록한다. "래퍼가 0 LUT 일 것이다" 는 주장이 아니라 **재측정 트리거를 건 예측**이다.
+
+**부작용 (반드시 기록 — 안 적으면 다음 세션이 base 재현에서 죽는다)**: `fp_stepseq_base` tag 의 재현 레시피가 **1파일 → 2파일**이 된다.
+
+> **base 재현 = 현행 트리 + `FP_StepSeq.v` 를 `e22e182` 판으로 + `synth/lattice/fp_ops/FP_StepSeq_gate_top.v` 를 `6c84cc1` 판(11 포트)으로 교체.**
+
+C4 이후의 13-포트 래퍼로 base `FP_StepSeq` (포트 11개) 를 elaborate 하면 **PINMISSING 으로 죽는다.** §34.2 의 "다른 것은 한 파일뿐" 은 **anchor 측정 시점의 사실**로 보존하고, C4 이후의 재현 조건은 위 두 파일 pin 이 대체한다.
+
+**ECP5 `gate_check.py` 의 `wrapper_ff: 147 → 149` (`synth/lattice/fp_ops/gate_check.py:83`)**:
+
+- 이 상수는 **ECP5 쪽에만** 있다. xcu55c 의 binding 체커 `synth/scripts/fp_op_gate_check.py` 에는 `wrapper_ff` 축 자체가 **없다** (실측: `grep wrapper_ff` 무히트; `sys_top_core` 행의 binding 은 LUT sites / DSP48 / BRAM / premap `$mul` / CRIT / DRC / WHS 뿐).
+- **상수만 옮기는 것은 금지**다 — 그 행이 판정하는 아카이브 `synth/lattice/reports/fp_ops/fp_stepseq_synth.rpt` 는 **이미 stale** 이기 때문이다: 최종 변경 커밋 `c21092a` (2026-08-15) 인데 3a-C3 는 `185ec42` (2026-08-17) 다. 즉 현행 `gate_summary.txt` 의 `GATE C3 LUT4 4,666 (limit 4,909) PASS` 는 **OPS_FDOTCR 이 없는 형상**의 수치다. stale 아카이브에 새 상수를 씌우면 §22.14b-13 ① 이 금지한 **"증거만 맞추기"** 와 같은 클래스가 된다.
+- ∴ **상수 이동은 ECP5 전 flow 재실행과 같은 COMMIT 에서만** 한다.
+- **선공표 (측정 전)**: 재실행하면 `LUT4 4,666` 이 `limit 4,909` 를 **넘길 가능성이 실재한다** (C3 의 745 줄이 이 축에서 한 번도 측정된 적 없다). 그 경우 **기준을 옮기지 않는다.** 처분은 두 갈래이고 **어느 쪽도 지금 선택하지 않는다**: (a) cut ladder (§35.8), (b) 이 행이 `GATES`(exit status) 가 아니라 `MEASUREMENTS` 에 있어야 하는가 라는 **정책 정합 판정** — V20-2/3 이래 ECP5 는 MEASUREMENT 정책이므로 정합성 논거가 실재하나, **측정 후에 이 판단을 여는 것은 기준 완화로 보인다.** 따라서 사실만 지금 적고, 판단은 사용자 결정으로 올린다. (`Makefile` 은 `gate_check.py` 를 호출하지 않는다 — 실측 확인. 운영자 실행 스크립트다.)
+
+### 35.5 GATE V20-4 — 판정 기준 **재확인 (인용, 이동 없음)** + 8축 예상 (측정 **전** 공표)
+
+**기준은 §27.7a.5 (선공표, locked) 와 §34.3 (anchor) 이 이미 확정했다. 본 절은 인용한다.**
+
+- anchor (§34.3, tag `fp_stepseq_base`): **LUT cells 3,809 / FF 844 / DSP48 4 / RAMB18 2 / premap `$mul` 4 / WNS +3.795 ns / Fmax 161.16 MHz / WHS +0.044 ns / ERROR 0 / CRITICAL 0**
+- **LUT 상한 = 3,809 + 2,200 = 6,009** (§34.3 문언 그대로)
+- premap `$mul` delta **정확히 0** → 실측 **4**. §34.4 가 C3 몫에 대해 이미 충족을 실측했다 — **C4 는 깨지 않기만 하면 된다**
+- DSP48 delta 0 → **4** (hard) · RAMB18 delta 0 → **2** (hard)
+- FF 추적만 · Fmax/WNS 기록 축 · WHS ≥ 0 · **cycle 실측 ≤ 10,000 (hard, §27.7a.2)**
+- 실행: `make synth-fp-op FP_OP=fp_stepseq PART=xcu55c-fsvh2892-2L-e`
+
+#### 35.5.1 정정 — **LUT 축의 단위가 두 개다** (본 세션 신규 발견, 강화 방향)
+
+`synth/scripts/synth_fp_op.tcl:240-253` 이 명시한다: `lut_cells` 는 **raw LUT1..LUT6 셀 수**이고, 계층 리포트의 "Total LUTs" 는 **LUT5 두 개가 LUT6 site 하나로 접힌 뒤의 site 수**로 더 작다. 그리고 **binding 체커 `fp_op_gate_check.py` 는 `max_lut_sites` 를 `top['total_luts']` (= site 수) 와 비교한다** (`:468`, `:620`) — `lut_cells` 는 괄호 안 정보로만 인쇄된다.
+
+anchor 의 두 값: **LUT cells 3,809 / LUT sites 3,277.**
+
+§34.3 은 ceiling 을 **cells 축**에서 6,009 로 확정했는데, 체커에 `fp_stepseq` 행을 `max_lut_sites: 6009` 로 등재하면 **sites 를 cells 기준 상한과 비교**하게 되어 gate 가 선공표보다 **~14% 느슨해진다.** 이것은 조용한 완화다.
+
+**정정 (강화 — §27.7a.5 의 "gate 수치는 하향 개정만 가능" 에 부합)**: §27.7a.5 원문은 "LUT delta ≤ 2,200" 이며 **단위를 명시하지 않았다.** 따라서 **두 축 모두에 같은 delta 를 건다**:
+
+| LUT 축 | anchor | 상한 | 지위 |
+|---|---:|---:|---|
+| **LUT cells** | 3,809 | **≤ 6,009** | §34.3 원문 — **이동 없음** |
+| **LUT sites** | 3,277 | **≤ 5,477** (= 3,277 + 2,200) | **본 절 신설 (강화)** — 체커가 실제로 읽는 축 |
+
+둘 다 **측정 전에** 적혔다. 어느 축을 읽어도 선공표 delta 2,200 이 지켜진다.
+
+#### 35.5.2 8축 예상표 (측정 **전** 공표 — 방향과 근거를 적고, 크기는 예상하지 않는다)
+
+| # | 축 | anchor | 상한/성격 | **예상** | 근거 | 실측 |
+|---|---|---:|---|---|---|---|
+| 1 | **LUT** | cells 3,809 / sites 3,277 | ≤ 6,009 / ≤ 5,477 (binding) | **증가 — 크기 예상 안 함** | 이 gate 가 재는 delta 는 **사실상 전부 3a-C3 몫**이다 (`FP_StepSeq.v` 1,268 → 2,013 줄). C4 자신의 유닛 몫은 sticky 2 포트 + `fd_fault` 가 **프루닝에서 되살아나며 딸려오는 fan-in** 뿐 | **cells 5,137 (delta +1,328) / sites 4,572 (delta +1,295) → 두 축 모두 PASS.** 예상(증가) 적중, 크기는 애초에 예상하지 않았다 |
+| 2 | **FF** | 844 (래퍼 147 + 유닛 697) | 추적만 | **증가: 래퍼 +2 (147→149) + 유닛 최소 +1** | `fd_fault_reg` 는 오늘 `[Synth 8-6014]` 로 제거된다 — 포트화하면 실재하게 된다. 귀속을 **반드시 분리 기록**한다 (§35.5.4) | **1,452 (delta +608).** 래퍼 예상 **147→149 정확 적중**. ⚠️ **유닛 몫 예상은 빗나갔다** — "최소 +1" 로 적었으나 실측 **406→950 (+544)**. 예상을 수정하지 않고 이 사실만 남긴다. 원인은 C4 가 아니라 **anchor 가 pre-C3** 이라 C3 의 `fd_asr`/`fd_bsr` 1,024b 캡처 + EFT 누산이 전부 이 delta 에 실린 것 (LUT 행에는 그 단서를 적었는데 FF 행에는 안 적은 것이 예상의 결함) |
+| 3 | **DSP48** | 4 | **delta 0 (hard)** | **4** | 산술 원소 추가 0. sticky 는 1-bit 논리 | **4 (delta 0) → PASS.** 예상 적중 |
+| 4 | **premap `$mul`** | 4 | **delta 0 (hard)** | **4** | §34.4 가 C3 몫에 대해 이미 실측 충족. C4 의 유닛 편집은 포트 2개뿐 | **4 (delta 0) → PASS.** 예상 적중. provenance = sources+top OK (3 소스 sha256 일치) |
+| 5 | **RAMB18** | 2 | **delta 0 (hard)** | **2** | 메모리 원소 추가 0 | **2 (delta 0) → PASS.** 예상 적중. 단 LUTRAM 이 0→132 로 **신설**됐다 (gate 축 아님, 기록) |
+| 6 | **WHS** | +0.044 ns | **≥ 0 (binding)** | **중립 예상 — 크기 예상 안 함** | 신규 경로는 유닛 reg → 래퍼 out flop → top port 직결로 논리 단수가 거의 0 이다. 그러나 hold 는 **재배치 노이즈만으로 움직인다**. 주파수를 낮춰도 살아나지 않는 축이므로 **판정은 재측정으로만** | **+0.023 ns (delta −0.021) → PASS (≥ 0).** 예상(중립) 대비 **얇아지는 방향**으로 움직였다 — 크기를 예상하지 않은 것이 옳았다 |
+| 7 | **cycle** | unit GLOBAL worst **1,167** (amendment-12) | **≤ 10,000 (hard)** | **1,167 유지 예상** (ingress 형 무변경) | 8.6× 여유. **측정 정의는 §35.5.3 에서 고정** | **unit 축 1,167 유지 (통합 TB phase 실측, RTL 무변경) → PASS.** 예상 적중. MEASUREMENT 통합축 worst 1,176 |
+| 8 | **Fmax / WNS** | 161.16 MHz / +3.795 ns | **기록 축 (binding 아님)** | **방향 예상 안 함** | V20-2/3 정책 승계. 이 유닛에 Fmax 계약이 선언된 적 없다 | **129.52 MHz / WNS +2.279 (delta −31.64 MHz / −1.516 ns) → RECORDED.** 방향을 예상하지 않았으므로 적중/빗나감 판정 없음. 100 MHz 는 상회 |
+
+**예상이 빗나가면 그 사실을 예상 옆에 남긴다** — "실측" 칸을 지우지 말고 채운다. 예상과 실측이 다르면 **예상을 사후 수정하지 마라** (V9-4 형식의 요점).
+
+#### 35.5.3 cycle 축의 **측정 정의 고정** (기준 이동이 아니라 정의 명시)
+
+§27.7a.2 의 ≤ 10,000 은 **sequencer 축**에서 쓰였다. C4 이후에는 관측 지점이 둘이 되므로 어느 것이 binding 인지 지금 못박는다:
+
+- **binding = unit 축**: `FP_StepSeq` 경계의 `start` 상승 → `done` (`FP_StepSeq.v:2002-2003`). C3 실측 GLOBAL worst **1,167**.
+- **MEASUREMENT = 통합 축**: PE/Cluster 경계의 dispatch (`dec_valid`) → `output_valid`. dispatch 2 stage (§26.4) + 결과 반환이 더해지므로 unit 축보다 **크다**. 통합 TB 는 **어느 축을 재는지 로그에 명기**한다.
+
+**이것은 상한의 이동이 아니다** — 상한 수치 10,000 은 그대로이고, 무엇을 재는지를 적었을 뿐이다.
+
+#### 35.5.4 **귀속 (attribution) — 어느 gate 도 ingress 면적을 재지 않는다** (정직 명기)
+
+| 비용 | GATE V20-4 (`fp_stepseq`) | GATE S1-US (`sys_top_core`) | 실제로 드러나는 곳 |
+|---|---|---|---|
+| `FP_StepSeq` sticky 2 포트 + `fd_fault` 부활 | **잰다** | 잰다 (미미) | — |
+| **PE_Core ingress 드라이버** (`fd_ing_q` 1,024b + 16:1×64b mux + 0x7A arm) | **안 잰다** — `FP_OP_SRCS_fp_stepseq` 에 `PE_Core.v` 가 **없다** (`Makefile:181`) | **거의 안 잰다** — `Top_Core.v:150-151` 이 `input_payload_wide` 를 **`1024'h0` 로 하드 타이**한다 (`:129-130` "single-decoder demo, external NoC is not present") → `fd_ing_q`·mux·0x7A 성공 branch 가 **통째로 DCE** | **Cluster (MU 1개)** |
+| `opcode_supported` / `dec_is_mul_op` OR 항 + 0x7A case 항 | 안 잰다 | **잰다** | — |
+| `Cluster` sticky 승격 reg + `m_err` 항 + 포트 | 안 잰다 | 안 잰다 (`Cluster.v`/`Pod.v` 가 소스 목록에 없다 — §22.14b-5 실측) | Cluster / Pod |
+
+**∴ "S1-US LUT 이 거의 안 늘었다 = ingress 설계가 싸다" 는 틀린 추론이다.** 이 사실을 기록하지 않으면 나중에 Cluster gate 에서 갑자기 면적이 튀어나오고 귀속이 불가능해진다 (§22.14b-8 의 `Synth 8-6014` anchor 사건과 같은 실패형).
+
+**의무 (측정 못 하면 PASS 가 아니다)**: C4 는 **Cluster (또는 Pod) OOC 합성을 MEASUREMENT 로 1회 실측·기록**한다 — `make synth-pod` (Vivado) 또는 `make synth-pod-ecp5` (yosys). **ceiling 은 만들지 않는다** (선공표된 기준이 없는 축에 기준을 신설하는 것은 별건이며 사용자 결정 사항이다). 기록 항목: LUT / FF / `Synth 8-6014` census (`fd_fault_reg` 부재 확인 — §35.3 항 6) / 곱셈 원소. 이 측정이 없으면 **ingress 면적을 아무도 재지 않은 채 C4 가 PASS 로 닫힌다.**
+
+**비-실측 수치 인용 금지 (명시)**: 본 C4 준비 정찰이 산출한 "ingress ≈ 410-610 LUT / ≈ 1,030 FF" 는 **UltraScale+ LUT6 구조로부터의 산정치이지 합성 실측이 아니다.** 유일한 실측 앵커는 `PE_Core.v:1974-1981` 의 "64-bit mux 트리 = +778 LUT" (20,252 → 21,030) 하나다. **이 추정치를 gate 판정 근거로 인용하지 마라.**
+
+### 35.6 GATE S1-US **동반 재측정 의무** (놓치기 쉬운 축)
+
+C4 는 `FP_OP_SRCS_sys_top_core` 의 소스를 **직접 건드린다** (`PE_Core.v`, `FP_StepSeq.v`, `ISA_Decoder.v`). 게다가 `EHDecode.v` 는 파일 무편집이어도 **`include/generated/isa_opcode_wires.vh` 가 바뀌므로 합성 결과가 달라진다.**
+
+- ⛔ **`make premap-mul-evidence` 로 증거만 맞추는 것은 §22.14b-13 ① 이 명시 금지한 경로다** (premap 축만 갱신되고 Vivado 6축은 옛 측정 그대로 PASS).
+- ✅ **`make synth-sys-gate SYS_GATE=sys_top_core PART=xcu55c-fsvh2892-2L-e` 전 flow 재실행.**
+- **Vivado 실행 규율 (실사고 있었음 — §22.14b-11)**: detach + done-marker 로 돌리고 **마커 확인 후에만** 판정한다. 완주 마커 = `[Common 17-206] Exiting Vivado`. 실행 중 로그를 읽고 판정하면 **잘린 로그가 실제보다 깨끗해 보여 조용히 PASS** 한다.
+
+**현행 실측 (변하면 안 되는 것 / 예상)**:
+
+| 축 | 현행 | 지위 | 예상 | 근거 |
+|---|---:|---|---|---|
+| LUT sites | **15,769** (raw cells 18,770) | ceiling 24,799 | 소폭 증가 | `opcode_supported` OR 항 1 + `dec_is_mul_op` OR 항 1 + 0x7A case 항. ingress 는 DCE (§35.5.4) |
+| DSP48 | **39** | exact | **39** | 산술 원소 0 |
+| premap `$mul` | **381** | exact | **381** | 곱 연산자 0. **가변 인덱스를 `*64` 로 쓰면 여기서 깨진다** (§27.7a.2c 의 슬라이스 관용구 pin) |
+| RAMB18 | **2** | exact | **2** | 메모리 원소 0 |
+| WHS | **+0.019 ns** | ≥ 0 — **얇다 (리스크 축)** | 중립 예상, **크기 예상 안 함** | 0x7A 는 decode critical path 근처에 fan-in 을 1씩 늘린다. DCE 로 면적이 안 늘어도 **hold 는 재배치만으로 움직인다** |
+| CRIT | **8** (`Synth 8-295` ×8) | whitelist by count | **8** | timing loop 신설 0 |
+| ERROR / DRC err | **0 / 0** | binding | **0 / 0** | — |
+| **`Synth 8-6014`** | **15** | **기계적 지표** | **15 유지** | 갈래 A (§35.3 항 5). **14 가 나오면 갈래 B 가 선택된 것**이므로 그 사실과 `Top_Core_gate_top.v` 회계를 기록한다 |
+
+`fp_op_gate_check.py` 는 premap 증거의 **provenance sha256** 을 현행 소스와 대조하므로 (`:476-481`), 재합성 없이 돌리면 **STALE FAIL** 이 난다. 그 FAIL 은 "숫자가 틀렸다" 가 아니라 **"재지 않았다"** 이며 둘 다 gate FAIL 이다.
+
+### 35.7 frozen truth-table 델타 = **0** — 재캡처·`domain_version` bump **불요**
+
+§27.7a.4 가 이미 판정한 것을 **캡처 파일 직접 파싱으로 재확인**했다:
+
+```
+isa/truth_table_premigration.json : domain_version = 3 · points = 5,934
+opcode 범위 0x00 .. 0x6F · 0x70-0x7F 항목 0건 · 0x7A in domain: False
+```
+
+`test_isa_decoder.py:4019-4036` 의 `_TT_SUPPORTED_OPCODES` (max **0x6A**) / `_TT_UNSUPPORTED_PROBES` (max **0x6F**) 만 `_tt_domain()` 이 순회하므로 **0x70-0x7F 는 열거 자체가 안 된다.**
+
+**∴ 차등 재캡처 0회, `domain_version` 3 유지.** `asm/test_wavetensor_asm.py:2656 test_frozen_truth_table_untouched` 는 flip 에 **무영향**이며 약화 대상이 아니다. (§32.6 이 C-1 에 대해 내린 판정과 같은 형식.)
+
+### 35.8 cut ladder 발동 조건 (§27.7a.5 의 pre-declared ladder — 인용 + 발동 조건 명시)
+
+**ad-hoc gate 상향은 금지다** (§23.10.10(g)). 초과 시 사다리를 탄다.
+
+| rung | 무엇을 포기하는가 | **발동 조건 (측정 전 공표)** | 되찾는 예산 |
+|---|---|---|---|
+| **1 — f16 행 이연** | `FP_LEGAL_ROM` 의 **`0xA24` (dtype=2, f16) 행을 뺀다.** bf16 (`0xA34`) 만 착지. **f16 은 기록된 loosening 예약** | LUT 축이 상한을 넘고 (cells > 6,009 **또는** sites > 5,477), 그 초과분이 dtype 분기에 귀속될 때 | `FP_StepSeq.v:1749` `fd_dtbf` 분기와 `fd_sp0..3` (`:1751-1754`) 의 f16/bf16 2:1 mux 4개, `FDS_PRIME`/lane 창의 f16 정규화 경로 |
+| **2 — 2-dispatch fallback** | 단일 dispatch 를 포기한다: **A-wave + B-wave 2회 dispatch, capture 1,024 → 512 bit** (0x70 interlock 선례) | rung 1 이후에도 LUT 축이 넘거나, **PE_Core ingress 버퍼 1,024 FF 가 Cluster MEASUREMENT 에서 실측 문제로 판명**될 때 | `fd_ing_q` 1,024 → 512 bit, `fd_asr`/`fd_bsr` 중 하나만 상주 |
+
+**주의 (실측 사실)**: 현행 ISA·RTL 은 **f16 + bf16 동시 착지형**이다 — `FP_LEGAL_ROM` 이 `0xA24`/`0xA34` 두 행을 이미 set 하고 (`isa_opcode_wires.vh:110` 직접 디코드 확인), `FP_StepSeq.v:1530-1531` 이 정확히 그 2행만 받는다. ∴ **rung 1 은 "추가" 가 아니라 "빼는" 작업**이며, ISA JSON `legal_dtypes [2,3]` → `[3]` 편집 + 생성물 재생성 + asm/테스트 동반 갱신을 요구한다. 사다리를 탄다면 그 자체가 **§12a 규칙 3 순서를 다시 밟는 별도 COMMIT** 이다.
+
+**rung 3 이상은 없다** — 그 위는 §12a 상 사용자 결정 사항이며 구현 세션이 스스로 정하지 않는다.
+
+### 35.9 테스트 파급 (선지정 — C4 는 이 목록을 소진해야 한다)
+
+**현행 baseline: 6 MOD 합계 312 PASS / 0 FAIL / 0 SKIP** (HIU 22 / ISA_Decoder 201 / ALU_Extended 16 / Top_Core 8 / Cluster 57 / Pod 8) · `asm` suite 153 PASS · `make lint` 6/6 exit 0. **감소 금지.**
+
+**(A) `decode_reserved` 해제로 반드시 깨지는 것 — 6건 (전부 동반 갱신 대상)**
+
+| 좌표 | 단언 | 처분 |
+|---|---|---|
+| `asm/test_wavetensor_asm.py:1695` | `assertEqual(DECODE_RESERVED_OPS, frozenset({0x7A}))` | `frozenset()` 로 |
+| `asm/test_wavetensor_asm.py:2642` | `assertIn(0x7A, DECODE_RESERVED_OPS)` | `test_decode_reserved_until_wiring` (`:2635`) 전체 역전/폐기 |
+| `asm/test_wavetensor_asm.py:2651` | `assertNotIn("8'h7A", supported)` | `assertIn` 으로 역전 |
+| `test_isa_decoder.py:4447-4448` | `DECODE_RESERVED_OPS == frozenset({0x7A})` | 갱신 |
+| **`asm/test_wavetensor_asm.py:1626-1631`** | `test_json_schema_strictness` — mutation 이 `stub_v18=True` **한쪽만** 세운다 | 🔴 **함정.** `decode_reserved` 가 false 가 되면 `gen_isa_tables.py:132` 의 **AND** 조건이 성립하지 않아 `SchemaError` 가 안 나고 `assertRaises` 가 FAIL 한다. **그 5줄을 지우면 XOR 검증의 유일한 테스트가 소멸한다** (조용한 검사 상실). 올바른 수리 = mutation 이 `decode_reserved=True` **와** `stub_v18=True` 를 **둘 다** 세우도록 바꾼다 |
+| **`test_isa_decoder.py:4244`** | `window = 320 if op == 0x78 else (64 if op == 0x70 else 24)` | 🔴 0x7A 는 **24 cycle** 창인데 FDOT32_CR 은 unit 축 실측 **1,167 cycle** 이다. flip 후 `_fp_expected` (`:4265`) 가 mode `0x12`/`0x13` 에서 `output_valid=1` 을 요구하므로 `test_fp_mode_rom_sweep_tag_path` (`:4336`) / `_precision_eh_path` (`:4355`) 가 **시간초과 FAIL**. **창 확장만으로는 부족하다** — §35.9(C) 참조 |
+
+**(B) 뒤집어야 하는 decode-error pin — 2건**: `test_isa_decoder.py:4435-4464 test_fdot32_cr_decode_reserved_all_modes` (256 mode × 2 mux arm, 전부 `(1,0,0)` 요구) / `:4468-4499 test_fdot32_cr_16_frag_wave_still_decode_errors` (`:4491` `error_flag==1`). **둘 다 "합법 2행은 실행, 나머지 254 는 여전히 decode_error" 형으로 재작성**한다 — 음성 축 (254 mode 거부) 을 **잃지 마라**.
+
+**(C) 새로 필요한 검사 — 5건 (없으면 조용한 구멍이 남는다)**
+
+1. **T1/T2 stale-dtype 오염 + 변이 사살** — §35.2 (①② 가 사살 축).
+2. **ingress clobber 가드 실증** — back-to-back 0x7A dispatch 를 directed 로 밀어, 가드가 무엇을 막았는지 (또는 도달 불가였는지) 를 **측정으로** 기록. 가드를 지운 변이가 사살돼야 한다 (도달 불가면 그 사실을 적는다 — §27.7a.2c 의 미확인 항).
+3. **sweep 의 위장 PASS 봉쇄** — `test_isa_decoder.py:4244` 의 창을 늘리는 것만으로는 안 된다: `for mode in range(256)` 이 mode `0x12` 에서 1,167 cycle 프로그램을 띄우면 뒤따르는 238개 illegal-mode 점이 **busy-interlock 때문에** `error_flag` 를 받아 `(1,0,0)` 으로 **우연히** 기대값과 일치한다. 즉 sweep 이 초록이어도 그 238점은 ROM 법성이 아니라 interlock 을 검증한 것이다. **각 점 뒤 완주 drain 을 넣거나 0x7A 를 sweep 에서 분리해 전용 테스트로 옮긴다.** (`:4257-4261` 의 drain 루프도 24 cycle 뿐이다.)
+4. **twin-classifier 커버리지** — `test_cluster.py:2657 test_twin_classifier_lockstep_static` 의 **하드코딩 기대 집합** (`:2684-2697`) 에 0x7A 를 등재. 그리고 `test_twin_classifier_mu_bank_coverage` (`:3568`) 의 `checks` 딕셔너리는 **하드코딩**이고 `set(checks) ⊇ classified` 를 요구하는 단언이 **없다** (실측) — 0x7A 를 `is_mul_op` 에 넣어도 이 테스트는 **초록인 채 0x7A 를 한 번도 안 찔러본다.** `checks[0x7A]` 를 추가하면 `_saw_mu` 의 watcher 가 **400 cycle** 뿐이라 (`:3606-3624`) 1,167 cycle 프로그램을 놓쳐 "classified-but-unreachable" 로 FAIL 한다. **둘 다 손봐야 한다** (창 확장 + 드라이버 추가).
+5. **sticky 2종 회귀 pin** — `fd_spec` 이 `any_error_flag` 에 **들어가지 않음**을 assert (음성 pin), `fd_fault` 는 **들어감**을 assert, Pod 경계 도달 pin (`test_pod_input_skid_overflow_reaches_pod_boundary` 형식), `fd_fault` 4개 set site 각각의 directed poke (**fault 를 낸 상태까지** assert — amendment-12 형식).
+
+**(D) 무변경 확정 (건드리지 마라)**: `asm:1696` · `asm:1712-1717` · `asm:2374-2530` (`TestFdot32CrIsa3aC2` 전부) · `asm:2656-2684` (frozen TT) · `test_isa_decoder.py:4375` (STUB 집합만 순회) · `:4406` (`_FP_UNASSIGNED=[0x7B,0x7F]`) · `:4503` (port-only shape 6종 거부 — `isa_ehshape_case_body.vh:652-656` 의 5플래그가 flip 후에도 남으므로 생존 **판정**이며 시뮬 미실행). `test_isa_decoder.py:4172 _FP_DECODE_RESERVED = [0x7A]` 는 의미상 낡지만 깨지진 않는다 — `_FP_ASSIGNED` 로 옮기는 것이 정직하다.
+
+**(E) `EHDecode.v:617` 의 지위 변화 (조용한 강화 아님 — 기록)**: 지금은 `!opcode_supported` 하나가 0x7A 의 모든 오류를 지배해서 `rtl_legality` 5플래그가 **사실상 검사되지 않는 상태**다 (`asm:2487-2492` 주석이 그 창을 지적한다). C4 이후 그 플래그가 **처음으로 실효**를 갖는다. 그물은 `asm:2484 test_rtl_legality_row_is_the_0x78_clone` 과 `test_isa_decoder.py:4503` 둘뿐이다 — **약화 금지.**
+
+### 35.10 균형 기록 — 본 개정에 **반대하는** 근거와 반박
+
+**반대 1 — "C4 는 gate 를 재는 단계인데, spec 이 설계 형태 (`fd_ing_q` 폭·가드·mux 관용구) 까지 못박는 것은 과도한 선점이다. RTL 세션이 더 나은 형을 찾을 여지를 없앤다."**
+
+반박: 세 가지 pin 만이 **실제로 형을 고정**하고 나머지는 계약이다. (i) `{idx, 6'b0} +: 64` 슬라이스 관용구 — 이것은 취향이 아니라 **gate hard binding (premap `$mul` delta 0 / S1-US exact 381) 의 보존 조건**이고, 대안 (`*64`) 은 gate 를 깬다. (ii) clobber 가드 — 없으면 실패형이 **error 도 fault 도 아닌 정상 형태의 오답**이라 loud-fault-never-silent 의 직접 위반이다. (iii) 버퍼가 MU-local 이어야 한다 — 이것은 §27.7a.1 원문의 요구다. 그 외 (`fd_ing_idx` 폭, 신호명, 이중 버퍼 채택 여부) 는 §27.7a.2c 가 **대안을 명시적으로 살려 둔** 채 권장형만 적었다. 오히려 이 pin 들을 적지 않으면 RTL 세션이 gate 를 깨는 형을 고른 뒤 **측정 후에** 되돌려야 한다 — 그것이 더 비싼 선점이다.
+
+**반대 2 — "`fd_spec`/`fd_fault` 포트 노출은 C4 의 필수 경로가 아니다. `FP_StepSeq` 포트를 11 로 동결해 두면 GATE V20-4 anchor 가 **완전히** 깨끗하게 비교되고, sticky 노출은 별도 COMMIT 으로 미룰 수 있다."**
+
+반박: 두 가지가 반박한다. (a) **§27.7a.4 가 sticky 포트 노출을 C4 에 배정**했고 `FP_StepSeq.v:1740-1744` 주석이 그 배정을 코드에 남겨 두었다. 미루면 C4 는 "결선 단계" 를 자칭하면서 결선을 안 한 것이 된다. (b) 더 결정적으로, **`fd_fault` 는 오늘 실리콘에 존재하지 않는다** — `[Synth 8-6014] fd_fault_reg was removed` 가 실측이다. 즉 §27.7a.2b amendment-11 이 신설한 loud fault 4종은 **합성 후 전부 사라진다.** "loud fault 를 넣었다" 와 "그 fault 가 실리콘에 있다" 사이의 간격을 C4 가 닫지 않으면, 그 간격은 **아무도 다시 열어보지 않는 종류**다 (§22.14b-8 이 이 1건을 C4 몫으로 귀속해 둔 이유). 그리고 anchor 비교 가능성은 §35.4 가 **실측으로** 유지된다고 판정했다 (래퍼 몫 = binding 축 전건 delta 0).
+
+**반대 3 (보조) — "LUT sites 축 5,477 신설은 사실상 gate 강화이고, 선공표를 '해석' 한 것이다."**
+
+반박: §27.7a.5 원문이 **단위를 명시하지 않았다**는 것이 사실이다. 그 상태에서 체커가 읽는 축 (sites) 에 cells 기준 상한을 씌우면 **선공표보다 느슨해진다** — 해석의 두 갈래 중 하나는 완화이고 다른 하나는 강화인데, §27.7a.5 는 "gate 수치는 **하향 개정만 가능**" 이라고 못박았다. 따라서 두 축 모두에 같은 delta 를 거는 것이 유일하게 문언과 정합한 독해다. 그리고 **측정 전에** 적혔다.
+
+### 35.11 §12a 기록
+
+- **본 절은 §12a 하의 정규 개발 행위다 — spec-before-code COMMIT 0.** §12a 규칙 3 의 순서 (spec → `isa/wt64v1_isa.json` → 생성물 재생성 → RTL/테스트) 를 그대로 따르며, **본 COMMIT 은 spec 1파일만 편집한다** (§27.7a.6 / §32.10 / §33.5 의 선례와 같은 범위 판정).
+- **§12a 규칙 5 준수**: §27.7a.1 / §27.7a.2 / §27.7a.2a / §27.7a.2b (amendment-9 포함) 원문은 **무수정 보존**한다. C4 의 ingress 결정은 **§27.7a.2c (amendment-13)** 로 **추가**되며, amendment-9 의 "C4 는 본 항에 재개정으로 기록" 의무는 번호 승계 + 전방 포인터로 이행한다. §34.2 의 "다른 것은 한 파일뿐" 은 **anchor 측정 시점의 사실**로 보존하고, C4 이후의 base 재현 조건은 §35.4 의 2파일 pin 이 대체한다.
+- **선공표 무변경**: GATE V20-4 의 수치 (LUT delta ≤ 2,200 / premap `$mul` delta 0 / DSP·BRAM delta 0 / cycle ≤ 10,000 / WHS ≥ 0) 와 §34.3 의 anchor·상한 6,009 은 **변경하지 않는다.** §35.5.1 의 LUT sites 축 5,477 은 **같은 delta 를 두 번째 단위에 거는 강화**이며 완화가 아니다 (§27.7a.5 의 "하향 개정만 가능" 에 부합, 측정 전 공표).
+- **truth-table**: 델타 0, 재캡처·`domain_version` bump 불요 (§35.7, 캡처 파일 직접 파싱으로 확인). §12a 규칙 2 (의도적·리뷰된 recapture) 발동 없음.
+- **격리 범위**: 본 COMMIT 은 `isa/wt64v1_isa.json` · 생성물 6종 · RTL · 테스트 · golden 3종 (`scripts/golden_{fp32,lattice,fdotcr}.py`) 을 **전부 무접촉**으로 둔다. 공유 datapath 3파일 (`FP_AddWide.v` / `FP_Mul36.v` / `include/fp_narrow_f32.vh`) 은 §27.7a.2 / §27.7a.4 의무대로 **byte-untouched** 이며, 그 의무는 C4 RTL COMMIT 에서도 유지된다 (diff 로 증명).
+- **이월 (C4 RTL COMMIT 이 닫아야 할 것)**:
+  1. **Cluster/Pod 면적 측정** — §35.5.4 의 MEASUREMENT 의무. 이것이 없으면 ingress 면적은 어느 gate 에도 잡히지 않는다.
+  2. **ECP5 `GATE C3 fp_stepseq` 아카이브의 stale 상태** — `fp_stepseq_synth.rpt` (`c21092a`, 2026-08-15) < C3 (`185ec42`, 2026-08-17). 재실행 + (필요 시) `wrapper_ff 147→149` 를 **같은 COMMIT** 에서. 상한 4,909 초과 시의 처분은 §35.4 대로 **사용자 결정**으로 올린다.
+  3. **`synth/lattice/fp_ops/gate_check.py:175` 의 `sys_top_core wrapper_ff = 1601`** 은 이미 틀린 값 (실제 1,740) 으로 §28.10 이월 목록에 있다. C4 가 갈래 B 를 택하지 않는 한 이 값은 움직이지 않지만, **이월 상태 자체는 유지**된다.
+  4. **`PE_Core.v:95/98` 의 `lint_off UNUSEDSIGNAL`** (`dec_input_payload_wide`/`_valid`) — 0x78/0x79/einsum 이 이미 읽고 있어 오늘도 unused 가 아닌데 왜 남아 있는지 **미확인** (pre-existing). C4 가 소비자를 하나 더 늘리므로 이때 걷어낼지 판단한다.
+  5. **`gen_isa_tables.py:7` 독스트링의 "five artifacts"** — `ARTIFACTS` (`:58-65`) 는 **6개**다 (`subops` 가 나중에 추가됨). 기계 검사 대상은 아니나 생성물 COMMIT 에서 함께 정정한다.
+- **미확인 (단정 금지 — 그대로 이월한다)**: (i) `dec_valid` 가 연속 cycle 에 뜰 수 있는지 (§27.7a.2c 의 미확인 항); (ii) `test_isa_decoder.py:4503` 의 C4 후 PASS 여부는 **코드 독해 판정**이며 시뮬 미실행; (iii) flip 후 312 테스트 중 정확히 몇 개가 FAIL 하는지는 **미측정** — PE_Core arm 없이 전체 cocotb 를 돌리는 것은 무의미하므로 **arm 착지 후 6 MOD 전량 재실행이 유일한 판정 근거**다; (iv) `Top_Core`/`Pod` 테스트가 `test_cluster.py` 처럼 RTL 텍스트에서 opcode 집합을 추출하는 간접 테스트를 더 갖고 있는지는 전수 조사하지 않았다 (`is_mul_op` 계열 3건만 확인).
+
+---
+
+## 36. GATE V20-4 실측 판정 + GATE S1-US 동반 재측정 (2026-08-18, 3a-C4 · normative)
+
+§35.5 / §35.6 이 **측정 전에** 공표한 기준으로 3a-C4 트리를 실제로 잰 기록이다. 기준 수치는 하나도 움직이지 않았다 — 본 절은 **측정과 귀속만** 적는다.
+
+**실행 규율 준수 기록 (§22.14b-11)**: 두 gate 모두 detach + done-marker (`/tmp/v204.done`, `/tmp/s1us.done`) 로 돌렸고, **마커와 완주 마커 `[Common 17-206] Exiting Vivado` 를 둘 다 확인한 뒤에만** 리포트를 읽었다. 실행 중 로그는 판정에 쓰지 않았다.
+
+### 36.1 GATE V20-4 실측 — **PASS (binding 6축 전건)**
+
+tag `fp_stepseq` · top `FP_StepSeq_gate_top` · xcu55c-fsvh2892-2L-e · OOC synth+opt+place+phys_opt+route · 10.0 ns · run marker 1 / EXIT=0.
+
+| 축 | anchor (§34.3) | **C4 실측** | delta | 기준 | 판정 |
+|---|---:|---:|---:|---|---|
+| **LUT cells** | 3,809 | **5,137** | **+1,328** | ≤ 6,009 (delta ≤ 2,200) | **PASS** (여유 872) |
+| **LUT sites** | 3,277 | **4,572** | **+1,295** | ≤ 5,477 (delta ≤ 2,200) | **PASS** (여유 905) |
+| **DSP48** | 4 | **4** | **0** | 정확히 4 (hard) | **PASS** |
+| **premap `$mul`** | 4 | **4** | **0** | 정확히 4 (hard) | **PASS** (provenance sources+top OK) |
+| **RAMB18** | 2 | **2** | **0** | 정확히 2 (hard) | **PASS** |
+| **WHS** | +0.044 ns | **+0.023 ns** | **−0.021** | ≥ 0 (binding) | **PASS** |
+| **ERROR / CRITICAL** | 0 / 0 | **0 / 0** | 0 | 0 / 0 (binding) | **PASS** |
+| **DRC** | 0 err / 3 warn rule | **0 err / 3 warn rule** (DPIP-2 ×10 · DPOP-4 ×4 · RTSTAT-10 ×1) | 동일 | 0 err | **PASS** |
+| **cycle** | unit worst 1,167 | **1,167** (unit, 통합 TB phase 실측) | 0 | ≤ 10,000 (hard) | **PASS** (8.6×) |
+| FF | 844 | **1,452** | +608 | 추적만 | 기록 |
+| WNS / Fmax | +3.795 / 161.16 MHz | **+2.279 / 129.52 MHz** | −1.516 / −31.64 | 기록 축 | 기록 |
+| CARRY | 104 | **127** | +23 | 기록 | 기록 |
+| SRL | 0 | **cell 128 / site 64** | +128 cell | 기록 | **신설 — 아래 36.1.2** |
+| LUTRAM | 0 | **132** | +132 | 축 없음 | **신설 — 아래 36.1.2** |
+
+**∴ cut ladder 미발동.** LUT 두 축 모두 상한 아래이며, 초과분이 없으므로 rung 1 (f16 행 이연) · rung 2 (2-dispatch) 어느 쪽도 발동 조건을 충족하지 않는다 (§35.8).
+
+#### 36.1.1 귀속 — **post-synth 계층표로** (§22.14b-9 가 금지한 post-route 귀속을 쓰지 않았다)
+
+post-route 계층표는 RTL 무변경 모듈이 ±96 움직이는 것이 실측된 축이라 귀속에 못 쓴다. 아래는 **양쪽 run 의 post-synth `*_synth_util.rpt`** 대조다.
+
+| 계층 행 | base LUT | C4 LUT | ΔLUT | base FF | C4 FF | ΔFF |
+|---|---:|---:|---:|---:|---:|---:|
+| `(FP_StepSeq_gate_top)` 래퍼 자체 | 0 | **0** | **0** | 147 | **149** | **+2** |
+| `(u_core)` `FP_StepSeq` 자체 | 2,574 | **3,852** | **+1,278** | 406 | **950** | **+544** |
+| `u_add` `FP_AddWide` | 706 | **800** | **+94** | 219 | **281** | **+62** |
+| `u_mul` `FP_Mul36` | 37 | **37** | **0** | 72 | **72** | **0** |
+| **합계** | 3,317 | **4,689** | **+1,372** | 844 | **1,452** | **+608** |
+
+**(a) §35.4 의 반증자가 발사되지 않았다 — 논증이 살아남았다.** §35.4 는 "anchor 재측정 불요" 를 주장하면서 **반증 조건을 함께 공표**했다: *"C4 리포트의 `(FP_StepSeq_gate_top)` 행이 LUT 0 이 아니면 논증이 깨진 것"*. 실측 **LUT 0 / FF 147→149** — 예상한 그 값 그대로다. 래퍼 11→13 포트 변경은 binding 축에 **아무것도** 싣지 않았고, FF 만 +2 이며 FF 는 binding 이 아니다. **∴ anchor 재측정 불요 판정은 실측으로 확인됐다.**
+
+**(b) `FP_AddWide` 가 +94 LUT / +62 FF 늘었는데 그 파일은 byte-untouched 다 — 이것은 소스 변경이 아니라 프루닝 부활이다.** 두 run 의 소스 sha256 대조로 확정: `FP_AddWide.v` = `61bc7231…`, `FP_Mul36.v` = `e9af9ef2…` 로 **양쪽 run 이 같은 파일**이다 (§34.2 갈래 B 는 `FP_StepSeq.v` 만 교체한다). base 에서는 OPS_FDOTCR 이 없어 공유 가산기의 일부 입력 조합이 상수 전파로 프루닝됐고, C4 트리에서는 step 프로그램이 그 조합을 실제로 구동하므로 되살아난다. **"공유 datapath 3파일 byte-untouched" 의무 (§27.7a.2/§27.7a.4) 는 지켜졌으며 — `git diff HEAD -- FP_AddWide.v FP_Mul36.v include/fp_narrow_f32.vh` 무출력으로 확인 — 면적이 는 것은 그 의무의 위반이 아니다.** 이 구분을 적어 두지 않으면 다음 세션이 "손대지 않은 파일이 커졌다" 를 결함으로 오진한다.
+
+**(c) delta 의 대부분은 C4 가 아니라 3a-C3 몫이며, 이 gate 는 둘을 분리하지 못한다 (설계상).** anchor 는 §27.7a.5 의 정의 그대로 **pre-C3 (OPS_FDOTCR 미포함)** 이다. 따라서 `+1,278 LUT / +544 FF` 는 C3 의 step 프로그램 (`fd_asr`/`fd_bsr` 1,024b 캡처 · EFT 누산 · lane 창) 과 C4 의 sticky 2 포트를 **합친** 값이고, 이 gate 로는 쪼갤 수 없다 — pre-C4/post-C3 시점의 Vivado run 이 존재하지 않기 때문이다. **분리 측정은 하지 않았고, 추정치로 대신하지도 않았다.** C4 유닛 몫에 대해 실측으로 말할 수 있는 것은 래퍼 행 (LUT 0 / FF +2) 뿐이다.
+
+#### 36.1.2 신규 원소 2종 (anchor 에 없던 것) — 기록
+
+| 원소 | anchor | C4 | 판정 |
+|---|---:|---:|---|
+| **SRL** | 0 | **cell 128 / 계층표 열 128(post-synth) → 64(post-route)** | gate 축 아님 (기록). **두 숫자는 시점이 아니라 단위가 다르다** — `impl_summary.json` 의 `srl` 은 `count_ref "SRL*"` 를 **route 후** 돌린 **cell** 수 128 이고 (run log 의 Static Shift Register Report 가 `SRL16E 128` 로 독립 확인), 계층표 SRLs 열은 place 후 packing 이 반영된 **site** 수 64 다. LUT 축의 cells/sites 관계와 같은 형태다. *packing 기전(SRL16E 2개가 LUT6 site 1개를 공유) 은 두 숫자의 2:1 비에서 온 **추론**이며 배치 리포트로 확인하지 않았다* |
+| **LUTRAM** | 0 | **132** | gate 축 아님 (기록). `[Synth 8-6904]` 가 `FP_StepSeq:/fd_xp_reg` (depth 35 × width 37) 를 LUTRAM 으로 추론했다 — "BRAM implementation would be inefficient". base run 에는 이 메시지가 **0 건**이다 (실측 대조). 내역 = `RAM64M8` ×15 + `RAM64M` ×3 = 120 + 12 = **132**. **RAMB18 은 2 로 불변**이므로 hard binding 은 무영향 |
+
+`SRL`/`LUTRAM` 은 §27.7a.5 가 축으로 선언한 적이 없다. **여기서 축을 신설하지 않는다** — 기준 신설은 §12a 상 사용자 결정 사항이다 (§35.5.4 가 Cluster ceiling 에 대해 내린 것과 같은 판정).
+
+#### 36.1.3 Fmax 하락 −31.64 MHz — **기록 축이며 FAIL 이 아니다** (정직 명기)
+
+161.16 → **129.52 MHz** (WNS +3.795 → +2.279). §27.7a.5 는 이 유닛의 Fmax/WNS 를 **기록 축**으로 선언했고 (Fmax 계약이 선언된 적 없다), §35.5.2 항 8 은 **방향조차 예상하지 않았다**. 따라서 적중/빗나감 판정 대상이 아니다.
+
+**하지 않은 것 (정직 명기)**: 이 −31.64 MHz 를 **어느 경로에 귀속시키지 않았다.** critical path 리포트를 열어 stage 를 특정하지 않았고, C3 몫과 C4 몫으로 나누지도 않았다. 10 ns 제약에 대해 +2.279 ns 여유가 남아 있어 **binding 축을 하나도 건드리지 않으므로** 본 세션 범위에서 조사하지 않는다 — 이것은 "문제 없음" 이 아니라 **"조사하지 않음"** 이다. §26.6 이 V9-4 에서 확립한 MULT-deviation 조사 방법을 이 축에 적용하려면 별건 세션이 필요하다.
+
+**WHS 도 같은 성격의 얇아짐이 있다**: +0.044 → **+0.023 ns**. 여전히 ≥ 0 이라 PASS 이지만 여유가 절반으로 줄었다. hold 는 주파수를 낮춰도 살아나지 않는 축이므로 (§35.5.2 항 6 이 미리 적었다) **다음 재측정에서 음수로 넘어가는지 반드시 확인해야 하는 리스크 축**으로 이월한다.
+
+#### 36.1.4 `fd_fault` 는 이제 실리콘에 존재한다 (§35.10 반박 2 의 실측 확인)
+
+`fp_stepseq_run.log` 의 `[Synth 8-6014]` census = **0 건**. 즉 이 유닛에서 제거된 레지스터가 없고, 래퍼 FF 147→**149** 가 sticky 2종의 출력 flop 이 실재함을 계층표로 보인다. §35.10 반박 2 가 지목한 간격 — *"loud fault 를 넣었다" 와 "그 fault 가 실리콘에 있다" 사이* — 은 **닫혔다**.
+
+**단, 이 측정은 `fd_fault` 의 존재만 말한다.** 4종 set site 각각이 실제로 발화 가능한지는 이 gate 가 아니라 cocotb directed poke 가 판정하며, 그것은 RTL phase 에서 이미 수행됐다 (§35.9(C) 항 5).
+
+### 36.2 GATE S1-US 동반 재측정 — **PASS (binding 7축 전건)**
+
+`make synth-sys-gate SYS_GATE=sys_top_core PART=xcu55c-fsvh2892-2L-e` 전 flow 재실행 (§35.6 이 요구한 그대로). ⛔ `make premap-mul-evidence` 단독 경로는 **쓰지 않았다** (§22.14b-13 ①). run marker 1 / EXIT=0 / premap 증거 재생성 timestamp `2026-08-18T21:35:05`.
+
+| 축 | 직전 (HEAD `6c84cc1`) | **C4 실측** | delta | 기준 | 판정 |
+|---|---:|---:|---:|---|---|
+| **LUT sites** | 15,769 | **15,666** | **−103** | ≤ 24,799 | **PASS** |
+| **DSP48** | 39 | **39** | **0** | 정확히 39 | **PASS** |
+| **premap `$mul`** | 381 | **381** | **0** | 정확히 381 | **PASS** (provenance 8 소스 sources+top OK) |
+| **RAMB18** | 2 | **2** | **0** | 정확히 2 | **PASS** |
+| **WHS** | +0.019 ns | **+0.019 ns** | **0.000** | ≥ 0 (얇음) | **PASS** |
+| **CRIT** | 8 (`Synth 8-295` ×8) | **8** (`Synth 8-295` ×8) | 0 | whitelist by count | **PASS** |
+| **ERROR / DRC err** | 0 / 0 | **0 / 0** | 0 | 0 / 0 | **PASS** |
+| LUT cells | 18,770 | **18,636** | −134 | 축 없음 | 기록 |
+| FF | 10,076 | **9,817** | −259 | 추적만 | 기록 — **아래 36.2.2 가 이 숫자를 부인한다** |
+| WNS / Fmax | +2.207 / 128.32 MHz | **+1.233 / 114.06 MHz** | −0.974 / −14.26 | 기록 축 | 기록 |
+| CARRY | 777 | **762** | −15 | 기록 | 기록 |
+| SRL | 128 | **128** | 0 | 기록 | 기록 |
+| DRC warn | — | DPIP-2 ×86 · DPOP-3 ×26 · DPOP-4 ×33 · DPOR-2 ×51 · **LUTLP-2 ×8** · RTSTAT-10 ×1 | — | LUTLP-1 은 0 이어야 함 | **PASS** (LUTLP-1 0 건 = `hiu_trng_ro.xdc` 가 작동 중) |
+| **`Synth 8-6014`** | **15** | **14** | **−1** | 예상 15 | **예상 빗나감 — 아래 36.2.1** |
+
+**WHS 는 얇은 채로 정확히 유지됐다 (+0.019 → +0.019).** §35.6 이 "리스크 축" 으로 지목한 그 축이며, 음수로 넘어가지 않았다. 다만 여유가 늘지도 않았으므로 **리스크 축 지위는 그대로 이월**한다.
+
+#### 36.2.1 `Synth 8-6014` 15 → 14 — **예상이 빗나갔고, 붙여 둔 해석 규칙도 틀렸다** (둘 다 기록)
+
+§35.6 표는 두 가지를 적었다: (i) 예상 **"15 유지"**, (ii) 해석 규칙 **"14 가 나오면 갈래 B 가 선택된 것"**. 실측은 **14** 이고, **갈래 B 는 선택되지 않았다** (§35.3 항 5 대로 갈래 A — `ISA_Decoder.v:238-239` 의 의도적 미접속). 즉 **예상도 규칙도 틀렸다.**
+
+원인은 목록을 diff 해서 **이름으로** 특정했다. 사라진 1 건은 정확히 이것 하나다:
+
+```
+- WARNING: [Synth 8-6014] Unused sequential element fd_fault_reg was removed.  [FP_StepSeq.v:1763]
+```
+
+남은 14 건은 전부 `HIU.v:638` 의 `initial_state_reg[2..15]` 로 **C4 와 무관한 기존 항목**이다.
+
+**∴ 15 → 14 는 갈래 B 의 신호가 아니라 C4 가 하려던 일이 성공했다는 신호다.** `fd_fault_reg` 는 §35.10 반박 2 가 "오늘 실리콘에 존재하지 않는다" 고 실측 인용한 바로 그 레지스터이고, C4 가 포트로 빼면서 **제거 대상에서 벗어났다.** §36.1.4 의 unit 축 관측(8-6014 0 건 + 래퍼 FF +2)과 **독립적으로 같은 결론**에 도달한다.
+
+**규칙 정정 (측정 후 정정이므로 명시)**: `Synth 8-6014` 는 gate 판정 수치가 아니라 **기계적 지표**이며 `fp_op_gate_check.GATES` 의 축이 아니다. 따라서 여기서 고치는 것은 **gate 기준이 아니라 해석 규칙**이다. 앞으로의 규칙 = *"이 census 가 움직이면 어느 이름이 들어오고 나갔는지 diff 로 특정한 뒤에 해석한다"* — 개수만 보고 갈래를 역추론하는 것은 이번에 **틀린 것으로 실증됐다.**
+
+#### 36.2.2 LUT 방향 예상 빗나감 + **FF −259 는 설계 변화가 아니다** (post-route 귀속 금지의 실증)
+
+§35.6 은 LUT 을 **"소폭 증가"** 로 예상했다 (`opcode_supported` OR 항 1 + `dec_is_mul_op` OR 항 1 + 0x7A case 항). 실측은 **감소** (sites −103 post-route / **−39 post-synth**) — **방향이 틀렸다.** 예상을 사후 수정하지 않고 이 사실만 남긴다.
+
+**귀속은 post-SYNTH 계층표로 한다** (§22.14b-9 — post-route 는 RTL 무변경 모듈이 ±96 움직이는 축이라 귀속에 쓰지 않는다):
+
+| post-synth 행 | 직전 LUT | C4 LUT | ΔLUT | 직전 FF | C4 FF | ΔFF |
+|---|---:|---:|---:|---:|---:|---:|
+| `Top_Core_gate_top` 합계 | 17,079 | **17,040** | **−39** | 9,816 | **9,817** | **+1** |
+| `(Top_Core_gate_top)` 래퍼 | 0 | 0 | 0 | 1,701 | 1,701 | 0 |
+| `u_hiu` `HIU` | 3,430 | 3,430 | **0** | 3,590 | 3,590 | **0** |
+| `u_decoder` `ISA_Decoder` | 13,616 | 13,577 | −39 | 4,525 | 4,526 | +1 |
+| `u_ehdec` `EHDecode` | 1,111 | **1,080** | **−31** | 1,388 | 1,387 | −1 |
+| `u_core` `PE_Core` | 12,505 | 12,497 | −8 | 3,137 | 3,139 | +2 |
+| `(u_core)` `PE_Core` 자체 | 7,819 | 7,814 | **−5** | 1,837 | **1,837** | **0** |
+| `g_v180c_fp.u_fp_stepseq` `FP_StepSeq` | 4,686 | 4,683 | −3 | 1,300 | **1,302** | **+2** |
+| `u_add` `FP_AddWide` | 799 | 799 | 0 | 281 | 281 | 0 |
+| `u_mul` `FP_Mul36` | 37 | 37 | 0 | 72 | 72 | 0 |
+
+**(a) FF 의 진짜 delta 는 −259 가 아니라 +1 이다.** 네 숫자를 나란히 놓으면 보인다 — **직전 run**: post-synth 9,816 → post-route **10,076** (`phys_opt` 가 **+260** 복제). **이번 run**: post-synth 9,817 → post-route **9,817** (복제 **0**). 그 260 은 전부 `EHDecode` 에 있었다 (직전 post-route 1,648 vs post-synth 1,388). 즉 **`phys_opt` 의 레지스터 복제 결정이 두 run 사이에 달라진 것**이지 설계에서 FF 가 사라진 것이 아니다. **§22.14b-9 가 "post-route 로 귀속하지 마라" 고 한 이유가 이번에 −259 라는 큰 숫자로 재현됐다** — 개수만 보고 판정했으면 "C4 가 EHDecode 레지스터 260 개를 지웠다" 는 **완전한 오진**을 기록할 뻔했다.
+
+**(b) `PE_Core` ingress 드라이버가 통째로 DCE 됐다는 §35.5.4 의 예고가 실측으로 확인됐다.** `PE_Core` 자체 행의 FF 가 **1,837 → 1,837 (정확히 0)** 이다. `fd_ing_q` 1,024 bit + `fd_ing_idx` + `fd_ing_run` + `cr_fd_launch` 가 하나도 남지 않았다 — `Top_Core.v:150-151` 의 `input_payload_wide = 1024'h0` 하드 타이 때문이다. **∴ ingress 면적은 이 gate 가 재지 않았다.** §35.5.4 의 Cluster/Pod MEASUREMENT 의무는 **여전히 이월 상태**이며 (본 세션 미수행), 그것 없이는 ingress 면적을 어느 gate 도 재지 않는다.
+
+**(c) `FP_StepSeq` 의 FF +2 중 1 개만 이름으로 특정했다 (정직 명기).** `Synth 8-6014` diff 가 `fd_fault_reg` 1 개를 이름으로 확정한다. 나머지 1 개가 무엇인지는 **조사하지 않았다** — 두 번째 sticky (`fd_spec`) 는 직전 run 의 8-6014 목록에 없었으므로 이미 살아 있었고, 따라서 +2 의 두 번째 항은 `fd_spec` 의 부활로는 설명되지 않는다. **미확인으로 남긴다.** (`FP_StepSeq` unit gate 축에서는 같은 +2 가 래퍼 출력 flop 2 개로 설명되지만, sys_top_core 에는 그 래퍼가 없으므로 같은 설명을 옮겨 붙일 수 없다.)
+
+**(d) `EHDecode` −31 LUT 의 기전은 조사하지 않았다.** `isa_opcode_wires.vh` 가 바뀌어 (0x7A 가 `opcode_supported` 에 합류) 합성 결과가 달라진 것은 §35.1 이 예고한 대로지만, **왜 늘지 않고 줄었는지**는 열어 보지 않았다. binding 축을 하나도 건드리지 않으므로 본 세션 범위에서 조사하지 않는다 — "문제 없음" 이 아니라 **"조사하지 않음"** 이다.
+
+#### 36.2.3 Fmax −14.26 MHz — 기록 축 (귀속 안 함)
+
+128.32 → **114.06 MHz** (WNS +2.207 → +1.233). §28 이 이 top 을 **기록 축**으로 선언했고 Fmax 계약이 선언된 적 없다. §35.6 은 이 축을 예상표에 넣지 않았다. **경로 귀속은 하지 않았다** — §36.1.3 의 unit 축 Fmax 하락과 같은 처분이며, 두 하락이 같은 원인인지도 **미확인**이다.
+
+### 36.3 `fp_op_gate_check.GATES` 에 `fp_stepseq` 등재 — §34.5 이월 해소
+
+§34.5 가 C4 몫으로 이연한 코드 등재를 수행했다. **기준 수치는 §34.3 / §35.5.1 에서 이미 공표된 것을 옮겨 적은 것이며 여기서 새로 정한 것이 아니다.**
+
+| 축 | 등재값 | 출처 |
+|---|---|---|
+| `max_lut_sites` | 5,477 | §35.5.1 신설 (anchor sites 3,277 + 선공표 delta 2,200) |
+| `max_lut_cells` | 6,009 | §34.3 원문 (anchor cells 3,809 + 선공표 delta 2,200) |
+| `max_dsp48` + `dsp_exact` | 4 / 정확히 | §34.3 |
+| `premap_mul_expect` | 4 | §34.3 · §34.4 |
+| `max_bram` + `bram_exact` | 2 / 정확히 | §34.3 |
+| `crit_whitelist` | `{}` (빈 whitelist) | §34.3 의 ERROR 0 / CRITICAL 0 을 binding 으로 encode |
+| `fmax_hard` | `False` | §27.7a.5 (기록 축) |
+
+**체커에 축이 하나 신설됐다 — `max_lut_cells`.** 등재 전까지 이 체커에는 **site 단위 상한밖에 없었다** (`max_lut_sites`). §35.5.1 이 지적한 그대로, 단위를 명시하지 않은 선공표를 site 축에만 걸면 둘 중 **느슨한 쪽으로 통과**할 수 있다. 그래서 `max_lut_cells` 를 신설해 **두 단위를 동시에 binding** 으로 만들었다 (`ok` 논리곱에 `ok_lut_cells` 합류, 리포트에 `LUT cells` 행 신설). 축을 **선언하지 않은 기존 gate 5개는 무영향**이다 (두 축 모두 공허참).
+
+**실행 결과: `python3 synth/scripts/fp_op_gate_check.py` → exit 0, 6 gate 전건 PASS** (F1-US · F1-US/xcu50 · V20-2/US · V20-3/US · **V20-4** · S1-US). 직전 phase 의 `sys_top_core` provenance STALE FAIL 은 **재측정으로 해소**됐다 — 증거만 맞추는 경로(§22.14b-13 ①)를 쓰지 않았다.
+
+### 36.4 cut ladder 판정 — **미발동**
+
+§35.8 의 발동 조건을 축별로 대조한다.
+
+| rung | 발동 조건 | 실측 | 판정 |
+|---|---|---|---|
+| **1 — f16 행 이연** | LUT cells > 6,009 **또는** sites > 5,477, 그리고 초과분이 dtype 분기 귀속 | cells **5,137** (여유 872) / sites **4,572** (여유 905) | **미발동** — 초과 없음 |
+| **2 — 2-dispatch fallback** | rung 1 이후에도 LUT 초과, **또는** ingress 버퍼 1,024 FF 가 Cluster MEASUREMENT 에서 실측 문제로 판명 | 전자: 해당 없음. 후자: **Cluster MEASUREMENT 미수행** | **미발동** — 단 후자 조건은 **판정 불가 상태**로 이월 |
+
+**∴ f16 행은 이연하지 않는다. `FP_LEGAL_ROM` 의 `0xA24`/`0xA34` 두 행 모두 착지 상태를 유지하며, ISA JSON `legal_dtypes [2,3]` 는 무변경이다.**
+
+**정직 명기**: rung 2 의 두 번째 발동 조건은 **아직 잴 수 없다.** §35.5.4 의 Cluster/Pod OOC MEASUREMENT 가 수행되지 않았으므로 "ingress 버퍼가 실측 문제인가" 라는 물음에 대해 **미발동이 아니라 미판정**이 정확한 상태다. 이 구분을 지우지 마라 — LUT 축의 미발동은 측정에 근거하고, ingress 축의 미발동은 **측정 부재**에 근거한다.
+
+### 36.5 §12a 기록 · 이월
+
+- **선공표 수치 이동 0 건.** GATE V20-4 (LUT delta ≤ 2,200 / premap `$mul` delta 0 / DSP·BRAM delta 0 / cycle ≤ 10,000 / WHS ≥ 0) 와 GATE S1-US (LUT ≤ 24,799 / DSP 39 / premap 381 / BRAM 2 / CRIT whitelist 8 / ERROR 0) 를 **하나도 고치지 않았다.** 초과가 없었으므로 사다리도 타지 않았다.
+- **강화 1 건**: `fp_op_gate_check.py` 에 `max_lut_cells` 축 신설 (§36.3). 완화 방향의 편집은 없다.
+- **예상 빗나감 3 건을 예상 옆에 남겼다** (§35.5.2 항 2 FF 유닛 몫 / §35.6 LUT 방향 / §35.6 `Synth 8-6014` 개수 + 해석 규칙). 예상은 **사후 수정하지 않았다.**
+- **이월 (본 세션이 닫지 않은 것)**:
+  1. **Cluster/Pod OOC MEASUREMENT (§35.5.4)** — 여전히 미수행. §36.2.2(b) 가 "ingress 가 S1-US 에서 통째로 DCE 됐다" 를 **실측으로** 확정했으므로, 이 측정 없이는 ingress 면적이 어느 gate 에도 잡히지 않는다는 사실도 이제 추정이 아니라 측정이다. **rung 2 판정 불가 상태의 원인**이기도 하다.
+  2. **ECP5 `GATE C3 fp_stepseq` 아카이브 stale** (§35.11 이월 2) — 본 세션 미실행. `wrapper_ff` 는 147 로 유지했다.
+  3. **WHS 얇음 2 건** — unit 축 +0.023 (여유 절반으로 감소) · S1-US +0.019 (불변). 둘 다 ≥ 0 이라 PASS 이지만 hold 는 주파수로 못 고치는 축이므로 **리스크 축 지위 유지**.
+  4. **Fmax 하락 2 건 미귀속** — unit −31.64 MHz / S1-US −14.26 MHz. 둘 다 기록 축이라 FAIL 이 아니지만 **경로 귀속을 하지 않았다** (§36.1.3 / §36.2.3).
+  5. **`FP_StepSeq` FF +2 중 1 개 미특정** (§36.2.2(c)) · **`EHDecode` −31 LUT 기전 미조사** (§36.2.2(d)).
+  6. **`fp_op_gate_check` provenance 가 `include/generated/*.vh` 를 추적하지 않는다** (RTL phase 신규 발견). 이번 커밋은 `.v` 3개가 함께 바뀌어 무해했으나, **생성 include 만 바뀌는 커밋은 stale 증거로 PASS 한다.** 별건 이월.
+
+---
+
+## 37. 3a-C4 적대 검증 반증 3건 처리 (2026-08-18, 3a-C4 수리 phase · normative)
+
+적대 검증이 `refuted=true` 로 낸 반증 3건(전부 severity=minor)을 **전건 독립
+재현**했다. **3건 모두 재현됐다** — "재현 실패" 로 반려한 것은 하나도 없다.
+아래는 건별 재현 근거·수리·재확립 수치다. §12a 규칙 5 에 따라 §34/§35/§36
+원문은 한 글자도 고치지 않고, 틀렸던 진술은 **여기서 이름을 붙여 정정**한다.
+
+### 37.1 반증 ① — `Pod.v` 신규 억제 프래그마 1건 + **RTL phase 보고의 반대 단언**
+
+#### 37.1.1 재현 (반증이 옳다)
+
+반증이 제시한 한 줄 census 를 그대로 돌렸다:
+
+| 파일 | HEAD | 반증 시점 작업트리 |
+|---|---:|---:|
+| `PE_Core.v` | 3 | 3 |
+| `Cluster.v` | 10 | 10 |
+| **`Pod.v`** | **2** | **3 ← +1** |
+| `ISA_Decoder.v` | 2 | 2 |
+| `FP_StepSeq.v` | 3 | 3 |
+
+좌표 = `Pod.v` 의 `cl_fdotcr_special[0:NUM_CLUSTERS-1]` 선언을 감싼
+`lint_off/lint_on UNUSEDSIGNAL` 쌍. **RTL phase 보고 §5(5) 의 "새 프래그마는
+1건도 추가하지 않았다" 는 거짓이다.** 반증의 원인 분석도 맞다 — `PE_Core.v`
+에서 1쌍을 걷어내고 `Pod.v` 에 1쌍을 넣어 **트리 순증감이 0** 인 것을 "추가
+0" 으로 잘못 요약했다.
+
+#### 37.1.2 반증이 남긴 미확인의 해소 (실측)
+
+반증은 "프래그마 없이 verilator 가 몇 건을 내는지는 측정하지 않았다" 고
+적었다. 측정했다 — Pod 계층 전량(`Pod.v Cluster.v ISA_Decoder.v EHDecode.v
+PE_Core.v FP_StepSeq.v FP_Mul36.v FP_AddWide.v`, `verilator --lint-only
+-Wall -Iinclude`):
+
+| 경고 클래스 | 프래그마 있음 | 프래그마 없음 | delta |
+|---|---:|---:|---:|
+| `UNUSEDSIGNAL` | 33 | **34** | **+1** (`cl_fdotcr_special` 단 1건) |
+| `PINCONNECTEMPTY` | 5 | 5 | 0 |
+| `UNUSEDPARAM` | 9 | 9 | 0 |
+| `GENUNNAMED` | 4 | 4 | 0 |
+
+즉 억제 대상은 **정확히 1건**이고 다른 클래스는 전혀 움직이지 않는다.
+
+#### 37.1.3 수리 — 프래그마를 **제거**한다 (억제 대신 경고를 세워 둔다)
+
+세 갈래를 놓고 판단했다.
+
+| 갈래 | 내용 | 판정 |
+|---|---|---|
+| A | 프래그마 유지 + 보고만 정정 | **기각** — 규칙 3(loud-fault-never-silent)에 정면으로 어긋난다. 억제는 "이 신호가 아무에게도 안 읽힌다" 는 사실을 **감춘다**. |
+| B | wire 를 지우고 Cluster 포트를 `( )` 로 둠 | **기각** — 경고 클래스를 `UNUSEDSIGNAL` → `PINCONNECTEMPTY` 로 **바꾸기만** 하고, Cluster 포트가 Pod 계층에서 좌표를 잃는다. |
+| **C** | **프래그마 제거, 경고를 세워 둠** | **채택** |
+
+채택 사유 3가지 — 전부 이 트리 안의 선례·실측이다.
+1. **§22.14b 선례**: `EHDecode.v:254/257`, `:503/505` 에서 같은 프래그마 쌍을
+   **제거**한 전례가 있고 사유가 "읽히는 순간 억제가 거짓이 된다" 였다.
+2. **같은 착지 안의 취급 일치**: C4 는 `PE_Core.v:1430`(`fd_ing_q`)의 신규
+   `UNUSEDSIGNAL` 을 **억제하지 않고 보고**했다. `cl_fdotcr_special` 만
+   억제하는 것은 같은 커밋 안에서 두 잣대를 쓰는 것이다.
+3. **비용이 측정됐다**: 정확히 1건. 감출 이유가 없다.
+
+파일-내 선례(`Pod.v:138-148` 이 `cl_collision`/`cl_bank_collision` 을 쌍으로
+감싼다)와 **어긋나는 것은 알면서 택했고**, 그 사실을 RTL 주석에 적었다.
+
+#### 37.1.4 수리가 만든 두 번째 문제와 그 처리 (정직 기록)
+
+프래그마 제거 후 census 를 다시 돌리자 `Pod.v` 는 HEAD=2/WT=2 로 돌아왔지만
+**`PE_Core.v` 가 HEAD=3/WT=3 으로 나왔다** — 실제로는 3→2 로 **줄었는데도**.
+원인: 두 파일의 설명 주석이 `lint_off` 라는 철자를 그대로 담고 있어
+**감사 한 줄이 주석까지 센다**. 방향은 반대지만 같은 종류의 오보다(이쪽은
+과소 보고).
+
+→ 두 주석에서 그 철자를 걷어내고 "verilator UNUSEDSIGNAL 억제 프래그마" 로
+바꿨다. **이제 두 census 형식이 같은 답을 낸다:**
+
+| 파일 | HEAD | 수리 후 | 한 줄 census | 정밀 census (`/\* verilator lint_off`) |
+|---|---:|---:|---:|---:|
+| `PE_Core.v` | 3 | **2** | 3→2 ✅ | 3→2 ✅ |
+| `Cluster.v` | 10 | 10 | 10→10 ✅ | 10→10 ✅ |
+| `Pod.v` | 2 | **2** | 2→2 ✅ | 2→2 ✅ |
+| `ISA_Decoder.v` | 2 | 2 | 2→2 ✅ | 2→2 ✅ |
+| `FP_StepSeq.v` | 3 | 3 | 3→3 ✅ | 3→3 ✅ |
+
+**트리 순증감 −1, 신규 프래그마 0.** RTL phase 보고의 문장은 이제 참이지만,
+**착지 시점에는 거짓이었다** — 그 사실을 지우지 않는다.
+
+#### 37.1.5 새 검사 — 경고를 "치우는" 다음 수를 막는다
+
+경고를 세워 두면 다음 세션이 **경고를 없애려고 wire 를 지우는** 것이 자연스러운
+유혹이 된다. 그리고 `test_pod_fdotcr_special_status_stops_at_cluster` 의
+docstring 은 *"the special signal is still wired (not dangling) inside Pod"*
+라고 **약속만 하고 검사하지 않고 있었다** — §28.4 항 8 위반이 1건 더 있었던
+것이다(test phase 가 잡은 `back_to_back_dispatch_is_loud` 와 같은 형태).
+
+→ 그 테스트에 소스 스캔 절반을 추가했다: (a) `.fdotcr_special_status
+(cl_fdotcr_special[...])` 결선 존재, (b) wire 존재, (c) `cl_fdotcr_special`
+가 등장하는 **어느 줄도** `m_err`/`m_lwr`/`m_fdotcr_fault`/`m_skid_overflow`
+에 닿지 않음. 주석은 스캔 전에 제거한다(§36 이 남긴 "주석 속 `;` 에 잘리는
+추출기" 교훈의 적용).
+
+**변이 실증 2건 — 소스 스캔형이 거짓말하지 않음을 확인했다:**
+
+| 변이 | 내용 | 결과 |
+|---|---|---|
+| **MUT-E** | wire 삭제 + Cluster 포트를 `( )` 로 (= "경고를 치운다") | **사살** — Pod 10 중 1 FAIL |
+| **MUT-F** | `m_err = m_err \| cl_fdotcr_special[i];` 추가 (금지 방향) | **사살** — Pod 10 중 1 FAIL |
+
+### 37.2 반증 ② — MU-local 버퍼(`fd_ing_q`)를 328 중 1개만 pin 한다
+
+#### 37.2.1 재현 (반증이 옳다)
+
+MUT-D(`PE_Core.v:1835` 의 ingress mux 를 `fd_ing_q` → live
+`dec_input_payload_wide` 직독)를 직접 넣고 3 MOD 전량 재실행:
+
+| MOD | total | FAIL |
+|---|---:|---:|
+| ISA_Decoder | 210 | **1** (`test_fdot32_cr_ingress_window_dispatch_is_loud`) |
+| Cluster | 62 | **0** |
+| Pod | 10 | **0** |
+
+**트리 328 중 1건.** 1,024 FF 를 통째로 지우는 변경이 327/328 녹색으로
+통과한다. 반증의 서술과 완전히 일치한다.
+
+#### 37.2.2 반증이 남긴 미확인의 해소 — **Cluster 축은 닫을 수 있다**
+
+반증은 "Cluster 축에서 이 변이를 잡는 테스트를 만들 수 있는지는 조사하지
+않았다" 고 적었다. 조사했고, **가능하다.**
+
+**기전 (실측으로 확인한 구조적 사실).** Cluster 는 `ISA_Decoder` 를 **하나만**
+갖고(`Cluster.v:1005`), 그 `dec_input_payload_wide` 가 17개 PE_Core 전부로
+팬아웃한다(`:1246` L-PE / `:1317` MU / `:1385` DU). 따라서 **L-PE 로 가는
+평범한 토큰 하나가 MU 가 스트리밍 중인 버스를 갈아치운다.** 억지 poke 가
+아니라 두 포트가 한 클러스터를 먹이는 정상 형태다.
+
+**측정한 stimulus 기하 (추정 아님).** 프로브로 다음을 실측했다:
+- `dec_input_payload_wide` 는 **완결-wave 레지스터**다. wave 완결 후 약 5
+  cycle 뒤 갱신되고, **N-fragment wave 는 word 0..N-1 만 덮어쓰며** 나머지는
+  직전 wave 값을 유지한다.
+- MU 는 word k 를 cycle 6+k 에 읽는다.
+- ∴ **N-fragment 교란자는 정확히 word N−1 을 오염시킨다.**
+
+스윕 실측 (교란자 fragment 수 → 오염된 word / MUT-D 하 payload):
+
+| N | 오염 word | clean RTL | MUT-D |
+|---:|---:|---|---|
+| 2·3·4 | (없음) | 0x42800000 | 0x42800000 (미사살) |
+| 6 | 5 | 0x42800000 | **0xDF2D0000** |
+| 8 | 7 | 0x42800000 | **0xDF2D0000** |
+| 10 | 9 | 0x42800000 | **0xDEAD0000** |
+| 12 | 11 | 0x42800000 | **0xDEAD0000** |
+| 14 | 13 | 0x42800000 | **0xDEAD0000** |
+| 16 | 15 | 0x42800000 | **0xDEAD0000** |
+
+#### 37.2.3 수리 — Cluster 축 신규 테스트 1건
+
+`test_cluster.py`:
+`test_fdotcr_ingress_buffer_holds_against_shared_bus_change`
+
+- 교란자 스윕 **N ∈ {6, 8, 10, 12, 14, 16}** → 오염 word `{5,7,9,11,13,15}`
+  로 **A 절반(0-7)과 B 절반(8-15)을 모두** 지난다.
+- 매 점에서 payload `0x42800000` / `err=lwr=0` / `special=fault=0` /
+  `cycle ≤ 10,000` 를 assert.
+- **취약성을 조용한 통과로 만들지 않는다.** 오염 word 는 타이밍에 의존하므로,
+  테스트가 `fd_ing_run`/`fd_ing_idx` 와 버스를 매 cycle 관측해 **실제로 바뀐
+  버스에서 읽힌 word 집합**을 모으고, 그 집합이 비면 **loud FAIL** 한다("이
+  테스트는 아무것도 검사하지 않게 됐다 — 스윕을 재조정하라, 삭제하지 마라").
+  두 절반 각각에 최소 1건도 요구한다.
+
+**결과: 실측**
+
+| RTL | 결과 |
+|---|---|
+| clean | **PASS** — 6점 전건 `0x42800000`, cycle 606 고정, 오염 word `[5,7,9,11,13,15]` |
+| MUT-D | **FAIL** — `disturber=6 … returned 0xdf2d0000, expected 0x42800000` |
+
+**∴ `fd_ing_q` 의 pin 은 1건 → 2건, 그리고 서로 다른 두 계층(ISA_Decoder /
+Cluster)에 각각 1건씩이다.**
+
+#### 37.2.4 정직 명기
+
+- **Pod 축은 여전히 닫지 않았다.** Pod 는 Cluster 위에 OR-reduce 만 얹으며
+  새 ingress 경로를 만들지 않는다 — 같은 stimulus 를 Pod 에서 반복하는 것은
+  Cluster 축의 사본이지 새 정보가 아니다. "Pod 도 커버됐다" 고 적지 않는다.
+- 반증의 "이것은 이번 착지가 만든 약화가 아니라 태생부터 얇은 단일점
+  의존" 이라는 판정에 동의한다. 수리는 **커버리지 추가**이지 회귀 수리가
+  아니다.
+
+### 37.3 반증 ③ — provenance 이중 사각지대 (생성 include + gate-top 래퍼)
+
+#### 37.3.1 재현 (반증이 옳고, 반증이 더 중요한 쪽을 짚었다)
+
+`gen_premap_mul.premap_sources()` 는 `synth/` 로 시작하는 항목을 명시적으로
+제외한다. **`FP_OP_SRCS_*` 전 gate 6개가 예외 없이 `synth/**` 래퍼를 Vivado
+top 으로 쓴다** — 즉 사각지대는 일부 gate 가 아니라 **전부**다.
+
+실측 재현 3건 (수리 전):
+
+| 조작 | 기대 | 실측 |
+|---|---|---|
+| `synth/lattice/fp_ops/FP_StepSeq_gate_top.v` 에 1줄 추가 | 검출 | **EXIT=0, 6 gate 전건 `provenance OK`** |
+| `include/generated/isa_opcode_wires.vh` 에 1줄 추가 | 검출 | **EXIT=0, GATE S1-US PASS** |
+
+`.vh` 축은 RTL phase 가 이미 이월로 적었지만(§36 미확인 6), **래퍼 축은 어느
+정찰·보고에도 없었다.** 그리고 래퍼 축이 더 아프다 — 래퍼는 합성의 **top 그
+자체**이고 3a-C4 가 11→13 포트로 **실제로 고친 파일**이다.
+
+#### 37.3.2 수리 — provenance 를 "Vivado 가 합성한 것 전량 + 그것이 읽는 헤더 전량" 으로 넓힌다
+
+`premap_sources()` 의 `synth/` 제외는 **그대로 둔다** — 그것은 yosys **계수
+입력**을 고르는 규칙이고, 래퍼를 읽히면 `hierarchy -top` 이 모호해져 §26.6
+pin form 의 의미가 바뀐다. 바꾼 것은 **증거의 범위**뿐이다.
+
+`gen_premap_mul.py` 헤더에 두 계열을 **추가**(기존 `# source:` 무변경):
+
+| 계열 | 내용 |
+|---|---|
+| `# vivado-source:` | Vivado SRCS **전량** (gate_top 래퍼 포함) |
+| `# include:` | 위 전량에서 **전이적으로** 도달하는 헤더 전량 |
+
+`resolve_includes()` 는 실제 flow 와 **같은 한 벌**의 탐색 경로를 쓴다
+(yosys `read_verilog -I include`, Vivado `-include_dirs .../include`
+= `synth/scripts/synth_fp_op.tcl:166`). 해소 실패는 **조용히 버리지 않고
+예외**다 — 못 찾은 헤더를 무시하면 그 헤더가 영구히 추적 밖에 남는다.
+
+**주석 제거가 필요한 이유도 측정이다**: `HIU.v:557` 의 한국어 주석 안 백틱
+표기가 주석을 지우지 않으면 존재하지 않는 include 로 잡힌다.
+
+해소된 헤더 (실측):
+- `fp_stepseq` → 6개. **생성 ROM 3종**(`fp_frsqrt_seed_rom.vh` /
+  `fp_fdiv_seed_rom.vh` / `fp_fexp2_coeffs.vh`) 포함.
+- `sys_top_core` → 10개. C4 가 실제로 바꾼 `isa_opcode_wires.vh` /
+  `isa_ehshape_case_body.vh` 포함.
+
+`verify_provenance` 는 세 계열 전부 해시 대조하고, `vivado-source` 목록을
+run log 의 **전량 SRCS** 와 대조하며, `include` 목록을 **현행 소스로 재해소한
+결과와 대조**한다(해시 대조만으로는 "include 가 **추가**됐다" 를 못 잡는다).
+
+#### 37.3.3 옛 형식 증거의 취급 — 조용한 완화 금지
+
+2026-08-18 이전 증거에는 새 두 계열이 없다. 그때 검사는 PASS 를 주되 강도
+문자열에 **`⚠ wrapper+include UNVERIFIED (pre-2026-08-18 evidence)`** 를
+박는다. 이것은 이 파일이 이미 쓰던 형태다(§22.14b-12 의
+`sources(hash only)` vs `sources+top` 비대칭) — 검증하지 않은 축을 **찍어서**
+남기는 것이지 검증한 척하는 것이 아니다.
+
+**현재 강도 (실측, gate 별로 이름을 적는다):**
+
+| gate | premap 증거 강도 |
+|---|---|
+| **GATE V20-4** (`fp_stepseq`) | `sources+top+wrapper(4)+include(6)` ✅ **전 축** |
+| **GATE S1-US** (`sys_top_core`) | `sources+top+wrapper(9)+include(10)` ✅ **전 축** |
+| GATE V20-2/US (`fp_acclattice`) | `sources(hash only)` **⚠ wrapper+include UNVERIFIED** |
+| GATE V20-3/US (`fp_traincluster`) | `sources(hash only)` **⚠ wrapper+include UNVERIFIED** |
+| GATE F1-US / F1-US-xcu50 | premap 축 미선언 (provenance 대상 아님) |
+
+**두 gate 를 재합성하지 않은 것은 판단이며, 그 사유를 적는다:** 그들은 C4 와
+무관한 연산자 gate 이고, 재합성은 **그들의 측정치를 다시 쓰는 행위**다. 이
+세션의 임무는 C4 반증 처리이지 무관한 gate 의 재측정이 아니다. 다음에 그
+gate 들이 어떤 이유로든 재합성되면 **자동으로** 전 축 강도가 된다(코드가
+이미 그렇게 쓴다). 그때까지 위 표의 ⚠ 를 "전 축 검증됨" 으로 요약하지 말 것.
+
+#### 37.3.4 수리 후 재현 — 세 조작이 **전부 hard FAIL** (실측)
+
+| 조작 | 결과 |
+|---|---|
+| `FP_StepSeq_gate_top.v` +1줄 | **EXIT=1** · `STALE … [vivado_sources] synth/lattice/fp_ops/FP_StepSeq_gate_top.v: sha256 불일치` · GATE V20-4 **FAIL** |
+| `include/generated/isa_opcode_wires.vh` +1줄 | **EXIT=1** · `STALE … [includes] include/generated/isa_opcode_wires.vh` · GATE S1-US **FAIL** |
+| `include/generated/fp_frsqrt_seed_rom.vh` +1줄 | **EXIT=1** · V20-4 **와** S1-US 동시 **FAIL** (두 gate 가 같은 ROM 을 읽는다) |
+
+전건 원복 후 **EXIT=0**. **§36 미확인 6(생성 include 이월)은 이로써 해소됐고,
+래퍼 축은 그 이월에 없던 항목이었다.**
+
+### 37.4 gate 재실행 — 검사 스크립트를 고쳤으므로 다시 쟀다
+
+`fp_op_gate_check.py` / `gen_premap_mul.py` 를 고쳤으므로 두 gate 를 **전
+flow** 로 재실행했다. ⛔ `make premap-mul-evidence` 단독 경로 **미사용**
+(§22.14b-13 ①). 둘 다 detach + done-marker, 마커 확인 후에만 판정(§22.14b-11).
+
+| | V20-4 | S1-US |
+|---|---|---|
+| marker | `/tmp/v204b.done` = `EXIT=0` | `/tmp/s1usb.done` = `EXIT=0` |
+| `[Common 17-206] Exiting Vivado` | 1 | 1 |
+| `^ERROR` | 0 | 0 |
+
+**전 축이 §36 실측과 자리수까지 동일하다 — 재현성 자체가 결과다:**
+
+| 축 | §36 실측 | 재실행 | delta |
+|---|---:|---:|---:|
+| **V20-4** LUT cells | 5,137 | **5,137** | 0 |
+| V20-4 DSP48 / RAMB18 / premap $mul | 4 / 2 / 4 | **4 / 2 / 4** | 0 |
+| V20-4 WHS / WNS / Fmax | +0.023 / +2.279 / 129.52 | **+0.023 / +2.279 / 129.52** | 0 |
+| V20-4 FF | 1,452 | **1,452** | 0 |
+| **S1-US** LUT cells | 18,636 | **18,636** | 0 |
+| S1-US DSP48 / premap $mul / RAMB18 | 39 / 381 / 2 | **39 / 381 / 2** | 0 |
+| S1-US WHS / WNS / Fmax | +0.019 / +1.233 / 114.06 | **+0.019 / +1.233 / 114.06** | 0 |
+| S1-US FF | 9,817 | **9,817** | 0 |
+
+**gate 기준은 한 개도 옮기지 않았다.** `GATES` 표의 임계값은 이 phase 에서
+**읽기만** 했다.
+
+### 37.5 재확립한 검사 전량 (수리 후 실측)
+
+| 축 | 결과 |
+|---|---|
+| cocotb 6 MOD | HIU 22 / ISA_Decoder 210 / ALU_Extended 16 / Top_Core 8 / **Cluster 63** / Pod 10 = **329 PASS / 0 FAIL / 0 SKIP** (반증 시점 328, **+1**; baseline 312 대비 +17. **감소 0**) |
+| `make lint` | **EXIT=0** (6/6) |
+| `make test-cluster-both` | **rc=0** — FRAG_SLOTS=1 63/63, FRAG_SLOTS=4 63/63, self-skip 7/0 정합 |
+| `python3 synth/scripts/fp_op_gate_check.py` | **EXIT=0** — 6 gate 전건 PASS |
+| GATE V20-4 / S1-US | **재실행 PASS**, 전 축 §36 과 동일 |
+| verilator `-Wall` UNUSEDSIGNAL (Pod 계층) | 33 → **34** (+1, `cl_fdotcr_special`) — **숨기지 않고 세워 둔 것** |
+| 억제 프래그마 (5 RTL 파일) | HEAD 20 → **19** (−1, 신규 0) |
+| 변이 사살 | MUT-D(Cluster 축 신규) · MUT-E · MUT-F **전건 KILLED**, 생존 0 |
+
+### 37.6 이 phase 에서 **틀렸다고 판명된 것** (숨기지 않는다)
+
+1. **RTL phase §5(5) "새 프래그마는 1건도 추가하지 않았다" — 거짓이었다.**
+   트리 순증감 0 을 "추가 0" 으로 요약한 오보. §37.1 이 좌표와 함께 정정.
+2. **`test_pod_fdotcr_special_status_stops_at_cluster` 의 docstring 이
+   검사하지 않는 것을 광고하고 있었다** (§28.4 항 8, test phase 가 잡은
+   `back_to_back_dispatch_is_loud` 에 이은 **2건째**). §37.1.5 가 검사를
+   실제로 붙이고 변이 2종으로 실증.
+3. **"Cluster 축은 `fd_ing_q` 를 볼 수 없다" 는 (반증도 나도) 확인하지 않은
+   추정이었다.** 측정하니 **볼 수 있었다** — 한 클러스터에 디코더가 하나뿐이라
+   L-PE 토큰이 MU 의 버스를 갈아친다. §37.2.2.
+4. **provenance 사각지대를 `.vh` 하나로 적은 것(§36 미확인 6)은 절반이었다.**
+   더 아픈 쪽인 **gate-top 래퍼**를 놓쳤다. §37.3.
+
+### 37.7 미확인 (단정하지 않음)
+
+1. **Cluster/Pod OOC MEASUREMENT (§35.5.4) 여전히 미수행** — §36.7 항 1 그대로
+   이월. ingress 면적은 아직 어느 gate 도 재지 않는다.
+2. **`fp_acclattice` / `fp_traincluster` 의 래퍼·include 축 미검증** — §37.3.3
+   표의 ⚠ . 코드는 준비됐고 재합성 시 자동으로 닫힌다.
+3. **Pod 축의 `fd_ing_q` 커버리지 없음** — §37.2.4. 의도된 판단이며 "커버됐다"
+   고 적지 않는다.
+4. **N-fragment 교란자 ↔ word N−1 대응은 6점에서만 실측**했다. 모든 N 에서
+   성립한다는 것은 증명하지 않았다 (테스트는 그 대응을 **가정하지 않고**
+   실측해 assert 하므로, 틀려도 조용히 통과하지는 않는다).
+5. **§36.7 의 항 2~5(ECP5 stale · WHS 얇음 · Fmax 하락 미귀속 · FF +2 중 1개
+   미특정 · EHDecode −31 LUT)는 이 phase 에서 손대지 않았다** — 그대로 이월.
+6. **`fp_op_gate_check` 가 `Makefile` 자체의 변경(예: `FP_OP_SRCS_*` 목록
+   수정)을 추적하는지는 조사하지 않았다.** run log 의 `SRCS=` 대조가 사실상
+   그 역할을 하지만 실측으로 확인하지 않았다.
+
+## 38. 3a-C4 재검증 잔여 2건 처리 (2026-08-18, orchestrator · normative)
+
+3a-C4 재검증(§37 후속)이 `refuted=false` 로 종결하며 minor 2건을 남겼다. 둘 다 **회귀가 아니고 이번 착지가 만든 것도 아니지만**, 하나는 §22.14b-10 계열의 **세 번째 사각지대**이고 다른 하나는 §28.4 항 8 계열의 **광고-대-검사 불일치**라 같은 COMMIT 에서 닫는다.
+
+### 38.1 provenance 세 번째 사각지대 — **빌드 레시피 드리프트** (해소)
+
+**기전**: `fp_op_gate_check.parse_run_expect(tag)` 가 읽는 것은 **아카이브된 `<tag>_run.log`** 다. 그래서 그것이 답하는 질문은 *"그 run 이 무엇을 합성했는가"* 이지 *"지금 `Makefile` 이 무엇을 합성하라고 하는가"* 가 아니다. 둘이 어긋나도 **대조 상대가 서로 자기 자신**이라 FAIL 이 날 수 없다.
+
+**§37 이 닫은 두 사각지대와 정확히 같은 실패형이다** — 증거와 현행이 어긋났는데 조용히 통과한다. 다른 것은 어긋나는 대상이 "소스 파일 내용" 이 아니라 **"빌드 레시피"** 라는 것뿐이다. §37 은 이 축을 *"조사하지 않았다"* 로 이월했고, 재검증이 그것을 **"측정했고 실제로 뚫려 있다"** 로 바꿨다 (`FP_OP_SRCS_fp_stepseq` 에 소스 1개를 끼워 넣고 재합성 없이 실행 → 6 gate 전건 PASS / EXIT 0).
+
+**수리**: `makefile_srcs(tag)` 신설 — `Makefile` 의 현행 `FP_OP_SRCS_<tag>` 를 읽어 아카이브 run 의 `SRCS=` 전량과 대조한다. 어긋나면 `RECIPE DRIFT` 로 **해당 gate FAIL**. 실패 문구는 "숫자가 틀렸다" 가 아니라 **"지금 빌드하라고 적힌 설계가 아니라 옛날에 빌드했던 설계를 재고 있다"** 이다.
+
+- **파생 정의(`:= $(FP_OP_SRCS_...)` 별칭)는 풀지 않고 `None` 을 돌려 이 축을 면제한다.** 반쪽짜리 Make 평가기를 만드는 것보다 *"그 tag 는 이 축을 받지 않는다"* 를 정직하게 비우는 편이 낫다. 강도 비대칭은 **gate 출력 문자열에 그대로 찍힌다** (`…+include(6)+recipe`) — §22.14b-13 이 세운 "비대칭을 출력에 노출한다" 규율의 적용.
+- **검출력 실증 (MUT-N)**: `FP_OP_SRCS_fp_stepseq` 에 `FP_AccBank.v` 를 끼워 넣고 **재합성 없이** 실행 → `RECIPE DRIFT` + `GATE V20-4 RESULT: FAIL` + **EXIT 1**. 원복 후 **EXIT 0**, `Makefile` 바이트 동일.
+- **기존 임계값 수정 0건.** 축 신설(강화)뿐이다.
+
+### 38.2 `assert cyc <= 10000` 8개 중 7개가 구조적 미발화 (해소 — 문구 정정)
+
+**실측**: `cyc <= 10000` / `m['O'] <= 10000` 사이트 8개 중 **7개는 참일 수밖에 없다.** 각 사이트를 감싸는 폴링 budget 이 상한보다 작기 때문이다.
+
+| 좌표 | 폴링 budget | 발화 가능? |
+|---|---:|---|
+| `test_isa_decoder.py:4578` / `:4722` (`_fdot_run`) | 2,048 | 불가 |
+| `test_isa_decoder.py:5151` / `:5387` (`_fdot_run_no_reset`) | 4,096 | 불가 |
+| **`test_isa_decoder.py:5300`** (`_measure`) | **10,001** | **가능 — 유일한 live 사이트** |
+| `test_cluster.py:4605` / `:4675` (`_fdotcr_dispatch_no_reset`) | 4,000 | 불가 |
+| `test_cluster.py:4826` (`range(1, 4000)`) | 3,999 | 불가 |
+
+**이것은 조용한 통과가 아니다** — budget 을 넘기면 `payload is None` / `out != 1` 검사가 **먼저 loud FAIL** 한다. 즉 실효 상한은 10,000 이 아니라 2,048~4,000 으로 **더 엄격**하다. 잃는 것은 정확성이 아니라 **정직성**이다: 7개 사이트의 실패 메시지가 *"spec §27.7a.2 hard ceiling 10,000"* 을 문자로 약속하는데 그 조건은 검사되지 않는다. §28.4 항 8 이 성문화한 형(문구가 body 보다 더 약속함)의 축소판이다.
+
+**수리 (assert 를 지우지 않는다)**: 7개 메시지 각각에 **실효 경계(그 사이트의 budget)** 와 **"10,000 상한 pin 은 `test_fdot32_cr_cycle_boundaries_measured` 가 단독 소유"** 를 명기했다. 상한 자체는 그대로 두되 **어느 사이트가 무엇을 pin 하는지**가 메시지에서 읽히게 만든 것이다. 회귀 무영향 확인 (ISA_Decoder 210 / Cluster 63 전건 PASS).
+
+### 38.3 부수 확인 — 신규 `UNUSEDSIGNAL` 2건은 전부 의도된 것 (실측)
+
+`lint_off` **순감 1** (`PE_Core.v` 3 → 2, 나머지 5파일 불변) — 억제는 늘지 않았다. verilator `-Wall` 이 새로 내는 2건은 둘 다 설계 의도다:
+
+- **`Pod.v:185 cl_fdotcr_special`** — `fdotcr_special_status` 를 Cluster 에서 받되 **Pod 로 올리지 않는다**는 의도적 갈래이고, `Pod.v:104` 가 그 사실을 명기하며 `test_pod_fdotcr_special_status_stops_at_cluster` 가 pin 한다. **억제하지 않고 경고를 남긴 것이 옳다.**
+- **`PE_Core.v:1430 fd_ing_q`** — **`MUL_OPS_SUPPORTED=0`(L-PE 형상)에서만** 발생한다. 실측: `-GMUL_OPS_SUPPORTED=1`(MU 형상, 기본값) 에서는 **0건**. L-PE 는 FDOT32_CR 를 호스팅하지 않으므로 `g_v180e_comb_off` 분기가 `fd_ing_frag = 64'h0` 으로 묶는 것이 정상이며, 합성에서는 DCE 된다.
+
+**두 경고를 `lint_off` 로 덮지 않는다** — 이 저장소에서 blanket 억제가 실제 결함(D4 TLB undriven)을 숨긴 전례가 있다 (§28/§29).

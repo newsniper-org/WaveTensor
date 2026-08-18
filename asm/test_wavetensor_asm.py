@@ -1623,9 +1623,24 @@ class TestGeneratedIsaTables(unittest.TestCase):
         # lower_required arm; decode_reserved = whitelist-omitted,
         # decode_error. A row claiming both is incoherent (which fault?)
         # and must be rejected, not silently resolved by emitter order.
+        #
+        # v1.8.0e 3a-C4: the mutation now sets BOTH bits explicitly. It
+        # used to set stub_v18 only and rely on 0x7A already carrying
+        # decode_reserved=true; when C4 cleared that bit the AND in
+        # gen_isa_tables.validate() stopped firing and this assertRaises
+        # started FAILING. Deleting the block would have been the easy
+        # "fix" and would have silently retired the ONLY test covering
+        # the XOR rule. Setting both bits keeps the rule covered no
+        # matter which rows carry which staging bit — today, none.
+        self.assertEqual(
+            [op["code"] for op in good["opcodes"]
+             if op.get("decode_reserved")], [],
+            "no row is decode-reserved today; if one is added, this "
+            "mutation must still set BOTH bits, never rely on the row")
         bad = copy.deepcopy(good)
         for op in bad["opcodes"]:
             if op["code"] == 0x7A:
+                op["decode_reserved"] = True
                 op["stub_v18"] = True
         with self.assertRaises(gen.SchemaError):
             gen.validate(bad)
@@ -1689,10 +1704,11 @@ class TestFpBlockModeLegality(unittest.TestCase):
         for code, mnem in self._FP_OPS.items():
             self.assertEqual(wta.MNEMONIC_TO_OPCODE[mnem], code)
         self.assertEqual(set(FP_MODE_LEGAL), set(self._FP_OPS))
-        # 3a-C2: exactly one decode-reserved row today, and the two
-        # staging bits never overlap (a stub is decode-LEGAL with a
-        # lower_required arm; a decode-reserved op has no arm at all).
-        self.assertEqual(DECODE_RESERVED_OPS, frozenset({0x7A}))
+        # 3a-C2 had exactly one decode-reserved row (0x7A). 3a-C4 landed
+        # its PE_Core arm + twin-classifier edit and cleared the bit in
+        # the SAME commit, so the set is EMPTY again. The XOR invariant
+        # is asserted unconditionally so it survives the empty set.
+        self.assertEqual(DECODE_RESERVED_OPS, frozenset())
         self.assertEqual(DECODE_RESERVED_OPS & STUB_OPS_V18, frozenset())
         # v1.8.0b: 0x71 VDOT_ACC / 0x72 ACC_REDUCE / 0x7C STORE_QUANT
         # graduated from stubs to real datapaths.
@@ -2632,14 +2648,24 @@ class TestFdot32CrIsa3aC2(unittest.TestCase):
 
     # ---- staging state (§27.7a.4) --------------------------------------
 
-    def test_decode_reserved_until_wiring(self):
-        """0x7A is transcribed everywhere on the asm side but OMITTED
-        from the RTL opcode_supported whitelist, so silicon still answers
-        decode_error for every mode byte (§27.7 reservation wording
-        unchanged, §27.7a.4 landing order). Flip decode_reserved in the
-        JSON at 3a-C4."""
+    def test_decode_reserved_cleared_at_wiring(self):
+        """3a-C4 INVERSION of test_decode_reserved_until_wiring.
+
+        Until 3a-C4 this test asserted the opposite: 0x7A was transcribed
+        everywhere on the asm side but DELIBERATELY omitted from the RTL
+        opcode_supported whitelist, so silicon answered decode_error for
+        every mode byte (§27.7 reservation wording, §27.7a.4 landing
+        order). 3a-C4 flipped `decode_reserved` in the JSON in the SAME
+        COMMIT as the PE_Core 0x7A arm + the twin-classifier lockstep
+        edit, so the assertions invert together.
+
+        The whitelist membership check is kept (not deleted) because it
+        is the only mechanical proof that the regeneration actually ran:
+        editing the JSON without regenerating leaves 0x7A out of
+        `opcode_supported` and every 0x7A dispatch keeps decode_erroring
+        while the Python tables claim it is legal."""
         from generated_isa_tables import DECODE_RESERVED_OPS, STUB_OPS_V18
-        self.assertIn(0x7A, DECODE_RESERVED_OPS)
+        self.assertNotIn(0x7A, DECODE_RESERVED_OPS)
         self.assertNotIn(0x7A, STUB_OPS_V18)
         self.assertIn('FDOT32_CR', wta.MNEMONIC_TO_OPCODE)
         self.assertEqual(wta.OPCODE_TO_MNEMONIC[0x7A], 'FDOT32_CR')
@@ -2648,10 +2674,14 @@ class TestFdot32CrIsa3aC2(unittest.TestCase):
         with open(wires, encoding='utf-8') as f:
             text = f.read()
         supported = text.split('wire opcode_supported =')[1].split(';')[0]
-        self.assertNotIn("8'h7A", supported,
-                         "0x7A must stay out of opcode_supported until 3a-C4")
+        self.assertIn("8'h7A", supported,
+                      "0x7A must be in opcode_supported from 3a-C4 on "
+                      "(did you edit the JSON without regenerating?)")
         for other in ('8\'h79', '8\'h7C', '8\'h7E'):
             self.assertIn(other, supported)
+        # The staging-bit machinery itself must still be present and
+        # honest: no row claims decode_reserved today.
+        self.assertEqual(DECODE_RESERVED_OPS, frozenset())
 
     def test_frozen_truth_table_untouched(self):
         """§27.7a.4 finding, quoting the isa JSON 0x79 note VERBATIM:
