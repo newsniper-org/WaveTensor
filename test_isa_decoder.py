@@ -1118,6 +1118,192 @@ async def test_prec_flag_without_precision_eh_errors(dut):
     assert dut.error_flag.value == 1
 
 
+# -----------------------------------------------------------------------------
+# C-1 실물화 (2026-08-18) — MEM EH `addr_mode`/`stride` 강제 + `F_MEM` legality.
+# spec §2 (`MEM.addr_mode` / `MEM.stride` 절) + §32.
+#
+# 규범: 두 필드는 **0 만 합법**이고 nonzero 는 `decode_error` 다. 하드웨어가
+# 필드를 읽는 목적은 오직 "0 인지 확인" — **주소 산술 의미는 배정되지 않았다**
+# (0x7D/0x7E sub-op 인코딩 공간 보존, §32.3). `F_MEM` 은 **방향1만** 강제한다:
+# 플래그가 서 있는데 MEM EH 가 없으면 error, 역방향은 합법 (§32.5).
+#
+# `F_MEM` 은 이 시점까지 **참조 0회의 죽은 상수**였다 — 아래가 최초 사용처다.
+# -----------------------------------------------------------------------------
+
+@cocotb.test()
+async def test_mem_addr_mode_nonzero_errors(dut):
+    """MEM EH `addr_mode != 0` → decode_error.
+
+    현행 하드웨어는 이 필드를 **조용히 버렸다**. 의미가 명세된 적이 없으므로
+    restrictive-first 로 0 만 합법이다 (spec §2).
+    """
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    instr = encode_instr(0x04, _STD_PORT(),
+                         eh_mem(offset=0x100, addr_mode=3))
+    await fire(dut, instr, _STD_TAG(), payload_a=0x1000)
+    assert dut.error_flag.value == 1
+    assert dut.output_valid.value == 0
+    # 거부된 명령은 메모리 트랜잭션을 발행하면 안 된다.
+    assert dut.memory_req.value == 0
+
+
+@cocotb.test()
+async def test_mem_stride_nonzero_errors(dut):
+    """MEM EH `stride != 0` → decode_error (같은 근거)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    instr = encode_instr(0x04, _STD_PORT(),
+                         eh_mem(offset=0x100, stride=64))
+    await fire(dut, instr, _STD_TAG(), payload_a=0x1000)
+    assert dut.error_flag.value == 1
+    assert dut.output_valid.value == 0
+    assert dut.memory_req.value == 0
+
+
+@cocotb.test()
+async def test_mem_addr_mode_and_stride_nonzero_errors(dut):
+    """두 필드가 **동시에** nonzero 여도 거부가 유지된다 (과잉 차단이 아니라
+    차단 유지 확인 — 두 항이 함께 발화할 때 서로를 상쇄하지 않는다).
+
+    **검출력의 정직한 한정 (§28.4 항 8)**: 이 테스트는 **단일 항 삭제를 검출하지
+    못한다.** 자기가 `addr_mode` 와 `stride` 를 둘 다 nonzero 로 넣으므로, 한
+    항을 지워도 남은 항이 언제나 은폐한다 — 실측으로 MUT-A(`mem_addr_mode_illegal`
+    → `1'b0`) 와 MUT-B(`mem_stride_illegal` → `1'b0`) 어느 쪽에서도 이 테스트는
+    죽지 않았다 (죽은 것은 각각 `test_mem_addr_mode_nonzero_errors` /
+    `test_mem_stride_nonzero_errors` **1건뿐**, spec §32.11 표).
+    항별 검출은 **앞의 두 테스트 몫**이고, 이 테스트가 pin 하는 것은 "논리합이
+    존재하며 동시 발화 시에도 거부가 유지된다" 까지다. 이 한정을 지우지 말 것 —
+    docstring 이 광고하는 검출력과 실제 검출력이 어긋나는 것 자체가 §28.4 항 8
+    위반이다.
+    """
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    instr = encode_instr(0x04, _STD_PORT(),
+                         eh_mem(offset=0x100, addr_mode=0xF, stride=0xFFF))
+    await fire(dut, instr, _STD_TAG(), payload_a=0x1000)
+    assert dut.error_flag.value == 1
+    assert dut.output_valid.value == 0
+    assert dut.memory_req.value == 0
+
+
+@cocotb.test()
+async def test_f_mem_flag_without_mem_eh_errors(dut):
+    """`F_MEM` 이 서 있는데 MEM EH 가 없으면 trap — `prec_flag_without_eh` 와
+    동형이다. 플래그만 있고 실물이 없으면 하류가 기본 offset(0)을 조용히
+    쓰게 된다."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    instr = encode_instr(0x10, _STD_PORT(), eh_imm16(5), flags=F_MEM)
+    await fire(dut, instr, _STD_TAG(), payload_a=10)
+    assert dut.error_flag.value == 1
+    assert dut.output_valid.value == 0
+
+
+@cocotb.test()
+async def test_mem_fields_zero_still_legal(dut):
+    """positive 대조 — `addr_mode=0` / `stride=0` 의 MEM EH 는 계속 정상
+    실행된다 (검사가 과잉 발화하지 않음을 직접 pin)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    instr = encode_instr(0x04, _STD_PORT(),
+                         eh_mem(offset=0x100, addr_mode=0, stride=0))
+    await fire(dut, instr, _STD_TAG(), payload_a=0x1000)
+    assert dut.error_flag.value == 0
+    assert dut.memory_req.value == 1
+    assert int(dut.mem_addr.value) == 0x1100
+
+
+@cocotb.test()
+async def test_mem_eh_without_f_mem_flag_is_legal(dut):
+    """**방향2 가드** — MEM EH 가 있고 `F_MEM` 이 서 있지 **않은** 명령은
+    합법이다 (spec §32.5 가 방향2 를 명시 기각했다).
+
+    이 pin 이 없으면 누군가 나중에 방향2 를 켰을 때 negative 테스트로는 전혀
+    잡히지 않고, 현존 LD/ST 회귀가 먼저 깨지는 형태로만 드러난다 — 그 시점엔
+    원인 귀속이 어렵다. 어셈블러가 `F_MEM` 을 자동 세팅하는 경로가 0건이므로
+    현존 전 LD/ST 가 정확히 이 형태다.
+    """
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    instr = encode_instr(0x04, _STD_PORT(), eh_mem(offset=0x100))
+    assert (instr >> 16) & 0xF == 0, "flags nibble 이 0 이어야 방향2 가드다"
+    await fire(dut, instr, _STD_TAG(), payload_a=0x1000)
+    assert dut.error_flag.value == 0
+    assert dut.memory_req.value == 1
+
+
+@cocotb.test()
+async def test_mem_field_state_does_not_leak_across_instructions(dut):
+    """MEM 필드 상태가 명령 경계를 넘지 않음을 pin 한다 — 방어는 **이중**이다.
+
+    (i) 명령 래치가 `acc_mem_addr_mode`/`acc_mem_stride` 를 0 으로 지운다,
+    (ii) legality 식이 `acc_any_mem` 으로 게이트된다.
+
+    **실측 변이 결과를 과장 없이 적는다** (spec §32.11 표, 2026-08-18 재실측):
+    어느 한쪽만 제거해도 이 테스트는 통과한다 — MUT-D(게이트만 제거) 200 PASS /
+    MUT-E(클리어만 제거) 200 PASS — 다른 쪽이 단독으로 막기 때문이다.
+    **둘 다 제거(MUT-F)해야 FAIL** 하고, 그때 죽는 테스트는 이 1건뿐이다.
+    즉 이 테스트가 pin 하는 것은 두 방어의 **논리곱**이지 게이트 단독이 아니다.
+    `acc_any_mem` 게이트만 단독으로 죽이는 테스트는 존재하지 않으며, 현행
+    RTL 에서는 쓸 수 없다 (게이트가 오늘은 행위적으로 중복이므로 — 예비
+    방어로서 남긴다). 이 한정을 지우지 말 것.
+
+    모든 기존 테스트가 시작 시 `reset(dut)` 을 하므로 명령 경계를 실제로
+    넘기는 것은 이 테스트뿐이다.
+    """
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    # 1) nonzero 필드를 실은 MEM 명령 — 거부되면서 누적 레지스터를 오염시킨다.
+    bad = encode_instr(0x04, _STD_PORT(),
+                       eh_mem(offset=0x100, addr_mode=0xF, stride=0xFFF))
+    await fire(dut, bad, _STD_TAG(), payload_a=0x1000)
+    assert dut.error_flag.value == 1
+
+    # error_flag 펄스가 내려갈 때까지 비운다 (다음 fire 의 폴링이 stale 값에
+    # 걸리지 않도록).
+    for _ in range(8):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+    assert dut.error_flag.value == 0
+
+    # 2) MEM EH 가 **없는** 평범한 명령 — 잔재값과 무관하게 합법이어야 한다.
+    good = encode_instr(0x10, _STD_PORT(), eh_imm16(5))
+    await fire(dut, good, _STD_TAG(), payload_a=10)
+    assert dut.error_flag.value == 0, \
+        "MEM EH 없는 명령이 직전 MEM 필드 잔재값으로 오발 거부됐다"
+    assert dut.output_valid.value == 1
+    assert int(dut.output_payload.value) == 15
+
+
+@cocotb.test()
+async def test_f_mem_flag_with_mem_eh_is_legal(dut):
+    """방향1 이 과잉 발화하지 않음 — `F_MEM` + MEM EH 조합은 합법이다."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset(dut)
+
+    instr = encode_instr(0x04, _STD_PORT(), eh_mem(offset=0x100), flags=F_MEM)
+    await fire(dut, instr, _STD_TAG(), payload_a=0x1000)
+    assert dut.error_flag.value == 0
+    assert dut.memory_req.value == 1
+    assert int(dut.mem_addr.value) == 0x1100
+
+
 @cocotb.test()
 async def test_assembler_add_imm_e2e(dut):
     if not _HAS_ASM:

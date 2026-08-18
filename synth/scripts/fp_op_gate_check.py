@@ -75,6 +75,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from gen_premap_mul import premap_sources, verify_provenance  # noqa: E402
+
 REPO = Path(__file__).resolve().parents[2]
 RPT_DIR = REPO / "synth" / "reports" / "fp_ops"
 
@@ -273,6 +276,46 @@ def parse_premap_mul(fname):
                   re.finditer(r"^\s+(\d+)\s+\$mul\s*$", text, re.M)))
 
 
+def parse_run_expect(tag):
+    """archived Vivado run log 의 `Command line :` 행에서 `SRCS=` / `TOP=` 를 뽑는다.
+
+    premap 증거가 **Vivado 가 실제로 합성한 것과 같은 설계**를 잰 것인지
+    대조하기 위한 것이다. 두 축을 본다:
+      * 소스 집합 — 소스가 하나 추가됐는데 premap 증거만 옛 목록으로 남아
+        있으면, 남은 항목의 해시는 전부 맞으므로 두 축이 서로 다른 설계를
+        재는데도 둘 다 PASS 한다. 해시 대조만으로는 **추가**를 못 잡는다.
+      * 코어 top — `hierarchy -top` 이 무엇을 살리고 무엇을 프루닝할지
+        결정하므로, top 이 다르면 같은 소스라도 계수의 의미가 달라진다.
+        run log 는 gate_top 래퍼 이름을 싣고, 코어 top 은 `_gate_top` 을 뗀
+        것이다 (Makefile `PREMAP_CORE_TOP` 과 같은 규칙 — 규칙이 한 벌이어야
+        두 벌이 어긋나는 이 결함 자체가 재발하지 않는다).
+
+    반환: (sources, core_top). run log 가 없으면 (None, None) 이고, 그 경우
+    provenance 검증은 **해시 대조까지만** 이다.
+
+    ⚠️ 검증 강도가 gate 별로 비대칭이다 — run log 를 아카이브하는 것은
+    `make synth-sys-gate` 계열뿐이고, `make synth-fp-op` 로 도는 운영자
+    gate (fp_fmalane_bf16 / fp_acclattice / fp_traincluster) 는 아직 로그가
+    쌓이기 전이라 해시 대조만 받는다. `synth-fp-op` 도 `-log` 를 넘기도록
+    고쳐 뒀으므로 **다음 재합성부터** 자동으로 같은 강도가 된다. 그때까지의
+    한정을 "전 축 검증됨" 으로 요약하지 말 것 (spec §22.14b-12).
+    """
+    p = RPT_DIR / f"{tag}_run.log"
+    if not p.exists():
+        return None, None
+    srcs = top = None
+    for line in p.read_text(errors="replace").splitlines()[:64]:
+        m = re.search(r"\bSRCS=(\S+)", line)
+        if m and srcs is None:
+            srcs = premap_sources(m.group(1))
+        m = re.search(r"\bTOP=(\S+)", line)
+        if m and top is None:
+            top = re.sub(r"_gate_top$", "", m.group(1))
+        if srcs is not None and top is not None:
+            break
+    return srcs, top
+
+
 def parse_msg_census(tag):
     """CRITICAL WARNING / ERROR census from the ARCHIVED VIVADO RUN LOG
     (`synth/reports/fp_ops/<tag>_run.log`, written by `make synth-sys-gate`
@@ -288,10 +331,24 @@ def parse_msg_census(tag):
 
     Returns None when no run log is archived — the caller turns that into
     UNMEASURED (= FAIL) for any gate that declares the axis, never a pass.
+
+    COMPLETENESS IS PART OF THE CENSUS (added 2026-08-18, spec §22.14b-11).
+    A census over a TRUNCATED log is a false PASS, and not a hypothetical
+    one: this checker was run against a log that a still-running Vivado had
+    written only as far as mid-`synth_design`, and it reported
+    `CRIT WARN = 0 -> PASS` for a gate whose complete log holds the 8
+    whitelisted ring-oscillator loops. Fewer critical warnings than reality
+    is exactly the direction that passes silently — the axis counts UP to a
+    ceiling, so a half-written log always looks cleaner than the truth.
+    A complete `vivado -mode batch` log ends with `[Common 17-206] Exiting
+    Vivado`; without that marker the run either crashed, was killed, or is
+    still in flight, and the only honest verdict is UNMEASURED (= FAIL).
     """
     p = RPT_DIR / f"{tag}_run.log"
     if not p.exists():
         return None
+    if "[Common 17-206] Exiting Vivado" not in p.read_text(errors="replace"):
+        return None            # 미완주 로그 = 미측정 (절대 PASS 아님)
     ids = {}
     n_crit = n_err = 0
     for line in p.read_text(errors="replace").splitlines():
@@ -412,6 +469,20 @@ def main():
         mul_count = (parse_premap_mul(g["premap_mul_log"])
                      if "premap_mul_log" in g else None)
 
+        # premap 증거의 PROVENANCE (§22.14b-10, 2026-08-18 적대 검수).
+        # 이 축은 archived yosys 로그에서 읽히는데, 그 로그를 만드는 단계가
+        # 어느 flow 타깃에도 없어서 **소스가 바뀌어도 로그는 그대로** 남았다.
+        # 그 상태에서 나오는 PASS 는 측정이 아니라 동결 상수다. 이제 로그
+        # 선두의 sha256 목록을 현행 소스와 대조하고, 어긋나면 축을 PASS 로
+        # 세지 않는다. 실패는 "숫자가 틀렸다" 가 아니라 **"재지 않았다"** 이며
+        # 둘 다 gate FAIL 이다 (loud-fault-never-silent).
+        if "premap_mul_log" in g:
+            run_srcs, run_top = parse_run_expect(g["tag"])
+            ok_prov, prov_detail = verify_provenance(
+                RPT_DIR / g["premap_mul_log"], run_srcs, run_top)
+        else:
+            ok_prov, prov_detail = True, None
+
         # dsp_exact / premap_mul_expect: "정확히 N" binding (GATE V20-3 —
         # deviation in EITHER direction fails; a smaller count means the
         # mapper split or merged a multiply the pin says must exist as-is).
@@ -420,7 +491,8 @@ def main():
         ok_dsp = ((dsp == g["max_dsp48"]) if g.get("dsp_exact")
                   else dsp <= g["max_dsp48"])
         ok_lut = (top["total_luts"] <= lut_limit) if lut_limit else True
-        ok_mul = (mul_count == mul_expect) if mul_count is not None else True
+        ok_mul = ((mul_count == mul_expect and ok_prov)
+                  if mul_count is not None else True)
 
         # BRAM: operator gates want 0; the GATE S1-US system top wants an
         # EXACT expected count (see the module docstring).
@@ -505,14 +577,20 @@ def main():
                f"evidence: {g['premap_mul_log']})"
                f"   -> {'PASS' if ok_mul else 'FAIL'}"]
               if mul_count is not None else []),
+            *([f"                 provenance: {prov_detail}"
+               f"   -> {'PASS' if ok_prov else 'FAIL (STALE EVIDENCE — 이 축은 재지 않았다)'}"]
+              if prov_detail else []),
             f"    BRAM       = {bram:5d}      "
             f"({'EXACTLY' if g.get('bram_exact') else 'limit'} {bram_limit}"
             f"{'; ' + g['bram_note'] if 'bram_note' in g else ''})"
             f"   -> {'PASS' if ok_bram else 'FAIL'}",
             *([("    CRIT WARN  = " + (
-                "  n/a      -> UNMEASURED (FAIL — no "
-                f"{g['tag']}_run.log archived; the census must come from a "
-                "log a reviewer can grep, see parse_msg_census)"
+                "  n/a      -> UNMEASURED (FAIL — "
+                f"{g['tag']}_run.log 이 없거나 **완주 마커"
+                "(`[Common 17-206] Exiting Vivado`)가 없다**: 크래시·강제 "
+                "종료·실행 중 셋 중 하나다. 잘린 로그의 census 는 항상 "
+                "실제보다 적게 나오므로 조용히 PASS 한다 — parse_msg_census "
+                "참조)"
                 if census is None else
                 f"{census['critical']:5d}      (whitelist "
                 + ", ".join(f"{k} x{v}" for k, v in sorted(wl.items()))

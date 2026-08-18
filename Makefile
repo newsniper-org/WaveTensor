@@ -233,14 +233,74 @@ FP_OP_RSTFP_sys_top_core_diag_nod2 := 1
 SYS_GATE     ?= sys_top_core
 SYS_GATE_TAG ?= $(SYS_GATE)
 
-.PHONY: synth-fp-op synth-sys-gate fp-op-report
+# -----------------------------------------------------------------------------
+# premap $mul 증거 (spec §22.14b-10, 2026-08-18 적대 검수에서 추가).
+#
+# `fp_op_gate_check.py` 의 binding 축 하나(premap $mul)는 archived yosys stat
+# 로그에서 읽힌다. 그런데 **그 로그를 만드는 단계가 어느 타깃에도 없었다** —
+# Vivado 만 돌고, 로그는 사람이 손으로 친 yosys 한 줄의 산출물이었다. 그래서
+# 소스가 바뀌어도 로그는 그대로 남았고, GATE S1 이 두 번 완주하는 동안 이
+# 파일만 갱신되지 않은 채 축이 PASS 했다 — 측정이 아니라 동결 상수였다.
+# 이제 합성 타깃이 증거를 **직접 재생성**하고, 소비 측(gate check)이 로그
+# 선두의 sha256 provenance 를 현행 소스와 대조한다. 어느 한쪽만으로는 부족
+# 하다: 생성만 편입하면 옛 로그가 계속 통과하고, 검증만 넣으면 flow 가 증거를
+# 못 만들어 gate 가 영영 FAIL 한다.
+#
+# 코어 top / 코어 소스 목록은 **파생**한다 (손으로 두 벌 유지하지 않는다 —
+# 두 벌이 어긋난 것이 바로 이 결함이었다):
+#   * 코어 top   = gate_top 래퍼 이름에서 `_gate_top` 접미를 뗀 것
+#   * 코어 소스  = FP_OP_SRCS_<tag> 에서 `synth/` 밑의 래퍼를 뺀 것
+#     (gen_premap_mul.py 의 premap_sources() 가 같은 규칙을 집행한다)
+PREMAP_CORE_TOP = $(patsubst %_gate_top,%,$(FP_OP_TOP_$(1)))
 
+define regen-premap-mul
+@python3 $(CURDIR)/synth/scripts/gen_premap_mul.py \
+	--tag $(2) \
+	--top $(call PREMAP_CORE_TOP,$(1)) \
+	--sources '$(FP_OP_SRCS_$(1))'
+endef
+
+.PHONY: synth-fp-op synth-sys-gate fp-op-report premap-mul-evidence
+
+# 운영자 gate 도 run log 를 아카이브한다 (2026-08-18). 이전에는 -nolog 라
+# 로그가 남지 않았고, 그래서 `parse_run_expect` 가 이 gate 들에 대해서만
+# (None, None) 을 돌려줘 premap provenance 가 **해시 대조까지만** 이었다 —
+# 소스가 하나 추가되면 남은 항목 해시는 전부 맞으므로 조용히 PASS 하는
+# 구멍이다. 검증 강도를 gate 마다 다르게 두면 그 예외가 다음 번 구멍이 된다
+# (§22.14b-10 이 세 증거를 전부 재생성한 것과 같은 이유). 로그가 쌓이는
+# **다음 재합성부터** sys_top_core 와 같은 강도(소스 목록 + top 대조)가 된다.
 synth-fp-op:
-	$(VIVADO) $(VIVADO_FLAGS) -source $(CURDIR)/synth/scripts/synth_fp_op.tcl \
+	$(VIVADO) -mode batch \
+	          -log     $(CURDIR)/synth/reports/fp_ops/$(FP_OP_TAG)_run.log \
+	          -journal $(CURDIR)/synth/reports/fp_ops/$(FP_OP_TAG)_run.jou \
+	          -source $(CURDIR)/synth/scripts/synth_fp_op.tcl \
 	          -tclargs TAG=$(FP_OP_TAG) \
 	                   TOP=$(FP_OP_TOP_$(FP_OP)) \
 	                   SRCS=$(FP_OP_SRCS_$(FP_OP)) \
 	                   PART=$(PART) PERIOD=$(FP_OP_PERIOD)
+	$(call regen-premap-mul,$(FP_OP),$(FP_OP_TAG))
+
+# premap 증거만 따로 재생성 (Vivado 없이 yosys 만으로 돌아간다).
+#
+# ⚠️ 이 타깃은 **gate 를 다시 판정하기 위한 것이 아니다.** 정반대다 — 잊는
+# 쪽이 안전하고 쓰는 쪽이 위험하다:
+#   * 잊으면  → provenance sha256 이 어긋나 `fp_op_gate_check` 가 STALE FAIL.
+#              **시끄럽게** 실패한다. 이것이 원하는 동작이다.
+#   * 단독 사용 → premap 축만 현행 소스로 갱신되고, LUT / DSP48 / RAMB18 /
+#              WHS / DRC / CRIT WARN 6축은 **옛 소스로 측정된 Vivado 리포트
+#              그대로** PASS 한다. 즉 저장소에 남은 **유일한 stale 신호를
+#              끄는 경로**다. 소스 목록 대조도 파일 이름만 보므로 못 잡는다.
+# 그러므로 이 타깃 단독 실행 후의 `fp_op_gate_check` PASS 는 **gate 판정이
+# 아니다.** RTL 을 고쳤으면 `make synth-sys-gate` / `make synth-fp-op` 로
+# Vivado 를 다시 돌려라 — 그 타깃들이 증거 재생성을 이미 포함한다.
+# 정당한 용도는 하나뿐이다: 증거 생성 자체를 손보거나(이 스크립트 개발),
+# Vivado 없는 환경에서 premap 계수만 따로 확인할 때.
+#   make premap-mul-evidence                      # 기본 = sys_top_core
+#   make premap-mul-evidence PREMAP_GATE=fp_acclattice
+#   make premap-mul-evidence PREMAP_GATE=fp_traincluster
+PREMAP_GATE ?= $(SYS_GATE)
+premap-mul-evidence:
+	$(call regen-premap-mul,$(PREMAP_GATE),$(PREMAP_GATE))
 
 # Same tcl harness as synth-fp-op, plus: the per-gate RST_FALSE_PATH /
 # POST_XDC options, and an ARCHIVED Vivado log. The log is archived because
@@ -265,6 +325,7 @@ synth-sys-gate:
 	                   PART=$(PART) PERIOD=$(FP_OP_PERIOD) \
 	                   RST_FALSE_PATH=$(or $(FP_OP_RSTFP_$(SYS_GATE)),0) \
 	                   POST_XDC=$(FP_OP_POSTXDC_$(SYS_GATE))
+	$(call regen-premap-mul,$(SYS_GATE),$(SYS_GATE_TAG))
 
 fp-op-report:
 	@python3 $(CURDIR)/synth/scripts/fp_op_gate_check.py

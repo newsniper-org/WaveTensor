@@ -206,17 +206,32 @@ Target: AMD/Xilinx FPGA, pure Verilog RTL (no HLS), 2-Pod scale (512 PEs) protot
 
 ### Makefile (모듈별 회귀 실행)
 ```
-make MOD=HIU            #  1 test
-make MOD=ISA_Decoder    # 177 tests (truth-table differential 포함)
-make MOD=Tensor_ALU     #  1 test
-make MOD=SIMD_ALU       #  9 tests
-make MOD=ALU_Extended   # 16 tests
-make MOD=Top_Core       #  5 tests (HIU + ISA_Decoder 통합)
-make MOD=PE             #  4 tests (PE wrapper)
-make MOD=Cluster        # 31 tests (4-PE grid + NoC + frag cache; FRAG_SLOTS=4 로도 실행)
-make MOD=Pod            #  7 tests (4-Cluster grid)
-python -m unittest asm.test_wavetensor_asm   # 어셈블러 단위 99 tests
-make lint                                    # ISA 테이블 freshness + frag FSM 불변식
+# 아래 test 수는 2026-08-18 실측이다 (`grep -c '^@cocotb.test' test_*.py` 와
+# 전 모듈 실행이 일치). 이 표가 실제보다 낮으면 **그 차이만큼의 회귀가
+# 기준선 안에서 조용히 통과**하므로, 수치가 어긋난 것을 보면 표를 고칠 것
+# — 문서 오타가 아니라 검사 약화다 (spec §32.8 의 "기준선 303" 오기 참조).
+make MOD=HIU            #  22 tests
+make MOD=ISA_Decoder    # 200 tests (truth-table differential 포함)
+make MOD=Tensor_ALU     #   8 tests
+make MOD=SIMD_ALU       #   9 tests
+make MOD=ALU_Extended   #  16 tests
+make MOD=Top_Core       #   8 tests (HIU + ISA_Decoder 통합)
+make MOD=PE             #   8 tests (PE wrapper)
+make MOD=Cluster        #  57 tests (4-PE grid + NoC + frag cache; FRAG_SLOTS=4 로도 실행)
+make MOD=Pod            #   8 tests (4-Cluster grid)
+#                       # ---- 9모듈 합계 336 (감소 금지 축) ----
+python -m unittest asm.test_wavetensor_asm   # 어셈블러 단위
+make lint                                    # 6종 lint (ISA freshness / frag FSM 불변식 / ...)
+make test-cluster-both                       # FRAG_SLOTS 1·4 양 빌드
+
+# 합성 gate (spec §28 / §22.14b):
+make synth-sys-gate SYS_GATE=sys_top_core PART=xcu55c-fsvh2892-2L-e
+python3 synth/scripts/fp_op_gate_check.py    # GATE 판정 (exit 0 = PASS)
+# synth-sys-gate / synth-fp-op 는 끝에 premap $mul 증거를 자동 재생성한다
+# (spec §22.14b-10). 증거만 따로 만들려면:
+make premap-mul-evidence PREMAP_GATE=sys_top_core
+# 증거 로그 선두의 sha256 provenance 가 현행 소스와 어긋나면 gate 는
+# PASS 가 아니라 STALE FAIL 로 끝난다 — "재지 않았다" 도 실패다.
 
 # ISA 정의 수정 워크플로 (v1.8.0a 단일 소스, spec §23.9):
 #   1. isa/wt64v1_isa.json 편집 (opcode/legality 의 유일한 소스)
@@ -271,12 +286,16 @@ Stage 6   encode_pass     AST    → List[int]   (각 int = 416-bit 기계어 wo
 |---------|-----|---------|
 | `.port` | PORT | `mask=N out=N` |
 | `.imm16` / `.imm32` / `.imm64` | IMM* | 위치 인자 (값) |
-| `.mem` | MEM | `offset=N [mode=N stride=N]` |
+| `.mem` | MEM | `offset=N [mode=N stride=N]` — **`mode`/`stride` 는 0 만 합법** (아래) |
 | `.subscript` | SUBSCRIPT | `A=i,j,... B=... O=...` (라벨은 알파벳 식별자) |
 | `.opref` | OPERAND_REF | `[kind=N port=N route=N]` |
 | `.precision` | PRECISION | `mode=N [dim=N]` |
 
 서브스크립트 라벨은 **첫 등장 순서**로 1, 2, 3, ... 코드에 자동 매핑 (`ij,jk->ik` 와 `pq,qr->pr` 은 비트 동등). 최대 12개 distinct 라벨.
+
+**`.mem` 의 `mode`/`stride` (C-1 실물화, 2026-08-18 — spec §2 + §32)**: 두 인자는 인코딩 자리는 있지만 **의미가 배정된 적이 없다.** 하드웨어는 이제 두 필드를 실제로 읽고 **0 이 아니면 `decode_error`** 로 거부한다 (`EHDecode.v` 의 `mem_addr_mode_illegal` / `mem_stride_illegal`). 주소는 여전히 `offset` 하나로만 결정된다. 의미 배정은 0x7D/0x7E sub-op 인코딩 규범화의 몫이다 — 지금 열어 두면 그 공간을 조기 소각한다. **어셈블러는 아직 조기 거부하지 않는다** (이월): `mode=3` 은 어셈블에 성공하고 하드웨어에서 `decode_error` 로 늦게 실패한다.
+
+**`mem_hint` 플래그 (base header flags bit1, `F_MEM`)**: 서 있는데 MEM EH 가 없으면 `decode_error` 다. **역방향은 강제하지 않는다** — MEM EH 가 있고 플래그가 없는 명령은 합법이며, 어셈블러가 이 플래그를 자동으로 세팅하지 않으므로 현존 전 LD/ST 가 정확히 그 형태다 (spec §32.5).
 
 ### 9-5. 예제 프로그램
 

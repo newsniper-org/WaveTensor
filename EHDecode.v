@@ -247,14 +247,19 @@ module EHDecode #(
     reg [63:0] acc_imm64;
     reg [63:0] acc_imm64_hi;
     reg [1:0]  acc_imm64_slot;
-    // MEM EH 의 addr_mode / stride 는 **누적만 되고 아직 소비되지 않는다**
-    // — EHDecode 는 `dec_eff_mem_offset` 만 내보내고, 주소 계산에 두 필드를
-    // 반영하는 실물화는 C-1 작업(별도)의 대상이다. 여기서 지우면 C-1 이
-    // 다시 만들어야 하므로 해석 경로는 유지한 채 경고만 국소 억제한다.
-    /* verilator lint_off UNUSEDSIGNAL */
+    // MEM EH 의 addr_mode / stride 는 **legality 판정에서 실제로 읽힌다**
+    // (C-1 실물화, 2026-08-18 — spec §2 `MEM.addr_mode`/`MEM.stride` 절 + §32).
+    // 합법값은 **둘 다 0 뿐**이고 nonzero 는 `decode_error` 다
+    // (`mem_addr_mode_illegal` / `mem_stride_illegal` — 둘 다 `acc_any_mem` 로
+    //  게이트되나 그 게이트는 **예비 방어**다 — `mem_addr_mode_illegal` 정의
+    //  바로 앞의 변이 실측 기록 + spec §32.11 참조).
+    // 본 개정은 두 필드에 **어떤 주소 산술 의미도 배정하지 않는다** — 주소는
+    // 여전히 `acc_mem_offset` 하나로만 결정된다 (`dec_eff_mem_offset`). 하드웨어가
+    // 두 필드를 읽는 목적은 오직 **0 인지 확인**하는 것이다. 의미 배정은
+    // 0x7D/0x7E sub-op 인코딩 규범화의 몫이며, 지금 선점하면 0x7D 가 sub-op 을
+    // 실을 마지막 자유 공간이 사라진다 (§32.3).
     reg [ 3:0] acc_mem_addr_mode;
     reg [11:0] acc_mem_stride;
-    /* verilator lint_on UNUSEDSIGNAL */
     reg [31:0] acc_mem_offset;
     // v1.3: widened to hold up to 2 SUBSCRIPT EH bodies (low + hi).
     // Lower 48 bits = first SUBSCRIPT (axes 0-3 for {A,B,O}).
@@ -497,12 +502,14 @@ module EHDecode #(
     // -------------------------------------------------------------------------
     wire f_has_opb       = cb_flags[3];
     wire f_precision_ovr = cb_flags[2];
-    // F_MEM 은 해독만 하고 **적법성 판정에 아직 쓰지 않는다** (MEM EH 유무와
-    // 이 플래그의 정합 검사가 없다). 실물화는 C-1 작업(별도)의 대상이므로
-    // 비트 해독 자체는 남긴 채 경고만 국소 억제한다.
-    /* verilator lint_off UNUSEDSIGNAL */
+    // F_MEM (bit1) 은 **적법성 판정에서 실제로 읽힌다** (C-1 실물화, 2026-08-18
+    // — spec §2 + §32.5): **F_MEM 이 서 있는데 MEM EH 가 없으면 `decode_error`**
+    // (`mem_flag_without_eh` — `prec_flag_without_eh` 와 동형의 한쪽 함의).
+    // **역방향은 강제하지 않는다** — MEM EH 가 있는데 F_MEM 이 서 있지 않은
+    // 명령은 합법이다. 어셈블러에 F_MEM 을 자동 세팅하는 경로가 0건이라 역방향을
+    // 강제하면 현존 전 LD/ST 가 즉시 `decode_error` 가 되고, ISA 자신도 이 비트를
+    // `mem_hint` 로 명명한다 (§32.5 의 기각 근거 3건).
     wire f_mem           = cb_flags[1];
-    /* verilator lint_on UNUSEDSIGNAL */
     wire f_dim_ovr       = cb_flags[0];
 
     wire [7:0] eff_output_port_id  = acc_port_body[15:8];
@@ -582,6 +589,29 @@ module EHDecode #(
     wire opb_required_invalid   = f_has_opb && !payload_b_valid_latched;
     // OPREF.src_kind: 0=direct payload_b, 1=NoC bank, 2=TRNG. 3+ rejected.
     wire opref_kind_unsupported = acc_any_opref && (acc_opref_src_kind > 4'h2);
+    // C-1 실물화 (2026-08-18) — spec §2 `MEM.addr_mode`/`MEM.stride` 절 + §32.2.
+    // 두 필드는 **0 만 합법**이다. 의미는 배정하지 않는다 (§32.3).
+    //
+    // `acc_any_mem` 게이트에 대한 정직한 기록 (**개별 중복 · 합동 필수**,
+    // spec §32.11 의 변이 표 — 2026-08-18 실측):
+    //   * 잔재값 오발을 막는 방어는 **둘**이다 — (i) 명령 래치가 `acc_mem_addr_mode`
+    //     /`acc_mem_stride` 를 0 으로 지우는 것, (ii) 이 `acc_any_mem` 게이트.
+    //   * MUT-D (게이트만 제거) → **200 PASS, 생존**. 오늘의 RTL 에서 게이트는
+    //     행위적으로 **중복**이며, 이를 죽이는 테스트는 존재할 수 없다 (클리어가
+    //     `acc_mem_* != 0 ⟹ acc_any_mem` 을 무조건 참으로 만들어 **등가 변이**).
+    //   * MUT-E (클리어만 제거) → **200 PASS, 생존**. 대칭적으로 게이트가 단독으로
+    //     막는다.
+    //   * MUT-F (둘 다 제거) → `test_mem_field_state_does_not_leak_across_instructions`
+    //     **FAIL**. 즉 이 쌍은 dead code 가 아니라 **합동으로 필수**다.
+    // 따라서 게이트는 "필수 조건" 이 아니라 **예비 방어(redundant-by-design)** 다 —
+    // 클리어에 대한 의존을 끊고 전제("MEM EH 가 존재할 때만 판정")를 식 자체에
+    // 명시한다. 이 문장을 "게이트가 없으면 오발한다" 로 되돌리지 말 것: 실측이
+    // 반증한다.
+    wire mem_addr_mode_illegal = acc_any_mem && (acc_mem_addr_mode != 4'h0);
+    wire mem_stride_illegal    = acc_any_mem && (acc_mem_stride    != 12'h0);
+    // F_MEM 방향1만: 플래그가 서 있는데 MEM EH 가 없음 → error.
+    // 역방향(EH 있고 flag 없음)은 **합법**이다 — §32.5.
+    wire mem_flag_without_eh   = f_mem && !acc_any_mem;
 
     wire decode_error = stg_chain_err | bh_len_mismatch | reserved_nonzero
                       | stg_unknown   | (!opcode_supported)
@@ -589,8 +619,13 @@ module EHDecode #(
                       | alu_binary_xor_err
                       | opb_required_invalid | opref_kind_unsupported
                       | prec_flag_without_eh
-                      // v1.8.0a COMMIT 2 — 11th term, self-gated to 0x70-0x7F.
-                      | fp_block_illegal;
+                      // v1.8.0a COMMIT 2 — 12th term, self-gated to 0x70-0x7F.
+                      // (원 주석은 "11th" 였으나 `dee6c94` 작성 시점부터
+                      //  off-by-one — 그때도 피연산자는 12개였다. §32.7 말미.)
+                      | fp_block_illegal
+                      // C-1 실물화 (2026-08-18) — 13~15번째 항. spec §2 + §32.2.
+                      | mem_addr_mode_illegal | mem_stride_illegal
+                      | mem_flag_without_eh;
 
     wire [7:0] pcid_one_hot = 8'h01 << cb_port_context_id[2:0];
     wire tag_match = (cb_opcode != 8'h00)

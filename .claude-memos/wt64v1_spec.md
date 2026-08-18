@@ -110,6 +110,36 @@
 | 2 | **TRNG bank** (Pod-wide `rng_word`, 64-bit conditioned random — Phase 2/3) |
 | ≥3 | reserved → `error_flag` |
 
+### `MEM.addr_mode` / `MEM.stride` (C-1 실물화, 2026-08-18 — normative)
+
+MEM EH (0x5) body 의 워드 배치 (실물 확인 — `EHDecode.v:437-439` 파싱, `asm/wavetensor_asm.py:1915-1920` 인코딩):
+
+```
+word0[31:20] stride     (12b)
+word0[19:16] addr_mode  (4b)
+word0[15:12] next_hdr   (4b)
+word0[11:8]  EH code    = 0x5
+word0[7:0]   eh_len     = 2
+word1[31:0]  offset     (32b)
+```
+
+| Field | Value | 의미 |
+|---|---|---|
+| `addr_mode[3:0]` | 0 | **유일 합법값** — 주소는 `offset` 만으로 결정된다 |
+| `addr_mode[3:0]` | ≥1 | reserved → `decode_error` |
+| `stride[11:0]` | 0 | **유일 합법값** |
+| `stride[11:0]` | ≠0 | reserved → `decode_error` |
+
+검사는 **MEM EH 가 실제로 존재하는 명령에 대해서만** 발화한다 — MEM EH 가 없는 명령의 body 잔여값은 판정 대상이 아니다. 위반은 EHDecode 단계의 **`decode_error`** 이며 `lower_required` 가 절대 아니다 (malformation vs capability 부재 경계 — §23.6a 와 동일 규율).
+
+> **구현 수단에 대한 정정 (2026-08-18 적대 검수)**: 위 문장은 **관측 가능한 계약**이고, 그것을 지키는 RTL 수단은 **둘**이다 — (i) 명령 래치가 두 누적 레지스터를 0 으로 지우는 것, (ii) legality 식의 `acc_any_mem` 게이트. 초기 서술은 (ii)를 **필수 조건**처럼 적었으나 **실측이 반증했다**: 게이트만 제거해도 전 테스트가 통과한다 (등가 변이). 두 수단은 **개별로는 중복, 합동으로는 필수**이며 spec 은 어느 한쪽을 규범으로 지정하지 않는다 — 규범은 위 계약뿐이다. 변이 실측 표는 **§32.11**.
+
+**restrictive-first 근거**: 두 필드의 **의미**는 이 저장소·형제 저장소·git 이력 어디에도 명세된 적이 없다. 의미가 없는 필드에 대해 합법 공간을 넓게 열어 두면, 나중에 의미를 배정하는 순간 이미 통과하던 인코딩의 해석이 바뀌어 **breaking** 이 된다. 반대로 지금 `0` 만 합법으로 좁혀 두면 이후 어떤 값의 합법화도 **monotonic loosening** 이라 non-breaking 이다 — 거부되던 인코딩에 의존하는 코드는 존재할 수 없기 때문이다 (§23.6a 의 "restrictive-first + monotonic loosening" 정책과 동일 논리). 좁히는 방향은 나중에 불가능하고 넓히는 방향은 나중에도 가능하므로, 불확실할 때의 유일한 안전한 선택은 **좁게 시작하는 것**이다.
+
+**의미 배정 금지 (normative)**: 본 개정은 `addr_mode` / `stride` 에 **어떤 주소 산술 의미도 배정하지 않는다.** 그 배정은 **0x7D / 0x7E sub-op 인코딩 규범화 (후속 COMMIT)** 의 몫이며, 지금 선점하면 그 COMMIT 이 쓸 자유 공간이 사라진다. 근거: **0x7D 는 EH shape 이 port+mem 으로 고정**돼 있고 (§23.6a "EH shape" — imm/opref/subscript 는 전부 forbidden) **mode byte 의 합법 조합이 단 하나** (dtype 0x4 / acc 1 / rnd 0 — §23.6a per-op 표 0x7D 행) 라, 0x7D 가 sub-op 을 실을 수 있는 자유 인코딩 공간은 사실상 **이 MEM body 필드뿐**이다. 상세 판정과 기각 근거는 **§32.3**.
+
+**`F_MEM` (base header flags bit1) legality (normative)**: **F_MEM 이 서 있는데 MEM EH 가 없으면 `decode_error`** 다 (`prec_flag_without_eh` 와 동형의 한쪽 함의). **역방향은 강제하지 않는다** — MEM EH 가 있는데 F_MEM 이 서 있지 않은 명령은 **합법**이다. 역방향 기각의 근거는 **§32.5**.
+
 ## 3. Opcode 표 (WT64v1 base)
 
 > **v1.8.0a COMMIT 1 (2026-07-16)**: 이 섹션의 hand-written opcode/legality
@@ -1970,6 +2000,162 @@ Pod 경계 (`make MOD=Pod`, 8 tests) 에서도 (i)/(ii) 는 각각 **1 FAIL** �
 | **`acc_mem_addr_mode_reg` / `acc_mem_stride_reg`** | **2** | `EHDecode.v:332-333` — **C-1 의 대상** |
 
 **왜 이 anchor 가 필요한가**: C-1 실물화의 기계적 성공 지표는 "EHDecode 2건이 목록에서 사라진다" = **17 → 15** 다. 그런데 직전에 커밋된 로그는 **20건**이었고 그 사이 `a93c7b2` 가 EHDecode 레지스터 3건(`tag_latched`/`acc_opref_port_id`/`acc_opref_noc_route`)을 이미 삭제했다. anchor 없이 C-1 을 착지시켰다면 20→15 의 **5건 델타에 남의 몫 3건이 섞여** 귀속이 무너졌을 것이다. §26.6 의 "편차는 귀속 후 재판정" 규율이 요구하는 것이 정확히 이 선행 측정이다.
+
+##### 22.14b-9 — C-1 착지 후 GATE S1 재측정 (**anchor 17 → 실측 15, 귀속 증명 완결**)
+
+C-1 RTL 착지(`EHDecode.v`) 직후 §32.8 "재측정 의무" 를 집행했다 — 전 flow 재실행 (2026-08-18 17:14–17:18, `xcu55c-fsvh2892-2L-e`, OOC synth+opt+place+phys_opt+route, `make synth-sys-gate SYS_GATE=sys_top_core` exit 0).
+
+**① 기계적 성공 지표 — `Synth 8-6014` 17 → 15 달성.** anchor 형식 그대로 계수했다 (`grep -cE "^WARNING: \[Synth 8-6014\]"`). 수치 일치만으로는 귀속이 아니므로 **집합 차**로 증명했다 (anchor 로그는 `dc96554` 커밋본):
+
+| 집합 연산 | 결과 |
+|---|---|
+| anchor(17) − 실측(15) = **사라진 건** | **`acc_mem_addr_mode_reg`, `acc_mem_stride_reg` — 정확히 이 2건뿐** |
+| 실측(15) − anchor(17) = **새로 생긴 건** | **0건** |
+| 교집합 | **15건** (HIU `initial_state_reg[2..15]` 14 + `FP_StepSeq` `fd_fault_reg` 1 — §32.7 이 "본 절의 대상이 아니다" 라고 미리 격리한 몫이 그대로 남았다) |
+
+더 강한 증거: **전 로그 메시지 census** (`WARNING`/`CRITICAL WARNING`/`INFO` 의 `[<도구> <번호>]` 별 빈도)를 anchor 와 대조하면, **합성 단계에서 달라진 것은 위 2줄의 소멸뿐**이다. 나머지 census 차이는 전부 `Physopt 32-*` (구현 단계) 다. `acc_mem` 문자열은 새 로그 전체에 **0회** 등장한다 — 부분 비트 제거(`..._reg[n]` 형식)조차 없다.
+
+**② GATE S1-US 전 축 PASS** (`fp_op_gate_check.py` exit 0). §32.7 이 **측정 전에** 공표한 예상과 대조:
+
+| 축 | anchor (§22.14b-8) | 실측 | 델타 | §32.7 예상 | 판정 |
+|---|---:|---:|---:|---|---|
+| **LUT sites** | 15,666 | **15,769** | **+103** | "소폭 증가" | PASS (ceiling 24,799, 마진 9,030) |
+| **DSP48** | 39 | **39** | **0** | delta 정확히 0 | PASS |
+| **premap `$mul`** | 381 | **381** | **0** | delta 정확히 0 | PASS (단 ④ 참조) |
+| **RAMB18** | 2 | **2** | **0** | delta 정확히 0 | PASS |
+| **WHS** | +0.007 ns | **+0.019 ns** | **+0.012** | 중립 예상 · 측정으로만 판정 | PASS |
+| **DRC** | 0 err / 6 warn | **0 err / 6 warn** | 0 (경고 6종·건수 동일) | delta 0 | PASS |
+| **CRIT WARN** | 8 (`Synth 8-295`×8) | **8 (동일)** | 0 | delta 0 | PASS |
+| ERROR lines | 0 | **0** | 0 | — | PASS (binding) |
+| **WNS / Fmax** | +1.656 ns / 119.85 MHz | **+2.207 ns / 128.32 MHz** | +0.551 / +8.47 | (기록 축) | RECORDED |
+| **FF** | 9,802 | **10,076** | **+274** | +16 예상 | 비-binding — ③ 에서 귀속 |
+
+**③ 정직한 귀속 — 예상과 어긋난 두 수치 (FF, 그리고 WHS 개선의 출처)**
+
+§32.7 은 FF **+16** 을 예상했다 (`acc_mem_addr_mode` 4 + `acc_mem_stride` 12 부활). 실측은 **+274** 다. 합성 단계와 구현 단계를 분리하면 전부 설명된다:
+
+| 단계 | anchor | 실측 | 델타 | 귀속 |
+|---|---:|---:|---:|---|
+| **post-synth FF** (`sys_top_core_synth_util.rpt`, 계층) | 9,802 | 9,816 | **+14** | **전량이 `u_ehdec` 내부** (1,374 → 1,388). 다른 계층 행(`u_hiu`/`u_core` PE_Core/`FP_StepSeq`/`FP_AddWide`/`FP_Mul36`)은 **비트 동일** |
+| **post-route FF** (`sys_top_core_impl_util.rpt`) | 9,802 | 10,076 | **+274** | 위 +14 **＋ 구현 단계 복제 260** |
+
+구현 단계 260 의 출처는 로그가 직접 말한다 — `phys_opt_design` 의 fanout 최적화가 `u_core/u_decoder/u_ehdec/dec_input_payload[*]` **30개 net 을 복제**했고 (`INFO: [Physopt 32-81]` ×30, 대부분 9배), 요약행이 `Created 260 new cells` 로 못박는다. anchor 실행에서는 이 메시지가 **0건**이다. 즉:
+
+- **C-1 의 순수 합성 비용은 LUT +14 / FF +14** 다 (post-synth, 전량 EHDecode 내부). post-synth 최상위 Total LUTs 도 17,065 → 17,079 = **+14** 로 일치한다.
+- **post-route 의 LUT +103 · FF +274 중 C-1 이 직접 산 것은 각각 14** 이고 나머지는 **구현 단계 변동**이다. 그 증거로 `PE_Core` 자체 행은 **post-synth 에서 7,819 로 완전 동일**한데 **post-route 에서는 6,580 → 6,676 (+96)** 로 움직인다 — RTL 이 한 글자도 안 바뀐 모듈이다. **post-route 의 모듈별 자원 귀속은 안정적이지 않으며, 모듈 단위 귀속은 post-synth 표로만 한다.**
+- **WHS 개선(+0.007 → +0.019)을 C-1 의 공로로 적지 않는다.** 그것은 위 fanout 복제가 만든 것이고, 복제는 **FF 260 개를 지불**하고 산 것이다. anchor 에서 이 최적화가 발화하지 않은 이유는 배치 상태 차이이며, 발화 여부 자체가 heuristic 이다. **다음 변경에서 이 260 이 사라지면 WHS 는 다시 +0.007 부근으로 내려갈 수 있다** — §22.14b-8 의 WHS 경고는 **해제되지 않았다.**
+
+**미해명 잔여 2건 (숨기지 않고 기록)**: post-synth FF 는 **+14** 인데 부활한 레지스터는 **16 비트**다. 8-6014 census 는 두 벡터가 **통째로** 살아남았다고 보고하고(비트 인덱스 형식의 잔여 제거 메시지 0건), 새로 생긴 제거 메시지도 0건이며, 추가된 FF 는 전부 `FDCE` (3,917 → 3,931 = +14) 다. 따라서 "16 이 살아나는 동안 EHDecode 안의 다른 2 FF 이 메시지 없이 접혔다" 또는 "등가 레지스터 2개가 병합됐다" 중 하나인데, **어느 쪽인지 현 증거로는 특정할 수 없다.** FF 는 비-binding 축(V9-4 관례)이라 판정에 영향이 없어 **추측으로 메우지 않고 미해명으로 남긴다.** 특정하려면 `KEEP_DCP=1` 재실행 후 라우팅 체크포인트에서 셀 목록을 직접 비교해야 한다.
+
+**④ 부수 발견 — `premap $mul` 축의 증거 파일이 flow 로 갱신되지 않는다 (선행 조건, C-1 무관)**
+
+`fp_op_gate_check.py` 는 premap `$mul` 을 `synth/reports/fp_ops/sys_top_core_premap_mul.log` 에서 읽는데, **`make synth-sys-gate` 는 이 파일을 생성하지 않는다** (Vivado tcl 에 해당 단계 없음 — 이 로그는 별도 yosys 호출 `read_verilog … ; hierarchy -top Top_Core; proc; opt_clean; stat` 의 산출물이다). 그래서 현재 tracked 로그는 **단계 0(skid buffer) 이전 소스 상태**의 것이다 (내부 `EHDecode.v:680/671` 참조 — 현행은 `:736/727`). 즉 **anchor(§22.14b-8) 시점에도 이미 stale 했다.**
+
+현행 소스로 같은 yosys 명령을 재실행해 확인한 결과 **`$mul` = 381 로 동일**하므로 **축 판정 자체는 유효**하다 (C-1 은 곱셈 연산자를 추가하지 않는다 — 예상대로다). 그러나 **binding 축이 갱신되지 않는 증거 파일 위에서 통과하고 있다**는 사실은 그 자체로 §12a 가 싫어하는 "조용히 통과하는 검사" 형태다. 이월 항목으로 등재한다:
+
+1. `synth_fp_op.tcl` (또는 `synth-sys-gate` 타깃) 에 premap `$mul` 증거 재생성을 **flow 안으로** 편입할 것. 그 전까지 premap 축은 "측정" 이 아니라 **동결 상수**다.
+2. 편입 전이라도, GATE S1 을 판정하는 phase 는 **증거 파일의 소스 상태 최신성**을 함께 확인해야 한다 (파일 mtime 이 아니라 내부 라인 참조가 현행 RTL 과 맞는지).
+
+> **→ 해소 완료 (§22.14b-10)**: 이월 1·2 를 **같이** 닫았다 — 생성은 `synth-sys-gate` / `synth-fp-op` 안으로 편입했고, 최신성 확인은 사람의 육안 대조(내부 라인 참조 읽기)가 아니라 **소스 sha256 대조**로 기계화해 gate 판정에 편입했다. 이월 2 가 제안한 "라인 참조 확인" 은 사람이 매번 해야 하고 잊으면 조용히 통과하므로, 그 형태로 남기지 않았다.
+
+**⑤ 무회귀** (본 재측정 phase 에서 확인): `make lint` **6/6 exit 0** (`lint_isa_tables_fresh` / `lint_frag_total_m1_held` / `lint_synth_coverage` / `lint_output_payload_hold` / `lint_frag_slots_dual_run` / `lint_known_defect_tests`). cocotb 전건은 직전 RTL phase 가 9모듈 **336 PASS** 로 실증했다 (ISA_Decoder 192 → 200, 나머지 8모듈 불변).
+
+##### 22.14b-10 — premap `$mul` 축의 증거를 **flow 안으로** 넣고 provenance 를 강제한다 (2026-08-18, normative)
+
+§22.14b-9 ④ 의 이월 해소. **결함의 성격을 먼저 정확히 적는다**: 수치가 틀린 적은 없었다 — `$mul` 은 재측정해도 **381** 이다. 틀린 것은 **"측정했다" 는 주장**이었다. binding 축 하나가 **어떤 flow 타깃도 만들지 않는 파일**에서 읽히고 있었고 (`make synth-sys-gate` 는 Vivado 만 호출한다 — tcl 에 yosys 단계가 없다), 그 파일은 사람이 손으로 친 yosys 한 줄의 산출물이었다. 그래서 GATE S1 이 두 번 완주하는 동안 다른 리포트 8종은 전부 갱신됐는데 **이 파일만 갱신되지 않았고**, 내부 라인 참조가 `EHDecode.v:671/680` — 당시 현행 소스에서는 `:727/736` — 로 어긋나 있었다. **PASS 는 사실이었으나 측정이 아니라 동결 상수 위에서 났다.** §12a 가 금지하는 "조용히 통과하는 검사" 의 교과서적 형태이며, **C-1 이 만든 것이 아니라 anchor(§22.14b-8) 시점에도 이미 존재**했다.
+
+**수리는 두 겹이다. 한 겹만으로는 닫히지 않는다.**
+
+| 겹 | 지점 | 내용 |
+|---|---|---|
+| **생성** | `Makefile` (`synth-sys-gate` / `synth-fp-op` / 신규 `premap-mul-evidence`) | 합성 타깃이 끝나면 `synth/scripts/gen_premap_mul.py` 가 증거를 **직접 재생성**한다. 코어 top 과 코어 소스 목록은 **파생**된다 (`FP_OP_TOP_<tag>` 에서 `_gate_top` 접미 제거 / `FP_OP_SRCS_<tag>` 에서 `synth/` 밑 래퍼 제외) — 손으로 두 벌 유지하지 않는다. **두 벌이 어긋난 것이 바로 이 결함이었다** |
+| **검증** | `synth/scripts/fp_op_gate_check.py` | 증거 로그 **선두의 provenance 헤더**(각 소스의 sha256)를 현행 소스와 대조한다. 어긋나면 축을 PASS 로 세지 않는다 — 실패 문구는 "숫자가 틀렸다" 가 아니라 **"이 축은 재지 않았다"** 다 |
+
+**왜 mtime 이 아니라 내용 해시인가**: mtime 은 checkout·`touch`·복사로 아무 의미 없이 바뀌고 (거짓 FAIL), 반대로 내용이 바뀌어도 보존될 수 있다 (거짓 PASS). 실제로 이 결함을 처음 드러낸 단서가 mtime 이었지만, mtime 은 **증상**이지 판정 근거가 아니다.
+
+**왜 sidecar 가 아니라 로그 선두 헤더인가**: 사이드카 파일은 분실·분리되고 (그 상태가 곧 "검사가 조용히 사라짐"), 헤더는 증거와 물리적으로 같은 파일이라 `git diff` 에 반드시 같이 뜬다.
+
+**세 번째 검사 — 소스 집합 대조**: provenance 의 소스 목록을 archived Vivado run log 의 `SRCS=` 와 대조한다 (`parse_run_srcs`). 소스가 하나 추가됐는데 premap 증거만 옛 목록이면 **두 축이 서로 다른 설계를 재면서 둘 다 PASS** 하기 때문이다.
+
+**신규 검사 자체의 변이 검증 (필수 — 이 검사가 또 하나의 조용한 검사가 되지 않도록)**:
+
+| 변이 | 조작 | 결과 |
+|---|---|---|
+| **MUT-G** | 소스 1바이트 변경 (`EHDecode.v` 에 개행 1개 추가) | `exit 1` — `STALE — 증거가 현행 소스로 만들어지지 않았다: EHDecode.v: sha256 불일치` |
+| **MUT-H** | provenance 헤더 삭제 (= 손으로 만든 legacy 로그) | `exit 1` — `provenance 헤더 없음 … 재생성할 것` |
+| **MUT-I** | 헤더의 `source: HIU.v` 줄 1개 무력화 | `exit 1` — `소스 목록이 합성 run 과 다르다` (run log 대조가 잡는다) |
+
+**MUT-G 가 결정적이다** — 그것이 정확히 **결함이 실제로 존재하던 상태**이고, 구 checker 는 그 상태에서 **PASS** 했다.
+
+**재생성 결과 — 축 수치 전건 불변 (gate 기준 수치 무수정)**:
+
+| gate | 증거 | 재생성 전 | 재생성 후 | 기대값 |
+|---|---|---:|---:|---|
+| GATE V20-2/US | `fp_acclattice_premap_mul.log` | 0 | **0** | limit 0 |
+| GATE V20-3/US | `fp_traincluster_premap_mul.log` | 8 | **8** | EXACTLY 8 |
+| GATE S1-US | `sys_top_core_premap_mul.log` | 381 | **381** | EXACTLY 381 |
+
+세 로그를 **전부** 재생성한 이유: provenance 강제에 예외 목록을 두면 그 예외가 다음 번 구멍이다. 나머지 두 로그도 같은 방식으로 만들어진 검증 불가능한 증거였고, 재생성 후 수치가 전건 동일하므로 **가려져 있던 회귀는 없었다**. `fp_op_gate_check.py` **exit 0** 유지 — 어떤 gate 기준 수치도 수정하지 않았다.
+
+**남는 한정 (정직하게)**: yosys 가 없는 환경에서는 증거를 만들 수 없다. 그 경우 `gen_premap_mul.py` 는 **조용히 건너뛰지 않고 정지**한다 ("측정 못 하면 PASS 가 아니라 정지"). 또한 premap 축을 선언하지 않는 gate tag 는 skip 하되 **그 사실을 한 줄 출력**한다 — 침묵은 판정이 아니다.
+
+##### 22.14b-11 — CRITICAL WARNING census 가 **잘린 로그**를 받아들였다 (같은 결함 계열, 실사고로 발견 · normative)
+
+§22.14b-10 을 착지시킨 직후 **같은 계열의 두 번째 구멍이 실사고로 드러났다.** 재측정을 위해 `make synth-sys-gate` 를 백그라운드로 돌린 뒤, **아직 실행 중인** Vivado 가 `synth_design` 중간까지만 쓴 로그에 대고 `fp_op_gate_check.py` 를 돌렸더니:
+
+```
+CRIT WARN  =     0      (whitelist Synth 8-295 x8 …)   -> PASS
+```
+
+**완주 로그에는 8건이 있는데 0건으로 세고 PASS 했다.** 발견 경위를 그대로 적는다 — 이것은 합성한 시나리오가 아니라 **실제로 잘못 판정된 실행**이다.
+
+**왜 이 방향이 위험한가**: census 축은 "화이트리스트 상한 이하" 를 보는 **상향 카운트**다. 로그가 잘리면 메시지가 **덜** 보이므로 결과는 언제나 실제보다 **깨끗해 보이고**, 따라서 **항상 조용히 통과하는 방향**으로 틀린다. `premap $mul` 의 stale 증거와 정확히 같은 구조다 — **"증거 파일이 무엇을 대표하는지 검증하지 않는 검사"**.
+
+**수리**: `parse_msg_census` 가 로그에 **완주 마커** `INFO: [Common 17-206] Exiting Vivado` 가 있는지 먼저 본다. 없으면 `None` 을 돌려주고, 기존 규약대로 **UNMEASURED = FAIL** 이 된다 (크래시·강제 종료·실행 중 셋 다 이 경로다). 실패 문구도 "로그가 없다" 에서 **"없거나 완주 마커가 없다"** 로 정정했다.
+
+**변이 검증 (실사고 그대로)**: 진행 중인 run 의 부분 로그에 대해 `fp_op_gate_check.py` → **`exit 1`**, `CRIT WARN = n/a -> UNMEASURED (FAIL …)`, `GATE S1-US RESULT: FAIL`. 같은 run 이 완주한 뒤 재실행 → `CRIT WARN = 8 -> PASS`, `exit 0`. 즉 검사는 "잘림" 과 "정상" 을 **양방향으로** 구분한다 (한쪽만 보이면 그것은 상수다).
+
+##### 22.14b-12 — 최종 재측정 (전 증거를 **최종 소스 상태**에서 다시 만들었다)
+
+§22.14b-10/-11 의 수리 도중 두 가지가 드러나 **재측정을 한 번 더** 했다: (a) 첫 재실행 중 RTL 주석을 고쳐 premap provenance 가 **STALE FAIL** 로 잡혔고 (검사가 **작성자 자신의 편집**을 잡은 것이므로 가장 강한 동작 증거다), (b) Vivado 가 읽은 소스 상태(18:03:01 세션 시작, elaboration +5s 완료)와 최종 파일 상태(mtime 18:05:14)가 **주석 차이만큼** 어긋나 있었다. 주석은 파싱에서 사라지므로 넷리스트는 동일하지만, **"동일할 것" 은 주장이지 측정이 아니므로** 전 소스를 확정한 뒤 flow 를 통째로 다시 돌렸다.
+
+**최종 실측 (2026-08-18 18:08–18:14, `make synth-sys-gate` exit 0 — Vivado 완주 + premap 자동 재생성까지 한 타깃 안에서)**:
+
+| 축 | anchor (§22.14b-8) | §22.14b-9 실측 | **최종** | 판정 |
+|---|---:|---:|---:|---|
+| `Synth 8-6014` | 17 | 15 | **15** (HIU `initial_state_reg` 14 + `FP_StepSeq` `fd_fault_reg` 1) | PASS — `acc_mem` 문자열 로그 전체 **0회** |
+| LUT sites | 15,666 | 15,769 | **15,769** | PASS (ceiling 24,799) |
+| DSP48 | 39 | 39 | **39** | PASS (EXACT) |
+| premap `$mul` | 381 | 381 | **381** + **provenance 검증됨** | PASS (EXACT) |
+| RAMB18 | 2 | 2 | **2** | PASS (EXACT) |
+| WHS | +0.007 | +0.019 | **+0.019 ns** | PASS |
+| DRC | 0 err / 6 warn | 동일 | **0 err / 6 warn** | PASS |
+| CRIT WARN | 8 | 8 | **8** (`Synth 8-295` ×8) | PASS |
+| ERROR lines | 0 | 0 | **0** | PASS (binding) |
+| WNS / Fmax | +1.656 / 119.85 | +2.207 / 128.32 | **+2.207 ns / 128.32 MHz** | RECORDED |
+
+**부수 소득 — 재현성이 실측으로 확인됐다**: 같은 설계로 돌린 세 번의 run 이 LUT 15,769 / WHS +0.019 / DSP 39 / BRAM 2 / CRIT 8 을 **전건 동일하게** 냈다. §22.14b-9 가 "post-route 모듈별 귀속은 안정적이지 않다" 고 경고한 것은 **설계가 바뀌었을 때** 의 이야기이고, **설계가 같으면 이 harness 는 결정적**이라는 것이 이번에 별도로 확인됐다. §22.14b-9 의 WHS 경고(얇은 +0.019 는 다음 설계 변경에서 되돌아갈 수 있다)는 **여전히 유효**하다 — 이번 확인은 "같은 설계의 재현성" 이지 "다른 설계에서의 안정성" 이 아니다.
+
+**일반화 (본 절이 남기는 규율)**: gate 축이 **파일에서 읽는 수치**일 때, 검사는 수치뿐 아니라 **그 파일이 무엇을 대표하는지**를 함께 검증해야 한다. 최소 두 가지다 — (i) **어느 소스 상태**의 산출물인가 (§22.14b-10 의 sha256 provenance), (ii) **완주한 실행**의 산출물인가 (본 절의 완주 마커). 둘 중 하나라도 없으면 그 축은 "PASS" 가 아니라 **"재지 않았다"** 이고, 저장소의 규약상 그것은 FAIL 이다.
+
+**의식적 이연 1건 — Vivado 리포트 자체의 소스 provenance (미해소, 오늘 닫지 않는 이유를 적는다)**: 위 규율을 끝까지 밀면 `*_impl_util.rpt` / `*_impl_summary.json` / `*_impl_drc.rpt` 도 **어느 소스 상태의 산출물인지** 기계 검증돼야 한다. 오늘 그것을 하지 않는 이유는 회피가 아니라 **비용 구조**다: (a) 구현하려면 공유 harness `synth/scripts/synth_fp_op.tcl` 이 소스 해시를 리포트에 심어야 하고, (b) 그 순간 **기존 아카이브 전건이 provenance 없음 = FAIL** 이 된다. 되살리려면 `fp_fmalane_bf16` / `fp_fmalane_bf16_xcu50` 를 포함한 **모든 gate 를 재실행**해야 하는데, 그중 일부는 오늘의 phase 범위를 벗어난 part/설정의 역사적 측정이다. 대안인 "기존 파일은 면제" 목록은 §22.14b-10 에서 premap 3종에 대해 **명시적으로 거부한 바로 그 형태**이므로 여기서만 채택할 수 없다. 따라서 **전 gate 재실행을 감당할 수 있는 phase 의 몫으로 이연**한다. 그때까지의 정직한 상태 서술: premap 축과 CRIT 축은 **증거의 대표성이 검증된다**, 나머지 Vivado 축(LUT/DSP/BRAM/WHS/DRC)은 **아직 아니다** — 이 비대칭을 "전 축 검증됨" 으로 요약하지 말 것.
+
+##### 22.14b-13 — 재검수가 남긴 4건 수리 (2026-08-18, normative)
+
+§22.14b-10/-11/-12 수리를 **적대 재검증**한 라운드가 minor 4건을 남겼다. 넷 다 "오늘 틀린 답을 내지는 않지만, 다음 사람이 밟게 되는" 형태라 같은 COMMIT 에서 닫았다.
+
+**① `make premap-mul-evidence` 안내 문구가 역방향이었다 (Makefile)** — 이 타깃은 Vivado 없이 premap 증거만 현행 소스로 갱신한다. 그런데 저장소에서 gate 전체의 stale 여부를 잡아 주는 **기계적 신호는 오늘 이것 하나뿐**이므로, RTL 을 고친 뒤 이 타깃만 돌리면 premap 축은 PASS 로 바뀌고 **LUT / DSP48 / RAMB18 / WHS / DRC / CRIT WARN 6축은 옛 소스로 측정된 리포트 그대로 PASS** 한다. 소스 목록 대조도 **파일 이름만** 보므로 잡지 못한다. 즉 **잊는 쪽이 안전하고 쓰는 쪽이 위험**한데, 원 주석은 "gate 를 다시 판정하기 전에 증거를 맞추는 용도" 라고 적어 정반대로 읽혔다. 주석을 정정하고 **"이 타깃 단독 실행 후의 `fp_op_gate_check` PASS 는 gate 판정이 아니다"** 를 사용 지점에 명기했다. §22.14b-12 말미의 비대칭 경고는 spec 에만 있었고 **사용 지점에는 없었다** — 경고는 읽히는 자리에 있어야 한다.
+
+**② provenance 강도가 gate 별로 비대칭이었다 → 절반 해소 + 나머지 자동화** — 두 갈래였다.
+- **소스 추가를 못 잡는 gate 가 있었다**: 소스 목록 대조는 archived run log 에서 오는데, 로그를 남기는 것은 `synth-sys-gate` 뿐이라 운영자 gate 3종은 **해시 대조만** 받았다. 해시 대조는 **수정은 잡지만 추가는 못 잡는다** (추가분은 헤더에 없으므로 대조 대상이 아니다). `synth-fp-op` 에 `-log`/`-journal` 을 넘기도록 고쳐 **다음 재합성부터 자동으로 같은 강도**가 되게 했다. "기존 것은 면제" 목록을 만들지 않은 이유는 §22.14b-10 과 같다 — 예외가 다음 번 구멍이 된다.
+- **`top` 이 아예 검증되지 않았다**: provenance 헤더는 `top:` 을 기록하면서 소비 측은 파싱조차 하지 않았다. `hierarchy -top` 이 무엇을 살리고 프루닝할지 결정하므로 **top 이 다르면 같은 소스라도 다른 설계를 잰 것**이다. `parse_run_srcs` → `parse_run_expect` 로 확장해 `TOP=` 도 뽑고(코어 top = `_gate_top` 을 뗀 것 — Makefile `PREMAP_CORE_TOP` 과 **같은 규칙 한 벌**), `verify_provenance` 에 실패 사유 (d) 를 추가했다.
+- **검출력 실증 (MUT-K)**: 증거 헤더의 `# top: Top_Core` 를 `ISA_Decoder` 로 바꾼 사본에 대해 `verify_provenance` → **False** ("증거는 `ISA_Decoder`, run log 는 `Top_Core`"), 대조군(현행) → **True**. gate 출력 자체가 이제 강도를 실토한다 — `sources+top` (sys_top_core) vs `sources(hash only)` (운영자 gate 2종).
+
+**③ §32.6 의 테스트 좌표가 +186 만큼 stale 했다** — 같은 COMMIT 이 `test_isa_decoder.py:1121` 부터 C-1 테스트 8건(**186 줄**)을 삽입하면서 자기가 적어 둔 좌표를 밀어 놓고 갱신하지 않았다. **내용 주장은 참**이었고(`_TT_FLAGS = [0x0, 0x8]`, builder 는 `eh_mem(0)`) 좌표만 어긋났으므로 "델타 0 · 재캡처 불요" 결론은 유효하다. §32.6 을 실측본으로 고치고, **자기 편집이 자기 좌표를 stale 하게 만든다**는 사실 자체를 그 자리에 남겼다.
+
+**④ `synth/scripts/gen_premap_mul.py` 는 이 COMMIT 의 필수 구성이다** — `fp_op_gate_check.py` 가 **모듈 최상단**에서 무조건 임포트하므로, 이 파일이 빠진 트리에서는 gate 판정 스크립트가 어떤 인자로도 `ImportError` 로 즉사한다. 조용한 실패는 아니지만(즉시 크래시), 신규 파일이 `git add` 없이 누락되는 것은 흔한 사고라 명시 등재한다.
+
+**본 절이 남기는 규율 (§22.14b-12 의 확장)**: 검사를 강화할 때 **강화의 범위가 균일한지**를 함께 적어야 한다. 범위가 고르지 않으면 "검사가 있다" 는 사실이 "전부 검사된다" 로 요약되고, 그 요약이 곧 다음 구멍이다. 그래서 본 절은 (i) 비대칭을 **gate 출력 문자열 자체**에 노출시키고(`sources+top` / `sources(hash only)`), (ii) 해소 경로를 **자동**으로 만들었다(다음 재합성 = 자동 승격). 사람이 기억해야 해소되는 형태로 남기지 않는다.
 
 #### 22.14c 회귀 (301 tests PASS, +4 신규)
 
@@ -5866,3 +6052,417 @@ S3-C4 통합 run 에서 처음 판정된다.** 여기서 그 축을 검증했다
    **본 절은 이 축을 검증하지 않았다.**
 7. `TENSOR_ALU.v` / `SIMD_ALU.v` 폐기 실행 (사용자 결정 1건), §11 표 전체
    재동기화, §30.11 / §31.12 의 나머지 이월 목록 **무변경 승계**.
+
+## 32. C-1 실물화 — MEM EH `addr_mode`/`stride` 강제 + `F_MEM` legality (2026-08-18, COMMIT 0 · spec-first · normative)
+
+**사용자 결정 (binding, 2026-08-18): "실물화의 범위는 강제만."** 필드를 하드웨어가
+**실제로 읽고** 불법값은 `decode_error` 로 거부한다. **주소 산술 의미는 배정하지
+않는다.** 본 절이 그 이행의 spec-first 기록이며, 규범 표 자체는 **§2** 에 있다
+(`MEM.addr_mode` / `MEM.stride` 절). 본 절은 그 표의 **판정 근거**를 남긴다.
+
+**RTL 은 본 COMMIT 에서 무접촉이다** — §12a 규칙 3 의 spec-first 순서에 따라
+본 절이 선행하고, `EHDecode.v` 편집과 directed 테스트는 다음 COMMIT 이다.
+
+### 32.1 무엇이 문제였나 — "해독은 하는데 아무도 안 읽는" 신호 3개
+
+> **좌표 규약 (2026-08-18 적대 검수 정정)**: 아래 표의 `EHDecode.v:<n>` 은 전부
+> **C-1 착지 이전** 파일 상태의 좌표다 (본 절은 spec-first COMMIT 에서 쓰였다).
+> 착지 후 주석이 늘어 좌표가 밀렸으므로 **착지 후 좌표를 병기**한다. 인라인
+> 좌표는 원리적으로 drift 하므로, 어긋남을 발견하면 **본 표를 고치는 것이
+> 정본이고 RTL 을 좌표에 맞추는 것이 아니다.**
+
+| 신호 | 착지 전 | 착지 후 (현행) | 착지 전 상태 |
+|---|---|---|---|
+| `acc_mem_addr_mode` | `EHDecode.v:255` | `:261` | MEM EH body 에서 파싱돼 레지스터에 적재되지만 (착지 전 `:437` / 현행 `:442`) 어떤 하류도 읽지 않았다 |
+| `acc_mem_stride` | `EHDecode.v:256` | `:262` | 동상 (착지 전 `:438` / 현행 `:443`) |
+| `f_mem` (`cb_flags[1]`) | `EHDecode.v:504` | `:512` | base header 에서 비트를 뽑지만 legality 판정에 쓰이지 않았다 |
+
+셋 다 **`/* verilator lint_off UNUSEDSIGNAL */` 프래그마로 경고가 국소 억제**돼
+있었다 (착지 전 `:254`/`:257`, `:503`/`:505` — 착지에서 **쌍 제거**). 억제는
+"아직 안 쓴다" 는 선언이지 "안 써도 된다" 는 결론이 아니었고, 주석이 그것을
+명시했다 ("실물화는 C-1 작업(별도)의 대상").
+
+**합성기는 이미 같은 말을 하고 있었다**: GATE S1-US 재측정의 `Synth 8-6014`
+(unused sequential element) 17건 중 **2건이 정확히 이 두 레지스터**다
+(`acc_mem_addr_mode_reg` `EHDecode.v:332` / `acc_mem_stride_reg` `:333` —
+§22.14b-8 의 귀속 표).
+
+**왜 이것이 결함인가**: 프로그램이 `.mem offset=0x100 mode=3 stride=64` 를 실어
+보내면 하드웨어는 **아무 말 없이 `offset` 만 쓰고 나머지 두 필드를 버린다.**
+어셈블러 문법이 그 표현을 열어 두고 있으므로 (`claude.md:274` 의 `.mem` 행 —
+`offset=N [mode=N stride=N]`) 이것은 이론적 위험이 아니라 **작성 가능한 조용한
+오동작**이다. loud-fault-never-silent 는 이런 상태를 허용하지 않는다.
+
+### 32.2 결정 — 강제만 (normative 요약)
+
+1. **R1** — MEM EH 가 존재하고 `addr_mode != 0` 이면 `decode_error`.
+2. **R2** — MEM EH 가 존재하고 `stride != 0` 이면 `decode_error`.
+3. **R3** — `F_MEM` 이 서 있는데 MEM EH 가 없으면 `decode_error` (방향1만).
+4. **R4** — 위 세 검사는 **의미를 배정하지 않는다.** 하드웨어가 두 필드를 읽는
+   것은 오직 **0 인지 확인하기 위해서**이며, 주소 계산에는 여전히 `offset` 만
+   들어간다 (`dec_eff_mem_offset`, `EHDecode.v:652` — 무변경).
+
+세 검사 전부 EHDecode 단계의 `decode_error` 이며 `lower_required` 가 아니다:
+malformed 인코딩이지 "합법이나 미구현" 이 아니기 때문이다 (§23.6a 의
+decode/execute 경계 규율 그대로).
+
+### 32.3 왜 "의미 배정 금지" 인가 — 0x7D/0x7E 인코딩 공간 보존 (normative)
+
+**사실 1 — 이 필드의 의미는 한 번도 명세된 적이 없다.** 저장소·형제 저장소·git
+이력 전수 조사에서 `addr_mode` 토큰은 **13 라인**에 등장하지만 (Vivado 로그 제외
+전수 — `EHDecode.v` 5 / `asm/wavetensor_asm.py` 2 / `asm/test_wavetensor_asm.py` 2 /
+`test_isa_decoder.py` 2 / `claude.md` 1 / `.claude-memories/` 1) **의미를 서술한
+문장은 0건**이다. 전부 (a) 비트 위치 인코딩/디코딩, (b) "아직 안 쓴다" 주석,
+(c) 기본값 0 을 넣는 테스트 헬퍼다. 즉 지금 부여하는 어떤 의미도 **기존 계약의
+문서화가 아니라 신규 발명**이다.
+
+**사실 2 — 0x7D 의 남은 자유 인코딩 공간은 사실상 MEM body 뿐이다.**
+
+- **EH shape 이 고정**: §23.6a "EH shape (restrictive-first)" 가 `0x7C/0x7D =
+  port+mem` 으로 못박았고, JSON 의 `rtl_legality` 가 `req_port: true` /
+  `req_mem: true` / `forbid_imm_any: true` / `forbid_opref: true` /
+  `forbid_subscript: true` 로 전사한다 — **imm16/imm32/imm64/OPREF/SUBSCRIPT
+  carrier 가 전부 금지**다.
+- **mode byte 의 합법 조합이 단 하나**: §23.6a per-op 표의 0x7D 행은 legal dtype
+  `0x4` / legal acc `1` / legal rnd `0` — **1 조합**이다. sub-op 을 실을 자유도가
+  0 이다.
+- 따라서 남는 carrier 는 PORT body (포트 식별에 이미 소모) 와 **MEM body**
+  — `offset`(32b) / `addr_mode`(4b) / `stride`(12b) 뿐이다.
+
+**사실 3 — ISA 자신이 이 공간을 명시적으로 예약해 두었다.** `isa/wt64v1_isa.json`
+의 0x7D `desc` 는 "sub-op encoding **v1.8.0b**", 0x7E `notes` 는 "ZERO/STATUS
+sub-op encoding decision **defers WITH the op** to v1.8.0c (**do not burn the
+encoding space early**)" 다. 지금 addr_mode/stride 에 의미를 주는 것은 그 문장이
+금지한 바로 그 행위 — **인코딩 공간 조기 소각** — 이다.
+
+**정직한 한정 (0x7E 에 대해)**: 0x7E 는 `forbid_mem: true` 이므로 **MEM body 가
+0x7E 자신의 후보 공간은 아니다.** 0x7E 를 함께 인용하는 것은 "미결정 sub-op
+공간을 선점하지 않는다" 는 **같은 규범 자세의 선례**로서이며, MEM body 를 직접
+잠식당하는 것은 **0x7D 다.** 이 구분을 흐리지 않는다.
+
+**normative 결론**: 본 개정은 `addr_mode`/`stride` 에 **어떤 주소 산술 의미도
+배정하지 않는다.** 그 배정은 **0x7D/0x7E sub-op 인코딩 규범화 (후속 COMMIT)** 의
+몫이다. 그 COMMIT 이 이 필드를 sub-op selector 로 쓰기로 결정하면, 오늘의
+"0 만 합법" 은 그때 **monotonic loosening** 으로 그대로 확장된다 — 오늘 의미를
+배정했다면 불가능했을 경로다.
+
+### 32.4 restrictive-first — 왜 "0 만 합법" 이고, 오늘 그 델타가 0 인가
+
+정책 근거는 §23.6a 의 문장과 동일하다: **넓히는 것(loosening)은 non-breaking,
+좁히는 것은 breaking.** 거부되던 인코딩에 의존하는 코드는 존재할 수 없으므로
+나중의 합법화는 언제나 안전하고, 오늘 관용한 값을 나중에 거부하는 것은 언제나
+위험하다. **불확실하면 ILLEGAL 로 남긴다.**
+
+**오늘 이 제약이 거부하는 현존 프로그램 = 0건 (실측)**:
+
+| 근거 | 실측 |
+|---|---|
+| asm 인코더 기본값 | `addr_mode = a.get('mode', 0)` / `stride = a.get('stride', 0)` (`asm/wavetensor_asm.py:1917-1918`) |
+| asm 테스트 헬퍼 | `def _eh_mem(offset, addr_mode=0, stride=0)` (`asm/test_wavetensor_asm.py:151`) |
+| cocotb 헬퍼 | `def eh_mem(offset, addr_mode=0, stride=0)` (`test_isa_decoder.py:96`) |
+| `eh_mem(` 호출 지점 | 6곳 전부 기본값 (`test_isa_decoder.py:368/3863/4011/4332`, `test_cluster.py:3881/3962`) |
+| `.mem` 소스에서 `mode=`/`stride=` 사용 | **0건** — 유일한 등장은 `claude.md:274` 의 문법 표 |
+
+즉 R1/R2 는 **현존 전 프로그램에 대해 no-op** 이고, 순수하게 미래의 조용한
+오해석을 막는 장치다.
+
+### 32.5 `F_MEM` legality — 방향1 채택 / 방향2 **명시 기각** (normative)
+
+| 방향 | 내용 | 판정 |
+|---|---|---|
+| **방향1** | `F_MEM` 이 서 있는데 MEM EH 가 **없음** → `decode_error` | **채택** |
+| **방향2** | MEM EH 가 있는데 `F_MEM` 이 **없음** → `decode_error` | **기각** |
+
+**방향1 채택 근거**: `prec_flag_without_eh` (`EHDecode.v:581`) 와 **정확히 동형**
+이다 — 플래그는 "override 가 온다" 는 예고이고, 예고만 있고 실물이 없으면 하류가
+기본값을 조용히 쓰게 된다. 그 기본값이 의미 있는 값처럼 보이는 것이 위험의 본체
+이며, 이미 `F_PRECISION_OVR`/`F_DIM_OVR` 에 대해 같은 판정이 내려져 있다.
+
+**방향2 기각 근거 3건 (전부 실측)**:
+
+1. **어셈블러에 `F_MEM` 자동 세팅 경로가 0건이다.** 플래그는 bare-IDENT 로
+   소스에 직접 적어야만 선다 (`asm/wavetensor_asm.py:284-293` — `FLAG_BITS` 에
+   있는 이름만 허용). 매크로 lowering 이 자동으로 붙이는 플래그는
+   `opb` / `prec` / `dim_ovr` 세 종뿐이고, **`mem_hint` 를 붙이는 지점은
+   어디에도 없다.**
+2. **그래서 현존 전 LD/ST 가 즉시 깨진다.** golden 이 flags nibble = 0 을
+   pin 한다: `"LD .port mask=0x01 out=0 .mem offset=0x100"` →
+   `ref.encode_instr(0x04, ref.eh_port(0x01, 0), ref.eh_mem(0x100))`
+   (`asm/test_wavetensor_asm.py:498-502`). Top_Core e2e 도 같은 형태
+   (`test_top_core.py:145-147` · `:216` — `"LD .mem offset=0x100"`). 방향2 는 이들을
+   **전건 `decode_error`** 로 만든다.
+3. **ISA 가 이 비트를 `mem_hint` 로 명명한다** (`isa/wt64v1_isa.json`
+   `flag_bits.mem_hint = 1`). **hint** 는 필수 동반 마커가 아니다 — 방향2 는
+   이름이 선언한 계약을 사후에 강화하는 것이고, 그것은 §12a 가 금지하는 종류의
+   **관측 가능한 breaking** 이다.
+
+**비대칭의 정직한 기록**: 방향1만 채택하면 `F_MEM` 은 "서면 MEM EH 를 요구하지만,
+서지 않아도 MEM EH 는 합법" 이라는 **한쪽 함의**가 된다. 이것을 결함으로 오독하지
+않도록 명기한다 — 이는 `F_PRECISION_OVR`/`F_DIM_OVR` 의 **현행 계약과 완전히 같은
+모양**이며, 의도된 비대칭이다. 방향2 를 원한다면 **어셈블러가 F_MEM 을 자동
+세팅하도록 먼저 바꾸고** (그 자체가 golden 재캡처를 동반하는 별도 결정) 그 다음에
+규범을 강화해야 한다. 그 순서를 뒤집지 않는다.
+
+### 32.6 frozen truth-table 델타 = 0 — 재캡처·`domain_version` bump **불요**
+
+- **`_TT_FLAGS = [0x0, 0x8]`** (`test_isa_decoder.py:4038`) — 캡처 도메인의 flags
+  축은 `0x0` 과 `F_HAS_OPB(0x8)` 뿐이다. **`F_MEM(0x2)` 은 도메인 밖**이므로 R3
+  은 캡처된 어떤 점에서도 발화하지 않는다.
+- **MEM EH builder 는 `eh_mem(0)`** (`test_isa_decoder.py:4049`) — `addr_mode=0` /
+  `stride=0` 이므로 R1/R2 도 캡처된 어떤 점에서도 발화하지 않는다. 같은 builder 가
+  `:4197` / `:4518` 에서도 전부 필드 0 이다.
+- ⚠️ 위 두 좌표는 **착지 후 실측본**이다. 최초 기록 시점에는 `:3852` / `:3863`
+  이었고, 같은 COMMIT 이 `:1121` 부터 C-1 테스트 8건(**+186 줄**)을 삽입하면서
+  정확히 그만큼 밀렸다 — **자기 편집이 자기 좌표를 stale 하게 만든 것**이다
+  (2026-08-18 적대 검수 지적). §32.1 이 세운 규약("어긋나면 표를 고치는 것이
+  정본")은 이 절에도 똑같이 적용된다.
+- **결론**: `isa/truth_table_premigration.json` **무접촉**, `domain_version` bump
+  **불요**, `WT_CAPTURE_TRUTH_TABLE=1` 재캡처 **불요**. §12a 규칙 2 의 재캡처
+  절차는 **발동하지 않는다** — 이것은 절차의 완화가 아니라 **해당 없음**이다.
+- 이 사실은 §32.5 방향2 기각의 **추가 근거**이기도 하다: 방향2 는 도메인 안의
+  점(`flags=0x0` + `mem` subset)을 뒤집으므로 delta 가 0 이 아니고, 재캡처와
+  `domain_version` bump 를 강제한다.
+
+### 32.7 GATE S1 영향 선언 (측정 **전** 공표 — V9-4 정신)
+
+**기계적 성공 조건 (binding)**: **`Synth 8-6014` 17 → 15.**
+
+anchor 는 **§22.14b-8** 이다 (2026-08-18 GATE S1-US 재측정,
+`synth/reports/fp_ops/sys_top_core_run.log`). 그 절이 17건의 귀속 **전량**을
+표로 등재했다 — HIU `initial_state_reg[2..15]` **14** + `FP_StepSeq.v`
+`fd_fault_reg` **1** + **EHDecode `acc_mem_addr_mode_reg`/`acc_mem_stride_reg`
+2**. C-1 이 두 레지스터를 legality 경로에서 읽는 순간 "unused" 가 거짓이 되므로
+목록에서 사라져야 한다. **15 가 아니면 실물화가 일어나지 않은 것이다.** 이 지표는
+우리가 쓴 테스트가 아니라 **합성기가 매기는 점수**라 우회 경로가 없다.
+
+**남는 15건은 본 절의 대상이 아니다** — 14건은 §29.8 D8 수리가 접은 몫, 1건은
+3a-C4 가 포트로 노출할 몫 (§27.7a). C-1 이 이 15건을 건드리면 그것이 귀속 오염이다.
+
+**각 gate 축 예상 (측정 전 공표 — 방향과 근거만 적고, 크기를 추정해 적지 않는다)**:
+
+| 축 | 현 값 (§22.14b-8) | 예상 | 근거 |
+|---|---:|---|---|
+| **LUT sites** | 15,666 / ceiling 24,799 | **소폭 증가** | 신규 조합 논리 전량 = wire 3개 (`mem_addr_mode_illegal` / `mem_stride_illegal` / `mem_flag_without_eh`) + `decode_error` OR 항 3개. 폭은 4-bit OR-reduce + 12-bit OR-reduce + 2-input AND 이고, 세 항 모두 **이미 12-operand 인 `decode_error` OR-tree 에 흡수**된다. 새 datapath 가 아니라 zero-compare 다. 마진 9,133 대비 무의미한 규모로 예상하나 **수치는 측정으로만 확정한다.** |
+| **FF** | (추적만) | **+16 예상** | `acc_mem_addr_mode` 4 + `acc_mem_stride` 12 가 **되살아난다** — 이것이 곧 8-6014 17→15 의 물리적 실체다. FF 는 gate 축이 아니다 (V9-4 관례). |
+| **DSP48** | 39 | **delta 정확히 0** | 산술 원소를 추가하지 않는다. |
+| **premap `$mul`** | 381 | **delta 정확히 0** | 곱셈 연산자를 추가하지 않는다. |
+| **RAMB18** | 2 | **delta 정확히 0** | 메모리 원소를 추가하지 않는다. |
+| **WHS** | **+0.007 ns** | **중립 예상 — 그러나 측정으로만 판정** | 신규 reg→reg 경로는 `acc_mem_*`(`EHDecode.v:255-256`) → OR-reduce → `decode_error`(`:586`) → 출력 레지스터 `dec_decode_error`(`:79`, `:638` 에서 commit) 로 **논리 단수가 0 이 아니다**. hold 위반은 논리가 거의 없는 짧은 경로에서 나오므로 신규 경로 자체가 새 WHS critical 이 될 구조가 아니다. **그러나 현 WHS 는 +0.007 ns 로 얇고, 이 축은 재배치 노이즈만으로도 움직인다** (§22.14b-8 의 경고). hold 위반은 주파수를 낮춰도 동작하지 않으므로, **방향은 예상하되 크기는 예상하지 않으며 PASS 판정은 재측정으로만 한다.** |
+| **DRC** | 0 errors | **delta 0 예상** | 신규 primitive 0. |
+| **CRIT** | 8 (전부 `Synth 8-295`) | **delta 0 예상** | 본 변경은 timing loop 를 만들지 않는다. |
+
+**breach 시 규율**: 어떤 축이든 초과하면 **기준 수치를 움직이지 않는다** —
+§23.10.10(g) 가 ad-hoc gate 상향을 명시적으로 금지한다. C-1 은 cut ladder 가
+필요할 규모가 아니라고 **예상**하지만, 그 판정 자체가 측정 이후여야 한다.
+
+**부수 실측 관측 (RTL phase 가 함께 정정할 것)**: `EHDecode.v:592` 의
+`// v1.8.0a COMMIT 2 — 11th term` 주석은 **작성 시점부터 off-by-one** 이다 —
+`decode_error` 식의 피연산자는 그 commit (`dee6c94`) 에서도 오늘도 **12개**이고
+`fp_block_illegal` 은 12번째다. C-1 이 3항을 더하면 **15항**이 되므로, RTL phase
+는 새 항을 추가하면서 이 주석 수치를 **12/15 기준으로 정정**한다 (수치를 그냥
++3 하면 오류를 승계한다).
+
+### 32.8 착지 순서 · test_plan (RTL/테스트는 다음 COMMIT)
+
+| # | 지점 | 조치 |
+|---|---|---|
+| 1 | **본 절 + §2** | spec-first (§12a 규칙 3) — **본 COMMIT** |
+| 2 | `EHDecode.v:254`/`:257`, `:503`/`:505` | `lint_off/on UNUSEDSIGNAL` 프래그마 **쌍 제거** — 읽히는 순간 억제가 거짓이 된다 |
+| 3 | `EHDecode.v:250-253`, `:500-502` | "C-1 예약" 주석 → **실제 규칙 주석** (합법값 + "주소 산술 의미 미배정" + §2/§32 참조) |
+| 4 | `EHDecode.v:584` 인접 | wire 3개 — `mem_addr_mode_illegal` / `mem_stride_illegal` (둘 다 `acc_any_mem` 게이트 — **예비 방어이지 필수 조건이 아니다**, §32.11 이 실측으로 정정) / `mem_flag_without_eh` (`f_mem && !acc_any_mem`). 형태는 `prec_flag_without_eh`(`:581`) · `opref_kind_unsupported`(`:584`) 를 그대로 복제 |
+| 5 | `EHDecode.v:586-593` | `decode_error` OR 항 **3개 추가** + `:592` 주석 수치 정정 (§32.7 말미) |
+| 6 | `test_isa_decoder.py:1093-1118` 인접 | **negative 4종** — `addr_mode≠0` / `stride≠0` / 둘 다 / `F_MEM` without MEM EH. 관용구는 `test_prec_flag_without_precision_eh_errors`(`:1108-1118`) 를 그대로 따른다 (`error_flag==1` + `output_valid==0`) |
+| 7 | 같은 파일 | **positive 회귀 pin** — `addr_mode=0`/`stride=0` 의 MEM EH 는 계속 정상 실행 (검사가 과잉 발화하지 않음을 직접 pin) + **`F_MEM` 없는 MEM EH 가 합법**임을 pin (**방향2 를 나중에 몰래 켜는 것을 막는 가드**) |
+| 8 | 같은 파일 `:52` | `F_MEM = 1 << 1` — 현재 **참조 0회 죽은 상수**다. 본 테스트가 **최초 사용처**가 된다 |
+| — | isa JSON / `gen_isa_tables.py` / 생성물 / `asm/` / golden / truth-table / 신규 포트 / `ISA_Decoder`·`Cluster`·`PE_Core` | **전부 무변경** (§32.10) |
+
+**변이 검증 의무 (필수)**: 신규 negative 4종은 **검출력이 실증돼야 한다** —
+`decode_error` OR 항을 하나씩 제거했을 때 대응 테스트가 **각각 FAIL** 하는 것을
+확인한다. §28.4 항 8 / §31.13.6 의 규율 ("자기 이름이 가리키는 결함을 잡지 못하는
+테스트는 그 자체가 위반") 을 본 절 신규 검사 전건에 적용한다.
+**집행 결과 → §32.11** (6종 변이 전건 실측; 그중 1종은 **등가 변이**로 판정돼
+본 절의 전제 하나를 반증했다).
+
+**재측정 의무**: RTL 착지 commit 은 `make synth-sys-gate` 를 재실행하고
+(i) `Synth 8-6014` **15건**과 그 귀속, (ii) GATE S1-US 전 축을 §32.7 표와 대조해
+기록한다. 무회귀 기준선: cocotb **328** (C-1 착지 직전 `dc96554` 의 `@cocotb.test`
+전수 계수 — HIU 22 / ISA_Decoder 192 / Tensor_ALU 8 / SIMD_ALU 9 / ALU_Extended 16 /
+Top_Core 8 / PE 8 / Cluster 57 / Pod 8) + 본 절 신규분 8 = **336**,
+`make lint` **6/6**, `python3 synth/scripts/fp_op_gate_check.py` exit 0,
+`make test-cluster-both`.
+
+> **기준선 수치 정정 (2026-08-18 적대 검수)**: 본 절의 초판과 계획 문서는 기준선을
+> **303** 으로 적었는데 **오기**다 — 303 은 9모듈 중 Tensor_ALU 까지의 **부분합**
+> 이다 (22+192+8+9+16+8+8+57+8 = 328). 감소 금지 축의 기준선이 참값보다 25 낮으면
+> **25건까지의 회귀가 기준선 안에서 조용히 통과**하므로, 이것은 문서 오타가 아니라
+> **검사 약화**다. 실측 재현: 9모듈 전건 336 PASS / FAIL 0 / SKIP 0, 감소한 모듈
+> 0개, 증가는 ISA_Decoder 192 → 200 (본 절 신규 8) 뿐.
+
+> **집행 완료 → §22.14b-9**: `Synth 8-6014` **17 → 15** 달성, 사라진 2건이
+> 정확히 `acc_mem_addr_mode_reg` / `acc_mem_stride_reg` 임을 **집합 차**로 증명
+> (새로 생긴 건 0). GATE S1-US 전 축 PASS (`fp_op_gate_check.py` exit 0),
+> WHS +0.007 → **+0.019 ns**. 다만 §32.7 의 **FF +16 예상은 빗나갔다** — 실측은
+> post-synth **+14** / post-route **+274** 이고, 후자의 260 은 C-1 이 아니라
+> `phys_opt_design` fanout 복제이며 **WHS 개선도 그 복제의 산물**이다. 귀속·
+> 미해명 2건·`premap $mul` 증거 stale 발견은 전부 §22.14b-9 에 있다.
+
+### 32.9 균형 기록 (본 개정에 **반대하는** 근거도 남긴다)
+
+1. **오늘의 기능 이득은 0 이다.** §32.4 가 실측했듯 nonzero `addr_mode`/`stride`
+   를 싣는 프로그램은 저장소에 0건이므로, R1/R2 는 **오늘 아무것도 잡지 않는다.**
+   순수 비용 (LUT 몇 개 + FF 16) 이다. — **실측 후 갱신 (§22.14b-9)**: 그 "순수
+   비용" 은 이제 수치를 갖는다. **post-synth LUT +14 / FF +14, 전량 EHDecode
+   내부.** 다만 post-route 는 LUT +103 / FF +274 로, 차액은 C-1 이 산 것이
+   아니라 `phys_opt_design` 이 **자기 판단으로** 지불한 몫이다 — 그 판단이
+   다음 변경에서 뒤집히면 이 절이 광고한 "몇 개" 라는 규모 감각도 함께 흔들린다.
+   반대 근거로서 **약화되지 않았다**: 기능 이득 0 은 여전히 사실이다.
+2. **어셈블러는 여전히 nonzero 를 인코딩할 수 있다.** 본 개정은 asm-side 거부를
+   만들지 않으므로, 사용자는 "어셈블 성공 → 하드웨어 `decode_error`" 라는 **늦은
+   실패**를 보게 된다. 조기 거부보다 나쁜 개발자 경험이다.
+3. **`F_MEM` 의 한쪽 함의는 미학적으로 불완전하다.** 양방향 강제가 더 깔끔하다는
+   주장은 그 자체로는 옳다.
+
+그럼에도 채택하는 근거:
+
+- **(1) 에 대해**: 늦은 loud 실패가 조용한 무시보다 **항상** 낫다. 현행은 필드를
+  **버린다** — 그것이 지금 이 순간의 상태다. 그리고 이 필드는 0x7D 의 마지막 자유
+  공간이라, "지금 아무 의미도 없다" 를 **하드웨어가 강제**해야 후속 COMMIT 이 그
+  공간을 깨끗한 상태로 넘겨받는다. 오늘 nonzero 를 관용하면 그것이 사실상의
+  don't-care 계약이 되고, 나중에 의미를 배정하는 것이 breaking 이 된다.
+- **(2) 에 대해**: asm-side 조기 거부는 **monotonic 하게 나중에 추가 가능**하다
+  (같은 규칙을 더 일찍 보고하는 것이지 규칙을 좁히는 것이 아니다). 지금 그것을
+  하지 않는 이유는 §12a 규칙 3 의 순서 — asm 편집은 `asm/` 접촉이고 본 phase 의
+  범위 밖이다. 이월로 등재한다 (§32.10).
+- **(3) 에 대해**: 양방향의 대칭은 §32.5 가 실측한 **현존 전 LD/ST 파괴**의
+  대가로만 살 수 있다. 미학이 동작을 이기지 못한다.
+
+### 32.10 §12a 기록
+
+- **성격**: 본 절은 §12a 하의 **정규 개발 행위**이며, **규칙 3 의 spec-first
+  순서**를 따른다 — 본 절(spec) → `EHDecode.v` + 테스트. ISA 표면 편집이 없으므로
+  "JSON → 생성물 재생성" 단계는 **발동하지 않는다**.
+- **isa JSON 을 확장하지 않는 근거 (조사 정정)**: `eh_body_layouts` 는 `_doc`
+  한 줄뿐인 **RESERVED 자리**이고 **어떤 emitter 도 읽지 않는다** — 저장소 전체
+  에서 이 키를 언급하는 유일한 코드는 `scripts/gen_isa_tables.py:93` 의
+  `_TOP_KEYS` 허용 목록이며, **키의 존재만 허용할 뿐 내용은 한 번도 읽히지
+  않는다** (`grep -rn eh_body_layouts` 로 실측: 코드 1건 = 그 허용 목록).
+  선례인 **OPREF `src_kind <= 2`** 도 JSON 에 기계가독 필드가 **없고**
+  — **EHDecode 하드코딩 wire (`EHDecode.v:584`) + spec 산문 표 (§2) + directed
+  테스트(양/음)** 의 **3점 배치**다. C-1 은 그 선례를 **그대로** 따른다. JSON 을
+  건드리면 `gen_isa_tables.py` · 생성물 · freshness lint · truth-table 까지
+  파급되는데, 그 파급이 사는 것은 **아무 emitter 도 읽지 않는 문서 필드 하나**뿐
+  이다.
+- **truth-table**: 무접촉 · `domain_version` bump 불요 — 근거는 §32.6 의 도메인
+  실측 (F_MEM 은 `_TT_FLAGS` 밖, MEM builder 는 필드 0).
+- **3a (§27.7a) 격리**: golden 3종 (`scripts/golden_{fp32,lattice,fdotcr}.py`) ·
+  ISA (`isa/wt64v1_isa.json` + 생성물 + `asm/`) · `FP_StepSeq.v` · 공유 datapath
+  3파일 (`FP_AddWide.v` / `FP_Mul36.v` / `include/fp_narrow_f32.vh`) 전부
+  **무접촉**. `decode_reserved` 미접촉 (**3a-C4 몫**). 모듈 파일 삭제 없음
+  (**C-2 몫**). 본 절은 §27.7a 의 착지 순서를 선점하지 않는다.
+- **이월 (별도 commit)**:
+  1. **`claude.md:274` 의 `.mem` 문법 표** — `offset=N [mode=N stride=N]` 을
+     legality 주석 없이 광고한다. RTL/테스트 phase 에서 "현재 `mode`/`stride` 는
+     0 만 합법 (§2)" 을 동반 명기한다.
+  2. **asm-side 조기 거부** — `.mem mode=3` 을 어셈블 시점에 거부할지 여부.
+     monotonic 하므로 언제든 추가 가능하나 `asm/` 접촉이라 본 phase 밖이다.
+     결정 시 `asm/test_wavetensor_asm.py` 의 negative 1건 동반.
+  3. **0x7D/0x7E sub-op 인코딩 규범화** — 본 절이 보존한 공간의 실제 배정.
+     그 COMMIT 이 `addr_mode`/`stride` 를 selector 로 쓰기로 하면, §2 표의 합법
+     공간을 **monotonic loosening** 으로 확장하고 본 절을 superseded-history 로
+     보존한다 (§12a 규칙 5).
+
+### 32.11 변이 검증 실측 (6종 전건) — **본 절의 전제 하나가 반증됐다** (normative 정정)
+
+§32.8 "변이 검증 의무" 의 집행 기록이다. 절차: 저장소 원본은 손대지 않고
+`/tmp/c1_mut` 에 **EHDecode.v 만 실사본, 나머지는 심링크**인 샌드박스를 만들어
+`make MOD=ISA_Decoder` (매회 `rm -rf sim_build`, `COCOTB_RESULTS_FILE` 리다이렉트)
+를 돌리고, **죽은 테스트 이름을 JUnit XML 에서 직접 추출**했다 (개수만 세면
+"어느 테스트가 잡았는가" 를 알 수 없다).
+
+| 변이 | 내용 | 결과 | 죽은 테스트 |
+|---|---|---|---|
+| **MUT-A** | `mem_addr_mode_illegal` → `1'b0` | 199 PASS / **1 FAIL** | `test_mem_addr_mode_nonzero_errors` |
+| **MUT-B** | `mem_stride_illegal` → `1'b0` | 199 PASS / **1 FAIL** | `test_mem_stride_nonzero_errors` |
+| **MUT-C** | `mem_flag_without_eh` → `1'b0` | 199 PASS / **1 FAIL** | `test_f_mem_flag_without_mem_eh_errors` |
+| **MUT-D** | 두 illegal 식에서 `acc_any_mem &&` **게이트만** 제거 | **200 PASS — 생존** | (없음) |
+| **MUT-E** | 명령 래치의 `acc_mem_*` **클리어만** 제거 | **200 PASS — 생존** | (없음) |
+| **MUT-F** | **게이트 + 클리어 둘 다** 제거 | 199 PASS / **1 FAIL** | `test_mem_field_state_does_not_leak_across_instructions` |
+
+**A/B/C 는 목적을 달성했다** — 신규 negative 3종은 각각 자기 항만을 정확히
+pin 하고, 다른 테스트가 대신 잡아 주는 은폐가 없다.
+
+**MUT-D 는 죽지 않는다. 그리고 죽을 수 없다** — 등가 변이(equivalent mutant)다.
+`EHDecode.v` 전수 grep 으로 세 신호의 writer 를 확인하면 정확히 3쌍이고 **세 쌍
+모두 같은 always 블록·같은 분기·같은 클럭 엣지**다:
+
+| 자리 | `acc_mem_addr_mode`/`acc_mem_stride` | `acc_any_mem` |
+|---|---|---|
+| reset | `:337-338` ← 0 | `:351` ← 0 |
+| 명령 래치 | `:382-383` ← 0 | `:396` ← 0 |
+| MEM EH 파싱 (`if (is_mem_c)`) | `:442-443` ← body | `:445` ← 1 |
+
+(좌표는 본 절 작성 시점 기준이며 §32.1 의 drift 규약이 그대로 적용된다 —
+어긋나면 **표를 고치는 것이 정본**이다. 논증이 의존하는 것은 줄 번호가 아니라
+"세 쌍이 같은 always 블록·같은 분기·같은 엣지" 라는 **구조**이고, 그것은
+`grep -n 'acc_mem_addr_mode\|acc_mem_stride\|acc_any_mem' EHDecode.v` 로 언제든
+재확인된다.)
+
+따라서 **`acc_mem_* != 0 ⟹ acc_any_mem == 1` 이 무조건 불변식**이고, 게이트를
+빼도 관측 가능한 차이가 없다. 이를 죽이는 테스트는 현행 RTL 에서 **작성
+불가능**하며, "테스트를 더 쓰면 된다" 는 해법은 존재하지 않는다.
+
+**그러나 게이트는 dead code 가 아니다** — MUT-E/MUT-F 가 그것을 판별한다.
+클리어를 제거하면 게이트가 **단독으로** 오발을 막고(MUT-E 생존), 둘 다 제거해야
+비로소 검출된다(MUT-F). 즉 두 방어는 **개별로는 중복(individually redundant),
+합동으로는 필수(jointly necessary)** 이고, 저장소는 그 합동성을
+`test_mem_field_state_does_not_leak_across_instructions` **1건**으로 pin 하고 있다.
+
+**normative 정정 3건**:
+
+1. **§2 의 "`acc_any_mem` 게이트" 서술은 계약이 아니라 구현 수단이었다.** 규범은
+   "MEM EH 가 존재하는 명령에 대해서만 발화" 라는 **관측 가능한 계약**이고, spec
+   은 그것을 지키는 두 수단 중 어느 쪽도 지정하지 않는다. §2 를 그렇게 고쳤다.
+2. **계획 문서의 "게이트 필수 — MEM EH 없이 잔재값으로 오발하면 안 된다" 는
+   전제는 거짓이다.** 오발은 클리어가 이미 막고 있었다. 이 문장을 근거로 게이트를
+   "필수" 로 재서술하지 말 것.
+3. **RTL 의 게이트는 유지한다** — 제거가 아니라 **성격 재분류**다. 근거: (a)
+   MUT-E 가 보이듯 클리어 쪽이 먼저 무너질 수 있고 그때 게이트가 유일한 방어다,
+   (b) 게이트는 전제("MEM EH 가 있을 때만 판정")를 식 자체에 적어 두어 §32.3 의
+   의미 미배정 규범을 코드에서 읽히게 한다, (c) 비용은 2-input AND 2개다.
+   **검사를 약화시키지 않으면서 문서를 실측에 맞추는 것**이 본 정정의 전부다.
+
+**왜 이것을 "성공" 으로 적지 않는가**: 오늘의 저장소에서 MUT-D 가 생존한다는
+사실 자체는 결함이 아니지만, **spec 이 그것을 필수 조건으로 서술한 것은 결함**
+이었다 — 검증되지 않은 필요성 주장을 규범에 올리면 나중에 그 주장을 근거로 한
+설계 결정이 줄줄이 잘못된 전제 위에 선다. §12a 의 "측정하지 않은 것을 규범으로
+쓰지 않는다" 가 이 자리에 적용된다.
+
+**재현 명령** (샌드박스 방식 그대로):
+
+```
+# 예: MUT-D
+mkdir -p /tmp/c1_mut && ln -s <repo>/* /tmp/c1_mut/    # EHDecode.v 만 실사본
+sed -i 's/acc_any_mem && (acc_mem_/(acc_mem_/' /tmp/c1_mut/EHDecode.v
+cd /tmp/c1_mut && rm -rf sim_build && \
+  COCOTB_RESULTS_FILE=/tmp/mut_D.xml make MOD=ISA_Decoder
+```
+
+### 32.12 이월 상태 (검수 후 갱신)
+
+| 이월 | 상태 |
+|---|---|
+| `claude.md` `.mem` 문법 표에 legality 명기 (§32.10 이월 1) | **해소** — `.mem` 행 + 전용 문단 + `mem_hint` 문단 추가 |
+| **asm-side 조기 거부** (§32.10 이월 2) | **이월 유지** — `asm/wavetensor_asm.py:1917-1920` 은 `mode`/`stride` 를 검증 없이 인코딩하므로 `mode=3` 은 **어셈블 성공 → 하드웨어 `decode_error`** 라는 늦은 실패다. `asm/` 은 본 phase 의 명시 금지 대상이라 손대지 않는다. **회귀 위험 0** (실측: `mode=`/`stride=` 를 nonzero 로 쓰는 호출처 저장소 전체 0건, 헬퍼 기본값 정의 2건 외 없음), 그리고 `claude.md` §9-4 가 "늦은 실패" 를 **정직하게 명기**하고 있다 — 즉 **숨겨진** 조용한 실패가 아니라 **문서화된** 늦은 실패다. 조기 거부 추가는 monotonic 이므로 언제든 안전하다 |
+| 0x7D/0x7E sub-op 인코딩 규범화 (§32.10 이월 3) | 이월 유지 (후속 COMMIT) |
+| premap `$mul` 증거가 flow 로 갱신되지 않음 (§22.14b-9 ④) | **해소 → §22.14b-10** (생성 편입 + sha256 provenance 강제; 변이 3종 MUT-G/H/I 로 검출력 실증) |
+| CRITICAL WARNING census 가 잘린 로그를 받아들임 (본 검수에서 **실사고로** 발견) | **해소 → §22.14b-11** (완주 마커 강제) |
+| 무회귀 기준선 오기 303 | **해소** — §32.8 에서 **328** 으로 정정 (+ `claude.md` 의 모듈별 test 수 표도 실측값으로 동기화) |
+| Vivado 리포트(LUT/DSP/BRAM/WHS/DRC) 자체의 소스 provenance | **의식적 이연** — 근거는 **§22.14b-12 말미** (전 gate 재실행을 감당할 수 있는 phase 의 몫; 면제 목록은 채택 불가) |
+| `make premap-mul-evidence` 안내 문구가 역방향 (재검수 ①) | **해소 → §22.14b-13 ①** — 이 타깃 단독 사용은 저장소의 **유일한 stale 신호를 끄는 경로**다. 주석을 정정하고 "단독 실행 후의 PASS 는 gate 판정이 아니다" 를 **사용 지점**에 명기 |
+| premap provenance 강도의 gate 별 비대칭 (재검수 ④) | **해소 → §22.14b-13 ②** — `synth-fp-op` 에 `-log` 추가(다음 재합성부터 자동 승격) + `top` 대조 신설. 검출력 **MUT-K** 로 실증, 강도를 gate 출력 문자열(`sources+top` / `sources(hash only)`)에 노출 |
+| §32.6 의 테스트 좌표 +186 stale (재검수 ②) | **해소 → §22.14b-13 ③** — 같은 COMMIT 의 테스트 삽입이 자기 좌표를 밀어 놓은 것. 내용 주장은 참, 좌표만 정정 |
+| `gen_premap_mul.py` untracked (재검수 ③) | **해소 → §22.14b-13 ④** — `git add` 완료. `fp_op_gate_check.py` 가 최상단에서 무조건 임포트하므로 누락 시 gate 스크립트 `ImportError` 즉사 |
+| `test_mem_addr_mode_and_stride_nonzero_errors` docstring 의 과잉 주장 | **해소** — "OR 항 상호 은폐 없음" 은 이 테스트가 실증하지 못한다 (MUT-A/B 어느 쪽에서도 죽지 않음). docstring 을 실제 검출력으로 한정하고 **"단일 항 삭제는 이 테스트로 검출되지 않는다"** 를 명기 |
+| §32.1 의 인라인 RTL 좌표 drift | **해소** — 착지 전/후 좌표 병기 + "좌표 drift 시 정본은 spec 표가 아니라 RTL" 규약 명시 |
+
+**부수 기록 — 세션 중 untracked 파일 1건 소실·복원 (`synth/lattice/reports/cluster_v19b_pnr.done`)**: 세션 시작 시 `git status` 에 있던 이 파일이 중간에 사라졌고 **어느 phase 도 삭제를 보고하지 않았다**. `.gitignore` 는 같은 디렉터리의 `*.log`/`*.rpt`/`*.json` 만 무시하고 `*.done` 은 무시하지 않으므로 ignore 로 숨은 것이 아니라 **실제 삭제**다. git 이력에 한 번도 tracked 된 적이 없어 **원본 내용은 복구 불가능**하다. 조치: **0 바이트 마커로 복원**했다 — 이 파일이 나르던 정보는 "cluster_v19b P&R 이 끝났다" 는 존재 사실 한 비트뿐이고, 그 비트는 같은 디렉터리의 `cluster_v19b_pnr.log`/`.rpt` (2026-07-27 17:34, 온전) 로 **독립 검증**된다. **복원본은 재구성이며 원본의 바이트 사본이 아니다** — 원본에 내용이 있었다면 그 내용은 소실됐다. tracked 산출물 손실은 0건이다. 재발 방지 관점의 관찰: 저장소 파일을 심링크로 참조하는 임시 샌드박스에서 `rm -rf` 를 쓰면 경로에 따라 **심링크를 통과해** 원본을 지울 수 있다 — 샌드박스는 `/tmp` 밑에 두고, 삭제는 샌드박스 루트에만 하며, 저장소 쓰기가 필요한 산출물은 `COCOTB_RESULTS_FILE` 처럼 명시 리다이렉트한다.

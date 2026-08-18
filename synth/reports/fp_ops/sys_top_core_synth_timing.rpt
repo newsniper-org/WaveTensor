@@ -1,7 +1,7 @@
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
 --------------------------------------------------------------------------------------------------------------------------------------------------
 | Tool Version      : Vivado v.2025.2.1 (lin64) Build 6403652 Thu Mar 19 13:47:00 MDT 2026
-| Date              : Tue Aug 18 16:45:11 2026
+| Date              : Tue Aug 18 18:11:07 2026
 | Host              : cachyos-ybi-tuf running 64-bit CachyOS
 | Command           : report_timing_summary -file /home/ybi/WaveTensor/synth/reports/fp_ops/sys_top_core_synth_timing.rpt
 | Design            : Top_Core_gate_top
@@ -139,7 +139,7 @@ Table of Contents
 
     WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
     -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
-      3.357        0.000                      0                18895        0.032        0.000                      0                18895        4.458        0.000                       0                 10187  
+      3.357        0.000                      0                18923        0.032        0.000                      0                18923        4.458        0.000                       0                 10201  
 
 
 All user specified timing constraints are met.
@@ -162,7 +162,7 @@ clk    {0.000 5.000}      10.000          100.000
 
 Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
 -----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
-clk                 3.357        0.000                      0                18895        0.032        0.000                      0                18895        4.458        0.000                       0                 10187  
+clk                 3.357        0.000                      0                18923        0.032        0.000                      0                18923        4.458        0.000                       0                 10201  
 
 
 ------------------------------------------------------------------------------------------------
@@ -225,7 +225,7 @@ Slack (MET) :             3.357ns  (required time - arrival time)
   -------------------------------------------------------------------    -------------------
                          (clock clk rise edge)        0.000     0.000 r  
                                                       0.000     0.000 r  clk (IN)
-                         net (fo=10221, unset)        0.030     0.030    u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/clk
+                         net (fo=10235, unset)        0.030     0.030    u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/clk
                          FDRE                                         r  u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/fd_j_reg[4]/C
   -------------------------------------------------------------------    -------------------
                          FDRE (Prop_FDRE_C_Q)         0.076     0.106 r  u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/fd_j_reg[4]/Q
@@ -287,7 +287,7 @@ Slack (MET) :             3.357ns  (required time - arrival time)
 
                          (clock clk rise edge)       10.000    10.000 r  
                                                       0.000    10.000 r  clk (IN)
-                         net (fo=10221, unset)        0.043    10.043    u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/fd_xp_reg_r1_0_63_0_6/WCLK
+                         net (fo=10235, unset)        0.043    10.043    u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/fd_xp_reg_r1_0_63_0_6/WCLK
                          RAMD64E                                      r  u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/fd_xp_reg_r1_0_63_0_6/RAMD/CLK
                          clock pessimism              0.000    10.043    
                          clock uncertainty           -0.035    10.008    
@@ -324,7 +324,7 @@ Slack (MET) :             0.032ns  (arrival time - required time)
   -------------------------------------------------------------------    -------------------
                          (clock clk rise edge)        0.000     0.000 r  
                                                       0.000     0.000 r  clk (IN)
-                         net (fo=10221, unset)        0.012     0.012    u_core/u_hiu/clk
+                         net (fo=10235, unset)        0.012     0.012    u_core/u_hiu/clk
                          FDRE                                         r  u_core/u_hiu/tlb_wr_phys_q_reg[14]/C
   -------------------------------------------------------------------    -------------------
                          FDRE (Prop_FDRE_C_Q)         0.038     0.050 r  u_core/u_hiu/tlb_wr_phys_q_reg[14]/Q
@@ -334,7 +334,7 @@ Slack (MET) :             0.032ns  (arrival time - required time)
 
                          (clock clk rise edge)        0.000     0.000 r  
                                                       0.000     0.000 r  clk (IN)
-                         net (fo=10221, unset)        0.039     0.039    u_core/u_hiu/tlb_mem_reg_0_63_0_6/WCLK
+                         net (fo=10235, unset)        0.039     0.039    u_core/u_hiu/tlb_mem_reg_0_63_0_6/WCLK
                          RAMD64E                                      r  u_core/u_hiu/tlb_mem_reg_0_63_0_6/RAMC/CLK
                          clock pessimism              0.000     0.039    
                          RAMD64E (Hold_RAMD64E_CLK_I)

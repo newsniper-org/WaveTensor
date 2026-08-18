@@ -1,7 +1,7 @@
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
 --------------------------------------------------------------------------------------------------------------------------------------------------
 | Tool Version      : Vivado v.2025.2.1 (lin64) Build 6403652 Thu Mar 19 13:47:00 MDT 2026
-| Date              : Tue Aug 18 16:47:37 2026
+| Date              : Tue Aug 18 18:13:30 2026
 | Host              : cachyos-ybi-tuf running 64-bit CachyOS
 | Command           : report_timing_summary -file /home/ybi/WaveTensor/synth/reports/fp_ops/sys_top_core_impl_timing.rpt
 | Design            : Top_Core_gate_top
@@ -139,7 +139,7 @@ Table of Contents
 
     WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
     -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
-      1.656        0.000                      0                18895        0.007        0.000                      0                18895        4.458        0.000                       0                 10187  
+      2.207        0.000                      0                19443        0.019        0.000                      0                19443        4.458        0.000                       0                 10461  
 
 
 All user specified timing constraints are met.
@@ -162,7 +162,7 @@ clk    {0.000 5.000}      10.000          100.000
 
 Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
 -----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
-clk                 1.656        0.000                      0                18895        0.007        0.000                      0                18895        4.458        0.000                       0                 10187  
+clk                 2.207        0.000                      0                19443        0.019        0.000                      0                19443        4.458        0.000                       0                 10461  
 
 
 ------------------------------------------------------------------------------------------------
@@ -193,24 +193,24 @@ Path Group    From Clock    To Clock          WNS(ns)      TNS(ns)  TNS Failing 
 From Clock:  clk
   To Clock:  clk
 
-Setup :            0  Failing Endpoints,  Worst Slack        1.656ns,  Total Violation        0.000ns
-Hold  :            0  Failing Endpoints,  Worst Slack        0.007ns,  Total Violation        0.000ns
+Setup :            0  Failing Endpoints,  Worst Slack        2.207ns,  Total Violation        0.000ns
+Hold  :            0  Failing Endpoints,  Worst Slack        0.019ns,  Total Violation        0.000ns
 PW    :            0  Failing Endpoints,  Worst Slack        4.458ns,  Total Violation        0.000ns
 ---------------------------------------------------------------------------------------------------
 
 
 Max Delay Paths
 --------------------------------------------------------------------------------------
-Slack (MET) :             1.656ns  (required time - arrival time)
-  Source:                 u_core/u_decoder/u_ehdec/dec_input_payload_reg[20]/C
+Slack (MET) :             2.207ns  (required time - arrival time)
+  Source:                 u_core/u_decoder/u_ehdec/dec_input_payload_reg[23]/C
                             (rising edge-triggered cell FDCE clocked by clk  {rise@0.000ns fall@5.000ns period=10.000ns})
-  Destination:            u_core/u_decoder/u_core/cr_payload_reg[63]/D
+  Destination:            u_core/u_decoder/u_core/cr_payload_reg[56]/D
                             (rising edge-triggered cell FDCE clocked by clk  {rise@0.000ns fall@5.000ns period=10.000ns})
   Path Group:             clk
   Path Type:              Setup (Max at Slow Process Corner)
   Requirement:            10.000ns  (clk rise@10.000ns - clk rise@0.000ns)
-  Data Path Delay:        8.326ns  (logic 2.707ns (32.514%)  route 5.619ns (67.486%))
-  Logic Levels:           29  (CARRY8=10 LUT2=2 LUT3=6 LUT4=1 LUT5=5 LUT6=4 MUXF7=1)
+  Data Path Delay:        7.775ns  (logic 2.220ns (28.554%)  route 5.555ns (71.446%))
+  Logic Levels:           27  (CARRY8=8 LUT2=2 LUT3=5 LUT5=4 LUT6=7 MUXF7=1)
   Clock Path Skew:        -0.008ns (DCD - SCD + CPR)
     Destination Clock Delay (DCD):    0.021ns = ( 10.021 - 10.000 ) 
     Source Clock Delay      (SCD):    0.029ns
@@ -225,115 +225,109 @@ Slack (MET) :             1.656ns  (required time - arrival time)
   -------------------------------------------------------------------    -------------------
                          (clock clk rise edge)        0.000     0.000 r  
                                                       0.000     0.000 r  clk (IN)
-                         net (fo=10221, unset)        0.029     0.029    u_core/u_decoder/u_ehdec/clk
-    SLICE_X185Y686       FDCE                                         r  u_core/u_decoder/u_ehdec/dec_input_payload_reg[20]/C
+                         net (fo=10495, unset)        0.029     0.029    u_core/u_decoder/u_ehdec/clk
+    SLICE_X221Y693       FDCE                                         r  u_core/u_decoder/u_ehdec/dec_input_payload_reg[23]/C
   -------------------------------------------------------------------    -------------------
-    SLICE_X185Y686       FDCE (Prop_GFF2_SLICEL_C_Q)
-                                                      0.081     0.110 f  u_core/u_decoder/u_ehdec/dec_input_payload_reg[20]/Q
-                         net (fo=105, routed)         0.860     0.970    u_core/u_decoder/u_core/dec_input_payload[20]
-    SLICE_X158Y668       LUT5 (Prop_D6LUT_SLICEL_I4_O)
-                                                      0.146     1.116 r  u_core/u_decoder/u_core/cr_payload[20]_i_32/O
-                         net (fo=2, routed)           0.158     1.274    u_core/u_decoder/u_core/cr_payload[20]_i_32_n_0
-    SLICE_X158Y672       LUT3 (Prop_C5LUT_SLICEL_I0_O)
-                                                      0.158     1.432 r  u_core/u_decoder/u_core/cr_payload[9]_i_34/O
-                         net (fo=4, routed)           0.220     1.651    u_core/u_decoder/u_core/cr_payload[9]_i_34_n_0
-    SLICE_X158Y669       LUT5 (Prop_D6LUT_SLICEL_I3_O)
-                                                      0.050     1.701 r  u_core/u_decoder/u_core/cr_payload[7]_i_62/O
-                         net (fo=4, routed)           0.146     1.847    u_core/u_decoder/u_core/cr_payload[7]_i_62_n_0
-    SLICE_X159Y668       LUT3 (Prop_H5LUT_SLICEL_I0_O)
-                                                      0.096     1.943 f  u_core/u_decoder/u_core/cr_payload[8]_i_45/O
-                         net (fo=3, routed)           0.234     2.177    u_core/u_decoder/u_core/cr_payload[8]_i_45_n_0
-    SLICE_X159Y672       LUT3 (Prop_B5LUT_SLICEL_I1_O)
-                                                      0.141     2.318 r  u_core/u_decoder/u_core/cr_payload[8]_i_23/O
-                         net (fo=4, routed)           0.192     2.510    u_core/u_decoder/u_core/cr_payload[8]_i_23_n_0
-    SLICE_X157Y668       LUT5 (Prop_C6LUT_SLICEM_I0_O)
-                                                      0.088     2.598 f  u_core/u_decoder/u_core/cr_payload[35]_i_850/O
-                         net (fo=2, routed)           0.171     2.769    u_core/u_decoder/u_core/cr_payload[35]_i_850_n_0
-    SLICE_X156Y668       LUT3 (Prop_D5LUT_SLICEM_I2_O)
-                                                      0.158     2.927 r  u_core/u_decoder/u_core/cr_payload[35]_i_789/O
-                         net (fo=2, routed)           0.242     3.169    u_core/u_decoder/u_core/cr_payload[35]_i_789_n_0
-    SLICE_X158Y670       LUT3 (Prop_C5LUT_SLICEL_I2_O)
-                                                      0.110     3.279 r  u_core/u_decoder/u_core/cr_payload[35]_i_791/O
-                         net (fo=2, routed)           0.256     3.535    u_core/u_decoder/u_core/cr_payload[35]_i_791_n_0
-    SLICE_X156Y670       LUT4 (Prop_F6LUT_SLICEM_I3_O)
-                                                      0.051     3.586 r  u_core/u_decoder/u_core/cr_payload[35]_i_696/O
-                         net (fo=1, routed)           0.022     3.608    u_core/u_decoder/u_core/cr_payload[35]_i_696_n_0
-    SLICE_X156Y670       CARRY8 (Prop_CARRY8_SLICEM_S[5]_CO[7])
-                                                      0.159     3.767 r  u_core/u_decoder/u_core/cr_payload_reg[35]_i_607/CO[7]
-                         net (fo=1, routed)           0.026     3.793    u_core/u_decoder/u_core/cr_payload_reg[35]_i_607_n_0
-    SLICE_X156Y671       CARRY8 (Prop_CARRY8_SLICEM_CI_CO[7])
-                                                      0.015     3.808 r  u_core/u_decoder/u_core/cr_payload_reg[35]_i_579/CO[7]
-                         net (fo=1, routed)           0.026     3.834    u_core/u_decoder/u_core/cr_payload_reg[35]_i_579_n_0
-    SLICE_X156Y672       CARRY8 (Prop_CARRY8_SLICEM_CI_CO[7])
-                                                      0.015     3.849 r  u_core/u_decoder/u_core/cr_payload_reg[35]_i_535/CO[7]
-                         net (fo=1, routed)           0.026     3.875    u_core/u_decoder/u_core/cr_payload_reg[35]_i_535_n_0
-    SLICE_X156Y673       CARRY8 (Prop_CARRY8_SLICEM_CI_CO[7])
-                                                      0.015     3.890 r  u_core/u_decoder/u_core/cr_payload_reg[35]_i_510/CO[7]
-                         net (fo=1, routed)           0.026     3.916    u_core/u_decoder/u_core/cr_payload_reg[35]_i_510_n_0
-    SLICE_X156Y674       CARRY8 (Prop_CARRY8_SLICEM_CI_CO[7])
-                                                      0.015     3.931 r  u_core/u_decoder/u_core/cr_payload_reg[35]_i_507/CO[7]
-                         net (fo=1, routed)           0.026     3.957    u_core/u_decoder/u_core/cr_payload_reg[35]_i_507_n_0
-    SLICE_X156Y675       CARRY8 (Prop_CARRY8_SLICEM_CI_O[4])
-                                                      0.086     4.043 r  u_core/u_decoder/u_core/cr_payload_reg[35]_i_428/O[4]
-                         net (fo=3, routed)           0.289     4.332    u_core/u_decoder/u_core/rne_shr642[52]
-    SLICE_X155Y678       LUT6 (Prop_G6LUT_SLICEL_I5_O)
-                                                      0.050     4.382 r  u_core/u_decoder/u_core/cr_payload[35]_i_458/O
-                         net (fo=1, routed)           0.322     4.704    u_core/u_decoder/u_core/cr_payload[35]_i_458_n_0
-    SLICE_X154Y674       LUT6 (Prop_B6LUT_SLICEM_I5_O)
-                                                      0.149     4.853 r  u_core/u_decoder/u_core/cr_payload[35]_i_314/O
-                         net (fo=1, routed)           0.016     4.869    u_core/u_decoder/u_core/cr_payload[35]_i_314_n_0
-    SLICE_X154Y674       CARRY8 (Prop_CARRY8_SLICEM_S[1]_CO[5])
-                                                      0.199     5.068 r  u_core/u_decoder/u_core/cr_payload_reg[35]_i_177/CO[5]
-                         net (fo=65, routed)          0.705     5.773    u_core/u_decoder/u_core/cr_payload_reg[35]_i_177_n_2
-    SLICE_X169Y678       LUT5 (Prop_G6LUT_SLICEL_I4_O)
-                                                      0.089     5.862 f  u_core/u_decoder/u_core/cr_payload[20]_i_21/O
-                         net (fo=1, routed)           0.215     6.077    u_core/u_decoder/u_core/cr_payload[20]_i_21_n_0
-    SLICE_X173Y682       LUT3 (Prop_D6LUT_SLICEL_I2_O)
-                                                      0.050     6.127 f  u_core/u_decoder/u_core/cr_payload[20]_i_12/O
-                         net (fo=9, routed)           0.302     6.429    u_core/u_decoder/u_core/cr_payload[20]_i_12_n_0
-    SLICE_X168Y680       LUT2 (Prop_B6LUT_SLICEL_I0_O)
-                                                      0.124     6.553 r  u_core/u_decoder/u_core/cr_payload[35]_i_331/O
-                         net (fo=1, routed)           0.009     6.562    u_core/u_decoder/u_core/cr_payload[35]_i_331_n_0
-    SLICE_X168Y680       CARRY8 (Prop_CARRY8_SLICEL_S[1]_CO[7])
-                                                      0.186     6.748 f  u_core/u_decoder/u_core/cr_payload_reg[35]_i_178/CO[7]
-                         net (fo=1, routed)           0.026     6.774    u_core/u_decoder/u_core/cr_payload_reg[35]_i_178_n_0
-    SLICE_X168Y681       CARRY8 (Prop_CARRY8_SLICEL_CI_CO[7])
-                                                      0.015     6.789 f  u_core/u_decoder/u_core/cr_payload_reg[35]_i_73/CO[7]
-                         net (fo=1, routed)           0.026     6.815    u_core/u_decoder/u_core/cr_payload_reg[35]_i_73_n_0
-    SLICE_X168Y682       CARRY8 (Prop_CARRY8_SLICEL_CI_CO[6])
-                                                      0.092     6.907 f  u_core/u_decoder/u_core/cr_payload_reg[35]_i_14/CO[6]
-                         net (fo=27, routed)          0.282     7.189    u_core/u_decoder/u_core/clamp_sext641
-    SLICE_X168Y675       LUT2 (Prop_B6LUT_SLICEL_I1_O)
-                                                      0.051     7.240 r  u_core/u_decoder/u_core/cr_payload[10]_i_14/O
-                         net (fo=38, routed)          0.337     7.577    u_core/u_decoder/u_core/cr_payload[10]_i_14_n_0
-    SLICE_X167Y685       LUT6 (Prop_C6LUT_SLICEM_I0_O)
-                                                      0.088     7.665 f  u_core/u_decoder/u_core/cr_payload[63]_i_24/O
-                         net (fo=1, routed)           0.021     7.686    u_core/u_decoder/u_core/cr_payload[63]_i_24_n_0
-    SLICE_X167Y685       MUXF7 (Prop_F7MUX_CD_SLICEM_I1_O)
-                                                      0.068     7.754 f  u_core/u_decoder/u_core/cr_payload_reg[63]_i_8/O
-                         net (fo=1, routed)           0.196     7.950    u_core/u_decoder/u_core/cr_payload_reg[63]_i_8_n_0
-    SLICE_X167Y685       LUT5 (Prop_B5LUT_SLICEM_I0_O)
-                                                      0.072     8.022 f  u_core/u_decoder/u_core/cr_payload[63]_i_2/O
-                         net (fo=1, routed)           0.184     8.206    u_core/u_decoder/u_core/cr_payload[63]_i_2_n_0
-    SLICE_X166Y686       LUT6 (Prop_G6LUT_SLICEM_I0_O)
-                                                      0.090     8.296 r  u_core/u_decoder/u_core/cr_payload[63]_i_1/O
-                         net (fo=1, routed)           0.059     8.355    u_core/u_decoder/u_core/cr_payload[63]_i_1_n_0
-    SLICE_X166Y686       FDCE                                         r  u_core/u_decoder/u_core/cr_payload_reg[63]/D
+    SLICE_X221Y693       FDCE (Prop_HFF_SLICEL_C_Q)
+                                                      0.079     0.108 f  u_core/u_decoder/u_ehdec/dec_input_payload_reg[23]/Q
+                         net (fo=89, routed)          0.777     0.885    u_core/u_decoder/u_core/dec_input_payload[23]
+    SLICE_X216Y691       LUT5 (Prop_H6LUT_SLICEM_I1_O)
+                                                      0.125     1.010 r  u_core/u_decoder/u_core/cr_payload[21]_i_54/O
+                         net (fo=4, routed)           0.334     1.345    u_core/u_decoder/u_core/cr_payload[21]_i_54_n_0
+    SLICE_X217Y683       LUT3 (Prop_C6LUT_SLICEM_I0_O)
+                                                      0.051     1.396 r  u_core/u_decoder/u_core/cr_payload[14]_i_60/O
+                         net (fo=4, routed)           0.099     1.495    u_core/u_decoder/u_core/cr_payload[14]_i_60_n_0
+    SLICE_X217Y683       LUT5 (Prop_H6LUT_SLICEM_I3_O)
+                                                      0.101     1.596 r  u_core/u_decoder/u_core/cr_payload[9]_i_38/O
+                         net (fo=6, routed)           0.227     1.822    u_core/u_decoder/u_core/cr_payload[9]_i_38_n_0
+    SLICE_X215Y682       LUT3 (Prop_D5LUT_SLICEL_I0_O)
+                                                      0.110     1.932 r  u_core/u_decoder/u_core/cr_payload[9]_i_21/O
+                         net (fo=2, routed)           0.123     2.055    u_core/u_decoder/u_core/cr_payload[9]_i_21_n_0
+    SLICE_X215Y681       LUT3 (Prop_F6LUT_SLICEL_I2_O)
+                                                      0.123     2.178 r  u_core/u_decoder/u_core/cr_payload[8]_i_23/O
+                         net (fo=4, routed)           0.093     2.271    u_core/u_decoder/u_core/cr_payload[8]_i_23_n_0
+    SLICE_X215Y682       LUT5 (Prop_G6LUT_SLICEL_I0_O)
+                                                      0.035     2.306 f  u_core/u_decoder/u_core/cr_payload[8]_i_25/O
+                         net (fo=7, routed)           0.219     2.525    u_core/u_decoder/u_core/cr_payload[10]_i_70_n_0
+    SLICE_X215Y689       LUT3 (Prop_E6LUT_SLICEL_I0_O)
+                                                      0.051     2.576 r  u_core/u_decoder/u_core/cr_payload[35]_i_725/O
+                         net (fo=3, routed)           0.043     2.620    u_core/u_decoder/u_core/cr_payload[35]_i_725_n_0
+    SLICE_X215Y689       LUT6 (Prop_B6LUT_SLICEL_I5_O)
+                                                      0.051     2.671 r  u_core/u_decoder/u_core/cr_payload[35]_i_770/O
+                         net (fo=4, routed)           0.376     3.047    u_core/u_decoder/u_core/cr_payload[35]_i_770_n_0
+    SLICE_X219Y692       LUT6 (Prop_G6LUT_SLICEL_I5_O)
+                                                      0.097     3.144 r  u_core/u_decoder/u_core/cr_payload[35]_i_675/O
+                         net (fo=2, routed)           0.218     3.362    u_core/u_decoder/u_core/cr_payload[35]_i_675_n_0
+    SLICE_X219Y688       LUT6 (Prop_A6LUT_SLICEL_I1_O)
+                                                      0.050     3.412 r  u_core/u_decoder/u_core/cr_payload[35]_i_588/O
+                         net (fo=1, routed)           0.009     3.421    u_core/u_decoder/u_core/cr_payload[35]_i_588_n_0
+    SLICE_X219Y688       CARRY8 (Prop_CARRY8_SLICEL_S[0]_CO[7])
+                                                      0.190     3.611 r  u_core/u_decoder/u_core/cr_payload_reg[35]_i_507/CO[7]
+                         net (fo=1, routed)           0.026     3.637    u_core/u_decoder/u_core/cr_payload_reg[35]_i_507_n_0
+    SLICE_X219Y689       CARRY8 (Prop_CARRY8_SLICEL_CI_CO[7])
+                                                      0.015     3.652 r  u_core/u_decoder/u_core/cr_payload_reg[35]_i_428/CO[7]
+                         net (fo=1, routed)           0.052     3.704    u_core/u_decoder/u_core/cr_payload_reg[35]_i_428_n_0
+    SLICE_X219Y690       CARRY8 (Prop_CARRY8_SLICEL_CI_O[1])
+                                                      0.076     3.780 r  u_core/u_decoder/u_core/cr_payload_reg[35]_i_310/O[1]
+                         net (fo=3, routed)           0.559     4.339    u_core/u_decoder/u_core/rne_shr642[57]
+    SLICE_X221Y689       LUT6 (Prop_F6LUT_SLICEL_I5_O)
+                                                      0.049     4.388 r  u_core/u_decoder/u_core/cr_payload[35]_i_287/O
+                         net (fo=1, routed)           0.218     4.606    u_core/u_decoder/u_core/cr_payload[35]_i_287_n_0
+    SLICE_X221Y688       CARRY8 (Prop_CARRY8_SLICEL_DI[4]_CO[7])
+                                                      0.098     4.704 r  u_core/u_decoder/u_core/cr_payload_reg[35]_i_175/CO[7]
+                         net (fo=76, routed)          0.871     5.575    u_core/u_decoder/u_core/rne_shr641
+    SLICE_X210Y681       LUT5 (Prop_G6LUT_SLICEM_I2_O)
+                                                      0.052     5.627 f  u_core/u_decoder/u_core/cr_payload[12]_i_56/O
+                         net (fo=1, routed)           0.156     5.783    u_core/u_decoder/u_core/cr_payload[12]_i_56_n_0
+    SLICE_X209Y681       LUT3 (Prop_A6LUT_SLICEL_I2_O)
+                                                      0.050     5.833 f  u_core/u_decoder/u_core/cr_payload[12]_i_45/O
+                         net (fo=9, routed)           0.199     6.032    u_core/u_decoder/u_core/cr_payload[12]_i_45_n_0
+    SLICE_X207Y681       LUT2 (Prop_F6LUT_SLICEL_I0_O)
+                                                      0.097     6.129 r  u_core/u_decoder/u_core/cr_payload[35]_i_469/O
+                         net (fo=1, routed)           0.011     6.140    u_core/u_decoder/u_core/cr_payload[35]_i_469_n_0
+    SLICE_X207Y681       CARRY8 (Prop_CARRY8_SLICEL_S[5]_CO[7])
+                                                      0.155     6.295 f  u_core/u_decoder/u_core/cr_payload_reg[35]_i_316/CO[7]
+                         net (fo=1, routed)           0.026     6.321    u_core/u_decoder/u_core/cr_payload_reg[35]_i_316_n_0
+    SLICE_X207Y682       CARRY8 (Prop_CARRY8_SLICEL_CI_CO[7])
+                                                      0.015     6.336 f  u_core/u_decoder/u_core/cr_payload_reg[35]_i_178/CO[7]
+                         net (fo=1, routed)           0.026     6.362    u_core/u_decoder/u_core/cr_payload_reg[35]_i_178_n_0
+    SLICE_X207Y683       CARRY8 (Prop_CARRY8_SLICEL_CI_CO[7])
+                                                      0.015     6.377 f  u_core/u_decoder/u_core/cr_payload_reg[35]_i_73/CO[7]
+                         net (fo=1, routed)           0.026     6.403    u_core/u_decoder/u_core/cr_payload_reg[35]_i_73_n_0
+    SLICE_X207Y684       CARRY8 (Prop_CARRY8_SLICEL_CI_CO[6])
+                                                      0.092     6.495 f  u_core/u_decoder/u_core/cr_payload_reg[35]_i_14/CO[6]
+                         net (fo=27, routed)          0.207     6.702    u_core/u_decoder/u_core/clamp_sext641
+    SLICE_X207Y680       LUT2 (Prop_E5LUT_SLICEL_I1_O)
+                                                      0.138     6.840 r  u_core/u_decoder/u_core/cr_payload[10]_i_14/O
+                         net (fo=38, routed)          0.377     7.218    u_core/u_decoder/u_core/cr_payload[10]_i_14_n_0
+    SLICE_X204Y684       LUT6 (Prop_F6LUT_SLICEL_I1_O)
+                                                      0.049     7.267 r  u_core/u_decoder/u_core/cr_payload[56]_i_17/O
+                         net (fo=1, routed)           0.137     7.404    u_core/u_decoder/u_core/cr_payload[56]_i_17_n_0
+    SLICE_X201Y685       LUT6 (Prop_D6LUT_SLICEM_I1_O)
+                                                      0.099     7.503 r  u_core/u_decoder/u_core/cr_payload[56]_i_7/O
+                         net (fo=1, routed)           0.087     7.590    u_core/u_decoder/u_core/cr_payload[56]_i_7_n_0
+    SLICE_X201Y686       LUT6 (Prop_D6LUT_SLICEM_I5_O)
+                                                      0.088     7.678 r  u_core/u_decoder/u_core/cr_payload[56]_i_2/O
+                         net (fo=1, routed)           0.025     7.703    u_core/u_decoder/u_core/cr_payload[56]_i_2_n_0
+    SLICE_X201Y686       MUXF7 (Prop_F7MUX_CD_SLICEM_I0_O)
+                                                      0.069     7.772 r  u_core/u_decoder/u_core/cr_payload_reg[56]_i_1/O
+                         net (fo=1, routed)           0.032     7.804    u_core/u_decoder/u_core/cr_payload_reg[56]_i_1_n_0
+    SLICE_X201Y686       FDCE                                         r  u_core/u_decoder/u_core/cr_payload_reg[56]/D
   -------------------------------------------------------------------    -------------------
 
                          (clock clk rise edge)       10.000    10.000 r  
                                                       0.000    10.000 r  clk (IN)
-                         net (fo=10221, unset)        0.021    10.021    u_core/u_decoder/u_core/clk
-    SLICE_X166Y686       FDCE                                         r  u_core/u_decoder/u_core/cr_payload_reg[63]/C
+                         net (fo=10495, unset)        0.021    10.021    u_core/u_decoder/u_core/clk
+    SLICE_X201Y686       FDCE                                         r  u_core/u_decoder/u_core/cr_payload_reg[56]/C
                          clock pessimism              0.000    10.021    
                          clock uncertainty           -0.035     9.986    
-    SLICE_X166Y686       FDCE (Setup_GFF_SLICEM_C_D)
-                                                      0.025    10.011    u_core/u_decoder/u_core/cr_payload_reg[63]
+    SLICE_X201Y686       FDCE (Setup_DFF_SLICEM_C_D)
+                                                      0.025    10.011    u_core/u_decoder/u_core/cr_payload_reg[56]
   -------------------------------------------------------------------
                          required time                         10.011    
-                         arrival time                          -8.355    
+                         arrival time                          -7.804    
   -------------------------------------------------------------------
-                         slack                                  1.656    
+                         slack                                  2.207    
 
 
 
@@ -341,46 +335,46 @@ Slack (MET) :             1.656ns  (required time - arrival time)
 
 Min Delay Paths
 --------------------------------------------------------------------------------------
-Slack (MET) :             0.007ns  (arrival time - required time)
-  Source:                 u_core/u_hiu/tlb_wr_virt_q_reg[19]/C
-                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@5.000ns period=10.000ns})
-  Destination:            u_core/u_hiu/tlb_mem_reg_0_63_49_55/RAMG/I
-                            (rising edge-triggered cell RAMD64E clocked by clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+Slack (MET) :             0.019ns  (arrival time - required time)
+  Source:                 u_core/u_decoder/u_core/div_tag_held_reg[20]/C
+                            (rising edge-triggered cell FDCE clocked by clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            u_core/u_decoder/u_core/div_tag_p2_reg[20]/D
+                            (rising edge-triggered cell FDCE clocked by clk  {rise@0.000ns fall@5.000ns period=10.000ns})
   Path Group:             clk
-  Path Type:              Hold (Min at Slow Process Corner)
+  Path Type:              Hold (Min at Fast Process Corner)
   Requirement:            0.000ns  (clk rise@0.000ns - clk rise@0.000ns)
-  Data Path Delay:        0.121ns  (logic 0.057ns (47.107%)  route 0.064ns (52.893%))
+  Data Path Delay:        0.072ns  (logic 0.039ns (54.167%)  route 0.033ns (45.833%))
   Logic Levels:           0  
-  Clock Path Skew:        0.036ns (DCD - SCD - CPR)
-    Destination Clock Delay (DCD):    0.057ns
-    Source Clock Delay      (SCD):    0.021ns
+  Clock Path Skew:        0.006ns (DCD - SCD - CPR)
+    Destination Clock Delay (DCD):    0.019ns
+    Source Clock Delay      (SCD):    0.013ns
     Clock Pessimism Removal (CPR):    -0.000ns
 
     Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
   -------------------------------------------------------------------    -------------------
                          (clock clk rise edge)        0.000     0.000 r  
                                                       0.000     0.000 r  clk (IN)
-                         net (fo=10221, unset)        0.021     0.021    u_core/u_hiu/clk
-    SLICE_X187Y700       FDRE                                         r  u_core/u_hiu/tlb_wr_virt_q_reg[19]/C
+                         net (fo=10495, unset)        0.013     0.013    u_core/u_decoder/u_core/clk
+    SLICE_X185Y654       FDCE                                         r  u_core/u_decoder/u_core/div_tag_held_reg[20]/C
   -------------------------------------------------------------------    -------------------
-    SLICE_X187Y700       FDRE (Prop_FFF_SLICEM_C_Q)
-                                                      0.057     0.078 r  u_core/u_hiu/tlb_wr_virt_q_reg[19]/Q
-                         net (fo=1, routed)           0.064     0.142    u_core/u_hiu/tlb_mem_reg_0_63_49_55/DIG
-    SLICE_X187Y701       RAMD64E                                      r  u_core/u_hiu/tlb_mem_reg_0_63_49_55/RAMG/I
+    SLICE_X185Y654       FDCE (Prop_HFF_SLICEL_C_Q)
+                                                      0.039     0.052 r  u_core/u_decoder/u_core/div_tag_held_reg[20]/Q
+                         net (fo=1, routed)           0.033     0.085    u_core/u_decoder/u_core/div_tag_held[20]
+    SLICE_X185Y654       FDCE                                         r  u_core/u_decoder/u_core/div_tag_p2_reg[20]/D
   -------------------------------------------------------------------    -------------------
 
                          (clock clk rise edge)        0.000     0.000 r  
                                                       0.000     0.000 r  clk (IN)
-                         net (fo=10221, unset)        0.057     0.057    u_core/u_hiu/tlb_mem_reg_0_63_49_55/WCLK
-    SLICE_X187Y701       RAMD64E                                      r  u_core/u_hiu/tlb_mem_reg_0_63_49_55/RAMG/CLK
-                         clock pessimism              0.000     0.057    
-    SLICE_X187Y701       RAMD64E (Hold_G6LUT_SLICEM_CLK_I)
-                                                      0.078     0.135    u_core/u_hiu/tlb_mem_reg_0_63_49_55/RAMG
+                         net (fo=10495, unset)        0.019     0.019    u_core/u_decoder/u_core/clk
+    SLICE_X185Y654       FDCE                                         r  u_core/u_decoder/u_core/div_tag_p2_reg[20]/C
+                         clock pessimism              0.000     0.019    
+    SLICE_X185Y654       FDCE (Hold_HFF2_SLICEL_C_D)
+                                                      0.047     0.066    u_core/u_decoder/u_core/div_tag_p2_reg[20]
   -------------------------------------------------------------------
-                         required time                         -0.135    
-                         arrival time                           0.142    
+                         required time                         -0.066    
+                         arrival time                           0.085    
   -------------------------------------------------------------------
-                         slack                                  0.007    
+                         slack                                  0.019    
 
 
 
@@ -394,9 +388,9 @@ Period(ns):         10.000
 Sources:            { clk }
 
 Check Type        Corner  Lib Pin             Reference Pin  Required(ns)  Actual(ns)  Slack(ns)  Location        Pin
-Min Period        n/a     RAMB18E2/CLKARDCLK  n/a            1.355         10.000      8.645      RAMB18_X11Y254  u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/sel/CLKARDCLK
-Low Pulse Width   Slow    RAMB18E2/CLKARDCLK  n/a            0.542         5.000       4.458      RAMB18_X11Y254  u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/sel/CLKARDCLK
-High Pulse Width  Slow    RAMB18E2/CLKARDCLK  n/a            0.542         5.000       4.458      RAMB18_X11Y254  u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/sel/CLKARDCLK
+Min Period        n/a     RAMB18E2/CLKARDCLK  n/a            1.355         10.000      8.645      RAMB18_X12Y260  u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/sel/CLKARDCLK
+Low Pulse Width   Slow    RAMB18E2/CLKARDCLK  n/a            0.542         5.000       4.458      RAMB18_X12Y260  u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/sel/CLKARDCLK
+High Pulse Width  Slow    RAMB18E2/CLKARDCLK  n/a            0.542         5.000       4.458      RAMB18_X12Y260  u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/sel/CLKARDCLK
 
 
 
