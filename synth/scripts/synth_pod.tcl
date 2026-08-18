@@ -41,6 +41,26 @@ synth_design -top Pod \
              -generic CLUSTER_COLS=$::CLUSTER_COLS \
              -flatten_hierarchy none
 
+# ---- rst false path, CLR/PRE 한정 (spec §29.7 XDC 정정) -------------------
+# 여기에 있는 이유: `REF_PIN_NAME == CLR|PRE` 는 넷리스트 primitive 핀을
+# 매칭하므로 `synth/constraints/pod.xdc` (synth_design 이전 read) 에서는
+# 0개를 매칭해 예외가 조용히 사라진다. 넓은 형태가 왜 틀렸는지는 pod.xdc
+# 의 같은 자리 주석 참조 — 요약하면 `rst` 가 CE LUT 의 **데이터 입력**이
+# 되어 setup/hold 가 걸리는 동기 경로가 되는데, 넓은 false_path 가 그것을
+# 타이밍 분석에서 통째로 빼고 있었다.
+#
+# 매칭이 0개면 **소리를 낸다** — 조용히 통과시키지 않는다.
+set _rst_async_pins [get_pins -quiet -hier \
+    -filter {REF_PIN_NAME == CLR || REF_PIN_NAME == PRE}]
+if {[llength $_rst_async_pins] == 0} {
+    puts "ERROR: spec 29.7 rst false_path — CLR/PRE 핀 매칭 0개."
+    puts "       async-reset 설계인데 비동기 reset 핀이 없다는 뜻이므로"
+    puts "       제약을 조용히 건너뛰지 않고 여기서 멈춘다."
+    exit 1
+}
+set_false_path -from [get_ports rst] -to $_rst_async_pins
+puts "spec 29.7: rst false_path -> [llength $_rst_async_pins] CLR/PRE pins"
+
 # Reports
 set tag "pod_${::PE_ROWS}x${::PE_COLS}_${::CLUSTER_ROWS}x${::CLUSTER_COLS}_synth"
 

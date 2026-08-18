@@ -79,6 +79,14 @@ module Pod_HIU_gate_top #(
     input  [191:0]                 chacha_nonce_i,
     input  [255:0]                 chacha_key_i,
 
+    // ---- HIU partitioned-TLB fill 입력 (spec §29.4 — D4 실물화) ----
+    // 래퍼 관례대로 rst 를 제외한 신규 I/O 를 정확히 1회 등록한다.
+    input                          tlb_write_en_i,
+    input  [1:0]                   tlb_write_partition_i,
+    input  [3:0]                   tlb_write_index_i,
+    input  [ADDR_WIDTH-1:0]        tlb_write_virt_i,
+    input  [ADDR_WIDTH-1:0]        tlb_write_phys_i,
+
     // ---- Pod 측 경계 출력 ----
     output reg [TAG_WIDTH-1:0]     ext_out_tag_o,
     output reg [ADDR_WIDTH-1:0]    ext_out_payload_o,
@@ -98,6 +106,8 @@ module Pod_HIU_gate_top #(
     output reg                     access_granted_o,
     output reg                     ats_resp_o,
     output reg                     pri_resp_o,
+    output reg                     tlb_fault_o,
+    output reg [2:0]               tlb_fault_code_o,
     output reg [7:0]               rng_raw_o,
     output reg                     rng_raw_valid_o,
     output reg [63:0]              rng_word_o,
@@ -129,6 +139,11 @@ module Pod_HIU_gate_top #(
     reg [1:0]               partition_id_q;
     reg [191:0]             chacha_nonce_q;
     reg [255:0]             chacha_key_q;
+    reg                     tlb_write_en_q;
+    reg [1:0]               tlb_write_partition_q;
+    reg [3:0]               tlb_write_index_q;
+    reg [ADDR_WIDTH-1:0]    tlb_write_virt_q;
+    reg [ADDR_WIDTH-1:0]    tlb_write_phys_q;
 
     // =========================================================================
     // 블록 출력 wire
@@ -150,6 +165,8 @@ module Pod_HIU_gate_top #(
     wire                    hiu_access_granted_w;
     wire                    hiu_ats_resp_w;
     wire                    hiu_pri_resp_w;
+    wire                    hiu_tlb_fault_w;
+    wire [2:0]              hiu_tlb_fault_code_w;
     wire [7:0]              hiu_rng_raw_w;
     wire                    hiu_rng_raw_valid_w;
     wire [63:0]             hiu_rng_word_w;
@@ -186,6 +203,11 @@ module Pod_HIU_gate_top #(
         partition_id_q        <= partition_id_i;
         chacha_nonce_q        <= chacha_nonce_i;
         chacha_key_q          <= chacha_key_i;
+        tlb_write_en_q        <= tlb_write_en_i;
+        tlb_write_partition_q <= tlb_write_partition_i;
+        tlb_write_index_q     <= tlb_write_index_i;
+        tlb_write_virt_q      <= tlb_write_virt_i;
+        tlb_write_phys_q      <= tlb_write_phys_i;
 
         // ---- 블록 간 링크 등록 ----
         link_rng_word_q       <= hiu_rng_word_w;
@@ -210,6 +232,8 @@ module Pod_HIU_gate_top #(
         access_granted_o      <= hiu_access_granted_w;
         ats_resp_o            <= hiu_ats_resp_w;
         pri_resp_o            <= hiu_pri_resp_w;
+        tlb_fault_o           <= hiu_tlb_fault_w;
+        tlb_fault_code_o      <= hiu_tlb_fault_code_w;
         rng_raw_o             <= hiu_rng_raw_w;
         rng_raw_valid_o       <= hiu_rng_raw_valid_w;
         rng_word_o            <= hiu_rng_word_w;
@@ -276,12 +300,19 @@ module Pod_HIU_gate_top #(
         .partition_id       (partition_id_q),
         .chacha_nonce       (chacha_nonce_q),
         .chacha_key         (chacha_key_q),
+        .tlb_write_en       (tlb_write_en_q),
+        .tlb_write_partition(tlb_write_partition_q),
+        .tlb_write_index    (tlb_write_index_q),
+        .tlb_write_virt     (tlb_write_virt_q),
+        .tlb_write_phys     (tlb_write_phys_q),
         .phys_addr          (hiu_phys_addr_w),
         .dma_data_out       (hiu_dma_data_out_w),
         .dma_ack            (hiu_dma_ack_w),
         .access_granted     (hiu_access_granted_w),
         .ats_resp           (hiu_ats_resp_w),
         .pri_resp           (hiu_pri_resp_w),
+        .tlb_fault          (hiu_tlb_fault_w),
+        .tlb_fault_code     (hiu_tlb_fault_code_w),
         .rng_raw            (hiu_rng_raw_w),
         .rng_raw_valid      (hiu_rng_raw_valid_w),
         .rng_word           (hiu_rng_word_w),

@@ -58,6 +58,14 @@ async def _reset(dut):
     dut.shadow_write_end.value = 0
     dut.shadow_write_en.value = 0
     dut.shadow_index.value = 0
+    # HIU partitioned-TLB fill control plane (spec §29.4). 명시적으로 0 을
+    # 구동한다 — verilator 는 2-state 라 암묵 0 이지만, 구동하지 않은 입력에
+    # 의존하는 것은 X 를 지원하는 시뮬레이터에서 곧바로 깨진다.
+    dut.tlb_write_en.value = 0
+    dut.tlb_write_partition.value = 0
+    dut.tlb_write_index.value = 0
+    dut.tlb_write_virt.value = 0
+    dut.tlb_write_phys.value = 0
     dut.chacha_key.value = 0xDEADBEEFCAFEBABE0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
     dut.chacha_nonce.value = 0xAABBCCDDEEFF00112233445566778899AABBCCDDEEFF0011
     await Timer(20, units="ns")
@@ -158,6 +166,70 @@ async def test_load_routes_through_hiu(dut):
     assert (int(dut.mem_phys_addr.value) & 0xFFFF) == 0x1100 or \
            (int(dut.mem_phys_addr.value) & 0xFFFFFFFF) != 0, \
            "phys_addr did not propagate from HIU to top boundary"
+
+
+async def _install_tlb_entry(dut, partition, virt, phys):
+    """Top_Core 경계의 `tlb_write_*` 포트로 TLB 엔트리를 설치한다 (§29.4)."""
+    dut.tlb_write_partition.value = partition
+    dut.tlb_write_index.value = (virt >> 12) & 0xF
+    dut.tlb_write_virt.value = virt
+    dut.tlb_write_phys.value = phys
+    dut.tlb_write_en.value = 1
+    await RisingEdge(dut.clk)          # IDLE → TLB_UPDATE (payload 샘플)
+    dut.tlb_write_en.value = 0
+    await RisingEdge(dut.clk)          # TLB_UPDATE — 설치
+    await Timer(1, units="ns")
+    assert int(dut.tlb_fault.value) == 0, \
+        f"TLB 기입이 거절됐다 (code={int(dut.tlb_fault_code.value)})"
+    await RisingEdge(dut.clk)
+    await Timer(1, units="ns")
+
+
+@cocotb.test()
+async def test_tlb_fill_passthrough(dut):
+    """spec §29.4 — Top_Core 가 TLB fill 계약을 **결선만** 한다는 실증.
+
+    이 테스트가 존재하는 이유는 두 가지다:
+      1. Top_Core 의 유일한 책임은 결선이고 (정책을 발명하지 않는다),
+         결선 오류는 HIU 단독 테스트가 볼 수 없다.
+      2. §28.4 항 7 (b) — 계층 강제 기입으로 시퀀스를 단축하려면 **같은
+         상태에 포트 경로로도 도달할 수 있음이 별도로 실증**되어야 한다.
+         이 테스트가 시스템 경계에서의 그 실증이다.
+
+    검사는 값으로 한다: shadow region 이 identity map 인 주소 범위에 TLB
+    엔트리를 겹쳐 깔고, LOAD 의 `mem_phys_addr` 가 **TLB 변환 결과**로
+    나오는지 본다 (identity 면 우선순위 규범 위반 = SHADOW_OVERRIDES).
+    """
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    virt_page = 0x1000
+    phys_page = 0x0000_0000_2000_0000
+
+    # 겹치는 shadow region 을 먼저 깐다 — TLB 가 이겨야 한다.
+    await _install_shadow_region(dut, start=0x0000, end=0xFFFF, index=0)
+    await _install_tlb_entry(dut, partition=0, virt=virt_page, phys=phys_page)
+
+    instr = assemble_one(
+        f".default_port mask={PORT_MASK:#x} out={PORT_OUT}\n"
+        "LD .mem offset=0x100\n"
+    )
+    dut.mem_data_in.value = 0xCAFEBABE
+    await _fire(dut, instr, _std_tag(), payload_a=virt_page)
+
+    for _ in range(120):
+        await RisingEdge(dut.clk)
+        if int(dut.mem_dma_ack.value) == 1:
+            break
+    else:
+        raise AssertionError("Top_Core: TLB 히트 LOAD 에 dma_ack 가 오지 않았다")
+
+    got = int(dut.mem_phys_addr.value)
+    assert got == (phys_page | 0x100), (
+        f"mem_phys_addr = 0x{got:016x}, 기대 0x{phys_page | 0x100:016x} — "
+        "Top_Core 의 tlb_write_* 결선이 끊겼거나 shadow 가 TLB 를 덮었다")
+    assert int(dut.mem_access_granted.value) == 1
 
 
 @cocotb.test()

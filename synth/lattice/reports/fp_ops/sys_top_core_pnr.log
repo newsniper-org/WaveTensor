@@ -1,13 +1,13 @@
 
 
 Info: Logic utilisation before packing:
-Info:     Total LUT4s:     23427/83640    28%
-Info:         logic LUTs:  17073/83640    20%
-Info:         carry LUTs:   5994/83640     7%
-Info:           RAM LUTs:    240/10455     2%
-Info:          RAMW LUTs:    120/20910     0%
+Info:     Total LUT4s:     24712/83640    29%
+Info:         logic LUTs:  17718/83640    21%
+Info:         carry LUTs:   6034/83640     7%
+Info:           RAM LUTs:    640/10455     6%
+Info:          RAMW LUTs:    320/20910     1%
 
-Info:      Total DFFs:     10645/83640    12%
+Info:      Total DFFs:     10736/83640    12%
 
 Info: Packing IOs..
 Info: Packing constants..
@@ -15,10 +15,10 @@ Info: Packing carries...
 Info: Packing LUTs...
 Info: Packing LUT5-7s...
 Info: Packing FFs...
-Info:     2802 FFs paired with LUTs.
+Info:     2437 FFs paired with LUTs.
 Info: Generating derived timing constraints...
 Info: Promoting globals...
-Info: Checksum: 0x4016c399
+Info: Checksum: 0xb6577ede
 
 Info: Device utilisation:
 Info: 	          TRELLIS_IO:       0/    365     0%
@@ -46,9 +46,9 @@ Info: 	             DQSBUFM:       0/     14     0%
 Info: 	     TRELLIS_ECLKBUF:       0/      8     0%
 Info: 	        ECLKBRIDGECS:       0/      2     0%
 Info: 	                DCSC:       0/      2     0%
-Info: 	          TRELLIS_FF:   10645/  83640    12%
-Info: 	        TRELLIS_COMB:   24397/  83640    29%
-Info: 	        TRELLIS_RAMW:      60/  10455     0%
+Info: 	          TRELLIS_FF:   10736/  83640    12%
+Info: 	        TRELLIS_COMB:   25688/  83640    30%
+Info: 	        TRELLIS_RAMW:     160/  10455     1%
 
 Info: Found 8 combinational loops:
 Info:     loop 1:

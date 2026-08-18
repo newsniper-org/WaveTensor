@@ -3449,7 +3449,6 @@ expansion 최대 25 component (용량 33), 삽입 pass 최대 77 (≤ 528), fold
 
 본 절은 §12a 하의 정규 개발 행위다 — §23.1 의 v2.0 bullet (fused-FMA "단 1회 RNE" 문구, 32b ACC bank, canonical-order serial-equivalence) 과 §23.4 항 2 는 본 절이 supersede 하며, 해당 원문은 삭제하지 않고 amendment 표기로 보존한다 (§12a 규칙 5; 편집 기록은 각 절 in-place). `isa/wt64v1_isa.json` 편집 (0x7A 예약 주석 포함) · golden model · RTL 은 §12a 규칙 3 의 순서대로 후속 commit 에서 뒤따른다 — 본 COMMIT 0 은 spec 과 kickoff memo 정리만 편집한다.
 
-
 ---
 
 ## 28. 시스템 통합 합성 gate 신설 — GATE S1 (2026-08-18, 사용자 지시 · normative)
@@ -3631,6 +3630,71 @@ Vivado 2025.2.1 (Build 6403652) / `xcu55c-fsvh2892-2L-e` / OOC / 10.000 ns / `De
 
 *(3) 자기시험이 잡아낸 기존 체커의 결함 1건 (수리 · 정직 기록).* (2) 를 처음 돌렸을 때 CRIT WARN 축은 FAIL 을 냈으나 **DRC 축은 "0 errors" 로 PASS 를 냈다.** 원인: `fp_op_gate_check.py` 의 `parse_drc` 정규식이 severity 를 `(\w+)` 로 잡아, **공백이 들어간 severity — 정확히 `Critical Warning` — 행을 전부 조용히 버리고 있었다.** 이 축이 발화해야 하는 유일한 severity 를 볼 수 없는 상태였던 것이다. `([A-Za-z][A-Za-z ]*?)` 로 수리하고 재실증했다 (diag run 이 DRC 축에서도 FAIL). 기존 4개 gate 의 warning 계수는 수리 전후 불변 (F1-US 2 / xcu50 2 / V20-2 0 / V20-3 2) — 즉 이 수리는 아카이브된 판정을 재분류하지 않고 보이지 않던 severity 만 보이게 한다. **이 결함은 GATE S1 을 만들지 않았다면 발견되지 않았을 것이다** — 지금까지 어떤 gate 도 Critical Warning DRC 행을 낸 적이 없어서 vacuous 하게 통과해 왔다.
 
+**GATE S1-US 재측정 (2026-08-18 — §29 HIU 실물화 반영, area binding 발효 후 최초 실측)**
+
+§28.5 (c) 가 "binding 은 **다음 commit** 부터 발효한다" 고 적은 그 다음 commit 이 이것이다. 위 anchor 기록 (표·계층 분해·병목 귀속·discriminator 자기시험) 은 **삭제하지 않고 병존**한다 (§12a 규칙 5) — anchor 는 anchor 로 남고, 아래가 그것에 대한 첫 drift 측정이다. 판정 형식은 §26.6 GATE V9-4 실측 표 형식을 그대로 쓴다.
+
+측정 조건은 anchor 와 동일하다: Vivado 2025.2.1 (Build 6403652) / `xcu55c-fsvh2892-2L-e` / OOC / 10.000 ns / `Design State: Routed` / `make synth-sys-gate SYS_GATE=sys_top_core PART=xcu55c-fsvh2892-2L-e` → `python3 synth/scripts/fp_op_gate_check.py`. 전 수치는 리포트 실물 전사다.
+
+**판정: GATE S1-US = FAIL. 단일 축 (premap `$mul`). 체커 exit 1.** 나머지 7개 binding 축은 전부 PASS 이고, **어떤 기준 수치도 수정하지 않았다.**
+
+| 축 | 지위 | anchor (§28.6) | 재측정 | 기준 | 판정 |
+|---|---|---:|---:|---|---|
+| **LUT sites** | binding | 14,850 | **14,984** (+134) | hard ceiling **24,799** | **PASS** — ceiling 의 **60.4%**. §29.11 선공표 상한 (+400 이내 = ≤ 15,250) 안 |
+| **DSP48E2** | binding, exact | 39 | **39** | 정확히 39 | **PASS** — 불변 |
+| **RAMB18 / RAMB36 / URAM** | binding, exact | 2 / 0 / 0 | **2 / 0 / 0** | RAMB 정확히 2 | **PASS** — 불변 |
+| **premap `$mul`** | binding, exact | 429 | **381** (−48) | 정확히 429 | **FAIL** — 아래 귀속 |
+| **DRC** | binding | errors 0, warnings 137 checks / 5 규칙 | **errors 0, warnings 137 checks / 5 규칙** | errors 0 | **PASS** — DPIP-2 66 + DPOP-3 29 + DPOP-4 33 + LUTLP-2 8 + RTSTAT-10 1. anchor 와 **구성·계수 완전 동일** |
+| **CRITICAL WARNING** | binding | 8, 전부 `Synth 8-295` | **8, 전부 `Synth 8-295`** | 화이트리스트 8, 외부 id 0 | **PASS** — 로그의 `ERROR:` 줄 **0** |
+| **WHS** | binding | +0.019 ns | **+0.019 ns** | ≥ 0 | **PASS** — §29.11 이 "본 변경의 **유일한 실질 리스크 축**" 으로 지목한 축이 **정확히 불변** |
+| WNS / Fmax | 기록 | +1.497 ns / 117.61 MHz | **+1.053 ns / 111.77 MHz** | — | RECORDED (−0.444 ns / −5.84 MHz) |
+| FF | 추적 | 9,585 | **9,674** (+89) | — | §29.11 선공표 상한 +320 이내 |
+| raw LUT cells / CARRY8 / SRL cells | 추적 | 17,753 / 702 / 128 | **17,763 / 704 / 128** | — | — |
+
+**FAIL 축의 귀속 — 수치를 맞추지 않는다 (§29.11 별항 1 절차 4 의 이행).**
+
+premap `$mul` 은 **381** 로 측정됐고, §29.11 별항 1 이 **측정 이전에** 공표한 예측값 **381 (−48)** 과 **정확히 일치**한다. 귀속도 그 별항이 미리 적어 둔 그대로다: 소멸한 2D 배열 `partitioned_tlb_*[partition_id][j]` 의 행 주소 곱셈 (`p*TLB_ENTRIES + j`) **48개**가 anchor 429 안에 **넷리스트 cell 0개짜리 phantom multiplier** 로 들어앉아 있었고, §29.3 의 direct-mapped 형태는 엔트리 주소를 `{partition, index}` 연접으로 만들어 곱셈을 **구조적으로 만들지 않는다**. 즉 이 FAIL 은 회귀가 아니라 **anchor 자신이 결함을 포함하고 있었다는 사실의 노출**이다.
+
+**그럼에도 FAIL 로 기록한다.** §28.5 는 이 축을 "즉시 binding, 1이라도 어긋나면 FAIL" 로 선언했고, 예측이 맞았다는 사실은 기준을 자동으로 움직이지 않는다. 실제 재anchor (`fp_op_gate_check.py` 의 `premap_mul_expect` 429 → 381) 는 **§12a 상 사용자 결정 사항**이며 §29.11 별항 1 절차 2 대로 승인 후 S2-C4 에서 수행한다. **승인 전 S2-C2/C3 merge 금지** (절차 3). 본 재측정 세션은 `premap_mul_expect` 를 건드리지 않았다.
+
+**계층 분해 (`sys_top_core_impl_util.rpt` 전사) 와 면적 귀속:**
+
+| 인스턴스 | 모듈 | LUT (anchor → 재측정) | FF (anchor → 재측정) | DSP | RAMB18 |
+|---|---|---|---|---:|---:|
+| `Top_Core_gate_top` | (top) | 14,850 → **14,984** (+134) | 9,585 → **9,674** (+89) | 39 | 2 |
+| `(Top_Core_gate_top)` | (top) | 0 → **0** | 1,573 → **1,701** (+128) | 0 | 0 |
+| `u_core` | Top_Core | 14,850 → **14,984** (+134) | 8,012 → **7,973** (−39) | 39 | 2 |
+| `u_core/u_hiu` | **HIU** | 2,570 → **2,706** (+136) | 3,621 → **3,582** (−39) | **0** | **0** |
+| `u_core/u_hiu/dma_inst` | dma_engine | 33 → **32** (−1) | 65 → **65** | 0 | 0 |
+| `u_core/u_decoder` | ISA_Decoder | 12,248 → **12,245** (−3) | 4,391 → **4,391** | 39 | 2 |
+| `u_core/u_decoder/u_core` | PE_Core | 11,118 → **11,116** (−2) | 3,016 → **3,016** | 39 | 2 |
+| `…/g_v180c_fp.u_fp_stepseq` | FP_StepSeq | 4,565 → **4,565** (불변) | 1,300 → **1,300** | 4 | 2 |
+
+**LUT 증분 +134 는 전부 HIU 안이고, 그 안에서 성분이 분리된다.** 리포트의 LUTRAM 열이 그것을 직접 준다: 설계 전체 LUTRAM **132 → 248 (+116)**, 그중 FP_StepSeq 132 (불변) / **HIU 116 (신규)**. 즉 `tlb_mem` 저장소의 대가는 **116 LUTRAM** 이고, HIU 의 logic LUT 는 2,570 → 2,590 으로 **+20** 뿐이다 (fault 로직 4종 + 기입 샘플 레지스터 디코드 + D6 형식3 분리 + D8 수리의 합). HIU 밖은 −2 (ISA_Decoder −3, dma_engine −1, PE_Core −2 — 계층 간 LUT combining 재귀속 규모이며 설계 변경이 아니다). **프로토타입 예측 +22 보다 큰 이유는 §29.11 이 미리 적어 둔 그대로다** — 정규 형태가 fault 로직·샘플 레지스터·D8 수리를 함께 갖고, 그 미지수를 흡수하도록 상한을 +400 으로 잡아 두었다.
+
+**RAMB18 이 2 로 유지된 것은 우연이 아니다.** 합성 로그의 Distributed RAM Final Mapping Report 가 `|u_hiu | tlb_mem_reg | User Attribute | 64 x 100 | RAM64M8 x 15 |` 로 적는다 — §29.5 가 규범으로 못박은 `ram_style = "distributed"` 가 **User Attribute 로 존중**됐다는 뜻이다. `block` 이었다면 RAMB36 2개가 붙어 축이 4 가 되고 즉시 FAIL 이었을 자리다 (§29.3 채택 이유 3 의 실측 확인). 부수로 `Synth 8-4767` (async reset 때문에 RAM 추론 거부) **0건** — `tlb_mem` 을 async-reset 없는 전용 블록에 둔 §29.7 형식3 이 "선택이 아니라 필수" 였다는 것의 실측 확인이다.
+
+**FF −39 (HIU) 의 귀속 — 추가분보다 소멸분이 컸다.** TLB 실물화는 HIU 에 `tlb_valid` 64 + `tlb_rd_q` 100 + 기입 샘플 4종 134 + fault 4 + one-hot state +2 를 **더한다**. 그런데 실측은 −39 다. 로그가 소멸분을 직접 보여준다: `Unused sequential element initial_state_reg[*] was removed` **14건** (설계 전체 `Synth 8-6014` 는 anchor **6건** → 재측정 **20건**, 즉 **증가분 14건이 전부 `initial_state`**) + `Synth 8-3886 merging instance … initial_state_reg[*]` **62건**. 즉 §29.8 의 D8 수리 (`initial_state` 경유 제거) 가 `initial_state` 를 `chacha_state` 와 동일 구동원으로 만들면서 그 512 bit 배열 대부분을 넷리스트에서 접어 버렸다. **FF 는 추적 축이므로 bit 단위 산술까지 유도하지 않는다** — 증거는 위 두 메시지 계수이고, 그 이상은 주장하지 않는다.
+
+**WNS 는 악화됐고 (기록 축), 병목은 HIU 가 아니다.** worst setup path 는 `u_core/u_decoder/u_ehdec/dec_eff_imm16_reg[5]/C` → `u_core/u_decoder/u_core/cr_payload_reg[59]/D`, Data Path Delay **8.927 ns** (logic 2.476 = 27.7% / **route 6.451 = 72.3%**), Logic Levels **28** (CARRY8 9 + LUT2/3/4/5/6 19). anchor 의 worst path 는 같은 계보의 `dec_eff_imm16_reg[4] → cr_payload_reg[12]`, 8.485 ns / Logic Levels 25 였다 — **비트 인덱스만 다른 같은 EHDecode→PE_Core dispatch 경로**이고 route 지배도 그대로다 (70.5% → 72.3%). §26.9 · §28.6 · §28.9 가 세 번 독립 확인한 그 병목이며, **HIU 경로도 rst 경로도 아니다.** +134 LUT 가 placer 해를 흔든 congestion drift 로 귀속한다 (§26.6 V9-4 선례와 같은 클래스, 다만 여기서는 기록 축이라 FAIL 을 구성하지 않는다). `checking unconstrained_internal_endpoints (0)` — anchor 와 동일하게 제약 누락으로 낙관 편향된 수치가 아니다.
+
+**WHS 는 정확히 불변이고, worst hold path 도 HIU 가 아니다.** `u_core/u_decoder/u_ehdec/payload_latched_reg[4]/C` → `…/dec_input_payload_reg[4]/D`, Data Path Delay 0.072 ns, Logic Levels **0**, Slack **+0.019 ns**. §29.11 이 "마진이 사실상 없다 · 음수면 즉시 FAIL, 완화 없음" 이라고 적은 축이 **한 자리도 움직이지 않았다.**
+
+**신규 축 2종 (§29.11 별항 2·3) 의 최초 실측 — 둘 다 선공표 값과 정확히 일치:**
+
+| 신규 축 | 선공표 | 실측 | 판정 |
+|---|---|---|---|
+| `Synth 8-7137` 모듈별 | HIU **0** / PE_Core **68** / 합 **68** | HIU **0** / PE_Core **68** / 합 **68** | 일치. D6 수리 전 HIU 66 → **0** |
+| `Synth 8-3848` (undriven net) | **0** | **0** | 일치. allowlist 비어 있음 |
+
+전제조건인 캡 상향 (`set_msg_config -id {…} -limit 100000`) 이 하네스에 들어가 있고, 그것이 작동했음이 로그로 확인된다: anchor 로그의 `Common 17-14` 캡 INFO 는 **7줄** (`Synth 8-7137` / `8-3848` / `8-7129` / `8-3886`×3 / `Route 35-198`) 이었고, 재측정 로그는 **1줄** (`Route 35-198`) 뿐이다. 즉 **gate 축 4종은 더 이상 100 에서 잘리지 않는다.** 남은 1건은 OOC 구조적 메시지 (`Port "…" does not have an associated HD.PARTPIN_LOCS`) 로 gate 축이 아니며, 이 사실을 적어 두어 "캡이 사라졌다" 로 과장되지 않게 한다. 부수로 캡 해제 후 `Synth 8-7129` **1,738건**, `Synth 8-3886` **316건** 이 보이며, 8-7129 안에 §29.10 이 유지를 결정한 예약 포트가 그대로 관측된다 (`Port interface_type[1] / [0] in module HIU is either unconnected or has no load`).
+
+**측정 방법의 함정 1건 — 캡 상향이 만들어낸 새 오계수 경로 (§29.2 C3 의 두 번째 형태).** Vivado 는 `-source` 로 읽은 tcl 을 **`# ` 접두로 로그에 그대로 echo** 한다. 하네스의 캡 상향 줄이 `{Synth 8-7137} {Synth 8-3848} {Synth 8-7129} {Synth 8-3886}` 를 문자열로 담고 있으므로, **소박한 `grep -c "Synth 8-7137"` 는 69 를 답한다 — 참값 68 에 tcl echo 1 줄이 얹힌 값이다.** `Synth 8-3848` 은 더 나쁘다: 참값 **0** 인데 소박한 grep 은 **1** 을 답해 **exact-0 축이 거짓 FAIL** 로 보인다. 따라서 이 두 축의 계수는 **반드시 severity 접두를 앵커해서** 취한다 — `grep -cE "^(WARNING|CRITICAL WARNING|INFO|ERROR): \[Synth 8-7137\]"`. §29.2 C3 이 "그 +1 은 경고가 아니라 캡 INFO 줄 자신이었다" 고 적은 것과 **정확히 같은 클래스의 오계수이고, 원인만 다르다** (그때는 캡 INFO 줄, 지금은 tcl echo 줄). 두 사례의 공통 교훈을 규범으로 승격한다: **메시지 계수 축은 id 문자열이 아니라 severity-앵커 정규식으로 센다.**
+
+**재현성 실측.** `impl_summary.json` 이 같은 날 앞선 run 과 **전 필드 동일**하다 (LUT cells 17,763 / FF 9,674 / DSP 39 / BRAM 2 / CARRY 704 / SRL 128 / WNS +1.053 / WHS +0.019 / Fmax 111.77). 다만 그 앞선 run 이후 `HIU.v` / `Top_Core.v` 의 mtime 이 갱신됐으므로, 이 일치는 두 가지를 동시에 말한다 — (i) 측정이 seed 잡음이 섞인 1회 관측이 아니고, (ii) **그 사이의 편집이 넷리스트에 영향을 주지 않았다.** (ii) 의 독립 증거는 yosys premap 로그를 재생성해 **본문이 바이트 동일** (logfile hash `3dc41cc4e8`) 함을 확인한 것이다.
+
+**하네스 공백 1건 (정직 기록, 수리하지 않음).** premap `$mul` 축의 증거 파일 `synth/reports/fp_ops/sys_top_core_premap_mul.log` 는 **어떤 make 타깃도 재생성하지 않는다** — `make synth-sys-gate` 는 Vivado 리포트만 갱신하고, 이 로그는 out-of-band yosys 호출로 만들어져 아카이브된 것을 `fp_op_gate_check.py` 가 읽기만 한다. 따라서 **RTL 이 바뀌어도 이 축은 조용히 옛 값을 계속 답할 수 있다** (본 재측정에서는 명시적으로 재생성해 최신임을 확인했다). 이것은 §28.5 가 `get_msg_config -count` 에서, §29.2 C2 가 메시지 캡에서 겪은 것과 같은 유형 — **"증거가 자동으로 갱신되지 않는 축은 false PASS 를 낼 수 있다"** — 의 세 번째 사례다. 수리 (make 타깃 편입) 는 gate 하네스 변경이므로 본 재측정 세션의 범위 밖으로 두고 §28.10 이월 목록에 올린다.
+
 ### 28.7 ECP5 반쪽 (MEASUREMENT — 어떤 결과도 FAIL 아님)
 
 V20-2/V20-3 의 정책을 문언 그대로 승계한다: **GATE S1 의 merge-blocker binding 은 xcu55c 반쪽에만 있다. ECP5 반쪽은 실현성 측정이며, 어떤 결과가 나와도 — 어렵다·비싸다·불가능하다·완주 실패 포함 — gate FAIL 을 구성하지 않는다. 유일한 의무는 측정의 실행과 정직한 기록이다.**
@@ -3667,6 +3731,39 @@ V20-2/V20-3 의 정책을 문언 그대로 승계한다: **GATE S1 의 merge-blo
 **리포트 아카이브**: `synth/lattice/reports/fp_ops/sys_top_core_{synth.rpt,premap.rpt,pnr.log}`. nextpnr 입력 넷리스트 `sys_top_core_synth.json` 은 **40 MB** (트래킹된 fp-ops 넷리스트 중 최대인 `fp_stepseq_synth.json` 7.9 MB 의 5배) 라 gitignore 하고 재생성 경로만 남긴다 — `sh synth/lattice/scripts/synth_fp_ops.sh sys_top_core`. 측정 증거 3종은 전부 트래킹된다.
 
 **off-ramp 판정**: ECP5 는 이 top 의 **at-speed 측정 역할을 갖지 않는다** (Fmax 미측정 = 측정 불가). 나머지 검증 역할 — TRNG 실리콘 검증 · UsbCdcTransport · FOSS bitstream — 은 전부 유지된다. TRNG **실리콘** 검증이 ECP5 의 역할로 남아 있다는 점은 특히 기록해 둘 가치가 있다: 그 검증을 실제로 수행하려면 이 RO 루프를 ECP5 흐름에서 통과시킬 수단 (nextpnr 의 loop 처리 옵션 또는 RO 를 blackbox 로 격리한 별도 top) 이 필요하고, 본 측정이 그 요구사항을 처음으로 실측 근거와 함께 드러냈다. 후속 commit 몫으로 이월한다.
+
+**ECP5 MEASUREMENT 재측정 (2026-08-18 — §29 HIU 실물화 반영). 위 최초 측정 기록은 삭제하지 않고 병존한다 (§12a 규칙 5).** 동일 하네스·동일 조건 (`sh synth/lattice/scripts/synth_fp_ops.sh sys_top_core`, yosys 0.64 + nextpnr-ecp5 / LFE5UM-85F CABGA381 -6 / OOC / seed 1 / 40 MHz 참조점). **본 절 정책 그대로 이 반쪽은 어떤 결과도 FAIL 을 구성하지 않는다** — 아래 전부 기록이다.
+
+| 단계 / 축 | 최초 측정 | 재측정 | 비고 |
+|---|---:|---:|---|
+| yosys `read_verilog` + `hierarchy -check` | 완주, ERROR 0 | **완주, ERROR 0** | 비-Vivado 프론트엔드 elaborate — 본 반쪽의 하중을 지는 데이터, 유지 |
+| premap `$mul` | 429 | **381** | **xcu55c 반쪽과 정확히 동일하게 이동**. 판별 pin 의 cross-frontend 일치가 유지된다 |
+| premap ports / port bits | 42 / 1,603 | **49 / 1,742** | +7 포트 / +139 bit = §29.4 계약 확장 (`tlb_write_*` 5 입력 135 bit + `tlb_fault`/`tlb_fault_code` 4 bit). **래퍼 I/O flop 1,740 + clk + rst = 1,742 로 독립 확인** |
+| premap memories / memory bits | 4 / 10,639 | **5 / 10,895** | `partitioned_tlb_virt`/`_phys` 소멸, `tlb_mem` 신설 |
+| `synth_ecp5` LUT4 (logic) | 17,073 | **17,718** (+645) | |
+| `synth_ecp5` CCU2C | 2,997 | **3,017** (+20) | |
+| `synth_ecp5` TRELLIS_FF | 10,645 | **10,736** (+91) | |
+| `synth_ecp5` MULT18X18D | 58 | **58** | **불변** |
+| `synth_ecp5` PFUMX | 1,429 | **1,835** (+406) | |
+| `synth_ecp5` TRELLIS_DPR16X4 | 60 | **160** (+100) | **`tlb_mem` 의 ECP5 판** — 아래 divergence 3 |
+| `synth_ecp5` DP16KD (EBR) | **0** | **0** | 양쪽 패브릭 모두 block RAM 을 쓰지 않았다 |
+| nextpnr packing 전 Total LUT4s | 23,427 = 28% | **24,712 = 29%** | logic 17,718 / carry 6,034 / **RAM 640** / **RAMW 320** |
+| nextpnr packing 후 TRELLIS_COMB | 24,397 = 29% | **25,688 = 30%** | TRELLIS_FF 10,736 = 12%, TRELLIS_RAMW **160**, MULT18X18D 58/156 = 37%, EBR 0/208 |
+| nextpnr timing analysis | 중단 (8 combinational loops) | **중단 — 완전히 같은 형태** | `Found 8 combinational loops` = `u_core.u_hiu.g_ro[0..7].ro_s2`, `ERROR: Timing analysis failed due to combinational loops`, `0 warnings, 1 error` |
+| placement / routing / Fmax | 미도달 — 측정값 없음 | **미도달 — 측정값 없음** | 없는 수치를 만들지 않는다 |
+
+**중단 원인은 그대로다** — 사전 기록 (a) 의 제약 표면 비대칭이며, TLB 실물화와 무관하다 (루프 8개의 좌표가 문자 단위로 동일하다). 즉 **§29 의 변경은 ECP5 반쪽의 완주 여부를 1도 바꾸지 않았다.** 면적은 여전히 85F 에 여유롭게 수납된다 (TRELLIS_COMB 30%, 사전 기록 (b) 가 우려한 v1.9b 의 39.6% routing-지배 영역보다 아래). "수납된다" 와 "동작 속도가 나온다" 가 별개로 남는 것도 그대로다.
+
+**cross-fabric divergence 3건 — 기존 2건은 유지되고, 1건이 새로 관측됐다:**
+
+- **곱셈기 (유지):** xcu55c **DSP48E2 39** vs ECP5 **MULT18X18D 58**. premap `$mul` 이 양쪽 **381** 로 동일하므로 차이는 여전히 매퍼 재량이고 결함이 아니다. 주목할 점은 **429 → 381 이동에도 두 패브릭의 물리 곱셈기 수가 둘 다 불변 (39 / 58)** 이라는 것 — 소멸한 48개가 **양쪽 패브릭 모두에서 물리 셀 0개** 였다는 독립 확인이며, §29.11 별항 1 의 "phantom multiplier" 귀속에 대한 두 번째 증거다.
+- **메모리 (유지):** xcu55c **RAMB18 2** vs ECP5 **EBR 0**.
+- **분산 RAM 의 가격 (신규):** 같은 `ram_style = "distributed"` 지시가 xcu55c 에서는 **116 LUTRAM** (`RAM64M8 × 15`), ECP5 에서는 **RAM LUT 400 + RAMW LUT 200 = TRELLIS_DPR16X4 100** 로 떨어진다. 원인은 기본 블록 크기다 — RAM64M8 은 64 word × 8 bit 이고 DPR16X4 는 16 word × 4 bit 이므로, 64×100 bit 저장소가 xcu55c 에서는 15개, ECP5 에서는 (64/16) × (100/4) = **정확히 100개**로 쪼개진다. **LUT 환산으로 약 3.4배 비싸다.** 이것이 §29.3 이 채택 형태를 고를 때 "ECP5 반쪽에서 더 커진다" 고 적어 둔 항목의 실측이며, xcu55c 의 116 LUTRAM 만 보고 저장소 비용을 일반화하면 안 된다는 근거다.
+
+**하네스 staleness 1건 (정직 기록 — 고치지 않았다).** `synth/lattice/fp_ops/gate_check.py` 의 `sys_top_core` 행은 두 상수를 갖는다: `premap_pin = 429` 와 `wrapper_ff = 1601`.
+
+- `premap_pin = 429` 는 이제 ` MISMATCH` 를 출력한다. **이것은 축이 작동하는 것이고, 고쳐야 할 대상이 아니다** — 해소는 xcu55c 반쪽과 **같은 하나의 사용자 재anchor 결정** (§29.11 별항 1) 에 종속되며, MEASUREMENT 반쪽이라 FAIL 을 구성하지도 않는다.
+- `wrapper_ff = 1601` 은 §29.4 계약 확장으로 **사실이 아니게 됐다** (실제 1,740; ECP5 자신의 `port bits 1,742` 가 그 증거다). 그 결과 요약의 파생 줄 `unit = 9135 after -1601 wrapper I/O flops` 는 **틀린 수**이고, **옳은 값은 10,736 − 1,740 = 8,996** 이다. 본 재측정 세션은 이 상수를 **수정하지 않았다** — 하네스 상수 변경은 측정 세션이 조용히 할 일이 아니고, 무엇보다 raw 값 10,736 이 같은 줄에 함께 인쇄되므로 은폐 경로가 없다. **정정은 §28.10 이월 목록으로 올린다.**
 
 ### 28.8 고아 3종 — 실측과 편입 보류 판정
 
@@ -3750,3 +3847,393 @@ V20-2/V20-3 의 정책을 문언 그대로 승계한다: **GATE S1 의 merge-blo
 - **3a (§27.7a) 와의 격리**: 3a 산출물 — golden 3종 (`scripts/golden_{fp32,lattice,fdotcr}.py`), ISA (`isa/wt64v1_isa.json` + 생성물 + `asm/`), `FP_StepSeq.v` step 프로그램 — 은 **무접촉**이며 hash 대조로 확인된다. 공유 datapath 3파일 (`FP_AddWide.v` / `FP_Mul36.v` / `include/fp_narrow_f32.vh`) 은 **byte-untouched** 이고 `git diff --exit-code` 로 확인된다. `decode_reserved` 는 미접촉 (3a-C4 몫). 즉 본 절은 §27.7a 의 착지 순서를 선점하지 않는다.
 - **선공표 규율**: §28.5 의 기준은 gate_check 스크립트에 **무수정 전사**됐다. 기준을 움직여서 통과하는 경로는 없다 (V20-2 재실측 선언의 그 규율). 단 본 commit 은 anchor 생성 commit 이므로 area 축이 구조적으로 PASS 라는 사실을 §28.5 (c) 가 명시한다 — **이 명시가 선공표 규율의 이행이지 예외가 아니다.**
 - **이월 항목 (별도 commit)**: D4 실물화-vs-폐기 판정 (§28.2) · D6 + O2 의 reset 블록 분리 (동형이라 동시 처리 권고) · D7/O4 미독 포트 처분 · 고아 3종 지위 판정 (§28.8) · §12a 의 **RTL 모듈 단위 제거 절차 성문화** (§28.8 정책 공백) · §28.4 항 6 의 기계적 강제 (undriven-signal 탐지 lint) · `PE.v` / `ISA_Decoder.v` standalone 합성 경로 (§28.4 `uncovered` 2건).
+
+**이월 항목 추가 3건 (2026-08-18 재측정 세션이 새로 드러낸 하네스 결함 — §28.6 재측정 · §28.7 재측정에서 각각 귀속됨). 전건 gate 하네스 변경이라 측정 세션이 수행하지 않았다:**
+
+1. **premap `$mul` 증거의 자동 갱신 경로 부재.** `synth/reports/fp_ops/sys_top_core_premap_mul.log` 를 재생성하는 make 타깃이 없다 — `fp_op_gate_check.py` 는 아카이브를 읽기만 하므로 **RTL 이 바뀌어도 이 축이 조용히 옛 값을 답할 수 있다** (false PASS 경로). 수리 형태: yosys 호출을 `synth-sys-gate` 에 편입하거나 전용 타깃 신설. §28.6 재측정의 "하네스 공백 1건" 참조.
+2. **`synth/lattice/fp_ops/gate_check.py` 의 `wrapper_ff = 1601` 이 사실이 아니다** (§29.4 계약 확장 후 실제 1,740). MEASUREMENT 반쪽이라 FAIL 을 만들지 않지만 파생 줄이 **틀린 수를 인쇄한다**. §28.7 재측정 참조.
+3. **메시지 계수 축의 계수 방법을 규범으로 고정한다** — id 문자열 grep 이 아니라 **severity-앵커 정규식** (`^(WARNING|CRITICAL WARNING|INFO|ERROR): \[<id>\]`). 캡 상향 tcl 을 Vivado 가 `# ` 접두로 로그에 echo 하므로 소박한 grep 은 `Synth 8-3848` 을 **0 이 아니라 1** 로 답해 exact-0 축을 거짓 FAIL 시킨다. §28.6 재측정의 "측정 방법의 함정 1건" 참조. 현행 `parse_msg_census` 는 이미 `line.startswith("CRITICAL WARNING:")` 로 앵커되어 있어 **CRIT 축은 영향 없음** — 위험은 손으로 세는 신규 2축에 있다.
+
+## 29. HIU 실물화 — D4 (partitioned TLB) / D6 (async-reset) / D7 (미독 포트) 처분 (2026-08-18, COMMIT 0 · normative)
+
+**사용자 지시 (binding, 2026-08-18): "HIU 는 실물에서 쓸 거니까, 구조적 문제들부터 먼저 해결해."** 본 절이 그 이행의 spec-first 기록이며, §28 이 이월로 남긴 D4 / D6 / D7 을 **처분 결정과 규범 계약**으로 확정한다. §28 이 "지금 상태는 유지되어서는 안 된다" 고만 적고 판정을 상위로 올린 항목들의 판정이 여기서 내려진다.
+
+본 절은 **spec-before-code COMMIT 0** 다 (§12a 규칙 3). RTL·테스트·gate 재측정은 §29.13 의 착지 순서대로 후속 commit 이 수행하며, 본 commit 은 spec 만 편집한다.
+
+### 29.1 결정의 축 — "실물" 이 기각 기준이다
+
+사용자 지시는 옵션 비교의 배경이 아니라 **기각 기준 그 자체**다. 실리콘 대상이라는 전제가 각 옵션에 대해 만들어내는 판정은 다음 셋이고, 본 절의 모든 처분이 이 셋에서 도출된다.
+
+1. **시뮬레이터에서만 성립하는 상태는 남길 수 없다.** D4 의 본질은 "TLB 가 없다" 가 아니라 **테스트가 RTL 이 만들지 않는 상태를 스스로 만들어 검증한다** 는 것이다 (§28.2). 실물에서는 그 상태가 존재하지 않으므로, 검증은 실물에 대해 아무것도 말하지 않는다.
+2. **매핑이 우연히 안전한 것은 안전이 아니다.** D6 가 "이번 xcu55c 매핑에서 미발현" 인 것은 설계의 성질이 아니라 그 매핑의 성질이다. 실물 대상에서는 매핑이 바뀌는 것이 정상 사건이다.
+3. **관측될 수 없는 결함은 고칠 수 없다.** 따라서 처분은 "고쳤다" 로 끝나지 않고, **같은 결함이 재발하면 소리가 나는 축**을 함께 남겨야 한다 (loud-fault-never-silent 의 gate 형).
+
+### 29.2 §28 정정 8건 — 조사 실측이 §28 서술을 뒤집은 것들
+
+처분 이전에 정정을 먼저 적는다. §28 의 서술 일부가 **실측으로 부정**되었고, 그 서술 위에 세워진 §28 의 판단 두 개 (8-7137 축 미채택 / D7 "제거 불가") 가 함께 무너지기 때문이다. §12a 규칙 5 대로 §28 원문은 삭제하지 않는다.
+
+| # | §28 의 서술 | 실측 | 파급 |
+|---|---|---|---|
+| **C1** | §28.2/§28.3 의 `HIU.v:51-52,154-155,114,127,297` | D1/D5 수리 **이전** 번호다. 현행: 배열 선언 **57-59**, rst clear **135-139**, 유일 read **163-168**, 죽은 가드 **170**, shadow fallback **171-177**, async 블록 머리 **124**, FLUSH_TLB clear **304-309** | 인용 정정만 |
+| **C2** | §28.3 "`Synth 8-7137` 는 HIU 단독 66 인데 Top_Core 문맥에서 32 — **메시지 수는 문맥 의존**" | **캡 아티팩트다.** `sys_top_core_run.log:264` = `INFO: [Common 17-14] Message 'Synth 8-7137' appears 100 times and further instances ... disabled`, 직전 263행이 `shadow_regions_end_reg[15]` — 열거가 **끊긴** 지점이다. 로그 실계수 HIU 32 + PE_Core 68 = **정확히 100 = 캡**. `-limit` 해제 후 재합성: HIU **66** (단독 66 과 동일), PE_Core **68**, 합 **134** | §28.3 이 "문맥 의존이라 회귀 지표로 못 쓴다 → 8-7137 을 gate 축으로 채택하지 않았다" 고 한 **근거가 소멸**한다. 축 채택 가능 (§29.11) |
+| **C3** | §28.3 "총 101건 = HIU 32 + PE_Core 68 **(+1 기타)**" | 그 "+1" 은 경고가 아니라 **캡 INFO 줄 자신**이다 (`grep -c` 가 INFO 줄도 센다) | 기타 결함 1건은 존재하지 않는다 |
+| **C4** | §28.3 "이번 매핑에서는 **전부 FDRE 로 떨어져** divergence 미발현 / 매핑이 FDSE·FDPE 로 바뀌면 reset 값이 갈린다" | 인과가 틀렸다. 66개는 FDRE 이고 **R 핀이 `<const0>`** — 실리콘에 reset 이 아예 없다. 안전한 진짜 이유는 **Vivado 가 `rst` 를 CE LUT 에 데이터 항으로 접어 넣은 것** (`CE = !rst & enable`; 실측 INIT: `shadow_regions_start[0][63]_i_1` LUT6 `64'h…04` I5←rst, `phys_addr[63]_i_1` LUT4 `16'h0008` I3←rst, `chacha_state[12][31]_i_1` LUT6 `64'h00000000FFFF5700` I5←rst — 전부 rst=1 반평면 0). HIU 가 전부 FDRE 인 것도 아니다: FDRE 3,040 / FDCE 568 / FDPE 1 | 위험의 성질이 바뀐다 — §29.7 |
+| **C5** | §28.3 D7 "**제거 불가**" | pre-stable 에서 dead 포트 제거는 **허가된 정규 이벤트**다 (`prestable_compat_policy`, 사용자 지시 2026-07-24). 정확한 서술은 "제거 불가" 가 아니라 "제거하지 않기로 **선택**" 이다 | §29.10 이 선택으로 재서술 |
+| **C6** | §28.3 D7 "넷리스트 확정은 **미조사로 남긴다**" | 해소됨. `sys_top_core_run.log:398-399` = `WARNING: [Synth 8-7129] Port interface_type[1] / [0] in module HIU is either unconnected or has no load` ×2, 그리고 Top_Core_gate_top 넷리스트에 `interface_type_q` 셀 **0개** — 래퍼 2 FF 까지 소멸 | 유지·제거 모두 **0 FF / 0 LUT**. 면적은 D7 판정 근거가 될 수 없다 |
+| **C7** | §28.8 O2 "`a_reg`/`b_reg`/`res_reg` **전군** ×49" | 49 는 맞으나 구성이 3군이 아니라 **4군**이다: `a` 16 + `b` 16 + `res` 16 + **`result_matrix` 1** (`TENSOR_ALU.v:13` output reg) | O2 수리 범위 정정 |
+| **C8** | §28.2 "**8,192 memory bits**" | yosys 가 memory 로 세는 `virt`+`phys` 만의 수치다. `valid` 64 bit 는 1-bit 폭이라 memory 로 집계되지 않을 뿐 똑같이 소멸한다. 실 저장 규모는 **8,256 bit** (4,096 + 4,096 + 64) | §29.11 면적 서술의 기준 |
+
+**C2 의 일반형 (본 절이 새로 확보한 사실)**: 캡은 8-7137 만의 문제가 아니다. 같은 로그에서 `Synth 8-3848` ("Net ... does not have driver") 도 **100 에서 잘려 있다** — 실계수는 `partitioned_tlb_phys` 64 + `partitioned_tlb_virt` 64 = **128** 인데 로그에는 phys 64 + virt 36 = 100 만 남았다. **메시지 계수를 축으로 삼으려면 `set_msg_config -id {…} -limit` 상향이 축 채택의 전제조건**이며, 이를 빼먹으면 축은 100 에서 잘려 **false PASS** 가 된다 (§28.5 가 `get_msg_config -count` 에서 겪은 것과 같은 유형의 함정, 두 번째 사례).
+
+### 29.3 D4 처분 결정 — 실물화 (호스트 기입형 · direct-mapped · reset-free 저장)
+
+**결정: partitioned TLB 를 실물화한다. 형태는 (i′) — 호스트 기입 포트 신설 + direct-mapped 색인 + async-reset 없는 전용 블록에 저장 (distributed RAM).** §28.2 가 제시한 두 갈래 (a) 실물화 / (b) 폐기 중 **(a)** 이고, 실물화 형태 4종 중 (i′) 이다.
+
+**채택 이유 4건 (전부 실측 근거):**
+
+1. **사용자 기준을 구조로 충족한다.** 테스트가 만지는 모든 TLB 상태가 **포트를 통해 RTL 이 구동하는 상태**가 된다. `test_hiu.py:24-26` 의 계층 강제 기입이 탐지 lint 없이 **구조적으로 소멸**하며, 이것이 §28.4 항 6 의무의 가장 강한 이행 형태다 — 규범이 금지하기 전에 대상 자체가 없어진다.
+2. **면적이 추정이 아니라 실측이고, 그 실측이 사실상 0 이다.** HIU 인스턴스 post-route (xcu55c, OOC, 10 ns, POST_XDC=`hiu_trng_ro.xdc`, synth→opt→place→phys_opt→route): LUT sites 2,626 → **2,648 (+22)** (logic 2,626 → 2,504 = −122, LUTRAM +144), FF 3,617 → **3,803 (+186)**, DSP 0, BRAM **0**, Fmax 229.94 → **228.47 MHz**. 하네스 검증: baseline FF **3,617 = §28.6 의 HIU 단독 실측과 정확히 일치**.
+3. **BRAM 축을 지키는 유일한 memory 형태다.** 같은 구조를 `ram_style="block"` 으로 만들면 **RAMB36 2개**가 붙어 §28.5 의 `bram = RAMB18 + RAMB36 = 정확히 2` 가 **4 로 깨진다 (즉시 FAIL)**. 100 bit × 64 word 에 72 Kb 를 쓰는 이용률 낭비이기도 하다. **힌트 하나의 차이가 gate 를 통과/실패시키므로 §29.5 가 `distributed` 를 규범으로 못박는다.**
+4. **D6 를 같은 commit 에서 처리하도록 강제한다 — 이것이 비용이 아니라 장점이다.** 배열이 `HIU.v:124` 의 async-reset 블록 안에 있는 한 Vivado 는 RAM 추론을 거부한다: `WARNING: [Synth 8-4767] Trying to implement RAM 'tlb_mem_reg' in registers. ... 1: RAM is sensitive to asynchronous reset signal. this RTL style is not supported.` 실측 비용 차이 — 같은 direct-mapped TLB 가 async-reset 블록 **안**이면 5,140 LUT / 11,743 FF, **밖**이면 2,648 LUT / 3,803 FF. **LUT +2,492 / FF +7,940 이 순수 D6 세금**이다.
+
+**기각한 옵션 4종 (기각 사유를 남긴다 — 재론 시 근거가 있어야 한다):**
+
+| 옵션 | 실측 (HIU 인스턴스, post-route) | 기각 사유 |
+|---|---|---|
+| **(i) 호스트 기입 · fully-associative · FF 저장** | LUT **7,833 (+5,207)** / FF 11,878 / Fmax 157.51 | ① GATE S1 잔여 headroom 9,949 의 **52.3%** 를 결함 1건 수리에 쓴다. ② §28.9 U30 실측 (LUT 77.17%, WNS −1.450, phys_opt 후에도 failing endpoints **258 불변**, 혼잡 등급 5) 위에 +5,207 LUT 는 **정확히 틀린 방향**이다. ③ ECP5 반쪽에서 더 커진다 (§28.7 실측: yosys 가 메모리를 레지스터로 전개) |
+| **(i″) direct-mapped · block RAM** | LUT 2,508 / FF 3,679 / **RAMB36 2** | **즉시 FAIL.** §28.5 의 BRAM exact 축 (=2) 이 **4** 가 된다. 위 채택 이유 3 |
+| **(ii) FSM fill 형 — ATS 응답으로 채움** | LUT **8,882 (+6,256)** / FF 11,908 / Fmax **131.96** (4종 중 최저) | **상수시간 계약 파기가 본질적이다.** Y4 `hiu_abi.md` §2.1 이 "TRANSLATE 가 항상 DUMMY_DELAY 로 진행하므로 상수시간" 을 명문화했는데 실제 ATS 왕복은 가변 지연이다 — 최악 지연 패딩 없이는 HIU 의 존재 이유(side-channel 방지)가 무너지고, 패딩하면 모든 DMA 가 ATS 최악 지연으로 느려진다. 게다가 현행 `ATS_QUERY` 는 `ats_resp <= 1` 만 올리고 **주소를 반환하지 않으므로** (HIU.v:290-292) 실제 fill 에는 `ats_phys_in/valid` 신설이 필요하다 — 즉 (ii) 는 호스트 인터페이스를 **없애는 게 아니라 (i) 위에 두 번째 인터페이스를 얹는다**. 면적·Fmax 도 최악 |
+| **(iii) 폐지 — shadow-region 단일 경로를 규범으로 승격** | LUT 2,596 (−30) / FF **3,617 (변화 0)** | ① **하드웨어 tenant 격리가 사라진다** — shadow region 16 슬롯에는 partition tag 가 없어 전역이므로, 어떤 tenant 의 DMA 든 등록된 아무 region 에나 접근이 허가된다. Y4 의 "동시 활성 lease hard cap 4" 가 하드웨어 근거를 잃고 순수 소프트웨어 약속으로 강등된다. ② 격리를 되살리려면 shadow region 에 partition tag 를 붙여야 하고 **그건 (i) 과 같은 크기의 인터페이스 변경**이다 — 폐지는 비용을 없애는 게 아니라 미루는 것. ③ `partition_id` 의 유일한 소비처가 lookup 이므로 **미독 포트 결함이 D7 1건 → 2건으로 늘어난다** — "구조적 문제부터 해결하라" 는 지시에 대해 결함 1개를 결함 1개로 교환하는 셈이다. ④ 3개 저장소 10곳 이상 동시 개정이 필요하고, §12a 에는 **RTL 모듈/기능 단위 제거 절차가 없다** (§28.8 정책 공백) — 폐지 경로는 그 절차 성문화가 선행 |
+
+**부수 실측 (FF 변화 0 의 의미)**: (iii) 폐지형의 FF 가 baseline 과 **완전히 동일한 3,617** 인 것이, §28.2 의 "TLB 는 실리콘에 없다" 에 대한 **독립 재확인**이다 — 8,256 bit (§29.2 C8) 전부가 오늘 실리콘에 1 bit 도 없다.
+
+**미측정 명기 (정직)**: **4-way set-associative 중간안은 측정하지 않았다.** (i) 의 fully-associative (+5,207 LUT) 와 (i′) 의 direct-mapped (+22 LUT) 사이 비용은 미지수다. associativity 가 재협상 대상이 되면 그때 측정한다 — 지금 없는 수치를 만들지 않는다.
+
+### 29.4 인터페이스 변경 (normative) — §12a 규칙 3 대상
+
+**본 항이 계약 변경의 본문이다.** HIU 모듈 인터페이스가 **입력 5개 + 출력 2개** 확장된다. `Top_Core.v` 는 전부 passthrough 하며, gate 래퍼 2종 (`synth/gate/Top_Core_gate_top.v`, `synth/gate/Pod_HIU_gate_top.v`) 은 기존 관례대로 rst 를 제외한 신규 I/O 를 정확히 1회 등록한다.
+
+**신규 입력 (control plane — TLB fill):**
+
+| 포트 | 폭 | 의미 |
+|---|---|---|
+| `tlb_write_en` | 1 | fill 요청 스트로브. `state == IDLE` 에서 **최우선** 분기 (shadow_write_en·dma_req_pending·ats_req·pri_req 보다 앞) |
+| `tlb_write_partition` | `$clog2(NUM_PARTITIONS)` = 2 | 대상 파티션 = tenant lease id. Y4 `HIU_CTRL[7:6]` 과 같은 인코딩 |
+| `tlb_write_index` | `$clog2(TLB_ENTRIES)` = 4 | 대상 슬롯. **`tlb_write_virt` 의 index 비트와 반드시 일치해야 한다** — 불일치는 loud fault (§29.6) |
+| `tlb_write_virt` | ADDR_WIDTH = 64 | 가상 주소. tag 와 index 를 여기서 도출한다 |
+| `tlb_write_phys` | ADDR_WIDTH = 64 | 물리 주소. **하위 `PAGE_SHIFT` 비트는 0 이어야 한다** — 비영은 loud fault (§29.6) |
+
+**신규 출력 (loud-fault 관측면):**
+
+| 포트 | 폭 | 의미 |
+|---|---|---|
+| `tlb_fault` | 1 | 1-cycle 펄스. **호스트 프로그래밍 오류 전용** — 변환 miss 는 여기 올리지 않는다 (§29.6 항 6) |
+| `tlb_fault_code` | 3 | 마지막 fault 사유. 다음 fault 까지 유지. 인코딩은 §29.6 표 |
+
+**프로토콜 (normative):**
+
+1. 호스트는 5개 입력을 안정시킨 뒤 `tlb_write_en` 을 1 cycle 어서트한다.
+2. HIU 가 `IDLE` 이면 다음 cycle 에 `TLB_UPDATE` 로 진입해 엔트리를 설치하고 `IDLE` 로 복귀한다 — **설치는 정확히 1 cycle**, 관측 가능한 부작용은 해당 엔트리의 `valid`/`tag`/`ppn` 뿐이다.
+3. HIU 가 `IDLE` 이 아니면 **기입은 수행되지 않고 `tlb_fault` 가 뜬다** (code = `BUSY`). 조용한 드롭도 조용한 큐잉도 없다 (loud-fault-never-silent). 호스트는 재시도 책임을 진다.
+4. `tlb_write_en` 과 `shadow_write_en` 이 같은 cycle 에 어서트되면 **TLB 기입이 이긴다** — shadow 기입은 수행되지 않고 `tlb_fault` 는 뜨지 않는다 (호스트 오류가 아니라 우선순위 규정이다). 이 우선순위는 §29.5 의 조회 우선순위 (TLB > shadow) 와 같은 방향이며, 두 우선순위가 **같은 방향인 것 자체가 규범**이다.
+5. **FSM 상태 폭은 늘지 않는다.** 현행 14 상태 (`4'b0000`-`4'b1101`) 에 `TLB_UPDATE = 4'b1110`, `TLB_READ = 4'b1111` 을 배정하면 4-bit 공간이 정확히 소진된다. (Vivado 는 이 `state` 를 one-hot 으로 추론하므로 실 FF 는 14 → 16, **+2 FF** 다 — 추정이 아니라 §28.6 이 관측한 `FSM_onehot_state_reg` 형태에서 도출한 값이며 재측정으로 확인한다.)
+
+**파라미터 제약 (normative — gate 축과 직결):** `NUM_PARTITIONS` 와 `TLB_ENTRIES` 는 **2의 거듭제곱이어야 한다.** 사유: 엔트리 주소를 `{tlb_write_partition, tlb_write_index}` **연접**으로 만들 수 있어야 곱셈이 생기지 않는다. 2의 거듭제곱이 아니면 주소가 `p*TLB_ENTRIES + j` 로 되돌아가고 **premap `$mul` exact 축이 움직인다** (§29.11 의 −48 귀속이 정확히 이 곱셈이다).
+
+**다운스트림 계약 개정 의무 (별도 저장소 — 본 절이 목록을 확정한다):**
+
+- **Y4** `docs/hiu_abi.md` §1 MMIO 맵: `HIU_TLB_VIRT` / `HIU_TLB_PHYS` / `HIU_TLB_INDEX` / `HIU_TLB_CTRL` (partition + en) + `HIU_TLB_FAULT` (code 판독) 신설. **결정적 근거 — 현행 §1 에는 `HIU_TLB_*` 레지스터가 아예 없다.** v0 draft 이므로 변경 가능하되 `hiu-abi:` prefix 필수, v1.0 freeze 는 양측 sign-off.
+- **Y4** `docs/hiu_abi.md` §3 lease attribute 표: `partition_id` 가 이제 **실제 하드웨어 격리 경계**임을 명기 (오늘은 읽히기만 하는 값이다).
+- **Y4** `docs/glossary.md` §2/§3: "물리적으로 분리된 4개의 16-entry 테이블" 서술은 **참으로 유지된다** (엔트리 주소 상위 2비트가 partition_id — §29.5). §3 의 "TLB miss 시 fallback" 서술은 §29.5 의 우선순위 규범과 일치하므로 변경 불필요.
+- **wavetensor-drivers** `docs/pcie_host_interface.md`: `0x100+ per-partition registers` 블록에 fill 레지스터 추가 (현행 서술은 "TLB flush, key rotation" — **무효화만 있고 fill 이 없다**), `:61` BAR2 라벨 "Shadow region (HIU partitioned TLB mapping)" 의 **shadow/TLB 혼동 정정**.
+
+**계보 기록 (본 절의 판정을 지탱하는 사실)**: `git show 4d80c76:HIU.v` (최초 private commit, 2026-05-03) 에도 배열 선언·lookup·flush 만 있고 **fill 이 없다.** 즉 D4 는 "구현하다 만 것" 이 아니라 **설계 단계에서 fill 을 아예 명세하지 않은 것**이며, repo 존재 기간 전체에 걸쳐 유일하게 존재해 온 fill 메커니즘이 `test_hiu.py:24-26` 의 계층 강제 기입이었다. 본 항이 그 공백을 처음으로 계약으로 메운다.
+
+### 29.5 TLB 의 규범적 의미론 (normative)
+
+**파티션 = tenant lease.** 3개 저장소가 일치해서 규정한다 — Y4 `glossary.md` §2 ("partition_id 별로 물리적으로 분리된 … cross-tenant cache-timing 채널 차단", "동시 활성 lease 수 hard cap 을 4 로 강제"), Y4 `hiu_abi.md` §3 (`partition_id ∈ {0,1,2,3}` → `HIU_CTRL[7:6]`), `.claude-memos/host_a_custom_hypervisor.md:250`. 파티션은 프로세스도 채널도 아니고 **VM/tenant** 다.
+
+**주소 분해 (PAGE_SHIFT = 12, 즉 4 KiB 페이지 — 본 절이 확정한다):**
+
+| 필드 | 비트 | 폭 |
+|---|---|---|
+| tag | `virt_addr[63:16]` | 48 |
+| index | `virt_addr[15:12]` | 4 = `$clog2(TLB_ENTRIES)` |
+| page offset | `virt_addr[11:0]` | 12 = `PAGE_SHIFT` |
+
+**저장 구조:**
+
+- `tlb_valid` — flat `NUM_PARTITIONS*TLB_ENTRIES` = **64 bit reg**, **async-reset 블록에 유지**한다 (reset 이 반드시 필요한 유일한 TLB 상태다).
+- `tlb_mem` — `{tag[47:0], ppn[51:0]}` = **100 bit × 64 word**, **async-reset 없는 전용 `always @(posedge clk)` 블록**에 두고 `(* ram_style = "distributed" *)` 로 못박는다. `block` 은 금지 (§29.3 채택 이유 3).
+- 엔트리 주소 = `{partition, index}` **연접** 6-bit. 곱셈 없음 (§29.4 파라미터 제약).
+
+**히트 조건 (normative):**
+
+```
+tlb_hit = tlb_valid[{partition_id, xlat_virt[15:12]}]
+       && (tlb_mem[{partition_id, xlat_virt[15:12]}].tag == xlat_virt[63:16])
+```
+
+`valid` 는 **AND 의 첫 항이자 유일한 자격 부여자**다 (§29.6 항 1).
+
+**변환 시퀀스 (normative) — 2 cycle 조회, 상수시간 유지:**
+
+1. `TRANSLATE` (cycle 1): `virt_addr` 를 `xlat_virt` 로 **샘플**한다. 이후 전 시퀀스 (조회·마스킹·DMA) 는 샘플본만 쓴다 — 라이브 입력을 다시 읽지 않는다. 같은 cycle 에 TLB 읽기 주소를 발행하고, shadow 16-way 비교 결과를 `shadow_hit` 에 확정한다.
+2. `TLB_READ` (cycle 2): 태그 비교 1회로 우선순위를 해소한다.
+
+```
+if      (tlb_hit)    begin phys_addr <= {ppn, xlat_virt[11:0]}; access_granted <= 1'b1; end
+else if (shadow_hit) begin phys_addr <= xlat_virt;              access_granted <= 1'b1; end
+else                 begin phys_addr <= {ADDR_WIDTH{1'b0}};     access_granted <= 1'b0; end
+```
+
+3. 이후 `DUMMY_DELAY` → XChaCha20 → `DMA_EXEC` → `GRANT_ACCESS` 는 불변.
+
+**우선순위 규범 — TLB 히트가 이기고 shadow 는 fallback 전용이다. 이것은 D4 수리의 부속이 아니라 선행 조건이다.**
+
+현행 `HIU.v:170` 의 `if (!access_granted)` 가드는 **죽은 코드**다: `access_granted` 는 rst / TRANSLATE / GRANT_ACCESS 세 곳에서만 대입되고 TRANSLATE 진입 시점 값은 **항상 0** 이다 (직전 상태는 IDLE, 그 앞은 GRANT_ACCESS 또는 rst). 따라서 shadow 루프가 **항상** 실행되고, 같은 always 블록의 **나중 대입인 shadow 가 TLB 를 덮는다.** 통제 대조 시뮬 실측 (verilator, 호스트 기입형 DUT):
+
+```
+shadow [0x0, 0xFFFF_FFFF] (TLB 항목 포함) → phys_addr=0x0000000010000000  VERDICT SHADOW_OVERRIDES
+shadow [0x0, 0x0FFF_FFFF] (비중첩)        → phys_addr=0x0000000020000000  VERDICT TLB_WINS
+```
+
+즉 **TLB 를 실체화하는 순간, shadow region 과 겹치는 TLB 엔트리는 조용히 identity-map 으로 강등된다 = tenant 격리 구멍**이다. 오늘은 TLB 가 죽어 있어서 이 결함이 보이지 않는다. 위 2번의 단일 `if/else if/else` 사슬이 이 구멍을 구조적으로 막으며, **죽은 가드는 삭제한다** (조건을 고치는 것이 아니라 우선순위 사슬로 대체한다 — 조건을 고치면 같은 always 블록의 나중-대입 규칙이 다시 함정이 된다).
+
+**상수시간 계약 (유지, 정정 포함):** hit / shadow-fallback / miss 세 경로가 **완전히 동일한 상태열**을 지난다. `TLB_READ` 추가로 DMA 변환 시퀀스가 **36 → 37 cycle** 로 1 cycle 늘어난다 (프로토타입 실측; hit/miss 동일). **상수 시간성은 절대치가 아니라 경로 간 동일성이므로 계약은 유지되고, 절대치는 갱신된다.** 테스트는 절대 cycle 수가 아니라 **경로 간 동일성**을 assert 해야 한다 (§29.13 test_plan).
+
+**associativity 규범 (명시적 축소 수용):** **파티션 간 격리는 계약이고, 파티션 내 associativity 는 계약이 아니다.** direct-mapped 이므로 같은 index 의 다른 tag 는 **덮어쓴다** — 이는 호스트 정책 책임이며 하드웨어는 fault 를 올리지 않는다 (정상 동작이다). 근거: 보안 주장의 대상은 **cross-tenant** 채널이고, 파티션 분리는 엔트리 주소 상위 2비트로 **구조적으로** 보장된다 (파티션 간 충돌 불가). 파티션 **내부** 충돌은 상수시간 경로 때문에 타이밍으로 관측되지도 않는다.
+
+**flush 규범:** `context_switch` → `FLUSH_TLB` 는 **`tlb_valid` 64 비트 전체와 `shadow_valid` 16 비트를 지운다** (현행 동작 보존). **`tlb_mem` 의 tag/ppn 데이터는 지우지 않는다** — reset-free RAM 이므로 지울 수단이 없고, 지울 필요도 없다. **이 사실이 §29.6 의 존재 이유다**: flush 후에도 RAM 에는 이전 tenant 의 데이터가 남아 있으며 `valid` 가 유일한 방벽이다. 구현자는 "flush 했으니 깨끗하다" 를 **가정할 수 없다.**
+
+### 29.6 loud-fault 계약 (normative) — 미초기화 TLB 를 히트로 오인하지 않는다
+
+**규범 6항:**
+
+1. **`valid` 가 유일한 자격 부여자다.** `tlb_mem` 은 reset-free 이므로 power-up 값이 **미정의**다. RTL 은 `tlb_valid` 검사 이전에 `tlb_mem` 출력을 **어떤 부수효과에도** 쓰지 않는다 (`phys_addr` 대입, `access_granted`, 마스킹 입력 전부 포함).
+2. **flush 는 데이터를 남긴다** (§29.5 flush 규범). 따라서 항 1 은 power-up 1회의 규율이 아니라 **영구 규율**이다.
+3. **zero-tag probe — 필수 directed test.** reset 직후, TLB 기입을 **한 번도 하지 않은 상태**에서, tag 가 0 이 되는 `virt_addr` (예: `64'h0000_0000_0000_0000`) 로 변환을 요청하면 `access_granted` 는 **0** 이어야 한다. 이 테스트에는 discriminator 가 실재한다: `Makefile:13` 의 `SIM ?= verilator` 는 **2-state zero-init** 이라 미기입 RAM 이 0 으로 읽히므로, `valid` 게이팅이 빠지면 tag 0 == RAM 0 으로 **반드시 히트하고 테스트가 반드시 실패한다.** 즉 이 테스트는 tautology 가 아니다.
+4. **4-state X 규율.** X 를 지원하는 시뮬레이터에서 미기입 RAM 은 X 다. `tlb_hit` 이 X 가 되어 `access_granted` 로 전파되면 안 된다 — 항 1 의 `valid` 게이팅이 그 방어이며, `WT_SIM_ASSERT` 가드 하에 `if (tlb_hit === 1'bx) $fatal` 를 둔다 (loud-fault-never-silent 의 시뮬 측 이행).
+5. **호스트 프로그래밍 오류는 즉시 소리를 낸다.** 아래 4종은 **기입을 수행하지 않고** `tlb_fault` 를 1 cycle 어서트하며 `tlb_fault_code` 를 갱신한다. **조용히 설치되어 영원히 히트하지 않는 엔트리를 만드는 것이 이 계약이 막는 대상이다.**
+
+| code | 이름 | 조건 | 왜 fault 인가 |
+|---:|---|---|---|
+| 0 | `NONE` | — | fault 없음 |
+| 1 | `INDEX_MISMATCH` | `tlb_write_index != tlb_write_virt[15:12]` | direct-mapped 에서 index 가 tag 와 어긋난 엔트리는 **어떤 주소로도 조회될 수 없다.** 조용히 설치하면 호스트는 매핑했다고 믿고 하드웨어는 영원히 miss 한다 — D4 와 같은 종류의 "선언과 실물의 괴리" 다 |
+| 2 | `PHYS_MISALIGNED` | `tlb_write_phys[11:0] != 0` | 페이지 단위 변환이므로 하위 12비트는 offset 이 차지한다. 비영을 조용히 버리면 호스트가 요청한 물리 주소와 실제 변환 결과가 **말없이 달라진다** |
+| 3 | `BUSY` | `tlb_write_en` 이 `state != IDLE` 에서 어서트 | §29.4 프로토콜 3 |
+| 4 | `PARTITION_RANGE` | `tlb_write_partition >= NUM_PARTITIONS` | `NUM_PARTITIONS = 4` 인 현 형상에서는 2-bit 포트라 **구조적으로 발생 불가**이나, 파라미터가 4 미만으로 재형상되면 발생한다. 조건을 지금 적어 두는 것이 재형상 시의 조용한 실패를 막는다 |
+| 5-7 | — | reserved | 미정의 |
+
+6. **변환 miss 는 fault 가 아니다 — 그리고 그것이 의도다.** miss 는 상수시간 시퀀스 **끝**에서 `access_granted = 0` 으로만 신호된다. `tlb_fault` 를 miss 에 쓰지 않는 이유는 관대함이 아니라 **타이밍 채널 방지**다: miss 를 조기 스트로브로 알리면 hit/miss 가 시간으로 구별되어 HIU 의 존재 이유가 무너진다. 반대로 §29.6 항 5 의 4종은 **호스트가 스스로 발행한 control-plane 기입**에 대한 응답이므로 DMA 변환 타이밍과 무관하고, 여기서 소리를 내는 것은 채널을 만들지 않는다. **이 구분 — data plane 은 조용히 상수시간, control plane 은 즉시 시끄럽게 — 이 본 항의 규범 내용이다.**
+
+**부수 규범 (`phys_addr` 결정성):** miss 시 `phys_addr` 는 **0 으로 구동**한다 (§29.5 시퀀스 3-arm). 현행 RTL 은 miss 시 `phys_addr` 를 대입하지 않아 **직전 변환 결과가 모듈 출력에 남고** `Top_Core.v` 가 `mem_phys_addr` 로 외부에 노출한다 — 소비자가 `mem_access_granted` 로 자격을 거른다는 계약은 spec 어디에도 쓰인 적이 없다. 0 구동은 그 미기록 계약 의존을 없애고, 동시에 D6 의 `phys_addr` read-before-write (§29.7) 를 근본에서 해소한다.
+
+### 29.7 D6 정책 (normative) — 형식 혼합, HIU 이번 · PE_Core/Tensor_ALU 이월
+
+**D6 의 진짜 실리콘 위험 (여기가 "미발현이니 그대로" 가 답이 아닌 이유):** §29.2 C4 대로 `rst` 는 CE LUT 의 **데이터 입력**이 되어 있다 — 즉 `rst → LUT → FF.CE` 는 setup/hold 가 걸리는 **동기 경로**다. 그런데 `synth/reports/fp_ops/sys_top_core_gate.xdc:6` 과 `synth/constraints/pod.xdc:20` 이 `set_false_path -from [get_ports rst]` 를 걸고, `synth/scripts/synth_fp_op.tcl:134` 주석은 *"It is not a functional timing path"* 라고 적는다. **이 주석은 D6 의 134개 레지스터군에 대해 거짓이다.** 정리하면: **실리콘에서 데이터 캡처를 게이팅하는데 타이밍이 검증되지 않은 경로**가 존재한다. 시뮬레이터는 이것을 볼 수 없다 — D4 와 같은 클래스이며, 사용자 지시의 정확한 대상이다. HIU 넷리스트에서 `rst` 를 데이터 입력으로 받는 LUT 실측 30개 (LUT6/I5 17 + LUT2 10 + LUT3 2 + LUT4 1) 중 LUT2 8개는 TRNG RO 의 `~(ro_s3 ^ rst)` 로 무관 → **실질 약 22개**. 나머지 rst 싱크는 FDCE/CLR 503 + FDPE/PRE 1 + `dma_engine/rst` 1.
+
+**수리 형식 4종과 배정:**
+
+| 형식 | 내용 | 넷리스트 효과 |
+|---|---|---|
+| **형식1** | 별도 `always @(posedge clk) if (!rst)` 블록 분리 (§28.3/§28.6 권고) | `if (!rst)` 가 **그대로 CE 로 접힌다** → rst→CE 동기 경로가 남는다 |
+| **형식2** | rst 분기에 명시적 대입 추가 | FDRE(R=const0) → **FDCE(CLR=rst)**, rst 가 CE cone 에서 빠진다. 파형 변화 (rst 중 hold → 0) |
+| **형식3** | `!rst` 가드 **없는** 순수 동기 블록 분리 | rst 가 CE cone 에서 **완전히** 사라진다. 파형·값 불변 |
+| **형식4** | `set_msg_config -suppress` | **즉시 탈락** — §28.4 항 5 (전역 강등 금지) 정면 위배, ASIC 흐름 미이식, 진짜 위험 미해결 |
+
+**HIU 배정 (본 commit):**
+
+| 대상 | 건수 | 형식 | 근거 |
+|---|---:|---|---|
+| `shadow_regions_start[0:15]`, `shadow_regions_end[0:15]` | 32 | **형식3** | 기입 enable 이 `SHADOW_UPDATE` 상태 디코드 종속이고 `state` 는 async-reset (FDPE PRE=rst / FDCE CLR=rst) 이라 rst 중 IDLE 에 고정된다 → **enable 이 1 이 될 수 없음이 구조적으로 증명**된다. 파형·값·면적 전부 불변이면서 rst→CE 를 없애는 유일한 형식. 읽기는 `shadow_valid[k] &&` 로 가드되고 `shadow_valid` 는 reset 된다 (교과서적 data/valid 쌍) |
+| `chacha_state[0:15]` | 16 | **형식3** | 동일 논거 (`CHACHA_*` 상태 종속) |
+| `masked_phys_addr` | 1 | **형식3** | 동일 논거 (`CHACHA_FINAL` 종속). 소비자 `dma_engine` 은 `dma_req && access_granted` 에서만 읽고 내부 reg 는 전부 reset 된다 (HIU.v:619-622) |
+| `initial_state[0:15]` | 16 | **형식3 + D8 수리** | 아래 **중요 정정** 참조 |
+| `phys_addr` | 1 | **형식2** | 모듈 output 이고 `mem_phys_addr` 로 외부 노출된다. §29.6 부수 규범이 요구하는 **3-arm 전건 대입**과 함께 rst 대입 0 을 넣는다 |
+| **신규** `tlb_mem` (100b × 64) | — | **형식3 (필수)** | async-reset 블록 안이면 RAM 추론이 원천 봉쇄된다 (`Synth 8-4767`). §29.3 채택 이유 4 |
+| **신규** `tlb_valid` (64b) | — | **async 블록 유지** | reset 이 반드시 필요한 유일한 TLB 상태 (§29.5) |
+| 전 구간 | — | **XDC 정정 (즉시·별건)** | `set_false_path -from [get_ports rst]` 를 **CLR/PRE 한정**으로 좁힌다: `-to [get_pins -hier -filter {REF_PIN_NAME == CLR \|\| REF_PIN_NAME == PRE}]`. 대상: `sys_top_core_gate.xdc` 생성 경로, `synth/constraints/pod.xdc:20`, `synth/scripts/synth_fp_op.tcl:130-136` 의 주석. **RTL 0줄 변경이므로 위 수리 이전에도 유효**하다 |
+
+**형식1 을 HIU 에 쓰지 않는다 — 명시 기각.** §28.3/§28.6 이 권고한 형식이지만 (i) `if (!rst)` 가 CE 로 접히므로 **위 문단의 실리콘 리스크를 전혀 해결하지 못한다** (메시지만 없애고 위험은 남긴다 = 증상 제거), (ii) HIU 의 6개 그룹은 기입 조건이 전부 FSM state 디코드 종속이라 분리하려면 `case (state)` 골격을 6 상태에 대해 **복제**해야 하고, 같은 state 를 두 블록이 읽는 이중구조의 유지보수 위험이 D6 자체보다 크다. **결정적 근거: 현재 넷리스트가 이미 형식1 이다** — Vivado 가 그 변환을 이미 수행했고 (§29.2 C4), 그래도 위험이 남아 있다. **단 이 기각은 HIU 한정**이다: §28.6 이 O2 에서 형식1 의 파형 일치를 확인한 것은 Tensor_ALU 의 기입 조건이 무조건/단순 opcode 디코드라 blast radius 가 작기 때문이며, 그 사정은 HIU 로 이전되지 않는다.
+
+**중요 정정 — `initial_state` 는 형식2 가 답이 아니다.** 조사 권고는 형식2 (reset 대입) 였으나 본 절은 이를 **기각**한다. 사유: `initial_state` 의 문제는 D6 가 아니라 **D8 (§29.8) 이다.** 형식2 는 rst 후 첫 진입의 미기입 값을 0 으로 만들 뿐 **영구적 1단계 어긋남을 고치지 못한다** — 즉 비결정적으로 틀린 값을 **결정적으로 틀린 값**으로 바꾼다. 그것은 개선이 아니라 **결함을 시뮬과 실리콘 양쪽에서 똑같이 조용하게 만드는 것**이며, 유일하게 남아 있던 "뭔가 어긋났다" 는 신호(sim ≠ silicon)를 지운다. 올바른 처분은 **D8 을 고쳐 read-before-write 자체를 없애고**, 그러면 `initial_state` 는 (a) 판정이 되어 **형식3 으로 충분**하다.
+
+**이월 2건과 기한 조건 (기한 없는 이월은 금지한다):**
+
+- **`PE_Core` 68건 — 이월.** 사유: (i) 68건 **전부 (a) 판정**이다 — 전부 데이터/피연산자 래치이고 reset 되는 valid 비트로 자격 부여되며, 의도가 이미 문서화되어 있다 (`PE_Core.v:1801-1807` *"Data regs (vfma_a_q/b_q/c_q/stage/lane/is_int8) are reset-free like the deq/fp operand regs."*). read-before-write 후보가 없으므로 **기능 결함이 없다**. (ii) PE_Core 는 §26.9 · §28.6 · §28.9 가 세 번 독립 재확인한 dispatch 병목 경로의 당사자다 — 본 commit 의 blast radius 에 넣으면 D4 판정과 dispatch 회귀가 뒤섞여 어느 쪽 실측인지 귀속이 불가능해진다. (iii) HIU 형식3 의 안전성 논증이 실증되면 그 패턴을 그대로 재사용할 수 있다 — 순서를 뒤집으면 미검증 패턴을 주력 모듈에 먼저 적용하게 된다. **수리 형식 사전 배정: 형식3 우선, 그룹별 enable 이 reset 되는 제어비트 종속임의 확인이 비싸면 형식1. 형식2 는 비권고** (위 인용 설계 의도와 정면 충돌하고 ASIC 면적만 늘린다).
+  **기한 조건 — 아래 셋 중 가장 먼저 오는 시점까지 처리한다:**
+  1. 본 절 S2-C4 (GATE S1-US #2) 가 PASS 하고 HIU 형식3 무회귀가 실증된 **직후의 다음 RTL commit**,
+  2. `Synth 8-7137` 모듈별 축 (§29.11) 에서 PE_Core 계수가 **68 을 초과하는 최초 시점** — 증가는 새 미리셋 레지스터가 추가됐다는 뜻이므로 그 commit 에서 즉시 처리,
+  3. PE_Core 를 **ASIC 흐름 또는 FDSE/FDPE 매핑이 나오는 흐름**으로 처음 내보내는 commit.
+  조건 2 는 gate 가 **자동으로 발화**시키므로 이 이월은 조용히 영구화될 수 없다.
+- **`Tensor_ALU` 49건 (= §29.2 C7 대로 4군) — 이월.** 사유: §28.8 의 **고아 지위 판정 (폐기 vs 통합) 이 선행해야 한다.** 폐기될 모듈의 reset 을 고치는 것은 낭비이고, 이 모듈은 애초에 대표 연산이 동작하지 않는다 (§28.8 O1 — MATMUL 이 무한 누산기로 축퇴). **기한 조건: §28.8 고아 지위 판정 commit 과 같은 commit.** 판정이 "폐기" 면 O2 수리는 소멸하고, "통합" 이면 그 commit 이 O1 (기능) · O2 (reset) · 데이터 레이아웃 불일치를 **동시에** 처리한다. 그 전건은 §12a 의 **RTL 모듈 단위 제거 절차 성문화** (§28.8 정책 공백) 다.
+  **정정**: 조사 과정에서 "Tensor_ALU 를 손대면 `a[i][k]*b[k][j]` 가 premap `$mul` exact 축을 건드린다" 는 우려가 제기됐으나 **틀렸다** — Tensor_ALU 는 어디에도 인스턴스화되지 않는 고아이고 `sys_top_core` premap 명령의 `read_verilog` 목록에도 없으므로 **429 축에 0 기여**한다. 축 영향은 **편입되는 시점에** 발생하며, 그때는 편입 자체가 재anchor 사유다.
+
+### 29.8 D8 (신규 결함) — XChaCha20 계약이 실물에서 이행되지 않는다
+
+**본 절이 새로 기록하는 결함이며, D4 와 같은 급의 "선언과 실물의 괴리" 다.** §28 은 이것을 기록하지 않았다.
+
+**사실:** `CHACHA_H_INIT` (HIU.v:186-209) 은 **같은 블록·같은 사이클**에 `initial_state[*] <= 상수/키/nonce` 와 `chacha_state[m] <= initial_state[m]` 을 수행한다. 비차단 대입이므로 RHS 는 **직전 값**이다. 결과는 첫 사이클만의 문제가 아니라 **영구적 1단계 어긋남**이다:
+
+- `CHACHA_H_INIT`: `chacha_state ← (직전) initial_state` — 최초에는 미기입 값, 이후에는 **직전 `CHACHA_INIT` 이 넣은 subkey 기반 상태**.
+- `CHACHA_INIT`: `chacha_state ← (직전) initial_state` = **HChaCha20 초기상태** (상수 + key + nonce).
+- ⇒ **subkey 가 HChaCha20 사양대로 유도되지 않고, ChaCha20 라운드가 subkey 상태 위에서 돌지 않는다. 즉 마스크는 XChaCha20 키스트림이 아니다.**
+
+**은폐 경로:** `test_hiu.py:51,68` 이 검사하는 것은 `masked_phys_addr != phys_addr` 뿐이다 — 마스크가 **무엇이든** 0 이 아니면 통과한다. §28.8 O1 이 `alu_valid == 1` 만 assert 해 MATMUL 결함을 은폐한 것과 **동형 패턴**이며, 본 절이 기록하는 세 번째 사례다 (D4 계층 강제 기입 / O1 값 미검사 / D8 값 미검사).
+
+**시뮬 ≠ 실리콘:** `Makefile:13` 의 `SIM ?= verilator` 는 2-state zero-init 이라 시뮬은 결정적인데 실리콘 power-up 은 랜덤이다 → **첫 변환의 마스크 값이 시뮬과 실리콘에서 다르다.**
+
+**처분: 본 절의 착지 범위에 포함한다 (S2-C1/C2).** 사유는 두 가지다 — (i) §29.7 이 확정한 대로 `initial_state` 의 D6 처분이 D8 판정에 종속되어 있어 분리할 수 없고, (ii) "실물에서 쓴다" 는 전제 하에서 **선언된 암호 계약이 이행되지 않는 것**은 D4 와 같은 등급의 구조적 결함이다.
+
+**수리 형태 (normative):** `chacha_state[m]` 에 `initial_state` 를 **경유하지 않고** 같은 cycle 에 확정되는 값 (상수 / key / nonce / subkey) 을 직접 대입하고, `initial_state[m]` 에는 `CHACHA_FINAL` 의 final-add 를 위해 **같은 값을 병렬 대입**한다. 두 배열이 같은 cycle 에 같은 값을 갖게 되어 1단계 어긋남이 소멸한다.
+
+**golden-before-RTL (프로젝트 법칙 이행):** XChaCha20 은 표준이므로 golden 이 존재할 수 있고, 따라서 존재해야 한다. **`scripts/golden_xchacha.py`** (stdlib-only, 고정 벡터, 재실행 byte-identical) 를 RTL 이전에 착지시키고, 그 산출물로 `test_hiu.py` 가 `masked_phys_addr` 의 **정확값**을 assert 한다 — `!=` 검사는 폐기한다. 참조: RFC 8439 (ChaCha20) + HChaCha20 (draft-irtf-cfrg-xchacha) 테스트 벡터.
+
+**면적 미측정 (정직 명기):** D8 수리의 LUT/FF 영향은 **측정하지 않았다.** `initial_state`→`chacha_state` 의 512-bit mux 경로가 없어지는 대신 `chacha_key` (256b) / `chacha_nonce` (192b) 팬아웃이 늘어난다 — **부호가 미정이며 수십~수백 LUT 규모일 수 있다.** 조사 workflow 가 RTL 무수정 원칙이었으므로 실측이 불가능했다. §29.11 의 LUT 선공표 상한이 이 미지수를 흡수하도록 잡혀 있으며, **추정을 실측으로 말하지 않는다** (§25.4).
+
+### 29.9 D9 (신규 결함, 이월) — FLUSH_TLB 의 전역성은 cross-tenant 행위다
+
+**사실:** `context_switch` 하나가 `FLUSH_TLB` 를 발동하고, 그것은 **전 파티션의 `tlb_valid` 64비트와 전역 `shadow_valid` 16비트를 한꺼번에 지운다.** 즉 tenant A 의 context switch 가 tenant B 의 변환을 무효화한다.
+
+**왜 결함인가:** §29.5 가 파티션을 tenant lease 격리 경계로 규범화한 순간, **한 tenant 가 다른 tenant 의 상태를 지울 수 있다는 것**은 격리 위반이다 (가용성 측면의 cross-tenant 영향이고, flush 후 재fill 지연은 관측 가능하다). D4 를 실물화하기 전에는 지울 상태가 없어 이 문제가 나타나지 않았다 — **D4 수리가 만들어낸 문제가 아니라, D4 수리가 드러낸 문제다.**
+
+**처분: 이월.** 본 commit 에서 고치지 않는 사유 — 수리는 `context_switch` 를 partition-qualified 로 바꾸는 것이고, 그것은 **Y4 `hiu_abi.md` 의 lease-rotation 시퀀스 계약 변경**이라 별도 저장소와의 sign-off 를 요구한다. 본 절은 `context_switch` 의 현행 의미 (**전역 flush**) 를 규범으로 명시하고 그 한계를 기록한다 — 조용히 두지 않는다.
+**기한 조건:** Y4 `hiu_abi.md` 의 **TLB fill 레지스터 신설 개정 (§29.4 다운스트림 목록) 과 같은 개정 라운드**에서 per-partition flush 를 함께 협상한다. 그 개정이 v1.0 freeze 전에 이루어져야 한다 — freeze 후에는 §12a 상 WT64v2 급 변경이 된다.
+
+### 29.10 D7 처분 — 예약 포트 명문화
+
+**결정: 처분3 — `interface_type[1:0]` 을 유지하되 지위를 "선언되지 않은 미독 포트" 에서 "선언된 예약 포트" 로 바꾼다.**
+
+**의도 복원 (근거 3건):** 호스트 **transport 종류 선택자**다. (i) `test_hiu.py:38` — `# Test 1: … PCIe, DMA 요청` 직후 `interface_type = 0`, (ii) `test_hiu.py:58` — `# Test 2: Shadow 히트 with USB …` 직후 `interface_type = 1`, (iii) `.claude-memos/sdk_architecture.md:92` — *"HIU 의 호스트 인터페이스가 PCIe/USB/CXL 등 무엇이든 Rust core 가 transport 추상화(`Transport` trait)로 처리"*, `remote_accelerator_access.md:72` 동일 취지. 2비트 = 4종 (PCIe / USB / CXL / 예약) 이 memo 서술과 정합한다. **인코딩 0=PCIe, 1=USB 가 테스트 주석에 화석으로 남아 있다.**
+
+**규범 (normative):**
+
+1. `interface_type[1:0]` 은 **RESERVED** 다. 호스트는 `2'b00` 으로 구동해야 하며, non-zero 는 **미정의**다.
+2. 현 RTL 은 이 포트를 읽지 않으므로 **어떤 값도 동작을 바꾸지 않는다.** 이 사실이 계약이다 — "무시된다" 를 명시적으로 약속한다.
+3. **승격 조건 (처분1 발동 조건):** transport 별 ATS/PRI 자격 계약이 spec 에 normative 로 기록되는 시점. **그 전에는 결선을 금지한다** — 지금 결선하는 것은 없는 행동을 발명하는 일이다 (HIU 에 transport 종속 행동이 하나도 없고, ATS/PRI 는 이미 전용 포트로 처리된다).
+4. **의무 — 이 항이 빠지면 처분3 은 무효다:** `test_hiu.py:38,58` 의 "PCIe" / "USB" 주석을 정정한다. RTL 이 그 구분을 **전혀 하지 않는다**는 사실을 주석에 명시해야 한다. 그 주석은 두 transport 를 검증하는 것처럼 읽히게 하는 **D4 와 동종의 거짓 진술**이며, 포트를 남기든 없애든 **무조건** 정정 대상이다. **D7 항에서 실물 관점에서 반드시 바뀌어야 하는 것은 포트가 아니라 이 주석이다.**
+5. `HIU.v:20` 주석에 항 1-3 과 복원된 인코딩 화석 (0=PCIe, 1=USB, memo 근거 포함) 을 기록한다.
+6. **예약 포트 목록의 기계 열거는 이월한다** — `scripts/lint_synth_coverage.py` 계보로 만들 수 있으나 본 commit 은 구현하지 않는다. 방어는 항 3 의 승격 조건과 `Synth 8-7129` 의 상시 관측이다.
+
+**기각 기록:**
+
+- **처분2 (제거)** — pre-stable 에서 허가된 정규 이벤트이지만 (§29.2 C5), (i) 면적 이득이 **실측 0** 이고 (`interface_type_q` 셀 0개, §29.2 C6), (ii) memo 2건 + SDK `Transport` trait 설계가 host-transport 선택을 **살아있는 설계 축**으로 유지하므로 재도입 확률이 낮지 않아 §12a 계약 변경을 **2회** 초래할 개연성이 있으며, (iii) blast radius 가 8개 파일 (gate 래퍼 2종 포함) 인데 얻는 것이 정결성 하나다.
+- **처분1 (결선)** — 행동 발명이며 spec-first + golden-before-RTL 을 요구하는 별도 작업이다. D4/D6 와 같은 commit 에 실을 일이 아니다.
+
+**D4 와의 성질 차이 (판정의 핵심):** D4 는 **실리콘에 없는 경로를 테스트가 있다고 말하는** 상태였다. D7 은 포트가 실리콘에 실재(입력 핀)하고 읽히지 않는다는 사실이 `Synth 8-7129` 로 **상시 관측**된다 — 은폐가 없다. 명문화는 "선언되지 않은 미독 포트" 를 "선언된 예약 포트" 로 바꾸는 것이고, 그것이 정직성의 전부다.
+
+### 29.11 GATE S1 영향 선언 (측정 **전** 공표 — V9-4 정신)
+
+**§28.5 (c) 대로 area binding 은 본 절의 구현 commit 부터 발효한다.** 아래는 **측정 이전에** 공표하는 예측이며, 사후 해석의 여지를 없애기 위해 방향과 상한을 함께 적는다. 근거 수치는 전부 `/tmp` 프로토타입의 **HIU 단독 OOC 실측**이고 system 문맥 값이 아니다 — **투영은 투영이고, 판정은 재측정으로만 내린다.**
+
+| 축 | 지위 | anchor | 예상 착지 | 선공표 상한 | 귀속 |
+|---|---|---:|---|---|---|
+| **LUT sites** | binding (ceiling **24,799**) | 14,850 | **≈ 14,872** (+22) = ceiling 의 **60.0%** | **+400 이내** (≤ 15,250 = **61.5%**) | 프로토타입 +22 (LUTRAM +144, 16-way 비교기 소멸 −122). 정규 형태는 (−) RAM 폭 124→100 bit 와 (+) fault 로직·샘플 레지스터·D8 수리 (부호 미정, §29.8) 를 함께 갖는다. **ceiling 초과는 예상하지 않는다** |
+| FF | 추적 | 9,585 | **≈ +186** | +320 이내 | 프로토타입 +186 + `tlb_fault_code` 3 + `tlb_fault` 1 + one-hot state +2 + 래퍼 flop |
+| **DSP48E2** | **즉시 binding, exact** | **39** | **불변 39** | — | TLB 는 곱셈기를 만들지 않는다. §29.4 파라미터 제약 (2의 거듭제곱) 이 전건 |
+| **RAMB18** | **즉시 binding, exact** | **2** | **불변 2** | — | `ram_style="distributed"` 강제 (§29.5). **`block` 을 쓰면 RAMB36 2개가 붙어 축이 4 가 되고 즉시 FAIL** — 실측 확인된 조건이며 §29.3 채택 이유 3 |
+| **premap `$mul`** | **즉시 binding, exact** | **429** | **381 (−48) — 재anchor 예상** | — | **아래 별항** |
+| **DRC errors** | binding | 0 | 0 | — | 전 프로토타입 errors 0, `LUTLP-2 Combinatorial Loop Allowed ×8` warning 만 (D2 제약 정상 작동) |
+| **CRITICAL `Synth 8-295`** | binding, exact | 8 | 8 | — | TRNG RO 무접촉. **단 아래 재측정 의무 참조** |
+| **WHS** | **즉시 binding** | **+0.019 ns** | **본 변경의 유일한 실질 리스크 축** | ≥ 0 | 프로토타입 HIU 단독 WHS **+0.007** (baseline +0.039). 형식2/3 은 rst→CE 조합 경로를 없애므로 hold 에 불리할 이유가 없으나 마진이 사실상 없다. **음수면 즉시 FAIL, 완화 없음** |
+| WNS / Fmax | 기록 | +1.497 / 117.61 | ≈ 불변 | — | HIU 단독 229.94 → 228.47 MHz (사실상 무변화). 시스템 병목은 HIU 가 아니라 EHDecode→PE_Core dispatch 다 (§28.6) |
+| **`Synth 8-7137` 모듈별** | **신규 축 — exact** | 미등재 | **HIU 0 / PE_Core 68 / 합 68** | — | 아래 별항 |
+| **`Synth 8-3848` (undriven net)** | **신규 축 — exact** | 참값 128 (로그는 캡 100) | **0** | — | 아래 별항 |
+
+**별항 1 — premap `$mul` 429 재anchor 사전 선언 (사용자 결정 사항).**
+
+**429 는 매핑 넷리스트에 cell 이 0개인 구조의 곱셈 48개를 포함하고 있었다.** 귀속: HIU 단독 premap stat 에서 현행 `$mul` = **48**, 배열 삭제 시 **0**. 이 48 은 `partitioned_tlb_*[partition_id][j]` 의 **2D 배열 행 주소 곱셈** (`p*TLB_ENTRIES + j`) 이며, yosys 가 premap 단계에서 배열을 `$memrd` 로 유지하기 때문에 `opt_clean` 을 통과한다. 즉 **소멸한 TLB 가 gate anchor 429 안에 phantom multiplier 48개로 들어앉아 있었다.**
+
+측정 실적 (gate 하네스와 동일 yosys 명령, HIU 만 교체): repo 현행 **429** / 호스트 기입형 · ATS fill 형 **432 (+3, 기입 포트 3개의 쓰기 주소 곱셈)** / **direct-mapped 381 (−48)** / 폐지형 **381 (−48)**. **모든 경로가 이 축을 움직인다 — 폐지해도 깨진다.**
+
+**절차 (조작 여지를 없애기 위해 판정 전에 공표한다):**
+1. 본 절이 **429 → 381** 을 예측으로 공표한다.
+2. 실제 재anchor (= `synth/scripts/fp_op_gate_check.py` 의 `premap_mul_expect` 갱신) 는 **사용자 승인 후** S2-C4 에서 수행한다. §12a 상 gate 기준 재anchor 는 사용자 결정 사항이다.
+3. **승인 전에는 S2-C2/C3 를 merge 할 수 없다.**
+4. 실측이 381 이 아니면 **수치를 맞추지 않는다** — 귀속을 다시 유도하고 그 사유를 기록한다. 예측이 틀렸다는 사실 자체가 기록 대상이다.
+
+**별항 2 — `Synth 8-7137` 모듈별 exact 축 신설.**
+
+§28.3 이 이 축을 채택하지 않은 근거 ("문맥 의존") 가 §29.2 C2 로 **소멸**했다 — 문맥 의존이 아니라 **캡 의존**이었고, `-limit` 만 올리면 모듈별로 완전히 결정적인 정수다 (HIU 단독 66 == 문맥 66, PE_Core 단독 68 == 문맥 68).
+
+- **전제조건 (빠뜨리면 축이 100 에서 잘려 false PASS):** 하네스에 `set_msg_config -id {Synth 8-7137} -limit 100000` 추가.
+- **선공표 값:** HIU **0** (본 commit 전건 수리) / PE_Core **68** (이월분, 정확 계수 pin) / 합 **68**. `Tensor_ALU` 는 `sys_top_core` 문맥 밖이라 이 축에 나타나지 않는다 (§29.7 정정).
+- **지위:** exact-value. **변동 시 FAIL.** 이월분을 수리하는 commit 이 같은 commit 에서 spec 과 gate_check 의 축 값을 함께 낮추는 것은 정규 행위다 — 수치를 통과시키려고 움직이는 것과, 수리 사실을 반영해 조이는 것은 다르다. 후자만 허용된다.
+
+**별항 3 — `Synth 8-3848` ("Net ... does not have driver") exact 0 축 신설. 이것이 §29.12 가 요구하는 기계적 검사의 실물이다.**
+
+아카이브된 `sys_top_core_run.log` 에서 이 경고는 **100건 (캡, 참값 128)** 이고 **전부 `partitioned_tlb_phys` / `partitioned_tlb_virt`** 다 — 즉 **D4 는 처음부터 기계 판독 가능한 형태로 로그에 있었다.** 아무도 이 축을 보지 않았을 뿐이다.
+
+- **지위:** exact **0**. 예외는 allowlist 로만 허용하며 **항목마다 사유 필수** (§28.4 항 3 래칫과 같은 형태). 착지 시점 allowlist 는 **비어 있어야 한다**.
+- **전제조건:** `-limit` 상향 (별항 2 와 동일 사유).
+- **정직한 한계 — 이 축은 D4 의 절반만 본다.** `partitioned_tlb_valid` 는 clear 구동원이 있어 이 경고에 **잡히지 않는다.** 즉 "전혀 기입되지 않는 저장소" 는 잡지만 "clear 만 되고 set 은 없는 저장소" 는 못 잡는다. **따라서 이 축은 §29.12 규범의 보완물이지 대체물이 아니다.** 이 한계를 적지 않으면 다음 사람이 "lint 가 있으니 안전하다" 고 오독한다.
+
+**재측정 의무 (구현 commit 몫):** `make synth-sys-gate SYS_GATE=sys_top_core PART=xcu55c-fsvh2892-2L-e` + `python3 synth/scripts/fp_op_gate_check.py` 로 **`sys_top_core` 문맥에서 전 축 재측정**. HIU 단독 수치로 대체 불가 — 조사에서 `Synth 8-295` census 가 HIU 단독 문맥에서 **v0=0 / 기입형=8** 로 **문맥 의존**임이 재현 확인됐다 (v0 을 별도 디렉터리에서 2회 재실행해 0 확인). gate 축은 system 문맥에 고정되어 있으므로 판정에 직접 영향은 없으나, **census 는 반드시 system 문맥에서 취한다.** ECP5 반쪽은 §28.7 정책 그대로 MEASUREMENT 이며 어떤 결과도 FAIL 을 구성하지 않는다.
+
+**ceiling 초과 시 절차 (초과를 예상하지 않지만 미리 적는다 — 이것이 V9-4 정신이다):**
+1. **정직 FAIL 로 기록한다.** 기준을 움직여 통과시키는 경로는 없다.
+2. 초과분을 **귀속**한다 (어느 구조가 몇 LUT 인지 — 프로토타입 실측과 대조).
+3. **재anchor 는 §12a 상 사용자 결정 사항**이다. 구현 세션이 스스로 결정하지 않는다.
+4. 재anchor 를 받지 못하면 **pre-declared cut ladder** 를 따른다: (a) `tlb_fault_code` 폭 축소 3→2 bit, (b) shadow 16-way 비교기의 공유화, (c) `TLB_ENTRIES` 16→8 (파티션 격리는 유지되고 conflict 만 늘어난다 — §29.5 associativity 규범이 이미 이를 계약 밖으로 규정해 두었다). **(c) 는 계약 축소이므로 §12a 재개정을 동반한다.**
+
+### 29.12 §28.4 항 7 신설 (normative) — 은폐 재발 방지 규범
+
+**§28.4 에 항 7 을 추가한다** (항 1-6 은 무수정 유지):
+
+> **7. 테스트는 RTL 이 구동하지 않는 상태를 계층 강제 기입으로 만들어 그 위에서 기능을 검증할 수 없다.** 계층 강제 기입 자체는 금지 대상이 아니며, 금지되는 것은 **RTL 이 만들지 않는 상태를 테스트가 스스로 만들어 그것을 검증 대상으로 삼는 것**이다. 경계는 다음 4항으로 정한다.
+>
+> - **(a) 허용 — 관측.** `dut.<internal>.value` **읽기**는 무제한 허용한다. 화이트박스 관측은 이 규범의 대상이 아니다.
+> - **(b) 허용 — 단축.** RTL 이 실제로 구동하는 상태를 초기 조건으로 밀어 넣어 시퀀스를 단축하는 것은 허용한다. **단 같은 상태에 포트 경로로도 도달할 수 있음이 별도 테스트로 실증되어 있어야 한다.** 단축은 도달 가능성을 대체하지 못한다.
+> - **(c) 금지 — 구동원 없는 기입.** 그 신호에 **RTL 구동원이 없는데** 기입하는 것. 이 경우 테스트는 실리콘에 존재하지 않는 경로를 검증한다 (D4 의 정확한 형태).
+> - **(d) 금지 — 유일 도달 수단.** 포트 경로가 존재하는데도 검증의 **유일한** 도달 수단이 강제 기입인 것. 이 경우 포트 경로 자체가 미검증으로 남는다.
+>
+> 위반 발견 시의 처분은 테스트 수정이 아니라 **RTL 과 테스트 중 어느 쪽이 진실인지의 판정**이다 — D4 가 그 판정에 3.5개월이 걸린 이유는 판정을 요구하는 규범이 없었기 때문이다.
+
+**적용 현황 (정량 baseline — 규범에 측정 기준선을 붙인다):** `test_*.py` 9개 파일의 `dut.<...>.value =` 대입은 총 **691건** (clk/rst 제외; test_cluster 304 / test_isa_decoder 280 / test_top_core 31 / test_hiu 27 / test_pod 17 / test_pe 13 / test_alu_extended 8 / test_simd_alu 8 / test_tensor_alu 3). **압도적 다수는 top-level 포트 구동이며 본 규범의 대상이 아니다.** 오늘 확인된 (c) 위반은 `test_hiu.py:24-26` 의 3건 (`partitioned_tlb_virt` / `_phys` / `_valid`) 이고, **D4 수리가 이를 포트 구동으로 교체하면서 구조적으로 소멸한다.** `test_hiu.py:29-31` 의 `shadow_regions_*` 3건은 (b) 에 해당하며 — `test_top_core.py:73-77` 이 `shadow_write_en` **정규 포트 경로**를 쓰는 것이 그 실증이다 — 규범을 만족한다. 이 대조가 (b) 와 (c) 의 경계를 실물로 보여준다.
+
+**기계적 검사 가능성 (정직한 논의 — 되는 것과 안 되는 것을 나눈다):**
+
+1. **이미 되는 것 — `Synth 8-3848` exact 0 축 (§29.11 별항 3). 본 절이 이 축을 신설한다.** 새 도구가 필요 없고 아카이브된 로그를 grep 하면 되며, D4 의 100/128 건이 전부 여기 잡혀 있었다. **한계는 명확하다: "전혀 구동원이 없는 저장소" 만 잡고, `partitioned_tlb_valid` 처럼 "clear 만 되고 set 은 없는 저장소" 는 못 잡는다.** 즉 D4 의 절반이다.
+2. **되지만 비용이 있는 것 — 넷리스트 대조 lint.** `test_*.py` 의 대입 대상 심볼을 정규식으로 추출해 아카이브 넷리스트와 대조한다. 한계 2건: (i) 합성기가 이름을 바꾼다 (`_reg` 접미, 배열 flatten) 는 정규화 휴리스틱이 필요하고, (ii) **정당하게 최적화로 사라진 신호와 구동원 부재를 구별하지 못해 false positive 가 난다.** 따라서 사유 필수 allowlist 를 갖는 형태여야 한다.
+3. **가장 정확하지만 도구 의존 — 프론트엔드 AST 질의.** verilator `--xml-only` 또는 yosys `read_verilog` 후 각 신호의 **대입문 존재**를 질의한다. 합성 최적화 이전이라 2의 false positive 가 대폭 준다. 한계: cocotb 계층 이름 ↔ AST 넷 이름 매핑을 만들어야 하고 generate/다차원 배열에서 깨진다. 스키마가 버전 의존이며 tracked artifact 가 아니다.
+4. **판정:** 본 commit 은 **1만 구현하고 (§29.11 별항 3), 2/3 은 구현하지 않는다.** §28.10 이월 목록의 "undriven-signal 탐지 lint" 항목은 그대로 남는다.
+
+**정직 명기 — "lint 가 있으니 안전하다" 고 말하지 않는다.** 이 commit 이후 D4 형 결함이 재발하지 않는 주된 이유는 lint 가 아니라 **D4 경로가 실제로 없어지고 (§29.3) 규범이 판정을 요구한다는 것 (항 7)** 이다. `Synth 8-3848` 축은 그 위에 얹는 **두 번째 방어선이고, 절반만 본다.**
+
+### 29.13 착지 순서 · test_plan · 재측정 의무
+
+**착지 순서 (spec-first §12a 규칙 3 + golden-before-RTL 동시 충족):**
+
+| 단계 | 내용 | 전건 |
+|---|---|---|
+| **S2-C0** | **본 절 (spec-first)** — 본 commit. RTL·테스트 무접촉 | — |
+| **S2-C1** | `scripts/golden_xchacha.py` + 고정 벡터 산출물 (D8 전건) | S2-C0 |
+| **S2-C2** | RTL — `HIU.v` (D4 실체화 + D6 형식2/3 + D8 + D7 주석) / `Top_Core.v` passthrough / gate 래퍼 2종 / XDC false_path 축소 | S2-C1 + **premap `$mul` 재anchor 사용자 승인** |
+| **S2-C3** | 테스트 — `test_hiu.py` 재작성 + `test_top_core.py` 갱신 | S2-C2 |
+| **S2-C4** | **GATE S1-US #2 (최초 binding 측정)** — 전 축 재측정 + 신규 축 3종 등재 + ECP5 MEASUREMENT | S2-C3 |
+| **S2-D** | 다운스트림 문서 (Y4 2파일 / wavetensor-drivers 2파일) — **별도 저장소이므로 별도 commit**, 목록은 §29.4 | S2-C2 |
+
+**test_plan (S2-C3 몫 — 본 절이 항목을 확정한다):**
+
+1. **계층 강제 기입 제거** — `test_hiu.py:24-26` 삭제, `tlb_write_*` 포트 구동으로 교체 (§28.4 항 7 (c) 위반 해소).
+2. **zero-tag probe** — §29.6 항 3. **discriminator 가 실재하는 테스트**다.
+3. **TLB 우선순위** — shadow region 과 **겹치는** TLB 엔트리를 설치하고 TLB 변환이 이기는 것을 assert. 조사가 실증한 `SHADOW_OVERRIDES` 회귀의 직접 방어.
+4. **상수시간 동일성** — hit / shadow-fallback / miss 세 경로의 cycle 수가 **서로 같음**을 assert. **절대치 (37) 를 assert 하지 않는다** — 계약은 동일성이지 절대치가 아니다 (§29.5).
+5. **loud fault 4종** — `INDEX_MISMATCH` / `PHYS_MISALIGNED` / `BUSY` / (`PARTITION_RANGE` 는 현 형상에서 도달 불가이므로 도달 불가임을 주석으로 기록) 각각에 대해 `tlb_fault` 펄스 + `tlb_fault_code` + **기입이 수행되지 않았음**을 assert.
+6. **파티션 격리** — 파티션 0 에 설치한 엔트리가 `partition_id = 1` 에서 miss 하는 것을 assert.
+7. **flush 후 stale 데이터 무해성** — 엔트리 설치 → `context_switch` → 같은 주소 변환이 miss 하는 것을 assert (RAM 에 데이터가 남아 있음에도).
+8. **XChaCha20 정확값** — `masked_phys_addr` 를 golden 산출값과 **정확 비교**. 기존 `!=` 검사 폐기 (§29.8).
+9. **D7 주석 정정** — `test_hiu.py:38,58` (§29.10 항 4). 코드 변경이 아니라 거짓 진술 제거다.
+10. **무회귀** — 6개 모듈 전 suite. `COCOTB_RESULTS_FILE` 을 `/tmp` 로 리다이렉트해 tracked `results.xml` 무접촉 (§28.3 관례). **단 `test_hiu.py` 는 의도적으로 재작성되므로 HIU 항목의 테스트 이름 집합 변화는 회귀가 아니라 요구된 결과다** — §12a 하의 재유도 대상이다.
+
+### 29.14 §12a 기록
+
+본 절은 §12a 하의 **정규 개발 행위 (regular development act)** 이며 **spec-before-code COMMIT 0** 다.
+
+- **계약 변경의 성격**: §29.4 의 HIU 모듈 인터페이스 확장 (입력 5 + 출력 2) 은 §12a 규칙 3 이 규율하는 계약 변경이다. **ISA 표면은 무접촉이다** — `isa/wt64v1_isa.json` · 생성물 · asm · golden 3종 · truth table 어느 것도 본 절의 대상이 아니므로 `domain_version` bump 도 truth-table recapture 도 발생하지 않는다. 규칙 3 의 순서 중 발동하는 것은 **spec amendment → RTL/테스트 갱신** 구간뿐이다.
+- **3a (§27.7a) 와의 격리**: 3a 산출물 — golden 3종 (`scripts/golden_{fp32,lattice,fdotcr}.py`), ISA (`isa/wt64v1_isa.json` + 생성물 + `asm/`), `FP_StepSeq.v` step 프로그램 — 은 **무접촉**이다. 공유 datapath 3파일 (`FP_AddWide.v` / `FP_Mul36.v` / `include/fp_narrow_f32.vh`) 은 **byte-untouched** 이고 `decode_reserved` 는 미접촉이다 (3a-C4 몫). 본 절은 §27.7a 의 착지 순서를 선점하지 않는다. 신규 `scripts/golden_xchacha.py` (§29.8) 는 3a golden 3종과 무관한 별개 파일이다.
+- **의도적 test-breakage 입장**: §29.13 항 10 대로 `test_hiu.py` 는 **의도적으로 재작성된다.** 계층 강제 기입 제거 (§28.4 항 7) 와 `!=` 검사 폐기 (§29.8) 는 사고가 아니라 본 절이 요구하는 결과이며, §12a 하에서 이런 breakage 는 **보존이 아니라 재유도 대상**이다 (§26.10 이 확립한 입장의 승계).
+- **선공표 규율**: §29.11 의 예측·상한·재anchor 예고는 **측정 이전에** 공표됐다. premap `$mul` 재anchor 는 사용자 승인 전에는 발효하지 않으며, 승인 전 S2-C2/C3 merge 를 금지한다. ceiling 초과 시 절차 (정직 FAIL → 귀속 → 사용자 결정 → cut ladder) 도 측정 이전에 고정됐다 — **판정 이후에 만들어진 절차는 절차가 아니다.**
+- **§28 정정의 성격**: §29.2 의 8건은 §28 원문을 **삭제하지 않고** 정정한다 (§12a 규칙 5). 그중 C2/C5/C6 은 §28 의 **판단 근거**를 무너뜨리므로 (8-7137 축 미채택 / D7 "제거 불가" / D7 미조사), 그 판단들은 본 절이 각각 §29.11 별항 2 · §29.10 · §29.2 C6 에서 대체한다.
+- **이월 항목 (기한 조건 포함, §29 몫)**: **D9** per-partition flush (§29.9 — Y4 ABI 개정 라운드) · **PE_Core D6** 68건 (§29.7 — 3조건 중 최선) · **Tensor_ALU O2** 49건 (§29.7 — 고아 판정 commit 동시) · **undriven-signal 탐지 lint 2/3** (§29.12 — §28.10 이월 목록 유지) · **예약 포트 기계 열거** (§29.10 항 6) · **4-way set-associative 비용 측정** (§29.3 — associativity 재협상 시).

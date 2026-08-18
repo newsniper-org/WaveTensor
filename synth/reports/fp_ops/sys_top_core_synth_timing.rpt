@@ -1,7 +1,7 @@
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
 --------------------------------------------------------------------------------------------------------------------------------------------------
 | Tool Version      : Vivado v.2025.2.1 (lin64) Build 6403652 Thu Mar 19 13:47:00 MDT 2026
-| Date              : Tue Aug 18 00:09:10 2026
+| Date              : Tue Aug 18 08:58:06 2026
 | Host              : cachyos-ybi-tuf running 64-bit CachyOS
 | Command           : report_timing_summary -file /home/ybi/WaveTensor/synth/reports/fp_ops/sys_top_core_synth_timing.rpt
 | Design            : Top_Core_gate_top
@@ -54,8 +54,8 @@ Table of Contents
 2. checking constant_clock (0)
 3. checking pulse_width_clock (0)
 4. checking unconstrained_internal_endpoints (0)
-5. checking no_input_delay (1230)
-6. checking no_output_delay (344)
+5. checking no_input_delay (1355)
+6. checking no_output_delay (347)
 7. checking multiple_clock (0)
 8. checking generated_clocks (0)
 9. checking loops (8)
@@ -85,16 +85,16 @@ Table of Contents
  There are 0 pins that are not constrained for maximum delay due to constant clock.
 
 
-5. checking no_input_delay (1230)
+5. checking no_input_delay (1355)
 ---------------------------------
- There are 1229 input ports with no input delay specified. (HIGH)
+ There are 1355 input ports with no input delay specified. (HIGH)
 
- There is 1 input port with no input delay but user has a false path constraint. (MEDIUM)
+ There are 0 input ports with no input delay but user has a false path constraint.
 
 
-6. checking no_output_delay (344)
+6. checking no_output_delay (347)
 ---------------------------------
- There are 344 ports with no output delay specified. (HIGH)
+ There are 347 ports with no output delay specified. (HIGH)
 
  There are 0 ports with no output delay but user has a false path constraint
 
@@ -139,7 +139,7 @@ Table of Contents
 
     WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
     -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
-      3.357        0.000                      0                18377        0.056        0.000                      0                18377        4.458        0.000                       0                  9851  
+      3.357        0.000                      0                19105        0.032        0.000                      0                19105        4.458        0.000                       0                 10056  
 
 
 All user specified timing constraints are met.
@@ -162,7 +162,7 @@ clk    {0.000 5.000}      10.000          100.000
 
 Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
 -----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
-clk                 3.357        0.000                      0                18377        0.056        0.000                      0                18377        4.458        0.000                       0                  9851  
+clk                 3.357        0.000                      0                19105        0.032        0.000                      0                19105        4.458        0.000                       0                 10056  
 
 
 ------------------------------------------------------------------------------------------------
@@ -194,7 +194,7 @@ From Clock:  clk
   To Clock:  clk
 
 Setup :            0  Failing Endpoints,  Worst Slack        3.357ns,  Total Violation        0.000ns
-Hold  :            0  Failing Endpoints,  Worst Slack        0.056ns,  Total Violation        0.000ns
+Hold  :            0  Failing Endpoints,  Worst Slack        0.032ns,  Total Violation        0.000ns
 PW    :            0  Failing Endpoints,  Worst Slack        4.458ns,  Total Violation        0.000ns
 ---------------------------------------------------------------------------------------------------
 
@@ -225,7 +225,7 @@ Slack (MET) :             3.357ns  (required time - arrival time)
   -------------------------------------------------------------------    -------------------
                          (clock clk rise edge)        0.000     0.000 r  
                                                       0.000     0.000 r  clk (IN)
-                         net (fo=9930, unset)         0.030     0.030    u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/clk
+                         net (fo=10135, unset)        0.030     0.030    u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/clk
                          FDRE                                         r  u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/fd_j_reg[4]/C
   -------------------------------------------------------------------    -------------------
                          FDRE (Prop_FDRE_C_Q)         0.076     0.106 r  u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/fd_j_reg[4]/Q
@@ -287,7 +287,7 @@ Slack (MET) :             3.357ns  (required time - arrival time)
 
                          (clock clk rise edge)       10.000    10.000 r  
                                                       0.000    10.000 r  clk (IN)
-                         net (fo=9930, unset)         0.043    10.043    u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/fd_xp_reg_r1_0_63_0_6/WCLK
+                         net (fo=10135, unset)        0.043    10.043    u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/fd_xp_reg_r1_0_63_0_6/WCLK
                          RAMD64E                                      r  u_core/u_decoder/u_core/g_v180c_fp.u_fp_stepseq/fd_xp_reg_r1_0_63_0_6/RAMD/CLK
                          clock pessimism              0.000    10.043    
                          clock uncertainty           -0.035    10.008    
@@ -305,18 +305,18 @@ Slack (MET) :             3.357ns  (required time - arrival time)
 
 Min Delay Paths
 --------------------------------------------------------------------------------------
-Slack (MET) :             0.056ns  (arrival time - required time)
-  Source:                 u_core/u_decoder/u_ehdec/cb_wave_number_reg[2]/C
-                            (rising edge-triggered cell FDCE clocked by clk  {rise@0.000ns fall@5.000ns period=10.000ns})
-  Destination:            u_core/u_decoder/u_ehdec/dec_wave_advanced_tag_reg[50]/D
-                            (rising edge-triggered cell FDCE clocked by clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+Slack (MET) :             0.032ns  (arrival time - required time)
+  Source:                 u_core/u_hiu/tlb_wr_phys_q_reg[14]/C
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            u_core/u_hiu/tlb_mem_reg_0_63_0_6/RAMC/I
+                            (rising edge-triggered cell RAMD64E clocked by clk  {rise@0.000ns fall@5.000ns period=10.000ns})
   Path Group:             clk
   Path Type:              Hold (Min at Fast Process Corner)
   Requirement:            0.000ns  (clk rise@0.000ns - clk rise@0.000ns)
-  Data Path Delay:        0.109ns  (logic 0.056ns (51.376%)  route 0.053ns (48.624%))
-  Logic Levels:           1  (CARRY8=1)
-  Clock Path Skew:        0.007ns (DCD - SCD - CPR)
-    Destination Clock Delay (DCD):    0.019ns
+  Data Path Delay:        0.114ns  (logic 0.038ns (33.333%)  route 0.076ns (66.667%))
+  Logic Levels:           0  
+  Clock Path Skew:        0.027ns (DCD - SCD - CPR)
+    Destination Clock Delay (DCD):    0.039ns
     Source Clock Delay      (SCD):    0.012ns
     Clock Pessimism Removal (CPR):    -0.000ns
 
@@ -324,28 +324,26 @@ Slack (MET) :             0.056ns  (arrival time - required time)
   -------------------------------------------------------------------    -------------------
                          (clock clk rise edge)        0.000     0.000 r  
                                                       0.000     0.000 r  clk (IN)
-                         net (fo=9930, unset)         0.012     0.012    u_core/u_decoder/u_ehdec/clk
-                         FDCE                                         r  u_core/u_decoder/u_ehdec/cb_wave_number_reg[2]/C
+                         net (fo=10135, unset)        0.012     0.012    u_core/u_hiu/clk
+                         FDRE                                         r  u_core/u_hiu/tlb_wr_phys_q_reg[14]/C
   -------------------------------------------------------------------    -------------------
-                         FDCE (Prop_FDCE_C_Q)         0.038     0.050 r  u_core/u_decoder/u_ehdec/cb_wave_number_reg[2]/Q
-                         net (fo=2, unplaced)         0.046     0.096    u_core/u_decoder/u_ehdec/cb_wave_number[2]
-                         CARRY8 (Prop_CARRY8_S[1]_O[1])
-                                                      0.018     0.114 r  u_core/u_decoder/u_ehdec/dec_wave_advanced_tag_reg[56]_i_1/O[1]
-                         net (fo=1, unplaced)         0.007     0.121    u_core/u_decoder/u_ehdec/wave_advanced_tag_c0[2]
-                         FDCE                                         r  u_core/u_decoder/u_ehdec/dec_wave_advanced_tag_reg[50]/D
+                         FDRE (Prop_FDRE_C_Q)         0.038     0.050 r  u_core/u_hiu/tlb_wr_phys_q_reg[14]/Q
+                         net (fo=1, unplaced)         0.076     0.126    u_core/u_hiu/tlb_mem_reg_0_63_0_6/DIC
+                         RAMD64E                                      r  u_core/u_hiu/tlb_mem_reg_0_63_0_6/RAMC/I
   -------------------------------------------------------------------    -------------------
 
                          (clock clk rise edge)        0.000     0.000 r  
                                                       0.000     0.000 r  clk (IN)
-                         net (fo=9930, unset)         0.019     0.019    u_core/u_decoder/u_ehdec/clk
-                         FDCE                                         r  u_core/u_decoder/u_ehdec/dec_wave_advanced_tag_reg[50]/C
-                         clock pessimism              0.000     0.019    
-                         FDCE (Hold_FDCE_C_D)         0.046     0.065    u_core/u_decoder/u_ehdec/dec_wave_advanced_tag_reg[50]
+                         net (fo=10135, unset)        0.039     0.039    u_core/u_hiu/tlb_mem_reg_0_63_0_6/WCLK
+                         RAMD64E                                      r  u_core/u_hiu/tlb_mem_reg_0_63_0_6/RAMC/CLK
+                         clock pessimism              0.000     0.039    
+                         RAMD64E (Hold_RAMD64E_CLK_I)
+                                                      0.055     0.094    u_core/u_hiu/tlb_mem_reg_0_63_0_6/RAMC
   -------------------------------------------------------------------
-                         required time                         -0.065    
-                         arrival time                           0.121    
+                         required time                         -0.094    
+                         arrival time                           0.126    
   -------------------------------------------------------------------
-                         slack                                  0.056    
+                         slack                                  0.032    
 
 
 

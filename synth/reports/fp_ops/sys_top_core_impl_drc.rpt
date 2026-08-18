@@ -1,7 +1,7 @@
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
 ---------------------------------------------------------------------------------------------------------------------------------------------
 | Tool Version : Vivado v.2025.2.1 (lin64) Build 6403652 Thu Mar 19 13:47:00 MDT 2026
-| Date         : Tue Aug 18 00:11:40 2026
+| Date         : Tue Aug 18 09:00:32 2026
 | Host         : cachyos-ybi-tuf running 64-bit CachyOS
 | Command      : report_drc -file /home/ybi/WaveTensor/synth/reports/fp_ops/sys_top_core_impl_drc.rpt
 | Design       : Top_Core_gate_top
@@ -735,12 +735,12 @@ Related violations: <none>
 
 RTSTAT-10#1 Warning
 No routable loads  
-344 net(s) have no routable loads. The problem bus(es) and/or net(s) are ats_resp_o, error_flag_o, lower_required_o, mem_access_granted_o,
+347 net(s) have no routable loads. The problem bus(es) and/or net(s) are ats_resp_o, error_flag_o, lower_required_o, mem_access_granted_o,
 mem_data_out_o[31:0], mem_dma_ack_o, mem_phys_addr_o[63:0],
 opcode_out_o[7:0], opref_noc_route_o[7:0], opref_port_id_o[3:0],
 opref_src_kind_o[3:0], output_frag_hdr_o[7:0], output_payload_o[63:0],
 output_tag_o[79:0], output_valid_o
- (the first 15 of 22 listed nets/buses).
+ (the first 15 of 24 listed nets/buses).
 Related violations: <none>
 
 

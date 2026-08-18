@@ -91,10 +91,10 @@ GATE S1-US — sys_top_core: system-integration synthesizability gate (spec §28
     device     = xcu55c-fsvh2892-2L-e  (Vivado out-of-context, synth + opt + place + phys_opt + route)
     constraint = 10.0 ns (100.00 MHz)
 
-    Fmax       =   117.61 MHz  (WNS +1.497 ns @ 10.0 ns; MEASUREMENT — §28 record axis. This top is not on the v2.0 datapath critical path and no Fmax contract has ever been declared for it; the number exists so the next measurement has something to drift against; >= 100.0 MHz: yes; binding verdict rides on LUT/DSP/premap-$mul only)   -> RECORDED
-    LUT sites  = 14850      (HARD ceiling 24799 — hard ceiling = anchor 14,850 (first repo-harness xcu55c routed measurement, this commit) x 1.67 (§23.10.10(g) overrun factor) = 24,799.5, floored to 24,799; binding from the NEXT commit onward)   -> PASS
+    Fmax       =   111.77 MHz  (WNS +1.053 ns @ 10.0 ns; MEASUREMENT — §28 record axis. This top is not on the v2.0 datapath critical path and no Fmax contract has ever been declared for it; the number exists so the next measurement has something to drift against; >= 100.0 MHz: yes; binding verdict rides on LUT/DSP/premap-$mul only)   -> RECORDED
+    LUT sites  = 14984      (HARD ceiling 24799 — hard ceiling = anchor 14,850 (first repo-harness xcu55c routed measurement, this commit) x 1.67 (§23.10.10(g) overrun factor) = 24,799.5, floored to 24,799; binding from the NEXT commit onward)   -> PASS
     DSP48      =    39      (EXACTLY 39 — anchor — 35 in PE_Core's einsum/dot path + 4 in FP_StepSeq's FP_Mul36; HIU 0. Any drift means the mapper's multiply inference moved and gets attributed before re-verdict (§26.6 MULT-deviation method))   -> PASS
-    premap $mul=   429      (EXACTLY 429 — §26.6 pin form; evidence: sys_top_core_premap_mul.log)   -> PASS
+    premap $mul=   381      (EXACTLY 429 — §26.6 pin form; evidence: sys_top_core_premap_mul.log)   -> FAIL
     BRAM       =     2      (EXACTLY 2; anchor — 2 RAMB18 inside FP_StepSeq; a system top legitimately infers memory, so the axis pins the EXACT count instead of demanding 0 as the operator gates do. Drift = a silent memory-inference change)   -> PASS
     CRIT WARN  =     8      (whitelist Synth 8-295 x8 — the 8 HIU TRNG ring oscillators are an INTENDED combinational feedback (they are the entropy source), so exactly 8 timing loops are expected and whitelisted BY COUNT; a 9th, or any other critical warning id, fails. Global set_msg_config demotion is forbidden (spec §28) — it would hide a real loop. DRC LUTLP-1 must be 0: that is the synth/constraints/hiu_trng_ro.xdc acknowledgement working, and it shows up as LUTLP-2 'Combinatorial Loop Allowed' x8 in the DRC warning list; evidence: sys_top_core_run.log)   -> PASS
                  issued: Synth 8-295 x8  <= whitelist
@@ -107,20 +107,20 @@ GATE S1-US — sys_top_core: system-integration synthesizability gate (spec §28
                  LUTLP-2 (Warning x8): Combinatorial Loop Allowed — Combinatorial Loop Allowed — this is the INTENDED HIU TRNG ring oscillator, acknowledged by synth/constraints/hiu_trng_ro.xdc (defect D2). Its presence is the constraint WORKING: without it the same 8 loops appear as LUTLP-1 Critical Warnings, which this checker counts as DRC errors and fails on
                  RTSTAT-10 (Warning x1): No routable loads — OOC top-level output nets have no routable loads — structural to out-of-context runs
 
-    LUT sites  = 14850      (see HARD line above; 14654 logic + 64 SRL; raw LUT cells 17753 before LUT-combining)
-    FF         =  9585      (informational; incl. the gate-top wrapper I/O flops)
-    CARRY8     =   702      (informational)
-      u_core         Top_Core         LUT 14850  FF  8012  DSP  39
-      u_hiu          HIU              LUT  2570  FF  3621  DSP   0
-      (u_hiu)        HIU              LUT  2538  FF  3556  DSP   0
-      dma_inst       dma_engine       LUT    33  FF    65  DSP   0
-      u_decoder      ISA_Decoder      LUT 12248  FF  4391  DSP  39
-      u_core         PE_Core          LUT 11118  FF  3016  DSP  39
-      (u_core)       PE_Core          LUT  6553  FF  1716  DSP  35
+    LUT sites  = 14984      (see HARD line above; 14672 logic + 64 SRL; raw LUT cells 17763 before LUT-combining)
+    FF         =  9674      (informational; incl. the gate-top wrapper I/O flops)
+    CARRY8     =   704      (informational)
+      u_core         Top_Core         LUT 14984  FF  7973  DSP  39
+      u_hiu          HIU              LUT  2706  FF  3582  DSP   0
+      (u_hiu)        HIU              LUT  2674  FF  3517  DSP   0
+      dma_inst       dma_engine       LUT    32  FF    65  DSP   0
+      u_decoder      ISA_Decoder      LUT 12245  FF  4391  DSP  39
+      u_core         PE_Core          LUT 11116  FF  3016  DSP  39
+      (u_core)       PE_Core          LUT  6551  FF  1716  DSP  35
       g_v180c_fp.u_fp_stepseq FP_StepSeq       LUT  4565  FF  1300  DSP   4
       (g_v180c_fp.u_fp_stepseq) FP_StepSeq       LUT  3734  FF   947  DSP   0
       u_add          FP_AddWide       LUT   794  FF   281  DSP   0
       u_mul          FP_Mul36         LUT    37  FF    72  DSP   4
-      u_ehdec        EHDecode         LUT  1130  FF  1375  DSP   0
-    GATE S1-US RESULT: PASS
+      u_ehdec        EHDecode         LUT  1129  FF  1375  DSP   0
+    GATE S1-US RESULT: FAIL
 

@@ -3,4 +3,5 @@
 # fp-ops cores are reset-free, so there is no reset false path
 # unless RST_FALSE_PATH=1 was passed (GATE S1 system tops).
 create_clock -name clk -period 10.000 [get_ports clk]
-set_false_path -from [get_ports rst]
+# rst false path: CLR/PRE 한정으로 좁혀 sys_top_core_gate_post.xdc 로 이동
+# (netlist 객체가 필요하므로 synth_design 이후에 source 된다)

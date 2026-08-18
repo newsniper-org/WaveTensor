@@ -28,7 +28,12 @@
 //     "코어가 reset-free 라서 reset false path 가 없다" 였던 것과 정확히
 //     반대의 이유 — 여기 코어는 reset 을 쓴다).
 //
-// wrapper I/O flop = 1,601: 입력 1,246 (token_valid 1 + instruction 416 +
+// wrapper I/O flop = 1,740 (spec §29.4 계약 확장 반영; 이전 1,601):
+// 입력 +135 (tlb_write_en 1 + tlb_write_partition 2 + tlb_write_index 4 +
+// tlb_write_virt 64 + tlb_write_phys 64), 출력 +4 (tlb_fault 1 +
+// tlb_fault_code 3). 내역은 아래 원 계산에 그대로 더한다.
+//
+// wrapper I/O flop (확장 전) = 1,601: 입력 1,246 (token_valid 1 + instruction 416 +
 // input_tag 80 + payload 64 + payload_b 64 + payload_b_valid 1 +
 // mem_data_in 32 + chacha_nonce 192 + chacha_key 256 + context_switch 1 +
 // partition_id 2 + interface_type 2 + ats_req 1 + pri_req 1 +
@@ -91,6 +96,14 @@ module Top_Core_gate_top #(
     input                          shadow_write_en_i,
     input  [3:0]                   shadow_index_i,
 
+    // ---- HIU partitioned-TLB fill 입력 (spec §29.4 — D4 실물화) ----
+    // 래퍼 관례대로 rst 를 제외한 신규 I/O 를 정확히 1회 등록한다.
+    input                          tlb_write_en_i,
+    input  [1:0]                   tlb_write_partition_i,
+    input  [3:0]                   tlb_write_index_i,
+    input  [ADDR_WIDTH-1:0]        tlb_write_virt_i,
+    input  [ADDR_WIDTH-1:0]        tlb_write_phys_i,
+
     // ---- 토큰 측 경계 출력 ----
     output reg [ADDR_WIDTH-1:0]    output_payload_o,
     output reg [TAG_WIDTH-1:0]     output_tag_o,
@@ -111,6 +124,8 @@ module Top_Core_gate_top #(
     output reg                     mem_dma_ack_o,
     output reg                     ats_resp_o,
     output reg                     pri_resp_o,
+    output reg                     tlb_fault_o,
+    output reg [2:0]               tlb_fault_code_o,
 
     // ---- TRNG 경계 출력 ----
     output reg [7:0]               rng_raw_o,
@@ -139,6 +154,11 @@ module Top_Core_gate_top #(
     reg [ADDR_WIDTH-1:0]       shadow_write_end_q;
     reg                        shadow_write_en_q;
     reg [3:0]                  shadow_index_q;
+    reg                        tlb_write_en_q;
+    reg [1:0]                  tlb_write_partition_q;
+    reg [3:0]                  tlb_write_index_q;
+    reg [ADDR_WIDTH-1:0]       tlb_write_virt_q;
+    reg [ADDR_WIDTH-1:0]       tlb_write_phys_q;
 
     // ---- core 출력 조합 넷 ----
     wire [ADDR_WIDTH-1:0]      output_payload_w;
@@ -158,6 +178,8 @@ module Top_Core_gate_top #(
     wire                       mem_dma_ack_w;
     wire                       ats_resp_w;
     wire                       pri_resp_w;
+    wire                       tlb_fault_w;
+    wire [2:0]                 tlb_fault_code_w;
     wire [7:0]                 rng_raw_w;
     wire                       rng_raw_valid_w;
     wire [63:0]                rng_word_w;
@@ -183,6 +205,11 @@ module Top_Core_gate_top #(
         shadow_write_end_q      <= shadow_write_end_i;
         shadow_write_en_q       <= shadow_write_en_i;
         shadow_index_q          <= shadow_index_i;
+        tlb_write_en_q          <= tlb_write_en_i;
+        tlb_write_partition_q   <= tlb_write_partition_i;
+        tlb_write_index_q       <= tlb_write_index_i;
+        tlb_write_virt_q        <= tlb_write_virt_i;
+        tlb_write_phys_q        <= tlb_write_phys_i;
 
         // ---- 출력 등록 (355 flops) ----
         output_payload_o        <= output_payload_w;
@@ -202,6 +229,8 @@ module Top_Core_gate_top #(
         mem_dma_ack_o           <= mem_dma_ack_w;
         ats_resp_o              <= ats_resp_w;
         pri_resp_o              <= pri_resp_w;
+        tlb_fault_o             <= tlb_fault_w;
+        tlb_fault_code_o        <= tlb_fault_code_w;
         rng_raw_o               <= rng_raw_w;
         rng_raw_valid_o         <= rng_raw_valid_w;
         rng_word_o              <= rng_word_w;
@@ -251,8 +280,15 @@ module Top_Core_gate_top #(
         .shadow_write_end     (shadow_write_end_q),
         .shadow_write_en      (shadow_write_en_q),
         .shadow_index         (shadow_index_q),
+        .tlb_write_en         (tlb_write_en_q),
+        .tlb_write_partition  (tlb_write_partition_q),
+        .tlb_write_index      (tlb_write_index_q),
+        .tlb_write_virt       (tlb_write_virt_q),
+        .tlb_write_phys       (tlb_write_phys_q),
         .ats_resp             (ats_resp_w),
         .pri_resp             (pri_resp_w),
+        .tlb_fault            (tlb_fault_w),
+        .tlb_fault_code       (tlb_fault_code_w),
         .rng_raw              (rng_raw_w),
         .rng_raw_valid        (rng_raw_valid_w),
         .rng_word             (rng_word_w),

@@ -92,9 +92,22 @@ module Top_Core #(
     input                              shadow_write_en,
     input  [3:0]                       shadow_index,
 
+    // ---- HIU partitioned-TLB fill control plane (spec §29.4) ----
+    // D4 실물화로 신설된 계약. Top_Core 는 **전부 passthrough** 한다 —
+    // 이 계층은 어떤 정책도 발명하지 않는다. 의미론은 HIU.v 의 포트
+    // 주석과 spec §29.4/§29.5/§29.6 을 참조하라.
+    input                              tlb_write_en,
+    input  [$clog2(NUM_PARTITIONS)-1:0] tlb_write_partition,
+    input  [$clog2(TLB_ENTRIES)-1:0]    tlb_write_index,
+    input  [ADDR_WIDTH-1:0]            tlb_write_virt,
+    input  [ADDR_WIDTH-1:0]            tlb_write_phys,
+
     // ---- HIU response signals exposed for system-level observability ----
     output                             ats_resp,
     output                             pri_resp,
+    // 호스트 프로그래밍 오류 전용 (§29.6). 변환 miss 는 여기 오지 않는다.
+    output                             tlb_fault,
+    output [2:0]                       tlb_fault_code,
 
     // ---- TRNG outputs (forwarded from HIU) ----
     output [7:0]                       rng_raw,
@@ -193,6 +206,13 @@ module Top_Core #(
         .partition_id      (partition_id),
         .chacha_nonce      (chacha_nonce),
         .chacha_key        (chacha_key),
+        .tlb_write_en      (tlb_write_en),
+        .tlb_write_partition(tlb_write_partition),
+        .tlb_write_index   (tlb_write_index),
+        .tlb_write_virt    (tlb_write_virt),
+        .tlb_write_phys    (tlb_write_phys),
+        .tlb_fault         (tlb_fault),
+        .tlb_fault_code    (tlb_fault_code),
         .phys_addr         (mem_phys_addr),
         .dma_data_out      (mem_data_out),
         .dma_ack           (mem_dma_ack),

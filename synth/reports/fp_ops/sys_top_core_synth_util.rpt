@@ -1,7 +1,7 @@
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
 ---------------------------------------------------------------------------------------------------------------------------------------------
 | Tool Version : Vivado v.2025.2.1 (lin64) Build 6403652 Thu Mar 19 13:47:00 MDT 2026
-| Date         : Tue Aug 18 00:08:54 2026
+| Date         : Tue Aug 18 08:57:51 2026
 | Host         : cachyos-ybi-tuf running 64-bit CachyOS
 | Command      : report_utilization -file /home/ybi/WaveTensor/synth/reports/fp_ops/sys_top_core_synth_util.rpt -hierarchical
 | Design       : Top_Core_gate_top
@@ -22,11 +22,11 @@ Table of Contents
 +-------------------------------------+-------------+------------+------------+---------+------+------+--------+--------+------+------------+
 |               Instance              |    Module   | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs | RAMB36 | RAMB18 | URAM | DSP Blocks |
 +-------------------------------------+-------------+------------+------------+---------+------+------+--------+--------+------+------------+
-| Top_Core_gate_top                   |       (top) |      16195 |      15935 |     132 |  128 | 9585 |      0 |      2 |    0 |         39 |
-|   (Top_Core_gate_top)               |       (top) |          0 |          0 |       0 |    0 | 1573 |      0 |      0 |    0 |          0 |
-|   u_core                            |    Top_Core |      16195 |      15935 |     132 |  128 | 8012 |      0 |      2 |    0 |         39 |
-|     u_hiu                           |         HIU |       2587 |       2587 |       0 |    0 | 3621 |      0 |      0 |    0 |          0 |
-|       (u_hiu)                       |         HIU |       2554 |       2554 |       0 |    0 | 3556 |      0 |      0 |    0 |          0 |
+| Top_Core_gate_top                   |       (top) |      16356 |      15980 |     248 |  128 | 9674 |      0 |      2 |    0 |         39 |
+|   (Top_Core_gate_top)               |       (top) |          0 |          0 |       0 |    0 | 1701 |      0 |      0 |    0 |          0 |
+|   u_core                            |    Top_Core |      16356 |      15980 |     248 |  128 | 7973 |      0 |      2 |    0 |         39 |
+|     u_hiu                           |         HIU |       2748 |       2632 |     116 |    0 | 3582 |      0 |      0 |    0 |          0 |
+|       (u_hiu)                       |         HIU |       2715 |       2599 |     116 |    0 | 3517 |      0 |      0 |    0 |          0 |
 |       dma_inst                      |  dma_engine |         33 |         33 |       0 |    0 |   65 |      0 |      0 |    0 |          0 |
 |     u_decoder                       | ISA_Decoder |      13575 |      13315 |     132 |  128 | 4391 |      0 |      2 |    0 |         39 |
 |       u_ehdec                       |    EHDecode |       1137 |       1137 |       0 |    0 | 1375 |      0 |      0 |    0 |          0 |
