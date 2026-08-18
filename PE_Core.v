@@ -1828,6 +1828,116 @@ module PE_Core #(
             frag_pending[15]    <= {ADDR_WIDTH{1'b0}};
             frag_tag_held    <= {TAG_WIDTH{1'b0}};
             frag_opcode_held <= 8'h00;
+            // v1.9.1 §31.3 (D10) — case_result_s2 뱅크의 **유일 게이트**.
+            // 미리셋이면 warm reset 해제 직후 첫 사이클의 stage-2 가 rst
+            // 이전에 래치된 1 을 읽어, dispatch 가 0건인데도 구 명령의
+            // cr_* 가 output_* 로 1회 commit 된다 (유령 wave 토큰 / 유령
+            // error_flag — 두 발현형 모두 실측). 상위 우선순위 arm
+            // (frag_idx / mul_valid_p2 / div_valid_p2 / div_b_zero_p2 /
+            // fp_valid_p2) 은 전부 rst 분기에서 대입되므로 가려주지
+            // 못한다. §31.3 이 형식3(reset-free + `pe_active && dec_valid`)
+            // 을 명시 기각한다 — 그 형식은 EHDecode.dec_valid 와
+            // Cluster.pe_active 가 rst 중 0 이라는 **모듈 간 미기록 계약**
+            // 에 의존하는데, PE_Core 는 단독 인스턴스화 테스트 대상이다.
+            // 자기완결적 형식2 (rst 분기 명시 대입) 가 정답이다.
+            cr_dispatch_valid <= 1'b0;
+            // -----------------------------------------------------------------
+            // v1.9.1 §31.5 (D6) — 형식2 전건 (68건).
+            //
+            // 아래 67건은 §29.7 이 (a) 판정(reset 불필요 데이터 래치)한 군
+            // 이며, 기능상으로는 자격 비트가 이미 거른다. 그럼에도 rst 분기에
+            // 명시 대입하는 이유는 **실리콘 위험**이다: rst 분기에 없는
+            // 레지스터는 Vivado 가 FDRE(R=const0) + `!rst` CE 로 매핑하므로
+            // `rst` 가 CE LUT 의 **데이터** 입력이 되어, `set_false_path
+            // -from [get_ports rst]` 로 타이밍이 검증되지 않은 동기 경로가
+            // 데이터 캡처를 게이팅한다 (§29.7). 형식2 는 이 경로를 FDCE/CLR
+            // 로 옮겨 rst→LUT 데이터 입력 12 → 0 으로 없앤다.
+            //
+            // 형식3(가드 없는 reset-free 블록 분리)은 실측 기각됐다 — HIU 와
+            // 달리 PE_Core 에는 RAM 추론 종속이 0 이라(`Synth 8-4767` 0건)
+            // 면적 이득이 없고, 비용은 형식2 의 1.8배(+258 vs +143 LUT)인데
+            // 위험은 절반만(12→5) 제거하며, 3a-C4 의 stage-1 `case` 편집면과
+            // 정면 충돌한다 (§31.5). 형식1(`if (!rst)` 가드 분리)은 CE 로
+            // 접혀 위험이 그대로 남으므로 §29.7 이 이미 기각했다.
+            //
+            // 파형 계약: 본 대입은 rst 구간의 값만 정의하므로 cold reset
+            // 파형은 **완전 불변**이고, 4-state 에서는 `cr_payload` /
+            // `cr_mem_addr` 의 초기 X 가 0 이 된다. 그 X 가 D11(§31.4)의
+            // 유일한 신호였으므로 D11 수리를 같은 commit 에 동반한다.
+            // -----------------------------------------------------------------
+            // case_result_s2 뱅크 (v1.9 §26.2) — 33건
+            cr_decode_error    <= 1'b0;
+            cr_tag_mismatch    <= 1'b0;
+            cr_module_lower    <= 1'b0;
+            cr_hard_error      <= 1'b0;
+            cr_hard_lower      <= 1'b0;
+            cr_needs_regs_free <= 1'b0;
+            cr_valid_out       <= 1'b0;
+            cr_is_frag_emit    <= 1'b0;
+            cr_memory_req      <= 1'b0;
+            cr_launch_fp       <= 1'b0;
+            cr_fp_armed        <= 1'b0;
+            cr_launch_vfma     <= 1'b0;
+            cr_launch_deq      <= 1'b0;
+            cr_opcode_out      <= 8'h00;
+            cr_payload         <= {ADDR_WIDTH{1'b0}};
+            cr_payload_hi      <= {ADDR_WIDTH{1'b0}};
+            cr_tag             <= {TAG_WIDTH{1'b0}};
+            cr_mem_addr        <= {ADDR_WIDTH{1'b0}};
+            cr_frag_total_m1   <= 4'd0;
+            cr_fp_a            <= 32'h0;
+            cr_fp_b            <= 32'h0;
+            cr_fp_c            <= 32'h0;
+            cr_fp_subop        <= 4'd0;
+            cr_fp_dtype        <= 4'd0;
+            cr_fp_opcode_held  <= 8'h00;
+            cr_fp_tag_held     <= {TAG_WIDTH{1'b0}};
+            cr_vfma_a          <= 128'h0;
+            cr_vfma_b          <= 8'h00;
+            cr_vfma_c          <= 32'h0;
+            cr_vfma_is_int8    <= 1'b0;
+            cr_deq_a           <= 128'h0;
+            cr_deq_is_int8     <= 1'b0;
+            // 64-bit MUL 파이프라인 데이터 래치 — 5건
+            mul_a_p1        <= {ADDR_WIDTH{1'b0}};
+            mul_b_p1        <= {ADDR_WIDTH{1'b0}};
+            mul_tag_p1      <= {TAG_WIDTH{1'b0}};
+            mul_result_p2   <= {ADDR_WIDTH{1'b0}};
+            mul_tag_p2      <= {TAG_WIDTH{1'b0}};
+            // bit-serial DIV/MOD/DIVMOD 데이터 래치 — 10건
+            div_iter_left   <= 7'd0;
+            div_dividend    <= {ADDR_WIDTH{1'b0}};
+            div_remainder   <= {ADDR_WIDTH{1'b0}};
+            div_divisor     <= {ADDR_WIDTH{1'b0}};
+            div_is_mod      <= 1'b0;
+            div_is_divmod   <= 1'b0;
+            div_b_zero      <= 1'b0;
+            div_tag_held    <= {TAG_WIDTH{1'b0}};
+            div_result_p2   <= {ADDR_WIDTH{1'b0}};
+            div_tag_p2      <= {TAG_WIDTH{1'b0}};
+            // fp32 step sequencer 피연산자/결과 래치 — 9건
+            fp_a_q          <= 32'h0;
+            fp_b_q          <= 32'h0;
+            fp_c_q          <= 32'h0;
+            fp_subop_q      <= 4'd0;
+            fp_dtype_q      <= 4'd0;
+            fp_opcode_held  <= 8'h00;
+            fp_tag_held     <= {TAG_WIDTH{1'b0}};
+            fp_result_p2    <= {ADDR_WIDTH{1'b0}};
+            fp_tag_p2       <= {TAG_WIDTH{1'b0}};
+            // VFMA lane loop 데이터 래치 — 6건
+            vfma_a_q        <= 128'h0;
+            vfma_b_q        <= 8'h00;
+            vfma_c_q        <= 32'h0;
+            vfma_is_int8    <= 1'b0;
+            vfma_lane       <= 5'd0;
+            vfma_stage      <= 32'h0;
+            // DEQUANT lane loop 데이터 래치 — 5건
+            deq_a_q         <= 128'h0;
+            deq_is_int8     <= 1'b0;
+            deq_lane        <= 5'd0;
+            deq_stage       <= 48'h0;
+            frag0_hold      <= 64'h0;
         end else begin
             output_valid    <= 1'b0;
             memory_req      <= 1'b0;
@@ -1861,6 +1971,14 @@ module PE_Core #(
             cr_launch_vfma     <= 1'b0;
             cr_launch_deq      <= 1'b0;
             cr_opcode_out      <= dec_opcode;
+            // v1.9.1 §31.4 (D11) — `cr_payload` / `cr_mem_addr` 는 여기서
+            // per-cycle 기본값을 두지 **않는다.** 두 레지스터는 64-bit 폭
+            // 이고 각각 75/2 개 arm 에서 기입되므로, 기본값을 두면 hold(CE)
+            // 구조가 사라지고 64-bit 폭 mux 트리가 생겨 **+778 LUT** 가
+            // 든다 (/tmp 격리 OOC 실측: 20,252 → 21,030). §31.10 이 선공표한
+            // 상한 +250 을 혼자서 3배 넘긴다. 대신 D11 은 (i) stage-2 복사의
+            // 자격 가드 + (ii) 실제로 누출하는 2개 arm 의 전건 대입 으로
+            // 처리한다 — 아래 stage-2 성공 arm 과 0x05 / 0x6A arm 참조.
 
             // Multi-cycle MUL pipeline advance. v1.5.3a: launch gated on
             // frag_idx == FRAG_IDLE so a MUL cannot enter the pipeline
@@ -2134,6 +2252,16 @@ module PE_Core #(
                             cr_mem_addr   <= dec_input_payload + {32'h0, dec_eff_mem_offset};
                             cr_memory_req <=  1'b1;
                             cr_valid_out <=  1'b1;
+                            // v1.9.1 §31.4 (D11) — 전건 대입. ST 는 자신의
+                            // 토큰 payload 를 쓰지 않는데 stage-2 는
+                            // `output_payload <= cr_payload` 를 수행하고
+                            // 이 arm 은 `cr_valid_out <= 1'b1` 이므로, 대입이
+                            // 없으면 **직전 명령의 payload 가 output_valid=1
+                            // 인 토큰에 실려 나간다** (실측 확인). 자격 가드
+                            // 로는 막을 수 없는 유일한 클래스이므로 여기서
+                            // 결정적 0 을 못박는다. ST 토큰 payload 의
+                            // 의미론은 ISA 미규정 — 0 은 보수적 선택이다.
+                            cr_payload    <= {ADDR_WIDTH{1'b0}};
                         end
                         8'h10: begin
                             cr_payload <= dec_input_payload + dec_eff_b_value;
@@ -2751,6 +2879,12 @@ module PE_Core #(
                                 cr_valid_out <=  1'b0;
                             end else begin
                                 cr_valid_out <=  1'b1;
+                                // v1.9.1 §31.4 (D11) — 전건 대입. 위 주석이
+                                // 적은 대로 ack 는 "payload of its own" 이
+                                // 없는데, stage-2 는 그래도 cr_payload 를
+                                // 복사한다. 0x05 와 같은 클래스 (전수 정적
+                                // 분석 결과 이 둘이 전부다).
+                                cr_payload   <= {ADDR_WIDTH{1'b0}};
                             end
                         end
                         // (The old 8'h6B WIDEN 4-fragment arm — with its
@@ -3404,10 +3538,41 @@ module PE_Core #(
                     // emit arms ever wrote output_frag_hdr).
                     output_tag     <= cr_tag;
                     opcode_out     <= cr_opcode_out;
-                    output_payload <= cr_payload;
                     output_valid   <= cr_valid_out;
                     memory_req     <= cr_memory_req;
-                    mem_addr       <= cr_mem_addr;
+                    // v1.9.1 §31.4 (D11) — 자격 가드. 이 두 줄은 바로 위의
+                    // `output_valid` / `memory_req` 와 달리 **무조건** 복사
+                    // 였다: 그 opcode 가 해당 필드를 쓰지 않았으면 미기입
+                    // 레지스터가 모듈 출력으로 나간다. §29.6 이 HIU
+                    // `phys_addr` 에 규범화한 것과 동형이며, "소비자가
+                    // 자격자로 거른다" 는 계약이 spec 어디에도 없었다는
+                    // 것이 §31.4 의 지적이다. 여기서 자격자를 명시한다.
+                    //
+                    // v1.9.1 §31.14 — **이 가드는 선택이 아니다.**
+                    // `Cluster` 의 NoC bank (OPREF.src_kind=1) 는 L-PE 슬롯의
+                    // 저장소로 `output_payload` 를 그대로 재사용하고 자격자
+                    // 없이 조합적으로 읽는다 (MU/DU 처럼 전용 bank 레지스터를
+                    // 두지 않는 면적 최적화). 따라서 `output_valid == 0` 인
+                    // 사이클에 이 레지스터가 움직이면 **토큰을 내지 않은
+                    // 명령이 다음 소비자의 B 피연산자를 덮어쓴다.** §31.13.3
+                    // 은 그 차이를 "masked" 로 분류했으나 적대 검증이 Cluster
+                    // 경계에서 관측 가능함을 실증했다 (§31.14.2).
+                    //
+                    //     불변식 H1 — `output_payload` 는 `output_valid` 가
+                    //     뜨는 사이클에만 바뀐다.
+                    //     불변식 H2 — `mem_addr` 는 `memory_req` 가 뜨는
+                    //     사이클에만 바뀐다.
+                    //
+                    // 두 불변식은 `scripts/lint_output_payload_hold.py` 가
+                    // `make lint` 에서 정적으로 집행하고,
+                    // `test_pe.py::test_pe_output_payload_hold_invariant` 가
+                    // 런타임으로 감시한다. 이 파일의 **모든**
+                    // `output_payload <=` / `mem_addr <=` 대입은 (i) rst arm,
+                    // (ii) 같은 블록에 `output_valid <= 1'b1` 이 있는 emit arm,
+                    // (iii) 자격자와 **같은 식**으로 인라인 가드된 복사 —
+                    // 셋 중 하나여야 한다.
+                    if (cr_valid_out)   output_payload <= cr_payload;
+                    if (cr_memory_req)  mem_addr       <= cr_mem_addr;
                     if (cr_is_frag_emit) begin
                         output_frag_hdr    <= 8'h01;   // idx=0 total_m1=1
                         frag_pending[1]    <= cr_payload_hi;

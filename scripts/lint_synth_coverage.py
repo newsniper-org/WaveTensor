@@ -25,7 +25,8 @@ checkout 에서도 동일한 판정이 나온다)
      COVERAGE 표에 없으면 FAIL. (= 합성 지위를 선언하지 않은 신규 모듈)
   2. **stale 금지**: COVERAGE 표에 있으나 Makefile 에 없는 모듈이 있으면
      FAIL. (= 사라진 모듈의 유령 선언)
-  3. **래칫**: `uncovered` / `measured-pending` 지위의 개수가 아래 선언된
+  3. **래칫**: `uncovered` / `measured-pending` / `superseded` /
+     `reference` 지위의 개수가 아래 선언된
      상한을 넘으면 FAIL. 지위 강등(gate → uncovered)은 상한을 올리는
      편집을 강제하므로 조용히 일어날 수 없다.
   4. **소리내기**: `gate` 가 아닌 모든 항목을 매 실행 stdout 에 열거한다.
@@ -40,6 +41,7 @@ Exit 0 = 전 모듈의 합성 지위가 선언되어 있고 래칫 위반 없음
 Exit 1 = 위반 (미분류 / stale / 래칫 초과).
 """
 
+import ast
 import re
 import sys
 from pathlib import Path
@@ -49,7 +51,14 @@ MAKEFILE = REPO_ROOT / "Makefile"
 
 # 래칫 상한 — 낮추는 편집만 정당하다. 올리려면 그 자체가 리뷰 대상이다.
 UNCOVERED_MAX = 2
-MEASURED_PENDING_MAX = 3
+# v1.9.1 §31.6 — 3건 전부 `superseded` 2 + `reference` 1 로 이동했으므로
+# 이 상한은 **완화가 아니라 0 으로 인하**된다. 새 `measured-pending` 은
+# 이제 상한 자체가 막는다.
+MEASURED_PENDING_MAX = 0
+# `superseded` 래칫 — §31.6 이 규정한 ≤ 3.
+SUPERSEDED_MAX = 3
+# `reference` 래칫 — 현재 ALU_Extended 1건. 늘리려면 그 편집이 리뷰 대상이다.
+REFERENCE_MAX = 1
 
 # ---------------------------------------------------------------------------
 # 합성 지위 선언표 (spec §28.4)
@@ -60,6 +69,29 @@ MEASURED_PENDING_MAX = 3
 #                               binding gate 는 없다.
 #   status "measured-pending" — 실측은 있으나 편입 보류. 보류 사유가
 #                               `why` 에 있어야 한다.
+#   status "superseded"       — (v1.9.1 §31.6 신설, §28.4 5번째 지위) 기능이
+#                               다른 모듈로 **이관 완료**됐음이 확정되어 합성
+#                               대상이 아닌 RTL. 등재 요건 4건 — `canonical`
+#                               (정본 모듈), `canonical_test` (그 정본의 값
+#                               검증 테스트 산문 설명), `canonical_test_refs`
+#                               (그 테스트의 **기계 판독 가능한** 참조 목록),
+#                               `deadline` (폐기 판정 기한 조건).
+#                               하나라도 비면 비영 종료한다.
+#
+#                               v1.9.1 §31.14 강화: `canonical_test` 는 원래
+#                               **문자열의 존재만** 검사됐다 — 즉 정본 테스트가
+#                               삭제되거나 이름이 바뀌어도 lint 는 조용했다.
+#                               "정본이 있고 그것이 검증됐다" 가 근거인데
+#                               그 근거를 검증하지 않는 lint 는 근거의 시늉일
+#                               뿐이다. 이제 `canonical_test_refs` 의 각 항목이
+#                               (a) 실제 파일의 실제 async 테스트 함수로
+#                               해소되고, (b) 그 함수가 DUT 신호를 읽는 값
+#                               assert 를 최소 1개 가진다는 것까지 AST 로
+#                               확인한다.
+#   status "reference"        — (v1.9.1 §31.6 신설) 통합 지점이 소멸했으나
+#                               값 검증 테스트가 건전하고 능동 유지보수된
+#                               참조 구현. **비합성 대상**임을 명시한다.
+#                               `why` + `how` 필수.
 #   status "uncovered"        — 합성 경로 없음. 사유가 `why` 에 있어야 한다.
 # ---------------------------------------------------------------------------
 COVERAGE = {
@@ -97,33 +129,73 @@ COVERAGE = {
                "Vivado — 실측 아카이브 synth/lattice/reports/cluster_v19b_*",
     },
     "Tensor_ALU": {
-        "status": "measured-pending",
+        "status": "superseded",
         "how": "정찰 실측 (xcu55c OOC gate_top, post-route): LUT 4,486 / "
-               "FF 7,178 / DSP48 310 / Fmax 155.79 MHz — spec §28.8",
-        "why": "고아 지위(폐기 vs 통합) 미확정. 편입은 gate 를 통해 설계를 "
-               "merge-blocker 로 약속하는 행위인데, MATMUL(0x30) 이 실측상 "
-               "무동작(무한 램프 — spec §28.8 결함 O1)이므로 지금 면적을 "
-               "gate 로 고정하면 죽은 설계를 규범화하게 된다. 지위 판정이 "
-               "선행해야 한다.",
+               "FF 7,178 / DSP48 310 / Fmax 155.79 MHz — spec §28.8. "
+               "합성 편입 경로는 신설하지 않는다 (GATE S1 전 축 0 기여).",
+        "canonical": "PE_Core (0x30 matmul_func / 0x31 인라인 lane add / "
+                     "0x32 EINSUM 2단 SUBSCRIPT dispatch)",
+        "canonical_test": "test_isa_decoder.py::test_matmul_2x2 "
+                          "(A=[[1,2],[3,4]] B=[[5,6],[7,8]] -> [[19,22],"
+                          "[43,50]] 값 assert PASS) + test_tensor_add",
+        "canonical_test_refs": [
+            ("test_isa_decoder.py", "test_matmul_2x2"),
+            ("test_isa_decoder.py", "test_tensor_add"),
+        ],
+        "deadline": "파일 폐기 실행은 사용자 결정 1건 (spec §31.6 — §12a "
+                    "규칙 6 절차의 (a) 소비자 audit 과 (b) 정본 지정은 이미 "
+                    "충족돼 있다). 그때까지 test_tensor_alu.py 가 §28.4 "
+                    "항 8 형식으로 결함을 loud 하게 유지한다.",
+        "why": "superseded duplicate — 소비자 0 (.v 인스턴스 0 / synth "
+               "read_verilog 목록 0 / 외부 sibling 리포 4곳 grep 0). "
+               "0x32 는 **현행 ISA 에 없는 의미론**(EINSUM 이 아니라 "
+               "retired TENSOR_MUL)이고 0x30 은 프로젝트가 기각한 4x4 "
+               "unrolled pre-mitigation shape 다. MATMUL(0x30) 무동작은 "
+               "수리 기각 상태로 남는다 (spec §31.7 — 정답 구현은 premap "
+               "$mul 31->76 / DSP48 310->~760 으로 이미 기각된 자원 폭증을 "
+               "복원한다). O2 (Synth 8-7137 x49) 수리는 소멸 (spec §31.8).",
     },
     "SIMD_ALU": {
-        "status": "measured-pending",
+        "status": "superseded",
         "how": "정찰 실측 (xcu55c OOC gate_top, 45 ns closure): LUT 10,001 / "
-               "CARRY8 1,608 / Fmax 22.47 MHz — spec §28.8",
-        "why": "고아 지위 미확정. 22.47 MHz 는 프로젝트 100 MHz 문맥의 "
-               "4.45x 미달이고 병목은 조합 divider 체인(CARRY8 159단)이다 — "
-               "수리는 PE_Core 의 bit-serial 상태기계 채택 = 인터페이스·"
-               "latency 변경이라 '의미 보존' 이 아니다. 지위 판정 선행.",
+               "CARRY8 1,608 / Fmax 22.47 MHz — spec §28.8.",
+        "canonical": "PE_Core (0x10/0x11/0x12/0x13/0x1C/0x1F 전부 구현; "
+                     "0x13/0x1C/0x1D 는 bit-serial FSM)",
+        "canonical_test": "test_isa_decoder.py 스칼라 ALU/DIV/MOD/DIVMOD "
+                          "값 검증군 (192 케이스 전건 PASS)",
+        "canonical_test_refs": [
+            ("test_isa_decoder.py", "test_add_with_imm"),
+            ("test_isa_decoder.py", "test_add_with_opref_uses_payload_b"),
+            ("test_isa_decoder.py", "test_divrem"),
+            ("test_isa_decoder.py", "test_bitwise_and"),
+            ("test_isa_decoder.py", "test_bitwise_or"),
+            ("test_isa_decoder.py", "test_bitwise_xor"),
+        ],
+        "deadline": "`board_hw_plan.md:173` 의 contingency 등재("
+                    "ECP5 84K LUT 부족 시 대체) 무효화가 선행한다. "
+                    "무효화 근거는 확보돼 있다 — §28.8 O3 실측 22.47 MHz "
+                    "는 100 MHz 문맥의 4.45x 미달이라 대체제로서 실효성이 "
+                    "없다. 그 다음이 사용자 결정 1건.",
+        "why": "superseded duplicate — 디코드하는 opcode 6종이 전부 "
+               "PE_Core 에 구현돼 있고, 정작 SIMD 계열 ISA opcode "
+               "0x60-0x65/0x69 는 하나도 디코드하지 않는다 (lane-parallel "
+               "형태의 ISA 진입점 0건). 값 테스트 9/9 는 건전하다 — "
+               "폐기 사유는 결함이 아니라 중복이다.",
     },
     "ALU_Extended": {
-        "status": "measured-pending",
+        "status": "reference",
         "how": "정찰 실측 (xcu55c OOC gate_top, post-route): LUT 606 / "
-               "FF 274 / DSP48 20 / Fmax 167.31 MHz — spec §28.8",
-        "why": "고아 지위 미확정. 3개 중 유일하게 Synth 경고 0건이고 "
-               "2026-07-14 까지 능동 유지보수됐다 (벤더 attribute 이행) — "
-               "즉 폐기 후보가 아니라 통합 후보로 보이지만, 통합 지점 "
+               "FF 274 / DSP48 20 / Fmax 167.31 MHz — spec §28.8. "
+               "**비합성 대상** — 합성 편입 경로를 신설하지 않는다.",
+        "why": "reference implementation 재분류 (spec §31.6). 3개 중 "
+               "유일하게 Synth 경고 0건이고 2026-07-14(7105e3c)까지 능동 "
+               "유지보수됐으며 값 테스트 16/16 이 전부 result 값을 "
+               "assert 한다 — 즉 폐기 후보가 아니다. 다만 통합 지점 "
                "(claude.md §6 'PE.v = ISA_Decoder + ALU wrapper') 자체가 "
-               "Cluster→PE_Core 직결로 대체된 상태다. 지위 판정 선행.",
+               "Cluster->PE_Core 직결로 소멸했으므로 `measured-pending` "
+               "(= 편입 판정 대기) 은 이미 거짓이 된 사유다. 비합성 참조 "
+               "구현을 repo 에 유지하는 것의 정당성 검토는 stable release "
+               "선언 라운드로 이월한다.",
     },
     "PE": {
         "status": "uncovered",
@@ -147,7 +219,8 @@ COVERAGE = {
     },
 }
 
-VALID_STATUS = ("gate", "harness", "measured-pending", "uncovered")
+VALID_STATUS = ("gate", "harness", "measured-pending", "superseded",
+                "reference", "uncovered")
 
 
 def parse_makefile_mods():
@@ -173,6 +246,68 @@ def parse_makefile_mods():
     return branch
 
 
+_TEST_AST_CACHE = {}
+
+
+def _test_funcs(fname):
+    """test 파일의 (함수명 -> node) 와 원본 소스. AST 로 1회만 파싱한다."""
+    if fname not in _TEST_AST_CACHE:
+        path = REPO_ROOT / fname
+        if not path.exists():
+            _TEST_AST_CACHE[fname] = (None, None)
+        else:
+            src = path.read_text()
+            funcs = {n.name: n for n in ast.walk(ast.parse(src))
+                     if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+            _TEST_AST_CACHE[fname] = (src, funcs)
+    return _TEST_AST_CACHE[fname]
+
+
+def _resolve_canonical_test(module, ref):
+    """v1.9.1 §31.14 — `canonical_test_refs` 항목 1건을 기계 검증한다.
+
+    반환: 위반 사유 문자열 리스트 (빈 리스트 = OK).
+
+    검사 2단:
+      (a) 그 파일의 그 이름이 실제 `async def` 테스트 함수로 해소되는가.
+          (정본 테스트가 삭제/개명되면 `superseded` 등재 근거가 사라진다)
+      (b) 그 함수가 **DUT 신호를 읽는 값 assert** 를 최소 1개 갖는가.
+          (`dut.` 를 참조하는 `assert ... == ...`). 이것이 없으면 그 테스트는
+          §28.4 항 8(a) 의 "값 검사" 요건을 만족하지 못하므로 정본의 근거가
+          될 수 없다 — 바로 구 `test_tensor_alu.py` 가 그랬다.
+    """
+    fname, tname = ref
+    problems = []
+    src, funcs = _test_funcs(fname)
+    if src is None:
+        return [f"{module}: canonical_test_refs 의 파일 {fname} 이 없다"]
+    node = funcs.get(tname)
+    if node is None:
+        return [f"{module}: canonical_test_refs {fname}::{tname} 가 해소되지 "
+                "않는다 — 정본의 값 검증 테스트가 삭제/개명됐다. "
+                "`superseded` 등재 근거는 '안 쓰인다' 가 아니라 '정본이 있고 "
+                "그것이 검증됐다' 이므로 (§12a 규칙 6), 이 참조가 끊기면 "
+                "등재 자체가 무효다."]
+    if not isinstance(node, ast.AsyncFunctionDef):
+        problems.append(f"{module}: {fname}::{tname} 은 `async def` 가 "
+                        "아니다 — cocotb 테스트가 아니다")
+    has_value_assert = False
+    for a in ast.walk(node):
+        if not isinstance(a, ast.Assert):
+            continue
+        seg = ast.get_source_segment(src, a) or ""
+        if "dut." in seg and ("==" in seg or "!=" in seg):
+            has_value_assert = True
+            break
+    if not has_value_assert:
+        problems.append(
+            f"{module}: {fname}::{tname} 에 DUT 신호를 읽는 값 assert 가 "
+            "없다 (§28.4 항 8(a)). 값을 보지 않는 테스트는 정본의 검증 "
+            "근거가 될 수 없다 — 구 test_tensor_alu.py 의 "
+            "`alu_valid == 1` 단독 assert 가 정확히 이 형태였다.")
+    return problems
+
+
 def main():
     mods = parse_makefile_mods()
 
@@ -180,13 +315,26 @@ def main():
         if e["status"] not in VALID_STATUS:
             sys.exit(f"lint_synth_coverage: {name}: 알 수 없는 status "
                      f"{e['status']!r} (허용: {VALID_STATUS})")
-        if e["status"] in ("measured-pending", "uncovered") and not e.get("why"):
+        if e["status"] in ("measured-pending", "superseded", "reference",
+                           "uncovered") and not e.get("why"):
             sys.exit(f"lint_synth_coverage: {name}: status "
                      f"{e['status']!r} 는 `why` 사유 문자열이 필수다.")
-        if e["status"] in ("gate", "harness", "measured-pending") \
-                and not e.get("how"):
+        if e["status"] in ("gate", "harness", "measured-pending",
+                           "superseded", "reference") and not e.get("how"):
             sys.exit(f"lint_synth_coverage: {name}: status "
                      f"{e['status']!r} 는 `how` 재현 경로가 필수다.")
+        # v1.9.1 §31.6 — `superseded` 등재 요건 3건. 하나라도 비면 FAIL.
+        # "안 쓰인다" 가 아니라 "정본이 있고 그것이 검증됐다" 가 근거여야
+        # 한다는 §12a 규칙 6 의 기계 집행이다.
+        if e["status"] == "superseded":
+            for key in ("canonical", "canonical_test", "canonical_test_refs",
+                        "deadline"):
+                if not e.get(key):
+                    sys.exit(
+                        f"lint_synth_coverage: {name}: status 'superseded' "
+                        f"는 `{key}` 가 필수다 (§31.6 등재 요건 + §31.14 "
+                        "기계 해소 요건: 정본 모듈 / 정본의 값 검증 테스트 / "
+                        "그 테스트의 기계 판독 참조 / 폐기 판정 기한 조건).")
 
     unclassified = [m for m in mods if m not in COVERAGE]
     stale = [k for k in COVERAGE if k not in mods]
@@ -200,17 +348,32 @@ def main():
         names = sorted(by_status[s])
         print(f"  {s:<17s} {len(names)}: {', '.join(names) or '-'}")
     print()
-    for s in ("harness", "measured-pending", "uncovered"):
+    for s in ("harness", "measured-pending", "superseded", "reference",
+              "uncovered"):
         for name in sorted(by_status[s]):
             e = COVERAGE[name]
             print(f"  [{s}] {name}")
             if e.get("how"):
                 print(f"      경로: {e['how']}")
+            if e.get("canonical"):
+                print(f"      정본: {e['canonical']}")
+            if e.get("canonical_test"):
+                print(f"      정본검증: {e['canonical_test']}")
+            if e.get("canonical_test_refs"):
+                refs = ", ".join(f"{f}::{t}"
+                                 for f, t in e["canonical_test_refs"])
+                print(f"      정본검증(해소됨): {refs}")
+            if e.get("deadline"):
+                print(f"      기한: {e['deadline']}")
             if e.get("why"):
                 print(f"      사유: {e['why']}")
     print()
 
     fail = []
+    # v1.9.1 §31.14 — `canonical_test` 를 문자열이 아니라 **실체**로 검증한다.
+    for name, e in sorted(COVERAGE.items()):
+        for ref in e.get("canonical_test_refs", ()):
+            fail.extend(_resolve_canonical_test(name, ref))
     if unclassified:
         fail.append(
             f"미분류 모듈 {unclassified} — cocotb MOD 에는 있으나 COVERAGE "
@@ -229,6 +392,12 @@ def main():
     if n_pend > MEASURED_PENDING_MAX:
         fail.append(f"래칫 위반: measured-pending {n_pend} > 상한 "
                     f"{MEASURED_PENDING_MAX}")
+    n_sup = len(by_status["superseded"])
+    n_ref = len(by_status["reference"])
+    if n_sup > SUPERSEDED_MAX:
+        fail.append(f"래칫 위반: superseded {n_sup} > 상한 {SUPERSEDED_MAX}")
+    if n_ref > REFERENCE_MAX:
+        fail.append(f"래칫 위반: reference {n_ref} > 상한 {REFERENCE_MAX}")
 
     if fail:
         for f in fail:
@@ -237,7 +406,8 @@ def main():
 
     print(f"lint_synth_coverage OK — 미분류 0 / stale 0 / uncovered {n_unc} "
           f"<= {UNCOVERED_MAX} / measured-pending {n_pend} <= "
-          f"{MEASURED_PENDING_MAX}")
+          f"{MEASURED_PENDING_MAX} / superseded {n_sup} <= {SUPERSEDED_MAX}"
+          f" / reference {n_ref} <= {REFERENCE_MAX}")
 
 
 if __name__ == "__main__":

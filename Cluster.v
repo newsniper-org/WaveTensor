@@ -563,6 +563,48 @@ module Cluster #(
     reg  [NUM_PES-1:0]    last_was_mu;
     reg  [NUM_PES-1:0]    last_was_du;
 
+    // -------------------------------------------------------------------------
+    // v1.9.1 §31.14 — NoC bank 저장소 계약 (normative). **읽기 전에 이걸 읽어라.**
+    //
+    // 세 소스의 저장소 형태가 다르다:
+    //   * MU / DU 슬롯 — `mu_bank_reg` / `du_bank_reg` 라는 **전용 뱅크
+    //     레지스터**를 두고 `mu_out_valid` / `du_out_valid` 로 write-enable 한다.
+    //   * L-PE 슬롯 — 전용 레지스터를 두지 **않는다.** `PE_Core` 의 출력
+    //     레지스터(`output_payload`)를 **뱅크 저장소로 그대로 재사용**하고
+    //     여기서 조합적으로 읽는다. PE 당 64-bit 레지스터 1개를 아끼는
+    //     의도적 면적 최적화다 (Pod 문맥에서는 × 클러스터 수).
+    //
+    // 따라서 아래 `pe_out_payload[kbank]` 읽기에 `pe_out_valid` 게이트가 없는
+    // 것은 누락이 아니라 **계약**이다. 그 계약의 이름과 내용:
+    //
+    //     불변식 H1 — `PE_Core.output_payload` 는 `output_valid` 가 뜨는
+    //     사이클에만 바뀐다. 즉 토큰을 내지 않는 명령은 뱅크를 오염시킬 수
+    //     없고, 이 조합 읽기는 항상 "그 슬롯이 마지막으로 **실제 발행한**
+    //     토큰의 payload" 를 돌려준다 — `:552-554` 주석의 계약 그대로다.
+    //
+    // **이 계약은 v1.9 에서 실제로 깨져 있었다.** stage-2 성공 arm 이
+    // `cr_valid_out` 과 무관하게 `output_payload <= cr_payload` 를 수행했으므로,
+    // 토큰을 내지 않는 명령 1건(예: LD 0x04)이 앞선 wave 가 뱅크에 남긴 값을
+    // 되돌려 놓았다. §31.13.3 은 그 차이를 "자격자가 0 이라 masked(SOFT)" 로
+    // 분류했는데, **이 소비자에게는 masked 가 아니다** — 적대 검증이 Cluster
+    // 경계에서 관측 가능한 값 변화로 실증했다 (§31.14.2). D11 수리(PE_Core
+    // stage-2 자격 가드)가 H1 을 복원했고, 그 복원이 본 뱅크 계약의 전제다.
+    //
+    // 집행 (계약을 주석으로만 두지 않는다 — §31.4 가 지적한 바로 그 실패를
+    // 여기서 반복하지 않기 위해):
+    //   * `scripts/lint_output_payload_hold.py` — H1/H2 정적 집행 (`make lint`).
+    //     v1.9 baseline 에 걸어 보면 정확히 두 대입 site 를 잡는다.
+    //   * `test_pe.py::test_pe_output_payload_hold_invariant` — 런타임 감시.
+    //   * `test_cluster.py::test_cluster_noc_bank_*` — 뱅크 값 의미론 pin.
+    //
+    // 왜 여기에 `pe_bank_reg` 를 달지 않는가: `PE_Core.output_payload` 와
+    // 완전히 중복되는 NUM_PES × 64-bit 레지스터가 생기고, 무엇보다 **미래의
+    // H1 위반을 조용히 덮는다.** 침묵시키는 대신 소리내는 쪽을 고른다.
+    //
+    // 다중 fragment wave 의 뱅크 의미론 (정직 명기): 뱅크 슬롯은 64-bit 이고
+    // wave 는 여러 fragment 일 수 있다. 현행 의미론은 **마지막 fragment 의
+    // payload** 이며, ISA 가 이를 규정한 바는 없다 (§31.14.5 이월).
+    // -------------------------------------------------------------------------
     reg [ADDR_WIDTH-1:0] bank_selected;
     integer kbank;
     always @(*) begin
@@ -571,6 +613,10 @@ module Cluster #(
             if ({4'h0, eff_opref_route_c[3:0]} == kbank[7:0]) begin
                 if      (last_was_mu[kbank]) bank_selected = mu_bank_reg[kbank];
                 else if (last_was_du[kbank]) bank_selected = du_bank_reg[kbank];
+                // 불변식 H1 하에서 이것이 "마지막으로 발행한 토큰의 payload"
+                // 다. `last_was_mu/du` 의 clear 조건이 `pe_out_valid[ksrc]`
+                // 인 것(아래 last-writer 추적)과 정합한다 — 즉 L-PE 슬롯의
+                // write-enable 은 이미 설계 안에서 `pe_out_valid` 다.
                 else                         bank_selected = pe_out_payload[kbank];
             end
         end

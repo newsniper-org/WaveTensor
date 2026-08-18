@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.join(_REPO, 'asm'))
 from wavetensor_asm import assemble_one  # noqa: E402
 
 from test_isa_decoder import (  # noqa: E402
-    encode_instr, eh_port, eh_imm16, eh_subscript, eh_opref, axes,
+    encode_instr, eh_port, eh_imm16, eh_mem, eh_subscript, eh_opref, axes,
     make_tag, pack16, F_HAS_OPB,
 )
 
@@ -2656,3 +2656,194 @@ async def test_twin_classifier_mu_bank_coverage(dut):
         assert not seen, \
             f"UNCLASSIFIED opcode 0x{op:02X} asserted mu_out_valid -- " \
             f"a real silent MU-table under-fill gap"
+
+
+# =============================================================================
+# v1.9.1 §31.14 — NoC bank (OPREF.src_kind=1) 저장소 의미론 pin.
+#
+# 무엇이 뒤집혔는가
+# -----------------
+# §31.13.3 은 D6/D11 착지본과 v1.9 기준본의 `output_payload` 차이를 "자격자가
+# 양쪽 0 인 masked 사이클(SOFT)" 로 분류했다. **이 소비자에게는 masked 가
+# 아니다.** `Cluster.v` 의 bank mux 는 L-PE 슬롯을 위해 전용 뱅크 레지스터를
+# 두지 않고 `PE_Core.output_payload` 를 **저장소로 재사용**하며 `pe_out_valid`
+# 게이트 없이 조합적으로 읽는다 (MU/DU 는 valid-게이트 레지스터를 따로 둔다).
+# 따라서 토큰을 내지 않는 명령이 그 레지스터를 움직이면 다음 소비자의 B
+# 피연산자가 바뀐다.
+#
+# 기존 `test_cluster_noc_routing_*` 3종은 **생산자 직후 1 사이클만** 보므로
+# 두 형태 모두 통과한다 — 즉 뱅크의 "유지(hold)" 의미론을 pin 한 테스트가
+# 0건이었다. 아래 두 케이스가 그 공백을 메운다. 둘 다 v1.9 기준
+# `PE_Core.v` 로 되돌리면 FAIL 한다 (검출력 실증: spec §31.14.2).
+#
+# 미검사 자극 축 (§28.4 항 8(c)): MU/DU 가 같은 슬롯을 덮은 뒤의 우선순위
+# (그건 `last_was_mu/du` 가 규정하고 별도 테스트군이 있다), 다중 fragment
+# wave 의 뱅크 의미론이 ISA 로 규정되지 않았다는 사실 자체 (§31.14.5 이월).
+# =============================================================================
+
+async def _fire_collect(dut, instr, tag, payload_a=0, payload_b=0,
+                        payload_b_valid=0, cycles=16):
+    """고정 사이클 수만큼 굴리며 토큰 beat 를 모은다.
+
+    조기 종료(`_fire` 의 break)는 뒤따르는 fragment beat 를 놓치므로 여기서는
+    쓰지 않는다 — 이 테스트가 보는 것이 바로 "마지막 beat" 다.
+    """
+    dut.ext_instruction.value = instr
+    dut.ext_tag.value = tag
+    dut.ext_payload.value = payload_a
+    dut.ext_payload_b.value = payload_b
+    dut.ext_payload_b_valid.value = payload_b_valid
+    dut.ext_frag_hdr.value = 0
+    dut.ext_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.ext_valid.value = 0
+    dut.ext_payload_b_valid.value = 0
+    beats = []
+    for _ in range(cycles):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.ext_out_valid.value) == 1:
+            beats.append((int(dut.ext_out_payload.value),
+                          int(dut.ext_out_frag_hdr.value)))
+    return beats
+
+
+@cocotb.test()
+async def test_cluster_store_token_payload_deterministic_and_bank(dut):
+    """§31.13.4 D11′ — ST(0x05) 토큰 payload 는 **결정적 0** 이다.
+
+    `0x05` arm 은 `cr_memory_req <= 1` + `cr_valid_out <= 1` 을 세우면서
+    `cr_payload` 를 기입하지 않는다. stage-2 가 payload 를 무조건 복사하던
+    v1.9 기준 RTL 에서는 **직전 명령의 payload 가 `output_valid=1` 인 토큰에
+    실려** 클러스터 경계로 나갔다 — 자격자를 통과해 새는 클래스라 X 탐지로는
+    보이지 않았다 (§31.13.4 가 §31.4 를 정정한 지점).
+
+    §31.13.4 는 이 값을 "직전 명령의 값 → 결정적 0" 으로 바꾼다고 **관측 가능한
+    동작 변경**으로 선언했으나 그것을 pin 하는 테스트가 0건이었다. 여기서
+    두 결과를 동시에 본다:
+
+      (a) ST 토큰의 payload 가 0 이다.
+      (b) 그 뒤 bank[0] 도 0 이다 — ST 는 토큰을 내므로 불변식 H1 하에서
+          뱅크를 **정당하게** 갱신한다 (§31.14 H1 은 "토큰 없는 명령" 만
+          막는다). 뱅크 계약이 "마지막으로 발행한 토큰의 payload" 임을 이
+          방향에서도 확인한다.
+
+    **정직 명기:** ST 토큰 payload 의 의미론은 ISA 미규정이다 (§31.13.8 항 2).
+    이 테스트는 0 이 옳다고 주장하지 않고 **현행 결정을 pin** 한다 — ISA 가
+    다른 값을 규정하면 이 테스트가 그 결정을 강제로 다시 열게 된다.
+    """
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    # 1) PE0 생산자 — ADD .imm16 5, payload_a=10 → 토큰 payload 15
+    instr_p = encode_instr(0x10,
+                           eh_port(input_port_mask=0x01, output_port_id=0),
+                           eh_imm16(5))
+    beats_p = await _fire_collect(dut, instr_p, _tag(0), payload_a=10)
+    assert beats_p and beats_p[-1][0] == 15, (
+        f"생산자 토큰이 15 가 아니다: {beats_p}"
+    )
+
+    # 2) 같은 PE0 에 ST(0x05) — 토큰 + memory_req 를 함께 낸다
+    instr_s = encode_instr(0x05,
+                           eh_port(input_port_mask=0x01, output_port_id=0),
+                           eh_mem(offset=0x40))
+    beats_s = await _fire_collect(dut, instr_s, _tag(0),
+                                  payload_a=0x0000_0000_0000_0200, cycles=10)
+    assert beats_s, "ST(0x05) 가 토큰을 내지 않았다 — 케이스 전제가 깨졌다"
+    st_payload = beats_s[0][0]
+    assert st_payload == 0, (
+        f"§31.13.4 D11′ 회귀 — ST 토큰 payload 가 {st_payload:#x} 다. "
+        "결정적 0 이어야 한다. 0 이 아니면 직전 명령의 payload 가 자격자를 "
+        "통과해 새고 있다는 뜻이다 (15 가 나오면 정확히 그 회귀다)."
+    )
+
+    # 3) PE1 이 bank[0] 을 읽는다 — ST 가 낸 토큰이 마지막이므로 0 이어야 한다
+    instr_c = encode_instr(0x10,
+                           eh_port(input_port_mask=0x02, output_port_id=1),
+                           eh_opref(src_kind=1, noc_route=0),
+                           flags=F_HAS_OPB)
+    beats_c = await _fire_collect(dut, instr_c, _tag(1), payload_a=7,
+                                  cycles=12)
+    assert beats_c, "소비자가 토큰을 내지 않았다"
+    observed = beats_c[0][0]
+    assert observed == 7, (
+        f"§31.14 NoC bank — 소비자 결과가 {observed} 다. bank[0] 은 마지막 "
+        "발행 토큰(ST, payload 0)이어야 하므로 7 + 0 = 7 이 기대값이다. "
+        f"22 가 나오면 뱅크에 ADD 의 15 가 남아 있다는 뜻이다."
+    )
+
+
+@cocotb.test()
+async def test_cluster_noc_bank_multifragment_last_beat(dut):
+    """다중 fragment wave 뒤의 bank[k] 는 **마지막 beat** 의 payload 다.
+
+    PE0 에 2-fragment 입력 wave 로 0x63 (SIMD_ADD_WIDE_VEC) 을 태우면 2 beat
+    가 나온다. 그 뒤 토큰 없는 LD(0x04) 를 같은 PE 에 태우고 PE1 이 bank[0]
+    을 읽는다 — 읽히는 값은 **두 번째(마지막) beat** 여야 한다.
+
+    이것이 적대 검증이 잡은 바로 그 수열이다 (spec §31.14.2): v1.9 기준
+    RTL 은 LD 의 stage-2 가 `cr_payload`(= fragment 0 값)로 되돌려 놓아
+    소비자가 읽는 값이 마지막 beat 가 아니라 **첫 beat** 로 바뀐다.
+
+    **정직 명기:** 뱅크 슬롯은 64-bit 이고 wave 는 다중 fragment 일 수 있다.
+    "마지막 fragment" 가 정답인지는 ISA 가 규정한 바 없다 (§31.14.5 이월).
+    이 테스트는 **현행 의미론을 pin** 할 뿐 그것이 옳다고 주장하지 않는다.
+    """
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    A = 0x1111_2222_3333_4444
+    B = 0x5555_6666_7777_8888
+    tot_m1 = 1
+
+    instr_p = encode_instr(0x63,
+                           eh_port(input_port_mask=0x01, output_port_id=0),
+                           eh_opref(), flags=F_HAS_OPB)
+    for idx, pl in enumerate((A, B)):
+        last = (idx == tot_m1)
+        dut.ext_instruction.value = instr_p
+        dut.ext_tag.value = _tag(0)
+        dut.ext_payload.value = pl
+        dut.ext_payload_b.value = 0x2222_2222_2222_2222 if last else 0
+        dut.ext_payload_b_valid.value = 1 if last else 0
+        dut.ext_frag_hdr.value = (idx << 4) | tot_m1
+        dut.ext_valid.value = 1
+        await RisingEdge(dut.clk)
+    dut.ext_valid.value = 0
+    dut.ext_frag_hdr.value = 0
+    dut.ext_payload_b_valid.value = 0
+
+    beats = []
+    for _ in range(14):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.ext_out_valid.value) == 1:
+            beats.append((int(dut.ext_out_payload.value),
+                          int(dut.ext_out_frag_hdr.value)))
+    assert len(beats) == 2, f"2-fragment wave 가 2 beat 를 내지 않았다: {beats}"
+    last_beat = beats[-1][0]
+
+    # 토큰 없는 LD 를 같은 PE 에 태운다 — 뱅크는 움직여선 안 된다.
+    instr_n = encode_instr(0x04,
+                           eh_port(input_port_mask=0x01, output_port_id=0),
+                           eh_mem(offset=0x100))
+    beats_n = await _fire_collect(dut, instr_n, _tag(0), cycles=8)
+    assert not beats_n, f"LD(0x04) 가 토큰을 냈다: {beats_n}"
+
+    instr_c = encode_instr(0x10,
+                           eh_port(input_port_mask=0x02, output_port_id=1),
+                           eh_opref(src_kind=1, noc_route=0),
+                           flags=F_HAS_OPB)
+    beats_c = await _fire_collect(dut, instr_c, _tag(1), payload_a=0,
+                                  cycles=12)
+    assert beats_c, "소비자가 토큰을 내지 않았다"
+    observed = beats_c[0][0]
+    assert observed == last_beat, (
+        f"§31.14 NoC bank 계약 위반 — bank[0] 이 {observed:#016x}, 기대값은 "
+        f"마지막 beat {last_beat:#016x} (beats={[hex(b[0]) for b in beats]}). "
+        "첫 beat 값이 돌아왔다면 토큰 없는 LD 의 stage-2 가 뱅크를 되돌린 "
+        "것이다 — 불변식 H1 위반."
+    )

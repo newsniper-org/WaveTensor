@@ -19,35 +19,41 @@ MOD ?= HIU
 #   - the cocotb top-level module name
 #   - the Python test module
 ifeq ($(MOD),HIU)
-    VERILOG_SOURCES = $(PWD)/HIU.v
+    VERILOG_SOURCES = $(CURDIR)/HIU.v
     COCOTB_TOPLEVEL = HIU
     COCOTB_TEST_MODULES = test_hiu
 else ifeq ($(MOD),ISA_Decoder)
-    VERILOG_SOURCES = $(PWD)/ISA_Decoder.v $(PWD)/EHDecode.v $(PWD)/PE_Core.v $(PWD)/FP_StepSeq.v $(PWD)/FP_Mul36.v $(PWD)/FP_AddWide.v
+    VERILOG_SOURCES = $(CURDIR)/ISA_Decoder.v $(CURDIR)/EHDecode.v $(CURDIR)/PE_Core.v $(CURDIR)/FP_StepSeq.v $(CURDIR)/FP_Mul36.v $(CURDIR)/FP_AddWide.v
     COCOTB_TOPLEVEL = ISA_Decoder
     COCOTB_TEST_MODULES = test_isa_decoder
 else ifeq ($(MOD),Tensor_ALU)
-    VERILOG_SOURCES = $(PWD)/TENSOR_ALU.v
+    VERILOG_SOURCES = $(CURDIR)/TENSOR_ALU.v
     COCOTB_TOPLEVEL = Tensor_ALU
     COCOTB_TEST_MODULES = test_tensor_alu
+    # v1.9.1 §28.4 항 8(d) — 자극 폭 정합. 기본 파라미터(ADDR_WIDTH=64 /
+    # DIM_SIZE=4)에서 matrix_a 실폭은 1,024 bit 인데 구 테스트는 256-bit
+    # 리터럴을 줘서 cocotb 가 상위 768 bit 를 조용히 0 으로 채우고 있었다
+    # (결함 O1c, spec §31.7) — "의도한 행렬을 넣은 적조차 없는" 테스트다.
+    # 여기서 D=2 / W=16 을 명시 override 해 포트 실폭을 64 bit 로 고정한다.
+    COMPILE_ARGS += -GADDR_WIDTH=16 -GDIM_SIZE=2
 else ifeq ($(MOD),SIMD_ALU)
-    VERILOG_SOURCES = $(PWD)/SIMD_ALU.v
+    VERILOG_SOURCES = $(CURDIR)/SIMD_ALU.v
     COCOTB_TOPLEVEL = SIMD_ALU
     COCOTB_TEST_MODULES = test_simd_alu
 else ifeq ($(MOD),ALU_Extended)
-    VERILOG_SOURCES = $(PWD)/ALU_Extended.v
+    VERILOG_SOURCES = $(CURDIR)/ALU_Extended.v
     COCOTB_TOPLEVEL = ALU_Extended
     COCOTB_TEST_MODULES = test_alu_extended
 else ifeq ($(MOD),Top_Core)
-    VERILOG_SOURCES = $(PWD)/Top_Core.v $(PWD)/ISA_Decoder.v $(PWD)/EHDecode.v $(PWD)/PE_Core.v $(PWD)/FP_StepSeq.v $(PWD)/FP_Mul36.v $(PWD)/FP_AddWide.v $(PWD)/HIU.v
+    VERILOG_SOURCES = $(CURDIR)/Top_Core.v $(CURDIR)/ISA_Decoder.v $(CURDIR)/EHDecode.v $(CURDIR)/PE_Core.v $(CURDIR)/FP_StepSeq.v $(CURDIR)/FP_Mul36.v $(CURDIR)/FP_AddWide.v $(CURDIR)/HIU.v
     COCOTB_TOPLEVEL = Top_Core
     COCOTB_TEST_MODULES = test_top_core
 else ifeq ($(MOD),PE)
-    VERILOG_SOURCES = $(PWD)/PE.v $(PWD)/ISA_Decoder.v $(PWD)/EHDecode.v $(PWD)/PE_Core.v $(PWD)/FP_StepSeq.v $(PWD)/FP_Mul36.v $(PWD)/FP_AddWide.v
+    VERILOG_SOURCES = $(CURDIR)/PE.v $(CURDIR)/ISA_Decoder.v $(CURDIR)/EHDecode.v $(CURDIR)/PE_Core.v $(CURDIR)/FP_StepSeq.v $(CURDIR)/FP_Mul36.v $(CURDIR)/FP_AddWide.v
     COCOTB_TOPLEVEL = PE
     COCOTB_TEST_MODULES = test_pe
 else ifeq ($(MOD),Cluster)
-    VERILOG_SOURCES = $(PWD)/Cluster.v $(PWD)/PE.v $(PWD)/ISA_Decoder.v $(PWD)/EHDecode.v $(PWD)/PE_Core.v $(PWD)/FP_StepSeq.v $(PWD)/FP_Mul36.v $(PWD)/FP_AddWide.v
+    VERILOG_SOURCES = $(CURDIR)/Cluster.v $(CURDIR)/PE.v $(CURDIR)/ISA_Decoder.v $(CURDIR)/EHDecode.v $(CURDIR)/PE_Core.v $(CURDIR)/FP_StepSeq.v $(CURDIR)/FP_Mul36.v $(CURDIR)/FP_AddWide.v
     COCOTB_TOPLEVEL = Cluster
     COCOTB_TEST_MODULES = test_cluster
     # v1.6.5c §22.16 — override the fragment/cache buffer slot count for
@@ -57,7 +63,7 @@ else ifeq ($(MOD),Cluster)
         COMPILE_ARGS += -GFRAG_SLOTS=$(FRAG_SLOTS)
     endif
 else ifeq ($(MOD),Pod)
-    VERILOG_SOURCES = $(PWD)/Pod.v $(PWD)/Cluster.v $(PWD)/PE.v $(PWD)/ISA_Decoder.v $(PWD)/EHDecode.v $(PWD)/PE_Core.v $(PWD)/FP_StepSeq.v $(PWD)/FP_Mul36.v $(PWD)/FP_AddWide.v
+    VERILOG_SOURCES = $(CURDIR)/Pod.v $(CURDIR)/Cluster.v $(CURDIR)/PE.v $(CURDIR)/ISA_Decoder.v $(CURDIR)/EHDecode.v $(CURDIR)/PE_Core.v $(CURDIR)/FP_StepSeq.v $(CURDIR)/FP_Mul36.v $(CURDIR)/FP_AddWide.v
     COCOTB_TOPLEVEL = Pod
     COCOTB_TEST_MODULES = test_pod
 else
@@ -293,7 +299,25 @@ lattice-clean:
 #                               them. Adding a module to the cocotb MOD
 #                               list without declaring where it gets
 #                               synthesized now breaks the build.
-# All three are stdlib-only Python; runnable directly without cocotb:
+#   * lint_output_payload_hold  — v1.9.1 §31.14. `PE_Core.output_payload` /
+#                               `mem_addr` must change ONLY on cycles where
+#                               their qualifier (`output_valid` /
+#                               `memory_req`) is asserted. The Cluster's NoC
+#                               bank (OPREF.src_kind=1) reuses PE_Core's
+#                               output register as the L-PE slot's STORAGE
+#                               and reads it combinationally, so a payload
+#                               that moves on a token-less cycle silently
+#                               corrupts the next consumer's B operand.
+#                               The v1.9 baseline violated this.
+#   * lint_known_defect_tests   — v1.9.1 §31.14. §28.4 item 8(e)'s
+#                               `expect_fail` ratchet, mechanically enforced
+#                               in BOTH directions. Weakening an assert
+#                               while ALSO dropping the `expect_fail=True`
+#                               marker used to restore full concealment with
+#                               a green CI; that path is now closed, and
+#                               undeclared `expect_fail` markers (silencing
+#                               a regression) fail too.
+# All five are stdlib-only Python; runnable directly without cocotb:
 #   python3 scripts/lint_isa_tables_fresh.py
 # =============================================================================
 
@@ -303,6 +327,8 @@ lint:
 	python3 $(CURDIR)/scripts/lint_isa_tables_fresh.py
 	python3 $(CURDIR)/scripts/lint_frag_total_m1_held.py
 	python3 $(CURDIR)/scripts/lint_synth_coverage.py
+	python3 $(CURDIR)/scripts/lint_output_payload_hold.py
+	python3 $(CURDIR)/scripts/lint_known_defect_tests.py
 
 # =============================================================================
 # Claude Code memory mirror — copies the per-project memory directory
