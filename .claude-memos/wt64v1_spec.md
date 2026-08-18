@@ -1952,6 +1952,25 @@ Pod 경계 (`make MOD=Pod`, 8 tests) 에서도 (i)/(ii) 는 각각 **1 FAIL** �
 
 **본 절이 실행하지 않은 것 (정직 명기)**: full Cluster (V9-4 계열) · Pod 합성은 여전히 **돌리지 않았다**. 22.14b-4b 가 추가한 조합 논리(슬롯별 full-mask 비교 + deferred commit 의 사슬 분리)는 22.14b-5 가 breach 를 예상한 **COMB 축을 더 밀어 올린다** — 그 방향은 확실하나 크기는 **미측정**이다. 측정과 (필요 시) cut ladder 발동은 후속 작업이며, 여기서 크기를 추정해 적지 않는다.
 
+
+##### 22.14b-8 — 단계 0 착지 후 GATE S1 재측정 + `Synth 8-6014` C-1 anchor
+
+단계 0 이 `EHDecode.v`(신규 `in_ready` 포트) 와 `ISA_Decoder.v`(배선) 를 건드렸고 둘 다 `sys_top_core` gate 소스이므로 **기존 리포트로 판정만 하는 것은 성립하지 않는다** — 전 flow 를 재실행했다 (2026-08-18, `xcu55c-fsvh2892-2L-e`, OOC synth+opt+place+phys_opt+route).
+
+**GATE S1-US 전 축 PASS**: LUT sites **15,666** ≤ ceiling 24,799 (직전 15,716 대비 **−50**) / DSP48 **39** / premap `$mul` **381** / RAMB18 **2** / WHS **+0.007 ns** / DRC 0 errors (LUTLP-2 ×8 = TRNG RO 인정 동작) / CRIT 8 (전부 `Synth 8-295`). `fp_op_gate_check.py` exit 0.
+
+> **WHS 주의 (기록)**: +0.019 → **+0.007 ns** 로 얇아졌다. binding 은 `≥ 0` 이므로 PASS 지만, 이 축은 §30 XChaCha 수리 때도 "유일한 실질 리스크 축" 으로 지목됐던 곳이다. 다음 변경이 이 축을 음수로 밀면 **주파수를 낮춰도 동작하지 않는다** — hold 위반은 setup 위반과 성격이 다르다.
+
+**`Synth 8-6014` (unused sequential element) anchor = 17건** — C-1 착수 **전에** 확보해야 했던 수치다. 귀속 전량:
+
+| 귀속 | 건수 | 위치 |
+|---|---:|---|
+| `initial_state_reg[2..15]` | **14** | `HIU.v:638` — §30 D8 수리가 `initial_state` 를 `chacha_state` 와 동일 구동원으로 만들며 접힌 몫 (§29.8 기록) |
+| `fd_fault_reg` | **1** | `FP_StepSeq.v:1763` — 3a-C4 가 포트로 노출할 sticky (§27.7a.4) |
+| **`acc_mem_addr_mode_reg` / `acc_mem_stride_reg`** | **2** | `EHDecode.v:332-333` — **C-1 의 대상** |
+
+**왜 이 anchor 가 필요한가**: C-1 실물화의 기계적 성공 지표는 "EHDecode 2건이 목록에서 사라진다" = **17 → 15** 다. 그런데 직전에 커밋된 로그는 **20건**이었고 그 사이 `a93c7b2` 가 EHDecode 레지스터 3건(`tag_latched`/`acc_opref_port_id`/`acc_opref_noc_route`)을 이미 삭제했다. anchor 없이 C-1 을 착지시켰다면 20→15 의 **5건 델타에 남의 몫 3건이 섞여** 귀속이 무너졌을 것이다. §26.6 의 "편차는 귀속 후 재판정" 규율이 요구하는 것이 정확히 이 선행 측정이다.
+
 #### 22.14c 회귀 (301 tests PASS, +4 신규)
 
 - Cocotb: 217 → 221 (+4)
