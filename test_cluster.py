@@ -864,79 +864,390 @@ async def test_trace_iijkl_end_to_end_via_cluster(dut):
     assert int(dut.any_lower_required.value) == 0
 
 
-@cocotb.test()
-async def test_bmm_3_lpe_collision_raises_output_collision(dut):
-    """v1.5.3 §20 (adversarial review bug 3+4): fire SIG_BMM_3 to MU, then
-    a legacy ADD to a different L-PE timed to complete during MU's fragment
-    emit window. The atomic OR-merge should keep MU's fragment (highest
-    priority) but MUST raise `any_output_collision` (folded into
-    any_error_flag) so software can detect the dropped L-PE output."""
-    clock = Clock(dut.clk, 10, units="ns")
-    cocotb.start_soon(clock.start())
-    await _reset(dut)
+# =============================================================================
+# v1.5.3 §20 (adversarial review bug 3+4) — 출력 충돌 `any_output_collision`
+#
+# Cluster.v 의 출력 병합은 **원자적 우선순위 중재**다: MU > DU > L-PE[0..N-1].
+# 한 사이클에 둘 이상의 소스가 요청하면 승자 하나만 데이터 채널과 메모리
+# 채널을 **함께** 구동하고, 패배한 소스는 `m_output_collision` 을 올리며
+# 그것이 다시 `any_error_flag` 로 폴딩된다 (Cluster.v: `m_err = m_err |
+# m_output_collision`).
+#
+# 왜 다시 썼는가
+# --------------
+# 구 테스트 `test_bmm_3_lpe_collision_raises_output_collision` 은 이 폴딩을
+# **한 번도 검증하지 못했다**. 함수 전체에 assert 가 0건이었고 30 사이클
+# 폴링 뒤 `if saw_collision: pass` 로 끝났다 — DUT 가 `any_output_collision`
+# 을 0 에 묶어도 그대로 통과하는, 조용히 통과하는 검사였다.
+#
+# 게다가 그 테스트가 만들려던 정렬(MU 조각 방출 창 ↔ L-PE ADD 완료)은
+# **이 지오메트리에서 도달 자체가 불가능**하다. 실측 근거:
+#
+#   * L-PE 의 비-mul·비-div 연산은 전부 지연이 7 사이클로 동일하다
+#     (주입 에지 기준; ADD/SUB/AND/SHL/0x20/0x21/0x51/0x52 … 전수 확인).
+#   * MU 의 SIG_BMM_3 는 마지막 입력 조각 에지 기준 +7 / +8 두 사이클에
+#     조각 0x01 / 0x11 을 방출한다.
+#   * ⇒ 두 출력을 같은 사이클에 놓으려면 ADD 를 4-조각 버스트가 점유 중인
+#     사이클에 주입해야 하는데, ext 포트는 사이클당 명령 1개만 받는다.
+#     구 테스트를 주입 지연 0..15 로 전수 스윕해도 충돌은 **0건**이었다.
+#
+# 무엇을 지렛대로 쓰는가
+# ----------------------
+# **DU(제산기)의 지연이 비대칭적으로 길다** — 0x13 DIV = 73 사이클,
+# 0x1D DIVMOD = 41 (실측). 이 비대칭이 충돌을 결정론적으로 강제한다:
+#
+#   * MU 대 DU  : DIV 를 먼저 띄우고, DIV 완료 사이클에 MU 조각 0x01 이
+#                 오도록 버스트를 배치 → MU 승 / DU 패 → collision.
+#   * DU 대 L-PE: DIV 를 먼저 띄우고, DIV 완료 사이클에 ADD 완료가 오도록
+#                 배치 → DU 승 / L-PE 패 → collision.
+#
+# 아래 세 테스트가 각각 (1) DU 패배 팔, (2) L-PE 패배 팔, (3) 트래픽이
+# 겹치지 않을 때 **거짓 충돌이 나지 않을 것**(신호를 1 에 묶는 반대 방향의
+# 축퇴)을 hard assert 한다. 지연 상수는 하드코딩하지 않고 매 실행마다
+# 실측(calibration)해서 쓴다 — 숫자가 낡아 조용히 빗나가는 것이 바로 구
+# 테스트를 무력화한 기전이기 때문이다.
+# =============================================================================
 
-    # Prepare SIG_BMM_3 wave to MU (port_context_id=0)
+_DIV_A = 100        # DIV 피제수
+_DIV_B = 3          # DIV 제수 → 몫 33
+_ADD_A = 42         # ADD 피가수
+_ADD_IMM = 7        # ADD imm16 → 합 49
+
+
+def _bmm3_stimulus():
+    """SIG_BMM_3 (0x32) 명령 + 4개 입력 조각 + 원본 A/B 를 돌려준다."""
     a_128 = 0
     b_128 = 0
     for i in range(8):
         a_128 |= 0x1111 << (i * 16)
         b_128 |= 0x2222 << (i * 16)
-    tag_mu = _tag(port_context_id=0)
-    bmm3_instr = encode_instr(0x32,
-                              eh_port(input_port_mask=0x01, output_port_id=0),
-                              eh_subscript(_BMM3_A_LO_S, _BMM3_B_LO_S, _BMM3_O_LO_S),
-                              eh_subscript(_BMM3_A_HI_S, _BMM3_B_HI_S, _BMM3_O_HI_S),
-                              eh_opref(),
-                              flags=F_HAS_OPB)
-    payloads_bmm3 = [a_128 & ((1<<64)-1), (a_128>>64) & ((1<<64)-1),
-                     b_128 & ((1<<64)-1), (b_128>>64) & ((1<<64)-1)]
-    # Emit 4 input fragments to Cluster
+    instr = encode_instr(0x32,
+                         eh_port(input_port_mask=0x01, output_port_id=0),
+                         eh_subscript(_BMM3_A_LO_S, _BMM3_B_LO_S, _BMM3_O_LO_S),
+                         eh_subscript(_BMM3_A_HI_S, _BMM3_B_HI_S, _BMM3_O_HI_S),
+                         eh_opref(),
+                         flags=F_HAS_OPB)
+    payloads = [a_128 & ((1 << 64) - 1), (a_128 >> 64) & ((1 << 64) - 1),
+                b_128 & ((1 << 64) - 1), (b_128 >> 64) & ((1 << 64) - 1)]
+    return instr, payloads, a_128, b_128
+
+
+def _coll_div_instr(pcid):
+    return encode_instr(0x13, eh_port(input_port_mask=(1 << pcid),
+                                      output_port_id=pcid),
+                        eh_imm16(_DIV_B), flags=F_HAS_OPB)
+
+
+def _coll_add_instr(pcid):
+    return encode_instr(0x10, eh_port(input_port_mask=(1 << pcid),
+                                      output_port_id=pcid),
+                        eh_imm16(_ADD_IMM))
+
+
+async def _inject_single(dut, instr, tag, pa, pb=0, pbv=0):
+    """단일 조각 명령 하나를 넣는다 (호출 반환 시점 = 주입 에지 직후)."""
+    dut.ext_instruction.value = instr
+    dut.ext_tag.value = tag
+    dut.ext_payload.value = pa
+    dut.ext_payload_b.value = pb
+    dut.ext_payload_b_valid.value = pbv
+    dut.ext_frag_hdr.value = 0
+    dut.ext_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.ext_valid.value = 0
+
+
+async def _calib_single_latency(dut, instr, tag, pa, pb=0, pbv=0, horizon=160):
+    """주입 에지 → 첫 `ext_out_valid` 까지의 사이클 수를 실측한다."""
+    await _reset(dut)
+    await _inject_single(dut, instr, tag, pa, pb, pbv)
+    for c in range(1, horizon):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.ext_out_valid.value) == 1:
+            return c
+    return None
+
+
+async def _calib_bmm3_emit_offset(dut, instr, payloads, tag, horizon=60):
+    """SIG_BMM_3 의 **마지막 입력 조각 에지** → 첫 출력 조각까지의 사이클 수."""
+    await _reset(dut)
     for idx in range(4):
-        dut.ext_instruction.value = bmm3_instr
-        dut.ext_tag.value = tag_mu
-        dut.ext_payload.value = payloads_bmm3[idx]
+        dut.ext_instruction.value = instr
+        dut.ext_tag.value = tag
+        dut.ext_payload.value = payloads[idx]
         dut.ext_payload_b.value = 0
         dut.ext_payload_b_valid.value = 1
         dut.ext_frag_hdr.value = (idx << 4) | 0x3
         dut.ext_valid.value = 1
-        await RisingEdge(dut.clk)
-    # After the 4-fragment burst, immediately queue an ADD to L-PE[1]
-    # (port_context_id=1). L-PE ADD is a 2-cycle op; if timing lands its
-    # output during MU's 2-cycle emit window, the atomic OR-merge drops
-    # the ADD and raises output_collision.
-    add_instr = encode_instr(0x10, eh_port(input_port_mask=0x02, output_port_id=1),
-                             eh_imm16(7))
-    dut.ext_instruction.value = add_instr
-    dut.ext_tag.value = _tag(port_context_id=1)
-    dut.ext_payload.value = 42
-    dut.ext_payload_b.value = 0
-    dut.ext_payload_b_valid.value = 0
-    dut.ext_frag_hdr.value = 0   # single-fragment ADD
-    dut.ext_valid.value = 1
-    await RisingEdge(dut.clk)
+        await RisingEdge(dut.clk)     # idx==3 에지가 기준점(사이클 0)
     dut.ext_valid.value = 0
     dut.ext_frag_hdr.value = 0
-
-    # Observe for up to 20 cycles: track if any_output_collision ever pulses
-    saw_collision = False
-    for _ in range(30):
+    for c in range(1, horizon):
         await RisingEdge(dut.clk)
         await Timer(1, units="ns")
-        if int(dut.any_output_collision.value) == 1:
-            saw_collision = True
-    # If timing aligns, collision must be surfaced. If timing happens to
-    # separate the outputs, collision may not fire — either way is
-    # architecturally OK for MVP, but if it does fire, error_flag must
-    # also assert (folded via the atomic merge in Cluster.v).
-    if saw_collision:
-        # any_output_collision is folded into any_error_flag
-        # Note: any_error_flag may have already deasserted by end of trace
-        pass  # test passes: collision was correctly surfaced when it occurred
-    # This test primarily documents the collision-detection API; the
-    # exact timing depends on pipeline latencies (may or may not align in
-    # this simple 2-PE cluster geometry). If not seen, that's not a
-    # failure — the atomic OR-merge still atomically bound data + mem
-    # to a single winner, which was the primary bug 4 fix.
+        if int(dut.ext_out_valid.value) == 1:
+            return c
+    return None
+
+
+@cocotb.test()
+async def test_output_collision_mu_beats_du_and_folds_into_error(dut):
+    """v1.5.3 §20 — MU 대 DU 충돌을 **강제**한다.
+
+    긴 DIV(DU) 를 먼저 띄우고, 그 완료 사이클에 SIG_BMM_3 의 조각 0x01
+    방출이 겹치도록 4-조각 버스트를 배치한다. 원자적 중재는
+      * MU(최우선)의 조각을 그대로 내보내고,
+      * 패배한 DU 때문에 `any_output_collision` 을 올리며,
+      * 그것을 `any_error_flag` 로 폴딩해야 한다.
+    셋 중 하나라도 죽으면 FAIL 한다 (신호를 0 에 묶는 축퇴 차단)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+
+    bmm3_instr, payloads, a_128, b_128 = _bmm3_stimulus()
+    div_instr = _coll_div_instr(1)
+    tag_div = _tag(port_context_id=1)
+    tag_mu = _tag(port_context_id=0)
+
+    # ---- calibration: 상수를 하드코딩하지 않는다 ----
+    lat_div = await _calib_single_latency(dut, div_instr, tag_div,
+                                          _DIV_A, _DIV_B, 1)
+    assert lat_div is not None, "DIV(0x13)가 출력하지 않았다 — calibration 실패"
+    emit = await _calib_bmm3_emit_offset(dut, bmm3_instr, payloads, tag_mu)
+    assert emit is not None, "SIG_BMM_3 이 출력하지 않았다 — calibration 실패"
+    assert lat_div - emit >= 4, (
+        f"DIV 지연({lat_div})이 MU 방출 오프셋({emit})보다 충분히 길지 않아 "
+        "버스트를 DIV 뒤에 배치할 수 없다 — 강제 정렬 전제가 깨졌다")
+
+    # ---- 강제 정렬: DIV 를 사이클 0 에, MU 조각 0x01 이 +lat_div 에 오도록 ----
+    burst_last = lat_div - emit
+    burst_start = burst_last - 3
+
+    await _reset(dut)
+    await _inject_single(dut, div_instr, tag_div, _DIV_A, _DIV_B, 1)  # 사이클 0
+
+    at_hit = None
+    at_next = None
+    collision_cycles = []
+    for c in range(1, lat_div + 8):
+        if burst_start <= c < burst_start + 4:
+            idx = c - burst_start
+            dut.ext_instruction.value = bmm3_instr
+            dut.ext_tag.value = tag_mu
+            dut.ext_payload.value = payloads[idx]
+            dut.ext_payload_b.value = 0
+            dut.ext_payload_b_valid.value = 1
+            dut.ext_frag_hdr.value = (idx << 4) | 0x3
+            dut.ext_valid.value = 1
+        await RisingEdge(dut.clk)
+        dut.ext_valid.value = 0
+        dut.ext_frag_hdr.value = 0
+        await Timer(1, units="ns")
+        snap = {
+            'valid': int(dut.ext_out_valid.value),
+            'frag_hdr': int(dut.ext_out_frag_hdr.value),
+            'payload': int(dut.ext_out_payload.value),
+            'collision': int(dut.any_output_collision.value),
+            'error': int(dut.any_error_flag.value),
+        }
+        if snap['collision'] == 1:
+            collision_cycles.append(c)
+        if c == lat_div:
+            at_hit = snap
+        elif c == lat_div + 1:
+            at_next = snap
+
+    exp_lo, exp_hi = _bmm_3_expected(a_128, b_128)
+
+    assert at_hit is not None, "관측 창이 DIV 완료 사이클을 담지 못했다"
+    assert at_hit['collision'] == 1, (
+        f"사이클 {lat_div} 에서 MU 조각 0x01 과 DU 몫이 동시에 요청하도록 "
+        f"강제했는데 any_output_collision 이 뜨지 않았다 — 충돌 검출이 죽어 "
+        f"있다 (충돌 관측 사이클: {collision_cycles})")
+    assert at_hit['error'] == 1, (
+        "any_output_collision 이 any_error_flag 로 폴딩되지 않았다 "
+        "(Cluster.v `m_err = m_err | m_output_collision`)")
+    assert at_hit['valid'] == 1, "충돌 사이클에 출력이 통째로 사라졌다"
+    assert at_hit['frag_hdr'] == 0x01, (
+        f"우선순위 위반: MU(조각 0x01)가 이겨야 하는데 "
+        f"frag_hdr={at_hit['frag_hdr']:02x}")
+    assert at_hit['payload'] == exp_lo, (
+        f"승자의 데이터 채널이 원자적이지 않다: payload "
+        f"{at_hit['payload']:016x} != MU 조각0 {exp_lo:016x}")
+
+    # 충돌은 정렬시킨 그 한 사이클에서만 나야 한다 — 신호를 1 에 묶는
+    # 반대 방향의 축퇴를 여기서 막는다.
+    assert collision_cycles == [lat_div], (
+        f"충돌은 사이클 {lat_div} 단 한 번이어야 한다 — 관측 {collision_cycles}")
+
+    # 바로 다음 사이클엔 MU 조각 0x11 이 충돌 없이 나온다.
+    assert at_next is not None and at_next['valid'] == 1, \
+        "MU 두 번째 조각이 나오지 않았다"
+    assert at_next['frag_hdr'] == 0x11, \
+        f"두 번째 조각 헤더 {at_next['frag_hdr']:02x} != 0x11"
+    assert at_next['payload'] == exp_hi, (
+        f"두 번째 조각 payload {at_next['payload']:016x} != {exp_hi:016x}")
+    assert at_next['collision'] == 0, \
+        "충돌이 다음 사이클까지 끌린다 — 1-사이클 펄스가 아니다"
+
+
+@cocotb.test()
+async def test_output_collision_du_beats_lpe_and_drops_loser(dut):
+    """v1.5.3 §20 — DU 대 L-PE 충돌을 **강제**한다 (L-PE 패배 팔).
+
+    긴 DIV(DU) 와 L-PE ADD 의 완료 사이클을 겹치도록 배치한다. DU 가
+    우선순위상 이기므로 ADD 의 결과는 **버려져야** 하고, 바로 그 사실을
+    알리기 위해 `any_output_collision` 이 떠야 한다. 패배자의 값이
+    끝까지 한 번도 나타나지 않는 것까지 확인한다 — 충돌 플래그의 존재
+    이유가 '조용히 버려진 출력'을 소프트웨어가 알아채게 하는 것이므로."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+
+    div_instr = _coll_div_instr(1)
+    add_instr = _coll_add_instr(2)
+    tag_div = _tag(port_context_id=1)
+    tag_add = _tag(port_context_id=2)
+
+    lat_div = await _calib_single_latency(dut, div_instr, tag_div,
+                                          _DIV_A, _DIV_B, 1)
+    assert lat_div is not None, "DIV(0x13)가 출력하지 않았다 — calibration 실패"
+    lat_add = await _calib_single_latency(dut, add_instr, tag_add, _ADD_A)
+    assert lat_add is not None, "ADD(0x10)가 출력하지 않았다 — calibration 실패"
+    assert lat_div > lat_add, (
+        f"DIV({lat_div}) 가 ADD({lat_add}) 보다 길어야 정렬을 강제할 수 있다")
+
+    add_at = lat_div - lat_add          # 두 완료가 같은 사이클에 오도록
+    await _reset(dut)
+    await _inject_single(dut, div_instr, tag_div, _DIV_A, _DIV_B, 1)  # 사이클 0
+
+    at_hit = None
+    collision_cycles = []
+    payloads_seen = []
+    for c in range(1, lat_div + 12):
+        if c == add_at:
+            dut.ext_instruction.value = add_instr
+            dut.ext_tag.value = tag_add
+            dut.ext_payload.value = _ADD_A
+            dut.ext_payload_b.value = 0
+            dut.ext_payload_b_valid.value = 0
+            dut.ext_frag_hdr.value = 0
+            dut.ext_valid.value = 1
+        await RisingEdge(dut.clk)
+        dut.ext_valid.value = 0
+        await Timer(1, units="ns")
+        snap = {
+            'valid': int(dut.ext_out_valid.value),
+            'payload': int(dut.ext_out_payload.value),
+            'collision': int(dut.any_output_collision.value),
+            'error': int(dut.any_error_flag.value),
+        }
+        if snap['collision'] == 1:
+            collision_cycles.append(c)
+        if snap['valid'] == 1:
+            payloads_seen.append(snap['payload'])
+        if c == lat_div:
+            at_hit = snap
+
+    exp_div = _DIV_A // _DIV_B          # 33
+    exp_add = _ADD_A + _ADD_IMM         # 49
+
+    assert at_hit is not None, "관측 창이 DIV 완료 사이클을 담지 못했다"
+    assert at_hit['collision'] == 1, (
+        f"사이클 {lat_div} 에서 DU 몫과 L-PE ADD 결과가 동시에 요청하도록 "
+        f"강제했는데 any_output_collision 이 뜨지 않았다 (충돌 관측: "
+        f"{collision_cycles})")
+    assert at_hit['error'] == 1, \
+        "any_output_collision 이 any_error_flag 로 폴딩되지 않았다"
+    assert at_hit['valid'] == 1, "충돌 사이클에 출력이 통째로 사라졌다"
+    assert at_hit['payload'] == exp_div, (
+        f"우선순위 위반: DU(몫 {exp_div})가 L-PE 를 이겨야 하는데 "
+        f"payload={at_hit['payload']}")
+    assert collision_cycles == [lat_div], (
+        f"충돌은 사이클 {lat_div} 단 한 번이어야 한다 — 관측 {collision_cycles}")
+    assert exp_add not in payloads_seen, (
+        f"패배한 L-PE 결과 {exp_add} 가 출력에 나타났다 — 충돌 시나리오가 "
+        f"성립하지 않았다 (관측 payload: {payloads_seen})")
+
+
+@cocotb.test()
+async def test_output_collision_stays_low_when_traffic_is_disjoint(dut):
+    """v1.5.3 §20 — 거짓 충돌 금지 (반대 방향의 축퇴 차단).
+
+    MU 의 SIG_BMM_3 두 조각과 L-PE ADD 의 결과가 **서로 다른 사이클**에
+    나오는 배치에서는 `any_output_collision` 이 한 번도 뜨면 안 된다.
+    위 두 테스트가 '신호를 0 에 묶는' 축퇴를 막는다면, 이 테스트는
+    '신호를 1 에 묶는' 축퇴를 막는다. 세 출력이 전부 관측되는지까지
+    확인하므로 자극이 사라져도 조용히 통과하지 않는다."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+
+    bmm3_instr, payloads, a_128, b_128 = _bmm3_stimulus()
+    add_instr = _coll_add_instr(1)
+    tag_mu = _tag(port_context_id=0)
+    tag_add = _tag(port_context_id=1)
+    exp_lo, exp_hi = _bmm_3_expected(a_128, b_128)
+    exp_add = _ADD_A + _ADD_IMM
+
+    # NOTE(정직성): 주입 지연 0..3 구간은 이 스윕에서 **제외**한다. 그
+    # 구간에서는 `cluster_ready` 가 1 인데도 ADD 가 출력을 전혀 내지
+    # 않는다 (공유 EHDecode 체인 워크가 SIG_BMM_3 파동에 점유된 동안
+    # 뒤따르는 명령이 배압 없이 소실된다). 이는 본 정리 작업 중 새로
+    # 관측된 **미해결 결함**이며, 여기서 "정상"으로 못박지 않기 위해
+    # assert 대상에서 뺐다. 스윕은 두 소스가 실제로 둘 다 출력하는
+    # 구간만 다룬다.
+    for delay in range(4, 16):
+        await _reset(dut)
+        for idx in range(4):
+            dut.ext_instruction.value = bmm3_instr
+            dut.ext_tag.value = tag_mu
+            dut.ext_payload.value = payloads[idx]
+            dut.ext_payload_b.value = 0
+            dut.ext_payload_b_valid.value = 1
+            dut.ext_frag_hdr.value = (idx << 4) | 0x3
+            dut.ext_valid.value = 1
+            await RisingEdge(dut.clk)     # idx==3 에지 = 사이클 0
+        dut.ext_valid.value = 0
+        dut.ext_frag_hdr.value = 0
+
+        outs = []            # (cycle, frag_hdr, payload)
+        collision_cycles = []
+        for c in range(1, delay + 24):
+            if c == delay + 1:
+                dut.ext_instruction.value = add_instr
+                dut.ext_tag.value = tag_add
+                dut.ext_payload.value = _ADD_A
+                dut.ext_payload_b.value = 0
+                dut.ext_payload_b_valid.value = 0
+                dut.ext_frag_hdr.value = 0
+                dut.ext_valid.value = 1
+            await RisingEdge(dut.clk)
+            dut.ext_valid.value = 0
+            await Timer(1, units="ns")
+            if int(dut.any_output_collision.value) == 1:
+                collision_cycles.append(c)
+            if int(dut.ext_out_valid.value) == 1:
+                outs.append((c, int(dut.ext_out_frag_hdr.value),
+                             int(dut.ext_out_payload.value)))
+
+        assert collision_cycles == [], (
+            f"delay={delay}: 겹치지 않는 트래픽인데 any_output_collision 이 "
+            f"떴다 (사이클 {collision_cycles}, 출력 {outs})")
+
+        by_hdr = {}
+        for cyc, hdr, pay in outs:
+            by_hdr.setdefault(hdr, []).append((cyc, pay))
+        for hdr, exp_pay in ((0x01, exp_lo), (0x11, exp_hi), (0x00, exp_add)):
+            got = by_hdr.get(hdr, [])
+            assert len(got) == 1, (
+                f"delay={delay}: frag_hdr=0x{hdr:02x} 출력이 1건이어야 하는데 "
+                f"{len(got)}건 (전체 {outs})")
+            assert got[0][1] == exp_pay, (
+                f"delay={delay}: frag_hdr=0x{hdr:02x} payload "
+                f"{got[0][1]:#x} != {exp_pay:#x}")
+
+        cycles = sorted(c for c, _, _ in outs)
+        assert len(set(cycles)) == 3, (
+            f"delay={delay}: 세 출력이 서로 다른 사이클이어야 한다 — {outs}")
 
 
 # =============================================================================
@@ -944,17 +1255,55 @@ async def test_bmm_3_lpe_collision_raises_output_collision(dut):
 #
 # Tests below run under BOTH the default (`make MOD=Cluster`, FRAG_SLOTS=1)
 # and the multi-slot (`make MOD=Cluster FRAG_SLOTS=4`) builds. Persistence/
-# LRU/cold-fill tests only apply at FRAG_SLOTS>1 and self-skip (trivial
-# pass) otherwise, proven via the actual elaborated width of frag_active
-# rather than a hardcoded assumption. The cache-load roundtrip test
-# exercises BOTH regimes: safe MISS at FRAG_SLOTS=1 (no persistence to
-# hit), real HIT at FRAG_SLOTS>1.
+# LRU/cold-fill tests only apply at FRAG_SLOTS>1 and self-skip otherwise,
+# proven via the actual elaborated width of frag_active rather than a
+# hardcoded assumption. The cache-load roundtrip test exercises BOTH
+# regimes: safe MISS at FRAG_SLOTS=1 (no persistence to hit), real HIT at
+# FRAG_SLOTS>1.
+#
+# self-skip 의 위험과 그 봉쇄 (P0-2)
+# -----------------------------------
+# 기본 빌드는 FRAG_SLOTS=1 이다. 그 빌드에서 아래 6건은 값 검사를 **0건**
+# 수행하고도 PASS 로 집계된다 — "돌렸다"와 "검증했다"가 구분되지 않는다.
+# 실제로 두 빌드를 모두 돌리도록 강제하는 장치가 CI·hook·lint 어디에도
+# 없었다. 두 가지로 막는다:
+#
+#   (i)  self-skip 은 반드시 `_skip_unless_multislot()` 을 거치며, 이것이
+#        WARNING 을 남긴다. 조용히 지나가는 경로가 없다.
+#   (ii) `make test-cluster-both` 가 두 빌드를 하나의 진입점으로 묶고,
+#        FRAG_SLOTS=1 에서 self-skip 이 정확히 6건, FRAG_SLOTS=4 에서
+#        정확히 0건인지까지 대조한다 (scripts/run_cluster_dual.py).
+#        `scripts/lint_frag_slots_dual_run.py` 가 (i)/(ii)의 형태를
+#        기계적으로 강제하므로 조용한 self-skip 을 새로 들여올 수 없다.
 # =============================================================================
 
 
 def _slots(dut):
     """Number of elaborated fragment-buffer slots (FRAG_SLOTS build param)."""
     return len(dut.frag_active.value)
+
+
+# `make test-cluster-both` / lint 이 로그에서 세는 고정 표식. 바꾸면
+# scripts/run_cluster_dual.py 와 scripts/lint_frag_slots_dual_run.py 도
+# 같이 바꿔야 한다 (lint 이 불일치를 잡는다).
+_MULTISLOT_SKIP_MARK = "FRAG_SLOTS-SELF-SKIP"
+
+
+def _skip_unless_multislot(dut):
+    """FRAG_SLOTS>1 전용 테스트의 **loud** self-skip 게이트.
+
+    True 를 돌려주면 호출자는 즉시 return 해야 한다. 조용히 넘어가지
+    않도록 반드시 WARNING 을 남긴다 — 이 부류의 PASS 는 '검증됨'이
+    아니라 '해당 없음'이기 때문이다."""
+    n = _slots(dut)
+    if n <= 1:
+        dut._log.warning(
+            "%s: FRAG_SLOTS=%d 빌드에서는 이 테스트가 값 검사를 0건 "
+            "수행한다. 이 PASS 는 '검증됨'이 아니라 '해당 없음'이다 — "
+            "다중 슬롯 검증은 `make test-cluster-both` 로 확보하라.",
+            _MULTISLOT_SKIP_MARK, n)
+        return True
+    return False
 
 
 async def _complete_wide_wave(dut, tag, lo, hi, consumer_instr):
@@ -1099,7 +1448,7 @@ async def test_frag_slots_persistent_no_clear(dut):
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
     await _reset(dut)
-    if _slots(dut) == 1:
+    if _skip_unless_multislot(dut):
         return
 
     tag = _tag(port_context_id=0)
@@ -1133,9 +1482,9 @@ async def test_frag_slots_coldfill_monotonic_age_and_lru_eviction(dut):
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
     await _reset(dut)
-    n = _slots(dut)
-    if n <= 1:
+    if _skip_unless_multislot(dut):
         return
+    n = _slots(dut)
 
     consumer = encode_instr(0x60, eh_port(input_port_mask=0x01, output_port_id=0),
                             eh_imm16(1))
@@ -1173,7 +1522,7 @@ async def test_frag_slots_tag_reuse_collision_safe_realloc(dut):
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
     await _reset(dut)
-    if _slots(dut) == 1:
+    if _skip_unless_multislot(dut):
         return
 
     tag = _tag(port_context_id=0)
@@ -1204,7 +1553,7 @@ async def test_frag_inval_hit_frees_slot_immediately(dut):
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
     await _reset(dut)
-    if _slots(dut) == 1:
+    if _skip_unless_multislot(dut):
         return
 
     tag = _tag(port_context_id=0)
@@ -1256,9 +1605,9 @@ async def test_frag_inval_freed_slot_reclaimed_by_free_priority_not_evict(dut):
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
     await _reset(dut)
-    n = _slots(dut)
-    if n <= 1:
+    if _skip_unless_multislot(dut):
         return
+    n = _slots(dut)
 
     consumer = encode_instr(0x60, eh_port(input_port_mask=0x01, output_port_id=0),
                             eh_imm16(1))
@@ -1296,7 +1645,7 @@ async def test_frag_inval_midassembly_slot_reports_miss_not_cancel(dut):
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
     await _reset(dut)
-    if _slots(dut) == 1:
+    if _skip_unless_multislot(dut):
         return
 
     tag = _tag(port_context_id=0)

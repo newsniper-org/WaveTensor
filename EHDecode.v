@@ -27,8 +27,9 @@
 // inputs mid-walk):
 //
 //   cycle T   : in_valid=1, instruction valid. Inputs latched into
-//               instr_latched / tag_latched / payload_latched. Pipeline
-//               kicks on next edge with stg_index=0.
+//               instr_latched / payload_latched. `input_tag` 은 래치하지
+//               않고 같은 에지에 cb_* 로 직접 분해한다 (§B-2 정리).
+//               Pipeline kicks on next edge with stg_index=0.
 //   cycle T+1 : SLOT 0 decoded from iw_c[stg_off]; accumulators update.
 //               stg_off / stg_expect advance. If cur_next == EH_END:
 //               done_d1 latches immediately (early sentinel exit).
@@ -44,8 +45,6 @@
 // `RisingEdge(dec_valid)` polling, not fixed cycle waits — so early
 // sentinel exit is transparent.
 // =============================================================================
-
-/* verilator lint_off UNUSEDSIGNAL */
 
 module EHDecode #(
     parameter ADDR_WIDTH  = 64,
@@ -173,7 +172,12 @@ module EHDecode #(
     // while subsequent slots read from the registered `instr_latched`.
     // -------------------------------------------------------------------------
     reg [INSTR_WIDTH-1:0] instr_latched;
-    reg [TAG_WIDTH-1:0]   tag_latched;
+    // 태그 래치본은 두지 않는다. 태그 필드는 같은 에지에 `input_tag` 에서
+    // cb_wave_number / cb_thread_id / cb_port_context_id / cb_precision_mode
+    // / cb_dimension_sizes 로 **직접** 들어가고, 출력 태그는
+    // `forwarded_tag_c` / `wave_advanced_tag_c` 가 조합으로 만든다. 즉
+    // 읽는 곳이 한 군데도 없는 write-only 레지스터였다 — "입력 래치 집합의
+    // 대칭" 이라는 명목상 사유만 있었고 RTL 의미에는 기여하지 않아 제거했다.
     reg [ADDR_WIDTH-1:0]  payload_latched, payload_b_latched;
     reg                   payload_b_valid_latched;
     // v1.5.2 §19 — wide payload latched on the same edge as legacy inputs.
@@ -183,7 +187,6 @@ module EHDecode #(
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             instr_latched              <= {INSTR_WIDTH{1'b0}};
-            tag_latched                <= {TAG_WIDTH{1'b0}};
             payload_latched            <= {ADDR_WIDTH{1'b0}};
             payload_b_latched          <= {ADDR_WIDTH{1'b0}};
             payload_b_valid_latched    <= 1'b0;
@@ -191,7 +194,6 @@ module EHDecode #(
             payload_wide_valid_latched <= 1'b0;
         end else if (in_valid && !stg_active) begin
             instr_latched              <= instruction;
-            tag_latched                <= input_tag;
             payload_latched            <= input_payload;
             payload_b_latched          <= input_payload_b;
             payload_b_valid_latched    <= input_payload_b_valid;
@@ -233,8 +235,14 @@ module EHDecode #(
     reg [63:0] acc_imm64;
     reg [63:0] acc_imm64_hi;
     reg [1:0]  acc_imm64_slot;
+    // MEM EH 의 addr_mode / stride 는 **누적만 되고 아직 소비되지 않는다**
+    // — EHDecode 는 `dec_eff_mem_offset` 만 내보내고, 주소 계산에 두 필드를
+    // 반영하는 실물화는 C-1 작업(별도)의 대상이다. 여기서 지우면 C-1 이
+    // 다시 만들어야 하므로 해석 경로는 유지한 채 경고만 국소 억제한다.
+    /* verilator lint_off UNUSEDSIGNAL */
     reg [ 3:0] acc_mem_addr_mode;
     reg [11:0] acc_mem_stride;
+    /* verilator lint_on UNUSEDSIGNAL */
     reg [31:0] acc_mem_offset;
     // v1.3: widened to hold up to 2 SUBSCRIPT EH bodies (low + hi).
     // Lower 48 bits = first SUBSCRIPT (axes 0-3 for {A,B,O}).
@@ -242,8 +250,13 @@ module EHDecode #(
     reg [95:0] acc_subscript;
     reg [1:0]  acc_subscript_slot;  // 0=none seen, 1=one seen, 2=two seen
     reg [ 3:0] acc_opref_src_kind;
-    reg [ 3:0] acc_opref_port_id;
-    reg [ 7:0] acc_opref_noc_route;
+    // OPREF 의 port_id / noc_route 에는 누적 레지스터를 두지 않는다.
+    // 실경로는 **조합 경로** (`opref_port_c` / `opref_route_c` →
+    // opref_port_id_out / opref_noc_route_out) 하나뿐이다 — 부모(Cluster)의
+    // bank 라우팅이 같은 에지에 값을 필요로 해서 1-사이클 늦은 누적본을 쓸
+    // 수 없기 때문이다. 과거의 `acc_opref_port_id` / `acc_opref_noc_route`
+    // 는 "EH 필드 집합의 대칭" 명목으로만 존재한 write-only 사본이었고,
+    // 읽는 곳이 없어 제거했다. src_kind 는 누적본이 실제로 읽히므로 유지.
     reg [ 7:0] acc_prec_mode;
     reg [ 7:0] acc_prec_dim;
 
@@ -312,8 +325,6 @@ module EHDecode #(
             acc_imm64_hi       <= 64'h0;
             acc_imm64_slot     <= 2'd0;
             acc_opref_src_kind <= 4'h0;
-            acc_opref_port_id  <= 4'h0;
-            acc_opref_noc_route<= 8'h0;
             acc_prec_mode      <= 8'h0;
             acc_prec_dim       <= 8'h0;
             acc_any_port       <= 1'b0;
@@ -359,8 +370,6 @@ module EHDecode #(
                 acc_imm64_hi       <= 64'h0;
                 acc_imm64_slot     <= 2'd0;
                 acc_opref_src_kind <= 4'h0;
-                acc_opref_port_id  <= 4'h0;
-                acc_opref_noc_route<= 8'h0;
                 acc_prec_mode      <= 8'h0;
                 acc_prec_dim       <= 8'h0;
                 acc_any_port       <= 1'b0;
@@ -434,8 +443,6 @@ module EHDecode #(
                     end
                     if (is_opref_c) begin
                         acc_opref_src_kind  <= cur_w0[19:16];
-                        acc_opref_port_id   <= cur_w0[23:20];
-                        acc_opref_noc_route <= cur_w0[31:24];
                         acc_any_opref       <= 1'b1;
                     end
                     if (is_precision_c) begin
@@ -478,7 +485,12 @@ module EHDecode #(
     // -------------------------------------------------------------------------
     wire f_has_opb       = cb_flags[3];
     wire f_precision_ovr = cb_flags[2];
+    // F_MEM 은 해독만 하고 **적법성 판정에 아직 쓰지 않는다** (MEM EH 유무와
+    // 이 플래그의 정합 검사가 없다). 실물화는 C-1 작업(별도)의 대상이므로
+    // 비트 해독 자체는 남긴 채 경고만 국소 억제한다.
+    /* verilator lint_off UNUSEDSIGNAL */
     wire f_mem           = cb_flags[1];
+    /* verilator lint_on UNUSEDSIGNAL */
     wire f_dim_ovr       = cb_flags[0];
 
     wire [7:0] eff_output_port_id  = acc_port_body[15:8];
@@ -660,7 +672,14 @@ module EHDecode #(
     reg [OFF_W-1:0] off_c     [0:MAX_EH];
     reg [3:0]       expect_c  [0:MAX_EH];
     reg [3:0] type_c, next_c;
+    // extlen_c 는 EH 헤더의 8-bit ext-length 필드를 통째로 받지만, 오프셋
+    // 전진에 쓰이는 것은 하위 니블 `extlen_c[3:0]` 뿐이다 (EH 길이는 최대
+    // 15 워드). 상위 니블은 예약 필드라 읽지 않는다 — 폭을 4로 줄이면
+    // 대입부에서 묵시적 절단이 생기므로 필드 폭은 spec 대로 두고 경고만
+    // 국소 억제한다.
+    /* verilator lint_off UNUSEDSIGNAL */
     reg [7:0] extlen_c;
+    /* verilator lint_on UNUSEDSIGNAL */
     reg [3:0] opref_kind_c;
     reg [3:0] opref_port_c;
     reg [7:0] opref_route_c;
@@ -701,5 +720,3 @@ module EHDecode #(
     assign opref_noc_route_out = opref_route_c;
 
 endmodule
-
-/* verilator lint_on UNUSEDSIGNAL */

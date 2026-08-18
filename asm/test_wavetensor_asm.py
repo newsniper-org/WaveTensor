@@ -2597,8 +2597,15 @@ class TestFdot32CrIsa3aC2(unittest.TestCase):
         would feed the RTL a payload no assembler emits."""
         hexfile = os.path.join(os.path.dirname(_HERE), 'include',
                                'generated', 'fdotcr_vectors.hex')
-        if not os.path.exists(hexfile):          # pragma: no cover
-            self.skipTest('golden vectors absent')
+        # `fdotcr_vectors.hex` 는 git 추적 파일(3a-C1 golden, frozen)이다.
+        # 따라서 clean checkout 에서는 **항상** 존재하고, 부재는 skip 사유가
+        # 아니라 결함이다 (golden 삭제 / 작업 트리 파손). skipTest 로 넘기면
+        # 이 C1<->C2 인터페이스 핀이 조용히 사라져서, asm packer 와 golden
+        # packer 가 어긋나도 아무도 알아채지 못한다 — 그래서 격상한다.
+        self.assertTrue(
+            os.path.exists(hexfile),
+            f'3a-C1 golden vectors missing: {hexfile} — git 추적 파일이므로 '
+            f'부재는 skip 사유가 아니라 결함이다')
         with open(hexfile, encoding='utf-8') as f:
             lines = [ln.strip() for ln in f
                      if ln.strip() and not ln.lstrip().startswith('//')]

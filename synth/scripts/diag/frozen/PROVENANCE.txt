@@ -1,0 +1,55 @@
+FROZEN — 진단 하네스 입력 고정본 (수정 금지)
+=============================================
+
+무엇인가
+--------
+`synth/scripts/diag/diag_names.tcl` + `classify_luts.py` 는 2026-08-15 의
+GATE V20-2 FAIL 원인 진단 (R3: 출하 top 재-synth 후 전 LUT cell 67,766 을
+이름-cone 으로 스테이지 귀속) 을 재현하는 하네스다. 그 결과는 spec
+`.claude-memos/wt64v1_spec.md` §27.6 (및 §26 계열 기록) 이 인용하는
+규범적 증적이며, 산출물은
+`synth/reports/fp_ops/fp_acclattice_diag_flat_attribution.txt` 다.
+
+왜 고정하는가
+-------------
+`classify_luts.py` 의 이름 규칙(g_addend / g_l[1-8] / row_a_p1 / g_place …)
+은 **그 시점의 FP_AccLattice.v 에만** 대응한다. 2026-08-16 커밋 cddb4d1
+("FP_AccLattice beat-serial N=8 재작성") 이 모듈을 통째로 다시 쓰면서
+그 라벨은 현행 RTL 에 **0건**이 됐다. 살아 있는 RTL 을 가리킨 채로 두면
+하네스는 **돌아가되 조용히 틀린 답**(전부 OTHER)을 내며, 예전에는 그래도
+exit 0 으로 그럴듯한 표를 찍었다. 이는 인용된 증적을 재현 불가능하게
+만들 뿐 아니라, 재현했다고 착각하게 만드는 쪽이 더 위험하다.
+
+그래서 하네스가 읽는 입력 3종을 진단 당시 리비전으로 고정했다.
+
+고정 리비전
+-----------
+  commit 903351c  (2026-08-15)
+    "rtl+test+synth(WT64v1 v2.0): golden lattice + FP_AccLattice +
+     GATE V20-2 실측 — xcu55c binding FAIL(LUT), ECP5 feasibility"
+
+  FP_AccLattice.v           <- 903351c:FP_AccLattice.v
+  FP_AccLattice_gate_top.v  <- 903351c:synth/lattice/fp_ops/FP_AccLattice_gate_top.v
+  fp_acclattice_gate.xdc    <- 903351c:synth/reports/fp_ops/fp_acclattice_gate.xdc
+
+주: 진단을 기록한 spec 커밋은 42130e2 이며, 그 시점의 FP_AccLattice.v 는
+903351c 의 것과 **바이트 동일**하다 (그 사이 RTL 변경 없음). xdc 는
+현행본과도 동일하나, 하네스를 자족적으로 만들기 위해 함께 고정했다.
+
+기준 결과 (이 고정본으로 재현되어야 하는 값)
+--------------------------------------------
+  total LUT cells: 67766
+    S1_place 0 / S1_ncnt 0 / S1_tree 60769 (89.67%) / S1_fault 3284 (4.85%)
+    S2_resolve 1455 (2.15%) / S3_extract 1808 (2.67%) / S4_encode 450 (0.66%)
+    OTHER 0 (0.00%)
+
+OTHER 가 0% 라는 점이 중요하다 — `classify_luts.py` 는 이제 OTHER 비율이
+임계(OTHER_FAIL_PCT)를 넘으면 **loud 하게 실패**한다. 잘못된 netlist 를
+먹였는데 조용히 통과하는 경로를 없애기 위한 것이다.
+
+현행 RTL 을 분류하고 싶다면
+---------------------------
+이 하네스를 고치지 마라. 현행 beat-serial FP_AccLattice 는 스테이지 라벨
+체계가 완전히 다르므로, 새 이름 규칙을 갖는 **별도** 하네스를 만들고
+그 결과를 별도 증적으로 기록하라. 이 디렉터리는 인용된 과거 측정의
+재현 전용이다.

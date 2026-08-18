@@ -120,7 +120,8 @@ synth-report:
 # vivado*.log`, which would have deleted 92 TRACKED gate-evidence files
 # (GATE V20-2 / V20-3 / S1-US reports — including sys_top_core_run.log,
 # whose CRITICAL WARNING census is a BINDING gate axis, see .gitignore
-# above) plus 12 tracked root Vivado logs. A "clean" target that destroys
+# above) plus the 12 root Vivado logs that were tracked at the time (they
+# were untracked on 2026-08-18 — see .gitignore). A "clean" target that destroys
 # the evidence its own gates depend on is a landmine; found by the
 # 2026-08-18 legacy audit before anyone tripped it.
 #
@@ -141,7 +142,9 @@ synth-clean:
 	rm -rf $$targets; \
 	echo "synth-clean: removed untracked byproducts only."; \
 	echo "  Tracked gate evidence under $(SYNTH_DIR)/reports/ is PRESERVED by design."; \
-	echo "  Root vivado*.jou/log are tracked today — untrack them first if they should go."
+	echo "  Root vivado*.{jou,log} + clockInfo.txt are gitignored (2026-08-18) and"; \
+	echo "  are deliberately NOT in the target list — deleting a vendor log is not"; \
+	echo "  this target's job, and synth-sys-gate no longer writes to the root."
 
 # -----------------------------------------------------------------------------
 # Per-operator UltraScale+ gates (v2.0) — the Vivado counterpart of
@@ -332,6 +335,16 @@ lattice-clean:
 #                               that moves on a token-less cycle silently
 #                               corrupts the next consumer's B operand.
 #                               The v1.9 baseline violated this.
+#   * lint_frag_slots_dual_run  — P0-2. `test_cluster.py` 의 FRAG_SLOTS>1
+#                               전용 6건은 기본 빌드(FRAG_SLOTS=1)에서
+#                               값 검사를 0건 하고도 PASS 로 집계됐고,
+#                               두 빌드를 모두 돌리도록 강제하는 장치가
+#                               어디에도 없었다. 이 lint 은 (a) 조용한
+#                               self-skip(`_slots()` → bare return)을
+#                               금지하고, (b) loud 게이트를 쓰는 테스트
+#                               집합이 선언표와 일치하는지, (c) 이중 빌드
+#                               진입점(`make test-cluster-both`)이 살아
+#                               있는지를 기계적으로 대조한다.
 #   * lint_known_defect_tests   — v1.9.1 §31.14. §28.4 item 8(e)'s
 #                               `expect_fail` ratchet, mechanically enforced
 #                               in BOTH directions. Weakening an assert
@@ -340,7 +353,7 @@ lattice-clean:
 #                               a green CI; that path is now closed, and
 #                               undeclared `expect_fail` markers (silencing
 #                               a regression) fail too.
-# All five are stdlib-only Python; runnable directly without cocotb:
+# All six are stdlib-only Python; runnable directly without cocotb:
 #   python3 scripts/lint_isa_tables_fresh.py
 # =============================================================================
 
@@ -351,7 +364,23 @@ lint:
 	python3 $(CURDIR)/scripts/lint_frag_total_m1_held.py
 	python3 $(CURDIR)/scripts/lint_synth_coverage.py
 	python3 $(CURDIR)/scripts/lint_output_payload_hold.py
+	python3 $(CURDIR)/scripts/lint_frag_slots_dual_run.py
 	python3 $(CURDIR)/scripts/lint_known_defect_tests.py
+
+# =============================================================================
+# P0-2 — Cluster 이중 빌드(FRAG_SLOTS=1 / FRAG_SLOTS=4) 단일 진입점.
+#
+# `make MOD=Cluster` 하나만 돌린 녹색은 다중 슬롯 경로(persistence / LRU /
+# cold-fill / FRAG_INVAL)가 검증됐다는 뜻이 **아니다** — 그 6건은 기본
+# 빌드에서 값 검사를 0건 수행하고 self-skip 한다. 이 타깃은 두 빌드를
+# 모두 돌리고, FRAG_SLOTS=1 에서 self-skip 이 정확히 6건 / FRAG_SLOTS=4
+# 에서 정확히 0건인지까지 대조한다. 한쪽만 돌리면 통과할 수 없다.
+# =============================================================================
+
+.PHONY: test-cluster-both
+
+test-cluster-both:
+	python3 $(CURDIR)/scripts/run_cluster_dual.py
 
 # =============================================================================
 # Claude Code memory mirror — copies the per-project memory directory
