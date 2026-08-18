@@ -116,9 +116,32 @@ impl-pod:
 synth-report:
 	@python3 $(SYNTH_DIR)/parse_reports.py $(GEOM_TAG)
 
+# synth-clean USED TO run `rm -rf $(SYNTH_DIR)/reports/* ... vivado*.jou
+# vivado*.log`, which would have deleted 92 TRACKED gate-evidence files
+# (GATE V20-2 / V20-3 / S1-US reports — including sys_top_core_run.log,
+# whose CRITICAL WARNING census is a BINDING gate axis, see .gitignore
+# above) plus 12 tracked root Vivado logs. A "clean" target that destroys
+# the evidence its own gates depend on is a landmine; found by the
+# 2026-08-18 legacy audit before anyone tripped it.
+#
+# It now removes ONLY untracked byproducts, and refuses loudly if any
+# target it is about to delete is tracked — the guard is the point, not
+# the shorter list: a future edit that re-adds a tracked path fails here
+# instead of silently deleting evidence.
 synth-clean:
-	rm -rf $(SYNTH_DIR)/reports/* $(SYNTH_DIR)/checkpoints/* \
-	       vivado*.jou vivado*.log .Xil
+	@set -e; \
+	targets="$(SYNTH_DIR)/checkpoints $(SYNTH_DIR)/reports/fp_ops/.sysgate_cwd .Xil"; \
+	tracked=$$(git ls-files -- $$targets 2>/dev/null); \
+	if [ -n "$$tracked" ]; then \
+	    echo "synth-clean: REFUSING — the following targets are TRACKED:"; \
+	    echo "$$tracked" | sed 's/^/    /'; \
+	    echo "synth-clean: a clean target must never delete tracked evidence."; \
+	    exit 1; \
+	fi; \
+	rm -rf $$targets; \
+	echo "synth-clean: removed untracked byproducts only."; \
+	echo "  Tracked gate evidence under $(SYNTH_DIR)/reports/ is PRESERVED by design."; \
+	echo "  Root vivado*.jou/log are tracked today — untrack them first if they should go."
 
 # -----------------------------------------------------------------------------
 # Per-operator UltraScale+ gates (v2.0) — the Vivado counterpart of
