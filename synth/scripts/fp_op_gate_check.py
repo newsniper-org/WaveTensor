@@ -209,7 +209,14 @@ GATES = [
                      "EXACT count instead of demanding 0 as the operator "
                      "gates do. Drift = a silent memory-inference change",
         "premap_mul_log": "sys_top_core_premap_mul.log",
-        "premap_mul_expect": 429,
+        # 429 -> 381: re-anchored 2026-08-18 on the user's §12a decision.
+        # The retired 48 were the row-address multiplies of the dead 2D
+        # partitioned_tlb_* arrays — phantoms that yosys kept as $memrd at
+        # premap time while the mapped netlist held ZERO cells for them.
+        # D4 deleted the arrays, so the phantoms went with them. Raising an
+        # exact axis is normally forbidden; here the axis was over-counting
+        # a structure that did not exist in silicon. See spec §29.11.
+        "premap_mul_expect": 381,
         "crit_whitelist": {"Synth 8-295": 8},
         "crit_note": "the 8 HIU TRNG ring oscillators are an INTENDED "
                      "combinational feedback (they are the entropy "
