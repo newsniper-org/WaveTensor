@@ -121,7 +121,19 @@ module EHDecode #(
     // ---- Combinational OPREF reflection (same-cycle as `instruction`) ----
     output [3:0]                 opref_src_kind_out,
     output [3:0]                 opref_port_id_out,
-    output [7:0]                 opref_noc_route_out
+    output [7:0]                 opref_noc_route_out,
+
+    // ---- 입력단 accept 가능 여부 (v1.9.2 §22.14b-3, normative) ----
+    // `in_ready = !stg_active`. 체인 워크가 진행 중이면 :195 의 입력 래치와
+    // :350 의 워크 kick 이 **둘 다** `in_valid && !stg_active` 로 가드되므로
+    // 그 사이클의 `in_valid` 는 소비되지도 큐잉되지도 에러로 기록되지도
+    // 않는다 — 즉 이 신호가 0 인 동안 들어온 명령은 **소실**된다.
+    // 그 사실을 처음으로 모듈 경계에 노출하는 포트다. 기존 내부 reg 의
+    // 반전일 뿐 **신규 상태가 아니다** (신규 FF 0).
+    //
+    // 이 포트를 읽는 부모는 소실 대신 **보류**를 선택할 수 있다 —
+    // Cluster.v 의 skid buffer 1단이 그것이다 (§22.14b-3).
+    output                       in_ready
 );
 
     // -------------------------------------------------------------------------
@@ -718,5 +730,9 @@ module EHDecode #(
     assign opref_src_kind_out  = opref_kind_c;
     assign opref_port_id_out   = opref_port_c;
     assign opref_noc_route_out = opref_route_c;
+
+    // v1.9.2 §22.14b-3 — 입력단 accept 가능 여부. `:195` / `:350` 의 가드
+    // 조건과 **문자 그대로 같은 항**이므로 두 지점이 어긋날 수 없다.
+    assign in_ready = !stg_active;
 
 endmodule

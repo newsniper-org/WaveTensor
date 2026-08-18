@@ -52,6 +52,10 @@ MULTISLOT_ONLY_TESTS = {
     "test_frag_inval_hit_frees_slot_immediately",
     "test_frag_inval_freed_slot_reclaimed_by_free_priority_not_evict",
     "test_frag_inval_midassembly_slot_reports_miss_not_cancel",
+    # v1.9.2 §22.14b-4b — deferred CAM commit 의 기아 봉쇄. FRAG_SLOTS=1 에는
+    # `frag_ready` 가 구조적으로 서지 않아 `cache_hit` 자체가 존재하지 않고,
+    # 따라서 기아 경로도 존재하지 않는다 (다중 슬롯 빌드 전용).
+    "test_skid_deferred_commit_survives_concurrent_cache_load",
 }
 
 

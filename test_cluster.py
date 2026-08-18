@@ -1188,14 +1188,19 @@ async def test_output_collision_stays_low_when_traffic_is_disjoint(dut):
     exp_lo, exp_hi = _bmm_3_expected(a_128, b_128)
     exp_add = _ADD_A + _ADD_IMM
 
-    # NOTE(정직성): 주입 지연 0..3 구간은 이 스윕에서 **제외**한다. 그
-    # 구간에서는 `cluster_ready` 가 1 인데도 ADD 가 출력을 전혀 내지
-    # 않는다 (공유 EHDecode 체인 워크가 SIG_BMM_3 파동에 점유된 동안
-    # 뒤따르는 명령이 배압 없이 소실된다). 이는 본 정리 작업 중 새로
-    # 관측된 **미해결 결함**이며, 여기서 "정상"으로 못박지 않기 위해
-    # assert 대상에서 뺐다. 스윕은 두 소스가 실제로 둘 다 출력하는
-    # 구간만 다룬다.
-    for delay in range(4, 16):
+    # NOTE(수리됨 — v1.9.2 §22.14b-3): 주입 지연 0..3 구간은 예전에 이
+    # 스윕에서 **제외**돼 있었다. 그 구간에서는 `cluster_ready` 가 1 인데도
+    # ADD 가 출력을 전혀 내지 않았기 때문이다 — 공유 EHDecode 체인 워크가
+    # SIG_BMM_3 파동에 점유된 동안(MAX_EH=4 에지) 뒤따르는 명령이 배압도
+    # 에러 비트도 없이 **소실**됐다. 그 회피 한정(`range(4, 16)`)은 결함을
+    # 우회했을 뿐 아니라, 결함이 고쳐졌는지도 영원히 볼 수 없게 만들었다.
+    #
+    # Cluster 입력단 skid buffer 1단이 착지해 소실이 구조적으로 0 이
+    # 됐으므로 **전 구간(0..15)을 복원한다.** 이제 delay 0..3 은 "출력이
+    # 없다" 가 아니라 "보류 후 투입되어 정확히 1건 출력한다" 를 뜻하며,
+    # 아래 by_hdr 검사(각 hdr 정확히 1건 + payload 일치)가 그것을 그대로
+    # 강제한다.
+    for delay in range(0, 16):
         await _reset(dut)
         for idx in range(4):
             dut.ext_instruction.value = bmm3_instr
@@ -1251,6 +1256,771 @@ async def test_output_collision_stays_low_when_traffic_is_disjoint(dut):
 
 
 # =============================================================================
+# v1.9.2 §22.14b-3 — Cluster 입력단 skid buffer 1단.
+#
+# 무엇을 pin 하는가:
+#   (a) test_skid_no_drop_during_ehdecode_blackout
+#       공유 EHDecode 가 점유된 blackout 구간(kick 후 MAX_EH 에지)에 주입된
+#       명령이 **소실되지 않는다**. 지연 0..MAX_EH 전 구간을 스윕하고, 각
+#       지연에서 두 명령이 **각각 정확히 1회** 자기 값으로 나오는지 본다.
+#       보류된 값이 live 값과 섞였는지도 payload 로 구분된다 (bit-identical).
+#       기전(`cluster_ready` 가 보류 중 0, skid 점유)도 직접 확인한다 —
+#       결과만 보면 "우연히 맞았다" 와 구분되지 않기 때문이다.
+#   (b) test_skid_overflow_raises_sticky_fault
+#       1단 skid 가 이미 점유된 상태에서 또 하나가 도착하면 **loud sticky
+#       fault**. 조용히 사라지는 경로가 없다는 것이 이 수리의 요점이므로,
+#       버려지는 경우까지 소리가 나는지 직접 본다.
+#
+# 왜 (a) 만으로 부족한가: (a) 는 skid 를 제거해도 "delay=4 만 통과" 로
+# 부분 통과할 수 있는 형태가 아니어야 한다. 그래서 (a) 는 지연 0 부터
+# 스윕하고 **모든** 지연에서 hard assert 한다. 반대로 (b) 가 없으면
+# "보류 대신 그냥 버리되 조용히" 라는 축퇴가 (a) 를 통과할 수 있다
+# (지연 1건만 보류해도 (a) 는 통과하므로).
+# =============================================================================
+
+_SKID_MAX_EH = 4        # Cluster 기본 파라미터. blackout 폭 = MAX_EH 에지.
+_SKID_A_PAY = 42        # 선행 파동 payload → 결과 49
+_SKID_B_PAY = 100       # ADD 기반 후행 파동 payload → 결과 107 (overflow 테스트)
+_SKID_C_PAY = 61        # overflow 로 버려질 세 번째 파동 → 결과 68
+
+# ---- 보류 대상 파동은 payload_b 를 **실제로 소비**해야 한다 ----------------
+# 2026-08-18 적대 검증 항 1 이 실증한 사각: 보류 저장소 1,659b 중 1,585b 가
+# 변이 사각이었다. 원인은 둘이었고 둘 다 자극의 문제였다.
+#   (1) 주입 펄스 뒤 `ext_*` 버스를 **그대로 방치**해서, 투입 에지의 live
+#       버스 값이 보류 값과 같아졌다 — 보류분을 쓰든 live 를 쓰든 결과가
+#       같으므로 원리적으로 구분 불가였다 (변이 M5/M6/M7/M13/M14 생존).
+#   (2) 두 파동이 모두 ADD-imm 이라 `payload_b` / `payload_b_valid` 를 아무도
+#       읽지 않았다 — 그 65 비트는 자극 자체가 만들어 낸 적이 없었다.
+# 아래 상수/헬퍼가 그 둘을 동시에 닫는다: 후행 파동은 TENSOR_ADD(0x31)로
+# payload_b 를 소비하고, 주입 직후 버스는 **미끼 값**으로 덮인다.
+_SKID_B_PCID = 1
+_SKID_B_A = pack16(1, 2, 3, 4)
+_SKID_B_B = pack16(10, 20, 30, 40)
+_SKID_B_EXP = pack16(11, 22, 33, 44)
+
+# ---- 미끼(decoy) ------------------------------------------------------------
+# 주입 펄스 직후 `ext_*` 전 필드를 덮는 값. 구현이 보류분 대신 투입 시점의
+# live 버스를 읽으면 그 오염이 결과/라우팅 태그로 **직접 관측**된다.
+#   * instruction : **다른 opcode**(ADD 0x10)여야 한다. 같은 0x31 을 쓰면
+#                   포트 필드만 달라져 결과값이 그대로여서 M5 가 산다.
+#   * tag         : 다른 port_context_id → 라우팅/출력 태그가 갈린다 (M6).
+#   * payload_b   : 다른 값 (M7).
+#   * payload_b_valid : 보류분과 **반대 값** (M13). 이 1비트는 값이 아니라
+#                   유효성이라 반대 값이 아니면 구분되지 않는다.
+_SKID_DECOY_PCID = 3
+_SKID_DECOY_A = 0xDEADBEEF0BADF00D
+_SKID_DECOY_B = 0x1111222233334444
+
+
+def _skid_tadd_instr(pcid):
+    """TENSOR_ADD(0x31) — `input_payload_b` 를 실제로 읽는 명령."""
+    return encode_instr(0x31, eh_port(input_port_mask=(1 << pcid),
+                                      output_port_id=pcid),
+                        eh_opref(), flags=F_HAS_OPB)
+
+
+def _skid_decoy(dut):
+    """`ext_*` 버스를 미끼로 덮는다 (ext_valid 는 0).
+
+    **모든** 주입 펄스 뒤에 반드시 불러야 한다. 이것을 빠뜨리면 보류
+    저장소의 대부분이 다시 변이 사각으로 돌아간다 (항 1)."""
+    dut.ext_instruction.value = _coll_add_instr(_SKID_DECOY_PCID)
+    dut.ext_tag.value = _tag(port_context_id=_SKID_DECOY_PCID, dim=0x05)
+    dut.ext_payload.value = _SKID_DECOY_A
+    dut.ext_payload_b.value = _SKID_DECOY_B
+    dut.ext_payload_b_valid.value = 0
+    dut.ext_frag_hdr.value = 0
+    dut.ext_valid.value = 0
+
+
+def _out_pcid(dut):
+    """출력 태그의 port_context_id 하위 4비트 (= 라우팅 목적지)."""
+    return (int(dut.ext_out_tag.value) >> 16) & 0xF
+
+
+async def _skid_pulse(dut, instr, tag, payload, payload_b=0,
+                      payload_b_valid=0):
+    """ext_valid 를 **정확히 1 사이클**만 세워 한 파동을 주입하고, 그 직후
+    버스를 미끼로 덮는다."""
+    dut.ext_instruction.value = instr
+    dut.ext_tag.value = tag
+    dut.ext_payload.value = payload
+    dut.ext_payload_b.value = payload_b
+    dut.ext_payload_b_valid.value = payload_b_valid
+    dut.ext_frag_hdr.value = 0
+    dut.ext_valid.value = 1
+    await RisingEdge(dut.clk)
+    _skid_decoy(dut)
+
+
+@cocotb.test()
+async def test_skid_no_drop_during_ehdecode_blackout(dut):
+    """v1.9.2 §22.14b-3 — blackout 구간 주입이 **소실되지 않는다**.
+
+    구 RTL 에서는 `EHDecode` 체인 워크 중(`stg_active==1`) 도착한 명령이
+    `EHDecode.v:195`/`:350` 양쪽 가드에 걸려 **어느 arm 에서도 읽히지
+    않았다** — 큐 0 · 홀드 0 · 에러 비트 0 의 순수 소실. `cluster_ready`
+    는 출력단만 보므로 그 순간에도 1 이었다.
+
+    이 테스트는 지연 0..MAX_EH 전 구간에서 두 번째 명령이 **정확히 1회**
+    자기 payload 로 나오는지 hard assert 한다. skid 를 제거하면 지연
+    0..3 이 전부 "출력 1건 누락" 으로 사멸한다.
+
+    **bit-identical 검사 (2026-08-18 항 1 수리)**: 주입 펄스 직후 버스를
+    미끼로 덮으므로(`_skid_decoy`), 보류분 대신 투입 시점의 live 버스를
+    읽는 구현은 값(payload_a / payload_b / payload_b_valid / opcode)이나
+    라우팅 태그가 어긋나 여기서 죽는다. 후행 파동을 TENSOR_ADD 로 고른
+    것도 같은 이유다 — ADD-imm 은 `payload_b` 65 비트를 읽지 않는다.
+
+    **투입 시점 pin**: 지연 0..MAX_EH 의 **모든** 값에서 후행 파동의 출력
+    사이클이 같아야 한다. 지연 MAX_EH 는 보류 없이 bypass 로 통과하는
+    기준점이므로, 보류분 투입에 거품이 1 에지라도 끼면 그 기준점과
+    어긋나 여기서 잡힌다 (= "in_ready 가 서는 **최초** 에지" 규범)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+
+    instr_a = _coll_add_instr(0)
+    instr_b = _skid_tadd_instr(_SKID_B_PCID)
+    exp_a = _SKID_A_PAY + _ADD_IMM
+    exp_b = _SKID_B_EXP
+    assert exp_a != exp_b
+
+    out_cycle_b = {}
+    for delay in range(0, _SKID_MAX_EH + 1):
+        await _reset(dut)
+        # 선행 파동: 이 에지가 EHDecode kick (= 사이클 0 의 시작).
+        await _skid_pulse(dut, instr_a, _tag(port_context_id=0), _SKID_A_PAY)
+
+        outs = []
+        ready_low_seen = False
+        skid_held_seen = False
+        for c in range(0, delay + 40):
+            if c == delay:
+                dut.ext_instruction.value = instr_b
+                dut.ext_tag.value = _tag(port_context_id=_SKID_B_PCID,
+                                         dim=0x05)
+                dut.ext_payload.value = _SKID_B_A
+                dut.ext_payload_b.value = _SKID_B_B
+                dut.ext_payload_b_valid.value = 1
+                dut.ext_frag_hdr.value = 0
+                dut.ext_valid.value = 1
+            await RisingEdge(dut.clk)
+            # 주입 에지 직후 즉시 미끼로 덮는다 — 이 한 줄이 보류 저장소
+            # 1,585 비트의 변이 사각을 없앤다 (항 1).
+            _skid_decoy(dut)
+            await Timer(1, units="ns")
+            if int(dut.cluster_ready.value) == 0:
+                ready_low_seen = True
+            if int(dut.skid_valid.value) == 1:
+                skid_held_seen = True
+            if int(dut.ext_out_valid.value) == 1:
+                outs.append((c, int(dut.ext_out_payload.value),
+                             _out_pcid(dut)))
+
+        got = [p for _, p, _ in outs]
+        assert got.count(exp_a) == 1, (
+            f"delay={delay}: 선행 파동 결과 {exp_a} 가 정확히 1회여야 하는데 "
+            f"{got.count(exp_a)}회 (관측 {outs})")
+        assert got.count(exp_b) == 1, (
+            f"delay={delay}: **후행 파동이 소실/오염됐다** — 결과 "
+            f"{exp_b:#x} 가 {got.count(exp_b)}회 (관측 "
+            f"{[(c, hex(p), t) for c, p, t in outs]}). §22.14b-3 skid 보류가 "
+            f"동작하지 않으면 delay 0..{_SKID_MAX_EH - 1} 이 여기서 죽고, "
+            f"보류가 **부분적**이면 미끼 값이 섞여 여기서 죽는다")
+        assert len(got) == 2, (
+            f"delay={delay}: 출력이 정확히 2건이어야 한다 (중복 투입 금지) "
+            f"— 관측 {[(c, hex(p), t) for c, p, t in outs]}")
+        assert [p for _, p, _ in sorted(outs)] == [exp_a, exp_b], (
+            f"delay={delay}: 프로그램 순서가 뒤집혔다 — {outs}")
+        # 라우팅 태그까지 본다 — 값만 보면 `ehdec_tag` 보류가 사각이 된다
+        # (미끼 태그로 라우팅되어도 산술 결과는 같을 수 있다).
+        by_pay = {p: (c, t) for c, p, t in outs}
+        assert by_pay[exp_a][1] == 0, (
+            f"delay={delay}: 선행 파동이 pcid 0 이 아닌 "
+            f"{by_pay[exp_a][1]} 로 나왔다 — {outs}")
+        assert by_pay[exp_b][1] == _SKID_B_PCID, (
+            f"delay={delay}: 보류 파동이 자기 태그가 아니라 미끼 태그로 "
+            f"라우팅됐다 (pcid {by_pay[exp_b][1]}, 기대 {_SKID_B_PCID}) — "
+            f"`ehdec_tag` 보류가 빠졌다는 뜻이다")
+        assert int(dut.input_skid_overflow_error.value) == 0, (
+            f"delay={delay}: 정상 보류인데 overflow fault 가 떴다")
+        assert int(dut.any_error_flag.value) == 0, (
+            f"delay={delay}: 정상 경로인데 any_error_flag 가 섰다")
+
+        out_cycle_b[delay] = by_pay[exp_b][0]
+
+        # 기전 직접 확인 — 결과만 보면 "우연히 맞았다" 와 구분이 안 된다.
+        if delay < _SKID_MAX_EH:
+            assert skid_held_seen, (
+                f"delay={delay}: blackout 구간 주입인데 skid 가 한 번도 "
+                f"점유되지 않았다 — bypass 로 통과했다면 EHDecode 가 "
+                f"그것을 버렸어야 한다")
+            assert ready_low_seen, (
+                f"delay={delay}: skid 점유 중 cluster_ready 가 0 으로 "
+                f"내려가지 않았다 — §22.14b-3 이 부여한 새 의미가 "
+                f"배선되지 않았다")
+        else:
+            # §22.14b-3 규범: EHDecode 가 비어 있으면 파동은 **그대로
+            # 통과**한다 (bypass mux — latency 델타 0). 상시 경유 레지스터
+            # (cut ladder rung 2)로 축퇴하면 여기서 죽는다.
+            assert not skid_held_seen, (
+                f"delay={delay}: EHDecode 가 비어 있는 에지의 도착인데 skid 를 "
+                f"경유했다 — §22.14b-3 의 bypass 규범 위반")
+
+    # 투입 시점 pin — 보류분은 `in_ready` 가 서는 **최초** 에지에 들어간다.
+    assert len(set(out_cycle_b.values())) == 1, (
+        f"보류 파동의 출력 사이클이 지연에 따라 달라졌다: {out_cycle_b}. "
+        f"delay={_SKID_MAX_EH} 는 보류 없이 통과하는 기준점이므로, 값이 "
+        f"갈렸다는 것은 보류 경로가 거품을 1 에지 이상 넣었다는 뜻이다 "
+        f"(§22.14b-3 은 '최초 에지' 를 규범으로 정한다)")
+
+
+@cocotb.test()
+async def test_skid_overflow_raises_sticky_fault(dut):
+    """v1.9.2 §22.14b-3 — skid 2개째 도착 = **loud sticky fault**.
+
+    1단 skid 는 blackout 창(MAX_EH 에지) 안에 도착하는 파동 1건까지만
+    담는다. 그 상태에서 또 하나가 오면 담을 자리가 없다. 그 파동은
+    버려지지만 **조용히 버려지지 않는다** — 이 수리의 요점이 "소실을
+    없앨 수 없는 경계에서는 최소한 소리를 낸다" 이기 때문이다.
+
+    검사 4건: (1) 두 번째까지는 fault 0, (2) 세 번째에서 1, (3) sticky
+    (이후 계속 1) + `any_error_flag` 폴딩, (4) 리셋으로만 지워진다."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+
+    instr_a = _coll_add_instr(0)
+    instr_b = _coll_add_instr(1)
+    instr_c = _coll_add_instr(2)
+    exp_a = _SKID_A_PAY + _ADD_IMM
+    exp_c = _SKID_C_PAY + _ADD_IMM
+
+    await _reset(dut)
+    assert int(dut.input_skid_overflow_error.value) == 0, \
+        "리셋 직후 fault 가 이미 서 있다"
+
+    # 사이클 0 의 시작 = kick. 이후 MAX_EH 에지 동안 in_ready=0.
+    await _skid_pulse(dut, instr_a, _tag(port_context_id=0), _SKID_A_PAY)
+
+    # 사이클 0: skid 로 보류된다 (아직 fault 없음).
+    await _skid_pulse(dut, instr_b, _tag(port_context_id=1), _SKID_B_PAY)
+    await Timer(1, units="ns")
+    assert int(dut.skid_valid.value) == 1, \
+        "두 번째 파동이 skid 에 보류되지 않았다 — 전제가 성립하지 않는다"
+    assert int(dut.input_skid_overflow_error.value) == 0, \
+        "보류 1건만으로 overflow fault 가 떴다 (신호가 1 에 묶인 축퇴)"
+    assert int(dut.cluster_ready.value) == 0, \
+        "skid 점유 중인데 cluster_ready 가 1 이다 — 바로 그 거짓말을 " \
+        "§22.14b-3 이 없앴어야 한다"
+
+    # 사이클 1: skid 가 이미 점유 → 3번째는 담을 자리가 없다.
+    await _skid_pulse(dut, instr_c, _tag(port_context_id=2), _SKID_C_PAY)
+    await Timer(1, units="ns")
+    assert int(dut.input_skid_overflow_error.value) == 1, \
+        "skid 가 찬 상태에서 도착한 파동이 **조용히** 사라졌다 — " \
+        "loud-fault-never-silent 위반"
+    assert int(dut.any_error_flag.value) == 1, \
+        "overflow fault 가 any_error_flag 로 폴딩되지 않았다"
+
+    # sticky: 이후 전 구간에서 1 을 유지하고, 버려진 파동은 실제로 안 나온다.
+    outs = []
+    for _ in range(60):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        assert int(dut.input_skid_overflow_error.value) == 1, \
+            "fault 가 sticky 가 아니다 — 다음 idle 사이클에 흡수됐다"
+        if int(dut.ext_out_valid.value) == 1:
+            outs.append(int(dut.ext_out_payload.value))
+    assert exp_c not in outs, (
+        f"overflow 로 보고한 파동이 실제로는 실행됐다 — fault 가 거짓 "
+        f"경보다 (관측 {outs})")
+    # overflow 는 **버려지는 쪽**만 버린다 — 이미 보류돼 있던 파동은
+    # 그대로 살아 나와야 한다. 이것이 없으면 "overflow 때 skid 를 통째로
+    # 버린다" 는 축퇴가 통과한다.
+    exp_b = _SKID_B_PAY + _ADD_IMM
+    assert outs.count(exp_b) == 1, (
+        f"overflow 사이클이 **이미 보류된** 파동까지 죽였다 — 기대 "
+        f"{exp_b} 가 {outs.count(exp_b)}회 (관측 {outs})")
+    assert outs.count(exp_a) == 1, (
+        f"선행 파동 결과 {exp_a} 가 {outs.count(exp_a)}회 (관측 {outs})")
+
+    # 리셋으로만 지워진다.
+    await _reset(dut)
+    assert int(dut.input_skid_overflow_error.value) == 0, \
+        "리셋이 sticky fault 를 지우지 못했다"
+
+
+def _bmm3_payloads(a_nib, b_nib):
+    """SIG_BMM_3 용 A/B 를 임의 nibble 패턴으로 만든다 (조각 4개 + 원본)."""
+    a_128 = 0
+    b_128 = 0
+    for i in range(8):
+        a_128 |= (a_nib & 0xFFFF) << (i * 16)
+        b_128 |= (b_nib & 0xFFFF) << (i * 16)
+    payloads = [a_128 & ((1 << 64) - 1), (a_128 >> 64) & ((1 << 64) - 1),
+                b_128 & ((1 << 64) - 1), (b_128 >> 64) & ((1 << 64) - 1)]
+    return payloads, a_128, b_128
+
+
+async def _skid_frag_beat(dut, instr, tag, payload, frag_hdr,
+                          payload_b_valid=0):
+    """조각 1개를 한 에지에 주입한다 (버스 정리는 호출자 몫)."""
+    dut.ext_instruction.value = instr
+    dut.ext_tag.value = tag
+    dut.ext_payload.value = payload
+    dut.ext_payload_b.value = 0
+    dut.ext_payload_b_valid.value = payload_b_valid
+    dut.ext_frag_hdr.value = frag_hdr
+    dut.ext_valid.value = 1
+    await RisingEdge(dut.clk)
+
+
+async def _bmm3_beat(dut, instr, tag, payload, idx):
+    """SIG_BMM_3 조각 1개를 한 에지에 주입한다 (버스는 호출자가 정리)."""
+    await _skid_frag_beat(dut, instr, tag, payload, (idx << 4) | 0x3,
+                          payload_b_valid=1)
+
+
+def _skid_slot_of(dut, tag):
+    """`tag` 를 담고 있는 CAM 슬롯 인덱스 (없으면 None)."""
+    for i in range(_slots(dut)):
+        if int(dut.frag_tag_reg[i].value) == tag:
+            return i
+    return None
+
+
+def _skid_slot_released(dut, slot):
+    """§22.14b-4 의 '철거' 가 실제로 일어났는가 — 빌드별 정의.
+
+    FRAG_SLOTS=1 은 즉시 철거(`frag_active=0`), FRAG_SLOTS>1 은 persistent
+    캐시로 승격(`frag_ready=1`)이 완료 형태다 (CAM always 블록의 두 갈래와
+    문자 그대로 같다). 어느 쪽도 '아무것도 검사하지 않음' 이 아니다."""
+    if _slots(dut) > 1:
+        return (int(dut.frag_ready.value) >> slot) & 1 == 1
+    return (int(dut.frag_active.value) >> slot) & 1 == 0
+
+
+async def _bmm3_burst(dut, instr, tag, payloads):
+    """4 조각을 연속 에지에 주입하고 버스를 **미끼로 덮는다**.
+
+    미끼가 없으면 투입 에지에 `ext_tag` 가 아직 이 파동의 태그라서
+    `hit_continue` 가 그대로 맞고, live `final_wide` 가 보류분과 같은
+    값이 되어 `ehdec_wide` 1,024 비트가 통째로 변이 사각이 된다
+    (2026-08-18 항 1 의 M14)."""
+    for idx in range(4):
+        await _bmm3_beat(dut, instr, tag, payloads[idx], idx)
+    _skid_decoy(dut)
+
+
+@cocotb.test()
+async def test_skid_deferred_wave_releases_cam_slot(dut):
+    """v1.9.2 §22.14b-4 — 보류된 다중 조각 파동의 **CAM 슬롯 회계**.
+
+    철거를 accept 에 종속시키는 것만으로는 절반이다: accept 이 미뤄지면
+    슬롯이 "완성됐는데 철거되지 않은" 상태로 남고, **같은 tag 로 재전송된
+    파동의 첫 조각이 가득 찬 mask 에 병합돼 즉시 거짓 완성**한다 — 오늘
+    존재하지 않는 오염이 새로 생긴다. 그래서 투입 에지에 deferred commit
+    이 슬롯을 정확히 같은 형태로 처리해야 한다.
+
+    자극: 선행 파동으로 EHDecode 를 점유시킨 뒤, blackout 창 안에서
+    4-조각 SIG_BMM_3 를 완성시킨다 (→ 보류). 투입 후 **같은 tag** 로
+    값이 다른 두 번째 SIG_BMM_3 를 재전송하고, 두 파동 모두 자기 값으로
+    나오는지 본다. 슬롯 회계가 틀리면 두 번째가 첫 번째의 잔재와 섞여
+    다른 값을 내거나 조각 수가 맞지 않는다."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+
+    bmm3_instr, _, _, _ = _bmm3_stimulus()
+    tag_mu = _tag(port_context_id=0)
+    pay1, a1, b1 = _bmm3_payloads(0x1111, 0x2222)
+    pay2, a2, b2 = _bmm3_payloads(0x3131, 0x1212)
+    exp1 = _bmm_3_expected(a1, b1)
+    exp2 = _bmm_3_expected(a2, b2)
+    assert exp1 != exp2, "두 파동의 기대값이 같으면 오염을 구분할 수 없다"
+
+    await _reset(dut)
+    # 선행 파동(단일 조각 ADD)으로 EHDecode 를 점유시킨다.
+    await _skid_pulse(dut, _coll_add_instr(1), _tag(port_context_id=1),
+                      _SKID_A_PAY)
+    # 사이클 0..3 = blackout. 4 조각이 그 안에서 완성된다 → 보류.
+    await _bmm3_burst(dut, bmm3_instr, tag_mu, pay1)
+    await Timer(1, units="ns")
+    assert int(dut.skid_valid.value) == 1, \
+        "완성 조각이 blackout 안에서 도착했는데 보류되지 않았다 — " \
+        "자극의 타이밍 전제가 깨졌다"
+
+    # ---- 기전 pin: 철거가 **투입 에지에** 실제로 일어나는가 ----
+    # 결과값만 보면 §22.14b-4b(b)(완성 보류 슬롯 병합 금지)가 오염을 대신
+    # 막아 주기 때문에 deferred commit 을 통째로 지워도 통과한다 (실측:
+    # `skid_commit_now ≡ 0` 변이가 결과 검사만으로는 생존). 두 방어가
+    # 서로를 가리므로 **각각을 기전으로** 못박는다.
+    slot = _skid_slot_of(dut, tag_mu)
+    assert slot is not None, "보류 파동의 CAM 슬롯을 찾지 못했다"
+    assert not _skid_slot_released(dut, slot), (
+        f"슬롯 {slot} 이 accept 전에 이미 철거됐다 — §22.14b-4 의 "
+        f"accept 종속이 배선되지 않았다")
+    await RisingEdge(dut.clk)               # = 보류분 투입 에지
+    await Timer(1, units="ns")
+    assert int(dut.skid_valid.value) == 0, \
+        "전제 붕괴: 이 에지가 투입 에지가 아니다"
+    assert _skid_slot_released(dut, slot), (
+        f"투입 에지에 deferred CAM commit 이 일어나지 않았다 — 슬롯 "
+        f"{slot} 이 '완성됐는데 철거되지 않은' 상태로 남았다. 재시도 경로가 "
+        f"없으므로 이 상태는 영구다 (§22.14b-4b)")
+
+    outs1 = []
+    for _ in range(59):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.ext_out_valid.value) == 1:
+            outs1.append((int(dut.ext_out_frag_hdr.value),
+                          int(dut.ext_out_payload.value)))
+    by1 = dict(outs1)
+    assert by1.get(0x01) == exp1[0] and by1.get(0x11) == exp1[1], (
+        f"보류된 SIG_BMM_3 가 자기 값으로 나오지 않았다 — 관측 {outs1}, "
+        f"기대 lo={exp1[0]:#x} hi={exp1[1]:#x}")
+
+    # 같은 tag 로 값만 다른 재전송. 슬롯이 남아 있으면 첫 조각에서
+    # 거짓 완성해 exp1 잔재가 섞인다.
+    await _bmm3_burst(dut, bmm3_instr, tag_mu, pay2)
+    outs2 = []
+    for _ in range(60):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.ext_out_valid.value) == 1:
+            outs2.append((int(dut.ext_out_frag_hdr.value),
+                          int(dut.ext_out_payload.value)))
+    by2 = dict(outs2)
+    assert len(outs2) == 2, (
+        f"재전송 파동의 출력 조각이 2건이어야 한다 — 관측 {outs2}. "
+        f"거짓 완성이 일어나면 조각 수부터 어긋난다")
+    assert by2.get(0x01) == exp2[0] and by2.get(0x11) == exp2[1], (
+        f"재전송 파동이 앞선 보류 파동의 CAM 잔재와 섞였다 — 관측 "
+        f"{outs2}, 기대 lo={exp2[0]:#x} hi={exp2[1]:#x}")
+    assert int(dut.input_skid_overflow_error.value) == 0, \
+        "정상 경로인데 overflow fault 가 떴다"
+
+
+# =============================================================================
+# v1.9.2 §22.14b-4b — deferred CAM commit 의 **기아(starvation) 봉쇄**와
+# 완성 보류 슬롯의 **병합 금지**.
+#
+# 왜 두 건이 더 필요한가 (2026-08-18 적대 검증 항 3):
+#   §22.14b-4 의 accept-종속 철거는 HEAD 에 없던 상태 — "완성됐는데 아직
+#   철거되지 않은 슬롯" — 를 **새로 만든다**. spec §22.14b-6(4)가 그 위험을
+#   축소 없이 공개했지만 **회귀 pin 이 0건**이었고, 초판 구현에는 실제로
+#   도달 경로가 두 갈래 있었다:
+#     (i)  deferred commit 이 CAM always 사슬의 마지막 arm 이라, 투입 에지에
+#          `cache_hit`(다른 tag 의 0x68) 하나만 겹쳐도 **영구 누락**됐다.
+#     (ii) 그렇게 남은 슬롯에 같은 tag 의 조각이 도착하면 가득 찬 mask 에
+#          병합돼 **즉시 거짓 완성** → stale wide 를 실행했다.
+#   아래 두 테스트가 각각을 직접 pin 한다. (i) 은 다중 슬롯 빌드에서만
+#   구성 가능하다 — FRAG_SLOTS=1 에는 `frag_ready` 가 서지 않아 `cache_hit`
+#   자체가 존재하지 않기 때문이다. (ii) 는 양 빌드에서 성립한다.
+# =============================================================================
+
+@cocotb.test()
+async def test_skid_deferred_commit_survives_concurrent_cache_load(dut):
+    """v1.9.2 §22.14b-4b — 투입 에지에 0x68 이 겹쳐도 deferred commit 이
+    **밀리지 않는다**.
+
+    초판에서는 deferred CAM commit 이 `frag_in_multi`/`cache_hit`/`inval_hit`
+    뒤의 마지막 else-if 였다. 재시도 경로가 없으므로 그 사이클에 다른 tag 의
+    `CACHE_LOAD_WIDE`(0x68) 하나만 겹치면 commit 은 지연이 아니라 **영구
+    누락**이 되고, 슬롯은 "완성 + full mask + frag_ready=0" 으로 남아 다음
+    같은-tag 파동을 거짓 완성시킨다.
+
+    자극은 계약 위반 영역이다 (`cluster_ready==0` 인 사이클에 0x68 주입) —
+    그래서 overflow fault 가 뜨는 것이 **정상**이고, 이 테스트가 보는 것은
+    "그 계약 위반 뒤에도 CAM 회계가 온전한가" 다. 그것이 loud-fault-never-
+    silent 의 요구다: 소리를 낸 다음에도 조용한 오염을 남기지 않는다.
+
+    FRAG_SLOTS=1 에서는 `frag_ready` 가 구조적으로 서지 않아 `cache_hit`
+    자체가 없다 — 즉 이 기아 경로는 다중 슬롯 빌드에만 존재한다."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+    if _skip_unless_multislot(dut):
+        return
+
+    consumer = encode_instr(0x60, eh_port(input_port_mask=0x01,
+                                          output_port_id=0), eh_imm16(1))
+    tag_cached = make_tag(wave_number=0x77, port_context_id=0)
+    # 0x68 이 hit 할 ready 슬롯을 하나 만들어 둔다 (다른 tag).
+    await _complete_wide_wave(dut, tag_cached, 0xA1A1A1A1A1A1A1A1,
+                              0xB2B2B2B2B2B2B2B2, consumer)
+    await _drain_output(dut)
+    for _ in range(12):
+        await RisingEdge(dut.clk)
+    _skid_decoy(dut)
+    await Timer(1, units="ns")
+
+    n = _slots(dut)
+    ready_bits = int(dut.frag_ready.value)
+    assert ready_bits != 0, \
+        "전제 붕괴: 0x68 이 hit 할 ready 슬롯이 만들어지지 않았다"
+
+    bmm3_instr, _, _, _ = _bmm3_stimulus()
+    tag_w = _tag(port_context_id=0)
+    assert tag_w != tag_cached
+    pay1, a1, b1 = _bmm3_payloads(0x1111, 0x2222)
+    pay2, a2, b2 = _bmm3_payloads(0x3131, 0x1212)
+    exp1 = _bmm_3_expected(a1, b1)
+    exp2 = _bmm_3_expected(a2, b2)
+    assert exp1 != exp2
+
+    # EHDecode 를 점유시킨 뒤 blackout 안에서 4-조각 파동을 완성 → 보류.
+    await _skid_pulse(dut, _coll_add_instr(1), _tag(port_context_id=1),
+                      _SKID_A_PAY)
+    await _bmm3_burst(dut, bmm3_instr, tag_w, pay1)
+    await Timer(1, units="ns")
+    assert int(dut.skid_valid.value) == 1, \
+        "전제 붕괴: 완성 조각이 blackout 안에서 보류되지 않았다"
+    slot_w = None
+    for i in range(n):
+        if int(dut.frag_tag_reg[i].value) == tag_w:
+            slot_w = i
+            break
+    assert slot_w is not None, "보류 파동의 CAM 슬롯을 찾지 못했다"
+    assert (int(dut.frag_ready.value) >> slot_w) & 1 == 0, \
+        "전제 붕괴: 철거가 accept 에 종속되지 않았다 (이미 ready)"
+
+    # ---- 투입 에지에 **다른 tag 의 0x68** 을 겹친다 ----
+    cache_instr = encode_instr(0x68, eh_port(input_port_mask=0x01,
+                                             output_port_id=0))
+    dut.ext_instruction.value = cache_instr
+    dut.ext_tag.value = tag_cached
+    dut.ext_payload.value = 0
+    dut.ext_payload_b.value = 0
+    dut.ext_payload_b_valid.value = 0
+    dut.ext_frag_hdr.value = 0
+    dut.ext_valid.value = 1
+    await RisingEdge(dut.clk)          # = 보류분 투입 에지
+    _skid_decoy(dut)
+    await Timer(1, units="ns")
+
+    assert int(dut.skid_valid.value) == 0, \
+        "전제 붕괴: 이 에지가 투입 에지가 아니다"
+    # 기전 직접 pin — 결과만 보면 뒤의 (ii) 방어가 가려 준다.
+    assert (int(dut.frag_ready.value) >> slot_w) & 1 == 1, (
+        f"deferred CAM commit 이 동시 발생한 cache_hit 에 **밀렸다** — "
+        f"슬롯 {slot_w} 이 '완성됐는데 철거되지 않은' 상태로 남았다. "
+        f"재시도 경로가 없으므로 이 상태는 영구다 (§22.14b-4b)")
+    assert int(dut.input_skid_overflow_error.value) == 1, \
+        "cluster_ready==0 인 사이클의 주입인데 loud fault 가 없다"
+
+    outs1 = []
+    for _ in range(60):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.ext_out_valid.value) == 1:
+            outs1.append((int(dut.ext_out_frag_hdr.value),
+                          int(dut.ext_out_payload.value)))
+    by1 = dict(outs1)
+    assert by1.get(0x01) == exp1[0] and by1.get(0x11) == exp1[1], (
+        f"보류된 파동이 자기 값으로 나오지 않았다 — 관측 {outs1}")
+
+    # 같은 tag 재전송이 잔재와 섞이지 않아야 한다.
+    await _bmm3_burst(dut, bmm3_instr, tag_w, pay2)
+    outs2 = []
+    for _ in range(60):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.ext_out_valid.value) == 1:
+            outs2.append((int(dut.ext_out_frag_hdr.value),
+                          int(dut.ext_out_payload.value)))
+    by2 = dict(outs2)
+    assert len(outs2) == 2, (
+        f"재전송 파동의 출력 조각이 2건이어야 한다 — 관측 {outs2}")
+    assert by2.get(0x01) == exp2[0] and by2.get(0x11) == exp2[1], (
+        f"재전송 파동이 CAM 잔재와 섞였다 — 관측 {outs2}, 기대 "
+        f"lo={exp2[0]:#x} hi={exp2[1]:#x}")
+
+
+@cocotb.test()
+async def test_skid_completed_slot_never_merges_new_fragment(dut):
+    """v1.9.2 §22.14b-4b — 완성 보류 슬롯은 **병합 대상이 아니다**.
+
+    §22.14b-4 가 새로 만든 상태("완성 + full mask + `frag_ready=0`")에
+    같은 tag 의 조각이 도착하면, 가득 찬 mask 와 OR 되어 그 자리에서
+    `frag_reass_valid` 가 서고 **stale wide 가 즉시 실행**된다. 그것이
+    §22.14b-6(4)가 공개한 '조용한' 하위 케이스다.
+
+    도달 경로: 보류분 투입 에지에 **같은 tag 의 새 조각 0번**을 겹치면
+    deferred commit 이 취소되고(`skid_slot_taken`), 슬롯은 완성 상태
+    그대로 남는다. 병합 금지가 없으면 그 조각이 즉시 거짓 완성해
+    **여분의 잘못된 출력**을 내고, 이후 조각들이 다시 겹치면서 파동 수와
+    값이 모두 어긋난다.
+
+    이 자극은 계약 위반 영역이지만(`cluster_ready==0` 에 주입) 조각 beat
+    자체는 완성 펄스가 아니므로 **overflow fault 가 뜨지 않는다** — 즉
+    수리 전에는 완전히 조용한 오염이었다. 그래서 여기서 fault 0 까지
+    hard assert 한다.
+
+    부수 확인: 이 시나리오에서 슬롯의 `frag_data` 는 새 파동에게
+    덮이는데도 보류분이 정확히 나온다 — §22.14b-3 이 wide 1,024b 를
+    슬롯 재독출이 아니라 **복제 보관**으로 정한 결정이 여기서 값을
+    한다 (cut ladder rung 1 은 이 성질을 잃는다)."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    bmm3_instr, _, _, _ = _bmm3_stimulus()
+    tag_w = _tag(port_context_id=0)
+    pay1, a1, b1 = _bmm3_payloads(0x1111, 0x2222)
+    pay2, a2, b2 = _bmm3_payloads(0x3131, 0x1212)
+    exp1 = _bmm_3_expected(a1, b1)
+    exp2 = _bmm_3_expected(a2, b2)
+    assert exp1 != exp2
+
+    # EHDecode 점유 → blackout 안에서 파동 1 완성 → 보류.
+    await _skid_pulse(dut, _coll_add_instr(1), _tag(port_context_id=1),
+                      _SKID_A_PAY)
+    await _bmm3_burst(dut, bmm3_instr, tag_w, pay1)
+    await Timer(1, units="ns")
+    assert int(dut.skid_valid.value) == 1, \
+        "전제 붕괴: 완성 조각이 blackout 안에서 보류되지 않았다"
+
+    # ---- 투입 에지에 **같은 tag 의 새 조각 0번**을 겹친다 ----
+    await _bmm3_beat(dut, bmm3_instr, tag_w, pay2[0], 0)
+    _skid_decoy(dut)
+    await Timer(1, units="ns")
+    assert int(dut.skid_valid.value) == 0, \
+        "전제 붕괴: 이 에지가 투입 에지가 아니다"
+    assert int(dut.input_skid_overflow_error.value) == 0, (
+        "조각 beat 는 완성 펄스가 아니므로 overflow 가 아니다 — 여기서 "
+        "1 이면 완성 보류 슬롯에 **병합**돼 거짓 완성했다는 뜻이다 "
+        "(§22.14b-4b 가 금지하는 바로 그 경로)")
+
+    # 나머지 조각 3개.
+    for idx in range(1, 4):
+        await _bmm3_beat(dut, bmm3_instr, tag_w, pay2[idx], idx)
+    _skid_decoy(dut)
+
+    outs = []
+    for _ in range(90):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.ext_out_valid.value) == 1:
+            outs.append((int(dut.ext_out_frag_hdr.value),
+                         int(dut.ext_out_payload.value)))
+
+    assert int(dut.input_skid_overflow_error.value) == 0, (
+        f"거짓 완성이 일어나 파동이 겹쳤다 (overflow fault) — 관측 "
+        f"{[(hex(h), hex(p)) for h, p in outs]}")
+    assert len(outs) == 4, (
+        f"출력이 정확히 4건(파동 2개 × 조각 2개)이어야 한다 — 관측 "
+        f"{[(hex(h), hex(p)) for h, p in outs]}. 완성 보류 슬롯에 병합이 "
+        f"일어나면 여분의 거짓 완성 출력이 섞인다")
+    lo_outs = [p for h, p in outs if h == 0x01]
+    hi_outs = [p for h, p in outs if h == 0x11]
+    assert lo_outs == [exp1[0], exp2[0]], (
+        f"lo 조각이 순서대로 파동1·파동2 여야 한다 — 관측 "
+        f"{[hex(p) for p in lo_outs]}, 기대 "
+        f"{[hex(exp1[0]), hex(exp2[0])]}")
+    assert hi_outs == [exp1[1], exp2[1]], (
+        f"hi 조각이 순서대로 파동1·파동2 여야 한다 — 관측 "
+        f"{[hex(p) for p in hi_outs]}, 기대 "
+        f"{[hex(exp1[1]), hex(exp2[1])]}")
+
+
+@cocotb.test()
+async def test_skid_deferred_commit_cancelled_when_slot_retaken(dut):
+    """v1.9.2 §22.14b-4b(a) — 보류 창 동안 슬롯을 뺏기면 deferred commit 은
+    **취소**돼야 한다 (밀리는 것이 아니라 없어진다).
+
+    deferred commit 의 가드는 `frag_active[slot] && tag 일치` 였다. 그 tag
+    비교는 **다른** tag 의 재할당만 걸러낸다 — **같은 tag 로 재전송**된
+    파동이 그 슬롯을 새로 가져간 경우에는 비교가 그대로 통과하므로, 투입
+    에지에 commit 이 실행되어 **새 주인의 슬롯을 철거**한다. FRAG_SLOTS=1
+    에서는 그것이 곧 재전송 파동의 **무언 소실**이다 (조각 0 이 사라져
+    영원히 완성되지 않는다).
+
+    자극: 2-조각 파동 1 을 blackout 초반(에지 0..1)에 완성시켜 보류시키고,
+    아직 투입되지 않은 에지 2 에 **같은 tag 로 파동 2 의 조각 0** 을
+    보낸다. 그 beat 는 완성 펄스가 아니므로 overflow fault 도 뜨지 않는다
+    — 취소가 없으면 완전히 조용한 손실이다. 두 파동이 **모두** 자기 값으로
+    나와야 한다.
+
+    (FRAG_SLOTS>1 에서는 그 beat 가 빈 슬롯으로 가므로 이 경로 자체가
+    생기지 않는다. 그래도 이 테스트는 양 빌드에서 '두 파동 모두 정상' 을
+    검사하므로 어느 쪽에서도 vacuous 하지 않다.)"""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    imm = 5
+    instr = encode_instr(0x10, eh_port(input_port_mask=0x01,
+                                       output_port_id=0), eh_imm16(imm))
+    tag = _tag(port_context_id=0)
+    p1_lo, p1_hi = 0x41, 0xF1F1F1F1F1F1F1F1
+    p2_lo, p2_hi = 0x52, 0xF2F2F2F2F2F2F2F2
+    exp1 = p1_lo + imm
+    exp2 = p2_lo + imm
+    assert exp1 != exp2
+
+    # 점유 (이 에지가 kick → 에지 0..3 이 blackout).
+    await _skid_pulse(dut, _coll_add_instr(1), _tag(port_context_id=1),
+                      _SKID_A_PAY)
+    # 에지 0·1 — 파동 1 의 두 조각. 에지 1 이 완성 에지 → 보류.
+    await _skid_frag_beat(dut, instr, tag, p1_lo, 0x01)
+    await _skid_frag_beat(dut, instr, tag, p1_hi, 0x11)
+    _skid_decoy(dut)
+    await Timer(1, units="ns")
+    assert int(dut.skid_valid.value) == 1, \
+        "전제 붕괴: 파동 1 이 blackout 안에서 보류되지 않았다"
+    slot1 = _skid_slot_of(dut, tag)
+    assert slot1 is not None
+
+    # 에지 2 — **아직 투입 전**에 같은 tag 로 파동 2 의 조각 0.
+    await _skid_frag_beat(dut, instr, tag, p2_lo, 0x01)
+    _skid_decoy(dut)
+    await Timer(1, units="ns")
+    assert int(dut.skid_valid.value) == 1, \
+        "전제 붕괴: 파동 1 이 이 시점에 이미 투입됐다 (창이 없다)"
+    assert int(dut.input_skid_overflow_error.value) == 0, (
+        "조각 beat 는 완성 펄스가 아니므로 overflow 가 아니다 — 1 이면 "
+        "완성 보류 슬롯에 병합돼 거짓 완성했다는 뜻이다 (§22.14b-4b(b))")
+
+    # 에지 3 (idle) → 에지 4 (투입).
+    await RisingEdge(dut.clk)
+    _skid_decoy(dut)
+    await RisingEdge(dut.clk)
+    _skid_decoy(dut)
+    await Timer(1, units="ns")
+    assert int(dut.skid_valid.value) == 0, \
+        "전제 붕괴: 에지 4 가 투입 에지가 아니다"
+
+    # 에지 5 — 파동 2 의 조각 1 (완성).
+    await _skid_frag_beat(dut, instr, tag, p2_hi, 0x11)
+    _skid_decoy(dut)
+
+    outs = []
+    for _ in range(90):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.ext_out_valid.value) == 1:
+            outs.append(int(dut.ext_out_payload.value))
+
+    # 관측 창이 점유 파동(단일 조각 ADD)의 출력까지 포함하므로 3건이다.
+    exp_occ = _SKID_A_PAY + _ADD_IMM
+    assert outs.count(exp1) == 1, (
+        f"보류된 파동 1 의 결과 {exp1} 가 {outs.count(exp1)}회 — 관측 "
+        f"{[hex(p) for p in outs]}")
+    assert outs.count(exp2) == 1, (
+        f"**재전송 파동 2 가 조용히 사라졌다** — 결과 {exp2} 가 "
+        f"{outs.count(exp2)}회 (관측 {[hex(p) for p in outs]}). 취소가 없으면 "
+        f"투입 에지의 deferred commit 이 파동 2 의 슬롯을 철거해 조각 0 이 "
+        f"사라지고, 그 파동은 영원히 완성되지 않는다 (§22.14b-4b(a))")
+    assert sorted(outs) == sorted([exp_occ, exp1, exp2]), (
+        f"출력이 정확히 3건(점유 파동 + 파동1 + 파동2)이어야 한다 — 관측 "
+        f"{[hex(p) for p in outs]}, 기대 "
+        f"{[hex(p) for p in sorted([exp_occ, exp1, exp2])]}")
+    assert int(dut.input_skid_overflow_error.value) == 0, \
+        "정상 경로인데 overflow fault 가 떴다"
+
+
+# =============================================================================
 # v1.6.5c §22.16 — multi-slot fragment buffer + CACHE_LOAD_WIDE (0x68)
 #
 # Tests below run under BOTH the default (`make MOD=Cluster`, FRAG_SLOTS=1)
@@ -1271,7 +2041,7 @@ async def test_output_collision_stays_low_when_traffic_is_disjoint(dut):
 #   (i)  self-skip 은 반드시 `_skip_unless_multislot()` 을 거치며, 이것이
 #        WARNING 을 남긴다. 조용히 지나가는 경로가 없다.
 #   (ii) `make test-cluster-both` 가 두 빌드를 하나의 진입점으로 묶고,
-#        FRAG_SLOTS=1 에서 self-skip 이 정확히 6건, FRAG_SLOTS=4 에서
+#        FRAG_SLOTS=1 에서 self-skip 이 정확히 7건, FRAG_SLOTS=4 에서
 #        정확히 0건인지까지 대조한다 (scripts/run_cluster_dual.py).
 #        `scripts/lint_frag_slots_dual_run.py` 가 (i)/(ii)의 형태를
 #        기계적으로 강제하므로 조용한 self-skip 을 새로 들여올 수 없다.
@@ -2391,11 +3161,22 @@ async def test_bank_tag_latch_no_intervening_hazard(dut):
     dut.ext_payload_b_valid.value = 0
     dut.ext_valid.value = 1
     await RisingEdge(dut.clk)   # P0 -- MUL0's own token pulse edge
+    # v1.9.2 §22.14b-3 자극 정정: 여기서 ext_valid 를 **내려야** 한다.
+    # 원래 이 줄이 없어서 ext_valid 가 P0 부터 P1 까지 5 사이클 연속으로
+    # 서 있었고, 그것은 "토큰 1건" 이 아니라 **같은 파동 5건 주입**이다.
+    # 구 RTL 은 그 4건을 조용히 삼켰기 때문에(§22.14b-1 결함 그 자체)
+    # 자극의 오류가 드러나지 않았다. skid 착지 후에는 2번째가 보류돼
+    # 재투입되고 3번째부터는 loud overflow fault 가 뜬다 — 즉 이 정정은
+    # 검사를 약화시키는 것이 아니라, 테스트가 의도한 자극("2건 디스패치")
+    # 을 처음으로 실제로 주는 것이다.
+    dut.ext_valid.value = 0
     # Empirically the earliest the shared EHDecode reliably accepts a
     # SECOND, independent token after this one (see session notes: the
     # standalone ISA_Decoder chain-walk needs ~5 edges before dec_valid,
     # and the Cluster-level EHDecode frees up ~1 edge ahead of its own
-    # dec_valid) -- firing any earlier silently drops the second token.
+    # dec_valid). v1.9.2 이후 더 이른 주입은 **소실되지 않고 보류**된다
+    # (§22.14b-3) — 그 성질은 test_skid_no_drop_delay_sweep 가 직접 pin
+    # 하며, 여기서는 원래의 back-to-back 라우팅 성질만 본다.
     for _ in range(4):
         await RisingEdge(dut.clk)
     dut.ext_instruction.value = _mul_instr(0x02, 1, 3)
@@ -3196,3 +3977,153 @@ async def test_cluster_noc_bank_multifragment_last_beat(dut):
         "첫 beat 값이 돌아왔다면 토큰 없는 LD 의 stage-2 가 뱅크를 되돌린 "
         "것이다 — 불변식 H1 위반."
     )
+
+
+# =============================================================================
+# v1.9.2 §22.14b-3 — 적대 감사(2026-08-18)가 생존시킨 변이 2종을 닫는다.
+#
+# 두 변이 모두 **RTL 은 옳은데 그 옳음을 붙잡는 테스트가 0건**이었다. 이
+# 세션이 반복해서 청산한 바로 그 형태(조용히 통과하는 검사)이므로, 규범이
+# 확정한 경계마다 회귀 pin 을 둔다.
+#
+#   m7  `skid_overflow_now = wave_complete && skid_valid`
+#       → `... && !ehdec_in_ready` 로 약화해도 전건 통과했다.
+#       차이는 **투입 에지**(`skid_valid && ehdec_in_ready`)에서만 난다:
+#       그 에지에 도착한 파동은 `skid_load`(!skid_valid 요구)에도
+#       `wave_accept`(보류분을 투입 중)에도 걸리지 않아 **양쪽 모두 드롭**
+#       된다. 무변이는 fault=1(loud drop), m7 은 fault=0(무언 소실).
+#       spec §22.14b-6(2) 가 "`skid_valid` 가 서 있는 사이클의 도착은 투입이
+#       같은 사이클에 일어나는지와 **무관하게** overflow fault" 로 확정한
+#       경계다.
+#
+#   m12 `in_pcid = ehdec_tag[31:16]` → `ext_tag[31:16]` 로 되돌려도 전건
+#       통과했다. 보류분이 **미끼 태그의 PE 로 디스패치**되는데(무변이
+#       `pe_active_lpe_s1=0b10` vs m12 `0b1000`), 기존 라우팅 assert 는
+#       `ext_out_tag`(= PE 출력 tag, EHDecode 래치 경로)를 읽어 `target_idx`
+#       (`in_pcid` 의 유일 소비자)와 **다른 경로**를 본다. 그래서 tag 를
+#       통째로 되돌리는 변이는 죽지만 라우팅 소비자만 되돌리는 변이는 산다.
+# =============================================================================
+
+
+@cocotb.test()
+async def test_skid_overflow_fires_on_the_inject_edge(dut):
+    """§22.14b-6(2) — **투입 에지** 도착도 overflow fault 를 낸다.
+
+    `skid_valid` 가 서 있는 사이클의 도착은 그 사이클에 보류분 투입이
+    함께 일어나든 아니든 담을 자리가 없다. 그 파동은 버려지고, 버려지는
+    이상 **소리가 나야 한다** — 조건에 `!ehdec_in_ready` 를 얹으면 정확히
+    이 한 에지에서만 조용해진다.
+    """
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+
+    instr_a = _coll_add_instr(0)
+    instr_b = _coll_add_instr(1)
+    instr_c = _coll_add_instr(2)
+    exp_a = _SKID_A_PAY + _ADD_IMM
+    exp_b = _SKID_B_PAY + _ADD_IMM
+    exp_c = _SKID_C_PAY + _ADD_IMM
+
+    await _reset(dut)
+
+    # 선행 파동 → EHDecode blackout 시작.
+    await _skid_pulse(dut, instr_a, _tag(port_context_id=0), _SKID_A_PAY)
+    # blackout 안에서 한 건 보류.
+    await _skid_pulse(dut, instr_b, _tag(port_context_id=1), _SKID_B_PAY)
+    await Timer(1, units="ns")
+    assert int(dut.skid_valid.value) == 1, \
+        "전제 불성립 — 두 번째 파동이 보류되지 않았다"
+    assert int(dut.input_skid_overflow_error.value) == 0, \
+        "보류 1건만으로 fault 가 떴다"
+
+    # 투입 에지를 **찾아서** 그 에지에 세 번째를 인가한다. 에지 번호를
+    # 하드코딩하지 않는 이유: MAX_EH 가 바뀌면 위치가 움직이는데, 그때
+    # 테스트가 조용히 다른 에지를 때리면 이 pin 이 무력해진다.
+    inject_edge_seen = False
+    outs = []
+    for _ in range(60):
+        drain_now = (int(dut.skid_valid.value) == 1
+                     and int(dut.ehdec_in_ready.value) == 1)
+        if drain_now and not inject_edge_seen:
+            inject_edge_seen = True
+            dut.ext_instruction.value = instr_c
+            dut.ext_tag.value = _tag(port_context_id=2)
+            dut.ext_payload.value = _SKID_C_PAY
+            dut.ext_payload_b.value = 0
+            dut.ext_payload_b_valid.value = 0
+            dut.ext_frag_hdr.value = 0
+            dut.ext_valid.value = 1
+        await RisingEdge(dut.clk)
+        _skid_decoy(dut)
+        await Timer(1, units="ns")
+        if int(dut.ext_out_valid.value) == 1:
+            outs.append(int(dut.ext_out_payload.value))
+
+    assert inject_edge_seen, (
+        "투입 에지(`skid_valid && ehdec_in_ready`)를 한 번도 관측하지 "
+        "못했다 — 자극이 이 경계를 밟지 못했으므로 이 테스트는 아무것도 "
+        "검사하지 않았다")
+    assert int(dut.input_skid_overflow_error.value) == 1, (
+        "투입 에지에 도착한 파동이 **조용히** 사라졌다 — "
+        "loud-fault-never-silent 위반이자 §22.14b-6(2) 위반")
+    assert int(dut.any_error_flag.value) == 1, \
+        "overflow fault 가 any_error_flag 로 폴딩되지 않았다"
+    assert exp_c not in outs, (
+        f"fault 를 냈는데 그 파동이 실제로는 실행됐다 — 거짓 경보 "
+        f"(관측 {outs})")
+    # 버려지는 쪽만 버린다 — 선행/보류분은 온전해야 한다.
+    assert outs.count(exp_a) == 1, f"선행 파동 소실 (관측 {outs})"
+    assert outs.count(exp_b) == 1, f"보류 파동 소실 (관측 {outs})"
+
+
+@cocotb.test()
+async def test_skid_inject_routes_by_held_tag_not_live_bus(dut):
+    """§22.14b-7(A) — 보류분은 **자기 태그**의 PE 로 라우팅된다.
+
+    `target_idx` 는 `in_pcid` 하나만 소비하고, `in_pcid` 는 투입 시점의
+    live `ext_tag` 가 아니라 보류된 `ehdec_tag` 에서 와야 한다. 이 경계는
+    출력 태그로 관측되지 **않는다** — `ext_out_tag` 는 PE 출력 tag 라
+    라우팅과 다른 경로다. 그래서 여기서는 디스패치 원핫
+    (`pe_active_lpe_s1`)을 직접 본다.
+    """
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+
+    n_pes = len(dut.pe_active_lpe_s1.value)
+    held_pcid = _SKID_B_PCID % n_pes
+    decoy_pcid = _SKID_DECOY_PCID % n_pes
+    assert held_pcid != decoy_pcid, (
+        f"자극이 두 PE 를 구분하지 못한다 (held={held_pcid} "
+        f"decoy={decoy_pcid}, NUM_PES={n_pes}) — 이 지오메트리에서는 "
+        f"이 테스트가 아무것도 판별하지 못하므로 자극을 고쳐야 한다")
+
+    instr_a = _coll_add_instr(0)
+    instr_b = _coll_add_instr(1)
+
+    await _reset(dut)
+    await _skid_pulse(dut, instr_a, _tag(port_context_id=0), _SKID_A_PAY)
+    # 보류분: held_pcid 를 겨냥. 주입 직후 버스는 decoy_pcid 로 덮인다
+    # (`_skid_pulse` 가 `_skid_decoy` 를 호출).
+    await _skid_pulse(dut, instr_b, _tag(port_context_id=held_pcid),
+                      _SKID_B_PAY)
+    await Timer(1, units="ns")
+    assert int(dut.skid_valid.value) == 1, \
+        "전제 불성립 — 보류가 일어나지 않았다"
+
+    # 투입이 실제로 디스패치로 이어지는 에지에서 원핫을 포착한다.
+    seen = None
+    for _ in range(40):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        act = int(dut.pe_active_lpe_s1.value)
+        if act != 0:
+            seen = act
+            break
+
+    assert seen is not None, \
+        "보류분이 어느 PE 로도 디스패치되지 않았다"
+    assert seen == (1 << held_pcid), (
+        f"보류 파동이 **미끼 태그**의 PE 로 라우팅됐다 — 기대 "
+        f"0b{1 << held_pcid:0{n_pes}b} (pcid {held_pcid}), 관측 "
+        f"0b{seen:0{n_pes}b}. `in_pcid` 가 보류된 `ehdec_tag` 가 아니라 "
+        f"투입 시점의 live `ext_tag` 를 읽고 있다")

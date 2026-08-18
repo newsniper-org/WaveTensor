@@ -31,7 +31,9 @@
 //
 // Routing
 // -------
-//   * Cluster combinationally extracts opcode (= ext_instruction[31:24]).
+//   * Cluster combinationally extracts opcode (= the instruction EHDecode
+//     actually latches this edge — live `ext_instruction[31:24]`, or the
+//     skid-held one when a wave was deferred; see §22.14b-3 below).
 //   * `is_mul_op` (∈ {MUL,MATMUL,EINSUM,EUCLID_NORM}) → MATMUL_UNIT.
 //   * Otherwise → the L-PE_Core whose linear index matches
 //     port_context_id[3:0] from the tag.
@@ -95,16 +97,29 @@ module Cluster #(
     // to detect and recover. Also folded into any_error_flag so legacy
     // consumers surface it as a generic error.
     output                      any_output_collision,
-    // v1.6.6 §22.14 — Cluster-level back-pressure aggregate. AND-reduce
-    // of all PE_Core pe_ready signals. High only when EVERY PE can accept
-    // a new dispatch. Upstream fabric can observe (MVP: observe-only).
+    // v1.6.6 §22.14 / v1.9.2 §22.14b-3 — Cluster-level back-pressure
+    // aggregate. 출력단 3항(모든 PE_Core 의 pe_ready) **AND 입력단 skid
+    // 자리가 비어 있음**. v1.6.6 원문의 식은 출력단만 봤기 때문에
+    // "cluster_ready=1 인데 명령이 소실된다" 가 성립했다 (§22.14b-1).
+    // 이 개정으로 이 신호는 **처음으로** "지금 명령을 받아도 소실되지
+    // 않는다" 를 뜻한다. 계약은 여전히 observe-only 다 (§22.14b-2).
     output                      cluster_ready,
     // v1.9 §26.5 — sticky synthesizable fault: a launch into the MU or DU
     // tag-indexed bank table found no free row (both MU rows busy, or the
     // DU row busy). Reset-clearable only — see the bank-table section
     // below for the interlock this closes (a real hardware fault, not a
     // sim-only assertion).
-    output                      bank_tag_collision_error
+    output                      bank_tag_collision_error,
+    // v1.9.2 §22.14b-3 — sticky synthesizable fault: 입력단 skid 가 이미
+    // 점유된 상태에서 또 하나의 `wave_complete` 가 섰다. 1단 skid 에는
+    // 둘째 파동을 담을 자리가 없으므로 **그 파동은 버려진다** — 포트명이
+    // 그 성격(입력단 / skid / overflow)을 드러낸다. 이 상황은 곧
+    // `cluster_ready==0` 인 사이클에 upstream 이 주입했다는 뜻이다
+    // (skid 점유 = cluster_ready 0). 리셋으로만 지워지는 sticky 이며
+    // `any_error_flag` 에도 폴딩된다. `bank_tag_collision_error` 와 같은
+    // 규율: **sim-only assertion 은 쓰지 않는다** — production 보장을
+    // 남기지 않기 때문이다.
+    output                      input_skid_overflow_error
 );
 
     localparam NUM_PES = PE_ROWS * PE_COLS;
@@ -188,11 +203,32 @@ module Cluster #(
     // exclusive on frag_ready[s]).
     reg hit_continue [0:FRAG_SLOTS-1];
     reg hit_ready    [0:FRAG_SLOTS-1];
+    // v1.9.2 §22.14b-4b — "이미 완성됐는데 아직 철거되지 않은" 슬롯.
+    // §22.14b-4 의 accept-종속 철거가 이 상태를 **새로 만들었다** (HEAD 에는
+    // 없던 상태다: 예전에는 완성 에지에 무조건 철거했으므로 full mask 가
+    // 유지된 채 `frag_active && !frag_ready` 인 슬롯이 존재할 수 없었다).
+    // 그 상태의 슬롯에 같은 tag 의 조각이 도착하면 가득 찬 mask 에 병합돼
+    // **즉시 거짓 완성**한다 — stale wide 를 실행하는 새 오염 경로다.
+    reg [FRAG_SLOTS-1:0] slot_complete_held;
     integer ghi;
     always @(*) begin
         for (ghi = 0; ghi < FRAG_SLOTS; ghi = ghi + 1) begin
+            // 슬롯 자신의 `frag_total_m1` 로 만든 full mask 와의 비교.
+            // shift amount 를 5 비트로 넓히는 것은 §25.3 의 latent-bug 수리와
+            // **같은 이유**다 (tot_m1=15 에서 4비트 덧셈이 0 으로 랩한다).
+            slot_complete_held[ghi] =
+                frag_active[ghi] && !frag_ready[ghi]
+                && (frag_mask[ghi] ==
+                    (({15'h0, 1'b1} << ({1'b0, frag_total_m1[ghi]} + 5'd1))
+                     - {{(FRAG_MAX-1){1'b0}}, 1'b1}));
+            // v1.9.2 §22.14b-4b — 완성 보류 슬롯은 **continue 대상이 아니다.**
+            // 정상 동작에서는 도달 불가능한 조건이므로 (완성 에지에 accept 이
+            // 나면 같은 에지에 철거/ready 승격된다) 기존 동작에 대해 **no-op**
+            // 이고, 위 새 오염 경로에서만 발동해 병합 대신 **새 할당**으로
+            // 보낸다 — 재전송된 파동이 처음부터 다시 조립된다.
             hit_continue[ghi] = frag_active[ghi] && !frag_ready[ghi]
-                              && (ext_tag == frag_tag_reg[ghi]);
+                              && (ext_tag == frag_tag_reg[ghi])
+                              && !slot_complete_held[ghi];
             hit_ready[ghi]    = frag_active[ghi] &&  frag_ready[ghi]
                               && (ext_tag == frag_tag_reg[ghi]);
         end
@@ -331,47 +367,104 @@ module Cluster #(
             frag_active  <= {FRAG_SLOTS{1'b0}};
             frag_ready   <= {FRAG_SLOTS{1'b0}};
             frag_age_ctr <= {AGE_W{1'b0}};
-        end else if (frag_in_multi) begin
-            frag_data[alloc_idx][frag_in_idx] <= ext_payload;
-            if (!alloc_is_continue) begin
-                // Fresh allocation at alloc_idx: free slot, LRU-evicted
-                // slot, or safe reallocation over a tag-collided cached
-                // (ready) slot — never a silent merge into stale data.
-                frag_tag_reg[alloc_idx]  <= ext_tag;
-                frag_total_m1[alloc_idx] <= frag_in_tot_m1;
-                frag_mask[alloc_idx]     <= frag_mask_add;
-                frag_active[alloc_idx]   <= 1'b1;
-                frag_ready[alloc_idx]    <= 1'b0;
-            end else begin
-                frag_mask[alloc_idx] <= frag_mask[alloc_idx] | frag_mask_add;
-            end
-            // Touch: every beat (allocate or continue) refreshes this
-            // slot's monotonic timestamp.
-            frag_age_ctr        <= frag_age_ctr + 1'b1;
-            frag_age[alloc_idx] <= frag_age_ctr + 1'b1;
-            // Completion: gate persistence by FRAG_SLOTS. FRAG_SLOTS=1
-            // reproduces the original unconditional clear exactly.
-            if (frag_reass_valid) begin
-                if (FRAG_SLOTS > 1) begin
-                    frag_ready[alloc_idx] <= 1'b1;
+        end else begin
+            // v1.9.2 §22.14b-4b — 아래 if/else-if 사슬은 **경쟁 arm 만** 담고,
+            // deferred CAM commit 은 사슬 **밖**(끝)에 따로 둔다. 초판은 그것을
+            // 사슬의 마지막 arm 으로 넣었는데, 그러면 `cache_hit`(다른 tag 의
+            // 0x68) 하나만 겹쳐도 commit 이 **영구히 밀려** 슬롯이 "완성됐는데
+            // 철거되지 않은" 상태로 남았다 — 재시도 경로가 없으므로 그 상태는
+            // 다시는 해소되지 않는다. 사슬 밖으로 빼면 `cache_hit`(frag_age 만
+            // 쓴다) · `inval_hit`(ready 슬롯만 대상이라 완성 보류 슬롯과 절대
+            // 겹치지 않는다) · 다른 슬롯의 조각 beat 와 **동시에** 성립할 수
+            // 있고, 유일한 실 충돌(같은 슬롯을 노리는 조각 beat)만 아래
+            // `skid_slot_taken` 으로 배제한다.
+            if (frag_in_multi) begin
+                frag_data[alloc_idx][frag_in_idx] <= ext_payload;
+                if (!alloc_is_continue) begin
+                    // Fresh allocation at alloc_idx: free slot, LRU-evicted
+                    // slot, or safe reallocation over a tag-collided cached
+                    // (ready) slot — never a silent merge into stale data.
+                    frag_tag_reg[alloc_idx]  <= ext_tag;
+                    frag_total_m1[alloc_idx] <= frag_in_tot_m1;
+                    frag_mask[alloc_idx]     <= frag_mask_add;
+                    frag_active[alloc_idx]   <= 1'b1;
+                    frag_ready[alloc_idx]    <= 1'b0;
                 end else begin
-                    frag_active[alloc_idx] <= 1'b0;
-                    frag_mask[alloc_idx]   <= {FRAG_MAX{1'b0}};
+                    frag_mask[alloc_idx] <= frag_mask[alloc_idx] | frag_mask_add;
+                end
+                // Touch: every beat (allocate or continue) refreshes this
+                // slot's monotonic timestamp.
+                frag_age_ctr        <= frag_age_ctr + 1'b1;
+                frag_age[alloc_idx] <= frag_age_ctr + 1'b1;
+                // Completion: gate persistence by FRAG_SLOTS. FRAG_SLOTS=1
+                // reproduces the original unconditional clear exactly.
+                //
+                // v1.9.2 §22.14b-4 (normative) — **철거를 accept 에 종속시킨다.**
+                // 이전에는 `frag_reass_valid` 만으로 무조건 철거했으므로,
+                // EHDecode 가 그 파동을 받지 못한 사이클에는 재조립 payload 까지
+                // 함께 사라졌다 (명령 1건이 아니라 파동 전체의 소실).
+                // `live_accept` 는 §22.14b-3 의 **단일 accept 정의**에서 온
+                // 그대로의 신호다 (조건이 갈라지면 그 자체가 다음 결함이다).
+                // accept 이 나지 않으면 슬롯은 손대지 않고, 보류분이 투입되는
+                // 에지에 아래 deferred-commit arm 이 같은 일을 대신 한다.
+                if (frag_reass_valid && live_accept) begin
+                    if (FRAG_SLOTS > 1) begin
+                        frag_ready[alloc_idx] <= 1'b1;
+                    end else begin
+                        frag_active[alloc_idx] <= 1'b0;
+                        frag_mask[alloc_idx]   <= {FRAG_MAX{1'b0}};
+                    end
+                end
+            end else if (cache_hit) begin
+                // Non-destructive read: still a "touch" for LRU purposes so a
+                // hot cached value doesn't get evicted while in active use.
+                frag_age_ctr            <= frag_age_ctr + 1'b1;
+                frag_age[ready_idx]      <= frag_age_ctr + 1'b1;
+            end else if (inval_hit) begin
+                // v1.6.5d §22.17 — explicit invalidate: clear active+ready so
+                // the slot immediately qualifies for any_free (checked ahead
+                // of evict_idx in the alloc_idx priority mux above) rather
+                // than lingering as an LRU-eviction candidate. frag_age is
+                // deliberately left untouched (irrelevant once inactive).
+                frag_active[ready_idx] <= 1'b0;
+                frag_ready[ready_idx]  <= 1'b0;
+            end
+            // -------------------------------------------------------------------
+            // v1.9.2 §22.14b-4 — **deferred CAM commit** (사슬 밖, 독립 arm).
+            // 보류됐던 다중 조각 완성 파동이 투입되는 에지에, 위 완성 arm 이
+            // accept 종속 때문에 미뤄 둔 슬롯 처리를 정확히 같은 형태로 수행한다.
+            // 이것이 없으면 슬롯이 "완성됐는데 철거되지 않은" 상태로 남고,
+            // **같은 tag 로 재전송된 파동의 첫 조각이 가득 찬 mask 에 병합돼
+            // 즉시 거짓 완성**한다 — HEAD 에는 없던 오염을 새로 들이게 된다.
+            //
+            // v1.9.2 §22.14b-4b (적대 검증 항 3 수리) — **사슬 밖으로 옮겼다.**
+            // 초판에서는 이 arm 이 `frag_in_multi`/`cache_hit`/`inval_hit` 뒤의
+            // 마지막 else-if 였고, 그래서 투입 에지에 **다른 tag 의 0x68 하나만
+            // 겹쳐도** commit 이 밀렸다. 재시도 경로가 없으므로 그것은 지연이
+            // 아니라 **영구 누락**이고, 위 거짓 완성 경로가 그대로 열린다.
+            // 이제 이 arm 은 다음 셋과 **동시에** 성립한다:
+            //   * `cache_hit`  — `frag_age` 만 쓴다 (레지스터 교집합 0)
+            //   * `inval_hit`  — `hit_ready` 대상(= `frag_ready==1`)만 건드리는데
+            //                    완성 보류 슬롯은 `frag_ready==0` 이라 **구조적으로
+            //                    같은 슬롯일 수 없다**
+            //   * 다른 슬롯을 노리는 조각 beat
+            // 유일한 실 충돌은 **같은 슬롯을 노리는 조각 beat** 이며, 그것은
+            // `skid_slot_taken` 으로 배제한다 (그 beat 가 슬롯의 새 주인이므로
+            // 여기서 철거하는 것이 오히려 파괴다). 그 경우 deferred commit 은
+            // 아래 skid always 블록에서 **취소**된다 — 밀리는 것이 아니라
+            // 없어진다 (§22.14b-4b).
+            //
+            // NBA 순서 주의: 이 arm 이 블록의 **마지막**이므로 같은 레지스터에
+            // 대해서는 여기가 이긴다. 위 `skid_slot_taken` 배제가 그 승리가
+            // 파괴가 되지 않도록 보장하는 유일한 장치다.
+            if (skid_commit_now) begin
+                if (FRAG_SLOTS > 1) begin
+                    frag_ready[skid_frag_slot] <= 1'b1;
+                end else begin
+                    frag_active[skid_frag_slot] <= 1'b0;
+                    frag_mask[skid_frag_slot]   <= {FRAG_MAX{1'b0}};
                 end
             end
-        end else if (cache_hit) begin
-            // Non-destructive read: still a "touch" for LRU purposes so a
-            // hot cached value doesn't get evicted while in active use.
-            frag_age_ctr            <= frag_age_ctr + 1'b1;
-            frag_age[ready_idx]      <= frag_age_ctr + 1'b1;
-        end else if (inval_hit) begin
-            // v1.6.5d §22.17 — explicit invalidate: clear active+ready so
-            // the slot immediately qualifies for any_free (checked ahead
-            // of evict_idx in the alloc_idx priority mux above) rather
-            // than lingering as an LRU-eviction candidate. frag_age is
-            // deliberately left untouched (irrelevant once inactive).
-            frag_active[ready_idx] <= 1'b0;
-            frag_ready[ready_idx]  <= 1'b0;
         end
     end
 
@@ -390,6 +483,153 @@ module Cluster #(
         cache_load_req ? cache_hit_wide                    :
         inval_req      ? {(FRAG_MAX*ADDR_WIDTH){1'b0}}      :
                           frag_reass_wide;
+
+    // -------------------------------------------------------------------------
+    // v1.9.2 §22.14b-3 (normative) — 입력단 **skid buffer 1단**.
+    //
+    // 무엇이 잘못돼 있었나 (§22.14b-1 확정 사실):
+    //   공유 `EHDecode` 는 체인 워크 중(`stg_active==1`) 도착한 명령을
+    //   `EHDecode.v:195`(입력 래치)·`:350`(워크 kick) 양쪽에서 **읽지 않는다**
+    //   — 큐 0 · 홀드 0 · 에러 비트 0. 그런데 여기 `wave_complete` 에는
+    //   `stg_active` 항이 없어 **항상 쏜다**. 결과는 오염이 아니라 **순수
+    //   소실**이고, 재시도 경로가 없어 영구하며, 어떤 status 비트도 서지
+    //   않으므로 loud-fault-never-silent 를 정면으로 위반했다.
+    //   `MAX_EH=4` 이므로 kick 후 4 에지가 blackout 이다.
+    //
+    // 왜 ready 정정만으로는 못 고치는가 (§22.14b-2):
+    //   `cluster_ready` 는 **RTL 소비자가 0건**이다 (Cluster → Pod →
+    //   래퍼에서 끝). observe-only 를 enforced stall 로 바꿔도 강제할 상대가
+    //   없어 손실을 1건도 줄이지 못하고, 결함을 관측 불가능하게 만들 뿐이다.
+    //   손실을 구조적으로 0 으로 만드는 유일한 수단이 **보류 경로**다.
+    //
+    // 형태:
+    //   * `EHDecode` 가 비어 있으면(`in_ready`) 파동은 **그대로 통과**한다
+    //     (bypass mux — latency 델타 0). 점유 중이면 **보류**했다가
+    //     `in_ready` 가 서는 최초 에지에 투입한다.
+    //   * 보류 대상은 EHDecode 가 그 사이클에 읽는 것 **전건**이다:
+    //     instruction 416b · tag 80b · payload 64b · payload_b 64b+valid 1b
+    //     · wide 1,024b+valid 1b · frag_hdr 8b = 1,658b, + 점유 1b = 1,659b.
+    //     **부분 보류는 금지한다** — 한 필드라도 빠지면 투입 시점에 live
+    //     값과 섞여, 현재는 존재하지 않는 실패 모드인 **오염**이 새로 생긴다.
+    //     (`skid_frag_slot` 은 EHDecode 입력이 아니라 §22.14b-4 deferred
+    //     CAM commit 전용 부기이며, 보류 폭 회계에는 들어가지 않는다.)
+    //   * 투입 시점의 값은 도착 시점의 값과 **bit-identical** 이다. 특히
+    //     `cluster_b_payload` 는 **도착 사이클에 해석된 값**을 담는다 —
+    //     NoC bank / TRNG 소스를 투입 시점에 다시 읽으면 최대 `MAX_EH`
+    //     에지 뒤의 다른 값이 되기 때문이다.
+    //   * 보류 창은 상수가 아니라 `MAX_EH` 의 함수다. blackout 이 `MAX_EH`
+    //     에지이므로 skid 는 반드시 배출된다 — 무한 보류는 구조적으로
+    //     불가능하다.
+    //
+    // 왜 mux 를 살려 두고 "상시 경유 레지스터" 로 만들지 않았는가:
+    //   상시 경유는 투입 mux 를 통째로 없애 LUT 를 아끼지만 **Cluster ext
+    //   경계 latency 가 균일 +1** 이 된다 (§5 표 재bump 동반). 그것은
+    //   §22.14b-5 의 cut ladder rung 2 로 **미리 공표**돼 있고, gate breach
+    //   가 실측으로 확인됐을 때 발동하는 축소안이다. 측정 전에 미리
+    //   당겨쓰지 않는다.
+    // -------------------------------------------------------------------------
+    // 파동 완성 펄스 (live). 단일 조각(frag_hdr==0x00)은 즉시, 다중 조각은
+    // 마지막 조각의 사이클에만 선다. **이 신호는 "도착" 이지 "accept" 가
+    // 아니다** — 그 구분이 없던 것이 §22.14b-1 결함의 형태 그 자체였다.
+    wire wave_complete = ext_valid
+                       && ((ext_frag_hdr == 8'h00) || frag_reass_valid);
+
+    // EHDecode 의 입력단 accept 가능 여부 (v1.9.2 신규 포트, `!stg_active`).
+    // 인스턴스는 아래에 있지만 Verilog-2001 은 선언 선행을 요구하므로
+    // 여기서 미리 선언한다 (EHDecode.v D3 수리와 같은 사유).
+    wire ehdec_in_ready;
+
+    // ---- 보류 저장소 (1단) ----
+    reg                           skid_valid;
+    reg [INSTR_WIDTH-1:0]         skid_instruction;
+    reg [TAG_WIDTH-1:0]           skid_tag;
+    reg [ADDR_WIDTH-1:0]          skid_payload;
+    reg [ADDR_WIDTH-1:0]          skid_payload_b;
+    reg                           skid_payload_b_valid;
+    reg [FRAG_MAX*ADDR_WIDTH-1:0] skid_payload_wide;
+    reg                           skid_payload_wide_valid;
+    reg [7:0]                     skid_frag_hdr;
+    // §22.14b-4 deferred CAM commit 전용 부기 — 보류분이 어느 CAM 슬롯을
+    // 완성시켰는지. `skid_frag_hdr != 0` 일 때만 의미를 갖는다.
+    reg [SLOT_W-1:0]              skid_frag_slot;
+
+    // -------------------------------------------------------------------------
+    // accept 조건 **단일 정의** (§22.14b-3 normative).
+    //
+    // "EHDecode 가 이 파동을 실제로 받았다" 를 여기 한 곳에서 정의하고,
+    // (i) EHDecode `in_valid`, (ii) `pe_active_*_s1` 로드, (iii) CAM 슬롯
+    // 철거 — 셋이 **같은 wire** 를 읽는다. 조건이 갈라지면 그 자체가 다음
+    // 결함이다.
+    //
+    // 근거는 **정의 정합성**이다: EHDecode 가 명령을 래치하는 에지는
+    // `in_valid && in_ready` 인 에지 하나뿐이고 (`EHDecode.v:195/:350` 의
+    // 가드가 문자 그대로 그 조건이다), 위 셋은 전부 "그 래치가 일어났다"
+    // 를 전제로 하는 후속 동작이다. 도착(`wave_complete`)을 읽는 판은
+    // 래치가 없었던 에지에도 후속 동작을 일으킨다 — 그 자체로 정의 위반이다.
+    //
+    // **정직 정정 (2026-08-18 적대 검증 항 2)**: 이 자리의 초판 주석은
+    // 근거로 "`MAX_EH` 가 바뀌면 그대로 오발 디스패치가 된다" 를 들었다.
+    // 그 시나리오는 **실증 불가능**하다 — `MAX_EH` 를 2 나 6 으로 바꾸면
+    // skid 와 무관하게 Cluster 가 무동작이 되기 때문이다 (아래 `pe_active`
+    // 정렬 파이프의 깊이 6 이 하드코딩이고 `EHDecode.v:481-482` 가 이미
+    // 그 lockstep 요구를 명시한다. HEAD 로도 `MAX_EH=6` 에서 49건 중 36건
+    // FAIL 이므로 **pre-existing** 이며 본 개정이 만든 것이 아니다).
+    // 즉 `MAX_EH` 는 독립적으로 움직일 수 있는 축이 아니고, 그것이 바뀌는
+    // 순간 파이프 정렬이 먼저 깨진다. 근거는 위 **정의 정합성** 하나로
+    // 충분하며, 도달 불가능한 시나리오를 근거로 들지 않는다.
+    //
+    // 1단 skid 의 점유 규약: `skid_valid` 가 서 있는 동안 `cluster_ready` 는
+    // 0 이다. 따라서 그 사이클의 도착은 **계약 위반**이고, 투입이 같은
+    // 사이클에 일어나는지와 무관하게 loud fault 로 처리한다 — 즉
+    // `cluster_ready` 가 약속한 것과 fault 조건이 **정확히 같은 경계**를
+    // 쓴다. (더 공격적인 "투입과 동시 적재" 를 허용하면 그 사이클의
+    // EHDecode OPREF 반사는 보류분 instruction 을 보고 있으므로 새로
+    // 적재되는 파동의 `cluster_b_payload` 가 **다른 명령의 src_kind 로**
+    // 해석된다 — bit-identical 요건이 깨진다. 한 사이클의 처리율보다
+    // 정확성을 택했다.)
+    // -------------------------------------------------------------------------
+    wire skid_inject = skid_valid && ehdec_in_ready;              // 보류분 투입
+    wire live_accept = wave_complete && !skid_valid && ehdec_in_ready;
+    wire wave_accept = skid_inject || live_accept;                // 단일 정의
+    wire skid_load   = wave_complete && !skid_valid && !ehdec_in_ready;
+    // 2개째 도착 = loud sticky fault. 버려지는 파동이 조용히 사라지지 않는다.
+    wire skid_overflow_now = wave_complete && skid_valid;
+
+    // -------------------------------------------------------------------------
+    // v1.9.2 §22.14b-4b — deferred CAM commit 의 성립/취소 조건.
+    //
+    // `skid_slot_taken` = 이번 에지의 조각 beat 가 **보류분이 완성시킨 그
+    // 슬롯**을 노린다. 그 beat 가 슬롯의 새 주인이므로 deferred commit 은
+    // 성립하지 않으며(아래 `skid_commit_now` 에서 배제), 보류가 계속되는
+    // 경우에는 skid always 블록이 `skid_frag_hdr` 를 0 으로 만들어 commit
+    // 자체를 **취소**한다 — 밀리는 것이 아니라 없어진다. (보류분의 wide
+    // payload 는 이미 `skid_payload_wide` 에 복제돼 있으므로 보류 파동
+    // 자체는 이 취소에 아무 영향도 받지 않는다.)
+    //
+    // FRAG_SLOTS=1 에서 `alloc_idx`/`skid_frag_slot` 은 둘 다 1비트 0 이라
+    // 이 조건은 "조각 beat 가 오면 참" 과 같다 — 슬롯이 하나뿐이니 옳다.
+    wire skid_slot_taken = frag_in_multi && (alloc_idx == skid_frag_slot);
+    // 가드 3건. 앞의 둘은 초판 그대로다:
+    //   * `skid_frag_hdr != 0` — 보류분이 다중 조각 완성이었을 때만.
+    //     단일 조각(0x00)은 애초에 CAM 을 거치지 않는다.
+    //   * `frag_active[slot] && tag 일치` — 보류 창(≤ `MAX_EH` 에지) 동안
+    //     그 슬롯이 **다른** tag 의 파동에 재할당됐다면 건드리지 않는다.
+    // 셋째가 §22.14b-4b 에서 추가됐다 (같은 tag 재할당은 tag 비교로는
+    // 잡히지 않으므로 슬롯 인덱스로 직접 배제한다):
+    wire skid_commit_now = skid_inject && (skid_frag_hdr != 8'h00)
+                        && frag_active[skid_frag_slot]
+                        && (frag_tag_reg[skid_frag_slot] == skid_tag)
+                        && !skid_slot_taken;
+
+    // EHDecode 가 이번 에지에 래치할 명령/태그. 보류분이 있으면 그것이
+    // 먼저다 (프로그램 순서 보존 — 새 파동이 보류분을 추월할 수 없다).
+    wire [INSTR_WIDTH-1:0] ehdec_instruction =
+        skid_valid ? skid_instruction : ext_instruction;
+    wire [TAG_WIDTH-1:0]   ehdec_tag =
+        skid_valid ? skid_tag         : ext_tag;
+    // 라우팅 분류는 **실제로 래치되는 명령**에서 뽑아야 한다. live 값에서
+    // 뽑으면 투입 사이클에 (ext_valid=0 인) 엉뚱한 워드를 분류한다.
+    wire [7:0] acc_opcode = ehdec_instruction[31:24];
 
     // ---- Compile-time geometry guard ----------------------------------------
     localparam VALID_GEOM =
@@ -462,40 +702,60 @@ module Cluster #(
     // (§25.6 item 4's SDK-rule extension to 0x6B/0x70/0x78/0x79 is RETIRED
     // along with the base rule above — see the RETIRED note preceding
     // this comment block.)
-    wire is_mul_op = (ext_opcode == 8'h12)
-                  || (ext_opcode == 8'h30)
-                  || (ext_opcode == 8'h32)
-                  || (ext_opcode == 8'h43)
-                  || (ext_opcode == 8'h6B)
-                  || (ext_opcode == 8'h70)
-                  || (ext_opcode == 8'h71)
-                  || (ext_opcode == 8'h72)
-                  || (ext_opcode == 8'h73)
-                  || (ext_opcode == 8'h74)
-                  || (ext_opcode == 8'h75)
-                  || (ext_opcode == 8'h76)
-                  || (ext_opcode == 8'h77)
-                  || (ext_opcode == 8'h78)
-                  || (ext_opcode == 8'h79);
-    wire is_div_op = (ext_opcode == 8'h13)   // DIV
-                  || (ext_opcode == 8'h1C)   // MOD
-                  || (ext_opcode == 8'h1D);  // DIVMOD
-    // v1.5.2 §19 — wave-complete gate. Legacy single-fragment
-    // (ext_frag_hdr == 0x00) fires immediately. Multi-fragment waves
-    // fire ONLY on the last fragment's cycle (frag_reass_valid pulse).
-    // Intermediate fragments are absorbed by the reassembly buffer without
-    // triggering EHDecode or PE_active pipelines.
-    wire wave_complete = ext_valid
-                       && ((ext_frag_hdr == 8'h00) || frag_reass_valid);
-    wire ext_to_mu  = wave_complete &&  is_mul_op;
-    wire ext_to_du  = wave_complete &&  is_div_op;
-    wire ext_to_lpe = wave_complete && !is_mul_op && !is_div_op;
+    // v1.9.2 §22.14b-3 — 분류 입력이 `ext_opcode`(live)에서
+    // `acc_opcode`(EHDecode 가 이번 에지에 실제로 래치하는 명령)로 바뀌었다.
+    // opcode 리터럴 집합은 **한 글자도 바뀌지 않았다** — twin-classifier
+    // 불변식(PE_Core.v `dec_is_mul_op` 와 lockstep)은 그대로다.
+    wire is_mul_op = (acc_opcode == 8'h12)
+                  || (acc_opcode == 8'h30)
+                  || (acc_opcode == 8'h32)
+                  || (acc_opcode == 8'h43)
+                  || (acc_opcode == 8'h6B)
+                  || (acc_opcode == 8'h70)
+                  || (acc_opcode == 8'h71)
+                  || (acc_opcode == 8'h72)
+                  || (acc_opcode == 8'h73)
+                  || (acc_opcode == 8'h74)
+                  || (acc_opcode == 8'h75)
+                  || (acc_opcode == 8'h76)
+                  || (acc_opcode == 8'h77)
+                  || (acc_opcode == 8'h78)
+                  || (acc_opcode == 8'h79);
+    wire is_div_op = (acc_opcode == 8'h13)   // DIV
+                  || (acc_opcode == 8'h1C)   // MOD
+                  || (acc_opcode == 8'h1D);  // DIVMOD
+    // v1.5.2 §19 — wave-complete gate. (`wave_complete` 자체의 정의는
+    // §22.14b-3 skid 절로 옮겼다 — skid 제어가 그것을 먼저 읽어야 하고
+    // Verilog-2001 은 선언 선행을 요구하기 때문이다. 정의식은 한 글자도
+    // 바뀌지 않았다.)
+    //
+    // v1.9.2 §22.14b-3 — 아래 세 신호는 이제 "도착(`wave_complete`)" 이
+    // 아니라 **accept(`wave_accept`)** 에 걸린다. 이것이 항 4 의 실체다:
+    // `pe_active_*_s1` 로드가 EHDecode 의 실제 래치 에지와 **정의상**
+    // 같아진다. 이전에는 EHDecode 가 명령을 버린 사이클에도 s1 이
+    // 실려 6단 파이프를 타고 내려갔다 — 현행 파이프 깊이의 우연 일치로
+    // dec_valid 가 뜨지 않아 무해했을 뿐인 **고아 펄스**였다.
+    //
+    // **정직 정정 (2026-08-18 적대 검증 항 2)**: 초판은 여기에 "`MAX_EH`
+    // 가 바뀌면 그대로 오발 디스패치" 를 근거로 덧붙였으나 그 시나리오는
+    // 실증 불가능하다 (아래 `pe_active` 파이프 깊이 6 이 하드코딩이라
+    // `MAX_EH` 를 바꾸면 정렬이 먼저 깨진다 — pre-existing, `EHDecode.v:
+    // 481-482` 참조). 근거는 위 **정의 정합성**(고아 펄스를 없앤다)
+    // 하나이며, 그것만으로 충분하다.
+    wire ext_to_mu  = wave_accept &&  is_mul_op;
+    wire ext_to_du  = wave_accept &&  is_div_op;
+    wire ext_to_lpe = wave_accept && !is_mul_op && !is_div_op;
 
     // -------------------------------------------------------------------------
     // Logical port_context_id → linear PE index
+    //
+    // v1.9.2 §22.14b-3 — 태그도 `ext_tag`(live)가 아니라 `ehdec_tag`
+    // (이번 에지에 실제로 래치되는 태그)에서 뽑는다. 보류분 투입 사이클에는
+    // `ext_valid=0` 이라 live 태그가 의미 없는 값이므로, 여기를 고치지
+    // 않으면 보류분이 **엉뚱한 PE 로** 디스패치된다.
     // -------------------------------------------------------------------------
     /* verilator lint_off UNUSEDSIGNAL */
-    wire [15:0] in_pcid = ext_tag[31:16];
+    wire [15:0] in_pcid = ehdec_tag[31:16];
     /* verilator lint_on UNUSEDSIGNAL */
     wire [3:0]  target_idx = in_pcid[3:0];
 
@@ -648,6 +908,26 @@ module Cluster #(
         (ext_frag_hdr == 8'h00) ? ext_payload
                                 : frag_reass_wide[ADDR_WIDTH-1:0];
 
+    // -------------------------------------------------------------------------
+    // v1.9.2 §22.14b-3 — skid 투입 mux (데이터 경로 나머지).
+    // instruction / tag 는 위 skid 절에서 이미 선택했다 (분류기가 먼저
+    // 읽어야 해서). 여기는 EHDecode 가 읽는 나머지 전건이다.
+    //
+    // 선택 신호가 `skid_valid` **하나**인 것이 핵심이다: 보류분이 있으면
+    // 전 필드가 통째로 보류분에서 온다. 필드별로 다른 선택 신호를 쓰면
+    // 그 순간 live 값과 섞인 오염이 생긴다 (§22.14b-3 "부분 보류 금지").
+    // -------------------------------------------------------------------------
+    wire [ADDR_WIDTH-1:0] ehdec_payload =
+        skid_valid ? skid_payload            : ehdec_input_payload;
+    wire [ADDR_WIDTH-1:0] ehdec_payload_b =
+        skid_valid ? skid_payload_b          : cluster_b_payload;
+    wire                  ehdec_payload_b_valid =
+        skid_valid ? skid_payload_b_valid    : cluster_b_valid;
+    wire [FRAG_MAX*ADDR_WIDTH-1:0] ehdec_wide =
+        skid_valid ? skid_payload_wide       : final_wide;
+    wire                  ehdec_wide_valid =
+        skid_valid ? skid_payload_wide_valid : final_wide_valid;
+
     EHDecode #(
         .ADDR_WIDTH (ADDR_WIDTH),
         .TAG_WIDTH  (TAG_WIDTH),
@@ -656,14 +936,17 @@ module Cluster #(
     ) u_ehdec (
         .clk                       (clk),
         .rst                       (rst),
-        .in_valid                  (wave_complete),
-        .instruction               (ext_instruction),
-        .input_tag                 (ext_tag),
-        .input_payload             (ehdec_input_payload),
-        .input_payload_b           (cluster_b_payload),
-        .input_payload_b_valid     (cluster_b_valid),
-        .input_payload_wide        (final_wide),
-        .input_payload_wide_valid  (final_wide_valid),
+        // v1.9.2 §22.14b-3 — `in_valid` 은 도착이 아니라 **accept** 다.
+        // `wave_accept` 는 두 항 모두 `ehdec_in_ready` 를 포함하므로
+        // EHDecode 내부의 `in_valid && !stg_active` 가드와 항상 일치한다.
+        .in_valid                  (wave_accept),
+        .instruction               (ehdec_instruction),
+        .input_tag                 (ehdec_tag),
+        .input_payload             (ehdec_payload),
+        .input_payload_b           (ehdec_payload_b),
+        .input_payload_b_valid     (ehdec_payload_b_valid),
+        .input_payload_wide        (ehdec_wide),
+        .input_payload_wide_valid  (ehdec_wide_valid),
         .dec_valid                 (dec_valid),
         .dec_opcode                (dec_opcode),
         .dec_decode_error          (dec_decode_error),
@@ -691,8 +974,81 @@ module Cluster #(
         .dec_port_context_id       (),
         .opref_src_kind_out        (eff_opref_kind_c),
         .opref_port_id_out         (),
-        .opref_noc_route_out       (eff_opref_route_c)
+        .opref_noc_route_out       (eff_opref_route_c),
+        .in_ready                  (ehdec_in_ready)
     );
+
+    // -------------------------------------------------------------------------
+    // v1.9.2 §22.14b-3 — skid 저장소 갱신 + overflow sticky fault.
+    //
+    // `skid_load` 와 `skid_inject` 는 **구조적으로 상호 배타**다
+    // (`skid_load` 는 `!skid_valid`, `skid_inject` 는 `skid_valid` 를 요구).
+    // else-if 는 그 사실의 표기이지 우선순위 결정이 아니다.
+    //
+    // 적재값은 전부 **도착 사이클의 조합 결과**다. 특히
+    // `cluster_b_payload` / `cluster_b_valid` 는 이 사이클의 EHDecode OPREF
+    // 반사(`eff_opref_kind_c`)로 이미 해석된 값이고, 그 반사는 이 사이클에
+    // `skid_valid==0` 이므로 **live `ext_instruction` 의** src_kind 다 —
+    // 즉 지금 적재하는 바로 그 파동의 것이다. (이 성립이 위 accept 정의의
+    // 보수적 경계를 택한 이유다.)
+    //
+    // sticky fault 정책은 §26.5 `bank_tag_collision_error` 와 동일하다:
+    // 리셋으로만 지워지고, `any_error_flag` 에 폴딩되며, sim-only assertion
+    // 이 아니라 **합성되는 status 비트**다.
+    // -------------------------------------------------------------------------
+    reg input_skid_overflow_error_r;
+
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            skid_valid                 <= 1'b0;
+            skid_instruction           <= {INSTR_WIDTH{1'b0}};
+            skid_tag                   <= {TAG_WIDTH{1'b0}};
+            skid_payload               <= {ADDR_WIDTH{1'b0}};
+            skid_payload_b             <= {ADDR_WIDTH{1'b0}};
+            skid_payload_b_valid       <= 1'b0;
+            skid_payload_wide          <= {(FRAG_MAX*ADDR_WIDTH){1'b0}};
+            skid_payload_wide_valid    <= 1'b0;
+            skid_frag_hdr              <= 8'h00;
+            skid_frag_slot             <= {SLOT_W{1'b0}};
+            input_skid_overflow_error_r <= 1'b0;
+        end else begin
+            if (skid_load) begin
+                skid_valid              <= 1'b1;
+                skid_instruction        <= ext_instruction;
+                skid_tag                <= ext_tag;
+                skid_payload            <= ehdec_input_payload;
+                skid_payload_b          <= cluster_b_payload;
+                skid_payload_b_valid    <= cluster_b_valid;
+                skid_payload_wide       <= final_wide;
+                skid_payload_wide_valid <= final_wide_valid;
+                skid_frag_hdr           <= ext_frag_hdr;
+                skid_frag_slot          <= alloc_idx;
+            end else if (skid_inject) begin
+                // 데이터 필드는 굳이 지우지 않는다 — `skid_valid` 가 유일한
+                // 유효성 근거이고, 지우면 1,658 비트에 리셋 팬아웃이 하나 더
+                // 생길 뿐 관측 가능한 차이가 없다.
+                skid_valid <= 1'b0;
+            end else if (skid_valid && (skid_frag_hdr != 8'h00)
+                         && skid_slot_taken) begin
+                // v1.9.2 §22.14b-4b — **deferred commit 취소.** 보류 창 동안
+                // 조각 beat 가 그 슬롯을 가져갔다 (같은 tag 재전송이든 다른
+                // tag 재할당이든). 슬롯의 주인이 바뀌었으므로 나중에 투입
+                // 에지에서 철거하면 **새 주인의 데이터를 부순다**. tag 비교
+                // 가드만으로는 같은 tag 재전송을 걸러낼 수 없어서 여기서
+                // 인덱스로 끊는다.
+                //
+                // 보류분 자체는 무해하다 — wide payload 는 이미
+                // `skid_payload_wide` 에 **복제**돼 있으므로 슬롯을 잃어도
+                // 투입되는 값은 bit-identical 그대로다 (§22.14b-3 이 재독출
+                // 대신 복제를 택한 이유가 여기서 값을 한다).
+                skid_frag_hdr <= 8'h00;
+            end
+
+            if (skid_overflow_now) begin
+                input_skid_overflow_error_r <= 1'b1;
+            end
+        end
+    end
 
     // -------------------------------------------------------------------------
     // Per-unit `pe_active` — pipelined to align with EHDecode's stage-1
@@ -700,10 +1056,16 @@ module Cluster #(
     // cycle when its dec_* operand-bus carries the matching instruction.
     // -------------------------------------------------------------------------
     // 6-stage pipe to align with EHDecode's pipelined chain walk:
-    //   ext_valid edge (1) → SLOT 0 (2) → SLOT 1 (3) → SLOT 2 (4) → SLOT 3 (5)
+    //   accept edge (1) → SLOT 0 (2) → SLOT 1 (3) → SLOT 2 (4) → SLOT 3 (5)
     //   → dec_* latch (6). pe_active is what PE_Core sees on the cycle when
     //   dec_valid=1 (Edge 6→7), so the registered value must be held in
     //   stage s6 during that interval.
+    //
+    // v1.9.2 §22.14b-3 항 4 — 1단(s1)의 기준 에지가 "ext_valid 에지" 에서
+    // **accept 에지**로 바뀌었다 (`ext_to_*` 가 `wave_accept` 를 읽는다).
+    // 두 에지는 EHDecode 가 비어 있을 때만 일치하고, 보류가 걸리면 최대
+    // `MAX_EH` 에지만큼 벌어진다. 파이프의 정렬 기준은 EHDecode 의 **실제
+    // 래치 에지**이므로 이쪽이 정의상 옳다.
     reg [NUM_PES-1:0] pe_active_lpe_s1, pe_active_lpe_s2, pe_active_lpe_s3,
                       pe_active_lpe_s4, pe_active_lpe_s5, pe_active_lpe_s6;
     reg               pe_active_mu_s1,  pe_active_mu_s2,  pe_active_mu_s3,
@@ -1392,6 +1754,9 @@ module Cluster #(
         // immediately below, so existing any_error_flag consumers see it
         // without needing to know about the dedicated port.
         m_err = m_err | bank_tag_collision_error_r;
+        // v1.9.2 §22.14b-3 — 같은 이유로 입력단 skid overflow 도 폴딩한다.
+        // 전용 포트를 모르는 기존 소비자도 "무언가 버려졌다" 를 본다.
+        m_err = m_err | input_skid_overflow_error_r;
         // Fold collision into the error flag so existing consumers surface it.
         m_err = m_err | m_output_collision;
     end
@@ -1407,8 +1772,18 @@ module Cluster #(
     assign any_lower_required = m_lwr;
     assign any_output_collision = m_output_collision;   // v1.5.3 §20 bug-3/4
     assign bank_tag_collision_error = bank_tag_collision_error_r;  // v1.9 §26.5
-    // v1.6.6 §22.14 — Cluster back-pressure: AND-reduce over MU/DU/L-PE ready.
-    // High only when ALL PE_Core instances can accept new dispatch this cycle.
+    assign input_skid_overflow_error = input_skid_overflow_error_r; // v1.9.2 §22.14b-3
+    // v1.6.6 §22.14 / v1.9.2 §22.14b-3 — Cluster back-pressure.
+    //   출력단 3항 = AND-reduce over MU/DU/L-PE ready ("결과를 낼 자리가
+    //   있는가"). v1.6.6 은 여기서 끝났고, 그래서 이 신호는 "지금 명령을
+    //   받을 수 있는가" 를 **뜻한 적이 없었다** (§22.14b-1).
+    //   입력단 1항 = `!skid_valid` ("보류 자리가 비어 있는가"). 이 항이
+    //   붙어야 비로소 "지금 명령을 받아도 **소실되지 않는다**" 가 된다.
+    //
+    // 계약은 여전히 observe-only 다 (§22.14b-2: 강제할 소비자가 0건이므로
+    // enforced stall 로 바꿔도 손실을 1건도 줄이지 못한다). 다만 이제
+    // 0 을 무시하고 주입하면 `input_skid_overflow_error` 가 **소리를 낸다**
+    // — 관측 가능한 계약이 됐다.
     generate
         if (NUM_PES > 0) begin : g_ready_agg
             integer pr_i;
@@ -1418,7 +1793,8 @@ module Cluster #(
                 for (pr_i = 0; pr_i < NUM_PES; pr_i = pr_i + 1)
                     pe_ready_and = pe_ready_and & pe_ready_lpe[pr_i];
             end
-            assign cluster_ready = mu_pe_ready & du_pe_ready & pe_ready_and;
+            assign cluster_ready = mu_pe_ready & du_pe_ready & pe_ready_and
+                                 & ~skid_valid;
         end
     endgenerate
 

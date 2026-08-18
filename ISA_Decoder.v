@@ -150,7 +150,26 @@ module ISA_Decoder #(
         .dec_port_context_id       (dec_port_context_id),
         .opref_src_kind_out        (opref_src_kind_out),
         .opref_port_id_out         (opref_port_id_out),
-        .opref_noc_route_out       (opref_noc_route_out)
+        .opref_noc_route_out       (opref_noc_route_out),
+        // v1.9.2 §22.14b-3/-5 — EHDecode 신규 출력 `in_ready` 는 여기서
+        // **의도적으로 미접속**이다 (§22.14b-5 표의 갈래 A). 근거 2건:
+        //   (1) 보류 경로(skid buffer)는 Cluster 계층의 구조물이고
+        //       (`Cluster.v` §22.14b-3), 이 얇은 래퍼에는 보류할 저장소도
+        //       배압을 걸 상대도 없다. 포트만 올리면 "관찰은 되는데 아무도
+        //       쓰지 않는 신호" 가 하나 더 생길 뿐이다 — §22.14b-2 가
+        //       `cluster_ready` 에 대해 정확히 그 형태를 문제 삼았다.
+        //   (2) `EHDecode.v` 는 GATE S1(`sys_top_core`) 소스 목록 안이다.
+        //       미접속이면 `Top_Core` 트리에서 프루닝되어 **전 축 델타 0**
+        //       이고, 노출하면 premap ports 49→50 · port bits 1,742→1,743
+        //       으로 gate 상수를 같은 commit 에서 옮겨야 한다 (갈래 B).
+        //       본 세션의 작업 범위는 gate 기준 수치를 건드리지 않는다.
+        // **정직 명기**: 따라서 `ISA_Decoder` 를 단독으로 구동하는 경로
+        // (test_isa_decoder.py / PE.v / Top_Core.v)에는 §22.14b-1 의 무언
+        // drop 이 **그대로 남아 있다** — 체인 워크 중(`MAX_EH` 에지)
+        // `token_valid` 를 다시 올리면 그 명령은 소실된다. 이 계층에서
+        // 그것을 닫으려면 여기에도 보류 경로가 필요하며, 본 amendment 의
+        // 범위가 아니다 (Cluster 가 유일한 실사용 주입 경로다).
+        .in_ready                  ()
     );
 
     PE_Core #(

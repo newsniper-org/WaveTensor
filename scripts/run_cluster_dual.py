@@ -41,7 +41,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SKIP_MARK = "FRAG_SLOTS-SELF-SKIP"
 
 # FRAG_SLOTS>1 전용 테스트 건수 = FRAG_SLOTS=1 빌드에서 나와야 할 표식 수.
-EXPECTED_SKIPS = 6
+# 6 → 7 (v1.9.2 §22.14b-4b): `test_skid_deferred_commit_survives_concurrent_
+# cache_load` 가 추가됐다. FRAG_SLOTS=1 에는 `frag_ready` 가 서지 않아
+# `cache_hit` 자체가 없고, 따라서 그 테스트가 겨냥하는 기아 경로도 없다.
+EXPECTED_SKIPS = 7
 
 # 다중 슬롯 빌드에서 쓸 슬롯 수.
 MULTI_SLOTS = 4

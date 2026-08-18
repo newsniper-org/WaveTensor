@@ -77,8 +77,22 @@ module Pod #(
     // ---- Aggregated diagnostics ----
     output                      any_error_flag,
     output                      any_lower_required,
-    // v1.6.6 §22.14 — pod_ready = AND across all clusters' ready.
-    output                      pod_ready
+    // v1.6.6 §22.14 / v1.9.2 §22.14b-3 — pod_ready = AND across all
+    // clusters' ready. `cluster_ready` 의 의미가 §22.14b-3 에서 "출력단만"
+    // 에서 "**출력단 + 입력단 skid 자리**" 로 바뀌었고, AND-reduce 는 그
+    // 의미를 **자동 상속**한다 (여기 코드 변경 0줄).
+    output                      pod_ready,
+    // v1.9.2 §22.14b-3 — 입력단 skid overflow sticky fault, Pod 전 클러스터
+    // OR-reduce. ready 체인과 달리 **fault 노출은 자동 상속이 아니다** —
+    // Cluster 는 이것을 자기 `any_error_flag` 에 폴딩하지만, 그 경로만
+    // 두면 "무언가 잘못됐다" 까지만 올라오고 **무엇이** 잘못됐는지는
+    // Pod 경계에서 사라진다. 전용 포트를 손으로 배선하는 이유다.
+    //
+    // 대비 (정직 기록): `bank_tag_collision_error`(§26.5)는 오늘도
+    // `cl_bank_collision` 으로 **흡수만** 하고 Pod 포트로 올리지 않는다.
+    // 그 결정을 여기서 바꾸지는 않되(범위 밖), 두 fault 의 노출 수준이
+    // 서로 다르다는 사실은 남겨 둔다.
+    output                      any_input_skid_overflow
 );
 
     localparam NUM_CLUSTERS = CLUSTER_ROWS * CLUSTER_COLS;
@@ -116,6 +130,10 @@ module Pod #(
     // the same future-bubble-to-Pod's-external-interface reason.
     wire                   cl_bank_collision [0:NUM_CLUSTERS-1];
     /* verilator lint_on UNUSEDSIGNAL */
+    // v1.9.2 §22.14b-3 — Cluster 의 입력단 skid overflow sticky fault.
+    // cl_collision / cl_bank_collision 과 달리 **흡수하지 않고** 아래
+    // OR-reduce 로 Pod 포트까지 올린다 (fault 노출은 수동 배선).
+    wire                   cl_skid_overflow [0:NUM_CLUSTERS-1];
     wire                   cl_mem_req     [0:NUM_CLUSTERS-1];
     wire [ADDR_WIDTH-1:0]  cl_mem_addr    [0:NUM_CLUSTERS-1];
     wire                   cl_error       [0:NUM_CLUSTERS-1];
@@ -171,7 +189,8 @@ module Pod #(
                     .any_lower_required  (cl_lower[CIDX]),
                     .any_output_collision (cl_collision[CIDX]),
                     .cluster_ready       (cl_ready[CIDX]),
-                    .bank_tag_collision_error (cl_bank_collision[CIDX])
+                    .bank_tag_collision_error (cl_bank_collision[CIDX]),
+                    .input_skid_overflow_error (cl_skid_overflow[CIDX])
                 );
             end
         end
@@ -190,6 +209,7 @@ module Pod #(
     reg                  m_mem_req;
     reg [ADDR_WIDTH-1:0] m_mem_addr;
     reg                  m_err, m_lwr;
+    reg                  m_skid_overflow;   // v1.9.2 §22.14b-3
 
     always @(*) begin
         m_tag      = {TAG_WIDTH{1'b0}};
@@ -201,6 +221,7 @@ module Pod #(
         m_mem_addr = {ADDR_WIDTH{1'b0}};
         m_err      = 1'b0;
         m_lwr      = 1'b0;
+        m_skid_overflow = 1'b0;
         for (i = 0; i < NUM_CLUSTERS; i = i + 1) begin
             if (cl_out_valid[i] && !m_valid) begin
                 m_tag      = cl_out_tag[i];
@@ -215,6 +236,7 @@ module Pod #(
             end
             m_err = m_err | cl_error[i];
             m_lwr = m_lwr | cl_lower[i];
+            m_skid_overflow = m_skid_overflow | cl_skid_overflow[i];
         end
     end
 
@@ -227,6 +249,7 @@ module Pod #(
     assign mem_addr           = m_mem_addr;
     assign any_error_flag     = m_err;
     assign any_lower_required = m_lwr;
+    assign any_input_skid_overflow = m_skid_overflow;   // v1.9.2 §22.14b-3
     // v1.6.6 §22.14 — pod_ready = AND across all clusters' ready.
     generate
         if (NUM_CLUSTERS > 0) begin : g_pod_ready

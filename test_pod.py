@@ -190,3 +190,73 @@ async def test_pod_lower_required_aggregates(dut):
                 payload_a=0, payload_b=0, payload_b_valid=1)
     assert dut.any_lower_required.value == 1
     assert dut.any_error_flag.value == 0
+
+
+@cocotb.test()
+async def test_pod_input_skid_overflow_reaches_pod_boundary(dut):
+    """v1.9.2 §22.14b-3 — Cluster 의 입력단 skid overflow sticky fault 가
+    **Pod 경계까지 올라온다**.
+
+    ready 체인(`cluster_ready` → `pod_ready`)은 AND-reduce 라 의미가 자동
+    상속되지만, fault 노출은 그렇지 않다 — Cluster 는 이 fault 를 자기
+    `any_error_flag` 에 폴딩하므로 그 경로만 두면 "무언가 잘못됐다" 까지만
+    올라오고 **무엇이** 잘못됐는지는 Pod 경계에서 사라진다. 이 테스트가
+    없으면 `any_input_skid_overflow` 는 배선만 되고 검증은 0건인 포트가
+    된다.
+
+    자극: 한 Cluster 의 공유 EHDecode 를 점유시킨 뒤 blackout 창 안에서
+    파동 2건을 연속 주입한다 — 첫째는 skid 로 보류, 둘째는 자리가 없어
+    overflow."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    assert int(dut.any_input_skid_overflow.value) == 0, \
+        "리셋 직후 Pod 경계 fault 가 이미 서 있다"
+
+    def _add(pcid_lo):
+        return encode_instr(0x10,
+                            eh_port(input_port_mask=(1 << pcid_lo),
+                                    output_port_id=pcid_lo),
+                            eh_imm16(5))
+
+    async def _pulse(instr, pcid, payload):
+        dut.ext_instruction.value = instr
+        dut.ext_tag.value = _tag(port_context_id=pcid)
+        dut.ext_payload.value = payload
+        dut.ext_payload_b.value = 0
+        dut.ext_payload_b_valid.value = 0
+        dut.ext_frag_hdr.value = 0
+        dut.ext_valid.value = 1
+        await RisingEdge(dut.clk)
+        dut.ext_valid.value = 0
+
+    # Cluster 1 의 EHDecode 를 점유시킨다 (pcid[7:4]=1).
+    await _pulse(_add(0), 0x10, 10)
+    # blackout 사이클 0 — skid 로 보류된다 (아직 fault 없음).
+    await _pulse(_add(1), 0x11, 20)
+    await Timer(1, units="ns")
+    assert int(dut.any_input_skid_overflow.value) == 0, \
+        "보류 1건만으로 Pod 경계 fault 가 떴다 (신호가 1 에 묶인 축퇴)"
+    assert int(dut.pod_ready.value) == 0, \
+        "skid 점유 중인데 pod_ready 가 1 이다 — cluster_ready 의 새 의미가 " \
+        "AND-reduce 로 상속되지 않았다"
+    # blackout 사이클 1 — skid 가 이미 찼으므로 overflow.
+    await _pulse(_add(2), 0x12, 30)
+    await Timer(1, units="ns")
+    assert int(dut.any_input_skid_overflow.value) == 1, \
+        "Cluster 의 skid overflow fault 가 Pod 포트까지 올라오지 않았다"
+    assert int(dut.any_error_flag.value) == 1, \
+        "overflow fault 가 Cluster any_error_flag 를 거쳐 Pod 로 폴딩되지 " \
+        "않았다"
+
+    # sticky — 이후 idle 구간에서 흡수되지 않는다.
+    for _ in range(40):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        assert int(dut.any_input_skid_overflow.value) == 1, \
+            "Pod 경계 fault 가 sticky 가 아니다"
+
+    await _reset(dut)
+    assert int(dut.any_input_skid_overflow.value) == 0, \
+        "리셋이 Pod 경계 sticky fault 를 지우지 못했다"

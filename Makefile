@@ -373,7 +373,7 @@ lint:
 # `make MOD=Cluster` 하나만 돌린 녹색은 다중 슬롯 경로(persistence / LRU /
 # cold-fill / FRAG_INVAL)가 검증됐다는 뜻이 **아니다** — 그 6건은 기본
 # 빌드에서 값 검사를 0건 수행하고 self-skip 한다. 이 타깃은 두 빌드를
-# 모두 돌리고, FRAG_SLOTS=1 에서 self-skip 이 정확히 6건 / FRAG_SLOTS=4
+# 모두 돌리고, FRAG_SLOTS=1 에서 self-skip 이 정확히 7건 / FRAG_SLOTS=4
 # 에서 정확히 0건인지까지 대조한다. 한쪽만 돌리면 통과할 수 없다.
 # =============================================================================
 

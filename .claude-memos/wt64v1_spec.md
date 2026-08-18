@@ -142,6 +142,10 @@ L-PE는 ALU/shape/단항/bitwise 모두 처리. MATMUL_UNIT은 0x12/0x30/0x32/0x
 
 ## 5. Pipeline latency
 
+> **[2026-08-18 개정 — B-5.]** 아래 원문 표는 **v1.0 lock 시점의 회계**이며 두 가지 결함이 있었다: **(i) 요약문과 표가 서로 모순**됐고(MUL), **(ii) 어느 경계에서 센 값인지가 한 번도 명시되지 않았다.** §12a 규칙 5 에 따라 원문은 삭제하지 않고 그대로 보존하고, 그 아래에 개정본을 병기한다.
+
+**[원문 — v1.0 lock 시점 회계, 보존]**
+
 | 단계 | cycles |
 |---|---:|
 | EHDecode chain walk (SLOT 0..3) | 4 |
@@ -152,6 +156,47 @@ L-PE는 ALU/shape/단항/bitwise 모두 처리. MATMUL_UNIT은 0x12/0x30/0x32/0x
 | DIVMOD bit-serial | 32 추가 |
 
 대부분 op은 token in → token out **6 cycles**. MUL 7. DIV 70. DIVMOD 38.
+
+### 5.1 측정 경계의 정의 (개정에서 신설 — 이것이 없어서 표가 모호했다)
+
+같은 명령의 latency 는 **어디서 세느냐**에 따라 다른 값이 나오고, 원문 표는 그것을 말한 적이 없다. 본 문서는 아래 세 경계를 구분하며, **§5.2 표의 모든 행은 경계 C 를 기준**으로 한다.
+
+| 기호 | 경계 | 정의 |
+|---|---|---|
+| **A** | PE_Core dispatch | `dec_valid` (EHDecode 가 이미 레지스터로 잡은 `dec_*` 버스) → PE_Core 출력측 레지스터 commit. **EHDecode chain walk 4 + dec register 1 = 5 cycle 을 포함하지 않는다** |
+| **B** | `ISA_Decoder` 포트 | `token_valid` → `output_valid`. EHDecode + PE_Core 를 포함하되, Cluster 의 fragment 재조립 · `pe_active` 정렬 파이프는 포함하지 않는다 |
+| **C** | **Cluster ext 포트** | `ext_valid` → Cluster `output_valid`. **본 표의 기준 경계** — 외부 fabric 이 실제로 관측하는 값이다 |
+
+### 5.2 개정 표 (경계 C 기준)
+
+| 항목 | v1.0 lock 회계 | v1.9 (§26.4 균일 +1) | 실측 (경계 C) | 지위 |
+|---|---:|---:|---:|---|
+| EHDecode chain walk (SLOT 0..3) | 4 | 4 | — | 구조값, 불변 |
+| `dec_*` register stage | 1 | 1 | — | 구조값, 불변 |
+| PE_Core dispatch (case-block 경유 opcode 전건) | 1 | **2** | — | §26.4 uniform +1 |
+| **일반 op 합계** | **6** | **7** | **7** | **일치 — 확정** |
+| MUL (0x12) | **8** (= 6 +2, 아래 (a)) | 8 (§26.4 상 **0 cycle 변경**) | **미측정** | **재측정 대상** |
+| DIV / MOD | 70 (= 6 +64) | 70 (§26.4 상 0 cycle 변경) | **73** | **재측정 대상 — 재유도 불가** |
+| DIVMOD | 38 (= 6 +32) | 38 (§26.4 상 0 cycle 변경) | **41** | **재측정 대상 — 재유도 불가** |
+
+**(a) 내부 모순의 해소 — 표의 행("+2")이 맞고 요약문("MUL 7")이 틀렸다.**
+
+- **표 자신의 회계 규약을 DIV/DIVMOD 두 행이 고정한다**: `6 + 64 = 70`, `6 + 32 = 38` — 즉 "N 추가" 는 **6 위에 N 을 더한다** 는 뜻이다. 같은 규약을 MUL 에 적용하면 `6 + 2 = 8` 이고, 요약문의 "MUL 7"(= 6+1)은 **어느 규약으로도 나오지 않는다**. (대안 규약 — "N 추가" 가 dispatch 1 cycle 을 **대체**한다 — 을 가정하면 MUL 은 7 이 되지만 DIV 가 `4+1+64 = 69 ≠ 70` 이 되어 두 행이 깨진다. 즉 두 규약 중 하나만 자기무모순이고, 그 규약에서 MUL 은 8 이다.)
+- **RTL 구조도 같은 답을 준다**: `mul_valid_p1 <= …` (`PE_Core.v:2006`) → `mul_valid_p2 <= mul_valid_p1` (`:2012`) → 출력 우선순위 체인의 `mul_valid_p2` arm (`:3466`) 이 출력 레지스터에 commit — dispatch 로부터 **3 에지**다. 같은 시점의 일반 op 은 1 에지(v1.0)이므로 차이는 **+2** 다.
+- **결론: v1.0 lock 시점의 정답은 MUL = 8 이고 요약문 "MUL 7" 은 전사 오류다.** 본 개정이 이를 정정한다.
+- **v1.9 이후**: 일반 op 이 +1 (6→7) 되고 MUL 은 §26.4 상 **0 cycle 변경**(case 블록을 완전히 우회)이므로, MUL 은 8 로 유지되고 **일반 op 과의 차이가 +2 에서 +1 로 좁아진다.** 즉 "+2" 라는 **상대 표기 자체가 v1.9 에서 낡았다** — 그래서 개정 표는 상대값이 아니라 **절대값**으로 적는다.
+
+**(b) 측정 경계 미명시 + 재유도 불가 2행 — 추측으로 채우지 않는다.**
+
+경계 C 실측은 **일반 7 / DIV 73 / DIVMOD 41** 이다 (원문 표: 6 / 70 / 38).
+
+- **일반 op 은 정확히 맞는다**: 6 → 7 은 §26.4 의 균일 +1 이 그대로 설명한다. **이 사실이 결정적이다** — 만약 경계 C 가 원문 표의 암묵 경계보다 몇 홉 뒤였다면 **세 행 모두 같은 만큼** 밀렸어야 한다. 일반 op 이 추가로 0 만큼 밀렸으므로, **DIV/DIVMOD 의 +3 은 측정 경계(래퍼 홉)로 설명되지 않는다.**
+- **DIV/DIVMOD 는 §26.3-26.4 로 재유도되지 않는다**: §26.4 는 "MUL, DIV, frag-drain absolute-priority override 는 변경 없음(0 cycle) — 이들은 case 블록을 완전히 우회한다" 고 명시하므로 v1.9 가 이 두 행을 움직였을 수 없다. 그런데 실측은 각각 +3 이다. **재유도 실패를 실패로 기록한다.**
+- **미검증 가설 (추측이므로 표에 반영하지 않는다)**: DIV 는 `DIV_IDLE`(launch) → `DIV_ITER`(N 회) → `DIV_FINISH`(`div_valid_p2` 세움) → 출력 commit 구조다 (`PE_Core.v:1298-1300` / `:2021-2100` / `:3472`). 즉 반복 N 회 **바깥에 최소 3 에지**가 있는데 원문의 `6 + N` 회계는 그 바깥을 **1 회분만** 계상한다. 이것이 관측된 +3 의 형태와 부합하지만, **부합은 유도가 아니다** — 확정은 directed 측정의 몫이다.
+- **재측정 의무 (normative)**: MUL / DIV / DIVMOD 세 행은 **경계 A · B · C 각각에서 directed cocotb 측정**으로 채운다. 측정이 착지하기 전까지 이 세 행은 **"재측정 대상"** 이며, **추측값을 표에 전사하는 것을 금지한다.** 측정이 끝나면 같은 commit 에서 (i) §5.2 표, (ii) `isa/wt64v1_isa.json` 파생 latency 문서, (iii) §9 항 6 의 인용을 **함께** bump 한다 (§26.4 가 이미 요구한 절차).
+- **선행 종속 (기록)**: §22.14b-5 cut ladder 의 rung 2 (skid 를 상시 경유 레지스터로 전환) 가 발동하면 **경계 C 의 모든 행이 균일 +1** 된다. rung 2 가 확정되기 전에 경계 C 값을 고정하면 즉시 낡으므로, **재측정은 §22.14b 착지 이후에 수행**한다.
+
+**균형 기록 (개정하지 않고 두자는 근거도 남긴다)**: latency 는 §9 항 6 이 **reference-only** 로 규정한 비-요건이므로, 표가 틀려도 conformance 는 깨지지 않는다 — "고칠 실익이 없다" 는 반론이 성립한다. 그럼에도 개정하는 이유는 두 가지다: (i) 표 **자기 자신이 자기와 모순**하고 있었고 (MUL), (ii) §26.4 가 latency 문서 전건의 동반 bump 를 **이미 의무화**했는데 §5 가 그 의무에서 누락돼 있었다. 모순과 누락은 reference 문서에서도 결함이다.
 
 ## 6. TRNG 사양 (WT64v1 base에 포함)
 
@@ -207,6 +252,7 @@ WT64v1 conformant 디바이스는 다음을 모두 만족해야 한다:
 4. TRNG 인프라 (RO + von Neumann + RCT/APT + 64-bit `rng_word`) 제공.
 5. error_flag / lower_required 분류 정확히 따름.
 6. 8장의 분류에 따른 Latency 표 (Section 5)는 reference에 한해 적용 — 다른 구현은 자체 latency 가능하나 functionally equivalent.
+   > **[2026-08-18 — B-5 정합 확인. 본 항의 conformance 지위는 바뀌지 않는다.]** §5 가 (i) 측정 경계를 **경계 C (Cluster ext 포트)** 로 명시하고 (ii) MUL/DIV/DIVMOD 3행을 **"재측정 대상"** 으로 표기하도록 개정됐다 (§5.1/§5.2). 본 항이 latency 를 **reference-only 비-요건**으로 규정하므로 **재측정 대기 상태는 conformance 구멍을 만들지 않는다** — conformant 디바이스가 만족해야 하는 것은 §8 의 분류(어떤 조건이 `error_flag` 이고 어떤 것이 `lower_required` 인가)이지 cycle 수가 아니다. 다만 본 항이 §5 를 인용하는 이상 **인용 대상이 어느 경계의 값인지**는 명시돼 있어야 하며, 그 공백을 §5.1 이 메웠다. §5.2 의 재측정이 착지하면 본 문장도 같은 commit 에서 갱신한다.
 
 ## 10. 비-요건 (확장으로 분리)
 
@@ -1696,6 +1742,216 @@ pe_ready = (frag_state == FRAG_IDLE)
 - `test_pe_ready_defaults_high` — 리셋 후 idle → pe_ready=1
 - `test_pe_ready_low_during_bmm3_emit` — SIG_BMM_3 fire 시 FRAG_EMIT_HI cycle 에서 pe_ready=0, 이후 다시 1
 
+---
+
+**[amendment 2026-08-18 · normative — 본 절의 계약 정정. §12a 규칙 5 에 따라 위 v1.6.6 원문은 삭제하지 않고 그대로 보존한다. 본 amendment 는 spec-first 이며 RTL 은 아직 바뀌지 않았다.]**
+
+##### 22.14b-1 확정 사실 — `cluster_ready` 는 **입력단을 포함한 적이 없다**
+
+v1.6.6 원문의 "Propagation 계층" 은 `cluster_ready = mu_pe_ready & du_pe_ready & AND(pe_ready_lpe[*])` 라고만 적어, 이것이 곧 "Cluster 가 지금 명령을 받을 수 있다" 로 읽히게 두었다. **그 읽기는 거짓이다.** 사이클 단위로 확정된 세 사실:
+
+1. **세 항 전부 출력단이다.** `Cluster.v:1421` 의 세 항은 모두 `PE_Core.v:1529` 의 `output_regs_free` 계열이다 — "PE 가 결과를 **낼** 자리가 있는가" 만 본다. Cluster 가 공유하는 `EHDecode` 의 점유 상태(`stg_active`)는 이 식에 **없다**.
+2. **넣을 수도 없었다.** `EHDecode` 에는 ready/busy **출력 포트가 없고**, `stg_active` 는 내부 reg (`EHDecode.v:163`) 다. v1.6.6 은 표현 수단 자체가 없는 상태를 계약에 넣지 않은 것이지, 넣었다가 빠뜨린 것이 아니다.
+3. **점유 중 도착한 명령은 어느 arm 에서도 읽히지 않는다.** `EHDecode.v:195`(입력 래치)와 `:350`(워크 kick)이 둘 다 `in_valid && !stg_active` 로 가드하므로 `stg_active==1` 이면 `in_valid` 는 **소비되지도, 큐잉되지도, 에러로 기록되지도 않는다** — 큐 0 · 홀드 0 · 에러 비트 0. 반면 `Cluster.v:488/659` 의 `wave_complete` 에는 `stg_active` 항이 없어 **항상 쏜다**.
+
+**성격 (정직 기술)**: 오염이 아니라 **순수 소실**이다. 진행 중인 파동은 `!stg_active` 가드가 보호하므로 값이 섞이지 않는다. 그러나 소실된 명령에 대한 **재시도 경로가 없어 영구**하고 어떤 status 비트도 서지 않으므로, **loud-fault-never-silent 를 정면으로 위반한다.**
+
+**관측 경계**: `MAX_EH=4` 이므로 kick 후 4 에지 동안 blackout (`EHDecode.v:471-477`) — 즉 `SIG_BMM_3` 파동 직후 **1~4 cycle** 안에 주입된 명령이 `cluster_ready=1` 인데도 소실된다. `test_cluster.py:1191-1198` 의 회피용 `range(4,16)` 한정이 정확히 이 경계를 우회하고 있었다 (delay 0..3 소실 / delay=4 정상 — 관측과 계산이 문자 단위로 일치).
+
+**균형 기록 (본 결함을 축소 해석할 수 있는 근거도 남긴다)**: 현재 어떤 상위 RTL 도 `cluster_ready` 를 소비하지 않으므로 (22.14b-2), 실 시스템에서 이 소실이 발현하려면 외부 fabric 이 `cluster_ready` 를 **무시하고** back-to-back 주입해야 한다 — 즉 "오늘 당장 데이터가 깨지고 있다" 는 종류의 결함이 아니다. 그럼에도 결함으로 취급하는 이유는 하나다: spec 이 이 신호를 "관찰하면 STALL 여부를 결정할 수 있다" 고 약속했는데, 그 약속이 **입력단에 대해서는 성립한 적이 없다.** 약속을 지키거나 철회하거나 둘 중 하나여야 하고, 본 amendment 는 전자를 택한다.
+
+##### 22.14b-2 observe-only 계약은 **유지한다** — enforced stall 로 바꿔도 무력하기 때문이다
+
+v1.6.6 의 "**MVP: observe-only** — `ext_valid` gating 안 함" 은 **그대로 규범으로 유지한다.** 근거는 이 신호의 소비자를 끝까지 따라간 실측이다:
+
+`Cluster.v:101`(출력) → `Pod.v:173`(`cl_ready[CIDX]`) → `Pod.v:230-240`(AND-reduce) → `Pod.v:81`(`pod_ready` 출력) → `synth/gate/Pod_HIU_gate_top.v:227`(래퍼 등록) → **끝.** 이 사슬 어디에서도 `ext_valid` 도, 다른 어떤 주입 경로도 게이트되지 않는다. **RTL 소비 0건**이고 `cluster_ready`/`pod_ready` 를 assert 하는 **cocotb 테스트도 0건**이다 (`pe_ready` 는 `ISA_Decoder` 경계에서 별개로 assert 된다 — `test_isa_decoder.py:3235/3247`. 서로 다른 경계의 서로 다른 신호이므로 혼동하지 않는다).
+
+따라서 **"observe-only → enforced stall" 전환은 손실을 1건도 줄이지 못한다** — 강제할 소비자가 존재하지 않기 때문이다. 그 전환은 결함을 고치는 대신 **결함을 관측 불가능하게 만들 뿐**이다. 손실을 구조적으로 0 으로 만드는 유일한 수단은 **보류 경로**이며 그것이 22.14b-3 이다. 정리하면: **계약(observe-only)은 정확했고 유지한다. 거짓이었던 것은 `cluster_ready` 의 의미이며, 그것만 22.14b-3 이 고친다.**
+
+##### 22.14b-3 (normative) Cluster 입력단 **skid buffer 1단**
+
+**규범.** Cluster 는 `wave_complete` 가 서는데 공유 `EHDecode` 가 점유 중(`in_ready==0`)일 때 그 파동을 **버리지 않고 1단 skid buffer 에 보류**해야 한다. `in_ready` 가 상승하는 최초 에지에 보류분을 투입한다.
+
+- **신규 포트 (normative)**: `EHDecode` 는 출력 `in_ready = !stg_active` 를 노출한다. 기존 내부 reg 의 반전일 뿐이며 **신규 상태가 아니다**.
+- **보류 대상 (normative, 전건)**: `ext_instruction`(416b) · `ehdec_input_payload`(64b) · `cluster_b_payload`(64b) + `cluster_b_valid`(1b) · `final_wide`(**1,024b**) + `final_wide_valid`(1b) · `ext_tag`(80b) · `ext_frag_hdr`(8b) = **1,658b**, + skid 점유 비트 1b = **1,659b**. **부분 보류는 금지한다** — 한 필드라도 빠지면 투입 시점에 live 값과 섞여, 현재는 존재하지 않는 실패 모드인 **오염**이 새로 생긴다.
+- **보류 창 (normative 상한)**: blackout 은 `MAX_EH` 에지이므로 (현행 `MAX_EH=4` → **최대 4 에지**) skid 는 반드시 배출된다 — 무한 보류는 구조적으로 불가능하다. `MAX_EH` 는 §16 이 spec 제약이 아닌 sizing hint 로 격하한 파라미터이므로, 이 상한은 상수가 아니라 **`MAX_EH` 의 함수로** 적는다.
+- **`cluster_ready` 의 새 의미 (normative)**: `cluster_ready = (기존 출력단 3항) && (skid 자리 비어 있음)`. 이 개정으로 이 신호는 **처음으로 "지금 명령을 받아도 소실되지 않는다" 를 뜻하게 된다.** v1.6.6 의 식은 이 뜻을 가진 적이 없다.
+- **2개째 도착 = loud sticky fault (normative)**: skid 가 이미 점유된 상태에서 또 하나의 `wave_complete` 가 서면 **sticky status bit** 를 세우고 `any_error_flag` 에 폴딩한다. 형식은 §26.5 의 `bank_tag_collision_error` 를 그대로 복제하며, **simulation-only `$error`/assertion 은 금지**한다 (§26.5 가 이미 확립한 규율 — sim-only 는 production 보장을 남기지 않는다). 이 fault 는 위 `MAX_EH` 상한 논증이 깨졌다는 뜻이므로 **조용히 넘어가서는 안 된다**.
+- **accept 조건 단일 정의 (normative)**: "EHDecode 가 이 파동을 실제로 받았다" 는 조건을 **한 곳에서 정의**하고, `wave_complete` 소비 · `pe_active_*_s1` 로드 · CAM 슬롯 철거(22.14b-4)가 **모두 같은 조건**을 읽어야 한다. 오늘 이 셋은 서로 다른 시점을 본다 — 현행 파이프 깊이의 우연한 일치로 무해할 뿐이며, `MAX_EH` 가 바뀌면 오발 디스패치가 된다.
+
+  > **[2026-08-18 정정 — 적대 검증 항 2. 위 문장의 마지막 절은 근거로 쓸 수 없다.]** "`MAX_EH` 가 바뀌면 오발 디스패치가 된다" 는 **실증 불가능한 시나리오**다. `Cluster.v` 의 `parameter MAX_EH` 를 2 나 6 으로 바꾸면 skid 와 무관하게 Cluster 전체가 무동작이 된다 (선행 파동조차 출력 0) — `pe_active_*` 정렬 파이프의 깊이가 6 으로 하드코딩돼 있고 `EHDecode.v:481-482` 가 이미 그 lockstep 요구를 명시하기 때문이다. 귀속을 위해 HEAD(수리 전) `Cluster.v` 로 같은 실험을 하면 **`MAX_EH=6` + HEAD 테스트 = 49건 중 36 FAIL** 이므로 **pre-existing** 이며 본 amendment 가 만든 것이 아니다. 즉 `MAX_EH` 는 독립적으로 움직일 수 있는 축이 아니고, 그것이 바뀌는 순간 파이프 정렬이 **먼저** 깨져 위 시나리오에 도달할 수 없다.
+  >
+  > **규범 자체는 유지한다 — 근거만 바꾼다.** 단일 정의를 요구하는 정당한 근거는 **정의 정합성** 하나다: EHDecode 가 명령을 래치하는 에지는 `in_valid && in_ready` 인 에지 하나뿐이고 (`EHDecode.v:195/:350` 의 가드가 문자 그대로 그 조건이다), 위 셋은 전부 "그 래치가 일어났다" 를 전제로 하는 후속 동작이다. 도착(`wave_complete`)을 읽는 판은 래치가 없던 에지에도 후속 동작을 일으키므로 그 자체가 정의 위반이며, 무해성은 **파이프 깊이의 우연**에만 의존한다. 도달 불가능한 시나리오를 근거로 드는 것은 검증 불가능한 주장을 규범에 싣는 일이므로 여기서 철회한다. (변이 검증 (iii)이 이 규범의 반증력을 실측으로 뒷받침한다 — 조건을 `wave_complete` 로 되돌리면 테스트가 죽는다.)
+
+**균형 기록 (skid 도입에 반대하는 근거도 남긴다)**: (i) **소비자가 0 인 신호**를 정직하게 만들려고 Cluster 에 1,659 FF 을 추가한다 — 오늘 당장의 기능 이득은 0 이다. (ii) 22.14b-5 가 보이듯 **V9-4 COMB gate 를 breach 할 것이 측정 전에 이미 예상된다.** 그럼에도 채택하는 근거: "**`cluster_ready=1` 인데 명령이 사라진다**" 는 상태는 어떤 상위 계층도 방어할 수 없는 종류의 거짓말이고, ready 식만 정정하면 (소비자가 0이므로) 그 거짓말은 **없어지지 않고 관측 불가능해질 뿐**이기 때문이다.
+
+##### 22.14b-4 (normative) 다중 조각 wave — CAM 슬롯 철거를 accept 에 종속시킨다
+
+오늘 `Cluster.v:354-360` 은 `wave_complete` 시점에 fragment CAM 슬롯을 **무조건** 철거한다. `EHDecode` 가 그 파동을 받지 못했을 때 재조립 payload 까지 함께 사라지므로, 다중 조각 wave 의 소실은 **명령 1건이 아니라 그 파동 전체**다.
+
+**규범**: CAM 슬롯 철거는 22.14b-3 의 **accept 조건에 종속**한다. accept 이 나지 않은 사이클에는 슬롯을 건드리지 않는다.
+
+**부수 이득 (기록)**: 이 종속이 성립하면 재조립 payload 가 슬롯에 남아 있으므로, skid 가 1,024b `final_wide` 를 **복제 보관하지 않고 슬롯에서 재독출하는 형태**가 성립 가능해진다 — 22.14b-5 cut ladder 의 rung 1 이 그것이다. 다만 **본 절의 채택 형태는 복제 보관(1,024b 포함 전건 보류)** 이며, 재독출 형태는 gate breach 시에만 발동하는 사전 공표 축소안이다.
+
+##### 22.14b-4b (normative) accept-종속 철거가 **새로 만든** 상태를 닫는다 — 기아 봉쇄 + 병합 금지
+
+**[2026-08-18 신설 — 적대 검증 항 3 의 수리. 22.14b-4 는 유지하며 그 위에 얹는다.]**
+
+22.14b-4 의 accept-종속 철거는 HEAD 에 **없던 상태**를 새로 만든다: `frag_active=1 · frag_ready=0 · frag_mask=full` — 즉 "**완성됐는데 아직 철거되지 않은 슬롯**". HEAD 에서는 완성 에지에 무조건 철거했으므로 이 배치가 존재할 수 없었다. 22.14b-6(4)가 이 위험을 축소 없이 공개했으나 **회귀 pin 이 0건**이었고, 초판 구현에는 실제 도달 경로가 두 갈래 있었다. 아래 둘을 normative 로 못박는다.
+
+**(a) deferred CAM commit 은 기아(starvation) 상태에 놓여서는 안 된다.** 초판은 이 arm 을 CAM `always` 사슬의 **마지막 else-if** 로 두었다. 그래서 투입 에지에 `cache_hit`(다른 tag 의 `CACHE_LOAD_WIDE` 0x68) 하나만 겹쳐도 commit 이 실행되지 않았고, **재시도 경로가 없으므로 그것은 지연이 아니라 영구 누락**이다. 규범: deferred commit 은 사슬 **밖**의 독립 arm 이어야 하며, 다음 셋과 **동시에** 성립해야 한다 — `cache_hit`(`frag_age` 만 쓴다), `inval_hit`(대상이 `frag_ready==1` 인 슬롯뿐이라 완성 보류 슬롯과 **구조적으로 같은 슬롯일 수 없다**), 다른 슬롯을 노리는 조각 beat. 유일하게 허용되는 억제는 **같은 슬롯을 노리는 조각 beat**(`skid_slot_taken`)이며, 그 경우 commit 은 밀리는 것이 아니라 **취소**된다 (`skid_frag_hdr <= 0`) — 슬롯의 주인이 바뀌었으므로 나중에 철거하면 새 주인의 데이터를 부순다. 같은 tag 재전송은 tag 비교로 걸러지지 않으므로 이 취소는 **슬롯 인덱스**로 판정해야 한다.
+
+**(b) 완성 보류 슬롯은 continue(병합) 대상이 아니다.** 그 상태의 슬롯에 같은 tag 의 조각이 도착하면 가득 찬 mask 와 OR 되어 그 자리에서 `frag_reass_valid` 가 서고 **stale wide 가 즉시 실행**된다. 규범: `hit_continue[s]` 는 `frag_mask[s]` 가 그 슬롯 자신의 `frag_total_m1[s]` 로 만든 full mask 와 같으면 **거짓**이어야 한다. 그러면 그 조각은 병합이 아니라 **새 할당**으로 가고 재전송 파동이 처음부터 다시 조립된다.
+
+**(b) 는 기존 동작에 대해 no-op 임을 명기한다** — HEAD 에서는 완성 에지에 (FRAG_SLOTS=1) `frag_active/frag_mask` 가 즉시 지워지거나 (FRAG_SLOTS>1) `frag_ready` 가 서고, `hit_continue` 는 `!frag_ready` 를 요구하므로 "full mask 인데 continue 대상" 인 슬롯은 **도달 불가능**했다. 즉 (b) 는 새 상태에만 반응한다.
+
+**두 방어는 서로를 가린다 — 그래서 각각을 기전으로 pin 한다 (검증 규범).** (a) 만 있어도 (b) 의 오염은 대개 발생하지 않고, (b) 만 있어도 (a) 의 누락은 대개 관측되지 않는다. 결과만 보는 테스트는 둘 중 하나를 지워도 통과하므로 **각 방어를 개별로 죽이는 자극**이 있어야 한다: (a) 는 투입 에지에 0x68 을 겹친 뒤 `frag_ready` 비트를 직접 확인 (다중 슬롯 빌드 전용 — FRAG_SLOTS=1 에는 `frag_ready` 가 서지 않아 `cache_hit` 자체가 없다), (b) 는 투입 에지에 **같은 tag 의 새 조각 0번**을 겹쳐 deferred commit 을 취소시킨 뒤 거짓 완성이 없음을 확인 (양 빌드).
+
+**잔여 (정직 기록, 축소하지 않는다)**: 위 (b)-자극이 보이듯, 보류 창(≤ `MAX_EH` 에지) 안의 주입은 여전히 `cluster_ready==0` 을 무시한 **계약 위반**이며 완성 펄스가 겹치면 loud overflow fault 가 뜬다. (a)+(b) 가 없애는 것은 그 계약 위반 **뒤에 남는 조용한 오염**이지 계약 위반 자체가 아니다.
+
+##### 22.14b-5 GATE 영향 선언 (측정 **전** 공표 — §31.10 / V9-4 정신)
+
+**본 절은 gate 를 실행하지 않았다.** 아래는 **측정 이전에** 공표하는 예측이며, 검증은 구현 세션의 몫이다.
+
+**(1) GATE S1 (`sys_top_core`) — 영향 없음. 소스 목록 실측으로 확인:**
+
+`sys_top_core` 의 소스 목록은 `Makefile:214`(Vivado / GATE S1-US)와 `synth/lattice/scripts/synth_fp_ops.sh:330`(ECP5 반쪽) 양쪽에서 동일하다 —
+`Top_Core.v · ISA_Decoder.v · EHDecode.v · PE_Core.v · FP_StepSeq.v · FP_Mul36.v · FP_AddWide.v · HIU.v · synth/gate/Top_Core_gate_top.v`.
+**`Cluster.v` 는 이 목록에 없다** (`Pod.v` 도 없다). 따라서 **skid 저장소 1,659b · 투입 mux · sticky 1비트는 전부 GATE S1 축 밖**이며, LUT(ceiling 24,799) / DSP48E2(39) / RAMB18(2) / premap `$mul`(381) / DRC(0) / CRITICAL(8) / WHS 전 축에 **델타 0** 이다.
+
+gate 안으로 들어가는 것은 단 하나, **`EHDecode` 의 신규 출력 `in_ready`** 다 (`EHDecode.v` 는 목록에 있다). 두 갈래로 미리 가른다:
+
+| 갈래 | 조건 | 예측 델타 |
+|---|---|---|
+| **A** | `ISA_Decoder`/`Top_Core` 로 **노출하지 않음** (Cluster 만 소비) | **전 축 0.** `in_ready` 는 `Top_Core` 트리에서 미접속으로 프루닝된다 |
+| **B** | `pe_ready` 선례대로 `Top_Core` 포트까지 **노출** | premap ports **49→50** · port bits **1,742→1,743** · 래퍼 I/O flop **1,740→1,741** (`Top_Core_gate_top.v` 는 `rst` 를 뺀 전 I/O 를 정확히 1회 등록한다) · LUT **0~1**(기존 reg 의 반전) · DSP48E2 · RAMB18 · premap `$mul` · CRITICAL **불변** |
+
+어느 갈래든 **binding 축은 움직이지 않는다.** 갈래 선택은 구현 세션의 결정이되, **선택한 갈래를 gate log 와 함께 기록**해야 한다 (갈래 B 를 고르면 premap ports/port bits 축이 움직이므로 `synth/lattice/fp_ops/gate_check.py` 의 해당 상수도 같은 commit 에서 함께 옮긴다).
+
+**(2) 실제로 하중을 지는 gate — full Cluster (V9-4 계열, `synth/lattice/scripts/synth_cluster.ys:20`) 와 Pod (`synth/scripts/common.tcl:38` · `synth_u30_pod_hiu.tcl:102`).**
+
+기준선 = v1.9b 실측 (`synth/lattice/reports/cluster_v19b_pnr.log`): **TRELLIS_COMB 33,089 / 83,640 = 39.56%**, TRELLIS_FF **10,607** (12.7%), Fmax **11.34 MHz**. §26.6 의 COMB hard gate 는 **≤ 40.0% = 33,456 LUT4** → **출발 마진 367 LUT4**.
+
+| 축 | 지위 | 기준선 | **본 절 델타 예측 (nominal)** | 1.67× 적용 worst | 판정 예고 |
+|---|---|---:|---|---|---|
+| **COMB (LUT4)** | **binding ≤ 40.0% (33,456)** | 33,089 | **+1,660 ~ +1,680** — 보류 1,650b 데이터 경로의 2:1 투입 mux ≈ 1 LUT4/bit + 제어 10~20 | **+2,772 ~ +2,806** | **breach 예상.** nominal 만으로 **34,749 (41.5%)**, worst **35,895 (42.9%)** |
+| FF | 추적만 | 10,607 | **+1,660** (보류 1,659 + sticky 1) | — | 12,267 (14.7%) — 문제 없음 |
+| **MULT18X18D / premap `$mul`** | **binding, exact** | 103 / §26.6 baseline | **불변** | — | skid 는 레지스터 + mux 뿐 — 곱셈 구조 신설 0 |
+| Fmax | 기록 | 11.34 MHz | **방향 미정 — 미정인 채로 공표한다** | — | 1,650b mux 가 EHDecode 입력 **직전**에 들어가는데, 그 지점은 병목으로 이미 **세 번 독립 확인된** EHDecode→PE_Core dispatch 경로다 (§26.9 · §28.6 · §28.9). 악화 가능성이 실재하며, 확신하지 못하면서 확신한 척 적지 않는다 |
+
+**breach 시 절차 — pre-declared cut ladder (§23.10.10(g) 가 ad-hoc gate 상향을 금지하므로 측정 전에 적는다):**
+
+1. **정직 FAIL 로 기록한다.** 기준을 움직여 통과시키는 경로는 없다.
+2. **rung 1 — wide 1,024b 복제 폐지.** 22.14b-4 의 accept-종속 철거가 성립하면 재조립 payload 는 CAM 슬롯에 남으므로 skid 는 그것을 **재독출**하면 된다. 보류 폭 1,659b → **635b**, mux −1,024 LUT4 → nominal **+636** = 33,725 (**40.32%**). **여전히 breach 가능하므로 rung 1 단독으로 충분하다고 가정하지 않는다.**
+3. **rung 2 — bypass mux 폐지 = 상시 경유 파이프라인 레지스터.** skid 를 우회로가 아니라 **항상 지나는 1단**으로 만들면 투입 mux 가 통째로 사라진다 (LUT 델타 ≈ 0, FF 는 그대로, 소실은 여전히 0). 대가는 **Cluster ext 경계 latency 균일 +1 cycle** 이며, 이는 §26.4 가 이미 한 번 채택·정당화한 것과 **같은 성격의 균일 +1** 이다. 발동하면 §5 latency 표(경계 C)를 **같은 commit 에서** 다시 bump 해야 한다.
+4. **rung 3 — 그 위는 사용자 결정.** 재anchor 는 §12a 상 사용자 결정 사항이며 구현 세션이 스스로 정하지 않는다.
+
+**정직 명기**: 위 LUT 수치는 **hand-count 추정**이고 합성 실측이 아니다 (§22.14d · §22.16.5 와 같은 조건). 특히 "2:1 mux = 1 LUT4/bit" 는 ECP5 매퍼가 PFUMX/L6MUX 로 다르게 접을 수 있어 **양방향으로 틀릴 수 있다**. 본 절의 목적은 절대치를 맞히는 것이 아니라, **breach 가 예상된다는 사실과 그때 무엇을 할지를 측정 전에 고정**하는 것이다.
+
+##### 22.14b-6 구현 착지 기록 (2026-08-18 · 22.14b-5 가 의무화한 기록)
+
+**(1) 갈래 선택 = A (`in_ready` 를 `ISA_Decoder`/`Top_Core` 로 노출하지 않음).** `ISA_Decoder.v` 의 EHDecode 인스턴스에서 `.in_ready ()` 로 **의도적 미접속**이며 사유 주석이 붙어 있다. 근거 2건: (i) 보류할 저장소도 배압을 걸 상대도 없는 계층에 포트만 올리면 §22.14b-2 가 `cluster_ready` 에 대해 문제 삼은 형태("관찰은 되는데 아무도 쓰지 않는 신호")를 하나 더 만든다. (ii) 갈래 B 는 premap ports 49→50 · port bits 1,742→1,743 으로 `synth/lattice/fp_ops/gate_check.py` 의 상수를 같은 commit 에서 옮겨야 하는데, 본 세션의 범위는 gate 기준 수치를 건드리지 않는다.
+
+**GATE S1 판정 = 재측정 불요.** 소스 목록(`Makefile:214` = `Top_Core.v · ISA_Decoder.v · EHDecode.v · PE_Core.v · FP_StepSeq.v · FP_Mul36.v · FP_AddWide.v · HIU.v · synth/gate/Top_Core_gate_top.v`)에 **`Cluster.v` 도 `Pod.v` 도 없다**는 22.14b-5 의 실측을 이번 세션에서 재확인했다. 따라서 skid 저장소·투입 mux·sticky 비트는 전부 축 밖이다. 목록 안에서 바뀐 것은 `EHDecode.v` 의 신규 출력 `in_ready` 하나이고, 갈래 A 에서 그것은 `Top_Core` 트리에 부하가 0 이므로 (기존 FF 의 인버터 1개) 프루닝된다 — **전 축 델타 0**. `python3 synth/scripts/fp_op_gate_check.py` 는 exit 0 (S1-US: LUT 15,716 ≤ 24,799 / DSP48 39 / premap `$mul` 381 / RAMB18 2 / CRIT 8 / DRC 0 errors / WHS +0.019 ns). **정직 명기**: 이 체커는 저장된 리포트를 판정하는 것이지 재합성이 아니다. 위 "델타 0" 은 소스 목록 + 미접속 프루닝에 대한 **논증**이며 재측정 실측이 아니다.
+
+**본 절이 실행하지 않은 것 (정직 명기)**: full Cluster (V9-4 계열) · Pod 합성은 이번 세션에서 **돌리지 않았다.** 22.14b-5 가 breach 를 예상한 COMB 축은 **여전히 미측정**이며, 그 측정과 (필요 시) cut ladder 발동은 후속 작업이다.
+
+**(2) accept 경계 = 보수적 판(normative 확정).** `skid_valid` 가 서 있는 사이클의 도착은 **투입이 같은 사이클에 일어나는지와 무관하게** overflow fault 로 처리한다. 즉 fault 경계와 `cluster_ready` 의 skid 항이 **정확히 같은 경계**를 쓴다 — "0 이라고 말해 놓고 받아 주기도 한다" 가 없다. 더 공격적인 판("투입 사이클에는 새 파동도 적재")을 **기각한 결정적 근거**: 그 사이클의 EHDecode OPREF 조합 반사(`opref_*_out`)는 **투입되는 보류분의 instruction** 을 보고 있으므로, 같은 사이클에 적재되는 새 파동의 `cluster_b_payload` 가 **다른 명령의 `src_kind` 로** 해석된다 — 22.14b-3 의 bit-identical 요건이 깨진다. 처리율 1 사이클보다 정확성을 택했다.
+
+**(3) 22.14b-4 의 이행 형태 = accept 종속 + deferred CAM commit.** 철거를 accept 에 종속시키는 것만으로 끝내면 슬롯이 "완성됐는데 철거되지 않은" 상태로 남고, **같은 tag 로 재전송된 파동의 첫 조각이 가득 찬 mask 에 병합돼 즉시 거짓 완성**한다 — 오늘 존재하지 않는 오염이 새로 생긴다 (변이 검증 4로 실증: 이 arm 을 제거하면 재전송 파동이 첫 조각에서 잘못된 값을 낸다). 따라서 보류분 투입 에지에 동일한 슬롯 처리를 수행하는 arm 을 두었다. 가드 2건: `skid_frag_hdr != 0` (다중 조각 완성이었을 때만) · `frag_active[slot] && tag 일치` (보류 창 동안 그 슬롯이 다른 파동에 재할당됐으면 건드리지 않는다). 이 arm 은 CAM always 사슬의 **마지막**이므로 같은 사이클의 새 조각 beat 가 이긴다 (그 beat 가 슬롯을 재할당했다면 철거가 오히려 파괴이므로 지는 쪽이 맞다).
+
+이를 위해 `skid_frag_slot` (`SLOT_W` 비트, FRAG_SLOTS=1 에서 1비트) 을 추가로 보관한다. 이것은 **EHDecode 입력이 아니라 CAM 부기**이므로 22.14b-3 의 보류 폭 회계(1,659b)에 들어가지 않는다 — 22.14b-3 이 금지한 것은 **부분 보류**(빠뜨림)이고 부기 추가는 그 금지의 대상이 아니다.
+
+**(4) 잔여 위험 (정직 기록, 축소하지 않는다).** 보류 창(≤ `MAX_EH` 에지) 안에 **같은 80-bit tag** 의 새 조각 beat 가 도착하면, 유지된 full mask 에 병합돼 **거짓 완성**한다. 전제는 `cluster_ready==0` 을 무시한 주입이고, 그 사이클에는 skid 가 차 있으므로 그 거짓 완성은 **loud overflow fault 와 함께 드롭**된다. 그러나 skid 가 배출된 뒤에도 같은 슬롯 상태가 남아 있는 배치(투입 사이클에 조각 beat 가 겹쳐 deferred commit 이 밀린 경우)에서는 **조용히 accept 될 수 있다.** 이것은 §22.14 가 이미 기록한 `frag_tag_held` last-write-wins 계열의 위험이며 skid 가 없애는 것이 아니다. 축소 해석하지 않고 여기에 남긴다.
+
+> **[2026-08-18 후속 — 이 항목의 위험은 22.14b-4b 로 **닫혔다**. 회귀 pin 도 생겼다.]** 위 서술은 정확했고 적대 검증이 그 도달 경로를 실제로 구성했다 (투입 에지에 다른 tag 의 0x68 이 겹치면 deferred commit 이 밀리고, 이후 같은 tag 조각 1개가 full mask 에 병합돼 거짓 완성한다). **다만 위 문장이 "조용히 accept 될 수 있다" 라고 적어 놓고 그 하위 케이스에 테스트를 0건 둔 것 자체가 결함이었다** — 프로젝트가 loud-fault-never-silent 를 명시 규율로 삼는 이상, 공개만 하고 pin 하지 않는 것은 공개하지 않은 것과 검증 관점에서 같다. 22.14b-4b 가 (a) 기아 봉쇄 · (b) 병합 금지 · (a) 의 취소 규칙 셋으로 이 경로를 닫았고, `test_skid_deferred_commit_survives_concurrent_cache_load` / `test_skid_completed_slot_never_merges_new_fragment` / `test_skid_deferred_commit_cancelled_when_slot_retaken` 이 각각을 pin 한다. **여전히 남는 것**은 계약 위반 주입 자체(그 경우 loud overflow fault)와, 본문이 인용한 `frag_tag_held` last-write-wins 계열의 별개 위험이다 — 그 둘은 22.14b-4b 의 대상이 아니다.
+
+**(5) `ISA_Decoder` 단독 경로는 여전히 무언 drop 이다 (정직 기록).** 보류 경로는 Cluster 계층에만 있다. `test_isa_decoder.py` / `PE.v` / `Top_Core.v` 처럼 `ISA_Decoder` 를 직접 구동하는 경로에서 체인 워크 중 `token_valid` 를 다시 올리면 그 명령은 §22.14b-1 그대로 소실된다. 갈래 A 의 대가이며, Cluster 가 유일한 실사용 주입 경로라는 판단에 근거한다.
+
+**(6) 검증.** cocotb **294 → 303** (Cluster 49 → **57**, Pod 7 → 8, 감소 0: HIU 22 / Top_Core 8 / ISA_Decoder 192 / Cluster 57 / Pod 8 / PE 8 / Tensor_ALU 8). `make lint` **6/6**. `make test-cluster-both` — FRAG_SLOTS=1/4 양쪽 **57/57**, self-skip **7/0** 정합.
+> **[정정 2026-08-18 — 적대 감사]** 본 항의 초판은 `294 → 298` / Cluster 52 / self-skip 6 / 신규 4건 이었다. §22.14b-4b 라운드에서 3건, 그리고 **생존 변이 2종을 닫는 회귀 pin 2건**이 뒤에 더 들어왔는데 수치가 따라가지 않았다. 위 값이 실측이다 — 규범 기록의 기준선이 낮게 박히면 다음 세션이 감소를 놓친다. **변이 검증 4종 전부 사멸**:
+
+> **[2026-08-18 정정 — 적대 검증 항 1. 아래 표의 "4종 전부 사멸" 은 참이지만 **그 4종에 한정된 진술**이며, 표현이 그 한정을 담지 않았다.]** 같은 날 적대 검증이 11종을 추가로 고안했고 그 중 **5종이 전 회귀를 생존**했다 — 보류 저장소 1,659b 중 **1,585b 가 변이 사각**이었다. 원인은 RTL 이 아니라 **자극**이었다 (무변이 RTL 은 적대 검증의 독립 테스트를 전부 통과했다). 수리와 갱신된 변이 표는 **22.14b-7** 에 있다. 아래 표는 그대로 보존한다.
+
+| 변이 | 내용 | Cluster | Pod |
+|---|---|---:|---:|
+| (i) | skid 제거 (`skid_load ≡ 0`) | **4 FAIL** | **1 FAIL** |
+| (ii) | `in_ready ≡ 1'b1` | **4 FAIL** | **1 FAIL** |
+| (iii) | accept 조건 절단 (`pe_active_*_s1` 이 `wave_complete` 를 읽음) | **3 FAIL** | 0 |
+| (iv) | deferred CAM commit arm 제거 | **1 FAIL** | 0 |
+
+신규 테스트 **9건**: `test_skid_no_drop_during_ehdecode_blackout`(지연 0..`MAX_EH` 전 구간) · `test_skid_overflow_raises_sticky_fault` · `test_skid_deferred_wave_releases_cam_slot` · `test_pod_input_skid_overflow_reaches_pod_boundary`(fault 의 Pod 경계 노출 + `pod_ready` 상속) · **`test_skid_overflow_fires_on_the_inject_edge`** (§22.14b-6(2) 의 투입-에지 경계 — 이 pin 이 없으면 `skid_overflow_now` 에 `!ehdec_in_ready` 를 얹는 변이가 **무언 소실을 되살리면서 전건 통과**한다) · **`test_skid_inject_routes_by_held_tag_not_live_bus`** (§22.14b-7(A) 의 라우팅 경계 — `pe_active_lpe_s1` 원핫을 직접 본다. 기존 `_out_pcid` assert 는 `ext_out_tag`(PE 출력 tag) 를 읽어 `target_idx` 와 **다른 경로**이므로 `in_pcid` 만 되돌리는 변이를 잡지 못했다).
+
+**(7) 회피 한정 제거 + 자극 정정 1건.** `test_cluster.py` 의 `range(4, 16)` → `range(0, 16)` 복원(그 NOTE 는 "수리됨" 으로 교체). 부수로 `test_bank_tag_latch_no_intervening_hazard` 의 자극 결함 1건을 정정했다 — `ext_valid` 가 5 사이클 연속 서 있어 "토큰 1건" 이 아니라 **같은 파동 5건 주입**이었고, 구 RTL 이 4건을 조용히 삼켰기 때문에 드러나지 않았다. skid 착지 후 그것이 loud 하게 드러나 FAIL 했으므로, 테스트가 의도한 자극(2건 디스패치)을 실제로 주도록 `ext_valid` 를 1 사이클 펄스로 고쳤다. **검사를 약화시킨 것이 아니라 자극을 처음으로 의도대로 만든 것**이다.
+
+##### 22.14b-7 적대 검증 반증 → 수리 기록 (2026-08-18, 같은 날 후행)
+
+22.14b-6 착지 직후의 적대 검증이 **단계 0 을 반증(refuted)** 했다. 판정 근거는 major 1건이었고 minor 3건이 함께 제기됐다. 네 건 모두 아래에서 처리한다. **RTL 결함으로 판명된 것은 minor 1건(항 3)뿐이고, 나머지는 검사(자극)와 서술의 결함이다.**
+
+**(A) 항 1 [major] — 보류 저장소 1,659b 중 1,585b 가 변이 사각이었다.**
+
+적대 검증이 고안한 11종 중 **5종이 전 회귀(Cluster 52×2빌드 + Pod 8)를 생존**했다: `ehdec_instruction`(416b) · `ehdec_tag`(80b) · `ehdec_payload_b`(64b) · `ehdec_payload_b_valid`(1b) · `ehdec_wide`(1,024b) 를 각각 live 버스로 되돌려도 아무 테스트도 죽지 않았다. **원인은 자극 두 가지였다** (RTL 은 무결 — 무변이 RTL 은 적대 검증의 독립 테스트를 전부 통과했다):
+
+1. 신규/복원 테스트가 주입 펄스 뒤 `ext_*` 버스를 **그대로 방치**했다. 그래서 투입 에지의 live 값이 보류 값과 **같아졌고**, 보류분을 읽든 live 를 읽든 결과가 동일해 원리적으로 구분 불가였다.
+2. 두 파동이 모두 ADD-imm 이라 `payload_b`/`payload_b_valid` **65 비트를 아무도 읽지 않았다** — 자극이 그 필드를 만들어 낸 적이 없었다.
+
+**심각도가 major 인 이유**는 결과가 아니라 성격이다: 22.14b-3 이 "부분 보류 금지" 를 **normative 로** 규정해 놓고 그 규범에 회귀 pin 이 0건이었고, 신규 테스트의 docstring 이 "보류된 값이 live 값과 섞였는지도 payload 로 구분된다 (bit-identical)" 라고 **명시적으로 주장**했는데 그것이 사실이 아니었다 — 이 세션이 청산하려던 "조용히 통과하는 검사" 와 같은 형태다.
+
+**수리 (normative — 이후 이 절의 자극 규약이다):**
+
+- **미끼 스크럽 (mandatory)**: 모든 주입 펄스 직후 `ext_*` **전 필드**를 미끼 값으로 덮는다 (`_skid_decoy`). 미끼는 (i) **다른 opcode** (같은 opcode 면 포트 필드만 달라져 결과가 그대로다), (ii) 다른 `port_context_id`, (iii) 다른 `payload`/`payload_b`, (iv) 보류분과 **반대** 값의 `payload_b_valid` 여야 한다. 그냥 0 으로 지우는 것은 부족하다 — 0 도 하나의 값이라 우연히 일치할 수 있다.
+- **보류 파동은 `payload_b` 를 실제로 소비해야 한다**: 스윕의 후행 파동을 ADD-imm 에서 **TENSOR_ADD(0x31, `F_HAS_OPB`)** 로 바꿨다.
+- **라우팅 태그까지 검사한다**: 값만 보면 `ehdec_tag` 보류는 사각이다 (미끼 태그로 라우팅돼도 산술 결과는 같을 수 있다). 출력 태그의 `port_context_id` 를 함께 assert 한다.
+- **다중 조각 경로**: `_bmm3_burst` 끝에도 미끼를 넣는다. 미끼가 없으면 투입 에지에 `ext_tag` 가 아직 그 파동의 태그라서 `hit_continue` 가 맞고 live `final_wide` 가 보류분과 같은 값이 되어 1,024b 가 통째로 사각이 된다.
+
+**(B) 항 2 [minor] — `MAX_EH` 를 근거로 쓴 서술 3곳을 철회했다.** 22.14b-3 의 "accept 조건 단일 정의" 절과 `Cluster.v` 주석 2곳이 근거로 든 "`MAX_EH` 가 바뀌면 그대로 오발 디스패치" 는 **실증 불가능**하다 (`MAX_EH` 를 2/6 으로 바꾸면 `pe_active` 정렬 파이프 깊이 6 하드코딩 때문에 Cluster 가 먼저 무동작이 된다 — HEAD 로도 `MAX_EH=6` 에서 49건 중 36 FAIL 이므로 **pre-existing**). 규범은 유지하고 근거를 **정의 정합성** 으로 교체했다. 상세는 22.14b-3 의 정정 blockquote.
+
+**(C) 항 3 [minor] — 유일한 실제 RTL 결함. 22.14b-4b 로 수리했다.** 적대 검증이 지적한 대로, accept-종속 철거가 만든 새 상태("완성됐는데 철거되지 않은 슬롯")에는 회귀 pin 이 0건이었고 도달 경로가 실재했다. 22.14b-4b (a) 기아 봉쇄 + (b) 병합 금지를 normative 로 신설하고 구현했다. 그 과정에서 **적대 검증이 보고하지 않은 세 번째 구멍**을 추가로 발견해 함께 닫았다: deferred commit 의 tag 비교 가드는 **같은 tag 로 재전송**된 파동이 슬롯을 가져간 경우를 걸러내지 못해, 투입 에지의 commit 이 **새 주인의 슬롯을 철거**한다 (FRAG_SLOTS=1 에서 재전송 파동의 무언 소실). 슬롯 인덱스 기반 **취소**(`skid_frag_hdr <= 0`)로 닫았다.
+
+**(D) 항 4 [minor] — 투입 latency pin 을 신설했다.** M10(투입 1 에지 지연)은 준등가로 판정됐으나 "보류 경로의 latency 를 pin 하는 검사가 0건" 이라는 사실이 남았다. 스윕이 지연 0..`MAX_EH` 의 **모든** 값에서 보류 파동의 출력 사이클이 같은지 검사한다 — 지연 `MAX_EH` 는 보류 없이 bypass 로 통과하는 **절대 기준점**이므로, 거품이 1 에지라도 끼면 그 기준점과 어긋나 잡힌다. 같은 스윕에 bypass 규범 pin 도 추가했다 (지연 `MAX_EH` 에서는 skid 를 **경유하지 않아야** 한다 — 상시 경유 레지스터로의 축퇴 봉쇄). **M11**(`live_accept` 의 `!skid_valid` 항 제거)은 적대 검증의 판정대로 **준등가**로 인정하고 결함으로 계상하지 않는다.
+
+**(E) 두 방어가 서로를 가리는 문제 (본 세션이 스스로 발견).** 22.14b-4b 의 (a)와 (b)는 같은 실패를 서로 다른 지점에서 막으므로, **결과만 보는 테스트는 둘 중 하나를 지워도 통과한다** — 실측으로 확인했다 (`skid_commit_now ≡ 0` 변이가 결과 검사만으로는 생존). 이것은 항 1 이 지적한 것과 **같은 종류의 사각**이다. 그래서 각 방어를 **기전으로** 못박았다: deferred commit 은 투입 에지 직후 `frag_ready`/`frag_active` 비트를 직접 확인하고 (빌드별 완료 형태를 `_skid_slot_released` 가 정의한다), 취소는 재전송 파동이 살아 나오는지로 확인한다.
+
+**(F) 검증 (재확립).**
+
+- cocotb **294 → 301** (Cluster 49 → **55**, Pod 7 → **8**; 감소 0: HIU 22 / Top_Core 8 / ISA_Decoder 192 / Cluster 55 / Pod 8 / PE 8 / Tensor_ALU 8)
+- `make lint` **6/6** — `lint_frag_slots_dual_run` 의 선언표와 `run_cluster_dual.EXPECTED_SKIPS` 를 **6 → 7** 로 함께 올렸다 (신규 다중슬롯 전용 테스트 1건). 한쪽만 고치면 lint 가 FAIL 하도록 이미 묶여 있다
+- `make test-cluster-both` — FRAG_SLOTS=1/4 양쪽 **55/55**, self-skip **7/0** 정합
+- `python3 synth/scripts/fp_op_gate_check.py` **exit 0** (GATE S1-US 전 축 불변 — `Cluster.v` 는 `sys_top_core` 소스 목록에 없다. 22.14b-6(1) 의 논증이 그대로 유효하며, 이번 변경은 `Cluster.v` 안에만 있다)
+
+**변이 검증 — 15종 전부 사멸** (`(i)`~`(iv)` 는 22.14b-6(6)의 4종, `M*` 은 적대 검증이 고안한 것, `A/B/C` 는 22.14b-4b 신설분):
+
+| 변이 | 내용 | Cluster FS=1 | Cluster FS=4 |
+|---|---|---:|---:|
+| (i) | skid 제거 (`skid_load ≡ 0`) | **6 FAIL** | **7 FAIL** |
+| (ii) | `in_ready ≡ 1'b1` | **6 FAIL** | **7 FAIL** |
+| (iii) | accept 조건 절단 (`ext_to_*` 가 `wave_complete` 를 읽음) | **6 FAIL** | **6 FAIL** |
+| (iv) | deferred CAM commit 제거 (`skid_commit_now ≡ 0`) | **1 FAIL** | **2 FAIL** |
+| M5 | `ehdec_instruction ≡ ext_instruction` (416b) | **5 FAIL** | **6 FAIL** |
+| M6 | `ehdec_tag ≡ ext_tag` (80b) | **5 FAIL** | **5 FAIL** |
+| M7 | `ehdec_payload_b ≡ cluster_b_payload` (64b) | **1 FAIL** | **1 FAIL** |
+| M12 | `ehdec_payload ≡ ehdec_input_payload` (64b) | **3 FAIL** | **3 FAIL** |
+| M13 | `ehdec_payload_b_valid ≡ cluster_b_valid` (1b) | **3 FAIL** | **4 FAIL** |
+| M14 | `ehdec_wide ≡ final_wide` (1,024b) | **1 FAIL** | **3 FAIL** |
+| M15 | `ehdec_wide_valid ≡ final_wide_valid` (1b) | **2 FAIL** | **2 FAIL** |
+| M10 | 투입 1 에지 지연 (거품) | **4 FAIL** | **5 FAIL** |
+| A | deferred commit 을 다시 `cache_hit`/`inval_hit` 뒤로 (기아) | 0 (**등가**) | **1 FAIL** |
+| B | 완성 보류 슬롯의 병합 금지 제거 | **2 FAIL** | **2 FAIL** |
+| C | 슬롯 탈취 시 deferred commit 취소 제거 | **1 FAIL** | 0 (미도달) |
+
+**두 예외의 정직한 구분** — 하나는 등가 변이이고 하나는 아니다:
+
+- **A @ FRAG_SLOTS=1 은 등가 변이다.** 그 빌드에서는 `frag_ready` 가 구조적으로 서지 않아 `cache_hit`/`inval_hit` 가 상시 0 이므로, 추가한 `&& !cache_hit && !inval_hit` 는 **항등**이다. 검사로 죽일 수 있는 대상이 아니다.
+- **C @ FRAG_SLOTS=4 는 등가가 아니라 "이 자극이 도달하지 않는" 것이다.** 빈 슬롯이 있으면 재전송 조각이 다른 슬롯으로 가서 슬롯 탈취가 일어나지 않는다. 슬롯이 **전부** 찬 상태에서는 도달 가능하므로, 이 칸의 0 은 **자극의 한계**이지 안전 증명이 아니다. 축소해 적지 않는다.
+
+두 빌드를 **모두** 돌리는 `make test-cluster-both` 가 필수인 이유가 여기에도 있다 — A 는 FS=4 에서만, C 는 FS=1 에서만 죽는다.
+
+Pod 경계 (`make MOD=Pod`, 8 tests) 에서도 (i)/(ii) 는 각각 **1 FAIL** 로 죽는다 (`test_pod_input_skid_overflow_reaches_pod_boundary`) — fault 노출이 자동 상속이 아니라 수동 배선이라는 사실의 회귀 pin 이다.
+
+**신규/개정 테스트 (Cluster 6건 · Pod 1건):** `test_skid_no_drop_during_ehdecode_blackout`(미끼 스크럽 + `payload_b` 소비 + 라우팅 태그 + 투입 시점 pin + bypass pin) · `test_skid_overflow_raises_sticky_fault`(보류분 생존 검사 추가) · `test_skid_deferred_wave_releases_cam_slot`(철거 기전 직접 pin 추가) · `test_skid_deferred_commit_survives_concurrent_cache_load`(**신규**, 다중슬롯 전용) · `test_skid_completed_slot_never_merges_new_fragment`(**신규**) · `test_skid_deferred_commit_cancelled_when_slot_retaken`(**신규**) · `test_pod_input_skid_overflow_reaches_pod_boundary`.
+
+**본 절이 실행하지 않은 것 (정직 명기)**: full Cluster (V9-4 계열) · Pod 합성은 여전히 **돌리지 않았다**. 22.14b-4b 가 추가한 조합 논리(슬롯별 full-mask 비교 + deferred commit 의 사슬 분리)는 22.14b-5 가 breach 를 예상한 **COMB 축을 더 밀어 올린다** — 그 방향은 확실하나 크기는 **미측정**이다. 측정과 (필요 시) cut ladder 발동은 후속 작업이며, 여기서 크기를 추정해 적지 않는다.
+
 #### 22.14c 회귀 (301 tests PASS, +4 신규)
 
 - Cocotb: 217 → 221 (+4)
@@ -1806,6 +2062,8 @@ tag-stability 검증 workflow (`w91wntdpk`) 가 RTL 직접 재추적으로 발�
 **Rejected 대안**:
 - Q16.16 explicit tagref EH: 새 EH kind 필요, ISA 최초 IMM-width-specific opcode 될 위험, 첫 verify pass 에서 구체적 치명 버그 발견 (opcode_supported 미등록, opb+B-source 모순, 존재하지 않는 output_payload_wide 신호 참조)
 - frag_tag_held 재사용: 이 LAYERNORM 8-step 시퀀스에 한해 RTL-검증상 correct 하지만 "우연히" 맞음 — single-slot last-write-wins latch 라 concurrent 한 다른 wave 의 SIG_BMM_3/wide-vec 이 같은 PE_Core 에 끼어들면 silently clobber. pe_ready/cluster_ready 가 observe-only (enforced stall 아님) 라 이 risk 는 실재.
+  > **[2026-08-18 보강 — §22.14b-1/-2. 이 항목은 유지하되 진단이 한 겹 얕았음을 기록한다.]** 위 문장의 "observe-only 라 risk 는 실재" 는 **과소 진술이었다.** `cluster_ready` 는 observe-only 였을 뿐 아니라 **입력단(공유 EHDecode 점유)을 애초에 포함하지 않았다** — 즉 이 risk 는 "강제하지 않아서" 실재한 것이 아니라 "**관찰해도 볼 수 없어서**" 실재했다 (§22.14b-1). 더 나아가 같은 구멍이 이 clobber risk 보다 무거운 결함을 하나 더 낳았다: `EHDecode` 점유 중 도착한 명령의 **무언 drop** (§22.14b-1).
+  > **그럼에도 observe-only 계약 자체는 유지한다.** `cluster_ready` 의 RTL 소비자가 0건이고 (`Cluster.v:101` → `Pod.v:173` → `:230-240` → `:81` → `Pod_HIU_gate_top.v:227` → 끝) 이를 assert 하는 테스트도 0건이므로, enforced stall 로 바꿔도 **강제할 상대가 없어 무력하다** — 그 전환은 결함을 고치는 대신 관측 불가능하게 만들 뿐이다 (§22.14b-2). 소실은 계약 강화가 아니라 **보류 경로(§22.14b-3 skid buffer)** 로 닫는다. 본 항목이 서술하는 `frag_tag_held` clobber risk 는 skid 착지 후에도 **별도로 남는다** (skid 는 입력 소실을 닫을 뿐 `frag_tag_held` 의 last-write-wins 성질을 바꾸지 않는다).
 
 **asm.py**: `_lower_layernorm` step 5 를 `CACHE_LOAD_WIDE` + `.precision dim=0x55` + `dim_ovr` flag 로 교체. `mu_opref`/`opb` flag 는 CACHE_LOAD_WIDE 에 불필요 (cache key 가 tag bus 자체이므로) — 이전 design workflow 초안의 "opb+mu_opref 유지" 제안은 실제 Cluster CAM 구현(§22.16.1, ext_tag 직접 매칭) 확정 후 불필요함이 판명되어 채택하지 않음.
 
@@ -3738,6 +3996,31 @@ V20-2/V20-3 의 정책을 문언 그대로 승계한다: **GATE S1 의 merge-blo
 - **메모리**: xcu55c **RAMB18 2** vs ECP5 **EBR 0**. yosys 가 `Replacing memory ... with list of registers` (PE_Core/EHDecode 다수) 로 메모리를 레지스터로 전개했고, 그것이 TRELLIS_FF 10,645 vs xcu55c FF 9,585 차이의 성분이다. GATE S1-US 가 RAMB18 을 **정확히 2** 로 pin 하는 이유가 여기 있다 — 같은 RTL 이 패브릭에 따라 메모리를 쓰기도, 안 쓰기도 한다.
 
 **리포트 아카이브**: `synth/lattice/reports/fp_ops/sys_top_core_{synth.rpt,premap.rpt,pnr.log}`. nextpnr 입력 넷리스트 `sys_top_core_synth.json` 은 **40 MB** (트래킹된 fp-ops 넷리스트 중 최대인 `fp_stepseq_synth.json` 7.9 MB 의 5배) 라 gitignore 하고 재생성 경로만 남긴다 — `sh synth/lattice/scripts/synth_fp_ops.sh sys_top_core`. 측정 증거 3종은 전부 트래킹된다.
+
+> **[2026-08-18 정정 — B-1 선행. 위 문장의 괄호 안 근거절을 철회한다. 문장 본체(gitignore 한다 · 재생성 경로를 남긴다 · 증거 3종은 트래킹한다)는 유지된다. §12a 규칙 5 에 따라 원문은 지우지 않는다.]**
+>
+> 원문은 "트래킹된 fp-ops 넷리스트 중 최대인 `fp_stepseq_synth.json` **7.9 MB** 의 5배" 라고 적어 **40 MB 가 예외적으로 크다** 는 것을 gitignore 의 근거로 삼았다. 실측이 그 근거를 반증한다 (`git ls-files -z -- synth | grep -z '[.]json$' | xargs -0 ls -l`, 2026-08-18):
+>
+> | 트래킹된 넷리스트 | bytes | MB (10진) | MiB |
+> |---|---:|---:|---:|
+> | `synth/lattice/reports/pe_core_gate/pe_core_mu_hosted_synth.json` | 33,211,423 | **33.2** | 31.7 |
+> | `synth/lattice/reports/pe_core_gate/pe_core_lpe_narrow_synth.json` | 8,177,150 | 8.2 | 7.8 |
+> | `synth/lattice/reports/fp_ops/fp_stepseq_synth.json` | 8,098,003 | 8.1 | 7.7 |
+> | 나머지 3건 (`fp_fmalane_bf16` / `fp_addwide` / `fp_mul36`) | 5,718,135 | 5.7 | 5.5 |
+> | **넷리스트 6건 합계** | **55,204,711** | **55.2** | **52.6** |
+>
+> 정정 3점: **(i)** 리포지토리에는 이미 **33.2 MB 짜리 넷리스트가 트래킹되어 있다** — 40 MB 는 "5배 예외" 가 아니라 **같은 자릿수**다. **(ii)** 원문의 "7.9 MB" 는 오늘 실측(8,098,003 B = 8.1 MB / 7.7 MiB)과도 일치하지 않는다. **(iii)** "fp-ops 넷리스트 중" 이라는 한정 안에서는 원문이 참이지만 **그 한정이 근거를 지탱하지 못한다** — 비교 대상이 임의로 좁혀져 있었고, 좁힘을 풀면 결론이 뒤집힌다.
+>
+> **gitignore 의 근거를 다음으로 재진술한다 (크기와 무관한 형태).** `sys_top_core_synth.json` 은 (a) **재생성이 결정적이고 1-커맨드**이며 (`sh synth/lattice/scripts/synth_fp_ops.sh sys_top_core`), (b) **gate 판정이 읽는 증거는 넷리스트가 아니라** `_synth.rpt` / `_premap.rpt` / `_pnr.log` 3종이라 넷리스트 자체는 증거가 아니다. 이 근거는 크기를 참조하지 않으므로 **위 6건 전부에 동일하게 적용된다** — 그리고 바로 그것이 B-1 을 제안 가능하게 만든다.
+>
+> **B-1 (넷리스트 6건, 52.6 MiB untrack) 의 실행 조건 — 명시.** 위 재진술은 B-1 을 **정당화하지만 자동 발동시키지 않는다.** B-1 은 다음 4개가 **전부** 참일 때에만 실행한다:
+>
+> 1. **증거 분리 확인 (실측 완료 — 조건 충족).** 대상 넷리스트마다 대응하는 `_synth.rpt`/`_premap.rpt` 가 트래킹되어 있어야 하고, gate 판정 스크립트가 넷리스트 `.json` 을 **한 건도 읽지 않아야** 한다. 실측: `synth/scripts/fp_op_gate_check.py` 는 `<tag>_impl_summary.json` (수백 바이트, 8건, 합 2,527 B) 만 읽고, `synth/lattice/fp_ops/gate_check.py` 는 `.json` 을 전혀 읽지 않는다. **따라서 `*_impl_summary.json` 8건은 gate 입력이므로 B-1 대상에서 제외**되며, 위 표의 넷리스트 6건만이 대상이다.
+> 2. **재생성 커맨드 명기.** 파일마다 재생성 1-커맨드를 `.gitignore` 주석에 남긴다 — `sys_top_core_synth.json` 의 현행 주석(`.gitignore:29-32`)이 그 형식의 선례다.
+> 3. **anchor 무손상.** untrack 이 §26.6 · §28 · §31.10 의 어떤 anchor 수치도 재측정 불가로 만들지 않음을 확인한다 (수치는 `.rpt`/`.log` 에 있고 `.json` 에는 없다).
+> 4. **사용자 결정.** 52.6 MiB 는 **이미 커밋된 이력에서는 사라지지 않으므로** untrack 의 실이득은 **향후 증분뿐**이다. 이 trade-off 판단은 §12a 상 사용자 결정 사항이며 구현 세션이 스스로 정하지 않는다.
+>
+> **균형 기록 (B-1 반대 근거도 남긴다)**: untrack 하면 넷리스트 수준 diff 로 "무엇이 달라졌는가" 를 사후 추적하는 길이 닫힌다 — §26.6 의 MULT 편차 조사는 정확히 그 층위에서 결론을 얻었다. 다만 그 조사는 트래킹된 `.json` 을 읽은 것이 아니라 **`git worktree` + 재synth 로 재현**했으므로, 이 반대 근거는 **결정적이지 않다**. 정직하게 적자면: 반대 근거는 존재하되 실제 선례가 그것을 필요로 하지 않았다.
 
 **off-ramp 판정**: ECP5 는 이 top 의 **at-speed 측정 역할을 갖지 않는다** (Fmax 미측정 = 측정 불가). 나머지 검증 역할 — TRNG 실리콘 검증 · UsbCdcTransport · FOSS bitstream — 은 전부 유지된다. TRNG **실리콘** 검증이 ECP5 의 역할로 남아 있다는 점은 특히 기록해 둘 가치가 있다: 그 검증을 실제로 수행하려면 이 RO 루프를 ECP5 흐름에서 통과시킬 수단 (nextpnr 의 loop 처리 옵션 또는 RO 를 blackbox 로 격리한 별도 top) 이 필요하고, 본 측정이 그 요구사항을 처음으로 실측 근거와 함께 드러냈다. 후속 commit 몫으로 이월한다.
 
