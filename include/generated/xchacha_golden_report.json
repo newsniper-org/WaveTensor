@@ -1,0 +1,321 @@
+{
+ "_doc": "HIU 주소 마스킹 golden = 표준 XChaCha20 (spec §29.8 D8 수리의 golden-before-RTL 전건) 의 자기검증 결과 + RTL TB 벡터 명세. 생성기: scripts/golden_xchacha.py (stdlib-only, 고정 seed, 재실행 byte-identical). 벡터 계약: include/generated/xchacha_vec_contract.md.",
+ "normative_source": {
+  "chacha20": "RFC 8439 §2.1 (quarter-round) / §2.3 (block) / §2.4 (encryption)",
+  "hchacha20": "draft-irtf-cfrg-xchacha-03 §2.2",
+  "xchacha20": "draft-irtf-cfrg-xchacha-03 §2.3 (구성) / §A.3.2 (테스트 벡터)",
+  "spec": "wt64v1_spec.md §29.8 (D8)"
+ },
+ "determinism": {
+  "seeds": {
+   "dep_matrix": 324337665,
+   "avalanche": 324337666,
+   "vec_rand": 324337681,
+   "vec_edge": 324337682,
+   "vec_pair": 324337683
+  },
+  "note": "고정 정수 seed 외 난수원/timestamp 없음 — 산출물 3종 (hex/md/json) 전부 byte-identical 재생성"
+ },
+ "standard_test_vectors": {
+  "rfc8439_2_1_1_quarter_round": "PASS",
+  "rfc8439_2_3_2_block": "PASS",
+  "rfc8439_2_4_2_encryption": "PASS",
+  "xchacha_2_2_1_hchacha20": "PASS",
+  "xchacha_a_3_2_1_stream_ctr0": "PASS",
+  "xchacha_a_3_2_2_stream_ctr1": "PASS",
+  "note": "여섯 벡터 전부 표준 문서에서 그대로 옮긴 값이며 self-test 가 assert 한다. §A.3.2 (300바이트, counter 0/1) 는 **구성 전체**를 건다 — nonce 워드 배치가 틀리면 전량 어긋난다."
+ },
+ "contract": {
+  "mask64": "{block_word1, block_word0} (상위 32b = 워드 1)",
+  "masked_phys_addr": "phys_addr ^ mask64",
+  "stage2_state_words_12_15": [
+   "counter=0",
+   "0",
+   "nonce[16:20]",
+   "nonce[20:24]"
+  ],
+  "rounds": 20,
+  "fixed_key": "0xdeadbeefcafebabe0123456789abcdef0123456789abcdef0123456789abcdef",
+  "fixed_nonce": "0xaabbccddeeff00112233445566778899aabbccddeeff0011",
+  "fixed_mask64_standard": "0x9cdc759c43b88b32",
+  "fixed_subkey_standard": "9cc26b6c9c45f449afb32a9fedcff4d91f7d82e50e92ccd862ac3be9d32409f9"
+ },
+ "legacy_pre_repair": {
+  "_doc": "폐기된 RTL 알고리즘 — 삭제하지 않고 모델로 남긴다. 회귀하면 마스크가 이 값으로 되돌아가므로 즉시 검출된다.",
+  "deviation_a_nonce_layout": "state[13]=nonce[16:20], [14]=nonce[20:24], [15]=0 (표준: [13]=0, [14]=nonce[16:20], [15]=nonce[20:24])",
+  "deviation_b_round_structure": "8 quarter-round 를 같은 (직전) 상태에서 병렬 계산 → diagonal 4쌍이 column 4쌍을 전량 덮음 → 한 cycle = diagonal round 1회",
+  "fixed_mask64_legacy": "0x817eba4a8961a7d6",
+  "verilator_measured_pin": "0x817eba4a8961a7d6",
+  "pin_reproduced": true
+ },
+ "diffusion": {
+  "orbit_groups_legacy": [
+   [
+    0,
+    5,
+    10,
+    15
+   ],
+   [
+    1,
+    6,
+    11,
+    12
+   ],
+   [
+    2,
+    7,
+    8,
+    13
+   ],
+   [
+    3,
+    4,
+    9,
+    14
+   ]
+  ],
+  "word_dependency": {
+   "cycles": 10,
+   "seed": 324337665,
+   "legacy_cells": 64,
+   "standard_cells": 256,
+   "total_cells": 256,
+   "legacy_out_word0_deps": [
+    0,
+    5,
+    10,
+    15
+   ],
+   "legacy_out_word1_deps": [
+    1,
+    6,
+    11,
+    12
+   ],
+   "standard_out_word0_deps": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+   ],
+   "standard_full_after_double_rounds": 1
+  },
+  "mask_input_dependence": {
+   "legacy": {
+    "live_key_bits": 256,
+    "live_nonce_bits": 128,
+    "dead_nonce_bits": 64,
+    "mask_lo_key_words": [
+     0,
+     2,
+     5,
+     7
+    ],
+    "mask_hi_key_words": [
+     1,
+     3,
+     4,
+     6
+    ],
+    "mask_lo_nonce_words": [
+     0,
+     2
+    ],
+    "mask_hi_nonce_words": [
+     1,
+     3
+    ]
+   },
+   "standard": {
+    "live_key_bits": 256,
+    "live_nonce_bits": 192,
+    "dead_nonce_bits": 0,
+    "mask_lo_key_words": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "mask_hi_key_words": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "mask_lo_nonce_words": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "mask_hi_nonce_words": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ]
+   }
+  },
+  "subkey_word_dependence": {
+   "legacy": [
+    1,
+    2,
+    6,
+    7
+   ],
+   "standard": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+   ],
+   "note": "2단 ChaCha20 만 단독으로 돌려 subkey 워드를 뒤집었다. legacy 는 4워드 (128b) 에만 의존하고, 그중 마스크 워드 하나가 보는 미지 입력은 2워드 (64b) 뿐이다 — 나머지 2개는 공개 상수와 0 이다."
+  },
+  "avalanche": {
+   "legacy": {
+    "key_flips": 1024,
+    "key_mean_bits": 16.042,
+    "key_mean_pct": 25.066,
+    "key_min_bits": 6,
+    "key_max_bits": 25,
+    "key_zero_change": 0,
+    "nonce_flips": 1024,
+    "nonce_mean_bits": 10.415,
+    "nonce_mean_pct": 16.273,
+    "nonce_zero_change": 355,
+    "nonce_zero_change_pct": 34.668
+   },
+   "standard": {
+    "key_flips": 1024,
+    "key_mean_bits": 31.9541,
+    "key_mean_pct": 49.928,
+    "key_min_bits": 22,
+    "key_max_bits": 43,
+    "key_zero_change": 0,
+    "nonce_flips": 1024,
+    "nonce_mean_bits": 31.9395,
+    "nonce_mean_pct": 49.905,
+    "nonce_zero_change": 0,
+    "nonce_zero_change_pct": 0.0
+   },
+   "ideal_mean_bits": 32.0
+  }
+ },
+ "vectors": {
+  "path": "include/generated/xchacha_vectors.hex",
+  "n_vec": 80,
+  "vec_bits": 1440,
+  "vec_hex_chars": 360,
+  "fields": [
+   {
+    "name": "META",
+    "width": 32
+   },
+   {
+    "name": "KEY",
+    "width": 256
+   },
+   {
+    "name": "NONCE",
+    "width": 192
+   },
+   {
+    "name": "PHYS",
+    "width": 64
+   },
+   {
+    "name": "SUBKEY",
+    "width": 256
+   },
+   {
+    "name": "BLOCK",
+    "width": 512
+   },
+   {
+    "name": "MASK",
+    "width": 64
+   },
+   {
+    "name": "MASKED",
+    "width": 64
+   }
+  ],
+  "families": [
+   {
+    "family": "pinned",
+    "code": 0,
+    "doc": "`test_hiu.py` 의 FIXED_KEY/FIXED_NONCE × phys 8종 (TB 직결 — 이 가족이 마스크 정확값 assert 의 원본)",
+    "start": 0,
+    "count": 8
+   },
+   {
+    "family": "rand",
+    "code": 1,
+    "doc": "고정 seed 난수 key/nonce/phys — 일반형",
+    "start": 8,
+    "count": 32
+   },
+   {
+    "family": "edge",
+    "code": 2,
+    "doc": "경계 입력 (전0 / 전1 / 1비트 key / 1비트 nonce / phys 경계)",
+    "start": 40,
+    "count": 8
+   },
+   {
+    "family": "nonce_tail",
+    "code": 3,
+    "doc": "**nonce 바이트 16-23 만** 다른 인접 쌍. 폐기 RTL 에서 이 두 라인의 마스크는 **같다** (그 64비트가 죽어 있었다). 표준에서는 반드시 달라야 한다 — 편차 A/B 회귀의 직접 검출기",
+    "start": 48,
+    "count": 16
+   },
+   {
+    "family": "key_word",
+    "code": 4,
+    "doc": "key 워드 w 의 1비트만 다른 인접 쌍 (w=0..7). 폐기 RTL 에서는 마스크의 **한쪽 32비트만** 바뀐다 (그룹 분해). 표준에서는 양쪽 32비트가 모두 바뀌어야 한다",
+    "start": 64,
+    "count": 16
+   }
+  ],
+  "verified_lines": 80,
+  "verify_path": "재독 후 독립 재구현 (SIMD 정식화) 으로 BLOCK/SUBKEY/MASK/MASKED 전 필드 재대조"
+ },
+ "checks": {
+  "hiu_contract_equals_standard": true,
+  "legacy_differs_from_standard": true,
+  "vector_lines_verified": true,
+  "artifacts_sha256": {
+   "xchacha_vectors.hex": "94db7c7d8456c41b5c6d28cc08c919de41b78a4f9d8dbc8beed93ccda90cf2ca",
+   "xchacha_vec_contract.md": "c0ea3387be8f00110371f7dc68e204a5f8d8f0aeb907877ecdbb5b0e6af746cd"
+  }
+ }
+}

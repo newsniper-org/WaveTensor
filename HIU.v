@@ -9,7 +9,13 @@ module HIU #(
     parameter DATA_WIDTH = 32,
     parameter TLB_ENTRIES = 16,
     parameter NUM_PARTITIONS = 4,  // Partitioned TLB size (for cache attack resistance)
-    parameter CHACHA_ROUNDS = 20,  // XChaCha20 rounds for masking
+    // XChaCha20 라운드 수 (표준 = 20). **의미가 §30.7 에서 확정됐다**:
+    // `round_counter` 는 이 값까지 세고 **1 cycle = 1 라운드 (quarter-round
+    // 4개)** 다. 즉 20 cycle = 20 라운드 = double round 10회 — RFC 8439 의
+    // ChaCha20 그대로다. 폐기 형태는 `< CHACHA_ROUNDS/2` = 10 cycle 을 돌면서
+    // 그 10 cycle 이 double round 10회라고 **선언만** 했고 실물은 diagonal
+    // round 10회였다 (§30.2 파급 1). 이 파라미터를 바꾸면 표준을 벗어난다.
+    parameter CHACHA_ROUNDS = 20,
     parameter DUMMY_CYCLES = 8     // Constant-time dummy delay cycles
 ) (
     input clk,
@@ -408,7 +414,9 @@ always @(posedge clk or posedge rst) begin
                 state <= CHACHA_H_MASK;
             end
             CHACHA_H_MASK: begin  // HChaCha20 rounds
-                if (round_counter < CHACHA_ROUNDS / 2) begin
+                // §30.7 부분 편집 함정 1: `< CHACHA_ROUNDS / 2` 를 그대로
+                // 두면 20 라운드가 아니라 double round 5회가 된다.
+                if (round_counter < CHACHA_ROUNDS) begin
                     round_counter <= round_counter + 1;
                 end else begin
                     // Extract subkey: state[0-3] + state[12-15]
@@ -428,7 +436,7 @@ always @(posedge clk or posedge rst) begin
                 state <= CHACHA_MASK;
             end
             CHACHA_MASK: begin  // ChaCha20 rounds
-                if (round_counter < CHACHA_ROUNDS / 2) begin
+                if (round_counter < CHACHA_ROUNDS) begin   // §30.7 함정 1
                     round_counter <= round_counter + 1;
                 end else begin
                     state <= CHACHA_FINAL;
@@ -535,6 +543,18 @@ end
 // 어긋남**이었다 — subkey 가 HChaCha20 사양대로 유도되지 않고 ChaCha20
 // 라운드가 subkey 상태 위에서 돌지 않는다. 즉 마스크가 XChaCha20
 // 키스트림이 아니었다. golden: `scripts/golden_xchacha.py`.
+//
+// **§30 정정 — D8 은 결함 1건이 아니라 3건의 묶음이었다.** 위 문단이 고친
+// 것은 그중 D8-0 뿐이고, 그것을 고쳐도 결론 (*"마스크는 XChaCha20
+// 키스트림이 아니다"*) 은 그대로 참으로 남았다. 나머지 둘은 이 commit 이
+// 처분한다:
+//   * **D8-A** — 2단 ChaCha20 의 nonce 워드 배치가 draft §2.3 위반
+//     (`c_init_w[13..15]`, 아래).
+//   * **D8-B** — 8 quarter-round 병렬 계산으로 column round 전량 소실
+//     (`CHACHA_H_MASK` / `CHACHA_MASK` 의 라운드 datapath, 아래).
+// 셋을 함께 고쳐야 값이 표준이 된다 — D8-A 만 고치면 nonce tail 64비트 중
+// 32비트가 여전히 죽는다 (§30.3 통제 실험). 값 계약은 §30.6, 실측 근거는
+// §30.4, 벡터는 `include/generated/xchacha_vectors.hex` 다.
 wire [31:0] h_init_w [0:15];
 wire [31:0] c_init_w [0:15];
 
@@ -567,10 +587,18 @@ assign c_init_w[8]  = subkey[159:128];
 assign c_init_w[9]  = subkey[191:160];
 assign c_init_w[10] = subkey[223:192];
 assign c_init_w[11] = subkey[255:224];
-assign c_init_w[12] = 32'h00000000;          // Counter 0
-assign c_init_w[13] = chacha_nonce[159:128]; // nonce[16:19]
-assign c_init_w[14] = chacha_nonce[191:160]; // nonce[20:23]
-assign c_init_w[15] = 32'h00000000;          // Padding for 96-bit nonce
+// ---- D8-A 수리 (spec §30.6 항 2) --------------------------------------
+// draft-irtf-cfrg-xchacha-03 §2.3: 2단 ChaCha20 의 12바이트 nonce 는
+// `4 NUL || nonce[16:24]` 다. 따라서 `[13]` 은 **0** 이고 nonce 바이트
+// 16-23 은 `[14]`/`[15]` 로 간다.
+//
+// 폐기 배치 (`[13]=nonce[16:20], [14]=nonce[20:24], [15]=0`) 는 표준
+// 위반이었다. libsodium 계열의 64-bit counter 표기로 봐도 counter 상위
+// 32비트 = `[13]` = 0 이므로 값이 같다 (§30.4 anchor 조사).
+assign c_init_w[12] = 32'h00000000;          // counter = 0 (하위 32b)
+assign c_init_w[13] = 32'h00000000;          // counter 상위 32b = 4 NUL
+assign c_init_w[14] = chacha_nonce[159:128]; // nonce 바이트 16-19
+assign c_init_w[15] = chacha_nonce[191:160]; // nonce 바이트 20-23
 
 always @(posedge clk) begin
     // ---- shadow region 데이터 (교과서적 data/valid 쌍; valid 는 reset) --
@@ -610,34 +638,58 @@ always @(posedge clk) begin
                 initial_state[m] <= h_init_w[m];
             end
         end
-        CHACHA_H_MASK: begin
-            if (round_counter < CHACHA_ROUNDS / 2) begin
-                {chacha_state[0], chacha_state[4], chacha_state[8], chacha_state[12]} <= chacha_qr_func(0, 4, 8, 12);
-                {chacha_state[1], chacha_state[5], chacha_state[9], chacha_state[13]} <= chacha_qr_func(1, 5, 9, 13);
-                {chacha_state[2], chacha_state[6], chacha_state[10], chacha_state[14]} <= chacha_qr_func(2, 6, 10, 14);
-                {chacha_state[3], chacha_state[7], chacha_state[11], chacha_state[15]} <= chacha_qr_func(3, 7, 11, 15);
-                {chacha_state[0], chacha_state[5], chacha_state[10], chacha_state[15]} <= chacha_qr_func(0, 5, 10, 15);
-                {chacha_state[1], chacha_state[6], chacha_state[11], chacha_state[12]} <= chacha_qr_func(1, 6, 11, 12);
-                {chacha_state[2], chacha_state[7], chacha_state[8], chacha_state[13]} <= chacha_qr_func(2, 7, 8, 13);
-                {chacha_state[3], chacha_state[4], chacha_state[9], chacha_state[14]} <= chacha_qr_func(3, 4, 9, 14);
-            end
-        end
         CHACHA_INIT: begin
             for (m = 0; m < 16; m = m + 1) begin
                 chacha_state[m]  <= c_init_w[m];
                 initial_state[m] <= c_init_w[m];
             end
         end
-        CHACHA_MASK: begin
-            if (round_counter < CHACHA_ROUNDS / 2) begin
-                {chacha_state[0], chacha_state[4], chacha_state[8], chacha_state[12]} <= chacha_qr_func(0, 4, 8, 12);
-                {chacha_state[1], chacha_state[5], chacha_state[9], chacha_state[13]} <= chacha_qr_func(1, 5, 9, 13);
-                {chacha_state[2], chacha_state[6], chacha_state[10], chacha_state[14]} <= chacha_qr_func(2, 6, 10, 14);
-                {chacha_state[3], chacha_state[7], chacha_state[11], chacha_state[15]} <= chacha_qr_func(3, 7, 11, 15);
-                {chacha_state[0], chacha_state[5], chacha_state[10], chacha_state[15]} <= chacha_qr_func(0, 5, 10, 15);
-                {chacha_state[1], chacha_state[6], chacha_state[11], chacha_state[12]} <= chacha_qr_func(1, 6, 11, 12);
-                {chacha_state[2], chacha_state[7], chacha_state[8], chacha_state[13]} <= chacha_qr_func(2, 7, 8, 13);
-                {chacha_state[3], chacha_state[4], chacha_state[9], chacha_state[14]} <= chacha_qr_func(3, 4, 9, 14);
+        // ---- D8-B 수리 (spec §30.6 항 3 / §30.7 형태 (A)) ----------------
+        //
+        // 폐기 형태는 **같은 arm 안에서 8개 quarter-round 를 전부 기술**했다.
+        // `chacha_qr_func` 는 레지스터 `chacha_state` 를 직접 읽고 대입은
+        // 비차단이므로 8개 전부가 **직전 상태**에서 계산됐고, diagonal 4쌍의
+        // 목적지 인덱스 합집합이 정확히 {0..15} 라 **column round 결과가
+        // 전량 덮였다.** 결과: 1 cycle = diagonal round 1회, 상태가 영구히
+        // 4그룹 {0,5,10,15}/{1,6,11,12}/{2,7,8,13}/{3,4,9,14} 로 분해되고
+        // 10 라운드 내내 그룹 간 혼합이 0 이었다 (§30.4 실측).
+        //
+        // 형태 (A) — **cycle 당 라운드 1개** (quarter-round 4개), 위상은
+        // `round_counter[0]` 이 고른다. column 이 먼저다 (`CHACHA_*_INIT`
+        // 직후 `round_counter <= 0`). 20 cycle = 20 라운드 = double round
+        // 10회 = RFC 8439 ChaCha20.
+        //
+        // 왜 (A) 인가 (§30.7): 한 cycle 안에 column→diagonal 을 직렬로 잇는
+        // 형태 (B) 는 quarter-round 의 의존 덧셈 사슬을 4단 → 8단으로 늘려
+        // **setup(WNS/Fmax) 축을 직접 때린다.** (A) 는 조합 깊이가 불변이고
+        // (출력 되쓰기 2:1 mux 1단만 추가), 비용은 단 당 +10 cycle 뿐이다.
+        //
+        // **정확성 근거 (비차단 대입이 이제 안전한 이유):** 한 arm 안의
+        // 4개 quarter-round 는 목적지 인덱스가 서로소이고 (column 은 열,
+        // diagonal 은 대각), 표준 정의상 **한 라운드의 4개 quarter-round 는
+        // 서로 독립**이다. 즉 전부 직전 상태에서 읽는 것이 규범 그대로다.
+        // 폐기 형태의 결함은 비차단 대입 자체가 아니라 **서로 의존하는 두
+        // 라운드를 같은 cycle 에 병렬로 놓은 것**이었다.
+        //
+        // 두 단(HChaCha20 / ChaCha20)이 **같은 case arm 을 공유**한다.
+        // 둘은 같은 `chacha_state` 위의 같은 연산이므로 폐기 형태에서도
+        // 값은 같았고 공유 여부는 합성기 재량이었다 — §30.9 cut ladder (b)
+        // 를 선제 적용해 공유를 **텍스트로 고정**한다 (값 계약 불변).
+        CHACHA_H_MASK, CHACHA_MASK: begin
+            if (round_counter < CHACHA_ROUNDS) begin
+                if (round_counter[0] == 1'b0) begin
+                    // column round — 4개 열
+                    {chacha_state[0], chacha_state[4], chacha_state[8],  chacha_state[12]} <= chacha_qr_func(0, 4, 8,  12);
+                    {chacha_state[1], chacha_state[5], chacha_state[9],  chacha_state[13]} <= chacha_qr_func(1, 5, 9,  13);
+                    {chacha_state[2], chacha_state[6], chacha_state[10], chacha_state[14]} <= chacha_qr_func(2, 6, 10, 14);
+                    {chacha_state[3], chacha_state[7], chacha_state[11], chacha_state[15]} <= chacha_qr_func(3, 7, 11, 15);
+                end else begin
+                    // diagonal round — 4개 대각
+                    {chacha_state[0], chacha_state[5], chacha_state[10], chacha_state[15]} <= chacha_qr_func(0, 5, 10, 15);
+                    {chacha_state[1], chacha_state[6], chacha_state[11], chacha_state[12]} <= chacha_qr_func(1, 6, 11, 12);
+                    {chacha_state[2], chacha_state[7], chacha_state[8],  chacha_state[13]} <= chacha_qr_func(2, 7, 8,  13);
+                    {chacha_state[3], chacha_state[4], chacha_state[9],  chacha_state[14]} <= chacha_qr_func(3, 4, 9,  14);
+                end
             end
         end
         CHACHA_FINAL: begin
@@ -671,8 +723,17 @@ always @(posedge clk) begin
 end
 `endif
 
-// chacha_qr task (quarter round)
-// CHACHA_MASK 상태 내 최적화 (function 사용)
+// ChaCha20 quarter-round (RFC 8439 §2.1). 반환 = {xa, xb, xc, xd}.
+//
+// **이 function 은 레지스터 `chacha_state` 를 직접 읽는다.** 즉 같은 cycle
+// 의 다른 호출이 만든 값을 볼 수 없고, 전부 **직전 상태**에서 계산된다.
+// 그 성질이 D8-B 의 원인이었으므로 호출 규율을 여기 못박는다:
+//
+//   **한 cycle 에는 같은 라운드에 속하는 4개만 호출할 것.** column 4개
+//   (열) 또는 diagonal 4개 (대각) 중 하나다. 이 4개는 표준 정의상 서로
+//   독립이고 목적지 인덱스가 서로소이므로 직전 상태 읽기가 규범 그대로다.
+//   서로 **의존하는** 두 라운드를 같은 cycle 에 놓으면 (폐기 형태) 뒤에
+//   적힌 라운드가 앞을 전량 덮는다 — 조용히, 시뮬레이션 경고 없이.
 function [127:0] chacha_qr_func;  // 반환: xa, xb, xc, xd (32-bit x 4)
     input [3:0] a, b, c, d;
     reg [31:0] xa, xb, xc, xd;

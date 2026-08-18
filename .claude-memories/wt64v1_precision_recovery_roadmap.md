@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 09e02def-fe68-4449-8866-9db15ac81932
-  modified: 2026-08-17T16:03:00.722Z
+  modified: 2026-08-18T01:39:44.697Z
 ---
 
 # WT64v1 RMSNORM/LAYERNORM scale multiplication 정밀도 roadmap
@@ -245,6 +245,23 @@ v1.7 은 (parity 수준으로) output-side 를 추가 개선하나 완전 제거
   = XCVU13P — 최대 무료 fabric, U55C 의 1.33x) / xcu26 / xcu30 /
   xcu25 전부 라이선스 확인. `xcvu13p*` 는 part DB 0건. Vitis 는
   **Verilog → .xo 패키징까지 무료**, 링크만 플랫폼 부재로 막힘.
+- **레거시 정리 결정 (2026-08-18, 사용자)**: (C-1) MEM EH
+  `addr_mode`/`stride` = **실물화, 단 "강제만"** — 필드를 하드웨어가
+  실제로 읽고 불법값은 decode_error, **주소 산술 의미는 배정하지
+  않는다**. 근거: 의미가 repo·형제 저장소·git 이력 어디에도 명세된
+  적 없고(토큰 13라인 전수, 서술 0건), 지금 부여하면 spec 이 후속
+  COMMIT 으로 명시 이연한 **0x7D/0x7E sub-op 인코딩 공간을 선점**한다
+  (0x7D 의 남은 자유 공간이 사실상 이 필드뿐). `mem_flag_without_eh`
+  는 **방향1만** (flag 있는데 EH 없음 → error); 방향2는 기각 —
+  assembler 가 F_MEM 을 세팅하지 않아 현존 전 LD/ST 가 깨지고, JSON
+  이 이 비트를 `mem_hint` 로 부르는 것이 미의도의 근거.
+  (C-2) RTL 모듈 제거 절차를 **§12a 에 먼저 성문화**한 뒤 고아 4종
+  (PE/TENSOR_ALU/SIMD_ALU/ALU_Extended) **일괄 판정** — 래칫이 양쪽
+  포화라 개별 처리 시 중간 상태가 어긋난다. **주의: TENSOR_ALU 는
+  opcode 0x30-0x32 가 ISA 에 살아있으면 고아가 아니라 미결선 결함**.
+- **발견된 landmine**: `make synth-clean` 이 tracked gate 증적 92건
+  (+ 루트 vivado 로그 12건) 을 삭제한다 — `synth/reports/*` 통삭제.
+  정리 1순위.
 - 장기 활용처: .claude-memos/future_applications.md (PLL-DSP,
   WT64v1CLf GPGPU — 트리거 조건 충족 전 착수 금지).
 
