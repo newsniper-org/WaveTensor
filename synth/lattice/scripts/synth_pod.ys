@@ -24,7 +24,6 @@ read_verilog -defer -sv \
     -I include \
     Pod.v \
     Cluster.v \
-    PE.v \
     ISA_Decoder.v \
     EHDecode.v \
     PE_Core.v \

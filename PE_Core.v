@@ -3565,8 +3565,11 @@ module PE_Core #(
                     //
                     // 두 불변식은 `scripts/lint_output_payload_hold.py` 가
                     // `make lint` 에서 정적으로 집행하고,
-                    // `test_pe.py::test_pe_output_payload_hold_invariant` 가
-                    // 런타임으로 감시한다. 이 파일의 **모든**
+                    // `test_isa_decoder.py::test_output_payload_hold_invariant`
+                    // 가 런타임으로 감시한다 (C-2 에서 `test_pe.py` 로부터
+                    // 이식 — `PE.v` 폐기, spec §33.4. 이 인용을 지우지 말 것:
+                    // 인용이 그 다리의 존재 증명이고, C-2 는 실제로 이 인용
+                    // 덕분에 소실을 발견했다). 이 파일의 **모든**
                     // `output_payload <=` / `mem_addr <=` 대입은 (i) rst arm,
                     // (ii) 같은 블록에 `output_valid <= 1'b1` 이 있는 emit arm,
                     // (iii) 자격자와 **같은 식**으로 인라인 가드된 복사 —

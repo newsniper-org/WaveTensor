@@ -6,9 +6,11 @@
 # Usage:
 #   make                     # default: HIU
 #   make MOD=ISA_Decoder
-#   make MOD=Tensor_ALU
-#   make MOD=SIMD_ALU
 #   make MOD=ALU_Extended
+#   make MOD=Top_Core / Cluster / Pod
+#
+# C-2 (2026-08-18, spec §33): MOD 9 → 6. Tensor_ALU / SIMD_ALU / PE 는 모듈
+# 자체가 폐기됐다 (superseded duplicate — §12a 규칙 6).
 
 SIM ?= verilator
 TOPLEVEL_LANG ?= verilog
@@ -26,20 +28,6 @@ else ifeq ($(MOD),ISA_Decoder)
     VERILOG_SOURCES = $(CURDIR)/ISA_Decoder.v $(CURDIR)/EHDecode.v $(CURDIR)/PE_Core.v $(CURDIR)/FP_StepSeq.v $(CURDIR)/FP_Mul36.v $(CURDIR)/FP_AddWide.v
     COCOTB_TOPLEVEL = ISA_Decoder
     COCOTB_TEST_MODULES = test_isa_decoder
-else ifeq ($(MOD),Tensor_ALU)
-    VERILOG_SOURCES = $(CURDIR)/TENSOR_ALU.v
-    COCOTB_TOPLEVEL = Tensor_ALU
-    COCOTB_TEST_MODULES = test_tensor_alu
-    # v1.9.1 §28.4 항 8(d) — 자극 폭 정합. 기본 파라미터(ADDR_WIDTH=64 /
-    # DIM_SIZE=4)에서 matrix_a 실폭은 1,024 bit 인데 구 테스트는 256-bit
-    # 리터럴을 줘서 cocotb 가 상위 768 bit 를 조용히 0 으로 채우고 있었다
-    # (결함 O1c, spec §31.7) — "의도한 행렬을 넣은 적조차 없는" 테스트다.
-    # 여기서 D=2 / W=16 을 명시 override 해 포트 실폭을 64 bit 로 고정한다.
-    COMPILE_ARGS += -GADDR_WIDTH=16 -GDIM_SIZE=2
-else ifeq ($(MOD),SIMD_ALU)
-    VERILOG_SOURCES = $(CURDIR)/SIMD_ALU.v
-    COCOTB_TOPLEVEL = SIMD_ALU
-    COCOTB_TEST_MODULES = test_simd_alu
 else ifeq ($(MOD),ALU_Extended)
     VERILOG_SOURCES = $(CURDIR)/ALU_Extended.v
     COCOTB_TOPLEVEL = ALU_Extended
@@ -48,12 +36,8 @@ else ifeq ($(MOD),Top_Core)
     VERILOG_SOURCES = $(CURDIR)/Top_Core.v $(CURDIR)/ISA_Decoder.v $(CURDIR)/EHDecode.v $(CURDIR)/PE_Core.v $(CURDIR)/FP_StepSeq.v $(CURDIR)/FP_Mul36.v $(CURDIR)/FP_AddWide.v $(CURDIR)/HIU.v
     COCOTB_TOPLEVEL = Top_Core
     COCOTB_TEST_MODULES = test_top_core
-else ifeq ($(MOD),PE)
-    VERILOG_SOURCES = $(CURDIR)/PE.v $(CURDIR)/ISA_Decoder.v $(CURDIR)/EHDecode.v $(CURDIR)/PE_Core.v $(CURDIR)/FP_StepSeq.v $(CURDIR)/FP_Mul36.v $(CURDIR)/FP_AddWide.v
-    COCOTB_TOPLEVEL = PE
-    COCOTB_TEST_MODULES = test_pe
 else ifeq ($(MOD),Cluster)
-    VERILOG_SOURCES = $(CURDIR)/Cluster.v $(CURDIR)/PE.v $(CURDIR)/ISA_Decoder.v $(CURDIR)/EHDecode.v $(CURDIR)/PE_Core.v $(CURDIR)/FP_StepSeq.v $(CURDIR)/FP_Mul36.v $(CURDIR)/FP_AddWide.v
+    VERILOG_SOURCES = $(CURDIR)/Cluster.v $(CURDIR)/ISA_Decoder.v $(CURDIR)/EHDecode.v $(CURDIR)/PE_Core.v $(CURDIR)/FP_StepSeq.v $(CURDIR)/FP_Mul36.v $(CURDIR)/FP_AddWide.v
     COCOTB_TOPLEVEL = Cluster
     COCOTB_TEST_MODULES = test_cluster
     # v1.6.5c §22.16 — override the fragment/cache buffer slot count for
@@ -63,11 +47,11 @@ else ifeq ($(MOD),Cluster)
         COMPILE_ARGS += -GFRAG_SLOTS=$(FRAG_SLOTS)
     endif
 else ifeq ($(MOD),Pod)
-    VERILOG_SOURCES = $(CURDIR)/Pod.v $(CURDIR)/Cluster.v $(CURDIR)/PE.v $(CURDIR)/ISA_Decoder.v $(CURDIR)/EHDecode.v $(CURDIR)/PE_Core.v $(CURDIR)/FP_StepSeq.v $(CURDIR)/FP_Mul36.v $(CURDIR)/FP_AddWide.v
+    VERILOG_SOURCES = $(CURDIR)/Pod.v $(CURDIR)/Cluster.v $(CURDIR)/ISA_Decoder.v $(CURDIR)/EHDecode.v $(CURDIR)/PE_Core.v $(CURDIR)/FP_StepSeq.v $(CURDIR)/FP_Mul36.v $(CURDIR)/FP_AddWide.v
     COCOTB_TOPLEVEL = Pod
     COCOTB_TEST_MODULES = test_pod
 else
-    $(error Unknown MOD '$(MOD)'. Valid: HIU, ISA_Decoder, Tensor_ALU, SIMD_ALU, ALU_Extended, Top_Core, PE, Cluster, Pod)
+    $(error Unknown MOD '$(MOD)'. Valid: HIU, ISA_Decoder, ALU_Extended, Top_Core, Cluster, Pod)
 endif
 
 # Add include path so `include/attributes.vh` (vendor-agnostic attribute macros)

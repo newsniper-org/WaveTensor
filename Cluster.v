@@ -859,7 +859,8 @@ module Cluster #(
     // 여기서 반복하지 않기 위해):
     //   * `scripts/lint_output_payload_hold.py` — H1/H2 정적 집행 (`make lint`).
     //     v1.9 baseline 에 걸어 보면 정확히 두 대입 site 를 잡는다.
-    //   * `test_pe.py::test_pe_output_payload_hold_invariant` — 런타임 감시.
+    //   * `test_isa_decoder.py::test_output_payload_hold_invariant` — 런타임
+    //     감시 (C-2 에서 `test_pe.py` 로부터 이식 — `PE.v` 폐기, spec §33.4).
     //   * `test_cluster.py::test_cluster_noc_bank_*` — 뱅크 값 의미론 pin.
     //
     // 왜 여기에 `pe_bank_reg` 를 달지 않는가: `PE_Core.output_payload` 와

@@ -170,7 +170,11 @@ make lattice-clean       # NEW: lattice/reports/* 정리
 | 리스크 | 확률 | 영향 | 완화 |
 |---|---|---|---|
 | ULX3S 발주 후 소재/화물 지연 | 낮음 | 저 (그동안 소프트웨어 진행) | 소프트웨어 트랙 병렬 |
-| ECP5 84K LUT 부족 (MATMUL 이 DSP 없이 LUT 로 흡수 시) | 낮음-중간 | 중 | `matmul_func` 를 2×2 로 이미 축소 (`.claude-memos/wt64v1_spec.md`). 넘칠 시 SIMD_ALU 대체 |
+| ECP5 84K LUT 부족 (MATMUL 이 DSP 없이 LUT 로 흡수 시) | 낮음-중간 | 중 | `matmul_func` 를 2×2 로 이미 축소 (`.claude-memos/wt64v1_spec.md`). ~~넘칠 시 SIMD_ALU 대체~~ ⟵ **무효 (2026-08-18, C-2 · spec §33.3.1)** |
+
+> **[2026-08-18 — 위 행의 "SIMD_ALU 대체" 완화책은 무효화됐다 (spec §33.3.1). 행 자체는 §12a 규칙 5 에 따라 삭제하지 않는다.]**
+> 근거 2건: **(1) 대체 대상 불일치** — 이 리스크는 **MATMUL** 에 관한 것인데 `SIMD_ALU` 는 matmul 을 **디코드하지 않는다** (0x10/0x11/0x12/0x13/0x1C/0x1F = 스칼라 ALU 6종). 대체제로 지목된 모듈이 대체 대상 기능을 갖고 있지 않다. **(2) 면적·주파수 모두 역효과** — 정찰 실측 **LUT 10,001 / Fmax 22.47 MHz** (spec §28.8 O3). LUT 부족을 완화하려는 자리에 10,001 LUT 를 넣는 것은 완화가 아니고, 22.47 MHz 는 100 MHz 문맥의 **4.45× 미달**이다.
+> **남은 완화책**: `matmul_func` 2×2 축소(이미 적용) + 아래 720K LUT 행의 geometry fallback. LUT 가 실제로 넘치면 대체 모듈이 아니라 **geometry 축소**로 대응한다. `SIMD_ALU.v` 는 C-2 에서 폐기됐다 (spec §33.3 판정 2).
 | TRNG oscillator 가 yosys 에서 프루닝됨 | 낮음 | 고 (엔트로피 상실) | `\`WT_KEEP` 매크로 정확한 lattice 문법 검증 필수. .json netlist 에서 `ro_out_w`, `ro_lfsr_q` 신호 존재 확인 |
 | timing closure ECP5 @ 100 MHz 실패 | 낮음 | 중 | 80 MHz 로 완화 후 progressive tuning |
 | Avant G70 PCIe card 상용 존재 안 함 | 중간 | 중 | Lattice eval kit + PCIe carrier 조합 대안 |

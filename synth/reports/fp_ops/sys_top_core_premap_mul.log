@@ -6,12 +6,12 @@
 # tag: sys_top_core
 # top: Top_Core
 # yosys: Yosys 0.64 (git sha1 6d2c445ae-dirty, g++ 15.2.1 -march=native -O3 -fno-plt -fexceptions -fstack-clash-protection -fcf-protection -mpclmul -ffile-prefix-map=/startdir/src=/usr/src/debug/yosys -fPIC -O3) [startdir/yosys at makepkg]
-# generated: 2026-08-18T18:14:29+09:00
+# generated: 2026-08-18T19:02:46+09:00
 # command: yosys -p 'read_verilog -I include Top_Core.v ISA_Decoder.v EHDecode.v PE_Core.v FP_StepSeq.v FP_Mul36.v FP_AddWide.v HIU.v; hierarchy -top Top_Core; proc; opt_clean; stat'
 # source: Top_Core.v sha256=5c838441d66717b4ac9963febe4fdf0f91888f04d95cc8ce87f252cfb4a8dbe1
-# source: ISA_Decoder.v sha256=f78cde70fa0073e09c4e24795e7963cee1966ac9a906f2c2460db7840d25e927
+# source: ISA_Decoder.v sha256=767cbd687261e87d533f8716b0e688e097f2d24fbdf53158b673d4a2a2ec0529
 # source: EHDecode.v sha256=eb027a5702c34e5bfd5ea3e9d8f0a8d1fb4ab1c2aea59177ecafa46649a4dfe5
-# source: PE_Core.v sha256=6d48d7b6ae0d65ebc2b08ff671c0389250bc29dc6aca24e381ab0c1080ef8e69
+# source: PE_Core.v sha256=4cc3a77a2e36bbdc6f352d3f69739a860477d0f4c36997fc4528b73761407727
 # source: FP_StepSeq.v sha256=ccf6cb9c4a44e790fa3f6eaa4fb1c19f4b57c0bfc7796ffb2c43196639ff053f
 # source: FP_Mul36.v sha256=e9af9ef261c5a16e1fb28c1b382af90af902ef06e11424cf40915a3f94641eab
 # source: FP_AddWide.v sha256=61bc72315a92d4d0e83c46af25fcfbf9ebfea27078184b2329924e97d3c76fdc
@@ -10890,6 +10890,6 @@ Removed 20988 unused cells and 58811 unused wires.
         1   $paramod$b049c2df2ea440858c6ed3470f2ac013e2cfeb60\ISA_Decoder
 
 Warnings: 80 unique messages, 86 total
-End of script. Logfile hash: c5ed42a1b9, time: 55.83s, user: 55.45s, system: 0.20s, MEM: 385.16 MB peak
+End of script. Logfile hash: c5ed42a1b9, time: 56.16s, user: 55.69s, system: 0.24s, MEM: 385.75 MB peak
 Yosys 0.64 (git sha1 6d2c445ae-dirty, g++ 15.2.1 -march=native -O3 -fno-plt -fexceptions -fstack-clash-protection -fcf-protection -mpclmul -ffile-prefix-map=/startdir/src=/usr/src/debug/yosys -fPIC -O3) [startdir/yosys at makepkg]
-Time spent: 93% 1x proc_mux (52 sec), 1% 9x read_verilog (0 sec), ...
+Time spent: 93% 1x proc_mux (52 sec), 1% 9x read_verilog (1 sec), ...

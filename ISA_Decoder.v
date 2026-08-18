@@ -5,7 +5,8 @@
 // ISA_Decoder.v — thin wrapper around EHDecode + PE_Core.
 //
 // Preserves the original module interface so all stand-alone tests
-// (test_isa_decoder.py, test_pe.py via PE.v, test_top_core.py via Top_Core)
+// (test_isa_decoder.py, test_top_core.py via Top_Core).  The PE.v wrapper
+// was another such consumer until C-2 retired it (spec §33.3 verdict 4).
 // continue to drive `instruction` / `input_tag` / payloads and observe
 // `output_*` exactly as before.
 //
@@ -50,7 +51,8 @@ module ISA_Decoder #(
     output                      pe_ready,
     // v1.5.2 §19 — reassembled wide payload latched into the dec_* stage.
     // Exposed at the ISA_Decoder boundary for hierarchical test access
-    // and downstream (PE.v / Cluster.v / Top_Core.v) legacy tie-off.
+    // and downstream (Cluster.v / Top_Core.v) legacy tie-off.  (PE.v also
+    // tied this off until C-2 retired it — spec §33.3.)
     output [WIDE_W-1:0]         dec_input_payload_wide_out,
     output                      dec_input_payload_wide_valid_out,
     output                      memory_req,
@@ -164,7 +166,7 @@ module ISA_Decoder #(
         //       으로 gate 상수를 같은 commit 에서 옮겨야 한다 (갈래 B).
         //       본 세션의 작업 범위는 gate 기준 수치를 건드리지 않는다.
         // **정직 명기**: 따라서 `ISA_Decoder` 를 단독으로 구동하는 경로
-        // (test_isa_decoder.py / PE.v / Top_Core.v)에는 §22.14b-1 의 무언
+        // (test_isa_decoder.py / Top_Core.v)에는 §22.14b-1 의 무언
         // drop 이 **그대로 남아 있다** — 체인 워크 중(`MAX_EH` 에지)
         // `token_valid` 를 다시 올리면 그 명령은 소실된다. 이 계층에서
         // 그것을 닫으려면 여기에도 보류 경로가 필요하며, 본 amendment 의

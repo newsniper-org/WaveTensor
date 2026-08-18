@@ -255,10 +255,17 @@ v1.7 은 (parity 수준으로) output-side 를 추가 개선하나 완전 제거
   는 **방향1만** (flag 있는데 EH 없음 → error); 방향2는 기각 —
   assembler 가 F_MEM 을 세팅하지 않아 현존 전 LD/ST 가 깨지고, JSON
   이 이 비트를 `mem_hint` 로 부르는 것이 미의도의 근거.
-  (C-2) RTL 모듈 제거 절차를 **§12a 에 먼저 성문화**한 뒤 고아 4종
-  (PE/TENSOR_ALU/SIMD_ALU/ALU_Extended) **일괄 판정** — 래칫이 양쪽
-  포화라 개별 처리 시 중간 상태가 어긋난다. **주의: TENSOR_ALU 는
-  opcode 0x30-0x32 가 ISA 에 살아있으면 고아가 아니라 미결선 결함**.
+  (C-2) **완료 (2026-08-18, spec §33)** — §12a 규칙 6 성문화 후 4종
+  판정. 결과: **폐기 3** (PE / TENSOR_ALU / SIMD_ALU) + **유지 1**
+  (ALU_Extended = 비합성 reference). cocotb MOD 9→6, 336→312.
+  **위 "미결선 결함" 주의는 §31.6 이 반증했다** — 0x30-0x32 는 ISA 에
+  살아 있고 **동시에** PE_Core 에 구현돼 값 검증까지 통과한다. 즉
+  제3의 지위 **superseded duplicate** 이며, "ISA 실재 ⇒ 미결선 결함"
+  조건문은 전건이 참인데 귀결이 거짓이다.
+  C-2 가 규칙 6 자체의 구멍 3개를 발견해 메웠다: (d) 합성 스크립트
+  소스 목록 · (e) 다른 MOD 의 VERILOG_SOURCES · (h′) 제거되는 테스트의
+  피인용 대조 (모듈 폐기가 H1/H2 런타임 집행 leg 를 끊을 뻔했고
+  make lint 는 전건 PASS 했다).
 - **발견된 landmine**: `make synth-clean` 이 tracked gate 증적 92건
   (+ 루트 vivado 로그 12건) 을 삭제한다 — `synth/reports/*` 통삭제.
   정리 1순위.

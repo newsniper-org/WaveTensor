@@ -50,13 +50,19 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 MAKEFILE = REPO_ROOT / "Makefile"
 
 # 래칫 상한 — 낮추는 편집만 정당하다. 올리려면 그 자체가 리뷰 대상이다.
-UNCOVERED_MAX = 2
+# C-2 (2026-08-18, §12a 규칙 6 · spec §33): PE 제거로 2 → 1. 남은 1건은
+# ISA_Decoder 이고, 그것은 Top_Core 안에서 실제 합성되므로 성격이 다르다.
+UNCOVERED_MAX = 1
 # v1.9.1 §31.6 — 3건 전부 `superseded` 2 + `reference` 1 로 이동했으므로
 # 이 상한은 **완화가 아니라 0 으로 인하**된다. 새 `measured-pending` 은
 # 이제 상한 자체가 막는다.
 MEASURED_PENDING_MAX = 0
-# `superseded` 래칫 — §31.6 이 규정한 ≤ 3.
-SUPERSEDED_MAX = 3
+# `superseded` 래칫 — §31.6 이 ≤ 3 으로 신설했고, C-2 가 두 항목(Tensor_ALU /
+# SIMD_ALU)을 **실제 폐기**로 소진했으므로 **0 으로 인하**한다. 상한을 3 으로
+# 남겨 두면 다음 중복 모듈이 그 자리를 조용히 채운다 — §12a 규칙 6 (j) 가
+# "항목 제거는 래칫 상한도 같이 내린다" 를 요구하는 이유가 이것이다.
+# 새 superseded 항목이 필요하면 그 편집 자체가 리뷰 대상이 된다.
+SUPERSEDED_MAX = 0
 # `reference` 래칫 — 현재 ALU_Extended 1건. 늘리려면 그 편집이 리뷰 대상이다.
 REFERENCE_MAX = 1
 
@@ -128,60 +134,6 @@ COVERAGE = {
         "how": "synth/lattice/scripts/synth_cluster.ys (ECP5) + Pod 경유 "
                "Vivado — 실측 아카이브 synth/lattice/reports/cluster_v19b_*",
     },
-    "Tensor_ALU": {
-        "status": "superseded",
-        "how": "정찰 실측 (xcu55c OOC gate_top, post-route): LUT 4,486 / "
-               "FF 7,178 / DSP48 310 / Fmax 155.79 MHz — spec §28.8. "
-               "합성 편입 경로는 신설하지 않는다 (GATE S1 전 축 0 기여).",
-        "canonical": "PE_Core (0x30 matmul_func / 0x31 인라인 lane add / "
-                     "0x32 EINSUM 2단 SUBSCRIPT dispatch)",
-        "canonical_test": "test_isa_decoder.py::test_matmul_2x2 "
-                          "(A=[[1,2],[3,4]] B=[[5,6],[7,8]] -> [[19,22],"
-                          "[43,50]] 값 assert PASS) + test_tensor_add",
-        "canonical_test_refs": [
-            ("test_isa_decoder.py", "test_matmul_2x2"),
-            ("test_isa_decoder.py", "test_tensor_add"),
-        ],
-        "deadline": "파일 폐기 실행은 사용자 결정 1건 (spec §31.6 — §12a "
-                    "규칙 6 절차의 (a) 소비자 audit 과 (b) 정본 지정은 이미 "
-                    "충족돼 있다). 그때까지 test_tensor_alu.py 가 §28.4 "
-                    "항 8 형식으로 결함을 loud 하게 유지한다.",
-        "why": "superseded duplicate — 소비자 0 (.v 인스턴스 0 / synth "
-               "read_verilog 목록 0 / 외부 sibling 리포 4곳 grep 0). "
-               "0x32 는 **현행 ISA 에 없는 의미론**(EINSUM 이 아니라 "
-               "retired TENSOR_MUL)이고 0x30 은 프로젝트가 기각한 4x4 "
-               "unrolled pre-mitigation shape 다. MATMUL(0x30) 무동작은 "
-               "수리 기각 상태로 남는다 (spec §31.7 — 정답 구현은 premap "
-               "$mul 31->76 / DSP48 310->~760 으로 이미 기각된 자원 폭증을 "
-               "복원한다). O2 (Synth 8-7137 x49) 수리는 소멸 (spec §31.8).",
-    },
-    "SIMD_ALU": {
-        "status": "superseded",
-        "how": "정찰 실측 (xcu55c OOC gate_top, 45 ns closure): LUT 10,001 / "
-               "CARRY8 1,608 / Fmax 22.47 MHz — spec §28.8.",
-        "canonical": "PE_Core (0x10/0x11/0x12/0x13/0x1C/0x1F 전부 구현; "
-                     "0x13/0x1C/0x1D 는 bit-serial FSM)",
-        "canonical_test": "test_isa_decoder.py 스칼라 ALU/DIV/MOD/DIVMOD "
-                          "값 검증군 (192 케이스 전건 PASS)",
-        "canonical_test_refs": [
-            ("test_isa_decoder.py", "test_add_with_imm"),
-            ("test_isa_decoder.py", "test_add_with_opref_uses_payload_b"),
-            ("test_isa_decoder.py", "test_divrem"),
-            ("test_isa_decoder.py", "test_bitwise_and"),
-            ("test_isa_decoder.py", "test_bitwise_or"),
-            ("test_isa_decoder.py", "test_bitwise_xor"),
-        ],
-        "deadline": "`board_hw_plan.md:173` 의 contingency 등재("
-                    "ECP5 84K LUT 부족 시 대체) 무효화가 선행한다. "
-                    "무효화 근거는 확보돼 있다 — §28.8 O3 실측 22.47 MHz "
-                    "는 100 MHz 문맥의 4.45x 미달이라 대체제로서 실효성이 "
-                    "없다. 그 다음이 사용자 결정 1건.",
-        "why": "superseded duplicate — 디코드하는 opcode 6종이 전부 "
-               "PE_Core 에 구현돼 있고, 정작 SIMD 계열 ISA opcode "
-               "0x60-0x65/0x69 는 하나도 디코드하지 않는다 (lane-parallel "
-               "형태의 ISA 진입점 0건). 값 테스트 9/9 는 건전하다 — "
-               "폐기 사유는 결함이 아니라 중복이다.",
-    },
     "ALU_Extended": {
         "status": "reference",
         "how": "정찰 실측 (xcu55c OOC gate_top, post-route): LUT 606 / "
@@ -197,21 +149,12 @@ COVERAGE = {
                "구현을 repo 에 유지하는 것의 정당성 검토는 stable release "
                "선언 라운드로 이월한다.",
     },
-    "PE": {
-        "status": "uncovered",
-        "how": None,
-        "why": "합성 경로 없음. synth_pod.ys / synth_cluster.ys 가 PE.v 를 "
-               "read_verilog 하지만 Pod/Cluster 가 인스턴스화하지 않으므로 "
-               "hierarchy -top 에서 프루닝된다 (pod_2x2_2x2_impl_util.rpt "
-               "계층에 bare PE 행 0건). 구조적 사유: Cluster.v 가 EHDecode "
-               "를 cluster 레벨로 끌어올려 공유하고 PE_Core 를 직접 "
-               "인스턴스화하므로 per-PE 래퍼 계층이 supersede 됐다.",
-    },
     "ISA_Decoder": {
         "status": "uncovered",
         "how": None,
-        "why": "합성 경로 없음 (PE 와 같은 구조적 사유 — Cluster→PE_Core "
-               "직결이 per-PE decode 래퍼를 대체했다). 단 GATE S1-US 의 "
+        "why": "합성 경로 없음 (구조적 사유 — Cluster→PE_Core 직결이 per-PE "
+               "decode 래퍼를 대체했다. 같은 사유로 폐기된 PE.v 는 C-2 에서 "
+               "제거됐다 — spec §33). 단 GATE S1-US 의 "
                "Top_Core 안에서는 `u_core/u_decoder` 로 실제 합성되므로 "
                "'전혀 합성되지 않는 RTL' 은 아니다 — standalone top 으로서 "
                "의 합성 경로가 없다는 뜻이며, 이 구분은 D1 류의 top-level "

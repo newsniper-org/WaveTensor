@@ -99,7 +99,11 @@ Target: AMD/Xilinx FPGA, pure Verilog RTL (no HLS), 2-Pod scale (512 PEs) protot
 ## 6. Overall Roadmap
 * HIU + ISA_Decoder 완전 구현 (완료)
 * Top_Core.v 생성 → HIU + ISA_Decoder + ALU 모듈들을 wire로 연결
-* PE.v (ISA_Decoder + ALU wrapper)
+* ~~PE.v (ISA_Decoder + ALU wrapper)~~ ⟵ **이 통합 지점은 소멸했다.** `Cluster.v`
+  가 `EHDecode` 를 cluster 레벨로 끌어올려 공유하고 `PE_Core` 를 **직접**
+  인스턴스화하므로 per-PE 래퍼 계층이 없다. `PE.v` 는 C-2 에서 폐기됐다
+  (spec §33.3 판정 4). 같은 이유로 `ALU_Extended` 는 "편입 대기" 가 아니라
+  **비합성 참조 구현**으로 재분류됐다 (spec §31.6)
 * Cluster.v (4×4 PE + local NoC)
 * Pod.v (16 Cluster + Pod NoC)
 * Global Grid + NoC + FPGA synthesis (ALINX AXU3EGB V2.1 target)
@@ -211,15 +215,19 @@ Target: AMD/Xilinx FPGA, pure Verilog RTL (no HLS), 2-Pod scale (512 PEs) protot
 # 기준선 안에서 조용히 통과**하므로, 수치가 어긋난 것을 보면 표를 고칠 것
 # — 문서 오타가 아니라 검사 약화다 (spec §32.8 의 "기준선 303" 오기 참조).
 make MOD=HIU            #  22 tests
-make MOD=ISA_Decoder    # 200 tests (truth-table differential 포함)
-make MOD=Tensor_ALU     #   8 tests
-make MOD=SIMD_ALU       #   9 tests
+make MOD=ISA_Decoder    # 201 tests (truth-table differential + H1/H2 홀드 감시 포함)
 make MOD=ALU_Extended   #  16 tests
 make MOD=Top_Core       #   8 tests (HIU + ISA_Decoder 통합)
-make MOD=PE             #   8 tests (PE wrapper)
 make MOD=Cluster        #  57 tests (4-PE grid + NoC + frag cache; FRAG_SLOTS=4 로도 실행)
 make MOD=Pod            #   8 tests (4-Cluster grid)
-#                       # ---- 9모듈 합계 336 (감소 금지 축) ----
+#                       # ---- 6모듈 합계 312 (감소 금지 축) ----
+# C-2 (2026-08-18, spec §33): MOD 9 → 6. Tensor_ALU / SIMD_ALU / PE 는 모듈
+# 자체가 폐기됐다 (superseded duplicate — 정본은 PE_Core / Cluster 직결).
+# 336 → 312 = **−25 +1**: −25 는 폐기된 세 모듈의 테스트 전량, +1 은
+# test_output_payload_hold_invariant 이식분 (§31.14 H1/H2 런타임 감시 leg 를
+# test_pe.py 에서 여기로 옮겼다 — 모듈 폐기가 그 다리를 끊을 뻔했다).
+# **이 −25 를 "회귀" 로 읽지 말 것** — 증감이 폐기분·이식분과 정확히
+# 일치한다는 것이 회귀가 섞이지 않았다는 증거다.
 python -m unittest asm.test_wavetensor_asm   # 어셈블러 단위
 make lint                                    # 6종 lint (ISA freshness / frag FSM 불변식 / ...)
 make test-cluster-both                       # FRAG_SLOTS 1·4 양 빌드

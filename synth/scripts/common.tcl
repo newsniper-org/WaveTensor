@@ -36,7 +36,6 @@ foreach {var def} {PE_ROWS 2 PE_COLS 2 CLUSTER_ROWS 2 CLUSTER_COLS 2} {
 set ::POD_SOURCES [list \
     [file join $REPO_ROOT Pod.v] \
     [file join $REPO_ROOT Cluster.v] \
-    [file join $REPO_ROOT PE.v] \
     [file join $REPO_ROOT ISA_Decoder.v] \
     [file join $REPO_ROOT EHDecode.v] \
     [file join $REPO_ROOT PE_Core.v] \

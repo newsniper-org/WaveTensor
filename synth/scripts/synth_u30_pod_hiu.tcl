@@ -100,7 +100,6 @@ flush stdout
 foreach src [list \
         [file join $REPO_ROOT Pod.v] \
         [file join $REPO_ROOT Cluster.v] \
-        [file join $REPO_ROOT PE.v] \
         [file join $REPO_ROOT ISA_Decoder.v] \
         [file join $REPO_ROOT EHDecode.v] \
         [file join $REPO_ROOT PE_Core.v] \

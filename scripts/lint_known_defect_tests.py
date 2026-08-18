@@ -56,27 +56,20 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 #                   형태를 막는다).
 #   why           — 왜 수리하지 않고 loud 기록으로 남기는가 (사람용)
 # ---------------------------------------------------------------------------
-KNOWN_DEFECT_TESTS = {
-    ("test_tensor_alu.py", "test_matmul_golden_known_broken"): {
-        "spec_ref": "§31.7",
-        "assert_tokens": ["ref_matmul(A, B)"],
-        "body_tokens": ["resolved(dut.result_matrix)"],
-        "why": "MATMUL(0x30) 무동작 — inner k-loop 의 비차단 대입 축퇴. "
-               "수리는 D²=16 mul → D³=64 mul (premap $mul 31→76, DSP48 "
-               "310→~760) 로 프로젝트가 이미 기각한 자원 폭증을 복원하므로 "
-               "spec §31.7 이 normative 로 기각했다. 정본은 PE_Core "
-               "(test_isa_decoder.py::test_matmul_2x2 값 검증 PASS).",
-    },
-    ("test_tensor_alu.py", "test_alu_valid_is_not_result_valid"): {
-        "spec_ref": "§31.7",
-        "assert_tokens": ["ref_add(A, B)"],
-        "body_tokens": ["resolved(dut.result_matrix)"],
-        "why": "O1b — `alu_valid` 는 result-valid 가 아니라 '리셋 중 아님' "
-               "자유주행 플래그다. 이 비트를 result-valid 로 쓰는 테스트가 "
-               "O1 을 은폐한 직접 기전이므로, 의미론을 실증하는 케이스를 "
-               "loud 하게 남긴다 (§28.4 항 8(b)).",
-    },
-}
+# C-2 (2026-08-18, §12a 규칙 6 · spec §33) — 표가 비었다. **이것은 "알려진
+# 결함이 없다" 는 뜻이 아니라 "알려진 결함을 담고 있던 모듈이 폐기됐다" 는
+# 뜻이다.** 두 선언(`test_tensor_alu.py::test_matmul_golden_known_broken` /
+# `::test_alu_valid_is_not_result_valid`)은 `TENSOR_ALU.v` 의 MATMUL 무동작
+# (O1) 과 `alu_valid` 오용(O1b)을 loud 하게 유지하려고 존재했다. 그 모듈이
+# superseded duplicate 로 폐기되면서 선언 대상 자체가 사라졌다 — 결함이
+# 수리된 것이 아니다. 결함의 서술과 **수리 기각 근거**는 spec §31.7/§31.8 에
+# superseded history 로 남아 있다 (§12a 규칙 5).
+#
+# 빈 표는 정상 상태다. 아래 검사기는 **미선언 `expect_fail` 이 0 건인지**를
+# 계속 강제하므로, 누군가 새 `expect_fail` 테스트를 선언 없이 추가하면
+# 표가 비어 있든 말든 즉시 비영 종료한다 — 이 lint 가 지키는 불변식은
+# "표에 뭔가 있다" 가 아니라 "선언 없는 expect_fail 이 없다" 이다.
+KNOWN_DEFECT_TESTS = {}
 
 
 def _decorator_expect_fail(dec) -> bool:

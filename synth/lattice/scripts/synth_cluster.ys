@@ -17,7 +17,6 @@ read_verilog -defer -sv \
     -DWT_VENDOR_LATTICE_YOSYS \
     -I include \
     Cluster.v \
-    PE.v \
     ISA_Decoder.v \
     EHDecode.v \
     PE_Core.v \

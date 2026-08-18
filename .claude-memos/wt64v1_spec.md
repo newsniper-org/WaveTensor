@@ -302,11 +302,11 @@ WT64v1 lock 시점 회귀 결과 (185 tests):
 | asm.test_wavetensor_asm | 58 |
 | HIU | 1 |
 | ISA_Decoder | 70 |
-| Tensor_ALU | ~~1~~ → **8** |
-| SIMD_ALU | 9 |
+| ~~Tensor_ALU~~ | ~~1~~ → ~~**8**~~ ⟵ **모듈 폐기 (C-2)** |
+| ~~SIMD_ALU~~ | ~~9~~ ⟵ **모듈 폐기 (C-2)** |
 | ALU_Extended | 16 |
 | Top_Core | 7 |
-| PE | ~~4~~ → **7** |
+| ~~PE~~ | ~~4~~ → ~~**7**~~ ⟵ **모듈 폐기 (C-2)** |
 | Cluster | 12 |
 | Pod | 7 |
 | **Total** | ~~185~~ → **195 PASS / 0 FAIL** |
@@ -319,6 +319,23 @@ WT64v1 lock 시점 회귀 결과 (185 tests):
 > 별개 계보다 (현행 `MOD=ISA_Decoder` 단독이 192 케이스다). 본 갱신은 본
 > workflow 가 실제로 바꾼 두 행만 반영하며 **표 전체의 재동기화는 하지
 > 않았다** — 그 재동기화는 별건이고, 하지 않았다는 사실을 여기 적는다.
+
+> **[2026-08-18 재계상 — C-2 (§12a 규칙 6 (i) · spec §33)]** `Tensor_ALU` /
+> `SIMD_ALU` / `PE` 세 행은 **모듈 자체가 폐기**되어 무효다. **행을 지우지
+> 않는 이유**: 이 표는 v1.0 lock 시점의 **역사적 기록**이고, 그 시점에 세
+> 모듈이 실재했으며 값 테스트가 통과했다는 것은 **사실**이다 (§12a 규칙 5).
+> 지우면 "그때도 없었다" 로 읽힌다.
+>
+> **현행 계보 (2026-08-18 실측, 위 표와 별개)** — cocotb `MOD` **9 → 6**:
+> `HIU` 22 / `ISA_Decoder` **201** / `ALU_Extended` 16 / `Top_Core` 8 /
+> `Cluster` 57 / `Pod` 8 = **312 PASS / 0 FAIL / 0 SKIP**.
+> 직전 계보 336 (9 MOD) 대비 **−25 +1**:
+> **−25** = 폐기된 세 모듈의 테스트 전량 (Tensor_ALU 8 + SIMD_ALU 9 + PE 8),
+> **+1** = `test_output_payload_hold_invariant` **이식분** (H1/H2 런타임 leg 를
+> `test_pe.py` 에서 `test_isa_decoder.py` 로 옮겼다 — §33.4).
+> **잔존 6 MOD 의 나머지는 전건 불변** — 증감이 폐기분·이식분과 정확히
+> 일치한다는 것이 "회귀가 섞이지 않았다" 의 증거다. 이 총계는 `claude.md`
+> 의 `MOD` 표와 동기화돼 있다.
 
 합성: XCAU25P (xcau25p-ffvb676-2-e), 100 MHz, 16-PE Pod, post-route LUT 61.9K (44%), WNS +2.06 ns, DRC 0 errors.
 
@@ -342,7 +359,31 @@ Pre-stable 기간 (현재) 의 규칙:
 4. 제거된 opcode 인코딩은 **reserved (decode_error)** 로 복귀하며, 후속 버전이 재사용할 수 있다 (§12 "새 opcode 추가는 reserved 영역에서 시작" 과 정합).
 5. Superseded 된 spec 절은 삭제하지 않고 **superseded history** 로 보존한다 (배너 표기).
 
-Stable release 선언 시점부터는 위 세 보장이 전부 발효되어, 이후 opcode 제거는 **WT64v2** (incompatible) 분류로만 가능하다. 첫 적용 사례: §24 (2026-07-24 dead-opcode removal, truth-table domain_version 2).
+6. **RTL 모듈 단위 고아/중복 제거는 정규 개발 행위다.** 규칙 1~4 는 **opcode/signature 단위** 정책이라 `.v` 파일 자체의 제거를 규정하지 못했다 (§28.8 이 기록한 정책 공백, §31.6 이 초안). 본 항이 그 공백을 메운다. 순서는 아래 (a)~(k) 이며, **(a)(b) 없이 (f) 를 수행할 수 없다** — 제거의 정당성은 *"안 쓰인다"* 가 아니라 **"정본(定本)이 있고 그것이 값 검증됐다"** 다.
+
+   | 단계 | 내용 |
+   |---|---|
+   | **(a) 소비자 audit** | **4축 전수**로 소비자 **0** 확정 — (i) `.v` 인스턴스 그래프, (ii) `synth/` 의 read_verilog·소스 목록, (iii) `asm/`, (iv) 외부 sibling 리포. 축을 줄이지 않는다 |
+   | **(b) 정본 지정** | 그 기능을 제공하는 모듈과 **값 검증 테스트**를 **이름으로** 명시. "다른 데 있다" 는 진술이 아니라 실행 가능한 테스트 이름이어야 한다 |
+   | **(c) spec 기록** | 근거표를 본 문서에 남긴다 |
+   | **(d) 합성 스크립트 소스 목록 갱신** ⟵ **본 항이 신설** | 아래 별도 문단 참조. **(f) 보다 먼저이거나 같은 COMMIT 이어야 한다** |
+   | **(e) 다른 `MOD` 의 `VERILOG_SOURCES` 갱신** ⟵ **본 항이 신설** | 제거 대상을 **소스로 나열하는 다른 모듈의 cocotb 빌드**가 있다. 자기 `MOD` 분기만 지우면 그 빌드들이 깨진다 |
+   | **(f) 파일 제거** | |
+   | **(g) `Makefile` `MOD` 분기 제거** | 분기 본체와 **Valid 목록을 함께** — 목록에서 빠뜨리면 검증기가 자기모순으로 즉시 종료한다 |
+   | **(h) 테스트 제거** | **제거 전에 (h′) 를 반드시 수행한다** |
+   | **(h′) 제거되는 테스트의 피인용 대조** ⟵ **본 항이 신설** | 제거 대상 테스트가 **다른 파일에서 이름으로 인용**되는지 전수 grep 한다. 인용이 있으면 그 테스트는 어떤 불변식의 **집행 leg** 일 가능성이 높다 — 아래 별도 문단 참조 |
+   | **(i) §11 베이스라인 재계상** | |
+   | **(j) `scripts/lint_synth_coverage.py` 표 + 래칫 갱신** | 항목 제거는 래칫 상한도 **같이 내린다**. 상한을 남겨 두면 다음 모듈이 조용히 그 자리를 채운다 |
+   | **(k) superseded 배너** | 규칙 5 |
+
+   **(d) 를 신설한 이유 — 프루닝은 모듈에 대한 것이지 파일에 대한 것이 아니다 (normative).** `scripts/lint_synth_coverage.py` 가 어떤 모듈을 *"`hierarchy -top` 에서 프루닝된다"* 로 서술하더라도, 그것은 **읽힌 뒤 버려진다**는 뜻이지 **안 읽어도 된다**는 뜻이 아니다. 합성 스크립트는 파일을 **이름으로 나열**하므로 **파일 부재 = 즉시 에러**다 — 실측: `synth/scripts/common.tcl` 의 `POD_SOURCES` 는 가드가 아예 없어 `read_verilog` 에서 죽고, `synth/scripts/synth_u30_pod_hiu.tcl` 은 `FATAL: source not found` + `exit 1` 로 명시 중단하며, `synth/lattice/scripts/synth_pod.ys` / `synth_cluster.ys` 는 yosys `read_verilog` 에서 중단한다. 이 네 지점을 갱신하지 않고 파일을 지우면 **합성 경로 전체가 죽는다.** 이 단계가 초안 (a)~(i) 에 없었던 것은, 초안을 쓸 당시의 후보 3종이 우연히 합성 소스 목록에 **0건**이었기 때문이다 — **구멍이 드러나지 않았을 뿐 없었던 것이 아니다.**
+
+   **(h′) 를 신설한 이유 — 모듈 폐기는 그 모듈과 무관한 불변식의 집행을 끊을 수 있다 (normative).** 테스트 파일은 자기 모듈만 검증하지 않는다. **다중 leg 집행**(정적 lint + 런타임 감시 + 의미론 pin)에서 런타임 leg 가 폐기 대상 모듈의 테스트 파일에 살고 있으면, 모듈 폐기가 **그 leg 를 조용히 끊는다.** 실측 사례가 본 절 착지 중에 발생했다 (§33.4) — `test_pe.py::test_pe_output_payload_hold_invariant` 는 §31.14 H1/H2 3중 집행의 **런타임 leg** 였고, `PE.v` 폐기와 함께 사라졌는데 **`make lint` 는 전건 PASS 했다.** lint 가 보는 것은 정적 leg **자신**이지 *"런타임 leg 가 존재하는가"* 가 아니기 때문이다. 유일한 흔적은 `PE_Core.v` / `Cluster.v` 주석이 그 테스트를 **이름으로 인용**하고 있던 것이었다.
+   ∴ 규범 2건: **(1)** 제거되는 테스트가 인용되면 **이식하거나**, 이식이 불가능하면 **집행 leg 가 하나 줄었다는 사실을 spec 에 명시 기록**한다. 조용한 감소는 금지다. **(2)** 이식했으면 **변이로 검출력을 실증**한다 — 이름만 옮기고 검출력을 잃으면 leg 를 복원한 것이 아니라 **복원했다고 적어 둔 것**이다.
+
+   **일괄 *판정* 과 일괄 *처분* 은 다르다 (normative).** 여러 모듈을 동시에 다루는 이유는 lint 래칫이 서로 맞물려 **개별 처리 시 중간 상태가 어긋나기** 때문이며, 이는 **판정 이벤트를 한 COMMIT 으로 묶으라**는 요구다. **판정 내용까지 같아야 한다는 뜻이 아니다** — §31.6 이 이미 "3모듈 일괄 처분 금지 (근거가 서로 다르다)" 로 못박았고, 본 항은 그것을 무효화하지 않는다. 모듈마다 (a)(b) 를 **따로** 세우고 결론도 **따로** 낸다.
+
+Stable release 선언 시점부터는 위 세 보장이 전부 발효되어, 이후 opcode 제거는 **WT64v2** (incompatible) 분류로만 가능하다. 첫 적용 사례: §24 (2026-07-24 dead-opcode removal, truth-table domain_version 2). **규칙 6 은 stable 이후에도 유효하다** — RTL 모듈 구성은 ISA 계약이 아니므로 freeze 세 보장의 대상이 아니고, 다만 (b) 정본 지정이 그때부터는 **ISA 계약을 지키는 정본**이어야 한다.
 
 ## 13. TBD (v1.0 시점 예약, v1.1 에서 부분 해결)
 
@@ -5227,6 +5268,8 @@ cyc=14 rst=0 out_valid=1 payload=deadbeef00000003 tag=…cafe opc=10   ← 유�
 
 - **§12a 확장 (normative) — RTL 모듈 단위 제거 절차 성문화.** pre-stable 기간의 정규 개발 행위로 다음을 규정한다:
   > **6. RTL 모듈 단위 고아/중복 제거는 정규 개발 행위다.** 단 순서를 따른다: (a) **소비자 audit** — `.v` 인스턴스 그래프 · `synth/` read_verilog 목록 · `asm/` · 외부 sibling 리포 전수 grep 으로 **0** 확정, (b) **정본(定本) 지정** — 그 기능을 제공하는 모듈과 **값 검증 테스트**를 이름으로 명시, (c) **spec 기록** (본 항의 근거표), (d) 파일 제거, (e) `Makefile` `MOD` 분기 제거, (f) 테스트 제거, (g) **§11 베이스라인 재계상**, (h) `scripts/lint_synth_coverage.py` 표 갱신, (i) superseded 배너. **(a)(b) 없이 (d) 를 수행할 수 없다** — 제거의 정당성은 "안 쓰인다" 가 아니라 **"정본이 있고 그것이 검증됐다"** 다.
+> **[2026-08-18 승격 — C-2]** 위 초안은 **§12a 규칙 6 으로 승격**됐다 (정본은 §12a). 승격본은 초안의 (a)~(i) 를 **(a)~(k) 로 확장**한다 — 초안에 없던 **(d) 합성 스크립트 소스 목록 갱신**과 **(e) 다른 `MOD` 의 `VERILOG_SOURCES` 갱신**이 신설됐다. 초안이 그 둘을 빠뜨린 것은 당시 후보 3종이 우연히 합성 소스 목록에 0건이었기 때문이며, `PE.v` 를 후보에 넣는 순간 구멍이 드러났다 (4개 스크립트가 이름으로 나열 — 파일 부재 = 즉시 에러). 본 blockquote 는 §12a 규칙 5 대로 무수정 보존한다. **초안을 단독 인용하지 마라** — (d)(e) 가 빠져 있다.
+
 - **audit 근거는 본 절이 전부 제공한다** — 위 표의 (a) 와 (b) 가 이미 충족돼 있다. 남은 것은 **사용자 결정 1건**이다.
 
 **개별 판정 — 3모듈 일괄 처분을 금지한다 (근거가 서로 다르다):**
@@ -6466,3 +6509,128 @@ cd /tmp/c1_mut && rm -rf sim_build && \
 | §32.1 의 인라인 RTL 좌표 drift | **해소** — 착지 전/후 좌표 병기 + "좌표 drift 시 정본은 spec 표가 아니라 RTL" 규약 명시 |
 
 **부수 기록 — 세션 중 untracked 파일 1건 소실·복원 (`synth/lattice/reports/cluster_v19b_pnr.done`)**: 세션 시작 시 `git status` 에 있던 이 파일이 중간에 사라졌고 **어느 phase 도 삭제를 보고하지 않았다**. `.gitignore` 는 같은 디렉터리의 `*.log`/`*.rpt`/`*.json` 만 무시하고 `*.done` 은 무시하지 않으므로 ignore 로 숨은 것이 아니라 **실제 삭제**다. git 이력에 한 번도 tracked 된 적이 없어 **원본 내용은 복구 불가능**하다. 조치: **0 바이트 마커로 복원**했다 — 이 파일이 나르던 정보는 "cluster_v19b P&R 이 끝났다" 는 존재 사실 한 비트뿐이고, 그 비트는 같은 디렉터리의 `cluster_v19b_pnr.log`/`.rpt` (2026-07-27 17:34, 온전) 로 **독립 검증**된다. **복원본은 재구성이며 원본의 바이트 사본이 아니다** — 원본에 내용이 있었다면 그 내용은 소실됐다. tracked 산출물 손실은 0건이다. 재발 방지 관점의 관찰: 저장소 파일을 심링크로 참조하는 임시 샌드박스에서 `rm -rf` 를 쓰면 경로에 따라 **심링크를 통과해** 원본을 지울 수 있다 — 샌드박스는 `/tmp` 밑에 두고, 삭제는 샌드박스 루트에만 하며, 저장소 쓰기가 필요한 산출물은 `COCOTB_RESULTS_FILE` 처럼 명시 리다이렉트한다.
+
+## 33. C-2 — RTL 모듈 제거 절차 성문화 + 고아 4종 일괄 판정 (2026-08-18, normative)
+
+**사용자 결정 (2026-08-18)**: *"C-2 는 **절차 성문화 후 4종 일괄 판정**"*. 본 절은 그 순서 그대로 집행한다 — §12a 규칙 6 을 먼저 세우고, 그 규칙에 **자기 자신을 적용**해 4종을 판정한다.
+
+### 33.1 절차 성문화 — §12a 규칙 6 (승격 + 2단계 신설)
+
+§31.6 이 blockquote 초안으로 남긴 규칙 6 을 **§12a 본문으로 승격**했다. 승격은 전사가 아니라 **확장**이다 — 초안의 (a)~(i) 에 두 단계를 신설했다:
+
+- **(d) 합성 스크립트 소스 목록 갱신**
+- **(e) 다른 `MOD` 의 `VERILOG_SOURCES` 갱신**
+
+**신설 근거 (본 절이 발견한 것)**: lint 는 `PE` 를 *"`synth_pod.ys`/`synth_cluster.ys` 가 `PE.v` 를 read_verilog 하지만 … `hierarchy -top` 에서 프루닝된다"* 로 서술한다. 이 서술은 참이지만 **"안 읽어도 된다" 를 함의하지 않는다.** 프루닝은 **모듈**에 대한 것이고, 스크립트는 **파일을 이름으로** 나열한다 — 즉 **파일 부재 = 즉시 에러**다. 실측한 4개 지점:
+
+| 지점 | 파일 부재 시 거동 |
+|---|---|
+| `synth/scripts/common.tcl` (`POD_SOURCES`) | **가드 없음** — `read_verilog` 에서 죽는다 |
+| `synth/scripts/synth_u30_pod_hiu.tcl` | `FATAL: source not found` + **`exit 1`** (명시 중단) |
+| `synth/lattice/scripts/synth_pod.ys` | yosys `read_verilog` 중단 |
+| `synth/lattice/scripts/synth_cluster.ys` | yosys `read_verilog` 중단 |
+
+초안이 이 단계를 빠뜨린 것은 **당시 후보 3종이 우연히 합성 소스 목록에 0건**이었기 때문이다. 구멍은 없었던 것이 아니라 **드러나지 않았을 뿐**이며, `PE.v` 를 후보에 넣는 순간 드러났다. 같은 이유로 (e) 도 신설했다 — `PE.v` 는 `MOD=PE` 뿐 아니라 **`MOD=Cluster` / `MOD=Pod` 의 `VERILOG_SOURCES` 에도** 실려 있어, 자기 분기만 지우면 두 빌드가 깨진다.
+
+**일괄 *판정* ≠ 일괄 *처분*.** 여러 모듈을 한 COMMIT 으로 묶는 이유는 lint 래칫이 서로 맞물려 개별 처리 시 중간 상태가 어긋나기 때문이다. §31.6 의 *"3모듈 일괄 처분 금지 — 근거가 서로 다르다"* 는 **무효화되지 않는다**. 아래 §33.3 은 4종에 대해 **서로 다른 4개의 결론**을 낸다.
+
+### 33.2 (a) 소비자 audit — 4축 전수 실측
+
+lint 표의 주장을 인용하지 않고 **본 절이 직접 재현**했다 (§12a 규칙 6 (a) 는 4축을 요구한다):
+
+| 모듈 | (i) `.v` 인스턴스 | (ii) `synth/` 소스 목록 | (iii) `asm/` | (iv) 외부 sibling 리포 |
+|---|---:|---:|---:|---:|
+| `TENSOR_ALU.v` | **0** | 0 | 0 | 0 |
+| `SIMD_ALU.v` | **0** | 0 | 0 | 0 |
+| `ALU_Extended.v` | **0** | 0 | 0 | 0 |
+| `PE.v` | **0** | **4** ⟵ (d) 의 발단 | 0 | 0 |
+
+- **(i) 판정 형식**: 모듈명 부분문자열이 아니라 **인스턴스화 구문**(`^\s*<모듈>\s*(#\(|<식별자>\()`)으로 셌다. `PE` 를 부분문자열로 세면 `PE_Core`/`PE_X`/`PE_ROWS` 가 잡혀 7개 파일이 나오지만, **인스턴스화는 0 건**이다. 대조군으로 같은 형식이 `PE_Core` 를 4건(`ISA_Decoder.v:175`, `Cluster.v:1172/1234/1295`) 잡는 것을 확인했다.
+- **(iv) 외부 리포 4곳**: `/home/ybi/Y4` · `/home/ybi/dasima` · `/home/ybi/wavetensor-sdk` · `/home/ybi/wavetensor-drivers` — 네 모듈 전부 **0 건**.
+- **`PE.v` 가 읽히고 버려진다는 것의 실측 증거**: `synth/reports/pod_2x2_2x2_impl_util.rpt` 의 계층표에 등장하는 모듈은 `Pod` / `Cluster` ×2 / `PE_Core` / `EHDecode` / `FP_StepSeq` ×2 뿐 — **bare `PE` 행 0 건**이다.
+
+### 33.3 개별 판정 (4종, 서로 다른 결론)
+
+| # | 모듈 | 판정 | (b) 정본 + 값 검증 | 결정 근거 |
+|---|---|---|---|---|
+| 1 | **`TENSOR_ALU.v`** | **폐기** | `PE_Core` (0x30/0x31/0x32) / `test_isa_decoder.py::test_matmul_2x2` · `::test_tensor_add` | superseded duplicate. 0x32 는 **현행 ISA 에 없는 의미론**, 0x30 은 프로젝트가 기각한 4×4 unrolled shape. MATMUL 무동작(O1)은 §31.7 이 **수리 기각**으로 종결했고 O2 는 §31.8 에서 **소멸**했다 — 즉 이 모듈에 남은 미래 작업이 0 이다 |
+| 2 | **`SIMD_ALU.v`** | **폐기** | `PE_Core` (0x10/0x11/0x12/0x13/0x1C/0x1F) / `test_isa_decoder.py` 스칼라 ALU·DIV·MOD·DIVMOD 값 검증군 | superseded duplicate. 디코드 opcode 6종 전부 `PE_Core` 구현 완료이고, 정작 **SIMD 계열 ISA opcode(0x60-0x65/0x69)는 하나도 디코드하지 않는다**. 유일한 잔여 blocker 였던 contingency 등재는 §33.3.1 에서 무효화 |
+| 3 | **`ALU_Extended.v`** | **유지 (폐기 아님)** | — (정본 지정 대상이 아니다) | (b) 를 세울 수 없다 — **중복이 아니기 때문**이다. 3종 중 유일하게 `Synth` 경고 **0 건**, 능동 유지보수 이력(`7105e3c`), 값 테스트 **16/16** 전부 result 값 assert. `reference` 지위를 유지하고, 비합성 참조 구현 보유의 정당성 검토는 **stable release 라운드로 이월**한다 |
+| 4 | **`PE.v`** | **폐기** | `Cluster.v` 의 `PE_Core` 직결 / `test_cluster.py` 57 케이스 (+ 래퍼가 감싸던 `ISA_Decoder` 는 `test_isa_decoder.py` 200 케이스가 직접 검증) | 이 파일의 **문서화된 계약이 사실과 반대**다 — 헤더가 *"Cluster 의 라우터가 각 PE 인스턴스를 식별하도록 `(PE_X, PE_Y)` 를 파라미터로 나른다"* 고 적는데, `Cluster.v` 는 `PE_Core` 를 직접 인스턴스화하고 `EHDecode` 를 cluster 레벨로 끌어올려 공유한다. 즉 **래퍼 계층 자체가 소멸**했고, 남은 것은 `ISA_Decoder` 를 이름만 바꿔 감싸며 wide 입력을 0 으로 묶는 27줄이다 |
+
+**판정 3 이 나머지와 다른 이유를 명기한다**: 규칙 6 은 *"제거의 정당성은 '안 쓰인다' 가 아니라 '정본이 있고 그것이 검증됐다'"* 다. `ALU_Extended` 는 (a) 소비자 audit 을 **네 모듈 중 똑같이 0 으로 통과**하지만 (b) 에서 막힌다 — 그 기능을 대신 제공하는 정본이 **없다**. "안 쓰인다" 만으로 지웠다면 규칙 6 이 금지하는 바로 그 추론이다.
+
+#### 33.3.1 `board_hw_plan.md` contingency 등재 무효화 (SIMD_ALU 의 선행 조건)
+
+`board_hw_plan.md` §6 리스크 매트릭스는 *"ECP5 84K LUT 부족 (MATMUL 이 DSP 없이 LUT 로 흡수 시)"* 의 완화책으로 *"넘칠 시 SIMD_ALU 대체"* 를 등재했다. **무효화 근거 2건**:
+
+1. **대체 대상 불일치 (치명적)** — 이 리스크 행은 **MATMUL** 에 관한 것인데, `SIMD_ALU` 는 **matmul 을 디코드하지 않는다** (0x10/0x11/0x12/0x13/0x1C/0x1F = 스칼라 ALU 6종). 대체제로 지목된 모듈이 대체 대상 기능을 **갖고 있지 않다** — 등재 자체가 성립하지 않는다.
+2. **면적·주파수 모두 역효과** — §28.8 O3 정찰 실측 **LUT 10,001 / Fmax 22.47 MHz**. LUT 부족을 완화하려는 자리에 10,001 LUT 를 넣는 것은 완화가 아니고, 22.47 MHz 는 100 MHz 문맥의 **4.45× 미달**이다.
+
+∴ 이 등재는 **실효성 없는 완화책**이며 §33.3 판정 2 의 선행 조건은 해소됐다. `board_hw_plan.md` 의 해당 행은 §12a 규칙 5 대로 **삭제하지 않고** 무효화 표기한다.
+
+### 33.4 착지 실측 — (d)~(k)
+
+| 단계 | 실행 | 실측 |
+|---|---|---|
+| (d) 합성 스크립트 | 4개 지점에서 `PE.v` 항목 제거 | 제거 후 4개 목록의 **전 항목이 실존 파일로 해소**됨을 재확인. `yosys read_verilog … hierarchy -top Cluster` **exit 0**, submodule = `PE_Core` ×6 + `EHDecode` ×1 (`PE` 0) |
+| (e) 다른 `MOD` 소스 | `MOD=Cluster` / `MOD=Pod` 의 `VERILOG_SOURCES` 에서 `PE.v` 제거 | 두 빌드 정상 |
+| (f) 파일 제거 | `TENSOR_ALU.v` · `SIMD_ALU.v` · `PE.v` | |
+| (g) `Makefile` `MOD` 분기 | 3분기 + **Valid 목록** 동시 갱신 (9 → 6) | 목록 누락 시 `parse_makefile_mods` 자기모순 즉시 종료 — 동시 갱신으로 회피 |
+| (h) 테스트 제거 | `test_tensor_alu.py` · `test_simd_alu.py` · `test_pe.py` | |
+| (i) §11 베이스라인 | 3행 무효화 표기 + 현행 계보 병기 (§11 배너) | |
+| (j) lint 표 + **래칫** | 3항목 제거, `UNCOVERED_MAX` 2→**1**, `SUPERSEDED_MAX` 3→**0** | `make lint` **6/6 exit 0** — uncovered 1 ≤ 1 / superseded 0 ≤ 0 / reference 1 ≤ 1 |
+| (k) superseded 배너 | §28.8 · §31.6 · §31.7 · §31.8 은 §12a 규칙 5 로 **무수정 보존**, 본 절이 처분 결과를 기록 | |
+| **GATE 재측정** | `make synth-sys-gate` 전 flow 재실행 | **exit 0 · 전 축 PASS** (아래) |
+
+**GATE S1-US 재측정 — 그리고 그 재측정이 필요했다는 것을 검사가 먼저 말했다.** 본 절은 `PE_Core.v` / `Cluster.v` / `ISA_Decoder.v` 의 **주석만** 고쳤다 (테스트 인용 갱신 + stale `PE.v` 참조 정정). 주석은 파싱에서 사라지므로 넷리스트는 동일할 **것이지만**, `fp_op_gate_check.py` 가 즉시 **STALE FAIL** 을 냈다 — `ISA_Decoder.v` / `PE_Core.v` 의 sha256 이 증거와 어긋난다는 것을 정확히 지목했다. §22.14b-10 의 provenance 강제가 **작성자 자신의 편집을 잡은 두 번째 사례**다(첫 사례는 §22.14b-12).
+
+여기서 `make premap-mul-evidence` 로 증거만 맞추는 것은 **§22.14b-13 ① 이 명시적으로 금지한 경로**다 (premap 축만 갱신되고 Vivado 6축은 옛 측정 그대로 PASS). 그래서 전 flow 를 다시 돌렸다:
+
+| 축 | C-1 측정 (§22.14b-12) | **C-2 재측정** | 판정 |
+|---|---:|---:|---|
+| `Synth 8-6014` | 15 | **15** | PASS |
+| LUT sites | 15,769 | **15,769** | PASS (ceiling 24,799) |
+| DSP48 | 39 | **39** | PASS (EXACT) |
+| premap `$mul` | 381 | **381** + provenance `sources+top` | PASS (EXACT) |
+| RAMB18 | 2 | **2** | PASS (EXACT) |
+| WHS | +0.019 ns | **+0.019 ns** | PASS |
+| DRC | 0 err / 6 warn | **0 err / 6 warn** | PASS |
+| CRIT WARN | 8 | **8** | PASS |
+| ERROR lines | 0 | **0** | PASS (binding) |
+| WNS / Fmax | +2.207 / 128.32 | **+2.207 ns / 128.32 MHz** | RECORDED |
+
+**전 축 비트 동일**이다. 이것이 "주석만 고쳤으니 같을 것" 이라는 **주장을 측정으로 대체**한 결과이며, 동시에 §22.14b-12 가 확인한 harness 결정성(같은 설계 → 같은 수치)의 세 번째 재현이다. **세 모듈 폐기가 GATE S1 축에 0 기여**임도 이것으로 확정된다 — 애초에 `sys_top_core` 소스 목록에 없었으므로 예상된 결과이나, 예상과 측정은 다르다.
+
+**`lint_known_defect_tests` 표가 비었다 — 이것을 "결함 0" 으로 읽지 말 것 (normative).** 두 선언(`test_matmul_golden_known_broken` / `test_alu_valid_is_not_result_valid`)은 `TENSOR_ALU.v` 의 O1/O1b 를 loud 하게 유지하려고 존재했고, **모듈이 폐기되면서 선언 대상이 사라진 것**이지 결함이 수리된 것이 아니다. 결함 서술과 **수리 기각 근거**는 §31.7/§31.8 에 superseded history 로 남는다. 검사기가 지키는 불변식은 *"표에 뭔가 있다"* 가 아니라 *"선언 없는 `expect_fail` 이 0 건"* 이므로, 빈 표에서도 검출력은 유지된다.
+
+#### 33.4.1 착지 중 발견 — 모듈 폐기가 **다른 불변식의 집행 leg 를 끊었다** (규칙 6 (h′) 의 발단)
+
+**증상**: `test_pe.py` 를 지우고 나서 `make lint` **6/6 exit 0**, 잔존 6 MOD 회귀 **전건 PASS**. 어느 검사도 문제를 보고하지 않았다.
+
+**실상**: §31.14.3 이 세운 H1/H2 자격자-홀드 불변식의 **3중 기계 집행** 중 하나가 사라졌다.
+
+| leg | 소재 | 폐기 후 |
+|---|---|---|
+| (1) 정적 집행 | `scripts/lint_output_payload_hold.py` (`make lint`) | 유지 |
+| (2) **런타임 감시** | **`test_pe.py::test_pe_output_payload_hold_invariant`** | **소실** |
+| (3) 뱅크 값 의미론 pin | `test_cluster.py::test_cluster_noc_bank_*` | 유지 |
+
+**왜 조용했는가**: `make lint` 가 보는 것은 (1) **자신**이지 *"(2) 가 존재하는가"* 가 아니다. 이 저장소가 반복해서 만나 온 결함 계열 — **검사가 자기 자신의 부재를 검사하지 않는다** — 의 또 다른 형태다.
+
+**어떻게 발견했는가**: `PE_Core.v` 와 `Cluster.v` 의 주석이 그 테스트를 **이름으로 인용**하고 있었고, 폐기 후 남은 참조를 전수 grep 하는 과정에서 걸렸다. 즉 **주석의 인용이 유일한 탐지 기전**이었다. (§31.4 가 *"계약을 주석으로만 두지 마라"* 로 지적한 실패의 **역방향** 사례다 — 여기서는 주석이 유일하게 남은 안전망이었다.)
+
+**처분**:
+1. **이식** — `test_isa_decoder.py::test_output_payload_hold_invariant` 로 옮겼다. 이식처가 `ISA_Decoder` 인 이유: `PE.v` 는 `ISA_Decoder` 를 이름만 바꿔 감싼 래퍼였고, 감시 대상 4신호(`output_payload`/`output_valid`/`mem_addr`/`memory_req`)는 전부 안쪽 `PE_Core` 레지스터가 그대로 올라온 것이라 **관측 지점이 동일**하다. 옛 래퍼의 wide 입력 tie-off 는 자극에서 wide 포트를 0 으로 두어 재현했다.
+2. **검출력 실증 (MUT-L)** — `PE_Core.v` 의 자격자 가드(`if (cr_valid_out) output_payload <= …` / `if (cr_memory_req) mem_addr <= …`)를 제거한 변이에 대해 **정확히 이 테스트 1건만 FAIL** (201 → PASS 200 / FAIL 1). 원복 후 `PE_Core.v` 는 바이트 동일. **이름만 옮기고 검출력을 잃지 않았음**을 이것으로 증명한다.
+3. **인용 갱신** — `PE_Core.v` / `Cluster.v` 의 두 인용을 새 이름으로 고치고, **"이 인용을 지우지 말 것 — 인용이 그 다리의 존재 증명"** 을 명기했다.
+4. **규칙 6 (h′) 신설** — 절차 자체에 이 대조를 넣었다. 본 절이 규칙 6 을 세운 바로 그 COMMIT 에서 **규칙 6 의 구멍을 스스로 밟았고**, 그 사실을 숨기지 않고 절차를 고쳤다.
+
+### 33.5 §12a 기록 · 균형 기록 · 이월
+
+- **§12a 순서 준수**: 본 절은 규칙 6 을 **먼저 성문화**하고 그 다음 적용했다. 규칙 3(spec-first)도 충족 — 절차·판정이 spec 에 먼저 적히고 파일 제거가 뒤따랐다.
+- **ISA 무접촉 (실측)**: 세 모듈 폐기는 `isa/wt64v1_isa.json` · 생성물 · `asm/` 를 **1바이트도 바꾸지 않는다**. `TENSOR_ALU` 가 디코드하던 0x30/0x31/0x32 는 `PE_Core` 가 계속 제공하고, `SIMD_ALU` 의 6종도 마찬가지다. 따라서 규칙 1~4 의 dead-opcode 절차(JSON→생성물→truth-table 재캡처)는 **발동하지 않는다** — truth-table recapture **0**, `domain_version` bump **0**.
+- **균형 기록 (폐기에 반대하는 근거도 남긴다)**: (i) 세 모듈의 값 테스트 25건(8+9+8)은 **건전했다** — 폐기 사유는 결함이 아니라 중복이므로, 회귀 총계 감소는 검사 약화처럼 보인다. 반박: 그 25건이 검증하던 기능은 전부 정본 테스트(`test_isa_decoder.py` 200 / `test_cluster.py` 57)가 **직접** 검증하며, 중복 검증의 소멸은 커버리지 소멸이 아니다. (ii) `PE.v` 는 "단일 PE standalone top" 이라는 미래 용도를 가질 수 있었다. 반박: 그 용도의 실체는 `ISA_Decoder` 를 top 으로 합성하는 것이고, `ISA_Decoder` 는 그대로 남아 있다 — 래퍼가 더하는 것은 wide 입력 tie-off 뿐이다.
+- **이월 (본 절이 닫지 않는 것)**:
+  1. **`ALU_Extended` 보유 정당성** — stable release 라운드. `reference` 래칫 1 이 이 판단을 조용히 영구화하지 못하게 잡고 있다.
+  2. **`ISA_Decoder` standalone 합성 경로** — `uncovered` 마지막 1건. `Top_Core` 안에서는 합성되므로 "전혀 합성되지 않는 RTL" 은 아니나, D1 류의 top-level 포트 결함은 standalone 에서만 드러난다.

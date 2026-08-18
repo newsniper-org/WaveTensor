@@ -7041,3 +7041,112 @@ async def test_frag_drain_priority_unaffected_by_case_result_s2(dut):
         "ADD intruder result illegally surfaced during the VFMA drain " \
         "-- frag-drain absolute priority did NOT hold against a " \
         "concurrent case_result_s2 arbitration"
+
+
+# =============================================================================
+# §31.14 H1/H2 자격자-홀드 불변식 — **런타임 감시 leg** (C-2 이식, spec §33.4)
+#
+# 이 테스트는 원래 `test_pe.py::test_pe_output_payload_hold_invariant` 였다.
+# C-2 가 `PE.v` 를 폐기하면서 그 파일이 사라졌고, 그 순간 §31.14.3 이 세운
+# **3중 기계 집행**의 세 다리 중 하나가 소리 없이 빠졌다:
+#
+#   (1) `scripts/lint_output_payload_hold.py`  — 정적 집행 (`make lint`)   [유지]
+#   (2) `test_pe.py::test_pe_output_payload_hold_invariant` — 런타임 감시  [소실]
+#   (3) `test_cluster.py::test_cluster_noc_bank_*` — 뱅크 값 의미론 pin    [유지]
+#
+# **`make lint` 는 이 소실을 잡지 못한다** — lint 가 보는 것은 (1) 자신이지
+# "(2) 가 존재하는가" 가 아니다. 그래서 삭제는 전 검사 PASS 상태로 통과했다.
+# `PE_Core.v` 와 `Cluster.v` 의 주석이 (2) 를 이름으로 인용하고 있었던 것이
+# 유일한 흔적이었고, 그 인용을 대조해 발견했다.
+#
+# 이식처가 `ISA_Decoder` 인 이유: `PE.v` 는 `ISA_Decoder` 를 이름만 바꿔
+# 감싸는 27줄 래퍼였고 (wide 입력을 0 으로 tie-off), 감시 대상 4신호
+# (`output_payload`/`output_valid`/`mem_addr`/`memory_req`)는 전부 안쪽
+# `PE_Core` 의 레지스터가 그대로 올라온 것이다. 즉 **관측 지점이 동일**하다.
+# 여기서 wide 입력을 0 으로 두는 것이 옛 래퍼의 tie-off 를 재현한다.
+# =============================================================================
+
+import random as _random  # noqa: E402
+
+_HOLD_OPCODES = (
+    0x10, 0x11, 0x12, 0x13, 0x1C, 0x1D, 0x1F,   # 스칼라 ALU / MUL / DIV 계열
+    0x04, 0x05,                                  # 메모리 (LD / ST — ST 는 D11')
+    0x30, 0x31,                                  # 텐서
+    0x6A,                                        # FRAG_INVAL ack (D11')
+    0x63,                                        # 2-fragment emit (frag drain)
+    0xFE,                                        # 미정의 (reject arm)
+)
+
+
+async def _hold_monitor(dut, cycles, rng):
+    """랜덤 자극을 주며 H1/H2 를 매 사이클 검사한다. 위반을 모아 돌려준다."""
+    violations = []
+    prev_payload = None
+    prev_addr = None
+    for _ in range(cycles):
+        # 자극: 매 사이클 새 명령을 던지거나 idle
+        if rng.random() < 0.45:
+            opc = rng.choice(_HOLD_OPCODES)
+            if opc in (0x04, 0x05):
+                instr = encode_instr(opc, _STD_PORT(),
+                                     eh_imm16(rng.randrange(1 << 12)))
+            else:
+                instr = encode_instr(opc, _STD_PORT(),
+                                     eh_opref(), flags=F_HAS_OPB)
+            dut.instruction.value = instr
+            dut.input_tag.value = _STD_TAG(dim=rng.choice((0, 0x05)))
+            dut.input_payload.value = rng.randrange(1 << 64)
+            dut.input_payload_b.value = rng.randrange(1 << 64)
+            dut.input_payload_b_valid.value = 1
+            dut.token_valid.value = 1
+        else:
+            dut.token_valid.value = 0
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+
+        # 4-state 를 그대로 보존해 비교한다 (X→0 전환도 "값이 바뀐 것"이다).
+        pay = str(dut.output_payload.value)
+        adr = str(dut.mem_addr.value)
+        val = int(dut.output_valid.value)
+        req = int(dut.memory_req.value)
+        if prev_payload is not None and pay != prev_payload and val != 1:
+            violations.append(("H1", prev_payload, pay))
+        if prev_addr is not None and adr != prev_addr and req != 1:
+            violations.append(("H2", prev_addr, adr))
+        prev_payload, prev_addr = pay, adr
+    return violations
+
+
+@cocotb.test()
+async def test_output_payload_hold_invariant(dut):
+    """§31.14 H1/H2 — 자격자가 0 인 사이클에 값 레지스터가 움직이면 FAIL.
+
+    이 불변식이 깨지면 `Cluster` NoC bank 가 토큰을 내지 않은 명령의 값으로
+    오염된다. v1.9 baseline 은 실제로 이것을 위반했고, 그 위반이 Cluster
+    경계에서 관측 가능한 값 변화를 만들었다 (spec §31.14.2 — 소비자가 읽은
+    B 피연산자가 `0x7777...` 에서 `0x3333...` 로 바뀐다).
+
+    C-2 이식 (spec §33.4): 원본은 `test_pe.py::test_pe_output_payload_hold_
+    invariant` 였다. `PE.v` 폐기로 소실될 뻔했으나 `PE_Core.v` / `Cluster.v`
+    주석이 이 테스트를 **이름으로** 인용하고 있어 발견됐다. **그 두 인용을
+    지우지 말 것** — 인용이 곧 이 다리의 존재 증명이다.
+
+    미검사 자극 축 (§28.4 항 8(c)): back-pressure 하의 재시도, HIU 왕복
+    메모리 응답, 다중 PE 동시 발행 (그것들은 Cluster 레벨 몫이다).
+    """
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+
+    all_violations = []
+    for seed in (20260818, 991, 4242):
+        await reset(dut)
+        rng = _random.Random(seed)
+        v = await _hold_monitor(dut, 900, rng)
+        all_violations.extend((seed, *x) for x in v)
+
+    assert not all_violations, (
+        f"§31.14 자격자-홀드 불변식 위반 {len(all_violations)}건 — 자격자가 "
+        "0 인 사이클에 값 레지스터가 움직였다. Cluster NoC bank "
+        "(OPREF.src_kind=1) 가 L-PE 슬롯의 저장소로 이 레지스터를 그대로 "
+        f"재사용하므로 이는 masked 가 아니다: {all_violations[:6]}"
+    )
