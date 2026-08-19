@@ -1,0 +1,498 @@
+# SPDX-License-Identifier: CC-BY-4.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# Hayagriva 서지. 본문에서 #cite 로 참조되는 키만 둔다.
+
+# ---------------------------------------------------------------------------
+# 명령어 형식 — 확장 헤더 사슬과 sentinel 종료
+# ---------------------------------------------------------------------------
+rfc8200:
+  type: Report
+  title: "Internet Protocol, Version 6 (IPv6) Specification"
+  author: ["Deering, Stephen E.", "Hinden, Robert M."]
+  date: 2017-07
+  serial-number:
+    rfc: 8200
+    doi: "10.17487/RFC8200"
+  organization: Internet Engineering Task Force
+  url: https://www.rfc-editor.org/rfc/rfc8200
+
+rfc2460:
+  type: Report
+  title: "Internet Protocol, Version 6 (IPv6) Specification"
+  author: ["Deering, Stephen E.", "Hinden, Robert M."]
+  date: 1998-12
+  serial-number:
+    rfc: 2460
+  organization: Internet Engineering Task Force
+  note: "RFC 8200 이 obsolete 시킨 판. 확장 헤더 사슬 설계의 원 논의 맥락"
+
+rfc7045:
+  type: Report
+  title: "Transmission and Processing of IPv6 Extension Headers"
+  author: ["Carpenter, Brian", "Jiang, Sheng"]
+  date: 2013-12
+  serial-number:
+    rfc: 7045
+  organization: Internet Engineering Task Force
+  note: "미지 확장 헤더 처분 규약 — 본 설계가 '가져오지 않기로' 한 부분의 출처"
+
+knr:
+  type: Book
+  title: "The C Programming Language"
+  author: ["Kernighan, Brian W.", "Ritchie, Dennis M."]
+  date: 1988
+  edition: 2
+  publisher: Prentice Hall
+  note: "널 종료 문자열 — sentinel 종료 관용구의 원형"
+
+# ---------------------------------------------------------------------------
+# 데이터플로 아키텍처 · Wave-Ordered Memory
+# ---------------------------------------------------------------------------
+wavescalar:
+  type: Article
+  title: "WaveScalar"
+  author: ["Swanson, Steven", "Michelson, Ken", "Schwerin, Andrew", "Oskin, Mark"]
+  date: 2003
+  page-range: 291-302
+  parent:
+    type: Proceedings
+    title: "Proceedings of the 36th Annual IEEE/ACM International Symposium on Microarchitecture (MICRO-36)"
+    publisher: IEEE
+  note: "wave-ordered memory 의 출처 — 데이터플로에서 메모리 순서를 보장하는 기전"
+
+wavescalar_tocs:
+  type: Article
+  title: "The WaveScalar Architecture"
+  author:
+    ["Swanson, Steven", "Schwerin, Andrew", "Mercaldi, Martha",
+     "Petersen, Andrew", "Putnam, Andrew", "Michelson, Ken",
+     "Oskin, Mark", "Eggers, Susan J."]
+  date: 2007-05
+  parent:
+    type: Periodical
+    title: "ACM Transactions on Computer Systems"
+    volume: 25
+    issue: 2
+  serial-number:
+    doi: "10.1145/1233307.1233308"
+  note: "wave-ordered memory 의 확장 서술"
+
+dennis_misunas:
+  type: Article
+  title: "A Preliminary Architecture for a Basic Data-Flow Processor"
+  author: ["Dennis, Jack B.", "Misunas, David P."]
+  date: 1974
+  page-range: 126-132
+  parent:
+    type: Proceedings
+    title: "Proceedings of the 2nd Annual Symposium on Computer Architecture (ISCA)"
+    publisher: ACM
+  note: "데이터플로 실행 모델의 고전"
+
+kahn:
+  type: Article
+  title: "The Semantics of a Simple Language for Parallel Programming"
+  author: ["Kahn, Gilles"]
+  date: 1974
+  page-range: 471-475
+  parent:
+    type: Proceedings
+    title: "Information Processing 74 — Proceedings of the IFIP Congress"
+    publisher: North-Holland
+  note: "결정론적 데이터플로 네트워크. 무손실·배압 계약의 이론적 배경"
+
+tartan:
+  type: Article
+  title: "Spatial Computation"
+  author: ["Budiu, Mihai", "Venkataramani, Girish", "Chelcea, Tiberiu", "Goldstein, Seth Copen"]
+  date: 2004
+  page-range: 14-26
+  parent:
+    type: Proceedings
+    title: "Proceedings of the 11th International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS XI)"
+    publisher: ACM
+  serial-number:
+    doi: "10.1145/1024393.1024396"
+
+# ---------------------------------------------------------------------------
+# 상호연결
+# ---------------------------------------------------------------------------
+dally_towles:
+  type: Book
+  title: "Principles and Practices of Interconnection Networks"
+  author: ["Dally, William J.", "Towles, Brian"]
+  date: 2004
+  publisher: Morgan Kaufmann
+  note: "torus·folded torus 형상, 가상 채널, 배압. 형상 선택 논의의 표준 참조"
+
+dally_route_packets:
+  type: Article
+  title: "Route Packets, Not Wires: On-Chip Interconnection Networks"
+  author: ["Dally, William J.", "Towles, Brian"]
+  date: 2001
+  page-range: 684-689
+  parent:
+    type: Proceedings
+    title: "Proceedings of the 38th Design Automation Conference (DAC)"
+    publisher: ACM
+
+benini_demicheli:
+  type: Article
+  title: "Networks on Chips: A New SoC Paradigm"
+  author: ["Benini, Luca", "De Micheli, Giovanni"]
+  date: 2002-01
+  parent:
+    type: Periodical
+    title: "Computer"
+    volume: 35
+    issue: 1
+  page-range: 70-78
+
+# ---------------------------------------------------------------------------
+# 수치 · 산술
+# ---------------------------------------------------------------------------
+ieee754:
+  type: Report
+  title: "IEEE Standard for Floating-Point Arithmetic"
+  date: 2019
+  serial-number:
+    doi: "10.1109/IEEESTD.2019.8766229"
+  organization: IEEE
+  note: "IEEE Std 754-2019. 반올림·특수값·최소/최대 의미론의 정본"
+
+muller_handbook:
+  type: Book
+  title: "Handbook of Floating-Point Arithmetic"
+  author:
+    ["Muller, Jean-Michel", "Brunie, Nicolas", "de Dinechin, Florent",
+     "Jeannerod, Claude-Pierre", "Joldes, Mioara", "Lefèvre, Vincent",
+     "Melquiond, Guillaume", "Revol, Nathalie", "Torres, Serge"]
+  date: 2018
+  edition: 2
+  publisher: Birkhäuser
+  note: "정확 누산·오차 해석. exact-integer 격자 누산의 배경"
+
+kulisch:
+  type: Book
+  title: "Computer Arithmetic and Validity: Theory, Implementation, and Applications"
+  author: ["Kulisch, Ulrich"]
+  date: 2013
+  edition: 2
+  publisher: De Gruyter
+  note: "완전 정확 누산기(complete register) — 정수 격자 누산 설계의 직접 선행"
+
+gustafson_posit:
+  type: Article
+  title: "Beating Floating Point at its Own Game: Posit Arithmetic"
+  author: ["Gustafson, John L.", "Yonemoto, Isaac"]
+  date: 2017
+  parent:
+    type: Periodical
+    title: "Supercomputing Frontiers and Innovations"
+    volume: 4
+    issue: 2
+  page-range: 71-86
+  note: "대안 수 체계. 가변 정밀도 논의의 비교 대상"
+
+bf16:
+  type: Web
+  title: "BFloat16: The Secret to High Performance on Cloud TPUs"
+  author: ["Wang, Shibo", "Kanwar, Pankaj"]
+  date: 2019
+  publisher: Google Cloud
+  note: "bf16 형식의 설계 의도"
+
+stochastic_rounding:
+  type: Article
+  title: "Stochastic Rounding and its Probabilistic Backward Error Analysis"
+  author: ["Connolly, Michael P.", "Higham, Nicholas J.", "Mary, Theo"]
+  date: 2021
+  parent:
+    type: Periodical
+    title: "SIAM Journal on Scientific Computing"
+    volume: 43
+    issue: 1
+  note: "확률적 반올림의 오차 해석 — 결정론 요건과의 긴장 관계"
+
+# ---------------------------------------------------------------------------
+# 암호 · 엔트로피
+# ---------------------------------------------------------------------------
+rfc8439:
+  type: Report
+  title: "ChaCha20 and Poly1305 for IETF Protocols"
+  author: ["Nir, Yoav", "Langley, Adam"]
+  date: 2018-06
+  serial-number:
+    rfc: 8439
+    doi: "10.17487/RFC8439"
+  organization: Internet Engineering Task Force
+  url: https://www.rfc-editor.org/rfc/rfc8439
+
+bernstein_chacha:
+  type: Article
+  title: "ChaCha, a Variant of Salsa20"
+  author: ["Bernstein, Daniel J."]
+  date: 2008
+  parent:
+    type: Proceedings
+    title: "Workshop Record of SASC 2008: The State of the Art of Stream Ciphers"
+  url: https://cr.yp.to/chacha/chacha-20080128.pdf
+
+xchacha:
+  type: Report
+  title: "XChaCha: eXtended-nonce ChaCha and AEAD_XChaCha20_Poly1305"
+  author: ["Arciszewski, Scott"]
+  date: 2020
+  serial-number:
+    serial: "draft-irtf-cfrg-xchacha-03"
+  organization: IRTF CFRG
+  note: "HChaCha20 부표준키 유도 — 본 설계 마스킹의 준거 대상"
+
+sp80090b:
+  type: Report
+  title: "Recommendation for the Entropy Sources Used for Random Bit Generation"
+  author: ["Turan, Meltem Sönmez", "Barker, Elaine", "Kelsey, John",
+           "McKay, Kerry A.", "Baish, Mary L.", "Boyle, Mike"]
+  date: 2018-01
+  serial-number:
+    serial: "NIST SP 800-90B"
+    doi: "10.6028/NIST.SP.800-90B"
+  organization: National Institute of Standards and Technology
+  note: "반복 계수(RCT)·적응 비율(APT) 건강성 검사의 정본"
+
+sp80090a:
+  type: Report
+  title: "Recommendation for Random Number Generation Using Deterministic Random Bit Generators"
+  author: ["Barker, Elaine", "Kelsey, John"]
+  date: 2015-06
+  serial-number:
+    serial: "NIST SP 800-90A Rev. 1"
+    doi: "10.6028/NIST.SP.800-90Ar1"
+  organization: National Institute of Standards and Technology
+  note: "조건화 — 본 설계에서는 범위 밖(후속 단계)"
+
+von_neumann:
+  type: Article
+  title: "Various Techniques Used in Connection with Random Digits"
+  author: ["von Neumann, John"]
+  date: 1951
+  parent:
+    type: Periodical
+    title: "National Bureau of Standards Applied Mathematics Series"
+    volume: 12
+  page-range: 36-38
+  note: "편향 제거 추출기의 원형"
+
+ro_trng:
+  type: Article
+  title: "A Provably Secure True Random Number Generator with Built-In Tolerance to Active Attacks"
+  author: ["Sunar, Berk", "Martin, William J.", "Stinson, Douglas R."]
+  date: 2007-01
+  parent:
+    type: Periodical
+    title: "IEEE Transactions on Computers"
+    volume: 56
+    issue: 1
+  page-range: 109-119
+  note: "링 발진기 기반 엔트로피원의 해석"
+
+kocher_timing:
+  type: Article
+  title: "Timing Attacks on Implementations of Diffie-Hellman, RSA, DSS, and Other Systems"
+  author: ["Kocher, Paul C."]
+  date: 1996
+  page-range: 104-113
+  parent:
+    type: Proceedings
+    title: "Advances in Cryptology — CRYPTO '96"
+    publisher: Springer
+  note: "타이밍 채널 — 상수 시간 요건의 근거"
+
+bernstein_cachetiming:
+  type: Report
+  title: "Cache-Timing Attacks on AES"
+  author: ["Bernstein, Daniel J."]
+  date: 2005
+  url: https://cr.yp.to/antiforgery/cachetiming-20050414.pdf
+
+# ---------------------------------------------------------------------------
+# 형식 검증
+# ---------------------------------------------------------------------------
+lamport_specifying:
+  type: Book
+  title: "Specifying Systems: The TLA+ Language and Tools for Hardware and Software Engineers"
+  author: ["Lamport, Leslie"]
+  date: 2002
+  publisher: Addison-Wesley
+  note: "선-formal 단계의 방법론적 기반"
+
+lamport_temporal:
+  type: Article
+  title: "The Temporal Logic of Actions"
+  author: ["Lamport, Leslie"]
+  date: 1994-05
+  parent:
+    type: Periodical
+    title: "ACM Transactions on Programming Languages and Systems"
+    volume: 16
+    issue: 3
+  page-range: 872-923
+
+newcombe_aws:
+  type: Article
+  title: "How Amazon Web Services Uses Formal Methods"
+  author:
+    ["Newcombe, Chris", "Rath, Tim", "Zhang, Fan", "Munteanu, Bogdan",
+     "Brooker, Marc", "Deardeuff, Michael"]
+  date: 2015-04
+  parent:
+    type: Periodical
+    title: "Communications of the ACM"
+    volume: 58
+    issue: 4
+  page-range: 66-73
+  note: "산업 규모에서 명세-선행이 실제로 무엇을 잡는가"
+
+clarke_emerson:
+  type: Article
+  title: "Design and Synthesis of Synchronization Skeletons Using Branching Time Temporal Logic"
+  author: ["Clarke, Edmund M.", "Emerson, E. Allen"]
+  date: 1981
+  parent:
+    type: Proceedings
+    title: "Logics of Programs"
+    publisher: Springer
+  note: "모델 검사의 출발점"
+
+clarke_mc_book:
+  type: Book
+  title: "Model Checking"
+  author: ["Clarke, Edmund M.", "Grumberg, Orna", "Peled, Doron A."]
+  date: 1999
+  publisher: MIT Press
+
+biere_bmc:
+  type: Article
+  title: "Symbolic Model Checking without BDDs"
+  author: ["Biere, Armin", "Cimatti, Alessandro", "Clarke, Edmund M.", "Zhu, Yunshan"]
+  date: 1999
+  page-range: 193-207
+  parent:
+    type: Proceedings
+    title: "Tools and Algorithms for the Construction and Analysis of Systems (TACAS)"
+    publisher: Springer
+  note: "유계 모델 검사 — 후-formal 단계의 RTL 대상 기법"
+
+sheeran_induction:
+  type: Article
+  title: "Checking Safety Properties Using Induction and a SAT-Solver"
+  author: ["Sheeran, Mary", "Singh, Satnam", "Stålmarck, Gunnar"]
+  date: 2000
+  page-range: 127-144
+  parent:
+    type: Proceedings
+    title: "Formal Methods in Computer-Aided Design (FMCAD)"
+    publisher: Springer
+  note: "k-귀납 — 유계 검사를 완전 증명으로 올리는 경로"
+
+demillo_mutation:
+  type: Article
+  title: "Hints on Test Data Selection: Help for the Practicing Programmer"
+  author: ["DeMillo, Richard A.", "Lipton, Richard J.", "Sayward, Frederick G."]
+  date: 1978-04
+  parent:
+    type: Periodical
+    title: "Computer"
+    volume: 11
+    issue: 4
+  page-range: 34-41
+  note: "변이 검사 — 본 문서의 '가드 삭제 실험' 이 모델 층위에 적용한 발상"
+
+jia_harman_mutation:
+  type: Article
+  title: "An Analysis and Survey of the Development of Mutation Testing"
+  author: ["Jia, Yue", "Harman, Mark"]
+  date: 2011-09
+  parent:
+    type: Periodical
+    title: "IEEE Transactions on Software Engineering"
+    volume: 37
+    issue: 5
+  page-range: 649-678
+
+# ---------------------------------------------------------------------------
+# 가속기 · 정량화
+# ---------------------------------------------------------------------------
+tpu_isca:
+  type: Article
+  title: "In-Datacenter Performance Analysis of a Tensor Processing Unit"
+  author: ["Jouppi, Norman P.", "Young, Cliff", "Patil, Nishant", "Patterson, David"]
+  date: 2017
+  page-range: 1-12
+  parent:
+    type: Proceedings
+    title: "Proceedings of the 44th Annual International Symposium on Computer Architecture (ISCA)"
+    publisher: ACM
+  serial-number:
+    doi: "10.1145/3079856.3080246"
+
+eyeriss:
+  type: Article
+  title: "Eyeriss: An Energy-Efficient Reconfigurable Accelerator for Deep Convolutional Neural Networks"
+  author: ["Chen, Yu-Hsin", "Krishna, Tushar", "Emer, Joel S.", "Sze, Vivienne"]
+  date: 2017-01
+  parent:
+    type: Periodical
+    title: "IEEE Journal of Solid-State Circuits"
+    volume: 52
+    issue: 1
+  page-range: 127-138
+
+bitfusion:
+  type: Article
+  title: "Bit Fusion: Bit-Level Dynamically Composable Architecture for Accelerating Deep Neural Networks"
+  author:
+    ["Sharma, Hardik", "Park, Jongse", "Suda, Naveen", "Lai, Liangzhen",
+     "Chau, Benson", "Chandra, Vikas", "Esmaeilzadeh, Hadi"]
+  date: 2018
+  page-range: 764-775
+  parent:
+    type: Proceedings
+    title: "Proceedings of the 45th Annual International Symposium on Computer Architecture (ISCA)"
+    publisher: IEEE
+  note: "비트 단위 가변 정밀도 연산기 — '가변 ALU' 의 정밀도 축 선행 연구"
+
+einsum:
+  type: Article
+  title: "A Domain-Specific Architecture for Deep Neural Networks"
+  author: ["Jouppi, Norman P.", "Young, Cliff", "Patil, Nishant", "Patterson, David"]
+  date: 2018-09
+  parent:
+    type: Periodical
+    title: "Communications of the ACM"
+    volume: 61
+    issue: 9
+  page-range: 50-59
+
+# ---------------------------------------------------------------------------
+# 격리 · 가상화
+# ---------------------------------------------------------------------------
+sriov:
+  type: Report
+  title: "PCI Express Base Specification"
+  date: 2022
+  organization: PCI-SIG
+  note: "구성 공간·기능 격리 모델의 배경"
+
+iommu_isolation:
+  type: Article
+  title: "Utilizing IOMMUs for Virtualization in Linux and Xen"
+  author: ["Ben-Yehuda, Muli", "Mason, Jon", "Xenidis, Jimi",
+           "Krieger, Orran", "van Doorn, Leendert", "Nakajima, Jun",
+           "Mallick, Asit", "Wahlig, Elsie"]
+  date: 2006
+  parent:
+    type: Proceedings
+    title: "Proceedings of the Linux Symposium"
+  note: "페이지 단위 격리 — 파티션 임대 모델의 배경"
