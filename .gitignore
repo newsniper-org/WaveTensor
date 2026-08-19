@@ -43,6 +43,12 @@ synth/reports/fp_ops/*.backup.jou
 # TLC model checker scratch (proofs/tla/)
 proofs/tla/states/
 proofs/tla/*.old
+# TLC 는 불변식 위반 run 마다 반례 trace 를 모듈 옆에 뱉는다.
+# run.sh 는 MUST-FAIL 을 14건 의도적으로 돌리므로 **게이트를 한 번
+# 돌릴 때마다 트리가 더러워진다** (실측: 1회 실행에 42개). 커밋된 적
+# 없는 순수 부산물이다 — 증거는 derived/traces/ 에 별도로 보존된다.
+proofs/tla/*_TTrace_*.tla
+proofs/tla/*_TTrace_*.bin
 
 # Vivado CWD scratch for `make synth-sys-gate` (keeps clockInfo.txt/.Xil out
 # of the repo root — the gate reports themselves are tracked, this is not).

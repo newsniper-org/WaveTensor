@@ -1,0 +1,58 @@
+{
+  "name": "WaveTensor 검증 환경 (formal + sim)",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "ALA_SNAPSHOT": "2026/08/12",
+      "TLA_VERSION": "1.8.0",
+      "COCOTB_VERSION": "2.0.1",
+      "WITH_SBY": "0",
+      "UID": "${localEnv:UID:1000}",
+      "GID": "${localEnv:GID:1000}"
+    }
+  },
+
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+
+  "remoteUser": "wt",
+  // VS Code 는 이 값으로 컨테이너 사용자 UID 를 호스트에 맞춘다.
+  // ⚠️ rootless podman 을 **수동으로** 쓸 때는 이것이 적용되지 않는다 —
+  //    `--userns=keep-id` 가 필요하다. 없으면 저장소가 컨테이너 안에서
+  //    uid 0 소유로 보여 TLC 가 `states/` 를 못 만들고 형식 게이트가 죽는다
+  //    (실측: util.Assert$TLCRuntimeException "could not make a directory").
+  //    README 의 수동 실행 예를 그대로 쓸 것.
+  "updateRemoteUserUID": true,
+
+  "containerEnv": {
+    // cocotb 결과 파일을 tracked results.xml 위에 쓰지 않는다.
+    // 호스트에서 반복해서 밟았던 함정을 환경 기본값으로 막는다.
+    "COCOTB_RESULTS_FILE": "/tmp/cocotb-results.xml"
+  },
+
+  "postCreateCommand": "~/wt-toolversions.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "mshr-h.veriloghdl",
+        "ms-python.python",
+        "alygin.vscode-tlaplus",
+        "myriad-dreamin.tinymist"
+      ],
+      "settings": {
+        "files.eol": "\n",
+        "editor.insertSpaces": true
+      }
+    }
+  },
+
+  // ⛔ Vivado 는 이 컨테이너에 없다 (의도).
+  //    합성 gate 는 호스트에서:
+  //      make synth-sys-gate SYS_GATE=sys_top_core PART=xcu55c-fsvh2892-2L-e
+  //      python3 synth/scripts/fp_op_gate_check.py
+  //    컨테이너에서 도는 것: make lint / cocotb / proofs/tla/run.sh / golden
+  "remoteEnv": {
+    "WT_ENV": "devcontainer"
+  }
+}
