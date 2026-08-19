@@ -98,10 +98,20 @@ will be rejected.
   generated includes). cocotb regression must pass on the affected module.
 * **Software**: All cocotb tests must continue to pass. Assembler unit
   tests (`python -m unittest -q asm.test_wavetensor_asm`) must pass.
-* **Lint**: `make lint` must pass (ISA-table freshness + frag-FSM
-  invariant). Fallback without cocotb installed (Makefile parse needs
-  cocotb-config): run `python3 scripts/lint_isa_tables_fresh.py` and
-  `python3 scripts/lint_frag_total_m1_held.py` directly.
+* **Lint**: `make lint` must pass. It is **seven** stdlib-only checks, not
+  two — this list was stale for several releases, which is exactly the
+  failure mode `lint_estimate_index` exists to catch:
+  `lint_isa_tables_fresh` (generated ISA artifacts match the JSON) ·
+  `lint_frag_total_m1_held` (frag-drain FSM invariant) ·
+  `lint_synth_coverage` (every cocotb-verified module declares a synthesis
+  position) · `lint_output_payload_hold` (qualifier-hold invariant) ·
+  `lint_frag_slots_dual_run` (FRAG_SLOTS=1/4 dual build is really run) ·
+  `lint_known_defect_tests` (`expect_fail` two-way ratchet) ·
+  `lint_estimate_index` (spec §39.2 estimate index: anchors live, IDs
+  agree with spec §39.2.3 both ways, graduation evidence exists).
+  Each is runnable directly without cocotb, e.g.
+  `python3 scripts/lint_isa_tables_fresh.py`. Note `make lint` itself
+  parses the Makefile, which needs `cocotb-config` on PATH.
 * **ISA single source (v1.8.0a §23.9)**: opcode identity / EH legality
   facts live ONLY in `isa/wt64v1_isa.json`. To change them: edit the
   JSON, run `python3 scripts/gen_isa_tables.py generate`, commit the

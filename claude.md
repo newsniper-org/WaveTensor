@@ -210,26 +210,33 @@ Target: AMD/Xilinx FPGA, pure Verilog RTL (no HLS), 2-Pod scale (512 PEs) protot
 
 ### Makefile (모듈별 회귀 실행)
 ```
-# 아래 test 수는 2026-08-18 실측이다 (`grep -c '^@cocotb.test' test_*.py` 와
+# 아래 test 수는 2026-08-19 실측이다 (`grep -c '^@cocotb.test' test_*.py` 와
 # 전 모듈 실행이 일치). 이 표가 실제보다 낮으면 **그 차이만큼의 회귀가
 # 기준선 안에서 조용히 통과**하므로, 수치가 어긋난 것을 보면 표를 고칠 것
 # — 문서 오타가 아니라 검사 약화다 (spec §32.8 의 "기준선 303" 오기 참조).
+#
+# 2026-08-19 정정 (spec §39.3.5 항 1): 이 표는 **312 로 stale 이었다** —
+# 3a-C3/C4 착지분(§37.5 가 이미 329 로 기록)이 여기 반영되지 않아 17건의
+# 회귀가 기준선 안에서 조용히 통과할 수 있었다. 위 문장이 요구하는 정정을
+# 이제 이행한다. **이 축을 재는 lint 은 아직 없다** (spec §39.4 이월 6).
 make MOD=HIU            #  22 tests
-make MOD=ISA_Decoder    # 201 tests (truth-table differential + H1/H2 홀드 감시 포함)
+make MOD=ISA_Decoder    # 210 tests (truth-table differential + H1/H2 홀드 감시 포함)
 make MOD=ALU_Extended   #  16 tests
 make MOD=Top_Core       #   8 tests (HIU + ISA_Decoder 통합)
-make MOD=Cluster        #  57 tests (4-PE grid + NoC + frag cache; FRAG_SLOTS=4 로도 실행)
-make MOD=Pod            #   8 tests (4-Cluster grid)
-#                       # ---- 6모듈 합계 312 (감소 금지 축) ----
+make MOD=Cluster        #  63 tests (4-PE grid + NoC + frag cache; FRAG_SLOTS=4 로도 실행)
+make MOD=Pod            #  10 tests (4-Cluster grid)
+#                       # ---- 6모듈 합계 329 (감소 금지 축) ----
 # C-2 (2026-08-18, spec §33): MOD 9 → 6. Tensor_ALU / SIMD_ALU / PE 는 모듈
 # 자체가 폐기됐다 (superseded duplicate — 정본은 PE_Core / Cluster 직결).
-# 336 → 312 = **−25 +1**: −25 는 폐기된 세 모듈의 테스트 전량, +1 은
+# 336 → 312 (C-2 시점) = **−25 +1**: −25 는 폐기된 세 모듈의 테스트 전량, +1 은
 # test_output_payload_hold_invariant 이식분 (§31.14 H1/H2 런타임 감시 leg 를
 # test_pe.py 에서 여기로 옮겼다 — 모듈 폐기가 그 다리를 끊을 뻔했다).
 # **이 −25 를 "회귀" 로 읽지 말 것** — 증감이 폐기분·이식분과 정확히
 # 일치한다는 것이 회귀가 섞이지 않았다는 증거다.
 python -m unittest asm.test_wavetensor_asm   # 어셈블러 단위
-make lint                                    # 6종 lint (ISA freshness / frag FSM 불변식 / ...)
+make lint                                    # 7종 lint (ISA freshness / frag FSM 불변식 /
+                                             #  합성 지위 / payload 홀드 / 이중 빌드 /
+                                             #  known-defect 래칫 / 추정치 색인 §39.2)
 make test-cluster-both                       # FRAG_SLOTS 1·4 양 빌드
 
 # 합성 gate (spec §28 / §22.14b):

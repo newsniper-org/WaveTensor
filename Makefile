@@ -415,7 +415,22 @@ lattice-clean:
 #                               a green CI; that path is now closed, and
 #                               undeclared `expect_fail` markers (silencing
 #                               a regression) fail too.
-# All six are stdlib-only Python; runnable directly without cocotb:
+#   * lint_estimate_index      — spec §39.2. 추정치 색인의 기계 집행. 이
+#                               저장소는 자기 추정치를 성실하게 적어 왔지만
+#                               ("hand-count 추정이고 합성 실측이 아니다",
+#                               "gate 판정 근거로 인용하지 마라") 그 성실함을
+#                               지키는 것이 아무것도 없었다: 실측이 추정
+#                               대역을 전부 하회했는데 원 추정 줄에 supersede
+#                               배너가 없고, "졸업" 배너가 붙었는데 정작
+#                               졸업한 것은 문장의 절반뿐이었다. 이 lint 은
+#                               색인의 anchor 실재(정확히 1회) / spec §39.2.3
+#                               본표와의 ID 양방향 정합 / 졸업 근거의 실재 /
+#                               인용 금지 / 4축 래칫을 강제한다. **산문
+#                               스캐너는 의도적으로 advisory 다** — 고정밀
+#                               검출기의 오탐률을 실측했더니 HEAD 증분 31줄
+#                               중 진성이 약 3건이었고, 그런 검사를
+#                               merge-blocker 로 걸면 사람이 lint 를 끈다.
+# All seven are stdlib-only Python; runnable directly without cocotb:
 #   python3 scripts/lint_isa_tables_fresh.py
 # =============================================================================
 
@@ -428,6 +443,7 @@ lint:
 	python3 $(CURDIR)/scripts/lint_output_payload_hold.py
 	python3 $(CURDIR)/scripts/lint_frag_slots_dual_run.py
 	python3 $(CURDIR)/scripts/lint_known_defect_tests.py
+	python3 $(CURDIR)/scripts/lint_estimate_index.py
 
 # =============================================================================
 # P0-2 — Cluster 이중 빌드(FRAG_SLOTS=1 / FRAG_SLOTS=4) 단일 진입점.
