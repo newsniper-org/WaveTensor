@@ -18,6 +18,9 @@
   [데이터플로], [dataflow], [@sec:preface], [실행 시점을 *피연산자 도착*이 정하는 모델],
   [토큰], [token], [@sec:preface], [64비트 페이로드 + 80비트 태그],
   [호스트 인터페이스 · HIU], [Host Interface Unit], [@sec:hiu], [*호스트가 장치에 닿는 유일한 경계*],
+  [DVMA], [Direct Virtual Memory Access], [@sec:hiu], [장치가 *가상 주소*로 메모리 접근. 호스트 MMU 유무와 무관해야 한다],
+  [zero-copy], [zero-copy], [@sec:hiu], [호스트와 장치가 *같은 페이지*를 직접 봄 — 복사 없음. *일관성과 다르다*],
+  [캐시 일관성], [coherency], [@sec:hiu], [하드웨어가 같은 값을 보장. zero-copy 보다 *강한* 성질이며 요건이 아니다],
 )
 
 == 구조

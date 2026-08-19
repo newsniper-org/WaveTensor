@@ -485,6 +485,13 @@ sriov:
   organization: PCI-SIG
   note: "구성 공간·기능 격리 모델의 배경"
 
+cxl_spec:
+  type: Report
+  title: "Compute Express Link (CXL) Specification"
+  date: 2023
+  organization: CXL Consortium
+  note: "장치–호스트 캐시 일관 상호연결. 본 설계에서 zero-copy 의 **전제가 아니다** — 3.4"
+
 iommu_isolation:
   type: Article
   title: "Utilizing IOMMUs for Virtualization in Linux and Xen"
