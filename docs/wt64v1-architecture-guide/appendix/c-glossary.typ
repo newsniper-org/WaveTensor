@@ -8,6 +8,18 @@
 
 국문 정본 · 영문 대응 · 정의 위치.
 
+== 기계
+
+#table(
+  columns: (auto, auto, auto, 1fr),
+  align: (left, left, left, left),
+  table.header([*국문*], [*영문*], [*절*], [*뜻*]),
+  [WT64v1], [WaveTensor 64-bit Dataflow ISA v1], [@sec:preface], [이 문서의 대상 — 데이터플로 텐서 가속기 규약],
+  [데이터플로], [dataflow], [@sec:preface], [실행 시점을 *피연산자 도착*이 정하는 모델],
+  [토큰], [token], [@sec:preface], [64비트 페이로드 + 80비트 태그],
+  [호스트 인터페이스 · HIU], [Host Interface Unit], [@sec:hiu], [*호스트가 장치에 닿는 유일한 경계*],
+)
+
 == 구조
 
 #table(
@@ -60,6 +72,8 @@
   [route fault], [route fault], [@sec:isa], [*머신 구성이 틀렸다* — 부트 코드가 고친다],
   [sticky fault], [sticky fault], [@sec:hiu], [한 번 서면 명시적 해제까지 유지],
   [폴딩], [folding], [@sec:security], [여러 fault 를 종합 신호로 모으기],
+  [주소 마스킹], [address masking], [@sec:security], [물리 주소를 키스트림으로 가리기],
+  [확산], [diffusion], [@sec:security], [입력 1비트가 출력 전반에 퍼지는 성질. *의존 ≠ 확산*],
   [loud fault], [loud fault], [@sec:security], [*조용히 실패하지 않는다* — 이 프로젝트의 제1규율],
 )
 
@@ -86,6 +100,8 @@
   columns: (auto, auto, auto, 1fr),
   align: (left, left, left, left),
   table.header([*국문*], [*영문*], [*절*], [*뜻*]),
+  [형식 검증], [formal verification], [@sec:formal], [*모든 도달 가능 상태*에 대한 논증. 테스트와 다르다],
+  [속성], [property], [@sec:formal], [검사 대상 명제 하나. 번호·단계·상태를 갖는다],
   [선-formal], [pre-formal], [@sec:formal], [RTL 이전에 모델 위에서 속성 검사],
   [후-formal], [post-formal], [@sec:formal], [구현된 RTL 에 대해 같은 속성 검사],
   [가드 삭제 실험], [guard-deletion experiment], [@sec:formal], [보호 조건을 지워 속성의 검출력 확인],
