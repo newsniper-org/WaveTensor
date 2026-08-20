@@ -240,6 +240,40 @@ expect_fail "증인: fault 가 실재하는가"        NoLoss_witness_NoFault.cf
 expect_fail "증인: 단이 실제로 가득 차는가"     NoLoss_witness_NoFullStage.cfg     "$M" Witness_NoFullStage
 expect_fail "증인: 넓은 요청이 실제로 거절되는가" NoLoss_witness_NoWideRejection.cfg "$M" Witness_NoWideRejection
 
+# ---------------------------------------------------------------------------
+# EXT-1 · EXT-2 · EXT-3 — 순회와 검산 (Walk.tla)
+#
+# EXT-3 은 검사들 *자신에 대한* 메타 속성이다 — 검사가 서로를 대신하고 있지
+# 않은가. 셋이 겹쳐 있어도 하나가 나머지에 함축되면 실제로는 둘뿐이고, 그
+# 사실은 아무 테스트도 드러내지 않는다. 모든 테스트가 여전히 통과하므로.
+# ---------------------------------------------------------------------------
+M=Walk.tla
+expect_pass "EXT-1/2/3 기저 — 상한 3"        Walk_base.cfg   "$M"
+expect_pass "형상 sweep — 상한 2"            Walk_shapeA.cfg "$M"
+expect_pass "형상 sweep — 상한 4"            Walk_shapeB.cfg "$M"
+
+# 네 가드가 한 불변식을 공유한다 — 그것이 증명하려는 것 그 자체다.
+# 넷을 각각 지웠을 때 넷 다 깨진다 = 넷 모두 독립적으로 필요하다.
+expect_fail "가드 삭제: end_authority (길이가 종료를 정한다)" \
+    Walk_del_end_authority.cfg  "$M" Inv_SoundVerdict
+expect_fail "가드 삭제: len_check (길이 검산)" \
+    Walk_del_len_check.cfg      "$M" Inv_SoundVerdict
+expect_fail "가드 삭제: cap_check (상한 안전장치)" \
+    Walk_del_cap_check.cfg      "$M" Inv_SoundVerdict
+expect_fail "가드 삭제: junk_check (미지 종류)" \
+    Walk_del_junk_check.cfg     "$M" Inv_SoundVerdict
+expect_fail "가드 삭제: post_end_gated (종료 뒤 효과)" \
+    Walk_del_post_end_gated.cfg "$M" Inv_NoPostEndEffect
+
+expect_fail "증인: 통과가 실재하는가"          Walk_witness_NoOk.cfg          "$M" Witness_NoOk
+expect_fail "증인: 거절이 실재하는가"          Walk_witness_NoMalformed.cfg   "$M" Witness_NoMalformed
+# 아래 셋이 EXT-3 「독립성」의 직접 형태다 — 그 검사 *하나만* 잡는 사슬이
+# 존재해야 한다. 존재하지 않으면 그 검사는 나머지에 함축된 것이다.
+expect_fail "독립성: 길이 검산만 잡는 사슬"     Walk_witness_NoLenOnly.cfg     "$M" Witness_NoLenOnly
+expect_fail "독립성: 상한 검사만 잡는 사슬"     Walk_witness_NoCapOnly.cfg     "$M" Witness_NoCapOnly
+expect_fail "독립성: 미지 종류만 잡는 사슬"     Walk_witness_NoJunkOnly.cfg    "$M" Witness_NoJunkOnly
+expect_fail "증인: 종료 뒤 슬롯이 실재하는가"   Walk_witness_NoPostEndSlot.cfg "$M" Witness_NoPostEndSlot
+
 if [ "$rc" -eq 0 ]; then
     echo " 전체 $runs run 이 선언대로 행동했다 — 게이트 GREEN"
 else
