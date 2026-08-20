@@ -92,3 +92,9 @@ rtl/spinal/project/project/
 rtl/spinal/.bsp/
 .bloop/
 .metals/
+
+# TLC 가 반례를 낼 때 남기는 trace-exploration spec / 디스크 상태.
+# 매 run 마다 타임스탬프 이름으로 새로 생기는 산출물이다.
+rtl/formal/tla/*_TTrace_*.tla
+rtl/formal/tla/*_TTrace_*.bin
+rtl/formal/tla/states/
