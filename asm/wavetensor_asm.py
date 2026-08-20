@@ -12,7 +12,6 @@ Levels
 
       .alias name  value          – symbolic constant
       .default_port dest=N        – auto-insert PORT EH where missing
-                                    (legacy: `mask=N out=N`, 개정 전 의미)
       .default_precision mode=N   – auto-insert PRECISION EH + flag
       RESHAPE  .from N  .to N     – macro lowering to VIEW
       (future) RESHAPE/PERMUTE for non-PE-local shapes
@@ -46,7 +45,7 @@ Typical use
     >>> from wavetensor_asm import assemble
     >>> insts = assemble('''
     ...     .alias port_a 0x01
-    ...     .default_port mask=port_a out=0
+    ...     .default_port dest=port_a
     ...     ADD .imm16 5
     ... ''')
     >>> hex(insts[0])
@@ -654,7 +653,7 @@ def _lower_batchnorm_infer(inst: Instruction) -> List[Instruction]:
       1) SIMD_MUL_WIDE_VEC   x, K1  →  t   (opcode 0x65)
       2) SIMD_ADD_WIDE_VEC   t, K2  →  y   (opcode 0x63)
 
-    Args: .k1 <64-bit int>, .k2 <64-bit int>, .port <dest | mask/out>.
+    Args: .k1 <64-bit int>, .k2 <64-bit int>, .port dest=<LNID>.
     """
     k1 = _get_macro_arg(inst, 'k1', 'k1')
     k2 = _get_macro_arg(inst, 'k2', 'k2')
@@ -938,7 +937,7 @@ def _lower_rmsnorm(inst: Instruction) -> List[Instruction]:
              FRSQRT32 output to BOTH pairs at N=32, sharing one s)
 
     Args: .gamma <64-bit int (N=16) / 128-bit int (N=32, low half =
-    lanes 0-15)>, .port <dest | mask/out>; optional .eps <fp32 bits, default
+    lanes 0-15)>, .port dest=<LNID>; optional .eps <fp32 bits, default
     bits(2^-13)>, .n <16 (default) or 32>, .gfrac <gamma fractional
     bits k, default 3 = Q1.3> — see the eps-guard/fallback and fold
     contracts in the section comment above."""
@@ -1896,44 +1895,38 @@ def _encode_eh(eh: ExtensionHeader) -> Tuple[int, List[int]]:
     kind = eh.kind
     a = eh.args
     if kind == 'port':
-        # PORT EH 본문 16비트 — 두 문법이 **같은 비트 컨테이너**를 채운다.
+        # PORT EH 본문 16비트 = `dest_node_id` (정본 §1.4.1).
         #
-        #   .port dest=N            개정판 (정본 §1.4.1) — 평면 16비트 LNID
-        #   .port out=N mask=M      개정 전 — {목적지 8b, 입력 포트 마스크 8b}
+        #   dest_node_id[15:0] = PORT EH body[15:0]
+        #   본문의 비트 i 가 dest_node_id 의 비트 i 다. 재정렬·스왑·엔디언 변환 없음.
         #
-        # 비트열이 같은 이유는 §1.4.2 가 폐지를 이렇게 적기 때문이다:
-        # "8비트 입력 포트 마스크는 폐지한다. **그 비트들은 dest_node_id 의
-        #  하위 절반이 된다.**" 즉 개정은 인코딩이 아니라 **의미**를 바꾼다.
-        # 그래서 개정 전 소스로 만든 바이너리는 여전히 같은 비트를 내고,
-        # 달라지는 것은 기계가 그것을 무엇으로 읽는가다.
+        # 개정 전 `{목적지 8b, 입력 마스크 8b}` 문법은 **받지 않는다.**
+        # §1.4.2 가 입력 포트 마스크를 폐지했고, 폐지된 개념을 표현할 수 있는
+        # 문법을 남겨 두는 것은 정본이 경계하는 바로 그 형태다 —
+        # "관대함이 살 이익이 없고, 관대함은 조용한 오해의 통로가 된다."
         #
-        # 두 문법을 섞는 것은 오류다 — 어느 계약을 뜻했는지 알 수 없다.
-        has_dest = 'dest' in a
-        has_legacy = ('out' in a) or ('mask' in a)
-        if has_dest and has_legacy:
+        # 비트열이 같다는 사실이 오히려 위험하다: 두 문법이 공존하면 같은
+        # 비트가 어느 계약을 뜻했는지 소스에서도 알 수 없게 된다.
+        if ('out' in a) or ('mask' in a):
             raise AssemblerError(
-                f"line {eh.line}: .port 는 `dest=` (개정판) 또는 "
-                f"`out=/mask=` (개정 전) 중 하나만 쓴다. 섞으면 어느 계약을 "
-                f"뜻했는지 알 수 없다 (정본 §1.4.1/§1.4.2)"
+                f"line {eh.line}: .port out=/mask= 는 폐지됐다 (정본 §1.4.2). "
+                f"입력 포트 마스크는 더 이상 존재하지 않으며 그 비트들은 "
+                f"dest_node_id 의 하위 절반이다. `.port dest=N` 으로 쓸 것 — "
+                f"개정 전 `out=O mask=M` 은 `dest=(O<<8)|M` 과 같은 값이다"
             )
-        if has_dest:
-            dest = a['dest']
-            if not (0 <= dest <= 0xFFFF):
-                raise AssemblerError(
-                    f"line {eh.line}: .port dest={dest} 가 16비트를 넘는다. "
-                    f"LNID 는 평면 16비트이며 값 공간은 항상 0..65535 다"
-                )
-            body16 = dest & 0xFFFF
-        else:
-            mask = a.get('mask', 0)
-            out = a.get('out', 0)
-            if not (0 <= out <= 0xFF) or not (0 <= mask <= 0xFF):
-                raise AssemblerError(
-                    f"line {eh.line}: .port out={out} mask={mask} — "
-                    f"각각 8비트를 넘을 수 없다. 조용한 절단은 금지다"
-                )
-            body16 = ((out & 0xFF) << 8) | (mask & 0xFF)
-        return EH_PORT, [(body16 << 16) | (EH_PORT << 8) | 1]
+        if 'dest' not in a:
+            raise AssemblerError(
+                f"line {eh.line}: .port 에 dest= 가 없다. "
+                f"PORT EH 본문은 수신자 LNID 다 (정본 §1.4.1)"
+            )
+        dest = a['dest']
+        if not (0 <= dest <= 0xFFFF):
+            raise AssemblerError(
+                f"line {eh.line}: .port dest={dest} 가 16비트를 넘는다. "
+                f"LNID 는 평면 16비트이며 값 공간은 항상 0..65535 다"
+            )
+        return EH_PORT, [((dest & 0xFFFF) << 16) | (EH_PORT << 8) | 1]
+
     if kind == 'imm16':
         v = _take_immediate(eh)
         return EH_IMM16, [((v & 0xFFFF) << 16) | (EH_IMM16 << 8) | 1]

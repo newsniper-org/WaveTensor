@@ -150,7 +150,7 @@ async def test_pod_einsum_matmul_e2e(dut):
     expected = pack16(19, 22, 43, 50)
 
     instr = assemble_one(
-        ".default_port mask=0x01 out=0\n"
+        ".default_port dest=0x01\n"
         "EINSUM opb .subscript A=i,j B=j,k O=i,k .opref\n"
     )
     await _fire(dut, instr, _tag(port_context_id=0x00, dim=0x05),

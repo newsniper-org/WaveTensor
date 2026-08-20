@@ -117,7 +117,7 @@ async def test_add_does_not_touch_hiu(dut):
     await _reset(dut)
 
     instr = assemble_one(
-        f".default_port mask={PORT_MASK:#x} out={PORT_OUT}\n"
+        f".default_port dest={(PORT_OUT << 8) | PORT_MASK:#x}\n"
         "ADD .imm16 5\n"
     )
     await _fire(dut, instr, _std_tag(), payload_a=10)
@@ -143,7 +143,7 @@ async def test_load_routes_through_hiu(dut):
 
     # input_payload supplies a base address; .mem offset adds to it.
     instr = assemble_one(
-        f".default_port mask={PORT_MASK:#x} out={PORT_OUT}\n"
+        f".default_port dest={(PORT_OUT << 8) | PORT_MASK:#x}\n"
         "LD .mem offset=0x100\n"
     )
     # Provide the data the DMA engine will surface on mem_data_out.
@@ -212,7 +212,7 @@ async def test_tlb_fill_passthrough(dut):
     await _install_tlb_entry(dut, partition=0, virt=virt_page, phys=phys_page)
 
     instr = assemble_one(
-        f".default_port mask={PORT_MASK:#x} out={PORT_OUT}\n"
+        f".default_port dest={(PORT_OUT << 8) | PORT_MASK:#x}\n"
         "LD .mem offset=0x100\n"
     )
     dut.mem_data_in.value = 0xCAFEBABE
@@ -241,7 +241,7 @@ async def test_error_flag_propagates(dut):
     await _reset(dut)
 
     instr = assemble_one(
-        f".default_port mask={PORT_MASK:#x} out={PORT_OUT}\n"
+        f".default_port dest={(PORT_OUT << 8) | PORT_MASK:#x}\n"
         "DIV .imm16 0\n"
     )
     await _fire(dut, instr, _std_tag(), payload_a=99)
@@ -287,7 +287,7 @@ async def test_einsum_matmul_e2e_through_top(dut):
 
     instr = assemble_one(
         f".alias port_a {PORT_MASK:#x}\n"
-        f".default_port mask=port_a out={PORT_OUT}\n"
+        f".default_port dest=port_a\n"
         "EINSUM opb .subscript A=i,j B=j,k O=i,k .opref\n"
     )
     await _fire(dut, instr, _std_tag(dim=0x05),

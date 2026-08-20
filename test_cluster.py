@@ -152,7 +152,7 @@ async def test_cluster_einsum_matmul_runs_on_pe0(dut):
     expected = pack16(19, 22, 43, 50)
 
     instr = assemble_one(
-        ".default_port mask=0x01 out=0\n"
+        ".default_port dest=0x01\n"
         "EINSUM opb .subscript A=i,j B=j,k O=i,k .opref\n"
     )
     await _fire(dut, instr, _tag(port_context_id=0, dim=0x05),
@@ -171,7 +171,7 @@ async def test_cluster_error_flag_propagates(dut):
 
     # DIV by zero on PE 0
     instr = assemble_one(
-        ".default_port mask=0x01 out=0\n"
+        ".default_port dest=0x01\n"
         "DIV .imm16 0\n"
     )
     await _fire(dut, instr, _tag(port_context_id=0), payload_a=99)

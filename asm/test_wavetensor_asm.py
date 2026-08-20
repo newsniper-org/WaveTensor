@@ -278,13 +278,13 @@ class TestParser(unittest.TestCase):
         self.assertEqual(prog.stmts[0].value, 1)
 
     def test_default_port_decl(self):
-        prog = parse(".default_port mask=0x01 out=0\n")
+        prog = parse(".default_port dest=0x01\n")
         self.assertIsInstance(prog.stmts[0], DefaultDecl)
         self.assertEqual(prog.stmts[0].kind, 'port')
-        self.assertEqual(prog.stmts[0].args, {'mask': 1, 'out': 0})
+        self.assertEqual(prog.stmts[0].args, {'dest': 1})
 
     def test_simple_instruction(self):
-        prog = parse("ADD .port mask=0x01 out=0 .imm16 5\n")
+        prog = parse("ADD .port dest=0x01 .imm16 5\n")
         inst = prog.stmts[0]
         self.assertIsInstance(inst, Instruction)
         self.assertEqual(inst.mnemonic, 'ADD')
@@ -295,12 +295,12 @@ class TestParser(unittest.TestCase):
         self.assertEqual(inst.eh_list[1].args, {'_pos': [5]})
 
     def test_instruction_with_flags(self):
-        prog = parse("MATMUL opb .port mask=0x01 out=0 .opref\n")
+        prog = parse("MATMUL opb .port dest=0x01 .opref\n")
         inst = prog.stmts[0]
         self.assertEqual(inst.flags, {'opb'})
 
     def test_subscript_parsing(self):
-        prog = parse("EINSUM opb .port mask=1 out=0 "
+        prog = parse("EINSUM opb .port dest=1 "
                      ".subscript A=i,j B=j,k O=i,k .opref\n")
         sub = prog.stmts[0].eh_list[1]
         self.assertEqual(sub.kind, 'subscript')
@@ -309,7 +309,7 @@ class TestParser(unittest.TestCase):
         self.assertEqual(sub.args['O'], ['i', 'k'])
 
     def test_label(self):
-        prog = parse("loop:\nADD .port mask=1 out=0 .imm16 1\n")
+        prog = parse("loop:\nADD .port dest=1 .imm16 1\n")
         self.assertEqual(prog.stmts[0].name, 'loop')
 
 
@@ -321,24 +321,24 @@ class TestAliasPass(unittest.TestCase):
 
     def test_resolves_kw_arg(self):
         prog = parse(".alias port_a 0x01\n"
-                     "ADD .port mask=port_a out=0 .imm16 5\n")
+                     "ADD .port dest=port_a .imm16 5\n")
         out = alias_pass(prog)
         # AliasDecl is consumed; only Instruction remains.
         self.assertEqual(len(out.stmts), 1)
         port_eh = out.stmts[0].eh_list[0]
-        self.assertEqual(port_eh.args['mask'], 1)
+        self.assertEqual(port_eh.args['dest'], 1)
 
     def test_undefined_alias_raises(self):
-        prog = parse("ADD .port mask=undefined_alias out=0 .imm16 5\n")
+        prog = parse("ADD .port dest=undefined_alias .imm16 5\n")
         # Note: at the parser stage we don't know it's an alias yet — it's
         # treated as a string. The encoder-level check fires.
         with self.assertRaises(AssemblerError):
-            assemble("ADD .port mask=undefined_alias out=0 .imm16 5\n")
+            assemble("ADD .port dest=undefined_alias .imm16 5\n")
 
     def test_subscript_labels_are_not_resolved(self):
         # `i, j` are subscript labels, not aliases — must survive alias_pass.
         prog = parse(".alias i 99\n"
-                     "EINSUM opb .port mask=1 out=0 "
+                     "EINSUM opb .port dest=1 "
                      ".subscript A=i,j B=j,k O=i,k .opref\n")
         out = alias_pass(prog)
         sub = out.stmts[0].eh_list[1]
@@ -352,41 +352,41 @@ class TestAliasPass(unittest.TestCase):
 class TestDefaultPass(unittest.TestCase):
 
     def test_default_port_filled_when_missing(self):
-        prog = parse(".default_port mask=0x01 out=0\n"
+        prog = parse(".default_port dest=0x01\n"
                      "ADD .imm16 5\n")
         out = default_pass(alias_pass(prog))
         eh_kinds = [eh.kind for eh in out.stmts[0].eh_list]
         self.assertEqual(eh_kinds, ['port', 'imm16'])
 
     def test_explicit_port_overrides_default(self):
-        prog = parse(".default_port mask=0x01 out=0\n"
-                     "ADD .port mask=0x04 out=2 .imm16 5\n")
+        prog = parse(".default_port dest=0x01\n"
+                     "ADD .port dest=0x204 .imm16 5\n")
         out = default_pass(alias_pass(prog))
         port_eh = out.stmts[0].eh_list[0]
-        self.assertEqual(port_eh.args, {'mask': 4, 'out': 2})
+        self.assertEqual(port_eh.args, {'dest': 0x204})
 
     def test_nop_does_not_get_default_port(self):
-        prog = parse(".default_port mask=0x01 out=0\nNOP\n")
+        prog = parse(".default_port dest=0x01\nNOP\n")
         out = default_pass(alias_pass(prog))
         self.assertEqual(out.stmts[0].eh_list, [])
 
     def test_default_precision_sets_prec_flag(self):
         prog = parse(".default_precision mode=0x12\n"
-                     "FLOOR .port mask=1 out=0\n")
+                     "FLOOR .port dest=1\n")
         out = default_pass(alias_pass(prog))
         self.assertIn('prec', out.stmts[0].flags)
         self.assertEqual(out.stmts[0].eh_list[-1].kind, 'precision')
 
     def test_default_precision_dim_only_sets_dim_ovr(self):
         prog = parse(".default_precision dim=0x05\n"
-                     "FLOOR .port mask=1 out=0\n")
+                     "FLOOR .port dest=1\n")
         out = default_pass(alias_pass(prog))
         self.assertIn('dim_ovr', out.stmts[0].flags)
         self.assertNotIn('prec', out.stmts[0].flags)
 
     def test_default_precision_both_sets_both_flags(self):
         prog = parse(".default_precision mode=0x12 dim=0x05\n"
-                     "FLOOR .port mask=1 out=0\n")
+                     "FLOOR .port dest=1\n")
         out = default_pass(alias_pass(prog))
         self.assertIn('prec', out.stmts[0].flags)
         self.assertIn('dim_ovr', out.stmts[0].flags)
@@ -399,7 +399,7 @@ class TestDefaultPass(unittest.TestCase):
 class TestMacroPass(unittest.TestCase):
 
     def test_reshape_lowers_to_view(self):
-        src = ".default_port mask=0x01 out=0\nRESHAPE .from 0x03 .to 0x05\n"
+        src = ".default_port dest=0x01\nRESHAPE .from 0x03 .to 0x05\n"
         prog = legality_pass(macro_pass(default_pass(alias_pass(parse(src)))))
         self.assertEqual(len(prog.stmts), 1)
         self.assertEqual(prog.stmts[0].mnemonic, 'VIEW')
@@ -408,13 +408,13 @@ class TestMacroPass(unittest.TestCase):
         self.assertIn('port', eh_kinds)
 
     def test_reshape_count_mismatch_raises(self):
-        src = ".default_port mask=1 out=0\nRESHAPE .from 0x03 .to 0x0A\n"
+        src = ".default_port dest=1\nRESHAPE .from 0x03 .to 0x0A\n"
         # 0x03 → 4 elems; 0x0A = 0b1010 → axis sizes 3,3 → 9 elems
         with self.assertRaises(AssemblerError):
             assemble(src)
 
     def test_non_macro_passes_through(self):
-        src = "ADD .port mask=1 out=0 .imm16 5\n"
+        src = "ADD .port dest=1 .imm16 5\n"
         out = macro_pass(default_pass(alias_pass(parse(src))))
         self.assertEqual(out.stmts[0].mnemonic, 'ADD')
 
@@ -427,44 +427,44 @@ class TestLegalityPass(unittest.TestCase):
 
     def test_unknown_mnemonic_raises(self):
         with self.assertRaises(AssemblerError):
-            assemble("FROBNICATE .port mask=1 out=0\n")
+            assemble("FROBNICATE .port dest=1\n")
 
     def test_matmul_without_opb_flag_raises(self):
         with self.assertRaises(AssemblerError):
-            assemble("MATMUL .port mask=1 out=0 .opref\n")
+            assemble("MATMUL .port dest=1 .opref\n")
 
     def test_matmul_with_subscript_forbidden(self):
         with self.assertRaises(AssemblerError):
-            assemble("MATMUL opb .port mask=1 out=0 .opref "
+            assemble("MATMUL opb .port dest=1 .opref "
                      ".subscript A=i,j B=j,k O=i,k\n")
 
     def test_alu_binary_neither_imm_nor_opref_raises(self):
         with self.assertRaises(AssemblerError):
-            assemble("ADD .port mask=1 out=0\n")
+            assemble("ADD .port dest=1\n")
 
     def test_alu_binary_both_imm_and_opref_raises(self):
         with self.assertRaises(AssemblerError):
-            assemble("ADD opb .port mask=1 out=0 .imm16 5 .opref\n")
+            assemble("ADD opb .port dest=1 .imm16 5 .opref\n")
 
     def test_shape_op_without_imm16_raises(self):
         with self.assertRaises(AssemblerError):
-            assemble("SQZ .port mask=1 out=0\n")
+            assemble("SQZ .port dest=1\n")
 
     def test_prec_flag_without_precision_eh_raises(self):
         with self.assertRaises(AssemblerError):
-            assemble("ADD prec .port mask=1 out=0 .imm16 5\n")
+            assemble("ADD prec .port dest=1 .imm16 5\n")
 
     def test_dim_ovr_flag_without_precision_eh_raises(self):
         with self.assertRaises(AssemblerError):
-            assemble("ADD dim_ovr .port mask=1 out=0 .imm16 5\n")
+            assemble("ADD dim_ovr .port dest=1 .imm16 5\n")
 
     def test_prec_flag_with_precision_eh_passes(self):
         # Should not raise
-        assemble("ADD prec .port mask=1 out=0 .imm16 5 .precision mode=0x12\n")
+        assemble("ADD prec .port dest=1 .imm16 5 .precision mode=0x12\n")
 
     def test_dim_ovr_flag_with_precision_eh_passes(self):
         # Should not raise
-        assemble("ADD dim_ovr .port mask=1 out=0 .imm16 5 .precision dim=0x05\n")
+        assemble("ADD dim_ovr .port dest=1 .imm16 5 .precision dim=0x05\n")
 
 
 # =============================================================================
@@ -485,44 +485,44 @@ class TestEncoderRoundtrip(unittest.TestCase):
 
     def test_wave_advance(self):
         self._assert_eq(
-            "WADV .port mask=0x01 out=0\n",
+            "WADV .port dest=0x01\n",
             ref.encode_instr(0x01, ref.eh_port(0x01, 0)),
         )
 
     def test_steer(self):
         self._assert_eq(
-            "STEER .port mask=0x01 out=0\n",
+            "STEER .port dest=0x01\n",
             ref.encode_instr(0x02, ref.eh_port(0x01, 0)),
         )
 
     def test_load_with_mem(self):
         self._assert_eq(
-            "LD .port mask=0x01 out=0 .mem offset=0x100\n",
+            "LD .port dest=0x01 .mem offset=0x100\n",
             ref.encode_instr(0x04, ref.eh_port(0x01, 0), ref.eh_mem(0x100)),
         )
 
     def test_add_with_imm(self):
         self._assert_eq(
-            "ADD .port mask=0x01 out=0 .imm16 5\n",
+            "ADD .port dest=0x01 .imm16 5\n",
             ref.encode_instr(0x10, ref.eh_port(0x01, 0), ref.eh_imm16(5)),
         )
 
     def test_add_with_opref(self):
         self._assert_eq(
-            "ADD opb .port mask=0x01 out=0 .opref\n",
+            "ADD opb .port dest=0x01 .opref\n",
             ref.encode_instr(0x10, ref.eh_port(0x01, 0), ref.eh_opref(),
                              flags=ref.F_HAS_OPB),
         )
 
     def test_shift_left(self):
         self._assert_eq(
-            "SHL .port mask=0x01 out=0 .imm16 4\n",
+            "SHL .port dest=0x01 .imm16 4\n",
             ref.encode_instr(0x17, ref.eh_port(0x01, 0), ref.eh_imm16(4)),
         )
 
     def test_bits_reverse(self):
         self._assert_eq(
-            "BITREV .port mask=0x01 out=0\n",
+            "BITREV .port dest=0x01\n",
             ref.encode_instr(0x1F, ref.eh_port(0x01, 0)),
         )
 
@@ -530,25 +530,25 @@ class TestEncoderRoundtrip(unittest.TestCase):
 
     def test_squeeze(self):
         self._assert_eq(
-            "SQZ .port mask=0x01 out=0 .imm16 0\n",
+            "SQZ .port dest=0x01 .imm16 0\n",
             ref.encode_instr(0x20, ref.eh_port(0x01, 0), ref.eh_imm16(0)),
         )
 
     def test_view(self):
         self._assert_eq(
-            "VIEW .port mask=0x01 out=0 .imm16 0x05\n",
+            "VIEW .port dest=0x01 .imm16 0x05\n",
             ref.encode_instr(0x22, ref.eh_port(0x01, 0), ref.eh_imm16(0x05)),
         )
 
     def test_perm_2x2(self):
         self._assert_eq(
-            "PERM .port mask=0x01 out=0 .imm16 0x01\n",
+            "PERM .port dest=0x01 .imm16 0x01\n",
             ref.encode_instr(0x23, ref.eh_port(0x01, 0), ref.eh_imm16(1)),
         )
 
     def test_red_axis_sum(self):
         self._assert_eq(
-            "RED .port mask=0x01 out=0 .imm16 0x00\n",
+            "RED .port dest=0x01 .imm16 0x00\n",
             ref.encode_instr(0x25, ref.eh_port(0x01, 0), ref.eh_imm16(0)),
         )
 
@@ -556,14 +556,14 @@ class TestEncoderRoundtrip(unittest.TestCase):
 
     def test_matmul(self):
         self._assert_eq(
-            "MATMUL opb .port mask=0x01 out=0 .opref\n",
+            "MATMUL opb .port dest=0x01 .opref\n",
             ref.encode_instr(0x30, ref.eh_port(0x01, 0), ref.eh_opref(),
                              flags=ref.F_HAS_OPB),
         )
 
     def test_einsum_matmul_pattern(self):
         self._assert_eq(
-            "EINSUM opb .port mask=0x01 out=0 "
+            "EINSUM opb .port dest=0x01 "
             ".subscript A=i,j B=j,k O=i,k .opref\n",
             ref.encode_instr(
                 0x32,
@@ -576,7 +576,7 @@ class TestEncoderRoundtrip(unittest.TestCase):
 
     def test_einsum_dot_pattern(self):
         self._assert_eq(
-            "EINSUM opb .port mask=0x01 out=0 "
+            "EINSUM opb .port dest=0x01 "
             ".subscript A=i B=i O= .opref\n",
             ref.encode_instr(
                 0x32,
@@ -592,7 +592,7 @@ class TestEncoderRoundtrip(unittest.TestCase):
     def test_default_port_yields_same_bits(self):
         with_defaults = assemble_one(
             ".alias port_a 0x01\n"
-            ".default_port mask=port_a out=0\n"
+            ".default_port dest=port_a\n"
             "ADD .imm16 7\n"
         )
         explicit = ref.encode_instr(
@@ -602,7 +602,7 @@ class TestEncoderRoundtrip(unittest.TestCase):
 
     def test_reshape_macro_yields_view_bits(self):
         macroed = assemble_one(
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "RESHAPE .from 0x03 .to 0x05\n"
         )
         direct = ref.encode_instr(
@@ -619,7 +619,7 @@ class TestLowerToLL(unittest.TestCase):
 
     def test_lowered_text_contains_view_after_reshape(self):
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "RESHAPE .from 0x03 .to 0x05\n"
         )
         ll = lower_to_ll(src)
@@ -627,7 +627,7 @@ class TestLowerToLL(unittest.TestCase):
         self.assertNotIn('RESHAPE', ll)
 
     def test_idempotent_on_pure_ll(self):
-        src = "ADD .port mask=0x01 out=0 .imm16 5\n"
+        src = "ADD .port dest=0x01 .imm16 5\n"
         ll = lower_to_ll(src)
         # Re-assembling the lowered text must produce the same bits.
         again = assemble_one(ll)
@@ -650,7 +650,7 @@ class TestEinsumLowering(unittest.TestCase):
     def test_hw_direct_passthrough_matmul(self):
         # ij,jk->ik is the HW MATMUL kernel, must not lower
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "EINSUM opb .subscript A=i,j B=j,k O=i,k .opref\n"
         )
         self.assertEqual(self._mnemonics(src), ['EINSUM'])
@@ -658,14 +658,14 @@ class TestEinsumLowering(unittest.TestCase):
     def test_hw_direct_passthrough_relabeled(self):
         # pq,qr->pr is alpha-equivalent to ij,jk->ik
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "EINSUM opb .subscript A=p,q B=q,r O=p,r .opref\n"
         )
         self.assertEqual(self._mnemonics(src), ['EINSUM'])
 
     def test_hw_direct_dot_passthrough(self):
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "EINSUM opb .subscript A=i B=i O= .opref\n"
         )
         self.assertEqual(self._mnemonics(src), ['EINSUM'])
@@ -673,7 +673,7 @@ class TestEinsumLowering(unittest.TestCase):
     def test_lower_ji_jk_to_ik(self):
         # ji,jk->ik needs A transposed before matmul, no other rewriting
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "EINSUM opb .subscript A=j,i B=j,k O=i,k .opref\n"
         )
         ms = self._mnemonics(src)
@@ -684,7 +684,7 @@ class TestEinsumLowering(unittest.TestCase):
         # output transposed: still a kernel A=ij B=jk so A and B straight,
         # but result needs final PERM
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "EINSUM opb .subscript A=i,j B=j,k O=k,i .opref\n"
         )
         ms = self._mnemonics(src)
@@ -695,7 +695,7 @@ class TestEinsumLowering(unittest.TestCase):
     def test_lower_4d_3d_einsum(self):
         # ijkl,jkm->iml — the canonical "needs full lowering" example
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "EINSUM opb .subscript A=i,j,k,l B=j,k,m O=i,m,l .opref "
             ".shape i=2 j=2 k=2 l=2 m=2\n"
         )
@@ -709,7 +709,7 @@ class TestEinsumLowering(unittest.TestCase):
 
     def test_trace_in_a_raises(self):
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "EINSUM opb .subscript A=i,i B=k O= .opref .shape i=2 k=2\n"
         )
         with self.assertRaises(AssemblerError):
@@ -720,7 +720,7 @@ class TestEinsumLowering(unittest.TestCase):
         splat that WT64v1 lacks — must raise with pointer to analysis memo."""
         # Label 'q' in O but not in A or B, size 2 → non-trivial
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "EINSUM opb .subscript A=i B=j O=i,j,q .opref "
             ".shape i=2 j=2 q=2\n"
         )
@@ -732,7 +732,7 @@ class TestEinsumLowering(unittest.TestCase):
         Result is matmul chain + UNSQUEEZE for each bcast dim."""
         # Label 'q' in O but not in A or B, size 1 → trivially lowerable
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "EINSUM opb .subscript A=i,j B=j,k O=i,k,q .opref "
             ".shape i=2 j=2 k=2 q=1\n"
         )
@@ -749,7 +749,7 @@ class TestEinsumLowering(unittest.TestCase):
         must match the label's location in O."""
         # O = [i, q, j] where q is size 1 broadcast; i and j come from A, B.
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "EINSUM opb .subscript A=i B=j O=i,q,j .opref "
             ".shape i=2 j=2 q=1\n"
         )
@@ -761,7 +761,7 @@ class TestEinsumLowering(unittest.TestCase):
         """v1.1 amendment: `bik,bkj->bij` batched matmul is now SIG_BMM,
         HW-direct pass-through (no macro lowering)."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "EINSUM opb .subscript A=b,i,k B=b,k,j O=b,i,j .opref "
             ".shape b=2 i=2 k=2 j=2\n"
         )
@@ -774,7 +774,7 @@ class TestEinsumLowering(unittest.TestCase):
     def test_trace_iij_v1_1_hw_direct_pass_through(self):
         """v1.1 amendment: `iij->j` is now SIG_TRACE_IIJ, HW-direct."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "EINSUM opb .subscript A=i,i,j B= O=j .opref "
             ".shape i=2 j=2\n"
         )
@@ -786,7 +786,7 @@ class TestEinsumLowering(unittest.TestCase):
         """v1.2 amendment: `abij,abjk->abik` (2-batch matmul) is now
         SIG_BMM_2, HW-direct pass-through at int4."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "EINSUM opb .subscript A=a,b,i,j B=a,b,j,k O=a,b,i,k .opref "
             ".shape a=2 b=2 i=2 j=2 k=2\n"
         )
@@ -798,7 +798,7 @@ class TestEinsumLowering(unittest.TestCase):
         """v1.2 amendment: `iijk->jk` (3D trace + 2 kept axes) is now
         SIG_TRACE_IIJK, HW-direct pass-through at int4."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "EINSUM opb .subscript A=i,i,j,k B= O=j,k .opref "
             ".shape i=2 j=2 k=2\n"
         )
@@ -813,7 +813,7 @@ class TestEinsumLowering(unittest.TestCase):
         `lower_required` (no matching PE primitive), but the encoding
         path itself is exercised — this closes the v1.2 raise."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "EINSUM opb .subscript A=a,b,c,i,j B=a,b,c,j,k O=a,b,c,i,k .opref "
             ".shape a=2 b=2 c=2 i=2 j=2 k=2\n"
         )
@@ -846,7 +846,7 @@ class TestEinsumLowering(unittest.TestCase):
         HW_DIRECT_EINSUM_SIGS_MULTI, so falls through to _lower_einsum_general
         which raises on batched contraction."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "EINSUM opb .subscript A=a,b,c,d,i,j B=a,b,c,d,j,k O=a,b,c,d,i,k "
             ".opref .shape a=2 b=2 c=2 d=2 i=2 j=2 k=2\n"
         )
@@ -857,7 +857,7 @@ class TestEinsumLowering(unittest.TestCase):
         """The lowered chain must encode through stage 5 / 6 cleanly,
         even if the resulting tensor sizes are above the single-PE limit."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "EINSUM opb .subscript A=j,i B=j,k O=i,k .opref "
             ".shape i=2 j=2 k=2\n"
         )
@@ -876,7 +876,7 @@ class TestMultiInstruction(unittest.TestCase):
     def test_three_instructions(self):
         src = (
             ".alias port_a 0x01\n"
-            ".default_port mask=port_a out=0\n"
+            ".default_port dest=port_a\n"
             "ADD .imm16 5\n"
             "MATMUL opb .opref\n"
             "EINSUM opb .subscript A=i B=i O= .opref\n"
@@ -899,7 +899,7 @@ class TestNormMacros(unittest.TestCase):
     def test_batchnorm_infer_expansion(self):
         """BATCHNORM_INFER → 2 primitives (SIMD_MUL_WIDE_VEC + SIMD_ADD_WIDE_VEC)."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "BATCHNORM_INFER opb .k1 0x1234_5678_9ABC_DEF0 "
             ".k2 0x0FED_CBA9_8765_4321\n"
         )
@@ -911,7 +911,7 @@ class TestNormMacros(unittest.TestCase):
     def test_batchnorm_infer_missing_k1_raises(self):
         """Missing .k1 directive raises clear error."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "BATCHNORM_INFER opb .k2 0xAAAA\n"
         )
         with self.assertRaises(wta.AssemblerError) as ctx:
@@ -944,7 +944,7 @@ class TestNormMacros(unittest.TestCase):
         (one pair at .n 16). The two FSCALAR B-constant producer
         dispatches (ADD .imm64) are explicitly emitted and counted."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "RMSNORM opb .gamma 0xDEADBEEFCAFEBABE\n"
         )
         insts = wta.assemble(src)
@@ -966,7 +966,7 @@ class TestNormMacros(unittest.TestCase):
         fp-eps producer/FS_ADD pair is dropped (1 producer remains on
         the 0e insert)."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "RMSNORM opb .gamma 0xDEADBEEFCAFEBABE .eps 0\n"
         )
         insts = wta.assemble(src)
@@ -983,7 +983,7 @@ class TestNormMacros(unittest.TestCase):
         7): the common eps=1e-5 default is REJECTED with a textual error
         naming both escapes (raise eps / .eps 0 clamp fallback)."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "RMSNORM opb .gamma 1 .eps %d\n" % wta.fp32_to_bits(1e-5)
         )
         with self.assertRaises(wta.AssemblerError) as ctx:
@@ -992,7 +992,7 @@ class TestNormMacros(unittest.TestCase):
         self.assertIn('.eps 0', str(ctx.exception))
         # boundary: exactly 2^-13 passes
         ok = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "RMSNORM opb .gamma 1 .eps %d\n" % wta.fp32_to_bits(2.0 ** -13)
         )
         wta.assemble(ok)   # must not raise
@@ -1000,7 +1000,7 @@ class TestNormMacros(unittest.TestCase):
         for bad in (0x7F800000, 0x7FC00000, 0x80000000 | wta.fp32_to_bits(0.5)):
             with self.assertRaises(wta.AssemblerError):
                 wta.assemble(
-                    ".default_port mask=0x01 out=0\n"
+                    ".default_port dest=0x01\n"
                     "RMSNORM opb .gamma 1 .eps %d\n" % bad)
 
     @staticmethod
@@ -1022,7 +1022,7 @@ class TestNormMacros(unittest.TestCase):
         verbatim, .n 4): 2 CVT + 3 FSCALAR + 1 FRSQRT with the UNFOLDED
         bits(0.25) — .n plumbed through, no fold on the 0d path."""
         insts = self._expand(
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "RMSNORM opb .gamma 1 .n 16\n"
         )
         fp_steps = [i for i in insts
@@ -1057,7 +1057,7 @@ class TestNormMacros(unittest.TestCase):
         # LAYERNORM: the 0d insert VERBATIM (deferral pin) — unfolded
         # constants, x256 producer + F2I retained, .n plumbed through.
         insts = self._expand(
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "LAYERNORM opb .gamma 1 .beta 2 .n 4\n"
         )
         fp_steps = [i for i in insts
@@ -1083,7 +1083,7 @@ class TestNormMacros(unittest.TestCase):
         on the completing beat) and NO imm/opref EH (port-only
         legality)."""
         insts = self._expand(
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "RMSNORM opb .gamma 0xDEADBEEFCAFEBABE\n"
         )
         gam = [i for i in insts if i.mnemonic == 'GAMMA_MUL_W']
@@ -1107,7 +1107,7 @@ class TestNormMacros(unittest.TestCase):
                          "DEQUANT is port-only (forbid_imm_any + "
                          "forbid_opref stand)")
         # whole-macro legality: the expansion must pass assemble() whole
-        wta.assemble(".default_port mask=0x01 out=0\n"
+        wta.assemble(".default_port dest=0x01\n"
                      "RMSNORM opb .gamma 0xDEADBEEFCAFEBABE\n")
 
     def test_rmsnorm_n32_two_pairs_share_scale(self):
@@ -1118,7 +1118,7 @@ class TestNormMacros(unittest.TestCase):
         .gamma are textual errors."""
         gamma = (0xAAAA_BBBB_CCCC_DDDD << 64) | 0x1111_2222_3333_4444
         insts = self._expand(
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "RMSNORM opb .gamma 0x%x .n 32\n" % gamma
         )
         opcodes = [wta.MNEMONIC_TO_OPCODE[i.mnemonic] for i in insts]
@@ -1131,13 +1131,13 @@ class TestNormMacros(unittest.TestCase):
         self.assertEqual(halves, [0x1111_2222_3333_4444,
                                   0xAAAA_BBBB_CCCC_DDDD])
         with self.assertRaises(wta.AssemblerError):
-            wta.assemble(".default_port mask=0x01 out=0\n"
+            wta.assemble(".default_port dest=0x01\n"
                          "RMSNORM opb .gamma 1 .n 8\n")
         with self.assertRaises(wta.AssemblerError):
-            wta.assemble(".default_port mask=0x01 out=0\n"
+            wta.assemble(".default_port dest=0x01\n"
                          "RMSNORM opb .gamma 0x%x .n 16\n" % (1 << 64))
         with self.assertRaises(wta.AssemblerError):
-            wta.assemble(".default_port mask=0x01 out=0\n"
+            wta.assemble(".default_port dest=0x01\n"
                          "RMSNORM opb .gamma 1 .gfrac 9\n")
 
     def test_rmsnorm_gamma_fold_bit_equiv(self):
@@ -1161,7 +1161,7 @@ class TestNormMacros(unittest.TestCase):
                     x = [rng.randint(0, 15) for _ in range(n)]
                     gam = [rng.randint(0, 15) for _ in range(n)]
                     insts = self._expand(
-                        ".default_port mask=0x01 out=0\n"
+                        ".default_port dest=0x01\n"
                         "RMSNORM opb .gamma 1 .n %d .gfrac %d .eps %d\n"
                         % (n, k, eps))
                     consts = [
@@ -1219,7 +1219,7 @@ class TestNormMacros(unittest.TestCase):
         uses (shared helper — drift-proof), then the v1.6.5c xc-reload
         tail bit-unchanged (CACHE_LOAD_WIDE + Q8.8 + MUL_VEC + ADD_VEC)."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "LAYERNORM opb .gamma 0x1111_2222_3333_4444 "
             ".beta 0x5555_6666_7777_8888\n"
         )
@@ -1239,7 +1239,7 @@ class TestNormMacros(unittest.TestCase):
         0x55 from step 1's OP_MEAN) independent of step 4's SCALAR_RSQRT
         hardcoding its own output dim_sizes to 0x00."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "LAYERNORM opb .gamma 0x1111_2222_3333_4444 "
             ".beta 0x5555_6666_7777_8888\n"
         )
@@ -1272,7 +1272,7 @@ class TestNormMacros(unittest.TestCase):
         _layernorm_xc_slot_addressing() helper, so this test also locks
         in that the refactor didn't silently diverge the two call sites."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "LAYERNORM opb .gamma 0x1111_2222_3333_4444 "
             ".beta 0x5555_6666_7777_8888\n"
         )
@@ -1303,7 +1303,7 @@ class TestNormMacros(unittest.TestCase):
         """The abort-cleanup instruction must actually assemble (legality-
         pass + encode) to opcode 0x6A, end to end through encode_pass."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "LAYERNORM opb .gamma 0x1111_2222_3333_4444 "
             ".beta 0x5555_6666_7777_8888\n"
         )
@@ -1323,7 +1323,7 @@ class TestNormMacros(unittest.TestCase):
     def test_layernorm_missing_beta_raises(self):
         """LAYERNORM missing .beta raises."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "LAYERNORM opb .gamma 0xAAAA\n"
         )
         with self.assertRaises(wta.AssemblerError) as ctx:
@@ -1333,7 +1333,7 @@ class TestNormMacros(unittest.TestCase):
     def test_primitive_simd_add_wide_scalar_legality(self):
         """SIMD_ADD_WIDE_SCALAR: binary-ALU (IMM XOR OPREF)."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "SIMD_ADD_WIDE_SCALAR .imm16 5\n"
         )
         insts = wta.assemble(src)
@@ -1348,7 +1348,7 @@ class TestNormMacros(unittest.TestCase):
         SIMD_MUL_WIDE_SCALAR (binary-ALU IMM XOR OPREF); full 16-bit IMM16
         maps directly onto the Q8.8 B operand (dec_eff_b_value[15:0])."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "SIMD_MUL_WIDE_Q8_8_SCALAR .imm16 0x0180\n"   # Q8.8 = 1.5
         )
         insts = wta.assemble(src)
@@ -1360,7 +1360,7 @@ class TestNormMacros(unittest.TestCase):
         FRAG_INVAL 0x6A). A .precision EH is legal (not in
         _ALL_DATA_EHS)."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "CACHE_LOAD_WIDE .precision dim=0x55\n"
         )
         insts = wta.assemble(src)
@@ -1369,7 +1369,7 @@ class TestNormMacros(unittest.TestCase):
     def test_primitive_cache_load_wide_rejects_imm(self):
         """CACHE_LOAD_WIDE with .imm16 must raise (no B operand at all)."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "CACHE_LOAD_WIDE .imm16 5\n"
         )
         with self.assertRaises(wta.AssemblerError):
@@ -1379,7 +1379,7 @@ class TestNormMacros(unittest.TestCase):
         """dim_ovr flag without a .precision EH must raise at compile time
         (mirrors the existing prec/dim_ovr-without-EH check)."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "CACHE_LOAD_WIDE dim_ovr\n"
         )
         with self.assertRaises(wta.AssemblerError) as ctx:
@@ -1390,7 +1390,7 @@ class TestNormMacros(unittest.TestCase):
         """v1.6.5d §22.17: FRAG_INVAL (0x6A) — explicit Cluster-buffer
         slot invalidate-by-tag, same no-B shape as 0x68."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "FRAG_INVAL\n"
         )
         insts = wta.assemble(src)
@@ -1399,7 +1399,7 @@ class TestNormMacros(unittest.TestCase):
     def test_primitive_frag_inval_rejects_imm(self):
         """FRAG_INVAL with .imm16 must raise (no B operand at all)."""
         src = (
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "FRAG_INVAL .imm16 5\n"
         )
         with self.assertRaises(wta.AssemblerError):
@@ -1419,7 +1419,7 @@ class TestRemovedOpcodes(unittest.TestCase):
     must be absent from every generated table."""
 
     def _assert_rejected(self, line):
-        src = ".default_port mask=0x01 out=0\n" + line + "\n"
+        src = ".default_port dest=0x01\n" + line + "\n"
         with self.assertRaises(wta.AssemblerError):
             wta.assemble(src)
 
@@ -1788,7 +1788,7 @@ class TestFpBlockModeLegality(unittest.TestCase):
             elif 'mem' in wta._LEGAL[code]['required']:
                 scaffold = ' .mem offset=0'
             with self.assertRaises(wta.AssemblerError, msg=mnem):
-                wta.assemble(f".default_port mask=0x01 out=0\n{mnem}{scaffold}\n")
+                wta.assemble(f".default_port dest=0x01\n{mnem}{scaffold}\n")
 
     def test_asm_mode_check_equivalence_with_golden_table(self):
         """Exhaustive 13x256: assembler accept <=> FP_MODE_LEGAL legal.
@@ -1823,7 +1823,7 @@ class TestFpBlockModeLegality(unittest.TestCase):
                 expect_ok = (dtype in legal['legal_dtypes']
                              and acc in legal['legal_acc']
                              and rnd in legal['legal_rnd'])
-                src = (f".default_port mask=0x01 out=0\n"
+                src = (f".default_port dest=0x01\n"
                        f"{mnem}{flags}{scaffold} .precision mode={mode}\n")
                 if expect_ok:
                     wta.assemble(src)   # must not raise
@@ -1882,7 +1882,7 @@ class TestFscalarV180cEncoding(unittest.TestCase):
         from generated_isa_tables import FSCALAR_OP_CODE, FLAG_BITS
         for name in FSCALAR_OP_CODE:
             imm16 = wta.fscalar_subop_imm16(name)
-            src = (f".default_port mask=0x01 out=0\n"
+            src = (f".default_port dest=0x01\n"
                    f"FSCALAR opb prec .imm16 {imm16} "
                    f".precision mode={self._MODE_F32}\n")
             inst = wta.assemble_one(src)
@@ -1893,7 +1893,7 @@ class TestFscalarV180cEncoding(unittest.TestCase):
 
     def test_fscalar_absent_imm16_assembles(self):
         """No imm16 EH at all is legal and documents FS_ADD (sub-op 0x0)."""
-        src = (f".default_port mask=0x01 out=0\n"
+        src = (f".default_port dest=0x01\n"
                f"FSCALAR opb prec .precision mode={self._MODE_F32}\n")
         inst = wta.assemble_one(src)
         self.assertEqual((inst >> 24) & 0xFF, 0x74)
@@ -1902,7 +1902,7 @@ class TestFscalarV180cEncoding(unittest.TestCase):
         """§23.10.2: F_HAS_OPB is required for EVERY sub-op — B arrives on
         input_payload_b; missing B is a dispatch-side error_flag in RTL,
         so the assembler rejects it textually up front."""
-        src = (f".default_port mask=0x01 out=0\n"
+        src = (f".default_port dest=0x01\n"
                f"FSCALAR prec .precision mode={self._MODE_F32}\n")
         with self.assertRaises(wta.AssemblerError) as ctx:
             wta.assemble(src)
@@ -1910,7 +1910,7 @@ class TestFscalarV180cEncoding(unittest.TestCase):
 
     def test_fscalar_reserved_low_nibble_rejected(self):
         """imm16[3:0] != 0 (RTL: lower_required) is an assembly-time error."""
-        src = (f".default_port mask=0x01 out=0\n"
+        src = (f".default_port dest=0x01\n"
                f"FSCALAR opb prec .imm16 0x21 "
                f".precision mode={self._MODE_F32}\n")
         with self.assertRaises(wta.AssemblerError) as ctx:
@@ -1921,7 +1921,7 @@ class TestFscalarV180cEncoding(unittest.TestCase):
         """Sub-op nibbles 0x5..0xF (RTL: lower_required) are assembly-time
         errors."""
         for nibble in (0x5, 0x9, 0xF):
-            src = (f".default_port mask=0x01 out=0\n"
+            src = (f".default_port dest=0x01\n"
                    f"FSCALAR opb prec .imm16 {nibble << 4} "
                    f".precision mode={self._MODE_F32}\n")
             with self.assertRaises(wta.AssemblerError, msg=hex(nibble)):
@@ -1933,7 +1933,7 @@ class TestFscalarV180cEncoding(unittest.TestCase):
             inst = wta.Instruction(
                 mnemonic=mnemonic, flags={'opb', 'prec'},
                 eh_list=[
-                    wta.ExtensionHeader('port', {'mask': 1, 'out': 0}, 1),
+                    wta.ExtensionHeader('port', {'dest': 1}, 1),
                     wta.ExtensionHeader('precision',
                                         {'mode': self._MODE_F32}, 1),
                     wta.ExtensionHeader(kind, {'_pos': [0]}, 1),
@@ -1957,7 +1957,7 @@ class TestFscalarV180cEncoding(unittest.TestCase):
         v1.8.0a — no bespoke encoder, matching sibling unary ops like
         SCALAR_RSQRT), and EVERY data EH is rejected."""
         for mnem, code in (('FRSQRT32', 0x75), ('FEXP2_32', 0x76)):
-            src = (f".default_port mask=0x01 out=0\n"
+            src = (f".default_port dest=0x01\n"
                    f"{mnem} prec .precision mode={self._MODE_F32}\n")
             inst = wta.assemble_one(src)
             self.assertEqual((inst >> 24) & 0xFF, code, mnem)
@@ -2002,11 +2002,11 @@ class TestFscalarV180cEncoding(unittest.TestCase):
             mode = 0x10 | dtype
             for name in CVT_OP_CODE:
                 imm16 = wta.cvt_subop_imm16(name)
-                src = (f".default_port mask=0x01 out=0\n"
+                src = (f".default_port dest=0x01\n"
                        f"CVT prec .imm16 {imm16} .precision mode={mode}\n")
                 inst = wta.assemble_one(src)
                 self.assertEqual((inst >> 24) & 0xFF, 0x77, (dtype, name))
-            src = (f".default_port mask=0x01 out=0\n"
+            src = (f".default_port dest=0x01\n"
                    f"CVT prec .precision mode={mode}\n")
             self.assertEqual((wta.assemble_one(src) >> 24) & 0xFF, 0x77)
 
@@ -2014,13 +2014,13 @@ class TestFscalarV180cEncoding(unittest.TestCase):
         """imm16[3:0] or [15:8] nonzero and unknown sub-op nibbles (RTL:
         lower_required) are assembly-time errors."""
         for imm in (0x0001, 0x0100, 0x8000, 0x0011):
-            src = (f".default_port mask=0x01 out=0\n"
+            src = (f".default_port dest=0x01\n"
                    f"CVT prec .imm16 {imm} "
                    f".precision mode={self._MODE_F32}\n")
             with self.assertRaises(wta.AssemblerError, msg=hex(imm)):
                 wta.assemble(src)
         for nib in (0x2, 0x9, 0xF):
-            src = (f".default_port mask=0x01 out=0\n"
+            src = (f".default_port dest=0x01\n"
                    f"CVT prec .imm16 {nib << 4} "
                    f".precision mode={self._MODE_F32}\n")
             with self.assertRaises(wta.AssemblerError, msg=hex(nib)):
@@ -2039,7 +2039,7 @@ class TestFscalarV180cEncoding(unittest.TestCase):
     def test_acc_elemwise_opref_form_assembles(self):
         """0x73 OPREF form (the only implemented form, §23.10.10(c))
         assembles; dtype row is [4] so mode 0x14."""
-        src = (f".default_port mask=0x01 out=0\n"
+        src = (f".default_port dest=0x01\n"
                f"ACC_ELEMWISE opb prec .opref "
                f".precision mode={self._MODE_F32}\n")
         inst = wta.assemble_one(src)
@@ -2051,14 +2051,14 @@ class TestFscalarV180cEncoding(unittest.TestCase):
         so the assembler rejects it textually. Neither-imm-nor-opref is
         already the generic XOR error."""
         for imm_directive in ('.imm16 16', '.imm32 5', '.imm64 5'):
-            src = (f".default_port mask=0x01 out=0\n"
+            src = (f".default_port dest=0x01\n"
                    f"ACC_ELEMWISE opb prec {imm_directive} "
                    f".precision mode={self._MODE_F32}\n")
             with self.assertRaises(wta.AssemblerError,
                                    msg=imm_directive) as ctx:
                 wta.assemble(src)
             self.assertIn('OPREF-form only', str(ctx.exception))
-        src = (f".default_port mask=0x01 out=0\n"
+        src = (f".default_port dest=0x01\n"
                f"ACC_ELEMWISE opb prec "
                f".precision mode={self._MODE_F32}\n")
         with self.assertRaises(wta.AssemblerError):
@@ -2146,36 +2146,36 @@ class TestV180e0e1Encoding(unittest.TestCase):
         payload_b ONLY), imm16 optional as CONTROL (reserved fields
         zero, sub-op from the generated table), imm32/imm64/opref
         forbidden."""
-        ok = (".default_port mask=0x01 out=0\n"
+        ok = (".default_port dest=0x01\n"
               "FMINMAX opb prec .precision mode=0x14 .imm16 %d\n"
               % wta.fminmax_subop_imm16('MAXIMUMNUM'))
         wta.assemble(ok)   # must not raise
         # absent imm16 = MINIMUMNUM default — also legal
-        wta.assemble(".default_port mask=0x01 out=0\n"
+        wta.assemble(".default_port dest=0x01\n"
                      "FMINMAX opb prec .precision mode=0x14\n")
         # missing opb -> textual error
         with self.assertRaises(wta.AssemblerError) as ctx:
-            wta.assemble(".default_port mask=0x01 out=0\n"
+            wta.assemble(".default_port dest=0x01\n"
                          "FMINMAX prec .precision mode=0x14\n")
         self.assertIn('opb', str(ctx.exception))
         # reserved-zero fields
         for bad_imm in (0x0001, 0x0100, 0x0011):
             with self.assertRaises(wta.AssemblerError, msg=hex(bad_imm)):
-                wta.assemble(".default_port mask=0x01 out=0\n"
+                wta.assemble(".default_port dest=0x01\n"
                              "FMINMAX opb prec .precision mode=0x14 "
                              ".imm16 %d\n" % bad_imm)
         # unknown sub-op nibble (2..15)
         with self.assertRaises(wta.AssemblerError):
-            wta.assemble(".default_port mask=0x01 out=0\n"
+            wta.assemble(".default_port dest=0x01\n"
                          "FMINMAX opb prec .precision mode=0x14 "
                          ".imm16 0x20\n")
         # opref-B is a recorded post-0e loosening — forbidden today
         with self.assertRaises(wta.AssemblerError):
-            wta.assemble(".default_port mask=0x01 out=0\n"
+            wta.assemble(".default_port dest=0x01\n"
                          "FMINMAX opb prec .precision mode=0x14 .opref\n")
         # only mode 0x14 (f32/acc=1/rnd=0) is ROM-legal
         with self.assertRaises(wta.AssemblerError):
-            wta.assemble(".default_port mask=0x01 out=0\n"
+            wta.assemble(".default_port dest=0x01\n"
                          "FMINMAX opb prec .precision mode=0x10\n")
 
     def test_dequant_legality(self):
@@ -2184,22 +2184,22 @@ class TestV180e0e1Encoding(unittest.TestCase):
         rides ext_payload_b on the wave-completing beat — the pinned
         SDK/NoC scale-beat contract); source dtypes int4/int8 only."""
         for mode in (0x10, 0x11):
-            wta.assemble(".default_port mask=0x01 out=0\n"
+            wta.assemble(".default_port dest=0x01\n"
                          "DEQUANT opb prec .precision mode=0x%02X\n" % mode)
         with self.assertRaises(wta.AssemblerError) as ctx:
-            wta.assemble(".default_port mask=0x01 out=0\n"
+            wta.assemble(".default_port dest=0x01\n"
                          "DEQUANT prec .precision mode=0x11\n")
         self.assertIn('opb', str(ctx.exception))
         for bad_eh in ('.imm16 1', '.imm32 1', '.imm64 1', '.opref'):
             with self.assertRaises(wta.AssemblerError, msg=bad_eh):
-                wta.assemble(".default_port mask=0x01 out=0\n"
+                wta.assemble(".default_port dest=0x01\n"
                              "DEQUANT opb prec .precision mode=0x11 "
                              "%s\n" % bad_eh)
         # dest-dtype carriers do not exist in 0e: f16/bf16/f32 source
         # nibbles are mode-ROM-illegal
         for bad_mode in (0x12, 0x13, 0x14):
             with self.assertRaises(wta.AssemblerError, msg=hex(bad_mode)):
-                wta.assemble(".default_port mask=0x01 out=0\n"
+                wta.assemble(".default_port dest=0x01\n"
                              "DEQUANT opb prec .precision mode=0x%02X\n"
                              % bad_mode)
 
@@ -2208,28 +2208,28 @@ class TestV180e0e1Encoding(unittest.TestCase):
         rejected); precision EH required with the hand-pinned mode 0x10
         (int4/acc=1/rnd=0 — no generated FP_MODE_LEGAL row since 0x6B is
         outside the in_fp_block gate; the asm check must NOT KeyError)."""
-        wta.assemble(".default_port mask=0x01 out=0\n"
+        wta.assemble(".default_port dest=0x01\n"
                      "GAMMA_MUL_W prec .precision mode=0x10 "
                      ".imm64 0x123456789ABCDEF0\n")
-        wta.assemble(".default_port mask=0x01 out=0\n"
+        wta.assemble(".default_port dest=0x01\n"
                      "GAMMA_MUL_W prec .precision mode=0x10 .opref\n")
         # XOR violations: neither / both
         with self.assertRaises(wta.AssemblerError):
-            wta.assemble(".default_port mask=0x01 out=0\n"
+            wta.assemble(".default_port dest=0x01\n"
                          "GAMMA_MUL_W prec .precision mode=0x10\n")
         with self.assertRaises(wta.AssemblerError):
-            wta.assemble(".default_port mask=0x01 out=0\n"
+            wta.assemble(".default_port dest=0x01\n"
                          "GAMMA_MUL_W prec .precision mode=0x10 "
                          ".imm64 1 .opref\n")
         # mode-byte pins: dtype must be int4, acc=1, rnd=0
         for bad_mode in (0x11, 0x14, 0x00, 0x50):
             with self.assertRaises(wta.AssemblerError, msg=hex(bad_mode)):
-                wta.assemble(".default_port mask=0x01 out=0\n"
+                wta.assemble(".default_port dest=0x01\n"
                              "GAMMA_MUL_W prec .precision mode=0x%02X "
                              ".imm64 1\n" % bad_mode)
         # precision EH + prec flag are required (asm row)
         with self.assertRaises(wta.AssemblerError):
-            wta.assemble(".default_port mask=0x01 out=0\n"
+            wta.assemble(".default_port dest=0x01\n"
                          "GAMMA_MUL_W .imm64 1\n")
 
     def test_v180e_encoding_roundtrip(self):
@@ -2237,7 +2237,7 @@ class TestV180e0e1Encoding(unittest.TestCase):
         encodings carry the expected opcode byte, flags nibble and EH
         chain kinds."""
         insts = wta.assemble(
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "GAMMA_MUL_W prec .precision mode=0x10 .imm64 0xAB\n"
             "DEQUANT opb prec .precision mode=0x11\n"
             "FMINMAX opb prec .precision mode=0x14 .imm16 0x10\n")
@@ -2300,30 +2300,30 @@ class TestV180e0e2Vfma(unittest.TestCase):
         modes 0x10/0x11 only (acc=1 is the wide-acc OUTPUT-form marker
         — acc=0 modes are decode_error, the corrected polarity)."""
         for mode in (0x10, 0x11):
-            wta.assemble(".default_port mask=0x01 out=0\n"
+            wta.assemble(".default_port dest=0x01\n"
                          "VFMA_ACC prec .precision mode=0x%02X "
                          ".imm64 %d\n"
                          % (mode, wta.pack_vfma_b(1, 5, mode & 0xF)))
-        wta.assemble(".default_port mask=0x01 out=0\n"
+        wta.assemble(".default_port dest=0x01\n"
                      "VFMA_ACC prec .precision mode=0x10 .opref\n")
         # XOR violations: neither / both
         with self.assertRaises(wta.AssemblerError):
-            wta.assemble(".default_port mask=0x01 out=0\n"
+            wta.assemble(".default_port dest=0x01\n"
                          "VFMA_ACC prec .precision mode=0x10\n")
         with self.assertRaises(wta.AssemblerError):
-            wta.assemble(".default_port mask=0x01 out=0\n"
+            wta.assemble(".default_port dest=0x01\n"
                          "VFMA_ACC prec .precision mode=0x10 "
                          ".imm64 1 .opref\n")
         # mode-byte ROM pins: acc=0 forms, fp/f32 dtypes, rnd!=0 all
         # reject (dtype {0,1} x acc=1 x rnd=0 is the whole legal set)
         for bad_mode in (0x00, 0x01, 0x14, 0x12, 0x50, 0x20):
             with self.assertRaises(wta.AssemblerError, msg=hex(bad_mode)):
-                wta.assemble(".default_port mask=0x01 out=0\n"
+                wta.assemble(".default_port dest=0x01\n"
                              "VFMA_ACC prec .precision mode=0x%02X "
                              ".imm16 1\n" % bad_mode)
         # precision EH + prec flag are required (fp-block asm row)
         with self.assertRaises(wta.AssemblerError):
-            wta.assemble(".default_port mask=0x01 out=0\n"
+            wta.assemble(".default_port dest=0x01\n"
                          "VFMA_ACC .imm16 1\n")
 
     def test_vfma_b_mul_range_lint(self):
@@ -2332,29 +2332,29 @@ class TestV180e0e2Vfma(unittest.TestCase):
         only B[3:0]/B[7:0] — silent truncation forbidden); the c_acc
         word B[63:32] is free."""
         # int4: B[3:0] legal, bit 4 and up loud
-        wta.assemble(".default_port mask=0x01 out=0\n"
+        wta.assemble(".default_port dest=0x01\n"
                      "VFMA_ACC prec .precision mode=0x10 .imm16 0xF\n")
         for bad in ("imm16 0x10", "imm16 0xFF", "imm32 0x100",
                     "imm64 0x10"):
             with self.assertRaises(wta.AssemblerError, msg=bad) as ctx:
-                wta.assemble(".default_port mask=0x01 out=0\n"
+                wta.assemble(".default_port dest=0x01\n"
                              "VFMA_ACC prec .precision mode=0x10 "
                              ".%s\n" % bad)
             self.assertIn('lane width', str(ctx.exception))
         # int8: B[7:0] legal, bit 8 and up loud
-        wta.assemble(".default_port mask=0x01 out=0\n"
+        wta.assemble(".default_port dest=0x01\n"
                      "VFMA_ACC prec .precision mode=0x11 .imm16 0xFF\n")
         for bad in ("imm16 0x100", "imm32 0x8000", "imm64 0x100"):
             with self.assertRaises(wta.AssemblerError, msg=bad):
-                wta.assemble(".default_port mask=0x01 out=0\n"
+                wta.assemble(".default_port dest=0x01\n"
                              "VFMA_ACC prec .precision mode=0x11 "
                              ".%s\n" % bad)
         # c_acc rides B[63:32] untouched — a full-scale imm64 upper word
         # with an in-range b_mul field is legal at both dtypes
-        wta.assemble(".default_port mask=0x01 out=0\n"
+        wta.assemble(".default_port dest=0x01\n"
                      "VFMA_ACC prec .precision mode=0x10 .imm64 %d\n"
                      % wta.pack_vfma_b(-8, 0xFFFFFFFF, 0x0))
-        wta.assemble(".default_port mask=0x01 out=0\n"
+        wta.assemble(".default_port dest=0x01\n"
                      "VFMA_ACC prec .precision mode=0x11 .imm64 %d\n"
                      % wta.pack_vfma_b(-128, -(1 << 31), 0x1))
 
@@ -2365,7 +2365,7 @@ class TestV180e0e2Vfma(unittest.TestCase):
         hi32 = c_acc} verbatim as consecutive 32-bit words."""
         b64 = wta.pack_vfma_b(-3, 0x8000_0001, 0x0)
         insts = wta.assemble(
-            ".default_port mask=0x01 out=0\n"
+            ".default_port dest=0x01\n"
             "VFMA_ACC prec .precision mode=0x10 .imm64 %d\n"
             "VFMA_ACC prec .precision mode=0x11 .imm16 0x7F\n" % b64)
         ops = [(w >> 24) & 0xFF for w in insts]
@@ -2402,7 +2402,7 @@ class TestFdot32CrIsa3aC2(unittest.TestCase):
     with EVERY other combination LOUDLY rejected.
     """
 
-    _SRC = ".default_port mask=0x01 out=0\n"
+    _SRC = ".default_port dest=0x01\n"
     _LEGAL_MODES = (0x12, 0x13)          # f16 / bf16, acc=1, rnd=0
 
     # ---- mode-byte legality (§27.7a.1 — the §23.6a 2-row transcription)

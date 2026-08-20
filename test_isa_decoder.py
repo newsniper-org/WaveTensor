@@ -1313,7 +1313,7 @@ async def test_assembler_add_imm_e2e(dut):
     await reset(dut)
 
     instr = assemble_one(
-        ".default_port mask=0x01 out=0\n"
+        ".default_port dest=0x01\n"
         "ADD .imm16 7\n"
     )
     await fire(dut, instr, _STD_TAG(), payload_a=10)
@@ -1336,7 +1336,7 @@ async def test_assembler_einsum_matmul_e2e(dut):
 
     instr = assemble_one(
         ".alias port_a 0x01\n"
-        ".default_port mask=port_a out=0\n"
+        ".default_port dest=port_a\n"
         "EINSUM opb .subscript A=i,j B=j,k O=i,k .opref\n"
     )
     await fire(dut, instr, _STD_TAG(dim=0x05),
@@ -1357,7 +1357,7 @@ async def test_assembler_reshape_macro_e2e(dut):
     # 1D 4-vec (dim_sizes=0x03) → 2D 2×2 (dim_sizes=0x05)
     payload = pack16(1, 2, 3, 4)
     instr = assemble_one(
-        ".default_port mask=0x01 out=0\n"
+        ".default_port dest=0x01\n"
         "RESHAPE .from 0x03 .to 0x05\n"
     )
     await fire(dut, instr, _STD_TAG(dim=0x03), payload_a=payload)
