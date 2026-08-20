@@ -34,7 +34,7 @@ chapters/06-formal.typ    선-formal → RTL → 후-formal
 appendix/a-capacity.typ   프로토타이핑 용량 산정 (실측 전수 + 벤더 질문)
 appendix/b-gaps.typ       기존 문서와 어긋나는 지점 — **재구현팀이 먼저 읽을 것**
 appendix/c-glossary.typ   국문–영문 용어 대응
-appendix/d-properties.typ 형식 속성 카탈로그 (39개 색인 — 선 27 / 후 12)
+appendix/d-properties.typ 형식 속성 카탈로그 (40개 색인 — 선 28 / 후 12)
 appendix/e-defined.typ    재구현이 새로 정의한 표면 (계약이 없어서 정한 것)
 refs.yml                  Hayagriva 서지 (42항, 전부 본문 인용)
 ```
@@ -80,7 +80,7 @@ tracked 파일 변경 **0**.
 
 정정 후 재실측 (2026-08-20, 판 0.1 결손 수리): 75쪽, 컴파일 경고 **0**,
 clean-room 위반 **0**, 금지 용어 **5건 전부 규율 서술 줄**,
-속성 수 **39 = 39** (선 27 / 후 12), HIU 속성 **1–11 정렬**.
+속성 수 **40 = 40** (선 28 / 후 12), HIU 속성 **1–11 정렬**.
 
 ## 수치의 출처
 
