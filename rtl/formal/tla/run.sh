@@ -210,6 +210,36 @@ expect_fail "증인: 소유권 이양이 실재하는가"     Platform_witness_N
 expect_fail "증인: 지역 사본이 실제로 어긋나는가" Platform_witness_NoDivergentCache.cfg "$M" Witness_NoDivergentCache
 expect_fail "증인: 두 세계의 배후 저장이 어긋나는가" Platform_witness_NoMemSkew.cfg     "$M" Witness_NoMemSkew
 
+# ---------------------------------------------------------------------------
+# SEC-3 — 무소실 (NoLoss.tla)
+#
+# FAB-2 의 상위 형태. FAB-2 는 한 공유 유닛의 무처분 없음이고, SEC-3 은
+# 기계 전체의 회계다 — 유닛마다 처분이 있어도 유닛 *사이*에서 새면 깨진다.
+# 서문 §0.8 이 적은 네 실패형(드롭·덮어쓰기·절단·완료 조작)이 전부 여기 있다.
+# ---------------------------------------------------------------------------
+M=NoLoss.tla
+expect_pass "SEC-3 기저 — 단 2 · 수용 1"      NoLoss_base.cfg   "$M"
+expect_pass "형상 sweep — 단 3"               NoLoss_shapeA.cfg "$M"
+expect_pass "형상 sweep — 수용 2"             NoLoss_shapeB.cfg "$M"
+
+expect_fail "가드 삭제: queue_room (조용한 덮어쓰기)" \
+    NoLoss_del_queue_room.cfg     "$M" Inv_Conservation
+expect_fail "가드 삭제: busy_loud (조용한 드롭)" \
+    NoLoss_del_busy_loud.cfg      "$M" Inv_Conservation
+expect_fail "가드 삭제: advance_atomic (단 사이 소실)" \
+    NoLoss_del_advance_atomic.cfg "$M" Inv_Conservation
+expect_fail "가드 삭제: fault_sticky (흔적 없는 fault)" \
+    NoLoss_del_fault_sticky.cfg   "$M" Inv_FaultVisible
+expect_fail "가드 삭제: width_checked (조용한 절단)" \
+    NoLoss_del_width_checked.cfg  "$M" Inv_NoSilentTruncation
+expect_fail "가드 삭제: complete_once (없던 완료)" \
+    NoLoss_del_complete_once.cfg  "$M" Inv_NoPhantom
+
+expect_fail "증인: 완료가 실재하는가"          NoLoss_witness_NoCompletion.cfg    "$M" Witness_NoCompletion
+expect_fail "증인: fault 가 실재하는가"        NoLoss_witness_NoFault.cfg         "$M" Witness_NoFault
+expect_fail "증인: 단이 실제로 가득 차는가"     NoLoss_witness_NoFullStage.cfg     "$M" Witness_NoFullStage
+expect_fail "증인: 넓은 요청이 실제로 거절되는가" NoLoss_witness_NoWideRejection.cfg "$M" Witness_NoWideRejection
+
 if [ "$rc" -eq 0 ]; then
     echo " 전체 $runs run 이 선언대로 행동했다 — 게이트 GREEN"
 else
