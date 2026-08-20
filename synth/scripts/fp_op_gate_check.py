@@ -606,7 +606,7 @@ def main():
         # 이 축은 archived yosys 로그에서 읽히는데, 그 로그를 만드는 단계가
         # 어느 flow 타깃에도 없어서 **소스가 바뀌어도 로그는 그대로** 남았다.
         # 그 상태에서 나오는 PASS 는 측정이 아니라 동결 상수다. 이제 로그
-        # 선두의 sha256 목록을 현행 소스와 대조하고, 어긋나면 축을 PASS 로
+        # 선두의 BLAKE2b-512 목록을 현행 소스와 대조하고, 어긋나면 축을 PASS 로
         # 세지 않는다. 실패는 "숫자가 틀렸다" 가 아니라 **"재지 않았다"** 이며
         # 둘 다 gate FAIL 이다 (loud-fault-never-silent).
         if "premap_mul_log" in g:

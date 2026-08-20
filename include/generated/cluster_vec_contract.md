@@ -14,7 +14,7 @@
   전 wave 4층 Fraction 이중 검증 통과).
 - **벡터 파일**: `include/generated/cluster_wave_vectors.hex` —
   `$readmemh`, 주석 3줄 + 1234 라인. 결정적 (고정 seed, 재실행
-  byte-identical; sha256 은 `lattice_golden_report.json`).
+  byte-identical; blake2b512 은 `lattice_golden_report.json`).
 - operand 를 새로 생성했다 — 기존 lattice 벡터 addend 의 역-인수분해가
   아니다 (④ 지시). 기존 `lattice_wave_vectors.hex` 4081 벡터는 무변경.
 
@@ -128,7 +128,7 @@ beat/lane 재배열도 기대값을 바꾸지 않는다** — 이 사상은 TB �
 
 고정 seed (아래, `CLUSTER_SEEDS` — 기존 `SEEDS` 와 분리: 기존 산출물
 byte-identity 유지) 외 난수원/timestamp 없음 — 재실행 byte-identical
-(sha256 은 report).
+(blake2b512 은 report).
 
 | seed key | value |
 |---|---|

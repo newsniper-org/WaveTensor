@@ -24,7 +24,7 @@ provenance 헤더
 ---------------
 로그 **선두**에 주석 블록으로 박는다 (sidecar 파일이 아니다 — 사이드카는
 분실·분리되고, 헤더는 증거와 물리적으로 같은 파일에 있어 `git diff` 에
-같이 뜬다). 각 소스의 sha256 을 적으므로, 소스가 한 바이트라도 바뀌면
+같이 뜬다). 각 소스의 BLAKE2b-512 를 적으므로, 소스가 한 바이트라도 바뀌면
 `fp_op_gate_check.py` 가 **STALE 로 즉시 FAIL** 한다. mtime 이 아니라 내용
 해시인 이유: mtime 은 checkout·touch·복사로 아무 의미 없이 바뀌고, 반대로
 내용이 바뀌어도 보존될 수 있다.
@@ -58,8 +58,24 @@ HEADER_BEGIN = "# ===== WT premap-$mul evidence provenance (spec §22.14b-10) ==
 HEADER_END = "# ===== end provenance ====="
 
 
-def sha256_of(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+#: 저장소 전체가 쓰는 해시 계열. `b2sum` 기본값과 같은 값이며 stdlib 이다.
+#: 계열이 섞이면 "무엇으로 쟀는가" 앞에 "어느 해시로?" 가 하나 더 붙는다.
+#:
+#: ⚠️ **재생성 순서** — 이 증거는 `# include:` 로 `include/generated/*.vh` 의
+#: 해시도 박는다. 따라서 생성 헤더를 다시 만들면 이 증거가 STALE 이 된다.
+#: 순서는 항상 **생성기 먼저, 증거 나중**이다:
+#:     python3 scripts/gen_isa_tables.py generate
+#:     python3 scripts/gen_fexp2_coeffs.py && python3 scripts/gen_frsqrt_seed_rom.py
+#:     make premap-mul-evidence PREMAP_GATE=<tag>     # ← 마지막
+#: (2026-08-20 해시 계열 통일 중 실제로 이 순서를 틀렸고, gate 가 STALE 로
+#:  잡았다. 기전이 작동한다는 증거이자 순서가 실재하는 함정이라는 증거다.)
+DIGEST_NAME = "blake2b512"
+DIGEST_BYTES = 64
+
+
+def digest_of(path):
+    return hashlib.blake2b(Path(path).read_bytes(),
+                           digest_size=DIGEST_BYTES).hexdigest()
 
 
 # =============================================================================
@@ -146,7 +162,7 @@ def resolve_includes(rel_paths, repo=None, incdirs=("include",)):
 def parse_provenance(text):
     """로그 선두 provenance 헤더를 파싱한다.
 
-    반환: dict(tag, top, yosys, generated, sources=[(rel_path, sha256), ...],
+    반환: dict(tag, top, yosys, generated, sources=[(rel_path, blake2b512), ...],
                vivado_sources=[...], includes=[...])
           헤더가 없으면 None (호출자가 STALE/LEGACY 로 판정한다).
 
@@ -169,7 +185,7 @@ def parse_provenance(text):
             prov[m.group(1)] = m.group(2).strip()
             continue
         m = re.match(r"^#\s+(source|vivado-source|include):\s+(\S+)\s+"
-                     r"sha256=([0-9a-f]{64})\s*$", line)
+                     rf"{DIGEST_NAME}=([0-9a-f]{{{DIGEST_BYTES * 2}}})\s*$", line)
         if m:
             prov[KEY[m.group(1)]].append((m.group(2), m.group(3)))
     return prov if prov["sources"] else None
@@ -224,9 +240,9 @@ def verify_provenance(log_path, expected_sources=None, expected_top=None,
             src = REPO / rel
             if not src.exists():
                 bad.append(f"[{kind}] {rel}: 소스 없음")
-            elif sha256_of(src) != want:
-                bad.append(f"[{kind}] {rel}: sha256 불일치 (증거는 "
-                           f"{want[:12]}…, 현행은 {sha256_of(src)[:12]}…)")
+            elif digest_of(src) != want:
+                bad.append(f"[{kind}] {rel}: {DIGEST_NAME} 불일치 (증거는 "
+                           f"{want[:12]}…, 현행은 {digest_of(src)[:12]}…)")
     if bad:
         return False, (f"{p.name}: STALE — 증거가 현행 소스로 만들어지지 "
                        f"않았다: " + "; ".join(bad))
@@ -346,7 +362,7 @@ def main():
         HEADER_BEGIN,
         "# 이 헤더는 `make synth-sys-gate` / `make synth-fp-op` 가 자동으로",
         "# 쓴다 (synth/scripts/gen_premap_mul.py). 손으로 고치지 말 것 —",
-        "# `fp_op_gate_check.py` 가 아래 sha256 을 현행 소스와 대조하고,",
+        f"# `fp_op_gate_check.py` 가 아래 {DIGEST_NAME} 를 현행 소스와 대조하고,",
         "# 하나라도 어긋나면 gate 를 PASS 가 아니라 STALE FAIL 로 끝낸다.",
         f"# tag: {args.tag}",
         f"# top: {args.top}",
@@ -354,13 +370,13 @@ def main():
         f"# generated: {now}",
         f"# command: yosys -p '{cmd}'",
     ]
-    header += [f"# source: {s} sha256={sha256_of(REPO / s)}" for s in srcs]
+    header += [f"# source: {s} {DIGEST_NAME}={digest_of(REPO / s)}" for s in srcs]
     # v1.8.0e 3a-C4 — 사각지대 2종을 닫는 두 계열. `# source:` 는 yosys 가
     # 읽은 코어 소스, 아래 둘은 **Vivado 가 합성한 것 전량과 그것이 읽는
     # 헤더 전량**이다. 셋은 서로 다른 질문에 답한다.
-    header += [f"# vivado-source: {s} sha256={sha256_of(REPO / s)}"
+    header += [f"# vivado-source: {s} {DIGEST_NAME}={digest_of(REPO / s)}"
                for s in vsrcs]
-    header += [f"# include: {s} sha256={sha256_of(REPO / s)}" for s in incs]
+    header += [f"# include: {s} {DIGEST_NAME}={digest_of(REPO / s)}" for s in incs]
     header += [HEADER_END, ""]
 
     out = RPT_DIR / gate["premap_mul_log"]

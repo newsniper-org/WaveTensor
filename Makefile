@@ -243,7 +243,7 @@ SYS_GATE_TAG ?= $(SYS_GATE)
 # 소스가 바뀌어도 로그는 그대로 남았고, GATE S1 이 두 번 완주하는 동안 이
 # 파일만 갱신되지 않은 채 축이 PASS 했다 — 측정이 아니라 동결 상수였다.
 # 이제 합성 타깃이 증거를 **직접 재생성**하고, 소비 측(gate check)이 로그
-# 선두의 sha256 provenance 를 현행 소스와 대조한다. 어느 한쪽만으로는 부족
+# 선두의 BLAKE2b-512 provenance 를 현행 소스와 대조한다. 어느 한쪽만으로는 부족
 # 하다: 생성만 편입하면 옛 로그가 계속 통과하고, 검증만 넣으면 flow 가 증거를
 # 못 만들어 gate 가 영영 FAIL 한다.
 #
@@ -285,7 +285,7 @@ synth-fp-op:
 #
 # ⚠️ 이 타깃은 **gate 를 다시 판정하기 위한 것이 아니다.** 정반대다 — 잊는
 # 쪽이 안전하고 쓰는 쪽이 위험하다:
-#   * 잊으면  → provenance sha256 이 어긋나 `fp_op_gate_check` 가 STALE FAIL.
+#   * 잊으면  → provenance 해시가 어긋나 `fp_op_gate_check` 가 STALE FAIL.
 #              **시끄럽게** 실패한다. 이것이 원하는 동작이다.
 #   * 단독 사용 → premap 축만 현행 소스로 갱신되고, LUT / DSP48 / RAMB18 /
 #              WHS / DRC / CRIT WARN 6축은 **옛 소스로 측정된 Vivado 리포트

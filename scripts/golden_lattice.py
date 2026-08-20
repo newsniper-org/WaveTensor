@@ -66,7 +66,7 @@ SEGMENT GEOMETRY (§27.2.1 "segment 기하는 golden model/RTL 에서 확정"):
 산출물 (전부 결정적 — 고정 seed, timestamp 없음, 재실행 byte-identical):
   include/generated/lattice_wave_vectors.hex   RTL TB 벡터 ($readmemh)
   include/generated/lattice_vec_contract.md    벡터 비트 레이아웃 계약
-  include/generated/lattice_golden_report.json 체크 결과·벡터 수·sha256
+  include/generated/lattice_golden_report.json 체크 결과·벡터 수·blake2b512
   include/generated/bank_scenarios.hex         bank 상태기계 시나리오 스트림
                                                (§27.6 하류 ③ 검증 계획 (c))
   include/generated/bank_scenarios_contract.md 시나리오 record 형식/의미 계약
@@ -1938,7 +1938,7 @@ writeback/commit 이 명령보다 선행한 뒤의 값이다.
 ## 9. 결정론
 
 고정 seed `bank_rand_interleave = 0x%X` 외 난수원/timestamp 없음 —
-재실행 byte-identical (sha256 은 `lattice_golden_report.json`).
+재실행 byte-identical (blake2b512 은 `lattice_golden_report.json`).
 
 ## 10. ④ GATE V20-3 이월 기록 (2026-08-17 — golden 반쪽; §27.6 ④ 검증 의무 1)
 
@@ -2231,7 +2231,7 @@ contributors -->
   `scripts/golden_fp32.py` 에서 import.
 - **벡터 파일**: `include/generated/lattice_wave_vectors.hex` —
   `$readmemh` 형식, 주석 3줄 + %d 라인. 결정적 (고정 seed, 재실행
-  byte-identical; sha256 은 `lattice_golden_report.json`).
+  byte-identical; blake2b512 은 `lattice_golden_report.json`).
 
 ## 1. 라인 형식
 
@@ -2355,7 +2355,7 @@ initial $readmemh("include/generated/lattice_wave_vectors.hex", vec);
 ## 8. 결정론
 
 고정 seed (아래) 외 난수원 없음, timestamp 없음 — 재실행 산출물은
-byte-identical (sha256 은 report).
+byte-identical (blake2b512 은 report).
 
 | seed key | value |
 |---|---|
@@ -2853,7 +2853,7 @@ contributors -->
   전 wave 4층 Fraction 이중 검증 통과).
 - **벡터 파일**: `include/generated/cluster_wave_vectors.hex` —
   `$readmemh`, 주석 3줄 + %d 라인. 결정적 (고정 seed, 재실행
-  byte-identical; sha256 은 `lattice_golden_report.json`).
+  byte-identical; blake2b512 은 `lattice_golden_report.json`).
 - operand 를 새로 생성했다 — 기존 lattice 벡터 addend 의 역-인수분해가
   아니다 (④ 지시). 기존 `lattice_wave_vectors.hex` 4081 벡터는 무변경.
 
@@ -2953,7 +2953,7 @@ beat/lane 재배열도 기대값을 바꾸지 않는다** — 이 사상은 TB �
 
 고정 seed (아래, `CLUSTER_SEEDS` — 기존 `SEEDS` 와 분리: 기존 산출물
 byte-identity 유지) 외 난수원/timestamp 없음 — 재실행 byte-identical
-(sha256 은 report).
+(blake2b512 은 report).
 
 | seed key | value |
 |---|---|
@@ -2969,8 +2969,8 @@ byte-identity 유지) 외 난수원/timestamp 없음 — 재실행 byte-identica
 # ===========================================================================
 
 
-def _sha256(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+def _digest(path):
+    return hashlib.blake2b(path.read_bytes(), digest_size=64).hexdigest()
 
 
 def main():
@@ -3088,11 +3088,11 @@ def main():
             "bits_per_line": VEC_BITS,
             "hex_chars_per_line": VEC_HEX,
             "families": em.families,
-            "sha256": _sha256(VEC_PATH),
+            "blake2b512": _digest(VEC_PATH),
         },
         "contract": {
             "path": "include/generated/lattice_vec_contract.md",
-            "sha256": _sha256(CONTRACT_PATH),
+            "blake2b512": _digest(CONTRACT_PATH),
         },
         "cluster_vectors": {
             "_doc": "④ GATE V20-3 (2026-08-17): cluster operand-level "
@@ -3120,10 +3120,10 @@ def main():
             "self_verify": {
                 "lines": n_cluster_verified, "mismatches": 0,
                 "verdict": "PASS"},
-            "sha256": _sha256(CLUSTER_VEC_PATH),
+            "blake2b512": _digest(CLUSTER_VEC_PATH),
             "contract": {
                 "path": "include/generated/cluster_vec_contract.md",
-                "sha256": _sha256(CLUSTER_CONTRACT_PATH),
+                "blake2b512": _digest(CLUSTER_CONTRACT_PATH),
             },
         },
         "gate_v20_3_carryover": {
@@ -3198,11 +3198,11 @@ def main():
                     {"family": f, "code": code, "scenarios": ns,
                      "records": nr, "doc": BANK_FAM_DOCS[f][1]}
                     for f, code, ns, nr in bank_fams],
-                "sha256": _sha256(BANK_HEX_PATH),
+                "blake2b512": _digest(BANK_HEX_PATH),
             },
             "contract": {
                 "path": "include/generated/bank_scenarios_contract.md",
-                "sha256": _sha256(BANK_CONTRACT_PATH),
+                "blake2b512": _digest(BANK_CONTRACT_PATH),
             },
             "coverage": bank_cov,
             "window_offset_crossproduct": bank_xprod,
@@ -3253,16 +3253,16 @@ def main():
     print("wrote %s" % REPORT_PATH)
     print("total %.1fs" % (time.time() - t_start))
     print("headlines:")
-    print("  vectors: %d (families %d), sha256 %s"
+    print("  vectors: %d (families %d), blake2b512 %s"
           % (len(em.lines), len(em.families),
-             report["vector_file"]["sha256"][:16]))
+             report["vector_file"]["blake2b512"][:16]))
     print("  theorem sweep: %d waves, 0 mismatch (+%d per-vector)"
           % (theorem["N"], len(em.lines)))
     print("  oracle: fp64 struct %d, f32 struct %d checked"
           % (codec["N"], theorem["f32_struct_oracle_checked"]))
-    print("  bank scenarios: %d (families %d, records %d), sha256 %s"
+    print("  bank scenarios: %d (families %d, records %d), blake2b512 %s"
           % (len(bank_scens), len(bank_fams), n_bank_rec,
-             report["bank_reference"]["scenario_file"]["sha256"][:16]))
+             report["bank_reference"]["scenario_file"]["blake2b512"][:16]))
     print("  bank coverage: chain7 %d / chain8 %d / window-fault %d / "
           "after-window %d / reject %d / carry (d)+(e) %d"
           % (bank_cov["chain_delta7"], bank_cov["chain_delta8"],
@@ -3275,9 +3275,9 @@ def main():
           % (bank_cov["spill_ok"], bank_cov["window_spill"],
              bank_cov["spill_owner"], bank_cov["proto_unk"]))
     print("  cluster vectors: %d (families %d, %d operand pairs "
-          "crosschecked), sha256 %s"
+          "crosschecked), blake2b512 %s"
           % (len(cem.lines), len(cem.families), cem.n_pairs_checked,
-             report["cluster_vectors"]["sha256"][:16]))
+             report["cluster_vectors"]["blake2b512"][:16]))
     print("  window x offset crossproduct: " + "; ".join(
         "%s={%s}" % (k.replace("window_", ""), ",".join(map(str, v)))
         for k, v in bank_xprod.items()))

@@ -12,7 +12,7 @@
   `scripts/golden_fp32.py` 에서 import.
 - **벡터 파일**: `include/generated/lattice_wave_vectors.hex` —
   `$readmemh` 형식, 주석 3줄 + 4081 라인. 결정적 (고정 seed, 재실행
-  byte-identical; sha256 은 `lattice_golden_report.json`).
+  byte-identical; blake2b512 은 `lattice_golden_report.json`).
 
 ## 1. 라인 형식
 
@@ -149,7 +149,7 @@ initial $readmemh("include/generated/lattice_wave_vectors.hex", vec);
 ## 8. 결정론
 
 고정 seed (아래) 외 난수원 없음, timestamp 없음 — 재실행 산출물은
-byte-identical (sha256 은 report).
+byte-identical (blake2b512 은 report).
 
 | seed key | value |
 |---|---|

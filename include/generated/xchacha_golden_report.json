@@ -313,9 +313,9 @@
   "hiu_contract_equals_standard": true,
   "legacy_differs_from_standard": true,
   "vector_lines_verified": true,
-  "artifacts_sha256": {
-   "xchacha_vectors.hex": "94db7c7d8456c41b5c6d28cc08c919de41b78a4f9d8dbc8beed93ccda90cf2ca",
-   "xchacha_vec_contract.md": "c0ea3387be8f00110371f7dc68e204a5f8d8f0aeb907877ecdbb5b0e6af746cd"
+  "artifacts_blake2b512": {
+   "xchacha_vectors.hex": "930bd60817aa1ec24286746ac0e1a193a77118c27999cf8eab97bbb381bd7facfea9697d0a004ea01b65c4d5f97c0d282207e9cc989706b270d7ae04301a38ca",
+   "xchacha_vec_contract.md": "1b66ae96a856beff9108b2cf19c61de3706b7d6a31317f52e964f9c55fc61ecc4ec4ad9e45b9ae6ecee553499caeca58239debd22b78edf2cdbfc42114fb74dc"
   }
  }
 }

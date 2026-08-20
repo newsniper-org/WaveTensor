@@ -1163,8 +1163,8 @@ def _test_port_encoding():
 # 11. 산출물 (contract md / report json)
 # ===========================================================================
 
-def _sha256(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+def _digest(path):
+    return hashlib.blake2b(path.read_bytes(), digest_size=64).hexdigest()
 
 
 def contract_text(em, diff, n_vec):
@@ -1385,9 +1385,9 @@ def build_report(em, diff, n_vec, n_verified):
             "hiu_contract_equals_standard": True,
             "legacy_differs_from_standard": True,
             "vector_lines_verified": n_verified == n_vec,
-            "artifacts_sha256": {
-                "xchacha_vectors.hex": _sha256(VEC_PATH),
-                "xchacha_vec_contract.md": _sha256(CONTRACT_PATH),
+            "artifacts_blake2b512": {
+                "xchacha_vectors.hex": _digest(VEC_PATH),
+                "xchacha_vec_contract.md": _digest(CONTRACT_PATH),
             },
         },
     }

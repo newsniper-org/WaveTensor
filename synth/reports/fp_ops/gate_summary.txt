@@ -46,7 +46,7 @@ GATE V20-2/US — fp_acclattice: v2.0 528-bit exact-integer lattice unit (spec �
     LUT sites  = 19298      (HARD ceiling 20040 — hard ceiling = 12,000 nominal x 1.67 measured overrun factor (spec §27.6, §23.10.10(g) method))   -> PASS
     DSP48      =     0      (limit 0 — lattice is add/shift/compare ONLY — any DSP48 means the mapper found a multiply that must not exist)   -> PASS
     premap $mul=     0      (limit 0 — §26.6 pin form; evidence: fp_acclattice_premap_mul.log)   -> PASS
-                 provenance: fp_acclattice_premap_mul.log: provenance OK (1 sources, sources(hash only) ⚠ wrapper+include UNVERIFIED (pre-2026-08-18 evidence), generated 2026-08-18T17:56:13+09:00)   -> PASS
+                 provenance: fp_acclattice_premap_mul.log: provenance OK (1 sources, sources(hash only)+wrapper(2)+include(0), generated 2026-08-20T16:08:36+09:00)   -> PASS
     BRAM       =     0      (limit 0)   -> PASS
     WHS        =   +0.044 ns (hold, limit >= 0)   -> PASS
     DRC        = 0 errors, 0 warnings (limit: 0 errors; warnings are listed, NOT 'clean')   -> PASS
@@ -65,7 +65,7 @@ GATE V20-3/US — fp_traincluster: v2.0 TRAIN full-cluster datapath (spec §27.6
     LUT sites  = 26863      (HARD ceiling 35377 — hard ceiling = anchors 33,874 (19,298 lattice + 8,368 bank + 776x8 lane) + glue 900 x 1.67 (spec §27.6 ④, §23.10.10(g) method))   -> PASS
     DSP48      =     8      (EXACTLY 8 — one 11x11 significand multiply per lane tap x 8 lanes; lattice 0 / bank 0 measured (§27.6 ④))   -> PASS
     premap $mul=     8      (EXACTLY 8 — §26.6 pin form; evidence: fp_traincluster_premap_mul.log)   -> PASS
-                 provenance: fp_traincluster_premap_mul.log: provenance OK (3 sources, sources(hash only) ⚠ wrapper+include UNVERIFIED (pre-2026-08-18 evidence), generated 2026-08-18T17:56:14+09:00)   -> PASS
+                 provenance: fp_traincluster_premap_mul.log: provenance OK (3 sources, sources(hash only)+wrapper(4)+include(1), generated 2026-08-20T16:08:37+09:00)   -> PASS
     BRAM       =     0      (limit 0)   -> PASS
     WHS        =   +0.042 ns (hold, limit >= 0)   -> PASS
     DRC        = 0 errors, 2 warnings (limit: 0 errors; warnings are listed, NOT 'clean')   -> PASS
@@ -98,7 +98,7 @@ GATE V20-4 — fp_stepseq: v1.9 FDOT32_CR (0x7A) 32-lane bf16/f16 dot-product st
     LUT cells  =  5137      (HARD ceiling 6009 — HARD ceiling = anchor cells 3,809 + pre-announced delta 2,200 = 6,009 (§34.3 verbatim — this is the unit §34.3 fixed))   -> PASS
     DSP48      =     4      (EXACTLY 4 — EXACTLY the anchor's 4 — OPS_FDOTCR reuses the single shared FP_Mul36 (§23.10) and adds no arithmetic element, so the pre-announced delta is 0 in BOTH directions; a drop means the mapper merged a multiply the pin says must stay)   -> PASS
     premap $mul=     4      (EXACTLY 4 — §26.6 pin form; evidence: fp_stepseq_premap_mul.log)   -> PASS
-                 provenance: fp_stepseq_premap_mul.log: provenance OK (3 sources, sources+top+wrapper(4)+include(6)+recipe, generated 2026-08-18T22:14:55+09:00)   -> PASS
+                 provenance: fp_stepseq_premap_mul.log: provenance OK (3 sources, sources+top+wrapper(4)+include(6)+recipe, generated 2026-08-20T16:08:38+09:00)   -> PASS
     BRAM       =     2      (EXACTLY 2; EXACTLY the anchor's 2 RAMB18 — delta 0 (hard). OPS_FDOTCR adds no memory element; a change means a silent memory-inference move)   -> PASS
     CRIT WARN  =     0      (whitelist  — §34.3 pins ERROR 0 / CRITICAL WARNING 0 for this unit and the anchor run measured exactly that, so the whitelist is EMPTY — any critical warning at all fails, and an absent or truncated run log (no `[Common 17-206] Exiting Vivado` marker) is UNMEASURED, never a pass; evidence: fp_stepseq_run.log)   -> PASS
                  ERROR lines in log: 0 (limit 0, BINDING)   -> PASS
@@ -125,7 +125,7 @@ GATE S1-US — sys_top_core: system-integration synthesizability gate (spec §28
     LUT sites  = 15666      (HARD ceiling 24799 — hard ceiling = anchor 14,850 (first repo-harness xcu55c routed measurement, this commit) x 1.67 (§23.10.10(g) overrun factor) = 24,799.5, floored to 24,799; binding from the NEXT commit onward)   -> PASS
     DSP48      =    39      (EXACTLY 39 — anchor — 35 in PE_Core's einsum/dot path + 4 in FP_StepSeq's FP_Mul36; HIU 0. Any drift means the mapper's multiply inference moved and gets attributed before re-verdict (§26.6 MULT-deviation method))   -> PASS
     premap $mul=   381      (EXACTLY 381 — §26.6 pin form; evidence: sys_top_core_premap_mul.log)   -> PASS
-                 provenance: sys_top_core_premap_mul.log: provenance OK (8 sources, sources+top+wrapper(9)+include(10)+recipe, generated 2026-08-18T22:21:29+09:00)   -> PASS
+                 provenance: sys_top_core_premap_mul.log: provenance OK (8 sources, sources+top+wrapper(9)+include(10)+recipe, generated 2026-08-20T16:09:35+09:00)   -> PASS
     BRAM       =     2      (EXACTLY 2; anchor — 2 RAMB18 inside FP_StepSeq; a system top legitimately infers memory, so the axis pins the EXACT count instead of demanding 0 as the operator gates do. Drift = a silent memory-inference change)   -> PASS
     CRIT WARN  =     8      (whitelist Synth 8-295 x8 — the 8 HIU TRNG ring oscillators are an INTENDED combinational feedback (they are the entropy source), so exactly 8 timing loops are expected and whitelisted BY COUNT; a 9th, or any other critical warning id, fails. Global set_msg_config demotion is forbidden (spec §28) — it would hide a real loop. DRC LUTLP-1 must be 0: that is the synth/constraints/hiu_trng_ro.xdc acknowledgement working, and it shows up as LUTLP-2 'Combinatorial Loop Allowed' x8 in the DRC warning list; evidence: sys_top_core_run.log)   -> PASS
                  issued: Synth 8-295 x8  <= whitelist

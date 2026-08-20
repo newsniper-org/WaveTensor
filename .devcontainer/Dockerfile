@@ -63,19 +63,23 @@ RUN pacman -S --noconfirm --needed \
 #    ⚠️ 실측 주의 — **`v1.8.0` 태그는 롤링 자산을 서빙한다.** 그 URL 로 받으면
 #    빌드 시점에 따라 TLC 버전이 달라진다 (실측: 호스트 2.19/2024-08-08 =
 #    2,274,532 B vs 컨테이너 2026.08.11 = 4,486,193 B). 태그가 버전을
-#    고정하지 못하므로 **sha256 으로 고정**한다 — 이 저장소가 gate 증거에
+#    고정하지 못하므로 **BLAKE2b-512 로 고정**한다 — 이 저장소가 gate 증거에
 #    적용하는 provenance 규율(§22.14b-10)을 도구에 그대로 적용한 것이다.
 #    해시를 바꾸는 것은 검증 도구를 바꾸는 것이다.
 #
 #    (참고: 두 버전 모두 `proofs/tla/run.sh` 16 run 을 통과한다 — 실측 확인.
 #     그래도 고정하는 이유는 "돌더라" 가 아니라 "무엇으로 쟀는지 답할 수
 #     있어야 한다" 이다.)
+#    해시 계열은 저장소 전체가 **BLAKE2b-512** 로 통일돼 있다 (`b2sum` 기본값).
+#    stdlib `hashlib.blake2b(digest_size=64)` 와 같은 값이며, 판정기 핀·생성물
+#    출처·게이트 증거가 전부 같은 계열을 쓴다 — 계열이 섞이면 "무엇으로 쟀는가"
+#    앞에 "어느 해시로?" 라는 질문이 하나 더 붙는다.
 ARG TLA_VERSION=1.8.0
-ARG TLA_SHA256=ab323b79802aedc3203b3f9af37c6aca3ed43f4e0225b36f2aa77b26de46c05f
+ARG TLA_BLAKE2B512=4b2313f35e5f2965120c161dbb982c8541fff20b9a556543bccbc5163f7fcdc40a7dafa43b5b99c628502409dcda7274936df8509bba8fded6d3b51d8f5ffe45
 RUN mkdir -p /usr/share/java \
  && curl -fsSL -o /usr/share/java/tla2tools.jar \
       "https://github.com/tlaplus/tlaplus/releases/download/v${TLA_VERSION}/tla2tools.jar" \
- && echo "${TLA_SHA256}  /usr/share/java/tla2tools.jar" | sha256sum -c - \
+ && echo "${TLA_BLAKE2B512}  /usr/share/java/tla2tools.jar" | b2sum -c - \
  && printf '#!/bin/sh\nexec java -XX:+UseParallelGC -cp /usr/share/java/tla2tools.jar tlc2.TLC "$@"\n' \
       > /usr/local/bin/tlc \
  && printf '#!/bin/sh\nexec java -cp /usr/share/java/tla2tools.jar tla2sany.SANY "$@"\n' \

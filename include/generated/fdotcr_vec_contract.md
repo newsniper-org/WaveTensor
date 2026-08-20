@@ -124,4 +124,4 @@ NaN 불산출 — report `checks.special_contrast` 가 실증). special-set 시
 ## 8. 카운트 (report 와 동일)
 
 EFT 값-계약 trial 57022 (0 mismatch 의무) / invariant trial 57022 /
-special trial 600. 상세·sha256 은 `fdotcr_golden_report.json`.
+special trial 600. 상세·blake2b512 은 `fdotcr_golden_report.json`.

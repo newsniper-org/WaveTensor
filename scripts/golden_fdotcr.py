@@ -93,7 +93,7 @@ trial, 0 mismatch 의무) 를 생성해 승계·졸업시킨다. 재실행 byte-
                                               operand 1,024b A||B (§27.7a.1
                                               frag 배치 그대로) + 기대 결과
   include/generated/fdotcr_vec_contract.md    벡터 비트 레이아웃/의미 계약
-  include/generated/fdotcr_golden_report.json 카운트·sha256·정리 실측 결과
+  include/generated/fdotcr_golden_report.json 카운트·blake2b512·정리 실측 결과
 
 ground truth 는 exact 정수/(m,e)/Fraction 산술, stdlib-only. 기존 golden
 산출물 (lattice/bank/cluster) 은 본 스크립트가 접촉하지 않는다.
@@ -1503,13 +1503,13 @@ NaN 불산출 — report `checks.special_contrast` 가 실증). special-set 시
 ## 8. 카운트 (report 와 동일)
 
 EFT 값-계약 trial %d (0 mismatch 의무) / invariant trial %d /
-special trial %d. 상세·sha256 은 `fdotcr_golden_report.json`.
+special trial %d. 상세·blake2b512 은 `fdotcr_golden_report.json`.
 """ % (len(em.lines), VEC_HEX, VEC_BITS, fam_rows, seed_rows,
        n_eft, n_inv, n_sp)
 
 
-def _sha256(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+def _digest(path):
+    return hashlib.blake2b(path.read_bytes(), digest_size=64).hexdigest()
 
 
 # ===========================================================================
@@ -2016,11 +2016,11 @@ def main():
             "operand_layout": "A||B 연접 16-frag (frag 0-7 = A 32x16b, "
                               "frag 8-15 = B; lanes_to_frags pin)",
             "families": em.families,
-            "sha256": _sha256(VEC_PATH),
+            "blake2b512": _digest(VEC_PATH),
         },
         "contract": {
             "path": "include/generated/fdotcr_vec_contract.md",
-            "sha256": _sha256(CONTRACT_PATH),
+            "blake2b512": _digest(CONTRACT_PATH),
         },
         "prannounced_plan_conformance": {
             "_doc": "§27.7a.5 선공표 (locked) 대비 실제 이행. 선공표 "
@@ -2255,8 +2255,8 @@ def main():
     print("  merge 정렬합 폭 최대 %d bit (강제 경계 %d), merge %d회"
           % (counters["merge_width_max"], Q48,
              counters["merge_count_total"]))
-    print("  vectors: %d lines, sha256 %s"
-          % (len(em.lines), report["vector_file"]["sha256"][:16]))
+    print("  vectors: %d lines, blake2b512 %s"
+          % (len(em.lines), report["vector_file"]["blake2b512"][:16]))
 
     # ---- 종료 코드 (§27.7a.5 (a) 의 "assert" 이행) --------------------
     # counter-only 는 문언 이탈이다 — 벡터 수록분 밖에서 나는 실패가

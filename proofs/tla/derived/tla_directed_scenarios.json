@@ -9,7 +9,7 @@
   "gate": "proofs/tla/run.sh — 16/16 runs behaved as declared (gate GREEN), 2026-08-16 재실행",
   "tlc": "TLC2 2.19 (/usr/share/java/tla2tools.jar), java -workers 1 -cleanup (BFS 결정성 pin — README §2)",
   "determinism": "MUST-FAIL 14 run 각 2회 재실행: trace extract 14/14 byte-identical; states generated 수치 README §4 표 (75/858/1250/2586/2788/487/361/363/26/24/162/489/205/23) 와 전부 일치. run.sh 는 동일 탐색을 -difftrace 로 출력하며 반례 자체는 동일하다 (difftrace 는 출력 형식만 바꾼다).",
-  "trace_sha256": "trace_to_directed.md §6 표 참조 (본 파일 재생성 시 갱신 의무 동반)"
+  "trace_blake2b512": "trace_to_directed.md §6 표 참조 (본 파일 재생성 시 갱신 의무 동반)"
  },
  "constants": {
   "NBANKS": 2,

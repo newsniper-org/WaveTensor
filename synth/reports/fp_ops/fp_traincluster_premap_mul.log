@@ -1,16 +1,21 @@
 # ===== WT premap-$mul evidence provenance (spec §22.14b-10) =====
 # 이 헤더는 `make synth-sys-gate` / `make synth-fp-op` 가 자동으로
 # 쓴다 (synth/scripts/gen_premap_mul.py). 손으로 고치지 말 것 —
-# `fp_op_gate_check.py` 가 아래 sha256 을 현행 소스와 대조하고,
+# `fp_op_gate_check.py` 가 아래 blake2b512 를 현행 소스와 대조하고,
 # 하나라도 어긋나면 gate 를 PASS 가 아니라 STALE FAIL 로 끝낸다.
 # tag: fp_traincluster
 # top: FP_TrainCluster
 # yosys: Yosys 0.64 (git sha1 6d2c445ae-dirty, g++ 15.2.1 -march=native -O3 -fno-plt -fexceptions -fstack-clash-protection -fcf-protection -mpclmul -ffile-prefix-map=/startdir/src=/usr/src/debug/yosys -fPIC -O3) [startdir/yosys at makepkg]
-# generated: 2026-08-18T17:56:14+09:00
+# generated: 2026-08-20T16:08:37+09:00
 # command: yosys -p 'read_verilog -I include FP_TrainCluster.v FP_AccLattice.v FP_AccBank.v; hierarchy -top FP_TrainCluster; proc; opt_clean; stat'
-# source: FP_TrainCluster.v sha256=5aef3a77460467202006da40274083fe5385a71fbf543088409ab9d7fc91cc15
-# source: FP_AccLattice.v sha256=dcee8ac87dee4ab7c4e7956df198169b85176e32e0a003f6a8bc42565c32bd12
-# source: FP_AccBank.v sha256=cd14694abb349807c6f5dda627320346f41cc9bff27200bccf5eb48d2b50c820
+# source: FP_TrainCluster.v blake2b512=1e198d3bebb85e6f15e0d87460dda330c829473582ea2f8a9a551326c3dc3ff1907779aff41305f3cbc5b6046e336486ca12775c190e1bd5171ad4f2de2dbce1
+# source: FP_AccLattice.v blake2b512=aea354685de558b21dbffb0e5b657e508959c5c71db02edd17a4a3c9385f222ff84809496ed0c0d563226d9bd7934f0b2abc660ce4d223291e1dc4fb1d31351c
+# source: FP_AccBank.v blake2b512=81f58304ba879b0f10469e70aaa2d0db12fd73412e8871f09c04e5085277910db8c29e5071e5f8dcf7658f9f4a1101e1fb95cccd4ed58a21db59ec347ed22ede
+# vivado-source: FP_TrainCluster.v blake2b512=1e198d3bebb85e6f15e0d87460dda330c829473582ea2f8a9a551326c3dc3ff1907779aff41305f3cbc5b6046e336486ca12775c190e1bd5171ad4f2de2dbce1
+# vivado-source: FP_AccLattice.v blake2b512=aea354685de558b21dbffb0e5b657e508959c5c71db02edd17a4a3c9385f222ff84809496ed0c0d563226d9bd7934f0b2abc660ce4d223291e1dc4fb1d31351c
+# vivado-source: FP_AccBank.v blake2b512=81f58304ba879b0f10469e70aaa2d0db12fd73412e8871f09c04e5085277910db8c29e5071e5f8dcf7658f9f4a1101e1fb95cccd4ed58a21db59ec347ed22ede
+# vivado-source: synth/lattice/fp_ops/FP_TrainCluster_gate_top.v blake2b512=7850aa5d6d62c036e2a20d8387caac72e8d94c5cdc05eb2f133cf5fb0cbf16925af1f17a5db8f57d86eea555110f124cf9022cac136e60f3ce0226fd9690560f
+# include: include/attributes.vh blake2b512=29c0b74d8337fa5d3a7175fa96b6634386d59682f159bd7d6720a83c4d3f1ef2af6759687c331ddba8ce0fdc984a1eef33c7a106c214df7600f55961bd57ba94
 # ===== end provenance =====
 
 
@@ -2191,6 +2196,6 @@ Removed 226 unused cells and 2315 unused wires.
         8   FP_TrainLaneTap
 
 Warnings: 2 unique messages, 4 total
-End of script. Logfile hash: f2b2d89e8a, time: 0.56s, user: 0.49s, system: 0.06s, MEM: 84.81 MB peak
+End of script. Logfile hash: f2b2d89e8a, time: 0.57s, user: 0.50s, system: 0.06s, MEM: 84.05 MB peak
 Yosys 0.64 (git sha1 6d2c445ae-dirty, g++ 15.2.1 -march=native -O3 -fno-plt -fexceptions -fstack-clash-protection -fcf-protection -mpclmul -ffile-prefix-map=/startdir/src=/usr/src/debug/yosys -fPIC -O3) [startdir/yosys at makepkg]
-Time spent: 24% 1x opt_clean (0 sec), 19% 4x read_verilog (0 sec), ...
+Time spent: 23% 1x opt_clean (0 sec), 20% 4x read_verilog (0 sec), ...

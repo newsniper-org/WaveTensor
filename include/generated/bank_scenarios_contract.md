@@ -192,7 +192,7 @@ writeback/commit 이 명령보다 선행한 뒤의 값이다.
 ## 9. 결정론
 
 고정 seed `bank_rand_interleave = 0x1A77E21` 외 난수원/timestamp 없음 —
-재실행 byte-identical (sha256 은 `lattice_golden_report.json`).
+재실행 byte-identical (blake2b512 은 `lattice_golden_report.json`).
 
 ## 10. ④ GATE V20-3 이월 기록 (2026-08-17 — golden 반쪽; §27.6 ④ 검증 의무 1)
 

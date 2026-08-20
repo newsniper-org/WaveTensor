@@ -1,26 +1,26 @@
 # ===== WT premap-$mul evidence provenance (spec §22.14b-10) =====
 # 이 헤더는 `make synth-sys-gate` / `make synth-fp-op` 가 자동으로
 # 쓴다 (synth/scripts/gen_premap_mul.py). 손으로 고치지 말 것 —
-# `fp_op_gate_check.py` 가 아래 sha256 을 현행 소스와 대조하고,
+# `fp_op_gate_check.py` 가 아래 blake2b512 를 현행 소스와 대조하고,
 # 하나라도 어긋나면 gate 를 PASS 가 아니라 STALE FAIL 로 끝낸다.
 # tag: fp_stepseq
 # top: FP_StepSeq
 # yosys: Yosys 0.64 (git sha1 6d2c445ae-dirty, g++ 15.2.1 -march=native -O3 -fno-plt -fexceptions -fstack-clash-protection -fcf-protection -mpclmul -ffile-prefix-map=/startdir/src=/usr/src/debug/yosys -fPIC -O3) [startdir/yosys at makepkg]
-# generated: 2026-08-18T22:14:55+09:00
+# generated: 2026-08-20T16:08:38+09:00
 # command: yosys -p 'read_verilog -I include FP_StepSeq.v FP_Mul36.v FP_AddWide.v; hierarchy -top FP_StepSeq; proc; opt_clean; stat'
-# source: FP_StepSeq.v sha256=c205bbc79b00a47c91da22c2b1a2b8ae0dd4869c9ba94443bde0de20f0a0f5ef
-# source: FP_Mul36.v sha256=e9af9ef261c5a16e1fb28c1b382af90af902ef06e11424cf40915a3f94641eab
-# source: FP_AddWide.v sha256=61bc72315a92d4d0e83c46af25fcfbf9ebfea27078184b2329924e97d3c76fdc
-# vivado-source: FP_StepSeq.v sha256=c205bbc79b00a47c91da22c2b1a2b8ae0dd4869c9ba94443bde0de20f0a0f5ef
-# vivado-source: FP_Mul36.v sha256=e9af9ef261c5a16e1fb28c1b382af90af902ef06e11424cf40915a3f94641eab
-# vivado-source: FP_AddWide.v sha256=61bc72315a92d4d0e83c46af25fcfbf9ebfea27078184b2329924e97d3c76fdc
-# vivado-source: synth/lattice/fp_ops/FP_StepSeq_gate_top.v sha256=81a33c44ed62a2d56c0b0de80b9e7fd2e20addd28780944f901a2b58a33ddc4e
-# include: include/attributes.vh sha256=664630d445f9904fea58b15237d9484cb01c7aefca2c1e5a2a65eaac95411ef3
-# include: include/fp_narrow_f32.vh sha256=f3e22e9960cd0cbd821c9913d53c680b56ef98354dfa5eec0bb0090b83f99039
-# include: include/generated/fp_fdiv_seed_rom.vh sha256=fae91ff3dd6a509e2d19a2ef6719b8c4e955aedac5cdf705353c606e3db8b9e3
-# include: include/generated/fp_fexp2_coeffs.vh sha256=1a805d3d44f22d24d2c293c4c6431ea0b2787b54197c4462b70a76ef73210115
-# include: include/generated/fp_frsqrt_seed_rom.vh sha256=521da6f2a7654049113d1f51e4e6aceb299ebbfd156932cc1ceed9189a89b3b9
-# include: include/generated/isa_subop_codes.vh sha256=d9a3ca6f0c76cfb65b05b918e390e8079b47ee6c24ba6e94ed75cfc2760bb557
+# source: FP_StepSeq.v blake2b512=e0f32ef236f5bffa0008b7642a4696091e605d88cbbc52192e9ac4c33fc91fe53d029ccc8f315f59b5d3568184d3774a31727ab900848efb104556dbdd46fb11
+# source: FP_Mul36.v blake2b512=abaa2cd40d3341fe86c1ed0e918a4bdf0bf5c6860337bc1631c4bdbb5a5626ef86e315ae0511144c6208ac884d4477d53acd4881c1b868a9422b80ec521dbcb8
+# source: FP_AddWide.v blake2b512=ec1d1833e9598d711cb4ca783b06c17bf38b415006973b8277ec3fbd913f62f626806a15d8ae81e447c0debe95095fd93b96c1acec7b99bdb79aa7fc05a0b4c0
+# vivado-source: FP_StepSeq.v blake2b512=e0f32ef236f5bffa0008b7642a4696091e605d88cbbc52192e9ac4c33fc91fe53d029ccc8f315f59b5d3568184d3774a31727ab900848efb104556dbdd46fb11
+# vivado-source: FP_Mul36.v blake2b512=abaa2cd40d3341fe86c1ed0e918a4bdf0bf5c6860337bc1631c4bdbb5a5626ef86e315ae0511144c6208ac884d4477d53acd4881c1b868a9422b80ec521dbcb8
+# vivado-source: FP_AddWide.v blake2b512=ec1d1833e9598d711cb4ca783b06c17bf38b415006973b8277ec3fbd913f62f626806a15d8ae81e447c0debe95095fd93b96c1acec7b99bdb79aa7fc05a0b4c0
+# vivado-source: synth/lattice/fp_ops/FP_StepSeq_gate_top.v blake2b512=ddea34733ea6ea90c43d4ca8a8598a2964eef97a189fef06eccab5f695cd4bb0d760e2da7e2067ac6fc281e5f953e359aaf08131cc2202608e1ebad3050da5b6
+# include: include/attributes.vh blake2b512=29c0b74d8337fa5d3a7175fa96b6634386d59682f159bd7d6720a83c4d3f1ef2af6759687c331ddba8ce0fdc984a1eef33c7a106c214df7600f55961bd57ba94
+# include: include/fp_narrow_f32.vh blake2b512=b34d555aafddf2c8371ce8bb3b155ea59fff791c0929e04926efc37986f49f890b101a76ad1894fb5de168cd1fd7200b9147460c3345ccf15cd69b833c6af75f
+# include: include/generated/fp_fdiv_seed_rom.vh blake2b512=9f958ec498174312c5c40c4f4f315da32305dee6cbbc74978ab60e206df44a5a236f1a08d033256d664e617127e5c368a705575532d24111c17547f482f410cf
+# include: include/generated/fp_fexp2_coeffs.vh blake2b512=373aa3e250f05fa8b7236fb8814c103ef1d2b5a18b6decd053b29d8dfff81ac2bfe10b0f11988ff260d9667861146b98478851e8734bf351dd6a8daf3d568d43
+# include: include/generated/fp_frsqrt_seed_rom.vh blake2b512=e6cb832051094dff02fadd460b51198f37ca9fcfcfa323eb73ec90f53e6c94dbc34a724b3302ebbc2ab26e83e6c195ea6586db21f3163c0aa82c7e071005bf2e
+# include: include/generated/isa_subop_codes.vh blake2b512=559dac0a04f4e5dfc97cb96e47693a285ae929af138ed50a82f937a49e94e22375967d94f21cf20d33ef27b738b5622e4aff6e56fd7cbbd9a741c505dc77bf2c
 # ===== end provenance =====
 
 
@@ -2677,6 +2677,6 @@ Removed 87 unused cells and 2450 unused wires.
         1   FP_AddWide
         1   FP_Mul36
 
-End of script. Logfile hash: cdf26faf2d, time: 0.21s, user: 0.18s, system: 0.04s, MEM: 64.49 MB peak
+End of script. Logfile hash: cdf26faf2d, time: 0.24s, user: 0.22s, system: 0.02s, MEM: 64.99 MB peak
 Yosys 0.64 (git sha1 6d2c445ae-dirty, g++ 15.2.1 -march=native -O3 -fno-plt -fexceptions -fstack-clash-protection -fcf-protection -mpclmul -ffile-prefix-map=/startdir/src=/usr/src/debug/yosys -fPIC -O3) [startdir/yosys at makepkg]
 Time spent: 32% 4x read_verilog (0 sec), 25% 1x opt_clean (0 sec), ...

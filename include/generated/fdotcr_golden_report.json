@@ -943,11 +943,11 @@
     "count": 24
    }
   ],
-  "sha256": "0a2cc29286f8c54002002bc6ea2c90dcfc622bc39cdb3fda29f4a21544367964"
+  "blake2b512": "b98908b89931da7e202e85efdaaaef7243fbcb01c5ff08bfb3388685866143c109cb688d6757f3118f04366f40a7936d602e5980f2d6685424d022c3f02c5ff6"
  },
  "contract": {
   "path": "include/generated/fdotcr_vec_contract.md",
-  "sha256": "7c4dbfd998221cbd185b65ee05dbdba5020f9dacf74d6cd08552de8a9a980aa1"
+  "blake2b512": "f46b35ddb4745d34f4243b5b8e5dddd7618a0a81198a6996c74a69e417223d1549c43d0e9abdfaf16cca057a6c2f3f8bffc21d73c29cb15c4c8602914bdd1f2c"
  },
  "prannounced_plan_conformance": {
   "_doc": "§27.7a.5 선공표 (locked) 대비 실제 이행. 선공표 문언에서 벗어난 항목은 **대체 사실 자체를** 여기와 §27.7a.2a amendment 에 기록한다 (§12a 규칙 5) — '하한 충족' 같은 재해석만 남기지 않는다.",

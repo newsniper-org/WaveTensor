@@ -1,7 +1,7 @@
 {
  "_doc": "v1.8.0c FRSQRT32 seed ROM \u2014 exact integer entries shared by RTL (fp_frsqrt_seed_rom.vh) and the golden model (scripts/golden_fp32.py).",
  "_generator": "scripts/gen_frsqrt_seed_rom.py",
- "_generator_sha256": "f7f1a3f510bd5ac6a3f463eb87e8f2fc9a8a4ec1aac2f7ecf398eac0d4a6415a",
+ "_generator_blake2b512": "52fa2699b6dcb1a715facec64d9c79554ab2cdf978a25eb7b86c130351c6929e5c6247079f63b08de31b45b3ccafa05ffd708e86da75b6a17941465bfbd33eba",
  "width_bits": 9,
  "depth": 256,
  "index": "{exp_field[0], mant[22:16]} \u2014 biased-exponent LSB 1 <=> x' in [1,2), 0 <=> x' in [2,4); mant[22:16] = top 7 mantissa bits",

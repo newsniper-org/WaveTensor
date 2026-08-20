@@ -503,11 +503,11 @@
     "count": 80
    }
   ],
-  "sha256": "f76947352d1857469c9a4e697ac61770277011413d5964464c023773d9c2b794"
+  "blake2b512": "30414e19192f8bc537e1d1d7f61202787095d5876b88b7c0ffacec721c20c28f500a8b772d457f6646c84a699527c7dc90efe49c8508679d501a9dfbddd27003"
  },
  "contract": {
   "path": "include/generated/lattice_vec_contract.md",
-  "sha256": "3732b01c22f4c210e7bb044a815b45dbd35e996495403e463cc8ff24b2a2a539"
+  "blake2b512": "a9b20184bacfee8cdb29f90f7cb63eb3f57656c8501a858e5ff74573d67deb143ee7055f78b687587f0f8505e5fab2fda0bb2cceb4dfa9dc75b63ffd8546a028"
  },
  "cluster_vectors": {
   "_doc": "④ GATE V20-3 (2026-08-17): cluster operand-level 벡터 — bf16/f16 operand 쌍 32개/wave 에서 lane 곱 전단 raw 형식 (§27.2.1) 을 거쳐 wave_step 4층 기대값까지. operand 는 신규 생성 (기존 lattice 벡터 역-인수분해 아님, CLUSTER_SEEDS 분리). 계약: include/generated/cluster_vec_contract.md.",
@@ -628,10 +628,10 @@
    "mismatches": 0,
    "verdict": "PASS"
   },
-  "sha256": "900cadc10d122bb166d656b27897869cd247b19d6c027138a60bb897428a97ef",
+  "blake2b512": "a62efd22237274fa5aa0d370aaa2a068d99db55ea0719b48760d3a3b69dfb6c7a14a4abb45ab2837d6ffc67d9fd57bec94b0b109807643cf3d12a354685f49b1",
   "contract": {
    "path": "include/generated/cluster_vec_contract.md",
-   "sha256": "a9d360a846ac91e098bc6f888c2a25525b0460ff0368cf386ed55c6c55ffb157"
+   "blake2b512": "dc9fd91d80bfcb7218ab7584eeea2840d8667c773598428b2223807cd44916243208404d39b3db5edeb2e140ef919ce27631f5d9f7fb6f4cc777018990c693ee"
   }
  },
  "gate_v20_3_carryover": {
@@ -884,11 +884,11 @@
      "doc": "랜덤 인터리브 (고정 seed) — 전 명령/거부/fault 클래스 혼합, coverage 하한은 report"
     }
    ],
-   "sha256": "f8248f6219873754533f853ceb66e1d7208164ce9aaa5031b81cb16da274ccd5"
+   "blake2b512": "5ec8f5930dd7df82651920116a4dfc5aaf7ad43f4856cb09ddec7137a807078dc275b812fd301f9e116357f532f945171f3a8e789b4b126782a6a7c480c169a2"
   },
   "contract": {
    "path": "include/generated/bank_scenarios_contract.md",
-   "sha256": "945716742bd97a5f3162dada17e38ec06b4cd96f2b189a24c8eba89745537e0d"
+   "blake2b512": "df556fefd398c3f17eb6077bb867e3b0d1d88d30815730759b6d39c4f1f5fb5e0eaa1851b5acc7a2a766131837b20e2b550009b1b55f121b7bb4253d2790db2d"
   },
   "coverage": {
    "wave_ok": 381,
