@@ -21,7 +21,7 @@ make rtl-formal        # 또는  sh rtl/formal/tla/run.sh
 | 속성 | 모델 | 상태 |
 |---|---|---|
 | **FAB-2** 공유 자원 배타성 + 무처분 없음 | `SharedUnit.tla` | **증명됨** |
-| FAB-3 기입 자격 | — | 미착수 |
+| **FAB-3** 기입 자격 · **FAB-4** 소유 구간 | `ResultBank.tla` | **증명됨** |
 | HIU-3 유효 게이팅 전수 | — | 미착수 |
 | ISA-3 전역 미스만 fault | — | 미착수 |
 | HIU-8 · HIU-9 플랫폼 독립 | — | 미착수 (HIU-9 는 소유권 규약 설계가 선행) |
