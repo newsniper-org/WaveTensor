@@ -137,6 +137,45 @@ expect_fail "증인: flush 후 데이터가 남는가"   XlateStore_witness_Data
 expect_pass "증인 유효성: 데이터를 지우면 증인이 선다" \
             XlateStore_del_flush_keeps_data.cfg "$M"
 
+# ---------------------------------------------------------------------------
+# ISA-3 · ISA-4 — route fault 의 판정 주체와 범위 (부록 D.5 우선순위 4번)
+#
+# 앞의 셋과 성격이 다르다. 이미 일어난 결함이 아니라 **일어나면 설계를
+# 망가뜨리는** 것이다 — "잘못 구현하면 정상 워크로드가 죽는다".
+#
+# 발화 조건은 **둘**이다 (§1.6.3): LNID 합집합 미스 · src_kind=1 의 LBID 미사상.
+# 하나만 모델링하면 ISA-4 「최대 1회」가 검사할 것이 없다.
+#
+# 형상 sweep 을 돈다 (§1.2 「유일한 직접 검사」). 깊이 축뿐 아니라 이름 수·지점
+# 수도 바꾼다 — |Names| = |Points| 인 형상에서는 구성이 끝나면 합집합이 이름
+# 공간 전체가 되어 **LNID 미스가 원리적으로 도달 불가**가 된다 (적대 검증 실측).
+#
+# 계층: 기저(깊이 1·2·3)는 TLC 전수 검사, 임의 깊이는 `Inv_ScopeLocal`
+# (범위 간 비간섭) 위에 선 **귀납 논증**이다. TLAPS 기계 증명이 아니다.
+# ---------------------------------------------------------------------------
+M=Route.tla
+expect_pass "ISA-3/4 기저 — 깊이 1"          Route_depth1.cfg "$M"
+expect_pass "ISA-3/4 기저 — 깊이 2"          Route_depth2.cfg "$M"
+expect_pass "ISA-3/4 기저 — 깊이 3"          Route_depth3.cfg "$M"
+expect_pass "형상 sweep — 이름 4 · 지점 2"   Route_shapeA.cfg "$M"
+expect_pass "형상 sweep — 이름 3 · 지점 3"   Route_shapeB.cfg "$M"
+
+expect_fail "가드 삭제: global_judge (지역 판정)" Route_del_global_judge.cfg "$M" Inv_CleanNeverFaults
+expect_fail "가드 삭제: fault_once"               Route_del_fault_once.cfg   "$M" Inv_FaultAtMostOncePerScope
+expect_fail "가드 삭제: loud_fault (무언 드롭)"   Route_del_loud_fault.cfg   "$M" Inv_MissAlwaysFaults
+
+expect_fail "증인: fault 가 실재하는가"            Route_witness_NoFault.cfg             "$M" Witness_NoFault
+expect_fail "증인: 무결 통과가 실재하는가"         Route_witness_NoClean.cfg             "$M" Witness_NoClean
+expect_fail "증인: 지역 비소유가 실재하는가"       Route_witness_NoLocalNonOwnership.cfg "$M" Witness_NoLocalNonOwnership
+expect_fail "증인: 두 조건 동시 발화가 실재하는가" Route_witness_NoDoubleMiss.cfg        "$M" Witness_NoDoubleMiss
+
+# 위 넷과 짝이 되는 **MUST PASS**. 좋은 모델에서 무언 드롭은 도달 불가여야 한다.
+# 위 `del_loud_fault` 의 MUST FAIL 과 짝으로 읽어야 뜻이 선다 — 그 상태가
+# 표현 가능하되(mutant 에서 도달) 좋은 모델에서는 도달 불가(여기서 통과)임을
+# 두 run 이 함께 말한다. 이 짝이 없어서 Inv_MissAlwaysFaults 가 **어떤 형상
+# 에서도 반증 불가**였다 (적대 검증이 잡은 blocking 지적).
+expect_pass "무언 드롭이 좋은 모델에서 도달 불가"  Route_witness_NoSilentDrop.cfg "$M"
+
 echo
 echo "======================================================================="
 if [ "$rc" -eq 0 ]; then
