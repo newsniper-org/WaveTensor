@@ -27,9 +27,41 @@ devcontainer 는 이 넷을 **환경 정의 하나로** 없앤다.
 
 | 검증 축 | 대상 | 도구 | 위치 |
 |---|---|---|---|
-| **(a)** 프로토콜 · 상태기계 · 소유권 | 형식화 적합 | TLC · (선택) SBY | **컨테이너** |
+| **(a)** 프로토콜 · 상태기계 · 소유권 | 형식화 적합 | TLC (선-formal) · SBY (후-formal) | **컨테이너** |
 | **(b)** 산술 bit-exactness | golden 대조가 현실적 | cocotb · verilator · iverilog · golden(python) | **컨테이너** |
 | **(c)** 타이밍 · 면적 · Fmax | 형식 대상 아님 — **측정** 대상 | **Vivado** | **호스트 전용** |
+
+### 네 번째 축 — 설계 (2026-08-20 신설)
+
+WT64v1 **RTL 전면 재구현**이 착수되면서 축이 하나 늘었다. 재구현의 정본은
+`docs/wt64v1-architecture-guide/main.pdf` 이고, 설계 언어는 SpinalHDL 이다.
+
+| 도구 | 고정값 | 어디서 고정하는가 |
+|---|---|---|
+| JDK | `jdk21-openjdk` **21.0.12** | Dockerfile (버전 **명시** — 무버전은 26.0.2 를 준다) |
+| sbt 런처 | 스냅샷 `sbt` **2.0.6** | ALA 스냅샷 |
+| sbt 실제 | **1.12.15** | `rtl/spinal/project/build.properties` |
+| Scala | **2.13.12** | `rtl/spinal/build.sbt` |
+| SpinalHDL | **1.14.2** | 〃 |
+
+`scripts/lint_toolchain_pins.py` 가 세 곳(Dockerfile ARG · devcontainer.json
+build.args · rtl/spinal 빌드 파일)이 같은 값을 말하는지 **기계로** 대조한다.
+
+> **⚠️ 실측이 뒤집은 가정 셋** (2026-08-20, ALA 스냅샷 `2026/08/12` 기준)
+>
+> 1. **스냅샷의 `sbt` 는 1.x 가 아니라 2.0.6 이다.** 그래도 쓸 수 있는 이유는
+>    그것이 *런처*이기 때문 — launcher jar 의 boot properties 가
+>    `version: ${sbt.version-read(sbt.version)[2.0.6]}` 이므로 2.0.6 은
+>    **기본값**이고 `project/build.properties` 가 이긴다. 아티팩트를 열어
+>    확인했고, 이미지 빌드의 스모크가 실제 부트스트랩까지 증명한다.
+> 2. **`scala` · `mill` · `coursier` 패키지는 스냅샷에 없다.** Scala 컴파일러는
+>    sbt 가 coursier 로 받으므로 정상이다. **mill 경로는 닫혀 있다.**
+> 3. **SpinalHDL 은 Scala 3 빌드가 없다** (`spinalhdl-core_3` 부재).
+>
+> 의존은 이미지 층에 **구워 둔다**. 컨테이너를 다시 만들 때 네트워크가 결과를
+> 바꾸면 그것은 고정이 아니다 — TLA+ 를 해시로 묶은 것과 같은 이유다.
+> 그 층은 동시에 **툴체인 스모크**다: 부트스트랩·컴파일러 플러그인·
+> `SpinalSystemVerilog` 출력까지 한 번에 판정하고, 실패하면 이미지 빌드가 죽는다.
 
 ### ⛔ Vivado 가 들어가지 않는 이유 (계약이지 편의가 아니다)
 
@@ -50,7 +82,8 @@ devcontainer 는 이 넷을 **환경 정의 하나로** 없앤다.
 | **Apalache** | 모델을 **TLC-checkable(유한·소형 상수)** 로 유지하는 제약이 인코딩 결정(불투명 토큰)을 강제해 왔다. 그 제약을 푸는 것은 **모델링 결정**이지 환경 결정이 아니다 |
 | **nextpnr / ECP5 P&R** | 검증 축 (c). ECP5 는 gate 가 아니라 MEASUREMENT 이기도 하다 |
 | **Isabelle** | 호스트가 **custom 설치본**이라 pacman 경로가 없다. 공식 번들을 쓰려면 별도 층에서 명시적으로 |
-| **SymbiYosys** | 저장소 선례 **0건** — 신규 인프라다. `WITH_SBY=1` 로 켤 수 있게만 열어 뒀다 |
+| ~~**SymbiYosys**~~ | ~~저장소 선례 0건~~ → **2026-08-20 기본 ON.** 재구현이 후-formal(유계 모델 검사 + k-귀납) 단계를 실제로 밟는다. 커밋 `f57802a1…`(v0.66) 로 고정 — 이전 판은 `--depth 1` 로 브랜치 끝을 받는 **롤링 자산**이었다 |
+| **boolector / bitwuzla / cvc5** | 스냅샷에 **없다**(실측: `target not found`). 그리고 없어도 된다 — 솔버는 **z3 하나만** 둔다. yices·cvc4 도 스냅샷에 있지만 넣지 않는다: 기본값에 의존하면 *어느 solver 로 쟀는지 증거에 안 남는다.* `.sby` 가 솔버를 명시하지 않으면 크게 실패해야 한다 |
 | Frama-C / CBMC / Verus / Kani / Rocq | drivers·Y4 층 도구. WaveTensor RTL 대상이 아니다 |
 
 ---
@@ -121,7 +154,7 @@ podman build --build-arg WITH_SBY=1 ... # SymbiYosys 포함
 이미지를 만들었다고 끝이 아니다. **아래가 전부 통과해야 이 환경이 쓸모 있다.**
 
 ```sh
-# 1) lint 7종
+# 1) lint 8종
 make lint                                   # → exit 0
 
 # 2) cocotb 회귀 — 6 MOD

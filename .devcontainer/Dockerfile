@@ -45,13 +45,18 @@ RUN printf 'Server=https://archive.archlinux.org/repos/%s/$repo/os/$arch\n' "${A
 # `curl` 은 아래 TLA+ 단계가 쓴다 — base-devel 에 없으므로 여기서 넣는다.
 # `nextpnr` 는 넣지 않는다: ECP5 P&R 은 검증 축 (c)(배치·배선) 이고
 # 그 축은 이 컨테이너의 대상이 아니다. ECP5 는 gate 가 아니라 MEASUREMENT 이기도 하다.
+#    ⚠️ JDK 는 **버전을 명시**한다. `jdk-openjdk` 는 무버전 메타 이름이라 스냅샷이
+#    주는 것이 곧 버전이 되는데, 이 스냅샷에서 그것은 **26.0.2** 다 (실측).
+#    비-LTS JDK 를 TLC 와 Scala 툴체인의 바닥으로 깔면 "어느 JDK 로 쟀는가" 의
+#    답이 스냅샷 날짜에 종속된다. `jdk21-openjdk` (21.0.12.u8-1, 실측 존재) 로
+#    고정한다 — LTS 이고, sbt 1.12.x · Scala 2.13.x 가 모두 지원하는 범위다.
 RUN pacman -S --noconfirm --needed \
       git make cmake pkgconf which diffutils curl \
       python python-pip \
       verilator iverilog gtkwave \
       yosys \
       z3 \
-      jdk-openjdk \
+      jdk21-openjdk \
  && pacman -Scc --noconfirm
 
 # ---------------------------------------------------------------------------
@@ -115,6 +120,89 @@ RUN pacman -S --noconfirm --needed uv && pacman -Scc --noconfirm \
  && cocotb-config --version
 
 # ---------------------------------------------------------------------------
+# 4b) Scala / SpinalHDL — RTL 전면 재구현의 설계 언어 층.
+#
+# 네 개의 버전이 **각각 독립적으로** 고정돼야 한다. 하나라도 흐르면 "어느
+# 툴체인으로 생성한 RTL 인가" 에 답할 수 없다 (§6.6 「도구는 증거의 일부다」).
+#
+#   · sbt 런처   — 스냅샷의 `sbt` 패키지. 이 스냅샷에서는 **2.0.6** 이다.
+#   · sbt 실제   — 런처가 아니라 `project/build.properties` 가 정한다.
+#   · Scala      — SpinalHDL 이 빌드된 그 버전으로 맞춘다.
+#   · SpinalHDL  — 라이브러리 2종 + **컴파일러 플러그인** 1종.
+#
+# ⚠️ 실측 주의 1 — **스냅샷의 sbt 는 1.x 가 아니라 2.0.6 이다.** 그래도 쓸 수
+#    있는 이유는 그 패키지가 *런처*이기 때문이다. 셸 스크립트에
+#    `build_props_sbt_version` 해석이 있고, launcher jar 의 boot properties 가
+#    `version: ${sbt.version-read(sbt.version)[2.0.6]}` 로 선언한다 —
+#    즉 **2.0.6 은 기본값일 뿐이고 실제 버전은 build.properties 가 정한다.**
+#    (패키지를 풀어 확인한 사실이지, "돌더라" 가 아니다. 다만 *부트스트랩이
+#    실제로 성공하는지*는 아래 스모크가 증명한다 — 읽은 것과 돈 것은 다르다.)
+#
+# ⚠️ 실측 주의 2 — **Arch 에 `scala` 패키지는 없다.** 정상이다. Scala 컴파일러는
+#    sbt 가 coursier 로 받으며, 그래서 버전이 pacman 이 아니라 build.sbt 에
+#    고정된다. `mill`·`coursier` 도 스냅샷에 없으므로 mill 경로는 닫혀 있다.
+#
+# ⚠️ 실측 주의 3 — SpinalHDL 은 **Scala 3 빌드가 없다** (`spinalhdl-core_3` 부재).
+#    2.13 계열만 있고, 1.14.2 의 POM 이 의존하는 것은 정확히 **2.13.12** 다.
+#    binary cross (`_2.13`) 로 배포되므로 다른 patch 도 될 가능성이 높으나,
+#    상류가 실제로 빌드한 값을 쓰는 것이 재현성에서 가장 싸다.
+#
+# 재현성: 의존을 이미지 층에 **구워 둔다**. 컨테이너를 다시 만들 때 네트워크가
+# 결과를 바꾸면 그것은 고정이 아니다 — TLA+ 를 해시로 묶은 것과 같은 이유다.
+# ---------------------------------------------------------------------------
+ARG SBT_VERSION=1.12.15
+ARG SCALA_VERSION=2.13.12
+ARG SPINAL_VERSION=1.14.2
+
+#    캐시는 시스템 경로에 두고 **누구나 쓸 수 있게** 연다. 아래에서 만드는
+#    비-root 사용자의 UID 가 ARG 로 정해지므로 chown 으로는 묶을 수 없고,
+#    묶으면 UID 를 바꾼 사용자가 런타임에 새 의존을 못 받는다.
+ENV COURSIER_CACHE=/opt/scala/coursier \
+    SBT_OPTS="-Dsbt.boot.directory=/opt/scala/sbt-boot -Dsbt.ivy.home=/opt/scala/ivy -Dsbt.global.base=/opt/scala/sbt-global"
+
+#    프라이밍 프로젝트는 의존을 캐시에 굽는 동시에 **툴체인 스모크**다 —
+#    sbt 2.0.6 런처가 실제로 sbt ${SBT_VERSION} 을 부트스트랩하는지, Scala
+#    컴파일러와 idsl 컴파일러 플러그인이 함께 서는지, SpinalVerilog 가 실제로
+#    파일을 뱉는지까지 한 번에 판정한다. 실패하면 이미지 빌드가 죽는다 —
+#    그것이 의도다. 조용히 통과하는 툴체인은 검증되지 않은 툴체인이다.
+RUN pacman -S --noconfirm --needed sbt && pacman -Scc --noconfirm \
+ && mkdir -p /opt/scala/coursier /opt/scala/sbt-boot /opt/scala/ivy /opt/scala/sbt-global \
+ && mkdir -p /tmp/prime/project /tmp/prime/src/main/scala \
+ && printf '%s\n' "sbt.version=${SBT_VERSION}" > /tmp/prime/project/build.properties \
+ && printf '%s\n' \
+      "ThisBuild / scalaVersion := \"${SCALA_VERSION}\"" \
+      'lazy val prime = (project in file("."))' \
+      '  .settings(' \
+      '    libraryDependencies ++= Seq(' \
+      "      \"com.github.spinalhdl\" %% \"spinalhdl-core\" % \"${SPINAL_VERSION}\"," \
+      "      \"com.github.spinalhdl\" %% \"spinalhdl-lib\"  % \"${SPINAL_VERSION}\"" \
+      '    ),' \
+      "    addCompilerPlugin(\"com.github.spinalhdl\" %% \"spinalhdl-idsl-plugin\" % \"${SPINAL_VERSION}\")" \
+      '  )' \
+      > /tmp/prime/build.sbt \
+ && printf '%s\n' \
+      'import spinal.core._' \
+      'class Prime extends Component {' \
+      '  val io = new Bundle { val a = in Bool(); val b = out Bool() }' \
+      '  io.b := !io.a' \
+      '}' \
+      'object PrimeGen extends App { SpinalVerilog(new Prime) }' \
+      > /tmp/prime/src/main/scala/Prime.scala \
+ && cd /tmp/prime \
+ && sbt -batch "runMain PrimeGen" \
+ && test -s /tmp/prime/Prime.v \
+ && grep -q 'module Prime' /tmp/prime/Prime.v \
+ && echo "[wt] SpinalHDL 스모크 OK — sbt ${SBT_VERSION} / scala ${SCALA_VERSION} / spinal ${SPINAL_VERSION}" \
+ && cd / && rm -rf /tmp/prime \
+ #  ⚠️ sbt 는 부트 서버 소켓을 `$TMPDIR/.sbt/` 에 만든다. 이 층은 root 로 도므로
+ #  그대로 두면 **root 소유 디렉터리가 남아** 비-root 개발 사용자의 sbt 가
+ #  AccessDeniedException 으로 죽는다 (실측). /tmp 는 1777 이라 지워 두면
+ #  각 사용자가 자기 것을 만든다. TLC 가 `--userns=keep-id` 없이 states/ 를
+ #  못 만들던 것과 같은 부류의 함정이다.
+ && rm -rf /tmp/.sbt /tmp/hsperfdata_root \
+ && chmod -R a+rwX /opt/scala
+
+# ---------------------------------------------------------------------------
 # 5) 형식 도구 보조층 (선택) — 무겁거나 별도 배포 체계라 기본에서 뺀다.
 #    · SymbiYosys(sby) : yosys 기반 BMC/k-induction 프론트엔드.
 #                        저장소 선례 0건이라 신규 인프라 — 도입 시 활성화.
@@ -124,11 +212,34 @@ RUN pacman -S --noconfirm --needed uv && pacman -Scc --noconfirm \
 #        공식 번들을 받으려면 별도 층에서 명시적으로 할 것.
 #    필요해지면 ARG 로 켠다. 켜지 않으면 이미지가 작게 유지된다.
 # ---------------------------------------------------------------------------
-ARG WITH_SBY=0
+#    SBY 는 이제 기본 ON 이다 — @sec:formal 이 후-formal 도구를 "합성 프론트엔드
+#    기반 유계 모델 검사 + k-귀납" 으로 규정하고, 재구현이 그 단계를 실제로
+#    밟기 때문이다. (문서는 제품명을 지목하지 않는다. sby 는 그 *성격*을
+#    만족하는 이 저장소의 선택이다.)
+#
+#    ⚠️ 이전 판은 `git clone --depth 1` 로 **기본 브랜치 끝**을 받았다. 그것은
+#    TLA+ 층이 스스로 경고한 바로 그 패턴 — *빌드 시점이 버전을 정하는* 롤링
+#    자산이다. **커밋 sha 로 고정한다.** `v0.66` 을 고른 이유는 이 스냅샷의
+#    yosys 가 0.66 이기 때문이다 (sby 는 yosys 와 함께 버전이 움직인다).
+#    태그가 아니라 커밋을 적는 이유: 태그는 옮길 수 있고 커밋은 옮길 수 없다.
+#    ⚠️ 실측 (2026-08-20) — 이전 판은 `boolector` 를 함께 깔았는데
+#    **그 패키지는 이 스냅샷에 없다** (`target not found`). `WITH_SBY=0` 이
+#    기본이었으므로 이 경로는 *한 번도 실행된 적이 없었고*, 그래서 못 쓰는
+#    상태로 남아 있었다. 켜자마자 드러났다 — cvc5 때와 같은 부류다.
+#
+#    솔버는 **z3 하나만** 둔다. 스냅샷에 yices·cvc4·cryptominisat·minisat 도
+#    있지만 넣지 않는다 — 위 §2 가 yices 에 대해 세운 규율("기본값에 의존하면
+#    어느 solver 로 쟀는지 증거에 안 남는다")을 sby 에도 그대로 적용한다.
+#    ⇒ .sby 파일이 솔버를 **명시하지 않으면 크게 실패한다.** 그것이 의도다.
+ARG WITH_SBY=1
+ARG SBY_COMMIT=f57802a16613f013e84e024df50fc3f0ea74f88b
 RUN if [ "${WITH_SBY}" = "1" ]; then \
-      pacman -S --noconfirm --needed python-click boolector && \
-      git clone --depth 1 https://github.com/YosysHQ/sby /tmp/sby && \
-      make -C /tmp/sby install && rm -rf /tmp/sby ; \
+      pacman -S --noconfirm --needed python-click && pacman -Scc --noconfirm && \
+      git clone https://github.com/YosysHQ/sby /tmp/sby && \
+      git -C /tmp/sby checkout --detach "${SBY_COMMIT}" && \
+      test "$(git -C /tmp/sby rev-parse HEAD)" = "${SBY_COMMIT}" && \
+      make -C /tmp/sby install && rm -rf /tmp/sby && \
+      sby --help > /dev/null && echo "[wt] sby OK @ ${SBY_COMMIT}" ; \
     fi
 
 # ---------------------------------------------------------------------------
@@ -154,7 +265,16 @@ RUN printf '%s\n' \
   'printf "  yosys      %s\\n" "$(yosys -V 2>&1 | head -1)"' \
   'printf "  cocotb     %s\\n" "$(cocotb-config --version 2>&1)"' \
   'printf "  z3         %s\\n" "$(z3 --version 2>&1)"' \
-  'printf "  TLC        %s\\n" "$(tlc -h 2>&1 | head -1)"' \
+  '# `tlc -h` 의 첫 줄은 빈 줄이라 head -1 이 아무것도 못 잡는다 — 이 행은' \
+  '# 오랫동안 공백을 보고하고 있었다. 인수 없이 부르면 첫 줄이 곧 버전이다.' \
+  '# "어느 버전으로 쟀는가" 에 답하지 못하는 자기보고는 자기보고가 아니다.' \
+  'printf "  TLC        %s\\n" "$(tlc 2>&1 | head -1)"' \
+  'printf "  sby        %s\\n" "$(command -v sby >/dev/null 2>&1 && sby --version 2>&1 | head -1 || echo "(미설치 — WITH_SBY=0)")"' \
+  'echo "  --- SpinalHDL 툴체인 (빌드 시 고정된 값) ---"' \
+  'printf "  java       %s\\n" "$(java -version 2>&1 | head -1)"' \
+  "printf \"  sbt        %s (런처 %s)\\\\n\" \"${SBT_VERSION}\" \"\$(sbt --script-version 2>/dev/null || echo '?')\"" \
+  "echo \"  scala      ${SCALA_VERSION}\"" \
+  "echo \"  SpinalHDL  ${SPINAL_VERSION}\"" \
   'echo "  Vivado     (의도적 부재 — 합성 gate 는 호스트에서 잰다)"' \
   > /home/${USERNAME}/wt-toolversions.sh \
  && chmod +x /home/${USERNAME}/wt-toolversions.sh

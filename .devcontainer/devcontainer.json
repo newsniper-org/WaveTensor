@@ -5,8 +5,14 @@
     "args": {
       "ALA_SNAPSHOT": "2026/08/12",
       "TLA_VERSION": "1.8.0",
+      "TLA_BLAKE2B512": "4b2313f35e5f2965120c161dbb982c8541fff20b9a556543bccbc5163f7fcdc40a7dafa43b5b99c628502409dcda7274936df8509bba8fded6d3b51d8f5ffe45",
       "COCOTB_VERSION": "2.0.1",
-      "WITH_SBY": "0",
+      "WITH_SBY": "1",
+      // SpinalHDL 툴체인 고정 — 이 넷은 rtl/spinal/ 의 빌드 파일과
+      // **반드시 일치**해야 한다. scripts/lint_toolchain_pins.py 가 대조한다.
+      "SBT_VERSION": "1.12.15",
+      "SCALA_VERSION": "2.13.12",
+      "SPINAL_VERSION": "1.14.2",
       "UID": "${localEnv:UID:1000}",
       "GID": "${localEnv:GID:1000}"
     }
@@ -38,7 +44,8 @@
         "mshr-h.veriloghdl",
         "ms-python.python",
         "alygin.vscode-tlaplus",
-        "myriad-dreamin.tinymist"
+        "myriad-dreamin.tinymist",
+        "scalameta.metals"
       ],
       "settings": {
         "files.eol": "\n",
