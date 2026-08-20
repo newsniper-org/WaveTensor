@@ -445,6 +445,7 @@ lint:
 	python3 $(CURDIR)/scripts/lint_known_defect_tests.py
 	python3 $(CURDIR)/scripts/lint_estimate_index.py
 	python3 $(CURDIR)/scripts/lint_gate_thresholds.py
+	python3 $(CURDIR)/scripts/lint_guide_derived_tables.py
 
 # =============================================================================
 # P0-2 — Cluster 이중 빌드(FRAG_SLOTS=1 / FRAG_SLOTS=4) 단일 진입점.
