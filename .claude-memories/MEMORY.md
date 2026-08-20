@@ -9,4 +9,5 @@
 - [WT64v1 precision recovery roadmap](wt64v1_precision_recovery_roadmap.md) — v1.6.7 Q8.8 (0x69) + v1.7 WIDEN/REQUANTIZE (0x6B/0x6C) landed; v1.7 restores parity, does NOT eliminate output rounding; rsqrt LUT 6.25% is the true floor.
 - [fp32 unit = "스텝 시퀀서" 용어](fp32_step_sequencer_terminology.md) — "마이크로코드" 지칭 금지 (사용자 지시 2026-07-16); spec/RTL/commit/테스트 전부 "step sequencer"/"step" 사용.
 - [pre-stable compat 정책](prestable_compat_policy.md) — 동결 보증(frozen/keep-forever)은 stable release부터 발효 (사용자 지시 2026-07-24); pre-stable에서 dead opcode 제거·recapture는 정규 이벤트.
-- [post-stable 장기 계획](post_stable_roadmap.md) — T_stable(stable spec+RTL) 이후에만 열리는 3단: 문서화 → 구현 이원화(Verilog/Chisel복합) → 양산 플랜 이원화; 게이트 전 착수 금지.
+- [post-stable 장기 계획](post_stable_roadmap.md) — §3(구현 이원화)은 RTL 전면 재구현으로 대체됨; §2 문서화·§4 양산만 T_stable 게이트 유지.
+- [WT64v1 RTL 전면 재구현](wt64v1_rtl_reimplementation.md) — 2026-08-20 착수; 정본은 아키텍처 가이드 PDF 하나, SpinalHDL 주 + SV 검증층, clean-room, 선-formal 이 RTL 을 선행한다.

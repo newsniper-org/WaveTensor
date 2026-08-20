@@ -5,7 +5,26 @@
 
 ## 1. Project Goal
 Implement a hybrid dataflow AI accelerator based on the attached research proposal PDF ("AI 가속기 아키텍처 연구 제안.pdf").
-Target: AMD/Xilinx FPGA, pure Verilog RTL (no HLS), 2-Pod scale (512 PEs) prototype.
+Target: AMD/Xilinx FPGA, no HLS.
+
+> ### ⚠️ 이 문서는 정본이 아니다 (2026-08-20)
+>
+> **정본은 `docs/wt64v1-architecture-guide/main.pdf` 하나다.** 이 파일과 정본이
+> 어긋나면 정본이 이기고, 어긋나는 지점은 정본 **부록 B** 가 정정본이다.
+>
+> 아래 두 서술은 이미 사실이 아니다 —
+>
+> - ~~"pure Verilog RTL"~~ → **RTL 전면 재구현이 착수됐다.** 설계 언어는
+>   **SpinalHDL**(→ SystemVerilog 생성)이며, 수기 SystemVerilog 는 SVA·bind
+>   검증 하네스와 벤더 프리미티브 래퍼로 한정된다. 규약은 `rtl/README.md`.
+>   정본 서문이 *"사용할 HDL 은 재구현팀의 자유"* 라고 적으므로 이것은 정본
+>   위반이 아니라 정본이 열어 둔 선택지다.
+> - ~~"2-Pod scale (512 PEs)"~~ → **철회됨.** 최상위는 단일 Pod 이고 ISA 상한은
+>   **256 PE** 다. 다중 Pod 모듈은 0건이다 (정본 부록 B.1).
+>
+> 아래 §2 이후는 **참조 구현의 개발 중 기록**이며, 재구현의 근거로 삼지 말 것.
+> 특히 §8·§10 의 ISA 서술은 정본 1장의 형상 독립성 개정(LNID/LBID) 이전을
+> 서술한다.
 
 ## 2. 2026년 4월 29일까지의 진행상황
 * HIU (Host Interface Unit): Universal IOMMU + Zero-Copy DMA + 보안 강화(constant-time, XChaCha20 masking, partitioned TLB, flush-on-context-switch) 완전 구현 완료. cocotb 테스트 1/1 PASS.
