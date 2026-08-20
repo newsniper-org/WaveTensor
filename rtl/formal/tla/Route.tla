@@ -40,6 +40,25 @@
 (* 것은 기저와 비간섭이고, 깊이에 대한 귀납은 그 둘 위에 선 **논증**이다.  *)
 (* 부록 D 에도 그렇게 적는다.                                              *)
 (***************************************************************************)
+(***************************************************************************)
+(* ## 이 모델이 덮지 않는 것 — 적대 검증이 남긴 목록                       *)
+(*                                                                         *)
+(* 덮지 않는 것을 적지 않으면 「전수」라는 낱말이 거짓이 된다. 아래는 이    *)
+(* 모델이 *의도적으로* 또는 *아직* 표현하지 않는 것들이다.                 *)
+(*                                                                         *)
+(*   ⚠️ 시간축 없음 — Judge(s) 는 ~judged[s] 로 범위당 1회 원자 대입이다.   *)
+(*      같은 범위가 다시 발화하는 상황(재진입·파이프라인 중첩)은 상태로     *)
+(*      존재하지 않는다. ISA-4 「계층당 최대 1회」의 *계층* 축은 덮이지만   *)
+(*      *시간* 축은 덮이지 않는다. 후-formal(sby) 이 그 축을 맡는다.        *)
+(*                                                                         *)
+(*   ⚠️ sticky 가 범위 밖 — Arrive 가 faultsIn 을 0 으로 되돌린다. 정본     *)
+(*      §1.6.3 과 ISA-6 은 fault 비트가 *sticky* 라고 규정하므로, 이 모델의 *)
+(*      faultsIn 은 「fault 상태」가 아니라 「이 토큰이 밟은 발화 횟수」다.  *)
+(*      두 낱말을 섞으면 안 된다.                                          *)
+(*                                                                         *)
+(*   ⚠️ 소유 서로소성은 정본 근거가 없다 — unique_owner 가드는 모델러의     *)
+(*      가정이다. 부록 B.5 에 미결로 등재했다.                             *)
+(***************************************************************************)
 EXTENDS Naturals, FiniteSets
 
 CONSTANTS
@@ -50,7 +69,8 @@ CONSTANTS
     NoName,
     DisabledGuards
 
-AllGuards == {"global_judge", "fault_once", "loud_fault"}
+AllGuards == {"global_judge", "fault_once", "loud_fault",
+              "view_sync", "scope_independent", "unique_owner"}
 On(g) == g \notin DisabledGuards
 
 Scopes == 1..Depth
@@ -78,10 +98,15 @@ VARIABLES
     lnid,        \* 흐르는 토큰의 LNID. NoName = 토큰 없음
     lbid,        \* 그 명령의 LBID
     srcKind,     \* 그 명령의 src_kind
+    view,        \* [Scopes -> SUBSET Names]  **진입점이 들고 있는 합집합 뷰.**
+                 \* 정본 §1.6.3 1항: "진입점은 자기 하위 소유 집합들의 합집합을
+                 \* 알아야 한다. 합집합 표를 갖든 하위의 적중 신호를 OR 로 모으든
+                 \* 구현은 자유" — 즉 뷰는 **표와 별개의 상태**이고, 둘이 어긋날
+                 \* 수 있다. 뷰를 정의로 두면 그 어긋남이 표현 불가능해진다.
     judged,      \* [Scopes -> BOOLEAN]  이 범위에서 판정이 끝났는가
     faultsIn     \* [Scopes -> 0..2]  이 범위에서 밟은 fault 수
 
-vars == <<owns, bankMap, lnid, lbid, srcKind, judged, faultsIn>>
+vars == <<owns, bankMap, lnid, lbid, srcKind, view, judged, faultsIn>>
 
 ScopeUnion(s) == UNION { owns[<<s, p>>] : p \in Points }
 
@@ -89,12 +114,21 @@ ScopeUnion(s) == UNION { owns[<<s, p>>] : p \in Points }
 NonOwners(s, n) == { p \in Points : n \notin owns[<<s, p>>] }
 
 (***************************************************************************)
-(* 두 발화 조건. 둘 다 **그 범위의 지역 상태**만 본다 — 그 사실이           *)
-(* Inv_ScopeLocal 의 내용이고, 깊이 귀납의 근거다.                         *)
+(* 두 어휘를 **의도적으로 가른다.**                                        *)
+(*                                                                         *)
+(*   Real*  — 실재. 지점별 소유 표가 말하는 것. **불변식이 쓴다.**         *)
+(*   View*  — 진입점이 보는 것. **액션이 쓴다.**                           *)
+(*                                                                         *)
+(* 처음 판은 불변식과 액션이 같은 술어를 썼다. 그러면 불변식이 액션을      *)
+(* 되풀이할 뿐이라 *자기지시적으로 만족*된다 — 적대 검증이 잡은 지적이다.  *)
+(* 어휘를 가르면 뷰가 실재와 어긋나는 순간 불변식이 그것을 잡는다.         *)
 (***************************************************************************)
-MissLnid(s) == lnid \notin ScopeUnion(s)
-MissLbid    == srcKind = 1 /\ lbid \notin bankMap
-AnyMiss(s)  == MissLnid(s) \/ MissLbid
+RealMissLnid(s) == lnid \notin ScopeUnion(s)
+ViewMissLnid(s) == lnid \notin view[s]
+MissLbid        == srcKind = 1 /\ lbid \notin bankMap
+
+RealAnyMiss(s) == RealMissLnid(s) \/ MissLbid
+ViewAnyMiss(s) == ViewMissLnid(s) \/ MissLbid
 
 TypeOK ==
     /\ owns \in [Scopes \X Points -> SUBSET Names]
@@ -102,6 +136,7 @@ TypeOK ==
     /\ lnid \in Names \cup {NoName}
     /\ lbid \in Banks
     /\ srcKind \in SrcKinds
+    /\ view \in [Scopes -> SUBSET Names]
     /\ judged \in [Scopes -> BOOLEAN]
     /\ faultsIn \in [Scopes -> 0..MaxF]
 
@@ -111,6 +146,7 @@ Init ==
     /\ lnid = NoName
     /\ lbid = CHOOSE b \in Banks : TRUE
     /\ srcKind = 0
+    /\ view = [s \in Scopes |-> {}]
     /\ judged = [s \in Scopes |-> FALSE]
     /\ faultsIn = [s \in Scopes |-> 0]
 
@@ -118,15 +154,23 @@ Init ==
 (* 구성 — reset 직후 소유 집합과 사상표는 전부 비어 있다 (§1.5).           *)
 (***************************************************************************)
 ConfigOwn(s, p, n) ==
+    \* 서로소 가드. 정본은 소유 집합의 서로소성을 **요구하지 않는다** —
+    \* 그래서 이것은 모델러가 넣은 가정이고, 가정이면 실험 대상이어야 한다.
+    \* 지우면 두 지점이 같은 이름을 소유해 배달이 모호해진다.
+    /\ (n \notin ScopeUnion(s) \/ ~On("unique_owner"))
     /\ lnid = NoName
-    /\ n \notin ScopeUnion(s)          \* 한 범위 안에서 한 이름은 한 지점만 소유
     /\ owns' = [owns EXCEPT ![<<s, p>>] = @ \cup {n}]
+    \* 뷰 동기화. 지우면 진입점의 뷰가 표보다 뒤처진다 — §1.6.3 이 허용한
+    \* 「하위 적중 신호 OR」 갈래의 대표 결함형(스큐)이 정확히 이것이다.
+    /\ view' = IF On("view_sync")
+                 THEN [view EXCEPT ![s] = @ \cup {n}]
+                 ELSE view
     /\ UNCHANGED <<bankMap, lnid, lbid, srcKind, judged, faultsIn>>
 
 ConfigBank(b) ==
     /\ lnid = NoName
     /\ bankMap' = bankMap \cup {b}
-    /\ UNCHANGED <<owns, lnid, lbid, srcKind, judged, faultsIn>>
+    /\ UNCHANGED <<owns, lnid, lbid, srcKind, view, judged, faultsIn>>
 
 Arrive(n, b, k) ==
     /\ lnid = NoName
@@ -135,7 +179,7 @@ Arrive(n, b, k) ==
     /\ srcKind' = k
     /\ judged' = [s \in Scopes |-> FALSE]
     /\ faultsIn' = [s \in Scopes |-> 0]
-    /\ UNCHANGED <<owns, bankMap>>
+    /\ UNCHANGED <<owns, bankMap, view>>
 
 (***************************************************************************)
 (* 판정 — 범위마다 한 번.                                                  *)
@@ -146,31 +190,37 @@ Arrive(n, b, k) ==
 (*   fault_once    두 발화 조건을 **하나의 fault 로 접는다.** 지우면 두     *)
 (*                 조건을 다 밟은 토큰이 두 번 발화한다.                   *)
 (***************************************************************************)
-FaultCount(s) ==
-    IF ~On("loud_fault") /\ AnyMiss(s)
+BaseFault(s) ==
+    IF ~On("loud_fault") /\ ViewAnyMiss(s)
       THEN 0                       \* 무언 드롭 — INV-T3 정면 위반
       ELSE IF On("global_judge")
-             THEN IF ~AnyMiss(s) THEN 0
+             THEN IF ~ViewAnyMiss(s) THEN 0
                   ELSE IF On("fault_once")
                          THEN 1
-                         ELSE (IF MissLnid(s) THEN 1 ELSE 0)
+                         ELSE (IF ViewMissLnid(s) THEN 1 ELSE 0)
                               + (IF MissLbid THEN 1 ELSE 0)
-             ELSE \* 지역 판정 — 형제마다 발화한다. LBID 축은 표가 하나이므로
-                  \* 지역 판정이어도 그대로 남는다.
+             ELSE \* 지역 판정 — 형제마다 발화한다.
                   Cardinality(NonOwners(s, lnid)) + (IF MissLbid THEN 1 ELSE 0)
+
+\* scope_independent 를 지우면 앞 범위의 결과가 이 범위의 판정에 샌다.
+\* 그 결합이 있으면 깊이에 대한 귀납이 성립하지 않는다.
+FaultCount(s) ==
+    IF On("scope_independent") \/ s = 1
+      THEN BaseFault(s)
+      ELSE IF faultsIn[s - 1] > 0 THEN 0 ELSE BaseFault(s)
 
 Judge(s) ==
     /\ lnid # NoName
     /\ ~judged[s]
     /\ judged' = [judged EXCEPT ![s] = TRUE]
     /\ faultsIn' = [faultsIn EXCEPT ![s] = FaultCount(s)]
-    /\ UNCHANGED <<owns, bankMap, lnid, lbid, srcKind>>
+    /\ UNCHANGED <<owns, bankMap, lnid, lbid, srcKind, view>>
 
 Retire ==
     /\ lnid # NoName
     /\ \A s \in Scopes : judged[s]
     /\ lnid' = NoName
-    /\ UNCHANGED <<owns, bankMap, lbid, srcKind, judged, faultsIn>>
+    /\ UNCHANGED <<owns, bankMap, lbid, srcKind, view, judged, faultsIn>>
 
 Next ==
     \/ \E s \in Scopes, p \in Points, n \in Names : ConfigOwn(s, p, n)
@@ -189,12 +239,12 @@ Spec == Init /\ [][Next]_vars
 \* 이것이 깨지면 *정상 워크로드가 죽는다.*
 Inv_CleanNeverFaults ==
     \A s \in Scopes :
-        (lnid # NoName /\ judged[s] /\ ~AnyMiss(s)) => faultsIn[s] = 0
+        (lnid # NoName /\ judged[s] /\ ~RealAnyMiss(s)) => faultsIn[s] = 0
 
 \* ISA-3 후반 — 걸리면 반드시 밟는다. 무언 드롭 금지 (INV-T3).
 Inv_MissAlwaysFaults ==
     \A s \in Scopes :
-        (lnid # NoName /\ judged[s] /\ AnyMiss(s)) => faultsIn[s] >= 1
+        (lnid # NoName /\ judged[s] /\ RealAnyMiss(s)) => faultsIn[s] >= 1
 
 \* ISA-4 — 배달 범위마다 최대 1회. **두 조건을 다 밟아도 하나다.**
 Inv_FaultAtMostOncePerScope == \A s \in Scopes : faultsIn[s] =< 1
@@ -206,10 +256,21 @@ Inv_FaultAtMostOncePerScope == \A s \in Scopes : faultsIn[s] =< 1
 (* 범위를 하나 더 쌓아도 새로운 상호작용이 생기지 않는다. 그 사실이 깊이   *)
 (* 에 대한 귀납의 단계다 — 기저(Depth=1,2,3)에서 임의 깊이로 올린다.       *)
 (***************************************************************************)
+\* **쌍대 형태**로 적는다. 지역 상태가 같은 두 범위는 같은 결과를 내야 한다 —
+\* 이 진술은 액션의 어휘를 되풀이하지 않으므로 자기지시적이지 않다.
 Inv_ScopeLocal ==
-    \A s \in Scopes :
-        (lnid # NoName /\ judged[s])
-            => faultsIn[s] = (IF AnyMiss(s) THEN 1 ELSE 0)
+    \A s, u \in Scopes :
+        (lnid # NoName /\ judged[s] /\ judged[u] /\ view[s] = view[u])
+            => faultsIn[s] = faultsIn[u]
+
+\* 진입점의 뷰가 실재와 일치해야 한다 (§1.6.3 1항).
+Inv_ViewAgrees == \A s \in Scopes : view[s] = ScopeUnion(s)
+
+\* 한 범위 안에서 한 이름의 소유자는 하나여야 한다.
+\* ⚠️ 정본은 이것을 **요구하지 않는다** — 부록 B.5 에 미결로 등재했다.
+Inv_UniqueOwnerPerScope ==
+    \A s \in Scopes, n \in Names :
+        Cardinality({ p \in Points : n \in owns[<<s, p>>] }) =< 1
 
 (***************************************************************************)
 (* 위험 도달성 증인                                                        *)
@@ -221,7 +282,7 @@ Inv_ScopeLocal ==
 (***************************************************************************)
 Configured(s) == ScopeUnion(s) # {} /\ bankMap # {}
 
-Witness_NoClean == \A s \in Scopes : ~(judged[s] /\ lnid # NoName /\ ~AnyMiss(s))
+Witness_NoClean == \A s \in Scopes : ~(judged[s] /\ lnid # NoName /\ ~RealAnyMiss(s))
 \* **구성된** 기계에서 fault 가 나는가. 구성 전에는 전부 fault 이므로
 \* (정본 §1.5) 그 상태로 반증하면 아무것도 뜻하지 않는다 — 적대 검증 지적.
 Witness_NoFault ==
@@ -230,7 +291,7 @@ Witness_NoFault ==
 \* 지역 비소유가 실재하는가 — 없으면 global_judge 가드가 공허하다.
 Witness_NoLocalNonOwnership ==
     \A s \in Scopes :
-        (judged[s] /\ lnid # NoName /\ ~MissLnid(s)) => NonOwners(s, lnid) = {}
+        (judged[s] /\ lnid # NoName /\ ~RealMissLnid(s)) => NonOwners(s, lnid) = {}
 
 (***************************************************************************)
 (* **두 조건을 동시에 밟는 토큰이 실재하는가.**                            *)
@@ -241,13 +302,13 @@ Witness_NoLocalNonOwnership ==
 (***************************************************************************)
 Witness_NoDoubleMiss ==
     \A s \in Scopes :
-        ~(judged[s] /\ lnid # NoName /\ Configured(s) /\ MissLnid(s) /\ MissLbid)
+        ~(judged[s] /\ lnid # NoName /\ Configured(s) /\ RealMissLnid(s) /\ MissLbid)
 
 \* 무언 드롭이 **표현 가능한가.** loud_fault 가드를 지운 모델에서만 도달해야
 \* 하며, 좋은 모델에서 도달 불가인 것이 곧 INV-T3 가 지켜진다는 뜻이다.
 \* 이 증인이 없어서 Inv_MissAlwaysFaults 가 *어떤 형상에서도 반증 불가*
 \* 였다 — README 교훈 ①(방어적 구성이 가드를 무력화)의 재발이었다.
 Witness_NoSilentDrop ==
-    \A s \in Scopes : ~(judged[s] /\ lnid # NoName /\ AnyMiss(s) /\ faultsIn[s] = 0)
+    \A s \in Scopes : ~(judged[s] /\ lnid # NoName /\ RealAnyMiss(s) /\ faultsIn[s] = 0)
 
 =============================================================================

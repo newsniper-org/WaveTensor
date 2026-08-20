@@ -163,6 +163,11 @@ expect_pass "형상 sweep — 이름 3 · 지점 3"   Route_shapeB.cfg "$M"
 expect_fail "가드 삭제: global_judge (지역 판정)" Route_del_global_judge.cfg "$M" Inv_CleanNeverFaults
 expect_fail "가드 삭제: fault_once"               Route_del_fault_once.cfg   "$M" Inv_FaultAtMostOncePerScope
 expect_fail "가드 삭제: loud_fault (무언 드롭)"   Route_del_loud_fault.cfg   "$M" Inv_MissAlwaysFaults
+# 아래 셋은 적대 검증이 지적한 맹점을 메운 뒤 세운 실험이다. 셋 다 처음에는
+# *가드조차 아니었고* — 모델이 그 결함형을 표현할 수 없었다는 뜻이다.
+expect_fail "가드 삭제: view_sync (뷰 스큐)"      Route_del_view_sync.cfg         "$M" Inv_ViewAgrees
+expect_fail "가드 삭제: scope_independent (결합)" Route_del_scope_independent.cfg "$M" Inv_ScopeLocal
+expect_fail "가드 삭제: unique_owner (중복 소유)" Route_del_unique_owner.cfg      "$M" Inv_UniqueOwnerPerScope
 
 expect_fail "증인: fault 가 실재하는가"            Route_witness_NoFault.cfg             "$M" Witness_NoFault
 expect_fail "증인: 무결 통과가 실재하는가"         Route_witness_NoClean.cfg             "$M" Witness_NoClean
