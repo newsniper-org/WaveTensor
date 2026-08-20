@@ -1,0 +1,166 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later OR BSD-2-Clause OR Apache-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# WaveTensor merge gate — 정본 부록 B.3 이 "CI 는 없다" 로 적은 항목의 해소.
+#
+# ⛔ 이 CI 가 **덮지 않는 것**을 먼저 적는다. 덮는 범위를 오해하면 이 파일이
+#    "다 검사된다" 는 착각의 근거가 되고, 그것이 이 저장소가 반복해서 진
+#    실패형이다.
+#
+#   · 검증 축 (c) — 타이밍 · 면적 · Fmax. **Vivado 는 호스트 전용**이다
+#     (81 GB · 라이선스 · 2025.2 고정). 합성 gate 는 여기서 돌지 않으며,
+#     이 CI 의 녹색은 면적·주파수에 대해 **아무것도 말하지 않는다.**
+#   · ECP5 P&R — 같은 이유로 제외. 그리고 그것은 gate 가 아니라 MEASUREMENT 다.
+#
+# ∴ 여기서 도는 것: 축 (a) 형식 검증 · 축 (b) golden 대조 · 정적 검사.
+
+name: gates
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 같은 ref 의 이전 실행은 취소한다 — 낡은 녹색이 남아 있으면 그것을 근거로
+# 읽는 사람이 생긴다.
+concurrency:
+  group: gates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 정적 검사 — 컨테이너가 필요 없다. 빠르게 먼저 죽는다.
+  # ---------------------------------------------------------------------------
+  static:
+    name: 정적 검사 (lint · 문서 · 훅)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: 툴체인 핀 대조
+        run: python3 scripts/lint_toolchain_pins.py
+
+      - name: 금지 용어 (마이크로코드)
+        run: python3 scripts/lint_forbidden_terms.py
+
+      - name: ISA-7 형상 독립성
+        run: python3 scripts/lint_isa7_topology.py
+
+      - name: 기존 lint 8종
+        run: make lint
+
+      - name: 훅이 정본과 일치하는가
+        run: |
+          install -m 0755 scripts/hooks/pre-commit .git/hooks/pre-commit
+          make hooks-check
+
+      # 아래 둘은 정본(docs/wt64v1-architecture-guide/)의 자기 검사다.
+      # typst 없이 grep 만으로 되는 축이라 여기서 돈다.
+      - name: 정본 clean-room 위반 스캔 (0 이어야 한다)
+        run: |
+          cd docs/wt64v1-architecture-guide
+          n=$(grep -REn "EHDecode|PE_Core|ISA_Decoder|Top_Core|FP_(StepSeq|Mul36|AddWide|Acc\w+|Train\w+|Fma\w+)|TENSOR_ALU|SIMD_ALU|ALU_Extended|dma_engine|\bpcid\b|\bNUM_PES\b|\bMAX_EH\b|\bTLB_ENTRIES\b|\bNUM_PARTITIONS\b|\bvirt_addr\b|\bdma_req\b|\w+\.(v|py|tcl|xdc):[0-9]+" chapters appendix main.typ | wc -l)
+          echo "clean-room 위반: $n"
+          test "$n" -eq 0
+
+      - name: 정본 속성 수 대조 (색인 == 각 장 선언)
+        run: |
+          cd docs/wt64v1-architecture-guide
+          idx=$(grep -c '^  \[\(ISA\|FAB\|HIU\|EXT\|SEC\)-' appendix/d-properties.typ)
+          decl=$(grep -ho '#속성("[A-Z]*-[0-9]*"' chapters/*.typ | wc -l)
+          echo "색인 $idx / 선언 $decl"
+          test "$idx" -eq "$decl"
+
+  # ---------------------------------------------------------------------------
+  # 컨테이너 게이트 — 도구 버전이 증거이므로 devcontainer 정의 그대로 쓴다.
+  # 러너에 도구를 직접 깔면 "어느 버전으로 쟀는가" 가 러너 이미지에 종속된다.
+  # ---------------------------------------------------------------------------
+  container:
+    name: 시뮬 · 형식 게이트 (devcontainer)
+    runs-on: ubuntu-latest
+    needs: static
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: devcontainer 이미지 빌드
+        uses: docker/build-push-action@v6
+        with:
+          context: .devcontainer
+          load: true
+          tags: wavetensor-dev:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            ALA_SNAPSHOT=2026/08/12
+            TLA_VERSION=1.8.0
+            TLA_BLAKE2B512=4b2313f35e5f2965120c161dbb982c8541fff20b9a556543bccbc5163f7fcdc40a7dafa43b5b99c628502409dcda7274936df8509bba8fded6d3b51d8f5ffe45
+            COCOTB_VERSION=2.0.1
+            WITH_SBY=1
+            SBT_VERSION=1.12.15
+            SCALA_VERSION=2.13.12
+            SPINAL_VERSION=1.14.2
+            UID=1001
+            GID=1001
+
+      - name: 도구 자기보고 — "어느 버전으로 쟀는가"
+        run: docker run --rm wavetensor-dev:ci sh -lc '~/wt-toolversions.sh'
+
+      - name: SpinalHDL 생성이 최신인가 (재생성 후 바이트 비교)
+        run: |
+          docker run --rm -v "$PWD":/workspace -w /workspace wavetensor-dev:ci \
+            sh -lc 'make rtl-gen'
+          git diff --exit-code -- rtl/generated/ || {
+            echo "⛔ rtl/generated/ 가 생성기와 어긋난다 — make rtl-gen 후 함께 커밋할 것"
+            exit 1
+          }
+
+      - name: 생성물 verilator lint
+        run: |
+          docker run --rm -v "$PWD":/workspace -w /workspace wavetensor-dev:ci \
+            sh -lc 'verilator --lint-only -Wall -Wno-fatal rtl/generated/*.sv'
+
+      - name: cocotb 회귀 (6 모듈)
+        run: |
+          for m in HIU ISA_Decoder ALU_Extended Top_Core Cluster Pod; do
+            echo "::group::MOD=$m"
+            docker run --rm -e COCOTB_RESULTS_FILE=/tmp/cocotb-results.xml \
+              -v "$PWD":/workspace -w /workspace wavetensor-dev:ci \
+              sh -lc "make MOD=$m"
+            echo "::endgroup::"
+          done
+
+      - name: Cluster 이중 빌드 (FRAG_SLOTS=1 / 4)
+        run: |
+          docker run --rm -e COCOTB_RESULTS_FILE=/tmp/cocotb-results.xml \
+            -v "$PWD":/workspace -w /workspace wavetensor-dev:ci \
+            sh -lc 'make test-cluster-both'
+
+      - name: 어셈블러 단위 테스트
+        run: |
+          docker run --rm -v "$PWD":/workspace -w /workspace wavetensor-dev:ci \
+            sh -lc 'python3 -m unittest -q asm.test_wavetensor_asm'
+
+      - name: TLA+ 형식 게이트 (16 run)
+        run: |
+          docker run --rm -v "$PWD":/workspace -w /workspace wavetensor-dev:ci \
+            sh -lc 'sh proofs/tla/run.sh'
+
+      # 재구현 선-formal 게이트. 모델이 아직 없으면 이 단계는 **실패한다** —
+      # 그것이 의도다. 미측정은 통과가 아니다 (정본 §6.7 원칙 5).
+      # 단계 1 이 착지할 때까지는 continue-on-error 로 두되, 그 사실이
+      # 요약에 남게 한다. 조용히 건너뛰지 않는다.
+      - name: 재구현 선-formal 게이트 (단계 1 미착지 — 미측정)
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD":/workspace -w /workspace wavetensor-dev:ci \
+            sh -lc 'make rtl-formal' || {
+              echo "::warning title=선-formal 미측정::rtl/formal/tla 에 모델이 없다. 통과가 아니라 미측정이다."
+              exit 1
+            }

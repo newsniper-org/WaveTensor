@@ -175,9 +175,10 @@ cd proofs/tla && ./run.sh                   # → exit 0
 command -v vivado || echo "OK: Vivado 부재(의도)"
 ```
 
-> ⚠️ **5번은 현재 `make` 어디에도 결선돼 있지 않다** (`grep -c 'run.sh\|tlc\|proofs' Makefile` = 0).
-> `run.sh` 는 merge gate 로 **설계**됐으나 아무도 부르지 않는다. 이 환경이 생긴
-> 이상 결선하지 않을 이유가 사라졌다 — spec §39.1 **D-12** 참조.
+> ✅ **5번은 2026-08-20 에 결선됐다.** `scripts/hooks/pre-commit` 이 커밋을 막고
+> (`make hooks-install`), `.github/workflows/gates.yml` 이 CI 에서 돌린다.
+> 재구현 선-formal 은 `make rtl-formal` 로 분리돼 있으며, **모델이 없으면
+> 통과가 아니라 실패한다** — 미측정은 통과가 아니다.
 
 ---
 

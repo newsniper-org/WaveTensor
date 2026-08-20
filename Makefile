@@ -430,7 +430,7 @@ lattice-clean:
 #                               검출기의 오탐률을 실측했더니 HEAD 증분 31줄
 #                               중 진성이 약 3건이었고, 그런 검사를
 #                               merge-blocker 로 걸면 사람이 lint 를 끈다.
-# All seven are stdlib-only Python; runnable directly without cocotb:
+# All eight are stdlib-only Python; runnable directly without cocotb:
 #   python3 scripts/lint_isa_tables_fresh.py
 # =============================================================================
 
@@ -444,6 +444,7 @@ lint:
 	python3 $(CURDIR)/scripts/lint_frag_slots_dual_run.py
 	python3 $(CURDIR)/scripts/lint_known_defect_tests.py
 	python3 $(CURDIR)/scripts/lint_estimate_index.py
+	python3 $(CURDIR)/scripts/lint_gate_thresholds.py
 
 # =============================================================================
 # P0-2 — Cluster 이중 빌드(FRAG_SLOTS=1 / FRAG_SLOTS=4) 단일 진입점.

@@ -115,7 +115,7 @@ will be rejected.
   generated includes). cocotb regression must pass on the affected module.
 * **Software**: All cocotb tests must continue to pass. Assembler unit
   tests (`python -m unittest -q asm.test_wavetensor_asm`) must pass.
-* **Lint**: `make lint` must pass. It is **seven** stdlib-only checks, not
+* **Lint**: `make lint` must pass. It is **eight** stdlib-only checks, not
   two — this list was stale for several releases, which is exactly the
   failure mode `lint_estimate_index` exists to catch:
   `lint_isa_tables_fresh` (generated ISA artifacts match the JSON) ·
@@ -125,7 +125,10 @@ will be rejected.
   `lint_frag_slots_dual_run` (FRAG_SLOTS=1/4 dual build is really run) ·
   `lint_known_defect_tests` (`expect_fail` two-way ratchet) ·
   `lint_estimate_index` (spec §39.2 estimate index: anchors live, IDs
-  agree with spec §39.2.3 both ways, graduation evidence exists).
+  agree with spec §39.2.3 both ways, graduation evidence exists) ·
+  `lint_gate_thresholds` (the gate **judges** themselves are BLAKE2b-512
+  pinned — editing a judge is changing a gate criterion, and that must not
+  pass silently; see 정본 부록 B.3 "판정기 상수를 편집해도 아무것도 울지 않는다").
   Each is runnable directly without cocotb, e.g.
   `python3 scripts/lint_isa_tables_fresh.py`. Note `make lint` itself
   parses the Makefile, which needs `cocotb-config` on PATH.

@@ -1,0 +1,85 @@
+#!/bin/sh
+# SPDX-License-Identifier: LGPL-2.1-or-later OR BSD-2-Clause OR Apache-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# WaveTensor pre-commit hook — **이 훅은 커밋을 막는다.**
+#
+# 정본 부록 B.3 이 이 저장소의 상태를 이렇게 적었다:
+#
+#     정적 검사를 CI·hook 에 결선 | **미결선.** 커밋 훅은 무조건 성공을
+#                                   반환하고 CI 는 없다
+#
+# 그리고 그것을 "재구현이 반드시 고쳐야 할 것" 으로 분류했다. 이전 판 훅은
+# 실제로 모든 실패 경로를 `|| true` 로 삼키고 `exit 0` 으로 끝났다.
+#
+# 이 저장소는 "기계가 집행한다" 를 반복해서 서사로 삼았는데, 그 서사가 서 있는
+# 바닥이 **사람의 실행 습관**이었다 (부록 B.3 함정). 이 파일이 바닥을 바꾼다.
+#
+# ## 설치
+#
+#   make hooks-install
+#
+# `.git/hooks/` 는 git 이 추적하지 않는다. 그래서 훅을 거기에만 고치면
+# **"내 머신에서만 돈다"** 가 되고, 그것은 게이트가 아니다. 정본이 원본으로
+# 남고 설치는 재현 가능한 절차여야 한다.
+#
+# ## 속도 규율
+#
+# 느린 훅은 `--no-verify` 로 우회되고, 우회되는 훅은 없는 훅보다 나쁘다
+# (통과했다고 착각하게 만들기 때문). 여기 있는 검사는 전부 stdlib python 이며
+# 합계 약 3초다. 시뮬레이션·합성·형식 검사는 **넣지 않는다** — 그것은 CI 몫이다.
+
+set -eu
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+fail=0
+run() {
+    label="$1"; shift
+    if "$@" >/tmp/wt-hook-out 2>&1; then
+        printf '  ✅ %s\n' "$label"
+    else
+        printf '  ⛔ %s\n' "$label"
+        sed 's/^/       /' /tmp/wt-hook-out
+        fail=1
+    fi
+}
+
+printf 'pre-commit: 정적 검사\n'
+
+run "툴체인 핀 대조"      python3 scripts/lint_toolchain_pins.py
+run "금지 용어"           python3 scripts/lint_forbidden_terms.py
+run "ISA-7 형상 독립성"    python3 scripts/lint_isa7_topology.py
+run "기존 lint 8종"       make lint
+
+if [ "$fail" -ne 0 ]; then
+    cat >&2 <<'EOF'
+
+pre-commit: 커밋을 막았다.
+
+  위 검사는 merge gate 다. 고치고 다시 커밋할 것.
+  --no-verify 로 넘기는 것은 이 저장소가 경계하는 바로 그 습관이다 —
+  "조용히 통과하는 검사가 진짜 적이다" (정본 §6.7).
+EOF
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# 메모리 미러 — 이 부분만 **의도적으로 비차단**이다.
+# 커밋의 정확성과 무관한 편의 기능이므로 실패가 커밋을 막을 이유가 없다.
+# 위 검사와 성격이 다르다는 것을 분명히 하기 위해 아래에 따로 둔다.
+# ---------------------------------------------------------------------------
+if [ -f Makefile ] && grep -q '^mirror-memory:' Makefile; then
+    make mirror-memory >/dev/null 2>&1 || true
+    if [ -d .claude-memories ]; then
+        if ! git diff --quiet -- .claude-memories 2>/dev/null; then
+            git add .claude-memories || true
+        fi
+        if [ -n "$(git ls-files --others --exclude-standard .claude-memories 2>/dev/null)" ]; then
+            git add .claude-memories || true
+        fi
+    fi
+fi
+
+exit 0
