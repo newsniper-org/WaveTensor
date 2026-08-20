@@ -11,7 +11,8 @@ Levels
 * **High-level (HL)** — strict superset of LL. Adds:
 
       .alias name  value          – symbolic constant
-      .default_port mask=N out=N  – auto-insert PORT EH where missing
+      .default_port dest=N        – auto-insert PORT EH where missing
+                                    (legacy: `mask=N out=N`, 개정 전 의미)
       .default_precision mode=N   – auto-insert PRECISION EH + flag
       RESHAPE  .from N  .to N     – macro lowering to VIEW
       (future) RESHAPE/PERMUTE for non-PE-local shapes
@@ -653,7 +654,7 @@ def _lower_batchnorm_infer(inst: Instruction) -> List[Instruction]:
       1) SIMD_MUL_WIDE_VEC   x, K1  →  t   (opcode 0x65)
       2) SIMD_ADD_WIDE_VEC   t, K2  →  y   (opcode 0x63)
 
-    Args: .k1 <64-bit int>, .k2 <64-bit int>, .port <mask/out>.
+    Args: .k1 <64-bit int>, .k2 <64-bit int>, .port <dest | mask/out>.
     """
     k1 = _get_macro_arg(inst, 'k1', 'k1')
     k2 = _get_macro_arg(inst, 'k2', 'k2')
@@ -937,7 +938,7 @@ def _lower_rmsnorm(inst: Instruction) -> List[Instruction]:
              FRSQRT32 output to BOTH pairs at N=32, sharing one s)
 
     Args: .gamma <64-bit int (N=16) / 128-bit int (N=32, low half =
-    lanes 0-15)>, .port <mask/out>; optional .eps <fp32 bits, default
+    lanes 0-15)>, .port <dest | mask/out>; optional .eps <fp32 bits, default
     bits(2^-13)>, .n <16 (default) or 32>, .gfrac <gamma fractional
     bits k, default 3 = Q1.3> — see the eps-guard/fallback and fold
     contracts in the section comment above."""
@@ -1895,9 +1896,43 @@ def _encode_eh(eh: ExtensionHeader) -> Tuple[int, List[int]]:
     kind = eh.kind
     a = eh.args
     if kind == 'port':
-        mask = a.get('mask', 0)
-        out = a.get('out', 0)
-        body16 = ((out & 0xFF) << 8) | (mask & 0xFF)
+        # PORT EH 본문 16비트 — 두 문법이 **같은 비트 컨테이너**를 채운다.
+        #
+        #   .port dest=N            개정판 (정본 §1.4.1) — 평면 16비트 LNID
+        #   .port out=N mask=M      개정 전 — {목적지 8b, 입력 포트 마스크 8b}
+        #
+        # 비트열이 같은 이유는 §1.4.2 가 폐지를 이렇게 적기 때문이다:
+        # "8비트 입력 포트 마스크는 폐지한다. **그 비트들은 dest_node_id 의
+        #  하위 절반이 된다.**" 즉 개정은 인코딩이 아니라 **의미**를 바꾼다.
+        # 그래서 개정 전 소스로 만든 바이너리는 여전히 같은 비트를 내고,
+        # 달라지는 것은 기계가 그것을 무엇으로 읽는가다.
+        #
+        # 두 문법을 섞는 것은 오류다 — 어느 계약을 뜻했는지 알 수 없다.
+        has_dest = 'dest' in a
+        has_legacy = ('out' in a) or ('mask' in a)
+        if has_dest and has_legacy:
+            raise AssemblerError(
+                f"line {eh.line}: .port 는 `dest=` (개정판) 또는 "
+                f"`out=/mask=` (개정 전) 중 하나만 쓴다. 섞으면 어느 계약을 "
+                f"뜻했는지 알 수 없다 (정본 §1.4.1/§1.4.2)"
+            )
+        if has_dest:
+            dest = a['dest']
+            if not (0 <= dest <= 0xFFFF):
+                raise AssemblerError(
+                    f"line {eh.line}: .port dest={dest} 가 16비트를 넘는다. "
+                    f"LNID 는 평면 16비트이며 값 공간은 항상 0..65535 다"
+                )
+            body16 = dest & 0xFFFF
+        else:
+            mask = a.get('mask', 0)
+            out = a.get('out', 0)
+            if not (0 <= out <= 0xFF) or not (0 <= mask <= 0xFF):
+                raise AssemblerError(
+                    f"line {eh.line}: .port out={out} mask={mask} — "
+                    f"각각 8비트를 넘을 수 없다. 조용한 절단은 금지다"
+                )
+            body16 = ((out & 0xFF) << 8) | (mask & 0xFF)
         return EH_PORT, [(body16 << 16) | (EH_PORT << 8) | 1]
     if kind == 'imm16':
         v = _take_immediate(eh)
@@ -1929,9 +1964,34 @@ def _encode_eh(eh: ExtensionHeader) -> Tuple[int, List[int]]:
         ]
     if kind == 'opref':
         src_kind = a.get('kind', 0)
-        port_id = a.get('port', 0)
         noc_route = a.get('route', 0)
-        upper = ((noc_route & 0xFF) << 8) | ((port_id & 0xF) << 4) | (src_kind & 0xF)
+        # `[23:20]` 4비트는 개정으로 **폐지**됐다 (정본 §1.4).
+        #
+        # 이 자리는 물리 포트 인덱스였다. 4비트 고정 니블은 "포트가 열여섯
+        # 개다" 라는 arity 를 인코딩에 싣는 것이고, INV-T2 가 정확히 그것을
+        # 금지한다: "인코딩은 계층의 수와 각 계층의 arity 를 표현하지 않는다.
+        # **고정 니블 분할을 금지한다.**" 입력 포트 마스크(§1.4.2)와 같은
+        # 위반이며 처분도 같다 — 폐지하고 예약으로 돌린다.
+        #
+        # 예약 필드는 **반드시 0** 이다 (§5.7). 조용히 무시하지 않는다 —
+        # 무시되는 비트는 검사받지 않고 통과하는 비트이고, 그것이 어딘가에
+        # 저장되거나 반향되면 은닉 채널이다.
+        port_id = a.get('port', 0)
+        if port_id != 0:
+            raise AssemblerError(
+                f"line {eh.line}: .opref port={port_id} — 이 필드는 개정으로 "
+                f"폐지됐다 (정본 §1.4). 4비트 고정 니블은 arity 를 인코딩에 "
+                f"싣는 것이라 INV-T2 위반이다. 자리는 예약이며 반드시 0 이다"
+            )
+        if not (0 <= noc_route <= 0xFF):
+            raise AssemblerError(
+                f"line {eh.line}: .opref route={noc_route} 가 8비트를 넘는다. "
+                f"LBID 는 평면 8비트이며 값 공간은 항상 0..255 다 (§1.4.3)"
+            )
+        if not (0 <= src_kind <= 0xF):
+            raise AssemblerError(
+                f"line {eh.line}: .opref kind={src_kind} 가 4비트를 넘는다")
+        upper = ((noc_route & 0xFF) << 8) | (src_kind & 0xF)
         return EH_OPREF, [(upper << 16) | (EH_OPREF << 8) | 1]
     if kind == 'precision':
         mode = a.get('mode', 0)
