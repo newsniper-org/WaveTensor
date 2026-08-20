@@ -183,6 +183,33 @@ expect_pass "무언 드롭이 좋은 모델에서 도달 불가"  Route_witness_
 
 echo
 echo "======================================================================="
+# ---------------------------------------------------------------------------
+# HIU-8 · HIU-9 · HIU-10 — 플랫폼 독립 (Platform.tla)
+#
+# 앞의 넷과 성격이 다르다. 이것은 **관계 속성**이라 두 세계(plain/rich)를
+# 같은 동작열로 lockstep 구동하고 관측을 비교한다. 기계 하나가 "잘 도는" 것은
+# 플랫폼 독립의 증거가 아니다 — 종속은 고장이 아니라 *다르게 도는 것*이다.
+# ---------------------------------------------------------------------------
+M=Platform.tla
+expect_pass "HIU-8/9/10 기저 — 페이지 1"       Platform_base.cfg   "$M"
+expect_pass "형상 sweep — 페이지 2"            Platform_shapeA.cfg "$M"
+expect_pass "형상 sweep — 페이지 2 · 주소 2"   Platform_shapeB.cfg "$M"
+
+expect_fail "가드 삭제: xlate_local (호스트 변환 서비스)" \
+    Platform_del_xlate_local.cfg        "$M" Inv_SameTranslation
+expect_fail "가드 삭제: flush_on_handoff (넘기는 쪽이 비운다)" \
+    Platform_del_flush_on_handoff.cfg   "$M" Inv_SameObservation
+expect_fail "가드 삭제: state_machine_kept (일관성 있으면 규약 생략)" \
+    Platform_del_state_machine_kept.cfg "$M" Inv_SameFaultPolicy
+expect_fail "가드 삭제: owner_check (비소유 접근)" \
+    Platform_del_owner_check.cfg        "$M" Inv_UnownedFaults
+
+expect_fail "증인: 값 읽기가 실재하는가"        Platform_witness_NoValueRead.cfg      "$M" Witness_NoValueRead
+expect_fail "증인: fault 가 실재하는가"         Platform_witness_NoFault.cfg          "$M" Witness_NoFault
+expect_fail "증인: 소유권 이양이 실재하는가"     Platform_witness_NoHandoff.cfg        "$M" Witness_NoHandoff
+expect_fail "증인: 지역 사본이 실제로 어긋나는가" Platform_witness_NoDivergentCache.cfg "$M" Witness_NoDivergentCache
+expect_fail "증인: 두 세계의 배후 저장이 어긋나는가" Platform_witness_NoMemSkew.cfg     "$M" Witness_NoMemSkew
+
 if [ "$rc" -eq 0 ]; then
     echo " 전체 $runs run 이 선언대로 행동했다 — 게이트 GREEN"
 else
