@@ -78,3 +78,17 @@ synth/reports/fp_ops/.sysgate_cwd/
 # confused with .claude/session-end-hook.sh, which is real infrastructure and
 # stays tracked.
 .claude/scheduled_tasks.lock
+
+# ---------------------------------------------------------------------------
+# WT64v1 RTL 전면 재구현 (SpinalHDL) — 빌드 산출물.
+#
+# ⚠️ `rtl/generated/` 는 **ignore 하지 않는다.** 생성물은 생성기와 함께
+#    커밋한다 (rtl/README.md 「혼재 경계」). ignore 하면 저장소 안의
+#    SystemVerilog 가 무엇으로부터 나왔는지 답할 수 없게 된다.
+# ---------------------------------------------------------------------------
+rtl/spinal/target/
+rtl/spinal/project/target/
+rtl/spinal/project/project/
+rtl/spinal/.bsp/
+.bloop/
+.metals/

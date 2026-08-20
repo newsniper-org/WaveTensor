@@ -544,3 +544,90 @@ claude-recent-id:
 	    echo "(no recent session id stamped yet)"; \
 	    exit 1; \
 	fi
+
+# =============================================================================
+# WT64v1 RTL 전면 재구현 (SpinalHDL + SystemVerilog) — `rtl-*` 타깃군.
+#
+# 정본은 `docs/wt64v1-architecture-guide/main.pdf` 하나이며, 이 트리의 규약은
+# `rtl/README.md` 가 선언한다.
+#
+# ⚠️ 여기에 **MOD 표 항목을 추가하지 않는다.** 위쪽 cocotb 흐름의
+#    `ifeq ($(MOD),...)` 표는 `scripts/lint_synth_coverage.py` 의 COVERAGE
+#    딕셔너리·지위 래칫과 이중으로 잠겨 있어서, 새 top 을 거기 끼우면 lint 가
+#    즉시 FAIL 한다. 재구현 트리는 `synth/lattice/fp_ops/run_fp_ops_tests.py`
+#    선례(자립형 cocotb python runner)를 따라 **독립 진입점**으로 돈다.
+#    기존 게이트 계보를 건드리지 않는 것이 목적이다.
+# =============================================================================
+
+RTL_DIR     := $(CURDIR)/rtl
+RTL_SPINAL  := $(RTL_DIR)/spinal
+RTL_GEN     := $(RTL_DIR)/generated
+
+.PHONY: rtl-pins rtl-gen rtl-lint rtl-formal rtl-sim rtl-clean
+
+# 툴체인 핀 대조 — devcontainer 의 ARG 와 rtl/spinal 의 빌드 파일이 같은 값을
+# 말하는지. 어긋나면 컨테이너가 구워 둔 캐시와 빌드가 원하는 버전이 달라지고,
+# 그러면 오프라인에서 죽거나(운이 좋을 때) 조용히 다른 버전을 받는다(나쁠 때).
+rtl-pins:
+	python3 $(CURDIR)/scripts/lint_toolchain_pins.py
+
+# SpinalHDL → SystemVerilog 생성. 생성물은 커밋 대상이며 손편집 금지다.
+rtl-gen: rtl-pins
+	@mkdir -p $(RTL_GEN)
+	cd $(RTL_SPINAL) && sbt -batch "runMain wt64.gen.ToolchainCheck $(RTL_GEN)"
+	@echo "rtl-gen: 생성물 → $(RTL_GEN)"
+
+# 정적 검사. ISA-7(형상 파라미터 노출 0)과 금지 용어를 포함한다.
+rtl-lint: rtl-pins
+	python3 $(CURDIR)/scripts/lint_forbidden_terms.py
+	python3 $(CURDIR)/scripts/lint_isa7_topology.py
+
+# 선-formal 게이트 — 재구현 모델 전용. 기존 AccBank 게이트와 분리해 둔다.
+rtl-formal:
+	@if [ -x $(RTL_DIR)/formal/tla/run.sh ]; then \
+	    sh $(RTL_DIR)/formal/tla/run.sh; \
+	else \
+	    echo "rtl-formal: 선-formal 모델이 아직 없다 (단계 1 미착수)."; \
+	    echo "  ⇒ 이것은 통과가 아니라 **미측정**이다 (정본 §6.7 원칙 5)."; \
+	    exit 1; \
+	fi
+
+# 재구현 하네스 — 자립형 cocotb 러너.
+rtl-sim:
+	@if [ -f $(RTL_DIR)/sim/run_wt64.py ]; then \
+	    python3 $(RTL_DIR)/sim/run_wt64.py; \
+	else \
+	    echo "rtl-sim: 하네스가 아직 없다 (단계 2 미착수) — 미측정."; \
+	    exit 1; \
+	fi
+
+# 생성물이 아니라 **빌드 산출물**만 지운다. rtl/generated/ 는 tracked 이므로
+# 건드리지 않는다 (`synth-clean` 이 tracked 증적을 지우던 사고의 재발 방지).
+rtl-clean:
+	rm -rf $(RTL_SPINAL)/target $(RTL_SPINAL)/project/target $(RTL_SPINAL)/project/project
+
+# =============================================================================
+# Git 훅 설치 — `.git/hooks/` 는 추적되지 않으므로 훅을 거기에만 두면
+# "내 머신에서만 돈다" 가 된다. 정본은 `scripts/hooks/` 이고 설치는 절차다.
+#
+# 정본 부록 B.3 이 "커밋 훅은 무조건 성공을 반환하고 CI 는 없다" 를
+# **재구현이 반드시 고쳐야 할 것**으로 분류했다.
+# =============================================================================
+
+.PHONY: hooks-install hooks-check
+
+hooks-install:
+	@install -m 0755 $(CURDIR)/scripts/hooks/pre-commit $(CURDIR)/.git/hooks/pre-commit
+	@echo "hooks-install: .git/hooks/pre-commit ← scripts/hooks/pre-commit"
+	@$(MAKE) --no-print-directory hooks-check
+
+# 설치된 훅이 정본과 같은지 — 그리고 **실제로 막는 훅인지**.
+# 무조건 exit 0 하는 훅이 설치돼 있으면 그 사실을 크게 알린다.
+hooks-check:
+	@if [ ! -x $(CURDIR)/.git/hooks/pre-commit ]; then \
+	    echo "hooks-check: ⛔ pre-commit 훅이 설치돼 있지 않다 → make hooks-install"; exit 1; \
+	fi
+	@if ! cmp -s $(CURDIR)/scripts/hooks/pre-commit $(CURDIR)/.git/hooks/pre-commit; then \
+	    echo "hooks-check: ⛔ 설치된 훅이 scripts/hooks/pre-commit 과 다르다 → make hooks-install"; exit 1; \
+	fi
+	@echo "hooks-check: OK — 설치된 훅이 정본과 일치한다"

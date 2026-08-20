@@ -79,11 +79,28 @@ on the first or second line:
 | File class | SPDX header |
 |---|---|
 | Verilog/SystemVerilog (`*.v`, `*.sv`) | `// SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0` |
+| **SpinalHDL design sources (`rtl/spinal/src/**/*.scala`)** | `// SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0` |
+| **Scala build definitions (`build.sbt`, `*.sbt`, `project/*.properties`, `project/*.scala`)** | `// SPDX-License-Identifier: LGPL-2.1-or-later OR BSD-2-Clause OR Apache-2.0` (`#` for `.properties`) |
 | XDC / SDC constraints | `# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0` |
 | Synth/impl Tcl scripts | `# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0` |
 | Python (assembler, tests, drivers, daemon) | `# SPDX-License-Identifier: LGPL-2.1-or-later OR BSD-2-Clause OR Apache-2.0` |
 | Makefile | `# SPDX-License-Identifier: LGPL-2.1-or-later OR BSD-2-Clause OR Apache-2.0` |
 | Documentation (`*.md`, ISA spec) | `<!-- SPDX-License-Identifier: CC-BY-4.0 -->` |
+
+### Why `.scala` splits into two rows
+
+A `.scala` file under `rtl/spinal/src/` **is hardware description** — it is the
+source from which the SystemVerilog in `rtl/generated/` is produced, and that
+generated output carries the HW header. Licensing the generator under a
+software licence while its output is hardware-licensed would put the two out
+of step. So design sources take the **HW** header.
+
+Build definitions (`build.sbt`, `project/build.properties`) describe *how to
+run the compiler*, not the circuit. They are tooling, like the `Makefile`, and
+take the **SW** header.
+
+> The dividing line is *what the file describes*, not what language it is
+> written in. `rtl/README.md` declares the same boundary per directory.
 
 PRs that introduce new source files without the appropriate SPDX header
 will be rejected.
