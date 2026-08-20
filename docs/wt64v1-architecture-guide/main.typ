@@ -22,6 +22,7 @@
 #include "appendix/b-gaps.typ"
 #include "appendix/c-glossary.typ"
 #include "appendix/d-properties.typ"
+#include "appendix/e-defined.typ"
 
 #pagebreak()
 #set heading(numbering: none)

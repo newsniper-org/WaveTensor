@@ -35,6 +35,7 @@ appendix/a-capacity.typ   프로토타이핑 용량 산정 (실측 전수 + 벤�
 appendix/b-gaps.typ       기존 문서와 어긋나는 지점 — **재구현팀이 먼저 읽을 것**
 appendix/c-glossary.typ   국문–영문 용어 대응
 appendix/d-properties.typ 형식 속성 카탈로그 (39개 색인 — 선 27 / 후 12)
+appendix/e-defined.typ    재구현이 새로 정의한 표면 (계약이 없어서 정한 것)
 refs.yml                  Hayagriva 서지 (42항, 전부 본문 인용)
 ```
 
