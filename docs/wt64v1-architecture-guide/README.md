@@ -13,7 +13,7 @@
 ## 빌드
 
 ```sh
-typst compile main.typ          # → main.pdf (66쪽, A4)
+typst compile main.typ          # → main.pdf (75쪽, A4)
 typst watch  main.typ           # 집필 중
 ```
 
@@ -78,7 +78,7 @@ grep -ho '#속성("[A-Z]*-[0-9]*"' chapters/*.typ | wc -l                 # 각 
 수치 대조 35/35, `make lint` **exit 0**, `fp_op_gate_check.py` **exit 0**,
 tracked 파일 변경 **0**.
 
-정정 후 재실측 (2026-08-20, 판 0.1 결손 수리): 66쪽, 컴파일 경고 **0**,
+정정 후 재실측 (2026-08-20, 판 0.1 결손 수리): 75쪽, 컴파일 경고 **0**,
 clean-room 위반 **0**, 금지 용어 **5건 전부 규율 서술 줄**,
 속성 수 **39 = 39** (선 27 / 후 12), HIU 속성 **1–11 정렬**.
 
