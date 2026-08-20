@@ -13,7 +13,7 @@
 ## 빌드
 
 ```sh
-typst compile main.typ          # → main.pdf (61쪽, A4)
+typst compile main.typ          # → main.pdf (66쪽, A4)
 typst watch  main.typ           # 집필 중
 ```
 
@@ -34,7 +34,7 @@ chapters/06-formal.typ    선-formal → RTL → 후-formal
 appendix/a-capacity.typ   프로토타이핑 용량 산정 (실측 전수 + 벤더 질문)
 appendix/b-gaps.typ       기존 문서와 어긋나는 지점 — **재구현팀이 먼저 읽을 것**
 appendix/c-glossary.typ   국문–영문 용어 대응
-appendix/d-properties.typ 형식 속성 카탈로그 (27개 색인)
+appendix/d-properties.typ 형식 속성 카탈로그 (39개 색인 — 선 27 / 후 12)
 refs.yml                  Hayagriva 서지 (42항, 전부 본문 인용)
 ```
 
@@ -65,11 +65,21 @@ grep -REn "EHDecode|PE_Core|ISA_Decoder|Top_Core|FP_(StepSeq|Mul36|AddWide|Acc\w
 grep -rn "마이크로코드\|microcode" chapters appendix
 
 # 5) 서지 무결성 — 미정의 인용 0 / 미인용 0
+
+# 6) 속성 수 대조 — 세 수가 전부 같아야 한다 (부록 D 는 색인이지 원천이 아니다)
+grep -c '^  \[\(ISA\|FAB\|HIU\|EXT\|SEC\)-' appendix/d-properties.typ   # 색인 행
+grep -ho '#속성("[A-Z]*-[0-9]*"' chapters/*.typ | wc -l                 # 각 장 선언
+#    그리고 부록 D 의 축별 분류 합계도 같아야 한다.
+#    이 검사가 없어서 실제로 드리프트했다 — 표는 27, 실물은 39였다.
 ```
 
 실측 결과 (2026-08-20): 컴파일 경고 **0**, clean-room 위반 **0**, 서지 42/42,
 수치 대조 35/35, `make lint` **exit 0**, `fp_op_gate_check.py` **exit 0**,
 tracked 파일 변경 **0**.
+
+정정 후 재실측 (2026-08-20, 판 0.1 결손 수리): 66쪽, 컴파일 경고 **0**,
+clean-room 위반 **0**, 금지 용어 **5건 전부 규율 서술 줄**,
+속성 수 **39 = 39** (선 27 / 후 12), HIU 속성 **1–11 정렬**.
 
 ## 수치의 출처
 
