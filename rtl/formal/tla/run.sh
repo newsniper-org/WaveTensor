@@ -112,6 +112,31 @@ expect_fail "증인: 소유가 실재하는가"       ResultBank_witness_NoOwner
 expect_fail "증인: 기입이 실재하는가"       ResultBank_witness_NoWrite.cfg        "$M" Witness_NoWrite
 expect_fail "증인: 구간 만료가 실재하는가"  ResultBank_witness_NoFullInterval.cfg "$M" Witness_NoFullInterval
 
+# ---------------------------------------------------------------------------
+# HIU-1 · HIU-2 · HIU-3 · HIU-4 — 변환 저장 블록 (부록 D.5 우선순위 3번)
+#
+# 넷을 한 모델에 두는 이유는 넷이 **같은 구조 위의 성질**이기 때문이다.
+# 따로 쓰면 저장 블록을 네 벌 모델링하게 되고 그 네 벌이 드리프트한다.
+#
+# 핵심은 §3.6.3 — flush 는 유효 비트만 지우고 **데이터는 남는다.**
+# 유효 비트가 유일한 방벽이다.
+# ---------------------------------------------------------------------------
+M=XlateStore.tla
+expect_pass "HIU-1/2/3/4 좋은 모델 (파티션 2 · 색인 2)"  XlateStore.cfg       "$M"
+expect_pass "HIU-1/2/3/4 좋은 모델 (파티션 3 · 색인 2)"  XlateStore_large.cfg "$M"
+
+expect_fail "가드 삭제: valid_check"     XlateStore_del_valid_check.cfg     "$M" Inv_ValidGated
+expect_fail "가드 삭제: partition_check" XlateStore_del_partition_check.cfg "$M" Inv_PartitionIsolated
+
+expect_fail "증인: 적중이 실재하는가"          XlateStore_witness_NoHit.cfg              "$M" Witness_NoHit
+expect_fail "증인: flush 후 데이터가 남는가"   XlateStore_witness_DataSurvivesFlush.cfg  "$M" Witness_DataSurvivesFlush
+
+# 위 증인의 **유효성**을 짝으로 확인한다. 데이터를 지우는 모델에서는 그 증인이
+# 성립해야 하며, 성립한다는 사실이 곧 "좋은 모델에서 반증된 이유는 데이터가
+# 실제로 남기 때문" 이라는 증명이다. 증인이 부실해서 반증된 것이 아니다.
+expect_pass "증인 유효성: 데이터를 지우면 증인이 선다" \
+            XlateStore_del_flush_keeps_data.cfg "$M"
+
 echo
 echo "======================================================================="
 if [ "$rc" -eq 0 ]; then
