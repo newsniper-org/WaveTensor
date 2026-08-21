@@ -29,7 +29,9 @@
 set -eu
 cd "$(dirname "$0")"
 
-TLC="tlc -nowarning -workers 1 -cleanup"
+# -noGenerateSpecTE: 반례마다 TTrace 재현 스펙을 만들지 않는다. 258 run 중
+# 170여 개가 의도된 MUST FAIL 이라, 켜 두면 run 마다 파일 두 개씩 쌓인다.
+TLC="tlc -nowarning -workers 1 -cleanup -noGenerateSpecTE"
 OUT=$(mktemp)
 trap 'rm -f "$OUT"' EXIT
 
@@ -60,7 +62,15 @@ expect_fail() {
         echo "--> FAIL: 반례가 나와야 하는데 통과했다."
         echo "    가드가 불필요하거나 속성이 부실하다 — 어느 쪽인지 판정할 것."
         rc=1
-    elif grep -q "$want is violated" "$OUT"; then
+    elif grep -qE "$want (is|was) violated" "$OUT"; then
+        # 어미가 둘인 이유: TLC 의 위반 보고 문구가 *셋*이다 (실측).
+        #   불변식     — "Error: Invariant Inv_X is violated."
+        #   전이 조건   — "Error: Action property Prop_Y is violated."
+        #   시간 속성   — "Error: Temporal property Prop_Z was violated."
+        # 이 헬퍼는 속성 *이름*에 앵커하므로 셋을 전부 잡는다. 넓힌 것은 어미뿐이며,
+        # "다른 이유로 실패한 run 을 통과로 읽지 않는다" 는 규율은 그대로다.
+        # FAB-6(진행성)이 이 배터리의 첫 시간 속성이라 필요해졌다 —
+        # 전이 조건은 FAB-3 부터 있었으나 어미가 `is` 라 그동안 드러나지 않았다.
         echo "--> OK (반례 생성됨 — 선언대로)"
     else
         echo "--> FAIL: 실패는 했으나 **다른 이유**다. 기대: $want"
@@ -273,6 +283,358 @@ expect_fail "독립성: 길이 검산만 잡는 사슬"     Walk_witness_NoLenOn
 expect_fail "독립성: 상한 검사만 잡는 사슬"     Walk_witness_NoCapOnly.cfg     "$M" Witness_NoCapOnly
 expect_fail "독립성: 미지 종류만 잡는 사슬"     Walk_witness_NoJunkOnly.cfg    "$M" Witness_NoJunkOnly
 expect_fail "증인: 종료 뒤 슬롯이 실재하는가"   Walk_witness_NoPostEndSlot.cfg "$M" Witness_NoPostEndSlot
+
+
+# ---------------------------------------------------------------------------
+# FAB-1 · FAB-5 · FAB-6 — 병합 지점과 배압 (Fabric.tla)
+#
+# §2.3 규범: 이 설계에 라우터도 중재기도 패킷도 flit 도 없다. 실체는
+# 브로드캐스트 + valid 디먹스 + OR 병합 셋뿐이다. FAB-1 은 그 셋째의
+# *정확성 전제*이고, §2.3 함정이 피해를 적어 준다 — 전제가 깨지면 결과는
+# 두 값의 비트 OR 이 되는데 그것은 어느 쪽도 아닌 값이고 조용하다.
+#
+# 그래서 이 배터리는 「유효 생산자 <= 1」이 아니라 *병합된 값 자체*를 본다.
+# 그렇게 적지 않으면 불변식이 가드와 같은 어휘가 되어 자기지시적으로
+# 만족된다 (Route.tla 에서 실측한 M2 실패형).
+#
+# FAB-6 은 이 배터리의 첫 *진행성* 속성이다 — PROPERTY / ~> 형태이며
+# 공정성을 생산자마다 건다.
+# ---------------------------------------------------------------------------
+M=Fabric.tla
+expect_pass "FAB-1 · FAB-5 · FAB-6 기저"                       Fabric_base.cfg "$M"
+expect_pass "형상 sweep A"                                     Fabric_shapeA.cfg "$M"
+expect_pass "형상 sweep B"                                     Fabric_shapeB.cfg "$M"
+
+# 가드 삭제 — 각 가드를 지우면 그 가드 자신의 불변식이 무너진다 (§6.3.2)
+expect_fail "가드 삭제: bp_loud"                                 Fabric_del_bp_loud.cfg "$M" Prop_NoSilentLoss
+expect_fail "가드 삭제: bp_loud · 형상 A"                          Fabric_del_bp_loud_shapeA.cfg "$M" Prop_NoSilentLoss
+expect_fail "가드 삭제: bp_loud · 형상 B"                          Fabric_del_bp_loud_shapeB.cfg "$M" Prop_NoSilentLoss
+expect_fail "가드 삭제: bp_no_consumer_write"                    Fabric_del_bp_no_consumer_write.cfg "$M" Prop_ConsumerQuiet
+expect_fail "가드 삭제: bp_no_consumer_write · 형상 A"             Fabric_del_bp_no_consumer_write_shapeA.cfg "$M" Prop_ConsumerQuiet
+expect_fail "가드 삭제: bp_no_consumer_write · 형상 B"             Fabric_del_bp_no_consumer_write_shapeB.cfg "$M" Prop_ConsumerQuiet
+expect_fail "가드 삭제: bp_relief"                               Fabric_del_bp_relief.cfg "$M" Prop_Progress
+expect_fail "가드 삭제: bp_relief · 형상 A"                        Fabric_del_bp_relief_shapeA.cfg "$M" Prop_Progress
+expect_fail "가드 삭제: bp_relief · 형상 B"                        Fabric_del_bp_relief_shapeB.cfg "$M" Prop_Progress
+expect_fail "가드 삭제: capture_atomic"                          Fabric_del_capture_atomic.cfg "$M" Inv_ArrivalFromProducer
+expect_fail "가드 삭제: capture_atomic · 형상 A"                   Fabric_del_capture_atomic_shapeA.cfg "$M" Inv_ArrivalFromProducer
+expect_fail "가드 삭제: capture_atomic · 형상 B"                   Fabric_del_capture_atomic_shapeB.cfg "$M" Inv_ArrivalFromProducer
+expect_fail "가드 삭제: fair_grant"                              Fabric_del_fair_grant.cfg "$M" Prop_Progress
+expect_fail "가드 삭제: fair_grant · 형상 A"                       Fabric_del_fair_grant_shapeA.cfg "$M" Prop_Progress
+expect_fail "가드 삭제: fair_grant · 형상 B"                       Fabric_del_fair_grant_shapeB.cfg "$M" Prop_Progress
+expect_fail "가드 삭제: fault_raised"                            Fabric_del_fault_raised.cfg "$M" Inv_FaultVisible
+expect_fail "가드 삭제: fault_raised · 형상 A"                     Fabric_del_fault_raised_shapeA.cfg "$M" Inv_FaultVisible
+expect_fail "가드 삭제: fault_raised · 형상 B"                     Fabric_del_fault_raised_shapeB.cfg "$M" Inv_FaultVisible
+expect_fail "가드 삭제: fault_sticky"                            Fabric_del_fault_sticky.cfg "$M" Inv_FaultVisible
+expect_fail "가드 삭제: fault_sticky · 형상 A"                     Fabric_del_fault_sticky_shapeA.cfg "$M" Inv_FaultVisible
+expect_fail "가드 삭제: fault_sticky · 형상 B"                     Fabric_del_fault_sticky_shapeB.cfg "$M" Inv_FaultVisible
+expect_fail "가드 삭제: single_producer"                         Fabric_del_single_producer.cfg "$M" Inv_SingleValidProducer
+expect_fail "가드 삭제: single_producer · 손상 축"                  Fabric_del_single_producer_damage.cfg "$M" Inv_MergeFaithful
+expect_fail "가드 삭제: single_producer · 형상 A"                  Fabric_del_single_producer_shapeA.cfg "$M" Inv_SingleValidProducer
+expect_fail "가드 삭제: single_producer · 형상 B"                  Fabric_del_single_producer_shapeB.cfg "$M" Inv_SingleValidProducer
+expect_fail "가드 삭제: stall_on_pending"                        Fabric_del_stall_on_pending.cfg "$M" Prop_NoSilentLoss
+expect_fail "가드 삭제: stall_on_pending · 형상 A"                 Fabric_del_stall_on_pending_shapeA.cfg "$M" Prop_NoSilentLoss
+expect_fail "가드 삭제: stall_on_pending · 형상 B"                 Fabric_del_stall_on_pending_shapeB.cfg "$M" Prop_NoSilentLoss
+expect_fail "가드 삭제: valid_gated"                             Fabric_del_valid_gated.cfg "$M" Inv_SingleValidProducer
+expect_fail "가드 삭제: valid_gated · 형상 A"                      Fabric_del_valid_gated_shapeA.cfg "$M" Inv_SingleValidProducer
+expect_fail "가드 삭제: valid_gated · 형상 B"                      Fabric_del_valid_gated_shapeB.cfg "$M" Inv_SingleValidProducer
+expect_fail "가드 삭제: valid_gated · 경합 없음"                     Fabric_del_valid_gated_solo.cfg "$M" Inv_SingleValidProducer
+expect_fail "가드 삭제: valid_tracks_data"                       Fabric_del_valid_tracks_data.cfg "$M" Prop_ArrivalHasSource
+expect_fail "가드 삭제: valid_tracks_data · 형상 A"                Fabric_del_valid_tracks_data_shapeA.cfg "$M" Prop_ArrivalHasSource
+expect_fail "가드 삭제: valid_tracks_data · 형상 B"                Fabric_del_valid_tracks_data_shapeB.cfg "$M" Prop_ArrivalHasSource
+
+# 위험 도달성 증인 — 좋은 모델에서 반드시 반증돼야 한다
+expect_fail "증인: NoArrival"                                  Fabric_witness_NoArrival.cfg "$M" Witness_NoArrival
+expect_fail "증인: NoArrival · 형상 A"                           Fabric_witness_NoArrival_shapeA.cfg "$M" Witness_NoArrival
+expect_fail "증인: NoArrival · 형상 B"                           Fabric_witness_NoArrival_shapeB.cfg "$M" Witness_NoArrival
+expect_fail "증인: NoBackpressure"                             Fabric_witness_NoBackpressure.cfg "$M" Witness_NoBackpressure
+expect_fail "증인: NoBackpressure · 형상 A"                      Fabric_witness_NoBackpressure_shapeA.cfg "$M" Witness_NoBackpressure
+expect_fail "증인: NoBackpressure · 형상 B"                      Fabric_witness_NoBackpressure_shapeB.cfg "$M" Witness_NoBackpressure
+expect_fail "증인: NoContention"                               Fabric_witness_NoContention.cfg "$M" Witness_NoContention
+expect_fail "증인: NoContention · 형상 A"                        Fabric_witness_NoContention_shapeA.cfg "$M" Witness_NoContention
+expect_fail "증인: NoContention · 형상 B"                        Fabric_witness_NoContention_shapeB.cfg "$M" Witness_NoContention
+expect_fail "증인: NoFault"                                    Fabric_witness_NoFault.cfg "$M" Witness_NoFault
+expect_fail "증인: NoFault · 형상 A"                             Fabric_witness_NoFault_shapeA.cfg "$M" Witness_NoFault
+expect_fail "증인: NoFault · 형상 B"                             Fabric_witness_NoFault_shapeB.cfg "$M" Witness_NoFault
+expect_fail "증인: NoOrHazard"                                 Fabric_witness_NoOrHazard.cfg "$M" Witness_NoOrHazard
+expect_fail "증인: NoOrHazard · 형상 A"                          Fabric_witness_NoOrHazard_shapeA.cfg "$M" Witness_NoOrHazard
+expect_fail "증인: NoOrHazard · 형상 B"                          Fabric_witness_NoOrHazard_shapeB.cfg "$M" Witness_NoOrHazard
+expect_fail "증인: NoStaleRegister"                            Fabric_witness_NoStaleRegister.cfg "$M" Witness_NoStaleRegister
+expect_fail "증인: NoStaleRegister · 형상 A"                     Fabric_witness_NoStaleRegister_shapeA.cfg "$M" Witness_NoStaleRegister
+expect_fail "증인: NoStaleRegister · 형상 B"                     Fabric_witness_NoStaleRegister_shapeB.cfg "$M" Witness_NoStaleRegister
+
+# 짝 run — 축의 분리를 확정한다. 같은 제약 아래 하나는 깨지고 하나는 안 깨진다
+expect_pass "짝: shovefair_bp_relief"                         Fabric_pair_shovefair_bp_relief.cfg "$M"
+expect_fail "짝: shovefair_fair_grant"                        Fabric_pair_shovefair_fair_grant.cfg "$M" Prop_Progress
+expect_pass "짝: solo_single_producer"                        Fabric_pair_solo_single_producer.cfg "$M"
+
+# ---------------------------------------------------------------------------
+# SEC-4 · HIU-11 — 비간섭과 선택적 경로 (Isolation.tla)
+#
+# 둘 다 관계 속성이다. SEC-4 는 「출력이 남의 상태에 의존하지 *않는다*」이므로
+# 한 실행 안에서 말할 수 없고, HIU-11 은 선택적 경로가 *있는* 구성과 *없는*
+# 구성의 비교다. Platform.tla 의 lockstep 구조를 승계한다 (§3.4.2).
+# ---------------------------------------------------------------------------
+M=Isolation.tla
+expect_pass "SEC-4 · HIU-11 기저"                              Isolation_base.cfg "$M"
+expect_pass "형상 sweep A"                                     Isolation_shapeA.cfg "$M"
+expect_pass "형상 sweep B"                                     Isolation_shapeB.cfg "$M"
+
+# 가드 삭제 — 각 가드를 지우면 그 가드 자신의 불변식이 무너진다 (§6.3.2)
+expect_fail "가드 삭제: approve_gates_value"                     Isolation_del_approve_gates_value.cfg "$M" Inv_ValueNonInterference
+expect_fail "가드 삭제: approve_gates_value · 형상 A"              Isolation_del_approve_gates_value_shapeA.cfg "$M" Inv_ValueNonInterference
+expect_fail "가드 삭제: approve_gates_value · 형상 B"              Isolation_del_approve_gates_value_shapeB.cfg "$M" Inv_ValueNonInterference
+expect_fail "가드 삭제: capacity_partitioned"                    Isolation_del_capacity_partitioned.cfg "$M" Inv_VerdictNonInterference
+expect_fail "가드 삭제: capacity_partitioned · 형상 A"             Isolation_del_capacity_partitioned_shapeA.cfg "$M" Inv_VerdictNonInterference
+expect_fail "가드 삭제: capacity_partitioned · 형상 B"             Isolation_del_capacity_partitioned_shapeB.cfg "$M" Inv_VerdictNonInterference
+expect_fail "가드 삭제: coh_no_shortcut"                         Isolation_del_coh_no_shortcut.cfg "$M" Inv_OptionalPathNeutral
+expect_pass "가드 삭제: coh_no_shortcut · 사이클만 관측"               Isolation_del_coh_no_shortcut_cyclesonly.cfg "$M"
+expect_fail "가드 삭제: coh_no_shortcut · 형상 A"                  Isolation_del_coh_no_shortcut_shapeA.cfg "$M" Inv_OptionalPathNeutral
+expect_fail "가드 삭제: coh_no_shortcut · 형상 B"                  Isolation_del_coh_no_shortcut_shapeB.cfg "$M" Inv_OptionalPathNeutral
+expect_fail "가드 삭제: fill_offpath"                            Isolation_del_fill_offpath.cfg "$M" Inv_TraceNonInterference
+expect_fail "가드 삭제: fill_offpath · 형상 A"                     Isolation_del_fill_offpath_shapeA.cfg "$M" Inv_TraceNonInterference
+expect_fail "가드 삭제: fill_offpath · 형상 B"                     Isolation_del_fill_offpath_shapeB.cfg "$M" Inv_TraceNonInterference
+expect_fail "가드 삭제: fill_slot_per_partition"                 Isolation_del_fill_slot_per_partition.cfg "$M" Inv_VerdictNonInterference
+expect_fail "가드 삭제: fill_slot_per_partition · 형상 A"          Isolation_del_fill_slot_per_partition_shapeA.cfg "$M" Inv_VerdictNonInterference
+expect_fail "가드 삭제: fill_slot_per_partition · 형상 B"          Isolation_del_fill_slot_per_partition_shapeB.cfg "$M" Inv_VerdictNonInterference
+expect_fail "가드 삭제: fill_tagged"                             Isolation_del_fill_tagged.cfg "$M" Inv_VerdictNonInterference
+expect_fail "가드 삭제: fill_tagged · 형상 A"                      Isolation_del_fill_tagged_shapeA.cfg "$M" Inv_VerdictNonInterference
+expect_fail "가드 삭제: fill_tagged · 형상 B"                      Isolation_del_fill_tagged_shapeB.cfg "$M" Inv_VerdictNonInterference
+expect_fail "가드 삭제: install_scoped"                          Isolation_del_install_scoped.cfg "$M" Inv_ValueNonInterference
+expect_fail "가드 삭제: install_scoped · 형상 A"                   Isolation_del_install_scoped_shapeA.cfg "$M" Inv_ValueNonInterference
+expect_fail "가드 삭제: install_scoped · 형상 B"                   Isolation_del_install_scoped_shapeB.cfg "$M" Inv_ValueNonInterference
+expect_fail "가드 삭제: no_early_forward"                        Isolation_del_no_early_forward.cfg "$M" Inv_ForwardNonInterference
+expect_fail "가드 삭제: no_early_forward · 형상 A"                 Isolation_del_no_early_forward_shapeA.cfg "$M" Inv_ForwardNonInterference
+expect_fail "가드 삭제: no_early_forward · 형상 B"                 Isolation_del_no_early_forward_shapeB.cfg "$M" Inv_ForwardNonInterference
+expect_pass "가드 삭제: no_early_forward · 값만 관측"                Isolation_del_no_early_forward_valueonly.cfg "$M"
+expect_fail "가드 삭제: query_no_serve"                          Isolation_del_query_no_serve.cfg "$M" Inv_OptSameVerdict
+expect_fail "가드 삭제: query_no_serve · 형상 A"                   Isolation_del_query_no_serve_shapeA.cfg "$M" Inv_OptSameVerdict
+expect_fail "가드 삭제: query_no_serve · 형상 B"                   Isolation_del_query_no_serve_shapeB.cfg "$M" Inv_OptSameVerdict
+expect_fail "가드 삭제: query_no_serve · 값 축"                    Isolation_del_query_no_serve_valueaxis.cfg "$M" Inv_OptSameValue
+expect_fail "가드 삭제: query_offpath"                           Isolation_del_query_offpath.cfg "$M" Inv_OptionalPathNeutral
+expect_fail "가드 삭제: query_offpath · 형상 A"                    Isolation_del_query_offpath_shapeA.cfg "$M" Inv_OptionalPathNeutral
+expect_fail "가드 삭제: query_offpath · 형상 B"                    Isolation_del_query_offpath_shapeB.cfg "$M" Inv_OptionalPathNeutral
+
+# 위험 도달성 증인 — 좋은 모델에서 반드시 반증돼야 한다
+expect_fail "증인: NoForeignFill"                              Isolation_witness_NoForeignFill.cfg "$M" Witness_NoForeignFill
+expect_fail "증인: NoInflightBypass"                           Isolation_witness_NoInflightBypass.cfg "$M" Witness_NoInflightBypass
+expect_fail "증인: NoOptStateSkew"                             Isolation_witness_NoOptStateSkew.cfg "$M" Witness_NoOptStateSkew
+expect_fail "증인: NoQSkew"                                    Isolation_witness_NoQSkew.cfg "$M" Witness_NoQSkew
+expect_fail "증인: NoRawSkew"                                  Isolation_witness_NoRawSkew.cfg "$M" Witness_NoRawSkew
+expect_fail "증인: NoSubjectMiss"                              Isolation_witness_NoSubjectMiss.cfg "$M" Witness_NoSubjectMiss
+expect_fail "증인: NoSubjectValue"                             Isolation_witness_NoSubjectValue.cfg "$M" Witness_NoSubjectValue
+
+# ---------------------------------------------------------------------------
+# EXT-4 — 재조립 배타성 (Payload.tla)
+#
+# NoLoss.tla 가 덮지 못한 축이다. 그 모델은 개수만 세므로 「A 를 잃고 B 를
+# 두 번 완료」를 보지 못하고, 자기 머리가 그 공백을 EXT-4 의 몫으로 남겼다.
+# 그래서 이 모델은 조각에 *정체성*을 준다 — 개수 보존이 아니라 어느 조각이
+# 어느 슬롯에 들어갔는가를 본다.
+# ---------------------------------------------------------------------------
+M=Payload.tla
+expect_pass "EXT-4 기저"                                       Payload_base.cfg "$M"
+expect_pass "형상 sweep A"                                     Payload_shapeA.cfg "$M"
+expect_pass "형상 sweep B"                                     Payload_shapeB.cfg "$M"
+
+# 가드 삭제 — 각 가드를 지우면 그 가드 자신의 불변식이 무너진다 (§6.3.2)
+expect_fail "가드 삭제: base_from_tag"                           Payload_del_base_from_tag.cfg "$M" Inv_NoCrossWindow
+expect_fail "가드 삭제: cap_check"                               Payload_del_cap_check.cfg "$M" Inv_NoCrossWindow
+expect_fail "가드 삭제: capability_check"                        Payload_del_capability_check.cfg "$M" Inv_NoCrossWindow
+expect_fail "가드 삭제: capability_not_fault"                    Payload_del_capability_not_fault.cfg "$M" Inv_CapabilityNotMalformed
+expect_fail "가드 삭제: key_is_tag"                              Payload_del_key_is_tag.cfg "$M" Inv_ReassemblyExclusive
+expect_fail "가드 삭제: loud_reject"                             Payload_del_loud_reject.cfg "$M" Inv_RejectLoud
+expect_fail "가드 삭제: no_dup_seq"                              Payload_del_no_dup_seq.cfg "$M" Inv_ReassemblyExclusive
+expect_fail "가드 삭제: no_restart"                              Payload_del_no_restart.cfg "$M" Inv_ReassemblyExclusive
+expect_fail "가드 삭제: reset_on_deliver"                        Payload_del_reset_on_deliver.cfg "$M" Inv_NoStaleRedeliver
+expect_fail "가드 삭제: write_atomic"                            Payload_del_write_atomic.cfg "$M" Inv_ReassemblyExclusive
+
+# 위험 도달성 증인 — 좋은 모델에서 반드시 반증돼야 한다
+expect_fail "증인: NoCapabilityAbsence"                        Payload_witness_NoCapabilityAbsence.cfg "$M" Witness_NoCapabilityAbsence
+expect_fail "증인: NoCapabilityOnlyRejection"                  Payload_witness_NoCapabilityOnlyRejection.cfg "$M" Witness_NoCapabilityOnlyRejection
+expect_fail "증인: NoDelivery"                                 Payload_witness_NoDelivery.cfg "$M" Witness_NoDelivery
+expect_fail "증인: NoDupSeq"                                   Payload_witness_NoDupSeq.cfg "$M" Witness_NoDupSeq
+expect_fail "증인: NoOverLimit"                                Payload_witness_NoOverLimit.cfg "$M" Witness_NoOverLimit
+expect_fail "증인: NoPartialReassembly"                        Payload_witness_NoPartialReassembly.cfg "$M" Witness_NoPartialReassembly
+expect_fail "증인: NoRestartClash"                             Payload_witness_NoRestartClash.cfg "$M" Witness_NoRestartClash
+expect_fail "증인: NoTagReuse"                                 Payload_witness_NoTagReuse.cfg "$M" Witness_NoTagReuse
+expect_fail "증인: NoTwoActiveCtx"                             Payload_witness_NoTwoActiveCtx.cfg "$M" Witness_NoTwoActiveCtx
+
+# 짝 run — 축의 분리를 확정한다. 같은 제약 아래 하나는 깨지고 하나는 안 깨진다
+expect_fail "짝: silent_overwrite"                            Payload_pair_silent_overwrite.cfg "$M" Prop_NoSilentOverwrite
+
+# ---------------------------------------------------------------------------
+# SEC-7 · SEC-2 — 예약 필드 불투과와 경로 간 동일성 (Decode.tla)
+#
+# SEC-7 의 함정은 「판정 이전」이다. "예약이 0 이 아니면 거절한다" 만 적으면
+# 속성이 자명하게 참이 된다 — 정본이 경고하는 것은 거절 판정이 내려지기
+# *전에* 그 비트가 상태·타이밍·부수효과에 이미 반영되는 경우다.
+#
+# SEC-2 는 「사이클 수」가 아니라 *상태열*이다. 정본이 인과를 명시한다 —
+# 상태열이 같다, *따라서* 사이클 수가 같다. 사이클 수만 비교하면 상태열이
+# 다른데 길이만 같은 구현을 통과시키고, 그 차이가 곧 부채널이다.
+# ---------------------------------------------------------------------------
+M=Decode.tla
+expect_pass "SEC-7 · SEC-2 기저"                               Decode_base.cfg "$M"
+expect_pass "형상 sweep A"                                     Decode_shapeA.cfg "$M"
+expect_pass "형상 sweep B"                                     Decode_shapeB.cfg "$M"
+expect_pass "형상 sweep C"                                     Decode_shapeC.cfg "$M"
+expect_pass "형상 sweep D"                                     Decode_shapeD.cfg "$M"
+
+# 가드 삭제 — 각 가드를 지우면 그 가드 자신의 불변식이 무너진다 (§6.3.2)
+expect_fail "가드 삭제: evict_inline"                            Decode_del_evict_inline.cfg "$M" Inv_SamePathTrace
+expect_fail "가드 삭제: evict_inline · 형상 B"                     Decode_del_evict_inline_shapeB.cfg "$M" Inv_SamePathTrace
+expect_fail "가드 삭제: evict_inline · 형상 C"                     Decode_del_evict_inline_shapeC.cfg "$M" Inv_SamePathTrace
+expect_fail "가드 삭제: fault_not_folded"                        Decode_del_fault_not_folded.cfg "$M" Inv_ResvOpaque
+expect_fail "가드 삭제: fault_not_folded · 판정 늦춤"                Decode_del_fault_not_folded_judgelate.cfg "$M" Inv_ResvOpaque
+expect_fail "가드 삭제: fault_not_folded · 형상 B"                 Decode_del_fault_not_folded_shapeB.cfg "$M" Inv_ResvOpaque
+expect_fail "가드 삭제: fault_not_folded · 형상 C"                 Decode_del_fault_not_folded_shapeC.cfg "$M" Inv_ResvOpaque
+expect_fail "가드 삭제: lookup_unbranched"                       Decode_del_lookup_unbranched.cfg "$M" Inv_SamePathTrace
+expect_fail "가드 삭제: lookup_unbranched · 형상 B"                Decode_del_lookup_unbranched_shapeB.cfg "$M" Inv_SamePathTrace
+expect_fail "가드 삭제: lookup_unbranched · 형상 C"                Decode_del_lookup_unbranched_shapeC.cfg "$M" Inv_SamePathTrace
+expect_fail "가드 삭제: mal_carried"                             Decode_del_mal_carried.cfg "$M" Inv_MalformedRejected
+expect_fail "가드 삭제: mal_carried · 형상 B"                      Decode_del_mal_carried_shapeB.cfg "$M" Inv_MalformedRejected
+expect_fail "가드 삭제: mal_carried · 형상 C"                      Decode_del_mal_carried_shapeC.cfg "$M" Inv_MalformedRejected
+expect_fail "가드 삭제: out_no_reason"                           Decode_del_out_no_reason.cfg "$M" Inv_OutVerdictOnly
+expect_fail "가드 삭제: out_no_reason · 판정 늦춤"                   Decode_del_out_no_reason_judgelate.cfg "$M" Inv_OutVerdictOnly
+expect_fail "가드 삭제: out_no_reason · 형상 B"                    Decode_del_out_no_reason_shapeB.cfg "$M" Inv_OutVerdictOnly
+expect_fail "가드 삭제: out_no_reason · 형상 C"                    Decode_del_out_no_reason_shapeC.cfg "$M" Inv_OutVerdictOnly
+expect_fail "가드 삭제: resv_judged"                             Decode_del_resv_judged.cfg "$M" Inv_MalformedRejected
+expect_fail "가드 삭제: resv_judged · 판정 늦춤"                     Decode_del_resv_judged_judgelate.cfg "$M" Inv_MalformedRejected
+expect_fail "가드 삭제: resv_judged · 형상 B"                      Decode_del_resv_judged_shapeB.cfg "$M" Inv_MalformedRejected
+expect_fail "가드 삭제: resv_judged · 형상 C"                      Decode_del_resv_judged_shapeC.cfg "$M" Inv_MalformedRejected
+expect_fail "가드 삭제: resv_not_echoed"                         Decode_del_resv_not_echoed.cfg "$M" Inv_ResvOpaque
+expect_fail "가드 삭제: resv_not_echoed · 판정 늦춤"                 Decode_del_resv_not_echoed_judgelate.cfg "$M" Inv_ResvOpaque
+expect_fail "가드 삭제: resv_not_echoed · 형상 B"                  Decode_del_resv_not_echoed_shapeB.cfg "$M" Inv_ResvOpaque
+expect_fail "가드 삭제: resv_not_echoed · 형상 C"                  Decode_del_resv_not_echoed_shapeC.cfg "$M" Inv_ResvOpaque
+expect_fail "가드 삭제: resv_not_indexed"                        Decode_del_resv_not_indexed.cfg "$M" Inv_ResvOpaque
+expect_fail "가드 삭제: resv_not_indexed · 판정 늦춤"                Decode_del_resv_not_indexed_judgelate.cfg "$M" Inv_ResvOpaque
+expect_fail "가드 삭제: resv_not_indexed · 형상 B"                 Decode_del_resv_not_indexed_shapeB.cfg "$M" Inv_ResvOpaque
+expect_fail "가드 삭제: resv_not_indexed · 형상 C"                 Decode_del_resv_not_indexed_shapeC.cfg "$M" Inv_ResvOpaque
+expect_fail "가드 삭제: resv_not_timed"                          Decode_del_resv_not_timed.cfg "$M" Inv_ResvOpaque
+expect_fail "가드 삭제: resv_not_timed · 판정 늦춤"                  Decode_del_resv_not_timed_judgelate.cfg "$M" Inv_ResvOpaque
+expect_fail "가드 삭제: resv_not_timed · 형상 B"                   Decode_del_resv_not_timed_shapeB.cfg "$M" Inv_ResvOpaque
+expect_fail "가드 삭제: resv_not_timed · 형상 C"                   Decode_del_resv_not_timed_shapeC.cfg "$M" Inv_ResvOpaque
+expect_fail "가드 삭제: stall_uniform"                           Decode_del_stall_uniform.cfg "$M" Inv_SamePathTrace
+expect_fail "가드 삭제: stall_uniform · 형상 B"                    Decode_del_stall_uniform_shapeB.cfg "$M" Inv_SamePathTrace
+expect_fail "가드 삭제: stall_uniform · 형상 C"                    Decode_del_stall_uniform_shapeC.cfg "$M" Inv_SamePathTrace
+expect_fail "가드 삭제: verdict_ungated"                         Decode_del_verdict_ungated.cfg "$M" Inv_ResvOpaque
+expect_fail "가드 삭제: verdict_ungated · 형상 B"                  Decode_del_verdict_ungated_shapeB.cfg "$M" Inv_ResvOpaque
+expect_fail "가드 삭제: verdict_ungated · 형상 C"                  Decode_del_verdict_ungated_shapeC.cfg "$M" Inv_ResvOpaque
+
+# 위험 도달성 증인 — 좋은 모델에서 반드시 반증돼야 한다
+expect_fail "증인: NoEarlyJudgment"                            Decode_witness_NoEarlyJudgment.cfg "$M" Witness_NoEarlyJudgment
+expect_fail "증인: NoEarlyObs"                                 Decode_witness_NoEarlyObs.cfg "$M" Witness_NoEarlyObs
+expect_fail "증인: NoHitPath"                                  Decode_witness_NoHitPath.cfg "$M" Witness_NoHitPath
+expect_fail "증인: NoMalformed"                                Decode_witness_NoMalformed.cfg "$M" Witness_NoMalformed
+expect_fail "증인: NoMissPath"                                 Decode_witness_NoMissPath.cfg "$M" Witness_NoMissPath
+expect_fail "증인: NoOk"                                       Decode_witness_NoOk.cfg "$M" Witness_NoOk
+expect_fail "증인: NoReplacePath"                              Decode_witness_NoReplacePath.cfg "$M" Witness_NoReplacePath
+expect_fail "증인: NoStall"                                    Decode_witness_NoStall.cfg "$M" Witness_NoStall
+expect_fail "증인: NoStickyMiss"                               Decode_witness_NoStickyMiss.cfg "$M" Witness_NoStickyMiss
+
+# 짝 run — 축의 분리를 확정한다. 같은 제약 아래 하나는 깨지고 하나는 안 깨진다
+expect_pass "짝: branch_resvaxis"                             Decode_pair_branch_resvaxis.cfg "$M"
+expect_pass "짝: branch_resvaxis · 형상 C"                      Decode_pair_branch_resvaxis_shapeC.cfg "$M"
+expect_pass "짝: evict_resvaxis"                              Decode_pair_evict_resvaxis.cfg "$M"
+expect_pass "짝: evict_resvaxis · 형상 C"                       Decode_pair_evict_resvaxis_shapeC.cfg "$M"
+expect_fail "짝: indexed_kind"                                Decode_pair_indexed_kind.cfg "$M" Inv_KindRealized
+expect_fail "짝: indexed_kind · 형상 C"                         Decode_pair_indexed_kind_shapeC.cfg "$M" Inv_KindRealized
+expect_pass "짝: indexed_postjudge"                           Decode_pair_indexed_postjudge.cfg "$M"
+expect_pass "짝: indexed_postjudge · 형상 C"                    Decode_pair_indexed_postjudge_shapeC.cfg "$M"
+expect_pass "짝: judge_late"                                  Decode_pair_judge_late.cfg "$M"
+expect_fail "짝: len_strong"                                  Decode_pair_len_strong.cfg "$M" Strong_SamePathSeq
+expect_fail "짝: len_strong · 형상 C"                           Decode_pair_len_strong_shapeC.cfg "$M" Strong_SamePathSeq
+expect_pass "짝: len_weak"                                    Decode_pair_len_weak.cfg "$M"
+expect_pass "짝: len_weak · 형상 C"                             Decode_pair_len_weak_shapeC.cfg "$M"
+expect_pass "짝: reason_prejudge"                             Decode_pair_reason_prejudge.cfg "$M"
+expect_pass "짝: reason_prejudge · 형상 C"                      Decode_pair_reason_prejudge_shapeC.cfg "$M"
+expect_pass "짝: stall_resvaxis"                              Decode_pair_stall_resvaxis.cfg "$M"
+expect_pass "짝: stall_resvaxis · 형상 C"                       Decode_pair_stall_resvaxis_shapeC.cfg "$M"
+expect_pass "짝: timed_pathaxis"                              Decode_pair_timed_pathaxis.cfg "$M"
+expect_pass "짝: timed_pathaxis · 형상 C"                       Decode_pair_timed_pathaxis_shapeC.cfg "$M"
+
+# ---------------------------------------------------------------------------
+# EXT-6 — 메모리 순서 (MemOrder.tla)
+#
+# §4.4.4 가 확정한 기전(명시적 순서 의존)의 형식화. 두 얼굴을 가른다 —
+# 발화 계약(Inv_DepRespected: 이어진 쌍은 선행 완료 뒤에만 발화)과
+# 관측 계약(Inv_ObservedOrder: EXT-6 문면 그대로, 완료 순서 일치).
+# 한 이름에 두 얼굴을 담으면 BFS 가 얕은 얼굴에서 멈춰 깊은 얼굴이 영원히
+# 무판정으로 남는다 — 이 배터리가 그 실측의 기록이다.
+#
+# 과잉 게이팅 축(wave·addr·inflight)과 완료측 결박(응답 FIFO)이 각각
+# 가드로 존재한다 — 지울 가드가 없는 결함형은 검출되지 않기 때문이다.
+# 이 모델은 한 번 죽었다 — 1차 판의 Inv_OnlyTokenBlocks 는 좋은 모델에서
+# 측정된 항진명제였다 (Route.tla M2 실패형의 재발). 어휘 분리로 고쳤다.
+# ---------------------------------------------------------------------------
+M=MemOrder.tla
+expect_pass "EXT-6 base"                                     MemOrder_base.cfg "$M"
+expect_pass "EXT-6 shapeA"                                   MemOrder_shapeA.cfg "$M"
+expect_pass "EXT-6 shapeB"                                   MemOrder_shapeB.cfg "$M"
+expect_pass "EXT-6 shapeC"                                   MemOrder_shapeC.cfg "$M"
+
+# 가드 삭제 — 각 가드를 지우면 그 가드 자신의 불변식이 무너진다 (§6.3.2)
+expect_fail "가드 삭제: addr_not_gating"                         MemOrder_del_addr_not_gating.cfg "$M" Inv_OnlyTokenBlocks
+expect_fail "가드 삭제: addr_not_gating_shapeA"                  MemOrder_del_addr_not_gating_shapeA.cfg "$M" Inv_OnlyTokenBlocks
+expect_fail "가드 삭제: addr_not_gating_shapeB"                  MemOrder_del_addr_not_gating_shapeB.cfg "$M" Inv_OnlyTokenBlocks
+expect_fail "가드 삭제: addr_not_gating_shapeC"                  MemOrder_del_addr_not_gating_shapeC.cfg "$M" Inv_OnlyTokenBlocks
+expect_fail "가드 삭제: complete_not_ordered"                    MemOrder_del_complete_not_ordered.cfg "$M" Inv_CompleteUngated
+expect_fail "가드 삭제: complete_not_ordered_shapeA"             MemOrder_del_complete_not_ordered_shapeA.cfg "$M" Inv_CompleteUngated
+expect_fail "가드 삭제: complete_not_ordered_shapeB"             MemOrder_del_complete_not_ordered_shapeB.cfg "$M" Inv_CompleteUngated
+expect_fail "가드 삭제: gate_matches_dep"                        MemOrder_del_gate_matches_dep.cfg "$M" Inv_DepRespected
+expect_fail "가드 삭제: gate_matches_dep_over"                   MemOrder_del_gate_matches_dep_over.cfg "$M" Inv_OnlyTokenBlocks
+expect_fail "가드 삭제: gate_matches_dep_over_shapeA"            MemOrder_del_gate_matches_dep_over_shapeA.cfg "$M" Inv_OnlyTokenBlocks
+expect_fail "가드 삭제: gate_matches_dep_over_shapeB"            MemOrder_del_gate_matches_dep_over_shapeB.cfg "$M" Inv_OnlyTokenBlocks
+expect_fail "가드 삭제: gate_matches_dep_shapeA"                 MemOrder_del_gate_matches_dep_shapeA.cfg "$M" Inv_DepRespected
+expect_fail "가드 삭제: gate_matches_dep_shapeC"                 MemOrder_del_gate_matches_dep_shapeC.cfg "$M" Inv_DepRespected
+expect_fail "가드 삭제: gate_matches_dep_stuck"                  MemOrder_del_gate_matches_dep_stuck.cfg "$M" Inv_NoCircularWait
+expect_fail "가드 삭제: gate_matches_dep_stuck_shapeA"           MemOrder_del_gate_matches_dep_stuck_shapeA.cfg "$M" Inv_NoCircularWait
+expect_fail "가드 삭제: inflight_not_gating"                     MemOrder_del_inflight_not_gating.cfg "$M" Inv_OnlyTokenBlocks
+expect_fail "가드 삭제: inflight_not_gating_shapeA"              MemOrder_del_inflight_not_gating_shapeA.cfg "$M" Inv_OnlyTokenBlocks
+expect_fail "가드 삭제: inflight_not_gating_shapeB"              MemOrder_del_inflight_not_gating_shapeB.cfg "$M" Inv_OnlyTokenBlocks
+expect_fail "가드 삭제: token_gate"                              MemOrder_del_token_gate.cfg "$M" Inv_DepRespected
+expect_fail "가드 삭제: token_gate_shapeA"                       MemOrder_del_token_gate_shapeA.cfg "$M" Inv_DepRespected
+expect_fail "가드 삭제: token_gate_shapeB"                       MemOrder_del_token_gate_shapeB.cfg "$M" Inv_DepRespected
+expect_fail "가드 삭제: token_on_complete"                       MemOrder_del_token_on_complete.cfg "$M" Inv_ObservedOrder
+expect_fail "가드 삭제: token_on_complete_fire"                  MemOrder_del_token_on_complete_fire.cfg "$M" Inv_DepRespected
+expect_fail "가드 삭제: token_on_complete_shapeA"                MemOrder_del_token_on_complete_shapeA.cfg "$M" Inv_ObservedOrder
+expect_fail "가드 삭제: token_on_complete_shapeB"                MemOrder_del_token_on_complete_shapeB.cfg "$M" Inv_ObservedOrder
+expect_fail "가드 삭제: wave_not_gating"                         MemOrder_del_wave_not_gating.cfg "$M" Inv_OnlyTokenBlocks
+expect_fail "가드 삭제: wave_not_gating_shapeA"                  MemOrder_del_wave_not_gating_shapeA.cfg "$M" Inv_OnlyTokenBlocks
+expect_fail "가드 삭제: wave_not_gating_shapeB"                  MemOrder_del_wave_not_gating_shapeB.cfg "$M" Inv_OnlyTokenBlocks
+expect_fail "가드 삭제: wave_not_gating_stuck"                   MemOrder_del_wave_not_gating_stuck.cfg "$M" Inv_NoCircularWait
+expect_fail "가드 삭제: wave_not_gating_stuck_shapeA"            MemOrder_del_wave_not_gating_stuck_shapeA.cfg "$M" Inv_NoCircularWait
+expect_fail "가드 삭제: wave_not_gating_stuck_shapeB"            MemOrder_del_wave_not_gating_stuck_shapeB.cfg "$M" Inv_NoCircularWait
+
+# 위험 도달성 증인 — 전부 *구성된 기계*에서 반증된다
+expect_fail "증인: NoAddrInversion"                            MemOrder_witness_NoAddrInversion.cfg "$M" Witness_NoAddrInversion
+expect_fail "증인: NoAddrInversion_shapeB"                     MemOrder_witness_NoAddrInversion_shapeB.cfg "$M" Witness_NoAddrInversion
+expect_fail "증인: NoCompletion"                               MemOrder_witness_NoCompletion.cfg "$M" Witness_NoCompletion
+expect_fail "증인: NoCompletion_shapeB"                        MemOrder_witness_NoCompletion_shapeB.cfg "$M" Witness_NoCompletion
+expect_fail "증인: NoConcurrentInflight"                       MemOrder_witness_NoConcurrentInflight.cfg "$M" Witness_NoConcurrentInflight
+expect_fail "증인: NoConcurrentInflight_shapeB"                MemOrder_witness_NoConcurrentInflight_shapeB.cfg "$M" Witness_NoConcurrentInflight
+expect_fail "증인: NoDepEnforced"                              MemOrder_witness_NoDepEnforced.cfg "$M" Witness_NoDepEnforced
+expect_fail "증인: NoDepEnforced_shapeB"                       MemOrder_witness_NoDepEnforced_shapeB.cfg "$M" Witness_NoDepEnforced
+expect_fail "증인: NoFireOrderCoupling"                        MemOrder_witness_NoFireOrderCoupling.cfg "$M" Witness_NoFireOrderCoupling
+expect_fail "증인: NoFireOrderCoupling_shapeB"                 MemOrder_witness_NoFireOrderCoupling_shapeB.cfg "$M" Witness_NoFireOrderCoupling
+expect_fail "증인: NoInflightPredecessor"                      MemOrder_witness_NoInflightPredecessor.cfg "$M" Witness_NoInflightPredecessor
+expect_fail "증인: NoInflightPredecessor_shapeB"               MemOrder_witness_NoInflightPredecessor_shapeB.cfg "$M" Witness_NoInflightPredecessor
+expect_fail "증인: NoWaveInversion"                            MemOrder_witness_NoWaveInversion.cfg "$M" Witness_NoWaveInversion
+expect_fail "증인: NoWaveInversion_shapeB"                     MemOrder_witness_NoWaveInversion_shapeB.cfg "$M" Witness_NoWaveInversion
+
+# 짝 run — 축의 분리를 확정한다
+expect_pass "짝: addr_freedom_lost"                           MemOrder_pair_addr_freedom_lost.cfg "$M"
+expect_pass "짝: addr_freedom_lost_shapeC"                    MemOrder_pair_addr_freedom_lost_shapeC.cfg "$M"
+expect_fail "짝: addr_wave_axis"                              MemOrder_pair_addr_wave_axis.cfg "$M" Witness_NoWaveInversion
+expect_fail "짝: addr_wave_axis_shapeC"                       MemOrder_pair_addr_wave_axis_shapeC.cfg "$M" Witness_NoWaveInversion
+expect_fail "짝: complete_order_axis"                         MemOrder_pair_complete_order_axis.cfg "$M" Witness_NoAddrInversion
+expect_pass "짝: fire_order_freedom_lost"                     MemOrder_pair_fire_order_freedom_lost.cfg "$M"
+expect_pass "짝: gate_equals_contract"                        MemOrder_pair_gate_equals_contract.cfg "$M"
+expect_pass "짝: gate_equals_contract_shapeA"                 MemOrder_pair_gate_equals_contract_shapeA.cfg "$M"
+expect_pass "짝: gate_equals_contract_shapeB"                 MemOrder_pair_gate_equals_contract_shapeB.cfg "$M"
+expect_pass "짝: gate_equals_contract_shapeC"                 MemOrder_pair_gate_equals_contract_shapeC.cfg "$M"
+expect_pass "짝: inflight_freedom_lost"                       MemOrder_pair_inflight_freedom_lost.cfg "$M"
+expect_fail "짝: inflight_order_axis"                         MemOrder_pair_inflight_order_axis.cfg "$M" Witness_NoAddrInversion
 
 if [ "$rc" -eq 0 ]; then
     echo " 전체 $runs run 이 선언대로 행동했다 — 게이트 GREEN"

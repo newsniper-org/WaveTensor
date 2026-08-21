@@ -11,3 +11,4 @@
 - [pre-stable compat 정책](prestable_compat_policy.md) — 동결 보증(frozen/keep-forever)은 stable release부터 발효 (사용자 지시 2026-07-24); pre-stable에서 dead opcode 제거·recapture는 정규 이벤트.
 - [post-stable 장기 계획](post_stable_roadmap.md) — §3(구현 이원화)은 RTL 전면 재구현으로 대체됨; §2 문서화·§4 양산만 T_stable 게이트 유지.
 - [WT64v1 RTL 전면 재구현](wt64v1_rtl_reimplementation.md) — 2026-08-20 착수; 정본은 아키텍처 가이드 PDF 하나, SpinalHDL 주 + SV 검증층, clean-room, 선-formal 이 RTL 을 선행한다.
+- [Workflow 자리표시자 패턴 금지](workflow_placeholder_bug.md) — 데이터는 인라인 또는 args 로; __X__ 치환 패턴은 두 번 다 즉시 실패
