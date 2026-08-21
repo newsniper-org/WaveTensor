@@ -618,6 +618,16 @@ rtl-clean:
 
 .PHONY: hooks-install hooks-check
 
+# =============================================================================
+# 정본 컴파일 + 렌더 검사 — 정본을 컴파일하는 정규 진입점.
+#
+# raw `typst compile` 을 직접 부르면 렌더 검사가 빠진다. 부록 B.5 표가 73쪽으로
+# 부풀어 있는 동안 「컴파일 OK · N쪽」 만 반복 보고된 사고의 재발 방지다 —
+# 컴파일 성공과 렌더링 정상은 다른 명제다.
+guide:
+	cd $(CURDIR)/docs/wt64v1-architecture-guide && typst compile main.typ
+	python3 $(CURDIR)/scripts/check_guide_render.py
+
 hooks-install:
 	@install -m 0755 $(CURDIR)/scripts/hooks/pre-commit $(CURDIR)/.git/hooks/pre-commit
 	@echo "hooks-install: .git/hooks/pre-commit ← scripts/hooks/pre-commit"

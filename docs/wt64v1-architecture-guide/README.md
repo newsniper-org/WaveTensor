@@ -13,9 +13,15 @@
 ## 빌드
 
 ```sh
-typst compile main.typ          # → main.pdf (75쪽, A4)
-typst watch  main.typ           # 집필 중
+make -C ../.. guide             # → main.pdf (89쪽, A4) + 렌더 검사
+typst watch  main.typ           # 집필 중 (끝나면 make guide 로 마감할 것)
 ```
+
+> `make guide` 가 정규 진입점이다 — 컴파일 성공과 렌더링 정상은 다른
+> 명제이기 때문이다. 부록 B.5 표가 73쪽으로 부풀어 있는 동안 raw
+> `typst compile` 은 경고 0 으로 성공했고, 쪽수 보고도 반복됐지만
+> *렌더링은 아무도 보지 않았다.* `scripts/check_guide_render.py` 가
+> 한 글자 세로 흐름 쪽을 전수 검사한다.
 
 요구: **Typst ≥ 0.14** (실측 0.14.2) · `Noto Serif/Sans/Sans Mono CJK KR`.
 
@@ -52,8 +58,8 @@ refs.yml                  Hayagriva 서지 (42항, 전부 본문 인용)
 ## 검증
 
 ```sh
-# 1) 컴파일 — 경고 0
-typst compile main.typ
+# 1) 컴파일 + 렌더 검사 — 경고 0 · 세로 흐름 0
+make -C ../.. guide
 
 # 2) 폰트 임베딩 (CID 서브셋)
 pdffonts main.pdf
