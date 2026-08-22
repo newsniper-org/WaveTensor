@@ -28,10 +28,10 @@ make rtl-formal        # 또는  sh rtl/formal/tla/run.sh
 | **HIU-8 · HIU-9 · HIU-10** 플랫폼 독립 · 소유권 배타성 | `Platform.tla` | **증명됨** |
 | **SEC-3** 무소실 | `NoLoss.tla` | **증명됨** |
 | **EXT-1 · EXT-2 · EXT-3** 순회 종료성 · 종료 후 무효과 · 검산 독립 | `Walk.tla` | **증명됨** |
-| **FAB-1 · FAB-9 · FAB-5 · FAB-6** 단일 생산자 · 병합 게이팅 · 무손실 · 진행성 | `Fabric.tla` | **증명됨** (FAB-6 은 공정성 가정 아래 — **부분 증명**) |
+| **FAB-1 · FAB-9 · FAB-10 · FAB-5 · FAB-6** 단일 생산자 · 병합 게이팅 · 소비자 무결성 · 무손실 · 진행성 | `Fabric.tla` | **증명됨** — FAB-6 의 공정성 가정은 §2.6 진행 전파 규범이 계약으로 승격 |
 | **SEC-4 · HIU-11** 격리(비간섭) · 선택적 경로 중립 | `Isolation.tla` | **증명됨** |
 | **EXT-4** 재조립 배타성 | `Payload.tla` | **증명됨** |
-| **EXT-6** 메모리 순서 (명시적 순서 의존) | `MemOrder.tla` | **부분 증명** — 과잉 게이팅 금지가 해설 기반 |
+| **EXT-6** 메모리 순서 (명시적 순서 의존) | `MemOrder.tla` | **증명됨** — 과잉 게이팅 금지가 §4.4.4 규범으로 승격 |
 | **SEC-2 · SEC-7** 경로 간 동일성 · 예약 필드 불투과 | `Decode.tla` | **증명됨** |
 
 순서는 부록 D.5 규범 그대로다 — **근거는 "실제로 무너진 곳"** 이다.
@@ -467,7 +467,7 @@ END 를 검사 중 하나로 센다. 모델을 세우면서 이 어긋남이 드
 `del_valid_gated` 에서 도달했고, 게이팅 축이 **FAB-9** 로 분리 등재됐다
 (§2.7 함정). ISA-3 → ISA-8 과 같은 발견 경로다.
 
-59 run. 가드 11 — 병합 축 4(single_producer · valid_gated ·
+63 run (D=2 형상 4 포함). 가드 11 — 병합 축 4(single_producer · valid_gated ·
 valid_tracks_data · capture_atomic), 배압 축 5(stall_on_pending · bp_loud ·
 fault_raised · fault_sticky · bp_no_consumer_write), 진행성 축 2(fair_grant ·
 bp_relief). FAB-6 은 이 배터리의 첫 **진행성** 속성이다 — `~>` 형태,
@@ -507,9 +507,13 @@ HIU-11 은 선택적 경로가 *있는* 구성과 *없는* 구성의 비교이�
 실측한 「같은 태그의 새 조각이 오면 조용히 마지막 것이 이긴다」가 배터리에서
 두 번 재현된다 — 문맥 축(`del_key_is_tag`)과 조각열 축(`del_no_restart`).
 
-23 run. 가드 10, 증인 9. **조각 순번·총개수를 나르는 채널이 정본에 없다** —
-태그 80비트에 그 필드가 없고 부록 E 에도 없다. 모델이 가정으로 메웠고
-정본 환류 대상이다 (B.5).
+26 run. 가드 11, 증인 11. 조각 순번·총개수의 채널은 **부록 E.10 (조각 머리
+채널, 사이드밴드 CTRL)** 로 확정됐다 — 모델의 「함께 도착한다」 가정이
+계약이 됐다. 마지막 조각 표시(B.5 결정)도 착지했다: `ctxLast` 가 종료
+authority, `last_judges` 가드가 표시 접수 시점의 완전성 판정 —
+지우면 누락이 무언으로 남아 `Inv_EndIncompleteLoud` 가 깨진다. 표시 유실
+갈래(`Witness_NoMarkerLoss`)는 fault 가 아니라 미완 문맥의 관측 가능성이다
+— 처분은 호스트 몫.
 
 ## EXT-6 — `MemOrder.tla`
 

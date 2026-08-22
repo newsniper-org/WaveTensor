@@ -15,6 +15,12 @@
 (*   4. 재조립 미완 상태에서 같은 태그로 새 조각열이 시작하면 loud fault —  *)
 (*      *조용히 덮어쓰지 않는다.*                                          *)
 (*                                                                         *)
+(* 순번·총개수·마지막 표시를 나르는 채널은 *사이드밴드 CTRL* 이다 — DATA 와 *)
+(* 나란히 가는 CTRL 등급 신호 (부록 E 열 번째 표면). 폭은 고정 상수         *)
+(* (INV-T1/T2 — 형상의 함수 금지), 태그 레이아웃과 페이로드는 불변. 이       *)
+(* 모델에서 순번 s · 총개수 total[r] · 마지막 비트 l 이 조각과 함께 도착하는 *)
+(* 것은 그 채널의 추상이다 — 더는 모델이 조용히 메운 공백이 아니다.         *)
+(*                                                                         *)
 (* 슬롯 의미론은 §2.4.1 규범이 정한 「조각별 슬롯」이다 — 조각열 하나가     *)
 (* *연속한 슬롯 구간*을 차지하고, 순번이 그 구간 안의 자리를 정한다.       *)
 (* 그리고 §2.4.1 규범 4항이 처분 하나를 더 못박는다: 조각 총 개수가        *)
@@ -70,6 +76,13 @@
 (* 일이 *정의상 불가능*해진다. base_from_tag 가 그 사상이고, 지우면 문맥이  *)
 (* 엉뚱한 자리를 구간 시작으로 잡는다.                                     *)
 (*                                                                         *)
+(* 이 독법은 규범이다: 재조립의 *키*는 태그이고(§4.3 규범 1), LBID(구간)는  *)
+(* 재조립 문맥 *생성 시점*에 태그에 결속돼 조각열 종료까지 불변인 *문맥의    *)
+(* 속성*이다(§2.4.1 — 착지). §4.3(태그=키)과 §2.4.1(LBID=착지)은 같은       *)
+(* 결속의 두 얼굴이며, 같은 태그의 동시 재조립 최대 하나(EXT-4)는 그        *)
+(* 결속의 유일성으로 성립한다. 모델에서 그 결속은 Send 의 「문맥을 새로     *)
+(* 열 때 한 번」 ctxBase 확정 + 이후 bb = ctxBase[c] 재사용으로 나타난다.   *)
+(*                                                                         *)
 (* ## 회계와 데이터 기입을 쪼갠다                                          *)
 (*                                                                         *)
 (* 실제 RTL 에서 slots(데이터) · ctxFill(개수) · ctxSeen(수신 기록) 은 서로 *)
@@ -92,49 +105,56 @@
 (* 내보내져도 매번 그 조각열이 증인이 된다. Inv_NoStaleRedeliver 가 그      *)
 (* 공백을 메운다.                                                          *)
 (*                                                                         *)
+(* ## 조각열 종료 = 마지막 조각 표시 — 누락이 loud fault 가 되는 자리       *)
+(*                                                                         *)
+(* §4.3 규범 3의 셋 중 상한 초과·순번 중복은 조각 *도착 시점*에 판정         *)
+(* 가능하지만 누락은 「조각열이 끝났다」는 시점을 요구한다. 그 시점은        *)
+(* *마지막 조각 표시*다 — 사이드밴드의 「마지막」 1비트. 표시가 authority,   *)
+(* 선언 총개수는 검산, 구현 슬롯 상한은 안전장치 — §4.2.2 EH 종료의 삼중    *)
+(* 구조(END authority · 길이 검산 · 상한 안전장치)와 동형이다.              *)
+(*                                                                         *)
+(*   - Deliver 는 표시를 요구한다 (ctxLast). 개수 도달(ctxFill >= total)은   *)
+(*     검산이지 종료 선언이 아니다 — 표시 없이 개수만 차는 것은 종료가       *)
+(*     아니다.                                                             *)
+(*   - 표시가 도착한 시점에 last_judges 가드가 완전성을 판정한다: 수신       *)
+(*     순번 집합 # {1..총개수} 이면 누락/중복이며 loud fault. 지우면 누락이   *)
+(*     무언으로 남는다 — 1차 판이 「덮지 않는 것」으로 자백했던 바로 그       *)
+(*     공백이다. Inv_EndIncompleteLoud 가 그 판정의 짝이다.                 *)
+(*   - *표시 유실* 갈래: 표시가 끝내 오지 않으면 문맥은 미완으로 남는다.     *)
+(*     그것은 fault 가 *아니다* — 타임아웃으로 fault 를 지어내는 것은        *)
+(*     「조용한 실패의 다른 이름」이다 (부록 E.3 이 HIU 채움에서 기각한       *)
+(*     것과 같은 이유가 여기서는 규범이다). 모델은 미완 문맥 상태의 *관측    *)
+(*     가능성*(IncompleteCtx — 진단 표면)만 두고, 처분은 호스트 몫이다.      *)
+(*     Witness_NoMarkerLoss 가 그 갈래의 도달 가능성을 검사한다.            *)
+(*   - 거절된 조각의 표시는 접수되지 않는다 — 거절 자체가 이미 loud 이고     *)
+(*     (loud_reject), 거절된 조각은 어떤 흔적도 문맥에 남기지 않는다는       *)
+(*     기존 처분과 한 몸이다.                                              *)
+(*                                                                         *)
 (* ## 오류 3분류를 접지 않는다 (§1.6.2 · §2.4.1 규범 4 · §4.5 규범)        *)
 (*                                                                         *)
 (* SlotCap 은 *구현 파라미터*(한 구간의 물리 칸 수)이고 total[r] 은 조각열이*)
-(* *선언한* 총개수다. 둘을 한 상수로 겸하게 하면 §4.3 규범 2·3 이 지목한    *)
-(* "총개수 자체가 상한을 넘는 조각열" 이 표현 자체가 불가능해진다.         *)
-(* 갈라 두면 처분도 갈린다:                                                *)
-(*   - 순번 s > total[r]           → loud fault (§4.3 규범 3)              *)
-(*   - total[r] > SlotCap          → *능력 부재* (§2.4.1 규범 4 · §4.5)     *)
+(* *선언한* 총개수다. 정본이 두 「상한」을 서로 다른 낱말로 확정했다 —      *)
+(* §4.3 의 상한은 *선언 총개수*이고 §2.4.1 의 상한은 *구현 슬롯 상한*이다.  *)
+(* 둘을 한 상수로 겸하게 하면 §4.3 규범 2·3 이 지목한 "총개수 자체가        *)
+(* 상한을 넘는 조각열" 이 표현 자체가 불가능해진다. 갈라 두면 처분도 갈린다:*)
+(*   - 순번 s > total[r]   → 선언과의 자기모순 = malformation·loud fault    *)
+(*                            (§4.3 규범 3)                                *)
+(*   - total[r] > SlotCap  → *능력 부재* — 오류가 아니다 (§2.4.1 규범 4 ·   *)
+(*                            §4.5 · §1.6.2 오류 3분류 배타성)              *)
 (* 능력 부재를 loud fault 로 접는 구현은 Inv_CapabilityNotMalformed 를      *)
-(* 위반한다. 정본 두 절이 같은 사건에 다른 처분을 적고 있다는 사실 자체는   *)
-(* 정본 환류 대상이며 아래 「덮지 않는 것」에 다시 적는다.                  *)
+(* 위반한다.                                                               *)
 (*                                                                         *)
 (* ## 이 모델이 덮지 않는 것                                               *)
 (*                                                                         *)
-(*   ⚠️ *조각 순번·총개수를 나르는 채널이 정본에 없다.* §4.3 정의와 §2.6     *)
-(*      규범은 "각 조각은 순번과 총 개수를 나른다" 고 적지만, §1.5 태그      *)
-(*      레이아웃(80b = wave 32 / 스레드 ID 16 / LNID 16 / 정밀도 8 /        *)
-(*      차원 8)에 그런 필드가 없고 부록 E 아홉 항(E.1~E.9)도 그 채널을      *)
-(*      정의하지 않는다. 이 모델은 순번 s 와 총개수 total[r] 이 조각과       *)
-(*      함께 도착한다고 *가정*한다 — 모델이 조용히 메운 공백이며 정본 환류   *)
-(*      대상이다.                                                          *)
-(*   ⚠️ *「순번 누락」이 loud fault 로 표현되지 않는다.* §4.3 규범 3은 셋을   *)
-(*      나란히 적지만 — 상한 초과 · 순번 중복 · 순번 누락 — 앞의 둘은        *)
-(*      조각 *도착 시점*에 판정 가능한 반면 누락은 그렇지 않다. 누락을        *)
-(*      선언하려면 「조각열이 끝났다」는 시점이 있어야 하는데 *정본에 그      *)
-(*      시점이 정의돼 있지 않다.* (부록 E.3 이 타임아웃을 "조용한 실패의     *)
-(*      다른 이름" 이라 기각한 것은 *HIU 변환표 미적중 채움*에 대한 규범이지 *)
-(*      조각 재조립에 대한 규범이 아니다 — 다른 표면의 규범을 이식하면 안   *)
-(*      된다.) 이 모델에서 누락은 ctxFill 이 total 에 못 미쳐 *조용히        *)
-(*      멈추는* 것으로만 나타난다 — 정본 환류 대상이다.                     *)
-(*      (중복이 개수를 부풀려 구멍을 채운 것처럼 보이게 하는 경우는          *)
-(*       no_dup_seq 가 덮는다. 덮이는 것은 그 합성뿐이다.)                   *)
 (*   ⚠️ 배압·무손실(§2.6)은 이 모델 밖이다 — SEC-3(NoLoss.tla)의 몫이다.     *)
 (*      여기서 거절된 조각은 회계에 남지만 재전송되지 않는다. 문맥 풀이      *)
 (*      고갈되면 Send 가 발화하지 않고 조용히 멈춘다 — 그 무처분도 SEC-3 의  *)
 (*      몫이다. (ASSUME Cardinality(Ctxs) >= NumTags 가 key_is_tag 아래에서  *)
 (*      그 고갈을 배제한다.)                                                *)
-(*   ⚠️ *능력 부재의 처분에 대해 정본 두 절이 충돌한다.* §4.3 규범 3은        *)
-(*      "상한을 넘는 조각열 … loud fault" 이고 §2.4.1 규범 4는 "구현의       *)
-(*      슬롯 상한을 넘으면 능력 부재 — malformation 이 아니다" 이다. 이      *)
-(*      모델은 두 「상한」을 서로 다른 것(total[r] 과 SlotCap)으로 *읽어*     *)
-(*      충돌을 회피했다. 그 독법이 정본의 뜻인지는 확인되지 않았다 —        *)
-(*      정본 환류 대상이다.                                                 *)
+(*   ⚠️ *미완 문맥의 처분*은 이 모델 밖이다 — 표시 유실로 미완에 머문 문맥을  *)
+(*      언제 어떻게 회수하는가는 호스트의 처분이며, 모델은 그 상태의 관측    *)
+(*      가능성(IncompleteCtx)까지만 담는다. 회수 자체를 모델에 넣으면        *)
+(*      타임아웃을 뒷문으로 다시 들이는 것이다.                             *)
 (*   ⚠️ 조각의 *날조*(생산자가 보내지 않은 조각이 슬롯에 나타남)는 표현      *)
 (*      가능하지만 그것을 막는 가드가 없다 — 삭제 실험이 이 축을 시험하지    *)
 (*      않는다. sent 를 불변식에 넣은 것은 표현 가능성을 위해서이지          *)
@@ -161,7 +181,7 @@ CONSTANTS
 
 AllGuards == {"cap_check", "capability_check", "capability_not_fault",
               "no_restart", "no_dup_seq", "loud_reject", "base_from_tag",
-              "key_is_tag", "reset_on_deliver", "write_atomic"}
+              "key_is_tag", "reset_on_deliver", "write_atomic", "last_judges"}
 On(g) == g \notin DisabledGuards
 
 Tags   == 1..NumTags
@@ -218,6 +238,7 @@ VARIABLES
     ctxSeen,    \* [Ctxs -> SUBSET Seqs]  문맥이 이미 받은 순번 (중복 판정 근거)
     ctxFill,    \* [Ctxs -> 0..MaxSend]  문맥이 세는 접수 개수 (완료 판정 근거)
     ctxOwner,   \* [Ctxs -> Runs \cup {NoR}]  문맥이 기억하는 진행 중 조각열
+    ctxLast,    \* [Ctxs -> BOOLEAN]  마지막 조각 표시가 접수됐는가 — 종료 authority
     outValid,   \* [Tags -> BOOLEAN]  재조립 완료 선언
     out,        \* [Tags -> [1..SlotCap -> Runs \cup {NoR}]]  완료 시점의 구간 스냅숏
     sends,      \* 0..MaxSend  전송 횟수. 유한화용
@@ -225,14 +246,15 @@ VARIABLES
     rejRestart, \* 유령 변수 — 재시작 충돌로 거절된 수
     rejDup,     \* 유령 변수 — 순번 중복으로 거절된 수
     rejCapa,    \* 유령 변수 — *능력 부재*로 거절된 수 (§2.4.1 규범 4)
+    endBad,     \* 유령 변수 — 표시 접수 시점에 순번 집합이 불완전했던 횟수
     accSince,   \* 유령 변수 — [Tags -> BOOLEAN] 태그가 해방된 뒤 접수가 있었는가
     dlvT,       \* 유령 변수 — [Tags -> 0..MaxSend] 그 태그가 몇 번 완료됐는가
     faultBit,   \* 기계가 세우는 sticky loud fault 비트 (§4.3 「loud fault」)
     capAbsent   \* 기계가 세우는 sticky *능력 부재* 신호 (§1.6.2 — fault 가 아니다)
 
 vars == <<runTag, total, sent, slots, pend, ctxTag, ctxBase, ctxSeen, ctxFill,
-          ctxOwner, outValid, out, sends, rejCap, rejRestart, rejDup, rejCapa,
-          accSince, dlvT, faultBit, capAbsent>>
+          ctxOwner, ctxLast, outValid, out, sends, rejCap, rejRestart, rejDup,
+          rejCapa, endBad, accSince, dlvT, faultBit, capAbsent>>
 
 TypeOK ==
     /\ runTag \in [Runs -> Tags]
@@ -249,6 +271,7 @@ TypeOK ==
     \* 일어난다 — 집합은 두 번 셀 수 없기 때문이다. 그래서 둘을 따로 둔다.
     /\ ctxFill \in [Ctxs -> 0..MaxSend]
     /\ ctxOwner \in [Ctxs -> Runs \cup {NoR}]
+    /\ ctxLast \in [Ctxs -> BOOLEAN]
     /\ outValid \in [Tags -> BOOLEAN]
     /\ out \in [Tags -> [1..SlotCap -> Runs \cup {NoR}]]
     /\ sends \in 0..MaxSend
@@ -256,6 +279,7 @@ TypeOK ==
     /\ rejRestart \in 0..MaxSend
     /\ rejDup \in 0..MaxSend
     /\ rejCapa \in 0..MaxSend
+    /\ endBad \in 0..MaxSend
     /\ accSince \in [Tags -> BOOLEAN]
     /\ dlvT \in [Tags -> 0..MaxSend]
     /\ faultBit \in BOOLEAN
@@ -272,6 +296,7 @@ Init ==
     /\ ctxSeen = [c \in Ctxs |-> {}]
     /\ ctxFill = [c \in Ctxs |-> 0]
     /\ ctxOwner = [c \in Ctxs |-> NoR]
+    /\ ctxLast = [c \in Ctxs |-> FALSE]
     /\ outValid = [t \in Tags |-> FALSE]
     /\ out = [t \in Tags |-> [i \in 1..SlotCap |-> NoR]]
     /\ sends = 0
@@ -279,6 +304,7 @@ Init ==
     /\ rejRestart = 0
     /\ rejDup = 0
     /\ rejCapa = 0
+    /\ endBad = 0
     /\ accSince = [t \in Tags |-> FALSE]
     /\ dlvT = [t \in Tags |-> 0]
     /\ faultBit = FALSE
@@ -347,11 +373,19 @@ SendPre(r, c) ==
 (*   no_dup_seq          지우면 같은 자리를 두 번 세고 구간에 구멍이 남는다 *)
 (*   loud_reject         지우면 거절이 흔적을 안 남긴다 → 조용한 드롭       *)
 (*   write_atomic        지우면 회계만 진행하고 데이터가 늦게 착지한다      *)
+(*   last_judges         지우면 표시 시점의 누락이 무언으로 남는다          *)
 (*                                                                         *)
 (* b 는 *문맥을 새로 열 때* 잡는 구간 시작이다. base_from_tag 가 켜져 있으면*)
 (* 태그가 지목한 자리 하나만 통과한다.                                     *)
+(*                                                                         *)
+(* l 은 사이드밴드의 「마지막」 1비트다. 생산자가 적대적이므로 아무 조각에나 *)
+(* 실릴 수 있고, 영영 안 실릴 수도 있다 (표시 유실 갈래). 표시가 *접수되는*  *)
+(* 시점에 last_judges 가 완전성을 판정한다 — 접수 후 순번 집합이            *)
+(* {1..선언 총개수} 와 다르면 누락/중복이며 loud fault (§4.3 규범 3의 누락   *)
+(* 축이 사는 자리). endBad 는 그 사건의 유령 기록이고, 가드는 faultBit 발화  *)
+(* 만 쥔다 — rej*/loud_reject 짝과 같은 분업이다.                           *)
 (***************************************************************************)
-Send(r, s, c, b) ==
+Send(r, s, c, b, l) ==
     /\ SendPre(r, c)
     /\ LET t  == runTag[r]
            bb == IF Free(c) THEN b ELSE ctxBase[c]
@@ -360,12 +394,16 @@ Send(r, s, c, b) ==
            rc == CapRej(r, s)
            rr == RestartRej(r, c)
            rd == DupRej(r, c, s)
+           ns == ctxSeen[c] \cup {s}          \* 접수 후의 수신 순번 집합
+           eb == l /\ ns # (1..total[r])      \* 표시 시점 불완전 — 지상 진리
        IN /\ (~Free(c)) \/ (~On("base_from_tag")) \/ (b = (t - 1) * SlotCap)
           \* 문맥을 새로 열지 않는 경우 b 는 쓰이지 않으므로 하나로 고정한다
           \* — 그러지 않으면 같은 전이가 |BaseRange| 번 중복 열거된다.
           /\ (Free(c)) \/ (b = 0)
           /\ IF ra \/ rc \/ rr \/ rd
                THEN \* 거절. 처분이 갈린다 — 능력 부재는 fault 가 아니다.
+                    \* 거절된 조각의 표시는 접수되지 않는다 (ctxLast·endBad
+                    \* 불변) — 거절 자체가 이미 loud 이다.
                     /\ rejCapa' = (IF ra THEN rejCapa + 1 ELSE rejCapa)
                     /\ rejCap' = (IF rc THEN rejCap + 1 ELSE rejCap)
                     /\ rejRestart' = (IF rr /\ ~rc THEN rejRestart + 1 ELSE rejRestart)
@@ -376,14 +414,18 @@ Send(r, s, c, b) ==
                            [] ra /\ ~On("capability_not_fault")     -> TRUE
                            [] OTHER                                  -> faultBit
                     /\ UNCHANGED <<slots, pend, ctxTag, ctxBase, ctxSeen,
-                                   ctxFill, ctxOwner, accSince>>
+                                   ctxFill, ctxOwner, ctxLast, endBad, accSince>>
                ELSE \* 접수. 자리에 *조각열의 정체성*을 남긴다.
                     /\ ctxTag' = [ctxTag EXCEPT ![c] = t]
                     /\ ctxBase' = [ctxBase EXCEPT ![c] = bb]
                     /\ ctxSeen' = [ctxSeen EXCEPT ![c] = @ \cup {s}]
                     /\ ctxFill' = [ctxFill EXCEPT ![c] = IF @ < MaxSend THEN @ + 1 ELSE @]
                     /\ ctxOwner' = [ctxOwner EXCEPT ![c] = r]
+                    /\ ctxLast' = [ctxLast EXCEPT ![c] = @ \/ l]
                     /\ accSince' = [accSince EXCEPT ![t] = TRUE]
+                    \* 표시 도착 = 조각열 종료 선언. 그 시점의 완전성 판정.
+                    /\ endBad' = (IF eb THEN endBad + 1 ELSE endBad)
+                    /\ faultBit' = (IF eb /\ On("last_judges") THEN TRUE ELSE faultBit)
                     \* 회계와 데이터 기입이 갈리는 자리.
                     /\ IF On("write_atomic")
                          THEN /\ slots' = [slots EXCEPT ![k] = r]
@@ -391,7 +433,7 @@ Send(r, s, c, b) ==
                          ELSE /\ pend' = [pend EXCEPT ![k] = r]
                               /\ UNCHANGED slots
                     /\ UNCHANGED <<rejCap, rejRestart, rejDup, rejCapa,
-                                   faultBit, capAbsent>>
+                                   capAbsent>>
     /\ sends' = sends + 1
     /\ sent' = [sent EXCEPT ![r] = @ \cup {s}]
     /\ UNCHANGED <<runTag, total, outValid, out, dlvT>>
@@ -403,8 +445,8 @@ WriteBack(k) ==
     /\ slots' = [slots EXCEPT ![k] = pend[k]]
     /\ pend' = [pend EXCEPT ![k] = NoR]
     /\ UNCHANGED <<runTag, total, sent, ctxTag, ctxBase, ctxSeen, ctxFill,
-                   ctxOwner, outValid, out, sends, rejCap, rejRestart, rejDup,
-                   rejCapa, accSince, dlvT, faultBit, capAbsent>>
+                   ctxOwner, ctxLast, outValid, out, sends, rejCap, rejRestart,
+                   rejDup, rejCapa, endBad, accSince, dlvT, faultBit, capAbsent>>
 
 (***************************************************************************)
 (* 재조립 완료 — 기계가 「다 모였다」고 판단하는 유일한 지점.              *)
@@ -412,10 +454,15 @@ WriteBack(k) ==
 (* 판단 근거는 *문맥이 센 개수*(ctxFill)다. 슬롯을 훑어 세지 않는다 — 훑어  *)
 (* 세면 구멍 있는 구간이 완성으로 판정되는 일이 구조적으로 불가능해지고,    *)
 (* 그러면 no_dup_seq · write_atomic 삭제 실험이 조용히 통과한다.           *)
+(*                                                                         *)
+(* 그리고 종료의 *authority* 는 마지막 조각 표시(ctxLast)다 — 개수 도달은   *)
+(* 검산일 뿐 종료 선언이 아니다. 표시 없이 개수만 찬 문맥은 인도되지 않고   *)
+(* 미완으로 남는다 (표시 유실 갈래 — 처분은 호스트 몫).                     *)
 (***************************************************************************)
 DeliverPre(c) ==
     /\ ctxTag[c] # NoT
     /\ ctxOwner[c] # NoR
+    /\ ctxLast[c]
     /\ ~outValid[ctxTag[c]]
     /\ ctxFill[c] >= total[ctxOwner[c]]
 
@@ -426,8 +473,8 @@ Deliver(c) ==
           /\ out' = [out EXCEPT ![t] = [i \in 1..SlotCap |-> slots[ctxBase[c] + i]]]
           /\ dlvT' = [dlvT EXCEPT ![t] = IF @ < MaxSend THEN @ + 1 ELSE @]
     /\ UNCHANGED <<runTag, total, sent, slots, pend, ctxTag, ctxBase, ctxSeen,
-                   ctxFill, ctxOwner, sends, rejCap, rejRestart, rejDup,
-                   rejCapa, accSince, faultBit, capAbsent>>
+                   ctxFill, ctxOwner, ctxLast, sends, rejCap, rejRestart,
+                   rejDup, rejCapa, endBad, accSince, faultBit, capAbsent>>
 
 (***************************************************************************)
 (* 소비 — 소비자가 결과를 가져가면 그 태그가 다시 쓸 수 있게 된다.         *)
@@ -452,12 +499,13 @@ Consume(t) ==
               /\ ctxSeen' = [c \in Ctxs |-> IF ctxTag[c] = t THEN {} ELSE ctxSeen[c]]
               /\ ctxFill' = [c \in Ctxs |-> IF ctxTag[c] = t THEN 0 ELSE ctxFill[c]]
               /\ ctxOwner' = [c \in Ctxs |-> IF ctxTag[c] = t THEN NoR ELSE ctxOwner[c]]
+              /\ ctxLast' = [c \in Ctxs |-> IF ctxTag[c] = t THEN FALSE ELSE ctxLast[c]]
               /\ slots' = [k \in SlotIx |->
                              IF \E c \in Ctxs : ctxTag[c] = t /\ InWindow(c, k)
                                THEN NoR ELSE slots[k]]
-         ELSE UNCHANGED <<ctxTag, ctxSeen, ctxFill, ctxOwner, slots>>
+         ELSE UNCHANGED <<ctxTag, ctxSeen, ctxFill, ctxOwner, ctxLast, slots>>
     /\ UNCHANGED <<runTag, total, sent, pend, ctxBase, out, sends, rejCap,
-                   rejRestart, rejDup, rejCapa, dlvT, faultBit, capAbsent>>
+                   rejRestart, rejDup, rejCapa, endBad, dlvT, faultBit, capAbsent>>
 
 (***************************************************************************)
 (* 종료를 모델에 명시한다 — CHECK_DEADLOCK 을 끄지 않기 위해서다.          *)
@@ -472,7 +520,8 @@ CanConsume == \E t \in Tags : outValid[t]
 Idle == ~CanSend /\ ~CanWrite /\ ~CanDeliver /\ ~CanConsume /\ UNCHANGED vars
 
 Next ==
-    \/ \E r \in Runs, s \in Seqs, c \in Ctxs, b \in BaseRange : Send(r, s, c, b)
+    \/ \E r \in Runs, s \in Seqs, c \in Ctxs, b \in BaseRange, l \in BOOLEAN :
+          Send(r, s, c, b, l)
     \/ \E k \in SlotIx : WriteBack(k)
     \/ \E c \in Ctxs : Deliver(c)
     \/ \E t \in Tags : Consume(t)
@@ -535,6 +584,33 @@ Inv_RejectLoud ==
     /\ (rejCapa > 0) => capAbsent
 
 (***************************************************************************)
+(* §4.3 규범 3의 *누락* 축 — 표시 시점의 불완전은 무언으로 남지 않는다.    *)
+(*                                                                         *)
+(* endBad 는 「마지막 조각 표시가 접수됐는데 그 시점의 수신 순번 집합이     *)
+(* {1..선언 총개수} 가 아니었다」는 사건의 유령 기록(지상 진리)이고,        *)
+(* faultBit 는 기계가 세우는 신호다. last_judges 를 지우면 사건은 그대로    *)
+(* 일어나되 신호가 서지 않는다 — 1차 판에서 누락이 「조용히 멈추는 것」으로 *)
+(* 만 나타나던 비-커버리지가 정확히 이 어긋남이다.                         *)
+(*                                                                         *)
+(* 전건에 들어가는 것은 *판정 사건*이지 미완 상태가 아니라는 데 주의 —      *)
+(* 표시가 오지 않아 미완에 머무는 문맥(표시 유실)은 endBad 를 올리지        *)
+(* 않으며, 따라서 이 불변식은 그 갈래에 fault 를 요구하지 않는다.          *)
+(***************************************************************************)
+Inv_EndIncompleteLoud == (endBad > 0) => faultBit
+
+(***************************************************************************)
+(* 표시 유실 갈래의 관측 표면 — 미완 문맥 상태.                            *)
+(*                                                                         *)
+(* 표시가 끝내 오지 않은 문맥은 인도되지 않고(DeliverPre 가 ctxLast 를      *)
+(* 요구한다) fault 도 아니다. 타임아웃으로 종료를 지어내는 것은 금지다 —    *)
+(* 그것은 조용한 실패의 다른 이름이다 (부록 E.3 선례). 기계가 지는 의무는   *)
+(* 이 상태가 진단 표면으로 *관측 가능*하다는 것까지이고, 회수·처분은        *)
+(* 호스트 몫이다. 모델에서 관측 가능성은 이 술어가 기계 상태(ctxTag ·       *)
+(* ctxLast)만으로 정의된다는 사실 그 자체다.                               *)
+(***************************************************************************)
+IncompleteCtx(c) == ctxTag[c] # NoT /\ ~ctxLast[c]
+
+(***************************************************************************)
 (* §1.6.2 오류 3분류 · §2.4.1 규범 4 · §4.5 규범 — 능력 부재는 malformation *)
 (* 이 아니다.                                                              *)
 (*                                                                         *)
@@ -543,9 +619,14 @@ Inv_RejectLoud ==
 (* 므로 자기지시가 아니다. 이것을 접는 구현은 관측자에게 *어디를 고쳐야     *)
 (* 하는지*를 거짓으로 알린다 — §1.6.2 가 "셋을 한 신호로 접으면" 이라 적은  *)
 (* 것 그대로다.                                                            *)
+(*                                                                         *)
+(* endBad = 0 이 전건에 있는 이유: 표시 시점 불완전은 malformation 이고     *)
+(* fault 가 *정당*하므로, 그 사건이 함께 일어난 이력에서는 이 불변식이      *)
+(* fault 부재를 요구하면 안 된다. 전건은 「fault 감인 사건이 하나도 없었다」 *)
+(* 를 전부 지상 진리 어휘로 나열한 것이다.                                 *)
 (***************************************************************************)
 Inv_CapabilityNotMalformed ==
-    (rejCapa > 0 /\ rejCap + rejRestart + rejDup = 0) => ~faultBit
+    (rejCapa > 0 /\ rejCap + rejRestart + rejDup = 0 /\ endBad = 0) => ~faultBit
 
 (***************************************************************************)
 (* 완료 후 태그 재사용 — 내놓은 결과는 *해방 이후 접수된 조각들*로 만들어져 *)
@@ -604,7 +685,7 @@ Witness_NoCapabilityAbsence == rejCapa = 0
 \* 전건 그 자체다. 앞 증인은 rejCapa > 0 만 보이므로 이것을 대신하지 못한다.
 \* 반증되지 않으면 그 불변식은 전건이 비어 자명하게 참일 뿐이다.
 Witness_NoCapabilityOnlyRejection ==
-    ~(rejCapa > 0 /\ rejCap + rejRestart + rejDup = 0)
+    ~(rejCapa > 0 /\ rejCap + rejRestart + rejDup = 0 /\ endBad = 0)
 
 \* *문맥 풀이 실제로 둘 이상 동시에 살아 있는가.* 반증되지 않으면 |Ctxs| >= 2
 \* 가 축퇴와 다를 바 없고, key_is_tag 삭제 실험이 아무것도 뜻하지 않는다.
@@ -615,5 +696,18 @@ Witness_NoTwoActiveCtx ==
 \* *한 태그가 실제로 두 번 완료되는가* — 즉 완료 후 재사용 갈래가 도달
 \* 가능한가. 반증되지 않으면 reset_on_deliver 삭제 실험이 공허하다.
 Witness_NoTagReuse == \A t \in Tags : dlvT[t] <= 1
+
+\* *표시 시점 불완전(누락)이 구성된 기계에서 실제로 도달하는가.* 반증되지
+\* 않으면 last_judges 는 한 번도 일하지 않은 것이고 Inv_EndIncompleteLoud
+\* 는 전건이 비어 자명하게 참일 뿐이다.
+Witness_NoMissAtEnd == endBad = 0
+
+\* *표시 유실 갈래가 실제로 도달하는가* — 생산이 끝났는데(sends = MaxSend)
+\* 표시 없는 미완 문맥이 남았고 기계는 fault 를 세우지 않았다. 반증되지
+\* 않으면 「미완은 fault 가 아니다」 라는 처분이 시험된 적 없는 장식이다.
+Witness_NoMarkerLoss ==
+    ~( /\ sends = MaxSend
+       /\ ~faultBit
+       /\ \E c \in Ctxs : IncompleteCtx(c) /\ ctxFill[c] > 0 )
 
 =============================================================================

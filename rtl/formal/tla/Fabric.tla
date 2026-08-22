@@ -2,7 +2,8 @@
 \* SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
 --------------------------- MODULE Fabric ---------------------------
 (***************************************************************************)
-(* FAB-1 · FAB-5 · FAB-6 선-formal 모델 — 병합 지점 하나의 계약 전부.       *)
+(* FAB-1 · FAB-5 · FAB-6 · FAB-9 · FAB-10 선-formal 모델 —                 *)
+(* 병합 지점 하나의 계약 전부.                                              *)
 (*                                                                         *)
 (* 정본 `docs/wt64v1-architecture-guide` §2.7:                             *)
 (*                                                                         *)
@@ -16,6 +17,15 @@
 (*     「유효 생산자 정확히 하나인데 소비자는 어느 생산자도 보내지 않은     *)
 (*     값을 받는」 반례를 냈다 — FAB-1 문자 그대로는 성립하는 상태다.       *)
 (*     §2.7 의 함정 「FAB-1 은 이 축을 덮지 않는다」가 그 기록이다.         *)
+(*   FAB-10 배압 구간 소비자 무결성 — 배압이 걸린 동안 소비자의 관측        *)
+(*   상태는 변하지 않는다. (§2.6 규범 5항의 형식 속성 짝.)                  *)
+(*                                                                         *)
+(*   ⇒ FAB-10 도 FAB-9 와 같은 경로로 태어난 속성이다. §2.6 함정이 적은     *)
+(*     피해(밀어 넣은 데이터가 소비자 레지스터를 덮어쓴다)를 모델에 그대로  *)
+(*     주입해도 1차 판의 전 속성이 통과했고(440 distinct), 그 공백을 막은   *)
+(*     Prop_ConsumerQuiet 이 정본에 FAB-10 으로 등재됐다. 형식화 사상은     *)
+(*     Prop_ConsumerQuiet 의 주석에 있다 (FAB-9 ↔ Inv_MergeFaithful 사상과  *)
+(*     같은 형태).                                                          *)
 (*   FAB-5 무손실 — 배압이 걸리지 않은 전송은 반드시 도착한다. 배압이       *)
 (*   걸린 전송은 재시도되거나 fault 를 낸다 — 소실되지 않는다.              *)
 (*   FAB-6 진행성 — 배압이 영구히 유지되지 않는 한, 대기 중인 요청은        *)
@@ -122,11 +132,16 @@
 (*   ⚠️ 배압의 원인을 추상했다. 소비자가 왜 못 받는지(버퍼 깊이·소비 속도)는 *)
 (*      모델에 없고 ready 는 자유 토글이다. 깊이 0 구현("항상 배압")도       *)
 (*      §2.2 3항이 적법하다 하므로, 원인을 박으면 그 구현을 배제하게 된다.   *)
-(*   ⚠️ 출력 레지스터 깊이가 1 이다 (stall_on_pending). 정본에 이 깊이를     *)
-(*      정한 문장이 *없다* — §2.4 인터페이스 계약은 결과 *슬롯*에 관한       *)
-(*      것이고, §2.2 3항은 보류 자원 깊이를 구현 파라미터로 열어 둔다.      *)
-(*      깊이 2 이상인 구현에서 이 가드는 다른 형태가 된다. 정본 미결        *)
-(*      후보로 환류했다.                                                    *)
+(*   ⚠️ 출력 레지스터 깊이는 CONSTANT D (>= 1) 다. 정본에 이 깊이를 정한     *)
+(*      문장이 *없다* — §2.4 인터페이스 계약은 결과 *슬롯*에 관한 것이고,   *)
+(*      §2.2 3항은 보류 자원 깊이를 구현 파라미터로 열어 둔다. 그래서       *)
+(*      계약을 깊이 무관으로 적었다: 「출력 자원이 가득이면 생산은 정지     *)
+(*      한다. 덮어쓰기는 없다.」 (stall_on_pending). D 의 *값*은 RTL 단계    *)
+(*      에서 측정과 함께 정한다 — ResultBank.tla 의 소유 구간 L 과 같은     *)
+(*      처분이다. 배터리는 D=1 전수 + D=2 는 핵심 가드 절단(stall_on_       *)
+(*      pending · capture_atomic · valid_gated)과 좋은 모델만 돈다 —        *)
+(*      D=2 의 나머지 가드·증인은 덮지 않는다. 적지 않으면 「전수」가        *)
+(*      거짓이 된다.                                                        *)
 (*   ⚠️ dispatch 방향(디코더 → PE 브로드캐스트)은 모델링하지 않는다.        *)
 (*      FAB-1 의 병합 지점은 *결과* 방향이다. dispatch 쪽 공유 자원 경합은   *)
 (*      FAB-2(SharedUnit.tla)의 대상이다.                                   *)
@@ -147,12 +162,15 @@
 (*   ⚠️ Shove 의 공정성을 *가정하지 않는다.* 이것이 bp_relief 판정을 가르는  *)
 (*      모델링 선택이므로 여기 적는다 — 아래 「공정성」절과 SpecShoveFair.  *)
 (***************************************************************************)
-EXTENDS Naturals, FiniteSets
+EXTENDS Naturals, FiniteSets, Sequences
 
 CONSTANTS
     NumProducers,   \* 병합 지점에 붙은 생산자 수
     Bits,           \* 값이 놓이는 비트 집합. 불투명 토큰
     NoVal,          \* 「구동하지 않음 / 써진 적 없음」 표식 (모델 값)
+    D,              \* 생산자 출력 자원의 깊이 (>= 1). 버스면 레지스터 1 +
+                    \*   뒤 슬롯 D-1. 계약은 깊이 무관 — 값은 RTL 단계에서
+                    \*   측정과 함께 (ResultBank.tla 의 L 파라미터 선례)
     DisabledGuards  \* 가드 삭제 실험용. 좋은 모델에서는 {}
 
 Producers == 1..NumProducers
@@ -184,6 +202,7 @@ Values == SUBSET Bits
 (***************************************************************************)
 ASSUME Cardinality(Bits) >= 2
 ASSUME NumProducers >= 2
+ASSUME D >= 1
 
 (***************************************************************************)
 (* 가드 — §6.3.2 「속성의 유효성 증명」의 대상.                            *)
@@ -195,7 +214,8 @@ ASSUME NumProducers >= 2
 (*                         §0.8 「손실을 덮는 회계」                        *)
 (*   capture_atomic        실린 값을 소비자가 그 사이클에 실제로 받는다     *)
 (*                         §2.6 규범 3항 (무손실)                           *)
-(*   stall_on_pending      아직 못 넘긴 결과를 덮어쓰지 않는다              *)
+(*   stall_on_pending      출력 자원이 가득이면 생산은 정지한다 —           *)
+(*                         덮어쓰기는 없다. 깊이 무관 진술 (CONSTANT D)     *)
 (*                         §2.2 규범 1항 (무처분 없음) + §2.6 규범 3항      *)
 (*   bp_loud               배압 위반은 loud fault 로 처분한다 — §2.6 규범 4항*)
 (*   fault_raised          그 fault 가 상태 비트를 *세운다* — §2.2 규범 1항 *)
@@ -248,6 +268,11 @@ VARIABLES
                 \*   NoVal 은 「한 번도 써진 적 없음」이다.
     vld,        \* [Producers -> BOOLEAN] 보낼 것이 있다 (valid).
                 \*   dat 에서 파생된 정의가 *아니라* 별도 상태다.
+    rest,       \* [Producers -> Seq(Values)] 버스면 레지스터 *뒤*의 슬롯들.
+                \*   길이 <= D-1. D=1 이면 언제나 <<>> — 그때 이 모델은
+                \*   깊이 파라미터화 이전 판과 전이 관계가 글자 그대로 같다.
+                \*   버스에 실리는 것은 언제나 dat 뿐이다 — 뒤 슬롯은
+                \*   병합 지점에서 보이지 않는다.
     ready,      \* 소비자가 받을 수 있는가. ~ready 가 곧 배압이다
     merged,     \* 병합 지점의 값 = 구동한 것들의 합집합 (비트 OR)
     drove,      \* [Producers -> ...] 이번 전이에 각 생산자가 *버스를 구동한*
@@ -260,11 +285,15 @@ VARIABLES
                 \*   faultBit 과 어휘가 갈라져 있어야 sticky 를 잴 수 있다
                 \*   (NoLoss.tla 의 faulted 카운터와 같은 자리).
 
-vars == <<dat, vld, ready, merged, drove, sunk, disp, faultBit, everFaulted>>
+vars == <<dat, vld, rest, ready, merged, drove, sunk, disp, faultBit, everFaulted>>
+
+\* 뒤 슬롯의 타입. Seq(Values) 는 무한이라 열거 가능한 유계형으로 적는다.
+BoundedRest == UNION { [1..n -> Values] : n \in 0..(D-1) }
 
 TypeOK ==
     /\ dat \in [Producers -> Values \cup {NoVal}]
     /\ vld \in [Producers -> BOOLEAN]
+    /\ rest \in [Producers -> BoundedRest]
     /\ ready \in BOOLEAN
     \* merged 를 「적법한 값」으로 좁히지 *않는다.* 병합 지점에서 나오는 것은
     \* 비트이지 계약이 아니다. 타입을 계약 쪽으로 당기면 그것이 곧 방어적
@@ -286,6 +315,24 @@ LowestWaiting == CHOOSE p \in Waiting : \A q \in Waiting : p =< q
 
 NoDrive == [p \in Producers |-> NoVal]
 NoDisp  == [p \in Producers |-> "none"]
+
+(***************************************************************************)
+(* 출력 자원의 점유와 핸드오프.                                            *)
+(*                                                                         *)
+(* 자원은 버스면 레지스터(dat/vld) 하나 + 뒤 슬롯(rest) D-1 이다. 가득은    *)
+(* 「버스면이 valid 이고 뒤 슬롯이 전부 찼다」 — D=1 에서는 vld 그 자체로   *)
+(* 축약되고, 그것이 파라미터화 이전의 stall_on_pending 전건이었다.          *)
+(*                                                                         *)
+(* Pop* 셋은 버스면의 값이 취해진 뒤의 모습이다: 뒤 슬롯이 있으면 다음      *)
+(* 값이 버스면으로 올라오고(valid 는 끊기지 않는다), 없으면 valid 만        *)
+(* 내려가고 *레지스터 내용은 남는다* — 실물 레지스터가 그렇고, 그 낡은      *)
+(* 값이 ungated OR 결함형(StaleHazard)을 표현 가능하게 만드는 장치다.       *)
+(***************************************************************************)
+Full(p) == vld[p] /\ Len(rest[p]) = D - 1
+
+PopVld(p)  == rest[p] # <<>>
+PopDat(p)  == IF rest[p] = <<>> THEN dat[p] ELSE Head(rest[p])
+PopRest(p) == IF rest[p] = <<>> THEN <<>> ELSE Tail(rest[p])
 
 (***************************************************************************)
 (* 병합 지점에 실제로 실리는 것 — §2.3 의 두 기전이 여기서 만난다.         *)
@@ -322,6 +369,7 @@ MergeOf(d) == UNION { Contribution(q) : q \in Drivers(d) }
 Init ==
     /\ dat = [p \in Producers |-> NoVal]
     /\ vld = [p \in Producers |-> FALSE]
+    /\ rest = [p \in Producers |-> <<>>]
     /\ ready = TRUE
     /\ merged = {}
     /\ drove = NoDrive
@@ -333,10 +381,13 @@ Init ==
 (***************************************************************************)
 (* 생산 — 생산자가 새 결과를 자기 출력 레지스터에 놓고 valid 를 세운다.    *)
 (*                                                                         *)
-(*   stall_on_pending    지우면 아직 못 넘긴 결과를 *덮어쓴다.* 소비자      *)
-(*                       쪽이 아니라 생산자 쪽에서 일어나는 소실이며,       *)
-(*                       병합 지점에는 아무 흔적도 남지 않는다 — 조용하다.  *)
-(*                       §2.2 1항 「무처분이 없다」의 이 지점 형태.          *)
+(*   stall_on_pending    지우면 가득 찬 출력 자원에 생산이 일어나 아직 못   *)
+(*                       넘긴 결과를 *덮어쓴다.* 소비자 쪽이 아니라 생산자  *)
+(*                       쪽에서 일어나는 소실이며, 병합 지점에는 아무       *)
+(*                       흔적도 남지 않는다 — 조용하다. D >= 2 에서는 덮어  *)
+(*                       써지는 것이 뒤 슬롯이라 버스면(dat/vld)조차 변하지 *)
+(*                       않는다 — Prop_NoSilentLoss 를 대기열 어휘로 적은   *)
+(*                       이유다. §2.2 1항 「무처분이 없다」의 이 지점 형태.  *)
 (*   valid_tracks_data   지우면 valid 는 서는데 데이터가 따라오지 않는다.   *)
 (*                       실물에서 valid 는 배선이고 데이터는 레지스터이며,  *)
 (*                       둘이 어긋나는 것이 valid 디먹스의 대표 결함형이다. *)
@@ -347,10 +398,25 @@ Init ==
 (*                       무너지지 않는다.                                   *)
 (***************************************************************************)
 Produce(p, v) ==
-    /\ (~vld[p] \/ ~On("stall_on_pending"))
+    /\ (~Full(p) \/ ~On("stall_on_pending"))      \* 가득 참 → 정지
     /\ vld' = [vld EXCEPT ![p] = TRUE]
-    /\ \/ dat' = [dat EXCEPT ![p] = v]
-       \/ (~On("valid_tracks_data") /\ dat' = dat)
+    /\ IF vld[p] /\ ~Full(p)
+         THEN \* 버스면이 이미 차 있고 뒤 슬롯에 자리가 있다 (D >= 2 전용).
+              \* 새 결과는 뒤 슬롯에 쌓이고 버스면은 그대로다.
+              /\ dat'  = dat
+              /\ rest' = [rest EXCEPT ![p] = Append(@, v)]
+       ELSE IF vld[p] /\ rest[p] # <<>>
+         THEN \* 가득 찼는데 생산했다 — stall_on_pending 을 지웠을 때만
+              \* 도달한다. 쓰기 포인터가 가리키는 막내 슬롯이 덮어써진다.
+              \* 처분 없는 소실이며, 버스면(dat/vld)에는 아무 흔적도 없다.
+              /\ dat'  = dat
+              /\ rest' = [rest EXCEPT ![p] = SubSeq(@, 1, Len(@) - 1) \o <<v>>]
+       ELSE \* 버스면 레지스터에 놓인다 — 빈 생산자의 정상 경로이자,
+            \* D=1 에서 가드가 지워졌을 때의 덮어쓰기 경로. 파라미터화
+            \* 이전 판의 Produce 가 글자 그대로 이 갈래다.
+            /\ rest' = rest
+            /\ \/ dat' = [dat EXCEPT ![p] = v]
+               \/ (~On("valid_tracks_data") /\ dat' = dat)
     /\ merged' = {}
     /\ drove' = NoDrive
     /\ disp' = NoDisp
@@ -365,9 +431,12 @@ Produce(p, v) ==
 (* 핵심이다. 가정해 버리면 손상이 표현 불가능해지고 FAB-1 은 항진명제가     *)
 (* 된다.                                                                   *)
 (*                                                                         *)
-(* 출력 레지스터는 *지우지 않는다* (dat' = dat). 내려가는 것은 valid 뿐     *)
-(* 이다. 실물 레지스터가 그렇고, 그 사실이 ungated OR 결함형을 표현 가능    *)
-(* 하게 만드는 유일한 장치다.                                              *)
+(* 출력 레지스터는 *지우지 않는다.* 마지막 항목을 넘긴 버스면 레지스터는    *)
+(* 낡은 값을 계속 들고 valid 만 내려간다 (Pop* 주석). 실물 레지스터가       *)
+(* 그렇고, 그 사실이 ungated OR 결함형을 표현 가능하게 만드는 유일한        *)
+(* 장치다. 뒤 슬롯이 남아 있으면 다음 값이 버스면으로 올라오고 valid 는     *)
+(* 끊기지 않는다 — D >= 2 의 핸드오프는 조각열 생산자(EmitStream)와 같은    *)
+(* 「끊기지 않는 대기」 모양이 된다.                                        *)
 (*                                                                         *)
 (*   single_producer 지우면 d 가 여럿일 수 있다 → 구동자가 둘 이상          *)
 (*                   → Inv_SingleValidProducer 위반, 값이 갈리면            *)
@@ -388,8 +457,9 @@ Emit(d) ==
     /\ (On("fair_grant") \/ d \subseteq {LowestWaiting})
     /\ drove'  = DriveOf(d)
     /\ merged' = MergeOf(d)                        \* OR 병합 = 합집합
-    /\ vld'    = [p \in Producers |-> IF p \in d THEN FALSE ELSE vld[p]]
-    /\ dat'    = dat                               \* 레지스터는 값을 계속 든다
+    /\ vld'    = [p \in Producers |-> IF p \in d THEN PopVld(p) ELSE vld[p]]
+    /\ dat'    = [p \in Producers |-> IF p \in d THEN PopDat(p) ELSE dat[p]]
+    /\ rest'   = [p \in Producers |-> IF p \in d THEN PopRest(p) ELSE rest[p]]
     /\ disp'   = [p \in Producers |-> IF p \in d THEN "arrived" ELSE "none"]
     \* 소비자가 그 사이클에 받는다. 이 갱신을 valid 정리와 *분리해 두는 것*이
     \* 유닛 사이 소실을 표현 가능하게 만드는 유일한 장치다 (NoLoss 실측).
@@ -422,7 +492,10 @@ EmitStream(p, v) ==
     /\ drove'  = DriveOf({p})
     /\ merged' = MergeOf({p})
     /\ vld'    = vld                               \* 대기 신호가 끊기지 않는다
-    /\ dat'    = [dat EXCEPT ![p] = v]             \* 다음 조각이 곧바로 온다
+    \* 다음 조각이 곧바로 온다 — 취해진 버스면 자리에 뒤 슬롯이 올라오고
+    \* 새 조각은 열린 마지막 자리로 들어간다 (점유는 그대로다).
+    /\ dat'    = [dat EXCEPT ![p] = IF rest[p] = <<>> THEN v ELSE Head(rest[p])]
+    /\ rest'   = [rest EXCEPT ![p] = IF @ = <<>> THEN <<>> ELSE Append(Tail(@), v)]
     /\ disp'   = [q \in Producers |-> IF q = p THEN "arrived" ELSE "none"]
     /\ sunk'   = IF On("capture_atomic") THEN MergeOf({p}) ELSE sunk
     /\ UNCHANGED <<ready, faultBit, everFaulted>>
@@ -469,8 +542,10 @@ Shove(p) ==
     /\ ~ready
     /\ drove'  = DriveOf({p})
     /\ merged' = MergeOf({p})
-    /\ vld'    = [vld EXCEPT ![p] = FALSE]
-    /\ dat'    = dat
+    \* 버스면의 값이 (규약을 어기고) 넘어갔다 — 핸드오프와 같은 pop 이다.
+    /\ vld'    = [vld EXCEPT ![p] = PopVld(p)]
+    /\ dat'    = [dat EXCEPT ![p] = PopDat(p)]
+    /\ rest'   = [rest EXCEPT ![p] = PopRest(p)]
     /\ everFaulted' = TRUE
     \* 소비자는 받을 수 없는 상태다. 규약을 지킨 구현이라면 *쓰지 않는다* —
     \* 그 규율이 bp_no_consumer_write 이고, 지우면 정본 함정의 피해가 열린다.
@@ -504,7 +579,7 @@ Block ==
     /\ merged' = {}
     /\ drove' = NoDrive
     /\ disp' = NoDisp
-    /\ UNCHANGED <<dat, vld, sunk, faultBit, everFaulted>>
+    /\ UNCHANGED <<dat, vld, rest, sunk, faultBit, everFaulted>>
 
 Release ==
     /\ ~ready
@@ -514,7 +589,7 @@ Release ==
     /\ merged' = {}
     /\ drove' = NoDrive
     /\ disp' = NoDisp
-    /\ UNCHANGED <<dat, vld, sunk, everFaulted>>
+    /\ UNCHANGED <<dat, vld, rest, sunk, everFaulted>>
 
 (***************************************************************************)
 (* 종료가 없다 — 그리고 그것이 이 모델에서는 옳다.                         *)
@@ -657,12 +732,30 @@ Inv_MergeFaithful ==
 (* 내용: 대기 중이던 값이 대기를 벗어나거나 덮어써지는 전이는 *반드시*     *)
 (* 「도착」이나 「fault」로만 간다. 셋째 길 — 아무 처분도 없이 값이         *)
 (* 사라지는 것 — 이 곧 소실이다. §2.2 1항 「무처분이 없다」를 이 지점에서   *)
-(* 다시 말한 것이며, 정본이 요구한 「재시도」는 valid 가 *그대로 서 있는*   *)
-(* 전이(전건이 거짓)로 표현된다 — 서 있으면 다음 사이클에 다시 시도된다.   *)
+(* 다시 말한 것이며, 정본이 요구한 「재시도」는 대기열이 *그대로 남는*      *)
+(* 전이로 표현된다 — 남아 있으면 다음 사이클에 다시 시도된다.              *)
+(*                                                                         *)
+(* 깊이 파라미터화(CONSTANT D) 이전 판은 이것을 버스면 어휘로 적었다 —      *)
+(*   vld[p] /\ (~vld'[p] \/ dat'[p] # dat[p]) => disp'[p] # "none"          *)
+(* D=1 에서는 대기열이 버스면 하나라 그 진술과 동치이지만, D >= 2 에서      *)
+(* 뒤 슬롯의 덮어쓰기는 버스면(dat/vld)을 *전혀 건드리지 않는다* — 그       *)
+(* 어휘로는 원리적으로 보이지 않는 소실이다. 그래서 대기열 어휘로 다시      *)
+(* 적는다: *무처분 전이에서 대기열은 뒤에 자라기만 한다.* 기존 항목이       *)
+(* 사라지거나(pop — 처분 필요) 바뀌는(덮어쓰기) 전이는 전부 처분을 남겨야   *)
+(* 한다. 접두 보존은 pop·덮어쓰기·소거를 한 문장으로 전부 잡고, 정상        *)
+(* 생산(뒤에 붙는다)만 통과시킨다.                                          *)
 (***************************************************************************)
+\* p 의 대기열 — 버스면 값(있다면) 뒤에 뒤 슬롯들. 인자로 받아 프라임/
+\* 비프라임 상태 양쪽에 적용한다.
+PendOf(v, dd, rr) == IF v THEN <<dd>> \o rr ELSE <<>>
+
+IsPrefixOf(s, t) == Len(s) =< Len(t) /\ SubSeq(t, 1, Len(s)) = s
+
 Prop_NoSilentLoss ==
     [][ \A p \in Producers :
-          (vld[p] /\ (~vld'[p] \/ dat'[p] # dat[p])) => disp'[p] # "none" ]_vars
+          disp'[p] = "none" =>
+            IsPrefixOf(PendOf(vld[p], dat[p], rest[p]),
+                       PendOf(vld'[p], dat'[p], rest'[p])) ]_vars
 
 (***************************************************************************)
 (* FAB-5 의 나머지 절반 — 「도착」이 실제 도착인가.                        *)
@@ -705,10 +798,24 @@ Prop_ArrivalHasSource ==
           (disp'[p] = "arrived") => (dat[p] # NoVal) ]_vars
 
 (***************************************************************************)
-(* §2.6 함정의 *피해* 쪽 — 소비자 레지스터의 무결성.                       *)
+(* FAB-10 — 배압 구간 소비자 무결성. §2.6 함정의 *피해* 쪽이자 §2.6 규범    *)
+(* 5항의 형식 속성 짝.                                                     *)
+(*                                                                         *)
+(*   "배압이 걸린 동안 소비자의 관측 상태는 변하지 않는다."                 *)
+(*                                                                         *)
+(* 이 속성이 FAB-10 의 형식화다 (FAB-9 ↔ Inv_MergeFaithful 사상과 같은      *)
+(* 형태). 정본 문장보다 한 걸음 센 형태로 적혀 있다 — 「배압 동안」이       *)
+(* 아니라 「어느 전이에서든, 소비자 관측(sunk)이 변하면 그 전이는           *)
+(* 도착이다」. 도착(Emit/EmitStream)은 ready 를 연언으로 요구하므로 배압    *)
+(* 구간(~ready)에서는 sunk 를 바꿀 수 있는 전이가 하나도 남지 않는다 —      *)
+(* 정본 문장은 이 진술의 따름정리다. 세게 적는 이유: 「배압 동안」으로      *)
+(* 좁히면 ready — 배압 기전 자신의 어휘 — 가 속성의 전건에 들어온다.        *)
+(* 처분 어휘(disp)로 적으면 배압 기전과 어휘가 갈라진 채로 남고(자기지시    *)
+(* 금지), 배압 밖에서 소비자 레지스터를 쓰는 미래의 어떤 경로도 함께        *)
+(* 잡는다.                                                                 *)
 (*                                                                         *)
 (*   "받을 수 없는 순간에 밀어 넣은 데이터는 *덮어써진다.* 그 결과는        *)
-(*    틀린 값이지 오류가 아니다."                                          *)
+(*    틀린 값이지 오류가 아니다."  (§2.6 함정)                             *)
 (*                                                                         *)
 (* 1차 판에는 sunk 에 걸린 술어가 도착 순간 하나뿐이었고, 그 밖의 어떤      *)
 (* 전이에서도 sunk 는 제약되지 않았다. 그래서 정본 함정이 적은 피해를       *)
@@ -819,11 +926,20 @@ Witness_NoFault == ~faultBit
 Witness_NoArrival == \A p \in Producers : disp[p] # "arrived"
 
 (***************************************************************************)
-(* 배터리 구성 — 59 run. cfg 이름이 곧 판정이다.                           *)
+(* 배터리 구성 — 63 run. cfg 이름이 곧 판정이다.                           *)
 (*                                                                         *)
 (*   좋은 모델 3        base(2·2) · shapeA(3·2) · shapeB(2·3)   MUST PASS   *)
 (*   가드 삭제 33       11 가드 × 3 형상                        MUST FAIL   *)
 (*   증인 18            6 증인 × 3 형상                         MUST FAIL   *)
+(*   깊이 sweep 4       depth2 (2·2·D=2) — 아래                             *)
+(*     depth2                               MUST PASS  좋은 모델, D=2       *)
+(*     del_stall_on_pending_depth2          MUST FAIL  뒤 슬롯 덮어쓰기 —   *)
+(*                                                     버스면 어휘로는 안   *)
+(*                                                     보이는 소실          *)
+(*     del_capture_atomic_depth2            MUST FAIL  깊이가 소실을 못     *)
+(*                                                     가린다               *)
+(*     del_valid_gated_depth2               MUST FAIL  낡은 버스면은 깊이와 *)
+(*                                                     무관히 실린다        *)
 (*   짝 5               아래                                                *)
 (*     del_single_producer_damage           MUST FAIL  전제 옆의 *피해*     *)
 (*     del_valid_gated_solo                 MUST FAIL  경합 없이도 깨진다   *)
@@ -831,6 +947,14 @@ Witness_NoArrival == \A p \in Producers : disp[p] # "arrived"
 (*     pair_shovefair_bp_relief             MUST PASS  가정이 판정을 뒤집는다*)
 (*     pair_shovefair_fair_grant            MUST FAIL  그 Spec 이 부실하지  *)
 (*                                                     않다는 대조군        *)
+(*                                                                         *)
+(* 위 59 run 은 전부 D=1 이다. D=1 에서 이 모듈의 전이 관계는 깊이          *)
+(* 파라미터화 이전 판과 글자 그대로 같다 (rest 가 항상 <<>> 로 고정) —      *)
+(* 실측: 파라미터화 전후의 base 형상 distinct 상태 수가 일치한다. 깊이      *)
+(* sweep 은 stall_on_pending 이 「가득 참 → 정지」로 재진술된 것이 D >= 2   *)
+(* 에서도 하중을 받는지(삭제 시 Prop_NoSilentLoss 붕괴), 그리고 소실·       *)
+(* 게이팅 축이 깊이에 무관함을 잰다. D=2 를 2·2 소형상으로만 도는 이유는    *)
+(* 「덮지 않는 것」 절에 적었다.                                            *)
 (*                                                                         *)
 (* ## 형상 sweep 을 *전 run 에* 건다                                       *)
 (*                                                                         *)

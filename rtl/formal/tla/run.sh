@@ -304,6 +304,9 @@ M=Fabric.tla
 expect_pass "FAB-1 · FAB-5 · FAB-6 기저"                       Fabric_base.cfg "$M"
 expect_pass "형상 sweep A"                                     Fabric_shapeA.cfg "$M"
 expect_pass "형상 sweep B"                                     Fabric_shapeB.cfg "$M"
+# D=2 형상 — 출력 레지스터 깊이 파라미터화(§2.6)의 sweep. D=1 보존은 상태 수
+# 일치로 실측했고(2,170 distinct, 파라미터화 전과 동일), 이 네 run 이 D=2 를 덮는다.
+expect_pass "형상 sweep — 깊이 D=2"                            Fabric_depth2.cfg "$M"
 
 # 가드 삭제 — 각 가드를 지우면 그 가드 자신의 불변식이 무너진다 (§6.3.2)
 expect_fail "가드 삭제: bp_loud"                                 Fabric_del_bp_loud.cfg "$M" Prop_NoSilentLoss
@@ -339,6 +342,9 @@ expect_fail "가드 삭제: valid_gated · 형상 A"                      Fabric
 expect_fail "가드 삭제: valid_gated · 형상 B"                      Fabric_del_valid_gated_shapeB.cfg "$M" Inv_SingleValidProducer
 expect_fail "가드 삭제: valid_gated · 경합 없음"                     Fabric_del_valid_gated_solo.cfg "$M" Inv_SingleValidProducer
 expect_fail "가드 삭제: valid_tracks_data"                       Fabric_del_valid_tracks_data.cfg "$M" Prop_ArrivalHasSource
+expect_fail "가드 삭제: stall_on_pending · D=2"                 Fabric_del_stall_on_pending_depth2.cfg "$M" Prop_NoSilentLoss
+expect_fail "가드 삭제: capture_atomic · D=2"                   Fabric_del_capture_atomic_depth2.cfg "$M" Inv_ArrivalFromProducer
+expect_fail "가드 삭제: valid_gated · D=2"                      Fabric_del_valid_gated_depth2.cfg "$M" Inv_SingleValidProducer
 expect_fail "가드 삭제: valid_tracks_data · 형상 A"                Fabric_del_valid_tracks_data_shapeA.cfg "$M" Prop_ArrivalHasSource
 expect_fail "가드 삭제: valid_tracks_data · 형상 B"                Fabric_del_valid_tracks_data_shapeB.cfg "$M" Prop_ArrivalHasSource
 
@@ -446,6 +452,8 @@ expect_fail "가드 삭제: loud_reject"                             Payload_del
 expect_fail "가드 삭제: no_dup_seq"                              Payload_del_no_dup_seq.cfg "$M" Inv_ReassemblyExclusive
 expect_fail "가드 삭제: no_restart"                              Payload_del_no_restart.cfg "$M" Inv_ReassemblyExclusive
 expect_fail "가드 삭제: reset_on_deliver"                        Payload_del_reset_on_deliver.cfg "$M" Inv_NoStaleRedeliver
+# D9(마지막 조각 표시) — 표시가 종료 authority, 접수 시점 완전성 판정 (§4.3).
+expect_fail "가드 삭제: last_judges (누락이 무언)"               Payload_del_last_judges.cfg "$M" Inv_EndIncompleteLoud
 expect_fail "가드 삭제: write_atomic"                            Payload_del_write_atomic.cfg "$M" Inv_ReassemblyExclusive
 
 # 위험 도달성 증인 — 좋은 모델에서 반드시 반증돼야 한다
@@ -458,6 +466,8 @@ expect_fail "증인: NoPartialReassembly"                        Payload_witness
 expect_fail "증인: NoRestartClash"                             Payload_witness_NoRestartClash.cfg "$M" Witness_NoRestartClash
 expect_fail "증인: NoTagReuse"                                 Payload_witness_NoTagReuse.cfg "$M" Witness_NoTagReuse
 expect_fail "증인: NoTwoActiveCtx"                             Payload_witness_NoTwoActiveCtx.cfg "$M" Witness_NoTwoActiveCtx
+expect_fail "증인: 표시 시점 누락이 실재하는가"                  Payload_witness_NoMissAtEnd.cfg "$M" Witness_NoMissAtEnd
+expect_fail "증인: 표시 유실 미완 문맥이 실재하는가"              Payload_witness_NoMarkerLoss.cfg "$M" Witness_NoMarkerLoss
 
 # 짝 run — 축의 분리를 확정한다. 같은 제약 아래 하나는 깨지고 하나는 안 깨진다
 expect_fail "짝: silent_overwrite"                            Payload_pair_silent_overwrite.cfg "$M" Prop_NoSilentOverwrite
