@@ -446,6 +446,7 @@ lint:
 	python3 $(CURDIR)/scripts/lint_estimate_index.py
 	python3 $(CURDIR)/scripts/lint_gate_thresholds.py
 	python3 $(CURDIR)/scripts/lint_guide_derived_tables.py
+	python3 $(CURDIR)/scripts/lint_guard_map.py
 
 # =============================================================================
 # P0-2 — Cluster 이중 빌드(FRAG_SLOTS=1 / FRAG_SLOTS=4) 단일 진입점.
@@ -576,7 +577,14 @@ rtl-pins:
 # SpinalHDL → SystemVerilog 생성. 생성물은 커밋 대상이며 손편집 금지다.
 rtl-gen: rtl-pins
 	@mkdir -p $(RTL_GEN)
-	cd $(RTL_SPINAL) && sbt -batch "runMain wt64.gen.ToolchainCheck $(RTL_GEN)"
+	cd $(RTL_SPINAL) && sbt -batch \
+	  "runMain wt64.gen.GenRouteJudge $(RTL_GEN)" \
+	  "runMain wt64.gen.GenMmioConfig $(RTL_GEN)" \
+	  "runMain wt64.gen.GenSharedUnit $(RTL_GEN)" \
+	  "runMain wt64.gen.GenResultBank $(RTL_GEN)" \
+	  "runMain wt64.gen.GenFabricMerge $(RTL_GEN)" \
+	  "runMain wt64.gen.GenXlateStore $(RTL_GEN)" \
+	  "runMain wt64.gen.GenDecodeWalk $(RTL_GEN)"
 	@echo "rtl-gen: 생성물 → $(RTL_GEN)"
 
 # 정적 검사. ISA-7(형상 파라미터 노출 0)과 금지 용어를 포함한다.
