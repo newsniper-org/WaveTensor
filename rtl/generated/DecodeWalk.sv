@@ -27,6 +27,7 @@ module DecodeWalk (
   input  wire          io_iFaultClear,
   output wire          io_oValid,
   output wire          io_oMalformed,
+  output wire          io_oCapAbsent,
   output wire          io_oExecValid,
   output wire [31:0]   io_oInstr_0,
   output wire [31:0]   io_oInstr_1,
@@ -256,6 +257,7 @@ module DecodeWalk (
   wire       [7:0]    walk_stepW_3;
   wire       [7:0]    judge_declLen;
   wire       [7:0]    judge_resvFld;
+  wire                judge_capAbsent;
   wire                judge_lenBad;
   wire                judge_capBad;
   wire                judge_junkBad;
@@ -266,6 +268,7 @@ module DecodeWalk (
   wire                judge_mal;
   reg                 outStage_rValid;
   reg                 outStage_rMal;
+  reg                 outStage_rCapa;
   reg        [31:0]   outStage_masked_0;
   wire       [31:0]   outStage_masked_1;
   wire       [31:0]   outStage_masked_2;
@@ -733,14 +736,15 @@ module DecodeWalk (
   assign walk_off_4 = (walk_off_3 + (walk_walked_3 ? walk_stepW_3 : 8'h0));
   assign judge_declLen = io_iInstr_0[7 : 0];
   assign judge_resvFld = io_iInstr_0[15 : 8];
+  assign judge_capAbsent = (8'h0d < judge_declLen);
   assign judge_lenBad = (walk_ended_4 && (judge_declLen != walk_off_4));
-  assign judge_capBad = (! walk_ended_4);
+  assign judge_capBad = ((! judge_capAbsent) && (! walk_ended_4));
   assign judge_junkBad = ((((walk_walked_0 && (! walk_defd_0)) || (walk_walked_1 && (! walk_defd_1))) || (walk_walked_2 && (! walk_defd_2))) || (walk_walked_3 && (! walk_defd_3)));
   assign judge_selfBad = ((((walk_walked_0 && (walk_selfCode_0 != walk_ptr_0)) || (walk_walked_1 && (walk_selfCode_1 != walk_ptr_1))) || (walk_walked_2 && (walk_selfCode_2 != walk_ptr_2))) || (walk_walked_3 && (walk_selfCode_3 != walk_ptr_3)));
   assign judge_wordsBad = (((((walk_walked_0 && walk_defd_0) && (walk_wordsFld_0 != walk_stepW_0)) || ((walk_walked_1 && walk_defd_1) && (walk_wordsFld_1 != walk_stepW_1))) || ((walk_walked_2 && walk_defd_2) && (walk_wordsFld_2 != walk_stepW_2))) || ((walk_walked_3 && walk_defd_3) && (walk_wordsFld_3 != walk_stepW_3)));
   assign judge_dupBad = ((((((((3'b001 < _zz_judge_dupBad) || (3'b001 < _zz_judge_dupBad_11)) || (3'b001 < _zz_judge_dupBad_22)) || (3'b001 < _zz_judge_dupBad_33)) || (3'b010 < _zz_judge_dupBad_44)) || (3'b001 < _zz_judge_dupBad_55)) || (3'b001 < _zz_judge_dupBad_66)) || (3'b001 < _zz_judge_dupBad_77));
   assign judge_resvBad = (judge_resvFld != 8'h0);
-  assign judge_mal = ((((((judge_resvBad || judge_capBad) || judge_lenBad) || judge_junkBad) || judge_selfBad) || judge_wordsBad) || judge_dupBad);
+  assign judge_mal = ((! judge_capAbsent) && ((((((judge_resvBad || judge_capBad) || judge_lenBad) || judge_junkBad) || judge_selfBad) || judge_wordsBad) || judge_dupBad));
   always @(*) begin
     outStage_masked_0 = io_iInstr_0;
     outStage_masked_0[15 : 8] = 8'h0;
@@ -760,7 +764,8 @@ module DecodeWalk (
   assign outStage_masked_12 = io_iInstr_12;
   assign io_oValid = outStage_rValid;
   assign io_oMalformed = outStage_rMal;
-  assign io_oExecValid = (outStage_rValid && (! outStage_rMal));
+  assign io_oCapAbsent = outStage_rCapa;
+  assign io_oExecValid = ((outStage_rValid && (! outStage_rMal)) && (! outStage_rCapa));
   assign io_oInstr_0 = outStage_rInstr_0;
   assign io_oInstr_1 = outStage_rInstr_1;
   assign io_oInstr_2 = outStage_rInstr_2;
@@ -792,10 +797,12 @@ module DecodeWalk (
     if(reset) begin
       outStage_rValid <= 1'b0;
       outStage_rMal <= 1'b0;
+      outStage_rCapa <= 1'b0;
       _zz_io_oFault <= 1'b0;
     end else begin
       outStage_rValid <= io_iValid;
       outStage_rMal <= judge_mal;
+      outStage_rCapa <= judge_capAbsent;
       if(io_iFaultClear) begin
         _zz_io_oFault <= 1'b0;
       end

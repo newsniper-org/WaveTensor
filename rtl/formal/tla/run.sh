@@ -270,6 +270,10 @@ expect_fail "가드 삭제: len_check (길이 검산)" \
     Walk_del_len_check.cfg      "$M" Inv_SoundVerdict
 expect_fail "가드 삭제: cap_check (상한 안전장치)" \
     Walk_del_cap_check.cfg      "$M" Inv_SoundVerdict
+# END 분류 확정(§4.2.2 개정) — 선언 기준 분기. cap_declared 를 지우면 능력
+# 부재(선언 > 구현 상한, 바이너리 옳음)가 malformation 으로 접힌다.
+expect_fail "가드 삭제: cap_declared (능력 부재가 오류로)" \
+    Walk_del_cap_declared.cfg   "$M" Inv_CapabilityNotMalformed
 expect_fail "가드 삭제: junk_check (미지 종류)" \
     Walk_del_junk_check.cfg     "$M" Inv_SoundVerdict
 expect_fail "가드 삭제: post_end_gated (종료 뒤 효과)" \
@@ -277,6 +281,7 @@ expect_fail "가드 삭제: post_end_gated (종료 뒤 효과)" \
 
 expect_fail "증인: 통과가 실재하는가"          Walk_witness_NoOk.cfg          "$M" Witness_NoOk
 expect_fail "증인: 거절이 실재하는가"          Walk_witness_NoMalformed.cfg   "$M" Witness_NoMalformed
+expect_fail "증인: 능력 종결이 실재하는가"    Walk_witness_NoCapability.cfg  "$M" Witness_NoCapability
 # 아래 셋이 EXT-3 「독립성」의 직접 형태다 — 그 검사 *하나만* 잡는 사슬이
 # 존재해야 한다. 존재하지 않으면 그 검사는 나머지에 함축된 것이다.
 expect_fail "독립성: 길이 검산만 잡는 사슬"     Walk_witness_NoLenOnly.cfg     "$M" Witness_NoLenOnly
