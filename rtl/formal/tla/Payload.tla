@@ -43,6 +43,11 @@
 (* 것은 값이 아니라 *어느 조각열의 조각인가*이며, 회계가 아니라 귀속을      *)
 (* 검사한다.                                                               *)
 (*                                                                         *)
+(* ISA-9(토큰 비증식)의 「조각열은 하나로 센다」(§1.4.6)가 이 모델에서 사는  *)
+(* 자리이기도 하다: Deliver 의 ~outValid 게이트(재조립 하나당 인도 하나) +  *)
+(* Inv_ReassemblyExclusive + Inv_NoStaleRedeliver(재인도는 새 접수 요구).   *)
+(* 회계 축은 NoLoss, 수락 축은 Route — 사상 전문은 NoLoss.tla 머리에 있다.  *)
+(*                                                                         *)
 (* ## 지상 진리와 기계 상태를 가른다                                       *)
 (*                                                                         *)
 (*   지상 진리 (생산자 측): runTag — 어느 조각열이 어느 태그를 겨냥하는가   *)
@@ -204,7 +209,7 @@
 (*      않는다. 정본에 「인도 후 구간의 지위」가 없어 무엇을 관측해야 할지가  *)
 (*      정해져 있지 않기 때문이다.                                          *)
 (***************************************************************************)
-EXTENDS Naturals, FiniteSets
+EXTENDS Naturals, FiniteSets, TLC
 
 CONSTANTS
     NumTags,        \* 태그 수. 슬롯 구간이 이웃하려면 2 이상이어야 한다
@@ -221,6 +226,31 @@ AllGuards == {"cap_check", "capability_check", "capability_not_fault",
               "key_is_tag", "reset_on_deliver", "write_atomic", "last_judges",
               "abort_erases", "abort_leaves_trace", "abort_not_fault"}
 On(g) == g \notin DisabledGuards
+
+(***************************************************************************)
+(* 형상 sweep 전용 대칭 (§6.7 — 시간 폭발 처분, 2026-08-23).               *)
+(*                                                                         *)
+(* ContextAbort(E.12) 착지 후 좋은 형상 sweep 이 실측으로 폭발했다 —        *)
+(* shapeA 가 소거 전 1.55M distinct/5분 → 소거 후 5.6M+/15분에도 미완.      *)
+(* 원인 축은 소거 *횟수*도(1회 게이트: -7%) 잔존 ctxBase 도(-15%) 아니고    *)
+(* 「임의 시점 소거 → 재개방」의 시간 배치 자유도다. 그 임의성은 E.12 정책   *)
+(* 비규정의 표현이라 좁히면 계약이 느슨해진다 — 대신 검사와 무관한 축을     *)
+(* 접는다:                                                                 *)
+(*                                                                         *)
+(* Runs·Ctxs 는 불투명 모델 값 풀이고, 스펙 전체(Init 포함)와 모든 검사     *)
+(* 속성이 두 집합의 순열에 불변이다 — 두 집합 위 CHOOSE 없음, 값을 구별하는 *)
+(* 술어 없음 (Tags 는 정수라 WindowOf 산술이 구별하므로 대칭 대상이         *)
+(* 아니다). 따라서 순열 궤도의 대표만 탐색해도 불변식·행위(action) 속성     *)
+(* 판정이 보존된다. TLC 대칭이 못 보는 것은 시간(liveness) 속성뿐인데       *)
+(* Payload 배터리 구간에 시간 속성은 없다 (Prop_NoSilentOverwrite 는 행위   *)
+(* 속성 — 안전 엔진).                                                      *)
+(*                                                                         *)
+(* SYMMETRY 는 형상 sweep cfg(shapeA·shapeB)만 선언한다 — MUST-FAIL run 의  *)
+(* 반증 재현성(-workers 1 PIN)은 구체 공간 그대로 남는다. 실측(2026-08-23): *)
+(* shapeA(Runs=2+대칭) 15초/69,845 distinct · shapeB(+대칭) 9분40초/2.05M   *)
+(* (병행 부하 포함 — 구체 공간은 두 형상 다 30분+ 미완이었다).              *)
+(***************************************************************************)
+Symm == Permutations(Runs) \cup Permutations(Ctxs)
 
 Tags   == 1..NumTags
 \* 선언 총개수. SlotCap + 1 은 *구현 상한을 넘는 조각열*이며 §2.4.1 규범 4가

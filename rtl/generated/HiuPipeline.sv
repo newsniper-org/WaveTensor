@@ -18,6 +18,11 @@ module HiuPipeline (
   input  wire          io_hold,
   output reg  [31:0]   io_owner_frame,
   input  wire          io_owner_devOwned,
+  output wire          io_mask_req_valid,
+  output wire [1:0]    io_mask_req_part,
+  output wire [31:0]   io_mask_req_frame,
+  input  wire          io_mask_rsp_valid,
+  input  wire [31:0]   io_mask_rsp_frame,
   input  wire          io_install_valid,
   output wire          io_install_ready,
   input  wire [1:0]    io_install_part,
@@ -43,6 +48,7 @@ module HiuPipeline (
   output reg           io_rsp_perm_r,
   output reg           io_rsp_perm_w,
   output reg           io_rsp_perm_x,
+  output wire [2:0]    io_occupancy,
   output wire          io_faultPerm,
   input  wire          io_faultClear,
   output wire          io_missNotice,
@@ -63,6 +69,22 @@ module HiuPipeline (
   wire                xlate_io_rsp_hostPerm_w;
   wire                xlate_io_rsp_hostPerm_x;
   wire                xlate_io_install_ready;
+  wire       [2:0]    _zz_io_occupancy;
+  wire       [2:0]    _zz_io_occupancy_1;
+  wire       [2:0]    _zz_io_occupancy_2;
+  wire       [2:0]    _zz_io_occupancy_3;
+  wire       [2:0]    _zz_io_occupancy_4;
+  wire       [0:0]    _zz_io_occupancy_5;
+  wire       [2:0]    _zz_io_occupancy_6;
+  wire       [0:0]    _zz_io_occupancy_7;
+  wire       [2:0]    _zz_io_occupancy_8;
+  wire       [0:0]    _zz_io_occupancy_9;
+  wire       [2:0]    _zz_io_occupancy_10;
+  wire       [0:0]    _zz_io_occupancy_11;
+  wire       [2:0]    _zz_io_occupancy_12;
+  wire       [0:0]    _zz_io_occupancy_13;
+  wire       [2:0]    _zz_io_occupancy_14;
+  wire       [0:0]    _zz_io_occupancy_15;
   reg                 s1_valid;
   reg        [1:0]    s1_part;
   reg        [31:0]   s1_vpn;
@@ -75,62 +97,64 @@ module HiuPipeline (
   reg        [1:0]    s3_part;
   reg        [31:0]   s3_vpn;
   reg                 s3_write;
-  reg                 s4_valid;
+  reg        [31:0]   lookFrame;
+  reg                 lookPerm_r;
+  reg                 lookPerm_w;
+  reg                 lookPerm_x;
+  wire                lookAny;
   reg        [1:0]    s4_part;
   reg                 s4_write;
-  reg                 s4_hit;
+  reg                 s4_anyHit;
   reg                 s4_fromFill;
   reg        [31:0]   s4_frame;
   reg                 s4_perm_r;
   reg                 s4_perm_w;
   reg                 s4_perm_x;
-  reg                 s4_hostP;
-  reg        [31:0]   s4_hostFrame;
-  reg                 s4_hostPerm_r;
-  reg                 s4_hostPerm_w;
-  reg                 s4_hostPerm_x;
   reg                 s5_valid;
   reg        [1:0]    s5_part;
   reg                 s5_write;
-  reg                 s5_hit;
+  reg                 s5_anyHit;
   reg                 s5_fromFill;
   reg        [31:0]   s5_frame;
+  reg        [31:0]   s5_masked;
   reg                 s5_perm_r;
   reg                 s5_perm_w;
   reg                 s5_perm_x;
-  reg                 s5_hostP;
-  reg        [31:0]   s5_hostFrame;
-  reg                 s5_hostPerm_r;
-  reg                 s5_hostPerm_w;
-  reg                 s5_hostPerm_x;
   reg                 s6_valid;
   reg        [1:0]    s6_part;
   reg                 s6_write;
-  reg                 s6_hit;
+  reg                 s6_anyHit;
   reg                 s6_fromFill;
   reg        [31:0]   s6_frame;
+  reg        [31:0]   s6_masked;
   reg                 s6_perm_r;
   reg                 s6_perm_w;
   reg                 s6_perm_x;
-  reg                 s6_hostP;
-  reg        [31:0]   s6_hostFrame;
-  reg                 s6_hostPerm_r;
-  reg                 s6_hostPerm_w;
-  reg                 s6_hostPerm_x;
   wire                missWait;
   wire                advance;
-  reg        [31:0]   selFrame;
-  reg                 selPerm_r;
-  reg                 selPerm_w;
-  reg                 selPerm_x;
-  wire                anyHit;
-  wire                when_HiuPipeline_l306;
+  wire                when_HiuPipeline_l391;
   wire                entitle;
   wire                granted;
   wire                permViol;
   reg                 _zz_io_faultPerm;
   reg                 _zz_io_missNotice;
 
+  assign _zz_io_occupancy = (_zz_io_occupancy_1 + _zz_io_occupancy_12);
+  assign _zz_io_occupancy_1 = (_zz_io_occupancy_2 + _zz_io_occupancy_10);
+  assign _zz_io_occupancy_2 = (_zz_io_occupancy_3 + _zz_io_occupancy_8);
+  assign _zz_io_occupancy_3 = (_zz_io_occupancy_4 + _zz_io_occupancy_6);
+  assign _zz_io_occupancy_5 = s1_valid;
+  assign _zz_io_occupancy_4 = {2'd0, _zz_io_occupancy_5};
+  assign _zz_io_occupancy_7 = s2_valid;
+  assign _zz_io_occupancy_6 = {2'd0, _zz_io_occupancy_7};
+  assign _zz_io_occupancy_9 = s3_valid;
+  assign _zz_io_occupancy_8 = {2'd0, _zz_io_occupancy_9};
+  assign _zz_io_occupancy_11 = io_mask_rsp_valid;
+  assign _zz_io_occupancy_10 = {2'd0, _zz_io_occupancy_11};
+  assign _zz_io_occupancy_13 = s5_valid;
+  assign _zz_io_occupancy_12 = {2'd0, _zz_io_occupancy_13};
+  assign _zz_io_occupancy_15 = s6_valid;
+  assign _zz_io_occupancy_14 = {2'd0, _zz_io_occupancy_15};
   XlateStore xlate (
     .io_lookup_valid    (s3_valid                    ), //i
     .io_lookup_part     (s3_part[1:0]                ), //i
@@ -166,65 +190,68 @@ module HiuPipeline (
     .reset              (reset                       )  //i
   );
   assign io_install_ready = xlate_io_install_ready;
+  always @(*) begin
+    lookFrame = 32'h0;
+    if(xlate_io_rsp_hit) begin
+      lookFrame = xlate_io_rsp_frame;
+    end else begin
+      if(xlate_io_rsp_hostPresent) begin
+        lookFrame = xlate_io_rsp_hostFrame;
+      end
+    end
+  end
+
+  always @(*) begin
+    lookPerm_r = 1'b0;
+    if(xlate_io_rsp_hit) begin
+      lookPerm_r = xlate_io_rsp_perm_r;
+    end else begin
+      if(xlate_io_rsp_hostPresent) begin
+        lookPerm_r = xlate_io_rsp_hostPerm_r;
+      end
+    end
+  end
+
+  always @(*) begin
+    lookPerm_w = 1'b0;
+    if(xlate_io_rsp_hit) begin
+      lookPerm_w = xlate_io_rsp_perm_w;
+    end else begin
+      if(xlate_io_rsp_hostPresent) begin
+        lookPerm_w = xlate_io_rsp_hostPerm_w;
+      end
+    end
+  end
+
+  always @(*) begin
+    lookPerm_x = 1'b0;
+    if(xlate_io_rsp_hit) begin
+      lookPerm_x = xlate_io_rsp_perm_x;
+    end else begin
+      if(xlate_io_rsp_hostPresent) begin
+        lookPerm_x = xlate_io_rsp_hostPerm_x;
+      end
+    end
+  end
+
+  assign lookAny = (xlate_io_rsp_hit || xlate_io_rsp_hostPresent);
+  assign io_mask_req_valid = s3_valid;
+  assign io_mask_req_part = s3_part;
+  assign io_mask_req_frame = lookFrame;
   assign missWait = ((s3_valid && (! xlate_io_rsp_hit)) && (! xlate_io_rsp_hostPresent));
   assign advance = ((! io_hold) && (! missWait));
   assign io_req_ready = advance;
   always @(*) begin
-    selFrame = 32'h0;
-    if(s6_hit) begin
-      selFrame = s6_frame;
-    end else begin
-      if(s6_hostP) begin
-        selFrame = s6_hostFrame;
-      end
-    end
-  end
-
-  always @(*) begin
-    selPerm_r = 1'b0;
-    if(s6_hit) begin
-      selPerm_r = s6_perm_r;
-    end else begin
-      if(s6_hostP) begin
-        selPerm_r = s6_hostPerm_r;
-      end
-    end
-  end
-
-  always @(*) begin
-    selPerm_w = 1'b0;
-    if(s6_hit) begin
-      selPerm_w = s6_perm_w;
-    end else begin
-      if(s6_hostP) begin
-        selPerm_w = s6_hostPerm_w;
-      end
-    end
-  end
-
-  always @(*) begin
-    selPerm_x = 1'b0;
-    if(s6_hit) begin
-      selPerm_x = s6_perm_x;
-    end else begin
-      if(s6_hostP) begin
-        selPerm_x = s6_hostPerm_x;
-      end
-    end
-  end
-
-  assign anyHit = (s6_hit || s6_hostP);
-  always @(*) begin
     io_owner_frame = 32'h0;
-    if(when_HiuPipeline_l306) begin
-      io_owner_frame = selFrame;
+    if(when_HiuPipeline_l391) begin
+      io_owner_frame = s6_frame;
     end
   end
 
-  assign when_HiuPipeline_l306 = (s6_valid && anyHit);
-  assign entitle = (s6_write ? selPerm_w : selPerm_r);
-  assign granted = (((s6_valid && anyHit) && io_owner_devOwned) && entitle);
-  assign permViol = ((s6_valid && anyHit) && (! (io_owner_devOwned && entitle)));
+  assign when_HiuPipeline_l391 = (s6_valid && s6_anyHit);
+  assign entitle = (s6_write ? s6_perm_w : s6_perm_r);
+  assign granted = (((s6_valid && s6_anyHit) && io_owner_devOwned) && entitle);
+  assign permViol = ((s6_valid && s6_anyHit) && (! (io_owner_devOwned && entitle)));
   assign io_rsp_valid = (s6_valid && advance);
   assign io_rsp_granted = granted;
   assign io_rsp_part = s6_part;
@@ -233,31 +260,32 @@ module HiuPipeline (
   always @(*) begin
     io_rsp_frame = 32'h0;
     if(granted) begin
-      io_rsp_frame = selFrame;
+      io_rsp_frame = s6_masked;
     end
   end
 
   always @(*) begin
     io_rsp_perm_r = 1'b0;
     if(granted) begin
-      io_rsp_perm_r = selPerm_r;
+      io_rsp_perm_r = s6_perm_r;
     end
   end
 
   always @(*) begin
     io_rsp_perm_w = 1'b0;
     if(granted) begin
-      io_rsp_perm_w = selPerm_w;
+      io_rsp_perm_w = s6_perm_w;
     end
   end
 
   always @(*) begin
     io_rsp_perm_x = 1'b0;
     if(granted) begin
-      io_rsp_perm_x = selPerm_x;
+      io_rsp_perm_x = s6_perm_x;
     end
   end
 
+  assign io_occupancy = (_zz_io_occupancy + _zz_io_occupancy_14);
   assign io_faultPerm = _zz_io_faultPerm;
   assign io_missNotice = _zz_io_missNotice;
   always @(posedge clk or posedge reset) begin
@@ -265,7 +293,6 @@ module HiuPipeline (
       s1_valid <= 1'b0;
       s2_valid <= 1'b0;
       s3_valid <= 1'b0;
-      s4_valid <= 1'b0;
       s5_valid <= 1'b0;
       s6_valid <= 1'b0;
       _zz_io_faultPerm <= 1'b0;
@@ -275,8 +302,7 @@ module HiuPipeline (
         s1_valid <= io_req_valid;
         s2_valid <= s1_valid;
         s3_valid <= s2_valid;
-        s4_valid <= s3_valid;
-        s5_valid <= s4_valid;
+        s5_valid <= io_mask_rsp_valid;
         s6_valid <= s5_valid;
       end
       if(io_faultClear) begin
@@ -307,43 +333,30 @@ module HiuPipeline (
       s3_write <= s2_write;
       s4_part <= s3_part;
       s4_write <= s3_write;
-      s4_hit <= xlate_io_rsp_hit;
+      s4_anyHit <= lookAny;
       s4_fromFill <= xlate_io_rsp_fromFill;
-      s4_frame <= xlate_io_rsp_frame;
-      s4_perm_r <= xlate_io_rsp_perm_r;
-      s4_perm_w <= xlate_io_rsp_perm_w;
-      s4_perm_x <= xlate_io_rsp_perm_x;
-      s4_hostP <= xlate_io_rsp_hostPresent;
-      s4_hostFrame <= xlate_io_rsp_hostFrame;
-      s4_hostPerm_r <= xlate_io_rsp_hostPerm_r;
-      s4_hostPerm_w <= xlate_io_rsp_hostPerm_w;
-      s4_hostPerm_x <= xlate_io_rsp_hostPerm_x;
+      s4_frame <= lookFrame;
+      s4_perm_r <= lookPerm_r;
+      s4_perm_w <= lookPerm_w;
+      s4_perm_x <= lookPerm_x;
       s5_part <= s4_part;
       s5_write <= s4_write;
-      s5_hit <= s4_hit;
+      s5_anyHit <= s4_anyHit;
       s5_fromFill <= s4_fromFill;
       s5_frame <= s4_frame;
+      s5_masked <= io_mask_rsp_frame;
       s5_perm_r <= s4_perm_r;
       s5_perm_w <= s4_perm_w;
       s5_perm_x <= s4_perm_x;
-      s5_hostP <= s4_hostP;
-      s5_hostFrame <= s4_hostFrame;
-      s5_hostPerm_r <= s4_hostPerm_r;
-      s5_hostPerm_w <= s4_hostPerm_w;
-      s5_hostPerm_x <= s4_hostPerm_x;
       s6_part <= s5_part;
       s6_write <= s5_write;
-      s6_hit <= s5_hit;
+      s6_anyHit <= s5_anyHit;
       s6_fromFill <= s5_fromFill;
       s6_frame <= s5_frame;
+      s6_masked <= s5_masked;
       s6_perm_r <= s5_perm_r;
       s6_perm_w <= s5_perm_w;
       s6_perm_x <= s5_perm_x;
-      s6_hostP <= s5_hostP;
-      s6_hostFrame <= s5_hostFrame;
-      s6_hostPerm_r <= s5_hostPerm_r;
-      s6_hostPerm_w <= s5_hostPerm_w;
-      s6_hostPerm_x <= s5_hostPerm_x;
     end
   end
 

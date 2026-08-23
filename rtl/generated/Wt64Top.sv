@@ -126,6 +126,7 @@ module Wt64Top (
   input  wire          io_hostRsp_perm_x,
   output wire          io_hiuRsp_valid,
   output wire          io_hiuRsp_granted,
+  output wire [1:0]    io_hiuRsp_part,
   output wire          io_hiuRsp_write,
   output wire          io_hiuRsp_fromFill,
   output wire          io_hiuRsp_perm_r,
@@ -270,7 +271,6 @@ module Wt64Top (
   wire       [2:0]    mask_io_nonceWr_idx;
   wire                mask_io_rekey_valid;
   wire       [1:0]    mask_io_rekey_part;
-  wire                mask_io_req_valid;
   wire                fps_io_progWr_valid;
   wire       [7:0]    fps_io_progWr_slot;
   wire       [7:0]    fps_io_progWr_idx;
@@ -283,7 +283,12 @@ module Wt64Top (
   wire                cq_io_wstrobe;
   wire                cq_io_rstrobe;
   wire       [255:0]  cq_io_comp_payload;
+  wire       [15:0]   cq_io_drain_pipe;
+  wire       [15:0]   cq_io_drain_pending;
+  wire       [15:0]   cq_io_drain_output;
+  wire       [15:0]   cq_io_drain_ownSlots;
   wire       [15:0]   cq_io_drain_contexts;
+  wire       [15:0]   cq_io_drain_tokens;
   wire                walk_io_oValid;
   wire                walk_io_oMalformed;
   wire                walk_io_oCapAbsent;
@@ -383,6 +388,7 @@ module Wt64Top (
   wire       [7:0]    reasm_io_deliver_payload_base;
   wire       [7:0]    reasm_io_deliver_payload_total;
   wire       [2:0]    reasm_io_incomplete;
+  wire       [2:0]    reasm_io_occupancy;
   wire       [7:0]    reasm_io_abortCount;
   wire                reasm_io_fault;
   wire                reasm_io_capAbsent;
@@ -400,8 +406,12 @@ module Wt64Top (
   wire       [127:0]  mog_io_down_3_payload;
   wire       [3:0]    mog_io_token;
   wire       [3:0]    mog_io_gateOpen;
+  wire       [2:0]    mog_io_occupancy;
   wire                hiu_io_req_ready;
   wire       [31:0]   hiu_io_owner_frame;
+  wire                hiu_io_mask_req_valid;
+  wire       [1:0]    hiu_io_mask_req_part;
+  wire       [31:0]   hiu_io_mask_req_frame;
   wire                hiu_io_install_ready;
   wire                hiu_io_rsp_valid;
   wire                hiu_io_rsp_granted;
@@ -412,6 +422,7 @@ module Wt64Top (
   wire                hiu_io_rsp_perm_r;
   wire                hiu_io_rsp_perm_w;
   wire                hiu_io_rsp_perm_x;
+  wire       [2:0]    hiu_io_occupancy;
   wire                hiu_io_faultPerm;
   wire                hiu_io_missNotice;
   wire       [31:0]   own_io_rdata;
@@ -446,14 +457,17 @@ module Wt64Top (
   wire       [7:0]    merge_io_consumer_payload_head_total;
   wire                merge_io_consumer_payload_head_last;
   wire       [63:0]   merge_io_consumer_payload_body;
+  wire       [2:0]    merge_io_occupancy;
   wire                shared_1_io_req_ready;
   wire                shared_1_io_rsp_valid;
   wire       [160:0]  shared_1_io_rsp_payload;
   wire                shared_1_io_faultBpViolation;
+  wire       [2:0]    shared_1_io_occupancy;
   wire                bank_io_acquire_granted;
   wire       [63:0]   bank_io_read_data;
   wire                bank_io_read_owned;
   wire                bank_io_fault;
+  wire       [4:0]    bank_io_occupancy;
   wire                mask_io_rekey_ready;
   wire       [3:0]    mask_io_maskReady;
   wire                mask_io_busy;
@@ -497,20 +511,20 @@ module Wt64Top (
   wire                loc_wr;
   wire                loc_rd;
   reg        [1:0]    loc_noncePart;
-  wire                when_Wt64Top_l641;
+  wire                when_Wt64Top_l654;
   reg        [31:0]   loc_abWave;
   reg        [15:0]   loc_abThread;
   reg        [15:0]   loc_abLnid;
   reg        [7:0]    loc_abPrec;
   reg        [7:0]    loc_abDim;
-  wire                when_Wt64Top_l672;
-  wire                when_Wt64Top_l673;
-  wire                when_Wt64Top_l677;
+  wire                when_Wt64Top_l685;
+  wire                when_Wt64Top_l686;
+  wire                when_Wt64Top_l690;
   reg        [31:0]   loc_maskStat;
   reg        [31:0]   loc_fpStat;
   reg        [31:0]   loc_rdReg;
   reg                 loc_rv;
-  wire                when_Wt64Top_l721;
+  wire                when_Wt64Top_l734;
   wire                resvRd;
   reg                 resvRv;
 
@@ -708,6 +722,7 @@ module Wt64Top (
     .io_deliver_payload_base          (reasm_io_deliver_payload_base[7:0]               ), //o
     .io_deliver_payload_total         (reasm_io_deliver_payload_total[7:0]              ), //o
     .io_incomplete                    (reasm_io_incomplete[2:0]                         ), //o
+    .io_occupancy                     (reasm_io_occupancy[2:0]                          ), //o
     .io_abort_valid                   (reasm_io_abort_valid                             ), //i
     .io_abort_tag_wave                (loc_abWave[31:0]                                 ), //i
     .io_abort_tag_thread              (loc_abThread[15:0]                               ), //i
@@ -755,49 +770,56 @@ module Wt64Top (
     .io_complete       (io_mem_complete[3:0]        ), //i
     .io_token          (mog_io_token[3:0]           ), //o
     .io_gateOpen       (mog_io_gateOpen[3:0]        ), //o
+    .io_occupancy      (mog_io_occupancy[2:0]       ), //o
     .clk               (clk                         ), //i
     .reset             (reset                       )  //i
   );
   HiuPipeline hiu (
-    .io_req_valid      (io_hiuReq_valid         ), //i
-    .io_req_ready      (hiu_io_req_ready        ), //o
-    .io_req_part       (io_hiuReq_part[1:0]     ), //i
-    .io_req_vpn        (io_hiuReq_vpn[31:0]     ), //i
-    .io_req_write      (io_hiuReq_write         ), //i
-    .io_hold           (io_hiuHold              ), //i
-    .io_owner_frame    (hiu_io_owner_frame[31:0]), //o
-    .io_owner_devOwned (own_io_query_devOwned   ), //i
-    .io_install_valid  (io_install_valid        ), //i
-    .io_install_ready  (hiu_io_install_ready    ), //o
-    .io_install_part   (io_install_part[1:0]    ), //i
-    .io_install_idx    (io_install_idx[3:0]     ), //i
-    .io_install_tag    (io_install_tag[27:0]    ), //i
-    .io_install_frame  (io_install_frame[31:0]  ), //i
-    .io_install_perm_r (io_install_perm_r       ), //i
-    .io_install_perm_w (io_install_perm_w       ), //i
-    .io_install_perm_x (io_install_perm_x       ), //i
-    .io_flush_valid    (io_flush_valid          ), //i
-    .io_flush_part     (io_flush_part[1:0]      ), //i
-    .io_hostRsp_valid  (io_hostRsp_valid        ), //i
-    .io_hostRsp_frame  (io_hostRsp_frame[31:0]  ), //i
-    .io_hostRsp_perm_r (io_hostRsp_perm_r       ), //i
-    .io_hostRsp_perm_w (io_hostRsp_perm_w       ), //i
-    .io_hostRsp_perm_x (io_hostRsp_perm_x       ), //i
-    .io_rsp_valid      (hiu_io_rsp_valid        ), //o
-    .io_rsp_granted    (hiu_io_rsp_granted      ), //o
-    .io_rsp_part       (hiu_io_rsp_part[1:0]    ), //o
-    .io_rsp_write      (hiu_io_rsp_write        ), //o
-    .io_rsp_fromFill   (hiu_io_rsp_fromFill     ), //o
-    .io_rsp_frame      (hiu_io_rsp_frame[31:0]  ), //o
-    .io_rsp_perm_r     (hiu_io_rsp_perm_r       ), //o
-    .io_rsp_perm_w     (hiu_io_rsp_perm_w       ), //o
-    .io_rsp_perm_x     (hiu_io_rsp_perm_x       ), //o
-    .io_faultPerm      (hiu_io_faultPerm        ), //o
-    .io_faultClear     (io_faultClear_hiuPerm   ), //i
-    .io_missNotice     (hiu_io_missNotice       ), //o
-    .io_missClear      (io_faultClear_hiuMiss   ), //i
-    .clk               (clk                     ), //i
-    .reset             (reset                   )  //i
+    .io_req_valid      (io_hiuReq_valid            ), //i
+    .io_req_ready      (hiu_io_req_ready           ), //o
+    .io_req_part       (io_hiuReq_part[1:0]        ), //i
+    .io_req_vpn        (io_hiuReq_vpn[31:0]        ), //i
+    .io_req_write      (io_hiuReq_write            ), //i
+    .io_hold           (io_hiuHold                 ), //i
+    .io_owner_frame    (hiu_io_owner_frame[31:0]   ), //o
+    .io_owner_devOwned (own_io_query_devOwned      ), //i
+    .io_mask_req_valid (hiu_io_mask_req_valid      ), //o
+    .io_mask_req_part  (hiu_io_mask_req_part[1:0]  ), //o
+    .io_mask_req_frame (hiu_io_mask_req_frame[31:0]), //o
+    .io_mask_rsp_valid (mask_io_rsp_valid          ), //i
+    .io_mask_rsp_frame (mask_io_rsp_frame[31:0]    ), //i
+    .io_install_valid  (io_install_valid           ), //i
+    .io_install_ready  (hiu_io_install_ready       ), //o
+    .io_install_part   (io_install_part[1:0]       ), //i
+    .io_install_idx    (io_install_idx[3:0]        ), //i
+    .io_install_tag    (io_install_tag[27:0]       ), //i
+    .io_install_frame  (io_install_frame[31:0]     ), //i
+    .io_install_perm_r (io_install_perm_r          ), //i
+    .io_install_perm_w (io_install_perm_w          ), //i
+    .io_install_perm_x (io_install_perm_x          ), //i
+    .io_flush_valid    (io_flush_valid             ), //i
+    .io_flush_part     (io_flush_part[1:0]         ), //i
+    .io_hostRsp_valid  (io_hostRsp_valid           ), //i
+    .io_hostRsp_frame  (io_hostRsp_frame[31:0]     ), //i
+    .io_hostRsp_perm_r (io_hostRsp_perm_r          ), //i
+    .io_hostRsp_perm_w (io_hostRsp_perm_w          ), //i
+    .io_hostRsp_perm_x (io_hostRsp_perm_x          ), //i
+    .io_rsp_valid      (hiu_io_rsp_valid           ), //o
+    .io_rsp_granted    (hiu_io_rsp_granted         ), //o
+    .io_rsp_part       (hiu_io_rsp_part[1:0]       ), //o
+    .io_rsp_write      (hiu_io_rsp_write           ), //o
+    .io_rsp_fromFill   (hiu_io_rsp_fromFill        ), //o
+    .io_rsp_frame      (hiu_io_rsp_frame[31:0]     ), //o
+    .io_rsp_perm_r     (hiu_io_rsp_perm_r          ), //o
+    .io_rsp_perm_w     (hiu_io_rsp_perm_w          ), //o
+    .io_rsp_perm_x     (hiu_io_rsp_perm_x          ), //o
+    .io_occupancy      (hiu_io_occupancy[2:0]      ), //o
+    .io_faultPerm      (hiu_io_faultPerm           ), //o
+    .io_faultClear     (io_faultClear_hiuPerm      ), //i
+    .io_missNotice     (hiu_io_missNotice          ), //o
+    .io_missClear      (io_faultClear_hiuMiss      ), //i
+    .clk               (clk                        ), //i
+    .reset             (reset                      )  //i
   );
   OwnershipTable own (
     .io_addr              (io_mmio_addr[11:0]      ), //i
@@ -894,6 +916,7 @@ module Wt64Top (
     .io_consumer_payload_head_total         (merge_io_consumer_payload_head_total[7:0]        ), //o
     .io_consumer_payload_head_last          (merge_io_consumer_payload_head_last              ), //o
     .io_consumer_payload_body               (merge_io_consumer_payload_body[63:0]             ), //o
+    .io_occupancy                           (merge_io_occupancy[2:0]                          ), //o
     .clk                                    (clk                                              ), //i
     .reset                                  (reset                                            )  //i
   );
@@ -905,6 +928,7 @@ module Wt64Top (
     .io_rsp_payload      (shared_1_io_rsp_payload[160:0]), //o
     .io_faultBpViolation (shared_1_io_faultBpViolation  ), //o
     .io_faultClear       (io_faultClear_sharedBp        ), //i
+    .io_occupancy        (shared_1_io_occupancy[2:0]    ), //o
     .clk                 (clk                           ), //i
     .reset               (reset                         )  //i
   );
@@ -922,36 +946,37 @@ module Wt64Top (
     .io_read_owned      (bank_io_read_owned     ), //o
     .io_fault           (bank_io_fault          ), //o
     .io_faultClear      (io_faultClear_bankWrite), //i
+    .io_occupancy       (bank_io_occupancy[4:0] ), //o
     .clk                (clk                    ), //i
     .reset              (reset                  )  //i
   );
   MaskUnit mask (
-    .io_keyWr_valid        (mask_io_keyWr_valid       ), //i
-    .io_keyWr_idx          (mask_io_keyWr_idx[2:0]    ), //i
-    .io_keyWr_data         (io_mmio_wdata[31:0]       ), //i
-    .io_nonceWr_valid      (mask_io_nonceWr_valid     ), //i
-    .io_nonceWr_part       (loc_noncePart[1:0]        ), //i
-    .io_nonceWr_idx        (mask_io_nonceWr_idx[2:0]  ), //i
-    .io_nonceWr_data       (io_mmio_wdata[31:0]       ), //i
-    .io_rekey_valid        (mask_io_rekey_valid       ), //i
-    .io_rekey_ready        (mask_io_rekey_ready       ), //o
-    .io_rekey_part         (mask_io_rekey_part[1:0]   ), //i
-    .io_maskReady          (mask_io_maskReady[3:0]    ), //o
-    .io_busy               (mask_io_busy              ), //o
-    .io_en                 (hiu_io_req_ready          ), //i
-    .io_req_valid          (mask_io_req_valid         ), //i
-    .io_req_part           (hiu_io_rsp_part[1:0]      ), //i
-    .io_req_frame          (hiu_io_rsp_frame[31:0]    ), //i
-    .io_rsp_valid          (mask_io_rsp_valid         ), //o
-    .io_rsp_frame          (mask_io_rsp_frame[31:0]   ), //o
-    .io_faultNoMask        (mask_io_faultNoMask       ), //o
-    .io_faultNonceDup      (mask_io_faultNonceDup     ), //o
-    .io_faultWrDuringRekey (mask_io_faultWrDuringRekey), //o
-    .io_faultClearNoMask   (io_faultClear_maskNoMask  ), //i
-    .io_faultClearNonceDup (io_faultClear_maskNonceDup), //i
-    .io_faultClearWrRekey  (io_faultClear_maskWrRekey ), //i
-    .clk                   (clk                       ), //i
-    .reset                 (reset                     )  //i
+    .io_keyWr_valid        (mask_io_keyWr_valid        ), //i
+    .io_keyWr_idx          (mask_io_keyWr_idx[2:0]     ), //i
+    .io_keyWr_data         (io_mmio_wdata[31:0]        ), //i
+    .io_nonceWr_valid      (mask_io_nonceWr_valid      ), //i
+    .io_nonceWr_part       (loc_noncePart[1:0]         ), //i
+    .io_nonceWr_idx        (mask_io_nonceWr_idx[2:0]   ), //i
+    .io_nonceWr_data       (io_mmio_wdata[31:0]        ), //i
+    .io_rekey_valid        (mask_io_rekey_valid        ), //i
+    .io_rekey_ready        (mask_io_rekey_ready        ), //o
+    .io_rekey_part         (mask_io_rekey_part[1:0]    ), //i
+    .io_maskReady          (mask_io_maskReady[3:0]     ), //o
+    .io_busy               (mask_io_busy               ), //o
+    .io_en                 (hiu_io_req_ready           ), //i
+    .io_req_valid          (hiu_io_mask_req_valid      ), //i
+    .io_req_part           (hiu_io_mask_req_part[1:0]  ), //i
+    .io_req_frame          (hiu_io_mask_req_frame[31:0]), //i
+    .io_rsp_valid          (mask_io_rsp_valid          ), //o
+    .io_rsp_frame          (mask_io_rsp_frame[31:0]    ), //o
+    .io_faultNoMask        (mask_io_faultNoMask        ), //o
+    .io_faultNonceDup      (mask_io_faultNonceDup      ), //o
+    .io_faultWrDuringRekey (mask_io_faultWrDuringRekey ), //o
+    .io_faultClearNoMask   (io_faultClear_maskNoMask   ), //i
+    .io_faultClearNonceDup (io_faultClear_maskNonceDup ), //i
+    .io_faultClearWrRekey  (io_faultClear_maskWrRekey  ), //i
+    .clk                   (clk                        ), //i
+    .reset                 (reset                      )  //i
   );
   StepSequencer fps (
     .io_req_valid         (io_fp_reqValid          ), //i
@@ -995,12 +1020,12 @@ module Wt64Top (
     .io_comp_payload   (cq_io_comp_payload[255:0] ), //i
     .io_comp_ready     (cq_io_comp_ready          ), //o
     .io_irq            (cq_io_irq                 ), //o
-    .io_drain_pipe     (16'h0                     ), //i
-    .io_drain_pending  (16'h0                     ), //i
-    .io_drain_output   (16'h0                     ), //i
-    .io_drain_ownSlots (16'h0                     ), //i
+    .io_drain_pipe     (cq_io_drain_pipe[15:0]    ), //i
+    .io_drain_pending  (cq_io_drain_pending[15:0] ), //i
+    .io_drain_output   (cq_io_drain_output[15:0]  ), //i
+    .io_drain_ownSlots (cq_io_drain_ownSlots[15:0]), //i
     .io_drain_contexts (cq_io_drain_contexts[15:0]), //i
-    .io_drain_tokens   (16'h0                     ), //i
+    .io_drain_tokens   (cq_io_drain_tokens[15:0]  ), //i
     .io_faultOverflow  (cq_io_faultOverflow       ), //o
     .clk               (clk                       ), //i
     .reset             (reset                     )  //i
@@ -1083,11 +1108,11 @@ module Wt64Top (
   assign io_mem_gateOpen = mog_io_gateOpen;
   assign io_hiuReq_ready = hiu_io_req_ready;
   assign io_install_ready = hiu_io_install_ready;
-  assign mask_io_req_valid = (hiu_io_rsp_valid && hiu_io_rsp_granted);
-  assign io_phys_valid = mask_io_rsp_valid;
-  assign io_phys_frame = mask_io_rsp_frame;
+  assign io_phys_valid = (hiu_io_rsp_valid && hiu_io_rsp_granted);
+  assign io_phys_frame = hiu_io_rsp_frame;
   assign io_hiuRsp_valid = hiu_io_rsp_valid;
   assign io_hiuRsp_granted = hiu_io_rsp_granted;
+  assign io_hiuRsp_part = hiu_io_rsp_part;
   assign io_hiuRsp_write = hiu_io_rsp_write;
   assign io_hiuRsp_fromFill = hiu_io_rsp_fromFill;
   assign io_hiuRsp_perm_r = hiu_io_rsp_perm_r;
@@ -1119,7 +1144,12 @@ module Wt64Top (
   assign io_fp_progMal = fps_io_oProgMal;
   assign io_fp_result = fps_io_oResult;
   assign cq_io_comp_payload = {{{160'h0,{reasm_io_deliver_payload_tag_dim,{reasm_io_deliver_payload_tag_precision,{reasm_io_deliver_payload_tag_lnid,{reasm_io_deliver_payload_tag_thread,reasm_io_deliver_payload_tag_wave}}}}},reasm_io_deliver_payload_base},reasm_io_deliver_payload_total};
-  assign cq_io_drain_contexts = {13'd0, reasm_io_incomplete};
+  assign cq_io_drain_pipe = {13'd0, hiu_io_occupancy};
+  assign cq_io_drain_pending = {13'd0, shared_1_io_occupancy};
+  assign cq_io_drain_output = {13'd0, merge_io_occupancy};
+  assign cq_io_drain_ownSlots = {11'd0, bank_io_occupancy};
+  assign cq_io_drain_contexts = {13'd0, reasm_io_occupancy};
+  assign cq_io_drain_tokens = {13'd0, mog_io_occupancy};
   assign io_irq = cq_io_irq;
   assign mmioAligned = (io_mmio_addr[1 : 0] == 2'b00);
   assign selOwn = (io_mmio_addr[11 : 8] == 4'b0010);
@@ -1138,7 +1168,7 @@ module Wt64Top (
   assign loc_rd = (((io_mmio_rstrobe && (! io_mmio_wstrobe)) && selLoc) && mmioAligned);
   assign mask_io_keyWr_valid = (loc_wr && (loc_wordOff < 6'h08));
   assign mask_io_keyWr_idx = loc_wordOff[2 : 0];
-  assign when_Wt64Top_l641 = (loc_wr && (loc_wordOff == 6'h08));
+  assign when_Wt64Top_l654 = (loc_wr && (loc_wordOff == 6'h08));
   assign mask_io_nonceWr_valid = ((loc_wr && (6'h09 <= loc_wordOff)) && (loc_wordOff <= 6'h0e));
   assign mask_io_nonceWr_idx = (loc_wordOff[2 : 0] - 3'b001);
   assign mask_io_rekey_valid = (loc_wr && (loc_wordOff == 6'h0f));
@@ -1151,9 +1181,9 @@ module Wt64Top (
   assign fps_io_bindWr_key = io_mmio_wdata[15 : 0];
   assign fps_io_bindWr_en = io_mmio_wdata[31];
   assign fps_io_bindWr_slot = io_mmio_wdata[23 : 16];
-  assign when_Wt64Top_l672 = (loc_wr && (loc_wordOff == 6'h14));
-  assign when_Wt64Top_l673 = (loc_wr && (loc_wordOff == 6'h15));
-  assign when_Wt64Top_l677 = (loc_wr && (loc_wordOff == 6'h16));
+  assign when_Wt64Top_l685 = (loc_wr && (loc_wordOff == 6'h14));
+  assign when_Wt64Top_l686 = (loc_wr && (loc_wordOff == 6'h15));
+  assign when_Wt64Top_l690 = (loc_wr && (loc_wordOff == 6'h16));
   assign reasm_io_abort_valid = ((loc_wr && (loc_wordOff == 6'h17)) && io_mmio_wdata[0]);
   always @(*) begin
     loc_maskStat = 32'h0;
@@ -1179,12 +1209,12 @@ module Wt64Top (
     if(selCfg) begin
       io_mmio_ready = cfgBlk_io_ready;
     end
-    if(when_Wt64Top_l721) begin
+    if(when_Wt64Top_l734) begin
       io_mmio_ready = fps_io_loadReady;
     end
   end
 
-  assign when_Wt64Top_l721 = (selLoc && ((loc_wordOff == 6'h11) || (loc_wordOff == 6'h12)));
+  assign when_Wt64Top_l734 = (selLoc && ((loc_wordOff == 6'h11) || (loc_wordOff == 6'h12)));
   assign resvRd = ((io_mmio_rstrobe && (! io_mmio_wstrobe)) && (((((! selOwn) && (! selCq)) && (! selCfg)) && (! selLoc)) || (selLoc && (! mmioAligned))));
   assign io_mmio_rvalid = ((((own_io_rvalid || cq_io_rvalid) || cfgBlk_io_rvalid) || loc_rv) || resvRv);
   always @(*) begin
@@ -1242,17 +1272,17 @@ module Wt64Top (
       loc_rv <= 1'b0;
       resvRv <= 1'b0;
     end else begin
-      if(when_Wt64Top_l641) begin
+      if(when_Wt64Top_l654) begin
         loc_noncePart <= io_mmio_wdata[1 : 0];
       end
-      if(when_Wt64Top_l672) begin
+      if(when_Wt64Top_l685) begin
         loc_abWave <= io_mmio_wdata;
       end
-      if(when_Wt64Top_l673) begin
+      if(when_Wt64Top_l686) begin
         loc_abThread <= io_mmio_wdata[31 : 16];
         loc_abLnid <= io_mmio_wdata[15 : 0];
       end
-      if(when_Wt64Top_l677) begin
+      if(when_Wt64Top_l690) begin
         loc_abPrec <= io_mmio_wdata[15 : 8];
         loc_abDim <= io_mmio_wdata[7 : 0];
       end
@@ -2793,6 +2823,7 @@ module ResultBank (
   output wire          io_read_owned,
   output wire          io_fault,
   input  wire          io_faultClear,
+  output wire [4:0]    io_occupancy,
   input  wire          clk,
   input  wire          reset
 );
@@ -2802,6 +2833,23 @@ module ResultBank (
   reg        [3:0]    _zz_wrQualified_1;
   reg        [63:0]   _zz_io_read_data;
   reg                 _zz_io_read_owned;
+  wire       [4:0]    _zz_io_occupancy_8;
+  wire       [4:0]    _zz_io_occupancy_9;
+  reg        [4:0]    _zz_io_occupancy_10;
+  wire       [2:0]    _zz_io_occupancy_11;
+  reg        [4:0]    _zz_io_occupancy_12;
+  wire       [2:0]    _zz_io_occupancy_13;
+  wire       [4:0]    _zz_io_occupancy_14;
+  reg        [4:0]    _zz_io_occupancy_15;
+  wire       [2:0]    _zz_io_occupancy_16;
+  reg        [4:0]    _zz_io_occupancy_17;
+  wire       [2:0]    _zz_io_occupancy_18;
+  wire       [4:0]    _zz_io_occupancy_19;
+  reg        [4:0]    _zz_io_occupancy_20;
+  wire       [2:0]    _zz_io_occupancy_21;
+  reg        [4:0]    _zz_io_occupancy_22;
+  wire       [2:0]    _zz_io_occupancy_23;
+  wire       [0:0]    _zz_io_occupancy_24;
   reg                 ownerValid_0;
   reg                 ownerValid_1;
   reg                 ownerValid_2;
@@ -2883,16 +2931,35 @@ module ResultBank (
   wire                ageAtEnd_14;
   wire                ageAtEnd_15;
   wire                acqFree;
-  wire                when_ResultBank_l154;
+  wire                when_ResultBank_l163;
   wire       [15:0]   _zz_1;
   wire       [15:0]   _zz_2;
   wire       [15:0]   _zz_3;
   wire                wrQualified;
-  wire                when_ResultBank_l172;
+  wire                when_ResultBank_l181;
   wire       [15:0]   _zz_4;
   wire                when_Common_l141;
   reg                 _zz_io_fault;
+  wire       [4:0]    _zz_io_occupancy;
+  wire       [4:0]    _zz_io_occupancy_1;
+  wire       [4:0]    _zz_io_occupancy_2;
+  wire       [4:0]    _zz_io_occupancy_3;
+  wire       [4:0]    _zz_io_occupancy_4;
+  wire       [4:0]    _zz_io_occupancy_5;
+  wire       [4:0]    _zz_io_occupancy_6;
+  wire       [4:0]    _zz_io_occupancy_7;
 
+  assign _zz_io_occupancy_8 = (_zz_io_occupancy_9 + _zz_io_occupancy_14);
+  assign _zz_io_occupancy_9 = (_zz_io_occupancy_10 + _zz_io_occupancy_12);
+  assign _zz_io_occupancy_14 = (_zz_io_occupancy_15 + _zz_io_occupancy_17);
+  assign _zz_io_occupancy_19 = (_zz_io_occupancy_20 + _zz_io_occupancy_22);
+  assign _zz_io_occupancy_24 = ownerValid_15;
+  assign _zz_io_occupancy_23 = {2'd0, _zz_io_occupancy_24};
+  assign _zz_io_occupancy_11 = {ownerValid_2,{ownerValid_1,ownerValid_0}};
+  assign _zz_io_occupancy_13 = {ownerValid_5,{ownerValid_4,ownerValid_3}};
+  assign _zz_io_occupancy_16 = {ownerValid_8,{ownerValid_7,ownerValid_6}};
+  assign _zz_io_occupancy_18 = {ownerValid_11,{ownerValid_10,ownerValid_9}};
+  assign _zz_io_occupancy_21 = {ownerValid_14,{ownerValid_13,ownerValid_12}};
   always @(*) begin
     case(io_acquire_slot)
       4'b0000 : _zz_acqFree = ownerValid_0;
@@ -3052,6 +3119,84 @@ module ResultBank (
     endcase
   end
 
+  always @(*) begin
+    case(_zz_io_occupancy_11)
+      3'b000 : _zz_io_occupancy_10 = _zz_io_occupancy;
+      3'b001 : _zz_io_occupancy_10 = _zz_io_occupancy_1;
+      3'b010 : _zz_io_occupancy_10 = _zz_io_occupancy_2;
+      3'b011 : _zz_io_occupancy_10 = _zz_io_occupancy_3;
+      3'b100 : _zz_io_occupancy_10 = _zz_io_occupancy_4;
+      3'b101 : _zz_io_occupancy_10 = _zz_io_occupancy_5;
+      3'b110 : _zz_io_occupancy_10 = _zz_io_occupancy_6;
+      default : _zz_io_occupancy_10 = _zz_io_occupancy_7;
+    endcase
+  end
+
+  always @(*) begin
+    case(_zz_io_occupancy_13)
+      3'b000 : _zz_io_occupancy_12 = _zz_io_occupancy;
+      3'b001 : _zz_io_occupancy_12 = _zz_io_occupancy_1;
+      3'b010 : _zz_io_occupancy_12 = _zz_io_occupancy_2;
+      3'b011 : _zz_io_occupancy_12 = _zz_io_occupancy_3;
+      3'b100 : _zz_io_occupancy_12 = _zz_io_occupancy_4;
+      3'b101 : _zz_io_occupancy_12 = _zz_io_occupancy_5;
+      3'b110 : _zz_io_occupancy_12 = _zz_io_occupancy_6;
+      default : _zz_io_occupancy_12 = _zz_io_occupancy_7;
+    endcase
+  end
+
+  always @(*) begin
+    case(_zz_io_occupancy_16)
+      3'b000 : _zz_io_occupancy_15 = _zz_io_occupancy;
+      3'b001 : _zz_io_occupancy_15 = _zz_io_occupancy_1;
+      3'b010 : _zz_io_occupancy_15 = _zz_io_occupancy_2;
+      3'b011 : _zz_io_occupancy_15 = _zz_io_occupancy_3;
+      3'b100 : _zz_io_occupancy_15 = _zz_io_occupancy_4;
+      3'b101 : _zz_io_occupancy_15 = _zz_io_occupancy_5;
+      3'b110 : _zz_io_occupancy_15 = _zz_io_occupancy_6;
+      default : _zz_io_occupancy_15 = _zz_io_occupancy_7;
+    endcase
+  end
+
+  always @(*) begin
+    case(_zz_io_occupancy_18)
+      3'b000 : _zz_io_occupancy_17 = _zz_io_occupancy;
+      3'b001 : _zz_io_occupancy_17 = _zz_io_occupancy_1;
+      3'b010 : _zz_io_occupancy_17 = _zz_io_occupancy_2;
+      3'b011 : _zz_io_occupancy_17 = _zz_io_occupancy_3;
+      3'b100 : _zz_io_occupancy_17 = _zz_io_occupancy_4;
+      3'b101 : _zz_io_occupancy_17 = _zz_io_occupancy_5;
+      3'b110 : _zz_io_occupancy_17 = _zz_io_occupancy_6;
+      default : _zz_io_occupancy_17 = _zz_io_occupancy_7;
+    endcase
+  end
+
+  always @(*) begin
+    case(_zz_io_occupancy_21)
+      3'b000 : _zz_io_occupancy_20 = _zz_io_occupancy;
+      3'b001 : _zz_io_occupancy_20 = _zz_io_occupancy_1;
+      3'b010 : _zz_io_occupancy_20 = _zz_io_occupancy_2;
+      3'b011 : _zz_io_occupancy_20 = _zz_io_occupancy_3;
+      3'b100 : _zz_io_occupancy_20 = _zz_io_occupancy_4;
+      3'b101 : _zz_io_occupancy_20 = _zz_io_occupancy_5;
+      3'b110 : _zz_io_occupancy_20 = _zz_io_occupancy_6;
+      default : _zz_io_occupancy_20 = _zz_io_occupancy_7;
+    endcase
+  end
+
+  always @(*) begin
+    case(_zz_io_occupancy_23)
+      3'b000 : _zz_io_occupancy_22 = _zz_io_occupancy;
+      3'b001 : _zz_io_occupancy_22 = _zz_io_occupancy_1;
+      3'b010 : _zz_io_occupancy_22 = _zz_io_occupancy_2;
+      3'b011 : _zz_io_occupancy_22 = _zz_io_occupancy_3;
+      3'b100 : _zz_io_occupancy_22 = _zz_io_occupancy_4;
+      3'b101 : _zz_io_occupancy_22 = _zz_io_occupancy_5;
+      3'b110 : _zz_io_occupancy_22 = _zz_io_occupancy_6;
+      default : _zz_io_occupancy_22 = _zz_io_occupancy_7;
+    endcase
+  end
+
   assign ageAtEnd_0 = (ownerValid_0 && (age_0 == 2'b10));
   assign ageAtEnd_1 = (ownerValid_1 && (age_1 == 2'b10));
   assign ageAtEnd_2 = (ownerValid_2 && (age_2 == 2'b10));
@@ -3070,17 +3215,26 @@ module ResultBank (
   assign ageAtEnd_15 = (ownerValid_15 && (age_15 == 2'b10));
   assign acqFree = (1'b1 && (! _zz_acqFree));
   assign io_acquire_granted = (io_acquire_valid && acqFree);
-  assign when_ResultBank_l154 = (io_acquire_valid && acqFree);
+  assign when_ResultBank_l163 = (io_acquire_valid && acqFree);
   assign _zz_1 = ({15'd0,1'b1} <<< io_acquire_slot);
   assign _zz_2 = ({15'd0,1'b1} <<< io_acquire_slot);
   assign _zz_3 = ({15'd0,1'b1} <<< io_acquire_slot);
   assign wrQualified = ((1'b1 && _zz_wrQualified) && (_zz_wrQualified_1 == io_write_prod));
-  assign when_ResultBank_l172 = (io_write_valid && wrQualified);
+  assign when_ResultBank_l181 = (io_write_valid && wrQualified);
   assign _zz_4 = ({15'd0,1'b1} <<< io_write_slot);
   assign when_Common_l141 = (io_write_valid && (! wrQualified));
   assign io_fault = _zz_io_fault;
   assign io_read_data = _zz_io_read_data;
   assign io_read_owned = (1'b1 && _zz_io_read_owned);
+  assign _zz_io_occupancy = 5'h0;
+  assign _zz_io_occupancy_1 = 5'h01;
+  assign _zz_io_occupancy_2 = 5'h01;
+  assign _zz_io_occupancy_3 = 5'h02;
+  assign _zz_io_occupancy_4 = 5'h01;
+  assign _zz_io_occupancy_5 = 5'h02;
+  assign _zz_io_occupancy_6 = 5'h02;
+  assign _zz_io_occupancy_7 = 5'h03;
+  assign io_occupancy = (_zz_io_occupancy_8 + _zz_io_occupancy_19);
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       ownerValid_0 <= 1'b0;
@@ -3277,7 +3431,7 @@ module ResultBank (
           age_15 <= (age_15 + 2'b01);
         end
       end
-      if(when_ResultBank_l154) begin
+      if(when_ResultBank_l163) begin
         if(_zz_1[0]) begin
           ownerValid_0 <= 1'b1;
         end
@@ -3423,7 +3577,7 @@ module ResultBank (
           age_15 <= 2'b00;
         end
       end
-      if(when_ResultBank_l172) begin
+      if(when_ResultBank_l181) begin
         if(_zz_4[0]) begin
           store_0 <= io_write_data;
         end
@@ -3493,6 +3647,7 @@ module SharedUnit (
   output wire [160:0]  io_rsp_payload,
   output wire          io_faultBpViolation,
   input  wire          io_faultClear,
+  output wire [2:0]    io_occupancy,
   input  wire          clk,
   input  wire          reset
 );
@@ -3510,6 +3665,8 @@ module SharedUnit (
   wire       [0:0]    _zz_queue_cnt_2;
   wire       [2:0]    _zz_queue_cnt_3;
   wire       [0:0]    _zz_queue_cnt_4;
+  wire       [2:0]    _zz_io_occupancy;
+  wire       [0:0]    _zz_io_occupancy_1;
   reg        [160:0]  queue_slots_0;
   reg        [160:0]  queue_slots_1;
   reg        [160:0]  queue_slots_2;
@@ -3524,7 +3681,7 @@ module SharedUnit (
   wire                acceptQueue;
   wire                bpViolation;
   reg                 _zz_io_faultBpViolation;
-  wire                when_SharedUnit_l185;
+  wire                when_SharedUnit_l192;
   wire       [3:0]    _zz_1;
 
   assign _zz_queue_rdPtr = (queue_rdPtr + 2'b01);
@@ -3532,8 +3689,10 @@ module SharedUnit (
   assign _zz_queue_cnt = (queue_cnt + _zz_queue_cnt_1);
   assign _zz_queue_cnt_2 = (io_req_valid && acceptQueue);
   assign _zz_queue_cnt_1 = {2'd0, _zz_queue_cnt_2};
-  assign _zz_queue_cnt_4 = when_SharedUnit_l185;
+  assign _zz_queue_cnt_4 = when_SharedUnit_l192;
   assign _zz_queue_cnt_3 = {2'd0, _zz_queue_cnt_4};
+  assign _zz_io_occupancy_1 = body_1_io_busy;
+  assign _zz_io_occupancy = {2'd0, _zz_io_occupancy_1};
   SharedUnitOccupyStub body_1 (
     .io_start (body_1_io_start     ), //i
     .io_req   (body_1_io_req[160:0]), //i
@@ -3562,7 +3721,7 @@ module SharedUnit (
   assign io_faultBpViolation = _zz_io_faultBpViolation;
   always @(*) begin
     body_1_io_start = 1'b0;
-    if(when_SharedUnit_l185) begin
+    if(when_SharedUnit_l192) begin
       body_1_io_start = 1'b1;
     end
     if(io_req_valid) begin
@@ -3574,15 +3733,16 @@ module SharedUnit (
 
   always @(*) begin
     body_1_io_req = io_req_payload;
-    if(when_SharedUnit_l185) begin
+    if(when_SharedUnit_l192) begin
       body_1_io_req = queue_head;
     end
   end
 
-  assign when_SharedUnit_l185 = ((! body_1_io_busy) && (! queueEmpty));
+  assign when_SharedUnit_l192 = ((! body_1_io_busy) && (! queueEmpty));
   assign _zz_1 = ({3'd0,1'b1} <<< queue_wrPtr);
   assign io_rsp_valid = body_1_io_done;
   assign io_rsp_payload = body_1_io_rsp;
+  assign io_occupancy = (queue_cnt + _zz_io_occupancy);
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       queue_slots_0 <= 161'h0;
@@ -3600,7 +3760,7 @@ module SharedUnit (
       if(bpViolation) begin
         _zz_io_faultBpViolation <= 1'b1;
       end
-      if(when_SharedUnit_l185) begin
+      if(when_SharedUnit_l192) begin
         queue_rdPtr <= ((queue_rdPtr == 2'b11) ? 2'b00 : _zz_queue_rdPtr);
       end
       if(io_req_valid) begin
@@ -3687,6 +3847,7 @@ module FabricMerge (
   output wire [7:0]    io_consumer_payload_head_total,
   output wire          io_consumer_payload_head_last,
   output wire [63:0]   io_consumer_payload_body,
+  output wire [2:0]    io_occupancy,
   input  wire          clk,
   input  wire          reset
 );
@@ -3698,6 +3859,12 @@ module FabricMerge (
   wire       [7:0]    _zz__zz_select_rrOh_2;
   wire       [7:0]    _zz__zz_select_rrOh_2_1;
   wire       [3:0]    _zz__zz_select_rrOh_2_2;
+  wire       [2:0]    _zz_io_occupancy;
+  wire       [2:0]    _zz_io_occupancy_1;
+  wire       [2:0]    _zz_io_occupancy_2;
+  wire       [2:0]    _zz_io_occupancy_3;
+  wire       [2:0]    _zz_io_occupancy_4;
+  wire       [2:0]    _zz_io_occupancy_5;
   reg        [31:0]   lanes_0_slots_0_head_tag_wave;
   reg        [15:0]   lanes_0_slots_0_head_tag_thread;
   reg        [15:0]   lanes_0_slots_0_head_tag_lnid;
@@ -3714,9 +3881,9 @@ module FabricMerge (
   wire                lanes_0_shove;
   wire                lanes_0_doPop;
   wire       [0:0]    lanes_0_wIdx;
-  wire                when_FabricMerge_l128;
-  wire                when_FabricMerge_l133;
-  wire                when_FabricMerge_l134;
+  wire                when_FabricMerge_l138;
+  wire                when_FabricMerge_l143;
+  wire                when_FabricMerge_l144;
   reg        [31:0]   lanes_1_slots_0_head_tag_wave;
   reg        [15:0]   lanes_1_slots_0_head_tag_thread;
   reg        [15:0]   lanes_1_slots_0_head_tag_lnid;
@@ -3733,9 +3900,9 @@ module FabricMerge (
   wire                lanes_1_shove;
   wire                lanes_1_doPop;
   wire       [0:0]    lanes_1_wIdx;
-  wire                when_FabricMerge_l128_1;
-  wire                when_FabricMerge_l133_1;
-  wire                when_FabricMerge_l134_1;
+  wire                when_FabricMerge_l138_1;
+  wire                when_FabricMerge_l143_1;
+  wire                when_FabricMerge_l144_1;
   reg        [31:0]   lanes_2_slots_0_head_tag_wave;
   reg        [15:0]   lanes_2_slots_0_head_tag_thread;
   reg        [15:0]   lanes_2_slots_0_head_tag_lnid;
@@ -3752,9 +3919,9 @@ module FabricMerge (
   wire                lanes_2_shove;
   wire                lanes_2_doPop;
   wire       [0:0]    lanes_2_wIdx;
-  wire                when_FabricMerge_l128_2;
-  wire                when_FabricMerge_l133_2;
-  wire                when_FabricMerge_l134_2;
+  wire                when_FabricMerge_l138_2;
+  wire                when_FabricMerge_l143_2;
+  wire                when_FabricMerge_l144_2;
   reg        [31:0]   lanes_3_slots_0_head_tag_wave;
   reg        [15:0]   lanes_3_slots_0_head_tag_thread;
   reg        [15:0]   lanes_3_slots_0_head_tag_lnid;
@@ -3771,9 +3938,9 @@ module FabricMerge (
   wire                lanes_3_shove;
   wire                lanes_3_doPop;
   wire       [0:0]    lanes_3_wIdx;
-  wire                when_FabricMerge_l128_3;
-  wire                when_FabricMerge_l133_3;
-  wire                when_FabricMerge_l134_3;
+  wire                when_FabricMerge_l138_3;
+  wire                when_FabricMerge_l143_3;
+  wire                when_FabricMerge_l144_3;
   reg        [3:0]    select_req;
   reg        [3:0]    select_ptrOh;
   wire       [3:0]    _zz_select_rrOh;
@@ -3784,7 +3951,7 @@ module FabricMerge (
   reg        [3:0]    select_lockedOh;
   wire       [3:0]    select_selOh;
   wire       [3:0]    select_drive;
-  wire                when_FabricMerge_l170;
+  wire                when_FabricMerge_l180;
   wire                io_consumer_fire;
   wire       [160:0]  merge_contribs_0;
   wire       [160:0]  merge_contribs_1;
@@ -3803,42 +3970,48 @@ module FabricMerge (
   assign _zz__zz_select_rrOh_2 = (_zz_select_rrOh_1 - _zz__zz_select_rrOh_2_1);
   assign _zz__zz_select_rrOh_2_2 = select_ptrOh;
   assign _zz__zz_select_rrOh_2_1 = {4'd0, _zz__zz_select_rrOh_2_2};
+  assign _zz_io_occupancy = (_zz_io_occupancy_1 + _zz_io_occupancy_4);
+  assign _zz_io_occupancy_1 = (_zz_io_occupancy_2 + _zz_io_occupancy_3);
+  assign _zz_io_occupancy_2 = {2'd0, lanes_0_cnt};
+  assign _zz_io_occupancy_3 = {2'd0, lanes_1_cnt};
+  assign _zz_io_occupancy_4 = {2'd0, lanes_2_cnt};
+  assign _zz_io_occupancy_5 = {2'd0, lanes_3_cnt};
   assign lanes_0_full = (lanes_0_cnt == 1'b1);
   assign lanes_0_vld = (lanes_0_cnt != 1'b0);
   assign io_push_0_stall = lanes_0_full;
   assign lanes_0_doPush = (io_push_0_strb && (! lanes_0_full));
   assign lanes_0_shove = (io_push_0_strb && lanes_0_full);
   assign lanes_0_wIdx = (lanes_0_doPop ? _zz_lanes_0_wIdx : lanes_0_cnt);
-  assign when_FabricMerge_l128 = (lanes_0_wIdx == 1'b0);
-  assign when_FabricMerge_l133 = (lanes_0_doPush && (! lanes_0_doPop));
-  assign when_FabricMerge_l134 = ((! lanes_0_doPush) && lanes_0_doPop);
+  assign when_FabricMerge_l138 = (lanes_0_wIdx == 1'b0);
+  assign when_FabricMerge_l143 = (lanes_0_doPush && (! lanes_0_doPop));
+  assign when_FabricMerge_l144 = ((! lanes_0_doPush) && lanes_0_doPop);
   assign lanes_1_full = (lanes_1_cnt == 1'b1);
   assign lanes_1_vld = (lanes_1_cnt != 1'b0);
   assign io_push_1_stall = lanes_1_full;
   assign lanes_1_doPush = (io_push_1_strb && (! lanes_1_full));
   assign lanes_1_shove = (io_push_1_strb && lanes_1_full);
   assign lanes_1_wIdx = (lanes_1_doPop ? _zz_lanes_1_wIdx : lanes_1_cnt);
-  assign when_FabricMerge_l128_1 = (lanes_1_wIdx == 1'b0);
-  assign when_FabricMerge_l133_1 = (lanes_1_doPush && (! lanes_1_doPop));
-  assign when_FabricMerge_l134_1 = ((! lanes_1_doPush) && lanes_1_doPop);
+  assign when_FabricMerge_l138_1 = (lanes_1_wIdx == 1'b0);
+  assign when_FabricMerge_l143_1 = (lanes_1_doPush && (! lanes_1_doPop));
+  assign when_FabricMerge_l144_1 = ((! lanes_1_doPush) && lanes_1_doPop);
   assign lanes_2_full = (lanes_2_cnt == 1'b1);
   assign lanes_2_vld = (lanes_2_cnt != 1'b0);
   assign io_push_2_stall = lanes_2_full;
   assign lanes_2_doPush = (io_push_2_strb && (! lanes_2_full));
   assign lanes_2_shove = (io_push_2_strb && lanes_2_full);
   assign lanes_2_wIdx = (lanes_2_doPop ? _zz_lanes_2_wIdx : lanes_2_cnt);
-  assign when_FabricMerge_l128_2 = (lanes_2_wIdx == 1'b0);
-  assign when_FabricMerge_l133_2 = (lanes_2_doPush && (! lanes_2_doPop));
-  assign when_FabricMerge_l134_2 = ((! lanes_2_doPush) && lanes_2_doPop);
+  assign when_FabricMerge_l138_2 = (lanes_2_wIdx == 1'b0);
+  assign when_FabricMerge_l143_2 = (lanes_2_doPush && (! lanes_2_doPop));
+  assign when_FabricMerge_l144_2 = ((! lanes_2_doPush) && lanes_2_doPop);
   assign lanes_3_full = (lanes_3_cnt == 1'b1);
   assign lanes_3_vld = (lanes_3_cnt != 1'b0);
   assign io_push_3_stall = lanes_3_full;
   assign lanes_3_doPush = (io_push_3_strb && (! lanes_3_full));
   assign lanes_3_shove = (io_push_3_strb && lanes_3_full);
   assign lanes_3_wIdx = (lanes_3_doPop ? _zz_lanes_3_wIdx : lanes_3_cnt);
-  assign when_FabricMerge_l128_3 = (lanes_3_wIdx == 1'b0);
-  assign when_FabricMerge_l133_3 = (lanes_3_doPush && (! lanes_3_doPop));
-  assign when_FabricMerge_l134_3 = ((! lanes_3_doPush) && lanes_3_doPop);
+  assign when_FabricMerge_l138_3 = (lanes_3_wIdx == 1'b0);
+  assign when_FabricMerge_l143_3 = (lanes_3_doPush && (! lanes_3_doPop));
+  assign when_FabricMerge_l144_3 = ((! lanes_3_doPush) && lanes_3_doPop);
   always @(*) begin
     select_req[0] = lanes_0_vld;
     select_req[1] = lanes_1_vld;
@@ -3852,7 +4025,7 @@ module FabricMerge (
   assign select_rrOh = (_zz_select_rrOh_2[7 : 4] | _zz_select_rrOh_2[3 : 0]);
   assign select_selOh = (select_locked ? select_lockedOh : select_rrOh);
   assign select_drive = (select_selOh & select_req);
-  assign when_FabricMerge_l170 = (io_consumer_valid && (! io_consumer_ready));
+  assign when_FabricMerge_l180 = (io_consumer_valid && (! io_consumer_ready));
   assign io_consumer_fire = (io_consumer_valid && io_consumer_ready);
   assign merge_contribs_0 = (select_drive[0] ? {lanes_0_slots_0_body,{lanes_0_slots_0_head_last,{lanes_0_slots_0_head_total,{lanes_0_slots_0_head_seq,{lanes_0_slots_0_head_tag_dim,{lanes_0_slots_0_head_tag_precision,{lanes_0_slots_0_head_tag_lnid,{lanes_0_slots_0_head_tag_thread,lanes_0_slots_0_head_tag_wave}}}}}}}} : 161'h0);
   assign merge_contribs_1 = (select_drive[1] ? {lanes_1_slots_0_body,{lanes_1_slots_0_head_last,{lanes_1_slots_0_head_total,{lanes_1_slots_0_head_seq,{lanes_1_slots_0_head_tag_dim,{lanes_1_slots_0_head_tag_precision,{lanes_1_slots_0_head_tag_lnid,{lanes_1_slots_0_head_tag_thread,lanes_1_slots_0_head_tag_wave}}}}}}}} : 161'h0);
@@ -3877,6 +4050,7 @@ module FabricMerge (
   assign lanes_3_doPop = (select_drive[3] && io_consumer_fire);
   assign shoveAny = (((lanes_0_shove || lanes_1_shove) || lanes_2_shove) || lanes_3_shove);
   assign io_fault = _zz_io_fault;
+  assign io_occupancy = (_zz_io_occupancy + _zz_io_occupancy_5);
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       lanes_0_cnt <= 1'b0;
@@ -3888,35 +4062,35 @@ module FabricMerge (
       select_lockedOh <= 4'b0000;
       _zz_io_fault <= 1'b0;
     end else begin
-      if(when_FabricMerge_l133) begin
+      if(when_FabricMerge_l143) begin
         lanes_0_cnt <= (lanes_0_cnt + 1'b1);
       end else begin
-        if(when_FabricMerge_l134) begin
+        if(when_FabricMerge_l144) begin
           lanes_0_cnt <= (lanes_0_cnt - 1'b1);
         end
       end
-      if(when_FabricMerge_l133_1) begin
+      if(when_FabricMerge_l143_1) begin
         lanes_1_cnt <= (lanes_1_cnt + 1'b1);
       end else begin
-        if(when_FabricMerge_l134_1) begin
+        if(when_FabricMerge_l144_1) begin
           lanes_1_cnt <= (lanes_1_cnt - 1'b1);
         end
       end
-      if(when_FabricMerge_l133_2) begin
+      if(when_FabricMerge_l143_2) begin
         lanes_2_cnt <= (lanes_2_cnt + 1'b1);
       end else begin
-        if(when_FabricMerge_l134_2) begin
+        if(when_FabricMerge_l144_2) begin
           lanes_2_cnt <= (lanes_2_cnt - 1'b1);
         end
       end
-      if(when_FabricMerge_l133_3) begin
+      if(when_FabricMerge_l143_3) begin
         lanes_3_cnt <= (lanes_3_cnt + 1'b1);
       end else begin
-        if(when_FabricMerge_l134_3) begin
+        if(when_FabricMerge_l144_3) begin
           lanes_3_cnt <= (lanes_3_cnt - 1'b1);
         end
       end
-      if(when_FabricMerge_l170) begin
+      if(when_FabricMerge_l180) begin
         select_locked <= 1'b1;
         select_lockedOh <= select_selOh;
       end else begin
@@ -3936,7 +4110,7 @@ module FabricMerge (
 
   always @(posedge clk) begin
     if(lanes_0_doPush) begin
-      if(when_FabricMerge_l128) begin
+      if(when_FabricMerge_l138) begin
         lanes_0_slots_0_head_tag_wave <= io_push_0_result_head_tag_wave;
         lanes_0_slots_0_head_tag_thread <= io_push_0_result_head_tag_thread;
         lanes_0_slots_0_head_tag_lnid <= io_push_0_result_head_tag_lnid;
@@ -3949,7 +4123,7 @@ module FabricMerge (
       end
     end
     if(lanes_1_doPush) begin
-      if(when_FabricMerge_l128_1) begin
+      if(when_FabricMerge_l138_1) begin
         lanes_1_slots_0_head_tag_wave <= io_push_1_result_head_tag_wave;
         lanes_1_slots_0_head_tag_thread <= io_push_1_result_head_tag_thread;
         lanes_1_slots_0_head_tag_lnid <= io_push_1_result_head_tag_lnid;
@@ -3962,7 +4136,7 @@ module FabricMerge (
       end
     end
     if(lanes_2_doPush) begin
-      if(when_FabricMerge_l128_2) begin
+      if(when_FabricMerge_l138_2) begin
         lanes_2_slots_0_head_tag_wave <= io_push_2_result_head_tag_wave;
         lanes_2_slots_0_head_tag_thread <= io_push_2_result_head_tag_thread;
         lanes_2_slots_0_head_tag_lnid <= io_push_2_result_head_tag_lnid;
@@ -3975,7 +4149,7 @@ module FabricMerge (
       end
     end
     if(lanes_3_doPush) begin
-      if(when_FabricMerge_l128_3) begin
+      if(when_FabricMerge_l138_3) begin
         lanes_3_slots_0_head_tag_wave <= io_push_3_result_head_tag_wave;
         lanes_3_slots_0_head_tag_thread <= io_push_3_result_head_tag_thread;
         lanes_3_slots_0_head_tag_lnid <= io_push_3_result_head_tag_lnid;
@@ -5089,6 +5263,11 @@ module HiuPipeline (
   input  wire          io_hold,
   output reg  [31:0]   io_owner_frame,
   input  wire          io_owner_devOwned,
+  output wire          io_mask_req_valid,
+  output wire [1:0]    io_mask_req_part,
+  output wire [31:0]   io_mask_req_frame,
+  input  wire          io_mask_rsp_valid,
+  input  wire [31:0]   io_mask_rsp_frame,
   input  wire          io_install_valid,
   output wire          io_install_ready,
   input  wire [1:0]    io_install_part,
@@ -5114,6 +5293,7 @@ module HiuPipeline (
   output reg           io_rsp_perm_r,
   output reg           io_rsp_perm_w,
   output reg           io_rsp_perm_x,
+  output wire [2:0]    io_occupancy,
   output wire          io_faultPerm,
   input  wire          io_faultClear,
   output wire          io_missNotice,
@@ -5134,6 +5314,22 @@ module HiuPipeline (
   wire                xlate_io_rsp_hostPerm_w;
   wire                xlate_io_rsp_hostPerm_x;
   wire                xlate_io_install_ready;
+  wire       [2:0]    _zz_io_occupancy;
+  wire       [2:0]    _zz_io_occupancy_1;
+  wire       [2:0]    _zz_io_occupancy_2;
+  wire       [2:0]    _zz_io_occupancy_3;
+  wire       [2:0]    _zz_io_occupancy_4;
+  wire       [0:0]    _zz_io_occupancy_5;
+  wire       [2:0]    _zz_io_occupancy_6;
+  wire       [0:0]    _zz_io_occupancy_7;
+  wire       [2:0]    _zz_io_occupancy_8;
+  wire       [0:0]    _zz_io_occupancy_9;
+  wire       [2:0]    _zz_io_occupancy_10;
+  wire       [0:0]    _zz_io_occupancy_11;
+  wire       [2:0]    _zz_io_occupancy_12;
+  wire       [0:0]    _zz_io_occupancy_13;
+  wire       [2:0]    _zz_io_occupancy_14;
+  wire       [0:0]    _zz_io_occupancy_15;
   reg                 s1_valid;
   reg        [1:0]    s1_part;
   reg        [31:0]   s1_vpn;
@@ -5146,62 +5342,64 @@ module HiuPipeline (
   reg        [1:0]    s3_part;
   reg        [31:0]   s3_vpn;
   reg                 s3_write;
-  reg                 s4_valid;
+  reg        [31:0]   lookFrame;
+  reg                 lookPerm_r;
+  reg                 lookPerm_w;
+  reg                 lookPerm_x;
+  wire                lookAny;
   reg        [1:0]    s4_part;
   reg                 s4_write;
-  reg                 s4_hit;
+  reg                 s4_anyHit;
   reg                 s4_fromFill;
   reg        [31:0]   s4_frame;
   reg                 s4_perm_r;
   reg                 s4_perm_w;
   reg                 s4_perm_x;
-  reg                 s4_hostP;
-  reg        [31:0]   s4_hostFrame;
-  reg                 s4_hostPerm_r;
-  reg                 s4_hostPerm_w;
-  reg                 s4_hostPerm_x;
   reg                 s5_valid;
   reg        [1:0]    s5_part;
   reg                 s5_write;
-  reg                 s5_hit;
+  reg                 s5_anyHit;
   reg                 s5_fromFill;
   reg        [31:0]   s5_frame;
+  reg        [31:0]   s5_masked;
   reg                 s5_perm_r;
   reg                 s5_perm_w;
   reg                 s5_perm_x;
-  reg                 s5_hostP;
-  reg        [31:0]   s5_hostFrame;
-  reg                 s5_hostPerm_r;
-  reg                 s5_hostPerm_w;
-  reg                 s5_hostPerm_x;
   reg                 s6_valid;
   reg        [1:0]    s6_part;
   reg                 s6_write;
-  reg                 s6_hit;
+  reg                 s6_anyHit;
   reg                 s6_fromFill;
   reg        [31:0]   s6_frame;
+  reg        [31:0]   s6_masked;
   reg                 s6_perm_r;
   reg                 s6_perm_w;
   reg                 s6_perm_x;
-  reg                 s6_hostP;
-  reg        [31:0]   s6_hostFrame;
-  reg                 s6_hostPerm_r;
-  reg                 s6_hostPerm_w;
-  reg                 s6_hostPerm_x;
   wire                missWait;
   wire                advance;
-  reg        [31:0]   selFrame;
-  reg                 selPerm_r;
-  reg                 selPerm_w;
-  reg                 selPerm_x;
-  wire                anyHit;
-  wire                when_HiuPipeline_l306;
+  wire                when_HiuPipeline_l391;
   wire                entitle;
   wire                granted;
   wire                permViol;
   reg                 _zz_io_faultPerm;
   reg                 _zz_io_missNotice;
 
+  assign _zz_io_occupancy = (_zz_io_occupancy_1 + _zz_io_occupancy_12);
+  assign _zz_io_occupancy_1 = (_zz_io_occupancy_2 + _zz_io_occupancy_10);
+  assign _zz_io_occupancy_2 = (_zz_io_occupancy_3 + _zz_io_occupancy_8);
+  assign _zz_io_occupancy_3 = (_zz_io_occupancy_4 + _zz_io_occupancy_6);
+  assign _zz_io_occupancy_5 = s1_valid;
+  assign _zz_io_occupancy_4 = {2'd0, _zz_io_occupancy_5};
+  assign _zz_io_occupancy_7 = s2_valid;
+  assign _zz_io_occupancy_6 = {2'd0, _zz_io_occupancy_7};
+  assign _zz_io_occupancy_9 = s3_valid;
+  assign _zz_io_occupancy_8 = {2'd0, _zz_io_occupancy_9};
+  assign _zz_io_occupancy_11 = io_mask_rsp_valid;
+  assign _zz_io_occupancy_10 = {2'd0, _zz_io_occupancy_11};
+  assign _zz_io_occupancy_13 = s5_valid;
+  assign _zz_io_occupancy_12 = {2'd0, _zz_io_occupancy_13};
+  assign _zz_io_occupancy_15 = s6_valid;
+  assign _zz_io_occupancy_14 = {2'd0, _zz_io_occupancy_15};
   XlateStore xlate (
     .io_lookup_valid    (s3_valid                    ), //i
     .io_lookup_part     (s3_part[1:0]                ), //i
@@ -5237,65 +5435,68 @@ module HiuPipeline (
     .reset              (reset                       )  //i
   );
   assign io_install_ready = xlate_io_install_ready;
+  always @(*) begin
+    lookFrame = 32'h0;
+    if(xlate_io_rsp_hit) begin
+      lookFrame = xlate_io_rsp_frame;
+    end else begin
+      if(xlate_io_rsp_hostPresent) begin
+        lookFrame = xlate_io_rsp_hostFrame;
+      end
+    end
+  end
+
+  always @(*) begin
+    lookPerm_r = 1'b0;
+    if(xlate_io_rsp_hit) begin
+      lookPerm_r = xlate_io_rsp_perm_r;
+    end else begin
+      if(xlate_io_rsp_hostPresent) begin
+        lookPerm_r = xlate_io_rsp_hostPerm_r;
+      end
+    end
+  end
+
+  always @(*) begin
+    lookPerm_w = 1'b0;
+    if(xlate_io_rsp_hit) begin
+      lookPerm_w = xlate_io_rsp_perm_w;
+    end else begin
+      if(xlate_io_rsp_hostPresent) begin
+        lookPerm_w = xlate_io_rsp_hostPerm_w;
+      end
+    end
+  end
+
+  always @(*) begin
+    lookPerm_x = 1'b0;
+    if(xlate_io_rsp_hit) begin
+      lookPerm_x = xlate_io_rsp_perm_x;
+    end else begin
+      if(xlate_io_rsp_hostPresent) begin
+        lookPerm_x = xlate_io_rsp_hostPerm_x;
+      end
+    end
+  end
+
+  assign lookAny = (xlate_io_rsp_hit || xlate_io_rsp_hostPresent);
+  assign io_mask_req_valid = s3_valid;
+  assign io_mask_req_part = s3_part;
+  assign io_mask_req_frame = lookFrame;
   assign missWait = ((s3_valid && (! xlate_io_rsp_hit)) && (! xlate_io_rsp_hostPresent));
   assign advance = ((! io_hold) && (! missWait));
   assign io_req_ready = advance;
   always @(*) begin
-    selFrame = 32'h0;
-    if(s6_hit) begin
-      selFrame = s6_frame;
-    end else begin
-      if(s6_hostP) begin
-        selFrame = s6_hostFrame;
-      end
-    end
-  end
-
-  always @(*) begin
-    selPerm_r = 1'b0;
-    if(s6_hit) begin
-      selPerm_r = s6_perm_r;
-    end else begin
-      if(s6_hostP) begin
-        selPerm_r = s6_hostPerm_r;
-      end
-    end
-  end
-
-  always @(*) begin
-    selPerm_w = 1'b0;
-    if(s6_hit) begin
-      selPerm_w = s6_perm_w;
-    end else begin
-      if(s6_hostP) begin
-        selPerm_w = s6_hostPerm_w;
-      end
-    end
-  end
-
-  always @(*) begin
-    selPerm_x = 1'b0;
-    if(s6_hit) begin
-      selPerm_x = s6_perm_x;
-    end else begin
-      if(s6_hostP) begin
-        selPerm_x = s6_hostPerm_x;
-      end
-    end
-  end
-
-  assign anyHit = (s6_hit || s6_hostP);
-  always @(*) begin
     io_owner_frame = 32'h0;
-    if(when_HiuPipeline_l306) begin
-      io_owner_frame = selFrame;
+    if(when_HiuPipeline_l391) begin
+      io_owner_frame = s6_frame;
     end
   end
 
-  assign when_HiuPipeline_l306 = (s6_valid && anyHit);
-  assign entitle = (s6_write ? selPerm_w : selPerm_r);
-  assign granted = (((s6_valid && anyHit) && io_owner_devOwned) && entitle);
-  assign permViol = ((s6_valid && anyHit) && (! (io_owner_devOwned && entitle)));
+  assign when_HiuPipeline_l391 = (s6_valid && s6_anyHit);
+  assign entitle = (s6_write ? s6_perm_w : s6_perm_r);
+  assign granted = (((s6_valid && s6_anyHit) && io_owner_devOwned) && entitle);
+  assign permViol = ((s6_valid && s6_anyHit) && (! (io_owner_devOwned && entitle)));
   assign io_rsp_valid = (s6_valid && advance);
   assign io_rsp_granted = granted;
   assign io_rsp_part = s6_part;
@@ -5304,31 +5505,32 @@ module HiuPipeline (
   always @(*) begin
     io_rsp_frame = 32'h0;
     if(granted) begin
-      io_rsp_frame = selFrame;
+      io_rsp_frame = s6_masked;
     end
   end
 
   always @(*) begin
     io_rsp_perm_r = 1'b0;
     if(granted) begin
-      io_rsp_perm_r = selPerm_r;
+      io_rsp_perm_r = s6_perm_r;
     end
   end
 
   always @(*) begin
     io_rsp_perm_w = 1'b0;
     if(granted) begin
-      io_rsp_perm_w = selPerm_w;
+      io_rsp_perm_w = s6_perm_w;
     end
   end
 
   always @(*) begin
     io_rsp_perm_x = 1'b0;
     if(granted) begin
-      io_rsp_perm_x = selPerm_x;
+      io_rsp_perm_x = s6_perm_x;
     end
   end
 
+  assign io_occupancy = (_zz_io_occupancy + _zz_io_occupancy_14);
   assign io_faultPerm = _zz_io_faultPerm;
   assign io_missNotice = _zz_io_missNotice;
   always @(posedge clk or posedge reset) begin
@@ -5336,7 +5538,6 @@ module HiuPipeline (
       s1_valid <= 1'b0;
       s2_valid <= 1'b0;
       s3_valid <= 1'b0;
-      s4_valid <= 1'b0;
       s5_valid <= 1'b0;
       s6_valid <= 1'b0;
       _zz_io_faultPerm <= 1'b0;
@@ -5346,8 +5547,7 @@ module HiuPipeline (
         s1_valid <= io_req_valid;
         s2_valid <= s1_valid;
         s3_valid <= s2_valid;
-        s4_valid <= s3_valid;
-        s5_valid <= s4_valid;
+        s5_valid <= io_mask_rsp_valid;
         s6_valid <= s5_valid;
       end
       if(io_faultClear) begin
@@ -5378,43 +5578,30 @@ module HiuPipeline (
       s3_write <= s2_write;
       s4_part <= s3_part;
       s4_write <= s3_write;
-      s4_hit <= xlate_io_rsp_hit;
+      s4_anyHit <= lookAny;
       s4_fromFill <= xlate_io_rsp_fromFill;
-      s4_frame <= xlate_io_rsp_frame;
-      s4_perm_r <= xlate_io_rsp_perm_r;
-      s4_perm_w <= xlate_io_rsp_perm_w;
-      s4_perm_x <= xlate_io_rsp_perm_x;
-      s4_hostP <= xlate_io_rsp_hostPresent;
-      s4_hostFrame <= xlate_io_rsp_hostFrame;
-      s4_hostPerm_r <= xlate_io_rsp_hostPerm_r;
-      s4_hostPerm_w <= xlate_io_rsp_hostPerm_w;
-      s4_hostPerm_x <= xlate_io_rsp_hostPerm_x;
+      s4_frame <= lookFrame;
+      s4_perm_r <= lookPerm_r;
+      s4_perm_w <= lookPerm_w;
+      s4_perm_x <= lookPerm_x;
       s5_part <= s4_part;
       s5_write <= s4_write;
-      s5_hit <= s4_hit;
+      s5_anyHit <= s4_anyHit;
       s5_fromFill <= s4_fromFill;
       s5_frame <= s4_frame;
+      s5_masked <= io_mask_rsp_frame;
       s5_perm_r <= s4_perm_r;
       s5_perm_w <= s4_perm_w;
       s5_perm_x <= s4_perm_x;
-      s5_hostP <= s4_hostP;
-      s5_hostFrame <= s4_hostFrame;
-      s5_hostPerm_r <= s4_hostPerm_r;
-      s5_hostPerm_w <= s4_hostPerm_w;
-      s5_hostPerm_x <= s4_hostPerm_x;
       s6_part <= s5_part;
       s6_write <= s5_write;
-      s6_hit <= s5_hit;
+      s6_anyHit <= s5_anyHit;
       s6_fromFill <= s5_fromFill;
       s6_frame <= s5_frame;
+      s6_masked <= s5_masked;
       s6_perm_r <= s5_perm_r;
       s6_perm_w <= s5_perm_w;
       s6_perm_x <= s5_perm_x;
-      s6_hostP <= s5_hostP;
-      s6_hostFrame <= s5_hostFrame;
-      s6_hostPerm_r <= s5_hostPerm_r;
-      s6_hostPerm_w <= s5_hostPerm_w;
-      s6_hostPerm_x <= s5_hostPerm_x;
     end
   end
 
@@ -5454,18 +5641,24 @@ module MemOrderGate (
   input  wire [3:0]    io_complete,
   output wire [3:0]    io_token,
   output reg  [3:0]    io_gateOpen,
+  output wire [2:0]    io_occupancy,
   input  wire          clk,
   input  wire          reset
 );
 
+  reg        [2:0]    _zz_io_occupancy_8;
+  wire       [2:0]    _zz_io_occupancy_9;
+  reg        [2:0]    _zz_io_occupancy_10;
+  wire       [2:0]    _zz_io_occupancy_11;
+  wire       [0:0]    _zz_io_occupancy_12;
   reg                 token_0;
   reg                 token_1;
   reg                 token_2;
   reg                 token_3;
-  wire                when_MemOrderGate_l143;
-  wire                when_MemOrderGate_l143_1;
-  wire                when_MemOrderGate_l143_2;
-  wire                when_MemOrderGate_l143_3;
+  wire                when_MemOrderGate_l155;
+  wire                when_MemOrderGate_l155_1;
+  wire                when_MemOrderGate_l155_2;
+  wire                when_MemOrderGate_l155_3;
   wire                gates_0_waitVec_0;
   wire                gates_0_waitVec_1;
   wire                gates_0_waitVec_2;
@@ -5482,11 +5675,52 @@ module MemOrderGate (
   wire                gates_3_waitVec_1;
   wire                gates_3_waitVec_2;
   wire                gates_3_open;
+  wire                referenced_0;
+  wire                referenced_1;
+  wire                referenced_2;
+  wire                referenced_3;
+  wire       [2:0]    _zz_io_occupancy;
+  wire       [2:0]    _zz_io_occupancy_1;
+  wire       [2:0]    _zz_io_occupancy_2;
+  wire       [2:0]    _zz_io_occupancy_3;
+  wire       [2:0]    _zz_io_occupancy_4;
+  wire       [2:0]    _zz_io_occupancy_5;
+  wire       [2:0]    _zz_io_occupancy_6;
+  wire       [2:0]    _zz_io_occupancy_7;
 
-  assign when_MemOrderGate_l143 = io_complete[0];
-  assign when_MemOrderGate_l143_1 = io_complete[1];
-  assign when_MemOrderGate_l143_2 = io_complete[2];
-  assign when_MemOrderGate_l143_3 = io_complete[3];
+  assign _zz_io_occupancy_12 = (referenced_3 && (! token_3));
+  assign _zz_io_occupancy_11 = {2'd0, _zz_io_occupancy_12};
+  assign _zz_io_occupancy_9 = {(referenced_2 && (! token_2)),{(referenced_1 && (! token_1)),(referenced_0 && (! token_0))}};
+  always @(*) begin
+    case(_zz_io_occupancy_9)
+      3'b000 : _zz_io_occupancy_8 = _zz_io_occupancy;
+      3'b001 : _zz_io_occupancy_8 = _zz_io_occupancy_1;
+      3'b010 : _zz_io_occupancy_8 = _zz_io_occupancy_2;
+      3'b011 : _zz_io_occupancy_8 = _zz_io_occupancy_3;
+      3'b100 : _zz_io_occupancy_8 = _zz_io_occupancy_4;
+      3'b101 : _zz_io_occupancy_8 = _zz_io_occupancy_5;
+      3'b110 : _zz_io_occupancy_8 = _zz_io_occupancy_6;
+      default : _zz_io_occupancy_8 = _zz_io_occupancy_7;
+    endcase
+  end
+
+  always @(*) begin
+    case(_zz_io_occupancy_11)
+      3'b000 : _zz_io_occupancy_10 = _zz_io_occupancy;
+      3'b001 : _zz_io_occupancy_10 = _zz_io_occupancy_1;
+      3'b010 : _zz_io_occupancy_10 = _zz_io_occupancy_2;
+      3'b011 : _zz_io_occupancy_10 = _zz_io_occupancy_3;
+      3'b100 : _zz_io_occupancy_10 = _zz_io_occupancy_4;
+      3'b101 : _zz_io_occupancy_10 = _zz_io_occupancy_5;
+      3'b110 : _zz_io_occupancy_10 = _zz_io_occupancy_6;
+      default : _zz_io_occupancy_10 = _zz_io_occupancy_7;
+    endcase
+  end
+
+  assign when_MemOrderGate_l155 = io_complete[0];
+  assign when_MemOrderGate_l155_1 = io_complete[1];
+  assign when_MemOrderGate_l155_2 = io_complete[2];
+  assign when_MemOrderGate_l155_3 = io_complete[3];
   assign io_token = {token_3,{token_2,{token_1,token_0}}};
   assign gates_0_waitVec_0 = (io_cfgPreds_0[0] && (! token_1));
   assign gates_0_waitVec_1 = (io_cfgPreds_0[1] && (! token_2));
@@ -5523,6 +5757,19 @@ module MemOrderGate (
   assign io_down_3_valid = (io_up_3_valid && gates_3_open);
   assign io_down_3_payload = io_up_3_payload;
   assign io_up_3_ready = (gates_3_open && io_down_3_ready);
+  assign referenced_0 = ((io_cfgPreds_1[0] || io_cfgPreds_2[0]) || io_cfgPreds_3[0]);
+  assign referenced_1 = ((io_cfgPreds_0[0] || io_cfgPreds_2[1]) || io_cfgPreds_3[1]);
+  assign referenced_2 = ((io_cfgPreds_0[1] || io_cfgPreds_1[1]) || io_cfgPreds_3[2]);
+  assign referenced_3 = ((io_cfgPreds_0[2] || io_cfgPreds_1[2]) || io_cfgPreds_2[2]);
+  assign _zz_io_occupancy = 3'b000;
+  assign _zz_io_occupancy_1 = 3'b001;
+  assign _zz_io_occupancy_2 = 3'b001;
+  assign _zz_io_occupancy_3 = 3'b010;
+  assign _zz_io_occupancy_4 = 3'b001;
+  assign _zz_io_occupancy_5 = 3'b010;
+  assign _zz_io_occupancy_6 = 3'b010;
+  assign _zz_io_occupancy_7 = 3'b011;
+  assign io_occupancy = (_zz_io_occupancy_8 + _zz_io_occupancy_10);
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       token_0 <= 1'b0;
@@ -5533,25 +5780,25 @@ module MemOrderGate (
       if(io_epochClear) begin
         token_0 <= 1'b0;
       end
-      if(when_MemOrderGate_l143) begin
+      if(when_MemOrderGate_l155) begin
         token_0 <= 1'b1;
       end
       if(io_epochClear) begin
         token_1 <= 1'b0;
       end
-      if(when_MemOrderGate_l143_1) begin
+      if(when_MemOrderGate_l155_1) begin
         token_1 <= 1'b1;
       end
       if(io_epochClear) begin
         token_2 <= 1'b0;
       end
-      if(when_MemOrderGate_l143_2) begin
+      if(when_MemOrderGate_l155_2) begin
         token_2 <= 1'b1;
       end
       if(io_epochClear) begin
         token_3 <= 1'b0;
       end
-      if(when_MemOrderGate_l143_3) begin
+      if(when_MemOrderGate_l155_3) begin
         token_3 <= 1'b1;
       end
     end
@@ -5593,6 +5840,7 @@ module Reassembly (
   output wire [7:0]    io_deliver_payload_base,
   output wire [7:0]    io_deliver_payload_total,
   output wire [2:0]    io_incomplete,
+  output wire [2:0]    io_occupancy,
   input  wire          io_abort_valid,
   input  wire [31:0]   io_abort_tag_wave,
   input  wire [15:0]   io_abort_tag_thread,
@@ -5649,6 +5897,11 @@ module Reassembly (
   reg        [2:0]    _zz_io_incomplete_10;
   wire       [2:0]    _zz_io_incomplete_11;
   wire       [0:0]    _zz_io_incomplete_12;
+  reg        [2:0]    _zz_io_occupancy_8;
+  wire       [2:0]    _zz_io_occupancy_9;
+  reg        [2:0]    _zz_io_occupancy_10;
+  wire       [2:0]    _zz_io_occupancy_11;
+  wire       [0:0]    _zz_io_occupancy_12;
   reg                 ctx_0_active;
   reg        [31:0]   ctx_0_tag_wave;
   reg        [15:0]   ctx_0_tag_thread;
@@ -5733,10 +5986,10 @@ module Reassembly (
   wire                fr_accept;
   wire       [15:0]   fr_newSeen;
   wire                fr_endBad;
-  wire                when_Reassembly_l297;
-  wire                when_Reassembly_l297_1;
-  wire                when_Reassembly_l297_2;
-  wire                when_Reassembly_l297_3;
+  wire                when_Reassembly_l306;
+  wire                when_Reassembly_l306_1;
+  wire                when_Reassembly_l306_2;
+  wire                when_Reassembly_l306_3;
   wire                fr_rejEvt;
   wire                fr_endEvt;
   wire                fr_capaEvt;
@@ -5749,10 +6002,10 @@ module Reassembly (
   wire       [3:0]    _zz_op_freeOh;
   wire       [3:0]    op_freeOh;
   wire                op_grant;
-  wire                when_Reassembly_l330;
-  wire                when_Reassembly_l330_1;
-  wire                when_Reassembly_l330_2;
-  wire                when_Reassembly_l330_3;
+  wire                when_Reassembly_l339;
+  wire                when_Reassembly_l339_1;
+  wire                when_Reassembly_l339_2;
+  wire                when_Reassembly_l339_3;
   wire                op_clashEvt;
   wire                dv_done_0;
   wire                dv_done_1;
@@ -5766,22 +6019,22 @@ module Reassembly (
   wire                _zz_io_deliver_payload_tag_wave_2;
   wire       [1:0]    _zz_io_deliver_payload_tag_wave_3;
   wire                io_deliver_fire;
-  wire                when_Reassembly_l369;
-  wire                when_Reassembly_l369_1;
-  wire                when_Reassembly_l369_2;
-  wire                when_Reassembly_l369_3;
+  wire                when_Reassembly_l378;
+  wire                when_Reassembly_l378_1;
+  wire                when_Reassembly_l378_2;
+  wire                when_Reassembly_l378_3;
   wire                ab_hit_0;
   wire                ab_hit_1;
   wire                ab_hit_2;
   wire                ab_hit_3;
   wire                ab_hitAny;
   wire                ab_fire;
-  wire                when_Reassembly_l401;
-  wire                when_Reassembly_l401_1;
-  wire                when_Reassembly_l401_2;
-  wire                when_Reassembly_l401_3;
+  wire                when_Reassembly_l410;
+  wire                when_Reassembly_l410_1;
+  wire                when_Reassembly_l410_2;
+  wire                when_Reassembly_l410_3;
   reg        [7:0]    ab_cnt;
-  wire                when_Reassembly_l412;
+  wire                when_Reassembly_l421;
   wire       [2:0]    _zz_io_incomplete;
   wire       [2:0]    _zz_io_incomplete_1;
   wire       [2:0]    _zz_io_incomplete_2;
@@ -5790,6 +6043,14 @@ module Reassembly (
   wire       [2:0]    _zz_io_incomplete_5;
   wire       [2:0]    _zz_io_incomplete_6;
   wire       [2:0]    _zz_io_incomplete_7;
+  wire       [2:0]    _zz_io_occupancy;
+  wire       [2:0]    _zz_io_occupancy_1;
+  wire       [2:0]    _zz_io_occupancy_2;
+  wire       [2:0]    _zz_io_occupancy_3;
+  wire       [2:0]    _zz_io_occupancy_4;
+  wire       [2:0]    _zz_io_occupancy_5;
+  wire       [2:0]    _zz_io_occupancy_6;
+  wire       [2:0]    _zz_io_occupancy_7;
   wire                when_Common_l141;
   reg                 _zz_io_fault;
   reg                 capBit;
@@ -5804,7 +6065,10 @@ module Reassembly (
   assign _zz_dv_grantOh_1 = (_zz_dv_grantOh - 4'b0001);
   assign _zz_io_incomplete_12 = (ctx_3_active && (! ctx_3_last));
   assign _zz_io_incomplete_11 = {2'd0, _zz_io_incomplete_12};
+  assign _zz_io_occupancy_12 = ctx_3_active;
+  assign _zz_io_occupancy_11 = {2'd0, _zz_io_occupancy_12};
   assign _zz_io_incomplete_9 = {(ctx_2_active && (! ctx_2_last)),{(ctx_1_active && (! ctx_1_last)),(ctx_0_active && (! ctx_0_last))}};
+  assign _zz_io_occupancy_9 = {ctx_2_active,{ctx_1_active,ctx_0_active}};
   assign _zz_op_clash = (((_zz_op_clash_1 && _zz_op_clash_2) && (ctx_0_tag_lnid == io_open_tag_lnid)) && (ctx_0_tag_precision == io_open_tag_precision));
   assign _zz_op_clash_3 = (ctx_0_tag_dim == io_open_tag_dim);
   assign _zz_op_clash_4 = (((_zz_op_clash_5 && _zz_op_clash_6) && (ctx_1_tag_lnid == io_open_tag_lnid)) && (ctx_1_tag_precision == io_open_tag_precision));
@@ -6023,6 +6287,32 @@ module Reassembly (
     endcase
   end
 
+  always @(*) begin
+    case(_zz_io_occupancy_9)
+      3'b000 : _zz_io_occupancy_8 = _zz_io_occupancy;
+      3'b001 : _zz_io_occupancy_8 = _zz_io_occupancy_1;
+      3'b010 : _zz_io_occupancy_8 = _zz_io_occupancy_2;
+      3'b011 : _zz_io_occupancy_8 = _zz_io_occupancy_3;
+      3'b100 : _zz_io_occupancy_8 = _zz_io_occupancy_4;
+      3'b101 : _zz_io_occupancy_8 = _zz_io_occupancy_5;
+      3'b110 : _zz_io_occupancy_8 = _zz_io_occupancy_6;
+      default : _zz_io_occupancy_8 = _zz_io_occupancy_7;
+    endcase
+  end
+
+  always @(*) begin
+    case(_zz_io_occupancy_11)
+      3'b000 : _zz_io_occupancy_10 = _zz_io_occupancy;
+      3'b001 : _zz_io_occupancy_10 = _zz_io_occupancy_1;
+      3'b010 : _zz_io_occupancy_10 = _zz_io_occupancy_2;
+      3'b011 : _zz_io_occupancy_10 = _zz_io_occupancy_3;
+      3'b100 : _zz_io_occupancy_10 = _zz_io_occupancy_4;
+      3'b101 : _zz_io_occupancy_10 = _zz_io_occupancy_5;
+      3'b110 : _zz_io_occupancy_10 = _zz_io_occupancy_6;
+      default : _zz_io_occupancy_10 = _zz_io_occupancy_7;
+    endcase
+  end
+
   assign fullMask_0 = 16'h0;
   assign fullMask_1 = 16'h0001;
   assign fullMask_2 = 16'h0003;
@@ -6063,10 +6353,10 @@ module Reassembly (
   assign fr_accept = (((((io_frag_valid && fr_hitAny) && (! fr_capaRej)) && (! fr_totBad)) && (! fr_overRej)) && (! fr_dupRej));
   assign fr_newSeen = (fr_cSeen | fr_ohSeq);
   assign fr_endBad = (io_frag_head_last && (fr_newSeen != _zz_fr_endBad));
-  assign when_Reassembly_l297 = (fr_accept && fr_hit_0);
-  assign when_Reassembly_l297_1 = (fr_accept && fr_hit_1);
-  assign when_Reassembly_l297_2 = (fr_accept && fr_hit_2);
-  assign when_Reassembly_l297_3 = (fr_accept && fr_hit_3);
+  assign when_Reassembly_l306 = (fr_accept && fr_hit_0);
+  assign when_Reassembly_l306_1 = (fr_accept && fr_hit_1);
+  assign when_Reassembly_l306_2 = (fr_accept && fr_hit_2);
+  assign when_Reassembly_l306_3 = (fr_accept && fr_hit_3);
   assign fr_rejEvt = (io_frag_valid && (((fr_strayRej || fr_totBad) || fr_overRej) || fr_dupRej));
   assign fr_endEvt = (fr_accept && fr_endBad);
   assign fr_capaEvt = (io_frag_valid && fr_capaRej);
@@ -6084,10 +6374,10 @@ module Reassembly (
   assign op_freeOh = (_zz_op_freeOh & (~ _zz_op_freeOh_1));
   assign op_grant = ((io_open_valid && (! op_clash)) && op_freeAny);
   assign io_open_granted = op_grant;
-  assign when_Reassembly_l330 = (op_grant && op_freeOh[0]);
-  assign when_Reassembly_l330_1 = (op_grant && op_freeOh[1]);
-  assign when_Reassembly_l330_2 = (op_grant && op_freeOh[2]);
-  assign when_Reassembly_l330_3 = (op_grant && op_freeOh[3]);
+  assign when_Reassembly_l339 = (op_grant && op_freeOh[0]);
+  assign when_Reassembly_l339_1 = (op_grant && op_freeOh[1]);
+  assign when_Reassembly_l339_2 = (op_grant && op_freeOh[2]);
+  assign when_Reassembly_l339_3 = (op_grant && op_freeOh[3]);
   assign op_clashEvt = (io_open_valid && op_clash);
   assign dv_done_0 = (((ctx_0_active && ctx_0_last) && ctx_0_totalKnown) && (ctx_0_seen == _zz_dv_done_0));
   assign dv_done_1 = (((ctx_1_active && ctx_1_last) && ctx_1_totalKnown) && (ctx_1_seen == _zz_dv_done_1));
@@ -6109,21 +6399,21 @@ module Reassembly (
   assign io_deliver_payload_base = _zz_io_deliver_payload_base;
   assign io_deliver_payload_total = _zz_io_deliver_payload_total;
   assign io_deliver_fire = (io_deliver_valid && io_deliver_ready);
-  assign when_Reassembly_l369 = (io_deliver_fire && dv_grantOh[0]);
-  assign when_Reassembly_l369_1 = (io_deliver_fire && dv_grantOh[1]);
-  assign when_Reassembly_l369_2 = (io_deliver_fire && dv_grantOh[2]);
-  assign when_Reassembly_l369_3 = (io_deliver_fire && dv_grantOh[3]);
+  assign when_Reassembly_l378 = (io_deliver_fire && dv_grantOh[0]);
+  assign when_Reassembly_l378_1 = (io_deliver_fire && dv_grantOh[1]);
+  assign when_Reassembly_l378_2 = (io_deliver_fire && dv_grantOh[2]);
+  assign when_Reassembly_l378_3 = (io_deliver_fire && dv_grantOh[3]);
   assign ab_hit_0 = (ctx_0_active && (((((ctx_0_tag_wave == io_abort_tag_wave) && (ctx_0_tag_thread == io_abort_tag_thread)) && (ctx_0_tag_lnid == io_abort_tag_lnid)) && (ctx_0_tag_precision == io_abort_tag_precision)) && (ctx_0_tag_dim == io_abort_tag_dim)));
   assign ab_hit_1 = (ctx_1_active && (((((ctx_1_tag_wave == io_abort_tag_wave) && (ctx_1_tag_thread == io_abort_tag_thread)) && (ctx_1_tag_lnid == io_abort_tag_lnid)) && (ctx_1_tag_precision == io_abort_tag_precision)) && (ctx_1_tag_dim == io_abort_tag_dim)));
   assign ab_hit_2 = (ctx_2_active && (((((ctx_2_tag_wave == io_abort_tag_wave) && (ctx_2_tag_thread == io_abort_tag_thread)) && (ctx_2_tag_lnid == io_abort_tag_lnid)) && (ctx_2_tag_precision == io_abort_tag_precision)) && (ctx_2_tag_dim == io_abort_tag_dim)));
   assign ab_hit_3 = (ctx_3_active && (((((ctx_3_tag_wave == io_abort_tag_wave) && (ctx_3_tag_thread == io_abort_tag_thread)) && (ctx_3_tag_lnid == io_abort_tag_lnid)) && (ctx_3_tag_precision == io_abort_tag_precision)) && (ctx_3_tag_dim == io_abort_tag_dim)));
   assign ab_hitAny = (((ab_hit_0 || ab_hit_1) || ab_hit_2) || ab_hit_3);
   assign ab_fire = (io_abort_valid && ab_hitAny);
-  assign when_Reassembly_l401 = (ab_fire && ab_hit_0);
-  assign when_Reassembly_l401_1 = (ab_fire && ab_hit_1);
-  assign when_Reassembly_l401_2 = (ab_fire && ab_hit_2);
-  assign when_Reassembly_l401_3 = (ab_fire && ab_hit_3);
-  assign when_Reassembly_l412 = (ab_fire && (ab_cnt != 8'hff));
+  assign when_Reassembly_l410 = (ab_fire && ab_hit_0);
+  assign when_Reassembly_l410_1 = (ab_fire && ab_hit_1);
+  assign when_Reassembly_l410_2 = (ab_fire && ab_hit_2);
+  assign when_Reassembly_l410_3 = (ab_fire && ab_hit_3);
+  assign when_Reassembly_l421 = (ab_fire && (ab_cnt != 8'hff));
   assign io_abortCount = ab_cnt;
   assign _zz_io_incomplete = 3'b000;
   assign _zz_io_incomplete_1 = 3'b001;
@@ -6134,6 +6424,15 @@ module Reassembly (
   assign _zz_io_incomplete_6 = 3'b010;
   assign _zz_io_incomplete_7 = 3'b011;
   assign io_incomplete = (_zz_io_incomplete_8 + _zz_io_incomplete_10);
+  assign _zz_io_occupancy = 3'b000;
+  assign _zz_io_occupancy_1 = 3'b001;
+  assign _zz_io_occupancy_2 = 3'b001;
+  assign _zz_io_occupancy_3 = 3'b010;
+  assign _zz_io_occupancy_4 = 3'b001;
+  assign _zz_io_occupancy_5 = 3'b010;
+  assign _zz_io_occupancy_6 = 3'b010;
+  assign _zz_io_occupancy_7 = 3'b011;
+  assign io_occupancy = (_zz_io_occupancy_8 + _zz_io_occupancy_10);
   assign when_Common_l141 = ((fr_rejEvt || fr_endEvt) || op_clashEvt);
   assign io_fault = _zz_io_fault;
   assign io_capAbsent = capBit;
@@ -6159,99 +6458,99 @@ module Reassembly (
       _zz_io_fault <= 1'b0;
       capBit <= 1'b0;
     end else begin
-      if(when_Reassembly_l297) begin
+      if(when_Reassembly_l306) begin
         ctx_0_seen <= fr_newSeen;
         ctx_0_last <= (ctx_0_last || io_frag_head_last);
         ctx_0_totalKnown <= 1'b1;
       end
-      if(when_Reassembly_l297_1) begin
+      if(when_Reassembly_l306_1) begin
         ctx_1_seen <= fr_newSeen;
         ctx_1_last <= (ctx_1_last || io_frag_head_last);
         ctx_1_totalKnown <= 1'b1;
       end
-      if(when_Reassembly_l297_2) begin
+      if(when_Reassembly_l306_2) begin
         ctx_2_seen <= fr_newSeen;
         ctx_2_last <= (ctx_2_last || io_frag_head_last);
         ctx_2_totalKnown <= 1'b1;
       end
-      if(when_Reassembly_l297_3) begin
+      if(when_Reassembly_l306_3) begin
         ctx_3_seen <= fr_newSeen;
         ctx_3_last <= (ctx_3_last || io_frag_head_last);
         ctx_3_totalKnown <= 1'b1;
       end
-      if(when_Reassembly_l330) begin
+      if(when_Reassembly_l339) begin
         ctx_0_active <= 1'b1;
         ctx_0_seen <= 16'h0;
         ctx_0_last <= 1'b0;
         ctx_0_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l330_1) begin
+      if(when_Reassembly_l339_1) begin
         ctx_1_active <= 1'b1;
         ctx_1_seen <= 16'h0;
         ctx_1_last <= 1'b0;
         ctx_1_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l330_2) begin
+      if(when_Reassembly_l339_2) begin
         ctx_2_active <= 1'b1;
         ctx_2_seen <= 16'h0;
         ctx_2_last <= 1'b0;
         ctx_2_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l330_3) begin
+      if(when_Reassembly_l339_3) begin
         ctx_3_active <= 1'b1;
         ctx_3_seen <= 16'h0;
         ctx_3_last <= 1'b0;
         ctx_3_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l369) begin
+      if(when_Reassembly_l378) begin
         ctx_0_active <= 1'b0;
         ctx_0_seen <= 16'h0;
         ctx_0_last <= 1'b0;
         ctx_0_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l369_1) begin
+      if(when_Reassembly_l378_1) begin
         ctx_1_active <= 1'b0;
         ctx_1_seen <= 16'h0;
         ctx_1_last <= 1'b0;
         ctx_1_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l369_2) begin
+      if(when_Reassembly_l378_2) begin
         ctx_2_active <= 1'b0;
         ctx_2_seen <= 16'h0;
         ctx_2_last <= 1'b0;
         ctx_2_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l369_3) begin
+      if(when_Reassembly_l378_3) begin
         ctx_3_active <= 1'b0;
         ctx_3_seen <= 16'h0;
         ctx_3_last <= 1'b0;
         ctx_3_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l401) begin
+      if(when_Reassembly_l410) begin
         ctx_0_active <= 1'b0;
         ctx_0_seen <= 16'h0;
         ctx_0_last <= 1'b0;
         ctx_0_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l401_1) begin
+      if(when_Reassembly_l410_1) begin
         ctx_1_active <= 1'b0;
         ctx_1_seen <= 16'h0;
         ctx_1_last <= 1'b0;
         ctx_1_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l401_2) begin
+      if(when_Reassembly_l410_2) begin
         ctx_2_active <= 1'b0;
         ctx_2_seen <= 16'h0;
         ctx_2_last <= 1'b0;
         ctx_2_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l401_3) begin
+      if(when_Reassembly_l410_3) begin
         ctx_3_active <= 1'b0;
         ctx_3_seen <= 16'h0;
         ctx_3_last <= 1'b0;
         ctx_3_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l412) begin
+      if(when_Reassembly_l421) begin
         ab_cnt <= (ab_cnt + 8'h01);
       end
       if(io_faultClear) begin
@@ -6270,19 +6569,19 @@ module Reassembly (
   end
 
   always @(posedge clk) begin
-    if(when_Reassembly_l297) begin
+    if(when_Reassembly_l306) begin
       ctx_0_total <= fr_effTotal;
     end
-    if(when_Reassembly_l297_1) begin
+    if(when_Reassembly_l306_1) begin
       ctx_1_total <= fr_effTotal;
     end
-    if(when_Reassembly_l297_2) begin
+    if(when_Reassembly_l306_2) begin
       ctx_2_total <= fr_effTotal;
     end
-    if(when_Reassembly_l297_3) begin
+    if(when_Reassembly_l306_3) begin
       ctx_3_total <= fr_effTotal;
     end
-    if(when_Reassembly_l330) begin
+    if(when_Reassembly_l339) begin
       ctx_0_tag_wave <= io_open_tag_wave;
       ctx_0_tag_thread <= io_open_tag_thread;
       ctx_0_tag_lnid <= io_open_tag_lnid;
@@ -6290,7 +6589,7 @@ module Reassembly (
       ctx_0_tag_dim <= io_open_tag_dim;
       ctx_0_base <= io_open_base;
     end
-    if(when_Reassembly_l330_1) begin
+    if(when_Reassembly_l339_1) begin
       ctx_1_tag_wave <= io_open_tag_wave;
       ctx_1_tag_thread <= io_open_tag_thread;
       ctx_1_tag_lnid <= io_open_tag_lnid;
@@ -6298,7 +6597,7 @@ module Reassembly (
       ctx_1_tag_dim <= io_open_tag_dim;
       ctx_1_base <= io_open_base;
     end
-    if(when_Reassembly_l330_2) begin
+    if(when_Reassembly_l339_2) begin
       ctx_2_tag_wave <= io_open_tag_wave;
       ctx_2_tag_thread <= io_open_tag_thread;
       ctx_2_tag_lnid <= io_open_tag_lnid;
@@ -6306,7 +6605,7 @@ module Reassembly (
       ctx_2_tag_dim <= io_open_tag_dim;
       ctx_2_base <= io_open_base;
     end
-    if(when_Reassembly_l330_3) begin
+    if(when_Reassembly_l339_3) begin
       ctx_3_tag_wave <= io_open_tag_wave;
       ctx_3_tag_thread <= io_open_tag_thread;
       ctx_3_tag_lnid <= io_open_tag_lnid;

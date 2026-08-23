@@ -180,6 +180,15 @@ class Reassembly(val cfg: Wt64Config, val nCtxs: Int = 4, val bodyW: Int = 64) e
       * abort 다. */
     val incomplete = out port UInt(log2Up(nCtxs + 1) bits)
 
+    /** E.11 점유 관측면 (§3.7 드레인 정의역 ⑤ — 활성 재조립 문맥, 미완
+      * *포함*). active popcount — 인도 대기(완성) 문맥도 태그를 쥔 활성이므로
+      * 함께 센다 (top 의 「활성 총계 포트 신설 대기」가 이 포트다).
+      * io.incomplete(active && !last)와 다른 관측이다 — 그쪽은 표시 유실
+      * 진단, 이쪽은 드레인 집계. 조합 집계 — 이미 있는 점유 상태의 배선일
+      * 뿐 새 상태가 아니다 (E.11 해설). 폭은 문맥 풀 상한에서 유도 —
+      * 관측면이지 인코딩이 아니므로 INV-T1 의 대상이 아니다. */
+    val occupancy  = out port UInt(log2Up(nCtxs + 1) bits)
+
     /** 태그 지정 문맥 소거 (부록 E.12 · §3.7 드레인 완주 가능성) — 호스트
       * MMIO 기입의 스트로브. MMIO 주소·레지스터 사상은 상류(E.1 레지스터 맵
       * 소유자) 몫이고, 이 모듈은 「태그 하나를 지정한 소거 기입」이라는
@@ -415,6 +424,12 @@ class Reassembly(val cfg: Wt64Config, val nCtxs: Int = 4, val bodyW: Int = 64) e
 
   // ── 진단 관측면 — 미완 문맥 수 (IncompleteCtx 의 RTL 형: active && !last) ─
   io.incomplete := CountOne(Vec(ctx.map(c => c.active && !c.last)))
+
+  // ── E.11 점유 관측면 — 드레인 집계의 실입력 (§3.7 정의역 ⑤) ────────────
+  // 활성 문맥 총계 — 미완(!last)도 인도 대기(완성)도 전부 활성이다. 조합
+  // popcount, 새 상태 없음 (E.11 해설). incomplete <= occupancy 가 구조로
+  // 성립한다 (같은 active 에 !last 연언 하나 차이).
+  io.occupancy := CountOne(Vec(ctx.map(_.active)))
 
   // ── loud fault sticky — malformation(구간 밖·중복·선언 모순·스트레이) ·
   //    재시작 충돌 · 표시 시점 누락 (§4.3 · §5.5: 세운다 / 명시적 해제 외엔

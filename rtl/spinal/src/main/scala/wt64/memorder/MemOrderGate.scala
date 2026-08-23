@@ -129,6 +129,18 @@ case class MemOrderGate(p: MemOrderGateParams) extends Component {
     /** 관측 — 게이트 축 단독 노출: 토큰 조건만으로 발화 가능한가.
       * 배압 축(down(i).ready)과 분리해 두 대기의 원인이 밖에서 구별된다. */
     val gateOpen = out Bits(n bits)
+
+    /** E.11 점유 관측면 (§3.7 드레인 정의역 ⑥ — 미완료 순서 토큰). 구성
+      * (cfgPreds)이 완료를 약속한 — 어떤 슬롯이 선행으로 참조하는 — 토큰 중
+      * 아직 서지 않은 것의 수. 조합 집계 — 새 상태 아님 (E.11 해설): fired
+      * 상태·비행 계수기를 들이지 않는다 (inflight_not_gating 의 구조 사실
+      * 유지 — 「발화됐으나 미완료」의 문면 그대로는 발행 관측 상태를 요구해
+      * 이 모듈이 가질 수 없다). 그 대가로 발화됐으나 미완료인데 *아무도
+      * 참조하지 않는* 연산은 이 면에 보이지 않는다 — 그 잔여의 집계는 발행
+      * 관측(상류 미착지, top TODO)의 몫이다. 이 콘은 관측 전용이다 —
+      * waitVec·valid·ready 어디에도 배선되지 않는다 (과잉 게이팅 없음).
+      * 폭은 슬롯 상한에서 유도 — 관측면이지 인코딩이 아니다 (INV-T1 무관). */
+    val occupancy = out UInt(log2Up(n + 1) bits)
   }
 
   // ── 토큰 상태 — 슬롯별 독립 비트 (모델 compIdx>0 의 이 게이트 관측면) ──
@@ -179,4 +191,20 @@ case class MemOrderGate(p: MemOrderGateParams) extends Component {
     io.down(i).payload := io.up(i).payload
     io.up(i).ready     := open && io.down(i).ready
   }
+
+  // ── E.11 점유 관측면 — 드레인 집계의 실입력 (§3.7 정의역 ⑥) ──────────
+  //
+  // referenced(t) = 어떤 슬롯 i 가 cfgPreds(i) 로 t 를 선행 참조한다 — 역사상
+  // 은 게이트와 같은 표다 (비트 k ↔ 선행 j = k < i ? k : k+1 의 역). cfgPreds
+  // 를 *읽기만* 한다: waitVec 의 원천은 그대로다 (gate_matches_dep 불변).
+  // token 과 함께 이 콘은 관측 전용이며 게이트·handshake 로 되돌아가는 배선이
+  // 없다. epochClear 뒤 낡은 cfgPreds 가 남아 있으면 그만큼 세인다 — cfgPreds
+  // 의 epoch 안정 계약(위 인터페이스 계약 1항)의 재구성 시퀀싱이 닫을 자리다.
+  private val referenced = Vec.tabulate(n) { t =>
+    (0 until n).filter(_ != t).map { i =>
+      val k = if (t < i) t else t - 1
+      io.cfgPreds(i)(k)
+    }.reduce(_ || _)
+  }
+  io.occupancy := CountOne(Vec.tabulate(n)(t => referenced(t) && !token(t)))
 }

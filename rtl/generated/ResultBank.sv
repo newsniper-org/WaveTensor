@@ -23,6 +23,7 @@ module ResultBank (
   output wire          io_read_owned,
   output wire          io_fault,
   input  wire          io_faultClear,
+  output wire [4:0]    io_occupancy,
   input  wire          clk,
   input  wire          reset
 );
@@ -32,6 +33,23 @@ module ResultBank (
   reg        [3:0]    _zz_wrQualified_1;
   reg        [63:0]   _zz_io_read_data;
   reg                 _zz_io_read_owned;
+  wire       [4:0]    _zz_io_occupancy_8;
+  wire       [4:0]    _zz_io_occupancy_9;
+  reg        [4:0]    _zz_io_occupancy_10;
+  wire       [2:0]    _zz_io_occupancy_11;
+  reg        [4:0]    _zz_io_occupancy_12;
+  wire       [2:0]    _zz_io_occupancy_13;
+  wire       [4:0]    _zz_io_occupancy_14;
+  reg        [4:0]    _zz_io_occupancy_15;
+  wire       [2:0]    _zz_io_occupancy_16;
+  reg        [4:0]    _zz_io_occupancy_17;
+  wire       [2:0]    _zz_io_occupancy_18;
+  wire       [4:0]    _zz_io_occupancy_19;
+  reg        [4:0]    _zz_io_occupancy_20;
+  wire       [2:0]    _zz_io_occupancy_21;
+  reg        [4:0]    _zz_io_occupancy_22;
+  wire       [2:0]    _zz_io_occupancy_23;
+  wire       [0:0]    _zz_io_occupancy_24;
   reg                 ownerValid_0;
   reg                 ownerValid_1;
   reg                 ownerValid_2;
@@ -113,16 +131,35 @@ module ResultBank (
   wire                ageAtEnd_14;
   wire                ageAtEnd_15;
   wire                acqFree;
-  wire                when_ResultBank_l154;
+  wire                when_ResultBank_l163;
   wire       [15:0]   _zz_1;
   wire       [15:0]   _zz_2;
   wire       [15:0]   _zz_3;
   wire                wrQualified;
-  wire                when_ResultBank_l172;
+  wire                when_ResultBank_l181;
   wire       [15:0]   _zz_4;
   wire                when_Common_l141;
   reg                 _zz_io_fault;
+  wire       [4:0]    _zz_io_occupancy;
+  wire       [4:0]    _zz_io_occupancy_1;
+  wire       [4:0]    _zz_io_occupancy_2;
+  wire       [4:0]    _zz_io_occupancy_3;
+  wire       [4:0]    _zz_io_occupancy_4;
+  wire       [4:0]    _zz_io_occupancy_5;
+  wire       [4:0]    _zz_io_occupancy_6;
+  wire       [4:0]    _zz_io_occupancy_7;
 
+  assign _zz_io_occupancy_8 = (_zz_io_occupancy_9 + _zz_io_occupancy_14);
+  assign _zz_io_occupancy_9 = (_zz_io_occupancy_10 + _zz_io_occupancy_12);
+  assign _zz_io_occupancy_14 = (_zz_io_occupancy_15 + _zz_io_occupancy_17);
+  assign _zz_io_occupancy_19 = (_zz_io_occupancy_20 + _zz_io_occupancy_22);
+  assign _zz_io_occupancy_24 = ownerValid_15;
+  assign _zz_io_occupancy_23 = {2'd0, _zz_io_occupancy_24};
+  assign _zz_io_occupancy_11 = {ownerValid_2,{ownerValid_1,ownerValid_0}};
+  assign _zz_io_occupancy_13 = {ownerValid_5,{ownerValid_4,ownerValid_3}};
+  assign _zz_io_occupancy_16 = {ownerValid_8,{ownerValid_7,ownerValid_6}};
+  assign _zz_io_occupancy_18 = {ownerValid_11,{ownerValid_10,ownerValid_9}};
+  assign _zz_io_occupancy_21 = {ownerValid_14,{ownerValid_13,ownerValid_12}};
   always @(*) begin
     case(io_acquire_slot)
       4'b0000 : _zz_acqFree = ownerValid_0;
@@ -282,6 +319,84 @@ module ResultBank (
     endcase
   end
 
+  always @(*) begin
+    case(_zz_io_occupancy_11)
+      3'b000 : _zz_io_occupancy_10 = _zz_io_occupancy;
+      3'b001 : _zz_io_occupancy_10 = _zz_io_occupancy_1;
+      3'b010 : _zz_io_occupancy_10 = _zz_io_occupancy_2;
+      3'b011 : _zz_io_occupancy_10 = _zz_io_occupancy_3;
+      3'b100 : _zz_io_occupancy_10 = _zz_io_occupancy_4;
+      3'b101 : _zz_io_occupancy_10 = _zz_io_occupancy_5;
+      3'b110 : _zz_io_occupancy_10 = _zz_io_occupancy_6;
+      default : _zz_io_occupancy_10 = _zz_io_occupancy_7;
+    endcase
+  end
+
+  always @(*) begin
+    case(_zz_io_occupancy_13)
+      3'b000 : _zz_io_occupancy_12 = _zz_io_occupancy;
+      3'b001 : _zz_io_occupancy_12 = _zz_io_occupancy_1;
+      3'b010 : _zz_io_occupancy_12 = _zz_io_occupancy_2;
+      3'b011 : _zz_io_occupancy_12 = _zz_io_occupancy_3;
+      3'b100 : _zz_io_occupancy_12 = _zz_io_occupancy_4;
+      3'b101 : _zz_io_occupancy_12 = _zz_io_occupancy_5;
+      3'b110 : _zz_io_occupancy_12 = _zz_io_occupancy_6;
+      default : _zz_io_occupancy_12 = _zz_io_occupancy_7;
+    endcase
+  end
+
+  always @(*) begin
+    case(_zz_io_occupancy_16)
+      3'b000 : _zz_io_occupancy_15 = _zz_io_occupancy;
+      3'b001 : _zz_io_occupancy_15 = _zz_io_occupancy_1;
+      3'b010 : _zz_io_occupancy_15 = _zz_io_occupancy_2;
+      3'b011 : _zz_io_occupancy_15 = _zz_io_occupancy_3;
+      3'b100 : _zz_io_occupancy_15 = _zz_io_occupancy_4;
+      3'b101 : _zz_io_occupancy_15 = _zz_io_occupancy_5;
+      3'b110 : _zz_io_occupancy_15 = _zz_io_occupancy_6;
+      default : _zz_io_occupancy_15 = _zz_io_occupancy_7;
+    endcase
+  end
+
+  always @(*) begin
+    case(_zz_io_occupancy_18)
+      3'b000 : _zz_io_occupancy_17 = _zz_io_occupancy;
+      3'b001 : _zz_io_occupancy_17 = _zz_io_occupancy_1;
+      3'b010 : _zz_io_occupancy_17 = _zz_io_occupancy_2;
+      3'b011 : _zz_io_occupancy_17 = _zz_io_occupancy_3;
+      3'b100 : _zz_io_occupancy_17 = _zz_io_occupancy_4;
+      3'b101 : _zz_io_occupancy_17 = _zz_io_occupancy_5;
+      3'b110 : _zz_io_occupancy_17 = _zz_io_occupancy_6;
+      default : _zz_io_occupancy_17 = _zz_io_occupancy_7;
+    endcase
+  end
+
+  always @(*) begin
+    case(_zz_io_occupancy_21)
+      3'b000 : _zz_io_occupancy_20 = _zz_io_occupancy;
+      3'b001 : _zz_io_occupancy_20 = _zz_io_occupancy_1;
+      3'b010 : _zz_io_occupancy_20 = _zz_io_occupancy_2;
+      3'b011 : _zz_io_occupancy_20 = _zz_io_occupancy_3;
+      3'b100 : _zz_io_occupancy_20 = _zz_io_occupancy_4;
+      3'b101 : _zz_io_occupancy_20 = _zz_io_occupancy_5;
+      3'b110 : _zz_io_occupancy_20 = _zz_io_occupancy_6;
+      default : _zz_io_occupancy_20 = _zz_io_occupancy_7;
+    endcase
+  end
+
+  always @(*) begin
+    case(_zz_io_occupancy_23)
+      3'b000 : _zz_io_occupancy_22 = _zz_io_occupancy;
+      3'b001 : _zz_io_occupancy_22 = _zz_io_occupancy_1;
+      3'b010 : _zz_io_occupancy_22 = _zz_io_occupancy_2;
+      3'b011 : _zz_io_occupancy_22 = _zz_io_occupancy_3;
+      3'b100 : _zz_io_occupancy_22 = _zz_io_occupancy_4;
+      3'b101 : _zz_io_occupancy_22 = _zz_io_occupancy_5;
+      3'b110 : _zz_io_occupancy_22 = _zz_io_occupancy_6;
+      default : _zz_io_occupancy_22 = _zz_io_occupancy_7;
+    endcase
+  end
+
   assign ageAtEnd_0 = (ownerValid_0 && (age_0 == 2'b10));
   assign ageAtEnd_1 = (ownerValid_1 && (age_1 == 2'b10));
   assign ageAtEnd_2 = (ownerValid_2 && (age_2 == 2'b10));
@@ -300,17 +415,26 @@ module ResultBank (
   assign ageAtEnd_15 = (ownerValid_15 && (age_15 == 2'b10));
   assign acqFree = (1'b1 && (! _zz_acqFree));
   assign io_acquire_granted = (io_acquire_valid && acqFree);
-  assign when_ResultBank_l154 = (io_acquire_valid && acqFree);
+  assign when_ResultBank_l163 = (io_acquire_valid && acqFree);
   assign _zz_1 = ({15'd0,1'b1} <<< io_acquire_slot);
   assign _zz_2 = ({15'd0,1'b1} <<< io_acquire_slot);
   assign _zz_3 = ({15'd0,1'b1} <<< io_acquire_slot);
   assign wrQualified = ((1'b1 && _zz_wrQualified) && (_zz_wrQualified_1 == io_write_prod));
-  assign when_ResultBank_l172 = (io_write_valid && wrQualified);
+  assign when_ResultBank_l181 = (io_write_valid && wrQualified);
   assign _zz_4 = ({15'd0,1'b1} <<< io_write_slot);
   assign when_Common_l141 = (io_write_valid && (! wrQualified));
   assign io_fault = _zz_io_fault;
   assign io_read_data = _zz_io_read_data;
   assign io_read_owned = (1'b1 && _zz_io_read_owned);
+  assign _zz_io_occupancy = 5'h0;
+  assign _zz_io_occupancy_1 = 5'h01;
+  assign _zz_io_occupancy_2 = 5'h01;
+  assign _zz_io_occupancy_3 = 5'h02;
+  assign _zz_io_occupancy_4 = 5'h01;
+  assign _zz_io_occupancy_5 = 5'h02;
+  assign _zz_io_occupancy_6 = 5'h02;
+  assign _zz_io_occupancy_7 = 5'h03;
+  assign io_occupancy = (_zz_io_occupancy_8 + _zz_io_occupancy_19);
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       ownerValid_0 <= 1'b0;
@@ -507,7 +631,7 @@ module ResultBank (
           age_15 <= (age_15 + 2'b01);
         end
       end
-      if(when_ResultBank_l154) begin
+      if(when_ResultBank_l163) begin
         if(_zz_1[0]) begin
           ownerValid_0 <= 1'b1;
         end
@@ -653,7 +777,7 @@ module ResultBank (
           age_15 <= 2'b00;
         end
       end
-      if(when_ResultBank_l172) begin
+      if(when_ResultBank_l181) begin
         if(_zz_4[0]) begin
           store_0 <= io_write_data;
         end

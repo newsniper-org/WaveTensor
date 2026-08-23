@@ -90,6 +90,16 @@ case class FabricMerge[T <: Data](cfg: Wt64Config, payloadType: HardType[T]) ext
       * 이름을 `out` 으로 두지 않는 이유: 같은 스코프의 방향 지정자
       * spinal.core.out 을 가려 다른 포트 선언을 깨뜨린다. */
     val consumer   = master(Stream(payloadType))
+
+    /** E.11 점유 관측면 (§3.7 드레인 정의역 ③ — 생산자 출력 자원과 병합 중
+      * 전송). lane 별 출력 자원 점유(cnt)의 합 — 조합 집계, 새 상태 아님
+      * (E.11 해설). 병합 중(제공됐으나 핸드오프 미완) beat 는 별항이 아니다:
+      * capture_atomic (FAB-5) 이 pop 을 소비자 수락과 같은 사건으로 묶어
+      * 「떠났는데 도착 안 함」 상태가 상태 공간에 없으므로, 병합 중인 beat 는
+      * 버스면 slots(0) 점유로 이 합에 이미 들어 있다 — 별항을 더하면 이중
+      * 계수다. 폭은 자원 상한(N·D)에서 유도 — 관측면이지 인코딩이 아니므로
+      * INV-T1 의 대상이 아니다. */
+    val occupancy  = out UInt(log2Up(nProd * depth + 1) bits)
   }
 
   // ── 생산자별 출력 자원 — 버스면 레지스터 + 뒤 슬롯 (§2.6 깊이 D) ──────
@@ -219,4 +229,10 @@ case class FabricMerge[T <: Data](cfg: Wt64Config, payloadType: HardType[T]) ext
   // sticky 상태 비트 — 시뮬레이션 전용 단언이 아니다).
   private val shoveAny = lanes.map(_.shove).reduce(_ || _)
   io.fault := StickyFault(set = shoveAny, clear = io.faultClear)
+
+  // ── E.11 점유 관측면 — 드레인 집계의 실입력 (§3.7 정의역 ③) ──────────
+  // 이미 있는 점유 상태(lane 별 cnt)의 조합 합산 — 새 상태 없음 (E.11 해설).
+  // 부분합·총합 전부 상한 N·D 이내라 occW 로 넘치지 않는다.
+  private val occW = log2Up(nProd * depth + 1)
+  io.occupancy := lanes.map(_.cnt.resize(occW)).reduce(_ + _)
 }

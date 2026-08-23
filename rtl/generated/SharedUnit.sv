@@ -17,6 +17,7 @@ module SharedUnit (
   output wire [15:0]   io_rsp_payload,
   output wire          io_faultBpViolation,
   input  wire          io_faultClear,
+  output wire [2:0]    io_occupancy,
   input  wire          clk,
   input  wire          reset
 );
@@ -34,6 +35,8 @@ module SharedUnit (
   wire       [0:0]    _zz_queue_cnt_2;
   wire       [2:0]    _zz_queue_cnt_3;
   wire       [0:0]    _zz_queue_cnt_4;
+  wire       [2:0]    _zz_io_occupancy;
+  wire       [0:0]    _zz_io_occupancy_1;
   reg        [15:0]   queue_slots_0;
   reg        [15:0]   queue_slots_1;
   reg        [15:0]   queue_slots_2;
@@ -48,7 +51,7 @@ module SharedUnit (
   wire                acceptQueue;
   wire                bpViolation;
   reg                 _zz_io_faultBpViolation;
-  wire                when_SharedUnit_l185;
+  wire                when_SharedUnit_l192;
   wire       [3:0]    _zz_1;
 
   assign _zz_queue_rdPtr = (queue_rdPtr + 2'b01);
@@ -56,8 +59,10 @@ module SharedUnit (
   assign _zz_queue_cnt = (queue_cnt + _zz_queue_cnt_1);
   assign _zz_queue_cnt_2 = (io_req_valid && acceptQueue);
   assign _zz_queue_cnt_1 = {2'd0, _zz_queue_cnt_2};
-  assign _zz_queue_cnt_4 = when_SharedUnit_l185;
+  assign _zz_queue_cnt_4 = when_SharedUnit_l192;
   assign _zz_queue_cnt_3 = {2'd0, _zz_queue_cnt_4};
+  assign _zz_io_occupancy_1 = body_1_io_busy;
+  assign _zz_io_occupancy = {2'd0, _zz_io_occupancy_1};
   SharedUnitOccupyStub body_1 (
     .io_start (body_1_io_start    ), //i
     .io_req   (body_1_io_req[15:0]), //i
@@ -86,7 +91,7 @@ module SharedUnit (
   assign io_faultBpViolation = _zz_io_faultBpViolation;
   always @(*) begin
     body_1_io_start = 1'b0;
-    if(when_SharedUnit_l185) begin
+    if(when_SharedUnit_l192) begin
       body_1_io_start = 1'b1;
     end
     if(io_req_valid) begin
@@ -98,15 +103,16 @@ module SharedUnit (
 
   always @(*) begin
     body_1_io_req = io_req_payload;
-    if(when_SharedUnit_l185) begin
+    if(when_SharedUnit_l192) begin
       body_1_io_req = queue_head;
     end
   end
 
-  assign when_SharedUnit_l185 = ((! body_1_io_busy) && (! queueEmpty));
+  assign when_SharedUnit_l192 = ((! body_1_io_busy) && (! queueEmpty));
   assign _zz_1 = ({3'd0,1'b1} <<< queue_wrPtr);
   assign io_rsp_valid = body_1_io_done;
   assign io_rsp_payload = body_1_io_rsp;
+  assign io_occupancy = (queue_cnt + _zz_io_occupancy);
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       queue_slots_0 <= 16'h0;
@@ -124,7 +130,7 @@ module SharedUnit (
       if(bpViolation) begin
         _zz_io_faultBpViolation <= 1'b1;
       end
-      if(when_SharedUnit_l185) begin
+      if(when_SharedUnit_l192) begin
         queue_rdPtr <= ((queue_rdPtr == 2'b11) ? 2'b00 : _zz_queue_rdPtr);
       end
       if(io_req_valid) begin

@@ -36,11 +36,6 @@
 //
 // ## 잠정 배선 (TODO — 몰래 고치지 않고 여기 전부 적는다)
 //
-//   · MaskUnit 은 승인(s6) **뒤**에 앉아 있다 — MaskUnit 보고서의 promote
-//     (s4 마스킹 자리를 요청 경로로 대체)는 HiuPipeline 내부 결선이라 그
-//     소유자 몫이다. 그때까지 마스킹 단은 rsp 뒤의 고정 1사이클로 두고
-//     공통 enable 은 advance(= hiu.req.ready)를 그대로 물린다 — 경로 무관
-//     고정 사이클 성질은 유지된다.
 //   · Reassembly.wr → ResultBank.write 는 **미배선**이다. LBID → 물리 슬롯
 //     사상(§3.7.1 — MmioConfig lbidMem 이 정본)이 조회 포트를 아직 내지
 //     않는다. 기입 면은 관측 IO 로 수출한다.
@@ -48,12 +43,13 @@
 //   · MemOrderGate 슬롯 결속(io.mem.slotSel)·순서 토큰 구성(cfgPreds)은
 //     외부 입력이다 — 토큰 채널의 명령 필드 배정을 정본이 아직 안 했다
 //     (§4.4.3). down/complete 는 메모리 파이프 미착지로 IO 수출.
-//   · E.11 여섯 카운트 중 pipe·pending·output·ownSlots·tokens 는 0 고정 —
-//     해당 유닛에 점유 *개수* 출력 포트가 아직 없다 (각 소유자 몫, 보고서
-//     promote). contexts 는 Reassembly.incomplete 를 잠정 배선 (활성 총계
-//     포트 신설 전까지의 하한 — 인도 대기 문맥이 빠진다). 따라서
-//     DRAIN_ALLZERO 는 **아직 드레인 완주의 증거가 아니다** — loud 하게
-//     여기 적는다.
+//   · E.11 여섯 카운트 중 ⑥ tokens 만 **부분**이다 — MemOrderGate 점유는
+//     cfgPreds 가 약속했으나 미완료인 토큰의 popcount 이고, 발행됐으나
+//     구성 표가 더는 참조하지 않는 토큰의 관측(발행 관측)은 상류(발행
+//     경로) 미착지다. 나머지 다섯(pipe·pending·output·ownSlots·contexts)은
+//     해당 유닛 점유 포트 실물이다 — DRAIN_ALLZERO 는 그 다섯 축의 드레인
+//     완주 **증거**이고, tokens 축만 하한으로 읽는다 (0 이 필요조건이지
+//     충분조건은 아니다).
 //   · SharedUnit 요청(dispatch 방향)·FabricMerge lane 1..N-1(PE 산출)·
 //     ResultBank 세 포트·StepSequencer 요청/피연산자는 상류 유닛 미착지로
 //     IO 수출이다.
@@ -76,6 +72,13 @@
 //   · Fabric.bp_relief (정식 ENV 줄: FabricMerge — 불변) — 호스트 배수
 //     의무의 장치 쪽 실물(완료 링)에 Reassembly.deliver 를 배압 보존으로
 //     이었다 (deliver.ready = comp.ready — 링 가득이면 인도가 선다).
+//   · Decode.stall_uniform (정식 줄: HiuPipeline) — 마스킹 단(s4)의 몸인
+//     MaskUnit 의 io.en 에 파이프 advance(= hiu.req.ready)를 그대로
+//     물렸다 — HiuPipeline 결선 계약의 통합자 몫 이행. 정지 원천이
+//     무엇이든 파이프와 s4 왕복이 함께 선다.
+//   · Isolation.no_early_forward (정식 줄: HiuPipeline) — hiu.io.mask 는
+//     MaskUnit 하나에만 직결했다. req 를 다른 소비자에 내지 않고 rsp 를
+//     MaskUnit 밖에서 구동하지 않는다 (io.mask 주석의 결선 계약).
 package wt64.top
 
 import spinal.core._
@@ -237,15 +240,17 @@ class Wt64Top(
       val frame = in port UInt(FRAME_W bits)
       val perm  = in(XlatePerm())
     }
-    /** 승인 방출 관측 (frame·part 는 마스킹 단이 소비한다). */
+    /** 승인 방출 관측 — frame 은 io.phys 가 나른다 (마스킹된 값 하나뿐). */
     val hiuRsp = new Bundle {
       val valid    = out port Bool()
       val granted  = out port Bool()
+      val part     = out port UInt(partW bits)
       val write    = out port Bool()
       val fromFill = out port Bool()
       val perm     = out(XlatePerm())
     }
-    /** 마스킹 단 출력 — 마스킹된 프레임 (잠정 위치는 머리 주석 TODO 1항). */
+    /** 물리 프레임 방출 — 승인된 요청의 **마스킹된** 프레임 (E.9 — 마스킹
+      * 단은 파이프 안 s4 다. 장치 밖으로 나가는 물리 프레임은 이것 하나). */
     val phys = new Bundle {
       val valid = out port Bool()
       val frame = out port UInt(FRAME_W bits)
@@ -429,7 +434,7 @@ class Wt64Top(
   reasm.io.frag.body  := merge.io.consumer.payload.body
   merge.io.consumer.ready := True
 
-  // 기입 면 수출 — LBID→물리 슬롯 사상 미착지 (머리 주석 TODO 2항).
+  // 기입 면 수출 — LBID→물리 슬롯 사상 미착지 (머리 주석 TODO 1항).
   io.reasmWr.valid := reasm.io.wr.valid
   io.reasmWr.base  := reasm.io.wr.base
   io.reasmWr.off   := reasm.io.wr.off
@@ -481,18 +486,26 @@ class Wt64Top(
   hiu.io.faultClear    := io.faultClear.hiuPerm
   hiu.io.missClear     := io.faultClear.hiuMiss
 
-  // 마스킹 단 (잠정 — 머리 주석 TODO 1항): 승인 뒤 고정 1사이클. 공통
-  // enable 은 advance(= req.ready) 그대로 — 정지 원천이 무엇이든 파이프와
-  // 마스킹 단이 함께 선다 (stall_uniform 의 연장).
+  // 마스킹 단 (s4) — HiuPipeline io.mask 왕복의 반대편이 MaskUnit 이다.
+  // 결선 계약(HiuPipeline io.mask 주석) 그대로: req↔rsp 직결, io.en 에
+  // advance(= req.ready) — 정지 원천이 무엇이든 파이프와 마스킹 단이 함께
+  // 선다 (stall_uniform). io.mask 는 MaskUnit 외에 결선하지 않는다.
   mask.io.en        := hiu.io.req.ready
-  mask.io.req.valid := hiu.io.rsp.valid && hiu.io.rsp.granted
-  mask.io.req.part  := hiu.io.rsp.part
-  mask.io.req.frame := hiu.io.rsp.frame
-  io.phys.valid     := mask.io.rsp.valid
-  io.phys.frame     := mask.io.rsp.frame
+  mask.io.req.valid := hiu.io.mask.req.valid
+  mask.io.req.part  := hiu.io.mask.req.part
+  mask.io.req.frame := hiu.io.mask.req.frame
+  hiu.io.mask.rsp.valid := mask.io.rsp.valid
+  hiu.io.mask.rsp.frame := mask.io.rsp.frame
+
+  // 물리 프레임 방출 — 승인 방출에서 직접. 마스킹이 s4(승인 앞)에서 이미
+  // 끝났으므로 rsp.frame 이 곧 마스킹된 프레임이고, 미승인 값 축은 0 이다
+  // (approve_gates_value — granted 게이트는 그 관측의 명시화다).
+  io.phys.valid := hiu.io.rsp.valid && hiu.io.rsp.granted
+  io.phys.frame := hiu.io.rsp.frame
 
   io.hiuRsp.valid    := hiu.io.rsp.valid
   io.hiuRsp.granted  := hiu.io.rsp.granted
+  io.hiuRsp.part     := hiu.io.rsp.part
   io.hiuRsp.write    := hiu.io.rsp.write
   io.hiuRsp.fromFill := hiu.io.rsp.fromFill
   io.hiuRsp.perm     := hiu.io.rsp.perm
@@ -560,16 +573,16 @@ class Wt64Top(
     reasm.io.deliver.payload.total.asBits
   reasm.io.deliver.ready := cq.io.comp.ready
 
-  // E.11 여섯 카운트 — §3.7 정의역 순서. 점유 *개수* 포트가 없는 유닛은
-  // 0 고정이다 (TODO — 각 유닛 소유자 몫, 머리 주석 TODO 5항. 그때까지
-  // DRAIN_ALLZERO 는 드레인 완주의 증거가 아니다):
-  cq.io.drain.pipe     := 0 // TODO HiuPipeline 파이프 점유 카운트 포트 신설 대기
-  cq.io.drain.pending  := 0 // TODO SharedUnit 보류 큐 점유 카운트 포트 신설 대기
-  cq.io.drain.output   := 0 // TODO FabricMerge 출력 자원 점유 카운트 포트 신설 대기
-  cq.io.drain.ownSlots := 0 // TODO ResultBank 소유 슬롯 카운트 포트 신설 대기
-  // 잠정 하한 — 미완 문맥 수. 활성 *총계*(인도 대기 포함) 포트 신설 대기.
-  cq.io.drain.contexts := reasm.io.incomplete.resized
-  cq.io.drain.tokens   := 0 // TODO MemOrderGate 미완료 토큰 카운트 — 발행 관측이 상류 미착지
+  // E.11 여섯 카운트 — §3.7 정의역 순서. 전부 해당 유닛의 점유 관측 포트
+  // 실물이다 (①~⑤ 정확값 · ⑥ tokens 만 부분 — 머리 주석 TODO 4항.
+  // DRAIN_ALLZERO 는 이제 ①~⑤ 축의 드레인 완주 증거다):
+  cq.io.drain.pipe     := hiu.io.occupancy.resized    // ① s1..s6 유효 popcount
+  cq.io.drain.pending  := shared.io.occupancy.resized // ② 보류 큐 + 본체 busy
+  cq.io.drain.output   := merge.io.occupancy.resized  // ③ lane cnt 합 (병합 중 beat 포함 — capture_atomic)
+  cq.io.drain.ownSlots := bank.io.occupancy.resized   // ④ ownerValid popcount
+  cq.io.drain.contexts := reasm.io.occupancy.resized  // ⑤ active 총계 (인도 대기 포함)
+  // ⑥ 부분 — cfgPreds 약속·미완료 토큰만. 발행 관측 착지까지 하한 (TODO).
+  cq.io.drain.tokens   := mog.io.occupancy.resized
 
   io.irq := cq.io.irq
 

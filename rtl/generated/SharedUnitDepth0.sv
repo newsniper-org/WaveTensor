@@ -17,6 +17,7 @@ module SharedUnitDepth0 (
   output wire [15:0]   io_rsp_payload,
   output wire          io_faultBpViolation,
   input  wire          io_faultClear,
+  output wire [0:0]    io_occupancy,
   input  wire          clk,
   input  wire          reset
 );
@@ -31,7 +32,7 @@ module SharedUnitDepth0 (
   wire                acceptQueue;
   wire                bpViolation;
   reg                 _zz_io_faultBpViolation;
-  wire                when_SharedUnit_l213;
+  wire                when_SharedUnit_l220;
 
   SharedUnitOccupyStub body_1 (
     .io_start (body_1_io_start     ), //i
@@ -51,14 +52,15 @@ module SharedUnitDepth0 (
   assign io_faultBpViolation = _zz_io_faultBpViolation;
   always @(*) begin
     body_1_io_start = 1'b0;
-    if(when_SharedUnit_l213) begin
+    if(when_SharedUnit_l220) begin
       body_1_io_start = 1'b1;
     end
   end
 
-  assign when_SharedUnit_l213 = (io_req_valid && acceptDirect);
+  assign when_SharedUnit_l220 = (io_req_valid && acceptDirect);
   assign io_rsp_valid = body_1_io_done;
   assign io_rsp_payload = body_1_io_rsp;
+  assign io_occupancy = body_1_io_busy;
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       _zz_io_faultBpViolation <= 1'b0;

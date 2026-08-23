@@ -132,6 +132,13 @@ class SharedUnit(
       * 오류 비트를 함께 지우는 W1C 동반 클리어 금지 (§2.6 함정). */
     val faultBpViolation = out port Bool()
     val faultClear       = in  port Bool()
+
+    /** E.11 점유 관측면 (§3.7 드레인 정의역 ② — 공유 유닛의 보류 자원).
+      * 보류 큐 점유 + 본체 점유(busy)의 조합 집계 — 이미 있는 점유 상태의
+      * 배선일 뿐 새 상태가 아니다 (E.11 해설). 폭은 자원 상한(보류
+      * queueDepth + 본체 1)에서 유도한 log2Up — 관측면이지 명령·태그
+      * 인코딩이 아니므로 INV-T1 의 대상이 아니다. */
+    val occupancy = out port UInt(log2Up(p.queueDepth + 2) bits)
   }
 
   private val body = mkBody(p)
@@ -219,4 +226,16 @@ class SharedUnit(
   // ── 완료 반환 ────────────────────────────────────────────────────────
   io.rsp.valid   := body.io.done
   io.rsp.payload := body.io.rsp
+
+  // ── E.11 점유 관측면 — 드레인 집계의 실입력 (§3.7 정의역 ②) ─────────
+  // 보류 큐 점유(cnt)와 본체 점유(busy)의 조합 합산. 깊이 0 형상에서는
+  // 보류 자원 자체가 없으므로 본체 점유만 남는다 (§2.2 3항 「항상 배압」
+  // 형상에서도 성립). 큐→본체 이동(pop)의 사이클에 항목은 아직 cnt 에
+  // 잡히고 다음 사이클부터 busy 에 잡힌다 — 이동 중 관측 공백이 없다.
+  // 직행 수락(start) 사이클의 항목은 다음 사이클부터 busy 로 잡힌다 —
+  // 드레인 규약(투입 정지 *후* 관측, §3.7)에서 그 사이클엔 투입이 없다.
+  private val occW = log2Up(p.queueDepth + 2)
+  io.occupancy :=
+    (if (hasQueue) queue.cnt.resize(occW) + bodyBusy.asUInt.resize(occW)
+     else bodyBusy.asUInt.resize(occW))
 }

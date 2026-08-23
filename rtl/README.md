@@ -137,14 +137,23 @@ NoLoss 는 모듈이 아니라 합성 속성 — 후-formal 이 조합 위에서
 
 3차 파도 착지 완료 (2026-08-23) — 16모듈 · ENFORCED 11모델 · 79가드 전수.
 
-4차 파도 TODO (top 이 정직하게 남긴 미배선):
-- 마스킹 단의 §3.2 위치 — MaskUnit 의 s4 결선은 HiuPipeline 내부 수정
-  (소유자 몫). 현행 top 은 승인 뒤 1사이클 잠정 — 상태열 문면과 어긋난
-  임시 형태.
-- E.11 점유 카운트 포트 — 여섯 중 다섯이 포트 부재로 0 고정. 각 유닛에
-  점유 노출 포트 신설 전까지 DRAIN_ALLZERO 는 드레인 완주의 증거가 아니다.
-- 후속 단계: 후-formal (sby — GUARD-MAP 79줄의 참 검증), cocotb 하네스,
-  ISA-1/2 두-형상 대조 인프라, 합성 실측 (Q3 DPGA 결정의 전제).
+4차 파도 착지 완료 (2026-08-23):
+- 마스킹 단이 §3.2 실자리(s4)로 — HiuPipeline io.mask 왕복이 s4 의 몸,
+  MaskUnit 이 반대편 (결선 계약: io.en = advance). 비마스킹 프레임은 승인
+  소유권 조회 전용 병행 운반, io.rsp.frame 은 마스킹된 값으로 의미 변경.
+- E.11 여섯 카운트 중 다섯 실물 (pipe·pending·output·ownSlots·contexts) —
+  tokens 만 발행 관측 상류 미착지로 부분 (정직한 TODO 유지).
+- Payload 시간 폭발 처분 — 지배 자유도는 「임의 시점 소거→재개방」의 시간
+  배치 (E.12 정책 비규정의 표현이라 좁히기 금지). 형상 축소 + 이름 대칭
+  (SYMMETRY — MUST-FAIL run 은 구체 공간 유지, -workers 1 재현성 PIN 보존):
+  shapeA 15s (127×), shapeB 9m40s. 배터리 전체 23m24s — 병합 게이트 실용.
+- ISA-9 = 기존 증명의 합성 (사상: NoLoss.tla 머리). 잔여 끝-끝 축은 후-formal.
+
+후속 단계: 후-formal (sby — GUARD-MAP 79줄의 참 검증 + ISA-9 끝-끝 합성 +
+HiuPipeline×MaskUnit 합성 stall_uniform), cocotb 하네스 (SEC-1 golden 대조
+— MaskUnit 합성 형상에서), ISA-1/2 두-형상 대조, 합성 실측 (Q3 전제).
+주의: 호스트 /usr/bin/tlc(2.19)는 -noGenerateSpecTE 미지원 — 배터리 재현은
+반드시 컨테이너로.
 
 ## 모델 환류 대기 — 구현이 새로 한 결정 (§6.3 5단계)
 

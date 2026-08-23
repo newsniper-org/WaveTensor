@@ -42,18 +42,24 @@ module MemOrderGate (
   input  wire [3:0]    io_complete,
   output wire [3:0]    io_token,
   output reg  [3:0]    io_gateOpen,
+  output wire [2:0]    io_occupancy,
   input  wire          clk,
   input  wire          reset
 );
 
+  reg        [2:0]    _zz_io_occupancy_8;
+  wire       [2:0]    _zz_io_occupancy_9;
+  reg        [2:0]    _zz_io_occupancy_10;
+  wire       [2:0]    _zz_io_occupancy_11;
+  wire       [0:0]    _zz_io_occupancy_12;
   reg                 token_0;
   reg                 token_1;
   reg                 token_2;
   reg                 token_3;
-  wire                when_MemOrderGate_l143;
-  wire                when_MemOrderGate_l143_1;
-  wire                when_MemOrderGate_l143_2;
-  wire                when_MemOrderGate_l143_3;
+  wire                when_MemOrderGate_l155;
+  wire                when_MemOrderGate_l155_1;
+  wire                when_MemOrderGate_l155_2;
+  wire                when_MemOrderGate_l155_3;
   wire                gates_0_waitVec_0;
   wire                gates_0_waitVec_1;
   wire                gates_0_waitVec_2;
@@ -70,11 +76,52 @@ module MemOrderGate (
   wire                gates_3_waitVec_1;
   wire                gates_3_waitVec_2;
   wire                gates_3_open;
+  wire                referenced_0;
+  wire                referenced_1;
+  wire                referenced_2;
+  wire                referenced_3;
+  wire       [2:0]    _zz_io_occupancy;
+  wire       [2:0]    _zz_io_occupancy_1;
+  wire       [2:0]    _zz_io_occupancy_2;
+  wire       [2:0]    _zz_io_occupancy_3;
+  wire       [2:0]    _zz_io_occupancy_4;
+  wire       [2:0]    _zz_io_occupancy_5;
+  wire       [2:0]    _zz_io_occupancy_6;
+  wire       [2:0]    _zz_io_occupancy_7;
 
-  assign when_MemOrderGate_l143 = io_complete[0];
-  assign when_MemOrderGate_l143_1 = io_complete[1];
-  assign when_MemOrderGate_l143_2 = io_complete[2];
-  assign when_MemOrderGate_l143_3 = io_complete[3];
+  assign _zz_io_occupancy_12 = (referenced_3 && (! token_3));
+  assign _zz_io_occupancy_11 = {2'd0, _zz_io_occupancy_12};
+  assign _zz_io_occupancy_9 = {(referenced_2 && (! token_2)),{(referenced_1 && (! token_1)),(referenced_0 && (! token_0))}};
+  always @(*) begin
+    case(_zz_io_occupancy_9)
+      3'b000 : _zz_io_occupancy_8 = _zz_io_occupancy;
+      3'b001 : _zz_io_occupancy_8 = _zz_io_occupancy_1;
+      3'b010 : _zz_io_occupancy_8 = _zz_io_occupancy_2;
+      3'b011 : _zz_io_occupancy_8 = _zz_io_occupancy_3;
+      3'b100 : _zz_io_occupancy_8 = _zz_io_occupancy_4;
+      3'b101 : _zz_io_occupancy_8 = _zz_io_occupancy_5;
+      3'b110 : _zz_io_occupancy_8 = _zz_io_occupancy_6;
+      default : _zz_io_occupancy_8 = _zz_io_occupancy_7;
+    endcase
+  end
+
+  always @(*) begin
+    case(_zz_io_occupancy_11)
+      3'b000 : _zz_io_occupancy_10 = _zz_io_occupancy;
+      3'b001 : _zz_io_occupancy_10 = _zz_io_occupancy_1;
+      3'b010 : _zz_io_occupancy_10 = _zz_io_occupancy_2;
+      3'b011 : _zz_io_occupancy_10 = _zz_io_occupancy_3;
+      3'b100 : _zz_io_occupancy_10 = _zz_io_occupancy_4;
+      3'b101 : _zz_io_occupancy_10 = _zz_io_occupancy_5;
+      3'b110 : _zz_io_occupancy_10 = _zz_io_occupancy_6;
+      default : _zz_io_occupancy_10 = _zz_io_occupancy_7;
+    endcase
+  end
+
+  assign when_MemOrderGate_l155 = io_complete[0];
+  assign when_MemOrderGate_l155_1 = io_complete[1];
+  assign when_MemOrderGate_l155_2 = io_complete[2];
+  assign when_MemOrderGate_l155_3 = io_complete[3];
   assign io_token = {token_3,{token_2,{token_1,token_0}}};
   assign gates_0_waitVec_0 = (io_cfgPreds_0[0] && (! token_1));
   assign gates_0_waitVec_1 = (io_cfgPreds_0[1] && (! token_2));
@@ -111,6 +158,19 @@ module MemOrderGate (
   assign io_down_3_valid = (io_up_3_valid && gates_3_open);
   assign io_down_3_payload = io_up_3_payload;
   assign io_up_3_ready = (gates_3_open && io_down_3_ready);
+  assign referenced_0 = ((io_cfgPreds_1[0] || io_cfgPreds_2[0]) || io_cfgPreds_3[0]);
+  assign referenced_1 = ((io_cfgPreds_0[0] || io_cfgPreds_2[1]) || io_cfgPreds_3[1]);
+  assign referenced_2 = ((io_cfgPreds_0[1] || io_cfgPreds_1[1]) || io_cfgPreds_3[2]);
+  assign referenced_3 = ((io_cfgPreds_0[2] || io_cfgPreds_1[2]) || io_cfgPreds_2[2]);
+  assign _zz_io_occupancy = 3'b000;
+  assign _zz_io_occupancy_1 = 3'b001;
+  assign _zz_io_occupancy_2 = 3'b001;
+  assign _zz_io_occupancy_3 = 3'b010;
+  assign _zz_io_occupancy_4 = 3'b001;
+  assign _zz_io_occupancy_5 = 3'b010;
+  assign _zz_io_occupancy_6 = 3'b010;
+  assign _zz_io_occupancy_7 = 3'b011;
+  assign io_occupancy = (_zz_io_occupancy_8 + _zz_io_occupancy_10);
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       token_0 <= 1'b0;
@@ -121,25 +181,25 @@ module MemOrderGate (
       if(io_epochClear) begin
         token_0 <= 1'b0;
       end
-      if(when_MemOrderGate_l143) begin
+      if(when_MemOrderGate_l155) begin
         token_0 <= 1'b1;
       end
       if(io_epochClear) begin
         token_1 <= 1'b0;
       end
-      if(when_MemOrderGate_l143_1) begin
+      if(when_MemOrderGate_l155_1) begin
         token_1 <= 1'b1;
       end
       if(io_epochClear) begin
         token_2 <= 1'b0;
       end
-      if(when_MemOrderGate_l143_2) begin
+      if(when_MemOrderGate_l155_2) begin
         token_2 <= 1'b1;
       end
       if(io_epochClear) begin
         token_3 <= 1'b0;
       end
-      if(when_MemOrderGate_l143_3) begin
+      if(when_MemOrderGate_l155_3) begin
         token_3 <= 1'b1;
       end
     end

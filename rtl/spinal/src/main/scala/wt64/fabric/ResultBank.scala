@@ -44,6 +44,7 @@
 package wt64.fabric
 
 import spinal.core._
+import spinal.lib.CountOne
 import wt64.{StickyFault, Wt64Config}
 
 /** 결과 뱅크 — 생산자의 직전 출력을 담아 두는 슬롯 집합 (정본 §2.4 정의).
@@ -102,6 +103,14 @@ class ResultBank(cfg: Wt64Config, val dataW: Int = 64, val prodW: Int = 4) exten
       * 않는다. */
     val fault      = out port Bool()
     val faultClear = in  port Bool()
+
+    /** E.11 점유 관측면 (§3.7 드레인 정의역 ④ — 소유 구간이 진행 중인 결과
+      * 슬롯). 소유 중(ownerValid) 슬롯 수의 조합 집계 — 이미 있는 점유
+      * 상태의 배선일 뿐 새 상태가 아니다 (E.11 해설). age === L 로 이번
+      * 사이클 말에 풀리는 슬롯도 아직 소유 중이므로 센다 (양끝 포함 —
+      * acquire 거절과 같은 독법). 폭은 슬롯 상한에서 유도 — 관측면이지
+      * 인코딩이 아니므로 INV-T1 의 대상이 아니다. */
+    val occupancy = out port UInt(log2Up(cfg.slotCap + 1) bits)
   }
 
   // ── 슬롯 상태 ─────────────────────────────────────────────────────
@@ -181,4 +190,10 @@ class ResultBank(cfg: Wt64Config, val dataW: Int = 64, val prodW: Int = 4) exten
   // ── 읽기 ─────────────────────────────────────────────────────────
   io.read.data  := store(phys(io.read.slot))
   io.read.owned := inRange(io.read.slot) && ownerValid(phys(io.read.slot))
+
+  // ── E.11 점유 관측면 — 드레인 집계의 실입력 (§3.7 정의역 ④) ──────
+  // 소유 비트의 popcount — 조합, 새 상태 없음 (E.11 해설). store 잔존
+  // 값은 세지 않는다: 값이 남는 것은 뱅크의 존재 이유(§2.4)이지 진행이
+  // 아니고, 드레인 정의역은 「소유 구간이 *진행 중*인」 슬롯이다.
+  io.occupancy := CountOne(ownerValid)
 }
