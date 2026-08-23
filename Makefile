@@ -584,7 +584,11 @@ rtl-gen: rtl-pins
 	  "runMain wt64.gen.GenResultBank $(RTL_GEN)" \
 	  "runMain wt64.gen.GenFabricMerge $(RTL_GEN)" \
 	  "runMain wt64.gen.GenXlateStore $(RTL_GEN)" \
-	  "runMain wt64.gen.GenDecodeWalk $(RTL_GEN)"
+	  "runMain wt64.gen.GenDecodeWalk $(RTL_GEN)" \
+	  "runMain wt64.gen.GenHiuPipeline $(RTL_GEN)" \
+	  "runMain wt64.gen.GenReassembly $(RTL_GEN)" \
+	  "runMain wt64.gen.GenMemOrderGate $(RTL_GEN)" \
+	  "runMain wt64.gen.GenOperandDecode $(RTL_GEN)"
 	@echo "rtl-gen: 생성물 → $(RTL_GEN)"
 
 # 정적 검사. ISA-7(형상 파라미터 노출 0)과 금지 용어를 포함한다.

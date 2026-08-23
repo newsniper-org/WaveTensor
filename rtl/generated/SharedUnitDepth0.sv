@@ -31,7 +31,7 @@ module SharedUnitDepth0 (
   wire                acceptQueue;
   wire                bpViolation;
   reg                 _zz_io_faultBpViolation;
-  wire                when_SharedUnit_l212;
+  wire                when_SharedUnit_l213;
 
   SharedUnitOccupyStub body_1 (
     .io_start (body_1_io_start     ), //i
@@ -51,12 +51,12 @@ module SharedUnitDepth0 (
   assign io_faultBpViolation = _zz_io_faultBpViolation;
   always @(*) begin
     body_1_io_start = 1'b0;
-    if(when_SharedUnit_l212) begin
+    if(when_SharedUnit_l213) begin
       body_1_io_start = 1'b1;
     end
   end
 
-  assign when_SharedUnit_l212 = (io_req_valid && acceptDirect);
+  assign when_SharedUnit_l213 = (io_req_valid && acceptDirect);
   assign io_rsp_valid = body_1_io_done;
   assign io_rsp_payload = body_1_io_rsp;
   always @(posedge clk or posedge reset) begin
@@ -88,14 +88,14 @@ module SharedUnitOccupyStub (
   reg        [3:0]    remain;
   reg        [15:0]   held;
   reg                 busyReg;
-  wire                when_SharedUnit_l94;
+  wire                when_SharedUnit_l95;
 
   assign io_busy = busyReg;
   always @(*) begin
     io_done = 1'b0;
     if(!io_start) begin
       if(busyReg) begin
-        if(when_SharedUnit_l94) begin
+        if(when_SharedUnit_l95) begin
           io_done = 1'b1;
         end
       end
@@ -103,7 +103,7 @@ module SharedUnitOccupyStub (
   end
 
   assign io_rsp = held;
-  assign when_SharedUnit_l94 = (remain == 4'b0001);
+  assign when_SharedUnit_l95 = (remain == 4'b0001);
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       remain <= 4'b0000;
@@ -117,7 +117,7 @@ module SharedUnitOccupyStub (
       end else begin
         if(busyReg) begin
           remain <= (remain - 4'b0001);
-          if(when_SharedUnit_l94) begin
+          if(when_SharedUnit_l95) begin
             busyReg <= 1'b0;
           end
         end

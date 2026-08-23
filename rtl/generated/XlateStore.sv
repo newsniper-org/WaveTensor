@@ -96,7 +96,7 @@ module XlateStore (
   reg                 fillSlot_3_perm_x;
   wire                flushSamePart;
   wire       [3:0]    _zz_1;
-  wire                when_XlateStore_l204;
+  wire                when_XlateStore_l200;
   wire       [3:0]    _zz_2;
   wire                _zz_3;
   wire                _zz_4;
@@ -245,7 +245,7 @@ module XlateStore (
   assign flushSamePart = (io_flush_valid && (io_flush_part == io_install_part));
   assign _zz_1 = ({3'd0,1'b1} <<< io_install_part);
   assign io_install_ready = ((! _zz_io_install_ready) && (! flushSamePart));
-  assign when_XlateStore_l204 = (io_install_valid && io_install_ready);
+  assign when_XlateStore_l200 = (io_install_valid && io_install_ready);
   assign _zz_2 = ({3'd0,1'b1} <<< io_install_part);
   assign _zz_3 = _zz_2[0];
   assign _zz_4 = _zz_2[1];
@@ -351,7 +351,7 @@ module XlateStore (
       fillPend_2 <= 1'b0;
       fillPend_3 <= 1'b0;
     end else begin
-      if(when_XlateStore_l204) begin
+      if(when_XlateStore_l200) begin
         if(_zz_1[0]) begin
           fillPend_0 <= 1'b1;
         end
@@ -421,7 +421,7 @@ module XlateStore (
   end
 
   always @(posedge clk) begin
-    if(when_XlateStore_l204) begin
+    if(when_XlateStore_l200) begin
       if(_zz_3) begin
         fillSlot_0_idx <= io_install_idx;
       end

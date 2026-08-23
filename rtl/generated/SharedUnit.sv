@@ -48,7 +48,7 @@ module SharedUnit (
   wire                acceptQueue;
   wire                bpViolation;
   reg                 _zz_io_faultBpViolation;
-  wire                when_SharedUnit_l184;
+  wire                when_SharedUnit_l185;
   wire       [3:0]    _zz_1;
 
   assign _zz_queue_rdPtr = (queue_rdPtr + 2'b01);
@@ -56,7 +56,7 @@ module SharedUnit (
   assign _zz_queue_cnt = (queue_cnt + _zz_queue_cnt_1);
   assign _zz_queue_cnt_2 = (io_req_valid && acceptQueue);
   assign _zz_queue_cnt_1 = {2'd0, _zz_queue_cnt_2};
-  assign _zz_queue_cnt_4 = when_SharedUnit_l184;
+  assign _zz_queue_cnt_4 = when_SharedUnit_l185;
   assign _zz_queue_cnt_3 = {2'd0, _zz_queue_cnt_4};
   SharedUnitOccupyStub body_1 (
     .io_start (body_1_io_start    ), //i
@@ -86,7 +86,7 @@ module SharedUnit (
   assign io_faultBpViolation = _zz_io_faultBpViolation;
   always @(*) begin
     body_1_io_start = 1'b0;
-    if(when_SharedUnit_l184) begin
+    if(when_SharedUnit_l185) begin
       body_1_io_start = 1'b1;
     end
     if(io_req_valid) begin
@@ -98,12 +98,12 @@ module SharedUnit (
 
   always @(*) begin
     body_1_io_req = io_req_payload;
-    if(when_SharedUnit_l184) begin
+    if(when_SharedUnit_l185) begin
       body_1_io_req = queue_head;
     end
   end
 
-  assign when_SharedUnit_l184 = ((! body_1_io_busy) && (! queueEmpty));
+  assign when_SharedUnit_l185 = ((! body_1_io_busy) && (! queueEmpty));
   assign _zz_1 = ({3'd0,1'b1} <<< queue_wrPtr);
   assign io_rsp_valid = body_1_io_done;
   assign io_rsp_payload = body_1_io_rsp;
@@ -124,7 +124,7 @@ module SharedUnit (
       if(bpViolation) begin
         _zz_io_faultBpViolation <= 1'b1;
       end
-      if(when_SharedUnit_l184) begin
+      if(when_SharedUnit_l185) begin
         queue_rdPtr <= ((queue_rdPtr == 2'b11) ? 2'b00 : _zz_queue_rdPtr);
       end
       if(io_req_valid) begin
@@ -166,14 +166,14 @@ module SharedUnitOccupyStub (
   reg        [3:0]    remain;
   reg        [15:0]   held;
   reg                 busyReg;
-  wire                when_SharedUnit_l94;
+  wire                when_SharedUnit_l95;
 
   assign io_busy = busyReg;
   always @(*) begin
     io_done = 1'b0;
     if(!io_start) begin
       if(busyReg) begin
-        if(when_SharedUnit_l94) begin
+        if(when_SharedUnit_l95) begin
           io_done = 1'b1;
         end
       end
@@ -181,7 +181,7 @@ module SharedUnitOccupyStub (
   end
 
   assign io_rsp = held;
-  assign when_SharedUnit_l94 = (remain == 4'b0001);
+  assign when_SharedUnit_l95 = (remain == 4'b0001);
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       remain <= 4'b0000;
@@ -195,7 +195,7 @@ module SharedUnitOccupyStub (
       end else begin
         if(busyReg) begin
           remain <= (remain - 4'b0001);
-          if(when_SharedUnit_l94) begin
+          if(when_SharedUnit_l95) begin
             busyReg <= 1'b0;
           end
         end

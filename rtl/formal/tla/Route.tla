@@ -60,6 +60,18 @@
 (*      faultsIn 은 「fault 상태」가 아니라 「이 토큰이 밟은 발화 횟수」다.  *)
 (*      두 낱말을 섞으면 안 된다.                                          *)
 (*                                                                         *)
+(*   ⚠️ 토큰 제시가 스트로브다 — Arrive 는 「새 토큰 하나의 도착」이고,      *)
+(*      같은 토큰이 여러 사이클 제시되는 상황은 이 모델에 상태로 없다.      *)
+(*      RTL(RouteJudge)의 tokIn 이 「토큰 하나 = valid 한 사이클」 이라는    *)
+(*      전제 — 같은 토큰을 여러 사이클 들고 있으면 발화가 사이클마다        *)
+(*      선다 — 는 위 시간축 부재에서 따라 나온 *구현의 새 결정*이며, 이     *)
+(*      모델이 검사하지 않는다. ISA-4 의 시간 축과 함께 후-formal(sby)      *)
+(*      몫이다 (1차 파도 환류 처분, 2026-08-23).                            *)
+(*                                                                         *)
+(*   ⚠️ 해제와 in-flight 의 겹침 없음 — 구성 액션(ConfigOwn·ConfigRelease)  *)
+(*      은 lnid = NoName (토큰 없음) 에서만 열린다. 소유 해제가 비행 중     *)
+(*      토큰과 겹치는 시간축은 이 모델에 표현이 없다 — 후-formal 몫이다.    *)
+(*                                                                         *)
 (*   ✅ (해소) 소유 서로소성 — 초판에서 unique_owner 는 정본 근거 없는      *)
 (*      모델러의 가정이었다. 지금은 §1.4.5 규범이다: 한 배달 범위 안에서   *)
 (*      한 LNID 의 소유자는 최대 하나, 강제는 사상표 기입 시점의 거절.     *)
@@ -176,8 +188,45 @@ ConfigOwn(s, p, n) ==
     /\ owns' = [owns EXCEPT ![<<s, p>>] = @ \cup {n}]
     \* 뷰 동기화. 지우면 진입점의 뷰가 표보다 뒤처진다 — §1.6.3 이 허용한
     \* 「하위 적중 신호 OR」 갈래의 대표 결함형(스큐)이 정확히 이것이다.
+    \* 이 원자 대입이 곧 「기입 1회 = 뷰 구동 1회」 라는 *모듈 간* 계약의
+    \* 모델 문면이다 — RTL 에서 표 반영(MmioConfig)과 뷰 구동(RouteJudge 의
+    \* viewWr 포트)이 서로 다른 모듈로 갈라졌으므로, 모델 안의 한 액션이던
+    \* 것이 두 모듈 사이의 계약이 됐다. 정본 §3.7.1 「기입의 원자성 계약」
+    \* 이 그 등재 자리다 (1차 파도 환류 처분, 2026-08-23).
     /\ view' = IF On("view_sync")
                  THEN [view EXCEPT ![s] = @ \cup {n}]
+                 ELSE view
+    /\ UNCHANGED <<bankMap, lnid, lbid, srcKind, judged, faultsIn>>
+
+(***************************************************************************)
+(* 소유 해제 — 구현 환류 (2026-08-23).                                     *)
+(*                                                                         *)
+(* 초판 모델은 추가(ConfigOwn)만 두었고 §1.5 공집합으로 되돌아갈 길이      *)
+(* 없었다. RTL(MmioConfig)이 해제 기입(V=0)을 열었다 — 표와 진입점 뷰를    *)
+(* *같은 조작*으로 소거한다. §6.3 5단계에 따라 그 결정을 모델로 돌려받는다.*)
+(*                                                                         *)
+(* view_sync 가드를 *공유*한다 — 「기입 1회 = 뷰 구동 1회」(§3.7.1)는       *)
+(* 방향(추가/해제)과 무관한 한 계약이기 때문이다. 가드를 지운 실험         *)
+(* (Route_del_view_sync)의 반례는 두 방향 어느 쪽에서든 나올 수 있다 —     *)
+(* TLC 는 통상 추가 쪽 최단 반례를 먼저 낸다. RTL 에서 두 방향이 서로      *)
+(* 다른 기입 경로라는 사실의 검사는 후-formal 몫이다.                      *)
+(*                                                                         *)
+(* 새 가드는 없다: 점유 엔트리의 유효 재기입 거절(해제 후 재기입 2단계)은  *)
+(* ConfigOwn 의 unique_owner 거절이 이미 형식화하고 있고, 해제 자체가      *)
+(* 만들 수 있는 유일한 스큐(뷰 잔존)는 view_sync 축이다. 해제 × 비행 중    *)
+(* 토큰의 시간축은 머리 비-커버리지 목록 참조.                             *)
+(***************************************************************************)
+ConfigRelease(s, p, n) ==
+    /\ n \in owns[<<s, p>>]
+    /\ lnid = NoName
+    /\ owns' = [owns EXCEPT ![<<s, p>>] = @ \ {n}]
+    \* @ \ {n} 이 정확한 것은 unique_owner 아래에서다 — 서로소성이 살아
+    \* 있으면 형제 지점이 같은 이름을 들 수 없어, 지점 하나의 해제가 곧
+    \* 범위 합집합에서의 소거다. unique_owner 를 지운 실험 형상에서는 이
+    \* 대입이 스큐를 만들 수 있으나, 그 형상이 검사하는 것은
+    \* Inv_UniqueOwnerPerScope 하나다 (cfg 참조).
+    /\ view' = IF On("view_sync")
+                 THEN [view EXCEPT ![s] = @ \ {n}]
                  ELSE view
     /\ UNCHANGED <<bankMap, lnid, lbid, srcKind, judged, faultsIn>>
 
@@ -239,6 +288,7 @@ Retire ==
 
 Next ==
     \/ \E s \in Scopes, p \in Points, n \in Names : ConfigOwn(s, p, n)
+    \/ \E s \in Scopes, p \in Points, n \in Names : ConfigRelease(s, p, n)
     \/ \E b \in Banks : ConfigBank(b)
     \/ \E n \in Names, b \in Banks, k \in SrcKinds : Arrive(n, b, k)
     \/ \E s \in Scopes : Judge(s)

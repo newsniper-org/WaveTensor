@@ -51,11 +51,16 @@ ENFORCED = [
     "Isolation",
     "Walk",
     "Decode",
+    # 2차 파도 (2026-08-23)
+    "Payload",
+    "MemOrder",
+    "Platform",
 ]
-# 미착지 (2차 파도 대기): NoLoss(회계는 횡단 관심사), Platform(플랫폼 비교는
-# 검증 구조), Payload(재조립), MemOrder(순서 토큰). 착지 시 위로 옮긴다.
+# 미착지: NoLoss — 기계 전체 회계는 모듈이 아니라 합성 속성이다. RTL 대응물은
+# 후-formal 이 조합 위에서 검사한다 (모듈 단위 GUARD-MAP 강제 부적합).
+# 이 판단이 틀렸다고 판명되면 목록에 올리고 사유를 갱신하라.
 
-_MIN_ENFORCED = 8  # 래칫 바닥 — 이 수 아래로 줄이는 편집은 실패한다
+_MIN_ENFORCED = 11  # 래칫 바닥 — 이 수 아래로 줄이는 편집은 실패한다
 
 
 def fail(msg: str) -> None:

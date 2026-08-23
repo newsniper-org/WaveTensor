@@ -120,11 +120,28 @@ golden 에서 직접 받는다.
 | `fabric/FabricMerge` | Fabric.tla (11가드) | §2.3 선택 규칙 · §2.6 배압 · FAB-9/10 |
 | `hiu/XlateStore` | XlateStore.tla + Isolation 저장·채움 축 | §3.6 직접 사상 · flush 데이터 잔존 · D12 |
 | `decode/DecodeWalk` | Walk.tla + Decode.tla | §4.2 END authority · §1.6.1 판정 위치 · SEC-7 |
+| `hiu/HiuPipeline` | Isolation 승인 축 + Decode 경로 축 + Platform | §3.2 여섯 단계 · D11 승인 게이팅 · SEC-2 상태열 |
+| `payload/Reassembly` | Payload.tla (11가드) | §4.3 문맥 결속 · D8/D9/D10 · E.10 |
+| `memorder/MemOrderGate` | MemOrder.tla (7가드) | §4.4.4 토큰 게이트 · D13 콘 앵커 |
+| `decode/OperandDecode` | (모델 없음 — 관측 기반) | §1.4 본문 해석 · ACCTGT 결속 배선 · SEC-7 |
 
-2차 파도 대기: HiuPipeline(승인 축 — Isolation 위임 가드 5), Payload 재조립,
-MemOrder 토큰, NoLoss 회계 횡단 검사, 피연산자 해석(EH 본문).
+2차 파도 착지 완료 (2026-08-23) — ENFORCED 11모델 · 76가드 전수.
+NoLoss 는 모듈이 아니라 합성 속성 — 후-formal 이 조합 위에서 검사한다
+(lint_guard_map ENFORCED 주석의 판단 근거 참조).
+
+3차 파도 대기: 페이지 소유권 표 유닛(E.7), 마스크 유닛(§5.2), 완료 통지
+(E.5/E.6), 스텝 시퀀서 통합, top-level 조립.
 
 ## 모델 환류 대기 — 구현이 새로 한 결정 (§6.3 5단계)
+
+> **처리 현황 (2026-08-23, 2차 파도)**: 아래 1차 파도 목록의 대부분이
+> 처분됐다 — 모델 개정(Route ConfigRelease · SharedUnit no_overtake ·
+> Fabric 비-커버리지), 정본 등재(§2.2 보류 순서 · §2.3 제공 잠금 · §2.4
+> 자격 관측면 · §3.7.1 원자성 계약·거절 3원인 · §4.2.2 검산 확장), B.5
+> 회부(엔트리 배치). 2차 파도가 새로 남긴 환류는 각 모듈 보고 기준으로
+> 이 절 말미에 추가된다. 미처분 잔여: E.2 주소 폭 44/44 · 항목 배치 ABI ·
+> flush×채움 모델 추가 · 채움 커밋 직렬화 (부록 E·Isolation 모델 확장 대기),
+> 고정 지연 길이(1사이클 잠정) 정본 확정, 자격/비소유 fault 폴딩 구분.
 
 RTL 이 모델에 없는 결정을 했다. §6.3: 「그 결정을 모델로 돌려보낸다.」
 아래는 1차 파도가 남긴 환류 대기 목록이다 — 처리 전까지 이 목록이 부채다.

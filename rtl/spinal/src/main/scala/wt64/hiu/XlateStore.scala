@@ -4,8 +4,9 @@
 // WT64v1 재구현 — 변환 저장 블록 + 채움 경로 (정본 §3.6 전부 · 부록 E.2 · E.3).
 //
 // 선-formal 계약: rtl/formal/tla/XlateStore.tla (HIU-1~4 축) +
-// rtl/formal/tla/Isolation.tla 의 저장·채움 축 (SEC-4). 승인 축은 2차 파도의
-// HiuPipeline 소관이다 — 아래 GUARD-MAP 에 위임으로 명시한다.
+// rtl/formal/tla/Isolation.tla 의 저장·채움 축 (SEC-4). 승인 축 5가드
+// (approve_gates_value · no_early_forward · query_offpath · query_no_serve ·
+// coh_no_shortcut)는 착지한 HiuPipeline.scala 의 CHECK 로 이관됐다.
 //
 // GUARD-MAP: XlateStore.valid_check        -> storeHit = lookup.valid ∧ storeValid ∧ 태그 일치 — storeValid(validBits(part)(idx)) 가 논리곱의 항이고, rsp.frame/rsp.perm 은 hit 인 가지에서만 구동된다 (miss 시 0)
 // GUARD-MAP: XlateStore.partition_check    -> entryAddr = lookup.part @@ reqIdx — 저장 주소 상위가 요청 파티션 그 자체라 남의 파티션 항목은 조회 주소 공간에 존재하지 않는다. validBits·fillSlot 도 part 로 색인된다
@@ -15,11 +16,6 @@
 // GUARD-MAP: Isolation.fill_tagged         -> fillHit 는 fillSlot(lookup.part) 하나만 후보로 삼는다 — 타 파티션 슬롯은 아예 조회되지 않고(파티션 검사의 구조화), idx·tag 일치가 논리곱의 항이다
 // GUARD-MAP: Isolation.fill_slot_per_partition -> fillPend/fillSlot 이 파티션당 정확히 한 자리인 Vec 이고, install.ready 는 자기 파티션 슬롯의 점유만 본다 — 남의 채움이 내 자리를 차지하거나 덮어쓸 수 없다
 // GUARD-MAP: Isolation.fill_offpath        -> 조회 응답은 같은 사이클 조합 판정이며 채움 상태는 lookup 경로에 정지·ready 를 만들지 않는다 — 채움은 fillHit 라는 값 판정으로만 나타난다 (fwait 단계 없음)
-// GUARD-MAP: Isolation.approve_gates_value -> DELEGATED(HiuPipeline — 2차 파도) — 승인(§3.2 6단계)이 값을 게이트하는 자리는 요청 파이프라인이다. 이 블록은 판정·값을 낼 뿐 소비자에게 싣지 않는다
-// GUARD-MAP: Isolation.no_early_forward    -> DELEGATED(HiuPipeline — 2차 파도) — 「승인 이전에 소비자에게 도달하지 않는다」(§3.2 규범 1)는 실행·승인 단계를 가진 파이프라인의 시간축 의무다
-// GUARD-MAP: Isolation.query_offpath       -> DELEGATED(HiuPipeline — 2차 파도) — 호스트 질의 왕복을 요청 경로 밖에 두는 것은 상태열(§5.3)을 소유한 파이프라인의 의무다. 이 블록은 hostRsp 를 실어 나르기만 한다
-// GUARD-MAP: Isolation.query_no_serve      -> DELEGATED(HiuPipeline — 2차 파도) — 호스트 응답이 장치가 가진 것만 담는지의 검사(§3.3.1 규범 1)는 호스트 응답을 판정에 쓰는 선택 경로의 것이다. 여기서는 그 값을 판정에 쓰지 않는다
-// GUARD-MAP: Isolation.coh_no_shortcut     -> DELEGATED(HiuPipeline — 2차 파도) — 승인 변종(approve_own/approve_coh)의 상태열 동일성(§3.4.1)은 승인 단계를 구현하는 쪽의 의무다
 //
 // ## D12 — 읽기 우선순위 (§3.6.2 규범 2, 확정)
 //
@@ -27,7 +23,7 @@
 //   채움 후보 복수면 자기 파티션 우선.
 //
 // 이 블록은 앞의 둘을 판정하고, 호스트 응답은 **인터페이스 자리만** 둔다 —
-// 그 leg 의 선택 경로는 2차 파도(HiuPipeline)가 세운다. 자기 파티션 우선은
+// 그 leg 의 선택 경로는 HiuPipeline(착지)이 세운다. 자기 파티션 우선은
 // 여기서 구조가 됐다: 채움 버퍼 자리가 파티션당 하나이고 기입이 자기
 // 파티션에만 가므로, 요청 파티션의 슬롯 하나가 유일한 후보다.
 //
@@ -116,7 +112,7 @@ case class XlateFillLine(idxW: Int, tagW: Int, frameW: Int) extends Bundle {
   *
   * 미적중은 오류가 아니다 (§3.6.2 규범 3) — 이 블록은 fault 원천이 없고
   * sticky 비트도 없다. 미적중 배압·sticky 통지(부록 E.3)는 요청 상태
-  * 기계를 소유한 2차 파도의 몫이다. */
+  * 기계를 소유한 HiuPipeline(착지)의 몫이다. */
 class XlateStore(val cfg: Wt64Config = Wt64Config()) extends Component {
   import XlateStore._
 
@@ -150,7 +146,7 @@ class XlateStore(val cfg: Wt64Config = Wt64Config()) extends Component {
       val perm     = out port XlatePerm()
       /** 호스트 응답 leg — D12 최하 순위의 **인터페이스 자리**. 이 블록은
         * 값을 판정에 쓰지 않고 실어 나르기만 한다. 선택 경로(그리고
-        * query_no_serve 검사)는 2차 파도 HiuPipeline 소관이다. */
+        * query_no_serve 검사)는 HiuPipeline(착지) 소관이다. */
       val hostPresent = out port Bool()
       val hostFrame   = out port UInt(FRAME_W bits)
       val hostPerm    = out port XlatePerm()

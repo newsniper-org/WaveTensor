@@ -23,6 +23,28 @@
 (* **불투명 토큰**이며 내부 구조가 없다 — 그 제약이 좋은 인코딩을 강제하고,*)
 (* ISA 를 형상 독립으로 만든 근거와 같은 방향이다.                         *)
 (***************************************************************************)
+(***************************************************************************)
+(* ## 이 모델이 덮지 않는 것 — 1차 파도 환류 처분 (2026-08-23)             *)
+(*                                                                         *)
+(*   ⚠️ 배압 위반의 loud 경로가 동작으로 없다. RTL 은 ready 무시 push 를    *)
+(*      sticky fault 로 구현했고 위반 갈래가 어떤 상태에도 쓰지 않는다.     *)
+(*      이 모델에 위반 push 동작 + fault 가드 4종을 들여오는 것은 같은      *)
+(*      §2.2 1항/§2.6 4·5항 계약을 이미 동작(Shove)과 가드(bp_loud ·        *)
+(*      fault_raised · fault_sticky · bp_no_consumer_write)로 검증하는      *)
+(*      Fabric.tla 와 같은 결함형의 두 벌 모델링이다 — 두 벌은 드리프트     *)
+(*      한다 (Fabric.tla 「셋을 한 모델에 둔 이유」와 같은 판단). 이        *)
+(*      표면(디코더 dispatch 경계)의 위반 → sticky 검사는 후-formal 이      *)
+(*      RTL 의 bpViolation 경로에 직접 건다.                                *)
+(*   ⚠️ 사이클 동시성이 없다. Arrive/Dequeue/Complete 는 원자 인터리빙      *)
+(*      이라 같은 사이클의 도착+dequeue 겹침이 없다. RTL 이 가득 찬 열의    *)
+(*      pop 사이클 도착을 보수적으로 배압 처리하는 것(room 판정은 현재      *)
+(*      계수 기준)은 §2.2 가 적법하다고 규정한 처분(배압)의 선택이지        *)
+(*      새 결함형이 아니다 — 모델 개정 불요, 시간축은 후-formal 몫.         *)
+(*   ⚠️ 본체 인터페이스(start/busy/done)의 시간축이 없다. Complete 는       *)
+(*      원자 동작이고, RTL 이 정의한 「start 는 busy 낮은 사이클에만 ·      *)
+(*      done 1사이클 + rsp 동시 유효」 계약은 Complete 의 RTL 시간축        *)
+(*      해석이다 — 본체 교체 경계의 검사는 후-formal 몫.                    *)
+(***************************************************************************)
 EXTENDS Naturals, FiniteSets, Sequences
 
 CONSTANTS
@@ -37,7 +59,7 @@ CONSTANTS
 (* 가드는 *불필요하거나 속성이 부실하거나* 둘 중 하나이며, 어느 쪽인지     *)
 (* 판정하기 전에는 그 가드를 검증됐다고 하지 않는다.                       *)
 (***************************************************************************)
-AllGuards == {"busy_check", "queue_room", "backpressure"}
+AllGuards == {"busy_check", "queue_room", "backpressure", "no_overtake"}
 On(g) == g \notin DisabledGuards
 
 Dispositions == {"idle", "queued", "serving", "done", "backpressured"}
@@ -79,7 +101,15 @@ Arrive(r) ==
     /\ arrived' = arrived \cup {r}
     /\ \/ \* 유닛이 비어 있으면 곧바로 처리한다.
           \* 가드 busy_check 를 지우면 점유 중에도 이 분기가 열린다.
+          \* 가드 no_overtake — 구현 환류 (2026-08-23): RTL 의 직행 수락은
+          \* 보류 열이 비어 있을 때만 열린다 (acceptDirect 의 queueEmpty
+          \* 연언). 모델 초판은 serving = {} 만 요구해, 대기자가 있는데
+          \* 새 도착이 유닛을 채가는 추월이 적법했다 — 보류(FIFO)가 도착
+          \* 순서에 관해 아무것도 말하지 않게 된다. §2.2 「보류는 도착
+          \* 순서를 보존한다」(환류로 등재)의 형식화다. 지우면 추월이
+          \* 열리고 Prop_NoOvertake 가 깨진다.
           /\ (serving = {} \/ ~On("busy_check"))
+          /\ (queue = <<>> \/ ~On("no_overtake"))
           /\ serving' = serving \cup {r}
           /\ disp'    = [disp EXCEPT ![r] = "serving"]
           /\ queue'   = queue
@@ -172,6 +202,26 @@ Inv_ServingAgrees == \A r \in Requesters : (disp[r] = "serving") <=> (r \in serv
 Prop_Progress == \A r \in Requesters : (disp[r] = "queued") ~> (disp[r] = "done")
 
 (***************************************************************************)
+(* 추월 금지 — §2.2 「보류는 도착 순서를 보존한다」의 전이 형태.           *)
+(*                                                                         *)
+(* 대기자를 거치지 않고 유닛으로 들어가는 전이(직행)는 보류 열이 비어      *)
+(* 있을 때만 허용된다. 열을 거친 진입(Dequeue)은 전건에서 걸러진다 —       *)
+(* disp 가 "queued" 에서 오기 때문이다.                                    *)
+(*                                                                         *)
+(* 정직 표기 — 이 모델의 구성 안에서 이 속성은 no_overtake 가드의 문면     *)
+(* 되풀이에 가깝다 (Fabric.tla Inv_SingleValidProducer 의 ① 과 같은         *)
+(* 상황). 그래도 거는 이유가 같다: §6.3 이 후-formal 이 *같은 속성*을      *)
+(* RTL 에 다시 건다고 못박고, RTL 에서 「직행」과 「열 비움」은 정의가      *)
+(* 아니라 서로 다른 배선(acceptDirect · cnt)이다 — 거기서는 두 진술이      *)
+(* 독립이다. 유한 요청자 모델에서는 추월이 기아(Prop_Progress 반증)로      *)
+(* 자라지 못하므로, 이 축을 잴 속성은 이것뿐이다.                          *)
+(***************************************************************************)
+Prop_NoOvertake ==
+    [][ \A r \in Requesters :
+          (disp[r] \in {"idle", "backpressured"} /\ disp'[r] = "serving")
+              => queue = <<>> ]_vars
+
+(***************************************************************************)
 (* 위험 도달성 증인 — 좋은 모델에서 **반드시 반증돼야 한다**.              *)
 (*                                                                         *)
 (* 좋은 모델이 통과하는 이유가 "계약이 위험을 담고 있어서" 인지 "설정이    *)
@@ -189,5 +239,10 @@ Witness_NoBackpressure == \A r \in Requesters : disp[r] # "backpressured"
 
 \* 처리가 실제로 끝나는가 — 진행 경로가 도달 가능한가.
 Witness_NoCompletion == \A r \in Requesters : disp[r] # "done"
+
+\* 추월의 기회가 실재하는가 — 유닛이 비었는데 보류 열이 비어 있지 않은
+\* 상태. 이 상태가 도달 불가라면 no_overtake 가드는 막을 것이 없어
+\* 공허하다 (Complete 뒤 Dequeue 가 열리기 *전*의 그 창이 정확히 이것이다).
+Witness_NoOvertakeWindow == ~(serving = {} /\ queue # <<>>)
 
 =============================================================================

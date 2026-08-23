@@ -22,6 +22,7 @@
 // GUARD-MAP: SharedUnit.busy_check   -> acceptDirect = !bodyBusy && queueEmpty — 점유 중(body.io.busy)에는 본체 직행 경로(start)가 닫힌다; start 는 popNow/acceptDirect 두 경로에서만 선다
 // GUARD-MAP: SharedUnit.queue_room   -> acceptQueue 에 queueRoom(cnt < queueDepth) 가드 — 자리 검사 없이 슬롯을 쓰는 경로가 없다 (덮어쓰기 부재; 깊이 0 이면 queueRoom = False 상수)
 // GUARD-MAP: SharedUnit.backpressure -> io.req.ready := acceptDirect || acceptQueue — 가득 참이 ready 강하로 상류에 보인다; ready 무시 push(valid && !ready)는 bpViolation → StickyFault
+// GUARD-MAP: SharedUnit.no_overtake  -> acceptDirect 의 queueEmpty 연언 + FIFO 큐 pop — 보류 열이 비어 있지 않으면 새 도착이 대기자를 추월해 직행할 수 없다 (§2.2 보류 순서 보존 — 구현이 먼저 있었고 모델이 환류로 따라온 가드다)
 //
 // 배치 규율: 처분 구조(이 파일의 SharedUnit)와 유닛 본체(SharedUnitBody
 // 하위 클래스)를 분리한다. 본체는 고정 인터페이스(start/req/busy/done/rsp)

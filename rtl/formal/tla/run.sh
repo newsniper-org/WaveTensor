@@ -96,9 +96,12 @@ expect_pass "FAB-2 좋은 모델 (깊이 2 · 요청자 4)"  SharedUnit_large.cf
 expect_fail "가드 삭제: busy_check"    SharedUnit_del_busy_check.cfg   "$M" Inv_Exclusive
 expect_fail "가드 삭제: queue_room"    SharedUnit_del_queue_room.cfg   "$M" Inv_NoLoss
 expect_fail "가드 삭제: backpressure"  SharedUnit_del_backpressure.cfg "$M" Inv_NoUndisposed
+# 구현 환류 (2026-08-23) — RTL 의 FIFO 보존이 모델보다 강했고, 모델이 따라왔다.
+expect_fail "가드 삭제: no_overtake (추월)"    SharedUnit_del_no_overtake.cfg "$M" Prop_NoOvertake
 
 expect_fail "증인: 경합이 실재하는가"       SharedUnit_witness_NoQueueing.cfg     "$M" Witness_NoQueueing
 expect_fail "증인: 배압 경로가 실재하는가"  SharedUnit_witness_NoBackpressure.cfg "$M" Witness_NoBackpressure
+expect_fail "증인: 추월 창이 실재하는가"        SharedUnit_witness_NoOvertakeWindow.cfg "$M" Witness_NoOvertakeWindow
 expect_fail "증인: 처리 완료가 실재하는가"  SharedUnit_witness_NoCompletion.cfg   "$M" Witness_NoCompletion
 
 # ---------------------------------------------------------------------------

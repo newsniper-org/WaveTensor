@@ -40,9 +40,9 @@
 // GUARD-MAP: Decode.fault_not_folded -> oFault 는 malformation 전용 sticky(공용 StickyFault)다 — 이 모듈에 미적중 sticky 표시가 없고, capability 종결은 fault 를 세우지 않으며(§1.6.2 — 능력 부재는 오류가 아니다), 이 신호의 폴딩 여부를 여기 명시한다: 폴딩하지 않는다 (§5.6 「malformation 은 미적중으로 접지 않는다」)
 // GUARD-MAP: Decode.out_no_reason    -> 판정 방출은 {oExecValid, oMalformed, oCapAbsent} 종결 등급 비트뿐 — oCapAbsent 는 §1.6.2 의 셋째 분류(종결 종류)이지 원인 코드가 아니다. 원인 코드 채널 자체가 없어 예약값 원본이 승인 경계로 반향될 자리가 없다 (§5.6 폴딩 규범 2항의 reason 확장은 이 모듈 밖이며, 추가 시 예약값 원본 금지가 그 확장의 의무다)
 // GUARD-MAP: Decode.verdict_ungated  -> outStage.rMal 의 fanout 은 oMalformed·oExecValid 게이트·oFault set, rCapa 의 fanout 은 oCapAbsent·oExecValid 게이트뿐이다 — 단계 선택·mux 제어에 불참. capability 로 조기에 판정이 서도 순회는 상한까지 완주한다 (D14 상태열 균일). 판정은 경로를 가르지 않고 결과를 게이트한다 (§3.2 · §1.6.1 「미진입은 효과의 문장」)
-// GUARD-MAP: Decode.lookup_unbranched -> DELEGATED(SEC-2 상태열 유닛) — 변환 조회가 이 모듈에 없다. 조회 결과에 따른 단계 배치 비분기는 조회를 품는 상태열 유닛의 소관이다
-// GUARD-MAP: Decode.evict_inline      -> DELEGATED(SEC-2 상태열 유닛) — 축출은 변환 저장의 것이다. 이 모듈에는 저장·대체 경로가 없다
-// GUARD-MAP: Decode.stall_uniform     -> DELEGATED(SEC-2 상태열 유닛) — 배압 정지는 조회 단의 것이다 (부록 E.3 · §5.3). 이 모듈은 정지 없는 고정 1사이클이라 선택적 정지가 표현될 자리가 없다
+// (이관 기록: Decode.lookup_unbranched · evict_inline · stall_uniform 의
+//  DELEGATED 3줄은 조회를 품는 상태열 유닛(HiuPipeline)의 착지와 함께 그쪽
+//  CHECK 줄로 **이동**했다 — 가드당 저장소 전체 정확히 1줄 규약.)
 // ─────────────────────────────────────────────────────────────────────────
 //
 // ── 인코딩 관측 기록 (허용 오라클: asm/wavetensor_asm.py encode_pass) ────
