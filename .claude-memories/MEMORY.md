@@ -12,3 +12,4 @@
 - [post-stable 장기 계획](post_stable_roadmap.md) — §3(구현 이원화)은 RTL 전면 재구현으로 대체됨; §2 문서화·§4 양산만 T_stable 게이트 유지.
 - [WT64v1 RTL 전면 재구현](wt64v1_rtl_reimplementation.md) — 2026-08-20 착수; 정본은 아키텍처 가이드 PDF 하나, SpinalHDL 주 + SV 검증층, clean-room, 선-formal 이 RTL 을 선행한다.
 - [Workflow 자리표시자 패턴 금지](workflow_placeholder_bug.md) — 데이터는 인라인 또는 args 로; __X__ 치환 패턴은 두 번 다 즉시 실패
+- [podman 고아 컨테이너 함정](podman_orphan_containers.md) — 클라이언트 kill ≠ 컨테이너 kill; 중단 후 podman ps 확인 필수, TLC 는 고유 -metadir

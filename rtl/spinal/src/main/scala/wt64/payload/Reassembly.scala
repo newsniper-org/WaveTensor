@@ -4,20 +4,24 @@
 // WT64v1 재구현 — 조각 재조립 (Reassembly). EXT-4 · D8 · D9.
 //
 // 선-formal 계약: rtl/formal/tla/Payload.tla — 검사된 모델이 의사-명세다 (§6.3).
-// 아래 GUARD-MAP 이 그 모델의 AllGuards 전부(11)와 이 RTL 의 검사를 잇는다.
+// 아래 GUARD-MAP 이 그 모델의 AllGuards 전부(14)와 이 RTL 의 검사를 잇는다.
 //
 // 정본: §4.3 전부 — 규범 5항 (태그=키 · 두 「상한」 상이 · 순번 누락도 loud ·
 //       미완 중 재시작 loud · 완료 후 재사용은 회계 소거 후) · 「태그→구간
 //       결속」 (결속 원천 = 개시 wave 의 ACCTGT 가 명명한 목적 LBID, 개방 시
 //       1회 확정·종료까지 불변) · 「조각열 종료 — 삼중 구조」 (마지막 표시가
 //       authority / 선언 총개수는 검산 / 구현 슬롯 상한은 안전장치 · 타임아웃
-//       금지),
+//       금지 — 표시 유실의 처분은 태그 지정 문맥 소거),
 //       §2.4.1 (조각별 슬롯 — 조각열 하나가 연속한 슬롯 구간, 순번이 구간 안의
 //       자리, 선언 총개수 > 구현 슬롯 상한 = 능력 부재),
 //       §1.4.7 (ACCTGT — 쓰기측 결과 슬롯 = 목적 LBID 명명, 사슬당 최대 1회),
 //       §1.6.2 (오류 3분류 배타 — 능력 부재는 오류가 아니다),
+//       §3.7 「미완 문맥의 소거 — 드레인 완주 가능성」 (소거 수단이 없으면
+//       표시 유실 문맥 하나가 드레인을 영원히 막는다),
 //       부록 E.10 (조각 머리 채널 — Types.FragHead 가 실물. 조각 머리는 자기
-//       조각과 같은 beat — 도착의 원자성).
+//       조각과 같은 beat — 도착의 원자성),
+//       부록 E.12 (태그 지정 문맥 소거 — fault 아님 · 소거 카운트 회계 ·
+//       없는 태그 쓰기 무시).
 //
 // ── GUARD-MAP ────────────────────────────────────────────────────────────
 // GUARD-MAP: Payload.key_is_tag -> 검사 fr.hit — 문맥 탐색의 유일한 키가 태그 전량 비교(c.tag === head.tag, 번들 통비교 — 슬라이스·부분 키 없음)다. 개방측 op.clash 가 같은 태그의 활성 문맥이 있는 한 새 문맥을 열지 않으므로 태그당 활성 문맥 <= 1 이 유지되고 hit 는 one-hot 이다 (§4.3 규범 1 「태그가 재조립의 키다」)
@@ -31,6 +35,9 @@
 // GUARD-MAP: Payload.reset_on_deliver -> 인도 완결(io.deliver.fire) when 블록이 그 문맥의 active·seen·last·totalKnown 을 전부 소거한다 — 태그 해방과 회계 소거가 같은 전이라 낡은 회계로 같은 구간이 다시 결과로 나갈 수 없다 (§4.3 규범 5 · Inv_NoStaleRedeliver)
 // GUARD-MAP: Payload.write_atomic -> 기입 면 발화(io.wr.valid := fr.accept)와 회계 갱신(seen·last·total 래치, 같은 fr.accept 게이트)이 같은 사이클에 선다 — 둘을 가르는 파이프 단·지연 경로가 없다 (모델 write_atomic — 「회계는 진행했는데 칸은 아직 비었다」 상태가 구조적으로 없다)
 // GUARD-MAP: Payload.last_judges -> 검사 fr.endBad — 수락 조각이 마지막 표시(head.last)를 나르는 시점에 갱신 후 수신 집합(newSeen)이 선언 총개수 전량 마스크와 다르면 누락/중복으로 io.fault (fr.endEvt). 거절된 조각의 표시는 접수되지 않는다. 표시 유실은 fault 가 아니다 — 미완 문맥 수가 io.incomplete 진단 관측면이다 (D9 · §4.3 조각열 종료 삼중 구조 · Inv_EndIncompleteLoud)
+// GUARD-MAP: Payload.abort_erases -> 검사 ab 소거 when 블록 — 소거 발화(ab.fire)가 그 태그 문맥의 active·seen·last·totalKnown 을 reset_on_deliver 와 같은 소거 규율로 한 전이에 전부 비운다. 태그만 해방하고 회계를 남기는 경로가 없다 (개방 수락 op.grant 의 재초기화가 이중 방어로 겹친다 — 부록 E.12 1항 「소거 대상: 활성 문맥 전체」)
+// GUARD-MAP: Payload.abort_leaves_trace -> 검사 ab.cnt — 소거 발화(ab.fire)와 소거 카운트 증가가 같은 사이클·같은 게이트다 (포화 — 되감기면 0 이 「소거 없음」으로 읽혀 조용한 소거가 된다). 흔적 없는 소거 경로가 없다. 없는 태그 무시는 카운트도 올리지 않는다 — 카운트는 「일어난 소거」의 회계다 (부록 E.12 2항 · Inv_AbortLoud)
+// GUARD-MAP: Payload.abort_not_fault -> ab 경로는 io.fault 의 set 항(fr.rejEvt·fr.endEvt·op.clashEvt)에 나타나지 않는다 — 소거는 호스트의 의도된 처분이지 오류가 아니고, 없는 태그 기입의 무시도 마찬가지다 (부록 E.12 2·3항 · capability_not_fault 선례 · Inv_AbortNotFault)
 // ─────────────────────────────────────────────────────────────────────────
 //
 // ## 모델 ↔ RTL 의 어긋난 자리 (정직하게)
@@ -54,6 +61,11 @@
 //    malformation loud fault 다 (fr.totBad). 모델은 total[r] 이 지상 진리라
 //    이 축(선언 위조)을 검사하지 않는다고 자백했다 — RTL 은 같은 조각열 안의
 //    자기모순만 판정한다 (§4.3 규범 2 「선언과 실물의 자기모순」 부류).
+//  - 모델의 ContextAbort 는 창의 slots(데이터)도 비운다 — Consume 과 같은
+//    소거 규율. 이 RTL 은 slots 를 소유하지 않으므로 (소관 경계 — §3.7.1
+//    상류 사상표·슬롯 소유자) 소거·인도 후 구간 데이터의 처분은 상류 몫이다.
+//    이 모듈의 소거는 문맥 회계(active·seen·last·totalKnown)까지다 —
+//    reset_on_deliver 의 대응과 같은 어긋남·같은 근거다.
 //
 // ## 이 모듈이 하지 않는 것 (소관 경계)
 //
@@ -164,8 +176,32 @@ class Reassembly(val cfg: Wt64Config, val nCtxs: Int = 4, val bodyW: Int = 64) e
 
     /** 진단 관측면 — 미완 문맥 수 (모델 IncompleteCtx 의 RTL 형: 활성인데
       * 마지막 표시 미접수). 표시 유실은 fault 가 아니고 회수는 호스트 몫이다
-      * — 타임아웃 금지 (§4.3 조각열 종료 규범 4항). */
+      * — 타임아웃 금지 (§4.3 조각열 종료 규범 4항). 그 회수의 실물이 아래
+      * abort 다. */
     val incomplete = out port UInt(log2Up(nCtxs + 1) bits)
+
+    /** 태그 지정 문맥 소거 (부록 E.12 · §3.7 드레인 완주 가능성) — 호스트
+      * MMIO 기입의 스트로브. MMIO 주소·레지스터 사상은 상류(E.1 레지스터 맵
+      * 소유자) 몫이고, 이 모듈은 「태그 하나를 지정한 소거 기입」이라는
+      * 의미론만 받는다. 지정 태그에 활성 문맥이 없으면 무시 — 오류도
+      * 카운트도 아니다 (E.12 3항: 드레인 경합에서 이미 인도·소거된 문맥의
+      * 소거 시도는 정상 경로다). fault 불참 (E.12 2항).
+      *
+      * 인도 대기(완성) 문맥의 소거도 허용된다 — 그 사이클에 io.deliver.valid
+      * 가 서 있었다면 다음 사이클에 fire 없이 내려간다. 이 valid 철회는
+      * 호스트가 개시한 폐기의 의도된 관측이다 — 소비자 쪽 계약이 valid 의
+      * 지속을 가정한다면 그 가정은 abort 를 쓰는 호스트 규약과 함께 정해야
+      * 한다 (모델도 같은 처분 — Deliver 전의 ContextAbort 가 인도를 대체). */
+    val abort = new Bundle {
+      val valid = in port Bool()
+      val tag   = in port Types.Tag()
+    }
+
+    /** 소거 카운트 — E.12 2항의 회계 관측면 (진단 표면, fault 아님). 포화 —
+      * 되감기면 0 이 「소거 없음」으로 읽혀 조용한 소거의 다른 형태가 된다.
+      * 해제 입력이 없는 이유: E.12 가 해제를 규정하지 않았다 — 규정 없는
+      * 표면을 지어내지 않는다 (§1.3 부류). 8비트는 진단 용도의 자리값이다. */
+    val abortCount = out port UInt(8 bits)
 
     /** malformation·재시작·표시 시점 누락의 loud fault sticky (§4.3 「loud
       * fault」 · §1.6.3 — 합성되는 상태 비트). 명시적 해제 외엔 안 내려간다. */
@@ -338,6 +374,44 @@ class Reassembly(val cfg: Wt64Config, val nCtxs: Int = 4, val bodyW: Int = 64) e
       }
     }
   }
+
+  // ── 문맥 소거 — 태그 지정 MMIO 기입 (부록 E.12 · §3.7 드레인 완주 가능성)
+  // 이 Area 는 fr(접수 회계)·op(개방)·dv(인도 소거) *뒤*에 있다 — 같은
+  // 사이클에 같은 문맥을 다투면 소거가 이긴다 (마지막 대입 우선). 경합 셋:
+  //   accept+abort  — 회계 갱신 위에 소거가 덮인다. 그 사이클의 io.wr 발화는
+  //                   이미 떠났다 — 소거 후 재사용 창의 잔재 처분은 상류
+  //                   몫이다 (파일 머리 「어긋난 자리」).
+  //   deliver+abort — 둘 다 같은 소거 규율이라 결과가 같다.
+  //   open+abort    — 문맥이 겹칠 수 없다 (grant 는 !active, hit 는 active).
+  //                   같은 태그면: abort 는 레지스터 시점을 보므로 이 사이클
+  //                   grant 된 문맥을 보지 못하고 무시된다 — 개방 규율의
+  //                   「다음 사이클부터 관측」과 같은 처분.
+  val ab = new Area {
+    /** key_is_tag 와 같은 탐색 규율 — 태그 전량 통비교, one-hot. */
+    val hit    = Vec(ctx.map(c => c.active && c.tag === io.abort.tag))
+    val hitAny = hit.reduce(_ || _)
+    /** 소거 발화 — 없는 태그는 무시 (E.12 3항: 오류도 카운트도 아니다). */
+    val fire = io.abort.valid && hitAny
+
+    // abort_erases — 소거 규율은 reset_on_deliver 와 같다: active(태그 해방)
+    // 와 회계(seen·last·totalKnown) 소거가 같은 전이다. 태그만 해방하고
+    // 회계를 남기는 경로가 없다. tag·base·total 레지스터는 active 하강으로
+    // 관측 불가가 된다 — dv 소거와 같은 처분.
+    for ((c, i) <- ctx.zipWithIndex) {
+      when(fire && hit(i)) {
+        c.active     := False
+        c.seen       := 0
+        c.last       := False
+        c.totalKnown := False
+      }
+    }
+
+    // abort_leaves_trace — 소거 카운트: 발화와 같은 사이클·같은 게이트(포화).
+    // abort_not_fault — 이 Area 는 io.fault 의 set 항에 나타나지 않는다.
+    val cnt = RegInit(U(0, 8 bits))
+    when(fire && cnt =/= cnt.maxValue) { cnt := cnt + 1 }
+  }
+  io.abortCount := ab.cnt
 
   // ── 진단 관측면 — 미완 문맥 수 (IncompleteCtx 의 RTL 형: active && !last) ─
   io.incomplete := CountOne(Vec(ctx.map(c => c.active && !c.last)))

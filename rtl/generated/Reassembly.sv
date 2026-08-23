@@ -42,6 +42,13 @@ module Reassembly (
   output wire [7:0]    io_deliver_payload_base,
   output wire [7:0]    io_deliver_payload_total,
   output wire [2:0]    io_incomplete,
+  input  wire          io_abort_valid,
+  input  wire [31:0]   io_abort_tag_wave,
+  input  wire [15:0]   io_abort_tag_thread,
+  input  wire [15:0]   io_abort_tag_lnid,
+  input  wire [7:0]    io_abort_tag_precision,
+  input  wire [7:0]    io_abort_tag_dim,
+  output wire [7:0]    io_abortCount,
   output wire          io_fault,
   input  wire          io_faultClear,
   output wire          io_capAbsent,
@@ -175,10 +182,10 @@ module Reassembly (
   wire                fr_accept;
   wire       [15:0]   fr_newSeen;
   wire                fr_endBad;
-  wire                when_Reassembly_l261;
-  wire                when_Reassembly_l261_1;
-  wire                when_Reassembly_l261_2;
-  wire                when_Reassembly_l261_3;
+  wire                when_Reassembly_l297;
+  wire                when_Reassembly_l297_1;
+  wire                when_Reassembly_l297_2;
+  wire                when_Reassembly_l297_3;
   wire                fr_rejEvt;
   wire                fr_endEvt;
   wire                fr_capaEvt;
@@ -191,10 +198,10 @@ module Reassembly (
   wire       [3:0]    _zz_op_freeOh;
   wire       [3:0]    op_freeOh;
   wire                op_grant;
-  wire                when_Reassembly_l294;
-  wire                when_Reassembly_l294_1;
-  wire                when_Reassembly_l294_2;
-  wire                when_Reassembly_l294_3;
+  wire                when_Reassembly_l330;
+  wire                when_Reassembly_l330_1;
+  wire                when_Reassembly_l330_2;
+  wire                when_Reassembly_l330_3;
   wire                op_clashEvt;
   wire                dv_done_0;
   wire                dv_done_1;
@@ -208,10 +215,22 @@ module Reassembly (
   wire                _zz_io_deliver_payload_tag_wave_2;
   wire       [1:0]    _zz_io_deliver_payload_tag_wave_3;
   wire                io_deliver_fire;
-  wire                when_Reassembly_l333;
-  wire                when_Reassembly_l333_1;
-  wire                when_Reassembly_l333_2;
-  wire                when_Reassembly_l333_3;
+  wire                when_Reassembly_l369;
+  wire                when_Reassembly_l369_1;
+  wire                when_Reassembly_l369_2;
+  wire                when_Reassembly_l369_3;
+  wire                ab_hit_0;
+  wire                ab_hit_1;
+  wire                ab_hit_2;
+  wire                ab_hit_3;
+  wire                ab_hitAny;
+  wire                ab_fire;
+  wire                when_Reassembly_l401;
+  wire                when_Reassembly_l401_1;
+  wire                when_Reassembly_l401_2;
+  wire                when_Reassembly_l401_3;
+  reg        [7:0]    ab_cnt;
+  wire                when_Reassembly_l412;
   wire       [2:0]    _zz_io_incomplete;
   wire       [2:0]    _zz_io_incomplete_1;
   wire       [2:0]    _zz_io_incomplete_2;
@@ -220,7 +239,7 @@ module Reassembly (
   wire       [2:0]    _zz_io_incomplete_5;
   wire       [2:0]    _zz_io_incomplete_6;
   wire       [2:0]    _zz_io_incomplete_7;
-  wire                when_Common_l132;
+  wire                when_Common_l141;
   reg                 _zz_io_fault;
   reg                 capBit;
 
@@ -493,10 +512,10 @@ module Reassembly (
   assign fr_accept = (((((io_frag_valid && fr_hitAny) && (! fr_capaRej)) && (! fr_totBad)) && (! fr_overRej)) && (! fr_dupRej));
   assign fr_newSeen = (fr_cSeen | fr_ohSeq);
   assign fr_endBad = (io_frag_head_last && (fr_newSeen != _zz_fr_endBad));
-  assign when_Reassembly_l261 = (fr_accept && fr_hit_0);
-  assign when_Reassembly_l261_1 = (fr_accept && fr_hit_1);
-  assign when_Reassembly_l261_2 = (fr_accept && fr_hit_2);
-  assign when_Reassembly_l261_3 = (fr_accept && fr_hit_3);
+  assign when_Reassembly_l297 = (fr_accept && fr_hit_0);
+  assign when_Reassembly_l297_1 = (fr_accept && fr_hit_1);
+  assign when_Reassembly_l297_2 = (fr_accept && fr_hit_2);
+  assign when_Reassembly_l297_3 = (fr_accept && fr_hit_3);
   assign fr_rejEvt = (io_frag_valid && (((fr_strayRej || fr_totBad) || fr_overRej) || fr_dupRej));
   assign fr_endEvt = (fr_accept && fr_endBad);
   assign fr_capaEvt = (io_frag_valid && fr_capaRej);
@@ -514,10 +533,10 @@ module Reassembly (
   assign op_freeOh = (_zz_op_freeOh & (~ _zz_op_freeOh_1));
   assign op_grant = ((io_open_valid && (! op_clash)) && op_freeAny);
   assign io_open_granted = op_grant;
-  assign when_Reassembly_l294 = (op_grant && op_freeOh[0]);
-  assign when_Reassembly_l294_1 = (op_grant && op_freeOh[1]);
-  assign when_Reassembly_l294_2 = (op_grant && op_freeOh[2]);
-  assign when_Reassembly_l294_3 = (op_grant && op_freeOh[3]);
+  assign when_Reassembly_l330 = (op_grant && op_freeOh[0]);
+  assign when_Reassembly_l330_1 = (op_grant && op_freeOh[1]);
+  assign when_Reassembly_l330_2 = (op_grant && op_freeOh[2]);
+  assign when_Reassembly_l330_3 = (op_grant && op_freeOh[3]);
   assign op_clashEvt = (io_open_valid && op_clash);
   assign dv_done_0 = (((ctx_0_active && ctx_0_last) && ctx_0_totalKnown) && (ctx_0_seen == _zz_dv_done_0));
   assign dv_done_1 = (((ctx_1_active && ctx_1_last) && ctx_1_totalKnown) && (ctx_1_seen == _zz_dv_done_1));
@@ -539,10 +558,22 @@ module Reassembly (
   assign io_deliver_payload_base = _zz_io_deliver_payload_base;
   assign io_deliver_payload_total = _zz_io_deliver_payload_total;
   assign io_deliver_fire = (io_deliver_valid && io_deliver_ready);
-  assign when_Reassembly_l333 = (io_deliver_fire && dv_grantOh[0]);
-  assign when_Reassembly_l333_1 = (io_deliver_fire && dv_grantOh[1]);
-  assign when_Reassembly_l333_2 = (io_deliver_fire && dv_grantOh[2]);
-  assign when_Reassembly_l333_3 = (io_deliver_fire && dv_grantOh[3]);
+  assign when_Reassembly_l369 = (io_deliver_fire && dv_grantOh[0]);
+  assign when_Reassembly_l369_1 = (io_deliver_fire && dv_grantOh[1]);
+  assign when_Reassembly_l369_2 = (io_deliver_fire && dv_grantOh[2]);
+  assign when_Reassembly_l369_3 = (io_deliver_fire && dv_grantOh[3]);
+  assign ab_hit_0 = (ctx_0_active && (((((ctx_0_tag_wave == io_abort_tag_wave) && (ctx_0_tag_thread == io_abort_tag_thread)) && (ctx_0_tag_lnid == io_abort_tag_lnid)) && (ctx_0_tag_precision == io_abort_tag_precision)) && (ctx_0_tag_dim == io_abort_tag_dim)));
+  assign ab_hit_1 = (ctx_1_active && (((((ctx_1_tag_wave == io_abort_tag_wave) && (ctx_1_tag_thread == io_abort_tag_thread)) && (ctx_1_tag_lnid == io_abort_tag_lnid)) && (ctx_1_tag_precision == io_abort_tag_precision)) && (ctx_1_tag_dim == io_abort_tag_dim)));
+  assign ab_hit_2 = (ctx_2_active && (((((ctx_2_tag_wave == io_abort_tag_wave) && (ctx_2_tag_thread == io_abort_tag_thread)) && (ctx_2_tag_lnid == io_abort_tag_lnid)) && (ctx_2_tag_precision == io_abort_tag_precision)) && (ctx_2_tag_dim == io_abort_tag_dim)));
+  assign ab_hit_3 = (ctx_3_active && (((((ctx_3_tag_wave == io_abort_tag_wave) && (ctx_3_tag_thread == io_abort_tag_thread)) && (ctx_3_tag_lnid == io_abort_tag_lnid)) && (ctx_3_tag_precision == io_abort_tag_precision)) && (ctx_3_tag_dim == io_abort_tag_dim)));
+  assign ab_hitAny = (((ab_hit_0 || ab_hit_1) || ab_hit_2) || ab_hit_3);
+  assign ab_fire = (io_abort_valid && ab_hitAny);
+  assign when_Reassembly_l401 = (ab_fire && ab_hit_0);
+  assign when_Reassembly_l401_1 = (ab_fire && ab_hit_1);
+  assign when_Reassembly_l401_2 = (ab_fire && ab_hit_2);
+  assign when_Reassembly_l401_3 = (ab_fire && ab_hit_3);
+  assign when_Reassembly_l412 = (ab_fire && (ab_cnt != 8'hff));
+  assign io_abortCount = ab_cnt;
   assign _zz_io_incomplete = 3'b000;
   assign _zz_io_incomplete_1 = 3'b001;
   assign _zz_io_incomplete_2 = 3'b001;
@@ -552,7 +583,7 @@ module Reassembly (
   assign _zz_io_incomplete_6 = 3'b010;
   assign _zz_io_incomplete_7 = 3'b011;
   assign io_incomplete = (_zz_io_incomplete_8 + _zz_io_incomplete_10);
-  assign when_Common_l132 = ((fr_rejEvt || fr_endEvt) || op_clashEvt);
+  assign when_Common_l141 = ((fr_rejEvt || fr_endEvt) || op_clashEvt);
   assign io_fault = _zz_io_fault;
   assign io_capAbsent = capBit;
   always @(posedge clk or posedge reset) begin
@@ -573,81 +604,109 @@ module Reassembly (
       ctx_3_totalKnown <= 1'b0;
       ctx_3_seen <= 16'h0;
       ctx_3_last <= 1'b0;
+      ab_cnt <= 8'h0;
       _zz_io_fault <= 1'b0;
       capBit <= 1'b0;
     end else begin
-      if(when_Reassembly_l261) begin
+      if(when_Reassembly_l297) begin
         ctx_0_seen <= fr_newSeen;
         ctx_0_last <= (ctx_0_last || io_frag_head_last);
         ctx_0_totalKnown <= 1'b1;
       end
-      if(when_Reassembly_l261_1) begin
+      if(when_Reassembly_l297_1) begin
         ctx_1_seen <= fr_newSeen;
         ctx_1_last <= (ctx_1_last || io_frag_head_last);
         ctx_1_totalKnown <= 1'b1;
       end
-      if(when_Reassembly_l261_2) begin
+      if(when_Reassembly_l297_2) begin
         ctx_2_seen <= fr_newSeen;
         ctx_2_last <= (ctx_2_last || io_frag_head_last);
         ctx_2_totalKnown <= 1'b1;
       end
-      if(when_Reassembly_l261_3) begin
+      if(when_Reassembly_l297_3) begin
         ctx_3_seen <= fr_newSeen;
         ctx_3_last <= (ctx_3_last || io_frag_head_last);
         ctx_3_totalKnown <= 1'b1;
       end
-      if(when_Reassembly_l294) begin
+      if(when_Reassembly_l330) begin
         ctx_0_active <= 1'b1;
         ctx_0_seen <= 16'h0;
         ctx_0_last <= 1'b0;
         ctx_0_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l294_1) begin
+      if(when_Reassembly_l330_1) begin
         ctx_1_active <= 1'b1;
         ctx_1_seen <= 16'h0;
         ctx_1_last <= 1'b0;
         ctx_1_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l294_2) begin
+      if(when_Reassembly_l330_2) begin
         ctx_2_active <= 1'b1;
         ctx_2_seen <= 16'h0;
         ctx_2_last <= 1'b0;
         ctx_2_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l294_3) begin
+      if(when_Reassembly_l330_3) begin
         ctx_3_active <= 1'b1;
         ctx_3_seen <= 16'h0;
         ctx_3_last <= 1'b0;
         ctx_3_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l333) begin
+      if(when_Reassembly_l369) begin
         ctx_0_active <= 1'b0;
         ctx_0_seen <= 16'h0;
         ctx_0_last <= 1'b0;
         ctx_0_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l333_1) begin
+      if(when_Reassembly_l369_1) begin
         ctx_1_active <= 1'b0;
         ctx_1_seen <= 16'h0;
         ctx_1_last <= 1'b0;
         ctx_1_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l333_2) begin
+      if(when_Reassembly_l369_2) begin
         ctx_2_active <= 1'b0;
         ctx_2_seen <= 16'h0;
         ctx_2_last <= 1'b0;
         ctx_2_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l333_3) begin
+      if(when_Reassembly_l369_3) begin
         ctx_3_active <= 1'b0;
         ctx_3_seen <= 16'h0;
         ctx_3_last <= 1'b0;
         ctx_3_totalKnown <= 1'b0;
       end
+      if(when_Reassembly_l401) begin
+        ctx_0_active <= 1'b0;
+        ctx_0_seen <= 16'h0;
+        ctx_0_last <= 1'b0;
+        ctx_0_totalKnown <= 1'b0;
+      end
+      if(when_Reassembly_l401_1) begin
+        ctx_1_active <= 1'b0;
+        ctx_1_seen <= 16'h0;
+        ctx_1_last <= 1'b0;
+        ctx_1_totalKnown <= 1'b0;
+      end
+      if(when_Reassembly_l401_2) begin
+        ctx_2_active <= 1'b0;
+        ctx_2_seen <= 16'h0;
+        ctx_2_last <= 1'b0;
+        ctx_2_totalKnown <= 1'b0;
+      end
+      if(when_Reassembly_l401_3) begin
+        ctx_3_active <= 1'b0;
+        ctx_3_seen <= 16'h0;
+        ctx_3_last <= 1'b0;
+        ctx_3_totalKnown <= 1'b0;
+      end
+      if(when_Reassembly_l412) begin
+        ab_cnt <= (ab_cnt + 8'h01);
+      end
       if(io_faultClear) begin
         _zz_io_fault <= 1'b0;
       end
-      if(when_Common_l132) begin
+      if(when_Common_l141) begin
         _zz_io_fault <= 1'b1;
       end
       if(io_capAbsentClear) begin
@@ -660,19 +719,19 @@ module Reassembly (
   end
 
   always @(posedge clk) begin
-    if(when_Reassembly_l261) begin
+    if(when_Reassembly_l297) begin
       ctx_0_total <= fr_effTotal;
     end
-    if(when_Reassembly_l261_1) begin
+    if(when_Reassembly_l297_1) begin
       ctx_1_total <= fr_effTotal;
     end
-    if(when_Reassembly_l261_2) begin
+    if(when_Reassembly_l297_2) begin
       ctx_2_total <= fr_effTotal;
     end
-    if(when_Reassembly_l261_3) begin
+    if(when_Reassembly_l297_3) begin
       ctx_3_total <= fr_effTotal;
     end
-    if(when_Reassembly_l294) begin
+    if(when_Reassembly_l330) begin
       ctx_0_tag_wave <= io_open_tag_wave;
       ctx_0_tag_thread <= io_open_tag_thread;
       ctx_0_tag_lnid <= io_open_tag_lnid;
@@ -680,7 +739,7 @@ module Reassembly (
       ctx_0_tag_dim <= io_open_tag_dim;
       ctx_0_base <= io_open_base;
     end
-    if(when_Reassembly_l294_1) begin
+    if(when_Reassembly_l330_1) begin
       ctx_1_tag_wave <= io_open_tag_wave;
       ctx_1_tag_thread <= io_open_tag_thread;
       ctx_1_tag_lnid <= io_open_tag_lnid;
@@ -688,7 +747,7 @@ module Reassembly (
       ctx_1_tag_dim <= io_open_tag_dim;
       ctx_1_base <= io_open_base;
     end
-    if(when_Reassembly_l294_2) begin
+    if(when_Reassembly_l330_2) begin
       ctx_2_tag_wave <= io_open_tag_wave;
       ctx_2_tag_thread <= io_open_tag_thread;
       ctx_2_tag_lnid <= io_open_tag_lnid;
@@ -696,7 +755,7 @@ module Reassembly (
       ctx_2_tag_dim <= io_open_tag_dim;
       ctx_2_base <= io_open_base;
     end
-    if(when_Reassembly_l294_3) begin
+    if(when_Reassembly_l330_3) begin
       ctx_3_tag_wave <= io_open_tag_wave;
       ctx_3_tag_thread <= io_open_tag_thread;
       ctx_3_tag_lnid <= io_open_tag_lnid;

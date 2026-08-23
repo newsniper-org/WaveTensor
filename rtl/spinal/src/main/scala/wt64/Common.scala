@@ -67,6 +67,9 @@ object Isa {
   * @param slotCap   구현 슬롯 상한 — capability 축의 상한 (§2.4.1, §4.3 과 별개)
   * @param xlateParts  변환 저장 파티션 수 (§3.6.1)
   * @param xlateIdx    파티션당 직접 사상 색인 수 (§3.6.1)
+  * @param ownEntries    페이지 소유권 표 슬롯 수 (부록 E.7)
+  * @param cqDepth       완료 링 깊이 (부록 E.5)
+  * @param stepProgDepth step 프로그램 저장 깊이 P (§2.5)
   */
 case class Wt64Config(
     nPoints:    Int = 4,
@@ -75,6 +78,9 @@ case class Wt64Config(
     slotCap:    Int = 16,
     xlateParts: Int = 4,
     xlateIdx:   Int = 16,
+    ownEntries: Int = 64, // E.7 소유권 표 직접 사상 슬롯 수 = 동시 장치 소유 가능 페이지 상한 (2의 거듭제곱)
+    cqDepth:    Int = 8, // 완료 링 깊이 — E.5: 2^k, 한 칸 비움 인코딩이라 수용량 cqDepth-1
+    stepProgDepth: Int = 10, // step 프로그램 저장 깊이 P >= 1 (§2.5) — 기본 전 상주(10종)
 ) {
   /** 진입점 뷰 표 용량 — RouteJudge 의 뷰와 MmioConfig 의 수락 용량이 같은
     * 식을 봐야 한다 (두 곳에 따로 적혀 드리프트 표면이 됐던 것을 승격).
@@ -83,6 +89,9 @@ case class Wt64Config(
 
   require(nPoints >= 2, "축퇴 형상 금지 — 지점 1개면 경합·판정이 전부 공허해진다 (선-formal ASSUME 과 동형)")
   require(ownL >= 0 && outDepth >= 1 && slotCap >= 1)
+  require(ownEntries >= 2 && isPow2(ownEntries), "소유권 표 슬롯 수는 2 이상 2의 거듭제곱")
+  require(cqDepth >= 2 && isPow2(cqDepth), "완료 링 크기는 2의 거듭제곱 >= 2 (E.5)")
+  require(stepProgDepth >= 1, "§2.5 프로그램 깊이 P >= 1 — 미상주 참조는 능력 부재 계약으로만 존재")
 }
 
 object Types {

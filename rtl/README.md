@@ -124,13 +124,27 @@ golden 에서 직접 받는다.
 | `payload/Reassembly` | Payload.tla (11가드) | §4.3 문맥 결속 · D8/D9/D10 · E.10 |
 | `memorder/MemOrderGate` | MemOrder.tla (7가드) | §4.4.4 토큰 게이트 · D13 콘 앵커 |
 | `decode/OperandDecode` | (모델 없음 — 관측 기반) | §1.4 본문 해석 · ACCTGT 결속 배선 · SEC-7 |
+| `hiu/OwnershipTable` | Platform 판정의 데이터 원천 | E.7 두 상태·명시 전이만 · 경계 계약 확정 |
+| `mask/MaskUnit` | (golden 관측 동형) | §5.2 라운드 3단 · E.9 · 고정 사이클 |
+| `host/CompletionUnit` | FAB-6 앵커의 장치 실물 | E.5 링 · E.6 통지 · **E.11 드레인 집계** |
+| `payload/Reassembly`+ | Payload +3 가드 (E.12) | 문맥 소거 — fault 아님·회계 흔적 |
+| `fp/StepSequencer` | (골격 — 산술은 축 (b) 후속) | §2.5 깊이 P · 미상주=능력 부재 · 곱셈기 1 앵커 |
+| `top/Wt64Top` | — | 15유닛 배선 · MMIO 디코드 · E.11 여섯 카운트 |
 
 2차 파도 착지 완료 (2026-08-23) — ENFORCED 11모델 · 76가드 전수.
 NoLoss 는 모듈이 아니라 합성 속성 — 후-formal 이 조합 위에서 검사한다
 (lint_guard_map ENFORCED 주석의 판단 근거 참조).
 
-3차 파도 대기: 페이지 소유권 표 유닛(E.7), 마스크 유닛(§5.2), 완료 통지
-(E.5/E.6), 스텝 시퀀서 통합, top-level 조립.
+3차 파도 착지 완료 (2026-08-23) — 16모듈 · ENFORCED 11모델 · 79가드 전수.
+
+4차 파도 TODO (top 이 정직하게 남긴 미배선):
+- 마스킹 단의 §3.2 위치 — MaskUnit 의 s4 결선은 HiuPipeline 내부 수정
+  (소유자 몫). 현행 top 은 승인 뒤 1사이클 잠정 — 상태열 문면과 어긋난
+  임시 형태.
+- E.11 점유 카운트 포트 — 여섯 중 다섯이 포트 부재로 0 고정. 각 유닛에
+  점유 노출 포트 신설 전까지 DRAIN_ALLZERO 는 드레인 완주의 증거가 아니다.
+- 후속 단계: 후-formal (sby — GUARD-MAP 79줄의 참 검증), cocotb 하네스,
+  ISA-1/2 두-형상 대조 인프라, 합성 실측 (Q3 DPGA 결정의 전제).
 
 ## 모델 환류 대기 — 구현이 새로 한 결정 (§6.3 5단계)
 

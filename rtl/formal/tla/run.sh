@@ -31,7 +31,12 @@ cd "$(dirname "$0")"
 
 # -noGenerateSpecTE: 반례마다 TTrace 재현 스펙을 만들지 않는다. 258 run 중
 # 170여 개가 의도된 MUST FAIL 이라, 켜 두면 run 마다 파일 두 개씩 쌓인다.
-TLC="tlc -nowarning -workers 1 -cleanup -noGenerateSpecTE"
+# run 마다 고유 metadir 를 준다. 기본값(./states)을 쓰면 같은 디렉터리에서
+# 도는 다른 TLC(병렬 검증·고아 컨테이너)와 상태 풀이 섞여 run 이 pool-read
+# 오류·무판정으로 끝난다 — 2026-08-23 실측: 타임아웃으로 클라이언트만 죽은
+# 스윕 컨테이너가 살아남아 배터리와 겹쳤고, Payload 구간 6 run 이 오염됐다.
+# 선-formal 착지 때 이미 경고된 결함형이었는데 배터리에는 반영돼 있지 않았다.
+TLC_BASE="tlc -nowarning -workers 1 -cleanup -noGenerateSpecTE"
 OUT=$(mktemp)
 trap 'rm -f "$OUT"' EXIT
 
@@ -42,7 +47,9 @@ expect_pass() {
     label="$1"; cfg="$2"; mod="$3"
     runs=$((runs + 1))
     printf '\n=== [%02d] %-42s (MUST PASS) ===\n' "$runs" "$label"
-    $TLC -config "$cfg" "$mod" > "$OUT" 2>&1 || true
+    md=$(mktemp -d "${TMPDIR:-/tmp}/wt-tlc.XXXXXX")
+    $TLC_BASE -metadir "$md" -config "$cfg" "$mod" > "$OUT" 2>&1 || true
+    rm -rf "$md"
     if grep -q "Model checking completed. No error has been found." "$OUT"; then
         grep -E "states generated" "$OUT" | tail -1
         echo "--> OK"
@@ -57,7 +64,9 @@ expect_fail() {
     label="$1"; cfg="$2"; mod="$3"; want="$4"
     runs=$((runs + 1))
     printf '\n=== [%02d] %-42s (MUST FAIL: %s) ===\n' "$runs" "$label" "$want"
-    $TLC -config "$cfg" "$mod" > "$OUT" 2>&1 || true
+    md=$(mktemp -d "${TMPDIR:-/tmp}/wt-tlc.XXXXXX")
+    $TLC_BASE -metadir "$md" -config "$cfg" "$mod" > "$OUT" 2>&1 || true
+    rm -rf "$md"
     if grep -q "No error has been found" "$OUT"; then
         echo "--> FAIL: 반례가 나와야 하는데 통과했다."
         echo "    가드가 불필요하거나 속성이 부실하다 — 어느 쪽인지 판정할 것."
@@ -462,6 +471,10 @@ expect_fail "가드 삭제: no_restart"                              Payload_del
 expect_fail "가드 삭제: reset_on_deliver"                        Payload_del_reset_on_deliver.cfg "$M" Inv_NoStaleRedeliver
 # D9(마지막 조각 표시) — 표시가 종료 authority, 접수 시점 완전성 판정 (§4.3).
 expect_fail "가드 삭제: last_judges (누락이 무언)"               Payload_del_last_judges.cfg "$M" Inv_EndIncompleteLoud
+# E.12 문맥 소거 (드레인 규약) — 소거는 회계를 남기되 fault 가 아니다.
+expect_fail "가드 삭제: abort_erases (잔여 회계)"              Payload_del_abort_erases.cfg "$M" Prop_NoSilentOverwrite
+expect_fail "가드 삭제: abort_leaves_trace (조용한 소거)"      Payload_del_abort_leaves_trace.cfg "$M" Inv_AbortLoud
+expect_fail "가드 삭제: abort_not_fault (소거가 오류로)"        Payload_del_abort_not_fault.cfg "$M" Inv_AbortNotFault
 expect_fail "가드 삭제: write_atomic"                            Payload_del_write_atomic.cfg "$M" Inv_ReassemblyExclusive
 
 # 위험 도달성 증인 — 좋은 모델에서 반드시 반증돼야 한다
@@ -476,6 +489,8 @@ expect_fail "증인: NoTagReuse"                                 Payload_witness
 expect_fail "증인: NoTwoActiveCtx"                             Payload_witness_NoTwoActiveCtx.cfg "$M" Witness_NoTwoActiveCtx
 expect_fail "증인: 표시 시점 누락이 실재하는가"                  Payload_witness_NoMissAtEnd.cfg "$M" Witness_NoMissAtEnd
 expect_fail "증인: 표시 유실 미완 문맥이 실재하는가"              Payload_witness_NoMarkerLoss.cfg "$M" Witness_NoMarkerLoss
+expect_fail "증인: 소거가 실재하는가"                          Payload_witness_NoAbort.cfg "$M" Witness_NoAbort
+expect_fail "증인: 소거 흔적만 남은 상태가 실재하는가"           Payload_witness_NoAbortOnlyHistory.cfg "$M" Witness_NoAbortOnlyHistory
 
 # 짝 run — 축의 분리를 확정한다. 같은 제약 아래 하나는 깨지고 하나는 안 깨진다
 expect_fail "짝: silent_overwrite"                            Payload_pair_silent_overwrite.cfg "$M" Prop_NoSilentOverwrite

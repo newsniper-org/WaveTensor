@@ -146,6 +146,41 @@
 (* 능력 부재를 loud fault 로 접는 구현은 Inv_CapabilityNotMalformed 를      *)
 (* 위반한다.                                                               *)
 (*                                                                         *)
+(* ## 태그 지정 문맥 소거 (부록 E.12) — 호스트의 처분이 기계에 들어오는 자리 *)
+(*                                                                         *)
+(* 1차 판은 「미완 문맥의 처분은 모델 밖 — 회수를 모델에 넣으면 타임아웃을   *)
+(* 뒷문으로 들이는 것」이라 적었다. E.12 가 그 처분의 실물을 확정했다:      *)
+(* *태그 지정 문맥 소거* MMIO 기입 — 타임아웃(기계가 지어내는 종료)이        *)
+(* 아니라 호스트의 *명시적* 기입이므로 뒷문이 아니다 (§3.7 드레인 완주       *)
+(* 가능성 — 표시 유실 문맥 하나가 드레인을 영원히 막지 않게 하는 수단).      *)
+(* ContextAbort(t) 가 그 추상이다. E.12 규범 세 항이 그대로 갈래가 된다:    *)
+(*                                                                         *)
+(*   - 소거 대상은 그 태그의 활성 문맥 전체다 — 결속(태그 해방)·수신 순번    *)
+(*     집합·회계. 구간 slots 도 비운다 — Consume 과 같은 소거 규율이다.      *)
+(*     abort_erases 가 그 가드다. 태그 해방은 가드 밖에 둔다 — 대표          *)
+(*     결함형이 「태그는 해방됐는데 회계·구간이 남았다」(소거 write-enable    *)
+(*     일부 누락)이기 때문이다. 지우면 잔재 위 재사용이 조용한 덮어쓰기      *)
+(*     (Prop_NoSilentOverwrite) 또는 섞인 인도(Inv_ReassemblyExclusive)로    *)
+(*     나타난다.                                                           *)
+(*   - 소거는 fault 가 아니다 — 호스트의 *의도된* 처분이다. abort_not_fault  *)
+(*     가 그 가드다 (capability_not_fault 와 같은 문체 — 지우면 소거가       *)
+(*     faultBit 를 세우고 Inv_AbortNotFault 가 반증한다).                    *)
+(*   - 소거는 회계 흔적을 남긴다 — *소거 카운트.* 조용한 소거는 없다.        *)
+(*     abort_leaves_trace 가 그 가드다: abortsG(실제 소거의 유령 기록 —      *)
+(*     지상 진리)와 abortCount(기계가 세는 관측면)를 가르고, 지우면 소거는   *)
+(*     일어나되 카운트가 서지 않는다 — Inv_AbortLoud 가 그 어긋남이다.       *)
+(*   - 지정 태그에 열린 문맥이 없으면 쓰기 무시 — 오류가 아니다 (드레인      *)
+(*     경합에서 이미 인도·소비된 문맥의 소거 시도는 정상 경로다). 모델에서   *)
+(*     그 갈래는 상태 무변경 = [Next]_vars 의 스터터와 동일하므로 따로       *)
+(*     열거하지 않는다 — 전제 TagHeld(t) 가 그 「무시」의 문면이다.          *)
+(*                                                                         *)
+(* 소거 규율이 Consume(reset_on_deliver)과 *같은데 가드를 따로 두는* 근거:  *)
+(* 두 소거는 서로 다른 전이(인도 완결 vs 호스트 기입)이고 RTL 에서 서로     *)
+(* 다른 write-enable 경로다. 한 가드로 묶으면 삭제 실험이 두 경로를 동시에  *)
+(* 지워, 한쪽 경로만 깨진 구현(인도 소거는 맞고 abort 소거만 누락)이 모델   *)
+(* 대응에서 구별 불가가 된다 — GUARD-MAP 의 가드당 1검사 규약과도 어긋난다. *)
+(* 「같은 규율」이라는 사실은 가드 공유가 아니라 이 해설이 나른다.          *)
+(*                                                                         *)
 (* ## 이 모델이 덮지 않는 것                                               *)
 (*                                                                         *)
 (*   ⚠️ 배압·무손실(§2.6)은 이 모델 밖이다 — SEC-3(NoLoss.tla)의 몫이다.     *)
@@ -153,10 +188,10 @@
 (*      고갈되면 Send 가 발화하지 않고 조용히 멈춘다 — 그 무처분도 SEC-3 의  *)
 (*      몫이다. (ASSUME Cardinality(Ctxs) >= NumTags 가 key_is_tag 아래에서  *)
 (*      그 고갈을 배제한다.)                                                *)
-(*   ⚠️ *미완 문맥의 처분*은 이 모델 밖이다 — 표시 유실로 미완에 머문 문맥을  *)
-(*      언제 어떻게 회수하는가는 호스트의 처분이며, 모델은 그 상태의 관측    *)
-(*      가능성(IncompleteCtx)까지만 담는다. 회수 자체를 모델에 넣으면        *)
-(*      타임아웃을 뒷문으로 다시 들이는 것이다.                             *)
+(*   ⚠️ *미완 문맥의 회수 정책*은 여전히 모델 밖이다 — E.12 로 들어온 것은    *)
+(*      소거라는 *수단*의 계약(회계 흔적·fault 불참·없는 태그 무시)이지,     *)
+(*      호스트가 언제 소거하는가라는 *정책*이 아니다. ContextAbort 는 아무   *)
+(*      때나 발화 가능한 환경 액션이다 — 그 임의성이 정책 비규정의 표현이다. *)
 (*   ⚠️ 조각의 *날조*(생산자가 보내지 않은 조각이 슬롯에 나타남)는 표현      *)
 (*      가능하지만 그것을 막는 가드가 없다 — 삭제 실험이 이 축을 시험하지    *)
 (*      않는다. sent 를 불변식에 넣은 것은 표현 가능성을 위해서이지          *)
@@ -183,7 +218,8 @@ CONSTANTS
 
 AllGuards == {"cap_check", "capability_check", "capability_not_fault",
               "no_restart", "no_dup_seq", "loud_reject", "base_from_tag",
-              "key_is_tag", "reset_on_deliver", "write_atomic", "last_judges"}
+              "key_is_tag", "reset_on_deliver", "write_atomic", "last_judges",
+              "abort_erases", "abort_leaves_trace", "abort_not_fault"}
 On(g) == g \notin DisabledGuards
 
 Tags   == 1..NumTags
@@ -251,12 +287,15 @@ VARIABLES
     endBad,     \* 유령 변수 — 표시 접수 시점에 순번 집합이 불완전했던 횟수
     accSince,   \* 유령 변수 — [Tags -> BOOLEAN] 태그가 해방된 뒤 접수가 있었는가
     dlvT,       \* 유령 변수 — [Tags -> 0..MaxSend] 그 태그가 몇 번 완료됐는가
+    abortsG,    \* 유령 변수 — 실제로 일어난 문맥 소거 수 (지상 진리, E.12)
+    abortCount, \* 기계가 세는 소거 카운트 — E.12 의 회계 관측면 (fault 아님)
     faultBit,   \* 기계가 세우는 sticky loud fault 비트 (§4.3 「loud fault」)
     capAbsent   \* 기계가 세우는 sticky *능력 부재* 신호 (§1.6.2 — fault 가 아니다)
 
 vars == <<runTag, total, sent, slots, pend, ctxTag, ctxBase, ctxSeen, ctxFill,
           ctxOwner, ctxLast, outValid, out, sends, rejCap, rejRestart, rejDup,
-          rejCapa, endBad, accSince, dlvT, faultBit, capAbsent>>
+          rejCapa, endBad, accSince, dlvT, abortsG, abortCount, faultBit,
+          capAbsent>>
 
 TypeOK ==
     /\ runTag \in [Runs -> Tags]
@@ -284,6 +323,14 @@ TypeOK ==
     /\ endBad \in 0..MaxSend
     /\ accSince \in [Tags -> BOOLEAN]
     /\ dlvT \in [Tags -> 0..MaxSend]
+    \* 0..1 포화 — accSince(BOOLEAN)와 같은 유한화다. 이 모델의 어떤 검사도
+    \* 소거 *횟수*를 쓰지 않는다 (Inv_AbortLoud·Witness 전부 > 0 비교) —
+    \* dlvT 가 값 2 를 요구하는 Witness_NoTagReuse 때문에 MaxSend 캡인 것과
+    \* 다른 자리다. 전폭 카운터로 두면 소거 뒤의 상태가 카운터 값만 다른
+    \* 채로 전부 새 상태가 되어 형상 sweep 이 실측으로 폭발했다 (shapeA
+    \* 10분+). 횟수의 회계 자체는 RTL 관측면(abortCount 레지스터)의 몫이다.
+    /\ abortsG \in 0..1
+    /\ abortCount \in 0..1
     /\ faultBit \in BOOLEAN
     /\ capAbsent \in BOOLEAN
 
@@ -309,6 +356,8 @@ Init ==
     /\ endBad = 0
     /\ accSince = [t \in Tags |-> FALSE]
     /\ dlvT = [t \in Tags |-> 0]
+    /\ abortsG = 0
+    /\ abortCount = 0
     /\ faultBit = FALSE
     /\ capAbsent = FALSE
 
@@ -438,7 +487,7 @@ Send(r, s, c, b, l) ==
                                    capAbsent>>
     /\ sends' = sends + 1
     /\ sent' = [sent EXCEPT ![r] = @ \cup {s}]
-    /\ UNCHANGED <<runTag, total, outValid, out, dlvT>>
+    /\ UNCHANGED <<runTag, total, outValid, out, dlvT, abortsG, abortCount>>
 
 \* 늦게 착지하는 데이터 기입. write_atomic 이 켜져 있으면 pend 가 늘 비어
 \* 있으므로 이 액션은 발화하지 않는다 — 좋은 모델은 1차 판과 같은 기계다.
@@ -448,7 +497,8 @@ WriteBack(k) ==
     /\ pend' = [pend EXCEPT ![k] = NoR]
     /\ UNCHANGED <<runTag, total, sent, ctxTag, ctxBase, ctxSeen, ctxFill,
                    ctxOwner, ctxLast, outValid, out, sends, rejCap, rejRestart,
-                   rejDup, rejCapa, endBad, accSince, dlvT, faultBit, capAbsent>>
+                   rejDup, rejCapa, endBad, accSince, dlvT, abortsG, abortCount,
+                   faultBit, capAbsent>>
 
 (***************************************************************************)
 (* 재조립 완료 — 기계가 「다 모였다」고 판단하는 유일한 지점.              *)
@@ -476,7 +526,8 @@ Deliver(c) ==
           /\ dlvT' = [dlvT EXCEPT ![t] = IF @ < MaxSend THEN @ + 1 ELSE @]
     /\ UNCHANGED <<runTag, total, sent, slots, pend, ctxTag, ctxBase, ctxSeen,
                    ctxFill, ctxOwner, ctxLast, sends, rejCap, rejRestart,
-                   rejDup, rejCapa, endBad, accSince, faultBit, capAbsent>>
+                   rejDup, rejCapa, endBad, accSince, abortsG, abortCount,
+                   faultBit, capAbsent>>
 
 (***************************************************************************)
 (* 소비 — 소비자가 결과를 가져가면 그 태그가 다시 쓸 수 있게 된다.         *)
@@ -507,12 +558,72 @@ Consume(t) ==
                                THEN NoR ELSE slots[k]]
          ELSE UNCHANGED <<ctxTag, ctxSeen, ctxFill, ctxOwner, ctxLast, slots>>
     /\ UNCHANGED <<runTag, total, sent, pend, ctxBase, out, sends, rejCap,
-                   rejRestart, rejDup, rejCapa, endBad, dlvT, faultBit, capAbsent>>
+                   rejRestart, rejDup, rejCapa, endBad, dlvT, abortsG,
+                   abortCount, faultBit, capAbsent>>
+
+(***************************************************************************)
+(* 태그 지정 문맥 소거 (부록 E.12 · §3.7 드레인 완주 가능성).              *)
+(*                                                                         *)
+(* 호스트의 MMIO 기입의 추상 — 환경 액션이라 아무 때나 발화할 수 있다      *)
+(* (언제 소거하는가는 호스트 정책이며 이 모델의 계약이 아니다 — 머리       *)
+(* 「덮지 않는 것」). 전제 TagHeld(t) 가 E.12 3항의 문면이다: 열린 문맥이   *)
+(* 없는 태그로의 기입은 무연산 = [Next]_vars 의 스터터와 동일해 따로        *)
+(* 열거하지 않는다.                                                        *)
+(*                                                                         *)
+(*   abort_erases       지우면 태그는 해방되는데 회계·구간이 남는다 —       *)
+(*                      잔재 위 재사용이 조용한 덮어쓰기·섞인 인도로 나타남 *)
+(*   abort_leaves_trace 지우면 소거가 카운트 없이 지나간다 — 조용한 소거    *)
+(*   abort_not_fault    지우면 호스트의 의도된 처분이 fault 로 접힌다       *)
+(*                                                                         *)
+(* 태그 해방(ctxTag := NoT)이 abort_erases *밖*에 있는 이유: 대표 결함형이  *)
+(* 「해방은 했는데 소거 write-enable 일부가 빠졌다」이기 때문이다. 해방까지 *)
+(* 가드 안에 넣으면 삭제 실험이 「소거가 아예 안 일어나는 기계」를 만드는데,*)
+(* 그것은 조용한 결함이 아니라 드레인이 멈추는 시끄러운 결함이라 이 배터리 *)
+(* 의 관심사(조용한 어긋남)가 아니다.                                      *)
+(*                                                                         *)
+(* slots 도 비운다 — Consume 과 같은 소거 규율(같은 InWindow 술어)이다.     *)
+(* 규율이 같은데 가드가 따로인 근거는 머리 해설에 있다 (서로 다른 전이 ·    *)
+(* 서로 다른 RTL write-enable — 한 가드로 묶으면 한쪽 경로만 깨진 구현이    *)
+(* 구별 불가). pend 는 건드리지 않는다 — Consume 과 같다 (write_atomic 이   *)
+(* 켜진 기계에서 pend 는 늘 비어 있다).                                    *)
+(*                                                                         *)
+(* 인도됐으나 아직 소비되지 않은 문맥(outValid[t] = TRUE)의 소거도 허용     *)
+(* 한다 — out 은 완료 시점의 스냅숏이라 소거의 영향을 받지 않고, accSince   *)
+(* 는 outValid 의 수명과 짝이므로 소거가 건드리지 않는다 (드레인 경합       *)
+(* 갈래 — E.12 3항 해설).                                                  *)
+(***************************************************************************)
+ContextAbort(t) ==
+    /\ TagHeld(t)
+    /\ LET cs == {c \in Ctxs : ctxTag[c] = t}
+       IN /\ ctxTag' = [c \in Ctxs |-> IF c \in cs THEN NoT ELSE ctxTag[c]]
+          /\ IF On("abort_erases")
+               THEN /\ ctxSeen'  = [c \in Ctxs |-> IF c \in cs THEN {} ELSE ctxSeen[c]]
+                    /\ ctxFill'  = [c \in Ctxs |-> IF c \in cs THEN 0 ELSE ctxFill[c]]
+                    /\ ctxOwner' = [c \in Ctxs |-> IF c \in cs THEN NoR ELSE ctxOwner[c]]
+                    /\ ctxLast'  = [c \in Ctxs |-> IF c \in cs THEN FALSE ELSE ctxLast[c]]
+                    /\ slots'    = [k \in SlotIx |->
+                                      IF \E c \in cs : InWindow(c, k)
+                                        THEN NoR ELSE slots[k]]
+               ELSE UNCHANGED <<ctxSeen, ctxFill, ctxOwner, ctxLast, slots>>
+    \* 유령(지상 진리)과 기계 관측면을 가른다 — rej*/faultBit 짝과 같은 분업.
+    \* 0..1 포화 — 근거는 TypeOK 의 해당 주석 (검사는 전부 > 0 비교).
+    /\ abortsG' = 1
+    /\ abortCount' = (IF On("abort_leaves_trace") THEN 1 ELSE abortCount)
+    \* 소거는 fault 가 아니다 (E.12 2항) — capability_not_fault 와 같은 문체.
+    /\ faultBit' = (IF On("abort_not_fault") THEN faultBit ELSE TRUE)
+    /\ UNCHANGED <<runTag, total, sent, pend, ctxBase, outValid, out, sends,
+                   rejCap, rejRestart, rejDup, rejCapa, endBad, accSince, dlvT,
+                   capAbsent>>
 
 (***************************************************************************)
 (* 종료를 모델에 명시한다 — CHECK_DEADLOCK 을 끄지 않기 위해서다.          *)
 (* 세 Can* 는 각 액션의 전제를 *그대로* 쓴다. 따로 적으면 어긋나고, 어긋나면*)
 (* TLC 가 정당한 종료를 교착으로 보고해 판정이 흐려진다.                   *)
+(*                                                                         *)
+(* ContextAbort 는 Idle 의 부정에 넣지 *않는다* — 호스트는 소거하지 않을    *)
+(* 수 있고(정책 비규정), 소거 가능한 상태는 ContextAbort 자신이 enabled     *)
+(* 라 애초에 교착으로 보고되지 않는다. Idle 과 ContextAbort 가 같은 상태에  *)
+(* 서 함께 열려 있는 것은 그 임의성의 표현이다.                            *)
 (***************************************************************************)
 CanSend    == \E r \in Runs, c \in Ctxs : SendPre(r, c)
 CanWrite   == \E k \in SlotIx : pend[k] # NoR
@@ -527,6 +638,7 @@ Next ==
     \/ \E k \in SlotIx : WriteBack(k)
     \/ \E c \in Ctxs : Deliver(c)
     \/ \E t \in Tags : Consume(t)
+    \/ \E t \in Tags : ContextAbort(t)
     \/ Idle
 
 Spec == Init /\ [][Next]_vars
@@ -640,6 +752,30 @@ Inv_CapabilityNotMalformed ==
 Inv_NoStaleRedeliver == \A t \in Tags : outValid[t] => accSince[t]
 
 (***************************************************************************)
+(* E.12 「조용한 소거는 없다」 — 소거는 회계 흔적(소거 카운트)을 남긴다.    *)
+(*                                                                         *)
+(* abortsG 는 실제로 일어난 소거의 유령 기록(지상 진리)이고 abortCount 는   *)
+(* 기계가 세는 관측면이다. 둘이 어긋나면 그것이 곧 조용한 소거다 —          *)
+(* rej*/faultBit 짝(Inv_RejectLoud)과 같은 형태. abort_leaves_trace 를      *)
+(* 지우면 소거는 일어나되 카운트가 서지 않아 이 불변식이 반증된다.         *)
+(* 두 기록 다 0..1 포화(유한화 — TypeOK 주석)라 > 0 비교가 검사의 전부이고, *)
+(* 같은 전이에서만 오르므로 포화가 거짓 반증을 만들지 않는다. 소거 *횟수*   *)
+(* 의 회계는 RTL 관측면(abortCount 레지스터, 포화 카운터)의 몫이다.        *)
+(***************************************************************************)
+Inv_AbortLoud == (abortsG > 0) => (abortCount > 0)
+
+(***************************************************************************)
+(* E.12 「소거는 fault 가 아니다」 — 호스트의 의도된 처분이 loud fault 로   *)
+(* 접히면 관측자에게 「기계 어딘가가 잘못됐다」를 거짓으로 알린다.          *)
+(* Inv_CapabilityNotMalformed 와 같은 구조: 전건은 「fault 감인 사건이       *)
+(* 하나도 없었는데 소거는 있었다」를 전부 지상 진리 어휘로 나열한 것이고,   *)
+(* 후건이 기계의 신호다. rejCapa 는 전건에서 배제하지 않는다 — 능력 부재    *)
+(* 역시 fault 가 아니기 때문이다 (§1.6.2).                                 *)
+(***************************************************************************)
+Inv_AbortNotFault ==
+    (abortsG > 0 /\ rejCap + rejRestart + rejDup = 0 /\ endBad = 0) => ~faultBit
+
+(***************************************************************************)
 (* §4.3 함정 「참조 구현에 남아 있던 조용한 덮어쓰기」 의 직접 형태.       *)
 (*                                                                         *)
 (* 정본이 실측으로 기록한 결함형은 *같은 태그의 새 조각이 도착하면 조용히   *)
@@ -711,5 +847,15 @@ Witness_NoMarkerLoss ==
     ~( /\ sends = MaxSend
        /\ ~faultBit
        /\ \E c \in Ctxs : IncompleteCtx(c) /\ ctxFill[c] > 0 )
+
+\* *문맥 소거가 구성된 기계에서 실제로 일어나는가.* 반증되지 않으면 E.12 의
+\* 세 가드 전부와 Inv_AbortLoud 가 한 번도 일하지 않은 장식이다.
+Witness_NoAbort == abortsG = 0
+
+\* *소거만 있고 fault 감인 사건이 없는 이력*이 도달 가능한가 —
+\* Inv_AbortNotFault 의 전건 그 자체다. Witness_NoAbort 는 abortsG > 0 만
+\* 보이므로 이것을 대신하지 못한다 (NoCapabilityOnlyRejection 과 같은 이유).
+Witness_NoAbortOnlyHistory ==
+    ~(abortsG > 0 /\ rejCap + rejRestart + rejDup = 0 /\ endBad = 0)
 
 =============================================================================
