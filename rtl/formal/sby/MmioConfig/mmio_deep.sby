@@ -37,7 +37,7 @@ smtbmc z3
 [script]
 read_verilog -formal -sv -DMMIO_DEEP MmioConfig.sv MmioConfig_props.sv
 expose MmioConfig/w:initDone MmioConfig/w:busy MmioConfig/w:pSlot MmioConfig/w:pWord
-expose MmioConfig/w:revChkPresent MmioConfig/w:fwdRd MmioConfig/w:chkDupOwn MmioConfig/w:chkBadWr
+expose MmioConfig/w:revChkPresent MmioConfig/w:fwdRd MmioConfig/w:chkDupOwn MmioConfig/w:chkBadWr MmioConfig/w:chkLbBadWr
 expose MmioConfig/w:fwdWrEn MmioConfig/w:fwdWrAddr MmioConfig/w:fwdWrData
 expose MmioConfig/w:revWrEn MmioConfig/w:revWrAddr MmioConfig/w:revWrData
 expose MmioConfig/w:lbWrEn MmioConfig/w:lbWrAddr MmioConfig/w:lbWrData

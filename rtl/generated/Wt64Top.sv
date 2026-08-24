@@ -4195,7 +4195,7 @@ module MmioConfig (
   reg        [15:0]   initCnt;
   reg                 initDone;
   wire                sweeping;
-  wire                when_MmioConfig_l175;
+  wire                when_MmioConfig_l244;
   reg                 revWrEn;
   reg        [15:0]   revWrAddr;
   reg        [0:0]    revWrData;
@@ -4205,7 +4205,7 @@ module MmioConfig (
   reg                 lbWrEn;
   reg        [7:0]    lbWrAddr;
   reg        [31:0]   lbWrData;
-  wire                when_MmioConfig_l202;
+  wire                when_MmioConfig_l271;
   reg                 busy;
   wire                aligned;
   wire       [1:0]    region;
@@ -4218,12 +4218,16 @@ module MmioConfig (
   reg        [1:0]    rdSel;
   reg                 acceptR_regNext;
   wire                lbidWrite;
+  wire                lbRsvBad;
+  wire                chkLbBadWr;
+  wire                lbidCommit;
   wire                lnidWrite;
   reg        [7:0]    pSlot;
   reg        [31:0]   pWord;
   wire                pV;
   wire       [7:0]    pPoint;
   wire       [15:0]   pLnid;
+  wire                pRsvBad;
   wire       [15:0]   revChkAddr;
   wire       [0:0]    revChk;
   wire                revChkPresent;
@@ -4231,8 +4235,9 @@ module MmioConfig (
   wire       [15:0]   oldLnid;
   reg                 chkDupOwn;
   reg                 chkBadWr;
-  wire                when_MmioConfig_l311;
+  wire                when_MmioConfig_l408;
   reg                 _zz_io_faultDupOwner;
+  wire                when_Common_l141;
   reg                 _zz_io_faultBadWrite;
   reg [31:0] fwdMem [0:255];
   reg [0:0] revMem [0:65535];
@@ -4275,22 +4280,24 @@ module MmioConfig (
   end
 
   assign sweeping = (! initDone);
-  assign when_MmioConfig_l175 = (initCnt == 16'hffff);
+  assign when_MmioConfig_l244 = (initCnt == 16'hffff);
   always @(*) begin
     revWrEn = 1'b0;
     if(sweeping) begin
       revWrEn = 1'b1;
     end
     if(busy) begin
-      if(pV) begin
-        if(!when_MmioConfig_l311) begin
-          if(!revChkPresent) begin
+      if(!pRsvBad) begin
+        if(pV) begin
+          if(!when_MmioConfig_l408) begin
+            if(!revChkPresent) begin
+              revWrEn = 1'b1;
+            end
+          end
+        end else begin
+          if(oldV) begin
             revWrEn = 1'b1;
           end
-        end
-      end else begin
-        if(oldV) begin
-          revWrEn = 1'b1;
         end
       end
     end
@@ -4302,15 +4309,17 @@ module MmioConfig (
       revWrAddr = initCnt;
     end
     if(busy) begin
-      if(pV) begin
-        if(!when_MmioConfig_l311) begin
-          if(!revChkPresent) begin
-            revWrAddr = pLnid;
+      if(!pRsvBad) begin
+        if(pV) begin
+          if(!when_MmioConfig_l408) begin
+            if(!revChkPresent) begin
+              revWrAddr = pLnid;
+            end
           end
-        end
-      end else begin
-        if(oldV) begin
-          revWrAddr = oldLnid;
+        end else begin
+          if(oldV) begin
+            revWrAddr = oldLnid;
+          end
         end
       end
     end
@@ -4319,15 +4328,17 @@ module MmioConfig (
   always @(*) begin
     revWrData = 1'b0;
     if(busy) begin
-      if(pV) begin
-        if(!when_MmioConfig_l311) begin
-          if(!revChkPresent) begin
-            revWrData = 1'b1;
+      if(!pRsvBad) begin
+        if(pV) begin
+          if(!when_MmioConfig_l408) begin
+            if(!revChkPresent) begin
+              revWrData = 1'b1;
+            end
           end
-        end
-      end else begin
-        if(oldV) begin
-          revWrData = 1'b0;
+        end else begin
+          if(oldV) begin
+            revWrData = 1'b0;
+          end
         end
       end
     end
@@ -4336,20 +4347,22 @@ module MmioConfig (
   always @(*) begin
     fwdWrEn = 1'b0;
     if(sweeping) begin
-      if(when_MmioConfig_l202) begin
+      if(when_MmioConfig_l271) begin
         fwdWrEn = 1'b1;
       end
     end
     if(busy) begin
-      if(pV) begin
-        if(!when_MmioConfig_l311) begin
-          if(!revChkPresent) begin
+      if(!pRsvBad) begin
+        if(pV) begin
+          if(!when_MmioConfig_l408) begin
+            if(!revChkPresent) begin
+              fwdWrEn = 1'b1;
+            end
+          end
+        end else begin
+          if(oldV) begin
             fwdWrEn = 1'b1;
           end
-        end
-      end else begin
-        if(oldV) begin
-          fwdWrEn = 1'b1;
         end
       end
     end
@@ -4358,20 +4371,22 @@ module MmioConfig (
   always @(*) begin
     fwdWrAddr = 8'h0;
     if(sweeping) begin
-      if(when_MmioConfig_l202) begin
+      if(when_MmioConfig_l271) begin
         fwdWrAddr = initCnt[7:0];
       end
     end
     if(busy) begin
-      if(pV) begin
-        if(!when_MmioConfig_l311) begin
-          if(!revChkPresent) begin
+      if(!pRsvBad) begin
+        if(pV) begin
+          if(!when_MmioConfig_l408) begin
+            if(!revChkPresent) begin
+              fwdWrAddr = pSlot;
+            end
+          end
+        end else begin
+          if(oldV) begin
             fwdWrAddr = pSlot;
           end
-        end
-      end else begin
-        if(oldV) begin
-          fwdWrAddr = pSlot;
         end
       end
     end
@@ -4380,15 +4395,17 @@ module MmioConfig (
   always @(*) begin
     fwdWrData = 32'h0;
     if(busy) begin
-      if(pV) begin
-        if(!when_MmioConfig_l311) begin
-          if(!revChkPresent) begin
-            fwdWrData = pWord;
+      if(!pRsvBad) begin
+        if(pV) begin
+          if(!when_MmioConfig_l408) begin
+            if(!revChkPresent) begin
+              fwdWrData = pWord;
+            end
           end
-        end
-      end else begin
-        if(oldV) begin
-          fwdWrData = 32'h0;
+        end else begin
+          if(oldV) begin
+            fwdWrData = 32'h0;
+          end
         end
       end
     end
@@ -4397,11 +4414,11 @@ module MmioConfig (
   always @(*) begin
     lbWrEn = 1'b0;
     if(sweeping) begin
-      if(when_MmioConfig_l202) begin
+      if(when_MmioConfig_l271) begin
         lbWrEn = 1'b1;
       end
     end
-    if(lbidWrite) begin
+    if(lbidCommit) begin
       lbWrEn = 1'b1;
     end
   end
@@ -4409,23 +4426,23 @@ module MmioConfig (
   always @(*) begin
     lbWrAddr = 8'h0;
     if(sweeping) begin
-      if(when_MmioConfig_l202) begin
+      if(when_MmioConfig_l271) begin
         lbWrAddr = initCnt[7:0];
       end
     end
-    if(lbidWrite) begin
+    if(lbidCommit) begin
       lbWrAddr = wordIdx;
     end
   end
 
   always @(*) begin
     lbWrData = 32'h0;
-    if(lbidWrite) begin
-      lbWrData = (io_wdata & 32'h8000ffff);
+    if(lbidCommit) begin
+      lbWrData = io_wdata;
     end
   end
 
-  assign when_MmioConfig_l202 = (initCnt < 16'h0100);
+  assign when_MmioConfig_l271 = (initCnt < 16'h0100);
   assign io_ready = (initDone && (! busy));
   assign aligned = (io_addr[1 : 0] == 2'b00);
   assign region = io_addr[11 : 10];
@@ -4453,15 +4470,17 @@ module MmioConfig (
   always @(*) begin
     io_viewWr_valid = 1'b0;
     if(busy) begin
-      if(pV) begin
-        if(!when_MmioConfig_l311) begin
-          if(!revChkPresent) begin
+      if(!pRsvBad) begin
+        if(pV) begin
+          if(!when_MmioConfig_l408) begin
+            if(!revChkPresent) begin
+              io_viewWr_valid = 1'b1;
+            end
+          end
+        end else begin
+          if(oldV) begin
             io_viewWr_valid = 1'b1;
           end
-        end
-      end else begin
-        if(oldV) begin
-          io_viewWr_valid = 1'b1;
         end
       end
     end
@@ -4470,15 +4489,17 @@ module MmioConfig (
   always @(*) begin
     io_viewWr_idx = 4'b0000;
     if(busy) begin
-      if(pV) begin
-        if(!when_MmioConfig_l311) begin
-          if(!revChkPresent) begin
+      if(!pRsvBad) begin
+        if(pV) begin
+          if(!when_MmioConfig_l408) begin
+            if(!revChkPresent) begin
+              io_viewWr_idx = pSlot[3:0];
+            end
+          end
+        end else begin
+          if(oldV) begin
             io_viewWr_idx = pSlot[3:0];
           end
-        end
-      end else begin
-        if(oldV) begin
-          io_viewWr_idx = pSlot[3:0];
         end
       end
     end
@@ -4487,15 +4508,17 @@ module MmioConfig (
   always @(*) begin
     io_viewWr_en = 1'b0;
     if(busy) begin
-      if(pV) begin
-        if(!when_MmioConfig_l311) begin
-          if(!revChkPresent) begin
-            io_viewWr_en = 1'b1;
+      if(!pRsvBad) begin
+        if(pV) begin
+          if(!when_MmioConfig_l408) begin
+            if(!revChkPresent) begin
+              io_viewWr_en = 1'b1;
+            end
           end
-        end
-      end else begin
-        if(oldV) begin
-          io_viewWr_en = 1'b0;
+        end else begin
+          if(oldV) begin
+            io_viewWr_en = 1'b0;
+          end
         end
       end
     end
@@ -4504,15 +4527,17 @@ module MmioConfig (
   always @(*) begin
     io_viewWr_lnid = 16'h0;
     if(busy) begin
-      if(pV) begin
-        if(!when_MmioConfig_l311) begin
-          if(!revChkPresent) begin
-            io_viewWr_lnid = pLnid;
+      if(!pRsvBad) begin
+        if(pV) begin
+          if(!when_MmioConfig_l408) begin
+            if(!revChkPresent) begin
+              io_viewWr_lnid = pLnid;
+            end
           end
-        end
-      end else begin
-        if(oldV) begin
-          io_viewWr_lnid = oldLnid;
+        end else begin
+          if(oldV) begin
+            io_viewWr_lnid = oldLnid;
+          end
         end
       end
     end
@@ -4520,30 +4545,34 @@ module MmioConfig (
 
   always @(*) begin
     io_bankWr_valid = 1'b0;
-    if(lbidWrite) begin
+    if(lbidCommit) begin
       io_bankWr_valid = 1'b1;
     end
   end
 
   always @(*) begin
     io_bankWr_lbid = 8'h0;
-    if(lbidWrite) begin
+    if(lbidCommit) begin
       io_bankWr_lbid = wordIdx;
     end
   end
 
   always @(*) begin
     io_bankWr_mapped = 1'b0;
-    if(lbidWrite) begin
+    if(lbidCommit) begin
       io_bankWr_mapped = io_wdata[31];
     end
   end
 
   assign lbidWrite = ((acceptW && aligned) && (region == 2'b10));
+  assign lbRsvBad = ((io_wdata & 32'h7fff0000) != 32'h0);
+  assign chkLbBadWr = (lbidWrite && lbRsvBad);
+  assign lbidCommit = (lbidWrite && (! lbRsvBad));
   assign lnidWrite = ((acceptW && aligned) && (region == 2'b01));
   assign pV = pWord[31];
   assign pPoint = pWord[23 : 16];
   assign pLnid = pWord[15 : 0];
+  assign pRsvBad = ((pWord & 32'h7f000000) != 32'h0);
   assign revChkAddr = io_wdata[15 : 0];
   assign revChk = revMem_spinal_port0;
   assign revChkPresent = revChk[0];
@@ -4552,10 +4581,12 @@ module MmioConfig (
   always @(*) begin
     chkDupOwn = 1'b0;
     if(busy) begin
-      if(pV) begin
-        if(!when_MmioConfig_l311) begin
-          if(revChkPresent) begin
-            chkDupOwn = 1'b1;
+      if(!pRsvBad) begin
+        if(pV) begin
+          if(!when_MmioConfig_l408) begin
+            if(revChkPresent) begin
+              chkDupOwn = 1'b1;
+            end
           end
         end
       end
@@ -4565,16 +4596,21 @@ module MmioConfig (
   always @(*) begin
     chkBadWr = 1'b0;
     if(busy) begin
-      if(pV) begin
-        if(when_MmioConfig_l311) begin
-          chkBadWr = 1'b1;
+      if(pRsvBad) begin
+        chkBadWr = 1'b1;
+      end else begin
+        if(pV) begin
+          if(when_MmioConfig_l408) begin
+            chkBadWr = 1'b1;
+          end
         end
       end
     end
   end
 
-  assign when_MmioConfig_l311 = (((8'h10 <= pSlot) || oldV) || (8'h04 <= pPoint));
+  assign when_MmioConfig_l408 = (((8'h10 <= pSlot) || oldV) || (8'h04 <= pPoint));
   assign io_faultDupOwner = _zz_io_faultDupOwner;
+  assign when_Common_l141 = (chkBadWr || chkLbBadWr);
   assign io_faultBadWrite = _zz_io_faultBadWrite;
   always @(posedge clk or posedge reset) begin
     if(reset) begin
@@ -4590,7 +4626,7 @@ module MmioConfig (
     end else begin
       if(sweeping) begin
         initCnt <= (initCnt + 16'h0001);
-        if(when_MmioConfig_l175) begin
+        if(when_MmioConfig_l244) begin
           initDone <= 1'b1;
         end
       end
@@ -4604,7 +4640,7 @@ module MmioConfig (
       if(lnidWrite) begin
         busy <= 1'b1;
         pSlot <= wordIdx;
-        pWord <= (io_wdata & 32'h80ffffff);
+        pWord <= io_wdata;
       end
       if(busy) begin
         busy <= 1'b0;
@@ -4618,7 +4654,7 @@ module MmioConfig (
       if(io_faultClearBad) begin
         _zz_io_faultBadWrite <= 1'b0;
       end
-      if(chkBadWr) begin
+      if(when_Common_l141) begin
         _zz_io_faultBadWrite <= 1'b1;
       end
     end
