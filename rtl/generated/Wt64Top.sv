@@ -211,6 +211,7 @@ module Wt64Top (
   output wire          io_fault_hiuMiss,
   output wire          io_fault_cfgDupOwner,
   output wire          io_fault_cfgBadWrite,
+  output wire          io_fault_cfgSurfBadWrite,
   output wire          io_fault_ownCollide,
   output wire          io_fault_fabricBp,
   output wire          io_fault_sharedBp,
@@ -220,7 +221,9 @@ module Wt64Top (
   output wire          io_fault_maskWrRekey,
   output wire          io_fault_fpBp,
   output wire          io_fault_fpBadProg,
+  output wire          io_fault_fpCapAbsent,
   output wire          io_fault_cqOverflow,
+  output wire          io_fault_cqBadWrite,
   input  wire          io_faultClear_decodeWalk,
   input  wire          io_faultClear_operandDecode,
   input  wire          io_faultClear_route,
@@ -230,6 +233,7 @@ module Wt64Top (
   input  wire          io_faultClear_hiuMiss,
   input  wire          io_faultClear_cfgDupOwner,
   input  wire          io_faultClear_cfgBadWrite,
+  input  wire          io_faultClear_cfgSurfBadWrite,
   input  wire          io_faultClear_ownCollide,
   input  wire          io_faultClear_fabricBp,
   input  wire          io_faultClear_sharedBp,
@@ -243,7 +247,12 @@ module Wt64Top (
   input  wire          reset
 );
 
+  wire                walk_io_iFaultClear;
+  wire                od_io_iFaultClear;
+  wire                rj_io_faultClear;
   wire                reasm_io_abort_valid;
+  wire                reasm_io_faultClear;
+  wire                reasm_io_capAbsentClear;
   wire                mog_io_up_0_valid;
   wire       [127:0]  mog_io_up_0_payload;
   wire                mog_io_up_1_valid;
@@ -252,10 +261,15 @@ module Wt64Top (
   wire       [127:0]  mog_io_up_2_payload;
   wire                mog_io_up_3_valid;
   wire       [127:0]  mog_io_up_3_payload;
+  wire                hiu_io_faultClear;
   wire                own_io_wstrobe;
   wire                own_io_rstrobe;
+  wire                own_io_faultClearCollide;
   wire                cfgBlk_io_wstrobe;
   wire                cfgBlk_io_rstrobe;
+  wire                cfgBlk_io_faultClearDup;
+  wire                cfgBlk_io_faultClearBad;
+  wire                merge_io_faultClear;
   wire       [31:0]   merge_io_push_0_result_head_tag_wave;
   wire       [15:0]   merge_io_push_0_result_head_tag_thread;
   wire       [15:0]   merge_io_push_0_result_head_tag_lnid;
@@ -265,12 +279,17 @@ module Wt64Top (
   wire       [7:0]    merge_io_push_0_result_head_total;
   wire                merge_io_push_0_result_head_last;
   wire       [63:0]   merge_io_push_0_result_body;
+  wire                shared_1_io_faultClear;
+  wire                bank_io_faultClear;
   wire                mask_io_keyWr_valid;
   wire       [2:0]    mask_io_keyWr_idx;
   wire                mask_io_nonceWr_valid;
   wire       [2:0]    mask_io_nonceWr_idx;
   wire                mask_io_rekey_valid;
   wire       [1:0]    mask_io_rekey_part;
+  wire                mask_io_faultClearNoMask;
+  wire                mask_io_faultClearNonceDup;
+  wire                mask_io_faultClearWrRekey;
   wire                fps_io_progWr_valid;
   wire       [7:0]    fps_io_progWr_slot;
   wire       [7:0]    fps_io_progWr_idx;
@@ -279,6 +298,8 @@ module Wt64Top (
   wire       [15:0]   fps_io_bindWr_key;
   wire                fps_io_bindWr_en;
   wire       [7:0]    fps_io_bindWr_slot;
+  wire                fps_io_faultClearBp;
+  wire                fps_io_faultClearBadProg;
   wire       [7:0]    cq_io_addr;
   wire                cq_io_wstrobe;
   wire                cq_io_rstrobe;
@@ -289,6 +310,8 @@ module Wt64Top (
   wire       [15:0]   cq_io_drain_ownSlots;
   wire       [15:0]   cq_io_drain_contexts;
   wire       [15:0]   cq_io_drain_tokens;
+  wire                cq_io_faultClearOverflow;
+  wire                cq_io_faultClearBadWrite;
   wire                walk_io_oValid;
   wire                walk_io_oMalformed;
   wire                walk_io_oCapAbsent;
@@ -492,9 +515,12 @@ module Wt64Top (
   wire                cq_io_comp_ready;
   wire                cq_io_irq;
   wire                cq_io_faultOverflow;
-  wire       [1:0]    _zz_loc_rdReg;
-  wire       [7:0]    _zz_loc_rdReg_1;
-  wire       [2:0]    _zz_loc_rdReg_2;
+  wire                cq_io_faultBadWrite;
+  wire       [1:0]    _zz_maskArea_readValue;
+  wire       [7:0]    _zz_abortArea_readValue;
+  wire       [2:0]    _zz_abortArea_readValue_1;
+  wire                fltClrAccept;
+  wire                capClrAccept;
   reg        [31:0]   tagQ_wave;
   reg        [15:0]   tagQ_thread;
   reg        [15:0]   tagQ_lnid;
@@ -506,31 +532,100 @@ module Wt64Top (
   wire                selOwn;
   wire                selCq;
   wire                selCfg;
-  wire                selLoc;
-  wire       [5:0]    loc_wordOff;
-  wire                loc_wr;
-  wire                loc_rd;
-  reg        [1:0]    loc_noncePart;
-  wire                when_Wt64Top_l654;
-  reg        [31:0]   loc_abWave;
-  reg        [15:0]   loc_abThread;
-  reg        [15:0]   loc_abLnid;
-  reg        [7:0]    loc_abPrec;
-  reg        [7:0]    loc_abDim;
-  wire                when_Wt64Top_l685;
-  wire                when_Wt64Top_l686;
-  wire                when_Wt64Top_l690;
-  reg        [31:0]   loc_maskStat;
-  reg        [31:0]   loc_fpStat;
-  reg        [31:0]   loc_rdReg;
-  reg                 loc_rv;
-  wire                when_Wt64Top_l734;
+  wire                selMask;
+  wire                selFp;
+  wire                selAbort;
+  wire                selFault;
+  wire                selSq;
+  wire                selXent;
+  wire                selXctl;
+  wire                selIdent;
+  wire                selUnwired;
+  reg                 surfBadWr;
+  wire       [4:0]    maskArea_wordOff;
+  wire                maskArea_wr;
+  wire                maskArea_rd;
+  wire                maskArea_isKey;
+  wire                maskArea_isNoncePart;
+  wire                maskArea_isNonce;
+  wire                maskArea_isRekey;
+  wire                maskArea_isStatus;
+  wire       [7:0]    maskArea_partField;
+  wire                maskArea_partBad;
+  reg        [1:0]    maskArea_noncePart;
+  wire                maskArea_npWr;
+  wire                maskArea_npRsvBad;
+  wire                maskArea_npReject;
+  wire                when_Wt64Top_l1030;
+  wire                maskArea_rkWr;
+  wire                maskArea_rkRsvBad;
+  wire                maskArea_rkReject;
+  reg        [31:0]   maskArea_maskStat;
+  wire                when_Wt64Top_l1057;
+  reg        [31:0]   maskArea_readValue;
+  wire       [3:0]    fpArea_wordOff;
+  wire                fpArea_wr;
+  wire                fpArea_rd;
+  wire                fpArea_isProg;
+  wire                fpArea_isBind;
+  wire                fpArea_isStatus;
+  wire                fpArea_bindRsvBad;
+  wire                when_Wt64Top_l1098;
+  reg        [31:0]   fpArea_fpStat;
+  reg        [31:0]   fpArea_readValue;
+  wire       [3:0]    abortArea_wordOff;
+  wire                abortArea_wr;
+  wire                abortArea_rd;
+  wire                abortArea_isTag0;
+  wire                abortArea_isTag1;
+  wire                abortArea_isTag2;
+  wire                abortArea_isFire;
+  wire                abortArea_isCnt;
+  wire                abortArea_isInc;
+  wire                abortArea_tag2RsvBad;
+  wire                abortArea_fireRsvBad;
+  reg        [31:0]   abortArea_abWave;
+  reg        [15:0]   abortArea_abThread;
+  reg        [15:0]   abortArea_abLnid;
+  reg        [7:0]    abortArea_abPrec;
+  reg        [7:0]    abortArea_abDim;
+  wire                when_Wt64Top_l1140;
+  wire                when_Wt64Top_l1141;
+  wire                when_Wt64Top_l1147;
+  wire                when_Wt64Top_l1159;
+  reg        [31:0]   abortArea_readValue;
+  wire       [3:0]    faultArea_wordOff;
+  wire                faultArea_wr;
+  wire                faultArea_rd;
+  wire                faultArea_isStatus;
+  wire                faultArea_isClear;
+  wire                faultArea_isSummary;
+  wire                faultArea_isCapSt;
+  wire                faultArea_isCapClr;
+  wire                faultArea_clrRsvBad;
+  wire                faultArea_capRsvBad;
+  wire                faultArea_doClr;
+  wire                faultArea_doCapClr;
+  wire                when_Wt64Top_l1208;
+  wire                when_Common_l140;
+  reg                 _zz_io_fault_cfgSurfBadWrite;
+  wire                when_Common_l140_1;
+  reg                 _zz_io_fault_fpCapAbsent;
+  reg        [31:0]   faultWords_status;
+  reg        [31:0]   faultWords_summary;
+  reg        [31:0]   faultWords_capStatus;
+  reg        [31:0]   faultWords_readValue;
+  wire                when_Wt64Top_l1312;
+  wire                mapRd;
+  reg        [31:0]   mapRdReg;
+  reg                 mapRv;
+  wire                resvOffset;
   wire                resvRd;
   reg                 resvRv;
 
-  assign _zz_loc_rdReg = loc_noncePart;
-  assign _zz_loc_rdReg_1 = reasm_io_abortCount;
-  assign _zz_loc_rdReg_2 = reasm_io_incomplete;
+  assign _zz_maskArea_readValue = maskArea_noncePart;
+  assign _zz_abortArea_readValue = reasm_io_abortCount;
+  assign _zz_abortArea_readValue_1 = reasm_io_incomplete;
   DecodeWalk walk (
     .io_iValid         (io_instr_valid          ), //i
     .io_iInstr_0       (io_instr_words_0[31:0]  ), //i
@@ -546,7 +641,7 @@ module Wt64Top (
     .io_iInstr_10      (io_instr_words_10[31:0] ), //i
     .io_iInstr_11      (io_instr_words_11[31:0] ), //i
     .io_iInstr_12      (io_instr_words_12[31:0] ), //i
-    .io_iFaultClear    (io_faultClear_decodeWalk), //i
+    .io_iFaultClear    (walk_io_iFaultClear     ), //i
     .io_oValid         (walk_io_oValid          ), //o
     .io_oMalformed     (walk_io_oMalformed      ), //o
     .io_oCapAbsent     (walk_io_oCapAbsent      ), //o
@@ -610,7 +705,7 @@ module Wt64Top (
     .io_iSlotOff_1         (walk_io_oSlotOff_1[7:0]      ), //i
     .io_iSlotOff_2         (walk_io_oSlotOff_2[7:0]      ), //i
     .io_iSlotOff_3         (walk_io_oSlotOff_3[7:0]      ), //i
-    .io_iFaultClear        (io_faultClear_operandDecode  ), //i
+    .io_iFaultClear        (od_io_iFaultClear            ), //i
     .io_oValid             (od_io_oValid                 ), //o
     .io_oMalformed         (od_io_oMalformed             ), //o
     .io_oCapAbsent         (od_io_oCapAbsent             ), //o
@@ -684,7 +779,7 @@ module Wt64Top (
     .io_bankWr_lbid                  (cfgBlk_io_bankWr_lbid[7:0]             ), //i
     .io_bankWr_mapped                (cfgBlk_io_bankWr_mapped                ), //i
     .io_fault                        (rj_io_fault                            ), //o
-    .io_faultClear                   (io_faultClear_route                    ), //i
+    .io_faultClear                   (rj_io_faultClear                       ), //i
     .io_faultFire                    (rj_io_faultFire                        ), //o
     .clk                             (clk                                    ), //i
     .reset                           (reset                                  )  //i
@@ -724,16 +819,16 @@ module Wt64Top (
     .io_incomplete                    (reasm_io_incomplete[2:0]                         ), //o
     .io_occupancy                     (reasm_io_occupancy[2:0]                          ), //o
     .io_abort_valid                   (reasm_io_abort_valid                             ), //i
-    .io_abort_tag_wave                (loc_abWave[31:0]                                 ), //i
-    .io_abort_tag_thread              (loc_abThread[15:0]                               ), //i
-    .io_abort_tag_lnid                (loc_abLnid[15:0]                                 ), //i
-    .io_abort_tag_precision           (loc_abPrec[7:0]                                  ), //i
-    .io_abort_tag_dim                 (loc_abDim[7:0]                                   ), //i
+    .io_abort_tag_wave                (abortArea_abWave[31:0]                           ), //i
+    .io_abort_tag_thread              (abortArea_abThread[15:0]                         ), //i
+    .io_abort_tag_lnid                (abortArea_abLnid[15:0]                           ), //i
+    .io_abort_tag_precision           (abortArea_abPrec[7:0]                            ), //i
+    .io_abort_tag_dim                 (abortArea_abDim[7:0]                             ), //i
     .io_abortCount                    (reasm_io_abortCount[7:0]                         ), //o
     .io_fault                         (reasm_io_fault                                   ), //o
-    .io_faultClear                    (io_faultClear_reasm                              ), //i
+    .io_faultClear                    (reasm_io_faultClear                              ), //i
     .io_capAbsent                     (reasm_io_capAbsent                               ), //o
-    .io_capAbsentClear                (io_faultClear_reasmCap                           ), //i
+    .io_capAbsentClear                (reasm_io_capAbsentClear                          ), //i
     .clk                              (clk                                              ), //i
     .reset                            (reset                                            )  //i
   );
@@ -815,7 +910,7 @@ module Wt64Top (
     .io_rsp_perm_x     (hiu_io_rsp_perm_x          ), //o
     .io_occupancy      (hiu_io_occupancy[2:0]      ), //o
     .io_faultPerm      (hiu_io_faultPerm           ), //o
-    .io_faultClear     (io_faultClear_hiuPerm      ), //i
+    .io_faultClear     (hiu_io_faultClear          ), //i
     .io_missNotice     (hiu_io_missNotice          ), //o
     .io_missClear      (io_faultClear_hiuMiss      ), //i
     .clk               (clk                        ), //i
@@ -832,7 +927,7 @@ module Wt64Top (
     .io_query_frame       (hiu_io_owner_frame[31:0]), //i
     .io_query_devOwned    (own_io_query_devOwned   ), //o
     .io_faultCollide      (own_io_faultCollide     ), //o
-    .io_faultClearCollide (io_faultClear_ownCollide), //i
+    .io_faultClearCollide (own_io_faultClearCollide), //i
     .clk                  (clk                     ), //i
     .reset                (reset                   )  //i
   );
@@ -853,14 +948,14 @@ module Wt64Top (
     .io_bankWr_mapped (cfgBlk_io_bankWr_mapped    ), //o
     .io_faultDupOwner (cfgBlk_io_faultDupOwner    ), //o
     .io_faultBadWrite (cfgBlk_io_faultBadWrite    ), //o
-    .io_faultClearDup (io_faultClear_cfgDupOwner  ), //i
-    .io_faultClearBad (io_faultClear_cfgBadWrite  ), //i
+    .io_faultClearDup (cfgBlk_io_faultClearDup    ), //i
+    .io_faultClearBad (cfgBlk_io_faultClearBad    ), //i
     .clk              (clk                        ), //i
     .reset            (reset                      )  //i
   );
   FabricMerge merge (
     .io_fault                               (merge_io_fault                                   ), //o
-    .io_faultClear                          (io_faultClear_fabricBp                           ), //i
+    .io_faultClear                          (merge_io_faultClear                              ), //i
     .io_push_0_strb                         (shared_1_io_rsp_valid                            ), //i
     .io_push_0_result_head_tag_wave         (merge_io_push_0_result_head_tag_wave[31:0]       ), //i
     .io_push_0_result_head_tag_thread       (merge_io_push_0_result_head_tag_thread[15:0]     ), //i
@@ -927,7 +1022,7 @@ module Wt64Top (
     .io_rsp_valid        (shared_1_io_rsp_valid         ), //o
     .io_rsp_payload      (shared_1_io_rsp_payload[160:0]), //o
     .io_faultBpViolation (shared_1_io_faultBpViolation  ), //o
-    .io_faultClear       (io_faultClear_sharedBp        ), //i
+    .io_faultClear       (shared_1_io_faultClear        ), //i
     .io_occupancy        (shared_1_io_occupancy[2:0]    ), //o
     .clk                 (clk                           ), //i
     .reset               (reset                         )  //i
@@ -945,7 +1040,7 @@ module Wt64Top (
     .io_read_data       (bank_io_read_data[63:0]), //o
     .io_read_owned      (bank_io_read_owned     ), //o
     .io_fault           (bank_io_fault          ), //o
-    .io_faultClear      (io_faultClear_bankWrite), //i
+    .io_faultClear      (bank_io_faultClear     ), //i
     .io_occupancy       (bank_io_occupancy[4:0] ), //o
     .clk                (clk                    ), //i
     .reset              (reset                  )  //i
@@ -955,7 +1050,7 @@ module Wt64Top (
     .io_keyWr_idx          (mask_io_keyWr_idx[2:0]     ), //i
     .io_keyWr_data         (io_mmio_wdata[31:0]        ), //i
     .io_nonceWr_valid      (mask_io_nonceWr_valid      ), //i
-    .io_nonceWr_part       (loc_noncePart[1:0]         ), //i
+    .io_nonceWr_part       (maskArea_noncePart[1:0]    ), //i
     .io_nonceWr_idx        (mask_io_nonceWr_idx[2:0]   ), //i
     .io_nonceWr_data       (io_mmio_wdata[31:0]        ), //i
     .io_rekey_valid        (mask_io_rekey_valid        ), //i
@@ -972,9 +1067,9 @@ module Wt64Top (
     .io_faultNoMask        (mask_io_faultNoMask        ), //o
     .io_faultNonceDup      (mask_io_faultNonceDup      ), //o
     .io_faultWrDuringRekey (mask_io_faultWrDuringRekey ), //o
-    .io_faultClearNoMask   (io_faultClear_maskNoMask   ), //i
-    .io_faultClearNonceDup (io_faultClear_maskNonceDup ), //i
-    .io_faultClearWrRekey  (io_faultClear_maskWrRekey  ), //i
+    .io_faultClearNoMask   (mask_io_faultClearNoMask   ), //i
+    .io_faultClearNonceDup (mask_io_faultClearNonceDup ), //i
+    .io_faultClearWrRekey  (mask_io_faultClearWrRekey  ), //i
     .clk                   (clk                        ), //i
     .reset                 (reset                      )  //i
   );
@@ -1003,33 +1098,38 @@ module Wt64Top (
     .io_loadReady         (fps_io_loadReady        ), //o
     .io_faultBpViolation  (fps_io_faultBpViolation ), //o
     .io_faultBadProg      (fps_io_faultBadProg     ), //o
-    .io_faultClearBp      (io_faultClear_fpBp      ), //i
-    .io_faultClearBadProg (io_faultClear_fpBadProg ), //i
+    .io_faultClearBp      (fps_io_faultClearBp     ), //i
+    .io_faultClearBadProg (fps_io_faultClearBadProg), //i
     .clk                  (clk                     ), //i
     .reset                (reset                   )  //i
   );
   CompletionUnit cq (
-    .io_addr           (cq_io_addr[7:0]           ), //i
-    .io_wstrobe        (cq_io_wstrobe             ), //i
-    .io_wdata          (io_mmio_wdata[31:0]       ), //i
-    .io_rstrobe        (cq_io_rstrobe             ), //i
-    .io_rdata          (cq_io_rdata[31:0]         ), //o
-    .io_rvalid         (cq_io_rvalid              ), //o
-    .io_ready          (cq_io_ready               ), //o
-    .io_comp_valid     (reasm_io_deliver_valid    ), //i
-    .io_comp_payload   (cq_io_comp_payload[255:0] ), //i
-    .io_comp_ready     (cq_io_comp_ready          ), //o
-    .io_irq            (cq_io_irq                 ), //o
-    .io_drain_pipe     (cq_io_drain_pipe[15:0]    ), //i
-    .io_drain_pending  (cq_io_drain_pending[15:0] ), //i
-    .io_drain_output   (cq_io_drain_output[15:0]  ), //i
-    .io_drain_ownSlots (cq_io_drain_ownSlots[15:0]), //i
-    .io_drain_contexts (cq_io_drain_contexts[15:0]), //i
-    .io_drain_tokens   (cq_io_drain_tokens[15:0]  ), //i
-    .io_faultOverflow  (cq_io_faultOverflow       ), //o
-    .clk               (clk                       ), //i
-    .reset             (reset                     )  //i
+    .io_addr               (cq_io_addr[7:0]           ), //i
+    .io_wstrobe            (cq_io_wstrobe             ), //i
+    .io_wdata              (io_mmio_wdata[31:0]       ), //i
+    .io_rstrobe            (cq_io_rstrobe             ), //i
+    .io_rdata              (cq_io_rdata[31:0]         ), //o
+    .io_rvalid             (cq_io_rvalid              ), //o
+    .io_ready              (cq_io_ready               ), //o
+    .io_comp_valid         (reasm_io_deliver_valid    ), //i
+    .io_comp_payload       (cq_io_comp_payload[255:0] ), //i
+    .io_comp_ready         (cq_io_comp_ready          ), //o
+    .io_irq                (cq_io_irq                 ), //o
+    .io_drain_pipe         (cq_io_drain_pipe[15:0]    ), //i
+    .io_drain_pending      (cq_io_drain_pending[15:0] ), //i
+    .io_drain_output       (cq_io_drain_output[15:0]  ), //i
+    .io_drain_ownSlots     (cq_io_drain_ownSlots[15:0]), //i
+    .io_drain_contexts     (cq_io_drain_contexts[15:0]), //i
+    .io_drain_tokens       (cq_io_drain_tokens[15:0]  ), //i
+    .io_faultOverflow      (cq_io_faultOverflow       ), //o
+    .io_faultClearOverflow (cq_io_faultClearOverflow  ), //i
+    .io_faultBadWrite      (cq_io_faultBadWrite       ), //o
+    .io_faultClearBadWrite (cq_io_faultClearBadWrite  ), //i
+    .clk                   (clk                       ), //i
+    .reset                 (reset                     )  //i
   );
+  assign walk_io_iFaultClear = (io_faultClear_decodeWalk || (fltClrAccept && io_mmio_wdata[0]));
+  assign od_io_iFaultClear = (io_faultClear_operandDecode || (fltClrAccept && io_mmio_wdata[1]));
   assign io_dec_valid = od_io_oValid;
   assign io_dec_malformed = od_io_oMalformed;
   assign io_dec_capAbsent = od_io_oCapAbsent;
@@ -1067,6 +1167,7 @@ module Wt64Top (
   assign io_dec_precPresent = od_io_oPrecPresent;
   assign io_dec_precMode = od_io_oPrecMode;
   assign io_dec_precDim = od_io_oPrecDim;
+  assign rj_io_faultClear = (io_faultClear_route || (fltClrAccept && io_mmio_wdata[2]));
   assign io_route_tokOut_valid = rj_io_tokOut_valid;
   assign io_route_tokOut_payload_tag_wave = rj_io_tokOut_payload_tag_wave;
   assign io_route_tokOut_payload_tag_thread = rj_io_tokOut_payload_tag_thread;
@@ -1081,6 +1182,8 @@ module Wt64Top (
   assign io_reasmWr_base = reasm_io_wr_base;
   assign io_reasmWr_off = reasm_io_wr_off;
   assign io_reasmWr_body = reasm_io_wr_body;
+  assign reasm_io_faultClear = (io_faultClear_reasm || (fltClrAccept && io_mmio_wdata[3]));
+  assign reasm_io_capAbsentClear = (io_faultClear_reasmCap || (capClrAccept && io_mmio_wdata[0]));
   assign mog_io_up_0_valid = (od_io_oMemPresent && (io_mem_slotSel == 2'b00));
   assign mog_io_up_0_payload = {{{{tagQ_dim,{tagQ_precision,{tagQ_lnid,{tagQ_thread,tagQ_wave}}}},od_io_oMemAddrMode},od_io_oMemStride},od_io_oMemOffset};
   always @(*) begin
@@ -1108,6 +1211,7 @@ module Wt64Top (
   assign io_mem_gateOpen = mog_io_gateOpen;
   assign io_hiuReq_ready = hiu_io_req_ready;
   assign io_install_ready = hiu_io_install_ready;
+  assign hiu_io_faultClear = (io_faultClear_hiuPerm || (fltClrAccept && io_mmio_wdata[4]));
   assign io_phys_valid = (hiu_io_rsp_valid && hiu_io_rsp_granted);
   assign io_phys_frame = hiu_io_rsp_frame;
   assign io_hiuRsp_valid = hiu_io_rsp_valid;
@@ -1119,6 +1223,7 @@ module Wt64Top (
   assign io_hiuRsp_perm_w = hiu_io_rsp_perm_w;
   assign io_hiuRsp_perm_x = hiu_io_rsp_perm_x;
   assign io_sharedReq_ready = shared_1_io_req_ready;
+  assign shared_1_io_faultClear = (io_faultClear_sharedBp || (fltClrAccept && io_mmio_wdata[9]));
   assign _zz_io_push_0_result_head_seq = shared_1_io_rsp_payload[96 : 0];
   assign _zz_io_push_0_result_head_tag_wave = _zz_io_push_0_result_head_seq[79 : 0];
   assign merge_io_push_0_result_head_tag_wave = _zz_io_push_0_result_head_tag_wave[31 : 0];
@@ -1134,15 +1239,19 @@ module Wt64Top (
   assign io_push_0_stall = merge_io_push_1_stall;
   assign io_push_1_stall = merge_io_push_2_stall;
   assign io_push_2_stall = merge_io_push_3_stall;
+  assign merge_io_faultClear = (io_faultClear_fabricBp || (fltClrAccept && io_mmio_wdata[8]));
   assign io_bank_acqGranted = bank_io_acquire_granted;
   assign io_bank_rdData = bank_io_read_data;
   assign io_bank_rdOwned = bank_io_read_owned;
+  assign bank_io_faultClear = (io_faultClear_bankWrite || (fltClrAccept && io_mmio_wdata[10]));
   assign io_fp_reqReady = fps_io_req_ready;
   assign io_fp_done = fps_io_oDone;
   assign io_fp_execValid = fps_io_oExecValid;
   assign io_fp_capAbsent = fps_io_oCapAbsent;
   assign io_fp_progMal = fps_io_oProgMal;
   assign io_fp_result = fps_io_oResult;
+  assign fps_io_faultClearBp = (io_faultClear_fpBp || (fltClrAccept && io_mmio_wdata[14]));
+  assign fps_io_faultClearBadProg = (io_faultClear_fpBadProg || (fltClrAccept && io_mmio_wdata[15]));
   assign cq_io_comp_payload = {{{160'h0,{reasm_io_deliver_payload_tag_dim,{reasm_io_deliver_payload_tag_precision,{reasm_io_deliver_payload_tag_lnid,{reasm_io_deliver_payload_tag_thread,reasm_io_deliver_payload_tag_wave}}}}},reasm_io_deliver_payload_base},reasm_io_deliver_payload_total};
   assign cq_io_drain_pipe = {13'd0, hiu_io_occupancy};
   assign cq_io_drain_pending = {13'd0, shared_1_io_occupancy};
@@ -1153,49 +1262,224 @@ module Wt64Top (
   assign io_irq = cq_io_irq;
   assign mmioAligned = (io_mmio_addr[1 : 0] == 2'b00);
   assign selOwn = (io_mmio_addr[11 : 8] == 4'b0010);
-  assign selCq = (io_mmio_addr[11 : 8] == 4'b0011);
+  assign selCq = (io_mmio_addr[11 : 7] == 5'h06);
   assign selCfg = ((io_mmio_addr[11 : 10] == 2'b01) || (io_mmio_addr[11 : 10] == 2'b10));
-  assign selLoc = (io_mmio_addr[11 : 8] == 4'b1100);
+  assign selMask = (io_mmio_addr[11 : 7] == 5'h1d);
+  assign selFp = (io_mmio_addr[11 : 6] == 6'h3c);
+  assign selAbort = (io_mmio_addr[11 : 6] == 6'h3d);
+  assign selFault = (io_mmio_addr[11 : 6] == 6'h3e);
+  assign selSq = (io_mmio_addr[11 : 7] == 5'h07);
+  assign selXent = (io_mmio_addr[11 : 9] == 3'b110);
+  assign selXctl = (io_mmio_addr[11 : 7] == 5'h1c);
+  assign selIdent = (io_mmio_addr[11 : 6] == 6'h3f);
+  assign selUnwired = (((selSq || selXent) || selXctl) || selIdent);
   assign own_io_wstrobe = (io_mmio_wstrobe && selOwn);
   assign own_io_rstrobe = (io_mmio_rstrobe && selOwn);
+  assign own_io_faultClearCollide = (io_faultClear_ownCollide || (fltClrAccept && io_mmio_wdata[7]));
   assign cq_io_addr = io_mmio_addr[7 : 0];
   assign cq_io_wstrobe = (io_mmio_wstrobe && selCq);
   assign cq_io_rstrobe = (io_mmio_rstrobe && selCq);
+  assign cq_io_faultClearOverflow = (fltClrAccept && io_mmio_wdata[16]);
+  assign cq_io_faultClearBadWrite = (fltClrAccept && io_mmio_wdata[6]);
   assign cfgBlk_io_wstrobe = (io_mmio_wstrobe && selCfg);
   assign cfgBlk_io_rstrobe = (io_mmio_rstrobe && selCfg);
-  assign loc_wordOff = io_mmio_addr[7 : 2];
-  assign loc_wr = ((io_mmio_wstrobe && selLoc) && mmioAligned);
-  assign loc_rd = (((io_mmio_rstrobe && (! io_mmio_wstrobe)) && selLoc) && mmioAligned);
-  assign mask_io_keyWr_valid = (loc_wr && (loc_wordOff < 6'h08));
-  assign mask_io_keyWr_idx = loc_wordOff[2 : 0];
-  assign when_Wt64Top_l654 = (loc_wr && (loc_wordOff == 6'h08));
-  assign mask_io_nonceWr_valid = ((loc_wr && (6'h09 <= loc_wordOff)) && (loc_wordOff <= 6'h0e));
-  assign mask_io_nonceWr_idx = (loc_wordOff[2 : 0] - 3'b001);
-  assign mask_io_rekey_valid = (loc_wr && (loc_wordOff == 6'h0f));
-  assign mask_io_rekey_part = io_mmio_wdata[1 : 0];
-  assign fps_io_progWr_valid = (loc_wr && (loc_wordOff == 6'h11));
+  assign cfgBlk_io_faultClearDup = (io_faultClear_cfgDupOwner || (fltClrAccept && io_mmio_wdata[5]));
+  assign cfgBlk_io_faultClearBad = (io_faultClear_cfgBadWrite || (fltClrAccept && io_mmio_wdata[6]));
+  always @(*) begin
+    surfBadWr = 1'b0;
+    if(when_Wt64Top_l1057) begin
+      surfBadWr = 1'b1;
+    end
+    if(when_Wt64Top_l1098) begin
+      surfBadWr = 1'b1;
+    end
+    if(when_Wt64Top_l1159) begin
+      surfBadWr = 1'b1;
+    end
+    if(when_Wt64Top_l1208) begin
+      surfBadWr = 1'b1;
+    end
+  end
+
+  assign maskArea_wordOff = io_mmio_addr[6 : 2];
+  assign maskArea_wr = ((io_mmio_wstrobe && selMask) && mmioAligned);
+  assign maskArea_rd = (((io_mmio_rstrobe && (! io_mmio_wstrobe)) && selMask) && mmioAligned);
+  assign maskArea_isKey = (maskArea_wordOff < 5'h08);
+  assign maskArea_isNoncePart = (maskArea_wordOff == 5'h08);
+  assign maskArea_isNonce = ((5'h09 <= maskArea_wordOff) && (maskArea_wordOff <= 5'h0e));
+  assign maskArea_isRekey = (maskArea_wordOff == 5'h0f);
+  assign maskArea_isStatus = (maskArea_wordOff == 5'h10);
+  assign maskArea_partField = io_mmio_wdata[7 : 0];
+  assign maskArea_partBad = (8'h04 <= maskArea_partField);
+  assign mask_io_keyWr_valid = (maskArea_wr && maskArea_isKey);
+  assign mask_io_keyWr_idx = maskArea_wordOff[2 : 0];
+  assign maskArea_npWr = (maskArea_wr && maskArea_isNoncePart);
+  assign maskArea_npRsvBad = ((io_mmio_wdata & 32'hffffff00) != 32'h0);
+  assign maskArea_npReject = (maskArea_npWr && (maskArea_npRsvBad || maskArea_partBad));
+  assign when_Wt64Top_l1030 = ((maskArea_npWr && (! maskArea_npRsvBad)) && (! maskArea_partBad));
+  assign mask_io_nonceWr_valid = (maskArea_wr && maskArea_isNonce);
+  assign mask_io_nonceWr_idx = (maskArea_wordOff[2 : 0] - 3'b001);
+  assign maskArea_rkWr = (maskArea_wr && maskArea_isRekey);
+  assign maskArea_rkRsvBad = ((io_mmio_wdata & 32'hffffff00) != 32'h0);
+  assign maskArea_rkReject = (maskArea_rkWr && (maskArea_rkRsvBad || maskArea_partBad));
+  assign mask_io_rekey_valid = ((maskArea_rkWr && (! maskArea_rkRsvBad)) && (! maskArea_partBad));
+  assign mask_io_rekey_part = maskArea_partField[1:0];
+  always @(*) begin
+    maskArea_maskStat = 32'h0;
+    maskArea_maskStat[3 : 0] = mask_io_maskReady;
+    maskArea_maskStat[8] = mask_io_busy;
+    maskArea_maskStat[9] = mask_io_rekey_ready;
+  end
+
+  assign when_Wt64Top_l1057 = ((maskArea_npReject || maskArea_rkReject) || (maskArea_wr && maskArea_isStatus));
+  always @(*) begin
+    maskArea_readValue = 32'h0;
+    if(maskArea_isNoncePart) begin
+      maskArea_readValue = {30'd0, _zz_maskArea_readValue};
+    end
+    if(maskArea_isStatus) begin
+      maskArea_readValue = maskArea_maskStat;
+    end
+  end
+
+  assign fpArea_wordOff = io_mmio_addr[5 : 2];
+  assign fpArea_wr = ((io_mmio_wstrobe && selFp) && mmioAligned);
+  assign fpArea_rd = (((io_mmio_rstrobe && (! io_mmio_wstrobe)) && selFp) && mmioAligned);
+  assign fpArea_isProg = (fpArea_wordOff == 4'b0000);
+  assign fpArea_isBind = (fpArea_wordOff == 4'b0001);
+  assign fpArea_isStatus = (fpArea_wordOff == 4'b0010);
+  assign fps_io_progWr_valid = (fpArea_wr && fpArea_isProg);
   assign fps_io_progWr_slot = io_mmio_wdata[31 : 24];
   assign fps_io_progWr_idx = io_mmio_wdata[23 : 16];
   assign fps_io_progWr_step = io_mmio_wdata[15 : 0];
-  assign fps_io_bindWr_valid = (loc_wr && (loc_wordOff == 6'h12));
+  assign fpArea_bindRsvBad = ((io_mmio_wdata & 32'h7f000000) != 32'h0);
+  assign fps_io_bindWr_valid = ((fpArea_wr && fpArea_isBind) && (! fpArea_bindRsvBad));
   assign fps_io_bindWr_key = io_mmio_wdata[15 : 0];
   assign fps_io_bindWr_en = io_mmio_wdata[31];
   assign fps_io_bindWr_slot = io_mmio_wdata[23 : 16];
-  assign when_Wt64Top_l685 = (loc_wr && (loc_wordOff == 6'h14));
-  assign when_Wt64Top_l686 = (loc_wr && (loc_wordOff == 6'h15));
-  assign when_Wt64Top_l690 = (loc_wr && (loc_wordOff == 6'h16));
-  assign reasm_io_abort_valid = ((loc_wr && (loc_wordOff == 6'h17)) && io_mmio_wdata[0]);
+  assign when_Wt64Top_l1098 = (((fpArea_wr && fpArea_isBind) && fpArea_bindRsvBad) || (fpArea_wr && fpArea_isStatus));
   always @(*) begin
-    loc_maskStat = 32'h0;
-    loc_maskStat[3 : 0] = mask_io_maskReady;
-    loc_maskStat[8] = mask_io_busy;
-    loc_maskStat[9] = mask_io_rekey_ready;
+    fpArea_fpStat = 32'h0;
+    fpArea_fpStat[0] = fps_io_loadReady;
+    fpArea_fpStat[1] = fps_io_oBusy;
   end
 
   always @(*) begin
-    loc_fpStat = 32'h0;
-    loc_fpStat[0] = fps_io_loadReady;
-    loc_fpStat[1] = fps_io_oBusy;
+    fpArea_readValue = 32'h0;
+    if(fpArea_isStatus) begin
+      fpArea_readValue = fpArea_fpStat;
+    end
+  end
+
+  assign abortArea_wordOff = io_mmio_addr[5 : 2];
+  assign abortArea_wr = ((io_mmio_wstrobe && selAbort) && mmioAligned);
+  assign abortArea_rd = (((io_mmio_rstrobe && (! io_mmio_wstrobe)) && selAbort) && mmioAligned);
+  assign abortArea_isTag0 = (abortArea_wordOff == 4'b0000);
+  assign abortArea_isTag1 = (abortArea_wordOff == 4'b0001);
+  assign abortArea_isTag2 = (abortArea_wordOff == 4'b0010);
+  assign abortArea_isFire = (abortArea_wordOff == 4'b0011);
+  assign abortArea_isCnt = (abortArea_wordOff == 4'b0100);
+  assign abortArea_isInc = (abortArea_wordOff == 4'b0101);
+  assign abortArea_tag2RsvBad = ((io_mmio_wdata & 32'hffff0000) != 32'h0);
+  assign abortArea_fireRsvBad = ((io_mmio_wdata & 32'hfffffffe) != 32'h0);
+  assign when_Wt64Top_l1140 = (abortArea_wr && abortArea_isTag0);
+  assign when_Wt64Top_l1141 = (abortArea_wr && abortArea_isTag1);
+  assign when_Wt64Top_l1147 = ((abortArea_wr && abortArea_isTag2) && (! abortArea_tag2RsvBad));
+  assign reasm_io_abort_valid = (((abortArea_wr && abortArea_isFire) && (! abortArea_fireRsvBad)) && io_mmio_wdata[0]);
+  assign when_Wt64Top_l1159 = ((((abortArea_wr && abortArea_isTag2) && abortArea_tag2RsvBad) || ((abortArea_wr && abortArea_isFire) && abortArea_fireRsvBad)) || (abortArea_wr && (abortArea_isCnt || abortArea_isInc)));
+  always @(*) begin
+    abortArea_readValue = 32'h0;
+    if(abortArea_isCnt) begin
+      abortArea_readValue = {24'd0, _zz_abortArea_readValue};
+    end
+    if(abortArea_isInc) begin
+      abortArea_readValue = {29'd0, _zz_abortArea_readValue_1};
+    end
+  end
+
+  assign faultArea_wordOff = io_mmio_addr[5 : 2];
+  assign faultArea_wr = ((io_mmio_wstrobe && selFault) && mmioAligned);
+  assign faultArea_rd = (((io_mmio_rstrobe && (! io_mmio_wstrobe)) && selFault) && mmioAligned);
+  assign faultArea_isStatus = (faultArea_wordOff == 4'b0000);
+  assign faultArea_isClear = (faultArea_wordOff == 4'b0001);
+  assign faultArea_isSummary = (faultArea_wordOff == 4'b0010);
+  assign faultArea_isCapSt = (faultArea_wordOff == 4'b0011);
+  assign faultArea_isCapClr = (faultArea_wordOff == 4'b0100);
+  assign faultArea_clrRsvBad = ((io_mmio_wdata & 32'hfffc0000) != 32'h0);
+  assign faultArea_capRsvBad = ((io_mmio_wdata & 32'hfffffffc) != 32'h0);
+  assign faultArea_doClr = ((faultArea_wr && faultArea_isClear) && (! faultArea_clrRsvBad));
+  assign faultArea_doCapClr = ((faultArea_wr && faultArea_isCapClr) && (! faultArea_capRsvBad));
+  assign fltClrAccept = faultArea_doClr;
+  assign capClrAccept = faultArea_doCapClr;
+  assign when_Wt64Top_l1208 = (((faultArea_wr && ((faultArea_isStatus || faultArea_isSummary) || faultArea_isCapSt)) || ((faultArea_wr && faultArea_isClear) && faultArea_clrRsvBad)) || ((faultArea_wr && faultArea_isCapClr) && faultArea_capRsvBad));
+  assign io_fault_decodeWalk = walk_io_oFault;
+  assign io_fault_operandDecode = od_io_oFault;
+  assign io_fault_route = rj_io_fault;
+  assign io_fault_reasm = reasm_io_fault;
+  assign io_fault_reasmCap = reasm_io_capAbsent;
+  assign io_fault_hiuPerm = hiu_io_faultPerm;
+  assign io_fault_hiuMiss = hiu_io_missNotice;
+  assign io_fault_cfgDupOwner = cfgBlk_io_faultDupOwner;
+  assign io_fault_cfgBadWrite = cfgBlk_io_faultBadWrite;
+  assign when_Common_l140 = (io_faultClear_cfgSurfBadWrite || (fltClrAccept && io_mmio_wdata[6]));
+  assign io_fault_cfgSurfBadWrite = _zz_io_fault_cfgSurfBadWrite;
+  assign io_fault_ownCollide = own_io_faultCollide;
+  assign io_fault_fabricBp = merge_io_fault;
+  assign io_fault_sharedBp = shared_1_io_faultBpViolation;
+  assign io_fault_bankWrite = bank_io_fault;
+  assign io_fault_maskNoMask = mask_io_faultNoMask;
+  assign io_fault_maskNonceDup = mask_io_faultNonceDup;
+  assign io_fault_maskWrRekey = mask_io_faultWrDuringRekey;
+  assign io_fault_fpBp = fps_io_faultBpViolation;
+  assign io_fault_fpBadProg = fps_io_faultBadProg;
+  assign io_fault_cqOverflow = cq_io_faultOverflow;
+  assign io_fault_cqBadWrite = cq_io_faultBadWrite;
+  assign when_Common_l140_1 = (capClrAccept && io_mmio_wdata[1]);
+  assign io_fault_fpCapAbsent = _zz_io_fault_fpCapAbsent;
+  always @(*) begin
+    faultWords_status = 32'h0;
+    faultWords_status[0] = io_fault_decodeWalk;
+    faultWords_status[1] = io_fault_operandDecode;
+    faultWords_status[2] = io_fault_route;
+    faultWords_status[3] = io_fault_reasm;
+    faultWords_status[4] = io_fault_hiuPerm;
+    faultWords_status[5] = io_fault_cfgDupOwner;
+    faultWords_status[6] = ((io_fault_cfgBadWrite || io_fault_cfgSurfBadWrite) || io_fault_cqBadWrite);
+    faultWords_status[7] = io_fault_ownCollide;
+    faultWords_status[8] = io_fault_fabricBp;
+    faultWords_status[9] = io_fault_sharedBp;
+    faultWords_status[10] = io_fault_bankWrite;
+    faultWords_status[11] = io_fault_maskNoMask;
+    faultWords_status[12] = io_fault_maskNonceDup;
+    faultWords_status[13] = io_fault_maskWrRekey;
+    faultWords_status[14] = io_fault_fpBp;
+    faultWords_status[15] = io_fault_fpBadProg;
+    faultWords_status[16] = io_fault_cqOverflow;
+    faultWords_status[17] = 1'b0;
+  end
+
+  always @(*) begin
+    faultWords_summary = 32'h0;
+    faultWords_summary[0] = (|faultWords_status);
+  end
+
+  always @(*) begin
+    faultWords_capStatus = 32'h0;
+    faultWords_capStatus[0] = io_fault_reasmCap;
+    faultWords_capStatus[1] = io_fault_fpCapAbsent;
+  end
+
+  always @(*) begin
+    faultWords_readValue = 32'h0;
+    if(faultArea_isStatus) begin
+      faultWords_readValue = faultWords_status;
+    end
+    if(faultArea_isSummary) begin
+      faultWords_readValue = faultWords_summary;
+    end
+    if(faultArea_isCapSt) begin
+      faultWords_readValue = faultWords_capStatus;
+    end
   end
 
   always @(*) begin
@@ -1209,14 +1493,16 @@ module Wt64Top (
     if(selCfg) begin
       io_mmio_ready = cfgBlk_io_ready;
     end
-    if(when_Wt64Top_l734) begin
+    if(when_Wt64Top_l1312) begin
       io_mmio_ready = fps_io_loadReady;
     end
   end
 
-  assign when_Wt64Top_l734 = (selLoc && ((loc_wordOff == 6'h11) || (loc_wordOff == 6'h12)));
-  assign resvRd = ((io_mmio_rstrobe && (! io_mmio_wstrobe)) && (((((! selOwn) && (! selCq)) && (! selCfg)) && (! selLoc)) || (selLoc && (! mmioAligned))));
-  assign io_mmio_rvalid = ((((own_io_rvalid || cq_io_rvalid) || cfgBlk_io_rvalid) || loc_rv) || resvRv);
+  assign when_Wt64Top_l1312 = (selFp && (fpArea_isProg || fpArea_isBind));
+  assign mapRd = (((maskArea_rd || fpArea_rd) || abortArea_rd) || faultArea_rd);
+  assign resvOffset = (! (((((((selOwn || selCq) || selCfg) || selMask) || selFp) || selAbort) || selFault) || selUnwired));
+  assign resvRd = ((io_mmio_rstrobe && (! io_mmio_wstrobe)) && ((resvOffset || selUnwired) || ((((selMask || selFp) || selAbort) || selFault) && (! mmioAligned))));
+  assign io_mmio_rvalid = ((((own_io_rvalid || cq_io_rvalid) || cfgBlk_io_rvalid) || mapRv) || resvRv);
   always @(*) begin
     io_mmio_rdata = 32'h0;
     if(own_io_rvalid) begin
@@ -1228,30 +1514,14 @@ module Wt64Top (
     if(cfgBlk_io_rvalid) begin
       io_mmio_rdata = cfgBlk_io_rdata;
     end
-    if(loc_rv) begin
-      io_mmio_rdata = loc_rdReg;
+    if(mapRv) begin
+      io_mmio_rdata = mapRdReg;
     end
   end
 
-  assign io_fault_decodeWalk = walk_io_oFault;
-  assign io_fault_operandDecode = od_io_oFault;
-  assign io_fault_route = rj_io_fault;
-  assign io_fault_reasm = reasm_io_fault;
-  assign io_fault_reasmCap = reasm_io_capAbsent;
-  assign io_fault_hiuPerm = hiu_io_faultPerm;
-  assign io_fault_hiuMiss = hiu_io_missNotice;
-  assign io_fault_cfgDupOwner = cfgBlk_io_faultDupOwner;
-  assign io_fault_cfgBadWrite = cfgBlk_io_faultBadWrite;
-  assign io_fault_ownCollide = own_io_faultCollide;
-  assign io_fault_fabricBp = merge_io_fault;
-  assign io_fault_sharedBp = shared_1_io_faultBpViolation;
-  assign io_fault_bankWrite = bank_io_fault;
-  assign io_fault_maskNoMask = mask_io_faultNoMask;
-  assign io_fault_maskNonceDup = mask_io_faultNonceDup;
-  assign io_fault_maskWrRekey = mask_io_faultWrDuringRekey;
-  assign io_fault_fpBp = fps_io_faultBpViolation;
-  assign io_fault_fpBadProg = fps_io_faultBadProg;
-  assign io_fault_cqOverflow = cq_io_faultOverflow;
+  assign mask_io_faultClearNoMask = (io_faultClear_maskNoMask || (fltClrAccept && io_mmio_wdata[11]));
+  assign mask_io_faultClearNonceDup = (io_faultClear_maskNonceDup || (fltClrAccept && io_mmio_wdata[12]));
+  assign mask_io_faultClearWrRekey = (io_faultClear_maskWrRekey || (fltClrAccept && io_mmio_wdata[13]));
   always @(posedge clk) begin
     tagQ_wave <= io_instr_tag_wave;
     tagQ_thread <= io_instr_tag_thread;
@@ -1262,52 +1532,59 @@ module Wt64Top (
 
   always @(posedge clk or posedge reset) begin
     if(reset) begin
-      loc_noncePart <= 2'b00;
-      loc_abWave <= 32'h0;
-      loc_abThread <= 16'h0;
-      loc_abLnid <= 16'h0;
-      loc_abPrec <= 8'h0;
-      loc_abDim <= 8'h0;
-      loc_rdReg <= 32'h0;
-      loc_rv <= 1'b0;
+      maskArea_noncePart <= 2'b00;
+      abortArea_abWave <= 32'h0;
+      abortArea_abThread <= 16'h0;
+      abortArea_abLnid <= 16'h0;
+      abortArea_abPrec <= 8'h0;
+      abortArea_abDim <= 8'h0;
+      _zz_io_fault_cfgSurfBadWrite <= 1'b0;
+      _zz_io_fault_fpCapAbsent <= 1'b0;
+      mapRdReg <= 32'h0;
+      mapRv <= 1'b0;
       resvRv <= 1'b0;
     end else begin
-      if(when_Wt64Top_l654) begin
-        loc_noncePart <= io_mmio_wdata[1 : 0];
+      if(when_Wt64Top_l1030) begin
+        maskArea_noncePart <= maskArea_partField[1:0];
       end
-      if(when_Wt64Top_l685) begin
-        loc_abWave <= io_mmio_wdata;
+      if(when_Wt64Top_l1140) begin
+        abortArea_abWave <= io_mmio_wdata;
       end
-      if(when_Wt64Top_l686) begin
-        loc_abThread <= io_mmio_wdata[31 : 16];
-        loc_abLnid <= io_mmio_wdata[15 : 0];
+      if(when_Wt64Top_l1141) begin
+        abortArea_abThread <= io_mmio_wdata[31 : 16];
+        abortArea_abLnid <= io_mmio_wdata[15 : 0];
       end
-      if(when_Wt64Top_l690) begin
-        loc_abPrec <= io_mmio_wdata[15 : 8];
-        loc_abDim <= io_mmio_wdata[7 : 0];
+      if(when_Wt64Top_l1147) begin
+        abortArea_abPrec <= io_mmio_wdata[15 : 8];
+        abortArea_abDim <= io_mmio_wdata[7 : 0];
       end
-      loc_rv <= loc_rd;
-      if(loc_rd) begin
-        loc_rdReg <= 32'h0;
-        case(loc_wordOff)
-          6'h08 : begin
-            loc_rdReg <= {30'd0, _zz_loc_rdReg};
-          end
-          6'h10 : begin
-            loc_rdReg <= loc_maskStat;
-          end
-          6'h13 : begin
-            loc_rdReg <= loc_fpStat;
-          end
-          6'h18 : begin
-            loc_rdReg <= {24'd0, _zz_loc_rdReg_1};
-          end
-          6'h19 : begin
-            loc_rdReg <= {29'd0, _zz_loc_rdReg_2};
-          end
-          default : begin
-          end
-        endcase
+      if(when_Common_l140) begin
+        _zz_io_fault_cfgSurfBadWrite <= 1'b0;
+      end
+      if(surfBadWr) begin
+        _zz_io_fault_cfgSurfBadWrite <= 1'b1;
+      end
+      if(when_Common_l140_1) begin
+        _zz_io_fault_fpCapAbsent <= 1'b0;
+      end
+      if(fps_io_oCapAbsent) begin
+        _zz_io_fault_fpCapAbsent <= 1'b1;
+      end
+      mapRv <= mapRd;
+      if(mapRd) begin
+        mapRdReg <= 32'h0;
+        if(selMask) begin
+          mapRdReg <= maskArea_readValue;
+        end
+        if(selFp) begin
+          mapRdReg <= fpArea_readValue;
+        end
+        if(selAbort) begin
+          mapRdReg <= abortArea_readValue;
+        end
+        if(selFault) begin
+          mapRdReg <= faultWords_readValue;
+        end
       end
       resvRv <= resvRd;
     end
@@ -1335,6 +1612,9 @@ module CompletionUnit (
   input  wire [15:0]   io_drain_contexts,
   input  wire [15:0]   io_drain_tokens,
   output wire          io_faultOverflow,
+  input  wire          io_faultClearOverflow,
+  output wire          io_faultBadWrite,
+  input  wire          io_faultClearBadWrite,
   input  wire          clk,
   input  wire          reset
 );
@@ -1343,15 +1623,14 @@ module CompletionUnit (
   wire       [2:0]    _zz_full;
   wire       [31:0]   _zz_readValue;
   wire       [0:0]    _zz_readValue_1;
-  wire       [0:0]    _zz_readValue_2;
-  wire       [31:0]   _zz_readValue_3;
-  wire       [0:0]    _zz_readValue_4;
+  wire       [31:0]   _zz_readValue_2;
+  wire       [0:0]    _zz_readValue_3;
+  wire       [31:0]   _zz_readValue_4;
   wire       [31:0]   _zz_readValue_5;
   wire       [31:0]   _zz_readValue_6;
   wire       [31:0]   _zz_readValue_7;
   wire       [31:0]   _zz_readValue_8;
   wire       [31:0]   _zz_readValue_9;
-  wire       [31:0]   _zz_readValue_10;
   reg        [31:0]   _zz_io_rdata;
   reg        [31:0]   headReg;
   wire       [2:0]    head;
@@ -1363,16 +1642,33 @@ module CompletionUnit (
   wire                shove;
   wire                aligned;
   wire                acceptR;
+  wire                isSize;
+  wire                isHead;
+  wire                isTail;
+  wire                isIrqSt;
+  wire                isIrqMk;
+  wire                isIrqClr;
+  wire                isWindow;
+  wire                isDrain;
+  wire                isOcc;
+  wire                isAllZ;
+  wire                isRoOff;
   wire                doWr;
+  wire                sizeRsvBad;
+  wire                mkRsvBad;
+  wire                clrRsvBad;
+  wire                sizeValBad;
   wire                irqClrPulse;
-  wire                fltClrPulse;
   reg        [31:0]   irqMaskReg;
   wire                irqMask;
+  wire                when_CompletionUnit_l333;
+  wire                when_CompletionUnit_l334;
+  wire                badWrite;
   reg                 irqSticky;
   reg                 faultOv;
+  reg                 _zz_io_faultBadWrite;
   wire                allZero;
   reg        [31:0]   readValue;
-  wire                isWindow;
   wire       [255:0]  ringRd;
   reg        [31:0]   rdataReg;
   reg                 winSel;
@@ -1383,15 +1679,14 @@ module CompletionUnit (
   assign _zz_full = (tail + 3'b001);
   assign _zz_readValue = {29'd0, tail};
   assign _zz_readValue_1 = irqSticky;
-  assign _zz_readValue_2 = faultOv;
-  assign _zz_readValue_3 = {29'd0, occ};
-  assign _zz_readValue_4 = allZero;
-  assign _zz_readValue_5 = {16'd0, io_drain_pipe};
-  assign _zz_readValue_6 = {16'd0, io_drain_pending};
-  assign _zz_readValue_7 = {16'd0, io_drain_output};
-  assign _zz_readValue_8 = {16'd0, io_drain_ownSlots};
-  assign _zz_readValue_9 = {16'd0, io_drain_contexts};
-  assign _zz_readValue_10 = {16'd0, io_drain_tokens};
+  assign _zz_readValue_2 = {29'd0, occ};
+  assign _zz_readValue_3 = allZero;
+  assign _zz_readValue_4 = {16'd0, io_drain_pipe};
+  assign _zz_readValue_5 = {16'd0, io_drain_pending};
+  assign _zz_readValue_6 = {16'd0, io_drain_output};
+  assign _zz_readValue_7 = {16'd0, io_drain_ownSlots};
+  assign _zz_readValue_8 = {16'd0, io_drain_contexts};
+  assign _zz_readValue_9 = {16'd0, io_drain_tokens};
   always @(posedge clk) begin
     if(doPush) begin
       ring[tail] <= io_comp_payload;
@@ -1427,58 +1722,73 @@ module CompletionUnit (
   assign shove = (io_comp_valid && full);
   assign aligned = (io_addr[1 : 0] == 2'b00);
   assign acceptR = ((! io_wstrobe) && io_rstrobe);
+  assign isSize = (io_addr == 8'h08);
+  assign isHead = (io_addr == 8'h0c);
+  assign isTail = (io_addr == 8'h10);
+  assign isIrqSt = (io_addr == 8'h20);
+  assign isIrqMk = (io_addr == 8'h24);
+  assign isIrqClr = (io_addr == 8'h28);
+  assign isWindow = (io_addr[7 : 5] == 3'b010);
+  assign isDrain = ((((((io_addr == 8'h60) || (io_addr == 8'h64)) || (io_addr == 8'h68)) || (io_addr == 8'h6c)) || (io_addr == 8'h70)) || (io_addr == 8'h74));
+  assign isOcc = (io_addr == 8'h78);
+  assign isAllZ = (io_addr == 8'h7c);
+  assign isRoOff = (((((isTail || isIrqSt) || isWindow) || isDrain) || isOcc) || isAllZ);
   assign doWr = (io_wstrobe && aligned);
-  assign irqClrPulse = ((doWr && (io_addr == 8'h18)) && io_wdata[0]);
-  assign fltClrPulse = ((doWr && (io_addr == 8'h20)) && io_wdata[0]);
+  assign sizeRsvBad = ((io_wdata & 32'hffffffe0) != 32'h0);
+  assign mkRsvBad = ((io_wdata & 32'hfffffffe) != 32'h0);
+  assign clrRsvBad = ((io_wdata & 32'hfffffffe) != 32'h0);
+  assign sizeValBad = (io_wdata[4 : 0] != 5'h03);
+  assign irqClrPulse = (((doWr && isIrqClr) && (! clrRsvBad)) && io_wdata[0]);
   assign irqMask = irqMaskReg[0];
+  assign when_CompletionUnit_l333 = (doWr && isHead);
+  assign when_CompletionUnit_l334 = ((doWr && isIrqMk) && (! mkRsvBad));
+  assign badWrite = (doWr && (((isRoOff || (isSize && (sizeRsvBad || sizeValBad))) || (isIrqMk && mkRsvBad)) || (isIrqClr && clrRsvBad)));
   assign io_irq = (irqSticky && (! irqMask));
   assign io_faultOverflow = faultOv;
+  assign io_faultBadWrite = _zz_io_faultBadWrite;
   assign allZero = (((((((io_drain_pipe == 16'h0) && (io_drain_pending == 16'h0)) && (io_drain_output == 16'h0)) && (io_drain_ownSlots == 16'h0)) && (io_drain_contexts == 16'h0)) && (io_drain_tokens == 16'h0)) && (occ == 3'b000));
   always @(*) begin
     readValue = 32'h0;
     if(aligned) begin
       case(io_addr)
-        8'h0 : begin
-          readValue = 32'h00000008;
+        8'h08 : begin
+          readValue = 32'h00000003;
         end
-        8'h04 : begin
+        8'h0c : begin
           readValue = headReg;
         end
-        8'h08 : begin
+        8'h10 : begin
           readValue = _zz_readValue;
         end
-        8'h10 : begin
+        8'h20 : begin
           readValue = {31'd0, _zz_readValue_1};
         end
-        8'h14 : begin
+        8'h24 : begin
           readValue = irqMaskReg;
         end
-        8'h1c : begin
-          readValue = {31'd0, _zz_readValue_2};
-        end
         8'h78 : begin
-          readValue = _zz_readValue_3;
+          readValue = _zz_readValue_2;
         end
         8'h7c : begin
-          readValue = {31'd0, _zz_readValue_4};
+          readValue = {31'd0, _zz_readValue_3};
         end
         8'h60 : begin
-          readValue = _zz_readValue_5;
+          readValue = _zz_readValue_4;
         end
         8'h64 : begin
-          readValue = _zz_readValue_6;
+          readValue = _zz_readValue_5;
         end
         8'h68 : begin
-          readValue = _zz_readValue_7;
+          readValue = _zz_readValue_6;
         end
         8'h6c : begin
-          readValue = _zz_readValue_8;
+          readValue = _zz_readValue_7;
         end
         8'h70 : begin
-          readValue = _zz_readValue_9;
+          readValue = _zz_readValue_8;
         end
         8'h74 : begin
-          readValue = _zz_readValue_10;
+          readValue = _zz_readValue_9;
         end
         default : begin
         end
@@ -1486,7 +1796,6 @@ module CompletionUnit (
     end
   end
 
-  assign isWindow = (io_addr[7 : 5] == 3'b010);
   assign ringRd = ring_spinal_port1;
   assign io_rvalid = acceptR_regNext;
   assign io_rdata = (winSel ? _zz_io_rdata : rdataReg);
@@ -1497,6 +1806,7 @@ module CompletionUnit (
       irqMaskReg <= 32'h00000001;
       irqSticky <= 1'b0;
       faultOv <= 1'b0;
+      _zz_io_faultBadWrite <= 1'b0;
       rdataReg <= 32'h0;
       winSel <= 1'b0;
       winWord <= 3'b000;
@@ -1505,17 +1815,11 @@ module CompletionUnit (
       if(doPush) begin
         tail <= (tail + 3'b001);
       end
-      if(doWr) begin
-        case(io_addr)
-          8'h04 : begin
-            headReg <= (io_wdata & 32'h00000007);
-          end
-          8'h14 : begin
-            irqMaskReg <= (io_wdata & 32'h00000001);
-          end
-          default : begin
-          end
-        endcase
+      if(when_CompletionUnit_l333) begin
+        headReg <= (io_wdata & 32'h00000007);
+      end
+      if(when_CompletionUnit_l334) begin
+        irqMaskReg <= io_wdata;
       end
       if(irqClrPulse) begin
         irqSticky <= 1'b0;
@@ -1523,11 +1827,17 @@ module CompletionUnit (
       if(doPush) begin
         irqSticky <= 1'b1;
       end
-      if(fltClrPulse) begin
+      if(io_faultClearOverflow) begin
         faultOv <= 1'b0;
       end
       if(shove) begin
         faultOv <= 1'b1;
+      end
+      if(io_faultClearBadWrite) begin
+        _zz_io_faultBadWrite <= 1'b0;
+      end
+      if(badWrite) begin
+        _zz_io_faultBadWrite <= 1'b1;
       end
       acceptR_regNext <= acceptR;
       if(acceptR) begin

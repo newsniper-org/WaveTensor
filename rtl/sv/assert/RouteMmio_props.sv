@@ -156,9 +156,19 @@ module RouteMmio_props (
   wire [15:0] h_pLnid  = w_pWord[15:0];
   wire        h_oldV   = w_fwdRd[31];
   wire [15:0] h_oldLnid = w_fwdRd[15:0];
-  wire        h_bad311 = (w_pSlot >= 8'h10) || h_oldV || (h_pPoint >= 8'h04);
-  wire        h_commit  = w_busy && h_pV && !h_bad311 && !w_revChkPresent;
-  wire        h_release = w_busy && !h_pV && h_oldV;
+  // 예약 비트 비0 은 *거절*이다 (§3.7.1 「기입 시점의 거절」 네 원인 중 넷째,
+  // 결정 df49b24). 워드 전체의 규범이므로 V 갈래보다 앞선다 — 등록(V=1)뿐
+  // 아니라 해제(V=0) 기입도 예약 비트가 서면 커밋되지 않는다.
+  // 이 셋은 MmioConfig_props 의 h_rsvL/h_rsvB/h_bad3 와 같은 식이어야 한다 —
+  // 실제로 어긋났고 그것이 이 태스크를 회귀시켰다 (LBID 축 p_bank_iff ·
+  // p_pair_bank 가 induction 에서 실패). 모듈 태스크만 돌리고 그 모듈을
+  // *인스턴스하는 합성 태스크*를 돌리지 않으면 이 형태를 놓친다.
+  wire        h_rsvL   = |w_pWord[30:24];       // LNID 엔트리 예약
+  wire        h_rsvB   = |wdata[30:16];         // LBID 엔트리 예약
+  wire        h_bad3   = (w_pSlot >= 8'h10) || h_oldV || (h_pPoint >= 8'h04);
+  wire        h_commit  = w_busy && !h_rsvL && h_pV && !h_bad3 && !w_revChkPresent;
+  wire        h_release = w_busy && !h_rsvL && !h_pV && h_oldV;
+  wire        h_lbidCommit = h_lbidWrite && !h_rsvB;
 
   // ── 배선 이력 그림자 — C1 의 기준 (viewWr/bankWr 배선에서 뜬다) ────
   reg [15:0]  shVV;
@@ -230,7 +240,7 @@ module RouteMmio_props (
       // ── 계약 절반 A — 「기입에서만, 기입마다 정확히 1회」 (§3.7.1):
       //    뷰 구동은 커밋·해제와 동치이고, 표 기입과 1:1 로 짝지어진다.
       p_drive_iff: assert (vw_valid == (h_commit || h_release));
-      p_bank_iff:  assert (bw_valid == h_lbidWrite);
+      p_bank_iff:  assert (bw_valid == h_lbidCommit);
       if (w_initDone) begin
         p_pair_lnid: assert (w_fwdWrEn == vw_valid);
         p_pair_lbid: assert (w_lbWrEn == bw_valid);
@@ -249,7 +259,7 @@ module RouteMmio_props (
                                 && w_fwdWrAddr == w_pSlot
                                 && w_fwdWrData == 32'h0);
       end
-      if (h_lbidWrite) begin
+      if (h_lbidCommit) begin
         p_pair_bank: assert (w_lbWrAddr == h_wordIdx && bw_lbid == h_wordIdx
                              && bw_mapped == w_lbWrData[31]);
       end

@@ -28,6 +28,9 @@ module CompletionUnit (
   input  wire [15:0]   io_drain_contexts,
   input  wire [15:0]   io_drain_tokens,
   output wire          io_faultOverflow,
+  input  wire          io_faultClearOverflow,
+  output wire          io_faultBadWrite,
+  input  wire          io_faultClearBadWrite,
   input  wire          clk,
   input  wire          reset
 );
@@ -36,15 +39,14 @@ module CompletionUnit (
   wire       [2:0]    _zz_full;
   wire       [31:0]   _zz_readValue;
   wire       [0:0]    _zz_readValue_1;
-  wire       [0:0]    _zz_readValue_2;
-  wire       [31:0]   _zz_readValue_3;
-  wire       [0:0]    _zz_readValue_4;
+  wire       [31:0]   _zz_readValue_2;
+  wire       [0:0]    _zz_readValue_3;
+  wire       [31:0]   _zz_readValue_4;
   wire       [31:0]   _zz_readValue_5;
   wire       [31:0]   _zz_readValue_6;
   wire       [31:0]   _zz_readValue_7;
   wire       [31:0]   _zz_readValue_8;
   wire       [31:0]   _zz_readValue_9;
-  wire       [31:0]   _zz_readValue_10;
   reg        [31:0]   _zz_io_rdata;
   reg        [31:0]   headReg;
   wire       [2:0]    head;
@@ -56,16 +58,33 @@ module CompletionUnit (
   wire                shove;
   wire                aligned;
   wire                acceptR;
+  wire                isSize;
+  wire                isHead;
+  wire                isTail;
+  wire                isIrqSt;
+  wire                isIrqMk;
+  wire                isIrqClr;
+  wire                isWindow;
+  wire                isDrain;
+  wire                isOcc;
+  wire                isAllZ;
+  wire                isRoOff;
   wire                doWr;
+  wire                sizeRsvBad;
+  wire                mkRsvBad;
+  wire                clrRsvBad;
+  wire                sizeValBad;
   wire                irqClrPulse;
-  wire                fltClrPulse;
   reg        [31:0]   irqMaskReg;
   wire                irqMask;
+  wire                when_CompletionUnit_l333;
+  wire                when_CompletionUnit_l334;
+  wire                badWrite;
   reg                 irqSticky;
   reg                 faultOv;
+  reg                 _zz_io_faultBadWrite;
   wire                allZero;
   reg        [31:0]   readValue;
-  wire                isWindow;
   wire       [255:0]  ringRd;
   reg        [31:0]   rdataReg;
   reg                 winSel;
@@ -76,15 +95,14 @@ module CompletionUnit (
   assign _zz_full = (tail + 3'b001);
   assign _zz_readValue = {29'd0, tail};
   assign _zz_readValue_1 = irqSticky;
-  assign _zz_readValue_2 = faultOv;
-  assign _zz_readValue_3 = {29'd0, occ};
-  assign _zz_readValue_4 = allZero;
-  assign _zz_readValue_5 = {16'd0, io_drain_pipe};
-  assign _zz_readValue_6 = {16'd0, io_drain_pending};
-  assign _zz_readValue_7 = {16'd0, io_drain_output};
-  assign _zz_readValue_8 = {16'd0, io_drain_ownSlots};
-  assign _zz_readValue_9 = {16'd0, io_drain_contexts};
-  assign _zz_readValue_10 = {16'd0, io_drain_tokens};
+  assign _zz_readValue_2 = {29'd0, occ};
+  assign _zz_readValue_3 = allZero;
+  assign _zz_readValue_4 = {16'd0, io_drain_pipe};
+  assign _zz_readValue_5 = {16'd0, io_drain_pending};
+  assign _zz_readValue_6 = {16'd0, io_drain_output};
+  assign _zz_readValue_7 = {16'd0, io_drain_ownSlots};
+  assign _zz_readValue_8 = {16'd0, io_drain_contexts};
+  assign _zz_readValue_9 = {16'd0, io_drain_tokens};
   always @(posedge clk) begin
     if(doPush) begin
       ring[tail] <= io_comp_payload;
@@ -120,58 +138,73 @@ module CompletionUnit (
   assign shove = (io_comp_valid && full);
   assign aligned = (io_addr[1 : 0] == 2'b00);
   assign acceptR = ((! io_wstrobe) && io_rstrobe);
+  assign isSize = (io_addr == 8'h08);
+  assign isHead = (io_addr == 8'h0c);
+  assign isTail = (io_addr == 8'h10);
+  assign isIrqSt = (io_addr == 8'h20);
+  assign isIrqMk = (io_addr == 8'h24);
+  assign isIrqClr = (io_addr == 8'h28);
+  assign isWindow = (io_addr[7 : 5] == 3'b010);
+  assign isDrain = ((((((io_addr == 8'h60) || (io_addr == 8'h64)) || (io_addr == 8'h68)) || (io_addr == 8'h6c)) || (io_addr == 8'h70)) || (io_addr == 8'h74));
+  assign isOcc = (io_addr == 8'h78);
+  assign isAllZ = (io_addr == 8'h7c);
+  assign isRoOff = (((((isTail || isIrqSt) || isWindow) || isDrain) || isOcc) || isAllZ);
   assign doWr = (io_wstrobe && aligned);
-  assign irqClrPulse = ((doWr && (io_addr == 8'h18)) && io_wdata[0]);
-  assign fltClrPulse = ((doWr && (io_addr == 8'h20)) && io_wdata[0]);
+  assign sizeRsvBad = ((io_wdata & 32'hffffffe0) != 32'h0);
+  assign mkRsvBad = ((io_wdata & 32'hfffffffe) != 32'h0);
+  assign clrRsvBad = ((io_wdata & 32'hfffffffe) != 32'h0);
+  assign sizeValBad = (io_wdata[4 : 0] != 5'h03);
+  assign irqClrPulse = (((doWr && isIrqClr) && (! clrRsvBad)) && io_wdata[0]);
   assign irqMask = irqMaskReg[0];
+  assign when_CompletionUnit_l333 = (doWr && isHead);
+  assign when_CompletionUnit_l334 = ((doWr && isIrqMk) && (! mkRsvBad));
+  assign badWrite = (doWr && (((isRoOff || (isSize && (sizeRsvBad || sizeValBad))) || (isIrqMk && mkRsvBad)) || (isIrqClr && clrRsvBad)));
   assign io_irq = (irqSticky && (! irqMask));
   assign io_faultOverflow = faultOv;
+  assign io_faultBadWrite = _zz_io_faultBadWrite;
   assign allZero = (((((((io_drain_pipe == 16'h0) && (io_drain_pending == 16'h0)) && (io_drain_output == 16'h0)) && (io_drain_ownSlots == 16'h0)) && (io_drain_contexts == 16'h0)) && (io_drain_tokens == 16'h0)) && (occ == 3'b000));
   always @(*) begin
     readValue = 32'h0;
     if(aligned) begin
       case(io_addr)
-        8'h0 : begin
-          readValue = 32'h00000008;
+        8'h08 : begin
+          readValue = 32'h00000003;
         end
-        8'h04 : begin
+        8'h0c : begin
           readValue = headReg;
         end
-        8'h08 : begin
+        8'h10 : begin
           readValue = _zz_readValue;
         end
-        8'h10 : begin
+        8'h20 : begin
           readValue = {31'd0, _zz_readValue_1};
         end
-        8'h14 : begin
+        8'h24 : begin
           readValue = irqMaskReg;
         end
-        8'h1c : begin
-          readValue = {31'd0, _zz_readValue_2};
-        end
         8'h78 : begin
-          readValue = _zz_readValue_3;
+          readValue = _zz_readValue_2;
         end
         8'h7c : begin
-          readValue = {31'd0, _zz_readValue_4};
+          readValue = {31'd0, _zz_readValue_3};
         end
         8'h60 : begin
-          readValue = _zz_readValue_5;
+          readValue = _zz_readValue_4;
         end
         8'h64 : begin
-          readValue = _zz_readValue_6;
+          readValue = _zz_readValue_5;
         end
         8'h68 : begin
-          readValue = _zz_readValue_7;
+          readValue = _zz_readValue_6;
         end
         8'h6c : begin
-          readValue = _zz_readValue_8;
+          readValue = _zz_readValue_7;
         end
         8'h70 : begin
-          readValue = _zz_readValue_9;
+          readValue = _zz_readValue_8;
         end
         8'h74 : begin
-          readValue = _zz_readValue_10;
+          readValue = _zz_readValue_9;
         end
         default : begin
         end
@@ -179,7 +212,6 @@ module CompletionUnit (
     end
   end
 
-  assign isWindow = (io_addr[7 : 5] == 3'b010);
   assign ringRd = ring_spinal_port1;
   assign io_rvalid = acceptR_regNext;
   assign io_rdata = (winSel ? _zz_io_rdata : rdataReg);
@@ -190,6 +222,7 @@ module CompletionUnit (
       irqMaskReg <= 32'h00000001;
       irqSticky <= 1'b0;
       faultOv <= 1'b0;
+      _zz_io_faultBadWrite <= 1'b0;
       rdataReg <= 32'h0;
       winSel <= 1'b0;
       winWord <= 3'b000;
@@ -198,17 +231,11 @@ module CompletionUnit (
       if(doPush) begin
         tail <= (tail + 3'b001);
       end
-      if(doWr) begin
-        case(io_addr)
-          8'h04 : begin
-            headReg <= (io_wdata & 32'h00000007);
-          end
-          8'h14 : begin
-            irqMaskReg <= (io_wdata & 32'h00000001);
-          end
-          default : begin
-          end
-        endcase
+      if(when_CompletionUnit_l333) begin
+        headReg <= (io_wdata & 32'h00000007);
+      end
+      if(when_CompletionUnit_l334) begin
+        irqMaskReg <= io_wdata;
       end
       if(irqClrPulse) begin
         irqSticky <= 1'b0;
@@ -216,11 +243,17 @@ module CompletionUnit (
       if(doPush) begin
         irqSticky <= 1'b1;
       end
-      if(fltClrPulse) begin
+      if(io_faultClearOverflow) begin
         faultOv <= 1'b0;
       end
       if(shove) begin
         faultOv <= 1'b1;
+      end
+      if(io_faultClearBadWrite) begin
+        _zz_io_faultBadWrite <= 1'b0;
+      end
+      if(badWrite) begin
+        _zz_io_faultBadWrite <= 1'b1;
       end
       acceptR_regNext <= acceptR;
       if(acceptR) begin

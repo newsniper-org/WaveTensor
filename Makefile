@@ -567,7 +567,7 @@ RTL_DIR     := $(CURDIR)/rtl
 RTL_SPINAL  := $(RTL_DIR)/spinal
 RTL_GEN     := $(RTL_DIR)/generated
 
-.PHONY: rtl-pins rtl-gen rtl-lint rtl-formal rtl-sim rtl-clean
+.PHONY: rtl-pins rtl-gen rtl-lint rtl-formal rtl-postformal rtl-impact rtl-sim rtl-clean
 
 # 툴체인 핀 대조 — devcontainer 의 ARG 와 rtl/spinal 의 빌드 파일이 같은 값을
 # 말하는지. 어긋나면 컨테이너가 구워 둔 캐시와 빌드가 원하는 버전이 달라지고,
@@ -631,6 +631,20 @@ rtl-postformal:
 	  else echo "FAIL (로그: /tmp/wt-sby-$$dir-$$name.log)"; fail=$$((fail+1)); fi; \
 	done; \
 	echo "rtl-postformal: $$total 태스크 중 실패 $$fail"; test $$fail -eq 0
+
+# 후-formal 영향 역색인 — 「이 변경으로 어느 태스크가 흔들리는가」.
+#
+# 2026-08-25 에 실제로 놓친 회귀가 근거다. MmioConfig 를 고친 담당자가 그
+# 모듈의 두 태스크만 돌리고, 그것을 *인스턴스하는* 합성 증명 RouteMmio 를
+# 돌리지 않아 하네스가 옛 「성공」 정의를 든 채 커밋됐다. basecase 는 통과하고
+# induction 만 깨져서 얕은 확인으로는 보이지 않았다. 뒤이은 검증자도 「이번
+# 파도가 바꾼 파일」만 대조해 그것을 선재 결함으로 오분류했다.
+#
+# 둘 다 성실했고 둘 다 놓쳤다 — 역색인을 매번 사람이 머리로 짜야 했기 때문이다.
+# rtl-postformal 전수 실행이 최종 그물이지만 50분+ 걸리므로, 작업 중에는
+# 이 타깃으로 좁혀 돌리고 커밋 전에 전수를 돌린다.
+rtl-impact:
+	@python3 $(CURDIR)/scripts/sby_impact.py
 
 # 재구현 하네스 — 자립형 cocotb 러너.
 rtl-sim:

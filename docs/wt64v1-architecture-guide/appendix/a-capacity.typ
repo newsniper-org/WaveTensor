@@ -3,15 +3,10 @@
 
 #import "../lib/template.typ": *
 
-// 부록은 "부록 A" / "A.1" 형태로 번호를 매긴다. numbering 을 끄면 참조가 깨지므로
-// 끄지 않고 형식만 바꾼다.
-#counter(heading).update(0)
-#let _부록글자 = ("A", "B", "C", "D", "E", "F")
-#set heading(numbering: (..n) => {
-  let p = n.pos()
-  let 글 = _부록글자.at(p.at(0) - 1)
-  if p.len() == 1 { "부록 " + 글 } else { 글 + "." + p.slice(1).map(str).join(".") }
-})
+// 부록 번호 규약(`부록 A` / `A.1`)은 *`main.typ` 이* 부록 include 앞에 건다.
+// 여기 두면 `#set` 이 include 가 만든 콘텐츠 블록에 스코프가 갇혀 A 에만
+// 걸리고 B–E 는 문서 기본 규칙으로 되돌아가며, `#counter(heading).update(0)`
+// 은 반대로 문서 전역에 남아 B–E 가 「2장·3장…」으로 새어 나온다.
 
 #pagebreak()
 = 프로토타이핑 용량 산정 <sec:capacity>

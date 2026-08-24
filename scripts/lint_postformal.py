@@ -93,6 +93,31 @@ def main() -> None:
         if k != "CHECK":
             fail(f"{f} — {model}.{guard} 는 {k} 다. 증명 주장은 CHECK 에만 선다")
 
+    # [files] 선언의 실재성 — 경로는 *저장소 루트 기준*이 규약이다.
+    #
+    # 2026-08-24: 10개 .sby 가 `../../../generated/` 를 쓰고 있었다. sby 는
+    # [files] 를 *호출 cwd* 로 풀므로, 자기 디렉터리에서 돌린 에이전트는 전부
+    # 통과했고 루트에서 돌린 전수 스윕만 FileNotFoundError 로 죽었다. 통과와
+    # 실패가 호출 위치에 따라 갈리는 검증은 검증이 아니다.
+    bad_paths = []
+    for f in sby_files:
+        in_files = False
+        for line in f.read_text(encoding="utf-8").splitlines():
+            s = line.strip()
+            if s.startswith("["):
+                in_files = s.lower().startswith("[files]")
+                continue
+            if not in_files or not s or s.startswith("#"):
+                continue
+            p = s.split()[-1]  # `dst src` 형태도 허용된다
+            if not (ROOT / p).is_file():
+                bad_paths.append((f.relative_to(ROOT), p))
+    if bad_paths:
+        for sby, p in bad_paths:
+            print(f"lint_postformal: {sby} 의 [files] 가 없는 파일을 가리킨다: {p}",
+                  file=sys.stderr)
+        fail("[files] 경로는 저장소 루트 기준이다 — sby 는 호출 cwd 로 푼다")
+
     covered = {(m, g) for m, g, _ in proves}
     checks = {k for k, v in kinds.items() if v == "CHECK"}
     if len(covered) < _MIN_COVERED:
@@ -102,7 +127,7 @@ def main() -> None:
     print(
         f"lint_postformal: OK — PROVES {len(proves)}건 · CHECK {len(checks)} 중 "
         f"{len(covered)} 덮임 (래칫 {_MIN_COVERED}) · 참조 실재성 위반 0 · "
-        f"sby {len(sby_files)}파일"
+        f"[files] 경로 실재 · sby {len(sby_files)}파일"
     )
     if uncovered:
         print(f"  미덮임 CHECK {len(uncovered)}건 (후속 파도 대상): "

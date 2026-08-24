@@ -33,6 +33,14 @@
 // 이 fault 는 오버플로 전용이며 다른 신호와 폴딩하지 않는다 (§5.6 — 폴딩
 // 여부는 신호마다 명시).
 //
+// **해제 경로는 이 모듈 밖이다.** 정본 E.1.2 가 링 오버플로를 장치 전역 fault
+// 워드의 `0xF80[16]` 으로 배정했으므로 sticky 를 내리는 표면도 그쪽(`0xF84`
+// W1C)이다 — 이 모듈은 `io.faultClearOverflow` 입력으로 그 해제를 받는다.
+// 옛 착지는 완료 구역 안에 자기 FAULT/FAULT_CLEAR 두 워드를 두고 있었고
+// (구역 안 `+0x1C`/`+0x20`), 새 맵에서 그 자리는 각각 *미정의 오프셋* 과
+// *IRQ_STATUS* 다. 두 워드를 지우는 것이 이 이동의 안전 논거다 — 남겨 두면
+// 정본을 따라 IRQ_STATUS 를 읽는 드라이버가 옛 FAULT_CLEAR 를 밟는다.
+//
 // ## FAB-6 앵커 — 이 모듈이 호스트 의무의 장치 쪽 실물 표면이다
 //
 // E.6 4항 「호스트는 완료 링을 결국 비운다」는 장치 규범이 아니라 호스트 ABI
@@ -53,31 +61,40 @@
 // Fabric.tla 가 bp_relief 가정으로, 배압 처분은 SharedUnit.tla 가 같은 규약
 // 으로 이미 다뤘다). 후속 모델이 서면 그때 정식 줄이 이 파일로 온다.
 //
-// ## MMIO 자리 — E.1 의 0x300~0x3FF (명령/완료 큐 · 인터럽트)
+// ## MMIO 자리 — 정본 E.1.2 「완료 방향 — 0x300 구역」 그대로
 //
-// 상위 데코더가 0x300 영역을 갈라 이 모듈에 넣는다 — addr 는 영역 안 바이트
-// 오프셋 8비트다. 표에 없는 오프셋·비정렬 접근은 예약 *오프셋* 정책이다
+// 상위 데코더가 `0x300`–`0x37F` 를 갈라 이 모듈에 넣는다 — addr 는 구역 안
+// 바이트 오프셋이다. 표에 없는 오프셋·비정렬 접근은 예약 *오프셋* 정책이다
 // (§3.7 — 쓰기 무시 · 읽기 0. 명령 인코딩의 예약 *필드*와 정반대 정책임에
 // 주의 — 그쪽은 0 이 아니면 malformation 이다).
 //
-// 오프셋 배치는 이 구현이 내리는 잠정 결정이며 호스트 ABI 합의(§3.10)의
-// 입력이다 — E.5 가 못박은 것(링 인코딩 · head/tail 의 갱신 주체와 RO/RW ·
-// 2^k 크기 · 32 B 디스크립터)만 규범이다:
+// **오프셋 배치는 더는 이 구현의 잠정 결정이 아니다.** 앞 착지는 자기 배치를
+// 두고 그것을 §3.10 합의의 입력이라 적었는데, 그 사이 정본 E.1.2 가 구역
+// 배정 원칙 넷을 적용해 워드를 전수로 확정했다. 값의 단일 출처는 그 표 하나다
+// — 아래 상수는 그것의 전사이며, 이 파일이 새로 정하는 오프셋은 하나도 없다.
 //
-//   0x00 CQ_SIZE       RO  링 크기 (엔트리 수, 2^k)
-//   0x04 CQ_HEAD       RW  소비 색인 — *호스트 갱신* (E.5 표의 RW 그대로)
-//   0x08 CQ_TAIL       RO  생산 색인 — *장치 갱신* (E.5 표의 RO 그대로)
-//   0x10 IRQ_STATUS    RO  [0] sticky 인터럽트 상태 (E.6)
-//   0x14 IRQ_MASK      RW  [0] 1 = 마스크. reset 값 1 — 인터럽트는 opt-in
-//                          가속이다 (E.6 함정: 인터럽트를 정상 경로의 전제로
-//                          두지 말 것. 기본이 폴링이어야 그 함정이 닫힌다)
-//   0x18 IRQ_CLEAR     WO  [0] 에 1 기입 = 명시적 해제 (이 외엔 안 내려간다)
-//   0x1C FAULT         RO  [0] 오버플로 sticky
-//   0x20 FAULT_CLEAR   WO  [0] 에 1 기입 = 명시적 해제
-//   0x40~0x5F 엔트리 창 RO  head 가 가리키는 항목의 8워드 (빈 링이면 0)
-//   0x60~0x77 드레인 카운트 RO  §3.7 여섯 항 (E.11 — 아래 io.drain 순서)
-//   0x78 CQ_OCC        RO  자기 완료 큐 점유 (E.11 집계의 일곱째 관측)
-//   0x7C DRAIN_ALLZERO RO  [0] 전부 0 — 여섯 카운트 + 완료 큐 점유
+//   +0x00 CQ_BASE_LO   RW  UNWIRED — 링 기저 하위 32b (이 링은 장치 상주)
+//   +0x04 CQ_BASE_HI   RW  UNWIRED — 상위 32b (LO 스테이징 · HI 커밋 발화)
+//   +0x08 CQ_SIZE      RW  [4:0] log2(엔트리 수) · [31:5] 예약 = 0 (엄격)
+//   +0x0C CQ_HEAD      RW  소비 색인 — *호스트 갱신* (E.5 표의 RW 그대로)
+//   +0x10 CQ_TAIL      RO  생산 색인 — *장치 갱신* (E.5 표의 RO 그대로)
+//   +0x20 IRQ_STATUS   RO  [0] sticky 인터럽트 상태 (E.6)
+//   +0x24 IRQ_MASK     RW  [0] 1 = 마스크 · [31:1] 예약 = 0 (엄격). reset 값 1
+//                          — 인터럽트는 opt-in 가속이다 (E.6 함정: 인터럽트를
+//                          정상 경로의 전제로 두지 말 것. 기본이 폴링이어야
+//                          그 함정이 닫힌다)
+//   +0x28 IRQ_CLEAR    WO  [0] 에 1 기입 = 명시적 해제 · [31:1] 예약(엄격)
+//   +0x40~+0x5C 엔트리 창 RO  head 가 가리키는 항목의 8워드 (빈 링이면 0)
+//   +0x60~+0x74 드레인 카운트 RO  §3.7 여섯 항 (E.11 — 아래 io.drain 순서)
+//   +0x78 CQ_OCC       RO  자기 완료 큐 점유 (E.11 집계의 일곱째 관측)
+//   +0x7C DRAIN_ALLZERO RO [0] 전부 0 — 여섯 카운트 + 완료 큐 점유
+//
+// CQ_SIZE 는 정본이 *지수 인코딩*을 규범화했다 — `[4:0]` 이 log2(엔트리 수)
+// 이고, 그래야 E.5 1항 「2의 거듭제곱」이 기입 시점 검사 없이 구조로 성립한다.
+// 옛 착지는 엔트리 수를 그대로 돌려주고 있었다 (깊이 8 이면 8). 재인코딩의
+// 결과는 3 이다 — 같은 워드가 다른 뜻을 갖게 되므로 이동이 아니라 *의미
+// 변경*이며, 드라이버가 옛 값을 새 인코딩으로 읽으면 8 을 2^8 로 오해한다.
+// 옛 자리(`+0x00`)를 반드시 비워야 하는 이유가 여기 있다.
 //
 // 「전부 0」 비트는 읽기 수락 사이클의 조합 스냅샷 하나가 단일 32비트 읽기로
 // 나간다 — 호스트가 여섯(+1) 카운트를 개별로 읽는 동안 상태가 움직이는 찢김을
@@ -85,8 +102,31 @@
 // 집계이며 보수 방향이다 — 링 배수는 어차피 호스트의 E.6 의무라서 드레인
 // 완주를 새로 막지 않는다 (E.11 문면은 여섯이다 — 보고서 model_feedback 참조).
 //
-// E.5 의 base 레지스터(호스트 메모리 배치)와 명령 큐 방향은 이 착지에 없다 —
-// 이 링은 장치 상주이고 명령 경로는 별도 유닛이다 (보고서 observations 참조).
+// ## 「예약」과 「미배선」을 코드에서 가른다
+//
+// CQ_BASE_LO/HI 는 *표에 있는* 워드인데 이 구현에 소비자가 없다 — 링이 장치
+// 상주(내부 `Mem`)라 기저 주소를 소비하지 않기 때문이다 (정본 E.1.3 등재).
+// 지금의 전기적 처분은 예약과 같지만(쓰기 무시 · 읽기 0) *사실*이 다르므로
+// 이름 있는 상수와 `UNWIRED` 주석을 갖는다 — 다음 사람이 「예약인가 미배선
+// 인가」를 물었을 때 답이 코드에 있어야 한다 (`object Wt64Top` 의 같은 처분).
+// 명령 방향(`0x380`–`0x3FF`)은 이 모듈의 구역이 아예 아니다 — 상위 데코더가
+// 별 구역(`R_SQ`)으로 든다.
+//
+// ## 기입 거절 — RO 오프셋과 예약 비트 (E.1.1 엄격 정책)
+//
+// 정본 E.1.2 는 이 구역의 예약 *비트*를 엄격으로 못박고 (CQ_SIZE `[31:5]` ·
+// IRQ_MASK/IRQ_CLEAR `[31:1]`), E.1.2 해설은 「RO 오프셋 쓰기」를 FAULT_STATUS
+// `[6]`「거절된 구성 기입」에 접는다. 이 모듈은 그 둘을 자기 sticky
+// (`io.faultBadWrite`)로 들고 top 이 `0xF80[6]` 에서 합류시킨다 — 하위 유닛의
+// sticky 를 top 이 대신 들지 않는다는 규율은 MmioConfig 선례 그대로다.
+//
+// CQ_SIZE 는 정본이 RW 지만 이 구현에서 링 크기는 *elaborate 상수*다. 다른
+// 크기를 요구하는 기입은 이행할 수단이 없고, 조용히 무시하면 호스트는 자기가
+// 정한 크기의 링이 있다고 믿는다 — 그래서 「현재 크기와 같은 값」만 수락(무동작)
+// 이고 다른 값은 거절 + loud 다. 링의 거처(호스트 메모리 / 장치 상주) 합의가
+// 서면 이 워드가 진짜 RW 가 될 자리이며 그때까지의 처분이다 (§3.10 입력).
+// CQ_HEAD 의 마스크 밖 상위 비트만 정본이 *정규화*(관대)로 정했다 — 링 크기
+// 마스크가 곧 mod size 이기 때문이며, 이 모듈은 그 한 워드만 관대하다.
 
 package wt64.host
 
@@ -106,19 +146,38 @@ object CompletionUnit {
     * 함수가 아니다 (E.10 이 조각 머리 폭에 내린 처분과 같은 논리). */
   val DRAIN_CNT_W = 16
 
-  // MMIO 오프셋 (영역 안 바이트 오프셋 — 배치 근거는 파일 머리)
-  val OFF_CQ_SIZE     = 0x00
-  val OFF_CQ_HEAD     = 0x04
-  val OFF_CQ_TAIL     = 0x08
-  val OFF_IRQ_STATUS  = 0x10
-  val OFF_IRQ_MASK    = 0x14
-  val OFF_IRQ_CLEAR   = 0x18
-  val OFF_FAULT       = 0x1C
-  val OFF_FAULT_CLEAR = 0x20
-  val OFF_WINDOW      = 0x40 // ~0x5F — head 엔트리 8워드
-  val OFF_DRAIN       = 0x60 // ~0x77 — 여섯 카운트
-  val OFF_CQ_OCC      = 0x78
-  val OFF_ALLZERO     = 0x7C
+  // ═══ MMIO 오프셋 — 구역(0x300–0x37F) 안 바이트 오프셋 ═════════════════
+  // 값의 단일 출처는 정본 E.1.2 「완료 방향 — 0x300 구역」 표다 (파일 머리).
+
+  /** UNWIRED — 표에 있고 소비자 회로가 없다. 이 링은 장치 상주(내부 `Mem`)라
+    * 기저 주소를 소비하지 않는다 (정본 E.1.3 「두 링의 base」 행). 상수를
+    * 두는 이유는 「예약이라 이름이 없다」와 「이름은 있는데 회로가 없다」가
+    * 다른 사실이기 때문이다 — 아래 어느 회로도 이 둘을 참조하지 않으며,
+    * *그 사실 자체가* UNWIRED 의 뜻이다. */
+  val OFF_CQ_BASE_LO  = 0x00
+  val OFF_CQ_BASE_HI  = 0x04
+
+  val OFF_CQ_SIZE     = 0x08 // RW  [4:0] log2(엔트리 수) · [31:5] 예약(엄격)
+  val OFF_CQ_HEAD     = 0x0C // RW  마스크 밖 상위는 *정규화*(관대) — E.1.2
+  val OFF_CQ_TAIL     = 0x10 // RO
+  val OFF_IRQ_STATUS  = 0x20 // RO
+  val OFF_IRQ_MASK    = 0x24 // RW  [31:1] 예약(엄격)
+  val OFF_IRQ_CLEAR   = 0x28 // WO  [31:1] 예약(엄격)
+  val OFF_WINDOW      = 0x40 // ~0x5C — head 엔트리 8워드 (RO)
+  val OFF_DRAIN       = 0x60 // ~0x74 — 여섯 카운트 (RO)
+  val OFF_CQ_OCC      = 0x78 // RO
+  val OFF_ALLZERO     = 0x7C // RO
+
+  /** 드레인 카운트 워드 수 — §3.7 정의역 여섯 항 (E.11). */
+  val DRAIN_WORDS = 6
+
+  // ═══ 워드 안의 예약 비트 — 엄격 (비0 기입은 거절 + loud fault) ════════
+  // 적재 마스크의 *여집합으로 유도*한다 — 두 상수가 따로 표류할 자리를
+  // 없앤다 (`object Wt64Top` 의 `rsv()` · MmioConfig.LNID_RSV_MASK 선례).
+  private def rsv(loadMask: Long): Long = (~loadMask) & 0xFFFFFFFFL
+  val CQ_SIZE_RSV   = rsv(0x0000001FL) // [31:5]
+  val IRQ_MASK_RSV  = rsv(0x00000001L) // [31:1]
+  val IRQ_CLEAR_RSV = rsv(0x00000001L) // [31:1]
 }
 
 /** §3.7 드레인 정의역 여섯 항의 진행 중 개수 — E.11 의 입력면.
@@ -181,10 +240,19 @@ class CompletionUnit(val cqDepth: Int = 8) extends Component {
     val drain = in port DrainCounts()
 
     // ── loud fault 관측 — 합성 가능한 sticky 상태 비트 (§3.8 오버플로).
-    //    해제는 MMIO FAULT_CLEAR 명시 기입뿐이다 — 이 유닛은 호스트 대면
-    //    표면이라 해제 권한도 그 표면에 있다 (배압 해제가 fault 를 함께
-    //    지우는 W1C 동반 클리어 금지 — §2.6 함정).
-    val faultOverflow = out port Bool()
+    //    해제는 장치 전역 fault 표면의 명시적 W1C 뿐이다 (`0xF84[16]`) —
+    //    top 이 그 펄스를 아래 입력으로 준다. 배압 해제가 fault 를 함께
+    //    지우는 동반 클리어는 금지다 (§2.6 함정) — 이 입력의 유일한 원천이
+    //    호스트의 명시 기입이라는 사실이 그 금지의 이행이다.
+    val faultOverflow      = out port Bool()
+    val faultClearOverflow = in  port Bool()
+
+    /** 거절된 구성 기입 — RO 오프셋 쓰기 + 워드 안 예약 비트 비0 + 이행할 수
+      * 없는 CQ_SIZE 값 (파일 머리 「기입 거절」). top 이 `0xF80[6]` 에서
+      * MmioConfig·top 표면의 같은 부류와 합류시킨다 (§5.6 — 폴딩 지점을
+      * 신호마다 명시). 해제는 `0xF84[6]` W1C. */
+    val faultBadWrite      = out port Bool()
+    val faultClearBadWrite = in  port Bool()
   }
 
   io.ready := True // 다사이클 수락이 없다 — 예약 정책 포함 모든 접근이 1사이클
@@ -221,27 +289,59 @@ class CompletionUnit(val cqDepth: Int = 8) extends Component {
   val acceptW = io.wstrobe                 // 동시 제시면 쓰기 우선 (MmioConfig 선례)
   val acceptR = !io.wstrobe && io.rstrobe
 
+  // ═══ 워드 판정 — 정본 표의 자리마다 하나 ════════════════════════════
+  // 처분(RW / RO / WO / UNWIRED)이 워드마다 갈리므로 판정도 워드마다 선다.
+  val isSize   = io.addr === OFF_CQ_SIZE
+  val isHead   = io.addr === OFF_CQ_HEAD
+  val isTail   = io.addr === OFF_CQ_TAIL
+  val isIrqSt  = io.addr === OFF_IRQ_STATUS
+  val isIrqMk  = io.addr === OFF_IRQ_MASK
+  val isIrqClr = io.addr === OFF_IRQ_CLEAR
+  val isWindow = io.addr(7 downto 5) === (OFF_WINDOW >> 5)
+  val isDrain  = (0 until DRAIN_WORDS).map(i => io.addr === (OFF_DRAIN + 4 * i)).reduce(_ || _)
+  val isOcc    = io.addr === OFF_CQ_OCC
+  val isAllZ   = io.addr === OFF_ALLZERO
+  /** 정본이 RO 로 정한 오프셋 전수 — 쓰기는 거절 + loud (E.1.2 해설). */
+  val isRoOff  = isTail || isIrqSt || isWindow || isDrain || isOcc || isAllZ
+
   // ═══ 쓰기 — 1사이클 커밋. 표에 없는 오프셋은 무시 ═══════════════════
   val doWr = acceptW && aligned
-  val irqClrPulse = doWr && io.addr === OFF_IRQ_CLEAR   && io.wdata(0)
-  val fltClrPulse = doWr && io.addr === OFF_FAULT_CLEAR && io.wdata(0)
+
+  // 예약 비트 검사 — 엄격 워드 셋 (E.1.1: 비0 기입은 거절 + loud fault).
+  val sizeRsvBad = (io.wdata & B(CQ_SIZE_RSV,   32 bits)) =/= 0
+  val mkRsvBad   = (io.wdata & B(IRQ_MASK_RSV,  32 bits)) =/= 0
+  val clrRsvBad  = (io.wdata & B(IRQ_CLEAR_RSV, 32 bits)) =/= 0
+
+  /** 이 구현이 이행할 수 있는 유일한 CQ_SIZE 값 — 링이 장치 상주라 크기가
+    * elaborate 상수다. 다른 값을 요구하는 기입은 거절 + loud (파일 머리). */
+  val sizeValBad = io.wdata(4 downto 0).asUInt =/= U(log2Up(cqDepth), 5 bits)
+
+  // 해제 펄스 — 거절된 기입은 발화하지 않는다 (반쯤 수락이 없다).
+  val irqClrPulse = doWr && isIrqClr && !clrRsvBad && io.wdata(0)
 
   // 인터럽트 마스크 — reset 1 (끔). 인터럽트는 opt-in 가속이다 (E.6 함정 —
   // 켜져 있어야 도는 설계는 인터럽트 지원 호스트를 전제한다). 정의 비트는
-  // [0] 하나 — 나머지는 마스크 정규화로 0 (쓰기 무시 · 읽기 0).
+  // [0] 하나이고 [31:1] 은 *엄격* 예약이라 정규화가 아니라 거절이다.
   val irqMaskReg = Reg(Bits(32 bits)) init 1
   val irqMask    = irqMaskReg(0)
 
-  when(doWr) {
-    switch(io.addr) {
-      // head 는 호스트가 소비한 만큼 전진시키는 값이다 (E.5 표 — RW).
-      // 마스크 밖 비트는 버린다 (2^k 크기 — 나머지 연산이 마스크다). 값의
-      // 적법성(전진이 tail 을 넘지 않음)은 호스트 ABI 의무다 — 장치는 강제
-      // 수단을 두지 않는다 (E.6 — 타임아웃은 조용한 실패의 다른 이름).
-      is(OFF_CQ_HEAD)  { headReg := io.wdata & B(cqDepth - 1, 32 bits) }
-      is(OFF_IRQ_MASK) { irqMaskReg := io.wdata & B(1, 32 bits) }
-    }
-  }
+  // head 는 호스트가 소비한 만큼 전진시키는 값이다 (E.5 표 — RW). 마스크 밖
+  // 비트는 버린다 (2^k 크기 — 나머지 연산이 마스크다. 이 한 워드만 정본이
+  // 정규화로 정했다). 값의 적법성(전진이 tail 을 넘지 않음)은 호스트 ABI
+  // 의무다 — 장치는 강제 수단을 두지 않는다 (E.6 — 타임아웃은 조용한 실패의
+  // 다른 이름).
+  when(doWr && isHead)                 { headReg := io.wdata & B(cqDepth - 1, 32 bits) }
+  when(doWr && isIrqMk && !mkRsvBad)   { irqMaskReg := io.wdata }
+
+  // CQ_BASE_LO/HI 는 여기 없다 — UNWIRED. 자리는 표에 있고 소비자가 없으므로
+  // 쓰기 무시 · 읽기 0 이며, *거절도 아니다* (이행 불가를 크게 알릴 대상은
+  // 링 기저를 실제로 쓰는 구현이 섰을 때의 일이다 — 정본 E.1.3 등재 그대로).
+
+  // 거절 — RO 오프셋 쓰기 · 예약 비트 비0 · 이행 불가 CQ_SIZE 값.
+  val badWrite = doWr && (isRoOff ||
+    (isSize   && (sizeRsvBad || sizeValBad)) ||
+    (isIrqMk  && mkRsvBad) ||
+    (isIrqClr && clrRsvBad))
 
   // ═══ 통지 상태 — sticky, 명시적 해제까지 유지 (E.6 3항) ═════════════
   // set 원천은 항목 삽입(doPush) 하나다 — 통지가 곧 삽입이라는 E.6 1항의
@@ -251,8 +351,12 @@ class CompletionUnit(val cqDepth: Int = 8) extends Component {
   io.irq := irqSticky && !irqMask
 
   // ═══ 오버플로 fault — 세운다 / 명시적 해제 외엔 내리지 않는다 ═══════
-  val faultOv = StickyFault(set = shove, clear = fltClrPulse)
+  // 해제 원천은 장치 전역 fault 표면(`0xF84[16]`) 하나다 — top 이 준다.
+  val faultOv = StickyFault(set = shove, clear = io.faultClearOverflow)
   io.faultOverflow := faultOv
+
+  // ═══ 거절된 구성 기입 — 같은 규약의 sticky (`0xF80[6]` 에서 합류) ════
+  io.faultBadWrite := StickyFault(set = badWrite, clear = io.faultClearBadWrite)
 
   // ═══ E.11 집계 — 조합. 새 상태 없음 (해설 문면 그대로) ═══════════════
   val cntVec = Vec(io.drain.pipe, io.drain.pending, io.drain.output,
@@ -263,20 +367,22 @@ class CompletionUnit(val cqDepth: Int = 8) extends Component {
   // ═══ 읽기 — 수락 다음 사이클 rdata (예약 오프셋은 0 — §3.7) ═════════
   // 레지스터·카운트 읽기는 수락 사이클의 조합값을 rdataReg 에 스냅한다 —
   // ALLZERO 가 단일 읽기 원자 스냅샷이 되는 지점이 정확히 여기다 (E.11).
+  // WO 워드(IRQ_CLEAR)와 UNWIRED 워드(CQ_BASE_LO/HI)는 아래에 없다 — 읽기 0
+  // 이 그 처분의 이행이다 (WO 의 되읽기를 주지 않는다 · 미배선은 값이 없다).
   val readValue = Bits(32 bits)
   readValue := 0
   when(aligned) {
     switch(io.addr) {
-      is(OFF_CQ_SIZE)    { readValue := B(cqDepth, 32 bits) }
+      // CQ_SIZE — *지수* 인코딩 (E.1.2). 엔트리 수가 아니라 log2 다.
+      is(OFF_CQ_SIZE)    { readValue := B(log2Up(cqDepth), 32 bits) }
       is(OFF_CQ_HEAD)    { readValue := headReg }
       is(OFF_CQ_TAIL)    { readValue := tail.resize(32).asBits }
       is(OFF_IRQ_STATUS) { readValue := irqSticky.asBits.resize(32) }
       is(OFF_IRQ_MASK)   { readValue := irqMaskReg }
-      is(OFF_FAULT)      { readValue := faultOv.asBits.resize(32) }
       is(OFF_CQ_OCC)     { readValue := occ.resize(32).asBits }
       is(OFF_ALLZERO)    { readValue := allZero.asBits.resize(32) }
-      // 드레인 여섯 카운트 — 0x60 + 4·i (E.11 · §3.7 정의역 순서)
-      for (i <- 0 until 6) {
+      // 드레인 여섯 카운트 — +0x60 + 4·i (E.11 · §3.7 정의역 순서)
+      for (i <- 0 until DRAIN_WORDS) {
         is(OFF_DRAIN + 4 * i) { readValue := cntVec(i).resize(32).asBits }
       }
     }
@@ -284,8 +390,7 @@ class CompletionUnit(val cqDepth: Int = 8) extends Component {
 
   // 엔트리 창 — head 항목을 동기 읽기로 낸다. 빈 링이면 0 (미기입 저장소를
   // 관측면에 내지 않는다 — head∈[head,tail) 인 항목만 창에 실린다).
-  val isWindow = io.addr(7 downto 5) === (OFF_WINDOW >> 5)
-  val ringRd   = ring.readSync(head, acceptR)
+  val ringRd = ring.readSync(head, acceptR)
 
   val rdataReg = Reg(Bits(32 bits)) init 0
   val winSel   = RegInit(False)

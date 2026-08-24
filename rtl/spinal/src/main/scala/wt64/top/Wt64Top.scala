@@ -5,8 +5,9 @@
 //
 // 착지한 유닛 전부를 한 지붕 아래 인스턴스하고, 보고서(promote)가 확정한
 // 경계 계약대로 배선한다. 이 파일은 **조립**이다 — 판정·상태·fault 의 원천은
-// 전부 하위 유닛에 있고, 여기서 새로 만드는 상태는 MMIO 잠정 표면의 스테이징
-// 레지스터(E.9 논스 파티션 선택·E.12 소거 태그)뿐이다.
+// 전부 하위 유닛에 있고, 여기서 새로 만드는 상태는 MMIO 표면의 스테이징
+// 레지스터(E.9 논스 파티션 선택·E.12 소거 태그)와 이 표면의 거절 sticky
+// 하나(cfgSurfBadWrite)뿐이다.
 //
 // ## 인스턴스 지도 (XlateStore 는 HiuPipeline 이 품는다 — §3.2 조회 단계의 몸)
 //
@@ -19,20 +20,59 @@
 //   보안     MaskUnit(마스킹) · StepSequencer(fp32 실행)
 //   호스트   CompletionUnit(E.5/E.6/E.11) + MMIO 디코드(아래)
 //
-// ## MMIO 디코드 — E.1 영역 배치 그대로 + 잠정 확장 (모두 4 KiB 블록 안)
+// ## MMIO 디코드 — 호스트 ABI 결정 2 의 구역 지도 (2026-08-25, 4 KiB 블록)
 //
-//   0x000–0x1FF  기존 배정·예약 (E.1) — 이 조립은 배선하지 않는다: 쓰기 무시 ·
-//                읽기 0 (§3.7 예약 *오프셋* 정책)
-//   0x200–0x2FF  OwnershipTable (E.7)
-//   0x300–0x3FF  CompletionUnit (E.5 · E.6 · E.11 드레인 읽기)
-//   0x400–0x7FF  MmioConfig — LNID 소유 표 (§3.7.1)
-//   0x800–0xBFF  MmioConfig — LBID 사상표 (§3.7.1)
-//   0xC00–0xCFF  **잠정 배정** (E.1 은 예약 — 개정 제안, 보고서 model_feedback):
-//                E.9 키·논스·재키잉 / step 프로그램 적재(§2.5) / E.12 문맥 소거.
-//                E.9·E.12 는 정본이 MMIO 표면을 규범으로 세웠으나 E.1 이
-//                오프셋을 배정하지 않았다 — 배정 없는 표면은 배선할 수 없으므로
-//                여기서 잠정 확정하고 되돌린다. 워드 배치는 아래 loc Area.
+// 배정 원칙과 구역별 근거는 companion `object Wt64Top` 의 스칼라독이 소유한다
+// (상수와 근거를 한 자리에 둔다 — 표만 두 곳에 적으면 드리프트 표면이다).
+// 여기는 *무엇이 배선됐고 무엇이 배선되지 않았는가*만 적는다:
+//
+//   0x000–0x11F  기존 배정 — 이 조립은 배선하지 않는다 (§3.10 호스트 ABI 합의)
+//   0x120–0x1FF  예약 — 기존 배정이 늘어날 자리 (§3.7)
+//   0x200–0x2FF  OwnershipTable (E.7)                              — 배선
+//   0x300–0x37F  CompletionUnit (E.5 완료 방향 · E.6 · E.11)       — 배선
+//   0x380–0x3FF  명령 링 (E.5 명령 방향)                           — **미배선**
+//   0x400–0x7FF  MmioConfig — LNID 소유 표 (§3.7.1)                — 배선
+//   0x800–0xBFF  MmioConfig — LBID 사상표 (§3.7.1)                 — 배선
+//   0xC00–0xDFF  변환 항목 배열 64 × 8 B (E.2 · E.3)               — **미배선**
+//   0xE00–0xE7F  변환 저장소 제어 — flush · 미적중 관측 (§3.6.3)   — **미배선**
+//   0xE80–0xEFF  마스킹 — 키 · 논스 · 재키잉 (E.9)                 — 배선
+//   0xF00–0xF3F  step 프로그램 적재 (@fabric 2.5)                  — 배선
+//   0xF40–0xF7F  재조립 문맥 소거 (E.12)                           — 배선
+//   0xF80–0xFBF  장치 전역 fault · 능력 부재 (§3.8)                — 배선
+//   0xFC0–0xFFF  장치 식별 — HIU_ABI_VERSION (`0xFFC`)             — **미배선**
 //   그 밖        예약 — 쓰기 무시 · 읽기 0 (§3.7)
+//
+// **「미배선」은 「예약」이 아니다.** 예약 오프셋은 *표에 없는* 오프셋이고,
+// 위의 미배선 구역은 표에 *있는데* 소비자 회로가 아직 없는 것이다. 지금은
+// 전기적으로 같은 값(쓰기 무시·읽기 0)을 돌려주지만 코드에서는 구별된다 —
+// 구역마다 이름 있는 상수와 `UNWIRED` 주석이 있고, 디코더가 그 구역을
+// *열거한다* (`selUnwired`). 다음 사람이 「예약인가 미배선인가」를 물었을 때
+// 답이 코드에 있어야 한다. 등재: rtl/README.md 「자리는 있고 회로는 없다」 ·
+// 정본 §3.9 — 미측정은 통과가 아니다 (§6.7 원칙 5).
+//
+// ## 장치 전역 fault 표면 — 이 파도가 배선했다 (§3.8 · HIU-6)
+//
+// 앞 파도는 구역 *경계*만 새 맵으로 옮기고 (`0x300`–`0x3FF` → `0x300`–`0x37F`)
+// 완료 구역 *안쪽*과 fault 표면을 옛 배치로 남겼다 — 파일 배정 밖이었기
+// 때문이며 rtl/README.md 에 정직하게 등재됐다. 이 파도가 그 어긋남을 닫는다:
+//
+//   · 완료 구역 안쪽은 `host/CompletionUnit.scala` 가 정본 E.1.2 로 옮겼다.
+//     가장 위험했던 자리는 `+0x04` 다 — 정본은 CQ_BASE_HI(RW)인데 옛 RTL 은
+//     CQ_HEAD(RW)여서, 정본을 따른 드라이버가 링 기저 상위 워드를 쓰면 완료
+//     링의 *소비 색인이 조용히 덮였다.* 예약이면 무해했을 자리가 유효한 RW
+//     기입으로 상태를 망가뜨리는 형태다. 옛 오프셋을 비우는 것이 수리다.
+//   · fault 는 `0xF80`–`0xF90` 다섯 워드로 나왔다. 열여덟 축은 전부 이미
+//     *합성 가능한 sticky 비트*로 존재했고 (§3.8 만족) 없던 것은 호스트 대면
+//     표면이었다 — HIU-6 의 「명시적 해제」 경로가 top IO 입력뿐이었다.
+//     이제 `0xF84` W1C 가 그 경로다. `[17]` 엔트로피만 원천 유닛 미착지라
+//     상수 0 이며, 그 사실은 rtl/README.md 가 행으로 든다.
+//
+// 해제 경로가 둘이 된 축(기존 `io.faultClear.*` IO + MMIO W1C)은 **논리합**
+// 이다 — 어느 쪽도 다른 쪽을 무효화하지 않는다. StickyFault 규약(발화가 해제를
+// 이긴다)이 모듈 안에 있으므로 해제 원천이 늘어도 「해제로 fault 를 삼키는
+// 창」은 생기지 않는다. 이 파도가 새로 낸 축 둘(완료 유닛의 거절된 구성 기입 ·
+// step 능력 부재 sticky)은 IO 해제선을 두지 않고 MMIO 로만 해제한다 — 정본이
+// 정한 해제 표면이 그것이기 때문이며, 없는 경로를 새로 만들지 않는다.
 //
 // ## 잠정 배선 (TODO — 몰래 고치지 않고 여기 전부 적는다)
 //
@@ -94,6 +134,246 @@ import wt64.mask.MaskUnit
 import wt64.fp.{StepSeqParams, StepSequencer}
 import wt64.host.CompletionUnit
 
+/** 4 KiB 구성 페이지의 구역·워드 배정 — 호스트 ABI 결정 2 (2026-08-25).
+  *
+  * ## 배정 원칙 — 결과 표 이전에 규칙이 있다
+  *
+  * 아래 상수는 이 넷을 적용한 *결과*다. 확장은 표를 흉내 내는 것이 아니라
+  * 넷을 다시 적용해서 만든다.
+  *
+  *  1. **2의 거듭제곱 크기와 자기 정렬** — 모든 기능 구역은 크기가 2^k 이고
+  *     시작 오프셋이 그 크기로 정렬된다. 그러면 구역 판정이 주소의 상위
+  *     *접두 비교 하나*로 끝난다 — 하한·상한 두 번의 크기 비교가 사라진다.
+  *     `Region.require` 가 이 규칙을 elaborate 시점에 강제하고, `prefix`/
+  *     `loBit` 이 그 접두 비교의 재료다. 이 파일에 범위 비교(`>= A && < B`)는
+  *     한 곳도 없다 — 비교기 개수가 곧 면적이고, 무엇보다 범위 비교는
+  *     *경계를 틀리게 적을 자리*를 구역마다 하나씩 만든다.
+  *  2. **기능별 clustering** — 한 유닛이 소유하는 표면은 한 구역에 모은다.
+  *     옛 `0xC00` 잠정 배정은 마스킹·step 적재·문맥 소거·재조립 진단 넷을
+  *     한 256 B 블록에 섞어 이 규칙을 어겼다 (소비 유닛이 MaskUnit ·
+  *     StepSequencer · Reassembly 셋인데 디코드는 하나였다). 이번 이동이
+  *     그것을 셋으로 가른다.
+  *  3. **큰 것부터 앉힌다** — 최대 항목(변환 항목 배열 512 B)이 자기 정렬을
+  *     만족하는 자리를 먼저 잡는다. 남은 공간에서 그 자리는 `0xC00` 하나뿐
+  *     이었고, 그래서 마스킹이 그 자리를 비켜 `0xE80` 으로 갔다.
+  *  4. **페이지 끝은 움직이지 않는 자리다** — 앞 구역이 아무리 늘어나도
+  *     페이지 마지막 워드는 밀리지 않는다. 드라이버가 *가장 먼저* 읽는
+  *     레지스터(ABI 판, `0xFFC`)를 그곳에 둔다.
+  *
+  * 규칙 1이 적용되지 않는 유일한 자리는 `0x000`~`0x11F` 다 — 288 B 는 2의
+  * 거듭제곱이 아니다. 예외가 아니라 *물려받은 것*이며 (§3.10), 그것을 감싸는
+  * 512 B 블록 `0x000`~`0x1FF` 은 정렬돼 있어 상위 구역 디코드는 접두 비교로
+  * 닫힌다. 그래서 이 객체는 그 구역에 `Region` 을 두지 않는다.
+  *
+  * ## 「예약」과 「미배선」은 다르다 — 이 상수들이 그 구별의 실물이다
+  *
+  * §3.7 예약 *오프셋* 정책(쓰기 무시 · 읽기 0)은 **표에 없는 오프셋**의
+  * 처분이다. 아래 상수가 이름한 오프셋은 표에 *있다* — 다만 소비자 회로가
+  * 아직 없어 지금은 같은 값을 돌려줄 뿐이다. 미배선 표면도 상수로 이름을
+  * 갖고 `UNWIRED` 로 표시하는 이유가 그것이다: 다음 사람이 「예약인가
+  * 미배선인가」를 물었을 때 답이 코드에 있어야 한다.
+  *
+  * ## 워드 안의 예약 *비트*는 엄격이다 (결정 A 와 같은 형태)
+  *
+  * 예약 *오프셋*의 관대 정책을 워드 *안*으로 옮겨 적지 않는다. 아래
+  * `*_RSV` 마스크가 선 워드의 기입은 거절 + loud sticky fault 다 —
+  * `hiu/MmioConfig.scala` 머리의 「엔트리 내부 예약 비트」 절과 같은 논거
+  * (방향 축: 호스트가 써 넣고 장치가 해석하는 「받아들이는 쪽」)이고,
+  * 마스크를 *적재 마스크의 여집합으로 유도*하는 형태까지 같다.
+  */
+object Wt64Top {
+  /** 기능 구역 하나 — 배정 원칙 규칙 1을 elaborate 시점에 강제한다.
+    *
+    * @param base 시작 바이트 오프셋 (4 KiB 페이지 안)
+    * @param size 바이트 크기 — 2의 거듭제곱이어야 하고 base 가 그 크기로
+    *             정렬돼 있어야 한다. 어기면 구역 판정이 접두 비교로 닫히지
+    *             않는다 (= 범위 비교 두 개가 살아난다).
+    */
+  case class Region(base: Int, size: Int, name: String) {
+    require(isPow2(size), s"구역 「$name」 크기 $size — 규칙 1 위반 (2의 거듭제곱이 아니다)")
+    require(base % size == 0, s"구역 「$name」 base 0x${base.toHexString} — 규칙 1 위반 (자기 정렬 아님)")
+    require(base >= 0 && base + size <= 0x1000, s"구역 「$name」 이 4 KiB 페이지 밖이다")
+    /** 접두 비교의 최하위 비트 — addr(11 downto loBit) === prefix 하나로 끝난다. */
+    def loBit:  Int = log2Up(size)
+    def prefix: Int = base >> loBit
+    /** 구역 안 워드 색인의 최상위 비트 (바이트 오프셋 [loBit-1:2]). */
+    def wordHi: Int = loBit - 1
+  }
+
+  // ═══ 구역 지도 ═══════════════════════════════════════════════════════
+  // 배선된 구역 — 소비자 회로가 실재한다.
+  val R_OWN   = Region(0x200, 0x100, "페이지 소유권 표 (E.7)")
+  val R_CQ    = Region(0x300, 0x080, "완료 방향 — 완료 링·통지·드레인 (E.5·E.6·E.11)")
+  val R_LNID  = Region(0x400, 0x400, "LNID 소유 표 (§3.7.1)")
+  val R_LBID  = Region(0x800, 0x400, "LBID 사상표 (§3.7.1)")
+  val R_MASK  = Region(0xE80, 0x080, "마스킹 — 키·논스·재키잉 (E.9)")
+  val R_FP    = Region(0xF00, 0x040, "step 프로그램 적재 (@fabric 2.5)")
+  val R_ABORT = Region(0xF40, 0x040, "재조립 문맥 소거 (E.12)")
+  val R_FAULT = Region(0xF80, 0x040, "장치 전역 fault · 능력 부재 (§3.8)")
+
+  // UNWIRED — 자리는 배정됐고 소비자 회로가 없다. 각 구역의 부재 사유는
+  // rtl/README.md 「자리는 있고 회로는 없다」 표가 행마다 소유한다.
+  val R_SQ    = Region(0x380, 0x080, "명령 방향 — 명령 링 (E.5)")
+  val R_XENT  = Region(0xC00, 0x200, "변환 항목 배열 64 × 8 B (E.2·E.3)")
+  val R_XCTL  = Region(0xE00, 0x080, "변환 저장소 제어 — flush·미적중 (§3.6.3·E.3)")
+  val R_IDENT = Region(0xFC0, 0x040, "장치 식별 (§3.7 측정 트랙)")
+
+  /** 드리프트 방지 — 구역 base 는 소유 모듈의 상수와 같은 값이어야 한다.
+    * 두 곳이 따로 표류하면 디코더는 A 를 고르고 모듈은 B 를 해석한다. */
+  require(R_OWN.prefix == OwnershipTable.REGION, "R_OWN 이 OwnershipTable.REGION 과 어긋난다")
+  require(R_LNID.base == MmioConfig.LNID_TBL_BASE, "R_LNID 가 MmioConfig 와 어긋난다")
+  require(R_LBID.base == MmioConfig.LBID_TBL_BASE, "R_LBID 가 MmioConfig 와 어긋난다")
+
+  // ═══ 배선된 구역의 워드 — 구역 안 바이트 오프셋 ══════════════════════
+  //
+  // 마스킹 (R_MASK, 0xE80) — 옛 0xC00 지역의 워드 색인 0..16 을 그대로
+  // 옮겼다. 상대 배치가 같아 이동은 base 하나의 변경이다.
+  val M_KEY0       = 0x00 // ~0x1C  WO  E.9 1항 — 키 8워드. 읽기 0 (되읽지 않는다, §5.8)
+  val M_NONCE_PART = 0x20 //        RW  논스 기입 대상 파티션 선택
+  val M_NONCE0     = 0x24 // ~0x38  WO  E.9 2항 — 선택 파티션의 논스 6워드
+  val M_REKEY      = 0x3C //        WO  E.9 4항 — 기입이 발화
+  val M_STATUS     = 0x40 //        RO  [7:0] maskReady · [8] busy · [9] rekey ready
+  val M_KEY_WORDS   = 8
+  val M_NONCE_WORDS = 6
+
+  // step 프로그램 적재 (R_FP, 0xF00)
+  val F_PROG   = 0x00 // WO  [31:24] slot · [23:16] idx · [15:0] step
+  val F_BIND   = 0x04 // WO  [31] en · [30:24] 예약(엄격) · [23:16] slot · [15:0] key
+  val F_STATUS = 0x08 // RO  [0] loadReady · [1] busy
+
+  // 재조립 문맥 소거 (R_ABORT, 0xF40)
+  val A_TAG0       = 0x00 // WO  태그 wave 32b (스테이징)
+  val A_TAG1       = 0x04 // WO  [31:16] thread · [15:0] LNID (스테이징)
+  val A_TAG2       = 0x08 // WO  [15:8] precision · [7:0] dim · [31:16] 예약(엄격)
+  val A_FIRE       = 0x0C // WO  [0]=1 기입 = 소거 발화 · [31:1] 예약(엄격)
+  val A_COUNT      = 0x10 // RO  소거 카운트 (E.12 2항 회계)
+  val A_INCOMPLETE = 0x14 // RO  미완 재조립 문맥 수 (진단)
+
+  // ═══ 워드 안의 예약 비트 — 엄격 (비0 기입은 거절 + loud fault) ════════
+  // 적재 마스크의 *여집합으로 유도*한다 — 두 상수가 따로 표류할 자리를
+  // 없앤다 (MmioConfig.LNID_RSV_MASK 선례).
+  private def rsv(loadMask: Long): Long = (~loadMask) & 0xFFFFFFFFL
+  /** 파티션 선택 필드는 8b 고정이다 — 형상의 함수가 아니다 (INV-T1: MASK_STATUS
+    * 의 `[7:0]` 파티션 필드와 같은 처분). 그래서 예약은 `[31:8]` 이다. */
+  val PART_FIELD_W       = 8
+  val M_NONCE_PART_RSV   = rsv(0x000000FFL) // [31:8]
+  val M_REKEY_RSV        = rsv(0x000000FFL) // [31:8]
+  val A_TAG2_RSV         = rsv(0x0000FFFFL) // [31:16]
+  val A_FIRE_RSV         = rsv(0x00000001L) // [31:1]
+  val F_BIND_RSV         = rsv(0x80FFFFFFL) // [30:24]
+  /** FAULT_CLEAR 의 예약 = `[31:18]`. 비트 *수*를 `Fault.N_BITS` 에서 끌어와
+    * 마스크를 유도한다 — 축이 하나 늘 때 고칠 자리가 상수 하나여야 한다
+    * (두 곳에 적으면 그 순간부터 어느 쪽이 정본인지 답할 수 없다). */
+  val FLT_CLEAR_RSV      = rsv((1L << Fault.N_BITS) - 1)     // [31:18]
+  /** CAP_CLEAR 의 예약 = `[31:2]`. 같은 유도. */
+  val CAP_CLEAR_RSV      = rsv((1L << Fault.N_CAP_BITS) - 1) // [31:2]
+
+  /** 장치 전역 fault (R_FAULT) — 구역 안 바이트 오프셋. **배선됨.**
+    *
+    * fault 는 특정 유닛의 표면이 아니라 *장치 전역*이므로 자기 구역을 갖는다
+    * (E.1 구역별 근거). 열여덟 축의 sticky 비트는 전부 하위 유닛(또는 이
+    * 조립)이 이미 들고 있었고 — §3.8 「합성 가능한 sticky 비트」는 만족이었다 —
+    * 없던 것은 *호스트 대면 표면*이었다. `STATUS` 가 그 관측면이고 `CLEAR`
+    * 가 HIU-6 이 요구하는 명시적 해제다. 관측·해제의 비트 배치가 같아
+    * 드라이버는 읽은 워드를 그대로 되쓰면 자기가 본 것만 지운다.
+    *
+    * `[17]` 엔트로피만 원천 유닛이 재구현에 미착지라 상수 0 이다 — 그 사실은
+    * rtl/README.md 「자리는 있고 회로는 없다」가 행으로 든다. 비트가 *없는*
+    * 것이 아니라 *세울 원천이* 없다. */
+  object Fault {
+    val STATUS  = 0x00 // RO  sticky 비트맵 (아래 비트 배정)
+    val CLEAR   = 0x04 // WO  STATUS 와 같은 비트 배치의 W1C
+    val SUMMARY = 0x08 // RO  [0] STATUS 의 논리합 (§5.6 1항 — 개별 노출을 대체하지 않는다)
+    val CAP_STATUS = 0x0C // RO  [0] 재조립 슬롯 능력 부재 · [1] step 미상주 — *fault 가 아니다*
+    val CAP_CLEAR  = 0x10 // WO  CAP_STATUS 와 같은 배치의 W1C
+
+    // FAULT_STATUS 비트 배정 — 원천별로 가른다 (접지 않는다, §5.6 3항).
+    // 이 순서는 호스트 드라이버와 공유되는 순간 ABI 다 (§3.10 합의 입력).
+    val B_DECODE_WALK  = 0  // 명령 걷기 malformation
+    val B_OPERAND      = 1  // 피연산자 디코드 malformation
+    val B_ROUTE        = 2  // route — 미사상 논리 ID
+    val B_REASM        = 3  // 재조립
+    val B_XLATE_PERM   = 4  // 변환 권한 위반
+    val B_CFG_DUP      = 5  // 구성 — 소유 서로소 위반 (D2)
+    val B_CFG_BADWRITE = 6  // 구성 — 거절된 구성 기입 (넷 + 둘을 접는다)
+    val B_OWN_COLLIDE  = 7  // 페이지 소유권 표 충돌
+    val B_FABRIC_BP    = 8  // 병합 배압 무시
+    val B_SHARED_BP    = 9  // 공유 유닛 배압 무시
+    val B_BANK_WRITE   = 10 // 비소유 결과 슬롯 기입
+    val B_MASK_NOMASK  = 11 // 미준비 마스크 통과
+    val B_MASK_NONCE   = 12 // 논스 재사용 재키잉
+    val B_MASK_REKEY   = 13 // 재키잉 중 입력 기입
+    val B_FP_BP        = 14 // step sequencer 배압 무시
+    val B_FP_BADPROG   = 15 // step 프로그램 불량
+    val B_RING_OVF     = 16 // 링 오버플로
+    val B_ENTROPY      = 17 // 엔트로피원 건강성 검사 실패 (유닛 자체가 미착지)
+    /** 정의된 fault 비트 수 — `[31:18]` 은 RO 예약 = 0 (정본 E.1.2). */
+    val N_BITS = 18
+    // 미적중 통지(XCTL STATUS [1])와 능력 부재(CAP_STATUS)는 이 워드에
+    // 들지 않는다 — 오류가 아니기 때문이다 (E.3 · §1.6.2).
+
+    // CAP_STATUS/CAP_CLEAR 비트 배정 — *fault 가 아니다* (§1.6.2). 바이너리는
+    // 옳고 이 기계가 지금 못 하는 것이며 상위 계층이 재적재 후 재시도한다.
+    val C_REASM_SLOT = 0 // 재조립 슬롯 능력 부재
+    val C_FP_PROG    = 1 // step 프로그램 미상주
+    val N_CAP_BITS   = 2
+  }
+
+  // ═══ UNWIRED 구역의 워드 — 배정만 있고 소비자 회로가 없다 ════════════
+  //
+  // 값을 여기 적는 이유: 「예약이라 이름이 없다」와 「이름은 있는데 회로가
+  // 없다」는 다른 사실이고, 뒤의 것은 다음 사람이 배선할 때 자리를 다시
+  // 정하지 않게 한다. 어느 상수도 지금은 회로에 닿지 않는다 — 그 사실이
+  // 곧 UNWIRED 의 뜻이다.
+
+  /** 명령 링 (R_SQ) — 구역 안 바이트 오프셋. 완료 방향과 *같은 상대 오프셋*
+    * 이라 드라이버가 한 구조체를 base 만 바꿔 두 링에 쓴다 (구역 간 거리
+    * 정확히 `0x80`). UNWIRED: 명령 방향 실물 0건 — 이 기계에서 일의 원천은
+    * top 의 `io.instr` 외부 제시이고 링에서 디스크립터를 꺼내는 경로가 없다. */
+  object Sq {
+    val BASE_LO = 0x00 // RW
+    val BASE_HI = 0x04 // RW  LO 스테이징 · HI 커밋 발화
+    val SIZE    = 0x08 // RW  [4:0] log2(엔트리 수) — E.5 1항이 검사 없이 구조로 성립
+    val HEAD    = 0x0C // RO  *장치* 갱신 (완료 링과 방향이 뒤집힌다)
+    val TAIL    = 0x10 // RW  *호스트* 갱신
+  }
+
+  /** 변환 항목 배열 (R_XENT) — 항목 주소가 `{파티션, 색인}` 연접이다:
+    * `addr[8:7]` = 파티션 · `addr[6:3]` = 색인 · `addr[2]` = 워드.
+    * E.2 2항의 「곱셈을 구조적으로 만들지 않는다」가 주소 배선 그 자체로
+    * 성립한다. UNWIRED: XlateStore 의 `install` 포트는 실재하나 top 이
+    * 그것을 외부 IO 로 수출하고 있어 MMIO 표면이 없다 (E.3 「호스트가
+    * 기입한다」의 *호스트 쪽 문*이 아직 없다). */
+  object Xent {
+    val PART_LO = 7 // addr[8:7] = 파티션
+    val IDX_LO  = 3 // addr[6:3] = 색인
+    val ENTRY_LO_WORD = 0x0 // WO  [31:0] 물리 프레임 — 스테이징
+    val ENTRY_HI_WORD = 0x4 // WO  [31] V · [30:28] rwx · [27:0] 태그 — 커밋 발화
+  }
+
+  /** 변환 저장소 제어 (R_XCTL) — 구역 안 바이트 오프셋. UNWIRED: flush 논리는
+    * XlateStore 에 실재하나 발화가 top IO 입력이고, 미적중 sticky 는
+    * HiuPipeline 에 있으나 top IO 포트로만 나간다. 정지한 요청의 VPN 을
+    * 관측면에 내는 배선은 0건이다. */
+  object Xctl {
+    val FLUSH        = 0x00 // WO  [7:0] 파티션 — 기입이 곧 발화 · [31:8] 예약(엄격)
+    val STATUS       = 0x04 // RO  [0] 미적중 정지 · [1] 미적중 sticky · [15:8] 파티션
+    val MISS_VPN_LO  = 0x08 // RO
+    val MISS_VPN_HI  = 0x0C // RO
+    val MISS_CLEAR   = 0x10 // WO  [0] 에 1 기입 = sticky 해제 (정지는 안 풀린다)
+  }
+
+  /** 장치 식별 (R_IDENT) — 구역 안 바이트 오프셋. `0xFFC` = 페이지 마지막
+    * 워드 (규칙 4). UNWIRED: 참조 구현에는 실재하나 재구현 RTL 에는 없다 —
+    * E.1 표가 이 자리를 예약으로 덮고 있던 탓에 배선되지 않았고, 결정 1 의
+    * 정정이 배선의 전제였다. 판 번호 자체는 §3.10 합의 대상이라 여기서
+    * 임의로 정하지 않는다 (틀린 값을 내는 것이 값을 안 내는 것보다 나쁘다). */
+  object Ident {
+    val ABI_VERSION = 0x3C // RO  `0xFFC` — [31:0] 호스트 ABI 판
+  }
+  require(R_IDENT.base + Ident.ABI_VERSION == 0xFFC, "ABI 판이 페이지 마지막 워드가 아니다 (규칙 4)")
+}
+
 /** WT64v1 top-level 조립.
   *
   * @param cfg      형상 파라미터 — Wt64Config 한 곳 정의 (승격 3건 반영:
@@ -113,14 +393,19 @@ class Wt64Top(
     val memSlots: Int        = 4,
 ) extends Component {
   import XlateStore.{FRAME_W, VPN_W}
+  import Wt64Top._ // 구역·워드 배정 — companion 스칼라독이 근거를 소유한다
 
   private val partW = log2Up(cfg.xlateParts)
   private val idxW  = log2Up(cfg.xlateIdx)
   private val xTagW = VPN_W - idxW
   private val slotW = log2Up(cfg.slotCap) max 1
 
-  // MASK_STATUS 워드 배치([7:0] = maskReady)가 넘치지 않는 형상만 받는다.
-  require(cfg.xlateParts <= 8, "MASK_STATUS 잠정 배치는 파티션 8 이하 — 넘으면 loc 워드 배치 합의부터 다시")
+  // 파티션 필드는 8b 고정이다 (MASK_STATUS `[7:0]` maskReady · MASK_NONCE_PART ·
+  // MASK_REKEY). 형상이 그 값 공간을 넘으면 워드 배치 합의부터 다시다 —
+  // 조용히 자르지 않는다.
+  require(cfg.xlateParts <= (1 << PART_FIELD_W),
+    s"파티션 필드 ${PART_FIELD_W}b 초과 형상 — 마스킹 구역 워드 배치 합의부터 다시")
+  require(cfg.xlateParts <= 8, "MASK_STATUS `[7:0]` 배치는 파티션 8 이하")
 
   /** MemOrderGate 불투명 기술자 폭 — 태그(통째) ‖ MEM 본문(addr_mode 4 ·
     * stride 12 · 오프셋 32, §1.3.2). 태그는 여기서도 불투명하다 —
@@ -323,6 +608,14 @@ class Wt64Top(
       val hiuMiss       = out port Bool() // 미적중 통지 — fault 아님 (§3.8)
       val cfgDupOwner   = out port Bool()
       val cfgBadWrite   = out port Bool()
+      /** 이 조립이 직접 디코드하는 구성 표면(마스킹·step·소거)의 거절된 기입.
+        * 새 맵의 FAULT_STATUS `[6]`「구성 — 거절된 구성 기입」과 같은 자리이며
+        * cfgBadWrite 와 같은 부류다 — 두 신호를 여기서 접지 않는 이유는 원천
+        * 모듈이 다르고 (MmioConfig 는 자기 sticky 를 자기가 든다) top 이
+        * 하위 유닛의 sticky 를 대신 들 수 없기 때문이다. 호스트 대면 표면
+        * (`0xF80[6]`)에서는 한 비트로 합류한다 — 그 표면이 착지할 때 폴딩이
+        * 일어난다 (지금은 미배선). */
+      val cfgSurfBadWrite = out port Bool()
       val ownCollide    = out port Bool()
       val fabricBp      = out port Bool()
       val sharedBp      = out port Bool()
@@ -332,9 +625,17 @@ class Wt64Top(
       val maskWrRekey   = out port Bool()
       val fpBp          = out port Bool()
       val fpBadProg     = out port Bool()
-      val cqOverflow    = out port Bool() // 해제는 MMIO FAULT_CLEAR (호스트 대면 표면)
+      val fpCapAbsent   = out port Bool() // 능력 부재 sticky — fault 아님 (§1.6.2)
+      val cqOverflow    = out port Bool() // FAULT_STATUS `[16]`
+      val cqBadWrite    = out port Bool() // 완료 구역의 거절된 구성 기입 — `[6]` 합류
     }
-    /** 명시적 해제 — 신호별 (cqOverflow 는 자기 MMIO 표면으로 해제한다). */
+    /** 명시적 해제 — 신호별.
+      *
+      * 이 IO 선들은 장치 전역 fault 표면(`0xF84` W1C)이 서기 *전*의 해제
+      * 경로였고, 표면이 선 지금은 둘의 **논리합**이 각 유닛의 clear 다 —
+      * 어느 쪽도 다른 쪽을 무효화하지 않는다. 이 파도가 새로 낸 축 셋
+      * (`cqOverflow` · `cqBadWrite` · `fpCapAbsent`)은 여기 선이 없다:
+      * 정본이 정한 해제 표면이 MMIO 이고, 없는 경로를 새로 만들지 않는다. */
     val faultClear = new Bundle {
       val decodeWalk    = in port Bool()
       val operandDecode = in port Bool()
@@ -345,6 +646,7 @@ class Wt64Top(
       val hiuMiss       = in port Bool()
       val cfgDupOwner   = in port Bool()
       val cfgBadWrite   = in port Bool()
+      val cfgSurfBadWrite = in port Bool()
       val ownCollide    = in port Bool()
       val fabricBp      = in port Bool()
       val sharedBp      = in port Bool()
@@ -357,10 +659,30 @@ class Wt64Top(
     }
   }
 
+  // ═══ 장치 전역 fault 표면의 해제 펄스 — 선언만 여기 ═══════════════════
+  //
+  // `0xF84` W1C 가 내는 비트별 해제 펄스다. **선언과 구동을 가른 이유**는
+  // 순서 하나뿐이다: 하위 유닛 결선이 이 파일에서 MMIO 디코드보다 앞에 있고,
+  // 디코드는 `selFault`·`mmioAligned` 를 필요로 한다. 구동은 아래
+  // `faultArea` 하나이며 (전 비트 한 곳에서 대입) 그 외 어디서도 대입하지
+  // 않는다 — 해제 원천이 흩어지면 「무엇이 이 fault 를 내렸는가」에 답할 수
+  // 없다 (§3.8 · §2.6 함정: 다른 동작이 fault 를 함께 내리는 것 금지).
+  //
+  // 형태는 *수락 사이클 하나 + 비트 선택*이다 — 비트마다 신호를 미리 만들면
+  // 소비자 없는 축(`[17]` 엔트로피 — 원천 유닛 미착지)이 죽은 배선으로 남고,
+  // 그것은 lint 가 잡아내는 종류의 「자리는 있는데 회로가 없다」이다. 함수로
+  // 두면 *참조된 비트만* 회로가 되며, 참조되지 않았다는 사실이 곧 미배선의
+  // 증거다 (비트 배치 자체는 companion 의 `Fault` 상수가 전수로 든다 — ABI 는
+  // 회로 유무와 무관하게 확정돼 있다).
+  private val fltClrAccept = Bool() // `0xF84` 수락 (예약 비트 검사 통과)
+  private val capClrAccept = Bool() // `0xF90` 수락
+  private def fclr(bit:   Int): Bool = fltClrAccept && io.mmio.wdata(bit)
+  private def capClr(bit: Int): Bool = capClrAccept && io.mmio.wdata(bit)
+
   // ═══ 디코드 사슬 — DecodeWalk → OperandDecode (방출면 1:1) ═══════════
   walk.io.iValid      := io.instr.valid
   walk.io.iInstr      := io.instr.words
-  walk.io.iFaultClear := io.faultClear.decodeWalk
+  walk.io.iFaultClear := io.faultClear.decodeWalk || fclr(Fault.B_DECODE_WALK)
 
   od.io.iValid       := walk.io.oValid
   od.io.iMalformed   := walk.io.oMalformed
@@ -370,7 +692,7 @@ class Wt64Top(
   od.io.iSlotPresent := walk.io.oSlotPresent
   od.io.iSlotCode    := walk.io.oSlotCode
   od.io.iSlotOff     := walk.io.oSlotOff
-  od.io.iFaultClear  := io.faultClear.operandDecode
+  od.io.iFaultClear  := io.faultClear.operandDecode || fclr(Fault.B_OPERAND)
 
   /** 태그 사이드밴드 정렬 — DecodeWalk 방출 단(1 레지스터)과 같은 지연.
     * 태그는 통째로 나른다 — 슬라이스 없음 (§1.4.4). */
@@ -414,7 +736,7 @@ class Wt64Top(
   rj.io.tokIn.payload.srcKind := od.io.oOprefASrcKind
   rj.io.viewWr     := cfgBlk.io.viewWr // Route.view_sync 직결 — 사이 단 없음
   rj.io.bankWr     := cfgBlk.io.bankWr
-  rj.io.faultClear := io.faultClear.route
+  rj.io.faultClear := io.faultClear.route || fclr(Fault.B_ROUTE)
   io.route.tokOut << rj.io.tokOut
   io.route.faultFire := rj.io.faultFire
 
@@ -440,8 +762,9 @@ class Wt64Top(
   io.reasmWr.off   := reasm.io.wr.off
   io.reasmWr.body  := reasm.io.wr.body
 
-  reasm.io.faultClear     := io.faultClear.reasm
-  reasm.io.capAbsentClear := io.faultClear.reasmCap
+  reasm.io.faultClear     := io.faultClear.reasm    || fclr(Fault.B_REASM)
+  // 능력 부재는 fault 가 아니므로 해제도 CAP_CLEAR(`0xF90`) 쪽이다 (§1.6.2).
+  reasm.io.capAbsentClear := io.faultClear.reasmCap || capClr(Fault.C_REASM_SLOT)
 
   // ═══ 순서 토큰 게이트 — 디코드 MEM 제시 + 외부 구성 (§4.4.3 잠정) ═════
   for (i <- 0 until memSlots) {
@@ -483,7 +806,7 @@ class Wt64Top(
   hiu.io.hostRsp.valid := io.hostRsp.valid
   hiu.io.hostRsp.frame := io.hostRsp.frame
   hiu.io.hostRsp.perm  := io.hostRsp.perm
-  hiu.io.faultClear    := io.faultClear.hiuPerm
+  hiu.io.faultClear    := io.faultClear.hiuPerm || fclr(Fault.B_XLATE_PERM)
   hiu.io.missClear     := io.faultClear.hiuMiss
 
   // 마스킹 단 (s4) — HiuPipeline io.mask 왕복의 반대편이 MaskUnit 이다.
@@ -514,7 +837,7 @@ class Wt64Top(
   shared.io.req.valid   := io.sharedReq.valid
   shared.io.req.payload := io.sharedReq.payload
   io.sharedReq.ready    := shared.io.req.ready
-  shared.io.faultClear  := io.faultClear.sharedBp
+  shared.io.faultClear  := io.faultClear.sharedBp || fclr(Fault.B_SHARED_BP)
 
   // lane 0 — 완료는 파이프 끝의 되물릴 수 없는 사건이라 스트로브 그대로다.
   // stall 무시가 물리적으로 가능한 그 경계(§2.6 4항)이며 위반은 merge 의
@@ -529,7 +852,7 @@ class Wt64Top(
     merge.io.push(i).result := io.push(i - 1).result
     io.push(i - 1).stall    := merge.io.push(i).stall
   }
-  merge.io.faultClear := io.faultClear.fabricBp
+  merge.io.faultClear := io.faultClear.fabricBp || fclr(Fault.B_FABRIC_BP)
 
   // ═══ 결과 뱅크 — 외부 포트 (TODO: LBID 사상 착지 후 Reassembly.wr 결선) ═
   bank.io.acquire.valid := io.bank.acqValid
@@ -543,7 +866,7 @@ class Wt64Top(
   bank.io.read.slot     := io.bank.rdSlot
   io.bank.rdData        := bank.io.read.data
   io.bank.rdOwned       := bank.io.read.owned
-  bank.io.faultClear    := io.faultClear.bankWrite
+  bank.io.faultClear    := io.faultClear.bankWrite || fclr(Fault.B_BANK_WRITE)
 
   // ═══ fp32 step sequencer — 요청은 외부 (dispatch 표 미착지) ═══════════
   fps.io.req.valid     := io.fp.reqValid
@@ -558,8 +881,8 @@ class Wt64Top(
   io.fp.capAbsent      := fps.io.oCapAbsent
   io.fp.progMal        := fps.io.oProgMal
   io.fp.result         := fps.io.oResult
-  fps.io.faultClearBp      := io.faultClear.fpBp
-  fps.io.faultClearBadProg := io.faultClear.fpBadProg
+  fps.io.faultClearBp      := io.faultClear.fpBp      || fclr(Fault.B_FP_BP)
+  fps.io.faultClearBadProg := io.faultClear.fpBadProg || fclr(Fault.B_FP_BADPROG)
 
   // ═══ 완료 유닛 — 인도 → 완료 링 (E.5) + E.11 집계 ════════════════════
   // 인도 = 완료 통지 (E.6 1항 — 링 삽입이 유일한 통지 수단). 디스크립터는
@@ -586,168 +909,304 @@ class Wt64Top(
 
   io.irq := cq.io.irq
 
-  // ═══ MMIO 디코드 — E.1 영역 배치 (머리 주석의 표) ════════════════════
+  // ═══ MMIO 디코드 — 구역 지도 (companion object Wt64Top) ══════════════
+  //
+  // 구역 판정은 **상수 접두 비교 하나**다 (배정 원칙 규칙 1). 범위 비교는
+  // 한 곳도 만들지 않는다 — 비교기 개수가 곧 면적이고, 범위 비교는 경계를
+  // 틀리게 적을 자리를 구역마다 하나씩 만든다.
   private val mmioAligned = io.mmio.addr(1 downto 0) === 0
-  private val selOwn = io.mmio.addr(11 downto 8) === OwnershipTable.REGION
-  private val selCq  = io.mmio.addr(11 downto 8) === 0x3
-  private val selCfg = io.mmio.addr(11 downto 10) === (MmioConfig.LNID_TBL_BASE >> 10) ||
-    io.mmio.addr(11 downto 10) === (MmioConfig.LBID_TBL_BASE >> 10)
-  private val selLoc = io.mmio.addr(11 downto 8) === 0xC // 잠정 배정 (머리 주석)
+  private def sel(r: Region): Bool = io.mmio.addr(11 downto r.loBit) === r.prefix
+  /** 구역 안 워드 색인 — 바이트 오프셋 [loBit-1:2]. */
+  private def word(r: Region): UInt = io.mmio.addr(r.wordHi downto 2)
+
+  // ── 배선된 구역 ──────────────────────────────────────────────────────
+  private val selOwn   = sel(R_OWN)
+  private val selCq    = sel(R_CQ)    // 0x300–0x37F — 0x3FF 에서 좁혔다 (머리 주석)
+  private val selCfg   = sel(R_LNID) || sel(R_LBID)
+  private val selMask  = sel(R_MASK)
+  private val selFp    = sel(R_FP)
+  private val selAbort = sel(R_ABORT)
+  private val selFault = sel(R_FAULT) // 장치 전역 fault — 이 파도가 배선했다
+
+  // ── UNWIRED 구역 — 배정됐고 소비자 회로가 없다 ────────────────────────
+  //
+  // 이 네 신호는 회로를 구동하지 않지만 *디코더가 구역을 열거한다*는
+  // 사실 자체가 산출물이다: 「예약이라 이름이 없다」와 「이름은 있는데 회로가
+  // 없다」가 코드에서 구별된다. 지금의 처분은 읽기 0 · 쓰기 무시로 예약과
+  // 같지만, 그것은 *소비자가 없어서*이지 표에 없어서가 아니다.
+  private val selSq    = sel(R_SQ)    // 명령 링 — 명령 방향 실물 0건
+  private val selXent  = sel(R_XENT)  // 변환 항목 배열 — install 이 top IO 로 수출돼 있다
+  private val selXctl  = sel(R_XCTL)  // flush 발화·미적중 관측 — 둘 다 top IO
+  private val selIdent = sel(R_IDENT) // HIU_ABI_VERSION — 판 번호가 §3.10 대기
+  private val selUnwired = selSq || selXent || selXctl || selIdent
 
   // 영역별 스트로브 게이트 — 한 접근은 정확히 한 블록에 닿는다.
   own.io.addr    := io.mmio.addr
   own.io.wdata   := io.mmio.wdata
   own.io.wstrobe := io.mmio.wstrobe && selOwn
   own.io.rstrobe := io.mmio.rstrobe && selOwn
-  own.io.faultClearCollide := io.faultClear.ownCollide
+  own.io.faultClearCollide := io.faultClear.ownCollide || fclr(Fault.B_OWN_COLLIDE)
 
   cq.io.addr    := io.mmio.addr(7 downto 0)
   cq.io.wdata   := io.mmio.wdata
   cq.io.wstrobe := io.mmio.wstrobe && selCq
   cq.io.rstrobe := io.mmio.rstrobe && selCq
+  // 완료 유닛의 두 sticky 는 자기 구역이 아니라 *장치 전역 fault 표면*이
+  // 해제한다 (정본 E.1.2 — 링 오버플로는 `0xF80[16]`). 옛 착지는 완료 구역
+  // 안에 자기 FAULT/FAULT_CLEAR 두 워드를 갖고 있었고, 그 자리가 새 맵에서는
+  // 미정의 오프셋과 IRQ_STATUS 다 — 두 워드를 지우는 것이 이동의 안전 논거다.
+  cq.io.faultClearOverflow := fclr(Fault.B_RING_OVF)
+  cq.io.faultClearBadWrite := fclr(Fault.B_CFG_BADWRITE)
 
   cfgBlk.io.addr    := io.mmio.addr
   cfgBlk.io.wdata   := io.mmio.wdata
   cfgBlk.io.wstrobe := io.mmio.wstrobe && selCfg
   cfgBlk.io.rstrobe := io.mmio.rstrobe && selCfg
-  cfgBlk.io.faultClearDup := io.faultClear.cfgDupOwner
-  cfgBlk.io.faultClearBad := io.faultClear.cfgBadWrite
+  cfgBlk.io.faultClearDup := io.faultClear.cfgDupOwner || fclr(Fault.B_CFG_DUP)
+  cfgBlk.io.faultClearBad := io.faultClear.cfgBadWrite || fclr(Fault.B_CFG_BADWRITE)
 
-  // ── 0xC00 지역 표면 — E.9 · E.12 · step 적재 (잠정 워드 배치) ─────────
+  // ── 거절된 구성 기입 — 이 조립이 직접 디코드하는 표면의 발화선 ────────
   //
-  //   워드 색인(addr[7:2]) 기준:
-  //     0..7   KEY[0..7]        WO  E.9 1항 — 키 기입 (읽기 0: 키는 되읽지
-  //                                 않는다 — 상태 표면 최소화, §5.8)
-  //     8      NONCE_PART       RW  논스 기입 대상 파티션 선택
-  //     9..14  NONCE[0..5]      WO  E.9 2항 — 선택 파티션의 논스 워드
-  //     15     REKEY            WO  [partW-1:0] 파티션 — 유휴가 아니면 유실
-  //                                 (MASK_STATUS 로 관측 — MaskUnit 계약)
-  //     16     MASK_STATUS      RO  [parts-1:0] maskReady · [8] busy ·
-  //                                 [9] rekey ready
-  //     17     FP_PROG          WO  [31:24] slot · [23:16] idx · [15:0] step
-  //     18     FP_BIND          WO  [31] en · [23:16] slot · [15:0] key
-  //     19     FP_STATUS        RO  [0] loadReady · [1] busy
-  //     20     ABORT_W0         WO  E.12 — 소거 태그 wave (32b 통째)
-  //     21     ABORT_W1         WO  [31:16] thread · [15:0] lnid
-  //     22     ABORT_W2         WO  [15:8] precision · [7:0] dim
-  //     23     ABORT_FIRE       WO  [0]=1 기입 = 소거 발화 (없는 태그 무시 —
-  //                                 E.12 3항, Reassembly 소관)
-  //     24     ABORT_COUNT      RO  소거 카운트 (E.12 2항 회계)
-  //     25     REASM_INCOMPLETE RO  미완 문맥 수 (진단 — §4.3)
-  //     그 밖  예약 — 쓰기 무시 · 읽기 0 (§3.7)
+  // 처분의 축은 *방향*이다 (§3.7.1 함정: 「이름표를 먼저 찾지 말고 방향을
+  // 먼저 물어라」). 그 축을 이 표면에 대면 갈래가 넷 나온다:
   //
-  // 태그 스테이징이 3워드 + 발화 1워드인 이유: 태그 80b 는 32b 버스 한
-  // 번에 실리지 않는다 — E.7 이 「한 워드 전이」로 얻은 원자성을 여기서는
-  // 명시적 발화 워드가 대신한다 (부분 기입 상태는 발화 전엔 효과가 없다).
-  private val loc = new Area {
-    val wordOff = io.mmio.addr(7 downto 2)
-    val wr = io.mmio.wstrobe && selLoc && mmioAligned
-    val rd = io.mmio.rstrobe && !io.mmio.wstrobe && selLoc && mmioAligned
+  //   · 워드 안의 예약 *비트* 비0 기입 → **거절 + loud fault.** 결정 A
+  //     (df49b24) 와 같은 형태·같은 논거다 — 호스트가 써 넣고 장치가 해석
+  //     하는 「받아들이는 쪽」이므로 관대함은 검사받지 않는 비트를 남긴다.
+  //     되돌림 비대칭도 그대로다: 엄격→관대는 무해하고 관대→엄격은 편도다.
+  //   · RO 오프셋의 *쓰기* → **거절 + loud fault.** 쓰기는 장치가 받아들이는
+  //     쪽이고, 조용히 무시하면 드라이버는 자기 쓰기가 먹혔다고 믿는다.
+  //   · WO 오프셋의 *읽기* → 0 반환, fault 없음. 읽기는 장치가 *돌려주는*
+  //     쪽이라 관대함이 하위 호환을 만들고, 무엇보다 WO 로 둔 이유 자체가
+  //     그 값을 상태 표면에 싣지 않기 위해서다 (E.9 키 — 되읽기를 주면 그
+  //     결정이 무효가 된다, §5.8). 아래 읽기 경로가 WO 워드를 *덮지 않는
+  //     것*이 그 이행이다.
+  //   · 구역 안의 미정의 워드 · 비정렬 접근 → §3.7 예약 *오프셋* 정책
+  //     그대로: 쓰기 무시 · 읽기 0 · fault 없음.
+  //
+  // 형상 밖 파티션 값(`>= cfg.xlateParts`)도 거절이다. 필드가 8b 고정이라
+  // 없는 파티션이 표현 가능하고, 조용히 자르면 파티션 4 를 재키잉하려던
+  // 호스트가 파티션 0 의 키를 갈아 버린다. MmioConfig 의 「없는 지점 등록
+  // 거절」(pointBad)과 같은 형태이며 같은 부류의 sticky 로 접힌다.
+  private val surfBadWr = False
 
-    // E.9 키 기입 — 워드 색인 0..7 (표 조회 형태의 등가 비교 디코드).
-    mask.io.keyWr.valid := wr && wordOff < 8
-    mask.io.keyWr.idx   := wordOff(2 downto 0)
+  // ── 마스킹 구역 (0xE80) — E.9 키 · 논스 · 재키잉 ──────────────────────
+  //
+  // 옛 `0xC00` 지역의 워드 색인 0..16 을 base 만 바꿔 옮겼다 (상대 배치
+  // 불변). 이 구역이 마스킹 *하나*의 것이라는 사실이 규칙 2 의 이행이다 —
+  // 옛 배정은 소비 유닛 셋을 한 디코드에 섞고 있었다.
+  private val maskArea = new Area {
+    val wordOff = word(R_MASK)
+    val wr = io.mmio.wstrobe && selMask && mmioAligned
+    val rd = io.mmio.rstrobe && !io.mmio.wstrobe && selMask && mmioAligned
+
+    // 워드 처분 — 상수와의 등가/구간 비교. 오프셋 숫자를 여기 다시 적지
+    // 않는다 (companion 의 상수가 유일한 출처다).
+    val isKey       = wordOff < M_KEY_WORDS                                      // WO
+    val isNoncePart = wordOff === M_NONCE_PART / 4                               // RW
+    val isNonce     = wordOff >= M_NONCE0 / 4 &&
+                      wordOff <= (M_NONCE0 / 4 + M_NONCE_WORDS - 1)              // WO
+    val isRekey     = wordOff === M_REKEY / 4                                    // WO
+    val isStatus    = wordOff === M_STATUS / 4                                   // RO
+
+    /** 파티션 필드 — 8b 고정, 형상의 함수가 아니다 (INV-T1 정합). 합법 값
+      * 검사는 폭이 아니라 *기입 시점 거절*로 선다 (MmioConfig 선례). */
+    val partField = io.mmio.wdata(PART_FIELD_W - 1 downto 0).asUInt
+    val partBad   = if (cfg.xlateParts >= (1 << PART_FIELD_W)) False
+                    else partField >= cfg.xlateParts
+
+    // E.9 1항 키 기입 — 워드 0..7. 예약 비트 없음 (32b 전폭이 키 워드다).
+    mask.io.keyWr.valid := wr && isKey
+    mask.io.keyWr.idx   := wordOff(log2Up(M_KEY_WORDS) - 1 downto 0)
     mask.io.keyWr.data  := io.mmio.wdata
 
-    // E.9 논스 — 파티션 선택 레지스터 + 워드 기입.
-    val noncePart = Reg(UInt(partW bits)) init 0
-    when(wr && wordOff === 8) { noncePart := io.mmio.wdata(partW - 1 downto 0).asUInt }
-    mask.io.nonceWr.valid := wr && wordOff >= 9 && wordOff <= 14
+    // E.9 2항 논스 — 파티션 선택 레지스터 + 워드 기입.
+    val noncePart  = Reg(UInt(partW bits)) init 0
+    val npWr       = wr && isNoncePart
+    val npRsvBad   = (io.mmio.wdata & B(M_NONCE_PART_RSV, 32 bits)) =/= 0
+    val npReject   = npWr && (npRsvBad || partBad)
+    // 거절된 기입은 레지스터를 움직이지 않는다 — 그래서 되읽기가 언제나
+    // 「마지막으로 수락된 값」이고 호스트가 쓴 값과 항등이다 (정규화 없음).
+    when(npWr && !npRsvBad && !partBad) { noncePart := partField.resized }
+
+    mask.io.nonceWr.valid := wr && isNonce
     mask.io.nonceWr.part  := noncePart
-    // 색인 9..14 는 하위 3비트 001..110 구간이라 (하위 3비트 − 1) 이 곧
-    // 논스 워드 0..5 다 — 전폭 감산 뒤 절단(미사용 상위 비트)을 만들지
-    // 않는 폭 정합 산술.
+    // 논스 워드 색인 — 구역 워드 9..14 의 하위 3비트가 001..110 이라
+    // (하위 3비트 − 1) 이 곧 논스 워드 0..5 다. 전폭 감산 뒤 절단(미사용
+    // 상위 비트)을 만들지 않는 폭 정합 산술.
     mask.io.nonceWr.idx   := wordOff(2 downto 0) - 1
     mask.io.nonceWr.data  := io.mmio.wdata
 
-    // E.9 재키잉 — 유휴가 아니면 유실(ready 관측은 MASK_STATUS). E.9 4항의
+    // E.9 4항 재키잉 — 기입이 발화. 엔진이 유휴가 아니면 수락되지 않고
+    // MASK_STATUS `[9]` 로 관측된다 (무언 드롭 아님 — MaskUnit 계약).
     // flush 동반·드레인 순서는 호스트 ABI 의무다 (§3.10).
-    mask.io.rekey.valid := wr && wordOff === 15
-    mask.io.rekey.part  := io.mmio.wdata(partW - 1 downto 0).asUInt
+    val rkWr     = wr && isRekey
+    val rkRsvBad = (io.mmio.wdata & B(M_REKEY_RSV, 32 bits)) =/= 0
+    val rkReject = rkWr && (rkRsvBad || partBad)
+    mask.io.rekey.valid := rkWr && !rkRsvBad && !partBad
+    mask.io.rekey.part  := partField.resized
 
-    // step 프로그램 적재 (§2.5 — 재적재는 §3.7 드레인 규약 아래, 호스트 의무).
-    fps.io.progWr.valid := wr && wordOff === 17
+    // 상태 워드 (RO). 파티션 필드는 8b 고정 — 형상이 그 안에 든다 (require).
+    val maskStat = Bits(32 bits)
+    maskStat := 0
+    maskStat(cfg.xlateParts - 1 downto 0) := mask.io.maskReady
+    maskStat(8) := mask.io.busy
+    maskStat(9) := mask.io.rekey.ready
+
+    // 거절 — 예약 비트 · 형상 밖 파티션 · RO 오프셋 쓰기.
+    when(npReject || rkReject || (wr && isStatus)) { surfBadWr := True }
+
+    // 읽기 — WO 워드(키·논스·재키잉)는 여기 없다: 읽기 0 이 그 결정의
+    // 이행이다 (되읽기를 주면 §5.8 관측면 최소화가 무효가 된다).
+    val readValue = Bits(32 bits)
+    readValue := 0
+    when(isNoncePart) { readValue := noncePart.asBits.resize(32) }
+    when(isStatus)    { readValue := maskStat }
+  }
+
+  // ── step 프로그램 적재 구역 (0xF00) — @fabric 2.5 ─────────────────────
+  //
+  // HIU 표면이 아니라 *패브릭 실행 자원*의 적재면이므로 마스킹·소거와 구역을
+  // 나눈다 — 드레인 규약 아래 재적재되는 주체가 다르다 (§3.7).
+  private val fpArea = new Area {
+    val wordOff = word(R_FP)
+    val wr = io.mmio.wstrobe && selFp && mmioAligned
+    val rd = io.mmio.rstrobe && !io.mmio.wstrobe && selFp && mmioAligned
+
+    val isProg   = wordOff === F_PROG / 4   // WO
+    val isBind   = wordOff === F_BIND / 4   // WO
+    val isStatus = wordOff === F_STATUS / 4 // RO
+
+    // 용량 밖 슬롯·색인과 step 워드의 예약 비트는 StepSequencer 가 자기
+    // 계약으로 거절하고 faultBadProg (새 맵 FAULT_STATUS `[15]`) 로 크게
+    // 알린다 — 여기서 두 번 검사하지 않는다. 검사가 두 곳에 있으면 둘이
+    // 갈리고, 그때 어느 쪽이 정본인지 답할 수 없다.
+    fps.io.progWr.valid := wr && isProg
     fps.io.progWr.slot  := io.mmio.wdata(31 downto 24).asUInt
     fps.io.progWr.idx   := io.mmio.wdata(23 downto 16).asUInt
     fps.io.progWr.step  := io.mmio.wdata(15 downto 0)
-    fps.io.bindWr.valid := wr && wordOff === 18
+
+    // FP_BIND `[30:24]` 은 예약 — 엄격이다 (슬롯 필드가 8b 인데 en 비트가
+    // `[31]` 이라 그 사이가 비었다. 그 자리를 관대하게 두면 슬롯 폭을
+    // 넓히는 날 옛 드라이버의 쓰레기가 조용히 의미가 된다).
+    val bindRsvBad = (io.mmio.wdata & B(F_BIND_RSV, 32 bits)) =/= 0
+    fps.io.bindWr.valid := wr && isBind && !bindRsvBad
     fps.io.bindWr.key   := io.mmio.wdata(15 downto 0)
     fps.io.bindWr.en    := io.mmio.wdata(31)
     fps.io.bindWr.slot  := io.mmio.wdata(23 downto 16).asUInt
 
-    // E.12 소거 태그 스테이징 — 필드별 레지스터, 조립은 Tag 번들 필드
-    // 대입으로만 (슬라이스 없음 — §1.4.4 태그 조립 규율).
+    when((wr && isBind && bindRsvBad) || (wr && isStatus)) { surfBadWr := True }
+
+    val fpStat = Bits(32 bits)
+    fpStat := 0
+    fpStat(0) := fps.io.loadReady
+    fpStat(1) := fps.io.oBusy
+
+    val readValue = Bits(32 bits)
+    readValue := 0
+    when(isStatus) { readValue := fpStat }
+  }
+
+  // ── 재조립 문맥 소거 구역 (0xF40) — E.12 ──────────────────────────────
+  //
+  // step 적재와 이웃하지만 구역을 가른다: 소거는 *드레인 완주를 위한 처분*
+  // 이고 적재는 *구성*이라 호스트가 부르는 시점이 다르다.
+  //
+  // 태그 스테이징 3워드 + 발화 1워드인 이유: 태그 80b 는 32b 버스 한 번에
+  // 실리지 않는다 — E.7 이 「한 워드 전이」로 얻은 원자성을 여기서는 명시적
+  // 발화 워드가 대신한다 (부분 기입 상태는 발화 전엔 효과가 없다).
+  private val abortArea = new Area {
+    val wordOff = word(R_ABORT)
+    val wr = io.mmio.wstrobe && selAbort && mmioAligned
+    val rd = io.mmio.rstrobe && !io.mmio.wstrobe && selAbort && mmioAligned
+
+    val isTag0 = wordOff === A_TAG0 / 4 // WO  스테이징
+    val isTag1 = wordOff === A_TAG1 / 4 // WO  스테이징
+    val isTag2 = wordOff === A_TAG2 / 4 // WO  스테이징 (예약 [31:16] 엄격)
+    val isFire = wordOff === A_FIRE / 4 // WO  발화     (예약 [31:1]  엄격)
+    val isCnt  = wordOff === A_COUNT / 4      // RO
+    val isInc  = wordOff === A_INCOMPLETE / 4 // RO
+
+    val tag2RsvBad = (io.mmio.wdata & B(A_TAG2_RSV, 32 bits)) =/= 0
+    val fireRsvBad = (io.mmio.wdata & B(A_FIRE_RSV, 32 bits)) =/= 0
+
+    // 필드별 레지스터 — 조립은 Tag 번들 필드 대입으로만 (슬라이스 없음,
+    // §1.4.4 태그 조립 규율).
     val abWave   = Reg(UInt(Isa.WAVE_W bits)) init 0
     val abThread = Reg(UInt(Isa.THREAD_W bits)) init 0
     val abLnid   = Reg(UInt(Isa.LNID_W bits)) init 0
     val abPrec   = Reg(UInt(Isa.PRECISION_W bits)) init 0
     val abDim    = Reg(UInt(Isa.DIM_W bits)) init 0
-    when(wr && wordOff === 20) { abWave := io.mmio.wdata.asUInt }
-    when(wr && wordOff === 21) {
+    when(wr && isTag0) { abWave := io.mmio.wdata.asUInt }
+    when(wr && isTag1) {
       abThread := io.mmio.wdata(31 downto 16).asUInt
       abLnid   := io.mmio.wdata(15 downto 0).asUInt
     }
-    when(wr && wordOff === 22) {
+    // 거절된 스테이징 기입은 레지스터를 움직이지 않는다 — 반쯤 갱신된
+    // 태그로 발화가 서는 창을 만들지 않는다.
+    when(wr && isTag2 && !tag2RsvBad) {
       abPrec := io.mmio.wdata(15 downto 8).asUInt
       abDim  := io.mmio.wdata(7 downto 0).asUInt
     }
-    reasm.io.abort.valid         := wr && wordOff === 23 && io.mmio.wdata(0)
+    reasm.io.abort.valid         := wr && isFire && !fireRsvBad && io.mmio.wdata(0)
     reasm.io.abort.tag.wave      := abWave
     reasm.io.abort.tag.thread    := abThread
     reasm.io.abort.tag.lnid      := abLnid
     reasm.io.abort.tag.precision := abPrec
     reasm.io.abort.tag.dim       := abDim
 
-    // 상태 워드 조립 (RO)
-    val maskStat = Bits(32 bits)
-    maskStat := 0
-    maskStat(cfg.xlateParts - 1 downto 0) := mask.io.maskReady
-    maskStat(8) := mask.io.busy
-    maskStat(9) := mask.io.rekey.ready
-    val fpStat = Bits(32 bits)
-    fpStat := 0
-    fpStat(0) := fps.io.loadReady
-    fpStat(1) := fps.io.oBusy
+    when((wr && isTag2 && tag2RsvBad) || (wr && isFire && fireRsvBad) ||
+         (wr && (isCnt || isInc))) { surfBadWr := True }
 
-    // 읽기 — 수락 다음 사이클 (하위 블록들과 같은 1사이클 규약). 예약·WO
-    // 오프셋은 0 이다 (§3.7).
-    val rdReg = Reg(Bits(32 bits)) init 0
-    val rv    = RegNext(rd, False)
-    when(rd) {
-      rdReg := 0
-      switch(wordOff) {
-        is(8)  { rdReg := noncePart.asBits.resize(32) }
-        is(16) { rdReg := maskStat }
-        is(19) { rdReg := fpStat }
-        is(24) { rdReg := reasm.io.abortCount.asBits.resize(32) }
-        is(25) { rdReg := reasm.io.incomplete.asBits.resize(32) }
-      }
-    }
+    val readValue = Bits(32 bits)
+    readValue := 0
+    when(isCnt) { readValue := reasm.io.abortCount.asBits.resize(32) }
+    when(isInc) { readValue := reasm.io.incomplete.asBits.resize(32) }
   }
 
-  // ── ready — 영역별 (구성 검사·초기화 소거 중에는 그 블록이 낮춘다) ────
-  io.mmio.ready := True
-  when(selOwn) { io.mmio.ready := own.io.ready }
-  when(selCq)  { io.mmio.ready := cq.io.ready }
-  when(selCfg) { io.mmio.ready := cfgBlk.io.ready }
-  // step 적재 워드만 선택자 표 초기화 소거를 기다린다 (StepSequencer 계약).
-  when(selLoc && (loc.wordOff === 17 || loc.wordOff === 18)) {
-    io.mmio.ready := fps.io.loadReady
+  // ── 장치 전역 fault 구역 (0xF80) — §3.8 · @sec:security 5.6 · 5.8 ─────
+  //
+  // fault 는 특정 유닛의 표면이 아니라 *장치 전역*이라 자기 구역을 갖는다.
+  // 이 구역은 새 상태를 **하나만** 만든다 (step 능력 부재 sticky — 원천이
+  // sticky 를 갖지 않는 유일한 축). 나머지 열여덟 축은 이미 하위 유닛이
+  // 들고 있던 비트의 *배치*일 뿐이다 — §3.8 의 「합성 가능한 sticky 비트」는
+  // 이 표면 이전에 이미 만족이었고, 없던 것은 HIU-6 의 해제 경로였다.
+  //
+  // 관측(STATUS)과 해제(CLEAR)의 비트 배치가 같다: 드라이버가 읽은 워드를
+  // 그대로 되쓰면 *자기가 본 것만* 지운다. 그 사이에 새로 선 fault 는 1 을
+  // 쓰지 않았으므로 살아남고, 같은 사이클에 서면 StickyFault 규약이 발화를
+  // 이기게 한다 — 어느 쪽으로도 해제가 fault 를 삼키지 않는다.
+  private val faultArea = new Area {
+    val wordOff = word(R_FAULT)
+    val wr = io.mmio.wstrobe && selFault && mmioAligned
+    val rd = io.mmio.rstrobe && !io.mmio.wstrobe && selFault && mmioAligned
+
+    val isStatus  = wordOff === Fault.STATUS / 4     // RO
+    val isClear   = wordOff === Fault.CLEAR / 4      // WO  W1C
+    val isSummary = wordOff === Fault.SUMMARY / 4    // RO
+    val isCapSt   = wordOff === Fault.CAP_STATUS / 4 // RO
+    val isCapClr  = wordOff === Fault.CAP_CLEAR / 4  // WO  W1C
+
+    val clrRsvBad = (io.mmio.wdata & B(FLT_CLEAR_RSV, 32 bits)) =/= 0
+    val capRsvBad = (io.mmio.wdata & B(CAP_CLEAR_RSV, 32 bits)) =/= 0
+
+    // 거절된 기입은 *한 비트도* 내리지 않는다 — 반쯤 수락이 없다 (E.9 논스
+    // 파티션 스테이징과 같은 처분).
+    val doClr    = wr && isClear  && !clrRsvBad
+    val doCapClr = wr && isCapClr && !capRsvBad
+
+    // 해제 수락 — 여기 한 곳에서 구동한다 (선언은 위쪽, 근거는 그 주석).
+    // 원천이 흩어지면 「무엇이 이 fault 를 내렸는가」에 답할 수 없다.
+    fltClrAccept := doClr
+    capClrAccept := doCapClr
+
+    // 거절 — RO 오프셋 쓰기 · 예약 비트 비0 (E.1.1 엄격 · E.1.2 해설의
+    // 「RO 오프셋 쓰기」). 자기 거절이 자기 워드(`[6]`)를 세우는 것은 순환이
+    // 아니라 정의다 — 거절된 구성 기입의 관측면이 그 비트다.
+    when((wr && (isStatus || isSummary || isCapSt)) ||
+         (wr && isClear  && clrRsvBad) ||
+         (wr && isCapClr && capRsvBad)) { surfBadWr := True }
   }
-
-  // ── 읽기 응답 병합 — 스트로브가 배타라 rvalid 도 배타다 ───────────────
-  // 예약 영역(과 0xC00 지역의 비정렬 접근)도 rvalid 는 돌려준다 — 읽기 0
-  // (§3.7. 응답 없는 읽기는 예약 정책이 아니라 버스 행 멈춤이다).
-  private val resvRd = io.mmio.rstrobe && !io.mmio.wstrobe &&
-    ((!selOwn && !selCq && !selCfg && !selLoc) || (selLoc && !mmioAligned))
-  private val resvRv = RegNext(resvRd, False)
-
-  io.mmio.rvalid := own.io.rvalid || cq.io.rvalid || cfgBlk.io.rvalid || loc.rv || resvRv
-  io.mmio.rdata := 0
-  when(own.io.rvalid)    { io.mmio.rdata := own.io.rdata }
-  when(cq.io.rvalid)     { io.mmio.rdata := cq.io.rdata }
-  when(cfgBlk.io.rvalid) { io.mmio.rdata := cfgBlk.io.rdata }
-  when(loc.rv)           { io.mmio.rdata := loc.rdReg }
 
   // ═══ sticky fault 관측면 — 원천별 수출 (여기서 접지 않는다, §5.6) ═════
   io.fault.decodeWalk    := walk.io.oFault
@@ -759,6 +1218,12 @@ class Wt64Top(
   io.fault.hiuMiss       := hiu.io.missNotice
   io.fault.cfgDupOwner   := cfgBlk.io.faultDupOwner
   io.fault.cfgBadWrite   := cfgBlk.io.faultBadWrite
+  // 이 조립이 직접 디코드하는 구성 표면의 거절 — 세운다 / 명시적 해제 외엔
+  // 내리지 않는다 (StickyFault 규약: 해제와 발화가 같은 사이클이면 발화가
+  // 이긴다). 호스트 대면 표면은 `0xF80[6]` 이고, 이제 배선됐다 — 해제는
+  // `0xF84[6]` 이며 같은 비트가 MmioConfig·완료 유닛의 같은 부류도 내린다.
+  io.fault.cfgSurfBadWrite :=
+    StickyFault(surfBadWr, io.faultClear.cfgSurfBadWrite || fclr(Fault.B_CFG_BADWRITE))
   io.fault.ownCollide    := own.io.faultCollide
   io.fault.fabricBp      := merge.io.fault
   io.fault.sharedBp      := shared.io.faultBpViolation
@@ -769,8 +1234,122 @@ class Wt64Top(
   io.fault.fpBp          := fps.io.faultBpViolation
   io.fault.fpBadProg     := fps.io.faultBadProg
   io.fault.cqOverflow    := cq.io.faultOverflow
+  io.fault.cqBadWrite    := cq.io.faultBadWrite
+  /** step 프로그램 미상주 — StepSequencer 의 `oCapAbsent` 는 종결 사이클 1펄스
+    * 라 관측면이 놓칠 수 있다. 정본 E.1.2 가 「능력 부재도 관측이 sticky 여야
+    * 재시도 주체가 놓치지 않는다」고 정했으므로 그 sticky 를 여기서 든다 —
+    * 원천 모듈이 sticky 를 갖지 않는 유일한 축이라 top 이 대신 드는 것이
+    * 아니라 *새로 만드는* 것이다. **fault 가 아니다** (§1.6.2): FAULT_STATUS
+    * 에도 FAULT_SUMMARY 에도 들지 않고 CAP_STATUS `[1]` 로만 나간다. */
+  io.fault.fpCapAbsent   := StickyFault(fps.io.oCapAbsent, capClr(Fault.C_FP_PROG))
 
-  mask.io.faultClearNoMask   := io.faultClear.maskNoMask
-  mask.io.faultClearNonceDup := io.faultClear.maskNonceDup
-  mask.io.faultClearWrRekey  := io.faultClear.maskWrRekey
+
+  // ── 장치 전역 fault 의 읽기 워드 — 위 수출이 확정된 뒤에 조립한다 ──────
+  //
+  // 원천 대입(`io.fault.*`)과 워드 조립을 붙여 두는 이유: 비트 배정이 ABI 라
+  // (§3.10) 「어느 신호가 몇 번 비트인가」를 한 화면에서 검산할 수 있어야 한다.
+  private val faultWords = new Area {
+    /** FAULT_STATUS (`0xF80`) — sticky 비트맵. `[31:18]` RO 예약 = 0. */
+    val status = Bits(32 bits)
+    status := 0
+    status(Fault.B_DECODE_WALK) := io.fault.decodeWalk
+    status(Fault.B_OPERAND)     := io.fault.operandDecode
+    status(Fault.B_ROUTE)       := io.fault.route
+    status(Fault.B_REASM)       := io.fault.reasm
+    status(Fault.B_XLATE_PERM)  := io.fault.hiuPerm
+    status(Fault.B_CFG_DUP)     := io.fault.cfgDupOwner
+    // `[6]` 이 넷 + 둘을 접는다 (E.1.2 해설). 세 원천 모듈의 같은 부류가
+    // *여기서* 한 비트로 합류한다 — 수리 주체가 드라이버 하나이고 고칠
+    // 동작이 같다(자기가 방금 쓴 워드를 고쳐 다시 쓴다). 폴딩 지점을 명시
+    // 하라는 §5.6 3항의 이행이며, 관측면 상류에서는 접지 않았다.
+    status(Fault.B_CFG_BADWRITE) := io.fault.cfgBadWrite ||
+                                    io.fault.cfgSurfBadWrite || io.fault.cqBadWrite
+    status(Fault.B_OWN_COLLIDE) := io.fault.ownCollide
+    status(Fault.B_FABRIC_BP)   := io.fault.fabricBp
+    status(Fault.B_SHARED_BP)   := io.fault.sharedBp
+    status(Fault.B_BANK_WRITE)  := io.fault.bankWrite
+    status(Fault.B_MASK_NOMASK) := io.fault.maskNoMask
+    status(Fault.B_MASK_NONCE)  := io.fault.maskNonceDup
+    status(Fault.B_MASK_REKEY)  := io.fault.maskWrRekey
+    status(Fault.B_FP_BP)       := io.fault.fpBp
+    status(Fault.B_FP_BADPROG)  := io.fault.fpBadProg
+    status(Fault.B_RING_OVF)    := io.fault.cqOverflow
+    // `[17]` 엔트로피 — 자리는 ABI 로 확정됐고 *세울 원천이* 없다 (엔트로피원
+    // 유닛이 재구현에 미착지). 상수 0 이며 rtl/README.md 가 행으로 등재한다.
+    // 비트를 비워 두는 것과 비트가 없는 것은 다른 사실이다.
+    status(Fault.B_ENTROPY)     := False
+
+    /** FAULT_SUMMARY (`0xF88`) — `[0]` 논리합. @sec:security 5.6 1항의 「종합
+      * 오류 신호」이며 개별 노출을 *대체하지 않고 덧붙인다* — 폴딩이 진단
+      * 정보를 버리는 거래가 되지 않는 유일한 형태다. 예약 비트가 0 이라
+      * 워드 전체의 논리합이 곧 정의 비트 열여덟의 논리합이다. */
+    val summary = Bits(32 bits)
+    summary := 0
+    summary(0) := status.orR
+
+    /** CAP_STATUS (`0xF8C`) — *fault 가 아니다* (§1.6.2). 바이너리는 옳고 이
+      * 기계가 지금 못 하는 것이며, FAULT_STATUS·FAULT_SUMMARY 어느 쪽에도
+      * 들지 않는다. 위 `status` 에 이 두 비트가 없다는 사실이 그 이행이다. */
+    val capStatus = Bits(32 bits)
+    capStatus := 0
+    capStatus(Fault.C_REASM_SLOT) := io.fault.reasmCap
+    capStatus(Fault.C_FP_PROG)    := io.fault.fpCapAbsent
+
+    // WO 워드(CLEAR · CAP_CLEAR)는 아래에 없다 — 읽기 0 이 그 처분이다.
+    val readValue = Bits(32 bits)
+    readValue := 0
+    when(faultArea.isStatus)  { readValue := status }
+    when(faultArea.isSummary) { readValue := summary }
+    when(faultArea.isCapSt)   { readValue := capStatus }
+  }
+
+  // ── ready — 영역별 (구성 검사·초기화 소거 중에는 그 블록이 낮춘다) ────
+  io.mmio.ready := True
+  when(selOwn) { io.mmio.ready := own.io.ready }
+  when(selCq)  { io.mmio.ready := cq.io.ready }
+  when(selCfg) { io.mmio.ready := cfgBlk.io.ready }
+  // step 적재 두 워드만 선택자 표 초기화 소거를 기다린다 (StepSequencer 계약).
+  when(selFp && (fpArea.isProg || fpArea.isBind)) {
+    io.mmio.ready := fps.io.loadReady
+  }
+
+  // ── 읽기 응답 병합 — 스트로브가 배타라 rvalid 도 배타다 ───────────────
+  //
+  // 이 조립이 직접 응답하는 네 구역(마스킹·step·소거·fault)은 하위 블록들과
+  // 같은 1사이클 규약이다: 수락 다음 사이클에 rdata 유효.
+  private val mapRd    = maskArea.rd || fpArea.rd || abortArea.rd || faultArea.rd
+  private val mapRdReg = Reg(Bits(32 bits)) init 0
+  private val mapRv    = RegNext(mapRd, False)
+  when(mapRd) {
+    mapRdReg := 0
+    when(selMask)  { mapRdReg := maskArea.readValue }
+    when(selFp)    { mapRdReg := fpArea.readValue }
+    when(selAbort) { mapRdReg := abortArea.readValue }
+    when(selFault) { mapRdReg := faultWords.readValue }
+  }
+
+  /** 표에 *없는* 오프셋 — §3.7 예약 오프셋 정책 (쓰기 무시 · 읽기 0). */
+  private val resvOffset = !(selOwn || selCq || selCfg ||
+    selMask || selFp || selAbort || selFault || selUnwired)
+
+  // 예약 오프셋 · **미배선 구역** · 세 구역의 비정렬 접근 — 셋 다 읽기 0 이고
+  // rvalid 는 돌려준다 (응답 없는 읽기는 예약 정책이 아니라 버스 행 멈춤이다).
+  // 셋을 한 식에 접지 않고 열거해 두는 이유: 전기적으로 같아도 *사실*이 다르다.
+  // `selUnwired` 는 표에 있는 오프셋이고 (companion 의 Sq·Xent·Xctl·Ident
+  // 상수가 그 이름들이다) 소비자 회로만 없다.
+  private val resvRd = io.mmio.rstrobe && !io.mmio.wstrobe &&
+    (resvOffset || selUnwired ||
+     ((selMask || selFp || selAbort || selFault) && !mmioAligned))
+  private val resvRv = RegNext(resvRd, False)
+
+  io.mmio.rvalid := own.io.rvalid || cq.io.rvalid || cfgBlk.io.rvalid || mapRv || resvRv
+  io.mmio.rdata := 0
+  when(own.io.rvalid)    { io.mmio.rdata := own.io.rdata }
+  when(cq.io.rvalid)     { io.mmio.rdata := cq.io.rdata }
+  when(cfgBlk.io.rvalid) { io.mmio.rdata := cfgBlk.io.rdata }
+  when(mapRv)            { io.mmio.rdata := mapRdReg }
+
+  mask.io.faultClearNoMask   := io.faultClear.maskNoMask   || fclr(Fault.B_MASK_NOMASK)
+  mask.io.faultClearNonceDup := io.faultClear.maskNonceDup || fclr(Fault.B_MASK_NONCE)
+  mask.io.faultClearWrRekey  := io.faultClear.maskWrRekey  || fclr(Fault.B_MASK_REKEY)
 }
