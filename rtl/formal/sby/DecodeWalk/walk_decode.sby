@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# DecodeWalk 후-formal — 순회·검산·판정의 GUARD-MAP CHECK 줄 전수 재검사.
+# 방법: 하네스(rtl/sv/assert/DecodeWalk_props.sv)의 독립 참조 순회와의 등가.
+#
+# PROVES: Walk.end_authority — 종료·보폭 콘이 END(0x0)만 소비: declLen·예약을 읽지 않는 참조 순회와의 완전 등가
+# PROVES: Walk.len_check — lenBad = endSeen && (declLen != off_final), 8비트 전폭 비교 (조용한 절단 없음)
+# PROVES: Walk.cap_declared — capAbsent = declLen > 13 (8비트 전폭, 순회 전 선언만) · StickyFault 불참 (상승 조건이 malformation 전건)
+# PROVES: Walk.cap_check — capBad = !capAbsent && !endSeen · capAbsent 와 상호 배타 (ISA-5, 조합·방출 양면)
+# PROVES: Walk.junk_check — junkBad = 카탈로그 표 조회 (16진 코드 전체), END 이전 슬롯만
+# PROVES: Walk.post_end_gated — walked 단조 강하 · END 뒤 off 동결 · 방출면 게이트 (oSlot* == 게이트된 순수 함수의 $past)
+# PROVES: Decode.resv_judged — resvBad = (word0[15:8] != 0) 가 mal 합성에 합류
+# PROVES: Decode.mal_carried — oMalformed/oCapAbsent == $past(judge.mal/judge.capAbsent) — 소비 지점의 단일 원천
+# PROVES: Decode.resv_not_indexed — 참조 순회의 head 색인 off >= 1 (word0 lo16 재독 없음) + 색인 등가 → 예약 비트 색인 불참
+# PROVES: Decode.resv_not_timed — oValid == $past(iValid): 지연 1 균일, 명령 내용 무관
+# PROVES: Decode.resv_not_echoed — oInstr_0[15:8] == 0 상시 + 방출면 전체가 예약-마스킹 원문의 $past 와 등가
+# PROVES: Decode.fault_not_folded — oFault 상승은 (oValid && oMalformed) 에피소드에서만 · capability 는 배타로 불참 · 하강은 명시적 해제뿐
+# PROVES: Decode.verdict_ungated — oValid·oSlot*·oInstr 이 판정 무관 순수 함수와 등가 (D14 상태열 균일) · 판정 fanout 은 oExecValid 게이트 등식으로
+#
+# 잔여 1건 (Decode.out_no_reason): 원인 코드 채널의 *부재* 는 트레이스 속성으로
+# 표현 불가 — 방출면 포트 전수 검토(생성 SV 포트 목록에 등급 3비트 외 판정
+# 채널 없음)로 갈음한다. 구조 skip — 통합자 보고에 명기.
+#
+# 부착 이탈: bind 대신 formal 전용 래퍼 top (컨테이너 yosys 0.66 이 bind 를
+# 파싱만 하고 적용하지 않음 — 실측. 하네스 파일 머리의 기록 참조).
+
+[options]
+# 단일 태스크 (Makefile rtl-postformal 이 태스크명 없이 -d 로 부르므로
+# 다중 [tasks] 불가 — 실측). mode prove 의 basecase 가 같은 깊이의 BMC 를
+# 포함하므로 bmc 태스크는 중복이다.
+# 깊이 근거: 대상 파이프 깊이 1단 (접수 → 방출 레지스터 1개 + sticky 1개).
+# 지침 「파이프 깊이의 2배 이상」 대비 20 은 10배 여유 — 리셋 1사이클 +
+# sticky set/clear 상호작용의 다사이클 에피소드까지 덮는다.
+mode prove
+depth 20
+
+[engines]
+smtbmc z3
+
+[script]
+read_verilog -sv -formal DecodeWalk.sv
+read_verilog -sv -formal DecodeWalk_props.sv
+prep -top DecodeWalk_formal
+# ROM 함정 (실측): yosys proc_rom 이 DUT 의 kindWords/kindDefined case 표를
+# $mem_v2 ROM 으로 만들었고, k-귀납은 초기 상태 제약(ROM init)을 걸지 않아
+# 귀납 세계에서 카탈로그 내용이 임의화됐다 (반례: stepW=0xe5). memory_map
+# 으로 ROM 을 순수 논리로 전개해 상태에서 제거한다.
+memory_map
+async2sync
+
+[files]
+rtl/generated/DecodeWalk.sv
+rtl/sv/assert/DecodeWalk_props.sv

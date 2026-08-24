@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# MmioConfig 후-formal — 서로소 기입 거절(D2)·원자성(§3.7.1) 재검사 (§6.3).
+#
+# PROVES: Route.view_sync — 구동 절반: 표 기입(fwd·rev·lbid)과 뷰 구동(viewWr·bankWr)이 동일 사이클·동일 조건·동일 내용, 그 외 뷰 구동 경로 없음 (반영 절반은 RouteJudge, 합성은 RouteMmio)
+#
+# 증명(위임) — Route 모델의 unique_owner 가드: GUARD-MAP 이 DELEGATED(MmioConfig)
+# 로 이 모듈을 지목한다. lint_postformal 규칙(앵커는 CHECK 가드 전용)에 따라
+# PROVES 앵커는 세우지 않되, 실측 대상은 이 파일이다 — 이행 지점 chkDupOwn 의
+# 「쓰기 무효(표·역방향 표·뷰 전부) + loud sticky faultDupOwner」. 표 *내용*
+# 수준의 서로소 불변식은 mmio_deep.sby 가 잰다.
+#
+# bmc 깊이 24 근거: 초기화 소거가 2^16 사이클이라 reset 기점 BMC 는 소거
+# 구간만 실측한다 (소거 중 침묵·ready 저지·reset 직후 상태 — 정직 표기는
+# 하네스 머리 주석). 기능 구간은 prove(k-귀납)가 도달성과 무관하게 덮는다.
+# prove 깊이 6 근거: 속성 전부 조합 등식 또는 1스텝($past) 관계 — k=2 로
+# 족하고 여유로 6.
+#
+# 실행(컨테이너 전용 — 호스트 sby 금지):
+#   podman run --rm --userns=keep-id -v "$PWD:/workspace" wavetensor-dev:scala \
+#     sh -lc "cd /workspace && sby -f --prefix /tmp/sby-MmioConfig \
+#             rtl/formal/sby/MmioConfig/mmio_config.sby"
+
+[tasks]
+bmc
+prove
+
+[options]
+bmc: mode bmc
+bmc: depth 24
+prove: mode prove
+prove: depth 6
+
+[engines]
+smtbmc z3
+
+[script]
+# bind 는 yosys 0.66 자유 프론트엔드가 조용히 버린다 (2026-08-24 실측) —
+# expose 로 내부 신호를 포트로 승격해 하네스가 직접 인스턴스한다.
+read_verilog -formal -sv MmioConfig.sv MmioConfig_props.sv
+expose MmioConfig/w:initDone MmioConfig/w:busy MmioConfig/w:pSlot MmioConfig/w:pWord
+expose MmioConfig/w:revChkPresent MmioConfig/w:fwdRd MmioConfig/w:chkDupOwn MmioConfig/w:chkBadWr
+expose MmioConfig/w:fwdWrEn MmioConfig/w:fwdWrAddr MmioConfig/w:fwdWrData
+expose MmioConfig/w:revWrEn MmioConfig/w:revWrAddr MmioConfig/w:revWrData
+expose MmioConfig/w:lbWrEn MmioConfig/w:lbWrAddr MmioConfig/w:lbWrData
+prep -top MmioConfig_props
+
+# 경로는 저장소 루트 기준 — sby 는 [files] 를 호출 cwd 기준으로 푼다 (실측).
+[files]
+rtl/generated/MmioConfig.sv
+rtl/sv/assert/MmioConfig_props.sv

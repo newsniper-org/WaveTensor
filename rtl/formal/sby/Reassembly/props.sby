@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# PROVES: Payload.key_is_tag — 활성 문맥 쌍 태그 전량 상이 불변식 inv_tag_uniq_* + 조각/소거 CAM hit 쌍별 배타 inv_hit_excl_*·inv_abhit_excl_*: 태그당 활성 문맥 <= 1, hit 는 one-hot
+# PROVES: Payload.no_restart — p_no_restart_grant(재개시 granted 억제) + p_no_restart_evt(거절 사건 정의) + t_no_restart_loud(다음 사이클 fault 관측)
+# PROVES: Payload.no_dup_seq — p_no_dup_accept: 수락은 seen 에 없는 순번뿐 (재기입 부재의 원천)
+# PROVES: Payload.cap_check — inv_total_bounds_*(래치 총개수 1..16) + p_cap_window(발화 시 순번 1..선언 총개수 <= slotCap) + p_cap_off(off = 순번-1): 기입 면에 구간 밖 좌표 부재
+# PROVES: Payload.capability_not_fault — p_capa_excl(조각 축 set 동시 부재) + t_fault_next_eq/t_capa_next_eq(sticky set 원천 전수 등식 — 능력 부재는 fault 를, malformation 은 capAbsent 를 세울 수 없다)
+# PROVES: Payload.last_judges — p_last_judges_def(종료 판정 문면 등식) + t_last_judges_loud(불완전 종료 → fault) + t_last_src_*(last 래치 상승 원천 = 수락 조각의 표시뿐)
+# PROVES: Payload.reset_on_deliver — t_deliver_frees_*(인도 완결 즉시 해방) + inv_free_clean_*(비활성 문맥 회계 공 — 해방 = 회계 소거 동시)
+# PROVES: Payload.abort_erases — t_abort_frees_*(소거 발화 즉시 해방) + inv_free_clean_*(태그만 해방하고 회계를 남기는 경로 부재)
+# PROVES: Payload.abort_leaves_trace — p_ab_fire_def + t_ab_cnt_inc/sat/hold: 소거 발화 = 카운트 증가 동시 (포화 0xff), 없는 태그 무시는 카운트 부동
+# PROVES: Payload.abort_not_fault — p_ab_not_fault_src/p_ab_not_capa_src(set 사건 원천에 소거 항 부재) + t_fault_next_eq(sticky set 원천 전수 등식)
+# PROVES: Payload.write_atomic — p_wr_atomic_face(기입 발화 == 접수, 같은 사이클) + t_wr_atomic_*(접수 사이클에 seen·total 회계 원자 진행)
+#
+# 대상: rtl/generated/Reassembly.sv (커밋본 — 재생성 금지, nCtxs=4·slotCap=16).
+# 처분은 전부 1사이클(파이프 깊이 1 — 판정 조합 + 회계 래치 1단) — bmc 깊이
+# 20 은 그 2배를 훨씬 넘는 여유이며 개방→조각열→종료→해방 전 과정을 덮는다.
+# prove 는 k-귀납(깊이 8)이 선다 — 그것이 정답 (불변식 inv_* 가 귀납 가설을
+# 닫는 보조 불변식 역할까지 겸한다).
+
+[tasks]
+bmc
+prove
+
+[options]
+bmc: mode bmc
+bmc: depth 20
+prove: mode prove
+prove: depth 8
+multiclock off
+
+[engines]
+smtbmc z3
+
+[script]
+# yosys 개방판(0.66 실측)은 SV bind 문을 조용히 무시한다 (인스턴스 미생성 —
+# 가짜 대상 bind 도 무오류 통과). 아래 exec 네 줄이 하네스의 bind 문을 그
+# 의미 그대로 — 대상 모듈 본문 안 인스턴스로 — 텍스트 전개한다. 전개하는
+# 것은 워크디렉터리 사본이다 (저장소 사본은 불변, bind 지원 도구에선 하네스
+# 파일이 그대로 선다). sed 프로그램은 yosys 스크립트의 ';' 분리·인용 전달
+# 함정을 피해 무공백·무'$' 형태로 쓴다.
+exec -- sh -c "sed /^bind/Q Reassembly_props.sv > props_only.sv"
+exec -- sh -c "sed -i /^endmodule/d Reassembly.sv"
+exec -- sh -c "sed -n /^bind/,+999p Reassembly_props.sv | sed s/^bind.Reassembly.// >> Reassembly.sv"
+exec -- sh -c "echo endmodule >> Reassembly.sv"
+read_verilog -sv -formal props_only.sv
+read_verilog -sv -formal Reassembly.sv
+prep -top Reassembly
+# fullMask 조회 case 표를 proc_rom 이 $mem_v2 ROM 으로 승격시키는데, ROM
+# 내용 init 은 초기 상태에만 걸려 k-귀납의 임의 시작 상태에선 *자유*가 된다
+# (실측 — 귀납이 fullMask[8]=0x1040 인 가짜 세계에서 t_wr_atomic_3 반례를
+# 만들었다). memory_map 이 ROM 을 상수 논리로 강하시켜 전 상태 구속을
+# 복원한다 — 진짜 메모리는 이 설계에 없으므로 의미 변화 없음.
+memory_map
+
+# [files] 경로는 저장소 루트 기준이다 — sby 는 상대 경로를 sby 파일이
+# 아니라 *호출 cwd* 기준으로 푼다 (스윕 실측: ../ 경로가 루트 호출에서 깨짐).
+# make rtl-postformal · 스윕 · 수동 실행 전부 루트에서 호출하는 것이 규약이다.
+[files]
+rtl/generated/Reassembly.sv
+rtl/sv/assert/Reassembly_props.sv

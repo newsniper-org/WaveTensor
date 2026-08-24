@@ -447,6 +447,7 @@ lint:
 	python3 $(CURDIR)/scripts/lint_gate_thresholds.py
 	python3 $(CURDIR)/scripts/lint_guide_derived_tables.py
 	python3 $(CURDIR)/scripts/lint_guard_map.py
+	python3 $(CURDIR)/scripts/lint_postformal.py
 
 # =============================================================================
 # P0-2 — Cluster 이중 빌드(FRAG_SLOTS=1 / FRAG_SLOTS=4) 단일 진입점.
@@ -610,6 +611,26 @@ rtl-formal:
 	    echo "  ⇒ 이것은 통과가 아니라 **미측정**이다 (정본 §6.7 원칙 5)."; \
 	    exit 1; \
 	fi
+
+# 후-formal 게이트 — sby 전 태스크 실행 (§6.3 셋째 단).
+#
+# GUARD-MAP 의 CHECK 는 주장이고, lint_guard_map 은 전수성만 잰다. 이 타깃이
+# 그 주장의 *참*을 잰다 — 각 .sby 를 컨테이너에서 실행해 하나라도 FAIL 이면
+# 크게 실패한다. 산출물은 /tmp (저장소에 쌓지 않는다). 솔버는 z3 단독
+# (.sby 안에 명시 — 기본값 의존 금지). 호스트 sby 사용 금지 — 컨테이너로만
+# (호스트 tlc 2.19 함정과 동류).
+rtl-postformal:
+	@test -d $(RTL_DIR)/formal/sby || { echo "rtl-postformal: sby 스크립트가 없다 — 미측정은 통과가 아니다"; exit 1; }
+	@fail=0; total=0; \
+	for f in $(RTL_DIR)/formal/sby/*/*.sby; do \
+	  total=$$((total+1)); name=$$(basename $$f .sby); dir=$$(basename $$(dirname $$f)); \
+	  printf '%-40s ' "$$dir/$$name"; \
+	  if podman run --rm --userns=keep-id -v "$(CURDIR):/workspace" wavetensor-dev:scala \
+	     sh -lc "cd /workspace && sby -f --prefix /tmp/sby-$$dir-$$name rtl/formal/sby/$$dir/$$name.sby" >/tmp/wt-sby-$$dir-$$name.log 2>&1; then \
+	     echo PASS; \
+	  else echo "FAIL (로그: /tmp/wt-sby-$$dir-$$name.log)"; fail=$$((fail+1)); fi; \
+	done; \
+	echo "rtl-postformal: $$total 태스크 중 실패 $$fail"; test $$fail -eq 0
 
 # 재구현 하네스 — 자립형 cocotb 러너.
 rtl-sim:

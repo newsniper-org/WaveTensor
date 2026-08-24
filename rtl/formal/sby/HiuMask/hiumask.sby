@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# PROVES: Decode.stall_uniform — advance 하나가 합성(HiuPipeline×MaskUnit) 전 단의 공통 enable — 정지 원천 무관 전 단 동결 (MaskUnit 쪽 s4 몸 rValid/rFrame 포함)
+# PROVES: Isolation.coh_no_shortcut — 상태열 균일: 조회·판정을 보지 않는 6단 시프트 거울이 단 valid 열과 항상 일치 — 유효 요청의 단 통과 enable-사이클 수는 상수 6, 단계열은 하나 (§5.3)
+# PROVES: Decode.lookup_unbranched — 조회 결과가 단 배치를 바꾸지 않는다: 거울 일치 + 응답은 정확히 6번째 enable 지점 (단계 선택 mux 부재의 관측형)
+# PROVES: Isolation.no_early_forward — granted 없이 io.rsp 값축(frame·perm) 비0 사이클 부재 — 승인 전 소비자 관측값 0
+#
+# (결선 계약) MaskUnit 고정 1사이클 왕복 — req.valid → 다음 enable 에 rsp.valid.
+# 결선 계약 자체(io.en = advance, req↔rsp 직결)는 하네스 HiuMask_comp 가 실물로 든다.
+#
+# bmc 깊이 24: 파이프 6단의 4배 — 수락→응답 왕복 두 번 + 미적중 정지 구간을
+# 덮는다 (2배 하한 12 이상). prove(k-귀납)가 서므로 그것이 정답이고 bmc 는
+# 도달 가능 접두의 이중 확인이다.
+
+[tasks]
+bmc
+prove
+
+[options]
+bmc: mode bmc
+bmc: depth 24
+prove: mode prove
+prove: depth 12
+
+[engines]
+smtbmc z3
+
+[script]
+read -formal MaskUnit.sv
+read -formal HiuPipeline.sv
+read -formal HiuMask_props.sv
+prep -top HiuMask_comp
+
+# [files] 경로는 저장소 루트 기준이다 — sby 는 상대 경로를 sby 파일이
+# 아니라 *호출 cwd* 기준으로 푼다 (스윕 실측: ../ 경로가 루트 호출에서 깨짐).
+# make rtl-postformal · 스윕 · 수동 실행 전부 루트에서 호출하는 것이 규약이다.
+[files]
+rtl/generated/MaskUnit.sv
+rtl/generated/HiuPipeline.sv
+rtl/sv/assert/HiuMask_props.sv

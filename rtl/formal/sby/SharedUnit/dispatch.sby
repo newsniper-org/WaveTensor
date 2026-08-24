@@ -1,0 +1,45 @@
+# PROVES: SharedUnit.busy_check — 점유 중(body busy) 직행 없음: start 는 본체가 빈 사이클에만, 단일 발화
+# PROVES: SharedUnit.queue_room — 자리 검사 없는 슬롯 기입 부재 (cnt<=4 · wr=rd+cnt 정합 → 덮어쓰기 없음)
+# PROVES: SharedUnit.backpressure — 가득 → ready 강하 · ready 무시 push → sticky fault · FAB-10 위반 갈래 무기입
+# PROVES: SharedUnit.no_overtake — 보류 비어 있지 않으면 직행 없음 + FIFO 순서 (카운터 태깅 보조 논리)
+#
+# 무처분-없음(FAB-2 심장)은 a_no_silent_drop 이 함께 잰다 — 도착은 세 갈래
+# 중 정확히 하나. cover 태스크가 각 갈래의 도달성(비-공허)을 증인한다.
+#
+# bmc 깊이 40 근거: 본체 점유 8 사이클 × 보류 깊이 4 = 큐 완전 드레인 1회
+# (36 사이클) 이상 — 파이프 깊이 2배 규율을 점유 구조에 맞게 읽은 값.
+# prove(k-귀납) 깊이 20: 하네스의 보강 불변(a_cnt_bound · a_ptr_sync ·
+# a_tag_count · a_tag_fifo0..3)이 귀납을 닫는다.
+
+[tasks]
+bmc
+prove
+cover
+
+[options]
+bmc: mode bmc
+bmc: depth 40
+prove: mode prove
+prove: depth 20
+cover: mode cover
+cover: depth 40
+multiclock off
+
+[engines]
+smtbmc z3
+
+[script]
+# read_verilog (defer 없이) → expose 로 내부 관측 신호를 포트로 승격 →
+# 래퍼 톱 결선. bind 미사용 사유는 SharedUnit_props.sv 파일 머리 참조
+# (yosys 0.66 이 bind 를 조용히 무시 — 실측).
+read_verilog -formal SharedUnit.sv
+expose SharedUnit/w:queue_slots_* SharedUnit/w:queue_rdPtr SharedUnit/w:queue_wrPtr SharedUnit/w:queue_cnt SharedUnit/w:queueEmpty SharedUnit/w:queueRoom SharedUnit/w:acceptDirect SharedUnit/w:acceptQueue SharedUnit/w:bpViolation SharedUnit/w:when_SharedUnit_l192 SharedUnit/w:body_1_io_busy SharedUnit/w:body_1_io_start SharedUnit/w:body_1_io_req
+read_verilog -formal -sv SharedUnit_props.sv
+prep -top SharedUnit_formal
+
+# [files] 경로는 저장소 루트 기준이다 — sby 는 상대 경로를 sby 파일이
+# 아니라 *호출 cwd* 기준으로 푼다 (스윕 실측: ../ 경로가 루트 호출에서 깨짐).
+# make rtl-postformal · 스윕 · 수동 실행 전부 루트에서 호출하는 것이 규약이다.
+[files]
+rtl/generated/SharedUnit.sv
+rtl/sv/assert/SharedUnit_props.sv

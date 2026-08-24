@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# RouteMmio 후-formal 합성 — 이 파도의 첫 합성 증명 (§6.3).
+# MmioConfig.viewWr/bankWr → RouteJudge 실배선 위에서 「기입 1회 = 뷰 구동
+# 1회」 원자성 계약(§3.7.1)과 그 귀결(뷰·표 무스큐, 판정 관측 일치)을 잰다.
+#
+# PROVES: Route.view_sync — 합성: 구동 규약(기입에서만·기입마다 1회·같은 내용)
+#   + 뷰 ≡ 배선 이력 ≡ 표 기입 이력 (Route.tla M3 스큐 결함형의 RTL 판 부정)
+#
+# bmc 깊이 24 근거: MmioConfig 소거 2^16 사이클이 도달성을 막아 BMC 는
+# 소거 구간(무구동·공집합 뷰 판정)만 실측한다 — 정직 표기. 기능 구간은
+# prove(k-귀납)가 도달성 무관하게 덮는다. prove 깊이 6 근거: 그림자·짝짓기
+# 속성 전부 조합 등식 또는 1스텝 관계 — k=2 로 족하고 여유로 6.
+#
+# 실행(컨테이너 전용 — 호스트 sby 금지):
+#   podman run --rm --userns=keep-id -v "$PWD:/workspace" wavetensor-dev:scala \
+#     sh -lc "cd /workspace && sby -f --prefix /tmp/sby-RouteMmio \
+#             rtl/formal/sby/RouteMmio/route_mmio.sby"
+
+[tasks]
+bmc
+prove
+
+[options]
+bmc: mode bmc
+bmc: depth 24
+prove: mode prove
+# 귀납 길이 2 로 충분하다 — 이 합성의 속성은 전부 1스텝 관계(기입 사이클과
+# 그 다음 관측 사이클)이고, 깊이 6 은 z3 귀납 스텝이 수 분간 미귀환했다
+# (1차 실측). 길이를 줄이는 것은 증명을 약화하지 않는다 — k-귀납은 어느
+# k 에서든 성립하면 증명이다.
+prove: depth 2
+
+[engines]
+smtbmc z3
+
+[script]
+# bind 는 yosys 0.66 자유 프론트엔드가 조용히 버린다 (2026-08-24 실측) —
+# expose 로 두 모듈의 내부를 포트로 승격해 합성 top 이 직접 인스턴스한다.
+read_verilog -formal -sv MmioConfig.sv RouteJudge.sv RouteMmio_props.sv
+expose MmioConfig/w:initDone MmioConfig/w:busy MmioConfig/w:pSlot MmioConfig/w:pWord
+expose MmioConfig/w:revChkPresent MmioConfig/w:fwdRd
+expose MmioConfig/w:fwdWrEn MmioConfig/w:fwdWrAddr MmioConfig/w:fwdWrData
+expose MmioConfig/w:lbWrEn MmioConfig/w:lbWrAddr MmioConfig/w:lbWrData
+expose RouteJudge/w:viewValid_* RouteJudge/w:viewName_* RouteJudge/w:bankPresent
+prep -top RouteMmio_props
+
+# 경로는 저장소 루트 기준 — sby 는 [files] 를 호출 cwd 기준으로 푼다 (실측).
+[files]
+rtl/generated/MmioConfig.sv
+rtl/generated/RouteJudge.sv
+rtl/sv/assert/RouteMmio_props.sv

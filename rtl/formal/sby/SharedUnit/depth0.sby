@@ -1,0 +1,41 @@
+# PROVES: SharedUnit.queue_room — 깊이 0 형상 문면: queueRoom/acceptQueue 상수 False (「항상 배압」, §2.2 3항)
+# PROVES: SharedUnit.busy_check — 깊이 0 형상에서도 점유 중 직행 없음
+# PROVES: SharedUnit.backpressure — ready = !busy 즉각 가시 · ready 무시 push → sticky fault
+#
+# no_overtake 는 이 형상에서 공허하다 (보류 열이 없어 추월 창 부재) —
+# a_always_bp 의 queueEmpty 상수 True 가 그 공허의 근거를 함께 잰다.
+# 무처분-없음은 a_no_silent_drop (직행/배압위반 두 갈래 onehot).
+#
+# bmc 깊이 20 근거: 본체 점유 8 사이클의 2배 이상. prove 깊이 20 —
+# 상태가 본체(stub)와 fault 비트뿐이라 귀납이 얕게 닫힌다.
+
+[tasks]
+bmc
+prove
+cover
+
+[options]
+bmc: mode bmc
+bmc: depth 20
+prove: mode prove
+prove: depth 20
+cover: mode cover
+cover: depth 20
+multiclock off
+
+[engines]
+smtbmc z3
+
+[script]
+# expose + 래퍼 부착 — bind 미사용 사유는 SharedUnit_props.sv 파일 머리 참조.
+read_verilog -formal SharedUnitDepth0.sv
+expose SharedUnitDepth0/w:queueEmpty SharedUnitDepth0/w:queueRoom SharedUnitDepth0/w:acceptDirect SharedUnitDepth0/w:acceptQueue SharedUnitDepth0/w:bpViolation SharedUnitDepth0/w:body_1_io_busy SharedUnitDepth0/w:body_1_io_start
+read_verilog -formal -sv SharedUnitDepth0_props.sv
+prep -top SharedUnitDepth0_formal
+
+# [files] 경로는 저장소 루트 기준이다 — sby 는 상대 경로를 sby 파일이
+# 아니라 *호출 cwd* 기준으로 푼다 (스윕 실측: ../ 경로가 루트 호출에서 깨짐).
+# make rtl-postformal · 스윕 · 수동 실행 전부 루트에서 호출하는 것이 규약이다.
+[files]
+rtl/generated/SharedUnitDepth0.sv
+rtl/sv/assert/SharedUnitDepth0_props.sv

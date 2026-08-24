@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# OperandDecode 후-formal — 본문 예약 판정·게이트의 재검사. 선-formal 모델
+# 없음 (관측 기반 착지) — 앵커는 정본 문면과 DecodeWalk GUARD-MAP 이 예고한
+# 합류 계약이다. 아래 이름은 하네스(OperandDecode_props.sv) 머리의 검사 항목.
+#
+# VERIFIES 는 모델 없는 모듈의 검증 앵커다 — PROVES 는 TLA 모델 가드 전용
+# (lint_postformal 이 AllGuards 와 대조)이고, OperandDecode 는 관측 기반
+# 모듈이라 모델 가드가 없다. 아래 항목들은 GUARD-MAP 이 아니라 어셈블러
+# 관측·정본 규범을 앵커로 한다.
+# VERIFIES: OperandDecode.body_resv_judged — 판정 3종 등가: OPREF [23:20] != 0 (§1.4.6) · src_kind >= 3 (§1.4.3) · ACCTGT [23:16] != 0 (§1.4.7), 전부 present 전건 (§1.6.1 함정) — 참조 판정이 슬롯 서술자+예약 슬라이스만 읽으므로 등가 = 비교기 콘의 협소성
+# VERIFIES: OperandDecode.verdict_join — oMalformed = iMalformed ∨ bodyMal · oCapAbsent 무변경 · oExecValid = iExecValid ∧ ¬bodyMal · bodyMal 의 ¬iCapAbsent 게이트 (ISA-5 출력 배타 포함, ENV 2건 가정下)
+# VERIFIES: OperandDecode.exec_gate — ¬oExecValid ⇒ 해석 산출 전면 0 (SEC-7 (ii) 부류 — 방출면 구별 불가능)
+# VERIFIES: OperandDecode.resv_not_echoed — OPREF LBID·src_kind, ACCTGT LBID·재조립 결속의 등가 (참조 우변에 예약 슬라이스 부재 → 1비트 판정 등급 외 비반향)
+# VERIFIES: OperandDecode.fault_sticky — 본문 전용 sticky: 상승 = iValid ∧ bodyMal 에피소드 · 하강 = 명시적 해제 · 유지 (§5.5) · DecodeWalk sticky 와 별도 신호 (포트 분리가 구조)
+#
+# 부착 이탈: bind 대신 formal 전용 래퍼 top (컨테이너 yosys 0.66 이 bind 를
+# 파싱만 하고 적용하지 않음 — 실측. DecodeWalk_props.sv 머리의 기록 참조).
+#
+# 콘 검사 주석: 「예약 슬라이스의 fanout 이 비교기뿐」의 완전한 콘 증명
+# (miter/자기합성)은 무겁다 — 대신 (i) 판정 3종이 협소 참조와 등가,
+# (ii) 예약 인접 방출 필드가 예약-불참 참조와 등가, 의 두 등가로 관측
+# 가능한 전 표면을 덮었다. 비검사 잔여는 PORT/IMM/MEM/SUBSCRIPT/PRECISION
+# 값 필드의 정확성 (예약 슬라이스와 무관한 축) — cocotb golden 대조 몫.
+
+[options]
+# 단일 태스크 (Makefile rtl-postformal 이 태스크명 없이 -d 로 부르므로
+# 다중 [tasks] 불가 — 실측). mode prove 의 basecase 가 같은 깊이의 BMC 를
+# 포함하므로 bmc 태스크는 중복이다.
+# 깊이 근거 (기본 20 에서 하향 — 실측 사유): 조합 모듈 + sticky 레지스터
+# 1개 — 파이프 깊이 1이라 지침 「2배 이상」의 하한은 2이고, 속성 중 가장
+# 긴 시간 구조는 sticky set→hold→clear→재set 에피소드 4스텝이다. 8 은
+# 그 두 배. 20 실측에서 basecase 스텝당 비용이 초선형으로 증가 (스텝 9
+# 단독 2분+, z3 가변 시프트 숲) — 8 은 basecase ~5분 · 귀납은 k 무관
+# (속성이 1-스텝 결정적: k=20 귀납 29초 통과 실측).
+mode prove
+depth 8
+
+[engines]
+smtbmc z3
+
+[script]
+read_verilog -sv -formal OperandDecode.sv
+read_verilog -sv -formal OperandDecode_props.sv
+prep -top OperandDecode_formal
+# ROM 함정 방지 — DecodeWalk 쪽 실측 (proc_rom $mem_v2 는 k-귀납에서 내용이
+# 임의화된다). 이 모듈도 같은 규율로 메모리를 순수 논리로 전개한다.
+memory_map
+async2sync
+
+[files]
+rtl/generated/OperandDecode.sv
+rtl/sv/assert/OperandDecode_props.sv

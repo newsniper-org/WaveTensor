@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# PROVES: Fabric.single_producer — selOh(포인터·포획 포함) one-hot 불변 → 사이클당 버스 구동 생산자 ≤ 1 (FAB-1)
+# PROVES: Fabric.valid_gated — 구동 lane 존재 시 소비자 페이로드가 그 lane 의 face 와 비트 단위 등식 — 비구동 lane 의 낡은 face 는 병합에 실리지 않는다 (FAB-9)
+# PROVES: Fabric.valid_tracks_data — vld 상승의 유일한 원인은 doPush 이고 같은 사이클에 face 가 밀어넣은 값으로 쓰인다
+# PROVES: Fabric.capture_atomic — pop ⊆ 소비자 수락(같은 사건), 점유 감소의 유일한 원인도 수락된 핸드오프 (FAB-5)
+# PROVES: Fabric.stall_on_pending — stall = full 수출 + full 사이클엔 face 에 닿는 쓰기 없음 + pop 없인 점유 불변
+# PROVES: Fabric.bp_loud — strb ∧ stall(shove) 은 다음 에지에 io_fault 를 세운다 — 조용한 소실 아님 (§2.6 규범 4항)
+# PROVES: Fabric.fault_raised — shoveAny 의 클록 에지에 상태 비트가 선다 (faultClear 동시라도 set 우선)
+# PROVES: Fabric.fault_sticky — fault ∧ ¬faultClear ⇒ 다음 사이클에도 fault — ready 상승 포함 어떤 입력도 내리지 못한다
+# PROVES: Fabric.bp_no_consumer_write — valid ∧ ¬ready 동안 valid 유지 + 페이로드 비트 단위 불변 (FAB-10)
+#
+# fair_grant 는 fairness.sby (BMC 전용), bp_relief 는 ENV (RTL 검사 아님 —
+# GUARD-MAP 문면: 소비자/호스트 의무, 뿌리는 부록 E 호스트 ABI).
+#
+# bmc 깊이 20 근거: FabricMerge 는 조합 병합 + 깊이 1 출력 자원 + 1단 선택
+# 잠금 — 유효 파이프 깊이 ≤ 2. 규율(파이프 깊이 2배 이상)의 기본값 20.
+# prove 는 k-귀납, k = 6: 모든 속성이 상태창 ≤ 2 사이클(즉시 불변식 + $past
+# 1단)이라 이론상 k = 2-3 이면 닫히고, 6 은 그 3배 여유다. k 를 20 까지
+# 올리는 것은 귀납 단계 SMT 질의만 키운다 (실측 z3 로 k=6 즉시 폐합).
+# 귀납을 닫는 힘은 하네스의 one-hot 보조 불변식들이다.
+#
+# 부착 방식: OSS yosys 는 bind 를 파싱만 하고 적용하지 않는다 (실측 —
+# 하네스 머리 주석 참조). 그래서 expose 로 내부 신호를 포트로 승격한 뒤
+# FABRICMERGE_EXPOSE_FLOW 의 FabricMerge_formal 래퍼가 bind 문과 1:1 동일한
+# 결선을 잇는다. 대상 SV 는 무수정 — 승격은 yosys 통과 중의 변환일 뿐이다.
+
+[tasks]
+bmc
+prove
+
+[options]
+bmc: mode bmc
+bmc: depth 20
+prove: mode prove
+prove: depth 6
+
+[engines]
+smtbmc z3
+
+[script]
+read -define FABRICMERGE_NO_FAIR
+read -define FABRICMERGE_EXPOSE_FLOW
+read -formal -sv FabricMerge.sv
+hierarchy -top FabricMerge
+proc
+expose FabricMerge/w:lanes_0_slots_0_head_tag_wave FabricMerge/w:lanes_0_slots_0_head_tag_thread FabricMerge/w:lanes_0_slots_0_head_tag_lnid FabricMerge/w:lanes_0_slots_0_head_tag_precision FabricMerge/w:lanes_0_slots_0_head_tag_dim FabricMerge/w:lanes_0_slots_0_head_seq FabricMerge/w:lanes_0_slots_0_head_total FabricMerge/w:lanes_0_slots_0_head_last FabricMerge/w:lanes_0_slots_0_body FabricMerge/w:lanes_1_slots_0_head_tag_wave FabricMerge/w:lanes_1_slots_0_head_tag_thread FabricMerge/w:lanes_1_slots_0_head_tag_lnid FabricMerge/w:lanes_1_slots_0_head_tag_precision FabricMerge/w:lanes_1_slots_0_head_tag_dim FabricMerge/w:lanes_1_slots_0_head_seq FabricMerge/w:lanes_1_slots_0_head_total FabricMerge/w:lanes_1_slots_0_head_last FabricMerge/w:lanes_1_slots_0_body FabricMerge/w:lanes_2_slots_0_head_tag_wave FabricMerge/w:lanes_2_slots_0_head_tag_thread FabricMerge/w:lanes_2_slots_0_head_tag_lnid FabricMerge/w:lanes_2_slots_0_head_tag_precision FabricMerge/w:lanes_2_slots_0_head_tag_dim FabricMerge/w:lanes_2_slots_0_head_seq FabricMerge/w:lanes_2_slots_0_head_total FabricMerge/w:lanes_2_slots_0_head_last FabricMerge/w:lanes_2_slots_0_body FabricMerge/w:lanes_3_slots_0_head_tag_wave FabricMerge/w:lanes_3_slots_0_head_tag_thread FabricMerge/w:lanes_3_slots_0_head_tag_lnid FabricMerge/w:lanes_3_slots_0_head_tag_precision FabricMerge/w:lanes_3_slots_0_head_tag_dim FabricMerge/w:lanes_3_slots_0_head_seq FabricMerge/w:lanes_3_slots_0_head_total FabricMerge/w:lanes_3_slots_0_head_last FabricMerge/w:lanes_3_slots_0_body FabricMerge/w:lanes_0_cnt FabricMerge/w:lanes_1_cnt FabricMerge/w:lanes_2_cnt FabricMerge/w:lanes_3_cnt FabricMerge/w:lanes_0_full FabricMerge/w:lanes_1_full FabricMerge/w:lanes_2_full FabricMerge/w:lanes_3_full FabricMerge/w:lanes_0_vld FabricMerge/w:lanes_1_vld FabricMerge/w:lanes_2_vld FabricMerge/w:lanes_3_vld FabricMerge/w:lanes_0_doPush FabricMerge/w:lanes_1_doPush FabricMerge/w:lanes_2_doPush FabricMerge/w:lanes_3_doPush FabricMerge/w:lanes_0_doPop FabricMerge/w:lanes_1_doPop FabricMerge/w:lanes_2_doPop FabricMerge/w:lanes_3_doPop FabricMerge/w:lanes_0_shove FabricMerge/w:lanes_1_shove FabricMerge/w:lanes_2_shove FabricMerge/w:lanes_3_shove FabricMerge/w:select_req FabricMerge/w:select_ptrOh FabricMerge/w:select_lockedOh FabricMerge/w:select_locked FabricMerge/w:select_selOh FabricMerge/w:select_drive FabricMerge/w:io_consumer_fire FabricMerge/w:shoveAny
+read -formal -sv FabricMerge_props.sv
+prep -top FabricMerge_formal
+
+# [files] 경로는 저장소 루트 기준이다 — sby 는 상대 경로를 sby 파일이
+# 아니라 *호출 cwd* 기준으로 푼다 (스윕 실측: ../ 경로가 루트 호출에서 깨짐).
+# make rtl-postformal · 스윕 · 수동 실행 전부 루트에서 호출하는 것이 규약이다.
+[files]
+rtl/generated/FabricMerge.sv
+rtl/sv/assert/FabricMerge_props.sv

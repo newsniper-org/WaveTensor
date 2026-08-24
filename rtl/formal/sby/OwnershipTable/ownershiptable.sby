@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# PROVES: Platform.state_machine_kept — 소유권 상태 기계 실물(validBits·tagVec)의 전이는 OWN_DATA 명시 기입 사이클에만 — 암묵 전이·축출 부재 (E.7), 이양 커밋은 유효+태그 단일 에지 원자 (혼합 관측 사이클 부재), 충돌 기입은 무효 + loud sticky fault
+# PROVES: Platform.owner_check — 판정 데이터 원천: io.query.devOwned = 유효 ∧ 태그 일치 ∧ 상위 0 (HiuPipeline granted 가 소비하는 값의 정의역 확인)
+#
+# (주의) Platform 가드의 정식 GUARD-MAP 줄 거처는 HiuPipeline.scala — 여기는
+# 그 판정의 데이터 원천인 상태 기계 실물을 재는 쪽이다. 판정 소비쪽
+# (granted 논리곱)은 HiuMask 하네스의 no_early_forward 축이 함께 덮는다.
+#
+# bmc 깊이 20: 모든 전이가 1사이클 완결(색인 기입→데이터 기입 2사이클 열)
+# 이라 2배 하한은 4 — 20 은 기입·충돌·회수·재이양 열을 넉넉히 덮는다.
+# prove(k-귀납)가 서므로 그것이 정답.
+
+[tasks]
+bmc
+prove
+
+[options]
+bmc: mode bmc
+bmc: depth 20
+prove: mode prove
+prove: depth 6
+
+[engines]
+smtbmc z3
+
+[script]
+read -formal OwnershipTable.sv
+read -formal OwnershipTable_props.sv
+prep -top OwnershipTable
+
+# [files] 경로는 저장소 루트 기준이다 — sby 는 상대 경로를 sby 파일이
+# 아니라 *호출 cwd* 기준으로 푼다 (스윕 실측: ../ 경로가 루트 호출에서 깨짐).
+# make rtl-postformal · 스윕 · 수동 실행 전부 루트에서 호출하는 것이 규약이다.
+[files]
+rtl/generated/OwnershipTable.sv
+rtl/sv/assert/OwnershipTable_props.sv

@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# PROVES: MemOrder.token_gate — 게이트 열림 = 지목 선행 토큰 전량 완료의 등식 (g_open_eq_*·g_fire_eq_*): 선행 미완이면 down.valid 승격·up.ready 가 서지 않는다
+# PROVES: MemOrder.token_on_complete — 토큰 차기 상태 등식 t_next_eq_* + 상승 에지 원천 t_rise_*: 토큰 set 원천은 자기 complete 비트뿐, 발화 사건은 콘에 없다
+# PROVES: MemOrder.complete_not_ordered — t_next_eq_* 등식의 콘이 {자기 complete, 자기 token, epochClear} 로 닫힘: 타 슬롯 완료·handshake 가 완료 경로에 불참, 동시·역순 완료 그대로 수락
+# PROVES: MemOrder.gate_matches_dep — g_open_eq_* 등식: 게이트 콘 = io_cfgPreds 그대로 (원소 추가·삭제·재부호화 없음; 자기 자리는 폭 N-1 로 값 공간에 부재)
+# PROVES: MemOrder.wave_not_gating — 구조 (wave 신호가 IO 에 부재) + g_fire_eq_*/g_payload_* 등식이 발화 콘을 {up.valid, gateOpen, down.ready} 로 폐쇄
+# PROVES: MemOrder.addr_not_gating — 구조 (주소 신호 부재, payload 불투명) + g_payload_* 전량 통과 등식 + 발화 콘 폐쇄
+# PROVES: MemOrder.inflight_not_gating — 구조 (비행 계수기·fired 상태 부재) + g_fire_eq_* 등식: up.ready 콘에 타 슬롯 handshake 항 없음 — 배압(down.ready)은 게이팅이 아니다
+#
+# 대상: rtl/generated/MemOrderGate.sv (커밋본 — 재생성 금지, N=4·reqW=16).
+# 상태는 token 4비트뿐(파이프 깊이 1) — bmc 깊이 20 은 그 2배를 훨씬 넘는
+# 여유. prove 는 k-귀납(깊이 8)이 선다 — 그것이 정답.
+
+[tasks]
+bmc
+prove
+
+[options]
+bmc: mode bmc
+bmc: depth 20
+prove: mode prove
+prove: depth 8
+multiclock off
+
+[engines]
+smtbmc z3
+
+[script]
+# yosys 개방판(0.66 실측)은 SV bind 문을 조용히 무시한다 (인스턴스 미생성 —
+# 가짜 대상 bind 도 무오류 통과). 아래 exec 네 줄이 하네스의 bind 문을 그
+# 의미 그대로 — 대상 모듈 본문 안 인스턴스로 — 텍스트 전개한다. 전개하는
+# 것은 워크디렉터리 사본이다 (저장소 사본은 불변, bind 지원 도구에선 하네스
+# 파일이 그대로 선다). sed 프로그램은 yosys 스크립트의 ';' 분리·인용 전달
+# 함정을 피해 무공백·무'$' 형태로 쓴다.
+exec -- sh -c "sed /^bind/Q MemOrderGate_props.sv > props_only.sv"
+exec -- sh -c "sed -i /^endmodule/d MemOrderGate.sv"
+exec -- sh -c "sed -n /^bind/,+999p MemOrderGate_props.sv | sed s/^bind.MemOrderGate.// >> MemOrderGate.sv"
+exec -- sh -c "echo endmodule >> MemOrderGate.sv"
+read_verilog -sv -formal props_only.sv
+read_verilog -sv -formal MemOrderGate.sv
+prep -top MemOrderGate
+# occupancy 계수 case 표가 proc_rom 으로 $mem_v2 ROM 이 되면 k-귀납의 임의
+# 시작 상태에서 내용 구속이 풀린다 (Reassembly 실측 함정과 동류 — 여기선
+# 단언 콘 밖이지만 규율 통일). memory_map 이 상수 논리로 강하시킨다.
+memory_map
+
+# [files] 경로는 저장소 루트 기준이다 — sby 는 상대 경로를 sby 파일이
+# 아니라 *호출 cwd* 기준으로 푼다 (스윕 실측: ../ 경로가 루트 호출에서 깨짐).
+# make rtl-postformal · 스윕 · 수동 실행 전부 루트에서 호출하는 것이 규약이다.
+[files]
+rtl/generated/MemOrderGate.sv
+rtl/sv/assert/MemOrderGate_props.sv

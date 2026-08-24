@@ -1,0 +1,43 @@
+# PROVES: ResultBank.owner_check — 비소유 기입은 store 불변 + loud sticky fault; 자격 기입은 무조건 성사 (제3의 결과 부재)
+# PROVES: ResultBank.acquire_free — 소유 슬롯 재획득 불가: granted=False 명시 거절, 소유 상승의 유일 경로는 grant
+# PROVES: ResultBank.interval_end — age <= L 불변 (L+1 상태의 구조적 부재) · age=L 사이클 말 해제 · 매 사이클 +1 — [t, t+L] 양끝 포함
+#
+# 모델 교훈 재검: 「해제가 판정과 융합돼 위반 상태가 생성 불가」라는 RTL
+# 근거를 a_age_le (불변) + a_release_at_L + a_tick 의 k-귀납으로 잰다.
+# store 불변 검사는 anyconst 슬롯(f_slot) — 임의 고정 슬롯 증명 = 전 슬롯
+# 보편 증명, $past 64b 상태를 슬롯당 두지 않기 위한 선택.
+#
+# bmc 깊이 20 근거: 소유 구간 L=2 (3사이클) 의 6배 이상 — 획득→기입→만료→
+# 재획득 순환 다회 포함. prove(k-귀납) 깊이 12: 슬롯 상태가 서로 독립이고
+# 보강 불변(a_age_le · a_free_age0)이 귀납을 닫는다.
+
+[tasks]
+bmc
+prove
+cover
+
+[options]
+bmc: mode bmc
+bmc: depth 20
+prove: mode prove
+prove: depth 12
+cover: mode cover
+cover: depth 20
+multiclock off
+
+[engines]
+smtbmc z3
+
+[script]
+# expose + 래퍼 부착 — bind 미사용 사유는 SharedUnit_props.sv 파일 머리 참조.
+read_verilog -formal ResultBank.sv
+expose ResultBank/w:ownerValid_* ResultBank/w:ownerId_* ResultBank/w:age_* ResultBank/w:store_* ResultBank/w:acqFree ResultBank/w:wrQualified ResultBank/w:when_ResultBank_l163 ResultBank/w:when_ResultBank_l181
+read_verilog -formal -sv ResultBank_props.sv
+prep -top ResultBank_formal
+
+# [files] 경로는 저장소 루트 기준이다 — sby 는 상대 경로를 sby 파일이
+# 아니라 *호출 cwd* 기준으로 푼다 (스윕 실측: ../ 경로가 루트 호출에서 깨짐).
+# make rtl-postformal · 스윕 · 수동 실행 전부 루트에서 호출하는 것이 규약이다.
+[files]
+rtl/generated/ResultBank.sv
+rtl/sv/assert/ResultBank_props.sv

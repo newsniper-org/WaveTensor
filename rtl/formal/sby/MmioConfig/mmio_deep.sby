@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# MmioConfig 후-formal (심층) — 표 *내용* 수준 서로소 불변식 (§1.4.5 D2).
+#
+# 증명(위임) — Route 모델의 unique_owner 가드의 실물: 「한 LNID 를 소유한
+# 슬롯은 최대 하나」가 fwd 표 그림자 위 k-귀납으로 선다. GUARD-MAP 이
+# unique_owner 를 DELEGATED(MmioConfig) 로 지목하므로 (lint_postformal
+# 규칙상 PROVES 앵커는 CHECK 전용 — 앵커 없음) 이 파일이 그 위임의 심층
+# 실측이다. 아울러 「역방향 표가 함수」라는 사실은 assume-guarantee 로
+# 갈랐다: 기입 짝짓기(보증, mmio_config.sby 의 assert 와 동일 하네스)와
+# Mem 판독=최후기입 의미론(가정, 하네스 assume 다리 ①·② — 근거 주석
+# 필수 규율에 따라 각 assume 에 명시)이다. 즉 이 태스크의 PASS 는
+# 「Mem 의미론 다리 위에서 서로소 불변식이 귀납 닫힘」이라는 뜻이다 —
+# yosys 자유 프론트엔드가 Mem 내용 접근 수단(bind·계층 참조·배열 포트)을
+# 전부 결여한다는 실측이 이 우회의 사유다 (하네스 머리 주석).
+#
+# prove 깊이 6 근거: 그림자 갱신과 커밋 가드는 1스텝 관계 — k=2 로 족하고
+# 여유로 6. bmc 태스크는 두지 않는다 — 소거 2^16 사이클이 도달성을 막아
+# 심층 속성의 BMC 는 공허하다 (mmio_config.sby 의 bmc 가 소거 구간을 잰다).
+#
+# 실행(컨테이너 전용 — 호스트 sby 금지):
+#   podman run --rm --userns=keep-id -v "$PWD:/workspace" wavetensor-dev:scala \
+#     sh -lc "cd /workspace && sby -f --prefix /tmp/sby-MmioDeep \
+#             rtl/formal/sby/MmioConfig/mmio_deep.sby"
+
+[tasks]
+deep
+
+[options]
+deep: mode prove
+deep: depth 6
+
+[engines]
+smtbmc z3
+
+[script]
+read_verilog -formal -sv -DMMIO_DEEP MmioConfig.sv MmioConfig_props.sv
+expose MmioConfig/w:initDone MmioConfig/w:busy MmioConfig/w:pSlot MmioConfig/w:pWord
+expose MmioConfig/w:revChkPresent MmioConfig/w:fwdRd MmioConfig/w:chkDupOwn MmioConfig/w:chkBadWr
+expose MmioConfig/w:fwdWrEn MmioConfig/w:fwdWrAddr MmioConfig/w:fwdWrData
+expose MmioConfig/w:revWrEn MmioConfig/w:revWrAddr MmioConfig/w:revWrData
+expose MmioConfig/w:lbWrEn MmioConfig/w:lbWrAddr MmioConfig/w:lbWrData
+prep -top MmioConfig_props
+
+# 경로는 저장소 루트 기준 — sby 는 [files] 를 호출 cwd 기준으로 푼다 (실측).
+[files]
+rtl/generated/MmioConfig.sv
+rtl/sv/assert/MmioConfig_props.sv

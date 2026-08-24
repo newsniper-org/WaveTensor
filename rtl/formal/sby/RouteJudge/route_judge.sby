@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# RouteJudge 후-formal — GUARD-MAP 의 CHECK 주장 재검사 (§6.3).
+#
+# PROVES: Route.global_judge — 판정 = (토큰, 자기 뷰, 존재 표)만의 함수, §1.6.3 두 발화 조건 문면과 등가 (하네스 독립 재계산 대조)
+# PROVES: Route.fault_once — 발화면 1비트 + 제시 사이클에만 발화 (시간축 판 「계층당 1회」)
+# PROVES: Route.loud_fault — sticky 정확한 다음 상태 함수: fault' = fire | (fault & ~clear); miss 삼킴 없음·해제 외 하강 없음
+# PROVES: Route.view_sync — 반영 절반: 기입 에지 즉시 커밋·단일 갱신 경로·타 엔트리 부동 (구동 절반은 MmioConfig·RouteMmio 몫)
+# PROVES: Route.scope_independent — 검증 가능 절반: tokOut 무게이트 전량 통과 (D3). 타 범위 입력 부재는 IO 구조 — 하네스 주석 참조
+#
+# bmc 깊이 20 근거: RouteJudge 는 순차 깊이 1(판정 조합 + sticky 1단)이라
+# 2배를 훨씬 넘는다. prove 깊이 6 근거: 모든 속성이 1스텝($past) 관계라
+# k-귀납은 k=2 면 족하고, 여유로 6.
+#
+# 실행(컨테이너 전용 — 호스트 sby 금지, Makefile rtl-postformal 과 동일):
+#   podman run --rm --userns=keep-id -v "$PWD:/workspace" wavetensor-dev:scala \
+#     sh -lc "cd /workspace && sby -f -d /tmp/sby-RouteJudge-route_judge \
+#             rtl/formal/sby/RouteJudge/route_judge.sby"
+
+[tasks]
+bmc
+prove
+
+[options]
+bmc: mode bmc
+bmc: depth 20
+prove: mode prove
+prove: depth 6
+
+[engines]
+smtbmc z3
+
+[script]
+# bind 는 yosys 0.66 자유 프론트엔드가 조용히 버린다 (2026-08-24 실측) —
+# expose 로 내부 레지스터를 포트로 승격해 하네스가 직접 인스턴스한다.
+read_verilog -formal -sv RouteJudge.sv RouteJudge_props.sv
+expose RouteJudge/w:viewValid_* RouteJudge/w:viewName_* RouteJudge/w:bankPresent
+prep -top RouteJudge_props
+
+# 경로는 저장소 루트 기준 — sby 는 [files] 를 *호출 cwd* 기준으로 푼다
+# (실측: .sby 파일 기준이 아니다). rtl-postformal 타깃과 위 실행 예처럼
+# 반드시 저장소 루트에서 호출할 것.
+[files]
+rtl/generated/RouteJudge.sv
+rtl/sv/assert/RouteJudge_props.sv

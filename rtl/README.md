@@ -149,11 +149,35 @@ NoLoss 는 모듈이 아니라 합성 속성 — 후-formal 이 조합 위에서
   shapeA 15s (127×), shapeB 9m40s. 배터리 전체 23m24s — 병합 게이트 실용.
 - ISA-9 = 기존 증명의 합성 (사상: NoLoss.tla 머리). 잔여 끝-끝 축은 후-formal.
 
-후속 단계: 후-formal (sby — GUARD-MAP 79줄의 참 검증 + ISA-9 끝-끝 합성 +
-HiuPipeline×MaskUnit 합성 stall_uniform), cocotb 하네스 (SEC-1 golden 대조
-— MaskUnit 합성 형상에서), ISA-1/2 두-형상 대조, 합성 실측 (Q3 전제).
-주의: 호스트 /usr/bin/tlc(2.19)는 -noGenerateSpecTE 미지원 — 배터리 재현은
-반드시 컨테이너로.
+## 후-formal 1차 파도 (2026-08-24) — 주장이 증명이 되다
+
+§6.3 셋째 단. GUARD-MAP CHECK 76 중 **66 이 sby(yosys 0.66 + smtbmc z3
+단독)로 증명**됐다 — 대부분 k-귀납(prove), 일부 bmc. **진짜 RTL 결함 0건.**
+선-formal 모델을 의사-명세로 쓴 구축 방식의 수확이다.
+
+구성: `rtl/sv/assert/*_props.sv` (SVA 하네스) + `rtl/formal/sby/<모듈>/*.sby`
+(머리의 `# PROVES: <모델>.<가드>` 가 lint_postformal 의 대조 앵커).
+게이트: `lint_postformal.py`(선언 실재성·CHECK 전용성·커버리지 래칫 66,
+make lint 11종) + `make rtl-postformal`(전 태스크 실행 — 미측정은 통과가
+아니다).
+
+첫 합성 증명 둘 — HiuPipeline×MaskUnit(상태열 균일·stall_uniform, 어느
+모델도 소유하지 않던 축)과 RouteJudge×MmioConfig(view_sync 원자성 —
+M3 스큐 부정. 모듈별 두 절반은 PASS, 합성 귀납은 2^16 Mem 부담).
+
+도구 함정 (재현·해소·메모리 등재): **yosys 0.66 은 bind 를 조용히
+무시한다** — 하네스가 제거돼 전 태스크 공허 PASS. 세 팀이 독립 적발.
+expose+래퍼로 대체, 공허 검출 = smt2 assert 셀 수 + cover reached 증인.
+generate 라벨 유일화 실패·proc_rom 귀납 비구속(memory_map)도 함께.
+
+미덮임 CHECK 10 (2차 파도 대상): 구조 skip 2 (out_no_reason —
+원인 채널 부재는 트레이스 속성 불가·포트 전수 검토로 갈음 / 완전 콘) +
+Isolation 승인 축 4 + Payload 2 + 기타.
+
+후속: cocotb 하네스 (SEC-1 golden 대조 — MaskUnit 합성 형상, mask64[43:12]
+사영 계약), ISA-1/2 두-형상 대조, ISA-9 끝-끝 합성, 합성 실측 (Q3 전제).
+주의: 호스트 tlc 2.19 는 -noGenerateSpecTE 미지원, 호스트 sby 사용 금지 —
+전부 컨테이너로.
 
 ## 모델 환류 대기 — 구현이 새로 한 결정 (§6.3 5단계)
 
