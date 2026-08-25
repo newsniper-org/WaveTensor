@@ -1,34 +1,75 @@
 # SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
 # SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
 #
-# PROVES: Platform.state_machine_kept — 소유권 상태 기계 실물(validBits·tagVec)의 전이는 OWN_DATA 명시 기입 사이클에만 — 암묵 전이·축출 부재 (E.7), 이양 커밋은 유효+태그 단일 에지 원자 (혼합 관측 사이클 부재), 충돌 기입은 무효 + loud sticky fault
-# PROVES: Platform.owner_check — 판정 데이터 원천: io.query.devOwned = 유효 ∧ 태그 일치 ∧ 상위 0 (HiuPipeline granted 가 소비하는 값의 정의역 확인)
+# PROVES: Platform.state_machine_kept — 소유권 상태 기계 실물(validBits·tagVec)의 전이는 OWN_SET/OWN_CLR 명시 기입 사이클에만 — 암묵 전이·축출 부재 (E.7), 이양 커밋은 유효+태그 단일 에지 원자 (혼합 관측 사이클 부재), 충돌 기입은 무효 + loud sticky fault, RO 오프셋(OWN_STATUS) 기입은 전이 무효 + loud sticky (E.1.1)
+# PROVES: Platform.owner_check — 판정 데이터 원천: io.query.devOwned = 유효 ∧ 태그 일치 (프레임 32b 전 구간 — HiuPipeline granted 가 소비하는 값의 정의역 확인)
+#
+# ══ 이 태스크가 재지 *않는* 것 — 정직 표기 ═══════════════════════════════
+#
+# 「비소유 접근은 loud fault」(§3.4.1 4항 · HIU-10)는 선-formal 에서만 참이다.
+# 위 owner_check 앵커가 주장하는 것은 판정의 *데이터 원천*이지 값 차단도
+# sticky 도달도 아니다 — 좁은 증명이 넓은 주장을 「덮임」으로 계수하지
+# 않도록 여기 적는다 (B.5 가 이름한 형태 그대로). 이 파일이 재는 fault 는
+# 표 자신의 둘(충돌 · RO 기입)뿐이고, 접근 시점의 loud 성은 후-formal 2차
+# 파도의 *fault 축*이다. 미측정은 통과가 아니다 (§6.7 원칙 5).
 #
 # (주의) Platform 가드의 정식 GUARD-MAP 줄 거처는 HiuPipeline.scala — 여기는
 # 그 판정의 데이터 원천인 상태 기계 실물을 재는 쪽이다. 판정 소비쪽
 # (granted 논리곱)은 HiuMask 하네스의 no_early_forward 축이 함께 덮는다.
 #
-# bmc 깊이 20: 모든 전이가 1사이클 완결(색인 기입→데이터 기입 2사이클 열)
+# ══ 부착 방식 — bind → expose + 래퍼 (2026-08-25) ═══════════════════════
+#
+# 앞판은 bind 로 붙였고 yosys 0.66 자유 프론트엔드가 그것을 **조용히 버렸다.**
+# 실측: 앞판 커밋본으로 이 태스크를 돌리면 design_smt2.smt2 의 assert 셀이
+# **0 개**이고 props 인스턴스도 0 개다 — 두 태스크의 PASS 는 공허했다.
+# 이 저장소의 다른 하네스(SharedUnit · ResultBank · MmioConfig …)는 이미 같은
+# 실측으로 expose 로 옮겨 갔는데 이 파일은 남아 있었다.
+#
+# ⇒ prep -top 은 이제 래퍼(OwnershipTable_formal)를 가리킨다. 공허가 아님은
+#    smt2 assert 셀 수(> 0)와 cover 태스크의 증인 도달로 함께 검산한다.
+#    실측 (이 개정본): assert 18 · assume 5 · cover 12, cover 12 전부 도달.
+#
+# ⛔ 같은 부류가 하나 더 남아 있다 — XlateStore/xlatestore.sby 도 공허다
+#    (assert 셀 0). 이 파도의 파일 배정 밖이라 여기서 고치지 않았고
+#    rtl/README.md 가 사실과 확인 명령을 등재한다.
+#
+# bmc 깊이 20: 모든 전이가 1사이클 완결(색인 기입→상태 읽기 2사이클 열)
 # 이라 2배 하한은 4 — 20 은 기입·충돌·회수·재이양 열을 넉넉히 덮는다.
-# prove(k-귀납)가 서므로 그것이 정답.
+# prove(k-귀납)가 서므로 그것이 정답. 속성 전부 조합 등식 또는 1스텝($past)
+# 관계라 k=2 로 족하고 여유로 6.
+#
+# cover 깊이 8: 가장 긴 증인이 「이양 기입 → 다음 사이클 조회에서 devOwned」
+# 2스텝이고, reset 소거가 없으므로(유효 비트가 reset 으로 스스로 0) 도달에
+# 긴 열이 필요 없다. 단언은 이 태스크에서도 켜 둔다 — 시작 상태 가정을
+# 따로 두지 않으므로 (MmioConfig 와 달리) 끌 이유가 없다.
+#
+# 실행(컨테이너 전용 — 호스트 sby 금지):
+#   podman run --rm --userns=keep-id -v "$PWD:/workspace" wavetensor-dev:scala \
+#     sh -lc "cd /workspace && sby -f --prefix /tmp/sby-OwnershipTable \
+#             rtl/formal/sby/OwnershipTable/ownershiptable.sby"
 
 [tasks]
 bmc
 prove
+cover
 
 [options]
 bmc: mode bmc
 bmc: depth 20
 prove: mode prove
 prove: depth 6
+cover: mode cover
+cover: depth 8
 
 [engines]
 smtbmc z3
 
 [script]
-read -formal OwnershipTable.sv
-read -formal OwnershipTable_props.sv
-prep -top OwnershipTable
+# expose + 래퍼 부착 — bind 미사용 사유는 위 절 · SharedUnit_props.sv 파일 머리.
+read_verilog -formal OwnershipTable.sv
+expose OwnershipTable/w:validBits OwnershipTable/w:tagVec_*
+read_verilog -formal -sv OwnershipTable_props.sv
+prep -top OwnershipTable_formal
 
 # [files] 경로는 저장소 루트 기준이다 — sby 는 상대 경로를 sby 파일이
 # 아니라 *호출 cwd* 기준으로 푼다 (스윕 실측: ../ 경로가 루트 호출에서 깨짐).

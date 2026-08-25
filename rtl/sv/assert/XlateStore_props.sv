@@ -11,6 +11,21 @@
 // 도 이 전칭의 부분집합이다 (flush 에서 비롯한 Mem 쓰기 포트 부재의 관측형).
 //
 // 대상 SV 는 rtl/generated/XlateStore.sv 커밋본 그대로.
+//
+// ## 부착 방식 — bind 텍스트 전개 (2026-08-25 수리)
+//
+// 이 파일은 bind 형태를 유지한다 (bind 를 지원하는 도구에서는 그대로 선다).
+// 그러나 yosys 0.66 자유 프론트엔드는 SV `bind` 를 오류 없이 파싱하고
+// *조용히 무시*한다. 2026-08-25 이전의 xlatestore.sby 는 `prep -top
+// XlateStore` 로 DUT 자신을 top 으로 삼았고, 그 결과 이 모듈은 unused 로
+// 제거되어 (yosys 로그: Removing unused module `$abstract\XlateStore_props')
+// **전 태스크가 assert=0 인 설계 위에서 통과했다 — 공허 PASS 였다.**
+// 그동안 이 파일의 본문은 한 번도 정련된 적이 없었고, 붙이자마자 yosys 가
+// 문법 오류를 냈다 (clocked block 밖의 $past — 아래 f_ok 에서 수리).
+//
+// 부착은 xlatestore.sby 의 `[script]` 가 MemOrderGate/Reassembly 선례대로
+// bind 문을 대상 모듈 본문 안 인스턴스로 텍스트 전개해서 한다 (전개 대상은
+// 워크디렉터리 사본 — 이 파일은 불변).
 
 `timescale 1ns/1ps
 
@@ -63,9 +78,17 @@ module XlateStore_props (
     else        assume (!reset);
   end
 
+  // f_ok — 「직전 에지도 이번 에지도 reset 밖」. $past(reset) 을 쓰지 않고
+  // 명시 레지스터로 지연시킨다: yosys 0.66 은 clocked block 밖의 $past 를
+  // 거절한다 (실측 ERROR "System function $past is only allowed in clocked
+  // blocks"). 의미는 동일하며 MemOrderGate/Reassembly 하네스와 같은 관용구다.
   reg f_past_valid = 1'b0;
-  always @(posedge clk) f_past_valid <= 1'b1;
-  wire f_ok = f_past_valid && !reset && !$past(reset);
+  reg f_past_reset = 1'b1;
+  always @(posedge clk) begin
+    f_past_valid <= 1'b1;
+    f_past_reset <= reset;
+  end
+  wire f_ok = f_past_valid && !reset && !f_past_reset;
 
   // 파티션 색인용 배열 뷰
   wire [15:0] f_vb   [0:3];
@@ -163,6 +186,95 @@ module XlateStore_props (
         assert ($stable(f_body));
     end
   end
+
+  // ── cover 증인 — 공허 아님의 증거 (2026-08-25 신설) ─────────────────────
+  //
+  // 위 단언은 대부분 「A 이면 B」 꼴이라, A 가 도달 불가능하면 전부 공허하게
+  // 통과한다. 특히 f_body 불변 단언들은 「저장 Mem 이 아무 때도 안 변한다」
+  // 는 세계에서 자명하게 선다. 아래 증인이 그 전제들이 *reset 으로부터*
+  // 실제로 도달함을 보인다.
+  //
+  // 증인의 시작 상태 (정직 표기): 전부 **reset 기점**이다. 이 설계에는
+  // MmioConfig 같은 긴 초기화 소거가 없어 (reset 이 validBits/fillPend 를
+  // 즉시 0 으로 놓는다) 도달성이 그대로 살아 있다 — 그래서 아래 증인은
+  // 「단언의 전제가 충족 *가능*하다」가 아니라 「reset 으로부터 실제로
+  // 도달한다」를 주장한다. 실측 도달 스텝 3~5.
+  //   ※ sby 의 cover 모드는 `chformal -assert -remove` 로 단언을 스스로
+  //     떼어낸다 (하네스가 끄는 것이 아니다). 그래도 증인이 적법 궤적 위에
+  //     있다는 것은 bmc 태스크가 따로 보증한다 — 깊이 20 까지 reset 기점의
+  //     모든 궤적에서 단언이 서므로, 스텝 3~5 의 이 증인들도 그 안이다.
+  //
+  // 증인은 cover 태스크에서만 컴파일한다 (-DXLATE_COVER). bmc/prove 모델을
+  // 종전과 한 비트도 다르지 않게 유지하기 위한 규율이다.
+`ifdef XLATE_COVER
+  // W1 — fill_tagged 의 전제: 채움 바이패스 적중이 실제로 일어난다
+  always @(posedge clk) if (f_ok) cover (fillHit);
+
+  // W2 — valid_check/partition_check 의 전제: 설치→커밋→저장 기입→조회
+  //      적중의 전 경로가 살아 있다 (바이패스가 아닌 저장 블록 적중)
+  always @(posedge clk) if (f_ok) cover (storeHit && !fillHit);
+
+  // W3 — 저장 Mem 이 *변할 수 있다*: 관측 중인 바로 그 주소를 커밋이
+  //      갈아엎는 에지. 이것 없이는 아래 두 불변 단언(W4 축·flush 축)이
+  //      「메모리가 아무 때도 안 변한다」로 공허하게 성립한다.
+  always @(posedge clk)
+    if (f_ok && $stable(entryAddr) && $past(commitFire)
+        && ($past({commitSel, commitLine_idx}) == entryAddr))
+      cover (f_body != $past(f_body));
+
+  // W4 — install_scoped 단언의 전제: 커밋 에지인데 기입 주소가 관측 주소와
+  //      다른 사이클이 실재한다
+  always @(posedge clk)
+    if (f_ok && $stable(entryAddr) && $past(commitFire))
+      cover ($past({commitSel, commitLine_idx}) != entryAddr);
+
+  // W5 — flush_keeps_data 의 본 증인 (XlateStore.tla 의
+  //      Witness_DataSurvivesFlush 의 RTL 판): 자기 파티션 flush 를 건넜는데
+  //      그 파티션 주소의 저장 몸체가 *비어 있지 않은 채로* 살아 있다
+  always @(posedge clk)
+    if (f_ok && $stable(entryAddr) && $past(io_flush_valid)
+        && ($past(io_flush_part) == entryAddr[5:4]) && !$past(commitFire))
+      cover ((f_body != 63'h0) && $stable(f_body));
+
+  // W6 — flush 가 실제로 *지운다*: 비지 않은 유효 비트열이 0 이 되는 에지
+  //      (지우지 않는 기계라면 W6 이 안 잡히고, 지워 버리는 기계라면 W5 가
+  //      안 잡힌다 — 둘을 함께 두는 것이 flush_keeps_data 의 양날이다)
+  always @(posedge clk)
+    if (f_ok && $past(io_flush_valid) && ($past(io_flush_part) == 2'd0))
+      cover (($past(f_vb0) != 16'h0) && (f_vb0 == 16'h0));
+
+  // W7 — capacity_partitioned 의 전제: 타 파티션(q=1) 커밋 에지를 건너는데
+  //      p=0 의 유효 비트열이 비어 있지 않다. 그 「불변」 단언이 0 → 0 의
+  //      자명한 성립이 아니라는 증거.
+  always @(posedge clk)
+    if (f_ok && $past(commitFire) && ($past(commitSel) == 2'd1))
+      cover (($past(f_vb0) != 16'h0) && (f_vb0 == $past(f_vb0)));
+
+  // W8 — fill_slot_per_partition 의 전제: 설치가 슬롯 몸체를 실제로 바꾼다
+  always @(posedge clk)
+    if (f_ok && $past(f_install_fire) && ($past(io_install_part) == 2'd2))
+      cover (f_slot2 != $past(f_slot2));
+
+  // W9 — partition_check 의 본 증인 (HIU-1 의 RTL 판): 같은 (색인, 태그)가
+  //      파티션 1 에서는 적중하는데, 바로 다음 사이클 파티션 0 의 같은
+  //      질의는 미적중이다. 파티션 필드가 방벽으로 실제 작동한다는 증거 —
+  //      이것 없이는 partition_check 단언이 「무엇도 적중 못 함」으로
+  //      공허하게 성립한다.
+  always @(posedge clk)
+    if (f_ok && $past(io_rsp_hit) && ($past(io_lookup_part) == 2'd1)
+        && ($past(reqIdx) == reqIdx) && ($past(reqTag) == reqTag)
+        && io_lookup_valid && (io_lookup_part == 2'd0))
+      cover (!io_rsp_hit);
+
+  // W10 — valid_check 의 시제 증인: 직전 사이클 같은 (파티션, 색인, 태그)
+  //       질의가 적중했는데 flush 를 건넌 지금은 미적중이다. 「flush 다음
+  //       사이클 어둡다」 단언이 *적중할 수 있었던* 질의 위에서 재어진다.
+  always @(posedge clk)
+    if (f_ok && $past(io_flush_valid) && (io_lookup_part == $past(io_flush_part))
+        && $past(io_rsp_hit) && ($past(io_lookup_part) == io_lookup_part)
+        && ($past(reqIdx) == reqIdx) && ($past(reqTag) == reqTag))
+      cover (!storeHit && !fillHit);
+`endif // XLATE_COVER
 endmodule
 
 bind XlateStore XlateStore_props u_xlate_props (

@@ -194,6 +194,7 @@ module HiuPipeline_props (
   input wire         clk,
   input wire         reset,
   input wire         advance,
+  input wire         io_hold,             // 증인 전용 — 정지 *원천*을 갈라 본다
   input wire         io_req_valid,
   input wire         io_mask_rsp_valid,   // 합성에서 MaskUnit.rValid — s4 valid
   input wire         io_rsp_valid,
@@ -209,9 +210,17 @@ module HiuPipeline_props (
   input wire         s6_valid,
   input wire [288:0] f_stage_data         // 전 단 수송 몸체 레지스터 연접
 );
+  // f_ok — 「직전 에지도 이번 에지도 reset 밖」. $past(reset) 을 쓰지 않고
+  // 명시 레지스터로 지연시킨다: yosys 0.66 은 clocked block 밖의 $past 를
+  // 거절한다 (실측 ERROR). 의미는 동일하며 MemOrderGate/Reassembly/XlateStore
+  // 하네스와 같은 관용구다.
   reg f_past_valid = 1'b0;
-  always @(posedge clk) f_past_valid <= 1'b1;
-  wire f_ok = f_past_valid && !reset && !$past(reset);
+  reg f_past_reset = 1'b1;
+  always @(posedge clk) begin
+    f_past_valid <= 1'b1;
+    f_past_reset <= reset;
+  end
+  wire f_ok = f_past_valid && !reset && !f_past_reset;
 
   // 상태열 거울 — io_req_valid 만 advance 로 시프트. 조회 결과·판정을 일절
   // 보지 않는 수리이므로, 아래 일치 assert 가 서면 단 통과가 요청 내용과
@@ -254,12 +263,110 @@ module HiuPipeline_props (
         assert (io_rsp_granted);
     end
   end
+
+  // ── cover 증인 — 공허 아님의 증거 (2026-08-25 신설) ─────────────────────
+  //
+  // 위 여섯 일치 assert 는 *등식*이라 「아무것도 흐르지 않는 세계」에서
+  // 0 == 0 으로 자명하게 선다. stall_uniform 의 $stable 단언도 마찬가지로
+  // 「단이 언제나 비어 있다」면 공허하다. 아래 증인이 reset 으로부터
+  // 실제로 요청이 흐르고, 실제로 멈추고, 실제로 승인·거절된다는 것을 보인다.
+  //   ※ sby 의 cover 모드는 chformal -assert -remove 로 단언을 스스로
+  //     떼어낸다. 증인이 적법 궤적 위에 있다는 것은 bmc 태스크가 보증한다.
+`ifdef HIUMASK_COVER
+  // W1 — 6단 전 구간을 요청이 실제로 통과해 응답이 나온다 (거울 전 지점이
+  //      1 을 실어 본다 — 등식 여섯이 0==0 이 아니다)
+  always @(posedge clk) if (f_ok) cover (io_rsp_valid);
+
+  // W2 — 파이프가 실제로 파이프다: 서로 다른 두 요청이 동시에 비행 중
+  //      (거울 양 끝이 동시에 1)
+  always @(posedge clk) if (f_ok) cover (f_v[1] && f_v[6]);
+
+  // W3 — stall_uniform 의 전제 ①: io_hold 발 정지를 *내용이 실린* 단이 건넌다
+  always @(posedge clk)
+    if (f_ok && !$past(advance) && $past(io_hold))
+      cover (s3_valid || s5_valid || s6_valid);
+
+  // W4 — stall_uniform 의 전제 ②: io_hold 가 아닌 정지 — E.3 미적중 채움
+  //      대기(missWait) 발. 「정지 원천 무관」이 두 원천 모두에서 재어진다는
+  //      증거 (하나뿐이면 그 문면이 절반만 실측된 것이다)
+  always @(posedge clk)
+    if (f_ok && !$past(advance) && !$past(io_hold))
+      cover (s3_valid);
+
+  // W5 — no_early_forward 의 활성면: 승인이 실제로 나고 값축이 비0 이다
+  //      (이것 없이는 「무엇도 승인되지 않는 기계」가 단언을 통과한다)
+  always @(posedge clk) if (f_ok) cover (io_rsp_granted && (io_rsp_frame != 32'h0));
+
+  // W6 — 그 반대면: 유효 응답인데 승인이 없고, 그래서 값축이 0 이다
+  //      (거절이 실제로 값을 지운다 — 두 면을 함께 둬야 계약이 잠긴다)
+  always @(posedge clk)
+    if (f_ok) cover (io_rsp_valid && !io_rsp_granted && (io_rsp_frame == 32'h0)
+                     && !io_rsp_perm_r && !io_rsp_perm_w && !io_rsp_perm_x);
+`endif // HIUMASK_COVER
 endmodule
 
+// ── MaskUnit 쪽 검사자 (bind) ─────────────────────────────────────────────
+module MaskUnit_props (
+  input wire        clk,
+  input wire        reset,
+  input wire        io_en,
+  input wire        io_req_valid,
+  input wire        io_rsp_valid,
+  input wire [31:0] io_rsp_frame
+);
+  // f_ok — HiuPipeline_props 와 같은 관용구 (위 주석 참조).
+  reg f_past_valid = 1'b0;
+  reg f_past_reset = 1'b1;
+  always @(posedge clk) begin
+    f_past_valid <= 1'b1;
+    f_past_reset <= reset;
+  end
+  wire f_ok = f_past_valid && !reset && !f_past_reset;
+
+  always @(posedge clk) begin
+    if (f_ok) begin
+      // Decode.stall_uniform — MaskUnit 쪽 s4 몸(rValid/rFrame)도 en(=advance)
+      // 이 낮으면 함께 선다. 구성 기입(keyWr/nonceWr/rekey)이 무엇을 하든.
+      if (!$past(io_en))
+        assert ($stable({io_rsp_valid, io_rsp_frame}));
+      // (결선 계약) 고정 1사이클 왕복 — req.valid → 바로 다음 enable 에
+      // rsp.valid. 가변 지연·조기 응답 부재 (MaskUnit.scala io.req 문면).
+      if ($past(io_en))
+        assert (io_rsp_valid == $past(io_req_valid));
+    end
+  end
+
+  // ── cover 증인 ──────────────────────────────────────────────────────────
+`ifdef HIUMASK_COVER
+  // W7 — 마스크 왕복이 실제로 돈다: 응답이 서고 값축이 비0 이다
+  //      (rValid 가 늘 0 이면 위 왕복 등식이 0==0 으로 공허하다)
+  always @(posedge clk) if (f_ok) cover (io_rsp_valid && (io_rsp_frame != 32'h0));
+
+  // W8 — MaskUnit 쪽 stall_uniform 의 전제: en 이 낮은 에지를 *실린* 응답이
+  //      건넌다 (rsp_valid 가 1 인 채로 동결 — 0 인 채 동결이 아니다)
+  always @(posedge clk)
+    if (f_ok && !$past(io_en)) cover (io_rsp_valid && (io_rsp_frame != 32'h0));
+`endif // HIUMASK_COVER
+endmodule
+
+bind MaskUnit MaskUnit_props u_mask_props (
+  .clk          (clk),
+  .reset        (reset),
+  .io_en        (io_en),
+  .io_req_valid (io_req_valid),
+  .io_rsp_valid (io_rsp_valid),
+  .io_rsp_frame (io_rsp_frame)
+);
+
+// ── HiuPipeline 쪽 bind — 파일 *맨 끝*이어야 한다.
+// hiumask.sby 의 텍스트 전개가 두 bind 를 「MaskUnit 것 먼저, HiuPipeline 것
+// 마지막」 순서로 잘라낸다 (sed 종료 주소에 ';' 와 ')' 를 쓸 수 없어 — yosys
+// exec 의 인용 전달이 깨진다 — 시작 패턴 + 파일 끝으로만 구간을 짚는다).
 bind HiuPipeline HiuPipeline_props u_hiu_props (
   .clk               (clk),
   .reset             (reset),
   .advance           (advance),
+  .io_hold           (io_hold),
   .io_req_valid      (io_req_valid),
   .io_mask_rsp_valid (io_mask_rsp_valid),
   .io_rsp_valid      (io_rsp_valid),
@@ -282,40 +389,4 @@ bind HiuPipeline HiuPipeline_props u_hiu_props (
                        s5_masked, s5_perm_r, s5_perm_w, s5_perm_x,
                        s6_part, s6_write, s6_anyHit, s6_fromFill, s6_frame,
                        s6_masked, s6_perm_r, s6_perm_w, s6_perm_x})
-);
-
-// ── MaskUnit 쪽 검사자 (bind) ─────────────────────────────────────────────
-module MaskUnit_props (
-  input wire        clk,
-  input wire        reset,
-  input wire        io_en,
-  input wire        io_req_valid,
-  input wire        io_rsp_valid,
-  input wire [31:0] io_rsp_frame
-);
-  reg f_past_valid = 1'b0;
-  always @(posedge clk) f_past_valid <= 1'b1;
-  wire f_ok = f_past_valid && !reset && !$past(reset);
-
-  always @(posedge clk) begin
-    if (f_ok) begin
-      // Decode.stall_uniform — MaskUnit 쪽 s4 몸(rValid/rFrame)도 en(=advance)
-      // 이 낮으면 함께 선다. 구성 기입(keyWr/nonceWr/rekey)이 무엇을 하든.
-      if (!$past(io_en))
-        assert ($stable({io_rsp_valid, io_rsp_frame}));
-      // (결선 계약) 고정 1사이클 왕복 — req.valid → 바로 다음 enable 에
-      // rsp.valid. 가변 지연·조기 응답 부재 (MaskUnit.scala io.req 문면).
-      if ($past(io_en))
-        assert (io_rsp_valid == $past(io_req_valid));
-    end
-  end
-endmodule
-
-bind MaskUnit MaskUnit_props u_mask_props (
-  .clk          (clk),
-  .reset        (reset),
-  .io_en        (io_en),
-  .io_req_valid (io_req_valid),
-  .io_rsp_valid (io_rsp_valid),
-  .io_rsp_frame (io_rsp_frame)
 );

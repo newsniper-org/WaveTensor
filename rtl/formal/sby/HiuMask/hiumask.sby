@@ -12,24 +12,81 @@
 # bmc 깊이 24: 파이프 6단의 4배 — 수락→응답 왕복 두 번 + 미적중 정지 구간을
 # 덮는다 (2배 하한 12 이상). prove(k-귀납)가 서므로 그것이 정답이고 bmc 는
 # 도달 가능 접두의 이중 확인이다.
+#
+# cover 깊이 16: 가장 깊은 증인(W2 — 서로 다른 두 요청이 6단 양 끝에 동시에)
+# 이 reset 후 8 enable-사이클을 필요로 한다. 그 2배로 여유를 둔다.
+#
+# ## 부착 방식 — bind 텍스트 전개 ×2 (2026-08-25 수리)
+#
+# 종전 스크립트는 `prep -top HiuMask_comp` 로 *래퍼*를 top 으로 삼았다.
+# 래퍼가 있으니 「prep -top 이 DUT 자신」이라는 순진한 지문 검사는 통과했지만,
+# HiuMask_comp 는 두 DUT 를 배선할 뿐이고 단언 열셋은 전부 HiuPipeline_props ·
+# MaskUnit_props 안에 있으며 그 둘은 SV `bind` 로만 붙는다. yosys 0.66 은
+# bind 를 오류 없이 파싱하고 조용히 무시한다 — 로그:
+#   Removing unused module `$abstract\MaskUnit_props'
+#   Removing unused module `$abstract\HiuPipeline_props'
+# 그래서 전 태스크가 **assert=0 · assume=2** 인 설계 위에서 통과했다.
+# **공허 PASS 였다** (XlateStore 와 같은 결함, 다른 위장).
+#
+# 진짜 지문은 「prep -top 이 DUT 자신」이 아니라 「단언이 bind 로만 붙는
+# 모듈에 있다」이다. 완료 기준은 design_prep.il 의 $assert 셀 수다.
+#
+# 전개는 XlateStore 와 같은 exec 텍스트 전개인데, 이 파일에는 함정이 둘 더 있다:
+#
+#  (1) **HiuPipeline.sv 는 모듈을 둘 담는다** — HiuPipeline 과 그 뒤의
+#      XlateStore. MemOrderGate 관용구(`sed -i /^endmodule/d` + 끝에 append)
+#      를 그대로 쓰면 endmodule 두 줄이 다 지워져 XlateStore 가 HiuPipeline
+#      본문 안으로 삼켜진다. 그래서 「첫 endmodule 앞에 주입」 형태로 쓴다:
+#      머리(첫 endmodule 직전까지) + 인스턴스 + 꼬리(첫 endmodule 부터 끝까지).
+#      꼬리를 통째로 되붙이므로 뒤에 모듈이 몇 개 더 오든 안전하다.
+#
+#  (2) **bind 가 둘**이다. sed 의 종료 주소에 `);` 를 쓸 수 없다 — yosys
+#      exec 의 인용 전달에서 `)` 와 `;` 가 깨진다 (실측: sh 가
+#      `syntax error near ')'` 로 죽는다). 그래서 구간을 「시작 패턴 + 파일
+#      끝」으로만 짚고, 그러기 위해 하네스의 두 bind 문을 파일 맨 끝에
+#      **MaskUnit 것 먼저, HiuPipeline 것 마지막** 순서로 모아 두었다
+#      (SV 에서 bind 는 파일 스코프라 위치는 의미와 무관 — 배치만 바꾼 것).
+#
+# 전개 대상은 워크디렉터리 사본이다 — 저장소 사본은 불변이고, bind 를
+# 지원하는 도구에서는 하네스 파일이 그대로 선다.
 
 [tasks]
 bmc
 prove
+cover
 
 [options]
 bmc: mode bmc
 bmc: depth 24
 prove: mode prove
 prove: depth 12
+cover: mode cover
+cover: depth 16
 
 [engines]
 smtbmc z3
 
 [script]
-read -formal MaskUnit.sv
-read -formal HiuPipeline.sv
-read -formal HiuMask_props.sv
+# ① 하네스를 「모듈 본문」과 「두 bind 문」으로 가른다
+exec -- sh -c "sed /^bind/Q HiuMask_props.sv > props_only.sv"
+exec -- sh -c "sed /^bind.HiuPipeline/Q HiuMask_props.sv > binds_head.sv"
+exec -- sh -c "sed -n /^bind.MaskUnit/,+999p binds_head.sv | sed s/^bind.MaskUnit.// > mask_inst.sv"
+exec -- sh -c "sed -n /^bind.HiuPipeline/,+999p HiuMask_props.sv | sed s/^bind.HiuPipeline.// > pipe_inst.sv"
+# ② MaskUnit — 첫 endmodule 앞에 검사자 인스턴스를 주입
+exec -- sh -c "sed /^endmodule/Q MaskUnit.sv > mask_dut.sv"
+exec -- sh -c "sed -n /^endmodule/,+9999p MaskUnit.sv > mask_tail.sv"
+exec -- sh -c "cat mask_inst.sv mask_tail.sv >> mask_dut.sv"
+# ③ HiuPipeline — 같은 방식. 이 파일은 뒤에 XlateStore 를 더 담고 있으므로
+#    파일 끝이 아니라 *첫* endmodule 앞이어야 한다 (위 함정 (1)).
+exec -- sh -c "sed /^endmodule/Q HiuPipeline.sv > pipe_dut.sv"
+exec -- sh -c "sed -n /^endmodule/,+9999p HiuPipeline.sv > pipe_tail.sv"
+exec -- sh -c "cat pipe_inst.sv pipe_tail.sv >> pipe_dut.sv"
+# 증인은 cover 태스크에서만 컴파일한다 — bmc/prove 모델은 단언만 든다.
+bmc:   read_verilog -sv -formal props_only.sv
+prove: read_verilog -sv -formal props_only.sv
+cover: read_verilog -sv -formal -DHIUMASK_COVER props_only.sv
+read_verilog -sv -formal mask_dut.sv
+read_verilog -sv -formal pipe_dut.sv
 prep -top HiuMask_comp
 
 # [files] 경로는 저장소 루트 기준이다 — sby 는 상대 경로를 sby 파일이

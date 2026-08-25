@@ -12,23 +12,58 @@
 # bmc 깊이 20: 내부 시퀀스 최장은 설치→커밋→조회 3사이클 — 그 6배 이상으로
 # 설치·커밋·flush·조회 상호작용을 넉넉히 덮는다 (2배 하한 충족). prove
 # (k-귀납)가 서므로 그것이 정답.
+#
+# cover 깊이 10: 가장 깊은 증인이 설치(t1)→pend(t2)→커밋·기입(t2)→유효(t3)
+# →flush(t3)→관측(t4) 의 5사이클이다 — 그 2배로 여유를 둔다.
+#
+# ## 부착 방식 — bind 텍스트 전개 (2026-08-25 수리)
+#
+# 종전 스크립트는 `prep -top XlateStore` 로 DUT 자신을 top 으로 삼았는데,
+# 하네스는 SV `bind` 로 붙는다. yosys 0.66 은 bind 를 오류 없이 파싱하고
+# *조용히 무시*한다 — 하네스 모듈이 unused 로 제거되고(로그: Removing unused
+# module `$abstract\XlateStore_props') 전 태스크가 assert=0·assume=0·cover=0
+# 인 설계 위에서 통과했다. **공허 PASS 였다.** 실제로 하네스 본문은 한 번도
+# 정련된 적이 없었고, 붙이자마자 yosys 가 문법 오류를 냈다 (clocked block
+# 밖의 $past — 하네스에서 수리).
+#
+# 부착은 MemOrderGate/Reassembly 선례의 exec 텍스트 전개를 따른다.
+# expose+래퍼(MmioConfig/RouteJudge 선례)를 쓰지 않은 이유:
+#   · 하네스가 taps 하는 내부 신호가 20개가 넘고, 그중 다섯(f_pend·f_slot0..3·
+#     f_body)은 *연접식*이다 — expose 는 신호를 포트로 승격할 뿐 연접식을
+#     만들지 못하므로 래퍼 안에서 그 연접을 손으로 다시 써야 한다.
+#   · 래퍼 형태는 하네스를 「DUT 를 인스턴스하는 모듈」로 바꾸는 일이라
+#     bind 가능성을 잃는다. 이 저장소 규약은 하네스 SV 를 bind 형태로
+#     유지하는 것이다 (bind 를 지원하는 도구에서는 그대로 선다).
+# 전개 대상은 워크디렉터리 사본이다 — 저장소 사본은 불변이다. sed 프로그램은
+# yosys 스크립트의 ';' 분리·인용 전달 함정을 피해 무공백·무'$' 형태로 쓴다.
 
 [tasks]
 bmc
 prove
+cover
 
 [options]
 bmc: mode bmc
 bmc: depth 20
 prove: mode prove
 prove: depth 8
+cover: mode cover
+cover: depth 10
 
 [engines]
 smtbmc z3
 
 [script]
-read -formal XlateStore.sv
-read -formal XlateStore_props.sv
+exec -- sh -c "sed /^bind/Q XlateStore_props.sv > props_only.sv"
+exec -- sh -c "sed -i /^endmodule/d XlateStore.sv"
+exec -- sh -c "sed -n /^bind/,+999p XlateStore_props.sv | sed s/^bind.XlateStore.// >> XlateStore.sv"
+exec -- sh -c "echo endmodule >> XlateStore.sv"
+# 증인(cover)은 cover 태스크에서만 컴파일한다 — bmc/prove 모델은 종전과
+# 한 비트도 다르지 않게 유지한다.
+bmc:   read_verilog -sv -formal props_only.sv
+prove: read_verilog -sv -formal props_only.sv
+cover: read_verilog -sv -formal -DXLATE_COVER props_only.sv
+read_verilog -sv -formal XlateStore.sv
 prep -top XlateStore
 
 # [files] 경로는 저장소 루트 기준이다 — sby 는 상대 경로를 sby 파일이

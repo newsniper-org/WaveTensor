@@ -13,5 +13,5 @@
 - [WT64v1 RTL 전면 재구현](wt64v1_rtl_reimplementation.md) — 2026-08-20 착수; 정본은 아키텍처 가이드 PDF 하나, SpinalHDL 주 + SV 검증층, clean-room, 선-formal 이 RTL 을 선행한다.
 - [Workflow 자리표시자 패턴 금지](workflow_placeholder_bug.md) — 데이터는 인라인 또는 args 로; __X__ 치환 패턴은 두 번 다 즉시 실패
 - [podman 고아 컨테이너 함정](podman_orphan_containers.md) — 클라이언트 kill ≠ 컨테이너 kill; 중단 후 podman ps 확인 필수, TLC 는 고유 -metadir
-- [yosys bind 묵살 함정](yosys_bind_trap.md) — bind 조용히 무시 → 공허 PASS; expose+래퍼로, 공허 검출 = smt2 assert 셀 수 + cover 증인
+- [yosys bind 묵살 함정](yosys_bind_trap.md) — bind 조용히 무시 → 공허 PASS; 사람 적발로는 못 막는다(3팀이 적발했는데도 둘이 빠져나갔다), make rtl-postformal 의 HOLLOW 게이트가 유일한 그물
 - [sby 합성 태스크 회귀 함정](sby_composite_regression.md) — 모듈 태스크만 돌리면 그것을 인스턴스하는 합성 증명이 조용히 깨진다; [files] 역색인이 완료 기준

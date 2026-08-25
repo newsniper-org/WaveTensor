@@ -617,6 +617,11 @@ class Wt64Top(
         * 일어난다 (지금은 미배선). */
       val cfgSurfBadWrite = out port Bool()
       val ownCollide    = out port Bool()
+      /** 소유권 구역의 거절된 구성 기입 — RO 오프셋(`0x204` OWN_STATUS) 쓰기.
+        * FAULT_STATUS `[6]` 합류 (cqBadWrite 와 같은 부류). 전이 인코딩이
+        * 데이터 비트에서 오프셋으로 옮겨 가면서 `0x204` 가 RW→RO 가 됐고,
+        * 앞판 드라이버의 이양 기입이 *조용히 사라지지 않게* 하는 자리다. */
+      val ownBadWrite   = out port Bool()
       val fabricBp      = out port Bool()
       val sharedBp      = out port Bool()
       val bankWrite     = out port Bool()
@@ -946,6 +951,10 @@ class Wt64Top(
   own.io.wstrobe := io.mmio.wstrobe && selOwn
   own.io.rstrobe := io.mmio.rstrobe && selOwn
   own.io.faultClearCollide := io.faultClear.ownCollide || fclr(Fault.B_OWN_COLLIDE)
+  // 소유권 구역의 거절된 구성 기입 (RO 오프셋 OWN_STATUS 쓰기 — E.1.1). 완료
+  // 유닛의 같은 부류와 마찬가지로 해제 표면은 MMIO `0xF84[6]` 하나이고
+  // 전용 IO 선은 새로 만들지 않는다 (io.faultClear 주석의 규율).
+  own.io.faultClearBadWrite := fclr(Fault.B_CFG_BADWRITE)
 
   cq.io.addr    := io.mmio.addr(7 downto 0)
   cq.io.wdata   := io.mmio.wdata
@@ -1225,6 +1234,7 @@ class Wt64Top(
   io.fault.cfgSurfBadWrite :=
     StickyFault(surfBadWr, io.faultClear.cfgSurfBadWrite || fclr(Fault.B_CFG_BADWRITE))
   io.fault.ownCollide    := own.io.faultCollide
+  io.fault.ownBadWrite   := own.io.faultBadWrite
   io.fault.fabricBp      := merge.io.fault
   io.fault.sharedBp      := shared.io.faultBpViolation
   io.fault.bankWrite     := bank.io.fault
@@ -1258,12 +1268,14 @@ class Wt64Top(
     status(Fault.B_REASM)       := io.fault.reasm
     status(Fault.B_XLATE_PERM)  := io.fault.hiuPerm
     status(Fault.B_CFG_DUP)     := io.fault.cfgDupOwner
-    // `[6]` 이 넷 + 둘을 접는다 (E.1.2 해설). 세 원천 모듈의 같은 부류가
+    // `[6]` 이 넷 + 둘을 접는다 (E.1.2 해설). *네* 원천(MmioConfig · 이
+    // 조립이 직접 디코드하는 표면 · 완료 유닛 · 소유권 표)의 같은 부류가
     // *여기서* 한 비트로 합류한다 — 수리 주체가 드라이버 하나이고 고칠
     // 동작이 같다(자기가 방금 쓴 워드를 고쳐 다시 쓴다). 폴딩 지점을 명시
     // 하라는 §5.6 3항의 이행이며, 관측면 상류에서는 접지 않았다.
     status(Fault.B_CFG_BADWRITE) := io.fault.cfgBadWrite ||
-                                    io.fault.cfgSurfBadWrite || io.fault.cqBadWrite
+                                    io.fault.cfgSurfBadWrite || io.fault.cqBadWrite ||
+                                    io.fault.ownBadWrite
     status(Fault.B_OWN_COLLIDE) := io.fault.ownCollide
     status(Fault.B_FABRIC_BP)   := io.fault.fabricBp
     status(Fault.B_SHARED_BP)   := io.fault.sharedBp

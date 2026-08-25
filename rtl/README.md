@@ -41,7 +41,7 @@ golden 에서 직접 받는다.
 |---|---|---|
 | `rtl/spinal/` | SpinalHDL 설계 (Scala) — **생성기** | ✅ 여기를 고친다 |
 | `rtl/generated/` | SpinalHDL 산출 SystemVerilog | ⛔ **금지.** 생성기를 고치고 다시 낸다 |
-| `rtl/sv/assert/` | SVA + `bind` 후-formal 하네스 (수기) | ✅ |
+| `rtl/sv/assert/` | SVA 후-formal 하네스 (수기) — 부착은 `expose` + 래퍼. **`bind` 금지** (yosys 0.66 이 조용히 버린다 → 공허 PASS) | ✅ |
 | `rtl/sv/prim/` | 벤더 프리미티브 BlackBox 래퍼 (수기) | ✅ |
 | `rtl/formal/tla/` | 선-formal 모델 · cfg · 러너 | ✅ |
 | `rtl/formal/sby/` | 후-formal BMC / k-귀납 | ✅ |
@@ -124,7 +124,7 @@ golden 에서 직접 받는다.
 | `payload/Reassembly` | Payload.tla (11가드) | §4.3 문맥 결속 · D8/D9/D10 · E.10 |
 | `memorder/MemOrderGate` | MemOrder.tla (7가드) | §4.4.4 토큰 게이트 · D13 콘 앵커 |
 | `decode/OperandDecode` | (모델 없음 — 관측 기반) | §1.4 본문 해석 · ACCTGT 결속 배선 · SEC-7 |
-| `hiu/OwnershipTable` | Platform 판정의 데이터 원천 | E.7 두 상태·명시 전이만 · 경계 계약 확정 |
+| `hiu/OwnershipTable` | Platform 판정의 데이터 원천 | E.7 두 상태·명시 전이만 · 전이 명령은 오프셋 · 경계 계약 확정 |
 | `mask/MaskUnit` | (golden 관측 동형) | §5.2 라운드 3단 · E.9 · 고정 사이클 |
 | `host/CompletionUnit` | FAB-6 앵커의 장치 실물 | E.5 링 · E.6 통지 · **E.11 드레인 집계** |
 | `payload/Reassembly`+ | Payload +3 가드 (E.12) | 문맥 소거 — fault 아님·회계 흔적 |
@@ -512,6 +512,81 @@ RTL 이 모델에 없는 결정을 했다. §6.3: 「그 결정을 모델로 돌
 미측정은 통과가 아니다 (§6.7 원칙 5). ⇒ 후속 파도 대상: `CompletionUnit` 의
 오프셋 배타성(정의 워드 밖 기입이 어떤 레지스터도 움직이지 않음)과
 `0xF84` W1C 의 「해제가 발화를 삼키지 않음」이 첫 두 속성이다.
+
+## 페이지 소유권 전이 인코딩 — 명령을 오프셋으로 (2026-08-25)
+
+정본 개정과 같은 파도에서 착지했다. E.7 전이가 `0x204` OWN_DATA 의 `[31]` 에
+방향 비트를 싣고 `[30:0]` 에 프레임을 싣던 것을, **이양용·회수용 오프셋을
+따로 두는** 형태로 바꿨다 — `0x200` OWN_IDX (RW) · `0x204` OWN_STATUS (RO) ·
+`0x208` OWN_SET (WO) · `0x20C` OWN_CLR (WO). 워드 선택은 `addr[3:2]` 전수
+디코드다 (E.1.2: `addr[3]` = 조회 쌍/전이 쌍 · `addr[2]` = 쌍 안의 방향).
+
+전이는 여전히 **한 워드 쓰기 한 번**이라 E.7 원자성 논증은 한 글자도 바뀌지
+않는다. 얻은 것은 기계 안의 주소 용량이 *하나*가 된 것이다 — 앞판은 소유권
+31b · 변환 32b 였고, 그 어긋남이 「유효하게 사상되지만 결코 장치 소유가 될 수
+없는 페이지」라는 §3.4.1 밖의 *제3 상태*를 만들었다. 더 나쁜 쪽은 기입 시점
+별칭이었다: 드라이버가 `(1<<31)|F` 를 조립하면 F 의 최상위 비트가 방향 비트와
+겹쳐 *다른 페이지가 조용히 장치 소유로 넘어갔다.*
+
+제거된 좁힘 배선: `MMIO_FRAME_W(=31)` · `DIR_BIT(=31)` · 조회의 `qHighZero` ·
+상태 읽기의 `idxHigh0` · `require(frameW >= MMIO_FRAME_W)`. 태그 폭이 25→26b
+가 됐다 (색인 6 + 태그 26 = 프레임 32 전폭).
+
+**마이그레이션 안전망**: `0x204` 가 RW→RO 가 됐으므로 앞판 드라이버의 이양
+기입은 *조용히 사라질 수 있었다.* E.1.1 「RO 오프셋의 쓰기는 거절 + loud
+fault」를 이행해 `io.faultBadWrite` 를 신설하고 FAULT_STATUS `[6]`(거절된
+구성 기입)에 합류시켰다 — 그 비트가 이제 넷을 접는다 (MmioConfig · top 직접
+디코드 표면 · 완료 유닛 · 소유권 표).
+
+⚠ **앞 파도의 `ownershiptable.sby` 는 공허 PASS 였다 (2026-08-25 실측).**
+1차 파도가 bind 함정을 적발하고 하네스를 expose+래퍼로 옮겼는데 **이 파일은
+`bind` 로 남아 있었다.** 실측: 앞판 커밋본으로 돌리면 `design_smt2.smt2` 의
+assert 셀이 **0 개**, props 인스턴스도 0 개다. 즉
+`Platform.state_machine_kept` · `Platform.owner_check` 두 앵커는 커버리지
+래칫 66 안에 있었으나 *아무것도 재지 않고* 있었다. 그 자리에 문법
+오류(`$past` 를 연속 대입 안에)까지 숨어 있었다 — 공허가 문법 검사마저
+가려 준다.
+
+⛔ **같은 부류가 하나 더 있다 — `XlateStore/xlatestore` 도 공허다 (실측).**
+이 파도의 파일 배정 밖이라 여기서 고칠 수 없어 사실만 등재한다. 실측:
+`sby -f --prefix … rtl/formal/sby/XlateStore/xlatestore.sby` 의
+`design_smt2.smt2` 가 `bmc`·`prove` 양쪽에서 assert 셀 **0 개**이고, yosys 가
+`Removing unused module '$abstract\XlateStore_props'` 를 찍는다. 그 `.sby` 는
+**PROVES 앵커 일곱**을 주장한다 — `XlateStore.valid_check` ·
+`partition_check` · `flush_keeps_data` · `Isolation.install_scoped` ·
+`capacity_partitioned` · `fill_tagged` · `fill_slot_per_partition`.
+⇒ 커버리지 래칫 66 중 **아홉(이 일곱 + 소유권 둘)이 공허였다**; 소유권 둘은
+이 파도에서 실물이 됐으므로 지금 실측 덮임은 **59**다. 래칫 수를 그대로 두는
+것은 이 아홉을 다시 조용히 덮는 일이다.
+
+⇒ **부착 방식 전수 (2026-08-25)**: 열여섯 태스크 중 열다섯은 래퍼 top
+(`*_formal` · `*_comp` · props 자신) 이거나 `exec -- sh -c sed` 텍스트 전개
+(MemOrderGate · Reassembly) 라 안전하다. 공허 판정의 지문은 **`prep -top` 이
+DUT 자신을 가리키면서 expose 도 sed 전개도 없는 것**이고, 지금 그에 해당하는
+것은 `XlateStore/xlatestore` 하나다. 눈으로 하는 확인은 한 줄이다 —
+`prep -top` 이 DUT 모듈 이름 *그대로*인 태스크를 뽑고, 그중 `exec -- sh -c`
+텍스트 전개가 없는 것이 공허다:
+
+```sh
+grep -H 'prep -top' rtl/formal/sby/*/*.sby
+grep -L 'exec -- sh -c' rtl/formal/sby/*/*.sby   # 위 목록과 교집합을 본다
+```
+
+기계로 하는 확인은 아래 lint 항목이다 — 눈은 이번에도 놓쳤다.
+
+⇒ **`lint_postformal.py` 에 공허 게이트가 없다.** 지금 그 lint 가 재는 것은
+선언의 *실재성*(PROVES 가 가리키는 CHECK 가 있는가)과 `[files]` 경로 실재성
+뿐이다 — 「그 선언이 실제로 셀을 만드는가」는 재지 않는다. 태스크당
+`design_smt2.smt2` 의 assert 셀 수 > 0 과 cover 태스크의 미도달 0 을 게이트로
+올리는 것이 이 부류를 마지막으로 닫는 방법이다 (`lint_postformal.py` 는 이
+파도의 배정 밖 — 후속 대상).
+
+⚠ **이 파도가 닫지 *않는* 것** — 「비소유 접근은 loud fault」(§3.4.1 4항 ·
+HIU-10). 선-formal 이 증명한 것은 모델 위의 배타성이고, 후-formal 에서 값
+차단·sticky·`0xF80` 도달은 미측정이다. `owner_check` 앵커가 주장하는 것은
+판정의 *데이터 원천*뿐이라 좁은 증명이 넓은 주장을 「덮임」으로 계수하지
+않도록 `.sby` 머리에 정직 표기를 넣었다. 후-formal 2차 파도의 **fault 축**
+이다 (B.5 · §3.9 미측정 행). 미측정은 통과가 아니다.
 
 **후-formal 상태 주의 (2026-08-25 실측)** — `RouteMmio/route_mmio` 의 `prove`
 태스크가 **HEAD 에서 이미 실패한다**: `p_bank_iff`(props.sv:233) ·

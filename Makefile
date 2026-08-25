@@ -564,6 +564,10 @@ claude-recent-id:
 # =============================================================================
 
 RTL_DIR     := $(CURDIR)/rtl
+# 후-formal 산출물의 호스트 쪽 자리. 저장소 밖에 두어 트리를 더럽히지 않되,
+# 컨테이너와 *공유*되어야 한다 — 공허 게이트가 셀을 세려면 산출물과 세는
+# 주체가 같은 파일시스템에 있어야 하기 때문이다 (rtl-postformal 주석 참조).
+SBY_OUT     := /tmp/wt-sby-out
 RTL_SPINAL  := $(RTL_DIR)/spinal
 RTL_GEN     := $(RTL_DIR)/generated
 
@@ -619,18 +623,50 @@ rtl-formal:
 # 크게 실패한다. 산출물은 /tmp (저장소에 쌓지 않는다). 솔버는 z3 단독
 # (.sby 안에 명시 — 기본값 의존 금지). 호스트 sby 사용 금지 — 컨테이너로만
 # (호스트 tlc 2.19 함정과 동류).
+#
+# ## 공허 게이트 — PASS 가 아무것도 보증하지 않는 경우
+#
+# yosys 0.66 은 SystemVerilog `bind` 를 오류 없이 파싱하고 *조용히 무시*한다.
+# 하네스 모듈이 「Removing unused module」로 제거되면 단언이 하나도 없는 채
+# 전 태스크가 PASS 한다. 2026-08-25 실측: XlateStore 가 PROVES 앵커 7건을
+# 달고도 assert 0 으로 통과하고 있었고, lint_postformal 의 커버리지 래칫이
+# 그 일곱을 「덮임」으로 세고 있었다 — 주장만 있고 측정이 없었다.
+#
+# 그래서 PASS 만으로는 부족하다. 각 태스크의 합성 모델에서 assert/cover 셀을
+# 세어 0 이면 HOLLOW 로 판정하고 실패시킨다. 「돌았고 통과했다」는 관측이
+# 무엇을 보증하는지는 셀 수가 답한다.
+#
+# 이 게이트가 사람의 적발을 대신하는 이유: 1차 파도에서 세 팀이 독립적으로
+# 이 함정을 밟고 각자 적발했는데도 둘이 그물을 빠져나갔다. 지문을 「prep -top
+# 이 DUT 자신인 것」으로 잡은 것이 원인이다 — HiuMask 는 래퍼를 가져서 그
+# 검사를 통과했고, 다만 그 래퍼가 DUT 둘을 배선만 하고 단언은 별도 props 에
+# bind 로 붙었다. **래퍼 top 은 부착의 증거가 아니다. 셀 수만이 증거다.**
+#
+# lint_postformal 은 이것을 잡을 수 없다 — 정적 검사라 셀을 셀 수 없고,
+# PROVES 앵커의 실재성만 재면서 그것을 「덮임」으로 계수한다. 두 층의 분업이
+# 그래서 이렇다: lint 은 *선언*의 정합을, 이 타깃은 *측정*의 실재를 잰다.
+#
+# 산출물을 SBY_OUT 볼륨으로 빼는 이유: sby 는 컨테이너 안에서 돌므로 --prefix
+# 를 컨테이너 /tmp 로 두면 --rm 과 함께 사라진다. 셀 수를 세는 쪽은 호스트라
+# 전부 0 으로 읽히고, 게이트가 멀쩡한 태스크를 공허로 오판한다 (2026-08-25
+# 첫 실행에서 14/16 오탐). 세는 주체와 산출물이 같은 파일시스템에 있어야 한다.
 rtl-postformal:
 	@test -d $(RTL_DIR)/formal/sby || { echo "rtl-postformal: sby 스크립트가 없다 — 미측정은 통과가 아니다"; exit 1; }
-	@fail=0; total=0; \
+	@rm -rf $(SBY_OUT); mkdir -p $(SBY_OUT)
+	@fail=0; total=0; hollow=0; \
 	for f in $(RTL_DIR)/formal/sby/*/*.sby; do \
 	  total=$$((total+1)); name=$$(basename $$f .sby); dir=$$(basename $$(dirname $$f)); \
 	  printf '%-40s ' "$$dir/$$name"; \
-	  if podman run --rm --userns=keep-id -v "$(CURDIR):/workspace" wavetensor-dev:scala \
-	     sh -lc "cd /workspace && sby -f --prefix /tmp/sby-$$dir-$$name rtl/formal/sby/$$dir/$$name.sby" >/tmp/wt-sby-$$dir-$$name.log 2>&1; then \
-	     echo PASS; \
+	  if podman run --rm --userns=keep-id -v "$(CURDIR):/workspace" -v "$(SBY_OUT):/sbyout" \
+	     wavetensor-dev:scala \
+	     sh -lc "cd /workspace && sby -f --prefix /sbyout/$$dir-$$name rtl/formal/sby/$$dir/$$name.sby" >/tmp/wt-sby-$$dir-$$name.log 2>&1; then \
+	     n=$$(cat $(SBY_OUT)/$$dir-$$name*/model/design_prep.il 2>/dev/null | grep -cE 'cell \$$(assert|cover)' || true); \
+	     if [ "$${n:-0}" -eq 0 ]; then echo "HOLLOW (단언 0개 — 통과가 아무것도 보증하지 않는다)"; hollow=$$((hollow+1)); \
+	     else echo "PASS (단언 $$n)"; fi; \
 	  else echo "FAIL (로그: /tmp/wt-sby-$$dir-$$name.log)"; fail=$$((fail+1)); fi; \
 	done; \
-	echo "rtl-postformal: $$total 태스크 중 실패 $$fail"; test $$fail -eq 0
+	echo "rtl-postformal: $$total 태스크 · 실패 $$fail · 공허 $$hollow"; \
+	test $$(( $$fail + $$hollow )) -eq 0
 
 # 후-formal 영향 역색인 — 「이 변경으로 어느 태스크가 흔들리는가」.
 #
