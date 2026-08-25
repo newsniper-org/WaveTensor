@@ -61,11 +61,19 @@ def sby_inputs() -> dict:
 
 
 def changed_files() -> list:
-    out = subprocess.run(
-        ["git", "diff", "--name-only", "HEAD"],
-        cwd=ROOT, capture_output=True, text=True, check=False,
-    )
-    return [ln for ln in out.stdout.splitlines() if ln.strip()]
+    """추적 변경 ∪ 미추적 신규.
+
+    미추적을 함께 보는 이유: 기존 .sby 에 *새 props 파일만* 추가하는 파도는
+    추적 변경이 0 일 수 있고, 그러면 이 도구가 「돌릴 것 없음」이라 답한다 —
+    이 도구가 존재하는 이유가 정확히 그 부류다. 2026-08-25 전수 검증이
+    실측으로 지적했다(그때는 같은 파도가 생성물도 건드려 우연히 잡혔다).
+    """
+    seen = []
+    for args in (["git", "diff", "--name-only", "HEAD"],
+                 ["git", "ls-files", "--others", "--exclude-standard"]):
+        out = subprocess.run(args, cwd=ROOT, capture_output=True, text=True, check=False)
+        seen += [ln for ln in out.stdout.splitlines() if ln.strip()]
+    return sorted(set(seen))
 
 
 def main() -> None:

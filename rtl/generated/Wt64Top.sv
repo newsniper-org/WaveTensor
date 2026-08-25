@@ -252,6 +252,11 @@ module Wt64Top (
   wire                od_io_iFaultClear;
   wire                rj_io_faultClear;
   wire                reasm_io_abort_valid;
+  wire       [31:0]   reasm_io_abort_tag_wave;
+  wire       [15:0]   reasm_io_abort_tag_thread;
+  wire       [15:0]   reasm_io_abort_tag_lnid;
+  wire       [7:0]    reasm_io_abort_tag_precision;
+  wire       [7:0]    reasm_io_abort_tag_dim;
   wire                reasm_io_faultClear;
   wire                reasm_io_capAbsentClear;
   wire                mog_io_up_0_valid;
@@ -305,7 +310,6 @@ module Wt64Top (
   wire       [7:0]    cq_io_addr;
   wire                cq_io_wstrobe;
   wire                cq_io_rstrobe;
-  wire       [255:0]  cq_io_comp_payload;
   wire       [15:0]   cq_io_drain_pipe;
   wire       [15:0]   cq_io_drain_pending;
   wire       [15:0]   cq_io_drain_output;
@@ -559,12 +563,12 @@ module Wt64Top (
   wire                maskArea_npWr;
   wire                maskArea_npRsvBad;
   wire                maskArea_npReject;
-  wire                when_Wt64Top_l1039;
+  wire                when_Wt64Top_l1085;
   wire                maskArea_rkWr;
   wire                maskArea_rkRsvBad;
   wire                maskArea_rkReject;
   reg        [31:0]   maskArea_maskStat;
-  wire                when_Wt64Top_l1066;
+  wire                when_Wt64Top_l1112;
   reg        [31:0]   maskArea_readValue;
   wire       [3:0]    fpArea_wordOff;
   wire                fpArea_wr;
@@ -573,7 +577,7 @@ module Wt64Top (
   wire                fpArea_isBind;
   wire                fpArea_isStatus;
   wire                fpArea_bindRsvBad;
-  wire                when_Wt64Top_l1107;
+  wire                when_Wt64Top_l1153;
   reg        [31:0]   fpArea_fpStat;
   reg        [31:0]   fpArea_readValue;
   wire       [3:0]    abortArea_wordOff;
@@ -587,15 +591,15 @@ module Wt64Top (
   wire                abortArea_isInc;
   wire                abortArea_tag2RsvBad;
   wire                abortArea_fireRsvBad;
-  reg        [31:0]   abortArea_abWave;
-  reg        [15:0]   abortArea_abThread;
-  reg        [15:0]   abortArea_abLnid;
-  reg        [7:0]    abortArea_abPrec;
-  reg        [7:0]    abortArea_abDim;
-  wire                when_Wt64Top_l1149;
-  wire                when_Wt64Top_l1150;
-  wire                when_Wt64Top_l1156;
-  wire                when_Wt64Top_l1168;
+  reg        [31:0]   abortArea_abTag0;
+  reg        [31:0]   abortArea_abTag1;
+  reg        [15:0]   abortArea_abTag2;
+  wire                when_Wt64Top_l1204;
+  wire                when_Wt64Top_l1205;
+  wire                when_Wt64Top_l1210;
+  wire       [31:0]   abortArea_abWords_2;
+  wire                abortArea_stagedRsvBad;
+  wire                when_Wt64Top_l1225;
   reg        [31:0]   abortArea_readValue;
   wire       [3:0]    faultArea_wordOff;
   wire                faultArea_wr;
@@ -609,16 +613,16 @@ module Wt64Top (
   wire                faultArea_capRsvBad;
   wire                faultArea_doClr;
   wire                faultArea_doCapClr;
-  wire                when_Wt64Top_l1217;
-  wire                when_Common_l140;
+  wire                when_Wt64Top_l1274;
+  wire                when_Common_l258;
   reg                 _zz_io_fault_cfgSurfBadWrite;
-  wire                when_Common_l140_1;
+  wire                when_Common_l258_1;
   reg                 _zz_io_fault_fpCapAbsent;
   reg        [31:0]   faultWords_status;
   reg        [31:0]   faultWords_summary;
   reg        [31:0]   faultWords_capStatus;
   reg        [31:0]   faultWords_readValue;
-  wire                when_Wt64Top_l1324;
+  wire                when_Wt64Top_l1385;
   wire                mapRd;
   reg        [31:0]   mapRdReg;
   reg                 mapRv;
@@ -822,11 +826,11 @@ module Wt64Top (
     .io_incomplete                    (reasm_io_incomplete[2:0]                         ), //o
     .io_occupancy                     (reasm_io_occupancy[2:0]                          ), //o
     .io_abort_valid                   (reasm_io_abort_valid                             ), //i
-    .io_abort_tag_wave                (abortArea_abWave[31:0]                           ), //i
-    .io_abort_tag_thread              (abortArea_abThread[15:0]                         ), //i
-    .io_abort_tag_lnid                (abortArea_abLnid[15:0]                           ), //i
-    .io_abort_tag_precision           (abortArea_abPrec[7:0]                            ), //i
-    .io_abort_tag_dim                 (abortArea_abDim[7:0]                             ), //i
+    .io_abort_tag_wave                (reasm_io_abort_tag_wave[31:0]                    ), //i
+    .io_abort_tag_thread              (reasm_io_abort_tag_thread[15:0]                  ), //i
+    .io_abort_tag_lnid                (reasm_io_abort_tag_lnid[15:0]                    ), //i
+    .io_abort_tag_precision           (reasm_io_abort_tag_precision[7:0]                ), //i
+    .io_abort_tag_dim                 (reasm_io_abort_tag_dim[7:0]                      ), //i
     .io_abortCount                    (reasm_io_abortCount[7:0]                         ), //o
     .io_fault                         (reasm_io_fault                                   ), //o
     .io_faultClear                    (reasm_io_faultClear                              ), //i
@@ -1109,29 +1113,35 @@ module Wt64Top (
     .reset                (reset                   )  //i
   );
   CompletionUnit cq (
-    .io_addr               (cq_io_addr[7:0]           ), //i
-    .io_wstrobe            (cq_io_wstrobe             ), //i
-    .io_wdata              (io_mmio_wdata[31:0]       ), //i
-    .io_rstrobe            (cq_io_rstrobe             ), //i
-    .io_rdata              (cq_io_rdata[31:0]         ), //o
-    .io_rvalid             (cq_io_rvalid              ), //o
-    .io_ready              (cq_io_ready               ), //o
-    .io_comp_valid         (reasm_io_deliver_valid    ), //i
-    .io_comp_payload       (cq_io_comp_payload[255:0] ), //i
-    .io_comp_ready         (cq_io_comp_ready          ), //o
-    .io_irq                (cq_io_irq                 ), //o
-    .io_drain_pipe         (cq_io_drain_pipe[15:0]    ), //i
-    .io_drain_pending      (cq_io_drain_pending[15:0] ), //i
-    .io_drain_output       (cq_io_drain_output[15:0]  ), //i
-    .io_drain_ownSlots     (cq_io_drain_ownSlots[15:0]), //i
-    .io_drain_contexts     (cq_io_drain_contexts[15:0]), //i
-    .io_drain_tokens       (cq_io_drain_tokens[15:0]  ), //i
-    .io_faultOverflow      (cq_io_faultOverflow       ), //o
-    .io_faultClearOverflow (cq_io_faultClearOverflow  ), //i
-    .io_faultBadWrite      (cq_io_faultBadWrite       ), //o
-    .io_faultClearBadWrite (cq_io_faultClearBadWrite  ), //i
-    .clk                   (clk                       ), //i
-    .reset                 (reset                     )  //i
+    .io_addr               (cq_io_addr[7:0]                            ), //i
+    .io_wstrobe            (cq_io_wstrobe                              ), //i
+    .io_wdata              (io_mmio_wdata[31:0]                        ), //i
+    .io_rstrobe            (cq_io_rstrobe                              ), //i
+    .io_rdata              (cq_io_rdata[31:0]                          ), //o
+    .io_rvalid             (cq_io_rvalid                               ), //o
+    .io_ready              (cq_io_ready                                ), //o
+    .io_comp_valid         (reasm_io_deliver_valid                     ), //i
+    .io_comp_tag_wave      (reasm_io_deliver_payload_tag_wave[31:0]    ), //i
+    .io_comp_tag_thread    (reasm_io_deliver_payload_tag_thread[15:0]  ), //i
+    .io_comp_tag_lnid      (reasm_io_deliver_payload_tag_lnid[15:0]    ), //i
+    .io_comp_tag_precision (reasm_io_deliver_payload_tag_precision[7:0]), //i
+    .io_comp_tag_dim       (reasm_io_deliver_payload_tag_dim[7:0]      ), //i
+    .io_comp_base          (reasm_io_deliver_payload_base[7:0]         ), //i
+    .io_comp_total         (reasm_io_deliver_payload_total[7:0]        ), //i
+    .io_comp_ready         (cq_io_comp_ready                           ), //o
+    .io_irq                (cq_io_irq                                  ), //o
+    .io_drain_pipe         (cq_io_drain_pipe[15:0]                     ), //i
+    .io_drain_pending      (cq_io_drain_pending[15:0]                  ), //i
+    .io_drain_output       (cq_io_drain_output[15:0]                   ), //i
+    .io_drain_ownSlots     (cq_io_drain_ownSlots[15:0]                 ), //i
+    .io_drain_contexts     (cq_io_drain_contexts[15:0]                 ), //i
+    .io_drain_tokens       (cq_io_drain_tokens[15:0]                   ), //i
+    .io_faultOverflow      (cq_io_faultOverflow                        ), //o
+    .io_faultClearOverflow (cq_io_faultClearOverflow                   ), //i
+    .io_faultBadWrite      (cq_io_faultBadWrite                        ), //o
+    .io_faultClearBadWrite (cq_io_faultClearBadWrite                   ), //i
+    .clk                   (clk                                        ), //i
+    .reset                 (reset                                      )  //i
   );
   assign walk_io_iFaultClear = (io_faultClear_decodeWalk || (fltClrAccept && io_mmio_wdata[0]));
   assign od_io_iFaultClear = (io_faultClear_operandDecode || (fltClrAccept && io_mmio_wdata[1]));
@@ -1257,7 +1267,6 @@ module Wt64Top (
   assign io_fp_result = fps_io_oResult;
   assign fps_io_faultClearBp = (io_faultClear_fpBp || (fltClrAccept && io_mmio_wdata[14]));
   assign fps_io_faultClearBadProg = (io_faultClear_fpBadProg || (fltClrAccept && io_mmio_wdata[15]));
-  assign cq_io_comp_payload = {{{160'h0,{reasm_io_deliver_payload_tag_dim,{reasm_io_deliver_payload_tag_precision,{reasm_io_deliver_payload_tag_lnid,{reasm_io_deliver_payload_tag_thread,reasm_io_deliver_payload_tag_wave}}}}},reasm_io_deliver_payload_base},reasm_io_deliver_payload_total};
   assign cq_io_drain_pipe = {13'd0, hiu_io_occupancy};
   assign cq_io_drain_pending = {13'd0, shared_1_io_occupancy};
   assign cq_io_drain_output = {13'd0, merge_io_occupancy};
@@ -1293,16 +1302,16 @@ module Wt64Top (
   assign cfgBlk_io_faultClearBad = (io_faultClear_cfgBadWrite || (fltClrAccept && io_mmio_wdata[6]));
   always @(*) begin
     surfBadWr = 1'b0;
-    if(when_Wt64Top_l1066) begin
+    if(when_Wt64Top_l1112) begin
       surfBadWr = 1'b1;
     end
-    if(when_Wt64Top_l1107) begin
+    if(when_Wt64Top_l1153) begin
       surfBadWr = 1'b1;
     end
-    if(when_Wt64Top_l1168) begin
+    if(when_Wt64Top_l1225) begin
       surfBadWr = 1'b1;
     end
-    if(when_Wt64Top_l1217) begin
+    if(when_Wt64Top_l1274) begin
       surfBadWr = 1'b1;
     end
   end
@@ -1322,7 +1331,7 @@ module Wt64Top (
   assign maskArea_npWr = (maskArea_wr && maskArea_isNoncePart);
   assign maskArea_npRsvBad = ((io_mmio_wdata & 32'hffffff00) != 32'h0);
   assign maskArea_npReject = (maskArea_npWr && (maskArea_npRsvBad || maskArea_partBad));
-  assign when_Wt64Top_l1039 = ((maskArea_npWr && (! maskArea_npRsvBad)) && (! maskArea_partBad));
+  assign when_Wt64Top_l1085 = ((maskArea_npWr && (! maskArea_npRsvBad)) && (! maskArea_partBad));
   assign mask_io_nonceWr_valid = (maskArea_wr && maskArea_isNonce);
   assign mask_io_nonceWr_idx = (maskArea_wordOff[2 : 0] - 3'b001);
   assign maskArea_rkWr = (maskArea_wr && maskArea_isRekey);
@@ -1337,7 +1346,7 @@ module Wt64Top (
     maskArea_maskStat[9] = mask_io_rekey_ready;
   end
 
-  assign when_Wt64Top_l1066 = ((maskArea_npReject || maskArea_rkReject) || (maskArea_wr && maskArea_isStatus));
+  assign when_Wt64Top_l1112 = ((maskArea_npReject || maskArea_rkReject) || (maskArea_wr && maskArea_isStatus));
   always @(*) begin
     maskArea_readValue = 32'h0;
     if(maskArea_isNoncePart) begin
@@ -1363,7 +1372,7 @@ module Wt64Top (
   assign fps_io_bindWr_key = io_mmio_wdata[15 : 0];
   assign fps_io_bindWr_en = io_mmio_wdata[31];
   assign fps_io_bindWr_slot = io_mmio_wdata[23 : 16];
-  assign when_Wt64Top_l1107 = (((fpArea_wr && fpArea_isBind) && fpArea_bindRsvBad) || (fpArea_wr && fpArea_isStatus));
+  assign when_Wt64Top_l1153 = (((fpArea_wr && fpArea_isBind) && fpArea_bindRsvBad) || (fpArea_wr && fpArea_isStatus));
   always @(*) begin
     fpArea_fpStat = 32'h0;
     fpArea_fpStat[0] = fps_io_loadReady;
@@ -1388,11 +1397,18 @@ module Wt64Top (
   assign abortArea_isInc = (abortArea_wordOff == 4'b0101);
   assign abortArea_tag2RsvBad = ((io_mmio_wdata & 32'hffff0000) != 32'h0);
   assign abortArea_fireRsvBad = ((io_mmio_wdata & 32'hfffffffe) != 32'h0);
-  assign when_Wt64Top_l1149 = (abortArea_wr && abortArea_isTag0);
-  assign when_Wt64Top_l1150 = (abortArea_wr && abortArea_isTag1);
-  assign when_Wt64Top_l1156 = ((abortArea_wr && abortArea_isTag2) && (! abortArea_tag2RsvBad));
-  assign reasm_io_abort_valid = (((abortArea_wr && abortArea_isFire) && (! abortArea_fireRsvBad)) && io_mmio_wdata[0]);
-  assign when_Wt64Top_l1168 = ((((abortArea_wr && abortArea_isTag2) && abortArea_tag2RsvBad) || ((abortArea_wr && abortArea_isFire) && abortArea_fireRsvBad)) || (abortArea_wr && (abortArea_isCnt || abortArea_isInc)));
+  assign when_Wt64Top_l1204 = (abortArea_wr && abortArea_isTag0);
+  assign when_Wt64Top_l1205 = (abortArea_wr && abortArea_isTag1);
+  assign when_Wt64Top_l1210 = ((abortArea_wr && abortArea_isTag2) && (! abortArea_tag2RsvBad));
+  assign abortArea_abWords_2 = {16'h0,abortArea_abTag2};
+  assign abortArea_stagedRsvBad = (abortArea_abWords_2[31 : 16] != 16'h0);
+  assign reasm_io_abort_valid = ((((abortArea_wr && abortArea_isFire) && (! abortArea_fireRsvBad)) && (! abortArea_stagedRsvBad)) && io_mmio_wdata[0]);
+  assign reasm_io_abort_tag_wave = abortArea_abTag0;
+  assign reasm_io_abort_tag_thread = abortArea_abTag1[31 : 16];
+  assign reasm_io_abort_tag_lnid = abortArea_abTag1[15 : 0];
+  assign reasm_io_abort_tag_precision = abortArea_abWords_2[15 : 8];
+  assign reasm_io_abort_tag_dim = abortArea_abWords_2[7 : 0];
+  assign when_Wt64Top_l1225 = ((((abortArea_wr && abortArea_isTag2) && abortArea_tag2RsvBad) || ((abortArea_wr && abortArea_isFire) && abortArea_fireRsvBad)) || (abortArea_wr && (abortArea_isCnt || abortArea_isInc)));
   always @(*) begin
     abortArea_readValue = 32'h0;
     if(abortArea_isCnt) begin
@@ -1411,13 +1427,13 @@ module Wt64Top (
   assign faultArea_isSummary = (faultArea_wordOff == 4'b0010);
   assign faultArea_isCapSt = (faultArea_wordOff == 4'b0011);
   assign faultArea_isCapClr = (faultArea_wordOff == 4'b0100);
-  assign faultArea_clrRsvBad = ((io_mmio_wdata & 32'hfffc0000) != 32'h0);
+  assign faultArea_clrRsvBad = ((io_mmio_wdata & 32'hfff80000) != 32'h0);
   assign faultArea_capRsvBad = ((io_mmio_wdata & 32'hfffffffc) != 32'h0);
   assign faultArea_doClr = ((faultArea_wr && faultArea_isClear) && (! faultArea_clrRsvBad));
   assign faultArea_doCapClr = ((faultArea_wr && faultArea_isCapClr) && (! faultArea_capRsvBad));
   assign fltClrAccept = faultArea_doClr;
   assign capClrAccept = faultArea_doCapClr;
-  assign when_Wt64Top_l1217 = (((faultArea_wr && ((faultArea_isStatus || faultArea_isSummary) || faultArea_isCapSt)) || ((faultArea_wr && faultArea_isClear) && faultArea_clrRsvBad)) || ((faultArea_wr && faultArea_isCapClr) && faultArea_capRsvBad));
+  assign when_Wt64Top_l1274 = (((faultArea_wr && ((faultArea_isStatus || faultArea_isSummary) || faultArea_isCapSt)) || ((faultArea_wr && faultArea_isClear) && faultArea_clrRsvBad)) || ((faultArea_wr && faultArea_isCapClr) && faultArea_capRsvBad));
   assign io_fault_decodeWalk = walk_io_oFault;
   assign io_fault_operandDecode = od_io_oFault;
   assign io_fault_route = rj_io_fault;
@@ -1427,7 +1443,7 @@ module Wt64Top (
   assign io_fault_hiuMiss = hiu_io_missNotice;
   assign io_fault_cfgDupOwner = cfgBlk_io_faultDupOwner;
   assign io_fault_cfgBadWrite = cfgBlk_io_faultBadWrite;
-  assign when_Common_l140 = (io_faultClear_cfgSurfBadWrite || (fltClrAccept && io_mmio_wdata[6]));
+  assign when_Common_l258 = (io_faultClear_cfgSurfBadWrite || (fltClrAccept && io_mmio_wdata[6]));
   assign io_fault_cfgSurfBadWrite = _zz_io_fault_cfgSurfBadWrite;
   assign io_fault_ownCollide = own_io_faultCollide;
   assign io_fault_ownBadWrite = own_io_faultBadWrite;
@@ -1441,7 +1457,7 @@ module Wt64Top (
   assign io_fault_fpBadProg = fps_io_faultBadProg;
   assign io_fault_cqOverflow = cq_io_faultOverflow;
   assign io_fault_cqBadWrite = cq_io_faultBadWrite;
-  assign when_Common_l140_1 = (capClrAccept && io_mmio_wdata[1]);
+  assign when_Common_l258_1 = (capClrAccept && io_mmio_wdata[1]);
   assign io_fault_fpCapAbsent = _zz_io_fault_fpCapAbsent;
   always @(*) begin
     faultWords_status = 32'h0;
@@ -1463,6 +1479,7 @@ module Wt64Top (
     faultWords_status[15] = io_fault_fpBadProg;
     faultWords_status[16] = io_fault_cqOverflow;
     faultWords_status[17] = 1'b0;
+    faultWords_status[18] = 1'b0;
   end
 
   always @(*) begin
@@ -1500,12 +1517,12 @@ module Wt64Top (
     if(selCfg) begin
       io_mmio_ready = cfgBlk_io_ready;
     end
-    if(when_Wt64Top_l1324) begin
+    if(when_Wt64Top_l1385) begin
       io_mmio_ready = fps_io_loadReady;
     end
   end
 
-  assign when_Wt64Top_l1324 = (selFp && (fpArea_isProg || fpArea_isBind));
+  assign when_Wt64Top_l1385 = (selFp && (fpArea_isProg || fpArea_isBind));
   assign mapRd = (((maskArea_rd || fpArea_rd) || abortArea_rd) || faultArea_rd);
   assign resvOffset = (! (((((((selOwn || selCq) || selCfg) || selMask) || selFp) || selAbort) || selFault) || selUnwired));
   assign resvRd = ((io_mmio_rstrobe && (! io_mmio_wstrobe)) && ((resvOffset || selUnwired) || ((((selMask || selFp) || selAbort) || selFault) && (! mmioAligned))));
@@ -1540,38 +1557,34 @@ module Wt64Top (
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       maskArea_noncePart <= 2'b00;
-      abortArea_abWave <= 32'h0;
-      abortArea_abThread <= 16'h0;
-      abortArea_abLnid <= 16'h0;
-      abortArea_abPrec <= 8'h0;
-      abortArea_abDim <= 8'h0;
+      abortArea_abTag0 <= 32'h0;
+      abortArea_abTag1 <= 32'h0;
+      abortArea_abTag2 <= 16'h0;
       _zz_io_fault_cfgSurfBadWrite <= 1'b0;
       _zz_io_fault_fpCapAbsent <= 1'b0;
       mapRdReg <= 32'h0;
       mapRv <= 1'b0;
       resvRv <= 1'b0;
     end else begin
-      if(when_Wt64Top_l1039) begin
+      if(when_Wt64Top_l1085) begin
         maskArea_noncePart <= maskArea_partField[1:0];
       end
-      if(when_Wt64Top_l1149) begin
-        abortArea_abWave <= io_mmio_wdata;
+      if(when_Wt64Top_l1204) begin
+        abortArea_abTag0 <= io_mmio_wdata;
       end
-      if(when_Wt64Top_l1150) begin
-        abortArea_abThread <= io_mmio_wdata[31 : 16];
-        abortArea_abLnid <= io_mmio_wdata[15 : 0];
+      if(when_Wt64Top_l1205) begin
+        abortArea_abTag1 <= io_mmio_wdata;
       end
-      if(when_Wt64Top_l1156) begin
-        abortArea_abPrec <= io_mmio_wdata[15 : 8];
-        abortArea_abDim <= io_mmio_wdata[7 : 0];
+      if(when_Wt64Top_l1210) begin
+        abortArea_abTag2 <= io_mmio_wdata[15 : 0];
       end
-      if(when_Common_l140) begin
+      if(when_Common_l258) begin
         _zz_io_fault_cfgSurfBadWrite <= 1'b0;
       end
       if(surfBadWr) begin
         _zz_io_fault_cfgSurfBadWrite <= 1'b1;
       end
-      if(when_Common_l140_1) begin
+      if(when_Common_l258_1) begin
         _zz_io_fault_fpCapAbsent <= 1'b0;
       end
       if(fps_io_oCapAbsent) begin
@@ -1609,7 +1622,13 @@ module CompletionUnit (
   output wire          io_rvalid,
   output wire          io_ready,
   input  wire          io_comp_valid,
-  input  wire [255:0]  io_comp_payload,
+  input  wire [31:0]   io_comp_tag_wave,
+  input  wire [15:0]   io_comp_tag_thread,
+  input  wire [15:0]   io_comp_tag_lnid,
+  input  wire [7:0]    io_comp_tag_precision,
+  input  wire [7:0]    io_comp_tag_dim,
+  input  wire [7:0]    io_comp_base,
+  input  wire [7:0]    io_comp_total,
   output wire          io_comp_ready,
   output wire          io_irq,
   input  wire [15:0]   io_drain_pipe,
@@ -1628,6 +1647,8 @@ module CompletionUnit (
 
   reg        [255:0]  ring_spinal_port1;
   wire       [2:0]    _zz_full;
+  wire       [7:0]    _zz_descWords_4;
+  wire       [7:0]    _zz_descWords_5;
   wire       [31:0]   _zz_readValue;
   wire       [0:0]    _zz_readValue_1;
   wire       [31:0]   _zz_readValue_2;
@@ -1645,6 +1666,12 @@ module CompletionUnit (
   wire                empty;
   wire                full;
   wire       [2:0]    occ;
+  wire       [31:0]   descWords_0;
+  wire       [31:0]   descWords_4;
+  wire       [31:0]   descWords_5;
+  wire       [31:0]   descWords_6;
+  wire       [31:0]   descWords_7;
+  wire       [255:0]  desc;
   wire                doPush;
   wire                shove;
   wire                aligned;
@@ -1668,8 +1695,8 @@ module CompletionUnit (
   wire                irqClrPulse;
   reg        [31:0]   irqMaskReg;
   wire                irqMask;
-  wire                when_CompletionUnit_l333;
-  wire                when_CompletionUnit_l334;
+  wire                when_CompletionUnit_l572;
+  wire                when_CompletionUnit_l573;
   wire                badWrite;
   reg                 irqSticky;
   reg                 faultOv;
@@ -1684,6 +1711,8 @@ module CompletionUnit (
   reg [255:0] ring [0:7];
 
   assign _zz_full = (tail + 3'b001);
+  assign _zz_descWords_4 = io_comp_base;
+  assign _zz_descWords_5 = io_comp_total;
   assign _zz_readValue = {29'd0, tail};
   assign _zz_readValue_1 = irqSticky;
   assign _zz_readValue_2 = {29'd0, occ};
@@ -1696,7 +1725,7 @@ module CompletionUnit (
   assign _zz_readValue_9 = {16'd0, io_drain_tokens};
   always @(posedge clk) begin
     if(doPush) begin
-      ring[tail] <= io_comp_payload;
+      ring[tail] <= desc;
     end
   end
 
@@ -1725,6 +1754,12 @@ module CompletionUnit (
   assign full = (_zz_full == head);
   assign occ = (tail - head);
   assign io_comp_ready = (! full);
+  assign descWords_0 = 32'h00000001;
+  assign descWords_4 = {24'd0, _zz_descWords_4};
+  assign descWords_5 = {24'd0, _zz_descWords_5};
+  assign descWords_6 = 32'h0;
+  assign descWords_7 = 32'h0;
+  assign desc = {{{{{{{descWords_7,descWords_6},descWords_5},descWords_4},{{16'h0,io_comp_tag_precision},io_comp_tag_dim}},{io_comp_tag_thread,io_comp_tag_lnid}},io_comp_tag_wave},descWords_0};
   assign doPush = (io_comp_valid && (! full));
   assign shove = (io_comp_valid && full);
   assign aligned = (io_addr[1 : 0] == 2'b00);
@@ -1747,8 +1782,8 @@ module CompletionUnit (
   assign sizeValBad = (io_wdata[4 : 0] != 5'h03);
   assign irqClrPulse = (((doWr && isIrqClr) && (! clrRsvBad)) && io_wdata[0]);
   assign irqMask = irqMaskReg[0];
-  assign when_CompletionUnit_l333 = (doWr && isHead);
-  assign when_CompletionUnit_l334 = ((doWr && isIrqMk) && (! mkRsvBad));
+  assign when_CompletionUnit_l572 = (doWr && isHead);
+  assign when_CompletionUnit_l573 = ((doWr && isIrqMk) && (! mkRsvBad));
   assign badWrite = (doWr && (((isRoOff || (isSize && (sizeRsvBad || sizeValBad))) || (isIrqMk && mkRsvBad)) || (isIrqClr && clrRsvBad)));
   assign io_irq = (irqSticky && (! irqMask));
   assign io_faultOverflow = faultOv;
@@ -1822,10 +1857,10 @@ module CompletionUnit (
       if(doPush) begin
         tail <= (tail + 3'b001);
       end
-      if(when_CompletionUnit_l333) begin
+      if(when_CompletionUnit_l572) begin
         headReg <= (io_wdata & 32'h00000007);
       end
-      if(when_CompletionUnit_l334) begin
+      if(when_CompletionUnit_l573) begin
         irqMaskReg <= io_wdata;
       end
       if(irqClrPulse) begin
@@ -1958,7 +1993,7 @@ module StepSequencer (
   wire       [15:0]   _zz_5;
   wire                when_StepSequencer_l444;
   wire                runaway;
-  wire                when_Common_l141;
+  wire                when_Common_l259;
   reg                 _zz_io_faultBadProg;
   reg [13:0] progMem [0:511];
   reg [4:0] selMem [0:65535];
@@ -2124,7 +2159,7 @@ module StepSequencer (
   assign _zz_5 = ({15'd0,1'b1} <<< stDst);
   assign when_StepSequencer_l444 = (execCnt == 5'h1f);
   assign runaway = (((state == 2'b10) && (! stLast)) && (execCnt == 5'h1f));
-  assign when_Common_l141 = ((progWrBad || bindWrBad) || runaway);
+  assign when_Common_l259 = ((progWrBad || bindWrBad) || runaway);
   assign io_faultBadProg = _zz_io_faultBadProg;
   assign io_oDone = rDone;
   assign io_oCapAbsent = (rDone && rCapa);
@@ -2265,7 +2300,7 @@ module StepSequencer (
       if(io_faultClearBadProg) begin
         _zz_io_faultBadProg <= 1'b0;
       end
-      if(when_Common_l141) begin
+      if(when_Common_l259) begin
         _zz_io_faultBadProg <= 1'b1;
       end
     end
@@ -3255,7 +3290,7 @@ module ResultBank (
   wire                wrQualified;
   wire                when_ResultBank_l181;
   wire       [15:0]   _zz_4;
-  wire                when_Common_l141;
+  wire                when_Common_l259;
   reg                 _zz_io_fault;
   wire       [4:0]    _zz_io_occupancy;
   wire       [4:0]    _zz_io_occupancy_1;
@@ -3539,7 +3574,7 @@ module ResultBank (
   assign wrQualified = ((1'b1 && _zz_wrQualified) && (_zz_wrQualified_1 == io_write_prod));
   assign when_ResultBank_l181 = (io_write_valid && wrQualified);
   assign _zz_4 = ({15'd0,1'b1} <<< io_write_slot);
-  assign when_Common_l141 = (io_write_valid && (! wrQualified));
+  assign when_Common_l259 = (io_write_valid && (! wrQualified));
   assign io_fault = _zz_io_fault;
   assign io_read_data = _zz_io_read_data;
   assign io_read_owned = (1'b1 && _zz_io_read_owned);
@@ -3947,7 +3982,7 @@ module ResultBank (
       if(io_faultClear) begin
         _zz_io_fault <= 1'b0;
       end
-      if(when_Common_l141) begin
+      if(when_Common_l259) begin
         _zz_io_fault <= 1'b1;
       end
     end
@@ -4554,7 +4589,7 @@ module MmioConfig (
   reg                 chkBadWr;
   wire                when_MmioConfig_l408;
   reg                 _zz_io_faultDupOwner;
-  wire                when_Common_l141;
+  wire                when_Common_l259;
   reg                 _zz_io_faultBadWrite;
   reg [31:0] fwdMem [0:255];
   reg [0:0] revMem [0:65535];
@@ -4927,7 +4962,7 @@ module MmioConfig (
 
   assign when_MmioConfig_l408 = (((8'h10 <= pSlot) || oldV) || (8'h04 <= pPoint));
   assign io_faultDupOwner = _zz_io_faultDupOwner;
-  assign when_Common_l141 = (chkBadWr || chkLbBadWr);
+  assign when_Common_l259 = (chkBadWr || chkLbBadWr);
   assign io_faultBadWrite = _zz_io_faultBadWrite;
   always @(posedge clk or posedge reset) begin
     if(reset) begin
@@ -4971,7 +5006,7 @@ module MmioConfig (
       if(io_faultClearBad) begin
         _zz_io_faultBadWrite <= 1'b0;
       end
-      if(when_Common_l141) begin
+      if(when_Common_l259) begin
         _zz_io_faultBadWrite <= 1'b1;
       end
     end
@@ -6412,7 +6447,7 @@ module Reassembly (
   wire       [2:0]    _zz_io_occupancy_5;
   wire       [2:0]    _zz_io_occupancy_6;
   wire       [2:0]    _zz_io_occupancy_7;
-  wire                when_Common_l141;
+  wire                when_Common_l259;
   reg                 _zz_io_fault;
   reg                 capBit;
 
@@ -6794,7 +6829,7 @@ module Reassembly (
   assign _zz_io_occupancy_6 = 3'b010;
   assign _zz_io_occupancy_7 = 3'b011;
   assign io_occupancy = (_zz_io_occupancy_8 + _zz_io_occupancy_10);
-  assign when_Common_l141 = ((fr_rejEvt || fr_endEvt) || op_clashEvt);
+  assign when_Common_l259 = ((fr_rejEvt || fr_endEvt) || op_clashEvt);
   assign io_fault = _zz_io_fault;
   assign io_capAbsent = capBit;
   always @(posedge clk or posedge reset) begin
@@ -6917,7 +6952,7 @@ module Reassembly (
       if(io_faultClear) begin
         _zz_io_fault <= 1'b0;
       end
-      if(when_Common_l141) begin
+      if(when_Common_l259) begin
         _zz_io_fault <= 1'b1;
       end
       if(io_capAbsentClear) begin
@@ -7672,7 +7707,7 @@ module OperandDecode (
   wire                judge_srcKindBad;
   wire                judge_acctgtResvBad;
   wire                judge_bodyMal;
-  wire                when_Common_l141;
+  wire                when_Common_l259;
   reg                 _zz_io_oFault;
 
   assign _zz_parse_oprefA_1_1 = parse_isOpref_0;
@@ -8080,7 +8115,7 @@ module OperandDecode (
   assign io_oPrecDim = ((io_oExecValid && parse_precPresent) ? parse_precDim : 8'h0);
   assign io_oReasmBind_valid = (io_oExecValid && parse_acctgtPresent);
   assign io_oReasmBind_payload = ((io_oExecValid && parse_acctgtPresent) ? parse_acctgtLbid : 8'h0);
-  assign when_Common_l141 = (io_iValid && judge_bodyMal);
+  assign when_Common_l259 = (io_iValid && judge_bodyMal);
   assign io_oFault = _zz_io_oFault;
   always @(posedge clk or posedge reset) begin
     if(reset) begin
@@ -8089,7 +8124,7 @@ module OperandDecode (
       if(io_iFaultClear) begin
         _zz_io_oFault <= 1'b0;
       end
-      if(when_Common_l141) begin
+      if(when_Common_l259) begin
         _zz_io_oFault <= 1'b1;
       end
     end
@@ -8396,7 +8431,7 @@ module DecodeWalk (
   reg        [7:0]    outStage_rOff_1;
   reg        [7:0]    outStage_rOff_2;
   reg        [7:0]    outStage_rOff_3;
-  wire                when_Common_l141;
+  wire                when_Common_l259;
   reg                 _zz_io_oFault;
 
   assign _zz_walk_head_0_1 = walk_off_0[3:0];
@@ -8880,7 +8915,7 @@ module DecodeWalk (
   assign io_oSlotOff_1 = outStage_rOff_1;
   assign io_oSlotOff_2 = outStage_rOff_2;
   assign io_oSlotOff_3 = outStage_rOff_3;
-  assign when_Common_l141 = (outStage_rValid && outStage_rMal);
+  assign when_Common_l259 = (outStage_rValid && outStage_rMal);
   assign io_oFault = _zz_io_oFault;
   always @(posedge clk or posedge reset) begin
     if(reset) begin
@@ -8895,7 +8930,7 @@ module DecodeWalk (
       if(io_iFaultClear) begin
         _zz_io_oFault <= 1'b0;
       end
-      if(when_Common_l141) begin
+      if(when_Common_l259) begin
         _zz_io_oFault <= 1'b1;
       end
     end

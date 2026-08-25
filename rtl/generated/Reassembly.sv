@@ -253,7 +253,7 @@ module Reassembly (
   wire       [2:0]    _zz_io_occupancy_5;
   wire       [2:0]    _zz_io_occupancy_6;
   wire       [2:0]    _zz_io_occupancy_7;
-  wire                when_Common_l141;
+  wire                when_Common_l259;
   reg                 _zz_io_fault;
   reg                 capBit;
 
@@ -635,7 +635,7 @@ module Reassembly (
   assign _zz_io_occupancy_6 = 3'b010;
   assign _zz_io_occupancy_7 = 3'b011;
   assign io_occupancy = (_zz_io_occupancy_8 + _zz_io_occupancy_10);
-  assign when_Common_l141 = ((fr_rejEvt || fr_endEvt) || op_clashEvt);
+  assign when_Common_l259 = ((fr_rejEvt || fr_endEvt) || op_clashEvt);
   assign io_fault = _zz_io_fault;
   assign io_capAbsent = capBit;
   always @(posedge clk or posedge reset) begin
@@ -758,7 +758,7 @@ module Reassembly (
       if(io_faultClear) begin
         _zz_io_fault <= 1'b0;
       end
-      if(when_Common_l141) begin
+      if(when_Common_l259) begin
         _zz_io_fault <= 1'b1;
       end
       if(io_capAbsentClear) begin

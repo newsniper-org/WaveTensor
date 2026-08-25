@@ -51,7 +51,7 @@ printf 'pre-commit: 정적 검사\n'
 run "툴체인 핀 대조"      python3 scripts/lint_toolchain_pins.py
 run "금지 용어"           python3 scripts/lint_forbidden_terms.py
 run "ISA-7 형상 독립성"    python3 scripts/lint_isa7_topology.py
-run "기존 lint 11종"       make lint
+run "기존 lint 12종"       make lint
 
 if [ "$fail" -ne 0 ]; then
     cat >&2 <<'EOF'

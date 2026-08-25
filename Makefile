@@ -448,6 +448,7 @@ lint:
 	python3 $(CURDIR)/scripts/lint_guide_derived_tables.py
 	python3 $(CURDIR)/scripts/lint_guard_map.py
 	python3 $(CURDIR)/scripts/lint_postformal.py
+	python3 $(CURDIR)/scripts/lint_generated_names.py
 
 # =============================================================================
 # P0-2 — Cluster 이중 빌드(FRAG_SLOTS=1 / FRAG_SLOTS=4) 단일 진입점.

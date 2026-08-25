@@ -18,7 +18,13 @@ module CompletionUnit (
   output wire          io_rvalid,
   output wire          io_ready,
   input  wire          io_comp_valid,
-  input  wire [255:0]  io_comp_payload,
+  input  wire [31:0]   io_comp_tag_wave,
+  input  wire [15:0]   io_comp_tag_thread,
+  input  wire [15:0]   io_comp_tag_lnid,
+  input  wire [7:0]    io_comp_tag_precision,
+  input  wire [7:0]    io_comp_tag_dim,
+  input  wire [7:0]    io_comp_base,
+  input  wire [7:0]    io_comp_total,
   output wire          io_comp_ready,
   output wire          io_irq,
   input  wire [15:0]   io_drain_pipe,
@@ -37,6 +43,8 @@ module CompletionUnit (
 
   reg        [255:0]  ring_spinal_port1;
   wire       [2:0]    _zz_full;
+  wire       [7:0]    _zz_descWords_4;
+  wire       [7:0]    _zz_descWords_5;
   wire       [31:0]   _zz_readValue;
   wire       [0:0]    _zz_readValue_1;
   wire       [31:0]   _zz_readValue_2;
@@ -54,6 +62,12 @@ module CompletionUnit (
   wire                empty;
   wire                full;
   wire       [2:0]    occ;
+  wire       [31:0]   descWords_0;
+  wire       [31:0]   descWords_4;
+  wire       [31:0]   descWords_5;
+  wire       [31:0]   descWords_6;
+  wire       [31:0]   descWords_7;
+  wire       [255:0]  desc;
   wire                doPush;
   wire                shove;
   wire                aligned;
@@ -77,8 +91,8 @@ module CompletionUnit (
   wire                irqClrPulse;
   reg        [31:0]   irqMaskReg;
   wire                irqMask;
-  wire                when_CompletionUnit_l333;
-  wire                when_CompletionUnit_l334;
+  wire                when_CompletionUnit_l572;
+  wire                when_CompletionUnit_l573;
   wire                badWrite;
   reg                 irqSticky;
   reg                 faultOv;
@@ -93,6 +107,8 @@ module CompletionUnit (
   reg [255:0] ring [0:7];
 
   assign _zz_full = (tail + 3'b001);
+  assign _zz_descWords_4 = io_comp_base;
+  assign _zz_descWords_5 = io_comp_total;
   assign _zz_readValue = {29'd0, tail};
   assign _zz_readValue_1 = irqSticky;
   assign _zz_readValue_2 = {29'd0, occ};
@@ -105,7 +121,7 @@ module CompletionUnit (
   assign _zz_readValue_9 = {16'd0, io_drain_tokens};
   always @(posedge clk) begin
     if(doPush) begin
-      ring[tail] <= io_comp_payload;
+      ring[tail] <= desc;
     end
   end
 
@@ -134,6 +150,12 @@ module CompletionUnit (
   assign full = (_zz_full == head);
   assign occ = (tail - head);
   assign io_comp_ready = (! full);
+  assign descWords_0 = 32'h00000001;
+  assign descWords_4 = {24'd0, _zz_descWords_4};
+  assign descWords_5 = {24'd0, _zz_descWords_5};
+  assign descWords_6 = 32'h0;
+  assign descWords_7 = 32'h0;
+  assign desc = {{{{{{{descWords_7,descWords_6},descWords_5},descWords_4},{{16'h0,io_comp_tag_precision},io_comp_tag_dim}},{io_comp_tag_thread,io_comp_tag_lnid}},io_comp_tag_wave},descWords_0};
   assign doPush = (io_comp_valid && (! full));
   assign shove = (io_comp_valid && full);
   assign aligned = (io_addr[1 : 0] == 2'b00);
@@ -156,8 +178,8 @@ module CompletionUnit (
   assign sizeValBad = (io_wdata[4 : 0] != 5'h03);
   assign irqClrPulse = (((doWr && isIrqClr) && (! clrRsvBad)) && io_wdata[0]);
   assign irqMask = irqMaskReg[0];
-  assign when_CompletionUnit_l333 = (doWr && isHead);
-  assign when_CompletionUnit_l334 = ((doWr && isIrqMk) && (! mkRsvBad));
+  assign when_CompletionUnit_l572 = (doWr && isHead);
+  assign when_CompletionUnit_l573 = ((doWr && isIrqMk) && (! mkRsvBad));
   assign badWrite = (doWr && (((isRoOff || (isSize && (sizeRsvBad || sizeValBad))) || (isIrqMk && mkRsvBad)) || (isIrqClr && clrRsvBad)));
   assign io_irq = (irqSticky && (! irqMask));
   assign io_faultOverflow = faultOv;
@@ -231,10 +253,10 @@ module CompletionUnit (
       if(doPush) begin
         tail <= (tail + 3'b001);
       end
-      if(when_CompletionUnit_l333) begin
+      if(when_CompletionUnit_l572) begin
         headReg <= (io_wdata & 32'h00000007);
       end
-      if(when_CompletionUnit_l334) begin
+      if(when_CompletionUnit_l573) begin
         irqMaskReg <= io_wdata;
       end
       if(irqClrPulse) begin

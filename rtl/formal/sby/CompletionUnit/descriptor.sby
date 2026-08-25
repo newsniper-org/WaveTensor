@@ -1,0 +1,100 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# CompletionUnit 후-formal — 완료 디스크립터 축. 이 모듈의 첫 태스크다
+# (완료 디스크립터·명령 링은 직전 파도까지 후-formal 0건이었다).
+#
+# VERIFIES 는 모델 없는 모듈의 검증 앵커다 — PROVES 는 TLA 모델 가드 전용이고
+# (lint_postformal 이 AllGuards 와 대조), 완료 큐·통지에는 이 저장소가 소유한
+# 선-formal 모델이 없다 (배압 규약은 Fabric/SharedUnit 이 자기 축에서 다뤘고,
+# 그 GUARD-MAP 정식 줄은 FabricMerge.scala 가 소유한다 — 가드당 저장소 전체
+# 한 줄 규율이라 여기서 PROVES 로 다시 주장하지 않는다). 아래 앵커는 정본
+# 문면(부록 E.5 · E.1.2)과 호스트 ABI 결정 5(2026-08-25)를 근거로 한다.
+#
+# VERIFIES: CompletionUnit.desc_full_write — 링 칸 32 B *전량 기입*: 되읽은 여덟 워드가 전부 이번 push 의 입력 필드로 재구성한 값과 같다 ⇒ 이전 항목의 어느 워드도 남지 않는다. 잔류의 일반형(임의 초기 내용)이 초기 상태에 들어 있다 — 링 저장소에 reset 이 없기 때문이다
+# VERIFIES: CompletionUnit.desc_word_layout — E.5.3 배치: CD_KIND `[7:0]` = `0x01` · CD_TAG0..2 = E.5.1 세 워드 직렬화(TAG1 = 스레드‖LNID · TAG2 = 예약 0‖정밀도‖차원) · CD_BASE `[7:0]` 결속 LBID · CD_TOTAL `[31:0]` 총개수 그릇 · CD_RSV0/1 = 0. 기대값은 정본 배치로 *독립 재구성*하며 RTL 의 조립을 참조하지 않는다
+# VERIFIES: CompletionUnit.ring_encoding — E.5 1·2항: `head == tail` 빈 링 · `(tail+1) mod size == head` 가득 · 배압(io_comp_ready)이 재구성한 「가득」의 부정과 등가 · 생산 색인은 수락 사이클에만 +1 (E.5 표의 「tail 은 장치 갱신」)
+# VERIFIES: CompletionUnit.window_no_leak — 빈 링의 창 읽기는 0: 미기입 저장소를 관측면에 내지 않는다 (E.1.2 창 행). desc_full_write 와 짝 — 살아 있는 칸은 이번 기입을 내고, 살아 있지 않으면 아무것도 내지 않는다
+# VERIFIES: CompletionUnit.overflow_sticky — 가득인 링에 밀어 넣기는 loud sticky (§3.8 「오버플로」) 이며 링 상태를 움직이지 않는다 (FAB-10 동형). 발화가 해제를 이긴다 · 명시적 해제 외엔 내려가지 않는다
+#
+# ══ 이 태스크가 재지 *않는* 것 — 정직 표기 ═══════════════════════════════
+#
+#  · **명령 방향.** 명령 디스크립터를 조립하는 회로가 없다 (E.1.3 UNWIRED).
+#    「태그가 양방향에서 같은 상대 오프셋」의 두 방향 대조는 elaborate 시점
+#    require(`HostDesc`)가 들고, 여기서는 완료 방향 절반만 잰다. 회로 없는
+#    쪽을 형식 검사가 덮는다고 적으면 그것이 좁은 증명의 넓은 주장이다.
+#  · **k-귀납(prove)이 없다.** 되읽기 등식의 귀납 불변은 `ring[f_slot] ==
+#    그림자` 인데 링 저장소가 포트로 노출되지 않아 적을 수 없다. BMC 는
+#    reset 부터 깊이 14 까지 전수이고, 잔류의 일반형이 그 초기 상태에 있다.
+#    「덮인 깊이 안에서 전수」와 「무한 깊이」는 다르다 — 그 차이가 여기 있다.
+#  · 드레인 집계(E.11) · IRQ 마스크(E.6) · 거절된 구성 기입(E.1.1)은 이
+#    태스크의 축이 아니다. 후속 파도 몫이며 미측정이지 통과가 아니다.
+#
+# ══ 깊이 근거 ═════════════════════════════════════════════════════════════
+#
+# 가장 긴 검사 열은 「push → 창 주소 제시 → 다음 사이클 rdata」 3스텝이고,
+# reset 한 사이클과 f_reset_d 한 사이클을 더해 5 가 하한이다. bmc 10 은 그
+# 2배이며(지침의 「2배 이상」), head 배수(호스트 CQ_HEAD 기입) → 재push →
+# 재읽기의 왕복이 그 안에 든다.
+#
+# cover 는 14 다 — 증인이 더 긴 열을 요구한다. 「가득」은 head 가 호스트
+# 기입으로 움직이므로 짧게 닿지만(실측 step 3), 여덟 워드 색인 증인과 태그
+# 전 필드 비영 증인이 여유를 쓴다. cover 는 반례 탐색이 아니라 도달 탐색이라
+# 깊이가 비용에 거의 들지 않는다 (실측 1초).
+#
+# ══ memory_map 이 필요한 이유 — 비용 실측 ══════════════════════════════════
+#
+# 링 저장소를 SMT array 로 두면 256b 원소와 배열 이론이 겹쳐 z3 가 **step 9
+# 에서 10분+ 미종료**였다 (실측 2026-08-25). `memory_map` 으로 비트벡터만
+# 남기면 같은 깊이가 **2분**에 끝난다. DecodeWalk/OperandDecode 가 같은 패스를
+# 쓰는 이유는 ROM 함정(귀납에서 내용이 임의화됨)이지만, 여기서는 *비용*이다 —
+# 목적이 다르므로 각자 사유를 적는다.
+#
+# ══ 공허 아님의 검산 — 실측 ════════════════════════════════════════════════
+#
+# design_prep.il 의 `cell $assert|$cover` 수 > 0 (make rtl-postformal 의 HOLLOW
+# 게이트) 과 cover 태스크의 증인 도달을 함께 본다. 특히 여덟 워드 색인 각각의
+# cover 가 도달해야 축 2 가 여덟 워드 전부에서 비공허다.
+#
+# 실측 (이 판): bmc assert 8 · cover 12, **cover 12 전부 도달** (여덟 워드 색인
+# + 가득 + 오버플로 + 빈 창 + 태그 전 필드 비영 되읽기). 두 태스크 합산 20 —
+# make rtl-postformal 이 `$dir-$name*` 글롭으로 세는 값이 그것이다.
+#
+# 실행(컨테이너 전용 — 호스트 sby 금지):
+#   podman run --rm --userns=keep-id -v "$PWD:/workspace" wavetensor-dev:scala \
+#     sh -lc "cd /workspace && sby -f --prefix /tmp/sby-CompletionUnit \
+#             rtl/formal/sby/CompletionUnit/descriptor.sby"
+
+[tasks]
+bmc
+cover
+
+[options]
+bmc: mode bmc
+bmc: depth 10
+cover: mode cover
+cover: depth 14
+multiclock off
+
+[engines]
+smtbmc z3
+
+[script]
+# expose + 래퍼 부착 — bind 미사용 사유는 CompletionUnit_props.sv 파일 머리.
+read_verilog -formal CompletionUnit.sv
+expose CompletionUnit/w:head CompletionUnit/w:tail
+read_verilog -formal -sv CompletionUnit_props.sv
+prep -top CompletionUnit_formal
+# 링 저장소를 순수 논리로 전개한다 — DecodeWalk/OperandDecode 가 ROM 함정
+# 때문에 쓴 것과 같은 패스이고, 여기서는 *비용*이 이유다. 실측: 배열을 SMT
+# array 로 두면 256b 원소 + 배열 이론이 겹쳐 z3 가 step 9 에서 10분+ 미종료
+# 였고, memory_map 으로 비트벡터만 남기면 전 깊이가 분 단위로 끝난다.
+memory_map
+async2sync
+
+# [files] 경로는 저장소 루트 기준이다 — sby 는 상대 경로를 sby 파일이
+# 아니라 *호출 cwd* 기준으로 푼다 (스윕 실측: ../ 경로가 루트 호출에서 깨짐).
+# make rtl-postformal · 스윕 · 수동 실행 전부 루트에서 호출하는 것이 규약이다.
+[files]
+rtl/generated/CompletionUnit.sv
+rtl/sv/assert/CompletionUnit_props.sv

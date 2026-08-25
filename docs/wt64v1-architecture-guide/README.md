@@ -13,7 +13,7 @@
 ## 빌드
 
 ```sh
-make -C ../.. guide             # → main.pdf (121쪽, A4) + 렌더 검사
+make -C ../.. guide             # → main.pdf (A4) + 렌더 검사 — 쪽수는 check_guide_render 가 낸다
 typst watch  main.typ           # 집필 중 (끝나면 make guide 로 마감할 것)
 ```
 

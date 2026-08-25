@@ -8,6 +8,23 @@
 // seq/total 8비트) 에 대해 재검사. bind 로 대상 안에 부착 — 포트는 대상
 // 내부 신호명 그대로 결선한다.
 //
+// ══ ⚠ 줄 번호에 매인 신호 이름 — 한 곳에 모아 둔다 (2026-08-25 실측) ═══
+//
+// SpinalHDL 은 익명 `when` 조건 신호를 **소스 줄 번호**로 이름 짓는다
+// (`when_<파일>_l<줄>`). 그래서 Common.scala 의 줄이 밀리면 이 이름이 조용히
+// 바뀐다. 이 하네스의 부착 방식(bind 문을 대상 모듈 본문으로 텍스트 전개)에서는
+// 없는 이름이 *암묵 wire* 로 살아나 자유 신호가 되고, 그 위에 선 단언은 반증
+// 가능해진다 — 2026-08-25 에 p_ab_not_fault_src 가 정확히 그렇게 FAIL 했다
+// (호스트 ABI 결정 4·5 파도가 Common.scala 를 늘려 l141 → l259).
+//
+// *크게 실패한 것은 다행이다.* 그리고 그 태스크를 돌리게 한 것은 사람의 기억이
+// 아니라 scripts/sby_impact.py 역색인이었다 — 그 도구가 존재하는 이유가 이
+// 부류다. 아래 매크로가 다음에 밀릴 때 고칠 자리를 한 줄로 만든다.
+//
+// (근본 수리는 그 조건에 안정된 이름을 주는 것이고, 그것은 StickyFault 를 쓰는
+//  전 모듈의 생성물 이름을 움직이므로 별 파도다 — rtl/README.md 등재.)
+`define WT_STICKY_SET_FAULT when_Common_l259
+//
 // 문체: yosys 개방판은 SVA 시퀀스를 받지 않으므로 즉시 단언(always+$past).
 // sticky 관측면(io_fault·io_capAbsent)은 차기 상태 함수의 *등식*으로 잰다 —
 // 등식이 서면 set 원천의 전수 목록이 기계 검증되므로 「~는 fault 를 세우지
@@ -42,7 +59,7 @@ module Reassembly_props (
   input logic        io_faultClear,
   input logic        io_capAbsent,
   input logic        io_capAbsentClear,
-  input logic        when_Common_l141,
+  input logic        `WT_STICKY_SET_FAULT,
   // 조각 접수 판정 내부
   input logic        fr_hit_0, fr_hit_1, fr_hit_2, fr_hit_3,
   input logic        fr_accept,
@@ -211,7 +228,7 @@ module Reassembly_props (
     // Payload.abort_not_fault (+ capability_not_fault 의 소거 축) —
     // fault·capAbsent 의 set 사건 원천에는 조각·개방 항뿐이다: 조각도
     // 개방도 없는 사이클(소거만 있는 사이클 포함)엔 set 사건이 없다.
-    p_ab_not_fault_src: assert ((io_frag_valid || io_open_valid) || !when_Common_l141);
+    p_ab_not_fault_src: assert ((io_frag_valid || io_open_valid) || !`WT_STICKY_SET_FAULT);
     p_ab_not_capa_src:  assert (io_frag_valid || !fr_capaEvt);
 
     // Payload.abort_leaves_trace 전제 — 소거 발화의 문면: 있는 태그를 맞힌
@@ -226,13 +243,13 @@ module Reassembly_props (
   // ═══ 전이 단언 (연속 두 사이클 리셋 밖) ═══════════════════════════
   always @(posedge clk) if (f_step) begin
     // sticky 차기 상태 *등식* — set 원천의 전수 목록을 기계 검증한다.
-    //   io_fault 의 set 은 when_Common_l141(= fr_rejEvt | fr_endEvt |
+    //   io_fault 의 set 은 위 매크로가 가리키는 조건(= fr_rejEvt | fr_endEvt |
     //   op_clashEvt) 뿐 → 능력 부재(capability_not_fault)도 소거
     //   (abort_not_fault)도 fault 를 세울 수 없다.
     //   io_capAbsent 의 set 은 fr_capaEvt 뿐 → malformation 이 capAbsent 를
     //   세울 수 없다. 두 관측면의 set 분리가 등식 둘로 닫힌다.
     t_fault_next_eq: assert (io_fault ==
-        ($past(when_Common_l141) || ($past(io_fault) && !$past(io_faultClear))));
+        ($past(`WT_STICKY_SET_FAULT) || ($past(io_fault) && !$past(io_faultClear))));
     t_capa_next_eq:  assert (io_capAbsent ==
         ($past(fr_capaEvt) || ($past(io_capAbsent) && !$past(io_capAbsentClear))));
 
@@ -301,7 +318,7 @@ bind Reassembly Reassembly_props u_props (
   .ab_hit_0(ab_hit_0), .ab_hit_1(ab_hit_1), .ab_hit_2(ab_hit_2), .ab_hit_3(ab_hit_3),
   .io_fault(io_fault), .io_faultClear(io_faultClear),
   .io_capAbsent(io_capAbsent), .io_capAbsentClear(io_capAbsentClear),
-  .when_Common_l141(when_Common_l141),
+  .`WT_STICKY_SET_FAULT(`WT_STICKY_SET_FAULT),
   .fr_hit_0(fr_hit_0), .fr_hit_1(fr_hit_1), .fr_hit_2(fr_hit_2), .fr_hit_3(fr_hit_3),
   .fr_accept(fr_accept), .fr_capaRej(fr_capaRej), .fr_dupRej(fr_dupRej),
   .fr_cKnown(fr_cKnown), .fr_cSeen(fr_cSeen), .fr_ohSeq(fr_ohSeq),

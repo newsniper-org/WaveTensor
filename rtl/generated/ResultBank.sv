@@ -138,7 +138,7 @@ module ResultBank (
   wire                wrQualified;
   wire                when_ResultBank_l181;
   wire       [15:0]   _zz_4;
-  wire                when_Common_l141;
+  wire                when_Common_l259;
   reg                 _zz_io_fault;
   wire       [4:0]    _zz_io_occupancy;
   wire       [4:0]    _zz_io_occupancy_1;
@@ -422,7 +422,7 @@ module ResultBank (
   assign wrQualified = ((1'b1 && _zz_wrQualified) && (_zz_wrQualified_1 == io_write_prod));
   assign when_ResultBank_l181 = (io_write_valid && wrQualified);
   assign _zz_4 = ({15'd0,1'b1} <<< io_write_slot);
-  assign when_Common_l141 = (io_write_valid && (! wrQualified));
+  assign when_Common_l259 = (io_write_valid && (! wrQualified));
   assign io_fault = _zz_io_fault;
   assign io_read_data = _zz_io_read_data;
   assign io_read_owned = (1'b1 && _zz_io_read_owned);
@@ -830,7 +830,7 @@ module ResultBank (
       if(io_faultClear) begin
         _zz_io_fault <= 1'b0;
       end
-      if(when_Common_l141) begin
+      if(when_Common_l259) begin
         _zz_io_fault <= 1'b1;
       end
     end

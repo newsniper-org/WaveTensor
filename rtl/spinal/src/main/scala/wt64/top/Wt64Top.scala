@@ -61,11 +61,11 @@
 //     CQ_HEAD(RW)여서, 정본을 따른 드라이버가 링 기저 상위 워드를 쓰면 완료
 //     링의 *소비 색인이 조용히 덮였다.* 예약이면 무해했을 자리가 유효한 RW
 //     기입으로 상태를 망가뜨리는 형태다. 옛 오프셋을 비우는 것이 수리다.
-//   · fault 는 `0xF80`–`0xF90` 다섯 워드로 나왔다. 열여덟 축은 전부 이미
+//   · fault 는 `0xF80`–`0xF90` 다섯 워드로 나왔다. 열아홉 축 중 열일곱은 이미
 //     *합성 가능한 sticky 비트*로 존재했고 (§3.8 만족) 없던 것은 호스트 대면
 //     표면이었다 — HIU-6 의 「명시적 해제」 경로가 top IO 입력뿐이었다.
-//     이제 `0xF84` W1C 가 그 경로다. `[17]` 엔트로피만 원천 유닛 미착지라
-//     상수 0 이며, 그 사실은 rtl/README.md 가 행으로 든다.
+//     이제 `0xF84` W1C 가 그 경로다. `[17]` 엔트로피와 `[18]` 명령 디스크립터
+//     둘만 원천 미착지라 상수 0 이며, rtl/README.md 가 행으로 든다.
 //
 // 해제 경로가 둘이 된 축(기존 `io.faultClear.*` IO + MMIO W1C)은 **논리합**
 // 이다 — 어느 쪽도 다른 쪽을 무효화하지 않는다. StickyFault 규약(발화가 해제를
@@ -94,12 +94,38 @@
 //     ResultBank 세 포트·StepSequencer 요청/피연산자는 상류 유닛 미착지로
 //     IO 수출이다.
 //
-// ## 태그 사이드밴드 (잠정)
+// ## 태그 사이드밴드 — 확정 (호스트 ABI 결정 4, 2026-08-25)
 //
-// 명령 제시(io.instr)는 태그를 사이드밴드로 동반한다 — 조각 머리가 조각과
-// 같은 beat 에 있는 것(E.10 도착의 원자성)과 같은 처분이다. 태그는 통째로만
-// 나른다 — 조립·분해는 Types.Tag 한 곳 (§1.4.4 · wave 불투명 식별자: 등가
-// 비교·보존 외 해석 없음. 이 파일에 태그 슬라이스는 없다).
+// 명령 제시(io.instr)는 태그를 *사이드밴드*로 동반한다: 명령 워드열과 태그가
+// 같은 beat 에 나란히 오고, 태그는 독립 valid 를 갖지 않는다 — 명령 valid
+// 하나가 둘을 함께 유효화한다. E.10 이 조각 머리에 내린 처분(「도착의
+// 원자성」)의 재사용이며, 「이 태그가 어느 명령의 것인가」라는 대응 계약을
+// *구조로* 없앤다.
+//
+// 정본이 이미 닫은 갈래 둘이 나머지 후보를 배제한다: §1.1 정의가 태그를
+// 「명령어 인코딩의 일부가 *아니라*」고 적어 **명령 스트림 워드** 갈래를
+// 배제하고, E.10 규범 1항이 같은 질문(머리와 몸의 동반)에 답과 이유까지 적어
+// **채널 분리**를 배제한다. 실질 경쟁자였던 「문맥 핸들 등록」의 기각 근거는
+// 절약의 부재다 — 태그 80b 중 32b 가 wave 번호라 wave 마다 바뀌므로 태그는
+// 상각되는 문맥이 아니다. 절약할 것이 없는 자리에 ABI 표면 셋(등록 MMIO ·
+// 핸들 재사용 규약 · 태그↔핸들 표)을 새로 만드는 거래이고, §3.7.1 해설이
+// 직접 이름 붙인 나쁜 거래다 — 「계약을 늘리지 않고 해결되는 것을 계약으로
+// 푸는 것」.
+//
+// **사이드밴드가 나르는 태그는 *통째*다 — 워드 표면이 아니다.** E.5.4 규범 3항이
+// 그렇게 정한다: 명령 디스크립터는 *호스트 메모리 쪽 형태*이고 사이드밴드는 *장치
+// 안쪽 제시 형태*이며, 둘을 잇는 것은 「1 디스크립터 = 1 명령 + 그 태그」다. 워드
+// 직렬화(E.5.1 세 워드)는 32비트 워드 표면 — 완료 디스크립터 · 명령 디스크립터 ·
+// E.12 소거 스테이징 — 에만 걸리고, 이 포트는 그 셋 중 어느 것도 아니다.
+//
+// 그래서 `io.instr.tag` 는 `Types.Tag` 번들 그대로다. 이 파도가 한때 이 자리를
+// 다섯 워드 포트로 바꿨다가 되돌렸다 — 정본이 확정한 직렬화가 다섯이 아니라 셋
+// 이었고, 무엇보다 *사이드밴드는 직렬화의 대상이 아니었다*. 번들 포트에는 예약
+// 여백이 아예 없으므로 「검사받지 않고 통과하는 비트」(§5.7)도 생기지 않는다 —
+// 여백은 워드 표면에만 있고 그 표면의 처분은 방향이 정한다 (E.5.1 4항).
+//
+// 80b 팩킹 순서는 여전히 미확정이며 이 파일은 그것을 알 필요가 없다 — 태그
+// 슬라이스가 한 곳도 없기 때문이다 (§1.4.4).
 //
 // ## GUARD-MAP 정식 줄 없음 — 접점 서술 (lint 가 파싱하지 않는 형태)
 //
@@ -258,26 +284,32 @@ object Wt64Top {
   val PART_FIELD_W       = 8
   val M_NONCE_PART_RSV   = rsv(0x000000FFL) // [31:8]
   val M_REKEY_RSV        = rsv(0x000000FFL) // [31:8]
-  val A_TAG2_RSV         = rsv(0x0000FFFFL) // [31:16]
+  /** ABORT_TAG2 의 예약 = `[31:16]`. 값을 여기 적지 않고 *태그 워드 코덱*에서
+    * 끌어온다 — 이 세 워드가 E.5.1 직렬화의 원본이므로 여백의 자리도 그 코덱이
+    * 정본이다 (같은 값을 두 곳에 적으면 그 순간부터 어느 쪽이 정본인지 답할 수
+    * 없다). 처분이 *엄격*인 것은 이 표면이 받아들이는 쪽이기 때문이다 (E.5.1 4항). */
+  val A_TAG2_RSV         = rsv((1L << Types.Tag.TAG2_RSV_LO) - 1) // [31:16]
   val A_FIRE_RSV         = rsv(0x00000001L) // [31:1]
   val F_BIND_RSV         = rsv(0x80FFFFFFL) // [30:24]
-  /** FAULT_CLEAR 의 예약 = `[31:18]`. 비트 *수*를 `Fault.N_BITS` 에서 끌어와
+  /** FAULT_CLEAR 의 예약 = `[31:19]`. 비트 *수*를 `Fault.N_BITS` 에서 끌어와
     * 마스크를 유도한다 — 축이 하나 늘 때 고칠 자리가 상수 하나여야 한다
-    * (두 곳에 적으면 그 순간부터 어느 쪽이 정본인지 답할 수 없다). */
-  val FLT_CLEAR_RSV      = rsv((1L << Fault.N_BITS) - 1)     // [31:18]
+    * (두 곳에 적으면 그 순간부터 어느 쪽이 정본인지 답할 수 없다). E.5.4 가
+    * `[18]` 을 새로 만들었을 때 실제로 이 한 상수만 움직였다. */
+  val FLT_CLEAR_RSV      = rsv((1L << Fault.N_BITS) - 1)     // [31:19]
   /** CAP_CLEAR 의 예약 = `[31:2]`. 같은 유도. */
   val CAP_CLEAR_RSV      = rsv((1L << Fault.N_CAP_BITS) - 1) // [31:2]
 
   /** 장치 전역 fault (R_FAULT) — 구역 안 바이트 오프셋. **배선됨.**
     *
     * fault 는 특정 유닛의 표면이 아니라 *장치 전역*이므로 자기 구역을 갖는다
-    * (E.1 구역별 근거). 열여덟 축의 sticky 비트는 전부 하위 유닛(또는 이
+    * (E.1 구역별 근거). 열아홉 축 중 열일곱의 sticky 비트는 하위 유닛(또는 이
     * 조립)이 이미 들고 있었고 — §3.8 「합성 가능한 sticky 비트」는 만족이었다 —
     * 없던 것은 *호스트 대면 표면*이었다. `STATUS` 가 그 관측면이고 `CLEAR`
     * 가 HIU-6 이 요구하는 명시적 해제다. 관측·해제의 비트 배치가 같아
     * 드라이버는 읽은 워드를 그대로 되쓰면 자기가 본 것만 지운다.
     *
-    * `[17]` 엔트로피만 원천 유닛이 재구현에 미착지라 상수 0 이다 — 그 사실은
+    * `[17]` 엔트로피와 `[18]` 명령 디스크립터 둘만 원천이 재구현에 미착지라
+    * 상수 0 이다 (엔트로피원 유닛 · 명령 링 소비자) — 그 사실은
     * rtl/README.md 「자리는 있고 회로는 없다」가 행으로 든다. 비트가 *없는*
     * 것이 아니라 *세울 원천이* 없다. */
   object Fault {
@@ -307,8 +339,13 @@ object Wt64Top {
     val B_FP_BADPROG   = 15 // step 프로그램 불량
     val B_RING_OVF     = 16 // 링 오버플로
     val B_ENTROPY      = 17 // 엔트로피원 건강성 검사 실패 (유닛 자체가 미착지)
-    /** 정의된 fault 비트 수 — `[31:18]` 은 RO 예약 = 0 (정본 E.1.2). */
-    val N_BITS = 18
+    /** 명령 디스크립터 malformation — E.5.4 가 만든 새 원천 (모르는 kind ·
+      * 예약 비0 · 부적법한 길이). 명령 링 소비자가 미착지라 세울 원천이
+      * 없다 — `[17]` 엔트로피와 같은 부류이며 상수 0 이다. 비트를 비워 두는
+      * 것과 비트가 없는 것은 다른 사실이므로 자리를 잡아 둔다. */
+    val B_CMD_DESC     = 18
+    /** 정의된 fault 비트 수 — `[31:19]` 은 RO 예약 = 0 (정본 E.1.2). */
+    val N_BITS = 19
     // 미적중 통지(XCTL STATUS [1])와 능력 부재(CAP_STATUS)는 이 워드에
     // 들지 않는다 — 오류가 아니기 때문이다 (E.3 · §1.6.2).
 
@@ -433,6 +470,10 @@ class Wt64Top(
   // ═══ IO ══════════════════════════════════════════════════════════════
   val io = new Bundle {
     // ── 명령 제시 — 태그는 사이드밴드 (머리 주석 「태그 사이드밴드」) ────
+    //    valid 하나가 words 와 tag 를 *함께* 유효화한다 — 태그에 독립 valid 를
+    //    주지 않는 것이 「도착의 원자성」의 이행이다 (E.10 1항 재사용).
+    //    태그는 *통째*로 온다 — 사이드밴드는 워드 표면이 아니므로 E.5.1 세 워드
+    //    직렬화의 대상이 아니다 (E.5.4 규범 3항).
     val instr = new Bundle {
       val valid = in port Bool()
       val words = in(Vec(Bits(32 bits), walk.maxWords))
@@ -700,7 +741,7 @@ class Wt64Top(
   od.io.iFaultClear  := io.faultClear.operandDecode || fclr(Fault.B_OPERAND)
 
   /** 태그 사이드밴드 정렬 — DecodeWalk 방출 단(1 레지스터)과 같은 지연.
-    * 태그는 통째로 나른다 — 슬라이스 없음 (§1.4.4). */
+    * 태그는 통째로 나른다 — 슬라이스 없음 (§1.4.4 · E.5.4 규범 3항). */
   private val tagQ = RegNext(io.instr.tag)
 
   // 디코드 관측면 수출
@@ -890,15 +931,20 @@ class Wt64Top(
   fps.io.faultClearBadProg := io.faultClear.fpBadProg || fclr(Fault.B_FP_BADPROG)
 
   // ═══ 완료 유닛 — 인도 → 완료 링 (E.5) + E.11 집계 ════════════════════
-  // 인도 = 완료 통지 (E.6 1항 — 링 삽입이 유일한 통지 수단). 디스크립터는
-  // 32 B 고정(E.5 4항)이고 이 조립의 잠정 배치는 하위부터 total(8) ·
-  // base(8) · tag(80, 통째) · 상위 0 — 호스트 ABI 합의 입력이다
-  // (model_feedback). 배압 보존: 링 가득 → comp.ready 하강 → 인도 대기.
+  // 인도 = 완료 통지 (E.6 1항 — 링 삽입이 유일한 통지 수단).
+  //
+  // **디스크립터 조립은 더는 이 파일에 없다.** 앞판은 여기서 12 B 를 비트로
+  // 팩킹해 256b 포트에 실었고, 그 한 줄이 (i) 정본이 정한 적 없는 태그 80b
+  // 팩킹 순서를 굳히고 (ii) 「32 B 중 12 B 만 유의미」를 코드 밖 사실로 남겼다.
+  // 이제 top 은 인도 페이로드의 *이름*을 그대로 넘기고, 워드 정렬 + kind 배치와
+  // 32 B 전량 기입은 E.5 를 소유한 유닛이 진다 (host/CompletionUnit.scala 의
+  // 「완료 디스크립터」 절 · `HostDesc.completion`).
+  //
+  // 배압 보존: 링 가득 → comp.ready 하강 → 인도 대기 (Fabric.bp_relief 접점).
   cq.io.comp.valid := reasm.io.deliver.valid
-  cq.io.comp.payload := B(0, CompletionUnit.ENTRY_W - Isa.TAG_W - Isa.LBID_W - Isa.FRAG_TOTAL_W bits) ##
-    reasm.io.deliver.payload.tag.asBits ##
-    reasm.io.deliver.payload.base.asBits ##
-    reasm.io.deliver.payload.total.asBits
+  cq.io.comp.tag   := reasm.io.deliver.payload.tag
+  cq.io.comp.base  := reasm.io.deliver.payload.base
+  cq.io.comp.total := reasm.io.deliver.payload.total
   reasm.io.deliver.ready := cq.io.comp.ready
 
   // E.11 여섯 카운트 — §3.7 정의역 순서. 전부 해당 유닛의 점유 관측 포트
@@ -1139,30 +1185,41 @@ class Wt64Top(
     val tag2RsvBad = (io.mmio.wdata & B(A_TAG2_RSV, 32 bits)) =/= 0
     val fireRsvBad = (io.mmio.wdata & B(A_FIRE_RSV, 32 bits)) =/= 0
 
-    // 필드별 레지스터 — 조립은 Tag 번들 필드 대입으로만 (슬라이스 없음,
-    // §1.4.4 태그 조립 규율).
-    val abWave   = Reg(UInt(Isa.WAVE_W bits)) init 0
-    val abThread = Reg(UInt(Isa.THREAD_W bits)) init 0
-    val abLnid   = Reg(UInt(Isa.LNID_W bits)) init 0
-    val abPrec   = Reg(UInt(Isa.PRECISION_W bits)) init 0
-    val abDim    = Reg(UInt(Isa.DIM_W bits)) init 0
-    when(wr && isTag0) { abWave := io.mmio.wdata.asUInt }
-    when(wr && isTag1) {
-      abThread := io.mmio.wdata(31 downto 16).asUInt
-      abLnid   := io.mmio.wdata(15 downto 0).asUInt
-    }
+    // 스테이징 레지스터는 *워드*로 든다 — 이 세 워드가 정본 E.5.1 태그 직렬화의
+    // **원본**이기 때문이다. E.5.1 1항이 `0xF40`~`0xF48` 을 세 표면(완료
+    // 디스크립터 · 명령 디스크립터 · 이 소거 스테이징)의 공통 직렬화로 올렸고,
+    // 그 뒤로 여기서 필드를 손으로 쪼개면 코덱이 두 벌이 된다 — §1.4.4 가 이름한
+    // 드리프트 실패형이 저장소 안에서 재현되는 형태다. 분해는 `Types.Tag.
+    // fromWords` 한 곳이고 이 블록에 태그 슬라이스는 없다 (E.5.1 3항).
+    //
+    // 스테이징은 *정의 비트만* 든다. TAG2 예약 `[31:16]` 은 엄격 거절이라 비0
+    // 이면 기입 자체가 서지 않으므로 저장할 값이 없고, 그럼에도 저장하면 §5.7
+    // 해설이 경계한 「무시되는 비트가 *어딘가에 저장되거나* 반향되면」의 그
+    // 저장이 바로 이 레지스터가 된다. 코덱에 넘길 때 0 으로 다시 채운다 —
+    // 여백이 존재하는 곳은 워드 표면이지 장치 안쪽 상태가 아니다.
+    private val T2_DEF_W = Types.Tag.TAG2_RSV_LO // TAG2 의 정의 비트 폭 (16)
+    val abTag0 = Reg(Bits(32 bits)) init 0
+    val abTag1 = Reg(Bits(32 bits)) init 0
+    val abTag2 = Reg(Bits(T2_DEF_W bits)) init 0
+    when(wr && isTag0) { abTag0 := io.mmio.wdata }
+    when(wr && isTag1) { abTag1 := io.mmio.wdata }
     // 거절된 스테이징 기입은 레지스터를 움직이지 않는다 — 반쯤 갱신된
-    // 태그로 발화가 서는 창을 만들지 않는다.
-    when(wr && isTag2 && !tag2RsvBad) {
-      abPrec := io.mmio.wdata(15 downto 8).asUInt
-      abDim  := io.mmio.wdata(7 downto 0).asUInt
-    }
-    reasm.io.abort.valid         := wr && isFire && !fireRsvBad && io.mmio.wdata(0)
-    reasm.io.abort.tag.wave      := abWave
-    reasm.io.abort.tag.thread    := abThread
-    reasm.io.abort.tag.lnid      := abLnid
-    reasm.io.abort.tag.precision := abPrec
-    reasm.io.abort.tag.dim       := abDim
+    // 태그로 발화가 서는 창을 만들지 않는다. TAG2 예약이 엄격인 것은 이
+    // 표면이 §5.7 축의 *받아들이는* 쪽이기 때문이다 (E.5.1 4항 — 여백의
+    // 정책은 직렬화가 아니라 방향이 정한다).
+    when(wr && isTag2 && !tag2RsvBad) { abTag2 := io.mmio.wdata(T2_DEF_W - 1 downto 0) }
+
+    val abWords = Vec(abTag0, abTag1, B(0, 32 - T2_DEF_W bits) ## abTag2)
+
+    // 이중 방어 — 발화 시점에 스테이징의 예약 여백을 *같은 함수로* 다시 본다.
+    // 기입 시점 거절이 이미 막고 있어 이 갈래는 도달 불가이며, 그것이 요점이다:
+    // 스테이징 경로가 훗날 하나 더 생겨도 발화가 그것을 통과시키지 않는다.
+    // 「검사가 두 곳」이 아니라 *정의가 한 곳이고 걸린 자리가 둘*이라 갈릴 수
+    // 있는 형태가 아니다 (Reassembly 의 개방 재초기화가 소거와 겹치는 것과 같은
+    // 형태). E.12 「발화 전의 부분 기입은 효과가 없다」의 여백 축이기도 하다.
+    val stagedRsvBad = Types.Tag.reservedNonZero(abWords)
+    reasm.io.abort.valid := wr && isFire && !fireRsvBad && !stagedRsvBad && io.mmio.wdata(0)
+    reasm.io.abort.tag   := Types.Tag.fromWords(abWords)
 
     when((wr && isTag2 && tag2RsvBad) || (wr && isFire && fireRsvBad) ||
          (wr && (isCnt || isInc))) { surfBadWr := True }
@@ -1177,7 +1234,7 @@ class Wt64Top(
   //
   // fault 는 특정 유닛의 표면이 아니라 *장치 전역*이라 자기 구역을 갖는다.
   // 이 구역은 새 상태를 **하나만** 만든다 (step 능력 부재 sticky — 원천이
-  // sticky 를 갖지 않는 유일한 축). 나머지 열여덟 축은 이미 하위 유닛이
+  // sticky 를 갖지 않는 유일한 축). 나머지 축 중 열일곱은 이미 하위 유닛이
   // 들고 있던 비트의 *배치*일 뿐이다 — §3.8 의 「합성 가능한 sticky 비트」는
   // 이 표면 이전에 이미 만족이었고, 없던 것은 HIU-6 의 해제 경로였다.
   //
@@ -1259,7 +1316,7 @@ class Wt64Top(
   // 원천 대입(`io.fault.*`)과 워드 조립을 붙여 두는 이유: 비트 배정이 ABI 라
   // (§3.10) 「어느 신호가 몇 번 비트인가」를 한 화면에서 검산할 수 있어야 한다.
   private val faultWords = new Area {
-    /** FAULT_STATUS (`0xF80`) — sticky 비트맵. `[31:18]` RO 예약 = 0. */
+    /** FAULT_STATUS (`0xF80`) — sticky 비트맵. `[31:19]` RO 예약 = 0. */
     val status = Bits(32 bits)
     status := 0
     status(Fault.B_DECODE_WALK) := io.fault.decodeWalk
@@ -1290,11 +1347,15 @@ class Wt64Top(
     // 유닛이 재구현에 미착지). 상수 0 이며 rtl/README.md 가 행으로 등재한다.
     // 비트를 비워 두는 것과 비트가 없는 것은 다른 사실이다.
     status(Fault.B_ENTROPY)     := False
+    // `[18]` 명령 디스크립터 malformation — E.5.4 가 만든 새 원천이고 세울
+    // 주체(명령 링 소비자)가 이 저장소에 없다. `[17]` 과 같은 부류·같은 처분:
+    // 상수 0 이며 rtl/README.md 가 행으로 등재한다.
+    status(Fault.B_CMD_DESC)    := False
 
     /** FAULT_SUMMARY (`0xF88`) — `[0]` 논리합. @sec:security 5.6 1항의 「종합
       * 오류 신호」이며 개별 노출을 *대체하지 않고 덧붙인다* — 폴딩이 진단
       * 정보를 버리는 거래가 되지 않는 유일한 형태다. 예약 비트가 0 이라
-      * 워드 전체의 논리합이 곧 정의 비트 열여덟의 논리합이다. */
+      * 워드 전체의 논리합이 곧 정의 비트 열아홉의 논리합이다. */
     val summary = Bits(32 bits)
     summary := 0
     summary(0) := status.orR
