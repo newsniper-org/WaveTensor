@@ -1,0 +1,25 @@
+{
+  "anchors": [
+    "Route.view_sync"
+  ],
+  "at": "2026-08-26T10:40:32Z",
+  "cells": {
+    "assert": 31,
+    "cover": 0
+  },
+  "cover": {
+    "reached": 0,
+    "unreached": 0
+  },
+  "inputs": {
+    "rtl/generated/MmioConfig.sv": "58ba347ba3c3fcc3876fadce6ddc214b6d2eb60a88251f81b8abf706930a3932",
+    "rtl/generated/RouteJudge.sv": "63682c0c0bf02d83d1516d39734b05c99d428f1fc714bbce6527d759dc38dd68",
+    "rtl/sv/assert/RouteMmio_props.sv": "07f5877b24e6c23466376a2c461696985ce3142d71bd810401f5cbae6ce4301c"
+  },
+  "sby": "rtl/formal/sby/RouteMmio/route_mmio.sby",
+  "sby_sha256": "7a7ebcf4457216ef2dcbc9d6c8cfe90e5bbdef6b16ce97ace89c4f36b0e2cb58",
+  "schema": "wt64-postformal-evidence/1",
+  "tasks": "bmc:PASS prove:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS"
+}

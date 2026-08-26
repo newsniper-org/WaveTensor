@@ -1,0 +1,25 @@
+{
+  "anchors": [
+    "Platform.state_machine_kept",
+    "Platform.owner_check"
+  ],
+  "at": "2026-08-26T10:19:31Z",
+  "cells": {
+    "assert": 18,
+    "cover": 12
+  },
+  "cover": {
+    "reached": 12,
+    "unreached": 0
+  },
+  "inputs": {
+    "rtl/generated/OwnershipTable.sv": "3b6f4b25c5407b0e49261df313116377f9ad724903cb4c466fb87ac36e454fce",
+    "rtl/sv/assert/OwnershipTable_props.sv": "f10e281ed8fd02a2322f95c6e0a41f90987dc429bd7c49b08e2d91be2e59fea5"
+  },
+  "sby": "rtl/formal/sby/OwnershipTable/ownershiptable.sby",
+  "sby_sha256": "5f0bfba1895745abbefb15f76c60c3ce2c4a0accfb1c4450cd981be674878b45",
+  "schema": "wt64-postformal-evidence/1",
+  "tasks": "bmc:PASS cover:PASS prove:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS"
+}

@@ -1,0 +1,32 @@
+{
+  "anchors": [
+    "Fabric.single_producer",
+    "Fabric.valid_gated",
+    "Fabric.valid_tracks_data",
+    "Fabric.capture_atomic",
+    "Fabric.stall_on_pending",
+    "Fabric.bp_loud",
+    "Fabric.fault_raised",
+    "Fabric.fault_sticky",
+    "Fabric.bp_no_consumer_write"
+  ],
+  "at": "2026-08-26T08:24:50Z",
+  "cells": {
+    "assert": 50,
+    "cover": 0
+  },
+  "cover": {
+    "reached": 0,
+    "unreached": 0
+  },
+  "inputs": {
+    "rtl/generated/FabricMerge.sv": "9afcbab99e4eb409a8679369a43574ef7f93067a12b6d0fd9ceccf32d028dbb2",
+    "rtl/sv/assert/FabricMerge_props.sv": "e05508761efbddd4820989eff07b4e71c4187e0c46988c3d85987e1a2b3c595f"
+  },
+  "sby": "rtl/formal/sby/FabricMerge/contracts.sby",
+  "sby_sha256": "c46074e68932f9cc3a0f78ad9b2430d64b34b51281965e8d7e9710a0509848df",
+  "schema": "wt64-postformal-evidence/1",
+  "tasks": "bmc:PASS prove:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS"
+}

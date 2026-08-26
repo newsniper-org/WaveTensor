@@ -1,0 +1,26 @@
+{
+  "anchors": [
+    "ResultBank.owner_check",
+    "ResultBank.acquire_free",
+    "ResultBank.interval_end"
+  ],
+  "at": "2026-08-26T10:22:00Z",
+  "cells": {
+    "assert": 117,
+    "cover": 6
+  },
+  "cover": {
+    "reached": 6,
+    "unreached": 0
+  },
+  "inputs": {
+    "rtl/generated/ResultBank.sv": "57925238932bf1aa090fce2b015baa68854e0da8e944bc6be7269a7556a3a1da",
+    "rtl/sv/assert/ResultBank_props.sv": "feda45230435c619ff55988ff908b837fa9ff2992f06a43195e8a472df6db25b"
+  },
+  "sby": "rtl/formal/sby/ResultBank/ownership.sby",
+  "sby_sha256": "246a1511b81afb3824b7178bbeed72b01cc8a5f1e59ce786b1d0b9243e5ee094",
+  "schema": "wt64-postformal-evidence/1",
+  "tasks": "bmc:PASS cover:PASS prove:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS"
+}

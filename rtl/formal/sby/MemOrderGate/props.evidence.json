@@ -1,0 +1,30 @@
+{
+  "anchors": [
+    "MemOrder.token_gate",
+    "MemOrder.token_on_complete",
+    "MemOrder.complete_not_ordered",
+    "MemOrder.gate_matches_dep",
+    "MemOrder.wave_not_gating",
+    "MemOrder.addr_not_gating",
+    "MemOrder.inflight_not_gating"
+  ],
+  "at": "2026-08-26T09:14:23Z",
+  "cells": {
+    "assert": 24,
+    "cover": 0
+  },
+  "cover": {
+    "reached": 0,
+    "unreached": 0
+  },
+  "inputs": {
+    "rtl/generated/MemOrderGate.sv": "1c2d0531b7110e0f26e8d67ae866ad59b0e8dd13a74813c1620e4649f9f1e49e",
+    "rtl/sv/assert/MemOrderGate_props.sv": "3ca79ac03ba1777127c7511ad819b0103274be4873bfa2d3132ee3ff37eb26b9"
+  },
+  "sby": "rtl/formal/sby/MemOrderGate/props.sby",
+  "sby_sha256": "48d1239353b0c6682189e3b57c08800234456bfa208d3e09487b19cfacd5d63e",
+  "schema": "wt64-postformal-evidence/1",
+  "tasks": "bmc:PASS prove:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS"
+}

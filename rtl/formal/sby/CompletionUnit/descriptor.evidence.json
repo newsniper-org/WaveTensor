@@ -1,0 +1,22 @@
+{
+  "anchors": [],
+  "at": "2026-08-26T08:20:26Z",
+  "cells": {
+    "assert": 8,
+    "cover": 12
+  },
+  "cover": {
+    "reached": 12,
+    "unreached": 0
+  },
+  "inputs": {
+    "rtl/generated/CompletionUnit.sv": "ebdc40cf21d2741651eb72a8ca6d68b41edd1013af7bae51659fdd625bc6be14",
+    "rtl/sv/assert/CompletionUnit_props.sv": "0790a6820edc3ae22fdeeec97b2b0bbba5b267117274095f479408a324800324"
+  },
+  "sby": "rtl/formal/sby/CompletionUnit/descriptor.sby",
+  "sby_sha256": "38d2371cbec792d66e289b39ca4a2b92b3c455fcde556e4f27b5a22aba360c37",
+  "schema": "wt64-postformal-evidence/1",
+  "tasks": "bmc:PASS cover:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS"
+}

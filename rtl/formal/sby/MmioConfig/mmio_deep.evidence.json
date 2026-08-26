@@ -1,0 +1,22 @@
+{
+  "anchors": [],
+  "at": "2026-08-26T10:08:18Z",
+  "cells": {
+    "assert": 148,
+    "cover": 0
+  },
+  "cover": {
+    "reached": 0,
+    "unreached": 0
+  },
+  "inputs": {
+    "rtl/generated/MmioConfig.sv": "58ba347ba3c3fcc3876fadce6ddc214b6d2eb60a88251f81b8abf706930a3932",
+    "rtl/sv/assert/MmioConfig_props.sv": "b1eed1a930d8e7e172fc0b0567bb50a7c738b6a41240d7ee682cf96fa3b9b0c8"
+  },
+  "sby": "rtl/formal/sby/MmioConfig/mmio_deep.sby",
+  "sby_sha256": "1f0cf44f35df23e23da064c79a459d3f1c2b60a4ef260054cdf99feb26d6b493",
+  "schema": "wt64-postformal-evidence/1",
+  "tasks": "deep:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS"
+}

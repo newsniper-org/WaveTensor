@@ -1,0 +1,27 @@
+{
+  "anchors": [
+    "SharedUnit.busy_check",
+    "SharedUnit.queue_room",
+    "SharedUnit.backpressure",
+    "SharedUnit.no_overtake"
+  ],
+  "at": "2026-08-26T10:40:47Z",
+  "cells": {
+    "assert": 23,
+    "cover": 7
+  },
+  "cover": {
+    "reached": 7,
+    "unreached": 0
+  },
+  "inputs": {
+    "rtl/generated/SharedUnit.sv": "55a9d9c4432c890cdafdc1df16fc8a36a220cde729a1969a32fb716757d02874",
+    "rtl/sv/assert/SharedUnit_props.sv": "97b16696cab98839dd40b7cc94abadae34953a537aa9b11df1636e66cb55f8cc"
+  },
+  "sby": "rtl/formal/sby/SharedUnit/dispatch.sby",
+  "sby_sha256": "13a871bcb9a339d8c21edce5012c64aac9f5719b84fe769f701b6bb46692920e",
+  "schema": "wt64-postformal-evidence/1",
+  "tasks": "bmc:PASS cover:PASS prove:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS"
+}

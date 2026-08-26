@@ -1,0 +1,24 @@
+{
+  "anchors": [
+    "Route.view_sync"
+  ],
+  "at": "2026-08-26T09:14:24Z",
+  "cells": {
+    "assert": 28,
+    "cover": 9
+  },
+  "cover": {
+    "reached": 9,
+    "unreached": 0
+  },
+  "inputs": {
+    "rtl/generated/MmioConfig.sv": "58ba347ba3c3fcc3876fadce6ddc214b6d2eb60a88251f81b8abf706930a3932",
+    "rtl/sv/assert/MmioConfig_props.sv": "b1eed1a930d8e7e172fc0b0567bb50a7c738b6a41240d7ee682cf96fa3b9b0c8"
+  },
+  "sby": "rtl/formal/sby/MmioConfig/mmio_config.sby",
+  "sby_sha256": "bdccc5411daf8a39294639c47d5b257ffa9d5d8218ed32f3a7c2c2f11845c760",
+  "schema": "wt64-postformal-evidence/1",
+  "tasks": "bmc:PASS cover:PASS prove:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS"
+}

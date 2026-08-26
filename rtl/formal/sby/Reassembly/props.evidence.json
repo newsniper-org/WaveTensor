@@ -1,0 +1,38 @@
+{
+  "anchors": [
+    "Payload.key_is_tag",
+    "Payload.no_restart",
+    "Payload.no_dup_seq",
+    "Payload.cap_check",
+    "Payload.capability_not_fault",
+    "Payload.last_judges",
+    "Payload.reset_on_deliver",
+    "Payload.abort_erases",
+    "Payload.abort_clears_window",
+    "Payload.abort_leaves_trace",
+    "Payload.abort_not_fault",
+    "Payload.write_atomic",
+    "Payload.capability_check",
+    "Payload.base_from_tag",
+    "Payload.loud_reject"
+  ],
+  "at": "2026-08-26T10:20:04Z",
+  "cells": {
+    "assert": 87,
+    "cover": 18
+  },
+  "cover": {
+    "reached": 18,
+    "unreached": 0
+  },
+  "inputs": {
+    "rtl/generated/Reassembly.sv": "09d7f715521ea37ef2e42c9f6435b2c414f839b0219211c08b4f2ff89fcaa135",
+    "rtl/sv/assert/Reassembly_props.sv": "a85452f9607d36c9f0fdaacfd0b5fbcc717f387c8c411788f380370d4af72283"
+  },
+  "sby": "rtl/formal/sby/Reassembly/props.sby",
+  "sby_sha256": "9a00799b605565dbe08e1bea46cc8d270740bad35a5d14853116a4fef33f1536",
+  "schema": "wt64-postformal-evidence/1",
+  "tasks": "bmc:PASS cover:PASS prove:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS"
+}

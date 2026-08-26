@@ -1,0 +1,24 @@
+{
+  "anchors": [
+    "Fabric.fair_grant"
+  ],
+  "at": "2026-08-26T08:32:27Z",
+  "cells": {
+    "assert": 54,
+    "cover": 0
+  },
+  "cover": {
+    "reached": 0,
+    "unreached": 0
+  },
+  "inputs": {
+    "rtl/generated/FabricMerge.sv": "9afcbab99e4eb409a8679369a43574ef7f93067a12b6d0fd9ceccf32d028dbb2",
+    "rtl/sv/assert/FabricMerge_props.sv": "e05508761efbddd4820989eff07b4e71c4187e0c46988c3d85987e1a2b3c595f"
+  },
+  "sby": "rtl/formal/sby/FabricMerge/fairness.sby",
+  "sby_sha256": "cddf4a942a4b768c6d48e6ada8213c86da18756f74997fd5e667d522052808bf",
+  "schema": "wt64-postformal-evidence/1",
+  "tasks": "FabricMerge-fairness:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS"
+}

@@ -9,6 +9,80 @@
 # PROVES: Isolation.fill_tagged — 채움 적중 = 자기 파티션 pend ∧ idx ∧ tag 논리곱 (타 파티션 슬롯은 후보 아님)
 # PROVES: Isolation.fill_slot_per_partition — 슬롯 몸체 기입은 자기 파티션 설치 사이클에만
 #
+# ## 이 태스크가 *재지 않는* 것 — Isolation.fill_offpath (2차 파도 판정)
+#
+# STRUCTURAL(port-absence): Isolation.fill_offpath — 조회 경로에 정지·ready 포트가
+#   없고 채움 대기 상태(fwait)에 해당하는 레지스터가 없다. 근거는 생성 SV 의
+#   포트 목록·레지스터 목록 전수이며, elaborate 시점 사실이라 트레이스 단언의
+#   대상이 아니다.
+#
+# 위 줄은 **증명 주장이 아니다** — 이 태스크는 fill_offpath 를 재지 않는다.
+# 앵커를 달지 않은 것이 판단의 결과다. 이유와 근거를 아래에 남긴다.
+#
+# ### 왜 단언을 세우지 않는가 (항진명제 회피)
+#
+# GUARD-MAP 문면(XlateStore.scala:18)의 알맹이는 *부재*다: 「채움 상태가 lookup
+# 경로에 정지·ready 를 만들지 않는다」·「fwait 단계 없음」. 이것을 트레이스
+# 단언으로 옮기면 이 저장소가 이미 세 번 밟은 공허 중 둘로 곧장 간다.
+#   · 존재하지 않는 신호(io_lookup_ready·fwait 상태)를 참조하면 상수 0 wire 로
+#     접힌다 — 줄번호 함정(2형)과 같은 부류다.
+#   · 「응답은 조합이다」를 단언으로 옮기면 readAsync 의 직역이라 yosys 가
+#     `connect \A 1'1` 로 접는다 — 셀은 늘고 재는 것은 없다(3형, 항진명제).
+# 커버리지를 올리려고 구조 부재에 억지 단언을 세우는 것이 정확히 항진명제
+# 생산 경로다. 거짓 앵커를 다는 것이 미덮임으로 남기는 것보다 나쁘다.
+#
+# ### 근거 — 기계로 다시 잴 수 있는 형태 (2026-08-26 실측)
+#
+#   rtl/generated/XlateStore.sv:1-32  모듈 포트 전수 32개. lookup 쪽은
+#     {io_lookup_valid, io_lookup_part, io_lookup_vpn} 셋뿐 — ready/stall 포트가
+#     없다. ready 라는 낱말이 붙은 포트는 io_install_ready 하나이며 채움 쪽이다.
+#       확인: grep -nE 'io_lookup_(ready|stall)' rtl/generated/XlateStore.sv → 0줄
+#   rtl/generated/XlateStore.sv:65-96  상태 레지스터 전수 = validBits_0..3 ·
+#     fillPend_0..3 · fillSlot_0..3_{idx,tag,frame,perm_r,perm_w,perm_x}.
+#     대기 단계에 해당하는 상태 레지스터가 없다 (:48-64 의 _zz_* 는 전부
+#     always @(*) 조합 임시다 — 클럭 블록은 :147 · :343 · :423 셋뿐이고
+#     각각 Mem 기입 · 리셋 있는 상태 · 슬롯 몸체다).
+#   조회 응답은 전부 조합이다 — XlateStore.scala:254 readAsync,
+#     :271-286 이 io.rsp.* 를 조합 구동. 이 셋이 문면의 전부다.
+#
+# ### 모델 문면의 잔여분은 이 모듈 밖에 있다 — 통합자 결정 사항
+#
+# Isolation.tla:428-429 가 금지하는 것은 「채움이 진행 중이면 트레이스에 fwait 가
+# 낀다」= *타이밍* 부채널이다. 그 타이밍은 XlateStore 에 존재하지 않는다 —
+# 실제 정지는 HiuPipeline.scala:334-335 의 missWait/advance 다. 그래서 잴 수 있는
+# 잔여분(「채움이 정지를 만들지 않는다」의 단조성 형태:
+# advance_with_fill >= advance_without_fill 를 fillPend/fillSlot 만 다른 2사본
+# miter 로) 은 HiuMask 하네스의 몫이지 이 태스크의 몫이 아니다. 세우려면
+# GUARD-MAP 소유 파일을 XlateStore.scala 에서 HiuPipeline.scala 로 옮기거나
+# 문면을 둘로 쪼개야 한다 — 이 파도의 권한 밖이라 보고로 넘긴다.
+#
+# ### lint 쪽 착지 (2026-08-26 — 같은 파도)
+#
+# scripts/lint_postformal.py 의 `_STRUCTURAL` 표가 이 가드를 담는다. CHECK
+# 분모에서 빠지고 `_MAX_STRUCTURAL` 래칫이 건수에 서명을 요구하며, 부재
+# 주장은 생성 SV 포트 선언으로 기계가 잰다(`require` ≥1 · `forbid` = 0).
+# 선례인 DecodeWalk/walk_decode.sby 의 구조 skip 도 같은 표에 있다.
+#
+# **남은 것 하나** — GUARD-MAP RHS(XlateStore.scala:18)는 여전히 CHECK 문면
+# 이고 분모 축소는 lint 표 한 곳에만 산다. 두 lint 가 서로 다른 분모를
+# 인쇄할 수 있는 자리이므로 GUARD-MAP 쪽 4분류 승격이 후속 안건이다.
+#
+# **잔여분은 여전히 미측정이다** — 모델 문면(Isolation.tla 의 파티션 간
+# 타이밍 부채널)의 관측 가능한 부분은 `fillPend`/`fillSlot` 만 다른 2사본
+# miter 의 `advance` 단조성이고, 그것은 이 모듈이 아니라 HiuPipeline 소유다.
+# 구조 skip 은 all-or-nothing 이라 그 잔여분이 분모에서 통째로 빠졌다 —
+# `_STRUCTURAL` 에 `_PARTIAL` 의 「안 잰다」에 해당하는 칸이 없기 때문이다.
+#
+# ## 항진 검사 실측 (2026-08-26 — 이 파일의 앵커 7건에 대해)
+#
+# 이 태스크는 2026-08-25 이전에 assert 셀 0개로 통과하던 공허였다(파일 머리
+# 기록). 부착 수리 뒤 실측으로 3형(항진명제)까지 배제한다:
+#   $assert 49 · $cover 10 · $assume 2 (prove/bmc 모델은 assert 49 · cover 0,
+#   cover 모델은 chformal 이 assert 를 떼어 cover 10).
+#   design_prep.il 의 49개 `cell $assert` 전수에서 `connect \A` 가 상수인 것
+#   **0건**, `connect \EN` 이 상수인 것 **0건** — 접힌 단언이 없다.
+#   cover 증인 10/10 reached (W1..W10, 스텝 3~5).
+#
 # bmc 깊이 20: 내부 시퀀스 최장은 설치→커밋→조회 3사이클 — 그 6배 이상으로
 # 설치·커밋·flush·조회 상호작용을 넉넉히 덮는다 (2배 하한 충족). prove
 # (k-귀납)가 서므로 그것이 정답.

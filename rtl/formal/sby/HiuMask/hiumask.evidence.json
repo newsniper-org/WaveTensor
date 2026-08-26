@@ -1,0 +1,33 @@
+{
+  "anchors": [
+    "Decode.stall_uniform",
+    "Isolation.coh_no_shortcut",
+    "Decode.lookup_unbranched",
+    "Isolation.approve_gates_value",
+    "Isolation.no_early_forward",
+    "Isolation.query_no_serve",
+    "Platform.xlate_local",
+    "Decode.evict_inline",
+    "Platform.owner_check"
+  ],
+  "at": "2026-08-26T09:14:22Z",
+  "cells": {
+    "assert": 23,
+    "cover": 15
+  },
+  "cover": {
+    "reached": 15,
+    "unreached": 0
+  },
+  "inputs": {
+    "rtl/generated/HiuPipeline.sv": "83768afe9908d36db56bc3a9887795bb18892704c230f1a5f27f2af809b88a44",
+    "rtl/generated/MaskUnit.sv": "6fe2cddee7b7dc270abd69a0e634d414cf1ec04157ffa35e3723ef7374801da8",
+    "rtl/sv/assert/HiuMask_props.sv": "00ee1f0c60378692db75d135b347f0903ebe504ffd50c6dc656b2562b4b12117"
+  },
+  "sby": "rtl/formal/sby/HiuMask/hiumask.sby",
+  "sby_sha256": "eb411a0b1992067b891bc738477480f15d957173463e08f5fc676b1b8bf04431",
+  "schema": "wt64-postformal-evidence/1",
+  "tasks": "bmc:PASS cover:PASS prove:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS"
+}

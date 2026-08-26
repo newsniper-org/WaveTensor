@@ -4,10 +4,101 @@
 # PROVES: Decode.stall_uniform — advance 하나가 합성(HiuPipeline×MaskUnit) 전 단의 공통 enable — 정지 원천 무관 전 단 동결 (MaskUnit 쪽 s4 몸 rValid/rFrame 포함)
 # PROVES: Isolation.coh_no_shortcut — 상태열 균일: 조회·판정을 보지 않는 6단 시프트 거울이 단 valid 열과 항상 일치 — 유효 요청의 단 통과 enable-사이클 수는 상수 6, 단계열은 하나 (§5.3)
 # PROVES: Decode.lookup_unbranched — 조회 결과가 단 배치를 바꾸지 않는다: 거울 일치 + 응답은 정확히 6번째 enable 지점 (단계 선택 mux 부재의 관측형)
-# PROVES: Isolation.no_early_forward — granted 없이 io.rsp 값축(frame·perm) 비0 사이클 부재 — 승인 전 소비자 관측값 0
+# PROVES: Isolation.approve_gates_value — 값축: io.rsp 값축(frame·perm)이 비0 인 사이클은 granted 인 사이클뿐 — 미승인 요청의 값 축 관측은 0 (승인 게이트가 값을 통제하는 유일 지점)
+# PROVES: Isolation.no_early_forward — 시간축: 그 값이 실리는 사이클은 거울 f_v 의 6번째 지점(승인 단)뿐 — 실행(s5)과 승인(s6) 사이의 일시 누출 부재. 문면의 「배선 부재」는 elaborate 사실이므로 그 관측형으로 좁혀 잰다 (아래 §미측정 잔여 ②)
+# PROVES: Isolation.query_no_serve — 로컬 저장 leg 이 답하는 사이클에 s4 로 들어가는 값(io.mask.req.frame 과 같은 그물)은 저장 leg 값 그 자체 — 호스트 leg 이 그 자리를 이기는 사이클 부재 (두 leg 충돌 궤적의 도달성은 증인 W9)
+# PROVES: Platform.xlate_local — **우선순위 축 한정**: 호스트 leg 은 로컬 미적중일 때만 소비되는 최하 순위이고 로컬 판정을 이기지 못한다 (query_no_serve 와 같은 단언 몸 + 증인 W9·W10). 지속 상태 불오염 축은 이 태스크가 재지 않는다 — 아래 §미측정 잔여 ③
+# PROVES: Decode.evict_inline — 캡처 축: 전진 에지의 s4 몸 = 그 사이클의 조회 데이터 그 자체 (대체 전용 상태·전용 데이터 경로·전용 판정 비트 부재) + 대체 궤적이 실제로 도달하고 여섯 단을 완주한다는 증인 W11·W12
+# PROVES: Platform.owner_check — **승인 소비 축**: granted ⊆ devOwned · 비소유의 값 차단(전건이 devOwned) · 비소유 적중의 loud fault (sticky 상승 + 명시 해제 없는 비하강). OwnershipTable 앵커(devOwned 의 데이터 원천 축)와 분업이다 — 그쪽은 「옳게 계산한다」, 이쪽은 「옳게 쓴다」
 #
 # (결선 계약) MaskUnit 고정 1사이클 왕복 — req.valid → 다음 enable 에 rsp.valid.
 # 결선 계약 자체(io.en = advance, req↔rsp 직결)는 하네스 HiuMask_comp 가 실물로 든다.
+#
+# ## §미측정 잔여 — 이 태스크가 **재지 않는** 것과 그 근거 (2026-08-26 2차 파도)
+#
+# 거짓 앵커를 다는 것이 최악이다. 아래 넷은 앵커를 달지 않는다.
+#
+# ① **Isolation.query_offpath — 구조 skip (port-absence)**.
+#    주장의 알맹이가 *포트의 부재*다: HiuPipeline 에 호스트 질의 *발행* 포트가
+#    없고(io.hostRsp 는 입력 셋뿐), 단계 레지스터는 s1·s2·s3·s4·s5·s6 여섯으로
+#    닫혀 있으며 qwait 에 해당하는 레지스터·상태가 없다 — 생성 SV 포트 전수와
+#    레지스터 선언 전수로 확인되는 elaborate 시점 사실이지 트레이스 속성이
+#    아니다. 단언으로 옮기면 존재하지 않는 신호를 참조해 상수 0 wire 로
+#    접히거나(공허 2형) 폭이 이미 보장하는 명제가 된다(공허 3형).
+#    관측 가능한 잔여분 — 「호스트 응답 유무가 단 수를 바꾸지 않는다」 — 은
+#    위 coh_no_shortcut 앵커가 *이미* 덮는다: 거울 f_v 는 io_hostRsp_* 를
+#    일절 보지 않고 io_req_valid 만 시프트하는데 단 valid 열과 전 지점
+#    일치한다. 중복 앵커를 세우면 커버리지만 부풀고 새로 재는 것이 없다.
+#    → GUARD-MAP 에 넷째 종류 `STRUCTURAL(port-absence)` 가 필요하다
+#      (표현 수단 부재 — 통합자 결정 사항. 보고서 참조).
+#
+# ② **Isolation.no_early_forward 의 문면 — 오계수 발견**.
+#    2026-08-25 판의 이 자리 앵커는 「granted 없이 값축 비0 사이클 부재」였다.
+#    그것은 문면 그대로 **값축** 명제이고, Isolation.tla:554-558 의 분업
+#    문면대로라면 approve_gates_value 의 몫이다. 즉 approve_gates_value 는
+#    「미덮임」으로 인쇄되는 동안 실제로는 no_early_forward 이름으로 증명돼
+#    있었다. 이 판에서 그 단언을 approve_gates_value 로 재귀속하고,
+#    no_early_forward 는 모델이 실제로 말하는 *시간축*(실행·승인 사이의 일시
+#    누출)의 관측형으로 갈아탔다. GUARD-MAP 문면 자신은 여전히 「배선 부재」
+#    라는 elaborate 사실을 적고 있다 — 문면을 시간축으로 개정할지, 아니면
+#    STRUCTURAL 로 격하할지는 RTL 소유자·통합자 결정이다 (이 파도는 하네스만
+#    고친다). 지금 앵커는 「배선 부재의 관측형」이라는 좁힌 문면이다.
+#
+# ③ **Platform.xlate_local 의 지속 상태 불오염 축** — 미측정.
+#    「호스트는 install 포트의 채움 공급자일 뿐」의 강한 형태는 2사본 miter
+#    (io_hostRsp_* 만 다른 두 사본에 동일 install/flush/lookup 을 주고 저장
+#    자원의 기입 enable·기입 데이터·validBits·fillPend·rsp_hit 일치)다.
+#    이 태스크의 top 은 HiuMask_comp 하나이고, HiuPipeline_props 는 결선
+#    계약(s5_valid ← io_mask_rsp_valid)에 매여 있어 MaskUnit 없는 miter top
+#    에서는 거울 등식이 그 자리에서 깨진다. 즉 **새 합성 top 이 필요하다** —
+#    XlateStore 2사본 miter 를 별도 태스크로 세우는 것이 옳다.
+#    단일 사본의 대체물(같은 주소 재조회의 시간 불변성)은 k-귀납이 서지
+#    않는다: 임의 초기 메모리에서 그림자와 Mem 을 묶을 귀납 불변식이 없다.
+#    bmc 한정 속성으로는 세울 수 있으나, 그러면 「덮임」이 도달 접두에만
+#    걸린다. 통합자 결정 사항으로 넘긴다.
+#    ※ 부수 발견(모델 되먹임): lookAny = hit || hostPresent 이고 s4.anyHit →
+#      granted 이므로, **호스트 leg 이 로컬 미적중을 승인으로 바꿀 수 있다.**
+#      GUARD-MAP 문면은 그 축을 주장하지 않는다 — 모델(Platform.tla:128-138
+#      「rich 세계에서 주소 공간이 커진다」)과의 간극이며 보고서에 적었다.
+#
+# ④ **Decode.evict_inline 의 기입 축** — 여기서 재귀속하지 않는다.
+#    「저장 기입은 채움 경로가 요청 경로 밖에서 수행한다」의 관측형(저장
+#    기입 enable = 채움 pend · 커밋 없는 에지의 validBits/Mem 몸 불변)은
+#    XlateStore 태스크가 이미 자기 앵커로 재고 있다 —
+#    rtl/formal/sby/XlateStore/xlatestore.sby 의 Isolation.install_scoped ·
+#    Isolation.capacity_partitioned · XlateStore.flush_keeps_data. 같은 것을
+#    여기서 다시 단언하면 셀만 늘고 새로 재는 것이 없다. 그래서 이 태스크는
+#    evict_inline 의 **단계 축**(캡처 등식 + 대체 궤적 도달 증인)만 든다.
+#
+# ⑤ **Isolation.query_no_serve 의 판정 축** — 단언하지 않는다.
+#    「로컬이 답하면 호스트는 판정 축에도 못 들어간다」를 이 스코프에서 그대로
+#    옮기면 `hit -> lookAny` 이고 lookAny = hit || hostPresent 이므로 흡수
+#    법칙으로 접힌다 — 셀은 세어지는데 아무것도 재지 않는 항진명제(공허 3형)
+#    다. 실제로 잴 것이 남아 있는 곳은 「호스트가 *저장 블록의* 적중 판정을
+#    바꾸지 못한다」이고 그것은 XlateStore 안의 명제다 (io_rsp_hit =
+#    fillHit || storeHit 에 hostRsp 가 들어가지 않는다 — 위 ③ 의 miter 와
+#    같은 태스크에서 재는 것이 옳다). 그래서 이 앵커는 **값 축 한정**이다.
+#
+# ## 역-변이 실측 — 「깨뜨리는 것이 있는가」 (2026-08-26)
+#
+# 셀 수와 A 입력 비상수는 항진명제를 배제할 뿐, *그 단언이 무엇을 잡는지*는
+# 말하지 않는다. 그래서 생성 SV 사본을 변이시켜 신설 단언 하나하나에 반례를
+# 실제로 내 보았다 (변이 사본은 /tmp 스크래치 — 저장소 생성물은 불변).
+# 다섯 변이가 각각 *의도한 그 단언 하나만* 깨뜨렸다:
+#
+#   mutA 조회 leg 우선순위 역전 (호스트가 로컬을 이긴다)
+#          → props_only.sv:382 `x_hit -> lookFrame == x_frame` 만 실패
+#   mutB permViol 이 sticky 를 세우지 않는다 (조용한 fault)
+#          → props_only.sv:337 loud fault 만 실패
+#   mutC 승인 판정과 값을 s5 로 당긴다 (조기 포워딩)
+#          → props_only.sv:361 `값축 비0 -> f_v[6]` 만 실패.
+#            **props_only.sv:350(approve_gates_value)은 살아남는다** — 값은
+#            여전히 granted 로 게이트되기 때문이다. 두 가드가 독립임의 실측
+#            이며, Isolation.tla:554-558 의 분업 문면 그대로다.
+#   mutD 미적중·대체 사이클에 전용 데이터를 s4 에 싣는다 (축출 상태의 실물형)
+#          → props_only.sv:325 캡처 등식만 실패
+#   mutE granted 에서 devOwned 를 뺀다
+#          → props_only.sv:366·372 (owner_check ①②) 실패
 #
 # bmc 깊이 24: 파이프 6단의 4배 — 수락→응답 왕복 두 번 + 미적중 정지 구간을
 # 덮는다 (2배 하한 12 이상). prove(k-귀납)가 서므로 그것이 정답이고 bmc 는
@@ -15,6 +106,8 @@
 #
 # cover 깊이 16: 가장 깊은 증인(W2 — 서로 다른 두 요청이 6단 양 끝에 동시에)
 # 이 reset 후 8 enable-사이클을 필요로 한다. 그 2배로 여유를 둔다.
+# 2026-08-26 실측: 신설 증인 일곱(W9..W15)의 도달 단계는 5·5·6·9·9·9·10 —
+# 가장 깊은 것(W15, sticky 해제)이 10 이므로 깊이 16 이 그대로 선다.
 #
 # ## 부착 방식 — bind 텍스트 전개 ×2 (2026-08-25 수리)
 #

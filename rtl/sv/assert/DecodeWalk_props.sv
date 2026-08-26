@@ -293,6 +293,101 @@ module DecodeWalk_props (
     end
   end
 
+  // ── cover 증인 (cover 태스크에서만 컴파일) ───────────────────────────────
+  //
+  // 왜 있는가. 위 단언 40개 중 다수가 *전건이 붙은 함의*(판정 에피소드 ·
+  // sticky 상승/하강 · END 뒤 게이트)이고, 결정적으로 등가식 하나
+  // (`io_oMalformed == $past(f_mal)`)가 **일곱 검산의 논리합을 통째로 접는다**.
+  // 그 논리합의 어느 항이 도달 불가능해도 등가식은 그대로 참이고 증명은
+  // 통과한다 — 그런데 그 항에 걸린 CHECK 줄(len_check · junk_check · …)은
+  // 아무것도 재지 못한 것이다. 단언만으로는 「참이라서 통과」와 「전제가
+  // 도달 불가능해서 통과」를 구별할 수 없다. 아래 증인이 그 구별을 만든다.
+  //
+  // 항진명제 검사(A 입력 상수 여부)는 이 결을 못 잡는다는 점이 요점이다 —
+  // `!전건 || 후건` 형태의 A 는 전건이 죽어 있어도 상수로 접히지 않는다.
+  // 셀 수 · A 상수성 · 증인 도달, 셋이 각각 다른 공허를 닫는다.
+  //
+  // cover 태스크 전용 컴파일은 HiuMask 선례(-DHIUMASK_COVER)를 따른다 —
+  // prove 모델은 단언만 들어 태스크별 셀 수가 정확히 대조된다.
+`ifdef DECODEWALK_COVER
+  reg f_past_reset = 1'b1;
+  always @(posedge clk) f_past_reset <= reset;
+  wire f_ok = f_past_valid && !reset && !f_past_reset;
+
+  // 단독 원인 — 일곱 검산이 *각각 혼자서* mal 을 세우는 조건. 논리합의 어느
+  // 항도 죽어 있지 않다는 것이 각 CHECK 줄의 비공허 조건이다. capability 는
+  // 맨 앞 배타항이므로 !f_capAbsent 를 함께 든다 (그래야 「malformed 가 실제로
+  // 방출되는」 궤적이다).
+  wire f_only_resv  = !f_capAbsent && f_resvBad &&
+    !(f_capBad || f_lenBad || f_junkBad || f_selfBad || f_wordsBad || f_dupBad);
+  wire f_only_len   = !f_capAbsent && f_lenBad &&
+    !(f_resvBad || f_capBad || f_junkBad || f_selfBad || f_wordsBad || f_dupBad);
+  wire f_only_cap   = !f_capAbsent && f_capBad &&
+    !(f_resvBad || f_lenBad || f_junkBad || f_selfBad || f_wordsBad || f_dupBad);
+  wire f_only_junk  = !f_capAbsent && f_junkBad &&
+    !(f_resvBad || f_capBad || f_lenBad || f_selfBad || f_wordsBad || f_dupBad);
+  wire f_only_self  = !f_capAbsent && f_selfBad &&
+    !(f_resvBad || f_capBad || f_lenBad || f_junkBad || f_wordsBad || f_dupBad);
+  wire f_only_words = !f_capAbsent && f_wordsBad &&
+    !(f_resvBad || f_capBad || f_lenBad || f_junkBad || f_selfBad || f_dupBad);
+  wire f_only_dup   = !f_capAbsent && f_dupBad &&
+    !(f_resvBad || f_capBad || f_lenBad || f_junkBad || f_selfBad || f_wordsBad);
+
+  // W1 — 정상 승인이 실제로 난다. 없으면 Decode.verdict_ungated 의 게이트
+  //      등식(:224)과 D14 상태열 균일이 「무엇도 통과하지 않는 기계」 위에서
+  //      참이 된다.
+  always @(posedge clk) if (f_ok) cover (io_oValid && io_oExecValid);
+  // W2 — malformed 종결 도달 (Decode.mal_carried 등식의 활성면)
+  always @(posedge clk) if (f_ok) cover (io_oValid && io_oMalformed);
+  // W3 — capability 종결 도달 (Walk.cap_declared 활성면 — 배타 단언 :220 이
+  //      「capAbsent 가 영영 0」으로 자명해지지 않는다)
+  always @(posedge clk) if (f_ok) cover (io_oValid && io_oCapAbsent);
+
+  // W4..W10 — 일곱 검산의 단독 원인. 이것이 `oMalformed == $past(f_mal)` 이
+  //      실제로 일곱 CHECK 줄을 나눠 재고 있다는 유일한 증거다.
+  always @(posedge clk) if (f_ok) cover (io_oMalformed && $past(f_only_resv));  // Decode.resv_judged
+  always @(posedge clk) if (f_ok) cover (io_oMalformed && $past(f_only_len));   // Walk.len_check
+  always @(posedge clk) if (f_ok) cover (io_oMalformed && $past(f_only_cap));   // Walk.cap_check
+  always @(posedge clk) if (f_ok) cover (io_oMalformed && $past(f_only_junk));  // Walk.junk_check
+  always @(posedge clk) if (f_ok) cover (io_oMalformed && $past(f_only_self));  // 자기 종류 검산
+  always @(posedge clk) if (f_ok) cover (io_oMalformed && $past(f_only_words)); // 워드 수 검산
+  always @(posedge clk) if (f_ok) cover (io_oMalformed && $past(f_only_dup));   // §4.2.3 반복 규약
+
+  // W11 — 4슬롯 완주: post_end_gated 의 단조 사슬(:237-239)과 서술자 등식이
+  //      사슬 끝까지 간다 (전부 END 인 세계에서는 :238-239 가 자명하다)
+  always @(posedge clk) if (f_ok) cover (io_oValid && io_oSlotPresent_3);
+  // W12 — 즉시 END: 슬롯 0개. Walk.end_authority 의 반대면 — 사슬 포인터
+  //      0x0 하나가 곧 종료라는 것이 실제로 관측된다.
+  always @(posedge clk) if (f_ok) cover (io_oValid && !io_oSlotPresent_0);
+  // W13 — off 상계 도달: 앞 세 슬롯이 3워드씩이면 oSlotOff_3 = 10. 조합 단언
+  //      :217 의 상계가 느슨한 상한이 아니라 실제로 닿는 값이라는 증거.
+  always @(posedge clk) if (f_ok)
+    cover (io_oValid && io_oSlotPresent_3 && (io_oSlotOff_3 == 8'd10));
+
+  // W14 — sticky 상승이 실제로 난다 (Decode.fault_not_folded 상승 함의 :282 의
+  //      전건 도달성)
+  always @(posedge clk) if (f_ok) cover (io_oFault && !$past(io_oFault));
+  // W15 — sticky 하강이 실제로 가능하다. 이 증인이 없으면 「해제 없인 내려가지
+  //      않는다」(:291)가 「영영 내려가지 않는다」로 자명해진다.
+  always @(posedge clk) if (f_ok) cover (!io_oFault && $past(io_oFault));
+  // W16 — 유지 구간 (해제 미제시) — :291 의 전건 도달성
+  always @(posedge clk) if (f_ok)
+    cover (io_oFault && $past(io_oFault) && !$past(io_iFaultClear));
+  // W17 — 능력 부재는 fault 를 세우지 않는다 (Walk.cap_declared 의 「StickyFault
+  //      불참」). 단언 :282 는 상승 *원인*을 malformed 로 못박을 뿐이고, 능력
+  //      부재가 fault 없이 지나가는 궤적을 보여야 그 문면이 재어진다.
+  always @(posedge clk) if (f_ok) cover (io_oValid && io_oCapAbsent && !io_oFault);
+
+  // W18 — 예약 비트가 비0 인 명령이 실제로 방출면을 지난다. Decode.resv_not_echoed
+  //      의 마스킹 단언(:232·:267)이 「예약이 늘 0 인 세계」에서 자명해지지 않는다.
+  //      구조 skip 으로 닫은 Decode.out_no_reason 의 관측 가능한 잔여분이 이
+  //      증인 위에서 재어진다 (walk_decode.sby 의 STRUCTURAL 절 참조).
+  always @(posedge clk) if (f_ok) cover (io_oValid && ($past(io_iInstr_0[15:8]) != 8'h00));
+  // W19 — 무효 사이클 — Decode.resv_not_timed 의 지연 등식(:243)이 양 극성에서
+  //      재어진다 (늘 유효한 세계에서는 절반만 실측된 것이다)
+  always @(posedge clk) if (f_ok) cover (!io_oValid);
+`endif // DECODEWALK_COVER
+
 endmodule
 
 // ── formal 전용 래퍼 — bind 의 대체 (파일 머리의 이탈 기록 참조) ───────────

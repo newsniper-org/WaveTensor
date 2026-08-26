@@ -1,0 +1,36 @@
+{
+  "anchors": [
+    "Walk.end_authority",
+    "Walk.len_check",
+    "Walk.cap_declared",
+    "Walk.cap_check",
+    "Walk.junk_check",
+    "Walk.post_end_gated",
+    "Decode.resv_judged",
+    "Decode.mal_carried",
+    "Decode.resv_not_indexed",
+    "Decode.resv_not_timed",
+    "Decode.resv_not_echoed",
+    "Decode.fault_not_folded",
+    "Decode.verdict_ungated"
+  ],
+  "at": "2026-08-26T11:38:15Z",
+  "cells": {
+    "assert": 40,
+    "cover": 19
+  },
+  "cover": {
+    "reached": 19,
+    "unreached": 0
+  },
+  "inputs": {
+    "rtl/generated/DecodeWalk.sv": "6bb4e8e5ff11735ca34b7ac979fb9032ad060bf391372c299ccc1f883b77bc1b",
+    "rtl/sv/assert/DecodeWalk_props.sv": "55115c17a8a12317caf6b397c8cb8446d5f83bfd967b0ea38cfa6252fdfeb879"
+  },
+  "sby": "rtl/formal/sby/DecodeWalk/walk_decode.sby",
+  "sby_sha256": "162a899e645bd6286df3b8dd825b5a462ddde58d278b87ba3df88902027d4d79",
+  "schema": "wt64-postformal-evidence/1",
+  "tasks": "cover:PASS prove:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS"
+}

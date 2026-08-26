@@ -34,6 +34,7 @@ module Reassembly_props (
   input logic        reset,
   // 개방 면
   input logic        io_open_valid,
+  input logic [7:0]  io_open_base,
   input logic        io_open_granted,
   // 조각 면
   input logic        io_frag_valid,
@@ -65,8 +66,12 @@ module Reassembly_props (
   input logic        `WT_STICKY_SET_FAULT,
   // 조각 접수 판정 내부
   input logic        fr_hit_0, fr_hit_1, fr_hit_2, fr_hit_3,
+  input logic        fr_hitAny,
   input logic        fr_accept,
   input logic        fr_capaRej,
+  input logic        fr_strayRej,
+  input logic        fr_totBad,
+  input logic        fr_overRej,
   input logic        fr_dupRej,
   input logic        fr_cKnown,
   input logic [15:0] fr_cSeen,
@@ -82,6 +87,8 @@ module Reassembly_props (
   input logic        op_clash,
   input logic        op_clashEvt,
   input logic        op_grant,
+  input logic        op_freeAny,
+  input logic [3:0]  op_freeOh,
   // 문맥 풀 (nCtxs=4)
   input logic        ctx_0_active,
   input logic [31:0] ctx_0_tag_wave,
@@ -142,6 +149,30 @@ module Reassembly_props (
     f_past_reset <= reset;
   end
   wire f_step = f_past_valid && !reset && !f_past_reset;
+
+  // ── 형상 상수 — 이 하네스가 검사하는 커밋 생성물의 형상 (파일 머리 참조) ──
+  // Reassembly.scala:148 의 `require(slotCap <= 254)` 가 「선언 총개수 8비트
+  // 값 공간 안에 능력 부재 축이 표현 가능하다」를 elaborate 로 못박아 둔
+  // 덕분에 아래 비교가 값 공간 넓은 비교로 선다 (16 초과 값 239개) — 폭이
+  // 답을 정해 버리는 항진명제의 정반대 자리다.
+  localparam [7:0] WT_SLOT_CAP = 8'd16;
+
+  // ── 독립 참조: 능력 부재 판정 (Payload.capability_check) ────────────────
+  //
+  // **DUT 의 비교기를 재인용하지 않는다.** fr_capaRej 는 `slotCap < head.total`
+  // 한 개의 비교 셀인데, 아래 참조는 같은 술어를 *비트 분해*로 따로 만든다:
+  //   total > 16  ⇔  total[7:5] != 0  ∨  (total[4] ∧ total[3:0] != 0)
+  // 두 계산이 구조적으로 달라 opt 가 하나로 합치지 못하므로 p_capa_def 의
+  // 등식이 상수로 접히지 않는다. 그리고 이 형태는 이 저장소가 실제로 밟은
+  // 「조용한 절단」(§1.3 함정 부류)을 정면으로 잰다 — DUT 가 총개수를 4비트로
+  // 잘라 비교하면 total=32 에서 즉시 반례가 난다.
+  wire f_capa_ref = (|io_frag_head_total[7:5])
+                 || (io_frag_head_total[4] && (|io_frag_head_total[3:0]));
+
+  // 개방 착지 one-hot — 개방 수락 when 블록의 생성 조건 이름은 줄번호에
+  // 매여 있으므로(`when_Reassembly_l<N>` — 파일 머리 함정 2형) 쓰지 않는다.
+  // 안정된 이름 둘(op_grant · op_freeOh)로 여기서 되만든다.
+  wire [3:0] f_grant_oh = {4{op_grant}} & op_freeOh;
 
   // 태그 전량 비교 (번들 통비교 — key_is_tag 의 문면)
   wire tag_eq_01 = (ctx_0_tag_wave == ctx_1_tag_wave) && (ctx_0_tag_thread == ctx_1_tag_thread)
@@ -267,6 +298,36 @@ module Reassembly_props (
     // Payload.write_atomic — 기입 면 발화 == 접수 판정 (같은 사이클·같은
     // 게이트, 사이를 가르는 파이프 단 없음).
     p_wr_atomic_face: assert (io_wr_valid == fr_accept);
+
+    // ══ Payload.capability_check (2차 파도 신설) ═════════════════════════
+    //
+    // 모델의 접수 순서는 「능력 → 상한 → 재시작 → 중복」이고 Payload.tla:431-437
+    // 이 CapRej·RestartRej·DupRej 전부의 전건에 ~CapaRej 를 넣는다. 그
+    // *순서*의 관측 가능한 알맹이는 「능력 밖 조각열은 나머지 판정·회계·기입에
+    // 불참한다」이며 여기서는 그것을 **DUT 의 fr_capaRej 가 아니라 독립 참조
+    // f_capa_ref 를 전건으로** 적는다.
+    //
+    // 왜 그게 요점인가: RTL 의 strayRej·totBad·overRej·dupRej·accept 는 전부
+    // 문면 그대로 `!capaRej && …` 로 시작한다. 전건에 fr_capaRej 를 쓰면
+    // `!capaRej ∨ !(!capaRej ∧ X)` 가 되어 **부울 항등식**이다 — 셀은 세어지고
+    // 증명도 통과하는데 아무것도 재지 않는다 (이 저장소가 세 번째로 밟은
+    // 공허 형태 그대로). 독립 참조를 전건에 두면 그 붕괴가 일어나지 않고,
+    // 판정 순서를 뒤집은 구현(능력 판정을 상한 뒤로 옮긴 구현)에서 반례가 난다.
+    p_capa_def:      assert (fr_capaRej == f_capa_ref);
+    p_capa_excl_all: assert (!(io_frag_valid && f_capa_ref) ||
+                             (!fr_accept && !io_wr_valid &&
+                              !fr_strayRej && !fr_totBad && !fr_overRej && !fr_dupRej &&
+                              !fr_rejEvt && !fr_endEvt));
+
+    // ══ Payload.base_from_tag — 조각 축 (소거 축 p_clr_base_* 의 거울) ════
+    //
+    // 기입 착지 좌표는 *적중 문맥의 결속*이다 — 조각이 나른 값도, 다른 문맥의
+    // 결속도 아니다. 조각 머리는 태그·순번·총개수·표시만 나르므로 (§4.3 결속
+    // 규범) 이 등식이 깨지는 유일한 길은 결속 원천이 어긋나는 구현이다.
+    p_wr_base_0: assert (!(io_wr_valid && fr_hit_0) || (io_wr_base == ctx_0_base));
+    p_wr_base_1: assert (!(io_wr_valid && fr_hit_1) || (io_wr_base == ctx_1_base));
+    p_wr_base_2: assert (!(io_wr_valid && fr_hit_2) || (io_wr_base == ctx_2_base));
+    p_wr_base_3: assert (!(io_wr_valid && fr_hit_3) || (io_wr_base == ctx_3_base));
   end
 
   // ═══ 전이 단언 (연속 두 사이클 리셋 밖) ═══════════════════════════
@@ -329,6 +390,90 @@ module Reassembly_props (
                            (ctx_2_seen == $past(fr_newSeen) && ctx_2_totalKnown && ctx_2_total == $past(fr_effTotal)));
     t_wr_atomic_3: assert (!$past(fr_accept && fr_hit_3 && !(ab_fire && ab_hit_3)) ||
                            (ctx_3_seen == $past(fr_newSeen) && ctx_3_totalKnown && ctx_3_total == $past(fr_effTotal)));
+
+    // ══ Payload.base_from_tag — 결속 불변 + 개방 원천 (2차 파도 신설) ═════
+    //
+    // 이 둘이 이 가드의 본체다. p_wr_base_* 는 MuxOH 문면의 거울이라 「어느
+    // 값이 실리는가」만 재는데, 모델이 금지하는 어긋남(구간 시작이 태그와
+    // 어긋난다 — Payload.tla:453)의 RTL 형은 **조각이 결속을 갱신하는 것**이다.
+    // 그것은 시간축이라야 잡힌다.
+    //
+    // ① 결속 불변 — 개방 착지가 없는 사이클에 base 는 움직이지 않는다.
+    //    조각 수락 경로가 c.base 를 쓰는 구현이면 즉시 반례.
+    t_base_stable_0: assert ($past(f_grant_oh[0]) || (ctx_0_base == $past(ctx_0_base)));
+    t_base_stable_1: assert ($past(f_grant_oh[1]) || (ctx_1_base == $past(ctx_1_base)));
+    t_base_stable_2: assert ($past(f_grant_oh[2]) || (ctx_2_base == $past(ctx_2_base)));
+    t_base_stable_3: assert ($past(f_grant_oh[3]) || (ctx_3_base == $past(ctx_3_base)));
+    // ② 개방 원천 — 그 유일한 기입의 값은 개시가 준 목적 LBID 다.
+    //    ※ 모델 문면 `b = (t-1)*SlotCap`(구간 시작이 *태그의 함수*)의 알맹이는
+    //      이 모듈이 재지 않는다 — io.open.base 는 in port 이고 태그→LBID
+    //      사상은 디코드 소관이다 (GUARD-MAP 문면 자신이 그 위임을 적는다).
+    //      좁은 증명이 넓은 모델 가드를 대신한다는 사실은 props.sby 머리에
+    //      명기했다.
+    t_base_src_0: assert (!$past(f_grant_oh[0]) || (ctx_0_base == $past(io_open_base)));
+    t_base_src_1: assert (!$past(f_grant_oh[1]) || (ctx_1_base == $past(io_open_base)));
+    t_base_src_2: assert (!$past(f_grant_oh[2]) || (ctx_2_base == $past(io_open_base)));
+    t_base_src_3: assert (!$past(f_grant_oh[3]) || (ctx_3_base == $past(io_open_base)));
+
+    // ══ Payload.capability_check — 회계 불참 (2차 파도 신설) ══════════════
+    //
+    // 능력 밖 조각은 회계에 흔적을 남기지 않는다. 전건은 다시 독립 참조다.
+    // 같은 사이클의 소거·인도는 자기 규율(abort_erases·reset_on_deliver)로
+    // 회계를 비우므로 배제한다 — 그 갈래는 t_abort_frees_*·t_deliver_frees_*
+    // 소관이다. 개방(f_grant_oh)은 배제하지 **않는다**: 개방은 !active 문맥만
+    // 고르고 그 문맥의 회계는 inv_free_clean_* 로 이미 공(空)이라 개방의
+    // 0 대입이 부동과 같기 때문이다 — 배제하면 그만큼 약해진다.
+    t_capa_no_acct_0: assert (!($past(io_frag_valid && f_capa_ref) &&
+                                !$past(ab_fire && ab_hit_0) &&
+                                !$past(io_deliver_fire && dv_grantOh[0])) ||
+                              (ctx_0_seen == $past(ctx_0_seen) &&
+                               ctx_0_last == $past(ctx_0_last) &&
+                               ctx_0_totalKnown == $past(ctx_0_totalKnown)));
+    t_capa_no_acct_1: assert (!($past(io_frag_valid && f_capa_ref) &&
+                                !$past(ab_fire && ab_hit_1) &&
+                                !$past(io_deliver_fire && dv_grantOh[1])) ||
+                              (ctx_1_seen == $past(ctx_1_seen) &&
+                               ctx_1_last == $past(ctx_1_last) &&
+                               ctx_1_totalKnown == $past(ctx_1_totalKnown)));
+    t_capa_no_acct_2: assert (!($past(io_frag_valid && f_capa_ref) &&
+                                !$past(ab_fire && ab_hit_2) &&
+                                !$past(io_deliver_fire && dv_grantOh[2])) ||
+                              (ctx_2_seen == $past(ctx_2_seen) &&
+                               ctx_2_last == $past(ctx_2_last) &&
+                               ctx_2_totalKnown == $past(ctx_2_totalKnown)));
+    t_capa_no_acct_3: assert (!($past(io_frag_valid && f_capa_ref) &&
+                                !$past(ab_fire && ab_hit_3) &&
+                                !$past(io_deliver_fire && dv_grantOh[3])) ||
+                              (ctx_3_seen == $past(ctx_3_seen) &&
+                               ctx_3_last == $past(ctx_3_last) &&
+                               ctx_3_totalKnown == $past(ctx_3_totalKnown)));
+    // 능력 부재의 관측면 도달 — 독립 참조 전건으로 (t_capa_next_eq 가 쓰는
+    // $past(fr_capaEvt) 의 재인용이 아니다: 그 등식은 「set 원천이 capaEvt
+    // 뿐」을, 이것은 「capaEvt 가 실제로 능력 밖 도착에서 선다」를 잰다.
+    // 둘을 합쳐야 fr_capaEvt 의 정의가 양방향으로 닫힌다).
+    //   해제와 발화가 겹쳐도 발화가 이기므로 io_capAbsentClear 를 배제하지
+    //   않는다 — 관측을 삼키는 창이 없다는 것이 여기서 함께 재어진다.
+    t_capa_absent_loud: assert (!($past(io_frag_valid) && $past(f_capa_ref)) || io_capAbsent);
+
+    // ══ Payload.loud_reject (2차 파도 신설) ══════════════════════════════
+    //
+    // **지상 진리를 검사 어휘로 적지 않는 것이 요점이다.** 전건은 사유 신호
+    // (rejEvt·capaEvt)의 재인용이 아니라 `조각이 왔는데 수락되지 않았다` 하나다.
+    // 조각의 처분은 accept 하나뿐이고 제3의 결과(대기·유실)가 없다 —
+    // io.frag 에 ready 가 없는 구조가 그것을 보장한다 (Reassembly.scala:174-179).
+    // 따라서 「io.frag.valid ∧ ¬accept」가 곧 거절의 지상 진리이며, 어떤 사유도
+    // 붙지 않는 *조용한 드롭* 경로가 하나라도 생기면 이 단언이 깨진다.
+    //   set 이 clear 를 이기므로(t_fault_next_eq 의 등식 문면) 전건 사이클의
+    //   clear 를 배제할 필요가 없다.
+    t_loud_frag: assert (!($past(io_frag_valid) && !$past(fr_accept)) ||
+                         io_fault || io_capAbsent);
+
+    // 개방 축 — 모델 밖 처분(풀 고갈)을 전건에서 명시적으로 뺀다. 풀 고갈
+    // 거절은 fault 가 아니라 granted=False 의 명시적 처분이므로(파일 머리
+    // 「어긋난 자리」) 빼지 않으면 *거짓 반례*가 난다. 남는 거절 사유는
+    // 재시작 충돌 하나뿐이고 그것은 loud 여야 한다.
+    t_loud_open: assert (!($past(io_open_valid) && !$past(io_open_granted) &&
+                           $past(op_freeAny)) || io_fault);
   end
 
   // ── cover 증인 — 공허 아님의 증거 (소거 축, 2026-08-25 신설) ────────────
@@ -369,6 +514,80 @@ module Reassembly_props (
   // W5 — 없는 태그의 소거 기입 (E.12 3항의 무시 갈래가 실재한다 —
   //      p_ab_fire_def · t_ab_cnt_hold 의 활성면).
   always @(posedge clk) if (f_step) cover (io_abort_valid && !ab_hitAny);
+
+  // ── 증인 — base_from_tag 축 (2차 파도) ─────────────────────────────────
+  //
+  // p_wr_base_* 는 전건이 거짓이면(기입이 없으면) 자명하고, base 가 늘 같은
+  // 값인 세계에서는 등식이 무엇도 가르지 않는다. 아래 셋이 그 둘을 막는다.
+
+  // W6 — 기입이 실제로 나고 결속이 0 이 아니다 (p_wr_base_* 의 전건 도달 +
+  //      「base 는 늘 0」인 축퇴 세계 배제).
+  always @(posedge clk) if (f_step) cover (io_wr_valid && (io_wr_base != 8'h00));
+
+  // W7 — **서로 다른 결속을 가진 두 활성 문맥**이 공존하는 채로 한쪽에 기입이
+  //      난다. 이것이 없으면 p_wr_base_* 는 「어느 문맥을 골라도 답이 같은」
+  //      세계에서 통과하고 MuxOH 의 선택이 재어지지 않는다.
+  always @(posedge clk)
+    if (f_step) cover (io_wr_valid &&
+                       ((fr_hit_0 && ctx_1_active && (ctx_1_base != ctx_0_base)) ||
+                        (fr_hit_1 && ctx_0_active && (ctx_0_base != ctx_1_base)) ||
+                        (fr_hit_2 && ctx_3_active && (ctx_3_base != ctx_2_base)) ||
+                        (fr_hit_3 && ctx_2_active && (ctx_2_base != ctx_3_base))));
+
+  // W8 — 개방 착지가 실제로 난다, 비0 결속으로 (t_base_src_* 의 전건 도달 —
+  //      개방이 한 번도 없으면 ①②③ 이 통째로 공허하다).
+  always @(posedge clk) if (f_step) cover (op_grant && (io_open_base != 8'h00));
+
+  // ── 증인 — capability_check 축 (2차 파도) ──────────────────────────────
+
+  // W9 — 능력 밖 조각이 *활성 문맥에 적중한 채로* 도착한다. 이것 없이는
+  //      p_capa_excl_all 이 「능력 밖은 애초에 hit 도 안 난다」로 공허해진다
+  //      (전건이 서긴 하나 배제 항들이 다른 이유로 이미 0 인 세계).
+  always @(posedge clk) if (f_step) cover (io_frag_valid && fr_capaRej && fr_hitAny);
+
+  // W10 — 그 도착이 회계가 실린 문맥에 난다 (t_capa_no_acct_* 가 「비울 것이
+  //       있는」 상태에서 재어진다 — 빈 문맥 부동은 무동작과 구별되지 않는다).
+  always @(posedge clk)
+    if (f_step) cover (io_frag_valid && fr_capaRej &&
+                       ((fr_hit_0 && (ctx_0_seen != 16'h0)) ||
+                        (fr_hit_1 && (ctx_1_seen != 16'h0)) ||
+                        (fr_hit_2 && (ctx_2_seen != 16'h0)) ||
+                        (fr_hit_3 && (ctx_3_seen != 16'h0))));
+
+  // ── 증인 — loud_reject 축 (2차 파도) ───────────────────────────────────
+  //
+  // 「크게 알린다」가 재어지려면 사유별로 (a) 거절이 실제로 일어나고 (b) 그
+  // 다음 사이클에 해당 sticky 가 **처음** 선다는 궤적이 있어야 한다. 이미 서
+  // 있는 sticky 위를 지나가는 통과는 아무것도 증명하지 않는다.
+
+  // W11..W14 — 조각 거절 네 사유 (스트레이 · 선언 자기모순 · 구간 밖 · 중복).
+  always @(posedge clk)
+    if (f_step) cover ($past(io_frag_valid && fr_strayRej) && io_fault && !$past(io_fault));
+  always @(posedge clk)
+    if (f_step) cover ($past(io_frag_valid && fr_totBad)   && io_fault && !$past(io_fault));
+  always @(posedge clk)
+    if (f_step) cover ($past(io_frag_valid && fr_overRej)  && io_fault && !$past(io_fault));
+  always @(posedge clk)
+    if (f_step) cover ($past(io_frag_valid && fr_dupRej)   && io_fault && !$past(io_fault));
+
+  // W15 — 능력 부재: 다른 채널(capAbsent)의 첫 상승.
+  always @(posedge clk)
+    if (f_step) cover ($past(io_frag_valid && fr_capaRej) && io_capAbsent && !$past(io_capAbsent));
+
+  // W16 — 재시작 충돌 (개방 축의 loud 사유).
+  always @(posedge clk)
+    if (f_step) cover ($past(op_clashEvt) && io_fault && !$past(io_fault));
+
+  // W17 — **모델 밖 예외가 실재한다**: 풀 고갈 개방 거절. t_loud_open 이
+  //       전건에서 빼는 그 갈래가 도달 불가라면 그 배제는 장식이고, 반대로
+  //       도달 가능하면 배제하지 않았을 때 거짓 반례가 났을 것이다.
+  always @(posedge clk)
+    if (f_step) cover (io_open_valid && !io_open_granted && !op_freeAny);
+
+  // W18 — sticky 가 실제로 내려갈 수 있다 (명시적 해제). io_fault 가 영구
+  //       1 인 세계라면 t_loud_frag·t_loud_open 이 자명하게 선다 — 그 축퇴를
+  //       배제하는 증인이다.
+  always @(posedge clk) if (f_step) cover ($past(io_fault) && !io_fault);
 `endif // REASM_COVER
 
 endmodule
@@ -376,7 +595,8 @@ endmodule
 // 대상 안에 부착 — 내부 신호는 대상 스코프에서 이름으로 결선된다.
 bind Reassembly Reassembly_props u_props (
   .clk(clk), .reset(reset),
-  .io_open_valid(io_open_valid), .io_open_granted(io_open_granted),
+  .io_open_valid(io_open_valid), .io_open_base(io_open_base),
+  .io_open_granted(io_open_granted),
   .io_frag_valid(io_frag_valid), .io_frag_head_seq(io_frag_head_seq),
   .io_frag_head_total(io_frag_head_total), .io_frag_head_last(io_frag_head_last),
   .io_wr_valid(io_wr_valid), .io_wr_base(io_wr_base), .io_wr_off(io_wr_off),
@@ -390,12 +610,15 @@ bind Reassembly Reassembly_props u_props (
   .io_capAbsent(io_capAbsent), .io_capAbsentClear(io_capAbsentClear),
   .`WT_STICKY_SET_FAULT(`WT_STICKY_SET_FAULT),
   .fr_hit_0(fr_hit_0), .fr_hit_1(fr_hit_1), .fr_hit_2(fr_hit_2), .fr_hit_3(fr_hit_3),
+  .fr_hitAny(fr_hitAny),
   .fr_accept(fr_accept), .fr_capaRej(fr_capaRej), .fr_dupRej(fr_dupRej),
+  .fr_strayRej(fr_strayRej), .fr_totBad(fr_totBad), .fr_overRej(fr_overRej),
   .fr_cKnown(fr_cKnown), .fr_cSeen(fr_cSeen), .fr_ohSeq(fr_ohSeq),
   .fr_newSeen(fr_newSeen), .fr_effTotal(fr_effTotal), .fr_cBase(fr_cBase),
   .fr_rejEvt(fr_rejEvt), .fr_endEvt(fr_endEvt), .fr_capaEvt(fr_capaEvt),
   ._zz_fr_endBad(_zz_fr_endBad),
   .op_clash(op_clash), .op_clashEvt(op_clashEvt), .op_grant(op_grant),
+  .op_freeAny(op_freeAny), .op_freeOh(op_freeOh),
   .ctx_0_active(ctx_0_active), .ctx_0_tag_wave(ctx_0_tag_wave),
   .ctx_0_tag_thread(ctx_0_tag_thread), .ctx_0_tag_lnid(ctx_0_tag_lnid),
   .ctx_0_tag_precision(ctx_0_tag_precision), .ctx_0_tag_dim(ctx_0_tag_dim),

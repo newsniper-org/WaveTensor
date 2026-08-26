@@ -18,29 +18,102 @@
 # PROVES: Decode.fault_not_folded — oFault 상승은 (oValid && oMalformed) 에피소드에서만 · capability 는 배타로 불참 · 하강은 명시적 해제뿐
 # PROVES: Decode.verdict_ungated — oValid·oSlot*·oInstr 이 판정 무관 순수 함수와 등가 (D14 상태열 균일) · 판정 fanout 은 oExecValid 게이트 등식으로
 #
-# 잔여 1건 (Decode.out_no_reason): 원인 코드 채널의 *부재* 는 트레이스 속성으로
-# 표현 불가 — 방출면 포트 전수 검토(생성 SV 포트 목록에 등급 3비트 외 판정
-# 채널 없음)로 갈음한다. 구조 skip — 통합자 보고에 명기.
+# ── 구조 skip — 단언을 세우지 않는 1건 ───────────────────────────────────
+#
+# STRUCTURAL: Decode.out_no_reason -> port-absence
+#   근거: rtl/generated/DecodeWalk.sv 방출면 포트 전수 (출력 30개) —
+#   판정을 나르는 것은 oValid·oMalformed·oCapAbsent·oExecValid 1비트 넷과
+#   oFault sticky 1비트뿐이고, 나머지 25개는 oInstr_0..12(13) ·
+#   oSlotPresent/Code/Off 각 4 로 전부 명령·서술자 축이다. 어떤 폭에도
+#   원인 코드 채널이 없다.
+#
+# 왜 이 태스크가 그것을 재지 않는가 (거짓 앵커를 다는 것이 최악이다):
+#   가드의 알맹이가 *채널의 부재*이고, 그것은 elaborate 시점 사실이지 트레이스
+#   속성이 아니다. 없는 포트를 단언으로 옮기면 (a) 존재하지 않는 신호 참조가
+#   되어 yosys 가 만든 상수 0 wire 를 재게 되거나 — lint_generated_names 가
+#   닫는 공허 2형 — (b) 「등급 비트의 상위가 0」류, 즉 폭이 이미 보장하는
+#   명제가 되어 opt 가 `connect \A 1'1` 로 접는다 (공허 3형: 셀은 세어지고
+#   증명도 통과하는데 재는 것이 없다). 이 저장소가 둘 다 실측으로 밟았다.
+#   그래서 여기에는 `PROVES:` 앵커를 달지 않는다.
+#
+# 관측 가능한 잔여분은 이 태스크가 *이미* 덮는다 — 부재의 대체물이 아니라,
+# 그 가드가 막으려는 것(예약값 원본이 승인 경계로 반향)의 직접 측정이다:
+#   · 출력 30개 중 29개가 「명령 버퍼의 *판정 무관* 순수 함수의 $past」와의
+#     등식으로 못박혀 있다 (props.sv:224 oExecValid · :243 oValid ·
+#     :247 oMalformed · :249 oCapAbsent · :253-264 서술자 · :267-279 명령).
+#     판정과 무관한 함수와 등가라는 것이 곧 「그 포트들은 어떤 원인 정보도
+#     나를 수 없다」이다.
+#   · 남은 1개 oFault 는 1비트이고 :282-292 의 네 함의가 상승 원인 · 하강
+#     원인 · 유실 없음 · 유지를 못박는다. 1비트에는 원인 코드가 실릴 폭이 없다.
+#   · 예약 비트 자체의 불투과는 위 Decode.resv_not_echoed 앵커가 방출면 전수
+#     등가로 잰다. 증인 W18 이 「예약 비트가 비0 인 명령이 실제로 방출면을
+#     지난다」를 보여 그 등가가 「예약이 늘 0 인 세계」에서 자명해지지 않게 한다.
+#
+# 기계 대조 수단 — 같은 파도에서 착지했다 (2026-08-26):
+#   scripts/lint_postformal.py 의 `_STRUCTURAL` 표가 이 가드를 담고,
+#   CHECK 분모에서 빼되 `_MAX_STRUCTURAL` 래칫이 건수 자체에 서명을 요구한다.
+#   근거는 산문이 아니라 기계가 잰다 — 생성 SV 포트 선언에 `require` 가
+#   하나 이상 · `forbid` 가 정확히 0 건 매치해야 한다(양성 대조 + 부재).
+#   다만 그 강도는 「포트 전수」가 아니라 *이름 거부목록*이다 — 거부목록에
+#   없는 이름으로 같은 기능을 달면 통과한다 (lint 의 「강도」 절에 실측과
+#   함께 적혀 있다). 위 앵커는 lint 의 `#\s*PROVES:` 정규식에 일부러 걸리지
+#   않게 낱말을 달리했다 (거짓 앵커 금지) — 그 규율은 그대로다.
+#
+# ── cover 증인 ───────────────────────────────────────────────────────────
+# W1..W19 (하네스 말미, -DDECODEWALK_COVER). 단언 40개 중 다수가 전건 붙은
+# 함의이고, 특히 `oMalformed == $past(f_mal)` 하나가 일곱 검산의 논리합을
+# 통째로 접는다 — 어느 항이 도달 불가능해도 등가식은 참이고 증명은 통과하며,
+# 그 항에 걸린 CHECK 줄은 아무것도 재지 못한다. W4..W10 이 일곱 검산의
+# **단독 원인** 궤적을 각각 요구해 그 결을 닫는다. 나머지는 종결 세 등급 ·
+# 순회 형상 양 극단 · sticky 네 국면 · 예약 비0 통과의 도달성이다.
+#
+# 증인이 무엇을 보증하고 무엇을 보증하지 않는가 (실측 기록 — 과대 주장 금지):
+#   sby 의 cover 모델은 `chformal -assume -early` 로 assume 은 남기고
+#   `chformal -live -fair -assert -remove` 로 **단언을 제거한다**. 실측:
+#   cover 모델 design_prep.il 이 assert=0 · cover=19 · assume=2 다 (prove
+#   모델은 assert=40 · cover=0 · assume=2). 그러므로 증인 궤적은 「단언을
+#   만족하도록 제약된 궤적」이 아니라 리셋 프로토콜만 지킨 도달 가능 궤적이다.
+#   그럼에도 결론은 서는데, prove 가 k-귀납으로 통과하므로 *모든* 도달 가능
+#   상태가 단언을 만족하고 증인은 그 세계 안의 점이기 때문이다. 순서가
+#   중요하다 — prove 가 깨지면 증인의 해석도 함께 무너진다. 둘을 따로 읽지 말 것.
 #
 # 부착 이탈: bind 대신 formal 전용 래퍼 top (컨테이너 yosys 0.66 이 bind 를
 # 파싱만 하고 적용하지 않음 — 실측. 하네스 파일 머리의 기록 참조).
 
+# 「다중 [tasks] 불가」 기록 정정 (2026-08-26 실측). 종전 주석은 Makefile 이
+# 태스크명 없이 `-d` 로 부른다는 전제였는데, 현행 rtl-postformal 은
+# scripts/sby_sweep.sh 를 통해 `sby -f --prefix <p> <file>` 로 부른다 —
+# 태스크명을 주지 않으면 sby 는 **전 태스크를 돌리고** `<p>_<task>/` 로 가른다.
+# 스윕의 셀 세기도 `"$prefix"*/model/design_prep.il` 글롭이라 태스크별 모델을
+# 모두 집계한다 (HiuMask/hiumask.sby 가 bmc·prove·cover 셋으로 이미 그렇게 돈다).
+# 따라서 증인을 위한 cover 태스크를 둘 수 있다.
+#
+# bmc 태스크는 여전히 두지 않는다 — mode prove 의 basecase 가 같은 깊이의
+# BMC 를 포함하므로 중복이다 (종전 판단 유지).
+[tasks]
+prove
+cover
+
 [options]
-# 단일 태스크 (Makefile rtl-postformal 이 태스크명 없이 -d 로 부르므로
-# 다중 [tasks] 불가 — 실측). mode prove 의 basecase 가 같은 깊이의 BMC 를
-# 포함하므로 bmc 태스크는 중복이다.
-# 깊이 근거: 대상 파이프 깊이 1단 (접수 → 방출 레지스터 1개 + sticky 1개).
+# prove 깊이 근거: 대상 파이프 깊이 1단 (접수 → 방출 레지스터 1개 + sticky 1개).
 # 지침 「파이프 깊이의 2배 이상」 대비 20 은 10배 여유 — 리셋 1사이클 +
 # sticky set/clear 상호작용의 다사이클 에피소드까지 덮는다.
-mode prove
-depth 20
+prove: mode prove
+prove: depth 20
+# cover 깊이 근거: 가장 깊은 증인은 W15(sticky 하강)로 reset 해제 → mal 방출
+# → fault 상승 → 해제 제시 → 하강까지 4 사이클이면 닿는다. 12 는 3배 여유.
+cover: mode cover
+cover: depth 12
 
 [engines]
 smtbmc z3
 
 [script]
 read_verilog -sv -formal DecodeWalk.sv
-read_verilog -sv -formal DecodeWalk_props.sv
+# 증인은 cover 태스크에서만 컴파일한다 (HiuMask 선례) — prove 모델은 단언만
+# 들어 태스크별 셀 수가 정확히 대조된다.
+prove: read_verilog -sv -formal DecodeWalk_props.sv
+cover: read_verilog -sv -formal -DDECODEWALK_COVER DecodeWalk_props.sv
 prep -top DecodeWalk_formal
 # ROM 함정 (실측): yosys proc_rom 이 DUT 의 kindWords/kindDefined case 표를
 # $mem_v2 ROM 으로 만들었고, k-귀납은 초기 상태 제약(ROM init)을 걸지 않아
