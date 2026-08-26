@@ -472,7 +472,8 @@ expect_fail "가드 삭제: reset_on_deliver"                        Payload_del
 # D9(마지막 조각 표시) — 표시가 종료 authority, 접수 시점 완전성 판정 (§4.3).
 expect_fail "가드 삭제: last_judges (누락이 무언)"               Payload_del_last_judges.cfg "$M" Inv_EndIncompleteLoud
 # E.12 문맥 소거 (드레인 규약) — 소거는 회계를 남기되 fault 가 아니다.
-expect_fail "가드 삭제: abort_erases (잔여 회계)"              Payload_del_abort_erases.cfg "$M" Prop_NoSilentOverwrite
+expect_fail "가드 삭제: abort_erases (잔여 회계)"              Payload_del_abort_erases.cfg "$M" Inv_ReassemblyExclusive
+expect_fail "가드 삭제: abort_clears_window (잔여 구간)"        Payload_del_abort_clears_window.cfg "$M" Prop_NoSilentOverwrite
 expect_fail "가드 삭제: abort_leaves_trace (조용한 소거)"      Payload_del_abort_leaves_trace.cfg "$M" Inv_AbortLoud
 expect_fail "가드 삭제: abort_not_fault (소거가 오류로)"        Payload_del_abort_not_fault.cfg "$M" Inv_AbortNotFault
 expect_fail "가드 삭제: write_atomic"                            Payload_del_write_atomic.cfg "$M" Inv_ReassemblyExclusive

@@ -1,0 +1,84 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# 무장 규율(정본 E.12.1)의 측정 — 2026-08-25 결정 A.
+#
+# VERIFIES: E.12.1 2항 (발화의 성립 조건) — p_fire_needs_armed(무장 셋 완비
+#   없이는 발화 없음) + p_fire_needs_word/bit0/ok(발화 전건 전수) +
+#   p_partial_no_effect(태그 워드 기입만으로는 발화 없음 — 「발화 전의 부분
+#   기입은 효과가 없다」의 문면)
+# VERIFIES: E.12.1 3항 (잔류 소진) — t_arm_cleared_on_fire(수락된 발화 기입은
+#   *성립 여부와 무관하게* 무장 전부 하강) + t_no_stale_staging(발화 직후
+#   사이클에 무장 완비 불가 — stale staging 구조적 부재) + t_fire_keeps_value
+# VERIFIES: E.12.1 1항 (워드별 무장) — t_arm_src_0/1/2(무장 상승의 원천은 자기
+#   워드의 수락된 기입뿐) + t_arm2_not_on_reject(거절된 기입은 무장 부동) +
+#   t_tag0/1/2_hold(스테이징 값은 자기 워드 기입에서만 움직인다)
+# VERIFIES: E.12.1 2항 후단 (무시 ≠ 거절) — p_arm_miss_not_bad: 거절 사건의
+#   전수 정의에 무장 상태가 들어가지 않는다 (무장 미완 발화는 fault 도
+#   카운트도 아니다 — E.12 3항과 같은 처분)
+# VERIFIES: E.12.1 5항 *전단* (무장은 태그 값을 검사하지 않는다) —
+#   t_arm_src_0/1/2: 무장의 상승 원천이 자기 워드의 수락된 기입뿐이라는 것이
+#   곧 값 무관이다. 5항 *후단*(스테이징된 태그를 관측면에 내지 않는다)은 이
+#   모듈 밖 조립의 성질이라 여기서 재지 않는다 — 미측정으로 등재(rtl/README).
+#   한동안 p_arm_width 가 후단을 주장했으나 3비트 포트에 대한 항진명제였다.
+#
+# ## PROVES 가 아니라 VERIFIES 인 이유 (앵커 규율)
+#
+# `# PROVES:` 는 GUARD-MAP 의 *실재 가드*에만 선다 (scripts/lint_postformal).
+# 무장 규율은 선-formal 모델에 대응 가드가 없다 — Payload.tla 는 소거를
+# 「태그 하나를 지정한 소거 기입」이라는 *의미론*으로 추상하고, 그 태그를 32b
+# 버스에 어떻게 싣는가는 모델 밖이다 (MMIO 워드 표면은 그 모델의 상태가
+# 아니다). 그래서 이 태스크는 정본 조항을 앵커로 삼고 강등한다. 모델에 MMIO
+# 워드 층을 들이는 것은 별 결정이며, 들이지 않는 것이 지금의 판단이다 —
+# 무장 규율은 *한 모듈 안의 조합·1스텝 계약*이라 k-귀납이 전수로 닫는다.
+#
+# ## 부착 — bind 없음 (이 태스크만 다르다)
+#
+# 하네스가 대상을 직접 인스턴스한다 (AbortStaging_check). 근거는 하네스 머리
+# 주석이 소유한다 — 요지는 Wt64Top.sv 가 모듈 열아홉을 담은 파일이라 「첫
+# endmodule 앞에 주입」 관용구가 파일 순서에 매달리고, 그 순서는 계약이
+# 아니라는 것이다. 단언이 top 모듈 본문에 살므로 yosys 의 bind 묵살 함정
+# 자체가 없다 — 공허 판정은 그래도 셀 수로 한다 (`make rtl-postformal`).
+#
+# 대상 파일은 Wt64Top.sv 다 (AbortStaging 은 그 조립의 서브컴포넌트로 생성된다).
+# `prep -top AbortStaging_check` 가 나머지 열여덟 모듈을 제거한다.
+#
+# bmc 깊이 12: 이 컴포넌트의 상태는 스테이징 3워드 + 무장 3비트뿐이고 전이는
+# 전부 1사이클이다 — 「세 워드 적재 → 발화 → 재적재 → 재발화」의 두 주기가
+# 6~8 사이클이므로 12 는 그 1.5배 여유다. prove 는 k-귀납(깊이 4)이 선다 —
+# 그것이 정답이고 bmc 는 도달 가능 접두의 이중 확인이다.
+# cover 깊이 10: 가장 깊은 증인(W5 — 무장 완비 후 발화 후 하강 관측)이
+# reset 후 5 사이클이면 닿는다.
+
+[tasks]
+bmc
+prove
+cover
+
+[options]
+bmc: mode bmc
+bmc: depth 12
+prove: mode prove
+prove: depth 4
+cover: mode cover
+cover: depth 10
+multiclock off
+
+[engines]
+smtbmc z3
+
+[script]
+# 증인(cover)은 cover 태스크에서만 컴파일한다 — bmc/prove 모델은 한 비트도
+# 다르지 않게 유지한다 (XlateStore 선례).
+bmc:   read_verilog -sv -formal AbortStaging_props.sv
+prove: read_verilog -sv -formal AbortStaging_props.sv
+cover: read_verilog -sv -formal -DABORTSTG_COVER AbortStaging_props.sv
+read_verilog -sv -formal Wt64Top.sv
+prep -top AbortStaging_check
+
+# [files] 경로는 저장소 루트 기준이다 — sby 는 상대 경로를 sby 파일이 아니라
+# *호출 cwd* 기준으로 푼다. make rtl-postformal · rtl-impact · 수동 실행 전부
+# 루트에서 호출하는 것이 규약이다.
+[files]
+rtl/generated/Wt64Top.sv
+rtl/sv/assert/AbortStaging_props.sv

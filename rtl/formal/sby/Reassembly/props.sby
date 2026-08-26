@@ -9,6 +9,7 @@
 # PROVES: Payload.last_judges — p_last_judges_def(종료 판정 문면 등식) + t_last_judges_loud(불완전 종료 → fault) + t_last_src_*(last 래치 상승 원천 = 수락 조각의 표시뿐)
 # PROVES: Payload.reset_on_deliver — t_deliver_frees_*(인도 완결 즉시 해방) + inv_free_clean_*(비활성 문맥 회계 공 — 해방 = 회계 소거 동시)
 # PROVES: Payload.abort_erases — t_abort_frees_*(소거 발화 즉시 해방) + inv_free_clean_*(태그만 해방하고 회계를 남기는 경로 부재)
+# PROVES: Payload.abort_clears_window — p_abort_clears_slots(구간 무효화 명령 == 소거 발화, 같은 게이트 — 「회계는 비웠는데 구간은 안 비웠다」 표현 불가) + p_clr_base_*(좌표 = 소거 대상의 결속, 결속 폐기 *전*) + p_clr_needs_hit(허공을 비우는 beat 부재)
 # PROVES: Payload.abort_leaves_trace — p_ab_fire_def + t_ab_cnt_inc/sat/hold: 소거 발화 = 카운트 증가 동시 (포화 0xff), 없는 태그 무시는 카운트 부동
 # PROVES: Payload.abort_not_fault — p_ab_not_fault_src/p_ab_not_capa_src(set 사건 원천에 소거 항 부재) + t_fault_next_eq(sticky set 원천 전수 등식)
 # PROVES: Payload.write_atomic — p_wr_atomic_face(기입 발화 == 접수, 같은 사이클) + t_wr_atomic_*(접수 사이클에 seen·total 회계 원자 진행)
@@ -22,12 +23,17 @@
 [tasks]
 bmc
 prove
+cover
 
 [options]
 bmc: mode bmc
 bmc: depth 20
 prove: mode prove
 prove: depth 8
+# cover 깊이 12: 가장 깊은 증인(W4 — 개방 → 조각 수락으로 seen 적재 →
+# 소거)이 reset 후 4~5 사이클이면 닿는다. 그 2배 이상으로 여유를 둔다.
+cover: mode cover
+cover: depth 12
 multiclock off
 
 [engines]
@@ -44,7 +50,11 @@ exec -- sh -c "sed /^bind/Q Reassembly_props.sv > props_only.sv"
 exec -- sh -c "sed -i /^endmodule/d Reassembly.sv"
 exec -- sh -c "sed -n /^bind/,+999p Reassembly_props.sv | sed s/^bind.Reassembly.// >> Reassembly.sv"
 exec -- sh -c "echo endmodule >> Reassembly.sv"
-read_verilog -sv -formal props_only.sv
+# 증인(cover)은 cover 태스크에서만 컴파일한다 — bmc/prove 모델은 종전과
+# 한 비트도 다르지 않게 유지한다 (XlateStore 선례).
+bmc:   read_verilog -sv -formal props_only.sv
+prove: read_verilog -sv -formal props_only.sv
+cover: read_verilog -sv -formal -DREASM_COVER props_only.sv
 read_verilog -sv -formal Reassembly.sv
 prep -top Reassembly
 # fullMask 조회 case 표를 proc_rom 이 $mem_v2 ROM 으로 승격시키는데, ROM

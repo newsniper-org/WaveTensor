@@ -6,8 +6,10 @@
 // 착지한 유닛 전부를 한 지붕 아래 인스턴스하고, 보고서(promote)가 확정한
 // 경계 계약대로 배선한다. 이 파일은 **조립**이다 — 판정·상태·fault 의 원천은
 // 전부 하위 유닛에 있고, 여기서 새로 만드는 상태는 MMIO 표면의 스테이징
-// 레지스터(E.9 논스 파티션 선택·E.12 소거 태그)와 이 표면의 거절 sticky
-// 하나(cfgSurfBadWrite)뿐이다.
+// 레지스터(E.9 논스 파티션 선택)와 이 표면의 거절 sticky 하나
+// (cfgSurfBadWrite)뿐이다. E.12 소거 태그의 스테이징은 2026-08-25 결정 A 로
+// 자기 컴포넌트(`AbortStaging`)를 얻었다 — 무장 규율이 잴 수 있는 경계를
+// 요구했기 때문이며, 그 근거는 그 클래스의 스칼라독이 소유한다.
 //
 // ## 인스턴스 지도 (XlateStore 는 HiuPipeline 이 품는다 — §3.2 조회 단계의 몸)
 //
@@ -274,6 +276,13 @@ object Wt64Top {
   val A_FIRE       = 0x0C // WO  [0]=1 기입 = 소거 발화 · [31:1] 예약(엄격)
   val A_COUNT      = 0x10 // RO  소거 카운트 (E.12 2항 회계)
   val A_INCOMPLETE = 0x14 // RO  미완 재조립 문맥 수 (진단)
+  /** ABORT_ARM — 무장 마스크 RO 관측면 (정본 E.12.1 4항 · §5.8 상태 표면
+    * 부류). 비트 $i$ 가 `0xF40`+4$i$ 스테이징 워드의 무장이다 · `[31:3]` RO
+    * 예약 = 0 · reset 값 0. 구역 `0xF40`+`0x18` = `0xF58` 이며 구역 64 B 안의
+    * 일곱째 워드다 — 구역을 늘리지 않고 여유가 흡수한 증설이다.
+    * *태그 값은 내지 않는다* — 스테이징 워드를 WO 로 둔 결정과 같은 이유다
+    * (E.1.1 WO 규범 · §5.8 관측면 최소화). */
+  val A_ARM        = 0x18 // RO  [2:0] 무장 마스크 · [31:3] RO 예약 = 0
 
   // ═══ 워드 안의 예약 비트 — 엄격 (비0 기입은 거절 + loud fault) ════════
   // 적재 마스크의 *여집합으로 유도*한다 — 두 상수가 따로 표류할 자리를
@@ -411,6 +420,131 @@ object Wt64Top {
   require(R_IDENT.base + Ident.ABI_VERSION == 0xFFC, "ABI 판이 페이지 마지막 워드가 아니다 (규칙 4)")
 }
 
+/** 재조립 문맥 소거의 *호스트 대면 절반* — 태그 스테이징 + 무장 규율 + 발화
+  * (정본 E.12.1 「무장 비트 다섯 항」 · 2026-08-25 결정 A).
+  *
+  * ## 왜 별 Component 인가
+  *
+  * 이 로직은 조립(Wt64Top) 안의 한 Area 로 있어도 전기적으로 같다. 별
+  * Component 로 세운 이유는 *측정*이다. 결정 A 의 요점이 「부분 기입 무효과」와
+  * 「stale staging 부재」를 ABI 의무에서 **기계가 강제하는 속성**으로 옮기는
+  * 것인데, 잴 수 없는 속성은 절반만 옮긴 것이다. 후-formal 이 태스크를 걸려면
+  * `prep -top` 이 짚을 이름이 있어야 하고, 9500줄짜리 조립 전체를 k-귀납에
+  * 올리는 것은 이 속성을 재는 값에 비해 터무니없는 비용이다. 경계가 이름을
+  * 가지면 하네스는 스무 줄이다.
+  *
+  * ## 무장 규율 (정본 E.12.1 다섯 항)
+  *
+  *  1. *워드별 무장 비트* — 태그 세 워드의 *수락된* 기입이 각각 자기 무장
+  *     비트를 세운다. 재기입은 값을 덮되 비트는 선 채다. 거절된 기입은
+  *     무장을 세우지 않는다 — 효과 없는 기입이 승인만 남기면 그것이 곧
+  *     부분 기입의 승격이다 (E.12.1 1항).
+  *  2. *발화는 셋이 모두 선 상태에서만 유효*하다. 무장 미완 발화는 **무시**다 —
+  *     E.12 3항(없는 태그 기입은 무시, 오류 아님)과 같은 처분이며 fault 도
+  *     아니고 소거 카운트도 올리지 않는다.
+  *  3. *발화 워드 기입은 성립·불성립 무관하게 무장 비트를 전부 내린다* (잔류
+  *     소진). stale staging 이 구조로 사라진다 — 「어제 반쯤 실어 둔 태그가
+  *     오늘의 발화에 실린다」가 표현 불가다.
+  *  4. *무장 마스크는 RO 상태 워드*로 나간다 — `0xF58` ABORT_ARM
+  *     (§5.8 상태 표면 부류 · 드레인 정의역은 아니다).
+  *  5. *무장은 태그 값을 검사하지 않는다* — 「세 워드가 다 왔는가」만 본다.
+  *     어느 태그가 스테이징돼 있는지는 관측면에 내지 않는다.
+  *
+  * E.7 이 「전이는 한 번의 쓰기로 완결된다」로 얻은 원자성을 태그 80b 는 가질
+  * 수 없다 — 32b 워드에 안 들어간다. 스테이징+발화가 그 대체이고, 무장 규율이
+  * 그 대체를 *관행에서 계약으로* 올린다. 이것은 현행의 **엄격한 축소**다:
+  * 올바른 호스트 시퀀스(세 워드 기입 후 발화)는 글자 그대로 동작한다.
+  *
+  * ## 「성립·불성립 무관」의 경계 — 거절된 기입은 기입이 아니다
+  *
+  * 무장을 내리는 것은 *수락된* 발화 워드 기입이다. 예약 비트 비0 인 발화 기입은
+  * E.1.1 엄격 정책의 *거절 + loud fault* 이고, 이 저장소의 반복 규율은 「거절된
+  * 기입은 레지스터를 한 비트도 움직이지 않는다」(TAG2 스테이징·FAULT_CLEAR 와
+  * 같은 처분)다. 거절이 무장을 내리면 호스트는 자기 오타 하나로 세 워드를 다시
+  * 실어야 하고, 그것은 「거절 = 무동작」이라는 표면 전체의 계약과 어긋난다.
+  * ⇒ 수락된 발화 기입(값이 0 이어도)은 무장을 내린다. 거절된 것은 아무것도
+  * 하지 않는다. E.12.1 3항의 「성립·불성립」은 *소거의 성립*을 가리키고, 기입
+  * 자체의 수락/거절 축은 같은 절 1항이 스테이징 쪽에 이미 그은 것을 대칭으로
+  * 옮긴 것이다 — 두 축을 한 낱말로 읽으면 1항과 3항이 서로를 부정한다.
+  *
+  * 상위 디코더가 구역 선택·정렬·방향을 이미 가른 뒤의 워드 스트로브만 받는다 —
+  * 이 컴포넌트는 「어느 워드에 무엇을 썼는가」만 안다.
+  */
+class AbortStaging extends Component {
+  import Wt64Top.{A_FIRE_RSV, A_TAG2_RSV}
+
+  /** TAG2 의 *정의 비트* 폭 (16) — 예약 `[31:16]` 은 저장하지 않는다. */
+  private val T2_DEF_W = Types.Tag.TAG2_RSV_LO
+
+  val io = new Bundle {
+    /** 이 구역의 정렬된 기입 스트로브 (구역 선택·정렬은 상위가 이미 가렸다). */
+    val wr      = in port Bool()
+    val selTag0 = in port Bool()
+    val selTag1 = in port Bool()
+    val selTag2 = in port Bool()
+    val selFire = in port Bool()
+    val wdata   = in port Bits(32 bits)
+
+    /** 거절된 구성 기입 — 워드 안 예약 비트 비0 (E.1.1 엄격 · FAULT `[6]`).
+      * *무장 미완 발화는 여기 들지 않는다* — 그것은 거절이 아니라 무시다. */
+    val badWrite = out port Bool()
+
+    /** 무장 마스크 RO 관측면 — `[0]` TAG0 · `[1]` TAG1 · `[2]` TAG2
+      * (결정 A 4항 · §5.8 상태 표면 부류). */
+    val armed = out port Bits(3 bits)
+
+    /** 소거 발화 — 의미론 스트로브. 무장 완비 + 발화 워드 `[0]`=1 + 수락된
+      * 기입일 때만 선다. */
+    val fire = out port Bool()
+    val tag  = out port Types.Tag()
+  }
+
+  // 워드 안 예약 판정 — 마스크 상수는 companion 이 소유한다 (같은 값을 두 곳에
+  // 적으면 그 순간부터 어느 쪽이 정본인지 답할 수 없다).
+  private val tag2RsvBad = (io.wdata & B(A_TAG2_RSV, 32 bits)) =/= 0
+  private val fireRsvBad = (io.wdata & B(A_FIRE_RSV, 32 bits)) =/= 0
+
+  /** 수락된 워드 기입 — 거절은 기입이 아니다 (위 스칼라독의 경계). */
+  private val okTag0 = io.wr && io.selTag0
+  private val okTag1 = io.wr && io.selTag1
+  private val okTag2 = io.wr && io.selTag2 && !tag2RsvBad
+  private val okFire = io.wr && io.selFire && !fireRsvBad
+
+  // 스테이징은 *정의 비트만* 든다 — TAG2 예약 `[31:16]` 은 엄격 거절이라
+  // 저장할 값이 없고, 그럼에도 저장하면 §5.7 해설이 경계한 「무시되는 비트가
+  // 어딘가에 저장되면」의 그 저장이 이 레지스터가 된다.
+  val tag0 = Reg(Bits(32 bits)) init 0
+  val tag1 = Reg(Bits(32 bits)) init 0
+  val tag2 = Reg(Bits(T2_DEF_W bits)) init 0
+
+  /** 무장 비트 — 워드마다 하나 (결정 A 1항). */
+  val armed = RegInit(B(0, 3 bits))
+
+  when(okTag0) { tag0 := io.wdata;                            armed(0) := True }
+  when(okTag1) { tag1 := io.wdata;                            armed(1) := True }
+  when(okTag2) { tag2 := io.wdata(T2_DEF_W - 1 downto 0);     armed(2) := True }
+  // 잔류 소진 (결정 A 3항) — 발화 워드의 *수락된* 기입은 성립·불성립 무관하게
+  // 셋을 전부 내린다. 마지막 대입이라 위 셋과 다투지 않지만, 애초에 한 접근은
+  // 한 워드에만 닿으므로 겹칠 수 없다 (배타 디코드).
+  when(okFire) { armed := 0 }
+
+  private val abWords = Vec(tag0, tag1, B(0, 32 - T2_DEF_W bits) ## tag2)
+
+  // 이중 방어 — 발화 시점에 스테이징의 예약 여백을 *같은 함수로* 다시 본다.
+  // 기입 시점 거절이 이미 막고 있어 이 갈래는 도달 불가이며, 그것이 요점이다:
+  // 스테이징 경로가 훗날 하나 더 생겨도 발화가 그것을 통과시키지 않는다.
+  private val stagedRsvBad = Types.Tag.reservedNonZero(abWords)
+
+  // 발화 조건 (결정 A 2항) — 무장 완비가 연언에 들어간다. armed 는 *레지스터
+  // 값*이므로 「앞선 사이클들의 기입」을 본다: 같은 사이클에 워드 하나를 쓰면서
+  // 발화하는 것은 애초에 불가능하고(한 접근 한 워드), 무장이 그 사실을 상태로
+  // 든다. 미완 발화는 무시 — badWrite 에도 들지 않는다.
+  io.fire  := okFire && io.wdata(0) && armed.andR && !stagedRsvBad
+  io.tag   := Types.Tag.fromWords(abWords)
+  io.armed := armed
+  io.badWrite := (io.wr && io.selTag2 && tag2RsvBad) || (io.wr && io.selFire && fireRsvBad)
+}
+
 /** WT64v1 top-level 조립.
   *
   * @param cfg      형상 파라미터 — Wt64Config 한 곳 정의 (승격 3건 반영:
@@ -466,6 +600,10 @@ class Wt64Top(
   val mask   = MaskUnit(cfg)
   val fps    = StepSequencer(StepSeqParams(progDepth = cfg.stepProgDepth)) // 승격 반영
   val cq     = new CompletionUnit(cfg.cqDepth) // 승격 반영
+  /** E.12 소거의 호스트 대면 절반 — 태그 스테이징 + 무장 규율 + 발화 (결정 A).
+    * 유일하게 *이 파일이 정의하는* 컴포넌트다 (다른 열넷은 자기 파일에 산다) —
+    * MMIO 표면의 절반이라 조립의 소관이고, 잴 수 있게 이름을 준 것뿐이다. */
+  val stg    = new AbortStaging
 
   // ═══ IO ══════════════════════════════════════════════════════════════
   val io = new Bundle {
@@ -523,6 +661,15 @@ class Wt64Top(
       val base  = out port UInt(Isa.LBID_W bits)
       val off   = out port UInt(log2Up(cfg.slotCap) bits)
       val body  = out port Bits(bodyW bits)
+    }
+    /** 구간 무효화 수출 — 소거가 회계뿐 아니라 구간 데이터까지 비운다는 계약
+      * (결정 B). 한 beat = `base` 구간 전체(slotCap 칸) 무효화이며, 이행은
+      * 슬롯 소유자의 의무다. 기입 면과 *다른 면*인 이유는 Reassembly 의
+      * `io.clr` 스칼라독이 소유한다 (원자성 · 기입 면 무간섭 · 이행의 자연형).
+      * ⚠ 이 verb 와 그 완결 시점은 정본 미규정 — rtl/README.md 등재. */
+    val reasmClr = new Bundle {
+      val valid = out port Bool()
+      val base  = out port UInt(Isa.LBID_W bits)
     }
 
     // ── 순서 토큰 게이트 — 구성·완료·하류는 외부 (§4.4.3 필드 배정 미확정) ─
@@ -807,6 +954,10 @@ class Wt64Top(
   io.reasmWr.base  := reasm.io.wr.base
   io.reasmWr.off   := reasm.io.wr.off
   io.reasmWr.body  := reasm.io.wr.body
+  // 구간 무효화 수출 — 소거와 같은 사이클 (결정 B). 기입 면과 같은 소유자에게
+  // 간다: 「어느 구간을 비우는가」의 좌표계가 io.reasmWr.base 와 같은 LBID 다.
+  io.reasmClr.valid := reasm.io.clr.valid
+  io.reasmClr.base  := reasm.io.clr.base
 
   reasm.io.faultClear     := io.faultClear.reasm    || fclr(Fault.B_REASM)
   // 능력 부재는 fault 가 아니므로 해제도 CAP_CLEAR(`0xF90`) 쪽이다 (§1.6.2).
@@ -1169,65 +1320,46 @@ class Wt64Top(
   //
   // 태그 스테이징 3워드 + 발화 1워드인 이유: 태그 80b 는 32b 버스 한 번에
   // 실리지 않는다 — E.7 이 「한 워드 전이」로 얻은 원자성을 여기서는 명시적
-  // 발화 워드가 대신한다 (부분 기입 상태는 발화 전엔 효과가 없다).
+  // 발화 워드가 대신한다 (부분 기입 상태는 발화 전엔 효과가 없다). 그
+  // 「효과가 없다」는 2026-08-25 결정 A 로 *무장 규율*이 되어 관행에서 계약으로
+  // 올라갔고, 무장 마스크 RO 워드(`0xF58`)가 그 계약의 관측면이다.
+  // 무장 규율(결정 A)의 실물은 `AbortStaging` 이 든다 — 그 스칼라독이 네 항의
+  // 근거를 소유한다. 이 Area 는 워드 디코드와 배선만 한다: 스테이징 레지스터·
+  // 무장 비트·발화 조건이 조립에 흩어져 있으면 「부분 기입 무효과」를 잴 자리가
+  // 조립 전체가 된다.
   private val abortArea = new Area {
     val wordOff = word(R_ABORT)
     val wr = io.mmio.wstrobe && selAbort && mmioAligned
     val rd = io.mmio.rstrobe && !io.mmio.wstrobe && selAbort && mmioAligned
 
-    val isTag0 = wordOff === A_TAG0 / 4 // WO  스테이징
-    val isTag1 = wordOff === A_TAG1 / 4 // WO  스테이징
-    val isTag2 = wordOff === A_TAG2 / 4 // WO  스테이징 (예약 [31:16] 엄격)
-    val isFire = wordOff === A_FIRE / 4 // WO  발화     (예약 [31:1]  엄격)
-    val isCnt  = wordOff === A_COUNT / 4      // RO
-    val isInc  = wordOff === A_INCOMPLETE / 4 // RO
+    val isTag0 = wordOff === A_TAG0 / 4 // WO  스테이징 (무장 [0])
+    val isTag1 = wordOff === A_TAG1 / 4 // WO  스테이징 (무장 [1])
+    val isTag2 = wordOff === A_TAG2 / 4 // WO  스테이징 (무장 [2] · 예약 [31:16] 엄격)
+    val isFire = wordOff === A_FIRE / 4 // WO  발화     (무장 완비 요구 · 예약 [31:1] 엄격)
+    val isCnt   = wordOff === A_COUNT / 4      // RO
+    val isInc   = wordOff === A_INCOMPLETE / 4 // RO
+    val isArm   = wordOff === A_ARM / 4        // RO  무장 마스크 (E.12.1 4항)
 
-    val tag2RsvBad = (io.mmio.wdata & B(A_TAG2_RSV, 32 bits)) =/= 0
-    val fireRsvBad = (io.mmio.wdata & B(A_FIRE_RSV, 32 bits)) =/= 0
+    stg.io.wr      := wr
+    stg.io.selTag0 := isTag0
+    stg.io.selTag1 := isTag1
+    stg.io.selTag2 := isTag2
+    stg.io.selFire := isFire
+    stg.io.wdata   := io.mmio.wdata
 
-    // 스테이징 레지스터는 *워드*로 든다 — 이 세 워드가 정본 E.5.1 태그 직렬화의
-    // **원본**이기 때문이다. E.5.1 1항이 `0xF40`~`0xF48` 을 세 표면(완료
-    // 디스크립터 · 명령 디스크립터 · 이 소거 스테이징)의 공통 직렬화로 올렸고,
-    // 그 뒤로 여기서 필드를 손으로 쪼개면 코덱이 두 벌이 된다 — §1.4.4 가 이름한
-    // 드리프트 실패형이 저장소 안에서 재현되는 형태다. 분해는 `Types.Tag.
-    // fromWords` 한 곳이고 이 블록에 태그 슬라이스는 없다 (E.5.1 3항).
-    //
-    // 스테이징은 *정의 비트만* 든다. TAG2 예약 `[31:16]` 은 엄격 거절이라 비0
-    // 이면 기입 자체가 서지 않으므로 저장할 값이 없고, 그럼에도 저장하면 §5.7
-    // 해설이 경계한 「무시되는 비트가 *어딘가에 저장되거나* 반향되면」의 그
-    // 저장이 바로 이 레지스터가 된다. 코덱에 넘길 때 0 으로 다시 채운다 —
-    // 여백이 존재하는 곳은 워드 표면이지 장치 안쪽 상태가 아니다.
-    private val T2_DEF_W = Types.Tag.TAG2_RSV_LO // TAG2 의 정의 비트 폭 (16)
-    val abTag0 = Reg(Bits(32 bits)) init 0
-    val abTag1 = Reg(Bits(32 bits)) init 0
-    val abTag2 = Reg(Bits(T2_DEF_W bits)) init 0
-    when(wr && isTag0) { abTag0 := io.mmio.wdata }
-    when(wr && isTag1) { abTag1 := io.mmio.wdata }
-    // 거절된 스테이징 기입은 레지스터를 움직이지 않는다 — 반쯤 갱신된
-    // 태그로 발화가 서는 창을 만들지 않는다. TAG2 예약이 엄격인 것은 이
-    // 표면이 §5.7 축의 *받아들이는* 쪽이기 때문이다 (E.5.1 4항 — 여백의
-    // 정책은 직렬화가 아니라 방향이 정한다).
-    when(wr && isTag2 && !tag2RsvBad) { abTag2 := io.mmio.wdata(T2_DEF_W - 1 downto 0) }
+    reasm.io.abort.valid := stg.io.fire
+    reasm.io.abort.tag   := stg.io.tag
 
-    val abWords = Vec(abTag0, abTag1, B(0, 32 - T2_DEF_W bits) ## abTag2)
-
-    // 이중 방어 — 발화 시점에 스테이징의 예약 여백을 *같은 함수로* 다시 본다.
-    // 기입 시점 거절이 이미 막고 있어 이 갈래는 도달 불가이며, 그것이 요점이다:
-    // 스테이징 경로가 훗날 하나 더 생겨도 발화가 그것을 통과시키지 않는다.
-    // 「검사가 두 곳」이 아니라 *정의가 한 곳이고 걸린 자리가 둘*이라 갈릴 수
-    // 있는 형태가 아니다 (Reassembly 의 개방 재초기화가 소거와 겹치는 것과 같은
-    // 형태). E.12 「발화 전의 부분 기입은 효과가 없다」의 여백 축이기도 하다.
-    val stagedRsvBad = Types.Tag.reservedNonZero(abWords)
-    reasm.io.abort.valid := wr && isFire && !fireRsvBad && !stagedRsvBad && io.mmio.wdata(0)
-    reasm.io.abort.tag   := Types.Tag.fromWords(abWords)
-
-    when((wr && isTag2 && tag2RsvBad) || (wr && isFire && fireRsvBad) ||
-         (wr && (isCnt || isInc))) { surfBadWr := True }
+    // 거절된 구성 기입 둘: 워드 안 예약 비0 (AbortStaging 이 판정) · RO 오프셋
+    // 쓰기 (여기서 판정 — 그 세 워드는 이 Area 의 것이다). *무장 미완 발화는
+    // 여기 들지 않는다* — 무시는 거절이 아니다 (결정 A 2항 · E.12 3항).
+    when(stg.io.badWrite || (wr && (isCnt || isInc || isArm))) { surfBadWr := True }
 
     val readValue = Bits(32 bits)
     readValue := 0
-    when(isCnt) { readValue := reasm.io.abortCount.asBits.resize(32) }
-    when(isInc) { readValue := reasm.io.incomplete.asBits.resize(32) }
+    when(isCnt)   { readValue := reasm.io.abortCount.asBits.resize(32) }
+    when(isInc)   { readValue := reasm.io.incomplete.asBits.resize(32) }
+    when(isArm)   { readValue := stg.io.armed.resize(32) }
   }
 
   // ── 장치 전역 fault 구역 (0xF80) — §3.8 · @sec:security 5.6 · 5.8 ─────

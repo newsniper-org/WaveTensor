@@ -21,7 +21,14 @@
 //       부록 E.10 (조각 머리 채널 — Types.FragHead 가 실물. 조각 머리는 자기
 //       조각과 같은 beat — 도착의 원자성),
 //       부록 E.12 (태그 지정 문맥 소거 — fault 아님 · 소거 카운트 회계 ·
-//       없는 태그 쓰기 무시).
+//       없는 태그 쓰기 무시 · *소거 대상에 구간 데이터가 든다*),
+//       §4.3 「소거 후 재사용」 (인도 후와 소거 후가 같은 요건 · 비우는 순서는
+//       결속 폐기 *전* · **소거는 종료가 아니라 폐기라 검산을 실행하지
+//       않는다** — 이 RTL 은 종료 판정(fr.endBad)을 조각 수락 경로 안에만
+//       두고 ab 소거 경로는 그 판정에 닿지 않는다. 정본 함정 「닫는 경로
+//       하나에 검산을 심으면 모든 소거가 거짓 fault 를 낸다」가 경고한
+//       결함형이 구조적으로 표현 불가다: 두 소거가 회계 비우기를 공유하되
+//       검산은 접수 판정 안에 산다).
 //
 // ── GUARD-MAP ────────────────────────────────────────────────────────────
 // GUARD-MAP: Payload.key_is_tag -> 검사 fr.hit — 문맥 탐색의 유일한 키가 태그 전량 비교(c.tag === head.tag, 번들 통비교 — 슬라이스·부분 키 없음)다. 개방측 op.clash 가 같은 태그의 활성 문맥이 있는 한 새 문맥을 열지 않으므로 태그당 활성 문맥 <= 1 이 유지되고 hit 는 one-hot 이다 (§4.3 규범 1 「태그가 재조립의 키다」)
@@ -35,7 +42,8 @@
 // GUARD-MAP: Payload.reset_on_deliver -> 인도 완결(io.deliver.fire) when 블록이 그 문맥의 active·seen·last·totalKnown 을 전부 소거한다 — 태그 해방과 회계 소거가 같은 전이라 낡은 회계로 같은 구간이 다시 결과로 나갈 수 없다 (§4.3 규범 5 · Inv_NoStaleRedeliver)
 // GUARD-MAP: Payload.write_atomic -> 기입 면 발화(io.wr.valid := fr.accept)와 회계 갱신(seen·last·total 래치, 같은 fr.accept 게이트)이 같은 사이클에 선다 — 둘을 가르는 파이프 단·지연 경로가 없다 (모델 write_atomic — 「회계는 진행했는데 칸은 아직 비었다」 상태가 구조적으로 없다)
 // GUARD-MAP: Payload.last_judges -> 검사 fr.endBad — 수락 조각이 마지막 표시(head.last)를 나르는 시점에 갱신 후 수신 집합(newSeen)이 선언 총개수 전량 마스크와 다르면 누락/중복으로 io.fault (fr.endEvt). 거절된 조각의 표시는 접수되지 않는다. 표시 유실은 fault 가 아니다 — 미완 문맥 수가 io.incomplete 진단 관측면이다 (D9 · §4.3 조각열 종료 삼중 구조 · Inv_EndIncompleteLoud)
-// GUARD-MAP: Payload.abort_erases -> 검사 ab 소거 when 블록 — 소거 발화(ab.fire)가 그 태그 문맥의 active·seen·last·totalKnown 을 reset_on_deliver 와 같은 소거 규율로 한 전이에 전부 비운다. 태그만 해방하고 회계를 남기는 경로가 없다 (개방 수락 op.grant 의 재초기화가 이중 방어로 겹친다 — 부록 E.12 1항 「소거 대상: 활성 문맥 전체」)
+// GUARD-MAP: Payload.abort_erases -> 검사 ab 소거 when 블록 — 소거 발화(ab.fire)가 그 태그 문맥의 active·seen·last·totalKnown 을 reset_on_deliver 와 같은 소거 규율로 한 전이에 전부 비운다. 태그만 해방하고 회계를 남기는 경로가 없다 (개방 수락 op.grant 의 재초기화가 이중 방어로 겹친다 — 부록 E.12 1항 「소거 대상: 활성 문맥 전체」의 회계 축)
+// GUARD-MAP: Payload.abort_clears_window -> 검사 구간 무효화 면 io.clr — 소거 발화와 *같은 게이트*(ab.fire)로 결속 구간 전체의 무효화가 발해진다. 좌표는 소거 대상 문맥의 결속(ab.cBase)이고 그것은 그 사이클의 레지스터 값이라 §4.3 「소거 후 재사용」 3항의 「결속을 버리기 전에 구간을 비운다」가 구조로 성립한다. 회계만 비우고 구간을 남기는 경로가 없다 — 두 소거가 같은 게이트를 쓰므로 그 어긋남이 표현 불가다 (부록 E.12 1항의 구간 축 · 2026-08-25 결정 B. 슬롯 실물은 이 모듈 소유가 아니므로 비우기는 *명령*이고, 이행은 슬롯 소유자 의무다 — E.12 1항 해설이 「요구를 거는 형태는 이 문서가 정하지 않는다」로 위임한 자리)
 // GUARD-MAP: Payload.abort_leaves_trace -> 검사 ab.cnt — 소거 발화(ab.fire)와 소거 카운트 증가가 같은 사이클·같은 게이트다 (포화 — 되감기면 0 이 「소거 없음」으로 읽혀 조용한 소거가 된다). 흔적 없는 소거 경로가 없다. 없는 태그 무시는 카운트도 올리지 않는다 — 카운트는 「일어난 소거」의 회계다 (부록 E.12 2항 · Inv_AbortLoud)
 // GUARD-MAP: Payload.abort_not_fault -> ab 경로는 io.fault 의 set 항(fr.rejEvt·fr.endEvt·op.clashEvt)에 나타나지 않는다 — 소거는 호스트의 의도된 처분이지 오류가 아니고, 없는 태그 기입의 무시도 마찬가지다 (부록 E.12 2·3항 · capability_not_fault 선례 · Inv_AbortNotFault)
 // ─────────────────────────────────────────────────────────────────────────
@@ -61,11 +69,23 @@
 //    malformation loud fault 다 (fr.totBad). 모델은 total[r] 이 지상 진리라
 //    이 축(선언 위조)을 검사하지 않는다고 자백했다 — RTL 은 같은 조각열 안의
 //    자기모순만 판정한다 (§4.3 규범 2 「선언과 실물의 자기모순」 부류).
-//  - 모델의 ContextAbort 는 창의 slots(데이터)도 비운다 — Consume 과 같은
-//    소거 규율. 이 RTL 은 slots 를 소유하지 않으므로 (소관 경계 — §3.7.1
-//    상류 사상표·슬롯 소유자) 소거·인도 후 구간 데이터의 처분은 상류 몫이다.
-//    이 모듈의 소거는 문맥 회계(active·seen·last·totalKnown)까지다 —
-//    reset_on_deliver 의 대응과 같은 어긋남·같은 근거다.
+//  - 모델의 ContextAbort 는 창의 slots(데이터)도 비운다. **이 어긋남은
+//    2026-08-25 결정 B 로 닫혔다** — 이 RTL 도 소거 시 구간을 비운다. 다만
+//    슬롯 실물은 이 모듈 소유가 아니므로(소관 경계 — §3.7.1 상류 사상표·슬롯
+//    소유자) *비우는 방식*이 명령이다: io.clr 이 「이 base 의 구간 전체를
+//    무효화하라」를 소거 발화와 같은 사이클·같은 게이트로 발한다. 모델의 한
+//    원자 스텝이 RTL 에서도 한 사이클이며, 전 슬롯 순회도 정지도 배압도 없다.
+//    이행(구간 slotCap 칸의 무효화)은 슬롯 소유자의 의무이고, 그 의무가
+//    *묵시가 아니라 면(面)* 이라는 것이 이번 변경의 실물이다.
+//  - 모델의 Consume 도 slots 를 비우는데 **그쪽은 여전히 대응이 없다** —
+//    그리고 그것이 옳다. 모델의 Deliver 는 slots 를 out 으로 *복사*한 뒤
+//    Consume 이 비우지만, 이 RTL 의 io.deliver 는 {태그·결속·총개수}만
+//    넘기고 데이터는 구간에 남아 소비자가 읽는다. 인도 시점에 비우면
+//    소비자가 읽기 전에 지우는 것이다. 「소비 완료」에 해당하는 사건이 이
+//    모듈에 도착하지 않으므로 (정본에 그 통지가 없다 — §4.3 5항은 재사용
+//    *전에* 비우라 요구할 뿐 비우는 주체를 이 모듈로 지정하지 않는다) 인도
+//    경로의 구간 소거는 소비자 쪽 계약이다. 소거 경로에는 읽을 소비자가
+//    아예 없으므로 그 비대칭이 곧 근거다.
 //
 // ## 이 모듈이 하지 않는 것 (소관 경계)
 //
@@ -192,7 +212,11 @@ class Reassembly(val cfg: Wt64Config, val nCtxs: Int = 4, val bodyW: Int = 64) e
     /** 태그 지정 문맥 소거 (부록 E.12 · §3.7 드레인 완주 가능성) — 호스트
       * MMIO 기입의 스트로브. MMIO 주소·레지스터 사상은 상류(E.1 레지스터 맵
       * 소유자) 몫이고, 이 모듈은 「태그 하나를 지정한 소거 기입」이라는
-      * 의미론만 받는다. 지정 태그에 활성 문맥이 없으면 무시 — 오류도
+      * 의미론만 받는다. *태그 80b 를 32b 워드 셋으로 실을 때의 무장 규율*
+      * (결정 A — 워드별 무장 · 무장 완비 발화 · 발화 시 잔류 소진)도 그
+      * 상류의 것이다 (`wt64.top.AbortStaging`) — 이 면에 valid 가 서는 순간
+      * 그 규율은 이미 통과했고, 무장 미완 발화는 여기 도착하지 않는다.
+      * 지정 태그에 활성 문맥이 없으면 무시 — 오류도
       * 카운트도 아니다 (E.12 3항: 드레인 경합에서 이미 인도·소거된 문맥의
       * 소거 시도는 정상 경로다). fault 불참 (E.12 2항).
       *
@@ -204,6 +228,39 @@ class Reassembly(val cfg: Wt64Config, val nCtxs: Int = 4, val bodyW: Int = 64) e
     val abort = new Bundle {
       val valid = in port Bool()
       val tag   = in port Types.Tag()
+    }
+
+    /** 구간 무효화 면 — 소거가 회계뿐 아니라 *구간 데이터까지* 비운다는
+      * 계약의 실물 (결정 B · 모델 ContextAbort 의 `slots'`). 한 beat 가
+      * `base` 결속 구간 전체(칸 slotCap 개)의 무효화를 뜻한다 — 칸마다 한
+      * beat 를 내지 않는 이유는 셋이다:
+      *
+      *  1. *원자성* — 모델의 소거는 한 스텝이다. 순회로 펴면 「회계는 비었는데
+      *     구간은 반쯤 낡은」 중간 상태가 sixteen 사이클 동안 관측 가능해지고,
+      *     그 상태의 지위를 정본이 정한 적이 없다.
+      *  2. *기입 면 무간섭* — io.wr 은 조각 수락과 원자다 (write_atomic).
+      *     순회를 그 면에 실으면 소거 중 도착한 조각이 기입을 잃는데, 조각
+      *     면은 스트로브라 되미룰 수단이 없다 (§2.6 은 SEC-3 몫이고 이
+      *     모듈은 「모든 조각이 도착 사이클에 처분된다」를 계약으로 든다).
+      *     별 면으로 두면 그 충돌 자체가 없다.
+      *  3. *이행의 자연형* — 구간 무효화의 자연스러운 실물은 데이터 zeroing
+      *     이 아니라 칸 유효 비트의 일괄 하강이다. 그쪽에서도 한 사이클이다.
+      *
+      * *비우는 순서* — §4.3 「소거 후 재사용」 3항은 「결속을 버리기 *전에*
+      * 구간을 비운다」를 요구한다: 결속이 비울 대상의 유일한 이름이기
+      * 때문이다. 이 면의 base 는 소거와 *같은 사이클의 레지스터 값*(ab.cBase)
+      * 이므로 그 순서가 구조로 성립한다 — 결속이 내려가는 것은 다음 사이클
+      * 이고, 그때 명령은 이미 떠났다.
+      *
+      * ⚠ 정본이 아직 정하지 않은 것: *무효화 이행의 완결 시점*이다. E.12 1항
+      * 해설이 「요구를 거는 형태(스트로브·핸드셰이크)는 이 문서가 정하지
+      * 않는다」로 형태를 위임했으므로 이 스트로브는 그 위임 안에 있으나,
+      * 「소거 후 같은 LBID 를 언제부터 재개방해도 안전한가」에는 답이 없다.
+      * ABORT_COUNT 는 *명령*의 회계이지 이행의 완결이 아니다 —
+      * rtl/README.md 「정본 환류 필요」 등재. */
+    val clr = new Bundle {
+      val valid = out port Bool()
+      val base  = out port UInt(LBID_W bits)
     }
 
     /** 소거 카운트 — E.12 2항의 회계 관측면 (진단 표면, fault 아님). 포화 —
@@ -388,8 +445,11 @@ class Reassembly(val cfg: Wt64Config, val nCtxs: Int = 4, val bodyW: Int = 64) e
   // 이 Area 는 fr(접수 회계)·op(개방)·dv(인도 소거) *뒤*에 있다 — 같은
   // 사이클에 같은 문맥을 다투면 소거가 이긴다 (마지막 대입 우선). 경합 셋:
   //   accept+abort  — 회계 갱신 위에 소거가 덮인다. 그 사이클의 io.wr 발화는
-  //                   이미 떠났다 — 소거 후 재사용 창의 잔재 처분은 상류
-  //                   몫이다 (파일 머리 「어긋난 자리」).
+  //                   이미 떠났고, 같은 사이클의 io.clr 이 그 구간을
+  //                   무효화한다 — 두 면의 순서는 소유자가 「같은 beat 의
+  //                   무효화가 기입을 이긴다」로 닫는다 (소거가 마지막 대입
+  //                   우선이라는 이 모듈 안의 규율과 같은 방향). 잔재가
+  //                   남는 갈래가 이 파도로 사라졌다.
   //   deliver+abort — 둘 다 같은 소거 규율이라 결과가 같다.
   //   open+abort    — 문맥이 겹칠 수 없다 (grant 는 !active, hit 는 active).
   //                   같은 태그면: abort 는 레지스터 시점을 보므로 이 사이클
@@ -401,6 +461,10 @@ class Reassembly(val cfg: Wt64Config, val nCtxs: Int = 4, val bodyW: Int = 64) e
     val hitAny = hit.reduce(_ || _)
     /** 소거 발화 — 없는 태그는 무시 (E.12 3항: 오류도 카운트도 아니다). */
     val fire = io.abort.valid && hitAny
+    /** 소거 대상의 결속 LBID — 구간 무효화 좌표. 탐색 규율이 fr.cBase 와
+      * 같다 (같은 one-hot, 같은 base_from_tag 원천 — 소거가 「어느 구간을
+      * 비우는가」를 스스로 지어내지 않는다). */
+    val cBase = MuxOH(hit, ctx.map(_.base))
 
     // abort_erases — 소거 규율은 reset_on_deliver 와 같다: active(태그 해방)
     // 와 회계(seen·last·totalKnown) 소거가 같은 전이다. 태그만 해방하고
@@ -421,6 +485,13 @@ class Reassembly(val cfg: Wt64Config, val nCtxs: Int = 4, val bodyW: Int = 64) e
     when(fire && cnt =/= cnt.maxValue) { cnt := cnt + 1 }
   }
   io.abortCount := ab.cnt
+
+  // 구간 무효화 — 회계 소거와 *같은 게이트*다 (결정 B). 두 신호가 같은
+  // ab.fire 를 쓰므로 「회계는 비웠는데 구간은 안 비웠다」가 표현 불가다 —
+  // write_atomic 이 기입과 회계에 대해 하는 것과 같은 형태의 원자성이며,
+  // 그래서 별도의 순서 계약이 생기지 않는다.
+  io.clr.valid := ab.fire
+  io.clr.base  := ab.cBase
 
   // ── 진단 관측면 — 미완 문맥 수 (IncompleteCtx 의 RTL 형: active && !last) ─
   io.incomplete := CountOne(Vec(ctx.map(c => c.active && !c.last)))

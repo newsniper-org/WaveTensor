@@ -80,6 +80,8 @@ module Wt64Top (
   output wire [7:0]    io_reasmWr_base,
   output wire [3:0]    io_reasmWr_off,
   output wire [63:0]   io_reasmWr_body,
+  output wire          io_reasmClr_valid,
+  output wire [7:0]    io_reasmClr_base,
   input  wire [2:0]    io_mem_cfgPreds_0,
   input  wire [2:0]    io_mem_cfgPreds_1,
   input  wire [2:0]    io_mem_cfgPreds_2,
@@ -251,12 +253,6 @@ module Wt64Top (
   wire                walk_io_iFaultClear;
   wire                od_io_iFaultClear;
   wire                rj_io_faultClear;
-  wire                reasm_io_abort_valid;
-  wire       [31:0]   reasm_io_abort_tag_wave;
-  wire       [15:0]   reasm_io_abort_tag_thread;
-  wire       [15:0]   reasm_io_abort_tag_lnid;
-  wire       [7:0]    reasm_io_abort_tag_precision;
-  wire       [7:0]    reasm_io_abort_tag_dim;
   wire                reasm_io_faultClear;
   wire                reasm_io_capAbsentClear;
   wire                mog_io_up_0_valid;
@@ -418,6 +414,8 @@ module Wt64Top (
   wire       [7:0]    reasm_io_deliver_payload_total;
   wire       [2:0]    reasm_io_incomplete;
   wire       [2:0]    reasm_io_occupancy;
+  wire                reasm_io_clr_valid;
+  wire       [7:0]    reasm_io_clr_base;
   wire       [7:0]    reasm_io_abortCount;
   wire                reasm_io_fault;
   wire                reasm_io_capAbsent;
@@ -523,6 +521,14 @@ module Wt64Top (
   wire                cq_io_irq;
   wire                cq_io_faultOverflow;
   wire                cq_io_faultBadWrite;
+  wire                stg_io_badWrite;
+  wire       [2:0]    stg_io_armed;
+  wire                stg_io_fire;
+  wire       [31:0]   stg_io_tag_wave;
+  wire       [15:0]   stg_io_tag_thread;
+  wire       [15:0]   stg_io_tag_lnid;
+  wire       [7:0]    stg_io_tag_precision;
+  wire       [7:0]    stg_io_tag_dim;
   wire       [1:0]    _zz_maskArea_readValue;
   wire       [7:0]    _zz_abortArea_readValue;
   wire       [2:0]    _zz_abortArea_readValue_1;
@@ -563,12 +569,12 @@ module Wt64Top (
   wire                maskArea_npWr;
   wire                maskArea_npRsvBad;
   wire                maskArea_npReject;
-  wire                when_Wt64Top_l1085;
+  wire                when_Wt64Top_l1236;
   wire                maskArea_rkWr;
   wire                maskArea_rkRsvBad;
   wire                maskArea_rkReject;
   reg        [31:0]   maskArea_maskStat;
-  wire                when_Wt64Top_l1112;
+  wire                when_Wt64Top_l1263;
   reg        [31:0]   maskArea_readValue;
   wire       [3:0]    fpArea_wordOff;
   wire                fpArea_wr;
@@ -577,7 +583,7 @@ module Wt64Top (
   wire                fpArea_isBind;
   wire                fpArea_isStatus;
   wire                fpArea_bindRsvBad;
-  wire                when_Wt64Top_l1153;
+  wire                when_Wt64Top_l1304;
   reg        [31:0]   fpArea_fpStat;
   reg        [31:0]   fpArea_readValue;
   wire       [3:0]    abortArea_wordOff;
@@ -589,17 +595,8 @@ module Wt64Top (
   wire                abortArea_isFire;
   wire                abortArea_isCnt;
   wire                abortArea_isInc;
-  wire                abortArea_tag2RsvBad;
-  wire                abortArea_fireRsvBad;
-  reg        [31:0]   abortArea_abTag0;
-  reg        [31:0]   abortArea_abTag1;
-  reg        [15:0]   abortArea_abTag2;
-  wire                when_Wt64Top_l1204;
-  wire                when_Wt64Top_l1205;
-  wire                when_Wt64Top_l1210;
-  wire       [31:0]   abortArea_abWords_2;
-  wire                abortArea_stagedRsvBad;
-  wire                when_Wt64Top_l1225;
+  wire                abortArea_isArm;
+  wire                when_Wt64Top_l1356;
   reg        [31:0]   abortArea_readValue;
   wire       [3:0]    faultArea_wordOff;
   wire                faultArea_wr;
@@ -613,7 +610,7 @@ module Wt64Top (
   wire                faultArea_capRsvBad;
   wire                faultArea_doClr;
   wire                faultArea_doCapClr;
-  wire                when_Wt64Top_l1274;
+  wire                when_Wt64Top_l1406;
   wire                when_Common_l258;
   reg                 _zz_io_fault_cfgSurfBadWrite;
   wire                when_Common_l258_1;
@@ -622,7 +619,7 @@ module Wt64Top (
   reg        [31:0]   faultWords_summary;
   reg        [31:0]   faultWords_capStatus;
   reg        [31:0]   faultWords_readValue;
-  wire                when_Wt64Top_l1385;
+  wire                when_Wt64Top_l1517;
   wire                mapRd;
   reg        [31:0]   mapRdReg;
   reg                 mapRv;
@@ -825,12 +822,14 @@ module Wt64Top (
     .io_deliver_payload_total         (reasm_io_deliver_payload_total[7:0]              ), //o
     .io_incomplete                    (reasm_io_incomplete[2:0]                         ), //o
     .io_occupancy                     (reasm_io_occupancy[2:0]                          ), //o
-    .io_abort_valid                   (reasm_io_abort_valid                             ), //i
-    .io_abort_tag_wave                (reasm_io_abort_tag_wave[31:0]                    ), //i
-    .io_abort_tag_thread              (reasm_io_abort_tag_thread[15:0]                  ), //i
-    .io_abort_tag_lnid                (reasm_io_abort_tag_lnid[15:0]                    ), //i
-    .io_abort_tag_precision           (reasm_io_abort_tag_precision[7:0]                ), //i
-    .io_abort_tag_dim                 (reasm_io_abort_tag_dim[7:0]                      ), //i
+    .io_abort_valid                   (stg_io_fire                                      ), //i
+    .io_abort_tag_wave                (stg_io_tag_wave[31:0]                            ), //i
+    .io_abort_tag_thread              (stg_io_tag_thread[15:0]                          ), //i
+    .io_abort_tag_lnid                (stg_io_tag_lnid[15:0]                            ), //i
+    .io_abort_tag_precision           (stg_io_tag_precision[7:0]                        ), //i
+    .io_abort_tag_dim                 (stg_io_tag_dim[7:0]                              ), //i
+    .io_clr_valid                     (reasm_io_clr_valid                               ), //o
+    .io_clr_base                      (reasm_io_clr_base[7:0]                           ), //o
     .io_abortCount                    (reasm_io_abortCount[7:0]                         ), //o
     .io_fault                         (reasm_io_fault                                   ), //o
     .io_faultClear                    (reasm_io_faultClear                              ), //i
@@ -1143,6 +1142,24 @@ module Wt64Top (
     .clk                   (clk                                        ), //i
     .reset                 (reset                                      )  //i
   );
+  AbortStaging stg (
+    .io_wr            (abortArea_wr             ), //i
+    .io_selTag0       (abortArea_isTag0         ), //i
+    .io_selTag1       (abortArea_isTag1         ), //i
+    .io_selTag2       (abortArea_isTag2         ), //i
+    .io_selFire       (abortArea_isFire         ), //i
+    .io_wdata         (io_mmio_wdata[31:0]      ), //i
+    .io_badWrite      (stg_io_badWrite          ), //o
+    .io_armed         (stg_io_armed[2:0]        ), //o
+    .io_fire          (stg_io_fire              ), //o
+    .io_tag_wave      (stg_io_tag_wave[31:0]    ), //o
+    .io_tag_thread    (stg_io_tag_thread[15:0]  ), //o
+    .io_tag_lnid      (stg_io_tag_lnid[15:0]    ), //o
+    .io_tag_precision (stg_io_tag_precision[7:0]), //o
+    .io_tag_dim       (stg_io_tag_dim[7:0]      ), //o
+    .clk              (clk                      ), //i
+    .reset            (reset                    )  //i
+  );
   assign walk_io_iFaultClear = (io_faultClear_decodeWalk || (fltClrAccept && io_mmio_wdata[0]));
   assign od_io_iFaultClear = (io_faultClear_operandDecode || (fltClrAccept && io_mmio_wdata[1]));
   assign io_dec_valid = od_io_oValid;
@@ -1197,6 +1214,8 @@ module Wt64Top (
   assign io_reasmWr_base = reasm_io_wr_base;
   assign io_reasmWr_off = reasm_io_wr_off;
   assign io_reasmWr_body = reasm_io_wr_body;
+  assign io_reasmClr_valid = reasm_io_clr_valid;
+  assign io_reasmClr_base = reasm_io_clr_base;
   assign reasm_io_faultClear = (io_faultClear_reasm || (fltClrAccept && io_mmio_wdata[3]));
   assign reasm_io_capAbsentClear = (io_faultClear_reasmCap || (capClrAccept && io_mmio_wdata[0]));
   assign mog_io_up_0_valid = (od_io_oMemPresent && (io_mem_slotSel == 2'b00));
@@ -1302,16 +1321,16 @@ module Wt64Top (
   assign cfgBlk_io_faultClearBad = (io_faultClear_cfgBadWrite || (fltClrAccept && io_mmio_wdata[6]));
   always @(*) begin
     surfBadWr = 1'b0;
-    if(when_Wt64Top_l1112) begin
+    if(when_Wt64Top_l1263) begin
       surfBadWr = 1'b1;
     end
-    if(when_Wt64Top_l1153) begin
+    if(when_Wt64Top_l1304) begin
       surfBadWr = 1'b1;
     end
-    if(when_Wt64Top_l1225) begin
+    if(when_Wt64Top_l1356) begin
       surfBadWr = 1'b1;
     end
-    if(when_Wt64Top_l1274) begin
+    if(when_Wt64Top_l1406) begin
       surfBadWr = 1'b1;
     end
   end
@@ -1331,7 +1350,7 @@ module Wt64Top (
   assign maskArea_npWr = (maskArea_wr && maskArea_isNoncePart);
   assign maskArea_npRsvBad = ((io_mmio_wdata & 32'hffffff00) != 32'h0);
   assign maskArea_npReject = (maskArea_npWr && (maskArea_npRsvBad || maskArea_partBad));
-  assign when_Wt64Top_l1085 = ((maskArea_npWr && (! maskArea_npRsvBad)) && (! maskArea_partBad));
+  assign when_Wt64Top_l1236 = ((maskArea_npWr && (! maskArea_npRsvBad)) && (! maskArea_partBad));
   assign mask_io_nonceWr_valid = (maskArea_wr && maskArea_isNonce);
   assign mask_io_nonceWr_idx = (maskArea_wordOff[2 : 0] - 3'b001);
   assign maskArea_rkWr = (maskArea_wr && maskArea_isRekey);
@@ -1346,7 +1365,7 @@ module Wt64Top (
     maskArea_maskStat[9] = mask_io_rekey_ready;
   end
 
-  assign when_Wt64Top_l1112 = ((maskArea_npReject || maskArea_rkReject) || (maskArea_wr && maskArea_isStatus));
+  assign when_Wt64Top_l1263 = ((maskArea_npReject || maskArea_rkReject) || (maskArea_wr && maskArea_isStatus));
   always @(*) begin
     maskArea_readValue = 32'h0;
     if(maskArea_isNoncePart) begin
@@ -1372,7 +1391,7 @@ module Wt64Top (
   assign fps_io_bindWr_key = io_mmio_wdata[15 : 0];
   assign fps_io_bindWr_en = io_mmio_wdata[31];
   assign fps_io_bindWr_slot = io_mmio_wdata[23 : 16];
-  assign when_Wt64Top_l1153 = (((fpArea_wr && fpArea_isBind) && fpArea_bindRsvBad) || (fpArea_wr && fpArea_isStatus));
+  assign when_Wt64Top_l1304 = (((fpArea_wr && fpArea_isBind) && fpArea_bindRsvBad) || (fpArea_wr && fpArea_isStatus));
   always @(*) begin
     fpArea_fpStat = 32'h0;
     fpArea_fpStat[0] = fps_io_loadReady;
@@ -1395,20 +1414,8 @@ module Wt64Top (
   assign abortArea_isFire = (abortArea_wordOff == 4'b0011);
   assign abortArea_isCnt = (abortArea_wordOff == 4'b0100);
   assign abortArea_isInc = (abortArea_wordOff == 4'b0101);
-  assign abortArea_tag2RsvBad = ((io_mmio_wdata & 32'hffff0000) != 32'h0);
-  assign abortArea_fireRsvBad = ((io_mmio_wdata & 32'hfffffffe) != 32'h0);
-  assign when_Wt64Top_l1204 = (abortArea_wr && abortArea_isTag0);
-  assign when_Wt64Top_l1205 = (abortArea_wr && abortArea_isTag1);
-  assign when_Wt64Top_l1210 = ((abortArea_wr && abortArea_isTag2) && (! abortArea_tag2RsvBad));
-  assign abortArea_abWords_2 = {16'h0,abortArea_abTag2};
-  assign abortArea_stagedRsvBad = (abortArea_abWords_2[31 : 16] != 16'h0);
-  assign reasm_io_abort_valid = ((((abortArea_wr && abortArea_isFire) && (! abortArea_fireRsvBad)) && (! abortArea_stagedRsvBad)) && io_mmio_wdata[0]);
-  assign reasm_io_abort_tag_wave = abortArea_abTag0;
-  assign reasm_io_abort_tag_thread = abortArea_abTag1[31 : 16];
-  assign reasm_io_abort_tag_lnid = abortArea_abTag1[15 : 0];
-  assign reasm_io_abort_tag_precision = abortArea_abWords_2[15 : 8];
-  assign reasm_io_abort_tag_dim = abortArea_abWords_2[7 : 0];
-  assign when_Wt64Top_l1225 = ((((abortArea_wr && abortArea_isTag2) && abortArea_tag2RsvBad) || ((abortArea_wr && abortArea_isFire) && abortArea_fireRsvBad)) || (abortArea_wr && (abortArea_isCnt || abortArea_isInc)));
+  assign abortArea_isArm = (abortArea_wordOff == 4'b0110);
+  assign when_Wt64Top_l1356 = (stg_io_badWrite || (abortArea_wr && ((abortArea_isCnt || abortArea_isInc) || abortArea_isArm)));
   always @(*) begin
     abortArea_readValue = 32'h0;
     if(abortArea_isCnt) begin
@@ -1416,6 +1423,9 @@ module Wt64Top (
     end
     if(abortArea_isInc) begin
       abortArea_readValue = {29'd0, _zz_abortArea_readValue_1};
+    end
+    if(abortArea_isArm) begin
+      abortArea_readValue = {29'd0, stg_io_armed};
     end
   end
 
@@ -1433,7 +1443,7 @@ module Wt64Top (
   assign faultArea_doCapClr = ((faultArea_wr && faultArea_isCapClr) && (! faultArea_capRsvBad));
   assign fltClrAccept = faultArea_doClr;
   assign capClrAccept = faultArea_doCapClr;
-  assign when_Wt64Top_l1274 = (((faultArea_wr && ((faultArea_isStatus || faultArea_isSummary) || faultArea_isCapSt)) || ((faultArea_wr && faultArea_isClear) && faultArea_clrRsvBad)) || ((faultArea_wr && faultArea_isCapClr) && faultArea_capRsvBad));
+  assign when_Wt64Top_l1406 = (((faultArea_wr && ((faultArea_isStatus || faultArea_isSummary) || faultArea_isCapSt)) || ((faultArea_wr && faultArea_isClear) && faultArea_clrRsvBad)) || ((faultArea_wr && faultArea_isCapClr) && faultArea_capRsvBad));
   assign io_fault_decodeWalk = walk_io_oFault;
   assign io_fault_operandDecode = od_io_oFault;
   assign io_fault_route = rj_io_fault;
@@ -1517,12 +1527,12 @@ module Wt64Top (
     if(selCfg) begin
       io_mmio_ready = cfgBlk_io_ready;
     end
-    if(when_Wt64Top_l1385) begin
+    if(when_Wt64Top_l1517) begin
       io_mmio_ready = fps_io_loadReady;
     end
   end
 
-  assign when_Wt64Top_l1385 = (selFp && (fpArea_isProg || fpArea_isBind));
+  assign when_Wt64Top_l1517 = (selFp && (fpArea_isProg || fpArea_isBind));
   assign mapRd = (((maskArea_rd || fpArea_rd) || abortArea_rd) || faultArea_rd);
   assign resvOffset = (! (((((((selOwn || selCq) || selCfg) || selMask) || selFp) || selAbort) || selFault) || selUnwired));
   assign resvRd = ((io_mmio_rstrobe && (! io_mmio_wstrobe)) && ((resvOffset || selUnwired) || ((((selMask || selFp) || selAbort) || selFault) && (! mmioAligned))));
@@ -1557,26 +1567,14 @@ module Wt64Top (
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       maskArea_noncePart <= 2'b00;
-      abortArea_abTag0 <= 32'h0;
-      abortArea_abTag1 <= 32'h0;
-      abortArea_abTag2 <= 16'h0;
       _zz_io_fault_cfgSurfBadWrite <= 1'b0;
       _zz_io_fault_fpCapAbsent <= 1'b0;
       mapRdReg <= 32'h0;
       mapRv <= 1'b0;
       resvRv <= 1'b0;
     end else begin
-      if(when_Wt64Top_l1085) begin
+      if(when_Wt64Top_l1236) begin
         maskArea_noncePart <= maskArea_partField[1:0];
-      end
-      if(when_Wt64Top_l1204) begin
-        abortArea_abTag0 <= io_mmio_wdata;
-      end
-      if(when_Wt64Top_l1205) begin
-        abortArea_abTag1 <= io_mmio_wdata;
-      end
-      if(when_Wt64Top_l1210) begin
-        abortArea_abTag2 <= io_mmio_wdata[15 : 0];
       end
       if(when_Common_l258) begin
         _zz_io_fault_cfgSurfBadWrite <= 1'b0;
@@ -1607,6 +1605,82 @@ module Wt64Top (
         end
       end
       resvRv <= resvRd;
+    end
+  end
+
+
+endmodule
+
+module AbortStaging (
+  input  wire          io_wr,
+  input  wire          io_selTag0,
+  input  wire          io_selTag1,
+  input  wire          io_selTag2,
+  input  wire          io_selFire,
+  input  wire [31:0]   io_wdata,
+  output wire          io_badWrite,
+  output wire [2:0]    io_armed,
+  output wire          io_fire,
+  output wire [31:0]   io_tag_wave,
+  output wire [15:0]   io_tag_thread,
+  output wire [15:0]   io_tag_lnid,
+  output wire [7:0]    io_tag_precision,
+  output wire [7:0]    io_tag_dim,
+  input  wire          clk,
+  input  wire          reset
+);
+
+  wire                tag2RsvBad;
+  wire                fireRsvBad;
+  wire                okTag0;
+  wire                okTag1;
+  wire                okTag2;
+  wire                okFire;
+  reg        [31:0]   tag0;
+  reg        [31:0]   tag1;
+  reg        [15:0]   tag2;
+  reg        [2:0]    armed;
+  wire       [31:0]   abWords_2;
+  wire                stagedRsvBad;
+
+  assign tag2RsvBad = ((io_wdata & 32'hffff0000) != 32'h0);
+  assign fireRsvBad = ((io_wdata & 32'hfffffffe) != 32'h0);
+  assign okTag0 = (io_wr && io_selTag0);
+  assign okTag1 = (io_wr && io_selTag1);
+  assign okTag2 = ((io_wr && io_selTag2) && (! tag2RsvBad));
+  assign okFire = ((io_wr && io_selFire) && (! fireRsvBad));
+  assign abWords_2 = {16'h0,tag2};
+  assign stagedRsvBad = (abWords_2[31 : 16] != 16'h0);
+  assign io_fire = (((okFire && io_wdata[0]) && (&armed)) && (! stagedRsvBad));
+  assign io_tag_wave = tag0;
+  assign io_tag_thread = tag1[31 : 16];
+  assign io_tag_lnid = tag1[15 : 0];
+  assign io_tag_precision = abWords_2[15 : 8];
+  assign io_tag_dim = abWords_2[7 : 0];
+  assign io_armed = armed;
+  assign io_badWrite = (((io_wr && io_selTag2) && tag2RsvBad) || ((io_wr && io_selFire) && fireRsvBad));
+  always @(posedge clk or posedge reset) begin
+    if(reset) begin
+      tag0 <= 32'h0;
+      tag1 <= 32'h0;
+      tag2 <= 16'h0;
+      armed <= 3'b000;
+    end else begin
+      if(okTag0) begin
+        tag0 <= io_wdata;
+        armed[0] <= 1'b1;
+      end
+      if(okTag1) begin
+        tag1 <= io_wdata;
+        armed[1] <= 1'b1;
+      end
+      if(okTag2) begin
+        tag2 <= io_wdata[15 : 0];
+        armed[2] <= 1'b1;
+      end
+      if(okFire) begin
+        armed <= 3'b000;
+      end
     end
   end
 
@@ -6243,6 +6317,8 @@ module Reassembly (
   input  wire [15:0]   io_abort_tag_lnid,
   input  wire [7:0]    io_abort_tag_precision,
   input  wire [7:0]    io_abort_tag_dim,
+  output wire          io_clr_valid,
+  output wire [7:0]    io_clr_base,
   output wire [7:0]    io_abortCount,
   output wire          io_fault,
   input  wire          io_faultClear,
@@ -6288,6 +6364,8 @@ module Reassembly (
   reg        [7:0]    _zz_io_deliver_payload_tag_dim;
   reg        [7:0]    _zz_io_deliver_payload_base;
   reg        [7:0]    _zz_io_deliver_payload_total;
+  reg        [7:0]    _zz_ab_cBase_2;
+  wire       [1:0]    _zz_ab_cBase_3;
   reg        [2:0]    _zz_io_incomplete_8;
   wire       [2:0]    _zz_io_incomplete_9;
   reg        [2:0]    _zz_io_incomplete_10;
@@ -6382,10 +6460,10 @@ module Reassembly (
   wire                fr_accept;
   wire       [15:0]   fr_newSeen;
   wire                fr_endBad;
-  wire                when_Reassembly_l306;
-  wire                when_Reassembly_l306_1;
-  wire                when_Reassembly_l306_2;
-  wire                when_Reassembly_l306_3;
+  wire                when_Reassembly_l363;
+  wire                when_Reassembly_l363_1;
+  wire                when_Reassembly_l363_2;
+  wire                when_Reassembly_l363_3;
   wire                fr_rejEvt;
   wire                fr_endEvt;
   wire                fr_capaEvt;
@@ -6398,10 +6476,10 @@ module Reassembly (
   wire       [3:0]    _zz_op_freeOh;
   wire       [3:0]    op_freeOh;
   wire                op_grant;
-  wire                when_Reassembly_l339;
-  wire                when_Reassembly_l339_1;
-  wire                when_Reassembly_l339_2;
-  wire                when_Reassembly_l339_3;
+  wire                when_Reassembly_l396;
+  wire                when_Reassembly_l396_1;
+  wire                when_Reassembly_l396_2;
+  wire                when_Reassembly_l396_3;
   wire                op_clashEvt;
   wire                dv_done_0;
   wire                dv_done_1;
@@ -6415,22 +6493,25 @@ module Reassembly (
   wire                _zz_io_deliver_payload_tag_wave_2;
   wire       [1:0]    _zz_io_deliver_payload_tag_wave_3;
   wire                io_deliver_fire;
-  wire                when_Reassembly_l378;
-  wire                when_Reassembly_l378_1;
-  wire                when_Reassembly_l378_2;
-  wire                when_Reassembly_l378_3;
+  wire                when_Reassembly_l435;
+  wire                when_Reassembly_l435_1;
+  wire                when_Reassembly_l435_2;
+  wire                when_Reassembly_l435_3;
   wire                ab_hit_0;
   wire                ab_hit_1;
   wire                ab_hit_2;
   wire                ab_hit_3;
   wire                ab_hitAny;
   wire                ab_fire;
-  wire                when_Reassembly_l410;
-  wire                when_Reassembly_l410_1;
-  wire                when_Reassembly_l410_2;
-  wire                when_Reassembly_l410_3;
+  wire                _zz_ab_cBase;
+  wire                _zz_ab_cBase_1;
+  wire       [7:0]    ab_cBase;
+  wire                when_Reassembly_l474;
+  wire                when_Reassembly_l474_1;
+  wire                when_Reassembly_l474_2;
+  wire                when_Reassembly_l474_3;
   reg        [7:0]    ab_cnt;
-  wire                when_Reassembly_l421;
+  wire                when_Reassembly_l485;
   wire       [2:0]    _zz_io_incomplete;
   wire       [2:0]    _zz_io_incomplete_1;
   wire       [2:0]    _zz_io_incomplete_2;
@@ -6463,6 +6544,7 @@ module Reassembly (
   assign _zz_io_incomplete_11 = {2'd0, _zz_io_incomplete_12};
   assign _zz_io_occupancy_12 = ctx_3_active;
   assign _zz_io_occupancy_11 = {2'd0, _zz_io_occupancy_12};
+  assign _zz_ab_cBase_3 = {_zz_ab_cBase_1,_zz_ab_cBase};
   assign _zz_io_incomplete_9 = {(ctx_2_active && (! ctx_2_last)),{(ctx_1_active && (! ctx_1_last)),(ctx_0_active && (! ctx_0_last))}};
   assign _zz_io_occupancy_9 = {ctx_2_active,{ctx_1_active,ctx_0_active}};
   assign _zz_op_clash = (((_zz_op_clash_1 && _zz_op_clash_2) && (ctx_0_tag_lnid == io_open_tag_lnid)) && (ctx_0_tag_precision == io_open_tag_precision));
@@ -6658,6 +6740,15 @@ module Reassembly (
   end
 
   always @(*) begin
+    case(_zz_ab_cBase_3)
+      2'b00 : _zz_ab_cBase_2 = ctx_0_base;
+      2'b01 : _zz_ab_cBase_2 = ctx_1_base;
+      2'b10 : _zz_ab_cBase_2 = ctx_2_base;
+      default : _zz_ab_cBase_2 = ctx_3_base;
+    endcase
+  end
+
+  always @(*) begin
     case(_zz_io_incomplete_9)
       3'b000 : _zz_io_incomplete_8 = _zz_io_incomplete;
       3'b001 : _zz_io_incomplete_8 = _zz_io_incomplete_1;
@@ -6749,10 +6840,10 @@ module Reassembly (
   assign fr_accept = (((((io_frag_valid && fr_hitAny) && (! fr_capaRej)) && (! fr_totBad)) && (! fr_overRej)) && (! fr_dupRej));
   assign fr_newSeen = (fr_cSeen | fr_ohSeq);
   assign fr_endBad = (io_frag_head_last && (fr_newSeen != _zz_fr_endBad));
-  assign when_Reassembly_l306 = (fr_accept && fr_hit_0);
-  assign when_Reassembly_l306_1 = (fr_accept && fr_hit_1);
-  assign when_Reassembly_l306_2 = (fr_accept && fr_hit_2);
-  assign when_Reassembly_l306_3 = (fr_accept && fr_hit_3);
+  assign when_Reassembly_l363 = (fr_accept && fr_hit_0);
+  assign when_Reassembly_l363_1 = (fr_accept && fr_hit_1);
+  assign when_Reassembly_l363_2 = (fr_accept && fr_hit_2);
+  assign when_Reassembly_l363_3 = (fr_accept && fr_hit_3);
   assign fr_rejEvt = (io_frag_valid && (((fr_strayRej || fr_totBad) || fr_overRej) || fr_dupRej));
   assign fr_endEvt = (fr_accept && fr_endBad);
   assign fr_capaEvt = (io_frag_valid && fr_capaRej);
@@ -6770,10 +6861,10 @@ module Reassembly (
   assign op_freeOh = (_zz_op_freeOh & (~ _zz_op_freeOh_1));
   assign op_grant = ((io_open_valid && (! op_clash)) && op_freeAny);
   assign io_open_granted = op_grant;
-  assign when_Reassembly_l339 = (op_grant && op_freeOh[0]);
-  assign when_Reassembly_l339_1 = (op_grant && op_freeOh[1]);
-  assign when_Reassembly_l339_2 = (op_grant && op_freeOh[2]);
-  assign when_Reassembly_l339_3 = (op_grant && op_freeOh[3]);
+  assign when_Reassembly_l396 = (op_grant && op_freeOh[0]);
+  assign when_Reassembly_l396_1 = (op_grant && op_freeOh[1]);
+  assign when_Reassembly_l396_2 = (op_grant && op_freeOh[2]);
+  assign when_Reassembly_l396_3 = (op_grant && op_freeOh[3]);
   assign op_clashEvt = (io_open_valid && op_clash);
   assign dv_done_0 = (((ctx_0_active && ctx_0_last) && ctx_0_totalKnown) && (ctx_0_seen == _zz_dv_done_0));
   assign dv_done_1 = (((ctx_1_active && ctx_1_last) && ctx_1_totalKnown) && (ctx_1_seen == _zz_dv_done_1));
@@ -6795,22 +6886,27 @@ module Reassembly (
   assign io_deliver_payload_base = _zz_io_deliver_payload_base;
   assign io_deliver_payload_total = _zz_io_deliver_payload_total;
   assign io_deliver_fire = (io_deliver_valid && io_deliver_ready);
-  assign when_Reassembly_l378 = (io_deliver_fire && dv_grantOh[0]);
-  assign when_Reassembly_l378_1 = (io_deliver_fire && dv_grantOh[1]);
-  assign when_Reassembly_l378_2 = (io_deliver_fire && dv_grantOh[2]);
-  assign when_Reassembly_l378_3 = (io_deliver_fire && dv_grantOh[3]);
+  assign when_Reassembly_l435 = (io_deliver_fire && dv_grantOh[0]);
+  assign when_Reassembly_l435_1 = (io_deliver_fire && dv_grantOh[1]);
+  assign when_Reassembly_l435_2 = (io_deliver_fire && dv_grantOh[2]);
+  assign when_Reassembly_l435_3 = (io_deliver_fire && dv_grantOh[3]);
   assign ab_hit_0 = (ctx_0_active && (((((ctx_0_tag_wave == io_abort_tag_wave) && (ctx_0_tag_thread == io_abort_tag_thread)) && (ctx_0_tag_lnid == io_abort_tag_lnid)) && (ctx_0_tag_precision == io_abort_tag_precision)) && (ctx_0_tag_dim == io_abort_tag_dim)));
   assign ab_hit_1 = (ctx_1_active && (((((ctx_1_tag_wave == io_abort_tag_wave) && (ctx_1_tag_thread == io_abort_tag_thread)) && (ctx_1_tag_lnid == io_abort_tag_lnid)) && (ctx_1_tag_precision == io_abort_tag_precision)) && (ctx_1_tag_dim == io_abort_tag_dim)));
   assign ab_hit_2 = (ctx_2_active && (((((ctx_2_tag_wave == io_abort_tag_wave) && (ctx_2_tag_thread == io_abort_tag_thread)) && (ctx_2_tag_lnid == io_abort_tag_lnid)) && (ctx_2_tag_precision == io_abort_tag_precision)) && (ctx_2_tag_dim == io_abort_tag_dim)));
   assign ab_hit_3 = (ctx_3_active && (((((ctx_3_tag_wave == io_abort_tag_wave) && (ctx_3_tag_thread == io_abort_tag_thread)) && (ctx_3_tag_lnid == io_abort_tag_lnid)) && (ctx_3_tag_precision == io_abort_tag_precision)) && (ctx_3_tag_dim == io_abort_tag_dim)));
   assign ab_hitAny = (((ab_hit_0 || ab_hit_1) || ab_hit_2) || ab_hit_3);
   assign ab_fire = (io_abort_valid && ab_hitAny);
-  assign when_Reassembly_l410 = (ab_fire && ab_hit_0);
-  assign when_Reassembly_l410_1 = (ab_fire && ab_hit_1);
-  assign when_Reassembly_l410_2 = (ab_fire && ab_hit_2);
-  assign when_Reassembly_l410_3 = (ab_fire && ab_hit_3);
-  assign when_Reassembly_l421 = (ab_fire && (ab_cnt != 8'hff));
+  assign _zz_ab_cBase = (ab_hit_1 || ab_hit_3);
+  assign _zz_ab_cBase_1 = (ab_hit_2 || ab_hit_3);
+  assign ab_cBase = _zz_ab_cBase_2;
+  assign when_Reassembly_l474 = (ab_fire && ab_hit_0);
+  assign when_Reassembly_l474_1 = (ab_fire && ab_hit_1);
+  assign when_Reassembly_l474_2 = (ab_fire && ab_hit_2);
+  assign when_Reassembly_l474_3 = (ab_fire && ab_hit_3);
+  assign when_Reassembly_l485 = (ab_fire && (ab_cnt != 8'hff));
   assign io_abortCount = ab_cnt;
+  assign io_clr_valid = ab_fire;
+  assign io_clr_base = ab_cBase;
   assign _zz_io_incomplete = 3'b000;
   assign _zz_io_incomplete_1 = 3'b001;
   assign _zz_io_incomplete_2 = 3'b001;
@@ -6854,99 +6950,99 @@ module Reassembly (
       _zz_io_fault <= 1'b0;
       capBit <= 1'b0;
     end else begin
-      if(when_Reassembly_l306) begin
+      if(when_Reassembly_l363) begin
         ctx_0_seen <= fr_newSeen;
         ctx_0_last <= (ctx_0_last || io_frag_head_last);
         ctx_0_totalKnown <= 1'b1;
       end
-      if(when_Reassembly_l306_1) begin
+      if(when_Reassembly_l363_1) begin
         ctx_1_seen <= fr_newSeen;
         ctx_1_last <= (ctx_1_last || io_frag_head_last);
         ctx_1_totalKnown <= 1'b1;
       end
-      if(when_Reassembly_l306_2) begin
+      if(when_Reassembly_l363_2) begin
         ctx_2_seen <= fr_newSeen;
         ctx_2_last <= (ctx_2_last || io_frag_head_last);
         ctx_2_totalKnown <= 1'b1;
       end
-      if(when_Reassembly_l306_3) begin
+      if(when_Reassembly_l363_3) begin
         ctx_3_seen <= fr_newSeen;
         ctx_3_last <= (ctx_3_last || io_frag_head_last);
         ctx_3_totalKnown <= 1'b1;
       end
-      if(when_Reassembly_l339) begin
+      if(when_Reassembly_l396) begin
         ctx_0_active <= 1'b1;
         ctx_0_seen <= 16'h0;
         ctx_0_last <= 1'b0;
         ctx_0_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l339_1) begin
+      if(when_Reassembly_l396_1) begin
         ctx_1_active <= 1'b1;
         ctx_1_seen <= 16'h0;
         ctx_1_last <= 1'b0;
         ctx_1_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l339_2) begin
+      if(when_Reassembly_l396_2) begin
         ctx_2_active <= 1'b1;
         ctx_2_seen <= 16'h0;
         ctx_2_last <= 1'b0;
         ctx_2_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l339_3) begin
+      if(when_Reassembly_l396_3) begin
         ctx_3_active <= 1'b1;
         ctx_3_seen <= 16'h0;
         ctx_3_last <= 1'b0;
         ctx_3_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l378) begin
+      if(when_Reassembly_l435) begin
         ctx_0_active <= 1'b0;
         ctx_0_seen <= 16'h0;
         ctx_0_last <= 1'b0;
         ctx_0_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l378_1) begin
+      if(when_Reassembly_l435_1) begin
         ctx_1_active <= 1'b0;
         ctx_1_seen <= 16'h0;
         ctx_1_last <= 1'b0;
         ctx_1_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l378_2) begin
+      if(when_Reassembly_l435_2) begin
         ctx_2_active <= 1'b0;
         ctx_2_seen <= 16'h0;
         ctx_2_last <= 1'b0;
         ctx_2_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l378_3) begin
+      if(when_Reassembly_l435_3) begin
         ctx_3_active <= 1'b0;
         ctx_3_seen <= 16'h0;
         ctx_3_last <= 1'b0;
         ctx_3_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l410) begin
+      if(when_Reassembly_l474) begin
         ctx_0_active <= 1'b0;
         ctx_0_seen <= 16'h0;
         ctx_0_last <= 1'b0;
         ctx_0_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l410_1) begin
+      if(when_Reassembly_l474_1) begin
         ctx_1_active <= 1'b0;
         ctx_1_seen <= 16'h0;
         ctx_1_last <= 1'b0;
         ctx_1_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l410_2) begin
+      if(when_Reassembly_l474_2) begin
         ctx_2_active <= 1'b0;
         ctx_2_seen <= 16'h0;
         ctx_2_last <= 1'b0;
         ctx_2_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l410_3) begin
+      if(when_Reassembly_l474_3) begin
         ctx_3_active <= 1'b0;
         ctx_3_seen <= 16'h0;
         ctx_3_last <= 1'b0;
         ctx_3_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l421) begin
+      if(when_Reassembly_l485) begin
         ab_cnt <= (ab_cnt + 8'h01);
       end
       if(io_faultClear) begin
@@ -6965,19 +7061,19 @@ module Reassembly (
   end
 
   always @(posedge clk) begin
-    if(when_Reassembly_l306) begin
+    if(when_Reassembly_l363) begin
       ctx_0_total <= fr_effTotal;
     end
-    if(when_Reassembly_l306_1) begin
+    if(when_Reassembly_l363_1) begin
       ctx_1_total <= fr_effTotal;
     end
-    if(when_Reassembly_l306_2) begin
+    if(when_Reassembly_l363_2) begin
       ctx_2_total <= fr_effTotal;
     end
-    if(when_Reassembly_l306_3) begin
+    if(when_Reassembly_l363_3) begin
       ctx_3_total <= fr_effTotal;
     end
-    if(when_Reassembly_l339) begin
+    if(when_Reassembly_l396) begin
       ctx_0_tag_wave <= io_open_tag_wave;
       ctx_0_tag_thread <= io_open_tag_thread;
       ctx_0_tag_lnid <= io_open_tag_lnid;
@@ -6985,7 +7081,7 @@ module Reassembly (
       ctx_0_tag_dim <= io_open_tag_dim;
       ctx_0_base <= io_open_base;
     end
-    if(when_Reassembly_l339_1) begin
+    if(when_Reassembly_l396_1) begin
       ctx_1_tag_wave <= io_open_tag_wave;
       ctx_1_tag_thread <= io_open_tag_thread;
       ctx_1_tag_lnid <= io_open_tag_lnid;
@@ -6993,7 +7089,7 @@ module Reassembly (
       ctx_1_tag_dim <= io_open_tag_dim;
       ctx_1_base <= io_open_base;
     end
-    if(when_Reassembly_l339_2) begin
+    if(when_Reassembly_l396_2) begin
       ctx_2_tag_wave <= io_open_tag_wave;
       ctx_2_tag_thread <= io_open_tag_thread;
       ctx_2_tag_lnid <= io_open_tag_lnid;
@@ -7001,7 +7097,7 @@ module Reassembly (
       ctx_2_tag_dim <= io_open_tag_dim;
       ctx_2_base <= io_open_base;
     end
-    if(when_Reassembly_l339_3) begin
+    if(when_Reassembly_l396_3) begin
       ctx_3_tag_wave <= io_open_tag_wave;
       ctx_3_tag_thread <= io_open_tag_thread;
       ctx_3_tag_lnid <= io_open_tag_lnid;

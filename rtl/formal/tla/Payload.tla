@@ -161,12 +161,13 @@
 (* ContextAbort(t) 가 그 추상이다. E.12 규범 세 항이 그대로 갈래가 된다:    *)
 (*                                                                         *)
 (*   - 소거 대상은 그 태그의 활성 문맥 전체다 — 결속(태그 해방)·수신 순번    *)
-(*     집합·회계. 구간 slots 도 비운다 — Consume 과 같은 소거 규율이다.      *)
-(*     abort_erases 가 그 가드다. 태그 해방은 가드 밖에 둔다 — 대표          *)
-(*     결함형이 「태그는 해방됐는데 회계·구간이 남았다」(소거 write-enable    *)
-(*     일부 누락)이기 때문이다. 지우면 잔재 위 재사용이 조용한 덮어쓰기      *)
-(*     (Prop_NoSilentOverwrite) 또는 섞인 인도(Inv_ReassemblyExclusive)로    *)
-(*     나타난다.                                                           *)
+(*     집합·회계, *그리고 구간 slots* (E.12 1항 개정 · 2026-08-25). 가드는   *)
+(*     **둘**이다: abort_erases(회계) 와 abort_clears_window(구간). 태그     *)
+(*     해방은 둘 다의 밖에 둔다 — 대표 결함형이 「태그는 해방됐는데 회계·    *)
+(*     구간이 남았다」(소거 write-enable 일부 누락)이기 때문이다. 지우면      *)
+(*     회계 축은 낡은 표시·개수 위의 완성 오판(Inv_ReassemblyExclusive)      *)
+(*     으로, 구간 축은 잔재 위 재사용의 조용한 덮어쓰기                      *)
+(*     (Prop_NoSilentOverwrite)로 나타난다.                                 *)
 (*   - 소거는 fault 가 아니다 — 호스트의 *의도된* 처분이다. abort_not_fault  *)
 (*     가 그 가드다 (capability_not_fault 와 같은 문체 — 지우면 소거가       *)
 (*     faultBit 를 세우고 Inv_AbortNotFault 가 반증한다).                    *)
@@ -224,7 +225,8 @@ CONSTANTS
 AllGuards == {"cap_check", "capability_check", "capability_not_fault",
               "no_restart", "no_dup_seq", "loud_reject", "base_from_tag",
               "key_is_tag", "reset_on_deliver", "write_atomic", "last_judges",
-              "abort_erases", "abort_leaves_trace", "abort_not_fault"}
+              "abort_erases", "abort_clears_window", "abort_leaves_trace",
+              "abort_not_fault"}
 On(g) == g \notin DisabledGuards
 
 (***************************************************************************)
@@ -600,8 +602,13 @@ Consume(t) ==
 (* 없는 태그로의 기입은 무연산 = [Next]_vars 의 스터터와 동일해 따로        *)
 (* 열거하지 않는다.                                                        *)
 (*                                                                         *)
-(*   abort_erases       지우면 태그는 해방되는데 회계·구간이 남는다 —       *)
-(*                      잔재 위 재사용이 조용한 덮어쓰기·섞인 인도로 나타남 *)
+(*   abort_erases       지우면 태그·구간은 비는데 *회계*가 남는다 — 낡은    *)
+(*                      표시·개수가 새 조각열 하나에 얹혀 완성 판정이 서고, *)
+(*                      비워진 구간이 그대로 결과로 나간다                  *)
+(*                      (Inv_ReassemblyExclusive)                          *)
+(*   abort_clears_window 지우면 태그·회계는 비는데 *구간*이 남는다 — 잔재   *)
+(*                      위 재사용이 조용한 덮어쓰기다                       *)
+(*                      (Prop_NoSilentOverwrite)                           *)
 (*   abort_leaves_trace 지우면 소거가 카운트 없이 지나간다 — 조용한 소거    *)
 (*   abort_not_fault    지우면 호스트의 의도된 처분이 fault 로 접힌다       *)
 (*                                                                         *)
@@ -617,6 +624,15 @@ Consume(t) ==
 (* 구별 불가). pend 는 건드리지 않는다 — Consume 과 같다 (write_atomic 이   *)
 (* 켜진 기계에서 pend 는 늘 비어 있다).                                    *)
 (*                                                                         *)
+(* **그 근거가 이 액션 *안*에도 걸린다 (2026-08-25 실측).** 회계 소거와     *)
+(* 구간 소거는 한 전이 안에 있지만 RTL 에서 서로 다른 write-enable 이다     *)
+(* (문맥 레지스터 vs 구간 무효화 면). 1차 판은 둘을 abort_erases 하나로     *)
+(* 묶었고, 그 삭제 실험의 반례는 *전부 구간 축*이 만들고 있었다 — 회계 축은 *)
+(* 한 번도 독립으로 재어진 적이 없었다. 그 사이 RTL 은 정확히 그 「한쪽만   *)
+(* 깨진 구현」(회계는 비우고 구간은 안 비움)이었고 배터리는 그것을 볼 수    *)
+(* 없었다. ⇒ 가드 분리의 기준은 *전이가 다른가*가 아니라 *write-enable 이   *)
+(* 다른가*다. 분리 후 두 축은 서로 다른 속성으로 반증된다 (각 cfg 머리).    *)
+(*                                                                         *)
 (* 인도됐으나 아직 소비되지 않은 문맥(outValid[t] = TRUE)의 소거도 허용     *)
 (* 한다 — out 은 완료 시점의 스냅숏이라 소거의 영향을 받지 않고, accSince   *)
 (* 는 outValid 의 수명과 짝이므로 소거가 건드리지 않는다 (드레인 경합       *)
@@ -631,10 +647,12 @@ ContextAbort(t) ==
                     /\ ctxFill'  = [c \in Ctxs |-> IF c \in cs THEN 0 ELSE ctxFill[c]]
                     /\ ctxOwner' = [c \in Ctxs |-> IF c \in cs THEN NoR ELSE ctxOwner[c]]
                     /\ ctxLast'  = [c \in Ctxs |-> IF c \in cs THEN FALSE ELSE ctxLast[c]]
-                    /\ slots'    = [k \in SlotIx |->
-                                      IF \E c \in cs : InWindow(c, k)
-                                        THEN NoR ELSE slots[k]]
-               ELSE UNCHANGED <<ctxSeen, ctxFill, ctxOwner, ctxLast, slots>>
+               ELSE UNCHANGED <<ctxSeen, ctxFill, ctxOwner, ctxLast>>
+          /\ IF On("abort_clears_window")
+               THEN slots' = [k \in SlotIx |->
+                                IF \E c \in cs : InWindow(c, k)
+                                  THEN NoR ELSE slots[k]]
+               ELSE UNCHANGED slots
     \* 유령(지상 진리)과 기계 관측면을 가른다 — rej*/faultBit 짝과 같은 분업.
     \* 0..1 포화 — 근거는 TypeOK 의 해당 주석 (검사는 전부 > 0 비교).
     /\ abortsG' = 1

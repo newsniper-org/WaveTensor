@@ -654,20 +654,8 @@ rtl-formal:
 rtl-postformal:
 	@test -d $(RTL_DIR)/formal/sby || { echo "rtl-postformal: sby 스크립트가 없다 — 미측정은 통과가 아니다"; exit 1; }
 	@rm -rf $(SBY_OUT); mkdir -p $(SBY_OUT)
-	@fail=0; total=0; hollow=0; \
-	for f in $(RTL_DIR)/formal/sby/*/*.sby; do \
-	  total=$$((total+1)); name=$$(basename $$f .sby); dir=$$(basename $$(dirname $$f)); \
-	  printf '%-40s ' "$$dir/$$name"; \
-	  if podman run --rm --userns=keep-id -v "$(CURDIR):/workspace" -v "$(SBY_OUT):/sbyout" \
-	     wavetensor-dev:scala \
-	     sh -lc "cd /workspace && sby -f --prefix /sbyout/$$dir-$$name rtl/formal/sby/$$dir/$$name.sby" >/tmp/wt-sby-$$dir-$$name.log 2>&1; then \
-	     n=$$(cat $(SBY_OUT)/$$dir-$$name*/model/design_prep.il 2>/dev/null | grep -cE 'cell \$$(assert|cover)' || true); \
-	     if [ "$${n:-0}" -eq 0 ]; then echo "HOLLOW (단언 0개 — 통과가 아무것도 보증하지 않는다)"; hollow=$$((hollow+1)); \
-	     else echo "PASS (단언 $$n)"; fi; \
-	  else echo "FAIL (로그: /tmp/wt-sby-$$dir-$$name.log)"; fail=$$((fail+1)); fi; \
-	done; \
-	echo "rtl-postformal: $$total 태스크 · 실패 $$fail · 공허 $$hollow"; \
-	test $$(( $$fail + $$hollow )) -eq 0
+	@podman run --rm --userns=keep-id -v "$(CURDIR):/workspace" -v "$(SBY_OUT):/sbyout" \
+	   wavetensor-dev:scala sh -lc "cd /workspace && sh scripts/sby_sweep.sh"
 
 # 후-formal 영향 역색인 — 「이 변경으로 어느 태스크가 흔들리는가」.
 #

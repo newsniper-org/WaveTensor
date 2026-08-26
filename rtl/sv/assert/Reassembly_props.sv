@@ -54,6 +54,9 @@ module Reassembly_props (
   input logic        ab_fire,
   input logic        ab_hitAny,
   input logic        ab_hit_0, ab_hit_1, ab_hit_2, ab_hit_3,
+  // 구간 무효화 면 (결정 B)
+  input logic        io_clr_valid,
+  input logic [7:0]  io_clr_base,
   // sticky 관측면
   input logic        io_fault,
   input logic        io_faultClear,
@@ -86,6 +89,7 @@ module Reassembly_props (
   input logic [15:0] ctx_0_tag_lnid,
   input logic [7:0]  ctx_0_tag_precision,
   input logic [7:0]  ctx_0_tag_dim,
+  input logic [7:0]  ctx_0_base,
   input logic [7:0]  ctx_0_total,
   input logic        ctx_0_totalKnown,
   input logic [15:0] ctx_0_seen,
@@ -96,6 +100,7 @@ module Reassembly_props (
   input logic [15:0] ctx_1_tag_lnid,
   input logic [7:0]  ctx_1_tag_precision,
   input logic [7:0]  ctx_1_tag_dim,
+  input logic [7:0]  ctx_1_base,
   input logic [7:0]  ctx_1_total,
   input logic        ctx_1_totalKnown,
   input logic [15:0] ctx_1_seen,
@@ -106,6 +111,7 @@ module Reassembly_props (
   input logic [15:0] ctx_2_tag_lnid,
   input logic [7:0]  ctx_2_tag_precision,
   input logic [7:0]  ctx_2_tag_dim,
+  input logic [7:0]  ctx_2_base,
   input logic [7:0]  ctx_2_total,
   input logic        ctx_2_totalKnown,
   input logic [15:0] ctx_2_seen,
@@ -116,6 +122,7 @@ module Reassembly_props (
   input logic [15:0] ctx_3_tag_lnid,
   input logic [7:0]  ctx_3_tag_precision,
   input logic [7:0]  ctx_3_tag_dim,
+  input logic [7:0]  ctx_3_base,
   input logic [7:0]  ctx_3_total,
   input logic        ctx_3_totalKnown,
   input logic [15:0] ctx_3_seen,
@@ -235,6 +242,28 @@ module Reassembly_props (
     // 소거뿐이다 (없는 태그 무시는 발화가 아니다).
     p_ab_fire_def: assert (ab_fire == (io_abort_valid && ab_hitAny));
 
+    // ── Payload.abort_clears_window (결정 B · 정본 E.12 1항 구간 축) ──────
+    //
+    // 「소거는 구간 데이터까지 비운다」의 RTL 형. 이 모듈은 슬롯 실물을
+    // 소유하지 않으므로 비우기는 *명령*이고, 계약은 그 명령이 회계 소거와
+    // **같은 게이트**라는 것이다 — 등식이 서면 「회계는 비웠는데 구간은
+    // 안 비웠다」(2026-08-25 이전의 이 RTL 그 자체)가 표현 불가가 된다.
+    p_abort_clears_slots: assert (io_clr_valid == ab_fire);
+
+    // 좌표는 *소거 대상 문맥의 결속*이다 — 소거가 「어느 구간을 비우는가」를
+    // 스스로 지어내지 않는다 (base_from_tag 의 소거 축). 그리고 그 값은 이
+    // 사이클의 레지스터이므로 §4.3 「소거 후 재사용」 3항의 「결속을 버리기
+    // *전에* 구간을 비운다」가 구조로 성립한다 — 결속 관측(active)이 내려가는
+    // 것은 다음 사이클이고 그때 명령은 이미 떠났다.
+    p_clr_base_0: assert (!(io_clr_valid && ab_hit_0) || (io_clr_base == ctx_0_base));
+    p_clr_base_1: assert (!(io_clr_valid && ab_hit_1) || (io_clr_base == ctx_1_base));
+    p_clr_base_2: assert (!(io_clr_valid && ab_hit_2) || (io_clr_base == ctx_2_base));
+    p_clr_base_3: assert (!(io_clr_valid && ab_hit_3) || (io_clr_base == ctx_3_base));
+
+    // 무효화 명령은 *반드시* 맞힌 문맥이 있다 — 허공을 비우는 beat 가 없다
+    // (없는 태그 무시가 무효화 명령을 내지 않는다는 문면).
+    p_clr_needs_hit: assert (!io_clr_valid || ab_hitAny);
+
     // Payload.write_atomic — 기입 면 발화 == 접수 판정 (같은 사이클·같은
     // 게이트, 사이를 가르는 파이프 단 없음).
     p_wr_atomic_face: assert (io_wr_valid == fr_accept);
@@ -302,6 +331,46 @@ module Reassembly_props (
                            (ctx_3_seen == $past(fr_newSeen) && ctx_3_totalKnown && ctx_3_total == $past(fr_effTotal)));
   end
 
+  // ── cover 증인 — 공허 아님의 증거 (소거 축, 2026-08-25 신설) ────────────
+  //
+  // 위 소거 단언은 전부 등식 또는 함의라 「소거가 한 번도 일어나지 않는
+  // 세계」에서 자명하게 선다 — p_abort_clears_slots 는 0 == 0 이고,
+  // p_clr_base_* 는 전건이 거짓이다. 아래 증인이 reset 으로부터 실제로
+  // 소거가 발화하고 무효화 명령이 나가는 궤적을 보인다.
+  //   ※ sby 의 cover 모드는 chformal -assert -remove 로 단언을 스스로
+  //     떼어낸다. 증인이 적법 궤적 위에 있다는 것은 bmc 태스크가 보증한다.
+  // 증인은 cover 태스크에서만 컴파일한다 (-DREASM_COVER) — bmc/prove 모델을
+  // 종전과 한 비트도 다르지 않게 유지하기 위한 규율이다 (XlateStore 선례).
+`ifdef REASM_COVER
+  // W1 — 소거가 실제로 발화한다 (Payload.tla Witness_NoAbort 의 RTL 대응).
+  //      이것 없이는 소거 단언 전부가 공허하다.
+  always @(posedge clk) if (f_step) cover (ab_fire);
+
+  // W2 — 그 발화가 구간 무효화 명령을 실제로 낸다 (결정 B 의 실물이
+  //      도달한다 — p_abort_clears_slots 가 0 == 0 이 아니다).
+  always @(posedge clk) if (f_step) cover (io_clr_valid);
+
+  // W3 — *미완* 문맥의 소거 — E.12 가 존재하는 이유 그 자체다 (표시 유실
+  //      문맥이 드레인을 막지 않게 하는 수단). 완성 문맥만 소거되는 세계면
+  //      이 표면은 인도의 중복일 뿐이다.
+  always @(posedge clk)
+    if (f_step) cover (ab_fire && ((ab_hit_0 && !ctx_0_last) || (ab_hit_1 && !ctx_1_last) ||
+                                   (ab_hit_2 && !ctx_2_last) || (ab_hit_3 && !ctx_3_last)));
+
+  // W4 — *회계가 실린* 문맥의 소거: 비울 것이 실제로 있는 상태에서 소거가
+  //      난다 (seen 이 0 이 아닌 문맥). 빈 문맥만 소거되면 「비운다」가
+  //      무동작과 구별되지 않는다.
+  always @(posedge clk)
+    if (f_step) cover (ab_fire && ((ab_hit_0 && (ctx_0_seen != 16'h0)) ||
+                                   (ab_hit_1 && (ctx_1_seen != 16'h0)) ||
+                                   (ab_hit_2 && (ctx_2_seen != 16'h0)) ||
+                                   (ab_hit_3 && (ctx_3_seen != 16'h0))));
+
+  // W5 — 없는 태그의 소거 기입 (E.12 3항의 무시 갈래가 실재한다 —
+  //      p_ab_fire_def · t_ab_cnt_hold 의 활성면).
+  always @(posedge clk) if (f_step) cover (io_abort_valid && !ab_hitAny);
+`endif // REASM_COVER
+
 endmodule
 
 // 대상 안에 부착 — 내부 신호는 대상 스코프에서 이름으로 결선된다.
@@ -314,6 +383,7 @@ bind Reassembly Reassembly_props u_props (
   .io_deliver_valid(io_deliver_valid), .io_deliver_fire(io_deliver_fire),
   .dv_grantOh(dv_grantOh),
   .io_abort_valid(io_abort_valid), .io_abortCount(io_abortCount),
+  .io_clr_valid(io_clr_valid), .io_clr_base(io_clr_base),
   .ab_fire(ab_fire), .ab_hitAny(ab_hitAny),
   .ab_hit_0(ab_hit_0), .ab_hit_1(ab_hit_1), .ab_hit_2(ab_hit_2), .ab_hit_3(ab_hit_3),
   .io_fault(io_fault), .io_faultClear(io_faultClear),
@@ -329,21 +399,25 @@ bind Reassembly Reassembly_props u_props (
   .ctx_0_active(ctx_0_active), .ctx_0_tag_wave(ctx_0_tag_wave),
   .ctx_0_tag_thread(ctx_0_tag_thread), .ctx_0_tag_lnid(ctx_0_tag_lnid),
   .ctx_0_tag_precision(ctx_0_tag_precision), .ctx_0_tag_dim(ctx_0_tag_dim),
+  .ctx_0_base(ctx_0_base),
   .ctx_0_total(ctx_0_total), .ctx_0_totalKnown(ctx_0_totalKnown),
   .ctx_0_seen(ctx_0_seen), .ctx_0_last(ctx_0_last),
   .ctx_1_active(ctx_1_active), .ctx_1_tag_wave(ctx_1_tag_wave),
   .ctx_1_tag_thread(ctx_1_tag_thread), .ctx_1_tag_lnid(ctx_1_tag_lnid),
   .ctx_1_tag_precision(ctx_1_tag_precision), .ctx_1_tag_dim(ctx_1_tag_dim),
+  .ctx_1_base(ctx_1_base),
   .ctx_1_total(ctx_1_total), .ctx_1_totalKnown(ctx_1_totalKnown),
   .ctx_1_seen(ctx_1_seen), .ctx_1_last(ctx_1_last),
   .ctx_2_active(ctx_2_active), .ctx_2_tag_wave(ctx_2_tag_wave),
   .ctx_2_tag_thread(ctx_2_tag_thread), .ctx_2_tag_lnid(ctx_2_tag_lnid),
   .ctx_2_tag_precision(ctx_2_tag_precision), .ctx_2_tag_dim(ctx_2_tag_dim),
+  .ctx_2_base(ctx_2_base),
   .ctx_2_total(ctx_2_total), .ctx_2_totalKnown(ctx_2_totalKnown),
   .ctx_2_seen(ctx_2_seen), .ctx_2_last(ctx_2_last),
   .ctx_3_active(ctx_3_active), .ctx_3_tag_wave(ctx_3_tag_wave),
   .ctx_3_tag_thread(ctx_3_tag_thread), .ctx_3_tag_lnid(ctx_3_tag_lnid),
   .ctx_3_tag_precision(ctx_3_tag_precision), .ctx_3_tag_dim(ctx_3_tag_dim),
+  .ctx_3_base(ctx_3_base),
   .ctx_3_total(ctx_3_total), .ctx_3_totalKnown(ctx_3_totalKnown),
   .ctx_3_seen(ctx_3_seen), .ctx_3_last(ctx_3_last)
 );
