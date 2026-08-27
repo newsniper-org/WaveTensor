@@ -450,6 +450,8 @@ lint:
 	python3 $(CURDIR)/scripts/lint_postformal.py
 	python3 $(CURDIR)/scripts/lint_generated_names.py
 	python3 $(CURDIR)/scripts/lint_tautology.py --audit
+	python3 $(CURDIR)/scripts/lint_witness_map.py
+	python3 $(CURDIR)/scripts/lint_witness_map.py --self-test
 
 # =============================================================================
 # P0-2 — Cluster 이중 빌드(FRAG_SLOTS=1 / FRAG_SLOTS=4) 단일 진입점.

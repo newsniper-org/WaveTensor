@@ -154,7 +154,7 @@ podman build --build-arg WITH_SBY=1 ... # SymbiYosys 포함
 이미지를 만들었다고 끝이 아니다. **아래가 전부 통과해야 이 환경이 쓸모 있다.**
 
 ```sh
-# 1) lint 8종
+# 1) lint 14종
 make lint                                   # → exit 0
 
 # 2) cocotb 회귀 — 6 MOD

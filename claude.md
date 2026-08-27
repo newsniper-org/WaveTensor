@@ -271,9 +271,9 @@ make MOD=Pod            #  10 tests (4-Cluster grid)
 # **이 −25 를 "회귀" 로 읽지 말 것** — 증감이 폐기분·이식분과 정확히
 # 일치한다는 것이 회귀가 섞이지 않았다는 증거다.
 python -m unittest asm.test_wavetensor_asm   # 어셈블러 단위
-make lint                                    # 7종 lint (ISA freshness / frag FSM 불변식 /
-                                             #  합성 지위 / payload 홀드 / 이중 빌드 /
-                                             #  known-defect 래칫 / 추정치 색인 §39.2)
+make lint                                    # 14종 lint — 목록의 authority 는 Makefile 의
+                                             #  lint: 타깃이다. 여기 개수를 적어 두면 반드시
+                                             #  낡는다 (실제로 두 번 낡았다)
 make test-cluster-both                       # FRAG_SLOTS 1·4 양 빌드
 
 # 합성 gate (spec §28 / §22.14b):

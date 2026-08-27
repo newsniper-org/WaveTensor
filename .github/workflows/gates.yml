@@ -51,7 +51,7 @@ jobs:
       - name: ISA-7 형상 독립성
         run: python3 scripts/lint_isa7_topology.py
 
-      - name: 기존 lint 8종
+      - name: 기존 lint 14종
         run: make lint
 
       - name: 훅이 정본과 일치하는가

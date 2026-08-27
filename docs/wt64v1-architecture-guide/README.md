@@ -40,9 +40,9 @@ chapters/06-formal.typ    선-formal → RTL → 후-formal
 appendix/a-capacity.typ   프로토타이핑 용량 산정 (실측 전수 + 벤더 질문)
 appendix/b-gaps.typ       기존 문서와 어긋나는 지점 — **재구현팀이 먼저 읽을 것**
 appendix/c-glossary.typ   국문–영문 용어 대응
-appendix/d-properties.typ 형식 속성 카탈로그 (40개 색인 — 선 28 / 후 12)
+appendix/d-properties.typ 형식 속성 카탈로그 (43개 색인 — 선 31 / 후 12)
 appendix/e-defined.typ    재구현이 새로 정의한 표면 (계약이 없어서 정한 것)
-refs.yml                  Hayagriva 서지 (42항, 전부 본문 인용)
+refs.yml                  Hayagriva 서지 (45항, 전부 본문 인용)
 ```
 
 ## 이 문서가 지키는 제약
@@ -88,9 +88,15 @@ python3 ../../scripts/lint_guide_derived_tables.py
 수치 대조 35/35, `make lint` **exit 0**, `fp_op_gate_check.py` **exit 0**,
 tracked 파일 변경 **0**.
 
-정정 후 재실측 (2026-08-20, 판 0.1 결손 수리): 75쪽, 컴파일 경고 **0**,
-clean-room 위반 **0**, 금지 용어 **5건 전부 규율 서술 줄**,
-속성 수 **40 = 40** (선 28 / 후 12), HIU 속성 **1–11 정렬**.
+재실측 (2026-08-27): **170쪽**, 컴파일 경고 **0**, clean-room 위반 **0**,
+금지 용어 **전부 규율 서술 줄**, 속성 수 **43 = 43** (선 31 / 후 12),
+서지 **45항**.
+
+> **이 수치들은 반드시 낡는다.** authority 는 이 문단이 아니라
+> `lint_guide_derived_tables.py`(속성 수·색인 정합)와 `typst compile`
+> 출력이다. 산문에 적힌 수는 갱신을 잊는 순간 거짓이 되고, 실제로
+> 그렇게 됐다 — 「75쪽 · 속성 40 · 서지 42」가 각각 170·43·45 일 때까지
+> 남아 있었다. 세는 것이 기계에 있으면 적지 않는 편이 낫다.
 
 ## 수치의 출처
 

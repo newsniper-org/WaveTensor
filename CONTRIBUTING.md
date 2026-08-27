@@ -115,9 +115,11 @@ will be rejected.
   generated includes). cocotb regression must pass on the affected module.
 * **Software**: All cocotb tests must continue to pass. Assembler unit
   tests (`python -m unittest -q asm.test_wavetensor_asm`) must pass.
-* **Lint**: `make lint` must pass. It is **eight** stdlib-only checks, not
-  two — this list was stale for several releases, which is exactly the
-  failure mode `lint_estimate_index` exists to catch:
+* **Lint**: `make lint` must pass. It is **fourteen** stdlib-only checks, not
+  two — this count has now gone stale *twice* (two → eight → fourteen), which
+  is exactly the failure mode `lint_estimate_index` exists to catch. A count
+  written in prose next to a list that grows is a defect waiting to happen;
+  the authority is `Makefile`'s `lint:` target, not this sentence:
   `lint_isa_tables_fresh` (generated ISA artifacts match the JSON) ·
   `lint_frag_total_m1_held` (frag-drain FSM invariant) ·
   `lint_synth_coverage` (every cocotb-verified module declares a synthesis

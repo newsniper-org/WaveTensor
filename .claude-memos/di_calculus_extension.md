@@ -74,7 +74,7 @@ lowering?), 그리고 리덕션의 결합 순서가 부동소수 재현성에 �
 
 ### 3.1 ISA-9 분할 형태 — Forward AD 가 정면 시험대다
 
-개정된 ISA-9 (정본 §1.4.6):
+개정된 ISA-9 (정본 §1.4.2):
 
 > 하나의 발화가 남기는 후속 전송 **전량**은 셋 중 **정확히 하나**다 —
 > ① 없음 ② 결과 슬롯 한 칸에 착지하는 단일 beat 결과 하나
@@ -132,8 +132,11 @@ Stencil 은 이웃 $k$ 개를 읽어 하나를 내므로 팬인이 크고 팬아
 
 ## 5. 관련 문서
 
-- 정본: `docs/wt64v1-architecture-guide/` — §1.4.6 (ISA-9 분할) ·
+- 정본: `docs/wt64v1-architecture-guide/` — §1.4.2 (ISA-9 분할) ·
   §4.3 (조각열 정의) · §4.4.4 (메모리 순서) · 부록 B.5 (미결 표)
 - `.claude-memos/wt64v1c_extension_plan.md` — 확장 계획 (지위 판정 연기)
 - `.claude-memos/eh_encoding_expansion.md` — EH 인코딩 확장 여지
-- `docs/research/token-pressure.md` — 토큰 압력 유계성 (정정 5건을 지고 있음)
+- `docs/research/token-pressure.md` — 토큰 압력 유계성. **정정 6건 이상을
+  지고 있으며 아직 집행되지 않았다** — 그중 하나는 순환 배선을 무해화하는
+  주체가 §3.2(팬아웃)가 아니라 §3.1(자가 발화 부재)이라는 판정이다.
+  이 문서를 정본처럼 인용하지 말 것.
