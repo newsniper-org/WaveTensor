@@ -51,7 +51,7 @@ jobs:
       - name: ISA-7 형상 독립성
         run: python3 scripts/lint_isa7_topology.py
 
-      - name: 기존 lint 14종
+      - name: 기존 lint 15종
         run: make lint
 
       - name: 훅이 정본과 일치하는가
@@ -154,10 +154,18 @@ jobs:
 
       # 재구현 선-formal 게이트. 모델이 아직 없으면 이 단계는 **실패한다** —
       # 그것이 의도다. 미측정은 통과가 아니다 (정본 §6.7 원칙 5).
-      # 단계 1 이 착지할 때까지는 continue-on-error 로 두되, 그 사실이
-      # 요약에 남게 한다. 조용히 건너뛰지 않는다.
-      - name: 재구현 선-formal 게이트 (단계 1 미착지 — 미측정)
-        continue-on-error: true
+      #
+      # 2026-08-27: 단계 1 이 착지해 `continue-on-error` 를 걷어냈다.
+      # 모델 12편 + run.sh 실재, 배터리 353 run. 유예가 필요했던 조건이
+      # 사라졌으므로 유예도 사라진다 — 유예를 남겨 두면 그 다음부터는
+      # 실패해도 초록으로 보인다.
+      #
+      # 후-formal 축은 별도 step 이 아니라 `make lint` 안에 있다
+      # (lint_postformal · lint_witness_map · lint_tautology · lint_guard_map).
+      # 전 태스크 재실행(`make rtl-postformal`, 약 51분)은 CI 예산 밖이라
+      # 의도적으로 뺐다 — CI 가 재는 것은 **증거의 자기모순**이지 증명 자체가
+      # 아니며, 그 구분은 lint_postformal 머리가 스스로 적는다.
+      - name: 재구현 선-formal 게이트
         run: |
           docker run --rm -v "$PWD":/workspace -w /workspace wavetensor-dev:ci \
             sh -lc 'make rtl-formal' || {

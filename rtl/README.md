@@ -158,7 +158,7 @@ NoLoss 는 모듈이 아니라 합성 속성 — 후-formal 이 조합 위에서
 구성: `rtl/sv/assert/*_props.sv` (SVA 하네스) + `rtl/formal/sby/<모듈>/*.sby`
 (머리의 `# PROVES: <모델>.<가드>` 가 lint_postformal 의 대조 앵커).
 게이트: `lint_postformal.py`(선언 실재성·CHECK 전용성·커버리지 래칫 74,
-make lint 14종) + `lint_witness_map.py`(증인↔전건 대응 + `--self-test` 여섯
+make lint 15종) + `lint_witness_map.py`(증인↔전건 대응 + `--self-test` 여섯
 변이 음성 시험) + `lint_tautology.py --audit`(**상수 접힘 검사** — 아래 정정
 참조) + `make rtl-postformal`(전 태스크 실행 — 미측정은 통과가 아니다).
 
