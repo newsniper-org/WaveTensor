@@ -33,6 +33,18 @@
    있으면 잡는다. 1·2 만으로는 「실재하는 엉뚱한 절」을 가리키는 것을 못 잡고,
    위 두 실측 사례가 **전부 그 부류**다.
 
+## 사각지대 하나를 실제로 밟았다 (2026-08-27)
+
+이 검사를 만든 날, 같은 사람이 `.claude-memos/di_calculus_extension.md` 의
+§4.4.4 를 §4.4.3 으로 **틀리게 「고쳤다」.** 헤딩(`=== `)이 아니라 *본문 언급*을
+세었기 때문이다 — `04-ext-payload.typ:602` 가 「§4.4.4 가 … 택했고」라 적는데
+그 줄 자체는 §4.4.3 안에 있고, 문자열 검색이 헤딩보다 먼저 그것을 잡았다.
+
+**이 검사는 그것을 놓쳤다** — `@sec:` 형태만 보고 `§N.M.K` 는 보지 않았기
+때문이다. 잡은 것은 `Di` 설계의 적대적 검증(사람 쪽)이었다.
+⇒ 그날 `§N.M.K` 형태를 검사에 넣었다. **검사가 놓친 자리를 검사에 넣는 것이
+이 저장소의 규율이다** (`claude.md` §7.2).
+
 ## 무엇을 재지 못하는가 — 정직하게
 
 - **따옴표 없는 인용의 대상 적합성.** 「(@sec:isa 1.4.2)」처럼 문장 인용이
@@ -80,6 +92,10 @@ REF_RE = re.compile(r"@sec:([a-z][a-z0-9-]*)\s+((?:\d+|부록\s*[A-Z])(?:\.\d+)*
 QUOTE_RE = re.compile(r"^.{0,30}?「([^」]{6,120})」", re.S)
 
 LABEL_DECL_RE = re.compile(r"<(sec:[a-z][a-z0-9-]*)>")
+
+# `§N.M[.K]` — 라벨 없이 절 번호만 쓴 인용. 장 번호 N 이 어느 파일인지는
+# 장 번호 → 파일 맵으로 푼다. 2026-08-27 에 이 형태를 놓쳐 개악이 났다.
+BARE_RE = re.compile(r"§(\d+\.\d+(?:\.\d+)?)")
 
 
 def chapter_number(path: Path) -> str | None:
@@ -140,6 +156,13 @@ def main() -> int:
         secmaps[p] = build_section_map(p)
         contents[p] = p.read_text(encoding="utf-8").splitlines()
 
+    # 장 번호 → 파일 (`§4.4.4` 를 04-ext-payload.typ 로 풀기 위한 맵)
+    chap_files: dict[str, Path] = {}
+    for p in sorted(GUIDE.rglob("*.typ")):
+        c = chapter_number(p)
+        if c and c.isdigit():
+            chap_files.setdefault(c, p)
+
     hard: list[str] = []
     soft: list[str] = []
     checked = quoted = 0
@@ -153,6 +176,29 @@ def main() -> int:
             except (UnicodeDecodeError, OSError):
                 continue
             rel = src.relative_to(REPO)
+            # (b) `§N.M[.K]` — 라벨 없는 절 인용
+            for m in BARE_RE.finditer(text):
+                num = m.group(1)
+                ch = num.split(".")[0]
+                tgt = chap_files.get(ch)
+                if tgt is None:
+                    continue          # 그 장이 없다 — 다른 문서의 절일 수 있다
+                checked += 1
+                line_no = text[: m.start()].count("\n") + 1
+                if num not in secmaps.get(tgt, {}):
+                    near = sorted(k for k in secmaps.get(tgt, {})
+                                  if k.startswith(num.rsplit(".", 1)[0]))
+                    msg = (f"{rel}:{line_no} — `§{num}` 이 실재하지 않는다 "
+                           f"({tgt.name}). 이웃: {', '.join(near[:6]) or '(없음)'}")
+                    # **비정본은 자기 절 번호를 가진다.** `.claude-memos/wt64v1_spec.md`
+                    # 의 `§2.1.1` 은 *그 문서의* 절이지 정본 2장이 아니다 —
+                    # 2026-08-27 첫 실행에서 이 부류로 오탐 16건이 났다.
+                    # ⇒ 정본 안과 `rtl/`(정본을 인용하는 층)만 하드로 본다.
+                    if str(rel).startswith(("docs/wt64v1-architecture-guide/", "rtl/")):
+                        hard.append(msg)
+                    else:
+                        soft.append(msg + " — 비정본이라 자기 절일 수 있다")
+
             for m in REF_RE.finditer(text):
                 checked += 1
                 label, num = "sec:" + m.group(1), m.group(2)
