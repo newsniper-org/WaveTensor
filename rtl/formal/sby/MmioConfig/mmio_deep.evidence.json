@@ -1,22 +1,22 @@
 {
   "anchors": [],
-  "at": "2026-08-26T10:08:18Z",
+  "at": "2026-08-26T17:07:11Z",
   "cells": {
     "assert": 148,
-    "cover": 0
+    "cover": 5
   },
   "cover": {
-    "reached": 0,
+    "reached": 5,
     "unreached": 0
   },
   "inputs": {
     "rtl/generated/MmioConfig.sv": "58ba347ba3c3fcc3876fadce6ddc214b6d2eb60a88251f81b8abf706930a3932",
-    "rtl/sv/assert/MmioConfig_props.sv": "b1eed1a930d8e7e172fc0b0567bb50a7c738b6a41240d7ee682cf96fa3b9b0c8"
+    "rtl/sv/assert/MmioConfig_props.sv": "4d334208c7409ce31c45205474e312770a38018400ff58fd7815f645d39b2cee"
   },
   "sby": "rtl/formal/sby/MmioConfig/mmio_deep.sby",
-  "sby_sha256": "1f0cf44f35df23e23da064c79a459d3f1c2b60a4ef260054cdf99feb26d6b493",
+  "sby_sha256": "5cd9f28394ca4af8edf009b80c9b80862233f84ff617ff498f788169991584d5",
   "schema": "wt64-postformal-evidence/1",
-  "tasks": "deep:PASS",
+  "tasks": "cover:PASS deep:PASS",
   "tool": "SBY v0.66",
   "verdict": "PASS"
 }

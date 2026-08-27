@@ -38,7 +38,7 @@
 // GUARD-MAP: Decode.resv_not_timed   -> 순회 완전 전개 + 무정지 고정 1사이클 래치 — 이 모듈에 데이터 의존 제어가 없어 어떤 명령 비트도(예약 포함) 소요 tick 을 바꿀 수 없다 (§3.2 2단계와 정합)
 // GUARD-MAP: Decode.resv_not_echoed  -> 방출면(oInstr·oSlot*·oValid·oMalformed·oCapAbsent·oExecValid·oFault) 어디에도 예약 비트가 실리지 않는다 — outStage.masked 가 oInstr 워드0 [15:8] 을 0 으로 지워 방출하므로 같은 판정을 받은 두 명령은 방출면에서 구별 불가능하다 (§5.8 SEC-7 (ii))
 // GUARD-MAP: Decode.fault_not_folded -> oFault 는 malformation 전용 sticky(공용 StickyFault)다 — 이 모듈에 미적중 sticky 표시가 없고, capability 종결은 fault 를 세우지 않으며(§1.6.2 — 능력 부재는 오류가 아니다), 이 신호의 폴딩 여부를 여기 명시한다: 폴딩하지 않는다 (§5.6 「malformation 은 미적중으로 접지 않는다」)
-// GUARD-MAP: Decode.out_no_reason    -> 판정 방출은 {oExecValid, oMalformed, oCapAbsent} 종결 등급 비트뿐 — oCapAbsent 는 §1.6.2 의 셋째 분류(종결 종류)이지 원인 코드가 아니다. 원인 코드 채널 자체가 없어 예약값 원본이 승인 경계로 반향될 자리가 없다 (§5.6 폴딩 규범 2항의 reason 확장은 이 모듈 밖이며, 추가 시 예약값 원본 금지가 그 확장의 의무다)
+// GUARD-MAP: Decode.out_no_reason    -> STRUCTURAL(port-absence) — 판정 방출은 {oExecValid, oMalformed, oCapAbsent} 종결 등급 비트뿐 — oCapAbsent 는 §1.6.2 의 셋째 분류(종결 종류)이지 원인 코드가 아니다. 원인 코드 채널 자체가 없어 예약값 원본이 승인 경계로 반향될 자리가 없다 (§5.6 폴딩 규범 2항의 reason 확장은 이 모듈 밖이며, 추가 시 예약값 원본 금지가 그 확장의 의무다)
 // GUARD-MAP: Decode.verdict_ungated  -> outStage.rMal 의 fanout 은 oMalformed·oExecValid 게이트·oFault set, rCapa 의 fanout 은 oCapAbsent·oExecValid 게이트뿐이다 — 단계 선택·mux 제어에 불참. capability 로 조기에 판정이 서도 순회는 상한까지 완주한다 (D14 상태열 균일). 판정은 경로를 가르지 않고 결과를 게이트한다 (§3.2 · §1.6.1 「미진입은 효과의 문장」)
 // (이관 기록: Decode.lookup_unbranched · evict_inline · stall_uniform 의
 //  DELEGATED 3줄은 조회를 품는 상태열 유닛(HiuPipeline)의 착지와 함께 그쪽

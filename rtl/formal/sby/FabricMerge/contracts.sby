@@ -25,16 +25,61 @@
 # 하네스 머리 주석 참조). 그래서 expose 로 내부 신호를 포트로 승격한 뒤
 # FABRICMERGE_EXPOSE_FLOW 의 FabricMerge_formal 래퍼가 bind 문과 1:1 동일한
 # 결선을 잇는다. 대상 SV 는 무수정 — 승격은 yosys 통과 중의 변환일 뿐이다.
+#
+# ── cover 증인 (2026-08-26 신설, -DFABRICMERGE_COVER_CONTRACTS) ────────────
+#
+# 왜 필요한가. 이 태스크의 단언 50 개 중 **41 개가 전건을 가진 함의**다
+# (lane 축 9 × 4 + 모듈 축 5 — 함의로 쓰인 `!P || Q` 포함). 전건이 도달
+# 불가능하면 그 단언은 *공허하게 참*이고, 이 저장소가 이미 세운 두 게이트는
+# 그것을 잡지 못한다: 셀 수는 그대로 세어지고, 항진 검사(`connect \A` 상수화)
+# 도 `!P || Q` 를 상수로 접지 못한다 — P 가 죽어 있어도 그 식은 상수가 아니다.
+# 공허의 넷째 결이고, 검출 수단은 「전건이 성립하는 궤적의 도달성」뿐이다.
+#
+# 남은 9 개는 전건이 없는 등식(`consumer_valid == (drive != 0)` 1 + lane 축
+# `stall[gi] == full[gi]` 4 + one-hot 4)이다. 앞의 다섯은 전건이 아니라
+# **양변이 늘 0/거짓인 세계**에서 공허해지고, one-hot 넷은 `$onehot0(drive)`
+# 처럼 「구동 집합이 늘 비어 있으면」 자명하다 — 결이 다르므로 증인도 따로
+# 세운다 (WC2 · WC3 · WL1 · WL7).
+#
+# 계약 축이 묻는 것: **병합 충돌이 실제로 일어나는가.** WL2(lane 축)와
+# WC3(모듈 축)이 그 중심이다 — 구동 lane 하나와, 버스와 다른 비0 face 를 든
+# 경쟁 lane 이 같은 사이클에 공존하는 궤적. 이것이 도달 불가능하면 FAB-9 의
+# 등식 `consumer_pay == face[gi]` 는 「경쟁자가 없는 세계」의 자명한 참이다.
+# 증인은 lane 마다 따로 선다 — 「어느 한 lane 이 구동한다」로 뭉치면
+# 라운드로빈이 특정 lane 에 영영 닿지 못하는 세계를 배제하지 못한다.
+#
+# 나머지 증인의 대응은 하네스 주석이 단언 문면과 1:1 로 적는다 (WL1..WL8 ·
+# WC1..WC10). 특기할 둘:
+#   · WL7 — full 인 자원에 *실제 쓰기 시도*가 닿는 궤적. 이것 하나가
+#     stall_on_pending ①②와 bp_loud 셋의 공통 활성면이다.
+#   · WC7 — fault 가 영구 1 이 아니라는 반대면. 전건 도달성과는 다른 결의
+#     공허(후건이 상수 참)이고 같은 단언 묶음에 함께 걸린다.
+#
+# 증인이 보증하지 않는 것 (과대 주장 금지 — 실측 기록): cover 모드는
+# `chformal -assume -early` 로 assume 만 남기고 `-assert -remove` 로 단언을
+# 제거한다. 그래서 증인 궤적은 「단언을 만족하도록 제약된」 궤적이 아니라
+# 리셋 규약만 지킨 도달 가능 궤적이다. 결론이 서는 것은 같은 파일의 prove
+# 태스크가 k-귀납으로 *모든* 도달 가능 상태를 덮기 때문이다 — prove 가
+# 깨지면 증인의 해석도 함께 무너진다. 둘을 따로 읽지 말 것.
+#
+# cover 깊이 14 근거: 가장 깊은 증인은 WL2 의 상위 lane 판(라운드로빈 포인터를
+# 한 번 돌려 놓아야 상위 lane 이 구동하면서 경쟁자를 갖는다 — 리셋 1 + 채움 1
+# + 첫 grant 1 + 재채움 1 + 충돌 1 ≈ 5)과 WC7(리셋 1 + 채움 1 + shove 1 +
+# 상승 1 + 해제 1 ≈ 5)이다. 14 는 그 3배 여유고, bmc 의 20 보다 얕게 두는
+# 것은 증인 탐색이 반례 탐색보다 얕은 곳에서 끝나기 때문이다.
 
 [tasks]
 bmc
 prove
+cover
 
 [options]
 bmc: mode bmc
 bmc: depth 20
 prove: mode prove
 prove: depth 6
+cover: mode cover
+cover: depth 14
 
 [engines]
 smtbmc z3
@@ -42,6 +87,9 @@ smtbmc z3
 [script]
 read -define FABRICMERGE_NO_FAIR
 read -define FABRICMERGE_EXPOSE_FLOW
+# 증인은 cover 태스크에서만 컴파일한다 (HiuMask -DHIUMASK_COVER 선례) —
+# bmc/prove 모델은 단언만 들어 태스크별 셀 수가 정확히 대조된다.
+cover: read -define FABRICMERGE_COVER_CONTRACTS
 read -formal -sv FabricMerge.sv
 hierarchy -top FabricMerge
 proc

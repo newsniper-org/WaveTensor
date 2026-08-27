@@ -15,7 +15,7 @@
 // GUARD-MAP: Isolation.capacity_partitioned -> 직접 사상 + validBits 는 파티션별 레지스터, Mem 주소 상위 = 파티션 — q 의 설치·커밋·flush 가 p 구간의 유효 비트·주소를 건드릴 경로가 구조적으로 없다 (축출이 경계를 못 넘는다)
 // GUARD-MAP: Isolation.fill_tagged         -> fillHit 는 fillSlot(lookup.part) 하나만 후보로 삼는다 — 타 파티션 슬롯은 아예 조회되지 않고(파티션 검사의 구조화), idx·tag 일치가 논리곱의 항이다
 // GUARD-MAP: Isolation.fill_slot_per_partition -> fillPend/fillSlot 이 파티션당 정확히 한 자리인 Vec 이고, install.ready 는 자기 파티션 슬롯의 점유만 본다 — 남의 채움이 내 자리를 차지하거나 덮어쓸 수 없다
-// GUARD-MAP: Isolation.fill_offpath        -> 조회 응답은 같은 사이클 조합 판정이며 채움 상태는 lookup 경로에 정지·ready 를 만들지 않는다 — 채움은 fillHit 라는 값 판정으로만 나타난다 (fwait 단계 없음)
+// GUARD-MAP: Isolation.fill_offpath        -> STRUCTURAL(port-absence) — 조회 응답은 같은 사이클 조합 판정이며 채움 상태는 lookup 경로에 정지·ready 를 만들지 않는다 — 채움은 fillHit 라는 값 판정으로만 나타난다 (fwait 단계 없음)
 //
 // ## D12 — 읽기 우선순위 (§3.6.2 규범 2, 확정)
 //

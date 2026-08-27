@@ -8,6 +8,27 @@
 # PROVES: Route.view_sync — 합성: 구동 규약(기입에서만·기입마다 1회·같은 내용)
 #   + 뷰 ≡ 배선 이력 ≡ 표 기입 이력 (Route.tla M3 스큐 결함형의 RTL 판 부정)
 #
+# cover 태스크 (2026-08-26 신설, -DROUTEMMIO_COVER) — 공허 방지.
+# C1·C2·C3 는 문법상 무전건이지만 배선이 한 번도 움직이지 않으면 아무것도
+# 재지 않는다 — 뷰도 표도 영원히 공집합이면 「뷰 ≡ 표」는 0 ≡ 0 이고,
+# 짝짓기 단언(w_fwdWrEn == vw_valid)은 양변이 늘 0 이어도 통과한다. 그래서
+# 합성 증명의 증인은 「기입과 뷰 구동이 실제로 짝지어지는 궤적」이다.
+# 문면에 전건이 붙은 넷(initDone · h_commit · h_release · h_lbidCommit)과
+# C2 이름 단언 16건의 `if (shVV[i])`, p_sweep_quiet 의 `!initDone` 까지
+# 증인 9개가 하나씩 대응한다 (대응표는 하네스의 증인 블록 머리 주석).
+#
+# 시작 상태 (정직 표기): reset 기점으로는 소거 2^16 사이클 때문에 구성
+# 구간에 원리적으로 닿지 못하므로, 이 태스크만 reset 을 인가하지 않고
+# t=0 을 「전부 공집합」(뷰 레지스터·세 그림자 0, busy·fault 없음)으로
+# 가정한다. initDone 만은 자유로 둔다 — p_sweep_quiet 의 전건도 증인이
+# 필요하기 때문이다. 공집합을 못박는 이유: 그림자를 자유로 두면 솔버가
+# t=0 에 아무 소유나 놓아 「기입 궤적이 뷰를 만든다」를 하나도 보이지
+# 못한다. 단언은 sby 가 cover 모드에서 통째로 제거하므로(실측 —
+# design_prep.ys 의 `chformal -live -fair -assert -remove`) 이 태스크의
+# 증인은 assume 만 걸린 상태에서 잡힌다. 깊이 12 근거: 커밋 1회 =
+# 수락+CHECK 2사이클 + 뷰 레지스터 반영 1사이클, 가장 먼 증인(커밋 후
+# 토큰 통과 판정 c_rm_judge_pass)이 4스텝이면 닿고 여유로 12.
+#
 # bmc 깊이 24 근거: MmioConfig 소거 2^16 사이클이 도달성을 막아 BMC 는
 # 소거 구간(무구동·공집합 뷰 판정)만 실측한다 — 정직 표기. 기능 구간은
 # prove(k-귀납)가 도달성 무관하게 덮는다. prove 깊이 6 근거: 그림자·짝짓기
@@ -21,10 +42,13 @@
 [tasks]
 bmc
 prove
+cover
 
 [options]
 bmc: mode bmc
 bmc: depth 24
+cover: mode cover
+cover: depth 12
 prove: mode prove
 # 귀납 길이 2 로 충분하다 — 이 합성의 속성은 전부 1스텝 관계(기입 사이클과
 # 그 다음 관측 사이클)이고, 깊이 6 은 z3 귀납 스텝이 수 분간 미귀환했다
@@ -38,7 +62,9 @@ smtbmc z3
 [script]
 # bind 는 yosys 0.66 자유 프론트엔드가 조용히 버린다 (2026-08-24 실측) —
 # expose 로 두 모듈의 내부를 포트로 승격해 합성 top 이 직접 인스턴스한다.
-read_verilog -formal -sv MmioConfig.sv RouteJudge.sv RouteMmio_props.sv
+bmc:   read_verilog -formal -sv MmioConfig.sv RouteJudge.sv RouteMmio_props.sv
+prove: read_verilog -formal -sv MmioConfig.sv RouteJudge.sv RouteMmio_props.sv
+cover: read_verilog -formal -sv -DROUTEMMIO_COVER MmioConfig.sv RouteJudge.sv RouteMmio_props.sv
 expose MmioConfig/w:initDone MmioConfig/w:busy MmioConfig/w:pSlot MmioConfig/w:pWord
 expose MmioConfig/w:revChkPresent MmioConfig/w:fwdRd
 expose MmioConfig/w:fwdWrEn MmioConfig/w:fwdWrAddr MmioConfig/w:fwdWrData

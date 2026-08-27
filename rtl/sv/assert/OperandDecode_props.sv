@@ -283,6 +283,147 @@ module OperandDecode_props (
     end
   end
 
+  // ── cover 증인 (cover 태스크에서만 컴파일) ───────────────────────────────
+  //
+  // 왜 있는가. 위 단언 32개 중 **18개가 문면 그대로 전건 붙은 함의**다 —
+  // exec_gate 14개가 전부 `if (!io_oExecValid)` 아래에 있고, fault_sticky 4개는
+  // 상승/하강/에피소드/유지 전건을 각각 진다. 나머지 등식들도 전건을 숨긴다:
+  // `oMalformed == (iMalformed || f_bodyMal)` 하나가 **세 본문 판정의 논리합**
+  // 을 접고, 그 각각이 다시 4슬롯 논리합이다.
+  //
+  // 그래서 다음 세계들에서 이 태스크는 전원 통과하면서 아무것도 재지 않는다:
+  //   · oExecValid 가 영영 0 인 세계 — exec_gate 14개는 참, resv_not_echoed
+  //     8개는 우변이 상수 0 이라 자명, 그런데 「해석 산출」은 한 번도 관측되지
+  //     않았다.
+  //   · oExecValid 가 영영 1 인 세계 — exec_gate 14개가 **공허하게** 참이다.
+  //   · 세 판정 중 둘이 도달 불가능한 세계 — 합류 등식은 그대로 참인데
+  //     body_resv_judged 가 예고한 판정 3종 중 하나만 재어졌다.
+  //   · 예약 슬라이스가 늘 0 인 세계 — resv_not_echoed 의 「예약은 어디에도
+  //     실리지 않는다」가 잴 것 없이 참이다.
+  //   · iCapAbsent 가 영영 0 인 세계 — f_bodyMal 의 `!io_iCapAbsent` 접합
+  //     (ISA-5 · §1.6.2)이 한 번도 0 을 만들지 않아 미측정이다.
+  //   · sticky 가 영영 서지 않는 세계 — fault_sticky 넷 전부 공허하다.
+  //
+  // 셀 수 게이트도 항진 검사도 이 결을 잡지 못한다: 셀은 32개 그대로 세어지고,
+  // `!전건 || 후건` 형태의 `\A` 는 전건이 죽어 있어도 상수로 접히지 않는다.
+  // 셀 수 · A 상수성 · 증인 도달, 셋이 각각 다른 공허를 닫는다.
+  //
+  // cover 태스크 전용 컴파일은 HiuMask·DecodeWalk 선례(-D…_COVER)를 따른다 —
+  // prove 모델에는 단언만 들어 태스크별 셀 수가 정확히 대조된다.
+`ifdef OPERANDDECODE_COVER
+  wire f_ok = f_past_valid && !reset;
+
+  // 본문 판정 3종의 **단독 원인** — f_bodyMal 이 접은 논리합의 각 항이 혼자서
+  // 판정을 세우는 조건. 어느 항이 죽어 있어도 합류 등식은 참이므로, 항마다
+  // 단독 원인 증인을 요구하는 것이 그 결을 닫는 유일한 수단이다.
+  wire f_only_oprefResv = !io_iCapAbsent && f_oprefResvBad
+                          && !f_srcKindBad && !f_acctgtResvBad;
+  wire f_only_srcKind   = !io_iCapAbsent && f_srcKindBad
+                          && !f_oprefResvBad && !f_acctgtResvBad;
+  wire f_only_acctgt    = !io_iCapAbsent && f_acctgtResvBad
+                          && !f_oprefResvBad && !f_srcKindBad;
+
+  // ── O1..O2 — 판정 무관 통과면의 양 극성 ─────────────────────────────────
+  // O1: 정상 승인이 실제로 난다. 이 증인이 없으면 exec_gate 14개가 「무엇도
+  //     유효하지 않은 기계」 위에서 참이고, resv_not_echoed 8개는 우변 상수 0
+  //     과의 등식으로 자명해진다. verdict_join 의 oExecValid 등식도 한쪽 극성만
+  //     재어진 것이다.
+  always @(posedge clk) if (f_ok) cover (io_iValid && io_oExecValid);
+  // O2: 무효 사이클 — `io_oValid == io_iValid` 가 양 극성에서 재어진다.
+  always @(posedge clk) if (f_ok) cover (!io_oValid);
+
+  // ── O3..O5 — body_resv_judged 판정 3종의 단독 원인 ──────────────────────
+  // 대응: O3 ↔ §1.4.6 OPREF 예약 니블 · O4 ↔ §1.4.3 src_kind >= 3 ·
+  //       O5 ↔ §1.4.7 ACCTGT 예약 바이트. 셋 다 「상류는 유효 실행을 내밀었는데
+  //       이 모듈이 혼자 꺾는다」 형태다 — 그래야 (a) 합류 등식의 f_bodyMal 항이
+  //       그 판정 하나로 살고, (b) exec_gate 14개의 전건 `!oExecValid` 가
+  //       **본문 판정 때문에** 성립하는 궤적으로 도달한다. 상류 무효로 도달한
+  //       전건(O6)은 이 모듈의 기여를 재지 못한다 — 둘을 갈라야 하는 이유다.
+  always @(posedge clk) if (f_ok)
+    cover (io_iValid && io_iExecValid && f_only_oprefResv
+           && io_oMalformed && !io_oExecValid);
+  always @(posedge clk) if (f_ok)
+    cover (io_iValid && io_iExecValid && f_only_srcKind
+           && io_oMalformed && !io_oExecValid);
+  always @(posedge clk) if (f_ok)
+    cover (io_iValid && io_iExecValid && f_only_acctgt
+           && io_oMalformed && !io_oExecValid);
+
+  // ── O6..O7 — 합류식의 나머지 두 항 ──────────────────────────────────────
+  // O6: `!oExecValid` 가 **상류 무효**로 도달하는 부류 (본문은 정상). O3..O5 와
+  //     짝을 이뤄 exec_gate 전건의 두 원인이 모두 살아 있음을 가른다.
+  always @(posedge clk) if (f_ok)
+    cover (io_iValid && !io_iExecValid && !f_bodyMal && !io_oExecValid);
+  // O7: `oMalformed == (iMalformed || f_bodyMal)` 의 **왼쪽 항 단독** — 상류
+  //     판정이 본문 판정 없이 그대로 실린다 (verdict_join 무변경 통과면).
+  always @(posedge clk) if (f_ok)
+    cover (io_iValid && io_iMalformed && !f_bodyMal && io_oMalformed);
+
+  // ── O8 — ISA-5 / §1.6.2: 능력 부재가 본문 판정을 잠근다 ─────────────────
+  // 원시 판정 3종 중 하나가 서 있는데도 iCapAbsent 때문에 mal 이 서지 않는
+  // 궤적. 이 증인이 없으면 f_bodyMal 의 `!io_iCapAbsent` 접합이 한 번도 0 을
+  // 만들지 않는 세계에서 verdict_join 등식이 성립할 수 있다 — 그 게이트는
+  // 미측정이고, capability 배타 단언 2건도 함께 공허해진다.
+  always @(posedge clk) if (f_ok)
+    cover (io_iValid && io_iCapAbsent
+           && (f_oprefResvBad || f_srcKindBad || f_acctgtResvBad)
+           && !io_oMalformed && io_oCapAbsent);
+
+  // ── O9..O10 — 판정 콘의 협소성: 무엇이 판정 대상이 *아닌가* ─────────────
+  // O9 (§1.6.1 함정): **부재** 슬롯의 본문 잔여값이 나쁜데도 판정되지 않는다.
+  //     f_is* 의 present 접합이 실제로 구분력을 갖는다는 활성면.
+  always @(posedge clk) if (f_ok)
+    cover (io_iValid && io_iExecValid && !io_iSlotPresent_0
+           && (io_iSlotCode_0 == 4'h7) && (f_body0[7:4] != 4'h0)
+           && !f_bodyMal && io_oExecValid);
+  // O10: OPREF·ACCTGT 가 아닌 실재 슬롯의 같은 슬라이스가 비0 인데 판정되지
+  //     않는다 — 4비트 코드 전체 비교가 실제로 갈라낸다.
+  always @(posedge clk) if (f_ok)
+    cover (io_iValid && io_iExecValid && io_iSlotPresent_1
+           && (io_iSlotCode_1 != 4'h7) && (io_iSlotCode_1 != 4'h9)
+           && (f_body1[7:0] != 8'h00) && !f_bodyMal && io_oExecValid);
+
+  // ── O11..O14 — resv_not_echoed 의 활성면 (방출이 실제로 값을 나른다) ────
+  // O11: OPREF A 가 **비0 LBID** 로 방출된다. 「LBID 가 늘 0 인 세계」에서는
+  //      :254 의 등식이 0==0 으로 자명하다.
+  always @(posedge clk) if (f_ok)
+    cover (io_oOprefAValid && (io_oOprefALbid != 8'h0));
+  // O12: OPREF 가 둘 — 등장 순서 A·B (§4.2.3) 가 실제로 둘 다 방출된다.
+  //      f_b* 참조의 「앞선 OPREF 개수 == 1」 항이 도달한다.
+  always @(posedge clk) if (f_ok)
+    cover (io_oOprefAValid && io_oOprefBValid && (io_oOprefBLbid != 8'h0)
+           && (io_oOprefALbid != io_oOprefBLbid));
+  // O13: src_kind 경계 바로 아래 값 2 가 그대로 통과한다 — 판정 문턱
+  //      `>= 3` (§1.4.3 표)이 상수 참이 아니라 실제 문턱이다.
+  always @(posedge clk) if (f_ok)
+    cover (io_oOprefAValid && (io_oOprefASrcKind == 4'd2));
+  // O14: ACCTGT 재조립 결속이 비0 payload 로 열린다 (§4.3 D8 부류의 활성면).
+  always @(posedge clk) if (f_ok)
+    cover (io_oReasmBind_valid && (io_oReasmBind_payload != 8'h0));
+
+  // ── O15..O18 — fault_sticky 네 전건의 도달성 ────────────────────────────
+  // O15 ↔ :270 상승 전건 / O16 ↔ :273 하강 전건 / O17 ↔ :279 유지 전건 /
+  // O18 ↔ :276 에피소드 전건(해제와 동시 제시에도 세움 우선).
+  always @(posedge clk) if (f_ok && !$past(reset))
+    cover (io_oFault && !$past(io_oFault));
+  always @(posedge clk) if (f_ok && !$past(reset))
+    cover (!io_oFault && $past(io_oFault));
+  always @(posedge clk) if (f_ok && !$past(reset))
+    cover (io_oFault && $past(io_oFault) && !$past(io_iFaultClear));
+  always @(posedge clk) if (f_ok && !$past(reset))
+    cover (io_oFault && $past(io_iFaultClear) && $past(io_iValid && f_bodyMal));
+
+  // ── O19..O20 — sticky 가 접지 *않는* 것 (§5.6 폴딩 명시의 반대면) ────────
+  // O19: 능력 부재는 fault 를 세우지 않는다 — :270 의 상승 원인이 bodyMal 로
+  //      못박힌 문면이 실제 궤적 위에서 재어진다.
+  always @(posedge clk) if (f_ok)
+    cover (io_iValid && io_oCapAbsent && !io_oFault);
+  // O20: 본문 판정이 서 있어도 iValid 가 없으면 fault 는 서지 않는다 —
+  //      :271 의 `iValid` 접합이 살아 있다.
+  always @(posedge clk) if (f_ok && !$past(reset))
+    cover (!io_iValid && f_bodyMal && !io_oFault && !$past(io_oFault));
+`endif // OPERANDDECODE_COVER
+
 endmodule
 
 // ── formal 전용 래퍼 — bind 의 대체 (파일 머리의 이탈 기록 참조) ───────────

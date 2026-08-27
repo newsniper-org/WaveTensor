@@ -6,23 +6,23 @@
     "Route.view_sync",
     "Route.scope_independent"
   ],
-  "at": "2026-08-26T10:25:57Z",
+  "at": "2026-08-26T17:26:12Z",
   "cells": {
     "assert": 43,
-    "cover": 0
+    "cover": 23
   },
   "cover": {
-    "reached": 0,
+    "reached": 23,
     "unreached": 0
   },
   "inputs": {
     "rtl/generated/RouteJudge.sv": "63682c0c0bf02d83d1516d39734b05c99d428f1fc714bbce6527d759dc38dd68",
-    "rtl/sv/assert/RouteJudge_props.sv": "8b8c7fa90b62cf272a35c0a1d9a97947e372a5935cb2f5979a1240aa00084a51"
+    "rtl/sv/assert/RouteJudge_props.sv": "e6c9e73c520265878379063d768df8d26c34e03b8886ea8bd35e5b0afc217e8d"
   },
   "sby": "rtl/formal/sby/RouteJudge/route_judge.sby",
-  "sby_sha256": "592de19c5636c6f40f39d04b321dcfa90263f7d7fdef69e7bc7ae35344fba7ce",
+  "sby_sha256": "3866ad55a6bc467ab0f54fdf479bfa3785a5725e384b216f65c57bf7e103411a",
   "schema": "wt64-postformal-evidence/1",
-  "tasks": "bmc:PASS prove:PASS",
+  "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",
   "verdict": "PASS"
 }

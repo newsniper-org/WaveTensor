@@ -12,16 +12,41 @@
 # 대상: rtl/generated/MemOrderGate.sv (커밋본 — 재생성 금지, N=4·reqW=16).
 # 상태는 token 4비트뿐(파이프 깊이 1) — bmc 깊이 20 은 그 2배를 훨씬 넘는
 # 여유. prove 는 k-귀납(깊이 8)이 선다 — 그것이 정답.
+#
+# ── cover 증인 ───────────────────────────────────────────────────────────
+# M1..M24 (하네스 말미, -DMEMORDERGATE_COVER). 단언 24개 중 t_rise_* 넷만
+# 문면에 전건이 보이고, 나머지 스무 개는 **등식이 전건을 논리합 안에 숨긴다**:
+# g_open_eq_i 하나가 「지목 선행 k 가 미완」 세 항을 접고, g_fire_eq_* ·
+# g_payload_* 는 gateOpen 이 영영 1 인 세계에서도 참이다. 그 세계에서 위
+# PROVES 앵커 일곱은 순서 의존을 재지 않는다 — 「순서 의존이 걸리지 않는
+# 기계에 대한 참인 항등식」일 뿐이다. M1..M12 가 12개 선행 항의 **단독 원인**
+# 궤적을 각각 요구해 그 결을 닫고(억제면 down.valid=0·up.ready=0 포함),
+# M13..M14 가 열림 방향과 과잉 게이팅 부재를, M15..M16 이 배압≠게이팅을,
+# M17..M18 이 payload 불투명 통과를, M19..M22 가 토큰 상태 함수 네 국면을,
+# M23..M24 가 역순·동시 완료 수락을 각각 도달로 세운다.
+#
+# 증인이 보증하지 않는 것 (DecodeWalk 쪽 실측 기록과 같은 규율): sby 의 cover
+# 모델은 assume 만 남기고 단언을 제거한다. 그러므로 증인 궤적은 「단언을
+# 만족하도록 제약된 궤적」이 아니라 리셋 규율만 지킨 도달 가능 궤적이다.
+# 그럼에도 결론이 서는 것은 prove 가 k-귀납으로 통과해 *모든* 도달 가능
+# 상태가 단언을 만족하기 때문이다 — prove 가 깨지면 증인의 해석도 무너진다.
+# 둘을 따로 읽지 말 것.
 
 [tasks]
 bmc
 prove
+cover
 
 [options]
 bmc: mode bmc
 bmc: depth 20
 prove: mode prove
 prove: depth 8
+# cover 깊이 근거: 가장 깊은 증인은 M20(epochClear 하강)으로 리셋 해제 →
+# complete 로 토큰 세움 → epochClear → 하강까지 4 사이클이면 닿는다 (f_step 이
+# 리셋 밖 2사이클을 요구하므로 실제 관측은 스텝 3). 8 은 그 두 배.
+cover: mode cover
+cover: depth 8
 multiclock off
 
 [engines]
@@ -38,7 +63,11 @@ exec -- sh -c "sed /^bind/Q MemOrderGate_props.sv > props_only.sv"
 exec -- sh -c "sed -i /^endmodule/d MemOrderGate.sv"
 exec -- sh -c "sed -n /^bind/,+999p MemOrderGate_props.sv | sed s/^bind.MemOrderGate.// >> MemOrderGate.sv"
 exec -- sh -c "echo endmodule >> MemOrderGate.sv"
-read_verilog -sv -formal props_only.sv
+# 증인은 cover 태스크에서만 컴파일한다 (HiuMask·DecodeWalk 선례) — bmc/prove
+# 모델에는 단언만 들어 태스크별 셀 수가 정확히 대조된다.
+bmc:   read_verilog -sv -formal props_only.sv
+prove: read_verilog -sv -formal props_only.sv
+cover: read_verilog -sv -formal -DMEMORDERGATE_COVER props_only.sv
 read_verilog -sv -formal MemOrderGate.sv
 prep -top MemOrderGate
 # occupancy 계수 case 표가 proc_rom 으로 $mem_v2 ROM 이 되면 k-귀납의 임의

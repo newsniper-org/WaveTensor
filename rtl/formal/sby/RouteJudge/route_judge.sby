@@ -13,6 +13,33 @@
 # 2배를 훨씬 넘는다. prove 깊이 6 근거: 모든 속성이 1스텝($past) 관계라
 # k-귀납은 k=2 면 족하고, 여유로 6.
 #
+# ## cover 증인 23건 — 공허의 넷째 결 (2026-08-26 신설)
+#
+# 이 태스크는 2026-08-26 까지 **cover 셀이 0** 이었다. 단언 43개 중 여섯
+# 부류가 전건을 갖고 있고(뷰 기입·존재 표 기입의 각 if/else, reset 관문),
+# 요체인 `p_global_judge` 는 형태상 무전건이나 **등식의 한 면만 재어질 수
+# 있다** — §1.5 대로 reset 직후 뷰는 공집합이라 구성 전에는 모든 토큰이
+# fault 이고, 뷰 기입 없이 도는 궤적에서는 「적중·무결 → 배달」이 한 번도
+# 서지 않는다. 셀 수 게이트도 항진 검출도 그 경우를 「덮임」과 구분하지
+# 못한다. 증인 23건이 그 구분을 기계로 세운다 (대응표는 하네스 주석).
+#
+# 값어치의 중심은 W6 이다 — 정본 §1.6.3 함정(「전역 미스」와 「지역 비소유」
+# 의 구분이 이 규범의 전부다)의 RTL 실측이다. 뷰에 *이름이 다른* 유효
+# 엔트리가 있는 상태에서 토큰이 fault 없이 통과하는 궤적 — 지역 판정
+# 기계였다면 존재할 수 없는 궤적 — 이 실제로 도달한다는 것을 잰다.
+# W2·W3·W4 는 Route.tla 증인 절이 적대 검증에서 받은 지적을 그대로 따라
+# **구성이 끝난 기계**(뷰·존재 표 모두 비지 않음)에서만 인정한다. 구성 전
+# 전량 fault 상태에서 잡은 fault 증인은 정본이 자명하다고 선언한 것을
+# 되풀이할 뿐이기 때문이다.
+#
+# cover 깊이 8 근거: 가장 깊은 증인이 기입 두 사이클을 거쳐야 한다 —
+# 뷰 엔트리 둘을 서로 다른 사이클에 심고 그 다음 사이클에 판정을 본다
+# (W6·W10·W16·W17·W20·W21 부류). 2026-08-26 실측 도달 스텝은 2~4 이고,
+# 최댓값 4 의 2배를 넘겨 8 로 둔다.
+#
+# 증인은 `-DROUTEJUDGE_COVER` 로 cover 태스크에서만 컴파일한다 —
+# bmc/prove 모델은 신설 전과 한 비트도 다르지 않다 (assert 43 · cover 0).
+#
 # 실행(컨테이너 전용 — 호스트 sby 금지, Makefile rtl-postformal 과 동일):
 #   podman run --rm --userns=keep-id -v "$PWD:/workspace" wavetensor-dev:scala \
 #     sh -lc "cd /workspace && sby -f -d /tmp/sby-RouteJudge-route_judge \
@@ -21,12 +48,15 @@
 [tasks]
 bmc
 prove
+cover
 
 [options]
 bmc: mode bmc
 bmc: depth 20
 prove: mode prove
 prove: depth 6
+cover: mode cover
+cover: depth 8
 
 [engines]
 smtbmc z3
@@ -34,7 +64,12 @@ smtbmc z3
 [script]
 # bind 는 yosys 0.66 자유 프론트엔드가 조용히 버린다 (2026-08-24 실측) —
 # expose 로 내부 레지스터를 포트로 승격해 하네스가 직접 인스턴스한다.
-read_verilog -formal -sv RouteJudge.sv RouteJudge_props.sv
+#
+# 증인은 cover 태스크에서만 컴파일한다. 세 줄이 갈라져 있는 것이 요점이다 —
+# bmc/prove 가 읽는 텍스트는 증인 신설 전과 동일하다.
+bmc:   read_verilog -formal -sv RouteJudge.sv RouteJudge_props.sv
+prove: read_verilog -formal -sv RouteJudge.sv RouteJudge_props.sv
+cover: read_verilog -formal -sv -DROUTEJUDGE_COVER RouteJudge.sv RouteJudge_props.sv
 expose RouteJudge/w:viewValid_* RouteJudge/w:viewName_* RouteJudge/w:bankPresent
 prep -top RouteJudge_props
 

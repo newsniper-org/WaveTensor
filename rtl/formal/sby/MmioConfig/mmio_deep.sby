@@ -19,6 +19,35 @@
 # 여유로 6. bmc 태스크는 두지 않는다 — 소거 2^16 사이클이 도달성을 막아
 # 심층 속성의 BMC 는 공허하다 (mmio_config.sby 의 bmc 가 소거 구간을 잰다).
 #
+# cover 태스크 (2026-08-26 신설, -DMMIO_DEEP_COVER) — 심층의 공허 방지.
+# 서로소 단언 120건은 `!(shV[a] && shV[b] && shL[a]==shL[b])` 꼴이라 **표가
+# 영원히 공집합이면 아무것도 재지 않는다** — 「빈 표는 항상 서로소」이기
+# 때문이다. 게다가 이 태스크는 다리 assume 둘을 더 얹으므로, 모듈 태스크
+# (mmio_config.sby)의 증인 9개가 도달 가능하다는 사실이 여기서 그대로
+# 성립한다는 보장도 없다: assume 이 서로 모순이면 148건 전부가 공허하게
+# 참이고 셀 수 게이트도 항진 검사도 그것을 잡지 못한다. 그래서 증인을
+# *이 태스크의 가정 아래에서* 다시 세운다 — 다섯이고, 알맹이는 W3
+# (같은 LNID 를 노리는 둘째 기입에 실제로 도달하고 거절된다)다. 나머지는
+# 소유 1개·소유 2개 동시·점유 슬롯 판독·해제로 소유가 줄어듦.
+#
+# 시작 상태 (정직 표기): mmio_config.sby 의 cover 와 같은 근거로 reset 을
+# 인가하지 않고 「소거 완료 직후」를 t=0 에 가정하되, **그림자까지 공집합**
+# 으로 못박는다. 그림자를 자유로 두면 증인이 t=0 에 소유를 공짜로 얻어
+# 「기입 궤적으로 소유가 생긴다」를 하나도 보이지 못한다.
+#
+# 이 태스크가 재는 것과 재지 않는 것 (실측에 근거한 정직 표기): sby 는
+# cover 모드에서 `chformal -live -fair -assert -remove` 로 **단언을 모델에서
+# 제거한다** (2026-08-26 실측 — 이 태스크의 design_prep.il 은 assert 0 ·
+# cover 5 · assume 11). 그러므로 증인 궤적은 단언 검사를 받지 않는다.
+# 살아남는 것은 assume 이고, 그것이 요점이다 — 증인이 **다리 assume ①·②
+# 아래에서** 잡혔다는 뜻이라 「다리가 모순이라 148건이 전부 공허」라는
+# 가능성을 이 태스크가 배제한다. 단언 셀 수의 증거는 deep 태스크 쪽
+# 모델이 낸다 (스윕은 태스크별 모델의 최댓값을 쓴다).
+#
+# 깊이 8 근거: 커밋 1회 = 수락+CHECK 2사이클, 그림자 반영에 1사이클 —
+# 두 슬롯 소유(W2)가 최장이라 5스텝이면 닿고 여유로 8 (실측: 최장 증인
+# c_deep_owned_two 가 5스텝).
+#
 # 실행(컨테이너 전용 — 호스트 sby 금지):
 #   podman run --rm --userns=keep-id -v "$PWD:/workspace" wavetensor-dev:scala \
 #     sh -lc "cd /workspace && sby -f --prefix /tmp/sby-MmioDeep \
@@ -26,16 +55,20 @@
 
 [tasks]
 deep
+cover
 
 [options]
 deep: mode prove
 deep: depth 6
+cover: mode cover
+cover: depth 8
 
 [engines]
 smtbmc z3
 
 [script]
-read_verilog -formal -sv -DMMIO_DEEP MmioConfig.sv MmioConfig_props.sv
+deep:  read_verilog -formal -sv -DMMIO_DEEP MmioConfig.sv MmioConfig_props.sv
+cover: read_verilog -formal -sv -DMMIO_DEEP -DMMIO_DEEP_COVER MmioConfig.sv MmioConfig_props.sv
 expose MmioConfig/w:initDone MmioConfig/w:busy MmioConfig/w:pSlot MmioConfig/w:pWord
 expose MmioConfig/w:revChkPresent MmioConfig/w:fwdRd MmioConfig/w:chkDupOwn MmioConfig/w:chkBadWr MmioConfig/w:chkLbBadWr
 expose MmioConfig/w:fwdWrEn MmioConfig/w:fwdWrAddr MmioConfig/w:fwdWrData

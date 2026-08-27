@@ -11,10 +11,13 @@
 //
 // ## 태스크별 조건부 컴파일
 //
-//   (없음)      bmc/prove — 단언 전량 + reset 프로토콜 assume
-//   MMIO_COVER  cover     — 단언을 끄고 증인만. 시작 상태를 「소거 완료
-//                           직후」로 가정한다 (아래 assume 절의 근거 참조)
-//   MMIO_DEEP   deep      — 표 내용 수준 서로소 (그림자 + assume 다리)
+//   (없음)          bmc/prove — 단언 전량 + reset 프로토콜 assume
+//   MMIO_COVER      cover     — 단언을 끄고 증인만. 시작 상태를 「소거 완료
+//                               직후」로 가정한다 (아래 assume 절의 근거 참조)
+//   MMIO_DEEP       deep      — 표 내용 수준 서로소 (그림자 + assume 다리)
+//   MMIO_DEEP_COVER cover     — mmio_deep.sby 의 증인 태스크. MMIO_DEEP 과
+//                               *함께* 켠다: 다리 assume 과 서로소 단언을
+//                               그대로 둔 채 증인만 얹는다 (아래 참조)
 //
 // ## 부착 방식 — bind 대신 expose+인스턴스
 //
@@ -50,6 +53,36 @@
 // assert 로 짝지어짐(assume-guarantee: t 이전의 보증이 t 의 가정을
 // 정당화)이다. 이 다리 위에서 「한 LNID 의 소유 슬롯 <= 1」(서로소의
 // 실물)이 k-귀납으로 선다.
+//
+// ## MMIO_DEEP_COVER (mmio_deep.sby 의 cover 태스크) — 심층의 공허 방지
+//
+// 심층 태스크는 assume 다리 둘을 *더* 얹는다. assume 은 상태 공간을 깎으므로
+// 모듈 태스크(mmio_config.sby)의 증인 9개가 도달 가능하다는 사실이 여기서
+// 그대로 성립한다는 보장이 없다 — 다리가 서로 모순이면 모든 것이 공허하게
+// 참이고, 셀 수 게이트도 항진 검사도 그것을 잡지 못한다. 그래서 증인을
+// *심층 태스크의 가정 아래에서* 다시 세운다.
+//
+// 서로소 단언 120건은 `!(shV[a] && shV[b] && shL[a]==shL[b])` 꼴이라 문법상
+// 전건이 없어 보이지만, **shV 가 영원히 공집합이면 아무것도 재지 않는다.**
+// 도달성 질문은 정확히 이것이다: 두 슬롯이 동시에 소유 상태가 되는가, 그리고
+// 「같은 LNID 를 노리는 둘째 기입」이라는 상황에 실제로 도달하는가. 후자가
+// 이 불변식의 실질 전건이며 (그 상황이 없으면 불변식은 아무 사건도 배제하지
+// 않는다) 아래 c_deep_dup_blocked 가 그 궤적이다.
+//
+// 시작 상태는 MMIO_COVER 와 같은 근거로 「소거 완료 직후」이되, 그림자까지
+// 공집합으로 가정한다 — 그러면 증인의 소유 상태는 *실제 MMIO 기입 궤적으로
+// 만들어져야* 한다. 그림자를 자유로 두면 t=0 에 아무 소유나 놓고 증인을
+// 만족시킬 수 있어 증인이 아무것도 말하지 않는다.
+//
+// 단언은 이 매크로에서 따로 끄지 않는다. 끌 필요가 없기 때문이다 —
+// **sby 는 cover 모드에서 단언을 모델에서 아예 제거한다** (실측 2026-08-26:
+// 생성된 model/design_prep.ys 에 `chformal -live -fair -assert -remove`,
+// 그 결과 design_prep.il 의 `cell $assert` 는 0). 즉 증인 궤적은 단언
+// 검사를 받지 않으며, MMIO_COVER 가 단언을 `ifdef` 로 끄는 것도 모델에
+// 대해서는 무연산이다. 남는 것은 **assume 이다** (`chformal -assume -early`
+// 로 살아남는다 — 같은 실측에서 $assume 11개). 그래서 이 태스크의 증인은
+// 정확히 「심층 태스크의 가정(다리 ①·②) 아래에서 도달 가능한가」를 재고,
+// 그것이 애초에 이 증인들을 모듈 태스크의 9개와 별도로 세운 이유다.
 
 `timescale 1ns/1ps
 
@@ -180,7 +213,17 @@ module MmioConfig_props (
   reg past_reset = 1'b1;
   always @(posedge clk) past_reset <= reset;
 
-`ifndef MMIO_COVER
+// ── 시작 상태의 갈래 — 증인 태스크 둘(MMIO_COVER · MMIO_DEEP_COVER)은
+//    reset 기점을 버리고 「소거 완료 직후」를 t=0 에 가정한다. 근거는 아래
+//    긴 주석 하나에 함께 적었다. 두 매크로를 내부 이름 하나로 접는다.
+`ifdef MMIO_COVER
+  `define MMIO_POSTSWEEP_START
+`endif
+`ifdef MMIO_DEEP_COVER
+  `define MMIO_POSTSWEEP_START
+`endif
+
+`ifndef MMIO_POSTSWEEP_START
   always @* begin
     if (!f_past_valid) assume (reset);
     else               assume (!reset);
@@ -197,8 +240,12 @@ module MmioConfig_props (
   // 직접 가정한다: initDone=1 · busy=0 · fault 없음. 이 넷은 소거 완료
   // 직후 상태 그 자체이고 (소거 자체의 성질 — 침묵·ready 저지·단조
   // 상승 — 은 mmio_config.sby 의 bmc/prove 태스크가 따로 잰다), Mem
-  // 내용은 자유로 둔다. 이 증인들이 재는 성질(예약 비트 비0 기입의
-  // 거절)이 표 내용에 무관하기 때문이다.
+  // 내용은 자유로 둔다. MMIO_COVER 의 증인들이 재는 성질(예약 비트 비0
+  // 기입의 거절)이 표 내용에 무관하기 때문이다.
+  //
+  // MMIO_DEEP_COVER 는 여기에 **그림자 공집합**을 더 못박는다 (아래 심층
+  // 증인 블록). 그쪽 증인은 반대로 표 내용이 알맹이라, 소유가 t=0 에
+  // 공짜로 주어지면 아무것도 보이지 못하기 때문이다.
   //
   // 이 태스크가 주장하는 것과 주장하지 않는 것: 「단언의 전제가 충족
   // 가능하다(= 공허하지 않다)」를 주장하고, 「reset 으로부터 도달
@@ -420,6 +467,7 @@ module MmioConfig_props (
       if (shV[s] && shL[s*16 +: 16] == h_pLnid) h_ownedP = 1'b1;
   end
 
+
   always @* begin
     if (!reset && w_busy) begin
       // assume 다리 ① — CHECK 의 역방향 표 판독 = 그림자 소유 존재.
@@ -464,6 +512,83 @@ module MmioConfig_props (
       end
     end
   endgenerate
+
+`ifdef MMIO_DEEP_COVER
+  // ═══ 심층 도달성 증인 (mmio_deep.sby 의 cover 태스크 전용) ═════════════
+  //
+  // 시작 상태의 그림자 절반 — 「소거 완료 = 표 공집합」. 위 MMIO_POSTSWEEP_START
+  // 절이 대상 쪽(initDone·!busy·fault 없음)을 가정했고 여기서 그림자 쪽을
+  // 맞춘다. 둘이 어긋나면(예: 그림자 자유) 증인이 t=0 에 소유를 공짜로 얻어
+  // 「기입으로 소유가 생긴다」를 하나도 보이지 못한다.
+  //
+  // 실제 Mem 내용은 여전히 자유다 — 다리 assume ①·②가 판독을 그림자에
+  // 묶으므로 솔버가 공집합과 일치하는 초기 내용을 고른다. 즉 이 가정은
+  // Mem 을 직접 건드리지 않고도 「소거 직후」를 재현한다.
+  always @* begin
+    if (!f_past_valid) begin
+      assume (shV == 16'b0);
+      assume (shL == 256'b0);
+    end
+  end
+
+  // 서로 다른 두 슬롯이 동시에 소유 상태인가 — 서로소 단언 120건의 연언쌍
+  // `shV[gs] && shV[gt]` 가 성립하는 상황. 짝을 고정하지 않고 존재로 쓰는
+  // 이유: 슬롯 번호는 자유 입력(addr)이 정하므로 특정 짝을 요구하면 증인이
+  // 「그 짝에 못 넣는다」로 실패할 수 있고, 그것은 재려는 것이 아니다.
+  //
+  // 이 계산을 증인 블록 *안*에 두는 이유: deep(prove) 태스크의 모델을 한
+  // 비트도 바꾸지 않기 위해서다. 70분짜리 k-귀납에 증인 전용 조합 논리를
+  // 얹으면 「증인을 더했더니 증명이 달라졌다」가 되고 증거의 신선도 판정이
+  // 흐려진다. (실측 2026-08-26: 이 배치로 deep 태스크의 design_prep.il 은
+  // src 줄번호를 빼면 편집 전과 완전 동일 — assert 148 · cover 0.)
+  integer u, v;
+  reg h_twoOwned;
+  always @* begin
+    h_twoOwned = 1'b0;
+    for (u = 0; u < 16; u = u + 1)
+      for (v = 0; v < 16; v = v + 1)
+        if (u < v && shV[u] && shV[v]) h_twoOwned = 1'b1;
+  end
+
+  always @(posedge clk) begin
+    if (!reset) begin
+      // ── W1 · 소유가 표에 실제로 실린다 (커밋이 그림자에 도달한다).
+      //    대응: 서로소 단언 120건의 첫째 연언지 `shV[gs]`. 이것이 영원히
+      //    거짓이면 120건은 전부 공허하다 — 「빈 표는 항상 서로소」다.
+      c_deep_owned_one: cover (|shV);
+
+      // ── W2 · 서로 다른 두 슬롯이 동시에 소유 상태 (연언쌍의 성립).
+      //    LNID 가 다르다는 것은 요구하지 않는다 — 같으면 서로소 단언이
+      //    막으므로, 이 증인이 잡히면 그것은 자동으로 「다른 LNID 두 개」다.
+      //    대응: `shV[gs] && shV[gt]`.
+      c_deep_owned_two: cover (h_twoOwned);
+
+      // ── W3 · **이 태스크의 알맹이** — 같은 LNID 를 노리는 둘째 기입이
+      //    실제로 도달하고, 거절된다. 서로소 불변식이 배제하는 사건이
+      //    존재함을 보이는 궤적이라, 이것이 없으면 120건은 「일어날 수 없는
+      //    일을 금지하는」 공허한 단언이다.
+      //    대응: 서로소 불변식의 실질 전건 + 다리 ①의 present 극성
+      //          (revChkPresent=1 인 궤적 — 다리가 이 방향으로도 충족 가능).
+      c_deep_dup_blocked: cover (w_busy && !h_rsvL && h_pV && !h_bad3
+                                 && h_ownedP && w_revChkPresent
+                                 && w_chkDupOwn && !w_fwdWrEn && !w_revWrEn);
+
+      // ── W4 · 점유 슬롯 재등록 시도의 도달·거절.
+      //    대응: 다리 ②의 `if (shV[w_pSlot[3:0]])` 가지 (그 전건이 성립하는
+      //    궤적 — 성립하지 않으면 LNID 일치 가정은 아무 데도 걸리지 않는다)
+      //    + h_bad3 의 oldV 원인.
+      c_deep_occupied_reject: cover (w_busy && !h_rsvL && h_pV && w_pSlot < 8'h10
+                                     && shV[w_pSlot[3:0]] && h_oldV
+                                     && w_chkBadWr && !w_fwdWrEn);
+
+      // ── W5 · 해제가 그림자를 되돌린다 — shV 가 단조 증가만 하는 것이
+      //    아니다. 소유 집합이 줄어드는 방향이 없으면 서로소 보존의 절반
+      //    (해제 후 재등록 경로)이 한 번도 실행되지 않는다.
+      c_deep_release_clears: cover (h_release && w_fwdWrEn && w_fwdWrAddr < 8'h10
+                                    && shV[w_fwdWrAddr[3:0]]);
+    end
+  end
+`endif
 `endif
 
 endmodule

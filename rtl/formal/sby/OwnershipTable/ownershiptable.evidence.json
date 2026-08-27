@@ -3,7 +3,7 @@
     "Platform.state_machine_kept",
     "Platform.owner_check"
   ],
-  "at": "2026-08-26T10:19:31Z",
+  "at": "2026-08-26T17:19:03Z",
   "cells": {
     "assert": 18,
     "cover": 12

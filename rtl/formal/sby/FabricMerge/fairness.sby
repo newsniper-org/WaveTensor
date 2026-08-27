@@ -14,16 +14,55 @@
 # 주의: FABRICMERGE_NO_FAIR 를 정의하지 않아 contracts.sby 의 안전 속성도
 # 함께 포함된다 — 공정성 반례가 안전 위반으로 오염되지 않았음을 겸사겸사
 # 재확인하는 부수 효과이며, 해가 없다.
+#
+# ── cover 증인 (2026-08-26 신설, -DFABRICMERGE_COVER_FAIR) ─────────────────
+#
+# 공정성 축은 계약 축(contracts.sby)과 **도달성 질문이 다르다**. 그쪽은
+# 「병합 충돌이 실제로 일어나는가」를 묻고 여기는 「기아 직전 상태에 도달하는가」
+# 를 묻는다. 그래서 한 하네스를 공유하면서도 증인을 ifdef 로 가른다 (HiuMask
+# 선례). 계약 축 증인을 여기 함께 켜면 셀만 늘고 이 태스크가 새로 아는 것은
+# 없다 — 같은 궤적을 contracts.sby 가 이미 요구한다.
+#
+# 이 태스크의 유일한 공정성 단언 `wait_fires <= 3` 은 **전건이 없다**. 그러니
+# 계약 축과 같은 「죽은 전건」이 아니라 다른 두 가지가 공허를 만든다:
+#   (1) **죽은 카운터** — wait_fires 가 0 을 못 벗어나면 `<= 3` 은 3비트 폭이
+#       이미 허용하는 값 위의 느슨한 상한이고, N=4 라운드로빈을 재지 않는다.
+#       WF1(증가 경로 활성) 과 WF2(상계 3 에 실제로 닿음)가 이것을 닫는다.
+#       WF2 가 없으면 「1 까지밖에 못 가는」 세계와 구별되지 않고, 그 세계에서
+#       FAB-6 의 문면 「N 회 안에」는 미측정이다.
+#   (2) **grant 없는 리셋** — 카운터는 `!req[gi]` 로도 0 이 된다. lane gi 가
+#       영영 선택되지 않고 요청만 끊기는 궤적에서도 상계는 성립한다. 이것이
+#       기아 그 자체인데 단언이 잡지 못한다. WF3(0 아닌 대기에서 *grant 로*
+#       리셋) 과 WF4(상계 3 인 사이클의 fire 가 lane gi 를 고름)가 그 세계를
+#       배제한다 — 이 둘이 이 파일의 알맹이다.
+# 증인은 lane 마다 따로 선다: 특정 lane 만 기아인 세계를 뭉친 증인은 못 잡는다.
+#
+# 증인이 보증하지 않는 것: cover 모드는 단언을 제거하므로(`chformal -assert
+# -remove`) 증인 궤적은 단언에 제약되지 않은 도달 가능 궤적이다. 상계 자체는
+# 같은 파일의 bmc 태스크가 깊이 20 까지 반증 시도로 잰다. 둘을 따로 읽지 말 것.
+#
+# cover 깊이 20 근거: 가장 깊은 증인은 WF4 의 하위 lane 판이다 — 포인터를
+# 그 lane 너머로 옮기는 첫 grant 1 + 재채움 1 + 지나보내는 fire 3 + 해방 1 에
+# 리셋·채움을 더해 ≈ 9. bmc 와 같은 20 을 써 두 태스크의 지평을 맞춘다.
+
+[tasks]
+bmc
+cover
 
 [options]
-mode bmc
-depth 20
+bmc: mode bmc
+bmc: depth 20
+cover: mode cover
+cover: depth 20
 
 [engines]
 smtbmc z3
 
 [script]
 read -define FABRICMERGE_EXPOSE_FLOW
+# 증인은 cover 태스크에서만 컴파일한다 (HiuMask -DHIUMASK_COVER 선례) —
+# bmc 모델은 단언만 들어 태스크별 셀 수가 정확히 대조된다.
+cover: read -define FABRICMERGE_COVER_FAIR
 read -formal -sv FabricMerge.sv
 hierarchy -top FabricMerge
 proc

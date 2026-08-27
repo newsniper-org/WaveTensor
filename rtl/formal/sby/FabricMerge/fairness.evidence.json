@@ -2,23 +2,23 @@
   "anchors": [
     "Fabric.fair_grant"
   ],
-  "at": "2026-08-26T08:32:27Z",
+  "at": "2026-08-26T15:24:16Z",
   "cells": {
     "assert": 54,
-    "cover": 0
+    "cover": 16
   },
   "cover": {
-    "reached": 0,
+    "reached": 16,
     "unreached": 0
   },
   "inputs": {
     "rtl/generated/FabricMerge.sv": "9afcbab99e4eb409a8679369a43574ef7f93067a12b6d0fd9ceccf32d028dbb2",
-    "rtl/sv/assert/FabricMerge_props.sv": "e05508761efbddd4820989eff07b4e71c4187e0c46988c3d85987e1a2b3c595f"
+    "rtl/sv/assert/FabricMerge_props.sv": "95ca7c2d7fd3bb9d95c5ce080172ecf6f2d9e5b7fca31ce8d9b5d4f7352dd36e"
   },
   "sby": "rtl/formal/sby/FabricMerge/fairness.sby",
-  "sby_sha256": "cddf4a942a4b768c6d48e6ada8213c86da18756f74997fd5e667d522052808bf",
+  "sby_sha256": "0a453a5e4b5a8d3eb52dbe1ead4317354d642f4bcc6a5d78b42245c4a39658ed",
   "schema": "wt64-postformal-evidence/1",
-  "tasks": "FabricMerge-fairness:PASS",
+  "tasks": "bmc:PASS cover:PASS",
   "tool": "SBY v0.66",
   "verdict": "PASS"
 }

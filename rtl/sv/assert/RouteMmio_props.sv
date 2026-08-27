@@ -29,8 +29,33 @@
 // 표 *내용*은 Mem 이라 하네스가 직접 못 읽는다 (yosys 자유 프론트엔드의
 // Mem 접근 수단 부재 — 실측). C2 의 「표」는 단일 쓰기 포트 신호의 거울
 // (그림자)이고, Mem 판독이 그 거울과 일치한다는 다리는 MmioConfig 심층
-// 태스크(mmio_deep.sby)의 assume ①·② 소관이다. 이 하네스의 assume 은
-// 아래 한 개 — 근거는 그 자리에 적었다.
+// 태스크(mmio_deep.sby)의 assume ①·② 소관이다. bmc/prove 에서 이 하네스의
+// 내용 assume 은 아래 한 개 — 근거는 그 자리에 적었다 (cover 태스크만
+// 시작 상태 가정을 더 얹는다. 바로 아래 절).
+//
+// ## ROUTEMMIO_COVER (route_mmio.sby 의 cover 태스크) — 공허 방지
+//
+// C1·C2·C3 는 문법상 무전건이지만 **배선이 한 번도 움직이지 않으면 아무것도
+// 재지 않는다**: 뷰도 표도 영원히 공집합이면 「뷰 ≡ 표」는 0 ≡ 0 이다.
+// 합성 증명의 도달성 질문은 그래서 「기입과 뷰 구동이 실제로 짝지어지는
+// 궤적이 있는가」이고, 아래 증인들이 그 궤적이다. 전건이 문면에 붙은 것도
+// 넷 있다 — initDone(p_pair_*) · h_commit · h_release · h_lbidCommit —
+// 그리고 C2 이름 단언 16건의 `if (shVV[i])`, p_sweep_quiet 의 `!initDone`.
+// 각 증인의 주석에 어느 전건에 대응하는지 적었다.
+//
+// 시작 상태: reset 기점 BMC 는 소거 2^16 사이클을 건너지 못한다(위 .sby
+// 주석의 정직 표기). 그래서 이 태스크만 reset 을 인가하지 않고 t=0 을
+// 「전부 공집합」 — 뷰 레지스터·세 그림자 모두 0, busy 없음, fault 없음 —
+// 으로 가정한다. **initDone 은 자유로 둔다**: p_sweep_quiet 의 전건
+// (!initDone)도 이 태스크에서 증인이 필요하고, 소거 구간은 이 시작 상태
+// 에서 곧바로 닿기 때문이다. 공집합을 못박는 이유는 그림자를 자유로 두면
+// 솔버가 t=0 에 아무 소유나 놓고 증인을 만족시켜 「기입 궤적이 뷰를
+// 만든다」를 하나도 보이지 못하기 때문이다.
+//
+// 단언은 끄지 않는다 — 끌 필요가 없다. sby 는 cover 모드에서
+// `chformal -live -fair -assert -remove` 로 단언을 모델에서 제거한다
+// (2026-08-26 실측, model/design_prep.ys). assume 은 살아남으므로 이
+// 태스크의 증인은 아래 Mem 다리 assume 아래에서 잡힌 것이다.
 
 `timescale 1ns/1ps
 
@@ -219,12 +244,37 @@ module RouteMmio_props (
   // ── reset 프로토콜 (환경 assume — RouteJudge_props 와 동일 근거) ────
   reg f_past_valid = 1'b0;
   always @(posedge clk) f_past_valid <= 1'b1;
+`ifndef ROUTEMMIO_COVER
   always @* begin
     if (!f_past_valid) assume (reset);
     else               assume (!reset);
   end
+`else
+  // 증인 태스크의 시작 상태 — 「전부 공집합」. 근거는 하네스 머리
+  // ROUTEMMIO_COVER 절. initDone 은 일부러 자유로 둔다 (소거 구간 증인).
+  always @* begin
+    assume (!reset);
+    if (!f_past_valid) begin
+      assume (!w_busy);
+      assume (!o_fault);
+      // 뷰(RouteJudge 실레지스터)
+      assume (rj_vv == 16'b0);
+      assume (rj_vn == 256'b0);
+      assume (bank == 256'b0);
+      // 배선 이력 그림자 (C1 의 기준)
+      assume (shVV == 16'b0);
+      assume (shVN == 256'b0);
+      assume (shBank == 256'b0);
+      // 표 기입 이력 그림자 (C2 의 기준)
+      assume (shTV == 16'b0);
+      assume (shTL == 256'b0);
+      assume (shTB == 256'b0);
+    end
+  end
+`endif
 
-  // ── Mem 다리 assume (이 하네스의 유일한 내용 가정) ──────────────────
+  // ── Mem 다리 assume (bmc/prove 에서 이 하네스의 유일한 내용 가정 —
+  //    cover 태스크는 위 「전부 공집합」 시작 상태를 더 얹는다) ─────────
   // 슬롯>=16 의 CHECK 판독은 V=0 이다. 근거: (a) V=1 기입의 커밋은 아래
   // p_pair_commit 이 pSlot<16 을 강제한다 (t 이전 사이클의 보증);
   // (b) reset 후 소거가 fwdMem 전 슬롯을 0 으로 쓴다 (§1.5); (c) 판독=
@@ -285,5 +335,61 @@ module RouteMmio_props (
       p_c3_judge: assert (o_fire == (tok_valid && h_anyMiss));
     end
   end
+
+`ifdef ROUTEMMIO_COVER
+  // ═══ 합성 도달성 증인 (cover 태스크 전용) ═════════════════════════════
+  //
+  // 대응표 — 증인 ↔ 그 증인이 성립시키는 전건:
+  //   c_rm_sweeping        !w_initDone            (p_sweep_quiet)
+  //   c_rm_commit_pair     w_initDone · h_commit  (p_pair_lnid · p_pair_commit)
+  //   c_rm_view_landed     shVV[i] (어떤 i)        (C2 이름 단언 16건)
+  //   c_rm_release_pair    h_release              (p_pair_release)
+  //   c_rm_view_cleared    (같은 전건의 되돌림 방향 — 뷰가 줄어드는 궤적)
+  //   c_rm_bank_pair       h_lbidCommit           (p_pair_bank · p_pair_lbid)
+  //   c_rm_bank_landed     bankPresent 비0        (C2 bank 축의 실물)
+  //   c_rm_judge_pass/fire (무전건인 p_c3_judge 의 두 극성 — 아래 주석)
+  always @(posedge clk) begin
+    if (!reset) begin
+      // ── 소거 구간이 이 시작 상태에서 도달 가능하다.
+      c_rm_sweeping: cover (!w_initDone);
+
+      // ── **이 태스크의 알맹이** — 표 기입과 뷰 구동이 같은 사이클에
+      //    실제로 짝지어진다. p_pair_lnid(w_fwdWrEn == vw_valid)는 양변이
+      //    영원히 0 이어도 통과하므로, 이 증인이 없으면 계약 절반 A 는
+      //    「아무 기입도 없다」로 만족될 수 있다.
+      c_rm_commit_pair: cover (w_initDone && h_commit
+                               && w_fwdWrEn && vw_valid && vw_en);
+
+      // ── 그 구동이 RouteJudge 의 실레지스터까지 닿았다 (C1 의 알맹이).
+      //    동시에 C2 이름 단언 16건의 전건 `shVV[i]` 가 성립하는 궤적이다
+      //    — C1 이 rj_vv == shVV 를 세우므로 rj_vv 비0 이 곧 그 전건이다.
+      c_rm_view_landed: cover (|rj_vv);
+
+      // ── 해제 방향 (p_pair_release 의 전건). 커밋 증인만 두면 「등록만
+      //    되고 해제는 못 하는 기계」도 전부 통과한다.
+      //    정직 표기: 이 증인만으로는 약하다 — 시작 상태에서 *Mem 내용은
+      //    자유*라 (그림자만 공집합으로 못박았다) 솔버가 fwdMem 에 유령
+      //    점유를 놓고 앞선 커밋 없이 해제를 일으킬 수 있다. 실측에서도
+      //    이것은 2스텝에 잡혔다. 그래서 아래를 짝으로 둔다:
+      c_rm_view_cleared: cover (vw_valid && !vw_en && rj_vv[vw_idx]);
+      c_rm_release_pair: cover (h_release && w_fwdWrEn && vw_valid && !vw_en);
+      //    c_rm_view_cleared 는 rj_vv 가 t=0 에 0 으로 못박혀 있어 *반드시*
+      //    앞선 실제 커밋을 거쳐야 성립한다 (실측 4스텝). 즉 「기입→구동→
+      //    뷰 반영→해제 구동→뷰 회수」의 온전한 왕복이 이 한 줄에 걸린다.
+
+      // ── LBID 축 (p_pair_bank · p_pair_lbid 의 전건) 과 그 착지.
+      c_rm_bank_pair: cover (w_initDone && h_lbidCommit
+                             && w_lbWrEn && bw_valid && bw_mapped);
+      c_rm_bank_landed: cover (|bank);
+
+      // ── p_c3_judge 는 무전건이지만 등식이라 *두 극성이 모두 도달
+      //    가능해야* 내용이 있다. 특히 통과(!o_fire) 쪽은 구성된 소유가
+      //    실제로 토큰을 통과시킨다는 뜻이라, 이것이 없으면 「전부
+      //    발화하는 기계」도 C3 를 만족한다 (h_anyMiss 도 항상 참이므로).
+      c_rm_judge_pass: cover (tok_valid && !o_fire && (|rj_vv));
+      c_rm_judge_fire: cover (tok_valid && o_fire);
+    end
+  end
+`endif
 
 endmodule

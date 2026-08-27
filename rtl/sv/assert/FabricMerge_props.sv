@@ -72,6 +72,22 @@ module FabricMerge_props (
   assign face[0] = face_0;  assign face[1] = face_1;
   assign face[2] = face_2;  assign face[3] = face_3;
 
+`ifdef FABRICMERGE_COVER_CONTRACTS
+  // ── 증인용 관측 결선 (cover 태스크에서만 컴파일) ─────────────────────────
+  //
+  // f_rival(i) — lane i 가 「요청을 든 채로 구동은 못 하고, 자기 face 에
+  // 버스와 *다른* 비0 값을 들고 있는」 상태. FAB-9 의 반례 형상이 정확히
+  // 이것이다: 게이팅이 빠지면 이 비트들이 OR 병합에 실려 소비자가 어느
+  // 생산자도 보내지 않은 값을 받는다. 이 상태가 도달 가능해야
+  // `if (drive[gi]) assert (consumer_pay == face[gi])` 가 「경쟁자가 없는
+  // 세계」의 자명한 등식이 아니게 된다.
+  wire [3:0] f_rival;
+  assign f_rival[0] = req[0] && !drive[0] && (|face_0) && (face_0 != consumer_pay);
+  assign f_rival[1] = req[1] && !drive[1] && (|face_1) && (face_1 != consumer_pay);
+  assign f_rival[2] = req[2] && !drive[2] && (|face_2) && (face_2 != consumer_pay);
+  assign f_rival[3] = req[3] && !drive[3] && (|face_3) && (face_3 != consumer_pay);
+`endif
+
   // ── 리셋 규약 (하네스 기반 시설 — 유일한 전역 assume) ────────────────
   //
   // 근거: 선-formal 모델의 Init 은 리셋 직후 상태다. 생성 SV 의 레지스터는
@@ -178,6 +194,64 @@ module FabricMerge_props (
       end
     end
 
+`ifdef FABRICMERGE_COVER_CONTRACTS
+    // ── lane 축 cover 증인 (계약 축 — 「병합 충돌이 실제로 일어나는가」) ────
+    //
+    // 위 lane 단언 열 개 중 **아홉이 전건을 가진 함의**다. 전건이 도달
+    // 불가능하면 그 단언은 공허하게 참이고, 셀 수 게이트도 항진 검사도
+    // 그것을 잡지 못한다 (`!전건 || 후건` 의 \A 는 전건이 죽어 있어도 상수로
+    // 접히지 않는다). 아래 증인이 그 결을 닫는다 — 각 줄의 `←` 오른쪽이
+    // 그 증인이 살리는 단언이고, 인용은 하네스 문면 그대로다 (줄번호로
+    // 매지 않는다 — 줄번호 매인 참조가 밀려 상수가 되는 것이 이 저장소가
+    // 이미 밟은 공허의 둘째 결이다).
+    //
+    // 증인은 lane 마다 따로 선다. 「어느 한 lane 이 구동한다」로 뭉치면
+    // 라운드로빈이 특정 lane 에 영영 닿지 못하는 세계를 배제하지 못하고,
+    // 그 lane 의 전건 붙은 단언 아홉은 그대로 공허하다.
+    wire f_ok_c = f_past_valid && !reset;
+
+    // WL1 ← `if (drive[gi]) assert (consumer_pay == face[gi])` (FAB-9 lane 축)
+    //       lane gi 가 실제로 버스를 구동하고 그 face 가 비0 이다. face 가
+    //       늘 0 이면 등식은 0 == 0 으로 아무것도 재지 않는다.
+    always @(posedge clk) if (f_ok_c) cover (drive[gi] && (|face[gi]));
+
+    // WL2 ← 같은 단언의 **충돌면**. lane gi 가 구동 중인데 다른 lane 이
+    //       버스와 다른 비0 face 를 들고 나란히 요청 중이다 — 게이팅이
+    //       빠졌다면 바로 반례가 되는 그 형상이 도달 가능하다는 증거.
+    always @(posedge clk) if (f_ok_c) cover (drive[gi] && (f_rival != 4'b0000));
+
+    // WL3 ← `if (vld[gi] && !$past(vld[gi])) assert ($past(doPush[gi]))`
+    //       (Fabric.valid_tracks_data ①) — vld 상승이 실제로 일어난다.
+    always @(posedge clk) if (f_ok_c) cover (vld[gi] && !$past(vld[gi]));
+
+    // WL4 ← `if ($past(doPush[gi])) assert (face[gi] == $past(push_pay[gi]))`
+    //       (② ) — 비0 페이로드로 밀어넣는다. 0 만 흐르는 세계에서는 이
+    //       등식도 0 == 0 이다.
+    always @(posedge clk) if (f_ok_c) cover ($past(doPush[gi] && (|push_pay[gi])));
+
+    // WL5 ← `assert (!doPop[gi] || (consumer_valid && consumer_ready && drive[gi]))`
+    //       (Fabric.capture_atomic ①) 의 전건 doPop[gi].
+    always @(posedge clk) if (f_ok_c) cover (doPop[gi]);
+
+    // WL6 ← capture_atomic ② `if (!cnt[gi] && $past(cnt[gi])) …` 와
+    //       ③ `if ($past(drive[gi] && fire)) …` 의 전건. 둘은 같은 사건의
+    //       앞뒤 면이라 증인 하나로 묶는다 (두 전건을 한 궤적이 함께 세운다).
+    always @(posedge clk) if (f_ok_c)
+      cover (!cnt[gi] && $past(cnt[gi]) && $past(drive[gi] && fire));
+
+    // WL7 ← stall_on_pending ① `assert (stall[gi] == full[gi])` ·
+    //       ② `if ($past(full[gi])) assert (face[gi] == $past(face[gi]))` ·
+    //       Fabric.bp_loud `if ($past(strb[gi] && stall[gi])) assert (fault)`
+    //       셋의 공통 활성면: 자원이 가득 찬 채로 **실제 쓰기 시도**를 받는다.
+    //       full 이 도달 불가능하면 ① 은 0 == 0, ② 는 「아무도 안 쓰는데 안
+    //       변한다」, bp_loud 는 통째로 공허하다.
+    always @(posedge clk) if (f_ok_c) cover ($past(full[gi] && strb[gi]));
+
+    // WL8 ← stall_on_pending ③ `if ($past(full[gi] && !doPop[gi])) assert (full[gi])`
+    //       의 전건 — pop 없는 full 구간이 실제로 존재한다.
+    always @(posedge clk) if (f_ok_c) cover ($past(full[gi] && !doPop[gi]));
+`endif // FABRICMERGE_COVER_CONTRACTS
+
 `ifndef FABRICMERGE_NO_FAIR
     // ── Fabric.fair_grant (FAB-6) — 유계 공정성, BMC 전용 ────────────────
     // 라운드로빈: fire 마다 ptrOh 가 방금 서비스된 lane 의 다음으로 돈다.
@@ -196,9 +270,106 @@ module FabricMerge_props (
     end
     always @(posedge clk)
       if (f_past_valid && !reset) assert (wait_fires <= 3'd3);
+
+`ifdef FABRICMERGE_COVER_FAIR
+    // ── 공정성 축 cover 증인 (「기아 직전 상태에 도달하는가」) ─────────────
+    //
+    // 위 단언은 전건이 없다 — 그래서 앞의 계약 축과 도달성 질문이 다르다.
+    // 여기서 공허를 만드는 것은 죽은 전건이 아니라 **죽은 카운터**다:
+    // wait_fires 가 0 을 벗어나지 못하면 `<= 3` 은 폭(3비트)이 이미 허용하는
+    // 값 위의 느슨한 상한일 뿐이고, N=4 라운드로빈에 대해 아무것도 재지 않는다.
+    // 게다가 카운터는 `!req[gi]` 로도 0 으로 되돌아가므로, lane gi 가 **영영
+    // grant 를 못 받고 요청만 끊기는** 세계에서도 상계는 성립한다. 그 두
+    // 세계를 배제하는 것이 아래 넷이다.
+
+    // WF1 — 증가 경로의 활성면: lane gi 가 요청을 든 채로 *남의* grant 를
+    //       지나본다. 이것이 도달 불가능하면 카운터는 영영 0 이다.
+    always @(posedge clk)
+      if (f_past_valid && !reset) cover (req[gi] && fire && !drive[gi]);
+
+    // WF2 — **상계가 빡빡하다**: 허용 최댓값 3 에 실제로 닿는다. 1 까지밖에
+    //       못 가면 `<= 3` 은 N-1 이라는 문면을 재지 못한 것이다 (FAB-6 의
+    //       주장은 「N 회 안에」이지 「언젠가는」이 아니다).
+    always @(posedge clk)
+      if (f_past_valid && !reset) cover (wait_fires == 3'd3);
+
+    // WF3 — **기아 배제의 알맹이**: 0 이 아닌 대기에서 *grant 로* 카운터가
+    //       내려간다. 요청 철회(!req)에 의한 리셋과 구별되지 않으면, 이
+    //       lane 이 한 번도 선택되지 않는 궤적 위에서도 상계는 참이다.
+    always @(posedge clk)
+      if (f_past_valid && !reset)
+        cover (req[gi] && fire && drive[gi] && (wait_fires != 3'd0));
+
+    // WF4 — 상계 바로 그 지점에서의 해방: wait_fires = 3 인 사이클의 fire 가
+    //       lane gi 를 고른다. WF2(도달) 와 WF3(grant 로 해제) 를 한 궤적에
+    //       겹쳐 「N-1 을 넘기지 않고 반드시 선택된다」를 그 자리에서 보인다.
+    always @(posedge clk)
+      if (f_past_valid && !reset)
+        cover ((wait_fires == 3'd3) && req[gi] && fire && drive[gi]);
+`endif // FABRICMERGE_COVER_FAIR
 `endif
 
   end endgenerate
+
+`ifdef FABRICMERGE_COVER_CONTRACTS
+  // ── 모듈 축 cover 증인 (계약 축) ────────────────────────────────────────
+  //
+  // 증인이 보증하는 것과 보증하지 않는 것 (과대 주장 금지 — DecodeWalk 선례):
+  // sby 의 cover 모드는 `chformal -assume -early` 로 assume 은 남기고
+  // `chformal -live -fair -assert -remove` 로 **단언을 제거한다**. 그러므로
+  // 아래 궤적은 「단언을 만족하도록 제약된 궤적」이 아니라 리셋 규약만 지킨
+  // 도달 가능 궤적이다. 그럼에도 결론이 서는 것은 같은 하네스의 bmc/prove
+  // 태스크가 *모든* 도달 가능 상태에서 단언이 서는 것을 따로 보이기 때문이다.
+  // 순서가 중요하다 — bmc/prove 가 깨지면 증인의 해석도 함께 무너진다.
+  wire f_ok_m = f_past_valid && !reset;
+
+  // WC1 ← `assert (!locked || $onehot(lockedOh))` 의 전건 `locked`.
+  //       잠금이 영영 서지 않으면 이 단언은 공허하고, 포획 경로(lockedOh)
+  //       전체가 검사에서 빠진다.
+  always @(posedge clk) if (f_ok_m) cover (locked);
+
+  // WC2 ← `assert ($onehot0(drive))` · `assert (consumer_valid == (drive != 4'b0))`
+  //       구동 집합이 실제로 비고 버스에 비0 이 실린다. drive 가 늘 0 이면
+  //       $onehot0 은 자명하고 등식은 0 == 0 이다.
+  always @(posedge clk) if (f_ok_m) cover (consumer_valid && (|consumer_pay));
+
+  // WC3 ← 같은 두 단언의 **최대 경합면**: 넷 전부 요청 중인데 구동은 하나다.
+  //       $onehot0(drive) 가 「경합이 없어서」가 아니라 선택 규칙 때문에
+  //       서는 것임을 이 증인이 가른다.
+  always @(posedge clk) if (f_ok_m) cover ((req == 4'b1111) && (drive != 4'b0000));
+
+  // WC4 ← `if ($past(shoveAny)) assert (fault)` (Fabric.fault_raised) 의 전건.
+  always @(posedge clk) if (f_ok_m) cover (shoveAny);
+
+  // WC5 ← 같은 단언의 상승 순간 — fault 가 *처음* 서는 에지. 이미 서 있는
+  //       상태를 지나가는 것과 구별되지 않으면 loud 단언이 자명해진다.
+  always @(posedge clk) if (f_ok_m) cover (fault && !$past(fault));
+
+  // WC6 ← `if ($past(fault && !faultClear)) assert (fault)` (fault_sticky) 의 전건.
+  always @(posedge clk) if (f_ok_m) cover ($past(fault && !faultClear));
+
+  // WC7 ← 그 **반대면**: fault 가 영구 1 이 아니다 (해제가 실제로 내린다).
+  //       이것이 없으면 fault_raised · bp_loud 의 `assert (fault)` 는 「리셋
+  //       이후 늘 1 인 비트」 위에서 자명하게 통과한다 — 전건 도달성과는
+  //       다른 결의 공허이고, 같은 단언 묶음에 함께 걸린다.
+  always @(posedge clk) if (f_ok_m) cover (!fault && $past(fault));
+
+  // WC8 ← bp_no_consumer_write 의 전건 `$past(consumer_valid && !consumer_ready)`.
+  //       페이로드 비0 을 함께 요구해 「불변」이 0 의 불변이 아니게 한다.
+  always @(posedge clk) if (f_ok_m)
+    cover ($past(consumer_valid && !consumer_ready) && (|consumer_pay));
+
+  // WC9 ← 같은 전건 ∧ 그 구간의 shove. 하네스 주석이 주장하는 「shove 가
+  //       그동안 일어나도 쓰이는 것은 fault 비트 하나뿐」이 실제로 재어지는
+  //       궤적 — 배압과 위반이 겹치지 않는 세계라면 그 문장은 미측정이다.
+  always @(posedge clk) if (f_ok_m)
+    cover ($past(consumer_valid && !consumer_ready) && shoveAny);
+
+  // WC10 ← 같은 전건의 종결면: 배압이 실제로 풀린다(fire). 영영 얼어 있는
+  //        기계에서는 「얼어 있다」가 자명하고, 잠금 해제 경로가 미측정이다.
+  always @(posedge clk) if (f_ok_m)
+    cover ($past(consumer_valid && !consumer_ready) && fire);
+`endif // FABRICMERGE_COVER_CONTRACTS
 
 endmodule
 

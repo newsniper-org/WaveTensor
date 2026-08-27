@@ -1,22 +1,22 @@
 {
   "anchors": [],
-  "at": "2026-08-26T10:12:34Z",
+  "at": "2026-08-26T17:11:48Z",
   "cells": {
     "assert": 32,
-    "cover": 0
+    "cover": 20
   },
   "cover": {
-    "reached": 0,
+    "reached": 20,
     "unreached": 0
   },
   "inputs": {
     "rtl/generated/OperandDecode.sv": "ac544b13a9226a0d1f966c0ad07ef916c318d2ad4d6acf957e1c5961c76edc99",
-    "rtl/sv/assert/OperandDecode_props.sv": "a5c7bdd39b76660f4b67500b8f7164fc5e555fb47eaa5bc64c75ba693f7c02b7"
+    "rtl/sv/assert/OperandDecode_props.sv": "29322b1e0fd67d6a803d8f74d9df78ae63ab2ed412ccb5ea9af7cd8ed2ec863f"
   },
   "sby": "rtl/formal/sby/OperandDecode/body_judge.sby",
-  "sby_sha256": "98b9bca714bba230d0a476203dd581173e761a28532a4c295d36ffe2d9e064f6",
+  "sby_sha256": "61b8fddfc2bf719f34f1706660a2799866333823e827aafb105ce7d824c76fb5",
   "schema": "wt64-postformal-evidence/1",
-  "tasks": "OperandDecode-body_judge:PASS",
+  "tasks": "cover:PASS prove:PASS",
   "tool": "SBY v0.66",
   "verdict": "PASS"
 }

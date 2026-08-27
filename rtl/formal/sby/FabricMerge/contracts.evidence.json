@@ -10,23 +10,23 @@
     "Fabric.fault_sticky",
     "Fabric.bp_no_consumer_write"
   ],
-  "at": "2026-08-26T08:24:50Z",
+  "at": "2026-08-26T15:16:42Z",
   "cells": {
     "assert": 50,
-    "cover": 0
+    "cover": 42
   },
   "cover": {
-    "reached": 0,
+    "reached": 42,
     "unreached": 0
   },
   "inputs": {
     "rtl/generated/FabricMerge.sv": "9afcbab99e4eb409a8679369a43574ef7f93067a12b6d0fd9ceccf32d028dbb2",
-    "rtl/sv/assert/FabricMerge_props.sv": "e05508761efbddd4820989eff07b4e71c4187e0c46988c3d85987e1a2b3c595f"
+    "rtl/sv/assert/FabricMerge_props.sv": "95ca7c2d7fd3bb9d95c5ce080172ecf6f2d9e5b7fca31ce8d9b5d4f7352dd36e"
   },
   "sby": "rtl/formal/sby/FabricMerge/contracts.sby",
-  "sby_sha256": "c46074e68932f9cc3a0f78ad9b2430d64b34b51281965e8d7e9710a0509848df",
+  "sby_sha256": "d30345102596cb17cbc3c84eda7b692976ebd275cd0cc5866fb0ad11cac51c68",
   "schema": "wt64-postformal-evidence/1",
-  "tasks": "bmc:PASS prove:PASS",
+  "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",
   "verdict": "PASS"
 }

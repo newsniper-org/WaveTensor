@@ -651,11 +651,34 @@ rtl-formal:
 # 를 컨테이너 /tmp 로 두면 --rm 과 함께 사라진다. 셀 수를 세는 쪽은 호스트라
 # 전부 0 으로 읽히고, 게이트가 멀쩡한 태스크를 공허로 오판한다 (2026-08-25
 # 첫 실행에서 14/16 오탐). 세는 주체와 산출물이 같은 파일시스템에 있어야 한다.
+#
+# ## 증거 층 — 이 타깃이 남기고 lint 가 검사한다 (2026-08-26)
+#
+# 스윕은 이제 태스크마다 `rtl/formal/sby/<Dir>/<name>.evidence.json` 을 쓴다.
+# 산출물(/tmp)은 여전히 버려지지만 **증거는 저장소에 남는다** — 그 둘은 다른
+# 것이다. 산출물은 수십 MB 의 재생성 가능한 중간물이고, 증거는 태스크당 20줄
+# 남짓의 「무엇을 언제 무슨 소스로 쟀는가」다.
+#
+# 커밋 대상인 이유는 이 저장소의 기존 처분과 같다 (.gitignore 의 synth 절):
+# **부피 큰 재생성 가능 산출물은 ignore, 컴팩트한 측정 증거는 tracked.**
+# `synth/reports/fp_ops/*_run.log` 가 「reviewer 가 grep 할 수 있어야 한다」는
+# 이유로 tracked 인 것과 같은 자리다. 증거를 커밋하지 않으면 갓 clone 한
+# 사람의 `make lint` 는 증거 0 건 = 전부 미측정이 되고, 그 검사는 방금 스윕을
+# 돌린 사람 말고 아무에게도 아무것도 재지 못한다.
+#
+# 스윕 직후의 `--require-fresh` 는 **게이트 자신에 대한 검사**다. 방금 잰
+# 증거가 stale 하거나 비어 있다면 그것은 대상의 결함이 아니라 스윕의 결함이다
+# — 2026-08-25 의 두 오탐(경로·인용)이 정확히 그 형태였고, 그때는 그것을
+# 알아차릴 검사가 없었다. `make lint` 쪽은 이 강도를 걸지 않는다: RTL 을
+# 편집하는 중에는 증거가 stale 한 것이 정상이고, 거기서 실패시키면 50분짜리
+# 스윕 없이는 아무 작업도 못 한다. 대신 stale·미측정을 **낱말을 갈라** 인쇄하고
+# 게이트는 래칫(줄지 않는다)으로만 건다.
 rtl-postformal:
 	@test -d $(RTL_DIR)/formal/sby || { echo "rtl-postformal: sby 스크립트가 없다 — 미측정은 통과가 아니다"; exit 1; }
 	@rm -rf $(SBY_OUT); mkdir -p $(SBY_OUT)
 	@podman run --rm --userns=keep-id -v "$(CURDIR):/workspace" -v "$(SBY_OUT):/sbyout" \
 	   wavetensor-dev:scala sh -lc "cd /workspace && sh scripts/sby_sweep.sh"
+	@python3 $(CURDIR)/scripts/lint_postformal.py --require-fresh
 
 # 후-formal 영향 역색인 — 「이 변경으로 어느 태스크가 흔들리는가」.
 #
