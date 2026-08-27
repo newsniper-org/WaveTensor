@@ -2632,7 +2632,7 @@ Phase 1 인벤토리로 확정한 현행 사실:
 | f16 | SHIP (v1.8 storage/CVT, v2.0 compute) | bf16 과 11-bit mantissa 곱셈기 공유로 near-free; f16×f16→fp32 가 실제 GPU 계약; f16-accumulate 미제공 |
 | bf16 | SHIP (v2.0) | THE training dtype; 8-bit exponent 가 loss-scaling 하드웨어 자체를 삭제 |
 | f32 | SHIP (v1.8 scalar + accumulator, v2.0 master weights) | 누산기/master/Adam/통계/rsqrt/exp 의 정밀도 천장 — DL 에서 이 위는 무가치 |
-| f64 | **별도 확장 `Lf` 로 분리** (2026-07-16 사용자 결정; base 에서는 dtype nibble 0x5 → decode_error 로 예약 유지) | TPU/Trainium/Cerebras/Graphcore/Dojo 어디에도 없어 base DL roadmap 에서는 제외하되, 완전 컷이 아니라 **WT64v1 의 optional extension "Lf"** (RISC-V 확장 문자 관례 유사 — 구현 명칭 예: WT64v1Lf) 로 본격 설계를 이관. Lf 착수 시점/스코프는 미정 — Stage-2 (Avant G70) 이상에서만 물리적으로 가능 |
+| f64 | **별도 확장 `Lf` 로 분리** (2026-07-16 사용자 결정 — ⚠️ 그 `Lf` 는 2026-08-28 에 `Lf64min`(f64 지원 그 자체) / `Lf64di`(`Di` 의 f64 판)로 **분할됨** (2026-08-28 사용자 결정). `Lf64di` 는 `Lf64min` 과 `Di` 를 의존성으로 가진다 — `.claude-memos/lf_extension_split.md`); base 에서는 dtype nibble 0x5 → decode_error 로 예약 유지) | TPU/Trainium/Cerebras/Graphcore/Dojo 어디에도 없어 base DL roadmap 에서는 제외하되, 완전 컷이 아니라 **WT64v1 의 optional extension "Lf"** (RISC-V 확장 문자 관례 유사 — 구현 명칭 예: WT64v1Lf) 로 본격 설계를 이관. Lf 착수 시점/스코프는 미정 — Stage-2 (Avant G70) 이상에서만 물리적으로 가능 |
 
 ### 23.3 스칼라/벡터 일관성 해결 (사용자 질문 3 직답)
 

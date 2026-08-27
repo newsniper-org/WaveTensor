@@ -62,6 +62,11 @@ v1.7 은 (parity 수준으로) output-side 를 추가 개선하나 완전 제거
 - **f64 → 별도 optional extension "Lf" 로 이관** (2026-07-16 사용자 결정,
   완전 컷 아님): base 는 dtype nibble 0x5 를 decode_error 로 예약, Lf 가
   나중에 claim. Lf 본격 설계는 Stage-2 이상에서.
+- **그 `Lf` 는 둘로 분할됐다 (2026-08-28 사용자 결정)** — `Lf64min`(f64 지원
+  그 자체만) / `Lf64di`(`Di` 미적분 확장의 f64 판). **`Lf64di` 는 `Lf64min`
+  과 `Di` 를 의존성으로 갖는다**(역방향 강제는 미결). 분할이 벽 하나를 즉시
+  드러냈다 — dtype 니블 여덟 칸이 전부 이름을 갖고 있어 `dual_f64` 가 쓸
+  자리가 없다. 상세: `.claude-memos/lf_extension_split.md`
 - **v1.8 착수 결정됨 (2026-07-16)**: staging 은 v1.8.0a(YAML codegen +
   decode skeleton) → 0b(int32 누산) → 0c(FP-UNIT, synth gate 후) →
   0d(CVT/DEQUANT/norm 재구축). spec §23.9 참조.

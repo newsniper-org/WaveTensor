@@ -157,7 +157,7 @@ spec 이 명시적으로 부정하는 항목들. 포지셔닝 규율 자체가 �
 | **v1.8 은 학습 가능하지 않다.** "v1.8 을 학습 가능한 것처럼 마케팅 금지" | §23.5 |
 | **v2.0 은 학습-속도 parity 가 아니다.** "v2.0 은 학습-**정확성** parity + GPU 가 못 주는 차별점(bit-reproducibility)이지, 학습-**가속** parity 가 아님. 속도 주장은 Stage-2 Avant G70 (v2.1) 부터" — 단 Avant G70 은 cross-vendor 실측 이후 **폐기**됐으므로(§5.4) 이 문장의 "Stage-2" 지시대상은 재지정 필요 | §23.5, cross-vendor §5 |
 | **타 GPU/CPU 와의 bitwise 동일성은 영원히 약속 불가.** FP 덧셈 비결합성 — GPU 자신도 kernel config 간 bit 동일성을 보장하지 않는다 | §23.4 |
-| **f64 는 v2.0 스코프 밖.** 별도 확장 `Lf`; base 의 dtype nibble 0x5 는 decode_error 예약 유지 | §23.2, §23.6a 전역 불변식 1 |
+| **f64 는 v2.0 스코프 밖.** 별도 확장 `Lf`; base 의 dtype nibble 0x5 는 decode_error 예약 유지. ⚠️ 그 `Lf` 는 이제 `Lf64min`(f64 지원 그 자체) / `Lf64di`(`Di` 의 f64 판)로 **분할됨** (2026-08-28 사용자 결정). `Lf64di` 는 `Lf64min` 과 `Di` 를 의존성으로 가진다 — `.claude-memos/lf_extension_split.md` | §23.2, §23.6a 전역 불변식 1 |
 | **FP8 / FP_LANES=8+ / 16-fragment 출력 FSM 은 v2.1.** SR 의 default 승격 검토도 v2.1 | §23.1 v2.1 bullet |
 | **bf16-accumulate 는 영구 금지.** 완화 loosening 대상이 아니다 | §23.1, §23.6a 불변식 4 |
 | **TRNG 는 SR 의 엔트로피원이 아니다.** SR 은 counter-based 여야 재현 가능하다(§2.2) — `HIU.v:347` 의 ring-oscillator TRNG 와 SR 은 **직교하며 연결 금지** | §23.1 (counter-based), cross-vendor §5.1 |
