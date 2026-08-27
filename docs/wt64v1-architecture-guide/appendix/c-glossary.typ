@@ -46,7 +46,8 @@
   [확장 헤더 · EH], [extension header], [@sec:isa], [사슬로 붙는 가변 길이 단위],
   [종료 표식], [sentinel / END], [@sec:extpayload], [사슬의 끝. *종료의 authority*],
   [태그], [tag], [@sec:isa], [토큰과 함께 흐르는 80비트 식별 정보],
-  [조각], [fragment], [@sec:extpayload], [하나의 논리 결과를 이루는 부분 전송 단위],
+  [조각열], [fragment sequence], [@sec:extpayload], [4.3 의 다섯 조건을 만족하는 전송 묶음. *하나로 센다*],
+  [조각], [fragment], [@sec:extpayload], [조각열의 원소인 부분 전송 단위],
   [고정 순회], [fixed walk], [@sec:extpayload], [슬롯 상한만큼 고정 횟수 순회],
   [lowering], [lowering], [@sec:isa], [고수준 표현을 실행 가능한 명령열로 낮추기],
 )
