@@ -449,6 +449,7 @@ lint:
 	python3 $(CURDIR)/scripts/lint_guard_map.py
 	python3 $(CURDIR)/scripts/lint_postformal.py
 	python3 $(CURDIR)/scripts/lint_generated_names.py
+	python3 $(CURDIR)/scripts/lint_tautology.py --audit
 
 # =============================================================================
 # P0-2 — Cluster 이중 빌드(FRAG_SLOTS=1 / FRAG_SLOTS=4) 단일 진입점.
@@ -673,12 +674,44 @@ rtl-formal:
 # 편집하는 중에는 증거가 stale 한 것이 정상이고, 거기서 실패시키면 50분짜리
 # 스윕 없이는 아무 작업도 못 한다. 대신 stale·미측정을 **낱말을 갈라** 인쇄하고
 # 게이트는 래칫(줄지 않는다)으로만 건다.
+#
+# ## 상수 접힘 게이트 — 공허 3형 (2026-08-27)
+#
+# 단언이 `connect \A 1'1` 로 접히면 **어떤 설계에서도 통과한다.** 셀 수는
+# 정직하게 1 을 세고 sby 는 PASS 를 낸다 — 앞의 두 게이트(HOLLOW·증인)가
+# 통째로 눈감는 자리다. 음성 시험 실측(격리 사본): 항진 4건을 심은 하네스에서
+# `sby … prove` 가 **PASS (rc=0)** 를 냈고 `lint_tautology` 만 잡았다.
+#
+# 왜 `lint_postformal` 이 아니라 별도 스크립트인가 — 셀 수 세기와 달리
+# **간접 결속을 따라가야 하므로 grep 두 줄로 끝나지 않는다.** 실측으로 이
+# 저장소의 모델에는 모듈 수준 상수 결속이 434건 있고, 직접 `\A 1'1` 만
+# 보면 그 뒤에 숨은 항진을 통째로 놓친다. 파서는 한 벌뿐이고(`--count` 를
+# 스윕이, `--audit` 를 여기가 부른다) 그것이 정규식 사본이 두 층에 생기는
+# 것 — 2026-08-25 두 오탐의 뿌리 — 을 막는다.
+#
+# **두 강도가 다른 이유**는 `--require-fresh` 의 비대칭과 정확히 같다.
+# 모델은 /tmp 에 있고 커밋되지 않으므로 갓 clone 한 사람에게는 없다. 거기서
+# 하드 실패시키면 50분 스윕 없이는 아무 작업도 못 하고, 다음 사람이 할 일은
+# 정해져 있다 — 게이트를 「임시로」 끄는 것. 그래서:
+#
+#   · `make lint`          모델 없음 = **미계수로 인쇄**하고 통과.
+#                          상수 0 을 인쇄하지 않는다 — 「없다」와 「없는 곳을
+#                          봤다」를 가르는 것이 이 게이트의 알맹이다.
+#   · `make rtl-postformal` 방금 스윕을 돌렸는데 모델이 없다 = **게이트의
+#                          결함**이다. 하드 실패.
+#
+# 그리고 `--audit` 는 매번 **양성 대조를 먼저** 돌린다 (일부러 심은 상수
+# 접힘을 잡는지). 그것이 없으면 계수 0 은 「접힘이 없다」와 「검사가 죽었다」를
+# 구별하지 못하고, 그 둘이 같은 결과를 내는 것이 이 저장소가 세 번 밟은
+# 형태다. 양성 대조는 모델 없이 도므로 **갓 clone 한 사람에게도 뜻이 있다.**
 rtl-postformal:
 	@test -d $(RTL_DIR)/formal/sby || { echo "rtl-postformal: sby 스크립트가 없다 — 미측정은 통과가 아니다"; exit 1; }
 	@rm -rf $(SBY_OUT); mkdir -p $(SBY_OUT)
 	@podman run --rm --userns=keep-id -v "$(CURDIR):/workspace" -v "$(SBY_OUT):/sbyout" \
 	   wavetensor-dev:scala sh -lc "cd /workspace && sh scripts/sby_sweep.sh"
 	@python3 $(CURDIR)/scripts/lint_postformal.py --require-fresh
+	@SBY_OUT=$(SBY_OUT) python3 $(CURDIR)/scripts/lint_tautology.py \
+	   --audit --require-models
 
 # 후-formal 영향 역색인 — 「이 변경으로 어느 태스크가 흔들리는가」.
 #

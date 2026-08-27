@@ -6,23 +6,69 @@
     "Route.view_sync",
     "Route.scope_independent"
   ],
-  "at": "2026-08-26T17:26:12Z",
-  "cells": {
-    "assert": 43,
-    "cover": 23
-  },
+  "at": "2026-08-27T10:08:03Z",
   "cover": {
     "reached": 23,
-    "unreached": 0
+    "reached_names": [
+      "RouteJudge_props.w10_verdict_flips_to_fault",
+      "RouteJudge_props.w11_sticky_rise",
+      "RouteJudge_props.w12_sticky_hold",
+      "RouteJudge_props.w13_sticky_clear",
+      "RouteJudge_props.w14_set_beats_clear",
+      "RouteJudge_props.w15_view_write_changes",
+      "RouteJudge_props.w16_view_invalidate",
+      "RouteJudge_props.w17_other_entry_live",
+      "RouteJudge_props.w18_view_hold_nonempty",
+      "RouteJudge_props.w19_bank_set",
+      "RouteJudge_props.w1_clean_delivery",
+      "RouteJudge_props.w20_bank_clear",
+      "RouteJudge_props.w21_other_bank_bit_live",
+      "RouteJudge_props.w22_bank_hold_nonempty",
+      "RouteJudge_props.w23_reset_exit_window",
+      "RouteJudge_props.w2_miss_lnid_only",
+      "RouteJudge_props.w3_miss_lbid_only",
+      "RouteJudge_props.w4_double_miss_one_fire",
+      "RouteJudge_props.w5_srckind_gates_lbid",
+      "RouteJudge_props.w6_sibling_nonowner_clean",
+      "RouteJudge_props.w7_miss_without_presentation",
+      "RouteJudge_props.w8_repeat_presentation",
+      "RouteJudge_props.w9_verdict_flips_to_clean"
+    ],
+    "unreached": 0,
+    "unreached_names": []
   },
   "inputs": {
     "rtl/generated/RouteJudge.sv": "63682c0c0bf02d83d1516d39734b05c99d428f1fc714bbce6527d759dc38dd68",
-    "rtl/sv/assert/RouteJudge_props.sv": "e6c9e73c520265878379063d768df8d26c34e03b8886ea8bd35e5b0afc217e8d"
+    "rtl/sv/assert/RouteJudge_props.sv": "bba23e0f65e8f9c4fd35b9eec03f153ffe0b8ac88f5ffba6fe199edf989bfbfa"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 43,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 23,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 43,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
   },
   "sby": "rtl/formal/sby/RouteJudge/route_judge.sby",
   "sby_sha256": "3866ad55a6bc467ab0f54fdf479bfa3785a5725e384b216f65c57bf7e103411a",
-  "schema": "wt64-postformal-evidence/1",
+  "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",
-  "verdict": "PASS"
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
 }

@@ -207,55 +207,64 @@ module XlateStore_props (
   // 증인은 cover 태스크에서만 컴파일한다 (-DXLATE_COVER). bmc/prove 모델을
   // 종전과 한 비트도 다르지 않게 유지하기 위한 규율이다.
 `ifdef XLATE_COVER
-  // W1 — fill_tagged 의 전제: 채움 바이패스 적중이 실제로 일어난다
-  always @(posedge clk) if (f_ok) cover (fillHit);
+  // W1 ← Isolation.fill_tagged
+  //      전제: 채움 바이패스 적중이 실제로 일어난다
+  always @(posedge clk) if (f_ok) w1_fill_hit: cover (fillHit);
 
-  // W2 — valid_check/partition_check 의 전제: 설치→커밋→저장 기입→조회
+  // W2 ← XlateStore.valid_check · XlateStore.partition_check
+  //      전제: 설치→커밋→저장 기입→조회
   //      적중의 전 경로가 살아 있다 (바이패스가 아닌 저장 블록 적중)
-  always @(posedge clk) if (f_ok) cover (storeHit && !fillHit);
+  always @(posedge clk) if (f_ok) w2_store_hit: cover (storeHit && !fillHit);
 
-  // W3 — 저장 Mem 이 *변할 수 있다*: 관측 중인 바로 그 주소를 커밋이
+  // W3 ← XlateStore.flush_keeps_data · Isolation.install_scoped
+  //      저장 Mem 이 *변할 수 있다*: 관측 중인 바로 그 주소를 커밋이
   //      갈아엎는 에지. 이것 없이는 아래 두 불변 단언(W4 축·flush 축)이
   //      「메모리가 아무 때도 안 변한다」로 공허하게 성립한다.
   always @(posedge clk)
     if (f_ok && $stable(entryAddr) && $past(commitFire)
         && ($past({commitSel, commitLine_idx}) == entryAddr))
-      cover (f_body != $past(f_body));
+      w3_body_changes: cover (f_body != $past(f_body));
 
-  // W4 — install_scoped 단언의 전제: 커밋 에지인데 기입 주소가 관측 주소와
+  // W4 ← Isolation.install_scoped
+  //      단언의 전제: 커밋 에지인데 기입 주소가 관측 주소와
   //      다른 사이클이 실재한다
   always @(posedge clk)
     if (f_ok && $stable(entryAddr) && $past(commitFire))
-      cover ($past({commitSel, commitLine_idx}) != entryAddr);
+      w4_commit_elsewhere: cover ($past({commitSel, commitLine_idx}) != entryAddr);
 
-  // W5 — flush_keeps_data 의 본 증인 (XlateStore.tla 의
+  // W5 ← XlateStore.flush_keeps_data
+  //      본 증인 (XlateStore.tla 의
   //      Witness_DataSurvivesFlush 의 RTL 판): 자기 파티션 flush 를 건넜는데
   //      그 파티션 주소의 저장 몸체가 *비어 있지 않은 채로* 살아 있다
   always @(posedge clk)
     if (f_ok && $stable(entryAddr) && $past(io_flush_valid)
         && ($past(io_flush_part) == entryAddr[5:4]) && !$past(commitFire))
-      cover ((f_body != 63'h0) && $stable(f_body));
+      w5_body_survives_flush: cover ((f_body != 63'h0) && $stable(f_body));
 
-  // W6 — flush 가 실제로 *지운다*: 비지 않은 유효 비트열이 0 이 되는 에지
+  // W6 ← XlateStore.flush_keeps_data
+  //      flush 가 실제로 *지운다*: 비지 않은 유효 비트열이 0 이 되는 에지
   //      (지우지 않는 기계라면 W6 이 안 잡히고, 지워 버리는 기계라면 W5 가
   //      안 잡힌다 — 둘을 함께 두는 것이 flush_keeps_data 의 양날이다)
   always @(posedge clk)
     if (f_ok && $past(io_flush_valid) && ($past(io_flush_part) == 2'd0))
-      cover (($past(f_vb0) != 16'h0) && (f_vb0 == 16'h0));
+      w6_flush_clears: cover (($past(f_vb0) != 16'h0) && (f_vb0 == 16'h0));
 
-  // W7 — capacity_partitioned 의 전제: 타 파티션(q=1) 커밋 에지를 건너는데
+  // W7 ← Isolation.capacity_partitioned
+  //      전제: 타 파티션(q=1) 커밋 에지를 건너는데
   //      p=0 의 유효 비트열이 비어 있지 않다. 그 「불변」 단언이 0 → 0 의
   //      자명한 성립이 아니라는 증거.
   always @(posedge clk)
     if (f_ok && $past(commitFire) && ($past(commitSel) == 2'd1))
-      cover (($past(f_vb0) != 16'h0) && (f_vb0 == $past(f_vb0)));
+      w7_other_part_stable: cover (($past(f_vb0) != 16'h0) && (f_vb0 == $past(f_vb0)));
 
-  // W8 — fill_slot_per_partition 의 전제: 설치가 슬롯 몸체를 실제로 바꾼다
+  // W8 ← Isolation.fill_slot_per_partition
+  //      전제: 설치가 슬롯 몸체를 실제로 바꾼다
   always @(posedge clk)
     if (f_ok && $past(f_install_fire) && ($past(io_install_part) == 2'd2))
-      cover (f_slot2 != $past(f_slot2));
+      w8_slot_written: cover (f_slot2 != $past(f_slot2));
 
-  // W9 — partition_check 의 본 증인 (HIU-1 의 RTL 판): 같은 (색인, 태그)가
+  // W9 ← XlateStore.partition_check
+  //      본 증인 (HIU-1 의 RTL 판): 같은 (색인, 태그)가
   //      파티션 1 에서는 적중하는데, 바로 다음 사이클 파티션 0 의 같은
   //      질의는 미적중이다. 파티션 필드가 방벽으로 실제 작동한다는 증거 —
   //      이것 없이는 partition_check 단언이 「무엇도 적중 못 함」으로
@@ -264,16 +273,17 @@ module XlateStore_props (
     if (f_ok && $past(io_rsp_hit) && ($past(io_lookup_part) == 2'd1)
         && ($past(reqIdx) == reqIdx) && ($past(reqTag) == reqTag)
         && io_lookup_valid && (io_lookup_part == 2'd0))
-      cover (!io_rsp_hit);
+      w9_part_barrier: cover (!io_rsp_hit);
 
-  // W10 — valid_check 의 시제 증인: 직전 사이클 같은 (파티션, 색인, 태그)
+  // W10 ← XlateStore.valid_check
+  //       시제 증인: 직전 사이클 같은 (파티션, 색인, 태그)
   //       질의가 적중했는데 flush 를 건넌 지금은 미적중이다. 「flush 다음
   //       사이클 어둡다」 단언이 *적중할 수 있었던* 질의 위에서 재어진다.
   always @(posedge clk)
     if (f_ok && $past(io_flush_valid) && (io_lookup_part == $past(io_flush_part))
         && $past(io_rsp_hit) && ($past(io_lookup_part) == io_lookup_part)
         && ($past(reqIdx) == reqIdx) && ($past(reqTag) == reqTag))
-      cover (!storeHit && !fillHit);
+      w10_dark_after_flush: cover (!storeHit && !fillHit);
 `endif // XLATE_COVER
 endmodule
 

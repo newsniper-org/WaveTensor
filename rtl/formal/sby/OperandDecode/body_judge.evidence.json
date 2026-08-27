@@ -1,22 +1,58 @@
 {
   "anchors": [],
-  "at": "2026-08-26T17:11:48Z",
-  "cells": {
-    "assert": 32,
-    "cover": 20
-  },
+  "at": "2026-08-27T09:50:52Z",
   "cover": {
     "reached": 20,
-    "unreached": 0
+    "reached_names": [
+      "OperandDecode_formal.props.o10_other_code_ignored",
+      "OperandDecode_formal.props.o11_opref_a_nonzero",
+      "OperandDecode_formal.props.o12_opref_pair",
+      "OperandDecode_formal.props.o13_srckind_below_threshold",
+      "OperandDecode_formal.props.o14_reasm_bind_nonzero",
+      "OperandDecode_formal.props.o15_fault_rise",
+      "OperandDecode_formal.props.o16_fault_fall",
+      "OperandDecode_formal.props.o17_fault_hold",
+      "OperandDecode_formal.props.o18_set_beats_clear",
+      "OperandDecode_formal.props.o19_capabsent_quiet",
+      "OperandDecode_formal.props.o1_accept",
+      "OperandDecode_formal.props.o20_no_fault_without_valid",
+      "OperandDecode_formal.props.o2_invalid_cycle",
+      "OperandDecode_formal.props.o3_only_opref_resv",
+      "OperandDecode_formal.props.o4_only_srckind",
+      "OperandDecode_formal.props.o5_only_acctgt",
+      "OperandDecode_formal.props.o6_upstream_invalid",
+      "OperandDecode_formal.props.o7_upstream_mal_passthru",
+      "OperandDecode_formal.props.o8_capabsent_locks",
+      "OperandDecode_formal.props.o9_absent_slot_ignored"
+    ],
+    "unreached": 0,
+    "unreached_names": []
   },
   "inputs": {
     "rtl/generated/OperandDecode.sv": "ac544b13a9226a0d1f966c0ad07ef916c318d2ad4d6acf957e1c5961c76edc99",
-    "rtl/sv/assert/OperandDecode_props.sv": "29322b1e0fd67d6a803d8f74d9df78ae63ab2ed412ccb5ea9af7cd8ed2ec863f"
+    "rtl/sv/assert/OperandDecode_props.sv": "b535860e927149c6b40062dc8df6f0d7bc6b1aec7587542f7cecded62600f514"
+  },
+  "per_task": {
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 20,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 32,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
   },
   "sby": "rtl/formal/sby/OperandDecode/body_judge.sby",
   "sby_sha256": "61b8fddfc2bf719f34f1706660a2799866333823e827aafb105ce7d824c76fb5",
-  "schema": "wt64-postformal-evidence/1",
+  "schema": "wt64-postformal-evidence/2",
   "tasks": "cover:PASS prove:PASS",
   "tool": "SBY v0.66",
-  "verdict": "PASS"
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
 }

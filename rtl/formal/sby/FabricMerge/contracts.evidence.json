@@ -10,23 +10,88 @@
     "Fabric.fault_sticky",
     "Fabric.bp_no_consumer_write"
   ],
-  "at": "2026-08-26T15:16:42Z",
-  "cells": {
-    "assert": 50,
-    "cover": 42
-  },
+  "at": "2026-08-27T10:41:32Z",
   "cover": {
     "reached": 42,
-    "unreached": 0
+    "reached_names": [
+      "FabricMerge_formal.u_props.wc10_bp_release",
+      "FabricMerge_formal.u_props.wc1_locked",
+      "FabricMerge_formal.u_props.wc2_bus_nonzero",
+      "FabricMerge_formal.u_props.wc3_max_contention",
+      "FabricMerge_formal.u_props.wc4_shove",
+      "FabricMerge_formal.u_props.wc5_fault_rise",
+      "FabricMerge_formal.u_props.wc6_fault_hold",
+      "FabricMerge_formal.u_props.wc7_fault_clear",
+      "FabricMerge_formal.u_props.wc8_bp_nonzero",
+      "FabricMerge_formal.u_props.wc9_bp_shove",
+      "FabricMerge_formal.u_props.wl1_l0",
+      "FabricMerge_formal.u_props.wl1_l1",
+      "FabricMerge_formal.u_props.wl1_l2",
+      "FabricMerge_formal.u_props.wl1_l3",
+      "FabricMerge_formal.u_props.wl2_l0",
+      "FabricMerge_formal.u_props.wl2_l1",
+      "FabricMerge_formal.u_props.wl2_l2",
+      "FabricMerge_formal.u_props.wl2_l3",
+      "FabricMerge_formal.u_props.wl3_l0",
+      "FabricMerge_formal.u_props.wl3_l1",
+      "FabricMerge_formal.u_props.wl3_l2",
+      "FabricMerge_formal.u_props.wl3_l3",
+      "FabricMerge_formal.u_props.wl4_l0",
+      "FabricMerge_formal.u_props.wl4_l1",
+      "FabricMerge_formal.u_props.wl4_l2",
+      "FabricMerge_formal.u_props.wl4_l3",
+      "FabricMerge_formal.u_props.wl5_l0",
+      "FabricMerge_formal.u_props.wl5_l1",
+      "FabricMerge_formal.u_props.wl5_l2",
+      "FabricMerge_formal.u_props.wl5_l3",
+      "FabricMerge_formal.u_props.wl6_l0",
+      "FabricMerge_formal.u_props.wl6_l1",
+      "FabricMerge_formal.u_props.wl6_l2",
+      "FabricMerge_formal.u_props.wl6_l3",
+      "FabricMerge_formal.u_props.wl7_l0",
+      "FabricMerge_formal.u_props.wl7_l1",
+      "FabricMerge_formal.u_props.wl7_l2",
+      "FabricMerge_formal.u_props.wl7_l3",
+      "FabricMerge_formal.u_props.wl8_l0",
+      "FabricMerge_formal.u_props.wl8_l1",
+      "FabricMerge_formal.u_props.wl8_l2",
+      "FabricMerge_formal.u_props.wl8_l3"
+    ],
+    "unreached": 0,
+    "unreached_names": []
   },
   "inputs": {
     "rtl/generated/FabricMerge.sv": "9afcbab99e4eb409a8679369a43574ef7f93067a12b6d0fd9ceccf32d028dbb2",
-    "rtl/sv/assert/FabricMerge_props.sv": "95ca7c2d7fd3bb9d95c5ce080172ecf6f2d9e5b7fca31ce8d9b5d4f7352dd36e"
+    "rtl/sv/assert/FabricMerge_props.sv": "8283494cf698385b1e4b63a5794af802ea68b99a2a3bc4ac110a221f151c02cf"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 50,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 42,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 50,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
   },
   "sby": "rtl/formal/sby/FabricMerge/contracts.sby",
   "sby_sha256": "d30345102596cb17cbc3c84eda7b692976ebd275cd0cc5866fb0ad11cac51c68",
-  "schema": "wt64-postformal-evidence/1",
+  "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",
-  "verdict": "PASS"
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
 }

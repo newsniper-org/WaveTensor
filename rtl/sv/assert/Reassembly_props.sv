@@ -487,68 +487,83 @@ module Reassembly_props (
   // 증인은 cover 태스크에서만 컴파일한다 (-DREASM_COVER) — bmc/prove 모델을
   // 종전과 한 비트도 다르지 않게 유지하기 위한 규율이다 (XlateStore 선례).
 `ifdef REASM_COVER
-  // W1 — 소거가 실제로 발화한다 (Payload.tla Witness_NoAbort 의 RTL 대응).
+  // 각 줄의 `←` 오른쪽이 **그 증인이 살리는 대상**이다: `<Model>.<guard>` 는
+  // 이 태스크의 `# PROVES:` 앵커, 소문자 식별자는 이 하네스의 단언 라벨.
+  // 줄번호로 매지 않는다. scripts/lint_witness_map.py 가 참조 실재성만 재고
+  // 「그 궤적이 정말 그 전건을 세우는가」는 재지 못한다.
+  //
+  // W1 ← Payload.abort_erases · Payload.abort_leaves_trace ·
+  //      Payload.abort_not_fault · p_ab_fire_def · t_ab_cnt_inc · t_abort_frees_0
+  //      소거가 실제로 발화한다 (Payload.tla Witness_NoAbort 의 RTL 대응).
   //      이것 없이는 소거 단언 전부가 공허하다.
-  always @(posedge clk) if (f_step) cover (ab_fire);
+  always @(posedge clk) if (f_step) w1_abort_fire: cover (ab_fire);
 
-  // W2 — 그 발화가 구간 무효화 명령을 실제로 낸다 (결정 B 의 실물이
-  //      도달한다 — p_abort_clears_slots 가 0 == 0 이 아니다).
-  always @(posedge clk) if (f_step) cover (io_clr_valid);
+  // W2 ← Payload.abort_clears_window · p_abort_clears_slots · p_clr_needs_hit ·
+  //      p_clr_base_0 — 그 발화가 구간 무효화 명령을 실제로 낸다 (결정 B 의
+  //      실물이 도달한다 — p_abort_clears_slots 가 0 == 0 이 아니다).
+  always @(posedge clk) if (f_step) w2_clr_cmd: cover (io_clr_valid);
 
-  // W3 — *미완* 문맥의 소거 — E.12 가 존재하는 이유 그 자체다 (표시 유실
+  // W3 ← Payload.abort_erases · Payload.abort_clears_window
+  //      *미완* 문맥의 소거 — E.12 가 존재하는 이유 그 자체다 (표시 유실
   //      문맥이 드레인을 막지 않게 하는 수단). 완성 문맥만 소거되는 세계면
   //      이 표면은 인도의 중복일 뿐이다.
   always @(posedge clk)
-    if (f_step) cover (ab_fire && ((ab_hit_0 && !ctx_0_last) || (ab_hit_1 && !ctx_1_last) ||
+    if (f_step) w3_abort_incomplete: cover (ab_fire && ((ab_hit_0 && !ctx_0_last) || (ab_hit_1 && !ctx_1_last) ||
                                    (ab_hit_2 && !ctx_2_last) || (ab_hit_3 && !ctx_3_last)));
 
-  // W4 — *회계가 실린* 문맥의 소거: 비울 것이 실제로 있는 상태에서 소거가
+  // W4 ← Payload.abort_erases · Payload.key_is_tag · inv_free_clean_0
+  //      *회계가 실린* 문맥의 소거: 비울 것이 실제로 있는 상태에서 소거가
   //      난다 (seen 이 0 이 아닌 문맥). 빈 문맥만 소거되면 「비운다」가
   //      무동작과 구별되지 않는다.
   always @(posedge clk)
-    if (f_step) cover (ab_fire && ((ab_hit_0 && (ctx_0_seen != 16'h0)) ||
+    if (f_step) w4_abort_loaded: cover (ab_fire && ((ab_hit_0 && (ctx_0_seen != 16'h0)) ||
                                    (ab_hit_1 && (ctx_1_seen != 16'h0)) ||
                                    (ab_hit_2 && (ctx_2_seen != 16'h0)) ||
                                    (ab_hit_3 && (ctx_3_seen != 16'h0))));
 
-  // W5 — 없는 태그의 소거 기입 (E.12 3항의 무시 갈래가 실재한다 —
-  //      p_ab_fire_def · t_ab_cnt_hold 의 활성면).
-  always @(posedge clk) if (f_step) cover (io_abort_valid && !ab_hitAny);
+  // W5 ← Payload.abort_leaves_trace · p_ab_fire_def · t_ab_cnt_hold
+  //      없는 태그의 소거 기입 (E.12 3항의 무시 갈래가 실재한다).
+  always @(posedge clk) if (f_step) w5_abort_miss: cover (io_abort_valid && !ab_hitAny);
 
   // ── 증인 — base_from_tag 축 (2차 파도) ─────────────────────────────────
   //
   // p_wr_base_* 는 전건이 거짓이면(기입이 없으면) 자명하고, base 가 늘 같은
   // 값인 세계에서는 등식이 무엇도 가르지 않는다. 아래 셋이 그 둘을 막는다.
 
-  // W6 — 기입이 실제로 나고 결속이 0 이 아니다 (p_wr_base_* 의 전건 도달 +
-  //      「base 는 늘 0」인 축퇴 세계 배제).
-  always @(posedge clk) if (f_step) cover (io_wr_valid && (io_wr_base != 8'h00));
+  // W6 ← Payload.base_from_tag · Payload.write_atomic · p_wr_base_0 ·
+  //      p_wr_atomic_face · t_wr_atomic_0 — 기입이 실제로 나고 결속이 0 이
+  //      아니다 (전건 도달 + 「base 는 늘 0」인 축퇴 세계 배제).
+  always @(posedge clk) if (f_step) w6_write_nonzero_base: cover (io_wr_valid && (io_wr_base != 8'h00));
 
-  // W7 — **서로 다른 결속을 가진 두 활성 문맥**이 공존하는 채로 한쪽에 기입이
+  // W7 ← Payload.base_from_tag · Payload.key_is_tag · p_wr_base_0
+  //      **서로 다른 결속을 가진 두 활성 문맥**이 공존하는 채로 한쪽에 기입이
   //      난다. 이것이 없으면 p_wr_base_* 는 「어느 문맥을 골라도 답이 같은」
   //      세계에서 통과하고 MuxOH 의 선택이 재어지지 않는다.
   always @(posedge clk)
-    if (f_step) cover (io_wr_valid &&
+    if (f_step) w7_two_ctx_distinct_base: cover (io_wr_valid &&
                        ((fr_hit_0 && ctx_1_active && (ctx_1_base != ctx_0_base)) ||
                         (fr_hit_1 && ctx_0_active && (ctx_0_base != ctx_1_base)) ||
                         (fr_hit_2 && ctx_3_active && (ctx_3_base != ctx_2_base)) ||
                         (fr_hit_3 && ctx_2_active && (ctx_2_base != ctx_3_base))));
 
-  // W8 — 개방 착지가 실제로 난다, 비0 결속으로 (t_base_src_* 의 전건 도달 —
-  //      개방이 한 번도 없으면 ①②③ 이 통째로 공허하다).
-  always @(posedge clk) if (f_step) cover (op_grant && (io_open_base != 8'h00));
+  // W8 ← Payload.base_from_tag · t_base_src_0 · t_base_stable_0
+  //      개방 착지가 실제로 난다, 비0 결속으로 (전건 도달 — 개방이 한 번도
+  //      없으면 ①②③ 이 통째로 공허하다).
+  always @(posedge clk) if (f_step) w8_open_nonzero_base: cover (op_grant && (io_open_base != 8'h00));
 
   // ── 증인 — capability_check 축 (2차 파도) ──────────────────────────────
 
-  // W9 — 능력 밖 조각이 *활성 문맥에 적중한 채로* 도착한다. 이것 없이는
+  // W9 ← Payload.capability_check · p_capa_excl_all · p_capa_def
+  //      능력 밖 조각이 *활성 문맥에 적중한 채로* 도착한다. 이것 없이는
   //      p_capa_excl_all 이 「능력 밖은 애초에 hit 도 안 난다」로 공허해진다
   //      (전건이 서긴 하나 배제 항들이 다른 이유로 이미 0 인 세계).
-  always @(posedge clk) if (f_step) cover (io_frag_valid && fr_capaRej && fr_hitAny);
+  always @(posedge clk) if (f_step) w9_capa_hit: cover (io_frag_valid && fr_capaRej && fr_hitAny);
 
-  // W10 — 그 도착이 회계가 실린 문맥에 난다 (t_capa_no_acct_* 가 「비울 것이
+  // W10 ← Payload.capability_check · t_capa_no_acct_0
+  //       그 도착이 회계가 실린 문맥에 난다 (t_capa_no_acct_* 가 「비울 것이
   //       있는」 상태에서 재어진다 — 빈 문맥 부동은 무동작과 구별되지 않는다).
   always @(posedge clk)
-    if (f_step) cover (io_frag_valid && fr_capaRej &&
+    if (f_step) w10_capa_loaded_ctx: cover (io_frag_valid && fr_capaRej &&
                        ((fr_hit_0 && (ctx_0_seen != 16'h0)) ||
                         (fr_hit_1 && (ctx_1_seen != 16'h0)) ||
                         (fr_hit_2 && (ctx_2_seen != 16'h0)) ||
@@ -560,34 +575,48 @@ module Reassembly_props (
   // 다음 사이클에 해당 sticky 가 **처음** 선다는 궤적이 있어야 한다. 이미 서
   // 있는 sticky 위를 지나가는 통과는 아무것도 증명하지 않는다.
 
-  // W11..W14 — 조각 거절 네 사유 (스트레이 · 선언 자기모순 · 구간 밖 · 중복).
+  // W11 ← Payload.loud_reject · t_loud_frag                (스트레이)
+  // W12 ← Payload.loud_reject · Payload.cap_check · p_cap_window · t_loud_frag
+  //                                                          (선언 자기모순)
+  // W13 ← Payload.loud_reject · Payload.cap_check · p_cap_off · t_loud_frag
+  //                                                          (구간 밖)
+  // W14 ← Payload.loud_reject · Payload.no_dup_seq · p_no_dup_accept ·
+  //       t_loud_frag                                        (중복)
+  // 사유별로 갈라 두는 것이 알맹이다 — 한 사유만 도달하면 나머지 셋에서
+  // 「크게 알린다」는 한 번도 재어지지 않는다.
   always @(posedge clk)
-    if (f_step) cover ($past(io_frag_valid && fr_strayRej) && io_fault && !$past(io_fault));
+    if (f_step) w11_loud_stray: cover ($past(io_frag_valid && fr_strayRej) && io_fault && !$past(io_fault));
   always @(posedge clk)
-    if (f_step) cover ($past(io_frag_valid && fr_totBad)   && io_fault && !$past(io_fault));
+    if (f_step) w12_loud_totbad: cover ($past(io_frag_valid && fr_totBad) && io_fault && !$past(io_fault));
   always @(posedge clk)
-    if (f_step) cover ($past(io_frag_valid && fr_overRej)  && io_fault && !$past(io_fault));
+    if (f_step) w13_loud_over: cover ($past(io_frag_valid && fr_overRej) && io_fault && !$past(io_fault));
   always @(posedge clk)
-    if (f_step) cover ($past(io_frag_valid && fr_dupRej)   && io_fault && !$past(io_fault));
+    if (f_step) w14_loud_dup: cover ($past(io_frag_valid && fr_dupRej) && io_fault && !$past(io_fault));
 
-  // W15 — 능력 부재: 다른 채널(capAbsent)의 첫 상승.
+  // W15 ← Payload.capability_not_fault · Payload.capability_check ·
+  //       t_capa_absent_loud · t_capa_next_eq
+  //       능력 부재: 다른 채널(capAbsent)의 첫 상승.
   always @(posedge clk)
-    if (f_step) cover ($past(io_frag_valid && fr_capaRej) && io_capAbsent && !$past(io_capAbsent));
+    if (f_step) w15_capabsent_rise: cover ($past(io_frag_valid && fr_capaRej) && io_capAbsent && !$past(io_capAbsent));
 
-  // W16 — 재시작 충돌 (개방 축의 loud 사유).
+  // W16 ← Payload.no_restart · Payload.loud_reject · p_no_restart_evt ·
+  //       p_no_restart_grant · t_no_restart_loud
+  //       재시작 충돌 (개방 축의 loud 사유).
   always @(posedge clk)
-    if (f_step) cover ($past(op_clashEvt) && io_fault && !$past(io_fault));
+    if (f_step) w16_loud_restart: cover ($past(op_clashEvt) && io_fault && !$past(io_fault));
 
-  // W17 — **모델 밖 예외가 실재한다**: 풀 고갈 개방 거절. t_loud_open 이
+  // W17 ← Payload.loud_reject · t_loud_open
+  //       **모델 밖 예외가 실재한다**: 풀 고갈 개방 거절. t_loud_open 이
   //       전건에서 빼는 그 갈래가 도달 불가라면 그 배제는 장식이고, 반대로
   //       도달 가능하면 배제하지 않았을 때 거짓 반례가 났을 것이다.
   always @(posedge clk)
-    if (f_step) cover (io_open_valid && !io_open_granted && !op_freeAny);
+    if (f_step) w17_pool_exhausted: cover (io_open_valid && !io_open_granted && !op_freeAny);
 
-  // W18 — sticky 가 실제로 내려갈 수 있다 (명시적 해제). io_fault 가 영구
+  // W18 ← Payload.loud_reject · Payload.abort_not_fault · t_fault_next_eq
+  //       sticky 가 실제로 내려갈 수 있다 (명시적 해제). io_fault 가 영구
   //       1 인 세계라면 t_loud_frag·t_loud_open 이 자명하게 선다 — 그 축퇴를
   //       배제하는 증인이다.
-  always @(posedge clk) if (f_step) cover ($past(io_fault) && !io_fault);
+  always @(posedge clk) if (f_step) w18_fault_clear: cover ($past(io_fault) && !io_fault);
 `endif // REASM_COVER
 
 endmodule

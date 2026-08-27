@@ -1,22 +1,51 @@
 {
   "anchors": [],
-  "at": "2026-08-26T15:12:01Z",
-  "cells": {
-    "assert": 16,
-    "cover": 6
-  },
+  "at": "2026-08-27T10:31:47Z",
   "cover": {
     "reached": 6,
-    "unreached": 0
+    "reached_names": [
+      "AbortStaging_check.w1_armed_full",
+      "AbortStaging_check.w2_fire",
+      "AbortStaging_check.w3_fire_underarmed",
+      "AbortStaging_check.w4_fire_underarmed_quiet",
+      "AbortStaging_check.w5_arm_drained",
+      "AbortStaging_check.w6_tag2_reject"
+    ],
+    "unreached": 0,
+    "unreached_names": []
   },
   "inputs": {
     "rtl/generated/Wt64Top.sv": "3067dbfa2cd97298718c0a04578331acf4576ea6becb0bbae87debf4265c6b40",
-    "rtl/sv/assert/AbortStaging_props.sv": "e91c68911e24387151bf1f59c2bc47f15e9e61da531aa11d870744c34bc8b3bd"
+    "rtl/sv/assert/AbortStaging_props.sv": "095c9454ced279fa5018abcc8fba2f8a092556f9c29e078baed6776663286e55"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 16,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 6,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 16,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
   },
   "sby": "rtl/formal/sby/AbortStaging/props.sby",
   "sby_sha256": "d871dc19bc71771d8236b927cdf331c721ff6bdf5bc4775e1c15b537f05a32f2",
-  "schema": "wt64-postformal-evidence/1",
+  "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",
-  "verdict": "PASS"
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
 }

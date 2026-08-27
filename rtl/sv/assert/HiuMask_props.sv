@@ -394,34 +394,40 @@ module HiuPipeline_props (
   //   ※ sby 의 cover 모드는 chformal -assert -remove 로 단언을 스스로
   //     떼어낸다. 증인이 적법 궤적 위에 있다는 것은 bmc 태스크가 보증한다.
 `ifdef HIUMASK_COVER
-  // W1 — 6단 전 구간을 요청이 실제로 통과해 응답이 나온다 (거울 전 지점이
+  // W1 ← Isolation.coh_no_shortcut · Decode.lookup_unbranched
+  //      6단 전 구간을 요청이 실제로 통과해 응답이 나온다 (거울 전 지점이
   //      1 을 실어 본다 — 등식 여섯이 0==0 이 아니다)
-  always @(posedge clk) if (f_ok) cover (io_rsp_valid);
+  always @(posedge clk) if (f_ok) w1_rsp: cover (io_rsp_valid);
 
-  // W2 — 파이프가 실제로 파이프다: 서로 다른 두 요청이 동시에 비행 중
+  // W2 ← Isolation.coh_no_shortcut · Decode.lookup_unbranched
+  //      파이프가 실제로 파이프다: 서로 다른 두 요청이 동시에 비행 중
   //      (거울 양 끝이 동시에 1)
-  always @(posedge clk) if (f_ok) cover (f_v[1] && f_v[6]);
+  always @(posedge clk) if (f_ok) w2_two_inflight: cover (f_v[1] && f_v[6]);
 
-  // W3 — stall_uniform 의 전제 ①: io_hold 발 정지를 *내용이 실린* 단이 건넌다
+  // W3 ← Decode.stall_uniform
+  //      전제 ①: io_hold 발 정지를 *내용이 실린* 단이 건넌다
   always @(posedge clk)
     if (f_ok && !$past(advance) && $past(io_hold))
-      cover (s3_valid || s5_valid || s6_valid);
+      w3_hold_loaded: cover (s3_valid || s5_valid || s6_valid);
 
-  // W4 — stall_uniform 의 전제 ②: io_hold 가 아닌 정지 — E.3 미적중 채움
+  // W4 ← Decode.stall_uniform
+  //      전제 ②: io_hold 가 아닌 정지 — E.3 미적중 채움
   //      대기(missWait) 발. 「정지 원천 무관」이 두 원천 모두에서 재어진다는
   //      증거 (하나뿐이면 그 문면이 절반만 실측된 것이다)
   always @(posedge clk)
     if (f_ok && !$past(advance) && !$past(io_hold))
-      cover (s3_valid);
+      w4_misswait_stall: cover (s3_valid);
 
-  // W5 — no_early_forward 의 활성면: 승인이 실제로 나고 값축이 비0 이다
+  // W5 ← Isolation.approve_gates_value · Isolation.no_early_forward
+  //      활성면: 승인이 실제로 나고 값축이 비0 이다
   //      (이것 없이는 「무엇도 승인되지 않는 기계」가 단언을 통과한다)
-  always @(posedge clk) if (f_ok) cover (io_rsp_granted && (io_rsp_frame != 32'h0));
+  always @(posedge clk) if (f_ok) w5_granted_nonzero: cover (io_rsp_granted && (io_rsp_frame != 32'h0));
 
-  // W6 — 그 반대면: 유효 응답인데 승인이 없고, 그래서 값축이 0 이다
+  // W6 ← Isolation.approve_gates_value
+  //      그 반대면: 유효 응답인데 승인이 없고, 그래서 값축이 0 이다
   //      (거절이 실제로 값을 지운다 — 두 면을 함께 둬야 계약이 잠긴다)
   always @(posedge clk)
-    if (f_ok) cover (io_rsp_valid && !io_rsp_granted && (io_rsp_frame == 32'h0)
+    if (f_ok) w6_denied_zero: cover (io_rsp_valid && !io_rsp_granted && (io_rsp_frame == 32'h0)
                      && !io_rsp_perm_r && !io_rsp_perm_w && !io_rsp_perm_x);
 
   // ── 2차 파도 증인 (2026-08-26 신설) ────────────────────────────────────
@@ -460,40 +466,47 @@ module HiuPipeline_props (
     else if (advance) f_rep <= {f_rep[5:4], (f_replace && !x_hit)};
   end
 
-  // W9 — query_no_serve · xlate_local 의 활성면: 두 leg 이 실제로 *충돌*
+  // W9 ← Isolation.query_no_serve · Platform.xlate_local
+  //      활성면: 두 leg 이 실제로 *충돌*
   //      한다 (같은 사이클에 로컬 적중 + 호스트 응답이 다른 frame).
   //      이것 없이는 우선순위 단언이 「호스트 leg 이 죽어 있는 세계」에서
   //      자명하다.
   always @(posedge clk)
-    if (f_ok) cover (x_hit && io_hostRsp_valid && (io_hostRsp_frame != x_frame));
+    if (f_ok) w9_leg_clash: cover (x_hit && io_hostRsp_valid && (io_hostRsp_frame != x_frame));
 
-  // W10 — 그 반대면: 로컬 미적중일 때 호스트 leg 이 실제로 소비된다.
+  // W10 ← Isolation.query_no_serve · Platform.xlate_local
+  //       그 반대면: 로컬 미적중일 때 호스트 leg 이 실제로 소비된다.
   //       (최하 순위 가지가 살아 있어야 「최하 순위」가 명제다)
   always @(posedge clk)
-    if (f_ok) cover (s3_valid && !x_hit && x_hostPresent
+    if (f_ok) w10_host_leg_used: cover (s3_valid && !x_hit && x_hostPresent
                      && (lookFrame == io_hostRsp_frame) && (io_hostRsp_frame != 32'h0));
 
-  // W11 — evict_inline 의 본체: 대체 궤적이 실제로 도달 가능하다
+  // W11 ← Decode.evict_inline
+  //       본체: 대체 궤적이 실제로 도달 가능하다
   //       (유효한 칸을 다른 태그로 조회 → 미적중으로만 나타난다)
-  always @(posedge clk) if (f_ok) cover (f_replace && !x_hit);
+  always @(posedge clk) if (f_ok) w11_replace_reached: cover (f_replace && !x_hit);
 
-  // W12 — 그 대체 요청이 여섯 단을 완주해 응답이 난다. 거울 등식은 전
+  // W12 ← Decode.evict_inline · Isolation.coh_no_shortcut
+  //       그 대체 요청이 여섯 단을 완주해 응답이 난다. 거울 등식은 전
   //       궤적에 대해 서 있으므로, 대체 궤적이 도달 가능하다는 이 증인이
   //       「대체가 단계열을 바꾸지 않는다」의 실측이다.
-  always @(posedge clk) if (f_ok) cover (f_rep[6] && io_rsp_valid);
+  always @(posedge clk) if (f_ok) w12_replace_completes: cover (f_rep[6] && io_rsp_valid);
 
-  // W13 — owner_check: 비소유 적중이 실제로 일어나고, 값이 차단된 채로
+  // W13 ← Platform.owner_check · Isolation.approve_gates_value
+  //       비소유 적중이 실제로 일어나고, 값이 차단된 채로
   //       크게 알려진다 (fault 축의 활성면 — 승격 항목 1)
   always @(posedge clk)
-    if (f_ok) cover (io_rsp_valid && !io_owner_devOwned && !io_rsp_granted
+    if (f_ok) w13_nonowner_loud: cover (io_rsp_valid && !io_owner_devOwned && !io_rsp_granted
                      && (io_rsp_frame == 32'h0) && io_faultPerm);
 
-  // W14 — sticky 가 *처음* 서는 순간. 이미 서 있는 상태를 지나가는 것과
+  // W14 ← Platform.owner_check
+  //       sticky 가 *처음* 서는 순간. 이미 서 있는 상태를 지나가는 것과
   //       구분되지 않으면 loud 단언이 「늘 1 인 비트」로 자명해진다.
-  always @(posedge clk) if (f_ok) cover (!$past(io_faultPerm) && io_faultPerm);
+  always @(posedge clk) if (f_ok) w14_fault_rise: cover (!$past(io_faultPerm) && io_faultPerm);
 
-  // W15 — 해제가 실제로 가능하다 (영구 1 이 아니다 — 위 자명화의 반대면)
-  always @(posedge clk) if (f_ok) cover ($past(io_faultPerm) && !io_faultPerm);
+  // W15 ← Platform.owner_check
+  //       해제가 실제로 가능하다 (영구 1 이 아니다 — 위 자명화의 반대면)
+  always @(posedge clk) if (f_ok) w15_fault_clear: cover ($past(io_faultPerm) && !io_faultPerm);
 `endif // HIUMASK_COVER
 endmodule
 
@@ -530,14 +543,16 @@ module MaskUnit_props (
 
   // ── cover 증인 ──────────────────────────────────────────────────────────
 `ifdef HIUMASK_COVER
-  // W7 — 마스크 왕복이 실제로 돈다: 응답이 서고 값축이 비0 이다
+  // W7 ← Decode.stall_uniform
+  //      마스크 왕복이 실제로 돈다: 응답이 서고 값축이 비0 이다
   //      (rValid 가 늘 0 이면 위 왕복 등식이 0==0 으로 공허하다)
-  always @(posedge clk) if (f_ok) cover (io_rsp_valid && (io_rsp_frame != 32'h0));
+  always @(posedge clk) if (f_ok) w7_mask_roundtrip: cover (io_rsp_valid && (io_rsp_frame != 32'h0));
 
-  // W8 — MaskUnit 쪽 stall_uniform 의 전제: en 이 낮은 에지를 *실린* 응답이
+  // W8 ← Decode.stall_uniform
+  //      MaskUnit 쪽 전제: en 이 낮은 에지를 *실린* 응답이
   //      건넌다 (rsp_valid 가 1 인 채로 동결 — 0 인 채 동결이 아니다)
   always @(posedge clk)
-    if (f_ok && !$past(io_en)) cover (io_rsp_valid && (io_rsp_frame != 32'h0));
+    if (f_ok && !$past(io_en)) w8_mask_frozen_loaded: cover (io_rsp_valid && (io_rsp_frame != 32'h0));
 `endif // HIUMASK_COVER
 endmodule
 

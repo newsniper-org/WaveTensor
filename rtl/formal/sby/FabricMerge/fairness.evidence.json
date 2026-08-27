@@ -2,23 +2,55 @@
   "anchors": [
     "Fabric.fair_grant"
   ],
-  "at": "2026-08-26T15:24:16Z",
-  "cells": {
-    "assert": 54,
-    "cover": 16
-  },
+  "at": "2026-08-27T10:49:25Z",
   "cover": {
     "reached": 16,
-    "unreached": 0
+    "reached_names": [
+      "FabricMerge_formal.u_props.wf1_l0",
+      "FabricMerge_formal.u_props.wf1_l1",
+      "FabricMerge_formal.u_props.wf1_l2",
+      "FabricMerge_formal.u_props.wf1_l3",
+      "FabricMerge_formal.u_props.wf2_l0",
+      "FabricMerge_formal.u_props.wf2_l1",
+      "FabricMerge_formal.u_props.wf2_l2",
+      "FabricMerge_formal.u_props.wf2_l3",
+      "FabricMerge_formal.u_props.wf3_l0",
+      "FabricMerge_formal.u_props.wf3_l1",
+      "FabricMerge_formal.u_props.wf3_l2",
+      "FabricMerge_formal.u_props.wf3_l3",
+      "FabricMerge_formal.u_props.wf4_l0",
+      "FabricMerge_formal.u_props.wf4_l1",
+      "FabricMerge_formal.u_props.wf4_l2",
+      "FabricMerge_formal.u_props.wf4_l3"
+    ],
+    "unreached": 0,
+    "unreached_names": []
   },
   "inputs": {
     "rtl/generated/FabricMerge.sv": "9afcbab99e4eb409a8679369a43574ef7f93067a12b6d0fd9ceccf32d028dbb2",
-    "rtl/sv/assert/FabricMerge_props.sv": "95ca7c2d7fd3bb9d95c5ce080172ecf6f2d9e5b7fca31ce8d9b5d4f7352dd36e"
+    "rtl/sv/assert/FabricMerge_props.sv": "8283494cf698385b1e4b63a5794af802ea68b99a2a3bc4ac110a221f151c02cf"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 54,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 16,
+      "mode": "cover"
+    }
   },
   "sby": "rtl/formal/sby/FabricMerge/fairness.sby",
   "sby_sha256": "0a453a5e4b5a8d3eb52dbe1ead4317354d642f4bcc6a5d78b42245c4a39658ed",
-  "schema": "wt64-postformal-evidence/1",
+  "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS",
   "tool": "SBY v0.66",
-  "verdict": "PASS"
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
 }

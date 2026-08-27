@@ -239,28 +239,47 @@ module CompletionUnit_props (
   // 셀 수가 0 이 아니라는 것만으로는 「그 assert 가 실제로 걸리는 실행이
   // 있는가」에 답하지 못한다. 아래 여덟 cover 가 그 답이다 — 하나라도 미도달
   // 이면 축 2 는 그 워드에서 공허하다.
+  //
+  // 각 줄의 `←` 오른쪽이 **그 증인이 살리는 대상**이다: `<Module>.<name>` 은
+  // 이 태스크의 `# VERIFIES:` 앵커다 (이 하네스의 단언에는 라벨이 없다).
+  // 줄번호로 매지 않는다. scripts/lint_witness_map.py 가 참조 실재성만 재고
+  // 「그 궤적이 정말 그 전건을 세우는가」는 재지 못한다.
+  //
+  // W1 ← CompletionUnit.desc_full_write · CompletionUnit.desc_word_layout
+  //      워드 0..7 각각의 되읽기가 도달한다 (한 태그 아래 라벨 여덟 —
+  //      워드마다 따로 세지 않으면 미도달 워드가 도달 워드에 가린다).
+  //      워드 하나가 미도달이면 그 워드의 배치 등식은 한 번도 걸리지 않은 채
+  //      통과한다.
   always @(posedge clk) begin
     if (f_ok && $past(f_winRead) && ($past(f_head) == f_slot) && $past(f_written)) begin
-      cover ($past(f_winWord) == 3'd0);
-      cover ($past(f_winWord) == 3'd1);
-      cover ($past(f_winWord) == 3'd2);
-      cover ($past(f_winWord) == 3'd3);
-      cover ($past(f_winWord) == 3'd4);
-      cover ($past(f_winWord) == 3'd5);
-      cover ($past(f_winWord) == 3'd6);
-      cover ($past(f_winWord) == 3'd7);
+      w1_word0: cover ($past(f_winWord) == 3'd0);
+      w1_word1: cover ($past(f_winWord) == 3'd1);
+      w1_word2: cover ($past(f_winWord) == 3'd2);
+      w1_word3: cover ($past(f_winWord) == 3'd3);
+      w1_word4: cover ($past(f_winWord) == 3'd4);
+      w1_word5: cover ($past(f_winWord) == 3'd5);
+      w1_word6: cover ($past(f_winWord) == 3'd6);
+      w1_word7: cover ($past(f_winWord) == 3'd7);
     end
   end
 
   // 나머지 증인 — 가득/오버플로/빈 창이 실제로 도달하는가.
+  // W2 ← CompletionUnit.ring_encoding — 「가득」 상태에 실제로 닿는다.
+  //      닿지 못하면 배압 등가와 가득 재구성은 늘 거짓인 우변으로 자명하다.
+  // W3 ← CompletionUnit.overflow_sticky — 오버플로 sticky 가 실제로 선다
+  //      (두 sticky 단언의 전건).
+  // W4 ← CompletionUnit.window_no_leak · CompletionUnit.ring_encoding —
+  //      빈 링의 창 읽기가 도달한다. 이것이 없으면 「빈 창은 0」은 창 읽기
+  //      자체가 없는 세계에서 자명하다.
+  // W5 ← CompletionUnit.desc_full_write · CompletionUnit.desc_word_layout —
+  //      태그 워드가 *전부 비영*인 항목의 되읽기: 「0 을 0 으로 맞히는」
+  //      항진 증인이 아니라는 것을 이 하나가 보인다.
   always @(posedge clk) begin
     if (f_ok) begin
-      cover (f_full);
-      cover (io_faultOverflow);
-      cover ($past(f_acceptR) && $past(f_isWin) && $past(f_empty));
-      // 태그 워드가 *전부 비영*인 항목의 되읽기 — 「0 을 0 으로 맞히는」
-      // 항진 증인이 아니라는 것을 이 하나가 보인다.
-      cover ($past(f_winRead) && ($past(f_head) == f_slot) && $past(f_written)
+      w2_full:         cover (f_full);
+      w3_overflow:     cover (io_faultOverflow);
+      w4_empty_window: cover ($past(f_acceptR) && $past(f_isWin) && $past(f_empty));
+      w5_nonzero_tags: cover ($past(f_winRead) && ($past(f_head) == f_slot) && $past(f_written)
              && (s_wave != 32'd0) && (s_lnid != 16'd0) && (s_total != 8'd0));
     end
   end

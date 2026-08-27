@@ -1,22 +1,50 @@
 {
   "anchors": [],
-  "at": "2026-08-26T15:12:13Z",
-  "cells": {
-    "assert": 8,
-    "cover": 12
-  },
+  "at": "2026-08-27T10:36:56Z",
   "cover": {
     "reached": 12,
-    "unreached": 0
+    "reached_names": [
+      "CompletionUnit_formal.props.w1_word0",
+      "CompletionUnit_formal.props.w1_word1",
+      "CompletionUnit_formal.props.w1_word2",
+      "CompletionUnit_formal.props.w1_word3",
+      "CompletionUnit_formal.props.w1_word4",
+      "CompletionUnit_formal.props.w1_word5",
+      "CompletionUnit_formal.props.w1_word6",
+      "CompletionUnit_formal.props.w1_word7",
+      "CompletionUnit_formal.props.w2_full",
+      "CompletionUnit_formal.props.w3_overflow",
+      "CompletionUnit_formal.props.w4_empty_window",
+      "CompletionUnit_formal.props.w5_nonzero_tags"
+    ],
+    "unreached": 0,
+    "unreached_names": []
   },
   "inputs": {
     "rtl/generated/CompletionUnit.sv": "ebdc40cf21d2741651eb72a8ca6d68b41edd1013af7bae51659fdd625bc6be14",
-    "rtl/sv/assert/CompletionUnit_props.sv": "0790a6820edc3ae22fdeeec97b2b0bbba5b267117274095f479408a324800324"
+    "rtl/sv/assert/CompletionUnit_props.sv": "29ed913dfa6cb8daf444853d5d969c192a78caa9221dcd1cfb7e6265e69bdac0"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 8,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 12,
+      "mode": "cover"
+    }
   },
   "sby": "rtl/formal/sby/CompletionUnit/descriptor.sby",
   "sby_sha256": "38d2371cbec792d66e289b39ca4a2b92b3c455fcde556e4f27b5a22aba360c37",
-  "schema": "wt64-postformal-evidence/1",
+  "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS",
   "tool": "SBY v0.66",
-  "verdict": "PASS"
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
 }

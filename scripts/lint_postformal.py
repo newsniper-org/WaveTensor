@@ -32,7 +32,188 @@ lint_guard_map 은 「가드마다 RTL 주장 1줄」의 전수성을 재고, �
   (5) **부분 덮임** — 좁은 증명이 넓은 주장을 「덮임」으로 계수하는 것을
       막는다. `_PARTIAL` 표를 보라.
   (6) **실행 증거** — `<태스크>.evidence.json` 의 존재·판정·셀 수·신선도.
-  (7) 래칫 넷 (아래).
+  (7) **증거의 자기모순 대조** — 4차 파도. 아래 §자기모순 대조 절.
+  (8) **상수 접힘 검사** — 태스크별 `connect \\A` 상수 계수. 아래 절.
+  (9) **증인 잔여 표** — 증인이 구조적으로 불가한 부류의 정직 표기.
+  (10) 래칫 (아래 §래칫).
+
+## 신뢰 경계 — 이 층이 무엇을 잡고 무엇을 못 잡는가 (4차 파도)
+
+**한 문장으로: 실수로 어긋난 증거는 이 검사들이 잡고, 악의적 위조는
+재실행만이 잡는다.** 아래 검사를 몇 개 더하든 이 문장은 바뀌지 않는다.
+
+증거를 쓰는 코드(`emit_evidence`)와 검사하는 코드(`check_evidence`)가 **같은
+파일**에 산다. 위조자는 검사 목록을 읽고 그대로 맞춘다. 정합 검사를 N 개
+늘리면 위조 비용은 「1줄 편집」에서 「k 개 필드 일관 편집」으로 *선형* 증가할
+뿐이고, 더 나쁘게는 **검사 자신이 어느 필드를 함께 고쳐야 하는지 알려주는
+명세**다. 예외를 찾으려 했고 없다 (§REJECT 기록).
+
+그래서 이 절의 검사들은 「무결성」이 아니라 **「자기모순 대조」**다. 이름을
+그렇게 붙이는 것이 규율의 일부다 — 항목이 늘수록 읽는 쪽은 「이건 잡았겠지」로
+옮겨가고, 그것이 `HiuMask` 래퍼 top 을 부착의 증거로 읽은 형태다. OK 줄이
+매번 「위조는 잡지 못한다 · 재실행만이 검증이다」를 인쇄하는 이유다.
+
+**실수(압도적으로 흔하다)가 잡히는 이유**는 검사가 똑똑해서가 아니라, 서로
+독립적으로 저작된 산출물 넷 — 하네스 `.sv` · `.sby` · 증거 `.json` ·
+GUARD-MAP `.scala` — 사이의 모순으로 드러나기 때문이다. **실수는 한 곳만
+어긋나게 하고 위조는 전부를 맞춘다.** 설계 목표는 「위조를 막는다」가 아니라
+**「모든 어긋남이 국소적으로 모순되게 만든다」**이다.
+
+신선도(`sby_sha256`·`inputs`)는 **입력**을 묶는다. 위조자는 **출력 수치만**
+고치고 해시는 건드리지 않는다 — 그래서 신선도는 stale 을 막지 위조를 막지
+않는다. 처방은 「수치를 실행에 묶는 것」이 아니라(원리적으로 불가능하다)
+**수치를 다른 산출물에서 독립적으로 재유도 가능하게 만드는 것**이다:
+태스크 집합은 `.sby` 의 `[tasks]` 에서, 앵커는 `# PROVES:` 에서, 증인 이름은
+하네스의 cover 라벨에서. 그때 위조는 「한 수를 고치는 일」에서 「여러 파일을
+일관되게 고치는 일」이 된다. 그 이상은 없고, 그 이상을 주장하면 안 된다.
+
+### 재실행만이 검증인 지점 (명시)
+
+  · 그 수치가 **이번 실행에서 나왔는가** — 정적으로 답할 수 없다. 영원히.
+  · 증인이 **정말 그 전건을 세우는가** — 의미의 주장. 솔버가 필요하고 그것은
+    하네스 소유다.
+  · 단언이 **assume 아래에서만 참인가**(assume 과잉) — 반례 공간의 성질.
+  · 가드를 지우면 증명이 **실제로 깨지는가**(3형의 진짜 검사) — 변이 실행.
+
+⇒ 그리고 그 재실행이 **저장소 밖**(CI · 다른 사람의 컨테이너)에 있어야 위조
+   창이 닫힌다. 로컬 lint 의 문면은 영원히 「증거가 참이다」가 아니라
+   **「증거가 자기모순이 아니다」**여야 한다.
+
+## 자기모순 대조 — 4차 파도가 결선한 여섯
+
+각각이 **다른 낱말로** 실패해야 한다. 고칠 대상이 다르기 때문이다.
+
+  (a) `anchors` ↔ 현행 `.sby` 의 `# PROVES:` 재유도 → **파서 드리프트**.
+      `sby_sha256` 이 *일치할 때만* 잰다. 같은 파일에서 두 판의 lint 가 다른
+      앵커를 볼 때만 어긋나므로 **정직한 드리프트에 대한 검출력은 0 이다**
+      (emit 이 자기가 해시한 그 파일에서 앵커를 계산하므로 항등이다).
+      「무결성 검사 하나 늘었다」로 계수하면 안 된다 — 잡는 것은 정확히
+      파서 드리프트 하나다. 위조에는 당연히 무력하다.
+  (b) `sby` 필드 ↔ 증거 파일 자신의 경로 → **오배치** (게이트의 결함).
+      `--emit-evidence` 인자를 잘못 준 경우 · 증거를 다른 태스크 디렉터리로
+      복사한 경우. 실무상 대부분 stale 로도 걸리지만 **stale 은 「대상의
+      결함」 낱말이고 오배치는 「게이트의 결함」이다.**
+  (c) `verdict` ↔ `tasks` 교차 유도 → PASS ⟺ 모든 태스크 PASS.
+      개정 전에는 `"ERROR" in tasks` 만 봤고 `verdict: PASS` +
+      `tasks: "bmc:FAIL …"` 가 그대로 통과했다. 검출력의 대부분은 **미래의
+      스윕 개작에 대한 보험**이지 오늘의 결함 검출이 아니다.
+  (d) `tasks` 키 집합 ↔ `.sby` 의 `[tasks]` 절 → **부분 실행**.
+      `.sby` 가 바뀌면 이미 stale 이 나므로 겹치는 부분이 크다. 겹치지 않는
+      유일한 자리가 「`.sby` 는 그대로인데 스윕이 태스크 하나를 못 돌렸다」이고,
+      그것이 z3 자원 경합(ERROR)이 다른 얼굴로 재발하는 자리다. (a) 와 같이
+      `sby_sha256` 일치를 전제로 잰다.
+  (e) **태스크별 셀 수** (schema/2) → 태스크 단위의 1형(하네스 미부착) 부활.
+      스윕은 최댓값을 쓰는데, 실측으로 `contracts` 는 bmc·prove 가 assert 50 ·
+      cover 가 assert 0/cover 42 다. **prove 만 부착이 깨져도 최댓값 50 이
+      남아 HOLLOW 가 안 뜬다.** 최댓값은 「몇 개를 재는가」에는 옳지만
+      「모든 태스크가 재고 있는가」에는 답하지 못한다. 최댓값은 이제 저장하지
+      않고 `evidence_cells()` 가 per_task 에서 **한 곳에서만** 유도한다.
+  (f) **도구 신원**(yosys 배너) 증거 간 일치 → 개별 갱신으로 증거가 여러 도구
+      판에 걸치는 것. 셀을 세는 주체는 yosys 인데 그 판이 증거 어디에도 없었다
+      (`tool` 은 `sby --version` 이고 게다가 읽히지도 않았다). **이 검사는
+      「같은 자로 쟀는가」이지 「그 자가 옳은가」가 아니다** — yosys 는 Arch
+      스냅샷에서 오고 ARG 로 핀되지 않으므로 절대 기준과 대조할 상대가 없다.
+      처분은 stale 과 같은 부류(경고 · `--require-fresh` 에서 실패)다.
+
+부수로 `cells ↔ verdict` 를 `assert ≥ 1` 로 조인다. `cover ≥ 1` 은 **일부러
+중복하지 않는다** — 바로 아래 `_NO_WITNESS` 게이트가 이미 그것을 잡고 탈출구
+기제까지 갖고 있어서, 두 기계가 같은 사실에 대해 각자 인쇄하면 3차가 닫은
+「분모 갈림」이 증거층에서 재발한다.
+
+## 상수 접힘 검사 — **「항진 게이트」가 아니다**
+
+이름을 정확히 붙이는 것이 이 항목의 절반이다. **세는 주체는 이 파일이
+아니다** — `lint_tautology` 가 센다 (간접 상수 결속을 따라가야 해서 grep 두
+줄로 끝나지 않는다: 실측으로 이 저장소의 모델에는 모듈 수준 상수 결속이
+434건 있고, 직접 `connect \\A 1'1` 만 보면 그 뒤에 숨은 항진을 통째로 놓친다).
+
+두 층의 분업이 `--require-fresh` 의 비대칭과 정확히 같다:
+
+    lint_tautology --audit   스윕 산출물(/tmp)을 **직접** 센다. 갓 clone 한
+                             사람에게는 모델이 없어 **미계수**로 인쇄한다.
+    여기 (증거층)            스윕이 `--count` 를 불러 증거에 적어 둔 계수를
+                             판정한다. **모델이 없어도 뜻이 있다** — 그것이
+                             증거를 커밋한 이유 그 자체다.
+
+파서도 허용목록(`_TAUTOLOGY`)도 래칫(`_MAX_TAUTOLOGY`)도 저장소에 한 벌이고,
+이 파일은 그것을 `import` 한다. 사본을 만들면 두 파일이 같은 태스크에 다른
+면제를 걸고, 그것이 3차가 닫은 「같은 사실에 두 기계가 다른 수를 인쇄한다」의
+재발이다.
+
+증거의 `-1` 은 **미계수**다 — 스윕이 `--count` 를 부르지 못했다는 뜻이고,
+「접힘이 0 이었다」와 절대 같은 낱말로 보고하지 않는다.
+
+**검사 순서가 정확성의 일부다.** 상수 계수는 셀 수 0 검사 **뒤**에 선다.
+셀이 0 이면 상수도 0 이라 자동으로 참이 되고, 그것이 3차가 `cover == 0` 을
+항등 검사 앞에 세운 것과 같은 함정이다.
+
+### 이 게이트가 못 잡는 것 (반드시 함께 적는다)
+
+  · **yosys 가 접을 수 있는 부분집합만이다** — 그리고 그 부분집합은 **구조적
+    항등**(`1'b1` · `q == q` · `b || !b`)뿐이다. **폭이 함의하는 항진은 접히지
+    않는다**: `assert ({3'b0, q} <= 4'hF)` 는 `$le` 셀이 그대로 남는다 (실측
+    2026-08-27 — 4차 설계 브리핑이 이 예를 「접힌다」로 들었고 그것이 틀렸다.
+    lint_tautology docstring · notes-vacuity-detection.md §4차 ①). 구조가 다른
+    두 식의 의미적 동치도 접히지 않는다. 항진 판정기가 아니라 **「문법적으로
+    자명한 부류」의 필요조건 검출기**다.
+  · **하네스 자신의 assume 아래에서만 항진인 것은 절대 접히지 않는다.**
+    assume 은 `chformal -assume -early` 로 별도 셀로 살아남는다. 「assume
+    과잉」과 같은 뿌리이고 이 게이트 밖이다.
+  · **유도되는 단언**(`_DERIVED` 의 `Platform.owner_check ②`)은 항진이 아니고
+    접히지도 않는다. 이 게이트는 그것에 대해 아무 말도 하지 않는다.
+  · 진짜 3형 검사는 **가드 삭제 실험의 후-formal 판**이고 그것은 정적 층이
+    아니라 **실행 층의 새 태스크**다. 이 게이트는 그 자리를 메우지 않고
+    바닥을 조금 올릴 뿐이다. ⇒ **3형은 열린 채로 유지한다.**
+
+## REJECT 기록 — 4차 설계가 만들지 **않기로** 한 셋
+
+기록이 없으면 다음 사람이 다시 제안한다. 셋 다 「순부불투」다.
+
+  · **모델 해시**(`design_prep.il` 의 sha256) — **아무것도 잡지 않는다.**
+    모델은 /tmp 에 있고 커밋되지 않으므로 **lint 시점에 대조할 상대가 존재하지
+    않는다.** 위조자는 임의 64자 16진 문자열을 적으면 되고, 정직한 사용자에게도
+    검사가 발동할 조건 자체가 없다. 비용이 0 이 아니라 **음수**인 이유: 「지문이
+    있으니 묶였다」는 잘못된 신뢰가 생긴다. 값어치가 있는 것은 모델의 *지문*이
+    아니라 모델에서 **센 것**이다 — 태스크별 셀 수 · 증인 이름 · 상수 계수.
+    (재현 가능성 자체는 있다: `design_prep.il` 은 절대경로도 시각도 담지
+    않는다. 그러나 **재현하려면 재실행이 필요하고, 재실행이 있으면 해시가
+    필요 없다.**)
+  · **증거 서명 / HMAC** — 키가 저장소 안이면 위조자가 갖고, 밖이면 **갓
+    clone 한 사람의 `make lint` 가 검증하지 못한다.** 증거를 커밋한 이유
+    (커밋하지 않으면 이 층이 아무 일도 하지 않는다)를 통째로 무효화한다.
+    신뢰 경계는 옮겨지지 않고 키 배포 문제로 이름만 바뀐다.
+  · **git 이력 대조** — 이력은 재작성 가능하고 squash·rebase·amend 로 정상
+    작업에서도 깨진다. shallow clone · dirty tree · 비-git 배포에서 **조용히
+    무력해진다** — 「없다」와 「없는 곳을 봤다」가 같은 결과를 내는 형태이고,
+    그것이 `_STRUCTURAL` 이 양성 대조를 앞세운 이유 그 자체다.
+
+## 아직 서지 않은 것 — 증인↔전건 대응 (다음 결)
+
+3차가 닫은 것은 「cover == 0」이고 다음 결은 **「cover > 0 인데 증인이 전건에
+대응하지 않는다」**이다. 4차는 그 **기반**만 놓았다 — 증거가 증인의 *이름*을
+싣는다 (계수 위조를 이름 위조로 승격한다: `"cover": 999` 는 두 줄 diff 이지만
+999개 식별자는 하네스에서 유도 가능해야 하므로 위조가 `.sv` 로 번진다).
+
+게이트 자체(앵커당 증인 ≥ 1 · `// W<n> ← <대상>` 선언 ↔ SV 라벨 대조)는 **이
+파일에 결선하지 않았다.** 근거는 실측이다: 오늘 하네스의 `←` 는 24건뿐이고
+그중 넷은 증인과 무관한 산문이며(`RouteMmio_props.sv:151` ·
+`HiuMask_props.sv:179`), 오른쪽은 `<Model>.<guard>` 가 아니라 단언 문면 인용이다.
+cover 220건 중 SV 라벨이 있는 것은 74건. **규약이 아직 하네스에 서지 않은
+상태에서 검사를 결선하면 무관한 `←` 에 오탐이 나거나 게이트가 영영 0 에서
+논다** — 그것이 이 저장소가 이름 붙인 「집행되지 않는 규율」의 새 사례가 된다.
+
+그리고 그 게이트에는 **자기 위험**이 있다. 3차가 `_NO_WITNESS` 를 순수 하드
+실패로 두지 않은 이유가 「아무거나 세는 증인」 압력이었고, 요구를 **태스크당
+1**(18건)에서 **앵커당 1**(80건)로 올리면 그 압력이 앵커 수만큼 곱해진다.
+게이트는 「증인이 있다」를 재고 「증인이 뜻이 있다」는 못 잰다. 순이득은
+리뷰 규율이 버틸 때만 성립하고, 그 조건을 명기하지 않으면 이 파도는 자기가
+닫으러 온 형태를 한 겹 더 정교하게 재생산한다. ⇒ 결선 시 **팬아웃 보고**를
+함께 두고 건수 래칫은 걸지 않는다.
+
+미리 거부하고 기록하는 근사 하나: 「증인 식이 그 단언이 쓰는 신호를 문법적으로
+언급해야 한다」. `f_ok`·`clk`·`reset`·`f_past_valid` 가 어디에나 있어 즉시
+무력해지고, **부분적으로 잡는 근사가 더 찾기 어려운 사각지대를 만든다**는 이
+저장소가 세 번 겪은 형태다.
 
 ## 이 검사가 재지 **못하는** 것 (정직하게)
 
@@ -40,9 +221,10 @@ lint_guard_map 은 「가드마다 RTL 주장 1줄」의 전수성을 재고, �
 방법이 없고, 이것은 수용 가능한 신뢰 경계다 — 다만 그 경계가 어디인지
 적어 두는 것과 모르는 것은 다르다. **실행 없이는 새 증거가 생기지 않는다.**
 
-셀 수는 하한이지 충분조건이 아니다. 항진명제(폭이 이미 보장하는 것을
-단언하는 형태)는 셀도 세어지고 증명도 통과하므로 이 층이 잡지 못한다 —
-가드 삭제 실험의 후-formal 판이 그 자리이고 아직 없다.
+셀 수는 하한이지 충분조건이 아니다. 상수 접힘 검사가 항진명제의 *문법적으로
+자명한 부류*를 잡지만 3형 전체는 열려 있다 — 가드 삭제 실험의 후-formal 판이
+그 자리이고 아직 없다. 셀 수의 **하한 래칫**(줄면 실패)도 아직 없다: 같은
+태스크 안에서 단언 일부만 떨어진 것은 수가 줄 뿐 0 이 아니므로 잡히지 않는다.
 
 ## 세 낱말을 섞지 않는다
 
@@ -102,6 +284,70 @@ notes-vacuity-detection.md 가 실물 사고 둘로 배운 규율이다:
   · **`_DERIVED` 결속** — 앵커 없는 태스크를 가리키면 실패
   · **분모 항등 방어선** — 앞선 두 겹(쌍방 대조 · 근거 종류 대조)을 코드에서
     무력화한 뒤에야 닿는 셋째 겹이고, 거기서 「분모 항등 위반」이 났다
+
+2026-08-27 4차 파도 (신설 검사 · 20건 전건 검출 — 음성 17 · 양성 3.
+**문면이 서로 다른 것이 시험 항목이다**. 같은 낱말로 보고하면 엉뚱한 것을
+고치러 간다). 격리 사본 `/tmp/nt4` 에 스텁 `sby` 로 schema/2 증거를 실제로
+만들어 놓고 깨뜨렸다 — 스텁은 솔버 대신 `/tmp/wt-sby-out` 의 실측 산출물을
+재생하므로 셀 수·증인 이름이 전부 실물이다:
+  · **파서 드리프트** — 해시는 그대로 두고 `anchors` 배열만 손댐 →
+    「anchors 가 현행 .sby 의 `# PROVES:` 와 다르다 … .sby 는 그대로인데
+    (해시 일치) 앵커가 갈렸다 = **파서 드리프트**다」.
+    **양성 대조**: `.sby` 를 진짜로 고치면 이 문면이 *아니라* stale 이 난다
+    (「.sby 자신이 바뀌었다」). 같은 축의 파괴가 두 낱말로 갈리는 것이 요점
+  · **오배치** — `sby` 필드를 `…/dispatch.sby` 로 → 「증거가 자기가 놓인
+    자리와 다른 .sby 를 말한다 … **게이트의 결함**이다 … 대상을 고치러 가지
+    마라」
+  · **verdict ↔ tasks** — `PASS` + `"bmc:FAIL cover:PASS prove:PASS"` →
+    「verdict 는 PASS 인데 태스크 판정은 bmc:FAIL 다 … 둘 중 하나가 거짓이다」
+  · **tasks 빔** — 「태스크별 판정을 세지 못했다 (tasks='') … 스윕이 status
+    파일 글롭을 놓치면 이 문자열이 조용히 비거나 짧아진다」(UNCOUNTED)
+  · **부분 실행** — tasks 와 per_task 에서 prove 삭제 → 「[tasks] 는
+    ['bmc','cover','prove'] 를 선언했는데 증거에는 ['bmc','cover'] 뿐이다 …
+    **부분 실행**이다」(UNCOUNTED). 스윕 쪽에서도 관측했다: 태스크 하나의
+    모델이 없으면 「per_task 키가 태스크 판정과 다르다」로 걸린다
+  · **태스크별 셀 수** — prove 만 assert 0 으로 → 「prove 태스크(assert
+    모드)의 모델에 assert 셀이 0 이다. **최댓값(assert≤7 · cover≤3)은 이것을
+    잡지 못한다**」. 같은 증거에서 `evidence_cells()` 가 (7,3) 을 내는 것을
+    함께 관측했다 — **옛 게이트가 이 파괴를 통과하는 것을 보는 것이 시험의
+    알맹이**다. 모드 UNKNOWN(=`design_prep.ys` 부재)일 때는 「모드를 읽지
+    못했고 형식 셀도 0 이다」로 갈려 인쇄된다
+  · **상수 접힘** — per_task 의 `const_a` 를 1 로 → 「상수로 접혔다:
+    prove(const_A 1·const_EN0 0) … **항진 판정기가 아니라 「문법적으로
+    자명한 부류」의 필요조건 검출기**다 — 식을 비틀어 접히지 않게 만드는 것은
+    고침이 아니다」. **순서 시험**: assert 0 ∧ const_a 1 로 함께 깨뜨리면
+    셀 수 검사가 먼저 인쇄된다 (셀 0 이면 상수도 0 이라 뒤에 서면 공허해진다)
+  · **상수 접힘 미계수** — `const_a` 를 -1 로 → 「상수 접힘을 *세지 못한*
+    태스크가 있다 … 「접힘이 없다」가 아니라 「세는 쪽을 부르지 못했다」다」.
+    스윕 쪽 전 구간도 관측: `lint_tautology --count` 가 죽게 만들면 스윕이
+    **UNCOUNTED**(0 이 아니다)를 내고 종료코드 1, 증거에 -1 이 적힌다
+  · **증인 이름 계수** — `reached_names` 하나 삭제 → 「증인 이름은 2+0건인데
+    계수는 3+0 다. 이름을 *세지 못한* 것이지 0 이었던 것이 아니다」(UNCOUNTED)
+  · **증인 겹침** — 도달 이름 하나를 미도달에도 → 「같은 증인이 도달·미도달
+    양쪽에 있다 … 「reached」가 「unreached」의 부분 문자열이라 …」.
+    **순서가 이 검사의 생사다**: 처음 판은 이 블록을 `_u > 0` 뒤에 두었고,
+    그러면 겹침은 언제나 「증인 미도달」에서 먼저 걸려 **영원히 도달 불가능**
+    했다. 검사가 자기 전제의 도달 불가로 공허해지는 것 — 이 층이 잡으러 온
+    결 그 자체다. 앞으로 옮긴 뒤에야 실제로 발화하는 것을 관측했다
+  · **도구 신원** — 증거 둘의 yosys 배너를 갈라 놓음 → 기본 모드는
+    「⚠ 도구 신원 불일치 … 셀을 센 자가 갈렸다」 경고(rc=0), `--require-fresh`
+    는 실패. stale 과 같은 부류의 처분이다
+  · **증인 잔여 표 5종** — 없는 .sby 지목(표 부패) · `elsewhere` 빔 ·
+    `require` 전제 파괴(하네스의 `assume (w_initDone)` 개명 — 표는 그대로) ·
+    표 쪽 정규식만 틀리게(같은 문면으로 걸린다: 「양성 대조가 하네스에서
+    0건이다」) · `_MAX_WITNESS_RESIDUAL` 1→0 래칫
+  · **쌍방 대조** — 하네스에서 `// WITNESS-RESIDUAL:` 선언을 지움 →
+    「하네스 선언 0 < 1 … 표만으로 면제를 자기 인증하게 된다」
+  · **구판 래칫** — `_MAX_LEGACY_EVIDENCE` 18→0 → 「구판 증거 래칫 위반 …
+    줄이는 길은 하나뿐이다: 다시 재는 것」
+  · **양성 대조 셋** — (a) 전부 되돌리면 통과 (b) 구판(schema/1) 증거 18건이
+    **깨짐이 아니라 구판으로** 받아들여진다 (c) 스텁 스윕이 만든 schema/2
+    증거와 구판이 **섞여 있어도** 통과한다.
+    (b) 가 시험 항목인 이유: schema 불일치를 하드 실패로 두면 스키마를 올리는
+    순간 18개가 전부 깨짐이 되고, 50분 전수 스윕이 착지하기 전까지
+    `make lint` 가 빨갛다. 그 상태에서 다음 사람이 하는 일은 정해져 있다 —
+    게이트를 「임시로」 완화하는 것. `_MAX_LEGACY_EVIDENCE` 상한 래칫이 그
+    자리를 잡는다 (`_MIN_EVIDENCED` 가 0→80 으로 간 단계 도입 그대로)
 """
 import argparse
 import hashlib
@@ -117,15 +363,43 @@ from pathlib import Path
 # 스크립트라 python 이 자동으로 sys.path 에 올린다.
 from lint_guard_map import classify  # noqa: E402
 
+# 상수 접힘의 **허용목록과 래칫도 저장소에 한 벌만** 산다 (같은 이유).
+# 세는 주체는 `lint_tautology` 다 — 간접 상수 결속을 따라가야 해서 grep 두
+# 줄로 끝나지 않고, 실측으로 이 저장소의 모델에는 모듈 수준 상수 결속이
+# 434건 있다. 여기서 사본을 만들면 두 파일이 같은 태스크에 다른 면제를 걸고,
+# 그것이 3차가 닫은 「같은 사실에 두 기계가 다른 수를 인쇄한다」의 재발이다.
+#
+# 두 층의 분업 (`--audit` 는 모델을, 여기는 **증거**를 본다):
+#   lint_tautology --audit  스윕 산출물(/tmp)을 직접 센다. 갓 clone 한
+#                           사람에게는 모델이 없어 **미계수**로 인쇄한다.
+#   여기                    스윕이 증거에 적어 둔 계수를 판정한다. 모델이
+#                           없어도 뜻이 있다 — 그것이 증거를 커밋한 이유다.
+# 겹치는 것은 판정 낱말이 아니라 *같은 수*이고, 그 수는 한 파서에서 나온다.
+from lint_tautology import _MAX_TAUTOLOGY, _TAUTOLOGY  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 TLA_DIR = ROOT / "rtl" / "formal" / "tla"
 SBY_DIR = ROOT / "rtl" / "formal" / "sby"
 RTL_DIR = ROOT / "rtl" / "spinal" / "src"
 GEN_DIR = ROOT / "rtl" / "generated"
 
-EVIDENCE_SCHEMA = "wt64-postformal-evidence/1"
+EVIDENCE_SCHEMA = "wt64-postformal-evidence/2"
 
-# ── 래칫 넷 ──────────────────────────────────────────────────────────────
+# 구판 — **깨짐이 아니다.** schema 불일치를 하드 실패로 두면 스키마를 올리는
+# 순간 18개 증거가 전부 깨짐이 되고, 50분 전수 스윕이 착지하기 전까지
+# `make lint` 가 빨갛다. 그 상태에서 다음 사람이 하는 일은 정해져 있다 —
+# 게이트를 「임시로」 완화하는 것. 그래서 구판은 「구판 — 태스크별 계수·상수
+# 접힘·증인 이름 미측정」으로 받고 `_MAX_LEGACY_EVIDENCE` 상한 래칫이 건수에
+# 서명을 요구한다. 줄이는 길은 하나뿐이다: 다시 재는 것.
+#
+# 구판에도 여전히 적용되는 것: verdict↔tasks · tasks↔[tasks] · sby↔경로 ·
+# anchors↔PROVES · assert≥1 · 증인 계수 항등 · 신선도. 구판이 못 내는 것만
+# (태스크별 셀 수 · 상수 접힘 · 증인 이름 · yosys 배너) 건너뛴다.
+_LEGACY_SCHEMAS = {
+    "wt64-postformal-evidence/1": "구판 — 태스크별 계수·상수 접힘·증인 이름 미측정",
+}
+
+# ── 래칫 ─────────────────────────────────────────────────────────────────
 #
 # 방향이 서로 다른 것에 주의하라. 아래 둘은 **하한**(줄면 실패)이고 가운데
 # 둘은 **상한**(늘면 실패)이다. 상한 쪽이 있는 이유: 구조 skip 과 부분 덮임은
@@ -169,6 +443,29 @@ _MIN_EVIDENCED = 80    # 실행 증거로 뒷받침된 앵커 수. 줄지 않는
                        # 과도기 값이었고, 발효시키지 않으면 증거를 쓰기만 하고
                        # 읽지 않는 층이 된다. 그것이 이 저장소가 이름 붙인
                        # 「집행되지 않는 규율」(부록 B.3)의 새 사례가 됐을 것이다.
+                       #
+                       # (상수 접힘 래칫 `_MAX_TAUTOLOGY` 는 여기 없다 —
+                       #  `lint_tautology` 에서 import 한다. 위 import 주석.)
+_MAX_LEGACY_EVIDENCE = 18
+                       # 구판(schema/1) 증거 수. **늘지 않는다.** 전수 스윕이
+                       # 착지하면 0 으로 내린다. 18 은 4차 파도 착지 시점의
+                       # 실측이고 「아직 아무것도 다시 재지 않았다」는 뜻이다 —
+                       # 그 사실이 매 실행에 인쇄되는 것이 이 래칫의 알맹이다.
+_MAX_WITNESS_RESIDUAL = 1
+                       # 증인 불가 부류가 선언된 .sby 수. 늘지 않는다.
+                       # `_MAX_STRUCTURAL_RESIDUAL` 과 같은 성격 — 벌점이
+                       # 아니라 영구적인 정직 표기이고, **줄이는 길은 하나뿐**
+                       # 이다: 그 부류를 실제로 재는 태스크를 세우는 것.
+_MIN_RESIDUAL_DECLARED = 1
+                       # 하네스에 `// WITNESS-RESIDUAL:` 선언이 실재하는
+                       # `_WITNESS_RESIDUAL` 항목 수. **줄지 않는다.**
+                       #
+                       # 0 → 1 (2026-08-27, 같은 파도에서 하네스가 선언을
+                       # 들인 직후 실측). 이 하한이 서기 전까지 면제는 **통합자
+                       # 단독 판정**이었다 — 표만으로는 「사실을 아는 사람」의
+                       # 확인이 없다. 이제 쌍방 대조가 닫혔고, 하네스에서
+                       # 선언을 지우면 여기서 실패한다 (`_STRUCTURAL` 의
+                       # GUARD-MAP↔표 쌍방 대조와 같은 성질).
 
 # ── 부분 덮임 표 ─────────────────────────────────────────────────────────
 #
@@ -508,6 +805,75 @@ _DERIVED = {
 }
 
 
+# ── 증인 잔여 — 「증인 전수」와 「증인 부분」을 가른다 ────────────────────
+#
+# ## 무엇이 보이지 않았는가
+#
+# `mmio_deep`: 단언 148 · 증인 5. `mmio_deep.sby` 와 `MmioConfig_props.sv` 가
+# **이미 정직하게 적었다** — cover 시작 상태가 `initDone=1 · !busy · fault 없음`
+# 에 **그림자 공집합**을 t=0 에 못박으므로, 소거 구간 부류와 reset 기점 도달성
+# 부류는 이 태스크의 가정 아래 **구조적으로 증인 불가**다. 그런데 증거에는
+# `cover 5 / reached 5 / unreached 0` 으로만 남아 **완전 덮임과 구별되지
+# 않는다.** `_PARTIAL` 을 만든 이유와 정확히 같은 사고 — 자백이 있는데 기계가
+# 못 읽는 상태는 자백이 없는 것보다 나쁘다.
+#
+# ## 왜 `_STRUCTURAL` 과 같은 idiom 인가 — 「표인가 선언인가」가 아니라 **둘 다**
+#
+#   하네스 선언만 두면 **자기 인증**이다. 저자가 「이 부류는 증인 불가」를
+#   스스로 선언해 증인 요구를 빠져나갈 수 있고, 그 편집은 같은 파일 안이라
+#   diff 에서 다른 편집과 섞인다. `Platform.owner_check` 가 「덮임」으로
+#   미끄러진 경로가 정확히 자기 인증이다.
+#
+#   통합자 표만 두면 **사실을 아는 사람이 표를 못 쓴다.** 「다리 assume 아래
+#   시작 상태가 무엇을 못박는가」는 하네스 저자만 아는 국소 기술 사실이고,
+#   `_PARTIAL`(증명의 *폭* 판정 — 저자가 판정할 수 없어 통합자 몫)과 성격이
+#   다르다. 표만 두면 문면이 하네스에서 표로 복사되고 곧 갈린다.
+#
+# ⇒ 표(여기) + 하네스 한 줄 선언(`// WITNESS-RESIDUAL: <부류> — <사유>`)의
+#   **쌍방 대조**. 하네스 쪽은 아직 서지 않았고(다른 담당의 파일),
+#   `_MIN_RESIDUAL_DECLARED` 가 그 사실을 매 실행에 인쇄한다.
+#
+# ## 표 키가 `.sby` 인 이유 — `_PARTIAL` 과의 결정적 차이
+#
+# `_PARTIAL`·`_DERIVED` 는 (모델, 가드, .sby)로 **앵커**를 지목한다. 이 표는
+# **`.sby` 하나**를 지목해야 한다. `mmio_deep` 은 앵커가 0 건(unique_owner 가
+# DELEGATED)이므로 **앵커 키로는 이 사례를 표현할 수 없다.** 키를 잘못 고르면
+# 표를 만들고도 정작 만든 이유가 된 사례가 안 들어간다 — 2차가 `_STRUCTURAL` 에
+# `unmeasured` 칸을 안 둬서 `Isolation.fill_offpath` 를 놓친 것과 같은 실수다.
+#
+# 그리고 이 기제와 앵커당 증인 게이트는 **정확히 상보적**이다: 앵커 0 인
+# 태스크에서 앵커당 증인 요구는 공허하고, 그 자리를 이 표가 메운다.
+#
+# 칸 넷이 `_STRUCTURAL` 과 대응한다:
+#   classes    증인 불가 부류 목록
+#   why        사유 (산문)
+#   ref        하네스·.sby 의 자백 위치
+#   elsewhere  `_NOTHING_LEFT` 자리 — 「그 부류가 어디서 덮이는가 / 왜 어디서도
+#              안 덮이는가」. 빈 문자열·깜빡한 None 과 구별하려고 문면을 요구한다
+#   require    **양성 대조** — 하네스가 실제로 그 가정을 두는지 기계가 확인한다.
+#              동시에 **살아 있는 검사**다: 누가 시작 상태를 reset 기점으로
+#              고치면 면제의 전제가 깨지고 lint 가 실패한다.
+_WITNESS_RESIDUAL = {
+    "rtl/formal/sby/MmioConfig/mmio_deep.sby": {
+        "classes": ["소거 구간 (initDone=0)", "reset 기점 도달성"],
+        "why": "cover 시작 상태가 initDone·!busy·fault 없음 + 그림자 공집합을 "
+               "t=0 에 못박는다. 소거 2^16 사이클을 BMC 가 건너지 못하므로 "
+               "reset 기점으로는 원리적으로 잡히지 않는다 — 하네스가 「단언의 "
+               "전제가 충족 가능하다를 주장하고 reset 으로부터 도달 가능하다는 "
+               "주장하지 않는다」로 스스로 적어 두었다",
+        "ref": "rtl/sv/assert/MmioConfig_props.sv:232-262 · :519-533 · "
+               "rtl/formal/sby/MmioConfig/mmio_deep.sby",
+        "elsewhere": "소거 구간의 성질(침묵·ready 저지·단조 상승)은 "
+                     "mmio_config.sby 의 bmc/prove 태스크가 따로 잰다 "
+                     "(p_busy_implies_done · p_done_monotone · p_reset_state). "
+                     "reset 기점 도달성 자체는 어디서도 재지 않는다 — 2^16 "
+                     "사이클이 BMC 지평 밖이고, 재려면 소거 카운터를 축약한 "
+                     "추상 모델이 따로 서야 한다",
+        "require": [r"assume\s*\(w_initDone\)", r"assume\s*\(shV == 16'b0\)"],
+    },
+}
+
+
 def fail(msg: str) -> None:
     print(f"lint_postformal: FAIL — {msg}", file=sys.stderr)
     sys.exit(1)
@@ -589,6 +955,66 @@ def sby_inputs(path: Path) -> list:
     return out
 
 
+def sby_tasks(path: Path):
+    """`[tasks]` 절이 선언한 태스크 이름 집합. 절이 없으면 None.
+
+    `sby_inputs` 와 **같은 파일**에 산다 (사본 금지 규율). 증거의 태스크 집합을
+    이것으로 재유도하는 것이 「부분 실행」을 잡는 유일한 자리다 — `.sby` 를
+    고치면 sby_sha256 이 이미 stale 을 내므로, 겹치지 않는 곳은 「`.sby` 는
+    그대로인데 스윕이 태스크 하나를 못 돌렸다」 하나뿐이다.
+
+    2026-08-27 실측: 18개 .sby 전부 `[tasks]` 를 갖는다
+    (bmc/prove/cover 13 · bmc/cover 2 · prove/cover 2 · deep/cover 1).
+    None 반환은 「선언이 없다」이고, 그때 증거의 태스크 집합을 재유도할 상대가
+    없으므로 **게이트의 결함**(UNCOUNTED)으로 흘려보낸다.
+    """
+    out, in_tasks, seen = set(), False, False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        s = line.strip()
+        if s.startswith("["):
+            in_tasks = s.lower().startswith("[tasks]")
+            seen = seen or in_tasks
+            continue
+        if not in_tasks or not s or s.startswith("#"):
+            continue
+        out.add(s.split()[0])
+    return out if seen else None
+
+
+def parse_task_states(s: str):
+    """`"bmc:PASS cover:PASS"` -> {태스크: 상태}. 못 쪼개면 None.
+
+    None 은 「상태를 *세지 못했다*」이지 「없었다」가 아니다 — 그 둘을 가르는
+    것이 이 저장소가 두 오탐으로 배운 규율이고, 호출자가 UNCOUNTED 로 인쇄한다.
+    """
+    toks = s.split()
+    if not toks:
+        return None
+    out = {}
+    for t in toks:
+        m = re.fullmatch(r"([^:\s]+):([^:\s]+)", t)
+        if not m:
+            return None
+        out[m.group(1)] = m.group(2)
+    return out
+
+
+def evidence_cells(doc) -> tuple:
+    """(assert 최댓값, cover 최댓값). **유도는 여기 한 곳뿐이다.**
+
+    schema/2 는 `per_task` 에서 유도하고 증거에 최댓값을 따로 적지 않는다.
+    두 수(최댓값·태스크별)가 각자 저장되면 3차가 닫은 「같은 사실에 두 기계가
+    다른 수를 인쇄한다」(lint_guard_map 77 vs lint_postformal 74)의 재발이다.
+    구판(schema/1)은 최댓값만 갖고 있으므로 저장된 `cells` 를 읽는다.
+    """
+    pt = doc.get("per_task")
+    if isinstance(pt, dict) and pt:
+        return (max(int(v.get("assert", 0)) for v in pt.values()),
+                max(int(v.get("cover", 0)) for v in pt.values()))
+    c = doc.get("cells", {})
+    return int(c.get("assert", 0)), int(c.get("cover", 0))
+
+
 def evidence_path(sby: Path) -> Path:
     return sby.with_suffix(".evidence.json")
 
@@ -610,6 +1036,17 @@ def sv_ports(module: str):
 # 증거 기록 모드 — sby_sweep.sh 전용
 # ─────────────────────────────────────────────────────────────────────────
 def emit_evidence(a) -> None:
+    """schema/2 증거를 쓴다.
+
+    **최댓값(`cells`)을 적지 않는다** — `evidence_cells()` 가 `per_task` 에서
+    한 곳에서만 유도한다. 증인은 **정렬된 이름 배열**만 두고 궤적·스텝은 넣지
+    않는다: PASS 요약의 `step N` 은 솔버 선택에 좌우되어 재실행마다 흔들리고,
+    그러면 diff 가 매번 전면 변경이 되어 아무도 안 읽는다 — 증거를 커밋한
+    이유(reviewer 가 grep 할 수 있어야 한다)가 무효화된다.
+
+    증인 *계수*는 이름 배열에서 유도한다. 스윕도 이름에서 세므로 두 수가
+    갈릴 자리가 없고, 갈리면 그것은 인자 전달의 결함이라 lint 가 잡는다.
+    """
     sby = Path(a.emit_evidence)
     if not sby.is_file():
         fail(f"--emit-evidence: {sby} 가 없다")
@@ -619,32 +1056,72 @@ def emit_evidence(a) -> None:
     for q in sby_inputs(sby):
         f = ROOT / q
         inputs[q] = sha256(f) if f.is_file() else "MISSING"
+
+    # `<태스크>:<모드>:<assert>:<cover>:<const_a>:<const_en0>` 공백 구분.
+    # 인자 하나로 받는 이유: 인용 층을 늘리지 않는다 (sby_sweep.sh 의 존재 이유).
+    per_task = {}
+    for tok in (a.task_cells or "").split():
+        parts = tok.split(":")
+        if len(parts) != 6:
+            fail(f"--task-cells 항목이 6칸이 아니다: {tok!r} "
+                 f"(<태스크>:<모드>:<assert>:<cover>:<const_a>:<const_en0>)")
+        name, mode = parts[0], parts[1]
+        try:
+            nums = [int(x) for x in parts[2:]]
+        except ValueError:
+            fail(f"--task-cells 의 수치가 정수가 아니다: {tok!r}")
+        per_task[name] = {
+            "mode": mode, "assert": nums[0], "cover": nums[1],
+            "const_a": nums[2], "const_en0": nums[3],
+        }
+
+    reached = sorted((a.cover_reached_names or "").split())
+    unreached = sorted((a.cover_unreached_names or "").split())
     doc = {
         "schema": EVIDENCE_SCHEMA,
         "sby": rel,
         "sby_sha256": sha256(sby),
         "verdict": a.verdict,
         "tasks": a.tasks,
-        "cells": {"assert": a.assert_cells, "cover": a.cover_cells},
-        "cover": {"reached": a.cover_reached, "unreached": a.cover_unreached},
+        "per_task": per_task,
+        "cover": {
+            "reached": len(reached), "unreached": len(unreached),
+            "reached_names": reached, "unreached_names": unreached,
+        },
         "anchors": sby_anchors(sby),
         "inputs": inputs,
         "tool": a.tool,
+        "yosys": a.yosys,
         "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     out = evidence_path(sby)
     out.write_text(json.dumps(doc, ensure_ascii=False, indent=2,
                               sort_keys=True) + "\n", encoding="utf-8")
+    ac, cc = evidence_cells(doc)
     print(f"evidence: {out.relative_to(ROOT)} ({a.verdict}, "
-          f"assert {a.assert_cells} · cover {a.cover_cells}/"
-          f"{a.cover_reached} 도달)")
+          f"태스크 {len(per_task)} · assert≤{ac} · cover≤{cc}/"
+          f"{len(reached)} 도달)")
 
 
 # ─────────────────────────────────────────────────────────────────────────
 # 증거 검사
 # ─────────────────────────────────────────────────────────────────────────
 def check_evidence(files: list):
-    """.sby 별 증거 상태. -> (상태 dict, 하드 실패 목록, 경고 목록)"""
+    """.sby 별 증거 상태. -> (상태 dict, 하드 실패 목록, 경고 목록)
+
+    ## 이 함수의 문면 규율
+
+    각 검사가 **서로 다른 낱말**로 실패해야 한다 — 고칠 대상이 다르기
+    때문이다. 오늘 쓰는 낱말과 그것이 지목하는 대상:
+
+        파서 드리프트 · 오배치 · UNCOUNTED · ERROR   → **게이트/환경**의 결함
+        HOLLOW · FAIL · 증인 없음 · 증인 미도달 · 상수 접힘 → **대상**의 결함
+        stale · 도구 신원 불일치                      → **신선도**(다시 재라)
+        구판                                          → 아직 안 잰 것
+
+    그리고 이 함수가 잡는 것은 **자기모순**이지 위조가 아니다. 문면에서
+    그것을 잃지 않는 것이 4차 파도의 규율이다 (docstring §신뢰 경계).
+    """
     state, hard, warn = {}, [], []
     for f in files:
         rel = f.relative_to(ROOT).as_posix()
@@ -658,13 +1135,88 @@ def check_evidence(files: list):
             hard.append(f"{ev.relative_to(ROOT)} 가 JSON 이 아니다 ({e})")
             state[rel] = ("깨짐", None)
             continue
-        if doc.get("schema") != EVIDENCE_SCHEMA:
-            hard.append(f"{ev.relative_to(ROOT)} 의 schema 가 {EVIDENCE_SCHEMA} 가 "
-                        f"아니다 ({doc.get('schema')!r}) — 옛 판을 지금 판으로 읽고 있다")
+        schema = doc.get("schema")
+        legacy = schema in _LEGACY_SCHEMAS
+        if schema != EVIDENCE_SCHEMA and not legacy:
+            hard.append(f"{ev.relative_to(ROOT)} 의 schema 가 {EVIDENCE_SCHEMA} 도 "
+                        f"구판({' · '.join(sorted(_LEGACY_SCHEMAS))})도 아니다 "
+                        f"({schema!r}) — 옛 판을 지금 판으로 읽고 있다")
             state[rel] = ("깨짐", None)
             continue
 
+        # ── 오배치 — 증거가 자기가 놓인 자리를 말하는가 ──────────────────
+        #
+        # `doc["sby"]` 는 4차 파도 전까지 **한 번도 읽히지 않았다.** 실무상
+        # 대부분 stale 로도 걸리지만(옮긴 자리의 .sby 해시가 다르므로), stale 은
+        # 「대상의 결함」 낱말이고 오배치는 「게이트의 결함」이다. 같은 낱말로
+        # 보고하면 엉뚱한 것을 고치러 간다.
+        if doc.get("sby") != rel:
+            hard.append(f"{rel} — 증거가 자기가 놓인 자리와 다른 .sby 를 말한다 "
+                        f"({doc.get('sby')!r}). **게이트의 결함**이다 — "
+                        f"`--emit-evidence` 인자가 틀렸거나 증거가 다른 태스크 "
+                        f"디렉터리로 복사됐다. 대상을 고치러 가지 마라")
+            state[rel] = ("오배치", doc)
+            continue
+
+        # `.sby` 자신이 바뀌었는가 — 아래 두 재유도 검사의 **전제**다.
+        #
+        # 파일이 바뀌었으면 앵커·태스크 집합의 어긋남은 「파서 드리프트」도
+        # 「부분 실행」도 아니라 **stale** 이다. 전제를 걸지 않으면 하나의
+        # 파괴가 세 낱말로 인쇄되고, 그것이 문면 규율의 붕괴다.
+        sby_same = doc.get("sby_sha256") == sha256(f)
+
+        # ── 파서 드리프트 — anchors 재유도 ───────────────────────────────
+        #
+        # **잡는 것을 정확히 인쇄한다: 파서 드리프트 하나다.** 정직한 드리프트에
+        # 대한 검출력은 0 이다 — emit 이 자기가 해시한 그 파일에서 앵커를
+        # 계산하므로 sby_sha256 이 일치하면 같은 앵커가 항등으로 성립한다.
+        # 어긋나는 유일한 경우는 **증거를 쓴 lint 판과 읽는 lint 판이 다를 때**
+        # (옛 증거를 새 lint 가 읽을 때) 두 층이 같은 .sby 에서 다른 앵커를
+        # 보는 것. 위조에는 당연히 무력하다 — 둘 다 고치면 된다.
+        if sby_same and doc.get("anchors") != sby_anchors(f):
+            hard.append(f"{rel} — anchors 가 현행 .sby 의 `# PROVES:` 와 다르다. "
+                        f".sby 는 그대로인데(해시 일치) 앵커가 갈렸다 = "
+                        f"**파서 드리프트**다 — 증거를 쓴 lint 판과 읽는 lint 판이 "
+                        f"같은 파일에서 다른 앵커를 본다. 증거: "
+                        f"{doc.get('anchors')} · 지금 읽은 것: {sby_anchors(f)}")
+            state[rel] = ("파서 드리프트", doc)
+            continue
+
         verdict = doc.get("verdict")
+        # ── verdict ↔ tasks 교차 유도 ────────────────────────────────────
+        #
+        # 개정 전에는 `"ERROR" in tasks` 만 봤고 `verdict: PASS` +
+        # `tasks: "bmc:FAIL cover:PASS prove:PASS"` 가 그대로 통과했다.
+        # 검출력의 대부분은 **미래의 스윕 개작에 대한 보험**이지 오늘의 결함
+        # 검출이 아니다 (스윕이 rc 분기와 tasks 조립을 같은 루프에서 한다).
+        # 그리고 **새 낱말을 만들지 않는다** — 기존 UNCOUNTED/FAIL 문면으로
+        # 흘려보낸다. 판정 로직이 두 층으로 흩어지는 것이 두 오탐의 뿌리였다.
+        st = parse_task_states(str(doc.get("tasks", "")))
+        if st is None:
+            hard.append(f"{rel} — 태스크별 판정을 세지 못했다 "
+                        f"(tasks={doc.get('tasks')!r}). 스윕이 status 파일 글롭을 "
+                        f"놓치면 이 문자열이 조용히 비거나 짧아진다 — "
+                        f"**게이트의 결함**이다 (UNCOUNTED)")
+            state[rel] = ("UNCOUNTED", doc)
+            continue
+        # ── 부분 실행 — tasks 키 집합 ↔ .sby 의 [tasks] ──────────────────
+        if sby_same:
+            want_tasks = sby_tasks(f)
+            if want_tasks is None:
+                hard.append(f"{rel} — .sby 에 `[tasks]` 절이 없다. 증거의 태스크 "
+                            f"집합을 재유도할 상대가 없다 — **게이트의 결함**이다 "
+                            f"(UNCOUNTED). `[tasks]` 를 선언하라")
+                state[rel] = ("UNCOUNTED", doc)
+                continue
+            if want_tasks != set(st):
+                hard.append(f"{rel} — .sby 의 [tasks] 는 {sorted(want_tasks)} 를 "
+                            f"선언했는데 증거에는 {sorted(st)} 뿐이다. .sby 는 "
+                            f"그대로인데(해시 일치) 태스크가 갈렸다 = **부분 "
+                            f"실행**이다 — 스윕이 태스크 하나를 못 돌렸거나 그 "
+                            f"status 를 못 읽었다 (UNCOUNTED). 전수로 다시 재라: "
+                            f"sh scripts/sby_sweep.sh {rel}")
+                state[rel] = ("UNCOUNTED", doc)
+                continue
         # 태스크별 판정에 ERROR 가 있으면 그것이 verdict 보다 정확하다.
         #
         # sby 는 엔진이 죽어도(rc=16 — 「Engine terminated without status」)
@@ -699,12 +1251,112 @@ def check_evidence(files: list):
                         f"앵커는 「덮임」이 아니다")
             state[rel] = (str(verdict), doc)
             continue
-        cells = doc.get("cells", {})
-        if int(cells.get("assert", 0)) + int(cells.get("cover", 0)) <= 0:
-            hard.append(f"{rel} — 증거가 PASS 인데 assert/cover 셀이 0 이다 "
-                        f"(스윕의 HOLLOW 판정과 증거가 어긋난다)")
+        # verdict == PASS ⟺ 모든 태스크 PASS. 여기까지 왔으면 왼쪽은 참이다.
+        bad_tasks = sorted(f"{k}:{v}" for k, v in st.items() if v != "PASS")
+        if bad_tasks:
+            hard.append(f"{rel} — verdict 는 PASS 인데 태스크 판정은 "
+                        f"{' · '.join(bad_tasks)} 다. 실패한 태스크를 담은 "
+                        f"증명의 앵커는 「덮임」이 아니다 — 둘 중 하나가 거짓이다")
+            state[rel] = ("FAIL", doc)
+            continue
+
+        # ── 태스크별 계수가 실재하는가 (schema/2) ────────────────────────
+        #
+        # **아래 셀 수 검사보다 먼저** 서야 한다. per_task 가 비면
+        # `evidence_cells()` 가 구판 경로로 떨어져 (0,0) 을 내고, 그러면
+        # 「HOLLOW」(대상의 결함)로 인쇄된다 — 실제로는 **세지 못한 것**
+        # (게이트의 결함)인데. 낱말이 뒤바뀌면 엉뚱한 것을 고치러 간다.
+        pt = doc.get("per_task")
+        if not legacy and (not isinstance(pt, dict) or set(pt) != set(st)):
+            hard.append(f"{rel} — per_task 키 {sorted(pt or {})} 가 태스크 "
+                        f"판정 {sorted(st)} 와 다르다. 태스크별 셀을 *세지 "
+                        f"못한* 것이다 — **게이트의 결함** (UNCOUNTED)")
+            state[rel] = ("UNCOUNTED", doc)
+            continue
+
+        # ── 셀 수 ────────────────────────────────────────────────────────
+        #
+        # `assert ≥ 1` 만 여기서 잰다. **`cover ≥ 1` 은 일부러 중복하지
+        # 않는다** — 아래 `_NO_WITNESS` 게이트가 이미 그것을 잡고 허용목록·
+        # 래칫까지 갖고 있어서, 두 기계가 같은 사실을 각자 인쇄하면 3차가 닫은
+        # 「분모 갈림」이 증거층에서 재발한다.
+        cell_a, cell_c = evidence_cells(doc)
+        if cell_a < 1:
+            hard.append(f"{rel} — 증거가 PASS 인데 assert 셀이 {cell_a} 다 "
+                        f"(cover {cell_c}). 단언 없는 통과는 아무것도 보증하지 "
+                        f"않는다 — 스윕의 HOLLOW 판정과 증거가 어긋난다")
             state[rel] = ("HOLLOW", doc)
             continue
+
+        # ── 태스크별 셀 수 (schema/2) — 태스크 단위의 1형 부활을 잡는다 ──
+        #
+        # **순서가 정확성의 일부다.** 이 검사가 아래 상수 접힘 검사보다 먼저
+        # 서야 한다 — 셀이 0 이면 상수도 0 이라 상수 검사가 자동으로 참이 되고,
+        # 그것이 3차가 `cover == 0` 을 항등 검사 앞에 세운 것과 같은 함정이다.
+        if not legacy:
+            bad = None
+            for t in sorted(pt):
+                e = pt[t]
+                mode, na, nc = e.get("mode"), int(e.get("assert", 0)), int(e.get("cover", 0))
+                if mode == "cover":
+                    if nc < 1:
+                        bad = (f"{t} 태스크(cover 모드)의 모델에 cover 셀이 0 이다")
+                elif mode == "assert":
+                    if na < 1:
+                        bad = (f"{t} 태스크(assert 모드)의 모델에 assert 셀이 0 이다")
+                elif na + nc < 1:
+                    # 모드를 못 읽었다 — 최소한 셀이 있기는 한지만 잰다.
+                    bad = (f"{t} 태스크의 모드를 읽지 못했고(mode={mode!r}) "
+                           f"모델에 형식 셀도 0 이다")
+                if bad:
+                    break
+            if bad:
+                hard.append(f"{rel} — {bad}. **최댓값(assert≤{cell_a} · "
+                            f"cover≤{cell_c})은 이것을 잡지 못한다** — 다른 태스크가 "
+                            f"세운 수가 남아 HOLLOW 가 뜨지 않는다. 태스크 단위의 "
+                            f"하네스 미부착(공허 1형)이다")
+                state[rel] = ("HOLLOW", doc)
+                continue
+            # ── 상수 접힘 검사 (「항진 게이트」가 아니다 — docstring 을 보라) ──
+            #
+            # 세는 주체는 `lint_tautology --count` 이고 스윕이 그것을 불러
+            # 증거에 적는다. 여기는 **소비**한다 — 모델이 없는 갓 clone 에서도
+            # 뜻이 있는 유일한 자리다. 허용목록 키는 그쪽과 같은
+            # `<.sby>:<태스크>` 형태를 쓴다 (표가 한 벌이므로 키도 한 벌).
+            #
+            # `-1` 은 **미계수**다: 스윕이 `--count` 를 부르지 못했다는 뜻이고,
+            # 「접힘이 0 이었다」와 절대 같은 낱말로 보고하지 않는다.
+            miss = sorted(t for t in pt
+                          if int(pt[t].get("const_a", -1)) < 0
+                          or int(pt[t].get("const_en0", -1)) < 0)
+            if miss:
+                hard.append(f"{rel} — 상수 접힘을 *세지 못한* 태스크가 있다: "
+                            f"{miss}. 「접힘이 없다」가 아니라 「세는 쪽을 부르지 "
+                            f"못했다」다 — 스윕이 lint_tautology --count 를 "
+                            f"실행했는지 보라 (**게이트의 결함** · UNCOUNTED)")
+                state[rel] = ("UNCOUNTED", doc)
+                continue
+            folded = sorted(
+                (t, int(pt[t]["const_a"]), int(pt[t]["const_en0"]))
+                for t in pt
+                if (int(pt[t]["const_a"]) or int(pt[t]["const_en0"]))
+                and f"{rel}:{t}" not in _TAUTOLOGY
+            )
+            if folded:
+                hard.append(
+                    f"{rel} — 단언의 피연산자가 상수로 접혔다: "
+                    + " · ".join(f"{t}(const_A {a}·const_EN0 {e})"
+                                 for t, a, e in folded)
+                    + ". `connect \\A` 가 상수면 어떤 설계에서도 통과하므로 이 "
+                      "설계에 대해 아무것도 말하지 않고, `connect \\EN` 이 상수 0 이면 "
+                      "그 단언은 영영 꺼져 있다. 다만 이것은 **항진 판정기가 아니라 "
+                      "「문법적으로 자명한 부류」의 필요조건 검출기**다 — 식을 "
+                      "비틀어 접히지 않게 만드는 것은 고침이 아니다. 어느 단언인지는 "
+                      f"lint_tautology --audit 가 인쇄한다. 면제는 그쪽 _TAUTOLOGY 에 "
+                      f"근거와 함께 (_MAX_TAUTOLOGY={_MAX_TAUTOLOGY} 서명 필요)")
+                state[rel] = ("상수 접힘", doc)
+                continue
+
         # 증인 계수의 항등 — 「세지 못한 것」과 「0이었던 것」을 가른다.
         #
         # 아래 unreached 검사만 두면 cover 셀 N>0 인데 reached=0·unreached=0 인
@@ -715,7 +1367,7 @@ def check_evidence(files: list):
         # 항등이 성립하는 근거: sby 는 cover 태스크의 요약에 모든 cover 문을
         # reached 또는 unreached 로 정확히 한 번씩 인쇄한다. 2026-08-26 전수
         # 실측에서 18/18 성립.
-        _cov = int(cells.get("cover", 0))
+        _cov = cell_c
         _r = int(doc.get("cover", {}).get("reached", 0))
         _u = int(doc.get("cover", {}).get("unreached", 0))
         # 공허의 넷째 결 — 증인이 아예 없는 증명. `_NO_WITNESS` 를 보라.
@@ -728,7 +1380,7 @@ def check_evidence(files: list):
         # 걸려 있었던 셈이다.
         if _cov <= 0 and rel not in _NO_WITNESS:
             hard.append(f"{rel} — cover 증인이 0 이다. 단언 "
-                        f"{int(cells.get('assert', 0))}건이 증인 없이 서 있다 — "
+                        f"{cell_a}건이 증인 없이 서 있다 — "
                         f"전건이 도달 불가능해서 통과하는 경우(공허한 참)를 "
                         f"구분하지 못한다. 증인을 세우거나 "
                         f"lint_postformal._NO_WITNESS 에 근거와 함께 등재하라 "
@@ -741,16 +1393,68 @@ def check_evidence(files: list):
                         f"0 이었던 것이 아니다 — 스윕의 요약 파싱을 고쳐라")
             state[rel] = ("UNCOUNTED", doc)
             continue
+        # ── 증인 이름 (schema/2) ─────────────────────────────────────────
+        #
+        # 이름을 싣는 이유는 계수 위조를 **이름 위조로 승격**하는 것이다:
+        # `"cover": 999, "reached": 999` 는 두 줄 diff 이고 정상 재측정과
+        # 문면상 구별되지 않지만, 999개 식별자는 하네스에서 유도 가능해야
+        # 하므로 위조가 `.sv` 로 번진다. 여전히 통과시킬 수 있으나 diff 가
+        # 리뷰 대상이 된다. **그 이상은 없고 그 이상을 주장하면 안 된다.**
+        #
+        # 여기서 재는 것은 두 가지뿐이다.
+        #   · 이름 개수 == 계수 — 「이름을 *세지 못한* 것」과 「0이었던 것」의
+        #     구분. emit 이 계수를 이름에서 유도하므로 어긋나면 인자 전달의 결함.
+        #   · 도달 ∩ 미도달 = ∅ — 「reached」가 「unreached」의 부분 문자열이라
+        #     스윕의 파싱이 한 번 이미 그 함정 위에 서 있었다.
+        #
+        # **순서**: 이 블록은 아래 `_u > 0`(증인 미도달)보다 **먼저** 서야 한다.
+        # 뒤에 두면 겹침이 있는 증거는 언제나 `_u > 0` 에서 먼저 걸려 이 검사가
+        # **영원히 도달 불가능**해진다 — 겹침은 미도달 이름이 있어야 성립하기
+        # 때문이다. 검사가 자기 전제의 도달 불가로 공허해지는 것이고, 그것이
+        # 이 층이 잡으러 온 결 그 자체다. 그리고 낱말 순서로도 옳다:
+        # 겹침은 **게이트의 결함**, `_u > 0` 은 **대상의 결함**이다.
+        #
+        # **중복 검사는 두지 않는다** — cover 태스크가 둘인 .sby 가 생기면 같은
+        # 이름이 정당하게 두 번 나온다. 부분적으로 잡는 근사가 더 찾기 어려운
+        # 사각지대를 만든다는 이 저장소의 판단 그대로다.
+        if not legacy:
+            rn = doc.get("cover", {}).get("reached_names")
+            un = doc.get("cover", {}).get("unreached_names")
+            if not isinstance(rn, list) or not isinstance(un, list):
+                hard.append(f"{rel} — schema/2 인데 증인 이름 배열이 없다 "
+                            f"(reached_names·unreached_names). 계수만으로는 어느 "
+                            f"전건이 죽었는지 증거가 말하지 못한다 — "
+                            f"**게이트의 결함** (UNCOUNTED)")
+                state[rel] = ("UNCOUNTED", doc)
+                continue
+            if len(rn) != _r or len(un) != _u:
+                hard.append(f"{rel} — 증인 이름은 {len(rn)}+{len(un)}건인데 계수는 "
+                            f"{_r}+{_u} 다. 이름을 *세지 못한* 것이지 0 이었던 "
+                            f"것이 아니다 — 스윕의 요약 파싱을 고쳐라 (UNCOUNTED)")
+                state[rel] = ("UNCOUNTED", doc)
+                continue
+            both = sorted(set(rn) & set(un))
+            if both:
+                hard.append(f"{rel} — 같은 증인이 도달·미도달 양쪽에 있다: "
+                            f"{both[:3]}. 「reached」가 「unreached」의 부분 "
+                            f"문자열이라 스윕의 파싱이 갈라 세지 못한 것이다 — "
+                            f"**게이트의 결함** (UNCOUNTED)")
+                state[rel] = ("UNCOUNTED", doc)
+                continue
+
         if _u > 0:
             hard.append(f"{rel} — 도달하지 못한 cover 증인이 "
                         f"{doc['cover']['unreached']}건 있다 — 전제가 도달 불가능한 "
-                        f"증명을 「덮임」으로 셀 수 없다")
+                        f"증명을 「덮임」으로 셀 수 없다"
+                        + (": " + " · ".join(sorted(
+                            doc["cover"].get("unreached_names", []))[:4])
+                           if doc["cover"].get("unreached_names") else ""))
             state[rel] = ("증인 미도달", doc)
             continue
 
         # 신선도 — fp_op_gate_check 의 provenance 대조와 같은 축.
         drift = []
-        if doc.get("sby_sha256") != sha256(f):
+        if not sby_same:
             drift.append(".sby 자신이 바뀌었다 (앵커·레시피 드리프트)")
         want = set(sby_inputs(f))
         have = set(doc.get("inputs", {}))
@@ -780,12 +1484,17 @@ def main() -> None:
     ap.add_argument("--emit-evidence", metavar="SBY",
                     help="증거 파일 기록 (sby_sweep.sh 전용)")
     ap.add_argument("--verdict", default="PASS")
-    ap.add_argument("--tasks", default="")
-    ap.add_argument("--assert-cells", type=int, default=0)
-    ap.add_argument("--cover-cells", type=int, default=0)
-    ap.add_argument("--cover-reached", type=int, default=0)
-    ap.add_argument("--cover-unreached", type=int, default=0)
+    ap.add_argument("--tasks", default="",
+                    help="`<태스크>:<상태>` 공백 구분")
+    ap.add_argument("--task-cells", default="",
+                    help="`<태스크>:<모드>:<assert>:<cover>:<const_a>:<const_en0>` "
+                         "공백 구분 — 인자 하나로 받아 인용 층을 늘리지 않는다")
+    ap.add_argument("--cover-reached-names", default="",
+                    help="도달 증인 이름 공백 구분 (계수는 여기서 유도한다)")
+    ap.add_argument("--cover-unreached-names", default="")
     ap.add_argument("--tool", default="")
+    ap.add_argument("--yosys", default="",
+                    help="셀을 센 yosys 의 배너 — 증거 간 일치만 잰다")
     a = ap.parse_args()
 
     if a.emit_evidence:
@@ -946,6 +1655,54 @@ def main() -> None:
         fail(f"증인 없음 래칫 위반 — {len(_NO_WITNESS)} > {_MAX_NO_WITNESS}. "
              f"「증인 없는 증명은 전제가 도달 불가능해서 통과하는 경우를 "
              f"구분하지 못한다」를 면제하려면 서명이 든다")
+    # `_TAUTOLOGY` 표의 부패 대조와 래칫은 **여기서 하지 않는다** —
+    # `lint_tautology.audit()` 가 자기 표에 대해 한다. 표가 한 벌이므로
+    # 검사도 한 벌이어야 하고, 두 벌이면 어느 쪽이 참인지 물어야 하는 상태가
+    # 된다. 여기서는 증거에 적힌 계수를 **소비**만 한다.
+
+    # ── 증인 잔여 표 ─────────────────────────────────────────────────────
+    #
+    # `_STRUCTURAL` 과 같은 idiom: 표(여기) + 하네스 선언 + **양성 대조**.
+    # `require` 가 살아 있는 검사인 것이 요점이다 — 누가 시작 상태를 reset
+    # 기점으로 고치면 면제의 전제가 깨지고 여기서 실패한다.
+    residual_witness, residual_declared = [], 0
+    for rel, spec in sorted(_WITNESS_RESIDUAL.items()):
+        if rel not in _sby_rels:
+            fail(f"_WITNESS_RESIDUAL 표의 {rel} 이 실재하지 않는다 (표 부패) — "
+                 f"태스크가 사라진 뒤에도 면제가 남으면 아무도 다시 읽지 않는다")
+        classes = spec.get("classes")
+        if not isinstance(classes, list) or not classes or not all(
+                isinstance(c, str) and c.strip() for c in classes):
+            fail(f"_WITNESS_RESIDUAL {rel} 에 증인 불가 *부류* 목록이 없다")
+        for col in ("why", "ref", "elsewhere"):
+            if not isinstance(spec.get(col), str) or not spec[col].strip():
+                fail(f"_WITNESS_RESIDUAL {rel} 의 `{col}` 칸이 비었다 — "
+                     f"「어디서 덮이는가 / 왜 어디서도 안 덮이는가」에 근거가 든다")
+        # 양성 대조: 하네스가 실제로 그 가정을 두는가.
+        srcs = [ROOT / q for q in sby_inputs(ROOT / rel)]
+        txt = "\n".join(p.read_text(encoding="utf-8")
+                        for p in srcs if p.is_file())
+        if not txt:
+            fail(f"_WITNESS_RESIDUAL {rel} — [files] 입력을 하나도 읽지 못했다. "
+                 f"근거를 잴 곳을 잘못 보고 있다 (「측정하지 못했다」이지 "
+                 f"「부재」가 아니다)")
+        for rx in spec.get("require", []):
+            if not re.search(rx, txt):
+                fail(f"_WITNESS_RESIDUAL {rel} — 양성 대조 {rx!r} 가 하네스에서 "
+                     f"0건이다. 면제의 전제(시작 상태 assume)가 깨졌다 — "
+                     f"부류가 정말 증인 불가인지 다시 판정하라")
+        # 쌍방 대조의 하네스 쪽. 아직 서지 않았고 그 사실을 계수한다.
+        if re.search(r"//\s*WITNESS-RESIDUAL:", txt):
+            residual_declared += 1
+        residual_witness.append((rel, spec))
+    if len(residual_witness) > _MAX_WITNESS_RESIDUAL:
+        fail(f"증인 잔여 래칫 위반 — {len(residual_witness)} > "
+             f"{_MAX_WITNESS_RESIDUAL}. 줄이는 길은 하나뿐이다: 그 부류를 실제로 "
+             f"재는 태스크를 세우는 것")
+    if residual_declared < _MIN_RESIDUAL_DECLARED:
+        fail(f"증인 잔여 선언 래칫 위반 — 하네스 선언 {residual_declared} < "
+             f"{_MIN_RESIDUAL_DECLARED}. 쌍방 대조의 하네스 쪽이 사라지면 표만으로 "
+             f"면제를 자기 인증하게 된다")
     for (m, g, rel), val in sorted(_DERIVED.items()):
         if rel not in anchors_by_guard.get((m, g), set()):
             fail(f"_DERIVED 표의 {m}.{g} @ {rel} 이 실재 앵커를 가리키지 않는다 "
@@ -1004,20 +1761,47 @@ def main() -> None:
     evidenced = sum(1 for _, _, r in proves if r in fresh_files or r in stale_files)
     attested = sum(1 for _, _, r in proves if r in fresh_files)
 
+    # ── 구판 계수 ────────────────────────────────────────────────────────
+    legacy_files = sorted(r for r, (_, d) in state.items()
+                          if d and d.get("schema") in _LEGACY_SCHEMAS)
+    if len(legacy_files) > _MAX_LEGACY_EVIDENCE:
+        fail(f"구판 증거 래칫 위반 — {len(legacy_files)} > {_MAX_LEGACY_EVIDENCE}. "
+             f"구판은 태스크별 계수·상수 접힘·증인 이름을 재지 못한다. "
+             f"줄이는 길은 하나뿐이다: 다시 재는 것")
+
+    # ── 도구 신원 — 「같은 자로 쟀는가」이지 「그 자가 옳은가」가 아니다 ──
+    #
+    # 셀을 세는 주체는 yosys 인데 그 판이 증거 어디에도 없었다. 좁혀 재기가
+    # 규율이고 컨테이너는 재빌드되므로 증거가 여러 도구 판에 걸치는 표류는
+    # 실제로 일어난다. yosys 는 Arch 스냅샷에서 오고 ARG 로 핀되지 않으므로
+    # **절대 기준과 대조할 상대가 없다** — 오직 증거끼리의 일치만 잰다.
+    # 처분은 stale 과 같은 부류다: 경고 · `--require-fresh` 에서 실패.
+    # (전수 스윕을 한 번에 돌리면 전부 일치하므로 그때는 아무것도 안 잡는다.)
+    banners = {}
+    for r, (_, d) in sorted(state.items()):
+        if d and d.get("schema") == EVIDENCE_SCHEMA:
+            banners.setdefault(str(d.get("yosys", "")), []).append(r)
+    tool_split = len(banners) > 1
+    if tool_split:
+        warn.append("도구 신원 불일치 — 증거가 여러 yosys 판에 걸쳐 있다: "
+                    + " · ".join(f"{b or '(빔)'}: {len(v)}건"
+                                 for b, v in sorted(banners.items()))
+                    + ". 셀을 센 자가 갈렸다 (전수로 다시 재라)")
+
     if evidenced < _MIN_EVIDENCED:
         fail(f"증거 래칫 위반 — 증거로 뒷받침된 앵커 {evidenced} < {_MIN_EVIDENCED}. "
              f"증거 파일을 지우는 편집은 측정을 되돌린다")
-    if a.require_fresh and (stale_files or none_files):
+    if a.require_fresh and (stale_files or none_files or tool_split):
         for r in sorted(none_files):
             print(f"lint_postformal: {r} — 증거 미측정", file=sys.stderr)
         for w in warn:
             print(f"lint_postformal: {w}", file=sys.stderr)
         fail(f"--require-fresh — stale {len(stale_files)} · 미측정 "
-             f"{len(none_files)}. 스윕 직후라면 이것은 **스윕의 결함**이다")
+             f"{len(none_files)} · 도구 신원 불일치 {int(tool_split)}. "
+             f"스윕 직후라면 이것은 **스윕의 결함**이다")
 
     # ── 보고 ─────────────────────────────────────────────────────────────
-    witnesses = sum(int(d.get("cells", {}).get("cover", 0))
-                    for _, d in state.values() if d)
+    witnesses = sum(evidence_cells(d)[1] for _, d in state.values() if d)
     print(
         f"lint_postformal: OK — PROVES {len(proves)}건 · 후-formal 분모 "
         f"{len(denom)} (= CHECK; 구조 skip {len(structural)} 는 GUARD-MAP 에서 "
@@ -1027,8 +1811,54 @@ def main() -> None:
         f"구조≤{_MAX_STRUCTURAL} · 잔여≤{_MAX_STRUCTURAL_RESIDUAL} · "
         f"증인없음≤{_MAX_NO_WITNESS}) · [files] 경로 실재 · sby {len(files)}파일"
     )
+    # 위험 ① 의 완화는 문면에 있다. 항목이 늘수록 읽는 쪽은 「이건 잡았겠지」로
+    # 옮겨가고, 그것이 `HiuMask` 래퍼 top 을 부착의 증거로 읽은 형태다.
+    print("  ※ 이 층이 잰 것은 **증거의 자기모순 없음**이지 증거의 참이 아니다 — "
+          "위조는 잡지 못한다 · 재실행만이 검증이다")
+    print(f"  자기모순 대조: 오배치 · 파서 드리프트 · verdict↔tasks · "
+          f"tasks↔[tasks] · 태스크별 셀 수 · 상수 접힘(≤{_MAX_TAUTOLOGY}) · "
+          f"증인 이름 계수 · 도구 신원 — 전건 통과")
+    if legacy_files:
+        print(f"  ⚠ 구판 증거 {len(legacy_files)}건 (≤{_MAX_LEGACY_EVIDENCE}) — "
+              f"태스크별 셀 수·상수 접힘·증인 이름·도구 신원을 **아직 재지 "
+              f"않았다** (측정한 적이 없는 것이지 0 이었던 것이 아니다). "
+              f"전수 스윕 1회로 갚고 래칫을 0 으로 내려라")
     print(f"  cover 증인: {len(files)}태스크 전수에 {witnesses}건 "
-          f"(증인 0 인 태스크 {len(_NO_WITNESS)} — 공허의 넷째 결 게이트)")
+          f"(증인 0 인 태스크 {len(_NO_WITNESS)} — 공허의 넷째 결 게이트"
+          + (f" · ⚠ 증인 부분 {len(residual_witness)} ≤{_MAX_WITNESS_RESIDUAL}"
+             if residual_witness else "") + ")")
+    for rel, spec in residual_witness:
+        d = state.get(rel, (None, None))[1]
+        na, nc = evidence_cells(d) if d else (0, 0)
+        print(f"    ⚠ {Path(rel).parent.name}/{Path(rel).name} — 단언 {na} · "
+              f"증인 {nc} · 증인 불가 부류 {len(spec['classes'])}: "
+              + " · ".join(spec["classes"]))
+        print("        근거 기계 대조 통과 (시작 상태 assume 실재: "
+              + " · ".join(spec.get("require", [])) + ")")
+        print(f"        {spec['elsewhere']}")
+    if residual_witness and residual_declared < len(residual_witness):
+        print(f"    ⚠ 쌍방 대조 미완 — 하네스 `// WITNESS-RESIDUAL:` 선언 "
+              f"{residual_declared}/{len(residual_witness)} "
+              f"(래칫 ≥{_MIN_RESIDUAL_DECLARED}). 표만 있는 동안 면제는 "
+              f"통합자 단독 판정이다. 하네스가 선언을 들이면 "
+              f"_MIN_RESIDUAL_DECLARED 를 표 크기로 올려라")
+    # 앵커당 증인 팬아웃 — **보고만 한다.** 게이트로 올리면 「아무거나 세는
+    # 증인」 압력이 앵커 수만큼 곱해진다 (docstring §아직 서지 않은 것).
+    #
+    # 여기서 `doc["anchors"]` 를 읽는다 — 그 필드가 실제로 **소비되는** 두
+    # 자리 중 하나다(다른 하나는 파서 드리프트 대조). 기록만 되고 안 읽히는
+    # 필드는 곧 썩고, 그것이 4차 파도 전 `anchors`·`sby`·`tool`·`at` 네 필드의
+    # 상태였다. `.sby` 를 다시 읽지 않고 증거의 것을 쓰는 이유: 이 줄은 **그
+    # 증거**에 대한 보고이고, 증거와 `.sby` 가 갈리면 위 대조가 이미 잡는다.
+    thin = sorted((r, len(d.get("anchors", [])), evidence_cells(d)[1])
+                  for r, (_, d) in state.items() if d
+                  and len(d.get("anchors", [])) > evidence_cells(d)[1])
+    if thin:
+        print(f"  앵커당 증인 — 증인이 앵커보다 적은 태스크 {len(thin)}건 "
+              f"(보고용 · 게이트 아님): "
+              + " · ".join(f"{Path(r).parent.name}/{Path(r).stem} {c}<{n}"
+                           for r, n, c in thin[:6])
+              + (" …" if len(thin) > 6 else ""))
     print(
         f"  증거: 앵커 {len(proves)} 중 신선 {attested} · stale "
         f"{evidenced - attested} · 미측정 {len(proves) - evidenced} "

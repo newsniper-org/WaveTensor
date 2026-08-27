@@ -71,10 +71,30 @@ module SharedUnitDepth0_props (
     a_bp_fault_sticky: assert (!$past(io_faultBpViolation && !io_faultClear) || io_faultBpViolation);
   end
 
+  // ── 도달성 증인 (cover 태스크 전용 — 단언의 공허 방지) ──────────────
+  //
+  // 각 줄의 `←` 오른쪽이 **그 증인이 살리는 대상**이다: `<Model>.<guard>` 는
+  // 이 태스크의 `# PROVES:` 앵커, 소문자 식별자는 이 하네스의 단언 라벨.
+  // 줄번호로 매지 않는다 (줄번호 매인 참조가 밀려 상수가 되는 것이 이
+  // 저장소가 이미 밟은 공허의 둘째 결이다). scripts/lint_witness_map.py 가
+  // 이 선언의 **참조 실재성**을 재고, 뜻은 재지 못한다.
+
+  // W1 ← SharedUnit.busy_check · a_busy_check · a_no_silent_drop
+  //      직행 수락이 실제로 일어난다. 이것이 도달 불가능하면 「점유 중 직행
+  //      없음」은 *직행 자체가 없는* 세계에서 자명하게 참이고, 무처분-없음의
+  //      one-hot 도 한 갈래만 관측된 채 통과한다.
+  // W2 ← SharedUnit.backpressure · SharedUnit.queue_room ·
+  //      a_fab10_no_start · a_bp_fault_set · a_no_silent_drop
+  //      배압위반이 도달 가능하다. a_fab10_no_start·a_bp_fault_set 의 전건이
+  //      바로 이것이고, 「깊이 0 이면 보류 수락 경로가 상수로 닫힌다」는
+  //      queue_room 문면의 관측면(도착이 큐로 갈 수 없어 위반이 된다)이다.
+  // W3 ← SharedUnit.backpressure · a_bp_fault_sticky
+  //      sticky fault 가 실제로 선다 — a_bp_fault_sticky 의 전건
+  //      ($past(fault && !clear)) 이 도달 가능하다는 증거.
   always @(posedge clk) if (!reset) begin
-    c_direct: cover (startDirect);
-    c_bp:     cover (bpViolation);
-    c_fault:  cover (io_faultBpViolation);
+    w1_direct: cover (startDirect);
+    w2_bp:     cover (bpViolation);
+    w3_fault:  cover (io_faultBpViolation);
   end
 
 endmodule

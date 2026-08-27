@@ -14,23 +14,58 @@
     "Decode.fault_not_folded",
     "Decode.verdict_ungated"
   ],
-  "at": "2026-08-26T15:12:39Z",
-  "cells": {
-    "assert": 40,
-    "cover": 19
-  },
+  "at": "2026-08-27T10:37:22Z",
   "cover": {
     "reached": 19,
-    "unreached": 0
+    "reached_names": [
+      "DecodeWalk_formal.props.w10_only_dup",
+      "DecodeWalk_formal.props.w11_four_slots",
+      "DecodeWalk_formal.props.w12_immediate_end",
+      "DecodeWalk_formal.props.w13_off_bound",
+      "DecodeWalk_formal.props.w14_fault_rise",
+      "DecodeWalk_formal.props.w15_fault_fall",
+      "DecodeWalk_formal.props.w16_fault_hold",
+      "DecodeWalk_formal.props.w17_capabsent_quiet",
+      "DecodeWalk_formal.props.w18_resv_nonzero",
+      "DecodeWalk_formal.props.w19_invalid_cycle",
+      "DecodeWalk_formal.props.w1_accept",
+      "DecodeWalk_formal.props.w2_malformed",
+      "DecodeWalk_formal.props.w3_capabsent",
+      "DecodeWalk_formal.props.w4_only_resv",
+      "DecodeWalk_formal.props.w5_only_len",
+      "DecodeWalk_formal.props.w6_only_cap",
+      "DecodeWalk_formal.props.w7_only_junk",
+      "DecodeWalk_formal.props.w8_only_self",
+      "DecodeWalk_formal.props.w9_only_words"
+    ],
+    "unreached": 0,
+    "unreached_names": []
   },
   "inputs": {
     "rtl/generated/DecodeWalk.sv": "6bb4e8e5ff11735ca34b7ac979fb9032ad060bf391372c299ccc1f883b77bc1b",
-    "rtl/sv/assert/DecodeWalk_props.sv": "55115c17a8a12317caf6b397c8cb8446d5f83bfd967b0ea38cfa6252fdfeb879"
+    "rtl/sv/assert/DecodeWalk_props.sv": "1c2db4ed26cfb87305299424c63c5d043c03e35303a1c8dfd3257dbbc198cc61"
+  },
+  "per_task": {
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 19,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 40,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
   },
   "sby": "rtl/formal/sby/DecodeWalk/walk_decode.sby",
   "sby_sha256": "162a899e645bd6286df3b8dd825b5a462ddde58d278b87ba3df88902027d4d79",
-  "schema": "wt64-postformal-evidence/1",
+  "schema": "wt64-postformal-evidence/2",
   "tasks": "cover:PASS prove:PASS",
   "tool": "SBY v0.66",
-  "verdict": "PASS"
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
 }

@@ -8,23 +8,70 @@
     "MemOrder.addr_not_gating",
     "MemOrder.inflight_not_gating"
   ],
-  "at": "2026-08-26T16:07:17Z",
-  "cells": {
-    "assert": 24,
-    "cover": 24
-  },
+  "at": "2026-08-27T08:40:52Z",
   "cover": {
     "reached": 24,
-    "unreached": 0
+    "reached_names": [
+      "MemOrderGate.u_props.m10_block_3_0",
+      "MemOrderGate.u_props.m11_block_3_1",
+      "MemOrderGate.u_props.m12_block_3_2",
+      "MemOrderGate.u_props.m13_all_preds_done",
+      "MemOrderGate.u_props.m14_no_overgating",
+      "MemOrderGate.u_props.m15_backpressure_only",
+      "MemOrderGate.u_props.m16_cross_slot_stall",
+      "MemOrderGate.u_props.m17_payload_nonzero",
+      "MemOrderGate.u_props.m18_payload_distinct",
+      "MemOrderGate.u_props.m19_token_rise",
+      "MemOrderGate.u_props.m1_block_0_0",
+      "MemOrderGate.u_props.m20_epoch_clear",
+      "MemOrderGate.u_props.m21_token_hold",
+      "MemOrderGate.u_props.m22_set_beats_clear",
+      "MemOrderGate.u_props.m23_out_of_order_complete",
+      "MemOrderGate.u_props.m24_simultaneous_complete",
+      "MemOrderGate.u_props.m2_block_0_1",
+      "MemOrderGate.u_props.m3_block_0_2",
+      "MemOrderGate.u_props.m4_block_1_0",
+      "MemOrderGate.u_props.m5_block_1_1",
+      "MemOrderGate.u_props.m6_block_1_2",
+      "MemOrderGate.u_props.m7_block_2_0",
+      "MemOrderGate.u_props.m8_block_2_1",
+      "MemOrderGate.u_props.m9_block_2_2"
+    ],
+    "unreached": 0,
+    "unreached_names": []
   },
   "inputs": {
     "rtl/generated/MemOrderGate.sv": "1c2d0531b7110e0f26e8d67ae866ad59b0e8dd13a74813c1620e4649f9f1e49e",
-    "rtl/sv/assert/MemOrderGate_props.sv": "30eb58b31b8d83a95de7d7aa1330a397bc285d2d5724fdf485885a2f7f38bd81"
+    "rtl/sv/assert/MemOrderGate_props.sv": "fa2f5269a976bcf682b37b29b4d4837102b1e342cd0337dba2e0e8f1477313f5"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 24,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 24,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 24,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
   },
   "sby": "rtl/formal/sby/MemOrderGate/props.sby",
   "sby_sha256": "d3d3611d724296bc0d7b7356d098fea146350bbaa9ae97f6c3f8cfea81b0bb0d",
-  "schema": "wt64-postformal-evidence/1",
+  "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",
-  "verdict": "PASS"
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
 }

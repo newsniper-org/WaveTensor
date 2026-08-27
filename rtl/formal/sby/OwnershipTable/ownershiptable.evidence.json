@@ -3,23 +3,58 @@
     "Platform.state_machine_kept",
     "Platform.owner_check"
   ],
-  "at": "2026-08-26T17:19:03Z",
-  "cells": {
-    "assert": 18,
-    "cover": 12
-  },
+  "at": "2026-08-27T10:00:15Z",
   "cover": {
     "reached": 12,
-    "unreached": 0
+    "reached_names": [
+      "OwnershipTable_formal.u_own_props.w10_noop_set",
+      "OwnershipTable_formal.u_own_props.w11_noop_clr",
+      "OwnershipTable_formal.u_own_props.w12_wo_read",
+      "OwnershipTable_formal.u_own_props.w1_handoff",
+      "OwnershipTable_formal.u_own_props.w2_reclaim",
+      "OwnershipTable_formal.u_own_props.w3_owned",
+      "OwnershipTable_formal.u_own_props.w4_owned_high",
+      "OwnershipTable_formal.u_own_props.w5_set_high",
+      "OwnershipTable_formal.u_own_props.w6_collide",
+      "OwnershipTable_formal.u_own_props.w7_flt_col",
+      "OwnershipTable_formal.u_own_props.w8_ro_write",
+      "OwnershipTable_formal.u_own_props.w9_flt_bad"
+    ],
+    "unreached": 0,
+    "unreached_names": []
   },
   "inputs": {
     "rtl/generated/OwnershipTable.sv": "3b6f4b25c5407b0e49261df313116377f9ad724903cb4c466fb87ac36e454fce",
-    "rtl/sv/assert/OwnershipTable_props.sv": "f10e281ed8fd02a2322f95c6e0a41f90987dc429bd7c49b08e2d91be2e59fea5"
+    "rtl/sv/assert/OwnershipTable_props.sv": "0b761dec0bb65ab5b31dde656ed36decf685f646b142dbc5439cf7bcbaefb56e"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 18,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 12,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 18,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
   },
   "sby": "rtl/formal/sby/OwnershipTable/ownershiptable.sby",
   "sby_sha256": "5f0bfba1895745abbefb15f76c60c3ce2c4a0accfb1c4450cd981be674878b45",
-  "schema": "wt64-postformal-evidence/1",
+  "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",
-  "verdict": "PASS"
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
 }

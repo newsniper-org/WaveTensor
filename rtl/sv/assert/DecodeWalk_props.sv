@@ -333,59 +333,79 @@ module DecodeWalk_props (
   wire f_only_dup   = !f_capAbsent && f_dupBad &&
     !(f_resvBad || f_capBad || f_lenBad || f_junkBad || f_selfBad || f_wordsBad);
 
-  // W1 — 정상 승인이 실제로 난다. 없으면 Decode.verdict_ungated 의 게이트
-  //      등식(:224)과 D14 상태열 균일이 「무엇도 통과하지 않는 기계」 위에서
-  //      참이 된다.
-  always @(posedge clk) if (f_ok) cover (io_oValid && io_oExecValid);
-  // W2 — malformed 종결 도달 (Decode.mal_carried 등식의 활성면)
-  always @(posedge clk) if (f_ok) cover (io_oValid && io_oMalformed);
-  // W3 — capability 종결 도달 (Walk.cap_declared 활성면 — 배타 단언 :220 이
-  //      「capAbsent 가 영영 0」으로 자명해지지 않는다)
-  always @(posedge clk) if (f_ok) cover (io_oValid && io_oCapAbsent);
+  // W1 ← Decode.verdict_ungated
+  //      정상 승인이 실제로 난다. 없으면 게이트 등식(:224)과 D14 상태열
+  //      균일이 「무엇도 통과하지 않는 기계」 위에서 참이 된다.
+  always @(posedge clk) if (f_ok) w1_accept: cover (io_oValid && io_oExecValid);
+  // W2 ← Decode.mal_carried
+  //      malformed 종결 도달 (등식의 활성면)
+  always @(posedge clk) if (f_ok) w2_malformed: cover (io_oValid && io_oMalformed);
+  // W3 ← Walk.cap_declared · Walk.cap_check
+  //      capability 종결 도달 — 배타 단언 :220 이 「capAbsent 가 영영 0」으로
+  //      자명해지지 않는다.
+  always @(posedge clk) if (f_ok) w3_capabsent: cover (io_oValid && io_oCapAbsent);
 
   // W4..W10 — 일곱 검산의 단독 원인. 이것이 `oMalformed == $past(f_mal)` 이
-  //      실제로 일곱 CHECK 줄을 나눠 재고 있다는 유일한 증거다.
-  always @(posedge clk) if (f_ok) cover (io_oMalformed && $past(f_only_resv));  // Decode.resv_judged
-  always @(posedge clk) if (f_ok) cover (io_oMalformed && $past(f_only_len));   // Walk.len_check
-  always @(posedge clk) if (f_ok) cover (io_oMalformed && $past(f_only_cap));   // Walk.cap_check
-  always @(posedge clk) if (f_ok) cover (io_oMalformed && $past(f_only_junk));  // Walk.junk_check
-  always @(posedge clk) if (f_ok) cover (io_oMalformed && $past(f_only_self));  // 자기 종류 검산
-  always @(posedge clk) if (f_ok) cover (io_oMalformed && $past(f_only_words)); // 워드 수 검산
-  always @(posedge clk) if (f_ok) cover (io_oMalformed && $past(f_only_dup));   // §4.2.3 반복 규약
+  //      실제로 일곱 CHECK 줄을 나눠 재고 있다는 유일한 증거다. 「단독」이
+  //      알맹이다: 원인 하나만 켜진 궤적이 없으면 그 CHECK 줄은 다른 원인에
+  //      가려 한 번도 독립으로 재어지지 않는다.
+  // W4  ← Decode.resv_judged · Decode.mal_carried
+  always @(posedge clk) if (f_ok) w4_only_resv: cover (io_oMalformed && $past(f_only_resv));
+  // W5  ← Walk.len_check · Decode.mal_carried
+  always @(posedge clk) if (f_ok) w5_only_len: cover (io_oMalformed && $past(f_only_len));
+  // W6  ← Walk.cap_check · Decode.mal_carried
+  always @(posedge clk) if (f_ok) w6_only_cap: cover (io_oMalformed && $past(f_only_cap));
+  // W7  ← Walk.junk_check · Decode.mal_carried
+  always @(posedge clk) if (f_ok) w7_only_junk: cover (io_oMalformed && $past(f_only_junk));
+  // W8  ← Decode.mal_carried — 자기 종류 검산 (전용 가드 없음: 이 축은
+  //       mal 합성의 한 항이고 그 합성의 단일 원천 주장이 mal_carried 다)
+  always @(posedge clk) if (f_ok) w8_only_self: cover (io_oMalformed && $past(f_only_self));
+  // W9  ← Decode.mal_carried — 워드 수 검산 (같은 사유)
+  always @(posedge clk) if (f_ok) w9_only_words: cover (io_oMalformed && $past(f_only_words));
+  // W10 ← Decode.mal_carried — §4.2.3 반복 규약 (같은 사유)
+  always @(posedge clk) if (f_ok) w10_only_dup: cover (io_oMalformed && $past(f_only_dup));
 
-  // W11 — 4슬롯 완주: post_end_gated 의 단조 사슬(:237-239)과 서술자 등식이
-  //      사슬 끝까지 간다 (전부 END 인 세계에서는 :238-239 가 자명하다)
-  always @(posedge clk) if (f_ok) cover (io_oValid && io_oSlotPresent_3);
-  // W12 — 즉시 END: 슬롯 0개. Walk.end_authority 의 반대면 — 사슬 포인터
-  //      0x0 하나가 곧 종료라는 것이 실제로 관측된다.
-  always @(posedge clk) if (f_ok) cover (io_oValid && !io_oSlotPresent_0);
-  // W13 — off 상계 도달: 앞 세 슬롯이 3워드씩이면 oSlotOff_3 = 10. 조합 단언
-  //      :217 의 상계가 느슨한 상한이 아니라 실제로 닿는 값이라는 증거.
+  // W11 ← Walk.post_end_gated · Decode.resv_not_indexed
+  //       4슬롯 완주: 단조 사슬(:237-239)과 서술자 등식이 사슬 끝까지 간다
+  //       (전부 END 인 세계에서는 :238-239 가 자명하다)
+  always @(posedge clk) if (f_ok) w11_four_slots: cover (io_oValid && io_oSlotPresent_3);
+  // W12 ← Walk.end_authority
+  //       즉시 END: 슬롯 0개. 사슬 포인터 0x0 하나가 곧 종료라는 것이
+  //       실제로 관측된다.
+  always @(posedge clk) if (f_ok) w12_immediate_end: cover (io_oValid && !io_oSlotPresent_0);
+  // W13 ← Walk.post_end_gated · Decode.resv_not_indexed
+  //       off 상계 도달: 앞 세 슬롯이 3워드씩이면 oSlotOff_3 = 10. 조합 단언
+  //       :217 의 상계가 느슨한 상한이 아니라 실제로 닿는 값이라는 증거.
   always @(posedge clk) if (f_ok)
-    cover (io_oValid && io_oSlotPresent_3 && (io_oSlotOff_3 == 8'd10));
+    w13_off_bound: cover (io_oValid && io_oSlotPresent_3 && (io_oSlotOff_3 == 8'd10));
 
-  // W14 — sticky 상승이 실제로 난다 (Decode.fault_not_folded 상승 함의 :282 의
-  //      전건 도달성)
-  always @(posedge clk) if (f_ok) cover (io_oFault && !$past(io_oFault));
-  // W15 — sticky 하강이 실제로 가능하다. 이 증인이 없으면 「해제 없인 내려가지
-  //      않는다」(:291)가 「영영 내려가지 않는다」로 자명해진다.
-  always @(posedge clk) if (f_ok) cover (!io_oFault && $past(io_oFault));
-  // W16 — 유지 구간 (해제 미제시) — :291 의 전건 도달성
+  // W14 ← Decode.fault_not_folded
+  //       sticky 상승이 실제로 난다 (상승 함의 :282 의 전건 도달성)
+  always @(posedge clk) if (f_ok) w14_fault_rise: cover (io_oFault && !$past(io_oFault));
+  // W15 ← Decode.fault_not_folded
+  //       sticky 하강이 실제로 가능하다. 이 증인이 없으면 「해제 없인
+  //       내려가지 않는다」(:291)가 「영영 내려가지 않는다」로 자명해진다.
+  always @(posedge clk) if (f_ok) w15_fault_fall: cover (!io_oFault && $past(io_oFault));
+  // W16 ← Decode.fault_not_folded
+  //       유지 구간 (해제 미제시) — :291 의 전건 도달성
   always @(posedge clk) if (f_ok)
-    cover (io_oFault && $past(io_oFault) && !$past(io_iFaultClear));
-  // W17 — 능력 부재는 fault 를 세우지 않는다 (Walk.cap_declared 의 「StickyFault
+    w16_fault_hold: cover (io_oFault && $past(io_oFault) && !$past(io_iFaultClear));
+  // W17 ← Walk.cap_declared · Decode.fault_not_folded
+  //       능력 부재는 fault 를 세우지 않는다 (cap_declared 의 「StickyFault
   //      불참」). 단언 :282 는 상승 *원인*을 malformed 로 못박을 뿐이고, 능력
   //      부재가 fault 없이 지나가는 궤적을 보여야 그 문면이 재어진다.
-  always @(posedge clk) if (f_ok) cover (io_oValid && io_oCapAbsent && !io_oFault);
+  always @(posedge clk) if (f_ok) w17_capabsent_quiet: cover (io_oValid && io_oCapAbsent && !io_oFault);
 
-  // W18 — 예약 비트가 비0 인 명령이 실제로 방출면을 지난다. Decode.resv_not_echoed
+  // W18 ← Decode.resv_not_echoed · Decode.resv_not_indexed
+  //       예약 비트가 비0 인 명령이 실제로 방출면을 지난다. resv_not_echoed
   //      의 마스킹 단언(:232·:267)이 「예약이 늘 0 인 세계」에서 자명해지지 않는다.
   //      구조 skip 으로 닫은 Decode.out_no_reason 의 관측 가능한 잔여분이 이
   //      증인 위에서 재어진다 (walk_decode.sby 의 STRUCTURAL 절 참조).
-  always @(posedge clk) if (f_ok) cover (io_oValid && ($past(io_iInstr_0[15:8]) != 8'h00));
-  // W19 — 무효 사이클 — Decode.resv_not_timed 의 지연 등식(:243)이 양 극성에서
-  //      재어진다 (늘 유효한 세계에서는 절반만 실측된 것이다)
-  always @(posedge clk) if (f_ok) cover (!io_oValid);
+  always @(posedge clk) if (f_ok) w18_resv_nonzero: cover (io_oValid && ($past(io_iInstr_0[15:8]) != 8'h00));
+  // W19 ← Decode.resv_not_timed
+  //       무효 사이클 — 지연 등식(:243)이 양 극성에서 재어진다 (늘 유효한
+  //       세계에서는 절반만 실측된 것이다)
+  always @(posedge clk) if (f_ok) w19_invalid_cycle: cover (!io_oValid);
 `endif // DECODEWALK_COVER
 
 endmodule

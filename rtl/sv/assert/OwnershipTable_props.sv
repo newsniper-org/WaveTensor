@@ -234,23 +234,47 @@ module OwnershipTable_props (
   // 이 파일의 단언은 「A 이면 B」 꼴이 대부분이라 A 가 충족 불가능하면 전부
   // 공허하게 통과한다. bind 묵살로 실제 공허 PASS 를 겪은 모듈이므로
   // (머리말) 증인을 명시적으로 둔다.
+  //
+  // 각 줄의 `←` 오른쪽이 **그 증인이 살리는 대상**이다 — 여기서는 전부 이
+  // 태스크의 `# PROVES:` 앵커다 (이 하네스의 단언에는 라벨이 없다).
+  // 줄번호로 매지 않는다. scripts/lint_witness_map.py 가 참조 실재성만 재고
+  // 「그 궤적이 정말 그 전건을 세우는가」는 재지 못한다.
+  //
+  // W1  ← Platform.state_machine_kept — 이양 커밋 도달 (원자성 단언의 전건).
+  // W2  ← Platform.state_machine_kept — 회수 도달.
+  // W3  ← Platform.owner_check — 장치 소유 상태가 실제로 관측된다. 이것이
+  //       도달 불가능하면 조회 정의(유효 ∧ 태그 일치)는 늘 거짓인 우변으로
+  //       자명하게 성립한다.
+  // W4  ← Platform.owner_check — 결정의 목적 그 자체: 프레임 ≥ 2^31 인
+  //       페이지도 장치 소유가 된다. 앞판 인코딩에서 이 증인은 **원리적으로
+  //       도달 불가**였다 (전이 워드가 그 프레임을 표현하지 못한다).
+  //       도달이 곧 「제3 상태 소멸」의 실측이다.
+  // W5  ← Platform.state_machine_kept — 상위 비트를 든 이양 기입 도달
+  //       (프레임 전폭이 전이 경로를 통과한다).
+  // W6  ← Platform.state_machine_kept — 충돌 기입 형상 도달 (기입 무효화
+  //       가지의 전건).
+  // W7  ← Platform.state_machine_kept — 충돌 sticky fault 가 실제로 선다.
+  // W8  ← Platform.state_machine_kept — RO 오프셋 기입 도달.
+  // W9  ← Platform.state_machine_kept — RO 기입 sticky fault 가 실제로 선다.
+  // W10 ← Platform.state_machine_kept — 무연산 항등(이미 소유한 슬롯에 SET):
+  //       「명시 기입 사이클인데 전이가 없다」는 갈래가 실재한다.
+  // W11 ← Platform.state_machine_kept — 무연산 항등의 CLR 면.
+  // W12 ← Platform.state_machine_kept — WO 오프셋 읽기 도달 (조용함 단언의
+  //       전건 $past(f_woRead)).
   always @(posedge clk) begin
     if (f_ok) begin
-      c_handoff:    cover (f_setWr && f_hit && !f_sVal);                  // 이양 도달
-      c_reclaim:    cover (f_clrWr && f_hit && f_sVal && f_mine);         // 회수 도달
-      c_owned:      cover (io_query_devOwned);
-      // 결정의 목적 그 자체 — 프레임 ≥ 2^31 인 페이지도 장치 소유가 된다.
-      // 앞판 인코딩에서 이 증인은 **원리적으로 도달 불가**였다 (전이 워드가
-      // 그 프레임을 표현하지 못한다). 도달이 곧 「제3 상태 소멸」의 실측이다.
-      c_owned_high: cover (io_query_devOwned && io_query_frame[31]);
-      c_set_high:   cover (f_setWr && f_hit && io_wdata[31] && !f_sVal);
-      c_collide:    cover (f_collide);
-      c_flt_col:    cover (io_faultCollide);
-      c_ro_write:   cover (f_statusWr);                           // RO 기입 도달
-      c_flt_bad:    cover (io_faultBadWrite);
-      c_noop_set:   cover (f_setWr && f_hit && f_sVal && f_mine);         // 무연산 항등
-      c_noop_clr:   cover (f_clrWr && f_hit && !f_sVal);
-      c_wo_read:    cover (f_woRead);
+      w1_handoff:    cover (f_setWr && f_hit && !f_sVal);
+      w2_reclaim:    cover (f_clrWr && f_hit && f_sVal && f_mine);
+      w3_owned:      cover (io_query_devOwned);
+      w4_owned_high: cover (io_query_devOwned && io_query_frame[31]);
+      w5_set_high:   cover (f_setWr && f_hit && io_wdata[31] && !f_sVal);
+      w6_collide:    cover (f_collide);
+      w7_flt_col:    cover (io_faultCollide);
+      w8_ro_write:   cover (f_statusWr);
+      w9_flt_bad:    cover (io_faultBadWrite);
+      w10_noop_set:  cover (f_setWr && f_hit && f_sVal && f_mine);
+      w11_noop_clr:  cover (f_clrWr && f_hit && !f_sVal);
+      w12_wo_read:   cover (f_woRead);
     end
   end
 endmodule

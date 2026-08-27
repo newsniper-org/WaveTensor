@@ -4,23 +4,52 @@
     "ResultBank.acquire_free",
     "ResultBank.interval_end"
   ],
-  "at": "2026-08-26T17:21:48Z",
-  "cells": {
-    "assert": 117,
-    "cover": 6
-  },
+  "at": "2026-08-27T10:03:18Z",
   "cover": {
     "reached": 6,
-    "unreached": 0
+    "reached_names": [
+      "ResultBank_formal.u_ResultBank_props.w1_grant",
+      "ResultBank_formal.u_ResultBank_props.w2_deny",
+      "ResultBank_formal.u_ResultBank_props.w3_write_ok",
+      "ResultBank_formal.u_ResultBank_props.w4_write_no",
+      "ResultBank_formal.u_ResultBank_props.w5_full_interval",
+      "ResultBank_formal.u_ResultBank_props.w6_fault"
+    ],
+    "unreached": 0,
+    "unreached_names": []
   },
   "inputs": {
     "rtl/generated/ResultBank.sv": "57925238932bf1aa090fce2b015baa68854e0da8e944bc6be7269a7556a3a1da",
-    "rtl/sv/assert/ResultBank_props.sv": "feda45230435c619ff55988ff908b837fa9ff2992f06a43195e8a472df6db25b"
+    "rtl/sv/assert/ResultBank_props.sv": "6a9c596f4f18e422123cdafed90aa5b84fc4df315014837f252758cd7fec7808"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 117,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 6,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 117,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
   },
   "sby": "rtl/formal/sby/ResultBank/ownership.sby",
   "sby_sha256": "246a1511b81afb3824b7178bbeed72b01cc8a5f1e59ce786b1d0b9243e5ee094",
-  "schema": "wt64-postformal-evidence/1",
+  "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",
-  "verdict": "PASS"
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
 }

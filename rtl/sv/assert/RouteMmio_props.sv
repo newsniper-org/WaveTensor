@@ -339,55 +339,59 @@ module RouteMmio_props (
 `ifdef ROUTEMMIO_COVER
   // ═══ 합성 도달성 증인 (cover 태스크 전용) ═════════════════════════════
   //
-  // 대응표 — 증인 ↔ 그 증인이 성립시키는 전건:
-  //   c_rm_sweeping        !w_initDone            (p_sweep_quiet)
-  //   c_rm_commit_pair     w_initDone · h_commit  (p_pair_lnid · p_pair_commit)
-  //   c_rm_view_landed     shVV[i] (어떤 i)        (C2 이름 단언 16건)
-  //   c_rm_release_pair    h_release              (p_pair_release)
-  //   c_rm_view_cleared    (같은 전건의 되돌림 방향 — 뷰가 줄어드는 궤적)
-  //   c_rm_bank_pair       h_lbidCommit           (p_pair_bank · p_pair_lbid)
-  //   c_rm_bank_landed     bankPresent 비0        (C2 bank 축의 실물)
-  //   c_rm_judge_pass/fire (무전건인 p_c3_judge 의 두 극성 — 아래 주석)
+  // 각 줄의 `←` 오른쪽이 **그 증인이 살리는 대상**이다: `<Model>.<guard>` 는
+  // 이 태스크의 `# PROVES:` 앵커, 소문자 식별자는 이 하네스의 단언 라벨.
+  // 줄번호로 매지 않는다. scripts/lint_witness_map.py 가 참조 실재성만 재고
+  // 「그 궤적이 정말 그 전건을 세우는가」는 재지 못한다.
   always @(posedge clk) begin
     if (!reset) begin
-      // ── 소거 구간이 이 시작 상태에서 도달 가능하다.
-      c_rm_sweeping: cover (!w_initDone);
+      // W1 ← p_sweep_quiet · p_busy_done
+      //      소거 구간이 이 시작 상태에서 도달 가능하다.
+      w1_rm_sweeping: cover (!w_initDone);
 
-      // ── **이 태스크의 알맹이** — 표 기입과 뷰 구동이 같은 사이클에
-      //    실제로 짝지어진다. p_pair_lnid(w_fwdWrEn == vw_valid)는 양변이
-      //    영원히 0 이어도 통과하므로, 이 증인이 없으면 계약 절반 A 는
-      //    「아무 기입도 없다」로 만족될 수 있다.
-      c_rm_commit_pair: cover (w_initDone && h_commit
-                               && w_fwdWrEn && vw_valid && vw_en);
+      // W2 ← Route.view_sync · p_pair_lnid · p_pair_commit · p_drive_iff
+      //      **이 태스크의 알맹이** — 표 기입과 뷰 구동이 같은 사이클에
+      //      실제로 짝지어진다. p_pair_lnid(w_fwdWrEn == vw_valid)는 양변이
+      //      영원히 0 이어도 통과하므로, 이 증인이 없으면 계약 절반 A 는
+      //      「아무 기입도 없다」로 만족될 수 있다.
+      w2_rm_commit_pair: cover (w_initDone && h_commit
+                                && w_fwdWrEn && vw_valid && vw_en);
 
-      // ── 그 구동이 RouteJudge 의 실레지스터까지 닿았다 (C1 의 알맹이).
-      //    동시에 C2 이름 단언 16건의 전건 `shVV[i]` 가 성립하는 궤적이다
-      //    — C1 이 rj_vv == shVV 를 세우므로 rj_vv 비0 이 곧 그 전건이다.
-      c_rm_view_landed: cover (|rj_vv);
+      // W3 ← Route.view_sync · p_c1_vv · p_c1_vn · p_c2_v
+      //      그 구동이 RouteJudge 의 실레지스터까지 닿았다 (C1 의 알맹이).
+      //      동시에 C2 이름 단언 16건의 전건 `shVV[i]` 가 성립하는 궤적이다
+      //      — C1 이 rj_vv == shVV 를 세우므로 rj_vv 비0 이 곧 그 전건이다.
+      w3_rm_view_landed: cover (|rj_vv);
 
-      // ── 해제 방향 (p_pair_release 의 전건). 커밋 증인만 두면 「등록만
-      //    되고 해제는 못 하는 기계」도 전부 통과한다.
-      //    정직 표기: 이 증인만으로는 약하다 — 시작 상태에서 *Mem 내용은
-      //    자유*라 (그림자만 공집합으로 못박았다) 솔버가 fwdMem 에 유령
-      //    점유를 놓고 앞선 커밋 없이 해제를 일으킬 수 있다. 실측에서도
-      //    이것은 2스텝에 잡혔다. 그래서 아래를 짝으로 둔다:
-      c_rm_view_cleared: cover (vw_valid && !vw_en && rj_vv[vw_idx]);
-      c_rm_release_pair: cover (h_release && w_fwdWrEn && vw_valid && !vw_en);
-      //    c_rm_view_cleared 는 rj_vv 가 t=0 에 0 으로 못박혀 있어 *반드시*
-      //    앞선 실제 커밋을 거쳐야 성립한다 (실측 4스텝). 즉 「기입→구동→
-      //    뷰 반영→해제 구동→뷰 회수」의 온전한 왕복이 이 한 줄에 걸린다.
+      // W4 ← Route.view_sync · p_pair_release
+      //      해제 방향의 온전한 왕복. rj_vv 가 t=0 에 0 으로 못박혀 있어
+      //      *반드시* 앞선 실제 커밋을 거쳐야 성립한다 (실측 4스텝) —
+      //      「기입→구동→뷰 반영→해제 구동→뷰 회수」가 이 한 줄에 걸린다.
+      w4_rm_view_cleared: cover (vw_valid && !vw_en && rj_vv[vw_idx]);
+      // W5 ← p_pair_release · p_drive_iff
+      //      해제 짝짓기 자체 (p_pair_release 의 전건). 커밋 증인만 두면
+      //      「등록만 되고 해제는 못 하는 기계」도 전부 통과한다.
+      //      정직 표기: 이 증인만으로는 약하다 — 시작 상태에서 *Mem 내용은
+      //      자유*라 (그림자만 공집합으로 못박았다) 솔버가 fwdMem 에 유령
+      //      점유를 놓고 앞선 커밋 없이 해제를 일으킬 수 있다 (실측 2스텝).
+      //      그래서 W4 를 짝으로 둔다.
+      w5_rm_release_pair: cover (h_release && w_fwdWrEn && vw_valid && !vw_en);
 
-      // ── LBID 축 (p_pair_bank · p_pair_lbid 의 전건) 과 그 착지.
-      c_rm_bank_pair: cover (w_initDone && h_lbidCommit
-                             && w_lbWrEn && bw_valid && bw_mapped);
-      c_rm_bank_landed: cover (|bank);
+      // W6 ← p_pair_bank · p_pair_lbid · p_bank_iff
+      //      LBID 축 짝짓기의 전건.
+      w6_rm_bank_pair: cover (w_initDone && h_lbidCommit
+                              && w_lbWrEn && bw_valid && bw_mapped);
+      // W7 ← Route.view_sync · p_c1_bank · p_c2_bank
+      //      그 구동이 bank 레지스터까지 닿았다 (C2 bank 축의 실물).
+      w7_rm_bank_landed: cover (|bank);
 
-      // ── p_c3_judge 는 무전건이지만 등식이라 *두 극성이 모두 도달
-      //    가능해야* 내용이 있다. 특히 통과(!o_fire) 쪽은 구성된 소유가
-      //    실제로 토큰을 통과시킨다는 뜻이라, 이것이 없으면 「전부
-      //    발화하는 기계」도 C3 를 만족한다 (h_anyMiss 도 항상 참이므로).
-      c_rm_judge_pass: cover (tok_valid && !o_fire && (|rj_vv));
-      c_rm_judge_fire: cover (tok_valid && o_fire);
+      // W8 ← p_c3_judge — 무전건이지만 등식이라 *두 극성이 모두 도달
+      //      가능해야* 내용이 있다. 통과(!o_fire) 쪽은 구성된 소유가 실제로
+      //      토큰을 통과시킨다는 뜻이라, 이것이 없으면 「전부 발화하는
+      //      기계」도 C3 를 만족한다 (h_anyMiss 도 항상 참이므로).
+      w8_rm_judge_pass: cover (tok_valid && !o_fire && (|rj_vv));
+      // W9 ← p_c3_judge — 발화 극성.
+      w9_rm_judge_fire: cover (tok_valid && o_fire);
     end
   end
 `endif

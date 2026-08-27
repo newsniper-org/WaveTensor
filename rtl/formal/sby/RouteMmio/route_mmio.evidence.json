@@ -2,24 +2,56 @@
   "anchors": [
     "Route.view_sync"
   ],
-  "at": "2026-08-26T17:41:09Z",
-  "cells": {
-    "assert": 31,
-    "cover": 9
-  },
+  "at": "2026-08-27T10:24:04Z",
   "cover": {
     "reached": 9,
-    "unreached": 0
+    "reached_names": [
+      "RouteMmio_props.w1_rm_sweeping",
+      "RouteMmio_props.w2_rm_commit_pair",
+      "RouteMmio_props.w3_rm_view_landed",
+      "RouteMmio_props.w4_rm_view_cleared",
+      "RouteMmio_props.w5_rm_release_pair",
+      "RouteMmio_props.w6_rm_bank_pair",
+      "RouteMmio_props.w7_rm_bank_landed",
+      "RouteMmio_props.w8_rm_judge_pass",
+      "RouteMmio_props.w9_rm_judge_fire"
+    ],
+    "unreached": 0,
+    "unreached_names": []
   },
   "inputs": {
     "rtl/generated/MmioConfig.sv": "58ba347ba3c3fcc3876fadce6ddc214b6d2eb60a88251f81b8abf706930a3932",
     "rtl/generated/RouteJudge.sv": "63682c0c0bf02d83d1516d39734b05c99d428f1fc714bbce6527d759dc38dd68",
-    "rtl/sv/assert/RouteMmio_props.sv": "e674120d9276294677d390b98465229d671d55e9213cba7fea4558c53674b48b"
+    "rtl/sv/assert/RouteMmio_props.sv": "c4db1e7c9181d176364f51e8674861dea4b94de9905295a901b213e611cde647"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 31,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 9,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 31,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
   },
   "sby": "rtl/formal/sby/RouteMmio/route_mmio.sby",
-  "sby_sha256": "6cd8490b7bb261b68a44a39642715f902ff84015651a5eb0761e58845803536d",
-  "schema": "wt64-postformal-evidence/1",
+  "sby_sha256": "91392ae23b6f405acbf1b87e773f1e3151e94d45747e58ef4ff1f0f4b80dfe94",
+  "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",
-  "verdict": "PASS"
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
 }

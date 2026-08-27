@@ -5,23 +5,53 @@
     "SharedUnit.backpressure",
     "SharedUnit.no_overtake"
   ],
-  "at": "2026-08-26T17:41:25Z",
-  "cells": {
-    "assert": 23,
-    "cover": 7
-  },
+  "at": "2026-08-27T10:24:20Z",
   "cover": {
     "reached": 7,
-    "unreached": 0
+    "reached_names": [
+      "SharedUnit_formal.u_SharedUnit_props.w1_direct",
+      "SharedUnit_formal.u_SharedUnit_props.w2_queued",
+      "SharedUnit_formal.u_SharedUnit_props.w3_pop",
+      "SharedUnit_formal.u_SharedUnit_props.w4_full",
+      "SharedUnit_formal.u_SharedUnit_props.w5_bp",
+      "SharedUnit_formal.u_SharedUnit_props.w6_fault",
+      "SharedUnit_formal.u_SharedUnit_props.w7_ovwin"
+    ],
+    "unreached": 0,
+    "unreached_names": []
   },
   "inputs": {
     "rtl/generated/SharedUnit.sv": "55a9d9c4432c890cdafdc1df16fc8a36a220cde729a1969a32fb716757d02874",
-    "rtl/sv/assert/SharedUnit_props.sv": "97b16696cab98839dd40b7cc94abadae34953a537aa9b11df1636e66cb55f8cc"
+    "rtl/sv/assert/SharedUnit_props.sv": "6706ea2b0c0ebe099cd0ba4dfdfe08cb327c77c863a20adfc2835a1c7a66ce2a"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 23,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 7,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 23,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
   },
   "sby": "rtl/formal/sby/SharedUnit/dispatch.sby",
   "sby_sha256": "13a871bcb9a339d8c21edce5012c64aac9f5719b84fe769f701b6bb46692920e",
-  "schema": "wt64-postformal-evidence/1",
+  "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",
-  "verdict": "PASS"
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
 }

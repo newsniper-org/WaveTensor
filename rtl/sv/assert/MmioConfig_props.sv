@@ -416,25 +416,52 @@ module MmioConfig_props (
   // 아래 증인들이 그 전제가 실제로 충족됨을 보인다. 거절 증인만 두면
   // 「전부 거절하는 기계」도 통과하므로 커밋 증인도 함께 둔다 (거절이
   // 정상 경로를 삼키지 않았다는 반대 방향 증거다).
+  // 각 줄의 `←` 오른쪽이 **그 증인이 살리는 대상**이다: `<Model>.<guard>` 는
+  // 이 태스크의 `# PROVES:` 앵커(또는 GUARD-MAP 의 위임 가드), 소문자
+  // 식별자는 이 하네스의 단언 라벨이다. 줄번호로 매지 않는다.
+  // scripts/lint_witness_map.py 가 참조 실재성만 재고 「그 궤적이 정말 그
+  // 전건을 세우는가」는 재지 못한다.
+  //
+  // 대상 단언들은 이 태스크에서 컴파일되지 않는다 (`ifndef MMIO_COVER`) —
+  // 이 태스크가 재는 것은 **그 단언들의 전건이 도달 가능하다**는 사실이고,
+  // 단언 자체는 같은 하네스의 bmc/prove 태스크가 잰다.
   always @(posedge clk) begin
     if (!reset) begin
-      // 결정 A — 예약 비트 비0 기입이 도달 가능하고, 거절된다.
-      c_rsv_lnid_reject: cover (w_busy && h_rsvL && w_chkBadWr
-                                && !w_fwdWrEn && !w_revWrEn && !vw_valid);
-      c_rsv_lbid_reject: cover (h_lbidWrite && h_rsvB && w_chkLbBadWr
-                                && !w_lbWrEn && !bw_valid);
-      // 거절이 loud 하다 — sticky 까지 실제로 올라온다 (두 축 각각).
-      c_rsv_lnid_fault: cover (f_bad && $past(w_chkBadWr));
-      c_rsv_lbid_fault: cover (f_bad && $past(w_chkLbBadWr));
-      // 반대 방향 — 적법한 기입은 여전히 커밋된다 (엄격화가 전부를
-      // 삼키지 않았다). LNID 커밋·해제, LBID 커밋.
-      c_lnid_commit:  cover (h_commit && w_fwdWrEn && vw_valid && vw_en);
-      c_lnid_release: cover (h_release && w_fwdWrEn && vw_valid && !vw_en);
-      c_lbid_commit:  cover (h_lbcommit && w_lbWrEn && bw_valid);
-      // 기존 거절 3원인과 D2 도 여전히 도달 가능하다 (폴딩이 원인을
-      // 하나로 줄이지 않았음의 증거 — 넷이 모두 살아 있다).
-      c_bad3_reject: cover (w_busy && !h_rsvL && h_pV && h_bad3 && w_chkBadWr);
-      c_dup_reject:  cover (w_chkDupOwn);
+      // W1 ← p_rsv_lnid_reject · p_chk_bad_def · p_reject_no_write ·
+      //      p_no_rsv_stored
+      //      결정 A — 예약 비트 비0 LNID 기입이 도달 가능하고, 거절된다.
+      w1_rsv_lnid_reject: cover (w_busy && h_rsvL && w_chkBadWr
+                                 && !w_fwdWrEn && !w_revWrEn && !vw_valid);
+      // W2 ← p_rsv_lbid_reject · p_chk_lbbad_def · p_reject_no_write
+      //      같은 결정의 LBID 축.
+      w2_rsv_lbid_reject: cover (h_lbidWrite && h_rsvB && w_chkLbBadWr
+                                 && !w_lbWrEn && !bw_valid);
+      // W3 ← p_bad_sticky · p_chk_bad_def
+      //      거절이 loud 하다 — LNID 축 sticky 까지 실제로 올라온다.
+      w3_rsv_lnid_fault: cover (f_bad && $past(w_chkBadWr));
+      // W4 ← p_bad_sticky · p_chk_lbbad_def
+      //      같은 것의 LBID 축.
+      w4_rsv_lbid_fault: cover (f_bad && $past(w_chkLbBadWr));
+      // W5 ← Route.view_sync · p_commit_fields · p_atomic_lnid ·
+      //      p_atomic_rev · p_view_drive_iff · p_view_en_iff
+      //      반대 방향 — 적법한 LNID 커밋은 여전히 성사되고 뷰를 구동한다
+      //      (엄격화가 정상 경로를 삼키지 않았다). view_sync 구동 절반의
+      //      전건이 여기서 산다: 구동 등식은 양변이 영원히 0 이어도 참이다.
+      w5_lnid_commit:  cover (h_commit && w_fwdWrEn && vw_valid && vw_en);
+      // W6 ← Route.view_sync · p_release_fields · p_view_en_iff
+      //      해제 방향 — 등록만 하고 해제 못 하는 기계를 배제한다.
+      w6_lnid_release: cover (h_release && w_fwdWrEn && vw_valid && !vw_en);
+      // W7 ← Route.view_sync · p_bank_fields · p_atomic_lbid ·
+      //      p_bank_drive_iff
+      //      LBID 축 커밋과 그 구동.
+      w7_lbid_commit:  cover (h_lbcommit && w_lbWrEn && bw_valid);
+      // W8 ← p_chk_bad_def · p_reject_no_write
+      //      기존 거절 3원인이 여전히 도달 가능하다 (폴딩이 원인을 하나로
+      //      줄이지 않았음의 증거).
+      w8_bad3_reject: cover (w_busy && !h_rsvL && h_pV && h_bad3 && w_chkBadWr);
+      // W9 ← p_chk_dup_def · p_dup_sticky · p_bad_causes_disjoint
+      //      D2(중복 소유) 거절 경로의 도달.
+      w9_dup_reject:  cover (w_chkDupOwn);
     end
   end
 `endif
@@ -524,6 +551,20 @@ module MmioConfig_props (
   // 실제 Mem 내용은 여전히 자유다 — 다리 assume ①·②가 판독을 그림자에
   // 묶으므로 솔버가 공집합과 일치하는 초기 내용을 고른다. 즉 이 가정은
   // Mem 을 직접 건드리지 않고도 「소거 직후」를 재현한다.
+  //
+  // ── 증인 불가 부류의 자백 (기계가 읽는 형식) ─────────────────────────
+  // 아래 두 줄은 scripts/lint_witness_map.py 의 `_WITNESS_RESIDUAL` 표와
+  // 쌍방 대조된다. 「이 태스크의 가정 아래에서 원리적으로 증인을 세울 수
+  // 없는 부류」를 선언하는 것이고, 그 가정이 실재하는지(위 assume 들)를
+  // 그 표가 양성 대조로 확인한다. 시작 상태를 reset 기점으로 되돌리면
+  // 면제의 전제가 깨지고 lint 가 실패한다 — 살아 있는 검사다.
+  //
+  // WITNESS-RESIDUAL: 소거 구간 (initDone=0) — 시작 상태가 initDone·!busy 를
+  //   t=0 에 못박으므로 소거 중 성질(침묵·ready 저지·단조 상승)의 궤적은 이
+  //   태스크에서 표현 불가. 그 부류는 mmio_config.sby 의 bmc 태스크가 잰다.
+  // WITNESS-RESIDUAL: reset 기점 도달성 — 소거 2^16 사이클을 BMC 가 건너지
+  //   못한다. 이 태스크의 증인은 전부 「소거 완료 직후」 기점이며 reset 으로
+  //   부터의 도달성을 주장하지 않는다 (위 시작 상태 절의 정직 표기 그대로).
   always @* begin
     if (!f_past_valid) begin
       assume (shV == 16'b0);
@@ -552,40 +593,50 @@ module MmioConfig_props (
 
   always @(posedge clk) begin
     if (!reset) begin
-      // ── W1 · 소유가 표에 실제로 실린다 (커밋이 그림자에 도달한다).
-      //    대응: 서로소 단언 120건의 첫째 연언지 `shV[gs]`. 이것이 영원히
-      //    거짓이면 120건은 전부 공허하다 — 「빈 표는 항상 서로소」다.
-      c_deep_owned_one: cover (|shV);
+      // 이 태스크의 대상 단언(서로소 120건)은 generate 안이라 라벨을 달 수
+      // 없다 (yosys 는 generate 이름으로 단언 라벨을 한정하지 않아 같은
+      // 라벨이 120회 생성되면 충돌한다 — 실측). 그래서 대상을 **가드**로
+      // 적는다: Route.unique_owner 는 GUARD-MAP 이 DELEGATED(MmioConfig) 로
+      // 지목한 가드이고, 이 파일이 그 위임의 실물이다. 규칙상 이 .sby 에는
+      // `# PROVES:` 앵커가 서지 않으므로(CHECK 전용) 앵커 덮임 계산에는
+      // 들어가지 않는다 — 그 자리는 mmio_deep.sby 의 WITNESS-RESIDUAL 이
+      // 메운다.
 
-      // ── W2 · 서로 다른 두 슬롯이 동시에 소유 상태 (연언쌍의 성립).
-      //    LNID 가 다르다는 것은 요구하지 않는다 — 같으면 서로소 단언이
-      //    막으므로, 이 증인이 잡히면 그것은 자동으로 「다른 LNID 두 개」다.
-      //    대응: `shV[gs] && shV[gt]`.
-      c_deep_owned_two: cover (h_twoOwned);
+      // D1 ← Route.unique_owner — 소유가 표에 실제로 실린다 (커밋이 그림자에
+      //      도달한다). 서로소 단언 120건의 첫째 연언지 `shV[gs]` 가 영원히
+      //      거짓이면 120건은 전부 공허하다 — 「빈 표는 항상 서로소」다.
+      d1_deep_owned_one: cover (|shV);
 
-      // ── W3 · **이 태스크의 알맹이** — 같은 LNID 를 노리는 둘째 기입이
-      //    실제로 도달하고, 거절된다. 서로소 불변식이 배제하는 사건이
-      //    존재함을 보이는 궤적이라, 이것이 없으면 120건은 「일어날 수 없는
-      //    일을 금지하는」 공허한 단언이다.
-      //    대응: 서로소 불변식의 실질 전건 + 다리 ①의 present 극성
-      //          (revChkPresent=1 인 궤적 — 다리가 이 방향으로도 충족 가능).
-      c_deep_dup_blocked: cover (w_busy && !h_rsvL && h_pV && !h_bad3
-                                 && h_ownedP && w_revChkPresent
-                                 && w_chkDupOwn && !w_fwdWrEn && !w_revWrEn);
+      // D2 ← Route.unique_owner — 서로 다른 두 슬롯이 동시에 소유 상태
+      //      (연언쌍 `shV[gs] && shV[gt]` 의 성립). LNID 가 다르다는 것은
+      //      요구하지 않는다 — 같으면 서로소 단언이 막으므로, 이 증인이
+      //      잡히면 그것은 자동으로 「다른 LNID 두 개」다.
+      d2_deep_owned_two: cover (h_twoOwned);
 
-      // ── W4 · 점유 슬롯 재등록 시도의 도달·거절.
-      //    대응: 다리 ②의 `if (shV[w_pSlot[3:0]])` 가지 (그 전건이 성립하는
-      //    궤적 — 성립하지 않으면 LNID 일치 가정은 아무 데도 걸리지 않는다)
-      //    + h_bad3 의 oldV 원인.
-      c_deep_occupied_reject: cover (w_busy && !h_rsvL && h_pV && w_pSlot < 8'h10
-                                     && shV[w_pSlot[3:0]] && h_oldV
-                                     && w_chkBadWr && !w_fwdWrEn);
+      // D3 ← Route.unique_owner · p_chk_dup_def — **이 태스크의 알맹이**:
+      //      같은 LNID 를 노리는 둘째 기입이 실제로 도달하고, 거절된다.
+      //      서로소 불변식이 배제하는 사건이 존재함을 보이는 궤적이라,
+      //      이것이 없으면 120건은 「일어날 수 없는 일을 금지하는」 공허한
+      //      단언이다. 아울러 다리 ①의 present 극성(revChkPresent=1)이
+      //      충족 가능함을 보인다.
+      d3_deep_dup_blocked: cover (w_busy && !h_rsvL && h_pV && !h_bad3
+                                  && h_ownedP && w_revChkPresent
+                                  && w_chkDupOwn && !w_fwdWrEn && !w_revWrEn);
 
-      // ── W5 · 해제가 그림자를 되돌린다 — shV 가 단조 증가만 하는 것이
-      //    아니다. 소유 집합이 줄어드는 방향이 없으면 서로소 보존의 절반
-      //    (해제 후 재등록 경로)이 한 번도 실행되지 않는다.
-      c_deep_release_clears: cover (h_release && w_fwdWrEn && w_fwdWrAddr < 8'h10
-                                    && shV[w_fwdWrAddr[3:0]]);
+      // D4 ← Route.unique_owner · p_chk_bad_def — 점유 슬롯 재등록 시도의
+      //      도달·거절. 다리 ②의 `if (shV[w_pSlot[3:0]])` 가지가 성립하는
+      //      궤적이다 (성립하지 않으면 LNID 일치 가정은 아무 데도 걸리지
+      //      않는다) + h_bad3 의 oldV 원인.
+      d4_deep_occupied_reject: cover (w_busy && !h_rsvL && h_pV && w_pSlot < 8'h10
+                                      && shV[w_pSlot[3:0]] && h_oldV
+                                      && w_chkBadWr && !w_fwdWrEn);
+
+      // D5 ← Route.unique_owner · p_release_fields — 해제가 그림자를
+      //      되돌린다: shV 가 단조 증가만 하는 것이 아니다. 소유 집합이
+      //      줄어드는 방향이 없으면 서로소 보존의 절반(해제 후 재등록
+      //      경로)이 한 번도 실행되지 않는다.
+      d5_deep_release_clears: cover (h_release && w_fwdWrEn && w_fwdWrAddr < 8'h10
+                                     && shV[w_fwdWrAddr[3:0]]);
     end
   end
 `endif

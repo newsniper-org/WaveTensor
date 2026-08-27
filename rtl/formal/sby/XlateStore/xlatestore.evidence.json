@@ -8,23 +8,56 @@
     "Isolation.fill_tagged",
     "Isolation.fill_slot_per_partition"
   ],
-  "at": "2026-08-26T17:45:43Z",
-  "cells": {
-    "assert": 49,
-    "cover": 10
-  },
+  "at": "2026-08-27T10:28:48Z",
   "cover": {
     "reached": 10,
-    "unreached": 0
+    "reached_names": [
+      "XlateStore.u_xlate_props.w10_dark_after_flush",
+      "XlateStore.u_xlate_props.w1_fill_hit",
+      "XlateStore.u_xlate_props.w2_store_hit",
+      "XlateStore.u_xlate_props.w3_body_changes",
+      "XlateStore.u_xlate_props.w4_commit_elsewhere",
+      "XlateStore.u_xlate_props.w5_body_survives_flush",
+      "XlateStore.u_xlate_props.w6_flush_clears",
+      "XlateStore.u_xlate_props.w7_other_part_stable",
+      "XlateStore.u_xlate_props.w8_slot_written",
+      "XlateStore.u_xlate_props.w9_part_barrier"
+    ],
+    "unreached": 0,
+    "unreached_names": []
   },
   "inputs": {
     "rtl/generated/XlateStore.sv": "6947b0d1e47b56f5000224e7af55dea8e4581ca6f2ac2a8ef7d761354b8be840",
-    "rtl/sv/assert/XlateStore_props.sv": "052a1799ca199f4ca876f918c9bb5c0ad6b0fde253779ec19f36a2ba97891cee"
+    "rtl/sv/assert/XlateStore_props.sv": "770547c39cc31df59b6344e3f43d0657ef6b07fd00157021996873c78a13b98c"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 49,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 10,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 49,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
   },
   "sby": "rtl/formal/sby/XlateStore/xlatestore.sby",
   "sby_sha256": "96910c2e3f14ebd0753ff779b021924cf9c69bea6a7d916d727522603c06105f",
-  "schema": "wt64-postformal-evidence/1",
+  "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",
-  "verdict": "PASS"
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
 }

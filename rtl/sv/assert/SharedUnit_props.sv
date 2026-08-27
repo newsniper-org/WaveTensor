@@ -202,14 +202,41 @@ module SharedUnit_props (
   end
 
   // ── 도달성 증인 (cover 태스크 전용 — 단언의 공허 방지) ──────────────
+  //
+  // 각 줄의 `←` 오른쪽이 **그 증인이 살리는 대상**이다: `<Model>.<guard>` 는
+  // 이 태스크의 `# PROVES:` 앵커, 소문자 식별자는 이 하네스의 단언 라벨.
+  // 줄번호로 매지 않는다. scripts/lint_witness_map.py 가 이 선언의 **참조
+  // 실재성**을 재고, 「그 궤적이 정말 그 전건을 세우는가」는 재지 못한다.
+
+  // W1 ← SharedUnit.busy_check · a_busy_check · a_no_double_start ·
+  //      a_order_direct · a_body_req_direct
+  //      직행 수락 도달. 직행이 없는 세계에서는 「점유 중 직행 없음」도
+  //      「직행은 대기자 전무일 때만」도 전건이 죽은 채 통과한다.
+  // W2 ← SharedUnit.queue_room · a_queue_room · a_no_silent_drop
+  //      보류 기입 도달 — a_queue_room 의 전건 pushQ 가 실제로 선다.
+  // W3 ← SharedUnit.no_overtake · a_order_pop · a_body_req_pop ·
+  //      a_no_double_start
+  //      pop 도달 — FIFO 순서 주장의 전건이 산다.
+  // W4 ← SharedUnit.backpressure · a_bp_full_ready_low · a_cnt_bound ·
+  //      a_tag_fifo3
+  //      상한(4)에 실제로 닿는다. 닿지 못하면 `cnt <= 4` 는 폭이 이미 주는
+  //      느슨한 상한이고 ready 강하도 관측되지 않는다.
+  // W5 ← SharedUnit.backpressure · a_fab10_no_start · a_bp_fault_set ·
+  //      a_fab10_wrptr_hold · a_fab10_slot_untouched · a_fab10_cnt
+  //      배압위반 도달 — FAB-10 다섯 단언의 공통 전건.
+  // W6 ← SharedUnit.backpressure · a_bp_fault_sticky
+  //      sticky fault 가 실제로 서서 유지 단언의 전건이 산다.
+  // W7 ← SharedUnit.no_overtake · a_no_overtake_direct
+  //      추월 유혹 창(대기자 있음 ∧ 본체 빔 ∧ 도착)에 도달한다 — 이 형상이
+  //      도달 불가능하면 「비지 않은 열에서 직행 닫힘」은 공허하다.
   always @(posedge clk) if (!reset) begin
-    c_direct:  cover (startDirect);
-    c_queued:  cover (pushQ);
-    c_pop:     cover (pop);
-    c_full:    cover (queue_cnt == 3'd4);
-    c_bp:      cover (bpViolation);
-    c_fault:   cover (io_faultBpViolation);
-    c_ovwin:   cover (!queueEmpty && !body_1_io_busy && io_req_valid); // 추월 유혹 창
+    w1_direct:  cover (startDirect);
+    w2_queued:  cover (pushQ);
+    w3_pop:     cover (pop);
+    w4_full:    cover (queue_cnt == 3'd4);
+    w5_bp:      cover (bpViolation);
+    w6_fault:   cover (io_faultBpViolation);
+    w7_ovwin:   cover (!queueEmpty && !body_1_io_busy && io_req_valid);
   end
 
 endmodule

@@ -170,13 +170,35 @@ module ResultBank_props (
   end
 
   // ── 도달성 증인 (cover 태스크 전용) ─────────────────────────────────
+  //
+  // 각 줄의 `←` 오른쪽이 **그 증인이 살리는 대상**이다: `<Model>.<guard>` 는
+  // 이 태스크의 `# PROVES:` 앵커, 소문자 식별자는 이 하네스의 단언 라벨.
+  // 줄번호로 매지 않는다. scripts/lint_witness_map.py 가 참조 실재성만 재고
+  // 「그 궤적이 정말 그 전건을 세우는가」는 재지 못한다.
+
+  // W1 ← ResultBank.acquire_free
+  //      허가가 실제로 난다. 슬롯 축 단언 셋(소유 상승의 원천 = grant ·
+  //      허가 다음 사이클의 age=0/소유자 등식)의 전건 $past(s_grant) 가
+  //      도달 불가능하면 그 셋이 통째로 공허하다.
+  // W2 ← ResultBank.acquire_free
+  //      명시적 거절이 실제로 관측된다 — 「제3의 결과 부재」의 거절면.
+  // W3 ← ResultBank.owner_check · a_write_lands
+  //      자격 있는 기입이 성사된다 (a_write_lands 의 전건 $past(f_wrq)).
+  // W4 ← ResultBank.owner_check · a_fault_loud · a_store_untouched
+  //      비소유 기입 시도가 도달 가능하다 — 두 단언의 공통 전건이며,
+  //      이것이 없으면 「store 불변」은 기입 시도가 없는 세계의 자명한 참이다.
+  // W5 ← ResultBank.interval_end
+  //      구간이 끝까지 간다 (소유 ∧ age = L). age 가 L 에 닿지 못하면
+  //      「age = L 사이클 말 해제」의 전건이 죽고 `age <= L` 은 느슨한 상한이다.
+  // W6 ← ResultBank.owner_check · a_fault_sticky
+  //      sticky fault 가 실제로 서서 유지 단언의 전건이 산다.
   always @(posedge clk) if (!reset) begin
-    c_grant:    cover (io_acquire_granted);
-    c_deny:     cover (io_acquire_valid && !io_acquire_granted);
-    c_write_ok: cover (when_ResultBank_l181);
-    c_write_no: cover (io_write_valid && !wrQualified);
-    c_full_interval: cover (ovVec[0] && (ageVec[1:0] == L));   // 구간이 끝까지 간다
-    c_fault:    cover (io_fault);
+    w1_grant:         cover (io_acquire_granted);
+    w2_deny:          cover (io_acquire_valid && !io_acquire_granted);
+    w3_write_ok:      cover (when_ResultBank_l181);
+    w4_write_no:      cover (io_write_valid && !wrQualified);
+    w5_full_interval: cover (ovVec[0] && (ageVec[1:0] == L));
+    w6_fault:         cover (io_fault);
   end
 
 endmodule

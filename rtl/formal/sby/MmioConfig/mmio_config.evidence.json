@@ -2,23 +2,55 @@
   "anchors": [
     "Route.view_sync"
   ],
-  "at": "2026-08-26T16:07:18Z",
-  "cells": {
-    "assert": 28,
-    "cover": 9
-  },
+  "at": "2026-08-27T08:40:53Z",
   "cover": {
     "reached": 9,
-    "unreached": 0
+    "reached_names": [
+      "MmioConfig_props.w1_rsv_lnid_reject",
+      "MmioConfig_props.w2_rsv_lbid_reject",
+      "MmioConfig_props.w3_rsv_lnid_fault",
+      "MmioConfig_props.w4_rsv_lbid_fault",
+      "MmioConfig_props.w5_lnid_commit",
+      "MmioConfig_props.w6_lnid_release",
+      "MmioConfig_props.w7_lbid_commit",
+      "MmioConfig_props.w8_bad3_reject",
+      "MmioConfig_props.w9_dup_reject"
+    ],
+    "unreached": 0,
+    "unreached_names": []
   },
   "inputs": {
     "rtl/generated/MmioConfig.sv": "58ba347ba3c3fcc3876fadce6ddc214b6d2eb60a88251f81b8abf706930a3932",
-    "rtl/sv/assert/MmioConfig_props.sv": "4d334208c7409ce31c45205474e312770a38018400ff58fd7815f645d39b2cee"
+    "rtl/sv/assert/MmioConfig_props.sv": "de0a0ac13b42b3b4fbb579cfa2e6ecefe06f0c42ddf44d235f343ff301c7d8c6"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 28,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 9,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 28,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
   },
   "sby": "rtl/formal/sby/MmioConfig/mmio_config.sby",
   "sby_sha256": "bdccc5411daf8a39294639c47d5b257ffa9d5d8218ed32f3a7c2c2f11845c760",
-  "schema": "wt64-postformal-evidence/1",
+  "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",
-  "verdict": "PASS"
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
 }

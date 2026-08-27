@@ -27,7 +27,7 @@
 # design_prep.ys 의 `chformal -live -fair -assert -remove`) 이 태스크의
 # 증인은 assume 만 걸린 상태에서 잡힌다. 깊이 12 근거: 커밋 1회 =
 # 수락+CHECK 2사이클 + 뷰 레지스터 반영 1사이클, 가장 먼 증인(커밋 후
-# 토큰 통과 판정 c_rm_judge_pass)이 4스텝이면 닿고 여유로 12.
+# 토큰 통과 판정 w8_rm_judge_pass)이 4스텝이면 닿고 여유로 12.
 #
 # bmc 깊이 24 근거: MmioConfig 소거 2^16 사이클이 도달성을 막아 BMC 는
 # 소거 구간(무구동·공집합 뷰 판정)만 실측한다 — 정직 표기. 기능 구간은

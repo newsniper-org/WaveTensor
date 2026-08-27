@@ -281,7 +281,8 @@ module RouteJudge_props (
 
   // ── 부류 ① 판정 분기 — p_global_judge 등식의 네 면 + p_fault_once 전건 ──
 
-  // W1 ⟨p_global_judge 의 `o_fire == 0` 면⟩ ⟨p_scope_pass 의 유의미한 통과⟩
+  // W1 ← Route.global_judge · Route.scope_independent · p_global_judge ·
+  //      p_scope_pass — ⟨판정 등식의 `o_fire == 0` 면⟩ ⟨전량 통과의 유의미한 면⟩
   //    Route.tla `Witness_NoFault` 의 RTL 판. **두 판정 축을 다 통과하는**
   //    토큰이 fault 없이 배달된다 — 뷰 적중이면서 `src_kind=1` 의 LBID 도
   //    사상돼 있다. srcKind 우회로 얻은 무결이 아니라는 뜻으로 두 조건을
@@ -295,14 +296,16 @@ module RouteJudge_props (
            && bank[tok_lbid] && !o_fire && out_valid);
   end
 
-  // W2 ⟨p_global_judge 의 `o_fire == 1` 면 · LNID 축 단독⟩ ⟨p_fault_once 전건⟩
+  // W2 ← Route.global_judge · Route.fault_once · p_global_judge · p_fault_once
+  //      ⟨판정 등식의 `o_fire == 1` 면 · LNID 축 단독⟩ ⟨발화 1회의 전건⟩
   //    **구성된** 기계에서 전역 미스만으로 발화한다 (ISA-3 후반).
   always @(posedge clk) begin
     w2_miss_lnid_only: cover (
       f_run && f_cfg && tok_valid && h_missLnid && !h_missLbid && o_fire);
   end
 
-  // W3 ⟨p_global_judge 의 `o_fire == 1` 면 · LBID 축 단독⟩
+  // W3 ← Route.global_judge · p_global_judge
+  //      ⟨판정 등식의 `o_fire == 1` 면 · LBID 축 단독⟩
   //    적중한 LNID 인데 `src_kind=1` 의 LBID 가 미사상이라 발화한다 (ISA-8).
   //    이 증인이 없으면 두 축이 독립이라는 정본의 주장(ISA-3/ISA-8 분리)이
   //    RTL 에서 재어지지 않는다 — 종전 판의 ISA-3 이 이 축을 삼키고 있었다.
@@ -311,7 +314,8 @@ module RouteJudge_props (
       f_run && f_cfg && tok_valid && !h_missLnid && h_missLbid && o_fire);
   end
 
-  // W4 ⟨p_fault_once 의 실질 전건⟩ — Route.tla `Witness_NoDoubleMiss` 의 RTL 판.
+  // W4 ← Route.fault_once · p_fault_once · p_global_judge
+  //      ⟨발화 1회의 실질 전건⟩ — Route.tla `Witness_NoDoubleMiss` 의 RTL 판.
   //    두 조건을 *동시에* 밟는 토큰이 실재한다. 이것이 도달 불가능하면
   //    ISA-4 「두 조건을 다 밟아도 fault 는 하나」는 검사할 것이 없다.
   always @(posedge clk) begin
@@ -319,7 +323,8 @@ module RouteJudge_props (
       f_run && f_cfg && tok_valid && h_missLnid && h_missLbid && o_fire);
   end
 
-  // W5 ⟨h_missLbid 의 srcKind 전건⟩ — LBID 가 미사상인데 `src_kind≠1` 이라
+  // W5 ← Route.global_judge · p_global_judge
+  //      ⟨h_missLbid 의 srcKind 전건⟩ — LBID 가 미사상인데 `src_kind≠1` 이라
   //    fault 가 없다. ISA-8 의 전건이 상수-참으로 접혀 있지 않다는 증거이며,
   //    이것 없이는 「사상 축은 src_kind=1 한정」이 재어지지 않는다.
   always @(posedge clk) begin
@@ -328,7 +333,8 @@ module RouteJudge_props (
            && !bank[tok_lbid] && !o_fire);
   end
 
-  // W6 ⟨정본 §1.6.3 함정: 「전역 미스」와 「지역 비소유」의 구분⟩
+  // W6 ← Route.global_judge · Route.scope_independent · p_global_judge
+  //      ⟨정본 §1.6.3 함정: 「전역 미스」와 「지역 비소유」의 구분⟩
   //    Route.tla `Witness_NoLocalNonOwnership` 의 RTL 판. 뷰에 *이름이 다른*
   //    유효 엔트리가 있는데 — 지역 판정 기계였다면 바로 그 자리가 fault 를
   //    냈을 상황 — 토큰은 합집합에 속하므로 fault 가 없다. 「형제 노드의
@@ -338,7 +344,8 @@ module RouteJudge_props (
       f_run && tok_valid && h_hit && f_sibling && !h_missLbid && !o_fire);
   end
 
-  // W7 ⟨p_fault_once 의 반대편 전건⟩ — 미스 조건이 성립하는데 제시가 없어
+  // W7 ← Route.fault_once · p_fault_once
+  //      ⟨발화 1회의 반대편 전건⟩ — 미스 조건이 성립하는데 제시가 없어
   //    발화하지 않는다. `!o_fire || tok_valid` 가 「미스가 없어서」가 아니라
   //    「제시가 없어서」 서는 사이클이 실재한다.
   always @(posedge clk) begin
@@ -348,7 +355,8 @@ module RouteJudge_props (
 
   // ── 부류 ② 시간축 — Route.tla 가 미덮임으로 남긴 축 (하네스 머리 주석) ──
 
-  // W8 ⟨p_fault_once 의 시간축 판⟩ — 동일 (wave·thread·lnid) 토큰이 연속 두
+  // W8 ← Route.fault_once · p_fault_once
+  //      ⟨발화 1회의 시간축 판⟩ — 동일 (wave·thread·lnid) 토큰이 연속 두
   //    사이클 제시되어 각각 발화한다. 「제시당 1회」가 「토큰당 1회」로 접히지
   //    않는다는 것, 곧 재제시가 표현 가능하다는 것. Route.tla 가 범위당 1회
   //    원자 판정으로 모델링해 표현 자체를 못 가졌던 축이며(하네스 머리 주석),
@@ -360,7 +368,8 @@ module RouteJudge_props (
             && (tok_thread == $past(tok_thread)));
   end
 
-  // W9 ⟨p_global_judge 가 「뷰만의 함수」라는 주장의 실측 ①⟩ — ISA-2(사상 경유)
+  // W9 ← Route.global_judge · Route.view_sync · p_global_judge
+  //      ⟨판정이 「뷰만의 함수」라는 주장의 실측 ①⟩ — ISA-2(사상 경유)
   //    의 RTL 상. *같은* 토큰이 뷰 구성 뒤에는 fault 를 밟지 않는다. 판정이
   //    토큰만의 함수라면 이 궤적은 없다.
   always @(posedge clk) begin
@@ -370,9 +379,10 @@ module RouteJudge_props (
             && (tok_srcKind == $past(tok_srcKind)));
   end
 
-  // W10 ⟨같은 주장의 실측 ②⟩ — 반대 방향. 뷰 엔트리를 무효화하면 같은 토큰이
-  //     fault 를 밟는다. 두 방향을 함께 두어야 「뷰가 판정을 *지배*한다」가
-  //     한 방향의 우연이 아님이 선다.
+  // W10 ← Route.global_judge · Route.view_sync · p_global_judge
+  //      ⟨같은 주장의 실측 ②⟩ — 반대 방향. 뷰 엔트리를 무효화하면 같은 토큰이
+  //      fault 를 밟는다. 두 방향을 함께 두어야 「뷰가 판정을 *지배*한다」가
+  //      한 방향의 우연이 아님이 선다.
   always @(posedge clk) begin
     w10_verdict_flips_to_fault: cover (
       f_seq && !$past(o_fire) && $past(tok_valid) && tok_valid && o_fire
@@ -382,30 +392,34 @@ module RouteJudge_props (
 
   // ── 부류 ③ sticky — p_loud_fault 등식의 네 분기 (ISA-6 · INV-T3) ──────
 
-  // W11 ⟨`fault' = fire | …` 의 fire 항⟩ — sticky 가 실제로 선다.
+  // W11 ← Route.loud_fault · p_loud_fault
+  //      ⟨`fault' = fire | …` 의 fire 항⟩ — sticky 가 실제로 선다.
   always @(posedge clk) begin
     w11_sticky_rise: cover (
       f_seq && !$past(o_fault) && $past(o_fire) && o_fault);
   end
 
-  // W12 ⟨`… | (fault & ~clear)` 의 유지 항⟩ — 재발화 없이 해제도 없이 유지.
-  //     ISA-6 「명시적 해제 전까지 유지」가 재어지는 자리.
+  // W12 ← Route.loud_fault · p_loud_fault
+  //      ⟨`… | (fault & ~clear)` 의 유지 항⟩ — 재발화 없이 해제도 없이 유지.
+  //      ISA-6 「명시적 해제 전까지 유지」가 재어지는 자리.
   always @(posedge clk) begin
     w12_sticky_hold: cover (
       f_seq && $past(o_fault) && !$past(o_fire) && !$past(fault_clear) && o_fault);
   end
 
-  // W13 ⟨같은 항의 `~clear` 인자⟩ — 명시적 해제가 실제로 내린다. 이것이
-  //     도달 불가능하면 p_loud_fault 는 「한 번 서면 영원히 1」인 기계에서도
-  //     통과하고, 해제 경로는 재어지지 않는다.
+  // W13 ← Route.loud_fault · p_loud_fault
+  //      ⟨같은 항의 `~clear` 인자⟩ — 명시적 해제가 실제로 내린다. 이것이
+  //      도달 불가능하면 p_loud_fault 는 「한 번 서면 영원히 1」인 기계에서도
+  //      통과하고, 해제 경로는 재어지지 않는다.
   always @(posedge clk) begin
     w13_sticky_clear: cover (
       f_seq && $past(o_fault) && $past(fault_clear) && !$past(o_fire) && !o_fault);
   end
 
-  // W14 ⟨두 항의 우선순위⟩ — 발화와 해제가 *같은 사이클*에 오면 set 이
-  //     이긴다. 하네스 주석이 주장하는 「miss 삼킴 없음」의 구석이며, 이
-  //     궤적 없이는 등식의 `fire |` 가 clear 와 겹치는 면이 미측정이다.
+  // W14 ← Route.loud_fault · p_loud_fault
+  //      ⟨두 항의 우선순위⟩ — 발화와 해제가 *같은 사이클*에 오면 set 이
+  //      이긴다. 하네스 주석이 주장하는 「miss 삼킴 없음」의 구석이며, 이
+  //      궤적 없이는 등식의 `fire |` 가 clear 와 겹치는 면이 미측정이다.
   always @(posedge clk) begin
     w14_set_beats_clear: cover (
       f_seq && $past(o_fire) && $past(fault_clear) && o_fault);
@@ -413,31 +427,36 @@ module RouteJudge_props (
 
   // ── 부류 ④ 뷰 기입 — `if ($past(vw_valid))` 전건과 그 else 가지 ────────
 
-  // W15 ⟨p_view_sync_wr_v/wr_n 의 전건⟩ — 기입이 상태를 *실제로 바꾼다*.
-  //     이것 없이는 기입 단언들이 「아무것도 안 바뀌는」 기계 위에서 성립.
+  // W15 ← Route.view_sync · p_view_sync_wr_v · p_view_sync_wr_n
+  //      ⟨두 기입 단언의 전건⟩ — 기입이 상태를 *실제로 바꾼다*.
+  //      이것 없이는 기입 단언들이 「아무것도 안 바뀌는」 기계 위에서 성립.
   always @(posedge clk) begin
     w15_view_write_changes: cover (
       f_seq && $past(vw_valid) && (h_vv != c_vv));
   end
 
-  // W16 ⟨같은 전건의 en=0 면⟩ — 무효화 기입. `== $past(vw_en)` 등식이 en=1
-  //     쪽만으로 재어지지 않는다는 증거.
+  // W16 ← Route.view_sync · p_view_sync_wr_v
+  //      ⟨같은 전건의 en=0 면⟩ — 무효화 기입. `== $past(vw_en)` 등식이 en=1
+  //      쪽만으로 재어지지 않는다는 증거.
   always @(posedge clk) begin
     w16_view_invalidate: cover (
       f_seq && $past(vw_valid) && !$past(vw_en)
             && c_vv[$past(vw_idx)] && !h_vv[$past(vw_idx)]);
   end
 
-  // W17 ⟨루프 단언 15×2 (`i != $past(vw_idx)`)의 전건⟩ — 기입 사이클에 *다른*
-  //     엔트리가 유효하다. 뷰가 한 칸만 쓰이는 세계라면 부동 단언 30개가
-  //     전부 0==0 이다.
+  // W17 ← Route.view_sync · p_view_sync_wr_v
+  //      ⟨루프 단언 15×2 (`i != $past(vw_idx)`)의 전건 — 그 단언들은 for 안이라
+  //      라벨을 달 수 없어 가드로 적는다⟩ — 기입 사이클에 *다른*
+  //      엔트리가 유효하다. 뷰가 한 칸만 쓰이는 세계라면 부동 단언 30개가
+  //      전부 0==0 이다.
   always @(posedge clk) begin
     w17_other_entry_live: cover (
       f_seq && $past(vw_valid) && ((h_vv & ~(16'h1 << $past(vw_idx))) != 16'h0));
   end
 
-  // W18 ⟨p_view_sync_hold 의 전건 (else 가지)⟩ — 무기입 사이클에 뷰가 비어
-  //     있지 않다. 유지 단언이 공집합 위의 자명한 성립이 아니라는 증거.
+  // W18 ← Route.view_sync · p_view_sync_hold
+  //      ⟨유지 단언의 전건 (else 가지)⟩ — 무기입 사이클에 뷰가 비어
+  //      있지 않다. 유지 단언이 공집합 위의 자명한 성립이 아니라는 증거.
   always @(posedge clk) begin
     w18_view_hold_nonempty: cover (
       f_seq && !$past(vw_valid) && (h_vv != 16'h0));
@@ -445,32 +464,36 @@ module RouteJudge_props (
 
   // ── 부류 ⑤ 존재 비트 표 — `if ($past(bw_valid))` 전건과 그 else 가지 ────
 
-  // W19 ⟨p_bank_sync_wr 의 전건 · mapped=1 면⟩ — 사상 등재가 실제로 일어난다.
+  // W19 ← Route.view_sync · p_bank_sync_wr
+  //      ⟨존재 비트 기입 단언의 전건 · mapped=1 면⟩ — 사상 등재가 실제로 일어난다.
   always @(posedge clk) begin
     w19_bank_set: cover (
       f_seq && $past(bw_valid) && $past(bw_mapped)
             && bank[$past(bw_lbid)] && !c_bank[$past(bw_lbid)]);
   end
 
-  // W20 ⟨같은 전건 · mapped=0 면⟩ — 사상 말소. `== $past(bw_mapped)` 등식이
-  //     기입 값 한쪽 면만으로 재어지지 않는다는 증거이며, 뷰 축의 W16
-  //     (무효화 기입)에 대응한다.
+  // W20 ← Route.view_sync · p_bank_sync_wr
+  //      ⟨같은 전건 · mapped=0 면⟩ — 사상 말소. `== $past(bw_mapped)` 등식이
+  //      기입 값 한쪽 면만으로 재어지지 않는다는 증거이며, 뷰 축의 W16
+  //      (무효화 기입)에 대응한다.
   always @(posedge clk) begin
     w20_bank_clear: cover (
       f_seq && $past(bw_valid) && !$past(bw_mapped)
             && !bank[$past(bw_lbid)] && c_bank[$past(bw_lbid)]);
   end
 
-  // W21 ⟨p_bank_sync_oth 의 전건⟩ — 기입 사이클에 *다른* 비트가 서 있다.
-  //     마스크 등식이 0==0 이 아니라는 증거.
+  // W21 ← Route.view_sync · p_bank_sync_oth
+  //      ⟨마스크 부동 단언의 전건⟩ — 기입 사이클에 *다른* 비트가 서 있다.
+  //      마스크 등식이 0==0 이 아니라는 증거.
   always @(posedge clk) begin
     w21_other_bank_bit_live: cover (
       f_seq && $past(bw_valid)
             && ((bank & ~(256'h1 << $past(bw_lbid))) != 256'h0));
   end
 
-  // W22 ⟨p_bank_sync_hold 의 전건 (else 가지)⟩ — 무기입 사이클에 표가 비어
-  //     있지 않다.
+  // W22 ← Route.view_sync · p_bank_sync_hold
+  //      ⟨유지 단언의 전건 (else 가지)⟩ — 무기입 사이클에 표가 비어
+  //      있지 않다.
   always @(posedge clk) begin
     w22_bank_hold_nonempty: cover (
       f_seq && !$past(bw_valid) && (bank != 256'h0));
@@ -478,9 +501,10 @@ module RouteJudge_props (
 
   // ── 부류 ⑥ reset 관문 — `if (f_past_valid && past_reset)` 전건 ──────────
 
-  // W23 ⟨p_reset_empty 의 전건⟩ — reset 직후 사이클이 실재한다. 유일한 환경
-  //     assume(reset 프로토콜)이 이 창을 목 졸라 놓지 않았다는 증거 —
-  //     졸랐다면 §1.5 단언은 존재하지 않는 사이클에 대한 주장이 된다.
+  // W23 ← p_reset_empty
+  //      ⟨reset 관문 단언의 전건⟩ — reset 직후 사이클이 실재한다. 유일한 환경
+  //      assume(reset 프로토콜)이 이 창을 목 졸라 놓지 않았다는 증거 —
+  //      졸랐다면 §1.5 단언은 존재하지 않는 사이클에 대한 주장이 된다.
   always @(posedge clk) begin
     w23_reset_exit_window: cover (
       f_past_valid && past_reset && !reset);

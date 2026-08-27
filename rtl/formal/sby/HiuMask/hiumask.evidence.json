@@ -10,24 +10,62 @@
     "Decode.evict_inline",
     "Platform.owner_check"
   ],
-  "at": "2026-08-26T16:07:16Z",
-  "cells": {
-    "assert": 23,
-    "cover": 15
-  },
+  "at": "2026-08-27T08:40:51Z",
   "cover": {
     "reached": 15,
-    "unreached": 0
+    "reached_names": [
+      "HiuMask_comp.u_mask.u_mask_props.w7_mask_roundtrip",
+      "HiuMask_comp.u_mask.u_mask_props.w8_mask_frozen_loaded",
+      "HiuMask_comp.u_pipe.u_hiu_props.w10_host_leg_used",
+      "HiuMask_comp.u_pipe.u_hiu_props.w11_replace_reached",
+      "HiuMask_comp.u_pipe.u_hiu_props.w12_replace_completes",
+      "HiuMask_comp.u_pipe.u_hiu_props.w13_nonowner_loud",
+      "HiuMask_comp.u_pipe.u_hiu_props.w14_fault_rise",
+      "HiuMask_comp.u_pipe.u_hiu_props.w15_fault_clear",
+      "HiuMask_comp.u_pipe.u_hiu_props.w1_rsp",
+      "HiuMask_comp.u_pipe.u_hiu_props.w2_two_inflight",
+      "HiuMask_comp.u_pipe.u_hiu_props.w3_hold_loaded",
+      "HiuMask_comp.u_pipe.u_hiu_props.w4_misswait_stall",
+      "HiuMask_comp.u_pipe.u_hiu_props.w5_granted_nonzero",
+      "HiuMask_comp.u_pipe.u_hiu_props.w6_denied_zero",
+      "HiuMask_comp.u_pipe.u_hiu_props.w9_leg_clash"
+    ],
+    "unreached": 0,
+    "unreached_names": []
   },
   "inputs": {
     "rtl/generated/HiuPipeline.sv": "83768afe9908d36db56bc3a9887795bb18892704c230f1a5f27f2af809b88a44",
     "rtl/generated/MaskUnit.sv": "6fe2cddee7b7dc270abd69a0e634d414cf1ec04157ffa35e3723ef7374801da8",
-    "rtl/sv/assert/HiuMask_props.sv": "00ee1f0c60378692db75d135b347f0903ebe504ffd50c6dc656b2562b4b12117"
+    "rtl/sv/assert/HiuMask_props.sv": "da87b844ee70ea3360e50bf2bf29cf30eb7c380a451e77f9259864aa5966e978"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 23,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 15,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 23,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
   },
   "sby": "rtl/formal/sby/HiuMask/hiumask.sby",
   "sby_sha256": "eb411a0b1992067b891bc738477480f15d957173463e08f5fc676b1b8bf04431",
-  "schema": "wt64-postformal-evidence/1",
+  "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",
-  "verdict": "PASS"
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
 }

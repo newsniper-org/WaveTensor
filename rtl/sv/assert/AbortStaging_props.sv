@@ -194,34 +194,41 @@ module AbortStaging_check (
   //   ※ sby 의 cover 모드는 chformal -assert -remove 로 단언을 스스로
   //     떼어낸다. 증인이 적법 궤적 위에 있다는 것은 bmc 태스크가 보증한다.
 `ifdef ABORTSTG_COVER
-  // W1 — 무장이 실제로 완비된다 (세 워드가 다 실린다). 이것 없이는
+  // W1 ← p_fire_needs_armed · t_arm_src_0 · t_arm_src_1 · t_arm_src_2
+  //      무장이 실제로 완비된다 (세 워드가 다 실린다). 이것 없이는
   //      p_fire_needs_armed 가 전건 거짓으로 공허하다.
-  always @(posedge clk) if (f_step) cover (io_armed == 3'b111);
+  always @(posedge clk) if (f_step) w1_armed_full: cover (io_armed == 3'b111);
 
-  // W2 — 발화가 실제로 난다 (결정 A 가 「엄격한 축소」라는 주장의 활성면:
+  // W2 ← p_fire_needs_ok · p_fire_needs_bit0 · p_fire_needs_word ·
+  //      t_arm_cleared_on_fire · t_fire_keeps_value
+  //      발화가 실제로 난다 (결정 A 가 「엄격한 축소」라는 주장의 활성면:
   //      올바른 호스트 시퀀스는 무장 규율 아래에서도 그대로 동작한다).
-  always @(posedge clk) if (f_step) cover (io_fire);
+  always @(posedge clk) if (f_step) w2_fire: cover (io_fire);
 
-  // W3 — *무장 미완 발화*가 실제로 도달한다 — 즉 이 규율이 실제로 막는
+  // W3 ← p_fire_needs_armed · p_partial_no_effect
+  //      *무장 미완 발화*가 실제로 도달한다 — 즉 이 규율이 실제로 막는
   //      일이 있다. 없으면 무장 게이트는 한 번도 일하지 않은 장식이다.
   always @(posedge clk)
-    if (f_step) cover (io_wr && io_selFire && !fire_rsv_bad && io_wdata[0]
+    if (f_step) w3_fire_underarmed: cover (io_wr && io_selFire && !fire_rsv_bad && io_wdata[0]
                        && (io_armed != 3'b111));
 
-  // W4 — 그 미완 발화가 *fault 를 세우지 않는다* (무시이지 거절이 아니다 —
+  // W4 ← p_arm_miss_not_bad · p_partial_no_effect
+  //      그 미완 발화가 *fault 를 세우지 않는다* (무시이지 거절이 아니다 —
   //      E.12 3항과 같은 처분이라는 문장의 활성면).
   always @(posedge clk)
-    if (f_step) cover (io_wr && io_selFire && !fire_rsv_bad && io_wdata[0]
+    if (f_step) w4_fire_underarmed_quiet: cover (io_wr && io_selFire && !fire_rsv_bad && io_wdata[0]
                        && (io_armed != 3'b111) && !io_badWrite);
 
-  // W5 — 잔류 소진이 실제로 관측된다: 무장 완비 상태에서 발화 워드를 쓰고
+  // W5 ← t_arm_cleared_on_fire · t_no_stale_staging · t_fire_keeps_value
+  //      잔류 소진이 실제로 관측된다: 무장 완비 상태에서 발화 워드를 쓰고
   //      다음 사이클에 무장이 0 이다.
   always @(posedge clk)
-    if (f_step) cover ($past(ok_fire) && $past(io_armed) == 3'b111 && io_armed == 3'b000);
+    if (f_step) w5_arm_drained: cover ($past(ok_fire) && $past(io_armed) == 3'b111 && io_armed == 3'b000);
 
-  // W6 — 거절된 스테이징 기입(TAG2 예약 비0)이 실제로 도달한다 —
+  // W6 ← t_arm2_not_on_reject · t_tag2_hold
+  //      거절된 스테이징 기입(TAG2 예약 비0)이 실제로 도달한다 —
   //      t_arm2_not_on_reject 의 전건.
-  always @(posedge clk) if (f_step) cover (io_wr && io_selTag2 && tag2_rsv_bad);
+  always @(posedge clk) if (f_step) w6_tag2_reject: cover (io_wr && io_selTag2 && tag2_rsv_bad);
 `endif // ABORTSTG_COVER
 
 endmodule

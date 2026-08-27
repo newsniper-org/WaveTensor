@@ -16,23 +16,64 @@
     "Payload.base_from_tag",
     "Payload.loud_reject"
   ],
-  "at": "2026-08-26T17:19:39Z",
-  "cells": {
-    "assert": 87,
-    "cover": 18
-  },
+  "at": "2026-08-27T10:00:55Z",
   "cover": {
     "reached": 18,
-    "unreached": 0
+    "reached_names": [
+      "Reassembly.u_props.w10_capa_loaded_ctx",
+      "Reassembly.u_props.w11_loud_stray",
+      "Reassembly.u_props.w12_loud_totbad",
+      "Reassembly.u_props.w13_loud_over",
+      "Reassembly.u_props.w14_loud_dup",
+      "Reassembly.u_props.w15_capabsent_rise",
+      "Reassembly.u_props.w16_loud_restart",
+      "Reassembly.u_props.w17_pool_exhausted",
+      "Reassembly.u_props.w18_fault_clear",
+      "Reassembly.u_props.w1_abort_fire",
+      "Reassembly.u_props.w2_clr_cmd",
+      "Reassembly.u_props.w3_abort_incomplete",
+      "Reassembly.u_props.w4_abort_loaded",
+      "Reassembly.u_props.w5_abort_miss",
+      "Reassembly.u_props.w6_write_nonzero_base",
+      "Reassembly.u_props.w7_two_ctx_distinct_base",
+      "Reassembly.u_props.w8_open_nonzero_base",
+      "Reassembly.u_props.w9_capa_hit"
+    ],
+    "unreached": 0,
+    "unreached_names": []
   },
   "inputs": {
     "rtl/generated/Reassembly.sv": "09d7f715521ea37ef2e42c9f6435b2c414f839b0219211c08b4f2ff89fcaa135",
-    "rtl/sv/assert/Reassembly_props.sv": "a85452f9607d36c9f0fdaacfd0b5fbcc717f387c8c411788f380370d4af72283"
+    "rtl/sv/assert/Reassembly_props.sv": "eeea7ac2eb794925f49d345b2e3d8f725c75ff86a72592da2c0faf0240bfa227"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 87,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 18,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 87,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
   },
   "sby": "rtl/formal/sby/Reassembly/props.sby",
   "sby_sha256": "9a00799b605565dbe08e1bea46cc8d270740bad35a5d14853116a4fef33f1536",
-  "schema": "wt64-postformal-evidence/1",
+  "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",
-  "verdict": "PASS"
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
 }

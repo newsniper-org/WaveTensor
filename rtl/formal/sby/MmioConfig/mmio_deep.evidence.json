@@ -1,22 +1,43 @@
 {
   "anchors": [],
-  "at": "2026-08-26T17:07:11Z",
-  "cells": {
-    "assert": 148,
-    "cover": 5
-  },
+  "at": "2026-08-27T09:45:46Z",
   "cover": {
     "reached": 5,
-    "unreached": 0
+    "reached_names": [
+      "MmioConfig_props.d1_deep_owned_one",
+      "MmioConfig_props.d2_deep_owned_two",
+      "MmioConfig_props.d3_deep_dup_blocked",
+      "MmioConfig_props.d4_deep_occupied_reject",
+      "MmioConfig_props.d5_deep_release_clears"
+    ],
+    "unreached": 0,
+    "unreached_names": []
   },
   "inputs": {
     "rtl/generated/MmioConfig.sv": "58ba347ba3c3fcc3876fadce6ddc214b6d2eb60a88251f81b8abf706930a3932",
-    "rtl/sv/assert/MmioConfig_props.sv": "4d334208c7409ce31c45205474e312770a38018400ff58fd7815f645d39b2cee"
+    "rtl/sv/assert/MmioConfig_props.sv": "de0a0ac13b42b3b4fbb579cfa2e6ecefe06f0c42ddf44d235f343ff301c7d8c6"
+  },
+  "per_task": {
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 5,
+      "mode": "cover"
+    },
+    "deep": {
+      "assert": 148,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
   },
   "sby": "rtl/formal/sby/MmioConfig/mmio_deep.sby",
-  "sby_sha256": "5cd9f28394ca4af8edf009b80c9b80862233f84ff617ff498f788169991584d5",
-  "schema": "wt64-postformal-evidence/1",
+  "sby_sha256": "e78d7587002050dc01813459d1963cdd4224e0c35543aa7d530721261b9344c1",
+  "schema": "wt64-postformal-evidence/2",
   "tasks": "cover:PASS deep:PASS",
   "tool": "SBY v0.66",
-  "verdict": "PASS"
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
 }

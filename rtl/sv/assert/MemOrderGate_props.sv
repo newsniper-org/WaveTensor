@@ -201,88 +201,118 @@ module MemOrderGate_props (
                && io_down_3_valid && io_up_3_ready;
 
   // ── M1..M12 — g_open_eq_0..3 이 접은 12개 선행 항의 단독 원인 ────────────
-  // 대응: M(3i+k+1) ↔ g_open_eq_<i> 우변의 (io_cfgPreds_<i>[<k>] && !io_token[·])
-  //       항. 같은 증인이 g_fire_eq_<i>v · g_fire_eq_<i>r 의 **억제면**도 함께
-  //       재운다 (down.valid=0 · up.ready=0 을 궤적 조건에 넣었다).
-  //       PROVES 대응: MemOrder.token_gate · MemOrder.gate_matches_dep.
-  always @(posedge clk) if (f_step) cover (f_block_0 && f_only_0_0);  // M1
-  always @(posedge clk) if (f_step) cover (f_block_0 && f_only_0_1);  // M2
-  always @(posedge clk) if (f_step) cover (f_block_0 && f_only_0_2);  // M3
-  always @(posedge clk) if (f_step) cover (f_block_1 && f_only_1_0);  // M4
-  always @(posedge clk) if (f_step) cover (f_block_1 && f_only_1_1);  // M5
-  always @(posedge clk) if (f_step) cover (f_block_1 && f_only_1_2);  // M6
-  always @(posedge clk) if (f_step) cover (f_block_2 && f_only_2_0);  // M7
-  always @(posedge clk) if (f_step) cover (f_block_2 && f_only_2_1);  // M8
-  always @(posedge clk) if (f_step) cover (f_block_2 && f_only_2_2);  // M9
-  always @(posedge clk) if (f_step) cover (f_block_3 && f_only_3_0);  // M10
-  always @(posedge clk) if (f_step) cover (f_block_3 && f_only_3_1);  // M11
-  always @(posedge clk) if (f_step) cover (f_block_3 && f_only_3_2);  // M12
+  // 각 줄의 `←` 오른쪽이 **그 증인이 살리는 대상**이다: `<Model>.<guard>` 는
+  // 이 태스크의 `# PROVES:` 앵커, 소문자 식별자는 이 하네스의 단언 라벨.
+  // 줄번호로 매지 않는다. scripts/lint_witness_map.py 가 참조 실재성만 재고
+  // 「그 궤적이 정말 그 전건을 세우는가」는 재지 못한다.
+  //
+  // 대응 M(3i+k+1) ↔ g_open_eq_<i> 우변의 (io_cfgPreds_<i>[<k>] && !io_token[·])
+  // 항. 같은 증인이 g_fire_eq_<i>v · g_fire_eq_<i>r 의 **억제면**도 함께
+  // 재운다 (down.valid=0 · up.ready=0 을 궤적 조건에 넣었다).
+  // M1  ← MemOrder.token_gate · MemOrder.gate_matches_dep · g_open_eq_0 · g_fire_eq_0v · g_fire_eq_0r
+  // M2  ← MemOrder.token_gate · MemOrder.gate_matches_dep · g_open_eq_0 · g_fire_eq_0v · g_fire_eq_0r
+  // M3  ← MemOrder.token_gate · MemOrder.gate_matches_dep · g_open_eq_0 · g_fire_eq_0v · g_fire_eq_0r
+  // M4  ← MemOrder.token_gate · MemOrder.gate_matches_dep · g_open_eq_1 · g_fire_eq_1v · g_fire_eq_1r
+  // M5  ← MemOrder.token_gate · MemOrder.gate_matches_dep · g_open_eq_1 · g_fire_eq_1v · g_fire_eq_1r
+  // M6  ← MemOrder.token_gate · MemOrder.gate_matches_dep · g_open_eq_1 · g_fire_eq_1v · g_fire_eq_1r
+  // M7  ← MemOrder.token_gate · MemOrder.gate_matches_dep · g_open_eq_2 · g_fire_eq_2v · g_fire_eq_2r
+  // M8  ← MemOrder.token_gate · MemOrder.gate_matches_dep · g_open_eq_2 · g_fire_eq_2v · g_fire_eq_2r
+  // M9  ← MemOrder.token_gate · MemOrder.gate_matches_dep · g_open_eq_2 · g_fire_eq_2v · g_fire_eq_2r
+  // M10 ← MemOrder.token_gate · MemOrder.gate_matches_dep · g_open_eq_3 · g_fire_eq_3v · g_fire_eq_3r
+  // M11 ← MemOrder.token_gate · MemOrder.gate_matches_dep · g_open_eq_3 · g_fire_eq_3v · g_fire_eq_3r
+  // M12 ← MemOrder.token_gate · MemOrder.gate_matches_dep · g_open_eq_3 · g_fire_eq_3v · g_fire_eq_3r
+  always @(posedge clk) if (f_step) m1_block_0_0: cover (f_block_0 && f_only_0_0);
+  always @(posedge clk) if (f_step) m2_block_0_1: cover (f_block_0 && f_only_0_1);
+  always @(posedge clk) if (f_step) m3_block_0_2: cover (f_block_0 && f_only_0_2);
+  always @(posedge clk) if (f_step) m4_block_1_0: cover (f_block_1 && f_only_1_0);
+  always @(posedge clk) if (f_step) m5_block_1_1: cover (f_block_1 && f_only_1_1);
+  always @(posedge clk) if (f_step) m6_block_1_2: cover (f_block_1 && f_only_1_2);
+  always @(posedge clk) if (f_step) m7_block_2_0: cover (f_block_2 && f_only_2_0);
+  always @(posedge clk) if (f_step) m8_block_2_1: cover (f_block_2 && f_only_2_1);
+  always @(posedge clk) if (f_step) m9_block_2_2: cover (f_block_2 && f_only_2_2);
+  always @(posedge clk) if (f_step) m10_block_3_0: cover (f_block_3 && f_only_3_0);
+  always @(posedge clk) if (f_step) m11_block_3_1: cover (f_block_3 && f_only_3_1);
+  always @(posedge clk) if (f_step) m12_block_3_2: cover (f_block_3 && f_only_3_2);
 
-  // ── M13 — g_open_eq_0 의 ← 방향(모든 선행 완료 → 열림)이 실제로 닿는다 ──
-  // 세 선행 전부를 지목한 채 셋 다 완료된 궤적. 이것이 없으면 등식의 왼쪽
-  // 방향만 재어진 셈이다 (닫힘만 관측되는 세계).
+  // ── M13 — g_open_eq_0 의 반대 방향(모든 선행 완료 → 열림)이 닿는다 ──────
+  // M13 ← MemOrder.token_gate · g_open_eq_0 · g_fire_eq_0v
+  //       세 선행 전부를 지목한 채 셋 다 완료된 궤적. 이것이 없으면 등식의
+  //       왼쪽 방향만 재어진 셈이다 (닫힘만 관측되는 세계).
   always @(posedge clk) if (f_step)
-    cover (f_fire_0 && (io_cfgPreds_0 == 3'b111)
+    m13_all_preds_done: cover (f_fire_0 && (io_cfgPreds_0 == 3'b111)
            && io_token[1] && io_token[2] && io_token[3]);
-  // ── M14 — 과잉 게이팅 부재 (MemOrder.gate_matches_dep) ───────────────────
-  // 무의존 슬롯은 **타 슬롯 토큰이 전무해도** 연다. 기계가 cfgPreds 에 없는
-  // 원소를 더하지 않는다는 주장의 활성면.
+  // ── M14 — 과잉 게이팅 부재 ───────────────────────────────────────────────
+  // M14 ← MemOrder.gate_matches_dep · g_open_eq_1
+  //       무의존 슬롯은 **타 슬롯 토큰이 전무해도** 연다. 기계가 cfgPreds 에
+  //       없는 원소를 더하지 않는다는 주장의 활성면.
   always @(posedge clk) if (f_step)
-    cover (f_fire_1 && (io_cfgPreds_1 == 3'b000) && (io_token == 4'b0000));
+    m14_no_overgating: cover (f_fire_1 && (io_cfgPreds_1 == 3'b000) && (io_token == 4'b0000));
 
   // ── M15..M16 — MemOrder.inflight_not_gating: 배압은 게이팅이 아니다 ──────
-  // M15: 게이트는 열려 있는데 하류 배압만으로 up.ready 가 죽는다 — down.valid
-  //      는 살아 있다. g_fire_eq_2r 의 down.ready 항이 실제로 구분력을 갖는다.
+  // M15 ← MemOrder.inflight_not_gating · g_fire_eq_2r
+  //       게이트는 열려 있는데 하류 배압만으로 up.ready 가 죽는다 —
+  //       down.valid 는 살아 있다. g_fire_eq_2r 의 down.ready 항이 실제로
+  //       구분력을 갖는다.
   always @(posedge clk) if (f_step)
-    cover (io_gateOpen[2] && io_up_2_valid && !io_down_2_ready
+    m15_backpressure_only: cover (io_gateOpen[2] && io_up_2_valid && !io_down_2_ready
            && !io_up_2_ready && io_down_2_valid);
-  // M16: 슬롯 0 이 발화 중인데 슬롯 1 은 배압으로 정체 — 타 슬롯 handshake 가
-  //      서로의 콘에 없다는 주장(등식의 콘 폐쇄)의 활성면.
+  // M16 ← MemOrder.inflight_not_gating · g_fire_eq_1r
+  //       슬롯 0 이 발화 중인데 슬롯 1 은 배압으로 정체 — 타 슬롯 handshake
+  //       가 서로의 콘에 없다는 주장(등식의 콘 폐쇄)의 활성면.
   always @(posedge clk) if (f_step)
-    cover (f_fire_0 && io_up_1_valid && io_gateOpen[1] && !io_down_1_ready
+    m16_cross_slot_stall: cover (f_fire_0 && io_up_1_valid && io_gateOpen[1] && !io_down_1_ready
            && !io_up_1_ready);
 
   // ── M17..M18 — g_payload_* / addr·wave_not_gating 의 활성면 ──────────────
-  // M17: 비0 payload 가 실제로 handshake 를 지난다 (「payload 가 늘 0 인 세계」
-  //      에서 전량 통과 등식은 자명하다).
+  // M17 ← MemOrder.addr_not_gating · MemOrder.wave_not_gating · g_payload_0
+  //       비0 payload 가 실제로 handshake 를 지난다 (「payload 가 늘 0 인
+  //       세계」에서 전량 통과 등식은 자명하다).
   always @(posedge clk) if (f_step)
-    cover (io_down_0_valid && io_down_0_ready && (io_down_0_payload != 16'h0));
-  // M18: 두 슬롯이 **서로 다른** 비0 payload 로 동시 발화 — 슬롯 간 payload
-  //      혼선이 없다는 것이 관측 가능한 궤적 위에서 재어진다.
+    m17_payload_nonzero: cover (io_down_0_valid && io_down_0_ready && (io_down_0_payload != 16'h0));
+  // M18 ← MemOrder.addr_not_gating · MemOrder.wave_not_gating · g_payload_0 ·
+  //       g_payload_1 — 두 슬롯이 **서로 다른** 비0 payload 로 동시 발화:
+  //       슬롯 간 payload 혼선이 없다는 것이 관측 가능한 궤적 위에서 재어진다.
   always @(posedge clk) if (f_step)
-    cover (io_down_0_valid && io_down_1_valid
+    m18_payload_distinct: cover (io_down_0_valid && io_down_1_valid
            && (io_down_0_payload != io_down_1_payload)
            && (io_down_0_payload != 16'h0) && (io_down_1_payload != 16'h0));
 
   // ── M19..M22 — 토큰 상태 함수 t_next_eq_* 의 네 국면 ─────────────────────
-  // M19: 상승 — t_rise_0 의 전건 도달성. 이 증인이 없으면 t_rise_* 넷은
-  //      「토큰이 영영 서지 않는 기계」 위에서 공허하게 참이다.
+  // M19 ← MemOrder.token_on_complete · t_rise_0 · t_next_eq_0
+  //       상승 — t_rise_0 의 전건 도달성. 이 증인이 없으면 t_rise_* 넷은
+  //       「토큰이 영영 서지 않는 기계」 위에서 공허하게 참이다.
   always @(posedge clk) if (f_step)
-    cover (io_token[0] && !$past(io_token[0]));
-  // M20: epochClear 하강 — t_next_eq_1 우변의 `&& !$past(io_epochClear)` 항이
-  //      실제로 0 을 만든다. 없으면 소거 경로가 미측정이다.
+    m19_token_rise: cover (io_token[0] && !$past(io_token[0]));
+  // M20 ← MemOrder.token_on_complete · t_next_eq_1
+  //       epochClear 하강 — 우변의 `&& !$past(io_epochClear)` 항이 실제로
+  //       0 을 만든다. 없으면 소거 경로가 미측정이다.
   always @(posedge clk) if (f_step)
-    cover (!io_token[1] && $past(io_token[1]) && $past(io_epochClear));
-  // M21: 유지 — complete 없이 epoch 안에서 토큰이 남는다 (t_next_eq_2 의
-  //      `$past(io_token[2]) && !$past(epochClear)` 항).
+    m20_epoch_clear: cover (!io_token[1] && $past(io_token[1]) && $past(io_epochClear));
+  // M21 ← MemOrder.token_on_complete · t_next_eq_2
+  //       유지 — complete 없이 epoch 안에서 토큰이 남는다 (우변의
+  //       `$past(io_token[2]) && !$past(epochClear)` 항).
   always @(posedge clk) if (f_step)
-    cover (io_token[2] && $past(io_token[2]) && !$past(io_complete[2])
+    m21_token_hold: cover (io_token[2] && $past(io_token[2]) && !$past(io_complete[2])
            && !$past(io_epochClear));
-  // M22: set 우선 — 소거와 완료가 같은 사이클에 오면 토큰은 선다 (RTL 기술
-  //      순서 「epochClear 소거 후 complete set」의 관측면).
+  // M22 ← MemOrder.token_on_complete · t_next_eq_3 · t_rise_3
+  //       set 우선 — 소거와 완료가 같은 사이클에 오면 토큰은 선다 (RTL 기술
+  //       순서 「epochClear 소거 후 complete set」의 관측면).
   always @(posedge clk) if (f_step)
-    cover (io_token[3] && $past(io_epochClear) && $past(io_complete[3]));
+    m22_set_beats_clear: cover (io_token[3] && $past(io_epochClear) && $past(io_complete[3]));
 
   // ── M23..M24 — MemOrder.complete_not_ordered 의 활성면 ───────────────────
-  // M23: **역순 완료 수락** — 슬롯 0 이 슬롯 3 을 선행으로 지목했고 그 선행이
+  // M23 ← MemOrder.complete_not_ordered · t_next_eq_0 · t_rise_0
+  //       **역순 완료 수락** — 슬롯 0 이 슬롯 3 을 선행으로 지목했고 그 선행이
   //      아직 미완이라 게이트가 닫혀 있는데도, 슬롯 0 자신의 완료는 그대로
   //      접수된다. 완료 경로에 순서 비교가 없다는 주장의 유일한 관측 형태.
   always @(posedge clk) if (f_step)
-    cover (io_cfgPreds_0[2] && !io_token[3] && !io_gateOpen[0]
+    m23_out_of_order_complete: cover (io_cfgPreds_0[2] && !io_token[3] && !io_gateOpen[0]
            && io_token[0] && !$past(io_token[0]));
-  // M24: **동시 완료** — 네 슬롯이 한 사이클에 함께 선다 (슬롯별 독립).
+  // M24 ← MemOrder.complete_not_ordered · t_next_eq_0 · t_next_eq_1 ·
+  //       t_next_eq_2 · t_next_eq_3 — **동시 완료**: 네 슬롯이 한 사이클에
+  //       함께 선다 (슬롯별 독립).
   always @(posedge clk) if (f_step)
-    cover ((io_token == 4'b1111) && ($past(io_token) == 4'b0000));
+    m24_simultaneous_complete: cover ((io_token == 4'b1111) && ($past(io_token) == 4'b0000));
 `endif // MEMORDERGATE_COVER
 
 endmodule
