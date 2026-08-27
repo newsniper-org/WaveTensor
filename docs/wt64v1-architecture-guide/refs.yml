@@ -382,7 +382,9 @@ biere_bmc:
     type: Proceedings
     title: "Tools and Algorithms for the Construction and Analysis of Systems (TACAS)"
     publisher: Springer
-  note: "유계 모델 검사 — 후-formal 단계의 RTL 대상 기법"
+  note: "유계 모델 검사 — 오늘 이 저장소의 후-formal 배터리가 유계 모드로 실제로
+    돌리는 엔진의 원 논문. 정본 §6.6 이 요구하는 것은 이 기법이 아니라 그 절의
+    요건이며, 이것은 그 요건을 만족하는 한 예다"
 
 sheeran_induction:
   type: Article
@@ -394,7 +396,36 @@ sheeran_induction:
     type: Proceedings
     title: "Formal Methods in Computer-Aided Design (FMCAD)"
     publisher: Springer
-  note: "k-귀납 — 유계 검사를 완전 증명으로 올리는 경로"
+  note: "k-귀납 — 유계 검사를 완전 증명으로 올리는 경로. 후-formal 배터리의 prove
+    모드가 이것이다. §6.6 의 「도달 가능 상태 전체를 덮어야 증명됨으로 계수한다」를
+    만족하는 한 경로이며 유일한 경로는 아니다 — IC3/PDR 도 같은 요건을 만족한다"
+
+# §6.6 후-formal 요건 6(증명됨의 계수)을 유계 깊이의 손튜닝 없이 만족하는 다른
+# 경로. 두 문헌을 함께 두는 이유는 알고리즘(IC3)과 그 효율적 구현(PDR)이 다른
+# 논문이고, 이 저장소가 손에 쥐고 있는 것은 후자의 계보이기 때문이다.
+bradley_ic3:
+  type: Article
+  title: "SAT-Based Model Checking without Unrolling"
+  author: ["Bradley, Aaron R."]
+  date: 2011
+  page-range: 70-87
+  parent:
+    type: Proceedings
+    title: "Verification, Model Checking, and Abstract Interpretation (VMCAI)"
+    publisher: Springer
+  note: "IC3 — 무계 증명. 유계 깊이 상수를 손으로 정할 필요가 없다"
+
+een_pdr:
+  type: Article
+  title: "Efficient Implementation of Property Directed Reachability"
+  author: ["Eén, Niklas", "Mishchenko, Alan", "Brayton, Robert"]
+  date: 2011
+  page-range: 125-134
+  parent:
+    type: Proceedings
+    title: "Formal Methods in Computer-Aided Design (FMCAD)"
+    publisher: FMCAD Inc.
+  note: "PDR — IC3 의 구현 계보. 이 저장소의 도구 사슬에 이미 들어 있는 엔진의 근거 논문"
 
 demillo_mutation:
   type: Article
