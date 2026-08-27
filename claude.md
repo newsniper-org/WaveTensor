@@ -115,7 +115,12 @@ Target: AMD/Xilinx FPGA, no HLS.
 * 모든 계층에서 tag가 흐르며, ISA_Decoder는 PE 내부에서만 동작합니다.
 * HIU는 Global Grid의 Host Interface로만 존재합니다.
 
-## 6. Overall Roadmap
+## 6. Overall Roadmap — 참조 구현이 지나온 순서 (이력)
+
+> **이 절은 이력이다 — 앞으로 할 일의 목록이 아니다 (2026-08-27).**
+> 아래는 루트 순수 Verilog **참조 구현**이 실제로 지나온 조립 순서이며,
+> 재구현의 계획이 아니다. 현행 우선순위는 **작업 큐**에 있다 (§7 참조).
+
 * HIU + ISA_Decoder 완전 구현 (완료)
 * Top_Core.v 생성 → HIU + ISA_Decoder + ALU 모듈들을 wire로 연결
 * ~~PE.v (ISA_Decoder + ALU wrapper)~~ ⟵ **이 통합 지점은 소멸했다.** `Cluster.v`
@@ -125,19 +130,32 @@ Target: AMD/Xilinx FPGA, no HLS.
   **비합성 참조 구현**으로 재분류됐다 (spec §31.6)
 * Cluster.v (4×4 PE + local NoC)
 * Pod.v (16 Cluster + Pod NoC)
-* Global Grid + NoC + FPGA synthesis (ALINX AXU3EGB V2.1 target)
-* Full cocotb system-level test + Vivado synthesis / timing analysis
+* ~~Global Grid + NoC + FPGA synthesis (ALINX AXU3EGB V2.1 target)~~ ⟵ **두 겹으로
+  무효다.** (i) **Global Grid 는 철회됐다** — 최상위는 단일 Pod 이고 ISA 상한은
+  256 PE 다 (정본 부록 B.1). (ii) **AMD/Xilinx 타깃은 벤더 이주 결정으로
+  폐기됐다** (`.claude-memos/board_hw_plan.md` §1). 용량 산정의 정본은 정본
+  **부록 A** 다.
+* ~~Full cocotb system-level test + Vivado synthesis / timing analysis~~ ⟵ 앞
+  항목과 같은 이유로 Vivado 부분이 무효. 재구현의 검증 축은 **선-formal →
+  RTL → 후-formal** 이며 규범은 정본 6장, 규약은 `rtl/README.md` 다.
 
-## 7. Current TODO
-* **(I) Vivado synthesis 인프라** — **완료** (synth/ 디렉터리, TCL 스크립트, parse_reports.py, Makefile 타겟). XCZU3EG 디바이스 패밀리 미설치 → AMD installer 재실행 또는 device 추가 필요.
-* **자원 폭증 이슈 발견 (smoke-test on Spartan 7 xc7s100)**: 16-PE Pod (2×2/2×2) = **494K LUT** + 160 DSP, WNS −214 ns @ 100MHz. ISA_Decoder 내부의 `matmul_func` (4×4×4 unrolled) 가 PE당 ~30K LUT 소비.
-* **Mitigation (a) 적용 완료**: `matmul_func` 를 4×4×4 (64 muls + 48 adds) 에서 **고정 2×2 (8 muls + 4 adds)** 로 축소. 64-bit payload 자체가 4 요소 (2×2 max) 한계라 capability loss 0. MATMUL의 dim 검사도 `eff_dim_sizes == 0x05` only로 강화. 더 큰 matmul은 어셈블러 / Cluster-level dispatch로 분해. 회귀 167/167 PASS, 재합성 후 LUT 측정 예정.
-* **FPGA synthesis 디바이스 패밀리 설치** — Vivado 2025.2에 Zynq UltraScale+ MPSoC 추가. 공식 AMD installer 재실행 권장.
-* (V) PRECISION EH dim_override — **완료** (F_DIM_OVR 플래그, eff_dim_sizes 전 경로 반영, PRECISION EH 누락 시 error_flag).
-* Cluster-level tile-PERMUTE / tile-RESHAPE / in-network REDUCE (현재는 PE-local fast-path만; 큰 텐서 분산은 향후).
-* 임의 EINSUM lowering의 trace/broadcast 케이스 지원 (현재 matmul-style만).
-* Pod-level operand bank (cross-Cluster NoC routing) — 현재 NoC routing은 intra-Cluster만.
-* HIU의 multi-cycle DMA 응답을 ISA_Decoder의 LOAD에 loopback (현재는 한쪽 방향 only).
+## 7. 현행 우선순위 — 이 문서에 없다
+
+> **여기 있던 "Current TODO" 목록은 삭제됐다 (2026-08-27).**
+>
+> 그 목록은 **참조 구현 시절의 것**이었고 (Vivado 디바이스 설치, `matmul_func`
+> 축소, Pod-level operand bank …), 이미 대부분 착지했거나 벤더 이주·재구현
+> 착수로 전제가 사라졌다. **갱신해서 살리면 셋째 상태 원천이 생긴다** —
+> 정본 · 작업 큐 · 이 파일이 서로 다른 "현재"를 주장하게 된다. 그래서
+> 갱신이 아니라 삭제한다.
+>
+> - **현행 우선순위는 작업 큐에 있다.** 이 파일에 복제하지 마라.
+> - **무엇이 미결인지**는 정본 **부록 B** (특히 B.5 미결 표) 가 승계한다.
+> - 삭제된 원문은 git 이력에 있다 (이 문단을 넣은 커밋의 직전 판).
+>
+> 이것은 이 저장소의 "폐기 서술을 삭제하지 않는다" 규율의 예외이며,
+> 사용자 지시 (2026-08-27) 에 근거한다 — 보존의 목적은 *결정의 경위*이지
+> *상태의 사본*이 아니기 때문이다.
 
 ## 8. ISA — TLV (IPv6 EH-style) 가변 길이 포맷
 

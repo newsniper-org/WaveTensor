@@ -3,6 +3,20 @@
 
 # imads-hpo 가속기 연계 — 검토
 
+> ### ⚠️ 이 문서는 정본이 아니다 — 설계 입력 (2026-08-27)
+>
+> **지위: 비정본 — 미착수 설계 입력.** 이 검토가 그리는 연계(HPO trial 을
+> 가속기로 발사)는 아직 구현이 없고, 그 전제인 SDK · daemon 계층도 이
+> 저장소 밖에 있다 ([`sdk_architecture.md`](./sdk_architecture.md) 는
+> `/home/ybi/wavetensor-sdk/` 로 분리됨,
+> [`remote_accelerator_access.md`](./remote_accelerator_access.md) 의
+> `wavetensor-daemon` 은 미생성).
+>
+> 이 문서의 주된 범위(외부 저장소 `imads` / `imads-hpo` 와의 계층 관계)는
+> **정본이 다루지 않는다** — 정본 `docs/wt64v1-architecture-guide/` 는 기계
+> 자체와 그 재구현 기준이다. 가속기 자체에 걸리는 서술에 한해 **정본이
+> 이기고**, 어긋나는 지점은 정본 **부록 B** 가 정정본이다.
+
 > **연관 메모**: [`notebook_web_ui.md`](./notebook_web_ui.md) — HPO 잡 발사/모니터링은 노트북 UI의 자연스러운 use case. [`remote_accelerator_access.md`](./remote_accelerator_access.md) — HPO 가 다수 trial 을 동시 발사할 때 lease/큐 협상.
 >
 > **저장소**:

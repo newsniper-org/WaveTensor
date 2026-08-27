@@ -3,6 +3,19 @@
 
 # Y4 — WaveTensor 가속기 모든 상용 폼팩터의 공통 기반 hypervisor
 
+> **🛈 본 메모는 historical context 입니다 (2026-05-03).** 본 메모의 디자인은
+> **Y4** (`/home/ybi/Y4/`, 자체 git 저장소, Apache-2.0) 로 분리되었으며, Y4 의
+> 정본 디자인은 거기의 문서입니다. 본 메모는 이전 디자인 토론 보존용으로만
+> 유지됩니다. 새 Y4 디자인 변경은 `/home/ybi/Y4/` 에서.
+>
+> **연관 분리**: 디바이스 드라이버 계열은 다시 **wavetensor-drivers**
+> (`/home/ybi/wavetensor-drivers/`) 로 갈라져 나갔습니다 — 본 메모의
+> "드라이버 출처 / 3-tier driver 전략" 논의는 그쪽이 승계합니다.
+>
+> 가속기 자체에 대한 서술(HIU 경계·테넌트 임대·`context_switch` 등)에 한해
+> 이 문서는 **비정본**이며, 정본은 `docs/wt64v1-architecture-guide/` (특히
+> 3장 HIU) 입니다. 어긋나는 지점은 정본 **부록 B** 가 정정본입니다.
+
 본 hypervisor 의 정식 명칭은 **Y4** 이다. 이하 본 메모와 다른 메모에서 "Y4" 는 곧 본 custom hypervisor 를 가리킨다.
 
 > **연관 메모**:

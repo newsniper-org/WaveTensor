@@ -3,6 +3,20 @@
 
 # 표준 Bitwise 연산 확장 — 도입 결정 및 ISA 매핑
 
+> ### ⚠️ 이 문서는 정본이 아니다 — 이력 (2026-08-27)
+>
+> **정본은 `docs/wt64v1-architecture-guide/` 하나다.** 이 문서와 정본이
+> 어긋나면 **정본이 이기고**, 어긋나는 지점은 정본 **부록 B** 가 정정본이다.
+>
+> **지위: 이력 — 착지 완료.** 이 메모가 제안한 연산군은 전부 현행 ISA 정의
+> (`isa/wt64v1_isa.json`) 에 실재한다: AND · OR · XOR · NAND · NOR · XNOR ·
+> NOT · SHR · SAR · ROL · POPCNT · CLZ · CTZ. 따라서 이 문서는 **도입 결정의
+> 경위 기록**이며, opcode 값·legality·인코딩의 근거로 인용하지 마라 — 그
+> 단일 소스는 `isa/wt64v1_isa.json` 이고 규범 서술은 정본 1장이다.
+>
+> 본문의 LUT 추산·PE_Core 자원 서술은 **참조 구현(루트 순수 Verilog)** 에
+> 대한 것이며 재구현에 대한 실측이 아니다.
+
 작성일: 2026-05-03
 컨텍스트: 16-PE Pod 구현 후 timing closure 완료. PE_Core LUT 1.6 K. Bitwise 연산은 cycle당 ~64 LUT의 매우 저렴한 비용이라 expand 여력 large.
 

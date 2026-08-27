@@ -4,7 +4,33 @@
 # WaveTensor 실물 검증 하드웨어 계획 — 2-stage FPGA 이주 (Vivado → ECP5 → Avant)
 
 작성일: 2026-07-12
-상태: **Stage 1 board 발주 승인 (2026-07-12) — 소프트웨어 정비 완료, 물리 발주 대기**
+상태: **Stage 1** — board 발주 승인 (2026-07-12), 소프트웨어 정비 완료, 물리 발주 대기
+      **Stage 2 (Avant) — 폐기 (2026-08-13).** 아래 배너 참조. 제목의 "→ Avant"
+      는 이미 사실이 아니며, 표제는 §12a 규칙 5(폐기 서술 보존) 대로 남긴다.
+
+> ### ⛔ Stage 2 (Avant G70) 는 폐기됐다 (2026-08-13)
+>
+> 판정 근거는 [`cross_vendor_fabric_evidence.md`](./cross_vendor_fabric_evidence.md)
+> §5 의 실측이다: 리드타임 **52주**, 1년차 $6,476 + 이후 $3,142/yr(유료 Radiant),
+> PCIe **Gen3**(이 계획이 전제한 Gen4 가 아니다), F2 부품 대비 3–5배 작음.
+>
+> 따라서 아래 **§ "Stage 2 — Flagship 검증" 전체와 그에 딸린 행들** — 부품
+> 선정, 720K LUT 마진, PCIe Gen4 전제, 상용 카드 조사 TODO, 유료 Radiant
+> 감수 결정, 리스크 표의 Avant 두 행 — 은 **전부 무효**다. 대체 플랫폼은
+> 아직 지정되지 않았다 (F2 는 TRNG 를 stub 처리한 후기 대규모 점검용이지
+> Stage-2 플랫폼이 아니라고 그 문서 §5 가 명시한다).
+>
+> **Stage 1 (ECP5) 은 폐기되지 않았다** — 위 상태 줄 그대로다.
+>
+> 본문은 §12a 규칙 5 에 따라 삭제하지 않는다. 이미 개별 무효화 배너가 붙은
+> 행(리스크 표의 "SIMD_ALU 대체")과 같은 관례다.
+>
+> ### ⚠️ 아울러 이 문서는 정본이 아니다 (2026-08-27)
+>
+> **정본은 `docs/wt64v1-architecture-guide/` 하나다.** 이 문서와 정본이
+> 어긋나면 **정본이 이기고**, 어긋나는 지점은 정본 **부록 B** 가 정정본이다.
+> 자원·형상 수치는 **참조 구현(루트 순수 Verilog)** 기준이며, 재구현 형상의
+> 실측이 아니다. 용량 산정의 정본은 정본 **부록 A** 다.
 
 > **연관 메모**: [`wt64v1_spec.md`](./wt64v1_spec.md) — 참조 구현 사양 (2026-05-03 로크). 본 계획 진행 시 그 값들을 새 벤더 실측값으로 갱신 예정.
 > [`sdk_architecture.md`](./sdk_architecture.md) — Stage 1 의 `UsbCdcTransport` / Stage 2 의 `PcieTransport` 가 SDK `Transport` trait 의 첫 실제 구현체.

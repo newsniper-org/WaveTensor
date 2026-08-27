@@ -3,6 +3,18 @@
 
 # WaveTensor NoC Fragment Extension Header — 설계 memo
 
+> ### ⚠️ 이 문서는 정본이 아니다 — 이력 (2026-08-27)
+>
+> **정본은 `docs/wt64v1-architecture-guide/` 하나다.** 이 문서와 정본이
+> 어긋나면 **정본이 이기고**, 어긋나는 지점은 정본 **부록 B** 가 정정본이다.
+>
+> **지위: 이력 — 착지 완료.** IPv6-style Fragment Extension Header 발상은
+> v1.5 amendment 로 인프라가 착지했고, 규범 서술은 이제 **정본 4장 (조각
+> 재조립)** 이 승계했다. 이 문서는 **발상의 계보 기록**이다.
+>
+> 본문의 wave-token 레이아웃·필드 폭·모듈 서술은 **참조 구현(루트 순수
+> Verilog)** 시점의 것이며, 재구현의 인터페이스가 아니다.
+
 작성일: 2026-07-14
 상태: **v1.5 amendment 로 인프라 landing** (2026-07-14). Fabric 재조립 로직 및 fragment-emitting primitives 는 v1.6+ 로드맵.
 
