@@ -731,13 +731,33 @@ rtl-impact:
 	@python3 $(CURDIR)/scripts/sby_impact.py
 
 # 재구현 하네스 — 자립형 cocotb 러너.
+#
+# ⚠ `python3` 을 직접 쓰지 않는다. 이 저장소의 cocotb 는 시스템 python 이
+#    아니라 전용 venv(3.13)에 있고 시스템 python 은 3.14 다 — devcontainer
+#    Dockerfile §4 주석이 그 벽과, 그것을 하나로 묶은 이유를 이미 적는다.
+#    `python3` 으로 부르면 ModuleNotFoundError 로 죽고, 그것은 「측정했는데
+#    실패」가 아니라 「도구를 못 찾음」이라 원인이 오독된다. 인터프리터는
+#    `cocotb-config --python-bin` 에게 묻는다 — 위 cocotb 흐름이 같은 문제를
+#    `cocotb-config --makefiles` 로 푸는 것과 같은 자리다.
+#
+# 이 타깃은 위쪽 모듈 표에 항목을 **추가하지 않는다** (조건 분기 0건).
+# 재구현 트리의 생성 SV 는 서로 모듈 정의를 중복해 갖고 Verilator 의
+# MODDUP 은 기본 fatal 이라, 형상마다 별도 build_dir 로 따로 돌아야 한다 —
+# 정적 표가 아니라 파이썬 루프여야 하는 구조적 이유다 (러너 머리 주석).
+#
+# 스위트를 좁히려면: make rtl-sim SIM_SUITES="Mask"
+# 빌드 산출물 자리를 고정하려면: make rtl-sim WT_SIM_BUILD=/tmp/wtsim
+# (기본은 mkdtemp — 저장소를 더럽히지 않는다)
 rtl-sim:
-	@if [ -f $(RTL_DIR)/sim/run_wt64.py ]; then \
-	    python3 $(RTL_DIR)/sim/run_wt64.py; \
-	else \
-	    echo "rtl-sim: 하네스가 아직 없다 (단계 2 미착수) — 미측정."; \
+	@command -v cocotb-config >/dev/null 2>&1 || { \
+	    echo "rtl-sim: cocotb-config 가 PATH 에 없다 — 미측정이지 통과가 아니다"; \
 	    exit 1; \
-	fi
+	}
+	@test -f $(RTL_DIR)/sim/run_wt64.py || { \
+	    echo "rtl-sim: 하네스가 아직 없다 — 미측정."; \
+	    exit 1; \
+	}
+	$$(cocotb-config --python-bin) $(RTL_DIR)/sim/run_wt64.py $(SIM_SUITES)
 
 # 생성물이 아니라 **빌드 산출물**만 지운다. rtl/generated/ 는 tracked 이므로
 # 건드리지 않는다 (`synth-clean` 이 tracked 증적을 지우던 사고의 재발 방지).

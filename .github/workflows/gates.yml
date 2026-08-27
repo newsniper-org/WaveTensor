@@ -126,6 +126,22 @@ jobs:
           docker run --rm -v "$PWD":/workspace -w /workspace wavetensor-dev:ci \
             sh -lc 'verilator --lint-only -Wall -Wno-fatal rtl/generated/*.sv'
 
+      # 재구현 런타임 하네스 (#17). 위 두 step 이 「생성물이 최신인가 · lint 가
+      # 통과하는가」를 재는 데 반해 이것은 **실제로 돌려서** 잰다 —
+      # SEC-1 golden 정확 대조와 ISA-1/ISA-2 두-형상 등가.
+      #
+      # ⚠️ 이 step 의 초록이 뜻하지 않는 것 (하네스가 스스로 매 실행에 인쇄한다):
+      #   · 투입 방향(E.5 명령 링) — RTL 에 회로가 0건이다. `Wt64Top` 의
+      #     `io.instr` 에 `ready` 조차 없다. 잰 것은 명령 *제시* 이후의 경로뿐
+      #   · ISA-1 의 형상 축 · ISA-2 의 자리 축 — 관측면이 아직 없다
+      #   · 그 밖 미측정 9축 — `rtl/sim/README.md` 의 원장
+      # 부록 D 에 ISA-1·ISA-2 를 「증명됨」으로 올리면 안 된다. 「부분」이
+      # 정직한 지위다 (정본 §6.7 원칙 5 — 미측정은 통과가 아니다).
+      - name: 재구현 런타임 하네스 (rtl-sim)
+        run: |
+          docker run --rm -v "$PWD":/workspace -w /workspace wavetensor-dev:ci \
+            sh -lc 'make rtl-sim'
+
       - name: cocotb 회귀 (6 모듈)
         run: |
           for m in HIU ISA_Decoder ALU_Extended Top_Core Cluster Pod; do
