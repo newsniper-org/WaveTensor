@@ -121,10 +121,13 @@ def validate(src):
         where = f"opcode {op.get('mnemonic', '?')}"
         _reject_unknown(op, _OPCODE_KEYS, where)
         code = op["code"]
-        if not isinstance(code, int) or not (0 <= code <= 0xFF):
+        # W1 (인코딩 개정 파도): opcode 는 12비트다 — 상한 0xFFF.
+        # 기존 계보는 0x000-0x3FF, 신규 확장은 0x400-0x7FF, 0x800-0xFFF 는
+        # 예비(claim 전까지 전역 malformation — W3).
+        if not isinstance(code, int) or not (0 <= code <= 0xFFF):
             raise SchemaError(f"{where}: bad code {code!r}")
         if code in seen_codes:
-            raise SchemaError(f"{where}: duplicate code 0x{code:02X}")
+            raise SchemaError(f"{where}: duplicate code 0x{code:03X}")
         if op["mnemonic"] in seen_mnems:
             raise SchemaError(f"{where}: duplicate mnemonic")
         seen_codes.add(code)
@@ -186,9 +189,26 @@ def emit_eh_codes(src, src_sha):
 def emit_case_body(src, src_sha):
     lines = [_hdr_vh(src_sha)]
     lines.append("// One case arm per opcode (no comma grouping — deterministic emission).")
+    # W2 컴파일 강제 가드 — 이 파일이 스스로 소리를 낸다.
+    # 8b 선택자 `case (cb_opcode)` 는 12'h### arm 에 대해 zero-extend 로
+    # *조용히* 컴파일·매치된다 (verilator 실측: WIDTHEXPAND 경고뿐, -Wno-fatal
+    # 아래서 rc 0 — ext=4'h4·op=8'h7A 가 12'h07A arm 에 매치, 확장 니블 소실).
+    # 아래 never-match arm 은 cb_opcode_ext 를 참조하므로, 확장 니블 입력이
+    # 없는 소비자는 여기서 컴파일이 깨진다 — loud. 라벨 ~{ext,op} 는 어떤
+    # 선택자 값과도 매치되지 않는다 (12b 연접 선택자: x == ~x 불가능 ·
+    # 8b 선택자 zero-extend {4'h0,op}: ~ext==0 ⇒ ext==4'hF 이고 ~op==op 불가능)
+    # — 순수 컴파일-범위 앵커라 두 결선 모두에서 행동 무변경이다.
+    lines.append("            // W2 GATE (compile-forcing): 선택자는 반드시 {cb_opcode_ext, cb_opcode}")
+    lines.append("            // 12b 연접이어야 한다 — 8b 선택자는 zero-extend 로 조용히 매치되어")
+    lines.append("            // 확장 니블이 접힌다 (0x47B→0x07B 공허 PASS). 아래 arm 은 never-match")
+    lines.append("            // 이지만 cb_opcode_ext 를 참조한다: 확장 니블이 결선되지 않은 소비자는")
+    lines.append("            // 여기서 컴파일이 깨진다 (undeclared identifier) — loud, 행동 무변경.")
+    lines.append("            (~{cb_opcode_ext, cb_opcode}): ;  // never matches (x == ~x 불가능)")
     for op in sorted(src["opcodes"], key=lambda o: o["code"]):
         r = op["rtl_legality"]
-        lines.append(f"            8'h{op['code']:02X}: begin  // {op['desc']}")
+        # W1: 12비트 opcode case arm — case 선택자는 {cb_opcode_ext, cb_opcode}
+        # (12b 연접)여야 한다. 소비자 결선은 legacy 재결선 커밋의 몫.
+        lines.append(f"            12'h{op['code']:03X}: begin  // {op['desc']}")
         if op["notes"]:
             for note_line in _wrap(op["notes"], 66):
                 lines.append(f"                // {note_line}")
@@ -199,6 +219,11 @@ def emit_case_body(src, src_sha):
                 assigns.append(f"                {flag:<16} = 1'b1;")
         lines.extend(assigns if assigns else ["                ;"])
         lines.append("            end")
+    lines.append("            // W3 (인코딩 개정 파도) — 미배정 opcode = malformation.")
+    lines.append("            // 예비 영역 0x800-0xFFF 전체 포함, claim 전까지. 1차 판정은")
+    lines.append("            // opcode_supported whitelist(decode_error)가 지고, 이 default")
+    lines.append("            // arm 은 그 뒤의 방어층이다 — 영역 구획은 배정 절차 규범이지")
+    lines.append("            // 하드웨어 판정이 아니다 (하드웨어는 whitelist 만 본다).")
     lines.append("            default: begin")
     lines.append("                forbid_subscript = 1'b1; forbid_mem = 1'b1;")
     lines.append("                forbid_imm_any   = 1'b1; forbid_opref = 1'b1;")
@@ -218,9 +243,12 @@ def emit_wires(src, src_sha):
     lines.append("    // (alu_binary_xor_err). NOTE: 0x63/64/65 are asm-side XOR-checked")
     lines.append("    // but deliberately NOT RTL-checked — documented asymmetry, see")
     lines.append("    // isa/wt64v1_isa.json notes and spec §23.9.")
+    lines.append("    // W1: 비교는 12비트 전폭 — {cb_opcode_ext, cb_opcode} 연접.")
+    lines.append("    // cb_opcode_ext(기본 헤더 [11:8], 4b)는 신규 입력이다. 하위 8b 만")
+    lines.append("    // 비교하면 0x47B 류가 0x07B 행에 얹히는 공허 PASS 가 된다 (W2).")
     lines.append("    wire is_alu_binary =")
     lines.append("        " + " ||\n        ".join(
-        f"(cb_opcode == 8'h{c:02X})" for c in alu) + ";")
+        f"({{cb_opcode_ext, cb_opcode}} == 12'h{c:03X})" for c in alu) + ";")
     lines.append("")
     if reserved:
         lines.append("    // DECODE-RESERVED (isa JSON decode_reserved=true): the ISA row")
@@ -228,10 +256,12 @@ def emit_wires(src, src_sha):
         lines.append("    // DELIBERATELY absent from opcode_supported below and keeps")
         lines.append("    // raising decode_error. Flip the JSON bit + regenerate in the")
         lines.append("    // wiring commit. Omitted here: " +
-                     ", ".join(f"8'h{c:02X}" for c in reserved) + ".")
+                     ", ".join(f"12'h{c:03X}" for c in reserved) + ".")
+    lines.append("    // W3: whitelist 부재 = malformation (decode_error). 미배정 opcode")
+    lines.append("    // 전부 — 예비 영역 0x800-0xFFF 포함 — 가 여기서 떨어진다.")
     lines.append("    wire opcode_supported =")
     lines.append("        " + " ||\n        ".join(
-        f"(cb_opcode == 8'h{c:02X})" for c in supported) + ";")
+        f"({{cb_opcode_ext, cb_opcode}} == 12'h{c:03X})" for c in supported) + ";")
     lines.append("")
     lines.append("    // v1.8.0a COMMIT 2 — FP-block mode-byte legality ROM (spec §23.6a).")
     lines.append("    // Index = {cb_opcode[3:0], dtype[3:0], acc[1:0], rnd[1:0]} (12 bits).")
@@ -245,7 +275,10 @@ def emit_wires(src, src_sha):
                     idx = ((fop["code"] & 0xF) << 8) | (dt << 4) | (ac << 2) | rn
                     rom |= 1 << idx
     lines.append(f"    localparam [4095:0] FP_LEGAL_ROM = 4096'h{rom:01024X};")
-    lines.append("    wire in_fp_block = (cb_opcode[7:4] == 4'h7);")
+    lines.append("    // W2 (인코딩 개정 파도): fp ROM 게이트는 확장 니블 == 0x0 을")
+    lines.append("    // 함께 검사한다. 빠뜨리면 0x47B 가 0x07B ROM 행에 얹히는 공허")
+    lines.append("    // PASS 다 — ROM 인덱스가 cb_opcode[3:0] 뿐이기 때문이다.")
+    lines.append("    wire in_fp_block = (cb_opcode_ext == 4'h0) && (cb_opcode[7:4] == 4'h7);")
     return "\n".join(lines) + "\n"
 
 
@@ -264,9 +297,10 @@ def emit_pytables(src, src_sha):
          '"""GENERATED by scripts/gen_isa_tables.py from isa/wt64v1_isa.json',
          f'blake2b512={src_sha} -- DO NOT EDIT (edit the JSON, regenerate, commit both).',
          '"""', ""]
+    L.append("# W7 (인코딩 개정 파도): opcode 표기는 0x0## 3자리다 (12b, 수치 불변).")
     L.append("MNEMONIC_TO_OPCODE = {")
     for op in sorted(src["opcodes"], key=lambda o: o["code"]):
-        L.append(f"    {op['mnemonic']!r}: 0x{op['code']:02X},")
+        L.append(f"    {op['mnemonic']!r}: 0x{op['code']:03X},")
     L.append("}")
     L.append("")
     L.append("OPCODE_TO_MNEMONIC = {v: k for k, v in MNEMONIC_TO_OPCODE.items()}")
@@ -333,7 +367,7 @@ def emit_pytables(src, src_sha):
     L.append("LEGAL = {")
     for op in sorted(src["opcodes"], key=lambda o: o["code"]):
         a = op["asm_legality"]
-        L.append(f"    0x{op['code']:02X}: dict(")
+        L.append(f"    0x{op['code']:03X}: dict(")
         L.append(f"        required={_set_literal(a['required'])},")
         L.append(f"        forbidden={_set_literal(a['forbidden'])},")
         L.append(f"        allow_imm_xor_opref={a['allow_imm_xor_opref']!r},")
@@ -345,7 +379,7 @@ def emit_pytables(src, src_sha):
     L.append("")
     stubs = sorted(op["code"] for op in src["opcodes"] if op.get("stub_v18"))
     L.append("STUB_OPS_V18 = frozenset([" +
-             ", ".join(f"0x{c:02X}" for c in stubs) + "])")
+             ", ".join(f"0x{c:03X}" for c in stubs) + "])")
     L.append("")
     L.append("# v1.8.0e 3a-C2 (spec section 27.7a.4) — rows transcribed AHEAD of")
     L.append("# their execute wiring: present in every table below, but OMITTED")
@@ -356,11 +390,11 @@ def emit_pytables(src, src_sha):
     dec_res = sorted(op["code"] for op in src["opcodes"]
                      if op.get("decode_reserved"))
     L.append("DECODE_RESERVED_OPS = frozenset([" +
-             ", ".join(f"0x{c:02X}" for c in dec_res) + "])")
+             ", ".join(f"0x{c:03X}" for c in dec_res) + "])")
     L.append("")
     L.append("FP_MODE_LEGAL = {")
     for fop in sorted(src["fp_block"]["ops"], key=lambda o: o["code"]):
-        L.append(f"    0x{fop['code']:02X}: dict(")
+        L.append(f"    0x{fop['code']:03X}: dict(")
         L.append(f"        legal_dtypes={sorted(fop['legal_dtypes'])!r},")
         L.append(f"        legal_acc={sorted(fop['legal_acc'])!r},")
         L.append(f"        legal_rnd={sorted(fop['legal_rnd'])!r},")
@@ -385,18 +419,18 @@ def emit_specfrag(src, src_sha):
             [k[4:] for k in ("req_port", "req_mem", "req_subscript", "req_opref", "req_imm16") if r[k]] +
             [f"!{k[7:]}" for k in ("forbid_subscript", "forbid_mem", "forbid_imm_any", "forbid_opref") if r[k]]
         ) or "—"
-        L.append(f"| 0x{op['code']:02X} | {op['mnemonic']} | {req} | {forb} | "
+        L.append(f"| 0x{op['code']:03X} | {op['mnemonic']} | {req} | {forb} | "
                  f"{'✓' if a['allow_imm_xor_opref'] else ''} | "
                  f"{'✓' if a['require_opb_flag'] else ''} | "
                  f"{'✓' if a['require_imm16'] else ''} | {rtl_bits} | {op['desc']} |")
     if src["fp_block"]["ops"]:
         L.append("")
-        L.append("## 0x70-0x7F mode-byte legality (fp block)")
+        L.append("## 0x070-0x07F mode-byte legality (fp block)")
         L.append("")
         L.append("| Op | Mnemonic | legal dtype | legal acc | legal rnd |")
         L.append("|---|---|---|---|---|")
         for fop in sorted(src["fp_block"]["ops"], key=lambda o: o["code"]):
-            L.append(f"| 0x{fop['code']:02X} | {fop['mnemonic']} | "
+            L.append(f"| 0x{fop['code']:03X} | {fop['mnemonic']} | "
                      f"{fop['legal_dtypes']} | {fop['legal_acc']} | {fop['legal_rnd']} |")
     reserved = [op for op in sorted(src["opcodes"], key=lambda o: o["code"])
                 if op.get("decode_reserved")]
@@ -410,7 +444,7 @@ def emit_specfrag(src, src_sha):
         L.append("`decode_reserved` 를 내리고 재생성할 때 등재된다.")
         L.append("")
         for op in reserved:
-            L.append(f"- **0x{op['code']:02X} {op['mnemonic']}**")
+            L.append(f"- **0x{op['code']:03X} {op['mnemonic']}**")
     return "\n".join(L) + "\n"
 
 

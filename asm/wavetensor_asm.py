@@ -33,10 +33,10 @@ machine code list).
     Stage 5   legality_pass   AST      →  AST  (errors raised on illegal
                                                  instructions; AST unchanged
                                                  if all OK)
-    Stage 6   encode_pass     AST      →  List[int]  (each int is a 416-bit
+    Stage 6   encode_pass     AST      →  List[int]  (each int is a 448-bit
                                                        instruction word)
 
-The 416-bit integers produced by `encode_pass` are bit-identical to what
+The 448-bit integers produced by `encode_pass` are bit-identical to what
 `test_isa_decoder.py:encode_instr(...)` emits, so the same bytes drive the
 ISA_Decoder.v RTL.
 
@@ -83,8 +83,10 @@ from generated_isa_tables import (  # noqa: F401
 from generated_isa_tables import LEGAL as _LEGAL              # noqa: F401
 from generated_isa_tables import ALL_DATA_EHS as _ALL_DATA_EHS  # noqa: F401
 
-INSTR_WORDS_REAL = 13
-INSTR_WIDTH_BITS = INSTR_WORDS_REAL * 32   # = 416
+# 인코딩 개정 파도 (W1~W8): 최대 명령 길이는 14워드 = 448비트다.
+# 기본 헤더 1 + CH(둘째 헤더, EH ≥ 1 일 때만) 1 + EH 예산 12 (불변).
+INSTR_WORDS_REAL = 14
+INSTR_WIDTH_BITS = INSTR_WORDS_REAL * 32   # = 448
 
 
 # =============================================================================
@@ -1579,7 +1581,7 @@ def legality_pass(prog: Program) -> Program:
         rules = _LEGAL.get(opcode)
         if rules is None:
             raise AssemblerError(
-                f"line {stmt.line}: opcode 0x{opcode:02x} has no legality entry"
+                f"line {stmt.line}: opcode 0x{opcode:03x} has no legality entry"
             )
         eh_kinds = {eh.kind for eh in stmt.eh_list}
         unknown = eh_kinds - set(EH_NAME_TO_CODE)
@@ -1762,7 +1764,7 @@ def legality_pass(prog: Program) -> Program:
         if rules.get('require_precision_eh'):
             if 'precision' not in eh_kinds or 'prec' not in stmt.flags:
                 raise AssemblerError(
-                    f"line {stmt.line}: {stmt.mnemonic} (0x{opcode:02X}, FP "
+                    f"line {stmt.line}: {stmt.mnemonic} (0x{opcode:03X}, FP "
                     f"block) requires a .precision EH carrying the mode byte "
                     f"AND the 'prec' flag (F_PRECISION_OVR)"
                 )
@@ -1784,7 +1786,7 @@ def legality_pass(prog: Program) -> Program:
             if legal is None:
                 if opcode != 0x6B:
                     raise AssemblerError(
-                        f"line {stmt.line}: opcode 0x{opcode:02X} requires "
+                        f"line {stmt.line}: opcode 0x{opcode:03X} requires "
                         f"a precision EH but has no mode-legality entry")
                 legal = {'legal_dtypes': [0], 'legal_acc': [1],
                          'legal_rnd': [0]}
@@ -1801,8 +1803,63 @@ def legality_pass(prog: Program) -> Program:
 
 
 # =============================================================================
-# Section 8 — Stage 6: encoder (LL AST → 416-bit machine code)
+# Section 8 — Stage 6: encoder (LL AST → 448-bit machine code)
 # =============================================================================
+
+# -----------------------------------------------------------------------------
+# CRC 유틸 — 인코딩 개정 파도 (W5 OPREF CRC-4 · W8 CH CRC-32C).
+#
+# 손구현이 의도다: stdlib 의 zlib.crc32/binascii 는 다항식 0x04C11DB7
+# (ISO-HDLC)라 Castagnoli(0x1EDC6F41)로 쓸 수 없고, CRC-4 는 stdlib 에
+# 아예 없다. 참조측 독립 구현은 asm/test_wavetensor_asm.py 에 있다 —
+# 두 구현이 같은 기지값 7종을 각자 통과해야 한다.
+# -----------------------------------------------------------------------------
+
+def crc4_opref(lbid: int, src_kind: int) -> int:
+    """OPREF EH 본문 12b 의 CRC-4 (정본 §1.4.6 국소 검산 규범).
+
+    G(x) = x⁴ + x + 1 (0b10011), 비반사, init 0, xorout 없음.
+    메시지 M = LBID[7]…LBID[0] ∥ src_kind[3]…src_kind[0] — **논리 비트
+    순서**(MSB-first: M(x)의 x¹¹ 계수 = LBID[7])다. 물리 워드 슬라이스
+    순서([31:24]·[19:16])가 아니다 — CRC 니블 [23:20]이 물리적으로 둘
+    사이에 끼기 때문에 정본이 논리 순서를 명문화한다.
+    반환값 = (M(x)·x⁴) mod G(x), 4비트. 방출 위치는 EH 워드 [23:20]
+    (crc[3]이 비트 23)."""
+    m = ((lbid & 0xFF) << 4) | (src_kind & 0xF)     # 12b 논리 메시지
+    reg = 0
+    for i in range(11, -1, -1):
+        fb = ((reg >> 3) & 1) ^ ((m >> i) & 1)
+        reg = (reg << 1) & 0xF
+        if fb:
+            reg ^= 0x3          # G(x) 하위 항 x+1
+    return reg
+
+
+def crc32c(data: bytes) -> int:
+    """CRC-32C, RFC 3720(iSCSI) 표준 관례 — CH(둘째 헤더, 정본 §1.3.4).
+
+    다항식 0x1EDC6F41(정규형)/0x82F63B78(반사형), 입·출력 반사,
+    init 0xFFFFFFFF, xorout 0xFFFFFFFF. 기지값: b"123456789" →
+    0xE3069283 · 32×0x00 → 0x8A9136AA · 32×0xFF → 0x62A8AB43."""
+    crc = 0xFFFFFFFF
+    for b in data:
+        crc ^= b
+        for _ in range(8):
+            crc = (crc >> 1) ^ (0x82F63B78 if crc & 1 else 0)
+    return crc ^ 0xFFFFFFFF
+
+
+def _ch_word(words_without_ch: List[int]) -> int:
+    """CH(둘째 헤더) word1 값 — 명령 전 워드(자기 워드 제외)의 CRC-32C.
+
+    메시지 = CH 를 제외한 명령의 전 워드(word 0, word 2‥bh_len−1)를
+    **워드 오름차순**으로 이은 비트열. 패딩 불포함. 직렬화는 각 32b
+    워드를 최하위 바이트부터(리틀엔디언) 4바이트로 잇는다. 호출 규율:
+    bh_len(CH 포함)·next_hdr 후패치가 **완결된 뒤** 불러야 한다."""
+    msg = b''.join((w & 0xFFFFFFFF).to_bytes(4, 'little')
+                   for w in words_without_ch)
+    return crc32c(msg)
+
 
 def _canonicalize_subscript(eh: ExtensionHeader) -> Dict[str, List[int]]:
     """Map textual subscript labels to the 4-bit codes used by the SUBSCRIPT
@@ -1958,23 +2015,23 @@ def _encode_eh(eh: ExtensionHeader) -> Tuple[int, List[int]]:
     if kind == 'opref':
         src_kind = a.get('kind', 0)
         noc_route = a.get('route', 0)
-        # `[23:20]` 4비트는 개정으로 **폐지**됐다 (정본 §1.4).
+        # `[23:20]` 4비트는 본문 12b(LBID 8 ∥ src_kind 4)의 **CRC-4** 다
+        # (정본 §1.4.6 국소 검산 규범, 인코딩 개정 파도 W5).
         #
-        # 이 자리는 물리 포트 인덱스였다. 4비트 고정 니블은 "포트가 열여섯
-        # 개다" 라는 arity 를 인코딩에 싣는 것이고, INV-T2 가 정확히 그것을
-        # 금지한다: "인코딩은 계층의 수와 각 계층의 arity 를 표현하지 않는다.
-        # **고정 니블 분할을 금지한다.**" 입력 포트 마스크(§1.4.2)와 같은
-        # 위반이며 처분도 같다 — 폐지하고 예약으로 돌린다.
+        # 이 자리는 물리 포트 인덱스였다가(INV-T2 위반으로 폐지) 예약을
+        # 거쳐 CRC-4 가 됐다. 닫는 것은 「조용한 오독」이다: LBID 가
+        # *사상된 다른* 값으로 깨지면 어떤 구조 검사도 울리지 않고 다른
+        # 뱅크를 읽는다 — 깨진 LBID 도 완벽히 적법한 선언이기 때문이다.
         #
-        # 예약 필드는 **반드시 0** 이다 (§5.7). 조용히 무시하지 않는다 —
-        # 무시되는 비트는 검사받지 않고 통과하는 비트이고, 그것이 어딘가에
-        # 저장되거나 반향되면 은닉 채널이다.
+        # CRC 는 어셈블러가 계산·주입한다. 사용자 주입은 금지다 —
+        # 사용자가 주입할 수 있는 검산값은 검산이 아니라 은닉 채널이고,
+        # 잘못된 LBID 에 올바른 CRC 를 붙이는 통로가 된다.
         port_id = a.get('port', 0)
         if port_id != 0:
             raise AssemblerError(
-                f"line {eh.line}: .opref port={port_id} — 이 필드는 개정으로 "
-                f"폐지됐다 (정본 §1.4). 4비트 고정 니블은 arity 를 인코딩에 "
-                f"싣는 것이라 INV-T2 위반이다. 자리는 예약이며 반드시 0 이다"
+                f"line {eh.line}: .opref port={port_id} — `[23:20]` 은 "
+                f"본문 12b 의 CRC-4 필드다 (정본 §1.4.6). CRC 는 어셈블러가 "
+                f"계산·주입하며 사용자 주입은 금지다"
             )
         if not (0 <= noc_route <= 0xFF):
             raise AssemblerError(
@@ -1984,7 +2041,8 @@ def _encode_eh(eh: ExtensionHeader) -> Tuple[int, List[int]]:
         if not (0 <= src_kind <= 0xF):
             raise AssemblerError(
                 f"line {eh.line}: .opref kind={src_kind} 가 4비트를 넘는다")
-        upper = ((noc_route & 0xFF) << 8) | (src_kind & 0xF)
+        crc = crc4_opref(noc_route, src_kind)
+        upper = ((noc_route & 0xFF) << 8) | (crc << 4) | (src_kind & 0xF)
         return EH_OPREF, [(upper << 16) | (EH_OPREF << 8) | 1]
     if kind == 'precision':
         mode = a.get('mode', 0)
@@ -2019,6 +2077,14 @@ def _encode_subscript_eh_multi(eh: ExtensionHeader) -> List[Tuple[int, List[int]
 
 def _encode_instruction(inst: Instruction) -> int:
     opcode = MNEMONIC_TO_OPCODE[inst.mnemonic]
+    # W1 — opcode 는 12비트다. 하위 8b 는 [31:24], 확장 니블은 [11:8].
+    # 기존 opcode(≤ 0xFF)는 확장 니블 0x0 프리픽스라 EH-0 명령의
+    # 바이너리가 파도 전후 비트 동일하다. [15:12] 는 예약 — 항상 0 방출.
+    if not (0 <= opcode <= 0xFFF):
+        raise AssemblerError(
+            f"line {inst.line}: opcode 0x{opcode:x} 가 12비트를 넘는다 — "
+            f"opcode 공간은 0x000..0xFFF 다 (정본 §1.3.1)"
+        )
     flags = 0
     for fname in inst.flags:
         flags |= 1 << FLAG_BITS[fname]
@@ -2028,7 +2094,10 @@ def _encode_instruction(inst: Instruction) -> int:
             encoded.extend(_encode_subscript_eh_multi(eh))
         else:
             encoded.append(_encode_eh(eh))
-    bh_len = 1 + sum(len(words) for _, words in encoded)
+    # W8 — CH(둘째 헤더) 존재 유도: EH ≥ 1 (⇔ next_hdr ≠ END) 이면
+    # word1 이 CH 다. bh_len 은 CH 를 **포함**한 물리 워드 총수다.
+    has_ch = bool(encoded)
+    bh_len = 1 + (1 if has_ch else 0) + sum(len(words) for _, words in encoded)
     # Patch next_hdr fields walking from end backwards.
     next_hdr = EH_END
     chain_words: List[int] = []
@@ -2041,8 +2110,16 @@ def _encode_instruction(inst: Instruction) -> int:
     base = ((opcode & 0xFF) << 24) \
          | ((first_next_hdr & 0xF) << 20) \
          | ((flags & 0xF) << 16) \
+         | (((opcode >> 8) & 0xF) << 8) \
          | (bh_len & 0xFF)
-    full_words = [base] + chain_words
+    # 순서 규율 (W8): bh_len(CH 포함)·next_hdr 후패치가 완결된 **뒤에**
+    # CRC-32C 를 계산한다 — CH 메시지는 CH 자기 워드를 제외한 명령의
+    # 전 워드(word 0, word 2‥bh_len−1, 워드 오름차순, 패딩 불포함)다.
+    if has_ch:
+        ch = _ch_word([base] + chain_words)
+        full_words = [base, ch] + chain_words
+    else:
+        full_words = [base] + chain_words
     if len(full_words) > INSTR_WORDS_REAL:
         raise AssemblerError(
             f"line {inst.line}: instruction is {len(full_words)} words, "
@@ -2057,7 +2134,7 @@ def _encode_instruction(inst: Instruction) -> int:
 
 
 def encode_pass(prog: Program) -> List[int]:
-    """Stage 6 — emit a list of 416-bit instruction integers, one per
+    """Stage 6 — emit a list of 448-bit instruction integers, one per
     Instruction node. Non-instruction statements (labels) are skipped."""
     insts: List[int] = []
     for stmt in prog.stmts:
@@ -2465,7 +2542,7 @@ def wave_fragments_trace_iijkl(a_128: int) -> List[Tuple[int, int]]:
 # =============================================================================
 
 def assemble(text: str) -> List[int]:
-    """Run the full pipeline (Stages 1..6) and return a list of 416-bit
+    """Run the full pipeline (Stages 1..6) and return a list of 448-bit
     machine-code integers."""
     prog = parse(text)
     prog = alias_pass(prog)

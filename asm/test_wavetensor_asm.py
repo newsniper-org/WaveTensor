@@ -108,6 +108,11 @@ from wavetensor_asm import (
 # helpers below mirror that file's encoding rules byte-for-byte. If you
 # change one, change the other in lockstep — the encoder roundtrip tests
 # below cross-check.
+#
+# ⚠ 인코딩 개정 파도 (W1~W8): 이 참조 인코더는 파도 후 의미론(12b opcode
+# ·OPREF CRC-4·CH)으로 개정됐다. 루트 cocotb 하네스의 재캡처(록스텝 복원
+# + truth_table_encwave.json 캡처)는 메인 루프 몫이다 — 그때까지 위
+# 록스텝 문장은 「의무」의 기록이지 「현재 상태」의 기록이 아니다.
 # =============================================================================
 
 EH_END        = 0x0
@@ -122,7 +127,41 @@ EH_PRECISION  = 0x8
 
 F_HAS_OPB        = 1 << 3
 F_PRECISION_OVR  = 1 << 2
-INSTR_WORDS_REAL = 13
+INSTR_WORDS_REAL = 14      # W8: 기본 헤더 1 + CH 1 + EH 예산 12 (448b)
+
+
+# -----------------------------------------------------------------------------
+# 참조측 CRC — wavetensor_asm.py 본체와 **독립** 구현 (교차 검증용).
+#
+# 본체는 비트-직렬 LFSR(crc4)·반사 비트루프(crc32c)다. 여기는 일부러 다른
+# 형태로 짠다: crc4 는 16b 부호어 다항 장제법, crc32c 는 256-엔트리 표.
+# 두 구현이 P1·P2 기지값 7종을 각자 통과해야 한다 (TestCrcReferenceValues).
+# -----------------------------------------------------------------------------
+
+def _ref_crc4(lbid, src_kind):
+    """(M(x)·x⁴) mod G(x), G = x⁴+x+1, M = LBID[7..0] ∥ src_kind[3..0]
+    (12b 논리 순서, MSB-first), init 0, xorout 없음 — 장제법 구현."""
+    v = (((lbid & 0xFF) << 4) | (src_kind & 0xF)) << 4    # 16b 부호어 자리
+    for i in range(15, 3, -1):
+        if (v >> i) & 1:
+            v ^= 0x13 << (i - 4)
+    return v & 0xF
+
+
+_CRC32C_TBL = []
+for _n in range(256):
+    _c = _n
+    for _ in range(8):
+        _c = (_c >> 1) ^ (0x82F63B78 if _c & 1 else 0)
+    _CRC32C_TBL.append(_c)
+
+
+def _ref_crc32c(data):
+    """CRC-32C, RFC 3720 관례 (반사, init/xorout 0xFFFFFFFF) — 표 구현."""
+    crc = 0xFFFFFFFF
+    for b in data:
+        crc = (crc >> 8) ^ _CRC32C_TBL[(crc ^ b) & 0xFF]
+    return crc ^ 0xFFFFFFFF
 
 
 class _EH:
@@ -164,8 +203,14 @@ def _eh_subscript(a_axes16, b_axes16, o_axes16):
 
 
 def _eh_opref(src_kind=0, port_id=0, noc_route=0):
+    # W5: `[23:20]` 은 본문 12b(LBID ∥ src_kind)의 CRC-4 다 (§1.4.6).
+    # port_id 인자는 폐지된 필드의 흔적 — 호출 호환으로만 남고 0 이어야
+    # 한다 (참조 인코더가 조용히 CRC 자리를 덮어쓰는 일이 없도록 단언).
+    assert port_id == 0, "opref [23:20] is the CRC-4 field (W5)"
+
     def fn(nh):
-        upper = ((noc_route & 0xFF) << 8) | ((port_id & 0xF) << 4) | (src_kind & 0xF)
+        crc = _ref_crc4(noc_route, src_kind)
+        upper = ((noc_route & 0xFF) << 8) | (crc << 4) | (src_kind & 0xF)
         return [(upper << 16) | (nh << 12) | (EH_OPREF << 8) | 1]
     return _EH(EH_OPREF, 1, fn)
 
@@ -191,17 +236,28 @@ def _decode_mirror(instr_int):
     iw = [(instr_int >> (i * 32)) & 0xFFFFFFFF for i in range(INSTR_WORDS_REAL)]
     base = iw[0]
     out = {
-        'opcode':   (base >> 24) & 0xFF,
+        # W1: opcode 는 12b — 하위 8b [31:24] + 확장 니블 [11:8].
+        'opcode':   ((base >> 24) & 0xFF) | (((base >> 8) & 0xF) << 8),
         'next_hdr': (base >> 20) & 0xF,
         'flags':    (base >> 16) & 0xF,
-        'reserved': (base >> 8) & 0xFF,
+        'reserved': (base >> 12) & 0xF,     # W1: [15:12] 로 협소화
         'bh_len':   base & 0xFF,
         'ehs':      [],
     }
     expect = out['next_hdr']
     off = 1
+    # W8: next_hdr ≠ END 이면 word 1 은 CH(둘째 헤더)다 — EH 가 아니고
+    # 순회 대상도 아니다. EH 순회는 word 2 에서 시작한다 (§4.2.1).
+    # 재계산 대조: 메시지 = CH 를 제외한 전 워드(word 0, word 2‥bh_len−1).
+    if expect != EH_END:
+        out['ch'] = iw[1]
+        bh_len = out['bh_len']
+        msg_words = [iw[0]] + iw[2:max(2, min(bh_len, INSTR_WORDS_REAL))]
+        msg = b''.join(w.to_bytes(4, 'little') for w in msg_words)
+        out['ch_ok'] = (_ref_crc32c(msg) == iw[1])
+        off = 2
     safety = 0
-    while expect != EH_END and safety < 8:
+    while expect != EH_END and safety < 16:
         safety += 1
         if off >= INSTR_WORDS_REAL:
             out['eh_overflow'] = True
@@ -227,12 +283,24 @@ def _encode_instr(opcode, *exts, flags=0):
     for eh in reversed(exts):
         chained.insert(0, (eh, nh))
         nh = eh.type
-    bh_len = 1 + sum(eh.words for eh, _ in chained)
+    # W8: EH ≥ 1 (⇔ next_hdr ≠ END) 이면 word 1 이 CH 다. bh_len 은
+    # CH 를 포함한 물리 워드 총수.
+    has_ch = bool(chained)
+    bh_len = 1 + (1 if has_ch else 0) + sum(eh.words for eh, _ in chained)
+    # W1: opcode 12b — 하위 8b [31:24], 확장 니블 [11:8], [15:12] 예약 0.
     base = ((opcode & 0xFF) << 24) | ((nh & 0xF) << 20) \
-         | ((flags & 0xF) << 16) | (bh_len & 0xFF)
-    words = [base]
+         | ((flags & 0xF) << 16) | (((opcode >> 8) & 0xF) << 8) \
+         | (bh_len & 0xFF)
+    body = [base]
     for eh, nh_v in chained:
-        words.extend(eh.emit(nh_v))
+        body.extend(eh.emit(nh_v))
+    if has_ch:
+        # CH 메시지 = CH 자기 워드를 제외한 전 워드(word 0, word 2‥
+        # bh_len−1), 워드 오름차순, 패딩 불포함, 워드당 리틀엔디언 4바이트.
+        msg = b''.join((w & 0xFFFFFFFF).to_bytes(4, 'little') for w in body)
+        words = [body[0], _ref_crc32c(msg)] + body[1:]
+    else:
+        words = body
     while len(words) < INSTR_WORDS_REAL:
         words.append(0)
     val = 0
@@ -478,7 +546,7 @@ class TestEncoderRoundtrip(unittest.TestCase):
         got = assemble_one(asm_text)
         self.assertEqual(
             got, expected_int,
-            f"\nasm:      0x{got:0104x}\nexpected: 0x{expected_int:0104x}",
+            f"\nasm:      0x{got:0112x}\nexpected: 0x{expected_int:0112x}",
         )
 
     # --- legacy opcodes ----------------------------------------------------
@@ -822,21 +890,22 @@ class TestEinsumLowering(unittest.TestCase):
         self.assertEqual(opcodes, [0x32],
                          f"expected single EINSUM, got {[hex(o) for o in opcodes]}")
         # Verify two SUBSCRIPT EHs are present in the emitted instruction.
-        # Walk the chain: base header + PORT + SUBSCRIPT_low + SUBSCRIPT_hi + OPREF.
+        # Walk the chain (W8: word 1 은 CH — 둘째 헤더, EH 아님):
+        # base + CH + PORT + SUBSCRIPT_low + SUBSCRIPT_hi + OPREF.
         val = insts[0]
-        words = [(val >> (i * 32)) & 0xFFFFFFFF for i in range(13)]
+        words = [(val >> (i * 32)) & 0xFFFFFFFF for i in range(14)]
         # base word 0: next_hdr in [23:20] = 0x1 (PORT)
         self.assertEqual((words[0] >> 20) & 0xF, 0x1, "base.next_hdr must be PORT")
-        # PORT (word 1): next_hdr = SUBSCRIPT (0x6)
-        self.assertEqual((words[1] >> 12) & 0xF, 0x6, "PORT.next_hdr must be SUBSCRIPT")
-        # SUBSCRIPT_low (word 2): next_hdr = SUBSCRIPT (0x6) — chained SUBSCRIPT
-        self.assertEqual((words[2] >> 12) & 0xF, 0x6,
+        # PORT (word 2 — CH 다음): next_hdr = SUBSCRIPT (0x6)
+        self.assertEqual((words[2] >> 12) & 0xF, 0x6, "PORT.next_hdr must be SUBSCRIPT")
+        # SUBSCRIPT_low (word 3): next_hdr = SUBSCRIPT (0x6) — chained SUBSCRIPT
+        self.assertEqual((words[3] >> 12) & 0xF, 0x6,
                          "first SUBSCRIPT.next_hdr must be SUBSCRIPT (chained multi)")
-        self.assertEqual((words[2] >> 8) & 0xF, 0x6, "type must be SUBSCRIPT")
-        # SUBSCRIPT_hi (word 4): next_hdr = OPREF (0x7)
-        self.assertEqual((words[4] >> 12) & 0xF, 0x7,
+        self.assertEqual((words[3] >> 8) & 0xF, 0x6, "type must be SUBSCRIPT")
+        # SUBSCRIPT_hi (word 5): next_hdr = OPREF (0x7)
+        self.assertEqual((words[5] >> 12) & 0xF, 0x7,
                          "second SUBSCRIPT.next_hdr must be OPREF")
-        self.assertEqual((words[4] >> 8) & 0xF, 0x6, "type must still be SUBSCRIPT")
+        self.assertEqual((words[5] >> 8) & 0xF, 0x6, "type must still be SUBSCRIPT")
 
     def test_4_batch_dims_still_raises_beyond_v1_3(self):
         """Beyond v1.3 §16: 4 batch axes would give 7-axis A/B/O tensors,
@@ -2374,14 +2443,14 @@ class TestV180e0e2Vfma(unittest.TestCase):
         self.assertEqual((insts[1] >> 16) & 0xF, 0b0100)
         # the imm64 EH body {lo32, hi32} rides verbatim (b_mul raw
         # field 0xD = -3 sext source, c_acc pattern untouched)
-        words = [(insts[0] >> (32 * i)) & 0xFFFFFFFF for i in range(13)]
+        words = [(insts[0] >> (32 * i)) & 0xFFFFFFFF for i in range(14)]
         lo, hi = b64 & 0xFFFFFFFF, b64 >> 32
         self.assertEqual((lo, hi), (0x0000000D, 0x80000001))
         self.assertIn((lo, hi), list(zip(words, words[1:])),
                       f"imm64 body words not found: {words}")
         # the imm16 form's EH body carries the raw 0x7F field at the
         # imm16 body position (upper 16 bits of its EH word)
-        words1 = [(insts[1] >> (32 * i)) & 0xFFFFFFFF for i in range(13)]
+        words1 = [(insts[1] >> (32 * i)) & 0xFFFFFFFF for i in range(14)]
         self.assertTrue(any((w >> 16) == 0x007F and ((w >> 8) & 0xF) == 0x2
                             for w in words1),
                         f"imm16 body word not found: {words1}")
@@ -2536,15 +2605,17 @@ class TestFdot32CrIsa3aC2(unittest.TestCase):
                                         ref.eh_precision(mode),
                                         flags=ref.F_PRECISION_OVR)
             self.assertEqual(got, expected,
-                             f"\nasm:      0x{got:0104x}"
-                             f"\nexpected: 0x{expected:0104x}")
+                             f"\nasm:      0x{got:0112x}"
+                             f"\nexpected: 0x{expected:0112x}")
             m = ref.decode_mirror(got)
             self.assertEqual(m['opcode'], 0x7A)
             self.assertEqual(m['flags'], 0b0100)          # prec only
             self.assertEqual([eh['type'] for eh in m['ehs']],
                              [EH_PORT, EH_PRECISION])
             self.assertNotIn('chain_break_at', m)
-            self.assertEqual(m['bh_len'], 1 + 1 + 1)
+            # W8: bh_len = 기본 헤더 + CH + PORT + PRECISION, CH 재계산 대조
+            self.assertEqual(m['bh_len'], 1 + 1 + 1 + 1)
+            self.assertTrue(m['ch_ok'], "CH(word 1) 재계산 대조 실패")
             # the mode byte survives the roundtrip in the PRECISION body
             self.assertEqual((m['ehs'][1]['words'][0] >> 16) & 0xFF, mode)
 
@@ -2674,29 +2745,32 @@ class TestFdot32CrIsa3aC2(unittest.TestCase):
         with open(wires, encoding='utf-8') as f:
             text = f.read()
         supported = text.split('wire opcode_supported =')[1].split(';')[0]
-        self.assertIn("8'h7A", supported,
-                      "0x7A must be in opcode_supported from 3a-C4 on "
+        # W1/W7: whitelist 비교는 12비트 전폭({cb_opcode_ext, cb_opcode})
+        # 이고 리터럴 표기는 12'h0## 3자리다.
+        self.assertIn("12'h07A", supported,
+                      "0x07A must be in opcode_supported from 3a-C4 on "
                       "(did you edit the JSON without regenerating?)")
-        for other in ('8\'h79', '8\'h7C', '8\'h7E'):
+        for other in ("12'h079", "12'h07C", "12'h07E"):
             self.assertIn(other, supported)
         # The staging-bit machinery itself must still be present and
         # honest: no row claims decode_reserved today.
         self.assertEqual(DECODE_RESERVED_OPS, frozenset())
 
     def test_frozen_truth_table_untouched(self):
-        """§27.7a.4 finding, quoting the isa JSON 0x79 note VERBATIM:
-        '0x70-0x7F is outside the truth-table domain'. Adding 0x7A
-        therefore forces NO differential recapture and NO domain_version
-        bump — this test proves the premise (the frozen capture really
-        contains no fp-block point) and the consequence (domain_version
-        stays 3) machine-checkably, instead of trusting the prose."""
+        """§27.7a.4 finding, quoting the isa JSON 0x079 note VERBATIM:
+        '0x070-0x07F is outside the truth-table domain' (W7 표기 이관을
+        따라 동일 커밋에 재동기된 인용). premigration 캡처의 지위는
+        인코딩 개정 파도 이후 「이관 전 HEAD(042f08e) 계보 전용 블랙박스
+        오라클」로 좁아진다 — 동결 단언(domain_version 3, fp-block 0점)은
+        계속 참이고, 현행 재생 대조는 isa/truth_table_encwave.json
+        (domain_version 4, 메인 루프 캡처)으로 재지향된다."""
         import json as _json
         root = os.path.dirname(_HERE)
         with open(os.path.join(root, 'isa', 'wt64v1_isa.json'),
                   encoding='utf-8') as f:
             src = _json.load(f)
         note_79 = next(o['notes'] for o in src['opcodes'] if o['code'] == 0x79)
-        self.assertIn('0x70-0x7F is outside the truth-table domain', note_79)
+        self.assertIn('0x070-0x07F is outside the truth-table domain', note_79)
         with open(os.path.join(root, 'isa',
                                'truth_table_premigration.json'),
                   encoding='utf-8') as f:
@@ -2712,3 +2786,320 @@ class TestFdot32CrIsa3aC2(unittest.TestCase):
         self.assertGreater(len(ops), 50, 'truth-table key parse broke')
         self.assertFalse([o for o in ops if 0x70 <= o <= 0x7F],
                          'frozen truth table unexpectedly covers the fp block')
+
+
+class TestCrcReferenceValues(unittest.TestCase):
+    """인코딩 개정 파도 (W5·W8) — CRC 기지값 7종 자기시험.
+
+    본체(wavetensor_asm)와 이 파일의 참조 구현은 **독립**이다(LFSR/장제법,
+    비트루프/표). 둘 다 아래 핀 명세 기지값을 각자 통과해야 하고, 표본
+    구간에서 서로 일치해야 한다 — 같은 버그를 두 벌 복사하는 경로를 막는다.
+    """
+
+    # P1 — OPREF CRC-4: (LBID, src_kind) -> CRC
+    _CRC4_PINS = [(0x00, 0, 0x0), (0x01, 1, 0x6), (0xA5, 2, 0x8),
+                  (0xFF, 2, 0xA)]
+    # P2 — CH CRC-32C (RFC 3720 시험 패턴)
+    _CRC32C_PINS = [(b"123456789", 0xE3069283),
+                    (bytes(32), 0x8A9136AA),
+                    (bytes([0xFF] * 32), 0x62A8AB43)]
+
+    def test_crc4_known_values_both_implementations(self):
+        for lbid, sk, exp in self._CRC4_PINS:
+            self.assertEqual(wta.crc4_opref(lbid, sk), exp,
+                             f"asm crc4({lbid:#04x},{sk})")
+            self.assertEqual(_ref_crc4(lbid, sk), exp,
+                             f"ref crc4({lbid:#04x},{sk})")
+
+    def test_crc32c_known_values_both_implementations(self):
+        for data, exp in self._CRC32C_PINS:
+            self.assertEqual(wta.crc32c(data), exp, f"asm crc32c({data!r})")
+            self.assertEqual(_ref_crc32c(data), exp, f"ref crc32c({data!r})")
+
+    def test_crc4_cross_agreement_exhaustive(self):
+        """본문 12b 전 공간(4096점) 교차 일치 — 작아서 전수가 싸다."""
+        for lbid in range(256):
+            for sk in range(16):
+                self.assertEqual(wta.crc4_opref(lbid, sk),
+                                 _ref_crc4(lbid, sk), (lbid, sk))
+
+    def test_crc32c_cross_agreement_samples(self):
+        samples = [b"", b"\x00", b"a", bytes(range(256)),
+                   b"WaveTensor CH", bytes([0x5A] * 56),
+                   (0xDEADBEEF).to_bytes(4, 'little') * 13]
+        for s in samples:
+            self.assertEqual(wta.crc32c(s), _ref_crc32c(s), repr(s))
+
+
+class TestEncodingWaveW1W8(unittest.TestCase):
+    """인코딩 개정 파도 — W1(12b opcode)·W5(OPREF CRC-4)·W8(CH) 인코더 핀."""
+
+    def test_eh0_instruction_has_no_ch_and_is_prewave_bit_identical_shape(self):
+        """EH-0 (NOP, next_hdr = END): CH 없음 — bh_len = 1, word 1 = 0.
+        W1 의 「기존 바이너리 무변경」 주장은 정확히 이 부류에 성립한다:
+        확장 니블 0x0 + [15:12] 0 + CH 부재라 하위 416b 가 파도 전과 비트
+        동일하고, 14워드째 패딩(상위 32b)은 0 이라 정수값도 같다."""
+        val = assemble_one("NOP\n")
+        words = [(val >> (32 * i)) & 0xFFFFFFFF for i in range(14)]
+        self.assertEqual(words[0] & 0xFF, 1, "EH-0 bh_len must be 1")
+        self.assertEqual((words[0] >> 20) & 0xF, 0x0, "next_hdr must be END")
+        self.assertEqual(words[1], 0, "EH-0 has NO CH — word 1 stays padding")
+        self.assertEqual((words[0] >> 8) & 0xFF, 0,
+                         "[15:8] = reserved(0) + opcode_ext(0) for NOP")
+        self.assertLess(val, 1 << 416,
+                        "EH-0 padding keeps the integer inside 416b")
+
+    def test_base_header_emits_extension_nibble_and_reserved_zero(self):
+        """W1: [11:8] = opcode[11:8] 방출, [15:12] 는 항상 0. 현행 opcode
+        는 전부 ≤ 0xFF 라 확장 니블 0x0 이 관측값이다 — 방출 *코드 경로*
+        는 12b 마스크로 검사한다 (opcode > 0xFFF 는 인코더가 거부)."""
+        for src, opc in (("ADD .port dest=1 .imm16 5\n", 0x010),
+                         ("NOP\n", 0x000)):
+            val = assemble_one(src)
+            base = val & 0xFFFFFFFF
+            self.assertEqual((base >> 12) & 0xF, 0, "[15:12] reserved-zero")
+            self.assertEqual((base >> 8) & 0xF, (opc >> 8) & 0xF)
+            self.assertEqual((base >> 24) & 0xFF, opc & 0xFF)
+        wta.MNEMONIC_TO_OPCODE['__W1_RANGE_PROBE__'] = 0x1000
+        try:
+            bad = wta.Instruction(mnemonic='__W1_RANGE_PROBE__',
+                                  flags=set(), eh_list=[], line=1)
+            with self.assertRaises(AssemblerError):
+                wta._encode_instruction(bad)
+        finally:
+            del wta.MNEMONIC_TO_OPCODE['__W1_RANGE_PROBE__']
+
+    def test_ch_word_recomputation_matches_on_eh_instruction(self):
+        """W8: EH ≥ 1 이면 word 1 = CH = 자기 워드 제외 전 워드(word 0,
+        word 2‥bh_len−1, 오름차순, 리틀엔디언 직렬화)의 CRC-32C. 참조측
+        독립 crc32c 로 재계산 대조한다."""
+        val = assemble_one("ADD .port dest=1 .imm16 5\n")
+        words = [(val >> (32 * i)) & 0xFFFFFFFF for i in range(14)]
+        bh_len = words[0] & 0xFF
+        self.assertEqual(bh_len, 4, "base + CH + PORT + IMM16")
+        msg = b''.join(w.to_bytes(4, 'little')
+                       for w in [words[0]] + words[2:bh_len])
+        self.assertEqual(words[1], _ref_crc32c(msg),
+                         "CH must equal the CRC-32C of every non-CH word")
+        m = ref.decode_mirror(val)
+        self.assertTrue(m['ch_ok'])
+        self.assertEqual([eh['type'] for eh in m['ehs']],
+                         [EH_PORT, EH_IMM16])
+
+    def test_ch_absent_iff_next_hdr_end(self):
+        """존재 유도 (W8): next_hdr ≠ END ⇔ word 1 = CH. 양방향을 EH-0
+        (NOP)·EH-1+(ADD) 한 쌍으로 핀한다."""
+        nop = assemble_one("NOP\n")
+        add = assemble_one("ADD .port dest=1 .imm16 5\n")
+        self.assertEqual((nop >> 20) & 0xF, 0x0)
+        self.assertEqual((nop >> 32) & 0xFFFFFFFF, 0)
+        self.assertNotEqual((add >> 20) & 0xF, 0x0)
+        self.assertNotEqual((add >> 32) & 0xFFFFFFFF, 0,
+                            "EH-bearing instruction must carry a CH word")
+
+    def test_opref_emits_crc4_nibble(self):
+        """W5: OPREF EH [23:20] = 본문 12b 의 CRC-4 (기지값으로 핀)."""
+        for route, kind, crc in ((0x00, 0, 0x0), (0x01, 1, 0x6),
+                                 (0xA5, 2, 0x8), (0xFF, 2, 0xA)):
+            eh = wta.ExtensionHeader('opref',
+                                     {'route': route, 'kind': kind}, 0)
+            type_code, ws = wta._encode_eh(eh)
+            self.assertEqual(type_code, wta.EH_OPREF)
+            self.assertEqual(len(ws), 1)
+            self.assertEqual((ws[0] >> 20) & 0xF, crc,
+                             f"route={route:#04x} kind={kind}")
+            self.assertEqual((ws[0] >> 24) & 0xFF, route)
+            self.assertEqual((ws[0] >> 16) & 0xF, kind)
+
+    def test_opref_user_crc_injection_rejected(self):
+        """`.opref port=` 비0 거부 존치 — 근거는 개정됐다: [23:20] 은
+        CRC-4 필드이고 CRC 는 어셈블러가 계산·주입한다 (사용자 주입 금지)."""
+        eh = wta.ExtensionHeader('opref', {'port': 3}, 7)
+        with self.assertRaises(AssemblerError) as ctx:
+            wta._encode_eh(eh)
+        self.assertIn('CRC', str(ctx.exception))
+
+    def test_opref_roundtrip_through_full_pipeline(self):
+        """어셈블러 전체 경로의 OPREF 도 같은 CRC 를 나른다 (EINSUM 합성
+        경로 포함 — _encode_eh 단일 경로라 자동으로 얻지만, 전 경로에서
+        한 번 관측해 둔다)."""
+        val = assemble_one("ADD opb .port dest=1 .opref\n")
+        m = ref.decode_mirror(val)
+        opref_w = next(eh['words'][0] for eh in m['ehs']
+                       if eh['type'] == EH_OPREF)
+        self.assertEqual((opref_w >> 20) & 0xF, _ref_crc4(0, 0))
+        self.assertTrue(m['ch_ok'])
+
+
+class TestEncwaveTruthTableConsumerPin(unittest.TestCase):
+    """P5 소비자 핀 — 인코딩 개정 파도의 현행 truth table.
+
+    파일 = isa/truth_table_encwave.json, domain_version = 4 (v4 정의의
+    일부로 키 opcode 표기가 0x0## 3자리다), 축 무변경. 캡처는 메인 루프
+    몫이다 (루트 test_isa_decoder.py 는 clean-room 금지 — W1~W8 반영 RTL
+    로 전량 1회). 파일이 아직 없으면 명시적 skip 으로 그 의무를 인쇄한다
+    — premigration 은 「이관 전 HEAD 계보 전용 블랙박스 오라클」로 동결
+    존치이고 이 파일이 현행 재생 대조의 대상이 된다."""
+
+    _PATH = os.path.join(os.path.dirname(_HERE), 'isa',
+                         'truth_table_encwave.json')
+
+    def test_encwave_capture_pin(self):
+        if not os.path.exists(self._PATH):
+            self.skipTest(
+                'isa/truth_table_encwave.json 미캡처 — 메인 루프 몫 (P5: '
+                'domain_version 4 · 키 opcode 0x0## 3자리 · 전량 1회 캡처, '
+                '선행 조건: 캡처 대상 RTL 에 W1~W8 반영)')
+        import json as _json
+        with open(self._PATH, encoding='utf-8') as f:
+            cap = _json.load(f)
+        self.assertEqual(cap['domain_version'], 4,
+                         'encwave 는 domain_version 4 다 (P5)')
+        for key in cap['points']:
+            op_tok = str(key).split('|')[0]
+            self.assertRegex(op_tok, r'^0x[0-9A-Fa-f]{3}$',
+                             f'encwave 키 opcode 표기는 0x0## 3자리다: {key}')
+
+
+class TestExtNibbleGateArtifacts(unittest.TestCase):
+    """수리 라운드 1 — W1/W2/W3 확장 니블 게이트의 상주 측정.
+
+    배경(실측): 생성 .vh 의 12'h### case arm 은 8비트 case 선택자 아래서
+    zero-extend 로 *조용히* 컴파일·매치된다 (verilator 5.048 — WIDTHEXPAND
+    경고뿐, -Wno-fatal 아래 rc 0; ext=4'h4·op=8'h7A 가 12'h07A arm 에 매치).
+    정확히 W2 가 경고한 0x47B→0x07B 공허 PASS 형태다. 수리로 case body 에
+    never-match cb_opcode_ext 참조 arm(컴파일 강제 가드)을 심었고, 이
+    클래스는 그 가드의 실재와 W2/W3 의미론을 상주로 잰다 — 종전에는 /tmp
+    일회용 실측뿐이라 재생성이 게이트를 떨어뜨려도 어떤 상주 시험도 울리지
+    않았다.
+    """
+
+    @staticmethod
+    def _read(rel):
+        with open(os.path.join(os.path.dirname(_HERE), *rel.split('/')),
+                  encoding='utf-8') as f:
+            return f.read()
+
+    def test_case_body_w2_compile_forcing_guard(self):
+        """case body 첫 arm = never-match cb_opcode_ext 참조 가드.
+
+        확장 니블이 결선되지 않은 소비자는 이 가드에서 컴파일이 깨진다
+        (undeclared identifier — verilator 실측 Error, -Wno-fatal 무관).
+        12b 연접 선택자에서는 x == ~x 가 불가능해 행동 무변경이다
+        (TB 실측: 0x07A arm 적중 · 0x47A default 적중 · 가드 비적중)."""
+        body = self._read('include/generated/isa_ehshape_case_body.vh')
+        guard = "(~{cb_opcode_ext, cb_opcode}): ;"
+        self.assertIn(guard, body,
+                      'W2 컴파일 강제 가드가 case body 에서 사라졌다 — '
+                      '8b 선택자 소비자가 다시 조용히 컴파일된다')
+        first_arm = body.index("12'h")
+        self.assertLess(body.index(guard), first_arm,
+                        'W2 가드는 첫 12b arm 앞에 있어야 한다')
+        self.assertIn('default: begin', body, 'W3 default arm 부재')
+        self.assertIn('미배정 opcode = malformation', body,
+                      'W3 규범 문면이 산출물에서 사라졌다')
+
+    def test_case_body_arms_are_12bit_fullwidth(self):
+        import re
+        body = self._read('include/generated/isa_ehshape_case_body.vh')
+        arms = re.findall(r"12'h([0-9A-F]{3}):", body)
+        self.assertGreater(len(arms), 40)
+        codes = {int(a, 16) for a in arms}
+        self.assertIn(0x07A, codes)
+        # 8b 폭 arm(12'h 아닌 8'h)이 하나라도 섞이면 즉시 실패.
+        self.assertNotRegex(body, r"8'h[0-9A-F]{2}:",
+                            'case body 에 8비트 arm 이 섞였다')
+
+    def _supported_codes(self):
+        import re
+        wires = self._read('include/generated/isa_opcode_wires.vh')
+        m = re.search(r'wire opcode_supported =(.*?);', wires, re.S)
+        self.assertIsNotNone(m, 'opcode_supported wire 부재')
+        codes = {int(c, 16) for c in
+                 re.findall(r"\{cb_opcode_ext, cb_opcode\} == 12'h([0-9A-F]{3})",
+                            m.group(1))}
+        self.assertGreater(len(codes), 40, 'opcode_supported 파싱 실패 의심')
+        return codes
+
+    def test_opcode_supported_w3_semantics(self):
+        """opcode_supported 는 순수 등호-OR 이므로 집합 소속 평가가 곧
+        행동 평가다: ext≠0 전 영역(0x47B·0x470·0x4##)과 예비 영역
+        (0x800·0xF00)은 거부, 0x000·0x010·0x07A 는 수용. 0x07B/0x07F 는
+        decode_reserved(실행 결선 선행 출하)라 whitelist 에 의도적으로
+        부재다 — 여기 넣지 않는다."""
+        codes = self._supported_codes()
+        for bad in (0x47B, 0x470, 0x410, 0x800, 0xF00):
+            self.assertNotIn(bad, codes,
+                             f'0x{bad:03X} 가 opcode_supported 에 있다 — '
+                             f'W3 미배정=malformation 위반')
+        for good in (0x000, 0x010, 0x07A):
+            self.assertIn(good, codes)
+        self.assertTrue(all(c <= 0xFFF for c in codes))
+
+    def test_assigned_codes_ext_nibble_zero_tripwire(self):
+        """트립와이어: 현재 배정 opcode 전부 확장 니블 0 (0x0## 계보).
+
+        0x4## 등 신규 영역이 실제로 claim 되면 이 핀은 의식적으로 갱신해야
+        한다 — 그 커밋은 encwave truth table 축 개정(ext≠0 벡터)과 legacy
+        결선 재확인을 함께 실어야 한다 (W3 영역 구획은 배정 절차 규범)."""
+        codes = self._supported_codes()
+        offenders = sorted(c for c in codes if c >> 8)
+        self.assertEqual(offenders, [],
+                         f'확장 니블 비0 opcode 배정 발견: '
+                         f'{[hex(c) for c in offenders]} — 트립와이어 갱신 필요')
+
+    def test_in_fp_block_w2_gate(self):
+        """W2 실물 게이트의 문면 핀 + 의미 평가."""
+        wires = self._read('include/generated/isa_opcode_wires.vh')
+        pinned = ("wire in_fp_block = "
+                  "(cb_opcode_ext == 4'h0) && (cb_opcode[7:4] == 4'h7);")
+        self.assertIn(pinned, wires,
+                      'W2 fp ROM 게이트(확장 니블 == 0x0 검사)가 산출물에서 '
+                      '사라졌다 — 0x47B 가 0x07B 행에 얹히는 공허 PASS 재개')
+        # 핀한 식의 의미 평가 (게이트 의미론의 이중 측정).
+        def in_fp_block(ext, op):
+            return ext == 0x0 and ((op >> 4) & 0xF) == 0x7
+        self.assertTrue(in_fp_block(0x0, 0x7B))
+        self.assertFalse(in_fp_block(0x4, 0x7B))
+        self.assertFalse(in_fp_block(0x0, 0x6B))
+
+    def test_wires_no_bare_8bit_compare(self):
+        """wires 산출물의 opcode 비교 전부가 12b 전폭 연접이어야 한다."""
+        import re
+        wires = self._read('include/generated/isa_opcode_wires.vh')
+        self.assertNotRegex(
+            wires, r"\(cb_opcode ==",
+            'cb_opcode 단독(8b) 비교 발견 — 확장 니블이 접힌다 (W2)')
+        self.assertNotRegex(wires, r"== 12'h[0-9A-F]{2}\)",
+                            '12b 리터럴이 3자리 미만이다')
+
+
+class TestEhAcctgtTwoLayerTripwire(unittest.TestCase):
+    """EH 0x9 (ACCTGT) 이층 분기 트립와이어 — 수리 라운드 1.
+
+    실측된 분기: legacy eh 표(include/generated/isa_eh_codes.vh)에는 0x9
+    행 자체가 없어 legacy 구조 판정은 0x9 를 미지 종류 후보로 처분하고,
+    Spinal 재구현 카탈로그(DecodeWalk catalogWords)는 0x9 를 정의 종류
+    (1워드·반복상한 1)로 순회한다. 0x9 를 나르는 명령의 구조 판정이 두
+    층에서 갈릴 수 있는 창인데 truth table 은 acctgt 0점이고 encwave 계획도
+    축 무변경이라 어떤 벡터도 이 창을 재지 않는다. 이 핀은 그 창을 *의식된
+    상태*로 유지한다: eh_codes 0x9 배정(Di 실장 파도, 0x79 재행과 함께)은
+    JSON eh_codes + legacy 표 재생성 + truth table 재캡처를 같은 커밋에
+    실어야 하고, 그 커밋이 이 핀을 의식적으로 갱신한다 (P4 범위 제한)."""
+
+    def test_eh_codes_0x9_unassigned_pin(self):
+        import json as _json
+        repo = os.path.dirname(_HERE)
+        with open(os.path.join(repo, 'include', 'generated',
+                               'isa_eh_codes.vh'), encoding='utf-8') as f:
+            vh = f.read()
+        self.assertNotIn('EH_ACCTGT', vh,
+                         'legacy eh 표에 0x9 가 배정됐다 — 이 트립와이어와 '
+                         'Spinal 카탈로그·재캡처의 록스텝을 확인하고 갱신하라')
+        self.assertNotIn("4'h9", vh)
+        with open(os.path.join(repo, 'isa', 'wt64v1_isa.json'),
+                  encoding='utf-8') as f:
+            isa = _json.load(f)
+        self.assertNotIn(0x9, set(isa['eh_codes'].values()),
+                         'JSON eh_codes 에 0x9 배정 — Di 실장 파도의 록스텝 '
+                         '커밋(legacy 표 + 재캡처 동일 커밋)인지 확인하라')
