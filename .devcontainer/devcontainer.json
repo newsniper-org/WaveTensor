@@ -8,6 +8,15 @@
       "TLA_BLAKE2B512": "4b2313f35e5f2965120c161dbb982c8541fff20b9a556543bccbc5163f7fcdc40a7dafa43b5b99c628502409dcda7274936df8509bba8fded6d3b51d8f5ffe45",
       "COCOTB_VERSION": "2.0.1",
       "WITH_SBY": "1",
+      // btormc(cover 모드 비트 수준 모델 체커) — Boolector 3.2.4 소스 빌드.
+      // 세 커밋은 상류 3.2.4 의 contrib/setup-*.sh 가 선언한 값이고
+      // Dockerfile 의 grep 대조가 그 일치를 빌드마다 다시 잰다.
+      // scripts/lint_toolchain_pins.py 가 여기 ↔ Dockerfile ARG 를 대조한다.
+      "WITH_BTORMC": "1",
+      "BOOLECTOR_VERSION": "3.2.4",
+      "BOOLECTOR_COMMIT": "393cdfba3735d334bb4e6525500b8a0280dd41e6",
+      "BTOR2TOOLS_COMMIT": "037f1fa88fb439dca6f648ad48a3463256d69d8b",
+      "LINGELING_COMMIT": "7d5db72420b95ab356c98ca7f7a4681ed2c59c70",
       // SpinalHDL 툴체인 고정 — 이 넷은 rtl/spinal/ 의 빌드 파일과
       // **반드시 일치**해야 한다. scripts/lint_toolchain_pins.py 가 대조한다.
       "SBT_VERSION": "1.12.15",

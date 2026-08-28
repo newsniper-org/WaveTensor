@@ -48,6 +48,21 @@ PINS = [
     ("SpinalHDL", "SPINAL_VERSION", "SPINAL_VERSION"),
 ]
 
+# 대조할 축 2 — rtl/spinal 대응물이 **없는** 도구 핀 (두 곳만 대조).
+#
+# btormc 층(2026-08-29, 사용자 승인)의 핀 넷. 기준은 Dockerfile ARG 다 —
+# 이미지가 실제로 굽는 값이고, devcontainer.json 이 다른 값을 넘기면 VS Code
+# 재빌드가 조용히 다른 도구를 굽는다 (위 (b)와 같은 모양 — 통과하는데
+# 무엇으로 쟀는지가 달라진다). 셋째 축(상류 3.2.4 가 선언한 커밋과의 일치)은
+# 여기가 아니라 Dockerfile 의 grep 대조가 빌드마다 잰다 — 네트워크 없이 잴 수
+# 없는 대조를 lint 에 두면 lint 가 네트워크를 잡게 된다.
+PINS_TWOWAY = [
+    ("btormc(Boolector)", "BOOLECTOR_VERSION"),
+    ("boolector 커밋", "BOOLECTOR_COMMIT"),
+    ("btor2tools 커밋", "BTOR2TOOLS_COMMIT"),
+    ("lingeling 커밋", "LINGELING_COMMIT"),
+]
+
 
 def strip_jsonc(text: str) -> str:
     """`//` 줄 주석을 제거한다 — 문자열 안의 `//` 는 건드리지 않는다.
@@ -162,6 +177,21 @@ def main() -> int:
                 f"{label}: devcontainer.json {dj_key}={j} ≠ rtl/spinal 의 {a}"
             )
         rows.append((label, a))
+
+    for label, key in PINS_TWOWAY:
+        d = df.get(key)
+        j = dj.get(key)
+        if d is None:
+            problems.append(f"{label}: Dockerfile 에 ARG {key} 가 없다")
+        if j is None:
+            problems.append(f"{label}: devcontainer.json build.args 에 {key} 가 없다")
+        elif d is not None and j != d:
+            problems.append(
+                f"{label}: devcontainer.json {key}={j} ≠ Dockerfile ARG 의 {d}"
+            )
+        if d is not None:
+            # 커밋 해시는 OK 줄을 읽을 수 없게 만든다 — 표시만 줄인다 (대조는 전폭).
+            rows.append((label, d if len(d) <= 12 else d[:12] + "…"))
 
     if problems:
         print("lint_toolchain_pins: FAIL — 툴체인 핀이 어긋났다", file=sys.stderr)

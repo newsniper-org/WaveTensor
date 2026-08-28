@@ -245,6 +245,80 @@ RUN if [ "${WITH_SBY}" = "1" ]; then \
     fi
 
 # ---------------------------------------------------------------------------
+# 5b) btormc + btorsim — cover 모드를 받는 **비트 수준** 모델 체커 (sby `btor` 엔진).
+#
+#    왜 들어가는가 (2026-08-28 전수 실측 → 2026-08-29 사용자 승인 「권고대로 해.」):
+#    DecodeWalk cover 태스크가 이 층 없이는 완주 불가였다 — cover 가용 엔진이
+#    smtbmc(z3)뿐이고 z3 는 아홉 구성 전부 step 3 미완주(1800초 TIMEOUT), 같은
+#    step-3 질의를 비트 수준(MiniSAT)은 5.76초에 푼다. abc 는 sby 에서 cover
+#    모드를 받지 않는다(bmc3·sim3 = bmc 전용, pdr = prove 전용). 즉 결손은
+#    「cover 모드를 받는 비트 수준 엔진의 부재」이고 이 층이 그 처분이다.
+#    스냅샷에 boolector/btormc/bitwuzla/pono 는 없다 (pacman 실측 — §5 의
+#    boolector target not found 기록과 같은 사실). Boolector 는 MIT.
+#
+#    구성 요소 셋을 **각각 커밋 해시로 고정해 명시로 받는다.** boolector 의
+#    contrib/setup-*.sh 를 그대로 돌리면 그 스크립트가 빌드 시점에 네트워크를
+#    잡는다 — 핀이 스크립트 속에 숨고, 이 파일만 읽어서는 「무엇을 받는가」에
+#    답할 수 없다. 대신 그 스크립트가 *선언한* 커밋(= 상류 3.2.4 가 실제로
+#    빌드한 값 — §4b 가 SpinalHDL 의 2.13.12 를 고른 것과 같은 이유)을 ARG 로
+#    들어 직접 받고, 아래 grep 대조가 「ARG ↔ 상류 선언」의 일치를 빌드마다
+#    다시 잰다 — boolector 만 올리면 대조가 크게 실패해 세 핀을 함께 움직이게
+#    만든다. 태그가 아니라 커밋을 적는 이유는 §5 와 같다: 태그는 옮길 수 있다.
+#
+#    SAT 백엔드는 **lingeling 하나만** 켠다 — boolector CMake 의 기본이자 상류
+#    핀이 있는 조합이다. cadical·cms·minisat·picosat 는 명시로 끈다 (§2 가
+#    yices 에 세운 규율 그대로: 백엔드가 늘면 「무엇으로 쟀는가」가 흐려진다).
+#
+#    실측 주의 (2026-08-29 프로토타입 빌드로 확인):
+#      · cmake 4.4.2 는 cmake_minimum_required < 3.5 를 거부한다 — 두 프로젝트
+#        (boolector 3.3 · btor2tools 3.3) 모두 해당. CMAKE_POLICY_VERSION_MINIMUM
+#        으로 하한만 선언한다 (소스 개정이 아니다).
+#      · lingeling 은 `make` 전체가 아니라 **liblgl.a 만** 짓는다 — gcc 16 이
+#        treengeling(병렬 프론트엔드, 소비하지 않는다)의 낡은 포인터 캐스트를
+#        오류로 승격시켜 전체 빌드가 죽는다 (실측). 소비하는 것만 짓는다.
+#      · btorsim 은 boolector 가 아니라 btor2tools 의 산출물이다 — sby 의 btor
+#        엔진은 cover 증인 궤적 재생을 btorsim 으로 돌린다 (sby_engine_btor.py:
+#        `btorsim -c --vcd … --hierarchical-symbols --info …`). 핀 커밋의
+#        btorsim 이 그 플래그를 전부 받는 것을 소스에서 확인했다.
+#    boolector 본체(SMT 솔버 실행 파일)는 넣지 않는다 — 승인된 결손은 cover
+#    모델 체커이고, smtbmc 백엔드 솔버를 늘리는 것은 별도 처분이다.
+# ---------------------------------------------------------------------------
+ARG WITH_BTORMC=1
+ARG BOOLECTOR_VERSION=3.2.4
+ARG BOOLECTOR_COMMIT=393cdfba3735d334bb4e6525500b8a0280dd41e6
+ARG BTOR2TOOLS_COMMIT=037f1fa88fb439dca6f648ad48a3463256d69d8b
+ARG LINGELING_COMMIT=7d5db72420b95ab356c98ca7f7a4681ed2c59c70
+RUN if [ "${WITH_BTORMC}" = "1" ]; then \
+      export CMAKE_POLICY_VERSION_MINIMUM=3.5 && \
+      git clone https://github.com/Boolector/boolector /tmp/boolector && \
+      git -C /tmp/boolector checkout --detach "${BOOLECTOR_COMMIT}" && \
+      test "$(git -C /tmp/boolector rev-parse HEAD)" = "${BOOLECTOR_COMMIT}" && \
+      grep -q "^COMMIT_ID=\"${BTOR2TOOLS_COMMIT}\"\$" /tmp/boolector/contrib/setup-btor2tools.sh && \
+      grep -q "^COMMIT_ID=\"${LINGELING_COMMIT}\"\$" /tmp/boolector/contrib/setup-lingeling.sh && \
+      git clone https://github.com/arminbiere/lingeling /tmp/lingeling && \
+      git -C /tmp/lingeling checkout --detach "${LINGELING_COMMIT}" && \
+      test "$(git -C /tmp/lingeling rev-parse HEAD)" = "${LINGELING_COMMIT}" && \
+      git clone https://github.com/Boolector/btor2tools /tmp/btor2tools && \
+      git -C /tmp/btor2tools checkout --detach "${BTOR2TOOLS_COMMIT}" && \
+      test "$(git -C /tmp/btor2tools rev-parse HEAD)" = "${BTOR2TOOLS_COMMIT}" && \
+      cd /tmp/lingeling && ./configure.sh -fPIC && make -j"$(nproc)" liblgl.a && \
+      cd /tmp/btor2tools && CFLAGS="-fPIC" ./configure.sh --static && make -C build -j"$(nproc)" && \
+      mkdir -p /tmp/boolector/deps/install/lib /tmp/boolector/deps/install/include && \
+      cp /tmp/lingeling/liblgl.a /tmp/btor2tools/build/lib/libbtor2parser.a \
+         /tmp/boolector/deps/install/lib/ && \
+      cp /tmp/lingeling/lglib.h /tmp/btor2tools/src/btor2parser/btor2parser.h \
+         /tmp/boolector/deps/install/include/ && \
+      cd /tmp/boolector && ./configure.sh --no-cadical --no-cms --no-minisat --no-picosat && \
+      make -C build -j"$(nproc)" && \
+      install -m 755 /tmp/boolector/build/bin/btormc /usr/local/bin/btormc && \
+      install -m 755 /tmp/btor2tools/build/bin/btorsim /usr/local/bin/btorsim && \
+      cd / && rm -rf /tmp/boolector /tmp/btor2tools /tmp/lingeling && \
+      test "$(btormc --version)" = "${BOOLECTOR_VERSION}" && \
+      btorsim -h > /dev/null && \
+      echo "[wt] btormc ${BOOLECTOR_VERSION} OK @ boolector ${BOOLECTOR_COMMIT} (btor2tools ${BTOR2TOOLS_COMMIT} / lingeling ${LINGELING_COMMIT})" ; \
+    fi
+
+# ---------------------------------------------------------------------------
 # 6) 비-root 개발 사용자 — 호스트 UID 와 맞춰 bind mount 권한 문제를 없앤다.
 # ---------------------------------------------------------------------------
 ARG USERNAME=wt
@@ -272,6 +346,10 @@ RUN printf '%s\n' \
   '# "어느 버전으로 쟀는가" 에 답하지 못하는 자기보고는 자기보고가 아니다.' \
   'printf "  TLC        %s\\n" "$(tlc 2>&1 | head -1)"' \
   'printf "  sby        %s\\n" "$(command -v sby >/dev/null 2>&1 && sby --version 2>&1 | head -1 || echo "(미설치 — WITH_SBY=0)")"' \
+  'printf "  btormc     %s\\n" "$(command -v btormc >/dev/null 2>&1 && btormc --version 2>&1 || echo "(미설치 — WITH_BTORMC=0)")"' \
+  '# btorsim 에는 --version 이 없다 (핀 커밋 소스 실측) — 스스로 답하지 못하는' \
+  '# 도구는 빌드가 고정한 커밋을 대신 적는다. §4b 의 「빌드 시 고정된 값」과 같은 층위다.' \
+  "printf \"  btorsim    %s\\\\n\" \"\$(command -v btorsim >/dev/null 2>&1 && echo 'btor2tools @ ${BTOR2TOOLS_COMMIT} (빌드 시 고정)' || echo '(미설치 — WITH_BTORMC=0)')\"" \
   'echo "  --- SpinalHDL 툴체인 (빌드 시 고정된 값) ---"' \
   'printf "  java       %s\\n" "$(java -version 2>&1 | head -1)"' \
   "printf \"  sbt        %s (런처 %s)\\\\n\" \"${SBT_VERSION}\" \"\$(sbt --script-version 2>/dev/null || echo '?')\"" \
