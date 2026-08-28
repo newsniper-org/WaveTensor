@@ -19,7 +19,7 @@
 // 접혀 방출되므로 개별 비교기의 상호 상쇄 오류는 이 검사가 원리적으로
 // 구별하지 못한다 — 단 접힌 판정 자체는 전 입력에서 등가가 강제된다.
 //
-// 하네스 결함 수리 기록 (반례 규율 (1)갈래, k-귀납 반례 2건):
+// 하네스 결함 수리 기록 (반례 규율 (1)갈래, k-귀납 반례 2건 + 완주 불능 1건):
 //  1) 초판은 참조 모델을 always_comb + unpacked 배열 + 공유 임시변수로 썼고,
 //     yosys 가 이를 $mem_v2/$anyinit 상태 셀로 컴파일했다 — 귀납 창의 임의
 //     초기 상태가 참조값을 오염시켰다. wire 연속 대입으로 평탄화해 수리.
@@ -29,25 +29,47 @@
 //     참조 판정을 임의로 뒤집었다 (실측 반례: PRECISION EH, 워드 수 필드 0 —
 //     RTL judge_mal=1 [iverilog 대조로 옳음 확인], 하네스 f_mal=0 [오염]).
 //     함수를 전부 매크로/명시 시프트 와이어로 인라인해 수리했다.
+//  3) CH(W8) 도입판은 CRC 참조를 비트-직렬 448단(워드 14 × 비트 32) ITE
+//     사슬로 전개했다. mal 등가 단언의 조합 콘에 「같은 GF(2) 선형 함수의
+//     구조적으로 정렬 불가능한 두 전개」(비트-직렬 사슬 vs RTL 의 워드 단위
+//     행렬 평탄화)의 등가 miter 가 삽입됐고, 비트-블라스트 후 자유 메시지
+//     416비트 위의 XOR 등가 문제 — 가우스식 추론 없는 CDCL SAT 의 최악
+//     부류 — 가 되어 prove depth 20 이 그것을 basecase·귀납 양쪽에 ~20벌
+//     복제했다 (실측: 종전 prove 20초 → 2시간 39분 미완주, z3 이탈 0 =
+//     순수 폭발. 참조가 보태는 귀납 *상태*는 0 — 상태 공간 문제가 아니라
+//     조합 miter 구조 문제다). 참조를 RTL 과 같은 워드 절단면(15개 상태
+//     경계)의 스펙-유도 행렬 상수 전개(wt_crc32c_word_ref, 파일 말미)로
+//     재구조해 수리 — 두 콘이 워드 단계별 국소로 닫힌다. 단언·cover 무변경.
+//     결과 실측 (2026-08-28): 트리 형상·항 순서·mux 셀형까지 동형이 되어
+//     walk_decode.sby 의 flatten+opt 가 두 콘을 물리 병합, CRC 등가 miter 는
+//     넷리스트에서 소거되고 k-귀납 귀납 다리가 4분 29초에 닫힌다. 잔여:
+//     basecase BMC 의 z3 웨지 (하네스 밖 원인 — .sby 의 미해결 상태 기록).
 //
 // 검사 대상 가드 (rtl/spinal/.../decode/DecodeWalk.scala GUARD-MAP):
 //   Walk.end_authority   — 종료·보폭 콘이 END(0x0)만 소비. 참조 순회는 선언
-//                          길이(word0[7:0])·예약(word0[15:8])을 구조적으로
-//                          읽지 않는다 — 등가가 곧 불참의 증명이다.
+//                          길이(word0[7:0])·예약(word0[15:12])을 구조적으로
+//                          읽지 않는다 — 등가가 곧 불참의 증명이다. (CH 참조
+//                          모델은 별개 콘이다 — 전 워드를 읽되 산출은
+//                          f_chBad 비교기 하나로만 나간다.)
 //   Walk.len_check       — lenBad: endSeen && (declLen != off_final), 8b 전폭.
-//   Walk.cap_declared    — capAbsent = declLen > 13, 8b 전폭, 순회 전 선언만.
+//   Walk.cap_declared    — capAbsent = declLen > 14, 8b 전폭, 순회 전 선언만.
 //   Walk.cap_check       — capBad = !capAbsent && !endSeen — capAbsent 와
 //                          서로소 (ISA-5 구조 성립).
 //   Walk.junk_check      — junkBad = 표 조회 (16진 코드 전체가 표를 지난다).
 //   Walk.post_end_gated  — walked 단조 강하 · END 뒤 off 동결 · 방출 게이트.
-//   Decode.resv_judged   — resvBad = (word0[15:8] != 0) 가 mal 에 합류.
+//   Decode.resv_judged   — resvBad = (word0[15:12] != 0) 가 mal 에 합류
+//                          ([11:8] 은 W1 부터 opcode_ext — 판정하지 않는다).
+//   Decode.ch_judged     — chBad = (next_hdr != END) && (CRC-32C 재계산 !=
+//                          word1) 가 mal 에 합류 (W8 · §1.3.4). 참조는
+//                          스펙-유도 워드 행렬 상수 전개 — RTL elaborate 와
+//                          유도 파이프라인이 독립인 같은 명세의 두 번째 구현.
 //   Decode.mal_carried   — oMalformed/oCapAbsent == $past(판정) — 소비 지점
 //                          전부가 같은 래치 값과 등가 (재계산 없음의 관측형).
 //   Decode.resv_not_indexed — 참조 순회의 head 색인이 off>=1 (word0 의 lo16 을
 //                          결코 재독하지 않음) + 방출 색인 등가 → 예약 비트가
 //                          어떤 색인에도 불참.
 //   Decode.resv_not_timed — oValid == $past(iValid): 지연 1 균일, 내용 무관.
-//   Decode.resv_not_echoed — oInstr_0[15:8] == 0 상시 + 방출면 전체 등가.
+//   Decode.resv_not_echoed — oInstr_0[15:12] == 0 상시 + 방출면 전체 등가.
 //   Decode.fault_not_folded — oFault 상승은 oMalformed 에피소드에서만,
 //                          capability 는 sticky 에 불참 (배타 + 상승 조건).
 //   Decode.verdict_ungated — oSlot*·oInstr·oValid 가 판정과 무관한 순수 함수의
@@ -69,6 +91,7 @@ module DecodeWalk_props (
   input  wire [31:0] io_iInstr_10,
   input  wire [31:0] io_iInstr_11,
   input  wire [31:0] io_iInstr_12,
+  input  wire [31:0] io_iInstr_13,
   input  wire        io_iFaultClear,
   input  wire        io_oValid,
   input  wire        io_oMalformed,
@@ -87,6 +110,7 @@ module DecodeWalk_props (
   input  wire [31:0] io_oInstr_10,
   input  wire [31:0] io_oInstr_11,
   input  wire [31:0] io_oInstr_12,
+  input  wire [31:0] io_oInstr_13,
   input  wire        io_oSlotPresent_0,
   input  wire        io_oSlotPresent_1,
   input  wire        io_oSlotPresent_2,
@@ -123,26 +147,28 @@ module DecodeWalk_props (
 `define WT_KW(p) ((((p) == 4'h3) || ((p) == 4'h5) || ((p) == 4'h6)) ? 8'd2 : \
                   (((p) == 4'h4) ? 8'd3 : 8'd1))
 
-  localparam [7:0] MAXW = 8'd13; // 1 + 4슬롯 * 3워드 — 기본 형상 (§1.3)
+  localparam [7:0] MAXW = 8'd14; // 1(기본 헤더) + 1(CH, W8) + 4슬롯 * 3워드 (§1.3)
 
   // 각 워드의 하위 16비트 — 순회가 읽는 유일한 사슬 표면.
-  wire [16*13-1:0] f_lo16bus = {
-    io_iInstr_12[15:0], io_iInstr_11[15:0], io_iInstr_10[15:0],
-    io_iInstr_9[15:0],  io_iInstr_8[15:0],  io_iInstr_7[15:0],
-    io_iInstr_6[15:0],  io_iInstr_5[15:0],  io_iInstr_4[15:0],
-    io_iInstr_3[15:0],  io_iInstr_2[15:0],  io_iInstr_1[15:0],
-    io_iInstr_0[15:0] };
+  wire [16*14-1:0] f_lo16bus = {
+    io_iInstr_13[15:0], io_iInstr_12[15:0], io_iInstr_11[15:0],
+    io_iInstr_10[15:0], io_iInstr_9[15:0],  io_iInstr_8[15:0],
+    io_iInstr_7[15:0],  io_iInstr_6[15:0],  io_iInstr_5[15:0],
+    io_iInstr_4[15:0],  io_iInstr_3[15:0],  io_iInstr_2[15:0],
+    io_iInstr_1[15:0],  io_iInstr_0[15:0] };
 
   // 순회 — END(사슬 포인터의 0x0)만이 종료 authority (Walk.end_authority).
-  // 선언 길이 word0[7:0] 과 예약 word0[15:8] 은 아래 어디에도 등장하지 않는다
+  // 선언 길이 word0[7:0] 과 예약 word0[15:12] 은 아래 어디에도 등장하지 않는다
   // (head 색인은 항상 >= 1 — word0 의 lo16 은 결코 head 로 재독되지 않는다).
   // 워드 색인은 명시 시프트 — 임의 off 에도 전정의 (표 밖 = 0, §1.3 절단
   // 금지 부류). 시프트 중간 와이어를 두는 것은 함수 금지의 귀결이다.
+  // W8: next_hdr ≠ END 이면 word1 = CH(둘째 헤더 — EH 아님·순회 대상 아님)
+  // 라 순회 시작 워드가 word2 다 (§4.2.1). = END 면 걷지 않는 시작 1.
   wire [3:0]  f_ptr0  = io_iInstr_0[23:20];
   wire        f_end0  = (f_ptr0 == 4'h0);
   wire        f_wlk0  = !f_end0;
-  wire [7:0]  f_off0  = 8'd1;
-  wire [16*13-1:0] f_sh0 = f_lo16bus >> (f_off0 * 16);
+  wire [7:0]  f_off0  = f_end0 ? 8'd1 : 8'd2;
+  wire [16*14-1:0] f_sh0 = f_lo16bus >> (f_off0 * 16);
   wire [15:0] f_head0 = f_sh0[15:0];
 
   wire [3:0]  f_ptr1  = f_head0[15:12];
@@ -150,21 +176,21 @@ module DecodeWalk_props (
   wire        f_wlk1  = !f_end1;
   // END 뒤 슬롯은 오프셋에 기여하지 않는다 (Walk.post_end_gated).
   wire [7:0]  f_off1  = f_off0 + (f_wlk0 ? `WT_KW(f_ptr0) : 8'd0);
-  wire [16*13-1:0] f_sh1 = f_lo16bus >> (f_off1 * 16);
+  wire [16*14-1:0] f_sh1 = f_lo16bus >> (f_off1 * 16);
   wire [15:0] f_head1 = f_sh1[15:0];
 
   wire [3:0]  f_ptr2  = f_head1[15:12];
   wire        f_end2  = f_end1 || (f_ptr2 == 4'h0);
   wire        f_wlk2  = !f_end2;
   wire [7:0]  f_off2  = f_off1 + (f_wlk1 ? `WT_KW(f_ptr1) : 8'd0);
-  wire [16*13-1:0] f_sh2 = f_lo16bus >> (f_off2 * 16);
+  wire [16*14-1:0] f_sh2 = f_lo16bus >> (f_off2 * 16);
   wire [15:0] f_head2 = f_sh2[15:0];
 
   wire [3:0]  f_ptr3  = f_head2[15:12];
   wire        f_end3  = f_end2 || (f_ptr3 == 4'h0);
   wire        f_wlk3  = !f_end3;
   wire [7:0]  f_off3  = f_off2 + (f_wlk2 ? `WT_KW(f_ptr2) : 8'd0);
-  wire [16*13-1:0] f_sh3 = f_lo16bus >> (f_off3 * 16);
+  wire [16*14-1:0] f_sh3 = f_lo16bus >> (f_off3 * 16);
   wire [15:0] f_head3 = f_sh3[15:0];
 
   wire [3:0]  f_ptr4  = f_head3[15:12];
@@ -200,10 +226,86 @@ module DecodeWalk_props (
     (`WT_OCC(4'h9) > 3'd1) || (`WT_OCC(4'h7) > 3'd2);
 `undef WT_OCC
 
-  wire f_resvBad = (io_iInstr_0[15:8] != 8'h00);             // Decode.resv_judged
-  // capability 가 맨 앞 — 두 종결의 상호 배타 (ISA-5).
+  // W1: 예약은 [15:12] 로 좁아졌다 — [11:8] 은 opcode_ext 라 판정하지 않는다.
+  wire f_resvBad = (io_iInstr_0[15:12] != 4'h0);             // Decode.resv_judged
+
+  // ── CH (둘째 헤더, W8 · §1.3.4) 참조 모델 — CRC-32C, RFC 3720 관례 ──────
+  // 다항식 0x1EDC6F41(정규형)/0x82F63B78(반사형) · 입출력 반사 · init/xorout
+  // 0xFFFFFFFF. 메시지 = CH 자기 워드(word1)를 *제외한* word0·word2‥
+  // (bh_len−1), 워드 오름차순 · 워드당 리틀엔디언 바이트 직렬 — 반사 관례
+  // + 리틀엔디언이라 워드 안 처리 순서는 정확히 비트 0→31 이고, 그 사실이
+  // 워드 스텝 상수의 유도(반사형 우시프트 fb = s[0]^m → s' = (s>>1) ^
+  // (fb ? 0x82F63B78 : 0) 를 워드당 32단 GF(2) 합성)의 근거다. 패딩
+  // (≥ bh_len) 불포함.
+  //
+  // 구현 형태 (수리 기록 3 — 재구조): 워드당 모듈 wt_crc32c_word_ref(파일
+  // 말미 — 스펙-유도 행렬 상수 S' = A·S ⊕ B·W 의 순수 XOR 전개)를 14단
+  // 인스턴스하고, 워드 절단면 15개(상태 경계)를 RTL 의 워드 단위 평탄화와
+  // 같은 자리에 둔다 — mal 등가 단언의 두 조합 콘이 동형이 되어 등가가
+  // 워드 단계별 국소로 닫힌다 (448단 비트-직렬 사슬 하나로 묶이지 않는다).
+  // 독립성 논거는 전개 형태가 아니라 *유도 파이프라인*이다: 이쪽 상수는
+  // 곁의 gen_crc32c_matrix.py 가 RFC 3720 비트-직렬 정의만으로 GF(2)
+  // 기호 합성해 유도했고(기지값 3종 + 무작위 (S,W) 10^4 스텝 등가 + LE
+  // 워드 폴드 교차의 3중 자기시험을 실행마다 전부 재측정 — RTL 무열람),
+  // RTL 쪽 상수는 SpinalHDL elaborate 의 평탄화다 — 같은 명세의 독립
+  // 두 번째 구현. 함수 금지(수리 기록 2)·표 조회 금지(walk_decode.sby 의
+  // $mem_v2 실측) 규율은 그대로고, 단언은 generate 안에 두지 않는다
+  // (yosys 0.66 이 generate 안 단언 라벨을 버린다 — ResultBank_props 실측).
+  // 기지값 (RFC 3720): "123456789"→0xE3069283 · 32B×0x00→0x8A9136AA ·
+  // 32B×0xFF→0x62A8AB43 — 핀 명세와 어셈블러·RTL elaborate 자기시험과
+  // gen_crc32c_matrix.py 자기시험이 이 값들을 못박고, 여기서는 상수
+  // 자기시험을 두지 않는다 (상수 접힘 단언은 lint_postformal 의 3형 계수가
+  // 잡는 부류라 거짓 신호가 된다).
+  wire [7:0]       f_bhlen  = io_iInstr_0[7:0];
+  wire [32*14-1:0] f_chwbus = {
+    io_iInstr_13, io_iInstr_12, io_iInstr_11, io_iInstr_10,
+    io_iInstr_9,  io_iInstr_8,  io_iInstr_7,  io_iInstr_6,
+    io_iInstr_5,  io_iInstr_4,  io_iInstr_3,  io_iInstr_2,
+    io_iInstr_1,  io_iInstr_0 };
+  // 메시지 포함 마스크 — word0 상시 · word1(CH 자기 워드) 상시 제외 ·
+  // word2.. 는 bh_len 미만일 때만. 비교 형태를 8비트 (상수 < 신호) 로 두는
+  // 것은 의미가 아니라 솔버 유도다 — flatten 후 opt_merge 가 단계 mux 를
+  // 물리 공유하려면 셀형까지 같아야 한다 (수리 기록 3: $gt(신호,상수) 로
+  // 썼더니 mux 불일치가 워드 2 에서 병합 연쇄를 끊었다). 의미는 동일
+  // (bh_len > i ⟺ i < bh_len) — 판정 내용은 바뀌지 않는다.
+  wire [13:0] f_chincl;
+  assign f_chincl[0] = 1'b1;
+  assign f_chincl[1] = 1'b0;
+  genvar g_ci;
+  generate
+    for (g_ci = 2; g_ci < 14; g_ci = g_ci + 1) begin : g_chincl
+      localparam [7:0] GI = g_ci;
+      assign f_chincl[g_ci] = (GI < f_bhlen);
+    end
+  endgenerate
+  // 상태 사슬 — f_chst[32i +: 32] = 워드 i 처리 *전* 상태. 워드 경계
+  // 절단면 15개 유지 — 각 단은 워드 스텝 모듈 하나 + 포함 mux 하나다
+  // (수리 기록 3).
+  wire [32*15-1:0] f_chst;
+  assign f_chst[31:0] = 32'hFFFF_FFFF;
+  genvar g_cw;
+  generate
+    for (g_cw = 0; g_cw < 14; g_cw = g_cw + 1) begin : g_chw
+      // 이 워드 처리 *후* 상태 (포함 여부와 무관하게 계산 — mux 가 고른다).
+      wire [31:0] sn;
+      wt_crc32c_word_ref u_ref (
+        .s  (f_chst[32*g_cw +: 32]),
+        .w  (f_chwbus[32*g_cw +: 32]),
+        .sn (sn)
+      );
+      assign f_chst[32*(g_cw+1) +: 32] =
+        f_chincl[g_cw] ? sn : f_chst[32*g_cw +: 32];
+    end
+  endgenerate
+  wire [31:0] f_chcrc = ~f_chst[32*14 +: 32];
+  // Decode.ch_judged — EH-조건부: next_hdr = END 면 CH 가 없어 판정이 서지
+  // 않는다. bh_len 은 여기서 메시지 경계로만 쓰인다 — 종료 판정·보폭 불참
+  // (Walk.end_authority 유지).
+  wire f_chBad = f_wlk0 && (f_chcrc != io_iInstr_1);
+
+  // capability 가 맨 앞 — 두 종결의 상호 배타 (ISA-5). 여덟 검산의 논리합.
   wire f_mal = !f_capAbsent &&
-               (f_resvBad || f_capBad || f_lenBad || f_junkBad ||
+               (f_resvBad || f_chBad || f_capBad || f_lenBad || f_junkBad ||
                 f_selfBad || f_wordsBad || f_dupBad);
 `undef WT_KD
 `undef WT_KW
@@ -211,10 +313,11 @@ module DecodeWalk_props (
   // ── 조합 단언 — 참조 모델 자체의 구조 상계 + 방출면 등식 ─────────────────
   always @* begin
     // Decode.resv_not_indexed 의 한 축: head 색인은 항상 >= 1 — word0 의
-    // lo16(예약 [15:8] 포함)은 결코 head 로 재독되지 않는다. off 상계는
-    // RTL 의 resize(4b) 색인이 값을 잃지 않는다는 주석 주장의 재검산.
+    // lo16(예약 [15:12] 포함)은 결코 head 로 재독되지 않는다. off 상계는
+    // RTL 의 resize(4b) 색인이 값을 잃지 않는다는 주석 주장의 재검산
+    // (시작 오프셋 상한 2 = CH 존재 갈래, W8).
     assert (f_off0 >= 8'd1 && f_off1 >= 8'd1 && f_off2 >= 8'd1 && f_off3 >= 8'd1);
-    assert (f_off3 <= 8'd10 && f_off4 <= 8'd13);
+    assert (f_off3 <= 8'd11 && f_off4 <= 8'd14);
     // ISA-5: 두 종결의 상호 배타 — 방출면 (1-스텝 귀납 성립: 다음 상태의
     // rMal·rCapa 는 구조적으로 배타인 judge 값이다).
     assert (!(io_oMalformed && io_oCapAbsent));
@@ -227,9 +330,10 @@ module DecodeWalk_props (
   // ── 클록 단언 — 판정·서술자·명령의 1사이클 운반 등가 ────────────────────
   always @(posedge clk) begin
     if (f_past_valid) begin
-      // Decode.resv_not_echoed: 방출 명령 워드0 의 예약 [15:8] 은 상시 0
-      // (레지스터는 리셋 사이클에도 마스킹된 값을 실었다).
-      assert (io_oInstr_0[15:8] == 8'h00);
+      // Decode.resv_not_echoed: 방출 명령 워드0 의 예약 [15:12] 은 상시 0
+      // (레지스터는 리셋 사이클에도 마스킹된 값을 실었다). [11:8] 은
+      // opcode_ext(W1) 라 지우지 않는다 — SEC-7 (ii) 재유도.
+      assert (io_oInstr_0[15:12] == 4'h0);
       // walked 단조 강하의 방출면 (Walk.post_end_gated — END 뒤 재개 없음).
       // 하네스 결함 수리 기록 (반례 규율 (1)갈래): 처음엔 조합 단언으로 두어
       // 초기 상태(첫 에지 이전, rPresent 무리셋·무의미)까지 주장했다가 반례 —
@@ -262,9 +366,11 @@ module DecodeWalk_props (
       assert (io_oSlotOff_1 == $past(f_wlk1 ? f_off1 : 8'h00));
       assert (io_oSlotOff_2 == $past(f_wlk2 ? f_off2 : 8'h00));
       assert (io_oSlotOff_3 == $past(f_wlk3 ? f_off3 : 8'h00));
-      // Decode.resv_not_echoed: 방출면 전체 등가 — 워드0 은 예약만 지워진 원문,
-      // 나머지 워드는 축자 통과. 같은 판정의 두 명령은 방출면에서 구별 불가.
-      assert (io_oInstr_0 == $past({io_iInstr_0[31:16], 8'h00, io_iInstr_0[7:0]}));
+      // Decode.resv_not_echoed: 방출면 전체 등가 — 워드0 은 예약 [15:12] 만
+      // 지워진 원문([11:8] opcode_ext 는 방출 — W1), 나머지 워드는 축자 통과
+      // (CH 워드 포함 — 명령 비트열의 결정론적 함수라 신규 구별 인자가
+      // 아니다). 같은 판정의 두 명령은 방출면에서 구별 불가.
+      assert (io_oInstr_0 == $past({io_iInstr_0[31:16], 4'h0, io_iInstr_0[11:0]}));
       assert (io_oInstr_1  == $past(io_iInstr_1));
       assert (io_oInstr_2  == $past(io_iInstr_2));
       assert (io_oInstr_3  == $past(io_iInstr_3));
@@ -277,6 +383,7 @@ module DecodeWalk_props (
       assert (io_oInstr_10 == $past(io_iInstr_10));
       assert (io_oInstr_11 == $past(io_iInstr_11));
       assert (io_oInstr_12 == $past(io_iInstr_12));
+      assert (io_oInstr_13 == $past(io_iInstr_13));
       // Decode.fault_not_folded + §5.5 sticky 규율:
       // 상승은 malformation 방출 에피소드에서만 — capability 는 배타(위)라 불참.
       if (io_oFault && !$past(io_oFault))
@@ -295,9 +402,9 @@ module DecodeWalk_props (
 
   // ── cover 증인 (cover 태스크에서만 컴파일) ───────────────────────────────
   //
-  // 왜 있는가. 위 단언 40개 중 다수가 *전건이 붙은 함의*(판정 에피소드 ·
+  // 왜 있는가. 위 단언 41개 중 다수가 *전건이 붙은 함의*(판정 에피소드 ·
   // sticky 상승/하강 · END 뒤 게이트)이고, 결정적으로 등가식 하나
-  // (`io_oMalformed == $past(f_mal)`)가 **일곱 검산의 논리합을 통째로 접는다**.
+  // (`io_oMalformed == $past(f_mal)`)가 **여덟 검산의 논리합을 통째로 접는다**.
   // 그 논리합의 어느 항이 도달 불가능해도 등가식은 그대로 참이고 증명은
   // 통과한다 — 그런데 그 항에 걸린 CHECK 줄(len_check · junk_check · …)은
   // 아무것도 재지 못한 것이다. 단언만으로는 「참이라서 통과」와 「전제가
@@ -314,39 +421,43 @@ module DecodeWalk_props (
   always @(posedge clk) f_past_reset <= reset;
   wire f_ok = f_past_valid && !reset && !f_past_reset;
 
-  // 단독 원인 — 일곱 검산이 *각각 혼자서* mal 을 세우는 조건. 논리합의 어느
+  // 단독 원인 — 여덟 검산이 *각각 혼자서* mal 을 세우는 조건. 논리합의 어느
   // 항도 죽어 있지 않다는 것이 각 CHECK 줄의 비공허 조건이다. capability 는
   // 맨 앞 배타항이므로 !f_capAbsent 를 함께 든다 (그래야 「malformed 가 실제로
-  // 방출되는」 궤적이다).
+  // 방출되는」 궤적이다). W8 부터 CH 검산이 여덟째 항이다 — EH ≥ 1 궤적은
+  // word1 이 옳은 CRC 일 때만 f_chBad 가 꺼지므로, 다른 항의 단독 원인
+  // 증인들도 전부 !f_chBad 를 배제 목록에 든다.
   wire f_only_resv  = !f_capAbsent && f_resvBad &&
-    !(f_capBad || f_lenBad || f_junkBad || f_selfBad || f_wordsBad || f_dupBad);
+    !(f_chBad || f_capBad || f_lenBad || f_junkBad || f_selfBad || f_wordsBad || f_dupBad);
+  wire f_only_ch    = !f_capAbsent && f_chBad &&
+    !(f_resvBad || f_capBad || f_lenBad || f_junkBad || f_selfBad || f_wordsBad || f_dupBad);
   wire f_only_len   = !f_capAbsent && f_lenBad &&
-    !(f_resvBad || f_capBad || f_junkBad || f_selfBad || f_wordsBad || f_dupBad);
+    !(f_resvBad || f_chBad || f_capBad || f_junkBad || f_selfBad || f_wordsBad || f_dupBad);
   wire f_only_cap   = !f_capAbsent && f_capBad &&
-    !(f_resvBad || f_lenBad || f_junkBad || f_selfBad || f_wordsBad || f_dupBad);
+    !(f_resvBad || f_chBad || f_lenBad || f_junkBad || f_selfBad || f_wordsBad || f_dupBad);
   wire f_only_junk  = !f_capAbsent && f_junkBad &&
-    !(f_resvBad || f_capBad || f_lenBad || f_selfBad || f_wordsBad || f_dupBad);
+    !(f_resvBad || f_chBad || f_capBad || f_lenBad || f_selfBad || f_wordsBad || f_dupBad);
   wire f_only_self  = !f_capAbsent && f_selfBad &&
-    !(f_resvBad || f_capBad || f_lenBad || f_junkBad || f_wordsBad || f_dupBad);
+    !(f_resvBad || f_chBad || f_capBad || f_lenBad || f_junkBad || f_wordsBad || f_dupBad);
   wire f_only_words = !f_capAbsent && f_wordsBad &&
-    !(f_resvBad || f_capBad || f_lenBad || f_junkBad || f_selfBad || f_dupBad);
+    !(f_resvBad || f_chBad || f_capBad || f_lenBad || f_junkBad || f_selfBad || f_dupBad);
   wire f_only_dup   = !f_capAbsent && f_dupBad &&
-    !(f_resvBad || f_capBad || f_lenBad || f_junkBad || f_selfBad || f_wordsBad);
+    !(f_resvBad || f_chBad || f_capBad || f_lenBad || f_junkBad || f_selfBad || f_wordsBad);
 
   // W1 ← Decode.verdict_ungated
-  //      정상 승인이 실제로 난다. 없으면 게이트 등식(:224)과 D14 상태열
+  //      정상 승인이 실제로 난다. 없으면 게이트 등식(oExecValid 조합 단언)과 D14 상태열
   //      균일이 「무엇도 통과하지 않는 기계」 위에서 참이 된다.
   always @(posedge clk) if (f_ok) w1_accept: cover (io_oValid && io_oExecValid);
   // W2 ← Decode.mal_carried
   //      malformed 종결 도달 (등식의 활성면)
   always @(posedge clk) if (f_ok) w2_malformed: cover (io_oValid && io_oMalformed);
   // W3 ← Walk.cap_declared · Walk.cap_check
-  //      capability 종결 도달 — 배타 단언 :220 이 「capAbsent 가 영영 0」으로
+  //      capability 종결 도달 — ISA-5 배타 단언이 「capAbsent 가 영영 0」으로
   //      자명해지지 않는다.
   always @(posedge clk) if (f_ok) w3_capabsent: cover (io_oValid && io_oCapAbsent);
 
-  // W4..W10 — 일곱 검산의 단독 원인. 이것이 `oMalformed == $past(f_mal)` 이
-  //      실제로 일곱 CHECK 줄을 나눠 재고 있다는 유일한 증거다. 「단독」이
+  // W4..W10 (+W20) — 여덟 검산의 단독 원인. 이것이 `oMalformed == $past(f_mal)`
+  //      이 실제로 여덟 CHECK 줄을 나눠 재고 있다는 유일한 증거다. 「단독」이
   //      알맹이다: 원인 하나만 켜진 궤적이 없으면 그 CHECK 줄은 다른 원인에
   //      가려 한 번도 독립으로 재어지지 않는다.
   // W4  ← Decode.resv_judged · Decode.mal_carried
@@ -366,46 +477,68 @@ module DecodeWalk_props (
   always @(posedge clk) if (f_ok) w10_only_dup: cover (io_oMalformed && $past(f_only_dup));
 
   // W11 ← Walk.post_end_gated · Decode.resv_not_indexed
-  //       4슬롯 완주: 단조 사슬(:237-239)과 서술자 등식이 사슬 끝까지 간다
-  //       (전부 END 인 세계에서는 :238-239 가 자명하다)
+  //       4슬롯 완주: 단조 사슬(oSlotPresent 단조 강하 3건)과 서술자 등식이
+  //       사슬 끝까지 간다 (전부 END 인 세계에서는 그 단조가 자명하다)
   always @(posedge clk) if (f_ok) w11_four_slots: cover (io_oValid && io_oSlotPresent_3);
   // W12 ← Walk.end_authority
   //       즉시 END: 슬롯 0개. 사슬 포인터 0x0 하나가 곧 종료라는 것이
   //       실제로 관측된다.
   always @(posedge clk) if (f_ok) w12_immediate_end: cover (io_oValid && !io_oSlotPresent_0);
   // W13 ← Walk.post_end_gated · Decode.resv_not_indexed
-  //       off 상계 도달: 앞 세 슬롯이 3워드씩이면 oSlotOff_3 = 10. 조합 단언
-  //       :217 의 상계가 느슨한 상한이 아니라 실제로 닿는 값이라는 증거.
+  //       off 상계 도달: 앞 세 슬롯이 3워드씩이면 oSlotOff_3 = 11 (시작 2 =
+  //       CH 갈래, W8). 조합 단언의 상계(f_off3 <= 11)가 느슨한 상한이
+  //       아니라 실제로 닿는 값이라는 증거.
   always @(posedge clk) if (f_ok)
-    w13_off_bound: cover (io_oValid && io_oSlotPresent_3 && (io_oSlotOff_3 == 8'd10));
+    w13_off_bound: cover (io_oValid && io_oSlotPresent_3 && (io_oSlotOff_3 == 8'd11));
 
   // W14 ← Decode.fault_not_folded
-  //       sticky 상승이 실제로 난다 (상승 함의 :282 의 전건 도달성)
+  //       sticky 상승이 실제로 난다 (상승 함의의 전건 도달성)
   always @(posedge clk) if (f_ok) w14_fault_rise: cover (io_oFault && !$past(io_oFault));
   // W15 ← Decode.fault_not_folded
   //       sticky 하강이 실제로 가능하다. 이 증인이 없으면 「해제 없인
-  //       내려가지 않는다」(:291)가 「영영 내려가지 않는다」로 자명해진다.
+  //       내려가지 않는다」가 「영영 내려가지 않는다」로 자명해진다.
   always @(posedge clk) if (f_ok) w15_fault_fall: cover (!io_oFault && $past(io_oFault));
   // W16 ← Decode.fault_not_folded
-  //       유지 구간 (해제 미제시) — :291 의 전건 도달성
+  //       유지 구간 (해제 미제시) — sticky 유지 함의의 전건 도달성
   always @(posedge clk) if (f_ok)
     w16_fault_hold: cover (io_oFault && $past(io_oFault) && !$past(io_iFaultClear));
   // W17 ← Walk.cap_declared · Decode.fault_not_folded
   //       능력 부재는 fault 를 세우지 않는다 (cap_declared 의 「StickyFault
-  //      불참」). 단언 :282 는 상승 *원인*을 malformed 로 못박을 뿐이고, 능력
+  //      불참」). 상승 함의는 상승 *원인*을 malformed 로 못박을 뿐이고, 능력
   //      부재가 fault 없이 지나가는 궤적을 보여야 그 문면이 재어진다.
   always @(posedge clk) if (f_ok) w17_capabsent_quiet: cover (io_oValid && io_oCapAbsent && !io_oFault);
 
   // W18 ← Decode.resv_not_echoed · Decode.resv_not_indexed
-  //       예약 비트가 비0 인 명령이 실제로 방출면을 지난다. resv_not_echoed
-  //      의 마스킹 단언(:232·:267)이 「예약이 늘 0 인 세계」에서 자명해지지 않는다.
-  //      구조 skip 으로 닫은 Decode.out_no_reason 의 관측 가능한 잔여분이 이
-  //      증인 위에서 재어진다 (walk_decode.sby 의 STRUCTURAL 절 참조).
-  always @(posedge clk) if (f_ok) w18_resv_nonzero: cover (io_oValid && ($past(io_iInstr_0[15:8]) != 8'h00));
+  //       예약 비트([15:12], W1)가 비0 인 명령이 실제로 방출면을 지난다.
+  //      resv_not_echoed 의 마스킹 단언이 「예약이 늘 0 인 세계」에서
+  //      자명해지지 않는다. 구조 skip 으로 닫은 Decode.out_no_reason 의
+  //      관측 가능한 잔여분이 이 증인 위에서 재어진다 (walk_decode.sby 의
+  //      STRUCTURAL 절 참조).
+  always @(posedge clk) if (f_ok) w18_resv_nonzero: cover (io_oValid && ($past(io_iInstr_0[15:12]) != 4'h0));
   // W19 ← Decode.resv_not_timed
-  //       무효 사이클 — 지연 등식(:243)이 양 극성에서 재어진다 (늘 유효한
+  //       무효 사이클 — 지연 등식이 양 극성에서 재어진다 (늘 유효한
   //       세계에서는 절반만 실측된 것이다)
   always @(posedge clk) if (f_ok) w19_invalid_cycle: cover (!io_oValid);
+
+  // W20 ← Decode.ch_judged · Decode.mal_carried
+  //       CH 단독 원인 (W8) — 여덟 검산의 논리합에서 재계산 대조 불일치
+  //       하나만 켜진 궤적. 이것이 없으면 f_chBad 항이 죽어 있어도
+  //       `oMalformed == $past(f_mal)` 은 그대로 참이고, ch_judged 의
+  //       CHECK 줄은 아무것도 재지 못한 것이다.
+  always @(posedge clk) if (f_ok) w20_only_ch: cover (io_oMalformed && $past(f_only_ch));
+  // W21 ← Decode.ch_judged
+  //       CH-ok 도달 — EH ≥ 1 (word1 = CH 실재) 명령이 재계산 대조를
+  //       통과해 실행 유효로 방출된다. 이 증인이 없으면 「CH 있는 명령이
+  //       전부 거절되는 세계」(참조·RTL 이 같은 방식으로 틀린 경우까지
+  //       포함)에서 등가 단언이 자명하게 참일 수 있다 — 대조 일치의 양
+  //       극성 중 통과 쪽이 실재함을 못박는다.
+  always @(posedge clk) if (f_ok) w21_ch_ok: cover (io_oExecValid && $past(f_wlk0));
+  // W22 ← Decode.ch_judged
+  //       EH-0 판정 부재 — next_hdr = END 면 word1 은 CH 가 아니라 버퍼
+  //       잔여이고 어떤 값이어도 판정이 서지 않는다 (EH-조건부 존재의
+  //       반대 극성 — §1.3.4 「EH-0 명령에는 CH 가 없다」).
+  always @(posedge clk) if (f_ok)
+    w22_eh0_unjudged: cover (io_oExecValid && $past(f_end0) && ($past(io_iInstr_1) != 32'h0));
 `endif // DECODEWALK_COVER
 
 endmodule
@@ -417,11 +550,11 @@ module DecodeWalk_formal (
   input  wire        clk,
   input  wire        reset,
   input  wire        iValid,
-  input  wire [31:0] i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12,
+  input  wire [31:0] i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13,
   input  wire        iFaultClear
 );
   wire oValid, oMalformed, oCapAbsent, oExecValid, oFault;
-  wire [31:0] o0, o1, o2, o3, o4, o5, o6, o7, o8, o9, o10, o11, o12;
+  wire [31:0] o0, o1, o2, o3, o4, o5, o6, o7, o8, o9, o10, o11, o12, o13;
   wire oP0, oP1, oP2, oP3;
   wire [3:0] oC0, oC1, oC2, oC3;
   wire [7:0] oO0, oO1, oO2, oO3;
@@ -432,14 +565,14 @@ module DecodeWalk_formal (
     .io_iInstr_0(i0), .io_iInstr_1(i1), .io_iInstr_2(i2), .io_iInstr_3(i3),
     .io_iInstr_4(i4), .io_iInstr_5(i5), .io_iInstr_6(i6), .io_iInstr_7(i7),
     .io_iInstr_8(i8), .io_iInstr_9(i9), .io_iInstr_10(i10), .io_iInstr_11(i11),
-    .io_iInstr_12(i12),
+    .io_iInstr_12(i12), .io_iInstr_13(i13),
     .io_iFaultClear(iFaultClear),
     .io_oValid(oValid), .io_oMalformed(oMalformed), .io_oCapAbsent(oCapAbsent),
     .io_oExecValid(oExecValid),
     .io_oInstr_0(o0), .io_oInstr_1(o1), .io_oInstr_2(o2), .io_oInstr_3(o3),
     .io_oInstr_4(o4), .io_oInstr_5(o5), .io_oInstr_6(o6), .io_oInstr_7(o7),
     .io_oInstr_8(o8), .io_oInstr_9(o9), .io_oInstr_10(o10), .io_oInstr_11(o11),
-    .io_oInstr_12(o12),
+    .io_oInstr_12(o12), .io_oInstr_13(o13),
     .io_oSlotPresent_0(oP0), .io_oSlotPresent_1(oP1),
     .io_oSlotPresent_2(oP2), .io_oSlotPresent_3(oP3),
     .io_oSlotCode_0(oC0), .io_oSlotCode_1(oC1),
@@ -455,14 +588,14 @@ module DecodeWalk_formal (
     .io_iInstr_0(i0), .io_iInstr_1(i1), .io_iInstr_2(i2), .io_iInstr_3(i3),
     .io_iInstr_4(i4), .io_iInstr_5(i5), .io_iInstr_6(i6), .io_iInstr_7(i7),
     .io_iInstr_8(i8), .io_iInstr_9(i9), .io_iInstr_10(i10), .io_iInstr_11(i11),
-    .io_iInstr_12(i12),
+    .io_iInstr_12(i12), .io_iInstr_13(i13),
     .io_iFaultClear(iFaultClear),
     .io_oValid(oValid), .io_oMalformed(oMalformed), .io_oCapAbsent(oCapAbsent),
     .io_oExecValid(oExecValid),
     .io_oInstr_0(o0), .io_oInstr_1(o1), .io_oInstr_2(o2), .io_oInstr_3(o3),
     .io_oInstr_4(o4), .io_oInstr_5(o5), .io_oInstr_6(o6), .io_oInstr_7(o7),
     .io_oInstr_8(o8), .io_oInstr_9(o9), .io_oInstr_10(o10), .io_oInstr_11(o11),
-    .io_oInstr_12(o12),
+    .io_oInstr_12(o12), .io_oInstr_13(o13),
     .io_oSlotPresent_0(oP0), .io_oSlotPresent_1(oP1),
     .io_oSlotPresent_2(oP2), .io_oSlotPresent_3(oP3),
     .io_oSlotCode_0(oC0), .io_oSlotCode_1(oC1),
@@ -471,4 +604,182 @@ module DecodeWalk_formal (
     .io_oSlotOff_2(oO2), .io_oSlotOff_3(oO3),
     .io_oFault(oFault)
   );
+endmodule
+
+// ── CRC-32C 워드 스텝 참조 — 스펙-유도 행렬 상수 (수리 기록 3) ────────────
+//
+// S' = A·S ⊕ B·W (GF(2), 상수항 없음). A·B 의 유도 출처는 RFC 3720 의
+// 반사형 비트-직렬 정의뿐이다 — 곁의 gen_crc32c_matrix.py 가 워드당
+// 32 비트-스텝을 기호 합성해 만들었고, 실행마다 (i) 무작위 (S,W) 10^4
+// 스텝 등가 (ii) RFC 3720 기지값 3종 (iii) LE 워드 폴드 == 바이트
+// 비트-직렬 교차 검사를 전부 다시 잰다. RTL 을 읽지 않는다 (clean-room).
+// 아래 본문은 그 스크립트의 출력 그대로다 — XOR 항 총 1068개,
+// 함수·표·감산 없음 (yosys 0.66 규율: 함수 미구동·$mem_v2 귀납 임의화).
+module wt_crc32c_word_ref (
+  input  wire [31:0] s,   // 워드 처리 전 상태
+  input  wire [31:0] w,   // 메시지 워드 (LE 직렬화 → 비트 0→31)
+  output wire [31:0] sn   // 워드 처리 후 상태
+);
+  assign sn[0] = (((((s[1] ^ s[2]) ^ (s[4] ^ s[5])) ^ ((s[6] ^ s[7]) ^ (s[9] ^
+    (s[11] ^ s[14])))) ^ (((s[15] ^ s[16]) ^ (s[20] ^ s[23])) ^ ((s[24] ^
+    s[25]) ^ (s[26] ^ (s[27] ^ s[28]))))) ^ ((((w[1] ^ w[2]) ^ (w[4] ^ w[5]))
+    ^ ((w[6] ^ w[7]) ^ (w[9] ^ (w[11] ^ w[14])))) ^ (((w[15] ^ w[16]) ^ (w[20]
+    ^ w[23])) ^ ((w[24] ^ w[25]) ^ (w[26] ^ (w[27] ^ w[28]))))));
+  assign sn[1] = (((((s[2] ^ s[3]) ^ (s[5] ^ s[6])) ^ ((s[7] ^ s[8]) ^ (s[10]
+    ^ (s[12] ^ s[15])))) ^ (((s[16] ^ s[17]) ^ (s[21] ^ s[24])) ^ ((s[25] ^
+    s[26]) ^ (s[27] ^ (s[28] ^ s[29]))))) ^ ((((w[2] ^ w[3]) ^ (w[5] ^ w[6]))
+    ^ ((w[7] ^ w[8]) ^ (w[10] ^ (w[12] ^ w[15])))) ^ (((w[16] ^ w[17]) ^
+    (w[21] ^ w[24])) ^ ((w[25] ^ w[26]) ^ (w[27] ^ (w[28] ^ w[29]))))));
+  assign sn[2] = (((((s[3] ^ s[4]) ^ (s[6] ^ s[7])) ^ ((s[8] ^ s[9]) ^ (s[11]
+    ^ (s[13] ^ s[16])))) ^ (((s[17] ^ s[18]) ^ (s[22] ^ s[25])) ^ ((s[26] ^
+    s[27]) ^ (s[28] ^ (s[29] ^ s[30]))))) ^ ((((w[3] ^ w[4]) ^ (w[6] ^ w[7]))
+    ^ ((w[8] ^ w[9]) ^ (w[11] ^ (w[13] ^ w[16])))) ^ (((w[17] ^ w[18]) ^
+    (w[22] ^ w[25])) ^ ((w[26] ^ w[27]) ^ (w[28] ^ (w[29] ^ w[30]))))));
+  assign sn[3] = (((((s[0] ^ s[4]) ^ (s[5] ^ s[7])) ^ ((s[8] ^ s[9]) ^ (s[10]
+    ^ (s[12] ^ s[14])))) ^ (((s[17] ^ s[18]) ^ (s[19] ^ (s[23] ^ s[26]))) ^
+    ((s[27] ^ s[28]) ^ (s[29] ^ (s[30] ^ s[31]))))) ^ ((((w[0] ^ w[4]) ^ (w[5]
+    ^ w[7])) ^ ((w[8] ^ w[9]) ^ (w[10] ^ (w[12] ^ w[14])))) ^ (((w[17] ^
+    w[18]) ^ (w[19] ^ (w[23] ^ w[26]))) ^ ((w[27] ^ w[28]) ^ (w[29] ^ (w[30] ^
+    w[31]))))));
+  assign sn[4] = (((((s[0] ^ s[2]) ^ (s[4] ^ s[7])) ^ ((s[8] ^ s[10]) ^ (s[13]
+    ^ s[14]))) ^ (((s[16] ^ s[18]) ^ (s[19] ^ s[23])) ^ ((s[25] ^ s[26]) ^
+    (s[29] ^ (s[30] ^ s[31]))))) ^ ((((w[0] ^ w[2]) ^ (w[4] ^ w[7])) ^ ((w[8]
+    ^ w[10]) ^ (w[13] ^ w[14]))) ^ (((w[16] ^ w[18]) ^ (w[19] ^ w[23])) ^
+    ((w[25] ^ w[26]) ^ (w[29] ^ (w[30] ^ w[31]))))));
+  assign sn[5] = ((((s[0] ^ (s[2] ^ s[3])) ^ ((s[4] ^ s[6]) ^ (s[7] ^ s[8])))
+    ^ (((s[16] ^ s[17]) ^ (s[19] ^ s[23])) ^ ((s[25] ^ s[28]) ^ (s[30] ^
+    s[31])))) ^ (((w[0] ^ (w[2] ^ w[3])) ^ ((w[4] ^ w[6]) ^ (w[7] ^ w[8]))) ^
+    (((w[16] ^ w[17]) ^ (w[19] ^ w[23])) ^ ((w[25] ^ w[28]) ^ (w[30] ^
+    w[31])))));
+  assign sn[6] = (((((s[2] ^ s[3]) ^ (s[6] ^ s[8])) ^ ((s[11] ^ s[14]) ^
+    (s[15] ^ s[16]))) ^ (((s[17] ^ s[18]) ^ (s[23] ^ s[25])) ^ ((s[27] ^
+    s[28]) ^ (s[29] ^ s[31])))) ^ ((((w[2] ^ w[3]) ^ (w[6] ^ w[8])) ^ ((w[11]
+    ^ w[14]) ^ (w[15] ^ w[16]))) ^ (((w[17] ^ w[18]) ^ (w[23] ^ w[25])) ^
+    ((w[27] ^ w[28]) ^ (w[29] ^ w[31])))));
+  assign sn[7] = (((((s[0] ^ s[1]) ^ (s[2] ^ s[3])) ^ ((s[5] ^ s[6]) ^ (s[11]
+    ^ (s[12] ^ s[14])))) ^ (((s[17] ^ s[18]) ^ (s[19] ^ s[20])) ^ ((s[23] ^
+    s[25]) ^ (s[27] ^ (s[29] ^ s[30]))))) ^ ((((w[0] ^ w[1]) ^ (w[2] ^ w[3]))
+    ^ ((w[5] ^ w[6]) ^ (w[11] ^ (w[12] ^ w[14])))) ^ (((w[17] ^ w[18]) ^
+    (w[19] ^ w[20])) ^ ((w[23] ^ w[25]) ^ (w[27] ^ (w[29] ^ w[30]))))));
+  assign sn[8] = (((((s[1] ^ s[2]) ^ (s[3] ^ s[4])) ^ ((s[6] ^ s[7]) ^ (s[12]
+    ^ (s[13] ^ s[15])))) ^ (((s[18] ^ s[19]) ^ (s[20] ^ s[21])) ^ ((s[24] ^
+    s[26]) ^ (s[28] ^ (s[30] ^ s[31]))))) ^ ((((w[1] ^ w[2]) ^ (w[3] ^ w[4]))
+    ^ ((w[6] ^ w[7]) ^ (w[12] ^ (w[13] ^ w[15])))) ^ (((w[18] ^ w[19]) ^
+    (w[20] ^ w[21])) ^ ((w[24] ^ w[26]) ^ (w[28] ^ (w[30] ^ w[31]))))));
+  assign sn[9] = (((((s[0] ^ s[1]) ^ (s[3] ^ s[6])) ^ ((s[8] ^ s[9]) ^ (s[11]
+    ^ (s[13] ^ s[15])))) ^ (((s[19] ^ s[21]) ^ (s[22] ^ s[23])) ^ ((s[24] ^
+    s[26]) ^ (s[28] ^ (s[29] ^ s[31]))))) ^ ((((w[0] ^ w[1]) ^ (w[3] ^ w[6]))
+    ^ ((w[8] ^ w[9]) ^ (w[11] ^ (w[13] ^ w[15])))) ^ (((w[19] ^ w[21]) ^
+    (w[22] ^ w[23])) ^ ((w[24] ^ w[26]) ^ (w[28] ^ (w[29] ^ w[31]))))));
+  assign sn[10] = ((((s[5] ^ s[6]) ^ (s[10] ^ (s[11] ^ s[12]))) ^ ((s[15] ^
+    (s[22] ^ s[26])) ^ (s[28] ^ (s[29] ^ s[30])))) ^ (((w[5] ^ w[6]) ^ (w[10]
+    ^ (w[11] ^ w[12]))) ^ ((w[15] ^ (w[22] ^ w[26])) ^ (w[28] ^ (w[29] ^
+    w[30])))));
+  assign sn[11] = ((((s[0] ^ (s[6] ^ s[7])) ^ (s[11] ^ (s[12] ^ s[13]))) ^
+    ((s[16] ^ (s[23] ^ s[27])) ^ (s[29] ^ (s[30] ^ s[31])))) ^ (((w[0] ^ (w[6]
+    ^ w[7])) ^ (w[11] ^ (w[12] ^ w[13]))) ^ ((w[16] ^ (w[23] ^ w[27])) ^
+    (w[29] ^ (w[30] ^ w[31])))));
+  assign sn[12] = (((((s[2] ^ s[4]) ^ (s[5] ^ s[6])) ^ ((s[8] ^ s[9]) ^ (s[11]
+    ^ (s[12] ^ s[13])))) ^ (((s[15] ^ s[16]) ^ (s[17] ^ (s[20] ^ s[23]))) ^
+    ((s[25] ^ s[26]) ^ (s[27] ^ (s[30] ^ s[31]))))) ^ ((((w[2] ^ w[4]) ^ (w[5]
+    ^ w[6])) ^ ((w[8] ^ w[9]) ^ (w[11] ^ (w[12] ^ w[13])))) ^ (((w[15] ^
+    w[16]) ^ (w[17] ^ (w[20] ^ w[23]))) ^ ((w[25] ^ w[26]) ^ (w[27] ^ (w[30] ^
+    w[31]))))));
+  assign sn[13] = (((((s[0] ^ s[1]) ^ (s[2] ^ s[3])) ^ ((s[4] ^ s[10]) ^
+    (s[11] ^ s[12]))) ^ (((s[13] ^ s[15]) ^ (s[17] ^ s[18])) ^ ((s[20] ^
+    s[21]) ^ (s[23] ^ (s[25] ^ s[31]))))) ^ ((((w[0] ^ w[1]) ^ (w[2] ^ w[3]))
+    ^ ((w[4] ^ w[10]) ^ (w[11] ^ w[12]))) ^ (((w[13] ^ w[15]) ^ (w[17] ^
+    w[18])) ^ ((w[20] ^ w[21]) ^ (w[23] ^ (w[25] ^ w[31]))))));
+  assign sn[14] = (((((s[3] ^ s[6]) ^ (s[7] ^ s[9])) ^ ((s[12] ^ s[13]) ^
+    (s[15] ^ s[18]))) ^ (((s[19] ^ s[20]) ^ (s[21] ^ s[22])) ^ ((s[23] ^
+    s[25]) ^ (s[27] ^ s[28])))) ^ ((((w[3] ^ w[6]) ^ (w[7] ^ w[9])) ^ ((w[12]
+    ^ w[13]) ^ (w[15] ^ w[18]))) ^ (((w[19] ^ w[20]) ^ (w[21] ^ w[22])) ^
+    ((w[23] ^ w[25]) ^ (w[27] ^ w[28])))));
+  assign sn[15] = (((((s[0] ^ s[4]) ^ (s[7] ^ s[8])) ^ ((s[10] ^ s[13]) ^
+    (s[14] ^ s[16]))) ^ (((s[19] ^ s[20]) ^ (s[21] ^ s[22])) ^ ((s[23] ^
+    s[24]) ^ (s[26] ^ (s[28] ^ s[29]))))) ^ ((((w[0] ^ w[4]) ^ (w[7] ^ w[8]))
+    ^ ((w[10] ^ w[13]) ^ (w[14] ^ w[16]))) ^ (((w[19] ^ w[20]) ^ (w[21] ^
+    w[22])) ^ ((w[23] ^ w[24]) ^ (w[26] ^ (w[28] ^ w[29]))))));
+  assign sn[16] = (((((s[0] ^ s[1]) ^ (s[5] ^ s[8])) ^ ((s[9] ^ s[11]) ^
+    (s[14] ^ (s[15] ^ s[17])))) ^ (((s[20] ^ s[21]) ^ (s[22] ^ s[23])) ^
+    ((s[24] ^ s[25]) ^ (s[27] ^ (s[29] ^ s[30]))))) ^ ((((w[0] ^ w[1]) ^ (w[5]
+    ^ w[8])) ^ ((w[9] ^ w[11]) ^ (w[14] ^ (w[15] ^ w[17])))) ^ (((w[20] ^
+    w[21]) ^ (w[22] ^ w[23])) ^ ((w[24] ^ w[25]) ^ (w[27] ^ (w[29] ^
+    w[30]))))));
+  assign sn[17] = (((((s[1] ^ s[2]) ^ (s[6] ^ s[9])) ^ ((s[10] ^ s[12]) ^
+    (s[15] ^ (s[16] ^ s[18])))) ^ (((s[21] ^ s[22]) ^ (s[23] ^ s[24])) ^
+    ((s[25] ^ s[26]) ^ (s[28] ^ (s[30] ^ s[31]))))) ^ ((((w[1] ^ w[2]) ^ (w[6]
+    ^ w[9])) ^ ((w[10] ^ w[12]) ^ (w[15] ^ (w[16] ^ w[18])))) ^ (((w[21] ^
+    w[22]) ^ (w[23] ^ w[24])) ^ ((w[25] ^ w[26]) ^ (w[28] ^ (w[30] ^
+    w[31]))))));
+  assign sn[18] = (((((s[0] ^ s[1]) ^ (s[3] ^ s[4])) ^ ((s[5] ^ s[6]) ^ (s[9]
+    ^ (s[10] ^ s[13])))) ^ (((s[14] ^ s[15]) ^ (s[17] ^ s[19])) ^ ((s[20] ^
+    s[22]) ^ (s[28] ^ (s[29] ^ s[31]))))) ^ ((((w[0] ^ w[1]) ^ (w[3] ^ w[4]))
+    ^ ((w[5] ^ w[6]) ^ (w[9] ^ (w[10] ^ w[13])))) ^ (((w[14] ^ w[15]) ^ (w[17]
+    ^ w[19])) ^ ((w[20] ^ w[22]) ^ (w[28] ^ (w[29] ^ w[31]))))));
+  assign sn[19] = ((((s[9] ^ s[10]) ^ (s[18] ^ (s[21] ^ s[24]))) ^ ((s[25] ^
+    (s[26] ^ s[27])) ^ (s[28] ^ (s[29] ^ s[30])))) ^ (((w[9] ^ w[10]) ^ (w[18]
+    ^ (w[21] ^ w[24]))) ^ ((w[25] ^ (w[26] ^ w[27])) ^ (w[28] ^ (w[29] ^
+    w[30])))));
+  assign sn[20] = ((((s[10] ^ s[11]) ^ (s[19] ^ (s[22] ^ s[25]))) ^ ((s[26] ^
+    (s[27] ^ s[28])) ^ (s[29] ^ (s[30] ^ s[31])))) ^ (((w[10] ^ w[11]) ^
+    (w[19] ^ (w[22] ^ w[25]))) ^ ((w[26] ^ (w[27] ^ w[28])) ^ (w[29] ^ (w[30]
+    ^ w[31])))));
+  assign sn[21] = (((((s[1] ^ s[2]) ^ (s[4] ^ s[5])) ^ ((s[6] ^ s[7]) ^ (s[9]
+    ^ s[12]))) ^ (((s[14] ^ s[15]) ^ (s[16] ^ s[24])) ^ ((s[25] ^ s[29]) ^
+    (s[30] ^ s[31])))) ^ ((((w[1] ^ w[2]) ^ (w[4] ^ w[5])) ^ ((w[6] ^ w[7]) ^
+    (w[9] ^ w[12]))) ^ (((w[14] ^ w[15]) ^ (w[16] ^ w[24])) ^ ((w[25] ^ w[29])
+    ^ (w[30] ^ w[31])))));
+  assign sn[22] = (((((s[0] ^ s[1]) ^ (s[3] ^ s[4])) ^ ((s[8] ^ s[9]) ^ (s[10]
+    ^ (s[11] ^ s[13])))) ^ (((s[14] ^ s[17]) ^ (s[20] ^ s[23])) ^ ((s[24] ^
+    s[27]) ^ (s[28] ^ (s[30] ^ s[31]))))) ^ ((((w[0] ^ w[1]) ^ (w[3] ^ w[4]))
+    ^ ((w[8] ^ w[9]) ^ (w[10] ^ (w[11] ^ w[13])))) ^ (((w[14] ^ w[17]) ^
+    (w[20] ^ w[23])) ^ ((w[24] ^ w[27]) ^ (w[28] ^ (w[30] ^ w[31]))))));
+  assign sn[23] = ((((s[6] ^ (s[7] ^ s[10])) ^ (s[12] ^ (s[16] ^ s[18]))) ^
+    ((s[20] ^ (s[21] ^ s[23])) ^ ((s[26] ^ s[27]) ^ (s[29] ^ s[31])))) ^
+    (((w[6] ^ (w[7] ^ w[10])) ^ (w[12] ^ (w[16] ^ w[18]))) ^ ((w[20] ^ (w[21]
+    ^ w[23])) ^ ((w[26] ^ w[27]) ^ (w[29] ^ w[31])))));
+  assign sn[24] = (((((s[0] ^ s[1]) ^ (s[2] ^ (s[4] ^ s[5]))) ^ ((s[6] ^ s[8])
+    ^ (s[9] ^ (s[13] ^ s[14])))) ^ (((s[15] ^ s[16]) ^ (s[17] ^ (s[19] ^
+    s[20]))) ^ ((s[21] ^ (s[22] ^ s[23])) ^ (s[25] ^ (s[26] ^ s[30]))))) ^
+    ((((w[0] ^ w[1]) ^ (w[2] ^ (w[4] ^ w[5]))) ^ ((w[6] ^ w[8]) ^ (w[9] ^
+    (w[13] ^ w[14])))) ^ (((w[15] ^ w[16]) ^ (w[17] ^ (w[19] ^ w[20]))) ^
+    ((w[21] ^ (w[22] ^ w[23])) ^ (w[25] ^ (w[26] ^ w[30]))))));
+  assign sn[25] = (((((s[1] ^ s[2]) ^ (s[3] ^ (s[5] ^ s[6]))) ^ ((s[7] ^ s[9])
+    ^ (s[10] ^ (s[14] ^ s[15])))) ^ (((s[16] ^ s[17]) ^ (s[18] ^ (s[20] ^
+    s[21]))) ^ ((s[22] ^ (s[23] ^ s[24])) ^ (s[26] ^ (s[27] ^ s[31]))))) ^
+    ((((w[1] ^ w[2]) ^ (w[3] ^ (w[5] ^ w[6]))) ^ ((w[7] ^ w[9]) ^ (w[10] ^
+    (w[14] ^ w[15])))) ^ (((w[16] ^ w[17]) ^ (w[18] ^ (w[20] ^ w[21]))) ^
+    ((w[22] ^ (w[23] ^ w[24])) ^ (w[26] ^ (w[27] ^ w[31]))))));
+  assign sn[26] = ((((s[0] ^ (s[1] ^ s[3])) ^ ((s[5] ^ s[8]) ^ (s[9] ^
+    s[10]))) ^ (((s[14] ^ s[17]) ^ (s[18] ^ s[19])) ^ ((s[20] ^ s[21]) ^
+    (s[22] ^ s[26])))) ^ (((w[0] ^ (w[1] ^ w[3])) ^ ((w[5] ^ w[8]) ^ (w[9] ^
+    w[10]))) ^ (((w[14] ^ w[17]) ^ (w[18] ^ w[19])) ^ ((w[20] ^ w[21]) ^
+    (w[22] ^ w[26])))));
+  assign sn[27] = (((((s[0] ^ s[1]) ^ (s[2] ^ s[4])) ^ ((s[6] ^ s[9]) ^ (s[10]
+    ^ s[11]))) ^ (((s[15] ^ s[18]) ^ (s[19] ^ s[20])) ^ ((s[21] ^ s[22]) ^
+    (s[23] ^ s[27])))) ^ ((((w[0] ^ w[1]) ^ (w[2] ^ w[4])) ^ ((w[6] ^ w[9]) ^
+    (w[10] ^ w[11]))) ^ (((w[15] ^ w[18]) ^ (w[19] ^ w[20])) ^ ((w[21] ^
+    w[22]) ^ (w[23] ^ w[27])))));
+  assign sn[28] = (((((s[0] ^ s[1]) ^ (s[2] ^ s[3])) ^ ((s[5] ^ s[7]) ^ (s[10]
+    ^ s[11]))) ^ (((s[12] ^ s[16]) ^ (s[19] ^ s[20])) ^ ((s[21] ^ s[22]) ^
+    (s[23] ^ (s[24] ^ s[28]))))) ^ ((((w[0] ^ w[1]) ^ (w[2] ^ w[3])) ^ ((w[5]
+    ^ w[7]) ^ (w[10] ^ w[11]))) ^ (((w[12] ^ w[16]) ^ (w[19] ^ w[20])) ^
+    ((w[21] ^ w[22]) ^ (w[23] ^ (w[24] ^ w[28]))))));
+  assign sn[29] = (((((s[1] ^ s[2]) ^ (s[3] ^ s[4])) ^ ((s[6] ^ s[8]) ^ (s[11]
+    ^ s[12]))) ^ (((s[13] ^ s[17]) ^ (s[20] ^ s[21])) ^ ((s[22] ^ s[23]) ^
+    (s[24] ^ (s[25] ^ s[29]))))) ^ ((((w[1] ^ w[2]) ^ (w[3] ^ w[4])) ^ ((w[6]
+    ^ w[8]) ^ (w[11] ^ w[12]))) ^ (((w[13] ^ w[17]) ^ (w[20] ^ w[21])) ^
+    ((w[22] ^ w[23]) ^ (w[24] ^ (w[25] ^ w[29]))))));
+  assign sn[30] = (((((s[0] ^ s[2]) ^ (s[3] ^ s[4])) ^ ((s[5] ^ s[7]) ^ (s[9]
+    ^ (s[12] ^ s[13])))) ^ (((s[14] ^ s[18]) ^ (s[21] ^ s[22])) ^ ((s[23] ^
+    s[24]) ^ (s[25] ^ (s[26] ^ s[30]))))) ^ ((((w[0] ^ w[2]) ^ (w[3] ^ w[4]))
+    ^ ((w[5] ^ w[7]) ^ (w[9] ^ (w[12] ^ w[13])))) ^ (((w[14] ^ w[18]) ^ (w[21]
+    ^ w[22])) ^ ((w[23] ^ w[24]) ^ (w[25] ^ (w[26] ^ w[30]))))));
+  assign sn[31] = (((((s[0] ^ s[1]) ^ (s[3] ^ s[4])) ^ ((s[5] ^ s[6]) ^ (s[8]
+    ^ (s[10] ^ s[13])))) ^ (((s[14] ^ s[15]) ^ (s[19] ^ (s[22] ^ s[23]))) ^
+    ((s[24] ^ s[25]) ^ (s[26] ^ (s[27] ^ s[31]))))) ^ ((((w[0] ^ w[1]) ^ (w[3]
+    ^ w[4])) ^ ((w[5] ^ w[6]) ^ (w[8] ^ (w[10] ^ w[13])))) ^ (((w[14] ^ w[15])
+    ^ (w[19] ^ (w[22] ^ w[23]))) ^ ((w[24] ^ w[25]) ^ (w[26] ^ (w[27] ^
+    w[31]))))));
 endmodule

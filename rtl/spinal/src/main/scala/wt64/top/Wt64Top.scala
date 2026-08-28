@@ -646,6 +646,9 @@ class Wt64Top(
       val precPresent   = out port Bool()
       val precMode      = out port Bits(8 bits)
       val precDim       = out port Bits(8 bits)
+      /** ACCTGT 조각열 선언 총개수 T (§1.4.7 · W4) — 관측 수출뿐, 기계 안
+        * 소비자 없음 (Reassembly 사이드밴드와의 결선은 파도 밖 — B.5). */
+      val acctgtTotal   = out port UInt(8 bits)
     }
 
     // ── 배달 범위 진입점 — 통과 토큰·발화 관측 (하류 배달 지점 미착지) ───
@@ -917,6 +920,7 @@ class Wt64Top(
   io.dec.precPresent   := od.io.oPrecPresent
   io.dec.precMode      := od.io.oPrecMode
   io.dec.precDim       := od.io.oPrecDim
+  io.dec.acctgtTotal   := od.io.oAcctgtTotal
 
   // ═══ 배달 범위 진입점 — 실행 유효 명령의 토큰 제시 ═══════════════════
   // OPREF 부재 명령은 srcKind = 0(직접, 게이트 산출 0)이라 LBID 축(ISA-8)에

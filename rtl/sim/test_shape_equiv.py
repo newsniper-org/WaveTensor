@@ -124,8 +124,11 @@ INIT_SWEEP = 1 << 16
 # 아니다). 그 둘을 대조면에서 빼고 나머지 전부를 사이클마다 통째로 비교한다.
 SHAPE_DEPENDENT = {"io_push_1_stall", "io_push_2_stall"}
 # 드리프트가 조용하지 않게 못박는다 — 포트가 늘거나 줄면 여기서 크게 깨진다.
-EXPECT_OUTPUTS = 117
-EXPECT_COMPARE_FACE = 115
+# 재유도 기록 (인코딩 개정 파도 W4): io_dec_acctgtTotal 신설 (+1) — ACCTGT
+# [23:16] = 조각열 선언 총개수 T 의 관측 수출 (§1.4.7, 무소비). 형상 무관
+# 출력이라 대조면에 든다 — 117/115 → 118/116.
+EXPECT_OUTPUTS = 118
+EXPECT_COMPARE_FACE = 116
 
 
 def parse_clear_ports():
@@ -182,9 +185,10 @@ _IX_CAP = COMPARE_FACE.index("io_dec_capAbsent")
 
 
 # ── 명령 공급 ─────────────────────────────────────────────────────────────
-# `asm/wavetensor_asm.py:2059` `encode_pass` 가 명령마다 416비트 정수를 낸다.
-# top 의 명령 포트는 13워드 × 32b = 416b (`Wt64Top.scala:615-619`) — 정확히
-# 맞는다. 워드 0 이 최하위다.
+# `asm/wavetensor_asm.py` `encode_pass` 가 명령마다 448비트 정수를 낸다
+# (인코딩 개정 파도 W8 — EH≥1 이면 word1 = CH, 최대 14워드). top 의 명령
+# 포트는 14워드 × 32b = 448b (`Wt64Top.scala` io.instr.words = walk.maxWords)
+# — 정확히 맞는다. 워드 0 이 최하위다.
 #
 # ⚠ **「같은 바이너리」의 단위는 (명령 워드열, 태그) 쌍이다.** 라우팅되는
 #   LNID 는 **태그**의 것이지 명령 인코딩의 것이 아니다 (`Wt64Top.scala:927`
@@ -194,7 +198,7 @@ _IX_CAP = COMPARE_FACE.index("io_dec_capAbsent")
 #   ⇒ 태그는 이 하네스가 벡터로 든다. 그리고 **80b 로 팩하지 않는다** — 팩킹
 #   순서는 미확정이고(`Common.scala:117-130`), top 이 필드별 포트로 받으므로
 #   팩킹을 알 필요가 없다. 팩하는 순간 미확정 값이 시험 코드로 굳는다.
-INSTR_WORDS = 13
+INSTR_WORDS = 14
 ASM_SRC = ("ACC_ELEMWISE prec .port dest=0x10 .precision mode=0x14 "
            ".opref kind={kind} route={lbid}")
 

@@ -9,36 +9,38 @@
 # (lint_postformal 이 AllGuards 와 대조)이고, OperandDecode 는 관측 기반
 # 모듈이라 모델 가드가 없다. 아래 항목들은 GUARD-MAP 이 아니라 어셈블러
 # 관측·정본 규범을 앵커로 한다.
-# VERIFIES: OperandDecode.body_resv_judged — 판정 3종 등가: OPREF [23:20] != 0 (§1.4.6) · src_kind >= 3 (§1.4.3) · ACCTGT [23:16] != 0 (§1.4.7), 전부 present 전건 (§1.6.1 함정) — 참조 판정이 슬롯 서술자+예약 슬라이스만 읽으므로 등가 = 비교기 콘의 협소성
+# VERIFIES: OperandDecode.body_resv_judged — 판정 2종 등가 (인코딩 개정 파도): OPREF [23:20] CRC-4 재계산 대조 (§1.4.6 · W5 — 논리 12b LBID∥src_kind MSB-first, G(x)=x⁴+x+1, 불일치 = malformation) · src_kind >= 3 (§1.4.3), 전부 present 전건 (§1.6.1 함정) — 참조 판정이 슬롯 서술자+판정 슬라이스만 읽으므로 등가 = 비교기 콘의 협소성. (W4: ACCTGT [23:16] 판정 항 삭제 — 총개수 필드라 어떤 값도 판정을 울리지 않는다, §1.4.7)
 # VERIFIES: OperandDecode.verdict_join — oMalformed = iMalformed ∨ bodyMal · oCapAbsent 무변경 · oExecValid = iExecValid ∧ ¬bodyMal · bodyMal 의 ¬iCapAbsent 게이트 (ISA-5 출력 배타 포함, ENV 2건 가정下)
 # VERIFIES: OperandDecode.exec_gate — ¬oExecValid ⇒ 해석 산출 전면 0 (SEC-7 (ii) 부류 — 방출면 구별 불가능)
-# VERIFIES: OperandDecode.resv_not_echoed — OPREF LBID·src_kind, ACCTGT LBID·재조립 결속의 등가 (참조 우변에 예약 슬라이스 부재 → 1비트 판정 등급 외 비반향)
-# VERIFIES: OperandDecode.fault_sticky — 본문 전용 sticky: 상승 = iValid ∧ bodyMal 에피소드 · 하강 = 명시적 해제 · 유지 (§5.5) · DecodeWalk sticky 와 별도 신호 (포트 분리가 구조)
+# VERIFIES: OperandDecode.resv_not_echoed — OPREF LBID·src_kind, ACCTGT LBID·총개수 T(oAcctgtTotal — W4 해석·방출, 무소비)·재조립 결속의 등가 (참조 우변에 CRC 니블 부재 → 1비트 판정 등급 외 비반향)
+# VERIFIES: OperandDecode.fault_sticky — 본문 전용 sticky: 상승 = iValid ∧ bodyMal 에피소드 (두 원인 — OPREF CRC-4 불일치 · src_kind 예약값 — 을 1비트로 접는 폴딩 명시, §5.6) · 하강 = 명시적 해제 · 유지 (§5.5) · DecodeWalk sticky 와 별도 신호 (포트 분리가 구조)
 #
 # 부착 이탈: bind 대신 formal 전용 래퍼 top (컨테이너 yosys 0.66 이 bind 를
 # 파싱만 하고 적용하지 않음 — 실측. DecodeWalk_props.sv 머리의 기록 참조).
 #
 # 콘 검사 주석: 「예약 슬라이스의 fanout 이 비교기뿐」의 완전한 콘 증명
-# (miter/자기합성)은 무겁다 — 대신 (i) 판정 3종이 협소 참조와 등가,
+# (miter/자기합성)은 무겁다 — 대신 (i) 판정 2종이 협소 참조와 등가,
 # (ii) 예약 인접 방출 필드가 예약-불참 참조와 등가, 의 두 등가로 관측
 # 가능한 전 표면을 덮었다. 비검사 잔여는 PORT/IMM/MEM/SUBSCRIPT/PRECISION
 # 값 필드의 정확성 (예약 슬라이스와 무관한 축) — cocotb golden 대조 몫.
 
 # ── cover 증인 ───────────────────────────────────────────────────────────
-# O1..O20 (하네스 말미, -DOPERANDDECODE_COVER). 단언 32개 중 **18개가 문면
-# 그대로 전건 붙은 함의**다 — exec_gate 14개가 전부 `if (!oExecValid)` 아래
+# O1..O20 (하네스 말미, -DOPERANDDECODE_COVER). 단언 34개 중 **19개가 문면
+# 그대로 전건 붙은 함의**다 — exec_gate 15개가 전부 `if (!oExecValid)` 아래
 # 이고, fault_sticky 4개는 상승·하강·에피소드·유지 전건을 각각 진다. 나머지
 # 등식들도 전건을 숨긴다: `oMalformed == (iMalformed || bodyMal)` 하나가 본문
-# 판정 3종의 논리합을 접고 그 각각이 다시 4슬롯 논리합이다. 그래서 oExecValid
-# 가 영영 0(또는 영영 1)인 세계, 판정 셋 중 둘이 도달 불가능한 세계, 예약
-# 슬라이스가 늘 0 인 세계, iCapAbsent 가 영영 0 인 세계, sticky 가 영영 서지
+# 판정 2종(W5 CRC-4 · src_kind)의 논리합을 접고 그 각각이 다시 4슬롯
+# 논리합이다. 그래서 oExecValid
+# 가 영영 0(또는 영영 1)인 세계, 판정 둘 중 하나가 도달 불가능한 세계, CRC
+# 니블이 늘 기대값인 세계, iCapAbsent 가 영영 0 인 세계, sticky 가 영영 서지
 # 않는 세계 — 어디서도 이 태스크는 전원 통과하면서 아무것도 재지 않는다.
 #
-# O3..O5 가 판정 3종의 **단독 원인** 궤적을 각각 요구해 body_resv_judged 의
+# O3·O4 가 판정 2종의 **단독 원인** 궤적을 각각 요구해 body_resv_judged 의
 # 결을 닫고, 동시에 exec_gate 의 전건이 *본문 판정 때문에* 성립하는 궤적으로
 # 도달시킨다 (상류 무효로 도달한 전건 O6 과 갈라야 이 모듈의 기여가 재어진다).
+# O5 는 W4 의 활성면 — ACCTGT 총개수 T 가 판정 없이 비0 으로 방출된다.
 # O8 이 §1.6.2 capability 게이트를, O9·O10 이 판정 콘의 협소성(부재 슬롯·타
-# 코드 슬롯의 같은 슬라이스가 비0 인데 불판정)을, O11..O14 가 resv_not_echoed
+# 코드 슬롯의 같은 슬라이스가 나쁜데 불판정)을, O11..O14 가 resv_not_echoed
 # 의 활성면(비0 LBID·두 OPREF·경계 아래 src_kind·재조립 결속)을, O15..O18 이
 # sticky 네 전건을, O19·O20 이 sticky 가 접지 *않는* 두 축을 세운다.
 #

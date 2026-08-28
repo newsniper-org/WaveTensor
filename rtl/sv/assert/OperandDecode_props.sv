@@ -17,24 +17,30 @@
 // 연속 대입 우변의 함수 호출은 미구동 $func$…$result 자유 변수로 각각
 // 오염된다 (yosys 0.66 실측 — DecodeWalk_props.sv 수리 기록 참조).
 //
-// 검사 항목 (아래 이름이 .sby 의 PROVES 앵커):
-//   OperandDecode.body_resv_judged — 본문 예약 판정 3종의 등가:
-//       OPREF [23:20] 폐지 니블 != 0 (§1.4.6 · §5.7) /
+// 검사 항목 (아래 이름이 .sby 의 VERIFIES 앵커):
+//   OperandDecode.body_resv_judged — 본문 판정 2종의 등가 (인코딩 개정 파도):
+//       OPREF [23:20] CRC-4 재계산 대조 (§1.4.6 · W5 — 메시지 = 논리 12b
+//       LBID[7]‥[0] ∥ src_kind[3]‥[0] MSB-first, G(x)=x⁴+x+1, 비반사 ·
+//       init 0 · xorout 없음, 불일치 = malformation) /
 //       OPREF src_kind >= 3 예약값 (§1.4.3 표 — RouteJudge 가 디코드 경계로
-//       넘긴 거절의 실물) / ACCTGT [23:16] 예약 바이트 != 0 (§1.4.7 · §5.7).
+//       넘긴 거절의 실물). (W4: ACCTGT [23:16] 판정 항은 소멸 — 총개수
+//       필드라 어떤 값도 판정을 울리지 않는다, §1.4.7. 해석·방출의 등가는
+//       resv_not_echoed 부류의 oAcctgtTotal 등식이 잰다.)
 //       판정은 실재(present) 슬롯에 대해서만 발화 (§1.6.1 함정 — 부재 EH 의
 //       본문 잔여값은 판정 대상이 아니다). 참조 판정이 슬롯 서술자 + 해당
-//       예약 슬라이스만 읽으므로, 등가가 곧 판정 콘의 협소성(비교기 콘) 증명.
+//       판정 슬라이스만 읽으므로, 등가가 곧 판정 콘의 협소성(비교기 콘) 증명.
 //   OperandDecode.verdict_join — 판정 합류: oMalformed = iMalformed ∨ bodyMal ·
 //       oCapAbsent 무변경 통과 · oExecValid = iExecValid ∧ ¬bodyMal ·
 //       bodyMal 은 ¬iCapAbsent 게이트 (ISA-5 — 능력 밖 사슬은 판정 대상 아님).
 //   OperandDecode.exec_gate — oExecValid 아래 산출 전면 억제: 비유효 명령의
 //       해석 산출은 전부 0 — 방출면 구별 불가능 (SEC-7 (ii) 부류).
-//   OperandDecode.resv_not_echoed — 예약 슬라이스 인접 필드(OPREF LBID·
-//       src_kind, ACCTGT LBID, 재조립 결속)의 등가: 예약 비트는 1비트 판정
-//       등급 외 어떤 방출면에도 실리지 않는다.
+//   OperandDecode.resv_not_echoed — 판정 슬라이스 인접 필드(OPREF LBID·
+//       src_kind, ACCTGT LBID·총개수 T, 재조립 결속)의 등가: CRC 니블은
+//       1비트 판정 등급 외 어떤 방출면에도 실리지 않고, ACCTGT 총개수는
+//       판정 없이 해석 필드로 방출된다 (W4 — oAcctgtTotal 등식).
 //   OperandDecode.fault_sticky — 본문 malformation 전용 sticky (§5.5 ·
-//       §5.6 폴딩 명시: 세 원인을 이 1비트로 접고, DecodeWalk.oFault 와는
+//       §5.6 폴딩 명시: 두 원인 — OPREF CRC-4 불일치 · src_kind 예약값 —
+//       을 이 1비트로 접고, DecodeWalk.oFault 와는
 //       접지 않는다 — 별도 신호라는 사실은 포트 분리가 구조로 보증).
 //
 // 반례 규율: 참조 판정이 틀리면 (1)갈래 — 고치고 경위를 주석으로.
@@ -58,6 +64,7 @@ module OperandDecode_props (
   input  wire [31:0] io_iInstr_10,
   input  wire [31:0] io_iInstr_11,
   input  wire [31:0] io_iInstr_12,
+  input  wire [31:0] io_iInstr_13,
   input  wire        io_iSlotPresent_0,
   input  wire        io_iSlotPresent_1,
   input  wire        io_iSlotPresent_2,
@@ -115,6 +122,7 @@ module OperandDecode_props (
   input  wire [7:0]  io_oPrecDim,
   input  wire        io_oReasmBind_valid,
   input  wire [7:0]  io_oReasmBind_payload,
+  input  wire [7:0]  io_oAcctgtTotal,
   input  wire        io_oFault
 );
 
@@ -142,25 +150,25 @@ module OperandDecode_props (
     assume (!(io_iExecValid && (io_iMalformed || io_iCapAbsent)));
   end
 
-  // ── 참조 판정 — §1.4.3 · §1.4.6 · §1.4.7 · §5.7 의 독립 재구현 ───────────
+  // ── 참조 판정 — §1.4.3 · §1.4.6(W5) · §1.4.7(W4) · §5.7 의 독립 재구현 ───
   // 각 워드의 [31:16] — EH 워드0 본문 상위 16비트 (§1.3.3 배치).
-  wire [16*13-1:0] f_hi16bus = {
-    io_iInstr_12[31:16], io_iInstr_11[31:16], io_iInstr_10[31:16],
-    io_iInstr_9[31:16],  io_iInstr_8[31:16],  io_iInstr_7[31:16],
-    io_iInstr_6[31:16],  io_iInstr_5[31:16],  io_iInstr_4[31:16],
-    io_iInstr_3[31:16],  io_iInstr_2[31:16],  io_iInstr_1[31:16],
-    io_iInstr_0[31:16] };
+  wire [16*14-1:0] f_hi16bus = {
+    io_iInstr_13[31:16], io_iInstr_12[31:16], io_iInstr_11[31:16],
+    io_iInstr_10[31:16], io_iInstr_9[31:16],  io_iInstr_8[31:16],
+    io_iInstr_7[31:16],  io_iInstr_6[31:16],  io_iInstr_5[31:16],
+    io_iInstr_4[31:16],  io_iInstr_3[31:16],  io_iInstr_2[31:16],
+    io_iInstr_1[31:16],  io_iInstr_0[31:16] };
 
   // 표 조회 — 8비트 오프셋 전폭 등가 비교와 동치: 표 밖 값은 0 (RTL 의
   // one-hot 마스킹 OR 과 같은 의미론 — §1.3 부류의 절단 금지). 명시 시프트.
-  wire [16*13-1:0] f_sh0 = f_hi16bus >> (io_iSlotOff_0 * 16);
-  wire [16*13-1:0] f_sh1 = f_hi16bus >> (io_iSlotOff_1 * 16);
-  wire [16*13-1:0] f_sh2 = f_hi16bus >> (io_iSlotOff_2 * 16);
-  wire [16*13-1:0] f_sh3 = f_hi16bus >> (io_iSlotOff_3 * 16);
-  wire [15:0] f_body0 = (io_iSlotOff_0 < 8'd13) ? f_sh0[15:0] : 16'h0;
-  wire [15:0] f_body1 = (io_iSlotOff_1 < 8'd13) ? f_sh1[15:0] : 16'h0;
-  wire [15:0] f_body2 = (io_iSlotOff_2 < 8'd13) ? f_sh2[15:0] : 16'h0;
-  wire [15:0] f_body3 = (io_iSlotOff_3 < 8'd13) ? f_sh3[15:0] : 16'h0;
+  wire [16*14-1:0] f_sh0 = f_hi16bus >> (io_iSlotOff_0 * 16);
+  wire [16*14-1:0] f_sh1 = f_hi16bus >> (io_iSlotOff_1 * 16);
+  wire [16*14-1:0] f_sh2 = f_hi16bus >> (io_iSlotOff_2 * 16);
+  wire [16*14-1:0] f_sh3 = f_hi16bus >> (io_iSlotOff_3 * 16);
+  wire [15:0] f_body0 = (io_iSlotOff_0 < 8'd14) ? f_sh0[15:0] : 16'h0;
+  wire [15:0] f_body1 = (io_iSlotOff_1 < 8'd14) ? f_sh1[15:0] : 16'h0;
+  wire [15:0] f_body2 = (io_iSlotOff_2 < 8'd14) ? f_sh2[15:0] : 16'h0;
+  wire [15:0] f_body3 = (io_iSlotOff_3 < 8'd14) ? f_sh3[15:0] : 16'h0;
 
   // 실재 + 4비트 코드 전체 비교 (§1.6.1 함정 — present 전건).
   wire f_isOpref0  = io_iSlotPresent_0 && (io_iSlotCode_0 == 4'h7);
@@ -172,18 +180,80 @@ module OperandDecode_props (
   wire f_isAcctgt2 = io_iSlotPresent_2 && (io_iSlotCode_2 == 4'h9);
   wire f_isAcctgt3 = io_iSlotPresent_3 && (io_iSlotCode_3 == 4'h9);
 
-  // 판정 3종 — 대응 예약 슬라이스만 소비한다.
-  wire f_oprefResvBad =                                    // §1.4.6 · §5.7
-    (f_isOpref0 && (f_body0[7:4] != 4'h0)) || (f_isOpref1 && (f_body1[7:4] != 4'h0)) ||
-    (f_isOpref2 && (f_body2[7:4] != 4'h0)) || (f_isOpref3 && (f_body3[7:4] != 4'h0));
+  // ── OPREF CRC-4 참조 (§1.4.6 · W5) — 독립 비트-직렬 12단 명시 전개 ──────
+  // G(x) = x⁴+x+1 (0b10011), 비반사 · init 0 · xorout 없음. 메시지 = 논리
+  // 12b LBID[7]‥[0] ∥ src_kind[3]‥[0] (MSB-first — 물리 슬라이스 순서가
+  // 아니라 논리 순서: CRC 니블 body[7:4] 가 물리적으로 둘 사이에 낀다).
+  // 단계식: fb = crc[3] ^ m → crc' = {crc[2:0], 1'b0} ^ (fb ? 4'h3 : 4'h0).
+  // 함수 금지 규율 그대로 — 매크로 1단 + 중간 wire (수리 기록 2 참조).
+  // 기지값 (LBID,src_kind)→CRC: (0x00,0)→0x0 · (0x01,1)→0x6 · (0xA5,2)→0x8 ·
+  // (0xFF,2)→0xA — 핀 명세·어셈블러 참조측·RTL elaborate 자기시험과 같은
+  // 값. 여기에 상수 자기시험 단언은 두지 않는다 (상수 접힘은 3형 계수가
+  // 잡는 부류라 거짓 신호가 된다).
+`define WT_C4(c, m) ({c[2:0], 1'b0} ^ ((c[3] ^ (m)) ? 4'h3 : 4'h0))
+  wire [3:0] f_c4z = 4'h0; // init 0 (리터럴에는 비트 선택이 안 걸려 이름을 준다)
+  wire [3:0] f_c0a = `WT_C4(f_c4z, f_body0[15]);
+  wire [3:0] f_c0b = `WT_C4(f_c0a, f_body0[14]);
+  wire [3:0] f_c0c = `WT_C4(f_c0b, f_body0[13]);
+  wire [3:0] f_c0d = `WT_C4(f_c0c, f_body0[12]);
+  wire [3:0] f_c0e = `WT_C4(f_c0d, f_body0[11]);
+  wire [3:0] f_c0f = `WT_C4(f_c0e, f_body0[10]);
+  wire [3:0] f_c0g = `WT_C4(f_c0f, f_body0[9]);
+  wire [3:0] f_c0h = `WT_C4(f_c0g, f_body0[8]);
+  wire [3:0] f_c0i = `WT_C4(f_c0h, f_body0[3]);
+  wire [3:0] f_c0j = `WT_C4(f_c0i, f_body0[2]);
+  wire [3:0] f_c0k = `WT_C4(f_c0j, f_body0[1]);
+  wire [3:0] f_crc4_0 = `WT_C4(f_c0k, f_body0[0]);
+  wire [3:0] f_c1a = `WT_C4(f_c4z, f_body1[15]);
+  wire [3:0] f_c1b = `WT_C4(f_c1a, f_body1[14]);
+  wire [3:0] f_c1c = `WT_C4(f_c1b, f_body1[13]);
+  wire [3:0] f_c1d = `WT_C4(f_c1c, f_body1[12]);
+  wire [3:0] f_c1e = `WT_C4(f_c1d, f_body1[11]);
+  wire [3:0] f_c1f = `WT_C4(f_c1e, f_body1[10]);
+  wire [3:0] f_c1g = `WT_C4(f_c1f, f_body1[9]);
+  wire [3:0] f_c1h = `WT_C4(f_c1g, f_body1[8]);
+  wire [3:0] f_c1i = `WT_C4(f_c1h, f_body1[3]);
+  wire [3:0] f_c1j = `WT_C4(f_c1i, f_body1[2]);
+  wire [3:0] f_c1k = `WT_C4(f_c1j, f_body1[1]);
+  wire [3:0] f_crc4_1 = `WT_C4(f_c1k, f_body1[0]);
+  wire [3:0] f_c2a = `WT_C4(f_c4z, f_body2[15]);
+  wire [3:0] f_c2b = `WT_C4(f_c2a, f_body2[14]);
+  wire [3:0] f_c2c = `WT_C4(f_c2b, f_body2[13]);
+  wire [3:0] f_c2d = `WT_C4(f_c2c, f_body2[12]);
+  wire [3:0] f_c2e = `WT_C4(f_c2d, f_body2[11]);
+  wire [3:0] f_c2f = `WT_C4(f_c2e, f_body2[10]);
+  wire [3:0] f_c2g = `WT_C4(f_c2f, f_body2[9]);
+  wire [3:0] f_c2h = `WT_C4(f_c2g, f_body2[8]);
+  wire [3:0] f_c2i = `WT_C4(f_c2h, f_body2[3]);
+  wire [3:0] f_c2j = `WT_C4(f_c2i, f_body2[2]);
+  wire [3:0] f_c2k = `WT_C4(f_c2j, f_body2[1]);
+  wire [3:0] f_crc4_2 = `WT_C4(f_c2k, f_body2[0]);
+  wire [3:0] f_c3a = `WT_C4(f_c4z, f_body3[15]);
+  wire [3:0] f_c3b = `WT_C4(f_c3a, f_body3[14]);
+  wire [3:0] f_c3c = `WT_C4(f_c3b, f_body3[13]);
+  wire [3:0] f_c3d = `WT_C4(f_c3c, f_body3[12]);
+  wire [3:0] f_c3e = `WT_C4(f_c3d, f_body3[11]);
+  wire [3:0] f_c3f = `WT_C4(f_c3e, f_body3[10]);
+  wire [3:0] f_c3g = `WT_C4(f_c3f, f_body3[9]);
+  wire [3:0] f_c3h = `WT_C4(f_c3g, f_body3[8]);
+  wire [3:0] f_c3i = `WT_C4(f_c3h, f_body3[3]);
+  wire [3:0] f_c3j = `WT_C4(f_c3i, f_body3[2]);
+  wire [3:0] f_c3k = `WT_C4(f_c3j, f_body3[1]);
+  wire [3:0] f_crc4_3 = `WT_C4(f_c3k, f_body3[0]);
+`undef WT_C4
+
+  // 판정 2종 — 대응 판정 슬라이스만 소비한다. 슬롯별 각자 검산 (§4.2.3 —
+  // ≤2 인스턴스가 각자 자기 CRC 를 나른다).
+  wire f_oprefCrcBad =                                     // §1.4.6 · W5
+    (f_isOpref0 && (f_body0[7:4] != f_crc4_0)) || (f_isOpref1 && (f_body1[7:4] != f_crc4_1)) ||
+    (f_isOpref2 && (f_body2[7:4] != f_crc4_2)) || (f_isOpref3 && (f_body3[7:4] != f_crc4_3));
   wire f_srcKindBad =                                      // §1.4.3 표
     (f_isOpref0 && (f_body0[3:0] >= 4'd3)) || (f_isOpref1 && (f_body1[3:0] >= 4'd3)) ||
     (f_isOpref2 && (f_body2[3:0] >= 4'd3)) || (f_isOpref3 && (f_body3[3:0] >= 4'd3));
-  wire f_acctgtResvBad =                                   // §1.4.7 · §5.7
-    (f_isAcctgt0 && (f_body0[7:0] != 8'h00)) || (f_isAcctgt1 && (f_body1[7:0] != 8'h00)) ||
-    (f_isAcctgt2 && (f_body2[7:0] != 8'h00)) || (f_isAcctgt3 && (f_body3[7:0] != 8'h00));
+  // (W4: f_acctgtResvBad 는 삭제 — ACCTGT [23:16] = 총개수 T, 어떤 값도
+  //  판정을 울리지 않는다. §1.4.7. 해석의 등가는 아래 f_acctgtTotal 등식.)
   // capability 종결이 맨 앞 (ISA-5) — 능력 밖 사슬은 본문 판정 대상 아님.
-  wire f_bodyMal = !io_iCapAbsent && (f_oprefResvBad || f_srcKindBad || f_acctgtResvBad);
+  wire f_bodyMal = !io_iCapAbsent && (f_oprefCrcBad || f_srcKindBad);
 
   // OPREF 등장 순서 A·B (§4.2.3) — 예약 슬라이스 불참의 참조 필드.
   wire f_a0 = f_isOpref0;
@@ -210,6 +280,11 @@ module OperandDecode_props (
   wire [7:0] f_acctgtLbid =
     (f_isAcctgt0 ? f_body0[15:8] : 8'h0) | (f_isAcctgt1 ? f_body1[15:8] : 8'h0) |
     (f_isAcctgt2 ? f_body2[15:8] : 8'h0) | (f_isAcctgt3 ? f_body3[15:8] : 8'h0);
+  // ACCTGT 총개수 T = body[7:0] (§1.4.7 · W4) — 예약 판정이었던 자리가 해석
+  // 필드가 됐다: T∈1..255 = 선언, 0 = 선언 없음(적법). 판정 불참.
+  wire [7:0] f_acctgtTotal =
+    (f_isAcctgt0 ? f_body0[7:0] : 8'h0) | (f_isAcctgt1 ? f_body1[7:0] : 8'h0) |
+    (f_isAcctgt2 ? f_body2[7:0] : 8'h0) | (f_isAcctgt3 ? f_body3[7:0] : 8'h0);
 
   // ── 조합 단언 ────────────────────────────────────────────────────────────
   always_comb begin
@@ -246,10 +321,13 @@ module OperandDecode_props (
               && io_oOprefBSrcKind == 4'h0);
       assert (io_oPrecPresent == 1'b0 && io_oPrecMode == 8'h0 && io_oPrecDim == 8'h0);
       assert (io_oReasmBind_valid == 1'b0 && io_oReasmBind_payload == 8'h0);
+      assert (io_oAcctgtTotal == 8'h0);
     end
 
-    // OperandDecode.resv_not_echoed — 예약 인접 필드의 등가: OPREF 예약 니블
-    // body[7:4] 과 ACCTGT 예약 바이트 body[7:0] 은 아래 어떤 우변에도 없다.
+    // OperandDecode.resv_not_echoed — 판정 슬라이스 인접 필드의 등가: OPREF
+    // CRC 니블 body[7:4] 은 아래 어떤 우변에도 없다 (판정 등급 1비트로만
+    // 나간다). ACCTGT body[7:0] 은 W4 부터 판정이 아니라 해석 필드다 —
+    // oAcctgtTotal 등식이 그 해석의 참을 잰다 (아래).
     assert (io_oOprefAValid   == (io_oExecValid && f_aValid));
     assert (io_oOprefALbid    == ((io_oExecValid && f_aValid) ? f_aLbid : 8'h0));
     assert (io_oOprefASrcKind == ((io_oExecValid && f_aValid) ? f_aKind : 4'h0));
@@ -260,6 +338,10 @@ module OperandDecode_props (
     assert (io_oReasmBind_valid   == (io_oExecValid && f_acctgtPresent));
     assert (io_oReasmBind_payload ==
             ((io_oExecValid && f_acctgtPresent) ? f_acctgtLbid : 8'h0));
+    // ACCTGT 총개수 T (W4) — 해석·방출의 등가. 게이트는 다른 산출과 같은
+    // emit ∧ present (무소비 방출 — 소비자 결선은 파도 밖, B.5 하위 항).
+    assert (io_oAcctgtTotal ==
+            ((io_oExecValid && f_acctgtPresent) ? f_acctgtTotal : 8'h0));
   end
 
   // ── 클록 단언 — 본문 malformation 전용 sticky (§5.5) ─────────────────────
@@ -285,10 +367,10 @@ module OperandDecode_props (
 
   // ── cover 증인 (cover 태스크에서만 컴파일) ───────────────────────────────
   //
-  // 왜 있는가. 위 단언 32개 중 **18개가 문면 그대로 전건 붙은 함의**다 —
+  // 왜 있는가. 위 단언 34개 중 **18개가 문면 그대로 전건 붙은 함의**다 —
   // exec_gate 14개가 전부 `if (!io_oExecValid)` 아래에 있고, fault_sticky 4개는
   // 상승/하강/에피소드/유지 전건을 각각 진다. 나머지 등식들도 전건을 숨긴다:
-  // `oMalformed == (iMalformed || f_bodyMal)` 하나가 **세 본문 판정의 논리합**
+  // `oMalformed == (iMalformed || f_bodyMal)` 하나가 **두 본문 판정의 논리합**
   // 을 접고, 그 각각이 다시 4슬롯 논리합이다.
   //
   // 그래서 다음 세계들에서 이 태스크는 전원 통과하면서 아무것도 재지 않는다:
@@ -296,10 +378,11 @@ module OperandDecode_props (
   //     8개는 우변이 상수 0 이라 자명, 그런데 「해석 산출」은 한 번도 관측되지
   //     않았다.
   //   · oExecValid 가 영영 1 인 세계 — exec_gate 14개가 **공허하게** 참이다.
-  //   · 세 판정 중 둘이 도달 불가능한 세계 — 합류 등식은 그대로 참인데
-  //     body_resv_judged 가 예고한 판정 3종 중 하나만 재어졌다.
-  //   · 예약 슬라이스가 늘 0 인 세계 — resv_not_echoed 의 「예약은 어디에도
-  //     실리지 않는다」가 잴 것 없이 참이다.
+  //   · 두 판정 중 하나가 도달 불가능한 세계 — 합류 등식은 그대로 참인데
+  //     body_resv_judged 가 예고한 판정 2종 중 하나만 재어졌다.
+  //   · CRC 니블이 늘 기대값인 세계 · ACCTGT T 가 늘 0 인 세계 —
+  //     resv_not_echoed 의 「판정 니블 비반향 · 총개수 해석 방출」이 잴 것
+  //     없이 참이다.
   //   · iCapAbsent 가 영영 0 인 세계 — f_bodyMal 의 `!io_iCapAbsent` 접합
   //     (ISA-5 · §1.6.2)이 한 번도 0 을 만들지 않아 미측정이다.
   //   · sticky 가 영영 서지 않는 세계 — fault_sticky 넷 전부 공허하다.
@@ -313,15 +396,12 @@ module OperandDecode_props (
 `ifdef OPERANDDECODE_COVER
   wire f_ok = f_past_valid && !reset;
 
-  // 본문 판정 3종의 **단독 원인** — f_bodyMal 이 접은 논리합의 각 항이 혼자서
+  // 본문 판정 2종의 **단독 원인** — f_bodyMal 이 접은 논리합의 각 항이 혼자서
   // 판정을 세우는 조건. 어느 항이 죽어 있어도 합류 등식은 참이므로, 항마다
   // 단독 원인 증인을 요구하는 것이 그 결을 닫는 유일한 수단이다.
-  wire f_only_oprefResv = !io_iCapAbsent && f_oprefResvBad
-                          && !f_srcKindBad && !f_acctgtResvBad;
-  wire f_only_srcKind   = !io_iCapAbsent && f_srcKindBad
-                          && !f_oprefResvBad && !f_acctgtResvBad;
-  wire f_only_acctgt    = !io_iCapAbsent && f_acctgtResvBad
-                          && !f_oprefResvBad && !f_srcKindBad;
+  // (W4: acctgt 항은 논리합에서 소멸 — 그 자리의 활성면은 o5 가 잰다.)
+  wire f_only_oprefCrc = !io_iCapAbsent && f_oprefCrcBad && !f_srcKindBad;
+  wire f_only_srcKind  = !io_iCapAbsent && f_srcKindBad && !f_oprefCrcBad;
 
   // ── O1..O2 — 판정 무관 통과면의 양 극성 ─────────────────────────────────
   // 각 줄의 `←` 오른쪽이 **그 증인이 살리는 대상**이다: `<Module>.<name>` 은
@@ -340,28 +420,29 @@ module OperandDecode_props (
   //     무효 사이클 — `io_oValid == io_iValid` 가 양 극성에서 재어진다.
   always @(posedge clk) if (f_ok) o2_invalid_cycle: cover (!io_oValid);
 
-  // ── O3..O5 — body_resv_judged 판정 3종의 단독 원인 ──────────────────────
+  // ── O3..O4 — body_resv_judged 판정 2종의 단독 원인 ──────────────────────
   // O3 ← OperandDecode.body_resv_judged · OperandDecode.verdict_join ·
-  //      OperandDecode.exec_gate  (§1.4.6 OPREF 예약 니블)
+  //      OperandDecode.exec_gate  (§1.4.6 OPREF CRC-4 불일치 — W5)
   // O4 ← OperandDecode.body_resv_judged · OperandDecode.verdict_join ·
   //      OperandDecode.exec_gate  (§1.4.3 src_kind >= 3)
-  // O5 ← OperandDecode.body_resv_judged · OperandDecode.verdict_join ·
-  //      OperandDecode.exec_gate  (§1.4.7 ACCTGT 예약 바이트)
-  // 대응: O3 ↔ §1.4.6 OPREF 예약 니블 · O4 ↔ §1.4.3 src_kind >= 3 ·
-  //       O5 ↔ §1.4.7 ACCTGT 예약 바이트. 셋 다 「상류는 유효 실행을 내밀었는데
+  // 대응: O3 ↔ §1.4.6 OPREF CRC-4 재계산 대조 · O4 ↔ §1.4.3 src_kind >= 3.
+  //       둘 다 「상류는 유효 실행을 내밀었는데
   //       이 모듈이 혼자 꺾는다」 형태다 — 그래야 (a) 합류 등식의 f_bodyMal 항이
-  //       그 판정 하나로 살고, (b) exec_gate 14개의 전건 `!oExecValid` 가
+  //       그 판정 하나로 살고, (b) exec_gate 15개의 전건 `!oExecValid` 가
   //       **본문 판정 때문에** 성립하는 궤적으로 도달한다. 상류 무효로 도달한
   //       전건(O6)은 이 모듈의 기여를 재지 못한다 — 둘을 갈라야 하는 이유다.
   always @(posedge clk) if (f_ok)
-    o3_only_opref_resv: cover (io_iValid && io_iExecValid && f_only_oprefResv
+    o3_only_opref_crc: cover (io_iValid && io_iExecValid && f_only_oprefCrc
            && io_oMalformed && !io_oExecValid);
   always @(posedge clk) if (f_ok)
     o4_only_srckind: cover (io_iValid && io_iExecValid && f_only_srcKind
            && io_oMalformed && !io_oExecValid);
+  // O5 ← OperandDecode.resv_not_echoed · OperandDecode.body_resv_judged
+  //      ACCTGT 총개수 T 가 비0 으로 방출된다 (W4 — 예약 판정이었던 자리가
+  //      해석 필드가 됐다: 같은 슬라이스가 판정을 울리지 않고 값으로 나온다.
+  //      「T 가 늘 0 인 세계」에서는 oAcctgtTotal 등식이 0==0 으로 자명하다).
   always @(posedge clk) if (f_ok)
-    o5_only_acctgt: cover (io_iValid && io_iExecValid && f_only_acctgt
-           && io_oMalformed && !io_oExecValid);
+    o5_acctgt_total_nonzero: cover (io_oReasmBind_valid && (io_oAcctgtTotal != 8'h0));
 
   // ── O6..O7 — 합류식의 나머지 두 항 ──────────────────────────────────────
   // O6 ← OperandDecode.exec_gate · OperandDecode.verdict_join
@@ -377,13 +458,13 @@ module OperandDecode_props (
 
   // ── O8 — ISA-5 / §1.6.2: 능력 부재가 본문 판정을 잠근다 ─────────────────
   // O8 ← OperandDecode.verdict_join · OperandDecode.body_resv_judged
-  // 원시 판정 3종 중 하나가 서 있는데도 iCapAbsent 때문에 mal 이 서지 않는
+  // 원시 판정 2종 중 하나가 서 있는데도 iCapAbsent 때문에 mal 이 서지 않는
   // 궤적. 이 증인이 없으면 f_bodyMal 의 `!io_iCapAbsent` 접합이 한 번도 0 을
   // 만들지 않는 세계에서 verdict_join 등식이 성립할 수 있다 — 그 게이트는
   // 미측정이고, capability 배타 단언 2건도 함께 공허해진다.
   always @(posedge clk) if (f_ok)
     o8_capabsent_locks: cover (io_iValid && io_iCapAbsent
-           && (f_oprefResvBad || f_srcKindBad || f_acctgtResvBad)
+           && (f_oprefCrcBad || f_srcKindBad)
            && !io_oMalformed && io_oCapAbsent);
 
   // ── O9..O10 — 판정 콘의 협소성: 무엇이 판정 대상이 *아닌가* ─────────────
@@ -392,11 +473,12 @@ module OperandDecode_props (
   //     f_is* 의 present 접합이 실제로 구분력을 갖는다는 활성면.
   always @(posedge clk) if (f_ok)
     o9_absent_slot_ignored: cover (io_iValid && io_iExecValid && !io_iSlotPresent_0
-           && (io_iSlotCode_0 == 4'h7) && (f_body0[7:4] != 4'h0)
+           && (io_iSlotCode_0 == 4'h7) && (f_body0[7:4] != f_crc4_0)
            && !f_bodyMal && io_oExecValid);
   // O10 ← OperandDecode.body_resv_judged
-  //      OPREF·ACCTGT 가 아닌 실재 슬롯의 같은 슬라이스가 비0 인데 판정되지
-  //     않는다 — 4비트 코드 전체 비교가 실제로 갈라낸다.
+  //      OPREF·ACCTGT 가 아닌 제3의 실재 슬롯의 같은 슬라이스가 비0 인데
+  //     판정되지 않는다 — 4비트 코드 전체 비교가 실제로 갈라낸다. (ACCTGT
+  //     의 불판정은 W4 부터 협소성이 아니라 정의다 — 그 활성면은 o5.)
   always @(posedge clk) if (f_ok)
     o10_other_code_ignored: cover (io_iValid && io_iExecValid && io_iSlotPresent_1
            && (io_iSlotCode_1 != 4'h7) && (io_iSlotCode_1 != 4'h9)
@@ -459,7 +541,7 @@ module OperandDecode_formal (
   input  wire        clk,
   input  wire        reset,
   input  wire        iValid, iMalformed, iCapAbsent, iExecValid,
-  input  wire [31:0] i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12,
+  input  wire [31:0] i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13,
   input  wire        p0, p1, p2, p3,
   input  wire [3:0]  c0, c1, c2, c3,
   input  wire [7:0]  f0, f1, f2, f3,
@@ -482,6 +564,7 @@ module OperandDecode_formal (
   wire [7:0] oPrecMode, oPrecDim;
   wire oBindV;
   wire [7:0] oBindP;
+  wire [7:0] oAcctgtT;
 
   OperandDecode dut (
     .clk(clk), .reset(reset),
@@ -490,7 +573,7 @@ module OperandDecode_formal (
     .io_iInstr_0(i0), .io_iInstr_1(i1), .io_iInstr_2(i2), .io_iInstr_3(i3),
     .io_iInstr_4(i4), .io_iInstr_5(i5), .io_iInstr_6(i6), .io_iInstr_7(i7),
     .io_iInstr_8(i8), .io_iInstr_9(i9), .io_iInstr_10(i10), .io_iInstr_11(i11),
-    .io_iInstr_12(i12),
+    .io_iInstr_12(i12), .io_iInstr_13(i13),
     .io_iSlotPresent_0(p0), .io_iSlotPresent_1(p1),
     .io_iSlotPresent_2(p2), .io_iSlotPresent_3(p3),
     .io_iSlotCode_0(c0), .io_iSlotCode_1(c1), .io_iSlotCode_2(c2), .io_iSlotCode_3(c3),
@@ -514,6 +597,7 @@ module OperandDecode_formal (
     .io_oOprefBValid(oBV), .io_oOprefBLbid(oBLbid), .io_oOprefBSrcKind(oBKind),
     .io_oPrecPresent(oPrecPresent), .io_oPrecMode(oPrecMode), .io_oPrecDim(oPrecDim),
     .io_oReasmBind_valid(oBindV), .io_oReasmBind_payload(oBindP),
+    .io_oAcctgtTotal(oAcctgtT),
     .io_oFault(oFault)
   );
 
@@ -524,7 +608,7 @@ module OperandDecode_formal (
     .io_iInstr_0(i0), .io_iInstr_1(i1), .io_iInstr_2(i2), .io_iInstr_3(i3),
     .io_iInstr_4(i4), .io_iInstr_5(i5), .io_iInstr_6(i6), .io_iInstr_7(i7),
     .io_iInstr_8(i8), .io_iInstr_9(i9), .io_iInstr_10(i10), .io_iInstr_11(i11),
-    .io_iInstr_12(i12),
+    .io_iInstr_12(i12), .io_iInstr_13(i13),
     .io_iSlotPresent_0(p0), .io_iSlotPresent_1(p1),
     .io_iSlotPresent_2(p2), .io_iSlotPresent_3(p3),
     .io_iSlotCode_0(c0), .io_iSlotCode_1(c1), .io_iSlotCode_2(c2), .io_iSlotCode_3(c3),
@@ -548,6 +632,7 @@ module OperandDecode_formal (
     .io_oOprefBValid(oBV), .io_oOprefBLbid(oBLbid), .io_oOprefBSrcKind(oBKind),
     .io_oPrecPresent(oPrecPresent), .io_oPrecMode(oPrecMode), .io_oPrecDim(oPrecDim),
     .io_oReasmBind_valid(oBindV), .io_oReasmBind_payload(oBindP),
+    .io_oAcctgtTotal(oAcctgtT),
     .io_oFault(oFault)
   );
 endmodule

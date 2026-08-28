@@ -89,6 +89,40 @@
 #     잰다. 좁혀 재기가 규율이고 컨테이너는 재빌드되므로 이 표류는 실제로
 #     일어난다.
 #
+# ## 엔진 처분 파도가 더 세는 것 (2026-08-28)
+#
+#   · **선-flatten 감사 모델의 const_a** (`design_preflatten.il` 이 있는
+#     태스크만 — 7째 칸 `const_a_authored`). 저작-항진과 병합-상수를 가르는
+#     유일한 측정이고, 갈라치기·판정은 lint 몫이다 (`lint_tautology` 의
+#     `_CONST_BY_MERGE` 머리 주석이 정본).
+#
+# ## btor 증인 갈래 (2026-08-29 — cover 엔진 증강 파도)
+#
+# sby 의 btor 엔진(btormc)은 cover PASS 요약에 「cover trace: …vcd」만 적고
+# smtbmc 의 「reached cover statement <이름>」 줄을 내지 않는다 — 실측
+# (walk_decode: PASS 요약이 궤적 22줄뿐, 이름 0). FAIL 요약은 더 나쁘다:
+# btor 엔진은 속성별 status 를 설계 DB 에 갱신하지 않아 도달했던 증인까지
+# **전부 unreached 절에 인쇄된다** — 실측 기록. 그러므로 btor 태스크의 요약
+# 파일에서 이름 줄을 읽으면 PASS 는 「증인 0」 오탐, FAIL 은 「전부 미도달」
+# 위증이 된다. 도달 귀속은 셋에서 유도한다:
+#
+#   · **이름** — model/design_btor.btor 의 bad 심볼. 파일 등장 순서가 곧
+#     btormc 의 속성 인덱스 0.. 이다 (실측: props.w1…w22, 소스 좌표 동반).
+#   · **도달** — engine_N/logfile.txt 의 「[btor>mc] bad state property <i>
+#     reachable at bound k = <k> SATISFIABLE」 줄의 인덱스. btormc 는 도달한
+#     속성을 이후 bound 에서 skip 하므로 인덱스는 원래 중복되지 않지만
+#     dedup 을 겸한다. 어느 engine_N 인지는 요약의 「engine_N (btor …)
+#     returned …」 줄에서 읽는다 — 태스크 이름으로 추측하지 않는다.
+#   · **미도달** — (전 bad 심볼) − (도달). FAIL 요약의 unreached 절은 위
+#     관측대로 위증이라 읽지 않는다.
+#
+# PASS 요약에서는 「cover trace:」 줄 수와 로그 도달 수를 교차 대조한다 —
+# sby 는 도달 증인마다 궤적 하나를 재생하므로(btorsim) 어긋나면 귀속을 믿을
+# 수 없다. 귀속이 성립하지 않는 경우(btor 모델·엔진 로그 부재 · 이름 없는
+# bad 심볼 · 교차 불일치)는 **도달 0 이 아니라 UNCOUNTED** 다 — 「세지
+# 못했다」와 「0 이었다」를 가르는 이 파일의 규율 그대로다. smtbmc·abc
+# 요약은 엔진 판별 매치가 비어 종전 갈래를 바이트 그대로 지난다.
+#
 # ## 실패해도 증거를 남긴다
 #
 # FAIL·HOLLOW·UNCOUNTED 도 그대로 기록한다. 「실패를 기록하지 않는 게이트」는
@@ -128,6 +162,41 @@ SBY_OUT="${SBY_OUT:-/sbyout}"
 LOG="${LOG:-/dev/stdout}"
 LINT="scripts/lint_postformal.py"
 TAUT="scripts/lint_tautology.py"
+
+# ── yosys-abc 호환 셔김 (2026-08-28, walk_decode 엔진 처분 파도) ──────────
+#
+# sby 의 abc 엔진과 yosys-smtbmc 의 abc 백엔드는 실행 파일 이름을
+# `yosys-abc` 로 하드코딩한다 (sby_core.py: os.getenv("ABC", …"yosys-abc") ·
+# smtio.py: popen_vargs=['yosys-abc', …]). 이 컨테이너의 yosys 는 Arch
+# 패키지라 yosys-abc 가 없고 독립 /usr/sbin/abc(Berkeley ABC 1.01)만 있다 —
+# 실측. 이름만 잇는 것으로 끝나지 않는 비호환이 하나 더 있다: sby 는
+# yosysHQ abc 전용 스위치를 전제로 `pdr` 에 `-v -l` 를 부가하는데
+# (sby_engine_abc.py 실측), Berkeley pdr 에는 `-l` 이 없어 사용법만 인쇄하고
+# UNKNOWN 이 된다 — 실측 (같은 모델·같은 pdr 가 `-l` 만 빼면 537초에
+# Property proved). 그래서 셔김은 두 가지만 한다: 이름을 잇고, 인자 속
+# `pdr -v -l` 을 `pdr -v` 로 좁혀 바꾼다 — 그 밖의 인자는 그대로 지난다.
+#
+# 진짜 yosys-abc 가 있으면 셔김을 만들지 않는다. 둘 다 없어도 만들지
+# 않는다 — abc 엔진 태스크는 그때 「Engine terminated」(ERROR 갈래)로 죽고,
+# 그것이 「엔진이 없는데 있다고 적는」 것보다 낫다 (없는 것을 있다고
+# 보고하는 쪽이 늘 더 나쁜 오탐이다).
+if ! command -v yosys-abc >/dev/null 2>&1 && command -v abc >/dev/null 2>&1; then
+  _abcshim=$(mktemp -d)
+  _abcreal=$(command -v abc)
+  {
+    printf '#!/bin/sh\n'
+    printf 'n=$#; i=0\n'
+    printf 'while [ $i -lt $n ]; do\n'
+    printf '  a=$1; shift\n'
+    printf '  case "$a" in *"pdr -v -l"*) a=$(printf "%%s" "$a" | sed "s/pdr -v -l/pdr -v/g");; esac\n'
+    printf '  set -- "$@" "$a"\n'
+    printf '  i=$((i+1))\n'
+    printf 'done\n'
+    printf 'exec %s "$@"\n' "$_abcreal"
+  } > "$_abcshim/yosys-abc"
+  chmod +x "$_abcshim/yosys-abc"
+  PATH="$_abcshim:$PATH"; export PATH
+fi
 
 mkdir -p "$SBY_OUT"
 fail=0; hollow=0; broken=0; total=0
@@ -215,7 +284,19 @@ for f in "$@"; do
     a=${trip%% *}; rest=${trip#* }; ca=${rest%% *}; ce=${rest##* }
     [ "$a" -lt 0 ] && nmiss=$((nmiss + 1))
 
-    tcells="$tcells${tcells:+ }$t:$mode:$a:$c:$ca:$ce"
+    # 선-flatten 감사 모델 — .sby 의 [script] 가 flatten *직전에*
+    # `write_rtlil ../model/design_preflatten.il` 을 두는 태스크만 있다
+    # (첫 실물: DecodeWalk/walk_decode — opt_merge 가 참조·RTL 의 동형 CRC
+    # 콘을 물리 공유해 등가 단언이 상수로 접히는 태스크). 여기서 센 const_a
+    # 가 「저작-항진」이고, design_prep.il 계수와의 차가 「병합-상수」다 —
+    # 그 갈라치기는 lint 몫이고 여기는 **센다**. 파일이 있는데 세지 못하면
+    # 그것은 0 이 아니라 미계수다 (이 파일의 규율 그대로).
+    aa=""
+    if [ -f "$mdir/design_preflatten.il" ]; then
+      aa=$(python3 "$TAUT" --count "$mdir/design_preflatten.il" 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin)["const_a"])' 2>/dev/null)
+      if [ -z "$aa" ]; then aa=-1; nmiss=$((nmiss + 1)); fi
+    fi
+    tcells="$tcells${tcells:+ }$t:$mode:$a:$c:$ca:$ce${aa:+:$aa}"
     [ "$a" -gt "$acell" ] && acell=$a
     [ "$c" -gt "$ccell" ] && ccell=$c
   done
@@ -240,11 +321,67 @@ for f in "$@"; do
   #
   # **이름을 세고 계수는 이름에서 유도한다.** 따로 세면 두 수가 갈릴 자리가
   # 생기고, 그 자리는 이 저장소가 이미 두 번 밟았다.
-  rnames=""; unames=""
+  #
+  # btor 엔진 태스크는 요약에 이름이 없다 — 갈래 전체가 머리 주석
+  # 「btor 증인 갈래」에 있다. 판별은 요약 자신의 「engine_N (btor …)
+  # returned …」 줄이다: smtbmc·abc 요약은 매치가 비어 종전 갈래를
+  # 바이트 그대로 지난다.
+  rnames=""; unames=""; wmiss=0
   for s in "$prefix"*/PASS "$prefix"*/FAIL; do
     [ -f "$s" ] || continue
-    rnames="$rnames $(awk '/^ *reached cover statement /{print $4}' "$s")"
-    unames="$unames $(awk '/unreached cover statement /{print $4}' "$s")"
+    beng=$(awk '$1 ~ /^engine_[0-9]+$/ && index($2, "(btor") == 1 { print $1; exit }' "$s")
+    if [ -z "$beng" ]; then
+      rnames="$rnames $(awk '/^ *reached cover statement /{print $4}' "$s")"
+      unames="$unames $(awk '/unreached cover statement /{print $4}' "$s")"
+      continue
+    fi
+    # ── btor 갈래 — 이름은 bad 심볼, 도달은 엔진 로그, 미도달은 차집합 ──
+    sdir=$(dirname "$s")
+    bt="$sdir/model/design_btor.btor"
+    el="$sdir/$beng/logfile.txt"
+    if [ ! -f "$bt" ] || [ ! -f "$el" ]; then
+      # 귀속의 재료가 없다 — 「도달 0」이 아니라 「귀속하지 못했다」다.
+      wmiss=$((wmiss + 1))
+      continue
+    fi
+    if [ "$(awk '$2 == "bad" && (NF < 4 || $4 == ";") { n++ } END { print n + 0 }' "$bt")" -gt 0 ]; then
+      # 이름 없는 bad 심볼 — 인덱스→이름 사상이 성립하지 않는다.
+      wmiss=$((wmiss + 1))
+      continue
+    fi
+    # bad 심볼을 파일 등장 순(= btormc 속성 인덱스)으로 적재하고, 로그의
+    # 「reachable … SATISFIABLE」 인덱스를 이름으로 사상한다. UNSATISFIABLE
+    # 은 $NF 전장 비교라 갈라진다 (「reached/unreached」 부분 문자열 함정과
+    # 같은 결 — 접미 매치가 아니라 필드 등가로 센다).
+    br=$(awk '
+      NR == FNR { if ($2 == "bad") name[n++] = $4; next }
+      $1 == "[btor>mc]" && $2 == "bad" && $3 == "state" && $4 == "property" &&
+        $6 == "reachable" && $NF == "SATISFIABLE" && !($5 in hit) && $5 + 0 < n {
+        hit[$5] = 1; print name[$5]
+      }' "$bt" "$el")
+    # `i` 명시 초기화 — 미초기화 awk 변수는 `in` 의 첨자로 "" 이지 "0" 이
+    # 아니라서, 첫 bad(인덱스 0)가 hit 대조를 그냥 지나 미도달로 인쇄된다
+    # (실장 중 실물 로그 건식 대조에서 실제로 밟았다).
+    bu=$(awk '
+      BEGIN { i = 0 }
+      NR == FNR {
+        if ($1 == "[btor>mc]" && $2 == "bad" && $3 == "state" && $4 == "property" &&
+            $6 == "reachable" && $NF == "SATISFIABLE") hit[$5] = 1
+        next
+      }
+      $2 == "bad" { if (!(i in hit)) print $4; i++ }' "$el" "$bt")
+    case "$s" in */PASS)
+      # PASS 는 도달 증인마다 궤적 하나를 재생한다 — 로그 귀속과 「cover
+      # trace:」 줄 수를 교차 대조한다. 어긋난 귀속을 싣는 것보다 UNCOUNTED
+      # 가 낫다. (FAIL 은 여기서 가르지 않는다 — 판정 사다리에서 FAIL 이
+      # 먼저 서고, 로그 유도 이름은 그 증거에 그대로 실린다.)
+      if [ "$(echo $br | wc -w)" -ne "$(grep -c '^cover trace: ' "$s")" ]; then
+        wmiss=$((wmiss + 1))
+        continue
+      fi
+    esac
+    rnames="$rnames $br"
+    unames="$unames $bu"
   done
   reached=$(echo $rnames | wc -w)
   unreach=$(echo $unames | wc -w)
@@ -265,6 +402,13 @@ for f in "$@"; do
   elif [ "$nmiss" -gt 0 ]; then
     # 모델은 있는데 세는 쪽을 부르지 못했다 — 같은 부류의 게이트 결함이다.
     echo "$dir/$name UNCOUNTED (모델 $nmiss개를 $TAUT --count 로 세지 못했다 — 「접힘이 없다」가 아니라 「세는 쪽이 죽었다」다)" >> "$LOG"
+    broken=$((broken + 1))
+    emit "$f" UNCOUNTED "$tasks" "$tcells" "$rnames" "$unames" "$yo"
+  elif [ "$wmiss" -gt 0 ]; then
+    # btor 증인의 귀속이 성립하지 않았다 — 「도달 0」이 아니라 「귀속하지
+    # 못했다」다. bad 심볼·엔진 로그·궤적 수가 맞물려야 이름이 선다
+    # (머리 주석 「btor 증인 갈래」).
+    echo "$dir/$name UNCOUNTED (btor 요약 $wmiss건의 증인 귀속 실패 — 「도달 0」이 아니라 「귀속하지 못했다」다)" >> "$LOG"
     broken=$((broken + 1))
     emit "$f" UNCOUNTED "$tasks" "$tcells" "$rnames" "$unames" "$yo"
   elif [ $((acell + ccell)) -eq 0 ]; then

@@ -1,6 +1,6 @@
 {
   "anchors": [],
-  "at": "2026-08-27T12:41:00Z",
+  "at": "2026-08-28T19:59:26Z",
   "cover": {
     "reached": 20,
     "reached_names": [
@@ -17,9 +17,9 @@
       "OperandDecode_formal.props.o1_accept",
       "OperandDecode_formal.props.o20_no_fault_without_valid",
       "OperandDecode_formal.props.o2_invalid_cycle",
-      "OperandDecode_formal.props.o3_only_opref_resv",
+      "OperandDecode_formal.props.o3_only_opref_crc",
       "OperandDecode_formal.props.o4_only_srckind",
-      "OperandDecode_formal.props.o5_only_acctgt",
+      "OperandDecode_formal.props.o5_acctgt_total_nonzero",
       "OperandDecode_formal.props.o6_upstream_invalid",
       "OperandDecode_formal.props.o7_upstream_mal_passthru",
       "OperandDecode_formal.props.o8_capabsent_locks",
@@ -29,8 +29,8 @@
     "unreached_names": []
   },
   "inputs": {
-    "rtl/generated/OperandDecode.sv": "ac544b13a9226a0d1f966c0ad07ef916c318d2ad4d6acf957e1c5961c76edc99",
-    "rtl/sv/assert/OperandDecode_props.sv": "b535860e927149c6b40062dc8df6f0d7bc6b1aec7587542f7cecded62600f514"
+    "rtl/generated/OperandDecode.sv": "578f535cedcff9656930850491deec6fd0a9717293ade151e16aa72e125587ad",
+    "rtl/sv/assert/OperandDecode_props.sv": "62dfa43ba1347d27be4ec2af284152c3a02f4afb163e48384e44866a94be91d5"
   },
   "per_task": {
     "cover": {
@@ -41,7 +41,7 @@
       "mode": "cover"
     },
     "prove": {
-      "assert": 32,
+      "assert": 34,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -49,7 +49,7 @@
     }
   },
   "sby": "rtl/formal/sby/OperandDecode/body_judge.sby",
-  "sby_sha256": "61b8fddfc2bf719f34f1706660a2799866333823e827aafb105ce7d824c76fb5",
+  "sby_sha256": "d1eaabeec7cd1485538f61ef21f47d012aa7f0b22d5a713dd5bd18949c35e71c",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "cover:PASS prove:PASS",
   "tool": "SBY v0.66",

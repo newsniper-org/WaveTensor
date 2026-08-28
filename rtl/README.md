@@ -663,10 +663,21 @@ RTL 이 모델에 없는 결정을 했다. §6.3: 「그 결정을 모델로 돌
 - 워드 수 필드의 지위 확정 — 보폭 authority 는 카탈로그 표이고 워드 내 [7:0] 워드 수 필드는 검산이다 (END/길이 관계와 동형). 불일치 = malformation, 8비트 전폭 비교. 정본은 이 필드의 검사 여부를 규정하지 않았다 — 환류 필요
 - §4.2.3 반복 규약을 전수 구현했다 (과제 명시는 ACCTGT 중복뿐) — PORT/IMM16/IMM32/IMM64/MEM/PRECISION/ACCTGT ≤1, OPREF ≤2, SUBSCRIPT·NOP_PAD 무제한. Walk.tla 는 §4.2.3 을 명시적으로 밖에 두었으므로 이 축의 모델 부재가 확인됨 — 순수 종류 계수 검사라 순회 모듈이 품는 것이 자연스럽다고 판단. 통합자 조정 대상
 - END 미출현 = 전부 malformation 으로 판정 (Walk.tla RejCap · 과제 지시대로) — 그러나 정본 §1.3 은 「지원하지 않는 길이는 능력 부재」라 적는다. END 가 구현 상한 밖에 실재하는 잘 형성된 사슬과 END 가 아예 없는 사슬을 상한 안 순회로는 구별할 수 없다 — §1.6.1 항4 (malformation) 와 §1.3 (capability 부재) 의 경계 확정이 정본에 필요
-- 방출면 예약 마스킹 — oInstr 워드0 [15:8] 을 0 으로 지워 방출한다. SEC-7 (ii) (판정 이후 구별 불가능) 를 게이트가 아닌 구조로 강제하는 결정이며 모델 관측면에 없는 형태 — 환류 후보
+- 방출면 예약 마스킹 — oInstr 워드0 [15:8] 을 0 으로 지워 방출한다. SEC-7 (ii) (판정 이후 구별 불가능) 를 게이트가 아닌 구조로 강제하는 결정이며 모델 관측면에 없는 형태 — 환류 후보. (인코딩 개정 파도가 [15:12] 로 협소화 — [11:8] 은 opcode_ext 라 방출된다. 아래 파도 기록)
 - sticky 발화 시점 — oFault 는 판정 방출 다음 에지에 선다 (set 이 래치된 판정 rMal 만 소비 — mal_carried 의 단일 원천 유지의 귀결). 판정 방출과 sticky 가 같은 tick 이어야 한다는 요구가 어디에도 없음을 확인, 필요 시 규정 요망
 - 미지 EH 의 순회 보폭 = 1 워드로 고정 (정본 미규정; 판정은 어차피 malformation 이므로 유일 목적은 순회 유계·결정성) — 환류 후보
-- 이 모듈이 남긴 것: 플래그–EH 대응 검사 (§1.6.1 항2) 와 EH 본문 내 예약 필드 (OPREF [23:20]·ACCTGT [23:16]) 판정은 본문 해석과 함께 2차 파도 몫 — 단 D14 의 「판정은 순회 종료 직후 한 번」과 정합하려면 2차 파도의 malformation 항이 같은 판정점(oExecValid 이전)에 합류해야 한다
+- 이 모듈이 남긴 것 — **이행 기록 (2026-08-28 인코딩 개정 파도)**: EH 본문 내 판정 몫은 OperandDecode 착지 + 이번 파도로 **완료**됐다 — 다만 「예약 판정」이 아니라 최종 의미론으로: OPREF [23:20] 은 CRC-4 국소 검산 (W5, `judge.oprefCrcBad`), ACCTGT [23:16] 은 조각열 선언 총개수 T 해석·방출 (W4 — 판정기 아님). 둘 다 oExecValid 이전 합류라 D14 정합 요건 그대로다. **잔여는 플래그–EH 대응 검사 (§1.6.1 항2) 하나** — 여전히 미착지.
+
+**DecodeWalk·OperandDecode — 인코딩 개정 파도 (W1~W8, 2026-08-28)**
+
+- **W1** — 기본 헤더 예약 판정 [15:8] → **[15:12] 협소화** (`resvFld`), [11:8] 은 opcode_ext. 방출 마스킹도 [15:12] 만 — opcode_ext 는 opcode 처럼 정당한 구별 인자라 방출된다 (SEC-7 (ii) 재유도). 이 순회 트리에 opcode 소비자는 여전히 0건 — 12b 결선 `{[11:8],[31:24]}` 는 미래 디스패치 유닛 몫.
+- **W8 CH** — `off(0) = (next_hdr==END) ? 1 : 2` (EH 순회 시작 워드 = word2), maxWords 13→**14** (1 기본 + 1 CH + 12 EH — EH 예산 불변), bh_len 회계는 시작 오프셋 경유로 자동 편입. 판정 `judge.chBad = (next_hdr≠END) && (재계산 ≠ word1)` — judge.mal 합류 (래치 이전 = D14). **CRC-32C 구현 형태가 결정 사항이다**: 32단 비트-직렬 중첩식은 SpinalHDL elaborate 재귀를 넘긴다 (StackOverflowError 실측) — GF(2) 선형성으로 워드 갱신을 엘라보레이션 시점 상수 행렬(단위-벡터 프로브)로 평탄화, 비트당 균형 XOR 트리로 방출. 상수 행렬이지 메모리가 아니다 ($mem_v2 함정 무관). 소프트웨어 참조 모델은 RFC 3720 워드 정렬 기지값 2건(32×0x00·32×0xFF)을 elaborate `require` 로 못박는다.
+- **W8 검증 실측** — 생성 SV 를 일회용 verilator TB(레포 밖 /tmp) 7케이스로 파이썬 독립 참조와 대조: CH 일치/불일치 · EH-0(word1 쓰레기 무판정) · opcode_ext 비0 적법 · [15:12] 비0 malformed · **본문 1비트 훼손을 구조 검산 전부 통과 후 CH 만 잡는 부류** 전부 통과. 어셈블러(축 B) 방출과의 차등 대조(CH·OPREF CRC-4)도 일치. Shape cocotb 스위트 6/6 (어셈블러 경유 14워드 자극 — CH·OPREF CRC 단대단).
+- **W5** — `oprefResvBad`(==0 판정) → **`oprefCrcBad`** 교체: 논리 12b(LBID∥src_kind, MSB-first) CRC-4 (x⁴+x+1, init 0, 비반사) 기대값을 정적 12단 XOR 트리로 재계산, body[7:4] 와 대조. 슬롯별 각자 검산 (≤2 인스턴스 A·B). 기지값 4종은 어셈블러·테스트 참조측 자기시험과 동일 문면.
+- **W4** — `acctgtResvBad` **삭제** (이 필드의 어떤 값도 구조 판정을 울리지 않는다), body[7:0]=T 해석 + `oAcctgtTotal` 방출 신설 (**무소비** — Reassembly 사이드밴드와의 결선은 파도 밖, B.5). Wt64Top 은 `io.dec.acctgtTotal` 로 관측 수출. Shape 하네스 대조면 재유도: 출력 117→118 · 대조면 115→116 (`test_shape_equiv.py` 핀 갱신, INSTR_WORDS 13→14).
+- **W2·W3 — 규범 기록만** (DecodeWalk 머리 주석): 12b→8b 접힘 지점은 opcode_ext==0 검사 동반 의무 (0x47B→0x07B 공허 PASS — 실물 게이트는 `scripts/gen_isa_tables.py`, 축 B) · 미배정 opcode = malformation 의 실판정은 opcode 소비자 몫 — 이 재구현 트리에는 아직 소비자가 없다 (합성 가능한 판정을 이 파도가 싣지 못한 결손으로 남긴다 — 디스패치 착지 시 의무).
+- **후-formal 파급 (재측정 의무 — 축 D·메인 루프)**: `walk_decode`(DecodeWalk.sv)·`body_judge`(OperandDecode.sv) stale + **AbortStaging/props ([files] = Wt64Top.sv — 합성 태스크 실재, 파일명 grep 만으로는 안 잡힌다)**. 신설 가드 `Decode.ch_judged` 는 GUARD-MAP 1줄이 이미 실렸고 Decode.tla AllGuards 등재(축 D)까지 lint_guard_map 이 의도적으로 FAIL 이다 — 록스텝 커밋에서 해소. ⚠ 규모 플래그: CRC-32C XOR 트리로 DecodeWalk.sv 가 ~0.5k → ~25.7k 줄 — SAT/SMT 는 XOR 사슬에 취약하므로 walk_decode 증명 비용 급증 가능. 하네스 CRC 참조 모델을 같은 행렬-상수 유도로 짜면 등가 증명이 구조 동형이 된다 (권고).
+- GUARD-MAP 편집은 DecodeWalk 블록에 1줄 신설 + 4건 같은 줄 치환 — 줄 수 불변 규약은 이 두 모듈 비구속 (하네스가 포트면만 관측, `lint_generated_names` OK 실측).
 
 **Wt64Top — 구역 지도 파도 (2026-08-25)**
 

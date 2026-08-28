@@ -36,6 +36,12 @@
 **`EN` 이 상수 1 인 것은 정상이다** — 무조건 단언이고 3차 실측에서 18건이었다.
 그것을 잡으면 오탐이고, 그래서 `en1` 은 세되 판정하지 않는다(보고만).
 
+**상수 A 에는 두 부류가 있다** (2026-08-28 신설 — `_CONST_BY_MERGE` 머리
+주석이 정본): 저작-항진(단언 문면이 설계 무관 — 하드 실패)과 병합-상수
+(flatten 후 opt_merge 가 동형 콘을 물리 공유해 등가 miter 가 접힘 — 구조적
+등가의 증명이므로 세되 근거와 함께 기록). 가르는 기계는 선-flatten 감사
+모델(`design_preflatten.il`)이다 — 병합 전 모델에서 접힌 것만 저작이다.
+
 ## 간접 결속 — 직접 상수만 보면 놓친다
 
 3차 전수 감사가 잡은 것은 「모듈 수준 `connect` 로 상수에 결속된 경우」다.
@@ -110,6 +116,52 @@ _TAUTOLOGY = {
     # (그것이 서명이다).
 }
 _MAX_TAUTOLOGY = 0   # 상수 접힘이 허용된 태스크 수. 늘지 않는다.
+
+# ── 병합-상수(const-by-merge) 표 — 저작-항진과 가른다 ────────────────────
+#
+# 2026-08-28 (walk_decode 엔진 처분 파도) 신설. `_STRUCTURAL`/`_PARTIAL` 의
+# 계보다: **범주가 없으면 통합자는 둘 중 하나를 강요받는다** — 게이트를
+# 완화하거나(항진 검출이 통째로 죽는다), 모델 준비를 비틀어 접히지 않게
+# 만들거나(증명이 완주하지 못하게 되돌아간다). 범주를 만들고 표+래칫으로
+# 서명을 요구하는 것이 세 번 검증된 세 번째 길이다.
+#
+# ## 두 접힘은 다른 것이다
+#
+#   저작-항진   단언 *문면*이 설계와 무관하게 참이다 (`assert (q == q)`).
+#               어떤 설계에서도 통과하므로 아무것도 재지 않는다. **하드 실패.**
+#   병합-상수   단언 문면은 두 독립 전개의 등가인데, flatten 후 opt_merge 가
+#               셀형·연결이 동일한 두 콘을 물리 공유해 $eq(r,r)→1 로 접었다.
+#               이 접힘은 **구조적 등가의 증명 그 자체**다 — RTL 상수가
+#               하나라도 틀리면 병합이 안 되어 SAT 반례 탐색으로 되돌아간다
+#               (walk_decode.sby [script] 의 flatten 주석 · 실측). 세되
+#               근거와 함께 기록하고, 하드 실패시키지 않는다.
+#
+# ## 기계가 둘을 가르는 방법 — 선-flatten 감사 모델
+#
+# 해당 .sby 의 [script] 가 flatten *직전에* `design_preflatten.il` 을 남기고
+# (sby_sweep.sh 가 그것을 세어 const_a_authored 로 증거에 싣는다), 병합 전
+# 모델에서 접힌 것만 저작-항진으로 판정한다. 병합 전 모델에서 0 이고 병합 후
+# 모델에서 N 이면 그 N 은 전부 병합-상수다. **감사 모델이 없는 태스크는 종전
+# 그대로 접힘 전부가 저작 혐의다** — 이 표에 올리는 것만으로는 아무것도
+# 면제되지 않는다 (표 등재 + 감사 모델 + authored 0, 셋이 모두 서야 한다).
+#
+# 키: `_TAUTOLOGY` 와 같은 "<sby 상대경로>:<태스크>". 값: (근거, 그래도 재는
+# 다른 수단). 항목을 넣으려면 _MAX_CONST_BY_MERGE 를 함께 올려야 한다.
+_CONST_BY_MERGE = {
+    "rtl/formal/sby/DecodeWalk/walk_decode.sby:bmc": (
+        "CH CRC-32C 등가 단언 콘 — 참조(스펙-유도 워드 행렬 상수)와 RTL 의 "
+        "CRC 콘이 동형이라 flatten 후 opt_merge 가 물리 공유, oInstr 등가 "
+        "14 · slot 등가 3 · 그 외 2 의 $eq 가 상수 1 로 접힘 (실측 19/41)",
+        "선-flatten 감사 모델에서 저작-항진 0 을 매 스윕 실측 + 변이 실측 "
+        "(RTL·참조 상수 1비트 훼손 시 병합이 풀려 반례가 실제로 난다 — "
+        "walk_decode.sby 엔진 처분 기록의 변이 4/4)",
+    ),
+    "rtl/formal/sby/DecodeWalk/walk_decode.sby:prove": (
+        "bmc 와 같은 모델·같은 병합 (태스크는 엔진만 다르다 — abc pdr)",
+        "bmc 항목과 동일 — 감사 모델은 태스크마다 따로 생성·계수된다",
+    ),
+}
+_MAX_CONST_BY_MERGE = 2   # 병합-상수가 허용된 태스크 수. 늘리려면 근거와 함께.
 
 _CONST_RE = re.compile(r"^(\d+)'([01xzm-]+)$")
 _INT_RE = re.compile(r"^-?\d+$")
@@ -244,7 +296,16 @@ def scan_model(path: Path) -> dict:
         if stripped == "end":
             if in_cell is not None:
                 ctype, ports, cname, csrc = in_cell
-                if ctype == "$assert":
+                # $check(FLAVOR=assert)는 $assert 와 같은 자로 센다 (2026-08-28):
+                # yosys 0.66 의 read_verilog -formal 은 단언을 $check 로 들이고
+                # $assert 로의 하강은 async2sync 가 한다. 선-flatten 감사 모델
+                # (walk_decode.sby 의 design_preflatten.il)은 하강 전 덤프라
+                # $check 뿐이고, 이것을 못 세면 「세는 쪽이 아무것도 보지
+                # 못했다」가 계수 0 으로 둔갑한다 — 이 파일이 막으러 온 그
+                # 형태다. 조건·활성 피연산자는 양쪽 다 \A·\EN 이다.
+                if ctype == "$assert" or (
+                        ctype == "$check"
+                        and ports.get("#FLAVOR") == '"assert"'):
                     ports["#name"] = cname
                     ports["#src"] = csrc
                     cur()["asserts"].append(ports)
@@ -258,6 +319,13 @@ def scan_model(path: Path) -> dict:
             in_cell = (parts[1] if len(parts) >= 2 else "?", {},
                        parts[2].lstrip("\\") if len(parts) >= 3 else "?",
                        last_src)
+            continue
+
+        if stripped.startswith("parameter ") and in_cell is not None:
+            # $check 의 FLAVOR 판별에만 쓴다. `parameter \FLAVOR "assert"`.
+            p = stripped.split(None, 2)
+            if len(p) == 3 and p[1] == "\\FLAVOR":
+                in_cell[1]["#FLAVOR"] = p[2].strip()
             continue
 
         if stripped.startswith("wire "):
@@ -444,6 +512,18 @@ module \selftest
     connect \A \live
     connect \EN \live
   end
+  attribute \keep 1
+  cell $check \t_check_assert_const
+    parameter \FLAVOR "assert"
+    connect \A 1'1
+    connect \EN \en_one
+  end
+  attribute \keep 1
+  cell $check \t_check_cover_const
+    parameter \FLAVOR "cover"
+    connect \A 1'1
+    connect \EN \en_one
+  end
 end
 """
 
@@ -472,11 +552,13 @@ def self_test(verbose: bool = True) -> bool:
         f.write_text(_FIXTURE, encoding="utf-8")
         r = scan_model(f)
         checks = [
-            ("assert 셀 6개를 센다", r["assert_cells"] == 6, r["assert_cells"]),
-            ("상수 A 3건 (직접·간접1단·간접2단)", r["const_a"] == 3, r["const_a"]),
+            ("assert 셀 7개를 센다 ($check FLAVOR=assert 포함 · FLAVOR=cover 제외)",
+             r["assert_cells"] == 7, r["assert_cells"]),
+            ("상수 A 4건 (직접·간접1단·간접2단·$check-assert)",
+             r["const_a"] == 4, r["const_a"]),
             ("상수 EN0 1건", r["const_en0"] == 1, r["const_en0"]),
-            ("무조건 단언(EN=1) 4건을 항진으로 잡지 않는다",
-             r["en1"] == 4, r["en1"]),
+            ("무조건 단언(EN=1) 5건을 항진으로 잡지 않는다",
+             r["en1"] == 5, r["en1"]),
             ("별칭 사슬 깊이 ≥ 1 (간접이 실제로 전파됐다)",
              r["depth"] >= 1, r["depth"]),
         ]
@@ -515,7 +597,8 @@ def audit(out: Path, require_models: bool, as_json: bool) -> int:
     found = sby_models(out)
     counted, uncounted, offenders, agg = [], [], [], {
         "assert_cells": 0, "const_a": 0, "const_en0": 0, "en1": 0, "depth": 0,
-        "unparsed": 0}
+        "unparsed": 0, "const_by_merge": 0}
+    merged, gate_defects = [], []
     for rel, tasks in sorted(found.items()):
         if not tasks:
             uncounted.append(rel)
@@ -523,13 +606,43 @@ def audit(out: Path, require_models: bool, as_json: bool) -> int:
         for task, model in sorted(tasks.items()):
             r = scan_model(model)
             agg["assert_cells"] += r["assert_cells"]
-            for k in ("const_a", "const_en0", "en1", "unparsed"):
+            for k in ("const_en0", "en1", "unparsed"):
                 agg[k] += r[k]
             agg["depth"] = max(agg["depth"], r["depth"])
-            counted.append(f"{rel}:{task}")
-            if r["const_a"] or r["const_en0"]:
-                key = f"{rel}:{task}"
-                if key not in _TAUTOLOGY:
+            key = f"{rel}:{task}"
+            counted.append(key)
+
+            # 선-flatten 감사 모델 — 있으면 저작-항진과 병합-상수를 가른다
+            # (`_CONST_BY_MERGE` 머리 주석). 없으면 종전 그대로: 접힘 전부가
+            # 저작 혐의다. `const_a` 집계는 **저작 혐의분**이다 — 병합-상수를
+            # 같은 칸에 합치면 머리줄의 「상수 A 0」이 두 뜻을 갖게 된다.
+            pre = model.parent / "design_preflatten.il"
+            if pre.is_file():
+                rp = scan_model(pre)
+                authored = rp["const_a"]
+                by_merge = r["const_a"] - authored
+                agg["const_a"] += authored
+                if (authored or r["const_en0"]) and key not in _TAUTOLOGY:
+                    # 저작-항진 — 병합 전 모델에서 이미 접혀 있었다.
+                    offenders.append((key, dict(rp, const_en0=r["const_en0"])))
+                elif by_merge < 0 and rp["assert_cells"] == r["assert_cells"]:
+                    # 같은 단언 집합인데 병합 *후*가 더 적게 접혔다 — 산술이
+                    # 서지 않는다. 게이트(감사 모델 배선)의 결함이지 대상의
+                    # 결함이 아니다. (단언 수가 다른 것은 정상 — cover 모델은
+                    # chformal 이 단언을 제거한다.)
+                    gate_defects.append(
+                        f"{key} — 선-flatten 접힘 {authored} > 후-flatten "
+                        f"{r['const_a']} (단언 수 동일 {r['assert_cells']})")
+                elif by_merge > 0:
+                    agg["const_by_merge"] += by_merge
+                    if key in _CONST_BY_MERGE:
+                        merged.append((key, by_merge))
+                    else:
+                        offenders.append((key, dict(
+                            r, _by_merge=by_merge, const_a=0)))
+            else:
+                agg["const_a"] += r["const_a"]
+                if (r["const_a"] or r["const_en0"]) and key not in _TAUTOLOGY:
                     offenders.append((key, r))
 
     if as_json:
@@ -545,6 +658,22 @@ def audit(out: Path, require_models: bool, as_json: bool) -> int:
     if len(_TAUTOLOGY) > _MAX_TAUTOLOGY:
         _fail(f"상수 접힘 래칫 위반 — {len(_TAUTOLOGY)} > {_MAX_TAUTOLOGY}. "
               f"면제를 늘리려면 근거와 함께 _MAX_TAUTOLOGY 를 올려라 (그것이 서명이다)")
+    for key, val in _CONST_BY_MERGE.items():
+        if key.split(":")[0] not in found:
+            _fail(f"_CONST_BY_MERGE 표가 부패했다 — {key} 의 .sby 가 없다. "
+                  f"항목을 지워라")
+        if not isinstance(val, (tuple, list)) or len(val) != 2 or not all(
+                isinstance(s, str) and s.strip() for s in val):
+            _fail(f"_CONST_BY_MERGE 표의 {key} 에 (근거, 다른 수단) 두 문면이 "
+                  f"없다 — 근거 없는 병합-상수는 저작-항진과 구별되지 않는다")
+    if len(_CONST_BY_MERGE) > _MAX_CONST_BY_MERGE:
+        _fail(f"병합-상수 래칫 위반 — {len(_CONST_BY_MERGE)} > "
+              f"{_MAX_CONST_BY_MERGE}. 항목을 늘리려면 근거와 함께 "
+              f"_MAX_CONST_BY_MERGE 를 올려라 (그것이 서명이다)")
+    if gate_defects:
+        _fail("선-flatten 감사 모델의 산술이 서지 않는 태스크가 있다 — "
+              "**게이트의 결함**이지 대상의 결함이 아니다: "
+              + " · ".join(gate_defects))
 
     if not as_json:
         # 미계수를 **머리줄 안에** 넣는다. 꼬리말로 붙이면 훑는 사람은 「상수 A
@@ -553,8 +682,9 @@ def audit(out: Path, require_models: bool, as_json: bool) -> int:
         scope = (f"{len(counted)}태스크" if not uncounted else
                  f"{len(counted)}태스크 (**미계수 {len(uncounted)}** — 아래)")
         print(f"상수 접힘 검사: {scope}에서 $assert "
-              f"{agg['assert_cells']}셀 — 상수 A {agg['const_a']} · "
+              f"{agg['assert_cells']}셀 — 상수 A(저작) {agg['const_a']} · "
               f"상수 EN0 {agg['const_en0']} (무조건 단언 {agg['en1']}건은 정상) "
+              f"· 병합-상수 {agg['const_by_merge']} (≤표 {_MAX_CONST_BY_MERGE}) "
               f"· 별칭 추적 깊이 {agg['depth']}단 (래칫 면제≤{_MAX_TAUTOLOGY})")
         print("  ※ yosys 가 접을 수 있는 부류만이다 — 의미적 동치와 assume 아래의 "
               "항진은 접히지 않는다. 3형은 열린 채다")
@@ -562,8 +692,22 @@ def audit(out: Path, require_models: bool, as_json: bool) -> int:
             print(f"  ⚠ 해석하지 못한 결선/피연산자 {agg['unparsed']}건 — 그 뒤의 "
                   f"상수 결속은 **보지 못했다**. 위 계수 0 은 그만큼 약하다. "
                   f"parse_sigspec 를 넓혀라", file=sys.stderr)
+        # 병합-상수 — 하드 실패가 아니라 **근거 있는 기록**이다. 계수와 근거를
+        # 매번 인쇄한다 (`_STRUCTURAL` 의 「안 잰다」 칸과 같은 성격 — 숫자를
+        # 침묵시키면 다음 사람이 이 접힘을 저작-항진으로 오독하거나, 반대로
+        # 저작-항진을 병합으로 오독한다).
+        for key, n in merged:
+            why, other = _CONST_BY_MERGE[key]
+            print(f"  병합-상수 {key} — {n}건 (선-flatten 감사 모델에서 저작 0 "
+                  f"실측)")
+            print(f"      근거: {why}")
+            print(f"      그래도 재는 수단: {other}")
 
     for key, r in offenders:
+        if "_by_merge" in r:
+            print(f"  FAIL {key} — 병합-상수 {r['_by_merge']}건이 "
+                  f"_CONST_BY_MERGE 표에 없다", file=sys.stderr)
+            continue
         print(f"  FAIL {key} — 상수 A {r['const_a']} · 상수 EN0 "
               f"{r['const_en0']}", file=sys.stderr)
         for x in r["detail"][:8]:
@@ -573,9 +717,11 @@ def audit(out: Path, require_models: bool, as_json: bool) -> int:
             print(f"      {x['cell']}  {x['port']}={x['value']} ({why})"
                   f"  @ {x['src']}", file=sys.stderr)
     if offenders:
-        _fail(f"상수로 접힌 단언이 {len(offenders)}태스크에 있다 — 설계와 무관하게 "
-              f"참이거나 영영 비활성이다. 단언을 고치거나 근거와 함께 "
-              f"_TAUTOLOGY 에 등재하라 (_MAX_TAUTOLOGY 서명 필요)")
+        _fail(f"상수로 접힌 단언이 {len(offenders)}태스크에 있다 — 저작-항진"
+              f"(설계와 무관하게 참이거나 영영 비활성)이거나 미등재 병합-상수다. "
+              f"단언을 고치거나, 저작-항진은 _TAUTOLOGY 에(_MAX_TAUTOLOGY 서명), "
+              f"병합-상수는 선-flatten 감사 모델과 함께 _CONST_BY_MERGE 에"
+              f"(_MAX_CONST_BY_MERGE 서명) 근거를 들어 등재하라")
 
     if uncounted:
         # 「없다」와 「없는 곳을 봤다」를 가른다 — 이 파일의 알맹이.

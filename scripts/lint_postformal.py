@@ -140,6 +140,24 @@ GUARD-MAP `.scala` — 사이의 모순으로 드러나기 때문이다. **실�
 면제를 걸고, 그것이 3차가 닫은 「같은 사실에 두 기계가 다른 수를 인쇄한다」의
 재발이다.
 
+### 저작-항진과 병합-상수 (2026-08-28 — walk_decode 엔진 처분 파도)
+
+상수 A 에는 두 부류가 있고 처분이 다르다 — 정본은
+`lint_tautology._CONST_BY_MERGE` 머리 주석:
+
+    저작-항진   단언 문면이 설계 무관 (하드 실패 — 종전 그대로)
+    병합-상수   flatten 후 opt_merge 가 동형 콘을 물리 공유해 등가 miter 가
+                접힘. 구조적 등가의 증명 그 자체 — 세되 근거와 함께 기록.
+
+가르는 기계는 선-flatten 감사 모델이다: 해당 .sby 가 [script] 에서
+`design_preflatten.il` 을 남기고 스윕이 그것을 세어 per_task 에
+`const_a_authored` 로 싣는다 (7째 칸 — **스키마 판 불변, 하위 호환 필드
+추가**: 칸 없는 태스크·기존 증거는 종전 판정 그대로다). 이 층의 판정:
+authored>0 → 하드 실패(저작) · authored −1 → UNCOUNTED(감사 모델은 있는데
+세지 못했다) · const_a−authored>0 → `_CONST_BY_MERGE` 등재 요구(미등재는
+하드 실패) · assert 모드에서 authored>const_a → 게이트 결함. 등재분은
+보고 블록이 계수·근거를 매번 인쇄한다.
+
 증거의 `-1` 은 **미계수**다 — 스윕이 `--count` 를 부르지 못했다는 뜻이고,
 「접힘이 0 이었다」와 절대 같은 낱말로 보고하지 않는다.
 
@@ -375,7 +393,8 @@ from lint_guard_map import classify  # noqa: E402
 #   여기                    스윕이 증거에 적어 둔 계수를 판정한다. 모델이
 #                           없어도 뜻이 있다 — 그것이 증거를 커밋한 이유다.
 # 겹치는 것은 판정 낱말이 아니라 *같은 수*이고, 그 수는 한 파서에서 나온다.
-from lint_tautology import _MAX_TAUTOLOGY, _TAUTOLOGY  # noqa: E402
+from lint_tautology import (  # noqa: E402
+    _CONST_BY_MERGE, _MAX_CONST_BY_MERGE, _MAX_TAUTOLOGY, _TAUTOLOGY)
 
 ROOT = Path(__file__).resolve().parent.parent
 TLA_DIR = ROOT / "rtl" / "formal" / "tla"
@@ -1070,12 +1089,18 @@ def emit_evidence(a) -> None:
 
     # `<태스크>:<모드>:<assert>:<cover>:<const_a>:<const_en0>` 공백 구분.
     # 인자 하나로 받는 이유: 인용 층을 늘리지 않는다 (sby_sweep.sh 의 존재 이유).
+    #
+    # 7째 칸 `<const_a_authored>` 는 선택이다 (2026-08-28 — 병합-상수 갈래):
+    # 그 태스크의 [script] 가 선-flatten 감사 모델(design_preflatten.il)을
+    # 남긴 경우에만 스윕이 붙인다. 필드 추가는 하위 호환이다 — 스키마 판은
+    # 그대로이고, 칸이 없는 태스크는 종전 판정(접힘 전부가 저작 혐의)이다.
     per_task = {}
     for tok in (a.task_cells or "").split():
         parts = tok.split(":")
-        if len(parts) != 6:
-            fail(f"--task-cells 항목이 6칸이 아니다: {tok!r} "
-                 f"(<태스크>:<모드>:<assert>:<cover>:<const_a>:<const_en0>)")
+        if len(parts) not in (6, 7):
+            fail(f"--task-cells 항목이 6칸도 7칸도 아니다: {tok!r} "
+                 f"(<태스크>:<모드>:<assert>:<cover>:<const_a>:<const_en0>"
+                 f"[:<const_a_authored>])")
         name, mode = parts[0], parts[1]
         try:
             nums = [int(x) for x in parts[2:]]
@@ -1085,6 +1110,8 @@ def emit_evidence(a) -> None:
             "mode": mode, "assert": nums[0], "cover": nums[1],
             "const_a": nums[2], "const_en0": nums[3],
         }
+        if len(parts) == 7:
+            per_task[name]["const_a_authored"] = nums[4]
 
     reached = sorted((a.cover_reached_names or "").split())
     unreached = sorted((a.cover_unreached_names or "").split())
@@ -1339,20 +1366,52 @@ def check_evidence(files: list):
             # 「접힘이 0 이었다」와 절대 같은 낱말로 보고하지 않는다.
             miss = sorted(t for t in pt
                           if int(pt[t].get("const_a", -1)) < 0
-                          or int(pt[t].get("const_en0", -1)) < 0)
+                          or int(pt[t].get("const_en0", -1)) < 0
+                          or int(pt[t].get("const_a_authored", 0)) < 0)
             if miss:
                 hard.append(f"{rel} — 상수 접힘을 *세지 못한* 태스크가 있다: "
                             f"{miss}. 「접힘이 없다」가 아니라 「세는 쪽을 부르지 "
                             f"못했다」다 — 스윕이 lint_tautology --count 를 "
-                            f"실행했는지 보라 (**게이트의 결함** · UNCOUNTED)")
+                            f"실행했는지 보라 (선-flatten 감사 모델의 -1 포함 — "
+                            f"파일이 있는데 세지 못한 것이다) "
+                            f"(**게이트의 결함** · UNCOUNTED)")
                 state[rel] = ("UNCOUNTED", doc)
                 continue
-            folded = sorted(
-                (t, int(pt[t]["const_a"]), int(pt[t]["const_en0"]))
-                for t in pt
-                if (int(pt[t]["const_a"]) or int(pt[t]["const_en0"]))
-                and f"{rel}:{t}" not in _TAUTOLOGY
-            )
+            # ── 저작-항진과 병합-상수를 가른다 (2026-08-28 — 판정 규칙과
+            # 표는 lint_tautology._CONST_BY_MERGE 머리 주석이 정본) ──────
+            #
+            # `const_a_authored` 가 실린 태스크(= .sby 가 선-flatten 감사
+            # 모델을 남긴 태스크)는 저작분(authored)만 하드 실패 대상이고,
+            # 차분(by_merge = const_a − authored)은 표 등재 + 근거를 요구한다.
+            # 칸이 없는 태스크는 종전 그대로 — 접힘 전부가 저작 혐의다.
+            # 산술 검산은 assert 모드에서만 선다: cover 모드는 chformal 이
+            # 단언을 제거하므로 선·후 모델의 단언 집합이 다르다.
+            folded, contra, unreg = [], [], []
+            for t in sorted(pt):
+                ca, ce = int(pt[t]["const_a"]), int(pt[t]["const_en0"])
+                au = pt[t].get("const_a_authored")
+                key = f"{rel}:{t}"
+                if au is None:
+                    if (ca or ce) and key not in _TAUTOLOGY:
+                        folded.append((t, ca, ce))
+                    continue
+                au = int(au)
+                if (au or ce) and key not in _TAUTOLOGY:
+                    folded.append((t, au, ce))
+                    continue
+                bm = ca - au
+                if bm < 0 and pt[t].get("mode") == "assert":
+                    contra.append(f"{t}(저작 {au} > 후-flatten {ca})")
+                elif bm > 0 and key not in _CONST_BY_MERGE:
+                    unreg.append((t, bm))
+            if contra:
+                hard.append(f"{rel} — 선-flatten 감사 모델의 산술이 서지 "
+                            f"않는다: {' · '.join(contra)}. 병합은 접힘을 "
+                            f"*늘릴* 수만 있다 — 감사 모델 배선의 결함이지 "
+                            f"대상의 결함이 아니다 (**게이트의 결함** · "
+                            f"UNCOUNTED)")
+                state[rel] = ("UNCOUNTED", doc)
+                continue
             if folded:
                 hard.append(
                     f"{rel} — 단언의 피연산자가 상수로 접혔다: "
@@ -1366,6 +1425,16 @@ def check_evidence(files: list):
                       f"lint_tautology --audit 가 인쇄한다. 면제는 그쪽 _TAUTOLOGY 에 "
                       f"근거와 함께 (_MAX_TAUTOLOGY={_MAX_TAUTOLOGY} 서명 필요)")
                 state[rel] = ("상수 접힘", doc)
+                continue
+            if unreg:
+                hard.append(
+                    f"{rel} — 병합-상수가 표에 없다: "
+                    + " · ".join(f"{t}({n}건)" for t, n in unreg)
+                    + ". 선-flatten 감사 모델은 저작 0 을 말하지만, 병합-상수도 "
+                      "**서명 없이 늘어도 되는 것은 아니다** — 근거와 함께 "
+                      "lint_tautology._CONST_BY_MERGE 에 등재하라 "
+                      f"(_MAX_CONST_BY_MERGE={_MAX_CONST_BY_MERGE} 서명 필요)")
+                state[rel] = ("병합-상수 미등재", doc)
                 continue
 
         # 증인 계수의 항등 — 「세지 못한 것」과 「0이었던 것」을 가른다.
@@ -1827,7 +1896,8 @@ def main() -> None:
     print("  ※ 이 층이 잰 것은 **증거의 자기모순 없음**이지 증거의 참이 아니다 — "
           "위조는 잡지 못한다 · 재실행만이 검증이다")
     print(f"  자기모순 대조: 오배치 · 파서 드리프트 · verdict↔tasks · "
-          f"tasks↔[tasks] · 태스크별 셀 수 · 상수 접힘(≤{_MAX_TAUTOLOGY}) · "
+          f"tasks↔[tasks] · 태스크별 셀 수 · 상수 접힘(저작≤{_MAX_TAUTOLOGY} · "
+          f"병합-상수 표≤{_MAX_CONST_BY_MERGE}) · "
           f"증인 이름 계수 · 도구 신원 — 전건 통과")
     if legacy_files:
         print(f"  ⚠ 구판 증거 {len(legacy_files)}건 (≤{_MAX_LEGACY_EVIDENCE}) — "
@@ -1893,6 +1963,25 @@ def main() -> None:
         for (m, g, rel), (what, why) in sorted(_DERIVED.items()):
             print(f"    {m}.{g} @ {Path(rel).parent.name}/{Path(rel).name} — {what}")
             print(f"      근거: {why}")
+    # 병합-상수 — 저작-항진과 갈라 **계수와 근거를 매번 인쇄**한다. 판정은
+    # check_evidence 가 이미 했고(미등재·저작·산술 모순은 하드 실패) 여기는
+    # 통과한 것의 정직 표기다 — 숫자를 침묵시키면 다음 사람이 이 접힘을
+    # 저작-항진으로 오독하거나, 저작-항진을 병합으로 오독한다.
+    merged_report = []
+    for r, (_, d) in sorted(state.items()):
+        for t, e in sorted((d.get("per_task") or {}).items() if d else []):
+            au = e.get("const_a_authored")
+            if au is not None and int(e.get("const_a", 0)) - int(au) > 0:
+                merged_report.append((r, t, int(e["const_a"]) - int(au)))
+    if merged_report:
+        print(f"  병합-상수 — opt_merge 의 구조 공유로 접힌 등가 단언 "
+              f"(저작-항진 아님 — 선-flatten 감사 모델이 저작 0 을 실측 · "
+              f"표 {len(_CONST_BY_MERGE)}≤{_MAX_CONST_BY_MERGE}):")
+        for r, t, bm in merged_report:
+            why, other = _CONST_BY_MERGE[f"{r}:{t}"]
+            print(f"    {Path(r).parent.name}/{Path(r).name}:{t} — {bm}건")
+            print(f"      근거: {why}")
+            print(f"      그래도 재는 수단: {other}")
     if structural:
         print("  구조 skip (근거 기계 대조 통과 — GUARD-MAP·표 쌍방 선언):")
         for m, g in sorted(structural):

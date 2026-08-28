@@ -6,26 +6,27 @@
 #
 # PROVES: Walk.end_authority — 종료·보폭 콘이 END(0x0)만 소비: declLen·예약을 읽지 않는 참조 순회와의 완전 등가
 # PROVES: Walk.len_check — lenBad = endSeen && (declLen != off_final), 8비트 전폭 비교 (조용한 절단 없음)
-# PROVES: Walk.cap_declared — capAbsent = declLen > 13 (8비트 전폭, 순회 전 선언만) · StickyFault 불참 (상승 조건이 malformation 전건)
+# PROVES: Walk.cap_declared — capAbsent = declLen > 14 (8비트 전폭, 순회 전 선언만 — 14 = 1 기본 헤더 + 1 CH + 12 EH 예산, W8) · StickyFault 불참 (상승 조건이 malformation 전건)
 # PROVES: Walk.cap_check — capBad = !capAbsent && !endSeen · capAbsent 와 상호 배타 (ISA-5, 조합·방출 양면)
 # PROVES: Walk.junk_check — junkBad = 카탈로그 표 조회 (16진 코드 전체), END 이전 슬롯만
 # PROVES: Walk.post_end_gated — walked 단조 강하 · END 뒤 off 동결 · 방출면 게이트 (oSlot* == 게이트된 순수 함수의 $past)
-# PROVES: Decode.resv_judged — resvBad = (word0[15:8] != 0) 가 mal 합성에 합류
+# PROVES: Decode.resv_judged — resvBad = (word0[15:12] != 0) 가 mal 합성에 합류 (W1 — [11:8] 은 opcode_ext 라 판정하지 않는다)
+# PROVES: Decode.ch_judged — chBad = (next_hdr != END) && (CRC-32C 재계산 != word1) 가 mal 합성에 합류 (W8 · §1.3.4) — 메시지는 CH 자기 워드 제외 · word0·word2‥(bh_len−1) 워드 오름차순 · 워드당 리틀엔디언 바이트 직렬 (RFC 3720 관례). 참조는 스펙-유도 워드 행렬 상수 전개 (RFC 3720 비트-직렬 정의의 GF(2) 합성을 gen_crc32c_matrix.py 로 유도, 기지값·무작위 자기시험 — RTL elaborate 와 유도 파이프라인 독립)
 # PROVES: Decode.mal_carried — oMalformed/oCapAbsent == $past(judge.mal/judge.capAbsent) — 소비 지점의 단일 원천
 # PROVES: Decode.resv_not_indexed — 참조 순회의 head 색인 off >= 1 (word0 lo16 재독 없음) + 색인 등가 → 예약 비트 색인 불참
 # PROVES: Decode.resv_not_timed — oValid == $past(iValid): 지연 1 균일, 명령 내용 무관
-# PROVES: Decode.resv_not_echoed — oInstr_0[15:8] == 0 상시 + 방출면 전체가 예약-마스킹 원문의 $past 와 등가
+# PROVES: Decode.resv_not_echoed — oInstr_0[15:12] == 0 상시 + 방출면 전체가 예약-마스킹 원문의 $past 와 등가 ([11:8] opcode_ext 는 방출 — SEC-7 (ii) 재유도)
 # PROVES: Decode.fault_not_folded — oFault 상승은 (oValid && oMalformed) 에피소드에서만 · capability 는 배타로 불참 · 하강은 명시적 해제뿐
 # PROVES: Decode.verdict_ungated — oValid·oSlot*·oInstr 이 판정 무관 순수 함수와 등가 (D14 상태열 균일) · 판정 fanout 은 oExecValid 게이트 등식으로
 #
 # ── 구조 skip — 단언을 세우지 않는 1건 ───────────────────────────────────
 #
 # STRUCTURAL: Decode.out_no_reason -> port-absence
-#   근거: rtl/generated/DecodeWalk.sv 방출면 포트 전수 (출력 30개) —
-#   판정을 나르는 것은 oValid·oMalformed·oCapAbsent·oExecValid 1비트 넷과
-#   oFault sticky 1비트뿐이고, 나머지 25개는 oInstr_0..12(13) ·
-#   oSlotPresent/Code/Off 각 4 로 전부 명령·서술자 축이다. 어떤 폭에도
-#   원인 코드 채널이 없다.
+#   근거: rtl/generated/DecodeWalk.sv 방출면 포트 전수 (출력 31개 — W8 로
+#   oInstr 14워드) — 판정을 나르는 것은 oValid·oMalformed·oCapAbsent·
+#   oExecValid 1비트 넷과 oFault sticky 1비트뿐이고, 나머지 26개는
+#   oInstr_0..13(14) · oSlotPresent/Code/Off 각 4 로 전부 명령·서술자
+#   축이다. 어떤 폭에도 원인 코드 채널이 없다.
 #
 # 왜 이 태스크가 그것을 재지 않는가 (거짓 앵커를 다는 것이 최악이다):
 #   가드의 알맹이가 *채널의 부재*이고, 그것은 elaborate 시점 사실이지 트레이스
@@ -38,12 +39,13 @@
 #
 # 관측 가능한 잔여분은 이 태스크가 *이미* 덮는다 — 부재의 대체물이 아니라,
 # 그 가드가 막으려는 것(예약값 원본이 승인 경계로 반향)의 직접 측정이다:
-#   · 출력 30개 중 29개가 「명령 버퍼의 *판정 무관* 순수 함수의 $past」와의
-#     등식으로 못박혀 있다 (props.sv:224 oExecValid · :243 oValid ·
-#     :247 oMalformed · :249 oCapAbsent · :253-264 서술자 · :267-279 명령).
+#   · 출력 31개 중 30개가 「명령 버퍼의 *판정 무관* 순수 함수의 $past」와의
+#     등식으로 못박혀 있다 (props.sv 의 oExecValid 게이트 등식 · oValid
+#     지연 등식 · oMalformed/oCapAbsent 판정 등식 · 서술자 12건 · 명령
+#     14건 — 줄번호로 매지 않는다).
 #     판정과 무관한 함수와 등가라는 것이 곧 「그 포트들은 어떤 원인 정보도
 #     나를 수 없다」이다.
-#   · 남은 1개 oFault 는 1비트이고 :282-292 의 네 함의가 상승 원인 · 하강
+#   · 남은 1개 oFault 는 1비트이고 sticky 네 함의가 상승 원인 · 하강
 #     원인 · 유실 없음 · 유지를 못박는다. 1비트에는 원인 코드가 실릴 폭이 없다.
 #   · 예약 비트 자체의 불투과는 위 Decode.resv_not_echoed 앵커가 방출면 전수
 #     등가로 잰다. 증인 W18 이 「예약 비트가 비0 인 명령이 실제로 방출면을
@@ -60,18 +62,21 @@
 #   않게 낱말을 달리했다 (거짓 앵커 금지) — 그 규율은 그대로다.
 #
 # ── cover 증인 ───────────────────────────────────────────────────────────
-# W1..W19 (하네스 말미, -DDECODEWALK_COVER). 단언 40개 중 다수가 전건 붙은
-# 함의이고, 특히 `oMalformed == $past(f_mal)` 하나가 일곱 검산의 논리합을
-# 통째로 접는다 — 어느 항이 도달 불가능해도 등가식은 참이고 증명은 통과하며,
-# 그 항에 걸린 CHECK 줄은 아무것도 재지 못한다. W4..W10 이 일곱 검산의
-# **단독 원인** 궤적을 각각 요구해 그 결을 닫는다. 나머지는 종결 세 등급 ·
-# 순회 형상 양 극단 · sticky 네 국면 · 예약 비0 통과의 도달성이다.
+# W1..W22 (하네스 말미, -DDECODEWALK_COVER). 단언 41개 중 다수가 전건 붙은
+# 함의이고, 특히 `oMalformed == $past(f_mal)` 하나가 여덟 검산(W8 부터 CH
+# 재계산 대조 포함)의 논리합을 통째로 접는다 — 어느 항이 도달 불가능해도
+# 등가식은 참이고 증명은 통과하며, 그 항에 걸린 CHECK 줄은 아무것도 재지
+# 못한다. W4..W10 + W20 이 여덟 검산의 **단독 원인** 궤적을 각각 요구해 그
+# 결을 닫는다. 나머지는 종결 세 등급 · 순회 형상 양 극단 · sticky 네 국면 ·
+# 예약 비0 통과 · CH 양 극성(W21 통과 · W22 EH-0 불판정)의 도달성이다.
 #
 # 증인이 무엇을 보증하고 무엇을 보증하지 않는가 (실측 기록 — 과대 주장 금지):
 #   sby 의 cover 모델은 `chformal -assume -early` 로 assume 은 남기고
 #   `chformal -live -fair -assert -remove` 로 **단언을 제거한다**. 실측:
 #   cover 모델 design_prep.il 이 assert=0 · cover=19 · assume=2 다 (prove
-#   모델은 assert=40 · cover=0 · assume=2). 그러므로 증인 궤적은 「단언을
+#   모델은 assert=40 · cover=0 · assume=2 — 인코딩 개정 파도 *전* 실측이다.
+#   파도 편집으로 하네스는 단언 41 · cover 22 가 됐고 재측정은 rtl-postformal
+#   몫 — 재기 전에는 재었다고 적지 않는다). 그러므로 증인 궤적은 「단언을
 #   만족하도록 제약된 궤적」이 아니라 리셋 프로토콜만 지킨 도달 가능 궤적이다.
 #   그럼에도 결론은 서는데, prove 가 k-귀납으로 통과하므로 *모든* 도달 가능
 #   상태가 단언을 만족하고 증인은 그 세계 안의 점이기 때문이다. 순서가
@@ -88,30 +93,121 @@
 # 모두 집계한다 (HiuMask/hiumask.sby 가 bmc·prove·cover 셋으로 이미 그렇게 돈다).
 # 따라서 증인을 위한 cover 태스크를 둘 수 있다.
 #
-# bmc 태스크는 여전히 두지 않는다 — mode prove 의 basecase 가 같은 깊이의
-# BMC 를 포함하므로 중복이다 (종전 판단 유지).
+# bmc 태스크 신설 (2026-08-28, 엔진 처분 파도 — 종전 「두지 않는다」 판단의
+# 전제가 사라졌다): 종전에는 mode prove(smtbmc)의 basecase 가 같은 깊이의
+# BMC 를 포함해 중복이었다. 엔진이 abc pdr 로 바뀌면 pdr 는 basecase 를
+# 따로 돌지 않으므로(불변식 탐색 하나로 증명·반박을 겸한다), 유계 반례
+# 탐색의 명시 태스크가 없으면 「깊이 20 까지 반례 없음」을 아무도 다시 재지
+# 않는다. bmc(abc bmc3, depth 20 — 종전 basecase 와 같은 깊이)가 그 자리다.
 [tasks]
+bmc
 prove
 cover
 
 [options]
+# bmc 깊이 근거: 종전 prove(smtbmc) basecase 와 같은 20 — 깊이 축소 없이
+# 유계 반례 탐색을 명시 태스크로 승계한다 ([tasks] 머리 주석).
+bmc: mode bmc
+bmc: depth 20
 # prove 깊이 근거: 대상 파이프 깊이 1단 (접수 → 방출 레지스터 1개 + sticky 1개).
 # 지침 「파이프 깊이의 2배 이상」 대비 20 은 10배 여유 — 리셋 1사이클 +
-# sticky set/clear 상호작용의 다사이클 에피소드까지 덮는다.
+# sticky set/clear 상호작용의 다사이클 에피소드까지 덮는다. (abc pdr 는
+# 깊이 인자를 쓰지 않는 무계 증명이지만, 엔진을 되돌릴 때의 기준값으로
+# 그대로 둔다 — 깊이 축소 금지 규율.)
 prove: mode prove
 prove: depth 20
 # cover 깊이 근거: 가장 깊은 증인은 W15(sticky 하강)로 reset 해제 → mal 방출
 # → fault 상승 → 해제 제시 → 하강까지 4 사이클이면 닿는다. 12 는 3배 여유.
 cover: mode cover
 cover: depth 12
+prove: timeout 1800
+cover: timeout 1800
+bmc: timeout 1800
+# abc 엔진이 반례를 낼 때 sby 는 궤적 재생(VCD·vlogtb)을 smtbmc 로 돌리는데
+# 그 기본 솔버는 yices 다 — 이 컨테이너에 없다 (실측: 변이 반례에서
+# 「SMT Solver 'yices-smt2' not found」로 FAIL 이 ERROR 로 둔갑). 재생은
+# 전 입력이 궤적으로 고정된 단위 전파 질의라 z3 로도 즉답이다. cover 는
+# btor 엔진이 증인 궤적을 btorsim 으로 재생하므로 aigsmt 가 불참한다 —
+# 태스크 한정으로 둔다 (전역이면 cover 단독 실행이 「Unused option:
+# aigsmt」로 죽는다. 실측 — smtbmc z3 시절의 실측이지만 불참 사정은 같다).
+bmc: aigsmt z3
+prove: aigsmt z3
 
+# ── 엔진 처분 기록 (2026-08-28 — 종전 「⚠ 미해결 상태 기록」의 해소) ──────
+#
+# z3 실명 실측(직전 수리 파도): CRC 콘 물리 병합 후에도 smtbmc z3 는 XOR
+# 콘에서 웨지된다 — basecase step ~5 · cover step 3 · 변이 반례 탐색까지
+# 전부 TIMEOUT (변이 4/4). presat 유무 · 신선 세션 · 단언 부분 제거 · stbv
+# 인코딩 · abc 재합성 전부에서 재현. 반례는 스텝 3 에 실재한다 — yosys
+# sat(MiniSAT)가 ~2초에 발견, 변이 4/4 적발 실증. 즉 문제의 부류는 워드
+# 수준 SMT 인코딩이지 명제 자체가 아니다.
+#
+# ⇒ 처분: bmc·prove 를 yosys 동봉 비트 수준 엔진 abc(bmc3/pdr)로 명시
+#   교체. **속성 집합·깊이 불변** — 바뀐 것은 엔진뿐이다. 완주 실측
+#   (2026-08-28, 컨테이너 Berkeley ABC 1.01 · sby_sweep.sh 의 yosys-abc
+#   호환 셔김 경유): bmc(bmc3, depth 20) 무변이 솔버 1.2초/태스크 25초 ·
+#   변이 4/4 를 frame 3 에서 각각 ~1초에 적발(FAIL rc=2 완주) · prove(pdr)
+#   Property proved 449–722초 (부하 따라 — [script] 말미 주석: 패스 순서를
+#   바꾼 모델에서는 1800초 미완주였으므로 pdr 시간은 모델 형상에 결속된
+#   실측이다). cover 는 abc 가 sby 에서 cover 모드를 지원하지 않으므로
+#   (bmc3·sim3 = bmc 전용, pdr = prove 전용 — sby_engine_abc.py 실측)
+#   컨테이너 내 cover-가용 엔진을 실측해 선택할 수밖에 없는데, 실측 결과
+#   **이 컨테이너에는 cover 를 완주할 엔진이 없다** (2026-08-28 전수 실측):
+#     · btormc·pono·yices·boolector·bitwuzla·cvc5 — 부재 (which 실측)
+#     · smtbmc abc 백엔드 — Berkeley ABC 의 SMT2 파서가 smtbmc 스트림을
+#       거부 (wlcReadSmt.c assertion, 기본·stbv 인코딩 양쪽 실측)
+#     · smtbmc z3 — 여덟 구성 전부 step 3 의 첫 실질 질의(22개 증인
+#       도달성 판별)에서 미완주: 증분(presat) · techmap 비트수준화 ·
+#       --noincr(워드/techmap) · sat.euf=true(워드/techmap) · --stbv+
+#       --noincr(±sat.euf) 각 TIMEOUT 1800초 — 그리고 파이프 밖에서도
+#       같다: 동일 질의 z3 파일 재생 900초 DNF · 순수 원샷 600초 DNF ·
+#       parallel.enable=true 600초 DNF.
+#   질의가 어려운 것이 아니라 z3 가 못 푸는 것이다 — **대조 실측**: 같은
+#   cover 모델의 $cover 를 부정-단언으로 뒤집은 AIG 에서 abc bmc3(MiniSAT)
+#   가 frame 3 증인을 5.76초에 낸다. 즉 남은 결손은 「cover 모드를 받는
+#   비트 수준 엔진(btormc 또는 pono)이 이미지에 없다」였고, 처분은 이
+#   파일이 아니라 devcontainer 이미지 증강이었다.
+#
+# ── cover 결손의 해소 (2026-08-29 — 이미지 증강 착지) ────────────────────
+#
+#   사용자 승인 (2026-08-29, 축자 「권고대로 해.」): Boolector 릴리스 소스
+#   커밋 핀 빌드. .devcontainer/Dockerfile §5b 가 boolector 3.2.4 +
+#   btor2tools + lingeling 을 상류 선언 커밋으로 고정해 굽고, btormc(모델
+#   체커)와 btorsim(증인 궤적 재생 — sby btor 엔진의 요건)을 넣는다.
+#   핀 대조는 scripts/lint_toolchain_pins.py 의 PINS_TWOWAY 가 잰다.
+#
+#   ⇒ cover 엔진을 btor btormc(비트 수준, sby 가 cover 모드를 공식 지원하는
+#     유일 조합 — sby_engine_btor.py: btormc 외 btor 솔버는 cover 를 거부)로
+#     명시 교체. **속성 집합·깊이·timeout 불변** — 바뀐 것은 엔진뿐이고,
+#     위 z3 미완주 매트릭스가 「왜 워드 수준 SMT 가 아닌가」의 근거로 남는다.
+#     bmc(abc bmc3)·prove(abc pdr) 핀과 [script] 순서는 검증된 그대로 두었다
+#     (pdr 는 패스 순서·넷리스트 형상에 민감 — [script] 말미 주석).
+#
+#   완주 실측 (2026-08-29, 증강 이미지에서 cover 태스크 단독): PASS rc=0 ·
+#   증인 22/22 도달(전 속성 k=3 SATISFIABLE, VCD 22개) · 벽시계 33초
+#   (btormc -kmax 11, --stop-first 0 — sby 가 depth 12 에서 유도). z3 가
+#   1800초에 못 낸 첫 증인을 포함해 전부를 33초에 냈다 — 부류 진단
+#   (워드 수준 SMT 인코딩이 문제)의 사후 확증이다.
+#
+#   ⚠ 증거층 잔여 (이 파일 밖 — 스윕·lint 파도 몫): btor 엔진의 PASS 파일은
+#     smtbmc 의 「reached cover statement <이름>」 대신 「cover trace: …vcd」
+#     만 적는다. 증인 *이름*은 model/design_btor.btor 의 bad 심볼(props.w1…
+#     w22, 소스 좌표 포함)과 로그의 속성 인덱스에 남는다 — sby_sweep.sh 의
+#     이름 추출이 그 포맷을 아직 모르므로, 전수 스윕 갱신 전에 그 결부터
+#     닫아야 한다 (안 닫으면 증인 0 으로 오탐되어 lint 가 하드 실패한다 —
+#     그 실패는 공허가 아니라 「세는 쪽이 새 포맷을 모른다」다).
+#   z3 는 다른 17개 .sby 의 명시 핀으로 그대로 남는다 — 이 처분은 이 파일
+#   국소다. timeout 은 완주 실측 후 여유를 두고 조정한다 (늘리는 방향만).
 [engines]
-smtbmc z3
+bmc: abc bmc3
+prove: abc pdr
+cover: btor btormc
 
 [script]
 read_verilog -sv -formal DecodeWalk.sv
-# 증인은 cover 태스크에서만 컴파일한다 (HiuMask 선례) — prove 모델은 단언만
-# 들어 태스크별 셀 수가 정확히 대조된다.
+# 증인은 cover 태스크에서만 컴파일한다 (HiuMask 선례) — bmc·prove 모델은
+# 단언만 들어 태스크별 셀 수가 정확히 대조된다.
+bmc: read_verilog -sv -formal DecodeWalk_props.sv
 prove: read_verilog -sv -formal DecodeWalk_props.sv
 cover: read_verilog -sv -formal -DDECODEWALK_COVER DecodeWalk_props.sv
 prep -top DecodeWalk_formal
@@ -120,7 +216,43 @@ prep -top DecodeWalk_formal
 # 귀납 세계에서 카탈로그 내용이 임의화됐다 (반례: stepW=0xe5). memory_map
 # 으로 ROM 을 순수 논리로 전개해 상태에서 제거한다.
 memory_map
+# 선-flatten 감사 모델 (2026-08-28, 엔진 처분 파도의 증거층 절반): 아래
+# flatten+opt 가 참조·RTL 의 동형 CRC 콘을 opt_merge 로 물리 공유하면 그
+# 등가 단언들이 $eq(r,r)→1 로 접혀 design_prep.il 에 상수 A 로 남는다 —
+# 저장소의 상수 접힘 게이트(lint_tautology)가 하드 실패시키는 바로 그 모양.
+# 그러나 이 접힘은 저작-항진(어떤 설계에서도 참)이 아니라 **병합-상수**
+# (RTL 상수가 하나라도 틀리면 병합이 안 되어 반례 탐색으로 되돌아가는,
+# 구조적 등가의 증명 그 자체)다. 둘을 가르는 유일한 측정 지점이 여기다:
+# 병합 *전* 모델에서 접힌 것만이 저작-항진이다. sby 의 [script] 는
+# <태스크>/src/ 에서 돌므로 ../model/ 이 design_prep.il 옆이다.
+# sby_sweep.sh 가 이 파일을 세어 const_a_authored 로 증거에 싣는다.
+#
+# 이 덤프 시점의 단언은 $assert 가 아니라 **$check** 셀이다 — yosys 0.66 의
+# read_verilog -formal 은 단언을 $check(FLAVOR=assert)로 들이고 $assert 로의
+# 하강은 말미의 async2sync 가 한다 (실측). 하강을 덤프 앞으로 당기는 개정
+# (async2sync 를 flatten 앞으로)을 실측했다가 **되돌렸다**: 패스 순서가
+# 바뀐 prove 모델에서 abc pdr 가 1800초에 미완주였다 (종전 순서 722초 PASS
+# — pdr 는 넷리스트 형상에 민감하다). 그래서 [script] 는 검증이 선 종전
+# 순서 그대로 두고, 세는 쪽(lint_tautology)이 $check(FLAVOR=assert)를
+# $assert 와 같은 자로 세도록 넓혔다 — 덤프는 부작용 없는 관측뿐이다.
+write_rtlil ../model/design_preflatten.il
+# CH 참조 재구조의 둘째 절반 (하네스 수리 기록 3): 참조와 RTL 의 CRC 콘은
+# 워드 절단면·항 순서(상태 오름차순 ++ 워드 오름차순)·mid-분할 균형 트리
+# 형상·단계 mux 셀형까지 동형이라, flatten 후 opt 의 구조 해싱(opt_merge)이
+# 두 콘을 물리 공유해 CRC 등가 miter 를 넷리스트 수준에서 소거한다 (실측:
+# flatten+opt 전 13371 셀 / $xor 12724 → 후 9328 셀 / $xor 8709 — 최종
+# CRC 비교기 $ne 쌍까지 병합). 이것 없이는 depth 20 unroll 이 「같은 GF(2)
+# 선형 함수의 두 전개」 등가를 CDCL SAT 에 통째로 넘겨 prove 가 완주하지
+# 못한다 (재구조 전 2h39m DNF · 재구조 후에도 계층 유지 시 z3 웨지 실측).
+# 병합은 증명 약화가 아니다 — opt_merge 는 셀형·연결이 동일한 것만 합치고,
+# RTL 상수가 하나라도 틀리면 병합이 안 되어 SAT 반례 탐색으로 되돌아간다.
+# 폭·엔진 불변 — 바꾼 것은 모델 준비의 구조 정리뿐이다.
+flatten
+opt
 async2sync
+# (cover 모델의 techmap 비트 수준화를 시도했으나 두지 않는다 — z3 는
+#  게이트 수준으로 떨어뜨려도 같은 자리에서 미완주였다. 실측은 [engines]
+#  머리 주석의 매트릭스에 있다. 효과 없는 준비 단계는 두지 않는다.)
 
 [files]
 rtl/generated/DecodeWalk.sv

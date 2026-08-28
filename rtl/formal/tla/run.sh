@@ -29,8 +29,8 @@
 set -eu
 cd "$(dirname "$0")"
 
-# -noGenerateSpecTE: 반례마다 TTrace 재현 스펙을 만들지 않는다. 258 run 중
-# 170여 개가 의도된 MUST FAIL 이라, 켜 두면 run 마다 파일 두 개씩 쌓인다.
+# -noGenerateSpecTE: 반례마다 TTrace 재현 스펙을 만들지 않는다. 358 run 중
+# 290 개가 의도된 MUST FAIL 이라, 켜 두면 run 마다 파일 두 개씩 쌓인다.
 # run 마다 고유 metadir 를 준다. 기본값(./states)을 쓰면 같은 디렉터리에서
 # 도는 다른 TLC(병렬 검증·고아 컨테이너)와 상태 풀이 섞여 run 이 pool-read
 # 오류·무판정으로 끝난다 — 2026-08-23 실측: 타임아웃으로 클라이언트만 죽은
@@ -515,6 +515,13 @@ expect_pass "형상 sweep C"                                     Decode_shapeC.c
 expect_pass "형상 sweep D"                                     Decode_shapeD.cfg "$M"
 
 # 가드 삭제 — 각 가드를 지우면 그 가드 자신의 불변식이 무너진다 (§6.3.2)
+# ch_judged (W8): CH 판정 축 — EH-조건부라 "absent" 레인은 대상이 아니고,
+# 지우면 재계산 대조 불일치("bad")가 조용히 통과한다. 배터리 형상은
+# resv_judged 와 같은 4벌 (기저 · 판정 늦춤 · 형상 B · 형상 C).
+expect_fail "가드 삭제: ch_judged"                               Decode_del_ch_judged.cfg "$M" Inv_MalformedRejected
+expect_fail "가드 삭제: ch_judged · 판정 늦춤"                       Decode_del_ch_judged_judgelate.cfg "$M" Inv_MalformedRejected
+expect_fail "가드 삭제: ch_judged · 형상 B"                        Decode_del_ch_judged_shapeB.cfg "$M" Inv_MalformedRejected
+expect_fail "가드 삭제: ch_judged · 형상 C"                        Decode_del_ch_judged_shapeC.cfg "$M" Inv_MalformedRejected
 expect_fail "가드 삭제: evict_inline"                            Decode_del_evict_inline.cfg "$M" Inv_SamePathTrace
 expect_fail "가드 삭제: evict_inline · 형상 B"                     Decode_del_evict_inline_shapeB.cfg "$M" Inv_SamePathTrace
 expect_fail "가드 삭제: evict_inline · 형상 C"                     Decode_del_evict_inline_shapeC.cfg "$M" Inv_SamePathTrace
@@ -556,6 +563,10 @@ expect_fail "가드 삭제: verdict_ungated · 형상 B"                  Decode
 expect_fail "가드 삭제: verdict_ungated · 형상 C"                  Decode_del_verdict_ungated_shapeC.cfg "$M" Inv_ResvOpaque
 
 # 위험 도달성 증인 — 좋은 모델에서 반드시 반증돼야 한다
+# NoChBadOnly: CH 축이 *혼자서* 거절을 만드는 궤적의 실재 (예약 축의
+# 그림자가 아님) — 없으면 위 ch_judged 삭제 반례가 어느 축을 지나는지
+# 구별되지 않는다.
+expect_fail "증인: NoChBadOnly"                                Decode_witness_NoChBadOnly.cfg "$M" Witness_NoChBadOnly
 expect_fail "증인: NoEarlyJudgment"                            Decode_witness_NoEarlyJudgment.cfg "$M" Witness_NoEarlyJudgment
 expect_fail "증인: NoEarlyObs"                                 Decode_witness_NoEarlyObs.cfg "$M" Witness_NoEarlyObs
 expect_fail "증인: NoHitPath"                                  Decode_witness_NoHitPath.cfg "$M" Witness_NoHitPath

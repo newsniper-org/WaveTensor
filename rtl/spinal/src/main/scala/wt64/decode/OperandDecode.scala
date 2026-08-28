@@ -5,16 +5,19 @@
 //
 // DecodeWalk 가 방출한 순회 산출(효과 게이트된 슬롯 서술자 + 명령 워드)을
 // 받아 종류별 본문을 필드로 해석한다. DecodeWalk 머리 주석의 「범위」가
-// 2차 파도에 남긴 것 중 **EH 본문 해석과 본문 내 예약 필드 판정**이 이
-// 모듈이다 (플래그–EH 대응 검사는 여기 아니다 — 아래 「남긴 것」).
+// 2차 파도에 남긴 것 중 **EH 본문 해석과 본문 내 판정**이 이 모듈이다
+// (플래그–EH 대응 검사는 여기 아니다 — 아래 「남긴 것」).
 //
 // 정본: §1.4 (목적지·피연산자 명명 — 논리화 개정판),
 //       §1.4.1 PORT 본문 = dest_node_id 16b 축자 (재정렬·스왑 없음),
 //       §1.4.3 OPREF noc_route[7:0] 전폭 = LBID · src_kind 표 (≥3 예약 → 오류),
-//       §1.4.6 OPREF [23:20] 포트 니블 폐지 — 예약, 반드시 0, 아니면
-//              malformation (@sec:security 5.7),
-//       §1.4.7 ACCTGT — [31:24] 목적 LBID · [23:16] 예약 반드시 0. 다중 조각
-//              wave 재조립 문맥의 결속 원천 (§4.3 「태그→구간 결속」),
+//       §1.4.6 OPREF [23:20] = CRC-4 국소 검산 (W5) — 본문 12b(LBID ∥
+//              src_kind)의 자기 검산, G(x)=x⁴+x+1, 재계산 대조 불일치 =
+//              malformation + loud, 판정은 디코드 경계,
+//       §1.4.7 ACCTGT — [31:24] 목적 LBID · [23:16] = 조각열 선언 총개수 T
+//              (W4): T∈1..255 = 선언, 0 = 선언 없음(적법). 이 필드의 어떤
+//              값도 구조 판정을 울리지 않는다. 다중 조각 wave 재조립 문맥의
+//              결속 원천 (§4.3 「태그→구간 결속」),
 //       §4.2.3 반복 결합 전수표 — OPREF 는 등장 순서대로 A·B (최대 2회),
 //              SUBSCRIPT 는 등장 순서대로 연접, NOP_PAD 는 효과 없음.
 //              반복 상한 위반의 *판정*은 DecodeWalk (dupBad) 소관이고, 이
@@ -41,16 +44,19 @@
 //              _pack_axes 1844–1861 행). 5–8축은 두 EH 연접, 첫째가 축 0–3 ·
 //              둘째가 축 4–7 (_encode_subscript_eh_multi 1999–2017 행) —
 //              §4.2.3 「등장 순서대로 연접」의 실물
-//  · OPREF     w0[31:24] = noc_route 8b (= LBID) · w0[23:20] = 예약 4b
-//              (폐지된 포트 니블 — 반드시 0) · w0[19:16] = src_kind 4b
-//              (1958–1988 행: upper = route<<8 | kind, port≠0 은 어셈블러도
-//              거절). RouteJudge.scala 34–39 행의 같은 관측 재확인
+//  · OPREF     w0[31:24] = noc_route 8b (= LBID) · w0[23:20] = CRC-4 (W5 —
+//              어셈블러가 계산·주입, 사용자 주입 금지) · w0[19:16] = src_kind
+//              4b. 메시지는 물리 슬라이스 순서가 아니라 **논리 12b**
+//              LBID[7]‥[0] ∥ src_kind[3]‥[0] (MSB-first) — CRC 니블이
+//              물리적으로 둘 사이에 끼기 때문 (§1.4.6)
 //  · PRECISION w0[31:24] = dim_override 8b · w0[23:16] = precision_mode 8b
 //              (1989–1993 행: upper = dim<<8 | mode)
 //  · NOP_PAD   본문 없음 — w0[31:16] 은 0 방출 (1995 행). 정렬 전용, 해석
 //              산출 없음 (§4.2.3 「효과 없음」)
-//  · ACCTGT    어셈블러·isa/wt64v1_isa.json 미착지 — 배치 원천은 정본 §1.4.7
-//              표 그대로: w0[31:24] = 목적 LBID · w0[23:16] = 예약 0
+//  · ACCTGT    어셈블러·isa/wt64v1_isa.json 미착지(P4 범위 제한 — eh_codes
+//              0x9 배정·표면은 Di 실장 파도 몫) — 배치 원천은 정본 §1.4.7
+//              표 그대로: w0[31:24] = 목적 LBID · w0[23:16] = 선언 총개수 T
+//              (0 = 선언 없음, 적법 — W4)
 // ─────────────────────────────────────────────────────────────────────────
 //
 // 이 모듈이 남긴 것 (2차 파도의 나머지 — 여기 없다):
@@ -61,10 +67,13 @@
 //  · ACCTGT LBID 의 사상표 부재 판정 — route fault 의 사상 축 (ISA-8),
 //    판정 주체는 배달 범위 진입점 (RouteJudge, §1.6.3).
 //
-// GUARD-MAP 없음 — 이 모듈의 선-formal 모델은 없다 (지시서: 모델 없음).
-// 본문 예약 판정의 모델·정본 대응은 DecodeWalk 의 Decode.resv_judged 줄이
-// 이미 「2차 파도가 같은 판정점에 합류시킨다」로 예고했다 — 이 모듈이 그
-// 합류의 실물이다.
+// GUARD-MAP 없음 — 이 모듈의 선-formal 모델은 없다 (지시서: 모델 없음 —
+// 모델 없는 모듈은 GUARD-MAP 금지, 검증 앵커는 body_judge.sby 의 VERIFIES
+// 경로다. PROVES 는 TLA 가드 전용). 본문 판정(W5 OPREF CRC-4 재계산 대조 ·
+// src_kind 예약값)의 정본 대응은 DecodeWalk 의 Decode.resv_judged 줄이
+// 「같은 판정점에 합류시킨다」로 가리킨다 — 이 모듈이 그 합류의 실물이다.
+// W4 로 ACCTGT [23:16] 은 예약이 아니라 총개수 필드가 됐다 — 판정기가 아니라
+// 해석·방출(oAcctgtTotal, 무소비)이다.
 package wt64.decode
 
 import spinal.core._
@@ -97,8 +106,9 @@ class OperandDecode(val ehSlots: Int = 4) extends Component {
   /** 카탈로그 최대 EH 워드 수 (IMM64 = 3, §1.3.2) — ISA 사실. */
   val EH_WORDS_MAX = 3
 
-  /** 명령 버퍼 워드 수 — DecodeWalk.maxWords 와 같은 식 (형상). */
-  val maxWords = 1 + ehSlots * EH_WORDS_MAX
+  /** 명령 버퍼 워드 수 — DecodeWalk.maxWords 와 같은 식 (형상):
+    * 기본 헤더 1 + CH 1 (W8) + EH 예산. */
+  val maxWords = 1 + 1 + ehSlots * EH_WORDS_MAX
   require(maxWords <= 255, "오프셋 산술이 bh_len 선언 폭 8비트 안에 있어야 한다 (§1.3)")
 
   /** 종류별 등장 계수 폭 — 슬롯 상한 + 1 값 공간. */
@@ -119,7 +129,9 @@ class OperandDecode(val ehSlots: Int = 4) extends Component {
     val iCapAbsent = in(Bool())
     /** 순회 검산 기준 실행 유효 (DecodeWalk.oExecValid). */
     val iExecValid = in(Bool())
-    /** 명령 워드 (DecodeWalk.oInstr — 워드0 예약 [15:8] 은 이미 0 마스킹). */
+    /** 명령 워드 (DecodeWalk.oInstr — 워드0 예약 [15:12] 은 이미 0 마스킹,
+      * [11:8] 은 opcode_ext 라 실려 온다. word1 은 EH≥1 이면 CH — 이 모듈은
+      * 순회 서술자(iSlotOff ≥ 2)를 따라가므로 CH 를 본문으로 읽을 일이 없다). */
     val iInstr = in(Vec(Bits(32 bits), maxWords))
     /** 슬롯 서술자 — 실재 슬롯만 present (post_end_gated 를 지난 것). */
     val iSlotPresent = in(Vec(Bool(), ehSlots))
@@ -183,10 +195,17 @@ class OperandDecode(val ehSlots: Int = 4) extends Component {
       * (§4.3 「태그→구간 결속」 — D8 부류의 결속 원천). valid 는 실행 유효
       * 게이트를 지난 ACCTGT 존재 — malformed 명령이 문맥을 열지 못한다. */
     val oReasmBind = master(Flow(UInt(Isa.LBID_W bits)))
-    /** 본문 예약 malformation 전용 sticky (합성 sticky, §5.5) —
-      * 폴딩 규정 (§5.6 신호별 명시): OPREF 예약 니블·src_kind 예약값·ACCTGT
-      * 예약 바이트 세 원인을 이 1비트로 접는다 (셋 다 같은 분류 —
-      * malformation — 이고 같은 수리 주체 — 어셈블러 — 다, §1.6.2).
+    /** ACCTGT [23:16] = 조각열 선언 총개수 T (§1.4.7 · W4) — 해석·방출만,
+      * 이 파도의 소비자는 없다 (무소비 — Reassembly 사이드밴드 총개수와의
+      * 결선(대체/교차검산)은 파도 밖, authority 관계는 B.5 하위 항).
+      * 0 = 선언 없음(적법 — ACCTGT 부재·T=0 모두). 게이트는 다른 산출과
+      * 같은 emit ∧ present. */
+    val oAcctgtTotal = out(UInt(8 bits))
+    /** 본문 malformation 전용 sticky (합성 sticky, §5.5) —
+      * 폴딩 규정 (§5.6 신호별 명시): OPREF CRC-4 불일치(W5)·src_kind 예약값
+      * 두 원인을 이 1비트로 접는다 (둘 다 같은 분류 — malformation — 이고
+      * 같은 수리 주체 — 어셈블러 — 다, §1.6.2. W4 로 ACCTGT 예약 바이트
+      * 원인은 소멸했다).
       * DecodeWalk.oFault(순회 검산 sticky)와는 접지 않는다 — 별도 신호. */
     val oFault = out(Bool())
   }
@@ -194,8 +213,9 @@ class OperandDecode(val ehSlots: Int = 4) extends Component {
   // ── 슬롯 본문 워드 조회 — 8비트 전폭 등가 비교의 one-hot 표 선택 ─────────
   // 오프셋은 bh_len 값 공간(8비트) 그대로 표를 지난다 — 축소 resize 없음
   // (§1.3 함정의 조용한 절단 금지 부류를 색인에도 적용). 오프셋의 구조적
-  // 상계 off(i) <= 1 + EH_WORDS_MAX*i <= maxWords - EH_WORDS_MAX (DecodeWalk
-  // walk.off 주석의 증명) 때문에 실재 슬롯의 조회는 항상 표 안에 적중하고,
+  // 상계 off(i) <= 2 + EH_WORDS_MAX*i <= maxWords - EH_WORDS_MAX (DecodeWalk
+  // walk.off 주석의 증명 — 시작 오프셋 상한 2 는 CH 존재 갈래) 때문에 실재
+  // 슬롯의 조회는 항상 표 안에 적중하고,
   // 표 밖 값(부재 슬롯의 off=0 파생 포함)은 아무 워드도 선택하지 않아 0 —
   // 어차피 아래 해석 전부가 present 게이트로 소거한다.
   val slots = new Area {
@@ -275,6 +295,10 @@ class OperandDecode(val ehSlots: Int = 4) extends Component {
     val acctgtPresent = isAcctgt.reduce(_ || _)
     /** w0[31:24] = 목적 LBID — 읽기측 LBID 와 같은 이름 공간 (§1.4.7). */
     val acctgtLbid = gather(isAcctgt, slots.body.map(_(15 downto 8))).asUInt
+    /** w0[23:16] = 조각열 선언 총개수 T (§1.4.7 · W4) — T∈1..255 = 선언,
+      * 0 = 선언 없음(적법). 어떤 값도 구조 판정을 울리지 않는다 — 예약
+      * 판정이 아니라 해석이다. */
+    val acctgtTotal = gather(isAcctgt, slots.body.map(_(7 downto 0))).asUInt
 
     // OPREF — 등장 순서대로 A·B (§4.2.3). 3회 이상은 DecodeWalk dupBad 몫.
     val oprefA = Vec((0 until ehSlots)
@@ -304,17 +328,39 @@ class OperandDecode(val ehSlots: Int = 4) extends Component {
     val subCount = (0 until ehSlots).map(i => isSub(i).asUInt(OCC_W bits)).reduce(_ + _)
   }
 
-  // ── 본문 예약 판정 — DecodeWalk 판정점에의 합류 (Decode.resv_judged 예고) ─
-  // 예약 필드 불투과의 구조 (SEC-7): 아래 세 예약 슬라이스 — body[7:4](OPREF
-  // 폐지 니블)·body[3:0]의 예약값 구간(src_kind ≥ 3)·body[7:0](ACCTGT 예약
-  // 바이트) — 의 fanout 은 이 Area 의 비교기뿐이다. 해석 산출(위 parse)은
-  // 예약 비트를 어떤 필드·색인·유효에도 싣지 않고, 판정은 아래 1비트
-  // 등급(bodyMal)으로만 나간다 — 예약값 원본이 방출면에 반향될 자리가 없다.
+  // ── 본문 판정 — DecodeWalk 판정점에의 합류 (Decode.resv_judged 예고) ─────
+  // 판정값 불투과의 구조 (SEC-7): 아래 두 판정 슬라이스 — body[7:4](OPREF
+  // CRC-4 니블 — W5)·body[3:0]의 예약값 구간(src_kind ≥ 3) — 의 fanout 은 이
+  // Area 의 비교기뿐이다. 해석 산출(위 parse)은 그 비트를 어떤 필드·색인·
+  // 유효에도 싣지 않고, 판정은 아래 1비트 등급(bodyMal)으로만 나간다 —
+  // 판정값 원본이 방출면에 반향될 자리가 없다. (ACCTGT body[7:0] 은 W4 로
+  // 예약이 아니라 총개수 필드다 — parse 가 해석하고 oAcctgtTotal 로 방출한다.)
   val judge = new Area {
-    /** OPREF [23:20] 폐지 니블 ≠ 0 — malformation (§1.4.6 · §5.7).
-      * 실재 OPREF 슬롯에 대해서만 발화한다 (§1.6.1 함정). */
-    val oprefResvBad = (0 until ehSlots)
-      .map(i => parse.isOpref(i) && slots.body(i)(7 downto 4) =/= 0)
+    /** OPREF CRC-4 기대값 (§1.4.6 · W5) — 메시지 = 논리 12비트
+      * LBID[7]‥LBID[0] ∥ src_kind[3]‥src_kind[0] (MSB-first: M(x)의 x¹¹
+      * 계수 = LBID[7]), G(x) = x⁴+x+1 (0b10011), 비반사 · init 0 · xorout
+      * 없음. CRC = (M(x)·x⁴) mod G(x). 물리 워드 슬라이스 순서([31:24] ·
+      * [19:16])가 아니라 논리 순서다 — CRC 니블([23:20] = body[7:4])이
+      * 물리적으로 둘 사이에 끼기 때문. 정적 12단 전개 — 순수 XOR 트리.
+      * 기지값 (LBID,src_kind)→CRC: (0x00,0)→0x0 · (0x01,1)→0x6 ·
+      * (0xA5,2)→0x8 · (0xFF,2)→0xA (어셈블러·참조측 자기시험과 같은 값). */
+    private def oprefCrcExpect(body: Bits): Bits = {
+      // 논리 비트열 MSB-first: LBID = body[15:8], src_kind = body[3:0].
+      val msg = (0 until 8).map(k => body(15 - k)) ++ (0 until 4).map(k => body(3 - k))
+      var crc = B(0, 4 bits)
+      for (m <- msg) {
+        val fb = crc(3) ^ m
+        crc = (crc(2 downto 0) ## B(0, 1 bits)) ^ (fb ? B(0x3, 4 bits) | B(0, 4 bits))
+      }
+      crc
+    }
+    /** OPREF [23:20] CRC-4 재계산 대조 (W5) — 불일치 = malformation + loud,
+      * 판정은 디코드 경계 (§1.4.6). 실재 OPREF 슬롯에 대해서만 발화한다
+      * (§1.6.1 함정). 슬롯별 각자 검산 — ≤2 인스턴스(A·B)가 각자 자기 CRC 를
+      * 나른다 (§4.2.3). */
+    val oprefCrcBad = (0 until ehSlots)
+      .map(i => parse.isOpref(i) &&
+        slots.body(i)(7 downto 4) =/= oprefCrcExpect(slots.body(i)))
       .reduce(_ || _)
     /** src_kind ≥ 3 = 예약 → 오류 (§1.4.3 표) — RouteJudge 가 디코드 경계로
       * 넘긴 결정의 실물. 4비트 전폭 비교 (값 구간 판정 — 비트 슬라이스 아님). */
@@ -322,15 +368,13 @@ class OperandDecode(val ehSlots: Int = 4) extends Component {
       .map(i => parse.isOpref(i) &&
         slots.body(i)(3 downto 0).asUInt >= SRC_KIND_RESERVED_MIN)
       .reduce(_ || _)
-    /** ACCTGT [23:16] 예약 바이트 ≠ 0 — malformation (§1.4.7 · §5.7). */
-    val acctgtResvBad = (0 until ehSlots)
-      .map(i => parse.isAcctgt(i) && slots.body(i)(7 downto 0) =/= 0)
-      .reduce(_ || _)
+    // (W4: acctgtResvBad 는 삭제됐다 — ACCTGT [23:16] 의 어떤 값도 구조
+    //  판정을 울리지 않는다. §1.4.7)
 
     /** 본문 malformation — capability 종결이 맨 앞이다: 능력 밖 사슬은 본문
       * 판정의 대상이 아니어서 두 종결이 동시에 서지 않는다 (ISA-5 —
       * DecodeWalk judge.mal 의 !capAbsent 와 같은 형태). */
-    val bodyMal = !io.iCapAbsent && (oprefResvBad || srcKindBad || acctgtResvBad)
+    val bodyMal = !io.iCapAbsent && (oprefCrcBad || srcKindBad)
   }
 
   // ── 합류된 판정 방출 — 게이트이지 분기가 아니다 (§1.6.1 · §5.3) ─────────
@@ -384,6 +428,8 @@ class OperandDecode(val ehSlots: Int = 4) extends Component {
   // ACCTGT 만 문맥을 연다 — malformed wave 는 결속을 만들지 못한다.
   io.oReasmBind.valid   := emit && parse.acctgtPresent
   io.oReasmBind.payload := gatedU(parse.acctgtPresent, parse.acctgtLbid)
+  // 조각열 선언 총개수 T (W4) — 해석·방출까지가 이 파도의 몫 (무소비).
+  io.oAcctgtTotal := gatedU(parse.acctgtPresent, parse.acctgtTotal)
 
   // 본문 malformation 전용 sticky — 세운다 / 명시적 해제 외엔 내리지 않는다
   // (§5.5). capability 종결 불참 (§1.6.2 — bodyMal 의 !iCapAbsent 가 구조).
