@@ -37,6 +37,18 @@ rfc7045:
   organization: Internet Engineering Task Force
   note: "미지 확장 헤더 처분 규약 — 본 설계가 '가져오지 않기로' 한 부분의 출처"
 
+rfc3720:
+  type: Report
+  title: "Internet Small Computer Systems Interface (iSCSI)"
+  author: ["Satran, Julian", "Meth, Kalman", "Sapuntzakis, Costa", "Chadalapaka, Mallikarjun", "Zeidner, Efri"]
+  date: 2004-04
+  serial-number:
+    rfc: 3720
+    doi: "10.17487/RFC3720"
+  organization: Internet Engineering Task Force
+  url: https://www.rfc-editor.org/rfc/rfc3720
+  note: "CRC-32C(Castagnoli) 계산 관례의 출처 — 반사·초기값·최종 XOR·시험 패턴 (§B.4). CH 가 이 관례를 그대로 쓴다"
+
 knr:
   type: Book
   title: "The C Programming Language"

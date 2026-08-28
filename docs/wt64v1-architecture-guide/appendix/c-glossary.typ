@@ -43,6 +43,7 @@
   align: (left, left, left, left),
   table.header([*국문*], [*영문*], [*절*], [*뜻*]),
   [기본 헤더], [base header], [@sec:isa], [32비트. 항상 존재],
+  [둘째 헤더 · CH], [Castagnoli Header], [@sec:isa], [word 1 의 32비트 CRC-32C 검산 워드. EH 가 있으면 존재. *EH 가 아니다*],
   [확장 헤더 · EH], [extension header], [@sec:isa], [사슬로 붙는 가변 길이 단위],
   [종료 표식], [sentinel / END], [@sec:extpayload], [사슬의 끝. *종료의 authority*],
   [태그], [tag], [@sec:isa], [토큰과 함께 흐르는 80비트 식별 정보],
