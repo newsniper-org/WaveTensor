@@ -15,6 +15,7 @@ synth/lattice/reports/*.log
 synth/lattice/reports/*.rpt
 synth/lattice/reports/*.config
 synth/lattice/reports/*.bit
+synth/lattice/reports/*.done
 
 # Vivado byproducts + huge checkpoints (2026-08-13)
 # .dcp are 129 MB of binary; regenerate with `make synth-pod/impl-pod PART=...`
