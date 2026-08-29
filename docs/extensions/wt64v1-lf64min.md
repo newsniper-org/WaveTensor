@@ -138,7 +138,7 @@ generator-independent"). 이 확장의 착지는 그 핀의 **프로파일-조�
   `payload_b` 64b 전폭 (`0x079` 의 B 저워드 규약 `dec_input_payload_b[31:0]`,
   `golden_fp32.py:1156-1160` 의 f64 자연 확장). 출력 = 64b 단일 beat.
   **ISA-9 ②** (규범 「토큰 비증식 — 발화가 남기는 후속 전송 전량의 분할」,
-  `01-isa-asm.typ:335-349`).
+  `01-isa-asm.typ:352-366`).
 - `0x079 FMINMAX`: A = 2 f64 레인 128b **2조각 파도**, 출력 128b = 2조각 —
   f32 형("4 f32 lanes (128b = 2-fragment) … 128b out = 2 fragments", JSON
   desc)과 동형. **함정**: `0x079` 의 2조각 출력은 오늘 ACCTGT 선언 없이
