@@ -114,6 +114,42 @@ kahn:
     publisher: North-Holland
   note: "결정론적 데이터플로 네트워크. 무손실·배압 계약의 이론적 배경"
 
+parks1995:
+  type: Thesis
+  title: "Bounded Scheduling of Process Networks"
+  author: ["Parks, Thomas M."]
+  date: 1995-12
+  genre: "PhD dissertation, Technical Report UCB/ERL-95-105"
+  organization: "EECS Department, University of California, Berkeley"
+  publisher: "University of California, Berkeley"
+  url: http://web.archive.org/web/20221022091907if_/https://ptolemy.berkeley.edu/papers/95/parksThesis/thesis.pdf
+  note: "KPN 의 종료·유계 버퍼링이 결정 불가능하다는 따름정리(3.1) 와, 판정 대신 큐를 키우는 동적 정책(4.2-4.3). 고정 크기가 결정 가능성의 전제인 근거"
+
+buck1993:
+  type: Thesis
+  title: "Scheduling Dynamic Dataflow Graphs with Bounded Memory Using the Token Flow Model"
+  author: ["Buck, Joseph T."]
+  date: 1993
+  genre: "PhD dissertation"
+  organization: "EECS Department, University of California, Berkeley"
+  publisher: "University of California, Berkeley"
+  note: "BDF 의 튜링 동등성에서 유계 메모리 스케줄 가능성의 결정 불가능성이 나온다. parks1995 정리 2 가 [9] 로 인용하는 문헌이며 결정 불가능성의 바닥이다"
+
+geilen_basten2003:
+  type: Article
+  title: "Requirements on the Execution of Kahn Process Networks"
+  author: ["Geilen, Marc", "Basten, Twan"]
+  editor: ["Degano, Pierpaolo"]
+  date: 2003
+  page-range: 319-334
+  parent:
+    type: Proceedings
+    title: "Programming Languages and Systems — 12th European Symposium on Programming (ESOP), LNCS 2618"
+    publisher: Springer
+  serial-number:
+    doi: "10.1007/3-540-36575-3_22"
+  note: "Parks 의 정책은 모든 KPN 에서 옳지 않다 — 옳음은 대상 부류의 제한을 대가로만 산다"
+
 tartan:
   type: Article
   title: "Spatial Computation"

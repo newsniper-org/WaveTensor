@@ -115,6 +115,7 @@
   [게이트], [gate], [@sec:capacity], [기계가 판정하는 측정 기준],
   [사전 공표], [pre-declaration], [@sec:formal], [*측정 이전에* 기준을 공표하는 것],
   [상수 시간성], [constant-time], [@sec:security], [절대치가 아니라 *경로 간 동일성*],
+  [구조적 유계성], [structural boundedness], [@sec:isa], [*어떤 형상·어떤 프로그램에서도* 유계. 「이 형상에서 유계」와 다른 주장],
 )
 
 == 출처 등급

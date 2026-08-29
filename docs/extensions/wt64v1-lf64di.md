@@ -109,7 +109,7 @@ imm16 배치, 판정 사다리는 `Di` §4 무변경 — 이 절은 dtype5 에�
 
 **dual_f64 결과 128b 는 조각열 T=2 로 나간다** — primal 조각 1 · 접선 조각
 2, ACCTGT `[23:16]` = 2 선언 필수. **ISA-9 ③** (조각열 하나 — 규범 「토큰
-비증식」, `01-isa-asm.typ:485-499`).
+비증식」, `01-isa-asm.typ:617-631` — ③ 은 `:622-623`).
 
 - **ACCTGT 부재 = malformation** (총개수 ≥2 선언 wave 의 결속 규범,
   `04-ext-payload.typ:276-277`) · **T ≠ 2 = malformation** (선언-실물 모순,

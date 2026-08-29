@@ -44,7 +44,7 @@
 | 이미 있는 것 | 자리 (직접 확인) |
 |---|---|
 | TRIPS 의 「출력 개수 카운팅으로 완료 검출」과 **null write/store 패딩** | `docs/research/wavescalar-capacity.md:148-152` — 카운팅과 패딩이 *같은 문장 안*에 있다. 이식 판정도 `:323-326` 에 이미 서 있다 |
-| KPN 계보 — Kahn 1974 | `docs/wt64v1-architecture-guide/refs.yml:93-103` 에 서지가 있고(note 는 `:103`) `chapters/02-fabric-alu.typ:555` 이 실제로 `@kahn` 으로 인용한다 |
+| KPN 계보 — Kahn 1974 | `docs/wt64v1-architecture-guide/refs.yml:105-115` 에 서지가 있고(note 는 `:115`) `chapters/02-fabric-alu.typ:555` 이 실제로 `@kahn` 으로 인용한다 |
 | WaveScalar k-bound 와 그 **대응물의 자리** | `docs/research/token-pressure.md:482-489` (후보 3 — 「제한 기전의 자리는 호스트 투입 경계」) · `wavescalar-capacity.md:406-411` |
 | DPGA 형 브로드캐스트 컨텍스트 | `wavescalar-capacity.md:318-322`(§5.2) |
 | SEED 형 **정적 명령 수 상한의 ISA 계약화** 와 그 기각 | `wavescalar-capacity.md:343-347`(§5.3 — 「상한을 인코딩 폭으로 승격하는 순간 INV-T1 위반」) |
@@ -164,30 +164,78 @@ work graph 와 달리 **검사가 있다.**
 
 ### 2.3 이론
 
-#### KPN 과 Parks 1995 — 유계 실행의 결정 불가능성 **[2차]**
+#### KPN 과 Parks 1995 — 유계 실행의 결정 불가능성 **[문면]**
+
+> **승격 (2026-08-30).** 이 항목은 초판에서 **[2차]**(초록·2차 요약만)였다.
+> 정본 진입의 전건이 「최소한 Parks 1995 의 해당 주장을 1차 출처에서 확인」
+> 이었으므로 세 문헌의 **본문 전문을 열어** 다시 썼다. 아래 문단들은 초록이
+> 아니라 **절 번호와 정리 번호가 붙은 문면**에 근거한다. 확인 경로와 그때
+> 죽어 있던 호스트는 §8.1 에 적는다.
 
 Kahn 1974 의 프로세스 네트워크는 결정론적이지만, 그 모델은 **종료(termination)
-와 유계 버퍼링(bounded buffering)이 결정 불가능할 만큼 강력하다** — 모든
-KPN 프로그램에 대해 이 질문들을 유한 시간에 답하는 알고리즘은 없다
-(Parks, *Bounded Scheduling of Process Networks*, UC Berkeley PhD, UCB/ERL
-M95-105, 1995; 초록 문면 확보, 본문 미열람).
+와 유계 버퍼링(bounded buffering)이 결정 불가능할 만큼 강력하다.** Parks
+1995 **§3.1 "Decidablilty"**(오탈자는 원문 그대로), pp. 32–33 에 정리 넷이
+있다 —
+
+- **Theorem 1** BDF 그래프의 종료 여부 판정은 결정 불가능하다.
+- **Corollary 1** KPN 의 종료 여부 판정은 결정 불가능하다.
+- **Theorem 2 ([9])** BDF 그래프를 유계 메모리로 스케줄할 수 있는지의 판정은
+  결정 불가능하다.
+- **Corollary 2** KPN 에 대해 같다.
+
+**⚠ 귀속은 두 층이다.** Theorem 2 는 문면에 `([9])` 가 붙어 있고 Parks 의
+참고문헌에서 `[9]` 는 **Buck 의 1993 학위논문 단독**이다(ICASSP 논문이
+아니다). 즉 결정 불가능성의 **바닥은 Buck** 이고, Parks 가 세운 것은
+「BDF 는 KPN 의 특수 경우이므로」라는 **따름정리 둘**이다. 「Parks 가
+증명했다」로 읽히게 적으면 귀속이 한 칸 밀린다.
 
 Parks 의 답은 **판정이 아니라 정책**이다. 빈 큐 읽기·가득 찬 큐 쓰기에서
-블록하고, 그 결과 **인공 교착**(artificial deadlock — 실제 교착이 아니라
-버퍼 크기 때문에 생긴 교착)이 나면 **가장 작은 가득 찬 큐의 용량을 늘려**
-생산자가 다시 발화하게 한다. 즉 유계성을 *증명*하는 대신 *동적으로
-찾아간다*.
+블록하고, **인공 교착**(artificial deadlock — 실제 교착이 아니라 버퍼 크기
+때문에 생긴 교착)이 나면 큐 용량을 늘려 생산자가 다시 발화하게 한다.
+**§4.2 "Bounded Scheduling"(p.47)** 이 세우는 것은 「인공 교착 시 *모든*
+채널 용량을 `b₁ > b₀` 로 올린다」이고, 「가장 작은 가득 찬 큐만 올린다」는
+그 다음 절 **§4.3 "Reducing Buffer Bounds"(p.48)** 의 *개량*이다 —
+「It is important not to increase the largest buffer … it is sufficient to
+increase the full channel with the smallest capacity.」 초판이 이 둘을 한
+문장으로 합쳐 적었다. 절 번호를 달 자리에서는 **§4.2–4.3 둘 다** 달아야
+한다.
 
-같은 부류의 결정 불가능성이 Boolean/dynamic dataflow 쪽에도 있다 —
-유계 버퍼와 교착이 DDF 에서 결정 불가능하다 (Buck & Lee, token flow model,
-ICASSP 1993 및 Buck 1993 학위논문; 2차 요약 기준).
+같은 부류의 결정 불가능성이 Boolean/dynamic dataflow 쪽에 있고, 그것이 위
+Theorem 2 의 근거다. Buck & Lee (ICASSP 1993) 4쪽 문면이 같은 주장을 적는다
+— 「the general problem of determining whether a BDF graph can be scheduled
+with bounded memory is undecidable (equivalent to the halting problem); this
+is because BDF graphs are Turing-equivalent」 — 그러나 그것은 **주장이지
+증명이 아니다.** 증명이 있는 곳은 **Buck 1993 학위논문**이고 Parks 가 `[9]`
+로 인용한 것도 그것이다.
 
-그리고 **Parks 의 정책은 완전하지 않다** — Geilen & Basten (ESOP 2003)은
-인공 교착이 *국소적*일 수 있음을(네트워크 일부만 교착) 지적했다. 국소
-교착은 전역 교착이 아니므로 Parks 의 규칙이 발동하지 않고, 그 부분은
-영원히 실행되지 않아 출력이 불완전해진다.
+그리고 **Parks 의 정책은 완전하지 않다** — Geilen & Basten, ESOP 2003.
+초판이 이 결과를 「국소 인공 교착을 못 잡는다」로만 적었는데, **적게 적었다.**
+문면은 더 세다.
 
-> **이 세 항목의 합이 §3 의 좁힌 명제다.**
+- 초록: 「the proposed method is used in many implementations of KPNs.
+  **However, it does not result in the correct behaviour for all KPNs.**」
+- §1 (Figure 2): Parks 는 **전역** 인공 교착에만 반응하므로, 상단부가 국소
+  인공 교착에 빠지고 하단부가 독립적으로 계속 돌면 프로세스가 모두 멈추지
+  않아 **국소 교착이 검출되지 않는다.** 「Such situations exist in realistic
+  networks.」
+- §1 (Figure 3, **non-effective network**): 둘째, 독립된 불완전성 — 소비되지
+  않는 데이터의 생산. 그리고 Fig.3 을 고치는 스케줄러는 **또 다른 KPN 에서
+  실패한다.** 그래서 G&B 는 대상 **부류를 제한**한다(유계 실행의 존재 +
+  effectiveness).
+
+⇒ G&B 가 세운 것은 「검출을 하나 빠뜨렸다」가 아니라 **「모든 KPN 에 대해
+옳은 스케줄러는 없고, 옳음은 부류 제한을 대가로만 산다」**이다. §4 의 좁힌
+명제에는 이쪽이 정확히 더 맞는 재료다.
+
+**⚠ 함정 — G&B 는 동적 확장을 포기하지 않았다.** 그들의 개선안도 **여전히
+FIFO 를 동적으로 키운다**(국소 교착 시 가득 찬 FIFO 를 키운다). 고친 것은
+정책이 아니라 **검출**(전역 → 국소)이다. 그러므로 「문헌이 동적 확장을
+포기했다」·「동적 확장은 고쳐지지 않는다」로 적으면 **문헌을 넘어선다.**
+적어도 되는 것은 「증명에서 탐색으로 강등되고, 그 탐색의 옳음은 부류 제한을
+요구한다」까지다.
+
+> **이 항목의 합이 §3 의 좁힌 명제다.** 그리고 그 명제는 이제 정본에 들어가
+> 있다 — `chapters/02-fabric-alu.typ` §2.6 해설 (§4 말미 참조).
 
 #### CSDF 의 repetition vector **[확신 낮음]**
 
@@ -251,7 +299,7 @@ Design*, IEEE TCAD 20(9), 2001, pp.1059–1076; 서지·요지 확인, 본문 �
 확인했다.
 
 **이름을 먼저 적고 좌표를 뒤에 적는다** — 정본이 스스로 「번호가 아니라
-이름으로 불러라」로 규율을 세우고(`chapters/01-isa-asm.typ:699`), 이 문서를
+이름으로 불러라」로 규율을 세우고(`chapters/01-isa-asm.typ:748`), 이 문서를
 쓰는 동안에도 좌표가 실제로 밀렸다 (§8.3 의 경고). **grep 대상은 이름
 열이다.**
 
@@ -259,10 +307,10 @@ Design*, IEEE TCAD 20(9), 2001, pp.1059–1076; 서지·요지 확인, 본문 �
 |---|---|---|---|
 | 라우터 없음 · 브로드캐스트 + valid 디먹스 + OR 병합 | 규범 「이름에 속지 말 것 — 이 설계에 NoC 는 없다」 | 본문에 `#등급("실측")` | `chapters/02-fabric-alu.typ:129-156` (실측 문장은 `:156`) |
 | 이식 오류의 이름 | 함정 「라우터를 짓지 말 것」 | 함정 | `chapters/02-fabric-alu.typ:268` (인용문 `:270`) |
-| 형상 독립 | 규범 「INV-T1 — 명명」 · 「INV-T2 — 계층 은닉」 | 규범 | `chapters/01-isa-asm.typ:77` · `:83` · `:116-117`(정적 검사 두 줄) |
+| 형상 독립 | 규범 「INV-T1 — 명명」 · 「INV-T2 — 계층 은닉」 | 규범 | `chapters/01-isa-asm.typ:77` · `:83` · `:146-147`(정적 검사 두 줄) |
 | 자가 발화 부재 | 규범 「발화의 유일한 원천은 호스트 명령 큐다」 | 규범 (근거절에서 승격됨) | `chapters/02-fabric-alu.typ:162` |
-| 토큰 비증식 | 규범 「토큰 비증식 — 발화가 남기는 후속 전송 전량의 분할」 · 속성 `ISA-9` | 규범 + 형식 속성 | `chapters/01-isa-asm.typ:587` · `:1691` |
-| 상수 시간성 | 규범 「정의 — 절대치가 아니라 경로 간 동일성」 · 속성 `SEC-2` | 규범 + 형식 속성(증명됨) | `chapters/05-security.typ:101-105` · `appendix/d-properties.typ:210` |
+| 토큰 비증식 | 규범 「토큰 비증식 — 발화가 남기는 후속 전송 전량의 분할」 · 속성 `ISA-9` | 규범 + 형식 속성 | `chapters/01-isa-asm.typ:617` · `:1740` |
+| 상수 시간성 | 규범 「정의 — 절대치가 아니라 경로 간 동일성」 · 속성 `SEC-2` | 규범 + 형식 속성(증명됨) | `chapters/05-security.typ:155-159` · `appendix/d-properties.typ:229` |
 
 > **함정 — 첫 두 줄은 등급이 다르다.** 「라우터가 없다」는 `:156` 에서
 > `#등급("실측")` 이 붙은 **실측**이고 (같은 규범이 `:158-159` 에서
@@ -283,7 +331,7 @@ Design*, IEEE TCAD 20(9), 2001, pp.1059–1076; 서지·요지 확인, 본문 �
 |---|---|---|
 | Monsoon activation frame | **이식 불가 — 전제가 이미 없다** | 프레임은 「호출마다 기계가 새 저장소를 연다」는 동적 할당이고, 그 여는 주체가 **기계**다. `02-fabric-alu.typ:162` 가 그 주체를 없앴다 |
 | TBDR partial render | **이식 불가 — 이 불가가 가장 유용하다** | §3.2 |
-| `__launch_bounds__` | **이미 있음 — 새것 없음** | 「선언이 구현 상한을 넘으면 능력 부재」(`01-isa-asm.typ:284-285`)가 같은 형태. 다른 것은 **처분**: launch 실패 ↔ 능력 부재 |
+| `__launch_bounds__` | **이미 있음 — 새것 없음** | 「선언이 구현 상한을 넘으면 능력 부재」(`01-isa-asm.typ:314-315`)가 같은 형태. 다른 것은 **처분**: launch 실패 ↔ 능력 부재 |
 | `max_vertices` | **이미 있음 — 그리고 이쪽이 강하다** | 조각열 선언 총개수(§4.3) + ISA-9 가 같은 형태이고, 초과의 처분이 undefined 가 아니라 malformation/능력 부재다 |
 | D3D12 work graphs | **이식 불가 — 그러나 최대 값의 대조** | §3.3 |
 | `maxDrawCount` | **개념은 이미 있고, 검산 축이 비어 있다** | §3.4 |
@@ -309,7 +357,7 @@ TBDR 의 partial render 는 「넘치면 중간 결과를 메모리로 흘리고
 
 > **가득 참의 처분이 셋뿐인 것은 구현 편의가 아니라 상수 시간 계약의
 > 귀결이다.** 스필은 정의상 경로를 가른다 — 스필한 실행과 스필하지 않은
-> 실행이 서로 다른 상태열을 지난다. `05-security.typ:102` 는 상수 시간성을
+> 실행이 서로 다른 상태열을 지난다. `05-security.typ:156` 은 상수 시간성을
 > 「어느 경로를 타든 같은 사이클」로 정의하고 `:104` 가 「완전히 동일한
 > 상태열을 지나야 한다」로 못박으며, `:121-125` 는 형식화가 상태열
 > *길이*가 아니라 **상태열 자체의 동일성**이어야 한다고 다시 못박는다.
@@ -343,7 +391,7 @@ UB 를 고른 이유는 검사 비용이고, 그 비용은 이 기계에도 그�
 정본이 개정 비용을 적을 때 이 셋이 그 목록이다.
 
 **부수 관찰** — 3번(선언으로 backing memory 를 사전 산정)은 이 기계의
-「조각열 선언 총개수 → 능력 부재 판정」(`01-isa-asm.typ:284-285`)과 같은
+「조각열 선언 총개수 → 능력 부재 판정」(`01-isa-asm.typ:314-315`)과 같은
 형태다. 다른 것은 **누가 그 선언으로 자원을 잡는가**다: work graph 는
 런타임이 잡고, 이 기계는 **아무도 잡지 않는다** — 선언은 판정에만 쓰인다.
 
@@ -394,12 +442,14 @@ Petri net 은 두 유계성을 이름으로 가른다 (§2.3):
 보지 않는다 —
 
 - 자가 발화 부재는 **구성이 무엇이든** 성립한다 (`02-fabric-alu.typ:162`).
-- 토큰 비증식은 **명령이 무엇이든** 성립한다 (`01-isa-asm.typ:587`,
+- 토큰 비증식은 **명령이 무엇이든** 성립한다 (`01-isa-asm.typ:617`,
   세 갈래의 전량 분할).
 - 저장 유계성은 **파라미터가 무엇이든** 성립한다 (자리마다 유한 + 처분 셋).
 
 ⇒ 이 기계의 유계성은 **행동적이 아니라 구조적**이다. 그리고 **그 사실이
-이름을 갖고 있지 않다** — `structural bounded` 저장소 전량 0건 (직접 grep).
+이름을 갖고 있지 않았다** — `structural bounded` 저장소 전량 0건 (2026-08-27
+직접 grep). **이것은 사건의 수이지 현황의 수가 아니다** — 아래 착지가 그
+0 을 끝냈다.
 
 이식되는 것은 기법이 아니라 **구분**이다. 값은 셋이다.
 
@@ -417,6 +467,15 @@ Petri net 은 두 유계성을 이름으로 가른다 (§2.3):
 시도는 이식 오류다. 발생 행렬을 세우려면 「전이마다 소비·생산 개수가
 고정」이라는 전제가 필요하고, 이 기계에는 CSDF 와 같은 이유로 그 전제가
 없다(§3.1 표). **이식되는 것은 결정 절차가 아니라 구분의 이름이다.**
+
+**착지 (2026-08-30).** 이름이 정본에 들어갔다 —
+`chapters/01-isa-asm.typ` §1.2.1 「세 불변식」의 #해설 「이 요건이 세우는
+주장의 부류 — 구조적 유계성 (structural boundedness)」, 그리고 부록 C
+용어집의 「검증」 표 한 행. 위 **함정도 함께 들어갔다** — 대수적 특징화의
+이식이 오류라는 ⚠ 문단이 없으면 다음 사람이 그 절차를 가져오려 한다.
+정본은 **복잡도 등급의 대조를 주장하지 않는다**: 그 근거가 개관 논문
+[2차](§8.1 6번, 원 정리 미열람)이므로, 정본 문면은 등급 대조를 이 파일로
+넘기고 「이 문서가 확인한 것이 아니다」라고 적었다.
 
 ### 3.6 credit-based flow control — 왕복이 없는 곳에서는 크레딧이 상태만 늘린다
 
@@ -470,7 +529,7 @@ LID 가 세우는 성질(지연을 바꿔도 기능이 보존된다)은 이 기�
 | | 무엇을 요구하나 | 자리 |
 |---|---|---|
 | 지연 무관성 (LID 형) | 지연이 **달라져도** 기능이 같아야 한다 | 이름 없음 — 배압·무손실·FAB-10 의 합으로만 존재 |
-| 상수 시간성 (SEC-2) | 지연이 **같아야** 한다 | `05-security.typ:99-102` · SEC-2 |
+| 상수 시간성 (SEC-2) | 지연이 **같아야** 한다 | `05-security.typ:155-159`(정의 문장은 `:156`) · SEC-2 |
 
 둘은 모순이 아니다 — SEC-2 의 정의가 「항상 N 사이클」이 아니라 「**어느
 경로를 타든** 같은 사이클」이므로(`:102`), 전체 지연이 늘어나는 것은
@@ -484,14 +543,24 @@ LID 가 세우는 성질(지연을 바꿔도 기능이 보존된다)은 이 기�
 보존되니 안전하다」로 잘못 읽힐 수 있다. **경로 하나에만 끼우면 SEC-2 가
 깨진다.**
 
+**착지 (2026-08-30).** 이 한 문장이 정본에 들어갔다 —
+`chapters/05-security.typ` §5.3 의 #함정 「지연 무관성과의 관계 — 「기능이
+보존된다」가 SEC-2 를 함의하지 않는다」. 36→37 사이클 해설과 지연 무관성
+축의 연결도 그 자리에서 붙었다. **LID 계보의 서지는 `refs.yml` 에 넣지
+않았다** — Carloni 외 2001 은 여전히 **[2차]**(본문 미열람)이고, 정본은
+인용 등급을 나누지 않으므로 들어가는 순간 그 표시가 사라진다. 정본 문면은
+LID 를 **이름으로만** 부르고 서지 확인의 부재를 스스로 적는다. 그 서지를
+정본에 올리려면 Parks 3종에 적용한 것과 **같은 전건**(본문 확인)을 넘겨야
+한다.
+
 ---
 
 ## 4. 좁힌 명제 하나 — 「고정 크기」는 편의가 아니라 결정 가능성의 전제다
 
 **정본이 Kahn 을 인용하는 자리는 하나이고, 용법도 하나다.**
 
-- `docs/wt64v1-architecture-guide/refs.yml:93-103` — `kahn` 항목. 그 note
-  (`:103`)가 용법을 한 줄로 못박는다: **「결정론적 데이터플로 네트워크.
+- `docs/wt64v1-architecture-guide/refs.yml:105-115` — `kahn` 항목. 그 note
+  (`:115`)가 용법을 한 줄로 못박는다: **「결정론적 데이터플로 네트워크.
   무손실·배압 계약의 이론적 배경」**
 - `docs/wt64v1-architecture-guide/chapters/02-fabric-alu.typ:555` — 「조각
   전송과 배압」 규범 3항: 「*무손실이어야 한다* — 배압을 무시한 전송으로
@@ -501,11 +570,12 @@ LID 가 세우는 성질(지연을 바꿔도 기능이 보존된다)은 이 기�
 그런데 같은 계보가 **다른 결과 하나를 더** 갖고 있고, 그것이 이 기계에
 훨씬 세게 걸린다.
 
-> **KPN 은 종료와 유계 버퍼링이 결정 불가능하다** (Parks 1995 §2.3).
-> Boolean/dynamic dataflow 에서도 같다 (Buck & Lee 1993). 그래서 Parks 의
-> 해법은 *판정*이 아니라 **동적 정책**이었고 — 인공 교착이 나면 가장 작은
-> 가득 찬 큐를 키운다 — **그 정책조차 완전하지 않았다** (Geilen & Basten
-> 2003: 국소 인공 교착을 못 잡는다).
+> **KPN 은 종료와 유계 버퍼링이 결정 불가능하다** (Parks 1995 §3.1 —
+> 바닥은 Buck 1993 의 BDF 튜링 동등성이고 Parks 의 것은 따름정리다; §2.3).
+> 그래서 Parks 의 해법은 *판정*이 아니라 **동적 정책**이었고 — 인공 교착이
+> 나면 가득 찬 큐를 키운다 (§4.2, 「가장 작은 것만」은 §4.3 의 개량) —
+> **그 정책은 모든 KPN 에서 옳지 않다** (Geilen & Basten 2003: 옳음은 대상
+> 부류의 제한을 대가로만 산다).
 
 여기서 서는 논거가 **저장소에 0건**이다.
 
@@ -531,13 +601,37 @@ LID 가 세우는 성질(지연을 바꿔도 기능이 보존된다)은 이 기�
    결정 불가능」이라 말한다. 두 결과가 같은 문장의 앞뒤다: **유계성을
    구조에서 얻으면 싸고, 실행에서 얻으려면 답이 없다.**
 
-**권고 형태**: `refs.yml` 에 `parks1995` (그리고 필요하면 `buck_lee1993` ·
-`geilen_basten2003`) 를 더하고, `02-fabric-alu.typ` 의 배압 규범 또는 그
-해설에서 **고정 크기의 사유절**로 인용한다. 서지 초안은 §7.2 에 둔다.
+**권고 형태**: `refs.yml` 에 `parks1995` · `buck1993` · `geilen_basten2003`
+을 더하고, `02-fabric-alu.typ` 의 배압 규범 해설에서 **고정 크기의 사유절**로
+인용한다. 서지는 §8.2 에 둔다.
 
 > ⚠ `refs.yml:4` 이 「본문에서 `#cite` 로 참조되는 키만 둔다」로 스스로
 > 규율을 적는다. **인용할 자리를 함께 정하지 않고 서지만 더하면 그
 > 규율 위반이다.**
+
+### 4.1 착지 (2026-08-30) — 이 권고는 집행됐다
+
+이 명제는 정본에 들어갔다. **여기 남는 것은 초안이 아니라 조사 근거이고,
+계약 문면은 정본이 진다.**
+
+- **자리**: `chapters/02-fabric-alu.typ` §2.6 「조각 전송과 배압」 — `@kahn`
+  을 인용하는 규범 3항 바로 아래의 #해설 「3항이 부르는 계보는 결과를 하나
+  더 갖는다 — 고정 크기는 편의가 아니라 결정 가능성의 전제다」.
+- **서지**: `refs.yml` 에 `parks1995` · `buck1993` · `geilen_basten2003`.
+  `buck_lee1993`(ICASSP)은 **넣지 않았다** — Parks 가 `[9]` 로 인용하는 것이
+  ICASSP 논문이 아니라 학위논문이므로, ICASSP 를 넣으면 「Parks 가 인용한 그
+  문헌」이 아닌 것을 인용하게 된다 (§2.3 의 귀속 두 층).
+- **정본이 함께 진 것 셋**: ⑴ 귀속을 Buck → Parks 두 층으로 적었다
+  ⑵ G&B 를 「부류 제한 없이는 옳은 스케줄러가 없다」로 적었다 ⑶ 「G&B 도
+  여전히 동적으로 키운다 — 고친 것은 검출이다」를 ⚠ 한 문단으로 함께 적었다.
+- **위 값 셋 중 ⑵ 도 집행됐다**: `appendix/b-gaps.typ` B.5 「재조립 문맥 풀
+  고갈의 처분」 행에 갈래 비교가 붙었다 — 「고갈되면 문맥을 더 연다」가
+  **Parks 의 규칙과 같은 형태**라는 대조. ⑴(스필 기각의 둘째 근거)은 위
+  #해설 안에서 SEC-2 와 나란히 적혔다.
+
+> ⚠ **정본은 인용의 등급을 나누지 않는다.** 이 파일의 **[문면]** 표시는 정본에
+> 들어가는 순간 사라지므로, 이 세 항목이 실제로 본문 확인을 거쳤다는 기록은
+> **오직 여기에만 남는다.** 이 절을 지우면 그 사실이 저장소에서 사라진다.
 
 ---
 
@@ -557,21 +651,21 @@ LID 가 세우는 성질(지연을 바꿔도 기능이 보존된다)은 이 기�
 
 > **증폭 계약 자체 — 「하나의 발화가 남기는 후속 전송 *전량*은 셋 중 정확히
 > 하나다」를 이름 있는 계약 · 형식 속성으로 든 선례를 이 조사는 찾지
-> 못했다.** (정본 `01-isa-asm.typ:587` 규범 · ISA-9 `:1691`.)
+> 못했다.** (정본 `01-isa-asm.typ:617` 규범 · ISA-9 `:1740`.)
 
 찾은 것은 **전부 인접 부류**이고, 그 차이를 정확히 적는 것이 이 절의 값이다.
 
 | 선례 | 무엇을 계약하나 | 증폭 계약과 무엇이 다른가 |
 |---|---|---|
-| TRIPS 블록 원자성 (≤32 write, ≤32 store, 정확히 1 분기, null 패딩) | **한 블록의 출력 개수 상한** | 상한이지 **분할이 아니다.** 「≤32」는 정의역이 열려 있으면 아무것도 세지 않는 형태이고 — 정본이 스스로 그 구멍을 이름했다 (`01-isa-asm.typ:603-614` 해설) — TRIPS 는 그 구멍을 **패딩으로 정확히 32 를 만들어** 닫는다. 즉 상한을 **등식**으로 바꾼 것이지 전량 분할이 아니다 |
+| TRIPS 블록 원자성 (≤32 write, ≤32 store, 정확히 1 분기, null 패딩) | **한 블록의 출력 개수 상한** | 상한이지 **분할이 아니다.** 「≤32」는 정의역이 열려 있으면 아무것도 세지 않는 형태이고 — 정본이 스스로 그 구멍을 이름했다 (`01-isa-asm.typ:633-644` 해설) — TRIPS 는 그 구멍을 **패딩으로 정확히 32 를 만들어** 닫는다. 즉 상한을 **등식**으로 바꾼 것이지 전량 분할이 아니다 |
 | work graph `MaxRecords` | **한 노드의 출력 record 수 상한** | 상한이고, 위반이 **검출되지 않는다**(UB). 이 기계는 위반이 규범 위반으로 *잡힌다* |
 | `max_vertices` | **한 호출의 출력 정점 수 상한** | 같은 부류. 상한형 |
 | SDF/CSDF 의 생산·소비 개수 | actor 마다 **고정 개수** | 개수 자체를 고정하므로 더 강하되, **actor 모델**의 성질이고 이 기계에는 옮길 그래프가 없다 (§3.1) |
 | Petri net 의 「전이마다 아크 가중」 | 전이마다 생산·소비 개수 고정 | 같은 이유로 형태만 같고 대상이 다르다 |
 
 ⇒ **모두 「상한」형이고, 정본의 것은 「전량 분할」형이다.** 이 차이는
-정본이 스스로 발견해 개정으로 적었다 (`01-isa-asm.typ:605`: 「「최대
-하나」는 정의역이 열려 있으면 아무것도 세지 않는다」 · `:610`: 「분할
+정본이 스스로 발견해 개정으로 적었다 (`01-isa-asm.typ:635`: 「「최대
+하나」는 정의역이 열려 있으면 아무것도 세지 않는다」 · `:640`: 「분할
 형태는 *전량*이라는 낱말로 정의역을 닫는다」). **그 개정이 외부 선례 없이 일어났다는
 사실 자체가 기록될 값이 있다** — 정본이 상한형에서 분할형으로 간 이유가
 문헌 모방이 아니라 자체 반례이기 때문이다.
@@ -580,6 +674,23 @@ LID 가 세우는 성질(지연을 바꿔도 기능이 보존된다)은 이 기�
 > 본 범위는 §2 의 네 계보이고, 프로세스 대수·세션 타입·선형 타입 계열은
 > 열지 않았다. 선형 타입(「자원을 정확히 한 번 쓴다」)이 형태상 가장 가까운
 > 후보인데 **이 조사는 그쪽을 보지 않았다** (§7.2).
+
+**착지 (2026-08-30).** 이 절의 판정이 정본에 한 문단으로 들어갔다 —
+`chapters/01-isa-asm.typ` §1.4.2 의 #해설 「왜 「최대 하나」가 아니라
+「분할」인가」 말미. **위 함정이 함께 들어간 것이 이 착지의 조건이었다** —
+「선례가 없다」만 옮기면 다음 사람이 그것을 「우리가 처음이다」로 읽고, 그
+오독은 이 조사가 열지 않은 세 계열(프로세스 대수·세션 타입·선형 타입)을
+보지 않은 채로 굳는다. 정본 문면은 넷을 **이름 없이 형태로만** 열거한다 —
+그중 SDF/CSDF 항목이 이 파일에서 **[확신 낮음]**(서지 미확인)이기 때문이다.
+
+> **정정 (2026-08-30, 전수 검증).** 초판 착지에서 정본 문면은 넷을 **전부
+> 상한형**이라 적었다. **틀렸다** — 넷째(SDF/CSDF 의 고정 소비·생산 개수)는
+> 위 표 자신이 「actor 마다 **고정 개수** … 개수 자체를 고정하므로 더 강하되」
+> 로 분류한 대로 상한형이 아니다. 정본은 「셋이 상한형, 넷째는 고정 개수형」
+> 으로 고쳤고, 그 넷째가 **[확신 낮음]**(서지 미확인)이라는 사실도 정본
+> 문면이 스스로 적게 했다 — 정본은 등급을 나누지 않으므로, 나누지 않는 대신
+> 그 한 항목의 미확인을 산문으로 적는 것이 이 파일과 어긋나지 않는 유일한
+> 형태였다.
 
 ---
 
@@ -624,7 +735,7 @@ grep·파일 열람이다.
   |---|---|
   | **base ↔ induction 비용 비대칭을 실제로 잰 것 — 둘** | `rtl/formal/sby/OperandDecode/body_judge.sby:67-69` · `rtl/sv/assert/OwnershipTable_props.sv:346-347` |
   | 「basecase 통과 / induction 만 깨짐」 함정·회귀 서술 (시간 아님) | `Makefile:722-723` · `.claude-memories/sby_composite_regression.md:16`·`:20-21` · `scripts/sby_impact.py:13` · `scripts/sby_sweep.sh:163` · `rtl/sv/assert/RouteMmio_props.sv:189` |
-  | 태스크 구성 주석 · 서지 키 · 도구 설명 (비실측) | `rtl/formal/sby/DecodeWalk/walk_decode.sby:91` · `rtl/formal/sby/OperandDecode/body_judge.sby:57` · `scripts/lint_postformal.py:1266` · `docs/wt64v1-architecture-guide/chapters/06-formal.typ:489` · `refs.yml:401`(`sheeran_induction`) · `.devcontainer/Dockerfile:335` |
+  | 태스크 구성 주석 · 서지 키 · 도구 설명 (비실측) | `rtl/formal/sby/DecodeWalk/walk_decode.sby:91` · `rtl/formal/sby/OperandDecode/body_judge.sby:57` · `scripts/lint_postformal.py:1266` · `docs/wt64v1-architecture-guide/chapters/06-formal.typ:489` · `refs.yml:437`(`sheeran_induction`) · `.devcontainer/Dockerfile:335` |
 - **그리고 이 저장소는 그 분해를 이미 두 번 적어 봤다** — 이것이 이 항목의
   진짜 무게다.
   - `rtl/formal/sby/OperandDecode/body_judge.sby:67-69` 는 깊이 선택의
@@ -668,10 +779,21 @@ grep·파일 열람이다.
 
 ### 7.1 미열람·미확인
 
-- **본문 미열람 (초록·2차 요약만)**: Parks 1995 학위논문 본문 · Buck & Lee
-  token flow model · Geilen & Basten ESOP 2003 · Papadopoulos & Culler
-  ISCA 1990 · Carloni 외 IEEE TCAD 2001 · Petri net 결정 가능성 개관.
+- **본문 미열람 (초록·2차 요약만)**: Papadopoulos & Culler ISCA 1990 ·
+  Carloni 외 IEEE TCAD 2001 · Petri net 결정 가능성 개관.
   **§2·§3·§4 의 이 항목들에 붙은 [2차] 표시가 그 뜻이다.**
+- **승격됨 (2026-08-30, [2차] → [문면])**: Parks 1995 학위논문 · Geilen &
+  Basten ESOP 2003 · Buck & Lee ICASSP 1993 — **셋 다 전문을 열어** 해당
+  문장을 직접 읽었다. 초록 수준 확인이 아니다. 그 결과가 §2.3 의 재작성이고,
+  드러난 오류 넷(귀속 한 칸 밀림 · §4.2 와 §4.3 의 합침 · G&B 결과의 과소
+  진술 · 보고서 번호)은 그 자리에서 고쳤다.
+- **여전히 미열람 — 그러나 정본이 인용한다**: **Buck 1993 학위논문**. 이것이
+  결정 불가능성의 **증명이 있는 곳**이고 Parks 의 `[9]` 이며 `refs.yml`
+  `buck1993` 이 가리키는 문헌인데, **이 조사는 그 본문을 열지 않았다.**
+  서지 레코드는 Parks 1995 참고문헌 목록을 **직접 읽어** 옮긴 것이고, 그
+  주장은 Buck & Lee ICASSP 1993 문면([문면])이 같은 문장으로 적는다 — 다만
+  거기서는 **주장이지 증명이 아니다.** 정본은 인용 등급을 나누지 않으므로
+  **이 사실의 유일한 기록이 이 줄이다.**
 - **서지조차 미확인**: CSDF(Bilsen 외 1996 으로 기억) · credit-based flow
   control(Kung & Morris 1995 로 기억) · `__launch_bounds__` · GLSL
   `max_vertices` · fuel/gas 세 사례. **[확신 낮음]** 표시가 붙은 것들이고,
@@ -727,22 +849,63 @@ mmio_deep 시간 기록 부재)뿐이다.
 확신도 등급을 함께 적는다. URL 은 **이 조사가 이번에 실제로 확인한 것만**
 싣는다 — 확인하지 않은 URL 은 싣지 않는다.
 
+> ⚠ **이 자기 규율은 이미 한 번 깨져 있었다 (2026-08-30 실측).** 초판의
+> 2·3번이 실은 `ptolemy.berkeley.edu` / `ptolemy.eecs.berkeley.edu` 를
+> 가리켰는데 **둘 다 지금 열리지 않는다** (연결 거부 / 타임아웃). 작성
+> 시점에 확인됐을지는 모르나 **URL 은 확인 시점과 함께 적지 않으면
+> 낡는다** — 「확인한 것만 싣는다」는 규율이 *언제* 확인했는지를 안 적으면
+> 스스로를 지키지 못한다. 아래는 **2026-08-30 에 실제로 200 을 받은 것만**
+> 싣고, 죽은 것은 죽었다고 적는다.
+>
+> ⚠ **본문 PDF 는 저장소로 옮기지 않았다** (저작권 · 부피). 대신 받은 바이트의
+> 지문을 적어 둔다 — 아래 확인 경로에서 다시 받으면 같은 값이 나와야 한다.
+> `parks1995` sha256 `7d0c1f88e9dcdaf74dfc23e6a67a06b2c768057d4fda9eb8aa54b2819257b056` ·
+> `geilen_basten2003` sha256 `18f6c6375927aef242e4a0a9393a1ce16dd7c4d1c7ad87f5e3fc140d4efb665e`.
+> 지문이 다르면 **같은 URL 이 다른 문서를 준 것**이고, 그때 이 파일의 [문면]
+> 표시는 재확인 전까지 [2차]로 내려야 한다.
+
 **데이터플로**
 
 1. **[2차]** Gregory M. Papadopoulos, David E. Culler. *Monsoon: an
    Explicit Token-Store Architecture.* ISCA 1990, pp. 82–91.
    <https://dl.acm.org/doi/10.1145/325164.325117>
    (회고: <https://people.eecs.berkeley.edu/~culler/courses/cs252-s05/papers/p74-papadopoulos.pdf>)
-2. **[2차]** Thomas M. Parks. *Bounded Scheduling of Process Networks.*
-   PhD dissertation, University of California, Berkeley, 1995.
-   Technical Report UCB/ERL M95-105.
-   <https://ptolemy.berkeley.edu/papers/95/parksThesis/thesis.pdf>
-3. **[2차]** Joseph T. Buck, Edward A. Lee. *Scheduling Dynamic Dataflow
-   Graphs with Bounded Memory Using the Token Flow Model.* ICASSP 1993.
-   <https://ptolemy.berkeley.edu/publications/papers/93/tokenFlowICASSP93/tokenFlowICASSP93.pdf>
-4. **[2차]** Marc Geilen, Twan Basten. *Requirements on the Execution of
-   Kahn Process Networks.* ESOP 2003, LNCS 2618.
-   <https://link.springer.com/chapter/10.1007/3-540-36575-3_22>
+2. **[문면]** Thomas M. Parks. *Bounded Scheduling of Process Networks.*
+   PhD dissertation, Technical Report **UCB/ERL-95-105**, EECS Department,
+   University of California, Berkeley, **December 1995**.
+   읽은 자리: §3.1 "Decidablilty" pp.32–33 (Theorem 1 / Corollary 1 /
+   Theorem 2 ([9]) / Corollary 2) · §4.2 "Bounded Scheduling" p.47 ·
+   §4.3 "Reducing Buffer Bounds" p.48 · 참고문헌 [9].
+   확인 경로 (Wayback 스냅샷):
+   <http://web.archive.org/web/20221022091907if_/https://ptolemy.berkeley.edu/papers/95/parksThesis/thesis.pdf>
+   - ⚠ **보고서 번호 정정.** 초판이 `UCB/ERL M95-105` 로 적었다. `M` 형은
+     Berkeley ERL 메모랜덤 관행 표기로 널리 쓰이나, **논문 표제지 뒤에
+     스스로 인쇄한 권장 인용문에는 `M` 이 없다.** 1차 문서 표기를 따른다.
+   - ⚠ 원 호스트 `ptolemy.berkeley.edu` 는 2026-08-30 현재 **연결 거부**
+     (`ECONNREFUSED 128.32.139.28:443`), `ptolemy.eecs.berkeley.edu` 는
+     타임아웃, DTIC 미러(`apps.dtic.mil/sti/pdfs/ADA637171.pdf`)는 HTTP 200
+     이나 본문이 PDF 가 아니라 **"Under Maintenance" HTML** 이다.
+3. **[문면]** Joseph T. Buck, Edward A. Lee. *Scheduling Dynamic Dataflow
+   Graphs with Bounded Memory Using the Token Flow Model.* Proc. ICASSP '93,
+   Minneapolis, April 1993. (4쪽 전문 열람 — 서지가 논문 문면과 일치한다.)
+   확인 경로 (Wayback 스냅샷):
+   <http://web.archive.org/web/20260711110423if_/https://ptolemy.berkeley.edu/publications/papers/93/tokenFlowICASSP93/tokenFlowICASSP93.pdf>
+   - ⚠ **이 논문은 주장이지 증명이 아니다.** 증명이 있는 곳은 **Buck 의
+     1993 학위논문**(단독 저자)이고 Parks 의 `[9]` 도 그것이다. 그래서
+     정본 `refs.yml` 이 든 키는 `buck_lee1993` 이 아니라 `buck1993` 이다
+     (§4.1). 그 학위논문 본문은 **열지 않았다** (§7.1).
+4. **[문면]** Marc Geilen, Twan Basten. *Requirements on the Execution of
+   Kahn Process Networks.* In P. Degano (ed.), ESOP 2003, LNCS 2618,
+   Springer, **pp. 319–334**. doi:`10.1007/3-540-36575-3_22`.
+   읽은 자리: 초록 · §1 서론 (Figure 2 국소 인공 교착 · Figure 3
+   non-effective network · 부류 제한).
+   확인 경로 (저자 미러, HTTP 200 `application/pdf`):
+   <https://tbasten.estue.nl/papers/esop03.pdf>
+   서지 레코드 대조: TU/e Research Portal
+   <https://research.tue.nl/en/publications/requirements-on-the-execution-of-kahn-process-networks/>
+   - ⚠ 초판이 **쪽 범위·편자·DOI 를 빠뜨렸다.** Springer 랜딩 페이지
+     (<https://link.springer.com/chapter/10.1007/3-540-36575-3_22>)는 살아
+     있으나 **초록만 보이고 본문은 유료**다 — 본문을 읽은 경로는 위 미러다.
 5. **[확신 낮음]** G. Bilsen, M. Engels, R. Lauwereins, J. Peperstraete.
    *Cyclo-Static Dataflow.* IEEE Trans. Signal Processing, 1996 (기억).
    **서지 미확인 — 인용 전 확인 요.**
@@ -780,53 +943,79 @@ mmio_deep 시간 기록 부재)뿐이다.
     1995 로 기억) · fuel/gas (Ethereum · Wasm 런타임 · 증명 보조기).
     **서지 미확인.**
 
-### 8.2 `refs.yml` 승격 후보 — **이 파일이 아니라 정본 몫이다**
+### 8.2 `refs.yml` 승격 — **집행됨 (2026-08-30)**
 
-§4 의 좁힌 명제를 정본이 채택하면 아래 둘(필요하면 셋)이 `refs.yml` 에
-들어간다. **형식은 hayagriva 로 맞춰 두었으나 여기 두는 것은 초안일
-뿐이고, 실제 기입은 정본 담당이 한다** — `refs.yml:4` 규율(「본문에서
-`#cite` 로 참조되는 키만 둔다」)상 **인용 자리를 함께 정하지 않으면
-넣으면 안 된다.**
+초판의 이 절은 **승격 후보 초안**이었다. 그 승격은 실제로 일어났고, 아래는
+**저장소에 들어간 실물**이다 (`docs/wt64v1-architecture-guide/refs.yml`,
+`kahn` 바로 뒤). 인용 자리는 `chapters/02-fabric-alu.typ` §2.6 해설 하나로
+셋 다 채워진다 — `refs.yml:4` 규율(「본문에서 `#cite` 로 참조되는 키만
+둔다」)의 전건이다.
 
 ```yaml
 parks1995:
   type: Thesis
   title: "Bounded Scheduling of Process Networks"
   author: ["Parks, Thomas M."]
-  date: 1995
-  serial-number: "UCB/ERL M95-105"
-  organization: "University of California, Berkeley"
-  url: https://ptolemy.berkeley.edu/papers/95/parksThesis/thesis.pdf
-  note: "KPN 의 종료·유계 버퍼링은 결정 불가능. 고정 크기가 결정 가능성의 전제인 근거"
+  date: 1995-12
+  genre: "PhD dissertation, Technical Report UCB/ERL-95-105"
+  organization: "EECS Department, University of California, Berkeley"
+  publisher: "University of California, Berkeley"
+  url: http://web.archive.org/web/20221022091907if_/https://ptolemy.berkeley.edu/papers/95/parksThesis/thesis.pdf
 
-buck_lee1993:
-  type: Article
+buck1993:
+  type: Thesis
   title: "Scheduling Dynamic Dataflow Graphs with Bounded Memory Using the Token Flow Model"
-  author: ["Buck, Joseph T.", "Lee, Edward A."]
+  author: ["Buck, Joseph T."]
   date: 1993
-  parent:
-    type: Proceedings
-    title: "IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP)"
-    publisher: IEEE
-  url: https://ptolemy.berkeley.edu/publications/papers/93/tokenFlowICASSP93/tokenFlowICASSP93.pdf
-  note: "동적 데이터플로에서도 유계 버퍼·교착이 결정 불가능"
+  genre: "PhD dissertation"
+  organization: "EECS Department, University of California, Berkeley"
+  publisher: "University of California, Berkeley"
 
 geilen_basten2003:
   type: Article
   title: "Requirements on the Execution of Kahn Process Networks"
   author: ["Geilen, Marc", "Basten, Twan"]
+  editor: ["Degano, Pierpaolo"]
   date: 2003
+  page-range: 319-334
   parent:
     type: Proceedings
-    title: "European Symposium on Programming (ESOP), LNCS 2618"
+    title: "Programming Languages and Systems — 12th European Symposium on Programming (ESOP), LNCS 2618"
     publisher: Springer
-  url: https://link.springer.com/chapter/10.1007/3-540-36575-3_22
-  note: "Parks 의 동적 정책조차 완전하지 않다 — 국소 인공 교착"
+  serial-number:
+    doi: "10.1007/3-540-36575-3_22"
 ```
 
-> ⚠ 세 항목 전부 **본문 미열람 [2차]** 이다. 정본에 인용하기 전에 최소한
-> Parks 1995 의 해당 절은 본문으로 확인하는 것이 옳다 — 정본은 인용의
-> 등급을 나누지 않으므로, 정본에 들어가는 순간 [2차] 표시가 사라진다.
+(각 항목의 `note:` 는 정본 파일에 있다 — 여기 옮겨 적으면 두 벌이 되고,
+두 벌은 갈린다.)
+
+**초안에서 바뀐 것 넷** — 전부 본문 확인이 드러낸 것이다.
+
+1. `buck_lee1993`(ICASSP) → **`buck1993`(학위논문)**. Parks 의 `[9]` 가
+   학위논문이므로, ICASSP 를 넣으면 「Parks 가 인용한 그 문헌」이 아닌 것을
+   인용하게 된다.
+2. `UCB/ERL M95-105` → **`UCB/ERL-95-105`** (1차 문서가 인쇄한 형태).
+   `date: 1995` → `1995-12`.
+3. Geilen & Basten 에 **쪽 범위 319–334 · 편자 · DOI** 를 더했다.
+4. **죽은 URL 을 걷어냈다.** `ptolemy.*` 두 호스트가 지금 열리지 않으므로
+   Parks 는 Wayback 스냅샷을 싣고, Geilen & Basten 은 URL 대신 **DOI** 를
+   싣는다 (본문을 읽은 저자 미러는 §8.1 에 적는다 — 개인 페이지 미러는
+   `refs.yml` 이 질 만큼 안정적이지 않다). `buck1993` 은 **URL 이 없다** —
+   열지 않은 문헌에 확인하지 않은 URL 을 다는 것이 이 규율이 금하는 것이다.
+
+> ⚠ **정본은 인용 등급을 나누지 않는다.** 이 세 항목이 [문면] 확인을 거쳤고
+> `buck1993` 은 거치지 않았다는 구분은 **오직 이 파일에만 산다** (§7.1 ·
+> §4.1). 정본만 읽는 사람에게 넷은 구별되지 않는다.
+
+**승격되지 않은 것** — 같은 전건을 못 넘겨서다.
+
+- Carloni 외 2001 (LID) — F-68 이 정본 §5.3 에 착지했으나 **서지는 넣지
+  않았다.** [2차]다 (§3.8 착지 문단).
+- Petri 개관 (아래 6번) — F-67 이 정본 §1.2.1 에 착지했으나 **서지는 넣지
+  않았고**, 정본 문면이 복잡도 등급 대조를 주장하지 않는다 (§3.5 착지 문단).
+- Bilsen 외 1996 (CSDF) · credit-based flow control · fuel/gas ·
+  `__launch_bounds__` · `max_vertices` — **[확신 낮음]**, 서지조차 미확인.
+  F-69 가 정본에 옮긴 상한형 열거가 **이름 없이 형태로만** 적힌 이유다.
 
 ### 8.3 이 문서가 좌표계로 삼은 정본·저장소 문면
 
@@ -843,7 +1032,7 @@ geilen_basten2003:
 > 뒤의 참값이나, **다음 커밋에서 다시 밀린다고 가정하라.**
 >
 > 그래서 이 문서는 본문에서 **규범 라벨·절 이름·속성 ID 를 함께** 적었다.
-> 정본이 스스로 그 규율을 적는다 — `chapters/01-isa-asm.typ:699`:
+> 정본이 스스로 그 규율을 적는다 — `chapters/01-isa-asm.typ:748`:
 > 「*이 규범은 번호가 아니라 이름으로 불러라* … 번호만 적으면 다음
 > 개정에서 또 틀린다」. **좌표가 안 맞으면 라벨로 grep 하라**, 그것이
 > 이 목록의 사용법이다.
@@ -879,6 +1068,30 @@ geilen_basten2003:
 > 낡아도 열어 봐서는 틀린 줄이 안 나온다 (정본 §0.6 「표기 규약」이 규범으로
 > 세운 형태다).
 >
+> ⚠ **재대조 3회 (2026-08-30, W8 착지분).** 이 파도가 정본 다섯 파일에
+> 삽입만 했고(삭제 0), 그래서 이동은 **정확히 계산 가능**했다 —
+> `01-isa-asm.typ` +30 (103행 이후) / +44 (620행 이후) ·
+> `02-fabric-alu.typ` +34 (562행 이후) · `05-security.typ` +27 (223행 이후) ·
+> `b-gaps.typ` +7 · `c-glossary.typ` +1 · `refs.yml` +36. 저장소 전량을
+> 훑어 **완전형과 바 형태를 둘 다** 옮겼다 — 앞 회차의 사각지대 ⑴ 이 정확히
+> 바 형태였으므로 이번에는 「앞 토큰에서 파일명을 물려받는」 해석을 기계로
+> 넣었다.
+>
+> **그 해석이 틀리는 자리가 실제로 있었다.** `docs/extensions/wt64v1-di.md`
+> 의 `` `:562-565` `` · `` `:459-505` `` 는 앞 토큰이 `05-security.typ` 이라
+> 기계는 그것을 물려받았으나, **실물은 `scripts/golden_fp32.py` 의 좌표**다
+> (05-security.typ 은 그만큼 길지도 않다). 옮기지 않았다 — **바 형태의
+> 물려받기는 규약이 아니라 관행이고, 관행은 문단 안에서 깨진다.**
+>
+> ⚠ **그리고 앞 회차의 사각지대 ⑵ 가 다시 나왔다.** 이번 훑기가 좌표마다
+> 정본을 열어 대조했더니, **이 파도가 건드리지 않은 낡음**이 셋 드러났다 —
+> `docs/extensions/wt64v1-c.md` 의 SEC-4 좌표 둘(관측면 넷·상태 표면)과
+> `.claude-memos/budget_axis.md` 의 05-security 좌표 셋(엔트로피 건강성 ·
+> SEC-5 · SEC-4)이 **§5.3 상수 시간성 절을 가리키고 있었다.** 전부 열어
+> 확인한 참값으로 고쳤다. 앞 회차가 선언한 정의역이 「형제 셋의
+> `01-isa-asm.typ` 좌표」였고, **05-security 축은 그 밖이었다** — 정의역
+> 밖은 예고 없이 낡는다는 것이 두 회차 연속의 실측이다.
+>
 > **이 회차가 연 정의역을 적는다** — 이 문서와 형제 셋
 > (`.claude-memos/budget_axis.md` · `.claude-memos/threat_naming_decision_package.md`
 > · `docs/extensions/wt64v1-c.md`)의 `01-isa-asm.typ` 좌표. 같은 형태의
@@ -886,10 +1099,13 @@ geilen_basten2003:
 > 정의역 밖을 세어 적는 것이 이 문단의 마지막 일이다.
 
 - `docs/wt64v1-architecture-guide/refs.yml:4`(키 규율) · `:105-115`(kahn · note 는 `:115`)
-- `docs/wt64v1-architecture-guide/chapters/01-isa-asm.typ:77`·`:83`·`:116-117`
-  (INV-T1/T2) · `:284-285`(능력 부재 판정 기준 = 선언) · `:587`(§1.4.2
-  토큰 비증식 규범) · `:603-614`(왜 「최대 하나」가 아니라 「분할」인가 —
-  구멍의 문면 `:605`, 닫는 문면 `:610`) · `:1691`(ISA-9)
+- `docs/wt64v1-architecture-guide/chapters/01-isa-asm.typ:77`·`:83`·`:146-147`
+  (INV-T1/T2) · `:103-131`(**W8 신설** — 해설 「이 요건이 세우는 주장의
+  부류 — 구조적 유계성」, 이식 오류 경고는 `:125-130`) · `:314-315`(능력
+  부재 판정 기준 = 선언) · `:617`(§1.4.2 토큰 비증식 규범) ·
+  `:633-663`(왜 「최대 하나」가 아니라 「분할」인가 — 구멍의 문면 `:635`,
+  닫는 문면 `:640`, **W8 이 더한 선례 부재 문단은 `:651-663`**) ·
+  `:1740`(ISA-9)
 - `docs/wt64v1-architecture-guide/chapters/02-fabric-alu.typ:129-156`
   (규범 「이름에 속지 말 것 — 이 설계에 NoC 는 없다」 — `:156` 은
   `#등급("실측")`, 문 여는 문장은 `:158-159`) · `:162`(규범 「발화의 유일한
@@ -907,6 +1123,14 @@ geilen_basten2003:
   엔트리 「길이」는 무엇의 길이인가」 — 소비자가 없다) · `:628-645`(짝 행
   「LBID 엔트리의 기입 시점 거절」) — ⚠ 이 둘은 이 파도에서 밀렸다(§3.4)
 - `docs/wt64v1-architecture-guide/appendix/d-properties.typ:229`(SEC-2)
+- **W8 이 신설한 자리 넷** — `chapters/02-fabric-alu.typ:562-595`(F-66 해설
+  「3항이 부르는 계보는 결과를 하나 더 갖는다」, 문헌 과대 인용 경고는
+  `:590-594`) · `chapters/01-isa-asm.typ:103-131`(F-67) ·
+  `chapters/01-isa-asm.typ:651-668`(F-69) ·
+  `chapters/05-security.typ:223-248`(F-68 함정 「지연 무관성과의 관계」) ·
+  `appendix/c-glossary.typ:118`(용어집 「구조적 유계성」) ·
+  `appendix/b-gaps.typ:1341-1346`(B.5 문맥 풀 행의 갈래 비교) ·
+  `refs.yml:117-151`(`parks1995` `:117-126` · `buck1993` `:128-136` · `geilen_basten2003` `:138-151`)
 - `docs/research/wavescalar-capacity.md:148-152` · `:323-326` · `:353-354` ·
   `:406-411` · `:460-461`
 - `docs/research/token-pressure.md:106-124`(결론 두 다리) · `:158-169`(자리별
