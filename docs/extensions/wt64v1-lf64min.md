@@ -19,10 +19,21 @@
 > 값이고 문서는 움직인다 — authority 는 라벨이다.
 >
 > **opcode 표기 규약** (`.claude-memos/opcode_width_expansion.md`, 채택
-> 2026-08-28): 신설 opcode 는 12b 표기. **이 확장의 신설 opcode 는 0 이다** —
-> base 인용은 8b 표기를 유지한다(수치 동일). fp 블록 게이트는 12b 확장 시
-> 확장 니블 `== 0x0` 검사가 함께 필요하다(같은 메모 §3-5 공허 PASS 함정 —
-> W2). 이것은 `Di` 와 공유하는 base 개정 전제다.
+> 2026-08-28 · 같은 날 인코딩 개정 파도로 base 이관 완료 — base §1.3.1):
+> opcode 는 12b 정식 표기로 적는다. **이 확장의 신설 opcode 는 0 이므로 이
+> 문서의 opcode 는 전부 base 인용이고, 그것도 `0x074`·`0x07A` 처럼 세
+> 자리다** (영역 `0x0##`, 확장 니블은 기본 헤더 `[11:8]`). **수치는 종전 8b
+> 표기와 동일하다** (`0x07A == 0x7A`).
+>
+> **2자리로 남는 것은 opcode 가 아니다** — 이 문서에는 폭이 다른 두 종류가
+> 나란히 산다: **mode(정밀도) 바이트**는 8b 필드이므로 `0x14`·`0x15` 처럼
+> 두 자리로 적고(§0 · §4.3), dtype 코드점은 한 자리(`0x5`)다. 세 자리를
+> 보면 opcode, 두 자리를 보면 mode 바이트다 — 이관 후 이 문서 본문에 남은
+> 두 자리는 **전부** mode 바이트이지 이관 누락이 아니다 (예외는 바로 위
+> 등식 `0x07A == 0x7A` 하나 — 그것은 규약 진술이다).
+>
+> fp 블록 게이트는 12b 확장 시 확장 니블 `== 0x0` 검사가 함께 필요하다(같은
+> 메모 §3-5 공허 PASS 함정 — W2). 이것은 `Di` 와 공유하는 base 개정 전제다.
 
 ---
 
@@ -35,7 +46,7 @@
 
 | 축 | 확정 |
 |---|---|
-| 범위 | **5행 in / 9행 out** — `0x74 FSCALAR` · `0x75 FRSQRT32` · `0x76 FEXP2_32` · `0x77 CVT` · `0x79 FMINMAX` 에 dtype 5 추가. 합법 (opcode,dtype) 행 26 → **31** |
+| 범위 | **5행 in / 9행 out** — `0x074 FSCALAR` · `0x075 FRSQRT32` · `0x076 FEXP2_32` · `0x077 CVT` · `0x079 FMINMAX` 에 dtype 5 추가. 합법 (opcode,dtype) 행 26 → **31** |
 | f64 합법 mode byte | **`0x15` 유일** (rnd=0 `[7:6]` · acc=1 `[5:4]` · dtype=5 `[3:0]` — JSON `mode_byte_fields` 실측 재계산) |
 | 태그 충돌 | **없음** — base 합법 정밀도 바이트는 `{0x10..0x14, 0x16, 0x17}`, `0x15` 는 미사용 (실측). 결속 키 = 태그(정밀도 포함)라 조각열 문맥도 갈린다 |
 | beat/조각 | f64 스칼라 = **정확히 64b 한 조각** (조각=64b 실측 — DEQUANT desc "128b, 2-frag" · FDOT32_CR desc "16-frag 1,024b" · `Reassembly.scala:139` `bodyW=64`) |
@@ -56,7 +67,7 @@ generator-independent"). 이 확장의 착지는 그 핀의 **프로파일-조�
 
 | # | 실물 | 현행 | 개정 |
 |---|---|---|---|
-| 1 | `isa/wt64v1_isa.json` `fp_block._doc` | "dtype 0x5 = f64/Lf-reserved illegal everywhere" | "illegal outside the `Lf64min` profile; `Lf64min` claims rows {0x74,0x75,0x76,0x77,0x79}" |
+| 1 | `isa/wt64v1_isa.json` `fp_block._doc` | "dtype 0x5 = f64/Lf-reserved illegal everywhere" | "illegal outside the `Lf64min` profile; `Lf64min` claims rows {0x074,0x075,0x076,0x077,0x079}" |
 | 2 | `asm/test_wavetensor_asm.py:1740-1748` | 전 행 `assertNotIn(5, …)` | 프로파일 분기 — base 프로파일에선 원문 유지, Lf 프로파일에선 5행 한정 `assertIn` |
 | 3 | `:1755-1779` | SPEC_ROWS 14행 + `total == 26` (`:1778`) | Lf 쌍둥이 표 신설 — `total == 31` (26+5) |
 | 4 | `:1793-1804` | 등가 스윕 (14×256) | 프로파일 축 추가 |
@@ -92,11 +103,11 @@ generator-independent"). 이 확장의 착지는 그 핀의 **프로파일-조�
 
 | opcode | 행 | f64 의미 | 비고 |
 |---|---|---|---|
-| `0x74 FSCALAR` | ×5 | FS_ADD · FS_SUB · FS_MUL · FS_DIV 의 f64 판 | **FS_FMA×5 = `lower_required`** (아래) |
-| `0x75 FRSQRT32` | ×5 | f64 rsqrt | 성립 근거는 **`Lf64di` DRSQRT primal 의존 경제** 하나다 — desc 실물("fp32 rsqrt: LUT seed + 3 Newton iterations")은 f32 조율 규범이고, f64 행은 그 조율의 재선언이 아니라 별도 몸체/공유 판정(§6)을 진다 (검증 C-6 수리 문면) |
-| `0x76 FEXP2_32` | ×5 | f64 2^x | 몸체는 **확실히 별도다** (§6) |
-| `0x77 CVT` | ×5 | f64↔f32 변환 두 방향 | §4 전체가 이 행의 규범이다 |
-| `0x79 FMINMAX` | ×5 | 2레인 f64 min/max | §5 |
+| `0x074 FSCALAR` | ×5 | FS_ADD · FS_SUB · FS_MUL · FS_DIV 의 f64 판 | **FS_FMA×5 = `lower_required`** (아래) |
+| `0x075 FRSQRT32` | ×5 | f64 rsqrt | 성립 근거는 **`Lf64di` DRSQRT primal 의존 경제** 하나다 — desc 실물("fp32 rsqrt: LUT seed + 3 Newton iterations")은 f32 조율 규범이고, f64 행은 그 조율의 재선언이 아니라 별도 몸체/공유 판정(§6)을 진다 (검증 C-6 수리 문면) |
+| `0x076 FEXP2_32` | ×5 | f64 2^x | 몸체는 **확실히 별도다** (§6) |
+| `0x077 CVT` | ×5 | f64↔f32 변환 두 방향 | §4 전체가 이 행의 규범이다 |
+| `0x079 FMINMAX` | ×5 | 2레인 f64 min/max | §5 |
 
 **FS_FMA×5 는 `lower_required` 다.** f64 단일-반올림 FMA 계약은 이 확장이
 사지 않는다 — lowering 은 MUL+ADD 두 발화로 펴고, 값은 그 두-발화 열
@@ -106,31 +117,31 @@ generator-independent"). 이 확장의 착지는 그 핀의 **프로파일-조�
 
 ### 2.2 남는 9행 — 제외 근거
 
-`0x70 VFMA_ACC` · `0x71 VDOT_ACC` · `0x72 ACC_REDUCE` · `0x73 ACC_ELEMWISE` ·
-`0x78 DEQUANT` · `0x7A FDOT32_CR` · `0x7C STORE_QUANT` · `0x7D ACC_SPILL_FILL`
-· `0x7E FP_ACC_CTRL`.
+`0x070 VFMA_ACC` · `0x071 VDOT_ACC` · `0x072 ACC_REDUCE` · `0x073 ACC_ELEMWISE` ·
+`0x078 DEQUANT` · `0x07A FDOT32_CR` · `0x07C STORE_QUANT` · `0x07D ACC_SPILL_FILL`
+· `0x07E FP_ACC_CTRL`.
 
-- **누산기 축** (`0x70`–`0x73` · `0x7D`) — f64 누산은 누산기 폭·spill 경로의
+- **누산기 축** (`0x070`–`0x073` · `0x07D`) — f64 누산은 누산기 폭·spill 경로의
   전면 개정이다. 「최소」의 정의가 이 경계다.
-- **양자화 축** (`0x78` · `0x7C`) — f64 소비자 0.
-- **`0x7A` 리만 축약** — f32 조차 없다 (`legal_dtypes [2,3]` 실측). f64 는
+- **양자화 축** (`0x078` · `0x07C`) — f64 소비자 0.
+- **`0x07A` 리만 축약** — f32 조차 없다 (`legal_dtypes [2,3]` 실측). f64 는
   이 확장의 결손이 아니라 별건 결손이다 (`lf_extension_split.md` §1.2 —
   「리만은 범위 밖」).
-- **`0x7E FP_ACC_CTRL`** — 행 추가 불요: sticky **기입**은 dtype 무관이라
+- **`0x07E FP_ACC_CTRL`** — 행 추가 불요: sticky **기입**은 dtype 무관이라
   f64 연산의 IEEE 예외도 오늘의 그 워드에 오르고, **읽기** 발화는 dtype4 로
   이미 적법하다.
 
 ### 2.3 파도·beat 형태와 ISA-9 판정
 
-- 스칼라 4행 (`0x74`/`0x75`/`0x76`/`0x77`): A = `payload_a` 64b 전폭
+- 스칼라 4행 (`0x074`/`0x075`/`0x076`/`0x077`): A = `payload_a` 64b 전폭
   (f32 는 `[31:0]` 저워드였다 — f64 는 전폭이 정확히 맞는다), B (이항) =
-  `payload_b` 64b 전폭 (`0x79` 의 B 저워드 규약 `dec_input_payload_b[31:0]`,
+  `payload_b` 64b 전폭 (`0x079` 의 B 저워드 규약 `dec_input_payload_b[31:0]`,
   `golden_fp32.py:1156-1160` 의 f64 자연 확장). 출력 = 64b 단일 beat.
   **ISA-9 ②** (규범 「토큰 비증식 — 발화가 남기는 후속 전송 전량의 분할」,
   `01-isa-asm.typ:335-349`).
-- `0x79 FMINMAX`: A = 2 f64 레인 128b **2조각 파도**, 출력 128b = 2조각 —
+- `0x079 FMINMAX`: A = 2 f64 레인 128b **2조각 파도**, 출력 128b = 2조각 —
   f32 형("4 f32 lanes (128b = 2-fragment) … 128b out = 2 fragments", JSON
-  desc)과 동형. **함정**: `0x79` 의 2조각 출력은 오늘 ACCTGT 선언 없이
+  desc)과 동형. **함정**: `0x079` 의 2조각 출력은 오늘 ACCTGT 선언 없이
   나간다 — W4(ACCTGT 승격) 착지 시 결속 규범(`04-ext-payload.typ:268-269`)과
   자기모순이 되는 **선행 충돌**이고, f32/f64 양쪽에 걸린다. 처분은 별건
   등재다 (`wt64v1-lf64di.md` §9 — 검증 A-1).
@@ -273,7 +284,7 @@ f32 FEXP2 는 차수 6 minimax (~2⁻²⁶ 급) — **2⁻⁵⁴ 에 수학적�
 
 ### 6.2 조건부인 것 — DIV·RSQRT f64 의 몸체 공유
 
-- 실측: FRSQRT32 = 256×9 seed ROM + **3** NR (JSON `0x75` notes) ·
+- 실측: FRSQRT32 = 256×9 seed ROM + **3** NR (JSON `0x075` notes) ·
   `micro_div` 도 3회 (`golden_fp32.py:34, 479`). seed 2⁻⁹ 에서 NR 3회 배가 =
   명목 2⁻⁷² > 2⁻⁵⁴ — **f64 도 3회로 충분한 갈래가 실재한다.**
 - 그 갈래에서 DIV·RSQRT 의 f64 몸체는 f32 와 반복 구조가 같고, 남는 차이는
@@ -318,7 +329,7 @@ min_normal `0x00800000` 상수 핀). f64 행의 처분:
 3. **f64 min_normal 상수 핀 = `0x0010_0000_0000_0000`** (신설 핀 — §1).
 4. **정확도 앵커 이월** — f32 의 ≤2ulp normative 외에 **monotonicity
    normative** · RSQRT 「x=4^k bit-exact」 · EXP2 「integer bypass 2^n
-   bit-exact」 (JSON `0x75`/`0x76` notes 실측)가 f64 행으로 이월되는지 —
+   bit-exact」 (JSON `0x075`/`0x076` notes 실측)가 f64 행으로 이월되는지 —
    원장 6. 선언 없이 이월된 것으로 읽지 말 것.
 
 ---
