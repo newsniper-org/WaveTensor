@@ -4,8 +4,17 @@
     "dockerfile": "Dockerfile",
     "args": {
       "ALA_SNAPSHOT": "2026/08/12",
+      // TLA+ / TLC — ⚠️ 이 넷은 **불변 아티팩트 핀이 아니다.** `v1.8.0` 은
+      // 롤링 pre-release 라 master 커밋마다 같은 URL 에 새 빌드가 덮인다
+      // (상류가 설계한 동작). 불변 좌표(Maven 스냅샷 타임스탬프 빌드)로의
+      // 전환은 2026-08-29 에 시도했고 **358 run 배터리 실측으로 기각**했다 —
+      // 그 아티팩트는 자립 실행 배포본이 아니다(javax.mail·gson 결손).
+      // 전문은 Dockerfile §3. 여기의 넷은 Dockerfile ARG 와 반드시 같아야
+      // 하고 scripts/lint_toolchain_pins.py 가 그것을 대조한다.
       "TLA_VERSION": "1.8.0",
-      "TLA_BLAKE2B512": "4b2313f35e5f2965120c161dbb982c8541fff20b9a556543bccbc5163f7fcdc40a7dafa43b5b99c628502409dcda7274936df8509bba8fded6d3b51d8f5ffe45",
+      "TLA_BLAKE2B512": "644f4331776049d41097c6f4540014c46acdf3c5d951f3d9778de8b1263bac9a0b2b00fa57329bc04d207d63b4b4df84fd5846493153d9149600aefef92beaa4",
+      "TLA_TLC_BUILD": "2026.08.21.155922",
+      "TLA_TLC_REV": "9787e65",
       "COCOTB_VERSION": "2.0.1",
       "WITH_SBY": "1",
       // btormc(cover 모드 비트 수준 모델 체커) — Boolector 3.2.4 소스 빌드.

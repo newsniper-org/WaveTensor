@@ -57,6 +57,26 @@ PINS = [
 # 여기가 아니라 Dockerfile 의 grep 대조가 빌드마다 잰다 — 네트워크 없이 잴 수
 # 없는 대조를 lint 에 두면 lint 가 네트워크를 잡게 된다.
 PINS_TWOWAY = [
+    # TLA+ / TLC (2026-08-29 등재). 이 넷은 **이전까지 대조 밖에 있었다** —
+    # devcontainer.json 에 값이 적혀 있는데 아무도 Dockerfile 과 맞춰 보지
+    # 않았다.
+    #
+    # ⚠️ 정직 기록 — 이 구멍으로 **실제 사고가 났다는 증거는 없다.** 2026-08-29
+    # 에 이 호스트의 세션 이전 이미지를 전수로 재 봤더니 전부 그때 커밋돼 있던
+    # 핀(`4b2313f3…`)과 일치했다. 그때의 결함은 이미지↔선언의 어긋남이 아니라
+    # **핀↔상류**의 어긋남(핀이 가리키는 바이트를 더는 받을 수 없음)이었고,
+    # 그것은 lint 가 아니라 `--no-cache` 빌드만 잡는다. 여기 등재하는 이유는
+    # 사고가 났기 때문이 아니라 **두 선언이 어긋날 수 있는데 아무도 대조하지
+    # 않고 있었기** 때문이다 — VS Code 재빌드가 조용히 다른 도구를 굽는 경로가
+    # 그것이고, 그 어긋남은 여기서만 잡힌다.
+    #
+    # 해시와 build/rev 를 **둘 다** 든 이유: 재핀을 기계적 복붙으로 만들지
+    # 않기 위해서다. 해시만 갈아 끼우면 Dockerfile 의 자기보고 대조가 빌드에서
+    # 죽는다 (§3 의 `grep -qF "TLC2 Version ${TLA_TLC_BUILD} (rev: ${TLA_TLC_REV})"`).
+    ("TLA+ 태그", "TLA_VERSION"),
+    ("tla2tools blake2b", "TLA_BLAKE2B512"),
+    ("TLC 빌드", "TLA_TLC_BUILD"),
+    ("TLC rev", "TLA_TLC_REV"),
     ("btormc(Boolector)", "BOOLECTOR_VERSION"),
     ("boolector 커밋", "BOOLECTOR_COMMIT"),
     ("btor2tools 커밋", "BTOR2TOOLS_COMMIT"),

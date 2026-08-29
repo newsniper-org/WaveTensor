@@ -15,6 +15,15 @@
 # 재현성: Arch Linux Archive 스냅샷으로 **날짜 고정**한다. 형식-우선 전략에서
 # 도구 버전은 증거의 일부다 — "어느 버전으로 쟀는가" 를 답할 수 없는 gate 는
 # gate 가 아니다 (§22.14b-10 provenance 규율의 도구 층 적용).
+#
+# ⚠️ 알려진 예외 — **§3 의 TLA+/TLC 는 불변 좌표에 묶여 있지 않다.**
+#    상류가 롤링 pre-release 하나로만 배포하기 때문이고, 불변 대안으로의
+#    전환은 2026-08-29 에 실측으로 기각됐다. 전문은 §3.
+#    작은 둘째 예외: §4 의 `COCOTB_PYTHON=3.13` 은 **마이너 좌표**라 uv 가
+#    빌드 시점의 최신 패치로 해석한다 (실측 2026-08-29: `3.13.15` 가 깔린다).
+#    나머지(ALA 날짜 · 커밋 sha · Maven/PyPI 릴리스 버전)는 불변이다.
+#    이 절을 여기 두는 이유는 "재현 가능하다" 는 통짜 주장이 사실이 아니기
+#    때문이다 — 어디가 아닌지 이름을 대지 못하면 그 주장은 검사할 수 없다.
 
 FROM archlinux:base-devel
 
@@ -65,22 +74,110 @@ RUN pacman -S --noconfirm --needed \
 #    유지하는 제약이 인코딩 결정(불투명 토큰)을 강제해 왔고, 그 제약을 푸는
 #    것은 모델링 결정이지 환경 결정이 아니다. 필요해지면 그때 별도 층으로.
 # ---------------------------------------------------------------------------
-#    ⚠️ 실측 주의 — **`v1.8.0` 태그는 롤링 자산을 서빙한다.** 그 URL 로 받으면
-#    빌드 시점에 따라 TLC 버전이 달라진다 (실측: 호스트 2.19/2024-08-08 =
-#    2,274,532 B vs 컨테이너 2026.08.11 = 4,486,193 B). 태그가 버전을
-#    고정하지 못하므로 **BLAKE2b-512 로 고정**한다 — 이 저장소가 gate 증거에
-#    적용하는 provenance 규율(§22.14b-10)을 도구에 그대로 적용한 것이다.
-#    해시를 바꾸는 것은 검증 도구를 바꾸는 것이다.
+#    ⚠️ 이 층의 핀은 **불변 아티팩트가 아니다.** 그것이 알려진 결손이고,
+#    아래가 왜 그런지와 무엇을 재 봤는지의 전문이다. 재지 않은 것은 재지
+#    않았다고 적는다.
 #
-#    (참고: 두 버전 모두 `proofs/tla/run.sh` 16 run 을 통과한다 — 실측 확인.
-#     그래도 고정하는 이유는 "돌더라" 가 아니라 "무엇으로 쟀는지 답할 수
-#     있어야 한다" 이다.)
+#    ## (1) `v1.8.0` 은 버전 태그가 아니라 **롤링 pre-release** 다
+#
+#    GitHub API 실측 (2026-08-29): `v1.8.0` 은 `prerelease=true` 이고
+#    published 2026-08-21T16:05:58Z, 자산 `tla2tools.jar` 의 updated 는
+#    2026-08-21T16:04:53Z 다. 상류 README 축자 —
+#
+#        Currently, every commit to the master branch is built & uploaded
+#        to the 1.8.0 Clarke pre-release
+#
+#    ⇒ **master 커밋마다 같은 태그·같은 URL 에 새 빌드가 덮인다.** 표류는
+#    이상 동작이 아니라 상류가 설계한 동작이고 앞으로도 계속된다. 이 저장소가
+#    두 번 겪은 핀 표류의 원인은 이것 하나다:
+#
+#        호스트 pacman 2.19 / 2024-08-08   2,274,532 B  (참고 — 다른 계보)
+#        구 핀 `4b2313f3…` / 2026-08-11    4,486,193 B  ← 더는 받을 수 없다
+#        현행  `644f4331…` / 2026-08-21    4,487,757 B  ← 지금 이 핀
+#
+#    ## (2) 정식 릴리스로의 다운그레이드는 **불가** (실측 2026-08-29)
+#
+#    최신 정식 릴리스는 `v1.7.4` (2024-08-05, prerelease=false, 2,274,532 B)
+#    = **TLC 2.19** 인데, 실행하면 `-noGenerateSpecTE` 를 인식하지 못한다:
+#    `Error: unrecognized option: -noGenerateSpecTE`. `rtl/formal/tla/run.sh`
+#    가 358 run 전부에 그 플래그를 쓴다 (290 개가 의도된 MUST FAIL 이라 끄면
+#    run 마다 TTrace 스펙 파일이 둘씩 쌓인다). ⇒ 이 경로는 닫혀 있다.
+#
+#    ## (3) 불변 아티팩트 전환을 시도했고 **실측으로 기각했다** (2026-08-29)
+#
+#    상류 README 가 가리키는 곳은 릴리스가 아니라 Maven 스냅샷 저장소
+#    (`org.lamport:tla2tools:1.8.0-SNAPSHOT`) 이고, 스냅샷 자체는 가변이지만
+#    **개별 빌드 파일은 타임스탬프·빌드번호가 박힌 유일 경로**다 — 실측한
+#    좌표는 `1.8.0-20260821.161407-53`, 3,729,383 B,
+#    b2 `1827aa31…` / sha256 `ac212fb5…`. TLC 자기보고도 GH 자산과 **같다**
+#    (`TLC2 Version 2026.08.21.155922 (rev: 9787e65)`). 두 jar 의 공통 엔트리
+#    1,600 개는 **CRC32 가 전부 일치**하고 Maven 쪽에만 있는 엔트리는 0 이다
+#    ⇒ 같은 빌드의 다른 패키징이 맞다.
+#
+#    그런데 **얇은 쪽으로는 우리 워크로드가 돌지 않는다.** 두 번 잰 결과:
+#
+#      · 그대로: `make rtl-formal` 358 + `proofs/tla/run.sh` 16 = **374 run
+#        전량 실패**, 374/374 가 같은 원인이다 —
+#        `java.lang.NoClassDefFoundError: javax/mail/SendFailedException`
+#        at `tlc2.TLC.main(TLC.java:333)`. 인수 파싱을 지난 모든 실행이 죽는다.
+#      · POM 이 선언한 유일한 런타임 의존(`com.sun.mail:mailapi:1.6.8`)을
+#        classpath 에 얹은 뒤: 모델 검사 **시작 직후** 다시 죽는다. 206 run
+#        확인 후 중단했고 206/206 이 NoClassDefFoundError, 클래스명이 인쇄된
+#        36 건(MUST PASS run)은 전부 `com/google/gson/JsonElement` 다.
+#        **gson 은 POM 에 없다** — 즉 POM 이 실제 런타임 의존을 과소 선언한다.
+#      · 대조군 — 같은 배터리를 현행 GH 지방 jar 로: **374 run 전량 정상**
+#        (OK 374 / FAIL 0). ⇒ 위 실패는 패키징 때문이지 다른 무엇 때문이 아니다.
+#
+#    GH 지방(fat) jar 가 더 담고 있는 520 엔트리의 정체: gson(230) ·
+#    com.sun.mail+javax.mail+javax.activation(233) · prettier4j(53) ·
+#    javamail 리소스 2. ⇒ Maven 아티팩트는 **자립 실행 배포본이 아니다**
+#    (Maven 소비자가 의존 해석으로 채우는 것을 전제한 얇은 jar 다).
+#
+#    ⇒ 전환하지 않는다. 이 결론은 「돌려 보니 안 되더라」가 아니라
+#      **358 run 배터리 두 번**의 출력이다.
+#
+#    ## (4) 그래서 이 층이 사는 것 / 못 사는 것
+#
+#    산다 — 조용한 바꿔치기는 없다. 같은 URL 이 다른 바이트를 주면 `b2sum -c`
+#    가 빌드를 **크게** 죽인다 (loud-fault-never-silent).
+#    못 산다 — **재현성**. 핀이 가리키는 바이트는 다음 master 푸시와 함께
+#    받을 수 없게 되고, 그때부터 정본 Dockerfile 은 **from-scratch 로 빌드
+#    불가**가 된다. 구 핀 `4b2313f3…` 가 이미 그 상태였는데 오래 보이지
+#    않았다 — 파생 빌드가 캐시 층을 재사용했기 때문이다. ⚠️ 캐시가 한 일을
+#    정확히 적어 둔다: 캐시는 **이미지와 핀의 일치를 유지하면서**
+#    from-scratch 실패만 가렸다. 어긋난 것은 이미지↔핀이 아니라 핀↔상류다.
+#    (실측 2026-08-29 — 이 호스트에 남아 있는 세션 이전 이미지 넷, 08-19
+#     15:43 · 08-19 15:52(`wavetensor-dev:test`) · 08-20 06:25 · 08-28 16:34
+#     UTC 는 **전부** b2 `4b2313f3…` / 4,486,193 B / `TLC2 Version
+#     2026.08.11.125311 (rev: 0894c34)` 를 담고 있고, 이는 그때 커밋돼 있던
+#     핀과 같다. 644f4331 을 담은 이미지는 이 세션 이전에 하나도 없다.)
+#    ⇒ 이 부류의 부패는 이미지를 열어 봐서는 드러나지 않는다. `--no-cache`
+#      재빌드가 유일한 관측 수단이다.
+#
+#    ## (5) 재지 **않은** 것 (정직 기록)
+#
+#      · Maven 스냅샷 저장소의 보존(purge) 정책 — 재지 않았다.
+#      · 얇은 jar + Maven Central 불변 릴리스(mailapi·gson·prettier4j)로
+#        지방 jar 를 **재조립**했을 때 358 run 이 도는지 — 재지 않았다.
+#        재조립을 하려면 gson·prettier4j 의 **버전**을 알아야 하는데, 지방
+#        jar 는 shading 으로 `META-INF/maven/**` 기술자를 지운다(실측:
+#        GH 전용 엔트리의 META-INF 는 javamail 리소스 둘뿐). ⇒ 아티팩트만
+#        보고는 버전이 정해지지 않는다. 상류 빌드 정의를 읽어야 하고, 그것은
+#        **우리가 배포본을 조립한다**는 뜻이라 별개의 정책 결정이다.
+#
 #    해시 계열은 저장소 전체가 **BLAKE2b-512** 로 통일돼 있다 (`b2sum` 기본값).
 #    stdlib `hashlib.blake2b(digest_size=64)` 와 같은 값이며, 판정기 핀·생성물
 #    출처·게이트 증거가 전부 같은 계열을 쓴다 — 계열이 섞이면 "무엇으로 쟀는가"
 #    앞에 "어느 해시로?" 라는 질문이 하나 더 붙는다.
+#
+#    핀 넷은 **서로 다른 것을 잰다.** 해시는 바이트를, build·rev 는 그 바이트가
+#    스스로 무엇이라 말하는지를 잰다. 둘을 함께 두는 이유는 재핀이 기계적
+#    복붙으로 흘러가지 않게 하기 위해서다 — 해시만 갈아 끼우면 build/rev 대조가
+#    죽는다. `scripts/lint_toolchain_pins.py` 가 여기 ↔ devcontainer.json 을 대조한다.
 ARG TLA_VERSION=1.8.0
-ARG TLA_BLAKE2B512=4b2313f35e5f2965120c161dbb982c8541fff20b9a556543bccbc5163f7fcdc40a7dafa43b5b99c628502409dcda7274936df8509bba8fded6d3b51d8f5ffe45
+ARG TLA_BLAKE2B512=644f4331776049d41097c6f4540014c46acdf3c5d951f3d9778de8b1263bac9a0b2b00fa57329bc04d207d63b4b4df84fd5846493153d9149600aefef92beaa4
+ARG TLA_TLC_BUILD=2026.08.21.155922
+ARG TLA_TLC_REV=9787e65
 RUN mkdir -p /usr/share/java \
  && curl -fsSL -o /usr/share/java/tla2tools.jar \
       "https://github.com/tlaplus/tlaplus/releases/download/v${TLA_VERSION}/tla2tools.jar" \
@@ -89,7 +186,38 @@ RUN mkdir -p /usr/share/java \
       > /usr/local/bin/tlc \
  && printf '#!/bin/sh\nexec java -cp /usr/share/java/tla2tools.jar tla2sany.SANY "$@"\n' \
       > /usr/local/bin/sany \
- && chmod +x /usr/local/bin/tlc /usr/local/bin/sany
+ && chmod +x /usr/local/bin/tlc /usr/local/bin/sany \
+ #  자기보고 대조 — 받은 바이트가 스스로 말하는 build/rev 가 핀과 같은가.
+ && tlc 2>&1 | head -1 \
+      | grep -qF "TLC2 Version ${TLA_TLC_BUILD} (rev: ${TLA_TLC_REV})" \
+ #  ⚠️ **실행 스모크** — `tlc -h` 가 도는 것은 아무것도 뜻하지 않는다.
+ #  2026-08-29 의 Maven 얇은 jar 실측이 정확히 그 함정이었다: 인수 없는 호출은
+ #  버전을 인쇄하고 깨끗이 끝났고 `sany` 도 모든 모듈을 파싱했는데(파라미터
+ #  오류 경로와 파서 경로가 MailSender 앞에서 반환한다),
+ #  **실제 모델 검사는 374 run 전량이 NoClassDefFoundError 로 죽었다.**
+ #  ⇒ 이 층은 진짜 모델을 하나 검사시킨다. 파싱·SANY·검사 시작·완주까지
+ #  밟으므로 그 결손을 빌드 시점에 잡는다. 조용히 통과하는 툴체인은 검증되지
+ #  않은 툴체인이다 (§4b SpinalHDL 스모크와 같은 규율).
+ #  `-noGenerateSpecTE` 도 함께 태운다 — 러너가 358 run 전부에 쓰는 플래그이고,
+ #  이것이 v1.7.4(TLC 2.19)로의 다운그레이드를 막는 바로 그 벽이다.
+ && mkdir -p /tmp/tlasmoke \
+ && printf '%s\n' \
+      '---- MODULE Smoke ----' \
+      'EXTENDS Naturals' \
+      'VARIABLE x' \
+      'Init == x = 0' \
+      'Next == x'"'"' = (x + 1) % 3' \
+      'Inv == x \in 0..2' \
+      '======================' \
+      > /tmp/tlasmoke/Smoke.tla \
+ && printf '%s\n' 'INIT Init' 'NEXT Next' 'INVARIANT Inv' > /tmp/tlasmoke/Smoke.cfg \
+ && cd /tmp/tlasmoke \
+ && tlc -nowarning -workers 1 -cleanup -noGenerateSpecTE -config Smoke.cfg Smoke \
+      > /tmp/tlasmoke/out.txt 2>&1 \
+ && grep -q "Model checking completed. No error has been found." /tmp/tlasmoke/out.txt \
+ && sany Smoke.tla > /dev/null \
+ && cd / && rm -rf /tmp/tlasmoke /tmp/hsperfdata_root \
+ && echo "[wt] TLC 스모크 OK — ${TLA_TLC_BUILD} (rev: ${TLA_TLC_REV}) / b2 ${TLA_BLAKE2B512}"
 
 # ---------------------------------------------------------------------------
 # 4) cocotb — **python 버전이 실제 제약이다** (실측으로 두 번 확인):
@@ -345,6 +473,11 @@ RUN printf '%s\n' \
   '# 오랫동안 공백을 보고하고 있었다. 인수 없이 부르면 첫 줄이 곧 버전이다.' \
   '# "어느 버전으로 쟀는가" 에 답하지 못하는 자기보고는 자기보고가 아니다.' \
   'printf "  TLC        %s\\n" "$(tlc 2>&1 | head -1)"' \
+  '# TLC 의 자기보고에는 **어느 자산을 받았는지**가 없다 — `v1.8.0` 은 롤링' \
+  '# pre-release 라 같은 태그가 여러 바이트를 서빙하기 때문이다. 그래서 빌드가' \
+  '# 고정한 해시를 함께 적는다: 위 한 줄은 "무엇이라 말하는가", 아래 한 줄은' \
+  '# "무슨 바이트였는가". 앞의 것만으로는 재현할 수 없다.' \
+  "printf \"  tla2tools  v${TLA_VERSION} 자산 · b2 %s… (빌드 시 고정 · 롤링 태그)\\\\n\" \"\$(echo ${TLA_BLAKE2B512} | cut -c1-16)\"" \
   'printf "  sby        %s\\n" "$(command -v sby >/dev/null 2>&1 && sby --version 2>&1 | head -1 || echo "(미설치 — WITH_SBY=0)")"' \
   'printf "  btormc     %s\\n" "$(command -v btormc >/dev/null 2>&1 && btormc --version 2>&1 || echo "(미설치 — WITH_BTORMC=0)")"' \
   '# btorsim 에는 --version 이 없다 (핀 커밋 소스 실측) — 스스로 답하지 못하는' \
