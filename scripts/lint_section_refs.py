@@ -71,6 +71,14 @@ REPO = Path(__file__).resolve().parent.parent
 GUIDE = REPO / "docs" / "wt64v1-architecture-guide"
 
 # 인용을 담을 수 있는 파일 — 정본 + 정본을 인용하는 층
+#
+# **`docs/extensions` 가 여기 있어야 하는 이유** (2026-08-29 실측): `Ctrl-min`
+# 명세를 `.claude-memos/ctrl_proposal.md` 에서 `docs/extensions/wt64v1-ctrl.md`
+# 로 *승격*하면서 이 검사를 잃었다 — 메모 시절에는 `.claude-memos/*.md` 글롭에
+# 걸려 §4.2.3·§4.3·§1.4.1·§5.1·§4.4.4 인용이 전부 검사되고 있었는데, 승격이
+# 그 문서를 훑지 않는 자리로 옮긴 것이다. 먼저 승격한 확장 명세 넷
+# (`di`·`c`·`lf64min`·`lf64di`)도 같은 상태였다. **승격은 검사를 늘려야지
+# 줄여서는 안 된다** — 확장 명세는 메모보다 더 정본을 인용한다.
 SCAN_GLOBS = [
     (GUIDE, "**/*.typ"),
     (REPO / "rtl" / "formal" / "tla", "*.tla"),
@@ -78,6 +86,7 @@ SCAN_GLOBS = [
     (REPO / "rtl" / "sv" / "assert", "*.sv"),
     (REPO / ".claude-memos", "*.md"),
     (REPO / "docs" / "research", "*.md"),
+    (REPO / "docs" / "extensions", "*.md"),
 ]
 
 # `@sec:label N.M[.K]` — 절 번호가 붙은 인용만 본다. 번호 없는 장 참조는 대상 아님.
@@ -96,6 +105,18 @@ LABEL_DECL_RE = re.compile(r"<(sec:[a-z][a-z0-9-]*)>")
 # `§N.M[.K]` — 라벨 없이 절 번호만 쓴 인용. 장 번호 N 이 어느 파일인지는
 # 장 번호 → 파일 맵으로 푼다. 2026-08-27 에 이 형태를 놓쳐 개악이 났다.
 BARE_RE = re.compile(r"§(\d+\.\d+(?:\.\d+)?)")
+
+# **이름이 붙은 형제 문서 인용** — `` `Di` §4.7 `` · `` `lf_extension_split.md`
+# §3.1 `` 처럼 *다른 문서의* 절을 가리키는 형태다. 정본 좌표가 아니므로 정본
+# 절 맵과 대조하면 안 된다: 대조하면 우연히 같은 번호가 정본에 있을 때 **조용히
+# 통과해 거짓 확신을 준다** (`Di` §4.2·§1.3 이 실제로 그 형태였다 — 정본에도
+# §4.2·§1.3 이 있어서 통과했다).
+#
+# 예외 하나 — 이름이 *정본 자신*을 가리키는 경우
+# (`` `docs/wt64v1-architecture-guide` §2.7 ``, `rtl/formal/tla` 의 관례)는
+# 그대로 검사한다. 이 예외를 두지 않으면 하드 검사 셋을 잃는다.
+NAMED_REF_RE = re.compile(r"(?:`([^`\n]{1,60})`|([A-Za-z0-9_./-]+\.md))\s*$")
+GUIDE_NAME = "wt64v1-architecture-guide"
 
 
 def chapter_number(path: Path) -> str | None:
@@ -165,7 +186,7 @@ def main() -> int:
 
     hard: list[str] = []
     soft: list[str] = []
-    checked = quoted = 0
+    checked = quoted = crossdoc = 0
 
     for root, pat in SCAN_GLOBS:
         if not root.exists():
@@ -183,6 +204,10 @@ def main() -> int:
                 tgt = chap_files.get(ch)
                 if tgt is None:
                     continue          # 그 장이 없다 — 다른 문서의 절일 수 있다
+                nm = NAMED_REF_RE.search(text[max(0, m.start() - 80) : m.start()])
+                if nm and GUIDE_NAME not in (nm.group(1) or nm.group(2) or ""):
+                    crossdoc += 1     # 이름 붙은 형제 문서 인용 — 정본 좌표가 아니다
+                    continue
                 checked += 1
                 line_no = text[: m.start()].count("\n") + 1
                 if num not in secmaps.get(tgt, {}):
@@ -306,7 +331,8 @@ def main() -> int:
 
     print(
         f"lint_section_refs: OK — 절 인용 {checked}건 실재 "
-        f"(그중 {quoted}건은 따옴표 내용까지 해당 절에서 확인) · 라벨 {len(labels)}종"
+        f"(그중 {quoted}건은 따옴표 내용까지 해당 절에서 확인) · 라벨 {len(labels)}종 "
+        f"· 이름 붙은 형제 문서 인용 {crossdoc}건은 대조 대상 밖"
     )
     print(
         "  ※ 재는 것은 「좌표가 실재하는가」이지 「인용이 옳은 근거인가」가 아니다 — "
