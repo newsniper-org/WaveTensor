@@ -44,7 +44,7 @@
 | 이미 있는 것 | 자리 (직접 확인) |
 |---|---|
 | TRIPS 의 「출력 개수 카운팅으로 완료 검출」과 **null write/store 패딩** | `docs/research/wavescalar-capacity.md:148-152` — 카운팅과 패딩이 *같은 문장 안*에 있다. 이식 판정도 `:323-326` 에 이미 서 있다 |
-| KPN 계보 — Kahn 1974 | `docs/wt64v1-architecture-guide/refs.yml:93-103` 에 서지가 있고(note 는 `:103`) `chapters/02-fabric-alu.typ:495` 이 실제로 `@kahn` 으로 인용한다 |
+| KPN 계보 — Kahn 1974 | `docs/wt64v1-architecture-guide/refs.yml:93-103` 에 서지가 있고(note 는 `:103`) `chapters/02-fabric-alu.typ:555` 이 실제로 `@kahn` 으로 인용한다 |
 | WaveScalar k-bound 와 그 **대응물의 자리** | `docs/research/token-pressure.md:482-489` (후보 3 — 「제한 기전의 자리는 호스트 투입 경계」) · `wavescalar-capacity.md:406-411` |
 | DPGA 형 브로드캐스트 컨텍스트 | `wavescalar-capacity.md:318-322`(§5.2) |
 | SEED 형 **정적 명령 수 상한의 ISA 계약화** 와 그 기각 | `wavescalar-capacity.md:343-347`(§5.3 — 「상한을 인코딩 폭으로 승격하는 순간 INV-T1 위반」) |
@@ -432,7 +432,7 @@ Petri net 은 두 유계성을 이름으로 가른다 (§2.3):
 해법이지 배압의 일반형이 아니다.
 
 효과 축에서는 이미 있다 — 무손실 + 배압 + 소비자 레지스터 불닿음이
-`02-fabric-alu.typ:492-500`(FAB-10 짝) 에 계약으로 서 있고, 그 무손실이
+`02-fabric-alu.typ:552-560`(FAB-10 짝) 에 계약으로 서 있고, 그 무손실이
 `@kahn` 을 인용하는 자리다.
 
 ### 3.7 fuel / gas — 이 기계에는 감할 자리가 없다
@@ -491,7 +491,7 @@ LID 가 세우는 성질(지연을 바꿔도 기능이 보존된다)은 이 기�
 - `docs/wt64v1-architecture-guide/refs.yml:93-103` — `kahn` 항목. 그 note
   (`:103`)가 용법을 한 줄로 못박는다: **「결정론적 데이터플로 네트워크.
   무손실·배압 계약의 이론적 배경」**
-- `docs/wt64v1-architecture-guide/chapters/02-fabric-alu.typ:495` — 「조각
+- `docs/wt64v1-architecture-guide/chapters/02-fabric-alu.typ:555` — 「조각
   전송과 배압」 규범 3항: 「*무손실이어야 한다* — 배압을 무시한 전송으로
   조각이 사라지면 안 된다 `@kahn`」
 

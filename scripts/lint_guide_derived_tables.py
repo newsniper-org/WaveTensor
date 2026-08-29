@@ -267,10 +267,12 @@ def check_b5_counts(bgaps_text: str):
             f"부류 어디에도 들지 않는 행이 있다는 뜻이다")
 
     # --- B2: 미결의 다섯 갈래 분해 ---------------------------------------
-    dec = re.search(r"남은 (\S+?)은 한 부류가 아니다:(.*?)Q5 분석", flat)
+    # 조사는 앞 수사의 받침이 정한다 — 「서른여덟은」 · 「마흔하나는」. 수가
+    # 움직일 때마다 게이트가 *비문을 쓰라고* 요구하지 않도록 둘 다 받는다.
+    dec = re.search(r"남은 (\S+?)[은는] 한 부류가 아니다:(.*?)Q5 분석", flat)
     if dec is None:
         raise Drift(
-            "B2: 미결 분해 문장(「남은 … 은 한 부류가 아니다」)을 찾지 못했다")
+            "B2: 미결 분해 문장(「남은 … 은/는 한 부류가 아니다」)을 찾지 못했다")
     if ko_num(dec.group(1)) != counts["미결"]:
         raise Drift(
             f"B2: 분해 머리는 {ko_num(dec.group(1))}, 표의 미결은 "
@@ -641,7 +643,7 @@ def _self_test(isa_text, ext_text, bgaps_text, sweep, words, bits,
                    "*하나*는 재는 일이", "*둘*은 재는 일이")))
     must_raise("B.5 미결 분해 문장 삭제",
                lambda: check_b5_counts(bgaps_text.replace(
-                   "은 한 부류가 아니다:", "은 한 부류가 아닐 수도 있다:")))
+                   "한 부류가 아니다:", "한 부류가 아닐 수도 있다:")))
     must_raise("B.5 해설 산술의 우변을 깨뜨림",
                lambda: check_b5_counts(_break_arith(bgaps_text)))
     must_raise("B.5 표의 상태 칸을 네 부류 밖으로",
