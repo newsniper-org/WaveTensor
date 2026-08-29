@@ -28,15 +28,44 @@
 
   (1) 각 장 `#속성(...)` 선언 수  ==  부록 D 색인 행 수
   (2) 부록 D 축별 분류 합         ==  위 수
-  (3) 부록 D 단계별 분류 합       ==  위 수
+  (3) 부록 D 단계별 분류 합       ==  위 수 (D.2 의 *모든* 사본 — 분류 문장과
+      진행 현황의 분모 둘 다)
   (4) 부록 D 진행 현황의 run 수   ==  rtl/formal/tla/run.sh 의 expect_* 수
-  (5) 명령어 최대 길이 주장       ==  어셈블러 상수 (그리고 서로)
+  (5) 명령어 최대 길이 주장       ==  어셈블러 상수 (그리고 서로), 그리고 그
+      주장이 가리키는 *절 번호* == 4장에서 「인코딩 용량」의 실제 차례
+  (6) 부록 B.5 요약 계수          ==  B.5 표를 파싱해 센 값 (행 수 · 네 부류 ·
+      미결 분해 다섯 · 해설 산술의 좌변과 우변 · 그리고 요약 문장 *밖*의
+      산문에 남은 행 수 사본 전부)
+  (7) README 가 인용하는 수        ==  위에서 센 값 · `refs.yml` 실물 항 수
+      (앵커는 현재 시제 주장에만 둔다 — 날짜 박힌 기록 안이면 실패)
+
+## (3) 은 도입 이래 한 번도 돌지 않았다 — 일곱 번째 드리프트
+
+이 검사가 실패한 방식이 이 파일이 경고하는 바로 그 형태다. (3) 의 정규식은
+「선 31 / 후 12」를 찾는데 정본 문면은 「*선-formal 31 · 후-formal 12*」라
+적는다. 매치가 `None` 이었고, 코드는 `if stage:` 로 *조용히 건너뛰었다.*
+그러면서 OK 줄은 자기가 센 값으로 「(선 31 / 후 12)」를 인쇄해 **정본 주장을
+대조한 것처럼** 읽히게 했다 — 검사받지 않은 수가 검사받은 얼굴로 나왔다.
+
+⇒ 앵커를 못 찾으면 건너뛰지 않고 *크게 실패한다.* 그리고 이 축을 자기
+시험에 급여한다 — 자기 시험이 먹이지 않는 축은 수리해도 다시 죽는다.
+(6)·(7) 도 같은 규율로 짓는다: 앵커 부재는 통과가 아니라 실패다.
+
+## (6) 은 왜 필요한가
+
+부록 B.5 는 78행 표 하나와 그 표를 *산문으로 요약한* 해설을 함께 싣는다 —
+행 수 · 네 부류(해소·파라미터화·조건부·미결) · 미결의 다섯 갈래 분해 ·
+그리고 「다섯에서 여덟이 됐다 — 둘을 닫았는데 …가 새로 열렸다」 부류의
+산술. 전부 *파생*이고, 전부 한글 수사로 적혀 있어 눈으로는 더 안 걸린다.
+드리프트 목록 5번(「B.5 해설의 산술이 표와 맞지 않았다」)이 정확히 여기서
+났는데 검사가 확장되지 않아 *같은 형태가 두 번째로 났다* — 이번엔 위 산술
+자신이 `5 - 2 + 4 = 8` 로 틀려 있었다.
 
 ## (5) 는 왜 뒤늦게 생겼는가 — 여섯 번째 드리프트
 
 인코딩 개정 파도(W8)가 CH 한 워드를 넣어 최대 길이를 416b/13워드 →
 448b/14워드로 옮겼다. 정본은 그 값을 **세 곳**에 적는다 — §1.3.1 규범
-「최대 길이」의 산술 · §4.6 「인코딩 용량」의 현행 문장 · 부록 B 원장의
+「최대 길이」의 산술 · §4.5 「인코딩 용량」의 현행 문장 · 부록 B 원장의
 *현재* 칸. 파도는 앞의 둘만 고쳤고 **원장 칸은 416비트로 남았다.** 같은
 정본이 자기 안에서 32비트 어긋났고, 재구현의 유일한 기준이 그것이다
 (부록 B 만 읽은 재구현자는 13워드 버스를 판다). `make guide` 도 이 검사도
@@ -65,6 +94,8 @@ GUIDE = ROOT / "docs" / "wt64v1-architecture-guide"
 EXTDOCS = ROOT / "docs" / "extensions"
 ASM = ROOT / "asm" / "wavetensor_asm.py"
 RUNSH = ROOT / "rtl" / "formal" / "tla" / "run.sh"
+REFS = GUIDE / "refs.yml"
+README = GUIDE / "README.md"
 
 PREFIXES = ("ISA", "FAB", "HIU", "EXT", "SEC")
 
@@ -81,6 +112,338 @@ class Drift(Exception):
 def fail(msg: str) -> None:
     print(f"lint_guide_derived_tables: FAIL — {msg}", file=sys.stderr)
     sys.exit(1)
+
+
+# --------------------------------------------------------------------------
+# 한글 수사 — B.5 요약은 아라비아 숫자를 쓰지 않는다
+# --------------------------------------------------------------------------
+_KO_TENS = {"아흔": 90, "여든": 80, "일흔": 70, "예순": 60, "쉰": 50,
+            "마흔": 40, "서른": 30, "스물": 20, "열": 10}
+_KO_ONES = {"하나": 1, "한": 1, "둘": 2, "두": 2, "셋": 3, "세": 3,
+            "넷": 4, "네": 4, "다섯": 5, "여섯": 6, "일곱": 7,
+            "여덟": 8, "아홉": 9}
+
+
+def ko_num(word: str) -> int:
+    """「일흔여덟」 → 78. 못 읽으면 Drift — 조용히 0 을 돌려주지 않는다."""
+    s = word.strip()
+    n, matched = 0, False
+    for k in sorted(_KO_TENS, key=len, reverse=True):
+        if s.startswith(k):
+            n, s, matched = _KO_TENS[k], s[len(k):], True
+            break
+    if s:
+        for k in sorted(_KO_ONES, key=len, reverse=True):
+            if s == k:
+                n, matched = n + _KO_ONES[k], True
+                s = ""
+                break
+    if not matched or s:
+        raise Drift(f"한글 수사를 읽지 못했다: 「{word}」")
+    return n
+
+
+_KO_ONES_W = {1: "하나", 2: "둘", 3: "셋", 4: "넷", 5: "다섯", 6: "여섯",
+              7: "일곱", 8: "여덟", 9: "아홉"}
+_KO_TENS_W = {v: k for k, v in _KO_TENS.items()}
+
+
+def _ko(n: int) -> str:
+    """78 → 「일흔여덟」. 자기 시험이 변이를 *문면으로* 만들 때 쓴다."""
+    if not 1 <= n <= 99:
+        raise Drift(f"한글 수사로 적을 범위 밖: {n}")
+    return _KO_TENS_W.get(n // 10 * 10, "") + _KO_ONES_W.get(n % 10, "")
+
+
+def _break_arith(bgaps_text: str) -> str:
+    """B.5 해설 산술의 *우변*만 한 칸 옮긴 변이를 만든다."""
+    def sub(m):
+        return f"부류는 {m.group(1)}에서 {_ko(ko_num(m.group(2)) + 1)}이 됐다"
+    out, n = re.subn(r"부류는 (\S+?)에서 (\S+?)이 됐다", sub, bgaps_text, count=1)
+    if n != 1:
+        fail("자기 시험이 B.5 산술 문장을 변이시키지 못했다 — 문면이 움직였다")
+    return out
+
+
+def _bracket_cells(body: str):
+    """`[...]` 최상위 셀을 순서대로 뽑는다 (중첩 대괄호 허용)."""
+    cells, depth, cur = [], 0, []
+    for ch in body:
+        if ch == "[":
+            depth += 1
+            if depth == 1:
+                cur = []
+                continue
+        elif ch == "]":
+            depth -= 1
+            if depth == 0:
+                cells.append("".join(cur))
+                continue
+            if depth < 0:
+                raise Drift("B.5 표의 대괄호 짝이 맞지 않는다")
+        if depth > 0:
+            cur.append(ch)
+    if depth != 0:
+        raise Drift("B.5 표의 대괄호가 닫히지 않았다")
+    return cells
+
+
+_B5_CATS = ("해소", "파라미터화", "조건부", "미결")
+
+
+def parse_b5_table(bgaps_text: str):
+    """부록 B.5 표를 파싱해 (행 수, 부류별 개수) 를 *세어서* 돌려준다.
+
+    손으로 옮겨 적은 요약을 이 값과 대조한다 — 요약은 파생이고 표가 원천이다.
+    """
+    sec = bgaps_text.find("== 미결 결정")
+    if sec < 0:
+        raise Drift("B.5 「미결 결정」 절을 찾지 못했다")
+    t = bgaps_text.find("#table(", sec)
+    if t < 0:
+        raise Drift("B.5 표를 찾지 못했다")
+    # 괄호 깊이로 표의 끝을 찾는다.
+    depth, end = 0, None
+    for i in range(t + len("#table"), len(bgaps_text)):
+        c = bgaps_text[i]
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+    if end is None:
+        raise Drift("B.5 표의 괄호가 닫히지 않았다")
+    body = bgaps_text[t:end]
+    h = body.find("table.header")
+    if h < 0:
+        raise Drift("B.5 표에 table.header 가 없다 — 열 구조를 확인할 수 없다")
+    hdr_end = body.find(")", h)
+    cells = _bracket_cells(body[hdr_end:])
+    if not cells or len(cells) % 3:
+        raise Drift(
+            f"B.5 표의 셀 수 {len(cells)} 가 3의 배수가 아니다 — 열이 밀렸다 "
+            f"(이 표가 실제로 그렇게 무너진 적이 있다)")
+    counts = {c: 0 for c in _B5_CATS}
+    for k in range(2, len(cells), 3):
+        s = cells[k].strip().lstrip("*")
+        for c in _B5_CATS:
+            if s.startswith(c):
+                counts[c] += 1
+                break
+        else:
+            raise Drift(
+                f"B.5 상태 칸이 네 부류 어디에도 들지 않는다: "
+                f"{' '.join(cells[k].split())[:80]}")
+    return len(cells) // 3, counts
+
+
+def check_b5_counts(bgaps_text: str):
+    """(6) B.5 요약 산문 세 겹을 표 실물과 대조한다."""
+    rows, counts = parse_b5_table(bgaps_text)
+    flat = re.sub(r"\s+", " ", bgaps_text)
+
+    # --- B1: 「지금 N 이다 — 해소 …, 파라미터화 …, 조건부 …, 미결 …」 ------
+    m = re.search(
+        r"이 표는 처음 \S+? 항이었고 지금 (\S+?)이다 — "
+        r"해소 (\S+?), 파라미터화 (\S+?), 조건부 (\S+?), 미결 (\S+?)\.", flat)
+    if m is None:
+        raise Drift(
+            "B1: B.5 요약 해설의 계수 문장을 찾지 못했다 — 표 행 수와 네 부류를 "
+            "적는 유일한 자리다. 문면이 바뀌었으면 이 검사도 함께 옮겨야 한다")
+    said_rows = ko_num(m.group(1))
+    said = {c: ko_num(m.group(i)) for i, c in enumerate(_B5_CATS, start=2)}
+    if said_rows != rows:
+        raise Drift(f"B1: B.5 해설은 {said_rows}행, 표 실물은 {rows}행")
+    for c in _B5_CATS:
+        if said[c] != counts[c]:
+            raise Drift(
+                f"B1: B.5 해설의 「{c}」 는 {said[c]}, 표 실물은 {counts[c]} "
+                f"(실물 전량: {counts})")
+    if sum(said.values()) != said_rows:
+        raise Drift(
+            f"B1: 네 부류 합 {sum(said.values())} != 표 행 수 {said_rows} — "
+            f"부류 어디에도 들지 않는 행이 있다는 뜻이다")
+
+    # --- B2: 미결의 다섯 갈래 분해 ---------------------------------------
+    dec = re.search(r"남은 (\S+?)은 한 부류가 아니다:(.*?)Q5 분석", flat)
+    if dec is None:
+        raise Drift(
+            "B2: 미결 분해 문장(「남은 … 은 한 부류가 아니다」)을 찾지 못했다")
+    if ko_num(dec.group(1)) != counts["미결"]:
+        raise Drift(
+            f"B2: 분해 머리는 {ko_num(dec.group(1))}, 표의 미결은 "
+            f"{counts['미결']}")
+    parts = [ko_num(x) for x in re.findall(r"\*([가-힣]{1,4})\*[은는]", dec.group(2))
+             if _is_ko_num(x)]
+    if len(parts) != 5:
+        raise Drift(
+            f"B2: 미결 분해의 갈래가 다섯이 아니라 {len(parts)}개로 읽혔다 "
+            f"({parts}) — 갈래를 늘리거나 줄였으면 이 수도 함께 움직여야 한다")
+    if sum(parts) != counts["미결"]:
+        raise Drift(
+            f"B2: 미결 분해 합 {'+'.join(map(str, parts))}={sum(parts)} != "
+            f"표의 미결 {counts['미결']}")
+
+    # --- B3: 「A 에서 B 가 됐다 — C 를 닫았는데 D 가 새로 열렸다」 ----------
+    ar = re.search(
+        r"부류는 (\S+?)에서 (\S+?)이 됐다 — (\S+?)을 닫았는데 (\S+?)이 "
+        r"새로 열렸다", flat)
+    if ar is None:
+        raise Drift(
+            "B3: 「정본이 스스로 답한다」 부류의 산술 문장을 찾지 못했다 — "
+            "드리프트 5번이 난 형태이고, 그래서 문장이 사라지는 것도 실패다")
+    a, b, c, d = (ko_num(x) for x in ar.groups())
+    if a - c + d != b:
+        raise Drift(
+            f"B3: B.5 해설의 산술이 스스로 틀렸다 — {a} - {c} + {d} = "
+            f"{a - c + d} 인데 {b} 라 적었다")
+
+    # --- B4: 산문 어디에도 표 행 수의 대조되지 않는 사본을 두지 않는다 ------
+    # B1 은 요약 해설 *한 문장*만 앵커로 잡는다. 그 문장 밖에 「78행 계수에
+    # 서는 …」 같은 사본이 서면 검사가 닿지 않고, 실제로 행을 79 로 만든
+    # 커밋이 그 사본을 78 로 남겼다. ⇒ B.5 절 안의 모든 「N행」을 센 값과
+    # 대조한다. 예외는 *소스 줄 번호*뿐이고, 그것은 파일 경로나 「파일」이
+    # 앞에 붙어 있어야 한다 — 예외의 자격을 문면이 스스로 증명하게 한다.
+    sec = bgaps_text.find("== 미결 결정")
+    b5_body = bgaps_text[sec:]
+    src_ref = re.compile(r"(?:`[^`]*\.(?:scala|py|sv|v|tla|typ|md)`|파일)[^`]{0,40}$",
+                         re.S)
+    for m in re.finditer(r"(?<![\d–~-])(\d+)행", b5_body):
+        if src_ref.search(b5_body[max(0, m.start() - 60):m.start()]):
+            continue  # 소스 줄 번호 — 이 표의 계수가 아니다
+        if int(m.group(1)) != rows:
+            ctx = " ".join(
+                b5_body[max(0, m.start() - 60):m.end() + 40].split())
+            raise Drift(
+                f"B4: B.5 산문이 「{m.group(0)}」 이라 적는데 표 실물은 "
+                f"{rows}행이다 — 계수를 옮길 때는 기계로 다시 센다: …{ctx}…")
+
+    return (f"B.5 {rows}행 = " +
+            " · ".join(f"{c} {counts[c]}" for c in _B5_CATS) +
+            f" · 미결 분해 {'+'.join(map(str, parts))}" +
+            f" · 해설 산술 {a}-{c}+{d}={b}"), rows, counts
+
+
+def _is_ko_num(word: str) -> bool:
+    try:
+        ko_num(word)
+    except Drift:
+        return False
+    return True
+
+
+def check_stage_split(dtext: str, n_pre: int, n_post: int) -> None:
+    """(3) 부록 D 단계별 분류 — 그리고 그 수의 *모든* 사본.
+
+    이 축은 도입 이래 매치가 `None` 이어서 한 번도 돌지 않았다. 그래서
+    *못 찾는 것 자체가 실패*다 — 조용히 건너뛰면 인쇄되는 「선 n/후 m」이
+    자기가 센 값이 되어 대조한 척한다.
+
+    그리고 자리를 *하나만* 잡으면 안 된다. 이 축을 살린 바로 그 수리가
+    같은 파일에 선-formal 수의 대조되지 않는 사본을 둘 더 낳았다 — 살아난
+    검사가 D.2 한 문장만 보고 있었기 때문이다. 사본이 생길 수 있는 문면
+    형태를 표로 들고, 형태마다 *적어도 하나*를 요구한다 (문면이 사라지는
+    것도 실패다).
+    """
+    # (정규식, 사람이 읽는 이름, 이 문면이 적는 수 — "pre" 또는 "pre_post")
+    forms = (
+        (r"선-formal\s+\*?(\d+)\*?\s*·\s*후-formal\s+\*?(\d+)\*?",
+         "D.2 단계별 분류 「선-formal N · 후-formal M」", "pre_post"),
+        (r"선-formal 대상\s+\*?(\d+)\*?\s*건",
+         "D.2 진행 현황의 분모 「선-formal 대상 N건」", "pre"),
+    )
+    for pat, label, kind in forms:
+        found = list(re.finditer(pat, dtext))
+        if not found:
+            raise Drift(
+                f"S1: 부록 D 에서 {label} 문면을 찾지 못했다. 이 축은 정규식이 "
+                f"문면과 안 맞아 도입 이래 조용히 건너뛴 전력이 있다 — 못 찾으면 "
+                f"통과가 아니라 실패다")
+        for m in found:
+            s_pre = int(m.group(1))
+            if s_pre != n_pre:
+                raise Drift(
+                    f"S1: {label} 가 선 {s_pre} 라 적는데 실물은 선 {n_pre} 다")
+            if kind == "pre_post" and int(m.group(2)) != n_post:
+                raise Drift(
+                    f"S1: {label} 가 후 {int(m.group(2))} 라 적는데 실물은 "
+                    f"후 {n_post} 다")
+
+
+# 날짜가 박힌 *실측 기록* 문단의 머리. 이 문단들은 「그날 무엇을 쟀는가」의
+# 로그이지 현재 상태의 요약이 아니다 — 아래 R2 가 게이트 앵커를 이 안에
+# 두는 것을 금한다.
+_DATED_RECORD_HEAD = re.compile(r"^재?실측[^\n(]*\(\d{4}-\d{2}-\d{2}\)", re.M)
+
+
+def _dated_record_spans(readme_text: str):
+    """날짜 박힌 실측 기록 문단의 (시작, 끝) 목록. 문단은 빈 줄로 끝난다."""
+    spans = []
+    for m in _DATED_RECORD_HEAD.finditer(readme_text):
+        end = readme_text.find("\n\n", m.end())
+        spans.append((m.start(), len(readme_text) if end < 0 else end))
+    return spans
+
+
+def check_readme_copies(readme_text, n_declared, n_pre, n_post, n_refs) -> str:
+    """(7) README 가 인용하는 수 — 그것이 *사본*이면 게이트 안에 넣는다.
+
+    README 는 「남은 수(속성 · 서지)는 **기계가 대조한다**」 고 적었는데
+    서지 수는 실제로 아무도 세지 않았고 이미 46 vs 45 로 어긋나 있었다.
+    쪽수는 「세는 것이 기계에 없으면 적지 않는 편이 낫다」로 지웠지만, 이 둘은
+    지우는 대신 *주장을 참으로 만드는* 쪽을 골랐다 — 재구현자가 README 만
+    읽고 규모를 가늠하는 자리이고, 세는 일이 파일 하나 파싱이면 지울 이유가
+    없다. 대신 그 주장을 문면 그대로 집행한다.
+
+    ## R2 — 앵커를 날짜 박힌 기록 안에 두지 않는다
+
+    이 축의 첫 판이 그 규율 없이 서서 곧바로 사고를 냈다. 앵커 둘이
+    「재실측 (2026-08-27)」 문단 안에 있었고, 그날 실물은 서지 *45* 였다.
+    수가 46 이 되자 게이트를 통과시키는 유일한 방법이 **그날의 기록을 46 으로
+    고치는 것**이었고 그렇게 됐다 — 게이트가 「그날 재지 않은 값을 그날 잰
+    것으로 적어라」를 강제한 것이다. 그리고 서지가 늘 때마다 같은 위조를
+    다시 요구한다.
+
+    ⇒ 현재 시제 주장(문서 지도의 괄호 · 「남은 수」)만 앵커로 삼고, 날짜
+    박힌 문단 안에 앵커가 들어오면 *실패한다.* 로그는 고치는 것이 아니라
+    새 줄을 더하는 것이다.
+    """
+    checks = (
+        (rf"\({n_declared}개 색인 — 선 {n_pre} / 후 {n_post}\)",
+         f"부록 D 인용 「({n_declared}개 색인 — 선 {n_pre} / 후 {n_post})」"),
+        (rf"\({n_refs}항, 전부 본문 인용\)", f"refs.yml 인용 「({n_refs}항…)」"),
+        (rf"남은 수\(속성 {n_declared} · 서지 {n_refs}\)",
+         f"「남은 수(속성 {n_declared} · 서지 {n_refs})」"),
+    )
+    spans = _dated_record_spans(readme_text)
+    for pat, label in checks:
+        m = re.search(pat, readme_text)
+        if m is None:
+            raise Drift(
+                f"R1: README 의 {label} 가 실물과 어긋난다 (실물: 속성 "
+                f"{n_declared} = 선 {n_pre} + 후 {n_post} · 서지 {n_refs}항). "
+                f"README 는 이 수들을 「기계가 대조한다」고 적으므로, 대조에서 "
+                f"빠지는 순간 그 문장 자신이 거짓이 된다")
+        for lo, hi in spans:
+            if lo <= m.start() < hi:
+                raise Drift(
+                    f"R2: 게이트 앵커 {label} 가 날짜 박힌 실측 기록 안에 있다. "
+                    f"그러면 수가 움직일 때마다 게이트가 *그날 재지 않은 값을 "
+                    f"그날 잰 것으로* 고치라고 요구한다 — 실제로 그렇게 서지 "
+                    f"45 가 46 으로 사후 수정됐다. 앵커는 현재 시제 주장에만 "
+                    f"두고, 기록은 고치지 말고 줄을 더하라")
+    return (f"README 인용 정합 (속성 {n_declared} · 선 {n_pre}/후 {n_post} · "
+            f"서지 {n_refs} · 앵커가 날짜 기록 {len(spans)}건 밖)")
+
+
+def count_refs(refs_text: str) -> int:
+    """`refs.yml` 최상위 키 = 서지 항 수."""
+    n = len(re.findall(r"^[A-Za-z0-9_.:+-]+:\s*$", refs_text, re.M))
+    if n == 0:
+        raise Drift("refs.yml 에서 서지 항을 하나도 찾지 못했다")
+    return n
 
 
 def _asm_length_constants(asm_text: str):
@@ -127,18 +490,18 @@ def check_length_claims(isa_text, ext_text, bgaps_text, sweep, words, bits):
             f"L1: 규범 「최대 길이」는 {rhs}비트, 어셈블러는 {bits}비트"
             f"(INSTR_WORDS_REAL={words}) — 정본과 실물이 갈렸다")
 
-    # --- L2: §4.6 「인코딩 용량」의 현행 문장 ------------------------------
+    # --- L2: §4.5 「인코딩 용량」의 현행 문장 ------------------------------
     sect = re.search(r"^== 인코딩 용량(.*?)(?=^== )", ext_text, re.S | re.M)
     if sect is None:
-        raise Drift("L2: §4.6 「인코딩 용량」 절을 찾지 못했다")
+        raise Drift("L2: §4.5 「인코딩 용량」 절을 찾지 못했다")
     body = sect.group(1)
     if f"{bits}비트" not in body:
         raise Drift(
-            f"L2: §4.6 이 현행 최대 길이 {bits}비트를 적지 않는다 — 여기가 "
+            f"L2: §4.5 이 현행 최대 길이 {bits}비트를 적지 않는다 — 여기가 "
             f"「이전 값 → 현행 값」을 나란히 적는 유일한 자리다")
     if f"*{words}워드*" not in body:
         raise Drift(
-            f"L2: §4.6 이 도달 가능 최대 *{words}워드*를 적지 않는다 — "
+            f"L2: §4.5 이 도달 가능 최대 *{words}워드*를 적지 않는다 — "
             f"비트 수만 맞고 워드 수가 어긋나면 버스 폭이 어긋난다")
 
     # --- L3: 부록 B 원장의 *현재* 칸 -------------------------------------
@@ -173,15 +536,143 @@ def check_length_claims(isa_text, ext_text, bgaps_text, sweep, words, bits):
                         f"자리에서 역사라고 말해야 한다 — 표지 {list(_HISTORICAL)[:3]} "
                         f"중 하나가 근처에 없다: …{win.strip()[:140]}…")
 
-    return f"명령어 최대 길이 {bits}b/{words}워드 정합 (규범·§4.6·부록 B · 스윕 {len(sweep)}건)"
+    # --- L5: 이 축을 가리키는 *절 번호* 자신이 맞는가 ----------------------
+    # 위 L2 는 「인코딩 용량」 절을 제목으로 연다 — 번호는 쓰지 않는다. 그래서
+    # 산문이 그 절을 §4.6 으로 잘못 가리켜도 L2 는 조용했고, `lint_section_refs`
+    # 도 조용했다 (4.6 은 실재하는 좌표 — 「형식 속성」 — 이라 좌표 실재성
+    # 검사를 통과한다). 그 오기가 이 스크립트의 메시지에서 원장으로, 원장에서
+    # README 로 세 자리를 번졌다. ⇒ 번호를 *센다*.
+    enc = _enc_section_number(ext_text)
+    for name, text in sweep:
+        flat = re.sub(r"\s+", " ", text)
+        for m in re.finditer(r"(?<![\d.])4\.(\d+)(?![\d.])", flat):
+            win = flat[max(0, m.start() - 120):m.end() + 120]
+            if "최대 길이" not in win and "인코딩 용량" not in win:
+                continue
+            if int(m.group(1)) == enc:
+                continue
+            # 낡은/틀린 번호를 *역사로* 적는 것은 이 부록의 일이다 (B.5 는
+            # 자기 오기의 기록을 싣는다). L4 와 같은 규율을 쓴다 — 금지가
+            # 아니라 *표지 강제*: 그 자리에서 역사라고 말해야 한다.
+            if any(h in win for h in _HISTORICAL):
+                continue
+            raise Drift(
+                f"L5: {name} 이 명령어 최대 길이의 근거 절을 「4.{m.group(1)}」 "
+                f"로 가리키는데 「인코딩 용량」은 4장의 {enc}번째 절 = "
+                f"§4.{enc} 다. 좌표가 실재하기만 하면 통과하는 참조 검사는 "
+                f"이 부류를 잡지 못한다 — 번호를 세는 것이 유일한 그물이다. "
+                f"종전 오기를 역사로 적는 것이면 그 자리에서 역사라고 말하라 "
+                f"(표지 {list(_HISTORICAL)[:3]} 중 하나): …{win.strip()[:140]}…")
+
+    return (f"명령어 최대 길이 {bits}b/{words}워드 정합 "
+            f"(규범·§4.{enc}·부록 B · 스윕 {len(sweep)}건)")
 
 
-def _self_test(isa_text, ext_text, bgaps_text, sweep, words, bits):
+def _enc_section_number(ext_text: str) -> int:
+    """4장에서 「인코딩 용량」이 몇 번째 `==` 절인가 — 곧 §4.N 의 N."""
+    heads = re.findall(r"^== (.+)$", ext_text, re.M)
+    idx = [i for i, h in enumerate(heads, start=1) if h.startswith("인코딩 용량")]
+    if len(idx) != 1:
+        raise Drift(
+            f"L5: 4장에서 「인코딩 용량」 절을 정확히 하나 찾지 못했다 "
+            f"({len(idx)}개) — 절 번호를 셀 수 없으면 아래 대조가 공허하다")
+    return idx[0]
+
+
+def _self_test(isa_text, ext_text, bgaps_text, sweep, words, bits,
+               dtext, readme_text, n_declared, n_pre, n_post, n_refs):
     """이 검사가 무엇을 배제하는지 매 실행마다 증명한다.
 
-    변이 여섯을 먹여 전부 Drift 가 나야 한다. 하나라도 조용하면 그 결은
+    변이를 먹여 전부 Drift 가 나야 한다. 하나라도 조용하면 그 결은
     검사되지 않는 것이고, 검사되지 않는 결은 다음 파도에서 다시 낡는다.
+
+    (3)·(6)·(7) 이 여기 급여되는 이유는 (3) 이 *바로 그것이 없어서* 도입 이래
+    죽어 있었기 때문이다. 자기 시험이 먹이지 않는 축은 수리해도 다시 죽는다.
     """
+    def must_raise(label, fn):
+        try:
+            fn()
+        except Drift:
+            return
+        fail(f"자기 시험 실패 — 변이 「{label}」 를 이 검사가 잡지 못한다")
+
+    # 변이 시험은 *기준 문면이 통과할 때만* 뜻이 있다. 기준이 이미 깨져 있으면
+    # 모든 변이가 엉뚱한 이유로 울고 자기 시험은 공허하게 초록이 된다 — (3) 이
+    # 죽어 있던 것과 같은 부류의 공허함이다. 그래서 기준을 먼저 통과시키고,
+    # 실패하면 그 Drift 를 그대로 올려보낸다 (호출부가 크게 운다).
+    check_stage_split(dtext, n_pre, n_post)
+    check_b5_counts(bgaps_text)
+    check_readme_copies(readme_text, n_declared, n_pre, n_post, n_refs)
+
+    # --- (3) 단계별 분류 -------------------------------------------------
+    must_raise("단계별 분류 앵커 삭제 (도입 이래 죽어 있던 결)",
+               lambda: check_stage_split(
+                   dtext.replace("선-formal", "선"), n_pre, n_post))
+    must_raise("단계별 분류의 선 수를 어긋나게",
+               lambda: check_stage_split(dtext, n_pre + 1, n_post))
+    must_raise("단계별 분류의 후 수를 어긋나게",
+               lambda: check_stage_split(dtext, n_pre, n_post + 1))
+    # 이 축을 살린 수리가 *같은 파일에* 대조 안 되는 사본을 둘 낳았다 —
+    # 자리 하나만 잡는 것으로는 부족하다는 것이 실측으로 드러난 결이다.
+    must_raise("D.2 진행 현황의 분모(선-formal 대상 N건)를 어긋나게",
+               lambda: check_stage_split(
+                   dtext.replace(f"선-formal 대상 {n_pre}건",
+                                 f"선-formal 대상 {n_pre - 1}건"),
+                   n_pre, n_post))
+    must_raise("D.2 진행 현황의 분모 문면 삭제",
+               lambda: check_stage_split(
+                   dtext.replace("선-formal 대상", "형식화 대상"),
+                   n_pre, n_post))
+
+    # --- (6) B.5 계수 ----------------------------------------------------
+    _rows, _counts = parse_b5_table(bgaps_text)
+    must_raise("B.5 요약의 행 수를 어긋나게",
+               lambda: check_b5_counts(bgaps_text.replace(
+                   f"지금 {_ko(_rows)}이다", f"지금 {_ko(_rows + 1)}이다")))
+    must_raise("B.5 요약의 부류 하나를 어긋나게",
+               lambda: check_b5_counts(bgaps_text.replace(
+                   f"해소 {_ko(_counts['해소'])},",
+                   f"해소 {_ko(_counts['해소'] + 1)},")))
+    must_raise("B.5 요약 계수 문장 삭제",
+               lambda: check_b5_counts(bgaps_text.replace(
+                   "이 표는 처음", "이 표는 예전에")))
+    must_raise("B.5 미결 분해 갈래 하나를 어긋나게",
+               lambda: check_b5_counts(bgaps_text.replace(
+                   "*하나*는 재는 일이", "*둘*은 재는 일이")))
+    must_raise("B.5 미결 분해 문장 삭제",
+               lambda: check_b5_counts(bgaps_text.replace(
+                   "은 한 부류가 아니다:", "은 한 부류가 아닐 수도 있다:")))
+    must_raise("B.5 해설 산술의 우변을 깨뜨림",
+               lambda: check_b5_counts(_break_arith(bgaps_text)))
+    must_raise("B.5 표의 상태 칸을 네 부류 밖으로",
+               lambda: check_b5_counts(bgaps_text.replace(
+                   "[*미결* — 정본 자답 가능]", "[*검토중* — 정본 자답 가능]", 1)))
+    # B4 — 요약 문장 *밖*의 행 수 사본. 실제로 표를 79 로 만든 커밋이 산문의
+    # 「78행 계수」를 그대로 두었고 B1 은 그 자리에 닿지 않았다.
+    must_raise("B.5 산문의 행 수 사본을 어긋나게",
+               lambda: check_b5_counts(bgaps_text.replace(
+                   f"{_rows}행 계수", f"{_rows + 1}행 계수")))
+
+    # --- (7) README 사본 --------------------------------------------------
+    for lbl, mut in (
+        ("README 의 속성 총수", (f"({n_declared}개 색인", f"({n_declared + 1}개 색인")),
+        ("README 의 선/후 분할", (f"선 {n_pre} / 후 {n_post})", f"선 {n_pre + 1} / 후 {n_post})")),
+        ("README 의 서지 항 수", (f"({n_refs}항, 전부", f"({n_refs - 1}항, 전부")),
+        ("README 의 「남은 수」 괄호", (f"서지 {n_refs})", f"서지 {n_refs - 1})")),
+    ):
+        must_raise(lbl, (lambda m: lambda: check_readme_copies(
+            readme_text.replace(*m), n_declared, n_pre, n_post, n_refs))(mut))
+    # R2 — 앵커가 날짜 박힌 기록 안으로 들어오는 변이. 이것이 조용하면 게이트가
+    # 다음 파도에서 다시 「그날 재지 않은 값을 그날 잰 것으로」 고치게 만든다.
+    must_raise(
+        "게이트 앵커를 날짜 박힌 실측 기록 안으로 옮김",
+        lambda: check_readme_copies(
+            f"재실측 (2026-08-27): 남은 수(속성 {n_declared} · 서지 {n_refs}) 확인,\n"
+            f"부록 D 색인 ({n_declared}개 색인 — 선 {n_pre} / 후 {n_post}),\n"
+            f"서지 ({n_refs}항, 전부 본문 인용).\n\n",
+            n_declared, n_pre, n_post, n_refs))
+
+    # --- (5) 명령어 최대 길이 --------------------------------------------
     old_bits, old_words = bits - 32, words - 1
     cases = [
         ("규범 산술의 우변을 개정 전 값으로",
@@ -193,7 +684,7 @@ def _self_test(isa_text, ext_text, bgaps_text, sweep, words, bits):
         ("규범 앵커 삭제",
          (isa_text.replace('#규범(라벨: "최대 길이")', '#트랙("최대 길이")'),
           ext_text, bgaps_text, sweep)),
-        ("§4.6 현행 문장을 개정 전 값으로",
+        ("§4.5 현행 문장을 개정 전 값으로",
          (isa_text, ext_text.replace(f"{bits}비트", f"{old_bits}비트"),
           bgaps_text, sweep)),
         ("부록 B 원장 칸에서 현행 값 삭제",
@@ -203,6 +694,15 @@ def _self_test(isa_text, ext_text, bgaps_text, sweep, words, bits):
          (isa_text, ext_text, bgaps_text,
           sweep + [("(변이 문서)",
                     f"상한은 {old_words}워드 · 최대 {old_bits}비트다.")])),
+        # L5 — 절 *번호*의 오기. 좌표가 실재하면 참조 검사는 조용하고, 이
+        # 오기는 실제로 lint 메시지 → 원장 → README 로 세 자리를 번졌다.
+        ("근거 절 번호를 이웃 절로 오기",
+         (isa_text, ext_text, bgaps_text,
+          sweep + [("(변이 문서)",
+                    "명령어 최대 길이의 근거는 @sec:extpayload 4.9 다.")])),
+        ("「인코딩 용량」 절 제목 삭제 — 번호를 셀 수 없게",
+         (isa_text, ext_text.replace("== 인코딩 용량", "== 용량"),
+          bgaps_text, sweep)),
     ]
     for label, (i, e, b, s) in cases:
         try:
@@ -271,14 +771,8 @@ def main() -> None:
     n_pre = sum(1 for m in re.finditer(r'#속성\("[A-Z]+-\d+", 단계: "선"', "".join(
         f.read_text(encoding="utf-8") for f in sorted((GUIDE / "chapters").glob("*.typ")))))
     n_post = n_declared - n_pre
-    stage = re.search(r"선\s*\*?(\d+)\*?\s*/\s*후\s*\*?(\d+)", dtext)
-    if stage:
-        s_pre, s_post = int(stage.group(1)), int(stage.group(2))
-        if (s_pre, s_post) != (n_pre, n_post):
-            fail(
-                f"단계별 분류 불일치 — 부록 D 는 선 {s_pre}/후 {s_post}, "
-                f"실물은 선 {n_pre}/후 {n_post}"
-            )
+    # 매치 실패는 *실패*다. `if stage:` 로 건너뛰던 판이 도입 이래 한 번도
+    # 돌지 않았고, 그러면서 아래 OK 줄이 자기가 센 값을 인쇄해 대조한 척했다.
 
     # --- 파생 (4): 진행 현황의 run 수 vs run.sh --------------------------
     if not RUNSH.is_file():
@@ -309,16 +803,31 @@ def main() -> None:
         if not p.is_file():
             fail(f"정본 장이 없다: {p}")
     read = lambda p: p.read_text(encoding="utf-8")
+    # README 도 스윕에 든다. 빠져 있던 동안 §4.6 오기가 *바로 그 파일로*
+    # 번졌고 (lint 메시지 → 원장 → README), 음성 시험이 그 구멍을 드러냈다 —
+    # 원장 쪽 변이는 잡히는데 README 쪽 같은 변이는 조용했다. 파생을 지키는
+    # 검사가 파생이 사는 파일을 안 읽으면 그만큼 공허하다.
     sweep = [(str(p.relative_to(ROOT)), read(p))
              for p in sorted(GUIDE.glob("chapters/*.typ"))
              + sorted(GUIDE.glob("appendix/*.typ"))
-             + sorted(EXTDOCS.glob("*.md"))]
+             + sorted(EXTDOCS.glob("*.md"))
+             + [GUIDE / "README.md"]]
     isa_text, ext_text = read(isa_p), read(ext_p)
     bgaps_text = read(GUIDE / "appendix" / "b-gaps.typ")
+    for p in (REFS, README):
+        if not p.is_file():
+            fail(f"정본 파일이 없다: {p}")
+    refs_text, readme_text = read(REFS), read(README)
     try:
         words, bits = _asm_length_constants(read(ASM))
+        n_refs = count_refs(refs_text)
         # 매 실행마다 반증력을 먼저 증명하고, 그 다음에 실물을 잰다.
-        _self_test(isa_text, ext_text, bgaps_text, sweep, words, bits)
+        _self_test(isa_text, ext_text, bgaps_text, sweep, words, bits,
+                   dtext, readme_text, n_declared, n_pre, n_post, n_refs)
+        check_stage_split(dtext, n_pre, n_post)
+        b5_note, _b5_rows, _b5_counts = check_b5_counts(bgaps_text)
+        readme_note = check_readme_copies(readme_text, n_declared, n_pre,
+                                          n_post, n_refs)
         length_note = check_length_claims(isa_text, ext_text, bgaps_text,
                                           sweep, words, bits)
     except Drift as exc:
@@ -326,9 +835,11 @@ def main() -> None:
 
     print(
         f"lint_guide_derived_tables: OK — 속성 {n_declared}건 "
-        f"(선 {n_pre} / 후 {n_post}) · 부록 D 색인 {n_index}건 정합"
+        f"(선 {n_pre} / 후 {n_post} — 부록 D 문면과 대조) · 부록 D 색인 {n_index}건 정합"
         + f" · 축별 (a){axes['a']}/(b){axes['b']}/(c){axes['c']} 합계 정합"
         + f" · 형식 배터리 {runs} run 정합"
+        + f" · {b5_note}"
+        + f" · {readme_note}"
         + f" · {length_note}"
     )
 
