@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 4e29961e-988b-4f27-9ede-dfb9c81925bc
-  modified: 2026-08-20T06:48:30.843Z
+  modified: 2026-08-29T07:09:26.135Z
 ---
 
 2026-08-20 사용자 지시로 **WT64v1 RTL 전면 재구현**이 착수됐다. 사용자 확정
@@ -21,8 +21,11 @@ metadata:
    (`asm/wavetensor_asm.py`, `scripts/golden_*.py`, `isa/wt64v1_isa.json`,
    `include/generated/*.hex`). 루트 `*.v`·`tb_*.v`·`test_*.py` 는 **읽지 않는다**
    — 루트 `test_*.py` 를 뺀 이유는 원본 포트명·내부 계층 경로에 결합돼 있어
-   간접 오염 경로이기 때문. `isa/truth_table_premigration.json` 은 블랙박스
-   오라클로만 (명세로 읽으면 오염).
+   간접 오염 경로이기 때문. truth table 은 블랙박스 오라클로만 (명세로 읽으면 오염).
+   ⚠️ **2026-08-29 갱신**: 현행 오라클은 `isa/truth_table_encwave.json`
+   (domain_version 4 · 키 `0x0##` 3자리)이고, `truth_table_premigration.json` 은
+   **「이관 전 계보 전용」으로 좁아진 동결 산출물**이다 — 현행 인코딩 바이너리를
+   프로즌 표에 걸면 전량 불일치한다. legacy 를 만져야 할 때는 [[cleanroom-airlock]].
 4. **SpinalHDL 주 + SV 검증층** — 설계는 전부 SpinalHDL(→ SystemVerilog 생성),
    수기 SV 는 SVA+bind 하네스와 벤더 프리미티브 래퍼로 한정.
 
@@ -37,8 +40,9 @@ metadata:
   "1단을 건너뛴 모듈은 완료로 간주하지 않는다."** RTL 을 먼저 쓰지 말 것.
 - 형식화 순서는 정본 부록 D.5: FAB-2 → FAB-3 → HIU-3 → ISA-3 → HIU-8/9 →
   SEC-3 → EXT-3. 각 모델에 **가드 삭제 실험** 필수, 반례는 지향 테스트로 변환.
-- 툴체인 고정 (`scripts/lint_toolchain_pins.py` 가 3곳 대조):
-  JDK 21.0.12 · sbt 1.12.15 · Scala 2.13.12 · SpinalHDL 1.14.2 · sby `f57802a1`.
+- 툴체인 고정 (`scripts/lint_toolchain_pins.py` 가 3곳 대조 + PINS_TWOWAY 축):
+  JDK 21.0.12 · sbt 1.12.15 · Scala 2.13.12 · SpinalHDL 1.14.2 · sby `f57802a1`
+  · btormc 3.2.4(2026-08-29 추가 — sby cover 엔진) · TLA 는 [[rolling-asset-pin-trap]].
   ⚠️ 스냅샷의 `sbt` 는 **2.0.6 (런처)** 이고 `build.properties` 가 실제 버전을
   정한다. `scala`/`mill`/`coursier` 패키지는 스냅샷에 **없다**.
   SpinalHDL 은 **Scala 3 빌드가 없다**.
@@ -49,4 +53,6 @@ metadata:
   슬롯** / 공유 유닛 점유 중 도착 = **대기** / 접근 승인 = **사후 게이팅**.
 
 관련: [[prestable-compat-policy]], [[fp32-step-sequencer-terminology]],
-[[wt64v1-precision-recovery-roadmap]] (참조 구현 현황).
+[[wt64v1-precision-recovery-roadmap]] (참조 구현 현황),
+[[cleanroom-airlock]] (legacy 를 만져야 할 때), [[solver-blindness-trap]] ·
+[[yosys-bind-trap]] · [[sby-composite-regression]] (공허 PASS 세 형태).
