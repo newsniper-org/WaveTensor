@@ -15,6 +15,7 @@ Exercises the TLV (IPv6 EH-style) variable-length instruction decoder:
 """
 
 import os
+import re as _re
 import sys
 
 import cocotb
@@ -51,8 +52,50 @@ F_HAS_OPB        = 1 << 3
 F_PRECISION_OVR  = 1 << 2
 F_MEM            = 1 << 1
 
-INSTR_WORDS_REAL = 13          # 32 + 4*96 = 416 → 13 words
+# 인코딩 개정 파도 W8 — 기본 헤더 1 + CH 1 + EH 예산 12 = 14 워드 (448b).
+INSTR_WORDS_REAL = 14          # 32 + 32 + 4*96 = 448 → 14 words
 INSTR_WIDTH      = INSTR_WORDS_REAL * 32
+
+
+# -----------------------------------------------------------------------------
+# 파도 CRC — 캡처 드라이버 측 **독립** 구현.
+#
+# 이 파일은 truth table 재캡처의 자극원이므로, asm 측 두 벌(본체
+# wavetensor_asm 의 비트직렬 LFSR/반사 비트루프, asm 시험 참조벌의 장제법/
+# 256-엔트리 표)과 byte-for-byte 로 일치해야 한다. 세 벌이 같은 버그를
+# 복사하는 경로를 막기 위해 여기서는 또 다른 형태로 짠다: crc4 는 니블
+# 사전(16-엔트리 전개), crc32c 는 4비트 반-바이트 표.
+# 교차 검증은 test_wave_crc_cross_check_against_asm_reference (아래) 가
+# 4,096 쌍 전수 + RFC 3720 기지값으로 상주 측정한다.
+# -----------------------------------------------------------------------------
+
+def _crc4_opref(lbid, src_kind):
+    """W5 — G(x)=x⁴+x+1, 비반사, init 0, xorout 없음.
+    메시지는 논리 순서 LBID[7]..src_kind[0] 의 12b, MSB-first."""
+    msg = ((lbid & 0xFF) << 4) | (src_kind & 0xF)
+    reg = 0
+    for i in range(11, -1, -1):
+        fb = ((reg >> 3) & 1) ^ ((msg >> i) & 1)
+        reg = ((reg << 1) & 0xF) ^ (0x3 if fb else 0x0)
+    return reg & 0xF
+
+
+_CRC32C_NIB = []
+for _n in range(16):
+    _c = _n
+    for _ in range(4):
+        _c = (_c >> 1) ^ (0x82F63B78 if _c & 1 else 0)
+    _CRC32C_NIB.append(_c)
+
+
+def _crc32c(data):
+    """W8 — CRC-32C, RFC 3720 관례 (반사, init/xorout 0xFFFFFFFF).
+    반-바이트(4b) 표 구현."""
+    crc = 0xFFFFFFFF
+    for b in data:
+        crc = (crc >> 4) ^ _CRC32C_NIB[(crc ^ b) & 0xF]
+        crc = (crc >> 4) ^ _CRC32C_NIB[(crc ^ (b >> 4)) & 0xF]
+    return crc ^ 0xFFFFFFFF
 
 
 class EH:
@@ -110,9 +153,16 @@ def eh_subscript(a_axes16, b_axes16, o_axes16):
     return EH(EH_SUBSCRIPT, 2, fn)
 
 
-def eh_opref(src_kind=0, port_id=0, noc_route=0):
+def eh_opref(src_kind=0, port_id=0, noc_route=0, force_crc=None):
+    """W5 — `[23:20]` 은 폐지된 port_id 가 아니라 본문 12b(LBID ∥ src_kind)의
+    CRC-4 다. `port_id` 는 호출 호환으로만 남고 0 이어야 한다.
+    `force_crc` 는 CRC 니블을 고의로 어긋내는 음성 시험용이다."""
+    assert port_id == 0, "opref [23:20] is the CRC-4 field (W5)"
+
     def fn(nh):
-        upper = ((noc_route & 0xFF) << 8) | ((port_id & 0xF) << 4) | (src_kind & 0xF)
+        crc = _crc4_opref(noc_route, src_kind) if force_crc is None \
+            else (force_crc & 0xF)
+        upper = ((noc_route & 0xFF) << 8) | (crc << 4) | (src_kind & 0xF)
         return [(upper << 16) | (nh << 12) | (EH_OPREF << 8) | 1]
     return EH(EH_OPREF, 1, fn)
 
@@ -135,13 +185,18 @@ def axes(*labels):
 
 
 def encode_instr(opcode, *exts, flags=0, force_bh_len=None,
-                 force_reserved=0, force_chain_break=False):
-    """Build the 416-bit instruction value.
+                 force_reserved=0, force_chain_break=False, force_ch=None):
+    """Build the 448-bit instruction value (W1/W8 인코딩 개정 파도).
+
+    `opcode` 는 12b 다 — 하위 8b 는 `[31:24]`, 확장 니블은 `[11:8]`.
+    `[15:12]` 는 예약 4b.
 
     `force_bh_len`        — override the bh_len field (negative testing)
-    `force_reserved`      — override the reserved byte (negative testing)
+    `force_reserved`      — override the reserved NIBBLE (negative testing;
+                            W1 이 예약 바이트를 니블로 협소화했다)
     `force_chain_break`   — corrupt the first EH's `type` field so that the
                             chain walk reports `chain_err` (negative testing)
+    `force_ch`            — override the CH word (negative testing)
     """
     chained = []
     nh = EH_END
@@ -150,7 +205,10 @@ def encode_instr(opcode, *exts, flags=0, force_bh_len=None,
         nh = eh.type
     first_next_hdr = nh
 
-    bh_len = 1 + sum(eh.words for eh, _ in chained)
+    # W8 — EH ≥ 1 (⇔ next_hdr ≠ END) 이면 word 1 이 CH 다. bh_len 은 CH 를
+    # 포함한 물리 워드 총수.
+    has_ch = bool(chained)
+    bh_len = 1 + (1 if has_ch else 0) + sum(eh.words for eh, _ in chained)
     if force_bh_len is not None:
         bh_len_field = force_bh_len & 0xFF
     else:
@@ -159,7 +217,8 @@ def encode_instr(opcode, *exts, flags=0, force_bh_len=None,
     base = ((opcode & 0xFF) << 24) \
          | ((first_next_hdr & 0xF) << 20) \
          | ((flags & 0xF) << 16) \
-         | ((force_reserved & 0xFF) << 8) \
+         | ((force_reserved & 0xF) << 12) \
+         | (((opcode >> 8) & 0xF) << 8) \
          | bh_len_field
 
     words = [base]
@@ -170,6 +229,12 @@ def encode_instr(opcode, *exts, flags=0, force_bh_len=None,
             # base.next_hdr expectation.
             emitted[0] = (emitted[0] & ~(0xF << 8)) | (0xE << 8)
         words.extend(emitted)
+    if has_ch:
+        # W8 — CH 메시지 = CH 자기 워드를 제외한 전 워드(word 0, word 2‥
+        # bh_len−1), 워드 오름차순, 패딩 불포함, 워드당 리틀엔디언 4바이트.
+        msg = b''.join((w & 0xFFFFFFFF).to_bytes(4, 'little') for w in words)
+        ch = _crc32c(msg) if force_ch is None else (force_ch & 0xFFFFFFFF)
+        words = [words[0], ch] + words[1:]
     while len(words) < INSTR_WORDS_REAL:
         words.append(0)
 
@@ -205,15 +270,25 @@ def _decode_mirror(instr_int):
     iw = [(instr_int >> (i * 32)) & 0xFFFFFFFF for i in range(INSTR_WORDS_REAL)]
     base = iw[0]
     out = {
-        'opcode':   (base >> 24) & 0xFF,
+        # W1 — opcode 는 12b: 하위 8b `[31:24]` + 확장 니블 `[11:8]`.
+        'opcode':   ((base >> 24) & 0xFF) | (((base >> 8) & 0xF) << 8),
         'next_hdr': (base >> 20) & 0xF,
         'flags':    (base >> 16) & 0xF,
-        'reserved': (base >> 8) & 0xFF,
+        'reserved': (base >> 12) & 0xF,     # W1: `[15:12]` 로 협소화
         'bh_len':   base & 0xFF,
         'ehs':      [],
     }
     expect = out['next_hdr']
     off = 1
+    # W8 — next_hdr ≠ END 이면 word 1 은 CH 다. EH 가 아니고 순회 대상도
+    # 아니다. 사슬 보행은 word 2 에서 시작한다.
+    if expect != EH_END:
+        out['ch'] = iw[1]
+        _bl = out['bh_len']
+        _msg_words = [iw[0]] + iw[2:max(2, min(_bl, INSTR_WORDS_REAL))]
+        out['ch_ok'] = (_crc32c(
+            b''.join(w.to_bytes(4, 'little') for w in _msg_words)) == iw[1])
+        off = 2
     safety = 0
     while expect != EH_END and safety < 8:
         safety += 1
@@ -309,7 +384,11 @@ async def test_encoder_self_check(dut):
     assert m['next_hdr'] == EH_PORT
     assert m['ehs'][0]['type'] == EH_PORT
     assert m['ehs'][1]['type'] == EH_IMM16
-    assert m['bh_len'] == 1 + 1 + 1
+    # W8 — bh_len 은 CH 를 포함한 물리 워드 총수: base 1 + CH 1 + PORT 1
+    # + IMM16 1 = 4.
+    assert m['bh_len'] == 1 + 1 + 1 + 1, f"bh_len w/ CH {m}"
+    assert m['ch_ok'], f"CH re-computation mismatch {m}"
+    assert m['reserved'] == 0
 
     instr = encode_instr(0x32,
                          _STD_PORT(),
@@ -319,6 +398,24 @@ async def test_encoder_self_check(dut):
     m = _decode_mirror(instr)
     assert [eh['type'] for eh in m['ehs']] == [EH_PORT, EH_SUBSCRIPT, EH_OPREF]
     assert m['flags'] == (F_HAS_OPB >> 0)
+    assert m['ch_ok']
+
+    # W1 — 확장 니블의 왕복. 0x47A 는 미배정(= malformation)이지만 인코더
+    # ·미러 디코더의 12b 왕복 자체는 성립해야 한다. EH-0 은 CH 가 없다.
+    instr = encode_instr(0x47A)
+    m = _decode_mirror(instr)
+    assert m['opcode'] == 0x47A, f"12b opcode roundtrip {m}"
+    assert m['next_hdr'] == EH_END
+    assert 'ch' not in m, "EH-0 must carry no CH word"
+    assert m['bh_len'] == 1
+
+    # W5 — OPREF `[23:20]` 은 CRC-4 다. 도메인이 태우지 않는 비영 CRC 를
+    # 여기서 최소 1점 왕복시킨다 (LBID 0xA5 · src_kind 2 → 0x8).
+    ow = _decode_mirror(
+        encode_instr(0x032, _STD_PORT(),
+                     eh_opref(src_kind=2, noc_route=0xA5)))['ehs'][1]['words'][0]
+    assert ((ow >> 20) & 0xF) == _crc4_opref(0xA5, 2) != 0, \
+        f"OPREF CRC-4 nibble not encoded (word={ow:#010x})"
 
 
 # =============================================================================
@@ -3999,6 +4096,22 @@ async def test_bmm3_then_mul_launch_gate(dut):
 #     legality re-row also forces this bump by policy, but 0x70-0x7F is
 #     outside this domain, so it contributes no visible delta here; its
 #     decode shape is pinned by the fp-block sweeps instead.)
+#   domain_version 4 — 인코딩 개정 파도 (W1~W8) 전량 재캡처. **파일이
+#     바뀐다**: `truth_table_premigration.json` → `truth_table_encwave.json`.
+#     premigration 은 디스크에 그대로 남아 동결을 유지하지만 지위가
+#     좁아진다 — 「이관 전 계보의 바이너리에 대한 블랙박스 오라클」이지
+#     현행 인코딩(CH 를 포함하는 bh_len · OPREF 의 CRC 니블 · 12b opcode)
+#     의 오라클이 아니다. 현행 재생 게이트는 이 파일이 승계한다.
+#
+#     v4 의 정의에 포함되는 표기 변경: 키의 opcode 토큰이 `0x0##` 3자리다
+#     (W7 표기 이관 — opcode 는 12b 이고 기존 코드점은 확장 니블 0).
+#
+#     **재캡처의 정보량에 대한 정직한 기록 (실측)**: 축을 그대로 둔 v4 는
+#     5,934 점 전량에서 outcome 이 premigration 과 **한 점도 다르지 않다**
+#     (인코딩은 EH ≥ 1 인 5,796 점에서 전부 바뀌었는데도). 즉 `points` 만
+#     으로는 파도에 대한 반증력이 0 비트다 — 「새 오라클」이 아니라 「새
+#     인코딩에 다시 못 박은 같은 오라클」이다. 그 공백을 메우는 것이 아래
+#     `ext_probes` 다 (확장 니블 축의 동적 갈래).
 #
 # Domain (fixed, generator-independent — never derived from the JSON
 # source): opcodes = the 53 supported (post-cleanup 0x00-0x6A era) + 16
@@ -4014,6 +4127,32 @@ async def test_bmm3_then_mul_launch_gate(dut):
 # Capture mode: WT_CAPTURE_TRUTH_TABLE=1 rewrites the committed file from
 # the live RTL instead of comparing (used once per baseline listed above;
 # any later capture must be a reviewed, deliberate act).
+#
+# -----------------------------------------------------------------------------
+# `ext_probes` — 확장 니블 축 (W1/W2/W3 의 **동적** 갈래)
+#
+# 배경(적대 검증이 major 로 확증): Verilog `case` 의 zero-extension 때문에
+# 8비트 선택자가 12비트 case arm 에 조용히 매치한다. 생성 include 의
+# never-match 가드는 `cb_opcode_ext` 라는 **식별자의 존재**만 강제하고,
+# 그것을 선언해 놓고 상수 0 에 묶은 결선을 **아무것도 잡지 못한다**
+# (실측: verilator 진단 0건 · 210 시험 결과 바이트 동일 · asm 측 상주
+# 게이트 5종 전부 통과 — 그것들은 *생성 산출물*을 재지 *소비자*를 재지
+# 않는다).
+#
+# 그리고 순서 제약이 하나 있다: 예약 필드가 8비트로 남아 있으면 ext ≠ 0
+# 명령이 **더 이른 층**(reserved-nonzero)에서 전부 삼켜져 올바른 결선과
+# 망가진 결선이 똑같이 「거부」로 보인다. 예약을 4비트로 협소화한 뒤에야
+# 이 축이 두 결선을 구분한다 — 그래서 협소화와 이 축은 한 묶음이다.
+#
+# 그 구분을 **데이터로** 남기는 것이 이 축이다. 도메인 69 opcode ×
+# ext ∈ {0x1, 0x4, 0xF} 을 표준 PORT EH 한 형상으로 태운다 (207 점).
+# 올바른 결선에서는 전부 malformation 이고, 확장 니블이 접히면 배정
+# opcode 들이 ext=0 행으로 얹혀 **실행**된다 — outcome 이 갈린다.
+#
+# `points` 와 별도 맵인 이유: #30 이 못박은 「축 무변경 · 전량 5,934 점」
+# 을 `points` 가 문자 그대로 지키게 하기 위해서다 (premigration 과의
+# 키 집합 1:1 대조가 표기 변환만으로 성립해야 한다). 두 맵 모두 같은
+# 캡처·같은 대조를 거친다.
 # =============================================================================
 
 _TT_SUPPORTED_OPCODES = (
@@ -4038,7 +4177,17 @@ _TT_DATA_EH_KINDS = ['imm16', 'imm32', 'imm64', 'mem', 'subscript', 'opref']
 _TT_FLAGS = [0x0, 0x8]
 _TT_WINDOW = 100
 
-_TT_PATH = os.path.join(_REPO, 'isa', 'truth_table_premigration.json')
+_TT_DOMAIN_VERSION = 4
+_TT_PATH = os.path.join(_REPO, 'isa', 'truth_table_encwave.json')
+
+# 동결 존치 — 현행 재생 게이트는 위 encwave 로 재지향됐고, 아래 경로는
+# 「이관 전 계보 전용 블랙박스 오라클」로만 남는다. 이 파일을 읽는 상주
+# 단언은 asm/test_wavetensor_asm.py 쪽 동결 핀 하나뿐이다.
+_TT_FROZEN_PREMIGRATION_PATH = os.path.join(
+    _REPO, 'isa', 'truth_table_premigration.json')
+
+# 확장 니블 축 — case zero-extension 게이트의 동적 갈래 (위 절 참조).
+_TT_EXT_NIBBLES = [0x1, 0x4, 0xF]
 
 
 def _tt_eh_builders():
@@ -4064,6 +4213,15 @@ def _tt_domain():
             for sub in subsets:
                 yield (op, sub, fl, True)
             yield (op, (), fl, False)   # bare no-port point
+
+
+def _tt_ext_domain():
+    """확장 니블 축의 점 열거 — (12b opcode, (), flags, port_present).
+    형상은 표준 PORT EH 한 종류로 고정한다: 이 축이 재는 것은 EH 형상이
+    아니라 `[11:8]` 이 실제로 길어 올려지는가 하나다."""
+    for op in sorted(_TT_SUPPORTED_OPCODES + _TT_UNSUPPORTED_PROBES):
+        for ext in _TT_EXT_NIBBLES:
+            yield ((ext << 8) | op, (), 0x0, True)
 
 
 async def _tt_run_point(dut, op, subset, flags, port_present):
@@ -4105,16 +4263,24 @@ async def _tt_run_point(dut, op, subset, flags, port_present):
 
 
 def _tt_key(op, subset, flags, port_present):
-    return f"0x{op:02X}|{','.join(subset)}|0x{flags:X}|{'P' if port_present else '-'}"
+    # W7 표기 이관 — opcode 는 12b 이므로 키 토큰도 3자리 `0x0##` 다.
+    # 이 표기는 domain_version 4 의 정의에 포함된다 (소비자 핀이
+    # `^0x[0-9A-Fa-f]{3}$` 로 강제한다).
+    return f"0x{op:03X}|{','.join(subset)}|0x{flags:X}|{'P' if port_present else '-'}"
 
 
 @cocotb.test()
-async def test_pre_migration_rtl_truth_table_differential(dut):
-    """v1.8.0a COMMIT 1 zero-behavior-change gate: the full EH-subset sweep
-    outcome table must be bit-identical to the frozen pre-migration
-    capture (isa/truth_table_premigration.json). Set
-    WT_CAPTURE_TRUTH_TABLE=1 to (re)write the capture instead — a
-    deliberate, reviewed act, never part of a normal run."""
+async def test_encwave_rtl_truth_table_differential(dut):
+    """인코딩 개정 파도의 현행 재생 게이트 — 전량 EH-subset 스윕의
+    outcome 표가 `isa/truth_table_encwave.json` (domain_version 4) 과
+    비트 동일해야 한다. `WT_CAPTURE_TRUTH_TABLE=1` 을 주면 대조 대신
+    재캡처한다 — 검토된 의도적 행위이지 통상 실행의 일부가 아니다.
+
+    두 맵을 함께 잰다:
+      * `points`     — 축 무변경 5,934 점 (premigration 과 키 집합 1:1,
+                       표기만 3자리로 이관). outcome 반증력은 0 비트다.
+      * `ext_probes` — 확장 니블 축 207 점. 확장 니블이 접히면(8비트
+                       선택자·상수 0 결선) 여기가 갈린다."""
     import json as _json
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
@@ -4125,32 +4291,314 @@ async def test_pre_migration_rtl_truth_table_differential(dut):
     for (op, sub, fl, pp) in _tt_domain():
         outcome = await _tt_run_point(dut, op, sub, fl, pp)
         results[_tt_key(op, sub, fl, pp)] = list(outcome)
+    ext_results = {}
+    for (op, sub, fl, pp) in _tt_ext_domain():
+        outcome = await _tt_run_point(dut, op, sub, fl, pp)
+        ext_results[_tt_key(op, sub, fl, pp)] = list(outcome)
 
     if capture_mode:
         os.makedirs(os.path.dirname(_TT_PATH), exist_ok=True)
         with open(_TT_PATH, 'w') as f:
-            _json.dump({'domain_version': 3, 'points': results}, f,
+            _json.dump({'domain_version': _TT_DOMAIN_VERSION,
+                        'points': results,
+                        'ext_probes': ext_results}, f,
                        indent=0, sort_keys=True)
             f.write('\n')
         return
 
     assert os.path.exists(_TT_PATH), (
-        f"frozen truth table missing at {_TT_PATH} — run once with "
-        f"WT_CAPTURE_TRUTH_TABLE=1 on the current frozen baseline "
-        f"(domain_version 3: the v1.8.0e 0e1 0x6B-reallocation commit)")
+        f"encwave truth table missing at {_TT_PATH} — run once with "
+        f"WT_CAPTURE_TRUTH_TABLE=1 on a W1~W8 반영 RTL "
+        f"(domain_version {_TT_DOMAIN_VERSION})")
     with open(_TT_PATH) as f:
         frozen = _json.load(f)
-    assert frozen['domain_version'] == 3
+    assert frozen['domain_version'] == _TT_DOMAIN_VERSION
     mismatches = []
-    for key, expected in frozen['points'].items():
-        got = results.get(key)
-        if got != expected:
-            mismatches.append(f"{key}: frozen={expected} got={got}")
-    extra = set(results) - set(frozen['points'])
-    assert not extra, f"domain drift — new points not in frozen table: {sorted(extra)[:5]}"
+    for section, got_map in (('points', results), ('ext_probes', ext_results)):
+        assert section in frozen, f"capture missing section '{section}'"
+        for key, expected in frozen[section].items():
+            got = got_map.get(key)
+            if got != expected:
+                mismatches.append(
+                    f"[{section}] {key}: frozen={expected} got={got}")
+        extra = set(got_map) - set(frozen[section])
+        assert not extra, (
+            f"domain drift in '{section}' — new points not in the capture: "
+            f"{sorted(extra)[:5]}")
     assert not mismatches, (
-        "RTL behavior diverged from the frozen baseline capture "
+        "RTL behavior diverged from the encwave capture "
         f"({len(mismatches)} points):\n" + "\n".join(mismatches[:20]))
+
+
+@cocotb.test()
+async def test_encwave_capture_shape_invariants(dut):
+    """재캡처의 자기 검산 — RTL 을 태우지 않는 순수 인코딩 검사.
+
+    파도가 인코딩에 한 일은 정확히 둘이다: (a) EH ≥ 1 인 명령에 CH 워드가
+    word 1 로 삽입되고 `bh_len` 이 +1 된다, (b) EH-0 인 명령의 바이너리는
+    **비트 동일**하다. 도메인 전량(5,934)에 대해 그 둘을 단언한다 —
+    truth table 이 outcome 만 담기 때문에 이 성질은 표 대조로는 절대
+    드러나지 않는다 (실측: outcome 차이 0 점, 인코딩 차이 5,796 점).
+
+    `dut` 는 쓰지 않는다 (cocotb 진입점 규약상 인자만 받는다)."""
+    builders = _tt_eh_builders()
+    eh0 = eh1 = 0
+    for (op, sub, fl, pp) in _tt_domain():
+        ehs = ([_STD_PORT()] if pp else []) + [builders[k]() for k in sub]
+        m = _decode_mirror(encode_instr(op, *ehs, flags=fl))
+        body = sum(e.words for e in ehs)
+        assert m['opcode'] == op and m['reserved'] == 0
+        if not ehs:
+            eh0 += 1
+            assert 'ch' not in m, f"EH-0 point grew a CH word: {op:#05x}"
+            assert m['bh_len'] == 1, f"EH-0 bh_len drift: {m}"
+        else:
+            eh1 += 1
+            assert m['ch_ok'], f"CH mismatch at {op:#05x}/{sub}"
+            assert m['bh_len'] == 1 + 1 + body, f"bh_len w/o CH: {m}"
+            assert len(m['ehs']) == len(ehs), f"chain walk short: {m}"
+    assert (eh0, eh1) == (138, 5796), \
+        f"domain shape drift: EH-0={eh0} EH>=1={eh1} (expected 138 / 5796)"
+
+    # 재지향의 다른 half — premigration 은 **손대지 않은 채** 남아야 한다.
+    # 재캡처가 동결 파일을 덮어쓰는 사고를 legacy 측에서도 잡는다
+    # (asm 측 동결 핀과 독립 · 같은 사실).
+    import json as _json
+    assert os.path.exists(_TT_FROZEN_PREMIGRATION_PATH), \
+        "frozen premigration capture disappeared — 동결 존치가 깨졌다"
+    with open(_TT_FROZEN_PREMIGRATION_PATH, encoding='utf-8') as f:
+        _pre = _json.load(f)
+    assert _pre['domain_version'] == 3, \
+        f"premigration must stay at domain_version 3, got {_pre['domain_version']}"
+    assert _TT_FROZEN_PREMIGRATION_PATH != _TT_PATH, \
+        "재생 게이트가 동결 파일을 그대로 가리킨다 — 재지향이 안 됐다"
+
+
+# -----------------------------------------------------------------------------
+# case zero-extension — **정적** 갈래 (소비자 측 선택자 폭 검사)
+#
+# 강제력 계층은 셋이고, 각각 다른 실패만 잡는다 (전부 실측):
+#   층 1  식별자 **존재** — 생성 include 의 never-match 가드 arm. 확장
+#         니블을 아예 결선하지 않은 소비자는 컴파일이 깨진다. 이 층은
+#         「선언은 했는데 상수 0 에 묶었다」를 못 잡는다.
+#   층 2  선택자 **폭** — verilator WIDTHEXPAND. cocotb 흐름에 `-Wno-fatal`
+#         이 없어 치명적으로 뜨지만, pragma 한 줄로 waive 되고 시뮬레이터
+#         의존이다.
+#   층 3  **행동** — 위 `ext_probes` 축. 「니블 상수 0」 결선을 잡는다
+#         (실측: 207 점 중 60 점 발산).
+#
+# 남는 구멍은 정확히 하나다: **8비트 선택자 + 경고 waive**. 생성 include 의
+# whitelist 가 12b 연접 등호-OR 라 ext ≠ 0 을 독립으로 떨구기 때문에 이
+# 변형은 **행동이 완전히 동일하다** (실측: 캡처 대조 통과 · 진단 0건).
+# 동적 축으로는 원리상 잡을 수 없고, 이 검사만이 그물이다.
+#
+# `make lint` 대신 여기 상주 시험으로 두는 이유: lint 종수는 5 곳에
+# 하드코딩돼 있고 그중 하나가 clean-room 트리 안이라 lint 신설은 이
+# 커밋의 격리를 깨는 록스텝을 만든다. 이 검사는 legacy 소스를 읽으므로
+# 어차피 격리 안쪽 작업이고, ISA_Decoder 라운드에서 CI 가 이미 돌린다.
+# -----------------------------------------------------------------------------
+
+_CASE_BODY_INCLUDE = 'generated/isa_ehshape_case_body.vh'
+_DECL_RE = _re.compile(r'\b(?:reg|wire)\s*\[\s*(\d+)\s*:\s*(\d+)\s*\]\s*'
+                       r'([A-Za-z_]\w*)')
+
+
+def _generated_arm_width():
+    """생성 include 가 방출한 case arm 의 폭 — 하드코딩하지 않고 읽는다."""
+    path = os.path.join(_REPO, 'include', _CASE_BODY_INCLUDE)
+    with open(path, encoding='utf-8') as f:
+        widths = {int(w) for w in
+                  _re.findall(r"^\s*(\d+)'h[0-9A-Fa-f]+\s*:", f.read(),
+                              _re.MULTILINE)}
+    assert len(widths) == 1, f"non-uniform case arm widths in the include: {widths}"
+    return widths.pop()
+
+
+def _case_selector_bits(src, decls):
+    """`case (...)` 선택자의 총 비트폭. 연접은 성분 폭의 합, 단독
+    식별자는 자기 폭. 폭을 알 수 없으면 None."""
+    total = 0
+    for name in _re.findall(r'[A-Za-z_]\w*', src):
+        if name not in decls:
+            return None
+        total += decls[name]
+    return total
+
+
+@cocotb.test()
+async def test_case_body_consumer_selector_is_full_width(dut):
+    """생성 case body 를 include 하는 **모든** legacy 소비자의 case 선택자가
+    arm 폭과 정확히 같아야 한다. 좁으면 Verilog 의 zero-extension 이
+    확장 니블을 조용히 접는다 — 경고를 waive 하면 시뮬레이터도 행동도
+    그것을 구분하지 못한다."""
+    arm_w = _generated_arm_width()
+    consumers = []
+    for fn in sorted(os.listdir(_REPO)):
+        if not fn.endswith('.v'):
+            continue
+        with open(os.path.join(_REPO, fn), encoding='utf-8') as f:
+            text = f.read()
+        if _CASE_BODY_INCLUDE not in text:
+            continue
+        consumers.append(fn)
+        decls = {m[2]: int(m[0]) - int(m[1]) + 1
+                 for m in _DECL_RE.findall(text)}
+        # 줄 끝 주석을 먼저 벗긴다 — `case (sel)  // note` 형태를 놓치면
+        # 이 검사가 조용히 「case 를 못 찾았다」로 빠져 공허해진다.
+        lines = [ln.split('//', 1)[0].rstrip() for ln in text.splitlines()]
+        raw = text.splitlines()
+        hits = [i for i, ln in enumerate(raw)
+                if _CASE_BODY_INCLUDE in ln and ln.lstrip().startswith('`include')]
+        assert hits, f"{fn}: include line not found"
+        for idx in hits:
+            sel = None
+            for j in range(idx - 1, max(idx - 40, -1), -1):
+                m = _re.match(r'\s*case\s*\((.*)\)\s*$', lines[j])
+                if m:
+                    sel = m.group(1)
+                    break
+            assert sel is not None, \
+                f"{fn}:{idx + 1}: no `case (...)` header above the include"
+            bits = _case_selector_bits(sel, decls)
+            assert bits is not None, \
+                (f"{fn}:{idx + 1}: 선택자 `{sel}` 의 폭을 결정할 수 없다 — "
+                 f"이 검사가 공허해지지 않도록 폭을 읽을 수 있는 형태로 써라")
+            assert bits == arm_w, (
+                f"{fn}:{idx + 1}: case 선택자 `{sel}` 는 {bits}b 인데 생성 "
+                f"arm 은 {arm_w}b 다 — zero-extension 으로 상위 "
+                f"{arm_w - bits}b 가 접힌다 (확장 니블 공허 매치)")
+    assert consumers, \
+        "생성 case body 를 include 하는 legacy 소비자가 0개 — 검사가 공허하다"
+
+
+@cocotb.test()
+async def test_no_truncated_opcode_extraction(dut):
+    """opcode 접힘면(fold surface)의 전수 검사 — case 선택자 **바깥**.
+
+    실측으로 걸린 실물: Cluster 층의 라우팅 분류기가 명령 워드에서
+    `[31:24]` 만 뽑아 8비트로 비교하고 있었다. 디코더가 뒤에서
+    malformation 을 내더라도 그 층의 분류·자원 예약은 **이미 움직인다** —
+    ext ≠ 0 이 조용히 ext = 0 행으로 얹히는, case 와 무관한 두 번째
+    접힘 경로였다. 어떤 동적 시험도 그것을 잡지 못했다.
+
+    규약: 명령 버스에서 opcode 하위 바이트 `[31:24]` 를 뽑는 곳은
+    **반드시** 같은 버스의 확장 니블 `[11:8]` 도 함께 뽑아야 한다.
+    파일 단위로 두 추출의 횟수가 같아야 한다."""
+    lo = _re.compile(r'\b(\w*[Ii]nstruction\w*)\s*\[\s*31\s*:\s*24\s*\]')
+    hi = _re.compile(r'\b(\w*[Ii]nstruction\w*)\s*\[\s*11\s*:\s*8\s*\]')
+    checked = 0
+    covered = set()
+    consumers = set()
+    for fn in sorted(os.listdir(_REPO)):
+        if not fn.endswith('.v'):
+            continue
+        with open(os.path.join(_REPO, fn), encoding='utf-8') as f:
+            raw = f.read()
+        if _CASE_BODY_INCLUDE in raw:
+            consumers.add(fn)
+        body = '\n'.join(ln.split('//', 1)[0] for ln in raw.splitlines())
+        buses = set(lo.findall(body)) | set(hi.findall(body))
+        if buses:
+            covered.add(fn)
+        for bus in sorted(buses):
+            n_lo = len(_re.findall(
+                r'\b' + _re.escape(bus) + r'\s*\[\s*31\s*:\s*24\s*\]', body))
+            n_hi = len(_re.findall(
+                r'\b' + _re.escape(bus) + r'\s*\[\s*11\s*:\s*8\s*\]', body))
+            checked += 1
+            assert n_lo == n_hi, (
+                f"{fn}: `{bus}` 에서 opcode 하위 바이트 추출 {n_lo}회 vs "
+                f"확장 니블 추출 {n_hi}회 — 짝이 맞지 않는다. 12b opcode 를 "
+                f"8b 로 뽑는 자리가 있으면 확장 니블이 조용히 접힌다 (W1)")
+    # 공허 방지 앵커 — 이름을 박지 않고, 「생성 case body 를 include 하는
+    # 소비자는 반드시 명령 버스에서 opcode 를 뽑는다」는 사실에 건다.
+    # 정규식이 아무것도 못 잡으면 여기서 걸린다.
+    assert consumers and consumers <= covered, (
+        f"공허 — case body 소비자 {sorted(consumers)} 중 명령 버스 opcode "
+        f"추출이 잡히지 않은 것이 있다 (잡힌 파일: {sorted(covered)}). "
+        f"버스 이름 규약이 바뀌었으면 이 검사의 정규식을 함께 고쳐라")
+    assert checked >= 1, "명령 버스 추출점 0개 — 검사가 공허하다"
+
+
+@cocotb.test()
+async def test_reference_encoders_byte_for_byte(dut):
+    """참조 인코더 2벌의 **byte-for-byte 계약** — 이 캡처 드라이버의 벌과
+    `asm/test_wavetensor_asm.py` 의 벌.
+
+    truth table 재캡처는 이 파일의 인코더가 만든 비트열을 RTL 에 먹여
+    얻은 표다. 두 벌이 어긋나면 재캡처 전량이 **조용히 다른 표**가 된다 —
+    자기일관이라 어떤 대조도 울리지 않는다. 계약을 문자(주석)로만 적어
+    두던 것을 여기서 기계로 잰다.
+
+    clean 측에서는 이 대조를 세울 수 없다 (그쪽은 이 파일을 읽지 못하고,
+    시스템 python 에 cocotb 가 없어 import 도 못 한다). 격리 안쪽만이 둘을
+    동시에 볼 수 있으므로 계약의 자리는 여기다."""
+    import importlib.util as _ilu
+    _p = os.path.join(_REPO, 'asm', 'test_wavetensor_asm.py')
+    assert os.path.exists(_p), f"asm 측 참조 인코더가 없다: {_p}"
+    _spec = _ilu.spec_from_file_location('_wt_asm_ref', _p)
+    _A = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(_A)
+    R = _A.ref
+
+    # P1 — CRC-4 전수 4,096 쌍 (본체·참조·이 파일 = 서로 다른 세 구현)
+    bad4 = [(l, s) for l in range(256) for s in range(16)
+            if _crc4_opref(l, s) != _A._ref_crc4(l, s)]
+    assert not bad4, f"CRC-4 구현 불일치 {len(bad4)}/4096, 예: {bad4[:3]}"
+    # P2 — CRC-32C RFC 3720 기지값
+    assert _crc32c(b'123456789') == 0xE3069283
+    assert _crc32c(b'') == 0x00000000
+    assert _crc32c(b'\x00' * 32) == 0x8A9136AA
+
+    # P3 — 인코딩 전수 대조. 두 벌이 공통으로 표현할 수 있는 EH 종류
+    # (PORT/IMM16/MEM/SUBSCRIPT/OPREF/PRECISION) 의 |S| ≤ 2 부분집합 ×
+    # flags 4 × opcode 표본 (확장 니블 0 과 ≠ 0 을 함께 태운다).
+    from itertools import combinations
+    kinds = {
+        'port':      (lambda: _STD_PORT(),
+                      lambda: R.eh_port(0x01, 0)),
+        'imm16':     (lambda: eh_imm16(0x1234), lambda: R.eh_imm16(0x1234)),
+        'mem':       (lambda: eh_mem(0xDEADBEEF), lambda: R.eh_mem(0xDEADBEEF)),
+        'subscript': (lambda: eh_subscript(axes(1), axes(2), axes(3)),
+                      lambda: R.eh_subscript(R.axes(1), R.axes(2), R.axes(3))),
+        'opref':     (lambda: eh_opref(src_kind=2, noc_route=0xA5),
+                      lambda: R.eh_opref(src_kind=2, noc_route=0xA5)),
+        'precision': (lambda: eh_precision(0x23, 0x07),
+                      lambda: R.eh_precision(0x23, 0x07)),
+    }
+    names = sorted(kinds)
+    shapes = [()]
+    for k in (1, 2):
+        shapes.extend(combinations(names, k))
+    ops = [0x000, 0x001, 0x012, 0x032, 0x06A, 0x079, 0x07F,
+           0x100, 0x47A, 0x47B, 0x800, 0xF6F, 0xFFF]
+    n = 0
+    for op in ops:
+        for sh in shapes:
+            for fl in (0x0, 0x4, 0x8, 0xC):
+                mine = encode_instr(op, *[kinds[k][0]() for k in sh], flags=fl)
+                theirs = R.encode_instr(op, *[kinds[k][1]() for k in sh],
+                                        flags=fl)
+                n += 1
+                assert mine == theirs, (
+                    f"참조 인코더 2벌 발산 op={op:#05x} shape={sh} "
+                    f"flags={fl:#x}\n  이 파일: "
+                    f"{[hex((mine >> (32 * i)) & 0xFFFFFFFF) for i in range(4)]}"
+                    f"\n  asm 참조: "
+                    f"{[hex((theirs >> (32 * i)) & 0xFFFFFFFF) for i in range(4)]}")
+    # 13 opcode × 22 형상(∅ + C(6,1) + C(6,2)) × 4 flags
+    assert n == len(ops) * len(shapes) * 4 == 1144, f"대조 점수 {n}"
+
+    # P4 — 미러 디코더도 같은 판정을 내려야 한다 (왕복의 반대 방향).
+    for op in ops:
+        v = encode_instr(op, _STD_PORT(),
+                         eh_opref(src_kind=1, noc_route=0x3C), flags=F_HAS_OPB)
+        a, b = _decode_mirror(v), R.decode_mirror(v)
+        for f in ('opcode', 'next_hdr', 'flags', 'reserved', 'bh_len', 'ch',
+                  'ch_ok'):
+            assert a.get(f) == b.get(f), \
+                f"미러 디코더 발산 op={op:#05x} field={f}: {a.get(f)} vs {b.get(f)}"
+        assert a['ch_ok'], f"CH 재계산 실패 op={op:#05x}"
 
 
 # =============================================================================

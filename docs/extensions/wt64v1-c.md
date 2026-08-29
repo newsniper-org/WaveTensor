@@ -184,16 +184,22 @@ base 가 드레인 정의역에 다이를 편입하는 개정 갈래는 전제 7
 |---|---|
 | opcode | **`0x057` PEXT · `0x058` PDEP** (계획 §3.4 자리 승계, 12b 표기) |
 | 의미 | PEXT: mask 1-비트 자리의 값을 하위로 압축 · PDEP: 하위 비트를 mask 1-비트 자리에 분산 (계획 §3.1) |
-| legality | **`0x14 AND` 미러** (실측): `{required:[port], forbidden:[mem,subscript], allow_imm_xor_opref:true}` + `rtl_alu_binary` — **B(마스크) = IMM64 XOR OPREF** |
-| EH 사슬 최악 | BH + PORT + IMM64(3워드) = **5워드 / 3슬롯** — 상한 4슬롯/13워드 안 (`01-isa-asm.typ:168-176`) |
+| legality | **`0x014 AND` 미러** (실측): `{required:[port], forbidden:[mem,subscript], allow_imm_xor_opref:true}` + `rtl_alu_binary` — **B(마스크) = IMM64 XOR OPREF** |
+| EH 사슬 최악 | BH(1) + CH(1) + PORT(1) + IMM64(3) = **6워드 · EH 2슬롯** — 상한 4슬롯 / 448b = 14워드 안 (`01-isa-asm.typ:219-228` 규범 「최대 길이」). CH 는 EH≥1 이면 강제 삽입이라 사슬에서 뺄 수 없다 (인코딩 개정 파도 W8, base §1.3.4). 실측: 같은 형상의 `bh_len` = 6 · EH 2개 |
 | 출력 | 64b 단일 beat — **ISA-9 ②** (규범 「토큰 비증식」, `:335-349`) |
 | 구현 | PE 내부 barrel 네트워크 **6단 = log₂64** — 상수 시간, §5.3 동일 상태열 무충돌 |
 
-- **truth table 비대칭 (실측)**: `truth_table_premigration.json`
-  domain_version 3 · 5,934 벡터 · 도메인 `0x00`–`0x6F`. **`0x57` 은 미배정인
-  채 86 벡터가 캡처돼 있고 `0x58`·`0x59` 는 0건이다.** ⇒ `0x057` claim 은
+- **truth table 비대칭 (실측)**: 근거 표는 **`truth_table_encwave.json`**
+  이다 — domain_version 4 · 5,934 벡터 · 도메인 69 opcode 균등(각 86점) ·
+  키 표기 `0x0##` 3자리. **`0x057` 은 미배정인 채 86 벡터가 캡처돼 있고
+  `0x058`·`0x059` 는 0건이다** (재캡처본에서 재확인). ⇒ `0x057` claim 은
   **differential recapture 를 강제**하고 (pre-stable 정규 이벤트), `0x058`
   은 공짜다. 이 비대칭을 모르면 재캡처 누락이 조용히 통과한다.
+  - ⚠️ **재캡처 대상은 `encwave` 이지 `premigration` 이 아니다.** 후자는
+    인코딩 개정 파도 이후 「이관 전 계보 전용 블랙박스 오라클」로 좁아진
+    **동결** 산출물이다 (그 항의 2자리 표기 `0x00`–`0x6F` 도 동결의 일부 —
+    지위 배너의 예외 하나). 동결 표를 재캡처하려 드는 커밋은 상주
+    동결 단언에서 즉사한다.
 - **비용 산정은 계약이 아니다** (원장 3): 계획 §3.3 의 산정은 **자체 산술
   모순을 품고 있다** — 「PE당 +1000 LUT · Pod 16-PE → 32K」인데 500×2×16 =
   **16K ≠ 32K**, 2배 어긋난다 (검증 적발). 재실측 사유에 이 모순이 든다.

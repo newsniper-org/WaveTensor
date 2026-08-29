@@ -45,7 +45,7 @@ module Pod_HIU_gate_top #(
     parameter ADDR_WIDTH   = 64,
     parameter TAG_WIDTH    = 80,
     parameter MAX_EH       = 4,
-    parameter INSTR_WIDTH  = 32 + MAX_EH*96,   // = 416
+    parameter INSTR_WIDTH  = 32 + 32 + MAX_EH*96,   // W8: +CH = 448
     parameter PE_ROWS      = 2,
     parameter PE_COLS      = 2,
     parameter CLUSTER_ROWS = 2,

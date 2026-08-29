@@ -52,7 +52,7 @@ module Cluster #(
     parameter ADDR_WIDTH  = 64,
     parameter TAG_WIDTH   = 80,
     parameter MAX_EH      = 4,
-    parameter INSTR_WIDTH = 32 + MAX_EH*96,    // = 416
+    parameter INSTR_WIDTH = 32 + 32 + MAX_EH*96,    // W8: +CH = 448
     parameter PE_ROWS     = 2,
     parameter PE_COLS     = 2,
     // v1.6.5c §22.16 — fragment-buffer slot count. FRAG_SLOTS=1 (default)
@@ -154,7 +154,10 @@ module Cluster #(
     // Opcode extracted combinationally up-front — needed by both the
     // fragment/cache buffer below (CACHE_LOAD_WIDE detection) and the
     // op-class classifiers further down.
-    wire [7:0] ext_opcode = ext_instruction[31:24];
+    // W1 — opcode 는 12b 다. 8비트로 뽑으면 확장 니블이 접혀 0x4## 명령이
+    // 0x0## 분류에 조용히 얹힌다 (디코더가 뒤에서 malformation 을 내더라도
+    // 이 층의 라우팅·자원 예약은 이미 움직인다). 상위 니블을 함께 뽑는다.
+    wire [11:0] ext_opcode = {ext_instruction[11:8], ext_instruction[31:24]};
 
     // -------------------------------------------------------------------------
     // v1.5.1/v1.6.5c §18/§22.16 — Fragment reassembly + persistent cache
@@ -216,14 +219,14 @@ module Cluster #(
     // stored tag once the assembler's PRECISION-EH dim_sizes guard is in
     // place).
     wire cache_load_req = ext_valid && (ext_frag_hdr == 8'h00)
-                                     && (ext_opcode == 8'h68);
+                                     && (ext_opcode == 12'h068);
     // v1.6.5d §22.17 — FRAG_INVAL (0x6A) request: mirrors cache_load_req's
     // shape exactly. Mutually exclusive with cache_load_req since
     // ext_opcode is a single 8-bit value per cycle (0x68 vs 0x6A cannot
     // both be true), so inval_hit/cache_hit are automatically disjoint
     // with zero extra interlock logic.
     wire inval_req = ext_valid && (ext_frag_hdr == 8'h00)
-                                && (ext_opcode == 8'h6A);
+                                && (ext_opcode == 12'h06A);
 
     // Per-slot hit classification (combinational). At most one of
     // hit_continue[s]/hit_ready[s] can be true for a given s (mutually
@@ -656,7 +659,7 @@ module Cluster #(
         skid_valid ? skid_tag         : ext_tag;
     // 라우팅 분류는 **실제로 래치되는 명령**에서 뽑아야 한다. live 값에서
     // 뽑으면 투입 사이클에 (ext_valid=0 인) 엉뚱한 워드를 분류한다.
-    wire [7:0] acc_opcode = ehdec_instruction[31:24];
+    wire [11:0] acc_opcode = {ehdec_instruction[11:8], ehdec_instruction[31:24]};  // W1: 12b
 
     // ---- Compile-time geometry guard ----------------------------------------
     localparam VALID_GEOM =
@@ -733,21 +736,21 @@ module Cluster #(
     // `acc_opcode`(EHDecode 가 이번 에지에 실제로 래치하는 명령)로 바뀌었다.
     // opcode 리터럴 집합은 **한 글자도 바뀌지 않았다** — twin-classifier
     // 불변식(PE_Core.v `dec_is_mul_op` 와 lockstep)은 그대로다.
-    wire is_mul_op = (acc_opcode == 8'h12)
-                  || (acc_opcode == 8'h30)
-                  || (acc_opcode == 8'h32)
-                  || (acc_opcode == 8'h43)
-                  || (acc_opcode == 8'h6B)
-                  || (acc_opcode == 8'h70)
-                  || (acc_opcode == 8'h71)
-                  || (acc_opcode == 8'h72)
-                  || (acc_opcode == 8'h73)
-                  || (acc_opcode == 8'h74)
-                  || (acc_opcode == 8'h75)
-                  || (acc_opcode == 8'h76)
-                  || (acc_opcode == 8'h77)
-                  || (acc_opcode == 8'h78)
-                  || (acc_opcode == 8'h79)
+    wire is_mul_op = (acc_opcode == 12'h012)
+                  || (acc_opcode == 12'h030)
+                  || (acc_opcode == 12'h032)
+                  || (acc_opcode == 12'h043)
+                  || (acc_opcode == 12'h06B)
+                  || (acc_opcode == 12'h070)
+                  || (acc_opcode == 12'h071)
+                  || (acc_opcode == 12'h072)
+                  || (acc_opcode == 12'h073)
+                  || (acc_opcode == 12'h074)
+                  || (acc_opcode == 12'h075)
+                  || (acc_opcode == 12'h076)
+                  || (acc_opcode == 12'h077)
+                  || (acc_opcode == 12'h078)
+                  || (acc_opcode == 12'h079)
     // v1.8.0e 3a-C4 §35.1 — 0x7A FDOT32_CR joins OPCODE-ONLY in lockstep
     // with PE_Core.v's dec_is_mul_op (MU-hosted: the step program lives in
     // the MU's FP_StepSeq). A one-sided edit is the silent permanent
@@ -757,10 +760,10 @@ module Cluster #(
     // scanning to the first statement terminator, so a comment INSIDE the
     // expression must not contain one — this very comment cost a debug
     // cycle when it did.
-                  || (acc_opcode == 8'h7A);
-    wire is_div_op = (acc_opcode == 8'h13)   // DIV
-                  || (acc_opcode == 8'h1C)   // MOD
-                  || (acc_opcode == 8'h1D);  // DIVMOD
+                  || (acc_opcode == 12'h07A);
+    wire is_div_op = (acc_opcode == 12'h013)   // DIV
+                  || (acc_opcode == 12'h01C)   // MOD
+                  || (acc_opcode == 12'h01D);  // DIVMOD
     // v1.5.2 §19 — wave-complete gate. (`wave_complete` 자체의 정의는
     // §22.14b-3 skid 절로 옮겼다 — skid 제어가 그것을 먼저 읽어야 하고
     // Verilog-2001 은 선언 선행을 요구하기 때문이다. 정의식은 한 글자도

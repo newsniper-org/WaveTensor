@@ -19,7 +19,7 @@ module ISA_Decoder #(
     parameter ADDR_WIDTH            = 64,
     parameter TAG_WIDTH             = 80,
     parameter MAX_EH                = 4,
-    parameter INSTR_WIDTH           = 32 + MAX_EH*96,
+    parameter INSTR_WIDTH           = 32 + 32 + MAX_EH*96,  // W8: +CH = 448
     parameter MUL_OPS_SUPPORTED     = 1,
     parameter DIV_OPS_SUPPORTED     = 1,
     parameter NON_MUL_OPS_SUPPORTED = 1,

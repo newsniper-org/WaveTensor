@@ -430,6 +430,20 @@ lattice-clean:
 #                               검출기의 오탐률을 실측했더니 HEAD 증분 31줄
 #                               중 진성이 약 3건이었고, 그런 검사를
 #                               merge-blocker 로 걸면 사람이 lint 를 끈다.
+#   * lint_case_selector_width — 인코딩 개정 파도 W2. 생성 case body 를
+#                               `include` 하는 소비자의 `case` 선택자가
+#                               arm 폭(12b)과 어긋나면 Verilog 가 좁은 쪽을
+#                               **zero-extend** 해서 조용히 매치한다 —
+#                               `0x47B` 가 `12'h07B` arm 에 적중하고 확장
+#                               니블이 접힌다. 생성기의 컴파일 강제 가드
+#                               `(~{cb_opcode_ext, cb_opcode}): ;` 는
+#                               「식별자가 선언돼 있는가」까지만 강제하므로
+#                               (a) 8b 선택자 (b) `{4'h0, cb_opcode}` 상수
+#                               묶기 (c) 니블의 선언 폭 협소화 셋이 남는다.
+#                               규정 폭·규정 문면을 **생성 산출물에서 읽어**
+#                               대조하므로 하드코딩이 없다. `--self-test` 가
+#                               합성 픽스처 7변이 + 실 트리 2변이로 자기
+#                               반증력을 인쇄한다.
 # All eight are stdlib-only Python; runnable directly without cocotb:
 #   python3 scripts/lint_isa_tables_fresh.py
 # =============================================================================
@@ -453,6 +467,8 @@ lint:
 	python3 $(CURDIR)/scripts/lint_witness_map.py
 	python3 $(CURDIR)/scripts/lint_witness_map.py --self-test
 	python3 $(CURDIR)/scripts/lint_section_refs.py
+	python3 $(CURDIR)/scripts/lint_case_selector_width.py
+	python3 $(CURDIR)/scripts/lint_case_selector_width.py --self-test
 
 # =============================================================================
 # P0-2 — Cluster 이중 빌드(FRAG_SLOTS=1 / FRAG_SLOTS=4) 단일 진입점.

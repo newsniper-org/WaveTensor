@@ -27,10 +27,11 @@
 > 이관 완료 — base §1.3.1): opcode 는 12b 정식 표기로 적는다 — 신설
 > `0x07B` · `0x07F` · `0x080` 은 물론 base 인용도 `0x074`·`0x07A` 처럼 세
 > 자리다 (영역 `0x0##`, 확장 니블은 기본 헤더 `[11:8]`). **수치는 종전 8b
-> 표기와 동일하다** (`0x07A == 0x7A`). 예외 하나: 동결 산출물
+> 표기와 동일하다** (`0x07A == 0x7A`). 예외 하나: **동결** 산출물
 > `truth_table_premigration.json` 의 도메인·키 인용은 그 파일의 2자리
-> 표기를 따른다. fp 블록 게이트의 확장 니블 `== 0x0` 검사(공허 PASS
-> 함정)는 base §1.3.1 함정으로 착지했다.
+> 표기를 따른다 — 현행 회귀 표 `truth_table_encwave.json` 은 세 자리다
+> (동결이 아니므로 W7 이관을 받았다). fp 블록 게이트의 확장 니블
+> `== 0x0` 검사(공허 PASS 함정)는 base §1.3.1 함정으로 착지했다.
 
 ---
 
@@ -520,8 +521,10 @@ lowering 은 축 좌표를 안다. 비대칭 커널은 계수 0 패딩으로, �
   게이트 안이다 — `0x080 & 0xF = 0x0` 이 `0x070` 행에 얹히고 그 행은 RTL 에서
   조회되지 않는 **공허 PASS** 가 된다 (`gen_isa_tables.py:266-282`).
 - step 저장소 상주 불가 (§1.3) — P 계상 밖.
-- `0x080` 은 `truth_table_premigration.json` 도메인(`0x00`–`0x6F`) 밖 —
-  differential recapture 를 강제하지 않는다.
+- `0x080` 은 현행 회귀 표 `truth_table_encwave.json` 의 도메인(69 opcode,
+  `0x000`–`0x06F` 중 캡처된 것들) 밖 — differential recapture 를 강제하지
+  않는다. (동결된 `truth_table_premigration.json` 도 같은 정의역이라
+  결론은 불변이나, 파도 이후 근거로 인용할 표는 `encwave` 다.)
 
 ### 기각한 대안
 

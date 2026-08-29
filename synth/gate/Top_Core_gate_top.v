@@ -66,7 +66,7 @@ module Top_Core_gate_top #(
     parameter ADDR_WIDTH     = 64,
     parameter TAG_WIDTH      = 80,
     parameter MAX_EH         = 4,
-    parameter INSTR_WIDTH    = 32 + MAX_EH*96,   // = 416
+    parameter INSTR_WIDTH    = 32 + 32 + MAX_EH*96,   // W8: +CH = 448
     parameter DMA_DATA_WIDTH = 32
 ) (
     input                          clk,

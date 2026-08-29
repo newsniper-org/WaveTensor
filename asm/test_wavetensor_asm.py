@@ -1745,7 +1745,7 @@ class TestGeneratedIsaTables(unittest.TestCase):
 
 
 class TestFpBlockModeLegality(unittest.TestCase):
-    """v1.8.0a COMMIT 2 §23.6a — FP-block (0x70-0x7F) mode-byte legality.
+    """v1.8.0a COMMIT 2 §23.6a — FP-block (0x070-0x07F) mode-byte legality.
 
     The spec-row pins below are transcribed character-for-character from
     the NORMATIVE §23.6a table, which landed and was reviewed in a
@@ -2198,7 +2198,7 @@ class TestV180e0e1Encoding(unittest.TestCase):
     the fminmax_subop_imm16 helper, the hardcoded opb requirements (B /
     the fp32 scale ride input_payload_b), the 0x79 imm16 reserved-field
     checks, the 0x78 port-only legality and the 0x6B imm64-XOR-opref +
-    hand-pinned mode-byte legality (0x6B sits outside the 0x70-0x7F
+    hand-pinned mode-byte legality (0x06B sits outside the 0x070-0x07F
     in_fp_block gate, so it has no generated FP_MODE_LEGAL row)."""
 
     def test_fminmax_subop_imm16_helper(self):
@@ -2761,9 +2761,11 @@ class TestFdot32CrIsa3aC2(unittest.TestCase):
         '0x070-0x07F is outside the truth-table domain' (W7 표기 이관을
         따라 동일 커밋에 재동기된 인용). premigration 캡처의 지위는
         인코딩 개정 파도 이후 「이관 전 HEAD(042f08e) 계보 전용 블랙박스
-        오라클」로 좁아진다 — 동결 단언(domain_version 3, fp-block 0점)은
-        계속 참이고, 현행 재생 대조는 isa/truth_table_encwave.json
-        (domain_version 4, 메인 루프 캡처)으로 재지향된다."""
+        오라클」로 **좁아졌다** — 동결 단언(domain_version 3, fp-block
+        0점)은 계속 참이고, 현행 재생 대조는 isa/truth_table_encwave.json
+        (domain_version 4)이 **승계했다**. 이 시험이 재는 것은 그 동결
+        자체다: 재지향은 표를 옮기는 것이지 고치는 것이 아니므로, 이
+        파일이 한 바이트라도 움직이면 여기서 울려야 한다."""
         import json as _json
         root = os.path.dirname(_HERE)
         with open(os.path.join(root, 'isa', 'wt64v1_isa.json'),
@@ -2777,9 +2779,14 @@ class TestFdot32CrIsa3aC2(unittest.TestCase):
             cap = _json.load(f)
         # the C2 consequence: NO bump (the 0e1 baseline stands)
         self.assertEqual(cap['domain_version'], 3)
-        # the C2 premise: point keys are '0xOP|ehs|flags|outcome' and no
-        # captured opcode lives in the fp block, so an fp-block ISA row
-        # cannot move a single frozen point.
+        # the C2 premise: point keys are '0xOP|ehs|flags|port' (the 4th
+        # field is the port-EH presence flag 'P'/'-'; the OUTCOME is the
+        # 3-element value vector, not a key field) and no captured opcode
+        # lives in the fp block, so an fp-block ISA row cannot move a
+        # single frozen point. NOTE the 2-digit '0xOP' notation: W7's
+        # 3-digit migration deliberately did NOT touch this file — it is
+        # frozen, and the current-encoding table that DOES carry 0x0##
+        # keys is isa/truth_table_encwave.json (see the consumer pin).
         ops = set()
         for key in cap['points']:
             ops.add(int(str(key).split('|')[0], 16))
@@ -2932,33 +2939,243 @@ class TestEncodingWaveW1W8(unittest.TestCase):
 
 
 class TestEncwaveTruthTableConsumerPin(unittest.TestCase):
-    """P5 소비자 핀 — 인코딩 개정 파도의 현행 truth table.
+    """P5 소비자 핀 — 인코딩 개정 파도의 현행 truth table (재생 게이트의 clean 측).
 
-    파일 = isa/truth_table_encwave.json, domain_version = 4 (v4 정의의
-    일부로 키 opcode 표기가 0x0## 3자리다), 축 무변경. 캡처는 메인 루프
-    몫이다 (루트 test_isa_decoder.py 는 clean-room 금지 — W1~W8 반영 RTL
-    로 전량 1회). 파일이 아직 없으면 명시적 skip 으로 그 의무를 인쇄한다
-    — premigration 은 「이관 전 HEAD 계보 전용 블랙박스 오라클」로 동결
-    존치이고 이 파일이 현행 재생 대조의 대상이 된다."""
+    파일 = `isa/truth_table_encwave.json`, domain_version = 4 (v4 정의의
+    일부로 키 opcode 표기가 0x0## 3자리다). 캡처 자체는 격리 안(루트
+    cocotb 모듈)에서 W1~W8 반영 RTL 로 전량 1회 이뤄졌고 — clean-room
+    규약상 이 파일은 그 캡처 드라이버를 읽지 않는다 — 이 클래스는 그
+    **산출물만** 받아 재검산한다. 파일 부재는 이제 skip 이 아니라
+    **하드 실패**다: 캡처가 착지했고 현행 재생 대조가 여기로 재지향됐다.
+
+    premigration 은 존치·동결이고 지위가 「이관 전 HEAD(042f08e) 계보
+    전용 블랙박스 오라클」로 좁아졌다. 아래 두 대조는 그 표를
+    **통과/실패를 받는 블랙박스로만** 쓴다 (키 집합과 판정 벡터의 대조
+    — 명세로 읽지 않는다):
+
+      · 축 무변경 — 표기 정규화 후 키 집합이 1:1 이어야 한다.
+      · 판정 무변경 — 파도는 *바이너리*를 바꿨지 *디코드 판정*을 바꾸지
+        않았다. 5,934점 전량 outcome 이 같아야 한다.
+
+    그 둘이 참이라는 것은 곧 `points` 축의 **반증력이 0비트**라는 뜻이기도
+    하다 (재캡처는 옳지만 새 오라클이 아니다). 반증력은 전적으로 새 축
+    `ext_probes` 가 진다 — 확장 니블이 접히면(선택자·결선이 8비트로
+    되돌아가면) 그 점들이 기본 영역 판정으로 발산한다.
+
+    다만 **축이 존재한다는 것과 축이 반증력을 가진다는 것은 다른 명제다.**
+    실측에서 207 탐침 중 발산하는 것은 60점뿐이고 나머지 147점은 접혀도
+    같은 값을 낸다 — 축을 그 147점만으로 갈아치워도 아래 시험들이 전량
+    통과한다. 그 구멍은 `test_ext_probes_retain_folding_discrimination`
+    이 닫는다: 개수가 아니라 **접힘 대응점과의 차이**를 센다.
+    """
 
     _PATH = os.path.join(os.path.dirname(_HERE), 'isa',
                          'truth_table_encwave.json')
+    _FROZEN = os.path.join(os.path.dirname(_HERE), 'isa',
+                           'truth_table_premigration.json')
 
-    def test_encwave_capture_pin(self):
-        if not os.path.exists(self._PATH):
-            self.skipTest(
-                'isa/truth_table_encwave.json 미캡처 — 메인 루프 몫 (P5: '
-                'domain_version 4 · 키 opcode 0x0## 3자리 · 전량 1회 캡처, '
-                '선행 조건: 캡처 대상 RTL 에 W1~W8 반영)')
+    @staticmethod
+    def _load(path):
         import json as _json
-        with open(self._PATH, encoding='utf-8') as f:
-            cap = _json.load(f)
+        with open(path, encoding='utf-8') as f:
+            return _json.load(f)
+
+    @classmethod
+    def _norm_key(cls, key):
+        """premigration 의 2자리 opcode 표기를 W7 의 3자리로 정규화한다.
+        나머지 세 필드(EH 조합 · flags · port)는 손대지 않는다."""
+        f = str(key).split('|')
+        f[0] = '0x%03X' % int(f[0], 16)
+        return '|'.join(f)
+
+    @classmethod
+    def _folded_key(cls, key):
+        """확장 니블이 **상수 0 에 묶였을 때**(B1 결선) 그 탐침이 실제로
+        밟게 되는 기본 영역 점의 키. 형상 세 필드(EH 조합 · flags · port)는
+        그대로 두고 opcode 만 `0xNLL` → `0x0LL` 로 접는다."""
+        f = str(key).split('|')
+        f[0] = '0x%03X' % (int(f[0], 16) & 0xFF)
+        return '|'.join(f)
+
+    def _cap(self):
+        self.assertTrue(
+            os.path.exists(self._PATH),
+            'isa/truth_table_encwave.json 부재 — 현행 재생 대조의 대상이다 '
+            '(P5 에서 착지). premigration 은 이관 전 계보 전용으로 좁아졌으니 '
+            '이 파일 없이는 현행 인코딩의 회귀 표가 아예 없다')
+        return self._load(self._PATH)
+
+    def _reject_outcome(self, cap):
+        """「거부」 판정 벡터를 *데이터에서 유도*한다 — 벡터 표현을
+        하드코딩하지 않는다. required EH 를 가진 opcode 의 EH-0 점
+        (`0x0##||0x0|-`, 확장 헤더가 하나도 없는 형상)은 정의상 필수
+        EH 결손이라 거부여야 하고, 그런 점 전부가 한 벡터로 모여야 한다."""
+        from generated_isa_tables import LEGAL
+        seen = {}
+        for code, rule in LEGAL.items():
+            if not rule['required']:
+                continue
+            key = '0x%03X||0x0|-' % code
+            if key in cap['points']:
+                seen.setdefault(tuple(cap['points'][key]), []).append(code)
+        self.assertGreater(sum(len(v) for v in seen.values()), 20,
+                           '거부 앵커 점을 충분히 찾지 못했다 — 키 문법 파손 의심')
+        self.assertEqual(len(seen), 1,
+                         f'필수 EH 결손 점들이 한 판정으로 모이지 않는다: '
+                         f'{ {k: len(v) for k, v in seen.items()} }')
+        return next(iter(seen))
+
+    def test_domain_version_and_three_digit_notation(self):
+        cap = self._cap()
         self.assertEqual(cap['domain_version'], 4,
-                         'encwave 는 domain_version 4 다 (P5)')
-        for key in cap['points']:
-            op_tok = str(key).split('|')[0]
-            self.assertRegex(op_tok, r'^0x[0-9A-Fa-f]{3}$',
-                             f'encwave 키 opcode 표기는 0x0## 3자리다: {key}')
+                         'encwave 는 domain_version 4 다 (P5). premigration 의 '
+                         '3 은 동결 유지 — 둘은 다른 파일의 다른 정의역이다')
+        for axis in ('points', 'ext_probes'):
+            self.assertIn(axis, cap, f'encwave 에 {axis} 축이 없다')
+            for key in cap[axis]:
+                fields = str(key).split('|')
+                self.assertEqual(len(fields), 4,
+                                 f'키는 4필드(op|ehs|flags|port)다: {key}')
+                self.assertRegex(fields[0], r'^0x[0-9A-Fa-f]{3}$',
+                                 f'{axis} 키 opcode 표기는 0x0## 3자리다: {key}')
+
+    def test_axis_unchanged_against_frozen_premigration(self):
+        """P5 항 3 「축 무변경」의 기계 확인 — 표기 정규화 후 키 집합 1:1."""
+        cap = self._cap()
+        frozen = self._load(self._FROZEN)
+        got = set(cap['points'])
+        want = {self._norm_key(k) for k in frozen['points']}
+        self.assertEqual(len(want), len(frozen['points']),
+                         '표기 정규화가 premigration 키를 충돌시켰다')
+        self.assertGreater(len(want), 5000, '동결 표 파싱 붕괴 의심')
+        self.assertEqual(got - want, set(),
+                         'encwave 에 동결 도메인 밖의 점이 points 축에 섞였다 '
+                         '(새 축은 ext_probes 다)')
+        self.assertEqual(want - got, set(),
+                         'encwave 가 동결 도메인의 점을 잃었다 — 전량 재캡처가 '
+                         '아니다')
+
+    def test_outcomes_match_frozen_premigration(self):
+        """파도는 *바이너리*를 바꿨지 *디코드 판정*을 바꾸지 않았다.
+
+        EH≥1 은 CH 삽입 + bh_len+1 로 인코딩이 달라지고 OPREF 는 CRC
+        니블이 생겼지만, 어느 것도 합법성 판정을 뒤집지 않는다 — 전량
+        일치가 그 명제의 기계 형태다. (이 대조가 참이라는 사실이 곧
+        `points` 축의 반증력이 0비트라는 증거이기도 하다.)"""
+        cap = self._cap()
+        frozen = self._load(self._FROZEN)
+        pre = {self._norm_key(k): v for k, v in frozen['points'].items()}
+        diff = [k for k, v in cap['points'].items()
+                if list(pre.get(k, [])) != list(v)]
+        self.assertEqual(diff[:8], [],
+                         f'동결 표와 판정이 갈리는 점 {len(diff)}건 — 파도는 '
+                         f'인코딩만 바꿨어야 한다')
+
+    def test_ext_probe_axis_is_present_and_rejecting(self):
+        """새 축 `ext_probes` — 확장 니블이 살아 있다는 유일한 증거.
+
+        W3: 미배정 opcode(확장 영역 전체 포함) = malformation. 이 점들이
+        전부 거부여야 하고, 그 거부 벡터는 수용 벡터와 **달라야** 한다 —
+        같으면 단언이 아무것도 배제하지 못한다(공허 방지)."""
+        cap = self._cap()
+        probes = cap['ext_probes']
+        self.assertGreaterEqual(
+            len(probes), 64,
+            f'ext_probes 가 {len(probes)}점뿐 — 확장 니블 축이 사실상 '
+            f'사라졌다. 이 축이 없으면 「니블을 선언만 하고 상수 0 에 묶는」 '
+            f'결선을 어떤 그물도 잡지 못한다')
+        reject = self._reject_outcome(cap)
+        accept = tuple(cap['points']['0x001||0x0|P'])
+        self.assertNotEqual(
+            reject, accept,
+            '거부 벡터와 수용 벡터가 같다 — 판정 축이 무너졌고 아래 단언이 '
+            '공허해진다 (0x001 WADV 는 port 필수, 그 충족 점은 수용이다)')
+        for key, outcome in probes.items():
+            op = int(str(key).split('|')[0], 16)
+            self.assertNotEqual(op >> 8, 0,
+                                f'ext_probes 에 확장 니블 0 인 점이 있다: {key} '
+                                f'— 이 축의 정의는 ext != 0 이다')
+            self.assertEqual(tuple(outcome), reject,
+                             f'{key} 가 거부가 아니다 — W3(미배정 opcode = '
+                             f'malformation) 위반이거나 확장 니블이 접혔다')
+
+    def test_ext_probes_retain_folding_discrimination(self):
+        """탐침이 **접힘을 잡을 수 있는 점인가** — 축의 반증력 자체를 잰다.
+
+        바로 위 시험이 축에 거는 것은 셋뿐이다: `len >= 64` · 전 점 ext≠0 ·
+        전 점 == reject. **어느 것도 그 점들이 무엇을 배제하는지 묻지
+        않는다.** 실측(재현): 207 탐침 중 147점은 접힘 대응점
+        `points['0x0LL|<같은 형상>']` 도 거부라서, 확장 니블이 상수 0 에
+        묶여도 **같은 값을 낸다** — 반증력 0인 점이다. 그 147점 중 64점만
+        남긴 `ext_probes` 로 위 다섯 시험을 돌리면 전량 ok / rc=0 이고,
+        격리 안 RTL 차등 시험도 같은 (얇아진) 표를 대조하므로 함께
+        초록이 된다. 즉 「니블을 선언만 하고 상수 0 에 묶기」가 다시
+        무방비가 된다 — 축이 사라지지 않고 *속만 비어도* 그렇다.
+
+        그래서 여기서는 개수가 아니라 **차이**를 센다. 탐침 k 가 접힘을
+        검출한다 ⟺ `probes[k] != points[fold(k)]`. 전 탐침이 거부인 한
+        이것은 「접힘 대응점이 수용이다」와 같은 말이고, 그 점에서만 니블
+        상수 결선이 판정을 뒤집는다.
+
+        하한 셋은 전부 커밋된 JSON 에서 유도한 현행 실측이다(2026-08-29:
+        검출력 60점 · low byte 20종 · 니블 0x1/0x4/0xF 각 20점). 하한이라
+        축을 넓히는 커밋은 통과하고 **얇게 만드는 커밋은 그 자리에서
+        죽는다.**
+        """
+        cap = self._cap()
+        probes, points = cap['ext_probes'], cap['points']
+        reject = self._reject_outcome(cap)
+
+        missing = sorted(k for k in probes
+                         if self._folded_key(k) not in points)
+        self.assertEqual(
+            missing[:8], [],
+            f'접힘 대응점이 points 축에 없는 탐침 {len(missing)}건 — 탐침은 '
+            f'동결 도메인 형상의 *확장 니블 들어올림*이어야 측정 가능하다. '
+            f'대응점이 없으면 그 탐침의 반증력은 잴 수 없고, 잴 수 없는 '
+            f'점은 이 축의 몫을 지지 못한다')
+
+        detecting = [k for k, v in probes.items()
+                     if list(points[self._folded_key(k)]) != list(v)]
+        for k in detecting[:1]:
+            # 위 시험의 전제(전 점 거부)를 이 시험 안에서도 한 번 못박는다 —
+            # 그것이 참일 때만 「검출 = 대응점이 수용」이 성립한다.
+            self.assertEqual(tuple(probes[k]), reject,
+                             f'{k} 가 거부가 아니다 — 검출력 산술의 전제가 '
+                             f'깨졌다')
+
+        self.assertGreaterEqual(
+            len(detecting), 60,
+            f'접힘 검출력이 있는 탐침이 {len(detecting)}점뿐이다(전체 '
+            f'{len(probes)}점). 나머지는 확장 니블이 상수 0 에 묶여도 같은 '
+            f'값을 내므로 이 축은 그만큼 공허하다 — 현행 실측 하한은 60점')
+
+        lows = {int(str(k).split('|')[0], 16) & 0xFF for k in detecting}
+        self.assertGreaterEqual(
+            len(lows), 20,
+            f'검출력 있는 탐침의 low byte 가 {len(lows)}종뿐이다 — 한두 '
+            f'opcode 에 몰린 검출력은 그 opcode 의 arm 만 지킨다. 현행 '
+            f'실측 하한은 20종')
+
+        per_nibble = {}
+        for k in detecting:
+            per_nibble.setdefault(int(str(k).split('|')[0], 16) >> 8,
+                                  []).append(k)
+        wide = sorted(n for n, ks in per_nibble.items() if len(ks) >= 20)
+        self.assertGreaterEqual(
+            len(wide), 3,
+            f'검출력 20점 이상을 가진 확장 니블이 {len(wide)}개뿐이다 '
+            f'({ {hex(n): len(v) for n, v in sorted(per_nibble.items())} }). '
+            f'W1 의 세 영역 — 기존 0x0##–0x3## · 신규 확장 0x4##–0x7## · '
+            f'예비 — 이 각각 검출력을 가져야 니블 상수 결선이 어느 영역에서 '
+            f'접히든 잡힌다')
+
+    def test_ext_probes_disjoint_from_frozen_domain(self):
+        """ext_probes 는 *새 축*이지 동결 도메인의 재캡처가 아니다."""
+        cap = self._cap()
+        self.assertEqual(set(cap['ext_probes']) & set(cap['points']), set(),
+                         'ext_probes 가 points 축과 겹친다 — 두 축의 정의역이 '
+                         '섞이면 「전량 5,934점」 산술이 무너진다')
 
 
 class TestExtNibbleGateArtifacts(unittest.TestCase):

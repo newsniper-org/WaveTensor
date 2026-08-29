@@ -13,7 +13,7 @@
 //
 // WT64v1 v1.3 (2026-07-14) amendment moves EH count from a spec constraint
 // to a hardware-sizing hint. Software emits any number of EHs it needs; the
-// bus width (INSTR_WIDTH = 32 + MAX_EH*96) is the only hard cap. See
+// bus width (INSTR_WIDTH = 32 + 32 + MAX_EH*96) is the only hard cap. See
 // `wt64v1_spec.md` §16 for details.
 //
 // Resource win: instead of MAX_EH cascaded sets of 16:1 muxes (one per
@@ -50,7 +50,7 @@ module EHDecode #(
     parameter ADDR_WIDTH  = 64,
     parameter TAG_WIDTH   = 80,
     parameter MAX_EH      = 4,
-    parameter INSTR_WIDTH = 32 + MAX_EH*96,
+    parameter INSTR_WIDTH = 32 + 32 + MAX_EH*96,   // W8: +CH = 448
     // v1.5.2 §19 — wide-input path capacity. 16 slot × 64 bit = 1024 bit
     // matches Cluster's fragment buffer (FRAG_MAX = 16). Legacy consumers
     // ignore this signal; wide-consumer primitives (v1.5.3+) read it.
@@ -75,6 +75,15 @@ module EHDecode #(
 
     // ---- Stage-1 registered dec_* bus (consumed by PE_Core) ----
     output reg                   dec_valid,
+    // W1 잔여 (기록) — 이 버스는 12b opcode 의 **하위 8b** 만 나른다.
+    // 오늘 이것이 접힘 경로가 **아닌** 이유는 하나뿐이다: 생성 whitelist
+    // 가 12b 연접 등호-OR 라 확장 니블 ≠ 0 인 코드점은 전부 decode_error
+    // 이고, PE_Core 는 `!dec_decode_error` 로 게이트되어 있다. 즉 여기에
+    // 실려 내려가는 값의 확장 니블은 항상 0 이다.
+    // 배정 코드점이 0x1##–0xF## 로 처음 들어오는 날 이 전제가 깨진다 —
+    // 그날을 잡는 상주 그물은 asm 측의 「배정 코드점 확장 니블 0」
+    // 트립와이어이고, 그것이 울리면 **먼저 이 버스를 12b 로 넓혀야
+    // 한다** (PE_Core 의 디스패치 case 선택자까지 함께).
     output reg [7:0]             dec_opcode,
     output reg                   dec_decode_error,
     output reg                   dec_tag_match,
@@ -282,9 +291,15 @@ module EHDecode #(
     reg acc_any_mem,  acc_any_subscript, acc_any_opref, acc_any_precision;
 
     // Carried base header
+    // 인코딩 개정 파도 W1 — opcode 는 12b 다: 기본 8b `[31:24]` + 확장
+    // 니블 `[11:8]`. `[15:12]` 는 예약 4b (항상 0). 확장 니블은 생성
+    // include 의 12b case arm / whitelist 와 결선되는 상위 니블이므로
+    // 반드시 별도 캐리로 살아 있어야 한다 (8b 선택자로 접히면 0x4## 가
+    // 0x0## arm 에 조용히 매치한다 — W2 가 경고한 공허 PASS).
     reg [7:0]  cb_opcode;
+    reg [3:0]  cb_opcode_ext;
     reg [3:0]  cb_flags;
-    reg [7:0]  cb_reserved;
+    reg [3:0]  cb_reserved;
     reg [7:0]  cb_bh_len;
 
     // Carried tag fields
@@ -353,8 +368,9 @@ module EHDecode #(
             acc_any_opref      <= 1'b0;
             acc_any_precision  <= 1'b0;
             cb_opcode          <= 8'h0;
+            cb_opcode_ext      <= 4'h0;
             cb_flags           <= 4'h0;
-            cb_reserved        <= 8'h0;
+            cb_reserved        <= 4'h0;
             cb_bh_len          <= 8'h0;
             cb_wave_number     <= 32'h0;
             cb_thread_id       <= 16'h0;
@@ -369,7 +385,15 @@ module EHDecode #(
                 // wire — saves a cycle of latency vs. requiring a separate
                 // walk_kick stage. Subsequent slot reads use the registered
                 // instr_latched (this same edge writes it).
-                stg_off            <= {{(OFF_W-1){1'b0}}, 1'b1};
+                // W8 — CH(Castagnoli Header): next_hdr ≠ END 이면 word 1 은
+                // CH 이고 EH 사슬이 아니다. 보행은 word 2 에서 시작한다.
+                // EH-0 (next_hdr == END) 은 CH 가 없으므로 종전과 동일하게
+                // word 1 에서 시작한다 (즉시 종료). `bh_len` 은 CH 를 포함한
+                // 물리 워드 총수이므로 bh_len 대조는 이 시작 오프셋에서
+                // 자연히 유도된다 — 별도 보정이 없다.
+                stg_off            <= (instruction[23:20] != 4'h0)
+                                      ? {{(OFF_W-2){1'b0}}, 2'd2}
+                                      : {{(OFF_W-1){1'b0}}, 1'b1};
                 stg_expect         <= instruction[23:20];
                 stg_index          <= {IDX_W{1'b0}};
                 stg_active         <= 1'b1;
@@ -398,8 +422,9 @@ module EHDecode #(
                 acc_any_opref      <= 1'b0;
                 acc_any_precision  <= 1'b0;
                 cb_opcode          <= instruction[31:24];
+                cb_opcode_ext      <= instruction[11:8];    // W1
                 cb_flags           <= instruction[19:16];
-                cb_reserved        <= instruction[15:8];
+                cb_reserved        <= instruction[15:12];   // W1: 8b → 4b
                 cb_bh_len          <= instruction[7:0];
                 cb_wave_number     <= input_tag[79:48];
                 cb_thread_id       <= input_tag[47:32];
@@ -538,7 +563,10 @@ module EHDecode #(
         forbid_mem       = 1'b0;
         forbid_imm_any   = 1'b0;
         forbid_opref     = 1'b0;
-        case (cb_opcode)
+        // W1 — 선택자는 12b 다. `cb_opcode` 단독(8b)으로 선택하면 생성
+        // include 의 `12'h###` arm 이 zero-extend 로 조용히 매치하여 확장
+        // 니블이 접힌다. 연접은 그 접힘을 구조적으로 불가능하게 한다.
+        case ({cb_opcode_ext, cb_opcode})
             // v1.8.0a §23.9 — legality case body is GENERATED from
             // isa/wt64v1_isa.json (scripts/gen_isa_tables.py). Historical
             // per-group commentary (v1.6.5c 0x63/64/65 bugfix rationale,
@@ -584,7 +612,7 @@ module EHDecode #(
                       | (forbid_opref     && acc_any_opref);
 
     wire bh_len_mismatch = (cb_bh_len != {{(8-OFF_W){1'b0}}, stg_off});
-    wire reserved_nonzero = (cb_reserved != 8'h00);
+    wire reserved_nonzero = (cb_reserved != 4'h0);
     wire prec_flag_without_eh = (f_precision_ovr || f_dim_ovr) && !acc_any_precision;
     wire opb_required_invalid   = f_has_opb && !payload_b_valid_latched;
     // OPREF.src_kind: 0=direct payload_b, 1=NoC bank, 2=TRNG. 3+ rejected.
@@ -733,7 +761,13 @@ module EHDecode #(
     reg       opref_found_c;
 
     always @(*) begin
-        off_c[0]      = {{(OFF_W-1){1'b0}}, 1'b1};
+        // W8 — 이 조합 보행도 CH 를 건너뛴다. `stg_off` 의 kick 과 **문자
+        // 그대로 같은 항**이어야 한다: 두 보행이 서로 다른 워드에서
+        // 시작하면 조합 반사(Cluster bank 라우팅)와 레지스터 경로가
+        // 어긋난다.
+        off_c[0]      = (instruction[23:20] != 4'h0)
+                        ? {{(OFF_W-2){1'b0}}, 2'd2}
+                        : {{(OFF_W-1){1'b0}}, 1'b1};
         expect_c[0]   = instruction[23:20];
         opref_kind_c  = 4'h0;
         opref_port_c  = 4'h0;
@@ -763,6 +797,13 @@ module EHDecode #(
     end
 
     assign opref_src_kind_out  = opref_kind_c;
+    // ⚠ W5 잔여 — `[23:20]` 은 더 이상 port_id 가 아니라 본문 12b(LBID ∥
+    // src_kind)의 CRC-4 다. 이 출력이 반사하는 값은 그 CRC 니블이고,
+    // 포트 이름만 폐지된 필드의 것으로 남아 있다. 개명은 Top_Core·합성
+    // 래퍼 포트까지 번지므로 별도 커밋으로 분리했다. 소비자는 0건이다
+    // (Cluster 는 명시적 미접속, Top_Core 는 상위로 통과만 시킨다).
+    // 이 자리의 CRC **검산**(불일치 = malformation) 역시 아직 없다 — 파도
+    // 이후 legacy 는 니블을 반사만 하고 판정하지 않는다.
     assign opref_port_id_out   = opref_port_c;
     assign opref_noc_route_out = opref_route_c;
 

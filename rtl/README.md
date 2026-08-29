@@ -25,7 +25,8 @@
 | ✅ | `scripts/golden_*.py` | golden 모델 — 산술 의미론의 authority |
 | ✅ | `isa/wt64v1_isa.json` | 정본 §1.7.3 이 요구하는 "기계가 읽는 단일 정의"의 실물 |
 | ✅ | `include/generated/*.hex` | golden 이 낸 기대값 벡터 |
-| ⚠️ | `isa/truth_table_premigration.json` | **오라클로만.** 통과/실패를 받는 것은 안전하나 **명세로 읽으면 오염** |
+| ⚠️ | `isa/truth_table_encwave.json` | **오라클로만** (현행 인코딩). 인코딩 개정 파도 W1~W8 반영 RTL 에서 전량 재캡처한 domain_version 4 · 5,934점 + 확장 니블 탐침 207점. 통과/실패를 받는 것은 안전하나 **명세로 읽으면 오염** |
+| ⚠️ | `isa/truth_table_premigration.json` | **오라클로만**, 그리고 **이관 전 계보 전용**. 동결·존치이나 파도 이전 바이너리에만 답한다 — 현행 인코딩(CH 를 포함하는 `bh_len` · OPREF 의 CRC 니블)의 회귀 대조는 위 `encwave` 가 승계했다. 명세로 읽으면 오염인 것은 같다 |
 | ⛔ | 저장소 루트 `*.v`, `tb_*.v` | 원본 RTL |
 | ⛔ | 루트 `test_*.py` | 오라클 목록에 없다. 원본의 top-level 포트명·내부 계층 경로에 결합돼 있어 **간접 오염 경로**다 |
 
@@ -158,7 +159,7 @@ NoLoss 는 모듈이 아니라 합성 속성 — 후-formal 이 조합 위에서
 구성: `rtl/sv/assert/*_props.sv` (SVA 하네스) + `rtl/formal/sby/<모듈>/*.sby`
 (머리의 `# PROVES: <모델>.<가드>` 가 lint_postformal 의 대조 앵커).
 게이트: `lint_postformal.py`(선언 실재성·CHECK 전용성·커버리지 래칫 74,
-make lint 15종) + `lint_witness_map.py`(증인↔전건 대응 + `--self-test` 여섯
+make lint 16종) + `lint_witness_map.py`(증인↔전건 대응 + `--self-test` 여섯
 변이 음성 시험) + `lint_tautology.py --audit`(**상수 접힘 검사** — 아래 정정
 참조) + `make rtl-postformal`(전 태스크 실행 — 미측정은 통과가 아니다).
 

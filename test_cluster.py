@@ -2678,7 +2678,14 @@ async def test_twin_classifier_lockstep_static(dut):
         body = text[idx:]
         stripped = '\n'.join(ln.split('//')[0] for ln in body.splitlines())
         expr = stripped[:stripped.index(';')]
-        return set(int(m, 16) for m in re.findall(r"8'h([0-9A-Fa-f]{2})",
+        # 인코딩 개정 파도 W1 — 두 분류기의 **리터럴 폭이 다르다**:
+        # Cluster 쪽은 12b (`12'h0XX`, 확장 니블을 함께 비교한다 — 8b 로
+        # 뽑으면 0x4XX 명령이 0x0XX 분류에 조용히 얹힌다), PE_Core 쪽은
+        # 8b (그 층은 decode_error 게이트 뒤라 확장 니블이 항상 0 이다).
+        # 이 대조가 재는 것은 **코드점 값**이지 리터럴 폭이 아니므로
+        # 폭 무관하게 뽑아 값으로 정규화한다 — 폭을 고정하면 한쪽만
+        # 넓히는 정당한 편집이 없는 발산을 만든다.
+        return set(int(m, 16) for m in re.findall(r"\d+'h([0-9A-Fa-f]+)",
                                                   expr))
     here = os.path.dirname(os.path.abspath(__file__))
     clu = _classifier_set(os.path.join(here, 'Cluster.v'),
@@ -3620,7 +3627,8 @@ async def test_twin_classifier_mu_bank_coverage(dut):
     _body = text[idx:]
     _stripped = '\n'.join(ln.split('//')[0] for ln in _body.splitlines())
     expr = _stripped[:_stripped.index(';')]
-    classified = set(int(m, 16) for m in re.findall(r"8'h([0-9A-Fa-f]{2})", expr))
+    # W1 — 폭 무관 추출 + 값 정규화 (`_classifier_set` 의 같은 주석 참조).
+    classified = set(int(m, 16) for m in re.findall(r"\d+'h([0-9A-Fa-f]+)", expr))
     assert classified, "failed to extract is_mul_op from Cluster.v"
 
     from test_isa_decoder import eh_precision as _ehp
