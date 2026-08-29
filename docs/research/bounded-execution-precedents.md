@@ -622,7 +622,7 @@ grep·파일 열람이다.
   |---|---|
   | **base ↔ induction 비용 비대칭을 실제로 잰 것 — 둘** | `rtl/formal/sby/OperandDecode/body_judge.sby:67-69` · `rtl/sv/assert/OwnershipTable_props.sv:346-347` |
   | 「basecase 통과 / induction 만 깨짐」 함정·회귀 서술 (시간 아님) | `Makefile:722-723` · `.claude-memories/sby_composite_regression.md:16`·`:20-21` · `scripts/sby_impact.py:13` · `scripts/sby_sweep.sh:163` · `rtl/sv/assert/RouteMmio_props.sv:189` |
-  | 태스크 구성 주석 · 서지 키 · 도구 설명 (비실측) | `rtl/formal/sby/DecodeWalk/walk_decode.sby:91` · `rtl/formal/sby/OperandDecode/body_judge.sby:57` · `scripts/lint_postformal.py:1239` · `docs/wt64v1-architecture-guide/chapters/06-formal.typ:401` · `refs.yml:389`(`sheeran_induction`) · `.devcontainer/Dockerfile:207` |
+  | 태스크 구성 주석 · 서지 키 · 도구 설명 (비실측) | `rtl/formal/sby/DecodeWalk/walk_decode.sby:91` · `rtl/formal/sby/OperandDecode/body_judge.sby:57` · `scripts/lint_postformal.py:1266` · `docs/wt64v1-architecture-guide/chapters/06-formal.typ:489` · `refs.yml:401`(`sheeran_induction`) · `.devcontainer/Dockerfile:335` |
 - **그리고 이 저장소는 그 분해를 이미 두 번 적어 봤다** — 이것이 이 항목의
   진짜 무게다.
   - `rtl/formal/sby/OperandDecode/body_judge.sby:67-69` 는 깊이 선택의
@@ -841,36 +841,52 @@ geilen_basten2003:
 > 뒤의 참값이나, **다음 커밋에서 다시 밀린다고 가정하라.**
 >
 > 그래서 이 문서는 본문에서 **규범 라벨·절 이름·속성 ID 를 함께** 적었다.
-> 정본이 스스로 그 규율을 적는다 — `chapters/01-isa-asm.typ:396`:
+> 정본이 스스로 그 규율을 적는다 — `chapters/01-isa-asm.typ:682`:
 > 「*이 규범은 번호가 아니라 이름으로 불러라* … 번호만 적으면 다음
 > 개정에서 또 틀린다」. **좌표가 안 맞으면 라벨로 grep 하라**, 그것이
 > 이 목록의 사용법이다.
+>
+> ⚠ **재대조 1회 (2026-08-29).** 아래 목록 전량을 직접 열어 다시 맞췄다 —
+> 이 면책문 자신의 좌표(`01-isa-asm.typ`)를 포함해서다. 밀린 좌표 **스물다섯**
+> 을 고쳤고 밀리지 않은 것은 그대로 두었다. 밀린 자리의 원인을 이 재대조가
+> 파도별로 귀속하지는 않았다 — 잰 것은 「지금 어디를 가리키는가」뿐이다.
+> 이 문단이 예고한
+> 그대로였다는 것이 재대조의 결과이므로 **면책은 취소되지 않는다** —
+> 다음 파도에서 또 밀린다.
+> 그리고 재대조가 하나를 더 드러냈다: `docs/research/token-pressure.md` 의
+> 좌표는 **이 문서를 쓴 커밋 시점에 이미 어긋나 있었다** (그 문서가 같은
+> 커밋 안에서 재작성 중이었고, 위 ⚠ 가 예고한 것이 정확히 그 상황이다).
+> 즉 이 목록의 좌표는 「착지 후 밀린다」만이 아니라 「착지 시점에도 틀릴 수
+> 있다」 — 라벨 grep 이 보조가 아니라 **일차 사용법**인 이유다.
 
-- `docs/wt64v1-architecture-guide/refs.yml:4`(키 규율) · `:93-103`(kahn · note 는 `:103`)
+- `docs/wt64v1-architecture-guide/refs.yml:4`(키 규율) · `:105-115`(kahn · note 는 `:115`)
 - `docs/wt64v1-architecture-guide/chapters/01-isa-asm.typ:77`·`:83`·`:116-117`
-  (INV-T1/T2) · `:172-173`(능력 부재 판정 기준 = 선언) · `:335`(§1.4.2
-  토큰 비증식 규범) · `:351-359`(왜 「최대 하나」가 아니라 「분할」인가 —
-  구멍의 문면 `:353`, 닫는 문면 `:358`) · `:1314`(ISA-9)
+  (INV-T1/T2) · `:267-268`(능력 부재 판정 기준 = 선언) · `:570`(§1.4.2
+  토큰 비증식 규범) · `:586-597`(왜 「최대 하나」가 아니라 「분할」인가 —
+  구멍의 문면 `:588`, 닫는 문면 `:593`) · `:1674`(ISA-9)
 - `docs/wt64v1-architecture-guide/chapters/02-fabric-alu.typ:129-156`
   (규범 「이름에 속지 말 것 — 이 설계에 NoC 는 없다」 — `:156` 은
   `#등급("실측")`, 문 여는 문장은 `:158-159`) · `:162`(규범 「발화의 유일한
   원천은 호스트 명령 큐다」 — 독립 규범, 개정 조항은 `:165-166`) ·
   `:268`(함정 「라우터를 짓지 말 것」 — 인용문은 `:270`) ·
-  `:492-500`(규범 「조각 전송과 배압」 · `@kahn` 인용 자리는 `:495`)
-- `docs/wt64v1-architecture-guide/chapters/03-hiu.typ:1015-1021`(드레인 —
-  관측면이 0 이 될 때까지)
-- `docs/wt64v1-architecture-guide/chapters/05-security.typ:99-125`(상수
-  시간성) — 정의 `:101-104` · 테스트 `:107-113` · 사례 해설 `:115-118` ·
-  형식화 `:121-125`
-- `docs/wt64v1-architecture-guide/appendix/b-gaps.typ:546-563`(B.5 행 「LBID
-  엔트리 「길이」는 무엇의 길이인가」 — 소비자가 없다) · `:566-580`(짝 행
+  `:550-560`(절 「조각 전송과 배압」 — 규범은 `:552-560`, `@kahn` 인용 자리는
+  `:555`)
+- `docs/wt64v1-architecture-guide/chapters/03-hiu.typ:1019-1043`(드레인 —
+  정의역 여섯 `:1019-1031` · 방식 `:1033-1043`, 「관측면이 0 이 될 때까지」는
+  `:1039`)
+- `docs/wt64v1-architecture-guide/chapters/05-security.typ:153-180`(상수
+  시간성) — 정의 `:155-159` · 테스트 `:161-167` · 사례 해설 `:169-173` ·
+  형식화 `:175-180`
+- `docs/wt64v1-architecture-guide/appendix/b-gaps.typ:591-609`(B.5 행 「LBID
+  엔트리 「길이」는 무엇의 길이인가」 — 소비자가 없다) · `:611-628`(짝 행
   「LBID 엔트리의 기입 시점 거절」) — ⚠ 이 둘은 이 파도에서 밀렸다(§3.4)
-- `docs/wt64v1-architecture-guide/appendix/d-properties.typ:210`(SEC-2)
+- `docs/wt64v1-architecture-guide/appendix/d-properties.typ:229`(SEC-2)
 - `docs/research/wavescalar-capacity.md:148-152` · `:323-326` · `:353-354` ·
   `:406-411` · `:460-461`
-- `docs/research/token-pressure.md:87-103`(결론 두 다리) · `:137-148`(자리별
-  표) · `:168-172`(가득 참의 처분 셋 · 스필 자리 0) · `:482-489`(후보 3)
-  (⚠ §7.3 — 이 문서는 같은 파도에서 재작성 중이다)
-- `rtl/README.md:587`(51분) · `rtl/formal/sby/MmioConfig/mmio_deep.sby:18-19`·
+- `docs/research/token-pressure.md:106-124`(결론 두 다리) · `:158-169`(자리별
+  표) · `:190-194`(가득 참의 처분 셋 · 스필 자리 0) · `:508-526`(후보 3)
+  (⚠ §7.3 — 이 문서는 같은 파도에서 재작성 중이었고, 그래서 이 줄의 좌표는
+  저작 시점부터 밀려 있었다. 위 재대조가 실물로 맞춘 값이다)
+- `rtl/README.md:588`(51분) · `rtl/formal/sby/MmioConfig/mmio_deep.sby:18-19`·
   `:75-76`·`:81` · `rtl/formal/sby/MmioConfig/mmio_deep.evidence.json`(전문) ·
   `.claude-memories/sby_composite_regression.md:20-21`
