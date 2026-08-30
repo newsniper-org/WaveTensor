@@ -444,7 +444,34 @@ lattice-clean:
 #                               대조하므로 하드코딩이 없다. `--self-test` 가
 #                               합성 픽스처 7변이 + 실 트리 2변이로 자기
 #                               반증력을 인쇄한다.
-# All eight are stdlib-only Python; runnable directly without cocotb:
+#   * lint_section_refs        — **인용 좌표의 실재와 대상.** 세 축을 잰다:
+#                               `@sec:라벨 N.M` · `파일:줄[-줄]` · `§N.M`.
+#                               세 축 전부 **따옴표를 동반한 인용만** 대상을
+#                               재고, 따옴표 없는 인용은 통과가 아니라
+#                               「안 잰다」로 별도 계수해 인쇄한다 (§6.6.5).
+#                               실재만 재던 시절에는 **재번호로 다른 절을
+#                               가리키게 된 것을 원리상 못 잡았다** — W6 실측
+#                               에서 그 부류 6건이 「파손 0」인 채 틀려 있었다.
+#                               **덮는 범위는 발신 구역에 따라 다르다**
+#                               (§6.7 과대 명명 금지): 상한(R4·R5·R6)은
+#                               hard 구역(정본·rtl·proofs) 발신만, 축 1 덮임
+#                               하한은 curated(그 밖의 `docs/`) 이상 발신만
+#                               건다. `.claude-memos/` 발신은 어떤 래칫에도
+#                               걸리지 않고 **인쇄만** 된다 — 걸었더니 메모
+#                               두 줄의 의역이 정본 부록의 하한을 깼다(F-52).
+#                               미추적 파일(`git add` 전)은 축 1 의 정의역
+#                               밖이고 그 수를 따로 인쇄한다.
+#                               `--self-test` 가 기준 문면 통과를 먼저 확인한
+#                               뒤 **래칫을 픽스처 기준선에서 재보정해 켠 채로**
+#                               열여섯 변이를 걸고, **덮임 0 인 장에서는 같은
+#                               변이가 검출 0** 임을 함께 인쇄한다 (상한만
+#                               두면 「인용을 안 쓰면 통과」가 되는 증거).
+#                               재보정 전에는 래칫 집행 코드 전체가 이 시험의
+#                               정의역 밖이었다 — 통째로 지워도 통과했다.
+#                               `--drift` 는 `git blame` 이력 축 — 느리고
+#                               shallow clone 에서 공허하므로 여기서 돌지
+#                               않는다. 그 사실도 인쇄한다.
+# All nine are stdlib-only Python; runnable directly without cocotb:
 #   python3 scripts/lint_isa_tables_fresh.py
 # =============================================================================
 
@@ -467,6 +494,7 @@ lint:
 	python3 $(CURDIR)/scripts/lint_witness_map.py
 	python3 $(CURDIR)/scripts/lint_witness_map.py --self-test
 	python3 $(CURDIR)/scripts/lint_section_refs.py
+	python3 $(CURDIR)/scripts/lint_section_refs.py --self-test
 	python3 $(CURDIR)/scripts/lint_case_selector_width.py
 	python3 $(CURDIR)/scripts/lint_case_selector_width.py --self-test
 

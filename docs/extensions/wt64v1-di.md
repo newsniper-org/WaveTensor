@@ -210,7 +210,7 @@ EINSUM 기반 리만(값 계약 부재) · 분할 폭을 인코딩에 싣기(INV
 | 플래그 | `F_HAS_OPB` + `F_PRECISION_OVR` |
 | imm16 | **금지** (`0x079` legality 승계 — 서브옵 없음) |
 | 출력 | `sext64(int32)` 계수 `0..4` — 단일 beat. **ISA-9 ②** |
-| ACCTGT | 요구하지 않는다 — 단일 beat 결과에는 §4.3 결속 1항의 전건이 서지 않는다 (`04-ext-payload.typ:276-277`) |
+| ACCTGT | 요구하지 않는다 — 단일 beat 결과에는 §4.3 결속 1항의 전건이 서지 않는다 (`04-ext-payload.typ:285-286`) |
 
 ### 규범 — 비교 의미론
 

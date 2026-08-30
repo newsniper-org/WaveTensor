@@ -112,7 +112,7 @@ imm16 배치, 판정 사다리는 `Di` §4 무변경 — 이 절은 dtype5 에�
 비증식」, `01-isa-asm.typ:617-631` — ③ 은 `:622-623`).
 
 - **ACCTGT 부재 = malformation** (총개수 ≥2 선언 wave 의 결속 규범,
-  `04-ext-payload.typ:276-277`) · **T ≠ 2 = malformation** (선언-실물 모순,
+  `04-ext-payload.typ:285-286`) · **T ≠ 2 = malformation** (선언-실물 모순,
   같은 4항 자리).
 - **역방향 규범 (검증 A-4)**: **단일 beat(②) 출력 발화 위의 T ≥ 1 ACCTGT
   선언 = malformation** — `ALGDi × dtype4` 와 `0x07B` 양 dtype 에 적용.
@@ -296,7 +296,7 @@ imm16 배치, 판정 사다리는 `Di` §4 무변경 — 이 절은 dtype5 에�
 `Di` §9 의 일곱에 더해:
 
 8. **`0x079 FMINMAX` 의 ACCTGT 없는 2조각 출력** (검증 A-1) — W4(ACCTGT
-   승격) 착지 순간 결속 규범(`04-ext-payload.typ:276-277`)과 자기모순.
+   승격) 착지 순간 결속 규범(`04-ext-payload.typ:285-286`)과 자기모순.
    eh_codes 에 `0x9` 자체가 없어 오늘은 선언이 불가능한 채 2조각이 나간다
    — 「선언 자리 부재」 진공(`b-gaps.typ:1054-1073`)이 가리는 기존 결손이고
    f32/f64 양쪽에 걸린다. 처분 갈래: W4 파도에서 `0x079` 에 ACCTGT 요구 추가

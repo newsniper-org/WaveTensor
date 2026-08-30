@@ -142,7 +142,7 @@ generator-independent"). 이 확장의 착지는 그 핀의 **프로파일-조�
 - `0x079 FMINMAX`: A = 2 f64 레인 128b **2조각 파도**, 출력 128b = 2조각 —
   f32 형("4 f32 lanes (128b = 2-fragment) … 128b out = 2 fragments", JSON
   desc)과 동형. **함정**: `0x079` 의 2조각 출력은 오늘 ACCTGT 선언 없이
-  나간다 — W4(ACCTGT 승격) 착지 시 결속 규범(`04-ext-payload.typ:268-269`)과
+  나간다 — W4(ACCTGT 승격) 착지 시 결속 규범(`04-ext-payload.typ:285-286`)과
   자기모순이 되는 **선행 충돌**이고, f32/f64 양쪽에 걸린다. 처분은 별건
   등재다 (`wt64v1-lf64di.md` §9 — 검증 A-1).
 

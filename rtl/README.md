@@ -1002,7 +1002,7 @@ E.12 1항 해설이 「요구를 거는 형태(스트로브·핸드셰이크)는
   때리므로, 확인된 ISA-1/ISA-2 는 **호스트 ABI 층위가 아니라 디코드 진입
   층위의 등가**다.
 - **ISA-1 의 형상 축은 미측정이다.** `Wt64Config(nPoints=2)` 로 둘째 SV 를
-  내는 `gen/GenWt64TopShape.scala` 가 없다 (선례는 `GenSharedUnit.scala:22-28`
+  내는 `gen/GenWt64TopShape.scala` 가 없다 (선례는 `GenSharedUnit.scala:23-26`
   — 같은 패턴 20줄). 하네스는 궤적 비교기를 세우고 그것이 살아 있음을 매 실행
   양·음성 대조로 증명하되 형상 축을 잰 척하지 않는다. 그 20줄이 이 축을
   여는 유일한 잔여물이다.

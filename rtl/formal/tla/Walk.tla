@@ -48,7 +48,7 @@
 (*   · declLen > Cap  → *능력 부재.* 판정은 순회 전에 선언만으로 선다.      *)
 (*     바이너리는 옳고 이 기계가 못 받는 것이다 — 오류가 아니다 (§1.6.2 ·   *)
 (*     §1.3 「최대 길이」). Payload.tla 의 capAbsent /                      *)
-(*     Inv_CapabilityNotMalformed 와 같은 처분 — §4.3 「선언 총개수 /       *)
+(*     Inv_CapabilityNotMalformed 와 같은 처분 — §4.2.2 「선언 총개수 /     *)
 (*     구현 슬롯 상한」 이분의 재적용이다.                                  *)
 (*   · declLen <= Cap 인데 그 안에 END 미출현 → *malformation* —            *)
 (*     「들어간다」고 선언하고 실물이 아닌 자기모순 (§4.2.2 검산 규범 3항). *)

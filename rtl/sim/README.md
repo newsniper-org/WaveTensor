@@ -144,7 +144,7 @@ ISA-2 사상 경유(존재 축) · ISA-1 자리 무관성 · 구성 표면 무�
 
 `Wt64Config(nPoints=2)` 로 두 번째 SV 를 내는 생성기가 없다
 (`rtl/spinal/src/main/scala/wt64/gen/` 에 `GenWt64TopShape.scala` 부재).
-선례는 있다 — `GenSharedUnit.scala:22-28` 이 정확히 그 패턴으로
+선례는 있다 — `GenSharedUnit.scala:23-26` 이 정확히 그 패턴으로
 `SharedUnitDepth0.sv` 를 낸다. `rtl/spinal/` 은 이 파도의 편집 배정 밖이라
 착지시키지 않았다.
 

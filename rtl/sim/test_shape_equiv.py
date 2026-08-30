@@ -54,7 +54,7 @@ DUT 는 `rtl/generated/Wt64Top.sv` (형상 A, `Wt64Config()` 기본값 —
 **재지 못한다 (이름을 적는다 — 여기 없는 것은 미측정이지 통과가 아니다)**
   1. **형상 B/C 와의 실제 대조** — `Wt64Config(nPoints=2)` 로 두 번째 SV 를
      내는 생성기가 없다 (`rtl/spinal/.../gen/` 에 `GenWt64TopShape.scala`
-     부재 — 실측). 선례는 있다 (`GenSharedUnit.scala:22-28` 이 같은 패턴으로
+     부재 — 실측). 선례는 있다 (`GenSharedUnit.scala:23-26` 이 같은 패턴으로
      `SharedUnitDepth0.sv` 를 낸다). 그 20줄이 착지하기 전까지 ISA-1 의
      **형상 축은 미측정**이다. 이 파일은 비교기를 세우고 그것이 살아 있음을
      `isa1_comparator_selfcheck` 로 매 실행 증명하되, **형상 축을 잰 척하지
