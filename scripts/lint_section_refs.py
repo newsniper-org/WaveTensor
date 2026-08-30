@@ -11,6 +11,7 @@
     축 0  `@sec:라벨 N.M`   — 라벨·절 실재 + 따옴표 대조   (원래 있던 축)
     축 1  `파일:줄[-줄]`     — 좌표 실재 + **따옴표 대조**   (신설)
     축 2  `§N.M[.K]`        — 절 실재 + **따옴표 대조**     (실재만 있었다)
+          `부록 X.N[.K]`    — 같은 축의 **부록 표기** (2026-08-30 신설)
     축 2b 「N.M 함정」        — 그 절 안의 블록 **종류**
 
 **세 축 전부 「따옴표가 붙은 인용」만 대상을 잰다.** 따옴표 없는 인용은
@@ -22,7 +23,7 @@
 
 발신 구역 셋을 구분한다 (아래 `sender_zone()`):
 
-    hard      정본 · `rtl/` · `proofs/`   — 상한(R4·R5·R6)과 하한이 전부 건다
+    hard      정본 · `rtl/` · `proofs/` · `asm/`  — 상한(R4·R5·R6)이 전부 건다
     curated   그 밖의 `docs/`             — **축 1 덮임 하한**이 여기까지 센다
     volatile  `.claude-memos/` 등         — 래칫 없음. **인쇄만** 한다
 
@@ -34,11 +35,63 @@ volatile 구역을 「매 커밋 거짓 실패한다」며 면제했는데 **덮
 충족되고 있었고, 그것을 옳게 되돌리는 순간 `make lint` 가 실패했다. 게이트가
 잘못된 인용을 *보존하도록* 압력을 만든 것이다.
 
+## 축 0·2 의 정의역을 **닫았다** (2026-08-30 두 번째 파도)
+
+첫 파도는 「`proofs/tla` 가 빠져 있다」를 고쳤는데 **글롭 한 줄을 손으로 더하는
+방식**으로 고쳤다. 같은 표에 `rtl/spinal`(재구현의 **주 구현체**)이 통째로
+빠져 있었고, 그것이 정본을 626번 인용한다. 아래 `SCAN_ROOTS` 주석에 실측과
+「넣지 않은 뿌리」의 사유가 있다. 결과:
+
+    축 2 실재 확인 인용   660 → 1,563건
+    축 2 **대상 대조**     50 →   145건   (반증력 있는 것만)
+    켜자마자 나온 참 결함  6건 (전부 수리)
+
+그 6건 중 하나는 `DecodeWalk.scala:14` 의 §4.3→§4.2.1 이고, **이 파일의 「왜 이 검사가
+있는가」 절이 「2026-08-27 에 있었다」고 적어 둔 바로 그 오기가 새 RTL 에서
+되살아난 것**이다. 정의역 밖에서 태어난 오기는 검사가 아니라 사람이 잡아야 했다.
+
+## 세 번째 파도 — **폐쇄 자신의 결손 넷** (2026-08-30, 같은 날)
+
+두 번째 파도의 전수 검증이 폐쇄 자신에게서 넷을 찾았다. 넷 다 「검사가 우는
+것이 아니라 조용해지는」 부류다.
+
+ 1. **부분 축소에 자기시험이 침묵했다.** ⑭ 는 `bool(newdom)`, ⑮ 는 무성
+    대체였다 — `rtl/spinal`(주 구현체)만 정의역에서 빼도 `--self-test` 가
+    rc=0 이었고 ⑮ 는 대체 사실을 인쇄하지 않았다. ⇒ `DOMAIN_WITNESS` 로
+    **부류마다** 하한과 변이를 건다 (그 상수 주석에 실측).
+ 2. **부록 표기가 정의역 밖이었다.** 두 번째 파도가 「수리」한 여섯 중 둘
+    (`rtl/sim/README.md` · `…/top/Wt64Top.scala`)은 재조준이 아니라
+    `부록 D.3.1`·`부록 E.1.1` 이라는 **이 검사가 파싱하지 못하는 표기**로
+    바꾼 것이었다 — 문면은 더 정확해졌지만 두 자리가 반증력 있는 대조에서
+    빠졌다. **수리가 검사를 좁힌 것**이다. ⇒ `APX_RE` 로 그 표기를 축 2 에
+    넣었다(정의역 안 98건 · 대조 22건 · 엉뚱한 절 0). 오늘 그 두 자리는
+    다시 `ok` 로 세어진다.
+ 3. **`asm` 뿌리의 집행 실효가 0 이었다.** 정의역에는 들어왔는데
+    `sender_zone()` 이 volatile 로 분류해 어느 래칫에도 걸리지 않았다
+    (그 함수 주석에 실측). ⇒ hard 로 올렸다.
+ 4. **뿌리 순회가 git 인덱스와 교차하지 않았다.** 정의역 655개 중 129개가
+    미추적 도구 산출물이었다 (`iter_scan_files()` 주석). ⇒ 세 축의 정의역을
+    같은 인덱스에 건다. 정의역 655 → 526파일.
+
 오늘 실측으로 이 게이트가 **덮지 않는 것**:
 
-  · 따옴표 없는 좌표 인용 — 축 1 약 860건 · 축 2(hard 구역) 509건.
+  · 따옴표 없는 좌표 인용 — 축 1 867건 · 축 2(hard 발신) 1,289건.
     실재만 확인되고 **대상은 재지 않는다.** 재번호·삽입에 무방비다.
     (수 자체는 R5 가 파일별로 잠근다 — 「새 인용은 따옴표를 달고 태어나라」.)
+  · **정본 장이 아닌 `§N.M`** 2,273건 — 거의 전부 `.claude-memos/wt64v1_spec.md`
+    의 §22–§40 이다(정본은 1–6장 + 부록 A–E). 저장소 루트의 참조 구현 `*.v`
+    922건과 `synth/` 277건이 **이 부류만** 갖는다. 그 문서의 절 지도를 이
+    검사는 만들지 않으므로 대조하지 않고, 이제 그 수를 OK 줄에 인쇄한다 —
+    오래도록 이 부류는 어느 칸에도 세어지지 않아 **존재하지 않는 것처럼**
+    보였다.
+  · **「부록」이 앞에 없는 맨 글자 좌표** — `부록 B.1/B.5` 의 `B.5`, 목록
+    `E.3 · E.5 · E.6` 처럼 글자만 적는 형태. `APX_RE` 는 `부록` 을 요구한다.
+    요구하지 않으면 식별자·버전 문자열(`E.5` 신호명 등)과 구별할 문법이 없다.
+  · **`scripts/` 의 정본 인용 89건** — 큐레이트되는 문면인데도 정의역 밖이다.
+    검사기의 **음성 시험 픽스처가 일부러 틀린 좌표를 문자열로 담기** 때문이다
+    (`lint_guide_derived_tables.py:704`). 넣으면 축 0 이 그 픽스처를 하드
+    실패로 물고, 그 반작용이 F-52 다. 픽스처를 문면에서 구별할 문법이 생기면
+    닫을 수 있다.
   · 비정본 문서의 `§N.M` — `token-pressure.md` 류는 **자기 `### N.M` 번호
     체계**를 갖는다 (약 1,200건). 자기 번호와 정본 번호를 문법으로 구별할
     방법이 없어 정의역 밖으로 둔다. **예외 하나**: 인용 바로 앞 창에 정본의
@@ -165,8 +218,13 @@ volatile 구역을 「매 커밋 거짓 실패한다」며 면제했는데 **덮
                   않았던 동안 래칫 집행 코드 전체(R1·R3·R4·R4b·R5·덮임 하한)가
                   이 시험의 정의역 밖이었고, 통째로 지워도 두 게이트가 다
                   통과했다 (§6.3.2 가드 삭제 실험 불통과).
-                  **대가는 시간이다** — 2026-08-30 실측 약 6.5초(변이 16개,
-                  변이마다 픽스처 전체를 다시 훑는다). 기본 실행은 약 1초다.
+                  **대가는 시간이다** — 2026-08-30 실측 약 10.9초(변이 18개 ·
+                  판정 칸 24개. 변이마다 픽스처 전체를 다시 훑는다.
+                  6.5 → 8.9 초는 정의역 폐쇄로 픽스처에 `rtl/spinal` 이
+                  들어온 값이고, 8.9 → 10.9 초는 ⑮ 를 **부류마다** 걸게 한
+                  값이다 — 하나만 걸면 나머지 부류가 조용히 빠진다.
+                  그 값이 여기 적혀 있어야 다음 사람이 「왜 느려졌나」를
+                  뒤지지 않는다). 기본 실행은 약 1.15초다.
                   이 수를 적어 두는 이유: 훅이 느려지면 `--no-verify` 로
                   우회되고, 우회되는 훅은 없는 훅보다 나쁘다. 더 늘릴 때는
                   변이를 더하는 것이 아니라 **가드 삭제 실험으로 정의역을
@@ -213,20 +271,86 @@ TAG = "lint_section_refs"
 # 와 같은 부류인데 글롭에 없어서 `AccBank.tla` 와 `proofs/tla/README.md` 의
 # 정본 인용이 통째로 검사 밖에 있었다. 정의역을 손으로 유지하면 새 부류는
 # 자동으로 검사 밖에 태어난다.
-SCAN_GLOBS_REL = [
-    ("docs/wt64v1-architecture-guide", "**/*.typ"),
-    ("rtl/formal/tla", "*.tla"),
-    ("rtl/formal/sby", "**/*.sby"),
-    ("rtl/sv/assert", "*.sv"),
-    ("proofs/tla", "**/*.tla"),
-    ("proofs/tla", "**/*.md"),
-    (".claude-memos", "**/*.md"),
-    ("docs/research", "**/*.md"),
-    ("docs/extensions", "**/*.md"),
+#
+# ── 그리고 그 수리가 **한 디렉토리만** 고쳤다 (2026-08-30 같은 날, 재측정) ──
+#
+# 위 문단은 「손으로 유지하면 새 부류는 자동으로 검사 밖에 태어난다」를 적어
+# 놓고 **글롭 한 줄을 손으로 더했다.** 같은 표에 남은 나머지가 그 진단을 그대로
+# 재현하고 있었다:
+#
+#   · `rtl/spinal/**/*.scala` — **재구현의 주 구현체**(2026-08-20 착수, SpinalHDL
+#     주 + SV 검증층)인데 표에 없었다. 정본 인용 **626건**이 통째로 축 0·2 밖에
+#     있었고, 켜자마자 참 결함 다섯이 나왔다 — 그중 하나(`DecodeWalk.scala:14`
+#     의 §4.3→§4.2.1)는 **이 파일의 「왜 이 검사가 있는가」 절이
+#     「2026-08-27 에 있었다」고 적어 둔 바로 그 오기**가 새 RTL 에서 되살아난
+#     것이다.
+#   · `rtl/README.md`(95) · `rtl/sim/**`(13) · `rtl/formal/tla/README.md`(47) ·
+#     `rtl/formal/tla/run.sh`(20) — `sender_zone()` 은 이것들을 이미 **hard**
+#     라 부르고 축 1 은 저장소 전역이라 R5·R6 로 잠그고 있었는데, 축 0·2 의
+#     정의역만 `rtl/` 의 하위 셋(`formal/tla/*.tla` · `formal/sby` ·
+#     `sv/assert`)이었다. **같은 파일이 한 축에서는 hard 이고 다른 축에서는
+#     존재하지 않았다** — 그 비대칭 자체가 「손으로 유지되는 정의역」의 지문이다.
+#
+# ⇒ 표를 **글롭 열거에서 뿌리 순회로** 바꾼다. 이제 정의역은 「이 뿌리들 아래의,
+#   이 확장자를 가진, 추적되는 텍스트 전부」이고 **새 하위 디렉토리는 자동으로
+#   검사 안에 태어난다.** 손으로 유지되는 것은 뿌리 목록과 확장자 목록 둘뿐이고,
+#   둘 다 넓히는 방향으로만 손대면 되므로 「빠뜨림」이 아니라 「과함」으로만
+#   틀릴 수 있다 (과함은 오탐으로 즉시 운다 — 결손은 조용하다).
+SCAN_ROOTS = [
+    "docs",           # 정본 + 승격된 확장 명세 + 연구 노트. 하위 전부.
+    "rtl",            # 형식 모델 · SpinalHDL 주 구현 · SV 검증층 · 시뮬 하네스
+    "proofs",         # `rtl/formal` 과 같은 부류의 형식 모델
+    "asm",            # 비트-동등 기준 어셈블러 — 정본 §1.3·§1.4 를 직접 인용한다.
+                      # **hard 구역이다** (`sender_zone()`) — 뿌리에 넣기만 하고
+                      # volatile 로 두면 정의역 안인데 어느 래칫에도 없다.
+    ".claude-memos",  # volatile 구역. 래칫은 안 걸고 대조만 한다.
 ]
-# **글롭을 재귀로 바꾼 이유** (2026-08-30 실측): 비재귀 `*.md` 라
-# `.claude-memos/generated/isa_tables_frag.md` 가 축 0·2 의 정의역 밖에 있었다.
-# 하위 디렉토리는 「새 부류가 자동으로 검사 밖에 태어난다」의 가장 흔한 형태다.
+SCAN_SUFFIXES = {
+    ".typ", ".tla", ".cfg", ".sby", ".sv", ".svh", ".v", ".scala", ".sbt",
+    ".md", ".py", ".sh",
+}
+
+# ── 뿌리 **안**에서 빼는 것 ── **추적되는데도** 빼는 것만 여기 적는다.
+#    산출물이라 좌표를 고칠 수 없다(재생성이 되돌린다) — 고쳐야 할 자리는
+#    생성기이거나 그 입력이다.
+#
+# **미추적 산출물은 여기 적지 않는다** — `iter_scan_files()` 가 git 인덱스와
+# 교차하므로 자동으로 밖이다. 초판은 `proofs/tla/derived/` 를 「TLC 추적
+# 산출물」이라며 적었는데 **그 디렉토리는 존재하지 않았다**: TLC 는
+# `proofs/tla/AccBank_TTrace_*.tla` 로 뿌리에 직접 떨군다(`.gitignore:51`).
+# 즉 그 줄은 아무것도 빼지 않았고, 실제 산출물 129개가 정의역 안에 있었다.
+# 손으로 적은 제외 목록이 실제 배치와 어긋난 지문이다 (§6.7).
+SCAN_EXCLUDE_PREFIX = (
+    "rtl/generated/",             # SpinalHDL 이 `.scala` 에서 뽑는 `.sv` (추적됨 18개)
+    "asm/generated_isa_tables.py",  # `gen_isa_tables.py` 산출물 (추적됨. 오늘 §인용
+                                    # 0건 — 0 이라서 빼는 게 아니라 **산출물이라서**)
+)
+
+# ── 뿌리로 **넣지 않은 것**과 그 이유 ──────────────────────────────────────
+#
+# 이 목록이 없으면 다음 사람이 「빠진 것을 또 손으로 더하는」 일을 반복한다.
+# 각 항목은 2026-08-30 전수 실측이다.
+#
+#  · **저장소 루트의 `*.v` (참조 구현 18개, `§` 인용 922건)** — 인용의 번호
+#    체계가 정본이 아니다. 전부 §22–§35 이고 그것은 `.claude-memos/wt64v1_spec.md`
+#    의 자기 절 번호다 (정본은 1–6장 + 부록 A–E). 실측으로 정본 장 번호에
+#    해당하는 것은 922건 중 **3건**뿐이다. 넣으면 919건이 「정본 장이 아님」으로
+#    조용히 버려지고 3건을 위해 표만 커진다. ⇒ 옛 명세를 겨냥한 인용은 이
+#    검사의 대상이 아니다 (그 문서의 절 지도를 이 검사는 만들지 않는다).
+#  · **`synth/` (277건)** — 위와 같다. 실측 정본 장 인용 **0건**. 게다가
+#    `synth/lattice/reports/` 는 축 1 이 이미 도구 산출물로 제외한 자리다.
+#  · **`include/generated/` (129건)** — `gen_*.py` 산출물이고 번호 체계도
+#    §23·§25·§27(옛 명세)이다. 실측 정본 장 인용 5건, 그중 3건은 그 문서
+#    자신의 절 번호(`selfnum`)다.
+#  · **`scripts/` (약 400건)** — 큐레이트되는 문면이고 정본을 인용한다. 그런데
+#    **검사기의 변이 픽스처가 일부러 틀린 좌표를 문자열로 담는다** — 실측
+#    `lint_guide_derived_tables.py:704` 의 `"…근거는 @sec:extpayload 4.9 다."`
+#    는 음성 시험이 심는 변이이고 §4.9 는 없어야 정상이다. 정의역에 넣으면
+#    축 0 이 그 자리를 하드 실패로 문다. 「검사기가 서로의 음성 시험을 깨는」
+#    형태이고 그 반작용이 F-52 다. ⇒ 픽스처를 문면에서 구별할 문법이 생기기
+#    전까지는 밖에 둔다. **그 대가는 `scripts/` 의 정본 인용 89건이 대조되지
+#    않는다는 것**이고, 그것을 여기 적어 둔다.
+#  · **`.claude-memories/`** — CC 메모리 미러. 저장소가 아니라 도구의 상태다.
 
 # 축 1 은 **저장소 전역**이 정의역이다 — 좌표 인용은 어디에나 산다.
 AX1_SKIP_DIRS = {".git", "__pycache__", "node_modules", ".pytest_cache",
@@ -258,6 +382,52 @@ LABEL_DECL_RE = re.compile(r"<(sec:[a-z][a-z0-9-]*)>")
 # `§N.M[.K]` — 라벨 없이 절 번호만 쓴 인용. 장 번호 N 이 어느 파일인지는
 # 장 번호 → 파일 맵으로 푼다. 2026-08-27 에 이 형태를 놓쳐 개악이 났다.
 BARE_RE = re.compile(r"§(\d+\.\d+(?:\.\d+)?)")
+
+# `부록 X.N[.K]` — **부록 절 인용.** 정본은 부록을 숫자가 아니라 글자로 부르고
+# (`부록 A`–`부록 E`), 그래서 `§` 를 붙이지 않는 관례가 굳었다. 그 관례 때문에
+# 이 부류는 `BARE_RE` 에 걸리지 않아 **축 2 의 정의역 밖**이었다.
+#
+# ── 왜 이것을 뒤늦게 더하는가 (2026-08-30, 폐쇄 직후의 실측) ──────────────
+#
+# 정의역 폐쇄가 드러낸 낡은 좌표 여섯을 수리하면서 **둘은 재조준이 아니라
+# 결속 해제**였다: `rtl/sim/README.md:170` 과 `…/top/Wt64Top.scala:1180` 은
+# `§N.M` 을 옳은 번호로 바꾼 것이 아니라 `부록 D.3.1`·`부록 E.1.1` 이라는
+# **이 검사가 파싱하지 못하는 표기**를 끼워 넣어, 따옴표가 어느 `§N.M` 에도
+# 결속되지 않게 만들었다. 문면 자체는 더 정확해졌지만(귀속은 헤딩 계수로
+# 참임을 확인했다) 두 자리는 반증력 있는 대조에서 빠져 「안 잰다」로 옮겨
+# 갔다 — 즉 **수리가 검사를 좁혔다.**
+#
+# 그 형태를 래칫으로 덮으면 「파싱 못 하는 표기로 바꾸면 통과」가 성립한다.
+# ⇒ 표기를 검사에 넣는다. 실측(전 정의역): 인용 98건 · 따옴표 대조 22건 ·
+#    **엉뚱한 절 0건**(오탐 0) · 실재하지 않는 부록 절 0건. 그중 반증력 있는
+#    hard 대조 5건이 부록 B·D·E 의 덮임을 처음으로 0 밖으로 내보낸다 —
+#    그 둘이 그 5건에 들어 있다.
+#
+# **덮지 않는 것**: `부록 B.1/B.5` 의 `B.5` 처럼 「부록」이 앞에 없는 맨 글자
+# 좌표. `E.10`·`D.5` 단독형은 식별자·버전 문자열과 문법으로 구별되지 않는다
+# (§6.7 — 넣지 않은 것의 사유를 적는다).
+APX_RE = re.compile(r"부록\s*([A-E])\.(\d+(?:\.\d+)?)")
+
+
+def cite_str(num: str) -> str:
+    """절 키를 **문면이 쓰는 꼴**로 되돌린다 — `'1.4.2'`→`§1.4.2`,
+    `'부록 D.3.1'`→`부록 D.3.1`. 실패 메시지가 `§부록 D.3.1` 이라 적으면
+    독자가 그 문자열을 찾을 수 없다."""
+    return num if num.startswith("부록") else "§" + num
+
+
+def iter_sec_cites(text: str):
+    """축 2 의 인용 — `§N.M` 과 `부록 X.N` 을 **문서 순서로** 함께 돌려준다.
+
+    Yields (절 키, match). 절 키는 `secmaps` 의 키와 같은 문면이다
+    (`'1.4.2'` · `'부록 D.3.1'`) — `키.split('.')[0]` 이 두 부류 모두에서
+    장 키(`'1'` · `'부록 D'`)가 되므로 아래 장→파일 맵이 그대로 선다.
+    """
+    rows = [(m.start(), m.group(1), m) for m in BARE_RE.finditer(text)]
+    rows += [(m.start(), f"부록 {m.group(1)}.{m.group(2)}", m)
+             for m in APX_RE.finditer(text)]
+    for _, num, m in sorted(rows, key=lambda x: x[0]):
+        yield num, m
 
 # **이름이 붙은 형제 문서 인용** — `` `Di` §4.7 `` · `` `lf_extension_split.md`
 # §3.1 `` 처럼 *다른 문서의* 절을 가리키는 형태다. 정본 좌표가 아니므로 정본
@@ -320,18 +490,37 @@ WEAK_OWNERS_MIN = 4
 # 하한은 면제하지 않았다. F-52(「하드 게이트가 거짓 실패하고 그 반작용으로
 # 게이트를 끈다」)의 뇌관을 스스로 심은 것이다.
 #
-#   hard      정본 · `rtl/` · `proofs/` — 큐레이트되고 리뷰를 거친다.
+#   hard      정본 · `rtl/` · `proofs/` · `asm/` — 큐레이트되고 리뷰를 거친다.
 #             R5·R6 상한이 여기만 건다.
 #   curated   그 밖의 `docs/` — 승격된 확장 명세·연구 노트. 버전 관리되는
 #             문서이고 세션마다 새로 태어나지 않는다. **덮임 하한이 여기까지**.
 #   volatile  나머지(`.claude-memos/` 등) — 세션마다 새 분석이 태어난다.
 #             **어떤 래칫도 걸지 않는다. 인쇄만 한다.**
+#
+# ── `asm/` 을 hard 로 올린다 (2026-08-30, 정의역 폐쇄의 후속) ──────────────
+#
+# `asm` 을 `SCAN_ROOTS` 에 넣으면서 주석에 「정본 §1.3·§1.4 를 직접 인용한다」고
+# 적었는데, **집행 실효는 0 이었다.** 이 함수가 `asm/` 을 volatile 로 분류하기
+# 때문이다: 축 0·2 의 정의역에는 들어왔지만 R5 상한도, R6 도, 덮임 기여도,
+# 하드 절-실재 검사도 걸리지 않았다. 실측으로 `asm/` 의 축 2 인용 12건이
+# 전부 `outofdomain`(인쇄만, 상한 없음)으로 흘렀고 실재하지 않는 절은
+# `nonexist_soft` 로 떨어져 실패하지 않았다.
+#
+# 그것은 이 커밋 자신이 「손-유지 정의역의 지문」이라 이름한 비대칭
+# (「같은 파일이 한 축에서는 hard 이고 다른 축에서는 존재하지 않았다」)의
+# **거울상**이다 — 이번엔 정의역 안인데 어느 래칫에도 없었다.
+#
+# `asm/` 은 비트-동등 기준 어셈블러이고 리뷰를 거쳐 버전 관리되는 소스다.
+# `.claude-memos/` 처럼 세션마다 새로 태어나지 않으므로 F-52(매 커밋 거짓
+# 실패)의 근거가 없다. ⇒ `rtl/`·`proofs/` 와 같은 지위를 준다.
+# 실측 대가: R5(축 2) 표에 두 파일 12건이 등재된다. 나머지 축은 0건이다.
+# (산출물 `asm/generated_isa_tables.py` 는 `SCAN_EXCLUDE_PREFIX` 가 이미 뺀다.)
 # ---------------------------------------------------------------------------
 _G = "docs/wt64v1-architecture-guide/"
 
 
 def sender_zone(rel: str) -> str:
-    if rel.startswith(_G) or rel.startswith(("rtl/", "proofs/")):
+    if rel.startswith(_G) or rel.startswith(("rtl/", "proofs/", "asm/")):
         return "hard"
     if rel.startswith("docs/"):
         return "curated"
@@ -453,15 +642,29 @@ AX1_UNMEASURED_HARD_MAX: dict[str, int] = {
     "rtl/sv/assert/HiuMask_props.sv": 3,
     "rtl/sv/assert/Reassembly_props.sv": 4,
 }
+# ── 축 2 표의 **세 번째 기준선** (2026-08-30 세 번째 파도) ────────────────
+# 늘어난 자리는 셋 다 「새 인용이 태어난 것」이 아니라 「이미 있던 인용이
+# 정의역 안으로 들어온 것」이다:
+#   · `부록 X.N` 표기 68건 — `APX_RE` 신설 (`docs/…/README.md` 3 ·
+#     `04-ext-payload.typ` 7 · `Reassembly.scala` 8 · `XlateStore.scala` 9 …)
+#   · `asm/` 12건 — `sender_zone()` 이 hard 로 올림
+#   · 인덱스 교차로 **줄어든 자리는 없다** — 미추적 129개의 `§N.M` 이 0건이라서다
+# 늘리는 편집이므로 사유를 남긴다 (래칫은 올릴 때 리뷰 대상이다).
 AX2_UNMEASURED_HARD_MAX: dict[str, int] = {
-    "docs/wt64v1-architecture-guide/appendix/b-gaps.typ": 33,
+    "asm/test_wavetensor_asm.py": 2,
+    "asm/wavetensor_asm.py": 10,
+    "docs/wt64v1-architecture-guide/README.md": 6,
+    "docs/wt64v1-architecture-guide/appendix/b-gaps.typ": 34,
     "docs/wt64v1-architecture-guide/appendix/d-properties.typ": 2,
-    "docs/wt64v1-architecture-guide/chapters/01-isa-asm.typ": 30,
+    "docs/wt64v1-architecture-guide/chapters/01-isa-asm.typ": 32,
     "docs/wt64v1-architecture-guide/chapters/02-fabric-alu.typ": 1,
-    "docs/wt64v1-architecture-guide/chapters/04-ext-payload.typ": 15,
+    "docs/wt64v1-architecture-guide/chapters/03-hiu.typ": 1,
+    "docs/wt64v1-architecture-guide/chapters/04-ext-payload.typ": 22,
+    "docs/wt64v1-architecture-guide/chapters/06-formal.typ": 1,
     "proofs/tla/README.md": 12,
     "proofs/tla/trace_to_directed.md": 2,
-    "rtl/formal/sby/CompletionUnit/descriptor.sby": 1,
+    "rtl/README.md": 78,
+    "rtl/formal/sby/CompletionUnit/descriptor.sby": 2,
     "rtl/formal/sby/DecodeWalk/walk_decode.sby": 1,
     "rtl/formal/sby/FabricMerge/contracts.sby": 1,
     "rtl/formal/sby/HiuMask/hiumask.sby": 1,
@@ -472,19 +675,108 @@ AX2_UNMEASURED_HARD_MAX: dict[str, int] = {
     "rtl/formal/sby/RouteJudge/route_judge.sby": 3,
     "rtl/formal/sby/RouteMmio/route_mmio.sby": 2,
     "rtl/formal/sby/SharedUnit/depth0.sby": 1,
-    "rtl/formal/tla/Decode.tla": 44,
+    "rtl/formal/tla/Decode.tla": 51,
     "rtl/formal/tla/Fabric.tla": 40,
+    "rtl/formal/tla/Fabric_del_bp_loud.cfg": 1,
+    "rtl/formal/tla/Fabric_del_bp_loud_shapeA.cfg": 1,
+    "rtl/formal/tla/Fabric_del_bp_loud_shapeB.cfg": 1,
+    "rtl/formal/tla/Fabric_del_bp_no_consumer_write.cfg": 1,
+    "rtl/formal/tla/Fabric_del_bp_no_consumer_write_shapeA.cfg": 1,
+    "rtl/formal/tla/Fabric_del_bp_no_consumer_write_shapeB.cfg": 1,
+    "rtl/formal/tla/Fabric_del_capture_atomic.cfg": 1,
+    "rtl/formal/tla/Fabric_del_capture_atomic_depth2.cfg": 1,
+    "rtl/formal/tla/Fabric_del_capture_atomic_shapeA.cfg": 1,
+    "rtl/formal/tla/Fabric_del_capture_atomic_shapeB.cfg": 1,
+    "rtl/formal/tla/Fabric_del_fault_sticky.cfg": 1,
+    "rtl/formal/tla/Fabric_del_fault_sticky_shapeA.cfg": 1,
+    "rtl/formal/tla/Fabric_del_fault_sticky_shapeB.cfg": 1,
+    "rtl/formal/tla/Fabric_del_single_producer.cfg": 1,
+    "rtl/formal/tla/Fabric_del_single_producer_damage.cfg": 1,
+    "rtl/formal/tla/Fabric_del_single_producer_shapeA.cfg": 1,
+    "rtl/formal/tla/Fabric_del_single_producer_shapeB.cfg": 1,
+    "rtl/formal/tla/Fabric_del_stall_on_pending.cfg": 2,
+    "rtl/formal/tla/Fabric_del_stall_on_pending_shapeA.cfg": 2,
+    "rtl/formal/tla/Fabric_del_stall_on_pending_shapeB.cfg": 2,
+    "rtl/formal/tla/Fabric_del_valid_gated.cfg": 1,
+    "rtl/formal/tla/Fabric_del_valid_gated_depth2.cfg": 1,
+    "rtl/formal/tla/Fabric_del_valid_gated_shapeA.cfg": 1,
+    "rtl/formal/tla/Fabric_del_valid_gated_shapeB.cfg": 1,
+    "rtl/formal/tla/Fabric_pair_shovefair_bp_relief.cfg": 1,
     "rtl/formal/tla/Isolation.tla": 59,
     "rtl/formal/tla/MemOrder.tla": 20,
+    "rtl/formal/tla/MemOrder_base.cfg": 3,
+    "rtl/formal/tla/MemOrder_del_complete_not_ordered.cfg": 1,
+    "rtl/formal/tla/MemOrder_del_complete_not_ordered_shapeA.cfg": 1,
+    "rtl/formal/tla/MemOrder_del_complete_not_ordered_shapeB.cfg": 1,
+    "rtl/formal/tla/MemOrder_del_token_gate.cfg": 1,
+    "rtl/formal/tla/MemOrder_del_token_gate_shapeA.cfg": 1,
+    "rtl/formal/tla/MemOrder_del_token_gate_shapeB.cfg": 1,
+    "rtl/formal/tla/MemOrder_del_wave_not_gating.cfg": 1,
+    "rtl/formal/tla/MemOrder_del_wave_not_gating_shapeA.cfg": 1,
+    "rtl/formal/tla/MemOrder_del_wave_not_gating_shapeB.cfg": 1,
+    "rtl/formal/tla/MemOrder_witness_NoWaveInversion.cfg": 1,
+    "rtl/formal/tla/MemOrder_witness_NoWaveInversion_shapeB.cfg": 1,
     "rtl/formal/tla/NoLoss.tla": 5,
-    "rtl/formal/tla/Payload.tla": 47,
+    "rtl/formal/tla/Payload.tla": 51,
+    "rtl/formal/tla/Payload_del_base_from_tag.cfg": 1,
+    "rtl/formal/tla/Payload_del_cap_check.cfg": 1,
+    "rtl/formal/tla/Payload_del_capability_check.cfg": 1,
+    "rtl/formal/tla/Payload_del_capability_not_fault.cfg": 1,
+    "rtl/formal/tla/Payload_del_key_is_tag.cfg": 1,
+    "rtl/formal/tla/Payload_del_last_judges.cfg": 1,
+    "rtl/formal/tla/Payload_del_loud_reject.cfg": 1,
+    "rtl/formal/tla/Payload_del_no_dup_seq.cfg": 1,
+    "rtl/formal/tla/Payload_del_no_restart.cfg": 1,
+    "rtl/formal/tla/Payload_shapeA.cfg": 1,
+    "rtl/formal/tla/Payload_shapeB.cfg": 1,
+    "rtl/formal/tla/Payload_witness_NoDupSeq.cfg": 1,
+    "rtl/formal/tla/Payload_witness_NoOverLimit.cfg": 1,
+    "rtl/formal/tla/Payload_witness_NoPartialReassembly.cfg": 1,
+    "rtl/formal/tla/Payload_witness_NoRestartClash.cfg": 1,
     "rtl/formal/tla/Platform.tla": 9,
-    "rtl/formal/tla/ResultBank.tla": 4,
+    "rtl/formal/tla/README.md": 40,
+    "rtl/formal/tla/ResultBank.cfg": 1,
+    "rtl/formal/tla/ResultBank.tla": 5,
+    "rtl/formal/tla/ResultBank_large.cfg": 1,
     "rtl/formal/tla/Route.tla": 18,
-    "rtl/formal/tla/SharedUnit.tla": 11,
+    "rtl/formal/tla/SharedUnit.tla": 12,
     "rtl/formal/tla/Walk.tla": 20,
-    "rtl/formal/tla/XlateStore.tla": 5,
-    "rtl/sv/assert/CompletionUnit_props.sv": 5,
+    "rtl/formal/tla/Walk_del_cap_check.cfg": 1,
+    "rtl/formal/tla/Walk_del_cap_declared.cfg": 1,
+    "rtl/formal/tla/Walk_del_end_authority.cfg": 1,
+    "rtl/formal/tla/Walk_del_junk_check.cfg": 1,
+    "rtl/formal/tla/Walk_del_len_check.cfg": 1,
+    "rtl/formal/tla/Walk_del_post_end_gated.cfg": 1,
+    "rtl/formal/tla/XlateStore.tla": 6,
+    "rtl/formal/tla/run.sh": 21,
+    "rtl/sim/README.md": 1,
+    "rtl/sim/run_wt64.py": 2,
+    "rtl/sim/test_mask_golden.py": 3,
+    "rtl/sim/test_shape_equiv.py": 2,
+    "rtl/spinal/src/main/scala/wt64/Common.scala": 33,
+    "rtl/spinal/src/main/scala/wt64/decode/DecodeWalk.scala": 58,
+    "rtl/spinal/src/main/scala/wt64/decode/OperandDecode.scala": 49,
+    "rtl/spinal/src/main/scala/wt64/fabric/FabricMerge.scala": 19,
+    "rtl/spinal/src/main/scala/wt64/fabric/ResultBank.scala": 16,
+    "rtl/spinal/src/main/scala/wt64/fabric/SharedUnit.scala": 11,
+    "rtl/spinal/src/main/scala/wt64/fp/StepSequencer.scala": 27,
+    "rtl/spinal/src/main/scala/wt64/gen/GenFabricMerge.scala": 1,
+    "rtl/spinal/src/main/scala/wt64/gen/GenHiuPipeline.scala": 1,
+    "rtl/spinal/src/main/scala/wt64/gen/GenReassembly.scala": 1,
+    "rtl/spinal/src/main/scala/wt64/gen/GenSharedUnit.scala": 2,
+    "rtl/spinal/src/main/scala/wt64/gen/GenStepSequencer.scala": 3,
+    "rtl/spinal/src/main/scala/wt64/gen/GenXlateStore.scala": 1,
+    "rtl/spinal/src/main/scala/wt64/hiu/HiuPipeline.scala": 27,
+    "rtl/spinal/src/main/scala/wt64/hiu/MmioConfig.scala": 27,
+    "rtl/spinal/src/main/scala/wt64/hiu/OwnershipTable.scala": 18,
+    "rtl/spinal/src/main/scala/wt64/hiu/XlateStore.scala": 29,
+    "rtl/spinal/src/main/scala/wt64/host/CompletionUnit.scala": 43,
+    "rtl/spinal/src/main/scala/wt64/mask/MaskUnit.scala": 19,
+    "rtl/spinal/src/main/scala/wt64/memorder/MemOrderGate.scala": 10,
+    "rtl/spinal/src/main/scala/wt64/payload/Reassembly.scala": 52,
+    "rtl/spinal/src/main/scala/wt64/route/RouteJudge.scala": 11,
+    "rtl/spinal/src/main/scala/wt64/top/Wt64Top.scala": 63,
+    "rtl/sv/assert/CompletionUnit_props.sv": 6,
     "rtl/sv/assert/DecodeWalk_props.sv": 15,
     "rtl/sv/assert/FabricMerge_props.sv": 9,
     "rtl/sv/assert/HiuMask_props.sv": 3,
@@ -498,6 +790,7 @@ AX2_UNMEASURED_HARD_MAX: dict[str, int] = {
     "rtl/sv/assert/SharedUnitDepth0_props.sv": 2,
     "rtl/sv/assert/SharedUnit_props.sv": 2,
     "rtl/sv/assert/XlateStore_props.sv": 1,
+    "rtl/sv/assert/gen_crc32c_matrix.py": 1,
 }
 
 # R6 — 「의역으로 보임」의 상한. **hard 구역 발신만.**
@@ -513,16 +806,50 @@ AX1_SOFT_HARD_MAX: dict[str, int] = {
     "rtl/sim/test_shape_equiv.py": 1,
     "rtl/sv/assert/HiuMask_props.sv": 1,
 }
+# ── 축 2 R6 의 **세 번째 기준선**: `APX_RE` 가 들여온 5건 ──────────────────
+# 여섯이 들어왔고 **하나는 고쳤다** — `Reassembly.scala:45` 의
+# `부록 E.12 1항 「소거 대상: 활성 문맥 전체」` 는 정본이 「소거 대상: **그
+# 태그의** 활성 문맥 전체」라 적으므로 축자로 되돌렸다(그 자리는 이제 `ok` 로
+# 세어지고 `e-defined.typ` 덮임이 3→4 가 됐다). 남은 다섯은 두 부류다:
+#   · **진짜 의역** 3건 — 전부 정본 문면(`README.md` · `01-isa-asm.typ` ×2 ·
+#     `04-ext-payload.typ`). 축자로 되돌리려면 정본 서술을 고쳐야 하므로
+#     이 파도의 소유 범위 밖이다 (좌표·계수만 손댄다).
+#   · **결속 오인** 2건 — `HiuPipeline.scala:38` 의 「s4 왕복」과
+#     `MaskUnit.scala:4-5` 의 「마스킹(자리)」는 정본 인용이 아니라 *그 파일
+#     자신의 절 이름*인데 앞에 `부록 E.9` 가 있어 결속됐다. `soft` 로 떨어져
+#     실패하지는 않으므로(R6 상한만 탄다) 오탐을 만들지 않는다.
+#     이 부류를 끊으려면 「따옴표가 로컬 헤딩을 가리킨다」를 문법으로
+#     구별해야 하는데 그 문법이 없다 — 있으면 그때 상한을 내린다.
 AX2_SOFT_HARD_MAX: dict[str, int] = {
+    "docs/wt64v1-architecture-guide/README.md": 1,
     "docs/wt64v1-architecture-guide/appendix/b-gaps.typ": 2,
-    "docs/wt64v1-architecture-guide/chapters/01-isa-asm.typ": 2,
-    "docs/wt64v1-architecture-guide/chapters/04-ext-payload.typ": 1,
+    "docs/wt64v1-architecture-guide/chapters/01-isa-asm.typ": 4,
+    "docs/wt64v1-architecture-guide/chapters/04-ext-payload.typ": 2,
+    "rtl/README.md": 1,
     "rtl/formal/tla/Fabric.tla": 1,
     "rtl/formal/tla/MemOrder.tla": 1,
+    "rtl/formal/tla/MemOrder_del_gate_matches_dep_stuck.cfg": 1,
     "rtl/formal/tla/Payload.tla": 1,
+    "rtl/formal/tla/Payload_pair_silent_overwrite.cfg": 1,
+    "rtl/formal/tla/README.md": 1,
     "rtl/formal/tla/ResultBank.tla": 1,
     "rtl/formal/tla/Route.tla": 1,
     "rtl/formal/tla/SharedUnit.tla": 1,
+    "rtl/sim/README.md": 1,
+    "rtl/spinal/src/main/scala/wt64/decode/DecodeWalk.scala": 2,
+    "rtl/spinal/src/main/scala/wt64/decode/OperandDecode.scala": 2,
+    "rtl/spinal/src/main/scala/wt64/fabric/FabricMerge.scala": 1,
+    "rtl/spinal/src/main/scala/wt64/fabric/ResultBank.scala": 1,
+    "rtl/spinal/src/main/scala/wt64/fp/StepSequencer.scala": 1,
+    "rtl/spinal/src/main/scala/wt64/hiu/HiuPipeline.scala": 2,
+    "rtl/spinal/src/main/scala/wt64/hiu/MmioConfig.scala": 2,
+    "rtl/spinal/src/main/scala/wt64/hiu/XlateStore.scala": 1,
+    "rtl/spinal/src/main/scala/wt64/host/CompletionUnit.scala": 1,
+    "rtl/spinal/src/main/scala/wt64/mask/MaskUnit.scala": 2,
+    "rtl/spinal/src/main/scala/wt64/memorder/MemOrderGate.scala": 1,
+    "rtl/spinal/src/main/scala/wt64/payload/Reassembly.scala": 4,
+    "rtl/spinal/src/main/scala/wt64/route/RouteJudge.scala": 1,
+    "rtl/spinal/src/main/scala/wt64/top/Wt64Top.scala": 2,
     "rtl/sv/assert/DecodeWalk_props.sv": 1,
     "rtl/sv/assert/OperandDecode_props.sv": 1,
 }
@@ -570,14 +897,41 @@ AX1_COVER_FLOOR: dict[str, int] = {
 # 통과」라는 논증이 이 축에 그대로 적용된다.
 #
 # 값은 **반증력 있는 대조**만 센다 (보통명사 인용·묶음 일부 적중은 제외 —
-# 위 `WEAK_OWNERS_MIN` 주석). 2026-08-30 실측 50건의 장별 분포다.
+# 위 `WEAK_OWNERS_MIN` 주석).
+#
+# **정의역 폐쇄가 이 표를 세 배로 만들었다** (2026-08-30 재기준):
+#
+#     장            폐쇄 전   폐쇄 후
+#     01-isa-asm       9   →   23
+#     02-fabric-alu   12   →   31
+#     03-hiu           6   →   23
+#     04-ext-payload  17   →   49
+#     05-security      2   →   11
+#     06-formal        4   →    8
+#     합계            50   →  145
+#
+# 늘어난 95건은 거의 전부 `rtl/spinal`(주 구현체) 발신이다. 「파손 0」이
+# 무증거였던 장들 — 특히 05-security(2건) 와 06-formal(4건) — 이 그만큼
+# 증거를 얻었다. **하한을 올리는 편집이 아니라, 정의역이 닫히면서 이미 있던
+# 증거가 보이게 된 것**이다.
+# **부록 다섯이 이 표에 없었다** (2026-08-30, `APX_RE` 신설과 함께 등재):
+# 축 2 가 `§N.M` 만 보던 동안 부록을 겨냥한 대조는 구조적으로 0 이었고, 그래서
+# 이 표는 「부록의 재번호를 잡을 증거가 없다」는 사실조차 인쇄하지 못했다 —
+# 등재되지 않은 장은 「증거 0 인 장」 경고에도 나오지 않는다. 부록 표기를
+# 검사에 넣자 B·D·E 가 처음으로 0 밖으로 나왔다. A·C 는 여전히 0 이고,
+# **그 0 이 이제 인쇄된다**(그 부록들에 대한 「파손 0」은 무증거다).
 AX2_COVER_FLOOR: dict[str, int] = {
-    _G + "chapters/01-isa-asm.typ": 9,
-    _G + "chapters/02-fabric-alu.typ": 12,
-    _G + "chapters/03-hiu.typ": 6,
-    _G + "chapters/04-ext-payload.typ": 17,
-    _G + "chapters/05-security.typ": 2,
-    _G + "chapters/06-formal.typ": 4,
+    _G + "chapters/01-isa-asm.typ": 23,
+    _G + "chapters/02-fabric-alu.typ": 31,
+    _G + "chapters/03-hiu.typ": 23,
+    _G + "chapters/04-ext-payload.typ": 49,
+    _G + "chapters/05-security.typ": 11,
+    _G + "chapters/06-formal.typ": 8,
+    _G + "appendix/a-capacity.typ": 0,     # 부록 인용 대조 0 — 무증거
+    _G + "appendix/b-gaps.typ": 1,
+    _G + "appendix/c-glossary.typ": 0,     # 부록 인용 대조 0 — 무증거
+    _G + "appendix/d-properties.typ": 1,   # `rtl/sim/README.md` 의 부록 D.3.1
+    _G + "appendix/e-defined.typ": 4,      # 그중 하나가 `Wt64Top.scala` 의 부록 E.1.1
 }
 
 
@@ -724,7 +1078,10 @@ class Guide:
             self.secmaps[p] = build_section_map(p)
             self.contents[p] = txt.splitlines()
             c = chapter_number(p)
-            if c and c.isdigit():
+            # 부록(`'부록 A'` …)도 장 키다 — `APX_RE` 인용의 대상 파일이 여기서
+            # 풀린다. 숫자만 넣던 동안 부록 인용은 「정본에 그런 장이 없다」로
+            # 떨어질 수밖에 없었다.
+            if c:
                 self.chap_files.setdefault(c, p)
 
     def _bodies(self, p: Path) -> dict[str, str]:
@@ -766,12 +1123,54 @@ class Guide:
 
 
 def iter_scan_files(root: Path):
-    """축 0·2 의 정의역."""
-    for rel_dir, pat in SCAN_GLOBS_REL:
+    """축 0·2 의 정의역 — **뿌리 순회 ∩ git 인덱스**.
+
+    글롭 열거였을 때 이 함수가 놓친 것: `rtl/spinal`(주 구현체) 전부 ·
+    `rtl/README.md` · `rtl/sim` · `rtl/formal/tla/README.md`. 위 `SCAN_ROOTS`
+    주석에 그 실측과 「넣지 않은 뿌리」의 사유가 있다.
+
+    ── **인덱스와 교차하는 이유** (2026-08-30, 뿌리 순회의 첫 회귀) ──
+
+    뿌리 순회는 「새 하위 디렉토리가 자동으로 검사 안에 태어난다」를 얻는
+    대신 **도구 산출물도 자동으로 태어나게** 했다. 실측: 순회가 잡은 655개
+    중 **129개가 미추적**이었고 전부 `proofs/tla/AccBank_TTrace_*.tla`
+    (TLC 추적 산출물)다. 손으로 적은 제외 목록은 그것을 존재하지 않는
+    `proofs/tla/derived/` 에서 찾고 있었다. `rtl/spinal/target` ·
+    `rtl/spinal/project/target`(sbt 산출물 344개)도 그대로 순회 대상이었고
+    `SCAN_SUFFIXES` 는 `.scala`·`.md` 를 받는다.
+
+    오늘 이들의 `§N.M` 은 0건이라 `make lint` 는 통과한다. 그런데 `ratchet()`
+    은 **파일별 정확 일치**(초과도 미달도 실패)이므로, 도구가 `§N.M` 을 담은
+    중간물을 하나만 떨궈도 **그 도구를 돌린 사람에게만** `make lint` 가
+    실패한다 — 이 파일이 R5 를 파일별 표로 만든 이유로 든 F-52 반작용
+    (「거짓 실패 → 게이트를 끈다」)의 정확한 형태다.
+
+    그리고 축 1 은 이미 `git ls-files` 를 정의역으로 명시하고 있었다. 축
+    0·2 만 파일시스템이었던 것이 **이 커밋이 없애려던 축 간 비대칭의 다른
+    형태**다 (「같은 파일이 한 축에서는 hard 이고 다른 축에서는 존재하지
+    않았다」의 거울상). ⇒ 세 축의 정의역을 같은 인덱스에 건다.
+
+    git 이 없는 자리(자기시험 픽스처)에서는 `_repo_paths()` 가 트리 순회로
+    떨어진다 — 그때 이 교차는 항등이 되고, 픽스처는 `_FIX_IGNORE` 가 대신
+    산출물을 막는다.
+    """
+    tracked = {str(p.relative_to(root)) for p in _repo_paths(root)}
+    seen: set[str] = set()
+    for rel_dir in SCAN_ROOTS:
         d = root / rel_dir
         if not d.exists():
             continue
-        for src in sorted(d.glob(pat)):
+        for src in sorted(d.rglob("*")):
+            if not src.is_file() or src.suffix.lower() not in SCAN_SUFFIXES:
+                continue
+            rel = str(src.relative_to(root))
+            if rel.startswith(SCAN_EXCLUDE_PREFIX) or rel in seen:
+                continue
+            if rel not in tracked:
+                continue          # 미추적 = 도구 산출물이거나 사설 메모. 정의역 밖.
+            if any(part in AX1_SKIP_DIRS for part in src.relative_to(root).parts):
+                continue
+            seen.add(rel)
             try:
                 yield src, src.read_text(encoding="utf-8")
             except (UnicodeDecodeError, OSError):
@@ -1073,7 +1472,7 @@ def axis1(root: Path) -> dict:
                 #    이름*이고 좌표는 그 블록의 일부 줄을 가리킨다. 결속하면
                 #    「그 줄에 없다」로 거짓 실패한다.
                 #    그리고 따옴표 **뒤**도 같은 이유로 막는다. 축 0·2 가 쓰는
-                #    `bind_quote()` 는 앞뒤 양쪽을 보는데(위 567행 부근) 축 1
+                #    `bind_quote()` 는 앞뒤 양쪽을 보는데(위 그 함수) 축 1
                 #    인라인 결속기는 오래도록 `pre` 만 보았다. 그 비대칭이
                 #    2026-08-30 에 **거짓 STALE 3건**을 만들었고, 그것을
                 #    「재조준」한 편집이 **옳던 좌표 셋을 틀린 좌표로 바꿨다**
@@ -1127,10 +1526,11 @@ def axis1(root: Path) -> dict:
 def axis2(root: Path, g: Guide, files) -> dict:
     r = {
         "checked": 0, "crossdoc": 0, "selfnum": 0, "outofdomain": 0,
+        "nonguide": 0,
         "nonexist_hard": [], "nonexist_soft": [],
         "ok": 0, "ok_weak": 0, "wrong": [], "soft": 0, "soft_hard": [],
         "ambig": 0, "unmeasured": 0, "unmeasured_hard": [], "group": 0,
-        "cover": {},
+        "cover": {}, "ok_sites": [],
         "ok_out": 0, "ok_out_sites": [], "wrong_out": [], "soft_out": 0,
     }
     for src, text in files:
@@ -1138,12 +1538,18 @@ def axis2(root: Path, g: Guide, files) -> dict:
         selfch = {m.group(1) for m in SELF_HEAD_RE.finditer(text)}
         canon = rel.startswith(_G)
         hard_zone = sender_zone(rel) == "hard"
-        for m in BARE_RE.finditer(text):
-            num = m.group(1)
+        for num, m in iter_sec_cites(text):
+            apx = num.startswith("부록")
             ch = num.split(".")[0]
             tgt = g.chap_files.get(ch)
             if tgt is None:
-                continue          # 그 장이 없다 — 다른 문서의 절일 수 있다
+                # 정본에 그런 장이 없다 — 거의 전부 `.claude-memos/wt64v1_spec.md`
+                # 의 §22–§40 번호다 (정본은 1–6장). **이 부류는 오래도록 아무
+                # 칸에도 세어지지 않아 인쇄에서 사라졌다** — 「안 잰다」조차 아니고
+                # 존재하지 않는 것처럼 보였다. §6.6.5 는 재지 않은 것을 통과로
+                # 인쇄하지 말라고 하지, 인쇄에서 지우라고 하지 않는다.
+                r["nonguide"] += 1
+                continue
             prewin = text[max(0, m.start() - 80): m.start()]
             nm = NAMED_REF_RE.search(prewin)
             if nm and GUIDE_NAME not in (nm.group(1) or nm.group(2) or ""):
@@ -1170,7 +1576,7 @@ def axis2(root: Path, g: Guide, files) -> dict:
             secmap = g.secmaps.get(tgt, {})
             if num not in secmap:
                 near = sorted(k for k in secmap if k.startswith(num.rsplit(".", 1)[0]))
-                msg = (f"{rel}:{line_no} — `§{num}` 이 실재하지 않는다 "
+                msg = (f"{rel}:{line_no} — `{cite_str(num)}` 이 실재하지 않는다 "
                        f"({tgt.name}). 이웃: {', '.join(near[:6]) or '(없음)'}")
                 # **비정본은 자기 절 번호를 가진다.** 2026-08-27 첫 실행에서
                 # 이 부류로 오탐 16건이 났다. ⇒ hard 구역만 하드로 본다.
@@ -1180,7 +1586,13 @@ def axis2(root: Path, g: Guide, files) -> dict:
                     r["nonexist_soft"].append(msg + " — 비정본이라 자기 절일 수 있다")
                 continue
 
-            members, is_last = group_members(text, m)
+            if apx:
+                # 부록 인용은 `(§1.4.2 · §1.4.6)` 같은 묶음 문법을 쓰지 않는다.
+                # `group_members()` 의 `§` 스캐너에 태우면 뒤따르는 `§` 인용을
+                # 같은 묶음으로 잘못 삼킨다.
+                members, is_last = [num], True
+            else:
+                members, is_last = group_members(text, m)
             if not is_last:
                 r["group"] += 1       # 묶음의 마지막 항이 대표로 결속한다
                 continue
@@ -1230,7 +1642,7 @@ def axis2(root: Path, g: Guide, files) -> dict:
                     r["soft_out"] += 1
                 else:
                     r["wrong_out"].append(
-                        (rel, line_no, "·".join(members), q,
+                        (rel, line_no, "·".join(cite_str(x) for x in members), q,
                          ", ".join(f"{p.name} §{k}" for p, k in owners[:4])))
                 continue
 
@@ -1256,13 +1668,18 @@ def axis2(root: Path, g: Guide, files) -> dict:
                     r["ok"] += 1
                     tr = str(tgt.relative_to(root))
                     r["cover"][tr] = r["cover"].get(tr, 0) + 1
+                    # **발신 자리를 기록한다.** 덮임은 대상별로만 세어져 있었고
+                    # 그래서 「이 대조가 *어느 정의역*에서 왔는가」를 물을 수
+                    # 없었다 — 정의역이 좁아져도 표는 그저 줄어들 뿐 「무엇이
+                    # 빠졌는가」를 말하지 못한다. 자기시험 ⑭ 가 이것을 쓴다.
+                    r["ok_sites"].append((rel, line_no, num, tr, needle))
             elif not owners:
                 r["soft"] += 1        # 의역/요약 — 대상은 못 재지만 R6 이 수를 잠근다
                 if hard_zone:
                     r["soft_hard"].append((rel, line_no, num, q))
             else:
                 r["wrong"].append(
-                    (rel, line_no, "·".join(members), q,
+                    (rel, line_no, "·".join(cite_str(x) for x in members), q,
                      ", ".join(f"{p.name} §{k}" for p, k in owners[:4])))
     return r
 
@@ -1529,7 +1946,7 @@ def run(root: Path, quiet: bool = False,
                         f"실제 자리는 **{act}** 다 (Δ{act - a_:+d})" if act else
                         f"{s}:{l} — `{r_}:{a_}` 가 인용한 「{q[:30]}」는 그 줄에 없다")
     for s, l, num, q, owners in a2["wrong"] + a2["wrong_out"]:
-        hard.append(f"{s}:{l} — `§{num}` 이 인용한 「{q[:34]}」는 그 절에 없다. "
+        hard.append(f"{s}:{l} — `{num}` 이 인용한 「{q[:34]}」는 그 절에 없다. "
                     f"실제 자리는 **{owners}**")
     for s, l, num, kinds in a2b["bad"]:
         hard.append(f"{s}:{l} — 「{num} 함정」이라 적었는데 §{num} 에 `#함정(` 이 없다 "
@@ -1570,8 +1987,8 @@ def run(root: Path, quiet: bool = False,
         f"  축 0 `@sec:`     인용 {a0['checked']}건 실재 · 따옴표 대조 {a0['quoted']}건\n"
         f"  축 1 `파일:줄`   인용 {a1['total']}건 (정의역 밖 {a1['outoftree']}건) — "
         f"좌표 실재 확인, 대상 대조 **{len(a1['ok'])}건**\n"
-        f"  축 2 `§N.M`      인용 {a2['checked']}건 실재 — 대상 대조 "
-        f"**{a2['ok']}건** (hard 구역 = 정본·rtl·proofs)\n"
+        f"  축 2 `§N.M`·`부록 X.N` 인용 {a2['checked']}건 실재 — 대상 대조 "
+        f"**{a2['ok']}건** (hard 구역 = 정본·rtl·proofs·asm)\n"
         f"                   + 비-hard 발신 대상 대조 **{a2['ok_out']}건** "
         f"(W6 이 밟은 부류 — 자기 번호 체계가 없는 문서의 정본 인용)\n"
         f"  축 2b 「N.M 함정」 블록 종류 {a2b['checked']}건 대조"
@@ -1588,6 +2005,10 @@ def run(root: Path, quiet: bool = False,
         f"     축 2 정의역 밖 — 비정본 자기 번호 {a2['selfnum']}건 · "
         f"형제 문서 인용 {a2['crossdoc']}건 · 비-hard 발신 따옴표 없음 "
         f"{a2['outofdomain']}건 · 그 구역 의역 {a2['soft_out']}건\n"
+        f"     축 2 **정본 장이 아닌 `§N.M`** {a2['nonguide']}건 — 거의 전부 옛 "
+        f"명세(`wt64v1_spec.md`)의 §22–§40 이다.\n"
+        f"        그 문서의 절 지도를 이 검사는 만들지 않으므로 대조하지 않는다 "
+        f"(뿌리 밖의 `synth/`·루트 `*.v` 는 이 부류만 갖는다 — `SCAN_ROOTS` 주석)\n"
         f"     축 1 정의역 밖 — **미추적 파일** {unf}개 / 좌표 {unc}건 "
         f"(정의역은 `git ls-files`, 즉 인덱스다)"
     )
@@ -1617,7 +2038,7 @@ def run(root: Path, quiet: bool = False,
     print("  ※ `--drift`(이력 축)는 이 실행에서 **돌지 않았다** — 약 12초가 "
           "걸리고 전체 이력을 요구하며,\n"
           "     shallow clone 에서는 통과가 아니라 공허가 된다. "
-          "(이 실행 자체는 약 1초, `--self-test` 는 약 6.5초다.)")
+          "(이 실행 자체는 약 1.2초, `--self-test` 는 약 10.9초다.)")
     return 0, {}
 
 
@@ -1631,13 +2052,94 @@ def run(root: Path, quiet: bool = False,
 # `rtl/formal/tla` 만 복사했더니 기준 문면의 **축 1 OK 가 0** 이었고, 축 1
 # 변이 둘이 「잡지 못함」이 아니라 「잴 것이 없음」으로 조용히 실패했다.
 # 자기시험이 스스로 공허해지는 정확한 형태다.
+# **`rtl/spinal` 을 2026-08-30 에 더했다** — 정의역 폐쇄로 새로 들어온 부류가
+# 픽스처에 없으면 ⑭·⑮ 가 「못 잡음」이 아니라 「잴 것 없음」이 되고, 그것이
+# 자기시험 자신의 공허다 (이 파일이 FIXTURE_DIRS 를 만든 이유와 같은 형태).
 FIXTURE_DIRS = [
     "docs/wt64v1-architecture-guide",
     "rtl/formal/tla",
     "rtl/sv/assert",
+    "rtl/spinal",
 ]
+
+# ── 2026-08-30 이전의 **손-유지 글롭 표** ──────────────────────────────────
+# 자기시험 ⑭ 가 「정의역이 이 표로 되돌아갔는가」를 잰다. 되돌아가면 축 2 의
+# 대조 95건(주로 `rtl/spinal` — 주 구현체)이 조용히 사라지는데, **사라지는
+# 것은 lint 를 울리지 않는다.** 그것이 §6.7 이 이름한 형태다: 정의역이 좁아지는
+# 회귀는 실패가 아니라 침묵으로 나타난다.
+LEGACY_SCAN_GLOBS = [
+    ("docs/wt64v1-architecture-guide", "**/*.typ"),
+    ("rtl/formal/tla", "*.tla"),
+    ("rtl/formal/sby", "**/*.sby"),
+    ("rtl/sv/assert", "*.sv"),
+    ("proofs/tla", "**/*.tla"),
+    ("proofs/tla", "**/*.md"),
+    (".claude-memos", "**/*.md"),
+    ("docs/research", "**/*.md"),
+    ("docs/extensions", "**/*.md"),
+]
+
+
+# ── ⑭·⑮ 의 **부류별 하한** — 「무엇을 되찾았는가」를 이름으로 적는다 ────────
+#
+# 초판의 ⑭ 는 `bool(newdom)` 이었고 ⑮ 는 무성 대체(`… or newdom[0]`)였다.
+# 둘 다 **전부 되돌리는 회귀**만 잡았다. 부분 축소 — 정확히 이 폐쇄가 되찾은
+# 주 구현체 `rtl/spinal` 만 빠지는 경우 — 에서는 다른 부류가 수를 채웠다.
+# 실측(2026-08-30): `SCAN_EXCLUDE_PREFIX` 에 `"rtl/spinal/"` 한 줄을 더하니
+# `--self-test` 가 rc=0 이고 ⑭ 는 `27건(발신 19개)`, ⑮ 는 `.cfg` 로 대체돼
+# 역시 ✓ 였다 — **주 구현체가 정의역에서 사라졌는데 두 칸이 다 초록이었고
+# 대체 사실은 출력에 어디에도 없었다.** 같은 커밋이 ⑤·④ 에는 「생략을
+# 인쇄한다」를 적용해 놓고 ⑮ 의 대체에는 적용하지 않은 것이다.
+#
+# ⇒ 부류를 `(경로 접두, 확장자)` 로 이름 짓고 **부류마다** 하한(⑭)과
+#    변이(⑮)를 건다. `rtl/spinal/build.sbt` 가 `.scala` 부류를 대신 채우는
+#    일이 없도록 확장자가 열쇠의 일부다.
+#
+# **왜 이 표는 손으로 유지해도 되는가** — 정의역 표는 안 되는데:
+# 이것은 **하한**이다. 손-유지 *정의역*은 빠뜨림이 침묵으로 나타나므로 안 되고
+# (§6.7), 손-유지 *하한*은 빠뜨림이 곧 실패로 나타난다. 방향이 반대다.
+# 부류를 새로 얻었는데 여기 적지 않으면 그만큼 시험이 약해질 뿐인데, 그
+# 「미등재」의 수를 ⑭ 가 함께 인쇄하므로 조용하지 않다.
+#
+# **값이 실측치가 아닌 이유** — 이 수는 픽스처의 RTL 주석을 그대로 따라간다.
+# 실측치로 잠그면 평범한 주석 편집마다 자기시험이 거짓 실패하고, 그 반작용이
+# F-52 다. 여기서 재는 것은 「부류가 살아 있는가」이지 「몇 건인가」가 아니다.
+# 실측은 인쇄되므로 하한과의 거리는 언제나 보인다.
+# 2026-08-30 픽스처 실측: spinal .scala 58 · formal/tla 비-.tla 27 · 정본 .md 1.
+DOMAIN_WITNESS: dict[tuple[str, str], int] = {
+    # 주 구현체. 옛 표에 `rtl/spinal` 뿌리가 통째로 없었다.
+    ("rtl/spinal/", ".scala"): 30,
+    # 옛 표는 `("rtl/formal/tla", "*.tla")` 였다 — 같은 디렉토리의 `README.md` ·
+    # `*.cfg` · `run.sh` 가 확장자 하나 때문에 밖이었다.
+    ("rtl/formal/tla/", ""): 12,
+    # 옛 표는 `("docs/wt64v1-architecture-guide", "**/*.typ")` 였다 — 정본
+    # 디렉토리 안의 `README.md` 가 밖이었다.
+    ("docs/wt64v1-architecture-guide/", ".md"): 1,
+}
+
+
+def witness_class(rel: str) -> tuple[str, str] | None:
+    for key in DOMAIN_WITNESS:
+        if rel.startswith(key[0]) and rel.endswith(key[1]):
+            return key
+    return None
+
+
+def legacy_domain(root: Path) -> set[str]:
+    """옛 글롭 표가 덮던 파일 집합 — 그때의 호출을 그대로 되풀이해 만든다."""
+    out: set[str] = set()
+    for rel_dir, pat in LEGACY_SCAN_GLOBS:
+        d = root / rel_dir
+        if d.exists():
+            out |= {str(p.relative_to(root)) for p in d.glob(pat) if p.is_file()}
+    return out
+# `target` 은 sbt 산출물이다. 실 트리에서는 git 인덱스 교차가 그것을 막는데
+# 픽스처에는 git 이 없으므로(`_repo_paths()` 가 트리 순회로 떨어진다) 여기서
+# 막지 않으면 **픽스처의 정의역이 실 트리보다 넓어진다** — 자기시험이 실
+# 게이트와 다른 것을 재게 된다.
 _FIX_IGNORE = shutil.ignore_patterns("*.bin", "*.vcd", "*.fst", "*.log",
-                                     "__pycache__", "sim_build", "*.pdf")
+                                     "__pycache__", "sim_build", "*.pdf",
+                                     "target")
 
 
 def _fixture(td: Path, extra: list[str]) -> Path:
@@ -2009,6 +2511,16 @@ def self_test() -> int:
                              f"검출 **{got}건**. 0 이면 그 장에 대한 「파손 0」은 "
                              f"**무증거**다 — ② 와의 대비가 덮임 하한의 근거",
                              True))
+        else:
+            # **생략을 인쇄한다.** 이 분기가 아무것도 기록하지 않던 동안 ⑤ 는
+            # 「돌았는데 검출 0」과 「아예 돌지 않았다」가 구별되지 않았다 —
+            # 출력에서 통째로 사라졌기 때문이다. ④ 가 같은 결함을 고친 형태를
+            # 그대로 쓴다. ⑤ 는 게이트가 아니라 **대비의 인쇄**이므로 실패로
+            # 승격하지는 않되, 안 돈 사실은 보인다.
+            rows.append(("⑤ 축1 — 덮임 0 인 장에 삽입",
+                         "픽스처 재보정 후 **덮임 0 인 장이 없다** — 이 대비는 "
+                         "이번 실행에서 돌지 않았다 (실 트리의 축 1 덮임 표가 "
+                         "0 인 장 7개를 그대로 인쇄한다)", True))
 
         # ⑬ **W6 그 자체** — 비-hard 발신이 정본 절을 정본 번호로 부르는 인용의
         #    대상이 재번호로 바뀌는 변이. 인용이 가리키는 절 **바로 앞**에 절을
@@ -2040,6 +2552,127 @@ def self_test() -> int:
                 "WRONG-TARGET 검출 (비-hard 발신)",
                 rule="R4′ 축2 대상 대조")
         p13.write_text(orig13, encoding="utf-8")
+
+        # ── ⑭ **정의역 폐쇄의 생존** ──────────────────────────────────────
+        # 「지위 변경이 정의역을 옮긴다」(§6.7)의 게이트. 이 시험이 재는 것은
+        # 변이가 아니라 **정의역 자체**다 — 축 2 의 반증력 있는 대조 중 옛
+        # 손-유지 글롭 표 **밖**에서 오는 것이 몇 건인가. 0 이면 누군가 뿌리
+        # 순회를 글롭 열거로 되돌린 것이고, 그 회귀는 **lint 를 울리지 않는다**
+        # (인용이 사라지는 것이지 틀려지는 것이 아니다). 조용한 회귀에는 그것을
+        # 겨냥한 시험이 있어야 한다.
+        legacy = legacy_domain(base)
+        newdom = [s for s in d0["a2"]["ok_sites"] if s[0] not in legacy]
+        senders = sorted({s[0] for s in newdom})
+        # **부류마다 따로 잰다.** 합계 하나로 재면 한 부류가 통째로 빠져도
+        # 나머지가 수를 채워 조용히 통과한다 — 실측으로 그 상태였다
+        # (`DOMAIN_WITNESS` 주석).
+        by_cls: dict[tuple[str, str], list] = {k: [] for k in DOMAIN_WITNESS}
+        unlisted: list = []
+        for s in newdom:
+            k = witness_class(s[0])
+            (by_cls[k] if k else unlisted).append(s)
+        for k, floor in sorted(DOMAIN_WITNESS.items()):
+            got = by_cls[k]
+            nfiles = len({s[0] for s in got})
+            hit = len(got) >= floor
+            rows.append((
+                f"⑭ 정의역 폐쇄 — 부류 `{k[0]}*{k[1]}` 의 축 2 대조 "
+                f"{len(got)}건 / 하한 {floor} (발신 파일 {nfiles}개)",
+                f"하한 아래면 이 부류가 정의역에서 **부분적으로** 빠진 것이다. "
+                f"그 회귀는 실패가 아니라 **침묵**으로 나타난다 (§6.7) — "
+                f"인용이 틀려지는 것이 아니라 사라지기 때문이다"
+                + (f" — 예: {', '.join(sorted({Path(s[0]).name for s in got})[:3])}"
+                   if got else " — **이 부류의 대조가 0 이다**"),
+                hit))
+            if not hit:
+                ok = False
+        rows.append((f"⑭′ 합계 — 옛 글롭 표 **밖** 발신의 축 2 대조 {len(newdom)}건 "
+                     f"(발신 파일 {len(senders)}개, 그중 `DOMAIN_WITNESS` 미등재 "
+                     f"{len(unlisted)}건)",
+                     "미등재는 실패가 아니다 — **시험이 그만큼 약하다**는 인쇄다. "
+                     "부류를 등재하면 ⑮ 가 그 부류에도 변이를 건다"
+                     + (f" (미등재 발신: "
+                        f"{', '.join(sorted({Path(s[0]).name for s in unlisted})[:4])})"
+                        if unlisted else ""),
+                     bool(newdom)))
+        if not newdom:
+            ok = False
+
+        # ⑮ 그 새 정의역이 **실제로 재는가.** ⑭ 는 「세었다」만 말한다 — 세는
+        #    것과 무는 것은 다르고, 그 차이가 §6.6.5 「대상 오인」이다.
+        #    새 정의역 발신 하나의 절 번호를 **실재하는 엉뚱한 절**로 바꾼다.
+        #
+        # **부류마다 건다. 대체는 없다.** 초판은 주 구현체를 우선 고르되
+        # 없으면 `newdom[0]` 으로 **말없이** 넘어갔고, 그래서 `rtl/spinal` 이
+        # 정의역에서 빠진 상태에서 `.cfg` 파일에 변이를 걸고 ✓ 를 인쇄했다.
+        # 대체가 인쇄되지 않는 생략은 ④·⑤ 가 이미 이름한 결함과 같은 것이다.
+        gb14 = Guide(base)
+        for k, floor in sorted(DOMAIN_WITNESS.items()):
+            s14 = next(iter(by_cls[k]), None)
+            if s14 is None:
+                rows.append((f"⑮ 부류 `{k[0]}*{k[1]}` 의 검출력",
+                             "이 부류의 대조가 0 이라 변이는 **돌지 않았다** — "
+                             "생략은 통과가 아니고, 대체는 더 나쁘다 "
+                             "(무엇을 잰 것인지 출력이 거짓말을 한다)", False))
+                ok = False
+                continue
+            rel14, ln14, num14, tgt14, needle14 = s14
+            p14t = base / tgt14
+            sm14 = gb14.secmaps[p14t]
+            sib14 = next((k2 for k2 in sorted(sm14)
+                          if k2 != num14 and k2.split(".")[0] == num14.split(".")[0]
+                          and needle14 not in gb14._bodies(p14t).get(k2, "")), None)
+            assert sib14, f"변이 ⑮({k[0]}) 의 대체 절을 찾지 못했다"
+            p14 = base / rel14
+            orig14 = p14.read_text(encoding="utf-8")
+            L14 = orig14.splitlines(keepends=True)
+            L14[ln14 - 1] = L14[ln14 - 1].replace(cite_str(num14), cite_str(sib14), 1)
+            assert L14[ln14 - 1] != orig14.splitlines(keepends=True)[ln14 - 1], \
+                f"변이 ⑮({k[0]}) 가 아무것도 치환하지 못했다"
+            p14.write_text("".join(L14), encoding="utf-8")
+            measure(f"⑮ 부류 `{k[0]}*{k[1]}` — `{rel14}:{ln14}` 의 "
+                    f"`{cite_str(num14)}` 을 실재하는 엉뚱한 절 "
+                    f"`{cite_str(sib14)}` 로 (인용문은 그대로)",
+                    "WRONG-TARGET 검출 — **그 파일을 지목하는가**. ⑭ 가 「세었다」를 "
+                    "말한다면 이것이 「문다」를 말한다",
+                    rule="R4 축2 대상 대조", names=Path(rel14).name)
+            p14.write_text(orig14, encoding="utf-8")
+
+        # ── ⑯ **부록 표기(`APX_RE`)가 실제로 무는가** ─────────────────────
+        # ⑮ 는 *부류*를 고르지 *표기*를 고르지 않는다 — 오늘 `docs/…*.md`
+        # 부류의 첫 자리가 우연히 부록 인용이지만, 그 우연이 사라지면 부록
+        # 표기 전체가 조용히 시험 밖이 된다. 그리고 부록 표기를 넣은 이유가
+        # 정확히 「두 자리가 조용히 대조 밖으로 옮겨 갔다」이므로, 그 부류에는
+        # 그 부류를 겨냥한 변이가 있어야 한다 (§6.6.5 대상 오인).
+        apx_sites = [s for s in d0["a2"]["ok_sites"] if s[2].startswith("부록")]
+        if not apx_sites:
+            rows.append(("⑯ 부록 표기 `부록 X.N` 의 검출력",
+                         "픽스처에 부록 인용 대조 0건 — **이 변이는 돌지 "
+                         "않았다**. `APX_RE` 가 죽었거나 정의역이 부록을 잃은 "
+                         "것이고, 둘 다 통과가 아니다", False))
+            ok = False
+        else:
+            rel16, ln16, num16, tgt16, needle16 = apx_sites[0]
+            p16t = base / tgt16
+            sm16 = gb14.secmaps[p16t]
+            sib16 = next((k for k in sorted(sm16)
+                          if k != num16 and k.split(".")[0] == num16.split(".")[0]
+                          and needle16 not in gb14._bodies(p16t).get(k, "")), None)
+            assert sib16, "변이 ⑯ 의 대체 부록 절을 찾지 못했다"
+            p16 = base / rel16
+            orig16 = p16.read_text(encoding="utf-8")
+            L16 = orig16.splitlines(keepends=True)
+            L16[ln16 - 1] = L16[ln16 - 1].replace(num16, sib16, 1)
+            assert L16[ln16 - 1] != orig16.splitlines(keepends=True)[ln16 - 1], \
+                "변이 ⑯ 이 아무것도 치환하지 못했다"
+            p16.write_text("".join(L16), encoding="utf-8")
+            measure(f"⑯ 부록 표기 — `{rel16}:{ln16}` 의 `{num16}` 을 실재하는 "
+                    f"엉뚱한 부록 절 `{sib16}` 로 (인용문은 그대로)",
+                    "WRONG-TARGET 검출. 이 표기를 파싱하지 못하던 동안 "
+                    "`rtl/sim/README.md`·`Wt64Top.scala` 두 자리가 대조 밖에 "
+                    "있었다 — **표기를 바꾸면 통과**하는 우회로였다",
+                    rule="R4 축2 대상 대조", names=Path(rel16).name)
+            p16.write_text(orig16, encoding="utf-8")
 
         # ⑫ **W6 이 실제로 밟은 자리의 재현** — 이 검사가 태어난 동기다.
         #    on-wire 절 삽입으로 §3.11 이 형식 속성에서 원격 표면으로 바뀌었을 때

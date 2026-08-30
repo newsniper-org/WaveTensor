@@ -11,7 +11,7 @@
 //       구조로 성립한다,
 //       §1.3 「최대 길이」 — 지원하지 않는 길이는 능력 부재로 보고한다.
 //       바이너리는 옳다 — 오류가 아니다 (§1.6.2 오류 3분류),
-//       §4.3 순회 규범 「순회는 슬롯 상한만큼 고정 횟수로 돈다. 종료 표식을
+//       §4.2.1 순회 규범 「순회는 슬롯 상한만큼 고정 횟수로 돈다. 종료 표식을
 //       만난 뒤의 슬롯은 순회하되 효과가 없어야 한다」 — 조기 탈출 금지,
 //       멈추는 것은 순회가 아니라 효과다,
 //       §1.3 함정 「bh_len 의 실효 폭은 8비트가 아니다」 — 비교 폭 = 선언 폭
@@ -110,7 +110,7 @@ import wt64.{Isa, StickyFault}
   * 모든 명령이 정확히 같은 1사이클 경로를 지난다 —
   * 판정 결과·명령 내용 어느 쪽도 단계를 바꾸지 못한다 (§1.6.1 · §5.3).
   *
-  * @param ehSlots EH 슬롯 상한 — 고정 순회의 횟수 (§4.3). 형상 파라미터다
+  * @param ehSlots EH 슬롯 상한 — 고정 순회의 횟수 (§4.2.1). 형상 파라미터다
   *                (§1.3 「이 상한은 형상 파라미터이지 ISA 상수가 아니다」).
   *                기본값 4 는 정본 기본 형상. Wt64Config 승격 후보 —
   *                기존 slotCap(§2.4.1 결과 슬롯)과는 다른 축이라 새 이름이 필요하다.
@@ -208,7 +208,7 @@ class DecodeWalk(val ehSlots: Int = 4) extends Component {
   private val kindDefined = Vec((0 until (1 << KIND_W)).map(c => Bool(catalogWords.contains(c))))
   private val kindWords   = Vec((0 until (1 << KIND_W)).map(c => U(catalogWords.getOrElse(c, 1), 8 bits)))
 
-  // ── 고정 순회 (§4.3) — 정적 전개. 조기 탈출이 구조적으로 불가능하다 ──────
+  // ── 고정 순회 (§4.2.1) — 정적 전개. 조기 탈출이 구조적으로 불가능하다 ──────
   val walk = new Area {
     // 순회가 읽는 것은 각 워드의 하위 16비트뿐이다 —
     // [15:12] 다음 종류 · [11:8] 자기 종류 · [7:0] 워드 수 (어셈블러 관측).
@@ -418,7 +418,7 @@ class DecodeWalk(val ehSlots: Int = 4) extends Component {
     val rInstr   = RegNext(masked)
     val rPresent = RegNext(Vec((0 until ehSlots).map(i => walk.walked(i))))
     // END 뒤 슬롯의 종류·오프셋은 방출되지 않는다 (post_end_gated) — 명령의
-    // 의미가 사슬 뒤의 쓰레기에 의존하지 않는다 (§4.3 함정).
+    // 의미가 사슬 뒤의 쓰레기에 의존하지 않는다 (§4.2.1 함정).
     val rCode = RegNext(Vec((0 until ehSlots)
       .map(i => walk.walked(i) ? walk.ptr(i) | B(EhCode.END, KIND_W bits))))
     val rOff = RegNext(Vec((0 until ehSlots)

@@ -194,6 +194,6 @@ class ResultBank(cfg: Wt64Config, val dataW: Int = 64, val prodW: Int = 4) exten
   // ── E.11 점유 관측면 — 드레인 집계의 실입력 (§3.7 정의역 ④) ──────
   // 소유 비트의 popcount — 조합, 새 상태 없음 (E.11 해설). store 잔존
   // 값은 세지 않는다: 값이 남는 것은 뱅크의 존재 이유(§2.4)이지 진행이
-  // 아니고, 드레인 정의역은 「소유 구간이 *진행 중*인」 슬롯이다.
+  // 아니고, 드레인 정의역은 §3.7.2 가 적은 「소유 구간이 *진행 중*인」 슬롯이다.
   io.occupancy := CountOne(ownerValid)
 }
