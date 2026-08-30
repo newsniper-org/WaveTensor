@@ -376,6 +376,39 @@ lattice-clean:
 # =============================================================================
 # Lint targets — v1.8.0a §23.9. `make lint` is the future CI entrypoint.
 #   * lint_isa_tables_fresh   — generated ISA artifacts match isa/wt64v1_isa.json
+#   * lint_truth_table_domain — clean-room 오라클의 **정의역** 신선도, 그리고
+#                               동결 표의 바이트 불변. 두 축은 서로 다른 종류의
+#                               자산이라 자료구조가 그 구분을 나른다:
+#                               `truth_table_encwave.json` 은 **재생성 대상**
+#                               (심의된 재캡처로 정당하게 움직인다 — 해시 핀을
+#                               걸지 않는다), `truth_table_premigration.json` 은
+#                               **불변 대상**(「이관 전 계보 전용」 동결 산출물 —
+#                               BLAKE2b-512 로 못박는다). 핀을 재생성 대상에
+#                               겨누는 것은 갱신이 아니라 오조준이고, 그것을
+#                               코드가 실패로 만든다.
+#                               정의역 축이 닫는 침묵: 캡처 도메인
+#                               (`_TT_SUPPORTED_OPCODES`/`_TT_UNSUPPORTED_PROBES`)
+#                               는 **손-리터럴**이고 `isa/wt64v1_isa.json` 과
+#                               아무것도 대조하지 않았다. 새 opcode 가 0x07 에
+#                               태어나면 오라클에 **한 점도 없이** 태어나고,
+#                               차등 시험의 `set(got) - set(frozen)` 은 `got` 이
+#                               상수라 영원히 공집합이다. 반대로 미지원 탐침에
+#                               명령이 배정되면 점은 있는데 outcome 계급이 낡는다
+#                               (0x6B 이 실제로 그랬다 — `PROBE_YET_ASSIGNED`).
+#                               **인코딩 축은 일부러 재지 않는다**: 이 표는 판정
+#                               3비트만 담고, 인코딩 파도가 5,796점의 바이너리를
+#                               바꿨을 때 outcome 은 5,934/5,934 동일했다 —
+#                               인코딩 지문은 이 표에 대해 0 비트짜리 검사다.
+#                               outcome 축은 CI 의 6,141점 차등 시험이 맡는다
+#                               (`make lint` 로 끌어오지 않는다: +24~46% 예산 ·
+#                               verilator + 206 MB sim_build).
+#                               `--self-test` 는 격리 사본에 변이를 건다 (계수는
+#                               그 실행이 인쇄한다 — 산문에 박은 숫자는 낡는다):
+#                               ISA opcode 제거/추가 · 동결 표 1바이트 반전 ·
+#                               핀 오조준 · **동결 경로에 쓰기를 여는 코드 경로** ·
+#                               도메인 공집합 · dv 갈라짐 · 형상 축 갈라짐 · 키
+#                               표기 갈라짐. rc 만이 아니라 **기대 문면**으로도
+#                               판정한다.
 #   * lint_frag_total_m1_held — frag-drain FSM invariant (v1.7 §22.18)
 #   * lint_synth_coverage     — every cocotb-verified module has a DECLARED
 #                               synthesis position (spec §28). This is the
@@ -499,6 +532,8 @@ lattice-clean:
 
 lint:
 	python3 $(CURDIR)/scripts/lint_isa_tables_fresh.py
+	python3 $(CURDIR)/scripts/lint_truth_table_domain.py
+	python3 $(CURDIR)/scripts/lint_truth_table_domain.py --self-test
 	python3 $(CURDIR)/scripts/lint_frag_total_m1_held.py
 	python3 $(CURDIR)/scripts/lint_synth_coverage.py
 	python3 $(CURDIR)/scripts/lint_output_payload_hold.py

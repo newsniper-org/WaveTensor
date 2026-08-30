@@ -186,6 +186,25 @@ jobs:
             echo "::endgroup::"
           done
 
+      # ⚠️ 위 step 은 **오라클을 덮어쓸 수 있다.** `WT_CAPTURE_TRUTH_TABLE=1`
+      # 이 어디에서든(셸 프로파일 · 러너 env · make 래퍼) export 되면
+      # `test_encwave_rtl_truth_table_differential` 이 대조 대신 **재캡처**로
+      # 분기하고, 그 실행은 커밋된 오라클을 조용히 덮어쓴 뒤 **통과한다**
+      # (`test_isa_decoder.py` 의 capture_mode 분기 — 재캡처는 검토된 의도적
+      # 행위여야 하는데 그 「검토」가 오늘까지 사람의 기억에만 있었다).
+      # 훅은 `isa/` 를 보지 않고, 여기에도 대조가 없었다 — 바로 위
+      # `rtl/generated/` step 이 정확히 같은 형태를 이미 쓰고 있는데도.
+      # 비용 ≈ 0. 이것이 이 축에서 가장 싸고 가장 실재하는 구멍이었다.
+      - name: 오라클이 시뮬 실행으로 덮이지 않았는가 (isa/ 작업트리)
+        run: |
+          git diff --exit-code -- isa/ || {
+            echo "⛔ cocotb 회귀가 isa/ 를 움직였다 — 재캡처는 CI 가 할 일이 아니다."
+            echo "   WT_CAPTURE_TRUTH_TABLE 이 환경에 새어 있는지 확인하라."
+            echo "   재캡처는 사람이 심의해 한 커밋으로 담는다"
+            echo "   (WT_CAPTURE_TRUTH_TABLE=1 make MOD=ISA_Decoder + dv 범프 + 소비자 핀 재동기)."
+            exit 1
+          }
+
       - name: Cluster 이중 빌드 (FRAG_SLOTS=1 / 4)
         run: |
           docker run --rm -e COCOTB_RESULTS_FILE=/tmp/cocotb-results.xml \

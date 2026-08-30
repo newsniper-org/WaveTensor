@@ -4297,6 +4297,26 @@ async def test_encwave_rtl_truth_table_differential(dut):
         ext_results[_tt_key(op, sub, fl, pp)] = list(outcome)
 
     if capture_mode:
+        # ⚠️ 이 분기는 **커밋된 오라클을 덮어쓴다.** 그리고 덮어쓴 뒤
+        # **통과한다** — 즉 사고가 나면 실패가 아니라 침묵으로 나타난다.
+        # 그러므로 「캡처 모드로 돌았다」는 사실 자체가 크게 보여야 한다.
+        # (게이트 쪽 그물은 둘이다: `.github/workflows/gates.yml` 의
+        # `git diff --exit-code -- isa/`, 그리고 동결 표를 바이트로 못박는
+        # `scripts/lint_truth_table_domain.py`. 이 인쇄는 사람이 로그에서
+        # 즉시 알아보게 하는 셋째 층이다.)
+        print(
+            "\n" + "=" * 78 +
+            "\n⚠️  WT_CAPTURE_TRUTH_TABLE=1 — 대조가 아니라 **재캡처**로 돌았다."
+            f"\n    {_TT_PATH} 을(를) 덮어쓴다 (domain_version "
+            f"{_TT_DOMAIN_VERSION}, points {len(results)} + ext_probes "
+            f"{len(ext_results)})."
+            "\n    이것은 검토된 의도적 행위여야 한다. 통상 실행이라면 지금 "
+            "환경을 확인하라."
+            "\n    재캡처라면: git diff --stat -- isa/ 로 확인 → dv 범프 → "
+            "소비자 핀 재동기 → 한 커밋."
+            "\n    isa/truth_table_premigration.json 은 재캡처 대상이 **아니다**"
+            " (이관 전 계보 전용 동결 산출물).\n" + "=" * 78,
+            file=sys.stderr, flush=True)
         os.makedirs(os.path.dirname(_TT_PATH), exist_ok=True)
         with open(_TT_PATH, 'w') as f:
             _json.dump({'domain_version': _TT_DOMAIN_VERSION,
