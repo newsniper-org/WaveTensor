@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: e7f99d7a-a6eb-46be-b7eb-fd78237e02a7
-  modified: 2026-08-29T07:08:41.050Z
+  modified: 2026-08-30T07:44:40.682Z
 ---
 
 `.devcontainer/Dockerfile` 이 TLA+ 를 `TLA_VERSION=1.8.0` + 해시로 핀해 왔는데, **`v1.8.0` 은
@@ -35,5 +35,26 @@ built & uploaded to the 1.8.0 Clarke pre-release」. GitHub API 도 `prerelease=
    진짜 모델 하나를 검사하는 스모크를 넣었고 양방향으로 실측했다.
 4. **주기적 재핀을 전제하라.** 이번 수리는 시계를 되감았을 뿐 멈추지 않았다 — 다음 master 푸시와
    함께 다시 죽는다. 재핀은 도구 버전 변경과 같은 급의 결정이므로 별도 커밋 + 이력 기록.
-5. 같은 부류 구멍이 남아 있다: `ALA_SNAPSHOT`·`COCOTB_VERSION`·`WITH_SBY` 는 양방향 대조 밖이고,
-   `SBY_COMMIT` 은 devcontainer.json 에 아예 없으며, base 이미지는 다이제스트로 안 묶여 있다.
+5. **⚠️ 둘째 선언처가 사고의 유일한 효과다 (2026-08-30 후속, 커밋 `727532a`).** 위 4항의
+   재핀(`cdc769d`)이 Dockerfile 과 devcontainer.json 은 갱신했는데 **`.github/workflows/gates.yml`
+   을 몰랐다.** 그 파일이 `TLA_BLAKE2B512` 를 죽은 값으로 `--build-arg` 에 박고 있었고,
+   `--build-arg` 는 ARG 기본값을 **덮으므로** 그 블록은 참고용 사본이 아니라 **셋째 선언처**였다.
+   핀 lint 의 정의역에도 없어 아무도 재지 않았고, GHA 층 캐시가 그 `RUN` 을 건너뛰는 동안만
+   가려져 있었다.
+   처분은 값 갱신이 아니라 **사본 제거**였다 — build-push-action 은 저장소의 Dockerfile 을 그대로
+   빌드하고 넘기지 않은 ARG 는 그 파일 기본값을 쓴다. **지운 여덟 중 일곱이 기본값과 글자 그대로
+   같았다.** 순수 중복이었고 중복의 유일한 효과가 이 사고다.
+   ⇒ **정보를 더하지 않는 선언처는 만들지 마라.** 남길 것은 호스트 적응 값뿐(UID/GID). 같은
+   논리로 [[differential-domain-trap]] 에서 `encwave` 에는 해시 핀을 걸지 **않았다** — 정당하게
+   움직이는 파일에 핀을 걸면 그것이 둘째 선언처가 되어 반드시 낡는다.
+6. **정의역을 손 목록으로 두지 마라.** `scripts/lint_toolchain_pins.py` 는 이제 `PINS_TWOWAY`
+   외에 **등재 완전성**(Dockerfile 의 모든 ARG 가 세 표 중 하나에 없으면 실패) · **역방향**
+   (devcontainer.json 이 Dockerfile 에 없는 인자를 넘기면 실패 — 빌드가 조용히 무시하는 경로) ·
+   **CI 재선언 금지**(`.github/workflows/` rglob, 허용표 밖 키는 **값이 맞아도** 실패, 워크플로
+   0건도 실패)를 잰다. 그리고 그 검사가 합법 표기 다섯으로 우회됐던 이력은 [[selftest-residency]].
+7. **base 이미지는 완전 수식만 하고 다이제스트는 안 박았다.** 짧은 이름 `archlinux:base-devel` 의
+   해석은 호스트가 정했고 실제로 갈라져 있었다(직전 빌드의 바닥 층이 3.7개월 묵음). 다이제스트를
+   안 박은 이유는 「보안 갱신이 멈춘다」가 **아니다** — 3.7개월 떨어진 두 base 위에 ALA 층만 얹어
+   전수 대조하니 패키지 170개와 `/usr` 전 파일 sha256 이 **차이 0건**이었다(도구 바이트 기여 0).
+   진짜 이유는 **보관본 없는 핀을 하나 더 만드는 일**이라는 것. 조건부 판정이고 선택지 원장은
+   `.claude-memos/toolchain_pin_axis.md`.
