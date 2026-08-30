@@ -9,6 +9,7 @@
 - [WT64v1 precision recovery roadmap](wt64v1_precision_recovery_roadmap.md) — v1.6.7 Q8.8 (0x69) + v1.7 WIDEN/REQUANTIZE (0x6B/0x6C) landed; v1.7 restores parity, does NOT eliminate output rounding; rsqrt LUT 6.25% is the true floor.
 - [fp32 unit = "스텝 시퀀서" 용어](fp32_step_sequencer_terminology.md) — "마이크로코드" 지칭 금지 (사용자 지시 2026-07-16); spec/RTL/commit/테스트 전부 "step sequencer"/"step" 사용.
 - [pre-stable compat 정책](prestable_compat_policy.md) — 동결 보증(frozen/keep-forever)은 stable release부터 발효 (사용자 지시 2026-07-24); pre-stable에서 dead opcode 제거·recapture는 정규 이벤트.
+- [개발환경·ABI·Rust 기준 방침](dev_platform_policy.md) — 사용자 방침 2026-08-30; 권장 개발환경 5종(목록이 `...` 로 **열려 있다 — 닫지 마라**) · musl/Bionic/glibc 3-ABI · asm 의 pure Rust 포팅(착수 시기 미정, **동결 금지**) · 모든 Rust 는 2024 Edition + stable >= 1.97(**하한이지 핀이 아니다**) · Y4 ABI 확정이 블로커; 실측·미결 10건은 `.claude-memos/dev_platform_axis.md`
 - [post-stable 장기 계획](post_stable_roadmap.md) — §3(구현 이원화)은 RTL 전면 재구현으로 대체됨; §2 문서화·§4 양산만 T_stable 게이트 유지.
 - [WT64v1 RTL 전면 재구현](wt64v1_rtl_reimplementation.md) — 2026-08-20 착수; 정본은 아키텍처 가이드 PDF 하나, SpinalHDL 주 + SV 검증층, clean-room, 선-formal 이 RTL 을 선행한다.
 - [Workflow 자리표시자 패턴 금지](workflow_placeholder_bug.md) — 데이터는 인라인 또는 args 로; __X__ 치환 패턴은 두 번 다 즉시 실패
