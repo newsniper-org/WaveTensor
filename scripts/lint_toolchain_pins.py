@@ -34,6 +34,67 @@
 ⇒ 이 검사는 그 어긋남을 **크게** 실패시킨다. 사람 기억으로 유지되는 일치는
    일치가 아니다 (정본 부록 B.3).
 
+## 음성 시험 — `--self-test`
+
+이 검사의 핵심 주장은 **완전성 주장**이다("Dockerfile 의 모든 ARG 는 세 표 중
+하나에 반드시 들어야 한다"). 그런 주장은 파서가 이름 하나를 못 읽는 순간
+조용히 무너진다 — 못 읽은 이름은 「미등재」로 울 대상조차 되지 못하고 애초에
+검사 정의역 밖이다. 2026-08-30 에 실제로 그랬다: 합법 표기 다섯이 옛 정규식을
+우회했고, **그것을 잡은 것은 상주 시험이 아니라 사람의 전수 검증이었다.**
+음성 시험 15종을 손으로 돌려 넷이 rc=0 인 것을 보고 고쳤는데 **그 시험은
+저장소에 하나도 남지 않았다.** `--self-test` 가 그것을 상주시킨다 — 그때의
+대조군 1 + 음성 9 + CI 금지 5 에, 그때 재지 않은 판정 분기 둘(읽지 못한
+토큰 N6 · CI 허공 build-arg C6), 그리고 **도입 당일 전수 검증이 찾은 미덮임
+일곱**(N11–N17)을 더해 **대조군 1 + 변이 23** 이다.
+
+    python3 scripts/lint_toolchain_pins.py --self-test
+
+형태는 `scripts/lint_witness_map.py --self-test` 를 따른다 — 격리 사본(`/tmp`)
+→ 문자열 치환 → **하위프로세스 재실행** → rc **와 문면**으로 판정. 실파일은
+건드리지 않는다 (실파일을 고쳤다 되돌리는 방식은 중단되면 저장소를 더럽힌다).
+
+규율 넷을 명시한다. 넷 다 이 저장소가 이미 데인 자리다.
+
+  · **대조군이 먼저다** (N0). 기준 사본이 이미 실패하면 모든 변이가 엉뚱한
+    이유로 울고 자기시험이 「전부 잡았다」로 초록이 된다.
+  · **판정 축이 둘이다** — rc=1 **과** 기대 문면. rc 만 보면 「울긴 울었는데
+    다른 이유로」가 통과로 세어지고, 그 변이가 겨냥한 분기는 조용히 정의역
+    밖에 남는다 (`lint_section_refs` 가 래칫 집행 코드에서 겪은 형태).
+  · **변이 지점은 손으로 박지 않는다.** 기준 파일을 파싱해 **실제 자리**에서
+    고른다. 손으로 박으면 문면이 옮겨간 날 「아무것도 치환 못 함 = 변화 없음
+    = 잡지 못함」으로 조용히 무효가 된다. 치환 실패는 실패다 (skip 이 아니다).
+  · **0 건은 통과가 아니다.** 「안 돌면서 OK 를 인쇄」가 이 부류의 전형이다
+    (`lint_guide_derived_tables` 가 도입 이래 정확히 그 상태였다). 그래서
+    ⓪ 정의역 폐쇄 다섯이 변이보다 **먼저** 돈다 — 정의역 경로 하한 · CI 파서
+    양성 대조 · 변이 건수 하한 · **ARG 파서 양성 대조** · **JSONC 파서 양성
+    대조**. ⓪ 가 막는 길은 「픽스처가 비었다 / 파서가 잴 것을 못 찾았다」다.
+
+## 이 검사가 재지 **못하는** 것 — 반드시 함께 읽어라
+
+⚠️ 도입 당시 이 절이 **없었다.** 그래서 무엇이 안 덮였는지 읽는 사람이 알
+길이 없었고, docstring 은 「이 자기시험이 조용해질 수 있는 **유일한** 길」이
+공허화라고 적었다. 그 문장은 좁게(공허화 갈래) 읽으면 참이지만 넓게(「검사가
+퇴화해도 초록」) 읽으면 거짓이었다 — 전수 검증이 **판정 분기 일곱과 파서
+보조 다섯**을 격리 사본에서 들어내도 자기시험이 초록인 것을 실측했다
+(2026-08-30). 그 열둘은 지금 N11–N17 · D4 · D5 가 문다. 남는 것은 아래다.
+
+  · **핀이 옳은지**는 재지 못한다. 이 검사는 세 선언이 **서로 같은지**만
+    잰다. 셋이 나란히 틀린 값을 말하면 초록이다 — 그 축은 `--no-cache` 실
+    빌드와 Dockerfile 안의 자기보고 grep 대조만 잰다 (§3).
+  · **CI 축의 실 트리 계수에 하한이 없다.** 「CI 가 build-arg 를 하나도 안
+    넘긴다」가 이 검사가 바라는 정상 상태라 계수 하한을 걸면 규범을 지킨
+    저장소가 실패한다. 대신 파서를 합성으로 검증하고(D2) 실 트리 계수는
+    **게이트가 아니라 대비로** 인쇄한다.
+  · **`--build-arg` 말고 다른 덮어쓰기 경로**는 정의역 밖이다 — 환경 변수
+    치환 · `devcontainer.json` 의 `features` · 러너 이미지에 미리 깔린 도구.
+  · **중단되면 `/tmp` 에 격리 사본이 남는다.** 실측 21회(2026-08-30):
+    SIGINT 는 잔여 0(파이썬이 `KeyboardInterrupt` 로 정리한다), **SIGTERM ·
+    SIGKILL 은 매회 잔여 1**(`/tmp/wt-pins-neg-*`). `tempfile.
+    TemporaryDirectory` 의 내재적 한계다. 저장소는 21회 전부 깨끗했다 —
+    위에서 「실파일을 고쳤다 되돌리는 방식은 중단되면 저장소를 더럽힌다」고
+    적은 그 대비가 여기서도 유지된다. 남는 것은 `/tmp` 뿐이고 재부팅이
+    치운다.
+
 stdlib 전용. 직접 실행 가능:  python3 scripts/lint_toolchain_pins.py
 """
 
@@ -41,7 +102,10 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -547,5 +611,594 @@ def main() -> int:
     return 0
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# 음성 시험 — 격리 사본에서 변이 16종이 실제로 잡히는지
+#
+# 왜 검사 파일 **안**인가: 이 저장소의 선례 다섯이 전부 안이고 lint 를 겨냥한
+# 별도 시험 파일은 0건이다. 안에 두면 (a) 표기를 넓힐 때 변이도 같은 커밋에서
+# 함께 움직이고 — 2026-08-30 사건이 정확히 「검사만 고치고 시험은 남지 않은」
+# 형태였다 — (b) 배포 단위가 하나로 남는다(stdlib 전용). 밖에 두면 시험 파일이
+# 「호출되지 않는 파일」이 되기 쉽고, 그것이 이 저장소의 실패형 그 자체다.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 손-유지 **하한**이다. 손-유지 *정의역*(목록)은 금지지만 하한은 허용된다 —
+# 방향이 반대이기 때문이다: 목록에서 빠뜨리면 침묵이고, 하한에서 빠뜨리면
+# 곧 실패다 (`lint_section_refs` ⑭ 가 적은 그대로).
+_MIN_DOMAIN_PATHS = 5
+_MIN_MUTATIONS = 23
+_MIN_ARG_PROBE = 10
+
+_SELF_TEST_TAG = "WT_SELFTEST"
+
+# ── 파서 양성 대조의 정답표 ─────────────────────────────────────────────────
+#
+# ⚠️ 왜 변이가 아니라 **양성 대조**인가. 파서 보조 함수의 퇴화는 대개
+# 「판정이 뒤집힌다」가 아니라 「같은 문면을 **다른 경로로** 얻는다」로
+# 나타나서 rc·문면 축에 안 걸린다. 실측(2026-08-30): `_strip_trailing_comment`
+# 를 `return rest` 로 무력화해도 N5 가 초록이었다 — 꼬리 주석의 `#` 가 「읽지
+# 못한 토큰」 경로로 흘러 기대 문면이 여전히 나왔기 때문이다. 반대로 값 안의
+# `#` 까지 자르는 **과잉** 변경도 초록이었다(핀 값이 조용히 절단되는데 이름은
+# 그대로라 아무도 울지 않는다). 그런 부류는 함수의 **출력 전체**를 정답표와
+# 대조해야 잡힌다.
+#
+# 정답표는 추측이 아니라 실측이다 — podman 5.8.2 / archlinux:base-devel 위에서
+# 아래 표기를 전부 빌드해 `RUN printf` 로 확인했다 (2026-08-30):
+#
+#   A=[1] B=[2] H=[a#b] QT=[vw] NOVAL=[] LOWCMD=[5] lowname=[6] TAILC=[7]
+#
+# 즉 한 줄 다중 · 소문자 명령 · 소문자 이름 · **이음 중간의 주석 줄** ·
+# 꼬리 주석 · 값 안의 `#` · 따옴표 벗기기 · 값 없는 ARG 가 전부 확인된 표기다.
+_ARG_PROBE_DF = (
+    "FROM scratch\n"
+    "# 주석 줄의 ARG COMMENTED=0 은 선언이 아니다\n"
+    "ARG A=1 B=2\n"
+    "arg LOWCMD=5\n"
+    "ARG lowname=6\n"
+    "ARG CONT=8 \\\n"
+    "# 이음 중간의 주석 줄 — Dockerfile 파서는 건너뛴다\n"
+    "    CONT2=9\n"
+    "ARG TAILC=7  # 꼬리 주석\n"
+    "ARG HASHVAL=a#b\n"
+    "ARG QUOTED=\"vw\"\n"
+    "ARG NOVAL\n"
+    "RUN echo hi\n"
+)
+_ARG_PROBE_WANT = [
+    ("A", "1"), ("B", "2"), ("LOWCMD", "5"), ("lowname", "6"),
+    ("CONT", "8"), ("CONT2", "9"), ("TAILC", "7"),
+    ("HASHVAL", "a#b"), ("QUOTED", "vw"), ("NOVAL", None),
+]
+
+# `strip_jsonc` 는 문자열 상태를 따라가야 한다. 추적을 지우면 `"https://…"` 의
+# `//` 가 주석으로 잘려 JSON 이 깨지는데, 실측으로는 **초록이었다** — 변이가
+# 없었기 때문이다.
+_JSONC_PROBE = (
+    "{\n"
+    "  // 줄 주석\n"
+    '  "url": "https://example.invalid/a//b",\n'
+    '  "esc": "he said \\"//\\" here",  // 꼬리 주석\n'
+    '  "n": 1\n'
+    "}\n"
+)
+_JSONC_WANT = {
+    "url": "https://example.invalid/a//b",
+    "esc": 'he said "//" here',
+    "n": 1,
+}
+
+
+class _MutationMiss(RuntimeError):
+    """변이 지점을 찾지 못했다 — **skip 이 아니라 실패다.**
+
+    치환할 문면이 사라지면 그 변이는 「파일을 바꾸지 않고 재실행」이 되고,
+    통과하는 검사는 당연히 통과한다. 조용히 무효가 되는 시험이 없는 시험보다
+    나쁘다 (그것이 초록을 인쇄하기 때문).
+    """
+
+
+def _domain_paths() -> list[Path]:
+    """이 검사가 읽는 **정의역 경로 전부**를 모듈 상수에서 뽑는다.
+
+    픽스처를 이 결과로 지으면 정의역이 늘 때 픽스처가 자동으로 따라온다 —
+    손으로 유지되는 픽스처 목록은 반드시 뒤처지고, 뒤처진 픽스처에서는
+    새 축이 「파일 부재」로 엉뚱하게 울거나(운이 좋을 때) 아예 안 돈다.
+    """
+    out: list[Path] = []
+    for name, val in sorted(globals().items()):
+        if name == "REPO" or name.startswith("_") or not isinstance(val, Path):
+            continue
+        try:
+            val.relative_to(REPO)
+        except ValueError:
+            continue
+        out.append(val)
+    return out
+
+
+def _build_fixture(root: Path) -> Path:
+    """정의역 경로만 담은 격리 사본을 짓는다. 실파일은 건드리지 않는다."""
+    me = Path(__file__).resolve()
+    base = root / "repo"
+    (base / "scripts").mkdir(parents=True, exist_ok=True)
+    shutil.copy2(me, base / "scripts" / me.name)
+    for p in _domain_paths():
+        tgt = base / p.relative_to(REPO)
+        tgt.parent.mkdir(parents=True, exist_ok=True)
+        if p.is_dir():
+            shutil.copytree(
+                p, tgt, symlinks=True,
+                ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+            )
+        elif p.is_file():
+            shutil.copy2(p, tgt)
+        else:
+            raise _MutationMiss(f"정의역 경로가 실재하지 않는다: {p}")
+    return base
+
+
+def _run_fixture(base: Path) -> tuple[int, str]:
+    me = Path(__file__).resolve().name
+    r = subprocess.run(
+        [sys.executable, str(base / "scripts" / me)],
+        capture_output=True, text=True,
+    )
+    return r.returncode, (r.stdout or "") + (r.stderr or "")
+
+
+def _sub(path: Path, before: str, after: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    if before not in text:
+        raise _MutationMiss(f"{path.name}: 변이 지점 부재 — /{before[:64]}/")
+    path.write_text(text.replace(before, after, 1), encoding="utf-8")
+
+
+def _append(path: Path, extra: str) -> None:
+    path.write_text(path.read_text(encoding="utf-8") + extra, encoding="utf-8")
+
+
+_SIMPLE_ARG_LINE = re.compile(r"^ARG\s+([A-Za-z_][A-Za-z0-9_]*)=(\S+)\s*$")
+
+
+def _arg_line(text: str, name: str | None = None) -> str:
+    """`ARG NAME=VALUE` 꼴 **실제 줄**을 돌려준다 (name 이 None 이면 첫 줄).
+
+    변이의 닻을 여기서 얻는다 — 리터럴을 이 파일에 박아 두지 않기 위해서다.
+    """
+    for raw in text.splitlines():
+        m = _SIMPLE_ARG_LINE.match(raw)
+        if m and (name is None or m.group(1) == name):
+            return raw
+    raise _MutationMiss(f"`ARG {name or '<첫>'}=…` 꼴 줄을 찾지 못했다")
+
+
+_SYNTH_WORKFLOW = (
+    "name: wt-selftest\n"
+    "on: workflow_dispatch\n"
+    "jobs:\n"
+    "  x:\n"
+    "    runs-on: ubuntu-latest\n"
+    "    steps:\n"
+    "      - uses: docker/build-push-action@v6\n"
+    "        with:\n"
+    "          build-args: |\n"
+    "            {block_key}={block_val}\n"
+    "      - run: docker build --build-arg {flag_key}={flag_val} .\n"
+    "      - run: docker build --build-arg={eq_key}={eq_val} .\n"
+)
+
+
+def _mutations() -> list[tuple]:
+    """`(번호, 설명, 적용함수, 기대 문면들[, 금지 문면들])`.
+
+    다섯째 칸은 **선택**이고 「이 문면이 나오면 겨냥한 분기가 아니라 다른
+    분기가 운 것」을 뜻한다 (N5 참조).
+
+    닻과 기댓값은 **기준 파일을 파싱해서** 만든다. 리터럴을 박으면 값이 바뀐
+    날 조용히 무효가 된다.
+    """
+    df_text = DOCKERFILE.read_text(encoding="utf-8")
+    dj_text = DEVJSON.read_text(encoding="utf-8")
+    df = dict(parse_dockerfile_args(DOCKERFILE)[0])
+    dj = read_devcontainer_args(DEVJSON)
+    anchor = _arg_line(df_text)
+
+    # ── 닻 넷을 기준 파일에서 고른다 ────────────────────────────────────────
+    # 값 대조 축(PINS): rtl/spinal 이 기준인 핀 하나.
+    pin_key = PINS[0][1]
+    pin_val = df.get(pin_key)
+    if pin_val is None:
+        raise _MutationMiss(f"Dockerfile 에 ARG {pin_key} 기본값이 없다")
+
+    # 두-선언 대조 축(PINS_TWOWAY): 양쪽에 리터럴로 적힌 첫 핀.
+    two_key = two_val = two_label = None
+    for _lbl, k in PINS_TWOWAY:
+        if k in df and dj.get(k) == df[k] and f'"{k}": "{df[k]}"' in dj_text:
+            two_key, two_val, two_label = k, df[k], _lbl
+            break
+    if two_key is None:
+        raise _MutationMiss("PINS_TWOWAY 중 양쪽에 리터럴로 적힌 핀이 없다")
+
+    # 기본값 제거 축: `ARG K=V` 단순 줄을 가진 첫 두-선언 핀.
+    nodef_key = nodef_label = None
+    for _lbl, k in PINS_TWOWAY:
+        if k in df and f"ARG {k}={df[k]}" in df_text:
+            nodef_key, nodef_label = k, _lbl
+            break
+    if nodef_key is None:
+        raise _MutationMiss("`ARG K=V` 단순 줄을 가진 두-선언 핀이 없다")
+    nodef_line = _arg_line(df_text, nodef_key)
+
+    # ── N11–N17 의 닻 ───────────────────────────────────────────────────────
+    # 아래 일곱은 **판정 분기 일곱**을 각각 격리한다. 도입 당일 전수 검증이
+    # 이 일곱을 격리 사본에서 통째로 들어내도 본 검사 rc=0 · 자기시험 rc=0 인
+    # 것을 실측했다 (2026-08-30). 가장 무거웠던 것은 `elif j != a` —
+    # devcontainer.json 이 rtl/spinal 과 어긋나도 아무도 울지 않게 검사를
+    # 퇴화시켜도 초록이었고, 바로 옆의 `elif d != a` 는 N7 이 물고 있었다.
+    # **나란한 두 분기 중 하나만 덮여 있었다**는 것이 이 부류의 얼굴이다.
+    pin_label = PINS[0][0]
+    pin_dj_key = PINS[0][2]
+    pin_dj_decl = f'"{pin_dj_key}": "{dj.get(pin_dj_key)}"'
+    if pin_dj_decl + "," not in dj_text:
+        raise _MutationMiss(f"devcontainer.json 에 `{pin_dj_decl},` 가 없다")
+    pin_arg_line = _arg_line(df_text, pin_key)
+
+    two_decl = f'"{two_key}": "{two_val}"'
+    if two_decl + "," not in dj_text:
+        raise _MutationMiss(f"devcontainer.json 에 `{two_decl},` 가 없다")
+
+    # rtl/spinal 기준값을 읽는 줄 — 주석이 아니라 **실 선언 줄**이어야 한다.
+    props_line = next(
+        (ln for ln in BUILD_PROPS.read_text(encoding="utf-8").splitlines()
+         if re.match(r"^\s*sbt\.version\s*=\s*(\S+)\s*$", ln)), None)
+    if props_line is None:
+        raise _MutationMiss("build.properties 에 `sbt.version=` 줄이 없다")
+
+    # CI 허용 축: CI 가 넘겨도 되는 인자 중 Dockerfile 에 ARG 로 있는 첫 것.
+    ci_key = None
+    for k in sorted(CI_BUILD_ARGS_ALLOWED):
+        if k in df and f"ARG {k}={df[k]}" in df_text:
+            ci_key = k
+            break
+    if ci_key is None:
+        raise _MutationMiss("CI_BUILD_ARGS_ALLOWED 중 Dockerfile ARG 인 것이 없다")
+    ci_line = _arg_line(df_text, ci_key)
+
+    real_wf = sorted(
+        p.relative_to(REPO)
+        for p in CI_WORKFLOW_DIR.rglob("*")
+        if p.suffix in (".yml", ".yaml") and p.is_file()
+    )
+    if not real_wf:
+        raise _MutationMiss(".github/workflows 에 워크플로가 없다 — C1 이 잴 것이 없다")
+    wf0 = real_wf[0]
+
+    def df_of(base: Path) -> Path:
+        return base / DOCKERFILE.relative_to(REPO)
+
+    def dj_of(base: Path) -> Path:
+        return base / DEVJSON.relative_to(REPO)
+
+    def wf_dir(base: Path) -> Path:
+        return base / CI_WORKFLOW_DIR.relative_to(REPO)
+
+    def bp_of(base: Path) -> Path:
+        return base / BUILD_PROPS.relative_to(REPO)
+
+    def _insert_arg(text_after: str):
+        return lambda b: _sub(df_of(b), anchor, anchor + text_after)
+
+    def _new_workflow(rel: str, keys: dict[str, str]):
+        def apply(b: Path) -> None:
+            f = wf_dir(b) / rel
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text(_SYNTH_WORKFLOW.format(**keys), encoding="utf-8")
+        return apply
+
+    def _drop_workflows(b: Path) -> None:
+        for p in sorted(wf_dir(b).rglob("*")):
+            if p.suffix in (".yml", ".yaml") and p.is_file():
+                p.unlink()
+
+    def _ci_block(b: Path) -> None:
+        # 실 워크플로 파일이 정의역 안에 있는가 — 그리고 **값이 정확해도**
+        # 실패하는가. (이 축의 판정은 「대조」가 아니라 「금지」다.)
+        _append(
+            b / wf0,
+            "\n# wt-selftest\nzz:\n  build-args: |\n"
+            f"    {two_key}={two_val}\n",
+        )
+
+    unreadable = f"9{_SELF_TEST_TAG}_N6=1"
+
+    return [
+        # ── N1–N5 : 표기 다섯. 2026-08-30 에 이 다섯이 옛 파서를 우회했고
+        #            podman 실 빌드로 다섯이 전부 유효 표기임이 확인됐다.
+        #            각각 **미등재 ARG 를 그 표기로 심고** 검사가 그 이름을
+        #            읽어 내는지를 잰다.
+        ("N1", "한 줄 다중 `ARG A=1 B=2` 의 둘째 이름",
+         _insert_arg(f" {_SELF_TEST_TAG}_N1=1"),
+         (f"미등재 ARG: Dockerfile 의 `{_SELF_TEST_TAG}_N1`",)),
+        ("N2", "소문자 **명령** `arg`",
+         _insert_arg(f"\narg {_SELF_TEST_TAG}_N2=1"),
+         (f"미등재 ARG: Dockerfile 의 `{_SELF_TEST_TAG}_N2`",)),
+        ("N3", "소문자 **이름**",
+         _insert_arg(f"\nARG {_SELF_TEST_TAG.lower()}_n3=1"),
+         (f"미등재 ARG: Dockerfile 의 `{_SELF_TEST_TAG.lower()}_n3`",)),
+        ("N4", "줄 이음(`\\`) 뒤의 둘째 이름",
+         _insert_arg(f" \\\n    {_SELF_TEST_TAG}_N4=1"),
+         (f"미등재 ARG: Dockerfile 의 `{_SELF_TEST_TAG}_N4`",)),
+        # N5 의 **금지 문면**에 주의. 꼬리 주석을 못 자르면 `#`·주석 낱말이
+        # 「읽지 못한 토큰」으로 흘러 기대 문면이 여전히 나오고, rc·기대 문면
+        # 두 축만으로는 초록이 된다 (실측 2026-08-30). 겨냥한 분기가 아니라
+        # 다른 분기가 울었다는 것을 가르려면 금지 축이 필요하다.
+        ("N5", "꼬리 주석",
+         _insert_arg(f"\nARG {_SELF_TEST_TAG}_N5=1  # 꼬리 주석"),
+         (f"미등재 ARG: Dockerfile 의 `{_SELF_TEST_TAG}_N5`",),
+         ("읽지 못한 ARG 토큰",)),
+        # ── N6 : 읽지 못한 토큰을 **버리지 않는다**. 조용히 버리는 것이
+        #         애초의 결함이었다 — 못 읽으면 등재 여부를 잴 수 없고,
+        #         잴 수 없는 것을 통과로 인쇄하면 안 된다.
+        ("N6", "읽을 수 없는 토큰을 통과시키지 않는다",
+         _insert_arg(f"\nARG {unreadable}"),
+         (f"읽지 못한 ARG 토큰: Dockerfile 의 `{unreadable}`",)),
+        # ── N7–N9 : 표기 축만 시험하면 **값 대조 코드가 정의역 밖에** 남는다.
+        ("N7", f"PINS 값 어긋남 (Dockerfile {pin_key} ≠ rtl/spinal)",
+         lambda b: _sub(df_of(b), f"ARG {pin_key}={pin_val}",
+                        f"ARG {pin_key}={pin_val}-wt-selftest"),
+         (f"Dockerfile ARG {pin_key}={pin_val}-wt-selftest ≠ rtl/spinal 의",)),
+        ("N8", f"PINS_TWOWAY 두 선언 어긋남 (devcontainer.json {two_key})",
+         lambda b: _sub(dj_of(b), f'"{two_key}": "{two_val}"',
+                        f'"{two_key}": "{two_val}-wt-selftest"'),
+         (f"devcontainer.json {two_key}={two_val}-wt-selftest ≠ "
+          f"Dockerfile ARG 의 {two_val}",)),
+        ("N9", f"기본값 제거 (`ARG {nodef_key}` — 이름은 있고 값이 없다)",
+         lambda b: _sub(df_of(b), nodef_line, f"ARG {nodef_key}"),
+         (f"Dockerfile 의 ARG {nodef_key} 에 기본값이 없다",)),
+        # ── N10 : 역방향. devcontainer.json 의 오타 하나로 핀이 무력해지는데
+        #          빌드는 **조용히 무시한다**.
+        ("N10", "허공 build.arg (devcontainer.json → 없는 ARG)",
+         lambda b: _sub(dj_of(b), f'"{two_key}": "{two_val}"',
+                        f'"{two_key}": "{two_val}",\n'
+                        f'      "{_SELF_TEST_TAG}_N10": "x"'),
+         (f"허공 build.arg: devcontainer.json 의 `{_SELF_TEST_TAG}_N10`",)),
+        # ── C1–C6 : CI 금지 축. 이 축은 **실제 사고로 열렸다** —
+        #            죽은 TLA 해시가 워크플로의 build-arg 사본에 있었다.
+        ("C1", f"실 워크플로({wf0}) 의 build-args 블록 — **값이 맞아도** 실패",
+         _ci_block,
+         ("CI 가 핀을 재선언한다", str(wf0), f"`{two_key}`")),
+        ("C2", "**새** 워크플로 (하위 디렉터리 + `.yaml`) — 정의역이 rglob 인가",
+         _new_workflow(f"sub/{_SELF_TEST_TAG.lower()}_c2.yaml",
+                       {"block_key": two_key, "block_val": two_val,
+                        "flag_key": two_key, "flag_val": two_val,
+                        "eq_key": two_key, "eq_val": two_val}),
+         ("CI 가 핀을 재선언한다",
+          f"sub/{_SELF_TEST_TAG.lower()}_c2.yaml")),
+        ("C3", "`run:` 안의 `--build-arg K=V` (공백 표기)",
+         _new_workflow(f"{_SELF_TEST_TAG.lower()}_c3.yml",
+                       {"block_key": ci_key, "block_val": "1",
+                        "flag_key": two_key, "flag_val": two_val,
+                        "eq_key": ci_key, "eq_val": "1"}),
+         ("CI 가 핀을 재선언한다", f"{_SELF_TEST_TAG.lower()}_c3.yml",
+          f"`{two_key}`")),
+        ("C4", "`--build-arg=K=V` (등호 표기)",
+         _new_workflow(f"{_SELF_TEST_TAG.lower()}_c4.yml",
+                       {"block_key": ci_key, "block_val": "1",
+                        "flag_key": ci_key, "flag_val": "1",
+                        "eq_key": two_key, "eq_val": two_val}),
+         ("CI 가 핀을 재선언한다", f"{_SELF_TEST_TAG.lower()}_c4.yml",
+          f"`{two_key}`")),
+        # 「덮었다」와 「잴 것이 없었다」를 가른다. 이 자기시험이 조용해질 수
+        # 있는 길 하나가 여기이므로 변이로도 잡아 둔다.
+        ("C5", "워크플로 0건 — 잴 것이 없으면 통과가 아니다",
+         _drop_workflows,
+         ("워크플로가 없다",)),
+        ("C6", f"허공 build-arg (CI 의 `{ci_key}` ↔ Dockerfile ARG 부재)",
+         lambda b: _sub(df_of(b), ci_line + "\n", ""),
+         ("허공 build-arg:", f"`{ci_key}`")),
+        # ── N11–N17 : 판정 분기 일곱의 격리. 전부 「들어내도 초록」이었다. ───
+        #
+        # N11 이 이 뭉치의 머릿돌이다 — `elif j != a`. 이 분기는 이 파일이
+        # 스스로 최악이라 부른 (b)「조용히 다른 버전을 받아 온다」를 SBT ·
+        # SCALA · SPINAL 에 대해 막는 **유일한 자리**이고, 실장 보고서는
+        # 「N7–N9 값 대조 축」이라 적어 닫힌 것처럼 읽히게 했다. 실제로는
+        # devcontainer.json 이 rtl/spinal 과 어긋나도 조용한 상태로 검사를
+        # 퇴화시켜도 변이 16 이 전부 초록이었다.
+        ("N11", f"PINS devcontainer 값 어긋남 ({pin_dj_key} ≠ rtl/spinal)",
+         lambda b: _sub(dj_of(b), pin_dj_decl,
+                        f'"{pin_dj_key}": "{dj.get(pin_dj_key)}-wt-selftest"'),
+         (f"devcontainer.json {pin_dj_key}={dj.get(pin_dj_key)}-wt-selftest ≠ "
+          f"rtl/spinal 의",)),
+        ("N12", f"PINS Dockerfile ARG 부재 ({pin_key} 줄 제거)",
+         lambda b: _sub(df_of(b), pin_arg_line + "\n", ""),
+         (f"{pin_label}: Dockerfile 에 ARG {pin_key} 가 없다",)),
+        ("N13", f"PINS devcontainer 선언 부재 ({pin_dj_key})",
+         lambda b: _sub(dj_of(b), pin_dj_decl + ",\n", ""),
+         (f"{pin_label}: devcontainer.json build.args 에 {pin_dj_key} 가 없다",)),
+        ("N14", "rtl/spinal 기준값을 읽지 못함 (build.properties 무력화)",
+         lambda b: _sub(bp_of(b), props_line + "\n", "# " + props_line + "\n"),
+         (f"{pin_label}: rtl/spinal 쪽에서 버전을 읽지 못했다",)),
+        ("N15", f"PINS_TWOWAY Dockerfile ARG 부재 ({nodef_key} 줄 제거)",
+         lambda b: _sub(df_of(b), nodef_line + "\n", ""),
+         (f"{nodef_label}: Dockerfile 에 ARG {nodef_key} 가 없다",)),
+        ("N16", f"PINS_TWOWAY devcontainer 선언 부재 ({two_key})",
+         lambda b: _sub(dj_of(b), two_decl + ",\n", ""),
+         (f"{two_label}: devcontainer.json build.args 에 {two_key} 가 없다",)),
+        # 진입부 존재 검사. 들어내면 파일이 없을 때 조용히 통과하는 것이
+        # 아니라 **역추적으로 죽는데**, 그것은 「검사가 판정했다」가 아니다 —
+        # 그래서 rc 가 아니라 문면으로 가른다.
+        ("N17", f"정의역 파일 부재 ({BUILD_SBT.relative_to(REPO)})",
+         lambda b: (b / BUILD_SBT.relative_to(REPO)).unlink(),
+         ("파일 부재:", str(BUILD_SBT.relative_to(REPO)))),
+    ]
+
+
+def self_test() -> int:
+    print("lint_toolchain_pins: 음성 시험 — 격리 사본(/tmp)에서 변이 주입")
+    rows: list[tuple[bool, str, str]] = []
+    ok = True
+
+    try:
+        muts = _mutations()
+    except _MutationMiss as e:
+        print(f"  ✗ 변이표를 짓지 못했다 — {e}", file=sys.stderr)
+        print("음성 시험 불통과 (변이 0건은 통과가 아니다)", file=sys.stderr)
+        return 1
+
+    with tempfile.TemporaryDirectory(prefix="wt-pins-neg-") as td:
+        root = Path(td)
+
+        # ── ⓪ 정의역 폐쇄 — 변이보다 **먼저**. ─────────────────────────────
+        # 「0 건을 돌고 OK 를 인쇄」가 이 부류의 전형적 실패다. 그 길을 셋으로
+        # 막는다: 픽스처가 검사의 정의역 전부를 담았는가 · CI 파서가 실제로
+        # 무언가를 읽는가 · 변이가 하한만큼 있는가.
+        try:
+            base0 = _build_fixture(root / "d0")
+        except _MutationMiss as e:
+            print(f"  ✗ D1 {e}", file=sys.stderr)
+            return 1
+        dom = _domain_paths()
+        missing = [
+            str(p.relative_to(REPO)) for p in dom
+            if not (base0 / p.relative_to(REPO)).exists()
+        ]
+        d1 = len(dom) >= _MIN_DOMAIN_PATHS and not missing
+        rows.append((d1, "D1",
+                     f"정의역 경로 {len(dom)}개(하한 {_MIN_DOMAIN_PATHS}) 전부 "
+                     f"픽스처에 실재" + (f" — 결손 {missing}" if missing else "")))
+
+        # CI build-arg 파서 **양성 대조**: 세 표기를 다 읽는가. 실 트리 계수에
+        # 하한을 걸지 않는 이유는 「CI 가 build-arg 를 하나도 안 넘긴다」가
+        # 이 검사가 바라는 정상 상태이기 때문이다 — 그것을 실패로 만들면
+        # 규범을 지킨 저장소가 실패한다. 대신 파서 자체를 합성으로 검증한다.
+        probe = root / "probe.yml"
+        probe.write_text(_SYNTH_WORKFLOW.format(
+            block_key="WT_PROBE_BLOCK", block_val="1",
+            flag_key="WT_PROBE_FLAG", flag_val="2",
+            eq_key="WT_PROBE_EQ", eq_val="3"), encoding="utf-8")
+        got = {k for _, k in read_ci_build_args(probe)}
+        want = {"WT_PROBE_BLOCK", "WT_PROBE_FLAG", "WT_PROBE_EQ"}
+        d2 = got >= want
+        rows.append((d2, "D2",
+                     f"CI build-arg 파서 양성 대조 — 표기 3종 {sorted(want & got)}"
+                     + (f" / **못 읽음** {sorted(want - got)}" if want - got else "")))
+
+        d3 = len(muts) >= _MIN_MUTATIONS
+        rows.append((d3, "D3",
+                     f"변이 {len(muts)}건 ≥ 하한 {_MIN_MUTATIONS} "
+                     f"(0건은 통과가 아니다)"))
+
+        # ── D4 : Dockerfile ARG 파서 **양성 대조.** ─────────────────────────
+        # 변이가 아니라 양성 대조인 이유는 `_ARG_PROBE_DF` 머리주석에 적었다 —
+        # 파서 보조의 퇴화는 「같은 문면을 다른 경로로」 나타나 rc·문면 축을
+        # 빠져나간다. 여기서는 **출력 전체**를 실측 정답표와 대조한다.
+        probe_df = root / "probe.Dockerfile"
+        probe_df.write_text(_ARG_PROBE_DF, encoding="utf-8")
+        got_pairs, got_unparsed = parse_dockerfile_args(probe_df)
+        # 정답표에 **하한**을 함께 건다. 표와 픽스처를 같이 비우면
+        # `[] == []` 로 조용히 초록이 되는데, 그것이 이 파일이 이름한 「0건을
+        # 돌고 OK 를 인쇄」 그 자체다 — 양성 대조도 예외가 아니다.
+        d4 = (len(_ARG_PROBE_WANT) >= _MIN_ARG_PROBE
+              and got_pairs == _ARG_PROBE_WANT and not got_unparsed)
+        rows.append((d4, "D4",
+                     f"ARG 파서 양성 대조 — 표기 {len(_ARG_PROBE_WANT)}종"
+                     f"(하한 {_MIN_ARG_PROBE})"
+                     + ("" if d4 else
+                        f" / **어긋남** 얻음={got_pairs} 읽지못함={got_unparsed}")))
+
+        # ── D5 : JSONC 파서 양성 대조. ──────────────────────────────────────
+        # 문자열 추적을 지우면 `"https://…"` 의 `//` 가 주석으로 잘려 JSON 이
+        # 깨진다. 그 갈래에 변이가 없어 들어내도 초록이었다 (실측 2026-08-30).
+        try:
+            got_json = json.loads(strip_jsonc(_JSONC_PROBE))
+        except Exception as e:  # noqa: BLE001 — 무엇이 터졌는지 인쇄해야 한다
+            got_json = f"<예외: {type(e).__name__}: {e}>"
+        d5 = got_json == _JSONC_WANT
+        rows.append((d5, "D5",
+                     "JSONC 파서 양성 대조 — 문자열 안의 `//` · 이스케이프 "
+                     "따옴표 · 꼬리 주석"
+                     + ("" if d5 else f" / **어긋남** {got_json}")))
+
+        # 게이트가 아니라 **대비의 인쇄** — 실 트리에서 이 축이 무엇을 봤는지.
+        real_wf = [p for p in CI_WORKFLOW_DIR.rglob("*")
+                   if p.suffix in (".yml", ".yaml") and p.is_file()]
+        real_keys = [k for p in real_wf for _, k in read_ci_build_args(p)]
+        note = (f"실 트리 대비: 워크플로 {len(real_wf)}편 / build-arg 키 "
+                f"{len(real_keys)}개 {sorted(set(real_keys))} — 게이트가 아니라 "
+                f"대비의 인쇄다")
+
+        if not (d1 and d2 and d3 and d4 and d5):
+            for good, tag, text in rows:
+                print(f"  {'✓' if good else '✗'} {tag} {text}")
+            print(f"  · {note}")
+            print("음성 시험 불통과 — 정의역 폐쇄가 깨졌다 (변이는 걸지 않았다)",
+                  file=sys.stderr)
+            return 1
+
+        # ── N0 대조군 — 변이 없는 사본이 통과하는가. **먼저.** ──────────────
+        rc, out = _run_fixture(base0)
+        if rc != 0:
+            for good, tag, text in rows:
+                print(f"  {'✓' if good else '✗'} {tag} {text}")
+            print("  ✗ N0 대조군 — **변이 없는 사본이 이미 실패한다**")
+            print(out)
+            print("음성 시험 불통과 — 기준이 깨진 상태에서는 모든 변이가 "
+                  "엉뚱한 이유로 운다", file=sys.stderr)
+            return 1
+        rows.append((True, "N0", "대조군 — 변이 없는 사본은 통과한다 (rc=0)"))
+
+        # ── 변이 ────────────────────────────────────────────────────────────
+        for i, mut in enumerate(muts):
+            tag, desc, apply, expect = mut[:4]
+            forbid = mut[4] if len(mut) > 4 else ()
+            base = _build_fixture(root / f"m{i}")
+            try:
+                apply(base)  # type: ignore[operator]
+            except _MutationMiss as e:
+                rows.append((False, tag, f"{desc} — 변이 지점을 찾지 못했다: {e}"))
+                ok = False
+                continue
+            rc, out = _run_fixture(base)
+            if rc == 0:
+                rows.append((False, tag,
+                             f"{desc} — **검사가 잡지 못했다** (공허한 검사다)"))
+                ok = False
+                continue
+            miss = [s for s in expect if s not in out]
+            if miss:
+                # rc 만 보면 여기가 통과로 세어지고, 이 변이가 겨냥한 분기는
+                # 조용히 정의역 밖에 남는다.
+                rows.append((False, tag,
+                             f"{desc} — 실패는 했으나 **다른 이유로** 울었다: "
+                             f"기대 문면 부재 {miss}"))
+                ok = False
+                continue
+            spur = [s for s in forbid if s in out]
+            if spur:
+                # 기대 문면이 **다른 경로로** 나온 경우. 이것을 통과로 세면
+                # 겨냥한 분기가 조용히 정의역 밖에 남는다 (N5 가 그랬다).
+                rows.append((False, tag,
+                             f"{desc} — 기대 문면은 나왔으나 **겨냥한 분기가 "
+                             f"아니라 다른 분기가** 울었다: 금지 문면 {spur}"))
+                ok = False
+                continue
+            rows.append((True, tag, f"{desc} — FAIL 확인"))
+
+    for good, tag, text in rows:
+        print(f"  {'✓' if good else '✗'} {tag} {text}")
+    print(f"  · {note}")
+    if not ok:
+        print(f"음성 시험 불통과 — 변이 {sum(1 for g, _, _ in rows if not g)}건이 "
+              f"기대대로 실패하지 않았다", file=sys.stderr)
+        return 1
+    print(f"음성 시험 통과 — 대조군 1 + 정의역 폐쇄 5 + 변이 {len(muts)} 전부 "
+          f"기대대로 판정된다")
+    print("  이것은 **검사가 무는지**를 재는 것이지 핀이 옳은지를 재는 것이 "
+          "아니다 — 후자는 위의 본 검사가, 그리고 `--no-cache` 실 빌드만이 "
+          "잰다.")
+    return 0
+
+
 if __name__ == "__main__":
+    if "--self-test" in sys.argv:
+        sys.exit(self_test())
     sys.exit(main())

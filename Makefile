@@ -517,6 +517,8 @@ lint:
 	python3 $(CURDIR)/scripts/lint_section_refs.py --self-test
 	python3 $(CURDIR)/scripts/lint_case_selector_width.py
 	python3 $(CURDIR)/scripts/lint_case_selector_width.py --self-test
+	python3 $(CURDIR)/scripts/lint_selftest_coverage.py
+	python3 $(CURDIR)/scripts/lint_selftest_coverage.py --self-test
 
 # =============================================================================
 # P0-2 — Cluster 이중 빌드(FRAG_SLOTS=1 / FRAG_SLOTS=4) 단일 진입점.
@@ -645,8 +647,20 @@ RTL_GEN     := $(RTL_DIR)/generated
 # 툴체인 핀 대조 — devcontainer 의 ARG 와 rtl/spinal 의 빌드 파일이 같은 값을
 # 말하는지. 어긋나면 컨테이너가 구워 둔 캐시와 빌드가 원하는 버전이 달라지고,
 # 그러면 오프라인에서 죽거나(운이 좋을 때) 조용히 다른 버전을 받는다(나쁠 때).
+#
+# ⚠️ **선언처가 하나다.** 2026-08-30 이전에는 훅·CI·이 타깃 셋이 각각
+# `python3 scripts/lint_toolchain_pins.py` 를 직접 불렀고, 그 구조에서는
+# `--self-test` 를 한 자리에만 붙이면 나머지 둘이 자기시험 없이 돈다. 셋이
+# 이 타깃을 부르게 하고 줄은 여기에만 둔다 — 이 저장소가 방금 GHA
+# `build-args` 중복으로 데인 것과 같은 논리다(사본은 정보를 더하지 않고
+# 어긋날 자리만 만든다).
+#
+# 둘째 줄은 **검사가 무는지**를 잰다. 첫 줄만으로는 「핀이 맞다」와 「검사가
+# 핀을 못 읽어서 조용했다」가 구별되지 않는다 — 2026-08-30 에 합법 표기
+# 다섯이 정확히 그 길로 완전성 검사를 우회했다.
 rtl-pins:
 	python3 $(CURDIR)/scripts/lint_toolchain_pins.py
+	python3 $(CURDIR)/scripts/lint_toolchain_pins.py --self-test
 
 # SpinalHDL → SystemVerilog 생성. 생성물은 커밋 대상이며 손편집 금지다.
 rtl-gen: rtl-pins

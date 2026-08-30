@@ -42,8 +42,11 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: 툴체인 핀 대조
-        run: python3 scripts/lint_toolchain_pins.py
+      # `make rtl-pins` 는 본 검사와 그 **음성 시험**(--self-test) 두 줄이다.
+      # 셋(훅·CI·make)이 각각 스크립트를 직접 부르던 구조에서는 자기시험을
+      # 한 자리에만 붙이면 나머지 둘이 자기시험 없이 돈다 — 선언처를 하나로.
+      - name: 툴체인 핀 대조 (+ 음성 시험)
+        run: make rtl-pins
 
       - name: 금지 용어 (마이크로코드)
         run: python3 scripts/lint_forbidden_terms.py
@@ -51,7 +54,10 @@ jobs:
       - name: ISA-7 형상 독립성
         run: python3 scripts/lint_isa7_topology.py
 
-      - name: 기존 lint 16종
+      # 이름에 숫자를 적지 않는다 — 「기존 lint 16종」은 아무도 재지 않는
+      # 손-유지 값이었다. 계수는 `scripts/lint_selftest_coverage.py` 의
+      # 하한이 집행한다.
+      - name: 정적 검사 일체 (make lint)
         run: make lint
 
       - name: 훅이 정본과 일치하는가

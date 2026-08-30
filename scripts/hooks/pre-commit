@@ -27,7 +27,17 @@
 #
 # 느린 훅은 `--no-verify` 로 우회되고, 우회되는 훅은 없는 훅보다 나쁘다
 # (통과했다고 착각하게 만들기 때문). 여기 있는 검사는 전부 stdlib python 이며
-# 합계 약 3초다. 시뮬레이션·합성·형식 검사는 **넣지 않는다** — 그것은 CI 몫이다.
+# 시뮬레이션·합성·형식 검사는 **넣지 않는다** — 그것은 CI 몫이다.
+#
+# ⏱ **실측 2026-08-30: 합계 약 20초** (이 호스트, 직렬). 그중 ~11초가
+# `lint_section_refs --self-test` 하나다. 이 주석은 오래도록 「약 3초」라고
+# 적혀 있었고 그것은 낡은 값이었다 — **낡은 속도 약속이 `--no-verify` 를
+# 부른다.** 실측 없이 이 숫자를 고치지 마라. 늘었으면 늘었다고 적어라.
+#
+# 20초의 대부분은 음성 시험(검사가 실제로 무는지를 격리 사본에서 재는 것)이
+# 차지한다. 그 값은 이 저장소가 세 번 지불했다 — yosys bind 묵살 · sby 합성
+# 태스크 회귀 · 2026-08-30 의 ARG 표기 우회. 셋 다 결함이 아니라 **그것을
+# 가능하게 한 조용한 검사**가 사건이었다 (정본 §6.7).
 
 set -eu
 
@@ -48,10 +58,14 @@ run() {
 
 printf 'pre-commit: 정적 검사\n'
 
-run "툴체인 핀 대조"      python3 scripts/lint_toolchain_pins.py
+run "툴체인 핀 대조"      make rtl-pins
 run "금지 용어"           python3 scripts/lint_forbidden_terms.py
 run "ISA-7 형상 독립성"    python3 scripts/lint_isa7_topology.py
-run "기존 lint 16종"       make lint
+# 라벨에 **숫자를 적지 않는다.** 이 자리는 오래도록 「기존 lint 16종」이었고
+# 그 숫자는 아무도 재지 않는 손-유지 값이었다 — 검사가 늘어도 줄어도 라벨은
+# 그대로였다. 계수를 집행하는 것은 `scripts/lint_selftest_coverage.py` 의
+# 하한이지 이 문자열이 아니다.
+run "정적 검사 일체 (make lint)"  make lint
 
 if [ "$fail" -ne 0 ]; then
     cat >&2 <<'EOF'
