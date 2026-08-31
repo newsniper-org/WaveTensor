@@ -101,7 +101,6 @@ module HiuPipeline (
   reg                 lookPerm_r;
   reg                 lookPerm_w;
   reg                 lookPerm_x;
-  wire                lookAny;
   reg        [1:0]    s4_part;
   reg                 s4_write;
   reg                 s4_anyHit;
@@ -132,7 +131,7 @@ module HiuPipeline (
   reg                 s6_perm_x;
   wire                missWait;
   wire                advance;
-  wire                when_HiuPipeline_l391;
+  wire                when_HiuPipeline_l405;
   wire                entitle;
   wire                granted;
   wire                permViol;
@@ -194,10 +193,6 @@ module HiuPipeline (
     lookFrame = 32'h0;
     if(xlate_io_rsp_hit) begin
       lookFrame = xlate_io_rsp_frame;
-    end else begin
-      if(xlate_io_rsp_hostPresent) begin
-        lookFrame = xlate_io_rsp_hostFrame;
-      end
     end
   end
 
@@ -205,10 +200,6 @@ module HiuPipeline (
     lookPerm_r = 1'b0;
     if(xlate_io_rsp_hit) begin
       lookPerm_r = xlate_io_rsp_perm_r;
-    end else begin
-      if(xlate_io_rsp_hostPresent) begin
-        lookPerm_r = xlate_io_rsp_hostPerm_r;
-      end
     end
   end
 
@@ -216,10 +207,6 @@ module HiuPipeline (
     lookPerm_w = 1'b0;
     if(xlate_io_rsp_hit) begin
       lookPerm_w = xlate_io_rsp_perm_w;
-    end else begin
-      if(xlate_io_rsp_hostPresent) begin
-        lookPerm_w = xlate_io_rsp_hostPerm_w;
-      end
     end
   end
 
@@ -227,28 +214,23 @@ module HiuPipeline (
     lookPerm_x = 1'b0;
     if(xlate_io_rsp_hit) begin
       lookPerm_x = xlate_io_rsp_perm_x;
-    end else begin
-      if(xlate_io_rsp_hostPresent) begin
-        lookPerm_x = xlate_io_rsp_hostPerm_x;
-      end
     end
   end
 
-  assign lookAny = (xlate_io_rsp_hit || xlate_io_rsp_hostPresent);
   assign io_mask_req_valid = s3_valid;
   assign io_mask_req_part = s3_part;
   assign io_mask_req_frame = lookFrame;
-  assign missWait = ((s3_valid && (! xlate_io_rsp_hit)) && (! xlate_io_rsp_hostPresent));
+  assign missWait = (s3_valid && (! xlate_io_rsp_hit));
   assign advance = ((! io_hold) && (! missWait));
   assign io_req_ready = advance;
   always @(*) begin
     io_owner_frame = 32'h0;
-    if(when_HiuPipeline_l391) begin
+    if(when_HiuPipeline_l405) begin
       io_owner_frame = s6_frame;
     end
   end
 
-  assign when_HiuPipeline_l391 = (s6_valid && s6_anyHit);
+  assign when_HiuPipeline_l405 = (s6_valid && s6_anyHit);
   assign entitle = (s6_write ? s6_perm_w : s6_perm_r);
   assign granted = (((s6_valid && s6_anyHit) && io_owner_devOwned) && entitle);
   assign permViol = ((s6_valid && s6_anyHit) && (! (io_owner_devOwned && entitle)));
@@ -333,7 +315,7 @@ module HiuPipeline (
       s3_write <= s2_write;
       s4_part <= s3_part;
       s4_write <= s3_write;
-      s4_anyHit <= lookAny;
+      s4_anyHit <= xlate_io_rsp_hit;
       s4_fromFill <= xlate_io_rsp_fromFill;
       s4_frame <= lookFrame;
       s4_perm_r <= lookPerm_r;

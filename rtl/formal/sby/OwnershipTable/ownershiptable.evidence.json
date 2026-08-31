@@ -3,7 +3,7 @@
     "Platform.state_machine_kept",
     "Platform.owner_check"
   ],
-  "at": "2026-08-28T20:07:36Z",
+  "at": "2026-08-31T13:51:14Z",
   "cover": {
     "reached": 12,
     "reached_names": [
@@ -24,7 +24,7 @@
     "unreached_names": []
   },
   "inputs": {
-    "rtl/generated/OwnershipTable.sv": "3b6f4b25c5407b0e49261df313116377f9ad724903cb4c466fb87ac36e454fce",
+    "rtl/generated/OwnershipTable.sv": "472232340c6982d70d935c02e5124e31680dbef7505af19cd8637d71636b4ef2",
     "rtl/sv/assert/OwnershipTable_props.sv": "0b761dec0bb65ab5b31dde656ed36decf685f646b142dbc5439cf7bcbaefb56e"
   },
   "per_task": {
@@ -51,7 +51,7 @@
     }
   },
   "sby": "rtl/formal/sby/OwnershipTable/ownershiptable.sby",
-  "sby_sha256": "5f0bfba1895745abbefb15f76c60c3ce2c4a0accfb1c4450cd981be674878b45",
+  "sby_sha256": "de859e3407e96eabbeca4d25c590aa492e6624451d1c6b9b9e7b72ea99d21957",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

@@ -627,11 +627,16 @@ AX2B_KIND_MAX: dict[str, int] = {}
 #      쌓여 다른 파일이 조용히 그 자리를 채울 수 있었다. `ratchet()` 은
 #      하강도 「상한을 함께 내려라」로 실패시킨다 — 저장소 자신의 규율
 #      (`lint_synth_coverage.py:63`)이 비대칭 적용돼 있었다.
+# 2026-08-31 **하강** 1건 — `hiumask.sby` 3 → 2.
+#   호스트 leg 수리 파도가 이 `.sby` 의 §미측정 잔여 ⑤ 를 「포기」에서
+#   「세웠다」로 갈아치우며 따옴표 없는 `Isolation.tla:NNN` 좌표 하나를
+#   지웠다. 항목이 사라졌으면 상한도 같이 내린다 — 그러지 않으면 그 슬랙을
+#   다음 편집이 조용히 채운다 (이 표를 스칼라에서 파일별로 바꾼 이유 ②).
 AX1_UNMEASURED_HARD_MAX: dict[str, int] = {
     "proofs/tla/AccBank.tla": 5,
     "proofs/tla/README.md": 14,
     "rtl/README.md": 2,
-    "rtl/formal/sby/HiuMask/hiumask.sby": 3,
+    "rtl/formal/sby/HiuMask/hiumask.sby": 2,
     "rtl/formal/sby/Reassembly/props.sby": 3,
     "rtl/formal/sby/XlateStore/xlatestore.sby": 7,
     "rtl/formal/tla/Decode.tla": 1,

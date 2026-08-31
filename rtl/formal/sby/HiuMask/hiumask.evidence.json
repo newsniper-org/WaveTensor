@@ -10,13 +10,13 @@
     "Decode.evict_inline",
     "Platform.owner_check"
   ],
-  "at": "2026-08-28T18:27:18Z",
+  "at": "2026-08-31T12:09:37Z",
   "cover": {
     "reached": 15,
     "reached_names": [
       "HiuMask_comp.u_mask.u_mask_props.w7_mask_roundtrip",
       "HiuMask_comp.u_mask.u_mask_props.w8_mask_frozen_loaded",
-      "HiuMask_comp.u_pipe.u_hiu_props.w10_host_leg_used",
+      "HiuMask_comp.u_pipe.u_hiu_props.w10_host_leg_inert",
       "HiuMask_comp.u_pipe.u_hiu_props.w11_replace_reached",
       "HiuMask_comp.u_pipe.u_hiu_props.w12_replace_completes",
       "HiuMask_comp.u_pipe.u_hiu_props.w13_nonowner_loud",
@@ -34,13 +34,13 @@
     "unreached_names": []
   },
   "inputs": {
-    "rtl/generated/HiuPipeline.sv": "83768afe9908d36db56bc3a9887795bb18892704c230f1a5f27f2af809b88a44",
+    "rtl/generated/HiuPipeline.sv": "cbaa291d8509cf310a5200617cd16ad6ba6ab7bd6270d46abdbba167eb7784d0",
     "rtl/generated/MaskUnit.sv": "6fe2cddee7b7dc270abd69a0e634d414cf1ec04157ffa35e3723ef7374801da8",
-    "rtl/sv/assert/HiuMask_props.sv": "da87b844ee70ea3360e50bf2bf29cf30eb7c380a451e77f9259864aa5966e978"
+    "rtl/sv/assert/HiuMask_props.sv": "1db042d0de048c660ac3ee112093761197befa0d99375a2f1a3f5bb7d83d4c2e"
   },
   "per_task": {
     "bmc": {
-      "assert": 23,
+      "assert": 26,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -54,7 +54,7 @@
       "mode": "cover"
     },
     "prove": {
-      "assert": 23,
+      "assert": 26,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -62,7 +62,7 @@
     }
   },
   "sby": "rtl/formal/sby/HiuMask/hiumask.sby",
-  "sby_sha256": "eb411a0b1992067b891bc738477480f15d957173463e08f5fc676b1b8bf04431",
+  "sby_sha256": "4b16c2dec3f8799de6e03b1d3d63847b03811816a22b80d6413cf8cc28134f8c",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

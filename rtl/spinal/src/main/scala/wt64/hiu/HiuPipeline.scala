@@ -11,13 +11,13 @@
 // ── GUARD-MAP ────────────────────────────────────────────────────────────
 // GUARD-MAP: Isolation.approve_gates_value -> io.rsp.frame/perm 은 기본 0 구동에 when(granted) 단 한 곳에서만 실린다 — granted = 승인 판정(적중 ∧ 소유 ∧ 자격)이며, 미승인 요청의 값 축 관측은 0 이다 (§3.2 규범 2항 「값이 새면 격리 위반」). 게이트가 값을 통제하는 유일 지점이다
 // GUARD-MAP: Isolation.no_early_forward   -> 소비자 인터페이스(io.rsp)에 닿는 배선은 승인 단계(s6) 조합 판정 뒤에만 존재한다 — s3 조회값과 s4·s5 운반 레지스터는 io.rsp 어디에도 배선되지 않는다. io.owner.frame 은 승인 자신의 소유권 조회 주소이고 io.mask.req 는 마스킹 단(s4) 자신의 왕복 요청이다 — 둘 다 소비자가 아니라 파이프 단계의 몸이며, io.mask 는 MaskUnit 외에 결선하지 않는 것이 통합자 결선 계약이다 (io.mask 주석)
-// GUARD-MAP: Isolation.query_offpath      -> STRUCTURAL(port-absence) — 이 모듈에 호스트 질의 발행 포트가 없다 — io.hostRsp 는 선택 경로가 밀어 넣는 입력이고, 파이프는 그것을 값(3순위 leg)과 E.3 채움 대기의 해제 조건으로만 소비한다. 질의 왕복(query·qwait)이 단계열 s1..s6 에 존재하지 않는다 (§3.3.1 「질의 왕복은 가변 지연」 — 요청 경로 밖)
-// GUARD-MAP: Isolation.query_no_serve     -> 호스트 leg 소비는 조회 캡처(s3→s4)의 when(hit).elsewhen(hostPresent) 값 접기 둘째 가지 하나 — 로컬(채움 바이패스·저장 블록)이 답하면 호스트 응답은 판정·값 어느 축에도 들어갈 수 없다 (§3.6.2 규범 2 최하 순위 · §3.3.1 규범 1 「변환은 장치 안에서 완결」 · HIU-8 로컬 우선. 접기가 승인이 아니라 캡처에 있는 이유는 마스킹(s4)이 승인(s6)에 선행해 마스킹 대상 값이 s4 전에 확정되어야 하기 때문 — 접기 위치는 순위를 바꾸지 않는다)
+// GUARD-MAP: Isolation.query_offpath      -> STRUCTURAL(port-absence) — 이 모듈에 호스트 질의 발행 포트가 없다 — io.hostRsp 는 선택 경로가 밀어 넣는 입력이고 XlateStore 로 통과할 뿐 파이프가 소비하지 않는다. 질의 왕복(query·qwait)이 단계열 s1..s6 에 존재하지 않는다 (§3.3.1 「질의 왕복은 가변 지연」 — 요청 경로 밖)
+// GUARD-MAP: Isolation.query_no_serve     -> 호스트 응답(xlate.io.rsp.hostPresent/hostFrame/hostPerm)은 판정·값 어느 축에도 **무조건** 들어가지 않는다 — 조회 캡처(s3→s4)의 값 접기는 when(hit) 한 가지뿐이고 lookAny = hit 이라 호스트 leg 에 가지가 없다. 전건이 「로컬이 답하면」이 아니라 항상이다 — 로컬 *미적중* 사이클이 정확히 이 가드가 지켜야 할 자리이기 때문이다 (§3.6.2 규범 2 최하 순위 · §3.3.1 규범 1 「변환은 장치 안에서 완결」 · 규범 2 「늘어도 안 된다」 · HIU-8 로컬 우선. 접기가 승인이 아니라 캡처에 있는 이유는 마스킹(s4)이 승인(s6)에 선행해 마스킹 대상 값이 s4 전에 확정되어야 하기 때문)
 // GUARD-MAP: Isolation.coh_no_shortcut    -> 단계 전진(advance · 단계 valid 시프트)은 판정·구성 신호와 독립이고, 일관성 가용 신호는 이 모듈에 배선 자체가 없다 — 승인 변종(approve_own/approve_coh)은 판정 입력(io.owner.devOwned)에만 존재하고 단계열은 하나다 (§3.4.1 「일관성이 있어도 규약은 남는다」 · §5.3 상태열 동일성)
-// GUARD-MAP: Decode.lookup_unbranched     -> 조회 결과(hit·fromFill·hostPresent)는 s4 캡처 **데이터**로만 흐르고 단계 배치를 바꾸지 않는다 — D12 값 접기도 값 mux 지 단계 mux 가 아니고, 조회 뒤 모든 요청이 마스킹→실행→승인을 무조건 지난다 (단계 선택 mux 부재 — 시프트 구조. E.4 규범 1·2항). 조회 결과가 닿는 유일한 제어는 E.4 3항이 명시 허용한 조회 지점의 일제 정지(advance)다
+// GUARD-MAP: Decode.lookup_unbranched     -> 조회 결과(hit·fromFill)는 s4 캡처 **데이터**로만 흐르고 단계 배치를 바꾸지 않는다 — D12 값 접기도 값 mux 지 단계 mux 가 아니고, 조회 뒤 모든 요청이 마스킹→실행→승인을 무조건 지난다 (단계 선택 mux 부재 — 시프트 구조. E.4 규범 1·2항). 조회 결과가 닿는 유일한 제어는 E.4 3항이 명시 허용한 조회 지점의 일제 정지(advance)다
 // GUARD-MAP: Decode.evict_inline          -> 축출 상태가 없다 — 대체(유효 ∧ 태그 불일치, §3.6.2 규범 4)는 미적중과 똑같이 캡처 데이터(anyHit=0)로만 나타나고, 저장 기입은 XlateStore 의 채움 경로(호스트 install, E.3 「장치는 채우지 않는다」)가 요청 경로 밖에서 수행하므로 단계열에 축출이 낄 자리가 구조적으로 없다
 // GUARD-MAP: Decode.stall_uniform         -> advance 하나가 파이프 전 단계 레지스터의 공통 enable 이다 — 마스킹 단(s4)의 valid·마스킹 frame 레지스터는 io.mask 왕복 반대편(MaskUnit — io.en 에 같은 advance = io.req.ready 를 물리는 것이 결선 계약)에 있고 나머지 단·필드 전부가 when(advance) 하나 안이다. 정지 원천(외부 io.hold · E.3 미적중 채움 대기)이 무엇이든 파이프 전체가 함께 서고, 요청별·단계별 enable 이 없다 (E.4 3항 「모든 요청이 같은 지점에서 정지 가능하므로 경로가 갈리지 않는다」)
-// GUARD-MAP: Platform.xlate_local         -> 변환 값의 1·2순위 원천은 XlateStore(로컬 저장 블록 + 채움 바이패스)다 — 호스트는 install 포트의 채움 공급자일 뿐이고, hostRsp leg 는 로컬이 미적중일 때만 소비되는 최하 순위 가속이라 로컬 판정을 이길 수 없다 (§3.3.1 규범 1·2 — 구조)
+// GUARD-MAP: Platform.xlate_local         -> 변환 값의 유일한 원천은 XlateStore(로컬 저장 블록 + 채움 바이패스)다 — 호스트는 install 포트의 채움 공급자일 뿐이다. hostRsp leg 는 이 모듈의 판정(lookAny)·값(lookFrame/lookPerm)·정지(missWait) 어느 축에도 소비되지 않는다 — 포트는 §3.3.1 측정 트랙의 「의도된 미결선」(「응답 비트만 세우고 주소를 반환하지 않는다」)으로 남으며 승격 조건은 「전송 방식별 자격 계약이 규범으로 기록되는 시점」이다 (§3.3.1 규범 1·2 · HIU-11 세 축 — 구조)
 // GUARD-MAP: Platform.state_machine_kept  -> 소유권 판정(io.owner.devOwned 의 granted 논리곱 참여)은 승인 조합식에 무조건 존재한다 — 이를 우회하는 elaborate 파라미터도 런타임 구성 비트도 없다 (§3.4.1 「소유권 상태 기계 자체는 그대로 유지한다」 — 판정이 구성 무관하게 상존. 마스킹 우회 파라미터를 두지 않은 판단도 같은 정신이다 — io.mask 주석)
 // GUARD-MAP: Platform.owner_check         -> granted 는 devOwned 를 논리곱의 항으로 요구하고, 비소유 적중은 값 차단(io.rsp.frame/perm 이 0 유지) + StickyFault(io.faultPerm) 다 (HIU-10 · §3.2 「비소유 접근의 관측 결과는 값 차단 + loud fault」 · §3.8 권한 위반 — D11 사후 게이팅)
 // GUARD-MAP: Platform.flush_on_handoff    -> ENV — 이양 시 비우기는 넘기는 쪽(호스트 소프트웨어)의 의무다 (§3.4.1 규범 3항 「넘기는 쪽이 비운다」 · §3.10 호스트 ABI 경계). 장치 쪽 강제 지점이 없고, 하드웨어 일관성 구성에서의 생략 역시 호스트 ABI 합의 사항이다
@@ -92,8 +92,8 @@
 //
 // ## E.3 미적중 배압 — 정지는 조회 지점 하나, 파이프 전체가 함께 선다
 //
-// 미적중은 오류가 아니다 (§3.6.2 규범 3). s3 의 요청이 로컬 미적중이고
-// 호스트 응답 leg 도 없으면 파이프 전체가 정지하고(missWait → advance 하강)
+// 미적중은 오류가 아니다 (§3.6.2 규범 3). s3 의 요청이 로컬 미적중이면
+// 파이프 전체가 정지하고(missWait → advance 하강)
 // 미적중을 sticky 로 알린다 (io.missNotice — fault 가 아니다. §3.8 폴딩
 // 규범: 미적중 표시와 fault 는 서로 다른 신호이며 어느 쪽도 다른 쪽을
 // 세우지 않는다). 호스트가 항목을 기입하면 채움 바이패스(XlateStore D12
@@ -276,9 +276,20 @@ class HiuPipeline(val cfg: Wt64Config = Wt64Config()) extends Component {
   xlate.io.lookup.vpn   := s3.vpn
 
   // ── 조회 값 접기 — D12 전순서의 이 모듈 몫 (query_no_serve 의 몸통) ──
-  // 로컬(바이패스∨저장 — XlateStore 가 1>2 순위를 이미 접었다) > 호스트
-  // 응답. elsewhen 이라 로컬이 답하면 호스트 값은 선택 불가능하다. 접기가
-  // 캡처에 있는 이유는 머리 「s4 왕복」절 — 마스킹 대상은 s4 전에 확정.
+  // 변환 값의 원천은 XlateStore(바이패스∨저장 — 1>2 순위를 그쪽이 이미
+  // 접었다) 하나다. 접기가 캡처에 있는 이유는 머리 「s4 왕복」절 —
+  // 마스킹 대상은 s4 전에 확정돼야 한다.
+  //
+  // 호스트 응답 leg(xlate.io.rsp.hostPresent/hostFrame/hostPerm)은 이
+  // 접기에 **가지를 갖지 않는다**. §3.3.1 규범 2 「지원하는 호스트에서
+  // 기능이 *늘어도* 안 된다」 · HIU-11 「켠 구성과 끈 구성이 같은 상태열을
+  // 지나고 같은 판정과 같은 값을 관측한다」 — 호스트 leg 이 값·판정·정지
+  // 어느 축에라도 들어가면 PE 가 보는 세계가 호스트에 따라 달라진다.
+  // 정본 §3.3.1 측정 트랙이 이 상태를 「질의 상태는 응답 비트만 세우고
+  // *주소를 반환하지 않는다.*」라 적고, 이어서 「이것은 미완성이 아니라
+  // *의도된 미결선*이다」라 못박는다. 이 접기가 그 서술 그대로다 (포트는
+  // 남고 소비가 없다 — 승격 조건은 「전송 방식별 자격 계약이 규범으로
+  // 기록되는 시점」).
   private val lookFrame = UInt(FRAME_W bits)
   private val lookPerm  = XlatePerm()
   lookFrame  := 0
@@ -288,11 +299,8 @@ class HiuPipeline(val cfg: Wt64Config = Wt64Config()) extends Component {
   when(xlate.io.rsp.hit) {
     lookFrame := xlate.io.rsp.frame
     lookPerm  := xlate.io.rsp.perm
-  } elsewhen (xlate.io.rsp.hostPresent) {
-    lookFrame := xlate.io.rsp.hostFrame
-    lookPerm  := xlate.io.rsp.hostPerm
   }
-  private val lookAny = xlate.io.rsp.hit || xlate.io.rsp.hostPresent
+  private val lookAny = xlate.io.rsp.hit
 
   // 마스킹 왕복의 요청 변 — s3→s4 캡처가 곧 MaskUnit req 다. 반대편
   // 레지스터(en = advance)가 s4 의 valid·마스킹 frame 레지스터를 대체한다.
@@ -328,10 +336,16 @@ class HiuPipeline(val cfg: Wt64Config = Wt64Config()) extends Component {
   private val s6 = new Carry
 
   // ── 일제 정지 — 유일한 정지 지점 (stall_uniform 의 CHECK 몸통) ────
-  // E.3 미적중 채움 대기: s3 의 요청이 로컬(바이패스·저장) 미적중이고
-  // 호스트 응답 leg 도 없으면 선다. 호스트 기입 → 채움 바이패스 적중 →
-  // 같은 사이클 해제. E.4 3항이 이 지점 하나를 명시 허용한다.
-  private val missWait = s3.valid && !xlate.io.rsp.hit && !xlate.io.rsp.hostPresent
+  // E.3 미적중 채움 대기: s3 의 요청이 로컬(바이패스·저장) 미적중이면
+  // 선다. 정지를 푸는 것은 **항목 기입 하나**다 — 호스트 install →
+  // 채움 바이패스(XlateStore D12 1순위) 적중 → 같은 사이클 해제.
+  // E.3 2항 파생 요건이 그 배타성을 축자로 못박는다: 「해제는 정지를
+  // 풀지 않는다 — 정지를 푸는 것은 2항의 항목 기입뿐이다」.
+  // 그러므로 hostRsp leg 은 이 식의 항이 될 수 없다 — 그것이 항이면
+  // 서비스 없는 구성이 영구 정지하는 접근을 서비스 있는 구성이 통과시켜
+  // HIU-11 의 *상태열* 축이 깨진다 (§3.3.1 규범 2 「늘어도 안 된다」).
+  // E.4 3항이 이 지점 하나를 명시 허용한다.
+  private val missWait = s3.valid && !xlate.io.rsp.hit
   private val advance  = !io.hold && !missWait
   io.req.ready := advance
 

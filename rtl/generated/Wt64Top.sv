@@ -573,12 +573,12 @@ module Wt64Top (
   wire                maskArea_npWr;
   wire                maskArea_npRsvBad;
   wire                maskArea_npReject;
-  wire                when_Wt64Top_l1240;
+  wire                when_Wt64Top_l1241;
   wire                maskArea_rkWr;
   wire                maskArea_rkRsvBad;
   wire                maskArea_rkReject;
   reg        [31:0]   maskArea_maskStat;
-  wire                when_Wt64Top_l1267;
+  wire                when_Wt64Top_l1268;
   reg        [31:0]   maskArea_readValue;
   wire       [3:0]    fpArea_wordOff;
   wire                fpArea_wr;
@@ -587,7 +587,7 @@ module Wt64Top (
   wire                fpArea_isBind;
   wire                fpArea_isStatus;
   wire                fpArea_bindRsvBad;
-  wire                when_Wt64Top_l1308;
+  wire                when_Wt64Top_l1309;
   reg        [31:0]   fpArea_fpStat;
   reg        [31:0]   fpArea_readValue;
   wire       [3:0]    abortArea_wordOff;
@@ -600,7 +600,7 @@ module Wt64Top (
   wire                abortArea_isCnt;
   wire                abortArea_isInc;
   wire                abortArea_isArm;
-  wire                when_Wt64Top_l1360;
+  wire                when_Wt64Top_l1361;
   reg        [31:0]   abortArea_readValue;
   wire       [3:0]    faultArea_wordOff;
   wire                faultArea_wr;
@@ -614,7 +614,7 @@ module Wt64Top (
   wire                faultArea_capRsvBad;
   wire                faultArea_doClr;
   wire                faultArea_doCapClr;
-  wire                when_Wt64Top_l1410;
+  wire                when_Wt64Top_l1411;
   wire                when_Common_l258;
   reg                 _zz_io_fault_cfgSurfBadWrite;
   wire                when_Common_l258_1;
@@ -623,7 +623,7 @@ module Wt64Top (
   reg        [31:0]   faultWords_summary;
   reg        [31:0]   faultWords_capStatus;
   reg        [31:0]   faultWords_readValue;
-  wire                when_Wt64Top_l1521;
+  wire                when_Wt64Top_l1522;
   wire                mapRd;
   reg        [31:0]   mapRdReg;
   reg                 mapRv;
@@ -1330,16 +1330,16 @@ module Wt64Top (
   assign cfgBlk_io_faultClearBad = (io_faultClear_cfgBadWrite || (fltClrAccept && io_mmio_wdata[6]));
   always @(*) begin
     surfBadWr = 1'b0;
-    if(when_Wt64Top_l1267) begin
+    if(when_Wt64Top_l1268) begin
       surfBadWr = 1'b1;
     end
-    if(when_Wt64Top_l1308) begin
+    if(when_Wt64Top_l1309) begin
       surfBadWr = 1'b1;
     end
-    if(when_Wt64Top_l1360) begin
+    if(when_Wt64Top_l1361) begin
       surfBadWr = 1'b1;
     end
-    if(when_Wt64Top_l1410) begin
+    if(when_Wt64Top_l1411) begin
       surfBadWr = 1'b1;
     end
   end
@@ -1359,7 +1359,7 @@ module Wt64Top (
   assign maskArea_npWr = (maskArea_wr && maskArea_isNoncePart);
   assign maskArea_npRsvBad = ((io_mmio_wdata & 32'hffffff00) != 32'h0);
   assign maskArea_npReject = (maskArea_npWr && (maskArea_npRsvBad || maskArea_partBad));
-  assign when_Wt64Top_l1240 = ((maskArea_npWr && (! maskArea_npRsvBad)) && (! maskArea_partBad));
+  assign when_Wt64Top_l1241 = ((maskArea_npWr && (! maskArea_npRsvBad)) && (! maskArea_partBad));
   assign mask_io_nonceWr_valid = (maskArea_wr && maskArea_isNonce);
   assign mask_io_nonceWr_idx = (maskArea_wordOff[2 : 0] - 3'b001);
   assign maskArea_rkWr = (maskArea_wr && maskArea_isRekey);
@@ -1374,7 +1374,7 @@ module Wt64Top (
     maskArea_maskStat[9] = mask_io_rekey_ready;
   end
 
-  assign when_Wt64Top_l1267 = ((maskArea_npReject || maskArea_rkReject) || (maskArea_wr && maskArea_isStatus));
+  assign when_Wt64Top_l1268 = ((maskArea_npReject || maskArea_rkReject) || (maskArea_wr && maskArea_isStatus));
   always @(*) begin
     maskArea_readValue = 32'h0;
     if(maskArea_isNoncePart) begin
@@ -1400,7 +1400,7 @@ module Wt64Top (
   assign fps_io_bindWr_key = io_mmio_wdata[15 : 0];
   assign fps_io_bindWr_en = io_mmio_wdata[31];
   assign fps_io_bindWr_slot = io_mmio_wdata[23 : 16];
-  assign when_Wt64Top_l1308 = (((fpArea_wr && fpArea_isBind) && fpArea_bindRsvBad) || (fpArea_wr && fpArea_isStatus));
+  assign when_Wt64Top_l1309 = (((fpArea_wr && fpArea_isBind) && fpArea_bindRsvBad) || (fpArea_wr && fpArea_isStatus));
   always @(*) begin
     fpArea_fpStat = 32'h0;
     fpArea_fpStat[0] = fps_io_loadReady;
@@ -1424,7 +1424,7 @@ module Wt64Top (
   assign abortArea_isCnt = (abortArea_wordOff == 4'b0100);
   assign abortArea_isInc = (abortArea_wordOff == 4'b0101);
   assign abortArea_isArm = (abortArea_wordOff == 4'b0110);
-  assign when_Wt64Top_l1360 = (stg_io_badWrite || (abortArea_wr && ((abortArea_isCnt || abortArea_isInc) || abortArea_isArm)));
+  assign when_Wt64Top_l1361 = (stg_io_badWrite || (abortArea_wr && ((abortArea_isCnt || abortArea_isInc) || abortArea_isArm)));
   always @(*) begin
     abortArea_readValue = 32'h0;
     if(abortArea_isCnt) begin
@@ -1452,7 +1452,7 @@ module Wt64Top (
   assign faultArea_doCapClr = ((faultArea_wr && faultArea_isCapClr) && (! faultArea_capRsvBad));
   assign fltClrAccept = faultArea_doClr;
   assign capClrAccept = faultArea_doCapClr;
-  assign when_Wt64Top_l1410 = (((faultArea_wr && ((faultArea_isStatus || faultArea_isSummary) || faultArea_isCapSt)) || ((faultArea_wr && faultArea_isClear) && faultArea_clrRsvBad)) || ((faultArea_wr && faultArea_isCapClr) && faultArea_capRsvBad));
+  assign when_Wt64Top_l1411 = (((faultArea_wr && ((faultArea_isStatus || faultArea_isSummary) || faultArea_isCapSt)) || ((faultArea_wr && faultArea_isClear) && faultArea_clrRsvBad)) || ((faultArea_wr && faultArea_isCapClr) && faultArea_capRsvBad));
   assign io_fault_decodeWalk = walk_io_oFault;
   assign io_fault_operandDecode = od_io_oFault;
   assign io_fault_route = rj_io_fault;
@@ -1536,12 +1536,12 @@ module Wt64Top (
     if(selCfg) begin
       io_mmio_ready = cfgBlk_io_ready;
     end
-    if(when_Wt64Top_l1521) begin
+    if(when_Wt64Top_l1522) begin
       io_mmio_ready = fps_io_loadReady;
     end
   end
 
-  assign when_Wt64Top_l1521 = (selFp && (fpArea_isProg || fpArea_isBind));
+  assign when_Wt64Top_l1522 = (selFp && (fpArea_isProg || fpArea_isBind));
   assign mapRd = (((maskArea_rd || fpArea_rd) || abortArea_rd) || faultArea_rd);
   assign resvOffset = (! (((((((selOwn || selCq) || selCfg) || selMask) || selFp) || selAbort) || selFault) || selUnwired));
   assign resvRd = ((io_mmio_rstrobe && (! io_mmio_wstrobe)) && ((resvOffset || selUnwired) || ((((selMask || selFp) || selAbort) || selFault) && (! mmioAligned))));
@@ -1582,7 +1582,7 @@ module Wt64Top (
       mapRv <= 1'b0;
       resvRv <= 1'b0;
     end else begin
-      if(when_Wt64Top_l1240) begin
+      if(when_Wt64Top_l1241) begin
         maskArea_noncePart <= maskArea_partField[1:0];
       end
       if(when_Common_l258) begin
@@ -5207,16 +5207,16 @@ module OwnershipTable (
   reg        [1:0]    rdSel;
   reg                 rState;
   reg                 acceptR_regNext;
-  wire                when_OwnershipTable_l297;
-  wire                when_OwnershipTable_l298;
   wire                when_OwnershipTable_l299;
+  wire                when_OwnershipTable_l300;
+  wire                when_OwnershipTable_l301;
   reg                 collide;
   wire                slotBusy;
   wire                slotMine;
-  wire                when_OwnershipTable_l318;
+  wire                when_OwnershipTable_l320;
   wire       [63:0]   _zz_1;
-  wire                when_OwnershipTable_l321;
-  wire                when_OwnershipTable_l330;
+  wire                when_OwnershipTable_l323;
+  wire                when_OwnershipTable_l332;
   reg                 _zz_io_faultCollide;
   reg                 _zz_io_faultBadWrite;
 
@@ -5387,9 +5387,9 @@ module OwnershipTable (
   assign idxTag = idxFrm[31 : 6];
   assign devStateAtIdx = (validBits[chkAddr] && (chkTag == idxTag));
   assign io_rvalid = acceptR_regNext;
-  assign when_OwnershipTable_l297 = (aligned && region);
-  assign when_OwnershipTable_l298 = (word == 6'h0);
-  assign when_OwnershipTable_l299 = (word == 6'h01);
+  assign when_OwnershipTable_l299 = (aligned && region);
+  assign when_OwnershipTable_l300 = (word == 6'h0);
+  assign when_OwnershipTable_l301 = (word == 6'h01);
   always @(*) begin
     io_rdata = 32'h0;
     case(rdSel)
@@ -5407,8 +5407,8 @@ module OwnershipTable (
   always @(*) begin
     collide = 1'b0;
     if(setWr) begin
-      if(!when_OwnershipTable_l318) begin
-        if(when_OwnershipTable_l321) begin
+      if(!when_OwnershipTable_l320) begin
+        if(when_OwnershipTable_l323) begin
           collide = 1'b1;
         end
       end
@@ -5417,10 +5417,10 @@ module OwnershipTable (
 
   assign slotBusy = validBits[wIdx];
   assign slotMine = (chkTag == wTag);
-  assign when_OwnershipTable_l318 = (! slotBusy);
+  assign when_OwnershipTable_l320 = (! slotBusy);
   assign _zz_1 = ({63'd0,1'b1} <<< wIdx);
-  assign when_OwnershipTable_l321 = (! slotMine);
-  assign when_OwnershipTable_l330 = (slotBusy && slotMine);
+  assign when_OwnershipTable_l323 = (! slotMine);
+  assign when_OwnershipTable_l332 = (slotBusy && slotMine);
   assign io_faultCollide = _zz_io_faultCollide;
   assign io_faultBadWrite = _zz_io_faultBadWrite;
   always @(posedge clk or posedge reset) begin
@@ -5504,17 +5504,17 @@ module OwnershipTable (
       if(acceptR) begin
         rdSel <= 2'b00;
         rState <= devStateAtIdx;
-        if(when_OwnershipTable_l297) begin
-          if(when_OwnershipTable_l298) begin
+        if(when_OwnershipTable_l299) begin
+          if(when_OwnershipTable_l300) begin
             rdSel <= 2'b01;
           end
-          if(when_OwnershipTable_l299) begin
+          if(when_OwnershipTable_l301) begin
             rdSel <= 2'b10;
           end
         end
       end
       if(setWr) begin
-        if(when_OwnershipTable_l318) begin
+        if(when_OwnershipTable_l320) begin
           validBits[wIdx] <= 1'b1;
           if(_zz_1[0]) begin
             tagVec_0 <= wTag;
@@ -5711,7 +5711,7 @@ module OwnershipTable (
         end
       end
       if(clrWr) begin
-        if(when_OwnershipTable_l330) begin
+        if(when_OwnershipTable_l332) begin
           validBits[wIdx] <= 1'b0;
         end
       end
@@ -5825,7 +5825,6 @@ module HiuPipeline (
   reg                 lookPerm_r;
   reg                 lookPerm_w;
   reg                 lookPerm_x;
-  wire                lookAny;
   reg        [1:0]    s4_part;
   reg                 s4_write;
   reg                 s4_anyHit;
@@ -5856,7 +5855,7 @@ module HiuPipeline (
   reg                 s6_perm_x;
   wire                missWait;
   wire                advance;
-  wire                when_HiuPipeline_l391;
+  wire                when_HiuPipeline_l405;
   wire                entitle;
   wire                granted;
   wire                permViol;
@@ -5918,10 +5917,6 @@ module HiuPipeline (
     lookFrame = 32'h0;
     if(xlate_io_rsp_hit) begin
       lookFrame = xlate_io_rsp_frame;
-    end else begin
-      if(xlate_io_rsp_hostPresent) begin
-        lookFrame = xlate_io_rsp_hostFrame;
-      end
     end
   end
 
@@ -5929,10 +5924,6 @@ module HiuPipeline (
     lookPerm_r = 1'b0;
     if(xlate_io_rsp_hit) begin
       lookPerm_r = xlate_io_rsp_perm_r;
-    end else begin
-      if(xlate_io_rsp_hostPresent) begin
-        lookPerm_r = xlate_io_rsp_hostPerm_r;
-      end
     end
   end
 
@@ -5940,10 +5931,6 @@ module HiuPipeline (
     lookPerm_w = 1'b0;
     if(xlate_io_rsp_hit) begin
       lookPerm_w = xlate_io_rsp_perm_w;
-    end else begin
-      if(xlate_io_rsp_hostPresent) begin
-        lookPerm_w = xlate_io_rsp_hostPerm_w;
-      end
     end
   end
 
@@ -5951,28 +5938,23 @@ module HiuPipeline (
     lookPerm_x = 1'b0;
     if(xlate_io_rsp_hit) begin
       lookPerm_x = xlate_io_rsp_perm_x;
-    end else begin
-      if(xlate_io_rsp_hostPresent) begin
-        lookPerm_x = xlate_io_rsp_hostPerm_x;
-      end
     end
   end
 
-  assign lookAny = (xlate_io_rsp_hit || xlate_io_rsp_hostPresent);
   assign io_mask_req_valid = s3_valid;
   assign io_mask_req_part = s3_part;
   assign io_mask_req_frame = lookFrame;
-  assign missWait = ((s3_valid && (! xlate_io_rsp_hit)) && (! xlate_io_rsp_hostPresent));
+  assign missWait = (s3_valid && (! xlate_io_rsp_hit));
   assign advance = ((! io_hold) && (! missWait));
   assign io_req_ready = advance;
   always @(*) begin
     io_owner_frame = 32'h0;
-    if(when_HiuPipeline_l391) begin
+    if(when_HiuPipeline_l405) begin
       io_owner_frame = s6_frame;
     end
   end
 
-  assign when_HiuPipeline_l391 = (s6_valid && s6_anyHit);
+  assign when_HiuPipeline_l405 = (s6_valid && s6_anyHit);
   assign entitle = (s6_write ? s6_perm_w : s6_perm_r);
   assign granted = (((s6_valid && s6_anyHit) && io_owner_devOwned) && entitle);
   assign permViol = ((s6_valid && s6_anyHit) && (! (io_owner_devOwned && entitle)));
@@ -6057,7 +6039,7 @@ module HiuPipeline (
       s3_write <= s2_write;
       s4_part <= s3_part;
       s4_write <= s3_write;
-      s4_anyHit <= lookAny;
+      s4_anyHit <= xlate_io_rsp_hit;
       s4_fromFill <= xlate_io_rsp_fromFill;
       s4_frame <= lookFrame;
       s4_perm_r <= lookPerm_r;

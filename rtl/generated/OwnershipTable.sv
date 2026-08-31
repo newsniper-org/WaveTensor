@@ -118,16 +118,16 @@ module OwnershipTable (
   reg        [1:0]    rdSel;
   reg                 rState;
   reg                 acceptR_regNext;
-  wire                when_OwnershipTable_l297;
-  wire                when_OwnershipTable_l298;
   wire                when_OwnershipTable_l299;
+  wire                when_OwnershipTable_l300;
+  wire                when_OwnershipTable_l301;
   reg                 collide;
   wire                slotBusy;
   wire                slotMine;
-  wire                when_OwnershipTable_l318;
+  wire                when_OwnershipTable_l320;
   wire       [63:0]   _zz_1;
-  wire                when_OwnershipTable_l321;
-  wire                when_OwnershipTable_l330;
+  wire                when_OwnershipTable_l323;
+  wire                when_OwnershipTable_l332;
   reg                 _zz_io_faultCollide;
   reg                 _zz_io_faultBadWrite;
 
@@ -298,9 +298,9 @@ module OwnershipTable (
   assign idxTag = idxFrm[31 : 6];
   assign devStateAtIdx = (validBits[chkAddr] && (chkTag == idxTag));
   assign io_rvalid = acceptR_regNext;
-  assign when_OwnershipTable_l297 = (aligned && region);
-  assign when_OwnershipTable_l298 = (word == 6'h0);
-  assign when_OwnershipTable_l299 = (word == 6'h01);
+  assign when_OwnershipTable_l299 = (aligned && region);
+  assign when_OwnershipTable_l300 = (word == 6'h0);
+  assign when_OwnershipTable_l301 = (word == 6'h01);
   always @(*) begin
     io_rdata = 32'h0;
     case(rdSel)
@@ -318,8 +318,8 @@ module OwnershipTable (
   always @(*) begin
     collide = 1'b0;
     if(setWr) begin
-      if(!when_OwnershipTable_l318) begin
-        if(when_OwnershipTable_l321) begin
+      if(!when_OwnershipTable_l320) begin
+        if(when_OwnershipTable_l323) begin
           collide = 1'b1;
         end
       end
@@ -328,10 +328,10 @@ module OwnershipTable (
 
   assign slotBusy = validBits[wIdx];
   assign slotMine = (chkTag == wTag);
-  assign when_OwnershipTable_l318 = (! slotBusy);
+  assign when_OwnershipTable_l320 = (! slotBusy);
   assign _zz_1 = ({63'd0,1'b1} <<< wIdx);
-  assign when_OwnershipTable_l321 = (! slotMine);
-  assign when_OwnershipTable_l330 = (slotBusy && slotMine);
+  assign when_OwnershipTable_l323 = (! slotMine);
+  assign when_OwnershipTable_l332 = (slotBusy && slotMine);
   assign io_faultCollide = _zz_io_faultCollide;
   assign io_faultBadWrite = _zz_io_faultBadWrite;
   always @(posedge clk or posedge reset) begin
@@ -415,17 +415,17 @@ module OwnershipTable (
       if(acceptR) begin
         rdSel <= 2'b00;
         rState <= devStateAtIdx;
-        if(when_OwnershipTable_l297) begin
-          if(when_OwnershipTable_l298) begin
+        if(when_OwnershipTable_l299) begin
+          if(when_OwnershipTable_l300) begin
             rdSel <= 2'b01;
           end
-          if(when_OwnershipTable_l299) begin
+          if(when_OwnershipTable_l301) begin
             rdSel <= 2'b10;
           end
         end
       end
       if(setWr) begin
-        if(when_OwnershipTable_l318) begin
+        if(when_OwnershipTable_l320) begin
           validBits[wIdx] <= 1'b1;
           if(_zz_1[0]) begin
             tagVec_0 <= wTag;
@@ -622,7 +622,7 @@ module OwnershipTable (
         end
       end
       if(clrWr) begin
-        if(when_OwnershipTable_l330) begin
+        if(when_OwnershipTable_l332) begin
           validBits[wIdx] <= 1'b0;
         end
       end
