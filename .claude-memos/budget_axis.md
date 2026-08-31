@@ -260,7 +260,7 @@ fault 가 서면 **드레인이 fault 를 만드는 구조가 된다.** 예산 �
 |---|---|
 | `chapters/03-hiu.typ:1064` | 「소거는 fault 가 아니다 — 호스트의 의도된 처분이다」 |
 | `chapters/04-ext-payload.typ:412` | 「(부록 E.12 2항 — 호스트의 의도된 처분)」 |
-| `appendix/e-defined.typ:1503` | 「소거는 fault 가 아니다 (호스트의 의도된 처분 — @sec:extpayload 4.3)」 |
+| `appendix/e-defined.typ:1584` | 「소거는 fault 가 아니다 (호스트의 의도된 처분 — @sec:extpayload 4.3)」 |
 
 **그런데 회계 흔적을 갖는 것은 소거뿐이다.**
 

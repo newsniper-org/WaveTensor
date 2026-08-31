@@ -313,8 +313,8 @@ HIU-6 의 「명시적 해제」가 top IO 입력뿐이었다. 다섯 워드가 
 | `0xF80` | FAULT_STATUS (RO) | 열아홉 축 중 열일곱의 sticky 배치 + `[6]` 폴딩. `[17]` 엔트로피와 `[18]` 명령 디스크립터는 세울 원천이 미착지라 상수 0 |
 | `0xF84` | FAULT_CLEAR (WO, W1C) | 각 하위 유닛의 `faultClear` 에 **논리합**으로 들어간다 — 기존 IO 해제선을 무효화하지 않는다 |
 | `0xF88` | FAULT_SUMMARY (RO) | `[0]` = STATUS 논리합. 개별 노출을 대체하지 않고 덧붙인다 (§5.6 1항) |
-| `0xF8C` | CAP_STATUS (RO) | `[0]` 재조립 슬롯 · `[1]` step 프로그램 미상주. **fault 아님** — STATUS·SUMMARY 어느 쪽에도 들지 않는다 (§1.6.2) |
-| `0xF90` | CAP_CLEAR (WO, W1C) | 같은 비트 배치 |
+| `0xF8C` | CAP_STATUS (RO) | 정본 축은 **넷**인데 이 배선은 **둘**이다 — `[0]` 재조립 슬롯 용량 · `[1]` step 프로그램 미상주만 세운다. `[2]` EH 사슬 용량은 판정 회로가 실재하나(`DecodeWalk.judge.capAbsent`) 최상위 포트 `io.dec.capAbsent` 로만 나가 이 워드에 닿지 않고 sticky 도 없다. `[3]` 연산 미지원은 세울 원천 자체가 0건이다. 둘 다 상수 0 (정본 E.1.3 · 3장 「아직 없는 것」 표). **fault 아님** — STATUS·SUMMARY 어느 쪽에도 들지 않는다 (§1.6.2) |
+| `0xF90` | CAP_CLEAR (WO, W1C) | 같은 비트 배치. **예약 구간이 아직 `[31:2]` 다** (`Fault.N_CAP_BITS = 2`) — 정본은 `[31:4]` 로 좁혔으므로 `[2]`·`[3]` 에 대한 적법한 W1C 기입이 오늘은 *거절 + loud* (`FAULT_STATUS[6]`)다. 읽기 쪽 결손(상수 0)보다 이쪽이 더 세다: 관측이 비는 것이 아니라 **적법한 기입이 오류로 보고된다** |
 
 `[6]`「거절된 구성 기입」이 세 원천을 접는다 — `MmioConfig.faultBadWrite` ·
 top 의 `cfgSurfBadWrite` · **완료 유닛의 새 `faultBadWrite`**. 상류
