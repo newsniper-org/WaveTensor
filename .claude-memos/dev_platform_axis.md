@@ -252,7 +252,7 @@ Phase C = 「이행 중 (두 어셈블러 모두 살아있음)」. 정본 §0.3.
 「에어락은 양방향이다」와 같은 결인데 **정본에 없다.**
 
 **(d) 부록 E 는 어셈블러를 pass/fail 오라클보다 강한 것으로 쓴다.**
-`docs/wt64v1-architecture-guide/appendix/e-defined.typ:868` 축자: 「미룬 자리로 어셈블러(허용 오라클)를 고른 것
+`docs/wt64v1-architecture-guide/appendix/e-defined.typ:899` 축자: 「미룬 자리로 어셈블러(허용 오라클)를 고른 것
 자체는 이 저장소의 관행 그대로이고, 다른 인코딩 공백들이 실제로 그렇게 닫혔다」.
 즉 어셈블러는 **정본이 정하지 않은 것을 정하는 관측원**이다. 그 권위가 둘로
 갈리면 `sdk_encoding_delta_notice.md` 머리의 현행 순위 「정본 > 어셈블러 실물 >
