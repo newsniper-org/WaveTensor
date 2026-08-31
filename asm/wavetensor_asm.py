@@ -2004,14 +2004,19 @@ def _encode_eh(eh: ExtensionHeader) -> Tuple[int, List[int]]:
         upper = ((stride & 0xFFF) << 4) | (addr_mode & 0xF)
         return EH_MEM, [(upper << 16) | (EH_MEM << 8) | 2, offset & 0xFFFFFFFF]
     if kind == 'subscript':
-        codes = _canonicalize_subscript(eh)
-        a_axes = _pack_axes(codes.get('A', []))
-        b_axes = _pack_axes(codes.get('B', []))
-        o_axes = _pack_axes(codes.get('O', []))
-        return EH_SUBSCRIPT, [
-            ((o_axes & 0xFFFF) << 16) | (EH_SUBSCRIPT << 8) | 2,
-            ((a_axes & 0xFFFF) << 16) | (b_axes & 0xFFFF),
-        ]
+        # 첨자는 이 함수의 소관이 아니다 — `_encode_instruction` 이 첨자만
+        # `_encode_subscript_eh_multi()` 로 먼저 보낸다 (다중 SUBSCRIPT 를
+        # 낼 수 있어야 하기 때문이다). 여기에 있던 **둘째 인코딩 사본**은
+        # 도달 불가능했고, 도달 불가능한 사본은 조용히 갈라진다: 그 사본의
+        # 워드 배치를 뒤집는 변이가 16,234점 스윕에서 불일치 0 으로
+        # 빠져나갔다 (실경로에 같은 변이를 걸면 2점이 문다). 사본을 지우고
+        # 오배선을 소리나게 만든다 — 침묵하는 죽은 코드보다 낫다.
+        raise AssemblerError(
+            f"line {eh.line}: .subscript 는 _encode_eh() 가 인코드하지 않는다 "
+            f"— 첨자는 _encode_subscript_eh_multi() 한 경로로만 나간다 "
+            f"(5축 이상이면 SUBSCRIPT EH 두 개가 되므로 (type, words) "
+            f"하나를 내는 이 함수의 서명으로는 표현할 수 없다)"
+        )
     if kind == 'opref':
         src_kind = a.get('kind', 0)
         noc_route = a.get('route', 0)

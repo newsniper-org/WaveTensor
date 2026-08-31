@@ -113,9 +113,9 @@ ADD .imm16 5
 [7:0]    bh_len        — CH 를 포함한 물리 워드 총수
 ```
 
-실물은 `asm/wavetensor_asm.py:2110` 「base = ((opcode & 0xFF) << 24)」 부터
-`asm/wavetensor_asm.py:2114` 「| (bh_len & 0xFF)」 까지의 다섯 줄이다.
-확장 니블은 그 사이 `asm/wavetensor_asm.py:2113` 「| (((opcode >> 8) & 0xF) << 8)」.
+실물은 `asm/wavetensor_asm.py:2115` 「base = ((opcode & 0xFF) << 24)」 부터
+`asm/wavetensor_asm.py:2119` 「| (bh_len & 0xFF)」 까지의 다섯 줄이다.
+확장 니블은 그 사이 `asm/wavetensor_asm.py:2118` 「| (((opcode >> 8) & 0xF) << 8)」.
 
 - **opcode 는 12비트.** 공간 `0x000..0xFFF`. 초과 시 `AssemblerError`.
 - 기존 opcode(≤ 0xFF)는 확장 니블 `0x0` 프리픽스 ⇒ `0x07B == 0x7B`.
@@ -128,7 +128,7 @@ ADD .imm16 5
 
 ### 2.2 `bh_len` 회계
 
-실물 한 줄이다 — `asm/wavetensor_asm.py:2100` 「bh_len = 1 + (1 if has_ch else 0) + sum(len(words) for _, words in encoded)」.
+실물 한 줄이다 — `asm/wavetensor_asm.py:2105` 「bh_len = 1 + (1 if has_ch else 0) + sum(len(words) for _, words in encoded)」.
 
 ```
 bh_len = 1                                   # 기본 헤더
@@ -147,8 +147,8 @@ bh_len = 1                                   # 기본 헤더
 - word0 `next_hdr ≠ END` ⇔ word1 = CH
 - `next_hdr == END` ⇒ CH 없음, `bh_len = 1`, 1워드 명령
 
-실물 분기는 `asm/wavetensor_asm.py:2099` 「has_ch = bool(encoded)」 ·
-`asm/wavetensor_asm.py:2119` 「ch = _ch_word([base] + chain_words)」.
+실물 분기는 `asm/wavetensor_asm.py:2104` 「has_ch = bool(encoded)」 ·
+`asm/wavetensor_asm.py:2124` 「ch = _ch_word([base] + chain_words)」.
 
 **CH 는 EH 가 아니다** — 셋 다 못박아라:
 
@@ -186,7 +186,7 @@ bh_len = 1                                   # 기본 헤더
 `asm/wavetensor_asm.py:1857` 「워드를 최하위 바이트부터(리틀엔디언) 4바이트로 잇는다」.
 직렬화 실물은 `asm/wavetensor_asm.py:1859` 「msg = b''.join((w & 0xFFFFFFFF).to_bytes(4, 'little')」.
 
-**순서 규율 (W8)** — `asm/wavetensor_asm.py:2115` 「순서 규율 (W8): bh_len(CH 포함)·next_hdr 후패치가 완결된 **뒤에**」.
+**순서 규율 (W8)** — `asm/wavetensor_asm.py:2120` 「순서 규율 (W8): bh_len(CH 포함)·next_hdr 후패치가 완결된 **뒤에**」.
 `bh_len`(CH 포함 값)과 `next_hdr` **후패치가 완결된 뒤**에 CRC 를 계산한다.
 `_ch_word()` 는 패치 완료본을 받는다. **순서를 뒤집으면 조용히 다른 CH 가
 나온다** — 시험이 없으면 못 잡는다.
@@ -207,8 +207,8 @@ bh_len = 1                                   # 기본 헤더
 [7:0]    이 EH 의 워드 수 (= 1)
 ```
 
-실물 조립 두 줄 — `asm/wavetensor_asm.py:2045` 「upper = ((noc_route & 0xFF) << 8) | (crc << 4) | (src_kind & 0xF)」 ·
-`asm/wavetensor_asm.py:2046` 「return EH_OPREF, [(upper << 16) | (EH_OPREF << 8) | 1]」.
+실물 조립 두 줄 — `asm/wavetensor_asm.py:2050` 「upper = ((noc_route & 0xFF) << 8) | (crc << 4) | (src_kind & 0xF)」 ·
+`asm/wavetensor_asm.py:2051` 「return EH_OPREF, [(upper << 16) | (EH_OPREF << 8) | 1]」.
 
 **CRC-4 파라미터**:
 
@@ -353,9 +353,9 @@ on-wire 원장 L12 가 **확정**했다 (2026-08-29): legacy 조각별 명령·E
 
 **소멸하는 계약의 실제 거처는 WaveTensor 쪽 두 docstring 이다:**
 
-- `asm/wavetensor_asm.py:2264` 「SDK CONTRACT (hardware-unenforced): the INSTRUCTION + full EH chain」
+- `asm/wavetensor_asm.py:2269` 「SDK CONTRACT (hardware-unenforced): the INSTRUCTION + full EH chain」
   — `wave_fragments_vdot()` (VDOT_ACC `0x71`, 4 조각)
-- `asm/wavetensor_asm.py:2327` 「INSTRUCTION + full EH chain must be replicated on EVERY fragment —」
+- `asm/wavetensor_asm.py:2332` 「INSTRUCTION + full EH chain must be replicated on EVERY fragment —」
   — `wave_fragments_fdot32_cr()` (FDOT32_CR `0x7A`, 16 조각)
 
 > **SDK 저장소에는 지울 문장이 없다.** 전수 grep(`vdot|fdot|fragment|조각|

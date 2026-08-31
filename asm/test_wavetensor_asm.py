@@ -124,6 +124,7 @@ EH_MEM        = 0x5
 EH_SUBSCRIPT  = 0x6
 EH_OPREF      = 0x7
 EH_PRECISION  = 0x8
+EH_NOP_PAD    = 0xF
 
 F_HAS_OPB        = 1 << 3
 F_PRECISION_OVR  = 1 << 2
@@ -185,6 +186,64 @@ def _eh_imm16(v):
     def fn(nh):
         return [((v & 0xFFFF) << 16) | (nh << 12) | (EH_IMM16 << 8) | 1]
     return _EH(EH_IMM16, 1, fn)
+
+
+# -----------------------------------------------------------------------------
+# IMM32 · IMM64 · NOP_PAD — 참조측 신설 (2026-08-31, 정의역 폐쇄 파도).
+#
+# 이 셋은 오랫동안 참조 인코더에 **없었다.** 그래서 `wta` 와 이 파일이
+# 대조하는 EH 종류는 6종뿐이었고, imm64 를 유일한 즉치 갈래로 갖는 opcode
+# (SIMD_*_WIDE_VEC 세 개)는 즉치 형태가 구조적으로 한 번도 대조되지 않았다.
+# 격리 사본에서 어셈블러의 imm64 워드 순서를 뒤집는 변이를 걸었더니 확장
+# 스윕이 그대로 녹색이었다 — 사각지대는 추측이 아니라 실행으로 확인됐다.
+#
+# ⚠ 출처 — 이 셋은 **독립 오라클이 아니다.**
+#
+# 배치는 아키텍처 가이드 1장 「EH 의 비트 배치」 절의 종류별 본문 표에서
+# 옮겼다 (IMM32 는 2워드로 w1 이 즉치 32비트, IMM64 는 3워드로 w1 이 하위
+# 32 · w2 가 상위 32, NOP_PAD 는 1워드로 본문 없음). 루트 cocotb 하네스에서
+# 베껴 오지 않았다 — 이 파일이 그 파일을 읽지 않는다는 규약은 아래 소비자
+# 핀이 문면으로 못박고 있다.
+#
+# 그러나 그 절은 **스스로를 어셈블러 출력의 관측 기록이라고 선언한다**:
+#   「이 문서는 오랫동안 EH 카탈로그만 주고 본문 비트 배치를 주지 않았다.
+#    아래는 어셈블러 출력을 관측해 기록한 것이다 — 어셈블러가 인코딩의
+#    정본이므로 그 출력이 유일한 관측원이다.」
+# 그러므로 이 셋에 대한 「`wta` ↔ `ref` 불일치 0」은 **독립 확인이 아니라
+# 동어반복**이다. 앞선 판에 「클린룸 — 정본에서 독립 재구성」이라 적혀
+# 있었던 것은 과대 명명이었고, 여기서 취소한다.
+#
+# 그래도 값은 있다 — **회귀 그물**이다. 오늘의 배치를 못박으므로 앞으로의
+# 표류를 문다. 실측(격리 사본): IMM32 절단 3,248점 · IMM64 워드 스왑
+# 6,768점 · NOP_PAD 워드 수 1→2 4,408점이 각각 물었다.
+#
+# 이 셋을 독립으로 올리려면 심판이 `isa/truth_table_encwave.json`(RTL 캡처)
+# 이어야 한다 — 어셈블러를 거치지 않는 유일한 관측원이다. 그것은 캡처
+# 정의역을 EH 본문까지 넓히는 별개의 파도다. 그때까지 아래
+# `_SWEEP_REF_PROVENANCE` 가 이 결손의 전수 목록이다.
+#
+# 공통 첫 워드 헤더(다음 종류 · 자기 종류 · 워드 수)는 위 여섯 빌더가 이미
+# 지고 있는 형태 그대로다.
+# -----------------------------------------------------------------------------
+
+def _eh_imm32(v):
+    def fn(nh):
+        return [(nh << 12) | (EH_IMM32 << 8) | 2, v & 0xFFFFFFFF]
+    return _EH(EH_IMM32, 2, fn)
+
+
+def _eh_imm64(v):
+    def fn(nh):
+        return [(nh << 12) | (EH_IMM64 << 8) | 3,
+                v & 0xFFFFFFFF,
+                (v >> 32) & 0xFFFFFFFF]
+    return _EH(EH_IMM64, 3, fn)
+
+
+def _eh_nop_pad():
+    def fn(nh):
+        return [(nh << 12) | (EH_NOP_PAD << 8) | 1]
+    return _EH(EH_NOP_PAD, 1, fn)
 
 
 def _eh_mem(offset, addr_mode=0, stride=0):
@@ -314,6 +373,9 @@ class ref:
     encode_instr  = staticmethod(_encode_instr)
     eh_port       = staticmethod(_eh_port)
     eh_imm16      = staticmethod(_eh_imm16)
+    eh_imm32      = staticmethod(_eh_imm32)
+    eh_imm64      = staticmethod(_eh_imm64)
+    eh_nop_pad    = staticmethod(_eh_nop_pad)
     eh_mem        = staticmethod(_eh_mem)
     eh_subscript  = staticmethod(_eh_subscript)
     eh_opref      = staticmethod(_eh_opref)
@@ -2926,6 +2988,28 @@ class TestEncodingWaveW1W8(unittest.TestCase):
             wta._encode_eh(eh)
         self.assertIn('CRC', str(ctx.exception))
 
+    def test_encode_eh_refuses_subscript_single_path(self):
+        """첨자는 `_encode_eh` 의 소관이 아니다 — 사본이 다시 태어나지 않게.
+
+        `_encode_eh` 에는 오랫동안 SUBSCRIPT 인코딩의 **둘째 사본**이
+        있었고 도달 불가능했다 (`_encode_instruction` 이 첨자만
+        `_encode_subscript_eh_multi()` 로 먼저 보낸다). 도달 불가능한
+        사본은 조용히 갈라진다: 그 사본에서 A↔B 워드를 뒤집는 변이가
+        전수 스윕에서 불일치 0 으로 빠져나갔고, 같은 변이를 실경로에
+        걸자 2점이 물었다. 사본은 지웠고, 이 시험이 「소리나는 거부」를
+        핀한다 — 누가 다시 채워 넣으면 여기서 운다."""
+        eh = wta.ExtensionHeader('subscript',
+                                 {'A': ['i', 'j'], 'B': ['j', 'k'],
+                                  'O': ['i', 'k']}, 3)
+        with self.assertRaises(AssemblerError) as ctx:
+            wta._encode_eh(eh)
+        self.assertIn('_encode_subscript_eh_multi', str(ctx.exception))
+        # 실경로는 살아 있다 — 거부가 첨자 인코딩을 끄지 않았음을 같은
+        # 시험 안에서 관측한다 (거부만 재면 「첨자를 못 낸다」와 구별 못 한다).
+        got = wta._encode_subscript_eh_multi(eh)
+        self.assertEqual(len(got), 1)
+        self.assertEqual(got[0][0], wta.EH_SUBSCRIPT)
+
     def test_opref_roundtrip_through_full_pipeline(self):
         """어셈블러 전체 경로의 OPREF 도 같은 CRC 를 나른다 (EINSUM 합성
         경로 포함 — _encode_eh 단일 경로라 자동으로 얻지만, 전 경로에서
@@ -3320,3 +3404,890 @@ class TestEhAcctgtTwoLayerTripwire(unittest.TestCase):
         self.assertNotIn(0x9, set(isa['eh_codes'].values()),
                          'JSON eh_codes 에 0x9 배정 — Di 실장 파도의 록스텝 '
                          '커밋(legacy 표 + 재캡처 동일 커밋)인지 확인하라')
+
+
+# =============================================================================
+# 정의역 유도 스윕 — 정의역은 `isa/wt64v1_isa.json` 에서 온다
+#
+# 이 파일의 `wta` ↔ `ref` 대조는 오랫동안 **손으로 고른 opcode 13개**
+# 위에서만 돌았다 (ISA 총수 68). 새 opcode 를 배정해도 핀이 자동으로
+# 태어나지 않으므로 아무도 울지 않는다 — 오라클의 손-리터럴 정의역이
+# 만들었던 것과 같은 부류의 사고 형태다.
+#
+# 아래는 그 정의역을 기계가 유도하게 만든다: opcode 목록도, 각 opcode 의
+# 적법 EH 조합도 JSON 의 `opcodes[*].asm_legality` 에서 나온다. 손 표는
+# 셋만 남고 **셋 다 자기가 낡으면 실패한다**:
+#
+#   `_SWEEP_EH_RECIPES`      EH 종류 → 어셈블리 문면 + 참조 빌더.
+#                            정의역은 `EH_NAME_TO_CODE` 전수 — 키가 하나라도
+#                            빠지면 실패한다 (EH 종류는 생성물이므로 이
+#                            손 표는 **닫힌** 손 표다).
+#   `_SWEEP_CODE_RULES`      JSON 에 없고 어셈블러 코드에만 사는 적법성
+#                            규칙의 전수 목록. 기계가 잰 집합과 **정확히**
+#                            같아야 한다 — 새 opcode 가 같은 결손을 갖고
+#                            태어나면 등재가 없어 즉시 운다.
+#   `_SWEEP_REF_GAPS`        참조 인코더가 표현하지 못하는 EH 종류.
+#                            **선언된 사각지대**다. 오늘은 비어 있다.
+#
+# 「최소 적법 형태가 유일하지 않은」 opcode 는 skip 하지 않는다 — 후보를
+# **전부** 태운다. 어느 것이 canonical 인지 고르는 순간 그 선택이 또 하나의
+# 손 리터럴이 되기 때문이다.
+# =============================================================================
+
+import collections
+import itertools as _sw_it
+import json as _sw_json
+
+# ISA opcode 총수 핀. 늘면 이 스윕(특히 `_SWEEP_CODE_RULES`)을 리뷰하라.
+_SWEEP_OPCODE_COUNT = 68
+
+# ── 리터럴 규율 ────────────────────────────────────────────────────────────
+# 각 리터럴은 **자기 필드의 최상위 비트를 갖는다.** 폭 축소 변이(예: MEM
+# stride 를 12b→11b 로 좁히기)는 최상위 비트가 0 인 값으로는 잡히지 않는다 —
+# 실측으로 확인했다: stride 0x2AB 로는 그 변이가 스윕을 빠져나갔고 0xABC 로
+# 바꾸자 물었다. 이 규율은 주석이 아니라 아래 시험이 계산으로 잰다.
+_SW_PORT_DEST      = 0xBEEF
+_SW_IMM16_WIDE     = 0xB234
+_SW_IMM16_SUBOP    = 0x0010               # 서브옵 니블이 잠긴 opcode 용
+_SW_IMM32          = 0xDEADBEEF
+_SW_IMM32_LOWSAFE  = 0x00000001           # 하위 워드를 레인 폭 안으로
+_SW_IMM64_WIDE     = 0xFEDCBA9876543210
+_SW_IMM64_LOWSAFE  = 0xFEDCBA9800000001   # 하위 워드를 레인 폭 안으로
+_SW_MEM_OFFSET     = 0xDEADBEEF
+_SW_MEM_MODE       = 0xD
+_SW_MEM_STRIDE     = 0xABC
+_SW_OPREF_KIND     = 0xB
+_SW_OPREF_ROUTE    = 0xC5
+_SW_PREC_DIM       = 0x87
+_SW_PREC_MODE_FREE = 0xC3                 # 모드 값역이 없는 opcode 용
+
+# 첨자 축 라벨은 A→B→O 최초등장순으로 1..12 로 정규화된다. 그래서 A 군의
+# 상위 니블은 **구조적으로** 4 를 넘지 못한다 (4축이면 코드 1..4). B·O 군은
+# 상위 비트를 싣는다 — 아래 리터럴 규율 시험이 그 비대칭을 명시로 잰다.
+_SW_SUB_WIDE_A = (1, 2, 3, 4)
+_SW_SUB_WIDE_B = (5, 6, 7, 8)
+_SW_SUB_WIDE_O = (9, 10, 11, 12)
+
+
+def _sw_prec_modes(code):
+    """이 opcode 에서 적법한 PRECISION 모드 바이트 — JSON 생성표에서 유도."""
+    from generated_isa_tables import FP_MODE_LEGAL
+    legal = FP_MODE_LEGAL.get(code)
+    if legal is not None:
+        return sorted({d | (a << 4) | (r << 6)
+                       for d in legal['legal_dtypes']
+                       for a in legal['legal_acc']
+                       for r in legal['legal_rnd']})
+    if code in _SWEEP_CODE_RULES and _SWEEP_CODE_RULES[code][0] == 'shape':
+        # 모드 바이트가 JSON 이 아니라 어셈블러 코드에만 사는 opcode.
+        # 등재된 예외이므로 코드측 값을 그대로 쓴다 (미등재면 아래
+        # `test_code_rule_table_is_exact` 가 먼저 운다).
+        return [0x10]
+    return [_SW_PREC_MODE_FREE]
+
+
+# ── 표 ①: EH 종류 → (어셈블리 문면, 참조 빌더) ────────────────────────────
+# 값은 `code -> [(text, builder), ...]` 를 내는 함수다. 정의역은
+# `EH_NAME_TO_CODE` 전수 — 아래 시험이 전수임을 잰다.
+_SWEEP_EH_RECIPES = {
+    'port': lambda code: [
+        ('.port dest=0x%04X' % _SW_PORT_DEST,
+         lambda: ref.eh_port(_SW_PORT_DEST & 0xFF, (_SW_PORT_DEST >> 8) & 0xFF)),
+    ],
+    'imm16': lambda code: [
+        ('.imm16 0x%04X' % _SW_IMM16_WIDE, lambda: ref.eh_imm16(_SW_IMM16_WIDE)),
+        ('.imm16 0x%04X' % _SW_IMM16_SUBOP, lambda: ref.eh_imm16(_SW_IMM16_SUBOP)),
+    ],
+    'imm32': lambda code: [
+        ('.imm32 0x%08X' % _SW_IMM32, lambda: ref.eh_imm32(_SW_IMM32)),
+        ('.imm32 0x%08X' % _SW_IMM32_LOWSAFE,
+         lambda: ref.eh_imm32(_SW_IMM32_LOWSAFE)),
+    ],
+    'imm64': lambda code: [
+        ('.imm64 0x%016X' % _SW_IMM64_WIDE, lambda: ref.eh_imm64(_SW_IMM64_WIDE)),
+        ('.imm64 0x%016X' % _SW_IMM64_LOWSAFE,
+         lambda: ref.eh_imm64(_SW_IMM64_LOWSAFE)),
+    ],
+    'mem': lambda code: [
+        ('.mem offset=0x%08X mode=0x%X stride=0x%03X'
+         % (_SW_MEM_OFFSET, _SW_MEM_MODE, _SW_MEM_STRIDE),
+         lambda: ref.eh_mem(_SW_MEM_OFFSET, _SW_MEM_MODE, _SW_MEM_STRIDE)),
+    ],
+    # 첫 문면이 각 종류의 **비트-가르는** 리터럴이다 — 값역 판정
+    # (`_sw_render_wide`) 이 그 첫 문면을 쓴다.
+    'subscript': lambda code: [
+        ('.subscript A=a,b,c,d B=e,f,g,h O=i,j,k,l',
+         lambda: ref.eh_subscript(ref.axes(*_SW_SUB_WIDE_A),
+                                  ref.axes(*_SW_SUB_WIDE_B),
+                                  ref.axes(*_SW_SUB_WIDE_O))),
+        ('.subscript A=i,j B=j,k O=i,k',
+         lambda: ref.eh_subscript(ref.axes(1, 2), ref.axes(2, 3), ref.axes(1, 3))),
+    ],
+    'opref': lambda code: [
+        ('.opref kind=0x%X route=0x%02X' % (_SW_OPREF_KIND, _SW_OPREF_ROUTE),
+         lambda: ref.eh_opref(_SW_OPREF_KIND, 0, _SW_OPREF_ROUTE)),
+    ],
+    'precision': lambda code: [
+        ('.precision mode=0x%02X dim=0x%02X' % (m, _SW_PREC_DIM),
+         (lambda m=m: ref.eh_precision(m, _SW_PREC_DIM)))
+        for m in _sw_prec_modes(code)
+    ],
+    'nop_pad': lambda code: [
+        ('.nop_pad', lambda: ref.eh_nop_pad()),
+    ],
+}
+
+# 형상 적법성만 재기 위한 **일부러 좁은** 리터럴. 값역 규칙(서브옵 니블·
+# 레인 폭)이 형상 판정을 오염시키지 않도록 전 필드를 0 근처로 둔다.
+# 리터럴 규율(최상위 비트)은 여기 걸리지 않는다 — 이 표는 대조점을 만들지
+# 않고 「JSON 이 말한 형상을 어셈블러가 받는가」만 잰다.
+_SWEEP_NEUTRAL_LITERALS = {
+    'port':      '.port dest=0x0001',
+    'imm16':     '.imm16 0x0000',
+    'imm32':     '.imm32 0x00000000',
+    'imm64':     '.imm64 0x0000000000000000',
+    'mem':       '.mem offset=0x0000 mode=0x0 stride=0x000',
+    'subscript': '.subscript A=i,j B=j,k O=i,k',
+    'opref':     '.opref kind=0x0 route=0x00',
+    'nop_pad':   '.nop_pad',
+}
+
+# ── 표 ②: JSON 에 없고 어셈블러 코드에만 사는 적법성 규칙 ─────────────────
+# 'shape'   — JSON 이 낸 최소 형태를 어셈블러가 받지 않는다(0개 수용, 또는
+#             일부 거부). 이 부류가 있으면 「JSON 만 읽는 유도기」는 그
+#             opcode 의 적법 형태를 만들지 못한다.
+# 'literal' — 형상은 맞지만 스윕의 비트-가르는 리터럴이 거부된다. 즉 그
+#             opcode 는 값역이 좁아 리터럴 규율을 그대로 못 받는다.
+#
+# **이 표는 오늘 비울 수 없다.** 비우려면 등재된 규칙들을 어셈블러 코드에서
+# `isa/wt64v1_isa.json` 으로 올려야 한다 — 그것은 ISA 생성 계보를 건드리는
+# 별개의 파도다. 그때까지 이 표가 그 결손의 전수 목록이고, 아래 시험이
+# 양방향(미등재 신설 · 낡은 등재)으로 잠근다.
+_SWEEP_CODE_RULES = {
+    0x06B: ('shape',
+            "require_precision_eh 가 참인데 생성 모드표에 행이 없다 — "
+            "적법 모드 바이트가 legality_pass 에만 손으로 박혀 있다"),
+    0x073: ('shape',
+            "JSON 은 즉치 3종 + OPREF 를 허용하는데 어셈블러가 즉치를 전부 "
+            "거부한다 (OPREF 형태 전용) — JSON 과 코드가 서로 다른 정의역을 "
+            "말한다"),
+    0x074: ('shape',
+            "'opb' 요건이 JSON require_opb_flag(거짓)가 아니라 legality_pass 의 "
+            "opcode 손 리터럴에 있다"),
+    0x078: ('shape', "0x074 와 같은 'opb' 손 리터럴"),
+    0x079: ('shape', "0x074 와 같은 'opb' 손 리터럴"),
+    0x032: ('literal',
+            "4축 첨자는 macro_pass 가 다중 명령으로 낮추므로 단일 명령 대조에 "
+            "쓸 수 없다 — 2축 첨자만 남고 첨자 상위 축은 이 opcode 에서 "
+            "안 실린다"),
+    0x070: ('literal',
+            "즉치 하위 워드가 레인 폭(모드 바이트의 dtype 니블)에 묶여 있어 "
+            "폭을 가르는 즉치가 거부된다"),
+}
+
+# ── 표 ③: 참조 인코더가 표현하지 못하는 EH 종류 ───────────────────────────
+# **선언된 사각지대.** 여기 이름이 있는 종류는 스윕이 아예 태우지 못한다.
+# 오늘은 비어 있다 — IMM32·IMM64·NOP_PAD 빌더를 참조측에 넣으면서 닫혔다.
+# 참조 인코더가 다시 좁아지면 아래 시험이 이 표를 낡았다고 운다.
+#
+# ⚠ 「빌더가 있다」와 「독립 오라클이다」는 다르다. 후자는 표 ④ 가 진다.
+_SWEEP_REF_GAPS = frozenset()
+
+# ── 표 ④: 참조측 배치의 **출처** ──────────────────────────────────────────
+# 표 ③ 은 「참조가 그 EH 를 만들 수 있는가」를 잰다. 이 표는 그보다 약한
+# 것이 어디인지 적는다: **그 배치를 어디서 가져왔는가.**
+#
+#   'cocotb'  — 이 파도 이전부터 있던 빌더. 파일 머리 docstring 이 루트
+#               cocotb 하네스(`test_isa_decoder.py`)의 `encode_instr()`
+#               계보로 기록한다. 어셈블러를 거치지 않는 계보이므로 대조가
+#               뜻을 갖는다. **다만 이 파일은 클린룸 규약상 그 파일을 읽지
+#               않으므로, 이 계보는 재확인한 것이 아니라 기록을 옮긴 것이다.**
+#   'asm-obs' — 정본의 「EH 의 비트 배치」 절에서 옮긴 빌더. 그 절은
+#               스스로를 어셈블러 출력의 관측 기록이라고 선언한다. 따라서
+#               이 종류의 「불일치 0」은 **독립 확인이 아니라 동어반복**이고,
+#               값은 회귀 그물(오늘의 배치를 못박아 표류를 문다)에 그친다.
+#
+# 이 표는 **닫힌** 손 표다 — 정의역이 `EH_NAME_TO_CODE` 전수여야 하므로 EH
+# 종류가 신설되면 출처를 적기 전에는 통과하지 못한다. 그리고 'asm-obs' 집합은
+# 명시로 못박는다: 결손이 조용히 사라지는(= 아무도 안 고쳤는데 표만 지워지는)
+# 것을 막기 위해서다. 이 결손을 실제로 닫는 길은 심판을
+# `isa/truth_table_encwave.json`(RTL 캡처)으로 올리는 별개의 파도다.
+_SWEEP_REF_PROVENANCE = {
+    'port':      'cocotb',
+    'imm16':     'cocotb',
+    'mem':       'cocotb',
+    'subscript': 'cocotb',
+    'opref':     'cocotb',
+    'precision': 'cocotb',
+    'imm32':     'asm-obs',
+    'imm64':     'asm-obs',
+    'nop_pad':   'asm-obs',
+}
+
+# 오늘 어셈블러에서 관측해 온 종류 — 명시 핀. 줄이려면 그 종류의 심판을
+# 실제로 바꿔야 하고, 그것은 이 주석과 함께 갱신될 편집이다.
+_SWEEP_ASM_OBSERVED_KINDS = frozenset({'imm32', 'imm64', 'nop_pad'})
+
+# ── 표 ⑤: EH 종류별 덮임 하한 (opcode 수, (opcode,형상) 소각 수) ──────────
+# **공시 표다.** 스윕 총점 16,234 는 종류별로 고르지 않다 — 첨자는 opcode
+# 하나·형상 하나·2점에 전적으로 걸려 있고, MEM 도 opcode 4개뿐이다. 이
+# 비대칭을 주석이 아니라 계수로 세워, 얇은 축이 더 얇아지면 울게 한다.
+#
+# 첨자가 1/1 인 것은 스윕의 결함이 아니라 ISA 의 형상이다: `.subscript` 를
+# 받는 opcode 는 0x032 하나이고 (`asm_legality.forbidden` 전수 실측), 그
+# 유일 형상이 {opref, port, subscript} 다. 4축 첨자는 macro_pass 가 다중
+# 명령으로 낮춰 단일 명령 대조에 못 쓴다 (`_SWEEP_CODE_RULES[0x032]`).
+# ⇒ 첨자 EH 의 배치 변이는 이 2점이 유일한 그물이다. 실측으로 확인했다:
+#    실경로의 A↔B 워드 스왑 변이가 정확히 2점을 물었다.
+_SWEEP_EH_KIND_FLOOR = {
+    'port':      (68, 415),
+    'precision': (67, 385),
+    'nop_pad':   (66, 333),
+    'imm16':     (36, 312),
+    'imm64':     (22, 292),
+    'imm32':     (19, 271),
+    'opref':     (26, 152),
+    'mem':       (4, 8),
+    'subscript': (1, 1),
+}
+
+# 참조측 플래그 니블 배치 — 생성표와 **독립으로** 적는 참조측 주장이다.
+# 아래 시험이 이름 집합과 자리를 생성표와 대조한다.
+_SWEEP_FLAG_BITS = {'opb': 3, 'prec': 2, 'mem_hint': 1, 'dim_ovr': 0}
+
+# 한 형상에 태우는 EH 최대 개수. 넘기면 조합이 폭발하고, EH 예산(12슬롯)
+# 안에서 3개는 사슬 순회·CH 재계산을 모두 지나는 형상을 준다.
+_SWEEP_MAX_EH = 3
+
+# 오늘 실측한 대조점 총수. **하한**이다 — 0 이나 13 에서 멈추는 것이 통과가
+# 되면 안 된다는 요구를 이 수가 진다.
+#
+# ⚠ 전역 스칼라 하나로는 부족하다 — 아래 `_SWEEP_PER_OPCODE_FLOOR` 를 함께
+# 읽어라. 총점만 재면 「한 opcode 가 조용히 줄고 다른 opcode 가 늘어 총점이
+# 유지되는」 형태가 전량 녹색으로 통과한다. 실측으로 확인했다 (격리 사본):
+# POPCNT 의 nop_pad 수용을 없애 20점을 지우고 opcode 셋을 새로 더하자
+# 총점 16,334 ≥ 16,234 · covered 71/71 로 **186 시험 전부 통과**했다.
+# 사라진 20점은 아무 데서도 울지 않았다.
+_SWEEP_POINT_FLOOR = 16234
+
+# opcode 단위 대조점 하한 — 오늘 실측. **정의역 폐쇄의 본체다.**
+#
+# 이 표가 지는 요구는 셋이다:
+#   ① 키 집합이 ISA opcode 전수와 **정확히** 같아야 한다 — 새 opcode 가
+#      배정되면 여기 등재 없이는 통과하지 못한다. 즉 정의역이 손 목록으로
+#      되돌아가는 것을 이 표가 막는다 (13/68 사고의 재발 방지).
+#   ② opcode 하나가 조용히 줄면 그 opcode 를 **지목해서** 운다. 총점 슬랙에
+#      가려지지 않는다.
+#   ③ 하강도 실패다 — 줄이려면 이 표를 함께 내려야 하고, 그것이 리뷰의
+#      자리다 (저장소의 `ratchet()` 규율과 같은 비대칭 금지).
+#
+# 갱신은 손으로 세지 말고 기계로 다시 뽑아라:
+#   python3 -c "import sys; sys.path.insert(0,'asm'); \
+#     import test_wavetensor_asm as T; \
+#     print({hex(c): n for c, n in sorted(T._sw_run_sweep()[1].items())})"
+_SWEEP_PER_OPCODE_FLOOR = {
+    0x000: 80,  0x001: 40,  0x002: 40,  0x003: 40,  0x004: 24,  0x005: 24,
+    0x010: 816, 0x011: 816, 0x012: 816, 0x013: 816, 0x014: 816, 0x015: 816,
+    0x016: 816, 0x017: 48,  0x018: 48,  0x019: 48,  0x01A: 48,  0x01B: 40,
+    0x01C: 816, 0x01D: 816, 0x01E: 48,  0x01F: 40,
+    0x020: 48,  0x021: 48,  0x022: 48,  0x023: 48,  0x024: 48,  0x025: 48,
+    0x026: 48,
+    0x030: 12,  0x031: 12,  0x032: 2,
+    0x040: 40,  0x041: 40,  0x042: 40,  0x043: 40,  0x044: 40,
+    0x050: 40,  0x051: 816, 0x052: 816, 0x053: 816, 0x054: 40,  0x055: 40,
+    0x056: 40,
+    0x060: 816, 0x061: 816, 0x062: 816, 0x063: 96,  0x064: 96,  0x065: 96,
+    0x068: 40,  0x069: 816, 0x06A: 40,  0x06B: 264,
+    0x070: 232, 0x071: 528, 0x072: 64,  0x073: 24,  0x074: 12,  0x075: 16,
+    0x076: 16,  0x077: 120, 0x078: 16,  0x079: 12,  0x07A: 32,  0x07C: 160,
+    0x07D: 8,   0x07E: 16,
+}
+
+
+def _sw_isa():
+    path = os.path.join(os.path.dirname(_HERE), 'isa', 'wt64v1_isa.json')
+    with open(path, encoding='utf-8') as f:
+        return _sw_json.load(f)
+
+
+def _sw_eh_order():
+    """EH 종류의 결정적 순서 — 생성표의 코드 오름차순."""
+    return sorted(wta.EH_NAME_TO_CODE, key=lambda k: wta.EH_NAME_TO_CODE[k])
+
+
+def _sw_derive_minimal(o):
+    """`asm_legality` 만으로 최소 적법 형태 후보를 유도한다.
+
+    반환: [(frozenset(eh 종류), frozenset(플래그), 모드 or None), ...]
+    모드가 문자열 'UNDERIVABLE' 이면 JSON 만으로는 모드 바이트가 안 나온다.
+    """
+    from generated_isa_tables import FP_MODE_LEGAL
+    a = o['asm_legality']
+    req, forb = set(a['required']), set(a['forbidden'])
+    imm_kinds = {'imm16', 'imm32', 'imm64'}
+    flags, base = set(), set()
+    if a['require_opb_flag']:
+        flags.add('opb')
+    if a['allow_imm_xor_opref']:
+        # legality_pass 는 이 갈래에서 `required` 루프를 건너뛴다 — 문서화된
+        # 비대칭이라 최소 형태에서 그 요구를 빼고 유도한다.
+        base |= (req - imm_kinds - {'opref'})
+        choices = [k for k in ('imm16', 'imm32', 'imm64', 'opref')
+                   if k not in forb]
+    else:
+        base |= req
+        choices = [None]
+    if a['require_imm16']:
+        base.add('imm16')
+    modes = [None]
+    if a.get('require_precision_eh'):
+        base.add('precision')
+        flags.add('prec')
+        legal = FP_MODE_LEGAL.get(o['code'])
+        modes = (['UNDERIVABLE'] if legal is None else
+                 sorted({d | (ac << 4) | (r << 6)
+                         for d in legal['legal_dtypes']
+                         for ac in legal['legal_acc']
+                         for r in legal['legal_rnd']}))
+    out = []
+    for choice in choices:
+        for m in modes:
+            s = set(base)
+            if choice:
+                s.add(choice)
+            out.append((frozenset(s), frozenset(flags), m))
+    return out
+
+
+def _sw_render_neutral(mnemonic, ehs, flags, mode, dim):
+    parts = [mnemonic] + sorted(flags)
+    for kind in _sw_eh_order():
+        if kind not in ehs:
+            continue
+        if kind == 'precision':
+            parts.append('.precision mode=0x%02X dim=0x%02X' % (mode or 0, dim))
+        else:
+            parts.append(_SWEEP_NEUTRAL_LITERALS[kind])
+    return ' '.join(parts) + '\n'
+
+
+def _sw_render_wide(mnemonic, ehs, flags, mode):
+    """`_SWEEP_EH_RECIPES` 의 첫 문면으로 렌더 — 값역 판정용."""
+    parts = [mnemonic] + sorted(flags)
+    for kind in _sw_eh_order():
+        if kind not in ehs:
+            continue
+        if kind == 'precision':
+            parts.append('.precision mode=0x%02X dim=0x%02X'
+                         % (mode or 0, _SW_PREC_DIM))
+        else:
+            parts.append(_SWEEP_EH_RECIPES[kind](0)[0][0])
+    return ' '.join(parts) + '\n'
+
+
+_SW_RULE_CACHE = None
+
+
+def _sw_measure_rules():
+    """기계 측정: 코드측 규칙을 지는 opcode · 유일/복수 계수.
+
+    반환 dict:
+      shape    {code}      JSON 최소 형태를 어셈블러가 0개 받거나 일부 거부
+      literal  {code}      형상은 받는데 비트-가르는 리터럴을 거부
+      accepted {code: n}   JSON 최소 형태 중 수용된 개수
+      shapes   {code: set}  그 수용된 형태의 EH 종류 집합들
+    """
+    global _SW_RULE_CACHE
+    if _SW_RULE_CACHE is not None:
+        return _SW_RULE_CACHE
+    shape, literal, accepted, shapes = set(), set(), {}, {}
+    for o in _sw_isa()['opcodes']:
+        code, mn = o['code'], o['mnemonic']
+        cands = _sw_derive_minimal(o)
+        n_ok = n_rej = 0
+        wide_rejected = False
+        shapes[code] = set()
+        for ehs, flags, mode in cands:
+            if mode == 'UNDERIVABLE':
+                n_rej += 1
+                continue
+            try:
+                wta.assemble_one(_sw_render_neutral(mn, ehs, flags, mode, 0x00))
+            except Exception:
+                n_rej += 1
+                continue
+            n_ok += 1
+            shapes[code].add(ehs)
+            try:
+                wta.assemble_one(_sw_render_wide(mn, ehs, flags, mode))
+            except Exception:
+                wide_rejected = True
+        if n_ok == 0 or n_rej > 0:
+            shape.add(code)
+        if wide_rejected:
+            literal.add(code)
+        accepted[code] = n_ok
+    _SW_RULE_CACHE = {'shape': shape, 'literal': literal,
+                      'accepted': accepted, 'shapes': shapes}
+    return _SW_RULE_CACHE
+
+
+_SW_GAP_CACHE = None
+
+
+def _sw_measure_ref_gaps():
+    """참조 인코더가 실제로 못 만드는 EH 종류 — 실측."""
+    global _SW_GAP_CACHE
+    if _SW_GAP_CACHE is not None:
+        return _SW_GAP_CACHE
+    gaps = set()
+    for kind in wta.EH_NAME_TO_CODE:
+        try:
+            built = _SWEEP_EH_RECIPES[kind](0x00)[0][1]()
+        except Exception:
+            built = None
+        if built is None or not hasattr(built, 'type'):
+            gaps.add(kind)
+    _SW_GAP_CACHE = gaps
+    return gaps
+
+
+def _sw_shape_space():
+    """스윕이 도는 (EH 형상, 플래그집합) 공간 — 가지치기 이전의 전체."""
+    order = [k for k in _sw_eh_order() if k not in _sw_measure_ref_gaps()]
+    shapes = []
+    for k in range(0, _SWEEP_MAX_EH + 1):
+        shapes.extend(_sw_it.combinations(order, k))
+    flagsets = [frozenset(c)
+                for k in range(len(_SWEEP_FLAG_BITS) + 1)
+                for c in _sw_it.combinations(sorted(_SWEEP_FLAG_BITS), k)]
+    return shapes, flagsets
+
+
+def _sw_shape_is_pruned(a, s):
+    """JSON 이 이미 불법이라 말하는 형상인가 — 가지치기 술어, 한 자리."""
+    imm_kinds = {'imm16', 'imm32', 'imm64'}
+    if s & set(a['forbidden']):
+        return True
+    if a['allow_imm_xor_opref'] and (bool(s & imm_kinds) == ('opref' in s)):
+        return True
+    if a['require_imm16'] and 'imm16' not in s:
+        return True
+    if a.get('require_precision_eh') and 'precision' not in s:
+        return True
+    return False
+
+
+def _sw_count_accepted(prune):
+    """어셈블러가 받는 (opcode → 점수) 를 센다. 참조 인코딩은 하지 않는다.
+
+    가지치기의 **건전성**을 재기 위한 것 — 가지치기가 대조점을 하나라도
+    지우면 정의역이 조용히 좁아지고, 그 사실은 총점만 봐서는 안 보인다.
+    반환 (시도 수, {code: 점수}).
+    """
+    shapes, flagsets = _sw_shape_space()
+    attempts, per_opcode = 0, {}
+    for o in _sw_isa()['opcodes']:
+        code, mn = o['code'], o['mnemonic']
+        a = o['asm_legality']
+        per_opcode[code] = 0
+        for shape in shapes:
+            if prune and _sw_shape_is_pruned(a, set(shape)):
+                continue
+            pools = [_SWEEP_EH_RECIPES[k](code) for k in shape]
+            for combo in _sw_it.product(*pools):
+                for flags in flagsets:
+                    src = ' '.join([mn] + sorted(flags)
+                                   + [c[0] for c in combo]) + '\n'
+                    attempts += 1
+                    try:
+                        wta.assemble_one(src)
+                    except Exception:
+                        continue
+                    per_opcode[code] += 1
+    return attempts, per_opcode
+
+
+_SW_SWEEP_CACHE = None
+
+
+def _sw_run_sweep(assemble_one=None):
+    """전수 스윕 — 정의역은 JSON, 형상은 EH 부분집합 × 플래그 부분집합.
+
+    반환 (points, per_opcode, mismatches, burned_shapes).
+    `burned_shapes` 는 opcode → 실제로 대조점을 낸 EH 형상 집합이다 —
+    「후보를 전부 태웠는가」를 형상 단위로 직접 재기 위한 것.
+    `assemble_one` 을 넘기면 그 함수로 돈다 (변이 하네스용).
+    """
+    global _SW_SWEEP_CACHE
+    if assemble_one is None and _SW_SWEEP_CACHE is not None:
+        return _SW_SWEEP_CACHE
+    asm1 = assemble_one or wta.assemble_one
+    # 참조측이 못 만드는 종류는 태울 수 없다. **측정한** 사각지대로 거르고,
+    # 그것이 선언(`_SWEEP_REF_GAPS`)과 갈렸는지는 아래 시험이 따로 운다 —
+    # 여기서 죽으면 「참조가 좁아졌다」가 크래시로 위장한다.
+    shapes, flagsets = _sw_shape_space()
+    points, per_opcode, mismatches, burned = 0, {}, [], {}
+    for o in _sw_isa()['opcodes']:
+        code, mn = o['code'], o['mnemonic']
+        a = o['asm_legality']
+        per_opcode[code] = 0
+        burned[code] = set()
+        for shape in shapes:
+            # JSON 이 이미 불법이라 말하는 형상은 안 태운다 — 어셈블러가
+            # 어차피 거부하므로 대조점이 늘지 않고 시도만 9배로 늘어난다.
+            # 가지치기의 근거도 정의역과 같은 JSON 이다.
+            #
+            # 「대조점이 늘지 않는다」는 주석이 아니라 아래
+            # `test_pruning_loses_no_point` 가 opcode 단위로 잰다. 술어는
+            # `_sw_shape_is_pruned` 한 자리에만 살아서 두 경로가 갈리지
+            # 않는다 (두 사본이 갈리는 것이 이 파일이 오늘 고친 결함이다).
+            if _sw_shape_is_pruned(a, set(shape)):
+                continue
+            pools = [_SWEEP_EH_RECIPES[k](code) for k in shape]
+            for combo in _sw_it.product(*pools):
+                for flags in flagsets:
+                    src = ' '.join([mn] + sorted(flags)
+                                   + [c[0] for c in combo]) + '\n'
+                    try:
+                        got = asm1(src)
+                    except Exception:
+                        continue
+                    nibble = 0
+                    for f in flags:
+                        nibble |= 1 << _SWEEP_FLAG_BITS[f]
+                    exp = ref.encode_instr(code, *[c[1]() for c in combo],
+                                           flags=nibble)
+                    points += 1
+                    per_opcode[code] += 1
+                    burned[code].add(frozenset(shape))
+                    if got != exp:
+                        mismatches.append((code, mn, src.strip(), got, exp))
+    result = (points, per_opcode, mismatches, burned)
+    if assemble_one is None:
+        _SW_SWEEP_CACHE = result
+    return result
+
+
+class TestIsaDerivedEncodingSweep(unittest.TestCase):
+    """`wta` ↔ `ref` 대조의 정의역을 `isa/wt64v1_isa.json` 에서 유도한다.
+
+    종전 대조는 손으로 고른 opcode 13개 위에서만 돌았다. 이 클래스는 ISA
+    전수를 태우고, 정의역이 실제로 닫혔는지를 계수 하한으로 잰다."""
+
+    # ---- 정의역 ----------------------------------------------------------
+
+    def test_isa_opcode_count_pin(self):
+        ops = _sw_isa()['opcodes']
+        codes = [o['code'] for o in ops]
+        self.assertEqual(len(codes), len(set(codes)),
+                         'JSON opcode 목록에 중복 code 가 있다')
+        self.assertEqual(
+            len(ops), _SWEEP_OPCODE_COUNT,
+            'ISA opcode 총수가 바뀌었다 — 이 스윕의 정의역 계수와 '
+            '`_SWEEP_CODE_RULES` 등재를 리뷰하고 이 핀을 갱신하라')
+
+    def test_eh_recipe_table_is_closed(self):
+        """EH 문면 레시피는 `EH_NAME_TO_CODE` 전수를 덮어야 한다."""
+        self.assertEqual(
+            set(_SWEEP_EH_RECIPES), set(wta.EH_NAME_TO_CODE),
+            'EH 종류가 신설/폐지됐다 — `_SWEEP_EH_RECIPES` 에 문면 레시피를 '
+            '등재하거나 지워라 (EH 종류는 생성물이므로 이 손 표는 닫힌다)')
+        for kind, make in _SWEEP_EH_RECIPES.items():
+            with self.subTest(kind=kind):
+                recipes = make(0x00)
+                self.assertTrue(recipes, '%s 레시피가 비었다' % kind)
+                for text, build in recipes:
+                    self.assertTrue(text.startswith('.' + kind),
+                                    '%s 문면이 자기 지시자로 시작하지 않는다: %r'
+                                    % (kind, text))
+                    self.assertIsNotNone(build())
+
+    def test_ref_gap_table_is_exact(self):
+        """참조 인코더가 못 만드는 EH 종류 = `_SWEEP_REF_GAPS`, 정확히."""
+        self.assertEqual(
+            _sw_measure_ref_gaps(), set(_SWEEP_REF_GAPS),
+            '선언된 참조측 사각지대가 낡았다 — 참조 인코더가 넓어졌으면 표를 '
+            '비우고, 좁아졌으면 그 종류를 등재하라. 이 표가 비어 있지 않은 '
+            '동안 그 EH 종류를 나르는 명령은 어떤 대조도 재지 않는다')
+
+    def test_ref_provenance_table_is_closed_and_discloses_the_weak_kinds(self):
+        """참조측 배치의 출처가 EH 전수로 선언돼 있어야 한다.
+
+        표 ③(`_SWEEP_REF_GAPS`)은 「참조가 만들 수 있는가」만 잰다. 만들 수
+        있어도 그 배치를 **어셈블러 출력에서 옮겨 온** 종류는 대조가
+        동어반복이다 — 그 사실이 어디에도 안 적히면 「불일치 0」이 독립
+        확인으로 읽힌다. 이 시험이 그 공시를 강제한다."""
+        self.assertEqual(
+            set(_SWEEP_REF_PROVENANCE), set(wta.EH_NAME_TO_CODE),
+            'EH 종류가 신설/폐지됐다 — `_SWEEP_REF_PROVENANCE` 에 그 종류의 '
+            '참조측 배치를 어디서 가져왔는지 적어라. 적지 않은 종류는 '
+            '「독립 오라클」로 읽히고, 그것이 과대 명명의 형태다')
+        self.assertEqual(
+            set(_SWEEP_REF_PROVENANCE.values()), {'cocotb', 'asm-obs'},
+            '출처 값은 두 가지뿐이다 — 새 부류를 만들었으면 표 머리 주석에 '
+            '그 부류가 대조에 무슨 뜻인지 적어라')
+        measured = {k for k, v in _SWEEP_REF_PROVENANCE.items()
+                    if v == 'asm-obs'}
+        self.assertEqual(
+            measured, set(_SWEEP_ASM_OBSERVED_KINDS),
+            '어셈블러 관측 출처 집합이 명시 핀과 갈렸다. 줄이려면 그 종류의 '
+            '심판이 실제로 바뀌어야 한다 (`isa/truth_table_encwave.json` 의 '
+            'RTL 캡처로 올리는 별개의 파도) — 표만 지우는 것은 결손을 '
+            '해결하는 것이 아니라 결손의 기록을 지우는 것이다')
+        # 사각지대와 출처는 다른 축이다 — 겹치면 두 표 중 하나가 낡았다.
+        self.assertFalse(
+            set(_SWEEP_REF_GAPS) & set(_SWEEP_REF_PROVENANCE),
+            '참조가 만들지 못하는 종류에 출처가 적혀 있다 — 표 ③ 과 표 ④ 중 '
+            '하나가 낡았다')
+
+    def test_flag_bit_claim_matches_generated_table(self):
+        from generated_isa_tables import FLAG_BITS
+        self.assertEqual(set(_SWEEP_FLAG_BITS), set(FLAG_BITS),
+                         '플래그 이름 집합이 갈렸다')
+        self.assertEqual(_SWEEP_FLAG_BITS, dict(FLAG_BITS),
+                         '참조측 플래그 니블 자리 주장이 생성표와 갈렸다')
+
+    # ---- 리터럴 규율 -----------------------------------------------------
+
+    def test_literals_split_the_top_bit_of_every_field(self):
+        """비트-가르는 값만 쓴다 — 폭 축소 변이를 물기 위한 요구다."""
+        for name, value, width in (
+                ('port.dest', _SW_PORT_DEST, 16),
+                ('imm16', _SW_IMM16_WIDE, 16),
+                ('imm32', _SW_IMM32, 32),
+                ('imm64', _SW_IMM64_WIDE, 64),
+                ('mem.offset', _SW_MEM_OFFSET, 32),
+                ('mem.mode', _SW_MEM_MODE, 4),
+                ('mem.stride', _SW_MEM_STRIDE, 12),
+                ('opref.kind', _SW_OPREF_KIND, 4),
+                ('opref.route', _SW_OPREF_ROUTE, 8),
+                ('precision.dim', _SW_PREC_DIM, 8)):
+            with self.subTest(field=name):
+                self.assertLess(value, 1 << width,
+                                '%s 리터럴이 필드 폭을 넘는다' % name)
+                self.assertEqual(
+                    (value >> (width - 1)) & 1, 1,
+                    '%s 리터럴이 최상위 비트를 안 싣는다 — 폭을 좁히는 변이가 '
+                    '이 값으로는 안 잡힌다' % name)
+        # 첨자: B·O 군은 상위 비트를 싣고, A 군은 라벨 정규화(A→B→O
+        # 최초등장순 1..12)가 상위 니블을 4 로 묶는다. 그 비대칭을 명시로
+        # 잰다 — 「A 축의 상위 비트는 안 잰다」가 조용히 지나가지 않게.
+        self.assertEqual((ref.axes(*_SW_SUB_WIDE_B) >> 15) & 1, 1)
+        self.assertEqual((ref.axes(*_SW_SUB_WIDE_O) >> 15) & 1, 1)
+        self.assertEqual((ref.axes(*_SW_SUB_WIDE_A) >> 15) & 1, 0)
+        self.assertEqual(max(_SW_SUB_WIDE_A), 4,
+                         '첫 축군의 라벨 코드 상한이 바뀌었다 — 정규화 규칙을 '
+                         '다시 읽고 이 비대칭 기록을 갱신하라')
+
+    # ---- 코드측 규칙 표 --------------------------------------------------
+
+    def test_code_rule_table_is_exact(self):
+        """JSON 에 없는 적법성 규칙의 전수 목록이 기계 측정과 일치해야 한다."""
+        m = _sw_measure_rules()
+        declared_shape = {c for c, (k, _) in _SWEEP_CODE_RULES.items()
+                          if k == 'shape'}
+        declared_literal = {c for c, (k, _) in _SWEEP_CODE_RULES.items()
+                            if k == 'literal'}
+        gap_note = (
+            '\n이 표는 오늘 비울 수 없다 — 등재된 opcode 의 적법성 규칙이 '
+            '`isa/wt64v1_isa.json` 이 아니라 어셈블러 코드에만 살기 때문이다. '
+            '표를 비우려면 그 규칙들을 JSON 으로 올려야 하고, 그것은 ISA 생성 '
+            '계보를 건드리는 별개의 파도다. 그때까지 이 표가 그 결손의 전수 '
+            '목록이다.')
+        self.assertEqual(
+            m['shape'], declared_shape,
+            '「JSON 만으로 적법 형태가 안 나오는 opcode」 집합이 등재와 갈렸다: '
+            '미등재 %s · 낡은 등재 %s.%s'
+            % (sorted(hex(c) for c in m['shape'] - declared_shape),
+               sorted(hex(c) for c in declared_shape - m['shape']), gap_note))
+        self.assertEqual(
+            m['literal'], declared_literal,
+            '「비트-가르는 리터럴을 못 받는 opcode」 집합이 등재와 갈렸다: '
+            '미등재 %s · 낡은 등재 %s.%s'
+            % (sorted(hex(c) for c in m['literal'] - declared_literal),
+               sorted(hex(c) for c in declared_literal - m['literal']), gap_note))
+        self.assertTrue(_SWEEP_CODE_RULES,
+                        '표가 비었다면 규칙이 JSON 으로 올라간 것이다 — '
+                        '이 단언과 위 문면을 함께 갱신하라')
+
+    def test_every_opcode_burns_all_its_minimal_shapes(self):
+        """유도된 최소 적법 형태는 **전 opcode에서** 하나도 안 빠지고 태워진다.
+
+        앞선 판은 이 소진을 「최소 형태가 복수인」 opcode 25건에만 걸었다.
+        유일 형태 39건은 `per_opcode ≥ 1` 만 요구받았고, 그것은 「그 하나가
+        정말 태워졌는가」를 재지 않는다 — 다른 형상 하나만 남아도 만족된다.
+        요구는 형상 단위이므로 분모도 형상 단위여야 한다."""
+        m = _sw_measure_rules()
+        _, per_opcode, _, burned = _sw_run_sweep()
+        for code in sorted(m['shapes']):
+            shapes = m['shapes'][code]
+            if not shapes:
+                continue
+            with self.subTest(opcode=hex(code)):
+                missed = shapes - burned.get(code, set())
+                self.assertFalse(
+                    missed,
+                    'opcode 0x%03X 의 최소 적법 형태 %d 가지 중 %d 가지를 스윕이 '
+                    '태우지 않았다 (%s) — 후보 중 하나를 canonical 로 고르지 '
+                    '마라. 고르는 순간 그 선택이 또 하나의 손 리터럴이 된다'
+                    % (code, len(shapes), len(missed),
+                       sorted(sorted(x) for x in missed)))
+                self.assertGreaterEqual(per_opcode.get(code, 0), len(shapes))
+        ambiguous = {c: n for c, n in m['accepted'].items() if n > 1}
+        self.assertTrue(
+            ambiguous,
+            '유일하지 않은 opcode 가 하나도 없다면 유도 규칙이 좁아진 것이다 — '
+            '`_sw_derive_minimal` 을 다시 읽어라')
+        # 「유도 불가」 opcode 는 skip 이 아니라 등재로 처분한다.
+        for code, n in sorted(m['accepted'].items()):
+            if n == 0:
+                with self.subTest(opcode=hex(code)):
+                    self.assertIn(
+                        code, _SWEEP_CODE_RULES,
+                        'opcode 0x%03X 는 JSON 만으로 적법 형태가 하나도 안 '
+                        '나오는데 `_SWEEP_CODE_RULES` 에 등재가 없다' % code)
+
+    # ---- 본 스윕 ---------------------------------------------------------
+
+    def test_domain_closure_and_point_floor(self):
+        """정의역이 실제로 닫혔는지 계수로 잰다 — 0 이나 13 은 실패다."""
+        points, per_opcode, _, _ = _sw_run_sweep()
+        codes = {o['code'] for o in _sw_isa()['opcodes']}
+        covered = {c for c, n in per_opcode.items() if n > 0}
+        self.assertEqual(
+            covered, codes,
+            'ISA opcode 중 대조점이 0 인 것이 있다: %s'
+            % sorted(hex(c) for c in codes - covered))
+        self.assertEqual(len(covered), _SWEEP_OPCODE_COUNT)
+        self.assertGreaterEqual(
+            points, _SWEEP_POINT_FLOOR,
+            '대조점이 하한 아래로 줄었다 (%d < %d) — 스윕이 조용히 좁아졌다'
+            % (points, _SWEEP_POINT_FLOOR))
+
+    def test_per_opcode_point_floor(self):
+        """opcode **단위** 하한. 총점 슬랙이 국소 축소를 삼키지 못하게 한다.
+
+        전역 스칼라 하나로는 「한 opcode 가 줄고 다른 opcode 가 늘어 총점이
+        유지되는」 형태가 전량 녹색으로 통과한다 — 실측으로 확인했다
+        (`_SWEEP_POINT_FLOOR` 주석). 여기서 분모를 opcode 로 내린다."""
+        _, per_opcode, _, _ = _sw_run_sweep()
+        codes = {o['code'] for o in _sw_isa()['opcodes']}
+        self.assertEqual(
+            set(_SWEEP_PER_OPCODE_FLOOR), codes,
+            'opcode 단위 하한표가 ISA 정의역과 갈렸다: 미등재 %s · 낡은 등재 '
+            '%s. 새 opcode 는 등재 없이 스윕에 들어올 수 없다 — 정의역이 손 '
+            '목록으로 되돌아가는 것을 막는 것이 이 표의 일이다'
+            % (sorted(hex(c) for c in codes - set(_SWEEP_PER_OPCODE_FLOOR)),
+               sorted(hex(c) for c in set(_SWEEP_PER_OPCODE_FLOOR) - codes)))
+        shrunk = {c: (per_opcode.get(c, 0), f)
+                  for c, f in _SWEEP_PER_OPCODE_FLOOR.items()
+                  if per_opcode.get(c, 0) < f}
+        self.assertFalse(
+            shrunk,
+            'opcode 단위로 대조점이 줄었다 (opcode: 실측 < 하한) — %s. 총점은 '
+            '다른 opcode 의 증가로 가려질 수 있으므로 여기가 진짜 그물이다. '
+            '줄인 것이 의도라면 이 표를 함께 내려라 (하강도 리뷰의 자리다)'
+            % {hex(c): '%d < %d' % v for c, v in sorted(shrunk.items())})
+        # 합이 총 하한과 맞물리는지 — 두 표가 따로 낡는 것을 막는다.
+        self.assertEqual(
+            sum(_SWEEP_PER_OPCODE_FLOOR.values()), _SWEEP_POINT_FLOOR,
+            'opcode 단위 하한의 합이 총 하한과 다르다 — 두 표 중 하나가 '
+            '낡았다 (%d vs %d)'
+            % (sum(_SWEEP_PER_OPCODE_FLOOR.values()), _SWEEP_POINT_FLOOR))
+
+    def test_pruning_loses_no_point(self):
+        """가지치기가 대조점을 하나도 지우지 않는다 — opcode 단위로 잰다.
+
+        스윕은 「JSON 이 이미 불법이라 말하는 형상」을 안 태운다. 그 술어가
+        틀리면 정의역이 조용히 좁아지고 총점만 봐서는 안 보인다 (줄어든
+        만큼이 그냥 오늘의 총점이 된다). 그래서 가지치기 없는 열거를 실제로
+        돌려 opcode 단위로 대조한다 — 주석의 「실측: 점수 동일」을 기계가
+        다시 재는 자리다. 앞선 보고가 적은 시도 계수(301,696 → 33,744)는
+        착지한 코드에서 재현되지 않았고, 재지 않은 수가 주석에 남아 있는
+        것이 이 시험을 만든 이유다."""
+        wide_attempts, wide = _sw_count_accepted(prune=False)
+        _, per_opcode, _, _ = _sw_run_sweep()
+        self.assertEqual(
+            wide, per_opcode,
+            '가지치기가 대조점을 지웠다 — 차이 %s. `_sw_shape_is_pruned` 의 '
+            '술어가 JSON 이 말하는 불법 형상보다 넓다'
+            % {hex(c): (wide[c], per_opcode.get(c))
+               for c in wide if wide[c] != per_opcode.get(c)})
+        # 가지치기가 실제로 뭔가를 자르는지 — 술어가 죽으면 이 시험은 그냥
+        # 같은 공간을 두 번 도는 항진이 된다. 잘린 몫을 계수로 잰다.
+        shapes, flagsets = _sw_shape_space()
+        narrow_attempts = 0
+        for o in _sw_isa()['opcodes']:
+            for shape in shapes:
+                if _sw_shape_is_pruned(o['asm_legality'], set(shape)):
+                    continue
+                narrow_attempts += (
+                    len(flagsets)
+                    * len(list(_sw_it.product(
+                        *[_SWEEP_EH_RECIPES[k](o['code']) for k in shape]))))
+        self.assertLess(
+            narrow_attempts, wide_attempts // 2,
+            '가지치기가 시도 공간을 절반도 못 줄인다 (%d / %d) — 술어가 '
+            '죽었는지 확인하라. 죽은 술어 아래서는 이 시험이 같은 공간을 '
+            '두 번 도는 항진이 된다' % (narrow_attempts, wide_attempts))
+
+    def test_per_eh_kind_coverage_floor(self):
+        """EH 종류별 덮임 하한 — 얇은 축이 더 얇아지면 운다.
+
+        총점은 종류별로 고르지 않다. 첨자는 opcode 하나·형상 하나에 전적으로
+        걸려 있고 MEM 은 opcode 4개다. 그 비대칭이 주석에만 있으면 「전수
+        스윕이 있다」가 「모든 EH 가 두텁게 덮였다」로 읽힌다."""
+        _, _, _, burned = _sw_run_sweep()
+        shapes_per_kind = collections.Counter()
+        opcodes_per_kind = collections.defaultdict(set)
+        for code, shapes in burned.items():
+            for shape in shapes:
+                for kind in shape:
+                    shapes_per_kind[kind] += 1
+                    opcodes_per_kind[kind].add(code)
+        self.assertEqual(
+            set(_SWEEP_EH_KIND_FLOOR), set(wta.EH_NAME_TO_CODE),
+            'EH 종류가 신설/폐지됐다 — `_SWEEP_EH_KIND_FLOOR` 에 그 종류의 '
+            '덮임을 등재하거나 지워라')
+        for kind in sorted(_SWEEP_EH_KIND_FLOOR):
+            want_ops, want_shapes = _SWEEP_EH_KIND_FLOOR[kind]
+            with self.subTest(kind=kind):
+                self.assertGreaterEqual(
+                    len(opcodes_per_kind[kind]), want_ops,
+                    '%s EH 를 태우는 opcode 가 줄었다 (%d < %d)'
+                    % (kind, len(opcodes_per_kind[kind]), want_ops))
+                self.assertGreaterEqual(
+                    shapes_per_kind[kind], want_shapes,
+                    '%s EH 의 (opcode,형상) 소각이 줄었다 (%d < %d)'
+                    % (kind, shapes_per_kind[kind], want_shapes))
+        # 가장 얇은 축을 **이름으로** 못박는다. 첨자가 1/1 인 것은 오늘의
+        # ISA 형상이고, 그것이 바뀌면(첨자 opcode 가 늘면) 이 기록도 낡는다.
+        thinnest = min(_SWEEP_EH_KIND_FLOOR,
+                       key=lambda k: _SWEEP_EH_KIND_FLOOR[k])
+        self.assertEqual(
+            thinnest, 'subscript',
+            '가장 얇은 EH 축이 첨자가 아니게 됐다 — 공시 문면을 갱신하라')
+        subs = {o['code'] for o in _sw_isa()['opcodes']
+                if 'subscript' not in set(o['asm_legality']['forbidden'])}
+        self.assertEqual(
+            subs, {0x032},
+            '`.subscript` 를 받는 opcode 집합이 바뀌었다 (%s) — 첨자 축이 '
+            '0x032 하나에 걸려 있다는 공시가 낡았다'
+            % sorted(hex(c) for c in subs))
+
+    def test_assembler_matches_reference_encoder_on_every_opcode(self):
+        """본 대조. 불일치는 **발견**이지 어느 한쪽을 고칠 근거가 아니다."""
+        _, _, mismatches, _ = _sw_run_sweep()
+        if mismatches:
+            head = '\n'.join(
+                '  0x%03X %s: %s\n    wta=0x%0112X\n    ref=0x%0112X'
+                % (c, mn, src, got, exp)
+                for c, mn, src, got, exp in mismatches[:8])
+            self.fail(
+                '%d 점에서 어셈블러와 참조 인코더가 갈렸다 (opcode %s).\n%s\n'
+                '⚠ 어느 쪽도 임의로 고치지 마라 — 심판은 정본과 '
+                '`isa/truth_table_encwave.json` 이다. 판정이 안 서면 안 선다고 '
+                '적어라. 시험을 덮는 것이 이 부류의 사고 형태다.'
+                % (len(mismatches),
+                   sorted({hex(c) for c, _, _, _, _ in mismatches}), head))
