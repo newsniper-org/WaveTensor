@@ -121,3 +121,34 @@ registered trademarks; future trademark policy will be published separately.
 When redistributing under Solderpad-2.1 or Apache-2.0, attribution
 requirements (clause §4(d)) require preserving the contents of `NOTICE`. See
 that file for required attributions and external dependency credits.
+
+---
+
+## 7. Third-party content redistributed verbatim
+
+`.devcontainer/vendor/` carries an unmodified copy of an upstream build
+artifact that the verification-environment definition
+(`.devcontainer/Dockerfile`) used to download at build time from a rolling
+upstream release. It is **not** WaveTensor's work and is **not** offered under
+any of the licenses above. It is redistributed under its own terms, byte-for-
+byte (BLAKE2b-512 pinned in the Dockerfile; the pin ↔ content match is enforced
+by `scripts/lint_toolchain_pins.py`).
+
+* `tla2tools.jar` — **TLA+ Tools** (TLC, SANY, PlusCal, TLATeX).
+  Copyright HP Corporation, Microsoft Corporation, Linux Foundation — **MIT**.
+  It is a fat jar; the bundled third-party components are enumerated, with
+  their provenance, in `.devcontainer/vendor/README.md`, and the license texts
+  (plus NOTICE files where the upstream ships one) are kept in
+  `.devcontainer/vendor/licenses/`:
+  * Google Gson 2.14.0 — Apache-2.0
+  * Apache Commons Math 3.2 (subset) — Apache-2.0
+  * javax.activation 1.1 (Apache Geronimo, Eclipse Orbit packaging) — Apache-2.0
+  * prettier4j 0.3.2 — Apache-2.0
+  * JavaMail 1.6.8 (`mailapi`, `smtp`) — EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+  * Eclipse LSP4J 0.21.1 — EPL-2.0 OR BSD-3-Clause
+  * JLine 3.25.0 — BSD-3-Clause
+
+No WaveTensor source links against, derives from, or is licensed with
+reference to this artifact. It exists only so that the verification
+environment can be rebuilt without network access to an upstream that
+overwrites the same URL on every commit.

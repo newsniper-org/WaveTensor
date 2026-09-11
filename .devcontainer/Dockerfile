@@ -110,7 +110,9 @@ RUN printf 'Server=https://archive.archlinux.org/repos/%s/$repo/os/$arch\n' "${A
 #                   cvc5 는 Arch 공식 저장소에 없다(실측: ALA 스냅샷 target
 #                   not found). 필요하면 별도 층에서 명시적으로 넣을 것.
 # ---------------------------------------------------------------------------
-# `curl` 은 아래 TLA+ 단계가 쓴다 — base-devel 에 없으므로 여기서 넣는다.
+# `curl` 은 2026-09-11 까지 아래 TLA+ 단계가 썼다(상류 jar 다운로드). 보관본
+# 착지(§3 (6)) 뒤로 이 Dockerfile 의 어느 RUN 도 curl 을 부르지 않는다 — 컨테이너
+# 안의 범용 도구로만 남긴다 (재핀 절차 ①이 상류 자산을 받을 때 쓴다).
 # `nextpnr` 는 넣지 않는다: ECP5 P&R 은 검증 축 (c)(배치·배선) 이고
 # 그 축은 이 컨테이너의 대상이 아니다. ECP5 는 gate 가 아니라 MEASUREMENT 이기도 하다.
 #    ⚠️ JDK 는 **버전을 명시**한다. `jdk-openjdk` 는 무버전 메타 이름이라 스냅샷이
@@ -136,6 +138,11 @@ RUN pacman -S --noconfirm --needed \
 #    ⚠️ 이 층의 핀은 **불변 아티팩트가 아니다.** 그것이 알려진 결손이고,
 #    아래가 왜 그런지와 무엇을 재 봤는지의 전문이다. 재지 않은 것은 재지
 #    않았다고 적는다.
+#
+#    ✅ 2026-09-11 **보관본 착지** — 이 층은 더는 네트워크를 쓰지 않는다.
+#    `vendor/tla2tools.jar` (빌드 컨텍스트 = `.devcontainer`) 를 `COPY` 하고
+#    `b2sum -c` 로 핀과 대조한다. 아래 (1)–(5) 는 그 전의 실측이고 전부 참으로
+#    남는다 — 바뀐 것은 (6) 하나다: 상류 표류가 **수리 사건이 아니게 됐다.**
 #
 #    ## (1) `v1.8.0` 은 버전 태그가 아니라 **롤링 pre-release** 다
 #
@@ -169,6 +176,10 @@ RUN pacman -S --noconfirm --needed \
 #                    `TLC2 Version 2026.09.10.191157 (rev: c3af5e2)` — 직전 핀
 #                    (2026-08-21 빌드)과 **불일치. 표류 발생** (상류 master
 #                    푸시 2026-09-10T19:16Z, GitHub API 실측). 재핀했다.
+#        2026-09-11  **보관본 착지** (`vendor/tla2tools.jar`, 같은 바이트
+#                    `a2ccfb8c…` / 4,490,846 B) — 이후 상류 표류는 수리
+#                    사건이 아니다. 상류를 다시 받아 대조하는 관측은 이제
+#                    「살아 있는가」가 아니라 「올릴 것이 있는가」를 묻는다.
 #
 #    ⚠️ 「안정적이다」로 읽지 말 것. 위 (1)의 성질은 하나도 변하지 않았다 —
 #    `v1.8.0` 은 여전히 롤링 pre-release 이고 master 커밋마다 같은 URL 이
@@ -222,10 +233,11 @@ RUN pacman -S --noconfirm --needed \
 #
 #    산다 — 조용한 바꿔치기는 없다. 같은 URL 이 다른 바이트를 주면 `b2sum -c`
 #    가 빌드를 **크게** 죽인다 (loud-fault-never-silent).
-#    못 산다 — **재현성**. 핀이 가리키는 바이트는 다음 master 푸시와 함께
-#    받을 수 없게 되고, 그때부터 정본 Dockerfile 은 **from-scratch 로 빌드
-#    불가**가 된다. 구 핀 `4b2313f3…` 가 이미 그 상태였는데 오래 보이지
-#    않았다 — 파생 빌드가 캐시 층을 재사용했기 때문이다. ⚠️ 캐시가 한 일을
+#    못 샀다 (2026-09-11 이전) — **재현성**. 핀이 가리키는 바이트는 다음 master
+#    푸시와 함께 받을 수 없게 되고, 그때부터 정본 Dockerfile 은 **from-scratch
+#    로 빌드 불가**가 됐다. (6) 이 그것을 닫았다; 아래 실측은 그 전의 기록이다.
+#    구 핀 `4b2313f3…` 가 이미 그 상태였는데 오래 보이지 않았다 — 파생 빌드가
+#    캐시 층을 재사용했기 때문이다. ⚠️ 캐시가 한 일을
 #    정확히 적어 둔다: 캐시는 **이미지와 핀의 일치를 유지하면서**
 #    from-scratch 실패만 가렸다. 어긋난 것은 이미지↔핀이 아니라 핀↔상류다.
 #    (실측 2026-08-29 — 이 호스트에 남아 있는 세션 이전 이미지 넷, 08-19
@@ -246,6 +258,42 @@ RUN pacman -S --noconfirm --needed \
 #        GH 전용 엔트리의 META-INF 는 javamail 리소스 둘뿐). ⇒ 아티팩트만
 #        보고는 버전이 정해지지 않는다. 상류 빌드 정의를 읽어야 하고, 그것은
 #        **우리가 배포본을 조립한다**는 뜻이라 별개의 정책 결정이다.
+#
+#    ## (6) 보관본 착지 — 이후 상류 표류는 수리 사건이 아니다 (2026-09-11)
+#
+#    사용자 판정 「landing → commit → 대기」. 거처는 원장
+#    `.claude-memos/toolchain_pin_axis.md` §3 의 ⒜(저장소 안), **jar 하나만** —
+#    ALA 층은 이 파도의 범위 밖이다. 정본 §6.6.2: 내용 고정은 필요조건이고
+#    재현의 충분조건은 그 내용을 이쪽이 보관하는 것이다. 실증이 위 관측 이력
+#    이다 — jar 가 세 주 사이 두 번 죽었다.
+#
+#    **보관본은 내용이고 핀은 그 내용의 해시다 — 둘째 선언처가 아니다.**
+#    선언처는 여전히 여기와 devcontainer.json 둘뿐이고, 보관본↔핀의 일치는
+#    `scripts/lint_toolchain_pins.py` 가 잰다(`vendor/tla2tools.jar` 의
+#    blake2b == `TLA_BLAKE2B512`; `--self-test` 가 「1바이트 훼손 · 핀만 갱신 ·
+#    보관본 부재」 셋을 문다). 그리고 아래 `b2sum -c` 는 **남긴다** — lint 가
+#    놓쳐도 빌드가 잡는다. 두 그물이 같은 값을 문다.
+#
+#    ### 재핀 절차 — 이렇게 바뀐다
+#
+#    전: 상류 URL 이 다른 바이트를 줌 → 빌드 사망 → 핀 둘 갱신 (강제 수리).
+#    후: 상류가 밀어도 아무것도 깨지지 않는다. 올리고 싶을 때만 —
+#      ① 상류 자산을 받아 b2sum · `TLC2 Version …` 자기보고를 잰다
+#      ② `vendor/tla2tools.jar` 를 **교체**한다
+#      ③ 핀 넷(`TLA_VERSION`·`TLA_BLAKE2B512`·`TLA_TLC_BUILD`·`TLA_TLC_REV`)을
+#        여기와 devcontainer.json 에서 갱신한다 — 고칠 곳은 여전히 **둘**
+#      ④ `make rtl-pins` → `podman build --no-cache` 완주 + 스모크 → 374 run
+#      ⑤ 번들 구성이 바뀌었으면 `vendor/README.md` 의 번들표와 `vendor/licenses/`
+#        를 다시 실측한다 — fat jar 라 남의 라이선스 의무가 따라온다. 그 문서는
+#        핀 값(해시·크기·build·rev)을 **담지 않는다** — lint 가 128-hex 와
+#        `YYYY.MM.DD.HHMMSS` 꼴을 그 파일에서 금지한다(V4·V5; 착지 당일 그
+#        표가 셋째 사본이었던 확증 결함의 처분). 재핀 자체로는 거기 고칠 것이
+#        없다. 루트 `NOTICE` 의 재배포 절도 번들 구성이 바뀔 때만 움직인다.
+#
+#    대가: git 에 4,490,846 B 바이너리가 든다 — 재핀마다 새 사본이 이력에
+#    영구히 쌓인다. 감수한다: 재핀이 이제 선택이므로 빈도는 이쪽이 정한다.
+#    LFS 는 쓰지 않는다 — LFS 서버가 곧 새 상류이고, 포인터만 남는 실패가
+#    지금 겪은 것과 같은 모양으로 한 겹 안쪽에 선다 (원장 §3 ⒝).
 #
 #    해시 계열은 저장소 전체가 **BLAKE2b-512** 로 통일돼 있다 (`b2sum` 기본값).
 #    stdlib `hashlib.blake2b(digest_size=64)` 와 같은 값이며, 판정기 핀·생성물
@@ -272,10 +320,10 @@ ARG TLA_VERSION=1.8.0
 ARG TLA_BLAKE2B512=a2ccfb8c78b9704c68c9b29534b11254c6b30729d48182b795420f1a1294252f1d7329c3d6f4fe7151705bbd6883210e4cb2055ab918871c3709c33a0bf379f9
 ARG TLA_TLC_BUILD=2026.09.10.191157
 ARG TLA_TLC_REV=c3af5e2
-RUN mkdir -p /usr/share/java \
- && curl -fsSL -o /usr/share/java/tla2tools.jar \
-      "https://github.com/tlaplus/tlaplus/releases/download/v${TLA_VERSION}/tla2tools.jar" \
- && echo "${TLA_BLAKE2B512}  /usr/share/java/tla2tools.jar" | b2sum -c - \
+#  보관본 → 이미지. 네트워크 없음. `TLA_VERSION` 은 이제 URL 을 만들지 않지만
+#  「어느 상류 이름에서 온 바이트인가」의 기록이라 핀 넷에 남긴다(자기보고 줄).
+COPY vendor/tla2tools.jar /usr/share/java/tla2tools.jar
+RUN echo "${TLA_BLAKE2B512}  /usr/share/java/tla2tools.jar" | b2sum -c - \
  && printf '#!/bin/sh\nexec java -XX:+UseParallelGC -cp /usr/share/java/tla2tools.jar tlc2.TLC "$@"\n' \
       > /usr/local/bin/tlc \
  && printf '#!/bin/sh\nexec java -cp /usr/share/java/tla2tools.jar tla2sany.SANY "$@"\n' \
@@ -311,7 +359,7 @@ RUN mkdir -p /usr/share/java \
  && grep -q "Model checking completed. No error has been found." /tmp/tlasmoke/out.txt \
  && sany Smoke.tla > /dev/null \
  && cd / && rm -rf /tmp/tlasmoke /tmp/hsperfdata_root \
- && echo "[wt] TLC 스모크 OK — ${TLA_TLC_BUILD} (rev: ${TLA_TLC_REV}) / b2 ${TLA_BLAKE2B512}"
+ && echo "[wt] TLC 스모크 OK — 보관본 v${TLA_VERSION} ${TLA_TLC_BUILD} (rev: ${TLA_TLC_REV}) / b2 ${TLA_BLAKE2B512}"
 
 # ---------------------------------------------------------------------------
 # 4) cocotb — **python 버전이 실제 제약이다** (실측으로 두 번 확인):

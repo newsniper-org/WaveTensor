@@ -131,11 +131,11 @@ Maven/PyPI 릴리스 버전). **TLC 가 그렇지 않다.** 알려진 결손이�
 
 | | |
 |---|---|
-| 받는 곳 | `github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar` |
+| 받는 곳 | **보관본 `vendor/tla2tools.jar`** (2026-09-11 착지, `COPY`). 출처는 `github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar` — 재핀할 때만 다시 받는다 |
 | 그 태그의 정체 | **롤링 pre-release** (`prerelease=true`). 상류 README: 「every commit to the master branch is built & uploaded to the 1.8.0 Clarke pre-release」 ⇒ **같은 URL 에 새 빌드가 덮인다** |
 | 고정 수단 | BLAKE2b-512 + TLC 자기보고 build/rev **셋을 함께** |
 | 사는 것 | 조용한 바꿔치기 없음 — 바이트가 바뀌면 `b2sum -c` 가 빌드를 죽인다 |
-| **못 사는 것** | **재현성.** 다음 master 푸시와 함께 이 바이트는 받을 수 없게 되고, 그때부터 정본 Dockerfile 은 from-scratch 빌드 불가가 된다 |
+| **못 샀던 것 (2026-09-11 이전)** | **재현성.** 다음 master 푸시와 함께 이 바이트는 받을 수 없게 되고, 그때부터 정본 Dockerfile 은 from-scratch 빌드 불가가 됐다 — **보관본 착지로 닫혔다.** 상류 표류는 이제 수리 사건이 아니라 선택적 업그레이드다 (`vendor/README.md` 의 재핀 절차) |
 
 표류 이력 (실측):
 
@@ -155,6 +155,7 @@ Maven/PyPI 릴리스 버전). **TLC 가 그렇지 않다.** 알려진 결손이�
 | 2026-08-29 | 재핀 (커밋 `cdc769d`) | 구 핀이 죽어 있었다 |
 | 2026-08-30 | 상류 자산을 다시 받아 대조 | `644f4331…` / 4,487,757 B — **현행 핀과 일치. 표류 없음** |
 | 2026-09-11 | 상류 자산을 다시 받아 대조 | `a2ccfb8c…` / 4,490,846 B / `TLC2 Version 2026.09.10.191157 (rev: c3af5e2)` — 직전 핀(2026-08-21 빌드)과 **불일치. 표류 발생**(상류 푸시 2026-09-10T19:16Z). 재핀 |
+| 2026-09-11 | **보관본 착지** — 같은 바이트를 `vendor/tla2tools.jar` 로 커밋 | 이후 상류 표류는 수리 사건이 아니다. 번들 구성·라이선스 실측은 `vendor/README.md` |
 
 > ⚠️ **「안정적이다」로 읽지 말 것.** 위 표의 성질은 하나도 변하지 않았다 —
 > `v1.8.0` 은 여전히 롤링 pre-release 이고 master 커밋마다 같은 URL 이 덮인다.

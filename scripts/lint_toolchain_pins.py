@@ -26,6 +26,24 @@
 가 허용하는 호스트 적응 값 둘 말고는, 워크플로가 build-arg 를 넘기면 실패한다.
 「세 곳」은 그러므로 관찰이 아니라 **집행되는 규범**이다.
 
+## 보관본 ↔ 핀 (2026-09-11 등재)
+
+선언처는 위 셋으로 닫혀 있지만, 핀 가운데 하나(`TLA_BLAKE2B512`)는 이제
+**저장소 안의 내용**을 가리킨다 — `.devcontainer/vendor/tla2tools.jar`
+(보관본, 사용자 판정 「landing → commit → 대기」·원장 §3 ⒜). 보관본은
+*내용*이고 핀은 *그 내용의 해시*다. **둘째 선언처가 아니다** — 그런데 둘이
+어긋나면 이 저장소가 `gates.yml` 에서 겪은 그 사고와 같은 모양이 된다(한쪽은
+갱신되고 한쪽은 남는다). ⇒ 이 검사가 보관 jar 의 BLAKE2b-512 를 **직접 재서**
+Dockerfile ARG 와 대조한다. Dockerfile 의 `b2sum -c` 도 남아 있다 — 두 그물이
+같은 값을 문다(lint 는 커밋 전에, 빌드는 이미지에서).
+
+그리고 보관본 옆의 산문(`.devcontainer/vendor/README.md`)은 **핀 값을 담지
+못한다.** 착지 당일 그 문서가 128-hex 해시 전문 · TLC build/rev 를 표로 옮겨
+적고 있었고(확증 결함), 그것은 lint 정의역 밖의 셋째 사본 — CI build-arg 가
+그랬던 것과 같은 모양 — 이라 재핀 즉시 조용히 낡는다. 처분은 CI 축과 같은
+**금지**다: 그 파일에 128-hex 나 `YYYY.MM.DD.HHMMSS` 꼴이 나오면 값이 맞아도
+실패한다(V4·V5). 산문이 핀을 말하려면 선언처를 **가리켜야** 한다.
+
 셋이 어긋나면 조용히 나쁜 일이 일어난다. 컨테이너는 어떤 버전의 의존을
 이미지 층에 구워 두는데, 빌드가 다른 버전을 원하면 (a) 네트워크가 없을 때
 죽거나 (b) 네트워크가 있을 때 **조용히 다른 버전을 받아 온다**. (b) 가 더
@@ -45,7 +63,9 @@
 저장소에 하나도 남지 않았다.** `--self-test` 가 그것을 상주시킨다 — 그때의
 대조군 1 + 음성 9 + CI 금지 5 에, 그때 재지 않은 판정 분기 둘(읽지 못한
 토큰 N6 · CI 허공 build-arg C6), 그리고 **도입 당일 전수 검증이 찾은 미덮임
-일곱**(N11–N17)을 더해 **대조군 1 + 변이 23** 이다.
+일곱**(N11–N17), 그리고 보관본 착지(2026-09-11)의 다섯 — 보관본 1바이트 훼손 ·
+핀만 갱신 · 보관본 부재(V1–V3) · 보관본 README 의 핀 사본 둘(V4·V5) — 을
+더해 **대조군 1 + 변이 28** 이다.
 
     python3 scripts/lint_toolchain_pins.py --self-test
 
@@ -65,9 +85,10 @@
     = 잡지 못함」으로 조용히 무효가 된다. 치환 실패는 실패다 (skip 이 아니다).
   · **0 건은 통과가 아니다.** 「안 돌면서 OK 를 인쇄」가 이 부류의 전형이다
     (`lint_guide_derived_tables` 가 도입 이래 정확히 그 상태였다). 그래서
-    ⓪ 정의역 폐쇄 다섯이 변이보다 **먼저** 돈다 — 정의역 경로 하한 · CI 파서
+    ⓪ 정의역 폐쇄 여섯이 변이보다 **먼저** 돈다 — 정의역 경로 하한 · CI 파서
     양성 대조 · 변이 건수 하한 · **ARG 파서 양성 대조** · **JSONC 파서 양성
-    대조**. ⓪ 가 막는 길은 「픽스처가 비었다 / 파서가 잴 것을 못 찾았다」다.
+    대조** · **해시 함수 양성 대조**(알려진 벡터). ⓪ 가 막는 길은 「픽스처가
+    비었다 / 파서가 잴 것을 못 찾았다 / 해시가 다른 계열이다」다.
 
 ## 이 검사가 재지 **못하는** 것 — 반드시 함께 읽어라
 
@@ -81,6 +102,11 @@
   · **핀이 옳은지**는 재지 못한다. 이 검사는 세 선언이 **서로 같은지**만
     잰다. 셋이 나란히 틀린 값을 말하면 초록이다 — 그 축은 `--no-cache` 실
     빌드와 Dockerfile 안의 자기보고 grep 대조만 잰다 (§3).
+    ⚠️ 보관본 축(2026-09-11)이 그 문장을 **한 핀에 대해서만** 좁힌다:
+    `TLA_BLAKE2B512` 는 이제 저장소 안의 바이트와 대조되므로 「선언 둘과
+    보관본이 나란히 틀린다」가 되려면 누군가 jar 를 바꾸고 그 해시를 두 곳에
+    옮겨 적어야 한다 — 그것은 사고가 아니라 재핀이다. 그 jar 가 *돌아가는지*
+    (build/rev 자기보고 · 모델 검사 스모크)는 여전히 빌드만 잰다.
   · **CI 축의 실 트리 계수에 하한이 없다.** 「CI 가 build-arg 를 하나도 안
     넘긴다」가 이 검사가 바라는 정상 상태라 계수 하한을 걸면 규범을 지킨
     저장소가 실패한다. 대신 파서를 합성으로 검증하고(D2) 실 트리 계수는
@@ -100,6 +126,7 @@ stdlib 전용. 직접 실행 가능:  python3 scripts/lint_toolchain_pins.py
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -114,6 +141,24 @@ DOCKERFILE = REPO / ".devcontainer" / "Dockerfile"
 DEVJSON = REPO / ".devcontainer" / "devcontainer.json"
 BUILD_PROPS = REPO / "rtl" / "spinal" / "project" / "build.properties"
 BUILD_SBT = REPO / "rtl" / "spinal" / "build.sbt"
+
+# 보관본 (2026-09-11 착지). 핀 `TLA_BLAKE2B512` 가 가리키는 **내용**이다 —
+# 선언이 아니다. Dockerfile 이 `COPY vendor/tla2tools.jar` 뒤에 `b2sum -c` 로
+# 같은 대조를 한 번 더 한다(빌드 컨텍스트 = `.devcontainer`).
+VENDOR_JAR = REPO / ".devcontainer" / "vendor" / "tla2tools.jar"
+VENDOR_PIN = "TLA_BLAKE2B512"
+# 보관본 옆의 산문. 핀 값 사본이 **금지**되는 파일이다 (아래 `_VENDOR_README_BAN`).
+VENDOR_README = REPO / ".devcontainer" / "vendor" / "README.md"
+# 금지 문양 — (이름, 정규식). 128-hex 는 BLAKE2b-512 전문, 점 넷의 숫자열은
+# TLC 의 `TLA_TLC_BUILD` 꼴(`2026.09.10.191157`)이다. 짧은 rev(7-hex)는 금지하지
+# 않는다 — 그 문서의 번들표가 라이선스 본문의 **출처 좌표**(`@<rev>`)로 정당하게
+# 쓰고, 7-hex 는 일반 낱말과 겹쳐 오탐이 된다. 값이 아니라 *꼴*을 금지하는
+# 이유는 재핀 뒤에도 옛 값이 남는 것을 잡기 위해서다 — 현행 값만 금지하면
+# 낡은 사본이 바로 정의역 밖으로 빠진다.
+_VENDOR_README_BAN = (
+    ("128-hex 해시 전문", re.compile(r"(?<![0-9a-fA-F])[0-9a-fA-F]{128}(?![0-9a-fA-F])")),
+    ("TLC build 시각 `YYYY.MM.DD.HHMMSS`", re.compile(r"(?<!\d)\d{4}\.\d{2}\.\d{2}\.\d{6}(?!\d)")),
+)
 
 # 대조할 축: (표시명, Dockerfile ARG 이름, devcontainer.json build.args 키)
 PINS = [
@@ -517,6 +562,62 @@ def main() -> int:
             # 커밋 해시는 OK 줄을 읽을 수 없게 만든다 — 표시만 줄인다 (대조는 전폭).
             rows.append((label, d if len(d) <= 12 else d[:12] + "…"))
 
+    # ── 보관본 ↔ 핀 ───────────────────────────────────────────────────────
+    # 핀은 해시이고 보관본은 그 해시가 가리키는 바이트다. 여기서 바이트를
+    # **직접 재서** Dockerfile ARG 와 대조한다. 어느 쪽이 참인지는 이 검사가
+    # 정하지 못한다 — 어긋났다는 사실만 크게 인쇄한다. devcontainer.json 쪽은
+    # 위 PINS_TWOWAY 가 Dockerfile 과 맞추므로 여기서 다시 재지 않는다.
+    vendor_rel = VENDOR_JAR.relative_to(REPO)
+    pin_df = df.get(VENDOR_PIN)
+    if not VENDOR_JAR.is_file():
+        problems.append(
+            f"보관본 부재: {vendor_rel} 가 없다 — 핀 {VENDOR_PIN} 이 가리키는 "
+            f"내용을 이쪽이 보관하지 않으면 환경 정의는 처음부터 다시 지을 수 "
+            f"없다 (정본 §6.6.2: 내용 고정은 필요조건, 보관이 충분조건). "
+            f"Dockerfile 의 COPY 도 이 파일이 없으면 죽는다"
+        )
+    else:
+        h = hashlib.blake2b(digest_size=64)
+        with VENDOR_JAR.open("rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        vendor_b2 = h.hexdigest()
+        vendor_size = VENDOR_JAR.stat().st_size
+        if pin_df is not None and vendor_b2 != pin_df:
+            problems.append(
+                f"보관본 ≠ 핀: {vendor_rel} 의 blake2b {vendor_b2[:12]}… "
+                f"({vendor_size:,} B) ≠ Dockerfile ARG {VENDOR_PIN} "
+                f"{pin_df[:12]}… — 보관본은 내용이고 핀은 그 내용의 해시다. "
+                f"둘 중 어느 쪽이 참인지 이 검사는 정하지 못한다. 재핀이면 "
+                f"보관본 교체 + 핀 넷(Dockerfile · devcontainer.json)을 "
+                f"**함께** 갱신하라; 아니면 어느 쪽이 조용히 바뀐 것이다"
+            )
+        elif pin_df is not None:
+            rows.append(("보관본", f"{vendor_size:,} B b2 {vendor_b2[:12]}…"))
+
+    # ── 보관본 README 의 핀 사본 금지 ──────────────────────────────────────
+    # 정의역 파일이 없으면 「잴 것이 없었다」이지 통과가 아니다 — 보관본이
+    # 있는데 그 옆의 산문(라이선스 실측·재핀 절차)이 없으면 그것도 결손이다.
+    readme_rel = VENDOR_README.relative_to(REPO)
+    if not VENDOR_README.is_file():
+        problems.append(
+            f"보관본 README 부재: {readme_rel} 가 없다 — 보관본의 번들 구성·"
+            f"라이선스 실측과 재핀 절차가 사는 자리다"
+        )
+    else:
+        for lineno, line in enumerate(
+                VENDOR_README.read_text(encoding="utf-8").splitlines(), 1):
+            for what, rx in _VENDOR_README_BAN:
+                m = rx.search(line)
+                if m:
+                    problems.append(
+                        f"보관본 README 가 핀을 재선언한다: {readme_rel}:{lineno} 에 "
+                        f"{what} `{m.group(0)[:12]}…` — 이 파일은 lint 가 대조하지 "
+                        f"않는 셋째 사본이라 재핀 즉시 조용히 낡는다. 값을 맞춰 "
+                        f"적어도 실패한다. 지우고 선언처(Dockerfile ARG · "
+                        f"devcontainer.json)를 **가리켜라**"
+                    )
+
     # ── 완전성 ────────────────────────────────────────────────────────────
     # 위의 표들은 **손으로 유지되는 목록**이고, 손으로 유지되는 목록은 반드시
     # 뒤처진다 (실측: 2026-08-30 에 세어 보니 양쪽에 적혀 있으면서 대조 밖인
@@ -600,6 +701,10 @@ def main() -> int:
             "  넘기지 않는다 (UID/GID 만 예외). --build-arg 는 ARG 기본값을 덮으므로\n"
             "  그 사본이 가장 센 선언이 되고, 2026-08-30 에 그 자리에서 죽은 TLA\n"
             "  해시가 나왔다. 값을 맞춰 적어도 실패한다 — 사본을 지워라.\n"
+            "\n  보관본은 선언이 아니라 **내용**이다:\n"
+            "    .devcontainer/vendor/tla2tools.jar   blake2b == TLA_BLAKE2B512\n"
+            "  어긋나면 재핀은 보관본 교체 + 핀 둘 갱신을 **함께** 한다.\n"
+            "  그 옆의 vendor/README.md 는 핀 값을 담지 않는다 — 셋째 사본 금지.\n"
             "\n  어긋난 채로 두면 컨테이너가 구운 캐시와 빌드가 원하는 버전이\n"
             "  달라진다. 네트워크가 있으면 조용히 다른 버전을 받아 온다 —\n"
             "  통과하는데 무엇으로 쟀는지가 달라지는 것이 가장 나쁘다.",
@@ -612,7 +717,7 @@ def main() -> int:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 음성 시험 — 격리 사본에서 변이 16종이 실제로 잡히는지
+# 음성 시험 — 격리 사본에서 변이 28종이 실제로 잡히는지 (도입 시 16, 이후 확장)
 #
 # 왜 검사 파일 **안**인가: 이 저장소의 선례 다섯이 전부 안이고 lint 를 겨냥한
 # 별도 시험 파일은 0건이다. 안에 두면 (a) 표기를 넓힐 때 변이도 같은 커밋에서
@@ -624,8 +729,8 @@ def main() -> int:
 # 손-유지 **하한**이다. 손-유지 *정의역*(목록)은 금지지만 하한은 허용된다 —
 # 방향이 반대이기 때문이다: 목록에서 빠뜨리면 침묵이고, 하한에서 빠뜨리면
 # 곧 실패다 (`lint_section_refs` ⑭ 가 적은 그대로).
-_MIN_DOMAIN_PATHS = 5
-_MIN_MUTATIONS = 23
+_MIN_DOMAIN_PATHS = 6
+_MIN_MUTATIONS = 28
 _MIN_ARG_PROBE = 10
 
 _SELF_TEST_TAG = "WT_SELFTEST"
@@ -685,6 +790,15 @@ _JSONC_WANT = {
     "esc": 'he said "//" here',
     "n": 1,
 }
+
+
+# BLAKE2b-512 의 빈 입력 벡터(RFC 7693 부록 A 계열; `b2sum </dev/null` 과 같다).
+# 해시 계열이 조용히 바뀌면(digest_size · 알고리즘) 변이 V1–V3 이 「다른
+# 이유로」 울기 전에 여기서 이름을 갖고 죽는다.
+_B2_EMPTY = (
+    "786a02f742015903c6c6fd852552d272912f4740e15847618a86e217f71f5419"
+    "d25e1031afee585313896444934eb04b903a685b1448b755d56f701afe9be2ce"
+)
 
 
 class _MutationMiss(RuntimeError):
@@ -884,6 +998,55 @@ def _mutations() -> list[tuple]:
     def bp_of(base: Path) -> Path:
         return base / BUILD_PROPS.relative_to(REPO)
 
+    def jar_of(base: Path) -> Path:
+        return base / VENDOR_JAR.relative_to(REPO)
+
+    def readme_of(base: Path) -> Path:
+        return base / VENDOR_README.relative_to(REPO)
+
+    # ── V1–V3 의 닻 — 보관본 핀은 양쪽에 **리터럴**로 적혀 있어야 한다. ─────
+    vpin = df.get(VENDOR_PIN)
+    if vpin is None or len(vpin) != 128:
+        raise _MutationMiss(f"Dockerfile 의 ARG {VENDOR_PIN} 이 128-hex 가 아니다")
+    vpin_df_line = f"ARG {VENDOR_PIN}={vpin}"
+    vpin_dj_decl = f'"{VENDOR_PIN}": "{vpin}"'
+    if vpin_df_line not in df_text or vpin_dj_decl not in dj_text:
+        raise _MutationMiss(f"{VENDOR_PIN} 이 양쪽에 리터럴로 적혀 있지 않다")
+    vpin_other = ("1" if vpin[0] != "1" else "2") + vpin[1:]
+
+    def _corrupt_jar(b: Path) -> None:
+        # 마지막 1바이트를 뒤집는다 — 크기는 같고 내용만 다르다. 「크기가
+        # 같으면 같은 파일」로 퇴화한 검사는 여기서 초록이 된다.
+        f = jar_of(b)
+        data = bytearray(f.read_bytes())
+        if not data:
+            raise _MutationMiss(f"{f.name} 이 비어 있다 — 훼손할 바이트가 없다")
+        data[-1] ^= 0xFF
+        f.write_bytes(bytes(data))
+
+    def _repin_only(b: Path) -> None:
+        # 핀 둘을 **일관되게** 다른 값으로 — 두-선언 대조(N8)는 조용하고
+        # 보관본 대조만 울어야 한다. 이것이 「셋째 선언처」 형태의 사고다:
+        # 선언은 갱신됐는데 내용이 안 따라왔다.
+        _sub(df_of(b), vpin_df_line, f"ARG {VENDOR_PIN}={vpin_other}")
+        _sub(dj_of(b), vpin_dj_decl, f'"{VENDOR_PIN}": "{vpin_other}"')
+
+    def _drop_jar(b: Path) -> None:
+        jar_of(b).unlink()
+
+    # V4·V5 — 산문에 **현행 값 그대로** 붙인다. 값이 맞아도 실패해야 한다
+    # (CI 축의 C1 과 같은 판정: 대조가 아니라 금지). 닻은 기준 파일에서 읽은
+    # 핀이다 — 리터럴을 박지 않는다.
+    build_val = df.get("TLA_TLC_BUILD")
+    if build_val is None or not re.fullmatch(r"\d{4}\.\d{2}\.\d{2}\.\d{6}", build_val):
+        raise _MutationMiss("Dockerfile 의 ARG TLA_TLC_BUILD 가 `YYYY.MM.DD.HHMMSS` 꼴이 아니다")
+
+    def _readme_hash_copy(b: Path) -> None:
+        _append(readme_of(b), f"\n| BLAKE2b-512 | `{vpin}` |\n")
+
+    def _readme_build_copy(b: Path) -> None:
+        _append(readme_of(b), f"\n| 자기보고 | `TLC2 Version {build_val}` |\n")
+
     def _insert_arg(text_after: str):
         return lambda b: _sub(df_of(b), anchor, anchor + text_after)
 
@@ -1029,6 +1192,34 @@ def _mutations() -> list[tuple]:
         ("N17", f"정의역 파일 부재 ({BUILD_SBT.relative_to(REPO)})",
          lambda b: (b / BUILD_SBT.relative_to(REPO)).unlink(),
          ("파일 부재:", str(BUILD_SBT.relative_to(REPO)))),
+        # ── V1–V3 : 보관본 ↔ 핀 (2026-09-11). 보관본은 내용, 핀은 해시 — ────
+        #            어긋남의 세 얼굴을 각각 격리한다. V1·V2 의 **금지 문면**은
+        #            두-선언 대조(N8 의 분기)가 대신 운 것을 걸러 낸다: 겨냥은
+        #            보관본 대조다.
+        ("V1", "보관본 1바이트 훼손 (크기 같음 · 내용 다름)",
+         _corrupt_jar,
+         ("보관본 ≠ 핀:", str(VENDOR_JAR.relative_to(REPO))),
+         ("≠ Dockerfile ARG 의",)),
+        ("V2", "핀만 갱신 (Dockerfile · devcontainer.json 둘 다, 보관본은 그대로)",
+         _repin_only,
+         ("보관본 ≠ 핀:", vpin_other[:12]),
+         ("≠ Dockerfile ARG 의",)),
+        ("V3", "보관본 부재",
+         _drop_jar,
+         ("보관본 부재:", str(VENDOR_JAR.relative_to(REPO)))),
+        # ── V4–V5 : 보관본 README 의 핀 사본 — **값이 맞아도** 실패. ─────────
+        #            착지 당일 실제로 그렇게 적혀 있었다(확증 결함). 금지 문면은
+        #            보관본 대조가 대신 운 것을 걸러 낸다.
+        ("V4", "vendor/README.md 에 128-hex 해시 전문 사본 (현행 값 그대로)",
+         _readme_hash_copy,
+         ("보관본 README 가 핀을 재선언한다:",
+          str(VENDOR_README.relative_to(REPO)), "128-hex 해시 전문"),
+         ("보관본 ≠ 핀:",)),
+        ("V5", "vendor/README.md 에 TLC build 시각 사본 (현행 값 그대로)",
+         _readme_build_copy,
+         ("보관본 README 가 핀을 재선언한다:",
+          str(VENDOR_README.relative_to(REPO)), "TLC build 시각"),
+         ("보관본 ≠ 핀:",)),
     ]
 
 
@@ -1118,6 +1309,17 @@ def self_test() -> int:
                      "따옴표 · 꼬리 주석"
                      + ("" if d5 else f" / **어긋남** {got_json}")))
 
+        # ── D6 : 해시 함수 양성 대조. ───────────────────────────────────────
+        # 보관본 대조는 `hashlib.blake2b(digest_size=64)` 위에 선다. 계열이
+        # 조용히 바뀌면(예: digest_size 기본값 32 로 회귀) V1–V3 이 「다른
+        # 이유로」 울고 N0 가 죽는데, 그때 문면은 「보관본 ≠ 핀」이라 사람이
+        # 보관본을 의심한다. 알려진 벡터로 함수 자체를 먼저 잰다.
+        d6 = hashlib.blake2b(b"", digest_size=64).hexdigest() == _B2_EMPTY
+        rows.append((d6, "D6",
+                     "해시 함수 양성 대조 — blake2b(digest_size=64) 의 빈 입력 "
+                     "벡터가 `b2sum </dev/null` 과 같다"
+                     + ("" if d6 else " / **어긋남**")))
+
         # 게이트가 아니라 **대비의 인쇄** — 실 트리에서 이 축이 무엇을 봤는지.
         real_wf = [p for p in CI_WORKFLOW_DIR.rglob("*")
                    if p.suffix in (".yml", ".yaml") and p.is_file()]
@@ -1126,7 +1328,7 @@ def self_test() -> int:
                 f"{len(real_keys)}개 {sorted(set(real_keys))} — 게이트가 아니라 "
                 f"대비의 인쇄다")
 
-        if not (d1 and d2 and d3 and d4 and d5):
+        if not (d1 and d2 and d3 and d4 and d5 and d6):
             for good, tag, text in rows:
                 print(f"  {'✓' if good else '✗'} {tag} {text}")
             print(f"  · {note}")
@@ -1190,7 +1392,7 @@ def self_test() -> int:
         print(f"음성 시험 불통과 — 변이 {sum(1 for g, _, _ in rows if not g)}건이 "
               f"기대대로 실패하지 않았다", file=sys.stderr)
         return 1
-    print(f"음성 시험 통과 — 대조군 1 + 정의역 폐쇄 5 + 변이 {len(muts)} 전부 "
+    print(f"음성 시험 통과 — 대조군 1 + 정의역 폐쇄 6 + 변이 {len(muts)} 전부 "
           f"기대대로 판정된다")
     print("  이것은 **검사가 무는지**를 재는 것이지 핀이 옳은지를 재는 것이 "
           "아니다 — 후자는 위의 본 검사가, 그리고 `--no-cache` 실 빌드만이 "
