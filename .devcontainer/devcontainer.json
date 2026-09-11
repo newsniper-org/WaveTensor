@@ -12,9 +12,9 @@
       // 전문은 Dockerfile §3. 여기의 넷은 Dockerfile ARG 와 반드시 같아야
       // 하고 scripts/lint_toolchain_pins.py 가 그것을 대조한다.
       "TLA_VERSION": "1.8.0",
-      "TLA_BLAKE2B512": "644f4331776049d41097c6f4540014c46acdf3c5d951f3d9778de8b1263bac9a0b2b00fa57329bc04d207d63b4b4df84fd5846493153d9149600aefef92beaa4",
-      "TLA_TLC_BUILD": "2026.08.21.155922",
-      "TLA_TLC_REV": "9787e65",
+      "TLA_BLAKE2B512": "a2ccfb8c78b9704c68c9b29534b11254c6b30729d48182b795420f1a1294252f1d7329c3d6f4fe7151705bbd6883210e4cb2055ab918871c3709c33a0bf379f9",
+      "TLA_TLC_BUILD": "2026.09.10.191157",
+      "TLA_TLC_REV": "c3af5e2",
       "COCOTB_VERSION": "2.0.1",
       // `COCOTB_PYTHON` 은 2026-08-30 까지 **Dockerfile 에만 있었다** — 즉 한쪽
       // 선언이고 대조 대상이 아니었다. 값이 아니라 *등재*를 고치는 것이다:
