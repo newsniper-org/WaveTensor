@@ -43,6 +43,15 @@ built & uploaded to the 1.8.0 Clarke pre-release」. GitHub API 도 `prerelease=
    ⚠️ 빌드 검증이 `no space left on device` 로 세 번 죽었는데 원인은 **다른 프로젝트의
    댕글링 podman 이미지 57GB** 였다 — 빌드 실패가 핀 문제로 보이지 않게 먼저
    `podman system df` 를 보라. 정리는 사용자 몫(다른 프로젝트 이미지다).
+   **보관본이 섰다 (2026-09-11, `8c7f848`).** 사용자 판정 「landing」— jar 하나만 저장소에
+   (`.devcontainer/vendor/tla2tools.jar`, `COPY`+`b2sum -c`, curl 제거). 이후 상류 표류는
+   **수리 사건이 아니라 선택적 업그레이드**다. 보관본과 핀이 둘째 선언처가 되지 않게
+   `lint_toolchain_pins` 가 보관 jar 의 blake2b == `TLA_BLAKE2B512` 를 재고, vendor/README
+   에 해시 전문·빌드일을 적으면 실패시킨다(셋째 산문 사본 금지). 재핀 절차는 이제
+   ①상류 → ②보관본 교체 → ③핀 넷 둘 → ④`rtl-pins`·no-cache 빌드·374 run → ⑤번들 재실측.
+   fat jar 라 번들 8종의 라이선스를 실측해 `vendor/licenses/`·`LICENSE.md` §7·`NOTICE` 에
+   적었다 — **라이선스 본문은 짓지 않고 jar/상류 실물에서** 가져온다. ALA 층은 여전히
+   보관본 없음(정본 `06-formal.typ:606` 이 그렇게 적는다).
 5. **⚠️ 둘째 선언처가 사고의 유일한 효과다 (2026-08-30 후속, 커밋 `727532a`).** 위 4항의
    재핀(`cdc769d`)이 Dockerfile 과 devcontainer.json 은 갱신했는데 **`.github/workflows/gates.yml`
    을 몰랐다.** 그 파일이 `TLA_BLAKE2B512` 를 죽은 값으로 `--build-arg` 에 박고 있었고,
