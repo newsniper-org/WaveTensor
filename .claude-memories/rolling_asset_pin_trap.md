@@ -35,6 +35,14 @@ built & uploaded to the 1.8.0 Clarke pre-release」. GitHub API 도 `prerelease=
    진짜 모델 하나를 검사하는 스모크를 넣었고 양방향으로 실측했다.
 4. **주기적 재핀을 전제하라.** 이번 수리는 시계를 되감았을 뿐 멈추지 않았다 — 다음 master 푸시와
    함께 다시 죽는다. 재핀은 도구 버전 변경과 같은 급의 결정이므로 별도 커밋 + 이력 기록.
+   **실제로 그렇게 됐다 (2026-09-11, 커밋 `ddcf150`).** 8/29 재핀 → 8/30 「표류 없음」 →
+   9/10 상류 푸시로 죽음. 관측 간격 8/11→8/21(열흘) · 8/21→9/10(스무날) — **표본 둘**,
+   주기라 부르지 마라. 재핀 절차는 넷 한 벌(해시·크기·`TLA_TLC_BUILD`·`TLA_TLC_REV`,
+   자기보고는 새 jar 를 기동해 얻는다) × 선언처 둘 + from-scratch 빌드 완주 + **새 jar 로
+   TLA 게이트 둘**(`proofs/tla` 16 · `rtl/formal/tla` 358)까지가 완료 기준이다.
+   ⚠️ 빌드 검증이 `no space left on device` 로 세 번 죽었는데 원인은 **다른 프로젝트의
+   댕글링 podman 이미지 57GB** 였다 — 빌드 실패가 핀 문제로 보이지 않게 먼저
+   `podman system df` 를 보라. 정리는 사용자 몫(다른 프로젝트 이미지다).
 5. **⚠️ 둘째 선언처가 사고의 유일한 효과다 (2026-08-30 후속, 커밋 `727532a`).** 위 4항의
    재핀(`cdc769d`)이 Dockerfile 과 devcontainer.json 은 갱신했는데 **`.github/workflows/gates.yml`
    을 몰랐다.** 그 파일이 `TLA_BLAKE2B512` 를 죽은 값으로 `--build-arg` 에 박고 있었고,
