@@ -68,3 +68,9 @@ metadata:
 - 형제 저장소(Y4 · wavetensor-sdk · wavetensor-drivers)의 핀이 방침과 어긋나면
   **조용히 맞추지 말고 충돌로 보고**하라. Y4 의 셋은 이미 #37 로 유보됐다.
 - 관련: [[wavetensor-sdk-lives-in-its-own-local-repo]] · [[y4-hypervisor-lives-in-its-own-local-repo]] · [[rolling-asset-pin-trap]]
+
+**2026-09-14 — 「Y4 ABI」의 범위(후보 ⒜ B 단독 / ⒝ B+D / ⒞ B·C·D, Y4 `glossary.md` §11)는
+**Y4 측이 직접 블로커 해소 작업 중**이다. 사용자 지시 축자: 「지금 Y4 측에서 이 문제에 대한
+블로커 해소 작업을 하고 있으니, 기다리는 게 좋겠어.」 ⇒ WaveTensor 쪽에서 질의 파도를 띄우지
+마라(하나 띄웠다가 중단했고 Y4 에 흔적은 남지 않았다). Y4 의 답이 `design_decisions.md` 나
+`glossary.md` §11 에 착지하면 그때 WaveTensor·SDK·drivers 의 미결 등재처 넷을 닫는다.
