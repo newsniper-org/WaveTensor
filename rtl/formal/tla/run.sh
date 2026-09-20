@@ -160,6 +160,33 @@ expect_pass "증인 유효성: 데이터를 지우면 증인이 선다" \
             XlateStore_del_flush_keeps_data.cfg "$M"
 
 # ---------------------------------------------------------------------------
+# 임대별 마스크 키 — MaskUnit 제어면 (정본 7fa5f2e, 05-security.typ:112 ·
+# e-defined.typ:333/351/E.9)
+#
+# 재구현 착수 시점 RTL 은 키 저장이 파티션별이 아니라 한 벌이었고, 키 기입이
+# 전 파티션의 maskValid 를 떨어뜨렸다 — 아래 두 가드 삭제가 정확히 그 형태와
+# 동형이다. rekey_explicit_target 은 e-defined.typ:351 7항이 명시적으로
+# 기각한 "창이 재키잉 authority 를 겸함" 갈래를 모델링한다.
+# ---------------------------------------------------------------------------
+M=Mask.tla
+expect_pass "임대별 마스크 키 좋은 모델 (파티션 2)"  Mask.cfg       "$M"
+expect_pass "임대별 마스크 키 좋은 모델 (파티션 3)"  Mask_large.cfg "$M"
+
+expect_fail "가드 삭제: key_scoped_storage (키 전역 1벌)" \
+            Mask_del_key_scoped_storage.cfg "$M" Prop_KeyScoped
+expect_fail "가드 삭제: key_write_own_only (전 파티션 무효화)" \
+            Mask_del_key_write_own_only.cfg "$M" Prop_MaskValidScoped
+expect_fail "가드 삭제: rekey_idle_only (busy 중 수락)" \
+            Mask_del_rekey_idle_only.cfg "$M" Prop_RekeyIdleOnly
+expect_fail "가드 삭제: rekey_explicit_target (창이 authority 겸함)" \
+            Mask_del_rekey_explicit_target.cfg "$M" Prop_RekeyTargetIsRequested
+
+expect_fail "증인: 키 기입이 실재하는가"            Mask_witness_NoKeyWrite.cfg          "$M" Witness_NoKeyWrite
+expect_fail "증인: REKEY 수락이 실재하는가"          Mask_witness_NoRekeyAccept.cfg       "$M" Witness_NoRekeyAccept
+expect_fail "증인: 창-지목 어긋남이 실재하는가"      Mask_witness_NoWindowTargetDrift.cfg "$M" Witness_NoWindowTargetDrift
+expect_fail "증인: busy 중 REKEY 시도가 실재하는가"  Mask_witness_NoBusyRekeyAttempt.cfg  "$M" Witness_NoBusyRekeyAttempt
+
+# ---------------------------------------------------------------------------
 # ISA-3 · ISA-4 — route fault 의 판정 주체와 범위 (부록 D.5 우선순위 4번)
 #
 # 앞의 셋과 성격이 다르다. 이미 일어난 결함이 아니라 **일어나면 설계를

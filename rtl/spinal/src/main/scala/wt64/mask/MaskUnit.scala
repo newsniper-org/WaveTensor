@@ -4,12 +4,39 @@
 // MaskUnit — 주소 마스킹 (정본 §5.2 · §5.3 · 부록 E.9). HiuPipeline s4
 // 「마스킹(자리)」의 실물이 될 유닛이다 (결선은 통합자 몫).
 //
-// ## 정식 GUARD-MAP 줄 없음 — 접점 서술
+// ## GUARD-MAP — Mask 모델 (2026-09-15 신설, 정본 7fa5f2e)
 //
-// 이 유닛을 직접 소유하는 선-formal 모델이 없다 (SEC-1 마스크 정확성은
-// 형식 증명 대상이 아니라 golden 대조 축 (b) — §5.8 함정 「SEC-1 은 형식이
-// 아니라 대조다」. 대조 하네스는 후속 cocotb 몫이다). lint_guard_map 의
-// 가드당 1줄 규약을 지키기 위해 파싱되는 형식의 줄은 여기 적지 않는다.
+// SEC-1 마스크 정확성은 형식 증명 대상이 아니라 golden 대조 축 (b) —
+// §5.8 함정 「SEC-1 은 형식이 아니라 대조다」(대조 하네스는 cocotb 몫). 그
+// 축에는 GUARD-MAP 줄이 없다(SEC-1 은 애초에 Mask.tla 의 AllGuards 가
+// 아니다). 제어면(키·논스 저장의 파티션별 스코프, REKEY 유휴 수락, 키
+// 기입의 유효 하강 범위)은 `rtl/formal/tla/Mask.tla` 가 선-formal 로
+// 소유하고, 아래 세 줄이 그 가드를 후-formal(rtl/formal/sby/HiuMask/
+// hiumask.sby)에 잇는다. `Mask` 는 아직 lint_guard_map.ENFORCED 밖이라
+// 전수성(가드당 정확히 1줄)은 강제되지 않는다 — 넷째 가드
+// `rekey_explicit_target` 은 MASK_PART 창 대 MASK_REKEY 필드의 *라우팅*
+// 문제라 Wt64Top 의 MMIO 디코드(maskArea) 소관이고 이 유닛에는 그 개념
+// 자체가 없다(이 파일에는 "창"이 없다 — keyWr.part/rekey.part 는 이미
+// 분리된 자유 입력으로 도착한다). 그 가드의 GUARD-MAP 줄은 Wt64Top 을
+// 감싸는 별도 후-formal 합성이 서는 날의 몫으로 남긴다.
+// GUARD-MAP: Mask.key_scoped_storage -> 저장은 파티션별이다(key 를
+//   parts 벌 둔다, 아래 key 선언). HiuMask 합성이 REKEY(p) 수락 다음
+//   사이클의 유도 초기 상태(st_4..st_11)를 keyWr 입력만으로 다시 지은
+//   독립 섀도우의 p 슬롯과 대조한다 — 재구현 착수 시점의 전역 1벌
+//   저장에 걸면 반례가 난다(hiumask.sby PROVES 앵커 · §역-변이 mutG).
+// GUARD-MAP: Mask.key_write_own_only -> 키 기입은 그 파티션의 maskValid
+//   만 떨어뜨린다(아래 keyWr 처리, `maskValid(io.keyWr.part) := False`).
+//   HiuMask 합성이 파티션 p 로 향한 키 기입 에지에서 q != p 의 maskReady
+//   가 불변임을 잰다 — 재구현 착수 시점의 전 파티션 무효화(for 문)에
+//   걸면 반례가 난다(hiumask.sby PROVES 앵커 · §역-변이 mutF).
+// GUARD-MAP: Mask.rekey_idle_only -> REKEY 는 엔진이 유휴(phase=IDLE)일
+//   때만 수락된다(io.rekey.ready = !engineBusy, 아래 FSM). HiuMask
+//   합성이 rekeyFire 발화 사이클의 phase 가 IDLE 였음을 잰다 — 이 축의
+//   로직은 이번 파도가 건드리지 않았고 회귀 그물로만 선다.
+// GUARD-MAP: Mask.rekey_explicit_target -> DELEGATED(Wt64Top) — MASK_PART
+//   창(0xEA0) 대 MASK_REKEY(0xEBC) 필드의 라우팅 문제라 MMIO 디코드
+//   (Wt64Top.maskArea) 소관이다. 이 유닛에는 "창" 개념 자체가 없다 —
+//   keyWr.part/rekey.part 는 이미 분리된 자유 입력으로 여기 도착한다.
 //
 //   · Decode.stall_uniform / SEC-2 와의 접점 — 상태열(§3.2 여섯 단계)의
 //     소유자는 HiuPipeline 이고 그 GUARD-MAP 줄도 그쪽에 있다. 이 유닛의
@@ -86,10 +113,11 @@
 //   4항 재키잉은 해당 파티션 flush 와 함께: flush 동반 자체는 호스트
 //       의무다 (§3.10 ABI 경계 — HiuPipeline flush_on_handoff ENV 와 같은
 //       자리). 이 유닛의 강제 몫은 「옛 키와 새 키의 혼합 금지」다 —
-//       키 기입은 전 파티션의, 논스 기입은 그 파티션의 마스크 유효를
-//       즉시 떨어뜨리고, 계산 중 입력이 바뀐 재키잉은 결과를 유효화하지
-//       않는다 (compDirty → faultWrDuringRekey). 미준비 마스크로 지나간
-//       요청은 faultNoMask 가 잡는다.
+//       키 기입도 논스 기입도 **그 파티션의** 마스크 유효만 즉시
+//       떨어뜨리고(정본 7fa5f2e — 저장은 파티션별, 다른 파티션은 사정권
+//       밖), 계산 중 입력이 바뀐 재키잉은 결과를 유효화하지 않는다
+//       (compDirty → faultWrDuringRekey). 미준비 마스크로 지나간 요청은
+//       faultNoMask 가 잡는다.
 //
 // ## 판단 — 라운드당 고정 1사이클 (근거)
 //
@@ -158,9 +186,14 @@ case class MaskUnit(cfg: Wt64Config = Wt64Config()) extends Component {
   require(W1_W + (32 - PAGE_W) == FRAME_W)
 
   val io = new Bundle {
-    // ── E.9 기입 표면 — 키 (전역, 구성 표면 기입 — 장치는 생성하지 않는다)
+    // ── E.9 기입 표면 — 키 (임대별, 구성 표면 기입 — 장치는 생성하지 않는다)
+    // 정본 7fa5f2e "키의 범위 — 임대마다 다르다": 저장은 파티션별이고,
+    // 기입 대상은 nonceWr 과 같은 창(0xEA0 MASK_PART, 구 MASK_NONCE_PART)이
+    // 정한다 — authority 는 그 창 하나가 아니라 REKEY 기입이다
+    // (e-defined.typ:351 7항). part 필드는 nonceWr 과 동형.
     val keyWr = new Bundle {
       val valid = in port Bool()
+      val part  = in port UInt(partW bits)
       val idx   = in port UInt(log2Up(KEY_WORDS) bits) // word n = key[32n+31:32n]
       val data  = in port Bits(32 bits)
     }
@@ -211,9 +244,12 @@ case class MaskUnit(cfg: Wt64Config = Wt64Config()) extends Component {
   }
 
   // ═══ 키·논스 저장 — E.9 공급·저장 ═══════════════════════════════════
-  // key(n) = 표준 key word n (관측 지점: _key_bytes — 포트 정수 최하위
-  // 32b 가 word 0). 논스는 파티션별 6워드 (0..3 유도 단계, 4..5 본 라운드).
-  private val key   = Vec.fill(KEY_WORDS)(Reg(Bits(32 bits)) init 0)
+  // key(p)(n) = 파티션 p 의 표준 key word n (관측 지점: _key_bytes — 포트
+  // 정수 최하위 32b 가 word 0). 정본 7fa5f2e "키의 범위 — 임대마다 다르다"
+  // — 저장은 파티션별이다 (분리되는 것은 저장이지 연산 자원이 아니다:
+  // 아래 라운드망은 여전히 한 벌). 논스도 파티션별 6워드
+  // (0..3 유도 단계, 4..5 본 라운드) — 이 축은 개정 전부터 이미 옳았다.
+  private val key   = Vec.fill(parts)(Vec.fill(KEY_WORDS)(Reg(Bits(32 bits)) init 0))
   private val nonce = Vec.fill(parts)(Vec.fill(NONCE_WORDS)(Reg(Bits(32 bits)) init 0))
 
   // 파티션별 마스크 — 저장은 **적용 비트만**: 64b 키스트림(golden
@@ -278,9 +314,18 @@ case class MaskUnit(cfg: Wt64Config = Wt64Config()) extends Component {
   // (column round 결과가 레지스터에 앉은 위에서 diagonal 이 돈다).
   private val roundNext = Mux(cnt(0), roundNet(st, DIAG), roundNet(st, COL))
 
-  // 논스 재사용 검사 (E.9 2항) — 같은 키 아래(= 키 기입이 전 파티션 유효를
-  // 떨어뜨리므로, maskValid 가 선 파티션은 전부 현행 키다) 마스크 유효한
-  // 타 파티션과의 논스 전폭 일치. 고정 병렬 비교 — 경로·시간 불변.
+  // 논스 재사용 검사 (E.9 2항) — 마스크 유효한 타 파티션과의 논스 전폭
+  // 일치. 고정 병렬 비교 — 경로·시간 불변.
+  //
+  // 이 검사는 "논스는 파티션마다 다르다"(1절)의 건전하되 불완전한 부분
+  // 집행이다 — **쌍 불변식(키, 논스) 유일성을 강제하는 기전으로 읽어서는
+  // 안 된다**(FAULT_STATUS[12] 강등 해설, e-defined.typ:1559-1583). 키가
+  // 파티션별로 갈라진 뒤에도(정본 7fa5f2e) 로직은 바뀌지 않는다 — 강등의
+  // 범위는 그 쌍 불변식이지 이 절 전체가 아니다. "같은 키 아래" 라는
+  // 옛 전제(키가 전역 1벌이던 시절 — 아래 §변경 이력)는 더는 성립하지
+  // 않지만, 검사 자체는 여전히 유효한 감시자다: 두 파티션이 (서로 다른
+  // 키라도) 같은 논스를 쓰면 그 자체가 §3.7 구성 규율 위반의 신호이고,
+  // 호스트가 수리할 축은 여전히 논스 배정이다.
   private val nonceFlat = Vec(nonce.map(_.asBits)) // 파티션당 192b
   private val reqNonce  = nonceFlat(io.rekey.part)
   private val nonceDup = (0 until parts)
@@ -295,8 +340,11 @@ case class MaskUnit(cfg: Wt64Config = Wt64Config()) extends Component {
       when(rekeyFire) {
         // 유도 초기 상태 — CONST ‖ key ‖ 논스 워드 0..3 (관측 지점:
         // chacha20_state / hchacha20 의 h_init 배치).
+        // E.9 4항 "엔진은 그 파티션의 키와 논스를 읽는다" — io.rekey.part
+        // 가 지목한 파티션의 저장을 그대로 읽는다(authority 는 REKEY 기입
+        // 하나, e-defined.typ:351 7항 — MASK_PART 창과는 별개).
         for (i <- 0 until 4) st(i)      := U(CONST(i), 32 bits)
-        for (i <- 0 until 8) st(4 + i)  := key(i).asUInt
+        for (i <- 0 until 8) st(4 + i)  := key(io.rekey.part)(i).asUInt
         for (i <- 0 until 4) st(12 + i) := nonce(io.rekey.part)(i).asUInt
         actPart   := io.rekey.part
         cnt       := 0
@@ -381,15 +429,20 @@ case class MaskUnit(cfg: Wt64Config = Wt64Config()) extends Component {
   // ═══ 기입 표면 — FSM 뒤에 두어 유효화와 겹치면 무효화가 이긴다 ═══════
   // (StickyFault 의 「발화가 해제를 이긴다」와 같은 방향 — 안전한 쪽 우선.)
   when(io.keyWr.valid) {
-    key(io.keyWr.idx) := io.keyWr.data
-    // 키 변경은 전 파티션의 마스크를 무효화한다 — 옛 키 마스크와 새 키
-    // 마스크의 혼합 금지 (E.9 4항). 파티션별 재키잉이 뒤따라야 한다.
-    for (p <- 0 until parts) maskValid(p) := False
-    // rekeyFire 와 같은 사이클의 기입도 dirty 다 — 유도 초기 상태는 이
+    key(io.keyWr.part)(io.keyWr.idx) := io.keyWr.data
+    // 키 변경은 **그 파티션만** 무효화한다 (정본 7fa5f2e, e-defined.typ:333
+    // "기입은 그 파티션의 마스크 유효를 즉시 떨어뜨린다" — E.9 4항 "다른
+    // 파티션이 그 변경의 사정권 밖"). 옛 키 마스크와 새 키 마스크의 혼합
+    // 금지는 그 파티션 안에서 성립하면 족하다 — 재키잉이 뒤따라야 한다.
+    maskValid(io.keyWr.part) := False
+    // rekeyFire 와 같은 사이클의 기입도, **그 기입이 지금 계산 중인
+    // 파티션(actPart)이나 이번에 수락되는 REKEY 의 대상과 같을 때만**
+    // dirty 다 — 논스 기입(아래)과 동형 스코프. 유도 초기 상태는 이
     // 사이클의 (옛) 레지스터 값을 래치하므로, 결과를 유효화하면 새 키
     // 아래에서 옛 키 마스크가 쓰이는 창이 생긴다. 이 when 이 switch 뒤라
     // IDLE 가지의 compDirty := False 를 이긴다 (텍스트 순서 — 의도).
-    when(engineBusy || rekeyFire) { compDirty := True }
+    when((engineBusy && io.keyWr.part === actPart) ||
+         (rekeyFire && io.keyWr.part === io.rekey.part)) { compDirty := True }
   }
   // 논스 기입 — 워드별 등가 비교 디코드 (Vec 동적 색인은 8→6 원핫
   // 디코더의 미사용 비트를 만든다 — 표 조회 형태로 적어 미사용 비트 0).

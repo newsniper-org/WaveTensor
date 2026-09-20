@@ -632,19 +632,41 @@ AX2B_KIND_MAX: dict[str, int] = {}
 #   「세웠다」로 갈아치우며 따옴표 없는 `Isolation.tla:NNN` 좌표 하나를
 #   지웠다. 항목이 사라졌으면 상한도 같이 내린다 — 그러지 않으면 그 슬랙을
 #   다음 편집이 조용히 채운다 (이 표를 스칼라에서 파일별로 바꾼 이유 ②).
+# 2026-09-20 **상승** — 임대별 마스크 키 파도, 정본 7fa5f2e. 신설 귀납 보조
+#   불변식·key_write_own_only·rekey_idle_only·rekey_explicit_target(DELEGATED)
+#   해설이 `e-defined.typ`/`05-security.typ`/`MaskUnit.scala` 의 구체 좌표를
+#   여럿 새로 인용한다. 전부 해설 산문 안에 있고 인용 *앞*에 산문 요약(「…」)을
+#   이미 적어 두었으므로 좌표 *뒤* 30자 결속창을 쓰는 R6 축자 대조는 적용하지
+#   않았다(인용 직전 요약은 R6 가 요구하는 「좌표 뒤 축자」와 다른 관용구다).
+#   새 인용은 모두 파도 착수 이후 신설이고 삭제된 자리는 없다.
+#     `HiuMask_props.sv` 3 → 7 — e-defined.typ:236-238 · :333 · :344 ·
+#       MaskUnit.scala:424
+#     `rtl/formal/tla/run.sh` (신설, 0 → 3) — 05-security.typ:112 ·
+#       e-defined.typ:333 · :351 (Mask.tla 배터리 머리말 해설)
+#     `MaskUnit.scala` (신설, 0 → 4) — e-defined.typ:351(×2) · :1559 · :333
+#     `Wt64Top.scala` (신설, 0 → 2) — e-defined.typ:344(×2, MASK_PART 해설)
 AX1_UNMEASURED_HARD_MAX: dict[str, int] = {
     "proofs/tla/AccBank.tla": 5,
     "proofs/tla/README.md": 14,
     "rtl/README.md": 2,
     "rtl/formal/sby/HiuMask/hiumask.sby": 2,
     "rtl/formal/sby/Reassembly/props.sby": 3,
+    "rtl/formal/tla/run.sh": 3,
     "rtl/formal/sby/XlateStore/xlatestore.sby": 7,
     "rtl/formal/tla/Decode.tla": 1,
+    # 2026-09-20 신설 (임대별 마스크 키 파도, 정본 7fa5f2e) — Mask.tla 는
+    # 선-formal 모델 자신이고 해설 산문 전체가 e-defined.typ/05-security.typ
+    # 좌표를 인용 *앞* 요약(「…」) 관용구로 단다(위 HiuMask_props.sv 항목과
+    # 같은 이유로 R6 결속 대상이 아니다). 새로 태어난 파일이므로 삭제 자리는
+    # 없다.
+    "rtl/formal/tla/Mask.tla": 10,
     "rtl/sim/README.md": 17,
     "rtl/sim/run_wt64.py": 11,
     "rtl/sim/test_mask_golden.py": 14,
     "rtl/sim/test_shape_equiv.py": 14,
-    "rtl/sv/assert/HiuMask_props.sv": 3,
+    "rtl/spinal/src/main/scala/wt64/mask/MaskUnit.scala": 4,
+    "rtl/spinal/src/main/scala/wt64/top/Wt64Top.scala": 2,
+    "rtl/sv/assert/HiuMask_props.sv": 7,
     "rtl/sv/assert/Reassembly_props.sv": 4,
 }
 # ── 축 2 표의 **세 번째 기준선** (2026-08-30 세 번째 파도) ────────────────
@@ -682,6 +704,9 @@ AX2_UNMEASURED_HARD_MAX: dict[str, int] = {
     "rtl/formal/sby/SharedUnit/depth0.sby": 1,
     "rtl/formal/tla/Decode.tla": 51,
     "rtl/formal/tla/Fabric.tla": 40,
+    # 2026-09-20 신설 — 임대별 마스크 키 파도, 정본 7fa5f2e. 위 축1 항목과
+    # 같은 파일·같은 사유(인용 앞 요약 관용구).
+    "rtl/formal/tla/Mask.tla": 1,
     "rtl/formal/tla/Fabric_del_bp_loud.cfg": 1,
     "rtl/formal/tla/Fabric_del_bp_loud_shapeA.cfg": 1,
     "rtl/formal/tla/Fabric_del_bp_loud_shapeB.cfg": 1,
@@ -776,7 +801,11 @@ AX2_UNMEASURED_HARD_MAX: dict[str, int] = {
     "rtl/spinal/src/main/scala/wt64/hiu/OwnershipTable.scala": 18,
     "rtl/spinal/src/main/scala/wt64/hiu/XlateStore.scala": 29,
     "rtl/spinal/src/main/scala/wt64/host/CompletionUnit.scala": 43,
-    "rtl/spinal/src/main/scala/wt64/mask/MaskUnit.scala": 19,
+    # 2026-09-20 상승 19 → 20 (임대별 마스크 키 파도, 정본 7fa5f2e):
+    # 논스 재사용 검사 해설에 신설 `§3.7` 인용 1건 — "같은 키 아래" 이던
+    # 옛 전제가 파티션별 키 분리로 깨진 사실과 그 검사가 여전히 유효한
+    # 이유를 적으며 새로 인용했다. 삭제된 자리는 없다.
+    "rtl/spinal/src/main/scala/wt64/mask/MaskUnit.scala": 20,
     "rtl/spinal/src/main/scala/wt64/memorder/MemOrderGate.scala": 10,
     "rtl/spinal/src/main/scala/wt64/payload/Reassembly.scala": 52,
     "rtl/spinal/src/main/scala/wt64/route/RouteJudge.scala": 11,

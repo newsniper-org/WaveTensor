@@ -11,6 +11,7 @@
 
 module MaskUnit (
   input  wire          io_keyWr_valid,
+  input  wire [1:0]    io_keyWr_part,
   input  wire [2:0]    io_keyWr_idx,
   input  wire [31:0]   io_keyWr_data,
   input  wire          io_nonceWr_valid,
@@ -42,6 +43,14 @@ module MaskUnit (
   wire                _zz_nonceDup;
   wire                _zz_nonceDup_1;
   wire       [1:0]    _zz_nonceDup_2;
+  reg        [31:0]   _zz_st_4;
+  reg        [31:0]   _zz_st_5;
+  reg        [31:0]   _zz_st_6;
+  reg        [31:0]   _zz_st_7;
+  reg        [31:0]   _zz_st_8;
+  reg        [31:0]   _zz_st_9;
+  reg        [31:0]   _zz_st_10;
+  reg        [31:0]   _zz_st_11;
   reg        [31:0]   _zz_st_12;
   reg        [31:0]   _zz_st_13;
   reg        [31:0]   _zz_st_14;
@@ -55,14 +64,38 @@ module MaskUnit (
   wire       [0:0]    _zz__zz_maskFrame_0_4;
   reg        [31:0]   _zz_rFrame;
   reg                 _zz_noMaskFire;
-  reg        [31:0]   key_0;
-  reg        [31:0]   key_1;
-  reg        [31:0]   key_2;
-  reg        [31:0]   key_3;
-  reg        [31:0]   key_4;
-  reg        [31:0]   key_5;
-  reg        [31:0]   key_6;
-  reg        [31:0]   key_7;
+  reg        [31:0]   key_0_0;
+  reg        [31:0]   key_0_1;
+  reg        [31:0]   key_0_2;
+  reg        [31:0]   key_0_3;
+  reg        [31:0]   key_0_4;
+  reg        [31:0]   key_0_5;
+  reg        [31:0]   key_0_6;
+  reg        [31:0]   key_0_7;
+  reg        [31:0]   key_1_0;
+  reg        [31:0]   key_1_1;
+  reg        [31:0]   key_1_2;
+  reg        [31:0]   key_1_3;
+  reg        [31:0]   key_1_4;
+  reg        [31:0]   key_1_5;
+  reg        [31:0]   key_1_6;
+  reg        [31:0]   key_1_7;
+  reg        [31:0]   key_2_0;
+  reg        [31:0]   key_2_1;
+  reg        [31:0]   key_2_2;
+  reg        [31:0]   key_2_3;
+  reg        [31:0]   key_2_4;
+  reg        [31:0]   key_2_5;
+  reg        [31:0]   key_2_6;
+  reg        [31:0]   key_2_7;
+  reg        [31:0]   key_3_0;
+  reg        [31:0]   key_3_1;
+  reg        [31:0]   key_3_2;
+  reg        [31:0]   key_3_3;
+  reg        [31:0]   key_3_4;
+  reg        [31:0]   key_3_5;
+  reg        [31:0]   key_3_6;
+  reg        [31:0]   key_3_7;
   reg        [31:0]   nonce_0_0;
   reg        [31:0]   nonce_0_1;
   reg        [31:0]   nonce_0_2;
@@ -231,28 +264,34 @@ module MaskUnit (
   wire                nonceDupFire;
   reg                 dirtyAtFinal;
   wire       [3:0]    _zz_1;
-  wire                when_MaskUnit_l313;
-  wire                when_MaskUnit_l346;
+  wire                when_MaskUnit_l361;
+  wire                when_MaskUnit_l394;
   wire       [3:0]    _zz_2;
   wire       [31:0]   _zz_maskFrame_0;
   wire       [3:0]    _zz_3;
   wire                _zz_maskValid_0;
-  wire       [7:0]    _zz_4;
-  wire                when_MaskUnit_l392;
-  wire                nonceWrHit;
-  wire                when_MaskUnit_l400;
-  wire       [3:0]    _zz_5;
+  wire       [3:0]    _zz_4;
+  wire                _zz_5;
   wire                _zz_6;
   wire                _zz_7;
   wire                _zz_8;
-  wire                _zz_9;
-  wire                when_MaskUnit_l400_1;
-  wire                when_MaskUnit_l400_2;
-  wire                when_MaskUnit_l400_3;
-  wire                when_MaskUnit_l400_4;
-  wire                when_MaskUnit_l400_5;
+  wire       [7:0]    _zz_9;
   wire       [3:0]    _zz_10;
-  wire                when_MaskUnit_l407;
+  wire                when_MaskUnit_l445;
+  wire                nonceWrHit;
+  wire                when_MaskUnit_l453;
+  wire       [3:0]    _zz_11;
+  wire                _zz_12;
+  wire                _zz_13;
+  wire                _zz_14;
+  wire                _zz_15;
+  wire                when_MaskUnit_l453_1;
+  wire                when_MaskUnit_l453_2;
+  wire                when_MaskUnit_l453_3;
+  wire                when_MaskUnit_l453_4;
+  wire                when_MaskUnit_l453_5;
+  wire       [3:0]    _zz_16;
+  wire                when_MaskUnit_l460;
   reg                 rValid;
   reg        [31:0]   rFrame;
   wire                noMaskFire;
@@ -272,6 +311,14 @@ module MaskUnit (
     case(io_rekey_part)
       2'b00 : begin
         _zz_reqNonce = nonceFlat_0;
+        _zz_st_4 = key_0_0;
+        _zz_st_5 = key_0_1;
+        _zz_st_6 = key_0_2;
+        _zz_st_7 = key_0_3;
+        _zz_st_8 = key_0_4;
+        _zz_st_9 = key_0_5;
+        _zz_st_10 = key_0_6;
+        _zz_st_11 = key_0_7;
         _zz_st_12 = nonce_0_0;
         _zz_st_13 = nonce_0_1;
         _zz_st_14 = nonce_0_2;
@@ -279,6 +326,14 @@ module MaskUnit (
       end
       2'b01 : begin
         _zz_reqNonce = nonceFlat_1;
+        _zz_st_4 = key_1_0;
+        _zz_st_5 = key_1_1;
+        _zz_st_6 = key_1_2;
+        _zz_st_7 = key_1_3;
+        _zz_st_8 = key_1_4;
+        _zz_st_9 = key_1_5;
+        _zz_st_10 = key_1_6;
+        _zz_st_11 = key_1_7;
         _zz_st_12 = nonce_1_0;
         _zz_st_13 = nonce_1_1;
         _zz_st_14 = nonce_1_2;
@@ -286,6 +341,14 @@ module MaskUnit (
       end
       2'b10 : begin
         _zz_reqNonce = nonceFlat_2;
+        _zz_st_4 = key_2_0;
+        _zz_st_5 = key_2_1;
+        _zz_st_6 = key_2_2;
+        _zz_st_7 = key_2_3;
+        _zz_st_8 = key_2_4;
+        _zz_st_9 = key_2_5;
+        _zz_st_10 = key_2_6;
+        _zz_st_11 = key_2_7;
         _zz_st_12 = nonce_2_0;
         _zz_st_13 = nonce_2_1;
         _zz_st_14 = nonce_2_2;
@@ -293,6 +356,14 @@ module MaskUnit (
       end
       default : begin
         _zz_reqNonce = nonceFlat_3;
+        _zz_st_4 = key_3_0;
+        _zz_st_5 = key_3_1;
+        _zz_st_6 = key_3_2;
+        _zz_st_7 = key_3_3;
+        _zz_st_8 = key_3_4;
+        _zz_st_9 = key_3_5;
+        _zz_st_10 = key_3_6;
+        _zz_st_11 = key_3_7;
         _zz_st_12 = nonce_3_0;
         _zz_st_13 = nonce_3_1;
         _zz_st_14 = nonce_3_2;
@@ -471,28 +542,34 @@ module MaskUnit (
   end
 
   assign _zz_1 = ({3'd0,1'b1} <<< io_rekey_part);
-  assign when_MaskUnit_l313 = (cnt == 5'h13);
-  assign when_MaskUnit_l346 = (cnt == 5'h13);
+  assign when_MaskUnit_l361 = (cnt == 5'h13);
+  assign when_MaskUnit_l394 = (cnt == 5'h13);
   assign _zz_2 = ({3'd0,1'b1} <<< actPart);
   assign _zz_maskFrame_0 = {_zz__zz_maskFrame_0,_zz__zz_maskFrame_0_1};
   assign _zz_3 = ({3'd0,1'b1} <<< actPart);
   assign _zz_maskValid_0 = (! compDirty);
-  assign _zz_4 = ({7'd0,1'b1} <<< io_keyWr_idx);
-  assign when_MaskUnit_l392 = (engineBusy || rekeyFire);
+  assign _zz_4 = ({3'd0,1'b1} <<< io_keyWr_part);
+  assign _zz_5 = _zz_4[0];
+  assign _zz_6 = _zz_4[1];
+  assign _zz_7 = _zz_4[2];
+  assign _zz_8 = _zz_4[3];
+  assign _zz_9 = ({7'd0,1'b1} <<< io_keyWr_idx);
+  assign _zz_10 = ({3'd0,1'b1} <<< io_keyWr_part);
+  assign when_MaskUnit_l445 = ((engineBusy && (io_keyWr_part == actPart)) || (rekeyFire && (io_keyWr_part == io_rekey_part)));
   assign nonceWrHit = (io_nonceWr_valid && (io_nonceWr_idx < 3'b110));
-  assign when_MaskUnit_l400 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b000));
-  assign _zz_5 = ({3'd0,1'b1} <<< io_nonceWr_part);
-  assign _zz_6 = _zz_5[0];
-  assign _zz_7 = _zz_5[1];
-  assign _zz_8 = _zz_5[2];
-  assign _zz_9 = _zz_5[3];
-  assign when_MaskUnit_l400_1 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b001));
-  assign when_MaskUnit_l400_2 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b010));
-  assign when_MaskUnit_l400_3 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b011));
-  assign when_MaskUnit_l400_4 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b100));
-  assign when_MaskUnit_l400_5 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b101));
-  assign _zz_10 = ({3'd0,1'b1} <<< io_nonceWr_part);
-  assign when_MaskUnit_l407 = ((engineBusy && (io_nonceWr_part == actPart)) || (rekeyFire && (io_nonceWr_part == io_rekey_part)));
+  assign when_MaskUnit_l453 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b000));
+  assign _zz_11 = ({3'd0,1'b1} <<< io_nonceWr_part);
+  assign _zz_12 = _zz_11[0];
+  assign _zz_13 = _zz_11[1];
+  assign _zz_14 = _zz_11[2];
+  assign _zz_15 = _zz_11[3];
+  assign when_MaskUnit_l453_1 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b001));
+  assign when_MaskUnit_l453_2 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b010));
+  assign when_MaskUnit_l453_3 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b011));
+  assign when_MaskUnit_l453_4 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b100));
+  assign when_MaskUnit_l453_5 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b101));
+  assign _zz_16 = ({3'd0,1'b1} <<< io_nonceWr_part);
+  assign when_MaskUnit_l460 = ((engineBusy && (io_nonceWr_part == actPart)) || (rekeyFire && (io_nonceWr_part == io_rekey_part)));
   assign io_maskReady = {maskValid_3,{maskValid_2,{maskValid_1,maskValid_0}}};
   assign io_rsp_valid = rValid;
   assign io_rsp_frame = rFrame;
@@ -502,14 +579,38 @@ module MaskUnit (
   assign io_faultWrDuringRekey = _zz_io_faultWrDuringRekey;
   always @(posedge clk or posedge reset) begin
     if(reset) begin
-      key_0 <= 32'h0;
-      key_1 <= 32'h0;
-      key_2 <= 32'h0;
-      key_3 <= 32'h0;
-      key_4 <= 32'h0;
-      key_5 <= 32'h0;
-      key_6 <= 32'h0;
-      key_7 <= 32'h0;
+      key_0_0 <= 32'h0;
+      key_0_1 <= 32'h0;
+      key_0_2 <= 32'h0;
+      key_0_3 <= 32'h0;
+      key_0_4 <= 32'h0;
+      key_0_5 <= 32'h0;
+      key_0_6 <= 32'h0;
+      key_0_7 <= 32'h0;
+      key_1_0 <= 32'h0;
+      key_1_1 <= 32'h0;
+      key_1_2 <= 32'h0;
+      key_1_3 <= 32'h0;
+      key_1_4 <= 32'h0;
+      key_1_5 <= 32'h0;
+      key_1_6 <= 32'h0;
+      key_1_7 <= 32'h0;
+      key_2_0 <= 32'h0;
+      key_2_1 <= 32'h0;
+      key_2_2 <= 32'h0;
+      key_2_3 <= 32'h0;
+      key_2_4 <= 32'h0;
+      key_2_5 <= 32'h0;
+      key_2_6 <= 32'h0;
+      key_2_7 <= 32'h0;
+      key_3_0 <= 32'h0;
+      key_3_1 <= 32'h0;
+      key_3_2 <= 32'h0;
+      key_3_3 <= 32'h0;
+      key_3_4 <= 32'h0;
+      key_3_5 <= 32'h0;
+      key_3_6 <= 32'h0;
+      key_3_7 <= 32'h0;
       nonce_0_0 <= 32'h0;
       nonce_0_1 <= 32'h0;
       nonce_0_2 <= 32'h0;
@@ -575,14 +676,14 @@ module MaskUnit (
             st_1 <= 32'h3320646e;
             st_2 <= 32'h79622d32;
             st_3 <= 32'h6b206574;
-            st_4 <= key_0;
-            st_5 <= key_1;
-            st_6 <= key_2;
-            st_7 <= key_3;
-            st_8 <= key_4;
-            st_9 <= key_5;
-            st_10 <= key_6;
-            st_11 <= key_7;
+            st_4 <= _zz_st_4;
+            st_5 <= _zz_st_5;
+            st_6 <= _zz_st_6;
+            st_7 <= _zz_st_7;
+            st_8 <= _zz_st_8;
+            st_9 <= _zz_st_9;
+            st_10 <= _zz_st_10;
+            st_11 <= _zz_st_11;
             st_12 <= _zz_st_12;
             st_13 <= _zz_st_13;
             st_14 <= _zz_st_14;
@@ -623,7 +724,7 @@ module MaskUnit (
           st_14 <= roundNext_14;
           st_15 <= roundNext_15;
           cnt <= (cnt + 5'h01);
-          if(when_MaskUnit_l313) begin
+          if(when_MaskUnit_l361) begin
             phase <= 3'b010;
             cnt <= 5'h0;
           end
@@ -665,7 +766,7 @@ module MaskUnit (
           st_14 <= roundNext_14;
           st_15 <= roundNext_15;
           cnt <= (cnt + 5'h01);
-          if(when_MaskUnit_l346) begin
+          if(when_MaskUnit_l394) begin
             phase <= 3'b100;
           end
         end
@@ -700,123 +801,118 @@ module MaskUnit (
         end
       endcase
       if(io_keyWr_valid) begin
-        if(_zz_4[0]) begin
-          key_0 <= io_keyWr_data;
+        if(_zz_9[0]) begin
+          if(_zz_5) begin
+            key_0_0 <= io_keyWr_data;
+          end
+          if(_zz_6) begin
+            key_1_0 <= io_keyWr_data;
+          end
+          if(_zz_7) begin
+            key_2_0 <= io_keyWr_data;
+          end
+          if(_zz_8) begin
+            key_3_0 <= io_keyWr_data;
+          end
         end
-        if(_zz_4[1]) begin
-          key_1 <= io_keyWr_data;
+        if(_zz_9[1]) begin
+          if(_zz_5) begin
+            key_0_1 <= io_keyWr_data;
+          end
+          if(_zz_6) begin
+            key_1_1 <= io_keyWr_data;
+          end
+          if(_zz_7) begin
+            key_2_1 <= io_keyWr_data;
+          end
+          if(_zz_8) begin
+            key_3_1 <= io_keyWr_data;
+          end
         end
-        if(_zz_4[2]) begin
-          key_2 <= io_keyWr_data;
+        if(_zz_9[2]) begin
+          if(_zz_5) begin
+            key_0_2 <= io_keyWr_data;
+          end
+          if(_zz_6) begin
+            key_1_2 <= io_keyWr_data;
+          end
+          if(_zz_7) begin
+            key_2_2 <= io_keyWr_data;
+          end
+          if(_zz_8) begin
+            key_3_2 <= io_keyWr_data;
+          end
         end
-        if(_zz_4[3]) begin
-          key_3 <= io_keyWr_data;
+        if(_zz_9[3]) begin
+          if(_zz_5) begin
+            key_0_3 <= io_keyWr_data;
+          end
+          if(_zz_6) begin
+            key_1_3 <= io_keyWr_data;
+          end
+          if(_zz_7) begin
+            key_2_3 <= io_keyWr_data;
+          end
+          if(_zz_8) begin
+            key_3_3 <= io_keyWr_data;
+          end
         end
-        if(_zz_4[4]) begin
-          key_4 <= io_keyWr_data;
+        if(_zz_9[4]) begin
+          if(_zz_5) begin
+            key_0_4 <= io_keyWr_data;
+          end
+          if(_zz_6) begin
+            key_1_4 <= io_keyWr_data;
+          end
+          if(_zz_7) begin
+            key_2_4 <= io_keyWr_data;
+          end
+          if(_zz_8) begin
+            key_3_4 <= io_keyWr_data;
+          end
         end
-        if(_zz_4[5]) begin
-          key_5 <= io_keyWr_data;
+        if(_zz_9[5]) begin
+          if(_zz_5) begin
+            key_0_5 <= io_keyWr_data;
+          end
+          if(_zz_6) begin
+            key_1_5 <= io_keyWr_data;
+          end
+          if(_zz_7) begin
+            key_2_5 <= io_keyWr_data;
+          end
+          if(_zz_8) begin
+            key_3_5 <= io_keyWr_data;
+          end
         end
-        if(_zz_4[6]) begin
-          key_6 <= io_keyWr_data;
+        if(_zz_9[6]) begin
+          if(_zz_5) begin
+            key_0_6 <= io_keyWr_data;
+          end
+          if(_zz_6) begin
+            key_1_6 <= io_keyWr_data;
+          end
+          if(_zz_7) begin
+            key_2_6 <= io_keyWr_data;
+          end
+          if(_zz_8) begin
+            key_3_6 <= io_keyWr_data;
+          end
         end
-        if(_zz_4[7]) begin
-          key_7 <= io_keyWr_data;
+        if(_zz_9[7]) begin
+          if(_zz_5) begin
+            key_0_7 <= io_keyWr_data;
+          end
+          if(_zz_6) begin
+            key_1_7 <= io_keyWr_data;
+          end
+          if(_zz_7) begin
+            key_2_7 <= io_keyWr_data;
+          end
+          if(_zz_8) begin
+            key_3_7 <= io_keyWr_data;
+          end
         end
-        maskValid_0 <= 1'b0;
-        maskValid_1 <= 1'b0;
-        maskValid_2 <= 1'b0;
-        maskValid_3 <= 1'b0;
-        if(when_MaskUnit_l392) begin
-          compDirty <= 1'b1;
-        end
-      end
-      if(when_MaskUnit_l400) begin
-        if(_zz_6) begin
-          nonce_0_0 <= io_nonceWr_data;
-        end
-        if(_zz_7) begin
-          nonce_1_0 <= io_nonceWr_data;
-        end
-        if(_zz_8) begin
-          nonce_2_0 <= io_nonceWr_data;
-        end
-        if(_zz_9) begin
-          nonce_3_0 <= io_nonceWr_data;
-        end
-      end
-      if(when_MaskUnit_l400_1) begin
-        if(_zz_6) begin
-          nonce_0_1 <= io_nonceWr_data;
-        end
-        if(_zz_7) begin
-          nonce_1_1 <= io_nonceWr_data;
-        end
-        if(_zz_8) begin
-          nonce_2_1 <= io_nonceWr_data;
-        end
-        if(_zz_9) begin
-          nonce_3_1 <= io_nonceWr_data;
-        end
-      end
-      if(when_MaskUnit_l400_2) begin
-        if(_zz_6) begin
-          nonce_0_2 <= io_nonceWr_data;
-        end
-        if(_zz_7) begin
-          nonce_1_2 <= io_nonceWr_data;
-        end
-        if(_zz_8) begin
-          nonce_2_2 <= io_nonceWr_data;
-        end
-        if(_zz_9) begin
-          nonce_3_2 <= io_nonceWr_data;
-        end
-      end
-      if(when_MaskUnit_l400_3) begin
-        if(_zz_6) begin
-          nonce_0_3 <= io_nonceWr_data;
-        end
-        if(_zz_7) begin
-          nonce_1_3 <= io_nonceWr_data;
-        end
-        if(_zz_8) begin
-          nonce_2_3 <= io_nonceWr_data;
-        end
-        if(_zz_9) begin
-          nonce_3_3 <= io_nonceWr_data;
-        end
-      end
-      if(when_MaskUnit_l400_4) begin
-        if(_zz_6) begin
-          nonce_0_4 <= io_nonceWr_data;
-        end
-        if(_zz_7) begin
-          nonce_1_4 <= io_nonceWr_data;
-        end
-        if(_zz_8) begin
-          nonce_2_4 <= io_nonceWr_data;
-        end
-        if(_zz_9) begin
-          nonce_3_4 <= io_nonceWr_data;
-        end
-      end
-      if(when_MaskUnit_l400_5) begin
-        if(_zz_6) begin
-          nonce_0_5 <= io_nonceWr_data;
-        end
-        if(_zz_7) begin
-          nonce_1_5 <= io_nonceWr_data;
-        end
-        if(_zz_8) begin
-          nonce_2_5 <= io_nonceWr_data;
-        end
-        if(_zz_9) begin
-          nonce_3_5 <= io_nonceWr_data;
-        end
-      end
-      if(nonceWrHit) begin
         if(_zz_10[0]) begin
           maskValid_0 <= 1'b0;
         end
@@ -829,7 +925,108 @@ module MaskUnit (
         if(_zz_10[3]) begin
           maskValid_3 <= 1'b0;
         end
-        if(when_MaskUnit_l407) begin
+        if(when_MaskUnit_l445) begin
+          compDirty <= 1'b1;
+        end
+      end
+      if(when_MaskUnit_l453) begin
+        if(_zz_12) begin
+          nonce_0_0 <= io_nonceWr_data;
+        end
+        if(_zz_13) begin
+          nonce_1_0 <= io_nonceWr_data;
+        end
+        if(_zz_14) begin
+          nonce_2_0 <= io_nonceWr_data;
+        end
+        if(_zz_15) begin
+          nonce_3_0 <= io_nonceWr_data;
+        end
+      end
+      if(when_MaskUnit_l453_1) begin
+        if(_zz_12) begin
+          nonce_0_1 <= io_nonceWr_data;
+        end
+        if(_zz_13) begin
+          nonce_1_1 <= io_nonceWr_data;
+        end
+        if(_zz_14) begin
+          nonce_2_1 <= io_nonceWr_data;
+        end
+        if(_zz_15) begin
+          nonce_3_1 <= io_nonceWr_data;
+        end
+      end
+      if(when_MaskUnit_l453_2) begin
+        if(_zz_12) begin
+          nonce_0_2 <= io_nonceWr_data;
+        end
+        if(_zz_13) begin
+          nonce_1_2 <= io_nonceWr_data;
+        end
+        if(_zz_14) begin
+          nonce_2_2 <= io_nonceWr_data;
+        end
+        if(_zz_15) begin
+          nonce_3_2 <= io_nonceWr_data;
+        end
+      end
+      if(when_MaskUnit_l453_3) begin
+        if(_zz_12) begin
+          nonce_0_3 <= io_nonceWr_data;
+        end
+        if(_zz_13) begin
+          nonce_1_3 <= io_nonceWr_data;
+        end
+        if(_zz_14) begin
+          nonce_2_3 <= io_nonceWr_data;
+        end
+        if(_zz_15) begin
+          nonce_3_3 <= io_nonceWr_data;
+        end
+      end
+      if(when_MaskUnit_l453_4) begin
+        if(_zz_12) begin
+          nonce_0_4 <= io_nonceWr_data;
+        end
+        if(_zz_13) begin
+          nonce_1_4 <= io_nonceWr_data;
+        end
+        if(_zz_14) begin
+          nonce_2_4 <= io_nonceWr_data;
+        end
+        if(_zz_15) begin
+          nonce_3_4 <= io_nonceWr_data;
+        end
+      end
+      if(when_MaskUnit_l453_5) begin
+        if(_zz_12) begin
+          nonce_0_5 <= io_nonceWr_data;
+        end
+        if(_zz_13) begin
+          nonce_1_5 <= io_nonceWr_data;
+        end
+        if(_zz_14) begin
+          nonce_2_5 <= io_nonceWr_data;
+        end
+        if(_zz_15) begin
+          nonce_3_5 <= io_nonceWr_data;
+        end
+      end
+      if(nonceWrHit) begin
+        if(_zz_16[0]) begin
+          maskValid_0 <= 1'b0;
+        end
+        if(_zz_16[1]) begin
+          maskValid_1 <= 1'b0;
+        end
+        if(_zz_16[2]) begin
+          maskValid_2 <= 1'b0;
+        end
+        if(_zz_16[3]) begin
+          maskValid_3 <= 1'b0;
+        end
+        if(when_MaskUnit_l460) begin
           compDirty <= 1'b1;
         end
       end

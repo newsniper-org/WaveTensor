@@ -257,7 +257,11 @@ object Wt64Top {
   // 마스킹 (R_MASK, 0xE80) — 옛 0xC00 지역의 워드 색인 0..16 을 그대로
   // 옮겼다. 상대 배치가 같아 이동은 base 하나의 변경이다.
   val M_KEY0       = 0x00 // ~0x1C  WO  E.9 1항 — 키 8워드. 읽기 0 (되읽지 않는다, §5.8)
-  val M_NONCE_PART = 0x20 //        RW  논스 기입 대상 파티션 선택
+  /** MASK_PART — 구 MASK_NONCE_PART 를 넓힌 것(정본 7fa5f2e,
+    * e-defined.typ:344·351 7항). 키·논스 두 기입 모두의 대상 파티션을
+    * *함께* 정하는 창이다 — authority(재키잉 지목)는 이 창이 아니라
+    * MASK_REKEY 기입 하나(같은 7항). */
+  val M_MASK_PART  = 0x20 //        RW  키·논스 기입 대상 파티션 선택
   val M_NONCE0     = 0x24 // ~0x38  WO  E.9 2항 — 선택 파티션의 논스 6워드
   val M_REKEY      = 0x3C //        WO  E.9 4항 — 기입이 발화
   val M_STATUS     = 0x40 //        RO  [7:0] maskReady · [8] busy · [9] rekey ready
@@ -291,7 +295,7 @@ object Wt64Top {
   /** 파티션 선택 필드는 8b 고정이다 — 형상의 함수가 아니다 (INV-T1: MASK_STATUS
     * 의 `[7:0]` 파티션 필드와 같은 처분). 그래서 예약은 `[31:8]` 이다. */
   val PART_FIELD_W       = 8
-  val M_NONCE_PART_RSV   = rsv(0x000000FFL) // [31:8]
+  val M_MASK_PART_RSV    = rsv(0x000000FFL) // [31:8]
   val M_REKEY_RSV        = rsv(0x000000FFL) // [31:8]
   /** ABORT_TAG2 의 예약 = `[31:16]`. 값을 여기 적지 않고 *태그 워드 코덱*에서
     * 끌어온다 — 이 세 워드가 E.5.1 직렬화의 원본이므로 여백의 자리도 그 코덱이
@@ -1214,7 +1218,7 @@ class Wt64Top(
     // 워드 처분 — 상수와의 등가/구간 비교. 오프셋 숫자를 여기 다시 적지
     // 않는다 (companion 의 상수가 유일한 출처다).
     val isKey       = wordOff < M_KEY_WORDS                                      // WO
-    val isNoncePart = wordOff === M_NONCE_PART / 4                               // RW
+    val isMaskPart  = wordOff === M_MASK_PART / 4                                // RW
     val isNonce     = wordOff >= M_NONCE0 / 4 &&
                       wordOff <= (M_NONCE0 / 4 + M_NONCE_WORDS - 1)              // WO
     val isRekey     = wordOff === M_REKEY / 4                                    // WO
@@ -1226,22 +1230,29 @@ class Wt64Top(
     val partBad   = if (cfg.xlateParts >= (1 << PART_FIELD_W)) False
                     else partField >= cfg.xlateParts
 
+    // MASK_PART(0xEA0) — 키·논스 두 기입 모두의 대상 파티션 창 (정본
+    // 7fa5f2e, e-defined.typ:344·351 7항 — 구 MASK_NONCE_PART 를 넓힌 것).
+    val maskPart = Reg(UInt(partW bits)) init 0
+    val mpWr     = wr && isMaskPart
+    val mpRsvBad = (io.mmio.wdata & B(M_MASK_PART_RSV, 32 bits)) =/= 0
+    val mpReject = mpWr && (mpRsvBad || partBad)
+    // 거절된 기입은 레지스터를 움직이지 않는다 — 그래서 되읽기가 언제나
+    // 「마지막으로 수락된 값」이고 호스트가 쓴 값과 항등이다 (정규화 없음).
+    when(mpWr && !mpRsvBad && !partBad) { maskPart := partField.resized }
+
     // E.9 1항 키 기입 — 워드 0..7. 예약 비트 없음 (32b 전폭이 키 워드다).
+    // 창(maskPart)이 가리키는 파티션의 슬롯에 앉는다 — 키도 논스와 같은
+    // 창을 거친다(정본 7fa5f2e "임대별 키의 인코딩 — 창이지 평면 배열이
+    // 아니다"). authority(재키잉 지목)는 이 창이 아니라 MASK_REKEY 기입
+    // 하나다 — 아래 rekey.part 는 이 레지스터를 참조하지 않는다.
     mask.io.keyWr.valid := wr && isKey
+    mask.io.keyWr.part  := maskPart
     mask.io.keyWr.idx   := wordOff(log2Up(M_KEY_WORDS) - 1 downto 0)
     mask.io.keyWr.data  := io.mmio.wdata
 
-    // E.9 2항 논스 — 파티션 선택 레지스터 + 워드 기입.
-    val noncePart  = Reg(UInt(partW bits)) init 0
-    val npWr       = wr && isNoncePart
-    val npRsvBad   = (io.mmio.wdata & B(M_NONCE_PART_RSV, 32 bits)) =/= 0
-    val npReject   = npWr && (npRsvBad || partBad)
-    // 거절된 기입은 레지스터를 움직이지 않는다 — 그래서 되읽기가 언제나
-    // 「마지막으로 수락된 값」이고 호스트가 쓴 값과 항등이다 (정규화 없음).
-    when(npWr && !npRsvBad && !partBad) { noncePart := partField.resized }
-
+    // E.9 2항 논스 — 같은 창(maskPart) + 워드 기입.
     mask.io.nonceWr.valid := wr && isNonce
-    mask.io.nonceWr.part  := noncePart
+    mask.io.nonceWr.part  := maskPart
     // 논스 워드 색인 — 구역 워드 9..14 의 하위 3비트가 001..110 이라
     // (하위 3비트 − 1) 이 곧 논스 워드 0..5 다. 전폭 감산 뒤 절단(미사용
     // 상위 비트)을 만들지 않는 폭 정합 산술.
@@ -1265,14 +1276,14 @@ class Wt64Top(
     maskStat(9) := mask.io.rekey.ready
 
     // 거절 — 예약 비트 · 형상 밖 파티션 · RO 오프셋 쓰기.
-    when(npReject || rkReject || (wr && isStatus)) { surfBadWr := True }
+    when(mpReject || rkReject || (wr && isStatus)) { surfBadWr := True }
 
     // 읽기 — WO 워드(키·논스·재키잉)는 여기 없다: 읽기 0 이 그 결정의
     // 이행이다 (되읽기를 주면 §5.8 관측면 최소화가 무효가 된다).
     val readValue = Bits(32 bits)
     readValue := 0
-    when(isNoncePart) { readValue := noncePart.asBits.resize(32) }
-    when(isStatus)    { readValue := maskStat }
+    when(isMaskPart) { readValue := maskPart.asBits.resize(32) }
+    when(isStatus)   { readValue := maskStat }
   }
 
   // ── step 프로그램 적재 구역 (0xF00) — @fabric 2.5 ─────────────────────

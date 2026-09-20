@@ -8,12 +8,18 @@
     "Isolation.query_no_serve",
     "Platform.xlate_local",
     "Decode.evict_inline",
-    "Platform.owner_check"
+    "Platform.owner_check",
+    "Mask.key_write_own_only",
+    "Mask.key_scoped_storage",
+    "Mask.rekey_idle_only"
   ],
-  "at": "2026-08-31T12:09:37Z",
+  "at": "2026-09-20T13:38:54Z",
   "cover": {
-    "reached": 15,
+    "reached": 18,
     "reached_names": [
+      "HiuMask_comp.u_mask.u_mask_props.w16_keywr_while_other_ready",
+      "HiuMask_comp.u_mask.u_mask_props.w17_rekey_fires",
+      "HiuMask_comp.u_mask.u_mask_props.w18_rekey_busy_reject",
       "HiuMask_comp.u_mask.u_mask_props.w7_mask_roundtrip",
       "HiuMask_comp.u_mask.u_mask_props.w8_mask_frozen_loaded",
       "HiuMask_comp.u_pipe.u_hiu_props.w10_host_leg_inert",
@@ -35,12 +41,12 @@
   },
   "inputs": {
     "rtl/generated/HiuPipeline.sv": "cbaa291d8509cf310a5200617cd16ad6ba6ab7bd6270d46abdbba167eb7784d0",
-    "rtl/generated/MaskUnit.sv": "6fe2cddee7b7dc270abd69a0e634d414cf1ec04157ffa35e3723ef7374801da8",
-    "rtl/sv/assert/HiuMask_props.sv": "1db042d0de048c660ac3ee112093761197befa0d99375a2f1a3f5bb7d83d4c2e"
+    "rtl/generated/MaskUnit.sv": "935967d3255207c3b02b282dabde531f291b40426e1f7099d60c878de5965424",
+    "rtl/sv/assert/HiuMask_props.sv": "5227d2a81746a268b54e6e18e9f1d127026e403226e7038c35d6c49df6e351df"
   },
   "per_task": {
     "bmc": {
-      "assert": 26,
+      "assert": 36,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -50,11 +56,11 @@
       "assert": 0,
       "const_a": 0,
       "const_en0": 0,
-      "cover": 15,
+      "cover": 18,
       "mode": "cover"
     },
     "prove": {
-      "assert": 26,
+      "assert": 36,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -62,7 +68,7 @@
     }
   },
   "sby": "rtl/formal/sby/HiuMask/hiumask.sby",
-  "sby_sha256": "4b16c2dec3f8799de6e03b1d3d63847b03811816a22b80d6413cf8cc28134f8c",
+  "sby_sha256": "8632aebcd363ffd952fcb4efc6e161d7f78a962a8a2d7fb37bb6fcd310fb0c92",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

@@ -10,6 +10,9 @@
 # PROVES: Platform.xlate_local — **판정·값·정지 세 축**: 호스트 응답(io_hostRsp_*)은 s4 판정 비트(캡처 등식의 우변이 XlateStore 독립 출력 x_hit 다) · 조회 값 접기 · advance 어느 식에도 들어가지 않는다. 지속 상태 불오염 축과 2사본 구성 간 동일성은 이 태스크가 재지 않는다 — 아래 §미측정 잔여 ③
 # PROVES: Decode.evict_inline — 캡처 축: 전진 에지의 s4 몸 = 그 사이클의 조회 데이터 그 자체 (대체 전용 상태·전용 데이터 경로·전용 판정 비트 부재) + 대체 궤적이 실제로 도달하고 여섯 단을 완주한다는 증인 W11·W12
 # PROVES: Platform.owner_check — **승인 소비 축**: granted ⊆ devOwned · 비소유의 값 차단(전건이 devOwned) · 비소유 적중의 loud fault (sticky 상승 + 명시 해제 없는 비하강). OwnershipTable 앵커(devOwned 의 데이터 원천 축)와 분업이다 — 그쪽은 「옳게 계산한다」, 이쪽은 「옳게 쓴다」
+# PROVES: Mask.key_write_own_only (2026-09-15 신설, 정본 7fa5f2e — 임대별 마스크 키) — 파티션 p 로 향한 키 기입이 있었던 에지에서 q != p 의 maskReady 비트는 그 에지를 건너 그대로다. 재구현 착수 시점 RTL(키 기입 시 전 파티션 무효화)에 걸면 반례가 난다 — §역-변이 실측 mutF.
+# PROVES: Mask.key_scoped_storage (2026-09-15 신설) — REKEY(p) 수락 다음 사이클, 엔진의 유도 초기 상태(st_4..st_11)는 keyWr 입력을 그대로 미러링하는 독립 섀도우의 p 슬롯과 같다(지상 진리를 DUT 의 key 저장 자체가 아니라 keyWr 입력에서 다시 적는다 — lookAny 규율과 같은 자리). 키가 전역 1벌이던 재구현 착수 시점 RTL 에 걸면 반례가 난다 — §역-변이 실측 mutG.
+# PROVES: Mask.rekey_idle_only (2026-09-15 신설) — rekeyFire(= io_rekey_valid && io_rekey_ready) 가 발화한 사이클의 phase 는 IDLE 이었다. 이 축의 로직은 이번 파도가 건드리지 않는다 — 회귀 그물(io_rekey_ready = !engineBusy 배선의 실물 확인)이다.
 #
 # (결선 계약) MaskUnit 고정 1사이클 왕복 — req.valid → 다음 enable 에 rsp.valid.
 # 결선 계약 자체(io.en = advance, req↔rsp 직결)는 하네스 HiuMask_comp 가 실물로 든다.
@@ -177,10 +180,13 @@
 # 덮는다 (2배 하한 12 이상). prove(k-귀납)가 서므로 그것이 정답이고 bmc 는
 # 도달 가능 접두의 이중 확인이다.
 #
-# cover 깊이 16: 가장 깊은 증인(W2 — 서로 다른 두 요청이 6단 양 끝에 동시에)
-# 이 reset 후 8 enable-사이클을 필요로 한다. 그 2배로 여유를 둔다.
-# 2026-08-26 실측: 신설 증인 일곱(W9..W15)의 도달 단계는 5·5·6·9·9·9·10 —
-# 가장 깊은 것(W15, sticky 해제)이 10 이므로 깊이 16 이 그대로 선다.
+# cover 깊이 60 (2026-09-15 파도 — 16 에서 상향): 신설 W16(mask_key_scoped
+# 증인)이 REKEY 완주(고정 43사이클, MaskUnit.scala 헤더 주석) + 키 기입
+# 1사이클을 요구한다 — 깊이 16 에서 실측 UNREACHED(로그: `Unreached cover
+# statement ... w16_two_parts_ready`, 이후 더 싼 전건으로 W16 을 재정의).
+# 43 + reset 정착 여유 ~3 + 마진 ~14 = 60. 옛 최심 증인(W15, 10)은 이제
+# W16(예상 ~46) 에 밀렸다 — "그 2배로 여유를 둔다" 는 이 파일의 관행을
+# 그대로 유지하되 기준을 새 최심 증인으로 옮긴 것이다.
 #
 # ## 부착 방식 — bind 텍스트 전개 ×2 (2026-08-25 수리)
 #
@@ -227,7 +233,7 @@ bmc: depth 24
 prove: mode prove
 prove: depth 12
 cover: mode cover
-cover: depth 16
+cover: depth 60
 
 [engines]
 smtbmc z3

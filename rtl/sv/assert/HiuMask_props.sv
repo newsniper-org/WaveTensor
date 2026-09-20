@@ -43,6 +43,34 @@
 //     비소유 적중의 loud fault (sticky 상승 + 명시 해제 없는 비하강).
 //   · (결선 계약) MaskUnit 고정 1사이클 왕복 — req.valid → 다음 enable 에
 //     rsp.valid. 계약 문면: MaskUnit.scala io.en/io.req 주석.
+//   · Mask.key_write_own_only (2026-09-15 신설, 정본 7fa5f2e — 임대별
+//     마스크 키) — 파티션 p 의 키 기입(io_keyWr_valid && io_keyWr_part==p)
+//     이후 q≠p 의 maskReady 비트는 그 에지를 건너 그대로다. bind 가
+//     MaskUnit 의 io_maskReady 출력(이미 존재하는 포트)을 직접 물어 잰다
+//     (HiuPipeline_props 의 s1_valid 등과 같은 내부-신호 tap 방식).
+//   · Mask.key_scoped_storage (2026-09-15 신설) — REKEY(p) 가
+//     수락된 다음 사이클, 엔진의 유도 초기 상태 워드 0(st_4)은 *그
+//     사이클의* p 파티션 키와 같다. 지상 진리는 DUT 의 key 저장 그
+//     자체가 아니라 keyWr 입력을 그대로 미러링하는 독립 섀도우
+//     (shadow_key) — 검사 어휘로 지상 진리를 적지 않는다는 이 파일의
+//     원칙(위 lookAny 해설)과 같은 자리.
+//   · Mask.rekey_idle_only (2026-09-15 신설) — REKEY 가 실제로 발화하면
+//     그 사이클의 phase 는 IDLE 이었다(io_rekey_ready = !engineBusy 배선의
+//     회귀 그물). 이 축의 로직 자체는 이번 파도가 건드리지 않는다 — 설계
+//     문면이 요구한 것은 신규 증명이 아니라 회귀 확인이다.
+//
+// ## Mask.rekey_explicit_target 은 이 하네스의 대상이 아니다 (DELEGATED)
+//
+// 정본 7fa5f2e "임대별 키의 인코딩 — 창이지 평면 배열이 아니다" 7항의
+// MASK_PART(0xEA0) 라우팅(키·논스 두 기입 모두가 같은 창을 거친다, REKEY
+// 는 별개 authority)은 **Wt64Top 의 MMIO 디코드**(maskArea) 몫이고, 이
+// 합성(HiuPipeline × MaskUnit)은 Wt64Top 을 포함하지 않는다 — MaskUnit
+// 자신에는 "창" 개념이 없다: keyWr.part / rekey.part 는 이미 분리된
+// 자유 입력으로 이 유닛에 도착한다. MaskUnit.scala 의 GUARD-MAP 이 이
+// 가드를 `DELEGATED(Wt64Top)` 로 선언한다 — Wt64Top 을 감싸는 별도
+// 후-formal 합성이 서는 날 CHECK 로 승격될 자리다. DELEGATED 선언은
+// PROVES 대상이 아니므로(lint_postformal 규율) 이 파일에도 그 가드의
+// 앵커를 달지 않는다.
 //
 // 이 태스크가 **재지 않는** 것과 그 근거는 hiumask.sby 머리의
 // 「§미측정 잔여」에 적는다 (Isolation.query_offpath 구조 skip ·
@@ -98,6 +126,7 @@ module HiuMask_comp (
   input  wire        io_missClear,
   // MaskUnit 구성 표면 (자유 입력 — 속성은 구성 무관하게 서야 한다)
   input  wire        io_keyWr_valid,
+  input  wire [1:0]  io_keyWr_part,  // 2026-09-15 파도: 정본 7fa5f2e — 키도 창을 거친다
   input  wire [2:0]  io_keyWr_idx,
   input  wire [31:0] io_keyWr_data,
   input  wire        io_nonceWr_valid,
@@ -174,6 +203,7 @@ module HiuMask_comp (
 
   MaskUnit u_mask (
     .io_keyWr_valid         (io_keyWr_valid),
+    .io_keyWr_part          (io_keyWr_part),
     .io_keyWr_idx           (io_keyWr_idx),
     .io_keyWr_data          (io_keyWr_data),
     .io_nonceWr_valid       (io_nonceWr_valid),
@@ -205,12 +235,38 @@ module HiuMask_comp (
   // 근거: 전원 인가 시 reset 어서션 후 해제 — async-reset 레지스터의 형식
   // 검사 초기화 규약 (설계 자체가 reset 으로 초기 상태를 정의한다. 재어서션
   // 없는 정상 동작 구간이 검사 대상 — GUARD-MAP 의 모든 속성은 reset 밖
-  // 문면이다). 그 외 assume 없음 — 모든 기능 입력은 자유.
+  // 문면이다).
   reg f_init = 1'b1;
   always @(posedge clk) f_init <= 1'b0;
   always @(*) begin
     if (f_init) assume (reset);
     else        assume (!reset);
+  end
+
+  // ── ENV assume: keyWr / nonceWr / rekey 는 결선상 상호배타다 (2026-09-16
+  // 신설, Mask.key_write_own_only 귀납 반례 수리) ───────────────────────────
+  // 근거: 정본 E.7 「워드 단위 정의」(e-defined.typ:236-238) — 구성 표면
+  // 기입은 「한 워드 쓰기 한 번」이다. Wt64Top.scala 의 MMIO 디코더에서
+  // isKey(wordOff < M_KEY_WORDS) · isNonce(wordOff in M_NONCE0 구간) ·
+  // isRekey(wordOff == M_REKEY/4) 는 서로 겹치지 않는 오프셋 범위이고,
+  // keyWr.valid/nonceWr.valid/rekey.valid 는 전부 `wr && isXxx` 형태로
+  // 같은 단일 워드 strobe(wr) 에서 파생된다 — 한 사이클에 최대 하나만
+  // 참일 수 있다. 이 유닛은 그 결선을 스스로 표현하지 못하므로(GUARD-MAP
+  // 머리말 — keyWr.part/rekey.part 는 이미 분리된 자유 입력으로 도착한다)
+  // 상위(Wt64Top)가 보장하는 이 계약을 ENV assume 으로 명시해야 한다.
+  //
+  // 이것이 없으면 무엇이 깨지는가 (실측, 2026-09-16): k-귀납이
+  // Mask.key_write_own_only 에서 UNKNOWN(induction FAIL) 을 냈다 — 같은
+  // 사이클에 keyWr(파티션 p)와 nonceWr(파티션 q≠p) 가 **동시에** valid=1
+  // 인, 결선상 불가능한 조합을 솔버가 자유롭게 골라 nonceWr 이 떨어뜨린
+  // maskReady[q] 를 keyWr 전용 assert 가 위반으로 오판했다(spurious
+  // counterexample — RTL 결함이 아니다). 선-formal Mask.tla 의 `Next` 는
+  // 애초에 `\/`(상호배타 액션 분기)로 이 제약을 옳게 가졌다 — 후-formal
+  // 하네스만 그 제약을 옮기지 않았다.
+  //
+  // 그 외 assume 없음 — 나머지 기능 입력은 여전히 자유.
+  always @(*) if (!f_init) begin
+    assume ($onehot0({io_keyWr_valid, io_nonceWr_valid, io_rekey_valid}));
   end
 endmodule
 
@@ -695,7 +751,36 @@ module MaskUnit_props (
   input wire        io_en,
   input wire        io_req_valid,
   input wire        io_rsp_valid,
-  input wire [31:0] io_rsp_frame
+  input wire [31:0] io_rsp_frame,
+  // ── 2026-09-15 파도 신설 tap — 임대별 마스크 키 (정본 7fa5f2e) ─────────
+  // io_keyWr_* 는 MaskUnit 자신의 포트(이미 자유 입력), rekeyFire ·
+  // io_maskReady · st_4(유도 초기 상태 워드 0) 는 MaskUnit 스코프의 평범한 내부 신호다 —
+  // bind 텍스트 전개가 이 검사자를 MaskUnit 본문 안에 주입하므로, 아래
+  // 포트에 연결되는 실인수는 DUT 자신의 이름으로 그대로 풀린다
+  // (HiuPipeline_props 의 s1_valid 등 기존 tap 과 같은 방식).
+  input wire        io_keyWr_valid,
+  input wire [1:0]  io_keyWr_part,
+  input wire [2:0]  io_keyWr_idx,
+  input wire [31:0] io_keyWr_data,
+  input wire        rekeyFire,     // io_rekey_valid && io_rekey_ready (내부 wire)
+  input wire        io_rekey_valid,
+  input wire [1:0]  io_rekey_part,
+  input wire [3:0]  io_maskReady,  // {maskValid_3,maskValid_2,maskValid_1,maskValid_0}
+  input wire [31:0] st_4,        // 유도 초기 상태 워드 0 (MaskUnit.scala st(4))
+  input wire [2:0]  phase,         // PH_IDLE=0 (MaskUnit.scala 지역 상수)
+  // 2026-09-16 신설 — DUT 실물 key 레지스터 (MaskUnit.scala `key =
+  // Vec.fill(parts)(...)` 가 합성되며 붙는 이름 `key_p_0`, 파티션당
+  // 워드 0). 아래 shk_p_0 섀도우와의 **동기화 자체를 무조건 불변식으로
+  // 검사**하는 데 쓴다 — key_scoped_storage 귀납 반례(아래 해설) 수리.
+  input wire [31:0] key_0_0,
+  input wire [31:0] key_1_0,
+  input wire [31:0] key_2_0,
+  input wire [31:0] key_3_0,
+  // 2026-09-16 — REKEY 완료 유효화 대상 (MaskUnit.scala actPart, PH_FINAL
+  // 완주 시 maskValid(actPart) := !compDirty 가 그 파티션을 *유효화*한다).
+  // key_write_own_only 가 이 원인의 변화를 keyWr 원인과 혼동하지 않도록
+  // 배제하는 데 쓴다 — 아래 해설.
+  input wire [1:0]  actPart
 );
   // f_ok — HiuPipeline_props 와 같은 관용구 (위 주석 참조).
   reg f_past_valid = 1'b0;
@@ -705,6 +790,89 @@ module MaskUnit_props (
     f_past_reset <= reset;
   end
   wire f_ok = f_past_valid && !reset && !f_past_reset;
+
+  // ── 섀도우 키 — 지상 진리를 DUT 어휘가 아니라 keyWr 입력에서 다시 적는다
+  // (이 파일의 원칙: "검사 어휘로 지상 진리를 적으면 그 신호를 지운
+  // 구현에서 전건이 함께 사라진다" — lookAny 해설과 같은 자리).
+  //
+  // **파티션당 워드 0 하나만** 미러링한다(4 레지스터, 128b) — 8워드
+  // 전부(32 레지스터, 1024b)를 배열로 처음 적었다가 SMT array 이론이
+  // 걸려 bmc 5분+ 정체를 실측했고, 평평한 레지스터 32개로 바꾼 뒤에도
+  // bmc 스텝 8 에서 여전히 분 단위로 막혀(누적 상태 1024b 가 여전히
+  // 무겁다) 실측으로 폭을 좁혔다. 워드 0 만으로도 key_scoped_storage
+  // 결함(mutG — 저장이 전역 1벌)과 rekey_explicit_target 형 결함
+  // (창이 지목을 겸함)은 **모든 워드에 균일하게** 나타나므로 워드 0
+  // 하나만 비교해도 반증력이 그대로다 — 8워드를 다 보는 것은 "같은
+  // 결함을 여덟 번 다시 보는" 중복이었다. DUT 자신도 key 저장을 동적
+  // 배열이 아니라 case-select 로 합성한다(생성 SV
+  // `case(io_rekey_part) ... _zz_st_4 = key_0_0; ...`).
+  reg [31:0] shk_0_0, shk_1_0, shk_2_0, shk_3_0;
+  always @(posedge clk) begin
+    if (reset) begin
+      {shk_0_0, shk_1_0, shk_2_0, shk_3_0} <= 128'h0;
+    end else if (io_keyWr_valid && (io_keyWr_idx == 3'd0)) begin
+      case (io_keyWr_part)
+        2'b00: shk_0_0 <= io_keyWr_data;
+        2'b01: shk_1_0 <= io_keyWr_data;
+        2'b10: shk_2_0 <= io_keyWr_data;
+        default: shk_3_0 <= io_keyWr_data;
+      endcase
+    end
+  end
+
+  // rekey_reads_own_key 의 비교 대상(워드 0) — **같은 에지에서** 캡처한다.
+  //
+  // 첫 판은 `$past(rekeyFire)` 뒤에 (아직 이번 에지가 갱신한) 섀도우를
+  // 직접 비교했는데, rekeyFire 와 **같은 사이클**에 같은 (파티션,워드)
+  // 로 향한 키 기입이 겹치면 거짓 반례가 났다(실측, bmc step 2 —
+  // props_only.sv:793): DUT 의 `st(4) := key(target)(0)` 도 이 섀도우의
+  // 기입도 둘 다 논블로킹이라 *그 에지 이전* 값을 읽는데, 검사가 *에지
+  // 이후* 섀도우를 읽어 비교 시점이 어긋났다. MaskUnit.scala 의 compDirty
+  // 규율(":388-392" — 같은 사이클의 기입은 dirty 로 표시해 결과를
+  // 무효화한다, *st 자체를 새 값으로 바꾸지는 않는다*)과 같은 자리 — 이
+  // 검사자도 "그 에지 이전 값" 을 DUT 와 같은 논블로킹 타이밍으로
+  // 캡처해야 레이스가 아니라 실제 결함만 잡는다.
+  reg [31:0] shadow_target_now;
+  always @(*) begin
+    case (io_rekey_part)
+      2'b00: shadow_target_now = shk_0_0;
+      2'b01: shadow_target_now = shk_1_0;
+      2'b10: shadow_target_now = shk_2_0;
+      default: shadow_target_now = shk_3_0;
+    endcase
+  end
+  reg [31:0] shadow_target_d1;
+  always @(posedge clk) shadow_target_d1 <= shadow_target_now;
+
+  // ── 귀납 보조 불변식 — 섀도우 ≡ DUT 실물 (2026-09-16 신설) ─────────────
+  // 근거: k-귀납은 리셋을 지나온 이력이 아니라 "임의의(reset=0 고정)
+  // 상태"에서 시작한다(engine_0.induction). shk_p_0 와 key_p_0 는 리셋에서
+  // 똑같이 0 이고 이후 똑같은 조건(io_keyWr_valid && idx==0, case part)
+  // 으로만 갱신되므로 리셋 이후 항상 같다 — 그러나 그 사실은 "쭉 그래
+  // 왔다"는 이력 추론이고, 임의 시작점에서 귀납 엔진은 그것을 모른다.
+  //
+  // 처방: 동기화 자체를 **무조건 assert** 로 적어 귀납 가정에 태운다.
+  // 이 assert 는 그 자신부터 귀납된다(같은 갱신 조건이므로 자명) —
+  // 서면 st_4 == shadow_target_d1(key_scoped_storage) 도 그로부터
+  // 도출된다: shadow_target_now = shk_{rekey_part}_0 = key_{rekey_part}_0
+  // 이고 DUT 도 st(4) := key(rekey_part)(0) 이므로 같은 값이다.
+  //
+  // 실측(2026-09-16): 이 불변식 없이는 induction 이 UNKNOWN — 섀도우와
+  // DUT 가 서로 다른 임의값으로 시작하는 조합에서 반례가 났다
+  // (props_only.sv:863, st_4 != shadow_target_d1). RTL 결함이 아니라
+  // 검사 하네스가 귀납 불변식을 하나 덜 가졌던 것이다.
+  // f_ok 가드 필수 — reset 이 *인가된 바로 그 사이클*에는 두 sync-reset
+  // 레지스터(key_p_0 · shk_p_0) 모두 아직 클럭 엣지를 지나지 않아 초기화
+  // 전 임의값일 수 있다(실측: 가드 없이 걸었더니 basecase step 0 에서
+  // 즉시 반례 — 리셋 로직 결함이 아니라 검사 타이밍 어긋남이었다).
+  // f_ok(= 직전·이번 에지 모두 reset 밖)는 「리셋을 지나 안정된 상태」만
+  // 잰다 — 이 파일의 다른 모든 검사와 같은 전제.
+  always @(*) if (f_ok) begin
+    assert (shk_0_0 == key_0_0);
+    assert (shk_1_0 == key_1_0);
+    assert (shk_2_0 == key_2_0);
+    assert (shk_3_0 == key_3_0);
+  end
 
   always @(posedge clk) begin
     if (f_ok) begin
@@ -716,6 +884,48 @@ module MaskUnit_props (
       // rsp.valid. 가변 지연·조기 응답 부재 (MaskUnit.scala io.req 문면).
       if ($past(io_en))
         assert (io_rsp_valid == $past(io_req_valid));
+
+      // Mask.key_write_own_only — 정본 7fa5f2e, e-defined.typ:333 "기입은
+      // 그 파티션의 마스크 유효를 즉시 떨어뜨린다". 파티션 p 로 향한 키
+      // 기입이 있었던 에지에서, q != p 의 maskReady 비트는 그 에지를
+      // 건너 그대로다 (재구현 착수 시점 결함 — 전 파티션 무효화 — 이
+      // assert 가 정확히 그 형태를 잡는다: for 문 삭제 회귀 시 반례).
+      // REKEY 완료(FINAL 완주)로 그 사이클 유효화되는 파티션은 keyWr 과
+      // 무관한 별개 원인이다(MaskUnit.scala:424 maskValid(actPart) :=
+      // !compDirty, PH_FINAL=3'd4 완주 다음 사이클). 실측(2026-09-16):
+      // 이 배제 없이는 induction 이 UNKNOWN — keyWr(p) 와 REKEY(q) 완료가
+      // 같은 사이클에 겹치면 q 의 maskReady 상승이 「keyWr 전용 assert」의
+      // 위반으로 오판됐다(spurious — RTL 결함 아님, actPart 는 REKEY 시작
+      // 때 캡처한 파티션이라 keyWr.part 와 독립적으로 아무 값이나 될 수
+      // 있다). $past(actPart) 를 쓰는 이유 — FINAL 완주 판정(`$past(phase)
+      // == PH_FINAL`)과 유효화 대상(actPart)은 **같은 에지 이전** 값이어야
+      // 짝이 맞는다(actPart 는 FINAL 사이클 내내 안정이므로 $past 든 현재든
+      // 값은 같지만, 문면의 짝을 명시한다).
+      if ($past(io_keyWr_valid)) begin
+        if ($past(io_keyWr_part) != 2'd0 && !($past(phase) == 3'd4 && $past(actPart) == 2'd0))
+          assert (io_maskReady[0] == $past(io_maskReady[0]));
+        if ($past(io_keyWr_part) != 2'd1 && !($past(phase) == 3'd4 && $past(actPart) == 2'd1))
+          assert (io_maskReady[1] == $past(io_maskReady[1]));
+        if ($past(io_keyWr_part) != 2'd2 && !($past(phase) == 3'd4 && $past(actPart) == 2'd2))
+          assert (io_maskReady[2] == $past(io_maskReady[2]));
+        if ($past(io_keyWr_part) != 2'd3 && !($past(phase) == 3'd4 && $past(actPart) == 2'd3))
+          assert (io_maskReady[3] == $past(io_maskReady[3]));
+      end
+
+      // Mask.key_scoped_storage — 정본 7fa5f2e, E.9 4항 "엔진은 그
+      // 파티션의 키와 논스를 읽는다". REKEY(p) 수락 다음 사이클, 엔진의
+      // 유도 초기 상태 워드 0(st_4)은 *섀도우 키의 p 워드 0*과
+      // 같다 — 창(MASK_PART)이 아니라 REKEY 기입 자신이 지목한 파티션.
+      // shadow_target_d1 은 rekeyFire 와 **같은 에지**에서 캡처한 값이다
+      // (위 해설 — 레이스 없이 DUT 의 논블로킹 타이밍과 맞춘다).
+      if ($past(rekeyFire)) assert (st_4 == shadow_target_d1);
+
+      // Mask.rekey_idle_only — 정본 7fa5f2e, e-defined.typ:344 "유휴가
+      // 아니면 미수락". rekeyFire(= io_rekey_valid && io_rekey_ready) 가
+      // 실제로 발화하면 그 사이클의 phase 는 IDLE(0) 이었어야 한다 —
+      // io_rekey_ready 배선(= !engineBusy) 자신의 회귀 그물. (이 축의
+      // 로직은 이번 파도가 건드리지 않는다 — 설계 문면 그대로 회귀만 잰다.)
+      if (rekeyFire) assert (phase == 3'b000);
     end
   end
 
@@ -725,6 +935,31 @@ module MaskUnit_props (
   //      마스크 왕복이 실제로 돈다: 응답이 서고 값축이 비0 이다
   //      (rValid 가 늘 0 이면 위 왕복 등식이 0==0 으로 공허하다)
   always @(posedge clk) if (f_ok) w7_mask_roundtrip: cover (io_rsp_valid && (io_rsp_frame != 32'h0));
+
+  // W16 ← Mask.key_write_own_only
+  //       q(=파티션 0) 가 이미 maskReady 인 상태에서 *다른* 파티션으로
+  //       향한 키 기입이 실제로 일어나는가 — 안 되면 위 assert 의
+  //       "q != p" 전건이 공허하다. (「두 파티션이 동시에 ready」로
+  //       처음 적었다가 depth 16 에서 미도달로 실패했다 — REKEY 는
+  //       43사이클 고정 FSM(헤더 주석)이라 *둘 다* ready 이려면 REKEY
+  //       가 최소 두 번 완주해야 하고 최소 depth 가 ~86 이다. 이 축이
+  //       실제로 재려는 것 — "다른 파티션으로 향한 기입이 이미 ready 인
+  //       파티션을 건드리지 않는가" — 은 REKEY 한 번 + 키 기입 한 번
+  //       (~44사이클)으로도 충분히 증인이 선다. 더 싼 전건으로 같은
+  //       것을 재는 쪽을 택했다.)
+  always @(posedge clk)
+    if (f_ok) w16_keywr_while_other_ready: cover (io_maskReady[0] && $past(io_keyWr_valid) && ($past(io_keyWr_part) != 2'd0));
+
+  // W17 ← Mask.key_scoped_storage
+  //       REKEY 수락이 실제로 일어나는가 (안 되면 위 assert 가 공허하다).
+  always @(posedge clk) if (f_ok) w17_rekey_fires: cover ($past(rekeyFire));
+
+  // W18 ← Mask.rekey_idle_only
+  //       busy 중 REKEY 시도(→ 미수락)가 실제로 일어나는가 — 안 되면
+  //       io_rekey_ready 의 "유휴가 아니면 미수락" 배선이 한 번도
+  //       실행되지 않은 채 통과한 것이다.
+  always @(posedge clk)
+    if (f_ok) w18_rekey_busy_reject: cover (io_rekey_valid && !rekeyFire && (phase != 3'b000));
 
   // W8 ← Decode.stall_uniform
   //      MaskUnit 쪽 전제: en 이 낮은 에지를 *실린* 응답이
@@ -740,7 +975,22 @@ bind MaskUnit MaskUnit_props u_mask_props (
   .io_en        (io_en),
   .io_req_valid (io_req_valid),
   .io_rsp_valid (io_rsp_valid),
-  .io_rsp_frame (io_rsp_frame)
+  .io_rsp_frame (io_rsp_frame),
+  .io_keyWr_valid (io_keyWr_valid),
+  .io_keyWr_part  (io_keyWr_part),
+  .io_keyWr_idx   (io_keyWr_idx),
+  .io_keyWr_data  (io_keyWr_data),
+  .rekeyFire      (rekeyFire),
+  .io_rekey_valid (io_rekey_valid),
+  .io_rekey_part  (io_rekey_part),
+  .io_maskReady   (io_maskReady),
+  .st_4           (st_4),
+  .phase          (phase),
+  .key_0_0        (key_0_0),
+  .key_1_0        (key_1_0),
+  .key_2_0        (key_2_0),
+  .key_3_0        (key_3_0),
+  .actPart        (actPart)
 );
 
 // ── HiuPipeline 쪽 bind — 파일 *맨 끝*이어야 한다.
