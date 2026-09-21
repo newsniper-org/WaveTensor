@@ -227,6 +227,7 @@ module Wt64Top (
   output wire          io_fault_fpBp,
   output wire          io_fault_fpBadProg,
   output wire          io_fault_fpCapAbsent,
+  output wire          io_fault_ehCapAbsent,
   output wire          io_fault_cqOverflow,
   output wire          io_fault_cqBadWrite,
   input  wire          io_faultClear_decodeWalk,
@@ -316,6 +317,8 @@ module Wt64Top (
   wire       [15:0]   cq_io_drain_tokens;
   wire                cq_io_faultClearOverflow;
   wire                cq_io_faultClearBadWrite;
+  wire       [3:0]    capWord_io_set;
+  wire                capWord_io_wr;
   wire                walk_io_oValid;
   wire                walk_io_oMalformed;
   wire                walk_io_oCapAbsent;
@@ -533,11 +536,13 @@ module Wt64Top (
   wire       [15:0]   stg_io_tag_lnid;
   wire       [7:0]    stg_io_tag_precision;
   wire       [7:0]    stg_io_tag_dim;
+  wire       [31:0]   capWord_io_word;
+  wire                capWord_io_rsvBad;
+  wire       [3:0]    capWord_io_clrAcc;
   wire       [1:0]    _zz_maskArea_readValue;
   wire       [7:0]    _zz_abortArea_readValue;
   wire       [2:0]    _zz_abortArea_readValue_1;
   wire                fltClrAccept;
-  wire                capClrAccept;
   reg        [31:0]   tagQ_wave;
   reg        [15:0]   tagQ_thread;
   reg        [15:0]   tagQ_lnid;
@@ -573,12 +578,12 @@ module Wt64Top (
   wire                maskArea_mpWr;
   wire                maskArea_mpRsvBad;
   wire                maskArea_mpReject;
-  wire                when_Wt64Top_l1241;
+  wire                when_Wt64Top_l1274;
   wire                maskArea_rkWr;
   wire                maskArea_rkRsvBad;
   wire                maskArea_rkReject;
   reg        [31:0]   maskArea_maskStat;
-  wire                when_Wt64Top_l1279;
+  wire                when_Wt64Top_l1312;
   reg        [31:0]   maskArea_readValue;
   wire       [3:0]    fpArea_wordOff;
   wire                fpArea_wr;
@@ -587,7 +592,7 @@ module Wt64Top (
   wire                fpArea_isBind;
   wire                fpArea_isStatus;
   wire                fpArea_bindRsvBad;
-  wire                when_Wt64Top_l1320;
+  wire                when_Wt64Top_l1353;
   reg        [31:0]   fpArea_fpStat;
   reg        [31:0]   fpArea_readValue;
   wire       [3:0]    abortArea_wordOff;
@@ -600,7 +605,7 @@ module Wt64Top (
   wire                abortArea_isCnt;
   wire                abortArea_isInc;
   wire                abortArea_isArm;
-  wire                when_Wt64Top_l1372;
+  wire                when_Wt64Top_l1405;
   reg        [31:0]   abortArea_readValue;
   wire       [3:0]    faultArea_wordOff;
   wire                faultArea_wr;
@@ -611,19 +616,19 @@ module Wt64Top (
   wire                faultArea_isCapSt;
   wire                faultArea_isCapClr;
   wire                faultArea_clrRsvBad;
-  wire                faultArea_capRsvBad;
   wire                faultArea_doClr;
-  wire                faultArea_doCapClr;
-  wire                when_Wt64Top_l1422;
+  wire                when_Wt64Top_l1461;
   wire                when_Common_l258;
   reg                 _zz_io_fault_cfgSurfBadWrite;
-  wire                when_Common_l258_1;
-  reg                 _zz_io_fault_fpCapAbsent;
+  wire                capSet_0;
+  wire                capSet_1;
+  wire                capSet_2;
+  wire                capSet_3;
   reg        [31:0]   faultWords_status;
   reg        [31:0]   faultWords_summary;
-  reg        [31:0]   faultWords_capStatus;
+  wire       [31:0]   faultWords_capStatus;
   reg        [31:0]   faultWords_readValue;
-  wire                when_Wt64Top_l1533;
+  wire                when_Wt64Top_l1598;
   wire                mapRd;
   reg        [31:0]   mapRdReg;
   reg                 mapRv;
@@ -1169,6 +1174,16 @@ module Wt64Top (
     .clk              (clk                      ), //i
     .reset            (reset                    )  //i
   );
+  CapStatusWord capWord (
+    .io_set    (capWord_io_set[3:0]   ), //i
+    .io_wr     (capWord_io_wr         ), //i
+    .io_wdata  (io_mmio_wdata[31:0]   ), //i
+    .io_word   (capWord_io_word[31:0] ), //o
+    .io_rsvBad (capWord_io_rsvBad     ), //o
+    .io_clrAcc (capWord_io_clrAcc[3:0]), //o
+    .clk       (clk                   ), //i
+    .reset     (reset                 )  //i
+  );
   assign walk_io_iFaultClear = (io_faultClear_decodeWalk || (fltClrAccept && io_mmio_wdata[0]));
   assign od_io_iFaultClear = (io_faultClear_operandDecode || (fltClrAccept && io_mmio_wdata[1]));
   assign io_dec_valid = od_io_oValid;
@@ -1227,7 +1242,7 @@ module Wt64Top (
   assign io_reasmClr_valid = reasm_io_clr_valid;
   assign io_reasmClr_base = reasm_io_clr_base;
   assign reasm_io_faultClear = (io_faultClear_reasm || (fltClrAccept && io_mmio_wdata[3]));
-  assign reasm_io_capAbsentClear = (io_faultClear_reasmCap || (capClrAccept && io_mmio_wdata[0]));
+  assign reasm_io_capAbsentClear = (io_faultClear_reasmCap || capWord_io_clrAcc[0]);
   assign mog_io_up_0_valid = (od_io_oMemPresent && (io_mem_slotSel == 2'b00));
   assign mog_io_up_0_payload = {{{{tagQ_dim,{tagQ_precision,{tagQ_lnid,{tagQ_thread,tagQ_wave}}}},od_io_oMemAddrMode},od_io_oMemStride},od_io_oMemOffset};
   always @(*) begin
@@ -1331,16 +1346,16 @@ module Wt64Top (
   assign cfgBlk_io_faultClearBad = (io_faultClear_cfgBadWrite || (fltClrAccept && io_mmio_wdata[6]));
   always @(*) begin
     surfBadWr = 1'b0;
-    if(when_Wt64Top_l1279) begin
+    if(when_Wt64Top_l1312) begin
       surfBadWr = 1'b1;
     end
-    if(when_Wt64Top_l1320) begin
+    if(when_Wt64Top_l1353) begin
       surfBadWr = 1'b1;
     end
-    if(when_Wt64Top_l1372) begin
+    if(when_Wt64Top_l1405) begin
       surfBadWr = 1'b1;
     end
-    if(when_Wt64Top_l1422) begin
+    if(when_Wt64Top_l1461) begin
       surfBadWr = 1'b1;
     end
   end
@@ -1358,7 +1373,7 @@ module Wt64Top (
   assign maskArea_mpWr = (maskArea_wr && maskArea_isMaskPart);
   assign maskArea_mpRsvBad = ((io_mmio_wdata & 32'hffffff00) != 32'h0);
   assign maskArea_mpReject = (maskArea_mpWr && (maskArea_mpRsvBad || maskArea_partBad));
-  assign when_Wt64Top_l1241 = ((maskArea_mpWr && (! maskArea_mpRsvBad)) && (! maskArea_partBad));
+  assign when_Wt64Top_l1274 = ((maskArea_mpWr && (! maskArea_mpRsvBad)) && (! maskArea_partBad));
   assign mask_io_keyWr_valid = (maskArea_wr && maskArea_isKey);
   assign mask_io_keyWr_idx = maskArea_wordOff[2 : 0];
   assign mask_io_nonceWr_valid = (maskArea_wr && maskArea_isNonce);
@@ -1375,7 +1390,7 @@ module Wt64Top (
     maskArea_maskStat[9] = mask_io_rekey_ready;
   end
 
-  assign when_Wt64Top_l1279 = ((maskArea_mpReject || maskArea_rkReject) || (maskArea_wr && maskArea_isStatus));
+  assign when_Wt64Top_l1312 = ((maskArea_mpReject || maskArea_rkReject) || (maskArea_wr && maskArea_isStatus));
   always @(*) begin
     maskArea_readValue = 32'h0;
     if(maskArea_isMaskPart) begin
@@ -1401,7 +1416,7 @@ module Wt64Top (
   assign fps_io_bindWr_key = io_mmio_wdata[15 : 0];
   assign fps_io_bindWr_en = io_mmio_wdata[31];
   assign fps_io_bindWr_slot = io_mmio_wdata[23 : 16];
-  assign when_Wt64Top_l1320 = (((fpArea_wr && fpArea_isBind) && fpArea_bindRsvBad) || (fpArea_wr && fpArea_isStatus));
+  assign when_Wt64Top_l1353 = (((fpArea_wr && fpArea_isBind) && fpArea_bindRsvBad) || (fpArea_wr && fpArea_isStatus));
   always @(*) begin
     fpArea_fpStat = 32'h0;
     fpArea_fpStat[0] = fps_io_loadReady;
@@ -1425,7 +1440,7 @@ module Wt64Top (
   assign abortArea_isCnt = (abortArea_wordOff == 4'b0100);
   assign abortArea_isInc = (abortArea_wordOff == 4'b0101);
   assign abortArea_isArm = (abortArea_wordOff == 4'b0110);
-  assign when_Wt64Top_l1372 = (stg_io_badWrite || (abortArea_wr && ((abortArea_isCnt || abortArea_isInc) || abortArea_isArm)));
+  assign when_Wt64Top_l1405 = (stg_io_badWrite || (abortArea_wr && ((abortArea_isCnt || abortArea_isInc) || abortArea_isArm)));
   always @(*) begin
     abortArea_readValue = 32'h0;
     if(abortArea_isCnt) begin
@@ -1448,12 +1463,10 @@ module Wt64Top (
   assign faultArea_isCapSt = (faultArea_wordOff == 4'b0011);
   assign faultArea_isCapClr = (faultArea_wordOff == 4'b0100);
   assign faultArea_clrRsvBad = ((io_mmio_wdata & 32'hfff80000) != 32'h0);
-  assign faultArea_capRsvBad = ((io_mmio_wdata & 32'hfffffffc) != 32'h0);
   assign faultArea_doClr = ((faultArea_wr && faultArea_isClear) && (! faultArea_clrRsvBad));
-  assign faultArea_doCapClr = ((faultArea_wr && faultArea_isCapClr) && (! faultArea_capRsvBad));
   assign fltClrAccept = faultArea_doClr;
-  assign capClrAccept = faultArea_doCapClr;
-  assign when_Wt64Top_l1422 = (((faultArea_wr && ((faultArea_isStatus || faultArea_isSummary) || faultArea_isCapSt)) || ((faultArea_wr && faultArea_isClear) && faultArea_clrRsvBad)) || ((faultArea_wr && faultArea_isCapClr) && faultArea_capRsvBad));
+  assign capWord_io_wr = (faultArea_wr && faultArea_isCapClr);
+  assign when_Wt64Top_l1461 = (((faultArea_wr && ((faultArea_isStatus || faultArea_isSummary) || faultArea_isCapSt)) || ((faultArea_wr && faultArea_isClear) && faultArea_clrRsvBad)) || capWord_io_rsvBad);
   assign io_fault_decodeWalk = walk_io_oFault;
   assign io_fault_operandDecode = od_io_oFault;
   assign io_fault_route = rj_io_fault;
@@ -1477,8 +1490,13 @@ module Wt64Top (
   assign io_fault_fpBadProg = fps_io_faultBadProg;
   assign io_fault_cqOverflow = cq_io_faultOverflow;
   assign io_fault_cqBadWrite = cq_io_faultBadWrite;
-  assign when_Common_l258_1 = (capClrAccept && io_mmio_wdata[1]);
-  assign io_fault_fpCapAbsent = _zz_io_fault_fpCapAbsent;
+  assign capSet_0 = reasm_io_capAbsent;
+  assign capSet_1 = fps_io_oCapAbsent;
+  assign capSet_2 = (walk_io_oValid && walk_io_oCapAbsent);
+  assign capSet_3 = 1'b0;
+  assign capWord_io_set = {capSet_3,{capSet_2,{capSet_1,capSet_0}}};
+  assign io_fault_fpCapAbsent = capWord_io_word[1];
+  assign io_fault_ehCapAbsent = capWord_io_word[2];
   always @(*) begin
     faultWords_status = 32'h0;
     faultWords_status[0] = io_fault_decodeWalk;
@@ -1507,12 +1525,7 @@ module Wt64Top (
     faultWords_summary[0] = (|faultWords_status);
   end
 
-  always @(*) begin
-    faultWords_capStatus = 32'h0;
-    faultWords_capStatus[0] = io_fault_reasmCap;
-    faultWords_capStatus[1] = io_fault_fpCapAbsent;
-  end
-
+  assign faultWords_capStatus = capWord_io_word;
   always @(*) begin
     faultWords_readValue = 32'h0;
     if(faultArea_isStatus) begin
@@ -1537,12 +1550,12 @@ module Wt64Top (
     if(selCfg) begin
       io_mmio_ready = cfgBlk_io_ready;
     end
-    if(when_Wt64Top_l1533) begin
+    if(when_Wt64Top_l1598) begin
       io_mmio_ready = fps_io_loadReady;
     end
   end
 
-  assign when_Wt64Top_l1533 = (selFp && (fpArea_isProg || fpArea_isBind));
+  assign when_Wt64Top_l1598 = (selFp && (fpArea_isProg || fpArea_isBind));
   assign mapRd = (((maskArea_rd || fpArea_rd) || abortArea_rd) || faultArea_rd);
   assign resvOffset = (! (((((((selOwn || selCq) || selCfg) || selMask) || selFp) || selAbort) || selFault) || selUnwired));
   assign resvRd = ((io_mmio_rstrobe && (! io_mmio_wstrobe)) && ((resvOffset || selUnwired) || ((((selMask || selFp) || selAbort) || selFault) && (! mmioAligned))));
@@ -1578,12 +1591,11 @@ module Wt64Top (
     if(reset) begin
       maskArea_maskPart <= 2'b00;
       _zz_io_fault_cfgSurfBadWrite <= 1'b0;
-      _zz_io_fault_fpCapAbsent <= 1'b0;
       mapRdReg <= 32'h0;
       mapRv <= 1'b0;
       resvRv <= 1'b0;
     end else begin
-      if(when_Wt64Top_l1241) begin
+      if(when_Wt64Top_l1274) begin
         maskArea_maskPart <= maskArea_partField[1:0];
       end
       if(when_Common_l258) begin
@@ -1591,12 +1603,6 @@ module Wt64Top (
       end
       if(surfBadWr) begin
         _zz_io_fault_cfgSurfBadWrite <= 1'b1;
-      end
-      if(when_Common_l258_1) begin
-        _zz_io_fault_fpCapAbsent <= 1'b0;
-      end
-      if(fps_io_oCapAbsent) begin
-        _zz_io_fault_fpCapAbsent <= 1'b1;
       end
       mapRv <= mapRd;
       if(mapRd) begin
@@ -1615,6 +1621,74 @@ module Wt64Top (
         end
       end
       resvRv <= resvRd;
+    end
+  end
+
+
+endmodule
+
+module CapStatusWord (
+  input  wire [3:0]    io_set,
+  input  wire          io_wr,
+  input  wire [31:0]   io_wdata,
+  output wire [31:0]   io_word,
+  output wire          io_rsvBad,
+  output wire [3:0]    io_clrAcc,
+  input  wire          clk,
+  input  wire          reset
+);
+
+  wire                rsvHit;
+  wire                accept;
+  wire                clrAcc_0;
+  wire                clrAcc_1;
+  wire                clrAcc_2;
+  wire                clrAcc_3;
+  wire                defined_0;
+  wire                when_Common_l259;
+  reg                 defined_1;
+  wire                when_Common_l259_1;
+  reg                 defined_2;
+  wire                when_Common_l259_2;
+  reg                 defined_3;
+
+  assign rsvHit = ((io_wdata & 32'hfffffff0) != 32'h0);
+  assign io_rsvBad = (io_wr && rsvHit);
+  assign accept = (io_wr && (! io_rsvBad));
+  assign clrAcc_0 = (accept && io_wdata[0]);
+  assign clrAcc_1 = (accept && io_wdata[1]);
+  assign clrAcc_2 = (accept && io_wdata[2]);
+  assign clrAcc_3 = (accept && io_wdata[3]);
+  assign io_clrAcc = {clrAcc_3,{clrAcc_2,{clrAcc_1,clrAcc_0}}};
+  assign defined_0 = io_set[0];
+  assign when_Common_l259 = io_set[1];
+  assign when_Common_l259_1 = io_set[2];
+  assign when_Common_l259_2 = io_set[3];
+  assign io_word = {28'h0,{defined_3,{defined_2,{defined_1,defined_0}}}};
+  always @(posedge clk or posedge reset) begin
+    if(reset) begin
+      defined_1 <= 1'b0;
+      defined_2 <= 1'b0;
+      defined_3 <= 1'b0;
+    end else begin
+      if(clrAcc_1) begin
+        defined_1 <= 1'b0;
+      end
+      if(when_Common_l259) begin
+        defined_1 <= 1'b1;
+      end
+      if(clrAcc_2) begin
+        defined_2 <= 1'b0;
+      end
+      if(when_Common_l259_1) begin
+        defined_2 <= 1'b1;
+      end
+      if(clrAcc_3) begin
+        defined_3 <= 1'b0;
+      end
+      if(when_Common_l259_2) begin
+        defined_3 <= 1'b1;
+      end
     end
   end
 

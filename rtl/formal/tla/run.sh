@@ -187,6 +187,36 @@ expect_fail "증인: 창-지목 어긋남이 실재하는가"      Mask_witness_
 expect_fail "증인: busy 중 REKEY 시도가 실재하는가"  Mask_witness_NoBusyRekeyAttempt.cfg  "$M" Witness_NoBusyRekeyAttempt
 
 # ---------------------------------------------------------------------------
+# CAP_STATUS · CAP_CLEAR — 능력 부재 관측 워드 (파도 B, 정본 1126a38:
+# e-defined.typ:500-503 「능력 부재도 관측이 sticky 여야 재시도 주체가 놓치지 않는다」 ·
+# e-defined.typ:566-616 「넷은 서로 접지 않는다」 · 01-isa-asm.typ:1540-1563 「관측은 sticky 다」)
+#
+# 재구현 착수 시점 RTL 은 이 워드를 두 축으로 들고 CAP_CLEAR 예약을 [31:2] 로
+# 유도했다 — 정본은 [31:4] 라 [2]·[3] 의 적법한 W1C 가 거절 + loud 된다
+# (clear_atomic 의 정의역이 다르다), 그리고 [2] 는 판정 회로만 있고 이 워드에
+# 닿지 않는다. Witness_NoClear 는 축 넷 *전부*의 해제 도달성을 요구한다 —
+# RTL 마스크 폭의 대조 자체는 후-formal capword.sby 의 a_rsvbad_def 몫이다.
+# set_beats_clear 는 StickyFault 규약(해제와 발화가 같은 사이클이면 발화가
+# 이긴다)을 이 워드에 승계한 것이다.
+# ---------------------------------------------------------------------------
+M=CapWord.tla
+expect_pass "CAP_STATUS 워드 좋은 모델 (축 4)"  CapWord.cfg "$M"
+
+expect_fail "가드 삭제: axis_isolated (사건이 다른 축도 세움)" \
+            CapWord_del_axis_isolated.cfg "$M" Prop_AxisIsolation
+expect_fail "가드 삭제: sticky_until_clear (저절로 내려감)" \
+            CapWord_del_sticky_until_clear.cfg "$M" Prop_StickyUntilClear
+expect_fail "가드 삭제: clear_atomic (예약 위반 부분 수락)" \
+            CapWord_del_clear_atomic.cfg "$M" Prop_ClearAtomic
+expect_fail "가드 삭제: set_beats_clear (해제가 이김)" \
+            CapWord_del_set_beats_clear.cfg "$M" Prop_SetBeatsClear
+
+expect_fail "증인: 사건이 실재하는가"                CapWord_witness_NoEvent.cfg         "$M" Witness_NoEvent
+expect_fail "증인: 축 넷 전부의 해제가 실재하는가"   CapWord_witness_NoClear.cfg         "$M" Witness_NoClear
+expect_fail "증인: 예약 위반 거절이 실재하는가"      CapWord_witness_NoRejectedWrite.cfg "$M" Witness_NoRejectedWrite
+expect_fail "증인: 같은 축 사건+해제 겹침이 실재하는가" CapWord_witness_NoSimultaneous.cfg "$M" Witness_NoSimultaneous
+
+# ---------------------------------------------------------------------------
 # ISA-3 · ISA-4 — route fault 의 판정 주체와 범위 (부록 D.5 우선순위 4번)
 #
 # 앞의 셋과 성격이 다르다. 이미 일어난 결함이 아니라 **일어나면 설계를

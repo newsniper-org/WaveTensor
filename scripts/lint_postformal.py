@@ -424,8 +424,27 @@ _LEGACY_SCHEMAS = {
 # 둘은 **상한**(늘면 실패)이다. 상한 쪽이 있는 이유: 구조 skip 과 부분 덮임은
 # 「CHECK 분모를 비우는」 방향의 부정을 가능하게 하므로, 그것을 늘리는 일은
 # 반드시 이 파일을 고치는 *명시적 서명*을 거쳐야 한다.
-_MIN_COVERED = 74      # 완전+부분 덮임 CHECK 가드 수. 2026-08-26 실측. 줄지 않는다
-_MAX_PARTIAL = 6       # 부분 덮임뿐인 가드 수. 늘지 않는다 (늘리려면 근거와 함께)
+_MIN_COVERED = 82      # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다.
+                       # 74 (2026-08-26 실측) → 82 (2026-09-21 실측 — CapWord
+                       # 앵커 넷 착지 + 그 사이 파도들의 증가분). 「줄지
+                       # 않는다」는 현재값에 서 있어야 문장이 된다 — 하한이
+                       # 실측 아래 8 칸 헐거운 채로는 앵커 여덟이 조용히 사라져도
+                       # 게이트가 침묵한다 (2026-09-21 전수 반증 세 렌즈가 같은
+                       # 것을 지적했다).
+_MAX_PARTIAL = 8       # 부분 덮임뿐인 가드 수. 늘지 않는다 (늘리려면 근거와 함께)
+                       #
+                       # 6 → 8 (2026-09-21, CAP_STATUS 축 둘→넷 파도 — 정본
+                       # 1126a38). 신설 모델 CapWord 의 sticky_until_clear ·
+                       # set_beats_clear 둘. 새 부분 증명을 *숨기고* 올린 것이
+                       # 아니라 **태어나면서 부분인 앵커를 태어나는 날 표에
+                       # 올린 것**이다: 워드 컴포넌트의 축 0 이 pass-through 라
+                       # (이중 sticky 레이스 — CapStatusWord.scala 파일 머리)
+                       # 그 축의 sticky·겹침은 컴포넌트 안에 없고 상류
+                       # Reassembly.capBit 이 든다. capword.sby 는 축 1·2·3 만
+                       # 재고 GUARD-MAP 두 줄이 그 좁힘을 자백한다 — 자백이
+                       # 기계 밖에 있으면 없는 것과 같으므로(HIU 격리 결함의
+                       # 교훈) 착지 커밋에서 표와 래칫을 함께 올린다.
+                       # (완전 덮임 +2 · 부분 +2 — 완전+부분은 +4.)
                        #
                        # 2 → 6 (2026-08-26, 같은 파도의 전수 검증 직후).
                        # 근거: 새로 부분 증명을 *만든* 것이 아니라 **이미 있던
@@ -607,6 +626,37 @@ _PARTIAL = {
         "모델 가드의 앞쪽 절반 — 그 base 값이 *개시 wave 의 ACCTGT 에서 온다*는 "
         "것(b = f(tag)). 디코드 경계 밖이라 이 태스크가 재지 못한다 "
         "(props.sby 가 「좁은 증명이 넓은 모델 가드를 대신한다」로 명기)",
+    ),
+    # ── 아래 둘: 태어나면서 부분인 앵커 (2026-09-21, CAP_STATUS 축 둘→넷) ──
+    #
+    # CapWord 모델은 축 넷을 대칭으로 보지만 워드 컴포넌트는 축 0 을
+    # pass-through 로 둔다 — 그 축의 sticky 는 Reassembly.capBit 이고 해제는
+    # capAbsentClear 로 간다 (이중 sticky 레이스, CapStatusWord.scala 파일 머리).
+    # 그래서 sticky·겹침에 관한 가드 둘은 capword.sby 가 축 1·2·3 만 재고, 축 0
+    # 은 Reassembly/props.sby 의 t_capa_next_eq (Payload.capability_not_fault
+    # 앵커의 일부) 가 *다른 모델의 이름으로* 잰다. 그 둘을 잇는 Top 결선
+    # (clrAcc(0) → reasm.io.capAbsentClear) 은 어느 태스크도 재지 않는다 —
+    # Wt64Top 의 결선을 top 으로 두는 태스크가 0건이다 (AbortStaging/props.sby
+    # 는 Wt64Top.sv 를 읽되 AbortStaging_check 만 top 으로 뗀다; rtl/README.md
+    # 「미측정」). axis_isolated 와 clear_atomic 은 축 0 도 이 태스크 안에
+    # 있다 (a_passthru_0 · a_clracc_def 가 축 넷 전부).
+    ("CapWord", "sticky_until_clear", "rtl/formal/sby/CapStatusWord/capword.sby"): (
+        "sticky 축 1·2·3 — 선 비트는 그 축의 수락된 W1C 없이 내려가지 않고 "
+        "(a_sticky_k) 수락된 W1C 는 실제로 내린다 (a_clear_k)",
+        "축 0 — 그 sticky 는 컴포넌트 밖(Reassembly.capBit)이고 "
+        "Reassembly_props.sv 의 t_capa_next_eq 가 잰다. 워드가 그 레벨을 "
+        "통과시킨다는 것까지는 a_passthru_0 이 재지만, 수락된 W1C 펄스 "
+        "clrAcc(0) 이 실제로 그 상류의 clear 에 닿는지는 Wt64Top 결선이라 "
+        "어느 후-formal 태스크도 재지 않는다 (rtl/README.md 「미측정」)",
+    ),
+    ("CapWord", "set_beats_clear", "rtl/formal/sby/CapStatusWord/capword.sby"): (
+        "sticky 축 1·2·3 — set(k) 가 있었던 축은 다음 사이클에 서 있다, 같은 "
+        "사이클에 그 축의 W1C 가 수락됐더라도 (a_set_beats_clear_k · 겹침 "
+        "도달 증인 W4)",
+        "축 0 — 이 컴포넌트에는 그 축의 겹침 자체가 없다 (레벨 통과). 겹침이 "
+        "실재하는 자리는 Reassembly.capBit 의 set(fr_capaEvt) 대 "
+        "capAbsentClear 이고 같은 t_capa_next_eq 등식이 그 순서를 든다 — 다만 "
+        "그 clear 에 clrAcc(0) 이 합류한다는 결선은 위 항목과 같이 미측정이다",
     ),
 }
 

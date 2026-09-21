@@ -663,7 +663,13 @@ AX1_UNMEASURED_HARD_MAX: dict[str, int] = {
     "rtl/sim/README.md": 17,
     "rtl/sim/run_wt64.py": 11,
     "rtl/sim/test_mask_golden.py": 14,
-    "rtl/sim/test_shape_equiv.py": 14,
+    # 2026-09-21 하강 14 → 13 (CAP_STATUS 축 둘→넷 파도, 정본 1126a38) —
+    # NO_IO_CLEAR 머리 주석의 좌표 인용(HEAD 문면 `Wt64Top.scala:1154`·:1164·
+    # :1165·:1443 — 이미 낡아 있어 파도 중간에 :1195 등으로 한 번 재조준했던
+    # 것)을 식별자 인용(`own.io.faultClearBadWrite` 등)으로 바꿨다. 좌표는
+    # Top 을 고칠 때마다 미끄러지고 식별자는 배선이 살아 있는 한 유효하다.
+    # 항목 제거는 래칫 상한도 같이 내린다 (R5 문면).
+    "rtl/sim/test_shape_equiv.py": 13,
     "rtl/spinal/src/main/scala/wt64/mask/MaskUnit.scala": 4,
     "rtl/spinal/src/main/scala/wt64/top/Wt64Top.scala": 2,
     "rtl/sv/assert/HiuMask_props.sv": 7,
@@ -702,6 +708,12 @@ AX2_UNMEASURED_HARD_MAX: dict[str, int] = {
     "rtl/formal/sby/RouteJudge/route_judge.sby": 3,
     "rtl/formal/sby/RouteMmio/route_mmio.sby": 2,
     "rtl/formal/sby/SharedUnit/depth0.sby": 1,
+    # 2026-09-21 신설 — CAP_STATUS 축 둘→넷 파도(정본 1126a38)의 후-formal
+    # 하네스. 유일한 `§N.M` 은 as_reset_shape 의 근거 「정본 §1.5 (모델 Init
+    # 대응이 reset 직후 상태라는 ENV 계약)」 한 줄로, SharedUnitDepth0_props.sv
+    # 의 같은 문면을 그대로 승계한 것이다(따옴표 없는 관용구). 새로 태어난
+    # 파일이므로 삭제 자리는 없다.
+    "rtl/sv/assert/CapStatusWord_props.sv": 1,
     "rtl/formal/tla/Decode.tla": 51,
     "rtl/formal/tla/Fabric.tla": 40,
     # 2026-09-20 신설 — 임대별 마스크 키 파도, 정본 7fa5f2e. 위 축1 항목과

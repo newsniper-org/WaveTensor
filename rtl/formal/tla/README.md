@@ -33,6 +33,7 @@ make rtl-formal        # 또는  sh rtl/formal/tla/run.sh
 | **EXT-4** 재조립 배타성 | `Payload.tla` | **증명됨** |
 | **EXT-6** 메모리 순서 (명시적 순서 의존) | `MemOrder.tla` | **증명됨** — 과잉 게이팅 금지가 §4.4.4 규범으로 승격 |
 | **SEC-2 · SEC-7** 경로 간 동일성 · 예약 필드 불투과 | `Decode.tla` | **증명됨** |
+| **E.1.2 CAP_STATUS/CAP_CLEAR** 축 격리 · sticky · 예약 위반 원자 거절 · 발화 우선 | `CapWord.tla` | **증명됨** — 가드 넷(axis_isolated · sticky_until_clear · clear_atomic · set_beats_clear) + 증인 넷, 9 run. 축은 불투명 토큰 넷 — 사건→축 배정은 정본 표의 몫 |
 
 순서는 부록 D.5 규범 그대로다 — **근거는 "실제로 무너진 곳"** 이다.
 

@@ -127,8 +127,10 @@ SHAPE_DEPENDENT = {"io_push_1_stall", "io_push_2_stall"}
 # 재유도 기록 (인코딩 개정 파도 W4): io_dec_acctgtTotal 신설 (+1) — ACCTGT
 # [23:16] = 조각열 선언 총개수 T 의 관측 수출 (§1.4.7, 무소비). 형상 무관
 # 출력이라 대조면에 든다 — 117/115 → 118/116.
-EXPECT_OUTPUTS = 118
-EXPECT_COMPARE_FACE = 116
+# 재유도 기록 (CAP_STATUS 파도): io_fault_ehCapAbsent 신설 (+1) — 형상 무관
+# 출력이라 대조면에 든다 — 118/116 → 119/117.
+EXPECT_OUTPUTS = 119
+EXPECT_COMPARE_FACE = 117
 
 
 def parse_clear_ports():
@@ -166,12 +168,15 @@ CLEAR_PORTS = parse_clear_ports()
 COMPARE_FACE = [n for n in OUT_PORTS if n not in SHAPE_DEPENDENT]
 
 # 해제선이 없는 sticky — 여기 있는 것은 IO 해제선이 아니라 **MMIO 로만**
-# 내려간다 (`Wt64Top.scala:1154`·:1164·:1165·:1443). 궤적 대조 전에 IO 만
+# 내려간다 (Wt64Top: `own.io.faultClearBadWrite`·`cq.io.faultClearOverflow`·
+# `cq.io.faultClearBadWrite` 는 `fclr(…)` 만 받고, `fpCapAbsent`·`ehCapAbsent`
+# 는 `capWord.io.word` 라 해제가 `capWord.io.clrAcc` 뿐). 궤적 대조 전에 IO 만
 # 흔들면 이 축들은 sticky 로 남고, 그 잔재가 다음 궤적의 시작 상태를 바꾼다.
-# 이 하네스의 자극은 이 넷을 세우지 않으므로 지금은 무해하지만, 세우는 자극이
+# 이 하네스의 자극은 이 다섯을 세우지 않으므로 지금은 무해하지만, 세우는 자극이
 # 추가되면 여기가 먼저 깨져야 한다 — 그래서 이름으로 적어 둔다.
 NO_IO_CLEAR = ["io_fault_ownBadWrite", "io_fault_cqOverflow",
-               "io_fault_cqBadWrite", "io_fault_fpCapAbsent"]
+               "io_fault_cqBadWrite", "io_fault_fpCapAbsent",
+               "io_fault_ehCapAbsent"]
 EXPECT_CLEAR_PORTS = 19
 
 # 자주 보는 자리의 색인 — 매번 `.index()` 하면 이름 오타가 ValueError 로만

@@ -716,6 +716,7 @@ rtl-gen: rtl-pins
 	  "runMain wt64.gen.GenMaskUnit $(RTL_GEN)" \
 	  "runMain wt64.gen.GenCompletionUnit $(RTL_GEN)" \
 	  "runMain wt64.gen.GenStepSequencer $(RTL_GEN)" \
+	  "runMain wt64.gen.GenCapStatusWord $(RTL_GEN)" \
 	  "runMain wt64.gen.GenWt64Top $(RTL_GEN)"
 	@echo "rtl-gen: 생성물 → $(RTL_GEN)"
 

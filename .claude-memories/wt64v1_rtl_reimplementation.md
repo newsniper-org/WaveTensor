@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 4e29961e-988b-4f27-9ede-dfb9c81925bc
-  modified: 2026-08-29T07:09:26.135Z
+  modified: 2026-09-20T17:09:16.899Z
 ---
 
 2026-08-20 사용자 지시로 **WT64v1 RTL 전면 재구현**이 착수됐다. 사용자 확정
@@ -56,3 +56,20 @@ metadata:
 [[wt64v1-precision-recovery-roadmap]] (참조 구현 현황),
 [[cleanroom-airlock]] (legacy 를 만져야 할 때), [[solver-blindness-trap]] ·
 [[yosys-bind-trap]] · [[sby-composite-regression]] (공허 PASS 세 형태).
+
+## RTL 이 정본을 뒤쫓는 파도 — 진행 (2026-09-20/21 갱신)
+
+정본이 RTL 을 앞선 지점을 §6.3 순서(선-formal → RTL → 후-formal)로
+따라잡는 작업이 진행 중이다.
+
+- **파도 A — 임대별 마스크 키(정본 `7fa5f2e`): 착지 완료**, commit
+  `ca3c496`. `MaskUnit.scala` 의 key 저장을 파티션별 `Vec` 로, `keyWr`
+  에 `part` 필드 신설, `Wt64Top` 의 `M_NONCE_PART`→`M_MASK_PART`(키·논스
+  공용 창). 선-formal `rtl/formal/tla/Mask.tla` 신설(368 run, 기존
+  358+10). 후-formal `HiuMask_props.sv` 수리 셋 — 상호배타 `assume`
+  누락 · 섀도우-DUT 귀납 보조 불변식 부재 · REKEY 완료/keyWr 겹침
+  오판 (전부 검증 하네스 결손, RTL 결함 아님). 실측 함정은
+  [[lint-section-refs-gotchas]] · [[host-tlc-shadow-package]] ·
+  [[background-task-oom-kill]] 로 별도 기록.
+- **파도 B — `CAP_STATUS` 축 둘→넷(정본 `1126a38`): 미착수.** 다음
+  세션에서 파도 A 와 같은 순서(선-formal→RTL→후-formal)로 진행할 것.

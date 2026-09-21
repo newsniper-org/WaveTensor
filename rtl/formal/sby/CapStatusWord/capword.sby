@@ -1,0 +1,83 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# PROVES: CapWord.axis_isolated — 축 k 의 사건이 있어도 다른 축은 자기 법칙대로만 움직인다 (a_isolated_1/2/3) · 비트 k 의 상승 원천은 set(k) 하나 (a_rise_only_by_set_1/2/3) · 축 0 은 set(0) 의 레벨 그 자체 (a_passthru_0). 축 k 의 set 이 축 j 도 세우게 한 변이가 반례를 낸다 — §역-변이 실측 mutC
+# PROVES: CapWord.sticky_until_clear — 선 비트는 그 축의 수락된 W1C 없이는 내려가지 않고 (a_sticky_1/2/3) 수락된 W1C 는 실제로 내린다 (a_clear_1/2/3). 축 0 은 pass-through 라 이 태스크 밖 — 그 sticky 는 Reassembly.capBit 이고 Reassembly/props.sby 의 t_capa_next_eq 가 잰다 (lint_postformal `_PARTIAL` 등재)
+# PROVES: CapWord.clear_atomic — 거절 = wr ∧ [31:4] 비0 (a_rsvbad_def, 하네스 리터럴 마스크) · 수락 W1C = accept ∧ wdata[k] 축 넷 전부 (a_clracc_def) · 거절된 기입은 어느 축의 해제도 수락하지 않고 sticky 비트 하나도 내리지 않는다 (a_clear_atomic). 예약 마스크를 [31:2] 로 넓힌 변이가 반례를 낸다 — §역-변이 실측 mutB
+# PROVES: CapWord.set_beats_clear — set(k) 가 있었던 축은 다음 사이클에 서 있다, 같은 사이클에 그 축의 W1C 가 수락됐더라도 (a_set_beats_clear_1/2/3 — 전건이 set 하나인 일반형이라 「사건이 관측된다」도 함께 든다; 겹침 도달성은 증인 W4). 해제가 이기게 한 변이가 반례를 낸다 — §역-변이 실측 mutA. 축 0 은 이 컴포넌트에 그 겹침이 없다 (`_PARTIAL` 등재)
+#
+# 대상: rtl/generated/CapStatusWord.sv (SpinalHDL 생성물, 손편집 금지 — 원본
+# rtl/spinal/src/main/scala/wt64/host/CapStatusWord.scala 의 GUARD-MAP 넷이
+# 위 앵커 넷과 일대일이다). 선-formal: rtl/formal/tla/CapWord.tla.
+#
+# 부착: 래퍼 모듈 CapStatusWord_formal (bind 금지 — yosys 0.66 이 조용히
+# 무시한다, SharedUnitDepth0 선례). 필요한 신호가 전부 포트라 expose 도 없다.
+#
+# ## 이 태스크가 재지 않는 것
+#
+# CapStatusWord_props.sv 파일 머리 「이 태스크가 재지 **않는** 것」 절이
+# 정본이다 — Top 의 set(3) := False 상수 묶음 · [2] set 의 walk.oValid 유효
+# 한정 · 능력 부재의 fault 불참 · clrAcc(0) → Reassembly.capAbsentClear 결선.
+# 넷 다 Wt64Top 의 결선이고 그 결선을 top 으로 재는 후-formal 태스크는 0건이다
+# (AbortStaging/props.sby 는 Wt64Top.sv 를 읽되 prep -top AbortStaging_check 로
+# 나머지를 뗀다 — rtl/README.md 「미측정」). 여기서 io_set 넷은 전부 자유 입력이다.
+#
+# ## 깊이 근거
+#
+# 상태는 sticky 셋(defined_1..3)과 하네스 f_past_valid · $past 레지스터뿐이다.
+# bmc 12: 「세운다 → 거절 기입 → 수락 기입 → 내려간다 → 겹침」 한 바퀴가
+# 5 사이클이고 그 두 배 이상. prove 8: 모든 단언이 한 스텝 전이 법칙이라
+# 귀납이 k=2 안에 닫힌다 — 8 은 그 여유. cover 12: 가장 깊은 증인
+# (w2_clear_k: 서고 · 지우고 · 내려간 것을 보는 3 스텝 + reset 2) 의 배수.
+#
+# ## §역-변이 실측 (2026-09-21) — 수락 기준은 무변이 GREEN 이 아니라 「변이를
+# 잡는다」다 (솔버 실명 함정). 생성 SV 의 격리 사본에 변이를 넣고 같은
+# 하네스가 각각 FAIL 하는지 실측했다 (bmc depth 12 · prove depth 8 · smtbmc
+# z3 — 넷 다 basecase 에서 반례, `DONE (FAIL, rc=2)` 완주). 결과표는 여기
+# 둔다 — 보고에만 있는 자백은 기계 밖이라 없는 것과 같다 (hiumask.sby 선례).
+# 깨진 단언은 좌표가 아니라 **라벨**로 적는다 — 좌표는 하네스를 고칠 때마다
+# 미끄러지지만 라벨은 단언이 살아 있는 한 유효하다:
+#   mutA 해제가 발화를 이기게 (sticky 셋의 if(clrAcc) 를 if(set) 뒤로)
+#          → a_set_beats_clear_1/2 · a_isolated_1/2/3 실패. a_isolated_k 의
+#            후건이 다른 sticky 축의 「set 이면 선다」 법칙을 품으므로 같은
+#            반례 궤적에서 함께 깨진다 — 의도한 a_set_beats_clear 가 주다
+#   mutB 예약 마스크를 [31:2] 로 (32'hfffffff0 → 32'hfffffffc)
+#          → a_rsvbad_def · a_clracc_def 만 실패 (하네스 리터럴 마스크와의
+#            등식 — 위 「지상 진리는 DUT 어휘를 재인용하지 않는다」의 실증)
+#   mutC 축 1 의 set 이 축 2 도 세우게 (축 2 sticky 의 set 항 = set[1] | set[2])
+#          → a_rise_only_by_set_2 · a_isolated_1 · a_clear_2 만 실패
+#   mutD pass-through 를 sticky 로 (defined_0 을 레지스터로)
+#          → a_passthru_0 만 실패
+#   재실행: 사본을 /tmp 아래에 두고 [files] 를 그 사본으로 돌린 .sby 를
+#   컨테이너 안에서 `sby -f --prefix <dir>` 로 직접 돌린다 (태스크가 둘이라
+#   `-d` 는 거부된다) — 스윕은 증거를 저장소에 쓰므로 변이에는 쓰지 않는다.
+
+[tasks]
+bmc
+prove
+cover
+
+[options]
+bmc: mode bmc
+bmc: depth 12
+prove: mode prove
+prove: depth 8
+cover: mode cover
+cover: depth 12
+multiclock off
+
+[engines]
+smtbmc z3
+
+[script]
+# 래퍼 부착 — bind 미사용 사유는 CapStatusWord_props.sv 파일 머리 참조.
+read_verilog -formal CapStatusWord.sv
+read_verilog -formal -sv CapStatusWord_props.sv
+prep -top CapStatusWord_formal
+
+# [files] 경로는 저장소 루트 기준이다 — sby 는 상대 경로를 sby 파일이
+# 아니라 *호출 cwd* 기준으로 푼다 (스윕 실측: ../ 경로가 루트 호출에서 깨짐).
+# make rtl-postformal · 스윕 · 수동 실행 전부 루트에서 호출하는 것이 규약이다.
+[files]
+rtl/generated/CapStatusWord.sv
+rtl/sv/assert/CapStatusWord_props.sv

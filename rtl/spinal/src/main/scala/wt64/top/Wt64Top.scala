@@ -72,9 +72,11 @@
 // 해제 경로가 둘이 된 축(기존 `io.faultClear.*` IO + MMIO W1C)은 **논리합**
 // 이다 — 어느 쪽도 다른 쪽을 무효화하지 않는다. StickyFault 규약(발화가 해제를
 // 이긴다)이 모듈 안에 있으므로 해제 원천이 늘어도 「해제로 fault 를 삼키는
-// 창」은 생기지 않는다. 이 파도가 새로 낸 축 둘(완료 유닛의 거절된 구성 기입 ·
-// step 능력 부재 sticky)은 IO 해제선을 두지 않고 MMIO 로만 해제한다 — 정본이
-// 정한 해제 표면이 그것이기 때문이며, 없는 경로를 새로 만들지 않는다.
+// 창」은 생기지 않는다. IO 해제선 없이 MMIO 로만 해제되는 축은 다섯이다 —
+// 완료 유닛 둘(cqOverflow · cqBadWrite) · 소유권 표의 거절된 기입(ownBadWrite) ·
+// step 능력 부재(fpCapAbsent) · EH 사슬 능력 부재(ehCapAbsent, 2026-09-21
+// CAP_STATUS 파도) — 정본이 정한 해제 표면이 그것이기 때문이며, 없는 경로를
+// 새로 만들지 않는다.
 //
 // ## 잠정 배선 (TODO — 몰래 고치지 않고 여기 전부 적는다)
 //
@@ -157,6 +159,7 @@ import wt64.route.{RouteJudge, RouteTok}
 import wt64.payload.Reassembly
 import wt64.memorder.{MemOrderGate, MemOrderGateParams}
 import wt64.hiu.{HiuPipeline, MmioConfig, OwnershipTable, XlatePerm, XlateStore}
+import wt64.host.CapStatusWord
 import wt64.fabric.{FabricMerge, ProducePort, ResultBank, ResultBeat, SharedUnit, SharedUnitParams}
 import wt64.mask.MaskUnit
 import wt64.fp.{StepSeqParams, StepSequencer}
@@ -309,8 +312,11 @@ object Wt64Top {
     * (두 곳에 적으면 그 순간부터 어느 쪽이 정본인지 답할 수 없다). E.5.4 가
     * `[18]` 을 새로 만들었을 때 실제로 이 한 상수만 움직였다. */
   val FLT_CLEAR_RSV      = rsv((1L << Fault.N_BITS) - 1)     // [31:19]
-  /** CAP_CLEAR 의 예약 = `[31:2]`. 같은 유도. */
-  val CAP_CLEAR_RSV      = rsv((1L << Fault.N_CAP_BITS) - 1) // [31:2]
+  /** CAP_CLEAR 의 예약 = `[31:4]` (정본 E.1.2 CAP_CLEAR 행). 같은 유도 —
+    * `Fault.N_CAP_BITS` 가 값의 단일 출처이고, 워드 컴포넌트(`CapStatusWord`)가
+    * 스스로 유도한 마스크와 같은지는 조립이 elaborate 시점 `require` 로
+    * 못박는다 (아래 `capWord`). */
+  val CAP_CLEAR_RSV      = rsv((1L << Fault.N_CAP_BITS) - 1) // [31:4]
 
   /** 장치 전역 fault (R_FAULT) — 구역 안 바이트 오프셋. **배선됨.**
     *
@@ -329,7 +335,7 @@ object Wt64Top {
     val STATUS  = 0x00 // RO  sticky 비트맵 (아래 비트 배정)
     val CLEAR   = 0x04 // WO  STATUS 와 같은 비트 배치의 W1C
     val SUMMARY = 0x08 // RO  [0] STATUS 의 논리합 (§5.6 1항 — 개별 노출을 대체하지 않는다)
-    val CAP_STATUS = 0x0C // RO  [0] 재조립 슬롯 능력 부재 · [1] step 미상주 — *fault 가 아니다*
+    val CAP_STATUS = 0x0C // RO  [0] 재조립 슬롯 · [1] step 미상주 · [2] EH 사슬 · [3] 연산 미지원 — *fault 가 아니다*
     val CAP_CLEAR  = 0x10 // WO  CAP_STATUS 와 같은 배치의 W1C
 
     // FAULT_STATUS 비트 배정 — 원천별로 가른다 (접지 않는다, §5.6 3항).
@@ -363,10 +369,17 @@ object Wt64Top {
     // 들지 않는다 — 오류가 아니기 때문이다 (E.3 · §1.6.2).
 
     // CAP_STATUS/CAP_CLEAR 비트 배정 — *fault 가 아니다* (§1.6.2). 바이너리는
-    // 옳고 이 기계가 지금 못 하는 것이며 상위 계층이 재적재 후 재시도한다.
-    val C_REASM_SLOT = 0 // 재조립 슬롯 능력 부재
-    val C_FP_PROG    = 1 // step 프로그램 미상주
-    val N_CAP_BITS   = 2
+    // 옳고 이 기계가 지금 못 하는 것이며 상위 계층이 조회·수리·해제·재시도한다.
+    // 축은 「고칠 동작」으로 가른다 (정본 E.1.2 규범) — 넷은 서로 접지 않는다.
+    // 워드의 *행위*(축별 sticky · W1C · 예약 엄격 · 발화가 해제를 이긴다)는
+    // host/CapStatusWord 가 들고, 어느 사건이 어느 축인가는 이 상수들과 그
+    // 결선(`io.fault.*` 수출 자리)이 든다.
+    val C_REASM_SLOT     = 0 // 재조립 슬롯 능력 부재 — sticky 는 Reassembly 안 (워드는 pass-through)
+    val C_FP_PROG        = 1 // step 프로그램 미상주 — sticky 는 CapStatusWord
+    val C_EH_CHAIN       = 2 // EH 사슬 용량 — sticky 는 CapStatusWord, set 은 DecodeWalk 종결 (oValid 한정)
+    val C_OP_UNSUPPORTED = 3 // 연산 미지원 — 원천 0건, 상수 0 (rtl/README.md 「자리는 있고 회로는 없다」)
+    /** 정의된 능력 부재 비트 수 — `[31:4]` 는 RO 예약 = 0 (정본 E.1.2). */
+    val N_CAP_BITS       = 4
   }
 
   // ═══ UNWIRED 구역의 워드 — 배정만 있고 소비자 회로가 없다 ════════════
@@ -605,9 +618,17 @@ class Wt64Top(
   val fps    = StepSequencer(StepSeqParams(progDepth = cfg.stepProgDepth)) // 승격 반영
   val cq     = new CompletionUnit(cfg.cqDepth) // 승격 반영
   /** E.12 소거의 호스트 대면 절반 — 태그 스테이징 + 무장 규율 + 발화 (결정 A).
-    * 유일하게 *이 파일이 정의하는* 컴포넌트다 (다른 열넷은 자기 파일에 산다) —
+    * 유일하게 *이 파일이 정의하는* 컴포넌트다 (다른 열다섯은 자기 파일에 산다) —
     * MMIO 표면의 절반이라 조립의 소관이고, 잴 수 있게 이름을 준 것뿐이다. */
   val stg    = new AbortStaging
+  /** 능력 부재 관측 워드 CAP_STATUS/CAP_CLEAR 의 *행위* — 축별 sticky · 수락
+    * W1C · 예약 엄격 (2026-09-21 파도, 정본 1126a38 축 둘→넷). 축 수는 ABI
+    * (`Fault.N_CAP_BITS`) 한 곳에서 흐르고, 컴포넌트가 스스로 유도한 예약
+    * 마스크가 companion 의 `CAP_CLEAR_RSV` 와 같은지를 아래 require 가
+    * 못박는다 — 출처가 하나여야 두 값이 따로 표류하지 않는다. */
+  val capWord = CapStatusWord(nBits = Fault.N_CAP_BITS)
+  require(capWord.rsvMask == CAP_CLEAR_RSV,
+    f"CAP_CLEAR 예약 마스크 불일치 — 컴포넌트 0x${capWord.rsvMask}%08X vs companion 0x${CAP_CLEAR_RSV}%08X")
 
   // ═══ IO ══════════════════════════════════════════════════════════════
   val io = new Bundle {
@@ -826,6 +847,13 @@ class Wt64Top(
       val fpBp          = out port Bool()
       val fpBadProg     = out port Bool()
       val fpCapAbsent   = out port Bool() // 능력 부재 sticky — fault 아님 (§1.6.2)
+      /** EH 사슬 용량 능력 부재 sticky — CAP_STATUS `[2]` (2026-09-21 파도).
+        * fpCapAbsent 와 같은 등급 — fault 아님, FAULT_STATUS·SUMMARY 어느
+        * 쪽에도 들지 않는다. 원천은 DecodeWalk 의 종결 등급이고 set 은
+        * `oValid` 로 유효 한정한다: `io.dec.capAbsent` 는 유효 한정 없는 등급
+        * 레벨, 이 sticky 는 oValid 로 한정 — 쓰레기 헤더 사이클에 둘이
+        * 갈리는 것은 설계다. IO 해제선 없음 — CAP_CLEAR `[2]` W1C 로만. */
+      val ehCapAbsent   = out port Bool()
       val cqOverflow    = out port Bool() // FAULT_STATUS `[16]`
       val cqBadWrite    = out port Bool() // 완료 구역의 거절된 구성 기입 — `[6]` 합류
     }
@@ -833,9 +861,9 @@ class Wt64Top(
       *
       * 이 IO 선들은 장치 전역 fault 표면(`0xF84` W1C)이 서기 *전*의 해제
       * 경로였고, 표면이 선 지금은 둘의 **논리합**이 각 유닛의 clear 다 —
-      * 어느 쪽도 다른 쪽을 무효화하지 않는다. 이 파도가 새로 낸 축 셋
-      * (`cqOverflow` · `cqBadWrite` · `fpCapAbsent`)은 여기 선이 없다:
-      * 정본이 정한 해제 표면이 MMIO 이고, 없는 경로를 새로 만들지 않는다. */
+      * 어느 쪽도 다른 쪽을 무효화하지 않는다. fault 표면 파도 이후에 난 축 넷
+      * (`cqOverflow` · `cqBadWrite` · `fpCapAbsent` · `ehCapAbsent`)은 여기 선이
+      * 없다: 정본이 정한 해제 표면이 MMIO 이고, 없는 경로를 새로 만들지 않는다. */
     val faultClear = new Bundle {
       val decodeWalk    = in port Bool()
       val operandDecode = in port Bool()
@@ -874,10 +902,12 @@ class Wt64Top(
   // 두면 *참조된 비트만* 회로가 되며, 참조되지 않았다는 사실이 곧 미배선의
   // 증거다 (비트 배치 자체는 companion 의 `Fault` 상수가 전수로 든다 — ABI 는
   // 회로 유무와 무관하게 확정돼 있다).
+  //
+  // `0xF90` CAP_CLEAR 는 여기 없다 — 그 수락과 축별 W1C 펄스(`capWord.io.clrAcc`)
+  // 는 워드 컴포넌트가 내고, 상류에 sticky 를 둔 축 0 의 해제만 그 펄스를
+  // 받아 Reassembly 로 나른다 (아래 reasm 결선).
   private val fltClrAccept = Bool() // `0xF84` 수락 (예약 비트 검사 통과)
-  private val capClrAccept = Bool() // `0xF90` 수락
-  private def fclr(bit:   Int): Bool = fltClrAccept && io.mmio.wdata(bit)
-  private def capClr(bit: Int): Bool = capClrAccept && io.mmio.wdata(bit)
+  private def fclr(bit: Int): Bool = fltClrAccept && io.mmio.wdata(bit)
 
   // ═══ 디코드 사슬 — DecodeWalk → OperandDecode (방출면 1:1) ═══════════
   walk.io.iValid      := io.instr.valid
@@ -969,7 +999,10 @@ class Wt64Top(
 
   reasm.io.faultClear     := io.faultClear.reasm    || fclr(Fault.B_REASM)
   // 능력 부재는 fault 가 아니므로 해제도 CAP_CLEAR(`0xF90`) 쪽이다 (§1.6.2).
-  reasm.io.capAbsentClear := io.faultClear.reasmCap || capClr(Fault.C_REASM_SLOT)
+  // 축 0 의 sticky 는 Reassembly 안(capBit)에 살고 워드 컴포넌트는 레벨을
+  // 통과시킨다 — 수락된 W1C 펄스 clrAcc(0) 가 여기로 와서 그 sticky 를 내린다.
+  // sticky 는 한 곳에만 산다 (CapStatusWord 머리 「이중 sticky 레이스」).
+  reasm.io.capAbsentClear := io.faultClear.reasmCap || capWord.io.clrAcc(Fault.C_REASM_SLOT)
 
   // ═══ 순서 토큰 게이트 — 디코드 MEM 제시 + 외부 구성 (§4.4.3 잠정) ═════
   for (i <- 0 until memSlots) {
@@ -1381,10 +1414,11 @@ class Wt64Top(
   // ── 장치 전역 fault 구역 (0xF80) — §3.8 · @sec:security 5.6 · 5.8 ─────
   //
   // fault 는 특정 유닛의 표면이 아니라 *장치 전역*이라 자기 구역을 갖는다.
-  // 이 구역은 새 상태를 **하나만** 만든다 (step 능력 부재 sticky — 원천이
-  // sticky 를 갖지 않는 유일한 축). 나머지 축 중 열일곱은 이미 하위 유닛이
-  // 들고 있던 비트의 *배치*일 뿐이다 — §3.8 의 「합성 가능한 sticky 비트」는
-  // 이 표면 이전에 이미 만족이었고, 없던 것은 HIU-6 의 해제 경로였다.
+  // fault 축 열아홉 중 열일곱은 이미 하위 유닛이 들고 있던 비트의 *배치*일
+  // 뿐이다 — §3.8 의 「합성 가능한 sticky 비트」는 이 표면 이전에 이미
+  // 만족이었고, 없던 것은 HIU-6 의 해제 경로였다. 능력 부재 워드의 sticky
+  // `[1]`·`[2]`·`[3]` 은 `capWord`(host/CapStatusWord)가 든다 — 이 구역이
+  // 직접 만드는 상태는 없다.
   //
   // 관측(STATUS)과 해제(CLEAR)의 비트 배치가 같다: 드라이버가 읽은 워드를
   // 그대로 되쓰면 *자기가 본 것만* 지운다. 그 사이에 새로 선 fault 는 1 을
@@ -1402,24 +1436,29 @@ class Wt64Top(
     val isCapClr  = wordOff === Fault.CAP_CLEAR / 4  // WO  W1C
 
     val clrRsvBad = (io.mmio.wdata & B(FLT_CLEAR_RSV, 32 bits)) =/= 0
-    val capRsvBad = (io.mmio.wdata & B(CAP_CLEAR_RSV, 32 bits)) =/= 0
 
     // 거절된 기입은 *한 비트도* 내리지 않는다 — 반쯤 수락이 없다 (E.9 논스
     // 파티션 스테이징과 같은 처분).
-    val doClr    = wr && isClear  && !clrRsvBad
-    val doCapClr = wr && isCapClr && !capRsvBad
+    val doClr = wr && isClear && !clrRsvBad
 
     // 해제 수락 — 여기 한 곳에서 구동한다 (선언은 위쪽, 근거는 그 주석).
     // 원천이 흩어지면 「무엇이 이 fault 를 내렸는가」에 답할 수 없다.
     fltClrAccept := doClr
-    capClrAccept := doCapClr
+
+    // CAP_CLEAR(`0xF90`) — 예약 판정·수락·축별 W1C 는 워드 컴포넌트의 것이다.
+    // 여기는 정렬된 워드 스트로브만 넘긴다 (AbortStaging 과 같은 분업 —
+    // 「어느 워드에 무엇을 썼는가」만 안다).
+    capWord.io.wr    := wr && isCapClr
+    capWord.io.wdata := io.mmio.wdata
 
     // 거절 — RO 오프셋 쓰기 · 예약 비트 비0 (E.1.1 엄격 · E.1.2 해설의
     // 「RO 오프셋 쓰기」). 자기 거절이 자기 워드(`[6]`)를 세우는 것은 순환이
-    // 아니라 정의다 — 거절된 구성 기입의 관측면이 그 비트다.
+    // 아니라 정의다 — 거절된 구성 기입의 관측면이 그 비트다. CAP_CLEAR 의
+    // 예약 위반은 컴포넌트가 `rsvBad` 로 돌려준다 — 능력 부재의 오류가
+    // 아니라 *구성 기입*의 오류이므로 같은 `[6]` 에 합류한다.
     when((wr && (isStatus || isSummary || isCapSt)) ||
-         (wr && isClear  && clrRsvBad) ||
-         (wr && isCapClr && capRsvBad)) { surfBadWr := True }
+         (wr && isClear && clrRsvBad) ||
+         capWord.io.rsvBad) { surfBadWr := True }
   }
 
   // ═══ sticky fault 관측면 — 원천별 수출 (여기서 접지 않는다, §5.6) ═════
@@ -1450,13 +1489,40 @@ class Wt64Top(
   io.fault.fpBadProg     := fps.io.faultBadProg
   io.fault.cqOverflow    := cq.io.faultOverflow
   io.fault.cqBadWrite    := cq.io.faultBadWrite
-  /** step 프로그램 미상주 — StepSequencer 의 `oCapAbsent` 는 종결 사이클 1펄스
-    * 라 관측면이 놓칠 수 있다. 정본 E.1.2 가 「능력 부재도 관측이 sticky 여야
-    * 재시도 주체가 놓치지 않는다」고 정했으므로 그 sticky 를 여기서 든다 —
-    * 원천 모듈이 sticky 를 갖지 않는 유일한 축이라 top 이 대신 드는 것이
-    * 아니라 *새로 만드는* 것이다. **fault 가 아니다** (§1.6.2): FAULT_STATUS
-    * 에도 FAULT_SUMMARY 에도 들지 않고 CAP_STATUS `[1]` 로만 나간다. */
-  io.fault.fpCapAbsent   := StickyFault(fps.io.oCapAbsent, capClr(Fault.C_FP_PROG))
+  // ── 능력 부재 워드 — 축별 결선 (어느 사건이 어느 축인가는 여기가 든다) ──
+  //
+  // 워드의 *행위*(sticky · W1C · 예약 엄격 · 발화가 해제를 이긴다)는 `capWord`
+  // 가 들고, 이 결선은 정본 E.1.2 표의 *배정*이다. 넷 중 어느 축도 다른 축의
+  // 신호를 보지 않는다 — 접지 않는다.
+  private val capSet = Vec(Bool(), Fault.N_CAP_BITS)
+  /** `[0]` 재조립 슬롯 — pass-through. sticky 는 Reassembly 안(capBit)에 살고
+    * 해제는 위 reasm.io.capAbsentClear 로 간다 (clrAcc(0) 가 그 펄스다). 워드
+    * 컴포넌트에서도 sticky 로 들면 이중 sticky 라 해제 사이클에 상류 레벨이
+    * 아직 1 이어서 발화가 이겨 영영 안 내려간다 — 그래서 레벨 통과다. */
+  capSet(Fault.C_REASM_SLOT) := reasm.io.capAbsent
+  /** `[1]` step 프로그램 미상주 — StepSequencer 의 `oCapAbsent` 는 종결 사이클
+    * 1펄스라 관측면이 놓칠 수 있다. 정본 E.1.2 가 「능력 부재도 관측이 sticky
+    * 여야 재시도 주체가 놓치지 않는다」고 정했으므로 그 sticky 를 워드
+    * 컴포넌트가 든다 — 원천 모듈이 sticky 를 갖지 않는 축이다. **fault 가
+    * 아니다** (§1.6.2): FAULT_STATUS 에도 FAULT_SUMMARY 에도 들지 않고
+    * CAP_STATUS `[1]` 로만 나간다. */
+  capSet(Fault.C_FP_PROG) := fps.io.oCapAbsent
+  /** `[2]` EH 사슬 용량 — DecodeWalk 의 종결 등급 `oCapAbsent` 는 명령 첫
+    * 워드의 선언 길이만 보고 iValid 와 무관하게 계산된다 (rCapa). 그래서 set 은
+    * `oValid` 로 **유효 한정**한다 — 쓰레기 헤더로 `[2]` 가 서면 안 된다.
+    * `io.dec.capAbsent` 는 유효 한정 없는 등급 레벨이고 이 sticky 는 oValid
+    * 로 한정된다 — 쓰레기 헤더 사이클에 둘이 갈리는 것은 설계다. */
+  capSet(Fault.C_EH_CHAIN) := walk.io.oValid && walk.io.oCapAbsent
+  /** `[3]` 연산 미지원 — 세울 원천이 0건이다 (지원 여부를 판정하는 회로가
+    * 재구현에 없다). 자리는 ABI 이고 상수 0 — rtl/README.md 「자리는 있고
+    * 회로는 없다」 표가 행으로 든다. 컴포넌트의 sticky 는 일반 계약이라 남고,
+    * set 이 False 라 그 비트는 서지 않는다. 원천이 서는 날 바뀌는 것은 이
+    * 한 줄이다. */
+  capSet(Fault.C_OP_UNSUPPORTED) := False
+  capWord.io.set := capSet.asBits
+
+  io.fault.fpCapAbsent   := capWord.io.word(Fault.C_FP_PROG)
+  io.fault.ehCapAbsent   := capWord.io.word(Fault.C_EH_CHAIN)
 
 
   // ── 장치 전역 fault 의 읽기 워드 — 위 수출이 확정된 뒤에 조립한다 ──────
@@ -1510,11 +1576,10 @@ class Wt64Top(
 
     /** CAP_STATUS (`0xF8C`) — *fault 가 아니다* (§1.6.2). 바이너리는 옳고 이
       * 기계가 지금 못 하는 것이며, FAULT_STATUS·FAULT_SUMMARY 어느 쪽에도
-      * 들지 않는다. 위 `status` 에 이 두 비트가 없다는 사실이 그 이행이다. */
+      * 들지 않는다. 위 `status` 에 이 네 비트가 없다는 사실이 그 이행이다.
+      * 워드 자체는 컴포넌트가 낸다 — `[31:4]` = 0 도 그쪽이 든다. */
     val capStatus = Bits(32 bits)
-    capStatus := 0
-    capStatus(Fault.C_REASM_SLOT) := io.fault.reasmCap
-    capStatus(Fault.C_FP_PROG)    := io.fault.fpCapAbsent
+    capStatus := capWord.io.word
 
     // WO 워드(CLEAR · CAP_CLEAR)는 아래에 없다 — 읽기 0 이 그 처분이다.
     val readValue = Bits(32 bits)

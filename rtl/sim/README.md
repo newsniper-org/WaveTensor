@@ -207,9 +207,9 @@ sticky 는 *역사의 누적*이다. 두 궤적을 따로 돌려 사이클 정�
 
 ⇒ **sticky 를 대조면에서 빼는 것으로 풀지 않는다** — 그것은 관측면을 줄이는
 것이고 줄인 만큼이 미측정이 된다. 궤적 앞에서 `clear_all_faults()` 로
-역사를 맞춘다. IO 해제선이 없는 넷(`ownBadWrite`·`cqOverflow`·`cqBadWrite`
-·`fpCapAbsent` — MMIO `0xF84`/`0xF90` 로만 내려간다)은 이름으로 적어 두고,
-서 있으면 크게 실패한다.
+역사를 맞춘다. IO 해제선이 없는 다섯(`ownBadWrite`·`cqOverflow`·`cqBadWrite`
+·`fpCapAbsent`·`ehCapAbsent` — MMIO `0xF84`/`0xF90` 로만 내려간다)은 이름으로
+적어 두고, 서 있으면 크게 실패한다.
 
 ### ③ `io_mmio_ready` 를 아무 주소에서나 폴링하면 소거 구간이 **0 사이클**로 보인다
 

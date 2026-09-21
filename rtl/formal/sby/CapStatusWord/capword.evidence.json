@@ -1,0 +1,60 @@
+{
+  "anchors": [
+    "CapWord.axis_isolated",
+    "CapWord.sticky_until_clear",
+    "CapWord.clear_atomic",
+    "CapWord.set_beats_clear"
+  ],
+  "at": "2026-09-21T12:31:21Z",
+  "cover": {
+    "reached": 10,
+    "reached_names": [
+      "CapStatusWord_formal.u_CapStatusWord_props.w1_set_1",
+      "CapStatusWord_formal.u_CapStatusWord_props.w1_set_2",
+      "CapStatusWord_formal.u_CapStatusWord_props.w1_set_3",
+      "CapStatusWord_formal.u_CapStatusWord_props.w2_clear_1",
+      "CapStatusWord_formal.u_CapStatusWord_props.w2_clear_2",
+      "CapStatusWord_formal.u_CapStatusWord_props.w2_clear_3",
+      "CapStatusWord_formal.u_CapStatusWord_props.w3_rejected_while_set",
+      "CapStatusWord_formal.u_CapStatusWord_props.w4_set_and_clear_same_cycle",
+      "CapStatusWord_formal.u_CapStatusWord_props.w5_other_axis_stays",
+      "CapStatusWord_formal.u_CapStatusWord_props.w6_passthru_toggle"
+    ],
+    "unreached": 0,
+    "unreached_names": []
+  },
+  "inputs": {
+    "rtl/generated/CapStatusWord.sv": "856e35216801487bad60c8de2b394a6f8a8e848f9fb02275d68d7cd9cadc8beb",
+    "rtl/sv/assert/CapStatusWord_props.sv": "62a2ed4866008287cdc98c55f15350ecbd91459e0b97557edeef0a6310f2bbc0"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 20,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 10,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 20,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
+  },
+  "sby": "rtl/formal/sby/CapStatusWord/capword.sby",
+  "sby_sha256": "f7837f1097d00a3068230c1679d1a6dd53ea5a20bd6c85faff5cd06fce0b6ae3",
+  "schema": "wt64-postformal-evidence/2",
+  "tasks": "bmc:PASS cover:PASS prove:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
+}

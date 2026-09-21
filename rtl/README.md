@@ -313,8 +313,8 @@ HIU-6 의 「명시적 해제」가 top IO 입력뿐이었다. 다섯 워드가 
 | `0xF80` | FAULT_STATUS (RO) | 열아홉 축 중 열일곱의 sticky 배치 + `[6]` 폴딩. `[17]` 엔트로피와 `[18]` 명령 디스크립터는 세울 원천이 미착지라 상수 0 |
 | `0xF84` | FAULT_CLEAR (WO, W1C) | 각 하위 유닛의 `faultClear` 에 **논리합**으로 들어간다 — 기존 IO 해제선을 무효화하지 않는다 |
 | `0xF88` | FAULT_SUMMARY (RO) | `[0]` = STATUS 논리합. 개별 노출을 대체하지 않고 덧붙인다 (§5.6 1항) |
-| `0xF8C` | CAP_STATUS (RO) | 정본 축은 **넷**인데 이 배선은 **둘**이다 — `[0]` 재조립 슬롯 용량 · `[1]` step 프로그램 미상주만 세운다. `[2]` EH 사슬 용량은 판정 회로가 실재하나(`DecodeWalk.judge.capAbsent`) 최상위 포트 `io.dec.capAbsent` 로만 나가 이 워드에 닿지 않고 sticky 도 없다. `[3]` 연산 미지원은 세울 원천 자체가 0건이다. 둘 다 상수 0 (정본 E.1.3 · 3장 「아직 없는 것」 표). **fault 아님** — STATUS·SUMMARY 어느 쪽에도 들지 않는다 (§1.6.2) |
-| `0xF90` | CAP_CLEAR (WO, W1C) | 같은 비트 배치. **예약 구간이 아직 `[31:2]` 다** (`Fault.N_CAP_BITS = 2`) — 정본은 `[31:4]` 로 좁혔으므로 `[2]`·`[3]` 에 대한 적법한 W1C 기입이 오늘은 *거절 + loud* (`FAULT_STATUS[6]`)다. 읽기 쪽 결손(상수 0)보다 이쪽이 더 세다: 관측이 비는 것이 아니라 **적법한 기입이 오류로 보고된다** |
+| `0xF8C` | CAP_STATUS (RO) | 정본 축 **넷** 중 **셋**이 배선됐다 (2026-09-21 CAP_STATUS 파도, `host/CapStatusWord`) — `[0]` 재조립 슬롯 용량(sticky 는 Reassembly 안, 워드는 레벨 통과) · `[1]` step 프로그램 미상주 · `[2]` EH 사슬 용량(DecodeWalk 종결 등급을 `oValid` 로 유효 한정한 sticky — 쓰레기 헤더로 서지 않는다). `[3]` 연산 미지원은 세울 원천 자체가 0건이라 상수 0 (아래 「자리는 있고 회로는 없다」 표 · 정본 E.1.3). `[31:4]` = 0. **fault 아님** — STATUS·SUMMARY 어느 쪽에도 들지 않는다 (§1.6.2) |
+| `0xF90` | CAP_CLEAR (WO, W1C) | 같은 비트 배치. 예약 구간은 정본대로 `[31:4]` (`Fault.N_CAP_BITS = 4` 에서 유도, 컴포넌트의 자기 마스크와 elaborate 시점 `require` 로 대조). 예약 위반 기입은 **한 비트도 내리지 않고** 거절 + loud (`FAULT_STATUS[6]`) — 축 넷 전부의 적법한 W1C 가 수락된다. 발화와 해제가 같은 사이클이면 발화가 이긴다 (StickyFault 규약 승계). 후-formal: `rtl/formal/sby/CapStatusWord/capword.sby` (선-formal `CapWord.tla` 가드 넷) |
 
 `[6]`「거절된 구성 기입」이 세 원천을 접는다 — `MmioConfig.faultBadWrite` ·
 top 의 `cfgSurfBadWrite` · **완료 유닛의 새 `faultBadWrite`**. 상류
@@ -322,11 +322,13 @@ top 의 `cfgSurfBadWrite` · **완료 유닛의 새 `faultBadWrite`**. 상류
 명시하라는 §5.6 3항의 이행이다. `[16]` 링 오버플로의 해제도 이제 여기다 —
 완료 유닛은 `io.faultClearOverflow` 입력으로 그 펄스를 받는다.
 
-새 sticky 는 **하나**다 (`io.fault.fpCapAbsent`): StepSequencer 의
-`oCapAbsent` 는 종결 사이클 1펄스라 관측면이 놓칠 수 있는데, 정본 E.1.2 가
-「능력 부재도 관측이 sticky 여야 재시도 주체가 놓치지 않는다」고 정했다.
-원천 모듈이 sticky 를 갖지 않는 유일한 축이라 top 이 *대신 드는* 것이 아니라
-*새로 만드는* 것이다. 나머지 축 중 열일곱은 배치일 뿐 새 상태가 아니고,
+능력 부재 워드의 sticky `[1]`·`[2]`·`[3]` 은 `host/CapStatusWord` 가 든다
+(2026-09-21 파도 — 착지 당시엔 top 이 `[1]` 하나를 직접 들었다). StepSequencer
+의 `oCapAbsent` 도 DecodeWalk 의 `oCapAbsent` 도 종결 등급 1펄스/레벨이라
+관측면이 놓칠 수 있는데, 정본 E.1.2 가 「능력 부재도 관측이 sticky 여야
+재시도 주체가 놓치지 않는다」고 정했다. `[0]` 만 원천(Reassembly)이 자기
+sticky 를 들어 워드는 레벨을 통과시키고 수락된 W1C 를 그쪽 clear 로 돌려준다
+(이중 sticky 레이스 회피). fault 축 열일곱은 배치일 뿐 새 상태가 아니고,
 `[17]`·`[18]` 둘은 배치도 아니다 — 세울 원천 자체가 미착지라 상수 0 이다.
 
 ### 미측정 — 단언이 없는 계약 (§6.7 원칙 5)
@@ -346,6 +348,15 @@ top 의 `cfgSurfBadWrite` · **완료 유닛의 새 `faultBadWrite`**. 상류
 
 ⇒ Wt64Top 조립층 하네스가 착지하면 이 조항이 그 태스크의 속성이 된다.
 (같은 자리에 다른 미측정이 이미 있다 — 완료 구역·fault 표면의 오프셋 배타성.)
+
+**CAP_STATUS 워드의 top 결선 (2026-09-21).** 워드 자체의 행위(축별 sticky ·
+수락 W1C · 예약 엄격 · 발화 우선)는 `host/CapStatusWord` 의 후-formal 이 재지만,
+그 컴포넌트를 조립에 잇는 결선 셋 — 축 `[0]` 의 `clrAcc(0)` →
+`reasm.io.capAbsentClear`(이중 sticky 레이스 회피) · 축 `[2]` set 의 `oValid`
+유효 한정 · 축 `[3]` set = False — 은 `Wt64Top.sv` 를 읽는 태스크가 없어
+**미측정**이다. 오늘의 유일한 확인은 생성물 grep 이다 (`capSet_2 =
+(walk_io_oValid && walk_io_oCapAbsent)` · `reasm_io_capAbsentClear =
+(io_faultClear_reasmCap || capWord_io_clrAcc[0])` · `capSet_3 = 1'b0`).
 
 ### 자리는 있고 회로는 없다 (§3.9 등재 대상)
 
@@ -369,6 +380,7 @@ top 의 `cfgSurfBadWrite` · **완료 유닛의 새 `faultBadWrite`**. 상류
 | 미적중 관측 3워드 + 해제 | `0xE04`–`0xE10` | 미구현 | 미적중 sticky 는 HiuPipeline 에 있으나 top IO 로만 나가고, 정지한 요청의 VPN 배선은 0건 |
 | FAULT_STATUS `[17]` 엔트로피 | `0xF80[17]` | 미구현 | 비트 *자리*는 ABI 로 확정됐고 **세울 원천이** 없다 — 엔트로피원 유닛 자체가 재구현에 미착지다. 생성물에서 상수 0 (`faultWords_status[17] = 1'b0`). 해제 경로도 참조되지 않아 회로가 서지 않는다 |
 | FAULT_STATUS `[18]` 명령 디스크립터 | `0xF80[18]` | 미구현 | E.5.4 가 만든 새 원천 (모르는 kind · 예약 비0 · 부적법한 길이). 명령 링 소비자가 미착지라 세울 주체가 없다 — `[17]` 과 같은 부류·같은 처분이며 생성물에서 상수 0 (`faultWords_status[18] = 1'b0`) |
+| CAP_STATUS `[3]` 연산 미지원 | `0xF8C[3]` | 미구현 | 정본 E.1.2 가 1장 1.6.2 의 넷(EINSUM 패턴 · 순열 형태 · 브로드캐스트 · 축약)을 한 축에 접었는데 지원 여부를 판정하는 회로가 재구현에 0건이다. 워드 컴포넌트의 sticky 는 일반 계약이라 남아 있고 top 이 set 을 False 로 묶는다 — 생성물에서 `capSet_3 = 1'b0`. `[2]` 는 2026-09-21 파도가 배선해 이 표의 대상이 아니다 |
 | HIU_ABI_VERSION | `0xFFC` | 미구현 | 자리는 되살렸으나 **판 번호가 §3.10 합의 대상**이다 — 틀린 값을 내는 것이 값을 안 내는 것보다 나쁘다 |
 
 ### 워드 안의 예약 비트 — 엄격 (결정 A 와 같은 형태)
@@ -388,7 +400,7 @@ top 의 `cfgSurfBadWrite` · **완료 유닛의 새 `faultBadWrite`**. 상류
 | IRQ_MASK `0x324` | `[31:1]` | `0xFFFFFFFE` |
 | IRQ_CLEAR `0x328` | `[31:1]` | `0xFFFFFFFE` |
 | FAULT_CLEAR `0xF84` | `[31:19]` | `0xFFF80000` (E.5.4 의 `[18]` 신설 반영 — `Fault.N_BITS` 에서 유도) |
-| CAP_CLEAR `0xF90` | `[31:2]` | `0xFFFFFFFC` |
+| CAP_CLEAR `0xF90` | `[31:4]` | `0xFFFFFFF0` (`Fault.N_CAP_BITS = 4` 에서 유도 — 판정은 `host/CapStatusWord` 가 하고 top 은 `rsvBad` 를 `[6]` 에 합류시킨다) |
 
 앞 넷은 `top/Wt64Top.scala` 가, IRQ_MASK 는 **정규화에서 거절로 바뀌었다** —
 옛 착지는 `wdata & 1` 로 정규화해 저장했는데 정본 E.1.2 가 이 워드의
@@ -729,12 +741,13 @@ RTL 이 모델에 없는 결정을 했다. §6.3: 「그 결정을 모델로 돌
   `faultBadWrite`)이 `0xF80[6]` *에서만* 합류한다. 상류 관측면에서는 여전히
   접지 않으므로 진단은 원천별로 남는다. §5.6 3항의 「폴딩 여부는 신호마다
   명시」의 이 표면 몫이다.
-- **능력 부재 sticky 를 top 이 새로 하나 만든다** (`io.fault.fpCapAbsent`).
-  StepSequencer 의 `oCapAbsent` 만 종결 1펄스라 sticky 원천이 없었다. 정본
-  E.1.2 CAP_CLEAR 항의 「능력 부재도 관측이 sticky 여야 재시도 주체가 놓치지
-  않는다」가 근거다. ⇒ StepSequencer 가 자기 sticky 를 드는 편이 옳은지는
-  모델 환류 대상 (다른 축 중 열일곱은 원천 모듈이 든다 — `[17]`·`[18]` 은
-  원천 유닛 자체가 미착지라 드는 주체가 없다).
+- **능력 부재 sticky 는 워드 컴포넌트가 든다** (`host/CapStatusWord` —
+  `io.fault.fpCapAbsent`·`io.fault.ehCapAbsent` 는 그 워드의 `[1]`·`[2]`).
+  착지 당시엔 top 이 `[1]` 하나를 직접 만들었고 2026-09-21 CAP_STATUS 파도가
+  축 넷의 sticky·W1C·예약 엄격을 한 컴포넌트로 추출했다. 정본 E.1.2 CAP_CLEAR
+  항의 「능력 부재도 관측이 sticky 여야 재시도 주체가 놓치지 않는다」가 근거다.
+  `[0]` 만 원천(Reassembly)이 자기 sticky 를 든다 — `[17]`·`[18]` 은 원천
+  유닛 자체가 미착지라 드는 주체가 없다.
 - **HIU_ABI_VERSION 은 자리만 되살렸다.** 판 번호의 내부 필드 분할
   (major/minor 등)이 §3.10 합의 대상이라 값을 정하지 않았고, 정하지 않은 값을
   회로로 내면 드라이버가 그것을 진짜로 읽는다. 자리(`0xFFC`)와 「페이지
