@@ -487,8 +487,8 @@ case class MaskUnit(cfg: Wt64Config = Wt64Config()) extends Component {
   // (StickyFault 의 「발화가 해제를 이긴다」와 같은 방향 — 안전한 쪽 우선.)
   when(io.keyWr.valid) {
     key(io.keyWr.part)(io.keyWr.idx) := io.keyWr.data
-    // 키 변경은 **그 파티션만** 무효화한다 (정본 7fa5f2e, e-defined.typ:333
-    // "기입은 그 파티션의 마스크 유효를 즉시 떨어뜨린다" — E.9 4항 "다른
+    // 키 변경은 **그 파티션만** 무효화한다 (정본 7fa5f2e, e-defined.typ:339 「기입은 그 파티션의 마스크 유효를 즉시 떨어뜨린다」
+    // — E.9 4항 "다른
     // 파티션이 그 변경의 사정권 밖"). 옛 키 마스크와 새 키 마스크의 혼합
     // 금지는 그 파티션 안에서 성립하면 족하다 — 재키잉이 뒤따라야 한다.
     maskValid(io.keyWr.part) := False

@@ -4,7 +4,7 @@ description: (해소 2026-09-22) make rtl-sim Mask 2/8 실패는 하네스가 io
 metadata:
   type: project
   originSessionId: e7f99d7a-a6eb-46be-b7eb-fd78237e02a7
-  modified: 2026-09-22T01:42:22.436Z
+  modified: 2026-09-22T11:39:57.118Z
 ---
 
 **해소됨 (파도 C, 2026-09-22).** `make rtl-sim` 의 Mask 스위트 2/8 실패
@@ -43,18 +43,17 @@ Shape 6/6.
   (`test_shape_equiv.py` 는 `EXPECT_OUTPUTS` 핀으로 같은 구멍을 다른 방식으로
   막는다.)
 
-**이월(이 파도가 고치지 않은 것):**
-1. **FINAL 엣지 동시 기입 모서리** — 같은 파티션 키·논스 기입이 정확히
-   FINAL 엣지(수락+42)에 실리면 유효만 떨어지고 `faultWrDuringRekey` 는
-   서지 않는다(수락+40·+41 은 fault 1). 기전: `dirtyAtFinal := compDirty` 가
-   엣지 전 값(0)을 읽고 같은 엣지의 `compDirty := True` 는 다음 사이클에야
-   선다. 정본 계약 명시 또는 `dirtyAtFinal` 확장은 별도 파도(선-formal 부터).
-   하네스 머리 「재지 못하는 축」 8항에 등재.
-2. **`MaskUnit.scala:433` 의 낡은 정본 좌표** — `e-defined.typ:333` 을
-   「기입은 그 파티션의 마스크 유효를 즉시 떨어뜨린다」로 인용하는데 그
-   문장은 :339(키)·:343(논스)에 있다(정본 삽입이 밀었다). 따옴표가 다음 줄에
-   있어 R6 결속 밖이라 lint 가 침묵. 다음 RTL 파도에서 같은 줄 결속
-   `e-defined.typ:339 「…」` 로 재조준(주석만 — 생성물 불변).
+**이월 처분:**
+1. **FINAL 엣지 동시 기입 모서리 — 파도 D 로 해소** (commit `086fb27`,
+   2026-09-22): `MaskEngine.tla` → `dirtyNow = compDirty || wrActNow` →
+   `MaskUnit/engine.sby` + cocotb 오프셋 스윕. 이제 수락 뒤 busy 사이클
+   전부(FINAL 포함)의 같은-파티션 기입이 loud 다.
+2. **낡은 정본 좌표 `e-defined.typ:333`(실물 :339)** — `MaskUnit.scala`
+   와 `Mask.tla` 의 둘은 같은 줄 축자 결속으로 재조준했다(2026-09-22 후속
+   커밋). **`HiuMask_props.sv:890` 하나가 남았다** — 그 파일은
+   `hiumask.sby` 의 [files] 라 주석 한 글자에도 재스윕(bmc z3 약 50분)이
+   따라와서 다음 HiuMask 편집 때 함께 고친다. 따옴표가 다음 줄에 있어 lint
+   는 침묵한다(정의역 밖) — 잊지 말 것.
 
 관련: [[wt64v1-rtl-reimplementation]] · [[selftest-residency]] (주석은 호출이
 아니다 — 정의역은 기계가 닫는다) · [[differential-domain-trap]].

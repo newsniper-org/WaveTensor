@@ -659,7 +659,11 @@ AX1_UNMEASURED_HARD_MAX: dict[str, int] = {
     # 좌표를 인용 *앞* 요약(「…」) 관용구로 단다(위 HiuMask_props.sv 항목과
     # 같은 이유로 R6 결속 대상이 아니다). 새로 태어난 파일이므로 삭제 자리는
     # 없다.
-    "rtl/formal/tla/Mask.tla": 10,
+    # 2026-09-22 하강 10 → 9 — 정본 삽입(1126a38 계열)이 민 `e-defined.typ:333`
+    # 「기입은 그 파티션의 마스크 유효를 즉시 떨어뜨린다」 인용을 실물 :339 로
+    # 재조준하며 같은 줄 축자 결속으로 바꿨다(측정 인용으로 승격). 항목
+    # 제거는 상한도 같이 내린다.
+    "rtl/formal/tla/Mask.tla": 9,
     # 2026-09-22 하강 17 → 13 · 11 → 10 (파도 D — FINAL 엣지 같은-파티션 동시
     # 기입). RTL 편집(MaskUnit.scala 머리 GUARD-MAP 넷 + wrActNow/dirtyNow)이
     # 그 파일과 생성물 MaskUnit.sv 의 줄을 밀어 `README.md` 의 따옴표 없는
@@ -683,7 +687,12 @@ AX1_UNMEASURED_HARD_MAX: dict[str, int] = {
     # Top 을 고칠 때마다 미끄러지고 식별자는 배선이 살아 있는 한 유효하다.
     # 항목 제거는 래칫 상한도 같이 내린다 (R5 문면).
     "rtl/sim/test_shape_equiv.py": 13,
-    "rtl/spinal/src/main/scala/wt64/mask/MaskUnit.scala": 4,
+    # 2026-09-22 하강 4 → 3 — 키 기입 주석의 `e-defined.typ:333` 을 실물 :339
+    # 「기입은 …」 같은 줄 축자 결속으로 재조준(같은 줄 안 편집 — 줄 수·생성물
+    # 불변). 남은 셋 중 HiuMask_props.sv:890 의 같은 낡은 좌표는 그 파일이
+    # hiumask.sby 의 [files] 라 재스윕(bmc 50분)을 동반해 다음 HiuMask 편집
+    # 때 함께 고친다(파도 D 이월).
+    "rtl/spinal/src/main/scala/wt64/mask/MaskUnit.scala": 3,
     "rtl/spinal/src/main/scala/wt64/top/Wt64Top.scala": 2,
     # 2026-09-22 하강 7 → 6 (파도 D — FINAL 엣지 같은-파티션 동시 기입).
     # `HiuMask_props.sv` 의 따옴표 없는 `MaskUnit.scala:424` 를 파도 D 가

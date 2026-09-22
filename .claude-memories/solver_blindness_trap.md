@@ -43,3 +43,15 @@ z3 로 bmc 를 돌리면 **4/4 전부 TIMEOUT** 이다. 반례는 스텝 3에 �
 5. **도구가 없으면 그것도 실측이다.** cover 를 완주할 비트 수준 엔진이 이미지에 없었고(z3 9구성
    전수 DNF), 그 사실을 「PASS」로 위장하지 않고 이미지 증강(btormc 커밋 핀 소스 빌드)으로
    해소했다.
+
+**2026-09-22 재발 실측 (파도 D).** HiuMask 합성 태스크의 cover(depth 60)를
+z3(smtbmc)로 돌리자 증인 `w16_keywr_while_other_ready` 의 step 45 에서
+**5시간** 「waiting for solver」— CPU 99 % 라 웨지가 아니라 실제 계산이지만
+끝나지 않았다(파도 A 때는 같은 태스크가 1~2시간에 끝났고, RTL 에
+`wrActNow` 항이 더해지자 SAT 문제가 달라졌다). 같은 하네스·같은 깊이를
+`btor btormc` 는 **2 s** 에 18/18 도달. 처분: 태스크별 엔진 지정(`cover:
+btor btormc`, bmc·prove 는 z3 유지 — 재지 않은 것은 바꾸지 않았다),
+실측 표를 `.sby` 머리에 인라인. 교훈 둘 — ① cover 는 도달 가능성 문제라
+비트 수준 엔진이 압도적으로 유리하다(walk_decode·engine.sby 선례와 같다);
+② 웨지 컨테이너는 `podman rm -f`(SIGKILL) 로 죽여라 — `stop`(SIGTERM)은
+sby 만 죽이고 스윕 셸이 `emit … ERROR` 로 저장소 증거를 덮어쓴다.

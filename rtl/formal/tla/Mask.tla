@@ -209,7 +209,7 @@ Spec == Init /\ [][Next]_vars
 Prop_KeyScoped ==
     [][ \A q \in Parts : (q # winPart) => (key'[q] = key[q]) ]_vars
 
-\* e-defined.typ:333 "기입은 그 파티션의 마스크 유효를 즉시 떨어뜨린다" —
+\* e-defined.typ:339 「기입은 그 파티션의 마스크 유효를 즉시 떨어뜨린다」 —
 \* 그 파티션에 한정된다. *창을 거친 기입*(lastWinWrite' # NoPart 인 전이 —
 \* WriteKey 또는 WriteNonce) 이 아닌 파티션의 준비는 꺼지지 않는다.
 \*

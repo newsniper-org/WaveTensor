@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 4e29961e-988b-4f27-9ede-dfb9c81925bc
-  modified: 2026-09-22T01:43:39.855Z
+  modified: 2026-09-22T11:38:37.591Z
 ---
 
 2026-08-20 사용자 지시로 **WT64v1 RTL 전면 재구현**이 착수됐다. 사용자 확정
@@ -82,8 +82,21 @@ metadata:
   (2026-09-22). 하네스 결함(io_keyWr_part 미구동)이었고 RTL 은 옳았다 —
   [[mask-golden-sim-regression]]. 하네스가 파도 A 의 계약을 값 수준에서
   재는 지향 시험 둘을 얻었고 `boot()` 가 입력 포트 정의역을 기계로 대조한다.
-- **정본이 RTL 을 앞선 두 파도(A·B)와 그 회귀(C)가 모두 닫혔다.** 이후
-  파도의 완료 게이트: `make rtl-postformal` · `make lint` · `make rtl-lint`
-  · `rtl/formal/tla/run.sh`(컨테이너) · **`make rtl-sim` 전 스위트** ·
-  레거시 `make MOD=HIU`. 이월 후보: FINAL 엣지 동시 기입 모서리(선-formal
-  부터) · `MaskUnit.scala:433` 낡은 정본 좌표(주석만).
+- **파도 D — 재키잉 FINAL 엣지 동시 기입 모서리: 착지 완료**, commit
+  `086fb27` (2026-09-22). 관측 결손(유효 하강만 있고 fault 침묵)을 정본
+  §6.3 순서로 닫았다: `MaskEngine.tla`(엔진 창의 시간 축, Mask.tla 과
+  분업) → `dirtyNow = compDirty || wrActNow` → `MaskUnit/engine.sby`(단독
+  래퍼, 비트 수준 엔진 1 s, 변이 6종) + cocotb 오프셋 스윕. 세션 한도로
+  워크플로가 한 번 끊겼고 `resumeFromRunId` 로 재개했다(끊긴 에이전트의
+  산출물은 트리에 남아 있었다 — 재작성이 아니라 검증 모드로 프롬프트를
+  고쳐 재개). HiuMask 합성 태스크의 cover 가 z3 로 step 45 에서 5시간
+  웨지 → cover 엔진만 btormc 로(2 s) — [[solver-blindness-trap]].
+- **완료 게이트(파도 C 부터 확정)**: `make lint` · `make rtl-lint` ·
+  rtl-gen 결정성 · `rtl/formal/tla/run.sh`(컨테이너) · 후-formal 관련
+  태스크 재스윕 + `lint_postformal --require-fresh` stale 0 · **`make
+  rtl-sim` 전 스위트** · 고아 컨테이너 0. 이월: `MaskUnit.scala` 머리의
+  MaskEngine GUARD-MAP 블록 위치(Mask 절 꼬리 불릿 둘 사이에 끼어 있다 —
+  줄 이동은 인용 27건 재조준 + HiuMask bmc 50분 재스윕이라 미룸) · cocotb
+  의 수락 사이클(N=0) 같은-파티션 기입 점(후-formal W8 이 잰다) ·
+  `lint_guide_derived_tables` 에 `.tla` 편수 ↔ 부록 D 「모델 수」 대조
+  한 줄(지금은 기계 밖 — 문면에 분모를 적어 두었다).
