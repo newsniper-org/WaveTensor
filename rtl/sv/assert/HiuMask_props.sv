@@ -777,7 +777,8 @@ module MaskUnit_props (
   input wire [31:0] key_2_0,
   input wire [31:0] key_3_0,
   // 2026-09-16 — REKEY 완료 유효화 대상 (MaskUnit.scala actPart, PH_FINAL
-  // 완주 시 maskValid(actPart) := !compDirty 가 그 파티션을 *유효화*한다).
+  // 완주 시 MaskUnit.scala:481 「maskValid(actPart) := !dirtyNow」 가 그 파티션을
+  // *유효화*한다 — 파도 D 2026-09-22 에 `!compDirty` 에서 재조준·결속).
   // key_write_own_only 가 이 원인의 변화를 keyWr 원인과 혼동하지 않도록
   // 배제하는 데 쓴다 — 아래 해설.
   input wire [1:0]  actPart
@@ -828,7 +829,8 @@ module MaskUnit_props (
   // props_only.sv:793): DUT 의 `st(4) := key(target)(0)` 도 이 섀도우의
   // 기입도 둘 다 논블로킹이라 *그 에지 이전* 값을 읽는데, 검사가 *에지
   // 이후* 섀도우를 읽어 비교 시점이 어긋났다. MaskUnit.scala 의 compDirty
-  // 규율(":388-392" — 같은 사이클의 기입은 dirty 로 표시해 결과를
+  // 규율(MaskUnit.scala:501-502 「compDirty := True」 — 같은 사이클의 기입은
+  // dirty 로 표시해 결과를
   // 무효화한다, *st 자체를 새 값으로 바꾸지는 않는다*)과 같은 자리 — 이
   // 검사자도 "그 에지 이전 값" 을 DUT 와 같은 논블로킹 타이밍으로
   // 캡처해야 레이스가 아니라 실제 결함만 잡는다.
@@ -891,8 +893,12 @@ module MaskUnit_props (
       // 건너 그대로다 (재구현 착수 시점 결함 — 전 파티션 무효화 — 이
       // assert 가 정확히 그 형태를 잡는다: for 문 삭제 회귀 시 반례).
       // REKEY 완료(FINAL 완주)로 그 사이클 유효화되는 파티션은 keyWr 과
-      // 무관한 별개 원인이다(MaskUnit.scala:424 maskValid(actPart) :=
-      // !compDirty, PH_FINAL=3'd4 완주 다음 사이클). 실측(2026-09-16):
+      // 무관한 별개 원인이다(MaskUnit.scala:481 「maskValid(actPart) := !dirtyNow」,
+      // PH_FINAL=3'd4 완주 다음 사이클 — 파도 D 2026-09-22 에 `!compDirty`
+      // 에서 재조준·결속). 같은 파티션 겹침(FINAL 사이클의 actPart 기입)은
+      // 아래 배제 조건이 keyWr.part != k 일 때만 걸리므로 여기서 관측되지
+      // 않는다 — 그 모서리는 rtl/formal/sby/MaskUnit/engine.sby 가 잰다.
+      // 실측(2026-09-16):
       // 이 배제 없이는 induction 이 UNKNOWN — keyWr(p) 와 REKEY(q) 완료가
       // 같은 사이클에 겹치면 q 의 maskReady 상승이 「keyWr 전용 assert」의
       // 위반으로 오판됐다(spurious — RTL 결함 아님, actPart 는 REKEY 시작

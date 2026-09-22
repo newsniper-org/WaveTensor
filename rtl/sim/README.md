@@ -47,13 +47,15 @@ make rtl-sim WT_SIM_BUILD=/tmp/wtsim      # 빌드 자리 고정 (기본은 mkdt
 ## 실행 결과 (2026-09-22, 호스트)
 
 ```
-Mask:  10 tests passed (skip 0, 하한 10)
+Mask:  11 tests passed (skip 0, 하한 11)
 Shape:  6 tests passed (skip 0, 하한 6)
-run_wt64: 요청 스위트 2건 / cocotb 테스트 16건 전부 통과
+run_wt64: 요청 스위트 2건 / cocotb 테스트 17건 전부 통과
 ```
 
 (직전 기준선 2026-08-28: Mask 8 · Shape 6 · 총 14. 2026-09-22 에 Mask 가
-8 → 10 — 임대별 키 파도의 값 수준 지향 시험 둘. 그 사이 2026-09-20 RTL
+8 → 10 — 임대별 키 파도의 값 수준 지향 시험 둘 — 그리고 같은 날 파도 D 에서
+10 → 11 — FINAL 엣지 같은-파티션 동시 기입 지향 시험
+`wr_same_partition_at_final_edge_is_loud`. 그 사이 2026-09-20 RTL
 `ca3c496` 이 Mask 스위트를 **2/8 FAIL** 로 깨뜨린 채 커밋됐다 — 아래
 「함정 ⑥」.)
 
@@ -87,12 +89,12 @@ io_rsp_frame  ==  io_req_frame ^ (mask64 >> 12) & 0xFFFFFFFF
 
 `mask64[43:12]` 는 E.9 3항의 적용 슬라이스이고 (`PA_W=44` · `PAGE_W=12` ·
 `FRAME_W=32`, `XlateStore.scala:60-70`), RTL 은 64비트 마스크를 레지스터에
-두지 않고 그 32비트만 상수 분해로 만든다 (`MaskUnit.scala:398-426`, 생성물
-`MaskUnit.sv:302-305` 에서 상수 셋 대조 확인).
+두지 않고 그 32비트만 상수 분해로 만든다 (`MaskUnit.scala:443-483` 「is(PH_FINAL) {」
+이하, 생성물 `MaskUnit.sv:304-307` 「st_1[11 : 0] + 12'h46e」 에서 상수 셋 대조 확인).
 
 **`!=`·popcount·통계형 확산 검사가 한 곳도 없다.** 정본 §5.2.4 가 이름한
 「확산은 세어서 확인할 수 없다 — **틀린 값도 다르다**」의 수신인이 이
-파일이고 (`MaskUnit.scala:95-100` 이 명시한다), 있는 것은 golden 값과의
+파일이고 (`MaskUnit.scala:125-130` 「확산 검사는 구현하지 않는다」 가 명시한다), 있는 것은 golden 값과의
 등가 비교 하나뿐이다. `nonce_tail`·`key_word` 가족의 「검출기」 성격은
 *그 벡터가 폐기 알고리즘을 골라내도록 golden 이 구성됐다*는 뜻이지
 하네스가 통계를 잰다는 뜻이 아니다.
@@ -125,6 +127,28 @@ fault 는 `io_fault*` **실포트로만** 관측한다 — 시뮬 전용 단언�
 
 M4 가 말하는 것: 기존 아홉은 「다른 파티션 기입은 사정권 밖」을 한 번도 재지
 않았다. 지향 시험 하나가 그 축의 유일한 그물이다.
+
+**FINAL 엣지의 같은-파티션 동시 기입** (파도 D, 2026-09-22) — 수락 엣지 기준
+오프셋 40·41·42·43·44 의 활성 파티션 키 기입(+ 논스 idx 5 · 예약 idx 6 음성
+대조)을 케이스마다 새 재키잉으로 재고 `io_faultWrDuringRekey == busy_seen`
+(기입 **직전** `io_busy` 표본)을 등가로 단언한다 —
+`wr_same_partition_at_final_edge_is_loud`. 「재키잉 중」의 정의역은 장치
+자신의 관측 busy=1 이고 FAULT_STATUS `[13]` 에 시점 예외가 없다(정본 E.1.2
+표 · E.9). 파도 D 이전 판(1666c7a)은 N=42(FINAL 사이클)에서 유효만
+떨어뜨리고 fault 가 침묵했다 — 음성 실측 (2026-09-22, `git worktree` 사본
+`1666c7a` 의 생성물 `rtl/generated/MaskUnit.sv` 에 이 하네스를 그대로 돌림):
+`wr_same_partition_at_final_edge_is_loud` **만** 죽고(`[key N=42]
+io_faultWrDuringRekey=0 ≠ busy_seen=1` — N=40·41 은 통과한 뒤) 나머지 열은
+통과, 10/11. 파도 D 의 생성물에서는 11/11 이고 표는
+`[(40,1),(41,1),(42,1),(43,0),(44,0)]`. RTL 의 수리는 FINAL 가지가
+같은 사이클 항 `wrActNow` 를 직접 보는 것 하나다
+(`MaskUnit.scala:473` 「val dirtyNow = compDirty || wrActNow」); 같은 모서리의
+후-formal 은 `rtl/formal/sby/MaskUnit/engine.sby` (D3) 다. 같은 시험이 N=42 에
+**타 파티션** 키 기입도 재서 같은-사이클 항이 활성 파티션 한정임을 등가로
+단언한다 — `(busy_seen, fault, maskReady[p], maskReady[q]) == (1, 0, 1, 0)` +
+p 의 값 golden. 변이 실측 mutScope(사본 생성물에서 `wrActNow` 의 파티션 비교를
+뗌): 이 케이스 하나만 죽고 나머지 전부 통과 — 그 케이스가 없던 동안 그 축은
+오라클에 점이 없었다(RTL 반증 검토가 찾아 파도 안에서 닫았다).
 
 ### `Shape` — `test_shape_equiv.py` (DUT `Wt64Top.sv`)
 
@@ -169,7 +193,7 @@ ISA-2 사상 경유(존재 축) · ISA-1 자리 무관성 · 구성 표면 무�
 | 2 | **ISA-1 두-형상 대조 (nPoints 4 ↔ 2)** | 형상 B 생성기 부재 — 아래 별항 |
 | 3 | ISA-2 **자리 축** (LNID 소유 지점 `[23:16]` · LBID 슬롯 구간 `[15:0]` 순열) | 관측면 부재 — `RouteJudge.scala:145` 는 `!viewHit` 뿐이고 지점별 소유를 구조적으로 모른다. 구간값 소비자 `Reassembly.wr → ResultBank.write` 는 미배선 (`Wt64Top.scala:81-83`) |
 | 4 | fp32 산술 정확성 (`golden_fp32` 비트 일치) | `StepSequencer.scala:425-426` 이 `UInt` 정수곱·정수합 — 산술은 축 (b) 후속 |
-| 5 | `mask64` 의 32비트 (`[63:44]`·`[11:0]`) | `MaskUnit.scala:255-262` — 레지스터도 배선도 없다. **비교 불가가 아니라 비교 대상 부재** |
+| 5 | `mask64` 의 32비트 (`[63:44]`·`[11:0]`) | `MaskUnit.scala:289-296` 「저장은 적용 비트만」 — 레지스터도 배선도 없다. **비교 불가가 아니라 비교 대상 부재** |
 | 6 | `SUBKEY`(256b)·`BLOCK`(512b) 를 통한 부분 수리 검출 | 내는 포트가 없다. `st_0..st_15` 의 계층 peek 은 포트 계약이 아니라 SpinalHDL 명명의 우연이라 통과 기준으로 쓰지 않는다 |
 | 7 | `FAULT_STATUS[17]`·`[18]` | `Wt64Top.sv:1491-1492` 상수 0 — 원천 부재. **0 을 「정상」으로 읽으면 안 된다** |
 | 8 | `SharedUnit`·`MemOrderGate` 독립 `.sv` 의 top 대표성 | 형상 불일치 — 독립본 16비트 vs top 인스턴스 161/128비트 |

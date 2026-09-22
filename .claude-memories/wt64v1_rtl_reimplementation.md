@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 4e29961e-988b-4f27-9ede-dfb9c81925bc
-  modified: 2026-09-21T13:05:38.362Z
+  modified: 2026-09-22T01:43:39.855Z
 ---
 
 2026-08-20 사용자 지시로 **WT64v1 RTL 전면 재구현**이 착수됐다. 사용자 확정
@@ -78,7 +78,12 @@ metadata:
   후-formal `capword.sby`(변이 7종 전부 FAIL 실측). 축 [0] 은 상류 sticky
   라 레벨 통과(이중 sticky 레이스), [2] 는 `oValid` 한정, [3] 상수 0.
   워크플로는 동시 ≤3 에이전트로 9개, 74분 — [[agent-concurrency-cap]].
-- **정본이 RTL 을 앞선 두 파도(A·B)가 모두 닫혔다.** 다음 후보:
-  [[mask-golden-sim-regression]] (`make rtl-sim` Mask 2/8 선재 실패 —
-  파도 A 의 게이트에 rtl-sim 이 없어 실린 회귀; RTL 결함인지 하네스
-  결함인지 미판정). 파도 게이트에 `make rtl-sim` 전 스위트를 넣을 것.
+- **파도 C — Mask cocotb 골든 회귀: 해소**, commit `1666c7a`
+  (2026-09-22). 하네스 결함(io_keyWr_part 미구동)이었고 RTL 은 옳았다 —
+  [[mask-golden-sim-regression]]. 하네스가 파도 A 의 계약을 값 수준에서
+  재는 지향 시험 둘을 얻었고 `boot()` 가 입력 포트 정의역을 기계로 대조한다.
+- **정본이 RTL 을 앞선 두 파도(A·B)와 그 회귀(C)가 모두 닫혔다.** 이후
+  파도의 완료 게이트: `make rtl-postformal` · `make lint` · `make rtl-lint`
+  · `rtl/formal/tla/run.sh`(컨테이너) · **`make rtl-sim` 전 스위트** ·
+  레거시 `make MOD=HIU`. 이월 후보: FINAL 엣지 동시 기입 모서리(선-formal
+  부터) · `MaskUnit.scala:433` 낡은 정본 좌표(주석만).

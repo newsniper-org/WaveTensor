@@ -660,8 +660,15 @@ AX1_UNMEASURED_HARD_MAX: dict[str, int] = {
     # 같은 이유로 R6 결속 대상이 아니다). 새로 태어난 파일이므로 삭제 자리는
     # 없다.
     "rtl/formal/tla/Mask.tla": 10,
-    "rtl/sim/README.md": 17,
-    "rtl/sim/run_wt64.py": 11,
+    # 2026-09-22 하강 17 → 13 · 11 → 10 (파도 D — FINAL 엣지 같은-파티션 동시
+    # 기입). RTL 편집(MaskUnit.scala 머리 GUARD-MAP 넷 + wrActNow/dirtyNow)이
+    # 그 파일과 생성물 MaskUnit.sv 의 줄을 밀어 `README.md` 의 따옴표 없는
+    # 좌표 넷(`MaskUnit.scala:398-426`·:95-100·:255-262 · `MaskUnit.sv:302-305`)
+    # 과 `run_wt64.py` 의 하나(`MaskUnit.scala:255-262`)를 재조준하면서 전부
+    # 같은 줄 축자 「…」 결속으로 바꿨다 — 다음 편집이 줄을 밀면 R3 STALE 로
+    # 지목된다. 항목 제거는 래칫 상한도 같이 내린다 (R5 문면).
+    "rtl/sim/README.md": 13,
+    "rtl/sim/run_wt64.py": 10,
     # 2026-09-22 하강 14 → 0 (파도 C — Mask cocotb 골든 회귀 수리, RTL ca3c496
     # 「임대별 마스크 키」가 밀어낸 좌표를 재조준). `test_mask_golden.py` 의
     # 따옴표 없는 좌표 14건은 **전부 낡아 있었다** — 파도 A 가 MaskUnit.scala
@@ -678,7 +685,12 @@ AX1_UNMEASURED_HARD_MAX: dict[str, int] = {
     "rtl/sim/test_shape_equiv.py": 13,
     "rtl/spinal/src/main/scala/wt64/mask/MaskUnit.scala": 4,
     "rtl/spinal/src/main/scala/wt64/top/Wt64Top.scala": 2,
-    "rtl/sv/assert/HiuMask_props.sv": 7,
+    # 2026-09-22 하강 7 → 6 (파도 D — FINAL 엣지 같은-파티션 동시 기입).
+    # `HiuMask_props.sv` 의 따옴표 없는 `MaskUnit.scala:424` 를 파도 D 가
+    # `MaskUnit.scala:481` 「maskValid(actPart) := !dirtyNow」 로 재조준·결속했다
+    # (위 2026-09-20 원장의 :424 는 그날의 기록이라 손대지 않는다). 항목 제거는
+    # 래칫 상한도 같이 내린다 (R5 문면).
+    "rtl/sv/assert/HiuMask_props.sv": 6,
     "rtl/sv/assert/Reassembly_props.sv": 4,
 }
 # ── 축 2 표의 **세 번째 기준선** (2026-08-30 세 번째 파도) ────────────────

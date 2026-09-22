@@ -99,12 +99,19 @@ ENFORCED = [
     "Payload",
     "MemOrder",
     "Platform",
+    # 파도 D (2026-09-22, 검토자 지적) — 셋 다 RTL 이 이미 착지해 GUARD-MAP 이
+    # 전수인데 목록 밖이라 「검사 대상 아님」으로 남아 있었다: Mask 는 임대별
+    # 마스크 키 파도(ca3c496), CapWord 는 CAP_STATUS 축 둘→넷 파도(ac63902),
+    # MaskEngine 은 파도 D(FINAL 엣지 동시 기입 — 엔진 창의 시간 축) 착지.
+    "Mask",
+    "CapWord",
+    "MaskEngine",
 ]
 # 미착지: NoLoss — 기계 전체 회계는 모듈이 아니라 합성 속성이다. RTL 대응물은
 # 후-formal 이 조합 위에서 검사한다 (모듈 단위 GUARD-MAP 강제 부적합).
 # 이 판단이 틀렸다고 판명되면 목록에 올리고 사유를 갱신하라.
 
-_MIN_ENFORCED = 11  # 래칫 바닥 — 이 수 아래로 줄이는 편집은 실패한다
+_MIN_ENFORCED = 14  # 래칫 바닥 — 이 수 아래로 줄이는 편집은 실패한다
 
 # 구조 skip 건수 래칫 — **상한**이다 (늘면 실패). 방향이 위 래칫과 반대인 것에
 # 주의하라. STRUCTURAL 은 CHECK 분모를 비우는 방향이므로 늘리는 일은 반드시

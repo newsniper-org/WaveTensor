@@ -262,12 +262,15 @@ module MaskUnit (
   wire       [191:0]  reqNonce;
   wire                nonceDup;
   wire                nonceDupFire;
+  wire                nonceWrHit;
+  wire                wrActNow;
   reg                 dirtyAtFinal;
   wire       [3:0]    _zz_1;
-  wire                when_MaskUnit_l361;
-  wire                when_MaskUnit_l394;
+  wire                when_MaskUnit_l406;
+  wire                when_MaskUnit_l439;
   wire       [3:0]    _zz_2;
   wire       [31:0]   _zz_maskFrame_0;
+  wire                _zz_dirtyAtFinal;
   wire       [3:0]    _zz_3;
   wire                _zz_maskValid_0;
   wire       [3:0]    _zz_4;
@@ -277,21 +280,20 @@ module MaskUnit (
   wire                _zz_8;
   wire       [7:0]    _zz_9;
   wire       [3:0]    _zz_10;
-  wire                when_MaskUnit_l445;
-  wire                nonceWrHit;
-  wire                when_MaskUnit_l453;
+  wire                when_MaskUnit_l502;
+  wire                when_MaskUnit_l510;
   wire       [3:0]    _zz_11;
   wire                _zz_12;
   wire                _zz_13;
   wire                _zz_14;
   wire                _zz_15;
-  wire                when_MaskUnit_l453_1;
-  wire                when_MaskUnit_l453_2;
-  wire                when_MaskUnit_l453_3;
-  wire                when_MaskUnit_l453_4;
-  wire                when_MaskUnit_l453_5;
+  wire                when_MaskUnit_l510_1;
+  wire                when_MaskUnit_l510_2;
+  wire                when_MaskUnit_l510_3;
+  wire                when_MaskUnit_l510_4;
+  wire                when_MaskUnit_l510_5;
   wire       [3:0]    _zz_16;
-  wire                when_MaskUnit_l460;
+  wire                when_MaskUnit_l517;
   reg                 rValid;
   reg        [31:0]   rFrame;
   wire                noMaskFire;
@@ -530,11 +532,13 @@ module MaskUnit (
   assign reqNonce = _zz_reqNonce;
   assign nonceDup = (((((maskValid_0 && _zz_nonceDup) && (nonceFlat_0 == reqNonce)) || ((maskValid_1 && _zz_nonceDup_1) && (nonceFlat_1 == reqNonce))) || ((maskValid_2 && (_zz_nonceDup_2 != io_rekey_part)) && (nonceFlat_2 == reqNonce))) || ((maskValid_3 && (2'b11 != io_rekey_part)) && (nonceFlat_3 == reqNonce)));
   assign nonceDupFire = (rekeyFire && nonceDup);
+  assign nonceWrHit = (io_nonceWr_valid && (io_nonceWr_idx < 3'b110));
+  assign wrActNow = ((io_keyWr_valid && (io_keyWr_part == actPart)) || (nonceWrHit && (io_nonceWr_part == actPart)));
   always @(*) begin
     dirtyAtFinal = 1'b0;
     case(phase)
       3'b100 : begin
-        dirtyAtFinal = compDirty;
+        dirtyAtFinal = _zz_dirtyAtFinal;
       end
       default : begin
       end
@@ -542,12 +546,13 @@ module MaskUnit (
   end
 
   assign _zz_1 = ({3'd0,1'b1} <<< io_rekey_part);
-  assign when_MaskUnit_l361 = (cnt == 5'h13);
-  assign when_MaskUnit_l394 = (cnt == 5'h13);
+  assign when_MaskUnit_l406 = (cnt == 5'h13);
+  assign when_MaskUnit_l439 = (cnt == 5'h13);
   assign _zz_2 = ({3'd0,1'b1} <<< actPart);
   assign _zz_maskFrame_0 = {_zz__zz_maskFrame_0,_zz__zz_maskFrame_0_1};
+  assign _zz_dirtyAtFinal = (compDirty || wrActNow);
   assign _zz_3 = ({3'd0,1'b1} <<< actPart);
-  assign _zz_maskValid_0 = (! compDirty);
+  assign _zz_maskValid_0 = (! _zz_dirtyAtFinal);
   assign _zz_4 = ({3'd0,1'b1} <<< io_keyWr_part);
   assign _zz_5 = _zz_4[0];
   assign _zz_6 = _zz_4[1];
@@ -555,21 +560,20 @@ module MaskUnit (
   assign _zz_8 = _zz_4[3];
   assign _zz_9 = ({7'd0,1'b1} <<< io_keyWr_idx);
   assign _zz_10 = ({3'd0,1'b1} <<< io_keyWr_part);
-  assign when_MaskUnit_l445 = ((engineBusy && (io_keyWr_part == actPart)) || (rekeyFire && (io_keyWr_part == io_rekey_part)));
-  assign nonceWrHit = (io_nonceWr_valid && (io_nonceWr_idx < 3'b110));
-  assign when_MaskUnit_l453 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b000));
+  assign when_MaskUnit_l502 = ((engineBusy && (io_keyWr_part == actPart)) || (rekeyFire && (io_keyWr_part == io_rekey_part)));
+  assign when_MaskUnit_l510 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b000));
   assign _zz_11 = ({3'd0,1'b1} <<< io_nonceWr_part);
   assign _zz_12 = _zz_11[0];
   assign _zz_13 = _zz_11[1];
   assign _zz_14 = _zz_11[2];
   assign _zz_15 = _zz_11[3];
-  assign when_MaskUnit_l453_1 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b001));
-  assign when_MaskUnit_l453_2 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b010));
-  assign when_MaskUnit_l453_3 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b011));
-  assign when_MaskUnit_l453_4 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b100));
-  assign when_MaskUnit_l453_5 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b101));
+  assign when_MaskUnit_l510_1 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b001));
+  assign when_MaskUnit_l510_2 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b010));
+  assign when_MaskUnit_l510_3 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b011));
+  assign when_MaskUnit_l510_4 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b100));
+  assign when_MaskUnit_l510_5 = (io_nonceWr_valid && (io_nonceWr_idx == 3'b101));
   assign _zz_16 = ({3'd0,1'b1} <<< io_nonceWr_part);
-  assign when_MaskUnit_l460 = ((engineBusy && (io_nonceWr_part == actPart)) || (rekeyFire && (io_nonceWr_part == io_rekey_part)));
+  assign when_MaskUnit_l517 = ((engineBusy && (io_nonceWr_part == actPart)) || (rekeyFire && (io_nonceWr_part == io_rekey_part)));
   assign io_maskReady = {maskValid_3,{maskValid_2,{maskValid_1,maskValid_0}}};
   assign io_rsp_valid = rValid;
   assign io_rsp_frame = rFrame;
@@ -724,7 +728,7 @@ module MaskUnit (
           st_14 <= roundNext_14;
           st_15 <= roundNext_15;
           cnt <= (cnt + 5'h01);
-          if(when_MaskUnit_l361) begin
+          if(when_MaskUnit_l406) begin
             phase <= 3'b010;
             cnt <= 5'h0;
           end
@@ -766,7 +770,7 @@ module MaskUnit (
           st_14 <= roundNext_14;
           st_15 <= roundNext_15;
           cnt <= (cnt + 5'h01);
-          if(when_MaskUnit_l394) begin
+          if(when_MaskUnit_l439) begin
             phase <= 3'b100;
           end
         end
@@ -925,11 +929,11 @@ module MaskUnit (
         if(_zz_10[3]) begin
           maskValid_3 <= 1'b0;
         end
-        if(when_MaskUnit_l445) begin
+        if(when_MaskUnit_l502) begin
           compDirty <= 1'b1;
         end
       end
-      if(when_MaskUnit_l453) begin
+      if(when_MaskUnit_l510) begin
         if(_zz_12) begin
           nonce_0_0 <= io_nonceWr_data;
         end
@@ -943,7 +947,7 @@ module MaskUnit (
           nonce_3_0 <= io_nonceWr_data;
         end
       end
-      if(when_MaskUnit_l453_1) begin
+      if(when_MaskUnit_l510_1) begin
         if(_zz_12) begin
           nonce_0_1 <= io_nonceWr_data;
         end
@@ -957,7 +961,7 @@ module MaskUnit (
           nonce_3_1 <= io_nonceWr_data;
         end
       end
-      if(when_MaskUnit_l453_2) begin
+      if(when_MaskUnit_l510_2) begin
         if(_zz_12) begin
           nonce_0_2 <= io_nonceWr_data;
         end
@@ -971,7 +975,7 @@ module MaskUnit (
           nonce_3_2 <= io_nonceWr_data;
         end
       end
-      if(when_MaskUnit_l453_3) begin
+      if(when_MaskUnit_l510_3) begin
         if(_zz_12) begin
           nonce_0_3 <= io_nonceWr_data;
         end
@@ -985,7 +989,7 @@ module MaskUnit (
           nonce_3_3 <= io_nonceWr_data;
         end
       end
-      if(when_MaskUnit_l453_4) begin
+      if(when_MaskUnit_l510_4) begin
         if(_zz_12) begin
           nonce_0_4 <= io_nonceWr_data;
         end
@@ -999,7 +1003,7 @@ module MaskUnit (
           nonce_3_4 <= io_nonceWr_data;
         end
       end
-      if(when_MaskUnit_l453_5) begin
+      if(when_MaskUnit_l510_5) begin
         if(_zz_12) begin
           nonce_0_5 <= io_nonceWr_data;
         end
@@ -1026,7 +1030,7 @@ module MaskUnit (
         if(_zz_16[3]) begin
           maskValid_3 <= 1'b0;
         end
-        if(when_MaskUnit_l460) begin
+        if(when_MaskUnit_l517) begin
           compDirty <= 1'b1;
         end
       end

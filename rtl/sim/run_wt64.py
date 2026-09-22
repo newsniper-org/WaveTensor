@@ -103,7 +103,9 @@ SUITES = {
         # 2026-09-22 8 → 10: 임대별 키(정본 7fa5f2e · RTL ca3c496)의 값 수준
         # 지향 시험 둘(key_scope_cross_partition_value ·
         # wr_other_partition_during_rekey_is_clean) 신설. 하한이지 계수가 아니다.
-        "expect_min": 10,
+        # 2026-09-22 10 → 11: 파도 D — FINAL 엣지 같은-파티션 동시 기입 지향
+        # 시험(wr_same_partition_at_final_edge_is_loud) 신설.
+        "expect_min": 11,
         "what": "SEC-1 golden 정확 대조 (mask64[43:12] 사영) + fault 3축 + 고정 지연 "
                 "+ 임대별 키 범위(값)",
     },
@@ -212,7 +214,7 @@ UNMEASURED = [
     ("fp32 산술 정확성 (golden_fp32 비트 일치)",
      "StepSequencer.scala:425-426 이 UInt 정수곱·정수합 — 산술은 축 (b) 후속"),
     ("mask64 의 32비트 ([63:44]·[11:0])",
-     "MaskUnit.scala:255-262 가 적용 슬라이스만 물질화 — 레지스터도 배선도 없다. "
+     "MaskUnit.scala:289-296 「저장은 적용 비트만」 — 적용 슬라이스만 물질화, 레지스터도 배선도 없다. "
      "비교 불가가 아니라 비교 대상 부재"),
     ("SUBKEY(256b)·BLOCK(512b) 필드를 통한 부분 수리 검출",
      "재구현 MaskUnit 에 부표준키·블록 워드를 내는 포트가 없다 — 계층 peek 은 "

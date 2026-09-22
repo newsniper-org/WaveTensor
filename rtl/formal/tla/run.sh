@@ -217,6 +217,38 @@ expect_fail "증인: 예약 위반 거절이 실재하는가"      CapWord_witne
 expect_fail "증인: 같은 축 사건+해제 겹침이 실재하는가" CapWord_witness_NoSimultaneous.cfg "$M" Witness_NoSimultaneous
 
 # ---------------------------------------------------------------------------
+# MaskUnit 재키잉 엔진 창의 시간 축 — FINAL 엣지 동시 기입 모서리 (파도 D,
+# 2026-09-22: e-defined.typ:518 「재키잉 중 입력 기입」 = FAULT_STATUS [13] ·
+# e-defined.typ:347 「`[8]` 엔진 busy · `[9]` 재키잉 수락 가능」 ·
+# 05-security.typ:384 「소실도 loud 여야 한다」)
+#
+# Mask.tla(위)은 「어느 파티션」, 이 모델은 「언제」 — E.9 4항의 두 면이다.
+# 파도 D 이전 판(1666c7a)의 RTL 은 활성 파티션 기입이 정확히 FINAL 사이클
+# (busy=1 · ready=0)에 실리면 compDirty 레지스터가 다음 사이클에야 서서
+# dirtyAtFinal 이 0 을 읽었다 — 유효는 텍스트 순서로 떨어지는데 fault 가
+# 침묵했다(관측 결손, 안전 결손 아님). dirty_loud 삭제가 그 판과 동형이고
+# Prop_MixLoud 가 반례를 낸다. 파도 D 의 RTL 은 같은 사이클 항을 직접 본다.
+# busy 는 추상 한 상태다 — 42사이클·라운드·값은 재지 않는다 (모델 머리말).
+# ---------------------------------------------------------------------------
+M=MaskEngine.tla
+expect_pass "엔진 창 시간 축 좋은 모델 (파티션 2)"  MaskEngine.cfg       "$M"
+expect_pass "엔진 창 시간 축 좋은 모델 (파티션 3)"  MaskEngine_large.cfg "$M"
+
+expect_fail "가드 삭제: dirty_scoped (타 파티션 기입도 오염)" \
+            MaskEngine_del_dirty_scoped.cfg "$M" Prop_DirtyScoped
+expect_fail "가드 삭제: dirty_no_validate (오염 완료가 유효화)" \
+            MaskEngine_del_dirty_no_validate.cfg "$M" Prop_DirtyNoValidate
+expect_fail "가드 삭제: dirty_loud (FINAL 엣지 기입에 fault 침묵)" \
+            MaskEngine_del_dirty_loud.cfg "$M" Prop_MixLoud
+expect_fail "가드 삭제: invalidate_beats_validate (유효화가 이김)" \
+            MaskEngine_del_invalidate_beats_validate.cfg "$M" Prop_InvalidateBeatsValidate
+
+expect_fail "증인: 완료+target 기입 겹침이 실재하는가"   MaskEngine_witness_NoOverlap.cfg        "$M" Witness_NoOverlap
+expect_fail "증인: 오염 완료가 실재하는가"               MaskEngine_witness_NoDirtyComplete.cfg  "$M" Witness_NoDirtyComplete
+expect_fail "증인: 깨끗한 완료의 유효화가 실재하는가"     MaskEngine_witness_NoCleanComplete.cfg  "$M" Witness_NoCleanComplete
+expect_fail "증인: busy 중 타 파티션 기입이 실재하는가"   MaskEngine_witness_NoOtherWriteBusy.cfg "$M" Witness_NoOtherWriteBusy
+
+# ---------------------------------------------------------------------------
 # ISA-3 · ISA-4 — route fault 의 판정 주체와 범위 (부록 D.5 우선순위 4번)
 #
 # 앞의 셋과 성격이 다르다. 이미 일어난 결함이 아니라 **일어나면 설계를

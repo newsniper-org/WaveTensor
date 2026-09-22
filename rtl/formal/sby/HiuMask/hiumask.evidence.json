@@ -13,36 +13,36 @@
     "Mask.key_scoped_storage",
     "Mask.rekey_idle_only"
   ],
-  "at": "2026-09-20T13:38:54Z",
+  "at": "2026-09-22T11:14:56Z",
   "cover": {
     "reached": 18,
     "reached_names": [
-      "HiuMask_comp.u_mask.u_mask_props.w16_keywr_while_other_ready",
-      "HiuMask_comp.u_mask.u_mask_props.w17_rekey_fires",
-      "HiuMask_comp.u_mask.u_mask_props.w18_rekey_busy_reject",
-      "HiuMask_comp.u_mask.u_mask_props.w7_mask_roundtrip",
-      "HiuMask_comp.u_mask.u_mask_props.w8_mask_frozen_loaded",
-      "HiuMask_comp.u_pipe.u_hiu_props.w10_host_leg_inert",
-      "HiuMask_comp.u_pipe.u_hiu_props.w11_replace_reached",
-      "HiuMask_comp.u_pipe.u_hiu_props.w12_replace_completes",
-      "HiuMask_comp.u_pipe.u_hiu_props.w13_nonowner_loud",
-      "HiuMask_comp.u_pipe.u_hiu_props.w14_fault_rise",
-      "HiuMask_comp.u_pipe.u_hiu_props.w15_fault_clear",
-      "HiuMask_comp.u_pipe.u_hiu_props.w1_rsp",
-      "HiuMask_comp.u_pipe.u_hiu_props.w2_two_inflight",
-      "HiuMask_comp.u_pipe.u_hiu_props.w3_hold_loaded",
-      "HiuMask_comp.u_pipe.u_hiu_props.w4_misswait_stall",
-      "HiuMask_comp.u_pipe.u_hiu_props.w5_granted_nonzero",
-      "HiuMask_comp.u_pipe.u_hiu_props.w6_denied_zero",
-      "HiuMask_comp.u_pipe.u_hiu_props.w9_leg_clash"
+      "u_mask.u_mask_props.w16_keywr_while_other_ready",
+      "u_mask.u_mask_props.w17_rekey_fires",
+      "u_mask.u_mask_props.w18_rekey_busy_reject",
+      "u_mask.u_mask_props.w7_mask_roundtrip",
+      "u_mask.u_mask_props.w8_mask_frozen_loaded",
+      "u_pipe.u_hiu_props.w10_host_leg_inert",
+      "u_pipe.u_hiu_props.w11_replace_reached",
+      "u_pipe.u_hiu_props.w12_replace_completes",
+      "u_pipe.u_hiu_props.w13_nonowner_loud",
+      "u_pipe.u_hiu_props.w14_fault_rise",
+      "u_pipe.u_hiu_props.w15_fault_clear",
+      "u_pipe.u_hiu_props.w1_rsp",
+      "u_pipe.u_hiu_props.w2_two_inflight",
+      "u_pipe.u_hiu_props.w3_hold_loaded",
+      "u_pipe.u_hiu_props.w4_misswait_stall",
+      "u_pipe.u_hiu_props.w5_granted_nonzero",
+      "u_pipe.u_hiu_props.w6_denied_zero",
+      "u_pipe.u_hiu_props.w9_leg_clash"
     ],
     "unreached": 0,
     "unreached_names": []
   },
   "inputs": {
     "rtl/generated/HiuPipeline.sv": "cbaa291d8509cf310a5200617cd16ad6ba6ab7bd6270d46abdbba167eb7784d0",
-    "rtl/generated/MaskUnit.sv": "935967d3255207c3b02b282dabde531f291b40426e1f7099d60c878de5965424",
-    "rtl/sv/assert/HiuMask_props.sv": "5227d2a81746a268b54e6e18e9f1d127026e403226e7038c35d6c49df6e351df"
+    "rtl/generated/MaskUnit.sv": "142c9a6792765ce698262e4abc103264ad84a2f451788100954c9bc65ea0624b",
+    "rtl/sv/assert/HiuMask_props.sv": "8cddc339aeb40d76deef57a4f3016097f67355521963e12a7110f2c79934dcd0"
   },
   "per_task": {
     "bmc": {
@@ -68,7 +68,7 @@
     }
   },
   "sby": "rtl/formal/sby/HiuMask/hiumask.sby",
-  "sby_sha256": "8632aebcd363ffd952fcb4efc6e161d7f78a962a8a2d7fb37bb6fcd310fb0c92",
+  "sby_sha256": "694e7163e439152cedb1bd08535898088735e080b667dd18f74b4b3b555c1203",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

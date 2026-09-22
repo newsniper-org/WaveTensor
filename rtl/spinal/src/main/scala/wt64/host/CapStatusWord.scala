@@ -43,7 +43,7 @@
 // ## GUARD-MAP — CapWord 모델 (2026-09-21 신설, 정본 1126a38)
 //
 // 후-formal 앵커는 rtl/formal/sby/CapStatusWord/capword.sby 다. `CapWord` 는
-// lint_guard_map.ENFORCED 밖이라(Mask 선례) 전수성은 강제되지 않지만, 넷 다
+// lint_guard_map.ENFORCED 안이라(2026-09-22 파도 D 등재) 전수성이 강제되고, 넷 다
 // CHECK 이고 넷 다 그 .sby 의 PROVES 가 앵커한다. 부착은 래퍼 모듈(bind 는
 // yosys 가 조용히 무시한다 — SharedUnitDepth0 선례) — 필요한 신호가 전부
 // 포트라 expose 도 필요 없다.

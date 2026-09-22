@@ -14,15 +14,15 @@ DUT 는 `rtl/generated/MaskUnit.sv` — 합성 형상 그대로다. MMIO 는 이
 E.9 3항(마스크는 페이지 프레임 부분에만)에 따라 적용 슬라이스가
 `mask64[PAGE_W+FRAME_W-1 : PAGE_W]` = `mask64[43:12]` 다.
 
-`MaskUnit.scala:471-477` 「rFrame := io.req.frame ^ maskFrame(io.req.part)」:
+`MaskUnit.scala:528-534` 「rFrame := io.req.frame ^ maskFrame(io.req.part)」:
     when(io.en) { rValid := io.req.valid
                   rFrame := io.req.frame ^ maskFrame(io.req.part) }
 
 ⇒  io_rsp_frame  ==  io_req_frame ^ (mask64 >> 12) & 0xFFFFFFFF
 
-RTL 은 64비트 마스크를 레지스터에 두지 않는다 (`MaskUnit.scala:255-262` 「저장은 적용 비트만」).
-`PH_FINAL`(`MaskUnit.scala:398` 「is(PH_FINAL) {」 이하)이 그 32비트만 상수 분해로 직접 만든다 — 생성물
-`MaskUnit.sv:302-305` 「st_1[11 : 0] + 12'h46e」 에서 상수 셋(`12'h79b` · `20'h61707` · `12'h46e`)을
+RTL 은 64비트 마스크를 레지스터에 두지 않는다 (`MaskUnit.scala:289-296` 「저장은 적용 비트만」).
+`PH_FINAL`(`MaskUnit.scala:443` 「is(PH_FINAL) {」 이하)이 그 32비트만 상수 분해로 직접 만든다 — 생성물
+`MaskUnit.sv:304-307` 「st_1[11 : 0] + 12'h46e」 에서 상수 셋(`12'h79b` · `20'h61707` · `12'h46e`)을
 대조 확인했다. 이 사영은 **정보 손실이 없다** (벡터 전 라인에서
 `(PHYS[43:12] ^ mask64[43:12]) == MASKED[43:12]` 성립 — 아래 회계가 매
 실행 재확인한다).
@@ -36,15 +36,15 @@ RTL 은 64비트 마스크를 레지스터에 두지 않는다 (`MaskUnit.scala:
 전제하는 계약 넷 (전부 현재 `MaskUnit.scala` 에서 실물 확인):
 
   · 키 기입 포트에 `io_keyWr_part` 가 있고 워드는 `key(part)(idx)` 에 앉는다
-    (`MaskUnit.scala:432` 「key(io.keyWr.part)(io.keyWr.idx) := io.keyWr.data」).
+    (`MaskUnit.scala:489` 「key(io.keyWr.part)(io.keyWr.idx) := io.keyWr.data」).
   · 키 기입은 **그 파티션의** maskValid 만 떨어뜨린다
-    (`MaskUnit.scala:437` 「maskValid(io.keyWr.part) := False」 — 정본
+    (`MaskUnit.scala:494` 「maskValid(io.keyWr.part) := False」 — 정본
     `e-defined.typ:339` 「기입은 그 파티션의 마스크 유효를 즉시 떨어뜨린다」).
   · REKEY 는 `key(io.rekey.part)` 를 읽는다
-    (`MaskUnit.scala:347` 「st(4 + i)  := key(io.rekey.part)(i).asUInt」).
+    (`MaskUnit.scala:392` 「st(4 + i)  := key(io.rekey.part)(i).asUInt」).
   · 계산 중 기입이 `compDirty` 를 세우는 것은 기입 파티션이 계산 중 파티션
     (actPart)이거나 이번에 수락되는 REKEY 의 대상일 때뿐이다
-    (`MaskUnit.scala:444-445` 「io.keyWr.part === actPart」) — 다른 파티션은
+    (`MaskUnit.scala:501-502` 「io.keyWr.part === actPart」) — 다른 파티션은
     E.9 4항 그대로 `e-defined.typ:1526` 「다른 파티션이 그 변경의 사정권 밖」.
 
 제어면(저장 스코프 · 기입의 무효화 범위 · REKEY 유휴 수락)은 후-formal
@@ -67,7 +67,7 @@ part≠0 으로 값을 재는 시험 둘에서 죽었다 (2026-09-22 실측, HEA
 ═══════════════════════════════════════════════════════════════════════════
 
 「확산은 세어서 확인할 수 없다. `!=` 검사는 무의미하다 — **틀린 값도
-다르다.**」 그 규율의 수신인이 이 파일이다 (`MaskUnit.scala:95-100` 「확산 검사는 구현하지 않는다」
+다르다.**」 그 규율의 수신인이 이 파일이다 (`MaskUnit.scala:125-130` 「확산 검사는 구현하지 않는다」
 가 명시한다). 이 파일에 다음은 **한 곳도 없다**:
 
     assert got != legacy          # 틀린 값도 다르다
@@ -100,16 +100,17 @@ fault 는 **`io_fault*` 실포트로만** 관측한다. 시뮬 전용 단언으�
    이고 그 중 두 줄은 페이지 오프셋만 다르다). 축소는 하네스 결함이 아니라
    사영의 필연이며, 아래 회계가 두 수를 매 실행 재계산해 인쇄한다.
 4. **counter·rounds 를 못 흔든다** — counter 는 `st(12):=0` 고정
-   (`MaskUnit.scala:384` 「st(12) := 0」), ROUNDS 는 Scala 상수(`MaskUnit.scala:151` 「val ROUNDS = 20」)로 SV 파라미터가 아니다.
+   (`MaskUnit.scala:429` 「st(12) := 0」), ROUNDS 는 Scala 상수(`MaskUnit.scala:185` 「val ROUNDS = 20」)로 SV 파라미터가 아니다.
    다중 블록 키스트림·축소 라운드 교차대조는 이 기계에 대상이 없다.
 5. **재키잉↔flush 결합(E.9 4항)은 잴 수 없다** — flush 동반은 호스트 ABI
    의무(§3.10)로 명시 위임돼 있고 RTL 에 강제 배선이 없다. 이 파일이 재는
    것은 「옛/새 입력 혼합 금지」(compDirty → faultWrDuringRekey)와 그
    금지의 **범위**(같은 파티션만 — `wr_other_partition_during_rekey_is_clean`)
-   뿐이다.
+   · 그 **시점**(busy 사이클 전부, FINAL 사이클 포함 —
+   `wr_same_partition_at_final_edge_is_loud`)뿐이다.
 6. **`faultNonceDup` 의 사각지대는 RTL 계약 자체에 있다** —
    `maskValid` 가 서지 않은 파티션과의 논스 중복은 검사되지 않는다
-   (`MaskUnit.scala:331-333` 「maskValid(q) && (U(q, partW bits) =/= io.rekey.part)」).
+   (`MaskUnit.scala:365-367` 「maskValid(q) && (U(q, partW bits) =/= io.rekey.part)」).
    하네스가 이것을 우회로 「해결」하지 않고 계약의 범위로 적는다. 키가 파티션별이 된 뒤로 golden 루프에서는 다른
    파티션의 `maskValid` 가 살아남으므로 dup 검사가 더는 공허하지 않다 —
    `pinned` 8줄(같은 키·논스)을 서로 다른 파티션에 앉히면 **실제로 선다**.
@@ -120,14 +121,16 @@ fault 는 **`io_fault*` 실포트로만** 관측한다. 시뮬 전용 단언으�
    바뀌어야 한다.
 7. **부채널·상수 시간성은 대상 밖** — 여기서 보는 것은 사이클 수 동일성뿐
    이다 (게이트 지연·전력·EM 아님).
-8. **FINAL 엣지의 같은-파티션 동시 기입 모서리는 재지 않는다** — 같은
-   파티션의 키·논스 기입이 정확히 FINAL 엣지에 실리면 유효만 떨어지고
-   `faultWrDuringRekey` 는 서지 않는다 (실측 2026-09-22: 수락+42 엣지에서
-   유효 하강만 · fault 0, 수락+40·+41 은 fault 1). 기전은 `dirtyAtFinal` 이
-   그 사이클 레지스터의 엣지 전 값(0)을 읽고 같은 엣지의 `compDirty := True`
-   는 다음 사이클에야 서기 때문이다. 기존 `fault_wr_during_rekey` 는 수락 뒤
-   5엣지(HROUND)에서만 쓴다. 정본 계약의 명시 또는 `dirtyAtFinal` 확장은
-   별도 파도다 — 이 파일은 그 모서리를 재지도, 잰다고 적지도 않는다.
+
+(옛 8항 「FINAL 엣지의 같은-파티션 동시 기입 모서리는 재지 않는다」는 파도 D
+(2026-09-22)에서 **이제 잰다** — `wr_same_partition_at_final_edge_is_loud`.
+파도 D 이전 판(1666c7a)은 수락+42 엣지(FINAL 사이클)의 활성 파티션 기입에
+유효만 떨어뜨리고 `faultWrDuringRekey` 가 침묵했다 — `dirtyAtFinal` 이
+레지스터 `compDirty` 의 엣지 전 값(0)만 읽고 같은 엣지의 `compDirty := True`
+는 다음 사이클에야 섰다. 지금은 FINAL 가지가 같은 사이클 항을 직접 본다 —
+`MaskUnit.scala:473` 「val dirtyNow = compDirty || wrActNow」. 기존
+`fault_wr_during_rekey` 는 수락 뒤 5엣지(HROUND)에서만 쓰므로 그 시험은 이
+모서리에 침묵한다 — 시점 축은 새 지향 시험 하나가 유일한 그물이다.)
 """
 
 import os
@@ -148,8 +151,8 @@ FRAME_MASK = (1 << FRAME_W) - 1
 # ── 재키잉 지연 — **실측으로 못박은 상수. 끝점을 함께 적는다** ─────────────
 #
 # `MaskUnit.scala` 는 두 숫자를 말하고 **끝점을 적지 않는다**: 머리 주석
-# `MaskUnit.scala:131` 「총 43사이클」 (수락 1 + 유도 20 + 재구성 1 + 본 라운드
-# 20 + 최종 덧셈 1) 과 `MaskUnit.scala:294` 「어떤 입력이든 42사이클 동일」.
+# `MaskUnit.scala:165` 「총 43사이클」 (수락 1 + 유도 20 + 재구성 1 + 본 라운드
+# 20 + 최종 덧셈 1) 과 `MaskUnit.scala:328` 「어떤 입력이든 42사이클 동일」.
 # 어느 쪽이 맞느냐가 아니라 **둘 다 맞고 끝점이 다르다** — 그 사실이 문면에
 # 없어서 다음 사람이 하나를 오타로 읽는다. 아래 셋이 그 자리를 닫는다
 # (전부 실측으로 확정):
@@ -333,7 +336,7 @@ async def write_key_word(dut, part, idx, data):
 
 
 async def write_key(dut, part, key256):
-    """파티션 `part` 에 키 8워드 기입 (`MaskUnit.scala:197` 「word n = key[32n+31:32n]」).
+    """파티션 `part` 에 키 8워드 기입 (`MaskUnit.scala:231` 「word n = key[32n+31:32n]」).
 
     키 저장은 파티션별이다 — 기입은 **그 파티션의** maskValid 만 떨어뜨리고
     다른 파티션은 사정권 밖이다 (파일 머리 「키·논스 저장의 범위」).
@@ -353,16 +356,37 @@ async def write_nonce(dut, part, nonce192):
     dut.io_nonceWr_valid.value = 0
 
 
+async def write_nonce_word(dut, part, idx, data):
+    """논스 워드 하나 기입 — 파티션 `part` 의 word `idx`. idx 6·7 은 RTL 이
+    무시한다 (예약 오프셋 정책 — `MaskUnit.scala:238` 「6·7 기입은 무시한다」);
+    음성 대조 자극으로 쓴다."""
+    dut.io_nonceWr_valid.value = 1
+    dut.io_nonceWr_part.value = part
+    dut.io_nonceWr_idx.value = idx
+    dut.io_nonceWr_data.value = data
+    await step(dut)
+    dut.io_nonceWr_valid.value = 0
+
+
+async def clear_wr_rekey(dut):
+    """`faultWrDuringRekey` sticky 를 해제선으로 내리고 **내려갔음을 확인**한다."""
+    dut.io_faultClearWrRekey.value = 1
+    await step(dut)
+    dut.io_faultClearWrRekey.value = 0
+    await step(dut)
+    assert int(dut.io_faultWrDuringRekey.value) == 0, "해제선이 faultWrDuringRekey sticky 를 내리지 못했다"
+
+
 async def rekey(dut, part, expect_accept=True):
     """재키잉 펄스. **`io_rekey_ready` 를 같은 엣지에서 확인한다.**
 
-    `MaskUnit.scala:310` 「io.rekey.ready := !engineBusy」 이고 미수락은 무언
+    `MaskUnit.scala:344` 「io.rekey.ready := !engineBusy」 이고 미수락은 무언
     드롭이 아니라 ready 하강으로 관측되는 것이 계약이다. ready 를 안 보고 쏘면
     **하네스가 스스로 조용한 드롭을 만든다.**
     """
     dut.io_rekey_valid.value = 1
     dut.io_rekey_part.value = part
-    # `MaskUnit.sv:419` 「assign io_rekey_ready = (! engineBusy);」 는 레지스터만의
+    # `MaskUnit.sv:421` 「assign io_rekey_ready = (! engineBusy);」 는 레지스터만의
     # 함수라 방금 쓴 입력에 의존하지 않는다 — 델타 없이 지금 값이 이 엣지의 값이다.
     ready = int(dut.io_rekey_ready.value)
     assert ready == (1 if expect_accept else 0), (
@@ -423,7 +447,7 @@ async def install(dut, key256, nonce192, part):
     `part` 로 간다 — 저장이 파티션별이다.
 
     ⚠ 키·논스 기입과 rekey 펄스 사이에 **≥1 유휴 엣지**를 둔다. 같은 엣지면
-      dirty 다 (`MaskUnit.scala:444-445` 「rekeyFire && io.keyWr.part === io.rekey.part」)
+      dirty 다 (`MaskUnit.scala:501-502` 「rekeyFire && io.keyWr.part === io.rekey.part」)
       — FINAL 에서 maskValid 가 서지 않고 `faultWrDuringRekey` 가 뜬다 — 하네스가 스스로 fault 를
       만드는 자리다.
     """
@@ -452,7 +476,7 @@ async def sec1_golden_exact(dut):
     E.9 2항 검사가 실제로 선다. 하네스 쪽 모델은 「maskValid 가 선 파티션 →
     그 논스」이고 기대값은 RTL 술어와 같은 형태 — 재키잉 수락 시점에
     maskValid 가 선 **다른** 파티션과 논스 전폭 일치
-    (`MaskUnit.scala:331-333` 「(nonceFlat(q) === reqNonce)」 — 앞 두 항이 전건).
+    (`MaskUnit.scala:365-367` 「(nonceFlat(q) === reqNonce)」 — 앞 두 항이 전건).
     기대가 1 이면 해제해 내리고 다음 라인으로 간다 — sticky 를 침묵 속에
     두고 가지 않는다. 기대 계산이 RTL 과 어긋나면 그것이 발견이지 우회 대상이
     아니다.
@@ -628,7 +652,7 @@ async def fixed_latency_path_invariant(dut):
 async def en_is_the_single_stall_source(dut):
     """`io_en=0` 이면 응답이 얼어붙는다 — SEC-2 상태열 균일의 관측 지점.
 
-    `MaskUnit.scala:471` 「when(io.en)」 이 rValid/rFrame 갱신의 유일한
+    `MaskUnit.scala:528` 「when(io.en)」 이 rValid/rFrame 갱신의 유일한
     관문이다. 얼어붙음은 **직전 값과의 정확 일치**로 확인한다. 파티션 2 에
     앉힌다 — part≠0 이라 키 저장이 파티션별인지도 이 값 하나가 함께 잰다.
     """
@@ -694,7 +718,7 @@ async def fault_no_mask(dut):
 async def fault_wr_during_rekey(dut):
     """계산 중 **같은 파티션** 입력 기입 → 결과를 유효화하지 않는다 (E.9 4항 혼합 금지).
 
-    `MaskUnit.scala:444-445` 「compDirty := True」 가 FINAL 에서 `maskValid` 를
+    `MaskUnit.scala:501-502` 「compDirty := True」 가 FINAL 에서 `maskValid` 를
     막고 `faultWrDuringRekey` 를 세운다. **두 관측이 모두 필요하다** — fault 만
     보면 「fault 는 떴는데 마스크는 유효」인 창을 못 잡는다.
     짝은 `wr_other_partition_during_rekey_is_clean` — 다른 파티션 기입은
@@ -732,7 +756,7 @@ async def wr_other_partition_during_rekey_is_clean(dut):
     """계산 중 **다른 파티션** 기입 → 결과는 유효하고 fault 도 없다 (E.9 4항의 범위).
 
     `fault_wr_during_rekey` 의 짝. `compDirty` 의 파티션 한정
-    (`MaskUnit.scala:444-445` 「engineBusy && io.keyWr.part === actPart」) 이
+    (`MaskUnit.scala:501-502` 「engineBusy && io.keyWr.part === actPart」) 이
     없으면 — 기입이 파티션과 무관하게 가동 중이면 dirty 라면 — part 3 의 키
     워드 하나가 part 0 의 재키잉을 미유효화한다. 세 관측을 **모두** 등가로
     본다: maskReady 전폭이 정확히 part 0 하나 · faultWrDuringRekey == 0 ·
@@ -770,6 +794,130 @@ async def wr_other_partition_during_rekey_is_clean(dut):
 
 
 @cocotb.test()
+async def wr_same_partition_at_final_edge_is_loud(dut):
+    """수락 엣지 기준 오프셋 N ≥ 1 의 **같은 파티션** 기입 — fault ⇔ 그 기입이
+    busy 사이클에 실렸다 (FINAL 사이클 **포함**). 파도 D (2026-09-22) 의 지향
+    시험. 수락 사이클 자체(N=0)의 같은-파티션 기입도 오염이지만 그때는 busy=0
+    이라 이 쌍조건 밖이다 — 그 면은 후-formal engine.sby 의 f_dirty 갈래 (i)
+    와 증인 W8 이 잰다(이 파일은 N=0 점을 두지 않는다 — 재지 않는 축).
+
+    정본: `e-defined.typ:518` 「재키잉 중 입력 기입」 (FAULT_STATUS [13] — 시점
+    예외 없음) · `e-defined.typ:1549` 「재계산 중(`0xEC0` `[8]`)」 — 「재키잉
+    중」의 정의역은 장치 자신의 관측 busy=1 이다 · `e-defined.typ:1544` 「그 파티션 비트가 설 때까지 기다린다」
+    — 호스트의 완료 관측. 파도 D 이전 판(1666c7a)은 수락+42 엣지(FINAL
+    사이클)의 활성 파티션 기입에 유효만 떨어뜨리고 fault 가 침묵해 그 기다림이
+    어떤 비트도 없이 무한이었다 — 수락+40·+41 은 fault 1 이라 같은 호스트
+    행위가 1사이클 타이밍에 두 판정을 받았다. 지금은 FINAL 가지가 같은
+    사이클 항을 직접 본다 (`MaskUnit.scala:473` 「val dirtyNow = compDirty || wrActNow」).
+
+    사이클 표 (rekey() 가 수락 엣지 E0 를 소비한다): E0 수락 → E20 HEXTRACT →
+    E21 CROUND → E41 뒤 phase=FINAL (busy=1 · ready=0) → E42 IDLE·유효화.
+    오프셋 N 의 기입은 엣지 E_N 에 래치된다 — busy 는 기입 **직전** 표본이고
+    io_busy 는 레지스터만의 함수라 그 표본이 정확하다
+    (`MaskUnit.scala:342` 「private val engineBusy = phase =/= PH_IDLE」).
+      N=40·41: compDirty 가 FINAL 사이클에 이미 1 — 파도 D 이전에도 fault.
+      N=42:    FINAL 사이클 자체의 기입 — **파도 D 가 세운 자리** (wrActNow).
+      N=43·44: 유휴 기입 — fault 0. 유효는 기입이 떨어뜨린 0 인데, 기입 **전**
+               maskReady[p]==1 을 등가로 단언해 「FINAL 이 유효화한 적 없는」
+               변이가 통과하지 못하게 한다.
+    판정은 전부 등가다: fault == busy_seen · 기입 전 maskReady[p] == !busy_seen
+    · 기입 뒤 maskReady[p] == 0 · 해제 뒤 fault == 0. busy_seen 자체도 상수
+    표(N <= REKEY_TO_READY)와 등가라 지연 상수가 바뀌면 여기서 죽는다.
+    논스 변형: N=42 idx=5 (fault 1) + 음성 대조 N=42 idx=6 (예약 오프셋 —
+    RTL 이 무시한다: fault 0 · maskReady[p]==1). sticky 는 케이스마다 해제해
+    0 을 확인한다 — 42 의 fault 가 43 으로 새어 등가 판정을 흐리지 않는다.
+    타 파티션 대조: N=42 에 q≠p 키 기입 — 같은 사이클 항 wrActNow 도 활성
+    파티션 한정이다(MaskEngine.dirty_scoped 의 FINAL 사이클 판): (busy_seen,
+    fault, maskReady[p], maskReady[q]) == (1, 0, 1, 0) 이고 p 의 값은 golden.
+    변이 실측(2026-09-22, 사본 생성물에서 wrActNow 의 파티션 비교를 뗀
+    mutScope): 앞의 다섯 케이스와 논스 둘은 전부 통과하고 이 케이스만 죽는다
+    — 이 케이스가 없던 동안 그 축은 오라클에 한 점도 없이 태어나 있었다.
+    """
+    recs = load_vectors()
+    r = recs[6]
+    p = 1
+
+    async def one_case(label, n, do_write):
+        # 매 케이스 새 재키잉 — 키·논스 기입(유효 하강) → 유휴 1엣지 → 수락 E0.
+        await write_key(dut, p, r["KEY"])
+        await write_nonce(dut, p, r["NONCE"])
+        await step(dut)
+        await rekey(dut, p)
+        await step(dut, n - 1)                       # E_(n-1) 뒤
+        busy_seen = int(dut.io_busy.value)
+        exp_busy = 1 if n <= REKEY_TO_READY else 0
+        assert busy_seen == exp_busy, (
+            f"[{label}] 기입 직전 io_busy={busy_seen} ≠ 상수 표 {exp_busy} — "
+            f"오프셋 {n} 이 busy 창({REKEY_TO_READY}) 과 어긋난다: 자극이 계약 밖")
+        ready_before = (int(dut.io_maskReady.value) >> p) & 1
+        assert ready_before == 1 - busy_seen, (
+            f"[{label}] 기입 전 maskReady[{p}]={ready_before} ≠ {1 - busy_seen} — "
+            "busy 중 유효(혼합 창) 또는 유휴인데 FINAL 이 유효화하지 않았다")
+        await do_write()                             # E_n 에 래치
+        await wait_engine_idle(dut)
+        fault = int(dut.io_faultWrDuringRekey.value)
+        ready_after = (int(dut.io_maskReady.value) >> p) & 1
+        return busy_seen, fault, ready_after
+
+    await boot(dut)
+    table = []
+    for n in (40, 41, 42, 43, 44):
+        label = f"key N={n}"
+        busy_seen, fault, ready_after = await one_case(
+            label, n, lambda: write_key_word(dut, p, 3, 0xA5A5_A5A5))
+        assert fault == busy_seen, (
+            f"[{label}] io_faultWrDuringRekey={fault} ≠ busy_seen={busy_seen} — "
+            "재키잉 중(busy=1) 기입인데 fault 가 침묵했거나, 유휴 기입에 fault 가 섰다 "
+            "(판정이 시간을 갈랐다)")
+        assert ready_after == 0, (
+            f"[{label}] 기입 뒤 maskReady[{p}]={ready_after} ≠ 0 — 기입이 유효를 "
+            "떨어뜨리지 않았다 (invalidate_beats_validate)")
+        await clear_wr_rekey(dut)
+        table.append((n, fault))
+    assert table == [(40, 1), (41, 1), (42, 1), (43, 0), (44, 0)], (
+        f"오프셋별 fault 표 {table} ≠ [(40,1),(41,1),(42,1),(43,0),(44,0)]")
+
+    # 논스 변형 — N=42 idx=5: FINAL 사이클의 논스 기입도 같은 항이다.
+    busy_seen, fault, ready_after = await one_case(
+        "nonce N=42 idx=5", 42, lambda: write_nonce_word(dut, p, 5, 0x5A5A_5A5A))
+    assert (busy_seen, fault, ready_after) == (1, 1, 0), (
+        f"[nonce N=42 idx=5] (busy_seen, fault, ready_after)={(busy_seen, fault, ready_after)} "
+        "≠ (1, 1, 0) — FINAL 사이클의 논스 기입이 키 기입과 동형이 아니다")
+    await clear_wr_rekey(dut)
+
+    # 음성 대조 — N=42 idx=6: 예약 오프셋은 RTL 이 무시한다 → 깨끗한 완료.
+    busy_seen, fault, ready_after = await one_case(
+        "nonce N=42 idx=6 (예약)", 42, lambda: write_nonce_word(dut, p, 6, 0x5A5A_5A5A))
+    assert (busy_seen, fault, ready_after) == (1, 0, 1), (
+        f"[nonce N=42 idx=6] (busy_seen, fault, ready_after)={(busy_seen, fault, ready_after)} "
+        "≠ (1, 0, 1) — 예약 오프셋 기입이 무시되지 않았다(fault 또는 무효화)")
+
+    # 타 파티션 대조 — N=42 에 q≠p 키 기입. FINAL 사이클의 같은-사이클 항
+    # (wrActNow)도 활성 파티션 한정이다: p 의 완료는 깨끗하고(유효화·fault 0),
+    # q 는 기입이 유효를 떨어뜨린 0 (설치한 적 없어 원래 0) 이며 p 의 값은 golden.
+    q = 2
+    busy_seen, fault, ready_after = await one_case(
+        "key N=42 other part", 42, lambda: write_key_word(dut, q, 3, 0xA5A5_A5A5))
+    ready_q = (int(dut.io_maskReady.value) >> q) & 1
+    assert (busy_seen, fault, ready_after, ready_q) == (1, 0, 1, 0), (
+        f"[key N=42 other part] (busy_seen, fault, ready[p], ready[q])="
+        f"{(busy_seen, fault, ready_after, ready_q)} ≠ (1, 0, 1, 0) — FINAL 사이클의 "
+        "타 파티션 기입이 활성 파티션의 완료를 더럽혔다(사정권 밖이어야 한다)")
+    got = await translate(dut, p, frame_of(r["PHYS"]))
+    assert got == frame_of(r["MASKED"]), (
+        f"[key N=42 other part] part {p} 0x{got:08X} ≠ golden 0x{frame_of(r['MASKED']):08X}")
+
+    faults = (int(dut.io_faultNoMask.value), int(dut.io_faultNonceDup.value),
+              int(dut.io_faultWrDuringRekey.value))
+    assert faults == (0, 0, 0), f"sticky (noMask, nonceDup, wrDuringRekey)={faults} ≠ (0,0,0)"
+    dut._log.info(
+        f"FINAL 엣지 동시 기입: 오프셋별 (N, fault) {table} — fault == 기입 직전 io_busy "
+        "전 케이스 등가 · 기입 뒤 maskReady[p]==0 · 논스 idx=5 동형 · idx=6 예약 무시 "
+        "(fault 0 · maskReady 1) · 타 파티션 N=42 기입은 사정권 밖 (1,0,1,0) + golden. "
+        "판정은 전부 등가 비교")
+
+
+@cocotb.test()
 async def key_scope_cross_partition_value(dut):
     """키의 범위 — 임대(파티션)마다 다르다. 제어면 증명을 **값 수준**에서 잰다.
 
@@ -780,7 +928,7 @@ async def key_scope_cross_partition_value(dut):
          install → 각 파티션 translate 가 자기 golden 과 일치. 논스가 다르므로
          faultNonceDup == 0 (등가).
       2. part 1 의 키만 C 로 다시 쓴다 (재키잉 없이) → maskReady 전폭이 정확히
-         0b0100: part 1 만 무효 (`MaskUnit.scala:437` 「maskValid(io.keyWr.part) := False」),
+         0b0100: part 1 만 무효 (`MaskUnit.scala:494` 「maskValid(io.keyWr.part) := False」),
          part 2 는 그대로 유효. part 2 translate 는 여전히 golden B.
       3. part 1 에 논스 c 를 쓰고 재키잉 → part 1 translate 가 golden C 와 일치,
          part 2 는 여전히 golden B, maskReady == 0b0110. 키 C 가 part 1 에만
@@ -854,7 +1002,7 @@ async def fault_nonce_dup(dut):
     검사가 사이클을 가르지 않음(부채널)도 함께 본다.
 
     그리고 계약의 사각지대를 함께 적는다: `maskValid` 가 서지 않은 파티션과의
-    논스 중복은 **검사되지 않는다** (`MaskUnit.scala:331-333` 「maskValid(q) &&」).
+    논스 중복은 **검사되지 않는다** (`MaskUnit.scala:365-367` 「maskValid(q) &&」).
     그것은 하네스의 누락이 아니라 RTL 계약의 범위다 — 우회로 「해결」하지 않는다.
     """
     recs = load_vectors()

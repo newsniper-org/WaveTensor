@@ -1,0 +1,60 @@
+{
+  "anchors": [
+    "MaskEngine.dirty_scoped",
+    "MaskEngine.dirty_no_validate",
+    "MaskEngine.dirty_loud",
+    "MaskEngine.invalidate_beats_validate"
+  ],
+  "at": "2026-09-22T10:12:14Z",
+  "cover": {
+    "reached": 10,
+    "reached_names": [
+      "u_MaskEngine_props.w10_final_reserved_nonce_is_clean",
+      "u_MaskEngine_props.w1_final_overlap_write",
+      "u_MaskEngine_props.w2_dirty_final",
+      "u_MaskEngine_props.w3_other_write_busy_then_clean_final",
+      "u_MaskEngine_props.w4_clean_final",
+      "u_MaskEngine_props.w5_fault_clear",
+      "u_MaskEngine_props.w6_dirty_final_with_clear",
+      "u_MaskEngine_props.w7_accept_drops_ready",
+      "u_MaskEngine_props.w8_accept_write_dirty_final",
+      "u_MaskEngine_props.w9_final_overlap_nonce_only"
+    ],
+    "unreached": 0,
+    "unreached_names": []
+  },
+  "inputs": {
+    "rtl/generated/MaskUnit.sv": "142c9a6792765ce698262e4abc103264ad84a2f451788100954c9bc65ea0624b",
+    "rtl/sv/assert/MaskEngine_props.sv": "9561be98034b1603b6015f54dee4e2e242b339fa9f539df532a50d30f7ee0839"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 11,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 10,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 11,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
+  },
+  "sby": "rtl/formal/sby/MaskUnit/engine.sby",
+  "sby_sha256": "88bac1a2f2c59a6be0cb6ac6943a32a08c11a511266d8e0f0a1a21089257d6bb",
+  "schema": "wt64-postformal-evidence/2",
+  "tasks": "bmc:PASS cover:PASS prove:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
+}

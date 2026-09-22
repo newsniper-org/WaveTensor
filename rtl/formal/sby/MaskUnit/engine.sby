@@ -1,0 +1,169 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# PROVES: MaskEngine.dirty_scoped — busy 중 기입은 활성 파티션(수락 엣지에 래치한 f_act)으로 향한 것만 오염이다: 타 파티션 기입만 있었던 창의 완료는 유효화하고 sticky 를 세우지 않는다 (a_clean_final_validates · a_clean_final_quiet · a_dirty_scoped — 전건 도달은 W3). 파티션 무관 오염 변이가 셋 다 깨뜨린다 — §역-변이 실측 mutB
+# PROVES: MaskEngine.dirty_no_validate — 직전 사이클까지의 오염(f_dirty — 수락 사이클 자체의 같은-파티션 기입 포함)이 있는 완료는 활성 파티션을 유효화하지 않는다 (a_dirty_final_no_validate — 도달은 W2·W8). 오염 완료도 유효화하는 변이가 반례를 낸다 — §역-변이 실측 mutD
+# PROVES: MaskEngine.dirty_loud — 유효화하지 않은 완료는 sticky faultWrDuringRekey 를 세운다 — **FINAL 사이클 자체의 활성 파티션 기입도 포함** (a_final_overlap_loud — 도달은 W1·W9) · 레지스터 경로 (a_dirty_final_loud — W2·W6·W8) · 상승 원천은 완료 엣지뿐 (a_fault_rise_at_final_only). 파도 D 이전 판(레지스터 compDirty 만 실음)이 a_final_overlap_loud 에서 bmc 반례 — §역-변이 실측 mutA
+# PROVES: MaskEngine.invalidate_beats_validate — 완료와 같은 사이클(FINAL)의 활성 파티션 기입은 유효화를 이긴다: 완료 뒤 그 비트는 0 (a_final_overlap_no_validate — 도달은 W1·W9). 유효화가 이기게 뒤집은 변이가 반례를 낸다 — §역-변이 실측 mutC
+#
+# 대상: rtl/generated/MaskUnit.sv (SpinalHDL 생성물, 손편집 금지 — 원본
+# rtl/spinal/src/main/scala/wt64/mask/MaskUnit.scala 머리 GUARD-MAP 「MaskEngine
+# 모델」 블록의 CHECK 넷이 위 앵커 넷과 일대일이다). 선-formal:
+# rtl/formal/tla/MaskEngine.tla (Mask.tla 과 분업 — 「어느 파티션」/「언제」).
+#
+# ## 왜 HiuMask 합성 태스크에 더하지 않고 새 태스크인가
+#
+# hiumask.sby 는 bmc 24 · prove 12 · cover 60 이고 FINAL 사이클은 수락 뒤 43
+# 엣지다 — 그 bmc 로는 닿지 않는다. 거기에 단언을 더하면 bmc 는 공허하고,
+# prove(smtbmc z3 k-귀납, 깊이 12)의 귀납 반례는 UNKNOWN 으로 남아 변이를
+# **소리 내어** 잡지 못한다 (솔버 실명 함정 — 수락 기준은 무변이 GREEN 이
+# 아니라 「변이를 잡는다」). MaskUnit 단독 하네스는 작고 포트만으로 닫힌다:
+# 검사자가 보는 상태는 phase·cnt·actPart·compDirty·maskValid·sticky 와 하네스
+# 레지스터 몇 개뿐이고, 라운드 데이터 경로(st_0..15)는 어느 단언의 콘에도
+# 없다.
+#
+# 부착: 래퍼 모듈 MaskUnit_formal 이 rtl/generated/MaskUnit.sv 를 인스턴스
+# (bind 금지 — yosys 0.66 이 조용히 무시한다, SharedUnitDepth0 선례). 필요한
+# 신호가 전부 포트라 expose 도 없다. 지상 진리(f_act · f_dirty 두 갈래 · wrAct ·
+# 완료 엣지 · 논스 예약 경계 idx < 6)는 하네스가 포트에서 다시 적는다 —
+# rtl/sv/assert/MaskEngine_props.sv 파일 머리.
+#
+# ## 이 태스크가 재지 않는 것
+#
+# MaskEngine_props.sv 파일 머리 「이 태스크가 재지 **않는** 것」 절이 정본이다
+# — busy 창의 정확한 길이(cocotb 지향 시험 몫) · 마스크 값 · 저장의 파티션
+# 범위와 REKEY 유휴 수락(hiumask.sby) · MASK_PART 라우팅(Wt64Top DELEGATED) ·
+# 논스 재사용·미준비 통과·요청 경로.
+#
+# ## 깊이 근거
+#
+# 수락은 reset 직후 첫 사이클(스텝 1)에 가능하고, FINAL 사이클은 수락 뒤 42
+# 엣지(스텝 43), 완료 엣지 관측(io_busy 하강 · 유효화 · sticky)은 스텝 44 다.
+# 가장 깊은 증인은 W7(첫 재키잉 완료 뒤 두 번째 수락이 유효 비트를 떨어뜨림 —
+# 스텝 45)과 W5(완료의 sticky 를 해제로 내림 — 스텝 45). bmc·cover 50 = 45 +
+# 여유 5 (설계 문면의 하한 48 이상). prove 의 깊이 56 은 smtbmc k-귀납으로
+# 되돌릴 때의 기준값이다: 귀납 세계의 도달 불가 상태(HROUND/CROUND 의 cnt 가
+# 20..31)에서 FINAL 까지 최장 54 스텝이라 그 위여야 하네스 f_dirty 와 DUT
+# compDirty 의 불일치 상태가 접두에 남지 않는다 — abc pdr 는 깊이 인자를 쓰지
+# 않으므로(무계 증명) 실행에는 무관하다.
+#
+# ## 엔진 처분 (실측으로 골랐다 — 아래 §실측 표 참조)
+#
+# 데이터 경로가 ChaCha 라운드망(32b 가감·XOR·회전 × 16 워드)이라 워드 수준
+# SMT(smtbmc z3)는 unroll 깊이 50 에서 웨지 위험이 크다 (walk_decode.sby 의
+# XOR 콘 실명 매트릭스와 같은 부류). 단언의 콘은 제어 레지스터 열여섯 비트
+# 남짓이므로 비트 수준 엔진이 COI 로 데이터 경로를 떼어낸다:
+#   bmc   : abc bmc3   (AIG BMC — COI 축소 내장)
+#   prove : abc pdr    (무계 증명 — 귀납 보조 불변식 없이 `busy ⇒ f_dirty =
+#                        compDirty` 류를 스스로 찾는다)
+#   cover : btor btormc (sby 가 cover 모드를 공식 지원하는 유일한 비트 수준
+#                        조합 — walk_decode.sby 의 처분 그대로)
+# abc 엔진이 반례를 낼 때 sby 는 궤적 재생을 smtbmc 로 돌리고 그 기본 솔버는
+# yices 다 — 이 컨테이너에 없다. 재생은 전 입력이 궤적으로 고정된 단위 전파
+# 질의라 z3 로 즉답이므로 bmc·prove 에 `aigsmt z3` 를 둔다 (walk_decode.sby
+# 선례). cover 는 btorsim 이 재생하므로 aigsmt 가 불참한다.
+# yosys-abc 이름·`pdr -v -l` 호환은 scripts/sby_sweep.sh 의 셔김이 잇는다 —
+# 수동 실행도 같은 셔김을 거쳐야 한다 (컨테이너의 abc 는 Berkeley ABC 1.01).
+#
+# ## §실측 표 (2026-09-22, 컨테이너 wavetensor-dev:scala · SBY v0.66 · Yosys 0.66)
+#
+#   같은 하네스·같은 깊이(bmc 50 · prove 56 · cover 50)에서 두 엔진 조합을 돌렸다.
+#   콘 실측: AIG PI/PO/Reg = 160/11/61 · AND 551 (abc 로그 — 데이터 경로 st_0..15
+#   512 플롭이 COI 밖). yosys 모델 셀: bmc·prove assert 11 / cover 10 / assume 1.
+#
+#   태스크  엔진            결과      솔버 시간           비고
+#   bmc     abc bmc3        PASS      0.27 s              「No output asserted in 50 frames」
+#   prove   abc pdr         PASS      0.19 s              불변식 79 절 · 57/61 플롭 · F[32] 에서 닫힘
+#   cover   btor btormc     PASS      벽시계 ≤3 s         10/10 도달 — 8 개 k=45 · W5·W7 k=46
+#   bmc     smtbmc z3       TIMEOUT   600 s 에 step 23    (50 중) — 완주 불가
+#   prove   smtbmc z3       TIMEOUT   600 s 에 basecase step 23
+#   cover   smtbmc z3       TIMEOUT   step 44 까지 5 분,  step 45(첫 증인이 서는 스텝)에서
+#                                     600 s 까지 미완주   4 분 넘게 웨지 — walk_decode 와 같은 부류
+#   ⇒ 비트 수준 엔진 셋으로 확정. 세 태스크 합계 벽시계 1 s (스윕 실측 — 증거
+#      파일의 도구 판과 함께 남는다). btormc 의 k 는 초기 상태를 0 으로 세는
+#      프레임 번호다 — 증인 궤적(VCD)에서 FINAL 사이클은 수락 스텝 1 기준 43,
+#      완료 관측은 44 다 (W1 궤적 실측: 43 에 phase=FINAL · 활성 파티션 논스
+#      기입, 44 에 io_busy=0 · io_faultWrDuringRekey=1 · io_maskReady[f_act]=0).
+#
+# ## §역-변이 실측 (2026-09-22) — 수락 기준은 무변이 GREEN 이 아니라 「변이를
+# 잡는다」다 (솔버 실명 함정). 생성 SV 의 격리 사본(/tmp)에 변이를 넣고 같은
+# 하네스가 각각 FAIL 하는지 실측했다. 결과표는 여기 둔다 — 보고에만 있는
+# 자백은 기계 밖이라 없는 것과 같다 (hiumask.sby 선례). 깨진 단언은 좌표가
+# 아니라 **라벨**로 적는다.
+#
+#   변이는 넷 다 생성 SV 한두 줄이다 (사본 diff 실측: A 2줄 · B 4줄 · C 14줄 ·
+#   D 2줄). bmc(abc bmc3, depth 50)와 prove(abc pdr) 둘 다에서 각각 반례가
+#   **완주**했다(`DONE (FAIL, rc=2)` · 궤적 VCD 재생 z3) — bmc3 는 첫 실패에서
+#   멈추므로, 죽은 단언을 항진으로 끄고 PASS 까지 되돌리는 반복으로 **죽는
+#   단언의 전수**를 닫았고, 남은 집합은 pdr 로 무계 PASS 를 확인했다:
+#   mutA dirtyAtFinal 을 레지스터 compDirty 만으로 (같은 사이클 항 wrActNow 를
+#          뗀다 = 파도 D 이전 판 1666c7a 와 동형)
+#          → a_final_overlap_loud **만** 실패 (bmc step 45 · bmc3 12 s · pdr 8 s).
+#            a_final_overlap_no_validate 는 살아남는다 — 유효는 기입 표면의
+#            텍스트 순서로 여전히 떨어진다. 정확히 「유효는 떨어지는데 fault 가
+#            침묵한다」는 관측 결손의 형태이고, 이것이 이 태스크가 세워진 이유다
+#   mutB compDirty 를 파티션 무관으로 (키·논스 두 when 의 part 비교를 뗀다:
+#          `(engineBusy && part == actPart) || (rekeyFire && part == rekey.part)`
+#          → `(engineBusy || rekeyFire)`)
+#          → a_clean_final_validates · a_clean_final_quiet · a_dirty_scoped 셋 실패
+#            (한 반례 궤적에서 함께 — step 45 · bmc3 14 s · pdr 88 s). 타 파티션
+#            기입이 활성 파티션의 완료를 버리고 sticky 까지 세운다
+#   mutC 유효화가 무효화를 이기게 (기입 표면 **뒤**에 FINAL 유효화 `maskValid(actPart)
+#          := !compDirty` 를 다시 대입 — 텍스트 순서 뒤집기 상당)
+#          → a_final_overlap_no_validate **만** 실패 (step 45 · bmc3 13 s · pdr 75 s).
+#            fault 는 여전히 선다 (a_final_overlap_loud 생존) — 두 가드
+#            dirty_loud / invalidate_beats_validate 가 독립임의 실측
+#   mutD dirty 한 완료도 유효화 (`maskValid(actPart) := !dirtyNow` 의 우변을 1 로)
+#          → a_dirty_final_no_validate **만** 실패 (step 45 · bmc3 20 s · pdr 45 s).
+#            FINAL 사이클 겹침은 기입 표면이 여전히 무효화하므로
+#            a_final_overlap_no_validate 는 생존 — dirty_no_validate 와
+#            invalidate_beats_validate 가 독립임의 실측
+#   (mutB 의 셋 중 a_dirty_scoped 는 a_clean_final_validates ∧ a_clean_final_quiet
+#   의 특수형이라 같은 궤적에서 함께 깨진다 — 주는 앞의 둘이고, 셋째는 가드의
+#   정의역을 라벨로 남긴다. MaskEngine_props.sv 「가드 ↔ 단언 대응」.)
+#
+#   독립 재현 (2026-09-22, D3 검증 단계 — 다른 손이 같은 날 격리 사본에서 다시
+#   돌렸다): 생성 SV 1~2줄 변이 A·B·D 를 새로 만들어 bmc(abc bmc3 50)·prove(abc
+#   pdr) 로 돌린 결과가 위 표와 같다 — mutA a_final_overlap_loud 만 frame 45
+#   (bmc3 12 s · pdr 7 s), 그리고 그 단언 하나를 끈 mutA 사본은 bmc 50·pdr 둘 다
+#   PASS 라 「만」이 실측이다; mutB 셋 동시 frame 45 (bmc3 12 s · pdr 78 s);
+#   mutD a_dirty_final_no_validate frame 45 (bmc3 17 s · pdr 24 s). mutC 는 이
+#   재현에서 돌리지 않았다 — 위 첫 실측 그대로다. 좋은 모델 재스윕도 동일(bmc3
+#   0.31 s · pdr F[32] 79 절 · btormc 10/10 — 8 개 k=45, W5·W7 k=46).
+#   재실행: 사본을 /tmp 아래에 두고 [files] 를 그 사본으로 돌린 .sby 를
+#   컨테이너 안에서 `sby -f --prefix <dir>` 로 직접 돌린다 (태스크가 셋이라
+#   `-d` 는 거부된다) — 스윕은 증거를 저장소에 쓰므로 변이에는 쓰지 않는다.
+
+[tasks]
+bmc
+prove
+cover
+
+[options]
+bmc: mode bmc
+bmc: depth 50
+prove: mode prove
+prove: depth 56
+cover: mode cover
+cover: depth 50
+multiclock off
+bmc: aigsmt z3
+prove: aigsmt z3
+
+[engines]
+bmc: abc bmc3
+prove: abc pdr
+cover: btor btormc
+
+[script]
+# 래퍼 부착 — bind 미사용 사유는 MaskEngine_props.sv 파일 머리 참조.
+read_verilog -sv -formal MaskUnit.sv
+read_verilog -sv -formal MaskEngine_props.sv
+prep -top MaskUnit_formal
+
+# [files] 경로는 저장소 루트 기준이다 — sby 는 상대 경로를 sby 파일이
+# 아니라 *호출 cwd* 기준으로 푼다 (스윕 실측: ../ 경로가 루트 호출에서 깨짐).
+# make rtl-postformal · 스윕 · 수동 실행 전부 루트에서 호출하는 것이 규약이다.
+[files]
+rtl/generated/MaskUnit.sv
+rtl/sv/assert/MaskEngine_props.sv

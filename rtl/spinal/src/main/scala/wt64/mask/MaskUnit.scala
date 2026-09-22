@@ -12,8 +12,8 @@
 // 아니다). 제어면(키·논스 저장의 파티션별 스코프, REKEY 유휴 수락, 키
 // 기입의 유효 하강 범위)은 `rtl/formal/tla/Mask.tla` 가 선-formal 로
 // 소유하고, 아래 세 줄이 그 가드를 후-formal(rtl/formal/sby/HiuMask/
-// hiumask.sby)에 잇는다. `Mask` 는 아직 lint_guard_map.ENFORCED 밖이라
-// 전수성(가드당 정확히 1줄)은 강제되지 않는다 — 넷째 가드
+// hiumask.sby)에 잇는다. `Mask` 는 2026-09-22 파도 D 부터 lint_guard_map.ENFORCED 안이라
+// 전수성(가드당 정확히 1줄)이 강제된다 — 넷째 가드
 // `rekey_explicit_target` 은 MASK_PART 창 대 MASK_REKEY 필드의 *라우팅*
 // 문제라 Wt64Top 의 MMIO 디코드(maskArea) 소관이고 이 유닛에는 그 개념
 // 자체가 없다(이 파일에는 "창"이 없다 — keyWr.part/rekey.part 는 이미
@@ -37,6 +37,36 @@
 //   창(0xEA0) 대 MASK_REKEY(0xEBC) 필드의 라우팅 문제라 MMIO 디코드
 //   (Wt64Top.maskArea) 소관이다. 이 유닛에는 "창" 개념 자체가 없다 —
 //   keyWr.part/rekey.part 는 이미 분리된 자유 입력으로 여기 도착한다.
+//
+// ## GUARD-MAP — MaskEngine 모델 (2026-09-22 신설, 파도 D — FINAL 엣지 동시 기입)
+//
+// `rtl/formal/tla/MaskEngine.tla` 는 Mask.tla 과 분업해 재키잉 엔진 창의
+// **시간 축**만 재는 선-formal 모델이다 (Mask = 「어느 파티션」 · MaskEngine =
+// 「언제」 — E.9 4항의 두 면). 후-formal 앵커는 넷 다
+// rtl/formal/sby/MaskUnit/engine.sby — MaskUnit 단독 하네스다. HiuMask 합성
+// 태스크(bmc 24)로는 수락 뒤 43 엣지의 FINAL 에 닿지 않아 그쪽에 단언을
+// 더하면 공허하다. `MaskEngine` 은 lint_guard_map.ENFORCED 안이다(2026-09-22 등재).
+// GUARD-MAP: MaskEngine.dirty_scoped -> busy 중 기입은 **활성 파티션(actPart)
+//   으로 향한 것만** compDirty 를 세운다 — 기입 표면의
+//   `engineBusy && io.keyWr.part === actPart` (논스 동형) 와 FINAL 가지의
+//   같은 사이클 항 wrActNow (actPart 한정). 타 파티션 기입은 E.9 4항
+//   「사정권 밖」. engine.sby 가 a_clean_final_validates · a_clean_final_quiet
+//   + W3 로 잰다 (변이 mutB: 파티션 무관 dirty 에 반례).
+// GUARD-MAP: MaskEngine.dirty_no_validate -> dirty 한 완료는 활성 파티션을
+//   유효화하지 않는다 — FINAL 가지 `maskValid(actPart) := !dirtyNow`
+//   (dirtyNow = compDirty || wrActNow). engine.sby 가
+//   a_dirty_final_no_validate 로 잰다 (변이 mutD: dirty 완료도 유효화).
+// GUARD-MAP: MaskEngine.dirty_loud -> 유효화하지 않은 완료는 sticky
+//   faultWrDuringRekey 를 세운다 — **FINAL 사이클 자체의 활성 파티션 기입도
+//   포함** (같은 사이클 항 wrActNow 를 dirtyAtFinal 에 직접 OR — 레지스터
+//   compDirty 는 그 기입을 다음 사이클에야 본다). engine.sby 가
+//   a_final_overlap_loud · a_dirty_final_loud 로 잰다 (변이 mutA:
+//   dirtyAtFinal 을 compDirty 만으로 = 파도 D 이전 판 1666c7a 에 반례).
+// GUARD-MAP: MaskEngine.invalidate_beats_validate -> 완료와 같은 사이클의
+//   활성 파티션 기입은 유효화를 이긴다(무효) — 기입 표면을 FSM **뒤**에 둔
+//   텍스트 순서에 더해 FINAL 가지의 `!dirtyNow` 가 같은 값을 식으로 명시.
+//   engine.sby 가 a_final_overlap_no_validate 로 잰다 (변이 mutC: 유효화가
+//   이기게 뒤집으면 반례).
 //
 //   · Decode.stall_uniform / SEC-2 와의 접점 — 상태열(§3.2 여섯 단계)의
 //     소유자는 HiuPipeline 이고 그 GUARD-MAP 줄도 그쪽에 있다. 이 유닛의
@@ -116,7 +146,11 @@
 //       키 기입도 논스 기입도 **그 파티션의** 마스크 유효만 즉시
 //       떨어뜨리고(정본 7fa5f2e — 저장은 파티션별, 다른 파티션은 사정권
 //       밖), 계산 중 입력이 바뀐 재키잉은 결과를 유효화하지 않는다
-//       (compDirty → faultWrDuringRekey). 미준비 마스크로 지나간 요청은
+//       (compDirty → faultWrDuringRekey). 「계산 중」의 정의역은 busy=1 인
+//       사이클 전부 — 완료(FINAL) 사이클 **포함** — 에 더해 수락 사이클 자체의
+//       같은-파티션(rekey.part) 기입(busy=0 이지만 유도 초기 상태가 그 옛 값을
+//       래치한다)이고, 그 기입은 유효화를 막고 sticky 를 세운다 (e-defined.typ:518 「재키잉 중 입력 기입」 에 시점 예외가 없다;
+//       파도 D, MaskEngine.dirty_loud). 미준비 마스크로 지나간 요청은
 //       faultNoMask 가 잡는다.
 //
 // ## 판단 — 라운드당 고정 1사이클 (근거)
@@ -333,7 +367,18 @@ case class MaskUnit(cfg: Wt64Config = Wt64Config()) extends Component {
     .reduce(_ || _)
   private val nonceDupFire = rekeyFire && nonceDup
 
-  private val dirtyAtFinal = False // FINAL 에서 compDirty 였는가 → sticky
+  // 논스 기입 적중 — 워드 0..5 만 (idx 6·7 은 예약 오프셋 정책으로 무시 —
+  // io 주석). 기입 표면(FSM 뒤)과 FINAL 가지가 같은 식을 본다 — Scala
+  // 클래스 본문의 전방 참조는 elaborate 시 null 이라 정의를 FSM 앞에 둔다.
+  private val nonceWrHit = io.nonceWr.valid && io.nonceWr.idx < NONCE_WORDS
+  // **이 사이클**의 활성 파티션 기입 — 레지스터 compDirty 가 아직 보지 못한
+  // 같은 사이클 항. FINAL 가지가 dirtyAtFinal · maskValid 에 직접 OR 한다
+  // (머리 GUARD-MAP: MaskEngine.dirty_loud · invalidate_beats_validate).
+  // 파티션 한정(actPart)은 dirty_scoped 와 같은 스코프다.
+  private val wrActNow = (io.keyWr.valid && io.keyWr.part === actPart) ||
+                         (nonceWrHit && io.nonceWr.part === actPart)
+
+  private val dirtyAtFinal = False // FINAL 에서 오염(레지스터 ∨ 같은 사이클)이었는가 → sticky
 
   switch(phase) {
     is(PH_IDLE) {
@@ -417,11 +462,23 @@ case class MaskUnit(cfg: Wt64Config = Wt64Config()) extends Component {
       val hi0 = st(0)(31 downto PAGE_W) + U(C0_HI, (32 - PAGE_W) bits) + carry0.asUInt.resize(32 - PAGE_W)
       val lo1 = st(1)(W1_W - 1 downto 0) + U(C1_LO, W1_W bits)
       maskFrame(actPart) := lo1 @@ hi0
-      dirtyAtFinal := compDirty
+      // FINAL 사이클의 활성 파티션 기입은 compDirty 레지스터에 **다음**
+      // 사이클에야 실리므로 같은 사이클 항(wrActNow)을 직접 본다 — 이
+      // 사이클은 busy=1 · ready=0 으로 장치 자신이 「재키잉 중」이라 말하고
+      // FAULT_STATUS [13] 에는 시점 예외가 없다 (e-defined.typ:518 「재키잉 중 입력 기입」).
+      // 파도 D 이전 판(1666c7a)은 compDirty 만 실어 수락+42 엣지 기입이
+      // 유효만 떨어뜨리고 fault 는 침묵했다 — 같은 호스트 행위가 1사이클
+      // 타이밍에 따라 두 판정을 받는 관측 결손(정본 5장 「조용한 소실」과
+      // 동형; 안전 결손은 아니다 — 마스크는 유효화되지 않았다).
+      val dirtyNow = compDirty || wrActNow
+      dirtyAtFinal := dirtyNow
       // 계산 중 입력이 바뀌었으면 유효화하지 않는다 — 옛/새 입력 혼합
       // 마스크를 쓰는 창을 만들지 않는다 (E.9 4항). 미유효는 maskReady
-      // 로 관측되고 sticky 가 크게 알린다 — 조용한 미완이 아니다.
-      maskValid(actPart) := !compDirty
+      // 로 관측되고 sticky 가 크게 알린다 — 조용한 미완이 아니다. 같은
+      // 사이클의 활성 파티션 기입은 아래 기입 표면의 무효화가 텍스트
+      // 순서로도 이기지만, 의도를 식으로 드러낸다
+      // (MaskEngine.invalidate_beats_validate).
+      maskValid(actPart) := !dirtyNow
       phase := PH_IDLE
     }
   }
@@ -447,8 +504,8 @@ case class MaskUnit(cfg: Wt64Config = Wt64Config()) extends Component {
   // 논스 기입 — 워드별 등가 비교 디코드 (Vec 동적 색인은 8→6 원핫
   // 디코더의 미사용 비트를 만든다 — 표 조회 형태로 적어 미사용 비트 0).
   // idx 6·7 은 어느 비교에도 맞지 않아 무시된다 (예약 오프셋 정책 — io
-  // 주석).
-  private val nonceWrHit = io.nonceWr.valid && io.nonceWr.idx < NONCE_WORDS
+  // 주석). nonceWrHit 의 정의는 FSM 앞(dirtyAtFinal 위) — FINAL 가지가 같은
+  // 식을 보기 때문이다.
   for (i <- 0 until NONCE_WORDS) {
     when(io.nonceWr.valid && io.nonceWr.idx === i) {
       nonce(io.nonceWr.part)(i) := io.nonceWr.data

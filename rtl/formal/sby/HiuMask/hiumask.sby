@@ -188,6 +188,48 @@
 # W16(예상 ~46) 에 밀렸다 — "그 2배로 여유를 둔다" 는 이 파일의 관행을
 # 그대로 유지하되 기준을 새 최심 증인으로 옮긴 것이다.
 #
+# ## 엔진 처분 — cover 만 btor btormc (2026-09-22 파도 D, FINAL 엣지 동시 기입)
+#
+# bmc·prove 는 smtbmc z3 그대로다 (아래 표 — 둘 다 파도 D 생성물에서 PASS).
+# 바뀐 것은 cover 태스크의 엔진 하나뿐이고 **속성 집합·깊이(24/12/60)·
+# [script]·[files] 는 불변**이다 — walk_decode.sby · MaskUnit/engine.sby 의
+# 처분과 같은 형태(「바뀐 것은 엔진뿐이다」).
+#
+# 왜: 파도 D 가 MaskUnit.scala 의 FINAL 가지에 wrActNow/dirtyNow 항을 더해
+# 생성물 MaskUnit.sv 의 sha 가 바뀌었고, 이 합성 태스크는 [files] 역색인으로
+# 재실행 대상이다(sby 합성 회귀 함정). 그 재스윕에서 cover 의 smtbmc z3 가
+# step 45 — W16 이 처음 서는 스텝(REKEY 완주 43 + 정착 여유) — 에서 **웨지**
+# 했다: step 44 까지 2 분 31 초, step 45 에서 3 시간 54 분 넘게 미완주(z3 한
+# 코어 99 %, RSS 1.1 GB). 2026-09-20 증거는 같은 엔진·같은 깊이로 18/18 이었으니
+# 대상의 결함이 아니라 솔버 실명이다 — 「엔진이 웨지되면 게이트가 영영 안
+# 끝남으로 위장한다」의 형태 그대로이고, 수락 기준은 무변이 GREEN 이 아니라
+# 「변이를 잡는다」이므로 안 끝나는 엔진에 매달 이유가 없다.
+#
+# §실측 표 (2026-09-22, 컨테이너 wavetensor-dev:scala · SBY v0.66 · Yosys 0.66,
+# 파도 D 생성물 · 같은 하네스 · 같은 깊이):
+#
+#   태스크  엔진          결과    시간                      비고
+#   bmc     smtbmc z3     PASS    49 분 31 초 (depth 24)     assert 36 · 그대로 둔다
+#   prove   smtbmc z3     PASS    2 분 53 초 (k=12)          assert 36 · 그대로 둔다
+#   cover   smtbmc z3     WEDGE   step 44 까지 2 분 31 초    step 45 에서 3 시간 54 분+ 미완주
+#   cover   btor btormc   PASS    벽시계 2 초                18/18 도달 · 궤적 18 —
+#                                                           w16 k=45, 나머지 17 개 k ≤ 10
+#   ⇒ cover 만 btor btormc 로 확정. btormc 의 k 는 초기 상태를 0 으로 세는
+#      프레임 번호라 W16 의 k=45 는 smtbmc 가 웨지한 step 45 와 같은 자리다 —
+#      두 엔진이 같은 스텝을 보고 하나는 2 초에 서고 하나는 4 시간에도 안 선다:
+#      질의가 어려운 것이 아니라 z3 가 못 푸는 것이다 (walk_decode.sby 의
+#      XOR 콘 실명 매트릭스 · MaskUnit/engine.sby 의 step 45 웨지와 같은 결 —
+#      셋 다 ChaCha 데이터 경로가 unroll 된 자리다).
+#   ※ aigsmt 는 두지 않는다 — bmc·prove 가 smtbmc 그대로라 abc 반례 재생
+#      경로가 없고, cover 는 btorsim 이 재생한다 (walk_decode.sby 의 불참 사정).
+#   ※ 증거층: btor cover 의 증인 귀속은 scripts/sby_sweep.sh 의 「btor 증인
+#      갈래」(bad 심볼 순서 ↔ 엔진 로그 인덱스, 궤적 수 교차 대조)가 한다 —
+#      MaskUnit/engine.sby 가 같은 갈래로 10/10 을 남긴 선례. 이 판의 스윕
+#      실측은 hiumask.evidence.json 의 reached_names(18) 와 at 시각이다.
+#   ※ bmc 49 분은 z3 의 몫이다 (같은 모델을 abc bmc3 로 재면 초 단위일 것이나
+#      **재지 않았다** — 처분은 실측한 것만 적는다). 다음 파도가 bmc 시간을
+#      줄이려면 먼저 재고 이 표에 줄을 더하라.
+#
 # ## 부착 방식 — bind 텍스트 전개 ×2 (2026-08-25 수리)
 #
 # 종전 스크립트는 `prep -top HiuMask_comp` 로 *래퍼*를 top 으로 삼았다.
@@ -236,7 +278,9 @@ cover: mode cover
 cover: depth 60
 
 [engines]
-smtbmc z3
+bmc: smtbmc z3
+prove: smtbmc z3
+cover: btor btormc
 
 [script]
 # ① 하네스를 「모듈 본문」과 「두 bind 문」으로 가른다
