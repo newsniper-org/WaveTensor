@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 4e29961e-988b-4f27-9ede-dfb9c81925bc
-  modified: 2026-09-20T17:09:16.899Z
+  modified: 2026-09-21T13:05:38.362Z
 ---
 
 2026-08-20 사용자 지시로 **WT64v1 RTL 전면 재구현**이 착수됐다. 사용자 확정
@@ -71,5 +71,14 @@ metadata:
   오판 (전부 검증 하네스 결손, RTL 결함 아님). 실측 함정은
   [[lint-section-refs-gotchas]] · [[host-tlc-shadow-package]] ·
   [[background-task-oom-kill]] 로 별도 기록.
-- **파도 B — `CAP_STATUS` 축 둘→넷(정본 `1126a38`): 미착수.** 다음
-  세션에서 파도 A 와 같은 순서(선-formal→RTL→후-formal)로 진행할 것.
+- **파도 B — `CAP_STATUS` 축 둘→넷(정본 `1126a38`): 착지 완료**, commit
+  `ac63902` (2026-09-21). 워드 행위를 `host/CapStatusWord` 컴포넌트로 추출
+  (Wt64Top 에 후-formal 하네스가 없어 그것이 형식으로 잴 유일한 자리 —
+  DELEGATED(Wt64Top) 선례와 같은 논리). 선-formal `CapWord.tla`(377 run),
+  후-formal `capword.sby`(변이 7종 전부 FAIL 실측). 축 [0] 은 상류 sticky
+  라 레벨 통과(이중 sticky 레이스), [2] 는 `oValid` 한정, [3] 상수 0.
+  워크플로는 동시 ≤3 에이전트로 9개, 74분 — [[agent-concurrency-cap]].
+- **정본이 RTL 을 앞선 두 파도(A·B)가 모두 닫혔다.** 다음 후보:
+  [[mask-golden-sim-regression]] (`make rtl-sim` Mask 2/8 선재 실패 —
+  파도 A 의 게이트에 rtl-sim 이 없어 실린 회귀; RTL 결함인지 하네스
+  결함인지 미판정). 파도 게이트에 `make rtl-sim` 전 스위트를 넣을 것.

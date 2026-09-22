@@ -44,13 +44,18 @@ make rtl-sim WT_SIM_BUILD=/tmp/wtsim      # 빌드 자리 고정 (기본은 mkdt
 
 ---
 
-## 실행 결과 (2026-08-28, 호스트)
+## 실행 결과 (2026-09-22, 호스트)
 
 ```
-Mask:  8 tests passed (skip 0, 하한 8)
-Shape: 6 tests passed (skip 0, 하한 6)
-run_wt64: 요청 스위트 2건 / cocotb 테스트 14건 전부 통과
+Mask:  10 tests passed (skip 0, 하한 10)
+Shape:  6 tests passed (skip 0, 하한 6)
+run_wt64: 요청 스위트 2건 / cocotb 테스트 16건 전부 통과
 ```
+
+(직전 기준선 2026-08-28: Mask 8 · Shape 6 · 총 14. 2026-09-22 에 Mask 가
+8 → 10 — 임대별 키 파도의 값 수준 지향 시험 둘. 그 사이 2026-09-20 RTL
+`ca3c496` 이 Mask 스위트를 **2/8 FAIL** 로 깨뜨린 채 커밋됐다 — 아래
+「함정 ⑥」.)
 
 핵심 수치:
 
@@ -60,8 +65,12 @@ run_wt64: 요청 스위트 2건 / cocotb 테스트 14건 전부 통과
 | 사영 뒤 서로 다른 `maskFrame` | **73/80** | 같음 |
 | 사영 뒤 서로 다른 자극점 | **79/80** | 같음 |
 | 재키잉 지연 | 수락 엣지 **포함** 43사이클 / **제외** 42엣지 / `io_busy` 상승 41사이클 | `fixed_latency_path_invariant` |
+| `faultNonceDup` 등가 대조 (golden 루프 안) | **80/80 라인** — 기대 1 이 17라인 (pinned 1–7 · edge 42–43 · key_word 쌍 뒤 줄 65…79), 나머지 63은 기대 0 | `sec1_golden_exact` |
+| 임대별 키 범위 — 값 수준 | part 1/2 각자 golden → part 1 키만 갈아 `maskReady` 정확히 `0b0100` · part 2 값 불변 → 재키잉 뒤 `0b0110` · 값 셋 golden | `key_scope_cross_partition_value` |
+| 계산 중 **다른** 파티션 기입 | `maskReady == 0b0001` · `faultWrDuringRekey == 0` · part 0 값 golden | `wr_other_partition_during_rekey_is_clean` |
+| 변이 실측 (사본 worktree, 생성 SV 한 자리씩 — M2 만 case 블록 24줄) | **4/4 잡힘** — 아래 표 | Mask 스위트 전체 |
 | 구성 표면 소거 구간 | **65535 엣지** | `cfg_surface_integrity` |
-| ISA-1 대조면 | **115/117** 출력 (제외: `io_push_1_stall`·`io_push_2_stall`) | `compare_face_is_pinned` |
+| ISA-1 대조면 | **117/119** 출력 (제외: `io_push_1_stall`·`io_push_2_stall`) | `compare_face_is_pinned` |
 | IO fault 해제선 | 19 (fault 출력 23 − MMIO 전용 4) | 같음 |
 
 ---
@@ -78,18 +87,44 @@ io_rsp_frame  ==  io_req_frame ^ (mask64 >> 12) & 0xFFFFFFFF
 
 `mask64[43:12]` 는 E.9 3항의 적용 슬라이스이고 (`PA_W=44` · `PAGE_W=12` ·
 `FRAME_W=32`, `XlateStore.scala:60-70`), RTL 은 64비트 마스크를 레지스터에
-두지 않고 그 32비트만 상수 분해로 만든다 (`MaskUnit.scala:350-371`, 생성물
-`MaskUnit.sv:263-266` 에서 상수 셋 대조 확인).
+두지 않고 그 32비트만 상수 분해로 만든다 (`MaskUnit.scala:398-426`, 생성물
+`MaskUnit.sv:302-305` 에서 상수 셋 대조 확인).
 
 **`!=`·popcount·통계형 확산 검사가 한 곳도 없다.** 정본 §5.2.4 가 이름한
 「확산은 세어서 확인할 수 없다 — **틀린 값도 다르다**」의 수신인이 이
-파일이고 (`MaskUnit.scala:74-79` 가 명시한다), 있는 것은 golden 값과의
+파일이고 (`MaskUnit.scala:95-100` 이 명시한다), 있는 것은 golden 값과의
 등가 비교 하나뿐이다. `nonce_tail`·`key_word` 가족의 「검출기」 성격은
 *그 벡터가 폐기 알고리즘을 골라내도록 golden 이 구성됐다*는 뜻이지
 하네스가 통계를 잰다는 뜻이 아니다.
 
 fault 는 `io_fault*` **실포트로만** 관측한다 — 시뮬 전용 단언으로 fault 를
 구현하면 합성 결과물에 그 검사가 없다.
+
+**키·논스 저장은 임대(파티션)마다 다르다** (정본 「키의 범위 — 임대마다
+다르다」, RTL `ca3c496`). 하네스의 전제는 넷 — 키 기입 포트에 `io_keyWr_part`
+가 있고 워드는 그 파티션에 앉는다 · 키 기입은 **그 파티션의** `maskValid`
+만 떨어뜨린다 · REKEY 는 그 파티션의 키를 읽는다 · `compDirty` 는 기입
+파티션이 계산 중 파티션(또는 이번 REKEY 대상)일 때만 선다. 제어면은 후-formal
+`HiuMask` 가 증명했고, 여기서는 그 결과가 **golden 값**으로 나타나는지를
+지향 시험 둘로 잰다 (`key_scope_cross_partition_value` ·
+`wr_other_partition_during_rekey_is_clean`). golden 루프는 `i % 4` 로 파티션을
+골고루 돌며 매 라인 `faultNonceDup` 도 하네스 쪽 모델(유효 파티션 → 논스)과
+**등가**로 대조한다 — 기대 1 이면 해제하고 다음 라인으로 간다. 옛 계약(키
+전역 1벌)에서는 이 축이 루프에서 공허하게 거짓이었고, 지금은 17라인에서
+실제로 선다.
+
+변이 실측 (2026-09-22 — `git worktree` 사본의 `rtl/generated/MaskUnit.sv`
+에 한 자리씩 넣고(M2 만 case 블록 24줄) `make rtl-sim SIM_SUITES=Mask`; 저장소 생성물은 손대지 않았다):
+
+| 변이 | 무엇을 깨는가 | 죽는 시험 |
+|---|---|---|
+| M1 | 키 기입이 part 를 무시하고 항상 파티션 0 에 쓴다 | `sec1_golden_exact` (라인 1, part=1) · `en_is_the_single_stall_source` · `key_scope_cross_partition_value` |
+| M2 | REKEY 가 항상 파티션 0 의 키를 읽는다 | `sec1_golden_exact` (라인 9, rand part=1 — pinned 8줄은 키가 같아 part 0 의 키로도 golden 이 맞는다; 그것이 원장 5번의 자극 축소다) · `en_is_the_single_stall_source` · `key_scope_cross_partition_value` |
+| M3 | 키 기입이 **전** 파티션의 `maskValid` 를 내린다 | `sec1_golden_exact` (라인 1 — `faultNonceDup` 기대 1 인데 0: 전건이던 part 0 이 무효화됐다) · `key_scope_cross_partition_value` (part 2 install 뒤 `maskReady` 0b0100 ≠ 0b0110 — part 2 의 키 기입이 part 1 을 무효화했다) |
+| M4 | 키 기입이 파티션과 무관하게 가동 중이면 `compDirty` 를 세운다 | `wr_other_partition_during_rekey_is_clean` (`maskReady` 0b0000 ≠ 0b0001) — **이 시험만** 문다; 나머지 아홉은 M4 에 침묵한다 |
+
+M4 가 말하는 것: 기존 아홉은 「다른 파티션 기입은 사정권 밖」을 한 번도 재지
+않았다. 지향 시험 하나가 그 축의 유일한 그물이다.
 
 ### `Shape` — `test_shape_equiv.py` (DUT `Wt64Top.sv`)
 
@@ -134,7 +169,7 @@ ISA-2 사상 경유(존재 축) · ISA-1 자리 무관성 · 구성 표면 무�
 | 2 | **ISA-1 두-형상 대조 (nPoints 4 ↔ 2)** | 형상 B 생성기 부재 — 아래 별항 |
 | 3 | ISA-2 **자리 축** (LNID 소유 지점 `[23:16]` · LBID 슬롯 구간 `[15:0]` 순열) | 관측면 부재 — `RouteJudge.scala:145` 는 `!viewHit` 뿐이고 지점별 소유를 구조적으로 모른다. 구간값 소비자 `Reassembly.wr → ResultBank.write` 는 미배선 (`Wt64Top.scala:81-83`) |
 | 4 | fp32 산술 정확성 (`golden_fp32` 비트 일치) | `StepSequencer.scala:425-426` 이 `UInt` 정수곱·정수합 — 산술은 축 (b) 후속 |
-| 5 | `mask64` 의 32비트 (`[63:44]`·`[11:0]`) | `MaskUnit.scala:219-226` — 레지스터도 배선도 없다. **비교 불가가 아니라 비교 대상 부재** |
+| 5 | `mask64` 의 32비트 (`[63:44]`·`[11:0]`) | `MaskUnit.scala:255-262` — 레지스터도 배선도 없다. **비교 불가가 아니라 비교 대상 부재** |
 | 6 | `SUBKEY`(256b)·`BLOCK`(512b) 를 통한 부분 수리 검출 | 내는 포트가 없다. `st_0..st_15` 의 계층 peek 은 포트 계약이 아니라 SpinalHDL 명명의 우연이라 통과 기준으로 쓰지 않는다 |
 | 7 | `FAULT_STATUS[17]`·`[18]` | `Wt64Top.sv:1491-1492` 상수 0 — 원천 부재. **0 을 「정상」으로 읽으면 안 된다** |
 | 8 | `SharedUnit`·`MemOrderGate` 독립 `.sv` 의 top 대표성 | 형상 불일치 — 독립본 16비트 vs top 인스턴스 161/128비트 |
@@ -182,11 +217,12 @@ ISA-2 사상 경유(존재 축) · ISA-1 자리 무관성 · 구성 표면 무�
 
 ---
 
-## 하네스를 짜다 실제로 밟은 함정 다섯
+## 하네스를 짜다 실제로 밟은 함정 여섯
 
-전부 **조용히 초록이 되는** 부류다. 다섯 다 코드 안에 재발 방지 주석이
-박혀 있다. ⑤ 는 하네스가 초록이 된 **뒤** 적대적 재검증이 찾은 것이라
-따로 표시해 둔다 — 초록은 검증의 끝이 아니다.
+전부 **조용히 초록이 되는** 부류다. 다섯은 코드 안에 재발 방지 주석이,
+⑥ 은 주석이 아니라 `boot()` 의 포트 정의역 **검사**가 박혀 있다. ⑤ 는 하네스가 초록이 된 **뒤** 적대적 재검증이 찾은 것이라
+따로 표시해 둔다 — 초록은 검증의 끝이 아니다. ⑥ 은 RTL 계약이 바뀐 뒤
+하네스가 **옛 계약을 잰 채** 여섯이 초록으로 남은 것이다.
 
 ### ① 관측 엣지가 한 박 늦으면 궤적 비교가 **공허하게 통과한다**
 
@@ -261,6 +297,32 @@ reset 해제 직후 1 이 읽힌다. 그것을 「소거 끝」으로 읽으면 
 (시뮬이 `$finish` 하고 남은 테스트가 message 빈 FAIL 로 무너진다).
 ⇒ 클럭은 테스트마다 새로 띄운다.
 
+### ⑥ (2026-09-22) 포트가 늘었는데 `INPUTS` 에 없으면 0 이 **뜻을 가진 채** 시험이 돈다
+
+RTL `ca3c496` 이 `io_keyWr_part` 를 신설했다. 하네스의 `INPUTS` 목록에 그
+이름이 없으니 `boot()` 가 초기화하지 않고 `write_key()` 도 구동하지 않았다 —
+Verilator 미구동 입력은 0 이고, 그 0 은 「파티션 0」이라는 **뜻**을 갖는다.
+모든 키가 파티션 0 에 앉았고 part≠0 파티션은 리셋 값(전부 0) 키로 재키잉해
+golden 과 어긋났다. part≠0 으로 값을 재는 시험 **둘만** 죽었고
+(`sec1_golden_exact` 라인 1 · `en_is_the_single_stall_source`), 나머지
+여섯은 전부 part 0 에서 값을 재서 초록이었다 — 그 여섯의 초록은 계약을
+확인한 것이 아니라 그 축을 재지 않은 것이다.
+
+⇒ `INPUTS` 는 `boot()` 가 생성물 머리의 입력 포트 집합과 **기계로** 대조한다
+— 누락·잉여면 FAIL 이다 (주석은 호출이 아니다; 옛 목록에 그 검사를 대면
+`io_keyWr_part` 누락을 즉시 지목한다). 그리고
+파도 A 의 **로컬** 완료 게이트에 `make rtl-sim` 이 없어 이 회귀가 커밋에
+실렸다 (CI 의 step 은 2026-08-28 부터 있었다 — 아래 「미처리」 정정) —
+RTL 계약을 바꾸는 파도는 후-formal 만이 아니라 **cocotb 골든도** 게이트에
+넣어야 한다. 형식은 제어면을, 골든은 값을 잰다 — 둘은 서로를 대신하지
+않는다.
+
+부수로 찾은 것: 이 하네스의 `MaskUnit.scala:NNN` 좌표 인용 14건이 **전부
+따옴표 없이** 있었고, 파도 A 가 그 파일을 고쳐 14건 중 13건이 다른 줄을
+가리키게 됐는데(제자리는 XlateStore 의 폭 상수 인용 하나) 아무도 몰랐다 (`lint_section_refs` 의 R5 는 상한만 걸고 대상 대조는
+따옴표 있는 인용에만 한다). 재조준하며 전부 같은 줄 축자 「…」 결속으로
+바꿨다 — 다음 RTL 편집이 줄을 밀면 STALE 로 지목된다. 래칫 항목은 14 → 0.
+
 ---
 
 ## 러너가 선례에서 갈라지는 세 곳
@@ -305,10 +367,16 @@ Verilator 가 `%Warning-MODDUP` 으로 거부한다(기본 fatal — 실측 5.04
 
 ## 미처리 — 보고만 하고 고치지 않은 것
 
-**`.github/workflows/gates.yml` 에 `rtl-sim` step 이 0건이다.** cocotb step 은
-구 모듈 6개와 `test-cluster-both` 뿐이다. `.github/` 는 이 파도의 편집 배정
-밖이라 정정하지 않았다. step 을 넣지 않으면 이 하네스는 **돌린 사람 말고
-아무에게도 아무것도 재지 못한다.**
+~~**`.github/workflows/gates.yml` 에 `rtl-sim` step 이 0건이다.**~~ — 착지했다.
+`9fd6b52`(2026-08-28, 이 하네스와 같은 커밋의 「CI 결선」)가 「재구현 런타임
+하네스 (rtl-sim)」 step 을 넣었다 (컨테이너 `wavetensor-dev:ci` 안에서
+`make rtl-sim`). 이 문단은 그 커밋 안에서 이미 낡아 있었다 — 2026-09-22 정정.
+
+그런데 CI 에 step 이 있어도 **파도의 로컬 완료 게이트에 `make rtl-sim` 이
+없으면** 회귀는 커밋에 실린다 — 2026-09-20 `ca3c496` 이 그 실례다 (커밋
+문면의 게이트 목록: rtl-postformal · lint · rtl-lint · tla run · 레거시
+cocotb — 이 하네스는 없다). RTL 계약을 바꾸는 파도의 게이트에 이 하네스를
+넣는 것은 CI 가 아니라 **파도 절차**의 몫이다 (함정 ⑥).
 
 `synth/lattice/fp_ops/run_fp_ops_tests.py` 자신의 결함 셋(위 표)도 그대로
 남아 있다 — 그 파일도 편집 배정 밖이다.

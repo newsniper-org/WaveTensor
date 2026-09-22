@@ -1,47 +1,60 @@
 ---
 name: mask-golden-sim-regression
-description: make rtl-sim 의 Mask 스위트 2/8 이 HEAD(ca3c496 임대별 마스크 키 착지)에서 이미 실패한다 — sec1_golden_exact 골든 불일치 · en_is_the_single_stall_source. 별도 파도로 처분 필요.
+description: (해소 2026-09-22) make rtl-sim Mask 2/8 실패는 하네스가 io_keyWr_part 를 구동하지 않은 것 — RTL 결함 아님(독립 반증). 남은 이월 둘 — FINAL 엣지 동시 기입 모서리 · MaskUnit.scala 의 낡은 정본 좌표.
 metadata:
   type: project
   originSessionId: e7f99d7a-a6eb-46be-b7eb-fd78237e02a7
-  modified: 2026-09-21T12:33:32.025Z
+  modified: 2026-09-22T01:42:22.436Z
 ---
 
-**`make rtl-sim` 이 HEAD 에서 빨갛다** — 2026-09-21 CAP_STATUS 파도(파도 B)의
-전수 반증 세 렌즈가 각각 독립으로 실측했다. `rtl/sim/test_mask_golden.py` 의
-두 시험이 순정 HEAD `ca3c496`(임대별 마스크 키 착지) worktree 에서도 같은
-메시지로 실패한다:
+**해소됨 (파도 C, 2026-09-22).** `make rtl-sim` 의 Mask 스위트 2/8 실패
+(`sec1_golden_exact` · `en_is_the_single_stall_source`)는 **하네스 결함**이었다:
+파도 A(ca3c496)가 `MaskUnit` 에 `io_keyWr_part` 입력을 신설했는데
+`rtl/sim/test_mask_golden.py` 의 `INPUTS` 손 목록과 `write_key()` 가 그 포트를
+구동하지 않아 모든 키가 파티션 0 에 앉았고, part≠0 으로 값을 재는 두 시험만
+리셋 값(0) 키의 마스크와 비교해 죽었다(관측값 0x8DC44C4A 가 정확히 key=0 의
+골든 — 독립 검토자가 `scripts/golden_xchacha.py` 로 확인).
 
-- `sec1_golden_exact` — 「라인 1 (pinned, part=1): io_rsp_frame 0x8DC44C4A ≠
-  golden MASKED[43:12] 0x59C63B88」
-- `en_is_the_single_stall_source` — `rtl/sim/test_mask_golden.py:468`
-  `assert got == exp` AssertionError
+**RTL 결함은 없다** — 「RTL 이 틀렸다」 가설을 세운 독립 검토자가 사본에서
+탐침 9종(4파티션 순서 교차 · 롤링 모델 · 재키잉 authority · 가동 중 타/동
+파티션 기입 · 동시 엣지 · 벡터 밖 난수 48벌)으로 등가 비교 2천여 건을 전부
+골든과 맞추고 기각했다.
 
-`run_wt64.py` 는 Mask 스위트를 먼저 돌리고 첫 스위트 실패에서 `sys.exit`
-하므로 **Shape 스위트는 `make rtl-sim` 으로는 도달되지 않는다** —
-`make rtl-sim SIM_SUITES=Shape` 로 따로 돌려야 한다(파도 B 는 그렇게 6/6 을
-실측했다). `rtl/sim/README.md` 의 「Mask 8 passed (2026-08-28)」 기록은 지금
-사실이 아니다.
+**착지한 것:** 하네스가 `io_keyWr_part` 를 구동 · 낡은 문면(전 파티션
+무효화, dup 검사 공허) 전부 새 계약으로 · 골든 루프가 `faultNonceDup` 을
+하네스 모델과 **등가** 대조(80 라인 중 기대 1 이 17) · 지향 시험 둘 신설
+(`key_scope_cross_partition_value` · `wr_other_partition_during_rekey_is_clean`)
+· 변이 6종 전부 잡힘 · `boot()` 가 생성물 입력 포트 집합과 `INPUTS` 를
+**기계로 대조**(손 목록 구멍을 닫음 — 옛 목록에 대면 `io_keyWr_part` 누락을
+즉시 지목) · 하네스의 `MaskUnit.scala:NNN` 좌표 14건(13건이 낡아 있었다)을
+같은 줄 축자 「…」 결속으로 바꿔 lint 가 STALE 을 잡게 함 · Mask 10/10 ·
+Shape 6/6.
 
-**Why (추정, 미확인):** 2026-09-20 파도 A 가 `MaskUnit.scala` 의 키 저장을
-파티션별로 가르고 `keyWr` 에 `part` 필드를 신설했으며 Wt64Top 의
-`M_NONCE_PART`(0x20)를 `M_MASK_PART` 로 넓혀 **키 기입도 그 창을 거치게**
-했다. cocotb golden 하네스가 옛 결선(키는 전역 1벌, 창은 논스 전용)을
-전제하면 pinned part=1 의 키가 다른 파티션 슬롯에 앉아 골든과 어긋난다.
-파도 A 의 게이트 목록에 `rtl-sim` 이 없었다 — 후-formal(18 모듈)·lint·TLA·
-레거시 HIU cocotb 는 돌렸지만 `rtl/sim` 은 돌리지 않았고, 그래서 이 회귀가
-커밋에 실렸다. **골든 값 불일치라 하네스 결함인지 RTL 실결함인지 아직
-가르지 않았다** — 하네스만 고치는 것으로 시작하지 말 것.
+**Why 회귀가 실렸는가:** 파도 A 의 로컬 완료 게이트에 `make rtl-sim` 이
+없었다(후-formal·lint·TLA·레거시 HIU 만). 형식은 제어면을, 골든은 값을
+잰다 — 둘은 서로를 대신하지 않는다.
 
 **How to apply:**
-- 다음 파도(또는 별도 수리 파도)의 첫 작업: `rtl/sim/test_mask_golden.py` 를
-  읽어 키 기입 경로(`M_MASK_PART` 창 + `keyWr.part`)를 따라가고 골든
-  생성(`scripts/golden_*.py`)의 파티션 전제와 대조한다. RTL 결함이면 `MaskUnit`
-  의 후-formal(hiumask.sby)이 왜 못 잡았는지도 함께 묻는다(값 축은 golden
-  대조 몫 — SEC-1 은 형식이 아니라 대조).
-- 파도 완료 게이트에 `make rtl-sim`(전 스위트)을 **반드시** 넣는다 — 파도 A
-  가 그것을 빠뜨렸다.
-- 해소 전까지 착지 보고에 「rtl-sim 전부 PASS」라 적지 말고 스위트별로 적는다.
+- RTL 계약을 바꾸는 파도의 완료 게이트에 `make rtl-sim`(전 스위트)을
+  **반드시** 넣는다. 러너는 첫 스위트 실패에서 멈추므로 스위트별 결과를
+  따로 적는다.
+- cocotb 하네스의 입력 목록은 손으로 유지하지 말고 생성물 포트 집합과 기계로
+  대조하라 — `test_mask_golden.py` 의 `generated_input_ports()` 가 선례다.
+  (`test_shape_equiv.py` 는 `EXPECT_OUTPUTS` 핀으로 같은 구멍을 다른 방식으로
+  막는다.)
 
-관련: [[wt64v1-rtl-reimplementation]] · [[differential-domain-trap]] (골든
-정의역이 손-리터럴이면 새 경로는 오라클에 한 점도 없이 태어난다).
+**이월(이 파도가 고치지 않은 것):**
+1. **FINAL 엣지 동시 기입 모서리** — 같은 파티션 키·논스 기입이 정확히
+   FINAL 엣지(수락+42)에 실리면 유효만 떨어지고 `faultWrDuringRekey` 는
+   서지 않는다(수락+40·+41 은 fault 1). 기전: `dirtyAtFinal := compDirty` 가
+   엣지 전 값(0)을 읽고 같은 엣지의 `compDirty := True` 는 다음 사이클에야
+   선다. 정본 계약 명시 또는 `dirtyAtFinal` 확장은 별도 파도(선-formal 부터).
+   하네스 머리 「재지 못하는 축」 8항에 등재.
+2. **`MaskUnit.scala:433` 의 낡은 정본 좌표** — `e-defined.typ:333` 을
+   「기입은 그 파티션의 마스크 유효를 즉시 떨어뜨린다」로 인용하는데 그
+   문장은 :339(키)·:343(논스)에 있다(정본 삽입이 밀었다). 따옴표가 다음 줄에
+   있어 R6 결속 밖이라 lint 가 침묵. 다음 RTL 파도에서 같은 줄 결속
+   `e-defined.typ:339 「…」` 로 재조준(주석만 — 생성물 불변).
+
+관련: [[wt64v1-rtl-reimplementation]] · [[selftest-residency]] (주석은 호출이
+아니다 — 정의역은 기계가 닫는다) · [[differential-domain-trap]].

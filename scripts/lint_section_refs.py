@@ -662,7 +662,13 @@ AX1_UNMEASURED_HARD_MAX: dict[str, int] = {
     "rtl/formal/tla/Mask.tla": 10,
     "rtl/sim/README.md": 17,
     "rtl/sim/run_wt64.py": 11,
-    "rtl/sim/test_mask_golden.py": 14,
+    # 2026-09-22 하강 14 → 0 (파도 C — Mask cocotb 골든 회귀 수리, RTL ca3c496
+    # 「임대별 마스크 키」가 밀어낸 좌표를 재조준). `test_mask_golden.py` 의
+    # 따옴표 없는 좌표 14건은 **전부 낡아 있었다** — 파도 A 가 MaskUnit.scala
+    # 를 고쳐 14건 중 13건이 다른 줄을 가리켰는데 미계수라 아무도 몰랐다.
+    # 재조준하면서 전부 같은 줄 축자 「…」 결속으로 바꿨다(0 건 미계수) — 다음
+    # RTL 편집이 줄을 밀면 이 검사가 STALE 로 지목한다. 항목 제거는 래칫 상한도
+    # 같이 내린다 (R5 문면).
     # 2026-09-21 하강 14 → 13 (CAP_STATUS 축 둘→넷 파도, 정본 1126a38) —
     # NO_IO_CLEAR 머리 주석의 좌표 인용(HEAD 문면 `Wt64Top.scala:1154`·:1164·
     # :1165·:1443 — 이미 낡아 있어 파도 중간에 :1195 등으로 한 번 재조준했던
