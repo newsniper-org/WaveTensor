@@ -1,0 +1,72 @@
+{
+  "anchors": [
+    "Mask.rekey_explicit_target"
+  ],
+  "at": "2026-09-25T17:01:17Z",
+  "cover": {
+    "reached": 25,
+    "reached_names": [
+      "Wt64Top.chk.w10_cap0_clr",
+      "Wt64Top.chk.w10_cap2_gate",
+      "Wt64Top.chk.w10_capst_rd2",
+      "Wt64Top.chk.w11_arm_rd_full",
+      "Wt64Top.chk.w11_fire",
+      "Wt64Top.chk.w12_key_win3",
+      "Wt64Top.chk.w13_rekey_drift",
+      "Wt64Top.chk.w14_bind_en",
+      "Wt64Top.chk.w15_drain_nz",
+      "Wt64Top.chk.w16_hm_stall",
+      "Wt64Top.chk.w17_resv_wr",
+      "Wt64Top.chk.w1_cq_last",
+      "Wt64Top.chk.w1_sq_first",
+      "Wt64Top.chk.w2_resv_rd",
+      "Wt64Top.chk.w2_undef_rd",
+      "Wt64Top.chk.w3_key_rd_after_wr",
+      "Wt64Top.chk.w4_ro_wr",
+      "Wt64Top.chk.w5_fclr_rsv",
+      "Wt64Top.chk.w5_rekey_rsv",
+      "Wt64Top.chk.w6_part_rej",
+      "Wt64Top.chk.w7_surf_clear",
+      "Wt64Top.chk.w7_surf_overlap",
+      "Wt64Top.chk.w8_fst_rd6",
+      "Wt64Top.chk.w8_fsum_rd",
+      "Wt64Top.chk.w9_fclr_all"
+    ],
+    "unreached": 0,
+    "unreached_names": []
+  },
+  "inputs": {
+    "rtl/generated/Wt64Top.sv": "4a4af7a99bf8ff261680d5ca3a269e65ec3930bd4e398be0da2cd5f361cd688a",
+    "rtl/sv/assert/Wt64Top_props.sv": "6ccb4ac7c35eb65947301d96ce5589f3aefd8120f799fbaf063e3138aad62d6c"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 83,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 25,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 83,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
+  },
+  "sby": "rtl/formal/sby/Wt64Top/assembly.sby",
+  "sby_sha256": "c4662f98ef1c6cc71772fd5d4b892b4bd76becb584b8912e2cd1479f3cd2057b",
+  "schema": "wt64-postformal-evidence/2",
+  "tasks": "bmc:PASS cover:PASS prove:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
+}

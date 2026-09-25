@@ -18,9 +18,9 @@
 # CapStatusWord_props.sv 파일 머리 「이 태스크가 재지 **않는** 것」 절이
 # 정본이다 — Top 의 set(3) := False 상수 묶음 · [2] set 의 walk.oValid 유효
 # 한정 · 능력 부재의 fault 불참 · clrAcc(0) → Reassembly.capAbsentClear 결선.
-# 넷 다 Wt64Top 의 결선이고 그 결선을 top 으로 재는 후-formal 태스크는 0건이다
-# (AbortStaging/props.sby 는 Wt64Top.sv 를 읽되 prep -top AbortStaging_check 로
-# 나머지를 뗀다 — rtl/README.md 「미측정」). 여기서 io_set 넷은 전부 자유 입력이다.
+# 넷 다 Wt64Top 의 결선이고 2026-09-26 부터 조립층 rtl/formal/sby/Wt64Top/assembly.sby
+# 가 잰다 (a_rd_capb3 · a_cap2_rise · a_rd_fst 의 비포함 · a_cap0_clr — rtl/README.md
+# 「미측정」 절은 좁혀졌다). 여기서 io_set 넷은 여전히 전부 자유 입력이다.
 #
 # ## 깊이 근거
 #

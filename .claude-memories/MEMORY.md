@@ -27,5 +27,6 @@
 - [lint_section_refs/lint_witness_map 함정 둘](lint_section_refs_gotchas.md) — R5 래칫은 git 인덱스만 스캔(신규 파일은 add 후에야 걸린다) · cover 라벨은 cover( 과 반드시 같은 줄
 - [호스트 tlc 는 무관한 시스템 패키지](host_tlc_shadow_package.md) — `/usr/bin/tlc` 구버전이 프로젝트 핀을 가린다; `-noGenerateSpecTE` 쓰는 신형 run.sh 는 devcontainer 안에서 돌려라
 - [Mask cocotb 골든 회귀 (해소)](mask_golden_sim_regression.md) — 원인은 하네스의 io_keyWr_part 미구동(RTL 결함 아님, 독립 반증); 파도 게이트에 rtl-sim 전 스위트 필수; 이월 둘(FINAL 엣지 동시 기입 모서리 · MaskUnit.scala:433 낡은 좌표)
+- [rIC3 fork stage4 검토](ric3_fork_review.md) — 도입한다면 fork 가 낫지만 이유는 upstream 인증서 세그폴트 회피(Stage 2~4 는 무효); 급하지 않음, 순이득은 certifaiger 인증서
 - [동시 실행 에이전트 상한 4](agent_concurrency_cap.md) — 사용자 지시 2026-09-21, 크레딧 고갈 방지; Workflow 팬아웃·fork 합쳐 4 이하
 - [백그라운드 대기 루프가 메모리 가드에 죽는다](background_task_oom_kill.md) — run_in_background Bash 폴링은 실사용량과 무관하게 죽는다; nohup 백그라운드 + Monitor 조합을 쓸 것

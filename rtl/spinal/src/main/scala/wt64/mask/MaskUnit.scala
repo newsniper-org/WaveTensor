@@ -17,8 +17,8 @@
 // `rekey_explicit_target` 은 MASK_PART 창 대 MASK_REKEY 필드의 *라우팅*
 // 문제라 Wt64Top 의 MMIO 디코드(maskArea) 소관이고 이 유닛에는 그 개념
 // 자체가 없다(이 파일에는 "창"이 없다 — keyWr.part/rekey.part 는 이미
-// 분리된 자유 입력으로 도착한다). 그 가드의 GUARD-MAP 줄은 Wt64Top 을
-// 감싸는 별도 후-formal 합성이 서는 날의 몫으로 남긴다.
+// 분리된 자유 입력으로 도착한다). 그 가드의 GUARD-MAP 정식 줄은 top/
+// Wt64Top.scala 머리의 GUARD-MAP 절에 있다 (조립층 assembly.sby 가 잰다).
 // GUARD-MAP: Mask.key_scoped_storage -> 저장은 파티션별이다(key 를
 //   parts 벌 둔다, 아래 key 선언). HiuMask 합성이 REKEY(p) 수락 다음
 //   사이클의 유도 초기 상태(st_4..st_11)를 keyWr 입력만으로 다시 지은
@@ -33,10 +33,10 @@
 //   때만 수락된다(io.rekey.ready = !engineBusy, 아래 FSM). HiuMask
 //   합성이 rekeyFire 발화 사이클의 phase 가 IDLE 였음을 잰다 — 이 축의
 //   로직은 이번 파도가 건드리지 않았고 회귀 그물로만 선다.
-// GUARD-MAP: Mask.rekey_explicit_target -> DELEGATED(Wt64Top) — MASK_PART
-//   창(0xEA0) 대 MASK_REKEY(0xEBC) 필드의 라우팅 문제라 MMIO 디코드
-//   (Wt64Top.maskArea) 소관이다. 이 유닛에는 "창" 개념 자체가 없다 —
-//   keyWr.part/rekey.part 는 이미 분리된 자유 입력으로 여기 도착한다.
+// (넷째 가드 Mask.rekey_explicit_target 의 GUARD-MAP 정식 줄은 top/Wt64Top.scala
+//   머리로 옮겼다 — MASK_PART 창(0xEA0) 대 MASK_REKEY(0xEBC) 필드의 라우팅은
+//   Wt64Top.maskArea 소관이고, 이 유닛에는 "창" 개념 자체가 없다 —
+//   keyWr.part/rekey.part 는 이미 분리된 자유 입력으로 여기 도착한다.)
 //
 //   · Decode.stall_uniform / SEC-2 와의 접점 — 상태열(§3.2 여섯 단계)의
 //     소유자는 HiuPipeline 이고 그 GUARD-MAP 줄도 그쪽에 있다. 이 유닛의

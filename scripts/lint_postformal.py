@@ -424,7 +424,11 @@ _LEGACY_SCHEMAS = {
 # 둘은 **상한**(늘면 실패)이다. 상한 쪽이 있는 이유: 구조 skip 과 부분 덮임은
 # 「CHECK 분모를 비우는」 방향의 부정을 가능하게 하므로, 그것을 늘리는 일은
 # 반드시 이 파일을 고치는 *명시적 서명*을 거쳐야 한다.
-_MIN_COVERED = 86      # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다.
+_MIN_COVERED = 87      # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다.
+                       # 86 → 87 (2026-09-26 실측 — 파도 2, Wt64Top 조립층:
+                       # Mask.rekey_explicit_target 이 DELEGATED → CHECK 로 승격되며
+                       # 조립층 Wt64Top/assembly.sby 앵커로 덮였다 — 부분, 아래
+                       # _MAX_PARTIAL 8 → 9 와 같은 사건).
                        # 82 → 86 (2026-09-22 실측 — 파도 D, FINAL 엣지 동시 기입:
                        # 신설 모델 MaskEngine 의 CHECK 넷을 MaskUnit/engine.sby
                        # 앵커 넷이 완전 덮임 — 부분 0). 하한을 실측값에 세운다
@@ -435,7 +439,17 @@ _MIN_COVERED = 86      # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다
                        # 실측 아래 8 칸 헐거운 채로는 앵커 여덟이 조용히 사라져도
                        # 게이트가 침묵한다 (2026-09-21 전수 반증 세 렌즈가 같은
                        # 것을 지적했다).
-_MAX_PARTIAL = 8       # 부분 덮임뿐인 가드 수. 늘지 않는다 (늘리려면 근거와 함께)
+_MAX_PARTIAL = 9       # 부분 덮임뿐인 가드 수. 늘지 않는다 (늘리려면 근거와 함께)
+                       #
+                       # 8 → 9 (2026-09-26, 파도 2 — Wt64Top 조립층). 승격된
+                       # Mask.rekey_explicit_target 하나. 이것도 **태어나면서
+                       # 부분인 앵커를 태어나는 날 표에 올린 것**이다: 조립층이
+                       # 재는 축은 조립 라우팅(*거절되지 않은* MASK_REKEY 기입 ⇔
+                       # rekey.valid 핀 · 그 part = 기입 [1:0] — 엔진의 수락은
+                       # valid ∧ ready 이고 ready 는 MaskUnit 몫)이고, 엔진이 그
+                       # 파티션의 저장을 읽는다는 축은 hiumask.sby 가 *다른 가드
+                       # 이름*(Mask.key_scoped_storage)으로 잰다 — 아래 _PARTIAL 항목.
+                       # (완전 덮임 78 불변 · 부분 +1 — 완전+부분은 +1.)
                        #
                        # 6 → 8 (2026-09-21, CAP_STATUS 축 둘→넷 파도 — 정본
                        # 1126a38). 신설 모델 CapWord 의 sticky_until_clear ·
@@ -477,7 +491,13 @@ _MAX_STRUCTURAL_RESIDUAL = 1
                        # 숨기는 것보다 낫지만, **늘어도 되는 것은 아니다.**
                        # 줄이는 길은 그 축을 실제로 재고 칸을 _NOTHING_LEFT 로
                        # 바꾸는 것뿐이다.
-_MIN_EVIDENCED = 80    # 실행 증거로 뒷받침된 앵커 수. 줄지 않는다.
+_MIN_EVIDENCED = 93    # 실행 증거로 뒷받침된 앵커 수. 줄지 않는다.
+                       #
+                       # 80 → 93 (2026-09-26, 파도 2 — Wt64Top/assembly.sby 스윕
+                       # 직후 실측: 앵커 93 전부 신선). 80 은 2026-08-26 의 값에
+                       # 머물러 있었고 그 사이 파도들이 앵커를 늘리는 동안 하한이
+                       # 실측 아래로 헐거워져 있었다 — 「줄지 않는다」는 현재값에
+                       # 서 있어야 문장이 된다 (_MIN_COVERED 2026-09-21 문면).
                        #
                        # 0 → 80 (2026-08-26, 전수 스윕 직후 실측: 18/18 PASS ·
                        # fail 0 · hollow 0 · uncounted 0 · 앵커 80 전부 신선).
@@ -504,14 +524,21 @@ _MAX_LEGACY_EVIDENCE = 0
                        # (실측 2026-08-27: 18/18 을 구판으로 강등해도 rc=0).
                        # 4차가 세운 게이트를 4차가 남긴 래칫이 열어 두고 있던
                        # 자리이고, 그것이 「집행되지 않는 규율」의 형태다.
-_MAX_WITNESS_RESIDUAL = 1
+_MAX_WITNESS_RESIDUAL = 2
                        # 증인 불가 부류가 선언된 .sby 수. 늘지 않는다.
                        # `_MAX_STRUCTURAL_RESIDUAL` 과 같은 성격 — 벌점이
                        # 아니라 영구적인 정직 표기이고, **줄이는 길은 하나뿐**
                        # 이다: 그 부류를 실제로 재는 태스크를 세우는 것.
-_MIN_RESIDUAL_DECLARED = 1
+                       #
+                       # 1 → 2 (2026-09-26, 파도 2). 조립층 Wt64Top/assembly.sby
+                       # 의 「절단 출력 의존 증인」 부류 — 하위 유닛 열넷을 절단한
+                       # 과대근사 위의 도달이라 실물 도달을 보증하지 않는다.
+_MIN_RESIDUAL_DECLARED = 2
                        # 하네스에 `// WITNESS-RESIDUAL:` 선언이 실재하는
                        # `_WITNESS_RESIDUAL` 항목 수. **줄지 않는다.**
+                       #
+                       # 1 → 2 (2026-09-26, 파도 2 — Wt64Top_props.sv 머리의
+                       # 선언 실재를 실측한 직후).
                        #
                        # 0 → 1 (2026-08-27, 같은 파도에서 하네스가 선언을
                        # 들인 직후 실측). 이 하한이 서기 전까지 면제는 **통합자
@@ -638,20 +665,22 @@ _PARTIAL = {
     # capAbsentClear 로 간다 (이중 sticky 레이스, CapStatusWord.scala 파일 머리).
     # 그래서 sticky·겹침에 관한 가드 둘은 capword.sby 가 축 1·2·3 만 재고, 축 0
     # 은 Reassembly/props.sby 의 t_capa_next_eq (Payload.capability_not_fault
-    # 앵커의 일부) 가 *다른 모델의 이름으로* 잰다. 그 둘을 잇는 Top 결선
-    # (clrAcc(0) → reasm.io.capAbsentClear) 은 어느 태스크도 재지 않는다 —
-    # Wt64Top 의 결선을 top 으로 두는 태스크가 0건이다 (AbortStaging/props.sby
-    # 는 Wt64Top.sv 를 읽되 AbortStaging_check 만 top 으로 뗀다; rtl/README.md
-    # 「미측정」). axis_isolated 와 clear_atomic 은 축 0 도 이 태스크 안에
+    # 앵커의 일부) 가 *다른 모델의 이름으로* 잰다. (2026-09-26) 그 둘을 잇는
+    # Top 결선은 조립층 Wt64Top/assembly.sby 가 잰다(a_cap0_clr) — 부분으로
+    # 남는 이유는 항목 문면이 든다. axis_isolated 와 clear_atomic 은 축 0 도 이 태스크 안에
     # 있다 (a_passthru_0 · a_clracc_def 가 축 넷 전부).
     ("CapWord", "sticky_until_clear", "rtl/formal/sby/CapStatusWord/capword.sby"): (
         "sticky 축 1·2·3 — 선 비트는 그 축의 수락된 W1C 없이 내려가지 않고 "
         "(a_sticky_k) 수락된 W1C 는 실제로 내린다 (a_clear_k)",
         "축 0 — 그 sticky 는 컴포넌트 밖(Reassembly.capBit)이고 "
         "Reassembly_props.sv 의 t_capa_next_eq 가 잰다. 워드가 그 레벨을 "
-        "통과시킨다는 것까지는 a_passthru_0 이 재지만, 수락된 W1C 펄스 "
-        "clrAcc(0) 이 실제로 그 상류의 clear 에 닿는지는 Wt64Top 결선이라 "
-        "어느 후-formal 태스크도 재지 않는다 (rtl/README.md 「미측정」)",
+        "통과시킨다는 것은 a_passthru_0(여기)과 조립층 Wt64Top/assembly.sby 의 "
+        "a_cap0_lvl 이, 수락된 W1C 펄스 clrAcc(0) 이 그 상류의 clear 에 닿는다는 "
+        "합류는 같은 태스크의 a_cap0_clr 가 잰다. 남는 것 둘: (i) 최상위 IO "
+        "해제선 io.faultClear.reasmCap 이 두 번째 해제 원천이라 「해제 authority 는 "
+        "CAP_CLEAR 하나」라는 모델 문면(CapWord.tla)이 최상위에서 그대로 서지 않는다 "
+        "(ii) a_passthru_0 · a_cap0_lvl · a_cap0_clr · t_capa_next_eq 의 합성은 "
+        "서술이지 한 증명이 아니다",
     ),
     ("CapWord", "set_beats_clear", "rtl/formal/sby/CapStatusWord/capword.sby"): (
         "sticky 축 1·2·3 — set(k) 가 있었던 축은 다음 사이클에 서 있다, 같은 "
@@ -659,8 +688,27 @@ _PARTIAL = {
         "도달 증인 W4)",
         "축 0 — 이 컴포넌트에는 그 축의 겹침 자체가 없다 (레벨 통과). 겹침이 "
         "실재하는 자리는 Reassembly.capBit 의 set(fr_capaEvt) 대 "
-        "capAbsentClear 이고 같은 t_capa_next_eq 등식이 그 순서를 든다 — 다만 "
-        "그 clear 에 clrAcc(0) 이 합류한다는 결선은 위 항목과 같이 미측정이다",
+        "capAbsentClear 이고 같은 t_capa_next_eq 등식이 그 순서를 든다. 그 "
+        "clear 에 clrAcc(0) 이 합류한다는 결선은 이제 Wt64Top/assembly.sby 의 "
+        "a_cap0_clr 가 재지만, 두 태스크의 합성은 서술이지 한 증명이 아니다 "
+        "(위 항목의 (i)·(ii) 그대로)",
+    ),
+    # ── 아래 하나: 태어나면서 부분인 앵커 (2026-09-26, 파도 2 — Wt64Top 조립층) ──
+    #
+    # 가드의 GUARD-MAP 정식 줄은 DELEGATED(Wt64Top) 에서 CHECK 로 올라
+    # Wt64Top.scala 머리로 옮겼다. 조립층이 재는 것은 라우팅(창은 재키잉
+    # 대상의 오라클에 없다)이고, 엔진 쪽 절반은 다른 가드 이름으로 잰다.
+    ("Mask", "rekey_explicit_target", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "조립 라우팅 축 — *거절되지 않은* MASK_REKEY(0xEBC) 기입(정렬 · 예약 [31:8] = 0 · "
+        "실재 파티션) ⇔ mask 의 rekey.valid 핀이고 그때 rekey.part 핀 = 기입 [1:0] 이다. "
+        "창(MASK_PART 0xEA0)은 그 핀의 오라클에 없고 드리프트 증인 W13(창 ≠ 재키잉 "
+        "대상)이 절단 무관으로 도달한다. 엔진의 *수락*은 valid ∧ ready 이고 ready 는 "
+        "MaskUnit 출력이라 이 축 밖이다",
+        "엔진 축 — MaskUnit 이 수락(valid ∧ ready) 때 rekey.part 가 지목한 파티션의 "
+        "*저장*을 읽는다는 것. hiumask.sby 의 Mask.key_scoped_storage(섀도우 p 슬롯 = "
+        "io_rekey_part)가 *다른 가드 이름으로* 잰다. MaskEngine_props.sv 의 f_act(수락 "
+        "엣지의 io_rekey_part 래치)는 저장 읽기가 아니라 무효화·유효화 대상 파티션"
+        "(io_maskReady[f_act])만 잰다 — 두 태스크의 합성은 서술이지 한 증명이 아니다",
     ),
 }
 
@@ -978,6 +1026,10 @@ _DERIVED = {
 #   require    **양성 대조** — 하네스가 실제로 그 가정을 두는지 기계가 확인한다.
 #              동시에 **살아 있는 검사**다: 누가 시작 상태를 reset 기점으로
 #              고치면 면제의 전제가 깨지고 lint 가 실패한다.
+#   premise    (선택) require 가 확인하는 전제의 이름 — 실패 문면·통과 인쇄가 쓴다.
+#              없으면 「시작 상태 assume」 (2026-09-26 — 조립층 항목의 전제는
+#              assume 이 아니라 「절단 핀을 자유 입력으로 받는 포트 선언」이라
+#              고정 문면이 틀린 말을 했다).
 _WITNESS_RESIDUAL = {
     "rtl/formal/sby/MmioConfig/mmio_deep.sby": {
         "classes": ["소거 구간 (initDone=0)", "reset 기점 도달성"],
@@ -995,6 +1047,18 @@ _WITNESS_RESIDUAL = {
                      "사이클이 BMC 지평 밖이고, 재려면 소거 카운터를 축약한 "
                      "추상 모델이 따로 서야 한다",
         "require": [r"assume\s*\(w_initDone\)", r"assume\s*\(shV == 16'b0\)"],
+    },
+    "rtl/formal/sby/Wt64Top/assembly.sby": {
+        "classes": ["실물 도달성 — 절단 출력 의존 증인"],
+        "why": "하위 유닛 열넷을 expose -evert 로 절단했다 — 그 출력 핀은 매 스텝 자유다. "
+               "콘에 절단 핀이 든 증인은 과대근사 위에서 도달하며 실물 도달을 보증하지 않는다",
+        "ref": "rtl/sv/assert/Wt64Top_props.sv (머리 WITNESS-RESIDUAL · W 태그의 [무관]/[의존]) · "
+               "rtl/formal/sby/Wt64Top/assembly.sby (cover [script] 콘 판별)",
+        "elsewhere": "절단 무관 증인은 cover [script] 의 select -assert-none 콘 판별이 기계로 "
+                     "강제한다. 절단 의존 증인의 실물 도달은 일부만 유닛 증인이 대응 궤적을 "
+                     "세우고, 조립 전체 궤적으로는 어디서도 재지 않는다 (전체 설계 btor cover 후보)",
+        "require": [r"(?m)^\s*input\s+logic\b.*\b[a-z0-9_]+__io_[A-Za-z0-9_]+\b"],
+        "premise": "절단 핀을 자유 입력으로 받는 하네스 포트 선언",
     },
 }
 
@@ -1864,7 +1928,8 @@ def main() -> None:
         for rx in spec.get("require", []):
             if not re.search(rx, txt):
                 fail(f"_WITNESS_RESIDUAL {rel} — 양성 대조 {rx!r} 가 하네스에서 "
-                     f"0건이다. 면제의 전제(시작 상태 assume)가 깨졌다 — "
+                     f"0건이다. 면제의 전제"
+                     f"({spec.get('premise', '시작 상태 assume')})가 깨졌다 — "
                      f"부류가 정말 증인 불가인지 다시 판정하라")
         # 쌍방 대조의 하네스 쪽. 아직 서지 않았고 그 사실을 계수한다.
         if re.search(r"//\s*WITNESS-RESIDUAL:", txt):
@@ -2009,7 +2074,7 @@ def main() -> None:
         print(f"    ⚠ {Path(rel).parent.name}/{Path(rel).name} — 단언 {na} · "
               f"증인 {nc} · 증인 불가 부류 {len(spec['classes'])}: "
               + " · ".join(spec["classes"]))
-        print("        근거 기계 대조 통과 (시작 상태 assume 실재: "
+        print(f"        근거 기계 대조 통과 ({spec.get('premise', '시작 상태 assume')} 실재: "
               + " · ".join(spec.get("require", [])) + ")")
         print(f"        {spec['elsewhere']}")
     if residual_witness and residual_declared < len(residual_witness):

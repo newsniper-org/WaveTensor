@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 4e29961e-988b-4f27-9ede-dfb9c81925bc
-  modified: 2026-09-22T11:38:37.591Z
+  modified: 2026-09-25T07:32:42.573Z
 ---
 
 2026-08-20 사용자 지시로 **WT64v1 RTL 전면 재구현**이 착수됐다. 사용자 확정
@@ -91,6 +91,13 @@ metadata:
   산출물은 트리에 남아 있었다 — 재작성이 아니라 검증 모드로 프롬프트를
   고쳐 재개). HiuMask 합성 태스크의 cover 가 z3 로 step 45 에서 5시간
   웨지 → cover 엔진만 btormc 로(2 s) — [[solver-blindness-trap]].
+- **파도 1 — 이월 묶음: 착지**, commit `db72dae` (2026-09-25). 증인 없는
+  앵커 0(Reassembly W19~W21, 변이로 비공허 확인) · 부록 D 모델 수를
+  lint_guide_derived_tables (8) 로 기계화 · GUARD-MAP 절 순서 · 낡은 좌표.
+  사용자 지정 순서 1 → **2(Wt64Top 조립층 후-formal 태스크)** → 3(정본
+  3.9 「내부만」 둘: 변환 항목 배열 0xC00 · flush 발화 0xE00). 세션 한도로
+  에이전트가 자주 끊긴다 — 끊긴 에이전트의 산출물이 디스크에 남으니
+  재작성 말고 상태부터 확인할 것.
 - **완료 게이트(파도 C 부터 확정)**: `make lint` · `make rtl-lint` ·
   rtl-gen 결정성 · `rtl/formal/tla/run.sh`(컨테이너) · 후-formal 관련
   태스크 재스윕 + `lint_postformal --require-fresh` stale 0 · **`make

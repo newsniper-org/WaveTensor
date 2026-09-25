@@ -63,23 +63,23 @@
 //
 // 이 태스크가 재지 **않는** 것 (각각 어디가 재는가):
 //   · Top 이 set(3) := False 로 묶어 [3] 이 상수 0 이라는 것 — Wt64Top 의
-//     결선이며 그 결선을 top 으로 재는 후-formal 태스크는 0건이다
-//     (AbortStaging/props.sby 가 Wt64Top.sv 를 *읽지만* prep -top
-//     AbortStaging_check 로 나머지 모듈을 뗀다 — 결선은 그 태스크의 밖이다).
-//     rtl/README.md 「자리는 있고 회로는 없다」 표의 CAP_STATUS[3] 행과
-//     「미측정」 절이 든다.
+//     결선이며 2026-09-26 부터 조립층 rtl/formal/sby/Wt64Top/assembly.sby 가
+//     MMIO 읽기 표면으로 잰다 (a_rd_capb3 — 내부 넷 상수 단언은 계층 모델에서
+//     상수 접힘 검사를 비껴가므로 쓰지 않았다).
+//     원천 부재는 rtl/README.md 「자리는 있고 회로는 없다」 표의 CAP_STATUS[3]
+//     행이 든다.
 //     여기서 io_set[3] 은 자유 입력이다 — 컴포넌트 계약은 네 축 대칭이다.
 //   · [2] 의 set 이 walk.oValid 로 유효 한정된다는 것(쓰레기 헤더로 [2] 가
-//     서지 않는다) — 같은 Top 결선(`capSet_2 = walk_io_oValid && …`)이고 같은
-//     「미측정」 절에 있다. DecodeWalk 자신의 판정(capAbsent = declLen > 14)은
+//     서지 않는다) — 같은 Top 결선(`capSet_2 = walk_io_oValid && …`)이고 조립층
+//     assembly.sby 의 a_cap2_rise 가 잰다. DecodeWalk 자신의 판정(capAbsent = declLen > 14)은
 //     DecodeWalk/walk_decode.sby 의 Walk.cap_declared · Decode.mal_carried 가 잰다.
 //   · 능력 부재가 fault 워드에 들지 않는 것 — 이 컴포넌트에 fault 포트가 없는
 //     것이 그 이행이고(구조), 원천 쪽은 Reassembly/props.sby 의
 //     Payload.capability_not_fault · DecodeWalk/walk_decode.sby 의
 //     Decode.fault_not_folded 가 잰다. 거절(io_rsvBad)을 FAULT_STATUS[6] 에
-//     잇는 Top 결선(surfBadWr)도 여기 없다.
+//     잇는 Top 결선(surfBadWr)은 조립층 assembly.sby 의 a_surf_fire · a_rd_fst 가 잰다.
 //   · clrAcc(0) 이 Reassembly 의 capAbsentClear 로 실제로 이어지는 것 —
-//     Top 결선, 같은 「미측정」 절. 이 하네스는 clrAcc(0) 이 *옳게 나온다*
+//     Top 결선 — 조립층 assembly.sby 의 a_cap0_clr 가 잰다. 이 하네스는 clrAcc(0) 이 *옳게 나온다*
 //     (a_clracc_def) 까지만 잰다.
 
 `default_nettype none

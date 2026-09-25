@@ -115,7 +115,7 @@ FabricMerge 가 「이 증인이 살리는 단언」 뜻으로 이미 썼고, �
 
 ## 음성 시험 (이 검사를 결선하기 전에 통과시킨 것)
 
-`--self-test` 가 격리 사본(`/tmp`)에서 여섯 변이를 만들어 각각이 실제로
+`--self-test` 가 격리 사본(`/tmp`)에서 일곱 변이를 만들어 각각이 실제로
 실패하는지 확인한다 — 저장소를 더럽히지 않는다.
 
     ① 없는 단언 라벨을 가리킨다        → 대상 부재로 FAIL
@@ -124,6 +124,8 @@ FabricMerge 가 「이 증인이 살리는 단언」 뜻으로 이미 썼고, �
     ④ 선언(`←` 줄)을 지운다            → 선언 없는 라벨로 FAIL
     ⑤ 앵커 하나의 증인을 전부 뗀다     → 앵커 미덮임으로 FAIL
     ⑥ 잔여 면제의 전제 assume 을 지운다 → 양성 대조 불통과로 FAIL
+    ⑦ 숫자 든 모듈 이름(`Wt64Top.x`)의 VERIFIES 앵커에서 증인을 뗀다
+                                        → 앵커 미덮임으로 FAIL (정규식 회귀 대조)
 
     scripts/lint_witness_map.py             검사
     scripts/lint_witness_map.py --self-test 음성 시험
@@ -162,6 +164,8 @@ ASSERT_DIR = ROOT / "rtl" / "sv" / "assert"
 # `require` 가 **양성 대조**다. 「없다」와 「없는 곳을 봤다」를 가르라는
 # `_STRUCTURAL` 조항의 이행이고, 동시에 **살아 있는 검사**다 — 누가 나중에
 # 시작 상태를 reset 기점으로 고치면 면제의 전제가 깨지고 여기서 실패한다.
+# `premise`(선택)는 그 전제의 이름이다 — 없으면 「시작 상태」 (조립층 항목의
+# 전제는 assume 이 아니라 절단 핀 포트 선언이다, 2026-09-26).
 _ELSEWHERE = "ELSEWHERE — "   # 그 부류를 실제로 재는 다른 태스크가 있다
 _NOWHERE = "NOWHERE — "       # 어디서도 안 잰다 (근거를 적어야 한다)
 
@@ -181,8 +185,26 @@ _WITNESS_RESIDUAL = {
         ),
         "require": [r"assume \(w_initDone\)", r"assume \(shV == 16'b0\)"],
     },
+    "rtl/formal/sby/Wt64Top/assembly.sby": {
+        "classes": ["실물 도달성 — 절단 출력 의존 증인"],
+        "why": "하위 유닛 열넷을 expose -evert 로 절단했다 — 그 출력 핀은 매 스텝 자유다. "
+               "콘에 절단 핀이 든 증인은 과대근사 위에서 도달하며 실물 도달을 보증하지 않는다",
+        "ref": "rtl/sv/assert/Wt64Top_props.sv (머리 WITNESS-RESIDUAL · W 태그의 [무관]/[의존]) · "
+               "rtl/formal/sby/Wt64Top/assembly.sby (cover [script] 콘 판별)",
+        "elsewhere": _NOWHERE + (
+            "절단 의존 증인을 실물 도달로 올리는 태스크는 없다. 일부는 유닛 태스크의 "
+            "증인이 대응 궤적을 세우고(W 태그 산문이 라벨을 인용한다), 절단 무관 증인은 "
+            "cover [script] 의 콘 판별이 기계로 강제한다. 조립 전체 궤적의 실물 도달은 "
+            "전체 설계(절단 없음) btor cover 가 서기 전까지 어디서도 재지 않는다"
+        ),
+        "require": [r"(?m)^\s*input\s+logic\b.*\b[a-z0-9_]+__io_[A-Za-z0-9_]+\b"],
+        "premise": "절단 핀을 자유 입력으로 받는 하네스 포트 선언",
+    },
 }
-_MAX_WITNESS_RESIDUAL = 1   # 증인 부분 덮임인 태스크 수. 늘지 않는다.
+_MAX_WITNESS_RESIDUAL = 2   # 증인 부분 덮임인 태스크 수. 늘지 않는다.
+                            # 1 → 2 (2026-09-26, 파도 2 — 조립층 Wt64Top/assembly.sby
+                            # 의 「절단 출력 의존 증인」 부류. lint_postformal 의 같은
+                            # 이름 래칫과 같은 사건이다).
 
 # ── 표 ②: 증인이 없는 앵커 (서명된 면제) ───────────────────────────────────
 #
@@ -209,7 +231,16 @@ _MAX_UNRESOLVED = 0   # 오늘 0. 늘리려면 근거와 함께.
 
 # ── 하한 래칫 ──────────────────────────────────────────────────────────────
 _MIN_WITNESS_MAPPED = 256   # 대응 선언이 붙은 cover 문 수. 줄지 않는다.
-_MIN_ANCHOR_WITNESSED = 102  # 증인이 선 앵커 수. 줄지 않는다.
+_MIN_ANCHOR_WITNESSED = 118  # 증인이 선 앵커 수. 줄지 않는다.
+                             # 102 → 118 (2026-09-26 실측 118/118 — 파도 2: 조립층
+                             # Wt64Top/assembly.sby 의 앵커 열여섯(PROVES 1 ·
+                             # VERIFIES 15)이 전부 증인을 갖고 태어났다). 단 넷은
+                             # **과대근사 위의 증인뿐**이다 — Wt64Top.wo_read_zero ·
+                             # fault_status_map · drain_wiring · composite_wiring 의
+                             # 증인은 전부 절단 의존 부류(콘에 절단 핀)라 실물 도달을
+                             # 보증하지 않는다 (_WITNESS_RESIDUAL 의 같은 .sby 항목).
+                             # 이 계수는 「증인 선언이 선 앵커」를 세지 「실물 도달이
+                             # 선 앵커」를 세지 않는다.
                              # 88 (2026-08-27 실측) → 102 (2026-09-24 실측 — 이월 B:
                              # Reassembly/props.sby 의 미결 앵커 둘을 W19~W21 로
                              # 덮어 102/102 가 됐고, 그 사이 파도들의 증가분
@@ -225,7 +256,10 @@ _LABELED = re.compile(r"\b([a-z][a-z0-9_]*)\s*:\s*cover\s*\(")
 _ASSERT_LABEL = re.compile(r"(?:^|[^\w.$])([a-z][a-z0-9_]*)\s*:\s*assert\b", re.M)
 _GUARD = re.compile(r"^[A-Z][A-Za-z0-9]*\.[a-z_][A-Za-z0-9_]*$")
 _LABEL = re.compile(r"^[a-z][a-z0-9_]*$")
-_VERIFIES = re.compile(r"#\s*VERIFIES:\s*([A-Za-z]+)\.([A-Za-z_]+)")
+# 모듈 이름에 숫자를 허용하고 가드 이름은 _GUARD 와 같은 꼴로 읽는다 (2026-09-26).
+# 옛 꼴 `([A-Za-z]+)\.([A-Za-z_]+)` 은 `Wt64Top.x` 를 [] 로 놓치고 `Top.e1_map_v2`
+# 를 ('Top','e') 로 잘랐다 — 기존 .sby 스무 개에서 파싱 결과 차이 0 (실측).
+_VERIFIES = re.compile(r"#\s*VERIFIES:\s*([A-Z][A-Za-z0-9]*)\.([a-z_][A-Za-z0-9_]*)")
 _DIRECTIVE = re.compile(r"^`(ifdef|ifndef|else|elsif|endif|define|undef)\b\s*(\w+)?")
 
 
@@ -543,8 +577,9 @@ def main() -> int:
         for pat in ent["require"]:
             if not re.search(pat, hs_txt):
                 hard.append(
-                    f"{srel} — 잔여 면제의 **전제**가 하네스에 없다: /{pat}/ "
-                    f"불일치. 시작 상태를 되돌렸다면 면제가 무효다 (양성 대조)")
+                    f"{srel} — 잔여 면제의 **전제**"
+                    f"({ent.get('premise', '시작 상태')})가 하네스에 없다: /{pat}/ "
+                    f"불일치. 전제를 되돌렸다면 면제가 무효다 (양성 대조)")
         residual.append((srel, ent))
     if len(residual) > _MAX_WITNESS_RESIDUAL:
         hard.append(f"증인 부분 덮임 {len(residual)} > 래칫 "
@@ -643,7 +678,7 @@ def main() -> int:
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# 음성 시험 — 격리 사본에서 여섯 변이가 실제로 실패하는지
+# 음성 시험 — 격리 사본에서 일곱 변이가 실제로 실패하는지
 # ─────────────────────────────────────────────────────────────────────────
 _MUTATIONS = [
     ("① 없는 단언 라벨을 가리킨다",
@@ -668,6 +703,9 @@ _MUTATIONS = [
     ("⑥ 잔여 면제의 전제 assume 을 지운다",
      "rtl/sv/assert/MmioConfig_props.sv",
      ("      assume (shV == 16'b0);", "      // (지운 전제)")),
+    ("⑦ 숫자 든 모듈 이름의 VERIFIES 앵커에서 증인을 뗀다",
+     "rtl/sv/assert/Wt64Top_props.sv",
+     ("W1 ← Wt64Top.region_routing · a_cq_strb", "W1 ← a_cq_strb")),
 ]
 
 
@@ -706,7 +744,7 @@ def self_test() -> int:
                          if "lint_witness_map:" in ln
                          and not ln.startswith("lint_witness_map: FAIL —")]
                 print(f"  {name}: FAIL 확인 ✓ — {first[0][:92] if first else ''}")
-    print("음성 시험 " + ("통과 — 여섯 변이 전부 잡힌다" if ok else "불통과"))
+    print("음성 시험 " + ("통과 — 일곱 변이 전부 잡힌다" if ok else "불통과"))
     return 0 if ok else 1
 
 

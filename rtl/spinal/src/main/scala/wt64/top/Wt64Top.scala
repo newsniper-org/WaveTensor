@@ -131,24 +131,24 @@
 // 80b 팩킹 순서는 여전히 미확정이며 이 파일은 그것을 알 필요가 없다 — 태그
 // 슬라이스가 한 곳도 없기 때문이다 (§1.4.4).
 //
-// ## GUARD-MAP 정식 줄 없음 — 접점 서술 (lint 가 파싱하지 않는 형태)
+// ## GUARD-MAP — 정식 줄 하나 (Mask 넷째 가드) + 접점 서술 (접점 불릿은 lint 비파싱)
 //
-//   · Route.view_sync (정식 줄: RouteJudge) — MmioConfig.viewWr/bankWr 를
-//     RouteJudge 에 **직결**한 것이 이 파일이다. 사이 레지스터 단 없음 —
-//     기입 사이클 즉시 반영이라는 그 줄의 전제가 배선으로 성립한다.
-//   · Platform.owner_check (정식 줄: HiuPipeline) — 판정이 소비하는
-//     io.owner.devOwned 의 원천을 OwnershipTable.query 로 직결했다. 조합
-//     0사이클 계약(OwnershipTable io.query 주석)이 승인(D11)의 전제다.
-//   · Fabric.bp_relief (정식 ENV 줄: FabricMerge — 불변) — 호스트 배수
-//     의무의 장치 쪽 실물(완료 링)에 Reassembly.deliver 를 배압 보존으로
-//     이었다 (deliver.ready = comp.ready — 링 가득이면 인도가 선다).
-//   · Decode.stall_uniform (정식 줄: HiuPipeline) — 마스킹 단(s4)의 몸인
-//     MaskUnit 의 io.en 에 파이프 advance(= hiu.req.ready)를 그대로
-//     물렸다 — HiuPipeline 결선 계약의 통합자 몫 이행. 정지 원천이
-//     무엇이든 파이프와 s4 왕복이 함께 선다.
-//   · Isolation.no_early_forward (정식 줄: HiuPipeline) — hiu.io.mask 는
-//     MaskUnit 하나에만 직결했다. req 를 다른 소비자에 내지 않고 rsp 를
-//     MaskUnit 밖에서 구동하지 않는다 (io.mask 주석의 결선 계약).
+// GUARD-MAP: Mask.rekey_explicit_target -> 재키잉 대상은 수락된 MASK_REKEY(0xEBC)
+//   기입의 [7:0] 그 자체다 — maskArea 가 rekey.part 를 partField 에서만 떼고, 창
+//   (maskPart · MASK_PART 0xEA0)은 그 식에 들지 않는다. 후-formal 은 조립층
+//   rtl/formal/sby/Wt64Top/assembly.sby 가 mask 의 rekey 핀을 창과 독립인 오라클로
+//   잰다. 엔진이 그 파티션의 저장을 읽는 절반은 hiumask.sby 의 key_scoped_storage 다.
+//   · Route.view_sync (정식 줄: RouteJudge) — MmioConfig.viewWr/bankWr 를 RouteJudge
+//     에 사이 레지스터 없이 직결했다 — 기입 사이클 즉시 반영이라는 그 줄의 전제.
+//   · Platform.owner_check (정식 줄: HiuPipeline) — io.owner.devOwned 의 원천을
+//     OwnershipTable.query 로 조합 0사이클 직결했다 — 승인(D11)의 전제.
+//   · Fabric.bp_relief (정식 ENV 줄: FabricMerge — 불변) — Reassembly.deliver 를
+//     완료 링에 배압 보존으로 이었다 (deliver.ready = comp.ready).
+//   · Decode.stall_uniform (정식 줄: HiuPipeline) — MaskUnit 의 io.en 에 파이프
+//     advance(= hiu.req.ready)를 그대로 물렸다 — 정지 원천 무관 s4 동행.
+//   · Isolation.no_early_forward (정식 줄: HiuPipeline) — hiu.io.mask 를 MaskUnit
+//     하나에만 직결했다 (req 를 다른 소비자에 내지 않고 rsp 를 밖에서 구동하지 않는다).
+//   다섯 접점의 핀 결선 등식도 같은 assembly.sby 가 잰다 (조립 절반 — 정식 앵커는 괄호 안).
 package wt64.top
 
 import spinal.core._
