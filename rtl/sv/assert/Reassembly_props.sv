@@ -617,6 +617,42 @@ module Reassembly_props (
   //       1 인 세계라면 t_loud_frag·t_loud_open 이 자명하게 선다 — 그 축퇴를
   //       배제하는 증인이다.
   always @(posedge clk) if (f_step) w18_fault_clear: cover ($past(io_fault) && !io_fault);
+
+  // ── 증인 — last_judges · reset_on_deliver 축 (2026-09-24 이월 B) ──────────
+  //
+  // 4차 파도가 「면제가 아니라 미결 보고」로 남긴 두 앵커다 (lint_witness_map
+  // `_ANCHOR_UNWITNESSED` 의 종전 두 항목). p_last_judges_def 는 무전건 등식이라
+  // fr_endEvt 가 영영 0 이면 0 == 0 이고, t_last_judges_loud · t_last_src_* ·
+  // t_deliver_frees_* 는 전건이 죽으면 자명하다. 아래 셋이 그 전건을 reset
+  // 기점에서 실제로 세운다 — 전부 개방 1회 + 조각 1회 안에 닿는 얕은 궤적이다
+  // (props.sby 깊이 주석의 실측 표).
+
+  // W19 ← Payload.last_judges · p_last_judges_def · t_last_judges_loud
+  //       불완전 종료(표시가 왔는데 수신 집합 != 전량 마스크)가 실제로 서고
+  //       그 다음 사이클 fault 가 **처음** 선다 — W11~W16 의 「첫 상승」 규율
+  //       그대로다 (이미 서 있는 sticky 위를 지나가는 통과는 아무것도 증명하지
+  //       않는다). 전건이 `$past(fr_endEvt)` 이므로 fr_endEvt 도달 자체를
+  //       함의한다 — 미결 보고의 처방 후보 `cover (fr_endEvt)` 를 포섭한다.
+  always @(posedge clk)
+    if (f_step) w19_end_incomplete_loud: cover ($past(fr_endEvt) && io_fault && !$past(io_fault));
+
+  // W20 ← Payload.last_judges · t_last_src_0
+  //       last 래치가 실제로 상승한다 (t_last_src_* 의 전건 — 표시 접수가 한
+  //       번도 없는 세계에서는 「상승 원천은 수락 조각의 표시뿐」이 공허하다).
+  always @(posedge clk)
+    if (f_step) w20_last_rise: cover (ctx_0_last && !$past(ctx_0_last));
+
+  // W21 ← Payload.reset_on_deliver · Payload.last_judges · t_deliver_frees_0 ·
+  //       inv_free_clean_0
+  //       인도 완결이 실제로 난다 (t_deliver_frees_* 넷의 전건 — 종전엔 통째로
+  //       미측정이었다). dv_done 은 last ∧ totalKnown ∧ seen == 전량 마스크를
+  //       요구하므로 이 궤적은 동시에 last_judges 의 *완전* 종료 갈래 — 표시가
+  //       왔는데 endEvt 가 서지 **않는** 쪽 — 의 실재이기도 하다 (W19 가 불완전
+  //       갈래, 이것이 완전 갈래: 둘이 있어야 p_last_judges_def 의 등식이 양쪽
+  //       값을 다 본다). 그리고 인도 직전 seen 은 결코 0 이 아니므로
+  //       inv_free_clean_0 이 「비울 것이 있는」 상태에서 재어진다.
+  always @(posedge clk)
+    if (f_step) w21_deliver_frees: cover ($past(io_deliver_fire && dv_grantOh[0]));
 `endif // REASM_COVER
 
 endmodule

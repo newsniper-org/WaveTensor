@@ -887,11 +887,11 @@ module MaskUnit_props (
       if ($past(io_en))
         assert (io_rsp_valid == $past(io_req_valid));
 
-      // Mask.key_write_own_only — 정본 7fa5f2e, e-defined.typ:333 "기입은
-      // 그 파티션의 마스크 유효를 즉시 떨어뜨린다". 파티션 p 로 향한 키
-      // 기입이 있었던 에지에서, q != p 의 maskReady 비트는 그 에지를
-      // 건너 그대로다 (재구현 착수 시점 결함 — 전 파티션 무효화 — 이
-      // assert 가 정확히 그 형태를 잡는다: for 문 삭제 회귀 시 반례).
+      // Mask.key_write_own_only — 정본 7fa5f2e, e-defined.typ:339 「기입은 그 파티션의 마스크 유효를 즉시 떨어뜨린다」.
+      // 파티션 p 로 향한 키 기입이 있었던 에지에서, q != p 의 maskReady
+      // 비트는 그 에지를 건너 그대로다 (재구현 착수 시점 결함 — 전 파티션
+      // 무효화 — 이 assert 가 정확히 그 형태를 잡는다: for 문 삭제 회귀 시
+      // 반례).
       // REKEY 완료(FINAL 완주)로 그 사이클 유효화되는 파티션은 keyWr 과
       // 무관한 별개 원인이다(MaskUnit.scala:481 「maskValid(actPart) := !dirtyNow」,
       // PH_FINAL=3'd4 완주 다음 사이클 — 파도 D 2026-09-22 에 `!compDirty`
@@ -926,11 +926,11 @@ module MaskUnit_props (
       // (위 해설 — 레이스 없이 DUT 의 논블로킹 타이밍과 맞춘다).
       if ($past(rekeyFire)) assert (st_4 == shadow_target_d1);
 
-      // Mask.rekey_idle_only — 정본 7fa5f2e, e-defined.typ:344 "유휴가
-      // 아니면 미수락". rekeyFire(= io_rekey_valid && io_rekey_ready) 가
-      // 실제로 발화하면 그 사이클의 phase 는 IDLE(0) 이었어야 한다 —
-      // io_rekey_ready 배선(= !engineBusy) 자신의 회귀 그물. (이 축의
-      // 로직은 이번 파도가 건드리지 않는다 — 설계 문면 그대로 회귀만 잰다.)
+      // Mask.rekey_idle_only — 정본 7fa5f2e, e-defined.typ:345 「엔진이 유휴가 아니면 수락되지 않고」.
+      // rekeyFire(= io_rekey_valid && io_rekey_ready) 가 실제로 발화하면
+      // 그 사이클의 phase 는 IDLE(0) 이었어야 한다 — io_rekey_ready 배선
+      // (= !engineBusy) 자신의 회귀 그물. (이 축의 로직은 이번 파도가
+      // 건드리지 않는다 — 설계 문면 그대로 회귀만 잰다.)
       if (rekeyFire) assert (phase == 3'b000);
     end
   end

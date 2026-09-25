@@ -214,7 +214,7 @@ NetBSD/DragonFly 의 축과, 방침 목록에 없는 macOS/Windows 의 처분은
 | 1 | **정본 오라클 (규범)** | `docs/wt64v1-architecture-guide/chapters/00-preface.typ:140` 「오염 없는 오라클」 · 규범 블록 :145 | 언어 중립 (§4.3) |
 | 2 | **정본 규범 — 재구현 대상 제외** | `docs/wt64v1-architecture-guide/chapters/01-isa-asm.typ:1610` · 규범 :1612–1616 | 언어 중립 |
 | 3 | **에어락 열람 허가표** | `rtl/README.md` ✅ 행 | **경로 결합** |
-| 4 | **lint 원천 — 정본 게이트의 진실 원천** | `scripts/lint_guide_derived_tables.py:95, 453, 459, 801` | **Python 문법 결합 → hard-fail** |
+| 4 | **lint 원천 — 정본 게이트의 진실 원천** | `scripts/lint_guide_derived_tables.py:126, 488, 494, 1016` | **Python 문법 결합 → hard-fail** |
 | 5 | **CI 게이트** | `.github/workflows/gates.yml:195` 「어셈블러 단위 테스트」 → `:198` | 경로 결합 |
 | 6 | **인용 좌표 래칫 (hard 구역)** | `scripts/lint_section_refs.py:654-655` | **경로 키 래칫 — 하강도 실패** |
 | 7 | **재구현 쪽 관측 기록의 출처** | `rtl/spinal/src/main/scala/wt64/decode/OperandDecode.scala:33` 「인코딩 관측 기록 (허용 오라클: asm/wavetensor_asm.py encode_pass)」 · 같은 디렉토리 `DecodeWalk.scala` | 경로 결합 |

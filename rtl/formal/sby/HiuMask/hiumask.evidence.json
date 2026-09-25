@@ -13,7 +13,7 @@
     "Mask.key_scoped_storage",
     "Mask.rekey_idle_only"
   ],
-  "at": "2026-09-22T11:14:56Z",
+  "at": "2026-09-24T03:35:21Z",
   "cover": {
     "reached": 18,
     "reached_names": [
@@ -42,7 +42,7 @@
   "inputs": {
     "rtl/generated/HiuPipeline.sv": "cbaa291d8509cf310a5200617cd16ad6ba6ab7bd6270d46abdbba167eb7784d0",
     "rtl/generated/MaskUnit.sv": "142c9a6792765ce698262e4abc103264ad84a2f451788100954c9bc65ea0624b",
-    "rtl/sv/assert/HiuMask_props.sv": "8cddc339aeb40d76deef57a4f3016097f67355521963e12a7110f2c79934dcd0"
+    "rtl/sv/assert/HiuMask_props.sv": "a1a73206446ad7c44955f32ab2b154b2f5f9e31791826830fee11be79fab1ea1"
   },
   "per_task": {
     "bmc": {

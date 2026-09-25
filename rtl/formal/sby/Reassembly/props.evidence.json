@@ -16,9 +16,9 @@
     "Payload.base_from_tag",
     "Payload.loud_reject"
   ],
-  "at": "2026-09-20T15:54:08Z",
+  "at": "2026-09-24T02:41:31Z",
   "cover": {
-    "reached": 18,
+    "reached": 21,
     "reached_names": [
       "Reassembly.u_props.w10_capa_loaded_ctx",
       "Reassembly.u_props.w11_loud_stray",
@@ -29,7 +29,10 @@
       "Reassembly.u_props.w16_loud_restart",
       "Reassembly.u_props.w17_pool_exhausted",
       "Reassembly.u_props.w18_fault_clear",
+      "Reassembly.u_props.w19_end_incomplete_loud",
       "Reassembly.u_props.w1_abort_fire",
+      "Reassembly.u_props.w20_last_rise",
+      "Reassembly.u_props.w21_deliver_frees",
       "Reassembly.u_props.w2_clr_cmd",
       "Reassembly.u_props.w3_abort_incomplete",
       "Reassembly.u_props.w4_abort_loaded",
@@ -44,7 +47,7 @@
   },
   "inputs": {
     "rtl/generated/Reassembly.sv": "09d7f715521ea37ef2e42c9f6435b2c414f839b0219211c08b4f2ff89fcaa135",
-    "rtl/sv/assert/Reassembly_props.sv": "eeea7ac2eb794925f49d345b2e3d8f725c75ff86a72592da2c0faf0240bfa227"
+    "rtl/sv/assert/Reassembly_props.sv": "9115da3e7c57bc58e9e1f44385488b6a4b869c0ba4792a9f6cbb434c56d8a269"
   },
   "per_task": {
     "bmc": {
@@ -58,7 +61,7 @@
       "assert": 0,
       "const_a": 0,
       "const_en0": 0,
-      "cover": 18,
+      "cover": 21,
       "mode": "cover"
     },
     "prove": {
@@ -70,7 +73,7 @@
     }
   },
   "sby": "rtl/formal/sby/Reassembly/props.sby",
-  "sby_sha256": "9a00799b605565dbe08e1bea46cc8d270740bad35a5d14853116a4fef33f1536",
+  "sby_sha256": "a7958b3b3e30b604b0942ea8ab7e1f9f7c3cc9e8778338ada05e0e2f0b439a67",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

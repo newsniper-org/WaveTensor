@@ -190,30 +190,33 @@ _MAX_WITNESS_RESIDUAL = 1   # 증인 부분 덮임인 태스크 수. 늘지 않�
 # 사람은 규율을 우회하는 대신 **아무거나 세는 증인**을 넣고, 그것은 5형을
 # 검출 불가 형태로 옮기는 것이다.
 #
-# 오늘 두 건이 들어 있고 **둘 다 「면제」가 아니라 「미결 보고」**다. 4차
-# 파도는 기존 증인에 대응을 다는 파도이고 증인 신설은 그 범위 밖이라, 발견을
-# 고치지 않고 기록한다. 처분(증인 둘 신설: `fr_endEvt` 도달 · `io_deliver_fire`
-# 도달)은 판단이 필요하다.
-_ANCHOR_UNWITNESSED = {
-    ("rtl/formal/sby/Reassembly/props.sby", "Payload.last_judges"):
-        "미결 — 종료 판정(fr_endEvt) 이 서는 궤적의 증인이 없다. p_last_judges_def "
-        "는 무전건 등식이라 fr_endEvt 가 영영 0 이면 0 == 0 이고, t_last_judges_loud · "
-        "t_last_src_* 는 전건이 죽는다. 처분 후보: `cover (fr_endEvt)` 와 "
-        "`cover (ctx_0_last && !$past(ctx_0_last))` 신설",
-    ("rtl/formal/sby/Reassembly/props.sby", "Payload.reset_on_deliver"):
-        "미결 — 인도 완결(io_deliver_fire ∧ grant) 의 증인이 없다. t_deliver_frees_* "
-        "넷의 전건이 통째로 미측정이고, inv_free_clean_* 만으로는 「해방이 실제로 "
-        "일어난다」가 재어지지 않는다. 처분 후보: "
-        "`cover ($past(io_deliver_fire && dv_grantOh[0]))` 신설",
-}
-_MAX_ANCHOR_UNWITNESSED = 2   # 늘지 않는다. 줄이는 길은 증인 신설뿐이다.
+# 오늘 0 건. 4차 파도(2026-08-27)가 두 건을 **「면제」가 아니라 「미결 보고」**로
+# 넣었었다 — Reassembly/props.sby 의 Payload.last_judges(종료 판정 fr_endEvt 가
+# 서는 궤적 없음) · Payload.reset_on_deliver(인도 완결 io_deliver_fire ∧ grant
+# 의 궤적 없음). 그 파도는 기존 증인에 대응을 다는 파도라 증인 신설이 범위
+# 밖이었고, 처분은 이월 B(2026-09-24)가 증인 W19·W20·W21 신설로 닫았다
+# (Reassembly_props.sv 의 REASM_COVER 절 · props.sby 깊이 주석의 실측 표).
+# 표는 비었지만 **형식은 남긴다** — 다음 파도가 앵커를 새로 세우고 증인을 못
+# 세울 때 「아무거나 세는 증인」 대신 여기 서명하도록 (파일 머리 검사 (4)).
+_ANCHOR_UNWITNESSED = {}
+_MAX_ANCHOR_UNWITNESSED = 0   # 늘지 않는다. 줄이는 길은 증인 신설뿐이다.
+                              # 2 → 0 (2026-09-24 이월 B — 위 두 건을 증인 신설로
+                              # 닫았다). 0 이 「미결이 없다」를 뜻하는 것은 표가
+                              # 비었기 때문이고, 다시 늘리려면 근거와 함께.
 
 # ── 표 ③: 해소 불가 대상 (`?` 접두) ────────────────────────────────────────
 _MAX_UNRESOLVED = 0   # 오늘 0. 늘리려면 근거와 함께.
 
 # ── 하한 래칫 ──────────────────────────────────────────────────────────────
 _MIN_WITNESS_MAPPED = 256   # 대응 선언이 붙은 cover 문 수. 줄지 않는다.
-_MIN_ANCHOR_WITNESSED = 88  # 증인이 선 앵커 수. 줄지 않는다.
+_MIN_ANCHOR_WITNESSED = 102  # 증인이 선 앵커 수. 줄지 않는다.
+                             # 88 (2026-08-27 실측) → 102 (2026-09-24 실측 — 이월 B:
+                             # Reassembly/props.sby 의 미결 앵커 둘을 W19~W21 로
+                             # 덮어 102/102 가 됐고, 그 사이 파도들의 증가분
+                             # (88 → 100, 임대별 마스크 키 · CAP_STATUS 축 둘→넷 ·
+                             # FINAL 엣지 동시 기입)을 포함한다). 하한을 실측값에
+                             # 세운다 — 「줄지 않는다」는 현재값에 서 있어야 문장이
+                             # 된다 (lint_postformal `_MIN_COVERED` 2026-09-21 문면).
 
 _TAG = re.compile(r"^\s*//\s*([A-Z][A-Z]*[0-9]+)\s*←\s*(\S.*?)\s*$")
 _COMMENT = re.compile(r"^\s*//\s?(.*?)\s*$")
