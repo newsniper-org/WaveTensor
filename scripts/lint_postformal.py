@@ -424,7 +424,14 @@ _LEGACY_SCHEMAS = {
 # 둘은 **상한**(늘면 실패)이다. 상한 쪽이 있는 이유: 구조 skip 과 부분 덮임은
 # 「CHECK 분모를 비우는」 방향의 부정을 가능하게 하므로, 그것을 늘리는 일은
 # 반드시 이 파일을 고치는 *명시적 서명*을 거쳐야 한다.
-_MIN_COVERED = 87      # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다.
+_MIN_COVERED = 103     # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다.
+                       # 98 → 103 (2026-09-26 실측 — 파도 3 반증 검토 뒤 수리: XlateSurface.tla
+                       # 가 0xE10 · RO 쓰기의 가드 다섯(mclr_fires · mclr_needs_one ·
+                       # mclr_rsv_strict · mclr_keeps_stall · ro_rejected)을 실었고 전부
+                       # XlateStaging/props.sby 앵커가 덮는다 — 다섯 다 부분. 분모 98 → 103).
+                       # 87 → 98 (2026-09-26 실측 — 파도 3, 변환 저장소의 MMIO 문:
+                       # 신설 모델 XlateSurface 의 CHECK 열하나 전부를 XlateStaging/
+                       # props.sby 앵커가 덮는다 — 완전 다섯 · 부분 여섯. 분모 87 → 98).
                        # 86 → 87 (2026-09-26 실측 — 파도 2, Wt64Top 조립층:
                        # Mask.rekey_explicit_target 이 DELEGATED → CHECK 로 승격되며
                        # 조립층 Wt64Top/assembly.sby 앵커로 덮였다 — 부분, 아래
@@ -439,7 +446,36 @@ _MIN_COVERED = 87      # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다
                        # 실측 아래 8 칸 헐거운 채로는 앵커 여덟이 조용히 사라져도
                        # 게이트가 침묵한다 (2026-09-21 전수 반증 세 렌즈가 같은
                        # 것을 지적했다).
-_MAX_PARTIAL = 9       # 부분 덮임뿐인 가드 수. 늘지 않는다 (늘리려면 근거와 함께)
+_MAX_PARTIAL = 24      # 부분 덮임뿐인 가드 수. 늘지 않는다 (늘리려면 근거와 함께)
+                       #
+                       # 14 → 24 (2026-09-26, 파도 3 반증 검토 뒤 수리). 열은 둘로 갈린다.
+                       # (a) +5 — 착지판이 「문면에 표 효과가 없다」며 완전으로 센 다섯
+                       #     (lo_stages_only · hi_entry_match · hi_needs_staging ·
+                       #     flush_part_exists · flush_rsv_strict). 그 전제가 거짓이었다: 모델
+                       #     속성이 전부 tbl' = tbl 로 끝나고, 문·조립 두 태스크는 「핀이 서지
+                       #     않는다」까지만 잰다 — 표 불변은 XlateStore 프레임 조건이다. **새
+                       #     결함이 아니라 계수의 정정**이다 (증명은 그대로, 덮임의 낱말만 좁다).
+                       # (b) +5 — 모델이 RTL 을 뒤따라 실은 0xE10 · RO 가드 다섯. 문 절반만
+                       #     XlateStaging/props.sby 가 재고, 미적중 sticky · 정지의 파이프라인
+                       #     절반은 어느 형식 태스크도 재지 않는다 (아래 _PARTIAL 머리 주석).
+                       #     줄이는 길은 HiuPipeline 의 missNotice/missWait 를 단언하는 태스크다.
+                       #
+                       # 15 → 14 (2026-09-26, 파도 3 후-formal). 조립층 Wt64Top/assembly.sby
+                       # 가 XlateSurface CHECK 열하나를 PROVES 로 앵커했다 — 오라클이 xstg
+                       # 출력에서 MMIO 이력의 그림자 스테이징으로 바뀌어 스테이징 의미까지
+                       # 끝-끝으로 잰다. 그중 reject_loud 는 조립 sticky(→ FAULT_STATUS [6])가
+                       # 절단 밖이라 그 앵커가 문면 전부를 재고 _PARTIAL 에 오르지 않는다 —
+                       # XlateStaging/props.sby 항목의 「조립 절반」 칸이 가드 이름의 앵커로
+                       # 닫혀 부분 가드가 하나 준다. 나머지 다섯의 조립 앵커는 핀까지의
+                       # 절반이라 부분 그대로다 (아래 _PARTIAL 의 파도 3 후-formal 머리 주석).
+                       #
+                       # 9 → 15 (2026-09-26, 파도 3 — 변환 저장소의 MMIO 문). 신설
+                       # 모델 XlateSurface 의 CHECK 열하나 중 여섯(hi_fires ·
+                       # hi_commit_whole · hi_v_carried · flush_fires · flush_scoped ·
+                       # reject_loud). **태어나면서 부분인 앵커를 태어나는 날 표에
+                       # 올린 것**이다 — 모델은 문과 저장 블록을 한 「표」로 접는데
+                       # RTL 은 두 모듈에 갈려 문 태스크가 표 효과를 재지 못한다
+                       # (아래 _PARTIAL 의 파도 3 머리 주석). 완전 덮임 +5 · 부분 +6.
                        #
                        # 8 → 9 (2026-09-26, 파도 2 — Wt64Top 조립층). 승격된
                        # Mask.rekey_explicit_target 하나. 이것도 **태어나면서
@@ -491,7 +527,22 @@ _MAX_STRUCTURAL_RESIDUAL = 1
                        # 숨기는 것보다 낫지만, **늘어도 되는 것은 아니다.**
                        # 줄이는 길은 그 축을 실제로 재고 칸을 _NOTHING_LEFT 로
                        # 바꾸는 것뿐이다.
-_MIN_EVIDENCED = 93    # 실행 증거로 뒷받침된 앵커 수. 줄지 않는다.
+_MIN_EVIDENCED = 121   # 실행 증거로 뒷받침된 앵커 수. 줄지 않는다.
+                       #
+                       # 116 → 121 (2026-09-26, 파도 3 반증 검토 뒤 수리 — XlateStaging/props.sby 가
+                       # XlateSurface 의 0xE10 · RO 가드 다섯을 PROVES 로 앵커했고, 영향 태스크 넷
+                       # (XlateStaging/props · xlatestore · AbortStaging · assembly) 재스윕 직후 실측:
+                       # 앵커 121 전부 신선).
+                       #
+                       # 105 → 116 (2026-09-26, 파도 3 후-formal — Wt64Top/assembly.sby 가
+                       # XlateSurface CHECK 열하나를 PROVES 로 앵커하고 재스윕한 직후 실측:
+                       # 앵커 116 전부 신선).
+                       #
+                       # 93 → 105 (2026-09-26, 파도 3 — 변환 저장소의 MMIO 문. 영향
+                       # 태스크 다섯(assembly · XlateStaging/props 신설 · AbortStaging ·
+                       # xlatestore · hiumask) 재스윕 직후 실측: 앵커 105 전부 신선.
+                       # 새 앵커 열둘 = XlateStaging/props.sby PROVES 11 + xlatestore.sby
+                       # 의 XlateSurface.hi_v_carried).
                        #
                        # 80 → 93 (2026-09-26, 파도 2 — Wt64Top/assembly.sby 스윕
                        # 직후 실측: 앵커 93 전부 신선). 80 은 2026-08-26 의 값에
@@ -710,6 +761,226 @@ _PARTIAL = {
         "엣지의 io_rekey_part 래치)는 저장 읽기가 아니라 무효화·유효화 대상 파티션"
         "(io_maskReady[f_act])만 잰다 — 두 태스크의 합성은 서술이지 한 증명이 아니다",
     ),
+    # ── 아래 일곱: 태어나면서 부분인 앵커 (2026-09-26, 파도 3 — 변환 저장소의 MMIO 문) ──
+    #
+    # 모델 XlateSurface.tla 는 「표」를 문과 저장 블록을 하나로 접어 본다 (채움 슬롯은
+    # busy 로만 드러난다). RTL 에서는 그 표가 두 모듈에 갈린다 — 문(XlateStaging)은
+    # install/flush 포트까지, 표 효과(유효 비트 세움·지움 · 채움 가림)는 XlateStore.
+    # 그래서 문면에 표 효과가 든 가드는 문 태스크가 앞 절반만 재고, 뒤 절반은
+    # xlatestore.sby 가 *다른 가드 이름으로*(또는 같은 이름의 저장 절반 앵커로) 잰다.
+    # 두 태스크의 합성은 서술이다 — 값 수준 끝-끝은 rtl/sim/test_shape_equiv.py 의
+    # xlate_* 지향 시험이 잰다 (형식 증명이 아니다).
+    ("XlateSurface", "hi_fires", "rtl/formal/sby/XlateStaging/props.sby"): (
+        "문 절반 — 하류가 받을 수 있는 적법 HI ⇔ commit.valid (흡수 가지 없음) · 같은 LO 로 온 "
+        "HI 의 재커밋(t_no_drain)",
+        "표 효과 — install.fire 가 채움 줄을 점유하고 다음 에지에 유효 비트를 세운다는 것. "
+        "XlateStore 몫이고 xlatestore.sby 가 Isolation.fill_slot_per_partition · "
+        "Isolation.capacity_partitioned 의 이름으로 잰다 (f_pend 세움 · validBits 커밋 전이)",
+    ),
+    ("XlateSurface", "hi_commit_whole", "rtl/formal/sby/XlateStaging/props.sby"): (
+        "문 절반 — commit 번들 하나가 항목 전 필드(LO 프레임 · HI 태그·권한·V · 번호)를 한 "
+        "사이클에 나른다 (p_commit_fields · p_commit_part)",
+        "저장 절반 — XlateStore 가 install.fire 한 에지에 채움 줄 전체를 싣고(f_slot 등식) 대기 "
+        "중인 줄이 그 항목의 옛 판을 가린다(가림 단언)는 것. xlatestore.sby 의 "
+        "Isolation.fill_slot_per_partition · XlateSurface.hi_v_carried 앵커가 잰다",
+    ),
+    ("XlateSurface", "hi_v_carried", "rtl/formal/sby/XlateStaging/props.sby"): (
+        "문 절반 — commit.v = XLATE_ENTRY_HI [31] (p_commit_fields)",
+        "저장 절반 — 커밋이 유효 비트를 v 로 쓰고 채움 적중이 v 를 요구하고 대기 줄이 옛 판을 "
+        "가린다는 것. 같은 가드의 xlatestore.sby 앵커가 잰다 — 두 앵커의 합성은 서술이다",
+    ),
+    ("XlateSurface", "hi_v_carried", "rtl/formal/sby/XlateStore/xlatestore.sby"): (
+        "저장 절반 — 커밋의 validBits 전이가 줄의 v 를 쓴다(1 세움 · 0 내림) · fillHit ⇒ 줄의 v · "
+        "가림(대기 줄과 같은 색인이면 storeHit 없음) · 증인 W11(V=0 커밋이 산 비트를 내림) · "
+        "W12(가림이 산 저장 항목을 숨김)",
+        "문 절반 — install.v 가 HI [31] 그 자체라는 것. 이 태스크에서 io_install_v 는 자유 "
+        "입력이다 (XlateStaging/props.sby 의 같은 가드 앵커가 잰다)",
+    ),
+    ("XlateSurface", "flush_fires", "rtl/formal/sby/XlateStaging/props.sby"): (
+        "문 절반 — 적법 XLATE_FLUSH([31:8] = 0 · [7:0] < 4) ⇔ flush.valid 같은 사이클 (p_flush_iff)",
+        "표 효과 — flush 다음 에지에 그 파티션의 유효 비트가 전부 0 이고 자기 채움 pend 가 "
+        "취해진다는 것. xlatestore.sby 가 XlateStore.flush_keeps_data · "
+        "Isolation.capacity_partitioned 의 이름으로 잰다",
+    ),
+    ("XlateSurface", "flush_scoped", "rtl/formal/sby/XlateStaging/props.sby"): (
+        "문 절반 — flush 포트는 파티션 하나를 나르고 그 값은 기입 [1:0] 그 자체다 (p_flush_part)",
+        "저장 절반 — flush(p) 가 q ≠ p 의 유효 비트·채움 pend 를 건드리지 않는다는 것. "
+        "xlatestore.sby 의 Isolation.capacity_partitioned 가 잰다",
+    ),
+    ("XlateSurface", "reject_loud", "rtl/formal/sby/XlateStaging/props.sby"): (
+        "문 절반 — 거절 사건 전수 ⇔ badWrite (p_bad_iff — 조용한 거절도 허위 fault 도 막는다)",
+        "조립 절반 — 거절 사건이 surfBadWr → FAULT_STATUS [6] sticky 에 닿는다는 것. 같은 가드의 "
+        "Wt64Top/assembly.sby 앵커가 잰다 (a_surf_fire · a_surf_rise — 오라클은 MMIO 이력의 "
+        "그림자 스테이징이고 sticky 는 절단 밖이라 그 앵커 하나로 문면이 닫힌다 · 이 표에 없다)",
+    ),
+    # ── 아래 다섯: 파도 3 후-formal — 조립층 Wt64Top/assembly.sby 의 XlateSurface 앵커 ──
+    #
+    # 조립 하네스는 xstg 출력이 아니라 MMIO 이력에서 다시 지은 그림자 스테이징을 오라클로
+    # 써서 MMIO 버스 → 워드 디코드 → 구체 문 → 설치·flush *절단 핀* · 조립 sticky 까지 잰다.
+    # hiu(= HiuPipeline, XlateStore 내장)는 절단이라 핀 뒤의 표 효과는 이 태스크 밖이다 —
+    # 위 XlateStaging/props.sby 항목과 같은 경계에서 같은 하류 절반이 빈다. sticky 가 절단
+    # 밖인 reject_loud 만 이 표에 없다 (완전). 착지판 머리는 「문면에 표 효과가 없는
+    # 다섯」(lo_stages_only · hi_entry_match · hi_needs_staging · flush_part_exists ·
+    # flush_rsv_strict)도 완전으로 셌는데 **그 전제가 거짓이었다** — 그 다섯의 모델 속성은
+    # 전부 tbl' = tbl(표 불변)로 끝난다. 두 태스크가 재는 것은 「핀이 서지 않는다」까지이고
+    # 「핀이 서지 않으면 표가 움직이지 않는다」는 XlateStore 의 프레임 조건이다. 그 다섯은
+    # 아래 「반증 검토 뒤 수리」 절에 두 태스크 앵커 모두 올렸다.
+    ("XlateSurface", "hi_fires", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "문·조립 절반 — 그림자가 적법이라 판정한 HI 가 install.ready 사이클에 오면 "
+        "install.valid 핀, 그 밖에는 없다 (a_xhi_iff — 흡수·LO 발 커밋·거부 사이클의 valid 를 "
+        "한 등식이 막는다) · 같은 LO 로 온 HI 의 재커밋 증인 W25",
+        "표 효과 — install.fire 가 채움 줄을 점유하고 다음 에지에 유효 비트를 세운다는 것. "
+        "install.ready 는 이 태스크의 절단 핀(자유)이다. xlatestore.sby 가 "
+        "Isolation.fill_slot_per_partition · Isolation.capacity_partitioned 의 이름으로 잰다",
+    ),
+    ("XlateSurface", "hi_commit_whole", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "문·조립 절반 — 커밋 사이클의 설치 핀 전부 = 그림자 LO 프레임 ‖ HI 태그·권한·V ‖ 래치 "
+        "번호 {part, idx}, 한 사이클 (a_xhi_fields)",
+        "저장 절반 — XlateStore 가 install.fire 한 에지에 채움 줄 전체를 싣고 대기 줄이 그 "
+        "항목의 옛 판을 가린다는 것. xlatestore.sby 의 Isolation.fill_slot_per_partition · "
+        "XlateSurface.hi_v_carried 앵커가 잰다",
+    ),
+    ("XlateSurface", "hi_v_carried", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "문·조립 절반 — 커밋 사이클의 install.v 핀 = XLATE_ENTRY_HI [31] (a_xhi_fields · V=0 "
+        "커밋 증인 W19)",
+        "저장 절반 — 커밋이 유효 비트를 v 로 쓰고 채움 적중이 v 를 요구하고 대기 줄이 옛 판을 "
+        "가린다는 것. 같은 가드의 xlatestore.sby 앵커가 잰다 — 두 앵커의 합성은 서술이다",
+    ),
+    ("XlateSurface", "flush_fires", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "문·조립 절반 — 적법 XLATE_FLUSH([31:8] = 0 · [7:0] < 4) ⇔ flush.valid 핀, 같은 사이클 · "
+        "버스 ready 무관 (a_xflush_iff)",
+        "표 효과 — flush 다음 에지에 그 파티션의 유효 비트가 전부 0 이고 자기 채움 pend 가 "
+        "취해진다는 것. xlatestore.sby 가 XlateStore.flush_keeps_data · "
+        "Isolation.capacity_partitioned 의 이름으로 잰다",
+    ),
+    ("XlateSurface", "flush_scoped", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "문·조립 절반 — flush 핀은 파티션 하나를 나르고 그 값은 기입 [1:0] 그 자체다 "
+        "(a_xflush_part · a_xflush_iff 가 [7:0] < 4 를 요구 — 절단 별칭 없음)",
+        "저장 절반 — flush(p) 가 q ≠ p 의 유효 비트·채움 pend 를 건드리지 않는다는 것. "
+        "xlatestore.sby 의 Isolation.capacity_partitioned 가 잰다",
+    ),
+    # ── 아래 열: 반증 검토 뒤 수리 (2026-09-26) — 「표 불변」으로 끝나는 다섯의 두 앵커 ──
+    #
+    # 모델 속성이 tbl' = tbl 로 끝나는 가드 다섯(Prop_LoStagesOnly · Prop_MismatchRejected ·
+    # Prop_UnstagedRejected · Prop_PhantomRejected · Prop_RsvRejected). 문 태스크와 조립
+    # 태스크가 재는 것은 「그 기입이 설치·flush 핀을 세우지 않는다」(그리고 거절이면
+    # badWrite · 조립 sticky)까지다. 하류 절반은 전부 같다 — XlateStore 의 프레임 조건.
+    ("XlateSurface", "lo_stages_only", "rtl/formal/sby/XlateStaging/props.sby"): (
+        "문 절반 — 수락된 LO 는 commit · flush · missClr · badWrite 어느 것도 세우지 않는다 "
+        "(p_lo_quiet) · 커밋의 전건에 LO 가 없다 (p_commit_iff) · 스테이징만 움직인다는 것은 "
+        "그림자 오라클의 갱신 규칙이 이후 HI 판정으로 잰다",
+        "표 불변 — 설치·flush 핀이 둘 다 서지 않는 사이클에 XlateStore 의 유효 비트 · 채움 pend · "
+        "슬롯 몸체가 커밋(채움 줄 → 저장, 가시성 보존) 밖으로 움직이지 않는다는 프레임 조건. "
+        "xlatestore.sby 의 g_part $stable 가지가 Isolation.capacity_partitioned · "
+        "Isolation.fill_slot_per_partition 의 이름으로 잰다 — 두 태스크의 합성은 서술이다",
+    ),
+    ("XlateSurface", "lo_stages_only", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "문·조립 절반 — 정렬된 LO 쓰기는 설치 핀도 flush 핀도 조립 sticky 도 세우지 않는다 "
+        "(a_xhi_iff · a_xflush_iff · a_surf_rise)",
+        "표 불변 — 설치·flush 핀이 둘 다 서지 않는 사이클에 XlateStore 의 유효 비트 · 채움 pend · "
+        "슬롯 몸체가 커밋(채움 줄 → 저장, 가시성 보존) 밖으로 움직이지 않는다는 프레임 조건. "
+        "xlatestore.sby 의 g_part $stable 가지가 Isolation.capacity_partitioned · "
+        "Isolation.fill_slot_per_partition 의 이름으로 잰다 — 두 태스크의 합성은 서술이다",
+    ),
+    ("XlateSurface", "hi_entry_match", "rtl/formal/sby/XlateStaging/props.sby"): (
+        "문 절반 — 래치 번호와 다른 항목의 HI 는 커밋 없음 + badWrite · 스테이징 부동 "
+        "(p_commit_iff · p_bad_iff · 그림자 갱신 규칙)",
+        "표 불변 — 설치·flush 핀이 둘 다 서지 않는 사이클에 XlateStore 의 유효 비트 · 채움 pend · "
+        "슬롯 몸체가 커밋(채움 줄 → 저장, 가시성 보존) 밖으로 움직이지 않는다는 프레임 조건. "
+        "xlatestore.sby 의 g_part $stable 가지가 Isolation.capacity_partitioned · "
+        "Isolation.fill_slot_per_partition 의 이름으로 잰다 — 두 태스크의 합성은 서술이다",
+    ),
+    ("XlateSurface", "hi_entry_match", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "문·조립 절반 — 번호 불일치 HI 는 설치 핀 없음 (a_xhi_iff) + 조립 sticky (a_surf_fire)",
+        "표 불변 — 설치·flush 핀이 둘 다 서지 않는 사이클에 XlateStore 의 유효 비트 · 채움 pend · "
+        "슬롯 몸체가 커밋(채움 줄 → 저장, 가시성 보존) 밖으로 움직이지 않는다는 프레임 조건. "
+        "xlatestore.sby 의 g_part $stable 가지가 Isolation.capacity_partitioned · "
+        "Isolation.fill_slot_per_partition 의 이름으로 잰다 — 두 태스크의 합성은 서술이다",
+    ),
+    ("XlateSurface", "hi_needs_staging", "rtl/formal/sby/XlateStaging/props.sby"): (
+        "문 절반 — 빈 스테이징의 HI 는 번호와 무관하게 커밋 없음 + badWrite (p_commit_iff · p_bad_iff)",
+        "표 불변 — 설치·flush 핀이 둘 다 서지 않는 사이클에 XlateStore 의 유효 비트 · 채움 pend · "
+        "슬롯 몸체가 커밋(채움 줄 → 저장, 가시성 보존) 밖으로 움직이지 않는다는 프레임 조건. "
+        "xlatestore.sby 의 g_part $stable 가지가 Isolation.capacity_partitioned · "
+        "Isolation.fill_slot_per_partition 의 이름으로 잰다 — 두 태스크의 합성은 서술이다",
+    ),
+    ("XlateSurface", "hi_needs_staging", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "문·조립 절반 — 빈 스테이징의 HI 는 설치 핀 없음 (a_xhi_iff) + 조립 sticky (a_surf_fire) · "
+        "증인 W21",
+        "표 불변 — 설치·flush 핀이 둘 다 서지 않는 사이클에 XlateStore 의 유효 비트 · 채움 pend · "
+        "슬롯 몸체가 커밋(채움 줄 → 저장, 가시성 보존) 밖으로 움직이지 않는다는 프레임 조건. "
+        "xlatestore.sby 의 g_part $stable 가지가 Isolation.capacity_partitioned · "
+        "Isolation.fill_slot_per_partition 의 이름으로 잰다 — 두 태스크의 합성은 서술이다",
+    ),
+    ("XlateSurface", "flush_part_exists", "rtl/formal/sby/XlateStaging/props.sby"): (
+        "문 절반 — [7:0] ≥ 4 의 XLATE_FLUSH 는 flush 없음 + badWrite (p_flush_iff · p_bad_iff)",
+        "표 불변 — 설치·flush 핀이 둘 다 서지 않는 사이클에 XlateStore 의 유효 비트 · 채움 pend · "
+        "슬롯 몸체가 커밋(채움 줄 → 저장, 가시성 보존) 밖으로 움직이지 않는다는 프레임 조건. "
+        "xlatestore.sby 의 g_part $stable 가지가 Isolation.capacity_partitioned · "
+        "Isolation.fill_slot_per_partition 의 이름으로 잰다 — 두 태스크의 합성은 서술이다",
+    ),
+    ("XlateSurface", "flush_part_exists", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "문·조립 절반 — [7:0] ≥ 4 의 XLATE_FLUSH 는 flush 핀 없음 (a_xflush_iff — 8b 필드를 "
+        "자르는 별칭 없음) + 조립 sticky (a_surf_fire)",
+        "표 불변 — 설치·flush 핀이 둘 다 서지 않는 사이클에 XlateStore 의 유효 비트 · 채움 pend · "
+        "슬롯 몸체가 커밋(채움 줄 → 저장, 가시성 보존) 밖으로 움직이지 않는다는 프레임 조건. "
+        "xlatestore.sby 의 g_part $stable 가지가 Isolation.capacity_partitioned · "
+        "Isolation.fill_slot_per_partition 의 이름으로 잰다 — 두 태스크의 합성은 서술이다",
+    ),
+    ("XlateSurface", "flush_rsv_strict", "rtl/formal/sby/XlateStaging/props.sby"): (
+        "문 절반 — [31:8] 비0 의 XLATE_FLUSH 는 flush 없음 + badWrite (p_flush_iff · p_bad_iff)",
+        "표 불변 — 설치·flush 핀이 둘 다 서지 않는 사이클에 XlateStore 의 유효 비트 · 채움 pend · "
+        "슬롯 몸체가 커밋(채움 줄 → 저장, 가시성 보존) 밖으로 움직이지 않는다는 프레임 조건. "
+        "xlatestore.sby 의 g_part $stable 가지가 Isolation.capacity_partitioned · "
+        "Isolation.fill_slot_per_partition 의 이름으로 잰다 — 두 태스크의 합성은 서술이다",
+    ),
+    ("XlateSurface", "flush_rsv_strict", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "문·조립 절반 — [31:8] 비0 의 XLATE_FLUSH 는 flush 핀 없음 (a_xflush_iff) + 조립 sticky "
+        "(a_surf_fire)",
+        "표 불변 — 설치·flush 핀이 둘 다 서지 않는 사이클에 XlateStore 의 유효 비트 · 채움 pend · "
+        "슬롯 몸체가 커밋(채움 줄 → 저장, 가시성 보존) 밖으로 움직이지 않는다는 프레임 조건. "
+        "xlatestore.sby 의 g_part $stable 가지가 Isolation.capacity_partitioned · "
+        "Isolation.fill_slot_per_partition 의 이름으로 잰다 — 두 태스크의 합성은 서술이다",
+    ),
+    # ── 아래 다섯: 0xE10 · RO 쓰기 (2026-09-26 수리 — 모델이 RTL 을 뒤따라 실은 가드) ──
+    #
+    # XlateSurface.tla 가 검토자 D-7 의 배선(0xE10 해제 · RO 세 워드 쓰기 거절)을 6.3 환류로
+    # 실었다. 문 태스크가 재는 것은 문의 출력(missClr · badWrite · commit · flush)까지다.
+    # 해제 핀으로의 합류와 [6] 결선은 조립 태스크의 VERIFIES Wt64Top.xlate_surface(a_miss_clr ·
+    # surfMust)이고, HiuPipeline 의 미적중 sticky(StickyFault — set 이 정지 레벨) · 정지
+    # (missWait)의 절반은 **어느 형식 태스크도 재지 않는다** — hiumask.sby 는 missNotice 를
+    # 단언하지 않는다. 값 수준은 cocotb xlate_missclear_keeps_stall.
+    ("XlateSurface", "mclr_fires", "rtl/formal/sby/XlateStaging/props.sby"): (
+        "문 절반 — 0xE10 의 [0]=1 · [31:1]=0 기입 ⇔ missClr 같은 사이클 (p_missclr_iff · 증인 W12)",
+        "해제 핀 합류(hiu.io.missClear = IO 해제선 ∨ missClr)는 Wt64Top/assembly.sby 의 "
+        "VERIFIES Wt64Top.xlate_surface(a_miss_clr). 정지가 없을 때 StickyFault 가 그 해제로 "
+        "sticky 를 내린다는 파이프라인 절반은 어느 형식 태스크도 재지 않는다",
+    ),
+    ("XlateSurface", "mclr_needs_one", "rtl/formal/sby/XlateStaging/props.sby"): (
+        "문 절반 — [0]=0 · 예약 0 의 0xE10 기입은 missClr 도 badWrite 도 세우지 않는다 "
+        "(p_missclr_iff · p_bad_iff · 증인 W13)",
+        "sticky 불변 — 해제 핀의 원천이 IO 해제선과 missClr 둘뿐이라는 합류(a_miss_clr)와 해제가 "
+        "없으면 sticky 가 유지된다는 StickyFault 규약. 후자는 어느 형식 태스크도 재지 않는다",
+    ),
+    ("XlateSurface", "mclr_rsv_strict", "rtl/formal/sby/XlateStaging/props.sby"): (
+        "문 절반 — [31:1] 비0 의 0xE10 기입은 missClr 없음 + badWrite (p_missclr_iff · p_bad_iff · "
+        "증인 W14)",
+        "sticky 불변(위 mclr_needs_one 과 같은 하류) · badWrite → FAULT_STATUS [6] 결선은 "
+        "Wt64Top/assembly.sby 의 surfMust(VERIFIES Wt64Top.xlate_surface)",
+    ),
+    ("XlateSurface", "mclr_keeps_stall", "rtl/formal/sby/XlateStaging/props.sby"): (
+        "문 절반 — missClr 가 서는 기입은 commit · flush 를 세우지 않는다 (p_commit_iff · "
+        "p_flush_iff — 정지를 푸는 항목 커밋의 전건에 0xE10 이 없다 · 증인 W12)",
+        "파이프라인 절반 — HiuPipeline 의 missWait · advance 에 missClear 항이 없다는 것. 어느 "
+        "형식 태스크도 재지 않는다 (값 수준은 cocotb xlate_missclear_keeps_stall 의 정지 유지 단계)",
+    ),
+    ("XlateSurface", "ro_rejected", "rtl/formal/sby/XlateStaging/props.sby"): (
+        "문 절반 — 0xE04 · 0xE08 · 0xE0C 쓰기 ⇒ badWrite 이고 commit · flush · missClr 없음 "
+        "(p_bad_iff · p_commit_iff · p_flush_iff · p_missclr_iff · 증인 W11)",
+        "하류 불변 — 핀이 서지 않는 사이클의 표 불변은 XlateStore 프레임 조건(xlatestore.sby "
+        "g_part $stable 가지), sticky · 정지 불변은 파이프라인 규약(재지 않음) · [6] 결선은 "
+        "Wt64Top/assembly.sby surfMust",
+    ),
 }
 
 # ── 구조 skip 표 ─────────────────────────────────────────────────────────
@@ -821,7 +1092,7 @@ _STRUCTURAL = {
         # 부재는 XlateStore 의 사실이지만 모델 문면은 XlateStore 밖까지 말한다.
         # Isolation.tla:428-429 가 금지하는 것은 「채움이 진행 중이면 트레이스에
         # fwait 가 낀다」 = *파티션 간 타이밍 부채널*이고, 실제 정지는 이 모듈이
-        # 아니라 HiuPipeline.scala:334-335 의 missWait/advance 에 있다.
+        # 아니라 HiuPipeline.scala:348-349 의 missWait/advance 에 있다 (2026-09-26 재조준 — 옛 :334-335).
         # 그래서 부재 증명만으로는 가드 문면이 닫히지 않는다.
         "unmeasured": (
             "파티션 간 타이밍 부채널 — 「채움이 정지를 만들지 않는다」의 단조성 "

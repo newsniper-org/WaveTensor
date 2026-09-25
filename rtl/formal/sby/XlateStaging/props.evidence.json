@@ -1,0 +1,76 @@
+{
+  "anchors": [
+    "XlateSurface.lo_stages_only",
+    "XlateSurface.hi_fires",
+    "XlateSurface.hi_entry_match",
+    "XlateSurface.hi_needs_staging",
+    "XlateSurface.hi_commit_whole",
+    "XlateSurface.hi_v_carried",
+    "XlateSurface.flush_fires",
+    "XlateSurface.flush_scoped",
+    "XlateSurface.flush_part_exists",
+    "XlateSurface.flush_rsv_strict",
+    "XlateSurface.reject_loud",
+    "XlateSurface.mclr_fires",
+    "XlateSurface.mclr_needs_one",
+    "XlateSurface.mclr_rsv_strict",
+    "XlateSurface.mclr_keeps_stall",
+    "XlateSurface.ro_rejected"
+  ],
+  "at": "2026-09-25T21:50:16Z",
+  "cover": {
+    "reached": 14,
+    "reached_names": [
+      "XlateStaging_check.w10_stall",
+      "XlateStaging_check.w11_ro_wr",
+      "XlateStaging_check.w12_missclr",
+      "XlateStaging_check.w13_mclr_zero",
+      "XlateStaging_check.w14_mclr_rsv",
+      "XlateStaging_check.w1_commit",
+      "XlateStaging_check.w2_mismatch",
+      "XlateStaging_check.w3_unstaged",
+      "XlateStaging_check.w4_v0_commit",
+      "XlateStaging_check.w5_lo_over",
+      "XlateStaging_check.w6_flush3",
+      "XlateStaging_check.w7_phantom",
+      "XlateStaging_check.w8_rsv",
+      "XlateStaging_check.w9_recommit"
+    ],
+    "unreached": 0,
+    "unreached_names": []
+  },
+  "inputs": {
+    "rtl/generated/Wt64Top.sv": "ea1902d4ba41f929f2106794acb3ad0344937b312f994d4eac6b91cd0922ac0d",
+    "rtl/sv/assert/XlateStaging_props.sv": "0e09a8757d93fc7c8b26a456277ef4517d47466ab30aed56067d59c3fcbe8573"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 11,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 14,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 11,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
+  },
+  "sby": "rtl/formal/sby/XlateStaging/props.sby",
+  "sby_sha256": "bf1322a5dba417bc8cf907a03697aefd0e9efa9533e402c57b99fcfb6cd032ad",
+  "schema": "wt64-postformal-evidence/2",
+  "tasks": "bmc:PASS cover:PASS prove:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
+}

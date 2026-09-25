@@ -106,12 +106,18 @@ ENFORCED = [
     "Mask",
     "CapWord",
     "MaskEngine",
+    # 파도 3 (2026-09-26) — 변환 저장소의 MMIO 문. 선-formal(XlateSurface.tla)이
+    # 먼저 착지했고 RTL(XlateStaging · XlateStore 의 V 운반)이 같은 파도에 착지해
+    # GUARD-MAP 열둘이 전수다 (XlateStaging.scala 머리 열하나 · XlateStore.scala 끝 하나).
+    # 같은 날 수리로 열일곱 — 모델이 RTL 을 뒤따라 0xE10 · RO 쓰기 가드 다섯을 실었고
+    # 그 GUARD-MAP 은 XlateStaging.scala 끝에 있다.
+    "XlateSurface",
 ]
 # 미착지: NoLoss — 기계 전체 회계는 모듈이 아니라 합성 속성이다. RTL 대응물은
 # 후-formal 이 조합 위에서 검사한다 (모듈 단위 GUARD-MAP 강제 부적합).
 # 이 판단이 틀렸다고 판명되면 목록에 올리고 사유를 갱신하라.
 
-_MIN_ENFORCED = 14  # 래칫 바닥 — 이 수 아래로 줄이는 편집은 실패한다
+_MIN_ENFORCED = 15  # 래칫 바닥 — 이 수 아래로 줄이는 편집은 실패한다 (14 → 15: 파도 3 XlateSurface)
 
 # 구조 skip 건수 래칫 — **상한**이다 (늘면 실패). 방향이 위 래칫과 반대인 것에
 # 주의하라. STRUCTURAL 은 CHECK 분모를 비우는 방향이므로 늘리는 일은 반드시

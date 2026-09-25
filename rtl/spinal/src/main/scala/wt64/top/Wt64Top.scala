@@ -5,11 +5,11 @@
 //
 // 착지한 유닛 전부를 한 지붕 아래 인스턴스하고, 보고서(promote)가 확정한
 // 경계 계약대로 배선한다. 이 파일은 **조립**이다 — 판정·상태·fault 의 원천은
-// 전부 하위 유닛에 있고, 여기서 새로 만드는 상태는 MMIO 표면의 스테이징
-// 레지스터(E.9 논스 파티션 선택)와 이 표면의 거절 sticky 하나
-// (cfgSurfBadWrite)뿐이다. E.12 소거 태그의 스테이징은 2026-08-25 결정 A 로
-// 자기 컴포넌트(`AbortStaging`)를 얻었다 — 무장 규율이 잴 수 있는 경계를
-// 요구했기 때문이며, 그 근거는 그 클래스의 스칼라독이 소유한다.
+// 전부 하위 유닛에 있고, 여기서 새로 만드는 상태는 MMIO 표면의 창 레지스터
+// (E.9 MASK_PART)와 이 표면의 거절 sticky 하나(cfgSurfBadWrite)뿐이다. 스테이징은
+// 자기 컴포넌트가 든다 — E.12 소거 태그는 `AbortStaging`(2026-08-25 결정 A),
+// 변환 항목의 LO 스테이징은 `XlateStaging`(파도 3, 2026-09-26). 둘 다 잴 수 있는
+// 경계를 요구했기 때문이며, 근거는 각 클래스의 스칼라독이 소유한다.
 //
 // ## 인스턴스 지도 (XlateStore 는 HiuPipeline 이 품는다 — §3.2 조회 단계의 몸)
 //
@@ -35,8 +35,8 @@
 //   0x380–0x3FF  명령 링 (E.5 명령 방향)                           — **미배선**
 //   0x400–0x7FF  MmioConfig — LNID 소유 표 (§3.7.1)                — 배선
 //   0x800–0xBFF  MmioConfig — LBID 사상표 (§3.7.1)                 — 배선
-//   0xC00–0xDFF  변환 항목 배열 64 × 8 B (E.2 · E.3)               — **미배선**
-//   0xE00–0xE7F  변환 저장소 제어 — flush · 미적중 관측 (§3.6.3)   — **미배선**
+//   0xC00–0xDFF  변환 항목 배열 64 × 8 B (E.2 · E.3)               — 배선 (XlateStaging)
+//   0xE00–0xE7F  변환 저장소 제어 — flush · 미적중 관측 (§3.6.3)   — 부분 (관측 값 미배선)
 //   0xE80–0xEFF  마스킹 — 키 · 논스 · 재키잉 (E.9)                 — 배선
 //   0xF00–0xF3F  step 프로그램 적재 (@fabric 2.5)                  — 배선
 //   0xF40–0xF7F  재조립 문맥 소거 (E.12)                           — 배선
@@ -237,16 +237,16 @@ object Wt64Top {
   val R_CQ    = Region(0x300, 0x080, "완료 방향 — 완료 링·통지·드레인 (E.5·E.6·E.11)")
   val R_LNID  = Region(0x400, 0x400, "LNID 소유 표 (§3.7.1)")
   val R_LBID  = Region(0x800, 0x400, "LBID 사상표 (§3.7.1)")
+  val R_XENT  = Region(0xC00, 0x200, "변환 항목 배열 64 × 8 B (E.2·E.3)")
+  val R_XCTL  = Region(0xE00, 0x080, "변환 저장소 제어 — flush·미적중 (§3.6.3·E.3)")
   val R_MASK  = Region(0xE80, 0x080, "마스킹 — 키·논스·재키잉 (E.9)")
   val R_FP    = Region(0xF00, 0x040, "step 프로그램 적재 (@fabric 2.5)")
   val R_ABORT = Region(0xF40, 0x040, "재조립 문맥 소거 (E.12)")
   val R_FAULT = Region(0xF80, 0x040, "장치 전역 fault · 능력 부재 (§3.8)")
 
-  // UNWIRED — 자리는 배정됐고 소비자 회로가 없다. 각 구역의 부재 사유는
-  // rtl/README.md 「자리는 있고 회로는 없다」 표가 행마다 소유한다.
+  // UNWIRED — 자리는 배정됐고 소비자 회로가 없다 (R_XCTL 의 관측 워드 셋도 — Xctl).
+  // 부재 사유는 rtl/README.md 「자리는 있고 회로는 없다」 표가 행마다 소유한다.
   val R_SQ    = Region(0x380, 0x080, "명령 방향 — 명령 링 (E.5)")
-  val R_XENT  = Region(0xC00, 0x200, "변환 항목 배열 64 × 8 B (E.2·E.3)")
-  val R_XCTL  = Region(0xE00, 0x080, "변환 저장소 제어 — flush·미적중 (§3.6.3·E.3)")
   val R_IDENT = Region(0xFC0, 0x040, "장치 식별 (§3.7 측정 트랙)")
 
   /** 드리프트 방지 — 구역 base 는 소유 모듈의 상수와 같은 값이어야 한다.
@@ -346,7 +346,7 @@ object Wt64Top {
     val B_REASM        = 3  // 재조립
     val B_XLATE_PERM   = 4  // 변환 권한 위반
     val B_CFG_DUP      = 5  // 구성 — 소유 서로소 위반 (D2)
-    val B_CFG_BADWRITE = 6  // 구성 — 거절된 구성 기입 (넷 + 둘을 접는다)
+    val B_CFG_BADWRITE = 6  // 구성 — 거절된 구성 기입 (넷 + 다섯을 접는다)
     val B_OWN_COLLIDE  = 7  // 페이지 소유권 표 충돌
     val B_FABRIC_BP    = 8  // 병합 배압 무시
     val B_SHARED_BP    = 9  // 공유 유닛 배압 무시
@@ -382,12 +382,12 @@ object Wt64Top {
     val N_CAP_BITS       = 4
   }
 
-  // ═══ UNWIRED 구역의 워드 — 배정만 있고 소비자 회로가 없다 ════════════
+  // ═══ 변환 저장소 두 구역 · UNWIRED 구역의 워드 ═════════════════════════
   //
   // 값을 여기 적는 이유: 「예약이라 이름이 없다」와 「이름은 있는데 회로가
   // 없다」는 다른 사실이고, 뒤의 것은 다음 사람이 배선할 때 자리를 다시
-  // 정하지 않게 한다. 어느 상수도 지금은 회로에 닿지 않는다 — 그 사실이
-  // 곧 UNWIRED 의 뜻이다.
+  // 정하지 않게 한다. Xent · Xctl 은 파도 3 이 XlateStaging 으로 배선했고
+  // (Xctl 의 관측 세 워드는 값만 UNWIRED), Sq · Ident 는 회로에 닿지 않는다.
 
   /** 명령 링 (R_SQ) — 구역 안 바이트 오프셋. 완료 방향과 *같은 상대 오프셋*
     * 이라 드라이버가 한 구조체를 base 만 바꿔 두 링에 쓴다 (구역 간 거리
@@ -404,9 +404,9 @@ object Wt64Top {
   /** 변환 항목 배열 (R_XENT) — 항목 주소가 `{파티션, 색인}` 연접이다:
     * `addr[8:7]` = 파티션 · `addr[6:3]` = 색인 · `addr[2]` = 워드.
     * E.2 2항의 「곱셈을 구조적으로 만들지 않는다」가 주소 배선 그 자체로
-    * 성립한다. UNWIRED: XlateStore 의 `install` 포트는 실재하나 top 이
-    * 그것을 외부 IO 로 수출하고 있어 MMIO 표면이 없다 (E.3 「호스트가
-    * 기입한다」의 *호스트 쪽 문*이 아직 없다). */
+    * 성립한다. **배선됨 (파도 3)**: LO 스테이징 · HI 커밋 · 거절은 XlateStaging
+    * 이 판정하고 XlateStore `install` 로 간다 — E.3 「호스트가 기입한다」의
+    * *호스트 쪽 문*이다. 최상위 IO `io.install` 은 은퇴했다 (authority 하나). */
   object Xent {
     val PART_LO = 7 // addr[8:7] = 파티션
     val IDX_LO  = 3 // addr[6:3] = 색인
@@ -414,10 +414,10 @@ object Wt64Top {
     val ENTRY_HI_WORD = 0x4 // WO  [31] V · [30:28] rwx · [27:0] 태그 — 커밋 발화
   }
 
-  /** 변환 저장소 제어 (R_XCTL) — 구역 안 바이트 오프셋. UNWIRED: flush 논리는
-    * XlateStore 에 실재하나 발화가 top IO 입력이고, 미적중 sticky 는
-    * HiuPipeline 에 있으나 top IO 포트로만 나간다. 정지한 요청의 VPN 을
-    * 관측면에 내는 배선은 0건이다. */
+  /** 변환 저장소 제어 (R_XCTL) — 구역 안 바이트 오프셋. **부분 (파도 3)**: FLUSH
+    * 발화와 MISS_CLEAR 해제는 XlateStaging 이 판정하고(최상위 IO `io.flush` 은
+    * 은퇴), 세 RO 워드의 쓰기는 거절 + [6] 이다. UNWIRED 로 남은 것은 관측 *값*
+    * — 정지 상태·정지한 요청의 VPN 을 내는 배선이 0건이라 읽기 0 이다. */
   object Xctl {
     val FLUSH        = 0x00 // WO  [7:0] 파티션 — 기입이 곧 발화 · [31:8] 예약(엄격)
     val STATUS       = 0x04 // RO  [0] 미적중 정지 · [1] 미적중 sticky · [15:8] 파티션
@@ -600,7 +600,7 @@ class Wt64Top(
     * MemOrderGate 는 해석하지 않고 나른다 (wave/addr_not_gating 의 전제). */
   private val mogReqW = Isa.TAG_W + 4 + 12 + 32
 
-  // ═══ 인스턴스 — 15유닛 (XlateStore 는 HiuPipeline 내장 = 조립 14 + 1) ═══
+  // ═══ 인스턴스 — 15유닛 (XlateStore 는 HiuPipeline 내장 = 조립 14 + 1 · 문 xstg 는 파일 끝) ═══
   val walk   = new DecodeWalk(ehSlots)
   val od     = new OperandDecode(ehSlots)
   val rj     = new RouteJudge(cfg)
@@ -618,7 +618,7 @@ class Wt64Top(
   val fps    = StepSequencer(StepSeqParams(progDepth = cfg.stepProgDepth)) // 승격 반영
   val cq     = new CompletionUnit(cfg.cqDepth) // 승격 반영
   /** E.12 소거의 호스트 대면 절반 — 태그 스테이징 + 무장 규율 + 발화 (결정 A).
-    * 유일하게 *이 파일이 정의하는* 컴포넌트다 (다른 열다섯은 자기 파일에 산다) —
+    * 유일하게 *이 파일이 정의하는* 컴포넌트다 (다른 것은 자기 파일에 산다 — xstg 포함) —
     * MMIO 표면의 절반이라 조립의 소관이고, 잴 수 있게 이름을 준 것뿐이다. */
   val stg    = new AbortStaging
   /** 능력 부재 관측 워드 CAP_STATUS/CAP_CLEAR 의 *행위* — 축별 sticky · 수락
@@ -723,19 +723,19 @@ class Wt64Top(
       val write = in port Bool()
     }
     val hiuHold = in port Bool()
-    val install = new Bundle {
-      val valid = in port Bool()
-      val ready = out port Bool()
-      val part  = in port UInt(partW bits)
-      val idx   = in port UInt(idxW bits)
-      val tag   = in port UInt(xTagW bits)
-      val frame = in port UInt(FRAME_W bits)
-      val perm  = in(XlatePerm())
-    }
-    val flush = new Bundle {
-      val valid = in port Bool()
-      val part  = in port UInt(partW bits)
-    }
+    // ── 은퇴 (파도 3, 2026-09-26): io.install · io.flush ─────────────────
+    //    항목 설치와 파티션 flush 의 원천은 이제 MMIO 문 하나다 — `0xC00`
+    //    XLATE_ENTRY_LO/HI · `0xE00` XLATE_FLUSH (파일 끝 xlateArea · XlateStaging).
+    //    남겨 두면 설치 authority 가 둘이 된다: install 은 다필드 트랜잭션이라
+    //    faultClear 식 논리합으로 합칠 수 없고, ready 없는 IO flush 가 MMIO
+    //    flush 와 한 사이클에 겹치면 XlateStore 의 단일 flush 포트가 하나를
+    //    조용히 잃으며, 번호 래치와 V 규약을 우회하는 옆문이 된다. 채움 주체는
+    //    호스트이고 호스트의 문은 MMIO 다 (E.3). 모델 XlateSurface.tla 도 이 문을
+    //    유일한 원천으로 가정한다. 이 주석은 삭제한 선언과 줄 수가 같다 — 아래
+    //    선언들의 줄 좌표(와 SpinalHDL 줄번호 이름)를 밀지 않기 위해서다.
+    //
+    //
+    //
     val hostRsp = new Bundle {
       val valid = in port Bool()
       val frame = in port UInt(FRAME_W bits)
@@ -824,7 +824,7 @@ class Wt64Top(
       val hiuMiss       = out port Bool() // 미적중 통지 — fault 아님 (§3.8)
       val cfgDupOwner   = out port Bool()
       val cfgBadWrite   = out port Bool()
-      /** 이 조립이 직접 디코드하는 구성 표면(마스킹·step·소거)의 거절된 기입.
+      /** 이 조립이 직접 디코드하는 구성 표면(마스킹·step·소거·변환 문)의 거절된 기입.
         * 새 맵의 FAULT_STATUS `[6]`「구성 — 거절된 구성 기입」과 같은 자리이며
         * cfgBadWrite 와 같은 부류다 — 두 신호를 여기서 접지 않는 이유는 원천
         * 모듈이 다르고 (MmioConfig 는 자기 sticky 를 자기가 든다) top 이
@@ -1032,20 +1032,20 @@ class Wt64Top(
   own.io.query.frame    := hiu.io.owner.frame
   hiu.io.owner.devOwned := own.io.query.devOwned
 
-  hiu.io.install.valid := io.install.valid
-  hiu.io.install.part  := io.install.part
-  hiu.io.install.idx   := io.install.idx
-  hiu.io.install.tag   := io.install.tag
-  hiu.io.install.frame := io.install.frame
-  hiu.io.install.perm  := io.install.perm
-  io.install.ready     := hiu.io.install.ready
-  hiu.io.flush.valid   := io.flush.valid
-  hiu.io.flush.part    := io.flush.part
+  // hiu.io.install · hiu.io.flush 는 파일 끝 xlateArea 가 구동한다 — 원천은
+  // XlateStaging 하나다 (최상위 IO 은퇴, 위 io 번들의 은퇴 주석). 결선이
+  // 파일 끝인 이유: 문의 컴포넌트·형상 require·ready 덮어쓰기를 한 자리에
+  // 모으고, 이 위의 줄 좌표를 밀지 않는다. 이 주석은 삭제한 결선과 줄 수가
+  // 같다.
+  //
+  //
+  //
+  //
   hiu.io.hostRsp.valid := io.hostRsp.valid
   hiu.io.hostRsp.frame := io.hostRsp.frame
   hiu.io.hostRsp.perm  := io.hostRsp.perm
   hiu.io.faultClear    := io.faultClear.hiuPerm || fclr(Fault.B_XLATE_PERM)
-  hiu.io.missClear     := io.faultClear.hiuMiss
+  // hiu.io.missClear — xlateArea 가 구동한다 (IO 해제선 ∨ 0xE10 MISS_CLEAR 수락).
 
   // 마스킹 단 (s4) — HiuPipeline io.mask 왕복의 반대편이 MaskUnit 이다.
   // 결선 계약(HiuPipeline io.mask 주석) 그대로: req↔rsp 직결, io.en 에
@@ -1171,17 +1171,17 @@ class Wt64Top(
   private val selAbort = sel(R_ABORT)
   private val selFault = sel(R_FAULT) // 장치 전역 fault — 이 파도가 배선했다
 
-  // ── UNWIRED 구역 — 배정됐고 소비자 회로가 없다 ────────────────────────
+  // ── UNWIRED 구역 둘 + 변환 저장소 두 구역 ─────────────────────────────
   //
-  // 이 네 신호는 회로를 구동하지 않지만 *디코더가 구역을 열거한다*는
+  // selSq · selIdent 는 회로를 구동하지 않지만 *디코더가 구역을 열거한다*는
   // 사실 자체가 산출물이다: 「예약이라 이름이 없다」와 「이름은 있는데 회로가
-  // 없다」가 코드에서 구별된다. 지금의 처분은 읽기 0 · 쓰기 무시로 예약과
-  // 같지만, 그것은 *소비자가 없어서*이지 표에 없어서가 아니다.
+  // 없다」가 코드에서 구별된다. 처분은 읽기 0 · 쓰기 무시로 예약과 같지만,
+  // 그것은 *소비자가 없어서*이지 표에 없어서가 아니다. 변환 두 구역은 파도 3.
   private val selSq    = sel(R_SQ)    // 명령 링 — 명령 방향 실물 0건
-  private val selXent  = sel(R_XENT)  // 변환 항목 배열 — install 이 top IO 로 수출돼 있다
-  private val selXctl  = sel(R_XCTL)  // flush 발화·미적중 관측 — 둘 다 top IO
+  private val selXent  = sel(R_XENT)  // 변환 항목 배열 — XlateStaging (파일 끝 xlateArea)
+  private val selXctl  = sel(R_XCTL)  // 변환 저장소 제어 — XlateStaging (관측 값은 UNWIRED)
   private val selIdent = sel(R_IDENT) // HIU_ABI_VERSION — 판 번호가 §3.10 대기
-  private val selUnwired = selSq || selXent || selXctl || selIdent
+  private val selUnwired = selSq || selIdent
 
   // 영역별 스트로브 게이트 — 한 접근은 정확히 한 블록에 닿는다.
   own.io.addr    := io.mmio.addr
@@ -1260,8 +1260,8 @@ class Wt64Top(
     /** 파티션 필드 — 8b 고정, 형상의 함수가 아니다 (INV-T1 정합). 합법 값
       * 검사는 폭이 아니라 *기입 시점 거절*로 선다 (MmioConfig 선례). */
     val partField = io.mmio.wdata(PART_FIELD_W - 1 downto 0).asUInt
-    val partBad   = if (cfg.xlateParts >= (1 << PART_FIELD_W)) False
-                    else partField >= cfg.xlateParts
+    val partBad   = XlateStaging.partBad(partField, cfg.xlateParts) // 한 정의 —
+                    // XLATE_FLUSH(XlateStaging) 도 같은 함수를 부른다 (파티션을 받는 표면 셋)
 
     // MASK_PART(0xEA0) — 키·논스 두 기입 모두의 대상 파티션 창 (정본
     // 7fa5f2e, e-defined.typ:344·351 7항 — 구 MASK_NONCE_PART 를 넓힌 것).
@@ -1539,7 +1539,7 @@ class Wt64Top(
     status(Fault.B_REASM)       := io.fault.reasm
     status(Fault.B_XLATE_PERM)  := io.fault.hiuPerm
     status(Fault.B_CFG_DUP)     := io.fault.cfgDupOwner
-    // `[6]` 이 넷 + 둘을 접는다 (E.1.2 해설). *네* 원천(MmioConfig · 이
+    // `[6]` 이 넷 + 다섯을 접는다 (E.1.2 해설). *네* 원천(MmioConfig · 이
     // 조립이 직접 디코드하는 표면 · 완료 유닛 · 소유권 표)의 같은 부류가
     // *여기서* 한 비트로 합류한다 — 수리 주체가 드라이버 하나이고 고칠
     // 동작이 같다(자기가 방금 쓴 워드를 고쳐 다시 쓴다). 폴딩 지점을 명시
@@ -1615,16 +1615,16 @@ class Wt64Top(
   }
 
   /** 표에 *없는* 오프셋 — §3.7 예약 오프셋 정책 (쓰기 무시 · 읽기 0). */
-  private val resvOffset = !(selOwn || selCq || selCfg ||
+  private val resvOffset = !(selOwn || selCq || selCfg || selXent || selXctl ||
     selMask || selFp || selAbort || selFault || selUnwired)
 
-  // 예약 오프셋 · **미배선 구역** · 세 구역의 비정렬 접근 — 셋 다 읽기 0 이고
-  // rvalid 는 돌려준다 (응답 없는 읽기는 예약 정책이 아니라 버스 행 멈춤이다).
-  // 셋을 한 식에 접지 않고 열거해 두는 이유: 전기적으로 같아도 *사실*이 다르다.
-  // `selUnwired` 는 표에 있는 오프셋이고 (companion 의 Sq·Xent·Xctl·Ident
-  // 상수가 그 이름들이다) 소비자 회로만 없다.
+  // 예약 오프셋 · **미배선 구역** · 변환 두 구역의 읽기 · 네 구역의 비정렬 접근 —
+  // 전부 읽기 0 이고 rvalid 는 돌려준다 (응답 없는 읽기는 버스 행 멈춤이다).
+  // 한 식에 접지 않고 열거해 두는 이유: 전기적으로 같아도 *사실*이 다르다.
+  // `selUnwired` 는 표에 있는 오프셋이고 (Sq·Ident) 소비자 회로만 없다. 변환 두
+  // 구역은 WO 워드의 읽기 0(E.1.1) 과 관측 세 워드의 미배선 값(0)이다.
   private val resvRd = io.mmio.rstrobe && !io.mmio.wstrobe &&
-    (resvOffset || selUnwired ||
+    (resvOffset || selUnwired || selXent || selXctl ||
      ((selMask || selFp || selAbort || selFault) && !mmioAligned))
   private val resvRv = RegNext(resvRd, False)
 
@@ -1638,4 +1638,79 @@ class Wt64Top(
   mask.io.faultClearNoMask   := io.faultClear.maskNoMask   || fclr(Fault.B_MASK_NOMASK)
   mask.io.faultClearNonceDup := io.faultClear.maskNonceDup || fclr(Fault.B_MASK_NONCE)
   mask.io.faultClearWrRekey  := io.faultClear.maskWrRekey  || fclr(Fault.B_MASK_REKEY)
+
+  // ═══ 변환 저장소의 MMIO 문 — 0xC00 항목 배열 · 0xE00 저장소 제어 (파도 3) ═══
+  //
+  // 정본 3.9 · E.1.3 이 「내부만」으로 적던 두 행을 닫는 자리다 — 항목 설치
+  // 논리와 flush 논리는 XlateStore 에 이미 있었고, 없던 것이 호스트 쪽 문이다.
+  // 선-formal 계약은 rtl/formal/tla/XlateSurface.tla 이고 그 가드 열둘의 RTL
+  // 주장(GUARD-MAP)은 XlateStaging.scala 머리(열하나)와 XlateStore.scala 끝
+  // (hi_v_carried)에 있다. 이 Area 는 구역 선택·정렬과 결선만 한다.
+  //
+  // 파일 *끝*에 둔 이유 셋: (1) 위쪽 줄 좌표를 한 줄도 밀지 않는다 (2) io.mmio.ready
+  // 덮어쓰기가 위 영역별 ready when 들보다 *뒤*여야 한다 (마지막 대입이 이긴다)
+  // (3) 컴포넌트 인스턴스를 이것을 부르는 결선과 같은 자리에 둔다 (Scala 본문
+  // 초기화 순서 — 위쪽에서 참조하면 elaborate 가 NullPointerException 으로 죽는다).
+  //
+  // ## 하류 거부의 처분 — 버스 정지 (D-2 · 모델 Refusal = "stall")
+  //
+  // XlateStore 의 install.ready 는 그 파티션 채움 슬롯이 차 있으면 내려간다. 그때
+  // HI 워드 기입의 mmio ready 를 같은 신호로 낮춰 *같은 기입*을 잡아 둔다 —
+  //   03-hiu.typ:989 「수락 중에는 ready 가 내려가 있으므로 중간 상태는 관측되지」
+  // 정지는 *적법한* HI(xstg.io.needReady — 스테이징이 차 있고 번호가 같다)에만
+  // 걸린다. 거절될 HI 는 기다리지 않고 곧장 거절이다 (모델의 Refused(w) 가
+  // ~DevHiBad(w) 를 전건에 든 것과 같다 — 거절선의 콘에 하류 상태가 없다).
+  // 정지는 유계다 — commitFire 가 점유가 있으면 매 사이클 발화하고 단일 버스
+  // 마스터라 정지 중에 새 설치가 없다. D1(수락되지 않은 기입의 효과) 재발을
+  // 막는 조건 넷: ① 커밋은 needReady ∧ installReady(= 그 사이클의 ready)로만,
+  // 거절은 needReady 가 아닌(ready = 1) HI 로만 ② ready 는 *기능적으로* 주소·스트로브·
+  // 상태만의 함수(wdata 비의존 — 구조 경로 wdata→flush.valid→install.ready→ready 는 있다:
+  // rtl/README.md 파도 3 「구조 경로」) ③ 읽기는 ready 를 낮추지 않는다(wstrobe 가 전건)
+  // ④ flush · MISS_CLEAR 발화는 io.mmio.ready 를 참조하지 않는다 — install.ready 가
+  // flush.valid 를 조합으로 보므로(flushSamePart) 참조하면 조합 루프다.
+  val xstg = new XlateStaging(cfg.xlateParts)
+  val xlateArea = new Area { // 공개 — 참조자가 없는 Area 는 private 이면 unused 로 컴파일이 멈춘다
+    // 형상 — 창(512 B)이 거는 상한과 두 워드의 필드 폭. 조용히 창 밖으로
+    // 넘치는 형상은 금지다 — e-defined.typ:803 「조용히 창 밖으로 넘치는 형상은 금지다」
+    require(cfg.xlateParts <= 4 && cfg.xlateIdx <= 16,
+      s"변환 항목 창(addr[8:7] 파티션 · addr[6:3] 색인) 밖 형상 — 파티션 ${cfg.xlateParts} · 색인 ${cfg.xlateIdx}. 창을 넓히는 정본 개정이 선행한다")
+    require(xTagW == XlateStaging.TAG_W,
+      s"XLATE_ENTRY_HI [27:0] 태그 폭 ${XlateStaging.TAG_W} ≠ 형상 태그 폭 $xTagW — 두 표면 동폭 (E.2 4항)")
+    require(FRAME_W == XlateStaging.FRAME_W,
+      s"XLATE_ENTRY_LO [31:0] 프레임 폭 ${XlateStaging.FRAME_W} ≠ FRAME_W $FRAME_W")
+
+    val wrEnt = io.mmio.wstrobe && selXent && mmioAligned
+    val wrCtl = io.mmio.wstrobe && selXctl && mmioAligned
+    val isHi  = io.mmio.addr(Xent.IDX_LO - 1) // addr[2] = 워드 (0 = LO · 1 = HI)
+
+    xstg.io.wrEnt        := wrEnt
+    xstg.io.wrCtl        := wrCtl
+    xstg.io.woff         := io.mmio.addr(R_XENT.wordHi downto 2) // addr[8:2]
+    xstg.io.wdata        := io.mmio.wdata
+    xstg.io.installReady := hiu.io.install.ready
+
+    // 설치 — part 는 valid 와 무관하게 그 기입의 번호다 (install.ready 가 그 파티션을 본다).
+    hiu.io.install.valid := xstg.io.commit.valid
+    hiu.io.install.part  := xstg.io.commit.part.resized
+    hiu.io.install.idx   := xstg.io.commit.idx.resized
+    hiu.io.install.tag   := xstg.io.commit.tag.resized
+    hiu.io.install.frame := xstg.io.commit.frame.resized
+    hiu.io.install.perm  := xstg.io.commit.perm
+    hiu.io.install.v     := xstg.io.commit.v
+
+    // flush · 미적중 해제 — 버스 ready 와 무관하다 (조건 ④).
+    hiu.io.flush.valid := xstg.io.flush.valid
+    hiu.io.flush.part  := xstg.io.flush.part.resized
+    // 해제 원천 둘의 논리합 — IO 해제선과 0xE10 수락 [0]. 정지는 풀지 않는다 —
+    // e-defined.typ:329 「*정지 자체는 이것으로 풀리지 않는다*」 (XlateStaging 에 그 배선이 없다).
+    hiu.io.missClear := io.faultClear.hiuMiss || xstg.io.missClr
+
+    // 거절 — 스테이징 빔 · 번호 불일치 · 형상 밖 파티션 · FLUSH 예약/없는 파티션 ·
+    // MISS_CLEAR 예약 · RO 세 워드 쓰기. 전부 FAULT_STATUS [6] 합류다.
+    when(xstg.io.badWrite) { surfBadWr := True }
+
+    // 하류 거부 = 버스 정지. 적법한 HI 워드의 *정렬된 쓰기*만 (조건 ②③).
+    // isHi 는 needReady 의 부분식이지만 이 식이 HI 워드임을 코드에서 읽히게 둔다.
+    when(wrEnt && isHi && xstg.io.needReady) { io.mmio.ready := hiu.io.install.ready }
+  }
 }

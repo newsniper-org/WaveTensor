@@ -103,6 +103,7 @@ module HiuMask_comp (
   input  wire        io_install_perm_r,
   input  wire        io_install_perm_w,
   input  wire        io_install_perm_x,
+  input  wire        io_install_v,        // XLATE_ENTRY_HI [31] — 자유 입력 (파도 3)
   input  wire        io_flush_valid,
   input  wire [1:0]  io_flush_part,
   input  wire        io_hostRsp_valid,
@@ -176,6 +177,7 @@ module HiuMask_comp (
     .io_install_perm_r  (io_install_perm_r),
     .io_install_perm_w  (io_install_perm_w),
     .io_install_perm_x  (io_install_perm_x),
+    .io_install_v       (io_install_v),
     .io_flush_valid     (io_flush_valid),
     .io_flush_part      (io_flush_part),
     .io_hostRsp_valid   (io_hostRsp_valid),
@@ -298,6 +300,10 @@ module HiuPipeline_props (
   input wire         io_flush_valid,
   input wire [1:0]   io_flush_part,
   input wire         io_hostRsp_valid,
+  // 파도 3 — V=0 설치(단일 항목 무효화)의 관측. 대체 추적기가 「유효 비트는
+  // 커밋이 세우기만 한다」에 기대던 것을 V=0 커밋이 깬다 (아래 f_ev_seen).
+  input wire         f_kill,              // io_install 수락 ∧ v = 0
+  input wire [1:0]   f_kill_part,
   input wire [31:0]  io_hostRsp_frame,
   input wire [1:0]   s3_part,
   input wire [31:0]  s3_vpn,
@@ -602,9 +608,9 @@ module HiuPipeline_props (
   //
   // 대체 궤적 추적기 — 「축출 상태 없음」의 도달성 증거를 만드는 도구다.
   // 저장 leg 적중(fromFill=0)을 한 번 관측하면 그 순간 그 칸의 유효 비트가
-  // 1 이었다는 뜻이다. XlateStore 의 유효 비트는 커밋이 *세우기만* 하고
-  // flush 만 내리므로(생성 SV 의 validBits 전이 전수), flush 가 없는 한
-  // 그 칸은 계속 유효하다. 그래서 「같은 파티션·같은 idx 를 *다른 태그*로
+  // 1 이었다는 뜻이다. XlateStore 의 유효 비트를 내리는 것은 flush 와 V=0
+  // 커밋(파도 3)뿐이므로(생성 SV 의 validBits 전이 전수), 그 파티션에 flush 도
+  // V=0 설치도 없는 한 그 칸은 계속 유효하다. 그래서 「같은 파티션·같은 idx 를 *다른 태그*로
   // 조회하는 사이클」 = 유효 ∧ 태그 불일치 = §3.6.2 규범 4 의 대체다.
   // 사이 커밋이 태그를 갈아치웠더라도 증인은 건전하다 — 그때는 적중이
   // 나므로 `!x_hit` 가 그 경우를 그 자리에서 배제한다.
@@ -615,12 +621,14 @@ module HiuPipeline_props (
   always @(posedge clk) begin
     if (reset) f_ev_seen <= 1'b0;
     else if (s3_valid && x_hit && !x_fromFill
-             && !(io_flush_valid && (io_flush_part == s3_part))) begin
+             && !(io_flush_valid && (io_flush_part == s3_part))
+             && !(f_kill && (f_kill_part == s3_part))) begin
       f_ev_seen <= 1'b1;
       f_ev_part <= s3_part;
       f_ev_idx  <= s3_vpn[3:0];      // XlateStore reqIdx = vpn(3 downto 0)
       f_ev_tag  <= s3_vpn[31:4];     // XlateStore reqTag = vpn(31 downto 4)
-    end else if (io_flush_valid && (io_flush_part == f_ev_part)) begin
+    end else if ((io_flush_valid && (io_flush_part == f_ev_part)) ||
+                 (f_kill && (f_kill_part == f_ev_part))) begin
       f_ev_seen <= 1'b0;
     end
   end
@@ -1036,6 +1044,8 @@ bind HiuPipeline HiuPipeline_props u_hiu_props (
   .io_flush_valid    (io_flush_valid),
   .io_flush_part     (io_flush_part),
   .io_hostRsp_valid  (io_hostRsp_valid),
+  .f_kill            (io_install_valid && io_install_ready && !io_install_v),
+  .f_kill_part       (io_install_part),
   .io_hostRsp_frame  (io_hostRsp_frame),
   .s3_part           (s3_part),
   .s3_vpn            (s3_vpn),

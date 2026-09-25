@@ -92,8 +92,7 @@
 //
 // ## E.3 미적중 배압 — 정지는 조회 지점 하나, 파이프 전체가 함께 선다
 //
-// 미적중은 오류가 아니다 (§3.6.2 규범 3). s3 의 요청이 로컬 미적중이면
-// 파이프 전체가 정지하고(missWait → advance 하강)
+// 미적중은 오류가 아니다 (§3.6.2 규범 3). s3 의 요청이 로컬 미적중이면 파이프 전체가 정지하고(missWait → advance 하강)
 // 미적중을 sticky 로 알린다 (io.missNotice — fault 가 아니다. §3.8 폴딩
 // 규범: 미적중 표시와 fault 는 서로 다른 신호이며 어느 쪽도 다른 쪽을
 // 세우지 않는다). 호스트가 항목을 기입하면 채움 바이패스(XlateStore D12
@@ -126,8 +125,7 @@
 //      이양 전 요청 경로의 정온(quiesce)은 호스트 ABI 의무다 (§3.4.1 전이
 //      시점 규범 · §3.10 — flush_on_handoff ENV 줄과 같은 자리).
 //
-// 이 상호작용 자체는 어느 모델에도 없다 (XlateStore.tla 에는 채움이,
-// Isolation.tla 에는 flush 가 없다) — model_feedback 유지.
+// 이 상호작용 자체는 어느 모델에도 없다 (XlateStore.tla 에 채움이 · Isolation.tla 에 flush 가 없다) — model_feedback 유지.
 
 package wt64.hiu
 
@@ -195,6 +193,7 @@ class HiuPipeline(val cfg: Wt64Config = Wt64Config()) extends Component {
       val tag   = in port UInt(tagW bits)
       val frame = in port UInt(FRAME_W bits)
       val perm  = in port XlatePerm()
+      val v     = in port Bool() // XLATE_ENTRY_HI [31] — 통과만 한다 (0 = 단일 항목 무효화)
     }
     /** 파티션 flush — XlateStore 로 통과 (§3.6.3). */
     val flush = new Bundle {
@@ -242,6 +241,7 @@ class HiuPipeline(val cfg: Wt64Config = Wt64Config()) extends Component {
   xlate.io.install.tag   := io.install.tag
   xlate.io.install.frame := io.install.frame
   xlate.io.install.perm  := io.install.perm
+  xlate.io.install.v     := io.install.v
   io.install.ready       := xlate.io.install.ready
   xlate.io.flush.valid   := io.flush.valid
   xlate.io.flush.part    := io.flush.part

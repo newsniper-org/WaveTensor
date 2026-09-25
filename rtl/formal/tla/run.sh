@@ -249,6 +249,107 @@ expect_fail "증인: 깨끗한 완료의 유효화가 실재하는가"     MaskE
 expect_fail "증인: busy 중 타 파티션 기입이 실재하는가"   MaskEngine_witness_NoOtherWriteBusy.cfg "$M" Witness_NoOtherWriteBusy
 
 # ---------------------------------------------------------------------------
+# 변환 저장소의 MMIO 문 — 0xC00 항목 배열(XLATE_ENTRY_LO/HI) · 0xE00 XLATE_FLUSH
+# (파도 3, 2026-09-26:
+# e-defined.typ:308 「기입이 항목 전체(스테이징 LO + 이 워드)를 단일 에지에 커밋한다」 ·
+# e-defined.typ:321 「기입이 곧 발화」 · e-defined.typ:419 「조용한 무시는 금지다」)
+#
+# XlateStore.tla(위)은 저장 블록, Isolation.tla 는 조회·채움의 비간섭이고, 이
+# 모델은 호스트가 두드리는 문이다 — 32b 버스가 64b 항목을 두 워드로 쪼개는
+# 자리의 스테이징·커밋 원자성, flush 발화의 범위, 거절의 처분. 오늘의 RTL 은
+# 두 구역을 selUnwired 로 열거만 하고 쓰기를 조용히 흡수한다(파도 2 의 T1) —
+# 짝 「오늘의 RTL」 둘이 그 기계와 동형이다. flush 쪽 짝은 항목을 HI 문으로
+# 세운다: 문을 둘 다 지우면 표에 산 항목이 없어 flush 결함이 공허하게 숨는다
+# (실측 — 그 판은 통과했다).
+#
+# 하류 거부(XlateStore install.ready = 0)의 처분은 설계 결정이라 대안 셋을 다
+# 돌린다 — 버스 정지(좋은 모델) · 거절 + loud(옳은 드라이버가 FAULT [6] 을
+# 받는다) · 조용한 흡수. 그리고 정지가 호스트 조치 없이 풀린다는 진행 속성과,
+# 그 공정성(채움 슬롯은 버스와 독립으로 비워진다)을 뺀 대조군.
+# 가드 삭제 cfg 는 가드 속성 열일곱을 전부 건다 — 지우면 자기 속성만 깨진다.
+#
+# 같은 날 수리 — 0xE10 XLATE_MISS_CLEAR 와 RO 세 워드(0xE04–0xE0C)의 쓰기 처분
+# (e-defined.typ:329 「`[0]` 에 1 기입 = 미적중 sticky 해제 · `[31:1]` 예약 = 0 (엄격)」 ·
+# e-defined.typ:202 「*RO 오프셋의 쓰기* — 거절 + loud fault 다」). RTL 이 모델보다
+# 먼저 배선한 결정(검토자 D-7)을 6.3 규율대로 모델로 돌려보냈다: 가드 다섯 ·
+# 증인 다섯 · 발견 run 하나(정지 중 해제의 유실 — set 이 해제를 이긴다).
+# ---------------------------------------------------------------------------
+M=XlateSurface.tla
+expect_pass "MMIO 문 좋은 모델 (파티션 2 · 색인 1 · 정지)"  XlateSurface.cfg       "$M"
+expect_pass "MMIO 문 좋은 모델 (파티션 2 · 색인 2 · 정지)"  XlateSurface_large.cfg "$M"
+
+expect_fail "가드 삭제: lo_stages_only (LO 가 표를 곧장 덮음)" \
+            XlateSurface_del_lo_stages_only.cfg "$M" Prop_LoStagesOnly
+expect_fail "가드 삭제: hi_fires (적법한 HI 흡수)" \
+            XlateSurface_del_hi_fires.cfg "$M" Prop_HiCommits
+expect_fail "가드 삭제: hi_entry_match (번호 불일치 커밋)" \
+            XlateSurface_del_hi_entry_match.cfg "$M" Prop_MismatchRejected
+expect_fail "가드 삭제: hi_needs_staging (HI 만 쓴 부분 기입 커밋)" \
+            XlateSurface_del_hi_needs_staging.cfg "$M" Prop_UnstagedRejected
+expect_fail "가드 삭제: hi_commit_whole (V 먼저 · 프레임 다음 에지)" \
+            XlateSurface_del_hi_commit_whole.cfg "$M" Prop_HiCommitWhole
+expect_fail "가드 삭제: hi_v_carried (커밋이 언제나 유효)" \
+            XlateSurface_del_hi_v_carried.cfg "$M" Prop_ValidFromV
+expect_fail "가드 삭제: flush_fires (적법한 flush 흡수)" \
+            XlateSurface_del_flush_fires.cfg "$M" Prop_FlushClears
+expect_fail "가드 삭제: flush_scoped (전역 발화)" \
+            XlateSurface_del_flush_scoped.cfg "$M" Prop_FlushScoped
+expect_fail "가드 삭제: flush_valid_only (데이터까지 지움)" \
+            XlateSurface_del_flush_valid_only.cfg "$M" Prop_FlushKeepsData
+expect_fail "가드 삭제: flush_part_exists (없는 값이 잘려 실재 파티션 flush)" \
+            XlateSurface_del_flush_part_exists.cfg "$M" Prop_PhantomRejected
+expect_fail "가드 삭제: flush_rsv_strict (예약 위반 flush 실행)" \
+            XlateSurface_del_flush_rsv_strict.cfg "$M" Prop_RsvRejected
+expect_fail "가드 삭제: reject_loud (조용한 거절)" \
+            XlateSurface_del_reject_loud.cfg "$M" Prop_RejectLoud
+expect_fail "가드 삭제: mclr_fires (적법한 0xE10 해제 흡수)" \
+            XlateSurface_del_mclr_fires.cfg "$M" Prop_MclrClears
+expect_fail "가드 삭제: mclr_needs_one ([0]=0 기입도 해제)" \
+            XlateSurface_del_mclr_needs_one.cfg "$M" Prop_MclrZeroKeeps
+expect_fail "가드 삭제: mclr_rsv_strict (예약 위반 해제 실행)" \
+            XlateSurface_del_mclr_rsv_strict.cfg "$M" Prop_MclrRsvRejected
+expect_fail "가드 삭제: mclr_keeps_stall (해제가 미적중 정지를 풂)" \
+            XlateSurface_del_mclr_keeps_stall.cfg "$M" Prop_MclrKeepsStall
+expect_fail "가드 삭제: ro_rejected (RO 오프셋 쓰기 흡수)" \
+            XlateSurface_del_ro_rejected.cfg "$M" Prop_RoRejected
+
+expect_fail "증인: 살아 있는 항목 위 LO 가 실재하는가"      XlateSurface_witness_NoLoOverLive.cfg    "$M" Witness_NoLoOverLive
+expect_fail "증인: 번호 불일치 HI 가 실재하는가"           XlateSurface_witness_NoMismatch.cfg      "$M" Witness_NoMismatch
+expect_fail "증인: 스테이징이 빈 HI 가 실재하는가"         XlateSurface_witness_NoUnstaged.cfg      "$M" Witness_NoUnstaged
+expect_fail "증인: 프레임을 바꾸는 커밋이 실재하는가"       XlateSurface_witness_NoFrameChange.cfg   "$M" Witness_NoFrameChange
+expect_fail "증인: V=0 단일 항목 무효화가 실재하는가"      XlateSurface_witness_NoKill.cfg          "$M" Witness_NoKill
+expect_fail "증인: 산 파티션의 flush 가 실재하는가"        XlateSurface_witness_NoFlushLive.cfg     "$M" Witness_NoFlushLive
+expect_fail "증인: 타 파티션이 산 동안의 flush 가 실재하는가" XlateSurface_witness_NoFlushOther.cfg "$M" Witness_NoFlushOther
+expect_fail "증인: 없는 파티션 값 flush 가 실재하는가"     XlateSurface_witness_NoPhantom.cfg       "$M" Witness_NoPhantom
+expect_fail "증인: 예약 위반 flush 가 실재하는가"          XlateSurface_witness_NoRsv.cfg           "$M" Witness_NoRsv
+expect_fail "증인: 하류 거부로 버스 정지가 실재하는가"     XlateSurface_witness_NoStall.cfg         "$M" Witness_NoStall
+expect_fail "증인: 정지가 풀린 뒤 선 sticky 의 해제가 실재하는가" XlateSurface_witness_NoClearLive.cfg "$M" Witness_NoClearLive
+expect_fail "증인: 선 sticky 위 [0]=0 기입이 실재하는가"   XlateSurface_witness_NoZeroLive.cfg      "$M" Witness_NoZeroLive
+expect_fail "증인: 예약 위반 해제가 실재하는가"            XlateSurface_witness_NoMclrRsv.cfg       "$M" Witness_NoMclrRsv
+expect_fail "증인: 미적중 정지 중의 해제가 실재하는가"     XlateSurface_witness_NoClearInStall.cfg  "$M" Witness_NoClearInStall
+expect_fail "증인: RO 오프셋 쓰기가 실재하는가"            XlateSurface_witness_NoRo.cfg            "$M" Witness_NoRo
+# 발견 1 (모델 머리말) — 정본 문면의 귀결을 붙잡는 증인. 정본이 스테이징
+# 소진을 정하면 이 run 이 실패하게 되고, 그때 모델을 고친다.
+expect_fail "증인: flush 를 건넌 스테이징 잔재 커밋이 실재하는가" \
+            XlateSurface_witness_NoStaleRecommit.cfg "$M" Witness_NoStaleRecommit
+
+expect_fail "짝: 오늘의 RTL — XLATE_FLUSH 가 사라진다 (T1)" \
+            XlateSurface_pair_today_flush.cfg "$M" Prop_FlushClears
+expect_fail "짝: 오늘의 RTL — 항목 기입이 사라진다" \
+            XlateSurface_pair_today_entry.cfg "$M" Prop_HiCommits
+expect_fail "대안: 하류 거부 → 거절 + loud (옳은 드라이버에 fault)" \
+            XlateSurface_pair_refusal_reject.cfg "$M" Prop_RejectOnlyMalformed
+expect_fail "대안: 하류 거부 → 조용한 흡수" \
+            XlateSurface_pair_refusal_drop.cfg "$M" Prop_HiCommits
+expect_pass "진행: 버스 정지는 호스트 조치 없이 풀린다"   XlateSurface_live.cfg "$M"
+expect_fail "짝: 채움 슬롯 Drain 공정성 없음 → 정지 영구" \
+            XlateSurface_pair_live_nodrain.cfg "$M" Prop_StallEnds
+# 발견 4 (모델 머리말) — 정지 중 해제의 유실을 붙잡는 run. set(정지 레벨)이
+# 해제를 이기는 RTL 규약의 귀결이다. 정본이 정지 중 해제의 처분을 정하면 다시 본다.
+expect_fail "발견: 정지 중 0xE10 해제는 sticky 를 내리지 못한다" \
+            XlateSurface_pair_clear_in_stall.cfg "$M" Prop_ClearAlwaysLowers
+
+# ---------------------------------------------------------------------------
 # ISA-3 · ISA-4 — route fault 의 판정 주체와 범위 (부록 D.5 우선순위 4번)
 #
 # 앞의 셋과 성격이 다르다. 이미 일어난 결함이 아니라 **일어나면 설계를

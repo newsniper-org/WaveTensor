@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 4e29961e-988b-4f27-9ede-dfb9c81925bc
-  modified: 2026-09-25T07:32:42.573Z
+  modified: 2026-09-25T17:02:28.173Z
 ---
 
 2026-08-20 사용자 지시로 **WT64v1 RTL 전면 재구현**이 착수됐다. 사용자 확정
@@ -98,6 +98,14 @@ metadata:
   3.9 「내부만」 둘: 변환 항목 배열 0xC00 · flush 발화 0xE00). 세션 한도로
   에이전트가 자주 끊긴다 — 끊긴 에이전트의 산출물이 디스크에 남으니
   재작성 말고 상태부터 확인할 것.
+- **파도 2 — Wt64Top 조립층 후-formal: 착지**, commit `e90d3f1` (2026-09-26).
+  `rtl/formal/sby/Wt64Top/assembly.sby` — 하위 유닛 14개 절단(블랙박스 =
+  과대근사), 83 단언·증인 25, 무결성 핀 여섯이 절단 정의역·assume 수 등을
+  [script] 에서 고정. 한계는 .sby 머리 「보증하지 않는 것」 닫힌 목록(절단
+  입력 핀 252 중 80 만 결박 — 데이터 경로 172 핀 미측정). 측정이 드러낸
+  미결: **결함 D1**(0xF00–0xF07 ready=0 인데 rvalid) · **D2**(TAG1 [27:16]
+  거절 미전파) · **정본 판정 요청 T1**(미배선 구역 쓰기 조용한 흡수 —
+  0xE00 XLATE_FLUSH) · T2(비정렬 쓰기) · T3(0x000–0x11F). 다음 = 파도 3.
 - **완료 게이트(파도 C 부터 확정)**: `make lint` · `make rtl-lint` ·
   rtl-gen 결정성 · `rtl/formal/tla/run.sh`(컨테이너) · 후-formal 관련
   태스크 재스윕 + `lint_postformal --require-fresh` stale 0 · **`make

@@ -230,8 +230,25 @@ _MAX_ANCHOR_UNWITNESSED = 0   # 늘지 않는다. 줄이는 길은 증인 신설
 _MAX_UNRESOLVED = 0   # 오늘 0. 늘리려면 근거와 함께.
 
 # ── 하한 래칫 ──────────────────────────────────────────────────────────────
-_MIN_WITNESS_MAPPED = 256   # 대응 선언이 붙은 cover 문 수. 줄지 않는다.
-_MIN_ANCHOR_WITNESSED = 118  # 증인이 선 앵커 수. 줄지 않는다.
+_MIN_WITNESS_MAPPED = 336   # 대응 선언이 붙은 cover 문 수. 줄지 않는다.
+                             # 256 → 336 (2026-09-26 실측 336/336 — 파도 3 반증 검토가 하한이
+                             # 실측 334 아래 78 칸 헐겁다고 지적했다: 파도 2 · 3 이 증인을 더하는
+                             # 동안 이 하한은 한 번도 오르지 않아 증인 78건이 조용히 사라져도
+                             # 게이트가 침묵했다. 334 에 수리판이 XlateStaging_props.sv 에 더한
+                             # cover 둘(w13_mclr_zero · w14_mclr_rsv)을 더해 336 — w11_missclr 는
+                             # w12_missclr 로 태그만 옮겼다).
+_MIN_ANCHOR_WITNESSED = 148  # 증인이 선 앵커 수. 줄지 않는다.
+                             # 144 → 148 (2026-09-26 실측 148/148 — 파도 3 수리: XlateStaging/
+                             # props.sby 가 VERIFIES XlateStaging.missclr_word 하나를 PROVES
+                             # 다섯(XlateSurface.mclr_* 넷 · ro_rejected)으로 갈았다 — 순증 4,
+                             # 전부 W11–W14 증인을 갖고 태어났다).
+                             # 133 → 144 (2026-09-26 실측 144/144 — 파도 3 후-formal:
+                             # Wt64Top/assembly.sby 의 XlateSurface PROVES 열하나가 전부 조립
+                             # 하네스 증인(W18 · W19 · W21 · W23–W27)을 갖고 태어났다).
+                             # 118 → 133 (2026-09-26 실측 133/133 — 파도 3: 변환 저장소의
+                             # MMIO 문 — XlateStaging/props.sby 앵커 13(PROVES 11 · VERIFIES 2)
+                             # · xlatestore.sby 의 XlateSurface.hi_v_carried · assembly.sby 의
+                             # Wt64Top.xlate_surface).
                              # 102 → 118 (2026-09-26 실측 118/118 — 파도 2: 조립층
                              # Wt64Top/assembly.sby 의 앵커 열여섯(PROVES 1 ·
                              # VERIFIES 15)이 전부 증인을 갖고 태어났다). 단 넷은

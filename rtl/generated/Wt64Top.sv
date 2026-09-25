@@ -112,17 +112,6 @@ module Wt64Top (
   input  wire [31:0]   io_hiuReq_vpn,
   input  wire          io_hiuReq_write,
   input  wire          io_hiuHold,
-  input  wire          io_install_valid,
-  output wire          io_install_ready,
-  input  wire [1:0]    io_install_part,
-  input  wire [3:0]    io_install_idx,
-  input  wire [27:0]   io_install_tag,
-  input  wire [31:0]   io_install_frame,
-  input  wire          io_install_perm_r,
-  input  wire          io_install_perm_w,
-  input  wire          io_install_perm_x,
-  input  wire          io_flush_valid,
-  input  wire [1:0]    io_flush_part,
   input  wire          io_hostRsp_valid,
   input  wire [31:0]   io_hostRsp_frame,
   input  wire          io_hostRsp_perm_r,
@@ -267,6 +256,7 @@ module Wt64Top (
   wire                mog_io_up_3_valid;
   wire       [127:0]  mog_io_up_3_payload;
   wire                hiu_io_faultClear;
+  wire                hiu_io_missClear;
   wire                own_io_wstrobe;
   wire                own_io_rstrobe;
   wire                own_io_faultClearCollide;
@@ -319,6 +309,7 @@ module Wt64Top (
   wire                cq_io_faultClearBadWrite;
   wire       [3:0]    capWord_io_set;
   wire                capWord_io_wr;
+  wire       [6:0]    xstg_io_woff;
   wire                walk_io_oValid;
   wire                walk_io_oMalformed;
   wire                walk_io_oCapAbsent;
@@ -539,6 +530,20 @@ module Wt64Top (
   wire       [31:0]   capWord_io_word;
   wire                capWord_io_rsvBad;
   wire       [3:0]    capWord_io_clrAcc;
+  wire                xstg_io_needReady;
+  wire                xstg_io_commit_valid;
+  wire       [1:0]    xstg_io_commit_part;
+  wire       [3:0]    xstg_io_commit_idx;
+  wire       [27:0]   xstg_io_commit_tag;
+  wire       [31:0]   xstg_io_commit_frame;
+  wire                xstg_io_commit_perm_r;
+  wire                xstg_io_commit_perm_w;
+  wire                xstg_io_commit_perm_x;
+  wire                xstg_io_commit_v;
+  wire                xstg_io_flush_valid;
+  wire       [1:0]    xstg_io_flush_part;
+  wire                xstg_io_missClr;
+  wire                xstg_io_badWrite;
   wire       [1:0]    _zz_maskArea_readValue;
   wire       [7:0]    _zz_abortArea_readValue;
   wire       [2:0]    _zz_abortArea_readValue_1;
@@ -635,6 +640,10 @@ module Wt64Top (
   wire                resvOffset;
   wire                resvRd;
   reg                 resvRv;
+  wire                xlateArea_wrEnt;
+  wire                xlateArea_wrCtl;
+  wire                xlateArea_isHi;
+  wire                when_Wt64Top_l1714;
 
   assign _zz_maskArea_readValue = maskArea_maskPart;
   assign _zz_abortArea_readValue = reasm_io_abortCount;
@@ -902,17 +911,18 @@ module Wt64Top (
     .io_mask_req_frame (hiu_io_mask_req_frame[31:0]), //o
     .io_mask_rsp_valid (mask_io_rsp_valid          ), //i
     .io_mask_rsp_frame (mask_io_rsp_frame[31:0]    ), //i
-    .io_install_valid  (io_install_valid           ), //i
+    .io_install_valid  (xstg_io_commit_valid       ), //i
     .io_install_ready  (hiu_io_install_ready       ), //o
-    .io_install_part   (io_install_part[1:0]       ), //i
-    .io_install_idx    (io_install_idx[3:0]        ), //i
-    .io_install_tag    (io_install_tag[27:0]       ), //i
-    .io_install_frame  (io_install_frame[31:0]     ), //i
-    .io_install_perm_r (io_install_perm_r          ), //i
-    .io_install_perm_w (io_install_perm_w          ), //i
-    .io_install_perm_x (io_install_perm_x          ), //i
-    .io_flush_valid    (io_flush_valid             ), //i
-    .io_flush_part     (io_flush_part[1:0]         ), //i
+    .io_install_part   (xstg_io_commit_part[1:0]   ), //i
+    .io_install_idx    (xstg_io_commit_idx[3:0]    ), //i
+    .io_install_tag    (xstg_io_commit_tag[27:0]   ), //i
+    .io_install_frame  (xstg_io_commit_frame[31:0] ), //i
+    .io_install_perm_r (xstg_io_commit_perm_r      ), //i
+    .io_install_perm_w (xstg_io_commit_perm_w      ), //i
+    .io_install_perm_x (xstg_io_commit_perm_x      ), //i
+    .io_install_v      (xstg_io_commit_v           ), //i
+    .io_flush_valid    (xstg_io_flush_valid        ), //i
+    .io_flush_part     (xstg_io_flush_part[1:0]    ), //i
     .io_hostRsp_valid  (io_hostRsp_valid           ), //i
     .io_hostRsp_frame  (io_hostRsp_frame[31:0]     ), //i
     .io_hostRsp_perm_r (io_hostRsp_perm_r          ), //i
@@ -931,7 +941,7 @@ module Wt64Top (
     .io_faultPerm      (hiu_io_faultPerm           ), //o
     .io_faultClear     (hiu_io_faultClear          ), //i
     .io_missNotice     (hiu_io_missNotice          ), //o
-    .io_missClear      (io_faultClear_hiuMiss      ), //i
+    .io_missClear      (hiu_io_missClear           ), //i
     .clk               (clk                        ), //i
     .reset             (reset                      )  //i
   );
@@ -1184,6 +1194,29 @@ module Wt64Top (
     .clk       (clk                   ), //i
     .reset     (reset                 )  //i
   );
+  XlateStaging xstg (
+    .io_wrEnt         (xlateArea_wrEnt           ), //i
+    .io_wrCtl         (xlateArea_wrCtl           ), //i
+    .io_woff          (xstg_io_woff[6:0]         ), //i
+    .io_wdata         (io_mmio_wdata[31:0]       ), //i
+    .io_installReady  (hiu_io_install_ready      ), //i
+    .io_needReady     (xstg_io_needReady         ), //o
+    .io_commit_valid  (xstg_io_commit_valid      ), //o
+    .io_commit_part   (xstg_io_commit_part[1:0]  ), //o
+    .io_commit_idx    (xstg_io_commit_idx[3:0]   ), //o
+    .io_commit_tag    (xstg_io_commit_tag[27:0]  ), //o
+    .io_commit_frame  (xstg_io_commit_frame[31:0]), //o
+    .io_commit_perm_r (xstg_io_commit_perm_r     ), //o
+    .io_commit_perm_w (xstg_io_commit_perm_w     ), //o
+    .io_commit_perm_x (xstg_io_commit_perm_x     ), //o
+    .io_commit_v      (xstg_io_commit_v          ), //o
+    .io_flush_valid   (xstg_io_flush_valid       ), //o
+    .io_flush_part    (xstg_io_flush_part[1:0]   ), //o
+    .io_missClr       (xstg_io_missClr           ), //o
+    .io_badWrite      (xstg_io_badWrite          ), //o
+    .clk              (clk                       ), //i
+    .reset            (reset                     )  //i
+  );
   assign walk_io_iFaultClear = (io_faultClear_decodeWalk || (fltClrAccept && io_mmio_wdata[0]));
   assign od_io_iFaultClear = (io_faultClear_operandDecode || (fltClrAccept && io_mmio_wdata[1]));
   assign io_dec_valid = od_io_oValid;
@@ -1269,7 +1302,6 @@ module Wt64Top (
   assign io_mem_token = mog_io_token;
   assign io_mem_gateOpen = mog_io_gateOpen;
   assign io_hiuReq_ready = hiu_io_req_ready;
-  assign io_install_ready = hiu_io_install_ready;
   assign hiu_io_faultClear = (io_faultClear_hiuPerm || (fltClrAccept && io_mmio_wdata[4]));
   assign io_phys_valid = (hiu_io_rsp_valid && hiu_io_rsp_granted);
   assign io_phys_frame = hiu_io_rsp_frame;
@@ -1330,7 +1362,7 @@ module Wt64Top (
   assign selXent = (io_mmio_addr[11 : 9] == 3'b110);
   assign selXctl = (io_mmio_addr[11 : 7] == 5'h1c);
   assign selIdent = (io_mmio_addr[11 : 6] == 6'h3f);
-  assign selUnwired = (((selSq || selXent) || selXctl) || selIdent);
+  assign selUnwired = (selSq || selIdent);
   assign own_io_wstrobe = (io_mmio_wstrobe && selOwn);
   assign own_io_rstrobe = (io_mmio_rstrobe && selOwn);
   assign own_io_faultClearCollide = (io_faultClear_ownCollide || (fltClrAccept && io_mmio_wdata[7]));
@@ -1356,6 +1388,9 @@ module Wt64Top (
       surfBadWr = 1'b1;
     end
     if(when_Wt64Top_l1461) begin
+      surfBadWr = 1'b1;
+    end
+    if(xstg_io_badWrite) begin
       surfBadWr = 1'b1;
     end
   end
@@ -1553,12 +1588,15 @@ module Wt64Top (
     if(when_Wt64Top_l1598) begin
       io_mmio_ready = fps_io_loadReady;
     end
+    if(when_Wt64Top_l1714) begin
+      io_mmio_ready = hiu_io_install_ready;
+    end
   end
 
   assign when_Wt64Top_l1598 = (selFp && (fpArea_isProg || fpArea_isBind));
   assign mapRd = (((maskArea_rd || fpArea_rd) || abortArea_rd) || faultArea_rd);
-  assign resvOffset = (! (((((((selOwn || selCq) || selCfg) || selMask) || selFp) || selAbort) || selFault) || selUnwired));
-  assign resvRd = ((io_mmio_rstrobe && (! io_mmio_wstrobe)) && ((resvOffset || selUnwired) || ((((selMask || selFp) || selAbort) || selFault) && (! mmioAligned))));
+  assign resvOffset = (! (((((((((selOwn || selCq) || selCfg) || selXent) || selXctl) || selMask) || selFp) || selAbort) || selFault) || selUnwired));
+  assign resvRd = ((io_mmio_rstrobe && (! io_mmio_wstrobe)) && ((((resvOffset || selUnwired) || selXent) || selXctl) || ((((selMask || selFp) || selAbort) || selFault) && (! mmioAligned))));
   assign io_mmio_rvalid = ((((own_io_rvalid || cq_io_rvalid) || cfgBlk_io_rvalid) || mapRv) || resvRv);
   always @(*) begin
     io_mmio_rdata = 32'h0;
@@ -1579,6 +1617,12 @@ module Wt64Top (
   assign mask_io_faultClearNoMask = (io_faultClear_maskNoMask || (fltClrAccept && io_mmio_wdata[11]));
   assign mask_io_faultClearNonceDup = (io_faultClear_maskNonceDup || (fltClrAccept && io_mmio_wdata[12]));
   assign mask_io_faultClearWrRekey = (io_faultClear_maskWrRekey || (fltClrAccept && io_mmio_wdata[13]));
+  assign xlateArea_wrEnt = ((io_mmio_wstrobe && selXent) && mmioAligned);
+  assign xlateArea_wrCtl = ((io_mmio_wstrobe && selXctl) && mmioAligned);
+  assign xlateArea_isHi = io_mmio_addr[2];
+  assign xstg_io_woff = io_mmio_addr[8 : 2];
+  assign hiu_io_missClear = (io_faultClear_hiuMiss || xstg_io_missClr);
+  assign when_Wt64Top_l1714 = ((xlateArea_wrEnt && xlateArea_isHi) && xstg_io_needReady);
   always @(posedge clk) begin
     tagQ_wave <= io_instr_tag_wave;
     tagQ_thread <= io_instr_tag_thread;
@@ -1621,6 +1665,103 @@ module Wt64Top (
         end
       end
       resvRv <= resvRd;
+    end
+  end
+
+
+endmodule
+
+module XlateStaging (
+  input  wire          io_wrEnt,
+  input  wire          io_wrCtl,
+  input  wire [6:0]    io_woff,
+  input  wire [31:0]   io_wdata,
+  input  wire          io_installReady,
+  output wire          io_needReady,
+  output wire          io_commit_valid,
+  output wire [1:0]    io_commit_part,
+  output wire [3:0]    io_commit_idx,
+  output wire [27:0]   io_commit_tag,
+  output wire [31:0]   io_commit_frame,
+  output wire          io_commit_perm_r,
+  output wire          io_commit_perm_w,
+  output wire          io_commit_perm_x,
+  output wire          io_commit_v,
+  output wire          io_flush_valid,
+  output wire [1:0]    io_flush_part,
+  output wire          io_missClr,
+  output wire          io_badWrite,
+  input  wire          clk,
+  input  wire          reset
+);
+
+  wire                isHi;
+  wire       [5:0]    num;
+  wire       [1:0]    numPart;
+  wire       [4:0]    ctlWord;
+  wire                isFlush;
+  wire                isMissC;
+  wire                isCtlRo;
+  wire                entPhantom;
+  reg                 stgValid;
+  reg        [5:0]    stgNum;
+  reg        [31:0]   stgFrame;
+  wire                loWr;
+  wire                loOk;
+  wire                hiWr;
+  wire                hiLegal;
+  wire                hiRej;
+  wire       [7:0]    partField;
+  wire                flRsvBad;
+  wire                flPartBad;
+  wire                flWr;
+  wire                mcRsvBad;
+  wire                mcWr;
+
+  assign isHi = io_woff[0];
+  assign num = io_woff[6 : 1];
+  assign numPart = num[5 : 4];
+  assign ctlWord = io_woff[4 : 0];
+  assign isFlush = (ctlWord == 5'h0);
+  assign isMissC = (ctlWord == 5'h04);
+  assign isCtlRo = (((ctlWord == 5'h01) || (ctlWord == 5'h02)) || (ctlWord == 5'h03));
+  assign entPhantom = 1'b0;
+  assign loWr = (io_wrEnt && (! isHi));
+  assign loOk = (loWr && (! entPhantom));
+  assign hiWr = (io_wrEnt && isHi);
+  assign hiLegal = (((! entPhantom) && stgValid) && (stgNum == num));
+  assign hiRej = (hiWr && (! hiLegal));
+  assign io_needReady = (hiWr && hiLegal);
+  assign io_commit_valid = ((hiWr && hiLegal) && io_installReady);
+  assign io_commit_part = numPart;
+  assign io_commit_idx = num[3 : 0];
+  assign io_commit_tag = io_wdata[27 : 0];
+  assign io_commit_frame = stgFrame;
+  assign io_commit_perm_r = io_wdata[30];
+  assign io_commit_perm_w = io_wdata[29];
+  assign io_commit_perm_x = io_wdata[28];
+  assign io_commit_v = io_wdata[31];
+  assign partField = io_wdata[7 : 0];
+  assign flRsvBad = ((io_wdata & 32'hffffff00) != 32'h0);
+  assign flPartBad = (8'h04 <= partField);
+  assign flWr = (io_wrCtl && isFlush);
+  assign io_flush_valid = ((flWr && (! flRsvBad)) && (! flPartBad));
+  assign io_flush_part = partField[1:0];
+  assign mcRsvBad = ((io_wdata & 32'hfffffffe) != 32'h0);
+  assign mcWr = (io_wrCtl && isMissC);
+  assign io_missClr = ((mcWr && (! mcRsvBad)) && io_wdata[0]);
+  assign io_badWrite = (((((loWr && entPhantom) || hiRej) || (flWr && (flRsvBad || flPartBad))) || (mcWr && mcRsvBad)) || (io_wrCtl && isCtlRo));
+  always @(posedge clk or posedge reset) begin
+    if(reset) begin
+      stgValid <= 1'b0;
+      stgNum <= 6'h0;
+      stgFrame <= 32'h0;
+    end else begin
+      if(loOk) begin
+        stgValid <= 1'b1;
+        stgNum <= num;
+        stgFrame <= io_wdata;
+      end
     end
   end
 
@@ -6032,6 +6173,7 @@ module HiuPipeline (
   input  wire          io_install_perm_r,
   input  wire          io_install_perm_w,
   input  wire          io_install_perm_x,
+  input  wire          io_install_v,
   input  wire          io_flush_valid,
   input  wire [1:0]    io_flush_part,
   input  wire          io_hostRsp_valid,
@@ -6183,6 +6325,7 @@ module HiuPipeline (
     .io_install_perm_r  (io_install_perm_r           ), //i
     .io_install_perm_w  (io_install_perm_w           ), //i
     .io_install_perm_x  (io_install_perm_x           ), //i
+    .io_install_v       (io_install_v                ), //i
     .io_flush_valid     (io_flush_valid              ), //i
     .io_flush_part      (io_flush_part[1:0]          ), //i
     .clk                (clk                         ), //i
@@ -34396,6 +34539,7 @@ module XlateStore (
   input  wire          io_install_perm_r,
   input  wire          io_install_perm_w,
   input  wire          io_install_perm_x,
+  input  wire          io_install_v,
   input  wire          io_flush_valid,
   input  wire [1:0]    io_flush_part,
   input  wire          clk,
@@ -34410,16 +34554,18 @@ module XlateStore (
   reg                 _zz_commitLine_perm_r;
   reg                 _zz_commitLine_perm_w;
   reg                 _zz_commitLine_perm_x;
+  reg                 _zz_commitLine_v;
   wire       [5:0]    _zz_store_port;
   wire       [62:0]   _zz_store_port_1;
-  reg        [15:0]   _zz_storeValid;
   reg        [3:0]    _zz_fillLine_idx;
   reg        [27:0]   _zz_fillLine_tag;
   reg        [31:0]   _zz_fillLine_frame;
   reg                 _zz_fillLine_perm_r;
   reg                 _zz_fillLine_perm_w;
   reg                 _zz_fillLine_perm_x;
-  reg                 _zz_fillHit;
+  reg                 _zz_fillLine_v;
+  reg                 _zz_fillShadow;
+  reg        [15:0]   _zz_storeValid;
   reg        [15:0]   validBits_0;
   reg        [15:0]   validBits_1;
   reg        [15:0]   validBits_2;
@@ -34434,24 +34580,28 @@ module XlateStore (
   reg                 fillSlot_0_perm_r;
   reg                 fillSlot_0_perm_w;
   reg                 fillSlot_0_perm_x;
+  reg                 fillSlot_0_v;
   reg        [3:0]    fillSlot_1_idx;
   reg        [27:0]   fillSlot_1_tag;
   reg        [31:0]   fillSlot_1_frame;
   reg                 fillSlot_1_perm_r;
   reg                 fillSlot_1_perm_w;
   reg                 fillSlot_1_perm_x;
+  reg                 fillSlot_1_v;
   reg        [3:0]    fillSlot_2_idx;
   reg        [27:0]   fillSlot_2_tag;
   reg        [31:0]   fillSlot_2_frame;
   reg                 fillSlot_2_perm_r;
   reg                 fillSlot_2_perm_w;
   reg                 fillSlot_2_perm_x;
+  reg                 fillSlot_2_v;
   reg        [3:0]    fillSlot_3_idx;
   reg        [27:0]   fillSlot_3_tag;
   reg        [31:0]   fillSlot_3_frame;
   reg                 fillSlot_3_perm_r;
   reg                 fillSlot_3_perm_w;
   reg                 fillSlot_3_perm_x;
+  reg                 fillSlot_3_v;
   wire                flushSamePart;
   wire       [3:0]    _zz_1;
   wire                when_XlateStore_l200;
@@ -34470,6 +34620,7 @@ module XlateStore (
   wire                commitLine_perm_r;
   wire                commitLine_perm_w;
   wire                commitLine_perm_x;
+  wire                commitLine_v;
   wire       [27:0]   commitBody_tag;
   wire       [31:0]   commitBody_frame;
   wire                commitBody_perm_r;
@@ -34489,14 +34640,16 @@ module XlateStore (
   wire                storeBody_perm_x;
   wire       [62:0]   _zz_storeBody_tag;
   wire       [2:0]    _zz_storeBody_perm_r;
-  wire                storeValid;
-  wire                storeHit;
   wire       [3:0]    fillLine_idx;
   wire       [27:0]   fillLine_tag;
   wire       [31:0]   fillLine_frame;
   wire                fillLine_perm_r;
   wire                fillLine_perm_w;
   wire                fillLine_perm_x;
+  wire                fillLine_v;
+  wire                fillShadow;
+  wire                storeValid;
+  wire                storeHit;
   wire                fillHit;
   (* ram_style = "distributed" *) reg [62:0] store [0:63];
 
@@ -34527,6 +34680,7 @@ module XlateStore (
         _zz_commitLine_perm_r = fillSlot_0_perm_r;
         _zz_commitLine_perm_w = fillSlot_0_perm_w;
         _zz_commitLine_perm_x = fillSlot_0_perm_x;
+        _zz_commitLine_v = fillSlot_0_v;
       end
       2'b01 : begin
         _zz_commitLine_idx = fillSlot_1_idx;
@@ -34535,6 +34689,7 @@ module XlateStore (
         _zz_commitLine_perm_r = fillSlot_1_perm_r;
         _zz_commitLine_perm_w = fillSlot_1_perm_w;
         _zz_commitLine_perm_x = fillSlot_1_perm_x;
+        _zz_commitLine_v = fillSlot_1_v;
       end
       2'b10 : begin
         _zz_commitLine_idx = fillSlot_2_idx;
@@ -34543,6 +34698,7 @@ module XlateStore (
         _zz_commitLine_perm_r = fillSlot_2_perm_r;
         _zz_commitLine_perm_w = fillSlot_2_perm_w;
         _zz_commitLine_perm_x = fillSlot_2_perm_x;
+        _zz_commitLine_v = fillSlot_2_v;
       end
       default : begin
         _zz_commitLine_idx = fillSlot_3_idx;
@@ -34551,6 +34707,7 @@ module XlateStore (
         _zz_commitLine_perm_r = fillSlot_3_perm_r;
         _zz_commitLine_perm_w = fillSlot_3_perm_w;
         _zz_commitLine_perm_x = fillSlot_3_perm_x;
+        _zz_commitLine_v = fillSlot_3_v;
       end
     endcase
   end
@@ -34558,44 +34715,48 @@ module XlateStore (
   always @(*) begin
     case(io_lookup_part)
       2'b00 : begin
-        _zz_storeValid = validBits_0;
         _zz_fillLine_idx = fillSlot_0_idx;
         _zz_fillLine_tag = fillSlot_0_tag;
         _zz_fillLine_frame = fillSlot_0_frame;
         _zz_fillLine_perm_r = fillSlot_0_perm_r;
         _zz_fillLine_perm_w = fillSlot_0_perm_w;
         _zz_fillLine_perm_x = fillSlot_0_perm_x;
-        _zz_fillHit = fillPend_0;
+        _zz_fillLine_v = fillSlot_0_v;
+        _zz_fillShadow = fillPend_0;
+        _zz_storeValid = validBits_0;
       end
       2'b01 : begin
-        _zz_storeValid = validBits_1;
         _zz_fillLine_idx = fillSlot_1_idx;
         _zz_fillLine_tag = fillSlot_1_tag;
         _zz_fillLine_frame = fillSlot_1_frame;
         _zz_fillLine_perm_r = fillSlot_1_perm_r;
         _zz_fillLine_perm_w = fillSlot_1_perm_w;
         _zz_fillLine_perm_x = fillSlot_1_perm_x;
-        _zz_fillHit = fillPend_1;
+        _zz_fillLine_v = fillSlot_1_v;
+        _zz_fillShadow = fillPend_1;
+        _zz_storeValid = validBits_1;
       end
       2'b10 : begin
-        _zz_storeValid = validBits_2;
         _zz_fillLine_idx = fillSlot_2_idx;
         _zz_fillLine_tag = fillSlot_2_tag;
         _zz_fillLine_frame = fillSlot_2_frame;
         _zz_fillLine_perm_r = fillSlot_2_perm_r;
         _zz_fillLine_perm_w = fillSlot_2_perm_w;
         _zz_fillLine_perm_x = fillSlot_2_perm_x;
-        _zz_fillHit = fillPend_2;
+        _zz_fillLine_v = fillSlot_2_v;
+        _zz_fillShadow = fillPend_2;
+        _zz_storeValid = validBits_2;
       end
       default : begin
-        _zz_storeValid = validBits_3;
         _zz_fillLine_idx = fillSlot_3_idx;
         _zz_fillLine_tag = fillSlot_3_tag;
         _zz_fillLine_frame = fillSlot_3_frame;
         _zz_fillLine_perm_r = fillSlot_3_perm_r;
         _zz_fillLine_perm_w = fillSlot_3_perm_w;
         _zz_fillLine_perm_x = fillSlot_3_perm_x;
-        _zz_fillHit = fillPend_3;
+        _zz_fillLine_v = fillSlot_3_v;
+        _zz_fillShadow = fillPend_3;
+        _zz_storeValid = validBits_3;
       end
     endcase
   end
@@ -34619,6 +34780,7 @@ module XlateStore (
   assign commitLine_perm_r = _zz_commitLine_perm_r;
   assign commitLine_perm_w = _zz_commitLine_perm_w;
   assign commitLine_perm_x = _zz_commitLine_perm_x;
+  assign commitLine_v = _zz_commitLine_v;
   assign commitBody_tag = commitLine_tag;
   assign commitBody_frame = commitLine_frame;
   assign commitBody_perm_r = commitLine_perm_r;
@@ -34638,15 +34800,17 @@ module XlateStore (
   assign storeBody_perm_r = _zz_storeBody_perm_r[0];
   assign storeBody_perm_w = _zz_storeBody_perm_r[1];
   assign storeBody_perm_x = _zz_storeBody_perm_r[2];
-  assign storeValid = _zz_storeValid[reqIdx];
-  assign storeHit = ((io_lookup_valid && storeValid) && (storeBody_tag == reqTag));
   assign fillLine_idx = _zz_fillLine_idx;
   assign fillLine_tag = _zz_fillLine_tag;
   assign fillLine_frame = _zz_fillLine_frame;
   assign fillLine_perm_r = _zz_fillLine_perm_r;
   assign fillLine_perm_w = _zz_fillLine_perm_w;
   assign fillLine_perm_x = _zz_fillLine_perm_x;
-  assign fillHit = (((io_lookup_valid && _zz_fillHit) && (fillLine_idx == reqIdx)) && (fillLine_tag == reqTag));
+  assign fillLine_v = _zz_fillLine_v;
+  assign fillShadow = (_zz_fillShadow && (fillLine_idx == reqIdx));
+  assign storeValid = _zz_storeValid[reqIdx];
+  assign storeHit = (((io_lookup_valid && storeValid) && (storeBody_tag == reqTag)) && (! fillShadow));
+  assign fillHit = (((io_lookup_valid && fillShadow) && (fillLine_tag == reqTag)) && fillLine_v);
   assign io_rsp_hit = (fillHit || storeHit);
   assign io_rsp_fromFill = fillHit;
   always @(*) begin
@@ -34725,16 +34889,16 @@ module XlateStore (
       end
       if(commitFire) begin
         if(_zz_8[0]) begin
-          validBits_0[commitLine_idx] <= 1'b1;
+          validBits_0[commitLine_idx] <= commitLine_v;
         end
         if(_zz_8[1]) begin
-          validBits_1[commitLine_idx] <= 1'b1;
+          validBits_1[commitLine_idx] <= commitLine_v;
         end
         if(_zz_8[2]) begin
-          validBits_2[commitLine_idx] <= 1'b1;
+          validBits_2[commitLine_idx] <= commitLine_v;
         end
         if(_zz_8[3]) begin
-          validBits_3[commitLine_idx] <= 1'b1;
+          validBits_3[commitLine_idx] <= commitLine_v;
         end
         if(_zz_9[0]) begin
           fillPend_0 <= 1'b0;
@@ -34851,6 +35015,18 @@ module XlateStore (
       end
       if(_zz_6) begin
         fillSlot_3_perm_x <= io_install_perm_x;
+      end
+      if(_zz_3) begin
+        fillSlot_0_v <= io_install_v;
+      end
+      if(_zz_4) begin
+        fillSlot_1_v <= io_install_v;
+      end
+      if(_zz_5) begin
+        fillSlot_2_v <= io_install_v;
+      end
+      if(_zz_6) begin
+        fillSlot_3_v <= io_install_v;
       end
     end
   end

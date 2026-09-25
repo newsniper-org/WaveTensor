@@ -2,7 +2,8 @@
 // SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
 //
 // XlateStore 후-formal 하네스 (§6.3) — CHECK 축: valid_check ·
-// partition_check · flush_keeps_data (+ Isolation 의 채움·커밋 격리 가드).
+// partition_check · flush_keeps_data (+ Isolation 의 채움·커밋 격리 가드 ·
+// 파도 3 의 XlateSurface.hi_v_carried 저장 절반 — V 의 유효 비트 운반과 채움 가림).
 //
 // 저장 Mem 내용의 불변성은 bind 모듈이 Mem 을 직접 들 수 없으므로 설계
 // 자신의 읽기 포트(storeBody_* = store[entryAddr])를 관측 창으로 쓴다:
@@ -48,6 +49,7 @@ module XlateStore_props (
   input wire        io_install_perm_r,
   input wire        io_install_perm_w,
   input wire        io_install_perm_x,
+  input wire        io_install_v,        // XLATE_ENTRY_HI [31] (파도 3)
   input wire        io_flush_valid,
   input wire [1:0]  io_flush_part,
   input wire [15:0] f_vb0,               // validBits_0..3 — 파티션별 유효 비트
@@ -55,13 +57,14 @@ module XlateStore_props (
   input wire [15:0] f_vb2,
   input wire [15:0] f_vb3,
   input wire [3:0]  f_pend,              // {fillPend_3..0}
-  input wire [66:0] f_slot0,             // {idx, tag, frame, perm_x, w, r}
-  input wire [66:0] f_slot1,
-  input wire [66:0] f_slot2,
-  input wire [66:0] f_slot3,
+  input wire [67:0] f_slot0,             // {idx, tag, frame, perm_x, w, r, v}
+  input wire [67:0] f_slot1,
+  input wire [67:0] f_slot2,
+  input wire [67:0] f_slot3,
   input wire        commitFire,
   input wire [1:0]  commitSel,
-  input wire [3:0]  commitLine_idx,
+  input wire [3:0]  commitLine_idx,      // DUT 커밋 줄 mux 출력 — 오라클에 쓰지 않는다 (f_slot_c 주석)
+  input wire        commitLine_v,
   input wire        storeHit,
   input wire        fillHit,
   input wire [3:0]  reqIdx,
@@ -92,17 +95,28 @@ module XlateStore_props (
 
   // 파티션 색인용 배열 뷰
   wire [15:0] f_vb   [0:3];
-  wire [66:0] f_slot [0:3];
+  wire [67:0] f_slot [0:3];
   assign f_vb[0] = f_vb0;  assign f_vb[1] = f_vb1;
   assign f_vb[2] = f_vb2;  assign f_vb[3] = f_vb3;
   assign f_slot[0] = f_slot0;  assign f_slot[1] = f_slot1;
   assign f_slot[2] = f_slot2;  assign f_slot[3] = f_slot3;
 
   wire [27:0] f_body_tag   = f_body[27:0];
-  wire [66:0] f_slot_sel   = f_slot[io_lookup_part];
-  wire [3:0]  f_slot_sel_idx = f_slot_sel[66:63];
-  wire [27:0] f_slot_sel_tag = f_slot_sel[62:35];
+  wire [67:0] f_slot_sel   = f_slot[io_lookup_part];
+  wire [3:0]  f_slot_sel_idx = f_slot_sel[67:64];
+  wire [27:0] f_slot_sel_tag = f_slot_sel[63:36];
+  wire        f_slot_sel_v   = f_slot_sel[0];
+  // 채움 가림 — 요청 파티션 슬롯이 대기 중이고 같은 색인이다 (DUT 어휘가 아니라
+  // 슬롯 몸체·pend 탭에서 다시 짓는다)
+  wire        f_shadow       = f_pend[io_lookup_part] && (f_slot_sel_idx == reqIdx);
   wire [15:0] f_vb_sel     = f_vb[io_lookup_part];
+  // 커밋되는 줄 — DUT 의 커밋 줄 mux(commitLine_*) 가 아니라 슬롯 몸체 탭에서
+  // commitSel 로 다시 고른다. 오라클이 mux 출력이면 그 mux 의 결함(다른 슬롯의
+  // v·idx 를 고름)이 오라클과 DUT 에 함께 실려 등식이 선다 — 2026-09-26 반증
+  // 검토 실측: `_zz_commitLine_v = fillSlot_1_v` (case 2'b00) 변이가 bmc · prove ·
+  // cover 12/12 를 전부 통과했다 (XS1).
+  wire [67:0] f_slot_c     = f_slot[commitSel];
+  wire [3:0]  f_cl_idx     = f_slot_c[67:64];
 
   // ── 조합 축 ──────────────────────────────────────────────────────────────
   always @(*) begin
@@ -116,6 +130,13 @@ module XlateStore_props (
       if (fillHit)
         assert (io_lookup_valid && f_pend[io_lookup_part]
                 && (f_slot_sel_idx == reqIdx) && (f_slot_sel_tag == reqTag));
+      // XlateSurface.hi_v_carried (저장 절반) — 채움 적중은 줄의 v 를 요구하고
+      // (V=0 줄은 적중하지 않는다), 대기 중인 줄은 같은 항목의 옛 저장 판을
+      // 가린다 (HI 커밋 다음 에지부터 그 항목은 새 판으로만 보인다).
+      if (fillHit)
+        assert (f_slot_sel_v);
+      if (io_lookup_valid && f_shadow)
+        assert (!storeHit && (io_rsp_hit == (f_slot_sel_v && (f_slot_sel_tag == reqTag))));
       // XlateStore.valid_check — 비유효/미적중이 rsp 값에 닿는 사이클 부재
       assert (io_rsp_hit == (storeHit || fillHit));
       assert (io_rsp_fromFill == fillHit);
@@ -134,6 +155,8 @@ module XlateStore_props (
   //    XlateStore.flush_keeps_data 의 유효 비트 축) ─────────────────────────
   genvar p;
   generate for (p = 0; p < 4; p = p + 1) begin : g_part
+    // 이 파티션의 슬롯 몸체 — 아래 커밋 가지는 commitSel == p 이므로 커밋된 줄이 곧 이것이다.
+    wire [67:0] f_sl = f_slot[p];
     always @(posedge clk) begin
       if (f_ok) begin
         // validBits — flush(자기 파티션 전소거) · 커밋(자기 파티션 한 비트
@@ -141,7 +164,11 @@ module XlateStore_props (
         if ($past(io_flush_valid) && ($past(io_flush_part) == p[1:0]))
           assert (f_vb[p] == 16'h0);                       // flush 는 유효만 지운다
         else if ($past(commitFire) && ($past(commitSel) == p[1:0]))
-          assert (f_vb[p] == ($past(f_vb[p]) | (16'h1 << $past(commitLine_idx))));
+          // XlateSurface.hi_v_carried — 커밋은 그 비트를 줄의 v 로 쓴다 (1 세움 · 0 내림).
+          // v·idx 는 슬롯 p 의 몸체에서 읽는다 (DUT 커밋 줄 mux 가 아니다 — 위 f_slot_c 주석).
+          assert (f_vb[p] == ($past(f_sl[0])
+                                ? ($past(f_vb[p]) |  (16'h1 << $past(f_sl[67:64])))
+                                : ($past(f_vb[p]) & ~(16'h1 << $past(f_sl[67:64])))));
         else
           assert ($stable(f_vb[p]));
 
@@ -160,7 +187,8 @@ module XlateStore_props (
         if ($past(f_install_fire) && ($past(io_install_part) == p[1:0]))
           assert (f_slot[p] == $past({io_install_idx, io_install_tag,
                                       io_install_frame, io_install_perm_x,
-                                      io_install_perm_w, io_install_perm_r}));
+                                      io_install_perm_w, io_install_perm_r,
+                                      io_install_v}));
         else
           assert ($stable(f_slot[p]));
 
@@ -181,8 +209,10 @@ module XlateStore_props (
         assert ($stable(f_body));
       // Isolation.install_scoped — 커밋 기입 주소는 {commitSel, idx} 하나뿐:
       // 다른 주소의 몸체는 커밋 에지에도 불변 (파티션 경계 = 주소 상위라
-      // q 커밋이 p 구간 주소를 만들 수 없다)
-      if ($past(commitFire) && ($past({commitSel, commitLine_idx}) != entryAddr))
+      // q 커밋이 p 구간 주소를 만들 수 없다). idx 는 커밋되는 슬롯의 몸체에서
+      // 읽는다 — DUT 의 commitLine_idx 를 쓰면 그 mux 가 다른 슬롯의 idx 를 골라도
+      // 오라클이 그 틀린 주소를 함께 빼 주어 단언이 공허하게 선다 (XS2).
+      if ($past(commitFire) && ($past({commitSel, f_cl_idx}) != entryAddr))
         assert ($stable(f_body));
     end
   end
@@ -222,7 +252,7 @@ module XlateStore_props (
   //      「메모리가 아무 때도 안 변한다」로 공허하게 성립한다.
   always @(posedge clk)
     if (f_ok && $stable(entryAddr) && $past(commitFire)
-        && ($past({commitSel, commitLine_idx}) == entryAddr))
+        && ($past({commitSel, f_cl_idx}) == entryAddr))
       w3_body_changes: cover (f_body != $past(f_body));
 
   // W4 ← Isolation.install_scoped
@@ -230,7 +260,7 @@ module XlateStore_props (
   //      다른 사이클이 실재한다
   always @(posedge clk)
     if (f_ok && $stable(entryAddr) && $past(commitFire))
-      w4_commit_elsewhere: cover ($past({commitSel, commitLine_idx}) != entryAddr);
+      w4_commit_elsewhere: cover ($past({commitSel, f_cl_idx}) != entryAddr);
 
   // W5 ← XlateStore.flush_keeps_data
   //      본 증인 (XlateStore.tla 의
@@ -284,6 +314,23 @@ module XlateStore_props (
         && $past(io_rsp_hit) && ($past(io_lookup_part) == io_lookup_part)
         && ($past(reqIdx) == reqIdx) && ($past(reqTag) == reqTag))
       w10_dark_after_flush: cover (!storeHit && !fillHit);
+
+  // W11 ← XlateSurface.hi_v_carried
+  //       V=0 커밋이 *살아 있는* 유효 비트를 실제로 내린다 (단일 항목 무효화).
+  //       커밋이 언제나 유효를 세우는 기계라면 이 증인이 안 잡힌다. 가드는 슬롯 0
+  //       의 몸체에서 v·idx 를 읽는다 — DUT 의 커밋 줄 mux 가 아니다.
+  always @(posedge clk)
+    if (f_ok && $past(commitFire) && ($past(commitSel) == 2'd0) && !$past(f_slot0[0]))
+      w11_v0_kills: cover (($past(f_vb0 & (16'h1 << f_slot0[67:64])) != 16'h0)
+                           && ((f_vb0 & (16'h1 << $past(f_slot0[67:64]))) == 16'h0));
+
+  // W12 ← XlateSurface.hi_v_carried
+  //       가림이 실제로 일한다: 저장 블록에는 같은 태그의 유효 항목이 있는데
+  //       대기 중인 V=0 줄이 그 항목을 가려 조회가 미적중이다.
+  always @(posedge clk)
+    if (f_ok && io_lookup_valid && f_shadow && !f_slot_sel_v
+        && f_vb_sel[reqIdx] && (f_body_tag == reqTag))
+      w12_shadow_hides: cover (!io_rsp_hit);
 `endif // XLATE_COVER
 endmodule
 
@@ -306,6 +353,7 @@ bind XlateStore XlateStore_props u_xlate_props (
   .io_install_perm_r (io_install_perm_r),
   .io_install_perm_w (io_install_perm_w),
   .io_install_perm_x (io_install_perm_x),
+  .io_install_v    (io_install_v),
   .io_flush_valid  (io_flush_valid),
   .io_flush_part   (io_flush_part),
   .f_vb0           (validBits_0),
@@ -314,16 +362,21 @@ bind XlateStore XlateStore_props u_xlate_props (
   .f_vb3           (validBits_3),
   .f_pend          ({fillPend_3, fillPend_2, fillPend_1, fillPend_0}),
   .f_slot0         ({fillSlot_0_idx, fillSlot_0_tag, fillSlot_0_frame,
-                     fillSlot_0_perm_x, fillSlot_0_perm_w, fillSlot_0_perm_r}),
+                     fillSlot_0_perm_x, fillSlot_0_perm_w, fillSlot_0_perm_r,
+                     fillSlot_0_v}),
   .f_slot1         ({fillSlot_1_idx, fillSlot_1_tag, fillSlot_1_frame,
-                     fillSlot_1_perm_x, fillSlot_1_perm_w, fillSlot_1_perm_r}),
+                     fillSlot_1_perm_x, fillSlot_1_perm_w, fillSlot_1_perm_r,
+                     fillSlot_1_v}),
   .f_slot2         ({fillSlot_2_idx, fillSlot_2_tag, fillSlot_2_frame,
-                     fillSlot_2_perm_x, fillSlot_2_perm_w, fillSlot_2_perm_r}),
+                     fillSlot_2_perm_x, fillSlot_2_perm_w, fillSlot_2_perm_r,
+                     fillSlot_2_v}),
   .f_slot3         ({fillSlot_3_idx, fillSlot_3_tag, fillSlot_3_frame,
-                     fillSlot_3_perm_x, fillSlot_3_perm_w, fillSlot_3_perm_r}),
+                     fillSlot_3_perm_x, fillSlot_3_perm_w, fillSlot_3_perm_r,
+                     fillSlot_3_v}),
   .commitFire      (commitFire),
   .commitSel       (commitSel),
   .commitLine_idx  (commitLine_idx),
+  .commitLine_v    (commitLine_v),
   .storeHit        (storeHit),
   .fillHit         (fillHit),
   .reqIdx          (reqIdx),

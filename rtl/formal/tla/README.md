@@ -34,6 +34,7 @@ make rtl-formal        # 또는  sh rtl/formal/tla/run.sh
 | **EXT-6** 메모리 순서 (명시적 순서 의존) | `MemOrder.tla` | **증명됨** — 과잉 게이팅 금지가 §4.4.4 규범으로 승격 |
 | **SEC-2 · SEC-7** 경로 간 동일성 · 예약 필드 불투과 | `Decode.tla` | **증명됨** |
 | **E.1.2 CAP_STATUS/CAP_CLEAR** 축 격리 · sticky · 예약 위반 원자 거절 · 발화 우선 | `CapWord.tla` | **증명됨** — 가드 넷(axis_isolated · sticky_until_clear · clear_atomic · set_beats_clear) + 증인 넷, 9 run. 축은 불투명 토큰 넷 — 사건→축 배정은 정본 표의 몫 |
+| **E.1.2 · E.3 변환 저장소의 MMIO 문** `0xC00` LO 스테이징 · HI 단일 에지 커밋 · 번호 래치 · `0xE00` flush 발화·범위 · `0xE10` 해제 · RO 쓰기 거절 · 거절 loud · 하류 거부 처분 | `XlateSurface.tla` | **증명됨** — 가드 열일곱(lo_stages_only · hi_fires · hi_entry_match · hi_needs_staging · hi_commit_whole · hi_v_carried · flush_fires · flush_scoped · flush_valid_only · flush_part_exists · flush_rsv_strict · reject_loud · mclr_fires · mclr_needs_one · mclr_rsv_strict · mclr_keeps_stall · ro_rejected) + 증인 열여섯 + 짝·대안·발견 여섯 + 진행 1, 42 run. 축 모델(라벨이 색인 속성 ID 를 인용하지 않는다). 정본이 닫지 않은 자리 넷은 모델 머리 「발견」 — 스테이징 소진은 rtl/README.md T5 |
 
 순서는 부록 D.5 규범 그대로다 — **근거는 "실제로 무너진 곳"** 이다.
 
@@ -559,3 +560,35 @@ SEC-2 는 「사이클 수」가 아니라 **상태열**이다 — `Strong_SameP
 72 run — 이 배터리에서 가장 큰 모델. 가드 11, 증인 9, 짝 19.
 세 경로(적중·대체·미적중) 각각의 도달성 증인이 있다 — 하나라도 도달
 불가면 SEC-2 는 남은 둘만 비교하는 명제가 된다.
+
+## E.1.2 · E.3 변환 저장소의 MMIO 문 — `XlateSurface.tla` (파도 3, 2026-09-26)
+
+`XlateStore.tla`(저장 블록) · `Isolation.tla`(조회·채움의 비간섭)가 설치와 flush 를 원자 동작
+하나로 두는 자리를 연다 — 호스트는 32b 버스로 한 워드씩 쓰므로 항목 하나(64b)는 LO · HI 두
+기입이고, 그 사이의 상태가 관측면에 실재한다. 정본 좌표와 각 가드의 문장은 모델 머리가 소유한다.
+
+42 run: 좋은 모델 2(파티션 2 · 색인 1 / 색인 2 규모) + 가드 삭제 17 + 증인 16 + 짝 「오늘의 RTL」
+2(XLATE_FLUSH · 항목 기입이 조용히 흡수되던 착지 전 기계 — 파도 2 의 T1) + 하류 거부 처분 대안 2
+(거절 + loud → `Prop_RejectOnlyMalformed` 위반 · 조용한 흡수 → `Prop_HiCommits` 위반) + 진행 1
+(`LiveSpec` 아래 `Prop_StallEnds` 통과) + 그 대조군 1(채움 슬롯 Drain 공정성을 빼면 정지가 영구) +
+발견 1(정지 중 `0xE10` 해제의 유실 — `Prop_ClearAlwaysLowers` 가 좋은 모델에서 반증된다).
+
+착지판은 31 run 이었다. `0xE10` XLATE_MISS_CLEAR 와 RO 세 워드(`0xE04`–`0xE0C`)의 쓰기 처분은
+RTL 이 모델보다 먼저 배선했고(검토자 D-7) 반증 검토가 그것을 6.3 위반으로 지적했다 — 같은 날
+모델로 돌려보내 가드 다섯(`mclr_fires` · `mclr_needs_one` · `mclr_rsv_strict` · `mclr_keeps_stall` ·
+`ro_rejected`) · 증인 다섯 · 발견 run 하나를 더했다. 모델은 조회 요청 하나의 미적중 정지(`mstall`)와
+미적중 sticky(`msticky` — set 은 정지 레벨, 발화가 해제를 이긴다)를 싣고, 정지는 그 항목의 V=1
+커밋만 푼다(E.3 2항).
+
+하류 거부(`install.ready` = 0)의 처분은 설계 결정이라 상수 `Refusal` 로 세 갈래를 다 표현하고
+기계가 판정한다 — 버스 정지만 모든 속성을 통과한다. 증인 `Witness_NoStaleRecommit` 는 정본 문면의
+귀결(스테이징이 커밋·flush 로 소진되지 않으면 임대 회전 ⑵ 를 건넌 옛 LO 가 HI 한 워드로 다시
+커밋된다)을 붙잡는 MUST FAIL 이다 — 정본이 소진을 정하면 이 run 이 선언과 어긋나 배터리가 울고,
+그때 모델을 고친다 (정본 판정 요청 T5 — `rtl/README.md`).
+
+**재지 않는 것** (모델 머리 「안 잰다」가 닫힌 목록): 조회·채움·값의 정확성 · HI 의 태그·권한
+필드 · 주소 디코드 · 읽기 방향(`0xE04`–`0xE0C` 관측 워드의 읽기 *값* 포함 — 쓰기 처분만 싣는다) ·
+적중 판정(미적중 정지는 「유효 항목 없는 항목의 조회」 하나로 접는다) · sub-word 쓰기 · FAULT `[6]` 의
+sticky·해제 · 사이클 수(모델은 하류 거부의 도달성을 *과대* 근사한다 — RTL 에서는 같은 항목 HI
+연속만 거부를 만난다) · 설치·flush 원천이 둘인 갈래(최상위 IO 잔존 — RTL 파도가 은퇴시켰다) ·
+형상 밖 항목 주소(T4).

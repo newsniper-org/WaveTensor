@@ -8,12 +8,12 @@
 // (approve_gates_value · no_early_forward · query_offpath · query_no_serve ·
 // coh_no_shortcut)는 착지한 HiuPipeline.scala 의 CHECK 로 이관됐다.
 //
-// GUARD-MAP: XlateStore.valid_check        -> storeHit = lookup.valid ∧ storeValid ∧ 태그 일치 — storeValid(validBits(part)(idx)) 가 논리곱의 항이고, rsp.frame/rsp.perm 은 hit 인 가지에서만 구동된다 (miss 시 0)
+// GUARD-MAP: XlateStore.valid_check        -> storeHit = lookup.valid ∧ storeValid ∧ 태그 일치 ∧ ¬fillShadow — storeValid(validBits(part)(idx)) 가 논리곱의 항이고, rsp.frame/rsp.perm 은 hit 인 가지에서만 구동된다 (miss 시 0). 채움 줄은 fillLine.v 가 논리곱의 항이다 (V=0 줄은 적중하지 않는다)
 // GUARD-MAP: XlateStore.partition_check    -> entryAddr = lookup.part @@ reqIdx — 저장 주소 상위가 요청 파티션 그 자체라 남의 파티션 항목은 조회 주소 공간에 존재하지 않는다. validBits·fillSlot 도 part 로 색인된다
 // GUARD-MAP: XlateStore.flush_keeps_data   -> flush 는 validBits(flush.part) := 0 (와 자기 파티션 채움 버퍼 취하) 만 수행 — store Mem 에는 flush 에서 비롯한 쓰기 포트 자체가 없다. 태그·데이터는 남는다 (§3.6.3)
 // GUARD-MAP: Isolation.install_scoped      -> 커밋 주소 = commitSel @@ 그 슬롯의 idx — 버퍼 슬롯 번호가 곧 파티션이므로 기입이 자기 파티션 밖 항목 주소를 만들 수 없다 (구조 보장)
 // GUARD-MAP: Isolation.capacity_partitioned -> 직접 사상 + validBits 는 파티션별 레지스터, Mem 주소 상위 = 파티션 — q 의 설치·커밋·flush 가 p 구간의 유효 비트·주소를 건드릴 경로가 구조적으로 없다 (축출이 경계를 못 넘는다)
-// GUARD-MAP: Isolation.fill_tagged         -> fillHit 는 fillSlot(lookup.part) 하나만 후보로 삼는다 — 타 파티션 슬롯은 아예 조회되지 않고(파티션 검사의 구조화), idx·tag 일치가 논리곱의 항이다
+// GUARD-MAP: Isolation.fill_tagged         -> fillHit 는 fillSlot(lookup.part) 하나만 후보로 삼는다 — 타 파티션 슬롯은 아예 조회되지 않고(파티션 검사의 구조화), idx·tag 일치와 줄의 v 가 논리곱의 항이다
 // GUARD-MAP: Isolation.fill_slot_per_partition -> fillPend/fillSlot 이 파티션당 정확히 한 자리인 Vec 이고, install.ready 는 자기 파티션 슬롯의 점유만 본다 — 남의 채움이 내 자리를 차지하거나 덮어쓸 수 없다
 // GUARD-MAP: Isolation.fill_offpath        -> STRUCTURAL(port-absence) — 조회 응답은 같은 사이클 조합 판정이며 채움 상태는 lookup 경로에 정지·ready 를 만들지 않는다 — 채움은 fillHit 라는 값 판정으로만 나타난다 (fwait 단계 없음)
 //
@@ -95,6 +95,7 @@ case class XlateFillLine(idxW: Int, tagW: Int, frameW: Int) extends Bundle {
   val tag   = UInt(tagW bits)
   val frame = UInt(frameW bits)
   val perm  = XlatePerm()
+  val v     = Bool() // XLATE_ENTRY_HI [31] — 커밋이 유효 비트에 그대로 싣는다 (0 = 단일 항목 무효화)
 }
 
 /** 변환 저장 블록 + 채움 경로.
@@ -168,6 +169,7 @@ class XlateStore(val cfg: Wt64Config = Wt64Config()) extends Component {
       val tag   = in port UInt(tagW bits)
       val frame = in port UInt(FRAME_W bits)
       val perm  = in port XlatePerm()
+      val v     = in port Bool() // 유효 — XLATE_ENTRY_HI `[31]` 그대로. 0 이면 그 항목을 무효로 커밋한다
     }
     /** 파티션 단위 flush — 유효 비트만 (§3.6.3). */
     val flush = new Bundle {
@@ -183,14 +185,12 @@ class XlateStore(val cfg: Wt64Config = Wt64Config()) extends Component {
   // 편다 (§3.6.1 해설 실측 — LUT 2배 · FF 3배).
   val store = Mem(XlateEntryBody(tagW, FRAME_W), cfg.xlateParts * cfg.xlateIdx)
 
-  // 유효 비트 — 파티션별 레지스터. 파티션별로 쪼개 둔 것이 곧
-  // capacity_partitioned 의 구조 보장이다: 어떤 동작도 남의 파티션
-  // 레지스터에 닿는 배선이 없다.
+  // 유효 비트 — 파티션별 레지스터. 파티션별로 쪼개 둔 것이 곧 capacity_partitioned
+  // 의 구조 보장이다: 어떤 동작도 남의 파티션 레지스터에 닿는 배선이 없다.
   val validBits = Vec.fill(cfg.xlateParts)(RegInit(B(0, cfg.xlateIdx bits)))
 
-  // 채움 버퍼 — 파티션당 정확히 한 자리 (fill_slot_per_partition).
-  // 줄 안에 파티션 필드가 없다 — 슬롯 번호가 파티션이다 (install_scoped 의
-  // 구조 보장: 기입이 자기 파티션 밖 줄을 표현할 수단 자체가 없다).
+  // 채움 버퍼 — 파티션당 정확히 한 자리 (fill_slot_per_partition). 줄 안에 파티션 필드가
+  // 없다 — 슬롯 번호가 파티션이다 (install_scoped: 자기 파티션 밖 줄을 표현할 수단이 없다).
   val fillPend = Vec.fill(cfg.xlateParts)(RegInit(False))
   val fillSlot = Vec.fill(cfg.xlateParts)(Reg(XlateFillLine(idxW, tagW, FRAME_W)))
 
@@ -203,6 +203,7 @@ class XlateStore(val cfg: Wt64Config = Wt64Config()) extends Component {
     fillSlot(io.install.part).tag   := io.install.tag
     fillSlot(io.install.part).frame := io.install.frame
     fillSlot(io.install.part).perm  := io.install.perm
+    fillSlot(io.install.part).v     := io.install.v
   }
 
   // ── 채움 경로 ② — 버퍼의 줄이 저장 블록으로 커밋된다 ─────────────
@@ -227,7 +228,7 @@ class XlateStore(val cfg: Wt64Config = Wt64Config()) extends Component {
     enable  = commitFire,
   )
   when(commitFire) {
-    validBits(commitSel)(commitLine.idx) := True
+    validBits(commitSel)(commitLine.idx) := commitLine.v // HI [31] 그대로 — 0 이면 단일 항목 무효화
     fillPend(commitSel)                  := False
   }
 
@@ -235,8 +236,7 @@ class XlateStore(val cfg: Wt64Config = Wt64Config()) extends Component {
   // store Mem 은 건드리지 않는다 — 건드릴 쓰기 포트가 이 경로에 없다.
   // 자기 파티션의 진행 중 채움도 함께 취한다: 남겨 두면 flush 뒤에 이전
   // 컨텍스트의 줄이 커밋돼 HIU-2 (flush 후 미적중)가 창 하나만큼 깨진다.
-  // 이 결정은 모델(XlateStore.tla 에는 채움이, Isolation.tla 에는 flush 가
-  // 없다)에 없으므로 model_feedback 으로 되돌린다.
+  // 이 결정은 모델(XlateStore.tla 에 채움이, Isolation.tla 에 flush 가 없다)에 없다 — model_feedback.
   // 이 블록이 텍스트상 마지막인 것은 의도다 — 같은 사이클의 커밋이 같은
   // 파티션의 유효 비트를 세워도 flush 의 전체 덮어쓰기가 이긴다.
   when(io.flush.valid) {
@@ -253,17 +253,30 @@ class XlateStore(val cfg: Wt64Config = Wt64Config()) extends Component {
   private val entryAddr = io.lookup.part @@ reqIdx
   private val storeBody = store.readAsync(entryAddr)
 
-  // 적중 = 파티션(주소 구조) ∧ 태그 일치 ∧ 유효 (§3.6.2 규범 1).
-  private val storeValid = validBits(io.lookup.part)(reqIdx)
-  private val storeHit =
-    io.lookup.valid && storeValid && storeBody.tag === reqTag
-
   // 바이패스 후보는 자기 파티션 슬롯 하나 — 타 파티션 슬롯은 조회되지
   // 않는다 (fill_tagged 의 파티션 검사 + D12 「자기 파티션 우선」이 구조로
   // 동시에 성립하는 지점).
   private val fillLine = fillSlot(io.lookup.part)
-  private val fillHit = io.lookup.valid && fillPend(io.lookup.part) &&
-    fillLine.idx === reqIdx && fillLine.tag === reqTag
+
+  // 채움 가림 — 대기 중인 줄은 *그 항목의 가장 새 판*이다 (3.6.2 해설: 신선도).
+  // 같은 {파티션, 색인} 의 저장 판은 대기 동안 보이지 않는다. 이것이 없으면
+  // XLATE_ENTRY_HI 가 커밋한 항목이 한 사이클 동안 옛 판으로 보인다 — V=0
+  // 무효화(e-defined.typ:308 「`[31]` V — 유효」)가 옛 유효 항목을 한 사이클 더
+  // 적중시키고, 태그를 바꾸는 설치가 옛 태그를 한 사이클 더 적중시킨다.
+  // 호스트 쪽 문(Wt64Top xlateArea)이 보는 표는 「HI 커밋 에지에 항목 전체가 바뀐다」이다 —
+  //   e-defined.typ:308 「기입이 항목 전체(스테이징 LO + 이 워드)를 *단일 에지에 커밋*한다」
+  // 채움 슬롯은 그 에지를 저장 블록 쪽으로 한 사이클 미루는 구현 세부다 — 가림이 그
+  // 세부를 관측면에서 지운다.
+  private val fillShadow = fillPend(io.lookup.part) && fillLine.idx === reqIdx
+
+  // 적중 = 파티션(주소 구조) ∧ 태그 일치 ∧ 유효 (§3.6.2 규범 1) — 가림 밖에서만.
+  private val storeValid = validBits(io.lookup.part)(reqIdx)
+  private val storeHit =
+    io.lookup.valid && storeValid && storeBody.tag === reqTag && !fillShadow
+
+  // 채움 적중도 유효를 요구한다 — 줄의 v 가 논리곱의 항이다 (V=0 줄은 가리기만 한다).
+  private val fillHit = io.lookup.valid && fillShadow &&
+    fillLine.tag === reqTag && fillLine.v
 
   // D12: 채움 바이패스 > 저장 블록. 커밋 사이클에도 fillPend 가 아직 서
   // 있고 유효 비트는 다음 에지에 서므로, 바이패스→저장 이관에 관측 공백이
@@ -291,3 +304,11 @@ class XlateStore(val cfg: Wt64Config = Wt64Config()) extends Component {
   io.rsp.hostFrame   := io.hostRsp.frame
   io.rsp.hostPerm    := io.hostRsp.perm
 }
+
+// ── GUARD-MAP — 호스트 쪽 문(XlateSurface.tla)의 가드 하나 ─────────────────
+// 문의 나머지 열하나는 top/XlateStaging.scala 머리가 든다. 이 가드만 여기
+// 있는 이유: V 를 유효 비트로 옮기는 식(커밋의 validBits := commitLine.v ·
+// 채움 적중의 fillLine.v 연언 · 채움 가림)이 이 파일에 산다. 파일 *끝*에 둔
+// 것은 when_XlateStore_l200(XlateStore_props.sv 가 이름으로 잡는 install.fire)
+// 을 밀지 않기 위해서다.
+// GUARD-MAP: XlateSurface.hi_v_carried -> install.v(= XLATE_ENTRY_HI [31], XlateStaging 이 wdata(31) 을 그대로 싣는다)가 채움 줄의 v 로 들어가고 커밋이 validBits(commitSel)(idx) := commitLine.v 로 그 값을 그대로 쓴다 — 커밋이 유효를 상수 True 로 세우는 경로가 없다. 대기 중에는 fillHit 가 fillLine.v 를 논리곱의 항으로 요구하고 fillShadow 가 같은 항목의 옛 저장 판을 가리므로 V=0 커밋은 HI 수락 다음 에지부터 적중하지 않는다

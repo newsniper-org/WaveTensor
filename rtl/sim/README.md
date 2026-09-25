@@ -44,15 +44,18 @@ make rtl-sim WT_SIM_BUILD=/tmp/wtsim      # 빌드 자리 고정 (기본은 mkdt
 
 ---
 
-## 실행 결과 (2026-09-22, 호스트)
+## 실행 결과 (2026-09-26, 호스트)
 
 ```
 Mask:  11 tests passed (skip 0, 하한 11)
-Shape:  6 tests passed (skip 0, 하한 6)
-run_wt64: 요청 스위트 2건 / cocotb 테스트 17건 전부 통과
+Shape: 15 tests passed (skip 0, 하한 15)
+run_wt64: 요청 스위트 2건 / cocotb 테스트 26건 전부 통과
 ```
 
-(직전 기준선 2026-08-28: Mask 8 · Shape 6 · 총 14. 2026-09-22 에 Mask 가
+(2026-09-26 파도 3 — 변환 저장소의 MMIO 문: Shape 6 → 13, 지향 시험 일곱
+`xlate_*`, 같은 날 반증 검토 뒤 수리로 13 → 15 — 인접 HI 의 D-2 버스 정지 값 시험 둘.
+직전 기준선 2026-09-22: Mask 11 · Shape 6 · 총 17.
+그 앞 기준선 2026-08-28: Mask 8 · Shape 6 · 총 14. 2026-09-22 에 Mask 가
 8 → 10 — 임대별 키 파도의 값 수준 지향 시험 둘 — 그리고 같은 날 파도 D 에서
 10 → 11 — FINAL 엣지 같은-파티션 동시 기입 지향 시험
 `wr_same_partition_at_final_edge_is_loud`. 그 사이 2026-09-20 RTL
@@ -152,7 +155,17 @@ p 의 값 golden. 변이 실측 mutScope(사본 생성물에서 `wrActNow` 의 �
 
 ### `Shape` — `test_shape_equiv.py` (DUT `Wt64Top.sv`)
 
-ISA-2 사상 경유(존재 축) · ISA-1 자리 무관성 · 구성 표면 무결성.
+ISA-2 사상 경유(존재 축) · ISA-1 자리 무관성 · 구성 표면 무결성 ·
+변환 저장소의 MMIO 문(파도 3 — `xlate_*` 아홉: 설치 → 적중 · flush → 같은 VPN
+미적중 · HI 한 워드가 정지를 푼다 · V=0 무효화 · HI 거절 둘의 `[6]` · flush 거절과
+절단 별칭 부재 · `0xE10` 은 정지를 풀지 않는다 · 그리고 반증 검토 뒤 더한 인접 HI 둘 —
+쉬는 사이클 없는 원시 구동 `mmio_burst` 로 D-2 버스 정지가 정확히 한 사이클이고 `[6]` 이
+서지 않으며 풀린 기입이 커밋됨(tagB 적중 · V=0 무효화 생존)을 값으로 잰다. 착지판 일곱은
+기입마다 쉬는 엣지를 남겨 정지를 한 번도 만들지 않았고, ready 덮어쓰기를 끊은 생성물
+변이를 7/7 로 통과시켰다). 미적중 판정(`assert_miss`)은 ready 표본열 등식이다 — 착지판의
+`stalled >= 8` 하한은 정지가 새는 변이를 통과시켰다. 기입은 호스트 ABI 오프셋이고 조회는
+내부 포트 `io.hiuReq` 다 — 정지 *중*의 `0xE10` 해제가 미적중 sticky 를 내리지 못한다는
+것(set 이 정지 레벨이고 발화가 해제를 이긴다)은 이 스위트가 처음 드러낸 사실이다.
 
 판정은 언제나 **예측 벡터와의 바이트 동일성**이다. ISA-2 를
 `F(σ(S)) != F(S)` 로 쓰지 않는다 — 그것이 정본이 이름한 「틀린 값도
@@ -168,9 +181,9 @@ ISA-2 사상 경유(존재 축) · ISA-1 자리 무관성 · 구성 표면 무�
 
 | 근거 | 파일:라인 |
 |---|---|
-| 일의 유일한 원천이 `io.instr` 외부 제시 | `Wt64Top.scala:876-877` |
+| 일의 유일한 원천이 `io.instr` 외부 제시 | `Wt64Top.scala:913` 「walk.io.iValid      := io.instr.valid」 |
 | `io_instr_valid` 는 있고 **`io_instr_ready` 가 없다** | `rtl/generated/Wt64Top.sv:13-31` |
-| `R_SQ`(0x380–0x3FF) = 「명령 방향 실물 0건」 | `Wt64Top.scala:1139-1143` |
+| `R_SQ`(0x380–0x3FF) = 「명령 방향 실물 0건」 | `Wt64Top.scala:1180` 「private val selSq    = sel(R_SQ)」 |
 | `CompletionUnit` 은 스스로 **완료 방향** 표면 셋이라 적는다 | `host/CompletionUnit.scala:1-27` |
 
 ⇒ **이 하네스에서 호스트는 하네스 자신이고, 설계 내부 포트 `io.instr` 를
@@ -182,7 +195,7 @@ ISA-2 사상 경유(존재 축) · ISA-1 자리 무관성 · 구성 표면 무�
 
 ---
 
-## 미측정 원장 — 9축
+## 미측정 원장 — 11축
 
 `make rtl-sim` 이 통과 계수와 **같은 자리에** 이 원장을 인쇄한다. 착지하면
 그 항이 사라진다.
@@ -191,13 +204,15 @@ ISA-2 사상 경유(존재 축) · ISA-1 자리 무관성 · 구성 표면 무�
 |---|---|---|
 | 1 | 투입 방향 일체 — 링 head/tail · 가득 참 · E.5 3항 loud fault · 배압 정지 · 크레딧 | 회로 0건 (위 표) |
 | 2 | **ISA-1 두-형상 대조 (nPoints 4 ↔ 2)** | 형상 B 생성기 부재 — 아래 별항 |
-| 3 | ISA-2 **자리 축** (LNID 소유 지점 `[23:16]` · LBID 슬롯 구간 `[15:0]` 순열) | 관측면 부재 — `RouteJudge.scala:145` 는 `!viewHit` 뿐이고 지점별 소유를 구조적으로 모른다. 구간값 소비자 `Reassembly.wr → ResultBank.write` 는 미배선 (`Wt64Top.scala:81-83`) |
+| 3 | ISA-2 **자리 축** (LNID 소유 지점 `[23:16]` · LBID 슬롯 구간 `[15:0]` 순열) | 관측면 부재 — `RouteJudge.scala:145` 는 `!viewHit` 뿐이고 지점별 소유를 구조적으로 모른다. 구간값 소비자 `Reassembly.wr → ResultBank.write` 는 미배선 — `Wt64Top.scala:83` 「Reassembly.wr → ResultBank.write 는 **미배선**이다」 |
 | 4 | fp32 산술 정확성 (`golden_fp32` 비트 일치) | `StepSequencer.scala:425-426` 이 `UInt` 정수곱·정수합 — 산술은 축 (b) 후속 |
 | 5 | `mask64` 의 32비트 (`[63:44]`·`[11:0]`) | `MaskUnit.scala:289-296` 「저장은 적용 비트만」 — 레지스터도 배선도 없다. **비교 불가가 아니라 비교 대상 부재** |
 | 6 | `SUBKEY`(256b)·`BLOCK`(512b) 를 통한 부분 수리 검출 | 내는 포트가 없다. `st_0..st_15` 의 계층 peek 은 포트 계약이 아니라 SpinalHDL 명명의 우연이라 통과 기준으로 쓰지 않는다 |
-| 7 | `FAULT_STATUS[17]`·`[18]` | `Wt64Top.sv:1491-1492` 상수 0 — 원천 부재. **0 을 「정상」으로 읽으면 안 된다** |
+| 7 | `FAULT_STATUS[17]`·`[18]` | `Wt64Top.sv:1554` 「faultWords_status[17] = 1'b0;」 과 다음 줄 `[18]` 상수 0 — 원천 부재. **0 을 「정상」으로 읽으면 안 된다** |
 | 8 | `SharedUnit`·`MemOrderGate` 독립 `.sv` 의 top 대표성 | 형상 불일치 — 독립본 16비트 vs top 인스턴스 161/128비트 |
-| 9 | OPREF **B** 참조의 LBID 축 | 제시 자체가 없다 — `Wt64Top.scala:84` TODO 2항, `tokIn` 은 사이클당 하나. ISA-2 α 는 **OPREF A 축만** 덮는다 |
+| 9 | OPREF **B** 참조의 LBID 축 | 제시 자체가 없다 — `Wt64Top.scala:86` 「OPREF B 토큰의 RouteJudge 제시는 미배선」 (TODO 2항), `tokIn` 은 사이클당 하나. ISA-2 α 는 **OPREF A 축만** 덮는다 |
+| 10 | 변환 저장소 관측 세 워드의 값 (`0xE04` · `0xE08`/`0xE0C`) | 회로 0건 — 정지 상태·정지한 요청의 VPN 을 내는 배선이 없다. 읽기는 응답 + 0, 쓰기는 거절 + `[6]` (파도 3 은 `0xE00` · `0xE10` 과 쓰기 방향만 닫았다) |
+| 11 | 변환 조회의 호스트 ABI 층위 | 요청 원천(메모리 파이프) 미착지 — 조회는 내부 포트 `io.hiuReq` 제시다. `xlate_*` 시험의 기입 쪽만 호스트 ABI 오프셋이다 |
 
 ### 2번 별항 — ISA-1 형상 축이 미측정인 이유와 남은 20줄
 
@@ -273,8 +288,8 @@ sticky 는 *역사의 누적*이다. 두 궤적을 따로 돌려 사이클 정�
 
 ### ③ `io_mmio_ready` 를 아무 주소에서나 폴링하면 소거 구간이 **0 사이클**로 보인다
 
-`io.mmio.ready` 의 기본값은 `True` 이고(`Wt64Top.scala:1512`) 구성 구역에서만
-`cfgBlk.io.ready` 로 덮인다(:1515). 예약 오프셋(예: `addr=0`)에서 폴링하면
+`io.mmio.ready` 의 기본값은 `True` 이고 — `Wt64Top.scala:1593` 「io.mmio.ready := True」 —
+몇 구역에서만 덮인다(구성 구역은 `cfgBlk.io.ready` · 적법한 XLATE_ENTRY_HI 쓰기는 하류 `install.ready`). 예약 오프셋(예: `addr=0`)에서 폴링하면
 reset 해제 직후 1 이 읽힌다. 그것을 「소거 끝」으로 읽으면 **이후 구성 기입이
 통째로 무시된 채 본시험이 돈다.**
 

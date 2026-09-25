@@ -69,10 +69,21 @@ ABI 에 넣지 않는다. 계약은 §5.3 의 상태열 동일성이다.」** �
   주소 배선 그 자체로 성립한다」, 같은 문장 `:311`·`:779`). RTL `XlateStore.scala:15` GUARD-MAP
   `Isolation.capacity_partitioned` 「q 의 설치·커밋·flush 가 p 구간의 유효
   비트·주소를 건드릴 경로가 구조적으로 없다」.
-- **단, 그 배열의 MMIO 표면은 재구현에 아직 없다.** 정본 E.1.3
-  (`appendix/e-defined.typ:719-720` 「변환 항목 배열 128 워드 — *내부만* — 항목
-  설치 경로는 실재하나 MMIO 표면이 없다」) · `top/Wt64Top.scala:38` 「0xC00–0xDFF
-  — **미배선**」. 자리는 ABI 이고 회로는 install 포트(top IO)까지다.
+- **그 배열의 MMIO 표면은 2026-09-26 재구현 파도 3 이 배선했다** (이 문단의 첫
+  판은 「아직 없다」였다 — 당시 정본 E.1.3 「내부만」 행 · `Wt64Top.scala` 머리의
+  「미배선」). 이제 `top/XlateStaging.scala` 가 LO 스테이징(항목 번호 래치 · reset 빈
+  스테이징) · HI 단일 에지 커밋(V 포함 — V=0 은 단일 항목 무효화) · 번호 불일치와
+  빈 스테이징의 거절 + `0xF80[6]` · XLATE_FLUSH(`0xE00`) 발화를 들고, 최상위 IO
+  설치·flush 입력은 은퇴했다 — 호스트가 `{파티션, 색인}` 주소로 직접 기입하는 것이
+  유일한 설치 경로다. 정본이 정하지 않은 스테이징 수명 여섯 사실(커밋이 소진하지
+  않는다 · reset = 빈 스테이징 · 거절은 스테이징 불변 · flush 무관 · LO 는 덮는다 ·
+  하류 거부로 정지된 HI 는 무효과)과 HI 권한 비트 배정(`[30]`=R · `[29]`=W ·
+  `[28]`=X)은 §3.10 합의 입력이다 (rtl/README.md 「파도 3」 장). **그 여섯의 귀결 하나를
+  호스트가 알아야 한다** (재구현의 정본 판정 요청 T5, 판정 대기): 커밋이 스테이징을 소진하지
+  않고 flush 가 스테이징에 닿지 않으므로, 임대 회전 ⑵ 의 XLATE_FLUSH 를 건넌 *옛 임대의* LO
+  (프레임 + 항목 번호)가 남고, 새 임대가 같은 항목에 HI 한 워드만 쓰면 옛 임대의 물리
+  프레임이 새 임대의 태그·권한·V=1 로 커밋된다. 오늘의 방어는 호스트 규율 하나다 — **새
+  임대의 항목 기입은 LO 로 시작한다** (LO 가 스테이징을 덮는다). 아래 H1-3 · H1-6 이 그 규율을 싣는다.
 
 **⇒ 항목 5 의 sign-off 답: 「Y4 측 결정 맞다. RTL 측 hint port 는 필요 없다 —
 호스트가 `{파티션, 색인}` 주소로 직접 기입한다. `shadow_*` 레지스터 셋
@@ -82,7 +93,7 @@ ABI 에 넣지 않는다. 계약은 §5.3 의 상태열 동일성이다.」** �
 
 `/home/ybi/Y4/docs/hiu_abi.md:75-77` 「호스트가 `HIU_VIRT_ADDR` + `HIU_DMA_DATA_IN` +
 `HIU_CTRL.dma_req=1` 을 순서대로 write 하면 …」 — 요청의 발신자를 *호스트
-MMIO* 로 둔다. 재구현에서 요청 경로의 입력은 `top/Wt64Top.scala:987-992`
+MMIO* 로 둔다. 재구현에서 요청 경로의 입력은 `top/Wt64Top.scala:1024` 「hiu.io.req.valid := io.hiuReq.valid」
 `hiu.io.req := io.hiuReq` — **최상위 입력 포트**이고 MMIO 가 아니다. 정본
 §3.3 (`chapters/03-hiu.typ:153-160`) 「PE 는 언제나 가상 주소를 쓰고, 변환은
 이 유닛이 한다」 — 발신자는 PE 쪽이다. `0x000`–`0x11F` 는 정본이 「기존 배정
@@ -117,7 +128,7 @@ lease/service capability 로만 노출」이 그 결정의 Y4 쪽 문면이다. 
   MASK_NONCE 행 (`:343`) 「읽기 0」.
 - §5.1 위협 5항 (`chapters/05-security.typ:20-28`) 「키 자료의 논리적 추출 —
   … 방어의 실물은 키·논스를 WO 로 두는 것」.
-- RTL `top/Wt64Top.scala:1270-1273` 「WO 워드(키·논스·재키잉)는 여기 없다:
+- RTL `top/Wt64Top.scala:1314` 「WO 워드(키·논스·재키잉)는 여기 없다:
   읽기 0 이 그 결정의 이행이다」, `readValue := 0`.
 
 **판정: 동의(이미 정본).** 그리고 이것은 「RTL 변경 소」가 아니라 **RTL 변경
@@ -236,10 +247,10 @@ RTL 은 그 뒤를 아직 따르지 않았다. **sign-off 는 정본 문면에 �
 |---|---|---|---|
 | H1-1 | `/home/ybi/Y4/docs/hiu_abi.md:60-61` | 「WO = write-only (read 시 0 또는 마지막 write 값 — 미정의)」 | 「WO = write-only. **read 시 0** — 되읽기를 주지 않는다 (WaveTensor 정본 E.9 5항 · §5.8 관측면). fault 없음.」 |
 | H1-2 | `:49-50` | `0x040 HIU_CHACHA_KEY` 256b WO · `0x060 HIU_CHACHA_NONCE` 192b WO (파티션 선택자 없음) | 정본 `0xE80` 구역으로 옮겨 받거나(`0xE80`–`0xE9C` MASK_KEY[0..7] · `0xEA0` MASK_PART · `0xEA4`–`0xEB8` MASK_NONCE[0..5] · `0xEBC` MASK_REKEY · `0xEC0` MASK_STATUS — `appendix/e-defined.typ:1533`), `0x040/0x060` 을 남기려면 「MASK_PART 가 가리키는 파티션의 슬롯」이라는 창 의미를 표에 적을 것. 같은 역할의 레지스터가 두 문서에 서로 다른 자리에 사는 상태(`y4_hiu_abi_divergence.md` §1)는 동결 전에 하나로 |
-| H1-3 | `:44` bit4 `context_switch` · `:88-96` §2.2 | 「동일 사이클에 모든 4×16 TLB entry valid=0 · 모든 16 shadow valid=0 · FSM 강제 FLUSH_TLB」 | 「파티션별 flush — `0xE00` XLATE_FLUSH `[7:0]` 파티션 기입이 발화. 유효 비트만 지운다(데이터는 남는다, 정본 §3.6.3). **전-파티션 flush 는 없다** (E.9 6항).」 §2.2 제목을 「lease-rotation 순서」로 바꾸고 정본 E.9 6항 ⑴ 투입 정지 → ⑵ 그 파티션 XLATE_FLUSH → ⑶ MASK_PART + 키 8 · 논스 6 → ⑷ MASK_REKEY 발화 + MASK_STATUS 관측 을 축자로 |
+| H1-3 | `:44` bit4 `context_switch` · `:88-96` §2.2 | 「동일 사이클에 모든 4×16 TLB entry valid=0 · 모든 16 shadow valid=0 · FSM 강제 FLUSH_TLB」 | 「파티션별 flush — `0xE00` XLATE_FLUSH `[7:0]` 파티션 기입이 발화. 유효 비트만 지운다(데이터는 남는다, 정본 §3.6.3). **전-파티션 flush 는 없다** (E.9 6항).」 §2.2 제목을 「lease-rotation 순서」로 바꾸고 정본 E.9 6항 ⑴ 투입 정지 → ⑵ 그 파티션 XLATE_FLUSH → ⑶ MASK_PART + 키 8 · 논스 6 → ⑷ MASK_REKEY 발화 + MASK_STATUS 관측 을 축자로. 그리고 ⑷ 뒤 **새 임대의 첫 항목 기입은 LO → HI 로 시작한다** — HI 한 워드는 flush 를 건넌 옛 임대의 스테이징 잔재를 새 태그로 커밋할 수 있다 (§0.2 의 T5 귀결 · 판정 대기) |
 | H1-4 | `:131-140` 「전이(回收) 시퀀스」 4-step | step 2 `context_switch=1`, step 3 「(key, nonce, partition_id) write」, 재키잉 발화·완료 관측 없음 | E.9 6항 4단계로 교체. 「단일 capability invocation 안에서 atomic」(`:139-140`)은 유지 — 정본이 호스트에 요구한 ⑴ 투입 정지 의무의 Y4 쪽 이행이다 (`y4_hiu_abi_divergence.md` §3 ⓔ) |
 | H1-5 | `:64-65` v0 미해결 첫 항 · `:160-161` §5 1항 | 「capability-protected 영역인지 … 별도 BAR 로 분리할지」 | 닫는 문면: 「1a 로 닫힘. WO(read 0)는 RTL 이미 이행. **zeroize 는 WaveTensor 정본 침묵 — 정본 개정 후보로 이관, 단위는 파티션.** 1b 는 Y4 v1.x fallback 으로 유지하되 채택 시 WaveTensor 정본 E.1 영역 배치(한 페이지, `0xE80`–`0xEFF`) 개정이 따른다. 1c 는 Y4 기각 (정본 무관).」 — 1b·1c 의 처분은 Y4 문면 그대로 두고 정본 제약만 붙인다 |
-| H1-6 | `/home/ybi/Y4/docs/lease_capability.md:71-86` I4 | 5-step (`context_switch` · KEY · NONCE · SHADOW_UPDATE) | H1-3 의 4단계로 교체; step 5 SHADOW_UPDATE 는 `0xC00` 항목 기입으로 (§0.2) |
+| H1-6 | `/home/ybi/Y4/docs/lease_capability.md:71-86` I4 | 5-step (`context_switch` · KEY · NONCE · SHADOW_UPDATE) | H1-3 의 4단계로 교체; step 5 SHADOW_UPDATE 는 `0xC00` 항목 기입으로 (§0.2) — 항목마다 LO → HI, 새 임대의 첫 기입은 반드시 LO (H1-3 의 T5 규율 — LO 없는 V=1 HI 는 옛 임대의 스테이징 잔재를 커밋할 수 있다. LO 없는 V=0 HI(단일 항목 무효화)는 잔재 프레임을 무효로 커밋할 뿐이라 해가 없고, 래치 번호가 다르면 거절 + `0xF80[6]` 이다) |
 
 ## 2. 항목 2 — ATS/PRI 응답 폭 (Y4 추천 2d, fallback 2b)
 
@@ -261,7 +272,7 @@ RTL 은 그 뒤를 아직 따르지 않았다. **sign-off 는 정본 문면에 �
   보이지 못하면 그 경로를 넣지 않는다」.
 - RTL: `hiu/HiuPipeline.scala:20` GUARD-MAP `Platform.xlate_local` 「hostRsp
   leg 는 이 모듈의 판정·값·정지 어느 축에도 소비되지 않는다」(aa29e2b 가
-  세 축에서 뗀 것). `top/Wt64Top.scala:714-718` `io.hostRsp` 는 top 입력으로
+  세 축에서 뗀 것). `top/Wt64Top.scala:739` 「val hostRsp = new Bundle {」 `io.hostRsp` 는 top 입력으로
   남아 있고 소비자가 없다. ATS/PRI 라는 이름의 신호는 재구현에 0건이다.
 
 **그러나 근거가 틀렸고, 그 틀린 근거가 결론을 과도하게 넓힌다.**
@@ -316,7 +327,7 @@ hiu_abi §0 (`/home/ybi/Y4/docs/hiu_abi.md:21-22`) 는 v1.x patch 로 「reserve
     *승인 이전에 소비자에게 실린 값*을 포함한다」 — 관측면을 늘린다. 같은
     근거로 정본은 OWN_SET 의 되읽기를 거부했다 (`appendix/e-defined.typ:227`
     OWN_SET 행 「되읽기를 주면 「마지막 전이 명령」이라는 상태가 관측면에 생긴다」).
-  - RTL `top/Wt64Top.scala:728-729` 「장치 밖으로 나가는 물리 프레임은 이것
+  - RTL `top/Wt64Top.scala:754` 「장치 밖으로 나가는 물리 프레임은 이것
     하나」— `io.phys.frame` 는 **마스킹된** 프레임이고, `HiuPipeline.scala`
     머리 「비마스킹 프레임이 모듈 밖에 닿는 곳은 io.owner.frame(승인 자신의
     조회 주소) 하나다」.
@@ -346,7 +357,7 @@ completion-code 는 장치→호스트 질의 응답의 부속이고 그 질의 
 | H2-3 | `:51` | 「`0x080` HIU_PHYS_ADDR RO 직전 TRANSLATE 결과 (마스킹 전)」 | **삭제**. 근거: 정본 §5.2 계약(장치가 외부로 내는 물리 주소는 마스킹) · §5.8 값 부류. 호스트는 자기가 기입한 프레임을 이미 안다 |
 | H2-4 | `:66-67` v0 미해결 둘째 · `:162` §5 2항 | 「ATS/PRI 결과 데이터(요청 ID, completion code)의 실제 폭 — 현 RTL 은 resp 단일 비트만 노출」 | 「2d 로 닫힘. 장치 측 ATS/PRI 는 없다. 미적중은 배압 정지 + `0xE04` XLATE_STATUS / `0xE08`·`0xE0C` XLATE_MISS_VPN 관측 → 호스트가 `0xC00` 항목 기입 → 해제 (정본 E.3). fallback 2b 는 정본 개정 갈래 — v1.x 후보가 아니다」 |
 | H2-5 | 2d 근거 문면(전달본) | 「PRI 는 32-cycle 상수시간 보장과 양립 불가 … pre-pinned 여야 하고 demand paging 을 쓰면 안 된다」 | 「장치 발 질의 왕복은 가변 지연이고 플랫폼 의존이라 정본 §3.3.1 이 기각. **호스트 발 요구 시 채움(E.3)은 정본 모델이다** — 정지는 단 전체가 함께 서서 상태열이 갈리지 않는다(§5.3). pre-pinning 은 E.3 3항 「정지가 영구가 되지 않을 책임」의 Y4 쪽 이행 방법이며 RTL 요건이 아니다」 |
-| H2-6 | (신설) | — | `0xC00`–`0xDFF` 변환 항목 배열 · `0xE00`–`0xE10` 변환 저장소 제어를 §1 표에 등재 (정본 E.1.2 `appendix/e-defined.typ:51-52`, `:316-326`). **단 둘 다 재구현에 미배선**(E.1.3 `:719-724`, `top/Wt64Top.scala:38-39`) — 등재는 자리이지 회로가 아니다 |
+| H2-6 | (신설) | — | `0xC00`–`0xDFF` 변환 항목 배열 · `0xE00`–`0xE10` 변환 저장소 제어를 §1 표에 등재 (정본 E.1.2 `appendix/e-defined.typ:51-52`, `:316-326`). **배선됨 (2026-09-26 파도 3)** — `0xC00` 항목 배열과 `0xE00` XLATE_FLUSH · `0xE10` 해제는 실물이고, `0xE04`–`0xE0C` 관측 워드는 쓰기 거절만 실물이며 읽기 값은 아직 0 (E.1.3 「미적중 관측」 행 *부분*). 이 칸의 첫 판은 「둘 다 미배선」이었다 |
 
 ## 3. 항목 3 — 인터럽트 vs polling (Y4 추천 3a + 3d)
 
@@ -375,8 +386,9 @@ timed-read 가 최적」.**
 1항 「통지는 완료 링에 항목을 넣는 것 — 유일한 통지 수단」이며, 폴링 대상은
 `HIU_STATUS.dma_ack` 가 아니라 완료 링 (`0x310` CQ_TAIL · `0x340` 엔트리 창)
 과, 미적중 정지에 대해서는 `0xE04` XLATE_STATUS 다.** 단 `0xE04`–`0xE10` 은
-재구현에 **미구현**(E.1.3 `appendix/e-defined.typ:723-724` 「미적중 sticky 자체는
-있으나 관측면에 나가지 않고, 정지한 요청의 VPN 을 내는 배선은 0건」, `chapters/03-hiu.typ:1277`).
+재구현에 **부분** (`0xE10` 해제·RO 쓰기 거절 실물, 관측 값 읽기 0 — 2026-09-26 파도 3;
+E.1.3 `appendix/e-defined.typ:720` 「미적중 sticky 자체는 있으나 관측면에 나가지 않고, 정지한 요청의 VPN 을 내는 배선은 0건」,
+`chapters/03-hiu.typ:1277`). 폴링 대상인 `0xE04` 의 *값*은 아직 0 이다.
 `HIU_STATUS`(`0x014`) 는 Y4 구역이라 정본이 오프셋을 말하지 않지만, `dma_ack`
 를 두 번째 통지 수단으로 두면 E.6 1항의 「유일한」과 부딪친다 — 완료 링
 상태의 파생으로 정의하거나 §0.3 의 답과 함께 처분해야 한다.
@@ -387,7 +399,7 @@ timed-read 가 최적」.**
 
 - 인터럽트는 **이미 RTL 에 있다**: `0x320` IRQ_STATUS · `0x324` IRQ_MASK ·
   `0x328` IRQ_CLEAR (`appendix/e-defined.typ:258-263`), `host/CompletionUnit.scala:589-590`
-  `io.irq := irqSticky && !irqMask`, `top/Wt64Top.scala:789`·`:1116` `io.irq`.
+  `io.irq := irqSticky && !irqMask`, `top/Wt64Top.scala:814` 「val irq = out port Bool()」·`:1153` `io.irq`.
   hiu_abi `:146` 「현재 RTL 은 별도 인터럽트 라인을 노출하지 않는다」 와 `:149`
   「(b) MSI-X … RTL 변경 필요」는 legacy 기준이고 재구현에 대해서는 거짓이다.
   v1.x 인 것은 **PCIe MSI-X 벡터 결선(보드 층)** 뿐이다.
@@ -399,7 +411,7 @@ timed-read 가 최적」.**
     명시 해제. IRQ 축에 들지 않는다 — fault → 인터럽트 경로는 정본 E.6 에
     없다. 그리고 엔트로피원 유닛 자체가 재구현에 **미착지** (E.1.3 `:727-728`
     「엔트로피원 유닛 자체가 재구현에 미착지. 자리는 ABI 이고 비트는 상수 0」,
-    `top/Wt64Top.scala:350`·`:1486` `status(B_ENTROPY) := False`). 실측: RTL
+    `top/Wt64Top.scala:360` 「val B_ENTROPY      = 17」·`:1563` `status(B_ENTROPY) := False`). 실측: RTL
     `grep -rn trng|entropy|unhealthy rtl/spinal` 0건.
   - 「lease event」 — 장치에 임대 사건이라는 개념이 없다. 정본의 임대는 구조
     (`chapters/03-hiu.typ:515-520`)이고 회전은 호스트 시퀀스(E.9 6항)다. 장치가
@@ -426,7 +438,7 @@ ABI 예약 문면은 「완료 링 통지 IRQ 의 MSI-X 결선」으로 좁혀 �
 | # | 좌표 | 현재 문면 | 제안 문면 |
 |---|---|---|---|
 | H3-1 | `/home/ybi/Y4/docs/hiu_abi.md:146` | 「현재 RTL 은 별도 인터럽트 라인을 노출하지 않는다」 | 「재구현 RTL 은 인터럽트 라인을 노출한다 — `0x320` IRQ_STATUS(sticky) · `0x324` IRQ_MASK(reset 1 = 끔) · `0x328` IRQ_CLEAR, 원천은 완료 링 삽입 (정본 E.6). PCIe MSI-X 벡터 결선은 보드 층」 |
-| H3-2 | `:148` (a) | 「`HIU_STATUS` polling」 | 「완료 링 polling — `0x310` CQ_TAIL / `0x340` 엔트리 창. 미적중 정지는 `0xE04` XLATE_STATUS (재구현 미구현 — E.1.3)」 |
+| H3-2 | `:148` (a) | 「`HIU_STATUS` polling」 | 「완료 링 polling — `0x310` CQ_TAIL / `0x340` 엔트리 창. 미적중 정지는 `0xE04` XLATE_STATUS (재구현 부분 — 쓰기 거절 · `0xE10` 해제만 실물, 읽기 값은 0 — E.1.3)」 |
 | H3-3 | `:149-154` (b)·(c)·v0 결정 | 「(b) MSI-X … RTL 변경 필요 … v1.x patch 후보」 | 「(b) 는 RTL 변경이 아니라 보드 결선. 3d 벡터의 원천은 완료 링 IRQ 하나이며 error/lease 이벤트 벡터는 WaveTensor 정본 개정 후보(fault → IRQ 경로 부재)」 |
 | H3-4 | 3a 근거 문면(전달본) | 「DMA 가 32-cycle 상수시간이라 host 는 완료 시점을 정확히 안다 → timed-read」 | 「통지는 완료 링 항목이 유일한 수단이고(E.6 1항) 인터럽트는 선택적 가속이다. **timed-read 는 미적중 정지 앞에서 안전하지 않다** — 정지 길이는 호스트의 채움 시각에 달렸고 상수 시간성은 절대 사이클이 아니다(§5.3)」 |
 | H3-5 | `:45` bit31 · `:55` bit1 · `:113` | 「`trng_unhealthy` … sticky — reset 까지 유지 … poll 또는 인터럽트 (Phase B 에서 결정)」 | 「정본 대응물은 `0xF80` FAULT_STATUS `[17]`, `0xF84` W1C 로 명시 해제(reset 까지가 아니다). 관측은 폴링. 재구현에 엔트로피원 유닛 미착지 — 비트 상수 0」 |
@@ -488,7 +500,7 @@ ABI 예약 문면은 「완료 링 통지 IRQ 의 MSI-X 결선」으로 좁혀 �
   hiu_abi §2.1 은 호스트를 둔다. 정본이 「호스트-발행 DMA 단발」이라는 표면을
   *배제*하는지 *침묵*하는지는 정본 문면으로 갈리지 않는다 — 3.10 합의 입력.
 - **G5 — 미적중 관측면의 착지.** 정본 규범(E.3 파생 요건)이 요구하는
-  `0xE04`–`0xE10` 이 재구현에 미구현이다. 항목 3 의 「폴링 대상」이 실물이
+  `0xE04`–`0xE10` 이 재구현에 부분이다 (`0xE10` 해제 · RO 쓰기 거절은 2026-09-26 실물, 관측 값은 읽기 0). 항목 3 의 「폴링 대상」이 실물이
   되려면 이 배선이 서야 한다 — 정본 개정이 아니라 RTL 숙제이지만, sign-off
   가 그것을 「있다」고 말하면 안 된다.
 - **G6 — 임대별 키의 RTL 착지.** §1.2. 정본 개정이 아니라 RTL 숙제. B.5

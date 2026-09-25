@@ -25,12 +25,12 @@
 **투입 방향(호스트 명령 큐 / E.5 명령 링)은 RTL 에 미착지다.**
 
 근거 (직접 열어 확인한 것):
-  · `rtl/spinal/src/main/scala/wt64/top/Wt64Top.scala:876-877` — 일의 유일한
-    원천은 `io.instr.valid` / `io.instr.words` 외부 제시다.
+  · `rtl/spinal/src/main/scala/wt64/top/Wt64Top.scala:913` 「walk.io.iValid      := io.instr.valid」
+    — 일의 유일한 원천은 `io.instr.valid` / `io.instr.words` 외부 제시다.
   · 생성물 `rtl/generated/Wt64Top.sv:13-31` 에 `io_instr_valid` 는 있고
     **`io_instr_ready` 가 없다.** 명령 제시는 배압 없는 단방향 스트로브다.
-  · `Wt64Top.scala:1139-1143` 의 `selUnwired` 가 `R_SQ`(0x380–0x3FF)를
-    「명령 방향 실물 0건」이라 열거한다.
+  · `Wt64Top.scala:1180` 「private val selSq    = sel(R_SQ)」 — `selUnwired` 가
+    `R_SQ`(0x380–0x3FF)를 「명령 방향 실물 0건」이라 열거한다.
   · `host/CompletionUnit.scala:1-27` 은 스스로 **완료 방향** 표면 셋
     (완료 큐 E.5 · 완료 통지 E.6 · 드레인 관측면 E.11)만 담는다고 적는다.
 
@@ -113,8 +113,16 @@ SUITES = {
         "top": "Wt64Top",
         "src": "Wt64Top.sv",
         "test_module": "test_shape_equiv",
-        "expect_min": 6,
-        "what": "ISA-2 순열 (LBID·LNID 존재 축) + ISA-1 자리 무관성 + 비교기 자기대조",
+        # 2026-09-26 6 → 13: 파도 3 — 변환 저장소의 MMIO 문(0xC00 LO/HI · 0xE00
+        # FLUSH · 0xE10 MISS_CLEAR) 지향 시험 일곱(xlate_*) 신설. 하한이지 계수가 아니다.
+        # 2026-09-26 13 → 15: 파도 3 반증 검토 뒤 수리 — 인접 HI 의 D-2 버스 정지
+        # 값 수준 시험 둘(xlate_adjacent_hi_stalls_then_commits ·
+        # xlate_adjacent_v0_stalls_then_invalidates). 착지판 일곱은 기입 사이에
+        # 쉬는 엣지를 남겨 정지를 한 번도 만들지 않았다 — ready 덮어쓰기를 끊은
+        # 생성물 변이가 일곱을 전부 통과했다.
+        "expect_min": 15,
+        "what": "ISA-2 순열 (LBID·LNID 존재 축) + ISA-1 자리 무관성 + 비교기 자기대조 "
+                "+ 변환 저장소 MMIO 문 (설치·flush·V=0·거절·정지 해제·인접 HI 버스 정지)",
     },
 }
 
@@ -204,13 +212,15 @@ def run_one(name, build_root):
 UNMEASURED = [
     ("투입 방향 일체 (명령 링 head/tail · 가득 참 · E.5 3항 loud fault · "
      "배압 정지 · 크레딧)",
-     "회로 0건 — Wt64Top.sv 에 io_instr_ready 부재, Wt64Top.scala:1139 selSq UNWIRED"),
+     "회로 0건 — Wt64Top.sv 에 io_instr_ready 부재, "
+     "Wt64Top.scala:1180 「private val selSq    = sel(R_SQ)」 UNWIRED"),
     ("ISA-1 두-형상 대조 (nPoints 4 ↔ 2)",
      "형상 B 생성기 부재 — rtl/spinal/.../gen/GenWt64TopShape.scala 미착지. "
      "비교기 자체는 isa1_comparator_selfcheck 가 양·음성 대조로 살아 있음을 확인한다"),
     ("ISA-2 자리 축 (LNID 소유 지점 [23:16] · LBID 슬롯 구간 [15:0] 순열)",
      "관측면 부재 — RouteJudge 는 지점별 소유를 모르고(RouteJudge.scala:145), "
-     "구간값 소비자 Reassembly.wr→ResultBank.write 가 미배선(Wt64Top.scala:81-83)"),
+     "구간값 소비자 Reassembly.wr→ResultBank.write 가 미배선 — "
+     "Wt64Top.scala:83 「Reassembly.wr → ResultBank.write 는 **미배선**이다」"),
     ("fp32 산술 정확성 (golden_fp32 비트 일치)",
      "StepSequencer.scala:425-426 이 UInt 정수곱·정수합 — 산술은 축 (b) 후속"),
     ("mask64 의 32비트 ([63:44]·[11:0])",
@@ -220,12 +230,20 @@ UNMEASURED = [
      "재구현 MaskUnit 에 부표준키·블록 워드를 내는 포트가 없다 — 계층 peek 은 "
      "포트 계약이 아니라 SpinalHDL 명명의 우연이므로 통과 기준으로 쓰지 않는다"),
     ("FAULT_STATUS[17]·[18]",
-     "Wt64Top.sv:1491-1492 상수 0 — 엔트로피원·명령 디스크립터 원천 부재. "
+     "Wt64Top.sv:1554 「faultWords_status[17] = 1'b0;」 과 그 다음 줄 [18] 상수 0 — "
+     "엔트로피원·명령 디스크립터 원천 부재. "
      "0 을 「정상」으로 읽으면 안 된다"),
     ("SharedUnit·MemOrderGate 독립 .sv 의 top 대표성",
      "형상 불일치 — 독립본 reqWidth=16/reqW=16 vs top 인스턴스 161/128비트"),
     ("OPREF B 참조의 LBID 축",
-     "제시 자체가 없다 — Wt64Top.scala:84 (TODO 2항) · :925-927, tokIn 은 사이클당 하나"),
+     "제시 자체가 없다 — Wt64Top.scala:86 「OPREF B 토큰의 RouteJudge 제시는 미배선」 "
+     "(TODO 2항), tokIn 은 사이클당 하나"),
+    ("변환 저장소 관측 세 워드의 값 (0xE04 XLATE_STATUS · 0xE08/0xE0C XLATE_MISS_VPN)",
+     "회로 0건 — 정지 상태·정지한 요청의 VPN 을 관측면에 내는 배선이 없다. 읽기는 응답 + 0 "
+     "이고 쓰기는 거절 + [6] 이다 (파도 3 이 0xE00·0xE10 과 쓰기 방향만 닫았다)"),
+    ("변환 조회의 호스트 ABI 층위 (MMIO 로 설치한 항목을 호스트 요청이 조회)",
+     "요청 원천(메모리 파이프) 미착지 — 조회는 내부 포트 io.hiuReq 제시다. "
+     "xlate_* 시험의 기입 쪽만 호스트 ABI 오프셋이다"),
 ]
 
 

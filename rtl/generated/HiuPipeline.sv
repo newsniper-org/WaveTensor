@@ -32,6 +32,7 @@ module HiuPipeline (
   input  wire          io_install_perm_r,
   input  wire          io_install_perm_w,
   input  wire          io_install_perm_x,
+  input  wire          io_install_v,
   input  wire          io_flush_valid,
   input  wire [1:0]    io_flush_part,
   input  wire          io_hostRsp_valid,
@@ -183,6 +184,7 @@ module HiuPipeline (
     .io_install_perm_r  (io_install_perm_r           ), //i
     .io_install_perm_w  (io_install_perm_w           ), //i
     .io_install_perm_x  (io_install_perm_x           ), //i
+    .io_install_v       (io_install_v                ), //i
     .io_flush_valid     (io_flush_valid              ), //i
     .io_flush_part      (io_flush_part[1:0]          ), //i
     .clk                (clk                         ), //i
@@ -374,6 +376,7 @@ module XlateStore (
   input  wire          io_install_perm_r,
   input  wire          io_install_perm_w,
   input  wire          io_install_perm_x,
+  input  wire          io_install_v,
   input  wire          io_flush_valid,
   input  wire [1:0]    io_flush_part,
   input  wire          clk,
@@ -388,16 +391,18 @@ module XlateStore (
   reg                 _zz_commitLine_perm_r;
   reg                 _zz_commitLine_perm_w;
   reg                 _zz_commitLine_perm_x;
+  reg                 _zz_commitLine_v;
   wire       [5:0]    _zz_store_port;
   wire       [62:0]   _zz_store_port_1;
-  reg        [15:0]   _zz_storeValid;
   reg        [3:0]    _zz_fillLine_idx;
   reg        [27:0]   _zz_fillLine_tag;
   reg        [31:0]   _zz_fillLine_frame;
   reg                 _zz_fillLine_perm_r;
   reg                 _zz_fillLine_perm_w;
   reg                 _zz_fillLine_perm_x;
-  reg                 _zz_fillHit;
+  reg                 _zz_fillLine_v;
+  reg                 _zz_fillShadow;
+  reg        [15:0]   _zz_storeValid;
   reg        [15:0]   validBits_0;
   reg        [15:0]   validBits_1;
   reg        [15:0]   validBits_2;
@@ -412,24 +417,28 @@ module XlateStore (
   reg                 fillSlot_0_perm_r;
   reg                 fillSlot_0_perm_w;
   reg                 fillSlot_0_perm_x;
+  reg                 fillSlot_0_v;
   reg        [3:0]    fillSlot_1_idx;
   reg        [27:0]   fillSlot_1_tag;
   reg        [31:0]   fillSlot_1_frame;
   reg                 fillSlot_1_perm_r;
   reg                 fillSlot_1_perm_w;
   reg                 fillSlot_1_perm_x;
+  reg                 fillSlot_1_v;
   reg        [3:0]    fillSlot_2_idx;
   reg        [27:0]   fillSlot_2_tag;
   reg        [31:0]   fillSlot_2_frame;
   reg                 fillSlot_2_perm_r;
   reg                 fillSlot_2_perm_w;
   reg                 fillSlot_2_perm_x;
+  reg                 fillSlot_2_v;
   reg        [3:0]    fillSlot_3_idx;
   reg        [27:0]   fillSlot_3_tag;
   reg        [31:0]   fillSlot_3_frame;
   reg                 fillSlot_3_perm_r;
   reg                 fillSlot_3_perm_w;
   reg                 fillSlot_3_perm_x;
+  reg                 fillSlot_3_v;
   wire                flushSamePart;
   wire       [3:0]    _zz_1;
   wire                when_XlateStore_l200;
@@ -448,6 +457,7 @@ module XlateStore (
   wire                commitLine_perm_r;
   wire                commitLine_perm_w;
   wire                commitLine_perm_x;
+  wire                commitLine_v;
   wire       [27:0]   commitBody_tag;
   wire       [31:0]   commitBody_frame;
   wire                commitBody_perm_r;
@@ -467,14 +477,16 @@ module XlateStore (
   wire                storeBody_perm_x;
   wire       [62:0]   _zz_storeBody_tag;
   wire       [2:0]    _zz_storeBody_perm_r;
-  wire                storeValid;
-  wire                storeHit;
   wire       [3:0]    fillLine_idx;
   wire       [27:0]   fillLine_tag;
   wire       [31:0]   fillLine_frame;
   wire                fillLine_perm_r;
   wire                fillLine_perm_w;
   wire                fillLine_perm_x;
+  wire                fillLine_v;
+  wire                fillShadow;
+  wire                storeValid;
+  wire                storeHit;
   wire                fillHit;
   (* ram_style = "distributed" *) reg [62:0] store [0:63];
 
@@ -505,6 +517,7 @@ module XlateStore (
         _zz_commitLine_perm_r = fillSlot_0_perm_r;
         _zz_commitLine_perm_w = fillSlot_0_perm_w;
         _zz_commitLine_perm_x = fillSlot_0_perm_x;
+        _zz_commitLine_v = fillSlot_0_v;
       end
       2'b01 : begin
         _zz_commitLine_idx = fillSlot_1_idx;
@@ -513,6 +526,7 @@ module XlateStore (
         _zz_commitLine_perm_r = fillSlot_1_perm_r;
         _zz_commitLine_perm_w = fillSlot_1_perm_w;
         _zz_commitLine_perm_x = fillSlot_1_perm_x;
+        _zz_commitLine_v = fillSlot_1_v;
       end
       2'b10 : begin
         _zz_commitLine_idx = fillSlot_2_idx;
@@ -521,6 +535,7 @@ module XlateStore (
         _zz_commitLine_perm_r = fillSlot_2_perm_r;
         _zz_commitLine_perm_w = fillSlot_2_perm_w;
         _zz_commitLine_perm_x = fillSlot_2_perm_x;
+        _zz_commitLine_v = fillSlot_2_v;
       end
       default : begin
         _zz_commitLine_idx = fillSlot_3_idx;
@@ -529,6 +544,7 @@ module XlateStore (
         _zz_commitLine_perm_r = fillSlot_3_perm_r;
         _zz_commitLine_perm_w = fillSlot_3_perm_w;
         _zz_commitLine_perm_x = fillSlot_3_perm_x;
+        _zz_commitLine_v = fillSlot_3_v;
       end
     endcase
   end
@@ -536,44 +552,48 @@ module XlateStore (
   always @(*) begin
     case(io_lookup_part)
       2'b00 : begin
-        _zz_storeValid = validBits_0;
         _zz_fillLine_idx = fillSlot_0_idx;
         _zz_fillLine_tag = fillSlot_0_tag;
         _zz_fillLine_frame = fillSlot_0_frame;
         _zz_fillLine_perm_r = fillSlot_0_perm_r;
         _zz_fillLine_perm_w = fillSlot_0_perm_w;
         _zz_fillLine_perm_x = fillSlot_0_perm_x;
-        _zz_fillHit = fillPend_0;
+        _zz_fillLine_v = fillSlot_0_v;
+        _zz_fillShadow = fillPend_0;
+        _zz_storeValid = validBits_0;
       end
       2'b01 : begin
-        _zz_storeValid = validBits_1;
         _zz_fillLine_idx = fillSlot_1_idx;
         _zz_fillLine_tag = fillSlot_1_tag;
         _zz_fillLine_frame = fillSlot_1_frame;
         _zz_fillLine_perm_r = fillSlot_1_perm_r;
         _zz_fillLine_perm_w = fillSlot_1_perm_w;
         _zz_fillLine_perm_x = fillSlot_1_perm_x;
-        _zz_fillHit = fillPend_1;
+        _zz_fillLine_v = fillSlot_1_v;
+        _zz_fillShadow = fillPend_1;
+        _zz_storeValid = validBits_1;
       end
       2'b10 : begin
-        _zz_storeValid = validBits_2;
         _zz_fillLine_idx = fillSlot_2_idx;
         _zz_fillLine_tag = fillSlot_2_tag;
         _zz_fillLine_frame = fillSlot_2_frame;
         _zz_fillLine_perm_r = fillSlot_2_perm_r;
         _zz_fillLine_perm_w = fillSlot_2_perm_w;
         _zz_fillLine_perm_x = fillSlot_2_perm_x;
-        _zz_fillHit = fillPend_2;
+        _zz_fillLine_v = fillSlot_2_v;
+        _zz_fillShadow = fillPend_2;
+        _zz_storeValid = validBits_2;
       end
       default : begin
-        _zz_storeValid = validBits_3;
         _zz_fillLine_idx = fillSlot_3_idx;
         _zz_fillLine_tag = fillSlot_3_tag;
         _zz_fillLine_frame = fillSlot_3_frame;
         _zz_fillLine_perm_r = fillSlot_3_perm_r;
         _zz_fillLine_perm_w = fillSlot_3_perm_w;
         _zz_fillLine_perm_x = fillSlot_3_perm_x;
-        _zz_fillHit = fillPend_3;
+        _zz_fillLine_v = fillSlot_3_v;
+        _zz_fillShadow = fillPend_3;
+        _zz_storeValid = validBits_3;
       end
     endcase
   end
@@ -597,6 +617,7 @@ module XlateStore (
   assign commitLine_perm_r = _zz_commitLine_perm_r;
   assign commitLine_perm_w = _zz_commitLine_perm_w;
   assign commitLine_perm_x = _zz_commitLine_perm_x;
+  assign commitLine_v = _zz_commitLine_v;
   assign commitBody_tag = commitLine_tag;
   assign commitBody_frame = commitLine_frame;
   assign commitBody_perm_r = commitLine_perm_r;
@@ -616,15 +637,17 @@ module XlateStore (
   assign storeBody_perm_r = _zz_storeBody_perm_r[0];
   assign storeBody_perm_w = _zz_storeBody_perm_r[1];
   assign storeBody_perm_x = _zz_storeBody_perm_r[2];
-  assign storeValid = _zz_storeValid[reqIdx];
-  assign storeHit = ((io_lookup_valid && storeValid) && (storeBody_tag == reqTag));
   assign fillLine_idx = _zz_fillLine_idx;
   assign fillLine_tag = _zz_fillLine_tag;
   assign fillLine_frame = _zz_fillLine_frame;
   assign fillLine_perm_r = _zz_fillLine_perm_r;
   assign fillLine_perm_w = _zz_fillLine_perm_w;
   assign fillLine_perm_x = _zz_fillLine_perm_x;
-  assign fillHit = (((io_lookup_valid && _zz_fillHit) && (fillLine_idx == reqIdx)) && (fillLine_tag == reqTag));
+  assign fillLine_v = _zz_fillLine_v;
+  assign fillShadow = (_zz_fillShadow && (fillLine_idx == reqIdx));
+  assign storeValid = _zz_storeValid[reqIdx];
+  assign storeHit = (((io_lookup_valid && storeValid) && (storeBody_tag == reqTag)) && (! fillShadow));
+  assign fillHit = (((io_lookup_valid && fillShadow) && (fillLine_tag == reqTag)) && fillLine_v);
   assign io_rsp_hit = (fillHit || storeHit);
   assign io_rsp_fromFill = fillHit;
   always @(*) begin
@@ -703,16 +726,16 @@ module XlateStore (
       end
       if(commitFire) begin
         if(_zz_8[0]) begin
-          validBits_0[commitLine_idx] <= 1'b1;
+          validBits_0[commitLine_idx] <= commitLine_v;
         end
         if(_zz_8[1]) begin
-          validBits_1[commitLine_idx] <= 1'b1;
+          validBits_1[commitLine_idx] <= commitLine_v;
         end
         if(_zz_8[2]) begin
-          validBits_2[commitLine_idx] <= 1'b1;
+          validBits_2[commitLine_idx] <= commitLine_v;
         end
         if(_zz_8[3]) begin
-          validBits_3[commitLine_idx] <= 1'b1;
+          validBits_3[commitLine_idx] <= commitLine_v;
         end
         if(_zz_9[0]) begin
           fillPend_0 <= 1'b0;
@@ -829,6 +852,18 @@ module XlateStore (
       end
       if(_zz_6) begin
         fillSlot_3_perm_x <= io_install_perm_x;
+      end
+      if(_zz_3) begin
+        fillSlot_0_v <= io_install_v;
+      end
+      if(_zz_4) begin
+        fillSlot_1_v <= io_install_v;
+      end
+      if(_zz_5) begin
+        fillSlot_2_v <= io_install_v;
+      end
+      if(_zz_6) begin
+        fillSlot_3_v <= io_install_v;
       end
     end
   end

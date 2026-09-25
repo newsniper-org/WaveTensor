@@ -652,7 +652,12 @@ AX1_UNMEASURED_HARD_MAX: dict[str, int] = {
     "rtl/formal/sby/HiuMask/hiumask.sby": 2,
     "rtl/formal/sby/Reassembly/props.sby": 3,
     "rtl/formal/tla/run.sh": 3,
-    "rtl/formal/sby/XlateStore/xlatestore.sby": 7,
+    # 2026-09-26 하강 7 → 3 (파도 3 — 변환 저장소의 MMIO 문). XlateStore 에 V 를
+    # 싣는 편집이 생성물 XlateStore.sv 의 포트·레지스터 줄을 밀어 따옴표 없는 좌표
+    # 넷(`XlateStore.sv:1-32` · `:65-96` · `XlateStore.scala:254` · 이미 낡아 있던
+    # `HiuPipeline.scala:334-335`)을 재조준하며 같은 줄 축자 「…」 결속으로 바꿨다.
+    # 항목 제거는 래칫 상한도 같이 내린다 (R5 문면).
+    "rtl/formal/sby/XlateStore/xlatestore.sby": 3,
     "rtl/formal/tla/Decode.tla": 1,
     # 2026-09-20 신설 (임대별 마스크 키 파도, 정본 7fa5f2e) — Mask.tla 는
     # 선-formal 모델 자신이고 해설 산문 전체가 e-defined.typ/05-security.typ
@@ -671,8 +676,14 @@ AX1_UNMEASURED_HARD_MAX: dict[str, int] = {
     # 과 `run_wt64.py` 의 하나(`MaskUnit.scala:255-262`)를 재조준하면서 전부
     # 같은 줄 축자 「…」 결속으로 바꿨다 — 다음 편집이 줄을 밀면 R3 STALE 로
     # 지목된다. 항목 제거는 래칫 상한도 같이 내린다 (R5 문면).
-    "rtl/sim/README.md": 13,
-    "rtl/sim/run_wt64.py": 10,
+    # 2026-09-26 하강 13 → 7 · 10 → 4 (파도 3 — 변환 저장소의 MMIO 문). Wt64Top.scala
+    # 의 IO 은퇴·구역 편집을 계기로 따옴표 없는 `Wt64Top.scala:NNN` · `Wt64Top.sv:NNN`
+    # 좌표를 전수 실물 대조했더니 **전부 이미 낡아 있었다**(`:876-877` · `:1139-1143` ·
+    # `:81-83` · `:84` · `:1512` · `Wt64Top.sv:1491-1492` — 앞 파도들이 줄을 밀었는데
+    # 미계수라 아무도 몰랐다). 재조준하며 같은 줄 축자 「…」 결속으로 바꿨다 — 다음
+    # 편집이 줄을 밀면 R3 STALE 로 지목된다. 항목 제거는 상한도 같이 내린다 (R5 문면).
+    "rtl/sim/README.md": 7,
+    "rtl/sim/run_wt64.py": 4,
     # 2026-09-22 하강 14 → 0 (파도 C — Mask cocotb 골든 회귀 수리, RTL ca3c496
     # 「임대별 마스크 키」가 밀어낸 좌표를 재조준). `test_mask_golden.py` 의
     # 따옴표 없는 좌표 14건은 **전부 낡아 있었다** — 파도 A 가 MaskUnit.scala
@@ -686,7 +697,10 @@ AX1_UNMEASURED_HARD_MAX: dict[str, int] = {
     # 것)을 식별자 인용(`own.io.faultClearBadWrite` 등)으로 바꿨다. 좌표는
     # Top 을 고칠 때마다 미끄러지고 식별자는 배선이 살아 있는 한 유효하다.
     # 항목 제거는 래칫 상한도 같이 내린다 (R5 문면).
-    "rtl/sim/test_shape_equiv.py": 13,
+    # 2026-09-26 하강 13 → 6 (파도 3) — 위 rtl/sim/README.md 항목과 같은 사건: 따옴표
+    # 없는 `Wt64Top.scala:NNN` 일곱(전부 낡아 있었다 — `:1139` · `:81-83` · `:84` ·
+    # `:95-97` · `:1512` · `:927` · `:876-892` · `:918`)을 같은 줄 축자 결속으로 바꿨다.
+    "rtl/sim/test_shape_equiv.py": 6,
     # 2026-09-22 하강 4 → 3 — 키 기입 주석의 `e-defined.typ:333` 을 실물 :339
     # 「기입은 …」 같은 줄 축자 결속으로 재조준(같은 줄 안 편집 — 줄 수·생성물
     # 불변). 남은 셋 중 HiuMask_props.sv:890 의 같은 낡은 좌표는 그 파일이
@@ -884,7 +898,9 @@ AX2_UNMEASURED_HARD_MAX: dict[str, int] = {
 # ⇒ hard 구역에서 「따옴표를 썼으면 축자로 써라」를 요구한다. 요약을 적고
 #    싶으면 따옴표를 떼면 되고, 그러면 R5 가 그것을 「안 잰다」로 계수한다.
 AX1_SOFT_HARD_MAX: dict[str, int] = {
-    "rtl/sim/test_shape_equiv.py": 1,
+    # 2026-09-26 하강 1 → 0 (항목 삭제) — `test_shape_equiv.py` 의 의역 결속
+    # (`Wt64Top.scala:81-83` 뒤 「잠정 배선 (TODO)」 — 절 이름이지 그 줄의 축자가
+    # 아니었다)을 파도 3 재조준이 `:83` 의 축자로 바꿨다.
     "rtl/sv/assert/HiuMask_props.sv": 1,
 }
 # ── 축 2 R6 의 **세 번째 기준선**: `APX_RE` 가 들여온 5건 ──────────────────

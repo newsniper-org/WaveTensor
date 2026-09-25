@@ -1,10 +1,21 @@
 {
   "anchors": [
-    "Mask.rekey_explicit_target"
+    "Mask.rekey_explicit_target",
+    "XlateSurface.lo_stages_only",
+    "XlateSurface.hi_fires",
+    "XlateSurface.hi_entry_match",
+    "XlateSurface.hi_needs_staging",
+    "XlateSurface.hi_commit_whole",
+    "XlateSurface.hi_v_carried",
+    "XlateSurface.flush_fires",
+    "XlateSurface.flush_scoped",
+    "XlateSurface.flush_part_exists",
+    "XlateSurface.flush_rsv_strict",
+    "XlateSurface.reject_loud"
   ],
-  "at": "2026-09-25T17:01:17Z",
+  "at": "2026-09-25T21:50:24Z",
   "cover": {
-    "reached": 25,
+    "reached": 35,
     "reached_names": [
       "Wt64Top.chk.w10_cap0_clr",
       "Wt64Top.chk.w10_cap2_gate",
@@ -17,8 +28,18 @@
       "Wt64Top.chk.w15_drain_nz",
       "Wt64Top.chk.w16_hm_stall",
       "Wt64Top.chk.w17_resv_wr",
+      "Wt64Top.chk.w18_xflush3",
+      "Wt64Top.chk.w19_xhi_v0",
       "Wt64Top.chk.w1_cq_last",
       "Wt64Top.chk.w1_sq_first",
+      "Wt64Top.chk.w20_xstall",
+      "Wt64Top.chk.w21_xhi_rej",
+      "Wt64Top.chk.w22_missclr",
+      "Wt64Top.chk.w23_xflush_rej",
+      "Wt64Top.chk.w24_xlo_over",
+      "Wt64Top.chk.w25_xrecommit",
+      "Wt64Top.chk.w26_xhi_mismatch",
+      "Wt64Top.chk.w27_xflush_rsv",
       "Wt64Top.chk.w2_resv_rd",
       "Wt64Top.chk.w2_undef_rd",
       "Wt64Top.chk.w3_key_rd_after_wr",
@@ -36,12 +57,12 @@
     "unreached_names": []
   },
   "inputs": {
-    "rtl/generated/Wt64Top.sv": "4a4af7a99bf8ff261680d5ca3a269e65ec3930bd4e398be0da2cd5f361cd688a",
-    "rtl/sv/assert/Wt64Top_props.sv": "6ccb4ac7c35eb65947301d96ce5589f3aefd8120f799fbaf063e3138aad62d6c"
+    "rtl/generated/Wt64Top.sv": "ea1902d4ba41f929f2106794acb3ad0344937b312f994d4eac6b91cd0922ac0d",
+    "rtl/sv/assert/Wt64Top_props.sv": "6a1372fc85902871e5905df09f2d019de638f00ad50356b7c79e1443f21036f9"
   },
   "per_task": {
     "bmc": {
-      "assert": 83,
+      "assert": 92,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -51,11 +72,11 @@
       "assert": 0,
       "const_a": 0,
       "const_en0": 0,
-      "cover": 25,
+      "cover": 35,
       "mode": "cover"
     },
     "prove": {
-      "assert": 83,
+      "assert": 92,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -63,7 +84,7 @@
     }
   },
   "sby": "rtl/formal/sby/Wt64Top/assembly.sby",
-  "sby_sha256": "c4662f98ef1c6cc71772fd5d4b892b4bd76becb584b8912e2cd1479f3cd2057b",
+  "sby_sha256": "af900b74741d148364843b971375e0f59253eeb5c5453f6420ff82a058c4441f",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

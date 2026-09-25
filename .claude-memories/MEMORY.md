@@ -30,3 +30,4 @@
 - [rIC3 fork stage4 검토](ric3_fork_review.md) — 도입한다면 fork 가 낫지만 이유는 upstream 인증서 세그폴트 회피(Stage 2~4 는 무효); 급하지 않음, 순이득은 certifaiger 인증서
 - [동시 실행 에이전트 상한 4](agent_concurrency_cap.md) — 사용자 지시 2026-09-21, 크레딧 고갈 방지; Workflow 팬아웃·fork 합쳐 4 이하
 - [백그라운드 대기 루프가 메모리 가드에 죽는다](background_task_oom_kill.md) — run_in_background Bash 폴링은 실사용량과 무관하게 죽는다; nohup 백그라운드 + Monitor 조합을 쓸 것
+- [tmpfs /tmp 고갈 함정](tmpfs_scratch_exhaustion.md) — /tmp 는 24G tmpfs; 세션 scratch·wt_sim_*·wt-sby-out 이 쌓여 검증 에이전트가 ENOSPC 로 죽었다(2026-09-26); 커밋한 파도의 scratch 는 치운다
