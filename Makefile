@@ -861,7 +861,7 @@ rtl-impact:
 #
 # 스위트를 좁히려면: make rtl-sim SIM_SUITES="Mask"
 # 빌드 산출물 자리를 고정하려면: make rtl-sim WT_SIM_BUILD=/tmp/wtsim
-# (기본은 mkdtemp — 저장소를 더럽히지 않는다)
+# (기본은 mkdtemp — 저장소를 더럽히지 않고, 통과하면 러너가 지운다; 남기려면 WT_SIM_KEEP=1)
 rtl-sim:
 	@command -v cocotb-config >/dev/null 2>&1 || { \
 	    echo "rtl-sim: cocotb-config 가 PATH 에 없다 — 미측정이지 통과가 아니다"; \

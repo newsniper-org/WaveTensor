@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 4e29961e-988b-4f27-9ede-dfb9c81925bc
-  modified: 2026-09-25T17:02:28.173Z
+  modified: 2026-09-25T22:17:57.773Z
 ---
 
 2026-08-20 사용자 지시로 **WT64v1 RTL 전면 재구현**이 착수됐다. 사용자 확정
@@ -106,6 +106,18 @@ metadata:
   미결: **결함 D1**(0xF00–0xF07 ready=0 인데 rvalid) · **D2**(TAG1 [27:16]
   거절 미전파) · **정본 판정 요청 T1**(미배선 구역 쓰기 조용한 흡수 —
   0xE00 XLATE_FLUSH) · T2(비정렬 쓰기) · T3(0x000–0x11F). 다음 = 파도 3.
+- **파도 3 — 변환 저장소 MMIO 문: 착지**, commit `bec0505` (2026-09-26).
+  0xC00 항목 배열(LO 스테이징 · HI 단일 에지 커밋 · V=0 무효화) · 0xE00
+  flush 발화 · 0xE10 해제 · RO 쓰기 거절. 선-formal `XlateSurface.tla`(가드
+  17 · 42 run, 전량 429) 가 하류 거부 처분을 **기계로 판정** — reject/drop
+  은 속성을 깨고 버스 정지만 통과. 새 컴포넌트 `XlateStaging.scala`, 최상위
+  io.install/io.flush 은퇴. 렌즈가 잡은 것: xlatestore V 운반 오라클이 DUT
+  자신의 commitLine_v 를 봐 공허(XS1 변이가 bmc/prove/cover 전부 통과) ·
+  RTL 이 모델 없이 0xE10/RO 를 착지(§6.3 역순 — 모델로 되먹임). **판정
+  요청 T5**: 스테이징 소진 미정 → flush 건넌 옛 LO 가 HI 한 워드로 재커밋,
+  방어는 LO-먼저 호스트 규율뿐. 이월: wdata→ready 기능상 죽은 구조 경로 ·
+  조립 그림자 하네스 독립 리뷰 · T1 잔여 · D1/D2 · run_wt64.py mkdtemp
+  누수([[tmpfs-scratch-exhaustion]]).
 - **완료 게이트(파도 C 부터 확정)**: `make lint` · `make rtl-lint` ·
   rtl-gen 결정성 · `rtl/formal/tla/run.sh`(컨테이너) · 후-formal 관련
   태스크 재스윕 + `lint_postformal --require-fresh` stale 0 · **`make

@@ -79,6 +79,7 @@ skip 한 테스트가 「돌았고 실패 0」으로 읽힌다.** 이 저장소�
 """
 
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -275,7 +276,13 @@ def main():
         if name not in SUITES:
             sys.exit(f"알 수 없는 스위트 '{name}' (유효: {', '.join(SUITES)})")
 
-    build_root = os.environ.get("WT_SIM_BUILD") or tempfile.mkdtemp(prefix="wt_sim_")
+    fixed_root = os.environ.get("WT_SIM_BUILD")
+    build_root = fixed_root or tempfile.mkdtemp(prefix="wt_sim_")
+    # mkdtemp 루트는 **이 실행이 만든 것**이라 이 실행이 치운다 — 통과한
+    # 실행에서만. 실패한 실행은 로그·파형을 보라고 남기고 자리를 인쇄한다.
+    # 남기던 시절 /tmp(tmpfs 24G)에 루트가 개당 ~230M 씩 쌓여 게이트를 돌리던
+    # 검토자가 ENOSPC 로 죽었다 (2026-09-26). WT_SIM_BUILD 로 준 자리는 호출자의
+    # 것이라 건드리지 않고, 통과해도 남기려면 WT_SIM_KEEP=1.
     # 저장소 안에 빌드 산출물을 만들지 않는다 — `scripts/lint_forbidden_terms.py`
     # 의 SKIP_DIRS 에 `sim_build` 가 있어 저장소 안 빌드는 lint 를 조용히
     # 건너뛰게 만든다. 선례 94-95행과 같은 처분.
@@ -297,13 +304,24 @@ def main():
     #   않는다 — 원장을 가장 읽어야 할 사람이 실패를 보고 있는 사람이다
     #   (「어디까지 잰 하네스가 깨진 것인가」가 원장 없이는 안 잡힌다).
     #   finally 가 먼저 돌고 SystemExit 문면이 그 뒤에 찍혀 실패가 마지막에 남는다.
+    passed = False
     try:
         for name in wanted:
             print(f"=== {name}: build + test (build root: {build_root}) ===")
             total += run_one(name, build_root)
         print(f"\nrun_wt64: 요청 스위트 {len(wanted)}건 / cocotb 테스트 {total}건 전부 통과")
+        passed = True
     finally:
         print_unmeasured()
+        if not fixed_root:
+            if passed and not os.environ.get("WT_SIM_KEEP"):
+                try:
+                    shutil.rmtree(build_root)
+                except OSError as e:
+                    print(f"run_wt64: ⚠ 빌드 루트를 지우지 못했다 — {build_root} ({e})")
+            else:
+                print(f"run_wt64: 빌드 루트를 남긴다 — {build_root}"
+                      + ("" if passed else " (실패 조사용 — 다 보면 지울 것)"))
 
 
 if __name__ == "__main__":

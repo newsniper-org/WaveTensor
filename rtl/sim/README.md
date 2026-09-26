@@ -19,6 +19,7 @@
 make rtl-sim                              # 전 스위트
 make rtl-sim SIM_SUITES="Mask"            # 좁혀 돌기
 make rtl-sim WT_SIM_BUILD=/tmp/wtsim      # 빌드 자리 고정 (기본은 mkdtemp)
+WT_SIM_KEEP=1 make rtl-sim                # 통과해도 mkdtemp 루트를 남긴다
 ```
 
 `python3 rtl/sim/run_wt64.py` 로 **직접 부르지 마라.** 이 저장소의 cocotb 는
@@ -31,6 +32,11 @@ make rtl-sim WT_SIM_BUILD=/tmp/wtsim      # 빌드 자리 고정 (기본은 mkdt
 `tempfile.mkdtemp()` 다. 저장소 안에 `sim_build/` 를 만들면
 `scripts/lint_forbidden_terms.py` 의 SKIP_DIRS 가 그것을 건너뛰므로,
 검사받지 않는 구역을 새로 만드는 셈이 된다.
+
+mkdtemp 루트는 **통과한 실행이 스스로 지운다** — 실패한 실행은 조사하라고
+남기고 그 자리를 인쇄한다. 남기던 시절 `/tmp`(tmpfs)에 루트가 개당 ~230M 씩
+쌓여 게이트를 돌리던 검토자가 ENOSPC 로 죽었다 (2026-09-26). `WT_SIM_BUILD`
+로 준 자리는 호출자의 것이라 러너가 지우지 않는다.
 
 ### 도구 (실측)
 
