@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 4e29961e-988b-4f27-9ede-dfb9c81925bc
-  modified: 2026-09-25T22:17:57.773Z
+  modified: 2026-09-26T06:08:38.208Z
 ---
 
 2026-08-20 사용자 지시로 **WT64v1 RTL 전면 재구현**이 착수됐다. 사용자 확정
@@ -118,6 +118,21 @@ metadata:
   방어는 LO-먼저 호스트 규율뿐. 이월: wdata→ready 기능상 죽은 구조 경로 ·
   조립 그림자 하네스 독립 리뷰 · T1 잔여 · D1/D2 · run_wt64.py mkdtemp
   누수([[tmpfs-scratch-exhaustion]]).
+- **파도 4 — 남은 과제 전수** (사용자 2026-09-26 「남은 것들도 전부 수행하도록.」
+  — 정본 판정 포함으로 읽었다). 착지: `d65b1c2` 러너 mkdtemp 정리 · `cd61057`
+  D2(TAG1 [27:16] 거절) + **AbortSurface.tla**(소거 스테이징의 §6.3 1단 결손 해소,
+  가드 13 · 30 run) · `f229c8b` **spec 판정** — T1-i β(소비 없는 RW 워드 쓰기
+  거절, CQ_BASE 포함) · T1-ii iv(판 0 = 물려받은 구간에 약속 없음) · T2 a(비정렬
+  쓰기 = sub-word → [6]) · T3 d(0x000–0x11F 합의 전 처분: 쓰기 [6] · 읽기 0,
+  3.10 새 규범) · T4 ii · T5 a(수락된 flush 가 래치 파티션 스테이징 유효를 내림)
+  · E04 A(정지 게이트 스냅샷) · E.12.1 3항 명료화. 판정 갈래는 조사 3 + 판결
+  검토 1 의 권고 채택(커밋 본문에 명시). 진행 중: W3(3A/3B/3C 워크트리) → W4
+  통합 → W5 독립 검토(조립 하네스 포함) → W6. 남은 것: 태그 코덱 전파 파도
+  (D2b · D2c — Payload.tla Tags 정제 → Common.scala 코덱).
+  ⚠ 「Common.scala 편집 금지」는 **사용자 지시가 아니었다** — 병렬 파도의 파일
+  소유권 규칙과 `when_Common_l259` 이름 핀(하네스 매크로 WT_STICKY_SET_FAULT)이
+  섞여 굳은 것. 판결 검토자가 그것을 「막힘」으로 올렸다 — 제약의 출처를 먼저
+  확인하라.
 - **완료 게이트(파도 C 부터 확정)**: `make lint` · `make rtl-lint` ·
   rtl-gen 결정성 · `rtl/formal/tla/run.sh`(컨테이너) · 후-formal 관련
   태스크 재스윕 + `lint_postformal --require-fresh` stale 0 · **`make

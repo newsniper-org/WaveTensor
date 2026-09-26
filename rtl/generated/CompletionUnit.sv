@@ -93,6 +93,7 @@ module CompletionUnit (
   wire                irqMask;
   wire                when_CompletionUnit_l572;
   wire                when_CompletionUnit_l573;
+  wire                isBase;
   wire                badWrite;
   reg                 irqSticky;
   reg                 faultOv;
@@ -180,7 +181,8 @@ module CompletionUnit (
   assign irqMask = irqMaskReg[0];
   assign when_CompletionUnit_l572 = (doWr && isHead);
   assign when_CompletionUnit_l573 = ((doWr && isIrqMk) && (! mkRsvBad));
-  assign badWrite = (doWr && (((isRoOff || (isSize && (sizeRsvBad || sizeValBad))) || (isIrqMk && mkRsvBad)) || (isIrqClr && clrRsvBad)));
+  assign isBase = ((io_addr == 8'h0) || (io_addr == 8'h04));
+  assign badWrite = ((io_wstrobe && (! aligned)) || (doWr && ((((isRoOff || isBase) || (isSize && (sizeRsvBad || sizeValBad))) || (isIrqMk && mkRsvBad)) || (isIrqClr && clrRsvBad))));
   assign io_irq = (irqSticky && (! irqMask));
   assign io_faultOverflow = faultOv;
   assign io_faultBadWrite = _zz_io_faultBadWrite;

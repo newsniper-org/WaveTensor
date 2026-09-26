@@ -3,10 +3,11 @@
 --------------------------- MODULE XlateSurface -----------------------------
 (***************************************************************************)
 (* 변환 저장소의 MMIO 문 — `0xC00` 항목 배열(XLATE_ENTRY_LO/HI)과          *)
-(* `0xE00` XLATE_FLUSH 의 선-formal 모델. 파도 3 (2026-09-26).             *)
+(* `0xE00` XLATE_FLUSH 의 선-formal 모델. 파도 3 (2026-09-26). 파도 4 개정 *)
+(* (같은 날): 판정 T5 (a) · T4 (ii) 를 가드 둘로 실었다 — 아래 「판정」.     *)
 (* 같은 날 수리: `0xE10` XLATE_MISS_CLEAR 와 RO 세 워드(`0xE04`–`0xE0C`)의 *)
 (* 쓰기 처분을 더했다 — RTL 이 모델보다 먼저 배선한 결정(검토자 D-7)을    *)
-(* 6.3 규율대로 모델로 돌려보낸 것이다 (아래 「가드」 끝 다섯 · 발견 4).    *)
+(* 6.3 규율대로 모델로 돌려보낸 것이다 (아래 「가드」 다섯 · 판정 4).      *)
 (*                                                                         *)
 (* ## 분업 — 이 모델은 「문」만 잰다                                       *)
 (*                                                                         *)
@@ -135,7 +136,7 @@
 (*   reject_loud        :419 조용한 무시 금지 — 거절은 전부 `[6]` 을 세운다. *)
 (*                      지우면 거절이 조용하다. → Prop_RejectLoud          *)
 (*                                                                         *)
-(*   아래 다섯 — `0xE10` · RO 세 워드 (같은 날 수리, 발견 4 와 함께)        *)
+(*   아래 다섯 — `0xE10` · RO 세 워드 (같은 날 수리, 아래 판정 4 와 함께)   *)
 (*   mclr_fires         :329 `[0]`=1 · 예약 0 의 기입이 미적중 sticky 를     *)
 (*                      내린다 (정지가 없을 때). 지우면 해제가 흡수된다 —  *)
 (*                      착지 전 RTL 의 `0xE10`. → Prop_MclrClears           *)
@@ -150,6 +151,22 @@
 (*   ro_rejected        :202 RO 오프셋의 쓰기는 거절이다. 지우면 흡수된다 — *)
 (*                      착지 전 RTL 의 `0xE04`–`0xE0C` (파도 2 의 T1).     *)
 (*                      → Prop_RoRejected (loud 는 reject_loud 가 잰다)    *)
+(*                                                                         *)
+(*   아래 둘 — 파도 4 판정 T5 · T4 (f229c8b) 의 착지                        *)
+(*   flush_drops_staging 0xC00 · 0xE00 행 — *수락된* flush 가 래치 번호의 파티션인 *)
+(*                      스테이징의 유효를 내린다 (프레임·번호는 남는다).   *)
+(*                      지우면 flush(임대 회전 ⑵)를 건넌 옛 LO 가 같은 번호 *)
+(*                      HI 한 워드로 새 임대의 태그·V 와 함께 커밋된다 —   *)
+(*                      판정 전 RTL. → Prop_FlushEndsStaging               *)
+(*   ent_part_exists    「없는 파티션 값의 처분」 말미 — 상한 아래 형상에서 *)
+(*                      항목 배열의 형상 밖 주소                           *)
+(*                      (없는 파티션)의 LO · HI 는 거절이고 스테이징을      *)
+(*                      움직이지 않는다. 지우면 주소가 partW 로 잘려 실재  *)
+(*                      파티션의 항목이 설치된다(별칭 — 격리 위반).        *)
+(*                      → Prop_EntPhantomRejected (격리 귀결은 고정 속성   *)
+(*                      Prop_EntNoAlias). 상수 BelowCap = TRUE 인 전용 cfg *)
+(*                      에서만 입력이 실재한다 — 기본 형상(상한)에서는     *)
+(*                      주소가 전부 실재 파티션이다.                       *)
 (*                                                                         *)
 (* ## 이 모델이 다루지 않는 것 (「안 잰다」)                               *)
 (*                                                                         *)
@@ -176,7 +193,7 @@
 (* · FAULT_STATUS `[6]` 의 sticky·해제 — 이 모델의 loud 는 그 스텝의 발화  *)
 (*   펄스다. sticky·W1C·발화 우선은 fault 표면(CapWord 와 같은 부류)의 몫. *)
 (*   (미적중 sticky 는 다르다 — 그 해제 문이 이 모델의 `0xE10` 이라 set·해제 *)
-(*   순서를 여기서 싣는다: 발견 4.)                                        *)
+(*   순서를 여기서 싣는다: 판정 4.)                                        *)
 (* · 시간 — 사이클 수. 모델은 스텝이 원자적이고 비시간적이라 하류 거부의   *)
 (*   도달성을 *과대* 근사한다 (RTL 에서는 LO 한 사이클이 슬롯 커밋을 기다려 *)
 (*   주므로 LO→HI 교대 기입은 거부를 만나지 않고, 같은 항목 HI 연속만      *)
@@ -185,37 +202,52 @@
 (*   남으면 authority 가 둘이 되고, 하류 거부가 외부 행위자에 매이며, 같은 *)
 (*   파티션 flush 와 설치가 한 사이클에 겹칠 수 있다. 그 갈래는 모델 밖이다 *)
 (*   (RTL 파도의 은퇴·중재 의무).                                          *)
-(* · 형상 밖 항목 주소 — e-defined.typ:424 「없는 값이 표현 자체가 불가능하다」 *)
-(*   를 받아 모델의 항목 주소는 전부 실재한다. 그 문장은 형상 = 상한일 때만 *)
-(*   참이다 — e-defined.typ:799 「형상은 그 상한 아래에서 자유이고」. 오늘의 *)
-(*   유일한 elaboration 은 상한 그대로라 무해하다 (아래 발견 3).           *)
+(* · 색인 축의 형상 밖 주소 — `addr[6:3]` 은 이 구현에서 색인 16 고정이라  *)
+(*   (XlateStore 의 8 B 폭 require) 실재하지 않는 색인을 표현하지 않는다.  *)
+(*   파티션 축의 형상 밖 주소는 이제 잰다 — 가드 ent_part_exists (판정 T4). *)
 (*                                                                         *)
-(* ## 정본 문면이 닫지 않은 자리 (발견 — 판정 요청)                        *)
+(* ## 판정 — 이 모델이 정본 판정 요청으로 올렸던 넷 (전부 닫혔다)       *)
 (*                                                                         *)
-(*   1. 스테이징 소진. HI 가 스테이징을 소진하는가, flush 가 그 파티션의   *)
-(*      스테이징을 지우는가를 정본은 말하지 않는다. 이 모델은 소진하지     *)
-(*      않는다(RTL 의 설계 판정 D-3 (1) · (4) 와 같다). 귀결: flush(⑵)를    *)
-(*      건넌 옛 LO 가 뒤따르는 HI 한 워드로 커밋된다 —                     *)
-(*      Witness_NoStaleRecommit 가 반증된다(도달 가능).                    *)
-(*      e-defined.typ:180 「원자성이 구조로 성립하고 더 걸 것이」 의 읽기 — *)
-(*      XlateStaging.scala 머리와 같은 한 읽기다: 이 갈래에 무장 규율(소진 *)
-(*      포함)을 *요구하지 않는다*. 소진을 명하지도 금하지도 않고 잔재의    *)
-(*      수명을 말하지 않는다 — 비소진은 문면 위반이 아니되 문면이 고른 것도 *)
-(*      아니다(정본 판정 요청 T5 — rtl/README.md). E.12 가 같은 부류(스테이징 *)
-(*      잔재)를 무장 규율로 기계에 올린 것과 대조된다.                     *)
-(*   2. reset 직후의 래치 번호. 스테이징의 유효 비트가 문면에 없다. 이     *)
-(*      모델의 hi_needs_staging 은 :308 의 부분 기입 문장에서 유도했다 —   *)
-(*      스테이징이 빈 HI 는 「HI 만 쓴 부분 기입」이다.                    *)
-(*   3. :424 는 형상 = 상한(파티션 4 · 색인 16)일 때만 참이다. 더 작은     *)
-(*      형상에서는 `addr[8:7]`·`addr[6:3]` 이 없는 항목을 표현한다.        *)
-(*   4. 정지 중의 `0xE10` 해제는 유실된다. 미적중 sticky 의 set 이 정지     *)
-(*      *레벨*이고 발화가 해제를 이기므로(StickyFault 규약 — RTL 이 먼저   *)
-(*      정했고 cocotb 가 처음 드러냈다) 정지가 살아 있는 동안 수락된 적법  *)
-(*      해제는 fault 도 효과도 없이 사라진다. 정본 :329 는 해제 *시점*을    *)
-(*      말하지 않는다. Prop_ClearAlwaysLowers 가 반증된다(run.sh 의 발견   *)
-(*      run, MUST FAIL) — 정본이 「정지 중 해제」의 처분을 정하면 그 run 이 *)
-(*      선언과 어긋날 수 있고, 그때 모델을 고친다. 드라이버의 순서는 항목  *)
-(*      기입 → 해제다.                                                     *)
+(*   1. 스테이징의 수명 (판정 T5 (a), f229c8b) — 커밋은 소진하지 않고       *)
+(*      *수락된* flush 가 래치 파티션의 스테이징 유효를 내린다:            *)
+(*        e-defined.typ:306 「커밋은 스테이징을 소진하지 않는다」          *)
+(*        e-defined.typ:321 「다른 파티션을 래치한 스테이징은 건드리지 않는다」 *)
+(*      가드 flush_drops_staging. 판정 전에는 Witness_NoStaleRecommit 가   *)
+(*      반증되는(= 옛 LO 재커밋이 도달하는) 증인이었다 — 이제 좋은 모델의 *)
+(*      고정 속성 Inv_NoStaleRecommit 이고, 가드 삭제 판이 그 반례를 낸다. *)
+(*      기각한 두 갈래를 대안 상수 StgAlt 로 싣는다 — "consume"(커밋 소진)은 *)
+(*      Prop_FlushEndsStaging 반례, "global"(전역 비움)은                 *)
+(*      Prop_FlushStagingScoped 반례. consume 의 반례가 정본 해설의 세 스텝 *)
+(*      그대로다 — e-defined.typ:1884 「바로 위 세 스텝이 곧 반례다」      *)
+(*      (LO{p,i} → flush(p) → HI{p,i}: 커밋된 적 없는 옛 LO 는 소진이 못   *)
+(*      막는다).                                                           *)
+(*   2. reset 직후의 래치 번호 — 스테이징의 유효가 정본 문면이 됐다:        *)
+(*        e-defined.typ:306 「reset 은 빈 스테이징이고」                   *)
+(*      hi_needs_staging 은 그 문장과 빈 스테이징 HI 의 거절을 싣는다.      *)
+(*   3. 상한 아래 형상 (판정 T4 (ii)) — 항목 배열의 형상 밖 주소는 거절:   *)
+(*        e-defined.typ:424 「상한 아래 형상에서는 그 주소가 없는 파티션을 가리키고」 *)
+(*      가드 ent_part_exists · 상수 BelowCap.                              *)
+(*   4. 정지 중의 `0xE10` 해제 — 유실이 정본 문면이 됐다:                 *)
+(*        e-defined.typ:329 「정지 *중에* 쓴 해제는 유실된다」             *)
+(*      Prop_ClearAlwaysLowers 는 여전히 반증된다(run.sh MUST FAIL) —      *)
+(*      이제 그 반례가 정본의 귀결이다. 드라이버의 순서는 항목 기입 → 해제. *)
+(*                                                                         *)
+(* ## 분리 검사 (비상주 실측 — 머리의 기록이 전부다)                       *)
+(*                                                                         *)
+(*   새 가드 둘을 각각 지운 판에 *나머지* 속성 전부(가드 속성 · 고정 속성)를 *)
+(*   건 run 은 그 가드의 자기 속성과 그 귀결(flush_drops_staging →         *)
+(*   Inv_NoStaleRecommit · ent_part_exists → Prop_EntNoAlias)만 빼면 통과한다 *)
+(*   — 새 가드가 기존 계약을 깨지 않고, 기존 가드가 새 속성을 대신 지지  *)
+(*   않는다. 실측값은 run.sh 의 이 모델 절 머리에 적는다.                  *)
+(*                                                                         *)
+(* ## 규모 — 새 입력이 large 를 부풀리지 않게 (배터리 소요)               *)
+(*                                                                         *)
+(*   XlateSurface_large.cfg 는 배터리 안이고 HEAD f229c8b 판이 단일 워커   *)
+(*   약 36분이다(62,060,261 generated · 2,400,988 distinct). 그래서 새 증인 *)
+(*   셋은 ev 사건을 늘리지 않고 스텝 뒤 상태(acc · why · stale · stg)의    *)
+(*   술어로 적었고(아래 증인 절), T4 의 형상 밖 파티션 주소는 상수 BelowCap *)
+(*   = FALSE 로 끄고 전용 cfg 에서만 켠다. 대안 StgAlt 는 large 에서 "flush" *)
+(*   하나다. 개정판 large 의 실측 소요는 run.sh 이 모델 절 머리에 적는다.  *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets
 
@@ -226,9 +258,15 @@ CONSTANTS
     Junk,            \* reset 뒤 한 번도 쓰이지 않은 내용 (모델 값) — 호스트가 쓴 적 없는 프레임
     Phantom,         \* XLATE_FLUSH `[7:0]` 이 표현하지만 실재하지 않는 파티션 값 (모델 값)
     Refusal,         \* 하류 거부(install.ready = 0)의 처분 — "stall" | "reject" | "drop"
+    StgAlt,          \* 스테이징 수명의 갈래 — "flush"(판정 T5 (a)) | "consume"(커밋 소진) |
+                     \* "global"(flush 가 파티션과 무관하게 스테이징을 비움). 뒤 둘은 기각한 대안
+    BelowCap,        \* 형상 < 인코딩 상한 — TRUE 면 항목 배열 창이 없는 파티션(Phantom)의 항목
+                     \* 주소를 표현한다 (판정 T4). 전용 cfg 에서만 TRUE — large 를 부풀리지 않는다
     DisabledGuards
 
 ASSUME Refusal \in {"stall", "reject", "drop"}
+ASSUME StgAlt \in {"flush", "consume", "global"}
+ASSUME BelowCap \in BOOLEAN
 ASSUME Cardinality(Parts) >= 2 /\ Cardinality(Frames) >= 2
 ASSUME Junk \notin Frames /\ Phantom \notin Parts
 
@@ -237,17 +275,29 @@ AllGuards == {"lo_stages_only", "hi_fires", "hi_entry_match", "hi_needs_staging"
               "flush_fires", "flush_scoped", "flush_valid_only",
               "flush_part_exists", "flush_rsv_strict", "reject_loud",
               "mclr_fires", "mclr_needs_one", "mclr_rsv_strict", "mclr_keeps_stall",
-              "ro_rejected"}
+              "ro_rejected", "flush_drops_staging", "ent_part_exists"}
 On(g) == g \notin DisabledGuards
 
 Entries == Parts \X Indices
 PartOf(e) == e[1]
+\* 항목 배열 창(`0xC00` 구역)이 표현하는 항목 번호 전수. 파티션은 주소 비트 `addr[8:7]`
+\* 로 오므로 형상이 상한이면 창의 번호가 전부 실재하고(Entries), 상한 아래이면 없는
+\* 파티션의 번호가 창에 남는다 (판정 T4 — Phantom 을 그 파티션 값으로 재사용한다).
+\* IF 를 창 파티션 집합(WinParts)으로 좁혀 둔다 — 「IF BelowCap THEN 곱집합 ELSE Entries」
+\* 꼴로 적으면 TLC 1 워커 실측(작은 cfg · 한 CPU 고정)에서 상태당 비용이 약 1.3배였다
+\* (31.5 s → 23.0 s, 도달 상태 같음). 뜻은 같다.
+WinParts == IF BelowCap THEN {Phantom} ELSE {}
+WinEnts == (Parts \cup WinParts) \X Indices
+EntReal(e) == PartOf(e) \in Parts
 FrVals == Frames \cup {Junk}
 E0 == CHOOSE e \in Entries : TRUE     \* 스테이징 번호 레지스터의 reset 값
 P0 == CHOOSE p \in Parts : TRUE
 \* flush_part_exists 를 지웠을 때 없는 값이 잘려 닿는 실재 파티션 — 8b 필드를
 \* partW 비트로 자르는 배선이면 없는 값은 어떤 실재 값과 겹친다.
 Alias == P0
+\* ent_part_exists 를 지웠을 때 형상 밖 번호가 닿는 실재 항목 — 번호의 파티션 필드를
+\* partW 로 자르는 배선(commit.part := numPart.resized)이면 없는 파티션이 Alias 로 간다.
+AliasEnt(e) == IF EntReal(e) THEN e ELSE <<Alias, e[2]>>
 
 (***************************************************************************)
 (* 버스 기입 — 필드가 고른 레코드. 쓰지 않는 필드는 채움 값이며 속성은     *)
@@ -261,8 +311,8 @@ Alias == P0
 (***************************************************************************)
 Wr(k, e, f, b, q, r) == [kind |-> k, ent |-> e, fr |-> f, v |-> b, part |-> q, rsv |-> r]
 NoWrite == Wr("none", E0, Junk, FALSE, P0, FALSE)
-LoWrites == {Wr("lo", e, f, FALSE, P0, FALSE) : e \in Entries, f \in Frames}
-HiWrites == {Wr("hi", e, Junk, b, P0, FALSE) : e \in Entries, b \in BOOLEAN}
+LoWrites == {Wr("lo", e, f, FALSE, P0, FALSE) : e \in WinEnts, f \in Frames}
+HiWrites == {Wr("hi", e, Junk, b, P0, FALSE) : e \in WinEnts, b \in BOOLEAN}
 FlushWrites == {Wr("flush", E0, Junk, FALSE, q, r) : q \in Parts \cup {Phantom}, r \in BOOLEAN}
 MclrWrites == {Wr("mclr", E0, Junk, b, P0, r) : b \in BOOLEAN, r \in BOOLEAN}
 RoWrites == {Wr("ro", E0, Junk, FALSE, P0, FALSE)}
@@ -275,11 +325,12 @@ Writes == LoWrites \cup HiWrites \cup FlushWrites \cup MclrWrites \cup RoWrites
 \*   clear   미적중 sticky 해제 발화             noop   `0xE10` `[0]`=0 — W1C 의 0 쓰기
 \*   (noop 은 흡수가 아니다: 정본 :329 가 해제로 정한 것은 `[0]` 에 1 을 쓰는
 \*    기입이고, `[0]` 의 0 은 예약 비트가 아니라 「해제하지 않는다」는 적법한 값이다.)
-\*   거절 일곱 — unstaged · mismatch · phantom · rsv · refused(하류 거부를 거절로
-\*   처분) · mrsv(`0xE10` 예약 비0) · ro(RO 오프셋 쓰기)
+\*   거절 여덟 — unstaged · mismatch · phantom · rsv · refused(하류 거부를 거절로
+\*   처분) · mrsv(`0xE10` 예약 비0) · ro(RO 오프셋 쓰기) · ephantom(항목 배열의 형상
+\*   밖 주소 — 판정 T4)
 Reasons == {"none", "hold", "stage", "commit", "flush", "absorb", "clear", "noop",
-            "unstaged", "mismatch", "phantom", "rsv", "refused", "mrsv", "ro"}
-RejectReasons == {"unstaged", "mismatch", "phantom", "rsv", "refused", "mrsv", "ro"}
+            "unstaged", "mismatch", "phantom", "rsv", "refused", "mrsv", "ro", "ephantom"}
+RejectReasons == {"unstaged", "mismatch", "phantom", "rsv", "refused", "mrsv", "ro", "ephantom"}
 
 \* 증인용 스텝 사건 — 전건 도달성의 표식. 매 스텝 새로 계산된다 (sticky 아님).
 Events == {"loLive", "newFr", "kill", "stale", "flushLive", "flushOther",
@@ -291,10 +342,12 @@ NoStall == [on |-> FALSE, ent |-> E0]
 VARIABLES
     tbl,     \* [Entries -> [v, fr]] — 항목의 유효 비트와 프레임 (가시성: 채움 슬롯 + 저장 블록)
     stg,     \* [sv, ent, fr] — LO 스테이징 레지스터: 유효 · 래치된 항목 번호 · 프레임
+             \* (ent 는 기입된 번호 그대로 — ent_part_exists 를 지우면 형상 밖 번호도 래치된다)
     busy,    \* [Parts -> BOOLEAN] — 그 파티션 채움 슬롯 점유 = XlateStore install.ready 하강
     held,    \* 버스가 잡아 둔 기입 (mmio ready = 0). NoWrite = 버스 한가
     late,    \* hi_commit_whole 을 지웠을 때만 쓰인다 — 다음 에지에 앉을 프레임
-    stale,   \* 고스트 — 스테이징된 LO 가 그 파티션의 마지막 flush 보다 먼저인가 (발견 1)
+    stale,   \* 고스트 — 스테이징된 LO 가 그 파티션의 마지막 flush 보다 먼저인가 (판정 1 ·
+             \* T5). 가드 무관: flush 가 *실행된* 파티션으로 선다(스테이징 유효 하강과 별개)
     mstall,  \* 미적중 정지 — [on, ent]: 조회 요청이 유효 항목 없는 항목에서 정지했는가
     msticky, \* 미적중 sticky (XLATE_STATUS [1]) — set 은 정지 레벨, 해제는 `0xE10`
     acc,     \* 보조 — 이 스텝에 버스가 수락한 기입. NoWrite = 수락 없음
@@ -306,7 +359,7 @@ vars == <<tbl, stg, busy, held, late, stale, mstall, msticky, acc, why, loud, ev
 
 TypeOK ==
     /\ tbl \in [Entries -> [v : BOOLEAN, fr : FrVals]]
-    /\ stg \in [sv : BOOLEAN, ent : Entries, fr : FrVals]
+    /\ stg \in [sv : BOOLEAN, ent : WinEnts, fr : FrVals]
     /\ busy \in [Parts -> BOOLEAN]
     /\ held \in Writes \cup {NoWrite}
     /\ late \in [on : BOOLEAN, ent : Entries, fr : FrVals]
@@ -336,10 +389,16 @@ Init ==
 (* 정본의 적법성 — 가드와 무관하다. 속성이 이것을 쓴다 (장치가 무엇을      *)
 (* 적법하다고 *보는가*는 아래 Dev 계열이고 가드에 따라 달라진다).          *)
 (***************************************************************************)
-SpecHiOK(w) == stg.sv /\ stg.ent = w.ent
+\* 정본이 보는 스테이징 유효 — 장치의 유효 비트에서 flush 를 건넌 것(stale)을 뺀다.
+\* 가드 flush_drops_staging 이 살아 있으면 stale ⇒ ~stg.sv 라 stg.sv 와 같고, 지운
+\* 판에서도 정본의 판정(flush 뒤 스테이징은 빈다)을 그대로 든다 — 장치가 스스로
+\* 적법하다고 보는 것을 속성이 믿지 않게 한다.
+SpecStaged == stg.sv /\ ~stale
+SpecHiOK(w) == SpecStaged /\ stg.ent = w.ent /\ EntReal(w.ent)
 SpecFlOK(w) == w.part \in Parts /\ ~w.rsv
 SpecMcOK(w) == ~w.rsv
 SpecMalformed(w) ==
+    \/ (~EntReal(w.ent) /\ w.kind \in {"lo", "hi"})
     \/ (w.kind = "hi" /\ ~SpecHiOK(w))
     \/ (w.kind = "flush" /\ ~SpecFlOK(w))
     \/ (w.kind = "mclr" /\ ~SpecMcOK(w))
@@ -348,6 +407,11 @@ SpecMalformed(w) ==
 (***************************************************************************)
 (* 장치의 판정 — 가드 의존. HI 는 스테이징 유무를 먼저 본다.               *)
 (***************************************************************************)
+\* 항목 배열의 형상 밖 주소 (판정 T4) — LO · HI 둘 다. 가장 먼저 본다. 첫 연언 BelowCap 은
+\* 뜻을 바꾸지 않는다(상한 형상에서는 번호가 전부 실재한다) — 모든 기입의 처분이 이 항을
+\* 먼저 보므로 상한 형상에서 곧장 거짓으로 끊게 둔 것이다 (1 워커 실측: 이 항이 상태당 비용의
+\* 약 2할이었다 — 작은 cfg · 한 CPU 고정 23.2 s → 18.2 s).
+DevEntPhantom(w) == BelowCap /\ w.kind \in {"lo", "hi"} /\ ~EntReal(w.ent) /\ On("ent_part_exists")
 DevUnstaged(w) == ~stg.sv /\ On("hi_needs_staging")
 DevMismatch(w) == stg.ent # w.ent /\ On("hi_entry_match")
 DevHiBad(w) == DevUnstaged(w) \/ DevMismatch(w)
@@ -358,7 +422,7 @@ DevMcRsvBad(w) == w.rsv /\ On("mclr_rsv_strict")
 DevMcFires(w) == w.v \/ ~On("mclr_needs_one")
 
 \* 하류 거부 — 장치가 적법하다고 본 HI 가 채움 슬롯이 찬 파티션으로 간다.
-Refused(w) == w.kind = "hi" /\ ~DevHiBad(w) /\ busy[PartOf(w.ent)]
+Refused(w) == w.kind = "hi" /\ ~DevEntPhantom(w) /\ ~DevHiBad(w) /\ busy[PartOf(AliasEnt(w.ent))]
 
 (***************************************************************************)
 (* 수락된 기입 하나의 처분 — 모든 수락 경로(Present · Retry)가 이 하나로   *)
@@ -371,9 +435,10 @@ Refused(w) == w.kind = "hi" /\ ~DevHiBad(w) /\ busy[PartOf(w.ent)]
 (* (Wt64Top maskArea 의 「거절된 기입은 레지스터를 움직이지 않는다」 규율). *)
 (***************************************************************************)
 Dispose(w) ==
-    LET e    == w.ent
+    LET e    == AliasEnt(w.ent)   \* 장치가 닿는 항목 (가드가 살아 있으면 형상 밖 번호는 여기 오지 않는다)
         p    == PartOf(e)
-        rej  == CASE w.kind = "hi"    /\ DevUnstaged(w) -> "unstaged"
+        rej  == CASE DevEntPhantom(w)                   -> "ephantom"
+                  [] w.kind = "hi"    /\ DevUnstaged(w) -> "unstaged"
                   [] w.kind = "hi"    /\ DevMismatch(w) -> "mismatch"
                   [] w.kind = "flush" /\ DevPhantom(w)  -> "phantom"
                   [] w.kind = "flush" /\ DevRsvBad(w)   -> "rsv"
@@ -401,6 +466,15 @@ Dispose(w) ==
         F    == IF On("flush_scoped") THEN {tgt} ELSE Parts
         flushEntry(x) == [v |-> FALSE,
                           fr |-> IF On("flush_valid_only") THEN tbl[x].fr ELSE Junk]
+        \* 수락된 flush 가 스테이징의 유효를 내리는가 (판정 T5). 번호·프레임은 남는다.
+        \*   flush   래치 번호의 파티션이 그 flush 의 범위 F 안일 때 (좋은 모델)
+        \*   global  파티션과 무관하게 (기각 — E.9 6항 「하나」 · :321 「다른 파티션을
+        \*           래치한 스테이징은 건드리지 않는다」 위반)
+        \*   consume flush 는 스테이징에 닿지 않고 커밋이 소진한다 (기각 — 아래 stg')
+        dropStg == /\ d = "flush" /\ stg.sv /\ On("flush_drops_staging")
+                   /\ CASE StgAlt = "flush"   -> PartOf(stg.ent) \in F
+                        [] StgAlt = "global"  -> TRUE
+                        [] StgAlt = "consume" -> FALSE
     IN  /\ tbl' = CASE d = "stage"  ->
                          (IF On("lo_stages_only") THEN tbl
                           ELSE [tbl EXCEPT ![e].fr = w.fr])
@@ -414,7 +488,10 @@ Dispose(w) ==
         /\ late' = IF d = "commit" /\ ~On("hi_commit_whole")
                      THEN [on |-> TRUE, ent |-> e, fr |-> stg.fr]
                      ELSE late
-        /\ stg' = IF d = "stage" THEN [sv |-> TRUE, ent |-> e, fr |-> w.fr] ELSE stg
+        /\ stg' = CASE d = "stage" -> [sv |-> TRUE, ent |-> w.ent, fr |-> w.fr]
+                    [] dropStg     -> [stg EXCEPT !.sv = FALSE]
+                    [] d = "commit" /\ StgAlt = "consume" -> [stg EXCEPT !.sv = FALSE]
+                    [] OTHER       -> stg
         /\ busy' = CASE d = "commit" -> [busy EXCEPT ![p] = TRUE]
                      \* flush 는 그 파티션의 진행 중 채움도 취한다 (XlateStore flush 가지)
                      [] d = "flush"  -> [q \in Parts |-> IF q \in F THEN FALSE ELSE busy[q]]
@@ -425,7 +502,7 @@ Dispose(w) ==
         \* 해제는 정지에 닿지 않는다 — mclr_keeps_stall 을 지운 모델에서만 푼다.
         /\ mstall' = IF rel \/ (d = "clear" /\ ~On("mclr_keeps_stall"))
                        THEN NoStall ELSE mstall
-        \* set 은 정지 *레벨*이고 발화가 해제를 이긴다 (StickyFault 규약 — 발견 4).
+        \* set 은 정지 *레벨*이고 발화가 해제를 이긴다 (StickyFault 규약 — 판정 4).
         \* 정지가 살아 있던 스텝의 해제는 유실된다.
         /\ msticky' = (mstall.on \/ (msticky /\ d # "clear"))
         /\ acc' = w
@@ -472,7 +549,7 @@ Present(w) ==
 Retry ==
     /\ held # NoWrite
     /\ ~late.on
-    /\ ~busy[PartOf(held.ent)]
+    /\ ~busy[PartOf(AliasEnt(held.ent))]
     /\ held' = NoWrite
     /\ Dispose(held)
 
@@ -565,15 +642,16 @@ Prop_UnstagedRejected ==
           => (why' \in RejectReasons /\ tbl' = tbl) ]_vars
 
 \* hi_commit_whole — 커밋 스텝이 스테이징 프레임까지 그 항목에 앉히고,
-\* 다른 항목은 건드리지 않는다.
+\* 다른 항목은 건드리지 않는다. (형상 밖 번호의 커밋은 이 속성이 아니라
+\* Prop_EntPhantomRejected · Prop_EntNoAlias 의 몫이다 — 그 번호는 표에 없다.)
 Prop_HiCommitWhole ==
-    [][ (acc'.kind = "hi" /\ why' = "commit")
+    [][ (acc'.kind = "hi" /\ why' = "commit" /\ EntReal(acc'.ent))
           => (/\ tbl'[acc'.ent].fr = stg.fr
               /\ \A x \in Entries \ {acc'.ent} : tbl'[x] = tbl[x]) ]_vars
 
 \* hi_v_carried — 커밋된 항목의 유효는 HI `[31]` 그 값이다.
 Prop_ValidFromV ==
-    [][ (acc'.kind = "hi" /\ why' = "commit") => tbl'[acc'.ent].v = acc'.v ]_vars
+    [][ (acc'.kind = "hi" /\ why' = "commit" /\ EntReal(acc'.ent)) => tbl'[acc'.ent].v = acc'.v ]_vars
 
 \* flush_fires — 적법한 flush 뒤 그 파티션의 항목은 전부 무효다.
 Prop_FlushClears ==
@@ -604,7 +682,7 @@ Prop_RejectLoud ==
     [][ why' \in RejectReasons => loud' ]_vars
 
 \* mclr_fires — 적법한 `[0]`=1 해제는 (정지가 없으면) 미적중 sticky 를 내린다.
-\* 정지 중의 해제는 이 속성의 전건 밖이다 — 발견 4 (Prop_ClearAlwaysLowers).
+\* 정지 중의 해제는 이 속성의 전건 밖이다 — 판정 4 (Prop_ClearAlwaysLowers).
 Prop_MclrClears ==
     [][ (acc'.kind = "mclr" /\ acc'.v /\ SpecMcOK(acc') /\ ~mstall.on) => ~msticky' ]_vars
 
@@ -628,6 +706,19 @@ Prop_RoRejected ==
           => (/\ why' \in RejectReasons
               /\ tbl' = tbl /\ stg' = stg /\ mstall' = mstall /\ msticky' = msticky) ]_vars
 
+\* flush_drops_staging — flush(임대 회전 ⑵)를 건넌 스테이징 위의 HI 는 번호와 무관하게
+\* 거절되고 표는 불변이다 (판정 T5 — E.1.2 `0xC00` · `0xE00` 행 · E.9 6항 ⑵). 전건 stale 은
+\* 가드 무관 고스트다: 가드를 지운 장치는 스테이징을 유효로 들고 있고, 그때 같은
+\* 번호의 HI 한 워드가 옛 임대의 프레임을 새 임대의 태그·V 로 커밋한다.
+Prop_FlushEndsStaging ==
+    [][ (acc'.kind = "hi" /\ stale) => (why' \in RejectReasons /\ tbl' = tbl) ]_vars
+
+\* ent_part_exists — 항목 배열의 형상 밖 주소(없는 파티션)의 LO · HI 는 거절되고 표도
+\* 스테이징도 움직이지 않는다 (판정 T4 — 「없는 파티션 값의 처분」 말미).
+Prop_EntPhantomRejected ==
+    [][ (~EntReal(acc'.ent) /\ acc'.kind \in {"lo", "hi"})
+          => (why' \in RejectReasons /\ tbl' = tbl /\ stg' = stg) ]_vars
+
 (***************************************************************************)
 (* 가드 아님 — 고정 의미의 속성. 좋은 모델 cfg 와 처분 대안 짝이 쓴다.     *)
 (***************************************************************************)
@@ -650,6 +741,29 @@ Prop_TableByDoor ==
 Inv_ValidFrameWritten ==
     \A x \in Entries : tbl[x].v => tbl[x].fr # Junk
 
+\* 판정 T5 의 격리 귀결 — flush 를 건넌 옛 LO 는 V 와 무관하게 다시 커밋되지 않는다.
+\* 판정 전에는 이것의 부정이 증인(Witness_NoStaleRecommit, MUST FAIL)이었다 — 옛 LO
+\* 재커밋이 도달했다. 가드 flush_drops_staging 을 지운 판이 그 반례를 그대로 낸다.
+Inv_NoStaleRecommit == "stale" \notin ev
+
+\* 판정 T5 의 범위 — 실재 파티션의 수락된 flush 는 다른 파티션을 래치한 스테이징을
+\* 건드리지 않는다 (E.1.2 `0xE00` 행). 대안 StgAlt = "global" 이 이것을 깬다.
+Prop_FlushStagingScoped ==
+    [][ (acc'.kind = "flush" /\ why' = "flush" /\ acc'.part \in Parts
+         /\ PartOf(stg.ent) # acc'.part) => stg' = stg ]_vars
+
+\* 판정 T5 — flush 가 내리는 것은 스테이징의 *유효*뿐이고 번호·프레임은 남는다
+\* (E.1.2 `0xC00` 행). 관측면에는 보이지 않는 사실이다 — 빈 스테이징의 HI 는
+\* 번호와 무관하게 거절이라 남은 번호·프레임이 쓰일 길이 없다 (후-formal 이 재지
+\* 않는 이유). 모델은 정본의 문면을 그대로 싣는다.
+Prop_FlushStagingKeepsData ==
+    [][ acc'.kind = "flush" => (stg'.ent = stg.ent /\ stg'.fr = stg.fr) ]_vars
+
+\* 판정 T4 의 격리 귀결 — 형상 밖 번호의 HI 가 실재 파티션의 항목을 움직이지 않는다
+\* (「없는 파티션 값의 처분」 말미의 별칭 금지). 가드 ent_part_exists 를 지운 판이 반례를 낸다.
+Prop_EntNoAlias ==
+    [][ (~EntReal(acc'.ent) /\ acc'.kind = "hi") => tbl' = tbl ]_vars
+
 \* 버스 정지는 영구가 아니다 (LiveSpec 아래).
 Prop_StallEnds ==
     (held # NoWrite) ~> (held = NoWrite)
@@ -664,10 +778,10 @@ Inv_StallSticky ==
 Prop_StallOnlyByEntry ==
     [][ (mstall.on /\ ~mstall'.on) => why' = "commit" ]_vars
 
-\* 발견 4 — 「적법한 해제는 언제나 sticky 를 내린다」. 좋은 모델에서 반드시
-\* 반증된다(run.sh 발견 run, MUST FAIL): 정지 중에 수락된 해제는 set(정지 레벨)
-\* 에 져서 fault 도 효과도 없이 사라진다. 정본이 정지 중 해제의 처분을 정하면
-\* 이 run 을 다시 본다.
+\* 판정 4 — 「적법한 해제는 언제나 sticky 를 내린다」. 좋은 모델에서 반드시
+\* 반증된다(run.sh MUST FAIL): 정지 중에 수락된 해제는 set(정지 레벨) 에 져서
+\* fault 도 효과도 없이 사라진다. 정본이 그 유실을 문면으로 정했다 —
+\* e-defined.typ:329 「정지 *중에* 쓴 해제는 유실된다」.
 Prop_ClearAlwaysLowers ==
     [][ (acc'.kind = "mclr" /\ acc'.v /\ SpecMcOK(acc')) => ~msticky' ]_vars
 
@@ -716,15 +830,27 @@ Witness_NoZeroLive == "zeroLive" \notin ev
 \* mclr_rsv_strict · reject_loud — 예약 위반 해제가 온다.
 Witness_NoMclrRsv == why # "mrsv"
 
-\* mclr_keeps_stall — 미적중 정지 중에 적법한 해제가 온다 (발견 4 의 전건).
+\* mclr_keeps_stall — 미적중 정지 중에 적법한 해제가 온다 (판정 4 의 전건).
 Witness_NoClearInStall == "clrStall" \notin ev
 
 \* ro_rejected · reject_loud — RO 오프셋 쓰기가 온다.
 Witness_NoRo == why # "ro"
 
-\* 발견 1 — flush 를 건넌 스테이징 잔재가 HI 한 워드로 커밋된다. 문면의
-\* 귀결을 기계에 붙잡아 두는 증인이다: 정본이 소진을 정하면 이 증인이
-\* 성립하게(= 배터리가 실패하게) 되고, 그때 이 모델을 고친다.
-Witness_NoStaleRecommit == "stale" \notin ev
+\* 아래 셋은 ev 사건을 늘리지 않고 스텝 뒤 상태의 술어로 적는다 — ev 가 상태의 일부라
+\* 사건 하나가 large 의 도달 상태를 늘린다 (머리 「규모」).
+
+\* flush_drops_staging — 스테이징이 찬 파티션의 flush 가 실행된다 (가드의 전건).
+\* stale 은 그런 flush 로만 서므로(스테이징 유효 · 래치 파티션 ∈ 실행 범위) 이 술어의
+\* 첫 도달이 곧 그 flush 의 스텝이다. 뒤따르는 같은 파티션 flush 도 술어를 만족하지만
+\* 증인이 보이는 것은 도달이므로 최단 반례가 첫 건넘이다.
+Witness_NoFlushStaged == ~(why = "flush" /\ stale /\ PartOf(stg.ent) = acc.part)
+
+\* flush_drops_staging — flush 를 건넌 스테이징 위에 *같은 번호*의 HI 가 온다 (속성의
+\* 전건 — 판정 전 RTL 이 옛 프레임을 커밋하던 입력). HI 는 stale · stg 를 움직이지
+\* 않으므로 스텝 뒤 상태가 곧 스텝 앞 상태다.
+Witness_NoStaleHi == ~(acc.kind = "hi" /\ stale /\ acc.ent = stg.ent)
+
+\* ent_part_exists · reject_loud — 항목 배열의 형상 밖 주소 기입이 온다 (BelowCap).
+Witness_NoEntPhantom == why # "ephantom"
 
 =============================================================================

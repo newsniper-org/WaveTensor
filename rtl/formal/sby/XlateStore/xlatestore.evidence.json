@@ -9,13 +9,15 @@
     "Isolation.fill_slot_per_partition",
     "XlateSurface.hi_v_carried"
   ],
-  "at": "2026-09-25T21:50:14Z",
+  "at": "2026-09-26T11:21:30Z",
   "cover": {
-    "reached": 12,
+    "reached": 14,
     "reached_names": [
       "XlateStore.u_xlate_props.w10_dark_after_flush",
       "XlateStore.u_xlate_props.w11_v0_kills",
       "XlateStore.u_xlate_props.w12_shadow_hides",
+      "XlateStore.u_xlate_props.w13_slot_busy",
+      "XlateStore.u_xlate_props.w13_split_flush",
       "XlateStore.u_xlate_props.w1_fill_hit",
       "XlateStore.u_xlate_props.w2_store_hit",
       "XlateStore.u_xlate_props.w3_body_changes",
@@ -30,12 +32,12 @@
     "unreached_names": []
   },
   "inputs": {
-    "rtl/generated/XlateStore.sv": "d1a53e0ce6f987e62a8a99792361117a4915983fec5346cf50cdaea8aea01d13",
-    "rtl/sv/assert/XlateStore_props.sv": "c399257cd4b549d062b2cdc9c876c11348447a25d833ae9a2fa1510329b5b622"
+    "rtl/generated/XlateStore.sv": "ec982336f8a26213492307e823ad09ab77edc0f86378de764ce11dd3c147e79e",
+    "rtl/sv/assert/XlateStore_props.sv": "dac3c1a5d822de473efc6191ea0197eb9d4c53909e70195fcc020e8e3a1ecdb2"
   },
   "per_task": {
     "bmc": {
-      "assert": 51,
+      "assert": 53,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -45,11 +47,11 @@
       "assert": 0,
       "const_a": 0,
       "const_en0": 0,
-      "cover": 12,
+      "cover": 14,
       "mode": "cover"
     },
     "prove": {
-      "assert": 51,
+      "assert": 53,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -57,7 +59,7 @@
     }
   },
   "sby": "rtl/formal/sby/XlateStore/xlatestore.sby",
-  "sby_sha256": "30b9924d9e9b49f4fff1d26e1f8f2a4e0f43bc9c12d5569dcb9fabb14b468e65",
+  "sby_sha256": "2ba9a28e7c0b1a19949855c150350734a389151020b9d0d497f29c7636458652",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

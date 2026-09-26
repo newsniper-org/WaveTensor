@@ -205,6 +205,7 @@ module Wt64Top (
   output wire          io_fault_cfgDupOwner,
   output wire          io_fault_cfgBadWrite,
   output wire          io_fault_cfgSurfBadWrite,
+  output wire          io_fault_fpCfgBadWrite,
   output wire          io_fault_ownCollide,
   output wire          io_fault_ownBadWrite,
   output wire          io_fault_fabricBp,
@@ -450,6 +451,10 @@ module Wt64Top (
   wire       [2:0]    hiu_io_occupancy;
   wire                hiu_io_faultPerm;
   wire                hiu_io_missNotice;
+  wire                hiu_installSlotFree;
+  wire                hiu_missStall;
+  wire       [1:0]    hiu_missPart;
+  wire       [31:0]   hiu_missVpn;
   wire       [31:0]   own_io_rdata;
   wire                own_io_rvalid;
   wire                own_io_ready;
@@ -547,6 +552,7 @@ module Wt64Top (
   wire       [1:0]    _zz_maskArea_readValue;
   wire       [7:0]    _zz_abortArea_readValue;
   wire       [2:0]    _zz_abortArea_readValue_1;
+  wire       [7:0]    _zz_xlateArea_obsStatus;
   wire                fltClrAccept;
   reg        [31:0]   tagQ_wave;
   reg        [15:0]   tagQ_thread;
@@ -644,10 +650,32 @@ module Wt64Top (
   wire                xlateArea_wrCtl;
   wire                xlateArea_isHi;
   wire                when_Wt64Top_l1714;
+  wire                xlateArea_obsRd;
+  wire       [4:0]    xlateArea_obsWord;
+  wire       [31:0]   xlateArea_obsStatus;
+  wire       [31:0]   xlateArea_obsVpnLo;
+  wire       [31:0]   xlateArea_obsVpnHi;
+  wire       [31:0]   xlateArea_obsValue;
+  reg        [31:0]   _zz_xlateArea_obsValue;
+  reg        [31:0]   xlateArea_obsReg;
+  reg                 xlateArea_obsRv;
+  wire                pageArea_selLeg;
+  wire                pageArea_legWr;
+  wire       [4:0]    pageArea_sqWord;
+  wire                pageArea_isSqRw;
+  wire                pageArea_isSqRo;
+  wire                pageArea_sqWr;
+  wire                pageArea_identWr;
+  wire                pageArea_unalWr;
+  wire                when_Wt64Top_l1780;
+  wire                fpBindArea_rej;
+  wire                when_Common_l258_1;
+  reg                 _zz_io_fault_fpCfgBadWrite;
 
   assign _zz_maskArea_readValue = maskArea_maskPart;
   assign _zz_abortArea_readValue = reasm_io_abortCount;
   assign _zz_abortArea_readValue_1 = reasm_io_incomplete;
+  assign _zz_xlateArea_obsStatus = {6'd0, hiu_missPart};
   DecodeWalk walk (
     .io_iValid         (io_instr_valid          ), //i
     .io_iInstr_0       (io_instr_words_0[31:0]  ), //i
@@ -942,6 +970,10 @@ module Wt64Top (
     .io_faultClear     (hiu_io_faultClear          ), //i
     .io_missNotice     (hiu_io_missNotice          ), //o
     .io_missClear      (hiu_io_missClear           ), //i
+    .installSlotFree   (hiu_installSlotFree        ), //o
+    .missStall         (hiu_missStall              ), //o
+    .missPart          (hiu_missPart[1:0]          ), //o
+    .missVpn           (hiu_missVpn[31:0]          ), //o
     .clk               (clk                        ), //i
     .reset             (reset                      )  //i
   );
@@ -1199,7 +1231,7 @@ module Wt64Top (
     .io_wrCtl         (xlateArea_wrCtl           ), //i
     .io_woff          (xstg_io_woff[6:0]         ), //i
     .io_wdata         (io_mmio_wdata[31:0]       ), //i
-    .io_installReady  (hiu_io_install_ready      ), //i
+    .io_installReady  (hiu_installSlotFree       ), //i
     .io_needReady     (xstg_io_needReady         ), //o
     .io_commit_valid  (xstg_io_commit_valid      ), //o
     .io_commit_part   (xstg_io_commit_part[1:0]  ), //o
@@ -1393,6 +1425,9 @@ module Wt64Top (
     if(xstg_io_badWrite) begin
       surfBadWr = 1'b1;
     end
+    if(when_Wt64Top_l1780) begin
+      surfBadWr = 1'b1;
+    end
   end
 
   assign maskArea_wordOff = io_mmio_addr[6 : 2];
@@ -1451,7 +1486,7 @@ module Wt64Top (
   assign fps_io_bindWr_key = io_mmio_wdata[15 : 0];
   assign fps_io_bindWr_en = io_mmio_wdata[31];
   assign fps_io_bindWr_slot = io_mmio_wdata[23 : 16];
-  assign when_Wt64Top_l1353 = (((fpArea_wr && fpArea_isBind) && fpArea_bindRsvBad) || (fpArea_wr && fpArea_isStatus));
+  assign when_Wt64Top_l1353 = (fpArea_wr && fpArea_isStatus);
   always @(*) begin
     fpArea_fpStat = 32'h0;
     fpArea_fpStat[0] = fps_io_loadReady;
@@ -1540,7 +1575,7 @@ module Wt64Top (
     faultWords_status[3] = io_fault_reasm;
     faultWords_status[4] = io_fault_hiuPerm;
     faultWords_status[5] = io_fault_cfgDupOwner;
-    faultWords_status[6] = (((io_fault_cfgBadWrite || io_fault_cfgSurfBadWrite) || io_fault_cqBadWrite) || io_fault_ownBadWrite);
+    faultWords_status[6] = ((((io_fault_cfgBadWrite || io_fault_cfgSurfBadWrite) || io_fault_cqBadWrite) || io_fault_ownBadWrite) || io_fault_fpCfgBadWrite);
     faultWords_status[7] = io_fault_ownCollide;
     faultWords_status[8] = io_fault_fabricBp;
     faultWords_status[9] = io_fault_sharedBp;
@@ -1589,11 +1624,11 @@ module Wt64Top (
       io_mmio_ready = fps_io_loadReady;
     end
     if(when_Wt64Top_l1714) begin
-      io_mmio_ready = hiu_io_install_ready;
+      io_mmio_ready = hiu_installSlotFree;
     end
   end
 
-  assign when_Wt64Top_l1598 = (selFp && (fpArea_isProg || fpArea_isBind));
+  assign when_Wt64Top_l1598 = (fpArea_wr && (fpArea_isProg || fpArea_isBind));
   assign mapRd = (((maskArea_rd || fpArea_rd) || abortArea_rd) || faultArea_rd);
   assign resvOffset = (! (((((((((selOwn || selCq) || selCfg) || selXent) || selXctl) || selMask) || selFp) || selAbort) || selFault) || selUnwired));
   assign resvRd = ((io_mmio_rstrobe && (! io_mmio_wstrobe)) && ((((resvOffset || selUnwired) || selXent) || selXctl) || ((((selMask || selFp) || selAbort) || selFault) && (! mmioAligned))));
@@ -1612,6 +1647,9 @@ module Wt64Top (
     if(mapRv) begin
       io_mmio_rdata = mapRdReg;
     end
+    if(xlateArea_obsRv) begin
+      io_mmio_rdata = xlateArea_obsReg;
+    end
   end
 
   assign mask_io_faultClearNoMask = (io_faultClear_maskNoMask || (fltClrAccept && io_mmio_wdata[11]));
@@ -1623,6 +1661,41 @@ module Wt64Top (
   assign xstg_io_woff = io_mmio_addr[8 : 2];
   assign hiu_io_missClear = (io_faultClear_hiuMiss || xstg_io_missClr);
   assign when_Wt64Top_l1714 = ((xlateArea_wrEnt && xlateArea_isHi) && xstg_io_needReady);
+  assign xlateArea_obsRd = (((io_mmio_rstrobe && (! io_mmio_wstrobe)) && selXctl) && mmioAligned);
+  assign xlateArea_obsWord = io_mmio_addr[6 : 2];
+  assign xlateArea_obsStatus = {{{{16'h0,_zz_xlateArea_obsStatus},6'h0},hiu_io_missNotice},hiu_missStall};
+  assign xlateArea_obsVpnLo = hiu_missVpn;
+  assign xlateArea_obsVpnHi = 32'h0;
+  always @(*) begin
+    case(xlateArea_obsWord)
+      5'h01 : begin
+        _zz_xlateArea_obsValue = xlateArea_obsStatus;
+      end
+      5'h02 : begin
+        _zz_xlateArea_obsValue = xlateArea_obsVpnLo;
+      end
+      5'h03 : begin
+        _zz_xlateArea_obsValue = xlateArea_obsVpnHi;
+      end
+      default : begin
+        _zz_xlateArea_obsValue = 32'h0;
+      end
+    endcase
+  end
+
+  assign xlateArea_obsValue = _zz_xlateArea_obsValue;
+  assign pageArea_selLeg = ((io_mmio_addr[11 : 8] == 4'b0000) || (io_mmio_addr[11 : 5] == 7'h08));
+  assign pageArea_legWr = (io_mmio_wstrobe && pageArea_selLeg);
+  assign pageArea_sqWord = io_mmio_addr[6 : 2];
+  assign pageArea_isSqRw = ((((pageArea_sqWord == 5'h0) || (pageArea_sqWord == 5'h01)) || (pageArea_sqWord == 5'h02)) || (pageArea_sqWord == 5'h04));
+  assign pageArea_isSqRo = (pageArea_sqWord == 5'h03);
+  assign pageArea_sqWr = ((io_mmio_wstrobe && selSq) && mmioAligned);
+  assign pageArea_identWr = (((io_mmio_wstrobe && selIdent) && mmioAligned) && (io_mmio_addr[5 : 2] == 4'b1111));
+  assign pageArea_unalWr = ((io_mmio_wstrobe && (! mmioAligned)) && (! ((selOwn || selCq) || selCfg)));
+  assign when_Wt64Top_l1780 = (((pageArea_legWr || (pageArea_sqWr && (pageArea_isSqRw || pageArea_isSqRo))) || pageArea_identWr) || pageArea_unalWr);
+  assign fpBindArea_rej = (((fpArea_wr && fpArea_isBind) && fpArea_bindRsvBad) && fps_io_loadReady);
+  assign when_Common_l258_1 = (fltClrAccept && io_mmio_wdata[6]);
+  assign io_fault_fpCfgBadWrite = _zz_io_fault_fpCfgBadWrite;
   always @(posedge clk) begin
     tagQ_wave <= io_instr_tag_wave;
     tagQ_thread <= io_instr_tag_thread;
@@ -1638,6 +1711,9 @@ module Wt64Top (
       mapRdReg <= 32'h0;
       mapRv <= 1'b0;
       resvRv <= 1'b0;
+      xlateArea_obsReg <= 32'h0;
+      xlateArea_obsRv <= 1'b0;
+      _zz_io_fault_fpCfgBadWrite <= 1'b0;
     end else begin
       if(when_Wt64Top_l1274) begin
         maskArea_maskPart <= maskArea_partField[1:0];
@@ -1665,6 +1741,16 @@ module Wt64Top (
         end
       end
       resvRv <= resvRd;
+      if(xlateArea_obsRd) begin
+        xlateArea_obsReg <= xlateArea_obsValue;
+      end
+      xlateArea_obsRv <= xlateArea_obsRd;
+      if(when_Common_l258_1) begin
+        _zz_io_fault_fpCfgBadWrite <= 1'b0;
+      end
+      if(fpBindArea_rej) begin
+        _zz_io_fault_fpCfgBadWrite <= 1'b1;
+      end
     end
   end
 
@@ -1717,6 +1803,7 @@ module XlateStaging (
   wire                flWr;
   wire                mcRsvBad;
   wire                mcWr;
+  wire                stgFlushDrop;
 
   assign isHi = io_woff[0];
   assign num = io_woff[6 : 1];
@@ -1751,6 +1838,7 @@ module XlateStaging (
   assign mcWr = (io_wrCtl && isMissC);
   assign io_missClr = ((mcWr && (! mcRsvBad)) && io_wdata[0]);
   assign io_badWrite = (((((loWr && entPhantom) || hiRej) || (flWr && (flRsvBad || flPartBad))) || (mcWr && mcRsvBad)) || (io_wrCtl && isCtlRo));
+  assign stgFlushDrop = ((io_flush_valid && (! loOk)) && (stgNum[5 : 4] == partField[1 : 0]));
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       stgValid <= 1'b0;
@@ -1761,6 +1849,9 @@ module XlateStaging (
         stgValid <= 1'b1;
         stgNum <= num;
         stgFrame <= io_wdata;
+      end
+      if(stgFlushDrop) begin
+        stgValid <= 1'b0;
       end
     end
   end
@@ -1998,6 +2089,7 @@ module CompletionUnit (
   wire                irqMask;
   wire                when_CompletionUnit_l572;
   wire                when_CompletionUnit_l573;
+  wire                isBase;
   wire                badWrite;
   reg                 irqSticky;
   reg                 faultOv;
@@ -2085,7 +2177,8 @@ module CompletionUnit (
   assign irqMask = irqMaskReg[0];
   assign when_CompletionUnit_l572 = (doWr && isHead);
   assign when_CompletionUnit_l573 = ((doWr && isIrqMk) && (! mkRsvBad));
-  assign badWrite = (doWr && (((isRoOff || (isSize && (sizeRsvBad || sizeValBad))) || (isIrqMk && mkRsvBad)) || (isIrqClr && clrRsvBad)));
+  assign isBase = ((io_addr == 8'h0) || (io_addr == 8'h04));
+  assign badWrite = ((io_wstrobe && (! aligned)) || (doWr && ((((isRoOff || isBase) || (isSize && (sizeRsvBad || sizeValBad))) || (isIrqMk && mkRsvBad)) || (isIrqClr && clrRsvBad))));
   assign io_irq = (irqSticky && (! irqMask));
   assign io_faultOverflow = faultOv;
   assign io_faultBadWrite = _zz_io_faultBadWrite;
@@ -5090,6 +5183,7 @@ module MmioConfig (
   reg                 chkDupOwn;
   reg                 chkBadWr;
   wire                when_MmioConfig_l408;
+  wire                chkUnalWr;
   reg                 _zz_io_faultDupOwner;
   wire                when_Common_l259;
   reg                 _zz_io_faultBadWrite;
@@ -5463,8 +5557,9 @@ module MmioConfig (
   end
 
   assign when_MmioConfig_l408 = (((8'h10 <= pSlot) || oldV) || (8'h04 <= pPoint));
+  assign chkUnalWr = (acceptW && (! aligned));
   assign io_faultDupOwner = _zz_io_faultDupOwner;
-  assign when_Common_l259 = (chkBadWr || chkLbBadWr);
+  assign when_Common_l259 = ((chkBadWr || chkLbBadWr) || chkUnalWr);
   assign io_faultBadWrite = _zz_io_faultBadWrite;
   always @(posedge clk or posedge reset) begin
     if(reset) begin
@@ -5637,6 +5732,7 @@ module OwnershipTable (
   wire                when_OwnershipTable_l323;
   wire                when_OwnershipTable_l332;
   reg                 _zz_io_faultCollide;
+  wire                when_Common_l259;
   reg                 _zz_io_faultBadWrite;
 
   always @(*) begin
@@ -5841,6 +5937,7 @@ module OwnershipTable (
   assign when_OwnershipTable_l323 = (! slotMine);
   assign when_OwnershipTable_l332 = (slotBusy && slotMine);
   assign io_faultCollide = _zz_io_faultCollide;
+  assign when_Common_l259 = (statusWr || (acceptW && (! aligned)));
   assign io_faultBadWrite = _zz_io_faultBadWrite;
   always @(posedge clk or posedge reset) begin
     if(reset) begin
@@ -6143,7 +6240,7 @@ module OwnershipTable (
       if(io_faultClearBadWrite) begin
         _zz_io_faultBadWrite <= 1'b0;
       end
-      if(statusWr) begin
+      if(when_Common_l259) begin
         _zz_io_faultBadWrite <= 1'b1;
       end
     end
@@ -6197,6 +6294,10 @@ module HiuPipeline (
   input  wire          io_faultClear,
   output wire          io_missNotice,
   input  wire          io_missClear,
+  output wire          installSlotFree,
+  output wire          missStall,
+  output wire [1:0]    missPart,
+  output wire [31:0]   missVpn,
   input  wire          clk,
   input  wire          reset
 );
@@ -6213,6 +6314,7 @@ module HiuPipeline (
   wire                xlate_io_rsp_hostPerm_w;
   wire                xlate_io_rsp_hostPerm_x;
   wire                xlate_io_install_ready;
+  wire                xlate_installSlotFree;
   wire       [2:0]    _zz_io_occupancy;
   wire       [2:0]    _zz_io_occupancy_1;
   wire       [2:0]    _zz_io_occupancy_2;
@@ -6330,6 +6432,7 @@ module HiuPipeline (
     .io_install_v       (io_install_v                ), //i
     .io_flush_valid     (io_flush_valid              ), //i
     .io_flush_part      (io_flush_part[1:0]          ), //i
+    .installSlotFree    (xlate_installSlotFree       ), //o
     .clk                (clk                         ), //i
     .reset              (reset                       )  //i
   );
@@ -6415,6 +6518,10 @@ module HiuPipeline (
   assign io_occupancy = (_zz_io_occupancy + _zz_io_occupancy_14);
   assign io_faultPerm = _zz_io_faultPerm;
   assign io_missNotice = _zz_io_missNotice;
+  assign installSlotFree = xlate_installSlotFree;
+  assign missStall = missWait;
+  assign missPart = (missWait ? s3_part : 2'b00);
+  assign missVpn = (missWait ? s3_vpn : 32'h0);
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       s1_valid <= 1'b0;
@@ -34544,12 +34651,13 @@ module XlateStore (
   input  wire          io_install_v,
   input  wire          io_flush_valid,
   input  wire [1:0]    io_flush_part,
+  output wire          installSlotFree,
   input  wire          clk,
   input  wire          reset
 );
 
   wire       [62:0]   store_spinal_port1;
-  reg                 _zz_io_install_ready;
+  reg                 _zz__zz_io_install_ready;
   reg        [3:0]    _zz_commitLine_idx;
   reg        [27:0]   _zz_commitLine_tag;
   reg        [31:0]   _zz_commitLine_frame;
@@ -34605,6 +34713,7 @@ module XlateStore (
   reg                 fillSlot_3_perm_x;
   reg                 fillSlot_3_v;
   wire                flushSamePart;
+  wire                _zz_io_install_ready;
   wire       [3:0]    _zz_1;
   wire                when_XlateStore_l200;
   wire       [3:0]    _zz_2;
@@ -34666,10 +34775,10 @@ module XlateStore (
   assign store_spinal_port1 = store[entryAddr];
   always @(*) begin
     case(io_install_part)
-      2'b00 : _zz_io_install_ready = fillPend_0;
-      2'b01 : _zz_io_install_ready = fillPend_1;
-      2'b10 : _zz_io_install_ready = fillPend_2;
-      default : _zz_io_install_ready = fillPend_3;
+      2'b00 : _zz__zz_io_install_ready = fillPend_0;
+      2'b01 : _zz__zz_io_install_ready = fillPend_1;
+      2'b10 : _zz__zz_io_install_ready = fillPend_2;
+      default : _zz__zz_io_install_ready = fillPend_3;
     endcase
   end
 
@@ -34764,6 +34873,7 @@ module XlateStore (
   end
 
   assign flushSamePart = (io_flush_valid && (io_flush_part == io_install_part));
+  assign _zz_io_install_ready = _zz__zz_io_install_ready;
   assign _zz_1 = ({3'd0,1'b1} <<< io_install_part);
   assign io_install_ready = ((! _zz_io_install_ready) && (! flushSamePart));
   assign when_XlateStore_l200 = (io_install_valid && io_install_ready);
@@ -34864,6 +34974,7 @@ module XlateStore (
   assign io_rsp_hostPerm_r = io_hostRsp_perm_r;
   assign io_rsp_hostPerm_w = io_hostRsp_perm_w;
   assign io_rsp_hostPerm_x = io_hostRsp_perm_x;
+  assign installSlotFree = (! _zz_io_install_ready);
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       validBits_0 <= 16'h0;

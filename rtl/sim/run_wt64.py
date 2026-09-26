@@ -123,10 +123,15 @@ SUITES = {
         # 생성물 변이가 일곱을 전부 통과했다.
         # 2026-09-26 15 → 16: 파도 4 D2 — ABORT_TAG1 워드 적법성 지향 시험
         # (abort_tag1_word_legality — [27:16] 사유 넷 · 에포크 수락 · 거절 무동작).
-        "expect_min": 16,
+        # 2026-09-26 16 → 21 (파도 4 통합): 페이지 통합 — page_disposition(판정 T1-i · T1-ii ·
+        # T2 · T3 의 호스트 가시 처분) · fp_clear_window(D1 (b)) · 3B — 미적중 관측 값 지향 시험 둘
+        # (xlate_miss_observed · xlate_miss_obs_second_stall) · 3A — xlate_other_flush_keeps_staging
+        # (T5 (a); xlate_hi_releases_stall 은 제자리에서 xlate_flush_ends_staging 으로 다시 썼다).
+        "expect_min": 21,
         "what": "ISA-2 순열 (LBID·LNID 존재 축) + ISA-1 자리 무관성 + 비교기 자기대조 "
                 "+ 변환 저장소 MMIO 문 (설치·flush·V=0·거절·정지 해제·인접 HI 버스 정지) "
-                "+ 소거 문 TAG1 워드 적법성",
+                "+ 소거 문 TAG1 워드 적법성 + 페이지 처분 · FP 소거 창 + 미적중 관측 값(정지 게이트 스냅샷) "
+                "+ 스테이징 수명(flush 가 끝낸다)",
     },
 }
 
@@ -234,7 +239,7 @@ UNMEASURED = [
      "재구현 MaskUnit 에 부표준키·블록 워드를 내는 포트가 없다 — 계층 peek 은 "
      "포트 계약이 아니라 SpinalHDL 명명의 우연이므로 통과 기준으로 쓰지 않는다"),
     ("FAULT_STATUS[17]·[18]",
-     "Wt64Top.sv:1554 「faultWords_status[17] = 1'b0;」 과 그 다음 줄 [18] 상수 0 — "
+     "Wt64Top.sv:1589 「faultWords_status[17] = 1'b0;」 과 그 다음 줄 [18] 상수 0 — "
      "엔트로피원·명령 디스크립터 원천 부재. "
      "0 을 「정상」으로 읽으면 안 된다"),
     ("SharedUnit·MemOrderGate 독립 .sv 의 top 대표성",

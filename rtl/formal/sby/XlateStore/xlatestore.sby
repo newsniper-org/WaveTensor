@@ -34,12 +34,12 @@
 #
 # ### 근거 — 기계로 다시 잴 수 있는 형태 (2026-08-26 실측)
 #
-#   rtl/generated/XlateStore.sv:13 「input  wire          io_lookup_valid,」 부터 모듈 포트 전수 33개
-#     (파도 3 이 io_install_v 하나를 더했다 — 채움 쪽이다). lookup 쪽은
+#   rtl/generated/XlateStore.sv:13 「input  wire          io_lookup_valid,」 부터 모듈 포트 전수 34개
+#     (파도 3 이 io_install_v 를, 파도 4 SLOTFREE 가 installSlotFree 를 더했다 — 둘 다 채움 쪽이다). lookup 쪽은
 #     {io_lookup_valid, io_lookup_part, io_lookup_vpn} 셋뿐 — ready/stall 포트가
 #     없다. ready 라는 낱말이 붙은 포트는 io_install_ready 하나이며 채움 쪽이다.
 #       확인: grep -nE 'io_lookup_(ready|stall)' rtl/generated/XlateStore.sv → 0줄
-#   rtl/generated/XlateStore.sv:68 「reg        [15:0]   validBits_0;」 부터 상태 레지스터 전수 =
+#   rtl/generated/XlateStore.sv:69 「reg        [15:0]   validBits_0;」 부터 상태 레지스터 전수 =
 #     validBits_0..3 · fillPend_0..3 · fillSlot_0..3_{idx,tag,frame,perm_r,perm_w,perm_x,v}.
 #     대기 단계에 해당하는 상태 레지스터가 없다 (그 앞의 _zz_* 는 전부
 #     always @(*) 조합 임시다 — 클럭 블록은 셋뿐이고 각각 Mem 기입 · 리셋 있는
@@ -112,6 +112,22 @@
 #     유지하는 것이다 (bind 를 지원하는 도구에서는 그대로 선다).
 # 전개 대상은 워크디렉터리 사본이다 — 저장소 사본은 불변이다. sed 프로그램은
 # yosys 스크립트의 ';' 분리·인용 전달 함정을 피해 무공백·무'$' 형태로 쓴다.
+
+#
+# ## 슬롯 여유 — 파도 4 SLOTFREE (2026-09-26)
+#
+# XlateStore 클래스 끝에 포트 installSlotFree(= !fillPend(install.part))가 생겼다. 조립
+# (Wt64Top xlateArea)의 MMIO ready 와 문의 installReady 가 install.ready 대신 이것을 먹어
+# wdata → flush.valid → install.ready → mmio ready 조합 경로가 넷리스트에서 사라진다
+# (rtl/README.md 파도 3 「구조 경로」 — 이제 수리 기록). 이 태스크가 더하는 것은 둘이고
+# 둘 다 Isolation.fill_slot_per_partition(「install.ready 는 자기 파티션 슬롯의 점유만
+# 본다」) 아래다 — 새 앵커가 아니다:
+#   a_slot_free   installSlotFree == !f_pend[io_install_part] (지상 진리 = pend 탭)
+#   a_ready_split io_install_ready == installSlotFree ∧ ¬(같은 파티션 flush) — 두 신호의 차이가
+#                 flush 충돌 항 하나라는 핀. 배타가 깨진 사이클의 설치는 이 블록이 flush
+#                 우선으로 버린다 — 그 배타는 조립 하네스 a_xonehot 이 잰다
+#   증인 W13 (w13_split_flush · w13_slot_busy) — 두 신호가 실제로 갈리고, 슬롯이 실제로 찬다.
+# 셀: assert 51 → 53 (bmc · prove) · cover 12 → 14 (cover). 위 「항진 검사 실측」 절의 49 · 10 은 2026-08-26 판이다.
 
 [tasks]
 bmc

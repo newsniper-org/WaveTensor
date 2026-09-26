@@ -127,7 +127,7 @@
 // ## MMIO 자리 — 정본 E.1.2 「완료 방향 — 0x300 구역」 그대로
 //
 // 상위 데코더가 `0x300`–`0x37F` 를 갈라 이 모듈에 넣는다 — addr 는 구역 안
-// 바이트 오프셋이다. 표에 없는 오프셋·비정렬 접근은 예약 *오프셋* 정책이다
+// 바이트 오프셋이다. 표에 없는 *정렬* 오프셋·비정렬 *읽기*는 예약 *오프셋* 정책이다 (비정렬 *쓰기*는 거절 + loud — 판정 T2)
 // (§3.7 — 쓰기 무시 · 읽기 0. 명령 인코딩의 예약 *필드*와 정반대 정책임에
 // 주의 — 그쪽은 0 이 아니면 malformation 이다).
 //
@@ -136,8 +136,8 @@
 // 배정 원칙 넷을 적용해 워드를 전수로 확정했다. 값의 단일 출처는 그 표 하나다
 // — 아래 상수는 그것의 전사이며, 이 파일이 새로 정하는 오프셋은 하나도 없다.
 //
-//   +0x00 CQ_BASE_LO   RW  UNWIRED — 링 기저 하위 32b (이 링은 장치 상주)
-//   +0x04 CQ_BASE_HI   RW  UNWIRED — 상위 32b (LO 스테이징 · HI 커밋 발화)
+//   +0x00 CQ_BASE_LO   RW  UNWIRED — 쓰기 거절 + loud · 읽기 0 (판정 T1-i β) — 링 기저 하위 32b (이 링은 장치 상주)
+//   +0x04 CQ_BASE_HI   RW  UNWIRED — 쓰기 거절 + loud · 읽기 0 (판정 T1-i β) — 상위 32b (LO 스테이징 · HI 커밋 발화)
 //   +0x08 CQ_SIZE      RW  [4:0] log2(엔트리 수) · [31:5] 예약 = 0 (엄격)
 //   +0x0C CQ_HEAD      RW  소비 색인 — *호스트 갱신* (E.5 표의 RW 그대로)
 //   +0x10 CQ_TAIL      RO  생산 색인 — *장치 갱신* (E.5 표의 RO 그대로)
@@ -169,7 +169,7 @@
 //
 // CQ_BASE_LO/HI 는 *표에 있는* 워드인데 이 구현에 소비자가 없다 — 링이 장치
 // 상주(내부 `Mem`)라 기저 주소를 소비하지 않기 때문이다 (정본 E.1.3 등재).
-// 지금의 전기적 처분은 예약과 같지만(쓰기 무시 · 읽기 0) *사실*이 다르므로
+// 처분은 정본 E.1.3 규범 끝(소비 회로가 없는 RW 워드 — 판정 T1-i β)이다: 쓰기 거절 + loud · 읽기 0. 예약(쓰기 무시)과 *사실*이 다르므로
 // 이름 있는 상수와 `UNWIRED` 주석을 갖는다 — 다음 사람이 「예약인가 미배선
 // 인가」를 물었을 때 답이 코드에 있어야 한다 (`object Wt64Top` 의 같은 처분).
 // 명령 방향(`0x380`–`0x3FF`)은 이 모듈의 구역이 아예 아니다 — 상위 데코더가
@@ -374,8 +374,8 @@ object CompletionUnit {
   /** UNWIRED — 표에 있고 소비자 회로가 없다. 이 링은 장치 상주(내부 `Mem`)라
     * 기저 주소를 소비하지 않는다 (정본 E.1.3 「두 링의 base」 행). 상수를
     * 두는 이유는 「예약이라 이름이 없다」와 「이름은 있는데 회로가 없다」가
-    * 다른 사실이기 때문이다 — 아래 어느 회로도 이 둘을 참조하지 않으며,
-    * *그 사실 자체가* UNWIRED 의 뜻이다. */
+    * 다른 사실이기 때문이다 — 아래 어느 회로도 이 둘을 저장·되읽기하지 않으며,
+    * *그 사실 자체가* UNWIRED 의 뜻이다 — 거절선(isBase) 하나만 둘을 본다 (판정 T1-i β: 쓰기 거절 + loud · 읽기 0). */
   val OFF_CQ_BASE_LO  = 0x00
   val OFF_CQ_BASE_HI  = 0x04
 
@@ -524,7 +524,7 @@ class CompletionUnit(val cqDepth: Int = 8) extends Component {
   val shove = io.comp.valid && full
 
   // ═══ MMIO 접근 수락 ═════════════════════════════════════════════════
-  val aligned = io.addr(1 downto 0) === 0 // 비정렬 = 예약 오프셋 정책 (§3.7)
+  val aligned = io.addr(1 downto 0) === 0 // 비정렬 *쓰기*는 거절 + loud (T2 — badWrite) · 비정렬 읽기는 0 (§3.7)
   val acceptW = io.wstrobe                 // 동시 제시면 쓰기 우선 (MmioConfig 선례)
   val acceptR = !io.wstrobe && io.rstrobe
 
@@ -572,12 +572,12 @@ class CompletionUnit(val cqDepth: Int = 8) extends Component {
   when(doWr && isHead)                 { headReg := io.wdata & B(cqDepth - 1, 32 bits) }
   when(doWr && isIrqMk && !mkRsvBad)   { irqMaskReg := io.wdata }
 
-  // CQ_BASE_LO/HI 는 여기 없다 — UNWIRED. 자리는 표에 있고 소비자가 없으므로
-  // 쓰기 무시 · 읽기 0 이며, *거절도 아니다* (이행 불가를 크게 알릴 대상은
-  // 링 기저를 실제로 쓰는 구현이 섰을 때의 일이다 — 정본 E.1.3 등재 그대로).
+  // CQ_BASE_LO/HI — UNWIRED. 소비 회로가 없는 RW 워드라 쓰기는 거절 + loud · 읽기 0 이다 (정본 E.1.3 규범 끝 · 판정 T1-i β —
+  // 레지스터만 실물화해 되읽기를 주는 것은 금지 · 소비 회로가 서면 수락으로 넓힌다). 옛 처분은 「*거절도 아니다*」였다.
+  val isBase = io.addr === OFF_CQ_BASE_LO || io.addr === OFF_CQ_BASE_HI
 
-  // 거절 — RO 오프셋 쓰기 · 예약 비트 비0 · 이행 불가 CQ_SIZE 값.
-  val badWrite = doWr && (isRoOff ||
+  // 거절 — 비정렬 쓰기(T2) · RO 오프셋 쓰기 · 소비 없는 base 쓰기(T1-i) · 예약 비트 비0 · 이행 불가 CQ_SIZE 값.
+  val badWrite = (acceptW && !aligned) || doWr && (isRoOff || isBase ||
     (isSize   && (sizeRsvBad || sizeValBad)) ||
     (isIrqMk  && mkRsvBad) ||
     (isIrqClr && clrRsvBad))

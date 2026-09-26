@@ -440,4 +440,31 @@ class HiuPipeline(val cfg: Wt64Config = Wt64Config()) extends Component {
   // 쪽도 다른 쪽을 세우지 않는다 (§3.8 폴딩 규범).
   io.faultPerm  := StickyFault(set = permViol, clear = io.faultClear)
   io.missNotice := StickyFault(set = missWait, clear = io.missClear)
+
+  // ── 파도 4 (2026-09-26) — 클래스 *끝*: :348 missWait 좌표를 밀지 않는다 ─────
+  // (xlatestore.sby · lint_postformal 이 그 줄을 축자로 인용한다). io 번들 밖 포트라
+  // 이름에 io_ 접두가 없다 — 조립층 절단 핀은 hiu__installSlotFree · hiu__miss*.
+  //
+  // 슬롯 여유 통과 (SLOTFREE) — XlateStore.installSlotFree 그대로. 조립의 MMIO ready ·
+  // 문의 installReady 가 install.ready 대신 이것을 먹는다 (XlateStore 끝 주석).
+  val installSlotFree = out port Bool()
+  installSlotFree := xlate.installSlotFree
+  // 미적중 관측 값 — 정지 게이트 스냅샷 (선-formal rtl/formal/tla/XlateObs.tla · 판정 E04 (A)).
+  // 정지 중(missWait)에만 조회 지점(s3)의 요청을 내고 정지가 없으면 0 이다. s3 은 정지
+  // 동안 advance = 0 으로 동결되므로(E.4 3항 — 정지를 푸는 것은 항목 기입뿐) 두 VPN
+  // 워드와 파티션이 같은 요청을 말한다. sticky(io.missNotice)는 위 그대로다.
+  val missStall = out port Bool()
+  val missPart  = out port UInt(partW bits)
+  val missVpn   = out port UInt(VPN_W bits)
+  missStall := missWait
+  missPart  := Mux(missWait, s3.part, U(0, partW bits))
+  missVpn   := Mux(missWait, s3.vpn, U(0, VPN_W bits))
 }
+
+// ── GUARD-MAP — 미적중 관측면(XlateObs.tla)의 파이프라인 쪽 가드 셋 (파도 4) ─────────
+// 나머지 셋(obs_stall_live · obs_sticky · obs_read_pure)은 STATUS 워드의 포장과 읽기
+// 경로가 사는 top/Wt64Top.scala 파일 끝이 든다. 파일 *끝*에 둔 것은 위 익명 when 의
+// 줄 좌표를 밀지 않기 위해서다.
+// GUARD-MAP: XlateObs.obs_part_stalled -> missPart = Mux(missWait, s3.part, 0) — 정지 중(missWait = s3.valid ∧ ¬적중)에는 조회 지점 s3 의 파티션 그 자체다. s3 는 advance 가 0 인 동안 when(advance) 밖이라 동결된다 — 정지 중에 파티션을 바꾸는 경로가 없다
+// GUARD-MAP: XlateObs.obs_vpn_stalled -> missVpn = Mux(missWait, s3.vpn, 0) — 정지 중에는 s3 의 VPN 그 자체다. 포착 레지스터가 없다 — 첫 미적중이 아니라 *지금* 정지한 요청의 VPN 이고, 해제 없이 온 둘째 정지는 둘째 요청의 VPN 을 낸다
+// GUARD-MAP: XlateObs.obs_no_residue -> missPart · missVpn 의 Mux 기본 가지가 상수 0 이다 — 정지가 없으면(missWait = 0) 조회 지점에 산 요청이 있어도 · 끝난 정지가 있었어도 0 이다. 상태가 없으므로 끝난 정지의 잔재를 들 자리가 없다

@@ -10,7 +10,7 @@
 // 워드 오프셋과 스트로브를 넘기고, 하류(HiuPipeline 이 품은 XlateStore)는
 // install · flush 두 포트로만 닿는다.
 //
-// ## GUARD-MAP — XlateSurface 열일곱 중 열여섯: 항목·flush 열하나는 여기, `0xE10` · RO 다섯은 파일 끝 (hi_v_carried 는 hiu/XlateStore.scala 끝)
+// ## GUARD-MAP — XlateSurface 열아홉 중 열여덟: 항목·flush 열하나는 여기, `0xE10` · RO 다섯과 판정 T5 · T4 둘은 파일 끝 (hi_v_carried 는 hiu/XlateStore.scala 끝)
 //
 // GUARD-MAP: XlateSurface.lo_stages_only -> LO 워드의 수락된 기입은 스테이징 세 레지스터(stgValid · stgNum · stgFrame)만 움직이고 commit.valid · flush.valid · missClr 어느 것도 세우지 않는다 — 하류 표를 움직이는 원천은 그 두 포트뿐이다 (XlateStore 의 validBits · fillPend · store 기입 원천 전수가 install · flush 둘)
 // GUARD-MAP: XlateSurface.hi_fires -> 스테이징이 차 있고 래치 번호가 그 기입의 번호와 같은 HI 워드 기입(needReady)은 하류가 받을 수 있는 사이클(installReady — 상위가 그 기입의 mmio ready 로 쓰는 바로 그 신호)에 commit.valid 를 세운다 — 흡수 가지가 없다. 수락 전(installReady = 0)의 적법 HI 는 아무것도 움직이지 않고 상위가 버스를 정지시킨다 (D-2 처분 · 모델 Refusal = "stall")
@@ -22,27 +22,27 @@
 // GUARD-MAP: XlateSurface.flush_valid_only -> DELEGATED(XlateStore) — 이 문의 flush 출력은 {valid, part} 뿐이라 데이터를 지울 채널이 없고, 지우는 범위(유효 비트 · 자기 채움 pend)와 저장 Mem 에 flush 발 쓰기 포트가 없다는 사실은 XlateStore.flush_keeps_data 가 증명한다 (xlatestore.sby)
 // GUARD-MAP: XlateSurface.flush_part_exists -> [7:0] ≥ 형상 파티션 수인 XLATE_FLUSH 는 flush.valid 를 세우지 않고 badWrite 를 세운다 — 8b 필드를 partW 로 자르는 경로가 없다 (partBad 는 maskArea 와 한 정의 — 아래 companion)
 // GUARD-MAP: XlateSurface.flush_rsv_strict -> [31:8] 비0 인 XLATE_FLUSH 는 flush.valid 를 세우지 않고 badWrite 를 세운다 (워드 안 예약 엄격)
-// GUARD-MAP: XlateSurface.reject_loud -> 거절 다섯 사유 — HI 의 스테이징 빔 · 번호 불일치 · (형상 밖 파티션) · XLATE_FLUSH 의 없는 파티션 · 예약 비0 — 가 전부 같은 사이클 badWrite 이고, 상위가 그것을 surfBadWr → FAULT_STATUS [6] sticky 로 잇는다. 거절은 하류 상태를 보지 않는다(needReady 가 아닌 HI 는 정지 없이 곧장 거절). 하류 거부(installReady = 0)는 거절이 아니라 적법 HI 의 정지다 (D-2)
+// GUARD-MAP: XlateSurface.reject_loud -> 거절 다섯 사유 — HI 의 스테이징 빔(reset · 래치 파티션 flush 뒤) · 번호 불일치 · (형상 밖 파티션 — LO 포함) · XLATE_FLUSH 의 없는 파티션 · 예약 비0 — 가 전부 같은 사이클 badWrite 이고, 상위가 그것을 surfBadWr → FAULT_STATUS [6] sticky 로 잇는다. 거절은 하류 상태를 보지 않는다(needReady 가 아닌 HI 는 정지 없이 곧장 거절). 하류 거부(installReady = 0)는 거절이 아니라 적법 HI 의 정지다 (D-2)
 //
-// ## 설계 판정 — 정본이 닫지 않은 자리 여섯 (호스트 ABI 합의 입력)
+// ## 설계 판정 — 정본이 닫지 않았던 자리 여섯 (파도 4 판정 T5 로 셋이 정본 문면이 됐다)
 //
-// 정본은 스테이징 레지스터의 번호 래치 하나만 정하고 —
+// 정본은 스테이징의 번호 래치에 더해 이제 수명까지 정한다 (판정 T5 (a), f229c8b) —
 //   e-defined.typ:306 「스테이징 레지스터는 *항목 번호를 함께 래치*하고」
-// 수명(소진 · reset · flush 와의 관계)을 말하지 않는다. 이 갈래(마지막 워드가
-// 유효 비트를 나르는 갈래)에 무장 규율(소진 포함)을 *요구하지 않는다*는 데까지다 —
+//   e-defined.typ:306 「커밋은 스테이징을 소진하지 않는다」
+// 무장 규율(소진 포함)을 걸지 않는다는 :180 의 갈래 판정은 그대로다 — 한 워드 쌍 *안의*
+// 원자성은 구조가 주고, 임대 경계를 건넌 옛 LO 는 격리의 문제라 flush 가 끊는다:
 //   e-defined.typ:180 「원자성이 구조로 성립하고 더 걸 것이」
-// 소진을 명하지도 금하지도 않고 잔재의 수명을 말하지 않는다 (모델 발견 1 과 같은 한
-// 읽기 · 정본 판정 요청 T5). 아래는 그 침묵 위의 선택이고 전부 모델이 먼저 싣는다:
+// 아래 여섯 중 (1)(2)(4) 는 정본 문면, (3)(5)(6) 은 그 위의 선택이고 전부 모델이 먼저 싣는다:
 //   (1) HI 커밋은 스테이징을 소진하지 않는다 — 같은 LO 로 HI 를 되풀이하면
 //       매번 커밋한다. 소진을 고르면 HI 하나로 V=0 무효화하는 정본 적합
-//       드라이버가 거절된다. 대가: 같은 항목의 옛 LO — flush(임대 회전 ⑵)를 건넌 것 포함 —
-//       가 HI 한 워드로 다시 커밋된다(교차 항목은 번호 래치가 막는다). 방어는 「새 임대의 항목 기입은 LO 로 시작」 호스트 규율뿐이다 — T5 · 모델 발견 1.
+//       드라이버가 거절된다. 같은 임대 안의 재커밋은 그대로 남고, flush(임대 회전 ⑵)를
+//       건넌 옛 LO 는 (4) 가 끊는다(교차 항목은 번호 래치가 막는다) — T5 · 모델 판정 1.
 //   (2) reset = 빈 스테이징 (stgValid = 0). LO 없이 온 HI 는 거절 + [6] —
 //       FAULT_STATUS [6] 폴딩 목록의 기존 원천이지 새 원천이 아니다:
 //         e-defined.typ:552 「항목 번호 불일치 · 없는 파티션 값 기입이다」
-//       모델 발견 2.
+//       모델 판정 2.
 //   (3) 번호 불일치 HI 는 거절이고 스테이징은 불변이다.
-//   (4) flush 는 스테이징에 닿지 않는다 — 이 컴포넌트에 그 배선이 없다.
+//   (4) 래치 파티션의 *수락된* flush 는 스테이징 유효를 내린다(번호·프레임은 남는다) — 파일 끝.
 //   (5) LO 재기입은 값과 번호를 덮는다 (스테이징 레지스터는 단수다).
 //   (6) 하류 거부로 수락되지 않은 HI 는 아무것도 움직이지 않는다 — 상위가
 //       mmio ready 를 내려 같은 기입을 잡아 두고, 슬롯이 비는 사이클에 그
@@ -51,13 +51,13 @@
 //       든 것과 같다). 거절될 HI 는 기다리지 않고 곧장 거절된다 — 그래서 거절
 //       선(badWrite)의 콘에 하류 상태(installReady)가 없다. ready 는 여전히
 //       *기능적으로* 주소 · 스트로브 · 상태(스테이징)만의 함수다 (wdata 비의존).
-//       ⚠ 구조적으로는 아니다 — 조합 경로 wdata → flush.valid(이 컴포넌트) →
-//       XlateStore flushSamePart → install.ready → 상위 mmio ready 덮어쓰기가
-//       넷리스트에 있다. 그 경로는 기능적으로 죽어 있다: 덮어쓰기의 전건 wrEnt
-//       (0xC00 구역)와 flush.valid 의 전건 wrCtl(0xE00 구역)이 주소 디코드로
-//       배타라, 덮어쓰기가 서는 사이클에 flush.valid = 0 이고 install.ready =
-//       !fillPend(part) 다. 기록과 이월(flush 와 무관한 slot-free 신호로 끊는 수리)은
-//       rtl/README.md 파도 3 「구조 경로」.
+//       구조적으로도 그렇다 (파도 4 SLOTFREE 수리): 판정 전에는 조합 경로 wdata →
+//       flush.valid(이 컴포넌트) → XlateStore flushSamePart → install.ready → 상위 mmio
+//       ready 덮어쓰기가 넷리스트에 있었다(기능적으로는 죽은 경로 — 두 전건 wrEnt ·
+//       wrCtl 이 주소 디코드로 배타). 이제 installReady 는 flush 와 무관한 슬롯 여유
+//       hiu.installSlotFree(= !fillPend(part))라 그 경로가 없다 — 구조 콘 검사
+//       scripts/lint_ready_cone.py 가 ready 의 조합 콘 = {addr, wstrobe} 를 잰다. 기록은
+//       rtl/README.md 파도 3 「구조 경로」 · 파도 4 3B 절.
 //
 // ## HI 권한 필드의 비트 배정 — 호스트 ABI 합의 입력
 //
@@ -68,16 +68,16 @@
 // 읽은 것이다. 하네스(XlateStaging_props.sv · Wt64Top_props.sv)가 필드 등식으로
 // 이 배정을 핀한다.
 //
-// ## 형상 밖 파티션 — 정본 판정 요청 T4
+// ## 형상 밖 파티션 — 판정 T4 (ii) (f229c8b)
 //
 //   e-defined.typ:424 「주소 비트 `addr[8:7]` 2b 이므로 없는 값이 *표현 자체가 불가능*하다」
-// 는 파티션 수가 4 일 때만 참이다 —
-//   e-defined.typ:799 「형상은 그 상한 아래에서 자유이고」
-// 파티션 2 인 형상에서는 addr[8:7] ∈ {2,3} 이 표에 있는 오프셋이면서 없는
-// 파티션이다. 처분은 XLATE_FLUSH 쪽 규범의 유추다 —
+// 는 형상이 상한(파티션 4)일 때만 할 일이 없고, 상한 아래에서는 —
+//   e-defined.typ:424 「상한 아래 형상에서는 그 주소가 없는 파티션을 가리키고」
+// 파티션 2 인 형상에서 addr[8:7] ∈ {2,3} 이 표에 있는 오프셋이면서 없는
+// 파티션이다. 처분은 판정대로 XLATE_FLUSH 쪽 규범 1항 그대로다 —
 //   e-defined.typ:414 「실재하지 않는 파티션 값의 기입은 *수락되지 않고 거절 + loud fault* 다」
-// LO · HI 모두 거절 + [6], 스테이징 부동이다. 기본 형상(4)에서 이 가지는
-// elaborate 상수 False 다.
+// LO · HI 모두 거절 + [6], 스테이징 부동이다 (entPhantom). 기본 형상(4)에서 이 가지는
+// elaborate 상수 False 다 — 파티션 2 판(XlateStagingP2.sv)을 XlateStaging/p2.sby 가 잰다.
 package wt64.top
 
 import spinal.core._
@@ -123,12 +123,12 @@ class XlateStaging(val parts: Int) extends Component {
       * 제어 구역에서는 하위 5b 가 구역 안 워드 색인이다. */
     val woff  = in port UInt(NUM_W + 1 bits)
     val wdata = in port Bits(32 bits)
-    /** 하류 수락 가능 — XlateStore `install.ready` (그 HI 의 파티션). 상위는
-      * needReady 인 HI 쓰기의 mmio ready 를 같은 신호로 구동한다. */
+    /** 하류 슬롯 여유 — HiuPipeline `installSlotFree`(XlateStore 의 !fillPend(part) — flush 와 무관). 상위는
+      * needReady 인 HI 쓰기의 mmio ready 를 같은 신호로 구동한다 (파도 4 SLOTFREE). */
     val installReady = in port Bool()
     /** 적법한 HI 쓰기 — 스테이징이 차 있고 번호가 같다. 하류 수락을 기다리는
       * 쓰기는 이것뿐이다 (상위의 ready 덮어쓰기 전건). 이 신호 자신은 wdata 를
-      * 보지 않는다 (덮어쓰기 *값*인 installReady 쪽 구조 경로는 머리 (6) ⚠). */
+      * 보지 않는다 (덮어쓰기 *값*인 installReady 도 wdata 콘이 없다 — 머리 (6)). */
     val needReady = out port Bool()
 
     /** 커밋 — XlateStore install 포트로 간다. part 는 valid 와 무관하게 그
@@ -215,6 +215,16 @@ class XlateStaging(val parts: Int) extends Component {
                  (flWr && (flRsvBad || flPartBad)) ||
                  (mcWr && mcRsvBad) ||
                  (io.wrCtl && isCtlRo)
+
+  // ── 판정 T5 (a) — 래치 파티션의 *수락된* XLATE_FLUSH 가 스테이징 유효를 내린다 ──
+  // 번호·프레임은 남는다(유효 비트만). 파티션 필드 2b 비교로 충분하다 — flush.valid ⇒
+  // [7:0] < parts ≤ 4. 같은 사이클의 수락된 LO 가 이긴다(직렬화 flush → LO): 상위의
+  // 두 구역 스트로브는 주소 디코드로 배타라 조립에서는 도달하지 않고, 문 단독(자유
+  // 입력)에서도 어느 직렬화와 같은 상태만 남긴다. 머리의 익명 when 좌표를 밀지 않게
+  // 클래스 끝에 두고 조건을 이름 붙인 신호로 둔다 (when_<파일>_l<줄> 이름을 만들지 않는다).
+  val stgFlushDrop = io.flush.valid && !loOk &&
+                     stgNum(NUM_W - 1 downto IDX_W) === partField(1 downto 0)
+  when(stgFlushDrop) { stgValid := False }
 }
 
 // ── GUARD-MAP 이어서 — XlateSurface 의 `0xE10` · RO 쓰기 다섯 (파도 3 수리, 2026-09-26) ──
@@ -230,3 +240,11 @@ class XlateStaging(val parts: Int) extends Component {
 // GUARD-MAP: XlateSurface.mclr_rsv_strict -> [31:1] 비0 인 XLATE_MISS_CLEAR 는 missClr 를 세우지 않고 badWrite 를 세운다 (워드 안 예약 엄격 — MISS_CLEAR_RSV)
 // GUARD-MAP: XlateSurface.mclr_keeps_stall -> missClr 는 commit.valid · flush.valid 어느 것의 항에도 없고 상위에서 hiu.io.missClear 하나로만 간다. HiuPipeline 의 정지 missWait = s3.valid && !xlate.io.rsp.hit 와 advance 에 missClear 항이 없다 — 정지를 푸는 것은 적중(= 그 항목의 커밋)뿐이다
 // GUARD-MAP: XlateSurface.ro_rejected -> 0xE04 · 0xE08 · 0xE0C(isCtlRo) 의 쓰기는 badWrite 를 세우고 commit · flush · missClr 어느 것도 세우지 않는다 — 흡수 가지가 없다 (loud 로 잇는 것은 reject_loud 의 surfBadWr → FAULT_STATUS [6])
+//
+// ── GUARD-MAP 이어서 — 파도 4 판정 T5 (a) · T4 (ii) 의 착지 (2026-09-26, 정본 f229c8b) ──
+//
+// 모델 XlateSurface.tla 가 같은 커밋에서 가드 둘을 실었다 (선-formal run 이 이 편집보다
+// 먼저다). 머리가 아니라 끝에 둔 것은 위와 같은 이유다.
+//
+// GUARD-MAP: XlateSurface.flush_drops_staging -> 수락된 XLATE_FLUSH(flush.valid — 예약 [31:8] = 0 · 실재 파티션)의 [1:0] 이 래치 번호의 파티션 필드 stgNum[5:4] 와 같으면 그 사이클 뒤 stgValid 가 내려간다(stgFlushDrop — 클래스 끝). stgNum · stgFrame 은 움직이지 않는다(유효 비트만). 뒤따르는 HI 는 hiLegal 의 stgValid 항에서 번호와 무관하게 거절 + badWrite 다(hi_needs_staging 과 같은 선). 다른 파티션의 flush · 거절된 flush(flush.valid = 0)는 스테이징에 닿지 않는다. 같은 사이클의 수락된 LO(loOk)가 이긴다 — 직렬화 flush → LO (상위의 두 구역 스트로브는 주소 디코드로 배타)
+// GUARD-MAP: XlateSurface.ent_part_exists -> entPhantom(항목 번호의 파티션 필드 ≥ 형상 파티션 수 — 기본 형상 4 에서 elaborate 상수 False)이면 LO 는 loOk 가 서지 않아 스테이징 세 레지스터가 부동이고 badWrite 를 세우며, HI 는 거절 + badWrite 다(needReady · commit.valid 없음) — 스테이징이 형상 밖 번호를 래치할 수 없으므로 stgNum === num 이 서지 않고, hiLegal 의 !entPhantom 항은 그 위의 중복 방어다(역-변이 P03 — 그 항만 지운 판은 생존한다). commit.part := numPart.resized 의 절단이 실재 파티션 항목을 설치하는 별칭 경로가 서지 않는다. 파티션 2 판 XlateStagingP2.sv 를 XlateStaging/p2.sby 가 잰다

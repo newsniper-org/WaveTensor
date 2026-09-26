@@ -1,8 +1,11 @@
 {
-  "anchors": [],
-  "at": "2026-09-20T11:06:28Z",
+  "anchors": [
+    "MmioPage.unaligned_rejected",
+    "MmioPage.nocons_rejected"
+  ],
+  "at": "2026-09-26T13:02:05Z",
   "cover": {
-    "reached": 12,
+    "reached": 15,
     "reached_names": [
       "CompletionUnit_formal.props.w1_word0",
       "CompletionUnit_formal.props.w1_word1",
@@ -15,18 +18,21 @@
       "CompletionUnit_formal.props.w2_full",
       "CompletionUnit_formal.props.w3_overflow",
       "CompletionUnit_formal.props.w4_empty_window",
-      "CompletionUnit_formal.props.w5_nonzero_tags"
+      "CompletionUnit_formal.props.w5_nonzero_tags",
+      "CompletionUnit_formal.props.w6_unal_wr",
+      "CompletionUnit_formal.props.w7_base_wr",
+      "CompletionUnit_formal.props.w8_unal_rd"
     ],
     "unreached": 0,
     "unreached_names": []
   },
   "inputs": {
-    "rtl/generated/CompletionUnit.sv": "ebdc40cf21d2741651eb72a8ca6d68b41edd1013af7bae51659fdd625bc6be14",
-    "rtl/sv/assert/CompletionUnit_props.sv": "29ed913dfa6cb8daf444853d5d969c192a78caa9221dcd1cfb7e6265e69bdac0"
+    "rtl/generated/CompletionUnit.sv": "86d7511c3dd6ee933bbf697fed67bfd465684db6dc7b0e8cd659c1e7f8127089",
+    "rtl/sv/assert/CompletionUnit_props.sv": "b91cf8b22a167e94aedd452b7395474baf4391b7886911afa4e8effc8c5bccf1"
   },
   "per_task": {
     "bmc": {
-      "assert": 8,
+      "assert": 11,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -36,12 +42,12 @@
       "assert": 0,
       "const_a": 0,
       "const_en0": 0,
-      "cover": 12,
+      "cover": 15,
       "mode": "cover"
     }
   },
   "sby": "rtl/formal/sby/CompletionUnit/descriptor.sby",
-  "sby_sha256": "38d2371cbec792d66e289b39ca4a2b92b3c455fcde556e4f27b5a22aba360c37",
+  "sby_sha256": "a391f32c11e1d881c5f2b97682d1c957ca245b37c3554128b61a966c108e0ab6",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS",
   "tool": "SBY v0.66",

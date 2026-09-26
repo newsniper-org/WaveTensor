@@ -16,6 +16,9 @@
 # VERIFIES: CompletionUnit.ring_encoding — E.5 1·2항: `head == tail` 빈 링 · `(tail+1) mod size == head` 가득 · 배압(io_comp_ready)이 재구성한 「가득」의 부정과 등가 · 생산 색인은 수락 사이클에만 +1 (E.5 표의 「tail 은 장치 갱신」)
 # VERIFIES: CompletionUnit.window_no_leak — 빈 링의 창 읽기는 0: 미기입 저장소를 관측면에 내지 않는다 (E.1.2 창 행). desc_full_write 와 짝 — 살아 있는 칸은 이번 기입을 내고, 살아 있지 않으면 아무것도 내지 않는다
 # VERIFIES: CompletionUnit.overflow_sticky — 가득인 링에 밀어 넣기는 loud sticky (§3.8 「오버플로」) 이며 링 상태를 움직이지 않는다 (FAB-10 동형). 발화가 해제를 이긴다 · 명시적 해제 외엔 내려가지 않는다
+# VERIFIES: CompletionUnit.unaligned_read_zero — 비정렬 읽기(주소 하위 두 비트 ≠ 0)의 응답은 다음 사이클 rvalid + 0 이다 — 창 포함 구역 전역 (03-hiu.typ:754 「비정렬 *읽기*는 0 · fault 없음이다」 · fault 없음은 축 6 등식) · 비어 있지 않은 링의 창 비정렬 읽기 증인 W8. 파도 4 W6 검토가 찾은 미측정(winSel 의 aligned 탈락이 통과한 변이 M12)을 닫는다
+# PROVES: MmioPage.unaligned_rejected — 유닛 절반(완료 구역): 비정렬 쓰기 ⇒ 다음 사이클 faultBadWrite — 거절 사유를 정본 표로 독립 재구성한 차기 상태 등식(축 6 · 증인 W6). 조립 구역과 own · cfg 는 다른 태스크다 (lint_postformal _PARTIAL 등재)
+# PROVES: MmioPage.nocons_rejected — CQ_BASE 절반: CQ_BASE_LO/HI(+0x00 · +0x04) 정렬 쓰기 ⇒ 다음 사이클 faultBadWrite (축 6 등식 · 증인 W7) · 되읽기 0 은 readValue 가 두 워드를 덮지 않는 구조다(이 태스크는 값 경로를 창 읽기로만 잰다). 명령 링 넷(0x380–0x390)은 Wt64Top/assembly.sby (lint_postformal _PARTIAL 등재)
 #
 # ══ 이 태스크가 재지 *않는* 것 — 정직 표기 ═══════════════════════════════
 #
@@ -27,8 +30,10 @@
 #    그림자` 인데 링 저장소가 포트로 노출되지 않아 적을 수 없다. BMC 는
 #    reset 부터 깊이 14 까지 전수이고, 잔류의 일반형이 그 초기 상태에 있다.
 #    「덮인 깊이 안에서 전수」와 「무한 깊이」는 다르다 — 그 차이가 여기 있다.
-#  · 드레인 집계(E.11) · IRQ 마스크(E.6) · 거절된 구성 기입(E.1.1)은 이
-#    태스크의 축이 아니다. 후속 파도 몫이며 미측정이지 통과가 아니다.
+#  · 드레인 집계(E.11) · IRQ 마스크(E.6)는 이 태스크의 축이 아니다. 후속 파도
+#    몫이며 미측정이지 통과가 아니다. 거절된 구성 기입(E.1.1)은 파도 4 가 축 6 으로
+#    세웠다 — sticky 의 차기 상태 등식(비정렬 · RO · CQ_BASE · 예약 · CQ_SIZE 값). 거절된
+#    기입이 레지스터(head · IRQ 마스크)를 움직이지 않는다는 절반은 재지 않는다.
 #
 # ══ 깊이 근거 ═════════════════════════════════════════════════════════════
 #
@@ -56,9 +61,10 @@
 # 게이트) 과 cover 태스크의 증인 도달을 함께 본다. 특히 여덟 워드 색인 각각의
 # cover 가 도달해야 축 2 가 여덟 워드 전부에서 비공허다.
 #
-# 실측 (이 판): bmc assert 8 · cover 12, **cover 12 전부 도달** (여덟 워드 색인
-# + 가득 + 오버플로 + 빈 창 + 태그 전 필드 비영 되읽기). 두 태스크 합산 20 —
-# make rtl-postformal 이 `$dir-$name*` 글롭으로 세는 값이 그것이다.
+# 실측 (파도 4 페이지 통합판): bmc assert 9 · cover 14, **cover 14 전부 도달** (여덟 워드 색인
+# + 가득 + 오버플로 + 빈 창 + 태그 전 필드 비영 되읽기 + 비정렬 쓰기 거절 W6 + CQ_BASE 쓰기 거절 W7).
+# 앞 판은 assert 8 · cover 12 였다 — 축 6(거절된 구성 기입의 차기 상태 등식)이 하나 · 증인 둘을 더했다.
+# 축 6 의 변이 실측(비상주): isBase 항 탈락 · 비정렬 항 탈락 둘 다 bmc FAIL (rtl/README.md 파도 4 페이지 통합 절).
 #
 # 실행(컨테이너 전용 — 호스트 sby 금지):
 #   podman run --rm --userns=keep-id -v "$PWD:/workspace" wavetensor-dev:scala \

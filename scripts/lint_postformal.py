@@ -424,7 +424,19 @@ _LEGACY_SCHEMAS = {
 # 둘은 **상한**(늘면 실패)이다. 상한 쪽이 있는 이유: 구조 skip 과 부분 덮임은
 # 「CHECK 분모를 비우는」 방향의 부정을 가능하게 하므로, 그것을 늘리는 일은
 # 반드시 이 파일을 고치는 *명시적 서명*을 거쳐야 한다.
-_MIN_COVERED = 116     # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다.
+_MIN_COVERED = 133     # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다.
+                       # 116 → 133 (2026-09-26 실측 133 — 파도 4 통합 착지: 9 + 6 + 2 · 완전 92 → 94 · 부분 24 → 39.
+                       # 아래 세 문단은 각 축 판의 116 기준 증분 서명이다):
+                       # 116 → 125 (2026-09-26 실측 — 파도 4 페이지 통합: 신설 모델 MmioPage 의 CHECK 아홉
+                       # 전부를 Wt64Top/assembly.sby 앵커가 덮고, 유닛 태스크 셋이 unaligned_rejected ·
+                       # nocons_rejected 를 같은 이름으로 더 앵커한다 — 완전 하나 · 부분 여덟. 분모 116 → 125).
+                       # 116 → 122 (2026-09-26 실측 — 파도 4 3B: 신설 모델 XlateObs 의 CHECK 여섯을
+                       # HiuMask/hiumask.sby(파이프라인 절반 다섯) · Wt64Top/assembly.sby(포장 절반 여섯)
+                       # 앵커가 덮는다 — 부분 다섯 · 완전 하나(obs_read_pure). 분모 116 → 122).
+                       # 116 → 118 (2026-09-26 실측 — 파도 4 판정 T5 (a) · T4 (ii) 의 착지, 축 3A:
+                       # XlateSurface.tla 가드 둘(flush_drops_staging · ent_part_exists)을 문 태스크 둘
+                       # (XlateStaging/props.sby · 신설 p2.sby)과 조립 assembly.sby 앵커가 덮는다 — 둘 다
+                       # 부분(표 불변의 하류 절반 — 아래 _PARTIAL). 분모 116 → 118).
                        # 103 → 116 (2026-09-26 실측 — 파도 4: 신설 모델 AbortSurface 의 CHECK 열셋 전부를
                        # AbortStaging/props.sby(열둘) · Wt64Top/assembly.sby(셋) 앵커가 덮는다 — 완전
                        # 열둘 · 부분 하나(stage_writes_value). 분모 103 → 116. 같은 날 검토 뒤 수리로
@@ -450,7 +462,29 @@ _MIN_COVERED = 116     # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다
                        # 실측 아래 8 칸 헐거운 채로는 앵커 여덟이 조용히 사라져도
                        # 게이트가 침묵한다 (2026-09-21 전수 반증 세 렌즈가 같은
                        # 것을 지적했다).
-_MAX_PARTIAL = 24      # 부분 덮임뿐인 가드 수. 늘지 않는다 (늘리려면 근거와 함께)
+_MAX_PARTIAL = 39      # 부분 덮임뿐인 가드 수. 늘지 않는다 (늘리려면 근거와 함께)
+                       #
+                       # 24 → 39 (2026-09-26, 파도 4 통합 착지 실측 — 8 (MmioPage) + 5 (XlateObs) + 2 (XlateSurface
+                       # T5 · T4) = 15. 아래 세 문단은 각 축 판의 24 기준 증분 서명이다):
+                       # 24 → 32 (2026-09-26, 파도 4 페이지 통합 — MmioPage.tla 착지). 신설 모델의 CHECK
+                       # 아홉 중 여덟이 **태어나면서 부분**이다: 페이지 처분이 조립과 유닛 셋에 갈리고 조립
+                       # 태스크는 세 유닛을 절단한다 (위 _PARTIAL 의 파도 4 페이지 통합 머리 주석). 완전은
+                       # leg_write_rejected 하나(조립만의 표면). 완전 92 → 93 · 부분 24 → 32 (분모 116 → 125).
+                       #
+                       # 24 → 29 (2026-09-26, 파도 4 3B — XlateObs.tla 착지). 신설 모델의 CHECK 여섯 중
+                       # 다섯(obs_stall_live · obs_sticky · obs_part_stalled · obs_vpn_stalled · obs_no_residue)이
+                       # **태어나면서 부분**이다: 값의 뜻은 HiuPipeline 이 만들고(hiumask.sby 가 잰다) 워드
+                       # 포장은 Wt64Top 이 한다(assembly.sby 가 잰다) — 조립층에서 hiu 가 절단되므로 두
+                       # 태스크의 합성은 서술이다 (아래 _PARTIAL 의 파도 4 3B 머리 주석). obs_read_pure 는
+                       # 조립 명제라 완전. 같은 파도의 원장 수리(XlateSurface mclr_* 셋에 hiumask.sby 앵커를
+                       # 더함)는 이미 부분이던 가드라 이 수를 움직이지 않는다.
+                       #
+                       # 24 → 26 (2026-09-26, 파도 4 판정 T5 (a) · T4 (ii) 착지 — 축 3A). 신설 가드 둘이
+                       # **태어나면서 부분**이다: 모델 속성 Prop_FlushEndsStaging · Prop_EntPhantomRejected 가
+                       # 둘 다 tbl' = tbl 로 끝나고, 문(XlateStaging/props.sby · p2.sby)과 조립(assembly.sby)은
+                       # 「설치 핀이 서지 않는다 + 거절 loud」까지만 잰다 — 표 불변은 XlateStore 프레임 조건이다
+                       # (파도 3 반증 검토가 같은 부류 다섯을 부분으로 정정한 (a) 의 논리 그대로). p2.sby 의
+                       # flush_part_exists 앵커는 이미 부분인 가드의 셋째 앵커라 계수에 들지 않는다.
                        #
                        # 25 → 24 (2026-09-26, 파도 4 검토 뒤 수리). 아래 24 → 25 의 전제 「에포크를 재려면
                        # 코덱 배치를 굳혀야 한다」가 거짓이었다 — t_tag1_val · 조립 a_tag1_val(옛
@@ -545,7 +579,23 @@ _MAX_STRUCTURAL_RESIDUAL = 1
                        # 숨기는 것보다 낫지만, **늘어도 되는 것은 아니다.**
                        # 줄이는 길은 그 축을 실제로 재고 칸을 _NOTHING_LEFT 로
                        # 바꾸는 것뿐이다.
-_MIN_EVIDENCED = 136   # 실행 증거로 뒷받침된 앵커 수. 줄지 않는다.
+_MIN_EVIDENCED = 167   # 실행 증거로 뒷받침된 앵커 수. 줄지 않는다.
+                       #
+                       # 136 → 167 (2026-09-26, 파도 4 통합 착지 — 13 + 14 + 4. 통합 재스윕(영향 태스크 열둘)
+                       # 직후 실측: 앵커 167 전부 신선. 아래 세 문단은 각 축 판의 136 기준 증분 서명이다):
+                       # 136 → 149 (2026-09-26, 파도 4 페이지 통합 — MmioPage 앵커 열셋: assembly.sby 아홉 ·
+                       # mmio_config.sby · ownershiptable.sby 하나씩 · descriptor.sby 둘. 영향 태스크
+                       # 여덟(assembly · AbortStaging/props · XlateStaging/props · mmio_config · mmio_deep ·
+                       # route_mmio · ownershiptable · descriptor) 재스윕 직후 실측: 앵커 149 전부 신선).
+                       # 136 → 150 (2026-09-26, 파도 4 3B — XlateObs.tla 착지 · 원장 수리: hiumask.sby PROVES
+                       # +8(XlateObs 다섯 · XlateSurface mclr_* 셋) · Wt64Top/assembly.sby PROVES +6(XlateObs).
+                       # 영향 태스크 여섯(xlatestore · hiumask · engine · assembly · AbortStaging/props ·
+                       # XlateStaging/props) 재스윕 직후 실측: 앵커 150 전부 신선).
+                       #
+                       # 136 → 140 (2026-09-26, 파도 4 판정 T5 · T4 착지 — 축 3A: XlateStaging/props.sby ·
+                       # assembly.sby 의 flush_drops_staging · 신설 p2.sby 의 ent_part_exists · flush_part_exists.
+                       # 영향 태스크 넷(XlateStaging/props · XlateStaging/p2 신설 · assembly · AbortStaging) 재스윕
+                       # 직후 실측: 앵커 140 전부 신선).
                        #
                        # 121 → 136 (2026-09-26, 파도 4 — AbortSurface.tla 착지: AbortStaging/props.sby 의
                        # VERIFIES E.12.1 1·2·3항을 PROVES 열둘로 승격하고 Wt64Top/assembly.sby 가 셋을
@@ -970,20 +1020,23 @@ _PARTIAL = {
     # XlateSurface.tla 가 검토자 D-7 의 배선(0xE10 해제 · RO 세 워드 쓰기 거절)을 6.3 환류로
     # 실었다. 문 태스크가 재는 것은 문의 출력(missClr · badWrite · commit · flush)까지다.
     # 해제 핀으로의 합류와 [6] 결선은 조립 태스크의 VERIFIES Wt64Top.xlate_surface(a_miss_clr ·
-    # surfMust)이고, HiuPipeline 의 미적중 sticky(StickyFault — set 이 정지 레벨) · 정지
-    # (missWait)의 절반은 **어느 형식 태스크도 재지 않는다** — hiumask.sby 는 missNotice 를
-    # 단언하지 않는다. 값 수준은 cocotb xlate_missclear_keeps_stall.
+    # surfMust)이다. HiuPipeline 의 미적중 sticky(StickyFault — set 이 정지 레벨) · 정지
+    # (missWait)의 절반은 2026-09-26 파도 4 3B 까지 「어느 형식 태스크도 재지 않는다」로 적혀
+    # 있었다 — 정지 절반은 **틀린 계수**였다(hiumask.sby 의 정지 원천 등식이 io_missClear 자유
+    # 입력 아래 이미 서 있었다 · KEEPSTALL-LEDGER), sticky 절반은 사실이었고 파도 4 의 m_sticky 가
+    # 닫았다. 이제 셋 다 hiumask.sby 에 파이프라인 절반 앵커가 있고 세 조각(문 · 조립 합류 ·
+    # 파이프라인)의 합성은 서술이라 부분 그대로다. 값 수준은 cocotb xlate_missclear_keeps_stall.
     ("XlateSurface", "mclr_fires", "rtl/formal/sby/XlateStaging/props.sby"): (
         "문 절반 — 0xE10 의 [0]=1 · [31:1]=0 기입 ⇔ missClr 같은 사이클 (p_missclr_iff · 증인 W12)",
         "해제 핀 합류(hiu.io.missClear = IO 해제선 ∨ missClr)는 Wt64Top/assembly.sby 의 "
-        "VERIFIES Wt64Top.xlate_surface(a_miss_clr). 정지가 없을 때 StickyFault 가 그 해제로 "
-        "sticky 를 내린다는 파이프라인 절반은 어느 형식 태스크도 재지 않는다",
+        "VERIFIES Wt64Top.xlate_surface(a_miss_clr). 정지가 없을 때 그 해제로 sticky 가 내려간다는 "
+        "파이프라인 절반은 hiumask.sby m_sticky 가 잰다 — 세 조각이 각각 섰고 합성은 서술이다",
     ),
     ("XlateSurface", "mclr_needs_one", "rtl/formal/sby/XlateStaging/props.sby"): (
         "문 절반 — [0]=0 · 예약 0 의 0xE10 기입은 missClr 도 badWrite 도 세우지 않는다 "
         "(p_missclr_iff · p_bad_iff · 증인 W13)",
         "sticky 불변 — 해제 핀의 원천이 IO 해제선과 missClr 둘뿐이라는 합류(a_miss_clr)와 해제가 "
-        "없으면 sticky 가 유지된다는 StickyFault 규약. 후자는 어느 형식 태스크도 재지 않는다",
+        "없으면 sticky 가 유지된다는 StickyFault 규약(hiumask.sby m_sticky) — 세 조각의 합성은 서술이다",
     ),
     ("XlateSurface", "mclr_rsv_strict", "rtl/formal/sby/XlateStaging/props.sby"): (
         "문 절반 — [31:1] 비0 의 0xE10 기입은 missClr 없음 + badWrite (p_missclr_iff · p_bad_iff · "
@@ -994,8 +1047,75 @@ _PARTIAL = {
     ("XlateSurface", "mclr_keeps_stall", "rtl/formal/sby/XlateStaging/props.sby"): (
         "문 절반 — missClr 가 서는 기입은 commit · flush 를 세우지 않는다 (p_commit_iff · "
         "p_flush_iff — 정지를 푸는 항목 커밋의 전건에 0xE10 이 없다 · 증인 W12)",
-        "파이프라인 절반 — HiuPipeline 의 missWait · advance 에 missClear 항이 없다는 것. 어느 "
-        "형식 태스크도 재지 않는다 (값 수준은 cocotb xlate_missclear_keeps_stall 의 정지 유지 단계)",
+        "파이프라인 절반 — HiuPipeline 의 missWait · advance 에 missClear 항이 없다는 것은 "
+        "hiumask.sby 의 정지 원천 등식이 io_missClear 자유 입력 아래 잰다(원장 수리 — 종전 문면 "
+        "「어느 형식 태스크도 재지 않는다」는 과소 계수였다) · 조립 합류는 a_miss_clr — 세 조각이 "
+        "각각 섰고 합성은 서술이다 (값 수준은 cocotb xlate_missclear_keeps_stall)",
+    ),
+    ("XlateSurface", "mclr_fires", "rtl/formal/sby/HiuMask/hiumask.sby"): (
+        "파이프라인 절반 — 정지가 없을 때 io_missClear 가 미적중 sticky 를 내린다 (m_sticky · 증인 W22)",
+        "0xE10 기입의 판정(문 — XlateStaging/props.sby p_missclr_iff)과 해제 핀 합류(assembly "
+        "a_miss_clr). 세 조각의 합성은 서술이다",
+    ),
+    ("XlateSurface", "mclr_needs_one", "rtl/formal/sby/HiuMask/hiumask.sby"): (
+        "파이프라인 절반 — 해제 입력 없이는 sticky 가 내려가지 않는다 (m_sticky · 증인 W21)",
+        "[0]=0 의 0xE10 기입이 해제 핀을 세우지 않는다는 문 절반(XlateStaging/props.sby)과 조립 "
+        "합류(a_miss_clr). 합성은 서술이다",
+    ),
+    ("XlateSurface", "mclr_keeps_stall", "rtl/formal/sby/HiuMask/hiumask.sby"): (
+        "파이프라인 절반 — 정지 원천 등식 advance == !io_hold && !(s3_valid && !x_hit) 이 "
+        "io_missClear 자유 입력 아래 선다 (2026-08-31 단언 · 증인 W23 · 역-변이 H1 · H1i)",
+        "문 절반(0xE10 이 commit · flush 를 세우지 않는다 — XlateStaging/props.sby)과 조립 합류. "
+        "세 조각의 합성은 서술이다",
+    ),
+    # ── 아래 열: 미적중 관측 값 (파도 4 3B, 2026-09-26 — XlateObs.tla · 판정 E04 (A)) ──
+    #
+    # 값의 뜻(정지 게이트 스냅샷)은 HiuPipeline 이 만들고(missStall · missPart · missVpn ·
+    # io.missNotice) Wt64Top xlateArea 가 워드로 포장한다. 조립층에서 hiu 는 절단되므로 두
+    # 태스크가 가드마다 절반씩 잰다 — 파이프라인 절반(hiumask.sby — 지상 진리는 io_req_* 거울)과
+    # 포장 절반(assembly.sby — 수락 사이클 절단 핀의 워드 포장 정확 등식). 합성은 서술이다
+    # (값 수준은 cocotb xlate_miss_observed · xlate_miss_obs_second_stall). obs_read_pure 는
+    # 조립 명제(읽기가 hiu 의 해제 · 설치 · flush 입력에 닿지 않는다)라 assembly 앵커 하나로
+    # 문면이 닫혀 이 표에 없다 — hiu 쪽 「해제 없이 sticky 가 내려가지 않는다」는 obs_sticky 의 몫.
+    ("XlateObs", "obs_stall_live", "rtl/formal/sby/HiuMask/hiumask.sby"): (
+        "파이프라인 절반 — missStall == 조회 지점 로컬 미적중 (m_obs_stall · 증인 W19)",
+        "STATUS[0] 로의 포장 — Wt64Top/assembly.sby a_rd_xstatus. 합성은 서술이다",
+    ),
+    ("XlateObs", "obs_stall_live", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "포장 절반 — 0xE04 읽기의 rdata[0] = 수락 사이클의 hiu.missStall 핀 (a_rd_xstatus)",
+        "그 핀이 *지금* 정지 중인가의 레벨이라는 것 — hiu 는 절단 핀(자유)이다. hiumask.sby m_obs_stall",
+    ),
+    ("XlateObs", "obs_sticky", "rtl/formal/sby/HiuMask/hiumask.sby"): (
+        "파이프라인 절반 — io_missNotice 의 차기 상태 = 정지 ∨ (sticky ∧ ¬해제) (m_sticky · 증인 W21)",
+        "STATUS[1] 로의 포장 — assembly a_rd_xstatus. 합성은 서술이다",
+    ),
+    ("XlateObs", "obs_sticky", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "포장 절반 — rdata[1] = hiu.io.missNotice 핀 · [0] 과 다른 넷 (a_rd_xstatus · 증인 W38)",
+        "그 핀이 sticky 규약을 따른다는 것 — hiumask.sby m_sticky",
+    ),
+    ("XlateObs", "obs_part_stalled", "rtl/formal/sby/HiuMask/hiumask.sby"): (
+        "파이프라인 절반 — 정지 중 missPart = 그 요청의 파티션 (거울 f_p3 · m_obs_part · m_cap_1..3)",
+        "[15:8] 로의 0 확장 포장 — assembly a_rd_xstatus. 합성은 서술이다",
+    ),
+    ("XlateObs", "obs_part_stalled", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "포장 절반 — rdata[15:8] = hiu.missPart 핀의 0 확장 (a_rd_xstatus · 증인 W36)",
+        "핀 값이 정지한 요청의 파티션이라는 것 — hiumask.sby m_obs_part",
+    ),
+    ("XlateObs", "obs_vpn_stalled", "rtl/formal/sby/HiuMask/hiumask.sby"): (
+        "파이프라인 절반 — 정지 중 missVpn = 그 요청의 VPN (거울 f_n3 · m_obs_vpn · 역-변이 H2)",
+        "VPN 두 워드 포장(0xE08 = VPN · 0xE0C = 0) — assembly a_rd_xvpnlo · a_rd_xvpnhi. 합성은 서술이다",
+    ),
+    ("XlateObs", "obs_vpn_stalled", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "포장 절반 — 0xE08 rdata = hiu.missVpn 핀 · 0xE0C rdata = 0 (a_rd_xvpnlo · a_rd_xvpnhi · 증인 W37)",
+        "핀 값이 *지금* 정지한 요청의 VPN 이라는 것(첫 미적중 포착이 아니다) — hiumask.sby m_obs_vpn",
+    ),
+    ("XlateObs", "obs_no_residue", "rtl/formal/sby/HiuMask/hiumask.sby"): (
+        "파이프라인 절반 — 정지가 없으면 missPart · missVpn = 0 (m_obs_zero · 증인 W20 둘)",
+        "포장이 상태 없이 핀을 싣는다는 것 — assembly a_rd_xstatus · a_rd_xvpnlo. 합성은 서술이다",
+    ),
+    ("XlateObs", "obs_no_residue", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "포장 절반 — 세 워드 값이 수락 사이클 절단 핀의 포장 그 자체다 (정확 등식 · 증인 W38)",
+        "정지가 없을 때 핀이 0 이라는 것 — hiumask.sby m_obs_zero",
     ),
     ("XlateSurface", "ro_rejected", "rtl/formal/sby/XlateStaging/props.sby"): (
         "문 절반 — 0xE04 · 0xE08 · 0xE0C 쓰기 ⇒ badWrite 이고 commit · flush · missClr 없음 "
@@ -1003,6 +1123,122 @@ _PARTIAL = {
         "하류 불변 — 핀이 서지 않는 사이클의 표 불변은 XlateStore 프레임 조건(xlatestore.sby "
         "g_part $stable 가지), sticky · 정지 불변은 파이프라인 규약(재지 않음) · [6] 결선은 "
         "Wt64Top/assembly.sby surfMust",
+    ),
+    # ── 아래 열둘: 태어나면서 부분인 앵커 (2026-09-26, 파도 4 페이지 통합 — MmioPage.tla) ──
+    #
+    # 모델 MmioPage.tla 는 페이지 전역의 처분을 한 기계로 본다. RTL 에서 그 처분은 네 곳에
+    # 갈린다 — 조립이 직접 디코드하는 구역(Wt64Top) · 사상표(MmioConfig) · 소유권 표
+    # (OwnershipTable) · 완료 유닛(CompletionUnit). 조립 태스크는 세 유닛을 절단하므로 유닛
+    # 구역의 처분은 자유 핀이고, 유닛 태스크는 자기 구역만 본다. 그래서 가드 아홉 중 여덟의
+    # 조립 앵커가 부분이고 유닛 앵커 넷도 부분이다 — 합성은 서술이고, 값 수준 끝-끝은
+    # rtl/sim/test_shape_equiv.py 의 page_disposition · fp_clear_window 가 잰다 (형식 증명이
+    # 아니다). leg_write_rejected 하나만 조립만의 표면이라 완전이다.
+    ("MmioPage", "rsp_on_accept", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "조립 절반 — 유닛 rvalid 가 없는 사이클의 rvalid ⇒ 직전 사이클에 수락된 조립 구역 읽기 "
+        "(a_rv_acc) · 조립 구역 읽기는 소거를 기다리지 않는다 (a_ready_one · a_ready_fpw · 증인 W33)",
+        "유닛 절반 — own · cq · cfgBlk 의 rvalid 가 수락된 읽기에만 선다는 것. MmioConfig 는 "
+        "mmio_config.sby 의 p_rvalid_next 가 *다른 가드 이름으로* 재고, OwnershipTable · "
+        "CompletionUnit 에는 rvalid 계약 단언이 없다 (assembly.sby 「보증하지 않는 것」 (b))",
+    ),
+    ("MmioPage", "effect_on_accept", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "조립 절반 — FP_BIND 예약 거절은 수락된(loadReady) 기입에서만 별도 sticky (a_fpbad_fire · "
+        "a_fpbad_rise · 증인 W34 · W35) · 조립 sticky 는 수락 전 사건에서 서지 않는다 (a_surf_rise) · "
+        "정지된 HI 무효과 (a_xstall_noeffect)",
+        "유닛 수락 게이트 — StepSequencer 가 progWr/bindWr 를 loadReady 로 스스로 게이트한다는 것 "
+        "(그 유닛의 형식 태스크 0 건 — 값 수준은 cocotb fp_clear_window ②) · own · cq · cfgBlk 의 "
+        "acceptW 게이트는 각 유닛 태스크가 다른 단언으로 잰다",
+    ),
+    ("MmioPage", "ro_rejected", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "조립 몫 — 조립 구역 RO 워드(0xEC0 · 0xF08 · 0xF50–0xF58 · 0xF80 · 0xF88 · 0xF8C · "
+        "0xE04–0xE0C · 0x38C · 0xFFC)의 정렬 쓰기 ⇒ 조립 sticky → [6] (a_surf_fire · 증인 W4 · W31)",
+        "유닛 RO — own 0x204(ownershiptable.sby 의 statusWr 단언) · cq RO 워드(descriptor.sby 축 6 "
+        "등식) — 둘 다 *다른 가드 이름으로* 잰다",
+    ),
+    ("MmioPage", "wo_read_zero", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "조립 구역 WO 워드 읽기 ⇒ 응답 + 0 (a_rd_wo · 변환 WO 는 a_rd_resv0 · 증인 W3)",
+        "유닛 WO 의 읽기 *값* — OWN_SET/OWN_CLR(ownershiptable.sby 는 fault 없음만 잰다) · "
+        "IRQ_CLEAR(descriptor.sby 는 재지 않는다). 어느 형식 태스크도 그 0 을 재지 않는다",
+    ),
+    ("MmioPage", "resv_lenient", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "조립 구역 표에 없는 정렬 워드 오프셋의 쓰기는 조립 sticky 를 세우지 않는다 (a_surf_rise · "
+        "증인 W17) · 그 읽기와 비정렬 읽기는 응답 + 0 (a_rd_resv_rv · a_rd_resv0 · a_rd_undef · 증인 W2)",
+        "유닛 구역 표 밖 정렬 오프셋 쓰기의 무-fault — mmio_config.sby p_bad_sticky · "
+        "ownershiptable.sby sticky 건전성 단언 · descriptor.sby 축 6 등식이 *다른 가드 이름으로* 잰다",
+    ),
+    ("MmioPage", "unaligned_rejected", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "조립 몫 — own · cq · cfg 밖 비정렬 쓰기 ⇒ 조립 sticky (a_surf_fire — surfMust T2 항 · "
+        "증인 W32) · 효과 없음 (a_arm_src · a_arm_unal · 문 핀 등식)",
+        "세 유닛 구역의 비정렬 쓰기 — mmio_config.sby · ownershiptable.sby · descriptor.sby 의 같은 "
+        "가드 앵커 (셋 다 부분 — 아래)",
+    ),
+    ("MmioPage", "unaligned_rejected", "rtl/formal/sby/MmioConfig/mmio_config.sby"): (
+        "사상표 구역 — 수락된 비정렬 쓰기 ⇒ faultBadWrite (p_bad_sticky 의 h_unalW 항 · 증인 W10)",
+        "나머지 페이지 — 조립 구역(assembly.sby) · own · cq (각 유닛 태스크)",
+    ),
+    ("MmioPage", "unaligned_rejected", "rtl/formal/sby/OwnershipTable/ownershiptable.sby"): (
+        "소유권 구역 — 수락된 비정렬 쓰기 ⇒ faultBadWrite · 전이 없음 · sticky 건전성 (증인 W13)",
+        "나머지 페이지 — 조립 구역(assembly.sby) · cfg · cq (각 유닛 태스크)",
+    ),
+    ("MmioPage", "unaligned_rejected", "rtl/formal/sby/CompletionUnit/descriptor.sby"): (
+        "완료 구역 — 비정렬 쓰기 ⇒ faultBadWrite (축 6 차기 상태 등식 · 증인 W6) — bmc(유계)",
+        "나머지 페이지 — 조립 구역(assembly.sby) · cfg · own (각 유닛 태스크) · 무한 깊이 (이 태스크는 "
+        "prove 가 없다)",
+    ),
+    ("MmioPage", "nocons_rejected", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "명령 링 넷(0x380 · 0x384 · 0x388 · 0x390) 정렬 쓰기 ⇒ 조립 sticky (a_surf_fire · 증인 W30) · "
+        "읽기 응답 + 0 (resvA)",
+        "완료 링 base 둘(0x300 · 0x304) — descriptor.sby 의 같은 가드 앵커",
+    ),
+    ("MmioPage", "nocons_rejected", "rtl/formal/sby/CompletionUnit/descriptor.sby"): (
+        "완료 링 base 둘 — 정렬 쓰기 ⇒ faultBadWrite (축 6 등식 · 증인 W7) — bmc(유계)",
+        "명령 링 넷 — assembly.sby · 두 워드의 되읽기 0 (readValue 가 덮지 않는 구조 — 이 태스크는 값 "
+        "경로를 창 읽기로만 잰다)",
+    ),
+    ("MmioPage", "reject_loud", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "조립 절반 — 조립 거절 전수 ⇒ 조립 sticky (a_surf_fire) · FP_BIND 거절 ⇒ 별도 sticky "
+        "(a_fpbad_fire) · 유닛 sticky 셋과 그 둘의 FAULT_STATUS [6] 합류 (a_rd_fst · a_rd_fsum) · "
+        "0xF84[6] 해제 (a_fclr_b6 · a_surf_clear · a_fpbad_clear)",
+        "유닛 거절이 유닛 sticky 를 세우는 절반 — mmio_config.sby p_bad_sticky · ownershiptable.sby "
+        "statusWr/비정렬 단언 · descriptor.sby 축 6 이 *다른 가드 이름으로* 잰다",
+    ),
+
+    # ── 아래 넷: 파도 4 판정 T5 (a) · T4 (ii) 의 착지 (2026-09-26, 축 3A) ──
+    #
+    # 모델 속성 Prop_FlushEndsStaging · Prop_EntPhantomRejected 가 tbl' = tbl 로 끝난다 — 위 「표
+    # 불변으로 끝나는 다섯」과 같은 경계에서 같은 하류 절반이 빈다. p2.sby 는 파티션 2 판
+    # (XlateStagingP2 — 형상 밖 가지가 서는 형상)의 문 단독이고 그 형상의 조립은 어느 태스크도
+    # 재지 않는다 (assembly.sby 「보증하지 않는 것」 (g)).
+    ("XlateSurface", "flush_drops_staging", "rtl/formal/sby/XlateStaging/props.sby"): (
+        "문 절반 — 래치 파티션의 수락된 XLATE_FLUSH 뒤 LO 없이 온 HI 는 번호와 무관하게 커밋 · "
+        "정지 없음 + badWrite · 다른 파티션 flush · 거절된 flush · 같은 사이클 LO 는 스테이징을 "
+        "비우지 않는다 (그림자의 flush 하강 규칙 + p_commit_iff · p_bad_iff · p_need_iff · "
+        "t_flush_ends · 증인 W15 · W16)",
+        "표 불변 — 설치·flush 핀이 둘 다 서지 않는 사이클에 XlateStore 의 유효 비트 · 채움 pend · "
+        "슬롯 몸체가 커밋(채움 줄 → 저장, 가시성 보존) 밖으로 움직이지 않는다는 프레임 조건. "
+        "xlatestore.sby 의 g_part $stable 가지가 Isolation.capacity_partitioned · "
+        "Isolation.fill_slot_per_partition 의 이름으로 잰다 — 두 태스크의 합성은 서술이다",
+    ),
+    ("XlateSurface", "flush_drops_staging", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "문·조립 절반 — 래치 파티션의 적법 0xE00 뒤 LO 없는 HI 는 설치 핀 없음 (a_xhi_iff — 그림자 "
+        "flush 하강) + 조립 sticky (a_surf_fire) · 다른 파티션 · 거절된 flush 뒤의 적법 HI 는 "
+        "커밋 (a_xhi_iff) · 증인 W40",
+        "표 불변 — 설치·flush 핀이 둘 다 서지 않는 사이클에 XlateStore 의 유효 비트 · 채움 pend · "
+        "슬롯 몸체가 커밋(채움 줄 → 저장, 가시성 보존) 밖으로 움직이지 않는다는 프레임 조건. "
+        "xlatestore.sby 의 g_part $stable 가지가 Isolation.capacity_partitioned · "
+        "Isolation.fill_slot_per_partition 의 이름으로 잰다 — 두 태스크의 합성은 서술이다",
+    ),
+    ("XlateSurface", "ent_part_exists", "rtl/formal/sby/XlateStaging/p2.sby"): (
+        "문 절반 (파티션 2 판) — 형상 밖 주소(addr[8:7] ≥ 2)의 LO · HI 는 커밋 · 정지 없음 + "
+        "badWrite · 형상 밖 LO 는 스테이징을 쓰지 않는다 (p_ent_phantom · p_bad_iff · 그림자 갱신 "
+        "규칙 loAcc + p_commit_iff · 증인 W17 · W18)",
+        "표 불변 — XlateStore 프레임 조건(위 항목들과 같다). 그리고 파티션 2 형상의 조립 — "
+        "xlateArea 의 partW = 1 결선 · badWrite → [6] 합류는 어느 태스크도 재지 않는다 "
+        "(assembly.sby 「보증하지 않는 것」 (g))",
+    ),
+    ("XlateSurface", "flush_part_exists", "rtl/formal/sby/XlateStaging/p2.sby"): (
+        "문 절반 (파티션 2 판) — [7:0] ≥ 2 의 XLATE_FLUSH 는 flush 없음 + badWrite — 1b "
+        "flush.part 로 자르는 별칭 없음 (p_flush_iff · p_bad_iff · 증인 W19)",
+        "표 불변 — XlateStore 프레임 조건(위 항목들과 같다) · 파티션 2 형상의 조립은 재지 않는다",
     ),
 }
 

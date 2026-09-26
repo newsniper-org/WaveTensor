@@ -18,6 +18,11 @@
 //   MMIO_DEEP_COVER cover     — mmio_deep.sby 의 증인 태스크. MMIO_DEEP 과
 //                               *함께* 켠다: 다리 assume 과 서로소 단언을
 //                               그대로 둔 채 증인만 얹는다 (아래 참조)
+//   MMIO_POST       post      — mmio_config.sby. 「소거 완료 직후」 기점 유계 검사
+//                               (단언 켬 — 기능 구간 결함의 확정 FAIL, 파도 4)
+//   MMIO_DEEP_POST  post      — mmio_deep.sby. 같은 기점 + 그림자 공집합 (MMIO_DEEP 과 함께)
+//   MMIO_DEEP_IND   ind       — mmio_deep.sby. 서로소 120 쌍의 귀납 단계 — 자유 상태 기점,
+//                               모듈 단언 28 은 끈다 (MMIO_DEEP 과 함께, 파도 4)
 //
 // ## 부착 방식 — bind 대신 expose+인스턴스
 //
@@ -57,7 +62,7 @@
 // ## MMIO_DEEP_COVER (mmio_deep.sby 의 cover 태스크) — 심층의 공허 방지
 //
 // 심층 태스크는 assume 다리 둘을 *더* 얹는다. assume 은 상태 공간을 깎으므로
-// 모듈 태스크(mmio_config.sby)의 증인 9개가 도달 가능하다는 사실이 여기서
+// 모듈 태스크(mmio_config.sby)의 증인 10개가 도달 가능하다는 사실이 여기서
 // 그대로 성립한다는 보장이 없다 — 다리가 서로 모순이면 모든 것이 공허하게
 // 참이고, 셀 수 게이트도 항진 검사도 그것을 잡지 못한다. 그래서 증인을
 // *심층 태스크의 가정 아래에서* 다시 세운다.
@@ -171,6 +176,10 @@ module MmioConfig_props (
   wire        h_lnidWrite = h_acceptW && h_aligned && (h_region == 2'd1);
   wire        h_lbidWrite = h_acceptW && h_aligned && (h_region == 2'd2);
   wire        h_rsvAccess = !(h_aligned && (h_region == 2'd1 || h_region == 2'd2));
+  // 판정 T2 (a) — 수락된 비정렬 *쓰기*는 sub-word 쓰기의 장치 포트 표현이라 거절 + loud 다
+  // (정본 03-hiu.typ:754 「하위 두 비트가 0 이 아닌 *쓰기*는 어댑터가 새게 한 sub-word 쓰기의 잔재이고」).
+  // 페이지 어디서든이다 — 구역(region)을 전건에 두지 않는다. 비정렬 *읽기*는 p_rsv_read_zero 그대로.
+  wire        h_unalW     = h_acceptW && !h_aligned;
 
   wire        h_pV     = w_pWord[31];
   wire [7:0]  h_pPoint = w_pWord[23:16];
@@ -222,7 +231,41 @@ module MmioConfig_props (
 `ifdef MMIO_DEEP_COVER
   `define MMIO_POSTSWEEP_START
 `endif
+// MMIO_POST (mmio_config.sby 의 post 태스크) — 같은 「소거 완료 직후」 시작 상태에서
+// 단언을 *켠 채* 유계 검사한다. k-귀납(prove)의 반례는 reset 기점 기저가 소거 2^16
+// 사이클을 건너지 못해 UNKNOWN 으로만 나오므로, 기능 구간 결함을 확정 FAIL 로 내는
+// 태스크가 따로 있어야 변이가 「잡혔다」고 말할 수 있다 (파도 4 — 변이 U01/U02 실측).
+`ifdef MMIO_POST
+  `define MMIO_POSTSWEEP_START
+`endif
+// MMIO_DEEP_POST (mmio_deep.sby 의 post 태스크) — 심층 단언을 켠 채 「소거 완료 직후 ·
+// 그림자 공집합」에서 유계 검사한다. 이유는 위 MMIO_POST 와 같다: deep(prove)의 기저는
+// reset 기점이라 표 내용 결함의 반례가 UNKNOWN 으로만 나온다.
+`ifdef MMIO_DEEP_POST
+  `define MMIO_POSTSWEEP_START
+  `define MMIO_DEEP_EMPTY_START
+`endif
+`ifdef MMIO_DEEP_COVER
+  `define MMIO_DEEP_EMPTY_START
+`endif
+// MMIO_DEEP_IND (mmio_deep.sby 의 ind 태스크) — 서로소 불변식의 *귀납 단계*를 자유 상태
+// 기점 3 프레임 유계 검사로 잰다: 프레임 0 은 아무 상태(reset 없음 · 시작 가정 없음)에서
+// 서로소 120 쌍을 가정으로 세우고, 한 전이 뒤의 상태가 그 120 쌍을 지키는지 단언한다.
+// 모듈 단언 28 은 이 태스크에서 끈다 — 자유 상태에서는 도달 불가능한 상태가 그것들을
+// 깨므로 켜 두면 가짜 반례만 난다. 그 28 의 귀납은 mmio_config.sby prove 가 진다.
+// 근거와 정직 표기는 mmio_deep.sby 머리 「ind 태스크」 절.
+`ifdef MMIO_DEEP_IND
+  `define MMIO_FREE_START
+  `define MMIO_NO_BASE
+`endif
+`ifdef MMIO_COVER
+  `define MMIO_NO_BASE
+`endif
 
+`ifdef MMIO_FREE_START
+  // 자유 상태 기점 — reset 을 한 번도 인가하지 않고 시작 상태도 가정하지 않는다 (귀납 단계).
+  always @* assume (!reset);
+`else
 `ifndef MMIO_POSTSWEEP_START
   always @* begin
     if (!f_past_valid) assume (reset);
@@ -261,8 +304,9 @@ module MmioConfig_props (
     end
   end
 `endif
+`endif // !MMIO_FREE_START
 
-`ifndef MMIO_COVER
+`ifndef MMIO_NO_BASE
   always @(posedge clk) begin
     if (!reset) begin
       // ── 수락 규약: ready = initDone && !busy 의 관측 등가 —
@@ -394,9 +438,9 @@ module MmioConfig_props (
       //    하강 없음, 동시 해제+발화면 발화 우선.
       p_dup_sticky: assert (f_dup == ($past(w_chkDupOwn)
                                       || ($past(f_dup) && !$past(clr_dup))));
-      // faultBadWrite 는 두 축의 거절 발화선을 OR 로 받는다 (폴딩 규정
-      // ④ — LNID CHECK 거절 · LBID 예약 비트 거절).
-      p_bad_sticky: assert (f_bad == ($past(w_chkBadWr || w_chkLbBadWr)
+      // faultBadWrite 는 세 원천을 OR 로 받는다 (폴딩 규정 ④ — LNID CHECK 거절 ·
+      // LBID 예약 비트 거절 — 와 판정 T2 (a) 의 수락된 비정렬 쓰기).
+      p_bad_sticky: assert (f_bad == ($past(w_chkBadWr || w_chkLbBadWr || h_unalW)
                                       || ($past(f_bad) && !$past(clr_bad))));
     end
 
@@ -405,7 +449,7 @@ module MmioConfig_props (
       p_reset_state: assert (!f_dup && !f_bad && !w_busy && !w_initDone);
     end
   end
-`endif // !MMIO_COVER
+`endif // !MMIO_NO_BASE (MMIO_COVER · MMIO_DEEP_IND 에서 꺼진다)
 
 `ifdef MMIO_COVER
   // ═══ 도달성 증인 (cover 태스크 전용 — 단언의 공허 방지) ═══════════════
@@ -422,7 +466,7 @@ module MmioConfig_props (
   // scripts/lint_witness_map.py 가 참조 실재성만 재고 「그 궤적이 정말 그
   // 전건을 세우는가」는 재지 못한다.
   //
-  // 대상 단언들은 이 태스크에서 컴파일되지 않는다 (`ifndef MMIO_COVER`) —
+  // 대상 단언들은 이 태스크에서 컴파일되지 않는다 (`ifndef MMIO_NO_BASE`) —
   // 이 태스크가 재는 것은 **그 단언들의 전건이 도달 가능하다**는 사실이고,
   // 단언 자체는 같은 하네스의 bmc/prove 태스크가 잰다.
   always @(posedge clk) begin
@@ -462,6 +506,10 @@ module MmioConfig_props (
       // W9 ← p_chk_dup_def · p_dup_sticky · p_bad_causes_disjoint
       //      D2(중복 소유) 거절 경로의 도달.
       w9_dup_reject:  cover (w_chkDupOwn);
+      // W10 ← MmioPage.unaligned_rejected · p_bad_sticky
+      //      판정 T2 (a) — 수락된 비정렬 쓰기가 sticky 를 처음 세운다 (표·뷰 불변은
+      //      p_busy_next · p_bank_drive_iff 가 aligned 를 전건에 들어 잰다).
+      w10_unal_reject: cover (f_bad && !$past(f_bad) && $past(h_unalW));
     end
   end
 `endif
@@ -535,6 +583,11 @@ module MmioConfig_props (
                         && shL[gs*16 +: 16] == shL[gt*16 +: 16]));
             end
           end
+`ifdef MMIO_DEEP_IND
+          // 귀납 가설 — 프레임 0 의 자유 상태에서만 같은 쌍을 가정한다 (ind 태스크).
+          always @* if (!f_past_valid)
+            assume (!(shV[gs] && shV[gt] && shL[gs*16 +: 16] == shL[gt*16 +: 16]));
+`endif
         end
       end
     end
@@ -565,12 +618,10 @@ module MmioConfig_props (
   // WITNESS-RESIDUAL: reset 기점 도달성 — 소거 2^16 사이클을 BMC 가 건너지
   //   못한다. 이 태스크의 증인은 전부 「소거 완료 직후」 기점이며 reset 으로
   //   부터의 도달성을 주장하지 않는다 (위 시작 상태 절의 정직 표기 그대로).
-  always @* begin
-    if (!f_past_valid) begin
-      assume (shV == 16'b0);
-      assume (shL == 256'b0);
-    end
-  end
+  //
+  // 그 가정(그림자 공집합) 자체는 아래 MMIO_DEEP_EMPTY_START 절 한 곳에 있다 — post
+  // 태스크(MMIO_DEEP_POST)와 같은 문면을 두 벌 두면 한 벌을 지운 편집을 양성 대조가
+  // 못 잡는다 (lint_witness_map 자기시험 ⑥ — 2026-09-26 실측).
 
   // 서로 다른 두 슬롯이 동시에 소유 상태인가 — 서로소 단언 120건의 연언쌍
   // `shV[gs] && shV[gt]` 가 성립하는 상황. 짝을 고정하지 않고 존재로 쓰는
@@ -637,6 +688,20 @@ module MmioConfig_props (
       //      경로)이 한 번도 실행되지 않는다.
       d5_deep_release_clears: cover (h_release && w_fwdWrEn && w_fwdWrAddr < 8'h10
                                      && shV[w_fwdWrAddr[3:0]]);
+    end
+  end
+`endif
+
+`ifdef MMIO_DEEP_EMPTY_START
+  // 시작 상태의 그림자 절반 — 「소거 완료 = 표 공집합」. 심층 증인(MMIO_DEEP_COVER)과
+  // 심층 유계 검사(MMIO_DEEP_POST)가 함께 쓴다. 증인 쪽 근거는 위 MMIO_DEEP_COVER 절 머리
+  // (소유가 t=0 에 공짜로 주어지면 증인이 아무것도 보이지 못한다), 유계 쪽 근거는 그림자를
+  // 자유로 두면 t=0 에 이미 겹친 소유가 있을 수 있고 그것은 도달 불가능한 시작이라는 것 —
+  // 귀납(deep)은 단언 자신이 그것을 배제하지만 유계 검사는 시작 상태를 가정으로 세워야 한다.
+  always @* begin
+    if (!f_past_valid) begin
+      assume (shV == 16'b0);
+      assume (shL == 256'b0);
     end
   end
 `endif

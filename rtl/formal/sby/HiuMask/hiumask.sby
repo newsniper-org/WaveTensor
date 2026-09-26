@@ -12,6 +12,14 @@
 # PROVES: Platform.owner_check — **승인 소비 축**: granted ⊆ devOwned · 비소유의 값 차단(전건이 devOwned) · 비소유 적중의 loud fault (sticky 상승 + 명시 해제 없는 비하강). OwnershipTable 앵커(devOwned 의 데이터 원천 축)와 분업이다 — 그쪽은 「옳게 계산한다」, 이쪽은 「옳게 쓴다」
 # PROVES: Mask.key_write_own_only (2026-09-15 신설, 정본 7fa5f2e — 임대별 마스크 키) — 파티션 p 로 향한 키 기입이 있었던 에지에서 q != p 의 maskReady 비트는 그 에지를 건너 그대로다. 재구현 착수 시점 RTL(키 기입 시 전 파티션 무효화)에 걸면 반례가 난다 — §역-변이 실측 mutF.
 # PROVES: Mask.key_scoped_storage (2026-09-15 신설) — REKEY(p) 수락 다음 사이클, 엔진의 유도 초기 상태(st_4..st_11)는 keyWr 입력을 그대로 미러링하는 독립 섀도우의 p 슬롯과 같다(지상 진리를 DUT 의 key 저장 자체가 아니라 keyWr 입력에서 다시 적는다 — lookAny 규율과 같은 자리). 키가 전역 1벌이던 재구현 착수 시점 RTL 에 걸면 반례가 난다 — §역-변이 실측 mutG.
+# PROVES: XlateObs.obs_stall_live (2026-09-26 파도 4 — 미적중 관측 값) — 파이프라인 절반: missStall == 조회 지점 로컬 미적중(거울 valid f_v[3] ∧ ¬x_hit) — *지금* 정지 중인가의 레벨이지 sticky 가 아니다 (m_obs_stall · 증인 W19). STATUS[0] 로의 포장은 Wt64Top/assembly.sby (lint_postformal _PARTIAL 등재)
+# PROVES: XlateObs.obs_sticky (파도 4) — 파이프라인 절반: io_missNotice 의 차기 상태 = 정지 ∨ (sticky ∧ ¬해제) — 정지가 해제를 이기고 · 해제 없이는 내려가지 않고 · 제3 원천이 없다 (m_sticky · 증인 W21). STATUS[1] 포장은 assembly (_PARTIAL)
+# PROVES: XlateObs.obs_part_stalled (파도 4) — 파이프라인 절반: 정지 중 missPart = 그 요청의 파티션 — 지상 진리는 io_req_part 를 advance 로 시프트한 거울 f_p3 (m_obs_part · m_cap_1..3 · 증인 W19). [15:8] 포장은 assembly (_PARTIAL)
+# PROVES: XlateObs.obs_vpn_stalled (파도 4) — 파이프라인 절반: 정지 중 missVpn = 그 요청의 VPN (거울 f_n3) — 첫 미적중 포착이 아니다 (m_obs_vpn · 증인 W19 · 역-변이 H2). VPN 두 워드 포장은 assembly (_PARTIAL)
+# PROVES: XlateObs.obs_no_residue (파도 4) — 파이프라인 절반: 정지가 없으면 missPart · missVpn = 0 — 조회 지점에 산 적중 요청 · 끝난 정지의 값이 새지 않는다 (m_obs_zero · 증인 W20 둘). 포장이 상태 없이 핀을 그대로 싣는다는 절반은 assembly (_PARTIAL)
+# PROVES: XlateSurface.mclr_fires (파도 4 — 원장 수리) — 파이프라인 절반: 정지가 없을 때 해제(io_missClear)가 미적중 sticky 를 내린다 (m_sticky · 증인 W22). 문 절반은 XlateStaging/props.sby · 해제 핀 합류는 assembly a_miss_clr — 합성은 서술 (_PARTIAL)
+# PROVES: XlateSurface.mclr_needs_one (파도 4 — 원장 수리) — 파이프라인 절반: 해제 없이는 sticky 가 내려가지 않는다 (m_sticky · 증인 W21). [0]=0 기입이 해제 핀을 세우지 않는 문 절반은 XlateStaging/props.sby (_PARTIAL)
+# PROVES: XlateSurface.mclr_keeps_stall (파도 4 — 원장 수리) — 파이프라인 절반: 정지 원천 등식 advance == !io_hold && !(s3_valid && !x_hit) 이 io_missClear 자유 입력 아래 선다 — 해제는 정지를 풀 수 없다 (2026-08-31 신설 단언 · 증인 W23 · 역-변이 H1). 원장이 이 절반을 「어느 형식 태스크도 재지 않는다」로 과소 계수하고 있었다. 문 절반은 XlateStaging/props.sby (_PARTIAL)
 # PROVES: Mask.rekey_idle_only (2026-09-15 신설) — rekeyFire(= io_rekey_valid && io_rekey_ready) 가 발화한 사이클의 phase 는 IDLE 이었다. 이 축의 로직은 이번 파도가 건드리지 않는다 — 회귀 그물(io_rekey_ready = !engineBusy 배선의 실물 확인)이다.
 #
 # (결선 계약) MaskUnit 고정 1사이클 왕복 — req.valid → 다음 enable 에 rsp.valid.
@@ -263,6 +271,68 @@
 #
 # 전개 대상은 워크디렉터리 사본이다 — 저장소 사본은 불변이고, bind 를
 # 지원하는 도구에서는 하네스 파일이 그대로 선다.
+#
+# ## 파도 4 (2026-09-26) — 미적중 관측 값 · 미적중 sticky 규약 · 원장 수리 · 슬롯 여유
+#
+# 선-formal rtl/formal/tla/XlateObs.tla (가드 여섯 · 22 run) 가 판정 E04 (A) 「정지 게이트
+# 스냅샷」을 먼저 실었고, HiuPipeline 클래스 끝의 새 출력 missStall · missPart · missVpn 이
+# 그 파이프라인 쪽 몸이다 (GUARD-MAP 셋은 HiuPipeline.scala 파일 끝). 이 태스크가 더한 것:
+#   · 요청 데이터 거울 f_p1..3 · f_n1..3 (io_req_* 를 advance 로 시프트) + 보조 불변식
+#     m_cap_1..3 (valid 인 단의 파티션 · VPN = 그 요청의 것). 거울 없이 DUT 의 s3_* 를
+#     지상 진리로 쓰면 「단 데이터가 틀린 구현」에서 관측 등식이 함께 선다. 보조 불변식이
+#     없으면 k-귀납이 임의 시작점의 거울 ↔ 단 몸 불일치에서 깨진다.
+#   · m_obs_stall · m_obs_part · m_obs_vpn · m_obs_zero — XlateObs 파이프라인 절반 다섯 가드.
+#   · m_sticky — 미적중 sticky 의 차기 상태 등식. XlateObs.obs_sticky 와 XlateSurface 의
+#     mclr_fires · mclr_needs_one 파이프라인 절반을 잰다 (종전 원장 「어느 형식 태스크도 재지
+#     않는다」 — README 파도 3 미측정 (vi) · lint_postformal _PARTIAL 간극).
+#   · m_slot_pass · m_slot_split — HiuPipeline 의 installSlotFree 통과 결선(SLOTFREE). 앵커
+#     없음. 「installSlotFree ← install.ready」 로 바꾼 통과 변이(H7)는 두 단언을 다 통과한다 —
+#     그 경우 두 신호가 갈리는 사이클이 없어진다 — 그래서 증인 W24(갈림의 도달)가 그 변이를
+#     cover 미도달로 잡는다. 두 단언이 무는 것은 상수 1 같은 다른 통과 결함이다(H9).
+#   · 원장 수리 KEEPSTALL — PROVES XlateSurface.mclr_keeps_stall 를 여기 앵커했다. 새 단언이
+#     아니다: 2026-08-31 의 정지 원천 등식이 io_missClear 자유 입력인 이 합성에서 이미 서
+#     있었다. 원장(lint_postformal _PARTIAL · README (vi))이 그 절반을 「재지 않는다」로
+#     과소 계수했다 — 자백이 기계 밖에 있으면 없는 것과 같다의 역방향(증명이 원장 밖에 있었다).
+#   셀: assert 36 → 46 (bmc · prove) · cover 18 → 25 (W19–W24 일곱 라벨).
+#
+# ### 역-변이 실측 — 파도 4 (2026-09-26, 비상주)
+#
+# 방법: 생성물 사본(HiuPipeline.sv) 한 곳을 문자열 치환(정확히 1 회 매치) · 이 하네스 그대로 ·
+# bmc 는 abc bmc3 depth 16 (aigsmt z3 재생) · cover 는 btor btormc depth 60. 구동기는 /var/tmp
+# 사본에만 있었고 커밋하지 않았다. 입력 sha256 앞 16자: 이 판의 rtl/generated/HiuPipeline.sv ·
+# rtl/sv/assert/HiuMask_props.sv 는 hiumask.evidence.json 의 inputs 와 같다. 무변이 B0 PASS.
+#
+#   id   치환 (생성 SV)                                              가드                     ⇒ 첫 적발
+#   H1   missWait 에 && !io_missClear (해제가 정지를 푼다)            mclr_keeps_stall         ⇒ 정지 원천 등식 + m_obs_stall (같은 스텝)
+#   H1i  〃 · 하네스 = f229c8b 판(파도 4 단언 없음)                   mclr_keeps_stall         ⇒ 정지 원천 등식 (props_only.sv:524) step 4 — 원장 과소 계수의 재현
+#   H2   missVpn = 첫 미적중 포착 레지스터 (sticky 상승 때 래치)       obs_vpn_stalled          ⇒ m_obs_vpn
+#   H3   missPart = 2'b00 (상수 0 — 파도 3 까지의 [15:8])              obs_part_stalled         ⇒ m_obs_part
+#   H4   missVpn = s3_vpn (비게이트 — 갈래 (C))                        obs_no_residue           ⇒ m_obs_zero
+#   H5   missStall = sticky 레지스터                                   obs_stall_live           ⇒ m_obs_stall
+#   H6   sticky 의 해제 · 발화 대입 순서 교환 (해제가 이긴다)           obs_sticky · mclr_*      ⇒ m_sticky
+#   H7   installSlotFree = xlate_io_install_ready (통과 결선을 ready 로) 결선(SLOTFREE)           ⇒ cover w24_slot_split 미도달 (bmc 는 통과 — 위 해설)
+#   H8   missPart = s3_part (비게이트)                                  obs_no_residue           ⇒ m_obs_zero
+#   H9   installSlotFree = 1'b1                                         결선(SLOTFREE)           ⇒ m_slot_split
+# 결과: 사살 9/9 (bmc 8 · cover 1) · H1i 로 KEEPSTALL 재현. 수락 기준(「변이를 잡는다」)은 bmc
+# 엔진을 abc bmc3 로 바꾼 판에서 잰 것이다 (아래 엔진 절).
+#
+# ### 엔진 — bmc 를 abc bmc3 로 옮겼다 (파도 4 실측)
+#
+# 위 「bmc 49 분은 z3 의 몫이다 … 다음 파도가 bmc 시간을 줄이려면 먼저 재고 이 표에 줄을
+# 더하라」를 이 파도가 쟀다. 같은 모델(파도 4 하네스 · 파도 4 생성물 · depth 24):
+#
+#   태스크  엔진          결과    시간                       비고
+#   bmc     abc bmc3      PASS    2 분 4 초 (24 프레임 전부 UNSAT)  assert 46 · 채택 (aigsmt z3 재생)
+#   bmc     smtbmc z3     중단    step 17 까지 27 분 45 초 ·       비교 — 파도 3 판(assert 36)은 24 스텝 전부 49 분 31 초.
+#                                 step 18 이 6 분 47 초+ 미완      이 판은 거울 32b VPN 세 단이 붙어 더 느리다 —
+#                                 (벽시계 34 분 32 초에 끊었다)    웨지가 게이트를 「영영 안 끝남」으로 위장하기 전에 옮긴다
+#   prove   smtbmc z3     PASS    2 분 51 초 (k=12)           assert 46 · 그대로 둔다 (거울 보조 불변식으로 귀납이 선다)
+#   cover   btor btormc   PASS    벽시계 2 초                25/25 도달 · 그대로 둔다
+#   변이    abc bmc3 d16  사살 8/8  건당 6–8 초               위 역-변이 표 (H7 은 cover)
+#   ⇒ bmc 만 abc bmc3 — 모드 한정 aigsmt z3 가 반례를 재생한다 (assembly.sby 와 같은 처분:
+#      한정 없이 쓰면 smtbmc cover 가 Unused option 으로 죽는다). 컨테이너의 yosys-abc 이름은
+#      scripts/sby_sweep.sh 의 셔김이 잇는다. 속성 집합 · 깊이 · [script] · [files] 는 불변 —
+#      바뀐 것은 bmc 엔진 한 줄과 그 재생 옵션 한 줄이다.
 
 [tasks]
 bmc
@@ -272,13 +342,14 @@ cover
 [options]
 bmc: mode bmc
 bmc: depth 24
+bmc: aigsmt z3
 prove: mode prove
 prove: depth 12
 cover: mode cover
 cover: depth 60
 
 [engines]
-bmc: smtbmc z3
+bmc: abc bmc3
 prove: smtbmc z3
 cover: btor btormc
 

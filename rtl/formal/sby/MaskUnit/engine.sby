@@ -32,7 +32,7 @@
 #
 # MaskEngine_props.sv 파일 머리 「이 태스크가 재지 **않는** 것」 절이 정본이다
 # — busy 창의 정확한 길이(cocotb 지향 시험 몫) · 마스크 값 · 저장의 파티션
-# 범위와 REKEY 유휴 수락(hiumask.sby) · MASK_PART 라우팅(Wt64Top DELEGATED) ·
+# 범위와 REKEY 유휴 수락(hiumask.sby) · MASK_PART 라우팅(Wt64Top/assembly.sby, CHECK) ·
 # 논스 재사용·미준비 통과·요청 경로.
 #
 # ## 깊이 근거

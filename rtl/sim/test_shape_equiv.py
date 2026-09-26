@@ -145,8 +145,10 @@ SHAPE_DEPENDENT = {"io_push_1_stall", "io_push_2_stall"}
 # · tag · frame · perm_r/w/x — 와 flush 둘 — valid · part)가 사라진다 —
 # 119/117 → 118/116. (착지판 문면은 「열한 개」였다 — 출력 하나까지 센 포트
 # 선언 줄 수였다. HEAD e90d3f1 생성물 포트 목록에서 재계수, 2026-09-26.)
-EXPECT_OUTPUTS = 118
-EXPECT_COMPARE_FACE = 116
+# 재유도 기록 (파도 4 페이지 통합 — D1 (b)): io_fault_fpCfgBadWrite 신설 (+1) — FP_BIND
+# 예약 거절의 수락 게이트된 sticky. 형상 무관 출력이라 대조면에 든다 — 118/116 → 119/117.
+EXPECT_OUTPUTS = 119
+EXPECT_COMPARE_FACE = 117
 
 
 def parse_clear_ports():
@@ -188,11 +190,12 @@ COMPARE_FACE = [n for n in OUT_PORTS if n not in SHAPE_DEPENDENT]
 # `cq.io.faultClearBadWrite` 는 `fclr(…)` 만 받고, `fpCapAbsent`·`ehCapAbsent`
 # 는 `capWord.io.word` 라 해제가 `capWord.io.clrAcc` 뿐). 궤적 대조 전에 IO 만
 # 흔들면 이 축들은 sticky 로 남고, 그 잔재가 다음 궤적의 시작 상태를 바꾼다.
-# 이 하네스의 자극은 이 다섯을 세우지 않으므로 지금은 무해하지만, 세우는 자극이
+# `fpCfgBadWrite` 는 0xF84[6] 로만 내려간다 (D1 (b) — IO 해제선을 새로 만들지 않았다). 궤적 대조
+# 시험의 자극은 이 여섯을 세우지 않으므로 지금은 무해하지만, 세우는 자극이
 # 추가되면 여기가 먼저 깨져야 한다 — 그래서 이름으로 적어 둔다.
 NO_IO_CLEAR = ["io_fault_ownBadWrite", "io_fault_cqOverflow",
                "io_fault_cqBadWrite", "io_fault_fpCapAbsent",
-               "io_fault_ehCapAbsent"]
+               "io_fault_ehCapAbsent", "io_fault_fpCfgBadWrite"]
 EXPECT_CLEAR_PORTS = 19
 
 # 자주 보는 자리의 색인 — 매번 `.index()` 하면 이름 오타가 ValueError 로만
@@ -961,35 +964,44 @@ async def xlate_flush_then_miss(dut):
 
 
 @cocotb.test()
-async def xlate_hi_releases_stall(dut):
-    """(3) 정지를 푸는 것은 항목 기입이다 (E.3 2항). flush 뒤 같은 VPN 이 미적중으로
-    정지하고, LO 를 다시 쓰지 않은 채 HI 한 워드(V=1)만 쓰면 정지한 요청이 그 사이클에
-    풀려 승인된다.
+async def xlate_flush_ends_staging(dut):
+    """(3) 판정 T5 (a) — 래치 파티션의 *수락된* 0xE00 flush 가 스테이징 유효를 내린다
+    (E.1.2 `0xC00` · `0xE00` 행 · E.9 6항 ⑵). 그리고 정지를 푸는 것은 항목
+    기입이다 (E.3 2항).
 
-    ⚠ 이 시험의 HI 한 워드 재커밋은 **설계 판정 D-3 (1)(커밋이 스테이징을 소진하지
-    않는다) · (4)(flush 는 스테이징에 닿지 않는다)의 인계철선**이지 정본이 정한 사실이
-    아니다 — 정본 판정 요청 T5 (rtl/README.md). 승인된 프레임이 flush 전과 같은 것은
-    flush 가 데이터를 남겨서가 아니다: 재커밋은 저장 블록이 아니라 *스테이징 레지스터*
-    에서 프레임을 싣고, 그 레지스터가 flush 를 건너 옛 LO 를 들고 있다 — 임대 회전 ⑵ 를
-    건넌 옛 LO 가 HI 한 워드로 다시 커밋되는 바로 그 귀결이다. T5 가 (a) flush 가
-    스테이징을 비움 · (b) 커밋이 스테이징을 소진함 으로 판정되면 이 HI 는 빈 스테이징의
-    HI 라 거절 + [6] 이어야 하고, 이 시험은 그때 옮긴다 (T5 의 「함께 움직이는 것」 목록)."""
+    설치 → flush(p) → 같은 VPN 미적중 정지 → LO 없이 HI 한 워드(V=1). 판정 전 RTL 은
+    이 HI 가 flush 를 건넌 스테이징 잔재(옛 임대의 LO 프레임)를 새 태그 · V=1 로 커밋해
+    정지를 풀었다 — 조용한 옛 프레임 재커밋(이 시험의 옛 이름 xlate_hi_releases_stall 이
+    인계철선으로 들던 귀결)이다. 판정 뒤에는 그 HI 가 빈 스테이징의 HI 라 거절 +
+    `[6]` 이고 아무것도 커밋하지 않는다 — 정지가 그대로다. 새 임대의 항목은 LO 부터
+    쓴다: `[6]` 을 지우고 LO(새 프레임) → HI 를 쓰면 정지한 요청이 풀려 *새* 프레임으로
+    승인된다."""
     await boot_hiu(dut)
     part, idx, tag, frame = 3, 9, 0x0123456, 0x0BAD_F00D
+    nframe = 0x0C0D_E000                      # 새 임대의 프레임
     await mmio_write(dut, OWN_SET, frame)
+    await mmio_write(dut, OWN_SET, nframe)
     await install_entry(dut, part, idx, tag, frame)
     await mmio_write(dut, XCTL_FLUSH, part)
+    assert await fault6(dut) == 0, "적법한 XLATE_FLUSH 가 [6] 을 세웠다"
     res = await hiu_lookup(dut, part, vpn_of(tag, idx))
     assert_miss(dut, res, "flush 뒤")
-    await mmio_write(dut, xent(part, idx) + 4, hi_word(tag))   # HI 만 — LO 없음 (D-3 (1) 인계철선)
-    assert await fault6(dut) == 0, (
-        "flush 를 건넌 스테이징 위의 HI 한 워드가 거절됐다 — 설계 판정 D-3 (1)(비소진)과 "
-        "다르다. 정본 판정 T5 가 (a)/(b) 로 났다면 의도된 변화이니 이 시험을 T5 목록대로 옮길 것")
+    await mmio_write(dut, xent(part, idx) + 4, hi_word(tag))   # HI 만 — LO 없음
+    assert await fault6(dut) == 1, (
+        "flush 를 건넌 스테이징 위의 HI 한 워드가 거절되지 않았다 — 옛 임대의 LO 프레임이 "
+        "새 임대의 태그·V 로 다시 커밋된다 (판정 T5 (a) 위반 · E.1.2 `0xC00` 행)")
     rsp = await wait_rsp(dut)
-    assert rsp["rsp"] == 1 and rsp["granted"] == 1 and rsp["frame"] == frame, (
-        f"HI 재기입이 정지를 풀지 못했거나 프레임이 스테이징 잔재와 다르다 ({rsp})")
-    dut._log.info("HI 한 워드 재커밋이 정지를 풀고 승인 (E.3 2항) — 프레임은 flush 를 건넌 "
-                  "스테이징 잔재 (D-3 (1) · (4) 인계철선 · T5)")
+    assert rsp["rsp"] == 0, (
+        f"거절된 HI 뒤에 정지한 요청이 풀렸다 — 무언가가 커밋됐다 ({rsp})")
+    await clear_fault6(dut)
+    await install_entry(dut, part, idx, tag, nframe)            # 새 임대 — LO 부터
+    assert await fault6(dut) == 0, "새 임대의 LO → HI 가 [6] 을 세웠다 (허위 fault)"
+    rsp = await wait_rsp(dut)
+    assert rsp["rsp"] == 1 and rsp["granted"] == 1 and rsp["frame"] == nframe, (
+        f"LO → HI 가 정지를 풀지 못했거나 승인 프레임이 새 LO 프레임 0x{nframe:08X} 와 "
+        f"다르다 ({rsp})")
+    dut._log.info("flush 뒤 HI 한 워드 → 거절 + [6] · 정지 유지(재커밋 없음) · "
+                  "LO → HI 가 정지를 풀고 새 프레임으로 승인 (판정 T5 (a) · E.3 2항)")
 
 
 @cocotb.test()
@@ -1228,3 +1240,285 @@ async def abort_tag1_word_legality(dut):
     assert await mmio_read(dut, ABORT_ARM) == 0
     assert await mmio_read(dut, ABORT_COUNT) == 0
     assert await fault6(dut) == 0, "무장 미완 발화가 [6] 을 세웠다 — 무시가 거절로 접혔다"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 파도 4 페이지 통합 — 페이지 처분(판정 T1-i · T1-ii · T2 · T3)과 FP 소거 창(D1 (b))
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# 선-formal 은 rtl/formal/tla/MmioPage.tla 이고 후-formal 조립 절반은 Wt64Top/assembly.sby
+# (surfMust · a_rv_acc · a_fpbad_* · a_rd_abi)다. 여기는 호스트가 보는 값으로 잰다 —
+# 0xF80[6] · 되읽기 · 무장 마스크 · 창 레지스터 · rvalid 의 개수.
+#
+# 정본 (f229c8b 판정):
+#   03-hiu.typ:1337 「이 장치는 거기 워드를 두지 않는다. 쓰기는」 — 물려받은 0x000–0x11F
+#   e-defined.typ:743 「*소비 회로가 없는 RW 워드 — 쓰기는 거절, 읽기는 0.*」
+#   03-hiu.typ:754 「비정렬 *읽기*는 0 · fault 없음이다」
+#   03-hiu.typ:990 「읽기도 같다 — 수락(ready ∧ 스트로브)되지 않은 접근은 효과도 응답도 없다」
+
+MASK_PART = 0xEA0
+FP_PROG = 0xF00
+FP_BIND = 0xF04
+FP_STATUS = 0xF08
+
+
+async def page_expect_loud(dut, addr, data, what):
+    """쓰기 하나가 [6] 을 세운다 — 앞뒤로 [6] 을 비워 원천을 이 쓰기 하나로 좁힌다."""
+    if await fault6(dut):
+        await clear_fault6(dut)
+    await mmio_write(dut, addr, data)
+    assert await fault6(dut) == 1, f"{what}: 0x{addr:03X} 쓰기에 [6] 이 서지 않았다 — 조용한 흡수"
+    await clear_fault6(dut)
+
+
+async def page_expect_quiet(dut, addr, data, what):
+    if await fault6(dut):
+        await clear_fault6(dut)
+    await mmio_write(dut, addr, data)
+    assert await fault6(dut) == 0, f"{what}: 0x{addr:03X} 쓰기가 [6] 을 세웠다 — 예약 오프셋 관대 위반"
+
+
+async def page_expect_read0(dut, addr, what):
+    v = await mmio_read(dut, addr)
+    assert v == 0, f"{what}: 0x{addr:03X} 읽기가 0x{v:08X} — 0 이어야 한다"
+    assert await fault6(dut) == 0, f"{what}: 0x{addr:03X} 읽기가 [6] 을 세웠다 — 읽기는 관대다"
+
+
+@cocotb.test()
+async def page_disposition(dut):
+    await boot(dut)                 # 사상표 구역(0x401)의 비정렬 쓰기가 유닛 ready 를 기다리지 않게
+    await clear_all_faults(dut)
+    if await fault6(dut):
+        await clear_fault6(dut)
+    # T3 (d) — 물려받은 0x000–0x11F: 쓰기 거절 + [6] (정렬 무관) · 읽기 0
+    for a in (0x000, 0x040, 0x100, 0x11C, 0x101):
+        await page_expect_loud(dut, a, 0xFFFFFFFF, "물려받은 구간")
+    for a in (0x014, 0x100, 0x101):
+        await page_expect_read0(dut, a, "물려받은 구간 읽기")
+    # 예약 오프셋의 관대는 *정렬 워드* 오프셋에 한한다 — 0x120 · 0x1FC 는 조용하다
+    for a in (0x120, 0x1FC):
+        await page_expect_quiet(dut, a, 0xFFFFFFFF, "예약 오프셋")
+    # T1-i (β) — 명령 링 RW 넷 · SQ_HEAD(RO): 쓰기 거절 + [6] · 저장 없음(되읽기 0)
+    for a in (0x380, 0x384, 0x388, 0x38C, 0x390):
+        await page_expect_loud(dut, a, 0xFFFFFFFF, "명령 링 표 워드")
+        await page_expect_read0(dut, a, "명령 링 표 워드 되읽기")
+    await page_expect_quiet(dut, 0x394, 0xFFFFFFFF, "명령 링 구역의 표에 없는 워드")
+    # T1-i (β) CQ_BASE 확장 — 완료 링 base 둘도 같은 처분 (CompletionUnit)
+    for a in (0x300, 0x304):
+        await page_expect_loud(dut, a, 0x12345678, "CQ_BASE")
+        await page_expect_read0(dut, a, "CQ_BASE 되읽기")
+    # T1-ii — 0xFFC HIU_ABI_VERSION: RO 쓰기 거절 + [6] · 읽기는 합의 전 값 0
+    await page_expect_loud(dut, 0xFFC, 0x00010000, "HIU_ABI_VERSION")
+    await page_expect_read0(dut, 0xFFC, "HIU_ABI_VERSION 읽기 (합의 전 0)")
+    # T2 (a) — 비정렬 쓰기: 페이지 어디서든 거절 + [6] · 효과 없음
+    for a in (0xE81, 0xF01, 0x122, 0x381, 0x041, 0xFC1, 0xF85, 0x201, 0x301, 0x401):
+        await page_expect_loud(dut, a, 0x3, "비정렬 쓰기")
+    await page_expect_loud(dut, MASK_PART + 1, 0x3, "비정렬 MASK_PART")
+    assert await mmio_read(dut, MASK_PART) == 0, "비정렬 MASK_PART 쓰기가 창을 움직였다"
+    await page_expect_loud(dut, 0xF41, 0xDEADBEEF, "비정렬 ABORT_TAG0")
+    assert await mmio_read(dut, ABORT_ARM) == 0, "비정렬 ABORT_TAG0 쓰기가 무장을 세웠다 (E.12.1 1항)"
+    # 비정렬 읽기는 0 · fault 없음
+    for a in (0xE81, 0xFFD, 0x3FD):
+        await page_expect_read0(dut, a, "비정렬 읽기")
+
+
+@cocotb.test()
+async def fp_clear_window(dut):
+    """선택자 표 초기화 소거(2^16 사이클) 중의 FP 구역 — D1 (b).
+
+    버스 마스터 규약대로 스트로브를 ready 까지 붙든다. 주소 기준 ready(D1 이전)에서는 ①
+    의 읽기가 잡힌 채 매 사이클 응답한다 — 음성 대조는 그 생성물 사본에서 ① 이 운다.
+    """
+    await boot_hiu(dut)             # 소거를 기다리지 않는다 — 창 *안*에서 잰다
+    st = await mmio_read(dut, FP_STATUS)
+    assert st & 1 == 0, f"FP_STATUS [0] loadReady = 1 — 소거 창 밖이다 (0x{st:08X})"
+    # ① 0xF00 정렬 읽기 → 기다리지 않는다 · rvalid 정확히 1회 · 값 0 (WO 읽기)
+    dut.io_mmio_addr.value = FP_PROG
+    dut.io_mmio_rstrobe.value = 1
+    await settle(dut)
+    held, rv, vals = 0, 0, []
+    while int(dut.io_mmio_ready.value) == 0 and held < 64:
+        await step(dut)
+        held += 1
+        if int(dut.io_mmio_rvalid.value):     # 잡혀 있는 동안의 응답도 센다
+            rv += 1
+            vals.append(int(dut.io_mmio_rdata.value))
+    await step(dut)                                  # 수락 엣지
+    dut.io_mmio_rstrobe.value = 0
+    for _ in range(4):
+        await settle(dut)
+        if int(dut.io_mmio_rvalid.value):
+            rv += 1
+            vals.append(int(dut.io_mmio_rdata.value))
+        await step(dut)
+    assert held == 0, (f"① 소거 중 0xF00 읽기가 {held} 사이클 잡혔다 (그동안 rvalid {rv} 회) — "
+                       f"읽기는 소거를 기다리지 않는다 (D1 (b))")
+    assert rv == 1 and vals == [0], f"① rvalid {rv} 회 · 값 {vals} — 정확히 1회 · 0 이어야 한다"
+    # ③ 0xF01 비정렬 쓰기 → 정지 없이 [6] (판정 T2 (a))
+    dut.io_mmio_addr.value = FP_PROG + 1
+    dut.io_mmio_wdata.value = 0x12345678
+    dut.io_mmio_wstrobe.value = 1
+    await settle(dut)
+    assert int(dut.io_mmio_ready.value) == 1, "③ 소거 중 0xF01 비정렬 쓰기가 정지했다 — 정렬 FP 쓰기만 기다린다"
+    await step(dut)
+    dut.io_mmio_wstrobe.value = 0
+    await step(dut)
+    assert await fault6(dut) == 1, "③ 0xF01 비정렬 쓰기에 [6] 이 서지 않았다"
+    await clear_fault6(dut)
+    assert int(dut.io_fault_fpCfgBadWrite.value) == 0
+    # ② [30:24] ≠ 0 FP_BIND 를 소거 중에 제시 → loadReady 전까지 ready = 0 · 어느 sticky 도 안 선다 ·
+    #   수락 뒤 fpCfgBadWrite = 1 · 0xF80[6] = 1
+    dut.io_mmio_addr.value = FP_BIND
+    dut.io_mmio_wdata.value = (1 << 24) | 0x1234
+    dut.io_mmio_wstrobe.value = 1
+    await settle(dut)
+    n = 0
+    while int(dut.io_mmio_ready.value) == 0:
+        assert int(dut.io_fault_fpCfgBadWrite.value) == 0, (
+            f"② 잡힌 FP_BIND 가 {n} 사이클에 fpCfgBadWrite 를 세웠다 — 수락 전 loud")
+        assert int(dut.io_fault_cfgSurfBadWrite.value) == 0, (
+            f"② 잡힌 FP_BIND 가 {n} 사이클에 조립 sticky 를 세웠다 — 수락 전 loud")
+        await step(dut)
+        n += 1
+        if n > INIT_SWEEP + 64:
+            raise AssertionError(f"② FP_BIND 가 {n} 엣지 안에 수락되지 않았다 — 미완료는 통과가 아니다")
+    assert n > 1000, f"② FP_BIND 가 {n} 사이클 만에 수락됐다 — 소거 창 안에서 제시하지 못했다"
+    await step(dut)                                  # 수락 엣지 (loadReady = 1)
+    dut.io_mmio_wstrobe.value = 0
+    await settle(dut)
+    assert int(dut.io_fault_fpCfgBadWrite.value) == 1, "② 수락된 FP_BIND 예약 비0 에 fpCfgBadWrite 가 서지 않았다"
+    assert int(dut.io_fault_cfgSurfBadWrite.value) == 0, "② FP_BIND 거절이 조립 sticky 로 새었다 (원천별 수출)"
+    await step(dut)
+    assert await fault6(dut) == 1, "② 0xF80[6] 에 FP_BIND 거절이 합류하지 않았다"
+    await clear_fault6(dut)
+    assert int(dut.io_fault_fpCfgBadWrite.value) == 0, "0xF84[6] W1C 가 fpCfgBadWrite 를 내리지 못했다"
+
+
+# ── 미적중 관측 값 — 0xE04 XLATE_STATUS · 0xE08/0xE0C XLATE_MISS_VPN (파도 4 · 판정 E04 (A)) ──
+#
+# 정본 e-defined.typ:323 「정지 중(`[0]` = 1)에만 정지한 요청의 값을 내고 정지가 없으면 0 이다」 —
+# 정지 게이트 스냅샷. 선-formal rtl/formal/tla/XlateObs.tla · 후-formal hiumask.sby(파이프라인
+# 절반) · assembly.sby(포장 절반). 여기는 값 수준이다: 호스트가 관측면만 보고 무엇을 기입할지
+# 알 수 있는가 (E.3 파생 요건 — e-defined.typ:881 「채널이 없으면 2항은 이행 불가능한」).
+XCTL_MISS_VPN_LO = 0xE08
+XCTL_MISS_VPN_HI = 0xE0C
+
+
+def xstatus_word(stall, sticky, part):
+    """XLATE_STATUS — `[0]` 정지 · `[1]` sticky · `[15:8]` 파티션 · 나머지 0."""
+    return (int(stall) & 1) | ((int(sticky) & 1) << 1) | ((part & 0xFF) << 8)
+
+
+async def read_obs(dut):
+    return (await mmio_read(dut, XCTL_STATUS), await mmio_read(dut, XCTL_MISS_VPN_LO),
+            await mmio_read(dut, XCTL_MISS_VPN_HI))
+
+
+@cocotb.test()
+async def xlate_miss_observed(dut):
+    """(E04-1) 정지 게이트 스냅샷의 값 — 정지 전 0 · 정지 중 [0]=1 · [1]=1 · [15:8] 파티션 ·
+    VPN 두 워드 · 재읽기 불변(읽기는 해제하지 않는다) · 정지한 파티션의 flush 도 스냅샷을
+    바꾸지 않는다(정지한 요청을 바꾸는 것은 항목 기입뿐) · 항목 기입 뒤 [0]=0 · [15:8] · VPN
+    0 (잔재 없음) · sticky [1] 은 0xE10 까지 남는다."""
+    await boot_hiu(dut)
+    part, idx, tag, frame = 2, 5, 0x0ABC123, 0x0000_5A5A
+    vpn = vpn_of(tag, idx)
+    await mmio_write(dut, OWN_SET, frame)
+    assert await read_obs(dut) == (0, 0, 0), "정지 전의 관측 세 워드는 0 이어야 한다"
+    res = await hiu_lookup(dut, part, vpn)
+    assert_miss(dut, res, "빈 표")
+    want = (xstatus_word(1, 1, part), vpn, 0)
+    got = await read_obs(dut)
+    assert got == want, (
+        f"정지 중 관측 {tuple(hex(v) for v in got)} ≠ 기대 {tuple(hex(v) for v in want)} — "
+        f"[0] 정지 · [1] sticky · [15:8] 파티션 {part} · VPN 0x{vpn:08X} · VPN_HI 0 (VA 44b)")
+    assert await read_obs(dut) == want, "재읽기가 달라졌다 — 읽기가 무엇인가를 해제했거나 스냅샷이 찢겼다"
+    assert int(dut.io_hiuReq_ready.value) == 0, "관측 읽기가 정지를 풀었다"
+    await mmio_write(dut, XCTL_FLUSH, part)
+    assert await read_obs(dut) == want, "정지한 파티션의 flush 가 스냅샷을 바꿨다 — 정지한 요청을 바꾸는 것은 항목 기입뿐이다"
+    assert int(dut.io_hiuReq_ready.value) == 0
+    # 호스트는 관측면만으로 항목을 안다 — 읽은 파티션 · VPN 그대로 기입한다.
+    status, vlo, _ = got
+    hpart, hvpn = (status >> 8) & 0xFF, vlo
+    await install_entry(dut, hpart, hvpn & 0xF, hvpn >> 4, frame)
+    rsp = await wait_rsp(dut)
+    assert rsp["rsp"] == 1 and rsp["granted"] == 1 and rsp["frame"] == frame, (
+        f"관측면이 알려 준 항목을 기입했는데 정지가 풀리지 않았다 ({rsp})")
+    await step(dut, 2)
+    assert await read_obs(dut) == (xstatus_word(0, 1, 0), 0, 0), (
+        "정지가 풀린 뒤: [0] 0 · [1] sticky 1 · [15:8] 과 VPN 0 이어야 한다 — 끝난 정지의 잔재가 남았다")
+    await mmio_write(dut, XCTL_MISS_CLEAR, 1)
+    assert await read_obs(dut) == (0, 0, 0), "0xE10 해제 뒤 관측 세 워드는 0 이어야 한다"
+    dut._log.info("미적중 관측: 정지 전 0 · 정지 중 스냅샷 · 재읽기 · flush 불변 · 관측면만으로 채움 · "
+                  "해제 뒤 잔재 없음 · sticky 는 0xE10 까지")
+
+
+@cocotb.test()
+async def xlate_miss_obs_second_stall(dut):
+    """(E04-2) 해제 없이 온 둘째 정지는 *둘째* 요청을 낸다 — 첫 미적중 포착(sticky 상승 때
+    래치하는 구현)이면 여기서 첫 요청의 VPN 이 읽혀 호스트가 엉뚱한 항목을 채우고 정지가
+    영구가 된다 (XlateObs.tla 진행 짝 live_del_vpn 의 값 판)."""
+    await boot_hiu(dut)
+    f1, f2 = 0x0000_1111, 0x0000_2222
+    p1, i1, t1 = 1, 3, 0x0000ABC
+    p2, i2, t2 = 3, 7, 0x0DEF000
+    v1, v2 = vpn_of(t1, i1), vpn_of(t2, i2)
+    await mmio_write(dut, OWN_SET, f1)
+    await mmio_write(dut, OWN_SET, f2)
+    assert_miss(dut, await hiu_lookup(dut, p1, v1), "첫 요청")
+    assert await read_obs(dut) == (xstatus_word(1, 1, p1), v1, 0)
+    await install_entry(dut, p1, i1, t1, f1)
+    r = await wait_rsp(dut)
+    assert r["rsp"] == 1 and r["frame"] == f1, f"첫 항목 기입이 정지를 풀지 못했다 ({r})"
+    await step(dut, 2)
+    # 해제(0xE10) 없이 둘째 미적중 — sticky 는 선 채다.
+    assert_miss(dut, await hiu_lookup(dut, p2, v2), "둘째 요청")
+    got = await read_obs(dut)
+    assert got == (xstatus_word(1, 1, p2), v2, 0), (
+        f"둘째 정지의 관측 {tuple(hex(v) for v in got)} — 파티션 {p2} · VPN 0x{v2:08X} 이어야 한다 "
+        f"(첫 요청 0x{v1:08X} 가 읽히면 첫 미적중 포착이다)")
+    await install_entry(dut, (got[0] >> 8) & 0xFF, got[1] & 0xF, got[1] >> 4, f2)
+    r = await wait_rsp(dut)
+    assert r["rsp"] == 1 and r["frame"] == f2, f"둘째 관측으로 채운 항목이 정지를 풀지 못했다 ({r})"
+    dut._log.info("둘째 정지 → 둘째 요청의 파티션 · VPN (첫 미적중 포착 아님) · 관측면만으로 두 정지를 다 푼다")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 판정 T5 (a) 의 범위 — flush 가 스테이징을 비우는 것은 *래치 파티션*의 *수락된* flush 뿐
+# ═══════════════════════════════════════════════════════════════════════════
+# e-defined.typ:321 「다른 파티션을 래치한 스테이징은 건드리지 않는다」 · 거절된 flush 는
+# 효과가 없다 (「없는 파티션 값의 처분」 1항 · E.12.1 1항과 같은 형태). xlate_flush_ends_staging 의 짝이다 —
+# 파티션을 가리지 않고 비우는 판(전역 비움)이나 거절된 flush 로도 비우는 판은 여기서
+# 적법한 LO → HI 를 거절 + [6] 으로 만든다.
+
+@cocotb.test()
+async def xlate_other_flush_keeps_staging(dut):
+    """LO{p}(F) → flush(q ≠ p) → HI{p} 는 거절 없이 커밋되어 F 로 적중한다. 이어서
+    LO{p}(F2) → 예약 위반 flush(p)(거절 + [6]) → [6] 해제 → HI{p} 도 커밋되어 F2 로
+    적중한다 — 거절된 flush 는 스테이징에 닿지 않는다."""
+    await boot_hiu(dut)
+    part, opart, idx = 2, 1, 4
+    tag, frame = 0x0055AA5, 0x0000_C0DE
+    tag2, frame2 = 0x0066BB6, 0x0000_C1E5    # 소유권 표 직접 사상 — frame 과 다른 슬롯(하위 6b)
+    await mmio_write(dut, OWN_SET, frame)
+    await mmio_write(dut, OWN_SET, frame2)
+    await mmio_write(dut, xent(part, idx), frame)              # LO{p}
+    await mmio_write(dut, XCTL_FLUSH, opart)                   # flush(q ≠ p) — 수락
+    assert await fault6(dut) == 0, "적법한 XLATE_FLUSH 가 [6] 을 세웠다"
+    await mmio_write(dut, xent(part, idx) + 4, hi_word(tag))   # HI{p}
+    assert await fault6(dut) == 0, (
+        f"파티션 {opart} 의 flush 뒤 파티션 {part} 을 래치한 스테이징의 HI 가 거절됐다 — "
+        f"flush 가 다른 파티션의 스테이징까지 비웠다 (E.1.2 `0xE00` 행 위반 · 전역 비움)")
+    assert_hit(await hiu_lookup(dut, part, vpn_of(tag, idx)), frame,
+               "타 파티션 flush 를 건넌 스테이징의 커밋")
+    await mmio_write(dut, xent(part, idx), frame2)             # LO{p}(F2)
+    await mmio_write(dut, XCTL_FLUSH, (1 << 8) | part)         # 예약 [31:8] 비0 — 거절
+    assert await fault6(dut) == 1, "예약 위반 XLATE_FLUSH 가 거절되지 않았다"
+    await clear_fault6(dut)
+    await mmio_write(dut, xent(part, idx) + 4, hi_word(tag2))  # HI{p}
+    assert await fault6(dut) == 0, (
+        "거절된 XLATE_FLUSH 뒤의 적법한 HI 가 거절됐다 — 거절된 flush 가 스테이징을 비웠다 "
+        "(거절된 기입은 기입이 아니다)")
+    assert_hit(await hiu_lookup(dut, part, vpn_of(tag2, idx)), frame2,
+               "거절된 flush 를 건넌 스테이징의 커밋")
+    dut._log.info("타 파티션 flush · 거절된 flush 는 스테이징에 닿지 않는다 — HI 커밋 · 적중 (판정 T5 (a) 범위)")

@@ -303,6 +303,21 @@ class XlateStore(val cfg: Wt64Config = Wt64Config()) extends Component {
   io.rsp.hostPresent := io.hostRsp.valid
   io.rsp.hostFrame   := io.hostRsp.frame
   io.rsp.hostPerm    := io.hostRsp.perm
+
+  // ── 슬롯 여유 — flush 와 무관한 설치 수락 가능성 (파도 4, 2026-09-26 SLOTFREE) ──
+  // install.ready = 슬롯 여유 ∧ ¬(같은 사이클 · 같은 파티션 flush) 이다. 뒤 항의
+  // flush.valid 는 호스트 쪽에서 0xE00 기입의 wdata 판정(XlateStaging 의 예약 ·
+  // 없는 파티션)이라, install.ready 를 MMIO ready 로 쓰면 wdata → ready 조합 경로가
+  // 넷리스트에 생긴다 (기능적으로는 죽은 경로 — 문의 항목 기입과 flush 발화는 주소
+  // 디코드로 배타). 조립(Wt64Top xlateArea)이 ready · 문의 installReady 로 쓰는 것은
+  // 이 신호다 — 파티션 슬롯 점유만의 함수. 배타가 깨지면 문은 커밋을 내고 이 블록은
+  // flush 우선으로 그 설치를 버린다(조용한 드롭) — 조립 하네스 a_xonehot 이 배타를
+  // 기계로 잡는다. install.ready 자체는 이 블록의 단독 계약으로 남는다
+  // (XlateStore_props.sv a_ready_split 이 둘의 관계를 핀한다).
+  // 클래스 *끝*인 이유: io 번들 안이면 :200 (when_XlateStore_l200 — XlateStore_props.sv
+  // 가 이름으로 잡는 install.fire) 이 밀린다. 포트 이름은 io_ 접두 없이 installSlotFree.
+  val installSlotFree = out port Bool()
+  installSlotFree := !fillPend(io.install.part)
 }
 
 // ── GUARD-MAP — 호스트 쪽 문(XlateSurface.tla)의 가드 하나 ─────────────────

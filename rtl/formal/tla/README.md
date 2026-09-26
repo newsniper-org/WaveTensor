@@ -36,6 +36,8 @@ make rtl-formal        # 또는  sh rtl/formal/tla/run.sh
 | **E.1.2 CAP_STATUS/CAP_CLEAR** 축 격리 · sticky · 예약 위반 원자 거절 · 발화 우선 | `CapWord.tla` | **증명됨** — 가드 넷(axis_isolated · sticky_until_clear · clear_atomic · set_beats_clear) + 증인 넷, 9 run. 축은 불투명 토큰 넷 — 사건→축 배정은 정본 표의 몫 |
 | **E.1.2 · E.3 변환 저장소의 MMIO 문** `0xC00` LO 스테이징 · HI 단일 에지 커밋 · 번호 래치 · `0xE00` flush 발화·범위 · `0xE10` 해제 · RO 쓰기 거절 · 거절 loud · 하류 거부 처분 | `XlateSurface.tla` | **증명됨** — 가드 열일곱(lo_stages_only · hi_fires · hi_entry_match · hi_needs_staging · hi_commit_whole · hi_v_carried · flush_fires · flush_scoped · flush_valid_only · flush_part_exists · flush_rsv_strict · reject_loud · mclr_fires · mclr_needs_one · mclr_rsv_strict · mclr_keeps_stall · ro_rejected) + 증인 열여섯 + 짝·대안·발견 여섯 + 진행 1, 42 run. 축 모델(라벨이 색인 속성 ID 를 인용하지 않는다). 정본이 닫지 않은 자리 넷은 모델 머리 「발견」 — 스테이징 소진은 rtl/README.md T5 |
 | **E.1.2 · E.12 · E.12.1 재조립 문맥 소거의 문** `0xF40` 스테이징 세 워드 · 워드 적법성(TAG1 poison·trace·예약 · TAG2/FIRE 예약 · RO 쓰기) · 거절의 무효과·loud · 워드별 무장 · 재기입 덮음 · 발화 성립(무장 완비 · `[0]`=1) · 잔류 소진 | `AbortSurface.tla` | **증명됨** — 가드 열셋(poison_trace_zero · epoch_word_rsv_strict · shape_word_rsv_strict · fire_rsv_strict · ro_rejected · legal_first · reject_loud · arm_on_accept · arm_own_word · stage_writes_value · fire_needs_armed · fire_needs_one · fire_drains_arm) + 증인 열하나 + 짝 셋 · 대비 1, 30 run. 축 모델. sub-word 처분은 상수 `Subword`(판정 T2 — RTL 은 W4). 짝 둘이 D2 이전 RTL(TAG1 무검사)과 동형 |
+| **3.7 · 3.10 · E.1.1 · E.1.3 구성 페이지의 처분** 포트 수락·응답 · RO 쓰기 · WO 읽기 · 예약 오프셋(정렬 워드) · 비정렬 쓰기 · 물려받은 `0x000`–`0x11F` · 소비 회로 없는 RW 워드 · 거절 loud | `MmioPage.tla` | **증명됨** — 가드 아홉(rsp_on_accept · effect_on_accept · ro_rejected · wo_read_zero · resv_lenient · unaligned_rejected · leg_write_rejected · nocons_rejected · reject_loud) + 증인 열 + 짝·대안 여덟 · 대비 1, 29 run. 축 모델. 고정 속성의 예외 집합(SpecReject · SpecQuiet)이 곧 판정 내용이라 판정을 유도하지 못한다. 짝 둘이 D1 이전 조립과 동형 |
+| **E.1.2 · E.3 변환 미적중의 관측면** `0xE04` XLATE_STATUS · `0xE08`/`0xE0C` XLATE_MISS_VPN 의 *값* — 정지 게이트 스냅샷(정지 중에만 그 요청 · 정지가 없으면 0) · 찢김 없음 · 읽기 무해제 · 채널의 충분성 | `XlateObs.tla` | **증명됨** — 가드 여섯(obs_stall_live · obs_sticky · obs_part_stalled · obs_vpn_stalled · obs_no_residue · obs_read_pure) + 고정 속성 Prop_NoTear · 진행 Prop_StallResolves(폴링 호스트 HostSpec) + 증인 일곱 + 대안 1 · 진행 짝 둘 · 짝 둘 · 대비 1, 22 run. 축 모델. 짝 「오늘의 RTL」(세 워드 읽기 0)이 정지 영구로 운다 |
 
 순서는 부록 D.5 규범 그대로다 — **근거는 "실제로 무너진 곳"** 이다.
 
@@ -568,9 +570,12 @@ SEC-2 는 「사이클 수」가 아니라 **상태열**이다 — `Strong_SameP
 하나로 두는 자리를 연다 — 호스트는 32b 버스로 한 워드씩 쓰므로 항목 하나(64b)는 LO · HI 두
 기입이고, 그 사이의 상태가 관측면에 실재한다. 정본 좌표와 각 가드의 문장은 모델 머리가 소유한다.
 
-42 run: 좋은 모델 2(파티션 2 · 색인 1 / 색인 2 규모) + 가드 삭제 17 + 증인 16 + 짝 「오늘의 RTL」
+50 run (파도 4 개정 뒤 — 아래 「판정 T5 · T4」): 좋은 모델 3(파티션 2 · 색인 1 / 색인 2 규모 / 상한 아래
+형상 — `BelowCap`) + 가드 삭제 19 + 증인 18 + 짝 「오늘의 RTL」
 2(XLATE_FLUSH · 항목 기입이 조용히 흡수되던 착지 전 기계 — 파도 2 의 T1) + 하류 거부 처분 대안 2
-(거절 + loud → `Prop_RejectOnlyMalformed` 위반 · 조용한 흡수 → `Prop_HiCommits` 위반) + 진행 1
+(거절 + loud → `Prop_RejectOnlyMalformed` 위반 · 조용한 흡수 → `Prop_HiCommits` 위반) + 스테이징 수명
+대안 2(`StgAlt` — 커밋 소진 → `Prop_FlushEndsStaging` 위반 · 전역 비움 → `Prop_FlushStagingScoped` 위반) +
+형상 밖 주소 별칭 짝 1(`Prop_EntNoAlias` 위반) + 진행 1
 (`LiveSpec` 아래 `Prop_StallEnds` 통과) + 그 대조군 1(채움 슬롯 Drain 공정성을 빼면 정지가 영구) +
 발견 1(정지 중 `0xE10` 해제의 유실 — `Prop_ClearAlwaysLowers` 가 좋은 모델에서 반증된다).
 
@@ -582,17 +587,25 @@ RTL 이 모델보다 먼저 배선했고(검토자 D-7) 반증 검토가 그것�
 커밋만 푼다(E.3 2항).
 
 하류 거부(`install.ready` = 0)의 처분은 설계 결정이라 상수 `Refusal` 로 세 갈래를 다 표현하고
-기계가 판정한다 — 버스 정지만 모든 속성을 통과한다. 증인 `Witness_NoStaleRecommit` 는 정본 문면의
-귀결(스테이징이 커밋·flush 로 소진되지 않으면 임대 회전 ⑵ 를 건넌 옛 LO 가 HI 한 워드로 다시
-커밋된다)을 붙잡는 MUST FAIL 이다 — 정본이 소진을 정하면 이 run 이 선언과 어긋나 배터리가 울고,
-그때 모델을 고친다 (정본 판정 요청 T5 — `rtl/README.md`).
+기계가 판정한다 — 버스 정지만 모든 속성을 통과한다.
+
+**판정 T5 · T4 (파도 4 개정, 2026-09-26 — 정본 f229c8b).** 착지판의 증인 `Witness_NoStaleRecommit`
+(MUST FAIL)는 정본 문면의 귀결 — 스테이징이 flush 로 끝나지 않으면 임대 회전 ⑵ 를 건넌 옛 LO 가
+HI 한 워드로 다시 커밋된다 — 을 붙잡고 「정본이 정하면 그때 모델을 고친다」고 적혀 있었다. 판정
+(a)(수락된 flush 가 래치 파티션의 스테이징 유효를 내린다 · 커밋은 소진하지 않는다)으로 그 증인은
+반례를 잃었고, 뒤집어 좋은 모델의 고정 속성 `Inv_NoStaleRecommit` 으로 올렸다 (run 은 지웠다). 가드
+`flush_drops_staging` · `ent_part_exists`(판정 T4 (ii) — 상한 아래 형상의 형상 밖 항목 주소는 거절) 둘,
+기각한 두 갈래는 상수 `StgAlt` 의 대안으로 각자 반례를 낸다 — 커밋 소진의 반례가 정본 해설의 세
+스텝(LO → flush → HI) 그대로다. 형상 밖 주소는 상수 `BelowCap` 으로 끄고 전용 cfg 넷에서만 켠다 —
+`XlateSurface_large.cfg` 는 배터리 안이다. 새 증인 셋은 ev 사건을 늘리지 않는 스텝 뒤 상태 술어라
+large 의 도달 상태를 부풀리지 않는다. 분리 검사와 규모 실측은 run.sh 그 절 머리.
 
 **재지 않는 것** (모델 머리 「안 잰다」가 닫힌 목록): 조회·채움·값의 정확성 · HI 의 태그·권한
 필드 · 주소 디코드 · 읽기 방향(`0xE04`–`0xE0C` 관측 워드의 읽기 *값* 포함 — 쓰기 처분만 싣는다) ·
 적중 판정(미적중 정지는 「유효 항목 없는 항목의 조회」 하나로 접는다) · sub-word 쓰기 · FAULT `[6]` 의
 sticky·해제 · 사이클 수(모델은 하류 거부의 도달성을 *과대* 근사한다 — RTL 에서는 같은 항목 HI
 연속만 거부를 만난다) · 설치·flush 원천이 둘인 갈래(최상위 IO 잔존 — RTL 파도가 은퇴시켰다) ·
-형상 밖 항목 주소(T4).
+색인 축의 형상 밖 주소(이 구현은 색인 16 고정 — 파티션 축은 판정 T4 로 잰다).
 
 ## E.1.2 · E.12 · E.12.1 재조립 문맥 소거의 문 — `AbortSurface.tla` (파도 4, 2026-09-26)
 
@@ -637,3 +650,70 @@ RTL 이 먼저 정한 읽기 둘을 모델로 돌려보냈다 (모델 머리 「
 무시 · ABORT_COUNT 증가 자체 — `Payload.tla`) · 매칭 키가 poison · trace 를 빼는가의 매칭 절반(재구현
 결함 D2b — 태그 코덱 전파 파도가 `Payload.tla` Tags 정제로 먼저 싣는다) · 워드 안의 필드 배치와 마스크
 값 · 주소 디코드 · 읽기 방향 · 5항 후단 · FAULT `[6]` 의 sticky · 시간.
+
+## 3.7 · 3.10 · E.1.1 · E.1.3 구성 페이지의 처분 — `MmioPage.tla` (파도 4 페이지 통합, 2026-09-26)
+
+MMIO 워드 표면의 *처분*은 어느 모델의 상태도 아니었다 — 조립 후-formal 이 VERIFIES 로만 잰 자리이고,
+파도 4 의 판정 다섯(D1 · T1-i · T1-ii 쓰기 · T2 · T3)이 여기에 새 가드를 만든다. 이 모델이 그 1단이다.
+`XlateSurface.tla` · `AbortSurface.tla` 는 자기 구역 문의 의미를, 이 모델은 페이지 전역의 처분 규칙
+— 어느 접근이 수락되고 수락된 접근이 효과 · 거절 + loud · 조용한 무시 · 응답 중 무엇이 되는가 — 를
+본다. 정본 좌표와 각 가드의 문장은 모델 머리가 소유한다.
+
+29 run: 좋은 모델 1 + 대비 1(주소 기준 ready — D1 이전 모양 — 에서도 가드 둘이 살면 안전) + 가드 삭제 9 +
+증인 10 + 짝·대안 8.
+- 짝 「D1 이전의 조립」 둘 — 주소 기준 ready(`FpWaitByAddr`) 아래 잡힌 읽기의 응답(`Prop_RespAnswersAccepted`)과
+  수락 전 FP_BIND 예약 거절(`Prop_LoudOnlySpec`).
+- 짝 「판정 전의 표면」 — 비정렬 · 물려받은 구간 · RO 쓰기 흡수 + 소비 없는 워드 흡수 → `Prop_NoSilentDrop`.
+- 대안 넷 — 레지스터만 실물화(`NoConsPolicy` = store: `Prop_NoSilentDrop` · `Prop_NoStaleRead`) · 물려받은
+  구간 관대 · 비정렬 관대 (셋 다 `Prop_NoSilentDrop`) — 판정이 기각한 갈래의 기계 기록이다.
+- 짝 「ready 만 고친 판」 — 응답 가드를 지우면 여전히 운다: 사상표(gateR)는 읽기도 소거를 기다린다.
+
+CQ_SIZE 의 같은 값 수락(무동작)은 고정 속성 `Prop_NoSilentDrop` 이 *효과*로 센다 — 세지 않으면 모델의
+고정 속성이 기존 정본 규범과 모순이다. 탐침(비상주): 그 계수를 빼면 좋은 모델이 `Prop_NoSilentDrop` 으로
+운다 · 증인 `Witness_NoSameValueWr` 가 예외의 도달이다.
+
+분리 검사(비상주, 2026-09-26 실측): 가드마다 지운 판에 나머지 가드 속성 여덟 — 9/9 통과(각 247 distinct).
+삭제 run 자체는 첫 위반 하나만 보고하므로 「자기 속성*만*」은 이 검사가 잰다.
+
+**한계** (모델 머리): 고정 속성의 예외 집합이 판정의 내용 그 자체다 — 판정이 달랐다면 두 집합을 바꿔 적었을
+것이고 모델은 똑같이 통과했을 것이다. 기계로 보이는 것은 가드 ↔ 속성 대응 · 증인 도달 · 짝의 반례 · 규범
+사이의 공존(예약 관대 ∧ 비정렬 엄격 · CQ_SIZE 같은 값 수락 ∧ 소비 없는 워드 거절)뿐이다.
+
+**재지 않는 것** (모델 머리가 닫힌 목록): 어느 오프셋이 어느 부류인가(주소 디코드 — 조립 후-formal) ·
+수락된 기입의 의미(각 구역 모델) · 읽기 값의 뜻(0xE04–0xE0C · 0xFFC 판 값) · 바이트 인에이블 · `[6]` 의
+sticky · 시간 · 한 스텝의 접근 여럿.
+
+## E.1.2 · E.3 변환 미적중의 관측면 — `XlateObs.tla` (파도 4 3B, 2026-09-26)
+
+`XlateSurface.tla` 는 호스트 쪽 *문*이고 세 RO 워드(`0xE04`–`0xE0C`)의 *읽기*는 그 모델의 상태가 아니다.
+파도 3 까지 RTL 은 세 워드 읽기를 0 으로 두었고(미배선) 정본은 필드만 정한 채 셋 — 정지가 없을 때의 값 ·
+여러 워드 읽기의 찢김 · 읽기가 해제하는가 — 에 침묵했다. 판정 E04 (A) 「정지 게이트 스냅샷」(f229c8b)이
+셋을 정했고, 6.3 의 요구대로 그 결정을 이 모델로 돌려보냈다. 정본 좌표와 각 가드의 문장은 모델 머리가
+소유한다.
+
+22 run: 좋은 모델 2(파티션 2 · VPN 2 / 파티션 3 규모) + 가드 삭제 6 + 대안 1(비게이트 — 갈래 (C)) + 진행 1
+(HostSpec) + 진행 짝 2(첫 미적중 포착 VPN · 상수 파티션) + 짝 「오늘의 RTL」 1 + 대비 1 + 짝 「새는 파이프」 1
++ 증인 7. RTL 편집 전에 블록 22/22 GREEN(컨테이너 · 2026-09-26 15:21 KST)을 남겼다.
+- 가드 삭제 셋이 기각 갈래와 동형이다: `obs_vpn_stalled` 삭제 = 첫 미적중 포착(갈래 (B)) ·
+  `obs_no_residue` 삭제(`ObsNoStall` = "latched") = 그 포착값의 잔재 · 대안(`ObsNoStall` = "live") = 비게이트
+  (갈래 (C) — 조회 지점의 살아 있는 요청이 샌다).
+- 진행 `Prop_StallResolves` 는 관측면만 보고 채우는 호스트(HostSpec)가 모든 정지를 푸는가 —
+  e-defined.typ:881 「채널이 없으면 2항은 이행 불가능한」의 *충분성* 쪽이다. 짝 「오늘의 RTL」(`Wired` = FALSE)이 그 문장의 기계 판이다.
+- `Prop_NoTear`(찢김 없음)는 가드가 아니다 — 몸이 관측 회로가 아니라 E.4 3항 일제 정지(RTL 주장은
+  `Decode.stall_uniform`)라서다. 짝 「새는 파이프」(`Pipe` = "leaky")가 반증력을 든다.
+
+**발견 — 원형의 진행 짝은 말더듬 인공물에 열려 있었다 (수리함).** 원형(스크래치 시안)은 HostSpec 의 공정성을
+채움(HostFill)에만 걸었다. 그 판에서 「`obs_stall_live` 를 지운 기계도 호스트가 푼다」(PASS 기대)가 FAIL 이었다 —
+[0] 이 sticky 를 내면 정지가 선 그 스텝의 sticky 가 아직 0 이라 HostFill 이 꺼지고, 공정성 없는 Read 만 켜져 있어
+영영 읽지 않는 호스트의 말더듬 행동이 진행을 깼다. 원형은 그 run 을 뺐다. 그러나 같은 인공물이 나머지 진행 짝에도
+열려 있었다(첫 미적중 포착 판은 첫 정지 스텝에 포착 레지스터가 비어 HostFill 이 꺼진다) — TLC 는 반례 하나만
+보고하므로 그 FAIL 이 「채널이 틀린 것을 말한다」로 났는지 「안 읽었다」로 났는지 선언이 가르지 못했다.
+그래서 빼지 않고 HostSpec 에 읽기 공정성(폴링)을 걸었다 — 근거는
+e-defined.typ:874 「정지가 영구가 되지 않을 책임은 호스트에 있다」 다. 그 판에서 진행 짝 반례는 「채널이 틀린 것을 말한다」뿐이고 원형이 뺀 run 은 대비 MUST PASS 다.
+
+분리 검사(비상주, 2026-09-26 실측): 가드마다 지운 판에 나머지 가드 속성 다섯을 걸어 6/6 통과 — 가드 삭제는
+자기 속성만 깨뜨린다. `Prop_NoTear` 는 분리 검사에서 뺐다 — 스냅샷의 전건이 「[0] = 1 을 읽었다」라
+`obs_stall_live` 를 지운 판([0] = sticky)에서는 정지가 끝난 뒤에도 스냅샷이 서서 뜻이 바뀐다.
+
+**재지 않는 것** (모델 머리 「닫지 않은 자리」가 닫힌 목록): 비트 배치(RTL 조립층 `a_rd_xstatus` ·
+`a_rd_xvpnlo` · `a_rd_xvpnhi`) · 읽기 응답의 시각 · 적중 요청의 나머지 단 · 0xE10 의 문 쪽 적법성(`XlateSurface.tla`).

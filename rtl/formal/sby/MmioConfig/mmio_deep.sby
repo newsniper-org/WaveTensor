@@ -4,26 +4,63 @@
 # MmioConfig 후-formal (심층) — 표 *내용* 수준 서로소 불변식 (§1.4.5 D2).
 #
 # 증명(위임) — Route 모델의 unique_owner 가드의 실물: 「한 LNID 를 소유한
-# 슬롯은 최대 하나」가 fwd 표 그림자 위 k-귀납으로 선다. GUARD-MAP 이
+# 슬롯은 최대 하나」가 fwd 표 그림자 위 귀납으로 선다. GUARD-MAP 이
 # unique_owner 를 DELEGATED(MmioConfig) 로 지목하므로 (lint_postformal
 # 규칙상 PROVES 앵커는 CHECK 전용 — 앵커 없음) 이 파일이 그 위임의 심층
 # 실측이다. 아울러 「역방향 표가 함수」라는 사실은 assume-guarantee 로
 # 갈랐다: 기입 짝짓기(보증, mmio_config.sby 의 assert 와 동일 하네스)와
 # Mem 판독=최후기입 의미론(가정, 하네스 assume 다리 ①·② — 근거 주석
-# 필수 규율에 따라 각 assume 에 명시)이다. 즉 이 태스크의 PASS 는
+# 필수 규율에 따라 각 assume 에 명시)이다. 즉 이 파일의 PASS 는
 # 「Mem 의미론 다리 위에서 서로소 불변식이 귀납 닫힘」이라는 뜻이다 —
 # yosys 자유 프론트엔드가 Mem 내용 접근 수단(bind·계층 참조·배열 포트)을
 # 전부 결여한다는 실측이 이 우회의 사유다 (하네스 머리 주석).
 #
-# prove 깊이 6 근거: 그림자 갱신과 커밋 가드는 1스텝 관계 — k=2 로 족하고
-# 여유로 6. bmc 태스크는 두지 않는다 — 소거 2^16 사이클이 도달성을 막아
-# 심층 속성의 BMC 는 공허하다 (mmio_config.sby 의 bmc 가 소거 구간을 잰다).
+# ── 귀납의 형태 — base + ind (2026-09-26 파도 4 개정 · 솔버 실명 함정) ────────
+#
+# 파도 4 까지 이 파일은 태스크 deep(mode prove · smtbmc z3 k-귀납 · 깊이 6) 하나로 서로소를
+# 쟀다. 실측 소요가 51–70 분이었고(rtl/README.md 운영 실측), 파도 4 판(비정렬 쓰기 거절 항
+# 하나가 faultBadWrite 에 더해진 판)에서는 경합 아래 2 시간 웨지로 죽였고 단독 재실행도
+# 1 시간을 넘었다. 원인 분리 실측(2026-09-26, 비상주): 서로소 쌍을 빼면 z3 귀납이 즉시
+# 닫히고 · Mem 을 cutpoint 로 끊어도 z3 는 그대로 멈추고 · 쌍 15 개만 남겨도 멈춘다 — 병목은
+# 서로소 120 쌍의 16b 등식이다. abc pdr 은 cutpoint 모델(플롭 346)에서도 프레임 2 에 정체했고,
+# `smtbmc abc` 는 컨테이너의 Berkeley abc SMT 파서가 거부한다. 비트 수준 SAT(abc bmc3)는 같은
+# 등식을 초 단위로 푼다. 그래서 k-귀납을 **손으로 둘로 가른다** — 같은 증명, 다른 엔진:
+#
+#   base  reset 기점 bmc (abc bmc3 · 깊이 6) — 단언 148 전부. 옛 deep 의 기저(basecase)와 같은
+#         것이다. 소거 2^16 이 도달성을 막으므로 이 태스크가 실제로 재는 것은 reset 직후와 소거
+#         구간뿐이다(정직 표기 — 그 구간의 모듈 단언은 mmio_config.sby bmc 도 잰다). 서로소의
+#         기저가 자명한 이유: 그림자는 reset 에서 공집합이고 공집합은 서로소다.
+#   ind   귀납 단계 (abc bmc3 · 깊이 3 · -DMMIO_DEEP_IND). 프레임 0 은 **아무 상태**다 — reset
+#         도 시작 가정도 없다. 거기서 서로소 120 쌍을 가정으로 세우고(하네스 g_pair 의 귀납
+#         가설), 다리 ①·② 아래 한 전이 뒤의 상태가 그 120 쌍을 지키는지 단언한다(clocked
+#         단언은 한 프레임 늦게 표본하므로 깊이 3 = 전이 하나 뒤의 상태까지). 즉 1-귀납이다.
+#         모듈 단언 28 은 끈다 — 자유 상태에는 도달 불가능한 상태가 있어 그것들이 가짜 반례를
+#         내고, 그 28 의 귀납은 mmio_config.sby prove 가 따로 닫는다. 귀납 가설에 그 28 을
+#         보조 정리로 싣지 **않고도** 닫힌다는 것이 실측이다 — 옛 deep(가설 148 전부)보다 약한
+#         가설로 같은 결론이다.
+#
+#   두 태스크가 함께 주장하는 것: 다리 assume ①·②가 모든 도달 상태에서 성립하면(= Mem 판독이
+#   최후 기입이라는 의미론 — 옛 deep 과 같은 기계 밖 가정), 서로소 120 쌍은 모든 도달 상태에서
+#   성립한다. base 가 초기 상태를, ind 가 임의 상태에서의 보존을 잰다.
+#
+#   cutpoint (ind · post · base): 세 Mem 의 판독 데이터를 매 스텝 자유로 바꾼다. 판독이 뜻을
+#   갖는 자리(CHECK 사이클의 역·정방향 판독)는 다리가 그림자에 묶으므로 이것은 assume-guarantee
+#   분해와 같은 주장이고, 그 밖은 과대근사(궤적이 늘 뿐)라 PASS 는 건전하다. 다리 assume 이
+#   뒤 프레임에서 궤적을 잘라 공허를 만들 수 없다는 점도 cutpoint 가 보장한다 — 다리가 묶는
+#   판독 값이 매 스텝 자유 입력이라 뒤 프레임의 다리는 언제나 충족 가능하다. Mem 을 끊지
+#   않으면 역방향 표 2^16 워드가 비트로 풀려 bmc3 가 스텝 6 에서 변수 170만이다.
+#
+#   ind 의 음성 대조 (2026-09-26 실측 · 비상주 사본): ① 커밋 가드의 역방향 표 검사를 지운 RTL
+#   변이(모든 `if(!revChkPresent)` → 참) → 서로소 쌍 단언 FAIL (스텝 2 — 모듈 단언 28 이 꺼진
+#   채 서로소 자신이 잡는다) ② 다리 ① 을 지운 하네스 → 서로소 FAIL ③ 귀납 가설을 지운 하네스
+#   → 스텝 1 FAIL (자유 그림자). 깊이 2 판은 ①·② 를 **통과시켰다** — clocked 단언이 한 프레임
+#   늦게 표본해 전이 뒤 상태를 한 번도 재지 않는 공허였다. 깊이 3 이 하한인 이유다.
 #
 # cover 태스크 (2026-08-26 신설, -DMMIO_DEEP_COVER) — 심층의 공허 방지.
 # 서로소 단언 120건은 `!(shV[a] && shV[b] && shL[a]==shL[b])` 꼴이라 **표가
 # 영원히 공집합이면 아무것도 재지 않는다** — 「빈 표는 항상 서로소」이기
 # 때문이다. 게다가 이 태스크는 다리 assume 둘을 더 얹으므로, 모듈 태스크
-# (mmio_config.sby)의 증인 9개가 도달 가능하다는 사실이 여기서 그대로
+# (mmio_config.sby)의 증인 10개가 도달 가능하다는 사실이 여기서 그대로
 # 성립한다는 보장도 없다: assume 이 서로 모순이면 148건 전부가 공허하게
 # 참이고 셀 수 게이트도 항진 검사도 그것을 잡지 못한다. 그래서 증인을
 # *이 태스크의 가정 아래에서* 다시 세운다 — 다섯이고, 알맹이는 W3
@@ -55,12 +92,24 @@
 # cover 5 · assume 11). 그러므로 증인 궤적은 단언 검사를 받지 않는다.
 # 살아남는 것은 assume 이고, 그것이 요점이다 — 증인이 **다리 assume ①·②
 # 아래에서** 잡혔다는 뜻이라 「다리가 모순이라 148건이 전부 공허」라는
-# 가능성을 이 태스크가 배제한다. 단언 셀 수의 증거는 deep 태스크 쪽
+# 가능성을 이 태스크가 배제한다. 단언 셀 수의 증거는 base · post 태스크 쪽
 # 모델이 낸다 (스윕은 태스크별 모델의 최댓값을 쓴다).
 #
 # 깊이 8 근거: 커밋 1회 = 수락+CHECK 2사이클, 그림자 반영에 1사이클 —
 # 두 슬롯 소유(D2)가 최장이라 5스텝이면 닿고 여유로 8 (실측: 최장 증인
 # d2_deep_owned_two 가 5스텝).
+#
+# post 태스크 (2026-09-26 파도 4 신설, -DMMIO_DEEP_POST) — 기능 구간 결함의 *확정* 반례.
+# base 는 reset 기점이라 소거 2^16 사이클을 건너지 못하고, ind 는 자유 상태라 모듈 단언
+# 28 을 끈다 — 그래서 「소거 완료 직후 · 그림자 공집합」에서 단언 148 을 켠 채 12 사이클을
+# 유계 검사하는 태스크가 따로 있어야 기능 구간의 모듈 결함이 FAIL 로 확정된다 (mmio_config
+# .sby post 태스크와 같은 사유). 이것은 귀납을 대체하지 않는다 — 무한 깊이는 base + ind 다.
+# 깊이 12 근거: 두 슬롯 소유(커밋 둘)가 5스텝, 해제 뒤 재등록까지 9스텝 — 여유로 12.
+#
+#   변이 실측 (2026-09-26 · 비상주 사본): 비정렬 쓰기 거절을 sticky 에서 뗀 변이(U01) · 구역
+#   한정 변이(U02) → 스텝 2 FAIL (p_bad_sticky) · 커밋 가드의 역방향 표 검사를 지운 변이 → 스텝
+#   4 FAIL (p_reject_no_write · p_view_drive_iff · p_view_en_iff). 무변이 PASS (12 프레임 5 초).
+#   smtbmc z3 는 같은 유계 검사를 스텝 5(두 번째 커밋이 처음 가능한 깊이)에서 수 분째 멈췄다.
 #
 # 실행(컨테이너 전용 — 호스트 sby 금지):
 #   podman run --rm --userns=keep-id -v "$PWD:/workspace" wavetensor-dev:scala \
@@ -68,20 +117,36 @@
 #             rtl/formal/sby/MmioConfig/mmio_deep.sby"
 
 [tasks]
-deep
+base
+ind
+post
 cover
 
 [options]
-deep: mode prove
-deep: depth 6
+base: mode bmc
+base: depth 6
+ind: mode bmc
+ind: depth 3
+post: mode bmc
+post: depth 12
 cover: mode cover
 cover: depth 8
+# abc 반례를 궤적으로 재생하는 aigsmt 기본값은 yices 인데 컨테이너에 없다 — 없으면 FAIL 이
+# 「aigsmt 상태 불명」 ERROR 로 뒤바뀐다 (walk_decode.sby 선례 · 2026-09-26 변이 실측).
+base: aigsmt z3
+ind: aigsmt z3
+post: aigsmt z3
 
 [engines]
-smtbmc z3
+base: abc bmc3
+ind: abc bmc3
+post: abc bmc3
+cover: smtbmc z3
 
 [script]
-deep:  read_verilog -formal -sv -DMMIO_DEEP MmioConfig.sv MmioConfig_props.sv
+base:  read_verilog -formal -sv -DMMIO_DEEP MmioConfig.sv MmioConfig_props.sv
+ind:   read_verilog -formal -sv -DMMIO_DEEP -DMMIO_DEEP_IND MmioConfig.sv MmioConfig_props.sv
+post:  read_verilog -formal -sv -DMMIO_DEEP -DMMIO_DEEP_POST MmioConfig.sv MmioConfig_props.sv
 cover: read_verilog -formal -sv -DMMIO_DEEP -DMMIO_DEEP_COVER MmioConfig.sv MmioConfig_props.sv
 expose MmioConfig/w:initDone MmioConfig/w:busy MmioConfig/w:pSlot MmioConfig/w:pWord
 expose MmioConfig/w:revChkPresent MmioConfig/w:fwdRd MmioConfig/w:chkDupOwn MmioConfig/w:chkBadWr MmioConfig/w:chkLbBadWr
@@ -89,6 +154,9 @@ expose MmioConfig/w:fwdWrEn MmioConfig/w:fwdWrAddr MmioConfig/w:fwdWrData
 expose MmioConfig/w:revWrEn MmioConfig/w:revWrAddr MmioConfig/w:revWrData
 expose MmioConfig/w:lbWrEn MmioConfig/w:lbWrAddr MmioConfig/w:lbWrData
 prep -top MmioConfig_props
+base: cutpoint MmioConfig/t:$mem_v2
+ind:  cutpoint MmioConfig/t:$mem_v2
+post: cutpoint MmioConfig/t:$mem_v2
 
 # 경로는 저장소 루트 기준 — sby 는 [files] 를 호출 cwd 기준으로 푼다 (실측).
 [files]

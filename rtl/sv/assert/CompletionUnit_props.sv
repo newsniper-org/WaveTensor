@@ -88,6 +88,8 @@ module CompletionUnit_props (
   input wire          io_comp_ready,
   input wire          io_faultOverflow,
   input wire          io_faultClearOverflow,
+  input wire          io_faultBadWrite,
+  input wire          io_faultClearBadWrite,
   // ── expose 로 승격된 링 포인터 ────────────────────────────────────────
   input wire [2:0]    f_head,
   input wire [2:0]    f_tail,
@@ -214,6 +216,20 @@ module CompletionUnit_props (
     end
   end
 
+  // ══ 축 3b — 비정렬 읽기는 0 (파도 4 W6) ═══════════════════════════════
+  // 03-hiu.typ:754 「비정렬 *읽기*는 0 · fault 없음이다」 — 창을 포함한 구역 어디서든 주소 하위 두
+  // 비트가 0 이 아닌 수락 읽기의 응답은 rvalid + 0 이다. RTL 은 readValue 의 aligned 게이트와 winSel 의
+  // aligned 항이 든다. 이 단언 전에는 그 규범을 재는 태스크가 없어 winSel 의 aligned 탈락(비어 있지 않은
+  // 링의 0x341 읽기가 링 항목을 샌다 — 검토 변이 M12)이 이 태스크를 통과했다. fault 없음은 축 6 등식이 잰다.
+  always @(posedge clk) begin
+    if (f_ok) begin
+      if ($past(f_acceptR) && !$past(f_aligned)) begin
+        assert (io_rvalid);
+        assert (io_rdata == 32'd0);
+      end
+    end
+  end
+
   // ══ 축 4 — 생산 색인은 장치가, 그것도 수락 사이클에만 움직인다 (E.5 표) ══
   always @(posedge clk) begin
     if (f_ok) begin
@@ -231,6 +247,28 @@ module CompletionUnit_props (
       if ($past(f_shove)) assert (io_faultOverflow); // 해제와 겹쳐도 발화가 이긴다
       if ($past(io_faultOverflow) && !$past(io_faultClearOverflow))
         assert (io_faultOverflow);
+    end
+  end
+
+  // ══ 축 6 — 거절된 구성 기입: 정확한 차기 상태 등식 (E.1.1 · 파도 4 판정 T1-i · T2) ══
+  // 거절 사유를 정본 표로 *독립 재구성*한다 — RTL 의 isRoOff · badWrite 를 참조하지 않는다.
+  //   비정렬 쓰기 (판정 T2 (a) — sub-word 쓰기의 장치 포트 표현, 구역 안 어디서든)
+  //   RO 오프셋 쓰기 — CQ_TAIL · IRQ_STATUS · 엔트리 창 · 드레인 여섯 · CQ_OCC · DRAIN_ALLZERO
+  //   소비 회로 없는 RW 워드 — CQ_BASE_LO/HI (판정 T1-i β · 정본 E.1.3 규범 끝)
+  //   예약 비트 비0 · 이행 불가 CQ_SIZE 값 (log2 8 = 3 이 아닌 값)
+  // 등식이 양방향이라 「표에 없는 정렬 오프셋 쓰기 · 적법한 기입은 sticky 를 세우지 않는다」
+  // (예약 오프셋 관대)와 「발화가 해제를 이긴다」가 함께 선다.
+  wire f_wAl    = io_wstrobe && f_aligned;
+  wire f_roOff  = (io_addr == 8'h10) || (io_addr == 8'h20) || (io_addr[7:5] == 3'd2) ||
+                  ((io_addr >= 8'h60) && (io_addr <= 8'h74)) || (io_addr == 8'h78) || (io_addr == 8'h7C);
+  wire f_base   = (io_addr == 8'h00) || (io_addr == 8'h04);
+  wire f_sizeBd = (io_addr == 8'h08) && ((io_wdata[31:5] != 27'd0) || (io_wdata[4:0] != 5'd3));
+  wire f_rsvBd  = ((io_addr == 8'h24) || (io_addr == 8'h28)) && (io_wdata[31:1] != 31'd0);
+  wire f_unalW  = io_wstrobe && !f_aligned;
+  wire f_badWr  = f_unalW || (f_wAl && (f_roOff || f_base || f_sizeBd || f_rsvBd));
+  always @(posedge clk) begin
+    if (f_ok) begin
+      assert (io_faultBadWrite == ($past(f_badWr) || ($past(io_faultBadWrite) && !$past(io_faultClearBadWrite))));
     end
   end
 
@@ -274,6 +312,11 @@ module CompletionUnit_props (
   // W5 ← CompletionUnit.desc_full_write · CompletionUnit.desc_word_layout —
   //      태그 워드가 *전부 비영*인 항목의 되읽기: 「0 을 0 으로 맞히는」
   //      항진 증인이 아니라는 것을 이 하나가 보인다.
+  // W6 ← MmioPage.unaligned_rejected — 판정 T2 (a): 비정렬 쓰기가 거절 sticky 를 처음 세운다.
+  // W7 ← MmioPage.nocons_rejected — 판정 T1-i β: CQ_BASE_HI(+0x04) 정렬 쓰기가 거절 sticky 를
+  //      처음 세운다 (소비 회로 없는 RW 워드 — 옛 처분은 조용한 흡수였다).
+  // W8 ← CompletionUnit.unaligned_read_zero — 비어 있지 않은 링의 창을 비정렬로 읽는다 (정렬이면 링 항목
+  //      워드가 나올 자리 — 「0 을 내는 읽기」가 빈 창 · 창 밖에서만 서는 공허를 막는다).
   always @(posedge clk) begin
     if (f_ok) begin
       w2_full:         cover (f_full);
@@ -281,6 +324,9 @@ module CompletionUnit_props (
       w4_empty_window: cover ($past(f_acceptR) && $past(f_isWin) && $past(f_empty));
       w5_nonzero_tags: cover ($past(f_winRead) && ($past(f_head) == f_slot) && $past(f_written)
              && (s_wave != 32'd0) && (s_lnid != 16'd0) && (s_total != 8'd0));
+      w6_unal_wr:      cover (io_faultBadWrite && !$past(io_faultBadWrite) && $past(f_unalW));
+      w7_base_wr:      cover (io_faultBadWrite && !$past(io_faultBadWrite) && $past(f_wAl && (io_addr == 8'h04)));
+      w8_unal_rd:      cover ($past(f_acceptR && !f_aligned && f_isWin && !f_empty) && io_rvalid);
     end
   end
 endmodule
@@ -368,6 +414,8 @@ module CompletionUnit_formal (
     .io_comp_ready(io_comp_ready),
     .io_faultOverflow(io_faultOverflow),
     .io_faultClearOverflow(io_faultClearOverflow),
+    .io_faultBadWrite(io_faultBadWrite),
+    .io_faultClearBadWrite(io_faultClearBadWrite),
     .f_head(head), .f_tail(tail), .f_slot(f_slot)
   );
 endmodule

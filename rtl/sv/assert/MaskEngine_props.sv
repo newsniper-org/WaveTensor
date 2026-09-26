@@ -113,7 +113,7 @@
 //     wr_same_partition_at_final_edge_is_loud 이, 마스크 값은 golden 대조가 잰다.
 //   · 저장의 파티션 범위(key_scoped_storage · key_write_own_only) · REKEY 유휴
 //     수락(rekey_idle_only) — HiuMask/hiumask.sby. MASK_PART 창 라우팅
-//     (rekey_explicit_target) — Wt64Top DELEGATED.
+//     (rekey_explicit_target) — Wt64Top/assembly.sby (CHECK — 파도 2 승격).
 //   · 논스 재사용 검사(faultNonceDup) · 미준비 통과(faultNoMask) · 요청 경로의
 //     고정 1사이클 — hiumask.sby 와 cocotb.
 //   · 수락과 같은 사이클의 기입이 유도 초기 상태에 **값**으로 어떻게 실리는가 —

@@ -51,6 +51,8 @@ module OwnershipTable_props (
   input wire [31:0]   io_wdata,
   input wire          io_rstrobe,
   input wire          io_ready,
+  input wire [31:0]   io_rdata,        // 파도 4 W6 — 비정렬 읽기 0 (아래 「비정렬 읽기」 절)
+  input wire          io_rvalid,
   input wire [31:0]   io_query_frame,
   input wire          io_query_devOwned,
   input wire          io_faultCollide,
@@ -105,6 +107,8 @@ module OwnershipTable_props (
   wire f_statusWr = f_selW && (io_addr[7:2] == W_STATUS);
   wire f_setWr    = f_selW && (io_addr[7:2] == W_SET);
   wire f_clrWr    = f_selW && (io_addr[7:2] == W_CLR);
+  // 판정 T2 (a) — 수락된 비정렬 *쓰기*: 구역 무관하게 거절 + loud (sub-word 쓰기의 장치 포트 표현).
+  wire f_unalWr   = io_ready && io_wstrobe && !f_aligned;
 
   // 전이 워드 — 워드 전체가 프레임이다 (예약 비트도 방향 비트도 없다).
   wire [5:0]      f_wIdx = io_wdata[5:0];
@@ -212,8 +216,16 @@ module OwnershipTable_props (
     if (f_ok) begin
       if ($past(f_statusWr))
         assert (io_faultBadWrite);
+      // 판정 T2 (a) — 비정렬 쓰기도 같은 sticky 로 loud 다 (f_selW 가 f_aligned 를 요구하므로
+      // 전이 원자성 단언들이 그 쓰기의 무효과를 이미 잰다).
+      if ($past(f_unalWr))
+        assert (io_faultBadWrite);
       if ($past(io_faultBadWrite && !io_faultClearBadWrite))
         assert (io_faultBadWrite);
+      // 건전성 — 상승 원천은 두 거절뿐이다. 표 밖 *정렬* 오프셋 쓰기(예약 오프셋 정책)와
+      // 적법한 전이 기입은 이 sticky 를 세우지 않는다 (MmioPage.resv_lenient 의 유닛 절반).
+      if (io_faultBadWrite && !$past(io_faultBadWrite))
+        assert ($past(f_statusWr || f_unalWr));
     end
   end
 
@@ -227,6 +239,24 @@ module OwnershipTable_props (
     if (f_ok && $past(f_woRead)) begin
       assert (io_faultBadWrite == $past(io_faultBadWrite && !io_faultClearBadWrite));
       assert (io_faultCollide  == $past(io_faultCollide  && !io_faultClearCollide));
+    end
+  end
+
+  // ── 비정렬 읽기는 0 — 03-hiu.typ:754 「비정렬 *읽기*는 0 · fault 없음이다」 (파도 4 W6) ──
+  // 위 WO 절이 rdata 를 재지 않은 자리의 한 조각이다. 수락된 비정렬 읽기의 응답은 rvalid + 0 이다 — RTL 은
+  // rdSel 을 고르는 when_OwnershipTable_l299 의 aligned 항이 든다. 이 단언 전에는 그 항을 떼는 변이(0x201
+  // 읽기가 OWN_IDX 를 샌다 — 검토 변이 M13)가 이 태스크를 통과했다. fault 없음은 위 sticky 건전성 단언이 잰다.
+  wire f_unalRd = io_ready && !io_wstrobe && io_rstrobe && !f_aligned;
+  // 증인 전용 그림자 — 마지막 OWN_IDX 기입이 비0 이었는가 (비정렬 읽기가 샐 값이 있는 형상).
+  reg f_idxNz = 1'b0;
+  always @(posedge clk) begin
+    if (reset)        f_idxNz <= 1'b0;
+    else if (f_idxWr) f_idxNz <= (io_wdata != 32'd0);
+  end
+  always @(posedge clk) begin
+    if (f_ok && $past(f_unalRd)) begin
+      assert (io_rvalid);
+      assert (io_rdata == 32'd0);
     end
   end
 
@@ -261,6 +291,10 @@ module OwnershipTable_props (
   // W11 ← Platform.state_machine_kept — 무연산 항등의 CLR 면.
   // W12 ← Platform.state_machine_kept — WO 오프셋 읽기 도달 (조용함 단언의
   //       전건 $past(f_woRead)).
+  // W13 ← MmioPage.unaligned_rejected — 판정 T2 (a): 수락된 비정렬 쓰기가 거절 sticky 를
+  //       처음 세운다 (전이 없음은 f_selW 의 aligned 전건).
+  // W14 ← OwnershipTable.unaligned_read_zero — 비0 OWN_IDX 가 있는 채로 0x201–0x203 을 읽는다 (정렬이면
+  //       OWN_IDX 가 나올 자리 — 비정렬 읽기 0 단언의 전건과 그 반례 형상에 닿는다).
   always @(posedge clk) begin
     if (f_ok) begin
       w1_handoff:    cover (f_setWr && f_hit && !f_sVal);
@@ -275,6 +309,8 @@ module OwnershipTable_props (
       w10_noop_set:  cover (f_setWr && f_hit && f_sVal && f_mine);
       w11_noop_clr:  cover (f_clrWr && f_hit && !f_sVal);
       w12_wo_read:   cover (f_woRead);
+      w13_unal_wr:   cover (io_faultBadWrite && !$past(io_faultBadWrite) && $past(f_unalWr));
+      w14_unal_rd:   cover ($past(f_unalRd && f_region && (io_addr[7:2] == W_IDX)) && f_idxNz && io_rvalid);
     end
   end
 endmodule
@@ -386,6 +422,8 @@ module OwnershipTable_formal (
     .io_wdata              (io_wdata),
     .io_rstrobe            (io_rstrobe),
     .io_ready              (io_ready),
+    .io_rdata              (io_rdata),
+    .io_rvalid             (io_rvalid),
     .io_query_frame        (io_query_frame),
     .io_query_devOwned     (io_query_devOwned),
     .io_faultCollide       (io_faultCollide),

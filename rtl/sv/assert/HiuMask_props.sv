@@ -58,19 +58,39 @@
 //     그 사이클의 phase 는 IDLE 이었다(io_rekey_ready = !engineBusy 배선의
 //     회귀 그물). 이 축의 로직 자체는 이번 파도가 건드리지 않는다 — 설계
 //     문면이 요구한 것은 신규 증명이 아니라 회귀 확인이다.
+//   · XlateObs.* 파이프라인 절반 (2026-09-26 파도 4 — 미적중 관측 값, 판정 E04 (A)) —
+//     HiuPipeline 의 새 출력 missStall · missPart · missVpn 이 정지 게이트 스냅샷이다:
+//     missStall = 조회 지점 로컬 미적중(m_obs_stall), 정지 중에는 *그 요청의* 파티션 ·
+//     VPN(m_obs_part · m_obs_vpn — 지상 진리는 DUT s3_* 가 아니라 io_req_* 를 advance 로
+//     시프트한 독립 거울 f_part · f_vpn), 정지가 없으면 0(m_obs_zero). 거울과 단 몸의
+//     일치(m_cap_1..3 — valid 인 단만)는 k-귀납의 보조 불변식이자 그 자체로 「단 데이터가
+//     그 요청의 것이다」의 단언이다. STATUS 워드로의 포장은 조립층(assembly.sby)이 잰다.
+//   · 미적중 sticky 규약 m_sticky (파도 4) — io_missNotice 의 차기 상태가 정확히
+//     (정지 ∨ (sticky ∧ ¬해제)) 다: 정지가 set 이고 해제를 이긴다 · 해제 없이는 내려가지
+//     않는다 · 읽기 같은 제3 원천이 없다. XlateObs.obs_sticky 와 XlateSurface 의 mclr_fires ·
+//     mclr_needs_one 의 파이프라인 절반을 잰다 (종전 「어느 형식 태스크도 재지 않는다」).
+//   · XlateSurface.mclr_keeps_stall 파이프라인 절반 — 새 단언이 아니다. 아래 정지 원천
+//     등식(advance == !io_hold && !(s3_valid && !x_hit))이 io_missClear 가 자유 입력인
+//     합성에서 이미 서 있었다 — 해제가 정지를 풀 수 없다는 것의 관측형이다. 원장이 그
+//     절반을 「안 잰다」로 과소 계수하고 있었다 (hiumask.sby §역-변이 KEEPSTALL 실측).
+//   · 슬롯 여유 통과 결선 m_slot_pass · m_slot_split (파도 4 SLOTFREE) — HiuPipeline 의
+//     installSlotFree 가 XlateStore 의 슬롯 여유 그대로이고, install.ready 와의 차이는
+//     같은 파티션 flush 항 하나다 (XlateStore_props.sv a_ready_split 의 합성 쪽 대응).
 //
-// ## Mask.rekey_explicit_target 은 이 하네스의 대상이 아니다 (DELEGATED)
+// ## Mask.rekey_explicit_target 은 조립층이 잰다 — 여기서 앵커하지 않는다
 //
 // 정본 7fa5f2e "임대별 키의 인코딩 — 창이지 평면 배열이 아니다" 7항의
 // MASK_PART(0xEA0) 라우팅(키·논스 두 기입 모두가 같은 창을 거친다, REKEY
 // 는 별개 authority)은 **Wt64Top 의 MMIO 디코드**(maskArea) 몫이고, 이
 // 합성(HiuPipeline × MaskUnit)은 Wt64Top 을 포함하지 않는다 — MaskUnit
 // 자신에는 "창" 개념이 없다: keyWr.part / rekey.part 는 이미 분리된
-// 자유 입력으로 이 유닛에 도착한다. MaskUnit.scala 의 GUARD-MAP 이 이
-// 가드를 `DELEGATED(Wt64Top)` 로 선언한다 — Wt64Top 을 감싸는 별도
-// 후-formal 합성이 서는 날 CHECK 로 승격될 자리다. DELEGATED 선언은
-// PROVES 대상이 아니므로(lint_postformal 규율) 이 파일에도 그 가드의
-// 앵커를 달지 않는다.
+// 자유 입력으로 이 유닛에 도착한다. 그 가드는 파도 2 에 DELEGATED(Wt64Top)
+// 에서 CHECK 로 올랐고 정식 GUARD-MAP 줄은 top/Wt64Top.scala 머리에 있다 —
+// 후-formal 은 rtl/formal/sby/Wt64Top/assembly.sby 의 PROVES(a_rekey_iff ·
+// a_rekey_part · a_win_pins)다. 엔진이 그 파티션의 저장을 읽는 절반은 아래
+// Mask.key_scoped_storage 가 다른 가드 이름으로 잰다. 이 합성은 Wt64Top 을
+// 포함하지 않으므로 이 파일에는 그 가드의 앵커를 달지 않는다.
+// (2026-09-26 파도 4 — 옛 문면 「DELEGATED 선언」은 승격으로 낡아 있었다.)
 //
 // 이 태스크가 **재지 않는** 것과 그 근거는 hiumask.sby 머리의
 // 「§미측정 잔여」에 적는다 (Isolation.query_offpath 구조 skip ·
@@ -125,6 +145,11 @@ module HiuMask_comp (
   input  wire        io_faultClear,
   output wire        io_missNotice,
   input  wire        io_missClear,
+  // 파도 4 — io 번들 밖 포트 (SLOTFREE 슬롯 여유 · 미적중 관측 값)
+  output wire        installSlotFree,
+  output wire        missStall,
+  output wire [1:0]  missPart,
+  output wire [31:0] missVpn,
   // MaskUnit 구성 표면 (자유 입력 — 속성은 구성 무관하게 서야 한다)
   input  wire        io_keyWr_valid,
   input  wire [1:0]  io_keyWr_part,  // 2026-09-15 파도: 정본 7fa5f2e — 키도 창을 거친다
@@ -199,6 +224,10 @@ module HiuMask_comp (
     .io_faultClear      (io_faultClear),
     .io_missNotice      (io_missNotice),
     .io_missClear       (io_missClear),
+    .installSlotFree    (installSlotFree),
+    .missStall          (missStall),
+    .missPart           (missPart),
+    .missVpn            (missVpn),
     .clk                (clk),
     .reset              (reset)
   );
@@ -339,7 +368,23 @@ module HiuPipeline_props (
   input wire [31:0]  lookFrame,
   input wire         lookPerm_r,
   input wire         lookPerm_w,
-  input wire         lookPerm_x
+  input wire         lookPerm_x,
+  // ── 파도 4 tap (2026-09-26) — 전부 HiuPipeline 스코프의 평범한 이름이다 ──────
+  input wire [1:0]   io_req_part,         // 거울 f_part 의 원천 (자유 입력)
+  input wire [31:0]  io_req_vpn,          // 거울 f_vpn 의 원천 (자유 입력)
+  input wire [1:0]   s1_part,
+  input wire [31:0]  s1_vpn,
+  input wire [1:0]   s2_part,
+  input wire [31:0]  s2_vpn,
+  input wire         missStall,           // 미적중 관측 값 (클래스 끝 포트)
+  input wire [1:0]   missPart,
+  input wire [31:0]  missVpn,
+  input wire         io_missNotice,       // 미적중 sticky (관측면 출력)
+  input wire         io_missClear,        // 그 해제 (자유 입력)
+  input wire         io_install_valid,
+  input wire         io_install_ready,
+  input wire [1:0]   io_install_part,
+  input wire         installSlotFree      // 슬롯 여유 (클래스 끝 포트)
 );
   // f_ok — 「직전 에지도 이번 에지도 reset 밖」. $past(reset) 을 쓰지 않고
   // 명시 레지스터로 지연시킨다: yosys 0.66 은 clocked block 밖의 $past 를
@@ -522,6 +567,64 @@ module HiuPipeline_props (
       //
       // 반증력 실측 — 아래 §반증력 실측표의 ④ 항.
       assert (advance == (!io_hold && !(s3_valid && !x_hit)));
+    end
+  end
+
+  // ── 파도 4 (2026-09-26) — 미적중 관측 값 · 미적중 sticky 규약 · 슬롯 여유 통과 ──────
+  //
+  // 요청 데이터 거울 — io_req_part · io_req_vpn 을 거울 f_v 와 같은 enable(advance)로
+  // 시프트한다. 관측 값의 지상 진리를 DUT 의 s3_* 가 아니라 이 거울에서 적는다 — 검사
+  // 어휘로 지상 진리를 적으면 그 신호가 틀린 구현에서 등식이 함께 선다 (위 f_nonowned_hit ·
+  // lookAny 해설과 같은 규율). reset 이 없는 레지스터인 것은 DUT 의 단 몸과 같다.
+  reg [1:0]  f_p1, f_p2, f_p3;
+  reg [31:0] f_n1, f_n2, f_n3;
+  always @(posedge clk) begin
+    if (advance) begin
+      f_p1 <= io_req_part;  f_n1 <= io_req_vpn;
+      f_p2 <= f_p1;         f_n2 <= f_n1;
+      f_p3 <= f_p2;         f_n3 <= f_n2;
+    end
+  end
+  // 조회 지점의 로컬 미적중 — 거울 valid 와 XlateStore 독립 출력 x_hit 로 적는다 (DUT
+  // missWait 를 재인용하지 않는다).
+  wire f_stall = f_v[3] && !x_hit;
+
+  always @(*) begin
+    if (f_past_valid && !reset) begin
+      // 거울 ↔ 단 몸 — valid 인 단의 파티션 · VPN 은 그 요청의 것이다. 관측 단언들의
+      // k-귀납 보조 불변식이기도 하다 (이것 없이는 임의 시작점에서 거울과 단 몸이 어긋난
+      // 채 정지가 마지막 스텝에 서는 반례가 귀납을 깬다).
+      m_cap_1: assert (!f_v[1] || (s1_part == f_p1 && s1_vpn == f_n1));
+      m_cap_2: assert (!f_v[2] || (s2_part == f_p2 && s2_vpn == f_n2));
+      m_cap_3: assert (!f_v[3] || (s3_part == f_p3 && s3_vpn == f_n3));
+      // XlateObs.obs_stall_live (파이프라인 절반) — missStall 은 *지금* 조회 지점이 로컬
+      // 미적중으로 서 있는가의 레벨이다 (sticky 가 아니다).
+      m_obs_stall: assert (missStall == f_stall);
+      // XlateObs.obs_part_stalled · obs_vpn_stalled (파이프라인 절반) — 정지 중의 값은
+      // *지금* 정지한 요청의 것이다 (첫 미적중 포착이 아니다 — 해제 없이 온 둘째 정지는
+      // 둘째 요청을 낸다).
+      m_obs_part: assert (!f_stall || missPart == f_p3);
+      m_obs_vpn:  assert (!f_stall || missVpn == f_n3);
+      // XlateObs.obs_no_residue (파이프라인 절반) — 정지가 없으면 0: 조회 지점에 산 적중
+      // 요청의 값도, 끝난 정지의 값도 새지 않는다.
+      m_obs_zero: assert (f_stall || (missPart == 2'd0 && missVpn == 32'd0));
+      // 슬롯 여유 통과 결선 (SLOTFREE) — installSlotFree 는 install.ready 의 상계이고(ready
+      // 이면 슬롯 여유) 둘이 갈리는 사이클은 같은 파티션 flush 뿐이다. 앵커 없음 — 결선
+      // 계약이다 (XlateStore 쪽 a_ready_split · 조립 쪽 a_xonehot 과 한 벌).
+      m_slot_pass:  assert (!io_install_ready || installSlotFree);
+      m_slot_split: assert (!(installSlotFree && !io_install_ready) ||
+                            (io_flush_valid && (io_flush_part == io_install_part)));
+    end
+  end
+
+  always @(posedge clk) begin
+    if (f_ok) begin
+      // 미적중 sticky 규약 — XlateObs.obs_sticky · XlateSurface.mclr_fires ·
+      // XlateSurface.mclr_needs_one 의 파이프라인 절반. 차기 상태가 정확히 (정지 ∨
+      // (sticky ∧ ¬해제)): 정지(set)가 해제를 이기고 · 정지가 없으면 해제가 내리고 ·
+      // 해제 없이는 내려가지 않고 · 제3 원천(읽기 등)이 없다. 지상 진리의 정지는 거울
+      // valid + x_hit 다. (StickyFault 규약 — Common.scala 의 「발화가 이긴다」.)
+      m_sticky: assert (io_missNotice == $past(f_stall || (io_missNotice && !io_missClear)));
     end
   end
 
@@ -749,6 +852,33 @@ module HiuPipeline_props (
   // W15 ← Platform.owner_check
   //       해제가 실제로 가능하다 (영구 1 이 아니다 — 위 자명화의 반대면)
   always @(posedge clk) if (f_ok) w15_fault_clear: cover ($past(io_faultPerm) && !io_faultPerm);
+
+  // ── 파도 4 증인 (2026-09-26) — 미적중 관측 값 · sticky 규약 · 슬롯 여유 ──────────
+  // W19 ← XlateObs.obs_stall_live · XlateObs.obs_part_stalled · XlateObs.obs_vpn_stalled ·
+  //       m_obs_stall · m_obs_part · m_obs_vpn — 정지가 실제로 서고 그 값이 0 이 아니다
+  //       (파티션 값 0 · VPN 0 이면 「상수 0」 구현이 등식을 통과한다)
+  always @(posedge clk) if (f_ok) w19_obs_stall: cover (missStall && missPart != 2'd0 && missVpn != 32'd0);
+
+  // W20 ← XlateObs.obs_no_residue · m_obs_zero — 정지가 없는데 값이 샐 원천이 실재한다:
+  //       조회 지점에 비0 요청이 적중으로 산 사이클 (비게이트 갈래가 새는 자리)과, 비0 값을
+  //       내던 정지가 막 풀린 사이클 (포착 갈래의 잔재가 남는 자리) — 둘 다 값은 0 이다
+  always @(posedge clk) if (f_ok) w20_live_zero:  cover (f_v[3] && x_hit && f_p3 != 2'd0 && f_n3 != 32'd0 && missPart == 2'd0 && missVpn == 32'd0);
+  always @(posedge clk) if (f_ok) w20_after_zero: cover ($past(missStall && missVpn != 32'd0) && !missStall && missVpn == 32'd0);
+
+  // W21 ← XlateObs.obs_sticky · XlateSurface.mclr_needs_one · m_sticky — 정지가 풀린 뒤
+  //       해제 없는 에지를 건너 sticky 가 1 로 남는다 ([0] 은 0 — 두 비트가 갈린다)
+  always @(posedge clk) if (f_ok) w21_sticky_holds: cover ($past(io_missNotice && !io_missClear && !f_stall) && io_missNotice && !missStall);
+
+  // W22 ← XlateSurface.mclr_fires · m_sticky — 정지가 없을 때 해제가 sticky 를 실제로 내린다
+  always @(posedge clk) if (f_ok) w22_clear_lowers: cover ($past(io_missNotice && io_missClear && !f_stall) && !io_missNotice);
+
+  // W23 ← XlateSurface.mclr_keeps_stall · m_sticky — 정지 *중*의 해제: 다음 에지에도
+  //       정지가 그대로이고(advance 0) sticky 도 선 채다 (set 이 이긴다 — 해제 유실)
+  always @(posedge clk) if (f_ok) w23_clear_in_stall: cover ($past(f_stall && io_missClear) && f_stall && io_missNotice && !advance);
+
+  // W24 ← m_slot_pass · m_slot_split — 슬롯은 비었는데 같은 파티션 flush 가 설치를 막는
+  //       사이클 (두 신호가 실제로 갈린다)
+  always @(posedge clk) if (f_ok) w24_slot_split: cover (installSlotFree && !io_install_ready);
 `endif // HIUMASK_COVER
 endmodule
 
@@ -1069,5 +1199,20 @@ bind HiuPipeline HiuPipeline_props u_hiu_props (
   .lookFrame         (lookFrame),
   .lookPerm_r        (lookPerm_r),
   .lookPerm_w        (lookPerm_w),
-  .lookPerm_x        (lookPerm_x)
+  .lookPerm_x        (lookPerm_x),
+  .io_req_part       (io_req_part),
+  .io_req_vpn        (io_req_vpn),
+  .s1_part           (s1_part),
+  .s1_vpn            (s1_vpn),
+  .s2_part           (s2_part),
+  .s2_vpn            (s2_vpn),
+  .missStall         (missStall),
+  .missPart          (missPart),
+  .missVpn           (missVpn),
+  .io_missNotice     (io_missNotice),
+  .io_missClear      (io_missClear),
+  .io_install_valid  (io_install_valid),
+  .io_install_ready  (io_install_ready),
+  .io_install_part   (io_install_part),
+  .installSlotFree   (installSlotFree)
 );

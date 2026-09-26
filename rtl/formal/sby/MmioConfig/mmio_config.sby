@@ -4,6 +4,7 @@
 # MmioConfig 후-formal — 서로소 기입 거절(D2)·원자성(§3.7.1) 재검사 (§6.3).
 #
 # PROVES: Route.view_sync — 구동 절반: 표 기입(fwd·rev·lbid)과 뷰 구동(viewWr·bankWr)이 동일 사이클·동일 조건·동일 내용, 그 외 뷰 구동 경로 없음 (반영 절반은 RouteJudge, 합성은 RouteMmio)
+# PROVES: MmioPage.unaligned_rejected — 유닛 절반(사상표 구역): 수락된(ready ∧ wstrobe) 비정렬 쓰기 ⇒ 다음 사이클 faultBadWrite (p_bad_sticky — 차기 상태 등식의 h_unalW 항 · 증인 W10) · 표·뷰 불변 (p_busy_next · p_bank_drive_iff 가 aligned 를 전건에 든다). 조립 구역과 own · cq 는 다른 태스크다 (lint_postformal _PARTIAL 등재)
 #
 # 증명(위임) — Route 모델의 unique_owner 가드: GUARD-MAP 이 DELEGATED(MmioConfig)
 # 로 이 모듈을 지목한다. lint_postformal 규칙(앵커는 CHECK 가드 전용)에 따라
@@ -16,6 +17,16 @@
 # 하네스 머리 주석). 기능 구간은 prove(k-귀납)가 도달성과 무관하게 덮는다.
 # prove 깊이 6 근거: 속성 전부 조합 등식 또는 1스텝($past) 관계 — k=2 로
 # 족하고 여유로 6.
+#
+# post 태스크 (2026-09-26 파도 4 신설, -DMMIO_POST) — 기능 구간의 *확정* 반례.
+# prove(k-귀납)는 반례를 찾아도 reset 기점 기저가 소거 2^16 사이클을 건너지
+# 못해 UNKNOWN 으로만 끝난다 — 실측: 비정렬 쓰기 거절을 지운 변이 둘(U01 ·
+# U02)이 prove 에서 UNKNOWN 이었다. UNKNOWN 은 「잡았다」가 아니다. 그래서
+# cover 태스크와 같은 「소거 완료 직후」 시작 상태에서 단언을 켠 채 유계
+# 검사한다. 이 태스크의 PASS 가 주장하는 것은 「그 시작 상태에서 12 사이클
+# 안에 위반 없음」뿐이다 — 귀납 닫힘은 prove 가, 소거 구간은 bmc 가 진다.
+# 깊이 12 근거: 최장 속성 사슬이 LNID 기입(수락 → CHECK → 커밋) 두 번 + sticky
+# 반영이라 7스텝이면 닿고 여유로 12.
 #
 # cover 태스크 (2026-08-24 신설, -DMMIO_COVER) — 공허 PASS 방지.
 # 이 파일의 단언은 「A 이면 B」 꼴이 대부분이라 A 가 충족 불가능하면 전부
@@ -41,6 +52,7 @@
 [tasks]
 bmc
 prove
+post
 cover
 
 [options]
@@ -48,6 +60,8 @@ bmc: mode bmc
 bmc: depth 24
 prove: mode prove
 prove: depth 6
+post: mode bmc
+post: depth 12
 cover: mode cover
 cover: depth 6
 
@@ -59,6 +73,7 @@ smtbmc z3
 # expose 로 내부 신호를 포트로 승격해 하네스가 직접 인스턴스한다.
 bmc:   read_verilog -formal -sv MmioConfig.sv MmioConfig_props.sv
 prove: read_verilog -formal -sv MmioConfig.sv MmioConfig_props.sv
+post:  read_verilog -formal -sv -DMMIO_POST MmioConfig.sv MmioConfig_props.sv
 cover: read_verilog -formal -sv -DMMIO_COVER MmioConfig.sv MmioConfig_props.sv
 expose MmioConfig/w:initDone MmioConfig/w:busy MmioConfig/w:pSlot MmioConfig/w:pWord
 expose MmioConfig/w:revChkPresent MmioConfig/w:fwdRd MmioConfig/w:chkDupOwn MmioConfig/w:chkBadWr MmioConfig/w:chkLbBadWr

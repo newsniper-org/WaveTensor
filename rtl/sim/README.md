@@ -54,11 +54,13 @@ mkdtemp 루트는 **통과한 실행이 스스로 지운다** — 실패한 실�
 
 ```
 Mask:  11 tests passed (skip 0, 하한 11)
-Shape: 15 tests passed (skip 0, 하한 15)
-run_wt64: 요청 스위트 2건 / cocotb 테스트 26건 전부 통과
+Shape: 21 tests passed (skip 0, 하한 21)
+run_wt64: 요청 스위트 2건 / cocotb 테스트 32건 전부 통과
 ```
 
-(2026-09-26 파도 3 — 변환 저장소의 MMIO 문: Shape 6 → 13, 지향 시험 일곱
+(2026-09-26 파도 4 — Shape 15 → 16 `abort_tag1_word_legality` · 통합 착지 16 → 21: 페이지 통합 `page_disposition` · `fp_clear_window` ·
+3B `xlate_miss_observed` · `xlate_miss_obs_second_stall` · 3A `xlate_other_flush_keeps_staging` (`xlate_hi_releases_stall` 은 제자리에서 `xlate_flush_ends_staging`).
+2026-09-26 파도 3 — 변환 저장소의 MMIO 문: Shape 6 → 13, 지향 시험 일곱
 `xlate_*`, 같은 날 반증 검토 뒤 수리로 13 → 15 — 인접 HI 의 D-2 버스 정지 값 시험 둘.
 직전 기준선 2026-09-22: Mask 11 · Shape 6 · 총 17.
 그 앞 기준선 2026-08-28: Mask 8 · Shape 6 · 총 14. 2026-09-22 에 Mask 가
@@ -172,6 +174,9 @@ ISA-2 사상 경유(존재 축) · ISA-1 자리 무관성 · 구성 표면 무�
 `stalled >= 8` 하한은 정지가 새는 변이를 통과시켰다. 기입은 호스트 ABI 오프셋이고 조회는
 내부 포트 `io.hiuReq` 다 — 정지 *중*의 `0xE10` 해제가 미적중 sticky 를 내리지 못한다는
 것(set 이 정지 레벨이고 발화가 해제를 이긴다)은 이 스위트가 처음 드러낸 사실이다.
+파도 4 페이지 통합 — `page_disposition`(물려받은 구간 · 명령 링 표 워드 · CQ_BASE · `0xFFC` 쓰기의 `[6]` 과
+되읽기 0 · 비정렬 쓰기 `[6]` · 예약 정렬 오프셋 무-fault) · `fp_clear_window`(선택자 표 소거 창 *안*에서 읽기는
+기다리지 않고 응답 정확히 1회 · FP_BIND 예약 거절은 수락 뒤에만 `fpCfgBadWrite` · 비정렬 쓰기는 정지 없이 `[6]`).
 
 판정은 언제나 **예측 벡터와의 바이트 동일성**이다. ISA-2 를
 `F(σ(S)) != F(S)` 로 쓰지 않는다 — 그것이 정본이 이름한 「틀린 값도
@@ -214,7 +219,7 @@ ISA-2 사상 경유(존재 축) · ISA-1 자리 무관성 · 구성 표면 무�
 | 4 | fp32 산술 정확성 (`golden_fp32` 비트 일치) | `StepSequencer.scala:425-426` 이 `UInt` 정수곱·정수합 — 산술은 축 (b) 후속 |
 | 5 | `mask64` 의 32비트 (`[63:44]`·`[11:0]`) | `MaskUnit.scala:289-296` 「저장은 적용 비트만」 — 레지스터도 배선도 없다. **비교 불가가 아니라 비교 대상 부재** |
 | 6 | `SUBKEY`(256b)·`BLOCK`(512b) 를 통한 부분 수리 검출 | 내는 포트가 없다. `st_0..st_15` 의 계층 peek 은 포트 계약이 아니라 SpinalHDL 명명의 우연이라 통과 기준으로 쓰지 않는다 |
-| 7 | `FAULT_STATUS[17]`·`[18]` | `Wt64Top.sv:1554` 「faultWords_status[17] = 1'b0;」 과 다음 줄 `[18]` 상수 0 — 원천 부재. **0 을 「정상」으로 읽으면 안 된다** |
+| 7 | `FAULT_STATUS[17]`·`[18]` | `Wt64Top.sv:1589` 「faultWords_status[17] = 1'b0;」 과 다음 줄 `[18]` 상수 0 — 원천 부재. **0 을 「정상」으로 읽으면 안 된다** |
 | 8 | `SharedUnit`·`MemOrderGate` 독립 `.sv` 의 top 대표성 | 형상 불일치 — 독립본 16비트 vs top 인스턴스 161/128비트 |
 | 9 | OPREF **B** 참조의 LBID 축 | 제시 자체가 없다 — `Wt64Top.scala:86` 「OPREF B 토큰의 RouteJudge 제시는 미배선」 (TODO 2항), `tokIn` 은 사이클당 하나. ISA-2 α 는 **OPREF A 축만** 덮는다 |
 | 10 | 변환 저장소 관측 세 워드의 값 (`0xE04` · `0xE08`/`0xE0C`) | 회로 0건 — 정지 상태·정지한 요청의 VPN 을 내는 배선이 없다. 읽기는 응답 + 0, 쓰기는 거절 + `[6]` (파도 3 은 `0xE00` · `0xE10` 과 쓰기 방향만 닫았다) |

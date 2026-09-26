@@ -266,7 +266,7 @@ expect_fail "증인: busy 중 타 파티션 기입이 실재하는가"   MaskEng
 # 돌린다 — 버스 정지(좋은 모델) · 거절 + loud(옳은 드라이버가 FAULT [6] 을
 # 받는다) · 조용한 흡수. 그리고 정지가 호스트 조치 없이 풀린다는 진행 속성과,
 # 그 공정성(채움 슬롯은 버스와 독립으로 비워진다)을 뺀 대조군.
-# 가드 삭제 cfg 는 가드 속성 열일곱을 전부 건다 — 지운 가드의 자기 속성이 첫 위반으로 난다
+# 가드 삭제 cfg 는 가드 속성 열아홉을 전부 건다 — 지운 가드의 자기 속성이 첫 위반으로 난다
 # (TLC 는 첫 위반 하나만 보고한다 — 「자기 속성*만*」 은 이 러너가 재지 않는다).
 #
 # 같은 날 수리 — 0xE10 XLATE_MISS_CLEAR 와 RO 세 워드(0xE04–0xE0C)의 쓰기 처분
@@ -274,6 +274,30 @@ expect_fail "증인: busy 중 타 파티션 기입이 실재하는가"   MaskEng
 # e-defined.typ:202 「*RO 오프셋의 쓰기* — 거절 + loud fault 다」). RTL 이 모델보다
 # 먼저 배선한 결정(검토자 D-7)을 6.3 규율대로 모델로 돌려보냈다: 가드 다섯 ·
 # 증인 다섯 · 발견 run 하나(정지 중 해제의 유실 — set 이 해제를 이긴다).
+#
+# 파도 4 개정 (2026-09-26 — 판정 T5 (a) · T4 (ii), 정본 f229c8b):
+# e-defined.typ:306 「커밋은 스테이징을 소진하지 않는다」 ·
+# e-defined.typ:321 「다른 파티션을 래치한 스테이징은 건드리지 않는다」 ·
+# e-defined.typ:424 「상한 아래 형상에서는 그 주소가 없는 파티션을 가리키고」.
+# 가드 둘(flush_drops_staging · ent_part_exists) · 증인 셋 · 기각 대안 둘(스테이징
+# 수명 consume · global) · 격리 짝 하나 · 상한 아래 형상의 좋은 모델 하나. 판정 전의
+# 증인 Witness_NoStaleRecommit(MUST FAIL — flush 를 건넌 옛 LO 재커밋이 도달했다)는
+# 좋은 모델의 고정 속성 Inv_NoStaleRecommit 으로 뒤집혀 올라갔다 — 그 run 을 지웠다.
+# 순증 +8 (42 → 50). 형상 밖 파티션 주소(BelowCap)는 전용 cfg 넷에서만 켠다 — large
+# 는 배터리 안이라 새 입력으로 부풀리지 않는다 (모델 머리 「규모」).
+# 규모 실측(2026-09-26 · 컨테이너 · -workers 1 · 다른 파도의 TLC · sby 와 같은 시각에 돈 단독 run):
+#   HEAD f229c8b 판 large   62,060,261 generated · 2,400,988 distinct · 34분 29초 (같은 환경 기준)
+#   개정판 large           54,546,301 generated · 2,089,284 distinct · 33분 52초 — PASS
+# 도달 상태는 오히려 줄었다(flush 를 건넌 옛 LO 재커밋이 사라졌다). 첫 개정판은 같은 도달에 44분 05초였다 —
+# 상태당 비용이 약 1.4배였고(같은 물리 코어의 두 SMT 스레드에 HEAD 판과 나란히 고정한 대조 실측), 원인
+# 둘을 모델 머리 「규모」 옆 두 정의(WinParts · DevEntPhantom 의 BelowCap 선두 연언)에서 걷어 1.15배로
+# 줄였다. 새 고스트 0 · large 안의 대안 상수는 끔(StgAlt = "flush" · BelowCap = FALSE) — 줄일 것이 더 없다.
+# 분리 검사(비상주 실측 2026-09-26 — 가드를 지운 판에 자기 속성 · 그 격리 귀결만 뺀 나머지
+# 속성 전부): flush_drops_staging 삭제(Prop_FlushEndsStaging · Inv_NoStaleRecommit 제외) PASS
+# 494,797 generated · 27,204 distinct / ent_part_exists 삭제 + BelowCap(Prop_EntPhantomRejected ·
+# Prop_EntNoAlias 제외) PASS 771,027 · 34,634 — 새 가드가 기존 계약을 깨지 않고 기존 가드가
+# 새 속성을 대신 지지 않는다. (그 실측이 Retry 의 held 파티션 조회가 형상 밖 번호에서 표
+# 밖으로 나가던 것을 잡았다 — AliasEnt 로 고쳤다.)
 # ---------------------------------------------------------------------------
 M=XlateSurface.tla
 expect_pass "MMIO 문 좋은 모델 (파티션 2 · 색인 1 · 정지)"  XlateSurface.cfg       "$M"
@@ -313,6 +337,10 @@ expect_fail "가드 삭제: mclr_keeps_stall (해제가 미적중 정지를 풂)
             XlateSurface_del_mclr_keeps_stall.cfg "$M" Prop_MclrKeepsStall
 expect_fail "가드 삭제: ro_rejected (RO 오프셋 쓰기 흡수)" \
             XlateSurface_del_ro_rejected.cfg "$M" Prop_RoRejected
+expect_fail "가드 삭제: flush_drops_staging (flush 를 건넌 옛 LO 재커밋)" \
+            XlateSurface_del_flush_drops_staging.cfg "$M" Prop_FlushEndsStaging
+expect_fail "가드 삭제: ent_part_exists (형상 밖 항목 주소 수락)" \
+            XlateSurface_del_ent_part_exists.cfg "$M" Prop_EntPhantomRejected
 
 expect_fail "증인: 살아 있는 항목 위 LO 가 실재하는가"      XlateSurface_witness_NoLoOverLive.cfg    "$M" Witness_NoLoOverLive
 expect_fail "증인: 번호 불일치 HI 가 실재하는가"           XlateSurface_witness_NoMismatch.cfg      "$M" Witness_NoMismatch
@@ -329,10 +357,11 @@ expect_fail "증인: 선 sticky 위 [0]=0 기입이 실재하는가"   XlateSurf
 expect_fail "증인: 예약 위반 해제가 실재하는가"            XlateSurface_witness_NoMclrRsv.cfg       "$M" Witness_NoMclrRsv
 expect_fail "증인: 미적중 정지 중의 해제가 실재하는가"     XlateSurface_witness_NoClearInStall.cfg  "$M" Witness_NoClearInStall
 expect_fail "증인: RO 오프셋 쓰기가 실재하는가"            XlateSurface_witness_NoRo.cfg            "$M" Witness_NoRo
-# 발견 1 (모델 머리말) — 정본 문면의 귀결을 붙잡는 증인. 정본이 스테이징
-# 소진을 정하면 이 run 이 실패하게 되고, 그때 모델을 고친다.
-expect_fail "증인: flush 를 건넌 스테이징 잔재 커밋이 실재하는가" \
-            XlateSurface_witness_NoStaleRecommit.cfg "$M" Witness_NoStaleRecommit
+expect_fail "증인: 스테이징이 찬 파티션의 flush 가 실재하는가" XlateSurface_witness_NoFlushStaged.cfg "$M" Witness_NoFlushStaged
+expect_fail "증인: flush 를 건넌 스테이징 위 같은 번호 HI 가 실재하는가" \
+            XlateSurface_witness_NoStaleHi.cfg "$M" Witness_NoStaleHi
+expect_fail "증인: 형상 밖 파티션의 항목 기입이 실재하는가" XlateSurface_witness_NoEntPhantom.cfg "$M" Witness_NoEntPhantom
+expect_pass "MMIO 문 좋은 모델 (파티션 2 + 형상 밖 1 · 색인 1 · 정지)" XlateSurface_phantom.cfg "$M"
 
 expect_fail "짝: 오늘의 RTL — XLATE_FLUSH 가 사라진다 (T1)" \
             XlateSurface_pair_today_flush.cfg "$M" Prop_FlushClears
@@ -342,11 +371,22 @@ expect_fail "대안: 하류 거부 → 거절 + loud (옳은 드라이버에 fau
             XlateSurface_pair_refusal_reject.cfg "$M" Prop_RejectOnlyMalformed
 expect_fail "대안: 하류 거부 → 조용한 흡수" \
             XlateSurface_pair_refusal_drop.cfg "$M" Prop_HiCommits
+# 판정 T5 가 기각한 두 갈래. consume 의 반례가 정본 해설(e-defined.typ 「바로 위 세
+# 스텝이 곧 반례다」)의 세 스텝 그대로다 — 실측 반례: LO{p1,i1}=f1 → flush(p1)(stale) →
+# HI{p1,i1} 커밋(프레임 f1 · 커밋된 적 없는 LO 라 소진이 할 일이 없었다). 가드 삭제 판의
+# 반례도 같은 세 스텝이다. global 의 반례는 두 스텝(LO{p1} → flush(p2) 가 p1 스테이징을 비움).
+expect_fail "대안: 스테이징 수명 → 커밋 소진 (flush 를 건넌 옛 LO 를 못 막는다)" \
+            XlateSurface_pair_stg_consume.cfg "$M" Prop_FlushEndsStaging
+expect_fail "대안: 스테이징 수명 → flush 가 모든 스테이징을 비움 (전역)" \
+            XlateSurface_pair_stg_global.cfg "$M" Prop_FlushStagingScoped
+expect_fail "짝: 형상 밖 항목 주소를 잘라 설치 (격리 위반 — :425 별칭)" \
+            XlateSurface_pair_ent_alias.cfg "$M" Prop_EntNoAlias
 expect_pass "진행: 버스 정지는 호스트 조치 없이 풀린다"   XlateSurface_live.cfg "$M"
 expect_fail "짝: 채움 슬롯 Drain 공정성 없음 → 정지 영구" \
             XlateSurface_pair_live_nodrain.cfg "$M" Prop_StallEnds
-# 발견 4 (모델 머리말) — 정지 중 해제의 유실을 붙잡는 run. set(정지 레벨)이
-# 해제를 이기는 RTL 규약의 귀결이다. 정본이 정지 중 해제의 처분을 정하면 다시 본다.
+# 판정 4 (모델 머리말) — 정지 중 해제의 유실을 붙잡는 run. set(정지 레벨)이
+# 해제를 이기는 RTL 규약의 귀결이고, 정본이 그것을 문면으로 정했다 —
+# e-defined.typ:329 「정지 *중에* 쓴 해제는 유실된다」.
 expect_fail "발견: 정지 중 0xE10 해제는 sticky 를 내리지 못한다" \
             XlateSurface_pair_clear_in_stall.cfg "$M" Prop_ClearAlwaysLowers
 
@@ -365,7 +405,7 @@ expect_fail "발견: 정지 중 0xE10 해제는 sticky 를 내리지 못한다" 
 # 삭제) — 거절 사유인 기입이 수락되고(Prop_PoisonTraceRejected), 발화가 trace 를
 # 든 태그를 싣는다(Prop_FiredKeyClean — E.12 6항의 호스트 가시 귀결).
 # sub-word(하위 두 비트 ≠ 0) 처분은 가드가 아니라 상수 Subword 다 — 판정
-# T2 (a) 의 거절 + [6] 은 W4 가 착지하고, 그 전의 RTL(조용한 흡수)이 짝
+# T2 (a) 의 거절 + [6] 은 파도 4 페이지 통합이 착지했고(가드는 MmioPage.unaligned_rejected), 그 전의 RTL(조용한 흡수)이 짝
 # 「D2 뒤 · T2 앞」 이다. 대비 MUST PASS 가 그 판에서 가드 속성 열셋이 전부
 # 통과함을 보인다 — 남은 간극이 sub-word 하나라는 기계 기록이다.
 # 가드 삭제 cfg 는 가드 속성 열셋을 전부 건다 — 지운 가드의 자기 속성이 첫 위반으로 난다
@@ -422,6 +462,143 @@ expect_fail "짝: D2 이전의 RTL — 소거가 trace 든 태그를 싣는다" 
 expect_fail "짝: D2 뒤 · T2 앞의 RTL — sub-word 조용한 흡수" \
             AbortSurface_pair_today_subword.cfg "$M" Prop_MalformedRejected
 expect_pass "대비: D2 뒤 · T2 앞의 RTL — 가드 속성 전부 통과"  AbortSurface_today.cfg "$M"
+
+# ---------------------------------------------------------------------------
+# 4 KiB 구성 페이지의 처분 — 포트 수락·응답 · 방향 · 정렬 · 예약 오프셋 ·
+# 물려받은 구역 · 소비 회로가 없는 워드 (파도 4, 2026-09-26:
+# 03-hiu.typ:990 「읽기도 같다 — 수락(ready ∧ 스트로브)되지 않은 접근은 효과도 응답도 없다」 ·
+# 03-hiu.typ:754 「비정렬 *읽기*는 0 · fault 없음이다」 ·
+# e-defined.typ:743 「*소비 회로가 없는 RW 워드 — 쓰기는 거절, 읽기는 0.*」)
+#
+# MMIO 워드 표면의 처분은 어느 모델의 상태도 아니었다 — 조립 후-formal 이 VERIFIES
+# 로만 잰 자리이고, 파도 4 의 판정 다섯(D1 · T1-i · T1-ii 쓰기 · T2 · T3)이 여기에 새
+# 가드를 만든다. 짝 「D1 이전의 조립」 둘: 주소 기준 ready 아래 잡힌 읽기의 응답과
+# 수락 전 FP_BIND 예약 거절. 짝 「판정 전의 표면」 하나와 판정의 기각 갈래 넷
+# (레지스터만 실물화 둘 · 물려받은 구간 관대 · 비정렬 관대) · ready 만 고친 판.
+# 대비 MUST PASS — 주소 기준 ready 에서도 가드 둘이 살아 있으면 안전하다 (ready
+# 모양의 선택은 안전이 아니라 측정 가능성의 문제다 — 모델 머리).
+# 한계는 모델 머리가 적는다: 고정 속성의 예외 집합(SpecReject · SpecQuiet)이 곧 판정의
+# 내용이라 이 배터리는 판정을 유도하지 못한다 — 가드 ↔ 속성 대응 · 증인 · 짝의 반례 ·
+# 규범 사이의 공존(예약 관대 ∧ 비정렬 엄격 · CQ_SIZE 같은 값 수락 ∧ 소비 없는 워드 거절)
+# 만 기계로 보인다. 가드 삭제 cfg 는 가드 속성 아홉을 전부 건다 — 지운 가드의 자기 속성이
+# 첫 위반으로 난다. 「자기 속성*만*」 은 분리 검사가 잰다 — 비상주, 2026-09-26 실측 9/9
+# (rtl/formal/tla/README.md MmioPage 절).
+# ---------------------------------------------------------------------------
+M=MmioPage.tla
+expect_pass "페이지 처분 좋은 모델 (정렬 FP 쓰기만 소거를 기다린다)"  MmioPage.cfg        "$M"
+expect_pass "대비: 주소 기준 ready — 가드 둘이 살면 안전"            MmioPage_byaddr.cfg "$M"
+
+expect_fail "가드 삭제: rsp_on_accept (잡힌 읽기가 응답)" \
+            MmioPage_del_rsp_on_accept.cfg "$M" Prop_RespAnswersAccepted
+expect_fail "가드 삭제: effect_on_accept (수락 전 loud)" \
+            MmioPage_del_effect_on_accept.cfg "$M" Prop_HeldQuiet
+expect_fail "가드 삭제: ro_rejected (RO 쓰기 흡수)" \
+            MmioPage_del_ro_rejected.cfg "$M" Prop_RoRejected
+expect_fail "가드 삭제: wo_read_zero (WO 되읽기)" \
+            MmioPage_del_wo_read_zero.cfg "$M" Prop_WoReadZero
+expect_fail "가드 삭제: resv_lenient (예약 오프셋 쓰기가 loud)" \
+            MmioPage_del_resv_lenient.cfg "$M" Prop_ResvQuiet
+expect_fail "가드 삭제: unaligned_rejected (비정렬 쓰기 무시)" \
+            MmioPage_del_unaligned_rejected.cfg "$M" Prop_UnalignedRejected
+expect_fail "가드 삭제: leg_write_rejected (물려받은 구간 쓰기 흡수)" \
+            MmioPage_del_leg_write_rejected.cfg "$M" Prop_LegacyRejected
+expect_fail "가드 삭제: nocons_rejected (소비 없는 워드 쓰기 흡수)" \
+            MmioPage_del_nocons_rejected.cfg "$M" Prop_NoConsRejected
+expect_fail "가드 삭제: reject_loud (조용한 거절)" \
+            MmioPage_del_reject_loud.cfg "$M" Prop_RejectLoud
+
+expect_fail "증인: 소거 중 잡힌 읽기가 실재하는가"           MmioPage_witness_NoHeldRead.cfg      "$M" Witness_NoHeldRead
+expect_fail "증인: 잡힌 거절 사유 기입이 실재하는가"         MmioPage_witness_NoHeldBad.cfg       "$M" Witness_NoHeldBad
+expect_fail "증인: 잡힌 요청의 늦은 수락이 실재하는가"       MmioPage_witness_NoLateAccept.cfg    "$M" Witness_NoLateAccept
+expect_fail "증인: 비정렬 쓰기가 실재하는가"                 MmioPage_witness_NoUnalignedWr.cfg   "$M" Witness_NoUnalignedWr
+expect_fail "증인: 물려받은 구간 쓰기가 실재하는가"          MmioPage_witness_NoLegWr.cfg         "$M" Witness_NoLegWr
+expect_fail "증인: 소비 없는 워드 쓰기가 실재하는가"         MmioPage_witness_NoNoConsWr.cfg      "$M" Witness_NoNoConsWr
+expect_fail "증인: RO 쓰기가 실재하는가"                     MmioPage_witness_NoRoWr.cfg          "$M" Witness_NoRoWr
+expect_fail "증인: 예약 오프셋 쓰기가 실재하는가"            MmioPage_witness_NoResvWr.cfg        "$M" Witness_NoResvWr
+expect_fail "증인: WO 에 쓴 뒤의 읽기가 실재하는가"          MmioPage_witness_NoWoReadAfterWr.cfg "$M" Witness_NoWoReadAfterWr
+expect_fail "증인: CQ_SIZE 같은 값 기입이 실재하는가"        MmioPage_witness_NoSameValueWr.cfg   "$M" Witness_NoSameValueWr
+
+expect_fail "짝: D1 이전의 조립 — 잡힌 읽기의 응답" \
+            MmioPage_pair_today_d1.cfg "$M" Prop_RespAnswersAccepted
+expect_fail "짝: D1 이전의 조립 — 수락 전 FP_BIND 거절" \
+            MmioPage_pair_today_d1_bind.cfg "$M" Prop_LoudOnlySpec
+expect_fail "짝: 판정 전의 표면 — 조용한 흡수" \
+            MmioPage_pair_today_surface.cfg "$M" Prop_NoSilentDrop
+expect_fail "대안: 레지스터만 실물화 — 조용한 저장" \
+            MmioPage_pair_nocons_store.cfg "$M" Prop_NoSilentDrop
+expect_fail "대안: 레지스터만 실물화 — 확인 읽기의 거짓 증언" \
+            MmioPage_pair_nocons_store_rd.cfg "$M" Prop_NoStaleRead
+expect_fail "대안: 물려받은 구간 관대" \
+            MmioPage_pair_leg_lenient.cfg "$M" Prop_NoSilentDrop
+expect_fail "대안: 비정렬 쓰기 관대" \
+            MmioPage_pair_unal_lenient.cfg "$M" Prop_NoSilentDrop
+expect_fail "짝: ready 만 고친 판 — 응답 가드 없음" \
+            MmioPage_pair_fixready_only.cfg "$M" Prop_RespAnswersAccepted
+
+# ---------------------------------------------------------------------------
+# 변환 미적중의 관측면 — 0xE04 XLATE_STATUS · 0xE08/0xE0C XLATE_MISS_VPN 의 *값*
+# (파도 4, 2026-09-26 — 판정 E04 (A) 정지 게이트 스냅샷:
+# e-defined.typ:323 「정지 중(`[0]` = 1)에만 정지한 요청의 값을 내고 정지가 없으면 0 이다」 ·
+# e-defined.typ:323 「여러 워드 읽기가 찢기지 않는다」 ·
+# e-defined.typ:881 「채널이 없으면 2항은 이행 불가능한」)
+#
+# XlateSurface.tla(위)는 문이고 세 RO 워드의 *읽기*는 그 모델의 상태가 아니다. 이
+# 모델이 관측 값의 1단이다 — 가드 여섯(정지 사실 · sticky · 정지 중의 파티션 · VPN ·
+# 정지 없는 0 · 읽기 무해제), 고정 속성 Prop_NoTear(찢김 없음 — 몸은 E.4 3항의 일제
+# 정지라 가드가 아니고 짝 「새는 파이프」가 반증력을 든다), 그리고 HostSpec(관측면만
+# 보고 채우는 폴링 호스트) 아래의 진행 Prop_StallResolves — E.3 채널의 *충분성*.
+# 기각 갈래 둘이 반례로 선다: 첫 미적중 포착(B — 끝난 정지의 잔재 · 둘째 정지의 VPN)과
+# 비게이트(C — 살아 있는 요청이 샌다). 짝 「오늘의 RTL」(세 워드 읽기 0)은 :881 의 기계 판.
+#
+# 원형(스크래치)이 뺀 run 하나 — 「obs_stall_live 를 지운 기계도 호스트가 푼다」(PASS
+# 기대)가 FAIL 이었다. 말더듬 인공물이다: [0] 이 sticky 를 내면 정지가 선 그 스텝의
+# sticky 는 아직 0 이고 켜진 동작은 Read 뿐인데 원형의 공정성은 HostFill 에만 있었다 —
+# 영영 읽지 않는 호스트가 진행을 깼다. 같은 인공물이 나머지 진행 짝(첫 미적중 포착 —
+# 첫 정지 스텝에 포착 레지스터가 비어 HostFill 이 꺼진다)에도 열려 있어, 그 FAIL 이
+# 「채널이 틀린 것을 말한다」로 났는지 「안 읽었다」로 났는지를 선언이 가르지 못했다.
+# 그래서 빼지 않고 뿌리를 고쳤다: HostSpec 에 읽기 공정성(폴링)을 걸었다 — 근거는
+# e-defined.typ:874 「정지가 영구가 되지 않을 책임은 호스트에 있다」 — 그리고 원형이 뺀 run 은 대비
+# MUST PASS 로 들어온다 (obs_stall_live 는 충분성이 아니라 정지 사실의 가드다).
+# 가드 삭제 cfg 는 가드 속성 여섯을 전부 건다 — 지운 가드의 자기 속성이 첫 위반으로 난다.
+# ---------------------------------------------------------------------------
+M=XlateObs.tla
+expect_pass "관측면 좋은 모델 (파티션 2 · VPN 2)"   XlateObs.cfg       "$M"
+expect_pass "관측면 좋은 모델 (파티션 3 · 규모)"    XlateObs_large.cfg "$M"
+
+expect_fail "가드 삭제: obs_stall_live ([0] 이 sticky 를 냄)" \
+            XlateObs_del_obs_stall_live.cfg "$M" Prop_StatusStall
+expect_fail "가드 삭제: obs_sticky ([1] 이 살아 있는 정지를 냄)" \
+            XlateObs_del_obs_sticky.cfg "$M" Prop_StatusSticky
+expect_fail "가드 삭제: obs_part_stalled ([15:8] 상수 0)" \
+            XlateObs_del_obs_part_stalled.cfg "$M" Prop_PartStalled
+expect_fail "가드 삭제: obs_vpn_stalled (VPN 이 첫 미적중 포착)" \
+            XlateObs_del_obs_vpn_stalled.cfg "$M" Prop_VpnStalled
+expect_fail "가드 삭제: obs_no_residue (끝난 정지의 잔재)" \
+            XlateObs_del_obs_no_residue.cfg "$M" Prop_NoStallNoData
+expect_fail "가드 삭제: obs_read_pure (STATUS 읽기가 sticky 를 내림)" \
+            XlateObs_del_obs_read_pure.cfg "$M" Prop_ReadPure
+expect_fail "대안: 비게이트 (정지 없는 관측이 살아 있는 요청을 냄)" \
+            XlateObs_alt_live.cfg "$M" Prop_NoStallNoData
+
+expect_pass "진행: 관측면만 보는 폴링 호스트가 모든 정지를 푼다"  XlateObs_live.cfg "$M"
+expect_fail "진행 짝: VPN 첫 미적중 포착 → 둘째 정지 영구" \
+            XlateObs_live_del_vpn.cfg "$M" Prop_StallResolves
+expect_fail "진행 짝: [15:8] 상수 0 → 파티션 0 밖 정지 영구" \
+            XlateObs_live_del_part.cfg "$M" Prop_StallResolves
+expect_fail "짝: 오늘의 RTL — 세 워드 읽기 0 → 정지 영구 (:881)" \
+            XlateObs_pair_today.cfg "$M" Prop_StallResolves
+expect_pass "대비: [0] 이 sticky 여도 폴링 호스트는 푼다 (원형이 뺀 run)" \
+            XlateObs_live_del_stall_live.cfg "$M"
+expect_fail "짝: 새는 파이프 — 스냅샷 뒤 정지한 요청이 밀려나 찢긴다" \
+            XlateObs_pair_leaky.cfg "$M" Prop_NoTear
+
+expect_fail "증인: 정지 중의 읽기가 실재하는가"               XlateObs_witness_NoRdStall.cfg      "$M" Witness_NoRdStall
+expect_fail "증인: 정지가 풀린 뒤 sticky 가 선 채의 읽기가 실재하는가" XlateObs_witness_NoRdAfter.cfg "$M" Witness_NoRdAfter
+expect_fail "증인: 적중 요청이 조회 지점에 산 채의 읽기가 실재하는가" XlateObs_witness_NoRdLive.cfg  "$M" Witness_NoRdLive
+expect_fail "증인: 파티션 값 0 이 아닌 정지의 읽기가 실재하는가" XlateObs_witness_NoRdStallOther.cfg "$M" Witness_NoRdStallOther
+expect_fail "증인: 해제 없이 온 둘째 정지의 읽기가 실재하는가"  XlateObs_witness_NoRdNewStall.cfg  "$M" Witness_NoRdNewStall
+expect_fail "증인: 스냅샷 뒤 · 항목 기입 전의 읽기가 실재하는가" XlateObs_witness_NoSnapRead.cfg   "$M" Witness_NoSnapRead
+expect_fail "증인: 끝난 정지의 파티션 flush(임대 회전)가 실재하는가" XlateObs_witness_NoLease.cfg  "$M" Witness_NoLease
 
 # ---------------------------------------------------------------------------
 # ISA-3 · ISA-4 — route fault 의 판정 주체와 범위 (부록 D.5 우선순위 4번)

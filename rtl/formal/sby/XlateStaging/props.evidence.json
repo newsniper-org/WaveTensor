@@ -15,17 +15,20 @@
     "XlateSurface.mclr_needs_one",
     "XlateSurface.mclr_rsv_strict",
     "XlateSurface.mclr_keeps_stall",
-    "XlateSurface.ro_rejected"
+    "XlateSurface.ro_rejected",
+    "XlateSurface.flush_drops_staging"
   ],
-  "at": "2026-09-26T04:48:41Z",
+  "at": "2026-09-26T11:12:19Z",
   "cover": {
-    "reached": 14,
+    "reached": 16,
     "reached_names": [
       "XlateStaging_check.w10_stall",
       "XlateStaging_check.w11_ro_wr",
       "XlateStaging_check.w12_missclr",
       "XlateStaging_check.w13_mclr_zero",
       "XlateStaging_check.w14_mclr_rsv",
+      "XlateStaging_check.w15_flush_ends",
+      "XlateStaging_check.w16_other_keeps",
       "XlateStaging_check.w1_commit",
       "XlateStaging_check.w2_mismatch",
       "XlateStaging_check.w3_unstaged",
@@ -40,12 +43,12 @@
     "unreached_names": []
   },
   "inputs": {
-    "rtl/generated/Wt64Top.sv": "aa510b191e133445c1a52f91843aae9e71c7dbb92fabbad1af9122d357416b31",
-    "rtl/sv/assert/XlateStaging_props.sv": "0e09a8757d93fc7c8b26a456277ef4517d47466ab30aed56067d59c3fcbe8573"
+    "rtl/generated/Wt64Top.sv": "6c451e4661407fd8046d1686c3f5cd175e78f704b8e87e6956ddd19e2ffa8f5c",
+    "rtl/sv/assert/XlateStaging_props.sv": "9894139360b1deb2819b305c4dd7d2fc7fdd1ffbed610331a49102ab39f1df83"
   },
   "per_task": {
     "bmc": {
-      "assert": 11,
+      "assert": 12,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -55,11 +58,11 @@
       "assert": 0,
       "const_a": 0,
       "const_en0": 0,
-      "cover": 14,
+      "cover": 16,
       "mode": "cover"
     },
     "prove": {
-      "assert": 11,
+      "assert": 12,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -67,7 +70,7 @@
     }
   },
   "sby": "rtl/formal/sby/XlateStaging/props.sby",
-  "sby_sha256": "bf1322a5dba417bc8cf907a03697aefd0e9efa9533e402c57b99fcfb6cd032ad",
+  "sby_sha256": "efc8fd2f5effacad8ba1f1d66d1cda4a0f779d743a973f71c4abac8940417422",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

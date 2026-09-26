@@ -19,7 +19,7 @@
 //   0x20C  OWN_CLR     WO  [31:0] 대상 프레임 32b — 장치 → 호스트 회수.
 //                          WO 오프셋의 읽기는 0 반환 · fault 없음 (E.1.1).
 //   그 밖  예약 오프셋 — 쓰기 무시 · 읽기 0 (§3.7. *오프셋* 정책이다 —
-//          명령 인코딩의 예약 *필드*와 정반대. 디코더로 옮겨 적지 말 것).
+//          명령 인코딩의 예약 *필드*와 정반대. 디코더로 옮겨 적지 말 것). 단 비정렬 *쓰기*는 어디서든 거절 + loud (판정 T2 — 3.7 sub-word 규범 끝줄).
 //
 // E.1.2 가 이 넷의 주소 비트를 읽는 방식: `addr[3]` 이 *조회 쌍과 전이 쌍*을,
 // `addr[2]` 가 쌍 안의 방향을 가른다 — 두 비트 전수 디코드라 빈 인코딩이
@@ -220,7 +220,7 @@ case class OwnershipTable(cfg: Wt64Config = Wt64Config(), ownEntries: Int = 64) 
     /** 직접 사상 충돌로 거절된 이양 기입 (머리말 — 축출은 암묵 전이라 금지). */
     val faultCollide = out port Bool()
     val faultClearCollide = in port Bool()
-    /** 거절된 구성 기입 — RO 오프셋(OWN_STATUS)의 쓰기 (E.1.1). 호스트 대면
+    /** 거절된 구성 기입 — RO 오프셋(OWN_STATUS)의 쓰기 (E.1.1) · 수락된 비정렬 쓰기 (판정 T2). 호스트 대면
       * 표면에서 FAULT_STATUS `[6]`「구성 — 거절된 구성 기입」으로 합류한다
       * (CompletionUnit.faultBadWrite 와 같은 부류·같은 폴딩 지점). 해제
       * 표면은 MMIO `0xF84[6]` 이고 전용 IO 선은 새로 만들지 않는다. */
@@ -247,7 +247,7 @@ case class OwnershipTable(cfg: Wt64Config = Wt64Config(), ownEntries: Int = 64) 
   io.query.devOwned := validBits(qIdx) && tagVec(qIdx) === qTag
 
   // ═══ MMIO 접근 수락 (MmioConfig 와 같은 규약 — 동시 제시면 쓰기 우선) ═
-  val aligned = io.addr(1 downto 0) === 0 // 비정렬 접근은 예약 오프셋 정책 (§3.7)
+  val aligned = io.addr(1 downto 0) === 0 // 비정렬 *쓰기*는 거절 + loud (T2 — 아래 faultBadWrite) · 비정렬 읽기는 0 (§3.7)
   val region  = io.addr(11 downto 8) === REGION
   val word    = io.addr(7 downto 2)       // 0 = IDX · 1 = STATUS · 2 = SET · 3 = CLR
 
@@ -335,9 +335,9 @@ case class OwnershipTable(cfg: Wt64Config = Wt64Config(), ownEntries: Int = 64) 
     // 그 밖 — 이미 호스트 소유 (표에 없음). 무연산.
   }
 
-  // ═══ sticky fault — 세운다 / 명시적 해제 외엔 내리지 않는다 ══════════
+  // ═══ sticky fault — 세운다 / 명시적 해제 외엔 내리지 않는다 (거절 둘: RO 쓰기 · 비정렬 쓰기 — 둘 다 전이 없음, selW 가 aligned 를 요구) ═══
   io.faultCollide  := StickyFault(collide, io.faultClearCollide)
-  io.faultBadWrite := StickyFault(statusWr, io.faultClearBadWrite)
+  io.faultBadWrite := StickyFault(statusWr || (acceptW && !aligned), io.faultClearBadWrite)
 
   // 전이 기입과 진행 중 요청(승인 조회)의 순서 규율은 호스트 ABI 다
   // (§3.7 드레인 · §3.10) — 여기서는 커밋의 원자성(단일 에지)과 조회

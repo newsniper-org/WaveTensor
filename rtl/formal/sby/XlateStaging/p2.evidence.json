@@ -1,0 +1,51 @@
+{
+  "anchors": [
+    "XlateSurface.ent_part_exists",
+    "XlateSurface.flush_part_exists"
+  ],
+  "at": "2026-09-26T11:13:57Z",
+  "cover": {
+    "reached": 3,
+    "reached_names": [
+      "XlateStaging_check.w17_ent_ph_lo",
+      "XlateStaging_check.w18_ent_ph_hi",
+      "XlateStaging_check.w19_flush_ph2"
+    ],
+    "unreached": 0,
+    "unreached_names": []
+  },
+  "inputs": {
+    "rtl/generated/XlateStagingP2.sv": "abad7c8b4e2472ba0ad94f2aad9750af8f4c27f41d144332bfe69a641f35953e",
+    "rtl/sv/assert/XlateStaging_props.sv": "9894139360b1deb2819b305c4dd7d2fc7fdd1ffbed610331a49102ab39f1df83"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 13,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 3,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 13,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
+  },
+  "sby": "rtl/formal/sby/XlateStaging/p2.sby",
+  "sby_sha256": "a8772afcc2c7cd6f04ec8838b6b7f1ea989df2242d427a198daf525a65ed8fcf",
+  "schema": "wt64-postformal-evidence/2",
+  "tasks": "bmc:PASS cover:PASS prove:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
+}

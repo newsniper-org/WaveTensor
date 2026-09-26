@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
 # SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
 #
-# 변환 저장소의 호스트 쪽 문 — XlateStaging 의 측정 (파도 3, 2026-09-26).
-# 선-formal 계약: rtl/formal/tla/XlateSurface.tla (가드 열일곱 — 여기 앵커 열여섯 · flush_valid_only 는
-# DELEGATED(XlateStore)).
+# 변환 저장소의 호스트 쪽 문 — XlateStaging 의 측정 (파도 3, 2026-09-26 · 파도 4 개정 같은 날).
+# 선-formal 계약: rtl/formal/tla/XlateSurface.tla (가드 열아홉 — 여기 앵커 열일곱 · flush_valid_only 는
+# DELEGATED(XlateStore) · ent_part_exists 는 상한 아래 형상에서만 입력이 서므로 p2.sby).
 #
 # PROVES: XlateSurface.lo_stages_only — 문 절반 전부: 수락된 LO 는 commit · flush · missClr · badWrite 어느 것도 세우지 않는다 (p_lo_quiet) · 커밋의 전건에 LO 가 없다 (p_commit_iff)
 # PROVES: XlateSurface.hi_fires — 문 절반: 하류가 받을 수 있는(installReady) 적법 HI ⇔ commit.valid (p_commit_iff) · 같은 LO 로 온 HI 의 재커밋 (t_no_drain). 하류(install.fire → 채움 → 커밋)는 xlatestore.sby
@@ -21,12 +21,13 @@
 # PROVES: XlateSurface.mclr_rsv_strict — 문 절반: [31:1] 비0 의 0xE10 기입은 missClr 없음 + badWrite (p_missclr_iff · p_bad_iff). sticky 불변 · [6] 의 하류는 _PARTIAL
 # PROVES: XlateSurface.mclr_keeps_stall — 문 절반: missClr 가 서는 기입은 commit · flush 를 세우지 않는다 (p_commit_iff · p_flush_iff — 정지를 푸는 항목 커밋의 전건에 0xE10 이 없다). 파이프라인의 정지(missWait)에 해제 항이 없다는 절반은 _PARTIAL
 # PROVES: XlateSurface.ro_rejected — 문 절반: 0xE04 · 0xE08 · 0xE0C 쓰기 ⇒ badWrite 이고 commit · flush · missClr 없음 (p_bad_iff · p_commit_iff · p_flush_iff · p_missclr_iff). 아무것도 움직이지 않는다는 하류 절반은 _PARTIAL
+# PROVES: XlateSurface.flush_drops_staging — 문 절반: 래치 파티션의 수락된 XLATE_FLUSH 뒤 LO 없이 온 HI 는 번호와 무관하게 커밋 없음 + badWrite · 다른 파티션의 flush 와 거절된 flush 는 스테이징에 닿지 않는다 (그림자의 flush 하강 규칙 + p_commit_iff · p_bad_iff · t_flush_ends — 판정 T5 (a)). 표 불변의 하류 절반은 _PARTIAL
 # VERIFIES: XlateStaging.stall_quiet — 하류 수락을 기다리는 것은 적법 HI 뿐이고 (p_need_iff) 수락되지 않은(installReady = 0) 적법 HI 는 아무것도 움직이지 않는다 (p_stall_quiet — 설계 판정 D-2)
 #
 # ## 이 태스크가 재지 않는 것
 #
-#   · 형상 밖 파티션(정본 판정 요청 T4) — 생성물이 기본 형상(파티션 4)이라 그
-#     가지는 elaborate 상수 False 다. 다른 형상은 별도 elaborate 이다.
+#   · 형상 밖 파티션(판정 T4 (ii)) — 생성물이 기본 형상(파티션 4)이라 그 가지는
+#     elaborate 상수 False 다. 파티션 2 판(XlateStagingP2.sv)을 p2.sby 가 잰다.
 #   · 표 효과 — 커밋이 유효 비트를 V 로 쓰고, flush 가 그 파티션의 유효 비트만
 #     지우고, 채움 슬롯이 커밋 전까지 그 항목의 옛 판을 가린다는 것. 하류
 #     XlateStore 의 몫이고 xlatestore.sby 가 잰다. 문 → 저장 합성은 어느 한
@@ -50,8 +51,8 @@
 # 같은 처분). bmc 는 abc bmc3, cover 는 smtbmc z3 (도달 step 을 이름과 함께 남긴다).
 #
 # 깊이: 이 컴포넌트의 상태는 스테이징 세 레지스터뿐이고 전이는 전부 1사이클이다.
-# 가장 깊은 증인(W9 — LO → HI → HI)이 reset 뒤 4 사이클이면 닿는다. bmc 12 ·
-# cover 10 은 AbortStaging/props.sby 와 같은 여유다.
+# 가장 깊은 증인(W9 — LO → HI → HI · W15/W16 — LO → flush → HI)이 reset 뒤 4
+# 사이클이면 닿는다. bmc 12 · cover 10 은 AbortStaging/props.sby 와 같은 여유다.
 
 [tasks]
 bmc

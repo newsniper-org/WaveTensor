@@ -42,6 +42,9 @@ module XlateStore_props (
   input wire        io_rsp_perm_w,
   input wire        io_rsp_perm_x,
   input wire        f_install_fire,      // when_XlateStore_l200 = install.fire
+  input wire        io_install_valid,    // 파도 4 SLOTFREE — 증인 W13 전용
+  input wire        io_install_ready,    // 파도 4 SLOTFREE — 아래 a_ready_split
+  input wire        installSlotFree,     // 파도 4 SLOTFREE — 클래스 끝 포트 (io_ 접두 없음)
   input wire [1:0]  io_install_part,
   input wire [3:0]  io_install_idx,
   input wire [27:0] io_install_tag,
@@ -147,6 +150,16 @@ module XlateStore_props (
         assert (!io_rsp_hit);
       // XlateStore.partition_check — 조회 주소 상위 = 요청 파티션 그 자체
       assert (entryAddr == {io_lookup_part, reqIdx});
+      // Isolation.fill_slot_per_partition — 슬롯 여유 (파도 4 SLOTFREE). 조립의 MMIO ready ·
+      // 문의 installReady 가 먹는 installSlotFree 는 *자기 파티션 슬롯의 점유만*의 함수다
+      // (flush 와 무관 — 그래서 wdata → ready 조합 경로가 없다). 지상 진리는 pend 탭이다.
+      a_slot_free: assert (installSlotFree == !f_pend[io_install_part]);
+      // install.ready 는 그 슬롯 여유와 같은 사이클 · 같은 파티션 flush 의 부정의 논리곱 —
+      // 둘의 차이는 flush 충돌 항 *하나*다. 조립이 ready 를 슬롯 여유로 바꿔도 이 블록의
+      // 수락 규칙(flush 우선)은 그대로라는 핀이다. 배타가 깨진 사이클의 설치는 여기서
+      // 버려진다 — 그 배타는 조립 하네스 a_xonehot 이 잰다 (assembly.sby 머리).
+      a_ready_split: assert (io_install_ready ==
+                             (installSlotFree && !(io_flush_valid && (io_flush_part == io_install_part))));
     end
   end
 
@@ -331,6 +344,13 @@ module XlateStore_props (
     if (f_ok && io_lookup_valid && f_shadow && !f_slot_sel_v
         && f_vb_sel[reqIdx] && (f_body_tag == reqTag))
       w12_shadow_hides: cover (!io_rsp_hit);
+
+  // W13 ← Isolation.fill_slot_per_partition · a_slot_free · a_ready_split
+  //       슬롯 여유와 install.ready 가 실제로 *갈린다*: 슬롯은 비었는데 같은 파티션
+  //       flush 가 그 사이클의 설치를 막는다 (a_ready_split 의 flush 항이 산다) —
+  //       그리고 슬롯이 실제로 차서 여유가 내려간다 (a_slot_free 가 0 == 0 이 아니다).
+  always @(posedge clk) if (f_ok) w13_split_flush: cover (installSlotFree && !io_install_ready);
+  always @(posedge clk) if (f_ok) w13_slot_busy:   cover (!installSlotFree && io_install_valid);
 `endif // XLATE_COVER
 endmodule
 
@@ -346,6 +366,9 @@ bind XlateStore XlateStore_props u_xlate_props (
   .io_rsp_perm_w   (io_rsp_perm_w),
   .io_rsp_perm_x   (io_rsp_perm_x),
   .f_install_fire  (when_XlateStore_l200),
+  .io_install_valid (io_install_valid),
+  .io_install_ready (io_install_ready),
+  .installSlotFree (installSlotFree),
   .io_install_part (io_install_part),
   .io_install_idx  (io_install_idx),
   .io_install_tag  (io_install_tag),

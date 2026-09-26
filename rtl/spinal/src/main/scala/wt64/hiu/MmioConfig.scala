@@ -49,7 +49,7 @@
 //
 // ## 예약 오프셋 — §3.7 (명령 인코딩 예약과 정반대 정책임에 주의)
 //
-// 이 모듈 관점의 표 밖 오프셋(0x000~0x3FF · 0xC00~0xFFF · 비정렬 접근)은
+// 이 모듈 관점의 표 밖 *정렬* 오프셋(0x000~0x3FF · 0xC00~0xFFF)과 비정렬 *읽기*는
 // 예약 *오프셋* 정책을 따른다: 쓰기 무시 · 읽기 0. 관대함이 하위 호환을
 // 만들기 때문이다 (§3.7). 명령 인코딩의 예약 *필드*는 정반대다 — 0 이
 // 아니면 malformation (§1.4.6 · §5.7): 그쪽에서는 관대함이 은닉 채널을
@@ -77,7 +77,7 @@
 // 드라이버는 이미 0 을 쓰고 있다). 관대 → 엄격은 편도다 (돌던 드라이버가
 // 죽는다). 한쪽만 두 결말에 모두 도달한다 — 그래서 엄격에서 시작한다.
 //
-// ## 구성 표면에 sub-word(바이트 인에이블) 쓰기 금지 — 규범 (결정 B)
+// ## 구성 표면에 sub-word(바이트 인에이블) 쓰기 금지 — 규범 (결정 B · 판정 T2 개정)
 //
 // 이 파일 머리의 「엔트리 폭 4 B = 단일 워드이므로 부분 갱신이라는 상태가
 // 구조적으로 존재하지 않는다」(§3.7.1) 는 논증은 *한 워드 쓰기가 쪼개지지
@@ -89,13 +89,13 @@
 // loud fault** 다. 적용 범위는 사상표만이 아니라 구성 표면 전체다 — E.7
 // 전이 워드·E.12 발화 워드가 같은 원자성 논증 위에 서 있기 때문이다.
 //
-// 이 모듈은 그 규범을 *표현할 수단이 없다*. io.wstrobe 는 워드 낱알이고
-// 바이트 인에이블 입력이 아예 없으므로 「sub-word 기입」이라는 사건이 이
-// 경계에 도달할 수 없다. 따라서 거절의 이행 지점은 상위 어댑터(PCIe/AXI →
-// 이 포트 브리지)다: 호스트 버스는 sub-word 쓰기를 허용하므로, 어댑터가
-// 그것을 거절하지 않으면 read-modify-write 가 조용히 생기고 위 원자성
-// 논증이 무너진다. 이것은 이 저장소 밖에서 지켜야 할 계약이며 여기서는
-// 검사할 수 없다 — rtl/README.md 「구성 표면 sub-word ABI 조항」 참조.
+// 이 경계에는 바이트 인에이블 입력이 없다 — 바이트 인에이블 쪽 거절의 이행
+// 지점은 상위 어댑터(PCIe/AXI → 이 포트 브리지)이고 이 저장소 밖의 계약이다
+// (rtl/README.md 「구성 표면 sub-word ABI 조항」). 그러나 *주소 하위 두 비트*는
+// 이 경계에 남는다. 판정 T2 (a) 가 그 잔재(하위 두 비트 ≠ 0 쓰기)를 sub-word
+// 쓰기의 장치 포트 표현으로 정했으므로 (정본 3.7 sub-word 규범 끝줄) 이 모듈은
+// 수락된 비정렬 쓰기를 거절 + loud 로 처분한다 — faultBadWrite 에 접힌다 (파일
+// 끝 sticky 결선의 chkUnalWr). 비정렬 *읽기*는 0 · fault 없음이다 (읽기 관대 축).
 //
 // ## reset 초기 상태 — §1.5
 //
@@ -173,8 +173,8 @@ object MmioConfig {
   *   - 읽기: 수락 다음 사이클에 rdata 유효 (rvalid 1펄스).
   *   - LBID 기입: 1사이클 커밋/거절. LNID 기입: 검사 1사이클 뒤 커밋/거절.
   *     어느 쪽이든 커밋 자체는 Mem 단일 워드 쓰기 하나다 (§3.7.1 원자성).
-  *   - 쓰기 낱알은 워드 하나뿐이다 — sub-word 는 이 경계에 도달할 수 없다
-  *     (결정 B, 파일 머리).
+  *   - 쓰기 낱알은 워드 하나뿐이다 — 바이트 인에이블은 이 경계에 없고, 주소
+  *     하위 두 비트 ≠ 0 쓰기는 거절 + loud 다 (결정 B · 판정 T2, 파일 머리).
   *
   * RouteJudge 로는 viewWr(합집합 뷰 기입) · bankWr(사상 존재 비트 기입)를
   * 낸다 — RouteJudge io 주석의 구동 규약 그대로, 기입 성공시에만, 자기 표
@@ -204,8 +204,8 @@ case class MmioConfig(cfg: Wt64Config) extends Component {
     // 쓰기 낱알은 *워드 하나*다. 바이트 인에이블 입력이 없는 것은 누락이
     // 아니라 규범이다 (결정 B — 파일 머리 「sub-word 쓰기 금지」): 이 포트에
     // 도달하는 쓰기는 정의상 쪼개지지 않는 32b 하나이고, 그 사실 위에
-    // §3.7.1 원자성 논증이 서 있다. sub-word 요청의 거절은 상위 어댑터
-    // 의무이며 이 경계에서는 표현조차 불가능하다.
+    // §3.7.1 원자성 논증이 서 있다. 바이트 인에이블 쪽 거절은 상위 어댑터
+    // 의무이고, 이 경계에 남는 주소 하위 두 비트 ≠ 0 쓰기는 거절 + loud 다 (T2).
     val wstrobe = in  port Bool()
     val wdata   = in  port Bits(32 bits)
     val rstrobe = in  port Bool()
@@ -282,7 +282,7 @@ case class MmioConfig(cfg: Wt64Config) extends Component {
   val busy = RegInit(False)
   io.ready := initDone && !busy
 
-  val aligned = io.addr(1 downto 0) === 0 // 비정렬 접근은 예약 오프셋 정책 (§3.7)
+  val aligned = io.addr(1 downto 0) === 0 // 비정렬 *쓰기*는 거절 + loud (T2 — 파일 끝 chkUnalWr) · 비정렬 읽기는 0 (§3.7)
   val region  = io.addr(11 downto 10)     // 1 = LNID 표 · 2 = LBID 표 · 0,3 = 예약
   val wordIdx = io.addr(9 downto 2)       // 표 안 워드 색인 (256 항목 = 1 KiB 만재)
 
@@ -449,12 +449,12 @@ case class MmioConfig(cfg: Wt64Config) extends Component {
   lbidMem.write(lbWrAddr, lbWrData, lbWrEn)
 
   // ═══ sticky fault — 세운다 / 명시적 해제 외엔 내리지 않는다 ══════════
-  // 두 축의 거절이 같은 sticky 비트로 접힌다 (위 폴딩 규정). 두 발화선이
-  // 같은 사이클에 서는 일은 구조적으로 없다 — chkBadWr 는 busy 사이클에
-  // 서고 busy 사이클에는 ready 가 낮아 lbidWrite 자체가 성립하지 않는다.
-  // 그래도 sticky 는 OR 라 겹쳐도 유실이 없다 (§3.8 합성 가능한 상태 비트).
+  // 세 원천이 같은 sticky 비트로 접힌다 — 위 폴딩 규정의 두 축 + 비정렬 쓰기(판정 T2 (a):
+  // 수락된 비정렬 쓰기는 sub-word 쓰기의 장치 포트 표현이라 거절 + loud 다). chkBadWr 는
+  // busy 사이클에 서고 그때는 ready 가 낮아 수락 쓰기가 없다 — 겹치지 않는다.
+  val chkUnalWr = acceptW && !aligned // 비정렬 쓰기 거절 — 표·뷰 불변 (lnidWrite · lbidWrite 가 aligned 를 요구 · §3.8 sticky)
   io.faultDupOwner := StickyFault(chkDupOwn, io.faultClearDup)
-  io.faultBadWrite := StickyFault(chkBadWr || chkLbBadWr, io.faultClearBad)
+  io.faultBadWrite := StickyFault(chkBadWr || chkLbBadWr || chkUnalWr, io.faultClearBad)
 
   // 구성 쓰기와 실행(토큰 흐름)의 순서 자체는 호스트 의무다 (§3.10 호스트
   // ABI 경계) — 여기서는 커밋의 원자성(단일 워드, §3.7.1)과 뷰 동시 구동만

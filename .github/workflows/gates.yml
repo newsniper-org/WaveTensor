@@ -234,6 +234,16 @@ jobs:
       # 전 태스크 재실행(`make rtl-postformal`, 약 51분)은 CI 예산 밖이라
       # 의도적으로 뺐다 — CI 가 재는 것은 **증거의 자기모순**이지 증명 자체가
       # 아니며, 그 구분은 lint_postformal 머리가 스스로 적는다.
+      # 조립 ready 의 구조 콘 검사 — 호스트 러너의 `make lint` 에는 yosys 가 없어
+      # lint_ready_cone 이 「미측정 — 통과가 아니다」를 인쇄하고 0 으로 끝난다.
+      # 여기(yosys 가 있는 이미지)서는 미측정을 실패로 강제한다 (2026-09-26 파도 4
+      # 통합 — 3B SLOTFREE 의 수리가 이 검사 하나로만 구조적으로 재진다). 자기시험도 여기서
+      # 돈다 — yosys 없는 호스트에서는 음성 시험도 미측정으로 0 을 내므로 (파도 4 W6 검토).
+      - name: 조립 ready 콘 구조 검사 (yosys 강제)
+        run: |
+          docker run --rm -v "$PWD":/workspace -w /workspace wavetensor-dev:ci \
+            sh -lc 'python3 scripts/lint_ready_cone.py --require-yosys && python3 scripts/lint_ready_cone.py --self-test --require-yosys'
+
       - name: 재구현 선-formal 게이트
         run: |
           docker run --rm -v "$PWD":/workspace -w /workspace wavetensor-dev:ci \

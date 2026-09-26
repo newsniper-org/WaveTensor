@@ -1,15 +1,18 @@
 {
   "anchors": [
     "Platform.state_machine_kept",
-    "Platform.owner_check"
+    "Platform.owner_check",
+    "MmioPage.unaligned_rejected"
   ],
-  "at": "2026-09-20T15:53:30Z",
+  "at": "2026-09-26T13:13:07Z",
   "cover": {
-    "reached": 12,
+    "reached": 14,
     "reached_names": [
       "OwnershipTable_formal.u_own_props.w10_noop_set",
       "OwnershipTable_formal.u_own_props.w11_noop_clr",
       "OwnershipTable_formal.u_own_props.w12_wo_read",
+      "OwnershipTable_formal.u_own_props.w13_unal_wr",
+      "OwnershipTable_formal.u_own_props.w14_unal_rd",
       "OwnershipTable_formal.u_own_props.w1_handoff",
       "OwnershipTable_formal.u_own_props.w2_reclaim",
       "OwnershipTable_formal.u_own_props.w3_owned",
@@ -24,12 +27,12 @@
     "unreached_names": []
   },
   "inputs": {
-    "rtl/generated/OwnershipTable.sv": "472232340c6982d70d935c02e5124e31680dbef7505af19cd8637d71636b4ef2",
-    "rtl/sv/assert/OwnershipTable_props.sv": "0b761dec0bb65ab5b31dde656ed36decf685f646b142dbc5439cf7bcbaefb56e"
+    "rtl/generated/OwnershipTable.sv": "f49e33d3bbc9c1f43dcb43aed5b5b291bad55d2d8bd78d98575de349092f3082",
+    "rtl/sv/assert/OwnershipTable_props.sv": "fca512b032601430432279f24977bb084b62687bc9dc0f117259b3fb55bb9621"
   },
   "per_task": {
     "bmc": {
-      "assert": 18,
+      "assert": 22,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -39,11 +42,11 @@
       "assert": 0,
       "const_a": 0,
       "const_en0": 0,
-      "cover": 12,
+      "cover": 14,
       "mode": "cover"
     },
     "prove": {
-      "assert": 18,
+      "assert": 22,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -51,7 +54,7 @@
     }
   },
   "sby": "rtl/formal/sby/OwnershipTable/ownershiptable.sby",
-  "sby_sha256": "de859e3407e96eabbeca4d25c590aa492e6624451d1c6b9b9e7b72ea99d21957",
+  "sby_sha256": "345303af8e45f6bef067afd5d10bf2f7d4ef7792e2ebed326ccb4389f935c980",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

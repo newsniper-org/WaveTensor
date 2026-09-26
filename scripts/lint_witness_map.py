@@ -45,7 +45,7 @@ FabricMerge 가 「이 증인이 살리는 단언」 뜻으로 이미 썼고, �
   * 대상 목록이 길어 줄을 넘길 때는 줄 끝을 `·` 로 맺는다 (그 줄이 이어짐을
     뜻한다). 목록은 `—` 또는 `(` 에서 끝난다.
 
-## 이 검사가 재는 것 (일곱)
+## 이 검사가 재는 것 (여덟)
 
   (1) cover 문마다 라벨이 있다. **무명 `cover(1)` 이 게이트를 만족시키는
       길을 막는다** — 5형의 가장 값싼 형태가 그것이다.
@@ -64,6 +64,11 @@ FabricMerge 가 「이 증인이 살리는 단언」 뜻으로 이미 썼고, �
   (7) 팬아웃 보고 — 한 증인이 앵커 여럿을 주장하면 매번 인쇄한다.
       **래칫은 걸지 않는다**: 내용을 못 재는 표에 건수 래칫을 거는 것은
       「집행되지 않는 규율」을 숫자로 위장하는 것이다 (`_DERIVED` 의 판단).
+  (8) 절단 부류 — 절단 무관 증인 집합을 `[script]` 의 `cover: select -assert-none
+      … %ci* <모듈>/i:*__* %i` 선택식(조립층 무결성 핀 ④)이 닫는 .sby 에서, 하네스
+      W 태그 산문의 [무관]/[의존] 표기가 그 선택식과 라벨 단위로 같은지, 그리고
+      머리의 `# CUT-DEP-ONLY:` 닫힌 목록이 「증인이 전부 [의존] 인 앵커」의 기계
+      유도 집합과 같은지 잰다 (파도 4 W6 — 손 목록이 여섯에 멈춰 여덟을 놓쳤다).
 
 ## 이 검사가 재지 **못하는** 것 — 반드시 함께 읽어라
 
@@ -71,7 +76,7 @@ FabricMerge 가 「이 증인이 살리는 단언」 뜻으로 이미 썼고, �
 
     w9_x: cover (1'b1);        // W9 ← Decode.mal_carried
 
-이 두 줄은 위 일곱 검사를 **전부 통과한다**. 라벨이 있고, 선언이 하나이고,
+이 두 줄은 위 여덟 검사를 **전부 통과한다**. 라벨이 있고, 선언이 하나이고,
 `Decode.mal_carried` 는 실재하는 가드이고, 그 .sby 의 앵커이기도 하다.
 「이 궤적이 저 전건을 세운다」는 **의미의 주장**이고, 로컬 정적 검사가
 원리적으로 잴 수 없다. 이 파일은 **이름이 실재하는가**만 잰다 —
@@ -115,7 +120,7 @@ FabricMerge 가 「이 증인이 살리는 단언」 뜻으로 이미 썼고, �
 
 ## 음성 시험 (이 검사를 결선하기 전에 통과시킨 것)
 
-`--self-test` 가 격리 사본(`/tmp`)에서 일곱 변이를 만들어 각각이 실제로
+`--self-test` 가 격리 사본(`/tmp`)에서 아홉 변이를 만들어 각각이 실제로
 실패하는지 확인한다 — 저장소를 더럽히지 않는다.
 
     ① 없는 단언 라벨을 가리킨다        → 대상 부재로 FAIL
@@ -126,10 +131,13 @@ FabricMerge 가 「이 증인이 살리는 단언」 뜻으로 이미 썼고, �
     ⑥ 잔여 면제의 전제 assume 을 지운다 → 양성 대조 불통과로 FAIL
     ⑦ 숫자 든 모듈 이름(`Wt64Top.x`)의 VERIFIES 앵커에서 증인을 뗀다
                                         → 앵커 미덮임으로 FAIL (정규식 회귀 대조)
+    ⑧ 절단 무관 증인의 산문 부류를 [의존] 으로 바꾼다 → 부류 대조로 FAIL
+    ⑨ `# CUT-DEP-ONLY:` 닫힌 목록에서 하나를 뺀다 → 유도 집합 불일치로 FAIL
 
     scripts/lint_witness_map.py             검사
     scripts/lint_witness_map.py --self-test 음성 시험
 """
+import fnmatch
 import json
 import re
 import shutil
@@ -230,7 +238,19 @@ _MAX_ANCHOR_UNWITNESSED = 0   # 늘지 않는다. 줄이는 길은 증인 신설
 _MAX_UNRESOLVED = 0   # 오늘 0. 늘리려면 근거와 함께.
 
 # ── 하한 래칫 ──────────────────────────────────────────────────────────────
-_MIN_WITNESS_MAPPED = 345   # 대응 선언이 붙은 cover 문 수. 줄지 않는다.
+_MIN_WITNESS_MAPPED = 378   # 대응 선언이 붙은 cover 문 수. 줄지 않는다.
+                             # 376 → 378 (2026-09-26 실측 378/378 — 파도 4 W6 검토 수리: 비정렬 읽기 0 의
+                             # 유닛 증인 CompletionUnit_props.sv W8 · OwnershipTable_props.sv W14)
+                             # 345 → 376 (2026-09-26 실측 376/376 — 파도 4 통합 착지: 11 + 14 + 6. 아래 셋은 각
+                             # 축 판의 345 기준 증분 서명이다 — 3B 의 W29–W32 는 통합이 W36–W39 로, 3A 의 W29 는 W40 으로 다시 매겼다)
+                             # 345 → 356 (2026-09-26 실측 356/356 — 파도 4 페이지 통합: Wt64Top_props.sv 에
+                             # W29–W35 일곱 · MmioConfig_props.sv W10 · OwnershipTable_props.sv W13 ·
+                             # CompletionUnit_props.sv W6 · W7).
+                             # 345 → 359 (2026-09-26 실측 359/359 — 파도 4 3B: HiuMask_props.sv 에 W19–W24 일곱
+                             # 라벨, XlateStore_props.sv 에 W13 둘, Wt64Top_props.sv 에 W36–W39 다섯).
+                             # 345 → 351 (2026-09-26 실측 351/351 — 파도 4 판정 T5 · T4 착지, 축 3A:
+                             # XlateStaging_props.sv 에 W15 · W16(기본 형상) · W17–W19(XLATESTG_P2 — p2.sby),
+                             # Wt64Top_props.sv 에 W40 하나).
                              # 336 → 345 (2026-09-26 실측 345/345 — 파도 4 D2 · AbortSurface: AbortStaging_props.sv
                              # 에 W7 셋 · W8 · W9–W12 넷(여덟), Wt64Top_props.sv 에 W28 하나).
                              # 256 → 336 (2026-09-26 실측 336/336 — 파도 3 반증 검토가 하한이
@@ -239,7 +259,24 @@ _MIN_WITNESS_MAPPED = 345   # 대응 선언이 붙은 cover 문 수. 줄지 않�
                              # 게이트가 침묵했다. 334 에 수리판이 XlateStaging_props.sv 에 더한
                              # cover 둘(w13_mclr_zero · w14_mclr_rsv)을 더해 336 — w11_missclr 는
                              # w12_missclr 로 태그만 옮겼다).
-_MIN_ANCHOR_WITNESSED = 163  # 증인이 선 앵커 수. 줄지 않는다.
+_MIN_ANCHOR_WITNESSED = 193  # 증인이 선 앵커 수. 줄지 않는다.
+                             # 191 → 193 (2026-09-26 실측 193/193 — 파도 4 W6: VERIFIES
+                             # CompletionUnit.unaligned_read_zero · OwnershipTable.unaligned_read_zero)
+                             # 163 → 191 (2026-09-26 실측 191/191 — 파도 4 통합 착지: 10 + 14 + 4. 아래 셋은 각
+                             # 축 판의 163 기준 증분 서명이다)
+                             # 163 → 173 (2026-09-26 실측 173/173 — 파도 4 페이지 통합: MmioPage PROVES 열셋
+                             # (assembly.sby 아홉 · mmio_config · ownershiptable 하나씩 · descriptor 둘)이
+                             # 증인을 갖고 태어났고, assembly.sby 의 VERIFIES 셋(undefined_offset ·
+                             # wo_read_zero · ro_write_loud)이 그중 셋으로 흡수됐다 — 순증 10. 새 과대근사
+                             # 증인뿐인 앵커 둘: MmioPage.rsp_on_accept(W33) · effect_on_accept(W34 · W35) —
+                             # 콘에 fps__io_loadReady 절단 핀).
+                             # 163 → 177 (2026-09-26 실측 177/177 — 파도 4 3B: hiumask.sby PROVES 여덟(XlateObs
+                             # 다섯 · XlateSurface mclr_* 셋) · Wt64Top/assembly.sby PROVES 여섯(XlateObs)이 전부
+                             # 증인을 갖고 태어났다 — W19–W23 · W36–W39).
+                             # 163 → 167 (2026-09-26 실측 167/167 — 파도 4 판정 T5 · T4 착지, 축 3A:
+                             # XlateSurface.flush_drops_staging 앵커 둘(XlateStaging/props.sby W15 · W16 ·
+                             # Wt64Top/assembly.sby W40) · 신설 XlateStaging/p2.sby 의 ent_part_exists(W17 · W18)
+                             # · flush_part_exists(W19) — 전부 증인을 갖고 태어났다).
                              # 148 → 163 (2026-09-26 실측 163/163 — 파도 4: AbortSurface PROVES 열다섯
                              # (AbortStaging/props.sby 열둘 · Wt64Top/assembly.sby 셋)이 전부 증인을 갖고 태어났다).
                              # 144 → 148 (2026-09-26 실측 148/148 — 파도 3 수리: XlateStaging/
@@ -281,6 +318,9 @@ _LABEL = re.compile(r"^[a-z][a-z0-9_]*$")
 # 옛 꼴 `([A-Za-z]+)\.([A-Za-z_]+)` 은 `Wt64Top.x` 를 [] 로 놓치고 `Top.e1_map_v2`
 # 를 ('Top','e') 로 잘랐다 — 기존 .sby 스무 개에서 파싱 결과 차이 0 (실측).
 _VERIFIES = re.compile(r"#\s*VERIFIES:\s*([A-Z][A-Za-z0-9]*)\.([a-z_][A-Za-z0-9_]*)")
+# (8) 절단 부류 — .sby 머리의 과대근사-전용 앵커 닫힌 목록 (조립층, 파도 4 W6).
+_DEP_ONLY = re.compile(r"^#\s*CUT-DEP-ONLY:\s*(.*?)\s*$", re.M)
+_CLASS = re.compile(r"\[(무관|의존)")
 _DIRECTIVE = re.compile(r"^`(ifdef|ifndef|else|elsif|endif|define|undef)\b\s*(\w+)?")
 
 
@@ -569,6 +609,73 @@ def main() -> int:
     for k in stale:
         hard.append(f"_ANCHOR_UNWITNESSED 의 {k[0]} / {k[1]} 가 실재하지 않는다 "
                     f"(표 부패 — 대상이 사라진 면제는 아무도 다시 읽지 않는다)")
+    # (8) 절단 부류 대조 — 절단 무관 증인 집합을 [script] 선택식(④)이 닫는 .sby 에서
+    #     ① W 태그 산문의 [무관]/[의존] 표기 = 선택식이 고른 라벨 집합 (라벨 단위)
+    #     ② 머리의 `# CUT-DEP-ONLY:` 닫힌 목록 = 증인이 전부 [의존] 인 앵커 집합 (기계 유도)
+    #     손으로 적은 목록이 기계 밖 자백으로 남아 여섯에 멈춰 있던 것을 닫는다.
+    dep_checked = 0
+    for srel, s in sorted(sbys.items()):
+        stext = s["path"].read_text(encoding="utf-8")
+        free_line = next((ln for ln in stext.splitlines()
+                          if ln.startswith("cover: select -assert-none")
+                          and "%ci*" in ln and "i:*__*" in ln), None)
+        decl = _DEP_ONLY.search(stext)
+        if free_line is None and decl is None:
+            continue
+        if free_line is None or decl is None:
+            hard.append(f"{srel} — 절단 무관 선택식(④)과 `# CUT-DEP-ONLY:` 닫힌 목록은 "
+                        f"짝으로만 선다 (한쪽만 있다)")
+            continue
+        pats = re.findall(r"c:chk\.([A-Za-z0-9_*]+)", free_line.split("%ci*", 1)[0])
+        labs = {(hrel, lab) for (hrel, lab), owners in owner.items() if srel in owners}
+        free = {lab for (_, lab) in labs
+                if any(fnmatch.fnmatchcase(lab, p_) for p_ in pats)}
+        for hrel, lab in sorted(labs):
+            h = harness[hrel]
+            cands = tag_of(lab, h["decls"])
+            if len(cands) != 1:
+                continue            # (2) 가 이미 운다
+            lines = h["text"].splitlines()
+            j = h["decls"][cands[0]][1] - 1
+            block = [lines[j]]
+            while j + 1 < len(lines) and _COMMENT.match(lines[j + 1]) \
+                    and not _TAG.match(lines[j + 1]):
+                j += 1
+                block.append(lines[j])
+            btxt = " ".join(block)
+            m = re.search(re.escape(lab) + r"\s*\[(무관|의존)", btxt)
+            if not m:
+                tail = btxt.split("—", 1)[1] if "—" in btxt else ""
+                m = _CLASS.search(tail)
+            if not m:
+                hard.append(f"{hrel} — 증인 {lab} 에 [무관]/[의존] 표기가 없다 ({srel} 의 "
+                            f"절단 부류는 라벨마다 선언한다)")
+                continue
+            said_free = m.group(1) == "무관"
+            if said_free != (lab in free):
+                hard.append(
+                    f"{hrel} — 증인 {lab} 의 산문 부류 [{m.group(1)}] 가 {srel} ④ 선택식과 "
+                    f"어긋난다 (선택식은 {'무관' if lab in free else '의존'})")
+        declared = set()
+        tail = stext[decl.start():].splitlines()
+        body = decl.group(1)
+        k = 0
+        while body.rstrip().endswith("·") and k + 1 < len(tail):
+            k += 1
+            body = body.rstrip() + " " + tail[k].lstrip("#").strip()
+        declared = {x.strip() for x in body.split("·") if x.strip()}
+        derived = {a for a in s["anchors"]
+                   if witnessed.get((srel, a))
+                   and not any(l_ in free for l_ in witnessed[(srel, a)])}
+        for a in sorted(derived - declared):
+            hard.append(f"{srel} — 앵커 {a} 의 증인은 전부 절단 의존인데 `# CUT-DEP-ONLY:` "
+                        f"닫힌 목록에 없다")
+        for a in sorted(declared - derived):
+            hard.append(f"{srel} — `# CUT-DEP-ONLY:` 의 {a} 는 절단 무관 증인이 있거나 "
+                        f"이 태스크의 증인 선 앵커가 아니다")
+        dep_checked += 1
+        notes.append(f"{srel} — 절단 의존 증인뿐인 앵커 {len(derived)} (④ 선택식 무관 "
+                     f"{len(free)} 라벨에서 유도 · 닫힌 목록과 일치)")
     if len(signed) > _MAX_ANCHOR_UNWITNESSED:
         hard.append(f"증인 없는 앵커 {len(signed)} > 래칫 "
                     f"{_MAX_ANCHOR_UNWITNESSED}")
@@ -699,7 +806,7 @@ def main() -> int:
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# 음성 시험 — 격리 사본에서 일곱 변이가 실제로 실패하는지
+# 음성 시험 — 격리 사본에서 아홉 변이가 실제로 실패하는지
 # ─────────────────────────────────────────────────────────────────────────
 _MUTATIONS = [
     ("① 없는 단언 라벨을 가리킨다",
@@ -727,6 +834,12 @@ _MUTATIONS = [
     ("⑦ 숫자 든 모듈 이름의 VERIFIES 앵커에서 증인을 뗀다",
      "rtl/sv/assert/Wt64Top_props.sv",
      ("W1 ← Wt64Top.region_routing · a_cq_strb", "W1 ← a_cq_strb")),
+    ("⑧ 절단 무관 증인의 산문 부류를 [의존] 으로 바꾼다",
+     "rtl/sv/assert/Wt64Top_props.sv",
+     ("a_miss_clr · a_hiu_pass — [무관]", "a_miss_clr · a_hiu_pass — [의존]")),
+    ("⑨ 과대근사-전용 앵커 닫힌 목록에서 하나를 뺀다",
+     "rtl/formal/sby/Wt64Top/assembly.sby",
+     ("CUT-DEP-ONLY: MmioPage.effect_on_accept · ", "CUT-DEP-ONLY: ")),
 ]
 
 
@@ -765,7 +878,7 @@ def self_test() -> int:
                          if "lint_witness_map:" in ln
                          and not ln.startswith("lint_witness_map: FAIL —")]
                 print(f"  {name}: FAIL 확인 ✓ — {first[0][:92] if first else ''}")
-    print("음성 시험 " + ("통과 — 일곱 변이 전부 잡힌다" if ok else "불통과"))
+    print("음성 시험 " + ("통과 — 아홉 변이 전부 잡힌다" if ok else "불통과"))
     return 0 if ok else 1
 
 

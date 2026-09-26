@@ -546,6 +546,8 @@ lint:
 	python3 $(CURDIR)/scripts/lint_guard_map.py --self-test
 	python3 $(CURDIR)/scripts/lint_postformal.py
 	python3 $(CURDIR)/scripts/lint_generated_names.py
+	python3 $(CURDIR)/scripts/lint_ready_cone.py
+	python3 $(CURDIR)/scripts/lint_ready_cone.py --self-test
 	python3 $(CURDIR)/scripts/lint_tautology.py --audit
 	python3 $(CURDIR)/scripts/lint_witness_map.py
 	python3 $(CURDIR)/scripts/lint_witness_map.py --self-test
@@ -718,6 +720,7 @@ rtl-gen: rtl-pins
 	  "runMain wt64.gen.GenCompletionUnit $(RTL_GEN)" \
 	  "runMain wt64.gen.GenStepSequencer $(RTL_GEN)" \
 	  "runMain wt64.gen.GenCapStatusWord $(RTL_GEN)" \
+	  "runMain wt64.gen.GenXlateStaging $(RTL_GEN)" \
 	  "runMain wt64.gen.GenWt64Top $(RTL_GEN)"
 	@echo "rtl-gen: 생성물 → $(RTL_GEN)"
 

@@ -5,7 +5,7 @@
     "MaskEngine.dirty_loud",
     "MaskEngine.invalidate_beats_validate"
   ],
-  "at": "2026-09-24T02:45:03Z",
+  "at": "2026-09-26T11:21:31Z",
   "cover": {
     "reached": 10,
     "reached_names": [
@@ -25,7 +25,7 @@
   },
   "inputs": {
     "rtl/generated/MaskUnit.sv": "142c9a6792765ce698262e4abc103264ad84a2f451788100954c9bc65ea0624b",
-    "rtl/sv/assert/MaskEngine_props.sv": "9561be98034b1603b6015f54dee4e2e242b339fa9f539df532a50d30f7ee0839"
+    "rtl/sv/assert/MaskEngine_props.sv": "5d33a7a3cb8bd43e5210e588a47e605f3c54751e5bc5ae180484c0572f94709a"
   },
   "per_task": {
     "bmc": {
@@ -51,7 +51,7 @@
     }
   },
   "sby": "rtl/formal/sby/MaskUnit/engine.sby",
-  "sby_sha256": "88bac1a2f2c59a6be0cb6ac6943a32a08c11a511266d8e0f0a1a21089257d6bb",
+  "sby_sha256": "e5ae31373737b2ddbcab1bf35d3c2375d97b75f2aee2b30e8c9337926e57946d",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

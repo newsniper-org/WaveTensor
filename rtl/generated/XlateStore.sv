@@ -41,12 +41,13 @@ module XlateStore (
   input  wire          io_install_v,
   input  wire          io_flush_valid,
   input  wire [1:0]    io_flush_part,
+  output wire          installSlotFree,
   input  wire          clk,
   input  wire          reset
 );
 
   wire       [62:0]   store_spinal_port1;
-  reg                 _zz_io_install_ready;
+  reg                 _zz__zz_io_install_ready;
   reg        [3:0]    _zz_commitLine_idx;
   reg        [27:0]   _zz_commitLine_tag;
   reg        [31:0]   _zz_commitLine_frame;
@@ -102,6 +103,7 @@ module XlateStore (
   reg                 fillSlot_3_perm_x;
   reg                 fillSlot_3_v;
   wire                flushSamePart;
+  wire                _zz_io_install_ready;
   wire       [3:0]    _zz_1;
   wire                when_XlateStore_l200;
   wire       [3:0]    _zz_2;
@@ -163,10 +165,10 @@ module XlateStore (
   assign store_spinal_port1 = store[entryAddr];
   always @(*) begin
     case(io_install_part)
-      2'b00 : _zz_io_install_ready = fillPend_0;
-      2'b01 : _zz_io_install_ready = fillPend_1;
-      2'b10 : _zz_io_install_ready = fillPend_2;
-      default : _zz_io_install_ready = fillPend_3;
+      2'b00 : _zz__zz_io_install_ready = fillPend_0;
+      2'b01 : _zz__zz_io_install_ready = fillPend_1;
+      2'b10 : _zz__zz_io_install_ready = fillPend_2;
+      default : _zz__zz_io_install_ready = fillPend_3;
     endcase
   end
 
@@ -261,6 +263,7 @@ module XlateStore (
   end
 
   assign flushSamePart = (io_flush_valid && (io_flush_part == io_install_part));
+  assign _zz_io_install_ready = _zz__zz_io_install_ready;
   assign _zz_1 = ({3'd0,1'b1} <<< io_install_part);
   assign io_install_ready = ((! _zz_io_install_ready) && (! flushSamePart));
   assign when_XlateStore_l200 = (io_install_valid && io_install_ready);
@@ -361,6 +364,7 @@ module XlateStore (
   assign io_rsp_hostPerm_r = io_hostRsp_perm_r;
   assign io_rsp_hostPerm_w = io_hostRsp_perm_w;
   assign io_rsp_hostPerm_x = io_hostRsp_perm_x;
+  assign installSlotFree = (! _zz_io_install_ready);
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       validBits_0 <= 16'h0;
