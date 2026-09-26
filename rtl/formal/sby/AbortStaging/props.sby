@@ -2,35 +2,117 @@
 # SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
 #
 # 무장 규율(정본 E.12.1)의 측정 — 2026-08-25 결정 A.
+# 선-formal 계약: rtl/formal/tla/AbortSurface.tla (파도 4 — 가드 열셋 중 열둘이 여기 앵커 ·
+# ro_rejected 는 RO 세 워드가 이 컴포넌트에 닿지 않아 Wt64Top/assembly.sby 만 앵커한다).
 #
-# VERIFIES: E.12.1 2항 (발화의 성립 조건) — p_fire_needs_armed(무장 셋 완비
-#   없이는 발화 없음) + p_fire_needs_word/bit0/ok(발화 전건 전수) +
-#   p_partial_no_effect(태그 워드 기입만으로는 발화 없음 — 「발화 전의 부분
-#   기입은 효과가 없다」의 문면)
-# VERIFIES: E.12.1 3항 (잔류 소진) — t_arm_cleared_on_fire(수락된 발화 기입은
-#   *성립 여부와 무관하게* 무장 전부 하강) + t_no_stale_staging(발화 직후
-#   사이클에 무장 완비 불가 — stale staging 구조적 부재) + t_fire_keeps_value
-# VERIFIES: E.12.1 1항 (워드별 무장) — t_arm_src_0/1/2(무장 상승의 원천은 자기
-#   워드의 수락된 기입뿐) + t_arm2_not_on_reject(거절된 기입은 무장 부동) +
-#   t_tag0/1/2_hold(스테이징 값은 자기 워드 기입에서만 움직인다)
+# PROVES: AbortSurface.poison_trace_zero — TAG1 [27] poison · [26] trace 비0 기입 ⇔ badWrite 의 TAG1 항 (p_arm_miss_not_bad — 마스크 0x0FFF0000) · 무장 [1] 부동 (t_arm1_not_on_reject · t_arm_src_1) · 스테이징 부동 (t_tag1_hold)
+# PROVES: AbortSurface.epoch_word_rsv_strict — TAG1 [25:16] 예약 비0 기입 ⇔ badWrite 의 TAG1 항 (p_arm_miss_not_bad) · 무장 [1] 부동 (t_arm1_not_on_reject) · 스테이징 부동 (t_tag1_hold)
+# PROVES: AbortSurface.shape_word_rsv_strict — TAG2 [31:16] 예약 비0 기입 ⇔ badWrite 의 TAG2 항 (p_arm_miss_not_bad) · 무장 [2] 부동 (t_arm2_not_on_reject) · 스테이징 부동 (t_tag2_hold)
+# PROVES: AbortSurface.fire_rsv_strict — FIRE [31:1] 예약 비0 기입 ⇔ badWrite 의 FIRE 항 (p_arm_miss_not_bad) · 발화 없음 (p_fire_needs_ok) · 무장 부동 (t_arm_fall)
+# PROVES: AbortSurface.legal_first — 거절된 기입(TAG1 · TAG2 · FIRE 의 거절 사유)은 무장을 세우지도 (t_arm1_not_on_reject · t_arm2_not_on_reject · t_arm_src_*) 내리지도 (t_arm_fall) 않고 스테이징을 움직이지 않으며 (t_tag*_hold) 발화하지 않는다 (p_fire_needs_ok). RO 세 워드의 무효과는 조립 절반 — Wt64Top/assembly.sby 의 같은 가드 앵커. t_arm_fall 은 이 가드보다 넓다 — 무장의 하강 원천은 수락된 발화 기입뿐(스테이징 기입 · 이웃 워드 재기입도 무장을 내리지 않는다)이고, 그것이 모델 고정 속성 Prop_ArmFallsOnlyOnFire 의 RTL 판이다 (파도 4 검토 뒤 — 가드가 아니라 고정 속성이라 PROVES 앵커가 따로 없다)
+# PROVES: AbortSurface.reject_loud — 문 절반: 거절 사건 전수 ⇔ badWrite (p_arm_miss_not_bad — 조용한 거절도 허위 fault 도 막는다). badWrite · RO 쓰기 → FAULT_STATUS [6] sticky 는 Wt64Top/assembly.sby
+# PROVES: AbortSurface.arm_on_accept — 수락된 스테이징 기입 뒤 자기 무장 비트가 서 있다 (t_arm_set_0/1/2 — 같은 사이클의 수락된 발화가 이기는 경우만 뺀다). 검토자 V13 의 구멍을 닫는 단언이다
+# PROVES: AbortSurface.arm_own_word — 무장 비트 i 의 상승 원천은 워드 i 의 수락된 기입뿐 (t_arm_src_0/1/2)
+# PROVES: AbortSurface.stage_writes_value — 수락된 기입 뒤 그 워드의 스테이징 값 = 쓴 값, 무장이 선 워드의 재기입 포함 (t_tag0_val · t_tag1_val · t_tag2_val · 증인 W10 · W8). TAG1 은 워드 전량의 왕복({io_tag_thread, io_tag_lnid} == 쓴 워드) — 에포크 [31:28] 의 값 경로까지 재면서 필드 이름을 부르지 않아 코덱 배치를 굳히지 않는다 (검토 N1 · N2 — 아래 표)
+# PROVES: AbortSurface.fire_needs_armed — 발화 ⇒ 무장 셋 완비 (p_fire_needs_armed) · 태그 워드 기입만으로는 발화 없음 (p_partial_no_effect)
+# PROVES: AbortSurface.fire_needs_one — 발화 ⇒ 발화 워드의 수락된 기입 ∧ [0]=1 (p_fire_needs_word · p_fire_needs_bit0 · p_fire_needs_ok)
+# PROVES: AbortSurface.fire_drains_arm — 수락된 발화 기입 ⇒ 다음 사이클 무장 전부 0, 성립 여부와 무관 (t_arm_cleared_on_fire — $past(io_fire) 가 전건에 없다 · 무시된 발화의 소진은 증인 W12) · 발화 직후 재발화 불가 (t_no_stale_staging)
 # VERIFIES: E.12.1 2항 후단 (무시 ≠ 거절) — p_arm_miss_not_bad: 거절 사건의
 #   전수 정의에 무장 상태가 들어가지 않는다 (무장 미완 발화는 fault 도
-#   카운트도 아니다 — E.12 3항과 같은 처분)
+#   카운트도 아니다 — E.12 3항과 같은 처분 · 모델의 고정 속성 Prop_UnderarmedIgnored)
 # VERIFIES: E.12.1 5항 *전단* (무장은 태그 값을 검사하지 않는다) —
-#   t_arm_src_0/1/2: 무장의 상승 원천이 자기 워드의 수락된 기입뿐이라는 것이
-#   곧 값 무관이다. 5항 *후단*(스테이징된 태그를 관측면에 내지 않는다)은 이
+#   t_arm_set_0/1/2: 수락된 기입이면 값과 무관하게 자기 무장이 선다 (증인 W8 —
+#   에포크 비0 의 TAG1 이 수락되어 무장한다). t_arm_src_0/1/2 는 상승의 *원천*만
+#   잰다 — 값에 따라 무장을 안 세우는 변이(N6)는 t_arm_src_1 을 통과하고
+#   t_arm_set_1 에만 걸린다 (아래 표). 5항 *후단*(스테이징된 태그를 관측면에 내지 않는다)은 이
 #   모듈 밖 조립의 성질이라 여기서 재지 않는다 — 조립 국소 경로는 Wt64Top/assembly.sby 가 잰다(Reassembly 경유 잔여는 rtl/README).
 #   한동안 p_arm_width 가 후단을 주장했으나 3비트 포트에 대한 항진명제였다.
 #
-# ## PROVES 가 아니라 VERIFIES 인 이유 (앵커 규율)
+# ## VERIFIES 에서 PROVES 로 — 파도 4 (2026-09-26)
 #
-# `# PROVES:` 는 GUARD-MAP 의 *실재 가드*에만 선다 (scripts/lint_postformal).
-# 무장 규율은 선-formal 모델에 대응 가드가 없다 — Payload.tla 는 소거를
-# 「태그 하나를 지정한 소거 기입」이라는 *의미론*으로 추상하고, 그 태그를 32b
-# 버스에 어떻게 싣는가는 모델 밖이다 (MMIO 워드 표면은 그 모델의 상태가
-# 아니다). 그래서 이 태스크는 정본 조항을 앵커로 삼고 강등한다. 모델에 MMIO
-# 워드 층을 들이는 것은 별 결정이며, 들이지 않는 것이 지금의 판단이다 —
-# 무장 규율은 *한 모듈 안의 조합·1스텝 계약*이라 k-귀납이 전수로 닫는다.
+# 착지판(2026-08-25)은 이 태스크를 정본 조항 앵커(VERIFIES E.12.1 1·2·3항)로
+# 강등했다 — 무장 규율에 대응하는 선-formal 가드가 없었기 때문이다 (Payload.tla 는
+# 소거를 「태그 하나를 지정한 소거 기입」이라는 의미론으로 추상하고 32b 버스 세
+# 워드의 문은 어느 모델의 상태도 아니었다). 그것은 정본 6.3 의 1단을 건너뛴
+# 착지였다. 파도 4 가 AbortSurface.tla 를 세워 그 문을 모델에 올렸고, 가드마다
+# 이 하네스의 실제 단언이 그 문장을 재는 것만 PROVES 로 승격했다 — 양의 방향이
+# 비어 있던 무장(arm_on_accept · V13)과 값 경로(stage_writes_value) · 발화 거절의
+# 무장 부동(legal_first 의 발화 쪽)은 단언을 새로 세운 뒤에 승격했다
+# (t_arm_set_0/1/2 · t_tag0/1/2_val · t_arm_fall). 무장 미완 발화의 「무시 ≠ 거절」과
+# 5항 전단은 모델에서 가드가 아니라 고정 속성이라 VERIFIES 로 남는다.
+#
+# ## 역-변이 표 — 파도 4 실측 (2026-09-26 · 비상주)
+#
+# 입력 (sha256 앞 16자): rtl/generated/Wt64Top.sv aa510b191e133445 ·
+# rtl/sv/assert/AbortStaging_props.sv 28b4d6bc42ec33d4 · 이 파일의 [script] 그대로.
+# 방법: 생성물 *사본*(/var/tmp)의 AbortStaging 모듈 한 곳을 문자열 치환(정확히 1 회 매치
+# 검사)하고 이 .sby 의 bmc · prove 를 그대로 돌린다 (smtbmc z3). 격리 = prep 뒤에
+# `chformal -assert -remove AbortStaging_check/c:* AbortStaging_check/c:<라벨> %d` 한 줄.
+# 구동기는 /var/tmp 에만 있었고 커밋하지 않았다 — 어떤 게이트도 이 표를 재실행하지 않는다.
+# 결과: 무변이 B0 PASS · 사살 변이 19 전부 bmc FAIL · 신설 단언 여섯(t_arm_set_0/1/2 ·
+# t_arm_fall · t_tag0/1/2_val 중 t_arm_fall 은 격리)과 t_arm1_not_on_reject(격리) 전부에 사살
+# 변이가 있다. 대조 둘: U06 을 t_arm_set_1 하나로 격리하면 PASS(양의 방향 단언은 「거절했는데
+# 무장」을 잡지 않는다 — 그것은 t_arm1_not_on_reject 의 몫) · U12 를 t_arm2_not_on_reject 하나로
+# 격리하면 PASS(발화 거절은 스테이징 축이 아니다).
+#
+#   id    치환 (생성 SV)                                   가드(AbortSurface)  ⇒ 첫 적발 (bmc) [· 격리]
+#   U01   D2 이전 생성물 (HEAD d65b1c2)                     poison_trace_zero · epoch_word_rsv_strict ⇒ p_arm_miss_not_bad (prove: + t_arm_src_1 · t_tag1_hold)
+#   U02   tag1 마스크 0x0FFF → 0x03FF (poison·trace 누락)   poison_trace_zero     ⇒ p_arm_miss_not_bad
+#   U03   → 0x0BFF (trace 누락)                             poison_trace_zero     ⇒ p_arm_miss_not_bad
+#   U04   → 0x07FF (poison 누락)                            poison_trace_zero     ⇒ p_arm_miss_not_bad
+#   U05   → 0xFFFF (에포크 과잉 거절)                        epoch_word_rsv_strict    ⇒ p_arm_miss_not_bad
+#   U06   okTag1 = wr ∧ selTag1 (loud 이지만 무장 — V7)      legal_first        ⇒ t_arm_src_1 t_tag1_hold · 격리 t_arm1_not_on_reject
+#   U07   badWrite 에서 TAG1 항 탈락 (조용한 거절)           reject_loud        ⇒ p_arm_miss_not_bad
+#   U08   거절된 TAG1 의 값이 스테이징된다                   legal_first        ⇒ t_tag1_hold
+#   U09   okTag1 이 armed[1] 을 안 세움 (V13)                arm_on_accept      ⇒ t_arm_set_1
+#   U10   okTag0 이 armed[0] 을 안 세움                      arm_on_accept      ⇒ t_arm_set_0
+#   U11   okTag2 가 armed[2] 를 안 세움                      arm_on_accept      ⇒ t_arm_set_2
+#   U12   무장 소진 전건 okFire → wr ∧ selFire (거절 발화 소진) legal_first      ⇒ t_arm_set_1 t_arm_set_2 · 격리 t_arm_fall
+#   U13   무장 소진 전건 okFire → io_fire (성립한 소거만)      fire_drains_arm    ⇒ t_arm_cleared_on_fire (prove: + t_no_stale_staging)
+#   U14   무장 선 TAG0 의 재기입이 값을 안 덮음               stage_writes_value ⇒ t_tag0_val
+#   U15   TAG1 LNID 두 바이트 뒤바뀜                          stage_writes_value ⇒ t_tag1_val
+#   U16   TAG2 값을 [31:16] 에서 받음                        stage_writes_value ⇒ t_tag2_val
+#   U17   okTag0 이 armed[1] 도 세움                         arm_own_word       ⇒ t_arm_src_1
+#   U18   io.fire 에서 &armed 탈락                           fire_needs_armed   ⇒ p_fire_needs_armed
+#   U19   io.fire 에서 wdata[0] 탈락                         fire_needs_one     ⇒ p_fire_needs_bit0
+# 하네스 쪽 대조 둘 (같은 방법 · 하네스 사본만 바꿈):
+#   H1    수리 생성물 + 착지 전 하네스(HEAD d65b1c2)       ⇒ p_arm_miss_not_bad FAIL — 옛 하네스가 TAG1
+#         비거절을 단언으로 굳히고 있었다 (rtl/README.md D2 의 「굳힌다」 문장의 실측)
+#   H2    U09(TAG1 이 무장 안 세움) + t_arm_set_0/1/2 를 뺀 하네스 ⇒ bmc · prove **PASS** — 검토자 V13
+#         의 구멍 재현. 같은 변이가 t_arm_set 이 든 이 하네스에서는 t_arm_set_1 로 FAIL (U09)
+# 선-formal 짝: AbortSurface 의 가드 삭제 run 열셋이 각각 위 변이의 모델 판이다 (U06 ↔ legal_first ·
+# U09 ↔ arm_on_accept · U13 ↔ fire_drains_arm …). fire_rsv_strict · shape_word_rsv_strict 는 착지판
+# 역-변이(p_fire_needs_ok · t_arm2_not_on_reject — 결정 A 착지 세션)가 든다.
+#
+# 이월 주의: 위 입력 줄의 하네스 sha(28b4d6bc…)는 인덱스에 오른 착지판(20da369f…)과 다르다 — 표를 잰
+# 뒤 하네스가 바뀌었다(주석으로 보이나 그 판이 남지 않아 확인하지 못했다). 착지판 위의 교차 실측은
+# 검토가 했다: 변이 여섯(무장 미완 발화 loud · 마스크 [16] 누락 · 거절 TAG1 이 무장 [1] 을 내림 · N6 ·
+# [0]=0 발화 미소진 · TAG0 최하위 비트 탈락)이 차례로 p_arm_miss_not_bad(앞 둘) · t_arm1_not_on_reject ∧
+# t_arm_fall · t_arm_set_1 · t_arm_cleared_on_fire ∧ t_no_stale_staging · t_tag0_val 로 FAIL.
+#
+# ## 역-변이 표 — 파도 4 검토 뒤 수리 (2026-09-26 · 비상주)
+#
+# 검토 발견: 착지판의 t_tag1_val 은 LNID [15:0] 만 재서 TAG1 에포크 [31:28] 의 값 경로가 비어
+# 있었다 — 아래 N1 · N2 가 bmc · prove 를 통과했다. 에포크는 매칭 키라(E.12 3·6항) 그 장치는 비0
+# 에포크 문맥의 소거를 전부 「없는 태그」로 조용히 무시한다 — 05-security.typ:371 「조용한 실패는 편의 문제가 아니라 *보안 문제*다.」
+# 수리: t_tag1_val 을 워드 전량의 왕복 {io_tag_thread, io_tag_lnid} == $past(io_wdata) 로 넓혔다 —
+# 필드 이름을 부르지 않아 코덱(Types.Tag) 배치를 굳히지 않는다. 그 이유로 두었던 lint_postformal
+# _PARTIAL 항목을 지웠다 (stage_writes_value 완전 덮임 · _MAX_PARTIAL 25 → 24). 조립 짝 a_tag1_val
+# (옛 a_tag1_lnid)은 Wt64Top/assembly.sby 표.
+# 입력 (sha256 앞 16자): rtl/generated/Wt64Top.sv aa510b191e133445 · 수리 하네스
+# rtl/sv/assert/AbortStaging_props.sv e50560ea6a3d4e9a · 착지 하네스(인덱스판) 20da369f48b7b17f ·
+# [script] 는 이 파일 그대로 (격리 줄만 덧붙임). 같은 방법 · 사본 /var/tmp/w1fix-mut (지웠다).
+#
+#   id    치환 (생성 SV · AbortStaging)                              하네스   bmc    prove   첫 적발
+#   N1    tag1 <= io_wdata → (io_wdata & 32'h0000ffff) (에포크 탈락)   착지판   PASS   PASS    — (생존)
+#   N1    〃                                                         수리판   FAIL   FAIL    t_tag1_val
+#   N2    tag1 <= armed[1] ? {tag1[31:28], io_wdata[27:0]} : io_wdata  착지판   PASS   PASS    — (생존)
+#         (무장 선 TAG1 의 재기입이 옛 에포크를 남김)
+#   N2    〃                                                         수리판   FAIL   UNKNOWN t_tag1_val (prove 깊이 4 의
+#                                                                                        기저가 재기입까지 못 닿아 귀납 반례 — bmc 가 사살)
+#   N6    armed[1] <= (io_wdata[31:28] == 0) (에포크 비0 이면 무장 없음) 수리판   FAIL   FAIL    t_arm_set_1 (그것만)
+#   N6    〃 · 격리 t_arm_src_1                                      수리판   PASS   PASS    — 5항 전단은 t_arm_src 가 재지 않는다
+# 무변이 B0 수리판 bmc · prove PASS.
 #
 # ## 부착 — bind 없음 (이 태스크만 다르다)
 #
@@ -48,7 +130,8 @@
 # 6~8 사이클이므로 12 는 그 1.5배 여유다. prove 는 k-귀납(깊이 4)이 선다 —
 # 그것이 정답이고 bmc 는 도달 가능 접두의 이중 확인이다.
 # cover 깊이 10: 가장 깊은 증인(W5 — 무장 완비 후 발화 후 하강 관측)이
-# reset 후 5 사이클이면 닿는다.
+# reset 후 5 사이클이면 닿는다. 파도 4 재실측(2026-09-26): assert 24 · cover 14/14 도달 —
+# 최심 step 4 (W5 · W12). 선택 신호가 자유라 세 워드가 한 사이클에 실려 W1 이 step 3 이다.
 
 [tasks]
 bmc

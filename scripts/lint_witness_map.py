@@ -230,14 +230,18 @@ _MAX_ANCHOR_UNWITNESSED = 0   # 늘지 않는다. 줄이는 길은 증인 신설
 _MAX_UNRESOLVED = 0   # 오늘 0. 늘리려면 근거와 함께.
 
 # ── 하한 래칫 ──────────────────────────────────────────────────────────────
-_MIN_WITNESS_MAPPED = 336   # 대응 선언이 붙은 cover 문 수. 줄지 않는다.
+_MIN_WITNESS_MAPPED = 345   # 대응 선언이 붙은 cover 문 수. 줄지 않는다.
+                             # 336 → 345 (2026-09-26 실측 345/345 — 파도 4 D2 · AbortSurface: AbortStaging_props.sv
+                             # 에 W7 셋 · W8 · W9–W12 넷(여덟), Wt64Top_props.sv 에 W28 하나).
                              # 256 → 336 (2026-09-26 실측 336/336 — 파도 3 반증 검토가 하한이
                              # 실측 334 아래 78 칸 헐겁다고 지적했다: 파도 2 · 3 이 증인을 더하는
                              # 동안 이 하한은 한 번도 오르지 않아 증인 78건이 조용히 사라져도
                              # 게이트가 침묵했다. 334 에 수리판이 XlateStaging_props.sv 에 더한
                              # cover 둘(w13_mclr_zero · w14_mclr_rsv)을 더해 336 — w11_missclr 는
                              # w12_missclr 로 태그만 옮겼다).
-_MIN_ANCHOR_WITNESSED = 148  # 증인이 선 앵커 수. 줄지 않는다.
+_MIN_ANCHOR_WITNESSED = 163  # 증인이 선 앵커 수. 줄지 않는다.
+                             # 148 → 163 (2026-09-26 실측 163/163 — 파도 4: AbortSurface PROVES 열다섯
+                             # (AbortStaging/props.sby 열둘 · Wt64Top/assembly.sby 셋)이 전부 증인을 갖고 태어났다).
                              # 144 → 148 (2026-09-26 실측 148/148 — 파도 3 수리: XlateStaging/
                              # props.sby 가 VERIFIES XlateStaging.missclr_word 하나를 PROVES
                              # 다섯(XlateSurface.mclr_* 넷 · ro_rejected)으로 갈았다 — 순증 4,

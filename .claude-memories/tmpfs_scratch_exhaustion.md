@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: e7f99d7a-a6eb-46be-b7eb-fd78237e02a7
-  modified: 2026-09-25T21:46:41.537Z
+  modified: 2026-09-26T01:13:48.787Z
 ---
 
 /tmp 는 24G **tmpfs** 다(RAM 이다). 세션 scratchpad(`/tmp/claude-1000/…`),
@@ -22,6 +22,7 @@ metadata:
 지운다(커밋 시각 이전 것만 — 진행 중 파도의 증거 로그는 남긴다). 파도 시작 전
 `df -h /tmp` 를 본다. 내가 돌린 `make rtl-sim` 의 `/tmp/wt_sim_*` 는 로그의
 「build root」 줄로 찾아 지운다; 남의 것·다른 저장소의 /tmp 디렉터리는 사용자
-몫이다. 큰 사본이 필요한 에이전트에게는 `/var/tmp` 를 지정한다. 이월:
-`run_wt64.py` 가 자기 mkdtemp 루트를 종료 시 지우게 하기. 관련
+몫이다. 큰 사본이 필요한 에이전트에게는 `/var/tmp` 를 지정한다. `run_wt64.py` 는
+`d65b1c2` 부터 통과한 실행의 mkdtemp 루트를 스스로 지운다(실패 실행은 남기고
+자리를 인쇄 — 그것은 내가 지운다). 관련
 [[background-task-oom-kill]] · [[podman-orphan-containers]].

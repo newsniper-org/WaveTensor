@@ -1183,3 +1183,48 @@ async def xlate_adjacent_v0_stalls_then_invalidates(dut):
     assert_miss(dut, await hiu_lookup(dut, part, vpn_of(tag, idx)),
                 "정지 뒤 수락된 V=0 HI 의 항목")
     dut._log.info("인접 HI(V=1) · HI(V=0) → 한 사이클 정지 · [6]=0 · 무효화 생존(미적중)")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 재조립 문맥 소거 — ABORT_TAG1 워드의 적법성 (D2 수리의 끝-끝 시험)
+# ═══════════════════════════════════════════════════════════════════════════
+# 정본 E.1.2 `0xF44`: `[27]` poison = 0 · `[26]` trace = 0 · `[25:16]` 예약 = 0 (엄격)
+# — 처분은 셋 다 같다: 거절 + FAULT_STATUS `[6]`. E.12.1 1항: 거절된 기입은
+# 무장을 세우지 않는다 · 5항: 워드의 적법성 검사는 무장보다 앞선다.
+# 스테이징 값은 WO 라 MMIO 로 보이지 않는다 — 「거절된 기입이 값을 덮지 않는다」는
+# 후-formal(AbortStaging_props.sv t_tag1_hold)이 잰다. 여기는 호스트가 보는 셋
+# (0xF80[6] · 0xF58[1] · 0xF50)만 잰다.
+ABORT_TAG1 = 0xF44
+ABORT_FIRE = 0xF4C
+ABORT_COUNT = 0xF50
+ABORT_ARM = 0xF58
+
+
+@cocotb.test()
+async def abort_tag1_word_legality(dut):
+    await boot(dut)
+    await clear_all_faults(dut)
+    if await fault6(dut):
+        await clear_fault6(dut)
+    lnid = 0x1234
+    for why, bits in (("[27] poison", 1 << 27), ("[26] trace", 1 << 26),
+                      ("[16] 예약 최하위", 1 << 16), ("[25:16] 예약 전폭", 0x3FF << 16)):
+        await mmio_write(dut, ABORT_TAG1, bits | lnid)
+        assert await fault6(dut) == 1, f"ABORT_TAG1 {why} 비0 기입에 [6] 이 서지 않았다 — 조용한 수락"
+        arm = await mmio_read(dut, ABORT_ARM)
+        assert arm & 0b010 == 0, f"ABORT_TAG1 {why}: 거절된 기입이 무장 [1] 을 세웠다 (ARM={arm:#05b})"
+        await clear_fault6(dut)
+    # 에포크 [31:28] 는 거절 사유가 아니다 — 수락되어 무장 [1] 만 선다
+    await mmio_write(dut, ABORT_TAG1, (0xA << 28) | lnid)
+    assert await fault6(dut) == 0, "에포크 비0 의 ABORT_TAG1 이 거절됐다 — 거절 마스크가 에포크를 삼킨다"
+    assert await mmio_read(dut, ABORT_ARM) == 0b010, "수락된 ABORT_TAG1 이 무장 [1] 을 세우지 않았다"
+    # 거절은 무동작 — 선 무장을 내리지도 않는다
+    await mmio_write(dut, ABORT_TAG1, (1 << 26) | lnid)
+    assert await fault6(dut) == 1
+    assert await mmio_read(dut, ABORT_ARM) == 0b010, "거절된 ABORT_TAG1 이 기존 무장을 움직였다"
+    await clear_fault6(dut)
+    # 무장 미완 발화 — 무시(거절 아님) · 무장 전부 하강 · 소거 카운트 0 (E.12.1 2·3항)
+    await mmio_write(dut, ABORT_FIRE, 1)
+    assert await mmio_read(dut, ABORT_ARM) == 0
+    assert await mmio_read(dut, ABORT_COUNT) == 0
+    assert await fault6(dut) == 0, "무장 미완 발화가 [6] 을 세웠다 — 무시가 거절로 접혔다"

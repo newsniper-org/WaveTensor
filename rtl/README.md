@@ -393,6 +393,7 @@ sticky 를 들어 워드는 레벨을 통과시키고 수락된 W1C 를 그쪽 c
 | MASK_NONCE_PART `0xEA0` | `[31:8]` | `0xFFFFFF00` |
 | MASK_REKEY `0xEBC` | `[31:8]` | `0xFFFFFF00` |
 | FP_BIND `0xF04` | `[30:24]` | `0x7F000000` |
+| ABORT_TAG1 `0xF44` | `[27:16]` (poison · trace · 예약 — 파도 4 D2) | `0x0FFF0000` |
 | ABORT_TAG2 `0xF48` | `[31:16]` | `0xFFFF0000` |
 | ABORT_FIRE `0xF4C` | `[31:1]` | `0xFFFFFFFE` |
 | CQ_SIZE `0x308` | `[31:5]` | `0xFFFFFFE0` |
@@ -966,7 +967,8 @@ E.12 1항 해설이 「요구를 거는 형태(스트로브·핸드셰이크)는
 신설했다 (소거 발화 · 무효화 명령 · *미완* 문맥 소거 · *회계가 실린* 문맥 소거 ·
 없는 태그 무시) — 앞의 단언이 전부 등식/함의라 소거 없는 세계에서 공허하다.
 
-`AbortStaging/props` (신설 태스크, `VERIFIES: E.12.1 …`): 무장 규율 전 항.
+`AbortStaging/props` (신설 태스크, `VERIFIES: E.12.1 …`): 무장 규율 전 항. (⚠ 파도 4 가 그 1단 결손을
+`AbortSurface.tla` 로 닫고 이 태스크를 PROVES 열둘로 승격했다 — 아래 「재조립 문맥 소거의 문」 절.)
 `# PROVES:` 가 아닌 이유는 앵커 규율이다 — 선-formal 모델에 대응 가드가 없다.
 `Payload.tla` 는 소거를 「태그 하나를 지정한 소거 기입」이라는 의미론으로
 추상하고 MMIO 워드 표면은 그 모델의 상태가 아니다. 모델에 워드 층을 들이는
@@ -1057,13 +1059,14 @@ E.12 1항 해설이 「요구를 거는 형태(스트로브·핸드셰이크)는
 
 **같은 날 반증 검토 뒤 수리.** (i) 스테이징 태그 *값*의 결선(MMIO wdata → `stg.io_wdata`)을
 재는 단언이 없어 비트 순서 결함이 세 태스크를 다 통과했다 — `a_tag0_val` · `a_tag1_lnid`
-(TAG1 은 정본 LNID 필드만 — 스레드‖LNID 코덱을 굳히지 않는다) · `a_tag2_val` 을 들였다.
+(TAG1 은 정본 LNID 필드만 — 스레드‖LNID 코덱을 굳히지 않는다) · `a_tag2_val` 을 들였다. (파도 4 검토 뒤
+`a_tag1_val` — 워드 전량의 왕복이라 필드를 부르지 않고도 에포크까지 잰다. 아래 AbortSurface 절.)
 (ii) 하네스가 물려받은 `0x000`–`0x11F` 에 예약 정책을 걸고 미배선 구역의 표에 *있는* RW/RO
 워드(`0xFFC` 포함)에 읽기 0 을 걸고 있었다 — 정의 정책과 예약 정책을 워드 단위로 갈라 전자는
 열고 표에 *없는* 워드의 예약 정책은 새로 단언한다(아래 T1 · T3). (iii) 절단 정의역이 넓어져도
 무결성 핀이 울지 않았다(15번째 인스턴스가 조용히 절단됐다) — expose 앞 계수 14 를 더했다.
 
-### 측정된 결함 두 건 — 단언을 싣지 않았다 (RTL 파도 몫)
+### 측정된 결함 — D1 은 열려 있다 · D2 는 파도 4 가 닫았다 · D2b · D2c 는 같은 뿌리의 새 결함
 
 - **D1 — 수락되지 않은 읽기에 응답이 선다.** `0xF00`–`0xF07` 읽기에서 `ready` = `fps.loadReady`
   = 0 (선택자 표 초기화 소거 구간)인데도 다음 사이클 `rvalid` 가 선다 — 매핑 읽기와 예약 읽기
@@ -1073,14 +1076,97 @@ E.12 1항 해설이 「요구를 거는 형태(스트로브·핸드셰이크)는
   rvalid 를 뺀 「rvalid ⇒ 직전 수락 읽기」 단언이 bmc step 3 에서 반례를 내고, `0xF00`–`0xF07`
   읽기만 전건에서 빼면 깊이 12 까지 PASS — 결함은 그 여덟 오프셋에 한정된다. 하네스는 그 자리의
   단언을 `$past(io_mmio_ready)` 로 게이트하거나 surfOpen 에 두어 결함을 굳히지 않는다.
-- **D2 — ABORT_TAG1 의 예약·poison·trace 거절이 없다.** 정본(`0xF44`: `[31:28]` 에포크 ·
-  `[27]` poison = 0 · `[26]` trace = 0 · `[25:16]` 예약 = 0 엄격)은 `[27:16]` 비0 을 거절 + `[6]` ·
-  무장 부동으로 처분하는데, `AbortStaging.okTag1 = io.wr && io.selTag1` 에 검사가 없어 어떤 값이든
-  무장한다(태그 코덱은 아직 스레드‖LNID — `Common.Tag` · 완료 디스크립터 · 위 결정 5 표에 미전파).
-  `AbortStaging_props.sv` 의 `ok_tag1` · `p_arm_miss_not_bad` 가 그 비거절을 단언으로 굳히고 있고,
-  `AbortStaging/props.sby` 의 「E.12.1 1항」 VERIFIES 는 TAG1 거절 부재를 덮지 못한다. 조립층
-  하네스는 그 기입을 surfOpen 에 두고 `a_arm_set1` · `a_tag1_lnid` 의 전건을 정본 수락(`[27:16]` = 0)으로 적는다 —
-  수리 뒤에도 서는 형태이며, 수리되면 surfOpen 에서 surfMust 로 옮긴다.
+- **D2 — ABORT_TAG1 의 예약·poison·trace 거절이 없었다 — 해소 (파도 4, 2026-09-26).** 정본
+  (`0xF44`: `[31:28]` 에포크 · `[27]` poison = 0 · `[26]` trace = 0 · `[25:16]` 예약 = 0 엄격)은
+  `[27:16]` 비0 을 거절 + `[6]` · 무장 부동으로 처분하는데(E.12.1 1·5항 「워드의 적법성 검사는 무장보다
+  앞선다」), `AbortStaging.okTag1 = io.wr && io.selTag1` 에 검사가 없어 어떤 값이든 스테이징·무장했다.
+  연대: AbortStaging 은 eec0d48(2026-08-25)이, 정본 TAG1 재배분은 fa18169(2026-08-27)가 들였고 재배분이
+  RTL 로 전파되지 않았다. 정본 개정은 0 이다.
+  **수리** — `Wt64Top` companion 에 `A_TAG1_RSV`(`[27:16]` — 적재 마스크 에포크 ‖ LNID 의 여집합,
+  LNID 부분은 `Isa.LNID_W` 에서 유도)를 두고 `AbortStaging` 의 `okTag1` 연언 · `badWrite` 항 ·
+  `stagedRsvBad` 이중 방어에 넣었다. `Common.scala` 편집 0 · `Wt64Top.scala` 줄 중립(수리 13/13 —
+  GUARD-MAP 은 파일 끝에 덧붙였다) · 생성물 변화는 AbortStaging 모듈 안에 한정된다. 코덱(`Types.Tag`)이
+  아직 스레드‖LNID 라 마스크를 코덱에서 끌어올 자리가 없다 — 코덱이 E.5.1 재배분을 싣는 날 그쪽으로
+  옮긴다 (그 스칼라독 같은 줄). 호스트 가시 변화: `[27:16]` 비0 기입이 `[6]` 을 받고 무장 `[1]` 이
+  서지 않는다. 정본 배치를 따르는 호스트는 무변화이고 없어지는 것은 `[26]`=1 로 trace 문맥을 전량
+  일치 소거하던 비정본 우회로뿐이다 (그 문맥의 정본 경로는 D2b 가 막는다).
+  **측정** — 선-formal `AbortSurface.tla`(아래 절)의 짝 둘이 D2 이전 기계와 동형이다 (TAG1 무검사 →
+  `Prop_PoisonTraceRejected` · 소거가 trace 든 태그를 싣는다 → `Prop_FiredKeyClean`). 후-formal:
+  `AbortStaging_props.sv` 의 `ok_tag1` · `p_arm_miss_not_bad` 가 정본 마스크(`0x0FFF0000`)를 들고
+  `t_arm1_not_on_reject` · 증인 W7(사유별 셋) · W8(에포크 비0 은 수락) 이 섰다 — 수리 전 하네스는 그
+  비거절을 단언으로 굳히고 있었다(수리 RTL + 옛 하네스 = `p_arm_miss_not_bad` FAIL). 조립층은 그
+  기입을 surfOpen 에서 surfMust 로 옮기고 `a_arm_rej1` · W28 을 들였다. cocotb
+  `abort_tag1_word_legality`(사유 넷 · 에포크 수락 · 거절의 무동작 · 무장 미완 발화의 무시)가 끝-끝
+  값 수준이다. 변이 실측은 `AbortStaging/props.sby` · `Wt64Top/assembly.sby` 머리 역-변이 표.
+- **D2b — 재조립·소거 매칭 키가 poison · trace 를 빼지 않는다 (파도 4 등재 · 구조 판독, 측정 전).**
+  정본은 키에서 두 비트를 뺀다 —
+  04-ext-payload.typ:307 「*그러나 키는 태그 전량이 아니다 — poison 과 trace 는 빠진다.*」
+  e-defined.typ:1739 「⇒ 키는 wave · 에포크 · LNID · 정밀도 · 차원이다.」
+  그리고 그 범위는 문맥 개시 · 조각 조회 · E.12 소거 매칭 세 곳에 모두 선다. 재구현은
+  `Reassembly.scala` 의 소거 적중 `c.tag === io.abort.tag`(번들 통비교)이고 `Common.scala` 의
+  `Tag` 번들은 아직 `thread` 16b 라 poison · trace 필드가 없다 (워드 코덱상 TAG1 `[27:26]` =
+  thread `[11:10]`). `Reassembly.scala` 머리 GUARD-MAP `Payload.key_is_tag` 의 「태그 전량 비교」
+  문면도 fa18169 이후 낡았다 — 문면만 고치면 모델 주장이 RTL 보다 앞서므로 코덱과 함께 고친다.
+  **호스트 가시 귀결**: 사이드밴드 태그의 trace 자리가 선 채 열린 문맥은 정본이 `[26]` = 0 을 강제하는
+  스테이징으로 일치시킬 수 없다 — 그 소거는 「없는 태그」로 조용히 무시되고 ABORT_COUNT 도 오르지
+  않는다 (E.12 3항의 오적용). D2 수리가 이것을 만든 것은 아니지만 비정본 우회로를 없애 표면에 낸다.
+- **D2c — 완료 디스크립터 CD_TAG1 `[31:16]` 이 사이드밴드를 반향한다 (파도 4 등재 · 구조 판독).**
+  `CompletionUnit` 이 `Types.Tag.toWords` 로 태그를 직렬화하고 그 코덱이 `thread ## lnid` 라 `[27]`
+  (poison — 장치 저작이어야 한다)과 `[25:16]`(예약 = 0 — E.5.3)이 입력 `io.instr.tag.thread` 의 비트를
+  그대로 낸다. 정본 3.9 · E.1.3 의 「두 비트는 상수 0」 서술은 사이드밴드가 0 일 때만 참이다 — 그
+  사실 정정은 파도 4 의 정본 커밋이 싣는다 (판정 대상이 아니라 이미 거짓인 사실의 정정). 위 결정 5
+  표의 「CD_TAG1 `[31:16]` 스레드」 행도 같은 파도에서 고친다.
+- **D2b · D2c 의 수리 계획 — 태그 코덱 전파 파도** (정본 01-isa-asm 「RTL 반영은 별도 파도」).
+  막힘이 아니다 — 파도 4 가 `Common.scala` 를 편집하지 않은 것은 병렬 파도의 파일 소유권 규칙이었지
+  사용자 지시가 아니다. 순서는 6.3 그대로: (1) 선-formal — `Payload.tla` 의 `Tags` 를
+  (Key × Trace × Poison) 으로 정제하고 `key_is_tag` 가드의 비교를 Key 투영으로 바꾼다 (새 증인: trace
+  만 다른 도착·소거가 같은 문맥에 닿는다 · 삭제 run: 키에 trace 를 넣으면 FAIL). (2) RTL —
+  `Common.scala` `Tag` 번들에 에포크 · poison · trace · 예약 필드와 키 투영 함수(예: `Types.Tag.key`)를
+  싣고 `toWords`/`fromWords` 를 E.5.1 배치로, `Reassembly` 의 개방 clash · 조각 적중 · 소거 적중이 그
+  투영을 쓰게 한다 · `A_TAG1_RSV` 를 코덱으로 옮긴다 · `CompletionUnit` 의 `[27]` 은 장치 저작 ·
+  `[25:16]` 은 0. `when_Common_l259` 가 움직이면 하네스는 한 자리 — `Reassembly_props.sv` 의
+  매크로 `WT_STICKY_SET_FAULT` — 만 고친다 (`lint_generated_names` 로 확인). (3) 후-formal —
+  Reassembly/props 의 키 단언 · `AbortStaging_props.sv` 의 `t_tag1_hold` · `t_tag1_val` 과 조립
+  `a_tag1_val`(셋 다 포트 이름 `thread` · `lnid` 를 부른다 — 값 단언은 이미 워드 전량의 왕복이라 에포크를
+  재고 있으므로(파도 4 검토 뒤) 코덱이 바뀌면 포트 이름만 따라가고, 필드별 단언은 그때 더한다) ·
+  CompletionUnit/descriptor 의 태그 워드 단언. 생성물 전부가 흔들리므로
+  전수 `rtl-postformal`(50분+) · `rtl-sim` 전 스위트. 끝-끝 cocotb 는 ACCTGT(EH 0x9)가 ISA json
+  `eh_codes` 에 없어 어셈블러 단일 출처 규율상 문맥 개시를 방출할 수 없다 — 그 공백이 먼저 닫히거나
+  형식이 유일한 측정원으로 남는다.
+
+### 재조립 문맥 소거의 문 — `AbortSurface.tla` (파도 4, 2026-09-26)
+
+`AbortStaging`(결정 A, 2026-08-25)은 선-formal 없이 RTL · 후-formal 로 착지했다 — 정본 6.3 의 1단
+결손이다 (그 `.sby` 가 「PROVES 가 아니라 VERIFIES 인 이유」로 자백했다). `rtl/formal/tla/AbortSurface.tla`
+가 그 1단이다: 스테이징 세 워드 · 무장 마스크 · 명세 그림자(직전 발화 뒤의 적법 기입 · 워드별 마지막
+적법 값) · 발화 기록. 가드 열셋 — 감지 다섯(`poison_trace_zero` · `epoch_word_rsv_strict` · `shape_word_rsv_strict` ·
+`fire_rsv_strict` · `ro_rejected`) · 거절의 처분 둘(`legal_first` · `reject_loud`) · 무장 셋
+(`arm_on_accept` · `arm_own_word` · `stage_writes_value`) · 발화 셋(`fire_needs_armed` · `fire_needs_one` ·
+`fire_drains_arm`) — 과 증인 열하나, 짝 셋(D2 이전 둘 · D2 뒤 T2 앞 하나) · 대비 MUST PASS 하나, 30 run.
+삭제 run 은 자기 속성이 첫 위반으로 나고, 「자기 속성*만*」은 분리 검사가 잰다 — 가드마다 지운 판에 나머지
+가드 속성 열둘이 전부 통과한다(13/13 — 비상주, 2026-09-26 실측).
+sub-word(하위 두 비트 ≠ 0) 처분은 가드가 아니라 상수 `Subword` 다 — 판정 T2 (a) 의 거절 + `[6]` 은 페이지
+통합 파도(W4)가 착지하고, 그전의 RTL(조용한 흡수)은 짝 「D2 뒤 · T2 앞」 이 `Prop_MalformedRejected` 반례로
+붙잡는다. 오늘 GUARD-MAP 이 거짓 주장을 하지 않도록 가드로 올리는 것은 그 착지 커밋의 몫이다.
+RTL 이 먼저 정한 읽기 둘을 모델로 돌려보냈다 — 거절된 발화 기입은 무장을 내리지 않는다(정본 3항은
+수락/거절을 가르지 않는다) · `[0]`=0 의 수락된 발화 기입도 무장을 내린다. 검토 뒤 셋째 읽기를 고정 속성
+`Prop_ArmFallsOnlyOnFire` 로 올렸다 — 무장은 수락된 발화 기입에서만 내려간다 (착지판의 속성 스물하나는
+「재기입이 이웃 워드의 무장을 내리는」 장치를 전부 통과시켰다 — 탐침 실측은 `rtl/formal/tla/README.md`).
+**GUARD-MAP** 열셋은 `Wt64Top.scala` 파일 끝(열둘 AbortStaging · `ro_rejected` 와 `[6]` 결선 abortArea).
+**후-formal**: `AbortStaging/props.sby` 가 열둘을 PROVES 로 승격했고(착지판은 VERIFIES E.12.1 1·2·3항) —
+단언이 비어 있던 셋은 먼저 세웠다: `t_arm_set_0/1/2`(검토자 V13 — 수락 기입의 양의 방향 무장),
+`t_arm_fall`(무장 하강 원천 = 수락된 발화뿐), `t_tag0/1/2_val`(재기입 포함 값 경로) — 그리고
+`Wt64Top/assembly.sby` 가 셋(`ro_rejected` · `reject_loud` 의 조립 sticky 절반 · `legal_first` 의 조립
+절반)을 PROVES 한다. 열다섯 전부 완전 덮임이다 — 착지판은 `stage_writes_value` 를 「TAG1 에포크의 값 경로가
+코덱 전파 대기」라며 `_PARTIAL` 에 올렸는데, 검토가 그 전제를 반증했다: `t_tag1_val` · 조립 `a_tag1_val`(옛
+`a_tag1_lnid`)을 TAG1 워드 전량의 왕복(`{thread, lnid}` == 쓴 워드)으로 넓히면 필드 이름을 하나도 부르지 않고
+에포크를 잰다. 넓히기 전에는 「스테이징이 에포크를 떨군다」 · 「재기입이 옛 에포크를 남긴다」 두 변이가 유닛
+bmc · prove 와 조립 bmc 를 전부 통과했다 — 에포크가 매칭 키라 그 장치는 비0 에포크 문맥의 소거를 전부 「없는
+태그」로 조용히 무시한다. `_PARTIAL` 항목을 지웠고 `_MAX_PARTIAL` 25 → 24 (역-변이 표: 두 `.sby` 머리).
+같은 검토로 `props.sby` 의 5항 전단 앵커를 바로잡았다 — 값 무관 무장을 재는 것은 `t_arm_set_0/1/2`(증인 W8)이고
+`t_arm_src_*` 는 상승의 원천만 잰다(에포크 비0 이면 무장을 안 세우는 변이가 `t_arm_src_1` 을 통과한다).
+모델이 재지 않는 것(소거의 효과 · 매칭 키 절반(D2b) ·
+필드 배치 · 주소 디코드 · 읽기 · 5항 후단 · `[6]` sticky · 시간)은 모델 머리 「안 잰다」가 닫힌 목록이다.
 
 ### 정본 판정 요청 — T1 · T2 · T3 (파도 2) · T4 · T5 (파도 3)
 

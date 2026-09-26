@@ -35,6 +35,7 @@ make rtl-formal        # 또는  sh rtl/formal/tla/run.sh
 | **SEC-2 · SEC-7** 경로 간 동일성 · 예약 필드 불투과 | `Decode.tla` | **증명됨** |
 | **E.1.2 CAP_STATUS/CAP_CLEAR** 축 격리 · sticky · 예약 위반 원자 거절 · 발화 우선 | `CapWord.tla` | **증명됨** — 가드 넷(axis_isolated · sticky_until_clear · clear_atomic · set_beats_clear) + 증인 넷, 9 run. 축은 불투명 토큰 넷 — 사건→축 배정은 정본 표의 몫 |
 | **E.1.2 · E.3 변환 저장소의 MMIO 문** `0xC00` LO 스테이징 · HI 단일 에지 커밋 · 번호 래치 · `0xE00` flush 발화·범위 · `0xE10` 해제 · RO 쓰기 거절 · 거절 loud · 하류 거부 처분 | `XlateSurface.tla` | **증명됨** — 가드 열일곱(lo_stages_only · hi_fires · hi_entry_match · hi_needs_staging · hi_commit_whole · hi_v_carried · flush_fires · flush_scoped · flush_valid_only · flush_part_exists · flush_rsv_strict · reject_loud · mclr_fires · mclr_needs_one · mclr_rsv_strict · mclr_keeps_stall · ro_rejected) + 증인 열여섯 + 짝·대안·발견 여섯 + 진행 1, 42 run. 축 모델(라벨이 색인 속성 ID 를 인용하지 않는다). 정본이 닫지 않은 자리 넷은 모델 머리 「발견」 — 스테이징 소진은 rtl/README.md T5 |
+| **E.1.2 · E.12 · E.12.1 재조립 문맥 소거의 문** `0xF40` 스테이징 세 워드 · 워드 적법성(TAG1 poison·trace·예약 · TAG2/FIRE 예약 · RO 쓰기) · 거절의 무효과·loud · 워드별 무장 · 재기입 덮음 · 발화 성립(무장 완비 · `[0]`=1) · 잔류 소진 | `AbortSurface.tla` | **증명됨** — 가드 열셋(poison_trace_zero · epoch_word_rsv_strict · shape_word_rsv_strict · fire_rsv_strict · ro_rejected · legal_first · reject_loud · arm_on_accept · arm_own_word · stage_writes_value · fire_needs_armed · fire_needs_one · fire_drains_arm) + 증인 열하나 + 짝 셋 · 대비 1, 30 run. 축 모델. sub-word 처분은 상수 `Subword`(판정 T2 — RTL 은 W4). 짝 둘이 D2 이전 RTL(TAG1 무검사)과 동형 |
 
 순서는 부록 D.5 규범 그대로다 — **근거는 "실제로 무너진 곳"** 이다.
 
@@ -592,3 +593,47 @@ RTL 이 모델보다 먼저 배선했고(검토자 D-7) 반증 검토가 그것�
 sticky·해제 · 사이클 수(모델은 하류 거부의 도달성을 *과대* 근사한다 — RTL 에서는 같은 항목 HI
 연속만 거부를 만난다) · 설치·flush 원천이 둘인 갈래(최상위 IO 잔존 — RTL 파도가 은퇴시켰다) ·
 형상 밖 항목 주소(T4).
+
+## E.1.2 · E.12 · E.12.1 재조립 문맥 소거의 문 — `AbortSurface.tla` (파도 4, 2026-09-26)
+
+`AbortStaging`(결정 A)은 2026-08-25 에 선-formal 없이 RTL · 후-formal 로 착지했다 — 6.3 의 1단 결손이었다.
+`Payload.tla` 는 소거를 「태그 하나를 지정한 소거 기입」이라는 의미론으로 추상하고, 그 태그를 32b 버스 세
+워드에 싣는 문은 어느 모델의 상태도 아니었다. 이 모델이 그 문이다 — 정본 좌표와 각 가드의 문장은 모델
+머리가 소유한다.
+
+30 run: 좋은 모델 2(값 2 / 값 3 규모) + 가드 삭제 13 + 증인 11 + 짝 3 + 대비 1.
+- 짝 「D2 이전의 RTL」 둘 — TAG1 `[27:16]` 무검사(`poison_trace_zero` · `epoch_word_rsv_strict` 삭제 · `Subword` =
+  "ignore"). 하나는 가드 자신의 속성(`Prop_PoisonTraceRejected`)으로, 하나는 그 호스트 가시 귀결
+  (`Prop_FiredKeyClean` — 소거가 trace 를 든 태그를 싣는다, E.12 6항)으로 운다.
+- 짝 「D2 뒤 · T2 앞의 RTL」 — sub-word 쓰기의 조용한 흡수(`Subword` = "ignore") → `Prop_MalformedRejected`.
+  sub-word 처분은 가드가 아니라 상수다: 판정 T2 (a) 의 RTL 은 페이지 통합 파도(W4)가 착지하므로, 오늘
+  GUARD-MAP 이 거짓 주장을 하지 않게 한다. 그 착지 커밋이 이 상수를 가드로 올린다.
+- 대비 MUST PASS — 같은 판에서 가드 속성 열셋과 나머지 고정 속성 여덟이 전부 통과한다. 남은 간극이 sub-word
+  하나라는 기계 기록이다.
+
+분리 검사(비상주, 2026-09-26 실측): 가드마다 지운 판에 나머지 가드 속성 열둘을 걸어 13/13 통과 — 가드
+삭제는 자기 속성만 깨뜨린다(삭제 run 자체는 첫 위반 하나만 보고하므로 이 「만」은 분리 검사가 잰다). 열둘은
+6천–5만7천 distinct(5,955 – 56,509 · 검토 재실측 `-workers 2`)이고, `legal_first` 삭제 판만 거절 사유가
+스테이징에 실려 상태가 커진다(905,561 distinct · `-workers 8` 로 1분 41초 — MUST PASS 판정은 워커 수와
+무관하다; 단일 워커 판은 10분을 넘겨 끊었다). 그리고 D2 이전 판(`poison_trace_zero` · `epoch_word_rsv_strict` 삭제 · `Subword` =
+"ignore")에 속성을 하나씩 걸면(21 run) 여섯이 운다: 가드 속성 둘(`Prop_PoisonTraceRejected` ·
+`Prop_EpochWordRsvRejected`)과 고정 속성 넷(`Prop_NoPartialFire` · `Prop_FireTagLatest` ·
+`Prop_FiredKeyClean` · `Prop_MalformedRejected`). `Prop_NoPartialFire` 가 우는 것은 수락된 거절 사유
+TAG1 이 정본 적법 기입이 아니어서 명세 그림자가 그 워드를 「쓰이지 않은」 것으로 보는데 장치는 무장해
+발화하기 때문이다 — D2 이전 기계의 발화는 정본의 눈으로는 부분 기입의 발화다.
+
+RTL 이 먼저 정한 읽기 둘을 모델로 돌려보냈다 (모델 머리 「정본 문면이 닫지 않은 자리」): 거절된 발화
+기입은 무장을 내리지 않는다(정본 3항은 수락/거절을 가르지 않는다 — `legal_first` 가 그 읽기다) ·
+`[0]`=0 의 수락된 발화 기입도 발화 워드 기입이라 무장을 내린다. 셋째 읽기는 검토가 모델로 올렸다 — 무장은
+수락된 발화 기입에서만 내려간다(정본 1항 「값을 덮되 비트는 선 채다」는 *같은* 워드의 재기입만 말한다). 이것은 가드가 아니라 고정
+속성 `Prop_ArmFallsOnlyOnFire` 다 (파도 4 검토 뒤, 2026-09-26): 착지판의 속성 스물하나 어느 것도 무장의
+*지속*을 말하지 않아 「재기입이 이웃 워드의 무장을 내린다」 장치가 전부를 통과했다. 탐침(비상주 — 모델
+사본에 상수 `Probe` 로 그 누수를 넣음) 실측: 누수 판에 옛 속성 스물하나 → 통과(10,117 distinct — 공허가
+아니다: 같은 판의 `Witness_NoFire` 는 반증된다) · 새 속성 → 위반 · `legal_first` 삭제 판(거절된 발화가
+무장을 내림)에 새 속성 → 위반 · 좋은 모델에 스물둘 → 통과(6,121 distinct). 좋은 모델 cfg 둘과 대비 cfg
+가 이 속성을 건다 — run 수는 그대로 30 이다. 후-formal 짝은 `AbortStaging_props.sv` 의 `t_arm_fall`.
+
+**재지 않는 것** (모델 머리 「안 잰다」가 닫힌 목록): 소거의 효과(어느 문맥이 지워지는가 · 없는 태그의
+무시 · ABORT_COUNT 증가 자체 — `Payload.tla`) · 매칭 키가 poison · trace 를 빼는가의 매칭 절반(재구현
+결함 D2b — 태그 코덱 전파 파도가 `Payload.tla` Tags 정제로 먼저 싣는다) · 워드 안의 필드 배치와 마스크
+값 · 주소 디코드 · 읽기 방향 · 5항 후단 · FAULT `[6]` 의 sticky · 시간.

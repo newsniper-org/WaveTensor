@@ -543,6 +543,7 @@ lint:
 	python3 $(CURDIR)/scripts/lint_gate_thresholds.py
 	python3 $(CURDIR)/scripts/lint_guide_derived_tables.py
 	python3 $(CURDIR)/scripts/lint_guard_map.py
+	python3 $(CURDIR)/scripts/lint_guard_map.py --self-test
 	python3 $(CURDIR)/scripts/lint_postformal.py
 	python3 $(CURDIR)/scripts/lint_generated_names.py
 	python3 $(CURDIR)/scripts/lint_tautology.py --audit

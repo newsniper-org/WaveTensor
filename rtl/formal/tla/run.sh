@@ -266,7 +266,8 @@ expect_fail "증인: busy 중 타 파티션 기입이 실재하는가"   MaskEng
 # 돌린다 — 버스 정지(좋은 모델) · 거절 + loud(옳은 드라이버가 FAULT [6] 을
 # 받는다) · 조용한 흡수. 그리고 정지가 호스트 조치 없이 풀린다는 진행 속성과,
 # 그 공정성(채움 슬롯은 버스와 독립으로 비워진다)을 뺀 대조군.
-# 가드 삭제 cfg 는 가드 속성 열일곱을 전부 건다 — 지우면 자기 속성만 깨진다.
+# 가드 삭제 cfg 는 가드 속성 열일곱을 전부 건다 — 지운 가드의 자기 속성이 첫 위반으로 난다
+# (TLC 는 첫 위반 하나만 보고한다 — 「자기 속성*만*」 은 이 러너가 재지 않는다).
 #
 # 같은 날 수리 — 0xE10 XLATE_MISS_CLEAR 와 RO 세 워드(0xE04–0xE0C)의 쓰기 처분
 # (e-defined.typ:329 「`[0]` 에 1 기입 = 미적중 sticky 해제 · `[31:1]` 예약 = 0 (엄격)」 ·
@@ -348,6 +349,79 @@ expect_fail "짝: 채움 슬롯 Drain 공정성 없음 → 정지 영구" \
 # 해제를 이기는 RTL 규약의 귀결이다. 정본이 정지 중 해제의 처분을 정하면 다시 본다.
 expect_fail "발견: 정지 중 0xE10 해제는 sticky 를 내리지 못한다" \
             XlateSurface_pair_clear_in_stall.cfg "$M" Prop_ClearAlwaysLowers
+
+# ---------------------------------------------------------------------------
+# 재조립 문맥 소거의 호스트 쪽 문 — 0xF40 구역(ABORT_TAG0/1/2 스테이징 ·
+# ABORT_FIRE 발화 · RO 세 워드)과 무장 규율 (파도 4, 2026-09-26:
+# e-defined.typ:475 「처분은 셋 다 같다: 거절 + loud fault」 ·
+# e-defined.typ:1818 「*워드의 적법성 검사는 무장보다 앞선다*」 ·
+# e-defined.typ:1808 「ABORT_FIRE 기입은 소거의 성립 여부와 무관하게 세 무장」)
+#
+# AbortStaging(결정 A, 2026-08-25)은 선-formal 없이 착지했다 — 6.3 의 1단을
+# 건너뛴 모듈이었고, 이 모델이 그 1단이다. Payload.tla 는 소거를 의미론으로
+# 추상하고 32b 버스 세 워드의 문은 어느 모델의 상태도 아니었다.
+#
+# 짝 「D2 이전의 RTL」 둘: TAG1 [27:16] 무검사(poison_trace_zero · epoch_word_rsv_strict
+# 삭제) — 거절 사유인 기입이 수락되고(Prop_PoisonTraceRejected), 발화가 trace 를
+# 든 태그를 싣는다(Prop_FiredKeyClean — E.12 6항의 호스트 가시 귀결).
+# sub-word(하위 두 비트 ≠ 0) 처분은 가드가 아니라 상수 Subword 다 — 판정
+# T2 (a) 의 거절 + [6] 은 W4 가 착지하고, 그 전의 RTL(조용한 흡수)이 짝
+# 「D2 뒤 · T2 앞」 이다. 대비 MUST PASS 가 그 판에서 가드 속성 열셋이 전부
+# 통과함을 보인다 — 남은 간극이 sub-word 하나라는 기계 기록이다.
+# 가드 삭제 cfg 는 가드 속성 열셋을 전부 건다 — 지운 가드의 자기 속성이 첫 위반으로 난다
+# (TLC 는 첫 위반 하나만 보고한다). 「자기 속성*만*」 은 분리 검사가 잰다 — 비상주,
+# 2026-09-26 실측 13/13 (rtl/formal/tla/README.md AbortSurface 절).
+# ---------------------------------------------------------------------------
+M=AbortSurface.tla
+expect_pass "소거 문 좋은 모델 (값 2 · sub-word 거절)"  AbortSurface.cfg       "$M"
+expect_pass "소거 문 좋은 모델 (값 3 · 규모)"          AbortSurface_large.cfg "$M"
+
+expect_fail "가드 삭제: poison_trace_zero (poison·trace TAG1 수락)" \
+            AbortSurface_del_poison_trace_zero.cfg "$M" Prop_PoisonTraceRejected
+expect_fail "가드 삭제: epoch_word_rsv_strict (예약 [25:16] TAG1 수락)" \
+            AbortSurface_del_epoch_word_rsv_strict.cfg "$M" Prop_EpochWordRsvRejected
+expect_fail "가드 삭제: shape_word_rsv_strict (예약 [31:16] TAG2 수락)" \
+            AbortSurface_del_shape_word_rsv_strict.cfg "$M" Prop_ShapeWordRsvRejected
+expect_fail "가드 삭제: fire_rsv_strict (예약 [31:1] 발화 수락)" \
+            AbortSurface_del_fire_rsv_strict.cfg "$M" Prop_FireRsvRejected
+expect_fail "가드 삭제: ro_rejected (RO 세 워드 쓰기 흡수)" \
+            AbortSurface_del_ro_rejected.cfg "$M" Prop_RoRejected
+expect_fail "가드 삭제: legal_first (거절했는데 무장·발화)" \
+            AbortSurface_del_legal_first.cfg "$M" Prop_RejectedNoEffect
+expect_fail "가드 삭제: reject_loud (조용한 거절)" \
+            AbortSurface_del_reject_loud.cfg "$M" Prop_RejectLoud
+expect_fail "가드 삭제: arm_on_accept (수락 기입이 무장 안 세움)" \
+            AbortSurface_del_arm_on_accept.cfg "$M" Prop_ArmOnAccept
+expect_fail "가드 삭제: arm_own_word (이웃 워드 무장)" \
+            AbortSurface_del_arm_own_word.cfg "$M" Prop_ArmOwnWord
+expect_fail "가드 삭제: stage_writes_value (재기입이 옛 값 남김)" \
+            AbortSurface_del_stage_writes_value.cfg "$M" Prop_StageLatest
+expect_fail "가드 삭제: fire_needs_armed (부분 기입 발화)" \
+            AbortSurface_del_fire_needs_armed.cfg "$M" Prop_FireNeedsArmed
+expect_fail "가드 삭제: fire_needs_one ([0]=0 기입이 발화)" \
+            AbortSurface_del_fire_needs_one.cfg "$M" Prop_FireNeedsOne
+expect_fail "가드 삭제: fire_drains_arm (성립한 소거만 소진)" \
+            AbortSurface_del_fire_drains_arm.cfg "$M" Prop_FireDrains
+
+expect_fail "증인: 소거 발화가 실재하는가"                 AbortSurface_witness_NoFire.cfg          "$M" Witness_NoFire
+expect_fail "증인: 무장 미완의 적법 발화가 실재하는가"     AbortSurface_witness_NoUnderarmedFire.cfg "$M" Witness_NoUnderarmedFire
+expect_fail "증인: 무장 완비 위 [0]=0 발화 기입이 실재하는가" AbortSurface_witness_NoZeroFire.cfg    "$M" Witness_NoZeroFire
+expect_fail "증인: 무장 선 워드의 다른 값 재기입이 실재하는가" AbortSurface_witness_NoRewrite.cfg   "$M" Witness_NoRewrite
+expect_fail "증인: 무장 중 거절 사유 발화 기입이 실재하는가" AbortSurface_witness_NoRejectedDrain.cfg "$M" Witness_NoRejectedDrain
+expect_fail "증인: poison·trace TAG1 거절이 실재하는가"   AbortSurface_witness_NoPoisonTraceReject.cfg "$M" Witness_NoPoisonTraceReject
+expect_fail "증인: 예약 TAG1 거절이 실재하는가"           AbortSurface_witness_NoEpochWordRsvReject.cfg "$M" Witness_NoEpochWordRsvReject
+expect_fail "증인: 예약 TAG2 거절이 실재하는가"           AbortSurface_witness_NoShapeWordRsvReject.cfg "$M" Witness_NoShapeWordRsvReject
+expect_fail "증인: 예약 발화 거절이 실재하는가"           AbortSurface_witness_NoFireRsvReject.cfg "$M" Witness_NoFireRsvReject
+expect_fail "증인: RO 세 워드 쓰기 거절이 실재하는가"     AbortSurface_witness_NoRoReject.cfg      "$M" Witness_NoRoReject
+expect_fail "증인: sub-word 쓰기 거절이 실재하는가"       AbortSurface_witness_NoSubReject.cfg     "$M" Witness_NoSubReject
+
+expect_fail "짝: D2 이전의 RTL — TAG1 [27:16] 무검사" \
+            AbortSurface_pair_today_tag1.cfg "$M" Prop_PoisonTraceRejected
+expect_fail "짝: D2 이전의 RTL — 소거가 trace 든 태그를 싣는다" \
+            AbortSurface_pair_today_tag1_key.cfg "$M" Prop_FiredKeyClean
+expect_fail "짝: D2 뒤 · T2 앞의 RTL — sub-word 조용한 흡수" \
+            AbortSurface_pair_today_subword.cfg "$M" Prop_MalformedRejected
+expect_pass "대비: D2 뒤 · T2 앞의 RTL — 가드 속성 전부 통과"  AbortSurface_today.cfg "$M"
 
 # ---------------------------------------------------------------------------
 # ISA-3 · ISA-4 — route fault 의 판정 주체와 범위 (부록 D.5 우선순위 4번)

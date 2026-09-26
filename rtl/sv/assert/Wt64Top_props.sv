@@ -292,12 +292,12 @@ module Wt64Top_props (
       ((A == 12'hE10) && (D[31:1] != 31'd0)) ||
       ((A == 12'hEA0) && !partOk) || ((A == 12'hEBC) && !partOk) || (A == 12'hEC0) ||
       ((A == 12'hF04) && (D[30:24] != 7'd0) && io_mmio_ready) || (A == 12'hF08) ||
+      ((A == 12'hF44) && (D[27:16] != 12'd0)) ||
       ((A == 12'hF48) && (D[31:16] != 16'd0)) || ((A == 12'hF4C) && (D[31:1] != 31'd0)) ||
       (A == 12'hF50) || (A == 12'hF54) || (A == 12'hF58) ||
       (A == 12'hF80) || ((A == 12'hF84) && (D[31:19] != 13'd0)) || (A == 12'hF88) || (A == 12'hF8C) ||
       ((A == 12'hF90) && (D[31:4] != 28'd0))));
   wire surfOpen = W && (rLeg || uDef || (!al && (rResv || uResv || rAsm || rXent || rXctl)) ||
-      (al && (A == 12'hF44) && (D[27:16] != 12'd0)) ||
       (al && (A == 12'hF04) && (D[30:24] != 7'd0) && !io_mmio_ready));
   wire clrS = io_faultClear_cfgSurfBadWrite || (acF84 && D[6]);
 
@@ -449,9 +449,12 @@ module Wt64Top_props (
     a_arm_set0: assert (!$past(W && al && (A == 12'hF40)) || stg_io_armed[0]);
     a_arm_set1: assert (!$past(W && al && (A == 12'hF44) && (D[27:16] == 12'd0)) || stg_io_armed[1]);
     a_arm_set2: assert (!$past(W && al && (A == 12'hF48) && (D[31:16] == 16'd0)) || stg_io_armed[2]);
-    // abort staging value — wdata pin to stg; TAG1 checks only the canon LNID field
+    // 거절된 TAG1 기입(poison·trace·예약 비0)은 무장 [1] 을 움직이지 않는다 — E.12.1 1항 후단의 조립 몫
+    a_arm_rej1: assert (!$past(W && al && (A == 12'hF44) && (D[27:16] != 12'd0)) || (stg_io_armed[1] == $past(stg_io_armed[1])));
+    // abort staging value — wdata pin to stg; TAG1 is the whole-word round trip (no field named — the codec layout
+    // is not locked; the epoch [31:28] path is measured). Wave-4 landing checked LNID only (was a_tag1_lnid).
     a_tag0_val:  assert (!$past(W && al && (A == 12'hF40)) || stg_io_tag_wave == $past(D));
-    a_tag1_lnid: assert (!$past(W && al && (A == 12'hF44) && (D[27:16] == 12'd0)) || stg_io_tag_lnid == $past(D[15:0]));
+    a_tag1_val:  assert (!$past(W && al && (A == 12'hF44) && (D[27:16] == 12'd0)) || {stg_io_tag_thread, stg_io_tag_lnid} == $past(D));
     a_tag2_val:  assert (!$past(W && al && (A == 12'hF48) && (D[31:16] == 16'd0)) || {stg_io_tag_precision, stg_io_tag_dim} == $past(D[15:0]));
     // cap axes 1/2
     a_cap1_set:  assert (!$past(src1) || capWord_io_word[1]);
@@ -475,7 +478,7 @@ module Wt64Top_props (
   always @(posedge clk) if (f_step) w2_undef_rd: cover ($past(R && A == 12'hEFC) && io_mmio_rvalid && io_mmio_rdata == 32'd0);
   // W3 ← Wt64Top.wo_read_zero · a_rd_wo — [의존: rdata mux] 키 기입 직후의 되읽기가 0 (mapRv 가 mux 최우선이라 값은 유닛 핀과 무관)
   always @(posedge clk) if (f_step) w3_key_rd_after_wr: cover ($past(R && A == 12'hE80) && $past(W && A == 12'hE80 && D != 32'd0, 2) && io_mmio_rvalid && io_mmio_rdata == 32'd0);
-  // W4 ← Wt64Top.ro_write_loud · a_surf_fire — [무관] RO 오프셋(0xF58) 쓰기로 조립 sticky 첫 상승
+  // W4 ← Wt64Top.ro_write_loud · AbortSurface.ro_rejected · AbortSurface.reject_loud · a_surf_fire — [무관] RO 오프셋(0xF58) 쓰기로 조립 sticky 첫 상승
   always @(posedge clk) if (f_step) w4_ro_wr: cover ($past(W && al && A == 12'hF58 && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite);
   // W5 ← Wt64Top.word_reserved_strict · a_rekey_iff · a_fclr_b0 — [무관] 예약 비0 기입은 거절+loud 이고 효과가 없다
   always @(posedge clk) if (f_step) w5_rekey_rsv: cover ($past(W && al && A == 12'hEBC && D[31:8] != 24'd0 && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite && !$past(mask__io_rekey_valid));
@@ -531,6 +534,8 @@ module Wt64Top_props (
   always @(posedge clk) if (f_step) w26_xhi_mismatch: cover ($past(xHiW && f_xv && A[8:3] != f_xnum && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite);
   // W27 ← XlateSurface.flush_rsv_strict · XlateSurface.reject_loud · a_xflush_iff · a_surf_fire — [무관] 실재 파티션이지만 [31:8] 비0 인 XLATE_FLUSH 는 flush 핀 없이 조립 sticky 를 세운다
   always @(posedge clk) if (f_step) w27_xflush_rsv: cover ($past(W && al && A == 12'hE00 && D[31:8] != 24'd0 && D[7:0] < 8'd4 && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite && !$past(hiu__io_flush_valid));
+  // W28 ← Wt64Top.word_reserved_strict · Wt64Top.abort_surface · AbortSurface.reject_loud · AbortSurface.legal_first · a_surf_fire · a_arm_rej1 — [무관] ABORT_TAG1 [26] trace 비0 정렬 쓰기는 조립 sticky 를 세우고 무장 [1] 을 세우지 않는다
+  always @(posedge clk) if (f_step) w28_tag1_trace_rej: cover ($past(W && al && A == 12'hF44 && D[27:16] == 12'h400 && !io_fault_cfgSurfBadWrite && !stg_io_armed[1]) && io_fault_cfgSurfBadWrite && !stg_io_armed[1]);
 `endif
 endmodule
 

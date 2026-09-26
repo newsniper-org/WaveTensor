@@ -70,6 +70,19 @@ SpinalHDL 이 익명 `when` 을 `when_<파일>_l<줄번호>` 로 이름 짓고 �
     미덮임과 구별되지 않는다」
 그리고 **분모 갈림의 양성 관측**: 승격 한 건을 되돌리면 여기가 75 를,
 lint_postformal 이 74 를 인쇄한다 — 승격 전의 상태가 정확히 그것이었다.
+(위는 손 실측이었다. 아래 상주 자기시험이 그중 둘을 이어받는다.)
+
+### 상주 자기시험 `--self-test` (2026-09-26, 파도 4 검토 뒤 수리)
+
+사건: 숫자 든 가드 이름 셋(`tag1_…`)이 AllGuards 에서도 GUARD-MAP 에서도 가드
+이름 정규식(`[A-Za-z_]+`)에 걸리지 않아 **조용히** 빠졌고, 이 검사가 「가드 120
+전수」를 OK 로 인쇄했다(실물 123). 크게 우는 대조 둘(문법 밖 AllGuards 토큰 ·
+읽지 못한 `// GUARD-MAP:` 선언)을 들인 뒤 그것을 손으로만 쟀던 것이 검토에서
+걸렸다 — 손으로 돌린 음성 시험은 없는 것과 같다. `--self-test` 는 격리 사본
+(`scripts/` 의 이 파일 · `rtl/formal/tla` · `rtl/spinal/src`)에 변이를 하나씩 먹여
+각각이 **정해진 문면으로** 실패하는지 본다 (다른 이유의 실패는 통과로 치지
+않는다). 변이 표 `_MUTATIONS` — 사건형 둘 + 전수성 · 실재성 · STRUCTURAL 근거.
+`make lint` 가 매 실행 부르고 `lint_selftest_coverage` 가 그 호출을 잰다.
 
 ## ENFORCED 래칫
 
@@ -78,7 +91,10 @@ lint_postformal 이 74 를 인쇄한다 — 승격 전의 상태가 정확히 �
 diff 는 이 검사가 아니라 리뷰가 잡아야 하므로, 줄이면 여기서 크게 실패한다.
 """
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -112,12 +128,17 @@ ENFORCED = [
     # 같은 날 수리로 열일곱 — 모델이 RTL 을 뒤따라 0xE10 · RO 쓰기 가드 다섯을 실었고
     # 그 GUARD-MAP 은 XlateStaging.scala 끝에 있다.
     "XlateSurface",
+    # 파도 4 (2026-09-26) — 재조립 문맥 소거의 호스트 쪽 문(0xF40 구역). RTL(AbortStaging ·
+    # 결정 A)이 2026-08-25 에 선-formal 없이 착지했던 1단 결손을 AbortSurface.tla 로 닫았다.
+    # 같은 파도의 D2 수리(ABORT_TAG1 [27:16] 엄격)와 함께 GUARD-MAP 열셋이 전수다
+    # (Wt64Top.scala 파일 끝 — 앞쪽 익명 when 의 줄 좌표를 밀지 않는다).
+    "AbortSurface",
 ]
 # 미착지: NoLoss — 기계 전체 회계는 모듈이 아니라 합성 속성이다. RTL 대응물은
 # 후-formal 이 조합 위에서 검사한다 (모듈 단위 GUARD-MAP 강제 부적합).
 # 이 판단이 틀렸다고 판명되면 목록에 올리고 사유를 갱신하라.
 
-_MIN_ENFORCED = 15  # 래칫 바닥 — 이 수 아래로 줄이는 편집은 실패한다 (14 → 15: 파도 3 XlateSurface)
+_MIN_ENFORCED = 16  # 래칫 바닥 — 이 수 아래로 줄이는 편집은 실패한다 (14 → 15: 파도 3 XlateSurface · 15 → 16: 2026-09-26 파도 4 AbortSurface)
 
 # 구조 skip 건수 래칫 — **상한**이다 (늘면 실패). 방향이 위 래칫과 반대인 것에
 # 주의하라. STRUCTURAL 은 CHECK 분모를 비우는 방향이므로 늘리는 일은 반드시
@@ -152,14 +173,40 @@ def fail(msg: str) -> None:
     sys.exit(1)
 
 
+# 가드 이름 문법 — 이 저장소에 하나다. GUARD-MAP · AllGuards · lint_postformal 의 PROVES
+# 정규식이 모두 이것을 쓴다 (lint_postformal 이 import 한다).
+GUARD_NAME = r"[A-Za-z_]+"
+GUARDMAP_DECL = re.compile(r"//\s*GUARD-MAP:")
+
+
+def split_all_guards(tla_text: str):
+    """`AllGuards == {…}` 본문 → (문법 적합 이름 집합, 문법 밖 토큰 목록) · 없으면 None.
+
+    **두 lint 가 공유한다** (lint_postformal.model_guards 가 import). 따옴표 토큰
+    *전수*를 먼저 모으고 문법으로 가른다 — 문법 정규식으로 곧장 findall 하면
+    문법 밖 이름이 *조용히* 분모에서 빠진다. 2026-09-26 파도 4 실측: AbortSurface 의
+    `tag1_…` 셋이 그렇게 빠져 「가드 120 전수」가 OK 로 인쇄됐다(실물 123).
+    """
+    m = re.search(r"AllGuards\s*==\s*\{([^}]*)\}", tla_text)
+    if not m:
+        return None
+    toks = re.findall(r'"([^"]*)"', m.group(1))
+    return ({t for t in toks if re.fullmatch(GUARD_NAME, t)},
+            [t for t in toks if not re.fullmatch(GUARD_NAME, t)])
+
+
 def model_guards(model: str) -> set:
     p = TLA_DIR / f"{model}.tla"
     if not p.is_file():
         fail(f"ENFORCED 모델 {model} 의 .tla 가 없다: {p}")
-    m = re.search(r"AllGuards\s*==\s*\{([^}]*)\}", p.read_text(encoding="utf-8"))
-    if not m:
+    parsed = split_all_guards(p.read_text(encoding="utf-8"))
+    if parsed is None:
         fail(f"{model}.tla 에서 AllGuards 를 찾지 못했다")
-    return set(re.findall(r'"([A-Za-z_]+)"', m.group(1)))
+    names, odd = parsed
+    if odd:
+        fail(f"{model}.tla AllGuards 에 가드 이름 문법({GUARD_NAME}) 밖의 이름 {odd} — "
+             f"GUARD-MAP · PROVES 정규식이 읽지 못해 전수 계수에서 조용히 빠진다")
+    return names
 
 
 def main() -> None:
@@ -178,6 +225,10 @@ def main() -> None:
         for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
             m = pat.search(line)
             if not m:
+                # `// GUARD-MAP:` 선언인데 문법이 안 맞으면 조용히 건너뛰지 않는다 (위 AllGuards 와 같은 이유).
+                if GUARDMAP_DECL.search(line):
+                    fail(f"{f.relative_to(ROOT)}:{i} — GUARD-MAP 선언을 읽지 못했다 "
+                         f"(형식: // GUARD-MAP: <Model>.<guard> -> …, 가드 이름 [A-Za-z_]+)")
                 continue
             model, guard, rhs = m.group(1), m.group(2), m.group(3).strip()
             kind = classify(rhs)
@@ -249,5 +300,90 @@ def main() -> None:
                 print(f"    {m}.{g} @ {f}:{i}")
 
 
+# ── 상주 자기시험 ──────────────────────────────────────────────────────────
+#
+# (이름, 사본 안 상대 경로, (찾을 문자열, 바꿀 문자열), 실패 문면에 있어야 할 조각).
+# 찾을 문자열은 사본에 **정확히 한 번** 있어야 한다 — 변이 지점이 사라지거나 둘이 되면
+# 그 자체로 불통과다 (자기시험이 조용히 아무것도 안 먹이는 것이 이 부류의 실패형이다).
+_WT_SCALA = "rtl/spinal/src/main/scala/wt64/top/Wt64Top.scala"
+_MUTATIONS = [
+    ("① AllGuards 에 숫자 든 가드 이름 — 2026-09-26 사건형 (옛 판은 조용히 뺐다)",
+     "rtl/formal/tla/AbortSurface.tla",
+     ('AllGuards == {"poison_trace_zero",', 'AllGuards == {"tag1_key_clean", "poison_trace_zero",'),
+     "가드 이름 문법"),
+    ("② 읽지 못하는 GUARD-MAP 선언 — 숫자 든 가드 이름 (옛 판은 조용히 건너뛰었다)",
+     _WT_SCALA,
+     ("// GUARD-MAP: AbortSurface.poison_trace_zero ->",
+      "// GUARD-MAP: AbortSurface.tag1_key_clean -> (변이)\n// GUARD-MAP: AbortSurface.poison_trace_zero ->"),
+     "GUARD-MAP 선언을 읽지 못했다"),
+    ("③ 가드 하나의 GUARD-MAP 이 사라진다 (전수성)",
+     _WT_SCALA,
+     ("// GUARD-MAP: AbortSurface.fire_needs_one ->", "// (지운 주장) fire_needs_one ->"),
+     "GUARD-MAP 부재"),
+    ("④ 같은 가드를 두 번 주장한다 (유일성)",
+     _WT_SCALA,
+     ("// GUARD-MAP: AbortSurface.fire_needs_one ->",
+      "// GUARD-MAP: AbortSurface.fire_needs_one -> (중복)\n// GUARD-MAP: AbortSurface.fire_needs_one ->"),
+     "중복 주장"),
+    ("⑤ AllGuards 에 없는 가드를 주장한다 (실재성)",
+     _WT_SCALA,
+     ("// GUARD-MAP: AbortSurface.fire_needs_one ->",
+      "// GUARD-MAP: AbortSurface.fire_needs_none -> (없는 가드)\n// GUARD-MAP: AbortSurface.fire_needs_one ->"),
+     "AllGuards 에 없다"),
+    ("⑥ STRUCTURAL 선언의 근거 종류가 비었다",
+     "rtl/spinal/src/main/scala/wt64/decode/DecodeWalk.scala",
+     ("-> STRUCTURAL(port-absence) —", "-> STRUCTURAL() —"),
+     "근거 종류이 비었다"),
+]
+
+
+def self_test() -> int:
+    me = Path(__file__).resolve()
+    ok = True
+    with tempfile.TemporaryDirectory(prefix="wt-guardmap-neg-") as td:
+        base = Path(td) / "repo"
+        (base / "scripts").mkdir(parents=True)
+        shutil.copy2(me, base / "scripts" / me.name)
+        shutil.copytree(TLA_DIR, base / "rtl" / "formal" / "tla",
+                        ignore=shutil.ignore_patterns("states", "*.out", "__pycache__"))
+        shutil.copytree(RTL_DIR, base / "rtl" / "spinal" / "src")
+
+        def run() -> subprocess.CompletedProcess:
+            return subprocess.run([sys.executable, str(base / "scripts" / me.name)],
+                                  capture_output=True, text=True)
+
+        r = run()
+        if r.returncode != 0:
+            print("lint_guard_map 자기시험: 전제 불통과 — 변이 없는 사본이 이미 실패한다:")
+            print(r.stdout + r.stderr)
+            return 1
+        print("lint_guard_map 자기시험: 양성 대조 — 변이 없는 사본은 통과한다 ✓")
+        for name, rel, (a, b), want in _MUTATIONS:
+            f = base / rel
+            orig = f.read_text(encoding="utf-8")
+            n = orig.count(a)
+            if n != 1:
+                print(f"  {name}: 변이 지점이 {n} 곳이다 (정확히 1 이어야 한다) — /{a[:48]}/")
+                ok = False
+                continue
+            f.write_text(orig.replace(a, b, 1), encoding="utf-8")
+            r = run()
+            f.write_text(orig, encoding="utf-8")
+            if r.returncode == 0:
+                print(f"  {name}: **검사가 잡지 못했다** (조용히 통과 — 공허한 검사다)")
+                ok = False
+            elif want not in r.stderr:
+                print(f"  {name}: 실패는 했으나 **다른 이유**다 — 기대 문면 「{want}」")
+                print("    " + (r.stderr.strip().splitlines() or [""])[0][:120])
+                ok = False
+            else:
+                print(f"  {name}: FAIL 확인 ✓ — 「{want}」")
+    print(f"lint_guard_map 자기시험: " + (f"통과 — 변이 {len(_MUTATIONS)} 전부 정해진 문면으로 잡힌다"
+                                        if ok else "불통과"))
+    return 0 if ok else 1
+
+
 if __name__ == "__main__":
+    if "--self-test" in sys.argv:
+        sys.exit(self_test())
     main()

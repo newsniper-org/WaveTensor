@@ -1,26 +1,47 @@
 {
-  "anchors": [],
-  "at": "2026-09-25T21:45:15Z",
+  "anchors": [
+    "AbortSurface.poison_trace_zero",
+    "AbortSurface.epoch_word_rsv_strict",
+    "AbortSurface.shape_word_rsv_strict",
+    "AbortSurface.fire_rsv_strict",
+    "AbortSurface.legal_first",
+    "AbortSurface.reject_loud",
+    "AbortSurface.arm_on_accept",
+    "AbortSurface.arm_own_word",
+    "AbortSurface.stage_writes_value",
+    "AbortSurface.fire_needs_armed",
+    "AbortSurface.fire_needs_one",
+    "AbortSurface.fire_drains_arm"
+  ],
+  "at": "2026-09-26T04:53:04Z",
   "cover": {
-    "reached": 6,
+    "reached": 14,
     "reached_names": [
+      "AbortStaging_check.w10_tag0_rewrite",
+      "AbortStaging_check.w11_fire_zero_full",
+      "AbortStaging_check.w12_ignored_fire_drains",
       "AbortStaging_check.w1_armed_full",
       "AbortStaging_check.w2_fire",
       "AbortStaging_check.w3_fire_underarmed",
       "AbortStaging_check.w4_fire_underarmed_quiet",
       "AbortStaging_check.w5_arm_drained",
-      "AbortStaging_check.w6_tag2_reject"
+      "AbortStaging_check.w6_tag2_reject",
+      "AbortStaging_check.w7_tag1_rej_poison",
+      "AbortStaging_check.w7_tag1_rej_rsv",
+      "AbortStaging_check.w7_tag1_rej_trace",
+      "AbortStaging_check.w8_tag1_epoch_arms",
+      "AbortStaging_check.w9_fire_rsv_armed"
     ],
     "unreached": 0,
     "unreached_names": []
   },
   "inputs": {
-    "rtl/generated/Wt64Top.sv": "ea1902d4ba41f929f2106794acb3ad0344937b312f994d4eac6b91cd0922ac0d",
-    "rtl/sv/assert/AbortStaging_props.sv": "702fd6bf0ef1240bd21619b1860ae4c824f6968cf9684ba36abf90ddba0b20ee"
+    "rtl/generated/Wt64Top.sv": "aa510b191e133445c1a52f91843aae9e71c7dbb92fabbad1af9122d357416b31",
+    "rtl/sv/assert/AbortStaging_props.sv": "e50560ea6a3d4e9a15fd212dc6b977bb6ab5aa5f0dd80bede7443f775c76a982"
   },
   "per_task": {
     "bmc": {
-      "assert": 16,
+      "assert": 24,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -30,11 +51,11 @@
       "assert": 0,
       "const_a": 0,
       "const_en0": 0,
-      "cover": 6,
+      "cover": 14,
       "mode": "cover"
     },
     "prove": {
-      "assert": 16,
+      "assert": 24,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -42,7 +63,7 @@
     }
   },
   "sby": "rtl/formal/sby/AbortStaging/props.sby",
-  "sby_sha256": "58744f14a5de1a6b2242a708883ab0200dc4f9d3ffe9bb1c4d6fdd9623fb59fa",
+  "sby_sha256": "94da35cb4fc08d3688724d330b41879ebd1ecce24e9caa1b896e5353eaa9f124",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

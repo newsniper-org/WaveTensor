@@ -1855,6 +1855,7 @@ module AbortStaging (
   input  wire          reset
 );
 
+  wire                tag1RsvBad;
   wire                tag2RsvBad;
   wire                fireRsvBad;
   wire                okTag0;
@@ -1868,14 +1869,15 @@ module AbortStaging (
   wire       [31:0]   abWords_2;
   wire                stagedRsvBad;
 
+  assign tag1RsvBad = ((io_wdata & 32'h0fff0000) != 32'h0);
   assign tag2RsvBad = ((io_wdata & 32'hffff0000) != 32'h0);
   assign fireRsvBad = ((io_wdata & 32'hfffffffe) != 32'h0);
   assign okTag0 = (io_wr && io_selTag0);
-  assign okTag1 = (io_wr && io_selTag1);
+  assign okTag1 = ((io_wr && io_selTag1) && (! tag1RsvBad));
   assign okTag2 = ((io_wr && io_selTag2) && (! tag2RsvBad));
   assign okFire = ((io_wr && io_selFire) && (! fireRsvBad));
   assign abWords_2 = {16'h0,tag2};
-  assign stagedRsvBad = (abWords_2[31 : 16] != 16'h0);
+  assign stagedRsvBad = ((abWords_2[31 : 16] != 16'h0) || ((tag1 & 32'h0fff0000) != 32'h0));
   assign io_fire = (((okFire && io_wdata[0]) && (&armed)) && (! stagedRsvBad));
   assign io_tag_wave = tag0;
   assign io_tag_thread = tag1[31 : 16];
@@ -1883,7 +1885,7 @@ module AbortStaging (
   assign io_tag_precision = abWords_2[15 : 8];
   assign io_tag_dim = abWords_2[7 : 0];
   assign io_armed = armed;
-  assign io_badWrite = (((io_wr && io_selTag2) && tag2RsvBad) || ((io_wr && io_selFire) && fireRsvBad));
+  assign io_badWrite = ((((io_wr && io_selTag1) && tag1RsvBad) || ((io_wr && io_selTag2) && tag2RsvBad)) || ((io_wr && io_selFire) && fireRsvBad));
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       tag0 <= 32'h0;

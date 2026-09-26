@@ -11,11 +11,14 @@
     "XlateSurface.flush_scoped",
     "XlateSurface.flush_part_exists",
     "XlateSurface.flush_rsv_strict",
-    "XlateSurface.reject_loud"
+    "XlateSurface.reject_loud",
+    "AbortSurface.ro_rejected",
+    "AbortSurface.reject_loud",
+    "AbortSurface.legal_first"
   ],
-  "at": "2026-09-25T21:50:24Z",
+  "at": "2026-09-26T04:48:39Z",
   "cover": {
-    "reached": 35,
+    "reached": 36,
     "reached_names": [
       "Wt64Top.chk.w10_cap0_clr",
       "Wt64Top.chk.w10_cap2_gate",
@@ -40,6 +43,7 @@
       "Wt64Top.chk.w25_xrecommit",
       "Wt64Top.chk.w26_xhi_mismatch",
       "Wt64Top.chk.w27_xflush_rsv",
+      "Wt64Top.chk.w28_tag1_trace_rej",
       "Wt64Top.chk.w2_resv_rd",
       "Wt64Top.chk.w2_undef_rd",
       "Wt64Top.chk.w3_key_rd_after_wr",
@@ -57,12 +61,12 @@
     "unreached_names": []
   },
   "inputs": {
-    "rtl/generated/Wt64Top.sv": "ea1902d4ba41f929f2106794acb3ad0344937b312f994d4eac6b91cd0922ac0d",
-    "rtl/sv/assert/Wt64Top_props.sv": "6a1372fc85902871e5905df09f2d019de638f00ad50356b7c79e1443f21036f9"
+    "rtl/generated/Wt64Top.sv": "aa510b191e133445c1a52f91843aae9e71c7dbb92fabbad1af9122d357416b31",
+    "rtl/sv/assert/Wt64Top_props.sv": "0a5815f68a87ab493fe7fb5e501a33d42f5a72a044783a6ed7a8f13c0dca2298"
   },
   "per_task": {
     "bmc": {
-      "assert": 92,
+      "assert": 93,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -72,11 +76,11 @@
       "assert": 0,
       "const_a": 0,
       "const_en0": 0,
-      "cover": 35,
+      "cover": 36,
       "mode": "cover"
     },
     "prove": {
-      "assert": 92,
+      "assert": 93,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -84,7 +88,7 @@
     }
   },
   "sby": "rtl/formal/sby/Wt64Top/assembly.sby",
-  "sby_sha256": "af900b74741d148364843b971375e0f59253eeb5c5453f6420ff82a058c4441f",
+  "sby_sha256": "62a92ab3a3cc7617bc0af62ecb22fb81504eacf9a083e094e2d1145df3d0745b",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

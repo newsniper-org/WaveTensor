@@ -278,7 +278,7 @@ object Wt64Top {
 
   // 재조립 문맥 소거 (R_ABORT, 0xF40)
   val A_TAG0       = 0x00 // WO  태그 wave 32b (스테이징)
-  val A_TAG1       = 0x04 // WO  [31:16] thread · [15:0] LNID (스테이징)
+  val A_TAG1       = 0x04 // WO  [31:28] 에포크 · [27] poison · [26] trace · [25:16] 예약 · [15:0] LNID (스테이징 · [27:16] 엄격)
   val A_TAG2       = 0x08 // WO  [15:8] precision · [7:0] dim · [31:16] 예약(엄격)
   val A_FIRE       = 0x0C // WO  [0]=1 기입 = 소거 발화 · [31:1] 예약(엄격)
   val A_COUNT      = 0x10 // RO  소거 카운트 (E.12 2항 회계)
@@ -300,11 +300,11 @@ object Wt64Top {
   val PART_FIELD_W       = 8
   val M_MASK_PART_RSV    = rsv(0x000000FFL) // [31:8]
   val M_REKEY_RSV        = rsv(0x000000FFL) // [31:8]
-  /** ABORT_TAG2 의 예약 = `[31:16]`. 값을 여기 적지 않고 *태그 워드 코덱*에서
-    * 끌어온다 — 이 세 워드가 E.5.1 직렬화의 원본이므로 여백의 자리도 그 코덱이
-    * 정본이다 (같은 값을 두 곳에 적으면 그 순간부터 어느 쪽이 정본인지 답할 수
-    * 없다). 처분이 *엄격*인 것은 이 표면이 받아들이는 쪽이기 때문이다 (E.5.1 4항). */
+  /** ABORT_TAG2 의 예약 = `[31:16]` — *태그 워드 코덱*에서 끌어온다 (세 워드가 E.5.1 직렬화의 원본이라 여백의 자리도 그 코덱이
+    * 정본이다 — 같은 값을 두 곳에 적으면 어느 쪽이 정본인지 답할 수 없다). 처분이 *엄격*인 것은 받아들이는 쪽이라서다 (E.5.1 4항). */
   val A_TAG2_RSV         = rsv((1L << Types.Tag.TAG2_RSV_LO) - 1) // [31:16]
+  /** ABORT_TAG1 의 거절 = `[27:16]` poison·trace·예약 — 처분은 셋 다 같다 (E.1.2 `0xF44` · E.12 6항). 코덱(`Types.Tag`)은 아직 스레드‖LNID 라 끌어올 자리가 없어 적재 마스크(에포크 ‖ LNID)로 적는다 — 코덱이 E.5.1 재배분을 싣는 날 그쪽으로 옮긴다. */
+  val A_TAG1_RSV         = rsv(0xF0000000L | ((1L << Isa.LNID_W) - 1)) // [27:16] — 적재 = 에포크 [31:28] ‖ LNID
   val A_FIRE_RSV         = rsv(0x00000001L) // [31:1]
   val F_BIND_RSV         = rsv(0x80FFFFFFL) // [30:24]
   /** FAULT_CLEAR 의 예약 = `[31:19]`. 비트 *수*를 `Fault.N_BITS` 에서 끌어와
@@ -465,7 +465,7 @@ object Wt64Top {
   *  4. *무장 마스크는 RO 상태 워드*로 나간다 — `0xF58` ABORT_ARM
   *     (§5.8 상태 표면 부류 · 드레인 정의역은 아니다).
   *  5. *무장은 태그 값을 검사하지 않는다* — 「세 워드가 다 왔는가」만 본다.
-  *     어느 태그가 스테이징돼 있는지는 관측면에 내지 않는다.
+  *     어느 태그가 스테이징돼 있는지는 관측면에 내지 않는다. *워드의 적법성은 무장보다 앞선다* — 예약·poison·trace 비0 기입은 거절이고 무장을 세우지 않는다 (E.12.1 5항 · 1항).
   *
   * E.7 이 「전이는 한 번의 쓰기로 완결된다」로 얻은 원자성을 태그 80b 는 가질
   * 수 없다 — 32b 워드에 안 들어간다. 스테이징+발화가 그 대체이고, 무장 규율이
@@ -488,7 +488,7 @@ object Wt64Top {
   * 이 컴포넌트는 「어느 워드에 무엇을 썼는가」만 안다.
   */
 class AbortStaging extends Component {
-  import Wt64Top.{A_FIRE_RSV, A_TAG2_RSV}
+  import Wt64Top.{A_FIRE_RSV, A_TAG1_RSV, A_TAG2_RSV}
 
   /** TAG2 의 *정의 비트* 폭 (16) — 예약 `[31:16]` 은 저장하지 않는다. */
   private val T2_DEF_W = Types.Tag.TAG2_RSV_LO
@@ -516,14 +516,14 @@ class AbortStaging extends Component {
     val tag  = out port Types.Tag()
   }
 
-  // 워드 안 예약 판정 — 마스크 상수는 companion 이 소유한다 (같은 값을 두 곳에
-  // 적으면 그 순간부터 어느 쪽이 정본인지 답할 수 없다).
+  // 워드 안 예약 판정 — 마스크 상수는 companion 이 소유한다 (두 곳에 적으면 어느 쪽이 정본인지 답할 수 없다).
+  private val tag1RsvBad = (io.wdata & B(A_TAG1_RSV, 32 bits)) =/= 0 // poison·trace·예약 — E.12 6항
   private val tag2RsvBad = (io.wdata & B(A_TAG2_RSV, 32 bits)) =/= 0
   private val fireRsvBad = (io.wdata & B(A_FIRE_RSV, 32 bits)) =/= 0
 
   /** 수락된 워드 기입 — 거절은 기입이 아니다 (위 스칼라독의 경계). */
   private val okTag0 = io.wr && io.selTag0
-  private val okTag1 = io.wr && io.selTag1
+  private val okTag1 = io.wr && io.selTag1 && !tag1RsvBad
   private val okTag2 = io.wr && io.selTag2 && !tag2RsvBad
   private val okFire = io.wr && io.selFire && !fireRsvBad
 
@@ -550,7 +550,7 @@ class AbortStaging extends Component {
   // 이중 방어 — 발화 시점에 스테이징의 예약 여백을 *같은 함수로* 다시 본다.
   // 기입 시점 거절이 이미 막고 있어 이 갈래는 도달 불가이며, 그것이 요점이다:
   // 스테이징 경로가 훗날 하나 더 생겨도 발화가 그것을 통과시키지 않는다.
-  private val stagedRsvBad = Types.Tag.reservedNonZero(abWords)
+  private val stagedRsvBad = Types.Tag.reservedNonZero(abWords) || (tag1 & B(A_TAG1_RSV, 32 bits)) =/= 0 // TAG1 은 코덱 밖 (위 A_TAG1_RSV)
 
   // 발화 조건 (결정 A 2항) — 무장 완비가 연언에 들어간다. armed 는 *레지스터
   // 값*이므로 「앞선 사이클들의 기입」을 본다: 같은 사이클에 워드 하나를 쓰면서
@@ -559,7 +559,7 @@ class AbortStaging extends Component {
   io.fire  := okFire && io.wdata(0) && armed.andR && !stagedRsvBad
   io.tag   := Types.Tag.fromWords(abWords)
   io.armed := armed
-  io.badWrite := (io.wr && io.selTag2 && tag2RsvBad) || (io.wr && io.selFire && fireRsvBad)
+  io.badWrite := (io.wr && io.selTag1 && tag1RsvBad) || (io.wr && io.selTag2 && tag2RsvBad) || (io.wr && io.selFire && fireRsvBad)
 }
 
 /** WT64v1 top-level 조립.
@@ -1382,7 +1382,7 @@ class Wt64Top(
     val rd = io.mmio.rstrobe && !io.mmio.wstrobe && selAbort && mmioAligned
 
     val isTag0 = wordOff === A_TAG0 / 4 // WO  스테이징 (무장 [0])
-    val isTag1 = wordOff === A_TAG1 / 4 // WO  스테이징 (무장 [1])
+    val isTag1 = wordOff === A_TAG1 / 4 // WO  스테이징 (무장 [1] · [27:16] 엄격 — E.12 6항)
     val isTag2 = wordOff === A_TAG2 / 4 // WO  스테이징 (무장 [2] · 예약 [31:16] 엄격)
     val isFire = wordOff === A_FIRE / 4 // WO  발화     (무장 완비 요구 · 예약 [31:1] 엄격)
     val isCnt   = wordOff === A_COUNT / 4      // RO
@@ -1714,3 +1714,28 @@ class Wt64Top(
     when(wrEnt && isHi && xstg.io.needReady) { io.mmio.ready := hiu.io.install.ready }
   }
 }
+
+// ── GUARD-MAP — AbortSurface 열셋 (파도 4, 2026-09-26) ──────────────────────
+//
+// 재조립 문맥 소거의 호스트 쪽 문(0xF40 구역)은 선-formal 없이 착지했다 (결정 A,
+// 2026-08-25 — 정본 6.3 의 1단 결손). rtl/formal/tla/AbortSurface.tla 가 그 1단이고
+// 가드 열셋의 RTL 주장이 아래다. 열둘은 AbortStaging(위 클래스), ro_rejected 와
+// reject_loud 의 [6] 결선은 abortArea 다. 파일 머리가 아니라 끝에 둔 것은 앞쪽
+// 익명 when 의 줄 좌표(when_Wt64Top_lNNNN)를 밀지 않기 위해서다 (XlateStaging 선례).
+// sub-word(하위 두 비트 ≠ 0) 쓰기의 처분은 모델에서 가드가 아니라 상수 Subword 다 —
+// 오늘은 abortArea.wr 이 mmioAligned 를 요구해 조용히 흡수되고(모델 짝 「D2 뒤 · T2 앞」),
+// 판정 T2 (a) 의 거절 + [6] 은 페이지 통합 파도가 착지하며 그때 가드로 올린다.
+//
+// GUARD-MAP: AbortSurface.poison_trace_zero -> AbortStaging 의 tag1RsvBad = (wdata & A_TAG1_RSV) ≠ 0 이고 A_TAG1_RSV 는 [27] poison · [26] trace 를 포함한다 (적재 마스크 = 에포크 [31:28] ‖ LNID 의 여집합). 그 비트가 선 TAG1 기입은 okTag1 이 서지 않아 스테이징·무장 [1] 이 움직이지 않고 badWrite 의 TAG1 항이 선다
+// GUARD-MAP: AbortSurface.epoch_word_rsv_strict -> 같은 tag1RsvBad 의 [25:16] 예약 절반 — 비0 TAG1 기입은 okTag1 이 서지 않고 badWrite 의 TAG1 항이 선다 (정본 E.1.2 0xF44 「처분은 셋 다 같다」 — 마스크가 한 벌이라 사유별 판정 회로가 따로 없다)
+// GUARD-MAP: AbortSurface.shape_word_rsv_strict -> tag2RsvBad = (wdata & A_TAG2_RSV) ≠ 0 — [31:16] 비0 TAG2 기입은 okTag2 가 서지 않고 badWrite 가 선다. 마스크는 태그 워드 코덱(Types.Tag.TAG2_RSV_LO)에서 끌어온다
+// GUARD-MAP: AbortSurface.fire_rsv_strict -> fireRsvBad = (wdata & A_FIRE_RSV) ≠ 0 — [31:1] 비0 발화 기입은 okFire 가 서지 않아 발화도 무장 소진도 없고 badWrite 가 선다
+// GUARD-MAP: AbortSurface.ro_rejected -> abortArea 에서 0xF50 · 0xF54 · 0xF58(isCnt · isInc · isArm)의 정렬 쓰기는 surfBadWr 을 세우고, 워드 디코드가 배타라 stg 의 selTag0/1/2 · selFire 어느 것도 서지 않는다 — 스테이징·무장·발화 어느 것도 움직이지 않는다
+// GUARD-MAP: AbortSurface.legal_first -> 스테이징 대입 · 무장 상승(armed(i) := True) · 무장 소진(armed := 0) · 발화(io.fire) 가 전부 okTag0/1/2 · okFire 의 when/연언 안에 있고, ok* 는 각 워드의 거절 판정(tag1RsvBad · tag2RsvBad · fireRsvBad)의 부정을 연언으로 든다 — 거절된 기입이 세우는 것은 badWrite 하나뿐이다 (워드의 적법성 검사가 무장보다 앞선다)
+// GUARD-MAP: AbortSurface.reject_loud -> AbortStaging.badWrite = 세 거절 판정(TAG1 · TAG2 · FIRE)의 논리합이고, abortArea 가 그것과 RO 세 워드 쓰기를 surfBadWr → FAULT_STATUS [6] sticky(cfgSurfBadWrite)로 잇는다. 무장 미완 발화는 badWrite 에 들지 않는다 (무시는 거절이 아니다)
+// GUARD-MAP: AbortSurface.arm_on_accept -> when(okTag0/1/2) 의 본문이 각각 armed(0/1/2) := True 를 대입한다 — 수락된 스테이징 기입은 무장 상태와 값에 무관하게 자기 비트를 세운다 (같은 사이클의 okFire 가 마지막 대입으로 이긴다 — 잔류 소진)
+// GUARD-MAP: AbortSurface.arm_own_word -> 무장 비트 i 의 True 대입은 when(okTag_i) 안에만 있다 — 한 워드의 기입이 다른 워드의 비트를 세우는 경로가 없다
+// GUARD-MAP: AbortSurface.stage_writes_value -> when(okTag_i) 가 매 수락 기입마다 tag_i := wdata 를 대입한다 (TAG2 는 정의 비트 [15:0] 만) — 무장이 이미 선 워드의 재기입도 값을 덮는다. 조건이 무장 상태를 보지 않는다
+// GUARD-MAP: AbortSurface.fire_needs_armed -> io.fire 의 연언에 armed.andR 가 있다 — armed 는 레지스터 값이라 앞선 사이클들의 수락 기입 셋이 모두 와야 선다
+// GUARD-MAP: AbortSurface.fire_needs_one -> io.fire 의 연언에 io.wdata(0) 이 있다 — [0]=0 의 수락된 발화 기입은 소거 없이 무장만 내린다
+// GUARD-MAP: AbortSurface.fire_drains_arm -> when(okFire) { armed := 0 } — 전건이 okFire 이고 io.fire(소거의 성립)가 아니다. 무장 미완 · [0]=0 · 없는 태그 어느 경우든 수락된 발화 기입은 무장 셋을 전부 내린다

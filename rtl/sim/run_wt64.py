@@ -121,9 +121,12 @@ SUITES = {
         # xlate_adjacent_v0_stalls_then_invalidates). 착지판 일곱은 기입 사이에
         # 쉬는 엣지를 남겨 정지를 한 번도 만들지 않았다 — ready 덮어쓰기를 끊은
         # 생성물 변이가 일곱을 전부 통과했다.
-        "expect_min": 15,
+        # 2026-09-26 15 → 16: 파도 4 D2 — ABORT_TAG1 워드 적법성 지향 시험
+        # (abort_tag1_word_legality — [27:16] 사유 넷 · 에포크 수락 · 거절 무동작).
+        "expect_min": 16,
         "what": "ISA-2 순열 (LBID·LNID 존재 축) + ISA-1 자리 무관성 + 비교기 자기대조 "
-                "+ 변환 저장소 MMIO 문 (설치·flush·V=0·거절·정지 해제·인접 HI 버스 정지)",
+                "+ 변환 저장소 MMIO 문 (설치·flush·V=0·거절·정지 해제·인접 HI 버스 정지) "
+                "+ 소거 문 TAG1 워드 적법성",
     },
 }
 

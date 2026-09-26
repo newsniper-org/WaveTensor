@@ -379,7 +379,7 @@ from pathlib import Path
 # lint 가 같은 GUARD-MAP 에서 다른 분모를 인쇄하고, 그것이 2026-08-26 이전의
 # 실제 상태였다 (lint_guard_map: CHECK 77 / 여기: 분모 74). 같은 디렉터리의
 # 스크립트라 python 이 자동으로 sys.path 에 올린다.
-from lint_guard_map import classify  # noqa: E402
+from lint_guard_map import GUARD_NAME, GUARDMAP_DECL, classify, split_all_guards  # noqa: E402
 
 # 상수 접힘의 **허용목록과 래칫도 저장소에 한 벌만** 산다 (같은 이유).
 # 세는 주체는 `lint_tautology` 다 — 간접 상수 결속을 따라가야 해서 grep 두
@@ -424,7 +424,11 @@ _LEGACY_SCHEMAS = {
 # 둘은 **상한**(늘면 실패)이다. 상한 쪽이 있는 이유: 구조 skip 과 부분 덮임은
 # 「CHECK 분모를 비우는」 방향의 부정을 가능하게 하므로, 그것을 늘리는 일은
 # 반드시 이 파일을 고치는 *명시적 서명*을 거쳐야 한다.
-_MIN_COVERED = 103     # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다.
+_MIN_COVERED = 116     # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다.
+                       # 103 → 116 (2026-09-26 실측 — 파도 4: 신설 모델 AbortSurface 의 CHECK 열셋 전부를
+                       # AbortStaging/props.sby(열둘) · Wt64Top/assembly.sby(셋) 앵커가 덮는다 — 완전
+                       # 열둘 · 부분 하나(stage_writes_value). 분모 103 → 116. 같은 날 검토 뒤 수리로
+                       # stage_writes_value 가 완전으로 옮겨 완전 열셋 — 계수 116 은 그대로다).
                        # 98 → 103 (2026-09-26 실측 — 파도 3 반증 검토 뒤 수리: XlateSurface.tla
                        # 가 0xE10 · RO 쓰기의 가드 다섯(mclr_fires · mclr_needs_one ·
                        # mclr_rsv_strict · mclr_keeps_stall · ro_rejected)을 실었고 전부
@@ -447,6 +451,20 @@ _MIN_COVERED = 103     # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다
                        # 게이트가 침묵한다 (2026-09-21 전수 반증 세 렌즈가 같은
                        # 것을 지적했다).
 _MAX_PARTIAL = 24      # 부분 덮임뿐인 가드 수. 늘지 않는다 (늘리려면 근거와 함께)
+                       #
+                       # 25 → 24 (2026-09-26, 파도 4 검토 뒤 수리). 아래 24 → 25 의 전제 「에포크를 재려면
+                       # 코덱 배치를 굳혀야 한다」가 거짓이었다 — t_tag1_val · 조립 a_tag1_val(옛
+                       # a_tag1_lnid)을 TAG1 *워드 전량*의 왕복({thread, lnid} == 쓴 워드)으로 넓히면 필드
+                       # 이름을 하나도 부르지 않고 에포크 [31:28] 의 값 경로를 잰다. 넓히기 전에는 「스테이징
+                       # 이 에포크를 떨군다」 · 「재기입이 옛 에포크를 남긴다」 두 변이(검토 N1 · N2)가 모든
+                       # 게이트를 통과했다 — 에포크가 매칭 키라(E.12 3·6항) 그 장치는 비0 에포크 문맥의 소거를
+                       # 전부 「없는 태그」로 조용히 무시한다. stage_writes_value 는 완전 덮임으로 옮겼고
+                       # _PARTIAL 항목을 지웠다 (_MIN_COVERED 116 불변 — 부분 25 → 24 · 완전 91 → 92).
+                       #
+                       # 24 → 25 (2026-09-26, 파도 4 — AbortSurface.tla 착지 · 위 수리로 되돌렸다). 신설 모델의 CHECK 열셋 중
+                       # stage_writes_value 하나가 **태어나면서 부분**이다: 스테이징 값 단언이 TAG1 의
+                       # 정본 LNID 필드만 재고 에포크 [31:28] 의 값 경로는 태그 코덱 전파(D2b 와 같은
+                       # 뿌리) 대기다 — 아래 _PARTIAL 항목. 나머지 열둘은 완전 덮임.
                        #
                        # 14 → 24 (2026-09-26, 파도 3 반증 검토 뒤 수리). 열은 둘로 갈린다.
                        # (a) +5 — 착지판이 「문면에 표 효과가 없다」며 완전으로 센 다섯
@@ -527,7 +545,12 @@ _MAX_STRUCTURAL_RESIDUAL = 1
                        # 숨기는 것보다 낫지만, **늘어도 되는 것은 아니다.**
                        # 줄이는 길은 그 축을 실제로 재고 칸을 _NOTHING_LEFT 로
                        # 바꾸는 것뿐이다.
-_MIN_EVIDENCED = 121   # 실행 증거로 뒷받침된 앵커 수. 줄지 않는다.
+_MIN_EVIDENCED = 136   # 실행 증거로 뒷받침된 앵커 수. 줄지 않는다.
+                       #
+                       # 121 → 136 (2026-09-26, 파도 4 — AbortSurface.tla 착지: AbortStaging/props.sby 의
+                       # VERIFIES E.12.1 1·2·3항을 PROVES 열둘로 승격하고 Wt64Top/assembly.sby 가 셋을
+                       # 더했다. 영향 태스크 셋(AbortStaging/props · assembly · XlateStaging/props) 재스윕
+                       # 직후 실측: 앵커 136 전부 신선).
                        #
                        # 116 → 121 (2026-09-26, 파도 3 반증 검토 뒤 수리 — XlateStaging/props.sby 가
                        # XlateSurface 의 0xE10 · RO 가드 다섯을 PROVES 로 앵커했고, 영향 태스크 넷
@@ -1349,10 +1372,18 @@ def model_guards(model: str) -> set:
     p = TLA_DIR / f"{model}.tla"
     if not p.is_file():
         fail(f"PROVES 가 참조한 모델 {model} 의 .tla 가 없다")
-    m = re.search(r"AllGuards\s*==\s*\{([^}]*)\}", p.read_text(encoding="utf-8"))
-    if not m:
+    # 파서는 lint_guard_map.split_all_guards 하나다 (import). 옛 판은 문법 정규식으로
+    # 곧장 findall 해 문법 밖 이름(숫자 든 가드)을 *조용히* 분모에서 뺐다 — 그 방어가
+    # make lint 에서 lint_guard_map 이 먼저 돈다는 순서 하나에 매달려 있었다 (2026-09-26
+    # 파도 4 검토). 이제 이 파일 단독 실행도 크게 운다.
+    parsed = split_all_guards(p.read_text(encoding="utf-8"))
+    if parsed is None:
         fail(f"{model}.tla 에서 AllGuards 를 찾지 못했다")
-    return set(re.findall(r'"([A-Za-z_]+)"', m.group(1)))
+    names, odd = parsed
+    if odd:
+        fail(f"{model}.tla AllGuards 에 가드 이름 문법({GUARD_NAME}) 밖의 이름 {odd} — "
+             f"PROVES · GUARD-MAP 정규식이 읽지 못해 분모에서 조용히 빠진다")
+    return names
 
 
 def guard_kinds() -> tuple:
@@ -1365,11 +1396,16 @@ def guard_kinds() -> tuple:
     세어 두 분모가 갈린다. 그 대조는 main() 이 양방향으로 한다.
     """
     kinds, args = {}, {}
-    pat = re.compile(r"//\s*GUARD-MAP:\s*([A-Za-z]+)\.([A-Za-z_]+)\s*->\s*(.+)$")
+    pat = re.compile(rf"//\s*GUARD-MAP:\s*([A-Za-z]+)\.({GUARD_NAME})\s*->\s*(.+)$")
     for f in sorted(RTL_DIR.rglob("*.scala")):
-        for line in f.read_text(encoding="utf-8").splitlines():
+        for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
             m = pat.search(line)
             if not m:
+                # 선언인데 못 읽으면 조용히 건너뛰지 않는다 — lint_guard_map 과 같은 대조
+                # (그쪽이 먼저 돈다는 순서에 기대지 않는다).
+                if GUARDMAP_DECL.search(line):
+                    fail(f"{f.relative_to(ROOT)}:{i} — GUARD-MAP 선언을 읽지 못했다 "
+                         f"(가드 이름 문법 {GUARD_NAME})")
                 continue
             key, rhs = (m.group(1), m.group(2)), m.group(3).strip()
             kinds[key] = classify(rhs)
@@ -1383,13 +1419,22 @@ def sby_files() -> list:
 
 
 def sby_anchors(path: Path) -> list:
-    """`# PROVES: Model.guard` 앵커 목록 — 파일 순서 그대로."""
-    pat = re.compile(r"#\s*PROVES:\s*([A-Za-z]+)\.([A-Za-z_]+)")
+    """`# PROVES: Model.guard` 앵커 목록 — 파일 순서 그대로.
+
+    선언은 **줄머리** `# PROVES:` 다 (산문 속 `` `# PROVES:` `` 인용은 선언이 아니다).
+    가드 이름 뒤에 이름 문자가 이어지면(`tag1_x` 의 `tag`) 옛 판은 앞토막만 읽었다 —
+    이제 선언인데 문법대로 읽히지 않으면 크게 운다 (2026-09-26 파도 4 검토).
+    """
+    decl = re.compile(r"^\s*#\s*PROVES:")
+    pat = re.compile(rf"^\s*#\s*PROVES:\s*([A-Za-z]+)\.({GUARD_NAME})(?![A-Za-z0-9_])")
     out = []
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         m = pat.search(line)
         if m:
             out.append(f"{m.group(1)}.{m.group(2)}")
+        elif decl.search(line):
+            fail(f"{path}:{i} — PROVES 앵커를 읽지 못했다 (형식: # PROVES: <Model>.<guard> …, "
+                 f"가드 이름 문법 {GUARD_NAME})")
     return out
 
 

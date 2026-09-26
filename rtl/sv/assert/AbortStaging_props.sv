@@ -80,10 +80,13 @@ module AbortStaging_check (
   //
   // 수락/거절의 문면 — 상위와 같은 마스크. 값을 다시 적지 않고 관측 가능한
   // io_badWrite 와 함께 쓴다.
+  // TAG1 의 거절 = [27:16] poison·trace·예약 — 처분은 셋 다 같다 (E.1.2 0xF44 · E.12 6항).
+  // 적재 필드는 [31:28] 에포크 ‖ [15:0] LNID. 스레드‖LNID 코덱을 여기 적지 않는다.
+  wire tag1_rsv_bad = ((io_wdata & 32'h0fff0000) != 32'h0);
   wire tag2_rsv_bad = ((io_wdata & 32'hffff0000) != 32'h0);
   wire fire_rsv_bad = ((io_wdata & 32'hfffffffe) != 32'h0);
   wire ok_tag0 = io_wr && io_selTag0;
-  wire ok_tag1 = io_wr && io_selTag1;
+  wire ok_tag1 = io_wr && io_selTag1 && !tag1_rsv_bad;
   wire ok_tag2 = io_wr && io_selTag2 && !tag2_rsv_bad;
   wire ok_fire = io_wr && io_selFire && !fire_rsv_bad;
 
@@ -116,7 +119,8 @@ module AbortStaging_check (
     // 무장 상태는 그 판정에 들어가지 않는다 — 들어가면 「무시」가 「거절」로
     // 접히고 E.12 3항과 같은 처분이라는 문장이 거짓이 된다.
     p_arm_miss_not_bad: assert (io_badWrite ==
-                                ((io_wr && io_selTag2 && tag2_rsv_bad) ||
+                                ((io_wr && io_selTag1 && tag1_rsv_bad) ||
+                                 (io_wr && io_selTag2 && tag2_rsv_bad) ||
                                  (io_wr && io_selFire && fire_rsv_bad)));
 
     // ── E.12.1 5항에 대해: 여기에 단언을 두지 않는다 ───────────────────
@@ -128,9 +132,11 @@ module AbortStaging_check (
     // 통과하는데 아무것도 재지 않는다. *셀 수로는 잡히지 않는 공허의 셋째
     // 결*이며, 전수 검증이 셀의 A 입력을 훑어 잡았다.
     //
-    // 5항 전단(무장은 태그 *값*을 검사하지 않는다)은 아래 t_arm_src_* 가
-    // 이미 잰다 — 무장의 상승 원천이 자기 워드의 수락된 기입뿐이라는 것이
-    // 곧 값 무관이다. 후단(스테이징된 태그를 관측면에 내지 않는다)은 이
+    // 5항 전단(무장은 태그 *값*을 검사하지 않는다)은 아래 t_arm_set_* 가
+    // 잰다 — 수락된 기입이면 값과 무관하게 자기 무장이 선다 (증인 W8 — 에포크
+    // 비0 의 TAG1 이 수락되어 무장한다). t_arm_src_* 는 상승의 *원천*만 잰다:
+    // 값에 따라 무장을 *안* 세우는 장치(검토 N6 — 에포크 비0 이면 무장 없음)는
+    // t_arm_src 를 통과하고 t_arm_set_1 에만 걸린다. 후단(스테이징된 태그를 관측면에 내지 않는다)은 이
     // 모듈 밖 Wt64Top 조립의 성질이고 그 *조립 국소 경로*는 Wt64Top/assembly.sby
     // 가 잰다 — Reassembly 경유 잔여는 rtl/README 「미측정」 절에 남는다.
   end
@@ -159,8 +165,29 @@ module AbortStaging_check (
     t_arm_src_1: assert (!(io_armed[1] && !$past(io_armed[1])) || $past(ok_tag1));
     t_arm_src_2: assert (!(io_armed[2] && !$past(io_armed[2])) || $past(ok_tag2));
 
-    // 거절된 스테이징 기입은 무장을 세우지 않는다 (E.12.1 1항 후단) —
-    // TAG2 예약 비0 축이 그 유일한 실물이다.
+    // ── E.12.1 1항 전단의 *양의 방향* — 수락된 기입은 자기 무장을 세운다 ──
+    //
+    // 위 t_arm_src_* 는 「상승 → 원천」뿐이라 「무장이 서야 할 때 서는가」를
+    // 재지 않았다. 그 방향은 증인 W1 만 쟀고, 실측으로 「TAG1 이 무장을 안
+    // 세우는」 변이가 bmc·prove 를 통과하고 cover 만 떨어졌다 (검토자 V13 —
+    // 선-formal AbortSurface.arm_on_accept 의 삭제 run 이 그 결함형이다).
+    // 같은 사이클의 수락된 발화 기입이 이기는 것은 잔류 소진 규약이다
+    // (선택 신호가 자유라 배타를 가정하지 않는다).
+    t_arm_set_0: assert (!$past(ok_tag0 && !ok_fire) || io_armed[0]);
+    t_arm_set_1: assert (!$past(ok_tag1 && !ok_fire) || io_armed[1]);
+    t_arm_set_2: assert (!$past(ok_tag2 && !ok_fire) || io_armed[2]);
+
+    // 무장 비트의 *하강* 원천은 수락된 발화 기입뿐이다 — 거절된 발화 기입
+    // (예약 [31:1] 비0)은 무장을 내리지 않는다 (AbortSurface.legal_first 의
+    // 발화 쪽 절반 · 모델 머리 「정본 문면이 닫지 않은 자리」 1). 스테이징
+    // 기입·거절된 스테이징 기입도 무장을 내리지 않는다 — 모델 고정 속성
+    // Prop_ArmFallsOnlyOnFire (「닫지 않은 자리」 4) 의 RTL 판이다.
+    t_arm_fall: assert (!(|($past(io_armed) & ~io_armed)) || $past(ok_fire));
+
+    // 거절된 스테이징 기입은 무장을 세우지 않는다 (E.12.1 1항 후단) — 실물은 두 축이다:
+    // TAG1 [27:16] poison·trace·예약 (E.12 6항) · TAG2 [31:16] 예약.
+    t_arm1_not_on_reject: assert (!$past(io_wr && io_selTag1 && tag1_rsv_bad && !io_selFire)
+                                  || (io_armed[1] == $past(io_armed[1])));
     t_arm2_not_on_reject: assert (!$past(io_wr && io_selTag2 && tag2_rsv_bad && !io_selFire)
                                   || (io_armed[2] == $past(io_armed[2])));
 
@@ -178,6 +205,18 @@ module AbortStaging_check (
                          ((io_tag_precision == $past(io_tag_precision)) &&
                           (io_tag_dim       == $past(io_tag_dim))));
 
+    // 「같은 워드의 재기입은 값을 덮되」(E.12.1 1항) — 수락된 기입 뒤 그 워드의
+    // 스테이징 값은 쓴 값이다. 무장이 이미 선 워드의 재기입도 같다 (증인 W10).
+    // TAG1 은 *워드 전량*의 왕복이다 — 호스트 대면 두 포트를 이어 붙인 32b 가 쓴
+    // 워드와 같다. 워드 *안*의 필드 이름(에포크 · LNID)을 하나도 부르지 않으므로
+    // 코덱(Types.Tag — 아직 스레드‖LNID)의 배치를 굳히지 않으면서 에포크 [31:28]
+    // 의 값 경로까지 잰다. 파도 4 착지판은 LNID [15:0] 만 재서 「에포크를 떨군다」
+    // · 「재기입이 옛 에포크를 남긴다」 두 변이가 bmc · prove 를 통과했다 (검토 N1 · N2 —
+    // props.sby 역-변이 표). 수락된 TAG1 은 [27:16] = 0 이라 그 자리도 0 으로 잰다.
+    t_tag0_val: assert (!$past(ok_tag0) || (io_tag_wave == $past(io_wdata)));
+    t_tag1_val: assert (!$past(ok_tag1) || ({io_tag_thread, io_tag_lnid} == $past(io_wdata)));
+    t_tag2_val: assert (!$past(ok_tag2) || ({io_tag_precision, io_tag_dim} == $past(io_wdata[15:0])));
+
     // 발화는 스테이징을 *소비하지 않는다* — 값은 그대로 남고 무장만 내려간다.
     // (남는 것이 문제가 아니다: 무장이 0 이라 다시 실리지 않는다. 이 단언이
     //  그 두 사실을 함께 못박는다 — t_arm_cleared_on_fire 와 짝이다.)
@@ -194,18 +233,19 @@ module AbortStaging_check (
   //   ※ sby 의 cover 모드는 chformal -assert -remove 로 단언을 스스로
   //     떼어낸다. 증인이 적법 궤적 위에 있다는 것은 bmc 태스크가 보증한다.
 `ifdef ABORTSTG_COVER
-  // W1 ← p_fire_needs_armed · t_arm_src_0 · t_arm_src_1 · t_arm_src_2
+  // W1 ← AbortSurface.arm_on_accept · AbortSurface.arm_own_word · p_fire_needs_armed ·
+  //      t_arm_src_0 · t_arm_src_1 · t_arm_src_2 · t_arm_set_0 · t_arm_set_1 · t_arm_set_2
   //      무장이 실제로 완비된다 (세 워드가 다 실린다). 이것 없이는
   //      p_fire_needs_armed 가 전건 거짓으로 공허하다.
   always @(posedge clk) if (f_step) w1_armed_full: cover (io_armed == 3'b111);
 
-  // W2 ← p_fire_needs_ok · p_fire_needs_bit0 · p_fire_needs_word ·
+  // W2 ← AbortSurface.fire_needs_one · p_fire_needs_ok · p_fire_needs_bit0 · p_fire_needs_word ·
   //      t_arm_cleared_on_fire · t_fire_keeps_value
   //      발화가 실제로 난다 (결정 A 가 「엄격한 축소」라는 주장의 활성면:
   //      올바른 호스트 시퀀스는 무장 규율 아래에서도 그대로 동작한다).
   always @(posedge clk) if (f_step) w2_fire: cover (io_fire);
 
-  // W3 ← p_fire_needs_armed · p_partial_no_effect
+  // W3 ← AbortSurface.fire_needs_armed · p_fire_needs_armed · p_partial_no_effect
   //      *무장 미완 발화*가 실제로 도달한다 — 즉 이 규율이 실제로 막는
   //      일이 있다. 없으면 무장 게이트는 한 번도 일하지 않은 장식이다.
   always @(posedge clk)
@@ -219,16 +259,50 @@ module AbortStaging_check (
     if (f_step) w4_fire_underarmed_quiet: cover (io_wr && io_selFire && !fire_rsv_bad && io_wdata[0]
                        && (io_armed != 3'b111) && !io_badWrite);
 
-  // W5 ← t_arm_cleared_on_fire · t_no_stale_staging · t_fire_keeps_value
+  // W5 ← AbortSurface.fire_drains_arm · t_arm_cleared_on_fire · t_no_stale_staging · t_fire_keeps_value
   //      잔류 소진이 실제로 관측된다: 무장 완비 상태에서 발화 워드를 쓰고
   //      다음 사이클에 무장이 0 이다.
   always @(posedge clk)
     if (f_step) w5_arm_drained: cover ($past(ok_fire) && $past(io_armed) == 3'b111 && io_armed == 3'b000);
 
-  // W6 ← t_arm2_not_on_reject · t_tag2_hold
+  // W6 ← AbortSurface.shape_word_rsv_strict · AbortSurface.legal_first · AbortSurface.reject_loud ·
+  //      t_arm2_not_on_reject · t_tag2_hold
   //      거절된 스테이징 기입(TAG2 예약 비0)이 실제로 도달한다 —
   //      t_arm2_not_on_reject 의 전건.
   always @(posedge clk) if (f_step) w6_tag2_reject: cover (io_wr && io_selTag2 && tag2_rsv_bad);
+
+  // W7 ← AbortSurface.poison_trace_zero · AbortSurface.epoch_word_rsv_strict · AbortSurface.legal_first ·
+  //      AbortSurface.reject_loud · t_arm1_not_on_reject · t_tag1_hold · p_arm_miss_not_bad
+  //      거절된 TAG1 기입이 사유마다 실제로 도달한다 — [27] poison 단독 · [26] trace 단독 ·
+  //      [25:16] 예약 단독. 셋이 따로 서야 한 사유만 빠뜨린 마스크가 증인 쪽에서도 드러난다.
+  always @(posedge clk) if (f_step) w7_tag1_rej_poison: cover (io_wr && io_selTag1 && io_wdata[27:16] == 12'h800);
+  always @(posedge clk) if (f_step) w7_tag1_rej_trace:  cover (io_wr && io_selTag1 && io_wdata[27:16] == 12'h400);
+  always @(posedge clk) if (f_step) w7_tag1_rej_rsv:    cover (io_wr && io_selTag1 && io_wdata[27:26] == 2'b00 && io_wdata[25:16] != 10'd0);
+
+  // W8 ← AbortSurface.arm_on_accept · t_arm_src_1 · t_arm_set_1 · t_tag1_val · p_arm_miss_not_bad
+  //      에포크 [31:28] 비0 의 TAG1 기입은 수락되어 무장을 세운다 — 거절 마스크가 에포크를 삼키지 않는다.
+  always @(posedge clk) if (f_step) w8_tag1_epoch_arms: cover ($past(ok_tag1 && io_wdata[31:28] != 4'd0 && !io_selFire) && io_armed[1]);
+  // W9 ← AbortSurface.fire_rsv_strict · AbortSurface.legal_first · t_arm_fall · p_fire_needs_ok
+  //      무장이 선 동안 예약 [31:1] 비0 의 발화 기입이 온다 — 거절이라 무장을 내리지 않는다
+  //      (t_arm_fall 의 전건 · 모델 Witness_NoRejectedDrain 의 RTL 판).
+  always @(posedge clk) if (f_step) w9_fire_rsv_armed: cover (io_wr && io_selFire && fire_rsv_bad && io_armed != 3'b000);
+
+  // W10 ← AbortSurface.stage_writes_value · t_tag0_val
+  //       무장이 이미 선 워드에 다른 값의 수락된 재기입이 온다 (「값을 덮되 비트는 선 채다」 —
+  //       모델 Witness_NoRewrite 의 RTL 판).
+  always @(posedge clk) if (f_step) w10_tag0_rewrite: cover (ok_tag0 && io_armed[0] && io_wdata != io_tag_wave);
+
+  // W11 ← AbortSurface.fire_needs_one · p_fire_needs_bit0
+  //       무장 완비 상태에 [0]=0 의 수락된 발화 기입이 온다 — 발화 없이 무장만 내린다
+  //       (모델 Witness_NoZeroFire 의 RTL 판).
+  always @(posedge clk) if (f_step) w11_fire_zero_full: cover (ok_fire && !io_wdata[0] && io_armed == 3'b111);
+
+  // W12 ← AbortSurface.fire_drains_arm · t_arm_cleared_on_fire
+  //       무장 미완(0 아님)의 발화가 무시되면서도 무장을 전부 내린다 — 「성립 여부와 무관하게」의
+  //       활성면. 「성립한 소거만 내린다」 결함은 이 궤적에서만 드러난다.
+  always @(posedge clk)
+    if (f_step) w12_ignored_fire_drains: cover ($past(ok_fire && io_wdata[0] && io_armed != 3'b111 && io_armed != 3'b000)
+                                                && io_armed == 3'b000);
 `endif // ABORTSTG_COVER
 
 endmodule
