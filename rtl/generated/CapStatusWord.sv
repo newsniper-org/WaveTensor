@@ -27,11 +27,11 @@ module CapStatusWord (
   wire                clrAcc_2;
   wire                clrAcc_3;
   wire                defined_0;
-  wire                when_Common_l259;
+  wire                when_Common_l337;
   reg                 defined_1;
-  wire                when_Common_l259_1;
+  wire                when_Common_l337_1;
   reg                 defined_2;
-  wire                when_Common_l259_2;
+  wire                when_Common_l337_2;
   reg                 defined_3;
 
   assign rsvHit = ((io_wdata & 32'hfffffff0) != 32'h0);
@@ -43,9 +43,9 @@ module CapStatusWord (
   assign clrAcc_3 = (accept && io_wdata[3]);
   assign io_clrAcc = {clrAcc_3,{clrAcc_2,{clrAcc_1,clrAcc_0}}};
   assign defined_0 = io_set[0];
-  assign when_Common_l259 = io_set[1];
-  assign when_Common_l259_1 = io_set[2];
-  assign when_Common_l259_2 = io_set[3];
+  assign when_Common_l337 = io_set[1];
+  assign when_Common_l337_1 = io_set[2];
+  assign when_Common_l337_2 = io_set[3];
   assign io_word = {28'h0,{defined_3,{defined_2,{defined_1,defined_0}}}};
   always @(posedge clk or posedge reset) begin
     if(reset) begin
@@ -56,19 +56,19 @@ module CapStatusWord (
       if(clrAcc_1) begin
         defined_1 <= 1'b0;
       end
-      if(when_Common_l259) begin
+      if(when_Common_l337) begin
         defined_1 <= 1'b1;
       end
       if(clrAcc_2) begin
         defined_2 <= 1'b0;
       end
-      if(when_Common_l259_1) begin
+      if(when_Common_l337_1) begin
         defined_2 <= 1'b1;
       end
       if(clrAcc_3) begin
         defined_3 <= 1'b0;
       end
-      if(when_Common_l259_2) begin
+      if(when_Common_l337_2) begin
         defined_3 <= 1'b1;
       end
     end

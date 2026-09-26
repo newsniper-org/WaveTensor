@@ -39,7 +39,9 @@ module RouteJudge_props (
   // ── 자유 입력 — 환경 제약 없음 (assume 은 reset 프로토콜 하나뿐) ──
   input wire        tok_valid,
   input wire [31:0] tok_wave,
-  input wire [15:0] tok_thread,
+  input wire [3:0]  tok_epoch,
+  input wire        tok_poison,
+  input wire        tok_trace,
   input wire [15:0] tok_lnid,
   input wire [7:0]  tok_precision,
   input wire [7:0]  tok_dim,
@@ -58,7 +60,9 @@ module RouteJudge_props (
   // ── 대상 출력 + expose 로 승격된 내부 상태 ──────────────────────────
   wire        out_valid;
   wire [31:0] out_wave;
-  wire [15:0] out_thread;
+  wire [3:0]  out_epoch;
+  wire        out_poison;
+  wire        out_trace;
   wire [15:0] out_lnid;
   wire [7:0]  out_precision;
   wire [7:0]  out_dim;
@@ -75,7 +79,9 @@ module RouteJudge_props (
   RouteJudge dut (
     .io_tokIn_valid(tok_valid),
     .io_tokIn_payload_tag_wave(tok_wave),
-    .io_tokIn_payload_tag_thread(tok_thread),
+    .io_tokIn_payload_tag_epoch(tok_epoch),
+    .io_tokIn_payload_tag_poison(tok_poison),
+    .io_tokIn_payload_tag_trace(tok_trace),
     .io_tokIn_payload_tag_lnid(tok_lnid),
     .io_tokIn_payload_tag_precision(tok_precision),
     .io_tokIn_payload_tag_dim(tok_dim),
@@ -83,7 +89,9 @@ module RouteJudge_props (
     .io_tokIn_payload_srcKind(tok_srcKind),
     .io_tokOut_valid(out_valid),
     .io_tokOut_payload_tag_wave(out_wave),
-    .io_tokOut_payload_tag_thread(out_thread),
+    .io_tokOut_payload_tag_epoch(out_epoch),
+    .io_tokOut_payload_tag_poison(out_poison),
+    .io_tokOut_payload_tag_trace(out_trace),
     .io_tokOut_payload_tag_lnid(out_lnid),
     .io_tokOut_payload_tag_precision(out_precision),
     .io_tokOut_payload_tag_dim(out_dim),
@@ -163,7 +171,7 @@ module RouteJudge_props (
       //    실어 오는 입력이 없다는 나머지 절반은 IO 목록의 구조다.
       p_scope_pass: assert (out_valid == tok_valid
                             && out_wave == tok_wave
-                            && out_thread == tok_thread
+                            && out_epoch == tok_epoch && out_poison == tok_poison && out_trace == tok_trace
                             && out_lnid == tok_lnid
                             && out_precision == tok_precision
                             && out_dim == tok_dim
@@ -356,7 +364,7 @@ module RouteJudge_props (
   // ── 부류 ② 시간축 — Route.tla 가 미덮임으로 남긴 축 (하네스 머리 주석) ──
 
   // W8 ← Route.fault_once · p_fault_once
-  //      ⟨발화 1회의 시간축 판⟩ — 동일 (wave·thread·lnid) 토큰이 연속 두
+  //      ⟨발화 1회의 시간축 판⟩ — 동일 (wave·에포크·poison·trace·lnid) 토큰이 연속 두
   //    사이클 제시되어 각각 발화한다. 「제시당 1회」가 「토큰당 1회」로 접히지
   //    않는다는 것, 곧 재제시가 표현 가능하다는 것. Route.tla 가 범위당 1회
   //    원자 판정으로 모델링해 표현 자체를 못 가졌던 축이며(하네스 머리 주석),
@@ -365,7 +373,8 @@ module RouteJudge_props (
     w8_repeat_presentation: cover (
       f_seq && o_fire && $past(o_fire) && tok_valid && $past(tok_valid)
             && (tok_lnid == $past(tok_lnid)) && (tok_wave == $past(tok_wave))
-            && (tok_thread == $past(tok_thread)));
+            && (tok_epoch == $past(tok_epoch)) && (tok_poison == $past(tok_poison))
+            && (tok_trace == $past(tok_trace)));
   end
 
   // W9 ← Route.global_judge · Route.view_sync · p_global_judge

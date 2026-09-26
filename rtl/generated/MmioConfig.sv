@@ -81,7 +81,7 @@ module MmioConfig (
   wire                when_MmioConfig_l408;
   wire                chkUnalWr;
   reg                 _zz_io_faultDupOwner;
-  wire                when_Common_l259;
+  wire                when_Common_l337;
   reg                 _zz_io_faultBadWrite;
   reg [31:0] fwdMem [0:255];
   reg [0:0] revMem [0:65535];
@@ -455,7 +455,7 @@ module MmioConfig (
   assign when_MmioConfig_l408 = (((8'h10 <= pSlot) || oldV) || (8'h04 <= pPoint));
   assign chkUnalWr = (acceptW && (! aligned));
   assign io_faultDupOwner = _zz_io_faultDupOwner;
-  assign when_Common_l259 = ((chkBadWr || chkLbBadWr) || chkUnalWr);
+  assign when_Common_l337 = ((chkBadWr || chkLbBadWr) || chkUnalWr);
   assign io_faultBadWrite = _zz_io_faultBadWrite;
   always @(posedge clk or posedge reset) begin
     if(reset) begin
@@ -499,7 +499,7 @@ module MmioConfig (
       if(io_faultClearBad) begin
         _zz_io_faultBadWrite <= 1'b0;
       end
-      if(when_Common_l259) begin
+      if(when_Common_l337) begin
         _zz_io_faultBadWrite <= 1'b1;
       end
     end

@@ -2,7 +2,7 @@
   "anchors": [
     "Fabric.fair_grant"
   ],
-  "at": "2026-09-20T11:28:24Z",
+  "at": "2026-09-26T13:55:53Z",
   "cover": {
     "reached": 16,
     "reached_names": [
@@ -27,8 +27,8 @@
     "unreached_names": []
   },
   "inputs": {
-    "rtl/generated/FabricMerge.sv": "9afcbab99e4eb409a8679369a43574ef7f93067a12b6d0fd9ceccf32d028dbb2",
-    "rtl/sv/assert/FabricMerge_props.sv": "8283494cf698385b1e4b63a5794af802ea68b99a2a3bc4ac110a221f151c02cf"
+    "rtl/generated/FabricMerge.sv": "d158f1020d713425888b23d748d05c4fb75538b1ae22e20196b5d4d76304653c",
+    "rtl/sv/assert/FabricMerge_props.sv": "db45edbf3f47823cc302c6339fe5b73f67fa2aa489aabc2565a18727d2cb649f"
   },
   "per_task": {
     "bmc": {
@@ -47,7 +47,7 @@
     }
   },
   "sby": "rtl/formal/sby/FabricMerge/fairness.sby",
-  "sby_sha256": "0a453a5e4b5a8d3eb52dbe1ead4317354d642f4bcc6a5d78b42245c4a39658ed",
+  "sby_sha256": "8d3ebb8bea6ff2ba2fa839dbe143897e6e9ff0a6b1e54b93f20c8ef95da06b31",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS",
   "tool": "SBY v0.66",

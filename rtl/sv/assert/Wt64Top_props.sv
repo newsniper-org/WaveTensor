@@ -156,7 +156,9 @@ module Wt64Top_props (
   input logic [2:0]  stg_io_armed,
   input logic        stg_io_fire,
   input logic [31:0] stg_io_tag_wave,
-  input logic [15:0] stg_io_tag_thread,
+  input logic [3:0]  stg_io_tag_epoch,
+  input logic        stg_io_tag_poison,
+  input logic        stg_io_tag_trace,
   input logic [15:0] stg_io_tag_lnid,
   input logic [7:0]  stg_io_tag_precision,
   input logic [7:0]  stg_io_tag_dim,
@@ -174,7 +176,9 @@ module Wt64Top_props (
   input logic [2:0]  reasm__io_occupancy,
   input logic        reasm__io_abort_valid,
   input logic [31:0] reasm__io_abort_tag_wave,
-  input logic [15:0] reasm__io_abort_tag_thread,
+  input logic [3:0]  reasm__io_abort_tag_epoch,
+  input logic        reasm__io_abort_tag_poison,
+  input logic        reasm__io_abort_tag_trace,
   input logic [15:0] reasm__io_abort_tag_lnid,
   input logic [7:0]  reasm__io_abort_tag_precision,
   input logic [7:0]  reasm__io_abort_tag_dim,
@@ -398,7 +402,8 @@ module Wt64Top_props (
     // abort
     a_fire_src:   assert (!reasm__io_abort_valid || (W && al && (A == 12'hF4C) && (D[31:1] == 31'd0) && D[0]));
     a_fire_route: assert (reasm__io_abort_valid == stg_io_fire && reasm__io_abort_tag_wave == stg_io_tag_wave &&
-                          reasm__io_abort_tag_thread == stg_io_tag_thread && reasm__io_abort_tag_lnid == stg_io_tag_lnid &&
+                          reasm__io_abort_tag_epoch == stg_io_tag_epoch && reasm__io_abort_tag_poison == stg_io_tag_poison &&
+                          reasm__io_abort_tag_trace == stg_io_tag_trace && reasm__io_abort_tag_lnid == stg_io_tag_lnid &&
                           reasm__io_abort_tag_precision == stg_io_tag_precision && reasm__io_abort_tag_dim == stg_io_tag_dim);
     // fault clear routing
     a_fclr_b0:  assert (walk__io_iFaultClear == (io_faultClear_decodeWalk || (acF84 && D[0])));
@@ -532,7 +537,7 @@ module Wt64Top_props (
     // abort staging value — wdata pin to stg; TAG1 is the whole-word round trip (no field named — the codec layout
     // is not locked; the epoch [31:28] path is measured). Wave-4 landing checked LNID only (was a_tag1_lnid).
     a_tag0_val:  assert (!$past(W && al && (A == 12'hF40)) || stg_io_tag_wave == $past(D));
-    a_tag1_val:  assert (!$past(W && al && (A == 12'hF44) && (D[27:16] == 12'd0)) || {stg_io_tag_thread, stg_io_tag_lnid} == $past(D));
+    a_tag1_val:  assert (!$past(W && al && (A == 12'hF44) && (D[27:16] == 12'd0)) || {stg_io_tag_epoch, stg_io_tag_poison, stg_io_tag_trace, 10'd0, stg_io_tag_lnid} == $past(D));
     a_tag2_val:  assert (!$past(W && al && (A == 12'hF48) && (D[31:16] == 16'd0)) || {stg_io_tag_precision, stg_io_tag_dim} == $past(D[15:0]));
     // cap axes 1/2
     a_cap1_set:  assert (!$past(src1) || capWord_io_word[1]);

@@ -28,7 +28,7 @@
 //   MaskUnit.scala:481 「maskValid(actPart) := !dirtyNow」 — 유효화의 식.
 //   MaskUnit.scala:238 「워드 0..5. 6·7 기입은 무시한다」 — 논스 예약 오프셋
 //     정책. 이 하네스는 그 경계를 리터럴(idx < 6)로 다시 적는다.
-//   Common.scala:256 「해제와 발화가 같은 사이클이면 발화가 이긴다」 — StickyFault
+//   Common.scala:334 「해제와 발화가 같은 사이클이면 발화가 이긴다」 — StickyFault
 //     규약. a_dirty_final_loud 의 전건은 해제를 배제하지 않으므로 그 겹침도
 //     이 유닛에서 잰다 (도달은 증인 W6).
 //

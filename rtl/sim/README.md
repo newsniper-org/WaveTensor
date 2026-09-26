@@ -83,7 +83,7 @@ run_wt64: 요청 스위트 2건 / cocotb 테스트 32건 전부 통과
 | 계산 중 **다른** 파티션 기입 | `maskReady == 0b0001` · `faultWrDuringRekey == 0` · part 0 값 golden | `wr_other_partition_during_rekey_is_clean` |
 | 변이 실측 (사본 worktree, 생성 SV 한 자리씩 — M2 만 case 블록 24줄) | **4/4 잡힘** — 아래 표 | Mask 스위트 전체 |
 | 구성 표면 소거 구간 | **65535 엣지** | `cfg_surface_integrity` |
-| ISA-1 대조면 | **117/119** 출력 (제외: `io_push_1_stall`·`io_push_2_stall`) | `compare_face_is_pinned` |
+| ISA-1 대조면 | **119/121** 출력 (제외: `io_push_1_stall`·`io_push_2_stall`) | `compare_face_is_pinned` |
 | IO fault 해제선 | 19 (fault 출력 23 − MMIO 전용 4) | 같음 |
 
 ---
@@ -219,7 +219,7 @@ ISA-2 사상 경유(존재 축) · ISA-1 자리 무관성 · 구성 표면 무�
 | 4 | fp32 산술 정확성 (`golden_fp32` 비트 일치) | `StepSequencer.scala:425-426` 이 `UInt` 정수곱·정수합 — 산술은 축 (b) 후속 |
 | 5 | `mask64` 의 32비트 (`[63:44]`·`[11:0]`) | `MaskUnit.scala:289-296` 「저장은 적용 비트만」 — 레지스터도 배선도 없다. **비교 불가가 아니라 비교 대상 부재** |
 | 6 | `SUBKEY`(256b)·`BLOCK`(512b) 를 통한 부분 수리 검출 | 내는 포트가 없다. `st_0..st_15` 의 계층 peek 은 포트 계약이 아니라 SpinalHDL 명명의 우연이라 통과 기준으로 쓰지 않는다 |
-| 7 | `FAULT_STATUS[17]`·`[18]` | `Wt64Top.sv:1589` 「faultWords_status[17] = 1'b0;」 과 다음 줄 `[18]` 상수 0 — 원천 부재. **0 을 「정상」으로 읽으면 안 된다** |
+| 7 | `FAULT_STATUS[17]`·`[18]` | `Wt64Top.sv:1641` 「faultWords_status[17] = 1'b0;」 과 다음 줄 `[18]` 상수 0 — 원천 부재. **0 을 「정상」으로 읽으면 안 된다** |
 | 8 | `SharedUnit`·`MemOrderGate` 독립 `.sv` 의 top 대표성 | 형상 불일치 — 독립본 16비트 vs top 인스턴스 161/128비트 |
 | 9 | OPREF **B** 참조의 LBID 축 | 제시 자체가 없다 — `Wt64Top.scala:86` 「OPREF B 토큰의 RouteJudge 제시는 미배선」 (TODO 2항), `tokIn` 은 사이클당 하나. ISA-2 α 는 **OPREF A 축만** 덮는다 |
 | 10 | 변환 저장소 관측 세 워드의 값 (`0xE04` · `0xE08`/`0xE0C`) | 회로 0건 — 정지 상태·정지한 요청의 VPN 을 내는 배선이 없다. 읽기는 응답 + 0, 쓰기는 거절 + `[6]` (파도 3 은 `0xE00` · `0xE10` 과 쓰기 방향만 닫았다) |

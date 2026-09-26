@@ -303,8 +303,8 @@ object Wt64Top {
   /** ABORT_TAG2 의 예약 = `[31:16]` — *태그 워드 코덱*에서 끌어온다 (세 워드가 E.5.1 직렬화의 원본이라 여백의 자리도 그 코덱이
     * 정본이다 — 같은 값을 두 곳에 적으면 어느 쪽이 정본인지 답할 수 없다). 처분이 *엄격*인 것은 받아들이는 쪽이라서다 (E.5.1 4항). */
   val A_TAG2_RSV         = rsv((1L << Types.Tag.TAG2_RSV_LO) - 1) // [31:16]
-  /** ABORT_TAG1 의 거절 = `[27:16]` poison·trace·예약 — 처분은 셋 다 같다 (E.1.2 `0xF44` · E.12 6항). 코덱(`Types.Tag`)은 아직 스레드‖LNID 라 끌어올 자리가 없어 적재 마스크(에포크 ‖ LNID)로 적는다 — 코덱이 E.5.1 재배분을 싣는 날 그쪽으로 옮긴다. */
-  val A_TAG1_RSV         = rsv(0xF0000000L | ((1L << Isa.LNID_W) - 1)) // [27:16] — 적재 = 에포크 [31:28] ‖ LNID
+  /** ABORT_TAG1 의 거절 = `[27:16]` poison·trace·예약 — 처분은 셋 다 같다 (E.1.2 `0xF44` · E.12 6항). 필드 자리는 태그 워드 코덱(`Types.Tag` TAG1 필드 마스크 — E.5.1 재배분)에서 끌어온다: 이 표면이 거절하는 *필드의 조합*만 여기서 짓는다 (명령 디스크립터는 trace 를 거절하지 않는다 — 조합은 표면의 몫). */
+  val A_TAG1_RSV         = Types.Tag.TAG1_POISON_MASK | Types.Tag.TAG1_TRACE_MASK | Types.Tag.TAG1_RSV_MASK; require(A_TAG1_RSV == 0x0FFF0000L, "ABORT_TAG1 거절 마스크가 정본 E.1.2 0xF44 [27:16] 과 다르다 — 코덱의 TAG1 필드 자리가 움직였다") // [27:16]
   val A_FIRE_RSV         = rsv(0x00000001L) // [31:1]
   val F_BIND_RSV         = rsv(0x80FFFFFFL) // [30:24]
   /** FAULT_CLEAR 의 예약 = `[31:19]`. 비트 *수*를 `Fault.N_BITS` 에서 끌어와
@@ -550,7 +550,7 @@ class AbortStaging extends Component {
   // 이중 방어 — 발화 시점에 스테이징의 예약 여백을 *같은 함수로* 다시 본다.
   // 기입 시점 거절이 이미 막고 있어 이 갈래는 도달 불가이며, 그것이 요점이다:
   // 스테이징 경로가 훗날 하나 더 생겨도 발화가 그것을 통과시키지 않는다.
-  private val stagedRsvBad = Types.Tag.reservedNonZero(abWords) || (tag1 & B(A_TAG1_RSV, 32 bits)) =/= 0 // TAG1 은 코덱 밖 (위 A_TAG1_RSV)
+  private val stagedRsvBad = Types.Tag.reservedNonZero(abWords) || (tag1 & B(A_TAG1_RSV, 32 bits)) =/= 0 // poison·trace 는 예약이 아니라 표면 마스크 (위 A_TAG1_RSV)
 
   // 발화 조건 (결정 A 2항) — 무장 완비가 연언에 들어간다. armed 는 *레지스터
   // 값*이므로 「앞선 사이클들의 기입」을 본다: 같은 사이클에 워드 하나를 쓰면서
@@ -598,7 +598,7 @@ class Wt64Top(
   /** MemOrderGate 불투명 기술자 폭 — 태그(통째) ‖ MEM 본문(addr_mode 4 ·
     * stride 12 · 오프셋 32, §1.3.2). 태그는 여기서도 불투명하다 —
     * MemOrderGate 는 해석하지 않고 나른다 (wave/addr_not_gating 의 전제). */
-  private val mogReqW = Isa.TAG_W + 4 + 12 + 32
+  private val mogReqW = Types.Tag.BUNDLE_W + 4 + 12 + 32 // 번들 70b — 예약 10b 는 번들에 없다 (Common.scala)
 
   // ═══ 인스턴스 — 15유닛 (XlateStore 는 HiuPipeline 내장 = 조립 14 + 1 · 문 xstg 는 파일 끝) ═══
   val walk   = new DecodeWalk(ehSlots)
@@ -1806,7 +1806,7 @@ class Wt64Top(
 // 판정 T2 (a) 의 거절 + [6] 은 페이지 통합(pageArea.unalWr — 페이지 전역 한 식)이 착지했고 그
 // 가드는 MmioPage.unaligned_rejected 한 줄이 진다 (아래 MmioPage 절). 이 모델의 Subword 는 "reject" 가 오늘의 RTL 이다.
 //
-// GUARD-MAP: AbortSurface.poison_trace_zero -> AbortStaging 의 tag1RsvBad = (wdata & A_TAG1_RSV) ≠ 0 이고 A_TAG1_RSV 는 [27] poison · [26] trace 를 포함한다 (적재 마스크 = 에포크 [31:28] ‖ LNID 의 여집합). 그 비트가 선 TAG1 기입은 okTag1 이 서지 않아 스테이징·무장 [1] 이 움직이지 않고 badWrite 의 TAG1 항이 선다
+// GUARD-MAP: AbortSurface.poison_trace_zero -> AbortStaging 의 tag1RsvBad = (wdata & A_TAG1_RSV) ≠ 0 이고 A_TAG1_RSV 는 [27] poison · [26] trace 를 포함한다 (태그 워드 코덱의 TAG1 필드 마스크 poison ‖ trace ‖ 예약 — 태그 코덱 전파 파도). 그 비트가 선 TAG1 기입은 okTag1 이 서지 않아 스테이징·무장 [1] 이 움직이지 않고 badWrite 의 TAG1 항이 선다
 // GUARD-MAP: AbortSurface.epoch_word_rsv_strict -> 같은 tag1RsvBad 의 [25:16] 예약 절반 — 비0 TAG1 기입은 okTag1 이 서지 않고 badWrite 의 TAG1 항이 선다 (정본 E.1.2 0xF44 「처분은 셋 다 같다」 — 마스크가 한 벌이라 사유별 판정 회로가 따로 없다)
 // GUARD-MAP: AbortSurface.shape_word_rsv_strict -> tag2RsvBad = (wdata & A_TAG2_RSV) ≠ 0 — [31:16] 비0 TAG2 기입은 okTag2 가 서지 않고 badWrite 가 선다. 마스크는 태그 워드 코덱(Types.Tag.TAG2_RSV_LO)에서 끌어온다
 // GUARD-MAP: AbortSurface.fire_rsv_strict -> fireRsvBad = (wdata & A_FIRE_RSV) ≠ 0 — [31:1] 비0 발화 기입은 okFire 가 서지 않아 발화도 무장 소진도 없고 badWrite 가 선다

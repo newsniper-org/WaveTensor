@@ -1,6 +1,7 @@
 {
   "anchors": [
     "Payload.key_is_tag",
+    "Payload.key_drops_side",
     "Payload.no_restart",
     "Payload.no_dup_seq",
     "Payload.cap_check",
@@ -16,9 +17,9 @@
     "Payload.base_from_tag",
     "Payload.loud_reject"
   ],
-  "at": "2026-09-24T02:41:31Z",
+  "at": "2026-09-26T15:33:02Z",
   "cover": {
-    "reached": 21,
+    "reached": 24,
     "reached_names": [
       "Reassembly.u_props.w10_capa_loaded_ctx",
       "Reassembly.u_props.w11_loud_stray",
@@ -33,6 +34,9 @@
       "Reassembly.u_props.w1_abort_fire",
       "Reassembly.u_props.w20_last_rise",
       "Reassembly.u_props.w21_deliver_frees",
+      "Reassembly.u_props.w22_side_frag_hit",
+      "Reassembly.u_props.w23_side_abort_hit",
+      "Reassembly.u_props.w24_side_open_clash",
       "Reassembly.u_props.w2_clr_cmd",
       "Reassembly.u_props.w3_abort_incomplete",
       "Reassembly.u_props.w4_abort_loaded",
@@ -46,12 +50,12 @@
     "unreached_names": []
   },
   "inputs": {
-    "rtl/generated/Reassembly.sv": "09d7f715521ea37ef2e42c9f6435b2c414f839b0219211c08b4f2ff89fcaa135",
-    "rtl/sv/assert/Reassembly_props.sv": "9115da3e7c57bc58e9e1f44385488b6a4b869c0ba4792a9f6cbb434c56d8a269"
+    "rtl/generated/Reassembly.sv": "3cfd2ee6f628bbed84979386b21a14c5642334a44c1ca16600111884daa9a84f",
+    "rtl/sv/assert/Reassembly_props.sv": "e0b1a050d1d5d92f70d88ddd2600e8c4808ed24846fac7e90882ac19a6bad263"
   },
   "per_task": {
     "bmc": {
-      "assert": 87,
+      "assert": 96,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -61,11 +65,11 @@
       "assert": 0,
       "const_a": 0,
       "const_en0": 0,
-      "cover": 21,
+      "cover": 24,
       "mode": "cover"
     },
     "prove": {
-      "assert": 87,
+      "assert": 96,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -73,7 +77,7 @@
     }
   },
   "sby": "rtl/formal/sby/Reassembly/props.sby",
-  "sby_sha256": "a7958b3b3e30b604b0942ea8ab7e1f9f7c3cc9e8778338ada05e0e2f0b439a67",
+  "sby_sha256": "2a291520194e221a59480aa93cc020ffd5b77f543e4041a53b8192d9f3bcadb3",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

@@ -109,7 +109,7 @@ module StepSequencerP1 (
   wire       [15:0]   _zz_5;
   wire                when_StepSequencer_l444;
   wire                runaway;
-  wire                when_Common_l259;
+  wire                when_Common_l337;
   reg                 _zz_io_faultBadProg;
   reg [13:0] progMem [0:63];
   reg [1:0] selMem [0:65535];
@@ -275,7 +275,7 @@ module StepSequencerP1 (
   assign _zz_5 = ({15'd0,1'b1} <<< stDst);
   assign when_StepSequencer_l444 = (execCnt == 5'h1f);
   assign runaway = (((state == 2'b10) && (! stLast)) && (execCnt == 5'h1f));
-  assign when_Common_l259 = ((progWrBad || bindWrBad) || runaway);
+  assign when_Common_l337 = ((progWrBad || bindWrBad) || runaway);
   assign io_faultBadProg = _zz_io_faultBadProg;
   assign io_oDone = rDone;
   assign io_oCapAbsent = (rDone && rCapa);
@@ -416,7 +416,7 @@ module StepSequencerP1 (
       if(io_faultClearBadProg) begin
         _zz_io_faultBadProg <= 1'b0;
       end
-      if(when_Common_l259) begin
+      if(when_Common_l337) begin
         _zz_io_faultBadProg <= 1'b1;
       end
     end

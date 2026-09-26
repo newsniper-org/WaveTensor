@@ -147,8 +147,10 @@ SHAPE_DEPENDENT = {"io_push_1_stall", "io_push_2_stall"}
 # 선언 줄 수였다. HEAD e90d3f1 생성물 포트 목록에서 재계수, 2026-09-26.)
 # 재유도 기록 (파도 4 페이지 통합 — D1 (b)): io_fault_fpCfgBadWrite 신설 (+1) — FP_BIND
 # 예약 거절의 수락 게이트된 sticky. 형상 무관 출력이라 대조면에 든다 — 118/116 → 119/117.
-EXPECT_OUTPUTS = 119
-EXPECT_COMPARE_FACE = 117
+# 재유도 기록 (태그 코덱 전파 파도): 태그 번들의 thread 16b 한 포트가 epoch · poison · trace
+# 세 포트가 됐다 — 출력 쪽은 io_route_tokOut_payload_tag_* 하나(+2). 형상 무관 — 119/117 → 121/119.
+EXPECT_OUTPUTS = 121
+EXPECT_COMPARE_FACE = 119
 
 
 def parse_clear_ports():
@@ -220,8 +222,8 @@ _IX_CAP = COMPARE_FACE.index("io_dec_capAbsent")
 #   정본 §1.1 이 태그를 「명령어 인코딩의 일부가 아니라」고 못박았으므로
 #   어셈블러는 태그를 방출하지 않는다. 「어셈블러가 다 준다」고 적으면 거짓이다.
 #   ⇒ 태그는 이 하네스가 벡터로 든다. 그리고 **80b 로 팩하지 않는다** — 팩킹
-#   순서는 미확정이고(`Common.scala:117-130`), top 이 필드별 포트로 받으므로
-#   팩킹을 알 필요가 없다. 팩하는 순간 미확정 값이 시험 코드로 굳는다.
+#   순서는 구현 자유이고 ABI 가 아니다(`Common.scala:120-127` — 정본 1.4.4), top 이 필드별
+#   포트로 받으므로 팩킹을 알 필요가 없다. 팩하는 순간 장치 내부 표현이 시험 코드로 굳는다.
 INSTR_WORDS = 14
 ASM_SRC = ("ACC_ELEMWISE prec .port dest=0x10 .precision mode=0x14 "
            ".opref kind={kind} route={lbid}")
@@ -261,7 +263,7 @@ def zero_inputs(dut):
     dut.io_instr_valid.value = 0
     for i in range(INSTR_WORDS):
         getattr(dut, f"io_instr_words_{i}").value = 0
-    for n in ("wave", "thread", "lnid", "precision", "dim"):
+    for n in ("wave", "epoch", "poison", "trace", "lnid", "precision", "dim"):
         getattr(dut, f"io_instr_tag_{n}").value = 0
     for n in ("io_mmio_addr", "io_mmio_wdata", "io_mmio_wstrobe", "io_mmio_rstrobe",
               "io_hiuReq_valid", "io_hiuReq_part", "io_hiuReq_vpn", "io_hiuReq_write",
@@ -434,7 +436,7 @@ async def install_banks(dut, lbids, universe):
 # 궤적 — ISA-1/ISA-2 의 공통 관측 원시 연산
 # ═══════════════════════════════════════════════════════════════════════════
 
-async def present(dut, words, lnid, thread=0, wave=0):
+async def present(dut, words, lnid, epoch=0, wave=0):
     """명령 디스크립터 하나를 제시하고 **그 엣지**의 관측면 전체를 뜬다.
 
     ⚠ **표본 엣지 = 방출 엣지다 (실측).** 디코드 사슬은 레지스터 한 단이고
@@ -452,7 +454,7 @@ async def present(dut, words, lnid, thread=0, wave=0):
     for i, w in enumerate(words):
         getattr(dut, f"io_instr_words_{i}").value = w
     dut.io_instr_tag_lnid.value = lnid
-    dut.io_instr_tag_thread.value = thread
+    dut.io_instr_tag_epoch.value = epoch
     dut.io_instr_tag_wave.value = wave
     dut.io_instr_valid.value = 1
     await step(dut)                     # ← 표본 엣지이자 방출 엣지
@@ -461,7 +463,7 @@ async def present(dut, words, lnid, thread=0, wave=0):
     for i in range(INSTR_WORDS):
         getattr(dut, f"io_instr_words_{i}").value = 0
     dut.io_instr_tag_lnid.value = 0
-    dut.io_instr_tag_thread.value = 0
+    dut.io_instr_tag_epoch.value = 0
     dut.io_instr_tag_wave.value = 0
 
     # 전건 확인 — 궤적이 통째로 0 인 채 「일치」하는 공허를 여기서 끊는다.

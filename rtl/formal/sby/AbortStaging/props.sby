@@ -5,7 +5,7 @@
 # 선-formal 계약: rtl/formal/tla/AbortSurface.tla (파도 4 — 가드 열셋 중 열둘이 여기 앵커 ·
 # ro_rejected 는 RO 세 워드가 이 컴포넌트에 닿지 않아 Wt64Top/assembly.sby 만 앵커한다).
 #
-# PROVES: AbortSurface.poison_trace_zero — TAG1 [27] poison · [26] trace 비0 기입 ⇔ badWrite 의 TAG1 항 (p_arm_miss_not_bad — 마스크 0x0FFF0000) · 무장 [1] 부동 (t_arm1_not_on_reject · t_arm_src_1) · 스테이징 부동 (t_tag1_hold)
+# PROVES: AbortSurface.poison_trace_zero — TAG1 [27] poison · [26] trace 비0 기입 ⇔ badWrite 의 TAG1 항 (p_arm_miss_not_bad — 마스크 0x0FFF0000) · 무장 [1] 부동 (t_arm1_not_on_reject · t_arm_src_1) · 스테이징 부동 (t_tag1_hold) · 소거가 싣는 태그의 poison · trace 는 언제나 0 (a_tag_pt_zero — 태그 코덱 전파 파도)
 # PROVES: AbortSurface.epoch_word_rsv_strict — TAG1 [25:16] 예약 비0 기입 ⇔ badWrite 의 TAG1 항 (p_arm_miss_not_bad) · 무장 [1] 부동 (t_arm1_not_on_reject) · 스테이징 부동 (t_tag1_hold)
 # PROVES: AbortSurface.shape_word_rsv_strict — TAG2 [31:16] 예약 비0 기입 ⇔ badWrite 의 TAG2 항 (p_arm_miss_not_bad) · 무장 [2] 부동 (t_arm2_not_on_reject) · 스테이징 부동 (t_tag2_hold)
 # PROVES: AbortSurface.fire_rsv_strict — FIRE [31:1] 예약 비0 기입 ⇔ badWrite 의 FIRE 항 (p_arm_miss_not_bad) · 발화 없음 (p_fire_needs_ok) · 무장 부동 (t_arm_fall)
@@ -13,7 +13,7 @@
 # PROVES: AbortSurface.reject_loud — 문 절반: 거절 사건 전수 ⇔ badWrite (p_arm_miss_not_bad — 조용한 거절도 허위 fault 도 막는다). badWrite · RO 쓰기 → FAULT_STATUS [6] sticky 는 Wt64Top/assembly.sby
 # PROVES: AbortSurface.arm_on_accept — 수락된 스테이징 기입 뒤 자기 무장 비트가 서 있다 (t_arm_set_0/1/2 — 같은 사이클의 수락된 발화가 이기는 경우만 뺀다). 검토자 V13 의 구멍을 닫는 단언이다
 # PROVES: AbortSurface.arm_own_word — 무장 비트 i 의 상승 원천은 워드 i 의 수락된 기입뿐 (t_arm_src_0/1/2)
-# PROVES: AbortSurface.stage_writes_value — 수락된 기입 뒤 그 워드의 스테이징 값 = 쓴 값, 무장이 선 워드의 재기입 포함 (t_tag0_val · t_tag1_val · t_tag2_val · 증인 W10 · W8). TAG1 은 워드 전량의 왕복({io_tag_thread, io_tag_lnid} == 쓴 워드) — 에포크 [31:28] 의 값 경로까지 재면서 필드 이름을 부르지 않아 코덱 배치를 굳히지 않는다 (검토 N1 · N2 — 아래 표)
+# PROVES: AbortSurface.stage_writes_value — 수락된 기입 뒤 그 워드의 스테이징 값 = 쓴 값, 무장이 선 워드의 재기입 포함 (t_tag0_val · t_tag1_val · t_tag2_val · 증인 W10 · W8). TAG1 은 워드 전량의 왕복({io_tag_epoch, io_tag_poison, io_tag_trace, 10'd0, io_tag_lnid} == 쓴 워드 — 태그 코덱 전파 파도가 코덱을 E.5.1 재배분으로 고친 뒤의 포트) + 필드별 t_tag1_epoch (검토 N1 · N2 — 아래 표)
 # PROVES: AbortSurface.fire_needs_armed — 발화 ⇒ 무장 셋 완비 (p_fire_needs_armed) · 태그 워드 기입만으로는 발화 없음 (p_partial_no_effect)
 # PROVES: AbortSurface.fire_needs_one — 발화 ⇒ 발화 워드의 수락된 기입 ∧ [0]=1 (p_fire_needs_word · p_fire_needs_bit0 · p_fire_needs_ok)
 # PROVES: AbortSurface.fire_drains_arm — 수락된 발화 기입 ⇒ 다음 사이클 무장 전부 0, 성립 여부와 무관 (t_arm_cleared_on_fire — $past(io_fire) 가 전건에 없다 · 무시된 발화의 소진은 증인 W12) · 발화 직후 재발화 불가 (t_no_stale_staging)
@@ -95,7 +95,7 @@
 # 검토 발견: 착지판의 t_tag1_val 은 LNID [15:0] 만 재서 TAG1 에포크 [31:28] 의 값 경로가 비어
 # 있었다 — 아래 N1 · N2 가 bmc · prove 를 통과했다. 에포크는 매칭 키라(E.12 3·6항) 그 장치는 비0
 # 에포크 문맥의 소거를 전부 「없는 태그」로 조용히 무시한다 — 05-security.typ:371 「조용한 실패는 편의 문제가 아니라 *보안 문제*다.」
-# 수리: t_tag1_val 을 워드 전량의 왕복 {io_tag_thread, io_tag_lnid} == $past(io_wdata) 로 넓혔다 —
+# 수리: t_tag1_val 을 워드 전량의 왕복 {io_tag_thread, io_tag_lnid} == $past(io_wdata) 로 넓혔다 (코덱 전파 파도 뒤 포트 {io_tag_epoch, io_tag_poison, io_tag_trace, 10'd0, io_tag_lnid}) —
 # 필드 이름을 부르지 않아 코덱(Types.Tag) 배치를 굳히지 않는다. 그 이유로 두었던 lint_postformal
 # _PARTIAL 항목을 지웠다 (stage_writes_value 완전 덮임 · _MAX_PARTIAL 25 → 24). 조립 짝 a_tag1_val
 # (옛 a_tag1_lnid)은 Wt64Top/assembly.sby 표.
@@ -132,6 +132,11 @@
 # cover 깊이 10: 가장 깊은 증인(W5 — 무장 완비 후 발화 후 하강 관측)이
 # reset 후 5 사이클이면 닿는다. 파도 4 재실측(2026-09-26): assert 24 · cover 14/14 도달 —
 # 최심 step 4 (W5 · W12). 선택 신호가 자유라 세 워드가 한 사이클에 실려 W1 이 step 3 이다.
+
+# ── 역-변이 표 — 태그 코덱 전파 파도 (2026-09-26 · 비상주, bmc) ──
+#   AM1  tag1RsvBad 마스크 0x0FFF → 0x0BFF (trace 누락)  ⇒ p_arm_miss_not_bad (첫 위반 — bmc 는 첫 위반에서 멎는다)
+#   AM2  io_tag_epoch ← tag1[30:27] (코덱 필드 자리 어긋남) ⇒ t_tag1_epoch · t_tag1_val
+#   둘 다 사살 (rc=2 — 게이트 자신의 bmc 태스크 엔진 smtbmc z3 · AM1 은 2026-09-27 같은 엔진에서 재사살, 벽시계 1 초).
 
 [tasks]
 bmc

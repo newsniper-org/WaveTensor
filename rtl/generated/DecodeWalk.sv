@@ -12511,7 +12511,7 @@ module DecodeWalk (
   reg        [7:0]    outStage_rOff_1;
   reg        [7:0]    outStage_rOff_2;
   reg        [7:0]    outStage_rOff_3;
-  wire                when_Common_l259;
+  wire                when_Common_l337;
   reg                 _zz_io_oFault;
 
   assign _zz_walk_head_0_1 = walk_off_0[3:0];
@@ -25643,7 +25643,7 @@ module DecodeWalk (
   assign io_oSlotOff_1 = outStage_rOff_1;
   assign io_oSlotOff_2 = outStage_rOff_2;
   assign io_oSlotOff_3 = outStage_rOff_3;
-  assign when_Common_l259 = (outStage_rValid && outStage_rMal);
+  assign when_Common_l337 = (outStage_rValid && outStage_rMal);
   assign io_oFault = _zz_io_oFault;
   always @(posedge clk or posedge reset) begin
     if(reset) begin
@@ -25658,7 +25658,7 @@ module DecodeWalk (
       if(io_iFaultClear) begin
         _zz_io_oFault <= 1'b0;
       end
-      if(when_Common_l259) begin
+      if(when_Common_l337) begin
         _zz_io_oFault <= 1'b1;
       end
     end

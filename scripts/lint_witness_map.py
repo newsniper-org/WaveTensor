@@ -238,7 +238,9 @@ _MAX_ANCHOR_UNWITNESSED = 0   # 늘지 않는다. 줄이는 길은 증인 신설
 _MAX_UNRESOLVED = 0   # 오늘 0. 늘리려면 근거와 함께.
 
 # ── 하한 래칫 ──────────────────────────────────────────────────────────────
-_MIN_WITNESS_MAPPED = 378   # 대응 선언이 붙은 cover 문 수. 줄지 않는다.
+_MIN_WITNESS_MAPPED = 383   # 대응 선언이 붙은 cover 문 수. 줄지 않는다.
+                             # 378 → 383 (2026-09-26 실측 383/383 — 태그 코덱 전파 파도: Reassembly_props.sv
+                             # W22–W24 셋 · CompletionUnit_props.sv W9 · W10)
                              # 376 → 378 (2026-09-26 실측 378/378 — 파도 4 W6 검토 수리: 비정렬 읽기 0 의
                              # 유닛 증인 CompletionUnit_props.sv W8 · OwnershipTable_props.sv W14)
                              # 345 → 376 (2026-09-26 실측 376/376 — 파도 4 통합 착지: 11 + 14 + 6. 아래 셋은 각
@@ -259,7 +261,10 @@ _MIN_WITNESS_MAPPED = 378   # 대응 선언이 붙은 cover 문 수. 줄지 않�
                              # 게이트가 침묵했다. 334 에 수리판이 XlateStaging_props.sv 에 더한
                              # cover 둘(w13_mclr_zero · w14_mclr_rsv)을 더해 336 — w11_missclr 는
                              # w12_missclr 로 태그만 옮겼다).
-_MIN_ANCHOR_WITNESSED = 193  # 증인이 선 앵커 수. 줄지 않는다.
+_MIN_ANCHOR_WITNESSED = 195  # 증인이 선 앵커 수. 줄지 않는다.
+                             # 193 → 195 (2026-09-26 실측 195/195 — 태그 코덱 전파 파도: PROVES
+                             # Payload.key_drops_side(Reassembly/props.sby W22–W24) · VERIFIES
+                             # CompletionUnit.cd_tag1_device_authored(descriptor.sby W9 · W10))
                              # 191 → 193 (2026-09-26 실측 193/193 — 파도 4 W6: VERIFIES
                              # CompletionUnit.unaligned_read_zero · OwnershipTable.unaligned_read_zero)
                              # 163 → 191 (2026-09-26 실측 191/191 — 파도 4 통합 착지: 10 + 14 + 4. 아래 셋은 각

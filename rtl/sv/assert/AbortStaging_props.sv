@@ -58,7 +58,9 @@ module AbortStaging_check (
   wire [2:0]  io_armed;
   wire        io_fire;
   wire [31:0] io_tag_wave;
-  wire [15:0] io_tag_thread;
+  wire [3:0]  io_tag_epoch;
+  wire        io_tag_poison;
+  wire        io_tag_trace;
   wire [15:0] io_tag_lnid;
   wire [7:0]  io_tag_precision;
   wire [7:0]  io_tag_dim;
@@ -67,7 +69,8 @@ module AbortStaging_check (
     .io_wr(io_wr), .io_selTag0(io_selTag0), .io_selTag1(io_selTag1),
     .io_selTag2(io_selTag2), .io_selFire(io_selFire), .io_wdata(io_wdata),
     .io_badWrite(io_badWrite), .io_armed(io_armed), .io_fire(io_fire),
-    .io_tag_wave(io_tag_wave), .io_tag_thread(io_tag_thread),
+    .io_tag_wave(io_tag_wave), .io_tag_epoch(io_tag_epoch),
+    .io_tag_poison(io_tag_poison), .io_tag_trace(io_tag_trace),
     .io_tag_lnid(io_tag_lnid), .io_tag_precision(io_tag_precision),
     .io_tag_dim(io_tag_dim),
     .clk(clk), .reset(reset)
@@ -199,7 +202,9 @@ module AbortStaging_check (
     // 스테이징 레지스터가 아니라 그것이 나가는 값이 계약이다.
     t_tag0_hold: assert ($past(ok_tag0) || (io_tag_wave == $past(io_tag_wave)));
     t_tag1_hold: assert ($past(ok_tag1) ||
-                         ((io_tag_thread == $past(io_tag_thread)) &&
+                         ((io_tag_epoch  == $past(io_tag_epoch))  &&
+                          (io_tag_poison == $past(io_tag_poison)) &&
+                          (io_tag_trace  == $past(io_tag_trace))  &&
                           (io_tag_lnid   == $past(io_tag_lnid))));
     t_tag2_hold: assert ($past(ok_tag2) ||
                          ((io_tag_precision == $past(io_tag_precision)) &&
@@ -208,14 +213,23 @@ module AbortStaging_check (
     // 「같은 워드의 재기입은 값을 덮되」(E.12.1 1항) — 수락된 기입 뒤 그 워드의
     // 스테이징 값은 쓴 값이다. 무장이 이미 선 워드의 재기입도 같다 (증인 W10).
     // TAG1 은 *워드 전량*의 왕복이다 — 호스트 대면 두 포트를 이어 붙인 32b 가 쓴
-    // 워드와 같다. 워드 *안*의 필드 이름(에포크 · LNID)을 하나도 부르지 않으므로
-    // 코덱(Types.Tag — 아직 스레드‖LNID)의 배치를 굳히지 않으면서 에포크 [31:28]
-    // 의 값 경로까지 잰다. 파도 4 착지판은 LNID [15:0] 만 재서 「에포크를 떨군다」
-    // · 「재기입이 옛 에포크를 남긴다」 두 변이가 bmc · prove 를 통과했다 (검토 N1 · N2 —
-    // props.sby 역-변이 표). 수락된 TAG1 은 [27:16] = 0 이라 그 자리도 0 으로 잰다.
+    // 워드와 같다 — 코덱이 E.5.1 재배분을 실은 뒤(태그 코덱 전파 파도)의 포트는
+    // 에포크 · poison · trace · LNID 이고 예약 [25:16] 은 번들에 없어 0 으로 잇는다.
+    // 파도 4 착지판은 LNID [15:0] 만 재서 「에포크를 떨군다」 · 「재기입이 옛 에포크를
+    // 남긴다」 두 변이가 bmc · prove 를 통과했다 (검토 N1 · N2 — props.sby 역-변이 표).
+    // 수락된 TAG1 은 [27:16] = 0 이라 그 자리도 0 으로 잰다. 그리고 코덱이 필드를 갖게 된
+    // 지금 필드별 단언을 더한다 (t_tag1_epoch · a_tag_pt_zero — 아래).
     t_tag0_val: assert (!$past(ok_tag0) || (io_tag_wave == $past(io_wdata)));
-    t_tag1_val: assert (!$past(ok_tag1) || ({io_tag_thread, io_tag_lnid} == $past(io_wdata)));
+    t_tag1_val: assert (!$past(ok_tag1) || ({io_tag_epoch, io_tag_poison, io_tag_trace, 10'd0, io_tag_lnid} == $past(io_wdata)));
+    // 필드별 — 에포크는 [31:28] 에서 온다 (코덱의 필드 자리가 E.5.1 과 어긋나면 반례).
+    t_tag1_epoch: assert (!$past(ok_tag1) || (io_tag_epoch == $past(io_wdata[31:28])));
     t_tag2_val: assert (!$past(ok_tag2) || ({io_tag_precision, io_tag_dim} == $past(io_wdata[15:0])));
+
+    // 소거가 싣는 태그의 poison · trace 는 *언제나* 0 이다 (E.1.2 0xF44 · E.12 6항) —
+    // 스테이징은 [27:26] 비0 을 거절하고 reset 값이 0 이라, 이것은 수락 기입만이 TAG1 을
+    // 움직인다는 사실의 불변식 형태다. Reassembly 의 소거 매칭이 두 비트를 키에서 빼야 하는
+    // 이유가 이 등식이다 (Payload.key_drops_side — 소거는 0 을 싣고 문맥은 1 일 수 있다).
+    a_tag_pt_zero: assert (!io_tag_poison && !io_tag_trace);
 
     // 발화는 스테이징을 *소비하지 않는다* — 값은 그대로 남고 무장만 내려간다.
     // (남는 것이 문제가 아니다: 무장이 0 이라 다시 실리지 않는다. 이 단언이

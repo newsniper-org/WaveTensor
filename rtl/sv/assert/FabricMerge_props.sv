@@ -8,10 +8,11 @@
 // 단독. 각 속성 위에 FabricMerge.scala 의 GUARD-MAP 과 같은 가드명을 적는다.
 //
 // 형상 (rtl/generated/FabricMerge.sv 기준): N = 4 lane, D = 1 (cnt 1비트),
-// 페이로드 폭 W = 161 = body 64 + last 1 + total 8 + seq 8 + dim 8 +
-// precision 8 + lnid 16 + thread 16 + wave 32. 아래 모든 161비트 연접은
-// merge_contribs_* 와 같은 순서 {body, last, total, seq, dim, precision,
-// lnid, thread, wave} 로 통일한다 — 순서 자체는 임의고, face·push·payload
+// 페이로드 폭 W = 151 = body 64 + last 1 + total 8 + seq 8 + dim 8 +
+// precision 8 + lnid 16 + trace 1 + poison 1 + epoch 4 + wave 32 (태그 코덱 전파
+// 파도 — 옛 스레드 ID 16 이 에포크 · poison · trace 로 갈렸고 예약 10 은 번들에
+// 없다). 아래 모든 151비트 연접은 merge_contribs_* 와 같은 순서 {body, last,
+// total, seq, dim, precision, lnid, epoch, poison, trace, wave} 로 통일한다 — 순서 자체는 임의고, face·push·payload
 // 세 연접이 같은 순서라는 것만이 비교의 전제다.
 //
 // 주의 1: yosys(비-Verific)의 SVA 부분집합에 맞춰 시퀀스 연산자 없이
@@ -36,18 +37,18 @@ module FabricMerge_props (
   input wire         consumer_valid,
   input wire         consumer_ready,
   input wire         fire,             // io_consumer_fire = valid && ready
-  input wire [160:0] consumer_pay,     // io_consumer_payload 연접
+  input wire [150:0] consumer_pay,     // io_consumer_payload 연접
   input wire [3:0]   strb,             // io_push_i_strb
   input wire [3:0]   stall,            // io_push_i_stall
-  input wire [160:0] push_pay_0,       // io_push_i_result 연접
-  input wire [160:0] push_pay_1,
-  input wire [160:0] push_pay_2,
-  input wire [160:0] push_pay_3,
+  input wire [150:0] push_pay_0,       // io_push_i_result 연접
+  input wire [150:0] push_pay_1,
+  input wire [150:0] push_pay_2,
+  input wire [150:0] push_pay_3,
   // lane 내부 상태 (버스면 face = slots(0), 점유 cnt — D = 1 이라 1비트)
-  input wire [160:0] face_0,
-  input wire [160:0] face_1,
-  input wire [160:0] face_2,
-  input wire [160:0] face_3,
+  input wire [150:0] face_0,
+  input wire [150:0] face_1,
+  input wire [150:0] face_2,
+  input wire [150:0] face_3,
   input wire [3:0]   cnt,              // lanes_i_cnt (D=1: 비트 = 값)
   input wire [3:0]   full,
   input wire [3:0]   vld,
@@ -65,8 +66,8 @@ module FabricMerge_props (
 );
 
   // 배열화 — generate 루프에서 인덱스로 접근하기 위한 내부 결선.
-  wire [160:0] push_pay [0:3];
-  wire [160:0] face     [0:3];
+  wire [150:0] push_pay [0:3];
+  wire [150:0] face     [0:3];
   assign push_pay[0] = push_pay_0;  assign push_pay[1] = push_pay_1;
   assign push_pay[2] = push_pay_2;  assign push_pay[3] = push_pay_3;
   assign face[0] = face_0;  assign face[1] = face_1;
@@ -471,7 +472,9 @@ module FabricMerge_formal (
   input wire         io_consumer_ready,
   input wire         io_push_0_strb,
   input wire [31:0]  io_push_0_result_head_tag_wave,
-  input wire [15:0]  io_push_0_result_head_tag_thread,
+  input wire [3:0]    io_push_0_result_head_tag_epoch,
+  input wire          io_push_0_result_head_tag_poison,
+  input wire          io_push_0_result_head_tag_trace,
   input wire [15:0]  io_push_0_result_head_tag_lnid,
   input wire [7:0]   io_push_0_result_head_tag_precision,
   input wire [7:0]   io_push_0_result_head_tag_dim,
@@ -481,7 +484,9 @@ module FabricMerge_formal (
   input wire [63:0]  io_push_0_result_body,
   input wire         io_push_1_strb,
   input wire [31:0]  io_push_1_result_head_tag_wave,
-  input wire [15:0]  io_push_1_result_head_tag_thread,
+  input wire [3:0]    io_push_1_result_head_tag_epoch,
+  input wire          io_push_1_result_head_tag_poison,
+  input wire          io_push_1_result_head_tag_trace,
   input wire [15:0]  io_push_1_result_head_tag_lnid,
   input wire [7:0]   io_push_1_result_head_tag_precision,
   input wire [7:0]   io_push_1_result_head_tag_dim,
@@ -491,7 +496,9 @@ module FabricMerge_formal (
   input wire [63:0]  io_push_1_result_body,
   input wire         io_push_2_strb,
   input wire [31:0]  io_push_2_result_head_tag_wave,
-  input wire [15:0]  io_push_2_result_head_tag_thread,
+  input wire [3:0]    io_push_2_result_head_tag_epoch,
+  input wire          io_push_2_result_head_tag_poison,
+  input wire          io_push_2_result_head_tag_trace,
   input wire [15:0]  io_push_2_result_head_tag_lnid,
   input wire [7:0]   io_push_2_result_head_tag_precision,
   input wire [7:0]   io_push_2_result_head_tag_dim,
@@ -501,7 +508,9 @@ module FabricMerge_formal (
   input wire [63:0]  io_push_2_result_body,
   input wire         io_push_3_strb,
   input wire [31:0]  io_push_3_result_head_tag_wave,
-  input wire [15:0]  io_push_3_result_head_tag_thread,
+  input wire [3:0]    io_push_3_result_head_tag_epoch,
+  input wire          io_push_3_result_head_tag_poison,
+  input wire          io_push_3_result_head_tag_trace,
   input wire [15:0]  io_push_3_result_head_tag_lnid,
   input wire [7:0]   io_push_3_result_head_tag_precision,
   input wire [7:0]   io_push_3_result_head_tag_dim,
@@ -515,7 +524,9 @@ module FabricMerge_formal (
   wire         io_fault;
   wire         io_consumer_valid;
   wire [31:0]  io_consumer_payload_head_tag_wave;
-  wire [15:0]  io_consumer_payload_head_tag_thread;
+  wire [3:0]    io_consumer_payload_head_tag_epoch;
+  wire          io_consumer_payload_head_tag_poison;
+  wire          io_consumer_payload_head_tag_trace;
   wire [15:0]  io_consumer_payload_head_tag_lnid;
   wire [7:0]   io_consumer_payload_head_tag_precision;
   wire [7:0]   io_consumer_payload_head_tag_dim;
@@ -529,8 +540,12 @@ module FabricMerge_formal (
   // expose 로 승격된 내부 신호들
   wire [31:0]  lanes_0_slots_0_head_tag_wave, lanes_1_slots_0_head_tag_wave,
                lanes_2_slots_0_head_tag_wave, lanes_3_slots_0_head_tag_wave;
-  wire [15:0]  lanes_0_slots_0_head_tag_thread, lanes_1_slots_0_head_tag_thread,
-               lanes_2_slots_0_head_tag_thread, lanes_3_slots_0_head_tag_thread;
+  wire [3:0]    lanes_0_slots_0_head_tag_epoch, lanes_1_slots_0_head_tag_epoch,
+               lanes_2_slots_0_head_tag_epoch, lanes_3_slots_0_head_tag_epoch;
+  wire          lanes_0_slots_0_head_tag_poison, lanes_1_slots_0_head_tag_poison,
+               lanes_2_slots_0_head_tag_poison, lanes_3_slots_0_head_tag_poison;
+  wire          lanes_0_slots_0_head_tag_trace, lanes_1_slots_0_head_tag_trace,
+               lanes_2_slots_0_head_tag_trace, lanes_3_slots_0_head_tag_trace;
   wire [15:0]  lanes_0_slots_0_head_tag_lnid, lanes_1_slots_0_head_tag_lnid,
                lanes_2_slots_0_head_tag_lnid, lanes_3_slots_0_head_tag_lnid;
   wire [7:0]   lanes_0_slots_0_head_tag_precision, lanes_1_slots_0_head_tag_precision,
@@ -561,7 +576,9 @@ module FabricMerge_formal (
     .io_fault(io_fault), .io_faultClear(io_faultClear),
     .io_push_0_strb(io_push_0_strb),
     .io_push_0_result_head_tag_wave(io_push_0_result_head_tag_wave),
-    .io_push_0_result_head_tag_thread(io_push_0_result_head_tag_thread),
+    .io_push_0_result_head_tag_epoch(io_push_0_result_head_tag_epoch),
+    .io_push_0_result_head_tag_poison(io_push_0_result_head_tag_poison),
+    .io_push_0_result_head_tag_trace(io_push_0_result_head_tag_trace),
     .io_push_0_result_head_tag_lnid(io_push_0_result_head_tag_lnid),
     .io_push_0_result_head_tag_precision(io_push_0_result_head_tag_precision),
     .io_push_0_result_head_tag_dim(io_push_0_result_head_tag_dim),
@@ -572,7 +589,9 @@ module FabricMerge_formal (
     .io_push_0_stall(io_push_0_stall),
     .io_push_1_strb(io_push_1_strb),
     .io_push_1_result_head_tag_wave(io_push_1_result_head_tag_wave),
-    .io_push_1_result_head_tag_thread(io_push_1_result_head_tag_thread),
+    .io_push_1_result_head_tag_epoch(io_push_1_result_head_tag_epoch),
+    .io_push_1_result_head_tag_poison(io_push_1_result_head_tag_poison),
+    .io_push_1_result_head_tag_trace(io_push_1_result_head_tag_trace),
     .io_push_1_result_head_tag_lnid(io_push_1_result_head_tag_lnid),
     .io_push_1_result_head_tag_precision(io_push_1_result_head_tag_precision),
     .io_push_1_result_head_tag_dim(io_push_1_result_head_tag_dim),
@@ -583,7 +602,9 @@ module FabricMerge_formal (
     .io_push_1_stall(io_push_1_stall),
     .io_push_2_strb(io_push_2_strb),
     .io_push_2_result_head_tag_wave(io_push_2_result_head_tag_wave),
-    .io_push_2_result_head_tag_thread(io_push_2_result_head_tag_thread),
+    .io_push_2_result_head_tag_epoch(io_push_2_result_head_tag_epoch),
+    .io_push_2_result_head_tag_poison(io_push_2_result_head_tag_poison),
+    .io_push_2_result_head_tag_trace(io_push_2_result_head_tag_trace),
     .io_push_2_result_head_tag_lnid(io_push_2_result_head_tag_lnid),
     .io_push_2_result_head_tag_precision(io_push_2_result_head_tag_precision),
     .io_push_2_result_head_tag_dim(io_push_2_result_head_tag_dim),
@@ -594,7 +615,9 @@ module FabricMerge_formal (
     .io_push_2_stall(io_push_2_stall),
     .io_push_3_strb(io_push_3_strb),
     .io_push_3_result_head_tag_wave(io_push_3_result_head_tag_wave),
-    .io_push_3_result_head_tag_thread(io_push_3_result_head_tag_thread),
+    .io_push_3_result_head_tag_epoch(io_push_3_result_head_tag_epoch),
+    .io_push_3_result_head_tag_poison(io_push_3_result_head_tag_poison),
+    .io_push_3_result_head_tag_trace(io_push_3_result_head_tag_trace),
     .io_push_3_result_head_tag_lnid(io_push_3_result_head_tag_lnid),
     .io_push_3_result_head_tag_precision(io_push_3_result_head_tag_precision),
     .io_push_3_result_head_tag_dim(io_push_3_result_head_tag_dim),
@@ -606,7 +629,9 @@ module FabricMerge_formal (
     .io_consumer_valid(io_consumer_valid),
     .io_consumer_ready(io_consumer_ready),
     .io_consumer_payload_head_tag_wave(io_consumer_payload_head_tag_wave),
-    .io_consumer_payload_head_tag_thread(io_consumer_payload_head_tag_thread),
+    .io_consumer_payload_head_tag_epoch(io_consumer_payload_head_tag_epoch),
+    .io_consumer_payload_head_tag_poison(io_consumer_payload_head_tag_poison),
+    .io_consumer_payload_head_tag_trace(io_consumer_payload_head_tag_trace),
     .io_consumer_payload_head_tag_lnid(io_consumer_payload_head_tag_lnid),
     .io_consumer_payload_head_tag_precision(io_consumer_payload_head_tag_precision),
     .io_consumer_payload_head_tag_dim(io_consumer_payload_head_tag_dim),
@@ -617,7 +642,9 @@ module FabricMerge_formal (
     .io_occupancy(io_occupancy),
     // ── expose 승격 포트 ──
     .lanes_0_slots_0_head_tag_wave(lanes_0_slots_0_head_tag_wave),
-    .lanes_0_slots_0_head_tag_thread(lanes_0_slots_0_head_tag_thread),
+    .lanes_0_slots_0_head_tag_epoch(lanes_0_slots_0_head_tag_epoch),
+    .lanes_0_slots_0_head_tag_poison(lanes_0_slots_0_head_tag_poison),
+    .lanes_0_slots_0_head_tag_trace(lanes_0_slots_0_head_tag_trace),
     .lanes_0_slots_0_head_tag_lnid(lanes_0_slots_0_head_tag_lnid),
     .lanes_0_slots_0_head_tag_precision(lanes_0_slots_0_head_tag_precision),
     .lanes_0_slots_0_head_tag_dim(lanes_0_slots_0_head_tag_dim),
@@ -626,7 +653,9 @@ module FabricMerge_formal (
     .lanes_0_slots_0_head_last(lanes_0_slots_0_head_last),
     .lanes_0_slots_0_body(lanes_0_slots_0_body),
     .lanes_1_slots_0_head_tag_wave(lanes_1_slots_0_head_tag_wave),
-    .lanes_1_slots_0_head_tag_thread(lanes_1_slots_0_head_tag_thread),
+    .lanes_1_slots_0_head_tag_epoch(lanes_1_slots_0_head_tag_epoch),
+    .lanes_1_slots_0_head_tag_poison(lanes_1_slots_0_head_tag_poison),
+    .lanes_1_slots_0_head_tag_trace(lanes_1_slots_0_head_tag_trace),
     .lanes_1_slots_0_head_tag_lnid(lanes_1_slots_0_head_tag_lnid),
     .lanes_1_slots_0_head_tag_precision(lanes_1_slots_0_head_tag_precision),
     .lanes_1_slots_0_head_tag_dim(lanes_1_slots_0_head_tag_dim),
@@ -635,7 +664,9 @@ module FabricMerge_formal (
     .lanes_1_slots_0_head_last(lanes_1_slots_0_head_last),
     .lanes_1_slots_0_body(lanes_1_slots_0_body),
     .lanes_2_slots_0_head_tag_wave(lanes_2_slots_0_head_tag_wave),
-    .lanes_2_slots_0_head_tag_thread(lanes_2_slots_0_head_tag_thread),
+    .lanes_2_slots_0_head_tag_epoch(lanes_2_slots_0_head_tag_epoch),
+    .lanes_2_slots_0_head_tag_poison(lanes_2_slots_0_head_tag_poison),
+    .lanes_2_slots_0_head_tag_trace(lanes_2_slots_0_head_tag_trace),
     .lanes_2_slots_0_head_tag_lnid(lanes_2_slots_0_head_tag_lnid),
     .lanes_2_slots_0_head_tag_precision(lanes_2_slots_0_head_tag_precision),
     .lanes_2_slots_0_head_tag_dim(lanes_2_slots_0_head_tag_dim),
@@ -644,7 +675,9 @@ module FabricMerge_formal (
     .lanes_2_slots_0_head_last(lanes_2_slots_0_head_last),
     .lanes_2_slots_0_body(lanes_2_slots_0_body),
     .lanes_3_slots_0_head_tag_wave(lanes_3_slots_0_head_tag_wave),
-    .lanes_3_slots_0_head_tag_thread(lanes_3_slots_0_head_tag_thread),
+    .lanes_3_slots_0_head_tag_epoch(lanes_3_slots_0_head_tag_epoch),
+    .lanes_3_slots_0_head_tag_poison(lanes_3_slots_0_head_tag_poison),
+    .lanes_3_slots_0_head_tag_trace(lanes_3_slots_0_head_tag_trace),
     .lanes_3_slots_0_head_tag_lnid(lanes_3_slots_0_head_tag_lnid),
     .lanes_3_slots_0_head_tag_precision(lanes_3_slots_0_head_tag_precision),
     .lanes_3_slots_0_head_tag_dim(lanes_3_slots_0_head_tag_dim),
@@ -686,7 +719,9 @@ module FabricMerge_formal (
                       io_consumer_payload_head_tag_dim,
                       io_consumer_payload_head_tag_precision,
                       io_consumer_payload_head_tag_lnid,
-                      io_consumer_payload_head_tag_thread,
+                      io_consumer_payload_head_tag_epoch,
+                      io_consumer_payload_head_tag_poison,
+                      io_consumer_payload_head_tag_trace,
                       io_consumer_payload_head_tag_wave}),
     .strb           ({io_push_3_strb, io_push_2_strb, io_push_1_strb, io_push_0_strb}),
     .stall          ({io_push_3_stall, io_push_2_stall, io_push_1_stall, io_push_0_stall}),
@@ -697,7 +732,9 @@ module FabricMerge_formal (
                       io_push_0_result_head_tag_dim,
                       io_push_0_result_head_tag_precision,
                       io_push_0_result_head_tag_lnid,
-                      io_push_0_result_head_tag_thread,
+                      io_push_0_result_head_tag_epoch,
+                      io_push_0_result_head_tag_poison,
+                      io_push_0_result_head_tag_trace,
                       io_push_0_result_head_tag_wave}),
     .push_pay_1     ({io_push_1_result_body,
                       io_push_1_result_head_last,
@@ -706,7 +743,9 @@ module FabricMerge_formal (
                       io_push_1_result_head_tag_dim,
                       io_push_1_result_head_tag_precision,
                       io_push_1_result_head_tag_lnid,
-                      io_push_1_result_head_tag_thread,
+                      io_push_1_result_head_tag_epoch,
+                      io_push_1_result_head_tag_poison,
+                      io_push_1_result_head_tag_trace,
                       io_push_1_result_head_tag_wave}),
     .push_pay_2     ({io_push_2_result_body,
                       io_push_2_result_head_last,
@@ -715,7 +754,9 @@ module FabricMerge_formal (
                       io_push_2_result_head_tag_dim,
                       io_push_2_result_head_tag_precision,
                       io_push_2_result_head_tag_lnid,
-                      io_push_2_result_head_tag_thread,
+                      io_push_2_result_head_tag_epoch,
+                      io_push_2_result_head_tag_poison,
+                      io_push_2_result_head_tag_trace,
                       io_push_2_result_head_tag_wave}),
     .push_pay_3     ({io_push_3_result_body,
                       io_push_3_result_head_last,
@@ -724,7 +765,9 @@ module FabricMerge_formal (
                       io_push_3_result_head_tag_dim,
                       io_push_3_result_head_tag_precision,
                       io_push_3_result_head_tag_lnid,
-                      io_push_3_result_head_tag_thread,
+                      io_push_3_result_head_tag_epoch,
+                      io_push_3_result_head_tag_poison,
+                      io_push_3_result_head_tag_trace,
                       io_push_3_result_head_tag_wave}),
     .face_0         ({lanes_0_slots_0_body,
                       lanes_0_slots_0_head_last,
@@ -733,7 +776,9 @@ module FabricMerge_formal (
                       lanes_0_slots_0_head_tag_dim,
                       lanes_0_slots_0_head_tag_precision,
                       lanes_0_slots_0_head_tag_lnid,
-                      lanes_0_slots_0_head_tag_thread,
+                      lanes_0_slots_0_head_tag_epoch,
+                      lanes_0_slots_0_head_tag_poison,
+                      lanes_0_slots_0_head_tag_trace,
                       lanes_0_slots_0_head_tag_wave}),
     .face_1         ({lanes_1_slots_0_body,
                       lanes_1_slots_0_head_last,
@@ -742,7 +787,9 @@ module FabricMerge_formal (
                       lanes_1_slots_0_head_tag_dim,
                       lanes_1_slots_0_head_tag_precision,
                       lanes_1_slots_0_head_tag_lnid,
-                      lanes_1_slots_0_head_tag_thread,
+                      lanes_1_slots_0_head_tag_epoch,
+                      lanes_1_slots_0_head_tag_poison,
+                      lanes_1_slots_0_head_tag_trace,
                       lanes_1_slots_0_head_tag_wave}),
     .face_2         ({lanes_2_slots_0_body,
                       lanes_2_slots_0_head_last,
@@ -751,7 +798,9 @@ module FabricMerge_formal (
                       lanes_2_slots_0_head_tag_dim,
                       lanes_2_slots_0_head_tag_precision,
                       lanes_2_slots_0_head_tag_lnid,
-                      lanes_2_slots_0_head_tag_thread,
+                      lanes_2_slots_0_head_tag_epoch,
+                      lanes_2_slots_0_head_tag_poison,
+                      lanes_2_slots_0_head_tag_trace,
                       lanes_2_slots_0_head_tag_wave}),
     .face_3         ({lanes_3_slots_0_body,
                       lanes_3_slots_0_head_last,
@@ -760,7 +809,9 @@ module FabricMerge_formal (
                       lanes_3_slots_0_head_tag_dim,
                       lanes_3_slots_0_head_tag_precision,
                       lanes_3_slots_0_head_tag_lnid,
-                      lanes_3_slots_0_head_tag_thread,
+                      lanes_3_slots_0_head_tag_epoch,
+                      lanes_3_slots_0_head_tag_poison,
+                      lanes_3_slots_0_head_tag_trace,
                       lanes_3_slots_0_head_tag_wave}),
     .cnt            ({lanes_3_cnt, lanes_2_cnt, lanes_1_cnt, lanes_0_cnt}),
     .full           ({lanes_3_full, lanes_2_full, lanes_1_full, lanes_0_full}),
@@ -782,7 +833,7 @@ endmodule
 `else  // bind 를 실제 적용하는 도구용 — 결선은 위 래퍼와 1:1 동일
 
 // ── bind — 대상 내부 스코프에 부착. 연접 순서는 merge_contribs_* 와 동일:
-//    {body, last, total, seq, dim, precision, lnid, thread, wave} ──────────
+//    {body, last, total, seq, dim, precision, lnid, epoch, poison, trace, wave} ──
 bind FabricMerge FabricMerge_props u_props (
   .clk            (clk),
   .reset          (reset),
@@ -798,7 +849,9 @@ bind FabricMerge FabricMerge_props u_props (
                     io_consumer_payload_head_tag_dim,
                     io_consumer_payload_head_tag_precision,
                     io_consumer_payload_head_tag_lnid,
-                    io_consumer_payload_head_tag_thread,
+                    io_consumer_payload_head_tag_epoch,
+                    io_consumer_payload_head_tag_poison,
+                    io_consumer_payload_head_tag_trace,
                     io_consumer_payload_head_tag_wave}),
   .strb           ({io_push_3_strb, io_push_2_strb, io_push_1_strb, io_push_0_strb}),
   .stall          ({io_push_3_stall, io_push_2_stall, io_push_1_stall, io_push_0_stall}),
@@ -809,7 +862,9 @@ bind FabricMerge FabricMerge_props u_props (
                     io_push_0_result_head_tag_dim,
                     io_push_0_result_head_tag_precision,
                     io_push_0_result_head_tag_lnid,
-                    io_push_0_result_head_tag_thread,
+                    io_push_0_result_head_tag_epoch,
+                    io_push_0_result_head_tag_poison,
+                    io_push_0_result_head_tag_trace,
                     io_push_0_result_head_tag_wave}),
   .push_pay_1     ({io_push_1_result_body,
                     io_push_1_result_head_last,
@@ -818,7 +873,9 @@ bind FabricMerge FabricMerge_props u_props (
                     io_push_1_result_head_tag_dim,
                     io_push_1_result_head_tag_precision,
                     io_push_1_result_head_tag_lnid,
-                    io_push_1_result_head_tag_thread,
+                    io_push_1_result_head_tag_epoch,
+                    io_push_1_result_head_tag_poison,
+                    io_push_1_result_head_tag_trace,
                     io_push_1_result_head_tag_wave}),
   .push_pay_2     ({io_push_2_result_body,
                     io_push_2_result_head_last,
@@ -827,7 +884,9 @@ bind FabricMerge FabricMerge_props u_props (
                     io_push_2_result_head_tag_dim,
                     io_push_2_result_head_tag_precision,
                     io_push_2_result_head_tag_lnid,
-                    io_push_2_result_head_tag_thread,
+                    io_push_2_result_head_tag_epoch,
+                    io_push_2_result_head_tag_poison,
+                    io_push_2_result_head_tag_trace,
                     io_push_2_result_head_tag_wave}),
   .push_pay_3     ({io_push_3_result_body,
                     io_push_3_result_head_last,
@@ -836,7 +895,9 @@ bind FabricMerge FabricMerge_props u_props (
                     io_push_3_result_head_tag_dim,
                     io_push_3_result_head_tag_precision,
                     io_push_3_result_head_tag_lnid,
-                    io_push_3_result_head_tag_thread,
+                    io_push_3_result_head_tag_epoch,
+                    io_push_3_result_head_tag_poison,
+                    io_push_3_result_head_tag_trace,
                     io_push_3_result_head_tag_wave}),
   .face_0         ({lanes_0_slots_0_body,
                     lanes_0_slots_0_head_last,
@@ -845,7 +906,9 @@ bind FabricMerge FabricMerge_props u_props (
                     lanes_0_slots_0_head_tag_dim,
                     lanes_0_slots_0_head_tag_precision,
                     lanes_0_slots_0_head_tag_lnid,
-                    lanes_0_slots_0_head_tag_thread,
+                    lanes_0_slots_0_head_tag_epoch,
+                    lanes_0_slots_0_head_tag_poison,
+                    lanes_0_slots_0_head_tag_trace,
                     lanes_0_slots_0_head_tag_wave}),
   .face_1         ({lanes_1_slots_0_body,
                     lanes_1_slots_0_head_last,
@@ -854,7 +917,9 @@ bind FabricMerge FabricMerge_props u_props (
                     lanes_1_slots_0_head_tag_dim,
                     lanes_1_slots_0_head_tag_precision,
                     lanes_1_slots_0_head_tag_lnid,
-                    lanes_1_slots_0_head_tag_thread,
+                    lanes_1_slots_0_head_tag_epoch,
+                    lanes_1_slots_0_head_tag_poison,
+                    lanes_1_slots_0_head_tag_trace,
                     lanes_1_slots_0_head_tag_wave}),
   .face_2         ({lanes_2_slots_0_body,
                     lanes_2_slots_0_head_last,
@@ -863,7 +928,9 @@ bind FabricMerge FabricMerge_props u_props (
                     lanes_2_slots_0_head_tag_dim,
                     lanes_2_slots_0_head_tag_precision,
                     lanes_2_slots_0_head_tag_lnid,
-                    lanes_2_slots_0_head_tag_thread,
+                    lanes_2_slots_0_head_tag_epoch,
+                    lanes_2_slots_0_head_tag_poison,
+                    lanes_2_slots_0_head_tag_trace,
                     lanes_2_slots_0_head_tag_wave}),
   .face_3         ({lanes_3_slots_0_body,
                     lanes_3_slots_0_head_last,
@@ -872,7 +939,9 @@ bind FabricMerge FabricMerge_props u_props (
                     lanes_3_slots_0_head_tag_dim,
                     lanes_3_slots_0_head_tag_precision,
                     lanes_3_slots_0_head_tag_lnid,
-                    lanes_3_slots_0_head_tag_thread,
+                    lanes_3_slots_0_head_tag_epoch,
+                    lanes_3_slots_0_head_tag_poison,
+                    lanes_3_slots_0_head_tag_trace,
                     lanes_3_slots_0_head_tag_wave}),
   .cnt            ({lanes_3_cnt, lanes_2_cnt, lanes_1_cnt, lanes_0_cnt}),
   .full           ({lanes_3_full, lanes_2_full, lanes_1_full, lanes_0_full}),

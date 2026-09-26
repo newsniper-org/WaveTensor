@@ -79,7 +79,9 @@ module CompletionUnit_props (
   input wire          io_ready,
   input wire          io_comp_valid,
   input wire [31:0]   io_comp_tag_wave,
-  input wire [15:0]   io_comp_tag_thread,
+  input wire [3:0]    io_comp_tag_epoch,
+  input wire          io_comp_tag_poison,
+  input wire          io_comp_tag_trace,
   input wire [15:0]   io_comp_tag_lnid,
   input wire [7:0]    io_comp_tag_precision,
   input wire [7:0]    io_comp_tag_dim,
@@ -144,7 +146,10 @@ module CompletionUnit_props (
   // 내용은 f_slot 에 대한 마지막 기입과 같다.
   reg        f_written = 1'b0;
   reg [31:0] s_wave;
-  reg [15:0] s_thread, s_lnid;
+  reg [15:0] s_lnid;
+  reg [3:0]  s_epoch;
+  reg        s_trace;
+  reg        s_poison_in; // 입력 poison — 기대값에 *쓰지 않는다* (증인 W9 의 전건 전용)
   reg [7:0]  s_prec, s_dim, s_base, s_total;
   always @(posedge clk) begin
     if (reset) begin
@@ -152,7 +157,9 @@ module CompletionUnit_props (
     end else if (f_push && (f_tail == f_slot)) begin
       f_written <= 1'b1;
       s_wave    <= io_comp_tag_wave;
-      s_thread  <= io_comp_tag_thread;
+      s_epoch   <= io_comp_tag_epoch;
+      s_trace   <= io_comp_tag_trace;
+      s_poison_in <= io_comp_tag_poison;
       s_lnid    <= io_comp_tag_lnid;
       s_prec    <= io_comp_tag_precision;
       s_dim     <= io_comp_tag_dim;
@@ -164,7 +171,8 @@ module CompletionUnit_props (
   // ── 정본 배치의 독립 재구성 (부록 E.5.1 직렬화 + E.5.2 kind + E.5.3 배치) ──
   // +0x00 CD_KIND   [7:0] kind = 0x01 · [31:8] 예약 = 0
   // +0x04 CD_TAG0   [31:0] wave 번호
-  // +0x08 CD_TAG1   [31:16] 스레드 ID · [15:0] LNID
+  // +0x08 CD_TAG1   [31:28] 에포크 · [27] poison(장치 저작 — 원천 0건이라 0) · [26] trace ·
+  //                 [25:16] 예약 = 0 · [15:0] LNID   (태그 코덱 전파 파도 — D2c 수리)
   // +0x0C CD_TAG2   [31:16] 예약 = 0 · [15:8] 정밀도 · [7:0] 차원
   // +0x10 CD_BASE   [7:0] 결속 LBID · [31:8] 예약 = 0
   // +0x14 CD_TOTAL  [31:0] 조각 선언 총개수 (폭 미확정 값의 그릇 — 상위 0 확장)
@@ -174,7 +182,7 @@ module CompletionUnit_props (
     case (i)
       3'd0:    f_exp = {24'd0, KIND_COMPLETION};
       3'd1:    f_exp = s_wave;
-      3'd2:    f_exp = {s_thread, s_lnid};
+      3'd2:    f_exp = {s_epoch, 1'b0, s_trace, 10'd0, s_lnid}; // 입력 poison 을 반향하지 않는다
       3'd3:    f_exp = {16'd0, s_prec, s_dim};
       3'd4:    f_exp = {24'd0, s_base};
       3'd5:    f_exp = {24'd0, s_total};
@@ -201,6 +209,22 @@ module CompletionUnit_props (
       if ($past(f_winRead) && ($past(f_head) == f_slot) && $past(f_written)) begin
         assert (io_rvalid);
         assert (io_rdata == f_exp($past(f_winWord)));
+      end
+    end
+  end
+
+  // ══ 축 2b — CD_TAG1 의 장치 저작 · 예약 자리 (E.5.3 · 1.4.4 poison 6항 · D2c) ═══
+  // 축 2 의 등식이 이미 워드 전량을 재지만, D2c 의 두 비트 부류를 이름으로 남긴다 —
+  // [27] poison 은 장치 저작이고 원천이 0건이라 0 (입력 사이드밴드의 poison 을 반향하면
+  // 반례), [25:16] 은 예약 = 0 (옛 코덱은 스레드 ID 상위 비트를 여기 냈다). 그리고 [26]
+  // trace 와 [31:28] 에포크는 호스트 저작이라 *보존*된다 (1.4.4 「trace 는 보존된다」).
+  always @(posedge clk) begin
+    if (f_ok) begin
+      if ($past(f_winRead) && ($past(f_head) == f_slot) && $past(f_written) && ($past(f_winWord) == 3'd2)) begin
+        a_cd_tag1_poison0: assert (io_rdata[27] == 1'b0);
+        a_cd_tag1_rsv0:    assert (io_rdata[25:16] == 10'd0);
+        a_cd_tag1_trace:   assert (io_rdata[26] == s_trace);
+        a_cd_tag1_epoch:   assert (io_rdata[31:28] == s_epoch);
       end
     end
   end
@@ -315,6 +339,10 @@ module CompletionUnit_props (
   // W6 ← MmioPage.unaligned_rejected — 판정 T2 (a): 비정렬 쓰기가 거절 sticky 를 처음 세운다.
   // W7 ← MmioPage.nocons_rejected — 판정 T1-i β: CQ_BASE_HI(+0x04) 정렬 쓰기가 거절 sticky 를
   //      처음 세운다 (소비 회로 없는 RW 워드 — 옛 처분은 조용한 흡수였다).
+  // W9 ← CompletionUnit.cd_tag1_device_authored · CompletionUnit.desc_word_layout — 입력 사이드밴드의
+  //      poison 이 1 인 항목의 CD_TAG1 을 되읽는다. 이것 없이는 a_cd_tag1_poison0 이 「입력 poison 이
+  //      늘 0 인 세계」에서 자명하다 (D2c 이전 기계를 가를 전건).
+  // W10 ← CompletionUnit.cd_tag1_device_authored — trace 가 1 인 항목의 CD_TAG1 되읽기 (보존 방향 전건).
   // W8 ← CompletionUnit.unaligned_read_zero — 비어 있지 않은 링의 창을 비정렬로 읽는다 (정렬이면 링 항목
   //      워드가 나올 자리 — 「0 을 내는 읽기」가 빈 창 · 창 밖에서만 서는 공허를 막는다).
   always @(posedge clk) begin
@@ -327,6 +355,8 @@ module CompletionUnit_props (
       w6_unal_wr:      cover (io_faultBadWrite && !$past(io_faultBadWrite) && $past(f_unalW));
       w7_base_wr:      cover (io_faultBadWrite && !$past(io_faultBadWrite) && $past(f_wAl && (io_addr == 8'h04)));
       w8_unal_rd:      cover ($past(f_acceptR && !f_aligned && f_isWin && !f_empty) && io_rvalid);
+      w9_poison_in:    cover ($past(f_winRead) && ($past(f_head) == f_slot) && $past(f_written) && ($past(f_winWord) == 3'd2) && s_poison_in);
+      w10_trace_in:    cover ($past(f_winRead) && ($past(f_head) == f_slot) && $past(f_written) && ($past(f_winWord) == 3'd2) && s_trace && (s_epoch != 4'd0));
     end
   end
 endmodule
@@ -341,7 +371,9 @@ module CompletionUnit_formal (
   input wire        io_rstrobe,
   input wire        io_comp_valid,
   input wire [31:0] io_comp_tag_wave,
-  input wire [15:0] io_comp_tag_thread,
+  input wire [3:0]  io_comp_tag_epoch,
+  input wire        io_comp_tag_poison,
+  input wire        io_comp_tag_trace,
   input wire [15:0] io_comp_tag_lnid,
   input wire [7:0]  io_comp_tag_precision,
   input wire [7:0]  io_comp_tag_dim,
@@ -373,7 +405,9 @@ module CompletionUnit_formal (
     .io_ready(io_ready),
     .io_comp_valid(io_comp_valid),
     .io_comp_tag_wave(io_comp_tag_wave),
-    .io_comp_tag_thread(io_comp_tag_thread),
+    .io_comp_tag_epoch(io_comp_tag_epoch),
+    .io_comp_tag_poison(io_comp_tag_poison),
+    .io_comp_tag_trace(io_comp_tag_trace),
     .io_comp_tag_lnid(io_comp_tag_lnid),
     .io_comp_tag_precision(io_comp_tag_precision),
     .io_comp_tag_dim(io_comp_tag_dim),
@@ -405,7 +439,9 @@ module CompletionUnit_formal (
     .io_ready(io_ready),
     .io_comp_valid(io_comp_valid),
     .io_comp_tag_wave(io_comp_tag_wave),
-    .io_comp_tag_thread(io_comp_tag_thread),
+    .io_comp_tag_epoch(io_comp_tag_epoch),
+    .io_comp_tag_poison(io_comp_tag_poison),
+    .io_comp_tag_trace(io_comp_tag_trace),
     .io_comp_tag_lnid(io_comp_tag_lnid),
     .io_comp_tag_precision(io_comp_tag_precision),
     .io_comp_tag_dim(io_comp_tag_dim),

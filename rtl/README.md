@@ -456,7 +456,7 @@ E.5.1 세 워드 직렬화의 대상이 아니다. 명령 디스크립터는 *�
 |---|---|---|
 | `+0x00` | CD_KIND `[7:0]`=`0x01` · `[31:8]` 예약 0 | SD_KIND `[7:0]`=`0x02` · `[31:8]` 예약 0 |
 | `+0x04` | CD_TAG0 `[31:0]` wave | SD_TAG0 — 같음 |
-| `+0x08` | CD_TAG1 `[31:16]` 스레드 · `[15:0]` LNID | SD_TAG1 — 같음 |
+| `+0x08` | CD_TAG1 `[31:28]` 에포크 · `[27]` poison (장치 저작 — 오늘 상수 0) · `[26]` trace · `[25:16]` 예약 0 · `[15:0]` LNID | SD_TAG1 — 같은 자리 (poison · 예약은 엄격 0) |
 | `+0x0C` | CD_TAG2 `[31:16]` 예약 · `[15:8]` 정밀도 · `[7:0]` 차원 | SD_TAG2 — 같음 |
 | `+0x10` | CD_BASE `[7:0]` 결속 LBID | SD_BODY_LO 본문 주소 `[31:0]` |
 | `+0x14` | CD_TOTAL `[31:0]` 조각 총개수 (그릇) | SD_BODY_HI 본문 주소 `[63:32]` |
@@ -1067,7 +1067,7 @@ E.12 1항 해설이 「요구를 거는 형태(스트로브·핸드셰이크)는
 열고 표에 *없는* 워드의 예약 정책은 새로 단언한다(아래 T1 · T3). (iii) 절단 정의역이 넓어져도
 무결성 핀이 울지 않았다(15번째 인스턴스가 조용히 절단됐다) — expose 앞 계수 14 를 더했다.
 
-### 측정된 결함 — D1 · D2 는 파도 4 가 닫았다 · D2b · D2c 는 같은 뿌리의 새 결함
+### 측정된 결함 — D1 · D2 는 파도 4 가 닫았다 · D2b · D2c 는 태그 코덱 전파 파도가 닫았다
 
 - **D1 — 수락되지 않은 읽기에 응답이 선다 — 해소 (파도 4 페이지 통합, 2026-09-26 · 수리 갈래 (b) — 끝 장 「페이지 처분」).** `0xF00`–`0xF07` 읽기에서 `ready` = `fps.loadReady`
   = 0 (선택자 표 초기화 소거 구간)인데도 다음 사이클 `rvalid` 가 선다 — 매핑 읽기와 예약 읽기
@@ -1099,7 +1099,7 @@ E.12 1항 해설이 「요구를 거는 형태(스트로브·핸드셰이크)는
   기입을 surfOpen 에서 surfMust 로 옮기고 `a_arm_rej1` · W28 을 들였다. cocotb
   `abort_tag1_word_legality`(사유 넷 · 에포크 수락 · 거절의 무동작 · 무장 미완 발화의 무시)가 끝-끝
   값 수준이다. 변이 실측은 `AbortStaging/props.sby` · `Wt64Top/assembly.sby` 머리 역-변이 표.
-- **D2b — 재조립·소거 매칭 키가 poison · trace 를 빼지 않는다 (파도 4 등재 · 구조 판독, 측정 전).**
+- **D2b — 재조립·소거 매칭 키가 poison · trace 를 빼지 않는다 — 해소 (태그 코덱 전파 파도, 2026-09-26 · 아래 「태그 코덱 전파 파도」 절). 아래는 등재 원문이다 (파도 4 등재 · 구조 판독).**
   정본은 키에서 두 비트를 뺀다 —
   04-ext-payload.typ:307 「*그러나 키는 태그 전량이 아니다 — poison 과 trace 는 빠진다.*」
   e-defined.typ:1739 「⇒ 키는 wave · 에포크 · LNID · 정밀도 · 차원이다.」
@@ -1111,13 +1111,13 @@ E.12 1항 해설이 「요구를 거는 형태(스트로브·핸드셰이크)는
   **호스트 가시 귀결**: 사이드밴드 태그의 trace 자리가 선 채 열린 문맥은 정본이 `[26]` = 0 을 강제하는
   스테이징으로 일치시킬 수 없다 — 그 소거는 「없는 태그」로 조용히 무시되고 ABORT_COUNT 도 오르지
   않는다 (E.12 3항의 오적용). D2 수리가 이것을 만든 것은 아니지만 비정본 우회로를 없애 표면에 낸다.
-- **D2c — 완료 디스크립터 CD_TAG1 `[31:16]` 이 사이드밴드를 반향한다 (파도 4 등재 · 구조 판독).**
+- **D2c — 완료 디스크립터 CD_TAG1 `[31:16]` 이 사이드밴드를 반향한다 — 해소 (태그 코덱 전파 파도, 2026-09-26). 아래는 등재 원문이다 (파도 4 등재 · 구조 판독).**
   `CompletionUnit` 이 `Types.Tag.toWords` 로 태그를 직렬화하고 그 코덱이 `thread ## lnid` 라 `[27]`
   (poison — 장치 저작이어야 한다)과 `[25:16]`(예약 = 0 — E.5.3)이 입력 `io.instr.tag.thread` 의 비트를
   그대로 낸다. 정본 3.9 · E.1.3 의 옛 「두 비트는 상수 0」 서술은 사이드밴드가 0 일 때만 참이었고 —
   파도 4 spec 커밋이 그 사실을 정정했다(03-hiu 3.9 · E.1.3 CD_TAG1 행 — 판정이 아니라 사실 정정). 위 결정 5
   표의 「CD_TAG1 `[31:16]` 스레드」 행도 같은 파도에서 고친다.
-- **D2b · D2c 의 수리 계획 — 태그 코덱 전파 파도** (정본 01-isa-asm 「RTL 반영은 별도 파도」).
+- **D2b · D2c 의 수리 계획 — 태그 코덱 전파 파도** (정본 01-isa-asm 「RTL 반영은 별도 파도」) — 착지 (아래 절이 계획과 달라진 자리를 적는다).
   막힘이 아니다 — 파도 4 가 `Common.scala` 를 편집하지 않은 것은 병렬 파도의 파일 소유권 규칙이었지
   사용자 지시가 아니다. 순서는 6.3 그대로: (1) 선-formal — `Payload.tla` 의 `Tags` 를
   (Key × Trace × Poison) 으로 정제하고 `key_is_tag` 가드의 비교를 Key 투영으로 바꾼다 (새 증인: trace
@@ -1134,6 +1134,53 @@ E.12 1항 해설이 「요구를 거는 형태(스트로브·핸드셰이크)는
   전수 `rtl-postformal`(50분+) · `rtl-sim` 전 스위트. 끝-끝 cocotb 는 ACCTGT(EH 0x9)가 ISA json
   `eh_codes` 에 없어 어셈블러 단일 출처 규율상 문맥 개시를 방출할 수 없다 — 그 공백이 먼저 닫히거나
   형식이 유일한 측정원으로 남는다.
+
+### 태그 코덱 전파 파도 — D2b · D2c 해소 (2026-09-26)
+
+정본 1.4.4 의 스레드 ID 폐지 개정(fa18169)과 E.5.1 TAG1 재배분이 재구현 코덱에 처음 닿았다.
+순서는 6.3 그대로다 — 선-formal run 로그가 RTL 편집보다 먼저 섰다.
+
+**(1) 선-formal — `Payload.tla` Tags 정제.** `Tags == Keys × Traces × Poisons`(키 투영은 wave · 에포크 ·
+LNID · 정밀도 · 차원을 한 정수로 접는다). 문맥이 쥔 태그는 `(ctxTag · ctxSide)` 이고 조각은 자기 키에 *아무*
+(trace, poison) 을 실어 온다 — poison 은 값마다 장치가 저작하므로 한 조각열 안에서 달라도 정상이다. 소거는
+언제나 Clean 을 싣는다(스테이징이 두 비트를 0 으로 못박는다). 새 가드 `key_drops_side` 가 세 매칭(개시 ·
+조각 조회 · 소거) 전부를 키 투영으로 만든다. 새 속성 `Inv_AbortReachesKey`(소거 뒤 그 *키*의 문맥이 남지
+않는다 — 지상 진리 어휘 `ctxTag` 만 쓴다). run 여섯: 좋은 모델 둘(trace 축 39.8만 distinct · poison 축 같은
+수 — 두 비트를 함께 켜면 전이 분기가 4배라 기저가 실측 폭발해 한 축씩 켠다) · 삭제 `key_drops_side` →
+`Inv_AbortReachesKey` 위반(1,199 distinct) · 증인 `Witness_NoSideFragHit` · `Witness_NoSideAbortHit` 반증 ·
+오늘의 RTL 짝 둘(번들 통비교 = 가드 삭제, trace 만 · poison 만) → `Prop_NoSilentOverwrite` 위반 — trace
+(또는 poison)만 다른 도착이 같은 키의 둘째 문맥을 열어 같은 구간을 조용히 덮는다. D2b 등재가 적은 소거 절반
+위에 **조각 조회 절반의 귀결**(정본 04-ext-payload 4.3 함정의 재발)이 모델에서 처음 드러났다. 다른 가드의 run 은 Traces =
+Poisons = {0} 의 접힌 판(1차 판과 같은 기계)으로 돈다. 전량 배터리 524/524 선언대로 (컨테이너 · 2026-09-26 · `run.sh` 종료 코드 0 · 이탈 0 — 부록 D 문장과 같은 판).
+
+**(2) RTL.** `Common.scala` `Types.Tag` 번들 = wave · epoch(4) · poison · trace · lnid · precision · dim —
+**70b, 예약 10b 는 번들에 없다**(계획은 예약 필드를 두자 했으나 `Wt64Top` 의 사이드밴드 논증 「번들 포트에는 예약
+여백이 없으므로 검사받지 않고 통과하는 비트가 생기지 않는다」를 따랐다). **정본 E.5.4 1항의 「80비트 태그」와의 대조**: 장치 안 사이드밴드는 80b 태그의 예약 10b 를 *구성상* 싣지 않는다 — 그 비트는 E.5.4 소비 검사가 0 을 요구하는 자리라 검사 뒤에는 언제나 0 이고(01-isa-asm 「태그 레이아웃과 필드 규범」 절 「명령 디스크립터에서 이미 검사됐으므로 별도의 검사 지점을 두지 않는다」), 돌려주는 표면(CD_TAG1 · ABORT_TAG1)이 0 을 다시 채운다. 그래서 80b 문면은 *의미상* 충족되며 규범 문면을 바꿀 일이 아니다 — 폭 불일치를 읽는 Y4 서명자가 걸려 넘어지지 않도록 여기 적는다(검토 2026-09-27). 소비자(E.5.4 · UNWIRED)가 배선되는 날 그 검사는 80b 워드열 쪽에서 선다. 「스레드」 이름은 코덱 · 포트 어디에도
+남지 않는다(정본 1.4.4 폐지 규범). 코덱: `TAG1_*_MASK` 필드 마스크 · `key`/`keyEq` 투영 · `toWords(t, poison)`
+— **poison 은 인자**다(돌려주는 표면에서 장치 저작, 입력 비트를 반향하지 않는다) · TAG1 `[25:16]` 은 0 기입 ·
+`reservedNonZero` 가 TAG1 예약도 본다 · `BUNDLE_W`(MemOrderGate 불투명 기술자 폭이 `TAG_W` 가 아니라 이것을
+쓴다 — 기술자 128 → 118b). `Reassembly` 의 `fr.hit` · `op.clash` · `ab.hit` 이 `keyEq` 를 쓴다(GUARD-MAP
+`Payload.key_drops_side` 한 줄 추가 · `key_is_tag` 문면 정정). `CompletionUnit` 은 `devPoison = False`(원천
+0건 — 정본 3.9 · E.1.3). `Wt64Top.A_TAG1_RSV` 가 코덱 마스크 poison ‖ trace ‖ 예약에서 끌려오고 elaborate
+`require` 가 `0x0FFF0000` 을 못박는다. `Common.scala` 가 길어져 `when_Common_l258/259` → `l336/337` —
+하네스 매크로 `WT_STICKY_SET_FAULT` 한 자리를 옮겼다(`lint_generated_names` OK). 생성물 변화는 13편(대부분
+그 이름 변화).
+
+**(3) 후-formal.** 새 단언: `Reassembly_props.sv` `p_key_hit_0..3` · `p_key_abhit_0..3` · `p_key_clash`(세 매칭
+== 활성 ∧ 필드별 키 등식 — 넓은 연접 비교를 재인용하지 않는다) · 증인 W22(조각) · W23(소거 — 0 을 싣는 소거가
+trace · poison 문맥을 지운다) · W24(개시). `CompletionUnit_props.sv` 축 2 기대값 = `{에포크, 0, trace, 10'd0,
+LNID}` + `a_cd_tag1_poison0 · rsv0 · trace · epoch` · 증인 W9(입력 poison = 1) · W10(trace = 1). `AbortStaging_props.sv`
+`t_tag1_val` 포트 갱신 + `t_tag1_epoch` · `a_tag_pt_zero`(소거가 싣는 poison · trace 는 언제나 0). 나머지 하네스
+(RouteJudge · RouteMmio · FabricMerge 151b 연접 · Wt64Top · cocotb `present`)는 포트 이름만 따라갔다.
+변이 사살(비상주 — 생성물 사본에 한 줄씩, 표는 각 `.sby` 머리): Reassembly RM1~RM4 · X3~X5(문맥 ≠ 0 — `ab_hit_1` trace · `fr_hit_1` poison · 문맥 1 `op_clash` poison) · CompletionUnit CM1~CM3 · AbortStaging AM1 · AM2, 열두 다 rc=2. **엔진은 각 게이트 자신의 bmc 태스크다** — Reassembly 는 `abc bmc3`(+ `aigsmt z3`), 나머지 둘은 `smtbmc z3`. Reassembly 의 bmc 는 검토 처방으로 `smtbmc z3` 에서 바꿨다: z3 는 무변이 GREEN 에 8분 5초였고 X3~X5 에서 step 2 에 웨지해 240 초 타임아웃으로 끝났다 — 게이트가 회귀를 「안 끝남」으로 위장하는 솔버 실명 함정이다. `abc bmc3` 는 일곱 변이를 프레임 3 · 1~2 초에 잡고 무변이 GREEN 도 13 초다(2026-09-27 재실측). prove(k-귀납 z3, 무변이 50 초)는 두되 `timeout 900` 이 웨지를 비-PASS 로 드러낸다. 역색인 16 태스크 재스윕.
+
+**(4) 시험.** cocotb 끝-끝 CD_TAG1 점은 **불가**다 — 완료 항목은 재조립 인도에서만 나오고 인도는 ACCTGT(EH
+0x9) 개시를 요구하는데 ISA json `eh_codes` 에 ACCTGT 가 없어 어셈블러 단일 출처 규율상 방출할 수 없다(소거 E2E 와
+같은 공백). 형식이 유일한 측정원이다.
+
+**(5) 남은 것.** poison 의 장치 안 *전파*(값 축 논리합 — 1.4.4 poison 2항)는 원천이 0건이라 이 파도의 몫이
+아니다 — 문맥 태그의 poison 은 개방 조각 값 그대로이고 뒤의 poison 조각이 합쳐지지 않는다(Payload.tla 「덮지
+않는 것」). 명령 사이드밴드의 poison · 예약 엄격 거절은 명령 디스크립터 소비자(E.5.4 · UNWIRED)의 몫이다.
 
 ### 재조립 문맥 소거의 문 — `AbortSurface.tla` (파도 4, 2026-09-26)
 

@@ -188,8 +188,12 @@
 #   ⑤ 양성 대조 — 절단 의존 증인 w10_cap2_gate 의 콘에는 절단 핀이 있다 (콘 판별이
 #      살아 있다는 확인).
 #   ⑥ 절단 핀 계수 — 조립이 구동하는 절단 입력 핀(Wt64Top 의 새 출력 포트 · 인스턴스마다
-#      clk·reset 제외) 253 · 절단 출력 핀(새 입력 포트) 213 · 그중 검사자가 묶는 것 101 · 64
-#      (`c:chk %ci1` ∩ 포트). 아래 「재지 않는 핀 152」는 253 − 101 이고 기계가 핀한다 —
+#      clk·reset 제외) 271 · 절단 출력 핀(새 입력 포트) 219 · 그중 검사자가 묶는 것 103 · 64
+#      (`c:chk %ci1` ∩ 포트). 아래 「재지 않는 핀 168」은 271 − 103 이고 기계가 핀한다 —
+#      (태그 코덱 전파 파도: 253 → 271 · 213 → 219 는 태그 번들의 thread 16b 한 핀이 epoch · poison ·
+#      trace 세 핀이 된 것 — 절단 입력 태그 아홉(rj tokIn · reasm open · frag · abort · merge push×4 ·
+#      cq comp) × 2 · 절단 출력 태그 셋(rj tokOut · reasm deliver · merge consumer) × 2 · 101 → 103 은
+#      reasm abort 태그 두 핀 — a_fire_route)
 #      (파도 3: 252 → 253 은 install.v · 80 → 91 은 install 아홉 + flush 둘 · 59 → 60 은
 #      install.ready — 최상위 IO 에서 MMIO 문으로 원천이 옮겨 와 처음 묶였다 · 파도 4 3B: 209 → 213 은
 #      hiu 의 io 번들 밖 출력 넷(installSlotFree · missStall · missPart · missVpn) · 60 → 64 는
@@ -220,13 +224,13 @@
 #
 # rtl/README.md 끝 장은 이 절을 가리킬 뿐 따로 적지 않고, 이 절은 그 장을 되가리키지
 # 않는다. 여기 없는 조립 계약은 「잰다」가 아니라 이 목록의 누락이다 — 찾으면 여기 더한다.
-#   (a) 명령·결과 데이터 경로의 결선. 조립이 구동하는 절단 입력 핀 253 중 검사자가 묶는
-#       것은 101 이다 (무결성 핀 ⑥). 나머지 152 핀, 인스턴스별:
-#         merge 41 (push×4 결과 payload · strb · consumer_ready) · od 30 (명령 워드 ·
+#   (a) 명령·결과 데이터 경로의 결선. 조립이 구동하는 절단 입력 핀 271 중 검사자가 묶는
+#       것은 103 이다 (무결성 핀 ⑥). 나머지 168 핀, 인스턴스별 (태그 코덱 전파 파도 뒤):
+#         merge 49 (push×4 결과 payload · strb · consumer_ready) · od 30 (명령 워드 ·
 #         슬롯 코드·오프셋·존재 · iValid · iMalformed · iCapAbsent · iExecValid) · hiu 0
 #         (install · flush 는 파도 3 이, req · hostRsp · hold 는 파도 4 W6 a_hiu_pass 가 묶었다) · mog 18 (up×4 · down ready · cfgPreds ·
-#         complete · epochClear) · reasm 17 (frag · open) · walk 15 (명령 워드 · iValid) ·
-#         rj 8 (tokIn) · bank 8 (acquire · write · read) · cq 7 (comp payload: base · tag ·
+#         complete · epochClear) · reasm 21 (frag · open) · walk 15 (명령 워드 · iValid) ·
+#         rj 10 (tokIn) · bank 8 (acquire · write · read) · cq 9 (comp payload: base · tag ·
 #         total) · fps 6 (req) · shared_1 2 (req).
 #       절단 출력 핀도 213 중 64 만 본다. 이 부류의 결선 결함은 세 태스크를 다 통과한다 —
 #       역-변이 탈출 E3 · E4 · E5 · E6 이 실측이다.
@@ -526,7 +530,7 @@
 #   M20   fps_io_bindWr_valid 에 && (! io_mmio_wdata[31]) 추가  ⇒ a_bind_acc
 #   M21   fps_io_bindWr_slot = wdata[23 : 16] → wdata[22 : 15]  ⇒ a_bind_fields
 #   M22   abortArea_isFire = (wordOff == 4'b0011) → 4'b0111  ⇒ a_surf_rise · 격리 a_fire_src
-#   M23   reasm .io_abort_tag_lnid (stg_io_tag_lnid) → (stg_io_tag_thread) (핀만)  ⇒ a_fire_route
+#   M23   reasm .io_abort_tag_lnid (stg_io_tag_lnid) → (stg_io_tag_thread) (핀만)  ⇒ a_fire_route  [thread = 코덱 전파 파도 이전 포트]
 #   M41   hiu .io_missClear (io_faultClear_hiuMiss) → (io_faultClear_hiuPerm) (핀만)  ⇒ a_miss_clr
 #   M42   capSet_0 = reasm_io_capAbsent → fps_io_oCapAbsent  ⇒ a_cap0_lvl
 #   M43   reasm_io_capAbsentClear 의 capWord_io_clrAcc[0] → [1]  ⇒ a_cap0_clr
@@ -554,8 +558,8 @@
 #   M63   faultWords_capStatus = capWord_io_word → 축 [1]·[0] 맞바꿈  ⇒ a_rd_capst
 #   M64   capSet_3 = 1'b0 → fps_io_oCapAbsent  ⇒ a_rd_capb3
 #   M66   mask 거절식의 (maskArea_wr && maskArea_isStatus) → (maskArea_rd && …)  ⇒ a_surf_rise
-#   M67   surf 해제 if(when_Common_l258) → if((when_Common_l258 || io_mmio_rstrobe))  ⇒ a_surf_hold
-#   M68   surf 해제식 when_Common_l258 의 io_mmio_wdata[6] → [5]  ⇒ a_surf_hold · 격리 a_surf_clear
+#   M67   surf 해제 if(when_Common_l258) → if((when_Common_l258 || io_mmio_rstrobe))  ⇒ a_surf_hold  [코덱 전파 파도 뒤 이름 when_Common_l336]
+#   M68   surf 해제식 when_Common_l258 의 io_mmio_wdata[6] → [5]  ⇒ a_surf_hold · 격리 a_surf_clear  [코덱 전파 파도 뒤 이름 when_Common_l336]
 #   M69   abortArea_wr = ((wstrobe && selAbort) && mmioAligned) → (wstrobe && selAbort)  ⇒ a_arm_src
 #   M70   stg .io_selTag0 (abortArea_isTag0) → (abortArea_isTag1) (핀만)  ⇒ a_arm_set0
 #   M71   abortArea_isTag2 = (wordOff == 4'b0010) → 4'b0110  ⇒ a_arm_set2
@@ -713,7 +717,7 @@
 #
 # 검토 뒤 수리 (2026-09-26) — TAG1 스테이징 값의 에포크 경로. 착지판 a_tag1_lnid 는 LNID [15:0] 만
 # 재서 아래 두 변이가 bmc 를 통과했다 (AbortStaging/props.sby 의 N1 · N2 와 같은 치환 — 유닛 쪽도
-# 생존). a_tag1_val 로 이름을 바꾸고 {stg_io_tag_thread, stg_io_tag_lnid} == $past(D) 로 넓혔다 —
+# 생존). a_tag1_val 로 이름을 바꾸고 {stg_io_tag_thread, stg_io_tag_lnid} == $past(D) 로 넓혔다 (코덱 전파 파도 뒤 {epoch, poison, trace, 10'd0, lnid}) —
 # 위 「라벨마다 사살 변이가 있다」 표의 S2 · S3 행이 부르는 a_tag1_lnid 가 이 단언이다 (옛 이름 · 그 사살은 넓힌 단언에서도
 # 선다 — 넓힌 쪽이 옛 쪽을 함의한다). assert 93 · cover 36 불변. 입력: Wt64Top.sv aa510b191e133445 ·
 # 수리 하네스 Wt64Top_props.sv 0a5815f68a87ab49 · 착지 하네스(인덱스판) 3c991439e602b2ec · 사본
@@ -928,9 +932,9 @@ select -assert-count 14 Wt64Top/c:* Wt64Top/t:$* %d Wt64Top/t:CapStatusWord %d W
 expose -evert -sep __ Wt64Top/c:* Wt64Top/t:$* %d Wt64Top/t:CapStatusWord %d Wt64Top/t:AbortStaging %d Wt64Top/t:XlateStaging %d Wt64Top/t:Wt64Top_props %d
 hierarchy -top Wt64Top
 select -assert-count 4 Wt64Top/c:* Wt64Top/t:$* %d
-select -assert-count 253 Wt64Top/o:*__* Wt64Top/o:*__clk %d Wt64Top/o:*__reset %d
-select -assert-count 213 Wt64Top/i:*__*
-select -assert-count 101 Wt64Top/c:chk %ci1 Wt64Top/o:*__* %i
+select -assert-count 271 Wt64Top/o:*__* Wt64Top/o:*__clk %d Wt64Top/o:*__reset %d
+select -assert-count 219 Wt64Top/i:*__*
+select -assert-count 103 Wt64Top/c:chk %ci1 Wt64Top/o:*__* %i
 select -assert-count 64 Wt64Top/c:chk %ci1 Wt64Top/i:*__* %i
 prep -top Wt64Top
 select -assert-count 1 t:$check r:FLAVOR=assume %i

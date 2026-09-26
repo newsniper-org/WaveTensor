@@ -12,7 +12,8 @@
 # 문면(부록 E.5 · E.1.2)과 호스트 ABI 결정 5(2026-08-25)를 근거로 한다.
 #
 # VERIFIES: CompletionUnit.desc_full_write — 링 칸 32 B *전량 기입*: 되읽은 여덟 워드가 전부 이번 push 의 입력 필드로 재구성한 값과 같다 ⇒ 이전 항목의 어느 워드도 남지 않는다. 잔류의 일반형(임의 초기 내용)이 초기 상태에 들어 있다 — 링 저장소에 reset 이 없기 때문이다
-# VERIFIES: CompletionUnit.desc_word_layout — E.5.3 배치: CD_KIND `[7:0]` = `0x01` · CD_TAG0..2 = E.5.1 세 워드 직렬화(TAG1 = 스레드‖LNID · TAG2 = 예약 0‖정밀도‖차원) · CD_BASE `[7:0]` 결속 LBID · CD_TOTAL `[31:0]` 총개수 그릇 · CD_RSV0/1 = 0. 기대값은 정본 배치로 *독립 재구성*하며 RTL 의 조립을 참조하지 않는다
+# VERIFIES: CompletionUnit.desc_word_layout — E.5.3 배치: CD_KIND `[7:0]` = `0x01` · CD_TAG0..2 = E.5.1 세 워드 직렬화(TAG1 = 에포크‖poison 0‖trace‖예약 0‖LNID · TAG2 = 예약 0‖정밀도‖차원) · CD_BASE `[7:0]` 결속 LBID · CD_TOTAL `[31:0]` 총개수 그릇 · CD_RSV0/1 = 0. 기대값은 정본 배치로 *독립 재구성*하며 RTL 의 조립을 참조하지 않는다
+# VERIFIES: CompletionUnit.cd_tag1_device_authored — CD_TAG1 `[27]` poison 은 장치 저작(원천 0건 — 정본 3.9 · E.1.3)이라 0 이고 입력 사이드밴드의 poison 을 반향하지 않는다 · `[25:16]` 예약 = 0 (E.5.3) · `[26]` trace 와 `[31:28]` 에포크는 보존된다 (01-isa-asm 1.4.4) — a_cd_tag1_poison0 · a_cd_tag1_rsv0 · a_cd_tag1_trace · a_cd_tag1_epoch · 증인 W9(입력 poison = 1) · W10(trace = 1 · 에포크 비0). 재구현 결함 D2c 의 수리(태그 코덱 전파 파도)
 # VERIFIES: CompletionUnit.ring_encoding — E.5 1·2항: `head == tail` 빈 링 · `(tail+1) mod size == head` 가득 · 배압(io_comp_ready)이 재구성한 「가득」의 부정과 등가 · 생산 색인은 수락 사이클에만 +1 (E.5 표의 「tail 은 장치 갱신」)
 # VERIFIES: CompletionUnit.window_no_leak — 빈 링의 창 읽기는 0: 미기입 저장소를 관측면에 내지 않는다 (E.1.2 창 행). desc_full_write 와 짝 — 살아 있는 칸은 이번 기입을 내고, 살아 있지 않으면 아무것도 내지 않는다
 # VERIFIES: CompletionUnit.overflow_sticky — 가득인 링에 밀어 넣기는 loud sticky (§3.8 「오버플로」) 이며 링 상태를 움직이지 않는다 (FAB-10 동형). 발화가 해제를 이긴다 · 명시적 해제 외엔 내려가지 않는다
@@ -70,6 +71,12 @@
 #   podman run --rm --userns=keep-id -v "$PWD:/workspace" wavetensor-dev:scala \
 #     sh -lc "cd /workspace && sby -f --prefix /tmp/sby-CompletionUnit \
 #             rtl/formal/sby/CompletionUnit/descriptor.sby"
+
+# ── 역-변이 표 — CD_TAG1 (태그 코덱 전파 파도, 2026-09-26 · 비상주: 생성물 사본에 한 줄씩, bmc) ──
+#   CM1  poison 자리 ← io_comp_tag_poison (D2c — 사이드밴드 반향)   ⇒ a_cd_tag1_poison0 (· 축 2 등식)
+#   CM2  예약 [25:16] ← {trace, 0…} (옛 스레드 상위 비트의 부류)     ⇒ a_cd_tag1_rsv0 (· 축 2 등식)
+#   CM3  trace 자리 ← 0 (보존 탈락)                                 ⇒ a_cd_tag1_trace (· 축 2 등식)
+#   셋 다 사살 (rc=2 — 게이트 자신의 bmc 태스크 엔진 smtbmc z3 · CM1 은 2026-09-27 같은 엔진에서 재사살, 벽시계 1 초). 실측 판: bmc assert 15 · cover 17 전부 도달 (W9 · W10 신설).
 
 [tasks]
 bmc

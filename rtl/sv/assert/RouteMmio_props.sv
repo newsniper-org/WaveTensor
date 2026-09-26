@@ -72,7 +72,9 @@ module RouteMmio_props (
   // ── 토큰 자유 입력 ──────────────────────────────────────────────────
   input wire        tok_valid,
   input wire [31:0] tok_wave,
-  input wire [15:0] tok_thread,
+  input wire [3:0]  tok_epoch,
+  input wire        tok_poison,
+  input wire        tok_trace,
   input wire [15:0] tok_lnid,
   input wire [7:0]  tok_precision,
   input wire [7:0]  tok_dim,
@@ -118,7 +120,9 @@ module RouteMmio_props (
   // 토큰 통과 출력 + RouteJudge 내부 (expose)
   wire        out_valid;
   wire [31:0] out_wave;
-  wire [15:0] out_thread;
+  wire [3:0]  out_epoch;
+  wire        out_poison;
+  wire        out_trace;
   wire [15:0] out_lnid;
   wire [7:0]  out_precision;
   wire [7:0]  out_dim;
@@ -134,7 +138,9 @@ module RouteMmio_props (
   RouteJudge rj (
     .io_tokIn_valid(tok_valid),
     .io_tokIn_payload_tag_wave(tok_wave),
-    .io_tokIn_payload_tag_thread(tok_thread),
+    .io_tokIn_payload_tag_epoch(tok_epoch),
+    .io_tokIn_payload_tag_poison(tok_poison),
+    .io_tokIn_payload_tag_trace(tok_trace),
     .io_tokIn_payload_tag_lnid(tok_lnid),
     .io_tokIn_payload_tag_precision(tok_precision),
     .io_tokIn_payload_tag_dim(tok_dim),
@@ -142,7 +148,9 @@ module RouteMmio_props (
     .io_tokIn_payload_srcKind(tok_srcKind),
     .io_tokOut_valid(out_valid),
     .io_tokOut_payload_tag_wave(out_wave),
-    .io_tokOut_payload_tag_thread(out_thread),
+    .io_tokOut_payload_tag_epoch(out_epoch),
+    .io_tokOut_payload_tag_poison(out_poison),
+    .io_tokOut_payload_tag_trace(out_trace),
     .io_tokOut_payload_tag_lnid(out_lnid),
     .io_tokOut_payload_tag_precision(out_precision),
     .io_tokOut_payload_tag_dim(out_dim),

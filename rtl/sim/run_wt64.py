@@ -239,7 +239,7 @@ UNMEASURED = [
      "재구현 MaskUnit 에 부표준키·블록 워드를 내는 포트가 없다 — 계층 peek 은 "
      "포트 계약이 아니라 SpinalHDL 명명의 우연이므로 통과 기준으로 쓰지 않는다"),
     ("FAULT_STATUS[17]·[18]",
-     "Wt64Top.sv:1589 「faultWords_status[17] = 1'b0;」 과 그 다음 줄 [18] 상수 0 — "
+     "Wt64Top.sv:1641 「faultWords_status[17] = 1'b0;」 과 그 다음 줄 [18] 상수 0 — "
      "엔트로피원·명령 디스크립터 원천 부재. "
      "0 을 「정상」으로 읽으면 안 된다"),
     ("SharedUnit·MemOrderGate 독립 .sv 의 top 대표성",

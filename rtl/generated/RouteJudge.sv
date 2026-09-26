@@ -12,7 +12,9 @@
 module RouteJudge (
   input  wire          io_tokIn_valid,
   input  wire [31:0]   io_tokIn_payload_tag_wave,
-  input  wire [15:0]   io_tokIn_payload_tag_thread,
+  input  wire [3:0]    io_tokIn_payload_tag_epoch,
+  input  wire          io_tokIn_payload_tag_poison,
+  input  wire          io_tokIn_payload_tag_trace,
   input  wire [15:0]   io_tokIn_payload_tag_lnid,
   input  wire [7:0]    io_tokIn_payload_tag_precision,
   input  wire [7:0]    io_tokIn_payload_tag_dim,
@@ -20,7 +22,9 @@ module RouteJudge (
   input  wire [3:0]    io_tokIn_payload_srcKind,
   output wire          io_tokOut_valid,
   output wire [31:0]   io_tokOut_payload_tag_wave,
-  output wire [15:0]   io_tokOut_payload_tag_thread,
+  output wire [3:0]    io_tokOut_payload_tag_epoch,
+  output wire          io_tokOut_payload_tag_poison,
+  output wire          io_tokOut_payload_tag_trace,
   output wire [15:0]   io_tokOut_payload_tag_lnid,
   output wire [7:0]    io_tokOut_payload_tag_precision,
   output wire [7:0]    io_tokOut_payload_tag_dim,
@@ -103,7 +107,9 @@ module RouteJudge (
   assign faultFire = (io_tokIn_valid && anyMiss);
   assign io_tokOut_valid = io_tokIn_valid;
   assign io_tokOut_payload_tag_wave = io_tokIn_payload_tag_wave;
-  assign io_tokOut_payload_tag_thread = io_tokIn_payload_tag_thread;
+  assign io_tokOut_payload_tag_epoch = io_tokIn_payload_tag_epoch;
+  assign io_tokOut_payload_tag_poison = io_tokIn_payload_tag_poison;
+  assign io_tokOut_payload_tag_trace = io_tokIn_payload_tag_trace;
   assign io_tokOut_payload_tag_lnid = io_tokIn_payload_tag_lnid;
   assign io_tokOut_payload_tag_precision = io_tokIn_payload_tag_precision;
   assign io_tokOut_payload_tag_dim = io_tokIn_payload_tag_dim;

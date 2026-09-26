@@ -15,7 +15,7 @@
 (*   01-isa-asm.typ:1540-1563 「관측은 sticky 다」 — 규범 「능력 부재의     *)
 (*     조회는 상위 계층의 의무다」(조회·수리·해제·재시도). 능력 부재는      *)
 (*     fault 가 아니다 — FAULT_STATUS·FAULT_SUMMARY 어느 쪽에도 들지 않는다. *)
-(*   rtl/spinal/src/main/scala/wt64/Common.scala:256 「해제와 발화가 같은 사이클이면 발화가 이긴다」 *)
+(*   rtl/spinal/src/main/scala/wt64/Common.scala:334 「해제와 발화가 같은 사이클이면 발화가 이긴다」 *)
 (*     — StickyFault 규약. 이 워드는 fault 가 아니지만 그 순서만 승계한다   *)
 (*     (해제로 관측을 삼키는 창을 만들지 않는다).                           *)
 (*   E.1.2 FAULT_CLEAR 행 · Wt64Top faultArea 주석: 거절된 기입은 한 비트도 *)

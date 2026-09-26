@@ -896,7 +896,8 @@ expect_fail "증인: NoSubjectValue"                             Isolation_witne
 # 어느 슬롯에 들어갔는가를 본다.
 # ---------------------------------------------------------------------------
 M=Payload.tla
-expect_pass "EXT-4 기저"                                       Payload_base.cfg "$M"
+expect_pass "EXT-4 기저 (Tags 정제 — trace 축)"                Payload_base.cfg "$M"
+expect_pass "EXT-4 기저 (Tags 정제 — poison 축)"               Payload_side_poison.cfg "$M"
 expect_pass "형상 sweep A"                                     Payload_shapeA.cfg "$M"
 expect_pass "형상 sweep B"                                     Payload_shapeB.cfg "$M"
 
@@ -918,6 +919,10 @@ expect_fail "가드 삭제: abort_clears_window (잔여 구간)"        Payload_
 expect_fail "가드 삭제: abort_leaves_trace (조용한 소거)"      Payload_del_abort_leaves_trace.cfg "$M" Inv_AbortLoud
 expect_fail "가드 삭제: abort_not_fault (소거가 오류로)"        Payload_del_abort_not_fault.cfg "$M" Inv_AbortNotFault
 expect_fail "가드 삭제: write_atomic"                            Payload_del_write_atomic.cfg "$M" Inv_ReassemblyExclusive
+# 태그 코덱 전파 파도 (2026-09-26 · D2b) — Tags = Key × Trace × Poison. 매칭 키는 poison · trace
+# 를 뺀다 (04-ext-payload 4.3 · E.12 6항). 이 축을 켠 run 은 이 절의 여섯뿐이다 — 다른 가드의
+# 삭제 · 증인 · 형상 sweep 은 Traces = Poisons = {0} 의 접힌 판(1차 판과 같은 기계)으로 돈다.
+expect_fail "가드 삭제: key_drops_side (소거가 trace 든 문맥에 못 닿는다)" Payload_del_key_drops_side.cfg "$M" Inv_AbortReachesKey
 
 # 위험 도달성 증인 — 좋은 모델에서 반드시 반증돼야 한다
 expect_fail "증인: NoCapabilityAbsence"                        Payload_witness_NoCapabilityAbsence.cfg "$M" Witness_NoCapabilityAbsence
@@ -933,9 +938,15 @@ expect_fail "증인: 표시 시점 누락이 실재하는가"                  P
 expect_fail "증인: 표시 유실 미완 문맥이 실재하는가"              Payload_witness_NoMarkerLoss.cfg "$M" Witness_NoMarkerLoss
 expect_fail "증인: 소거가 실재하는가"                          Payload_witness_NoAbort.cfg "$M" Witness_NoAbort
 expect_fail "증인: 소거 흔적만 남은 상태가 실재하는가"           Payload_witness_NoAbortOnlyHistory.cfg "$M" Witness_NoAbortOnlyHistory
+expect_fail "증인: trace·poison 만 다른 조각이 문맥에 닿는가"     Payload_witness_NoSideFragHit.cfg "$M" Witness_NoSideFragHit
+expect_fail "증인: Clean 소거가 trace·poison 든 문맥을 지우는가" Payload_witness_NoSideAbortHit.cfg "$M" Witness_NoSideAbortHit
 
 # 짝 run — 축의 분리를 확정한다. 같은 제약 아래 하나는 깨지고 하나는 안 깨진다
 expect_fail "짝: silent_overwrite"                            Payload_pair_silent_overwrite.cfg "$M" Prop_NoSilentOverwrite
+# 오늘의 RTL 짝 (태그 코덱 전파 파도 착지 *전*의 Reassembly — 번들 통비교 = key_drops_side 삭제).
+# 삭제 run 이 소거 절반을 재고, 이 둘이 조각 조회 절반의 호스트 가시 귀결을 한 비트씩 잰다.
+expect_fail "짝: 오늘의 RTL — trace 만 다른 도착이 덮어쓴다"     Payload_pair_today_trace.cfg "$M" Prop_NoSilentOverwrite
+expect_fail "짝: 오늘의 RTL — poison 만 다른 도착이 덮어쓴다"    Payload_pair_today_poison.cfg "$M" Prop_NoSilentOverwrite
 
 # ---------------------------------------------------------------------------
 # SEC-7 · SEC-2 — 예약 필드 불투과와 경로 간 동일성 (Decode.tla)

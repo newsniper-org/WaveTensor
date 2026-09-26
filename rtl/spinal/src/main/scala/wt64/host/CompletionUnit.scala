@@ -41,7 +41,7 @@
 //
 //   +0x00 CD_KIND   [7:0] kind = 0x01 · [31:8] 예약 = 0
 //   +0x04 CD_TAG0   [31:0] wave 번호
-//   +0x08 CD_TAG1   [31:16] 스레드 ID · [15:0] LNID
+//   +0x08 CD_TAG1   [31:28] 에포크 · [27] poison(장치 저작) · [26] trace · [25:16] 예약 = 0 · [15:0] LNID
 //   +0x0C CD_TAG2   [31:16] 예약 = 0 · [15:8] 정밀도 · [7:0] 차원
 //   +0x10 CD_BASE   [7:0] 결속 LBID · [31:8] 예약 = 0
 //   +0x14 CD_TOTAL  [31:0] 조각 선언 총개수 — *폭 미확정 값의 그릇*
@@ -338,9 +338,14 @@ object HostDesc {
     *
     * 태그를 워드로 펴는 일은 `Types.Tag.toWords` 가 한다 — 이 함수는 그것을
     * *배치*할 뿐 자기 팩킹을 갖지 않는다 (§1.4.4 조립 단일 지점).
+    *
+    * `poison` 은 CD_TAG1 `[27]` 에 실릴 *장치 저작* 값이다 (1.4.4 poison 6항 ·
+    * E.5.3). 입력 태그의 poison 비트는 명령 사이드밴드가 제시한 값이라 장치 저작이
+    * 아니다 — 그래서 코덱이 poison 을 인자로 받고 여기가 그 원천을 댄다. 예약
+    * `[25:16]` 은 코덱이 0 을 쓴다 (D2c 수리 — 태그 코덱 전파 파도).
     */
-  def completion(tag: Types.Tag, base: UInt, total: UInt): Vec[Bits] = {
-    val tw = Types.Tag.toWords(tag)
+  def completion(tag: Types.Tag, poison: Bool, base: UInt, total: UInt): Vec[Bits] = {
+    val tw = Types.Tag.toWords(tag, poison)
     Vec((0 until WORDS).map {
       case W_KIND     => B(Kind.COMPLETION, 32 bits) // [7:0] kind · [31:8] 예약 0
       case CD_W_BASE  => base.asBits.resize(32)      // [7:0] LBID · [31:8] 예약 0
@@ -511,7 +516,14 @@ class CompletionUnit(val cqDepth: Int = 8) extends Component {
   // 검사가 아니라 구조다. desc 는 그 여덟 워드를 워드 0 = 최하위로 묶은 것이고,
   // 창 읽기의 subdivideIn 과 같은 방향이라 「호스트가 본 워드 i」와 「여기의
   // 워드 i」가 같은 것을 가리킨다.
-  val descWords = HostDesc.completion(io.comp.tag, io.comp.base, io.comp.total)
+  //
+  // CD_TAG1 `[27]` poison — *장치 저작*이고 오늘 원천이 0건이다 (정본 3.9 · E.1.3
+  // 「CD_TAG1 poison · trace」 행: 유일한 후보 원천 FAULT `[17]` 엔트로피 건강성이
+  // 미착지). 그래서 상수 0 이다. 입력 태그의 poison 은 명령 사이드밴드가 제시한
+  // 비트라 원천이 아니다 — 그것을 반향하던 것이 D2c 다. 원천이 서는 날 이 한 줄이
+  // 장치 안 전파(1.4.4 poison 2항 — 논리합)의 결과로 바뀐다.
+  val devPoison = False
+  val descWords = HostDesc.completion(io.comp.tag, devPoison, io.comp.base, io.comp.total)
   val desc      = HostDesc.pack(descWords)
 
   // 수락 = 통지 (E.6 1항 — 링에 항목을 넣는 것이 통지다).

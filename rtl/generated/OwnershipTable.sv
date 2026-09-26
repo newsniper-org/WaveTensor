@@ -129,7 +129,7 @@ module OwnershipTable (
   wire                when_OwnershipTable_l323;
   wire                when_OwnershipTable_l332;
   reg                 _zz_io_faultCollide;
-  wire                when_Common_l259;
+  wire                when_Common_l337;
   reg                 _zz_io_faultBadWrite;
 
   always @(*) begin
@@ -334,7 +334,7 @@ module OwnershipTable (
   assign when_OwnershipTable_l323 = (! slotMine);
   assign when_OwnershipTable_l332 = (slotBusy && slotMine);
   assign io_faultCollide = _zz_io_faultCollide;
-  assign when_Common_l259 = (statusWr || (acceptW && (! aligned)));
+  assign when_Common_l337 = (statusWr || (acceptW && (! aligned)));
   assign io_faultBadWrite = _zz_io_faultBadWrite;
   always @(posedge clk or posedge reset) begin
     if(reset) begin
@@ -637,7 +637,7 @@ module OwnershipTable (
       if(io_faultClearBadWrite) begin
         _zz_io_faultBadWrite <= 1'b0;
       end
-      if(when_Common_l259) begin
+      if(when_Common_l337) begin
         _zz_io_faultBadWrite <= 1'b1;
       end
     end

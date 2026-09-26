@@ -32,7 +32,7 @@
     "XlateObs.obs_no_residue",
     "XlateObs.obs_read_pure"
   ],
-  "at": "2026-09-26T13:12:26Z",
+  "at": "2026-09-26T15:33:13Z",
   "cover": {
     "reached": 49,
     "reached_names": [
@@ -90,8 +90,8 @@
     "unreached_names": []
   },
   "inputs": {
-    "rtl/generated/Wt64Top.sv": "6c451e4661407fd8046d1686c3f5cd175e78f704b8e87e6956ddd19e2ffa8f5c",
-    "rtl/sv/assert/Wt64Top_props.sv": "7edbf8fa1187e3350ea9ab2d77b9585ba4370b9a651c5543214a75398dd437b6"
+    "rtl/generated/Wt64Top.sv": "3b6d8416e0b9d46d4a210f69a018a3803ef557fc87ae1401e8a3d5129467f8ce",
+    "rtl/sv/assert/Wt64Top_props.sv": "611aa9650a7678764023f9244d4c86c5c9c47771a71b85600a8a32bf9dbe96e0"
   },
   "per_task": {
     "bmc": {
@@ -117,7 +117,7 @@
     }
   },
   "sby": "rtl/formal/sby/Wt64Top/assembly.sby",
-  "sby_sha256": "4a1f26b5e5db7b3f9d4e103e675be2765f680975b83fbe433a005245e0a18cd9",
+  "sby_sha256": "327e60188841da82b0926e45d1d834f51af4c80d52b6df9d158df4b87539486d",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

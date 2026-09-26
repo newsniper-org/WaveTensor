@@ -516,7 +516,7 @@ module OperandDecode (
   wire                judge_oprefCrcBad;
   wire                judge_srcKindBad;
   wire                judge_bodyMal;
-  wire                when_Common_l259;
+  wire                when_Common_l337;
   reg                 _zz_io_oFault;
 
   assign _zz_parse_oprefA_1_1 = parse_isOpref_0;
@@ -989,7 +989,7 @@ module OperandDecode (
   assign io_oReasmBind_valid = (io_oExecValid && parse_acctgtPresent);
   assign io_oReasmBind_payload = ((io_oExecValid && parse_acctgtPresent) ? parse_acctgtLbid : 8'h0);
   assign io_oAcctgtTotal = ((io_oExecValid && parse_acctgtPresent) ? parse_acctgtTotal : 8'h0);
-  assign when_Common_l259 = (io_iValid && judge_bodyMal);
+  assign when_Common_l337 = (io_iValid && judge_bodyMal);
   assign io_oFault = _zz_io_oFault;
   always @(posedge clk or posedge reset) begin
     if(reset) begin
@@ -998,7 +998,7 @@ module OperandDecode (
       if(io_iFaultClear) begin
         _zz_io_oFault <= 1'b0;
       end
-      if(when_Common_l259) begin
+      if(when_Common_l337) begin
         _zz_io_oFault <= 1'b1;
       end
     end

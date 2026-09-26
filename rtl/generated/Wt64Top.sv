@@ -26,7 +26,9 @@ module Wt64Top (
   input  wire [31:0]   io_instr_words_12,
   input  wire [31:0]   io_instr_words_13,
   input  wire [31:0]   io_instr_tag_wave,
-  input  wire [15:0]   io_instr_tag_thread,
+  input  wire [3:0]    io_instr_tag_epoch,
+  input  wire          io_instr_tag_poison,
+  input  wire          io_instr_tag_trace,
   input  wire [15:0]   io_instr_tag_lnid,
   input  wire [7:0]    io_instr_tag_precision,
   input  wire [7:0]    io_instr_tag_dim,
@@ -70,7 +72,9 @@ module Wt64Top (
   output wire [7:0]    io_dec_acctgtTotal,
   output wire          io_route_tokOut_valid,
   output wire [31:0]   io_route_tokOut_payload_tag_wave,
-  output wire [15:0]   io_route_tokOut_payload_tag_thread,
+  output wire [3:0]    io_route_tokOut_payload_tag_epoch,
+  output wire          io_route_tokOut_payload_tag_poison,
+  output wire          io_route_tokOut_payload_tag_trace,
   output wire [15:0]   io_route_tokOut_payload_tag_lnid,
   output wire [7:0]    io_route_tokOut_payload_tag_precision,
   output wire [7:0]    io_route_tokOut_payload_tag_dim,
@@ -94,16 +98,16 @@ module Wt64Top (
   output reg  [3:0]    io_mem_upReady,
   output wire          io_mem_down_0_valid,
   input  wire          io_mem_down_0_ready,
-  output wire [127:0]  io_mem_down_0_payload,
+  output wire [117:0]  io_mem_down_0_payload,
   output wire          io_mem_down_1_valid,
   input  wire          io_mem_down_1_ready,
-  output wire [127:0]  io_mem_down_1_payload,
+  output wire [117:0]  io_mem_down_1_payload,
   output wire          io_mem_down_2_valid,
   input  wire          io_mem_down_2_ready,
-  output wire [127:0]  io_mem_down_2_payload,
+  output wire [117:0]  io_mem_down_2_payload,
   output wire          io_mem_down_3_valid,
   input  wire          io_mem_down_3_ready,
-  output wire [127:0]  io_mem_down_3_payload,
+  output wire [117:0]  io_mem_down_3_payload,
   output wire [3:0]    io_mem_token,
   output wire [3:0]    io_mem_gateOpen,
   input  wire          io_hiuReq_valid,
@@ -129,7 +133,9 @@ module Wt64Top (
   output wire [31:0]   io_phys_frame,
   input  wire          io_push_0_strb,
   input  wire [31:0]   io_push_0_result_head_tag_wave,
-  input  wire [15:0]   io_push_0_result_head_tag_thread,
+  input  wire [3:0]    io_push_0_result_head_tag_epoch,
+  input  wire          io_push_0_result_head_tag_poison,
+  input  wire          io_push_0_result_head_tag_trace,
   input  wire [15:0]   io_push_0_result_head_tag_lnid,
   input  wire [7:0]    io_push_0_result_head_tag_precision,
   input  wire [7:0]    io_push_0_result_head_tag_dim,
@@ -140,7 +146,9 @@ module Wt64Top (
   output wire          io_push_0_stall,
   input  wire          io_push_1_strb,
   input  wire [31:0]   io_push_1_result_head_tag_wave,
-  input  wire [15:0]   io_push_1_result_head_tag_thread,
+  input  wire [3:0]    io_push_1_result_head_tag_epoch,
+  input  wire          io_push_1_result_head_tag_poison,
+  input  wire          io_push_1_result_head_tag_trace,
   input  wire [15:0]   io_push_1_result_head_tag_lnid,
   input  wire [7:0]    io_push_1_result_head_tag_precision,
   input  wire [7:0]    io_push_1_result_head_tag_dim,
@@ -151,7 +159,9 @@ module Wt64Top (
   output wire          io_push_1_stall,
   input  wire          io_push_2_strb,
   input  wire [31:0]   io_push_2_result_head_tag_wave,
-  input  wire [15:0]   io_push_2_result_head_tag_thread,
+  input  wire [3:0]    io_push_2_result_head_tag_epoch,
+  input  wire          io_push_2_result_head_tag_poison,
+  input  wire          io_push_2_result_head_tag_trace,
   input  wire [15:0]   io_push_2_result_head_tag_lnid,
   input  wire [7:0]    io_push_2_result_head_tag_precision,
   input  wire [7:0]    io_push_2_result_head_tag_dim,
@@ -161,7 +171,7 @@ module Wt64Top (
   input  wire [63:0]   io_push_2_result_body,
   output wire          io_push_2_stall,
   input  wire          io_sharedReq_valid,
-  input  wire [160:0]  io_sharedReq_payload,
+  input  wire [150:0]  io_sharedReq_payload,
   output wire          io_sharedReq_ready,
   output wire          io_sharedPushStall,
   input  wire          io_bank_acqValid,
@@ -249,13 +259,13 @@ module Wt64Top (
   wire                reasm_io_faultClear;
   wire                reasm_io_capAbsentClear;
   wire                mog_io_up_0_valid;
-  wire       [127:0]  mog_io_up_0_payload;
+  wire       [117:0]  mog_io_up_0_payload;
   wire                mog_io_up_1_valid;
-  wire       [127:0]  mog_io_up_1_payload;
+  wire       [117:0]  mog_io_up_1_payload;
   wire                mog_io_up_2_valid;
-  wire       [127:0]  mog_io_up_2_payload;
+  wire       [117:0]  mog_io_up_2_payload;
   wire                mog_io_up_3_valid;
-  wire       [127:0]  mog_io_up_3_payload;
+  wire       [117:0]  mog_io_up_3_payload;
   wire                hiu_io_faultClear;
   wire                hiu_io_missClear;
   wire                own_io_wstrobe;
@@ -268,7 +278,9 @@ module Wt64Top (
   wire                cfgBlk_io_faultClearBad;
   wire                merge_io_faultClear;
   wire       [31:0]   merge_io_push_0_result_head_tag_wave;
-  wire       [15:0]   merge_io_push_0_result_head_tag_thread;
+  wire       [3:0]    merge_io_push_0_result_head_tag_epoch;
+  wire                merge_io_push_0_result_head_tag_poison;
+  wire                merge_io_push_0_result_head_tag_trace;
   wire       [15:0]   merge_io_push_0_result_head_tag_lnid;
   wire       [7:0]    merge_io_push_0_result_head_tag_precision;
   wire       [7:0]    merge_io_push_0_result_head_tag_dim;
@@ -390,7 +402,9 @@ module Wt64Top (
   wire                od_io_oFault;
   wire                rj_io_tokOut_valid;
   wire       [31:0]   rj_io_tokOut_payload_tag_wave;
-  wire       [15:0]   rj_io_tokOut_payload_tag_thread;
+  wire       [3:0]    rj_io_tokOut_payload_tag_epoch;
+  wire                rj_io_tokOut_payload_tag_poison;
+  wire                rj_io_tokOut_payload_tag_trace;
   wire       [15:0]   rj_io_tokOut_payload_tag_lnid;
   wire       [7:0]    rj_io_tokOut_payload_tag_precision;
   wire       [7:0]    rj_io_tokOut_payload_tag_dim;
@@ -405,7 +419,9 @@ module Wt64Top (
   wire       [63:0]   reasm_io_wr_body;
   wire                reasm_io_deliver_valid;
   wire       [31:0]   reasm_io_deliver_payload_tag_wave;
-  wire       [15:0]   reasm_io_deliver_payload_tag_thread;
+  wire       [3:0]    reasm_io_deliver_payload_tag_epoch;
+  wire                reasm_io_deliver_payload_tag_poison;
+  wire                reasm_io_deliver_payload_tag_trace;
   wire       [15:0]   reasm_io_deliver_payload_tag_lnid;
   wire       [7:0]    reasm_io_deliver_payload_tag_precision;
   wire       [7:0]    reasm_io_deliver_payload_tag_dim;
@@ -423,13 +439,13 @@ module Wt64Top (
   wire                mog_io_up_2_ready;
   wire                mog_io_up_3_ready;
   wire                mog_io_down_0_valid;
-  wire       [127:0]  mog_io_down_0_payload;
+  wire       [117:0]  mog_io_down_0_payload;
   wire                mog_io_down_1_valid;
-  wire       [127:0]  mog_io_down_1_payload;
+  wire       [117:0]  mog_io_down_1_payload;
   wire                mog_io_down_2_valid;
-  wire       [127:0]  mog_io_down_2_payload;
+  wire       [117:0]  mog_io_down_2_payload;
   wire                mog_io_down_3_valid;
-  wire       [127:0]  mog_io_down_3_payload;
+  wire       [117:0]  mog_io_down_3_payload;
   wire       [3:0]    mog_io_token;
   wire       [3:0]    mog_io_gateOpen;
   wire       [2:0]    mog_io_occupancy;
@@ -480,7 +496,9 @@ module Wt64Top (
   wire                merge_io_push_3_stall;
   wire                merge_io_consumer_valid;
   wire       [31:0]   merge_io_consumer_payload_head_tag_wave;
-  wire       [15:0]   merge_io_consumer_payload_head_tag_thread;
+  wire       [3:0]    merge_io_consumer_payload_head_tag_epoch;
+  wire                merge_io_consumer_payload_head_tag_poison;
+  wire                merge_io_consumer_payload_head_tag_trace;
   wire       [15:0]   merge_io_consumer_payload_head_tag_lnid;
   wire       [7:0]    merge_io_consumer_payload_head_tag_precision;
   wire       [7:0]    merge_io_consumer_payload_head_tag_dim;
@@ -491,7 +509,7 @@ module Wt64Top (
   wire       [2:0]    merge_io_occupancy;
   wire                shared_1_io_req_ready;
   wire                shared_1_io_rsp_valid;
-  wire       [160:0]  shared_1_io_rsp_payload;
+  wire       [150:0]  shared_1_io_rsp_payload;
   wire                shared_1_io_faultBpViolation;
   wire       [2:0]    shared_1_io_occupancy;
   wire                bank_io_acquire_granted;
@@ -528,7 +546,9 @@ module Wt64Top (
   wire       [2:0]    stg_io_armed;
   wire                stg_io_fire;
   wire       [31:0]   stg_io_tag_wave;
-  wire       [15:0]   stg_io_tag_thread;
+  wire       [3:0]    stg_io_tag_epoch;
+  wire                stg_io_tag_poison;
+  wire                stg_io_tag_trace;
   wire       [15:0]   stg_io_tag_lnid;
   wire       [7:0]    stg_io_tag_precision;
   wire       [7:0]    stg_io_tag_dim;
@@ -555,12 +575,14 @@ module Wt64Top (
   wire       [7:0]    _zz_xlateArea_obsStatus;
   wire                fltClrAccept;
   reg        [31:0]   tagQ_wave;
-  reg        [15:0]   tagQ_thread;
+  reg        [3:0]    tagQ_epoch;
+  reg                 tagQ_poison;
+  reg                 tagQ_trace;
   reg        [15:0]   tagQ_lnid;
   reg        [7:0]    tagQ_precision;
   reg        [7:0]    tagQ_dim;
-  wire       [96:0]   _zz_io_push_0_result_head_seq;
-  wire       [79:0]   _zz_io_push_0_result_head_tag_wave;
+  wire       [86:0]   _zz_io_push_0_result_head_seq;
+  wire       [69:0]   _zz_io_push_0_result_head_tag_wave;
   wire                mmioAligned;
   wire                selOwn;
   wire                selCq;
@@ -629,7 +651,7 @@ module Wt64Top (
   wire                faultArea_clrRsvBad;
   wire                faultArea_doClr;
   wire                when_Wt64Top_l1461;
-  wire                when_Common_l258;
+  wire                when_Common_l336;
   reg                 _zz_io_fault_cfgSurfBadWrite;
   wire                capSet_0;
   wire                capSet_1;
@@ -669,7 +691,7 @@ module Wt64Top (
   wire                pageArea_unalWr;
   wire                when_Wt64Top_l1780;
   wire                fpBindArea_rej;
-  wire                when_Common_l258_1;
+  wire                when_Common_l336_1;
   reg                 _zz_io_fault_fpCfgBadWrite;
 
   assign _zz_maskArea_readValue = maskArea_maskPart;
@@ -811,7 +833,9 @@ module Wt64Top (
   RouteJudge rj (
     .io_tokIn_valid                  (od_io_oExecValid                       ), //i
     .io_tokIn_payload_tag_wave       (tagQ_wave[31:0]                        ), //i
-    .io_tokIn_payload_tag_thread     (tagQ_thread[15:0]                      ), //i
+    .io_tokIn_payload_tag_epoch      (tagQ_epoch[3:0]                        ), //i
+    .io_tokIn_payload_tag_poison     (tagQ_poison                            ), //i
+    .io_tokIn_payload_tag_trace      (tagQ_trace                             ), //i
     .io_tokIn_payload_tag_lnid       (tagQ_lnid[15:0]                        ), //i
     .io_tokIn_payload_tag_precision  (tagQ_precision[7:0]                    ), //i
     .io_tokIn_payload_tag_dim        (tagQ_dim[7:0]                          ), //i
@@ -819,7 +843,9 @@ module Wt64Top (
     .io_tokIn_payload_srcKind        (od_io_oOprefASrcKind[3:0]              ), //i
     .io_tokOut_valid                 (rj_io_tokOut_valid                     ), //o
     .io_tokOut_payload_tag_wave      (rj_io_tokOut_payload_tag_wave[31:0]    ), //o
-    .io_tokOut_payload_tag_thread    (rj_io_tokOut_payload_tag_thread[15:0]  ), //o
+    .io_tokOut_payload_tag_epoch     (rj_io_tokOut_payload_tag_epoch[3:0]    ), //o
+    .io_tokOut_payload_tag_poison    (rj_io_tokOut_payload_tag_poison        ), //o
+    .io_tokOut_payload_tag_trace     (rj_io_tokOut_payload_tag_trace         ), //o
     .io_tokOut_payload_tag_lnid      (rj_io_tokOut_payload_tag_lnid[15:0]    ), //o
     .io_tokOut_payload_tag_precision (rj_io_tokOut_payload_tag_precision[7:0]), //o
     .io_tokOut_payload_tag_dim       (rj_io_tokOut_payload_tag_dim[7:0]      ), //o
@@ -841,7 +867,9 @@ module Wt64Top (
   Reassembly reasm (
     .io_open_valid                    (od_io_oReasmBind_valid                           ), //i
     .io_open_tag_wave                 (tagQ_wave[31:0]                                  ), //i
-    .io_open_tag_thread               (tagQ_thread[15:0]                                ), //i
+    .io_open_tag_epoch                (tagQ_epoch[3:0]                                  ), //i
+    .io_open_tag_poison               (tagQ_poison                                      ), //i
+    .io_open_tag_trace                (tagQ_trace                                       ), //i
     .io_open_tag_lnid                 (tagQ_lnid[15:0]                                  ), //i
     .io_open_tag_precision            (tagQ_precision[7:0]                              ), //i
     .io_open_tag_dim                  (tagQ_dim[7:0]                                    ), //i
@@ -849,7 +877,9 @@ module Wt64Top (
     .io_open_granted                  (reasm_io_open_granted                            ), //o
     .io_frag_valid                    (merge_io_consumer_valid                          ), //i
     .io_frag_head_tag_wave            (merge_io_consumer_payload_head_tag_wave[31:0]    ), //i
-    .io_frag_head_tag_thread          (merge_io_consumer_payload_head_tag_thread[15:0]  ), //i
+    .io_frag_head_tag_epoch           (merge_io_consumer_payload_head_tag_epoch[3:0]    ), //i
+    .io_frag_head_tag_poison          (merge_io_consumer_payload_head_tag_poison        ), //i
+    .io_frag_head_tag_trace           (merge_io_consumer_payload_head_tag_trace         ), //i
     .io_frag_head_tag_lnid            (merge_io_consumer_payload_head_tag_lnid[15:0]    ), //i
     .io_frag_head_tag_precision       (merge_io_consumer_payload_head_tag_precision[7:0]), //i
     .io_frag_head_tag_dim             (merge_io_consumer_payload_head_tag_dim[7:0]      ), //i
@@ -864,7 +894,9 @@ module Wt64Top (
     .io_deliver_valid                 (reasm_io_deliver_valid                           ), //o
     .io_deliver_ready                 (cq_io_comp_ready                                 ), //i
     .io_deliver_payload_tag_wave      (reasm_io_deliver_payload_tag_wave[31:0]          ), //o
-    .io_deliver_payload_tag_thread    (reasm_io_deliver_payload_tag_thread[15:0]        ), //o
+    .io_deliver_payload_tag_epoch     (reasm_io_deliver_payload_tag_epoch[3:0]          ), //o
+    .io_deliver_payload_tag_poison    (reasm_io_deliver_payload_tag_poison              ), //o
+    .io_deliver_payload_tag_trace     (reasm_io_deliver_payload_tag_trace               ), //o
     .io_deliver_payload_tag_lnid      (reasm_io_deliver_payload_tag_lnid[15:0]          ), //o
     .io_deliver_payload_tag_precision (reasm_io_deliver_payload_tag_precision[7:0]      ), //o
     .io_deliver_payload_tag_dim       (reasm_io_deliver_payload_tag_dim[7:0]            ), //o
@@ -874,7 +906,9 @@ module Wt64Top (
     .io_occupancy                     (reasm_io_occupancy[2:0]                          ), //o
     .io_abort_valid                   (stg_io_fire                                      ), //i
     .io_abort_tag_wave                (stg_io_tag_wave[31:0]                            ), //i
-    .io_abort_tag_thread              (stg_io_tag_thread[15:0]                          ), //i
+    .io_abort_tag_epoch               (stg_io_tag_epoch[3:0]                            ), //i
+    .io_abort_tag_poison              (stg_io_tag_poison                                ), //i
+    .io_abort_tag_trace               (stg_io_tag_trace                                 ), //i
     .io_abort_tag_lnid                (stg_io_tag_lnid[15:0]                            ), //i
     .io_abort_tag_precision           (stg_io_tag_precision[7:0]                        ), //i
     .io_abort_tag_dim                 (stg_io_tag_dim[7:0]                              ), //i
@@ -896,28 +930,28 @@ module Wt64Top (
     .io_epochClear     (io_mem_epochClear           ), //i
     .io_up_0_valid     (mog_io_up_0_valid           ), //i
     .io_up_0_ready     (mog_io_up_0_ready           ), //o
-    .io_up_0_payload   (mog_io_up_0_payload[127:0]  ), //i
+    .io_up_0_payload   (mog_io_up_0_payload[117:0]  ), //i
     .io_up_1_valid     (mog_io_up_1_valid           ), //i
     .io_up_1_ready     (mog_io_up_1_ready           ), //o
-    .io_up_1_payload   (mog_io_up_1_payload[127:0]  ), //i
+    .io_up_1_payload   (mog_io_up_1_payload[117:0]  ), //i
     .io_up_2_valid     (mog_io_up_2_valid           ), //i
     .io_up_2_ready     (mog_io_up_2_ready           ), //o
-    .io_up_2_payload   (mog_io_up_2_payload[127:0]  ), //i
+    .io_up_2_payload   (mog_io_up_2_payload[117:0]  ), //i
     .io_up_3_valid     (mog_io_up_3_valid           ), //i
     .io_up_3_ready     (mog_io_up_3_ready           ), //o
-    .io_up_3_payload   (mog_io_up_3_payload[127:0]  ), //i
+    .io_up_3_payload   (mog_io_up_3_payload[117:0]  ), //i
     .io_down_0_valid   (mog_io_down_0_valid         ), //o
     .io_down_0_ready   (io_mem_down_0_ready         ), //i
-    .io_down_0_payload (mog_io_down_0_payload[127:0]), //o
+    .io_down_0_payload (mog_io_down_0_payload[117:0]), //o
     .io_down_1_valid   (mog_io_down_1_valid         ), //o
     .io_down_1_ready   (io_mem_down_1_ready         ), //i
-    .io_down_1_payload (mog_io_down_1_payload[127:0]), //o
+    .io_down_1_payload (mog_io_down_1_payload[117:0]), //o
     .io_down_2_valid   (mog_io_down_2_valid         ), //o
     .io_down_2_ready   (io_mem_down_2_ready         ), //i
-    .io_down_2_payload (mog_io_down_2_payload[127:0]), //o
+    .io_down_2_payload (mog_io_down_2_payload[117:0]), //o
     .io_down_3_valid   (mog_io_down_3_valid         ), //o
     .io_down_3_ready   (io_mem_down_3_ready         ), //i
-    .io_down_3_payload (mog_io_down_3_payload[127:0]), //o
+    .io_down_3_payload (mog_io_down_3_payload[117:0]), //o
     .io_complete       (io_mem_complete[3:0]        ), //i
     .io_token          (mog_io_token[3:0]           ), //o
     .io_gateOpen       (mog_io_gateOpen[3:0]        ), //o
@@ -1021,7 +1055,9 @@ module Wt64Top (
     .io_faultClear                          (merge_io_faultClear                              ), //i
     .io_push_0_strb                         (shared_1_io_rsp_valid                            ), //i
     .io_push_0_result_head_tag_wave         (merge_io_push_0_result_head_tag_wave[31:0]       ), //i
-    .io_push_0_result_head_tag_thread       (merge_io_push_0_result_head_tag_thread[15:0]     ), //i
+    .io_push_0_result_head_tag_epoch        (merge_io_push_0_result_head_tag_epoch[3:0]       ), //i
+    .io_push_0_result_head_tag_poison       (merge_io_push_0_result_head_tag_poison           ), //i
+    .io_push_0_result_head_tag_trace        (merge_io_push_0_result_head_tag_trace            ), //i
     .io_push_0_result_head_tag_lnid         (merge_io_push_0_result_head_tag_lnid[15:0]       ), //i
     .io_push_0_result_head_tag_precision    (merge_io_push_0_result_head_tag_precision[7:0]   ), //i
     .io_push_0_result_head_tag_dim          (merge_io_push_0_result_head_tag_dim[7:0]         ), //i
@@ -1032,7 +1068,9 @@ module Wt64Top (
     .io_push_0_stall                        (merge_io_push_0_stall                            ), //o
     .io_push_1_strb                         (io_push_0_strb                                   ), //i
     .io_push_1_result_head_tag_wave         (io_push_0_result_head_tag_wave[31:0]             ), //i
-    .io_push_1_result_head_tag_thread       (io_push_0_result_head_tag_thread[15:0]           ), //i
+    .io_push_1_result_head_tag_epoch        (io_push_0_result_head_tag_epoch[3:0]             ), //i
+    .io_push_1_result_head_tag_poison       (io_push_0_result_head_tag_poison                 ), //i
+    .io_push_1_result_head_tag_trace        (io_push_0_result_head_tag_trace                  ), //i
     .io_push_1_result_head_tag_lnid         (io_push_0_result_head_tag_lnid[15:0]             ), //i
     .io_push_1_result_head_tag_precision    (io_push_0_result_head_tag_precision[7:0]         ), //i
     .io_push_1_result_head_tag_dim          (io_push_0_result_head_tag_dim[7:0]               ), //i
@@ -1043,7 +1081,9 @@ module Wt64Top (
     .io_push_1_stall                        (merge_io_push_1_stall                            ), //o
     .io_push_2_strb                         (io_push_1_strb                                   ), //i
     .io_push_2_result_head_tag_wave         (io_push_1_result_head_tag_wave[31:0]             ), //i
-    .io_push_2_result_head_tag_thread       (io_push_1_result_head_tag_thread[15:0]           ), //i
+    .io_push_2_result_head_tag_epoch        (io_push_1_result_head_tag_epoch[3:0]             ), //i
+    .io_push_2_result_head_tag_poison       (io_push_1_result_head_tag_poison                 ), //i
+    .io_push_2_result_head_tag_trace        (io_push_1_result_head_tag_trace                  ), //i
     .io_push_2_result_head_tag_lnid         (io_push_1_result_head_tag_lnid[15:0]             ), //i
     .io_push_2_result_head_tag_precision    (io_push_1_result_head_tag_precision[7:0]         ), //i
     .io_push_2_result_head_tag_dim          (io_push_1_result_head_tag_dim[7:0]               ), //i
@@ -1054,7 +1094,9 @@ module Wt64Top (
     .io_push_2_stall                        (merge_io_push_2_stall                            ), //o
     .io_push_3_strb                         (io_push_2_strb                                   ), //i
     .io_push_3_result_head_tag_wave         (io_push_2_result_head_tag_wave[31:0]             ), //i
-    .io_push_3_result_head_tag_thread       (io_push_2_result_head_tag_thread[15:0]           ), //i
+    .io_push_3_result_head_tag_epoch        (io_push_2_result_head_tag_epoch[3:0]             ), //i
+    .io_push_3_result_head_tag_poison       (io_push_2_result_head_tag_poison                 ), //i
+    .io_push_3_result_head_tag_trace        (io_push_2_result_head_tag_trace                  ), //i
     .io_push_3_result_head_tag_lnid         (io_push_2_result_head_tag_lnid[15:0]             ), //i
     .io_push_3_result_head_tag_precision    (io_push_2_result_head_tag_precision[7:0]         ), //i
     .io_push_3_result_head_tag_dim          (io_push_2_result_head_tag_dim[7:0]               ), //i
@@ -1066,7 +1108,9 @@ module Wt64Top (
     .io_consumer_valid                      (merge_io_consumer_valid                          ), //o
     .io_consumer_ready                      (1'b1                                             ), //i
     .io_consumer_payload_head_tag_wave      (merge_io_consumer_payload_head_tag_wave[31:0]    ), //o
-    .io_consumer_payload_head_tag_thread    (merge_io_consumer_payload_head_tag_thread[15:0]  ), //o
+    .io_consumer_payload_head_tag_epoch     (merge_io_consumer_payload_head_tag_epoch[3:0]    ), //o
+    .io_consumer_payload_head_tag_poison    (merge_io_consumer_payload_head_tag_poison        ), //o
+    .io_consumer_payload_head_tag_trace     (merge_io_consumer_payload_head_tag_trace         ), //o
     .io_consumer_payload_head_tag_lnid      (merge_io_consumer_payload_head_tag_lnid[15:0]    ), //o
     .io_consumer_payload_head_tag_precision (merge_io_consumer_payload_head_tag_precision[7:0]), //o
     .io_consumer_payload_head_tag_dim       (merge_io_consumer_payload_head_tag_dim[7:0]      ), //o
@@ -1080,10 +1124,10 @@ module Wt64Top (
   );
   SharedUnit shared_1 (
     .io_req_valid        (io_sharedReq_valid            ), //i
-    .io_req_payload      (io_sharedReq_payload[160:0]   ), //i
+    .io_req_payload      (io_sharedReq_payload[150:0]   ), //i
     .io_req_ready        (shared_1_io_req_ready         ), //o
     .io_rsp_valid        (shared_1_io_rsp_valid         ), //o
-    .io_rsp_payload      (shared_1_io_rsp_payload[160:0]), //o
+    .io_rsp_payload      (shared_1_io_rsp_payload[150:0]), //o
     .io_faultBpViolation (shared_1_io_faultBpViolation  ), //o
     .io_faultClear       (shared_1_io_faultClear        ), //i
     .io_occupancy        (shared_1_io_occupancy[2:0]    ), //o
@@ -1177,7 +1221,9 @@ module Wt64Top (
     .io_ready              (cq_io_ready                                ), //o
     .io_comp_valid         (reasm_io_deliver_valid                     ), //i
     .io_comp_tag_wave      (reasm_io_deliver_payload_tag_wave[31:0]    ), //i
-    .io_comp_tag_thread    (reasm_io_deliver_payload_tag_thread[15:0]  ), //i
+    .io_comp_tag_epoch     (reasm_io_deliver_payload_tag_epoch[3:0]    ), //i
+    .io_comp_tag_poison    (reasm_io_deliver_payload_tag_poison        ), //i
+    .io_comp_tag_trace     (reasm_io_deliver_payload_tag_trace         ), //i
     .io_comp_tag_lnid      (reasm_io_deliver_payload_tag_lnid[15:0]    ), //i
     .io_comp_tag_precision (reasm_io_deliver_payload_tag_precision[7:0]), //i
     .io_comp_tag_dim       (reasm_io_deliver_payload_tag_dim[7:0]      ), //i
@@ -1209,7 +1255,9 @@ module Wt64Top (
     .io_armed         (stg_io_armed[2:0]        ), //o
     .io_fire          (stg_io_fire              ), //o
     .io_tag_wave      (stg_io_tag_wave[31:0]    ), //o
-    .io_tag_thread    (stg_io_tag_thread[15:0]  ), //o
+    .io_tag_epoch     (stg_io_tag_epoch[3:0]    ), //o
+    .io_tag_poison    (stg_io_tag_poison        ), //o
+    .io_tag_trace     (stg_io_tag_trace         ), //o
     .io_tag_lnid      (stg_io_tag_lnid[15:0]    ), //o
     .io_tag_precision (stg_io_tag_precision[7:0]), //o
     .io_tag_dim       (stg_io_tag_dim[7:0]      ), //o
@@ -1292,7 +1340,9 @@ module Wt64Top (
   assign rj_io_faultClear = (io_faultClear_route || (fltClrAccept && io_mmio_wdata[2]));
   assign io_route_tokOut_valid = rj_io_tokOut_valid;
   assign io_route_tokOut_payload_tag_wave = rj_io_tokOut_payload_tag_wave;
-  assign io_route_tokOut_payload_tag_thread = rj_io_tokOut_payload_tag_thread;
+  assign io_route_tokOut_payload_tag_epoch = rj_io_tokOut_payload_tag_epoch;
+  assign io_route_tokOut_payload_tag_poison = rj_io_tokOut_payload_tag_poison;
+  assign io_route_tokOut_payload_tag_trace = rj_io_tokOut_payload_tag_trace;
   assign io_route_tokOut_payload_tag_lnid = rj_io_tokOut_payload_tag_lnid;
   assign io_route_tokOut_payload_tag_precision = rj_io_tokOut_payload_tag_precision;
   assign io_route_tokOut_payload_tag_dim = rj_io_tokOut_payload_tag_dim;
@@ -1309,7 +1359,7 @@ module Wt64Top (
   assign reasm_io_faultClear = (io_faultClear_reasm || (fltClrAccept && io_mmio_wdata[3]));
   assign reasm_io_capAbsentClear = (io_faultClear_reasmCap || capWord_io_clrAcc[0]);
   assign mog_io_up_0_valid = (od_io_oMemPresent && (io_mem_slotSel == 2'b00));
-  assign mog_io_up_0_payload = {{{{tagQ_dim,{tagQ_precision,{tagQ_lnid,{tagQ_thread,tagQ_wave}}}},od_io_oMemAddrMode},od_io_oMemStride},od_io_oMemOffset};
+  assign mog_io_up_0_payload = {{{{tagQ_dim,{tagQ_precision,{tagQ_lnid,{tagQ_trace,{tagQ_poison,{tagQ_epoch,tagQ_wave}}}}}},od_io_oMemAddrMode},od_io_oMemStride},od_io_oMemOffset};
   always @(*) begin
     io_mem_upReady[0] = mog_io_up_0_ready;
     io_mem_upReady[1] = mog_io_up_1_ready;
@@ -1320,15 +1370,15 @@ module Wt64Top (
   assign io_mem_down_0_valid = mog_io_down_0_valid;
   assign io_mem_down_0_payload = mog_io_down_0_payload;
   assign mog_io_up_1_valid = (od_io_oMemPresent && (io_mem_slotSel == 2'b01));
-  assign mog_io_up_1_payload = {{{{tagQ_dim,{tagQ_precision,{tagQ_lnid,{tagQ_thread,tagQ_wave}}}},od_io_oMemAddrMode},od_io_oMemStride},od_io_oMemOffset};
+  assign mog_io_up_1_payload = {{{{tagQ_dim,{tagQ_precision,{tagQ_lnid,{tagQ_trace,{tagQ_poison,{tagQ_epoch,tagQ_wave}}}}}},od_io_oMemAddrMode},od_io_oMemStride},od_io_oMemOffset};
   assign io_mem_down_1_valid = mog_io_down_1_valid;
   assign io_mem_down_1_payload = mog_io_down_1_payload;
   assign mog_io_up_2_valid = (od_io_oMemPresent && (io_mem_slotSel == 2'b10));
-  assign mog_io_up_2_payload = {{{{tagQ_dim,{tagQ_precision,{tagQ_lnid,{tagQ_thread,tagQ_wave}}}},od_io_oMemAddrMode},od_io_oMemStride},od_io_oMemOffset};
+  assign mog_io_up_2_payload = {{{{tagQ_dim,{tagQ_precision,{tagQ_lnid,{tagQ_trace,{tagQ_poison,{tagQ_epoch,tagQ_wave}}}}}},od_io_oMemAddrMode},od_io_oMemStride},od_io_oMemOffset};
   assign io_mem_down_2_valid = mog_io_down_2_valid;
   assign io_mem_down_2_payload = mog_io_down_2_payload;
   assign mog_io_up_3_valid = (od_io_oMemPresent && (io_mem_slotSel == 2'b11));
-  assign mog_io_up_3_payload = {{{{tagQ_dim,{tagQ_precision,{tagQ_lnid,{tagQ_thread,tagQ_wave}}}},od_io_oMemAddrMode},od_io_oMemStride},od_io_oMemOffset};
+  assign mog_io_up_3_payload = {{{{tagQ_dim,{tagQ_precision,{tagQ_lnid,{tagQ_trace,{tagQ_poison,{tagQ_epoch,tagQ_wave}}}}}},od_io_oMemAddrMode},od_io_oMemStride},od_io_oMemOffset};
   assign io_mem_down_3_valid = mog_io_down_3_valid;
   assign io_mem_down_3_payload = mog_io_down_3_payload;
   assign io_mem_token = mog_io_token;
@@ -1347,17 +1397,19 @@ module Wt64Top (
   assign io_hiuRsp_perm_x = hiu_io_rsp_perm_x;
   assign io_sharedReq_ready = shared_1_io_req_ready;
   assign shared_1_io_faultClear = (io_faultClear_sharedBp || (fltClrAccept && io_mmio_wdata[9]));
-  assign _zz_io_push_0_result_head_seq = shared_1_io_rsp_payload[96 : 0];
-  assign _zz_io_push_0_result_head_tag_wave = _zz_io_push_0_result_head_seq[79 : 0];
+  assign _zz_io_push_0_result_head_seq = shared_1_io_rsp_payload[86 : 0];
+  assign _zz_io_push_0_result_head_tag_wave = _zz_io_push_0_result_head_seq[69 : 0];
   assign merge_io_push_0_result_head_tag_wave = _zz_io_push_0_result_head_tag_wave[31 : 0];
-  assign merge_io_push_0_result_head_tag_thread = _zz_io_push_0_result_head_tag_wave[47 : 32];
-  assign merge_io_push_0_result_head_tag_lnid = _zz_io_push_0_result_head_tag_wave[63 : 48];
-  assign merge_io_push_0_result_head_tag_precision = _zz_io_push_0_result_head_tag_wave[71 : 64];
-  assign merge_io_push_0_result_head_tag_dim = _zz_io_push_0_result_head_tag_wave[79 : 72];
-  assign merge_io_push_0_result_head_seq = _zz_io_push_0_result_head_seq[87 : 80];
-  assign merge_io_push_0_result_head_total = _zz_io_push_0_result_head_seq[95 : 88];
-  assign merge_io_push_0_result_head_last = _zz_io_push_0_result_head_seq[96];
-  assign merge_io_push_0_result_body = shared_1_io_rsp_payload[160 : 97];
+  assign merge_io_push_0_result_head_tag_epoch = _zz_io_push_0_result_head_tag_wave[35 : 32];
+  assign merge_io_push_0_result_head_tag_poison = _zz_io_push_0_result_head_tag_wave[36];
+  assign merge_io_push_0_result_head_tag_trace = _zz_io_push_0_result_head_tag_wave[37];
+  assign merge_io_push_0_result_head_tag_lnid = _zz_io_push_0_result_head_tag_wave[53 : 38];
+  assign merge_io_push_0_result_head_tag_precision = _zz_io_push_0_result_head_tag_wave[61 : 54];
+  assign merge_io_push_0_result_head_tag_dim = _zz_io_push_0_result_head_tag_wave[69 : 62];
+  assign merge_io_push_0_result_head_seq = _zz_io_push_0_result_head_seq[77 : 70];
+  assign merge_io_push_0_result_head_total = _zz_io_push_0_result_head_seq[85 : 78];
+  assign merge_io_push_0_result_head_last = _zz_io_push_0_result_head_seq[86];
+  assign merge_io_push_0_result_body = shared_1_io_rsp_payload[150 : 87];
   assign io_sharedPushStall = merge_io_push_0_stall;
   assign io_push_0_stall = merge_io_push_1_stall;
   assign io_push_1_stall = merge_io_push_2_stall;
@@ -1546,7 +1598,7 @@ module Wt64Top (
   assign io_fault_hiuMiss = hiu_io_missNotice;
   assign io_fault_cfgDupOwner = cfgBlk_io_faultDupOwner;
   assign io_fault_cfgBadWrite = cfgBlk_io_faultBadWrite;
-  assign when_Common_l258 = (io_faultClear_cfgSurfBadWrite || (fltClrAccept && io_mmio_wdata[6]));
+  assign when_Common_l336 = (io_faultClear_cfgSurfBadWrite || (fltClrAccept && io_mmio_wdata[6]));
   assign io_fault_cfgSurfBadWrite = _zz_io_fault_cfgSurfBadWrite;
   assign io_fault_ownCollide = own_io_faultCollide;
   assign io_fault_ownBadWrite = own_io_faultBadWrite;
@@ -1694,11 +1746,13 @@ module Wt64Top (
   assign pageArea_unalWr = ((io_mmio_wstrobe && (! mmioAligned)) && (! ((selOwn || selCq) || selCfg)));
   assign when_Wt64Top_l1780 = (((pageArea_legWr || (pageArea_sqWr && (pageArea_isSqRw || pageArea_isSqRo))) || pageArea_identWr) || pageArea_unalWr);
   assign fpBindArea_rej = (((fpArea_wr && fpArea_isBind) && fpArea_bindRsvBad) && fps_io_loadReady);
-  assign when_Common_l258_1 = (fltClrAccept && io_mmio_wdata[6]);
+  assign when_Common_l336_1 = (fltClrAccept && io_mmio_wdata[6]);
   assign io_fault_fpCfgBadWrite = _zz_io_fault_fpCfgBadWrite;
   always @(posedge clk) begin
     tagQ_wave <= io_instr_tag_wave;
-    tagQ_thread <= io_instr_tag_thread;
+    tagQ_epoch <= io_instr_tag_epoch;
+    tagQ_poison <= io_instr_tag_poison;
+    tagQ_trace <= io_instr_tag_trace;
     tagQ_lnid <= io_instr_tag_lnid;
     tagQ_precision <= io_instr_tag_precision;
     tagQ_dim <= io_instr_tag_dim;
@@ -1718,7 +1772,7 @@ module Wt64Top (
       if(when_Wt64Top_l1274) begin
         maskArea_maskPart <= maskArea_partField[1:0];
       end
-      if(when_Common_l258) begin
+      if(when_Common_l336) begin
         _zz_io_fault_cfgSurfBadWrite <= 1'b0;
       end
       if(surfBadWr) begin
@@ -1745,7 +1799,7 @@ module Wt64Top (
         xlateArea_obsReg <= xlateArea_obsValue;
       end
       xlateArea_obsRv <= xlateArea_obsRd;
-      if(when_Common_l258_1) begin
+      if(when_Common_l336_1) begin
         _zz_io_fault_fpCfgBadWrite <= 1'b0;
       end
       if(fpBindArea_rej) begin
@@ -1877,11 +1931,11 @@ module CapStatusWord (
   wire                clrAcc_2;
   wire                clrAcc_3;
   wire                defined_0;
-  wire                when_Common_l259;
+  wire                when_Common_l337;
   reg                 defined_1;
-  wire                when_Common_l259_1;
+  wire                when_Common_l337_1;
   reg                 defined_2;
-  wire                when_Common_l259_2;
+  wire                when_Common_l337_2;
   reg                 defined_3;
 
   assign rsvHit = ((io_wdata & 32'hfffffff0) != 32'h0);
@@ -1893,9 +1947,9 @@ module CapStatusWord (
   assign clrAcc_3 = (accept && io_wdata[3]);
   assign io_clrAcc = {clrAcc_3,{clrAcc_2,{clrAcc_1,clrAcc_0}}};
   assign defined_0 = io_set[0];
-  assign when_Common_l259 = io_set[1];
-  assign when_Common_l259_1 = io_set[2];
-  assign when_Common_l259_2 = io_set[3];
+  assign when_Common_l337 = io_set[1];
+  assign when_Common_l337_1 = io_set[2];
+  assign when_Common_l337_2 = io_set[3];
   assign io_word = {28'h0,{defined_3,{defined_2,{defined_1,defined_0}}}};
   always @(posedge clk or posedge reset) begin
     if(reset) begin
@@ -1906,19 +1960,19 @@ module CapStatusWord (
       if(clrAcc_1) begin
         defined_1 <= 1'b0;
       end
-      if(when_Common_l259) begin
+      if(when_Common_l337) begin
         defined_1 <= 1'b1;
       end
       if(clrAcc_2) begin
         defined_2 <= 1'b0;
       end
-      if(when_Common_l259_1) begin
+      if(when_Common_l337_1) begin
         defined_2 <= 1'b1;
       end
       if(clrAcc_3) begin
         defined_3 <= 1'b0;
       end
-      if(when_Common_l259_2) begin
+      if(when_Common_l337_2) begin
         defined_3 <= 1'b1;
       end
     end
@@ -1938,7 +1992,9 @@ module AbortStaging (
   output wire [2:0]    io_armed,
   output wire          io_fire,
   output wire [31:0]   io_tag_wave,
-  output wire [15:0]   io_tag_thread,
+  output wire [3:0]    io_tag_epoch,
+  output wire          io_tag_poison,
+  output wire          io_tag_trace,
   output wire [15:0]   io_tag_lnid,
   output wire [7:0]    io_tag_precision,
   output wire [7:0]    io_tag_dim,
@@ -1968,10 +2024,12 @@ module AbortStaging (
   assign okTag2 = ((io_wr && io_selTag2) && (! tag2RsvBad));
   assign okFire = ((io_wr && io_selFire) && (! fireRsvBad));
   assign abWords_2 = {16'h0,tag2};
-  assign stagedRsvBad = ((abWords_2[31 : 16] != 16'h0) || ((tag1 & 32'h0fff0000) != 32'h0));
+  assign stagedRsvBad = (((abWords_2[31 : 16] != 16'h0) || (tag1[25 : 16] != 10'h0)) || ((tag1 & 32'h0fff0000) != 32'h0));
   assign io_fire = (((okFire && io_wdata[0]) && (&armed)) && (! stagedRsvBad));
   assign io_tag_wave = tag0;
-  assign io_tag_thread = tag1[31 : 16];
+  assign io_tag_epoch = tag1[31 : 28];
+  assign io_tag_poison = tag1[27];
+  assign io_tag_trace = tag1[26];
   assign io_tag_lnid = tag1[15 : 0];
   assign io_tag_precision = abWords_2[15 : 8];
   assign io_tag_dim = abWords_2[7 : 0];
@@ -2015,7 +2073,9 @@ module CompletionUnit (
   output wire          io_ready,
   input  wire          io_comp_valid,
   input  wire [31:0]   io_comp_tag_wave,
-  input  wire [15:0]   io_comp_tag_thread,
+  input  wire [3:0]    io_comp_tag_epoch,
+  input  wire          io_comp_tag_poison,
+  input  wire          io_comp_tag_trace,
   input  wire [15:0]   io_comp_tag_lnid,
   input  wire [7:0]    io_comp_tag_precision,
   input  wire [7:0]    io_comp_tag_dim,
@@ -2041,6 +2101,8 @@ module CompletionUnit (
   wire       [2:0]    _zz_full;
   wire       [7:0]    _zz_descWords_4;
   wire       [7:0]    _zz_descWords_5;
+  wire       [3:0]    _zz_desc;
+  wire       [0:0]    _zz_desc_1;
   wire       [31:0]   _zz_readValue;
   wire       [0:0]    _zz_readValue_1;
   wire       [31:0]   _zz_readValue_2;
@@ -2058,6 +2120,7 @@ module CompletionUnit (
   wire                empty;
   wire                full;
   wire       [2:0]    occ;
+  wire                devPoison;
   wire       [31:0]   descWords_0;
   wire       [31:0]   descWords_4;
   wire       [31:0]   descWords_5;
@@ -2087,8 +2150,8 @@ module CompletionUnit (
   wire                irqClrPulse;
   reg        [31:0]   irqMaskReg;
   wire                irqMask;
-  wire                when_CompletionUnit_l572;
-  wire                when_CompletionUnit_l573;
+  wire                when_CompletionUnit_l584;
+  wire                when_CompletionUnit_l585;
   wire                isBase;
   wire                badWrite;
   reg                 irqSticky;
@@ -2116,6 +2179,8 @@ module CompletionUnit (
   assign _zz_readValue_7 = {16'd0, io_drain_ownSlots};
   assign _zz_readValue_8 = {16'd0, io_drain_contexts};
   assign _zz_readValue_9 = {16'd0, io_drain_tokens};
+  assign _zz_desc = io_comp_tag_epoch;
+  assign _zz_desc_1 = devPoison;
   always @(posedge clk) begin
     if(doPush) begin
       ring[tail] <= desc;
@@ -2147,12 +2212,13 @@ module CompletionUnit (
   assign full = (_zz_full == head);
   assign occ = (tail - head);
   assign io_comp_ready = (! full);
+  assign devPoison = 1'b0;
   assign descWords_0 = 32'h00000001;
   assign descWords_4 = {24'd0, _zz_descWords_4};
   assign descWords_5 = {24'd0, _zz_descWords_5};
   assign descWords_6 = 32'h0;
   assign descWords_7 = 32'h0;
-  assign desc = {{{{{{{descWords_7,descWords_6},descWords_5},descWords_4},{{16'h0,io_comp_tag_precision},io_comp_tag_dim}},{io_comp_tag_thread,io_comp_tag_lnid}},io_comp_tag_wave},descWords_0};
+  assign desc = {{{{{{{descWords_7,descWords_6},descWords_5},descWords_4},{{16'h0,io_comp_tag_precision},io_comp_tag_dim}},{{{{_zz_desc,_zz_desc_1},io_comp_tag_trace},10'h0},io_comp_tag_lnid}},io_comp_tag_wave},descWords_0};
   assign doPush = (io_comp_valid && (! full));
   assign shove = (io_comp_valid && full);
   assign aligned = (io_addr[1 : 0] == 2'b00);
@@ -2175,8 +2241,8 @@ module CompletionUnit (
   assign sizeValBad = (io_wdata[4 : 0] != 5'h03);
   assign irqClrPulse = (((doWr && isIrqClr) && (! clrRsvBad)) && io_wdata[0]);
   assign irqMask = irqMaskReg[0];
-  assign when_CompletionUnit_l572 = (doWr && isHead);
-  assign when_CompletionUnit_l573 = ((doWr && isIrqMk) && (! mkRsvBad));
+  assign when_CompletionUnit_l584 = (doWr && isHead);
+  assign when_CompletionUnit_l585 = ((doWr && isIrqMk) && (! mkRsvBad));
   assign isBase = ((io_addr == 8'h0) || (io_addr == 8'h04));
   assign badWrite = ((io_wstrobe && (! aligned)) || (doWr && ((((isRoOff || isBase) || (isSize && (sizeRsvBad || sizeValBad))) || (isIrqMk && mkRsvBad)) || (isIrqClr && clrRsvBad))));
   assign io_irq = (irqSticky && (! irqMask));
@@ -2251,10 +2317,10 @@ module CompletionUnit (
       if(doPush) begin
         tail <= (tail + 3'b001);
       end
-      if(when_CompletionUnit_l572) begin
+      if(when_CompletionUnit_l584) begin
         headReg <= (io_wdata & 32'h00000007);
       end
-      if(when_CompletionUnit_l573) begin
+      if(when_CompletionUnit_l585) begin
         irqMaskReg <= io_wdata;
       end
       if(irqClrPulse) begin
@@ -2387,7 +2453,7 @@ module StepSequencer (
   wire       [15:0]   _zz_5;
   wire                when_StepSequencer_l444;
   wire                runaway;
-  wire                when_Common_l259;
+  wire                when_Common_l337;
   reg                 _zz_io_faultBadProg;
   reg [13:0] progMem [0:511];
   reg [4:0] selMem [0:65535];
@@ -2553,7 +2619,7 @@ module StepSequencer (
   assign _zz_5 = ({15'd0,1'b1} <<< stDst);
   assign when_StepSequencer_l444 = (execCnt == 5'h1f);
   assign runaway = (((state == 2'b10) && (! stLast)) && (execCnt == 5'h1f));
-  assign when_Common_l259 = ((progWrBad || bindWrBad) || runaway);
+  assign when_Common_l337 = ((progWrBad || bindWrBad) || runaway);
   assign io_faultBadProg = _zz_io_faultBadProg;
   assign io_oDone = rDone;
   assign io_oCapAbsent = (rDone && rCapa);
@@ -2694,7 +2760,7 @@ module StepSequencer (
       if(io_faultClearBadProg) begin
         _zz_io_faultBadProg <= 1'b0;
       end
-      if(when_Common_l259) begin
+      if(when_Common_l337) begin
         _zz_io_faultBadProg <= 1'b1;
       end
     end
@@ -3885,7 +3951,7 @@ module ResultBank (
   wire                wrQualified;
   wire                when_ResultBank_l181;
   wire       [15:0]   _zz_4;
-  wire                when_Common_l259;
+  wire                when_Common_l337;
   reg                 _zz_io_fault;
   wire       [4:0]    _zz_io_occupancy;
   wire       [4:0]    _zz_io_occupancy_1;
@@ -4169,7 +4235,7 @@ module ResultBank (
   assign wrQualified = ((1'b1 && _zz_wrQualified) && (_zz_wrQualified_1 == io_write_prod));
   assign when_ResultBank_l181 = (io_write_valid && wrQualified);
   assign _zz_4 = ({15'd0,1'b1} <<< io_write_slot);
-  assign when_Common_l259 = (io_write_valid && (! wrQualified));
+  assign when_Common_l337 = (io_write_valid && (! wrQualified));
   assign io_fault = _zz_io_fault;
   assign io_read_data = _zz_io_read_data;
   assign io_read_owned = (1'b1 && _zz_io_read_owned);
@@ -4577,7 +4643,7 @@ module ResultBank (
       if(io_faultClear) begin
         _zz_io_fault <= 1'b0;
       end
-      if(when_Common_l259) begin
+      if(when_Common_l337) begin
         _zz_io_fault <= 1'b1;
       end
     end
@@ -4588,10 +4654,10 @@ endmodule
 
 module SharedUnit (
   input  wire          io_req_valid,
-  input  wire [160:0]  io_req_payload,
+  input  wire [150:0]  io_req_payload,
   output wire          io_req_ready,
   output wire          io_rsp_valid,
-  output wire [160:0]  io_rsp_payload,
+  output wire [150:0]  io_rsp_payload,
   output wire          io_faultBpViolation,
   input  wire          io_faultClear,
   output wire [2:0]    io_occupancy,
@@ -4600,11 +4666,11 @@ module SharedUnit (
 );
 
   reg                 body_1_io_start;
-  reg        [160:0]  body_1_io_req;
+  reg        [150:0]  body_1_io_req;
   wire                body_1_io_busy;
   wire                body_1_io_done;
-  wire       [160:0]  body_1_io_rsp;
-  reg        [160:0]  _zz_queue_head;
+  wire       [150:0]  body_1_io_rsp;
+  reg        [150:0]  _zz_queue_head;
   wire       [1:0]    _zz_queue_rdPtr;
   wire       [1:0]    _zz_queue_wrPtr;
   wire       [2:0]    _zz_queue_cnt;
@@ -4614,14 +4680,14 @@ module SharedUnit (
   wire       [0:0]    _zz_queue_cnt_4;
   wire       [2:0]    _zz_io_occupancy;
   wire       [0:0]    _zz_io_occupancy_1;
-  reg        [160:0]  queue_slots_0;
-  reg        [160:0]  queue_slots_1;
-  reg        [160:0]  queue_slots_2;
-  reg        [160:0]  queue_slots_3;
+  reg        [150:0]  queue_slots_0;
+  reg        [150:0]  queue_slots_1;
+  reg        [150:0]  queue_slots_2;
+  reg        [150:0]  queue_slots_3;
   reg        [1:0]    queue_rdPtr;
   reg        [1:0]    queue_wrPtr;
   reg        [2:0]    queue_cnt;
-  wire       [160:0]  queue_head;
+  wire       [150:0]  queue_head;
   wire                queueEmpty;
   wire                queueRoom;
   wire                acceptDirect;
@@ -4642,10 +4708,10 @@ module SharedUnit (
   assign _zz_io_occupancy = {2'd0, _zz_io_occupancy_1};
   SharedUnitOccupyStub body_1 (
     .io_start (body_1_io_start     ), //i
-    .io_req   (body_1_io_req[160:0]), //i
+    .io_req   (body_1_io_req[150:0]), //i
     .io_busy  (body_1_io_busy      ), //o
     .io_done  (body_1_io_done      ), //o
-    .io_rsp   (body_1_io_rsp[160:0]), //o
+    .io_rsp   (body_1_io_rsp[150:0]), //o
     .clk      (clk                 ), //i
     .reset    (reset               )  //i
   );
@@ -4692,10 +4758,10 @@ module SharedUnit (
   assign io_occupancy = (queue_cnt + _zz_io_occupancy);
   always @(posedge clk or posedge reset) begin
     if(reset) begin
-      queue_slots_0 <= 161'h0;
-      queue_slots_1 <= 161'h0;
-      queue_slots_2 <= 161'h0;
-      queue_slots_3 <= 161'h0;
+      queue_slots_0 <= 151'h0;
+      queue_slots_1 <= 151'h0;
+      queue_slots_2 <= 151'h0;
+      queue_slots_3 <= 151'h0;
       queue_rdPtr <= 2'b00;
       queue_wrPtr <= 2'b00;
       queue_cnt <= 3'b000;
@@ -4741,7 +4807,9 @@ module FabricMerge (
   input  wire          io_faultClear,
   input  wire          io_push_0_strb,
   input  wire [31:0]   io_push_0_result_head_tag_wave,
-  input  wire [15:0]   io_push_0_result_head_tag_thread,
+  input  wire [3:0]    io_push_0_result_head_tag_epoch,
+  input  wire          io_push_0_result_head_tag_poison,
+  input  wire          io_push_0_result_head_tag_trace,
   input  wire [15:0]   io_push_0_result_head_tag_lnid,
   input  wire [7:0]    io_push_0_result_head_tag_precision,
   input  wire [7:0]    io_push_0_result_head_tag_dim,
@@ -4752,7 +4820,9 @@ module FabricMerge (
   output wire          io_push_0_stall,
   input  wire          io_push_1_strb,
   input  wire [31:0]   io_push_1_result_head_tag_wave,
-  input  wire [15:0]   io_push_1_result_head_tag_thread,
+  input  wire [3:0]    io_push_1_result_head_tag_epoch,
+  input  wire          io_push_1_result_head_tag_poison,
+  input  wire          io_push_1_result_head_tag_trace,
   input  wire [15:0]   io_push_1_result_head_tag_lnid,
   input  wire [7:0]    io_push_1_result_head_tag_precision,
   input  wire [7:0]    io_push_1_result_head_tag_dim,
@@ -4763,7 +4833,9 @@ module FabricMerge (
   output wire          io_push_1_stall,
   input  wire          io_push_2_strb,
   input  wire [31:0]   io_push_2_result_head_tag_wave,
-  input  wire [15:0]   io_push_2_result_head_tag_thread,
+  input  wire [3:0]    io_push_2_result_head_tag_epoch,
+  input  wire          io_push_2_result_head_tag_poison,
+  input  wire          io_push_2_result_head_tag_trace,
   input  wire [15:0]   io_push_2_result_head_tag_lnid,
   input  wire [7:0]    io_push_2_result_head_tag_precision,
   input  wire [7:0]    io_push_2_result_head_tag_dim,
@@ -4774,7 +4846,9 @@ module FabricMerge (
   output wire          io_push_2_stall,
   input  wire          io_push_3_strb,
   input  wire [31:0]   io_push_3_result_head_tag_wave,
-  input  wire [15:0]   io_push_3_result_head_tag_thread,
+  input  wire [3:0]    io_push_3_result_head_tag_epoch,
+  input  wire          io_push_3_result_head_tag_poison,
+  input  wire          io_push_3_result_head_tag_trace,
   input  wire [15:0]   io_push_3_result_head_tag_lnid,
   input  wire [7:0]    io_push_3_result_head_tag_precision,
   input  wire [7:0]    io_push_3_result_head_tag_dim,
@@ -4786,7 +4860,9 @@ module FabricMerge (
   output wire          io_consumer_valid,
   input  wire          io_consumer_ready,
   output wire [31:0]   io_consumer_payload_head_tag_wave,
-  output wire [15:0]   io_consumer_payload_head_tag_thread,
+  output wire [3:0]    io_consumer_payload_head_tag_epoch,
+  output wire          io_consumer_payload_head_tag_poison,
+  output wire          io_consumer_payload_head_tag_trace,
   output wire [15:0]   io_consumer_payload_head_tag_lnid,
   output wire [7:0]    io_consumer_payload_head_tag_precision,
   output wire [7:0]    io_consumer_payload_head_tag_dim,
@@ -4806,6 +4882,14 @@ module FabricMerge (
   wire       [7:0]    _zz__zz_select_rrOh_2;
   wire       [7:0]    _zz__zz_select_rrOh_2_1;
   wire       [3:0]    _zz__zz_select_rrOh_2_2;
+  wire       [3:0]    _zz_merge_contribs_0;
+  wire       [31:0]   _zz_merge_contribs_0_1;
+  wire       [3:0]    _zz_merge_contribs_1;
+  wire       [31:0]   _zz_merge_contribs_1_1;
+  wire       [3:0]    _zz_merge_contribs_2;
+  wire       [31:0]   _zz_merge_contribs_2_1;
+  wire       [3:0]    _zz_merge_contribs_3;
+  wire       [31:0]   _zz_merge_contribs_3_1;
   wire       [2:0]    _zz_io_occupancy;
   wire       [2:0]    _zz_io_occupancy_1;
   wire       [2:0]    _zz_io_occupancy_2;
@@ -4813,7 +4897,9 @@ module FabricMerge (
   wire       [2:0]    _zz_io_occupancy_4;
   wire       [2:0]    _zz_io_occupancy_5;
   reg        [31:0]   lanes_0_slots_0_head_tag_wave;
-  reg        [15:0]   lanes_0_slots_0_head_tag_thread;
+  reg        [3:0]    lanes_0_slots_0_head_tag_epoch;
+  reg                 lanes_0_slots_0_head_tag_poison;
+  reg                 lanes_0_slots_0_head_tag_trace;
   reg        [15:0]   lanes_0_slots_0_head_tag_lnid;
   reg        [7:0]    lanes_0_slots_0_head_tag_precision;
   reg        [7:0]    lanes_0_slots_0_head_tag_dim;
@@ -4832,7 +4918,9 @@ module FabricMerge (
   wire                when_FabricMerge_l143;
   wire                when_FabricMerge_l144;
   reg        [31:0]   lanes_1_slots_0_head_tag_wave;
-  reg        [15:0]   lanes_1_slots_0_head_tag_thread;
+  reg        [3:0]    lanes_1_slots_0_head_tag_epoch;
+  reg                 lanes_1_slots_0_head_tag_poison;
+  reg                 lanes_1_slots_0_head_tag_trace;
   reg        [15:0]   lanes_1_slots_0_head_tag_lnid;
   reg        [7:0]    lanes_1_slots_0_head_tag_precision;
   reg        [7:0]    lanes_1_slots_0_head_tag_dim;
@@ -4851,7 +4939,9 @@ module FabricMerge (
   wire                when_FabricMerge_l143_1;
   wire                when_FabricMerge_l144_1;
   reg        [31:0]   lanes_2_slots_0_head_tag_wave;
-  reg        [15:0]   lanes_2_slots_0_head_tag_thread;
+  reg        [3:0]    lanes_2_slots_0_head_tag_epoch;
+  reg                 lanes_2_slots_0_head_tag_poison;
+  reg                 lanes_2_slots_0_head_tag_trace;
   reg        [15:0]   lanes_2_slots_0_head_tag_lnid;
   reg        [7:0]    lanes_2_slots_0_head_tag_precision;
   reg        [7:0]    lanes_2_slots_0_head_tag_dim;
@@ -4870,7 +4960,9 @@ module FabricMerge (
   wire                when_FabricMerge_l143_2;
   wire                when_FabricMerge_l144_2;
   reg        [31:0]   lanes_3_slots_0_head_tag_wave;
-  reg        [15:0]   lanes_3_slots_0_head_tag_thread;
+  reg        [3:0]    lanes_3_slots_0_head_tag_epoch;
+  reg                 lanes_3_slots_0_head_tag_poison;
+  reg                 lanes_3_slots_0_head_tag_trace;
   reg        [15:0]   lanes_3_slots_0_head_tag_lnid;
   reg        [7:0]    lanes_3_slots_0_head_tag_precision;
   reg        [7:0]    lanes_3_slots_0_head_tag_dim;
@@ -4900,13 +4992,13 @@ module FabricMerge (
   wire       [3:0]    select_drive;
   wire                when_FabricMerge_l180;
   wire                io_consumer_fire;
-  wire       [160:0]  merge_contribs_0;
-  wire       [160:0]  merge_contribs_1;
-  wire       [160:0]  merge_contribs_2;
-  wire       [160:0]  merge_contribs_3;
-  wire       [160:0]  merge_merged;
-  wire       [96:0]   _zz_io_consumer_payload_head_seq;
-  wire       [79:0]   _zz_io_consumer_payload_head_tag_wave;
+  wire       [150:0]  merge_contribs_0;
+  wire       [150:0]  merge_contribs_1;
+  wire       [150:0]  merge_contribs_2;
+  wire       [150:0]  merge_contribs_3;
+  wire       [150:0]  merge_merged;
+  wire       [86:0]   _zz_io_consumer_payload_head_seq;
+  wire       [69:0]   _zz_io_consumer_payload_head_tag_wave;
   wire                shoveAny;
   reg                 _zz_io_fault;
 
@@ -4923,6 +5015,14 @@ module FabricMerge (
   assign _zz_io_occupancy_3 = {2'd0, lanes_1_cnt};
   assign _zz_io_occupancy_4 = {2'd0, lanes_2_cnt};
   assign _zz_io_occupancy_5 = {2'd0, lanes_3_cnt};
+  assign _zz_merge_contribs_0 = lanes_0_slots_0_head_tag_epoch;
+  assign _zz_merge_contribs_0_1 = lanes_0_slots_0_head_tag_wave;
+  assign _zz_merge_contribs_1 = lanes_1_slots_0_head_tag_epoch;
+  assign _zz_merge_contribs_1_1 = lanes_1_slots_0_head_tag_wave;
+  assign _zz_merge_contribs_2 = lanes_2_slots_0_head_tag_epoch;
+  assign _zz_merge_contribs_2_1 = lanes_2_slots_0_head_tag_wave;
+  assign _zz_merge_contribs_3 = lanes_3_slots_0_head_tag_epoch;
+  assign _zz_merge_contribs_3_1 = lanes_3_slots_0_head_tag_wave;
   assign lanes_0_full = (lanes_0_cnt == 1'b1);
   assign lanes_0_vld = (lanes_0_cnt != 1'b0);
   assign io_push_0_stall = lanes_0_full;
@@ -4974,23 +5074,25 @@ module FabricMerge (
   assign select_drive = (select_selOh & select_req);
   assign when_FabricMerge_l180 = (io_consumer_valid && (! io_consumer_ready));
   assign io_consumer_fire = (io_consumer_valid && io_consumer_ready);
-  assign merge_contribs_0 = (select_drive[0] ? {lanes_0_slots_0_body,{lanes_0_slots_0_head_last,{lanes_0_slots_0_head_total,{lanes_0_slots_0_head_seq,{lanes_0_slots_0_head_tag_dim,{lanes_0_slots_0_head_tag_precision,{lanes_0_slots_0_head_tag_lnid,{lanes_0_slots_0_head_tag_thread,lanes_0_slots_0_head_tag_wave}}}}}}}} : 161'h0);
-  assign merge_contribs_1 = (select_drive[1] ? {lanes_1_slots_0_body,{lanes_1_slots_0_head_last,{lanes_1_slots_0_head_total,{lanes_1_slots_0_head_seq,{lanes_1_slots_0_head_tag_dim,{lanes_1_slots_0_head_tag_precision,{lanes_1_slots_0_head_tag_lnid,{lanes_1_slots_0_head_tag_thread,lanes_1_slots_0_head_tag_wave}}}}}}}} : 161'h0);
-  assign merge_contribs_2 = (select_drive[2] ? {lanes_2_slots_0_body,{lanes_2_slots_0_head_last,{lanes_2_slots_0_head_total,{lanes_2_slots_0_head_seq,{lanes_2_slots_0_head_tag_dim,{lanes_2_slots_0_head_tag_precision,{lanes_2_slots_0_head_tag_lnid,{lanes_2_slots_0_head_tag_thread,lanes_2_slots_0_head_tag_wave}}}}}}}} : 161'h0);
-  assign merge_contribs_3 = (select_drive[3] ? {lanes_3_slots_0_body,{lanes_3_slots_0_head_last,{lanes_3_slots_0_head_total,{lanes_3_slots_0_head_seq,{lanes_3_slots_0_head_tag_dim,{lanes_3_slots_0_head_tag_precision,{lanes_3_slots_0_head_tag_lnid,{lanes_3_slots_0_head_tag_thread,lanes_3_slots_0_head_tag_wave}}}}}}}} : 161'h0);
+  assign merge_contribs_0 = (select_drive[0] ? {lanes_0_slots_0_body,{lanes_0_slots_0_head_last,{lanes_0_slots_0_head_total,{lanes_0_slots_0_head_seq,{lanes_0_slots_0_head_tag_dim,{lanes_0_slots_0_head_tag_precision,{lanes_0_slots_0_head_tag_lnid,{lanes_0_slots_0_head_tag_trace,{lanes_0_slots_0_head_tag_poison,{_zz_merge_contribs_0,_zz_merge_contribs_0_1}}}}}}}}}} : 151'h0);
+  assign merge_contribs_1 = (select_drive[1] ? {lanes_1_slots_0_body,{lanes_1_slots_0_head_last,{lanes_1_slots_0_head_total,{lanes_1_slots_0_head_seq,{lanes_1_slots_0_head_tag_dim,{lanes_1_slots_0_head_tag_precision,{lanes_1_slots_0_head_tag_lnid,{lanes_1_slots_0_head_tag_trace,{lanes_1_slots_0_head_tag_poison,{_zz_merge_contribs_1,_zz_merge_contribs_1_1}}}}}}}}}} : 151'h0);
+  assign merge_contribs_2 = (select_drive[2] ? {lanes_2_slots_0_body,{lanes_2_slots_0_head_last,{lanes_2_slots_0_head_total,{lanes_2_slots_0_head_seq,{lanes_2_slots_0_head_tag_dim,{lanes_2_slots_0_head_tag_precision,{lanes_2_slots_0_head_tag_lnid,{lanes_2_slots_0_head_tag_trace,{lanes_2_slots_0_head_tag_poison,{_zz_merge_contribs_2,_zz_merge_contribs_2_1}}}}}}}}}} : 151'h0);
+  assign merge_contribs_3 = (select_drive[3] ? {lanes_3_slots_0_body,{lanes_3_slots_0_head_last,{lanes_3_slots_0_head_total,{lanes_3_slots_0_head_seq,{lanes_3_slots_0_head_tag_dim,{lanes_3_slots_0_head_tag_precision,{lanes_3_slots_0_head_tag_lnid,{lanes_3_slots_0_head_tag_trace,{lanes_3_slots_0_head_tag_poison,{_zz_merge_contribs_3,_zz_merge_contribs_3_1}}}}}}}}}} : 151'h0);
   assign merge_merged = (((merge_contribs_0 | merge_contribs_1) | merge_contribs_2) | merge_contribs_3);
   assign io_consumer_valid = (|select_drive);
-  assign _zz_io_consumer_payload_head_seq = merge_merged[96 : 0];
-  assign _zz_io_consumer_payload_head_tag_wave = _zz_io_consumer_payload_head_seq[79 : 0];
+  assign _zz_io_consumer_payload_head_seq = merge_merged[86 : 0];
+  assign _zz_io_consumer_payload_head_tag_wave = _zz_io_consumer_payload_head_seq[69 : 0];
   assign io_consumer_payload_head_tag_wave = _zz_io_consumer_payload_head_tag_wave[31 : 0];
-  assign io_consumer_payload_head_tag_thread = _zz_io_consumer_payload_head_tag_wave[47 : 32];
-  assign io_consumer_payload_head_tag_lnid = _zz_io_consumer_payload_head_tag_wave[63 : 48];
-  assign io_consumer_payload_head_tag_precision = _zz_io_consumer_payload_head_tag_wave[71 : 64];
-  assign io_consumer_payload_head_tag_dim = _zz_io_consumer_payload_head_tag_wave[79 : 72];
-  assign io_consumer_payload_head_seq = _zz_io_consumer_payload_head_seq[87 : 80];
-  assign io_consumer_payload_head_total = _zz_io_consumer_payload_head_seq[95 : 88];
-  assign io_consumer_payload_head_last = _zz_io_consumer_payload_head_seq[96];
-  assign io_consumer_payload_body = merge_merged[160 : 97];
+  assign io_consumer_payload_head_tag_epoch = _zz_io_consumer_payload_head_tag_wave[35 : 32];
+  assign io_consumer_payload_head_tag_poison = _zz_io_consumer_payload_head_tag_wave[36];
+  assign io_consumer_payload_head_tag_trace = _zz_io_consumer_payload_head_tag_wave[37];
+  assign io_consumer_payload_head_tag_lnid = _zz_io_consumer_payload_head_tag_wave[53 : 38];
+  assign io_consumer_payload_head_tag_precision = _zz_io_consumer_payload_head_tag_wave[61 : 54];
+  assign io_consumer_payload_head_tag_dim = _zz_io_consumer_payload_head_tag_wave[69 : 62];
+  assign io_consumer_payload_head_seq = _zz_io_consumer_payload_head_seq[77 : 70];
+  assign io_consumer_payload_head_total = _zz_io_consumer_payload_head_seq[85 : 78];
+  assign io_consumer_payload_head_last = _zz_io_consumer_payload_head_seq[86];
+  assign io_consumer_payload_body = merge_merged[150 : 87];
   assign lanes_0_doPop = (select_drive[0] && io_consumer_fire);
   assign lanes_1_doPop = (select_drive[1] && io_consumer_fire);
   assign lanes_2_doPop = (select_drive[2] && io_consumer_fire);
@@ -5059,7 +5161,9 @@ module FabricMerge (
     if(lanes_0_doPush) begin
       if(when_FabricMerge_l138) begin
         lanes_0_slots_0_head_tag_wave <= io_push_0_result_head_tag_wave;
-        lanes_0_slots_0_head_tag_thread <= io_push_0_result_head_tag_thread;
+        lanes_0_slots_0_head_tag_epoch <= io_push_0_result_head_tag_epoch;
+        lanes_0_slots_0_head_tag_poison <= io_push_0_result_head_tag_poison;
+        lanes_0_slots_0_head_tag_trace <= io_push_0_result_head_tag_trace;
         lanes_0_slots_0_head_tag_lnid <= io_push_0_result_head_tag_lnid;
         lanes_0_slots_0_head_tag_precision <= io_push_0_result_head_tag_precision;
         lanes_0_slots_0_head_tag_dim <= io_push_0_result_head_tag_dim;
@@ -5072,7 +5176,9 @@ module FabricMerge (
     if(lanes_1_doPush) begin
       if(when_FabricMerge_l138_1) begin
         lanes_1_slots_0_head_tag_wave <= io_push_1_result_head_tag_wave;
-        lanes_1_slots_0_head_tag_thread <= io_push_1_result_head_tag_thread;
+        lanes_1_slots_0_head_tag_epoch <= io_push_1_result_head_tag_epoch;
+        lanes_1_slots_0_head_tag_poison <= io_push_1_result_head_tag_poison;
+        lanes_1_slots_0_head_tag_trace <= io_push_1_result_head_tag_trace;
         lanes_1_slots_0_head_tag_lnid <= io_push_1_result_head_tag_lnid;
         lanes_1_slots_0_head_tag_precision <= io_push_1_result_head_tag_precision;
         lanes_1_slots_0_head_tag_dim <= io_push_1_result_head_tag_dim;
@@ -5085,7 +5191,9 @@ module FabricMerge (
     if(lanes_2_doPush) begin
       if(when_FabricMerge_l138_2) begin
         lanes_2_slots_0_head_tag_wave <= io_push_2_result_head_tag_wave;
-        lanes_2_slots_0_head_tag_thread <= io_push_2_result_head_tag_thread;
+        lanes_2_slots_0_head_tag_epoch <= io_push_2_result_head_tag_epoch;
+        lanes_2_slots_0_head_tag_poison <= io_push_2_result_head_tag_poison;
+        lanes_2_slots_0_head_tag_trace <= io_push_2_result_head_tag_trace;
         lanes_2_slots_0_head_tag_lnid <= io_push_2_result_head_tag_lnid;
         lanes_2_slots_0_head_tag_precision <= io_push_2_result_head_tag_precision;
         lanes_2_slots_0_head_tag_dim <= io_push_2_result_head_tag_dim;
@@ -5098,7 +5206,9 @@ module FabricMerge (
     if(lanes_3_doPush) begin
       if(when_FabricMerge_l138_3) begin
         lanes_3_slots_0_head_tag_wave <= io_push_3_result_head_tag_wave;
-        lanes_3_slots_0_head_tag_thread <= io_push_3_result_head_tag_thread;
+        lanes_3_slots_0_head_tag_epoch <= io_push_3_result_head_tag_epoch;
+        lanes_3_slots_0_head_tag_poison <= io_push_3_result_head_tag_poison;
+        lanes_3_slots_0_head_tag_trace <= io_push_3_result_head_tag_trace;
         lanes_3_slots_0_head_tag_lnid <= io_push_3_result_head_tag_lnid;
         lanes_3_slots_0_head_tag_precision <= io_push_3_result_head_tag_precision;
         lanes_3_slots_0_head_tag_dim <= io_push_3_result_head_tag_dim;
@@ -5185,7 +5295,7 @@ module MmioConfig (
   wire                when_MmioConfig_l408;
   wire                chkUnalWr;
   reg                 _zz_io_faultDupOwner;
-  wire                when_Common_l259;
+  wire                when_Common_l337;
   reg                 _zz_io_faultBadWrite;
   reg [31:0] fwdMem [0:255];
   reg [0:0] revMem [0:65535];
@@ -5559,7 +5669,7 @@ module MmioConfig (
   assign when_MmioConfig_l408 = (((8'h10 <= pSlot) || oldV) || (8'h04 <= pPoint));
   assign chkUnalWr = (acceptW && (! aligned));
   assign io_faultDupOwner = _zz_io_faultDupOwner;
-  assign when_Common_l259 = ((chkBadWr || chkLbBadWr) || chkUnalWr);
+  assign when_Common_l337 = ((chkBadWr || chkLbBadWr) || chkUnalWr);
   assign io_faultBadWrite = _zz_io_faultBadWrite;
   always @(posedge clk or posedge reset) begin
     if(reset) begin
@@ -5603,7 +5713,7 @@ module MmioConfig (
       if(io_faultClearBad) begin
         _zz_io_faultBadWrite <= 1'b0;
       end
-      if(when_Common_l259) begin
+      if(when_Common_l337) begin
         _zz_io_faultBadWrite <= 1'b1;
       end
     end
@@ -5732,7 +5842,7 @@ module OwnershipTable (
   wire                when_OwnershipTable_l323;
   wire                when_OwnershipTable_l332;
   reg                 _zz_io_faultCollide;
-  wire                when_Common_l259;
+  wire                when_Common_l337;
   reg                 _zz_io_faultBadWrite;
 
   always @(*) begin
@@ -5937,7 +6047,7 @@ module OwnershipTable (
   assign when_OwnershipTable_l323 = (! slotMine);
   assign when_OwnershipTable_l332 = (slotBusy && slotMine);
   assign io_faultCollide = _zz_io_faultCollide;
-  assign when_Common_l259 = (statusWr || (acceptW && (! aligned)));
+  assign when_Common_l337 = (statusWr || (acceptW && (! aligned)));
   assign io_faultBadWrite = _zz_io_faultBadWrite;
   always @(posedge clk or posedge reset) begin
     if(reset) begin
@@ -6240,7 +6350,7 @@ module OwnershipTable (
       if(io_faultClearBadWrite) begin
         _zz_io_faultBadWrite <= 1'b0;
       end
-      if(when_Common_l259) begin
+      if(when_Common_l337) begin
         _zz_io_faultBadWrite <= 1'b1;
       end
     end
@@ -6605,28 +6715,28 @@ module MemOrderGate (
   input  wire          io_epochClear,
   input  wire          io_up_0_valid,
   output wire          io_up_0_ready,
-  input  wire [127:0]  io_up_0_payload,
+  input  wire [117:0]  io_up_0_payload,
   input  wire          io_up_1_valid,
   output wire          io_up_1_ready,
-  input  wire [127:0]  io_up_1_payload,
+  input  wire [117:0]  io_up_1_payload,
   input  wire          io_up_2_valid,
   output wire          io_up_2_ready,
-  input  wire [127:0]  io_up_2_payload,
+  input  wire [117:0]  io_up_2_payload,
   input  wire          io_up_3_valid,
   output wire          io_up_3_ready,
-  input  wire [127:0]  io_up_3_payload,
+  input  wire [117:0]  io_up_3_payload,
   output wire          io_down_0_valid,
   input  wire          io_down_0_ready,
-  output wire [127:0]  io_down_0_payload,
+  output wire [117:0]  io_down_0_payload,
   output wire          io_down_1_valid,
   input  wire          io_down_1_ready,
-  output wire [127:0]  io_down_1_payload,
+  output wire [117:0]  io_down_1_payload,
   output wire          io_down_2_valid,
   input  wire          io_down_2_ready,
-  output wire [127:0]  io_down_2_payload,
+  output wire [117:0]  io_down_2_payload,
   output wire          io_down_3_valid,
   input  wire          io_down_3_ready,
-  output wire [127:0]  io_down_3_payload,
+  output wire [117:0]  io_down_3_payload,
   input  wire [3:0]    io_complete,
   output wire [3:0]    io_token,
   output reg  [3:0]    io_gateOpen,
@@ -6799,7 +6909,9 @@ endmodule
 module Reassembly (
   input  wire          io_open_valid,
   input  wire [31:0]   io_open_tag_wave,
-  input  wire [15:0]   io_open_tag_thread,
+  input  wire [3:0]    io_open_tag_epoch,
+  input  wire          io_open_tag_poison,
+  input  wire          io_open_tag_trace,
   input  wire [15:0]   io_open_tag_lnid,
   input  wire [7:0]    io_open_tag_precision,
   input  wire [7:0]    io_open_tag_dim,
@@ -6807,7 +6919,9 @@ module Reassembly (
   output wire          io_open_granted,
   input  wire          io_frag_valid,
   input  wire [31:0]   io_frag_head_tag_wave,
-  input  wire [15:0]   io_frag_head_tag_thread,
+  input  wire [3:0]    io_frag_head_tag_epoch,
+  input  wire          io_frag_head_tag_poison,
+  input  wire          io_frag_head_tag_trace,
   input  wire [15:0]   io_frag_head_tag_lnid,
   input  wire [7:0]    io_frag_head_tag_precision,
   input  wire [7:0]    io_frag_head_tag_dim,
@@ -6822,7 +6936,9 @@ module Reassembly (
   output wire          io_deliver_valid,
   input  wire          io_deliver_ready,
   output wire [31:0]   io_deliver_payload_tag_wave,
-  output wire [15:0]   io_deliver_payload_tag_thread,
+  output wire [3:0]    io_deliver_payload_tag_epoch,
+  output wire          io_deliver_payload_tag_poison,
+  output wire          io_deliver_payload_tag_trace,
   output wire [15:0]   io_deliver_payload_tag_lnid,
   output wire [7:0]    io_deliver_payload_tag_precision,
   output wire [7:0]    io_deliver_payload_tag_dim,
@@ -6832,7 +6948,9 @@ module Reassembly (
   output wire [2:0]    io_occupancy,
   input  wire          io_abort_valid,
   input  wire [31:0]   io_abort_tag_wave,
-  input  wire [15:0]   io_abort_tag_thread,
+  input  wire [3:0]    io_abort_tag_epoch,
+  input  wire          io_abort_tag_poison,
+  input  wire          io_abort_tag_trace,
   input  wire [15:0]   io_abort_tag_lnid,
   input  wire [7:0]    io_abort_tag_precision,
   input  wire [7:0]    io_abort_tag_dim,
@@ -6854,18 +6972,42 @@ module Reassembly (
   wire       [3:0]    _zz_fr_off;
   reg        [15:0]   _zz_fr_endBad;
   wire       [4:0]    _zz_fr_endBad_1;
-  wire                _zz_op_clash;
-  wire                _zz_op_clash_1;
-  wire                _zz_op_clash_2;
-  wire                _zz_op_clash_3;
-  wire                _zz_op_clash_4;
-  wire                _zz_op_clash_5;
-  wire                _zz_op_clash_6;
-  wire                _zz_op_clash_7;
-  wire                _zz_op_clash_8;
-  wire                _zz_op_clash_9;
-  wire                _zz_op_clash_10;
-  wire                _zz_op_clash_11;
+  wire       [67:0]   _zz_op_clash;
+  wire       [51:0]   _zz_op_clash_1;
+  wire       [31:0]   _zz_op_clash_2;
+  wire       [3:0]    _zz_op_clash_3;
+  wire       [7:0]    _zz_op_clash_4;
+  wire       [67:0]   _zz_op_clash_5;
+  wire       [51:0]   _zz_op_clash_6;
+  wire       [31:0]   _zz_op_clash_7;
+  wire       [3:0]    _zz_op_clash_8;
+  wire       [7:0]    _zz_op_clash_9;
+  wire       [67:0]   _zz_op_clash_10;
+  wire       [51:0]   _zz_op_clash_11;
+  wire       [31:0]   _zz_op_clash_12;
+  wire       [3:0]    _zz_op_clash_13;
+  wire       [7:0]    _zz_op_clash_14;
+  wire       [67:0]   _zz_op_clash_15;
+  wire       [51:0]   _zz_op_clash_16;
+  wire       [31:0]   _zz_op_clash_17;
+  wire       [3:0]    _zz_op_clash_18;
+  wire       [7:0]    _zz_op_clash_19;
+  wire       [59:0]   _zz_op_clash_20;
+  wire       [35:0]   _zz_op_clash_21;
+  wire       [15:0]   _zz_op_clash_22;
+  wire       [7:0]    _zz_op_clash_23;
+  wire       [59:0]   _zz_op_clash_24;
+  wire       [35:0]   _zz_op_clash_25;
+  wire       [15:0]   _zz_op_clash_26;
+  wire       [7:0]    _zz_op_clash_27;
+  wire       [51:0]   _zz_op_clash_28;
+  wire       [31:0]   _zz_op_clash_29;
+  wire       [3:0]    _zz_op_clash_30;
+  wire       [7:0]    _zz_op_clash_31;
+  wire       [51:0]   _zz_op_clash_32;
+  wire       [31:0]   _zz_op_clash_33;
+  wire       [3:0]    _zz_op_clash_34;
+  wire       [7:0]    _zz_op_clash_35;
   wire       [3:0]    _zz_op_freeOh_1;
   reg        [15:0]   _zz_dv_done_0;
   wire       [4:0]    _zz_dv_done_0_1;
@@ -6877,7 +7019,9 @@ module Reassembly (
   wire       [4:0]    _zz_dv_done_3_1;
   wire       [3:0]    _zz_dv_grantOh_1;
   reg        [31:0]   _zz_io_deliver_payload_tag_wave_4;
-  reg        [15:0]   _zz_io_deliver_payload_tag_thread;
+  reg        [3:0]    _zz_io_deliver_payload_tag_epoch;
+  reg                 _zz_io_deliver_payload_tag_poison;
+  reg                 _zz_io_deliver_payload_tag_trace;
   reg        [15:0]   _zz_io_deliver_payload_tag_lnid;
   reg        [7:0]    _zz_io_deliver_payload_tag_precision;
   reg        [7:0]    _zz_io_deliver_payload_tag_dim;
@@ -6897,7 +7041,9 @@ module Reassembly (
   wire       [0:0]    _zz_io_occupancy_12;
   reg                 ctx_0_active;
   reg        [31:0]   ctx_0_tag_wave;
-  reg        [15:0]   ctx_0_tag_thread;
+  reg        [3:0]    ctx_0_tag_epoch;
+  reg                 ctx_0_tag_poison;
+  reg                 ctx_0_tag_trace;
   reg        [15:0]   ctx_0_tag_lnid;
   reg        [7:0]    ctx_0_tag_precision;
   reg        [7:0]    ctx_0_tag_dim;
@@ -6908,7 +7054,9 @@ module Reassembly (
   reg                 ctx_0_last;
   reg                 ctx_1_active;
   reg        [31:0]   ctx_1_tag_wave;
-  reg        [15:0]   ctx_1_tag_thread;
+  reg        [3:0]    ctx_1_tag_epoch;
+  reg                 ctx_1_tag_poison;
+  reg                 ctx_1_tag_trace;
   reg        [15:0]   ctx_1_tag_lnid;
   reg        [7:0]    ctx_1_tag_precision;
   reg        [7:0]    ctx_1_tag_dim;
@@ -6919,7 +7067,9 @@ module Reassembly (
   reg                 ctx_1_last;
   reg                 ctx_2_active;
   reg        [31:0]   ctx_2_tag_wave;
-  reg        [15:0]   ctx_2_tag_thread;
+  reg        [3:0]    ctx_2_tag_epoch;
+  reg                 ctx_2_tag_poison;
+  reg                 ctx_2_tag_trace;
   reg        [15:0]   ctx_2_tag_lnid;
   reg        [7:0]    ctx_2_tag_precision;
   reg        [7:0]    ctx_2_tag_dim;
@@ -6930,7 +7080,9 @@ module Reassembly (
   reg                 ctx_2_last;
   reg                 ctx_3_active;
   reg        [31:0]   ctx_3_tag_wave;
-  reg        [15:0]   ctx_3_tag_thread;
+  reg        [3:0]    ctx_3_tag_epoch;
+  reg                 ctx_3_tag_poison;
+  reg                 ctx_3_tag_trace;
   reg        [15:0]   ctx_3_tag_lnid;
   reg        [7:0]    ctx_3_tag_precision;
   reg        [7:0]    ctx_3_tag_dim;
@@ -6979,10 +7131,10 @@ module Reassembly (
   wire                fr_accept;
   wire       [15:0]   fr_newSeen;
   wire                fr_endBad;
-  wire                when_Reassembly_l363;
-  wire                when_Reassembly_l363_1;
-  wire                when_Reassembly_l363_2;
-  wire                when_Reassembly_l363_3;
+  wire                when_Reassembly_l364;
+  wire                when_Reassembly_l364_1;
+  wire                when_Reassembly_l364_2;
+  wire                when_Reassembly_l364_3;
   wire                fr_rejEvt;
   wire                fr_endEvt;
   wire                fr_capaEvt;
@@ -6995,10 +7147,10 @@ module Reassembly (
   wire       [3:0]    _zz_op_freeOh;
   wire       [3:0]    op_freeOh;
   wire                op_grant;
-  wire                when_Reassembly_l396;
-  wire                when_Reassembly_l396_1;
-  wire                when_Reassembly_l396_2;
-  wire                when_Reassembly_l396_3;
+  wire                when_Reassembly_l397;
+  wire                when_Reassembly_l397_1;
+  wire                when_Reassembly_l397_2;
+  wire                when_Reassembly_l397_3;
   wire                op_clashEvt;
   wire                dv_done_0;
   wire                dv_done_1;
@@ -7012,10 +7164,10 @@ module Reassembly (
   wire                _zz_io_deliver_payload_tag_wave_2;
   wire       [1:0]    _zz_io_deliver_payload_tag_wave_3;
   wire                io_deliver_fire;
-  wire                when_Reassembly_l435;
-  wire                when_Reassembly_l435_1;
-  wire                when_Reassembly_l435_2;
-  wire                when_Reassembly_l435_3;
+  wire                when_Reassembly_l436;
+  wire                when_Reassembly_l436_1;
+  wire                when_Reassembly_l436_2;
+  wire                when_Reassembly_l436_3;
   wire                ab_hit_0;
   wire                ab_hit_1;
   wire                ab_hit_2;
@@ -7025,12 +7177,12 @@ module Reassembly (
   wire                _zz_ab_cBase;
   wire                _zz_ab_cBase_1;
   wire       [7:0]    ab_cBase;
-  wire                when_Reassembly_l474;
-  wire                when_Reassembly_l474_1;
-  wire                when_Reassembly_l474_2;
-  wire                when_Reassembly_l474_3;
+  wire                when_Reassembly_l477;
+  wire                when_Reassembly_l477_1;
+  wire                when_Reassembly_l477_2;
+  wire                when_Reassembly_l477_3;
   reg        [7:0]    ab_cnt;
-  wire                when_Reassembly_l485;
+  wire                when_Reassembly_l488;
   wire       [2:0]    _zz_io_incomplete;
   wire       [2:0]    _zz_io_incomplete_1;
   wire       [2:0]    _zz_io_incomplete_2;
@@ -7047,7 +7199,7 @@ module Reassembly (
   wire       [2:0]    _zz_io_occupancy_5;
   wire       [2:0]    _zz_io_occupancy_6;
   wire       [2:0]    _zz_io_occupancy_7;
-  wire                when_Common_l259;
+  wire                when_Common_l337;
   reg                 _zz_io_fault;
   reg                 capBit;
 
@@ -7066,18 +7218,42 @@ module Reassembly (
   assign _zz_ab_cBase_3 = {_zz_ab_cBase_1,_zz_ab_cBase};
   assign _zz_io_incomplete_9 = {(ctx_2_active && (! ctx_2_last)),{(ctx_1_active && (! ctx_1_last)),(ctx_0_active && (! ctx_0_last))}};
   assign _zz_io_occupancy_9 = {ctx_2_active,{ctx_1_active,ctx_0_active}};
-  assign _zz_op_clash = (((_zz_op_clash_1 && _zz_op_clash_2) && (ctx_0_tag_lnid == io_open_tag_lnid)) && (ctx_0_tag_precision == io_open_tag_precision));
-  assign _zz_op_clash_3 = (ctx_0_tag_dim == io_open_tag_dim);
-  assign _zz_op_clash_4 = (((_zz_op_clash_5 && _zz_op_clash_6) && (ctx_1_tag_lnid == io_open_tag_lnid)) && (ctx_1_tag_precision == io_open_tag_precision));
-  assign _zz_op_clash_7 = (ctx_1_tag_dim == io_open_tag_dim);
-  assign _zz_op_clash_8 = (((ctx_2_tag_wave == io_open_tag_wave) && (ctx_2_tag_thread == io_open_tag_thread)) && (ctx_2_tag_lnid == io_open_tag_lnid));
-  assign _zz_op_clash_9 = (ctx_2_tag_precision == io_open_tag_precision);
-  assign _zz_op_clash_10 = ((ctx_3_tag_wave == io_open_tag_wave) && (ctx_3_tag_thread == io_open_tag_thread));
-  assign _zz_op_clash_11 = (ctx_3_tag_lnid == io_open_tag_lnid);
-  assign _zz_op_clash_1 = (ctx_0_tag_wave == io_open_tag_wave);
-  assign _zz_op_clash_2 = (ctx_0_tag_thread == io_open_tag_thread);
-  assign _zz_op_clash_5 = (ctx_1_tag_wave == io_open_tag_wave);
-  assign _zz_op_clash_6 = (ctx_1_tag_thread == io_open_tag_thread);
+  assign _zz_op_clash = {{_zz_op_clash_1,_zz_op_clash_4},ctx_0_tag_dim};
+  assign _zz_op_clash_5 = {{_zz_op_clash_6,_zz_op_clash_9},io_open_tag_dim};
+  assign _zz_op_clash_10 = {{_zz_op_clash_11,_zz_op_clash_14},ctx_1_tag_dim};
+  assign _zz_op_clash_15 = {{_zz_op_clash_16,_zz_op_clash_19},io_open_tag_dim};
+  assign _zz_op_clash_20 = {{_zz_op_clash_21,_zz_op_clash_22},ctx_2_tag_precision};
+  assign _zz_op_clash_23 = ctx_2_tag_dim;
+  assign _zz_op_clash_24 = {{_zz_op_clash_25,_zz_op_clash_26},io_open_tag_precision};
+  assign _zz_op_clash_27 = io_open_tag_dim;
+  assign _zz_op_clash_28 = {{_zz_op_clash_29,_zz_op_clash_30},ctx_3_tag_lnid};
+  assign _zz_op_clash_31 = ctx_3_tag_precision;
+  assign _zz_op_clash_32 = {{_zz_op_clash_33,_zz_op_clash_34},io_open_tag_lnid};
+  assign _zz_op_clash_35 = io_open_tag_precision;
+  assign _zz_op_clash_1 = {{_zz_op_clash_2,_zz_op_clash_3},ctx_0_tag_lnid};
+  assign _zz_op_clash_4 = ctx_0_tag_precision;
+  assign _zz_op_clash_6 = {{_zz_op_clash_7,_zz_op_clash_8},io_open_tag_lnid};
+  assign _zz_op_clash_9 = io_open_tag_precision;
+  assign _zz_op_clash_11 = {{_zz_op_clash_12,_zz_op_clash_13},ctx_1_tag_lnid};
+  assign _zz_op_clash_14 = ctx_1_tag_precision;
+  assign _zz_op_clash_16 = {{_zz_op_clash_17,_zz_op_clash_18},io_open_tag_lnid};
+  assign _zz_op_clash_19 = io_open_tag_precision;
+  assign _zz_op_clash_21 = {ctx_2_tag_wave,ctx_2_tag_epoch};
+  assign _zz_op_clash_22 = ctx_2_tag_lnid;
+  assign _zz_op_clash_25 = {io_open_tag_wave,io_open_tag_epoch};
+  assign _zz_op_clash_26 = io_open_tag_lnid;
+  assign _zz_op_clash_29 = ctx_3_tag_wave;
+  assign _zz_op_clash_30 = ctx_3_tag_epoch;
+  assign _zz_op_clash_33 = io_open_tag_wave;
+  assign _zz_op_clash_34 = io_open_tag_epoch;
+  assign _zz_op_clash_2 = ctx_0_tag_wave;
+  assign _zz_op_clash_3 = ctx_0_tag_epoch;
+  assign _zz_op_clash_7 = io_open_tag_wave;
+  assign _zz_op_clash_8 = io_open_tag_epoch;
+  assign _zz_op_clash_12 = ctx_1_tag_wave;
+  assign _zz_op_clash_13 = ctx_1_tag_epoch;
+  assign _zz_op_clash_17 = io_open_tag_wave;
+  assign _zz_op_clash_18 = io_open_tag_epoch;
   always @(*) begin
     case(_zz_fr_cBase_2)
       2'b00 : begin
@@ -7221,7 +7397,9 @@ module Reassembly (
     case(_zz_io_deliver_payload_tag_wave_3)
       2'b00 : begin
         _zz_io_deliver_payload_tag_wave_4 = ctx_0_tag_wave;
-        _zz_io_deliver_payload_tag_thread = ctx_0_tag_thread;
+        _zz_io_deliver_payload_tag_epoch = ctx_0_tag_epoch;
+        _zz_io_deliver_payload_tag_poison = ctx_0_tag_poison;
+        _zz_io_deliver_payload_tag_trace = ctx_0_tag_trace;
         _zz_io_deliver_payload_tag_lnid = ctx_0_tag_lnid;
         _zz_io_deliver_payload_tag_precision = ctx_0_tag_precision;
         _zz_io_deliver_payload_tag_dim = ctx_0_tag_dim;
@@ -7230,7 +7408,9 @@ module Reassembly (
       end
       2'b01 : begin
         _zz_io_deliver_payload_tag_wave_4 = ctx_1_tag_wave;
-        _zz_io_deliver_payload_tag_thread = ctx_1_tag_thread;
+        _zz_io_deliver_payload_tag_epoch = ctx_1_tag_epoch;
+        _zz_io_deliver_payload_tag_poison = ctx_1_tag_poison;
+        _zz_io_deliver_payload_tag_trace = ctx_1_tag_trace;
         _zz_io_deliver_payload_tag_lnid = ctx_1_tag_lnid;
         _zz_io_deliver_payload_tag_precision = ctx_1_tag_precision;
         _zz_io_deliver_payload_tag_dim = ctx_1_tag_dim;
@@ -7239,7 +7419,9 @@ module Reassembly (
       end
       2'b10 : begin
         _zz_io_deliver_payload_tag_wave_4 = ctx_2_tag_wave;
-        _zz_io_deliver_payload_tag_thread = ctx_2_tag_thread;
+        _zz_io_deliver_payload_tag_epoch = ctx_2_tag_epoch;
+        _zz_io_deliver_payload_tag_poison = ctx_2_tag_poison;
+        _zz_io_deliver_payload_tag_trace = ctx_2_tag_trace;
         _zz_io_deliver_payload_tag_lnid = ctx_2_tag_lnid;
         _zz_io_deliver_payload_tag_precision = ctx_2_tag_precision;
         _zz_io_deliver_payload_tag_dim = ctx_2_tag_dim;
@@ -7248,7 +7430,9 @@ module Reassembly (
       end
       default : begin
         _zz_io_deliver_payload_tag_wave_4 = ctx_3_tag_wave;
-        _zz_io_deliver_payload_tag_thread = ctx_3_tag_thread;
+        _zz_io_deliver_payload_tag_epoch = ctx_3_tag_epoch;
+        _zz_io_deliver_payload_tag_poison = ctx_3_tag_poison;
+        _zz_io_deliver_payload_tag_trace = ctx_3_tag_trace;
         _zz_io_deliver_payload_tag_lnid = ctx_3_tag_lnid;
         _zz_io_deliver_payload_tag_precision = ctx_3_tag_precision;
         _zz_io_deliver_payload_tag_dim = ctx_3_tag_dim;
@@ -7336,10 +7520,10 @@ module Reassembly (
   assign fullMask_14 = 16'h3fff;
   assign fullMask_15 = 16'h7fff;
   assign fullMask_16 = 16'hffff;
-  assign fr_hit_0 = (ctx_0_active && (((((ctx_0_tag_wave == io_frag_head_tag_wave) && (ctx_0_tag_thread == io_frag_head_tag_thread)) && (ctx_0_tag_lnid == io_frag_head_tag_lnid)) && (ctx_0_tag_precision == io_frag_head_tag_precision)) && (ctx_0_tag_dim == io_frag_head_tag_dim)));
-  assign fr_hit_1 = (ctx_1_active && (((((ctx_1_tag_wave == io_frag_head_tag_wave) && (ctx_1_tag_thread == io_frag_head_tag_thread)) && (ctx_1_tag_lnid == io_frag_head_tag_lnid)) && (ctx_1_tag_precision == io_frag_head_tag_precision)) && (ctx_1_tag_dim == io_frag_head_tag_dim)));
-  assign fr_hit_2 = (ctx_2_active && (((((ctx_2_tag_wave == io_frag_head_tag_wave) && (ctx_2_tag_thread == io_frag_head_tag_thread)) && (ctx_2_tag_lnid == io_frag_head_tag_lnid)) && (ctx_2_tag_precision == io_frag_head_tag_precision)) && (ctx_2_tag_dim == io_frag_head_tag_dim)));
-  assign fr_hit_3 = (ctx_3_active && (((((ctx_3_tag_wave == io_frag_head_tag_wave) && (ctx_3_tag_thread == io_frag_head_tag_thread)) && (ctx_3_tag_lnid == io_frag_head_tag_lnid)) && (ctx_3_tag_precision == io_frag_head_tag_precision)) && (ctx_3_tag_dim == io_frag_head_tag_dim)));
+  assign fr_hit_0 = (ctx_0_active && ({{{{ctx_0_tag_wave,ctx_0_tag_epoch},ctx_0_tag_lnid},ctx_0_tag_precision},ctx_0_tag_dim} == {{{{io_frag_head_tag_wave,io_frag_head_tag_epoch},io_frag_head_tag_lnid},io_frag_head_tag_precision},io_frag_head_tag_dim}));
+  assign fr_hit_1 = (ctx_1_active && ({{{{ctx_1_tag_wave,ctx_1_tag_epoch},ctx_1_tag_lnid},ctx_1_tag_precision},ctx_1_tag_dim} == {{{{io_frag_head_tag_wave,io_frag_head_tag_epoch},io_frag_head_tag_lnid},io_frag_head_tag_precision},io_frag_head_tag_dim}));
+  assign fr_hit_2 = (ctx_2_active && ({{{{ctx_2_tag_wave,ctx_2_tag_epoch},ctx_2_tag_lnid},ctx_2_tag_precision},ctx_2_tag_dim} == {{{{io_frag_head_tag_wave,io_frag_head_tag_epoch},io_frag_head_tag_lnid},io_frag_head_tag_precision},io_frag_head_tag_dim}));
+  assign fr_hit_3 = (ctx_3_active && ({{{{ctx_3_tag_wave,ctx_3_tag_epoch},ctx_3_tag_lnid},ctx_3_tag_precision},ctx_3_tag_dim} == {{{{io_frag_head_tag_wave,io_frag_head_tag_epoch},io_frag_head_tag_lnid},io_frag_head_tag_precision},io_frag_head_tag_dim}));
   assign fr_hitAny = (((fr_hit_0 || fr_hit_1) || fr_hit_2) || fr_hit_3);
   assign _zz_fr_cBase = (fr_hit_1 || fr_hit_3);
   assign _zz_fr_cBase_1 = (fr_hit_2 || fr_hit_3);
@@ -7359,10 +7543,10 @@ module Reassembly (
   assign fr_accept = (((((io_frag_valid && fr_hitAny) && (! fr_capaRej)) && (! fr_totBad)) && (! fr_overRej)) && (! fr_dupRej));
   assign fr_newSeen = (fr_cSeen | fr_ohSeq);
   assign fr_endBad = (io_frag_head_last && (fr_newSeen != _zz_fr_endBad));
-  assign when_Reassembly_l363 = (fr_accept && fr_hit_0);
-  assign when_Reassembly_l363_1 = (fr_accept && fr_hit_1);
-  assign when_Reassembly_l363_2 = (fr_accept && fr_hit_2);
-  assign when_Reassembly_l363_3 = (fr_accept && fr_hit_3);
+  assign when_Reassembly_l364 = (fr_accept && fr_hit_0);
+  assign when_Reassembly_l364_1 = (fr_accept && fr_hit_1);
+  assign when_Reassembly_l364_2 = (fr_accept && fr_hit_2);
+  assign when_Reassembly_l364_3 = (fr_accept && fr_hit_3);
   assign fr_rejEvt = (io_frag_valid && (((fr_strayRej || fr_totBad) || fr_overRej) || fr_dupRej));
   assign fr_endEvt = (fr_accept && fr_endBad);
   assign fr_capaEvt = (io_frag_valid && fr_capaRej);
@@ -7370,7 +7554,7 @@ module Reassembly (
   assign io_wr_base = fr_cBase;
   assign io_wr_off = fr_off;
   assign io_wr_body = io_frag_body;
-  assign op_clash = ((((ctx_0_active && (_zz_op_clash && _zz_op_clash_3)) || (ctx_1_active && (_zz_op_clash_4 && _zz_op_clash_7))) || (ctx_2_active && ((_zz_op_clash_8 && _zz_op_clash_9) && (ctx_2_tag_dim == io_open_tag_dim)))) || (ctx_3_active && (((_zz_op_clash_10 && _zz_op_clash_11) && (ctx_3_tag_precision == io_open_tag_precision)) && (ctx_3_tag_dim == io_open_tag_dim))));
+  assign op_clash = ((((ctx_0_active && (_zz_op_clash == _zz_op_clash_5)) || (ctx_1_active && (_zz_op_clash_10 == _zz_op_clash_15))) || (ctx_2_active && ({_zz_op_clash_20,_zz_op_clash_23} == {_zz_op_clash_24,_zz_op_clash_27}))) || (ctx_3_active && ({{_zz_op_clash_28,_zz_op_clash_31},ctx_3_tag_dim} == {{_zz_op_clash_32,_zz_op_clash_35},io_open_tag_dim})));
   assign op_free_0 = (! ctx_0_active);
   assign op_free_1 = (! ctx_1_active);
   assign op_free_2 = (! ctx_2_active);
@@ -7380,10 +7564,10 @@ module Reassembly (
   assign op_freeOh = (_zz_op_freeOh & (~ _zz_op_freeOh_1));
   assign op_grant = ((io_open_valid && (! op_clash)) && op_freeAny);
   assign io_open_granted = op_grant;
-  assign when_Reassembly_l396 = (op_grant && op_freeOh[0]);
-  assign when_Reassembly_l396_1 = (op_grant && op_freeOh[1]);
-  assign when_Reassembly_l396_2 = (op_grant && op_freeOh[2]);
-  assign when_Reassembly_l396_3 = (op_grant && op_freeOh[3]);
+  assign when_Reassembly_l397 = (op_grant && op_freeOh[0]);
+  assign when_Reassembly_l397_1 = (op_grant && op_freeOh[1]);
+  assign when_Reassembly_l397_2 = (op_grant && op_freeOh[2]);
+  assign when_Reassembly_l397_3 = (op_grant && op_freeOh[3]);
   assign op_clashEvt = (io_open_valid && op_clash);
   assign dv_done_0 = (((ctx_0_active && ctx_0_last) && ctx_0_totalKnown) && (ctx_0_seen == _zz_dv_done_0));
   assign dv_done_1 = (((ctx_1_active && ctx_1_last) && ctx_1_totalKnown) && (ctx_1_seen == _zz_dv_done_1));
@@ -7398,31 +7582,33 @@ module Reassembly (
   assign _zz_io_deliver_payload_tag_wave_2 = (dv_grantOh[2] || _zz_io_deliver_payload_tag_wave);
   assign _zz_io_deliver_payload_tag_wave_3 = {_zz_io_deliver_payload_tag_wave_2,_zz_io_deliver_payload_tag_wave_1};
   assign io_deliver_payload_tag_wave = _zz_io_deliver_payload_tag_wave_4;
-  assign io_deliver_payload_tag_thread = _zz_io_deliver_payload_tag_thread;
+  assign io_deliver_payload_tag_epoch = _zz_io_deliver_payload_tag_epoch;
+  assign io_deliver_payload_tag_poison = _zz_io_deliver_payload_tag_poison;
+  assign io_deliver_payload_tag_trace = _zz_io_deliver_payload_tag_trace;
   assign io_deliver_payload_tag_lnid = _zz_io_deliver_payload_tag_lnid;
   assign io_deliver_payload_tag_precision = _zz_io_deliver_payload_tag_precision;
   assign io_deliver_payload_tag_dim = _zz_io_deliver_payload_tag_dim;
   assign io_deliver_payload_base = _zz_io_deliver_payload_base;
   assign io_deliver_payload_total = _zz_io_deliver_payload_total;
   assign io_deliver_fire = (io_deliver_valid && io_deliver_ready);
-  assign when_Reassembly_l435 = (io_deliver_fire && dv_grantOh[0]);
-  assign when_Reassembly_l435_1 = (io_deliver_fire && dv_grantOh[1]);
-  assign when_Reassembly_l435_2 = (io_deliver_fire && dv_grantOh[2]);
-  assign when_Reassembly_l435_3 = (io_deliver_fire && dv_grantOh[3]);
-  assign ab_hit_0 = (ctx_0_active && (((((ctx_0_tag_wave == io_abort_tag_wave) && (ctx_0_tag_thread == io_abort_tag_thread)) && (ctx_0_tag_lnid == io_abort_tag_lnid)) && (ctx_0_tag_precision == io_abort_tag_precision)) && (ctx_0_tag_dim == io_abort_tag_dim)));
-  assign ab_hit_1 = (ctx_1_active && (((((ctx_1_tag_wave == io_abort_tag_wave) && (ctx_1_tag_thread == io_abort_tag_thread)) && (ctx_1_tag_lnid == io_abort_tag_lnid)) && (ctx_1_tag_precision == io_abort_tag_precision)) && (ctx_1_tag_dim == io_abort_tag_dim)));
-  assign ab_hit_2 = (ctx_2_active && (((((ctx_2_tag_wave == io_abort_tag_wave) && (ctx_2_tag_thread == io_abort_tag_thread)) && (ctx_2_tag_lnid == io_abort_tag_lnid)) && (ctx_2_tag_precision == io_abort_tag_precision)) && (ctx_2_tag_dim == io_abort_tag_dim)));
-  assign ab_hit_3 = (ctx_3_active && (((((ctx_3_tag_wave == io_abort_tag_wave) && (ctx_3_tag_thread == io_abort_tag_thread)) && (ctx_3_tag_lnid == io_abort_tag_lnid)) && (ctx_3_tag_precision == io_abort_tag_precision)) && (ctx_3_tag_dim == io_abort_tag_dim)));
+  assign when_Reassembly_l436 = (io_deliver_fire && dv_grantOh[0]);
+  assign when_Reassembly_l436_1 = (io_deliver_fire && dv_grantOh[1]);
+  assign when_Reassembly_l436_2 = (io_deliver_fire && dv_grantOh[2]);
+  assign when_Reassembly_l436_3 = (io_deliver_fire && dv_grantOh[3]);
+  assign ab_hit_0 = (ctx_0_active && ({{{{ctx_0_tag_wave,ctx_0_tag_epoch},ctx_0_tag_lnid},ctx_0_tag_precision},ctx_0_tag_dim} == {{{{io_abort_tag_wave,io_abort_tag_epoch},io_abort_tag_lnid},io_abort_tag_precision},io_abort_tag_dim}));
+  assign ab_hit_1 = (ctx_1_active && ({{{{ctx_1_tag_wave,ctx_1_tag_epoch},ctx_1_tag_lnid},ctx_1_tag_precision},ctx_1_tag_dim} == {{{{io_abort_tag_wave,io_abort_tag_epoch},io_abort_tag_lnid},io_abort_tag_precision},io_abort_tag_dim}));
+  assign ab_hit_2 = (ctx_2_active && ({{{{ctx_2_tag_wave,ctx_2_tag_epoch},ctx_2_tag_lnid},ctx_2_tag_precision},ctx_2_tag_dim} == {{{{io_abort_tag_wave,io_abort_tag_epoch},io_abort_tag_lnid},io_abort_tag_precision},io_abort_tag_dim}));
+  assign ab_hit_3 = (ctx_3_active && ({{{{ctx_3_tag_wave,ctx_3_tag_epoch},ctx_3_tag_lnid},ctx_3_tag_precision},ctx_3_tag_dim} == {{{{io_abort_tag_wave,io_abort_tag_epoch},io_abort_tag_lnid},io_abort_tag_precision},io_abort_tag_dim}));
   assign ab_hitAny = (((ab_hit_0 || ab_hit_1) || ab_hit_2) || ab_hit_3);
   assign ab_fire = (io_abort_valid && ab_hitAny);
   assign _zz_ab_cBase = (ab_hit_1 || ab_hit_3);
   assign _zz_ab_cBase_1 = (ab_hit_2 || ab_hit_3);
   assign ab_cBase = _zz_ab_cBase_2;
-  assign when_Reassembly_l474 = (ab_fire && ab_hit_0);
-  assign when_Reassembly_l474_1 = (ab_fire && ab_hit_1);
-  assign when_Reassembly_l474_2 = (ab_fire && ab_hit_2);
-  assign when_Reassembly_l474_3 = (ab_fire && ab_hit_3);
-  assign when_Reassembly_l485 = (ab_fire && (ab_cnt != 8'hff));
+  assign when_Reassembly_l477 = (ab_fire && ab_hit_0);
+  assign when_Reassembly_l477_1 = (ab_fire && ab_hit_1);
+  assign when_Reassembly_l477_2 = (ab_fire && ab_hit_2);
+  assign when_Reassembly_l477_3 = (ab_fire && ab_hit_3);
+  assign when_Reassembly_l488 = (ab_fire && (ab_cnt != 8'hff));
   assign io_abortCount = ab_cnt;
   assign io_clr_valid = ab_fire;
   assign io_clr_base = ab_cBase;
@@ -7444,7 +7630,7 @@ module Reassembly (
   assign _zz_io_occupancy_6 = 3'b010;
   assign _zz_io_occupancy_7 = 3'b011;
   assign io_occupancy = (_zz_io_occupancy_8 + _zz_io_occupancy_10);
-  assign when_Common_l259 = ((fr_rejEvt || fr_endEvt) || op_clashEvt);
+  assign when_Common_l337 = ((fr_rejEvt || fr_endEvt) || op_clashEvt);
   assign io_fault = _zz_io_fault;
   assign io_capAbsent = capBit;
   always @(posedge clk or posedge reset) begin
@@ -7469,105 +7655,105 @@ module Reassembly (
       _zz_io_fault <= 1'b0;
       capBit <= 1'b0;
     end else begin
-      if(when_Reassembly_l363) begin
+      if(when_Reassembly_l364) begin
         ctx_0_seen <= fr_newSeen;
         ctx_0_last <= (ctx_0_last || io_frag_head_last);
         ctx_0_totalKnown <= 1'b1;
       end
-      if(when_Reassembly_l363_1) begin
+      if(when_Reassembly_l364_1) begin
         ctx_1_seen <= fr_newSeen;
         ctx_1_last <= (ctx_1_last || io_frag_head_last);
         ctx_1_totalKnown <= 1'b1;
       end
-      if(when_Reassembly_l363_2) begin
+      if(when_Reassembly_l364_2) begin
         ctx_2_seen <= fr_newSeen;
         ctx_2_last <= (ctx_2_last || io_frag_head_last);
         ctx_2_totalKnown <= 1'b1;
       end
-      if(when_Reassembly_l363_3) begin
+      if(when_Reassembly_l364_3) begin
         ctx_3_seen <= fr_newSeen;
         ctx_3_last <= (ctx_3_last || io_frag_head_last);
         ctx_3_totalKnown <= 1'b1;
       end
-      if(when_Reassembly_l396) begin
+      if(when_Reassembly_l397) begin
         ctx_0_active <= 1'b1;
         ctx_0_seen <= 16'h0;
         ctx_0_last <= 1'b0;
         ctx_0_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l396_1) begin
+      if(when_Reassembly_l397_1) begin
         ctx_1_active <= 1'b1;
         ctx_1_seen <= 16'h0;
         ctx_1_last <= 1'b0;
         ctx_1_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l396_2) begin
+      if(when_Reassembly_l397_2) begin
         ctx_2_active <= 1'b1;
         ctx_2_seen <= 16'h0;
         ctx_2_last <= 1'b0;
         ctx_2_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l396_3) begin
+      if(when_Reassembly_l397_3) begin
         ctx_3_active <= 1'b1;
         ctx_3_seen <= 16'h0;
         ctx_3_last <= 1'b0;
         ctx_3_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l435) begin
+      if(when_Reassembly_l436) begin
         ctx_0_active <= 1'b0;
         ctx_0_seen <= 16'h0;
         ctx_0_last <= 1'b0;
         ctx_0_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l435_1) begin
+      if(when_Reassembly_l436_1) begin
         ctx_1_active <= 1'b0;
         ctx_1_seen <= 16'h0;
         ctx_1_last <= 1'b0;
         ctx_1_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l435_2) begin
+      if(when_Reassembly_l436_2) begin
         ctx_2_active <= 1'b0;
         ctx_2_seen <= 16'h0;
         ctx_2_last <= 1'b0;
         ctx_2_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l435_3) begin
+      if(when_Reassembly_l436_3) begin
         ctx_3_active <= 1'b0;
         ctx_3_seen <= 16'h0;
         ctx_3_last <= 1'b0;
         ctx_3_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l474) begin
+      if(when_Reassembly_l477) begin
         ctx_0_active <= 1'b0;
         ctx_0_seen <= 16'h0;
         ctx_0_last <= 1'b0;
         ctx_0_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l474_1) begin
+      if(when_Reassembly_l477_1) begin
         ctx_1_active <= 1'b0;
         ctx_1_seen <= 16'h0;
         ctx_1_last <= 1'b0;
         ctx_1_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l474_2) begin
+      if(when_Reassembly_l477_2) begin
         ctx_2_active <= 1'b0;
         ctx_2_seen <= 16'h0;
         ctx_2_last <= 1'b0;
         ctx_2_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l474_3) begin
+      if(when_Reassembly_l477_3) begin
         ctx_3_active <= 1'b0;
         ctx_3_seen <= 16'h0;
         ctx_3_last <= 1'b0;
         ctx_3_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l485) begin
+      if(when_Reassembly_l488) begin
         ab_cnt <= (ab_cnt + 8'h01);
       end
       if(io_faultClear) begin
         _zz_io_fault <= 1'b0;
       end
-      if(when_Common_l259) begin
+      if(when_Common_l337) begin
         _zz_io_fault <= 1'b1;
       end
       if(io_capAbsentClear) begin
@@ -7580,45 +7766,53 @@ module Reassembly (
   end
 
   always @(posedge clk) begin
-    if(when_Reassembly_l363) begin
+    if(when_Reassembly_l364) begin
       ctx_0_total <= fr_effTotal;
     end
-    if(when_Reassembly_l363_1) begin
+    if(when_Reassembly_l364_1) begin
       ctx_1_total <= fr_effTotal;
     end
-    if(when_Reassembly_l363_2) begin
+    if(when_Reassembly_l364_2) begin
       ctx_2_total <= fr_effTotal;
     end
-    if(when_Reassembly_l363_3) begin
+    if(when_Reassembly_l364_3) begin
       ctx_3_total <= fr_effTotal;
     end
-    if(when_Reassembly_l396) begin
+    if(when_Reassembly_l397) begin
       ctx_0_tag_wave <= io_open_tag_wave;
-      ctx_0_tag_thread <= io_open_tag_thread;
+      ctx_0_tag_epoch <= io_open_tag_epoch;
+      ctx_0_tag_poison <= io_open_tag_poison;
+      ctx_0_tag_trace <= io_open_tag_trace;
       ctx_0_tag_lnid <= io_open_tag_lnid;
       ctx_0_tag_precision <= io_open_tag_precision;
       ctx_0_tag_dim <= io_open_tag_dim;
       ctx_0_base <= io_open_base;
     end
-    if(when_Reassembly_l396_1) begin
+    if(when_Reassembly_l397_1) begin
       ctx_1_tag_wave <= io_open_tag_wave;
-      ctx_1_tag_thread <= io_open_tag_thread;
+      ctx_1_tag_epoch <= io_open_tag_epoch;
+      ctx_1_tag_poison <= io_open_tag_poison;
+      ctx_1_tag_trace <= io_open_tag_trace;
       ctx_1_tag_lnid <= io_open_tag_lnid;
       ctx_1_tag_precision <= io_open_tag_precision;
       ctx_1_tag_dim <= io_open_tag_dim;
       ctx_1_base <= io_open_base;
     end
-    if(when_Reassembly_l396_2) begin
+    if(when_Reassembly_l397_2) begin
       ctx_2_tag_wave <= io_open_tag_wave;
-      ctx_2_tag_thread <= io_open_tag_thread;
+      ctx_2_tag_epoch <= io_open_tag_epoch;
+      ctx_2_tag_poison <= io_open_tag_poison;
+      ctx_2_tag_trace <= io_open_tag_trace;
       ctx_2_tag_lnid <= io_open_tag_lnid;
       ctx_2_tag_precision <= io_open_tag_precision;
       ctx_2_tag_dim <= io_open_tag_dim;
       ctx_2_base <= io_open_base;
     end
-    if(when_Reassembly_l396_3) begin
+    if(when_Reassembly_l397_3) begin
       ctx_3_tag_wave <= io_open_tag_wave;
-      ctx_3_tag_thread <= io_open_tag_thread;
+      ctx_3_tag_epoch <= io_open_tag_epoch;
+      ctx_3_tag_poison <= io_open_tag_poison;
+      ctx_3_tag_trace <= io_open_tag_trace;
       ctx_3_tag_lnid <= io_open_tag_lnid;
       ctx_3_tag_precision <= io_open_tag_precision;
       ctx_3_tag_dim <= io_open_tag_dim;
@@ -7632,7 +7826,9 @@ endmodule
 module RouteJudge (
   input  wire          io_tokIn_valid,
   input  wire [31:0]   io_tokIn_payload_tag_wave,
-  input  wire [15:0]   io_tokIn_payload_tag_thread,
+  input  wire [3:0]    io_tokIn_payload_tag_epoch,
+  input  wire          io_tokIn_payload_tag_poison,
+  input  wire          io_tokIn_payload_tag_trace,
   input  wire [15:0]   io_tokIn_payload_tag_lnid,
   input  wire [7:0]    io_tokIn_payload_tag_precision,
   input  wire [7:0]    io_tokIn_payload_tag_dim,
@@ -7640,7 +7836,9 @@ module RouteJudge (
   input  wire [3:0]    io_tokIn_payload_srcKind,
   output wire          io_tokOut_valid,
   output wire [31:0]   io_tokOut_payload_tag_wave,
-  output wire [15:0]   io_tokOut_payload_tag_thread,
+  output wire [3:0]    io_tokOut_payload_tag_epoch,
+  output wire          io_tokOut_payload_tag_poison,
+  output wire          io_tokOut_payload_tag_trace,
   output wire [15:0]   io_tokOut_payload_tag_lnid,
   output wire [7:0]    io_tokOut_payload_tag_precision,
   output wire [7:0]    io_tokOut_payload_tag_dim,
@@ -7723,7 +7921,9 @@ module RouteJudge (
   assign faultFire = (io_tokIn_valid && anyMiss);
   assign io_tokOut_valid = io_tokIn_valid;
   assign io_tokOut_payload_tag_wave = io_tokIn_payload_tag_wave;
-  assign io_tokOut_payload_tag_thread = io_tokIn_payload_tag_thread;
+  assign io_tokOut_payload_tag_epoch = io_tokIn_payload_tag_epoch;
+  assign io_tokOut_payload_tag_poison = io_tokIn_payload_tag_poison;
+  assign io_tokOut_payload_tag_trace = io_tokIn_payload_tag_trace;
   assign io_tokOut_payload_tag_lnid = io_tokIn_payload_tag_lnid;
   assign io_tokOut_payload_tag_precision = io_tokIn_payload_tag_precision;
   assign io_tokOut_payload_tag_dim = io_tokIn_payload_tag_dim;
@@ -8388,7 +8588,7 @@ module OperandDecode (
   wire                judge_oprefCrcBad;
   wire                judge_srcKindBad;
   wire                judge_bodyMal;
-  wire                when_Common_l259;
+  wire                when_Common_l337;
   reg                 _zz_io_oFault;
 
   assign _zz_parse_oprefA_1_1 = parse_isOpref_0;
@@ -8861,7 +9061,7 @@ module OperandDecode (
   assign io_oReasmBind_valid = (io_oExecValid && parse_acctgtPresent);
   assign io_oReasmBind_payload = ((io_oExecValid && parse_acctgtPresent) ? parse_acctgtLbid : 8'h0);
   assign io_oAcctgtTotal = ((io_oExecValid && parse_acctgtPresent) ? parse_acctgtTotal : 8'h0);
-  assign when_Common_l259 = (io_iValid && judge_bodyMal);
+  assign when_Common_l337 = (io_iValid && judge_bodyMal);
   assign io_oFault = _zz_io_oFault;
   always @(posedge clk or posedge reset) begin
     if(reset) begin
@@ -8870,7 +9070,7 @@ module OperandDecode (
       if(io_iFaultClear) begin
         _zz_io_oFault <= 1'b0;
       end
-      if(when_Common_l259) begin
+      if(when_Common_l337) begin
         _zz_io_oFault <= 1'b1;
       end
     end
@@ -21381,7 +21581,7 @@ module DecodeWalk (
   reg        [7:0]    outStage_rOff_1;
   reg        [7:0]    outStage_rOff_2;
   reg        [7:0]    outStage_rOff_3;
-  wire                when_Common_l259;
+  wire                when_Common_l337;
   reg                 _zz_io_oFault;
 
   assign _zz_walk_head_0_1 = walk_off_0[3:0];
@@ -34513,7 +34713,7 @@ module DecodeWalk (
   assign io_oSlotOff_1 = outStage_rOff_1;
   assign io_oSlotOff_2 = outStage_rOff_2;
   assign io_oSlotOff_3 = outStage_rOff_3;
-  assign when_Common_l259 = (outStage_rValid && outStage_rMal);
+  assign when_Common_l337 = (outStage_rValid && outStage_rMal);
   assign io_oFault = _zz_io_oFault;
   always @(posedge clk or posedge reset) begin
     if(reset) begin
@@ -34528,7 +34728,7 @@ module DecodeWalk (
       if(io_iFaultClear) begin
         _zz_io_oFault <= 1'b0;
       end
-      if(when_Common_l259) begin
+      if(when_Common_l337) begin
         _zz_io_oFault <= 1'b1;
       end
     end
@@ -34568,16 +34768,16 @@ endmodule
 
 module SharedUnitOccupyStub (
   input  wire          io_start,
-  input  wire [160:0]  io_req,
+  input  wire [150:0]  io_req,
   output wire          io_busy,
   output reg           io_done,
-  output wire [160:0]  io_rsp,
+  output wire [150:0]  io_rsp,
   input  wire          clk,
   input  wire          reset
 );
 
   reg        [3:0]    remain;
-  reg        [160:0]  held;
+  reg        [150:0]  held;
   reg                 busyReg;
   wire                when_SharedUnit_l95;
 
@@ -34598,7 +34798,7 @@ module SharedUnitOccupyStub (
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       remain <= 4'b0000;
-      held <= 161'h0;
+      held <= 151'h0;
       busyReg <= 1'b0;
     end else begin
       if(io_start) begin

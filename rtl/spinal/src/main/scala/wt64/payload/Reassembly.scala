@@ -4,7 +4,7 @@
 // WT64v1 재구현 — 조각 재조립 (Reassembly). EXT-4 · D8 · D9.
 //
 // 선-formal 계약: rtl/formal/tla/Payload.tla — 검사된 모델이 의사-명세다 (§6.3).
-// 아래 GUARD-MAP 이 그 모델의 AllGuards 전부(14)와 이 RTL 의 검사를 잇는다.
+// 아래 GUARD-MAP 이 그 모델의 AllGuards 전부(16)와 이 RTL 의 검사를 잇는다.
 //
 // 정본: §4.3 전부 — 규범 5항 (태그=키 · 두 「상한」 상이 · 순번 누락도 loud ·
 //       미완 중 재시작 loud · 완료 후 재사용은 회계 소거 후) · 「태그→구간
@@ -31,7 +31,8 @@
 //       검산은 접수 판정 안에 산다).
 //
 // ── GUARD-MAP ────────────────────────────────────────────────────────────
-// GUARD-MAP: Payload.key_is_tag -> 검사 fr.hit — 문맥 탐색의 유일한 키가 태그 전량 비교(c.tag === head.tag, 번들 통비교 — 슬라이스·부분 키 없음)다. 개방측 op.clash 가 같은 태그의 활성 문맥이 있는 한 새 문맥을 열지 않으므로 태그당 활성 문맥 <= 1 이 유지되고 hit 는 one-hot 이다 (§4.3 규범 1 「태그가 재조립의 키다」)
+// GUARD-MAP: Payload.key_is_tag -> 검사 fr.hit — 문맥 탐색의 유일한 키가 태그의 키 투영 비교(Types.Tag.keyEq(c.tag, head.tag) — wave · 에포크 · LNID · 정밀도 · 차원, 슬라이스는 코덱 한 곳)다. 개방측 op.clash 가 같은 키의 활성 문맥이 있는 한 새 문맥을 열지 않으므로 키당 활성 문맥 <= 1 이 유지되고 hit 는 one-hot 이다 (§4.3 규범 1 「태그가 재조립의 키다」 — 그 「태그」의 범위는 아래 key_drops_side)
+// GUARD-MAP: Payload.key_drops_side -> 검사 fr.hit · op.clash · ab.hit — 세 매칭이 전부 Types.Tag.keyEq 하나를 쓰고 그 키(Types.Tag.key)에 poison · trace 가 없다. trace 만(또는 poison 만) 다른 도착은 같은 문맥에 닿고, 두 비트를 0 으로 싣는 소거(ABORT_TAG1 [27:26] = 0 강제)가 그 비트가 선 문맥에도 닿는다 (04-ext-payload 4.3 「키는 태그 전량이 아니다 — poison 과 trace 는 빠진다」 · E.12 6항 · 태그 코덱 전파 파도가 번들 통비교(D2b)를 대체)
 // GUARD-MAP: Payload.no_restart -> 검사 op.clash — 진행 중 태그(인도 대기 포함 — 소거 전이면 태그는 아직 그 문맥의 것)로의 재개시는 granted=False 거절 + io.fault sticky 발화 (op.clashEvt). 조용한 덮어쓰기 경로가 구조적으로 없다 (§4.3 규범 4 · 함정 「참조 구현에 남아 있던 조용한 덮어쓰기」)
 // GUARD-MAP: Payload.no_dup_seq -> 검사 fr.dupRej — 문맥의 수신 순번 집합(seen)에 이미 있는 순번은 거절 + io.fault, 기입·회계 불변 (§4.3 규범 2 의 중복 축 — 도착 시점 판정)
 // GUARD-MAP: Payload.cap_check -> 검사 fr.overRej — 순번 0 또는 순번 > 선언 총개수(8비트 전폭 비교)이면 거절 + io.fault. 수락 기입은 off = 순번-1 < 선언 총개수 <= slotCap 이 구조적으로 성립해 기입 면에 구간 밖 좌표가 실리지 않는다 (Inv_NoCrossWindow 의 RTL 형 — §2.4.1 「순번이 구간 안의 자리를 정한다」)
@@ -307,10 +308,10 @@ class Reassembly(val cfg: Wt64Config, val nCtxs: Int = 4, val bodyW: Int = 64) e
   val fr = new Area {
     val head = io.frag.head
 
-    /** key_is_tag — 탐색의 유일한 키는 태그다. 번들 통비교 (슬라이스 없음 —
-      * 태그 조립·분해는 Types.Tag 한 곳). 개방 규율이 태그당 활성 문맥 <= 1
-      * 을 유지하므로 one-hot 이다 (MuxOH 의 전제). */
-    val hit    = Vec(ctx.map(c => c.active && c.tag === head.tag))
+    /** key_is_tag · key_drops_side — 탐색의 유일한 키는 태그의 키 투영이다
+      * (poison · trace 제외 — 슬라이스는 Types.Tag 한 곳). 개방 규율이 키당 활성
+      * 문맥 <= 1 을 유지하므로 one-hot 이다 (MuxOH 의 전제). */
+    val hit    = Vec(ctx.map(c => c.active && Types.Tag.keyEq(c.tag, head.tag)))
     val hitAny = hit.reduce(_ || _)
 
     val cBase  = MuxOH(hit, ctx.map(_.base))
@@ -382,8 +383,8 @@ class Reassembly(val cfg: Wt64Config, val nCtxs: Int = 4, val bodyW: Int = 64) e
 
   // ── 개시 경로 — 개방·결속 확정 (D8) 과 재시작 판정 (no_restart) ─────────
   val op = new Area {
-    /** no_restart — 진행 중 태그(인도 대기 포함)로의 재개시. 태그 통비교. */
-    val clash   = ctx.map(c => c.active && c.tag === io.open.tag).reduce(_ || _)
+    /** no_restart — 진행 중 태그(인도 대기 포함)로의 재개시. 키 투영 비교 (key_drops_side). */
+    val clash   = ctx.map(c => c.active && Types.Tag.keyEq(c.tag, io.open.tag)).reduce(_ || _)
     val free    = Vec(ctx.map(c => !c.active))
     val freeAny = free.reduce(_ || _)
     /** 자유 문맥 선택 — 우선 인코더. 어느 문맥을 고르는가는 계약이 아니다
@@ -456,8 +457,10 @@ class Reassembly(val cfg: Wt64Config, val nCtxs: Int = 4, val bodyW: Int = 64) e
   //                   grant 된 문맥을 보지 못하고 무시된다 — 개방 규율의
   //                   「다음 사이클부터 관측」과 같은 처분.
   val ab = new Area {
-    /** key_is_tag 와 같은 탐색 규율 — 태그 전량 통비교, one-hot. */
-    val hit    = Vec(ctx.map(c => c.active && c.tag === io.abort.tag))
+    /** key_is_tag 와 같은 탐색 규율 — 키 투영 비교(key_drops_side), one-hot. 소거
+      * 스테이징은 poison · trace 를 0 으로 싣지만 키에 두 비트가 없으므로 그 비트가
+      * 선 문맥에도 닿는다 (E.12 6항). */
+    val hit    = Vec(ctx.map(c => c.active && Types.Tag.keyEq(c.tag, io.abort.tag)))
     val hitAny = hit.reduce(_ || _)
     /** 소거 발화 — 없는 태그는 무시 (E.12 3항: 오류도 카운트도 아니다). */
     val fire = io.abort.valid && hitAny

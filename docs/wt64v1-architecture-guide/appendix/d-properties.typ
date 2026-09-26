@@ -32,10 +32,10 @@
   *진행 현황*: 선-formal 대상 31건 중 *29건*이 모델을 가졌다 — 모델 12개
   (색인 속성을 덮는 것; 그 밖에 저장·워드·엔진 창·MMIO 문·소거 문·구성 페이지 처분·미적중 관측면의 축 모델 일곱
   Mask · CapWord · MaskEngine · XlateSurface · AbortSurface · MmioPage · XlateObs 이 있어 `.tla` 는 19편이다),
-  전체 *518 run* 이 선언대로 행동했다 (Decode `ch_judged` 5 · Mask 10 · CapWord 9 · MaskEngine 10 ·
-  XlateSurface 축 50 · AbortSurface 축 30 · 구성 페이지 처분의 MmioPage 축 29 · 미적중 관측면의 XlateObs 축 22 run 을 포함한 518 run 한 판을
+  전체 *524 run* 이 선언대로 행동했다 (Decode `ch_judged` 5 · Mask 10 · CapWord 9 · MaskEngine 10 ·
+  XlateSurface 축 50 · AbortSurface 축 30 · MmioPage 축 29 · XlateObs 축 22 · Payload 태그 정제 축(키가 poison · trace 를 뺀다) 6 run 을 포함한 524 run 한 판을
   2026-09-26 컨테이너에서 전량 재실행해 실측했다 — 이탈 0, `run.sh` 종료 코드 0. 그 앞
-  판 459 run 도 2026-09-26 실측이다).
+  판 518 run 도 2026-09-26 실측이다).
   #등급("실측")
 
   날짜는 *run 을 실제로 돌린 날*에만 붙는다. 앞의 두 수(대상 31 · 모델을

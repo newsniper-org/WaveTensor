@@ -3,10 +3,11 @@
     "MmioPage.unaligned_rejected",
     "MmioPage.nocons_rejected"
   ],
-  "at": "2026-09-26T13:02:05Z",
+  "at": "2026-09-26T15:33:26Z",
   "cover": {
-    "reached": 15,
+    "reached": 17,
     "reached_names": [
+      "CompletionUnit_formal.props.w10_trace_in",
       "CompletionUnit_formal.props.w1_word0",
       "CompletionUnit_formal.props.w1_word1",
       "CompletionUnit_formal.props.w1_word2",
@@ -21,18 +22,19 @@
       "CompletionUnit_formal.props.w5_nonzero_tags",
       "CompletionUnit_formal.props.w6_unal_wr",
       "CompletionUnit_formal.props.w7_base_wr",
-      "CompletionUnit_formal.props.w8_unal_rd"
+      "CompletionUnit_formal.props.w8_unal_rd",
+      "CompletionUnit_formal.props.w9_poison_in"
     ],
     "unreached": 0,
     "unreached_names": []
   },
   "inputs": {
-    "rtl/generated/CompletionUnit.sv": "86d7511c3dd6ee933bbf697fed67bfd465684db6dc7b0e8cd659c1e7f8127089",
-    "rtl/sv/assert/CompletionUnit_props.sv": "b91cf8b22a167e94aedd452b7395474baf4391b7886911afa4e8effc8c5bccf1"
+    "rtl/generated/CompletionUnit.sv": "5bca742dfb97776b7b08aef8a60e0157587881be3d1ca00f95b78651e6ebff55",
+    "rtl/sv/assert/CompletionUnit_props.sv": "940885bbfd4d26a7a163459e426caa4340b8611c2f6f2c5030a61ee3c81418be"
   },
   "per_task": {
     "bmc": {
-      "assert": 11,
+      "assert": 15,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -42,12 +44,12 @@
       "assert": 0,
       "const_a": 0,
       "const_en0": 0,
-      "cover": 15,
+      "cover": 17,
       "mode": "cover"
     }
   },
   "sby": "rtl/formal/sby/CompletionUnit/descriptor.sby",
-  "sby_sha256": "a391f32c11e1d881c5f2b97682d1c957ca245b37c3554128b61a966c108e0ab6",
+  "sby_sha256": "242d7ff151774e87e63c16ad6e40e1d859c4c655367b7ec4756839aa36364ce8",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS",
   "tool": "SBY v0.66",

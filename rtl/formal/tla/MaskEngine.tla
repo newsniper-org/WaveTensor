@@ -36,7 +36,7 @@
 (*   rtl/spinal/src/main/scala/wt64/mask/MaskUnit.scala:148 「계산 중 입력이 바뀐 재키잉은 결과를 유효화하지 않는다」 *)
 (*     — 그 파일 자신의 E.9 4항 계약 (compDirty → faultWrDuringRekey);      *)
 (*     파도 D 가 그 문면에 「FINAL 사이클 포함」을 한 문장으로 더했다.       *)
-(*   rtl/spinal/src/main/scala/wt64/Common.scala:256 「해제와 발화가 같은 사이클이면 발화가 이긴다」 *)
+(*   rtl/spinal/src/main/scala/wt64/Common.scala:334 「해제와 발화가 같은 사이클이면 발화가 이긴다」 *)
 (*     — StickyFault 규약. 이 모델의 ClearFault 는 완료와 겹치지 않는다     *)
 (*     (아래 「안 잰다」).                                                  *)
 (*                                                                         *)

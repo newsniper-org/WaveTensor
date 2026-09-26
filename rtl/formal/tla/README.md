@@ -520,6 +520,17 @@ authority, `last_judges` 가드가 표시 접수 시점의 완전성 판정 —
 갈래(`Witness_NoMarkerLoss`)는 fault 가 아니라 미완 문맥의 관측 가능성이다
 — 처분은 호스트 몫.
 
+**태그 코덱 전파 파도 (2026-09-26 · D2b).** `Tags` 를 (Key × Trace × Poison) 으로 정제했다 — 정본이
+「키는 태그 전량이 아니다 — poison 과 trace 는 빠진다」(04-ext-payload 4.3 · E.12 6항)로 태그 = 키 등식을
+끊었는데, 태그가 정수 하나인 모델에서는 키를 태그 전량으로 잡는 구현(재구현의 번들 통비교)이 정본 구현과
+구별되지 않았다. 새 가드 `key_drops_side`(세 매칭 — 개시 · 조각 조회 · 소거 — 이 키 투영만 비교) · 새 불변식
+`Inv_AbortReachesKey`(소거 뒤 그 *키*의 문맥이 남지 않는다 — 소거는 스테이징이 0 으로 못박은 두 비트를 싣는다).
+run 여섯: 좋은 모델 둘(trace 축 · poison 축 — 두 축을 함께 켜면 전이 분기 4배로 기저가 폭발해 한 축씩 켠다,
+각 39.8만 distinct · 1분 30초) · 삭제 → `Inv_AbortReachesKey` · 증인 둘(`NoSideFragHit` · `NoSideAbortHit`) ·
+오늘의 RTL 짝 둘(trace 만 · poison 만 → `Prop_NoSilentOverwrite` — 조각 조회 절반의 귀결: 두 비트만 다른
+도착이 같은 키의 둘째 문맥을 열어 같은 구간을 덮는다). 다른 가드의 run 은 접힌 판(Traces = Poisons = {0}
+— 1차 판과 같은 기계)으로 돈다. Payload 구간 38 run · 가드 16.
+
 ## EXT-6 — `MemOrder.tla`
 
 §4.4.4 가 확정한 기전(명시적 순서 의존)의 형식화. **이 모델은 한 번
@@ -648,7 +659,7 @@ RTL 이 먼저 정한 읽기 둘을 모델로 돌려보냈다 (모델 머리 「
 
 **재지 않는 것** (모델 머리 「안 잰다」가 닫힌 목록): 소거의 효과(어느 문맥이 지워지는가 · 없는 태그의
 무시 · ABORT_COUNT 증가 자체 — `Payload.tla`) · 매칭 키가 poison · trace 를 빼는가의 매칭 절반(재구현
-결함 D2b — 태그 코덱 전파 파도가 `Payload.tla` Tags 정제로 먼저 싣는다) · 워드 안의 필드 배치와 마스크
+결함 D2b — 태그 코덱 전파 파도가 `Payload.tla` Tags 정제 · 가드 `key_drops_side` 로 실었다) · 워드 안의 필드 배치와 마스크
 값 · 주소 디코드 · 읽기 방향 · 5항 후단 · FAULT `[6]` 의 sticky · 시간.
 
 ## 3.7 · 3.10 · E.1.1 · E.1.3 구성 페이지의 처분 — `MmioPage.tla` (파도 4 페이지 통합, 2026-09-26)

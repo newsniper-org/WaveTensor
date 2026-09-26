@@ -12,7 +12,7 @@
 //     W1C 이고 [31:4] 예약 = 0 (엄격).
 //   e-defined.typ:566-616 「넷은 서로 접지 않는다」 — 축은 「고칠 동작」으로 가른다.
 //   01-isa-asm.typ:1540-1563 「관측은 sticky 다」 — 능력 부재는 fault 가 아니다.
-//   rtl/spinal/src/main/scala/wt64/Common.scala:256 「해제와 발화가 같은 사이클이면 발화가 이긴다」
+//   rtl/spinal/src/main/scala/wt64/Common.scala:334 「해제와 발화가 같은 사이클이면 발화가 이긴다」
 //     — StickyFault 규약. 이 워드는 그 순서만 승계한다.
 //
 // 부착 방식: 래퍼 모듈 CapStatusWord_formal 이 DUT 를 인스턴스하고 포트에

@@ -19,7 +19,9 @@ module CompletionUnit (
   output wire          io_ready,
   input  wire          io_comp_valid,
   input  wire [31:0]   io_comp_tag_wave,
-  input  wire [15:0]   io_comp_tag_thread,
+  input  wire [3:0]    io_comp_tag_epoch,
+  input  wire          io_comp_tag_poison,
+  input  wire          io_comp_tag_trace,
   input  wire [15:0]   io_comp_tag_lnid,
   input  wire [7:0]    io_comp_tag_precision,
   input  wire [7:0]    io_comp_tag_dim,
@@ -45,6 +47,8 @@ module CompletionUnit (
   wire       [2:0]    _zz_full;
   wire       [7:0]    _zz_descWords_4;
   wire       [7:0]    _zz_descWords_5;
+  wire       [3:0]    _zz_desc;
+  wire       [0:0]    _zz_desc_1;
   wire       [31:0]   _zz_readValue;
   wire       [0:0]    _zz_readValue_1;
   wire       [31:0]   _zz_readValue_2;
@@ -62,6 +66,7 @@ module CompletionUnit (
   wire                empty;
   wire                full;
   wire       [2:0]    occ;
+  wire                devPoison;
   wire       [31:0]   descWords_0;
   wire       [31:0]   descWords_4;
   wire       [31:0]   descWords_5;
@@ -91,8 +96,8 @@ module CompletionUnit (
   wire                irqClrPulse;
   reg        [31:0]   irqMaskReg;
   wire                irqMask;
-  wire                when_CompletionUnit_l572;
-  wire                when_CompletionUnit_l573;
+  wire                when_CompletionUnit_l584;
+  wire                when_CompletionUnit_l585;
   wire                isBase;
   wire                badWrite;
   reg                 irqSticky;
@@ -120,6 +125,8 @@ module CompletionUnit (
   assign _zz_readValue_7 = {16'd0, io_drain_ownSlots};
   assign _zz_readValue_8 = {16'd0, io_drain_contexts};
   assign _zz_readValue_9 = {16'd0, io_drain_tokens};
+  assign _zz_desc = io_comp_tag_epoch;
+  assign _zz_desc_1 = devPoison;
   always @(posedge clk) begin
     if(doPush) begin
       ring[tail] <= desc;
@@ -151,12 +158,13 @@ module CompletionUnit (
   assign full = (_zz_full == head);
   assign occ = (tail - head);
   assign io_comp_ready = (! full);
+  assign devPoison = 1'b0;
   assign descWords_0 = 32'h00000001;
   assign descWords_4 = {24'd0, _zz_descWords_4};
   assign descWords_5 = {24'd0, _zz_descWords_5};
   assign descWords_6 = 32'h0;
   assign descWords_7 = 32'h0;
-  assign desc = {{{{{{{descWords_7,descWords_6},descWords_5},descWords_4},{{16'h0,io_comp_tag_precision},io_comp_tag_dim}},{io_comp_tag_thread,io_comp_tag_lnid}},io_comp_tag_wave},descWords_0};
+  assign desc = {{{{{{{descWords_7,descWords_6},descWords_5},descWords_4},{{16'h0,io_comp_tag_precision},io_comp_tag_dim}},{{{{_zz_desc,_zz_desc_1},io_comp_tag_trace},10'h0},io_comp_tag_lnid}},io_comp_tag_wave},descWords_0};
   assign doPush = (io_comp_valid && (! full));
   assign shove = (io_comp_valid && full);
   assign aligned = (io_addr[1 : 0] == 2'b00);
@@ -179,8 +187,8 @@ module CompletionUnit (
   assign sizeValBad = (io_wdata[4 : 0] != 5'h03);
   assign irqClrPulse = (((doWr && isIrqClr) && (! clrRsvBad)) && io_wdata[0]);
   assign irqMask = irqMaskReg[0];
-  assign when_CompletionUnit_l572 = (doWr && isHead);
-  assign when_CompletionUnit_l573 = ((doWr && isIrqMk) && (! mkRsvBad));
+  assign when_CompletionUnit_l584 = (doWr && isHead);
+  assign when_CompletionUnit_l585 = ((doWr && isIrqMk) && (! mkRsvBad));
   assign isBase = ((io_addr == 8'h0) || (io_addr == 8'h04));
   assign badWrite = ((io_wstrobe && (! aligned)) || (doWr && ((((isRoOff || isBase) || (isSize && (sizeRsvBad || sizeValBad))) || (isIrqMk && mkRsvBad)) || (isIrqClr && clrRsvBad))));
   assign io_irq = (irqSticky && (! irqMask));
@@ -255,10 +263,10 @@ module CompletionUnit (
       if(doPush) begin
         tail <= (tail + 3'b001);
       end
-      if(when_CompletionUnit_l572) begin
+      if(when_CompletionUnit_l584) begin
         headReg <= (io_wdata & 32'h00000007);
       end
-      if(when_CompletionUnit_l573) begin
+      if(when_CompletionUnit_l585) begin
         irqMaskReg <= io_wdata;
       end
       if(irqClrPulse) begin

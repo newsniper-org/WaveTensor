@@ -15,7 +15,8 @@
 // 바뀐다. 이 하네스의 부착 방식(bind 문을 대상 모듈 본문으로 텍스트 전개)에서는
 // 없는 이름이 *암묵 wire* 로 살아나 자유 신호가 되고, 그 위에 선 단언은 반증
 // 가능해진다 — 2026-08-25 에 p_ab_not_fault_src 가 정확히 그렇게 FAIL 했다
-// (호스트 ABI 결정 4·5 파도가 Common.scala 를 늘려 l141 → l259).
+// (호스트 ABI 결정 4·5 파도가 Common.scala 를 늘려 l141 → l259 · 태그 코덱 전파
+// 파도가 Tag 코덱을 E.5.1 재배분으로 고쳐 l259 → l337).
 //
 // *크게 실패한 것은 다행이다.* 그리고 그 태스크를 돌리게 한 것은 사람의 기억이
 // 아니라 scripts/sby_impact.py 역색인이었다 — 그 도구가 존재하는 이유가 이
@@ -23,7 +24,7 @@
 //
 // (근본 수리는 그 조건에 안정된 이름을 주는 것이고, 그것은 StickyFault 를 쓰는
 //  전 모듈의 생성물 이름을 움직이므로 별 파도다 — rtl/README.md 등재.)
-`define WT_STICKY_SET_FAULT when_Common_l259
+`define WT_STICKY_SET_FAULT when_Common_l337
 //
 // 문체: yosys 개방판은 SVA 시퀀스를 받지 않으므로 즉시 단언(always+$past).
 // sticky 관측면(io_fault·io_capAbsent)은 차기 상태 함수의 *등식*으로 잰다 —
@@ -36,6 +37,28 @@ module Reassembly_props (
   input logic        io_open_valid,
   input logic [7:0]  io_open_base,
   input logic        io_open_granted,
+  // 세 매칭 면의 태그 (태그 코덱 전파 파도 — 키 투영 단언 p_key_* 의 입력)
+  input logic [31:0] io_open_tag_wave,
+  input logic [3:0]  io_open_tag_epoch,
+  input logic        io_open_tag_poison,
+  input logic        io_open_tag_trace,
+  input logic [15:0] io_open_tag_lnid,
+  input logic [7:0]  io_open_tag_precision,
+  input logic [7:0]  io_open_tag_dim,
+  input logic [31:0] io_frag_head_tag_wave,
+  input logic [3:0]  io_frag_head_tag_epoch,
+  input logic        io_frag_head_tag_poison,
+  input logic        io_frag_head_tag_trace,
+  input logic [15:0] io_frag_head_tag_lnid,
+  input logic [7:0]  io_frag_head_tag_precision,
+  input logic [7:0]  io_frag_head_tag_dim,
+  input logic [31:0] io_abort_tag_wave,
+  input logic [3:0]  io_abort_tag_epoch,
+  input logic        io_abort_tag_poison,
+  input logic        io_abort_tag_trace,
+  input logic [15:0] io_abort_tag_lnid,
+  input logic [7:0]  io_abort_tag_precision,
+  input logic [7:0]  io_abort_tag_dim,
   // 조각 면
   input logic        io_frag_valid,
   input logic [7:0]  io_frag_head_seq,
@@ -92,7 +115,9 @@ module Reassembly_props (
   // 문맥 풀 (nCtxs=4)
   input logic        ctx_0_active,
   input logic [31:0] ctx_0_tag_wave,
-  input logic [15:0] ctx_0_tag_thread,
+  input logic [3:0]  ctx_0_tag_epoch,
+  input logic        ctx_0_tag_poison,
+  input logic        ctx_0_tag_trace,
   input logic [15:0] ctx_0_tag_lnid,
   input logic [7:0]  ctx_0_tag_precision,
   input logic [7:0]  ctx_0_tag_dim,
@@ -103,7 +128,9 @@ module Reassembly_props (
   input logic        ctx_0_last,
   input logic        ctx_1_active,
   input logic [31:0] ctx_1_tag_wave,
-  input logic [15:0] ctx_1_tag_thread,
+  input logic [3:0]  ctx_1_tag_epoch,
+  input logic        ctx_1_tag_poison,
+  input logic        ctx_1_tag_trace,
   input logic [15:0] ctx_1_tag_lnid,
   input logic [7:0]  ctx_1_tag_precision,
   input logic [7:0]  ctx_1_tag_dim,
@@ -114,7 +141,9 @@ module Reassembly_props (
   input logic        ctx_1_last,
   input logic        ctx_2_active,
   input logic [31:0] ctx_2_tag_wave,
-  input logic [15:0] ctx_2_tag_thread,
+  input logic [3:0]  ctx_2_tag_epoch,
+  input logic        ctx_2_tag_poison,
+  input logic        ctx_2_tag_trace,
   input logic [15:0] ctx_2_tag_lnid,
   input logic [7:0]  ctx_2_tag_precision,
   input logic [7:0]  ctx_2_tag_dim,
@@ -125,7 +154,9 @@ module Reassembly_props (
   input logic        ctx_2_last,
   input logic        ctx_3_active,
   input logic [31:0] ctx_3_tag_wave,
-  input logic [15:0] ctx_3_tag_thread,
+  input logic [3:0]  ctx_3_tag_epoch,
+  input logic        ctx_3_tag_poison,
+  input logic        ctx_3_tag_trace,
   input logic [15:0] ctx_3_tag_lnid,
   input logic [7:0]  ctx_3_tag_precision,
   input logic [7:0]  ctx_3_tag_dim,
@@ -174,25 +205,84 @@ module Reassembly_props (
   // 안정된 이름 둘(op_grant · op_freeOh)로 여기서 되만든다.
   wire [3:0] f_grant_oh = {4{op_grant}} & op_freeOh;
 
-  // 태그 전량 비교 (번들 통비교 — key_is_tag 의 문면)
-  wire tag_eq_01 = (ctx_0_tag_wave == ctx_1_tag_wave) && (ctx_0_tag_thread == ctx_1_tag_thread)
+  // 키 투영 비교 — wave · 에포크 · LNID · 정밀도 · 차원 (poison · trace 제외 —
+  // key_is_tag 의 「태그」의 범위는 Payload.key_drops_side 가 정한다, 04-ext-payload 4.3)
+  wire tag_eq_01 = (ctx_0_tag_wave == ctx_1_tag_wave) && (ctx_0_tag_epoch == ctx_1_tag_epoch)
                 && (ctx_0_tag_lnid == ctx_1_tag_lnid) && (ctx_0_tag_precision == ctx_1_tag_precision)
                 && (ctx_0_tag_dim == ctx_1_tag_dim);
-  wire tag_eq_02 = (ctx_0_tag_wave == ctx_2_tag_wave) && (ctx_0_tag_thread == ctx_2_tag_thread)
+  wire tag_eq_02 = (ctx_0_tag_wave == ctx_2_tag_wave) && (ctx_0_tag_epoch == ctx_2_tag_epoch)
                 && (ctx_0_tag_lnid == ctx_2_tag_lnid) && (ctx_0_tag_precision == ctx_2_tag_precision)
                 && (ctx_0_tag_dim == ctx_2_tag_dim);
-  wire tag_eq_03 = (ctx_0_tag_wave == ctx_3_tag_wave) && (ctx_0_tag_thread == ctx_3_tag_thread)
+  wire tag_eq_03 = (ctx_0_tag_wave == ctx_3_tag_wave) && (ctx_0_tag_epoch == ctx_3_tag_epoch)
                 && (ctx_0_tag_lnid == ctx_3_tag_lnid) && (ctx_0_tag_precision == ctx_3_tag_precision)
                 && (ctx_0_tag_dim == ctx_3_tag_dim);
-  wire tag_eq_12 = (ctx_1_tag_wave == ctx_2_tag_wave) && (ctx_1_tag_thread == ctx_2_tag_thread)
+  wire tag_eq_12 = (ctx_1_tag_wave == ctx_2_tag_wave) && (ctx_1_tag_epoch == ctx_2_tag_epoch)
                 && (ctx_1_tag_lnid == ctx_2_tag_lnid) && (ctx_1_tag_precision == ctx_2_tag_precision)
                 && (ctx_1_tag_dim == ctx_2_tag_dim);
-  wire tag_eq_13 = (ctx_1_tag_wave == ctx_3_tag_wave) && (ctx_1_tag_thread == ctx_3_tag_thread)
+  wire tag_eq_13 = (ctx_1_tag_wave == ctx_3_tag_wave) && (ctx_1_tag_epoch == ctx_3_tag_epoch)
                 && (ctx_1_tag_lnid == ctx_3_tag_lnid) && (ctx_1_tag_precision == ctx_3_tag_precision)
                 && (ctx_1_tag_dim == ctx_3_tag_dim);
-  wire tag_eq_23 = (ctx_2_tag_wave == ctx_3_tag_wave) && (ctx_2_tag_thread == ctx_3_tag_thread)
+  wire tag_eq_23 = (ctx_2_tag_wave == ctx_3_tag_wave) && (ctx_2_tag_epoch == ctx_3_tag_epoch)
                 && (ctx_2_tag_lnid == ctx_3_tag_lnid) && (ctx_2_tag_precision == ctx_3_tag_precision)
                 && (ctx_2_tag_dim == ctx_3_tag_dim);
+
+  // ── Payload.key_drops_side — 세 매칭의 키가 poison · trace 를 뺀다 (태그 코덱 전파 파도) ──
+  //
+  // 정본: 04-ext-payload 4.3 「*그러나 키는 태그 전량이 아니다 — poison 과 trace 는
+  // 빠진다.*」 · e-defined E.12 6항 「⇒ 키는 wave · 에포크 · LNID · 정밀도 · 차원이다」.
+  // 참조는 필드별 등식의 연언이다 — DUT 의 넓은 연접 비교 한 셀을 재인용하지 않는다
+  // (p_capa_def 와 같은 이유: 두 계산이 구조로 달라야 opt 가 합치지 못한다). 등식이라
+  // 두 방향을 다 잰다: poison · trace 를 키에 넣는 기계(오늘의 번들 통비교 — D2b)는
+  // 그 비트만 다른 도착에서, 키 필드 하나를 빠뜨린 기계는 그 필드만 다른 도착에서 반례가
+  // 난다. 전건 없는 조합 등식이라 전 사이클에서 선다.
+  wire k_fh_0 = (ctx_0_tag_wave == io_frag_head_tag_wave) && (ctx_0_tag_epoch == io_frag_head_tag_epoch)
+                && (ctx_0_tag_lnid == io_frag_head_tag_lnid) && (ctx_0_tag_precision == io_frag_head_tag_precision)
+                && (ctx_0_tag_dim == io_frag_head_tag_dim);
+  wire k_fh_1 = (ctx_1_tag_wave == io_frag_head_tag_wave) && (ctx_1_tag_epoch == io_frag_head_tag_epoch)
+                && (ctx_1_tag_lnid == io_frag_head_tag_lnid) && (ctx_1_tag_precision == io_frag_head_tag_precision)
+                && (ctx_1_tag_dim == io_frag_head_tag_dim);
+  wire k_fh_2 = (ctx_2_tag_wave == io_frag_head_tag_wave) && (ctx_2_tag_epoch == io_frag_head_tag_epoch)
+                && (ctx_2_tag_lnid == io_frag_head_tag_lnid) && (ctx_2_tag_precision == io_frag_head_tag_precision)
+                && (ctx_2_tag_dim == io_frag_head_tag_dim);
+  wire k_fh_3 = (ctx_3_tag_wave == io_frag_head_tag_wave) && (ctx_3_tag_epoch == io_frag_head_tag_epoch)
+                && (ctx_3_tag_lnid == io_frag_head_tag_lnid) && (ctx_3_tag_precision == io_frag_head_tag_precision)
+                && (ctx_3_tag_dim == io_frag_head_tag_dim);
+  wire k_ab_0 = (ctx_0_tag_wave == io_abort_tag_wave) && (ctx_0_tag_epoch == io_abort_tag_epoch)
+                && (ctx_0_tag_lnid == io_abort_tag_lnid) && (ctx_0_tag_precision == io_abort_tag_precision)
+                && (ctx_0_tag_dim == io_abort_tag_dim);
+  wire k_ab_1 = (ctx_1_tag_wave == io_abort_tag_wave) && (ctx_1_tag_epoch == io_abort_tag_epoch)
+                && (ctx_1_tag_lnid == io_abort_tag_lnid) && (ctx_1_tag_precision == io_abort_tag_precision)
+                && (ctx_1_tag_dim == io_abort_tag_dim);
+  wire k_ab_2 = (ctx_2_tag_wave == io_abort_tag_wave) && (ctx_2_tag_epoch == io_abort_tag_epoch)
+                && (ctx_2_tag_lnid == io_abort_tag_lnid) && (ctx_2_tag_precision == io_abort_tag_precision)
+                && (ctx_2_tag_dim == io_abort_tag_dim);
+  wire k_ab_3 = (ctx_3_tag_wave == io_abort_tag_wave) && (ctx_3_tag_epoch == io_abort_tag_epoch)
+                && (ctx_3_tag_lnid == io_abort_tag_lnid) && (ctx_3_tag_precision == io_abort_tag_precision)
+                && (ctx_3_tag_dim == io_abort_tag_dim);
+  wire k_op_0 = (ctx_0_tag_wave == io_open_tag_wave) && (ctx_0_tag_epoch == io_open_tag_epoch)
+                && (ctx_0_tag_lnid == io_open_tag_lnid) && (ctx_0_tag_precision == io_open_tag_precision)
+                && (ctx_0_tag_dim == io_open_tag_dim);
+  wire k_op_1 = (ctx_1_tag_wave == io_open_tag_wave) && (ctx_1_tag_epoch == io_open_tag_epoch)
+                && (ctx_1_tag_lnid == io_open_tag_lnid) && (ctx_1_tag_precision == io_open_tag_precision)
+                && (ctx_1_tag_dim == io_open_tag_dim);
+  wire k_op_2 = (ctx_2_tag_wave == io_open_tag_wave) && (ctx_2_tag_epoch == io_open_tag_epoch)
+                && (ctx_2_tag_lnid == io_open_tag_lnid) && (ctx_2_tag_precision == io_open_tag_precision)
+                && (ctx_2_tag_dim == io_open_tag_dim);
+  wire k_op_3 = (ctx_3_tag_wave == io_open_tag_wave) && (ctx_3_tag_epoch == io_open_tag_epoch)
+                && (ctx_3_tag_lnid == io_open_tag_lnid) && (ctx_3_tag_precision == io_open_tag_precision)
+                && (ctx_3_tag_dim == io_open_tag_dim);
+  always @(*) if (!reset) begin
+    p_key_hit_0:   assert (fr_hit_0 == (ctx_0_active && k_fh_0));
+    p_key_hit_1:   assert (fr_hit_1 == (ctx_1_active && k_fh_1));
+    p_key_hit_2:   assert (fr_hit_2 == (ctx_2_active && k_fh_2));
+    p_key_hit_3:   assert (fr_hit_3 == (ctx_3_active && k_fh_3));
+    p_key_abhit_0: assert (ab_hit_0 == (ctx_0_active && k_ab_0));
+    p_key_abhit_1: assert (ab_hit_1 == (ctx_1_active && k_ab_1));
+    p_key_abhit_2: assert (ab_hit_2 == (ctx_2_active && k_ab_2));
+    p_key_abhit_3: assert (ab_hit_3 == (ctx_3_active && k_ab_3));
+    p_key_clash:   assert (op_clash == ((ctx_0_active && k_op_0) || (ctx_1_active && k_op_1) ||
+                                    (ctx_2_active && k_op_2) || (ctx_3_active && k_op_3)));
+  end
 
   // ═══ 상태 불변식 (리셋 밖 전 사이클) ═══════════════════════════════
   always @(*) if (!reset) begin
@@ -653,6 +743,28 @@ module Reassembly_props (
   //       inv_free_clean_0 이 「비울 것이 있는」 상태에서 재어진다.
   always @(posedge clk)
     if (f_step) w21_deliver_frees: cover ($past(io_deliver_fire && dv_grantOh[0]));
+
+  // ── 증인 — key_drops_side 축 (태그 코덱 전파 파도, 2026-09-26) ─────────────
+
+  // W22 ← Payload.key_drops_side · p_key_hit_0
+  //       poison 또는 trace 만 다른 조각이 열린 문맥에 실제로 적중한다 (Payload.tla
+  //       Witness_NoSideFragHit 의 RTL 대응). 이것 없이는 p_key_hit_* 의 「두 비트를
+  //       보지 않는다」 방향이 두 비트가 늘 같은 세계에서 공허하다.
+  always @(posedge clk)
+    if (f_step) w22_side_frag_hit: cover (io_frag_valid && fr_hit_0 && ((io_frag_head_tag_trace != ctx_0_tag_trace) || (io_frag_head_tag_poison != ctx_0_tag_poison)));
+
+  // W23 ← Payload.key_drops_side · Payload.abort_erases · p_key_abhit_0
+  //       두 비트를 0 으로 싣는 소거(ABORT_TAG1 [27:26] = 0 강제 — 조립이 싣는 유일한
+  //       값)가 trace 또는 poison 이 선 문맥을 실제로 지운다 (Witness_NoSideAbortHit ·
+  //       D2b 의 호스트 가시 귀결 「trace 든 문맥은 소거할 수 없다」의 반대편).
+  always @(posedge clk)
+    if (f_step) w23_side_abort_hit: cover (ab_fire && ab_hit_0 && !io_abort_tag_trace && !io_abort_tag_poison && (ctx_0_tag_trace || ctx_0_tag_poison));
+
+  // W24 ← Payload.key_drops_side · Payload.no_restart · p_key_clash
+  //       trace 또는 poison 만 다른 재개시가 진행 중 문맥과 충돌해 거절된다 — 개시의
+  //       재시작 판정도 같은 키 범위다 (04-ext-payload 4.3 「셋에 같은 범위로」).
+  always @(posedge clk)
+    if (f_step) w24_side_open_clash: cover (io_open_valid && !io_open_granted && ctx_0_active && k_op_0 && ((io_open_tag_trace != ctx_0_tag_trace) || (io_open_tag_poison != ctx_0_tag_poison)));
 `endif // REASM_COVER
 
 endmodule
@@ -662,6 +774,12 @@ bind Reassembly Reassembly_props u_props (
   .clk(clk), .reset(reset),
   .io_open_valid(io_open_valid), .io_open_base(io_open_base),
   .io_open_granted(io_open_granted),
+  .io_open_tag_wave(io_open_tag_wave), .io_open_tag_epoch(io_open_tag_epoch), .io_open_tag_poison(io_open_tag_poison), .io_open_tag_trace(io_open_tag_trace),
+  .io_open_tag_lnid(io_open_tag_lnid), .io_open_tag_precision(io_open_tag_precision), .io_open_tag_dim(io_open_tag_dim),
+  .io_frag_head_tag_wave(io_frag_head_tag_wave), .io_frag_head_tag_epoch(io_frag_head_tag_epoch), .io_frag_head_tag_poison(io_frag_head_tag_poison), .io_frag_head_tag_trace(io_frag_head_tag_trace),
+  .io_frag_head_tag_lnid(io_frag_head_tag_lnid), .io_frag_head_tag_precision(io_frag_head_tag_precision), .io_frag_head_tag_dim(io_frag_head_tag_dim),
+  .io_abort_tag_wave(io_abort_tag_wave), .io_abort_tag_epoch(io_abort_tag_epoch), .io_abort_tag_poison(io_abort_tag_poison), .io_abort_tag_trace(io_abort_tag_trace),
+  .io_abort_tag_lnid(io_abort_tag_lnid), .io_abort_tag_precision(io_abort_tag_precision), .io_abort_tag_dim(io_abort_tag_dim),
   .io_frag_valid(io_frag_valid), .io_frag_head_seq(io_frag_head_seq),
   .io_frag_head_total(io_frag_head_total), .io_frag_head_last(io_frag_head_last),
   .io_wr_valid(io_wr_valid), .io_wr_base(io_wr_base), .io_wr_off(io_wr_off),
@@ -685,25 +803,29 @@ bind Reassembly Reassembly_props u_props (
   .op_clash(op_clash), .op_clashEvt(op_clashEvt), .op_grant(op_grant),
   .op_freeAny(op_freeAny), .op_freeOh(op_freeOh),
   .ctx_0_active(ctx_0_active), .ctx_0_tag_wave(ctx_0_tag_wave),
-  .ctx_0_tag_thread(ctx_0_tag_thread), .ctx_0_tag_lnid(ctx_0_tag_lnid),
+  .ctx_0_tag_epoch(ctx_0_tag_epoch), .ctx_0_tag_poison(ctx_0_tag_poison),
+  .ctx_0_tag_trace(ctx_0_tag_trace), .ctx_0_tag_lnid(ctx_0_tag_lnid),
   .ctx_0_tag_precision(ctx_0_tag_precision), .ctx_0_tag_dim(ctx_0_tag_dim),
   .ctx_0_base(ctx_0_base),
   .ctx_0_total(ctx_0_total), .ctx_0_totalKnown(ctx_0_totalKnown),
   .ctx_0_seen(ctx_0_seen), .ctx_0_last(ctx_0_last),
   .ctx_1_active(ctx_1_active), .ctx_1_tag_wave(ctx_1_tag_wave),
-  .ctx_1_tag_thread(ctx_1_tag_thread), .ctx_1_tag_lnid(ctx_1_tag_lnid),
+  .ctx_1_tag_epoch(ctx_1_tag_epoch), .ctx_1_tag_poison(ctx_1_tag_poison),
+  .ctx_1_tag_trace(ctx_1_tag_trace), .ctx_1_tag_lnid(ctx_1_tag_lnid),
   .ctx_1_tag_precision(ctx_1_tag_precision), .ctx_1_tag_dim(ctx_1_tag_dim),
   .ctx_1_base(ctx_1_base),
   .ctx_1_total(ctx_1_total), .ctx_1_totalKnown(ctx_1_totalKnown),
   .ctx_1_seen(ctx_1_seen), .ctx_1_last(ctx_1_last),
   .ctx_2_active(ctx_2_active), .ctx_2_tag_wave(ctx_2_tag_wave),
-  .ctx_2_tag_thread(ctx_2_tag_thread), .ctx_2_tag_lnid(ctx_2_tag_lnid),
+  .ctx_2_tag_epoch(ctx_2_tag_epoch), .ctx_2_tag_poison(ctx_2_tag_poison),
+  .ctx_2_tag_trace(ctx_2_tag_trace), .ctx_2_tag_lnid(ctx_2_tag_lnid),
   .ctx_2_tag_precision(ctx_2_tag_precision), .ctx_2_tag_dim(ctx_2_tag_dim),
   .ctx_2_base(ctx_2_base),
   .ctx_2_total(ctx_2_total), .ctx_2_totalKnown(ctx_2_totalKnown),
   .ctx_2_seen(ctx_2_seen), .ctx_2_last(ctx_2_last),
   .ctx_3_active(ctx_3_active), .ctx_3_tag_wave(ctx_3_tag_wave),
-  .ctx_3_tag_thread(ctx_3_tag_thread), .ctx_3_tag_lnid(ctx_3_tag_lnid),
+  .ctx_3_tag_epoch(ctx_3_tag_epoch), .ctx_3_tag_poison(ctx_3_tag_poison),
+  .ctx_3_tag_trace(ctx_3_tag_trace), .ctx_3_tag_lnid(ctx_3_tag_lnid),
   .ctx_3_tag_precision(ctx_3_tag_precision), .ctx_3_tag_dim(ctx_3_tag_dim),
   .ctx_3_base(ctx_3_base),
   .ctx_3_total(ctx_3_total), .ctx_3_totalKnown(ctx_3_totalKnown),

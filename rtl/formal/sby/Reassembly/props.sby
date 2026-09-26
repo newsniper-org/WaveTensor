@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
 # SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
 #
-# PROVES: Payload.key_is_tag — 활성 문맥 쌍 태그 전량 상이 불변식 inv_tag_uniq_* + 조각/소거 CAM hit 쌍별 배타 inv_hit_excl_*·inv_abhit_excl_*: 태그당 활성 문맥 <= 1, hit 는 one-hot
+# PROVES: Payload.key_is_tag — 활성 문맥 쌍 키 투영 상이 불변식 inv_tag_uniq_* + 조각/소거 CAM hit 쌍별 배타 inv_hit_excl_*·inv_abhit_excl_*: 키당 활성 문맥 <= 1, hit 는 one-hot
+# PROVES: Payload.key_drops_side — p_key_hit_*·p_key_abhit_*·p_key_clash(세 매칭 == 활성 ∧ 필드별 키 등식 wave·에포크·LNID·정밀도·차원 — poison·trace 를 넣는 기계도 키 필드를 빠뜨린 기계도 반례) · 증인 W22(조각 절반)·W23(소거 절반 — 0 을 싣는 소거가 trace·poison 문맥을 지운다)·W24(개시 절반)
 # PROVES: Payload.no_restart — p_no_restart_grant(재개시 granted 억제) + p_no_restart_evt(거절 사건 정의) + t_no_restart_loud(다음 사이클 fault 관측)
 # PROVES: Payload.no_dup_seq — p_no_dup_accept: 수락은 seen 에 없는 순번뿐 (재기입 부재의 원천)
 # PROVES: Payload.cap_check — inv_total_bounds_*(래치 총개수 1..16) + p_cap_window(발화 시 순번 1..선언 총개수 <= slotCap) + p_cap_off(off = 순번-1): 기입 면에 구간 밖 좌표 부재
@@ -43,6 +44,19 @@
 # prove 는 k-귀납(깊이 8)이 선다 — 그것이 정답 (불변식 inv_* 가 귀납 가설을
 # 닫는 보조 불변식 역할까지 겸한다).
 
+# ── 역-변이 표 — key_drops_side (태그 코덱 전파 파도, 2026-09-26 · 비상주: 생성물 사본에 한 줄씩, bmc = abc bmc3) ──
+#   RM1  fr_hit_0 에 trace 등식 연언 (오늘의 번들 통비교의 조각 절반)  ⇒ p_key_hit_0
+#   RM2  ab_hit_0 에 poison 등식 연언 (소거 절반 — D2b 의 호스트 가시 귀결) ⇒ p_key_abhit_0
+#   RM3  op_clash 문맥 0 항에 trace 등식 연언 (개시 절반)            ⇒ p_key_clash
+#   RM4  fr_hit_0 의 양변에서 에포크를 뺌 (키 필드 누락 방향)         ⇒ p_key_hit_0
+#   X3   ab_hit_1 에 trace 등식 연언 (문맥 ≠ 0 · 소거 절반)            ⇒ p_key_abhit_1
+#   X4   fr_hit_1 에 poison 등식 연언 (문맥 ≠ 0 · 조각 절반)           ⇒ p_key_hit_1
+#   X5   op_clash 문맥 1 항에 poison 등식 연언 (문맥 ≠ 0 · 개시 절반)   ⇒ p_key_clash
+#   일곱 다 사살 (rc=2) — **게이트 자신의 bmc 태스크(abc bmc3, 깊이 20)로**, 프레임 3 · 벽시계
+#   1~2 초 (2026-09-27 재실측, 컨테이너). 종전 기록의 넷은 smtbmc z3 로 쟀는데, 같은 엔진에서
+#   X3~X5 는 step 2 에 웨지해 240 초 타임아웃으로 끝났다(검토 실측) — 그래서 bmc 엔진을 바꿨다
+#   (아래 [options] 주석). 등식이라 두 방향(비트를 더함 · 필드를 뺌)을 다 잰다.
+
 [tasks]
 bmc
 prove
@@ -69,9 +83,21 @@ prove: depth 8
 cover: mode cover
 cover: depth 16
 multiclock off
+# bmc 엔진 = abc bmc3 (+ aigsmt z3 궤적 재생) — 태그 코덱 전파 파도 검토 처방
+# (2026-09-27). 종전 smtbmc z3 는 무변이 GREEN 에 8분 5초가 걸렸고, 문맥 ≠ 0
+# 의 키 매칭 변이(X3 ab_hit_1 에 trace · X4 fr_hit_1 에 poison · X5 문맥 1
+# op_clash 항에 poison)에서 「Checking assertions in step 2」에 웨지해 240초
+# 타임아웃(rc=124)으로 끝났다 — 게이트가 회귀를 「안 끝남」으로 위장한다
+# (solver_blindness_trap). 같은 변이를 abc bmc3 는 프레임 3 에서 초 미만에
+# 잡는다. prove(k-귀납 smtbmc z3)는 무변이 50초라 그대로 두되, timeout 이
+# 웨지를 「안 끝남」 대신 비-PASS 로 드러낸다.
+bmc: aigsmt z3
+timeout 900
 
 [engines]
-smtbmc z3
+bmc: abc bmc3
+prove: smtbmc z3
+cover: smtbmc z3
 
 [script]
 # yosys 개방판(0.66 실측)은 SV bind 문을 조용히 무시한다 (인스턴스 미생성 —

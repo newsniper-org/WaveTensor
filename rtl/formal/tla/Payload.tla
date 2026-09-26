@@ -205,6 +205,12 @@
 (*   ⚠️ 조각열이 *선언한* 총개수와 *실제로 보낸* 개수의 불일치를 기계가      *)
 (*      판정하지 않는다. total[r] 은 지상 진리이자 기계가 믿는 값이며,       *)
 (*      둘을 가르는 축(선언 위조)은 여기 없다.                              *)
+(*   ⚠️ *poison 의 전파*(값 축의 논리합 — 01-isa-asm 1.4.4 poison 2항)는      *)
+(*      여기 없다. 문맥이 쥔 (trace, poison) 은 개방 조각의 값 그대로이고,     *)
+(*      뒤에 온 poison 조각이 문맥 태그에 합쳐지지 않는다. 이 모델이 재는 것은 *)
+(*      매칭 키가 두 비트를 *보지 않는가*이지 인도되는 태그의 poison 이 무엇  *)
+(*      인가가 아니다 — 재구현은 poison 원천이 0건이라(정본 3.9 · E.1.3) 완료 *)
+(*      디스크립터의 poison 을 장치 상수 0 으로 쓴다 (CompletionUnit · D2c).  *)
 (*   ⚠️ out 은 완료 시점의 *스냅숏*이다. 인도 후에 구간이 변하는 것          *)
 (*      (늦은 WriteBack 은 제외 — 그것은 write_atomic 이 덮는다)을 관측하지  *)
 (*      않는다. 정본에 「인도 후 구간의 지위」가 없어 무엇을 관측해야 할지가  *)
@@ -220,13 +226,15 @@ CONSTANTS
     MaxSend,        \* 유한화를 위한 총 전송 상한. 모델 유한성의 유일한 목적
     NoR,            \* 「조각 없음」 / 「소유자 없음」 표식 (모델 값)
     NoT,            \* 「이 문맥은 비어 있다」 표식 (모델 값)
+    Traces,         \* 태그 trace 비트의 값 공간 — {0} 또는 {0, 1} (Tags 정제, D2b)
+    Poisons,        \* 태그 poison 비트의 값 공간 — {0} 또는 {0, 1} (Tags 정제, D2b)
     DisabledGuards
 
 AllGuards == {"cap_check", "capability_check", "capability_not_fault",
               "no_restart", "no_dup_seq", "loud_reject", "base_from_tag",
               "key_is_tag", "reset_on_deliver", "write_atomic", "last_judges",
               "abort_erases", "abort_clears_window", "abort_leaves_trace",
-              "abort_not_fault"}
+              "abort_not_fault", "key_drops_side"}
 On(g) == g \notin DisabledGuards
 
 (***************************************************************************)
@@ -241,7 +249,7 @@ On(g) == g \notin DisabledGuards
 (*                                                                         *)
 (* Runs·Ctxs 는 불투명 모델 값 풀이고, 스펙 전체(Init 포함)와 모든 검사     *)
 (* 속성이 두 집합의 순열에 불변이다 — 두 집합 위 CHOOSE 없음, 값을 구별하는 *)
-(* 술어 없음 (Tags 는 정수라 WindowOf 산술이 구별하므로 대칭 대상이         *)
+(* 술어 없음 (Keys 는 정수라 WindowOf 산술이 구별하므로 대칭 대상이         *)
 (* 아니다). 따라서 순열 궤도의 대표만 탐색해도 불변식·행위(action) 속성     *)
 (* 판정이 보존된다. TLC 대칭이 못 보는 것은 시간(liveness) 속성뿐인데       *)
 (* Payload 배터리 구간에 시간 속성은 없다 (Prop_NoSilentOverwrite 는 행위   *)
@@ -254,7 +262,42 @@ On(g) == g \notin DisabledGuards
 (***************************************************************************)
 Symm == Permutations(Runs) \cup Permutations(Ctxs)
 
-Tags   == 1..NumTags
+(***************************************************************************)
+(* Tags 정제 — (Key × Trace × Poison) (태그 코덱 전파 파도, 2026-09-26 · D2b).*)
+(*                                                                         *)
+(* 1차 판의 Tags 는 1..NumTags 의 정수였고 「태그 = 키」 가 정의로 참이었다. *)
+(* 정본은 그 등식을 끊었다 — 04-ext-payload 4.3 「*그러나 키는 태그 전량이  *)
+(* 아니다 — poison 과 trace 는 빠진다.*」 · e-defined E.12 6항 「⇒ 키는 wave *)
+(* · 에포크 · LNID · 정밀도 · 차원이다.」 그리고 그 범위는 문맥 개시 · 조각  *)
+(* 의 문맥 조회 · E.12 소거 매칭 *셋에 같은 범위로* 선다. 태그 = 키 인 모델  *)
+(* 에서는 그 셋이 키를 태그 전량으로 잡는 구현(재구현의 번들 통비교 — D2b) *)
+(* 과 정본 구현이 구별되지 않는다 — 비교할 비트가 없기 때문이다.            *)
+(*                                                                         *)
+(* 그래서 태그를 셋으로 가른다: Keys(=1..NumTags — 키 투영 전부를 한 정수로  *)
+(* 접는다: wave · 에포크 · LNID · 정밀도 · 차원) × Traces × Poisons. 문맥이  *)
+(* 쥔 태그는 (ctxTag · ctxSide) 두 변수이고, ctxTag 가 키 투영이다 — WindowOf *)
+(* 산술 · outValid · accSince 가 전부 키 위에 서는 까닭이다(결속 · 인도 · 재 *)
+(* 사용은 키의 사건이다). 조각은 자기 조각열의 키에 *아무* (trace, poison)  *)
+(* 을 실어 온다 — 생산자는 적대적이고, poison 은 값마다 장치가 저작하므로   *)
+(* 한 조각열 안에서 조각마다 다를 수 있는 것이 정상이다(01-isa-asm 1.4.4    *)
+(* 「poison 은 값의 신뢰도를 나른다」 2항 · 전파는 논리합). 소거는 스테이징이 *)
+(* 두 비트를 0 으로 못박으므로(E.1.2 `0xF44` · AbortSurface.poison_trace_zero)*)
+(* 언제나 Clean 을 싣는다 — 그 사실이 trace 가 키에 든 기계를 소거 쪽에서   *)
+(* 드러낸다: trace 든 문맥은 영영 소거할 수 없다.                           *)
+(*                                                                         *)
+(* key_drops_side 가드가 그 투영이다. 지우면 세 매칭이 전량 비교가 된다 —   *)
+(* 오늘의 RTL(Reassembly 의 `c.tag === x` 번들 통비교)과 같은 기계다.       *)
+(*                                                                         *)
+(* 형상 축: Traces · Poisons 가 {0} 이면 이 정제는 1차 판과 같은 기계로      *)
+(* 접힌다(ctxSide 가 상수). 다른 가드의 삭제 run · 증인 · 형상 sweep 은 그  *)
+(* 접힌 판으로 돈다 — 이 축은 그 가드들의 반증 축이 아니고, 켜면 전이 분기가 *)
+(* |Traces × Poisons| 배가 된다. 이 축을 켠 run 은 좋은 모델 base · 이 가드의 *)
+(* 삭제 · 증인 둘 · 오늘의 RTL 짝 둘이다 (run.sh 이 절).                    *)
+(***************************************************************************)
+Keys   == 1..NumTags
+Sides  == Traces \X Poisons
+Tags   == Keys \X Sides           \* 전체 태그 = (Key × Trace × Poison)
+Clean  == <<0, 0>>                \* trace = 0 · poison = 0 — 소거 스테이징이 싣는 유일한 값
 \* 선언 총개수. SlotCap + 1 은 *구현 상한을 넘는 조각열*이며 §2.4.1 규범 4가
 \* 「능력 부재」로 처분하라고 못박은 값이다. 2 부터인 이유는 총개수 1 이면
 \* 재조립의 「미완 상태」가 존재하지 않아 §4.3 규범 4가 공허해지기 때문이다.
@@ -296,46 +339,55 @@ ASSUME Cardinality(Ctxs) >= NumTags
 ASSUME SlotCap >= 2
 \* 한 태그에서 재조립이 두 번 일어날 수 있어야 태그 재사용 축이 도달 가능하다.
 ASSUME MaxSend >= 2 * SlotCap
+\* 두 비트의 값 공간은 {0} 또는 {0, 1} 이고 0 은 언제나 든다 — 소거가 Clean
+\* 을 싣기 때문이다 (0 이 없으면 ContextAbort 가 표현 불가해진다).
+ASSUME /\ Traces \subseteq {0, 1} /\ 0 \in Traces
+       /\ Poisons \subseteq {0, 1} /\ 0 \in Poisons
 
 VARIABLES
-    runTag,     \* [Runs -> Tags]      지상 진리. 초기 상태에서 정해지고 안 바뀐다
+    runTag,     \* [Runs -> Keys]      지상 진리. 초기 상태에서 정해지고 안 바뀐다
     total,      \* [Runs -> Totals]    지상 진리. 조각열이 선언한 조각 총 개수
     sent,       \* [Runs -> SUBSET Seqs]  지상 진리. 생산자가 실제로 내보낸 것
     slots,      \* [SlotIx -> Runs \cup {NoR}]  기계. 각 자리에 *누구의* 조각이
     pend,       \* [SlotIx -> Runs \cup {NoR}]  기계. 접수됐으나 아직 안 착지한 기입
-    ctxTag,     \* [Ctxs -> Tags \cup {NoT}]  문맥이 서비스하는 태그. *변수다*
+    ctxTag,     \* [Ctxs -> Keys \cup {NoT}]  문맥이 서비스하는 태그의 *키 투영*. *변수다*
+    ctxSide,    \* [Ctxs -> Sides]  문맥이 열릴 때 실린 (trace, poison) — 태그의 나머지
     ctxBase,    \* [Ctxs -> BaseRange]  문맥이 잡은 구간 시작. *정의가 아니라 변수다*
     ctxSeen,    \* [Ctxs -> SUBSET Seqs]  문맥이 이미 받은 순번 (중복 판정 근거)
     ctxFill,    \* [Ctxs -> 0..MaxSend]  문맥이 세는 접수 개수 (완료 판정 근거)
     ctxOwner,   \* [Ctxs -> Runs \cup {NoR}]  문맥이 기억하는 진행 중 조각열
     ctxLast,    \* [Ctxs -> BOOLEAN]  마지막 조각 표시가 접수됐는가 — 종료 authority
-    outValid,   \* [Tags -> BOOLEAN]  재조립 완료 선언
-    out,        \* [Tags -> [1..SlotCap -> Runs \cup {NoR}]]  완료 시점의 구간 스냅숏
+    outValid,   \* [Keys -> BOOLEAN]  재조립 완료 선언
+    out,        \* [Keys -> [1..SlotCap -> Runs \cup {NoR}]]  완료 시점의 구간 스냅숏
     sends,      \* 0..MaxSend  전송 횟수. 유한화용
     rejCap,     \* 유령 변수 — 순번 상한 초과로 거절된 수
     rejRestart, \* 유령 변수 — 재시작 충돌로 거절된 수
     rejDup,     \* 유령 변수 — 순번 중복으로 거절된 수
     rejCapa,    \* 유령 변수 — *능력 부재*로 거절된 수 (§2.4.1 규범 4)
     endBad,     \* 유령 변수 — 표시 접수 시점에 순번 집합이 불완전했던 횟수
-    accSince,   \* 유령 변수 — [Tags -> BOOLEAN] 태그가 해방된 뒤 접수가 있었는가
-    dlvT,       \* 유령 변수 — [Tags -> 0..MaxSend] 그 태그가 몇 번 완료됐는가
+    accSince,   \* 유령 변수 — [Keys -> BOOLEAN] 태그가 해방된 뒤 접수가 있었는가
+    dlvT,       \* 유령 변수 — [Keys -> 0..MaxSend] 그 태그가 몇 번 완료됐는가
     abortsG,    \* 유령 변수 — 실제로 일어난 문맥 소거 수 (지상 진리, E.12)
     abortCount, \* 기계가 세는 소거 카운트 — E.12 의 회계 관측면 (fault 아님)
     faultBit,   \* 기계가 세우는 sticky loud fault 비트 (§4.3 「loud fault」)
-    capAbsent   \* 기계가 세우는 sticky *능력 부재* 신호 (§1.6.2 — fault 가 아니다)
+    capAbsent,  \* 기계가 세우는 sticky *능력 부재* 신호 (§1.6.2 — fault 가 아니다)
+    abortLeft,  \* 유령 — 소거 뒤에 그 소거의 *키*를 가진 문맥이 살아남은 적이 있는가
+    sideFrag,   \* 유령 — 연 문맥과 (trace, poison) 이 다른 조각이 그 문맥에 접수된 적이 있는가
+    sideAbort   \* 유령 — Clean 소거가 (trace, poison) 이 Clean 이 아닌 문맥을 지운 적이 있는가
 
-vars == <<runTag, total, sent, slots, pend, ctxTag, ctxBase, ctxSeen, ctxFill,
-          ctxOwner, ctxLast, outValid, out, sends, rejCap, rejRestart, rejDup,
-          rejCapa, endBad, accSince, dlvT, abortsG, abortCount, faultBit,
-          capAbsent>>
+vars == <<runTag, total, sent, slots, pend, ctxTag, ctxSide, ctxBase, ctxSeen,
+          ctxFill, ctxOwner, ctxLast, outValid, out, sends, rejCap, rejRestart,
+          rejDup, rejCapa, endBad, accSince, dlvT, abortsG, abortCount, faultBit,
+          capAbsent, abortLeft, sideFrag, sideAbort>>
 
 TypeOK ==
-    /\ runTag \in [Runs -> Tags]
+    /\ runTag \in [Runs -> Keys]
     /\ total \in [Runs -> Totals]
     /\ sent \in [Runs -> SUBSET Seqs]
     /\ slots \in [SlotIx -> Runs \cup {NoR}]
     /\ pend \in [SlotIx -> Runs \cup {NoR}]
-    /\ ctxTag \in [Ctxs -> Tags \cup {NoT}]
+    /\ ctxTag \in [Ctxs -> Keys \cup {NoT}]
+    /\ ctxSide \in [Ctxs -> Sides]
     /\ ctxBase \in [Ctxs -> BaseRange]
     /\ ctxSeen \in [Ctxs -> SUBSET Seqs]
     \* ctxFill 을 total 로 캡하지 *않는다.* 캡하면 no_dup_seq 를 지웠을 때
@@ -345,16 +397,16 @@ TypeOK ==
     /\ ctxFill \in [Ctxs -> 0..MaxSend]
     /\ ctxOwner \in [Ctxs -> Runs \cup {NoR}]
     /\ ctxLast \in [Ctxs -> BOOLEAN]
-    /\ outValid \in [Tags -> BOOLEAN]
-    /\ out \in [Tags -> [1..SlotCap -> Runs \cup {NoR}]]
+    /\ outValid \in [Keys -> BOOLEAN]
+    /\ out \in [Keys -> [1..SlotCap -> Runs \cup {NoR}]]
     /\ sends \in 0..MaxSend
     /\ rejCap \in 0..MaxSend
     /\ rejRestart \in 0..MaxSend
     /\ rejDup \in 0..MaxSend
     /\ rejCapa \in 0..MaxSend
     /\ endBad \in 0..MaxSend
-    /\ accSince \in [Tags -> BOOLEAN]
-    /\ dlvT \in [Tags -> 0..MaxSend]
+    /\ accSince \in [Keys -> BOOLEAN]
+    /\ dlvT \in [Keys -> 0..MaxSend]
     \* 0..1 포화 — accSince(BOOLEAN)와 같은 유한화다. 이 모델의 어떤 검사도
     \* 소거 *횟수*를 쓰지 않는다 (Inv_AbortLoud·Witness 전부 > 0 비교) —
     \* dlvT 가 값 2 를 요구하는 Witness_NoTagReuse 때문에 MaxSend 캡인 것과
@@ -365,33 +417,40 @@ TypeOK ==
     /\ abortCount \in 0..1
     /\ faultBit \in BOOLEAN
     /\ capAbsent \in BOOLEAN
+    /\ abortLeft \in BOOLEAN
+    /\ sideFrag \in BOOLEAN
+    /\ sideAbort \in BOOLEAN
 
 Init ==
-    /\ runTag \in [Runs -> Tags]
+    /\ runTag \in [Runs -> Keys]
     /\ total \in [Runs -> Totals]
     /\ sent = [r \in Runs |-> {}]
     /\ slots = [k \in SlotIx |-> NoR]
     /\ pend = [k \in SlotIx |-> NoR]
     /\ ctxTag = [c \in Ctxs |-> NoT]
+    /\ ctxSide = [c \in Ctxs |-> Clean]
     /\ ctxBase = [c \in Ctxs |-> 0]
     /\ ctxSeen = [c \in Ctxs |-> {}]
     /\ ctxFill = [c \in Ctxs |-> 0]
     /\ ctxOwner = [c \in Ctxs |-> NoR]
     /\ ctxLast = [c \in Ctxs |-> FALSE]
-    /\ outValid = [t \in Tags |-> FALSE]
-    /\ out = [t \in Tags |-> [i \in 1..SlotCap |-> NoR]]
+    /\ outValid = [t \in Keys |-> FALSE]
+    /\ out = [t \in Keys |-> [i \in 1..SlotCap |-> NoR]]
     /\ sends = 0
     /\ rejCap = 0
     /\ rejRestart = 0
     /\ rejDup = 0
     /\ rejCapa = 0
     /\ endBad = 0
-    /\ accSince = [t \in Tags |-> FALSE]
-    /\ dlvT = [t \in Tags |-> 0]
+    /\ accSince = [t \in Keys |-> FALSE]
+    /\ dlvT = [t \in Keys |-> 0]
     /\ abortsG = 0
     /\ abortCount = 0
     /\ faultBit = FALSE
     /\ capAbsent = FALSE
+    /\ abortLeft = FALSE
+    /\ sideFrag = FALSE
+    /\ sideAbort = FALSE
 
 (***************************************************************************)
 (* 문맥 선택 — §4.3 규범 1 「태그가 재조립의 키다」 가 사는 자리.           *)
@@ -400,14 +459,22 @@ Init ==
 (* 하나도 없을 때뿐*이다. 지우면 기계가 태그가 아닌 다른 것(소스 포트,     *)
 (* 자유 문맥 풀)으로 문맥을 색인하게 되고, 한 태그를 두 문맥이 서비스한다. *)
 (***************************************************************************)
-Serves(c, t) == ctxTag[c] = t
-Free(c)      == ctxTag[c] = NoT
-TagHeld(t)   == \E d \in Ctxs : ctxTag[d] = t
+\* 매칭 — 도착한 태그 (t, x) 가 문맥 c 에 닿는가. key_drops_side 가 켜져 있으면
+\* 키 투영만 비교하고(정본: 키는 wave · 에포크 · LNID · 정밀도 · 차원), 지우면
+\* 태그 전량(키 ‖ trace ‖ poison)을 비교한다 — 오늘의 RTL 의 번들 통비교.
+\* 이 술어 하나가 세 매칭(개시의 재시작 판정 · 조각의 문맥 조회 · E.12 소거
+\* 대상 매칭)에 같은 범위로 선다 (04-ext-payload 4.3 「셋에 같은 범위로」).
+Serves(c, t, x) == /\ ctxTag[c] = t
+                   /\ (On("key_drops_side") \/ ctxSide[c] = x)
+Free(c)         == ctxTag[c] = NoT
+TagHeld(t, x)   == \E d \in Ctxs : Serves(d, t, x)
+\* 키만 본 보유 — *지상 진리 어휘*다(가드를 부르지 않는다). 속성이 이것을 쓴다.
+KeyHeld(t)      == \E d \in Ctxs : ctxTag[d] = t
 
-CtxUsable(r, c) ==
-    \/ Serves(c, runTag[r])
+CtxUsable(r, c, x) ==
+    \/ Serves(c, runTag[r], x)
     \/ /\ Free(c)
-       /\ (~On("key_is_tag")) \/ (~TagHeld(runTag[r]))
+       /\ (~On("key_is_tag")) \/ (~TagHeld(runTag[r], x))
 
 (***************************************************************************)
 (* 접수 검사 — §4.3 규범 2·3·4 와 §2.4.1 규범 4를 기계 어휘로 적은 것.      *)
@@ -436,10 +503,10 @@ DupRej(r, c, s)    == /\ ~CapaRej(r)
                       /\ DupSeq(c, s)
 
 \* Send 의 전제 — Idle 이 이것의 부정을 쓰므로 두 곳이 어긋나지 않게 한 곳에 둔다.
-SendPre(r, c) ==
+SendPre(r, c, x) ==
     /\ sends < MaxSend
     /\ ~outValid[runTag[r]]
-    /\ CtxUsable(r, c)
+    /\ CtxUsable(r, c, x)
 
 (***************************************************************************)
 (* 조각 도착.                                                              *)
@@ -468,8 +535,8 @@ SendPre(r, c) ==
 (* 축이 사는 자리). endBad 는 그 사건의 유령 기록이고, 가드는 faultBit 발화  *)
 (* 만 쥔다 — rej*/loud_reject 짝과 같은 분업이다.                           *)
 (***************************************************************************)
-Send(r, s, c, b, l) ==
-    /\ SendPre(r, c)
+Send(r, s, c, b, l, x) ==
+    /\ SendPre(r, c, x)
     /\ LET t  == runTag[r]
            bb == IF Free(c) THEN b ELSE ctxBase[c]
            k  == bb + s
@@ -496,10 +563,15 @@ Send(r, s, c, b, l) ==
                          CASE (rc \/ rr \/ rd) /\ On("loud_reject") -> TRUE
                            [] ra /\ ~On("capability_not_fault")     -> TRUE
                            [] OTHER                                  -> faultBit
-                    /\ UNCHANGED <<slots, pend, ctxTag, ctxBase, ctxSeen,
-                                   ctxFill, ctxOwner, ctxLast, endBad, accSince>>
+                    /\ UNCHANGED <<slots, pend, ctxTag, ctxSide, ctxBase, ctxSeen,
+                                   ctxFill, ctxOwner, ctxLast, endBad, accSince,
+                                   sideFrag>>
                ELSE \* 접수. 자리에 *조각열의 정체성*을 남긴다.
                     /\ ctxTag' = [ctxTag EXCEPT ![c] = t]
+                    \* 여는 조각의 (trace, poison) 이 문맥의 것이 된다 — 이미 열린
+                    \* 문맥에 닿은 조각은 그 값을 바꾸지 않는다 (RTL: 개방만 태그를 싣는다).
+                    /\ ctxSide' = IF Free(c) THEN [ctxSide EXCEPT ![c] = x] ELSE ctxSide
+                    /\ sideFrag' = (sideFrag \/ ((~Free(c)) /\ ctxSide[c] # x))
                     /\ ctxBase' = [ctxBase EXCEPT ![c] = bb]
                     /\ ctxSeen' = [ctxSeen EXCEPT ![c] = @ \cup {s}]
                     /\ ctxFill' = [ctxFill EXCEPT ![c] = IF @ < MaxSend THEN @ + 1 ELSE @]
@@ -519,7 +591,8 @@ Send(r, s, c, b, l) ==
                                    capAbsent>>
     /\ sends' = sends + 1
     /\ sent' = [sent EXCEPT ![r] = @ \cup {s}]
-    /\ UNCHANGED <<runTag, total, outValid, out, dlvT, abortsG, abortCount>>
+    /\ UNCHANGED <<runTag, total, outValid, out, dlvT, abortsG, abortCount,
+                   abortLeft, sideAbort>>
 
 \* 늦게 착지하는 데이터 기입. write_atomic 이 켜져 있으면 pend 가 늘 비어
 \* 있으므로 이 액션은 발화하지 않는다 — 좋은 모델은 1차 판과 같은 기계다.
@@ -527,10 +600,10 @@ WriteBack(k) ==
     /\ pend[k] # NoR
     /\ slots' = [slots EXCEPT ![k] = pend[k]]
     /\ pend' = [pend EXCEPT ![k] = NoR]
-    /\ UNCHANGED <<runTag, total, sent, ctxTag, ctxBase, ctxSeen, ctxFill,
+    /\ UNCHANGED <<runTag, total, sent, ctxTag, ctxSide, ctxBase, ctxSeen, ctxFill,
                    ctxOwner, ctxLast, outValid, out, sends, rejCap, rejRestart,
                    rejDup, rejCapa, endBad, accSince, dlvT, abortsG, abortCount,
-                   faultBit, capAbsent>>
+                   faultBit, capAbsent, abortLeft, sideFrag, sideAbort>>
 
 (***************************************************************************)
 (* 재조립 완료 — 기계가 「다 모였다」고 판단하는 유일한 지점.              *)
@@ -556,10 +629,10 @@ Deliver(c) ==
        IN /\ outValid' = [outValid EXCEPT ![t] = TRUE]
           /\ out' = [out EXCEPT ![t] = [i \in 1..SlotCap |-> slots[ctxBase[c] + i]]]
           /\ dlvT' = [dlvT EXCEPT ![t] = IF @ < MaxSend THEN @ + 1 ELSE @]
-    /\ UNCHANGED <<runTag, total, sent, slots, pend, ctxTag, ctxBase, ctxSeen,
-                   ctxFill, ctxOwner, ctxLast, sends, rejCap, rejRestart,
+    /\ UNCHANGED <<runTag, total, sent, slots, pend, ctxTag, ctxSide, ctxBase,
+                   ctxSeen, ctxFill, ctxOwner, ctxLast, sends, rejCap, rejRestart,
                    rejDup, rejCapa, endBad, accSince, abortsG, abortCount,
-                   faultBit, capAbsent>>
+                   faultBit, capAbsent, abortLeft, sideFrag, sideAbort>>
 
 (***************************************************************************)
 (* 소비 — 소비자가 결과를 가져가면 그 태그가 다시 쓸 수 있게 된다.         *)
@@ -581,6 +654,7 @@ Consume(t) ==
     /\ accSince' = [accSince EXCEPT ![t] = FALSE]
     /\ IF On("reset_on_deliver")
          THEN /\ ctxTag' = [c \in Ctxs |-> IF ctxTag[c] = t THEN NoT ELSE ctxTag[c]]
+              /\ ctxSide' = [c \in Ctxs |-> IF ctxTag[c] = t THEN Clean ELSE ctxSide[c]]
               /\ ctxSeen' = [c \in Ctxs |-> IF ctxTag[c] = t THEN {} ELSE ctxSeen[c]]
               /\ ctxFill' = [c \in Ctxs |-> IF ctxTag[c] = t THEN 0 ELSE ctxFill[c]]
               /\ ctxOwner' = [c \in Ctxs |-> IF ctxTag[c] = t THEN NoR ELSE ctxOwner[c]]
@@ -588,10 +662,10 @@ Consume(t) ==
               /\ slots' = [k \in SlotIx |->
                              IF \E c \in Ctxs : ctxTag[c] = t /\ InWindow(c, k)
                                THEN NoR ELSE slots[k]]
-         ELSE UNCHANGED <<ctxTag, ctxSeen, ctxFill, ctxOwner, ctxLast, slots>>
+         ELSE UNCHANGED <<ctxTag, ctxSide, ctxSeen, ctxFill, ctxOwner, ctxLast, slots>>
     /\ UNCHANGED <<runTag, total, sent, pend, ctxBase, out, sends, rejCap,
                    rejRestart, rejDup, rejCapa, endBad, dlvT, abortsG,
-                   abortCount, faultBit, capAbsent>>
+                   abortCount, faultBit, capAbsent, abortLeft, sideFrag, sideAbort>>
 
 (***************************************************************************)
 (* 태그 지정 문맥 소거 (부록 E.12 · §3.7 드레인 완주 가능성).              *)
@@ -639,9 +713,27 @@ Consume(t) ==
 (* 갈래 — E.12 3항 해설).                                                  *)
 (***************************************************************************)
 ContextAbort(t) ==
-    /\ TagHeld(t)
-    /\ LET cs == {c \in Ctxs : ctxTag[c] = t}
+    \* 호스트는 *키*로 소거한다 — 그 키의 문맥이 살아 있을 때 (없으면 무연산 =
+    \* 스터터). 실리는 태그는 언제나 (t, Clean) 이다: 스테이징이 poison · trace
+    \* 를 0 으로 못박는다 (E.1.2 `0xF44` · AbortSurface.poison_trace_zero).
+    \* 기계가 지우는 것은 매칭된 문맥 cs 이고, 매칭이 키를 넘어 trace · poison
+    \* 까지 보면 cs 가 키의 문맥 일부(또는 전무)로 줄어든다. cs 가 비면 E.12 3항
+    \* 「없는 태그」로 무시된다 — 카운트도 오르지 않는다.
+    /\ KeyHeld(t)
+    /\ LET cs == {c \in Ctxs : Serves(c, t, Clean)}
        IN /\ ctxTag' = [c \in Ctxs |-> IF c \in cs THEN NoT ELSE ctxTag[c]]
+          /\ ctxSide' = [c \in Ctxs |-> IF c \in cs THEN Clean ELSE ctxSide[c]]
+          \* 지상 진리: 소거 뒤에 그 키의 문맥이 남았는가 (E.12 1항 「그 태그의
+          \* 활성 문맥 전체」 — 태그의 동일성은 키다, E.12 6항).
+          /\ abortLeft' = (abortLeft \/ \E c \in Ctxs : ctxTag[c] = t /\ c \notin cs)
+          /\ sideAbort' = (sideAbort \/ \E c \in cs : ctxSide[c] # Clean)
+          \* 유령(지상 진리)과 기계 관측면을 가른다 — rej*/faultBit 짝과 같은 분업.
+          \* 0..1 포화 — 근거는 TypeOK 의 해당 주석 (검사는 전부 > 0 비교).
+          \* 매칭 0 건이면 「없는 태그」 무시 — 일어난 소거가 없다.
+          /\ abortsG' = (IF cs # {} THEN 1 ELSE abortsG)
+          /\ abortCount' = (IF cs # {} /\ On("abort_leaves_trace") THEN 1 ELSE abortCount)
+          \* 소거는 fault 가 아니다 (E.12 2항) — capability_not_fault 와 같은 문체.
+          /\ faultBit' = (IF cs = {} \/ On("abort_not_fault") THEN faultBit ELSE TRUE)
           /\ IF On("abort_erases")
                THEN /\ ctxSeen'  = [c \in Ctxs |-> IF c \in cs THEN {} ELSE ctxSeen[c]]
                     /\ ctxFill'  = [c \in Ctxs |-> IF c \in cs THEN 0 ELSE ctxFill[c]]
@@ -653,15 +745,9 @@ ContextAbort(t) ==
                                 IF \E c \in cs : InWindow(c, k)
                                   THEN NoR ELSE slots[k]]
                ELSE UNCHANGED slots
-    \* 유령(지상 진리)과 기계 관측면을 가른다 — rej*/faultBit 짝과 같은 분업.
-    \* 0..1 포화 — 근거는 TypeOK 의 해당 주석 (검사는 전부 > 0 비교).
-    /\ abortsG' = 1
-    /\ abortCount' = (IF On("abort_leaves_trace") THEN 1 ELSE abortCount)
-    \* 소거는 fault 가 아니다 (E.12 2항) — capability_not_fault 와 같은 문체.
-    /\ faultBit' = (IF On("abort_not_fault") THEN faultBit ELSE TRUE)
     /\ UNCHANGED <<runTag, total, sent, pend, ctxBase, outValid, out, sends,
                    rejCap, rejRestart, rejDup, rejCapa, endBad, accSince, dlvT,
-                   capAbsent>>
+                   capAbsent, sideFrag>>
 
 (***************************************************************************)
 (* 종료를 모델에 명시한다 — CHECK_DEADLOCK 을 끄지 않기 위해서다.          *)
@@ -673,20 +759,20 @@ ContextAbort(t) ==
 (* 라 애초에 교착으로 보고되지 않는다. Idle 과 ContextAbort 가 같은 상태에  *)
 (* 서 함께 열려 있는 것은 그 임의성의 표현이다.                            *)
 (***************************************************************************)
-CanSend    == \E r \in Runs, c \in Ctxs : SendPre(r, c)
+CanSend    == \E r \in Runs, c \in Ctxs, x \in Sides : SendPre(r, c, x)
 CanWrite   == \E k \in SlotIx : pend[k] # NoR
 CanDeliver == \E c \in Ctxs : DeliverPre(c)
-CanConsume == \E t \in Tags : outValid[t]
+CanConsume == \E t \in Keys : outValid[t]
 
 Idle == ~CanSend /\ ~CanWrite /\ ~CanDeliver /\ ~CanConsume /\ UNCHANGED vars
 
 Next ==
-    \/ \E r \in Runs, s \in Seqs, c \in Ctxs, b \in BaseRange, l \in BOOLEAN :
-          Send(r, s, c, b, l)
+    \/ \E r \in Runs, s \in Seqs, c \in Ctxs, b \in BaseRange, l \in BOOLEAN, x \in Sides :
+          Send(r, s, c, b, l, x)
     \/ \E k \in SlotIx : WriteBack(k)
     \/ \E c \in Ctxs : Deliver(c)
-    \/ \E t \in Tags : Consume(t)
-    \/ \E t \in Tags : ContextAbort(t)
+    \/ \E t \in Keys : Consume(t)
+    \/ \E t \in Keys : ContextAbort(t)
     \/ Idle
 
 Spec == Init /\ [][Next]_vars
@@ -721,7 +807,7 @@ Faithful(t) ==
         /\ \A i \in 1..SlotCap :
               out[t][i] = (IF i <= total[r] THEN r ELSE NoR)
 
-Inv_ReassemblyExclusive == \A t \in Tags : outValid[t] => Faithful(t)
+Inv_ReassemblyExclusive == \A t \in Keys : outValid[t] => Faithful(t)
 
 (***************************************************************************)
 (* §2.4.1 「연속한 슬롯 구간」 — 조각은 자기 조각열의 구간을 벗어나지       *)
@@ -797,7 +883,7 @@ Inv_CapabilityNotMalformed ==
 (*                                                                         *)
 (* accSince 는 「접수가 있었다」는 지상 진리이고 outValid 는 기계의 선언이다.*)
 (***************************************************************************)
-Inv_NoStaleRedeliver == \A t \in Tags : outValid[t] => accSince[t]
+Inv_NoStaleRedeliver == \A t \in Keys : outValid[t] => accSince[t]
 
 (***************************************************************************)
 (* E.12 「조용한 소거는 없다」 — 소거는 회계 흔적(소거 카운트)을 남긴다.    *)
@@ -822,6 +908,23 @@ Inv_AbortLoud == (abortsG > 0) => (abortCount > 0)
 (***************************************************************************)
 Inv_AbortNotFault ==
     (abortsG > 0 /\ rejCap + rejRestart + rejDup = 0 /\ endBad = 0) => ~faultBit
+
+(***************************************************************************)
+(* E.12 1항 × 6항 — 소거는 *그 키의* 활성 문맥 전체를 지운다 (D2b).        *)
+(*                                                                         *)
+(* 1항 「소거 대상: 그 태그의 활성 문맥 전체」의 「태그」는 6항이 키로 좁혔다 *)
+(* — poison · trace 는 빠진다. 소거 스테이징이 두 비트를 0 으로 못박으므로   *)
+(* 매칭이 두 비트를 보는 기계에서는 trace(또는 poison) 든 문맥이 *어떤 적법  *)
+(* 한 소거로도* 지워지지 않는다: 소거는 「없는 태그」로 조용히 무시되고(3항의 *)
+(* 오적용) ABORT_COUNT 도 오르지 않으며, 표시 유실 문맥이면 드레인이 영원히  *)
+(* 막힌다 (3.7 드레인 완주 가능성).                                        *)
+(*                                                                         *)
+(* abortLeft 는 지상 진리 어휘다 — 「소거가 겨냥한 키의 문맥이 소거 뒤에도   *)
+(* 살아 있다」를 ctxTag(키)로만 판정하고 매칭 술어를 부르지 않는다. 그래서   *)
+(* 가드(Serves 의 투영)를 되풀이하지 않는다. key_drops_side 삭제가 이것을    *)
+(* 깨뜨린다.                                                               *)
+(***************************************************************************)
+Inv_AbortReachesKey == ~abortLeft
 
 (***************************************************************************)
 (* §4.3 함정 「참조 구현에 남아 있던 조용한 덮어쓰기」 의 직접 형태.       *)
@@ -849,7 +952,7 @@ Prop_NoSilentOverwrite ==
 (***************************************************************************)
 
 \* 재조립이 실제로 완료되는가 — 안 되면 Inv_ReassemblyExclusive 가 공허하다.
-Witness_NoDelivery == \A t \in Tags : ~outValid[t]
+Witness_NoDelivery == \A t \in Keys : ~outValid[t]
 
 \* *미완 재조립 상태가 실제로 존재하는가.* 없으면 §4.3 규범 4의 전건
 \* ("재조립이 완료되지 않은 채") 이 도달 불가이고 no_restart 는 아무것도
@@ -881,7 +984,7 @@ Witness_NoTwoActiveCtx ==
 
 \* *한 태그가 실제로 두 번 완료되는가* — 즉 완료 후 재사용 갈래가 도달
 \* 가능한가. 반증되지 않으면 reset_on_deliver 삭제 실험이 공허하다.
-Witness_NoTagReuse == \A t \in Tags : dlvT[t] <= 1
+Witness_NoTagReuse == \A t \in Keys : dlvT[t] <= 1
 
 \* *표시 시점 불완전(누락)이 구성된 기계에서 실제로 도달하는가.* 반증되지
 \* 않으면 last_judges 는 한 번도 일하지 않은 것이고 Inv_EndIncompleteLoud
@@ -899,6 +1002,16 @@ Witness_NoMarkerLoss ==
 \* *문맥 소거가 구성된 기계에서 실제로 일어나는가.* 반증되지 않으면 E.12 의
 \* 세 가드 전부와 Inv_AbortLoud 가 한 번도 일하지 않은 장식이다.
 Witness_NoAbort == abortsG = 0
+
+\* *(trace, poison) 만 다른 조각이 열린 문맥에 실제로 닿는가* — 조각 조회 매칭이
+\* 두 비트를 뺀다는 계약의 도달성. 반증되지 않으면 좋은 모델에서 그 투영이 한
+\* 번도 일하지 않은 것이고, 오늘의 RTL 짝(조각 절반)이 무엇과 대비되는지가 빈다.
+\* Traces · Poisons 가 {0} 인 접힌 판에서는 참이다 — 이 증인은 축을 켠 cfg 로만 돈다.
+Witness_NoSideFragHit == ~sideFrag
+
+\* *Clean 소거가 trace·poison 든 문맥을 실제로 지우는가* — 소거 매칭 절반의 도달성.
+\* 반증되지 않으면 Inv_AbortReachesKey 는 「그런 문맥이 생긴 적이 없어서」 참이다.
+Witness_NoSideAbortHit == ~sideAbort
 
 \* *소거만 있고 fault 감인 사건이 없는 이력*이 도달 가능한가 —
 \* Inv_AbortNotFault 의 전건 그 자체다. Witness_NoAbort 는 abortsG > 0 만

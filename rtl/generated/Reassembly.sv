@@ -12,7 +12,9 @@
 module Reassembly (
   input  wire          io_open_valid,
   input  wire [31:0]   io_open_tag_wave,
-  input  wire [15:0]   io_open_tag_thread,
+  input  wire [3:0]    io_open_tag_epoch,
+  input  wire          io_open_tag_poison,
+  input  wire          io_open_tag_trace,
   input  wire [15:0]   io_open_tag_lnid,
   input  wire [7:0]    io_open_tag_precision,
   input  wire [7:0]    io_open_tag_dim,
@@ -20,7 +22,9 @@ module Reassembly (
   output wire          io_open_granted,
   input  wire          io_frag_valid,
   input  wire [31:0]   io_frag_head_tag_wave,
-  input  wire [15:0]   io_frag_head_tag_thread,
+  input  wire [3:0]    io_frag_head_tag_epoch,
+  input  wire          io_frag_head_tag_poison,
+  input  wire          io_frag_head_tag_trace,
   input  wire [15:0]   io_frag_head_tag_lnid,
   input  wire [7:0]    io_frag_head_tag_precision,
   input  wire [7:0]    io_frag_head_tag_dim,
@@ -35,7 +39,9 @@ module Reassembly (
   output wire          io_deliver_valid,
   input  wire          io_deliver_ready,
   output wire [31:0]   io_deliver_payload_tag_wave,
-  output wire [15:0]   io_deliver_payload_tag_thread,
+  output wire [3:0]    io_deliver_payload_tag_epoch,
+  output wire          io_deliver_payload_tag_poison,
+  output wire          io_deliver_payload_tag_trace,
   output wire [15:0]   io_deliver_payload_tag_lnid,
   output wire [7:0]    io_deliver_payload_tag_precision,
   output wire [7:0]    io_deliver_payload_tag_dim,
@@ -45,7 +51,9 @@ module Reassembly (
   output wire [2:0]    io_occupancy,
   input  wire          io_abort_valid,
   input  wire [31:0]   io_abort_tag_wave,
-  input  wire [15:0]   io_abort_tag_thread,
+  input  wire [3:0]    io_abort_tag_epoch,
+  input  wire          io_abort_tag_poison,
+  input  wire          io_abort_tag_trace,
   input  wire [15:0]   io_abort_tag_lnid,
   input  wire [7:0]    io_abort_tag_precision,
   input  wire [7:0]    io_abort_tag_dim,
@@ -67,18 +75,42 @@ module Reassembly (
   wire       [3:0]    _zz_fr_off;
   reg        [15:0]   _zz_fr_endBad;
   wire       [4:0]    _zz_fr_endBad_1;
-  wire                _zz_op_clash;
-  wire                _zz_op_clash_1;
-  wire                _zz_op_clash_2;
-  wire                _zz_op_clash_3;
-  wire                _zz_op_clash_4;
-  wire                _zz_op_clash_5;
-  wire                _zz_op_clash_6;
-  wire                _zz_op_clash_7;
-  wire                _zz_op_clash_8;
-  wire                _zz_op_clash_9;
-  wire                _zz_op_clash_10;
-  wire                _zz_op_clash_11;
+  wire       [67:0]   _zz_op_clash;
+  wire       [51:0]   _zz_op_clash_1;
+  wire       [31:0]   _zz_op_clash_2;
+  wire       [3:0]    _zz_op_clash_3;
+  wire       [7:0]    _zz_op_clash_4;
+  wire       [67:0]   _zz_op_clash_5;
+  wire       [51:0]   _zz_op_clash_6;
+  wire       [31:0]   _zz_op_clash_7;
+  wire       [3:0]    _zz_op_clash_8;
+  wire       [7:0]    _zz_op_clash_9;
+  wire       [67:0]   _zz_op_clash_10;
+  wire       [51:0]   _zz_op_clash_11;
+  wire       [31:0]   _zz_op_clash_12;
+  wire       [3:0]    _zz_op_clash_13;
+  wire       [7:0]    _zz_op_clash_14;
+  wire       [67:0]   _zz_op_clash_15;
+  wire       [51:0]   _zz_op_clash_16;
+  wire       [31:0]   _zz_op_clash_17;
+  wire       [3:0]    _zz_op_clash_18;
+  wire       [7:0]    _zz_op_clash_19;
+  wire       [59:0]   _zz_op_clash_20;
+  wire       [35:0]   _zz_op_clash_21;
+  wire       [15:0]   _zz_op_clash_22;
+  wire       [7:0]    _zz_op_clash_23;
+  wire       [59:0]   _zz_op_clash_24;
+  wire       [35:0]   _zz_op_clash_25;
+  wire       [15:0]   _zz_op_clash_26;
+  wire       [7:0]    _zz_op_clash_27;
+  wire       [51:0]   _zz_op_clash_28;
+  wire       [31:0]   _zz_op_clash_29;
+  wire       [3:0]    _zz_op_clash_30;
+  wire       [7:0]    _zz_op_clash_31;
+  wire       [51:0]   _zz_op_clash_32;
+  wire       [31:0]   _zz_op_clash_33;
+  wire       [3:0]    _zz_op_clash_34;
+  wire       [7:0]    _zz_op_clash_35;
   wire       [3:0]    _zz_op_freeOh_1;
   reg        [15:0]   _zz_dv_done_0;
   wire       [4:0]    _zz_dv_done_0_1;
@@ -90,7 +122,9 @@ module Reassembly (
   wire       [4:0]    _zz_dv_done_3_1;
   wire       [3:0]    _zz_dv_grantOh_1;
   reg        [31:0]   _zz_io_deliver_payload_tag_wave_4;
-  reg        [15:0]   _zz_io_deliver_payload_tag_thread;
+  reg        [3:0]    _zz_io_deliver_payload_tag_epoch;
+  reg                 _zz_io_deliver_payload_tag_poison;
+  reg                 _zz_io_deliver_payload_tag_trace;
   reg        [15:0]   _zz_io_deliver_payload_tag_lnid;
   reg        [7:0]    _zz_io_deliver_payload_tag_precision;
   reg        [7:0]    _zz_io_deliver_payload_tag_dim;
@@ -110,7 +144,9 @@ module Reassembly (
   wire       [0:0]    _zz_io_occupancy_12;
   reg                 ctx_0_active;
   reg        [31:0]   ctx_0_tag_wave;
-  reg        [15:0]   ctx_0_tag_thread;
+  reg        [3:0]    ctx_0_tag_epoch;
+  reg                 ctx_0_tag_poison;
+  reg                 ctx_0_tag_trace;
   reg        [15:0]   ctx_0_tag_lnid;
   reg        [7:0]    ctx_0_tag_precision;
   reg        [7:0]    ctx_0_tag_dim;
@@ -121,7 +157,9 @@ module Reassembly (
   reg                 ctx_0_last;
   reg                 ctx_1_active;
   reg        [31:0]   ctx_1_tag_wave;
-  reg        [15:0]   ctx_1_tag_thread;
+  reg        [3:0]    ctx_1_tag_epoch;
+  reg                 ctx_1_tag_poison;
+  reg                 ctx_1_tag_trace;
   reg        [15:0]   ctx_1_tag_lnid;
   reg        [7:0]    ctx_1_tag_precision;
   reg        [7:0]    ctx_1_tag_dim;
@@ -132,7 +170,9 @@ module Reassembly (
   reg                 ctx_1_last;
   reg                 ctx_2_active;
   reg        [31:0]   ctx_2_tag_wave;
-  reg        [15:0]   ctx_2_tag_thread;
+  reg        [3:0]    ctx_2_tag_epoch;
+  reg                 ctx_2_tag_poison;
+  reg                 ctx_2_tag_trace;
   reg        [15:0]   ctx_2_tag_lnid;
   reg        [7:0]    ctx_2_tag_precision;
   reg        [7:0]    ctx_2_tag_dim;
@@ -143,7 +183,9 @@ module Reassembly (
   reg                 ctx_2_last;
   reg                 ctx_3_active;
   reg        [31:0]   ctx_3_tag_wave;
-  reg        [15:0]   ctx_3_tag_thread;
+  reg        [3:0]    ctx_3_tag_epoch;
+  reg                 ctx_3_tag_poison;
+  reg                 ctx_3_tag_trace;
   reg        [15:0]   ctx_3_tag_lnid;
   reg        [7:0]    ctx_3_tag_precision;
   reg        [7:0]    ctx_3_tag_dim;
@@ -192,10 +234,10 @@ module Reassembly (
   wire                fr_accept;
   wire       [15:0]   fr_newSeen;
   wire                fr_endBad;
-  wire                when_Reassembly_l363;
-  wire                when_Reassembly_l363_1;
-  wire                when_Reassembly_l363_2;
-  wire                when_Reassembly_l363_3;
+  wire                when_Reassembly_l364;
+  wire                when_Reassembly_l364_1;
+  wire                when_Reassembly_l364_2;
+  wire                when_Reassembly_l364_3;
   wire                fr_rejEvt;
   wire                fr_endEvt;
   wire                fr_capaEvt;
@@ -208,10 +250,10 @@ module Reassembly (
   wire       [3:0]    _zz_op_freeOh;
   wire       [3:0]    op_freeOh;
   wire                op_grant;
-  wire                when_Reassembly_l396;
-  wire                when_Reassembly_l396_1;
-  wire                when_Reassembly_l396_2;
-  wire                when_Reassembly_l396_3;
+  wire                when_Reassembly_l397;
+  wire                when_Reassembly_l397_1;
+  wire                when_Reassembly_l397_2;
+  wire                when_Reassembly_l397_3;
   wire                op_clashEvt;
   wire                dv_done_0;
   wire                dv_done_1;
@@ -225,10 +267,10 @@ module Reassembly (
   wire                _zz_io_deliver_payload_tag_wave_2;
   wire       [1:0]    _zz_io_deliver_payload_tag_wave_3;
   wire                io_deliver_fire;
-  wire                when_Reassembly_l435;
-  wire                when_Reassembly_l435_1;
-  wire                when_Reassembly_l435_2;
-  wire                when_Reassembly_l435_3;
+  wire                when_Reassembly_l436;
+  wire                when_Reassembly_l436_1;
+  wire                when_Reassembly_l436_2;
+  wire                when_Reassembly_l436_3;
   wire                ab_hit_0;
   wire                ab_hit_1;
   wire                ab_hit_2;
@@ -238,12 +280,12 @@ module Reassembly (
   wire                _zz_ab_cBase;
   wire                _zz_ab_cBase_1;
   wire       [7:0]    ab_cBase;
-  wire                when_Reassembly_l474;
-  wire                when_Reassembly_l474_1;
-  wire                when_Reassembly_l474_2;
-  wire                when_Reassembly_l474_3;
+  wire                when_Reassembly_l477;
+  wire                when_Reassembly_l477_1;
+  wire                when_Reassembly_l477_2;
+  wire                when_Reassembly_l477_3;
   reg        [7:0]    ab_cnt;
-  wire                when_Reassembly_l485;
+  wire                when_Reassembly_l488;
   wire       [2:0]    _zz_io_incomplete;
   wire       [2:0]    _zz_io_incomplete_1;
   wire       [2:0]    _zz_io_incomplete_2;
@@ -260,7 +302,7 @@ module Reassembly (
   wire       [2:0]    _zz_io_occupancy_5;
   wire       [2:0]    _zz_io_occupancy_6;
   wire       [2:0]    _zz_io_occupancy_7;
-  wire                when_Common_l259;
+  wire                when_Common_l337;
   reg                 _zz_io_fault;
   reg                 capBit;
 
@@ -279,18 +321,42 @@ module Reassembly (
   assign _zz_ab_cBase_3 = {_zz_ab_cBase_1,_zz_ab_cBase};
   assign _zz_io_incomplete_9 = {(ctx_2_active && (! ctx_2_last)),{(ctx_1_active && (! ctx_1_last)),(ctx_0_active && (! ctx_0_last))}};
   assign _zz_io_occupancy_9 = {ctx_2_active,{ctx_1_active,ctx_0_active}};
-  assign _zz_op_clash = (((_zz_op_clash_1 && _zz_op_clash_2) && (ctx_0_tag_lnid == io_open_tag_lnid)) && (ctx_0_tag_precision == io_open_tag_precision));
-  assign _zz_op_clash_3 = (ctx_0_tag_dim == io_open_tag_dim);
-  assign _zz_op_clash_4 = (((_zz_op_clash_5 && _zz_op_clash_6) && (ctx_1_tag_lnid == io_open_tag_lnid)) && (ctx_1_tag_precision == io_open_tag_precision));
-  assign _zz_op_clash_7 = (ctx_1_tag_dim == io_open_tag_dim);
-  assign _zz_op_clash_8 = (((ctx_2_tag_wave == io_open_tag_wave) && (ctx_2_tag_thread == io_open_tag_thread)) && (ctx_2_tag_lnid == io_open_tag_lnid));
-  assign _zz_op_clash_9 = (ctx_2_tag_precision == io_open_tag_precision);
-  assign _zz_op_clash_10 = ((ctx_3_tag_wave == io_open_tag_wave) && (ctx_3_tag_thread == io_open_tag_thread));
-  assign _zz_op_clash_11 = (ctx_3_tag_lnid == io_open_tag_lnid);
-  assign _zz_op_clash_1 = (ctx_0_tag_wave == io_open_tag_wave);
-  assign _zz_op_clash_2 = (ctx_0_tag_thread == io_open_tag_thread);
-  assign _zz_op_clash_5 = (ctx_1_tag_wave == io_open_tag_wave);
-  assign _zz_op_clash_6 = (ctx_1_tag_thread == io_open_tag_thread);
+  assign _zz_op_clash = {{_zz_op_clash_1,_zz_op_clash_4},ctx_0_tag_dim};
+  assign _zz_op_clash_5 = {{_zz_op_clash_6,_zz_op_clash_9},io_open_tag_dim};
+  assign _zz_op_clash_10 = {{_zz_op_clash_11,_zz_op_clash_14},ctx_1_tag_dim};
+  assign _zz_op_clash_15 = {{_zz_op_clash_16,_zz_op_clash_19},io_open_tag_dim};
+  assign _zz_op_clash_20 = {{_zz_op_clash_21,_zz_op_clash_22},ctx_2_tag_precision};
+  assign _zz_op_clash_23 = ctx_2_tag_dim;
+  assign _zz_op_clash_24 = {{_zz_op_clash_25,_zz_op_clash_26},io_open_tag_precision};
+  assign _zz_op_clash_27 = io_open_tag_dim;
+  assign _zz_op_clash_28 = {{_zz_op_clash_29,_zz_op_clash_30},ctx_3_tag_lnid};
+  assign _zz_op_clash_31 = ctx_3_tag_precision;
+  assign _zz_op_clash_32 = {{_zz_op_clash_33,_zz_op_clash_34},io_open_tag_lnid};
+  assign _zz_op_clash_35 = io_open_tag_precision;
+  assign _zz_op_clash_1 = {{_zz_op_clash_2,_zz_op_clash_3},ctx_0_tag_lnid};
+  assign _zz_op_clash_4 = ctx_0_tag_precision;
+  assign _zz_op_clash_6 = {{_zz_op_clash_7,_zz_op_clash_8},io_open_tag_lnid};
+  assign _zz_op_clash_9 = io_open_tag_precision;
+  assign _zz_op_clash_11 = {{_zz_op_clash_12,_zz_op_clash_13},ctx_1_tag_lnid};
+  assign _zz_op_clash_14 = ctx_1_tag_precision;
+  assign _zz_op_clash_16 = {{_zz_op_clash_17,_zz_op_clash_18},io_open_tag_lnid};
+  assign _zz_op_clash_19 = io_open_tag_precision;
+  assign _zz_op_clash_21 = {ctx_2_tag_wave,ctx_2_tag_epoch};
+  assign _zz_op_clash_22 = ctx_2_tag_lnid;
+  assign _zz_op_clash_25 = {io_open_tag_wave,io_open_tag_epoch};
+  assign _zz_op_clash_26 = io_open_tag_lnid;
+  assign _zz_op_clash_29 = ctx_3_tag_wave;
+  assign _zz_op_clash_30 = ctx_3_tag_epoch;
+  assign _zz_op_clash_33 = io_open_tag_wave;
+  assign _zz_op_clash_34 = io_open_tag_epoch;
+  assign _zz_op_clash_2 = ctx_0_tag_wave;
+  assign _zz_op_clash_3 = ctx_0_tag_epoch;
+  assign _zz_op_clash_7 = io_open_tag_wave;
+  assign _zz_op_clash_8 = io_open_tag_epoch;
+  assign _zz_op_clash_12 = ctx_1_tag_wave;
+  assign _zz_op_clash_13 = ctx_1_tag_epoch;
+  assign _zz_op_clash_17 = io_open_tag_wave;
+  assign _zz_op_clash_18 = io_open_tag_epoch;
   always @(*) begin
     case(_zz_fr_cBase_2)
       2'b00 : begin
@@ -434,7 +500,9 @@ module Reassembly (
     case(_zz_io_deliver_payload_tag_wave_3)
       2'b00 : begin
         _zz_io_deliver_payload_tag_wave_4 = ctx_0_tag_wave;
-        _zz_io_deliver_payload_tag_thread = ctx_0_tag_thread;
+        _zz_io_deliver_payload_tag_epoch = ctx_0_tag_epoch;
+        _zz_io_deliver_payload_tag_poison = ctx_0_tag_poison;
+        _zz_io_deliver_payload_tag_trace = ctx_0_tag_trace;
         _zz_io_deliver_payload_tag_lnid = ctx_0_tag_lnid;
         _zz_io_deliver_payload_tag_precision = ctx_0_tag_precision;
         _zz_io_deliver_payload_tag_dim = ctx_0_tag_dim;
@@ -443,7 +511,9 @@ module Reassembly (
       end
       2'b01 : begin
         _zz_io_deliver_payload_tag_wave_4 = ctx_1_tag_wave;
-        _zz_io_deliver_payload_tag_thread = ctx_1_tag_thread;
+        _zz_io_deliver_payload_tag_epoch = ctx_1_tag_epoch;
+        _zz_io_deliver_payload_tag_poison = ctx_1_tag_poison;
+        _zz_io_deliver_payload_tag_trace = ctx_1_tag_trace;
         _zz_io_deliver_payload_tag_lnid = ctx_1_tag_lnid;
         _zz_io_deliver_payload_tag_precision = ctx_1_tag_precision;
         _zz_io_deliver_payload_tag_dim = ctx_1_tag_dim;
@@ -452,7 +522,9 @@ module Reassembly (
       end
       2'b10 : begin
         _zz_io_deliver_payload_tag_wave_4 = ctx_2_tag_wave;
-        _zz_io_deliver_payload_tag_thread = ctx_2_tag_thread;
+        _zz_io_deliver_payload_tag_epoch = ctx_2_tag_epoch;
+        _zz_io_deliver_payload_tag_poison = ctx_2_tag_poison;
+        _zz_io_deliver_payload_tag_trace = ctx_2_tag_trace;
         _zz_io_deliver_payload_tag_lnid = ctx_2_tag_lnid;
         _zz_io_deliver_payload_tag_precision = ctx_2_tag_precision;
         _zz_io_deliver_payload_tag_dim = ctx_2_tag_dim;
@@ -461,7 +533,9 @@ module Reassembly (
       end
       default : begin
         _zz_io_deliver_payload_tag_wave_4 = ctx_3_tag_wave;
-        _zz_io_deliver_payload_tag_thread = ctx_3_tag_thread;
+        _zz_io_deliver_payload_tag_epoch = ctx_3_tag_epoch;
+        _zz_io_deliver_payload_tag_poison = ctx_3_tag_poison;
+        _zz_io_deliver_payload_tag_trace = ctx_3_tag_trace;
         _zz_io_deliver_payload_tag_lnid = ctx_3_tag_lnid;
         _zz_io_deliver_payload_tag_precision = ctx_3_tag_precision;
         _zz_io_deliver_payload_tag_dim = ctx_3_tag_dim;
@@ -549,10 +623,10 @@ module Reassembly (
   assign fullMask_14 = 16'h3fff;
   assign fullMask_15 = 16'h7fff;
   assign fullMask_16 = 16'hffff;
-  assign fr_hit_0 = (ctx_0_active && (((((ctx_0_tag_wave == io_frag_head_tag_wave) && (ctx_0_tag_thread == io_frag_head_tag_thread)) && (ctx_0_tag_lnid == io_frag_head_tag_lnid)) && (ctx_0_tag_precision == io_frag_head_tag_precision)) && (ctx_0_tag_dim == io_frag_head_tag_dim)));
-  assign fr_hit_1 = (ctx_1_active && (((((ctx_1_tag_wave == io_frag_head_tag_wave) && (ctx_1_tag_thread == io_frag_head_tag_thread)) && (ctx_1_tag_lnid == io_frag_head_tag_lnid)) && (ctx_1_tag_precision == io_frag_head_tag_precision)) && (ctx_1_tag_dim == io_frag_head_tag_dim)));
-  assign fr_hit_2 = (ctx_2_active && (((((ctx_2_tag_wave == io_frag_head_tag_wave) && (ctx_2_tag_thread == io_frag_head_tag_thread)) && (ctx_2_tag_lnid == io_frag_head_tag_lnid)) && (ctx_2_tag_precision == io_frag_head_tag_precision)) && (ctx_2_tag_dim == io_frag_head_tag_dim)));
-  assign fr_hit_3 = (ctx_3_active && (((((ctx_3_tag_wave == io_frag_head_tag_wave) && (ctx_3_tag_thread == io_frag_head_tag_thread)) && (ctx_3_tag_lnid == io_frag_head_tag_lnid)) && (ctx_3_tag_precision == io_frag_head_tag_precision)) && (ctx_3_tag_dim == io_frag_head_tag_dim)));
+  assign fr_hit_0 = (ctx_0_active && ({{{{ctx_0_tag_wave,ctx_0_tag_epoch},ctx_0_tag_lnid},ctx_0_tag_precision},ctx_0_tag_dim} == {{{{io_frag_head_tag_wave,io_frag_head_tag_epoch},io_frag_head_tag_lnid},io_frag_head_tag_precision},io_frag_head_tag_dim}));
+  assign fr_hit_1 = (ctx_1_active && ({{{{ctx_1_tag_wave,ctx_1_tag_epoch},ctx_1_tag_lnid},ctx_1_tag_precision},ctx_1_tag_dim} == {{{{io_frag_head_tag_wave,io_frag_head_tag_epoch},io_frag_head_tag_lnid},io_frag_head_tag_precision},io_frag_head_tag_dim}));
+  assign fr_hit_2 = (ctx_2_active && ({{{{ctx_2_tag_wave,ctx_2_tag_epoch},ctx_2_tag_lnid},ctx_2_tag_precision},ctx_2_tag_dim} == {{{{io_frag_head_tag_wave,io_frag_head_tag_epoch},io_frag_head_tag_lnid},io_frag_head_tag_precision},io_frag_head_tag_dim}));
+  assign fr_hit_3 = (ctx_3_active && ({{{{ctx_3_tag_wave,ctx_3_tag_epoch},ctx_3_tag_lnid},ctx_3_tag_precision},ctx_3_tag_dim} == {{{{io_frag_head_tag_wave,io_frag_head_tag_epoch},io_frag_head_tag_lnid},io_frag_head_tag_precision},io_frag_head_tag_dim}));
   assign fr_hitAny = (((fr_hit_0 || fr_hit_1) || fr_hit_2) || fr_hit_3);
   assign _zz_fr_cBase = (fr_hit_1 || fr_hit_3);
   assign _zz_fr_cBase_1 = (fr_hit_2 || fr_hit_3);
@@ -572,10 +646,10 @@ module Reassembly (
   assign fr_accept = (((((io_frag_valid && fr_hitAny) && (! fr_capaRej)) && (! fr_totBad)) && (! fr_overRej)) && (! fr_dupRej));
   assign fr_newSeen = (fr_cSeen | fr_ohSeq);
   assign fr_endBad = (io_frag_head_last && (fr_newSeen != _zz_fr_endBad));
-  assign when_Reassembly_l363 = (fr_accept && fr_hit_0);
-  assign when_Reassembly_l363_1 = (fr_accept && fr_hit_1);
-  assign when_Reassembly_l363_2 = (fr_accept && fr_hit_2);
-  assign when_Reassembly_l363_3 = (fr_accept && fr_hit_3);
+  assign when_Reassembly_l364 = (fr_accept && fr_hit_0);
+  assign when_Reassembly_l364_1 = (fr_accept && fr_hit_1);
+  assign when_Reassembly_l364_2 = (fr_accept && fr_hit_2);
+  assign when_Reassembly_l364_3 = (fr_accept && fr_hit_3);
   assign fr_rejEvt = (io_frag_valid && (((fr_strayRej || fr_totBad) || fr_overRej) || fr_dupRej));
   assign fr_endEvt = (fr_accept && fr_endBad);
   assign fr_capaEvt = (io_frag_valid && fr_capaRej);
@@ -583,7 +657,7 @@ module Reassembly (
   assign io_wr_base = fr_cBase;
   assign io_wr_off = fr_off;
   assign io_wr_body = io_frag_body;
-  assign op_clash = ((((ctx_0_active && (_zz_op_clash && _zz_op_clash_3)) || (ctx_1_active && (_zz_op_clash_4 && _zz_op_clash_7))) || (ctx_2_active && ((_zz_op_clash_8 && _zz_op_clash_9) && (ctx_2_tag_dim == io_open_tag_dim)))) || (ctx_3_active && (((_zz_op_clash_10 && _zz_op_clash_11) && (ctx_3_tag_precision == io_open_tag_precision)) && (ctx_3_tag_dim == io_open_tag_dim))));
+  assign op_clash = ((((ctx_0_active && (_zz_op_clash == _zz_op_clash_5)) || (ctx_1_active && (_zz_op_clash_10 == _zz_op_clash_15))) || (ctx_2_active && ({_zz_op_clash_20,_zz_op_clash_23} == {_zz_op_clash_24,_zz_op_clash_27}))) || (ctx_3_active && ({{_zz_op_clash_28,_zz_op_clash_31},ctx_3_tag_dim} == {{_zz_op_clash_32,_zz_op_clash_35},io_open_tag_dim})));
   assign op_free_0 = (! ctx_0_active);
   assign op_free_1 = (! ctx_1_active);
   assign op_free_2 = (! ctx_2_active);
@@ -593,10 +667,10 @@ module Reassembly (
   assign op_freeOh = (_zz_op_freeOh & (~ _zz_op_freeOh_1));
   assign op_grant = ((io_open_valid && (! op_clash)) && op_freeAny);
   assign io_open_granted = op_grant;
-  assign when_Reassembly_l396 = (op_grant && op_freeOh[0]);
-  assign when_Reassembly_l396_1 = (op_grant && op_freeOh[1]);
-  assign when_Reassembly_l396_2 = (op_grant && op_freeOh[2]);
-  assign when_Reassembly_l396_3 = (op_grant && op_freeOh[3]);
+  assign when_Reassembly_l397 = (op_grant && op_freeOh[0]);
+  assign when_Reassembly_l397_1 = (op_grant && op_freeOh[1]);
+  assign when_Reassembly_l397_2 = (op_grant && op_freeOh[2]);
+  assign when_Reassembly_l397_3 = (op_grant && op_freeOh[3]);
   assign op_clashEvt = (io_open_valid && op_clash);
   assign dv_done_0 = (((ctx_0_active && ctx_0_last) && ctx_0_totalKnown) && (ctx_0_seen == _zz_dv_done_0));
   assign dv_done_1 = (((ctx_1_active && ctx_1_last) && ctx_1_totalKnown) && (ctx_1_seen == _zz_dv_done_1));
@@ -611,31 +685,33 @@ module Reassembly (
   assign _zz_io_deliver_payload_tag_wave_2 = (dv_grantOh[2] || _zz_io_deliver_payload_tag_wave);
   assign _zz_io_deliver_payload_tag_wave_3 = {_zz_io_deliver_payload_tag_wave_2,_zz_io_deliver_payload_tag_wave_1};
   assign io_deliver_payload_tag_wave = _zz_io_deliver_payload_tag_wave_4;
-  assign io_deliver_payload_tag_thread = _zz_io_deliver_payload_tag_thread;
+  assign io_deliver_payload_tag_epoch = _zz_io_deliver_payload_tag_epoch;
+  assign io_deliver_payload_tag_poison = _zz_io_deliver_payload_tag_poison;
+  assign io_deliver_payload_tag_trace = _zz_io_deliver_payload_tag_trace;
   assign io_deliver_payload_tag_lnid = _zz_io_deliver_payload_tag_lnid;
   assign io_deliver_payload_tag_precision = _zz_io_deliver_payload_tag_precision;
   assign io_deliver_payload_tag_dim = _zz_io_deliver_payload_tag_dim;
   assign io_deliver_payload_base = _zz_io_deliver_payload_base;
   assign io_deliver_payload_total = _zz_io_deliver_payload_total;
   assign io_deliver_fire = (io_deliver_valid && io_deliver_ready);
-  assign when_Reassembly_l435 = (io_deliver_fire && dv_grantOh[0]);
-  assign when_Reassembly_l435_1 = (io_deliver_fire && dv_grantOh[1]);
-  assign when_Reassembly_l435_2 = (io_deliver_fire && dv_grantOh[2]);
-  assign when_Reassembly_l435_3 = (io_deliver_fire && dv_grantOh[3]);
-  assign ab_hit_0 = (ctx_0_active && (((((ctx_0_tag_wave == io_abort_tag_wave) && (ctx_0_tag_thread == io_abort_tag_thread)) && (ctx_0_tag_lnid == io_abort_tag_lnid)) && (ctx_0_tag_precision == io_abort_tag_precision)) && (ctx_0_tag_dim == io_abort_tag_dim)));
-  assign ab_hit_1 = (ctx_1_active && (((((ctx_1_tag_wave == io_abort_tag_wave) && (ctx_1_tag_thread == io_abort_tag_thread)) && (ctx_1_tag_lnid == io_abort_tag_lnid)) && (ctx_1_tag_precision == io_abort_tag_precision)) && (ctx_1_tag_dim == io_abort_tag_dim)));
-  assign ab_hit_2 = (ctx_2_active && (((((ctx_2_tag_wave == io_abort_tag_wave) && (ctx_2_tag_thread == io_abort_tag_thread)) && (ctx_2_tag_lnid == io_abort_tag_lnid)) && (ctx_2_tag_precision == io_abort_tag_precision)) && (ctx_2_tag_dim == io_abort_tag_dim)));
-  assign ab_hit_3 = (ctx_3_active && (((((ctx_3_tag_wave == io_abort_tag_wave) && (ctx_3_tag_thread == io_abort_tag_thread)) && (ctx_3_tag_lnid == io_abort_tag_lnid)) && (ctx_3_tag_precision == io_abort_tag_precision)) && (ctx_3_tag_dim == io_abort_tag_dim)));
+  assign when_Reassembly_l436 = (io_deliver_fire && dv_grantOh[0]);
+  assign when_Reassembly_l436_1 = (io_deliver_fire && dv_grantOh[1]);
+  assign when_Reassembly_l436_2 = (io_deliver_fire && dv_grantOh[2]);
+  assign when_Reassembly_l436_3 = (io_deliver_fire && dv_grantOh[3]);
+  assign ab_hit_0 = (ctx_0_active && ({{{{ctx_0_tag_wave,ctx_0_tag_epoch},ctx_0_tag_lnid},ctx_0_tag_precision},ctx_0_tag_dim} == {{{{io_abort_tag_wave,io_abort_tag_epoch},io_abort_tag_lnid},io_abort_tag_precision},io_abort_tag_dim}));
+  assign ab_hit_1 = (ctx_1_active && ({{{{ctx_1_tag_wave,ctx_1_tag_epoch},ctx_1_tag_lnid},ctx_1_tag_precision},ctx_1_tag_dim} == {{{{io_abort_tag_wave,io_abort_tag_epoch},io_abort_tag_lnid},io_abort_tag_precision},io_abort_tag_dim}));
+  assign ab_hit_2 = (ctx_2_active && ({{{{ctx_2_tag_wave,ctx_2_tag_epoch},ctx_2_tag_lnid},ctx_2_tag_precision},ctx_2_tag_dim} == {{{{io_abort_tag_wave,io_abort_tag_epoch},io_abort_tag_lnid},io_abort_tag_precision},io_abort_tag_dim}));
+  assign ab_hit_3 = (ctx_3_active && ({{{{ctx_3_tag_wave,ctx_3_tag_epoch},ctx_3_tag_lnid},ctx_3_tag_precision},ctx_3_tag_dim} == {{{{io_abort_tag_wave,io_abort_tag_epoch},io_abort_tag_lnid},io_abort_tag_precision},io_abort_tag_dim}));
   assign ab_hitAny = (((ab_hit_0 || ab_hit_1) || ab_hit_2) || ab_hit_3);
   assign ab_fire = (io_abort_valid && ab_hitAny);
   assign _zz_ab_cBase = (ab_hit_1 || ab_hit_3);
   assign _zz_ab_cBase_1 = (ab_hit_2 || ab_hit_3);
   assign ab_cBase = _zz_ab_cBase_2;
-  assign when_Reassembly_l474 = (ab_fire && ab_hit_0);
-  assign when_Reassembly_l474_1 = (ab_fire && ab_hit_1);
-  assign when_Reassembly_l474_2 = (ab_fire && ab_hit_2);
-  assign when_Reassembly_l474_3 = (ab_fire && ab_hit_3);
-  assign when_Reassembly_l485 = (ab_fire && (ab_cnt != 8'hff));
+  assign when_Reassembly_l477 = (ab_fire && ab_hit_0);
+  assign when_Reassembly_l477_1 = (ab_fire && ab_hit_1);
+  assign when_Reassembly_l477_2 = (ab_fire && ab_hit_2);
+  assign when_Reassembly_l477_3 = (ab_fire && ab_hit_3);
+  assign when_Reassembly_l488 = (ab_fire && (ab_cnt != 8'hff));
   assign io_abortCount = ab_cnt;
   assign io_clr_valid = ab_fire;
   assign io_clr_base = ab_cBase;
@@ -657,7 +733,7 @@ module Reassembly (
   assign _zz_io_occupancy_6 = 3'b010;
   assign _zz_io_occupancy_7 = 3'b011;
   assign io_occupancy = (_zz_io_occupancy_8 + _zz_io_occupancy_10);
-  assign when_Common_l259 = ((fr_rejEvt || fr_endEvt) || op_clashEvt);
+  assign when_Common_l337 = ((fr_rejEvt || fr_endEvt) || op_clashEvt);
   assign io_fault = _zz_io_fault;
   assign io_capAbsent = capBit;
   always @(posedge clk or posedge reset) begin
@@ -682,105 +758,105 @@ module Reassembly (
       _zz_io_fault <= 1'b0;
       capBit <= 1'b0;
     end else begin
-      if(when_Reassembly_l363) begin
+      if(when_Reassembly_l364) begin
         ctx_0_seen <= fr_newSeen;
         ctx_0_last <= (ctx_0_last || io_frag_head_last);
         ctx_0_totalKnown <= 1'b1;
       end
-      if(when_Reassembly_l363_1) begin
+      if(when_Reassembly_l364_1) begin
         ctx_1_seen <= fr_newSeen;
         ctx_1_last <= (ctx_1_last || io_frag_head_last);
         ctx_1_totalKnown <= 1'b1;
       end
-      if(when_Reassembly_l363_2) begin
+      if(when_Reassembly_l364_2) begin
         ctx_2_seen <= fr_newSeen;
         ctx_2_last <= (ctx_2_last || io_frag_head_last);
         ctx_2_totalKnown <= 1'b1;
       end
-      if(when_Reassembly_l363_3) begin
+      if(when_Reassembly_l364_3) begin
         ctx_3_seen <= fr_newSeen;
         ctx_3_last <= (ctx_3_last || io_frag_head_last);
         ctx_3_totalKnown <= 1'b1;
       end
-      if(when_Reassembly_l396) begin
+      if(when_Reassembly_l397) begin
         ctx_0_active <= 1'b1;
         ctx_0_seen <= 16'h0;
         ctx_0_last <= 1'b0;
         ctx_0_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l396_1) begin
+      if(when_Reassembly_l397_1) begin
         ctx_1_active <= 1'b1;
         ctx_1_seen <= 16'h0;
         ctx_1_last <= 1'b0;
         ctx_1_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l396_2) begin
+      if(when_Reassembly_l397_2) begin
         ctx_2_active <= 1'b1;
         ctx_2_seen <= 16'h0;
         ctx_2_last <= 1'b0;
         ctx_2_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l396_3) begin
+      if(when_Reassembly_l397_3) begin
         ctx_3_active <= 1'b1;
         ctx_3_seen <= 16'h0;
         ctx_3_last <= 1'b0;
         ctx_3_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l435) begin
+      if(when_Reassembly_l436) begin
         ctx_0_active <= 1'b0;
         ctx_0_seen <= 16'h0;
         ctx_0_last <= 1'b0;
         ctx_0_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l435_1) begin
+      if(when_Reassembly_l436_1) begin
         ctx_1_active <= 1'b0;
         ctx_1_seen <= 16'h0;
         ctx_1_last <= 1'b0;
         ctx_1_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l435_2) begin
+      if(when_Reassembly_l436_2) begin
         ctx_2_active <= 1'b0;
         ctx_2_seen <= 16'h0;
         ctx_2_last <= 1'b0;
         ctx_2_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l435_3) begin
+      if(when_Reassembly_l436_3) begin
         ctx_3_active <= 1'b0;
         ctx_3_seen <= 16'h0;
         ctx_3_last <= 1'b0;
         ctx_3_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l474) begin
+      if(when_Reassembly_l477) begin
         ctx_0_active <= 1'b0;
         ctx_0_seen <= 16'h0;
         ctx_0_last <= 1'b0;
         ctx_0_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l474_1) begin
+      if(when_Reassembly_l477_1) begin
         ctx_1_active <= 1'b0;
         ctx_1_seen <= 16'h0;
         ctx_1_last <= 1'b0;
         ctx_1_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l474_2) begin
+      if(when_Reassembly_l477_2) begin
         ctx_2_active <= 1'b0;
         ctx_2_seen <= 16'h0;
         ctx_2_last <= 1'b0;
         ctx_2_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l474_3) begin
+      if(when_Reassembly_l477_3) begin
         ctx_3_active <= 1'b0;
         ctx_3_seen <= 16'h0;
         ctx_3_last <= 1'b0;
         ctx_3_totalKnown <= 1'b0;
       end
-      if(when_Reassembly_l485) begin
+      if(when_Reassembly_l488) begin
         ab_cnt <= (ab_cnt + 8'h01);
       end
       if(io_faultClear) begin
         _zz_io_fault <= 1'b0;
       end
-      if(when_Common_l259) begin
+      if(when_Common_l337) begin
         _zz_io_fault <= 1'b1;
       end
       if(io_capAbsentClear) begin
@@ -793,45 +869,53 @@ module Reassembly (
   end
 
   always @(posedge clk) begin
-    if(when_Reassembly_l363) begin
+    if(when_Reassembly_l364) begin
       ctx_0_total <= fr_effTotal;
     end
-    if(when_Reassembly_l363_1) begin
+    if(when_Reassembly_l364_1) begin
       ctx_1_total <= fr_effTotal;
     end
-    if(when_Reassembly_l363_2) begin
+    if(when_Reassembly_l364_2) begin
       ctx_2_total <= fr_effTotal;
     end
-    if(when_Reassembly_l363_3) begin
+    if(when_Reassembly_l364_3) begin
       ctx_3_total <= fr_effTotal;
     end
-    if(when_Reassembly_l396) begin
+    if(when_Reassembly_l397) begin
       ctx_0_tag_wave <= io_open_tag_wave;
-      ctx_0_tag_thread <= io_open_tag_thread;
+      ctx_0_tag_epoch <= io_open_tag_epoch;
+      ctx_0_tag_poison <= io_open_tag_poison;
+      ctx_0_tag_trace <= io_open_tag_trace;
       ctx_0_tag_lnid <= io_open_tag_lnid;
       ctx_0_tag_precision <= io_open_tag_precision;
       ctx_0_tag_dim <= io_open_tag_dim;
       ctx_0_base <= io_open_base;
     end
-    if(when_Reassembly_l396_1) begin
+    if(when_Reassembly_l397_1) begin
       ctx_1_tag_wave <= io_open_tag_wave;
-      ctx_1_tag_thread <= io_open_tag_thread;
+      ctx_1_tag_epoch <= io_open_tag_epoch;
+      ctx_1_tag_poison <= io_open_tag_poison;
+      ctx_1_tag_trace <= io_open_tag_trace;
       ctx_1_tag_lnid <= io_open_tag_lnid;
       ctx_1_tag_precision <= io_open_tag_precision;
       ctx_1_tag_dim <= io_open_tag_dim;
       ctx_1_base <= io_open_base;
     end
-    if(when_Reassembly_l396_2) begin
+    if(when_Reassembly_l397_2) begin
       ctx_2_tag_wave <= io_open_tag_wave;
-      ctx_2_tag_thread <= io_open_tag_thread;
+      ctx_2_tag_epoch <= io_open_tag_epoch;
+      ctx_2_tag_poison <= io_open_tag_poison;
+      ctx_2_tag_trace <= io_open_tag_trace;
       ctx_2_tag_lnid <= io_open_tag_lnid;
       ctx_2_tag_precision <= io_open_tag_precision;
       ctx_2_tag_dim <= io_open_tag_dim;
       ctx_2_base <= io_open_base;
     end
-    if(when_Reassembly_l396_3) begin
+    if(when_Reassembly_l397_3) begin
       ctx_3_tag_wave <= io_open_tag_wave;
-      ctx_3_tag_thread <= io_open_tag_thread;
+      ctx_3_tag_epoch <= io_open_tag_epoch;
+      ctx_3_tag_poison <= io_open_tag_poison;
+      ctx_3_tag_trace <= io_open_tag_trace;
       ctx_3_tag_lnid <= io_open_tag_lnid;
       ctx_3_tag_precision <= io_open_tag_precision;
       ctx_3_tag_dim <= io_open_tag_dim;

@@ -16,8 +16,9 @@
 // 태그(§1.4.4)의 비트 오프셋은 어셈블러 관측으로 확정할 수 *없다* — §1.1
 // 정의가 태그를 「명령어 인코딩의 일부가 아니라」고 못박았으므로 어셈블러가
 // 태그를 방출하지 않기 때문이다. 관측원이 원리적으로 비어 있다. 그래서 태그의
-// 팩킹 순서는 *결정 대기*이지 관측 대기가 아니며, 아래 Types.Tag 가 그 사실과
-// 그것을 *우회하는* 직렬화(정본 E.5.1 세 워드)를 함께 든다.
+// 팩킹 순서는 관측 대기가 아니라 *구현 자유*이며 (정본 1.4.4 — 제약은 조립·분해가
+// 한 곳뿐), 아래 Types.Tag 가 그 사실과 호스트 표면의 직렬화(정본 E.5.1 세 워드)를
+// 함께 든다.
 package wt64
 
 import spinal.core._
@@ -30,10 +31,13 @@ object Isa {
   /** 논리 뱅크 ID. 8b 평면 이름 공간 (정본 §1.4.3 · §1.4.7 ACCTGT "평면 8비트"). */
   val LBID_W = 8
 
-  // ── 태그 (정본 §1.4.4 — 80b: wave 32 / 스레드 16 / LNID 16 / 정밀도 8 / 차원 8)
+  // ── 태그 (정본 §1.4.4 — 80b: wave 32 / 에포크 4 / poison 1 / trace 1 / 예약 10 /
+  //    LNID 16 / 정밀도 8 / 차원 8). 종전 표의 스레드 ID 16b 는 폐지됐고 그 자리를
+  //    에포크 · poison · trace · 예약 넷이 나눠 갖는다 (4 + 1 + 1 + 10 = 16).
   val TAG_W       = 80
   val WAVE_W      = 32
-  val THREAD_W    = 16
+  val EPOCH_W     = 4
+  val TAG_RSV_W   = 10 // 엄격 예약 — 번들에 싣지 않는다 (아래 Types.Tag)
   val PRECISION_W = 8
   val DIM_W       = 8
 
@@ -104,21 +108,43 @@ case class Wt64Config(
 object Types {
   import Isa._
 
-  /** 태그 80b. 필드 순서는 정본 §1.4.4 의 나열 순서.
+  /** 태그 80b (번들 70b — 예약 10b 는 싣지 않는다, 아래). 필드 순서는 정본 §1.4.4 의 나열 순서.
     *
-    * ## 80b 팩킹 순서는 *결정 대기*다 — 관측 대기가 아니다 (2026-08-25 정정)
+    * ## 80b 팩킹 순서는 관측 대기가 아니다 (2026-08-25 정정 · 태그 코덱 전파 파도 개정)
     *
     * 앞판 주석은 「비트 오프셋은 어셈블러 관측으로 확정할 것」이라 적고 그
     * 관측을 기다렸다. **그 관측원은 원리적으로 비어 있다.** 정본 §1.1 정의가
     * 태그를 「명령어 인코딩의 일부가 *아니라*」고 못박았으므로 어셈블러는 태그를
-    * 방출하지 않는다 — 관측할 encode 출력 자체가 존재하지 않는다. 즉 앞판은
-    * 영원히 오지 않을 관측을 기다리고 있었고, 그 사이 잠정 배치(`asBits` 가
-    * 함축하는 순서)가 생성된 SV 한 줄로 조용히 굳고 있었다. 정본이 정한 적 없는
-    * 값이 계약이 되는 형태다 — 부록 B 해설의 「조용히 메운 공백은 메워지지 않은
-    * 것보다 위험하다」와 같은 부류이며, 여기서는 모델이 아니라 생성물이 메웠다.
+    * 방출하지 않는다 — 관측할 encode 출력 자체가 존재하지 않는다.
     *
-    * 그래서 팩킹 순서는 **미확정으로 남긴다**. 확정의 조건은 관측이 아니라
-    * *결정*이다 (@sec:gaps B.5 · §3.10 호스트 ABI 합의).
+    * **팩킹 순서는 구현 자유다 — 제약은 조립·분해가 한 곳뿐이라는 것 하나다**
+    * (정본 01-isa-asm 1.4.4 「비트 오프셋은 이 문서가 정하지 않는다」 · 같은 절
+    * 함정이 이 주석에 갈아 끼우라고 정한 문면). 호스트 표면은 태그를 워드 정렬된
+    * 명명 필드로 나르므로(아래 E.5.1) 팩킹 순서를 아는 코드가 어느 표면에도 없고,
+    * 그래서 그것은 ABI 가 아니다. 반대로 `TAG1` 안의 비트 범위는 호스트가 직접
+    * 읽고 쓰는 값이라 *ABI 다* — 두 문장을 가르지 않으면 E.5.1 의 비트 범위를
+    * 팩킹 순서로 읽는다.
+    *
+    * ## 필드 — 스레드 ID 폐지 개정 (정본 1.4.4 · 이 코덱의 RTL 반영은 태그 코덱 전파 파도)
+    *
+    * 종전의 스레드 ID 16b 는 폐지됐다 — 「스레드」라는 이름을 나르는 필드는 이
+    * 기계의 태그에 없다(같은 절 규범). 그 자리를 에포크(4b · 호스트 저작 · 불투명
+    * 식별자) · poison(1b · *장치*가 저작하는 유일한 태그 비트) · trace(1b · 관측
+    * 요청 · 어떤 판정 입력도 아니다) · 예약(10b · 엄격)이 나눠 갖는다.
+    *
+    * *예약 10b 는 번들에 싣지 않는다.* 번들은 장치 안쪽 제시 형태이고(E.5.4 3항)
+    * 예약 여백은 워드 표면에만 있다 — 번들에 자리가 없으면 「검사받지 않고
+    * 통과하는 비트」(§5.7)가 구조로 생기지 않는다. 그래서 번들 폭은 70 = 80 − 10
+    * 이고, 여백의 처분은 워드 코덱과 표면이 진다 (아래 `object Tag`).
+    *
+    * ## 매칭 키는 태그 전량이 아니다 — `Tag.key`
+    *
+    * 문맥 개시 · 조각의 문맥 조회 · E.12 소거 대상 매칭 셋의 키는 wave · 에포크 ·
+    * LNID · 정밀도 · 차원이다 — poison 과 trace 는 빠진다 (04-ext-payload 4.3
+    * 「*그러나 키는 태그 전량이 아니다*」 · e-defined E.12 6항). 번들을 통째로
+    * 비교(`===`)하면 그 두 비트가 판정 입력이 되어 「trace 는 관측만 켠다」와
+    * 「poison 은 흐름을 바꾸지 않는다」가 그 자리에서 깨진다 — 재구현 결함 D2b 가
+    * 정확히 그것이었다. 태그로 동일성을 판정하는 자리는 `Tag.keyEq` 만 쓴다.
     *
     * ## 그럼에도 워드 표면은 오늘 닫힌다 — 세 워드 명명 필드 (정본 E.5.1)
     *
@@ -141,7 +167,9 @@ object Types {
     */
   case class Tag() extends Bundle {
     val wave      = UInt(WAVE_W bits)
-    val thread    = UInt(THREAD_W bits)
+    val epoch     = UInt(EPOCH_W bits)
+    val poison    = Bool()
+    val trace     = Bool()
     val lnid      = UInt(LNID_W bits)
     val precision = UInt(PRECISION_W bits)
     val dim       = UInt(DIM_W bits)
@@ -151,15 +179,19 @@ object Types {
     *
     * {{{
     *   TAG0  +0x0  [31:0]  wave 번호
-    *   TAG1  +0x4  [31:16] 스레드 ID · [15:0] LNID
+    *   TAG1  +0x4  [31:28] 에포크 · [27] poison · [26] trace · [25:16] 예약 · [15:0] LNID
     *   TAG2  +0x8  [31:16] 예약 · [15:8] 정밀도 · [7:0] 차원
     * }}}
     *
     * 80 = 32 + 32 + 16 이라 세 워드에 16비트가 남고, 그 여백이 TAG2 상위다.
-    * **여백의 정책은 직렬화가 아니라 *방향*이 정한다** — 장치가 돌려주는 표면은
-    * 전량 0 기입(E.5.3), 받아들이는 표면은 엄격 malformation(E.5.4 · E.1.2)이며
-    * 축은 §5.7 함정의 그것이다. 그래서 이 객체는 여백의 처분을 갖지 않는다:
-    * 조립은 0 을 쓰고, 분해는 절단하며, *판정과 처분은 표면이 한다.*
+    * TAG1 의 `[25:16]` 은 태그 자신의 예약 필드다 (1.4.4 표 — 스레드 ID 의 자리를
+    * 나눈 넷 중 하나). **여백의 정책은 직렬화가 아니라 *방향*이 정한다** — 장치가
+    * 돌려주는 표면은 전량 0 기입(E.5.3), 받아들이는 표면은 엄격 malformation
+    * (E.5.4 · E.1.2)이며 축은 §5.7 함정의 그것이다. 그래서 이 객체는 여백의
+    * 처분을 갖지 않는다: 조립은 0 을 쓰고, 분해는 절단하며, *판정과 처분은
+    * 표면이 한다.* poison 도 방향이 가른다 — 받아들이는 표면에서는 반드시 0 이고
+    * (비0 은 거절 · 표면이 필드 마스크로 판정), 돌려주는 표면에서만 장치가
+    * 저작한다 (1.4.4 poison 6항). 그래서 조립은 poison 을 *인자로* 받는다.
     *
     * 이 배치는 새로 만든 것이 아니다 — E.1.2 「재조립 문맥 소거」의 `0xF40`~
     * `0xF48` 세 워드가 이미 같은 배치이고, E.5.1 이 그 하나를 세 표면(완료
@@ -183,34 +215,78 @@ object Types {
     val TAG2_RSV_LO = PRECISION_W + DIM_W
     val TAG2_RSV_HI = 31
 
+    /** TAG1 의 필드 자리 (E.5.1 — *ABI 다*, 팩킹 순서와 다르다). 상위부터
+      * 에포크 `[31:28]` · poison `[27]` · trace `[26]` · 예약 `[25:16]` · LNID `[15:0]`. */
+    val TAG1_EPOCH_LO = 32 - EPOCH_W
+    val TAG1_POISON   = TAG1_EPOCH_LO - 1
+    val TAG1_TRACE    = TAG1_POISON - 1
+    val TAG1_RSV_HI   = TAG1_TRACE - 1
+    val TAG1_RSV_LO   = LNID_W
+
+    /** TAG1 필드 마스크 — 표면이 방향별 처분을 조합하는 재료 (32b 워드 값).
+      * 받아들이는 표면이 무엇을 거절하는가는 표면마다 다르다 — 소거 스테이징은
+      * poison · trace · 예약 셋을(E.12 6항), 명령 디스크립터는 poison · 예약을
+      * (E.5.4 — trace 는 호스트 저작이다). 그래서 합성 마스크는 표면이 짓는다. */
+    private def bitsMask(hi: Int, lo: Int): Long = ((1L << (hi - lo + 1)) - 1) << lo
+    val TAG1_EPOCH_MASK  = bitsMask(31, TAG1_EPOCH_LO)
+    val TAG1_POISON_MASK = bitsMask(TAG1_POISON, TAG1_POISON)
+    val TAG1_TRACE_MASK  = bitsMask(TAG1_TRACE, TAG1_TRACE)
+    val TAG1_RSV_MASK    = bitsMask(TAG1_RSV_HI, TAG1_RSV_LO)
+    val TAG1_LNID_MASK   = bitsMask(LNID_W - 1, 0)
+
     // 배치가 성립하는 조건을 elaborate 시점에 든다 — §1.4.4 표가 움직이면
     // 여기서 즉시 멎어야 한다 (조용히 다른 배치를 내지 않는다).
     require(WAVE_W == 32, s"TAG0 은 wave 전폭이어야 한다 (WAVE_W=$WAVE_W)")
-    require(THREAD_W + LNID_W == 32, "TAG1 = 스레드 ID ‖ LNID 가 한 워드여야 한다")
+    require(EPOCH_W + 1 + 1 + TAG_RSV_W + LNID_W == 32,
+      "TAG1 = 에포크 ‖ poison ‖ trace ‖ 예약 ‖ LNID 가 한 워드여야 한다")
+    require(TAG1_RSV_HI - TAG1_RSV_LO + 1 == TAG_RSV_W, "TAG1 예약 필드 폭이 1.4.4 표와 다르다")
+    require((TAG1_EPOCH_MASK | TAG1_POISON_MASK | TAG1_TRACE_MASK | TAG1_RSV_MASK | TAG1_LNID_MASK) == 0xFFFFFFFFL &&
+            Seq(TAG1_EPOCH_MASK, TAG1_POISON_MASK, TAG1_TRACE_MASK, TAG1_RSV_MASK, TAG1_LNID_MASK)
+              .map(java.lang.Long.bitCount).sum == 32, "TAG1 필드가 워드를 정확히 분할하지 않는다")
     require(PRECISION_W + DIM_W <= 32, "TAG2 하위가 한 워드를 넘는다")
-    require(WAVE_W + THREAD_W + LNID_W + PRECISION_W + DIM_W == TAG_W,
+    require(WAVE_W + EPOCH_W + 1 + 1 + TAG_RSV_W + LNID_W + PRECISION_W + DIM_W == TAG_W,
       s"필드 폭 합이 태그 폭 $TAG_W 와 다르다 — §1.4.4 표와 어긋난다")
 
-    /** 조립 — 태그 → 세 워드. TAG2 예약은 *0 을 쓴다* (돌려주는 쪽 의무). */
-    def toWords(t: Tag): Vec[Bits] = Vec(
+    /** 번들 폭 — 80 − 예약 10 = 70. 태그를 불투명 비트열로 나르는 자리(MemOrderGate
+      * 기술자)는 이 값을 쓴다 — TAG_W 는 태그의 정의 폭이고 번들 폭이 아니다. */
+    val BUNDLE_W = WAVE_W + EPOCH_W + 1 + 1 + LNID_W + PRECISION_W + DIM_W
+    require(BUNDLE_W == TAG_W - TAG_RSV_W, "번들 폭은 태그 폭에서 예약을 뺀 값이어야 한다")
+
+    /** 매칭 키 — wave · 에포크 · LNID · 정밀도 · 차원 (poison · trace 제외).
+      * 연접 순서는 비교용일 뿐 어느 표면에도 나가지 않는다 (팩킹 순서가 아니다). */
+    def key(t: Tag): Bits = t.wave.asBits ## t.epoch.asBits ## t.lnid.asBits ## t.precision.asBits ## t.dim.asBits
+
+    /** 태그 동일성 판정 — 문맥 개시 · 조각 조회 · 소거 매칭 셋이 같은 범위로 쓴다
+      * (04-ext-payload 4.3 「셋에 같은 범위로 선다」). */
+    def keyEq(a: Tag, b: Tag): Bool = key(a) === key(b)
+
+    /** 조립 — 태그 → 세 워드. 예약(TAG1 `[25:16]` · TAG2 `[31:16]`)은 *0 을
+      * 쓴다* (돌려주는 쪽 의무 — E.5.3). poison 은 입력 태그의 비트가 아니라
+      * *인자*다: 이 조립을 쓰는 표면은 돌려주는 쪽이고 거기서 poison 은 장치가
+      * 저작한다 (1.4.4 poison 6항). 입력 태그의 그 비트를 반향하면 호스트가 제시한
+      * 비트가 장치 저작 자리에 나간다 — 재구현 결함 D2c. trace 와 에포크는
+      * 호스트 저작이라 보존·반향한다 (1.4.4 「trace 는 보존된다」 · 불투명 식별자). */
+    def toWords(t: Tag, poison: Bool): Vec[Bits] = Vec(
       t.wave.asBits,
-      t.thread.asBits ## t.lnid.asBits,
+      t.epoch.asBits ## poison ## t.trace ## B(0, TAG_RSV_W bits) ## t.lnid.asBits,
       B(0, 32 - PRECISION_W - DIM_W bits) ## t.precision.asBits ## t.dim.asBits,
     )
 
-    /** 예약 여백의 *판정* — TAG2 `[31:16]` 이 0 이 아닌가.
+    /** 예약 여백의 *판정* — TAG1 `[25:16]` 또는 TAG2 `[31:16]` 이 0 이 아닌가.
       *
       * 값이 아니라 1비트 판정만 낸다. 받아들이는 표면(E.5.4 명령 디스크립터 ·
-      * E.1.2 ABORT_TAG2)은 이것을 malformation 으로 처분하고, 돌려주는 표면은
+      * E.1.2 ABORT_TAG1/2)은 이것을 malformation 으로 처분하고, 돌려주는 표면은
       * 애초에 0 을 쓰므로 쓸 일이 없다. 처분을 여기 두지 않는 이유가 그것이다 —
-      * 같은 직렬화 위에 방향이 다른 두 정책이 선다 (E.5.2 해설). */
+      * 같은 직렬화 위에 방향이 다른 두 정책이 선다 (E.5.2 해설). poison · trace 는
+      * 예약이 아니다 — 그 판정은 표면이 필드 마스크로 한다. */
     def reservedNonZero(w: Vec[Bits]): Bool = {
       require(w.length == WORDS, s"태그 워드 ${w.length}개 — $WORDS 개여야 한다")
-      if (TAG2_RSV_LO > TAG2_RSV_HI) False
-      else w(W_TAG2)(TAG2_RSV_HI downto TAG2_RSV_LO) =/= 0
+      val t2 = if (TAG2_RSV_LO > TAG2_RSV_HI) False else w(W_TAG2)(TAG2_RSV_HI downto TAG2_RSV_LO) =/= 0
+      t2 || w(W_TAG1)(TAG1_RSV_HI downto TAG1_RSV_LO) =/= 0
     }
 
-    /** 분해 — 세 워드 → 태그. 예약 여백은 절단한다.
+    /** 분해 — 세 워드 → 태그. 예약 여백(TAG1 `[25:16]` · TAG2 `[31:16]`)은 절단한다 —
+      * 번들에 그 자리가 없다.
       *
       * 절단은 「무시되는 비트가 어딘가에 저장되거나 반향되면 은닉 채널」(§5.7
       * 해설)의 후건을 구조로 막는다 — 잘린 비트는 어느 하류에도 도달하지 않는다.
@@ -220,7 +296,9 @@ object Types {
       require(w.length == WORDS, s"태그 워드 ${w.length}개 — $WORDS 개여야 한다")
       val t = Tag()
       t.wave      := w(W_TAG0).asUInt
-      t.thread    := w(W_TAG1)(31 downto LNID_W).asUInt
+      t.epoch     := w(W_TAG1)(31 downto TAG1_EPOCH_LO).asUInt
+      t.poison    := w(W_TAG1)(TAG1_POISON)
+      t.trace     := w(W_TAG1)(TAG1_TRACE)
       t.lnid      := w(W_TAG1)(LNID_W - 1 downto 0).asUInt
       t.precision := w(W_TAG2)(PRECISION_W + DIM_W - 1 downto DIM_W).asUInt
       t.dim       := w(W_TAG2)(DIM_W - 1 downto 0).asUInt
