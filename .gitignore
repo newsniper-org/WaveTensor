@@ -100,5 +100,10 @@ rtl/formal/tla/*_TTrace_*.tla
 rtl/formal/tla/*_TTrace_*.bin
 rtl/formal/tla/states/
 
-# 형제 저장소가 남기는 로컬 요청 메시지(예: Y4 → WaveTensor) — 저장소 이력 밖
+# 형제 저장소와의 로컬 요청·답장 채널 — 저장소 이력 밖 (Y4 .gitignore 와 같은 관례)
+# - .local-requests-to/<상대>/  = 이쪽 발신 원본 (상대의 .local-requests-from/WaveTensor/ 로 거울)
+# - .local-replies-from/<상대>/ = 상대 답장 수신 (상대의 .local-replies-to/WaveTensor/ 에서 거울)
+.local-requests-to/
 .local-requests-from/
+.local-replies-to/
+.local-replies-from/
