@@ -99,3 +99,6 @@ rtl/spinal/.bsp/
 rtl/formal/tla/*_TTrace_*.tla
 rtl/formal/tla/*_TTrace_*.bin
 rtl/formal/tla/states/
+
+# 형제 저장소가 남기는 로컬 요청 메시지(예: Y4 → WaveTensor) — 저장소 이력 밖
+.local-requests-from/
