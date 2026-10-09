@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 4e29961e-988b-4f27-9ede-dfb9c81925bc
-  modified: 2026-09-26T06:08:38.208Z
+  modified: 2026-10-09T10:05:03.800Z
 ---
 
 2026-08-20 사용자 지시로 **WT64v1 RTL 전면 재구현**이 착수됐다. 사용자 확정
@@ -155,9 +155,13 @@ metadata:
 **§3.10 v1.0 묶음 (Y4 협상, 2026-10-09)** — 양측 사용자 결정으로 입장 확정 (WT 답
 `.local-replies-to/Y4/2026-10-09-reply-s310.md` · Y4 r2 · WT r2-ack). 정본 spec 커밋
 `6a25359` (형상 비노출 `0xC00` · `0xE14` (A, D)=APPLIED/DRAINED · `0xFF8` · `0xEC4` ·
-판정 래치 신설 · E.1.1 호스트 해석 규범 · reset 값 규범 · 판의 뜻). Y4 diff 대조 대기
-(`2026-10-09-spec-commit-6a25359.md` §3 13항, 원장 밖 동결 전 판정 둘: 비소유 접근 → `[4]` ·
-겹치는 슬롯 구간은 접지 않음). 다음: 이견 없으면 RTL 파도(형상 비노출 문 · ACTIVE_PART ·
+판정 래치 신설 · E.1.1 호스트 해석 규범 · reset 값 규범 · 판의 뜻). Y4 대조 답이 정정을
+요청해 정정 커밋 `8af46df` (FAULT_STATUS `[19]` 비소유 프레임 접근 신설 — `[4]` 는 자격 거부로
+좁힘, 자격이 먼저 · 배정 `[0]`–`[19]` · 예약 `[31:20]` · 겹치는 슬롯 구간은 v1.0 판정 안 함(수락,
+호스트 의무) · (a) 래치 한정 · minor (e) VA 조건 · `[12]` 「재키잉이 시작된」). 줄 수를 보존해
+인용 재조준 0. Y4 의 `8af46df` 대조 대기 (`2026-10-09-spec-fix-8af46df.md`). 파도에 더함:
+permViol 가르기 · N_BITS 20 · FLT_CLEAR_RSV · Wt64Top_props/HiuMask_props/assembly.sby 의 `[4]`·`[31:19]`
+자리. 다음: 이견 없으면 RTL 파도(형상 비노출 문 · ACTIVE_PART ·
 HIU_SHAPE · 0xEC4 · d-i 래치 + HiuMask_props/GUARD-MAP · XlateObs 확장(같은 파티션 축출) ·
 정지 유계 단언 xlatestore+assembly · `[11]`/`[12]` 발화 단언 engine.sby · 3.9 상태 낱말 ·
 부록 D 수), `0xFFC` 는 0 유지 → Y4 v1.0 frozen + sign-off → `0x0001_0000` 별도 커밋.
