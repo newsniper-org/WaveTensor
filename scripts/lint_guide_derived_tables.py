@@ -163,9 +163,11 @@ def ko_num(word: str) -> int:
     """「일흔여덟」 → 78. 못 읽으면 Drift — 조용히 0 을 돌려주지 않는다."""
     s = word.strip()
     n, matched = 0, False
+    if s.startswith("백"):  # 100–199: 「백다섯」 = 105. B.5 표가 백 행을 넘었다.
+        n, s, matched = 100, s[1:], True
     for k in sorted(_KO_TENS, key=len, reverse=True):
         if s.startswith(k):
-            n, s, matched = _KO_TENS[k], s[len(k):], True
+            n, s, matched = n + _KO_TENS[k], s[len(k):], True
             break
     if s:
         for k in sorted(_KO_ONES, key=len, reverse=True):
@@ -185,9 +187,10 @@ _KO_TENS_W = {v: k for k, v in _KO_TENS.items()}
 
 def _ko(n: int) -> str:
     """78 → 「일흔여덟」. 자기 시험이 변이를 *문면으로* 만들 때 쓴다."""
-    if not 1 <= n <= 99:
+    if not 1 <= n <= 199:
         raise Drift(f"한글 수사로 적을 범위 밖: {n}")
-    return _KO_TENS_W.get(n // 10 * 10, "") + _KO_ONES_W.get(n % 10, "")
+    head, n = ("백", n - 100) if n >= 100 else ("", n)
+    return head + _KO_TENS_W.get(n // 10 * 10, "") + _KO_ONES_W.get(n % 10, "")
 
 
 def _break_arith(bgaps_text: str) -> str:

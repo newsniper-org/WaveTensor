@@ -1656,7 +1656,7 @@ class Wt64Top(
   //
   // XlateStore 의 install.ready 는 그 파티션 채움 슬롯이 차 있으면 내려간다. 그때
   // HI 워드 기입의 mmio ready 를 그 슬롯 여유(installSlotFree)로 낮춰 *같은 기입*을 잡아 둔다 —
-  //   03-hiu.typ:989 「수락 중에는 ready 가 내려가 있으므로 중간 상태는 관측되지」
+  //   03-hiu.typ:1133 「수락 중에는 ready 가 내려가 있으므로 중간 상태는 관측되지」
   // 정지는 *적법한* HI(xstg.io.needReady — 스테이징이 차 있고 번호가 같다)에만
   // 걸린다. 거절될 HI 는 기다리지 않고 곧장 거절이다 (모델의 Refused(w) 가
   // ~DevHiBad(w) 를 전건에 든 것과 같다 — 거절선의 콘에 하류 상태가 없다).

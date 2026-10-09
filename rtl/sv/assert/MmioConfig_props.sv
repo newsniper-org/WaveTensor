@@ -177,7 +177,7 @@ module MmioConfig_props (
   wire        h_lbidWrite = h_acceptW && h_aligned && (h_region == 2'd2);
   wire        h_rsvAccess = !(h_aligned && (h_region == 2'd1 || h_region == 2'd2));
   // 판정 T2 (a) — 수락된 비정렬 *쓰기*는 sub-word 쓰기의 장치 포트 표현이라 거절 + loud 다
-  // (정본 03-hiu.typ:754 「하위 두 비트가 0 이 아닌 *쓰기*는 어댑터가 새게 한 sub-word 쓰기의 잔재이고」).
+  // (정본 03-hiu.typ:874 「하위 두 비트가 0 이 아닌 *쓰기*는 어댑터가 새게 한 sub-word 쓰기의 잔재이고」).
   // 페이지 어디서든이다 — 구역(region)을 전건에 두지 않는다. 비정렬 *읽기*는 p_rsv_read_zero 그대로.
   wire        h_unalW     = h_acceptW && !h_aligned;
 

@@ -242,7 +242,7 @@ module OwnershipTable_props (
     end
   end
 
-  // ── 비정렬 읽기는 0 — 03-hiu.typ:754 「비정렬 *읽기*는 0 · fault 없음이다」 (파도 4 W6) ──
+  // ── 비정렬 읽기는 0 — 03-hiu.typ:874 「비정렬 *읽기*는 0 · fault 없음이다」 (파도 4 W6) ──
   // 위 WO 절이 rdata 를 재지 않은 자리의 한 조각이다. 수락된 비정렬 읽기의 응답은 rvalid + 0 이다 — RTL 은
   // rdSel 을 고르는 when_OwnershipTable_l299 의 aligned 항이 든다. 이 단언 전에는 그 항을 떼는 변이(0x201
   // 읽기가 OWN_IDX 를 샌다 — 검토 변이 M13)가 이 태스크를 통과했다. fault 없음은 위 sticky 건전성 단언이 잰다.

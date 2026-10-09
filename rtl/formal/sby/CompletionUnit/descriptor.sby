@@ -17,7 +17,7 @@
 # VERIFIES: CompletionUnit.ring_encoding — E.5 1·2항: `head == tail` 빈 링 · `(tail+1) mod size == head` 가득 · 배압(io_comp_ready)이 재구성한 「가득」의 부정과 등가 · 생산 색인은 수락 사이클에만 +1 (E.5 표의 「tail 은 장치 갱신」)
 # VERIFIES: CompletionUnit.window_no_leak — 빈 링의 창 읽기는 0: 미기입 저장소를 관측면에 내지 않는다 (E.1.2 창 행). desc_full_write 와 짝 — 살아 있는 칸은 이번 기입을 내고, 살아 있지 않으면 아무것도 내지 않는다
 # VERIFIES: CompletionUnit.overflow_sticky — 가득인 링에 밀어 넣기는 loud sticky (§3.8 「오버플로」) 이며 링 상태를 움직이지 않는다 (FAB-10 동형). 발화가 해제를 이긴다 · 명시적 해제 외엔 내려가지 않는다
-# VERIFIES: CompletionUnit.unaligned_read_zero — 비정렬 읽기(주소 하위 두 비트 ≠ 0)의 응답은 다음 사이클 rvalid + 0 이다 — 창 포함 구역 전역 (03-hiu.typ:754 「비정렬 *읽기*는 0 · fault 없음이다」 · fault 없음은 축 6 등식) · 비어 있지 않은 링의 창 비정렬 읽기 증인 W8. 파도 4 W6 검토가 찾은 미측정(winSel 의 aligned 탈락이 통과한 변이 M12)을 닫는다
+# VERIFIES: CompletionUnit.unaligned_read_zero — 비정렬 읽기(주소 하위 두 비트 ≠ 0)의 응답은 다음 사이클 rvalid + 0 이다 — 창 포함 구역 전역 (03-hiu.typ:874 「비정렬 *읽기*는 0 · fault 없음이다」 · fault 없음은 축 6 등식) · 비어 있지 않은 링의 창 비정렬 읽기 증인 W8. 파도 4 W6 검토가 찾은 미측정(winSel 의 aligned 탈락이 통과한 변이 M12)을 닫는다
 # PROVES: MmioPage.unaligned_rejected — 유닛 절반(완료 구역): 비정렬 쓰기 ⇒ 다음 사이클 faultBadWrite — 거절 사유를 정본 표로 독립 재구성한 차기 상태 등식(축 6 · 증인 W6). 조립 구역과 own · cfg 는 다른 태스크다 (lint_postformal _PARTIAL 등재)
 # PROVES: MmioPage.nocons_rejected — CQ_BASE 절반: CQ_BASE_LO/HI(+0x00 · +0x04) 정렬 쓰기 ⇒ 다음 사이클 faultBadWrite (축 6 등식 · 증인 W7) · 되읽기 0 은 readValue 가 두 워드를 덮지 않는 구조다(이 태스크는 값 경로를 창 읽기로만 잰다). 명령 링 넷(0x380–0x390)은 Wt64Top/assembly.sby (lint_postformal _PARTIAL 등재)
 #

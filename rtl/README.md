@@ -1298,7 +1298,7 @@ LO 프레임 + HI 태그·권한·V) · XLATE_FLUSH 발화 · XLATE_MISS_CLEAR �
 **설계 판정 (검토자 D-1…D-8 반영).**
 - D-1 최상위 `io.install` · `io.flush` 는 은퇴했다 — 설치 authority 는 MMIO 문 하나다.
 - D-2 하류 거부(`install.ready` = 0)는 **버스 정지**다 (mmio ready 하강) —
-  03-hiu.typ:989 「수락 중에는 ready 가 내려가 있으므로 중간 상태는 관측되지」. 정지는 *적법한* HI 에만 걸리고
+  03-hiu.typ:1133 「수락 중에는 ready 가 내려가 있으므로 중간 상태는 관측되지」. 정지는 *적법한* HI 에만 걸리고
   (`needReady` — 모델의 `Refused(w)` 가 `~DevHiBad(w)` 를 전건에 든 것과 같다), 거절될 HI 는
   기다리지 않고 곧장 거절이다. 검토자 지시문(6·8)은 「HI 수락 = wr ∧ HI ∧ install.ready」로
   거절까지 수락에 매다는 형태였는데, 그 형태는 거절선(`surfBadWr`)의 콘에 하류 상태(절단 핀)를
@@ -1763,7 +1763,7 @@ W4 통합판을 짓지 않은 검토 둘(조립 하네스의 독립 반증 · �
   (a_rd_x* 중 하나) 주석. GUARD-MAP `XlateObs.obs_read_pure` 줄(같은 줄)에 요청 · hold · hostRsp 직결을 더했다
   (Scala 주석 — 생성물 바이트 동일).
 
-**유닛 구역 비정렬 읽기 0.** 정본 03-hiu.typ:754 「비정렬 *읽기*는 0 · fault 없음이다」를 own(0x200) · cq(0x300)
+**유닛 구역 비정렬 읽기 0.** 정본 03-hiu.typ:874 「비정렬 *읽기*는 0 · fault 없음이다」를 own(0x200) · cq(0x300)
 구역에서 재는 태스크가 없었다 — RTL 은 맞지만(OwnershipTable rdSel 게이트 · CompletionUnit readValue · winSel 의
 aligned 항) 그 항을 떼는 변이 M13 · M12 가 ownershiptable · descriptor 를 통과했다. `CompletionUnit_props.sv` 축 3b ·
 `OwnershipTable_props.sv` 「비정렬 읽기」 절에 수락된 비정렬 읽기 ⇒ 다음 사이클 rvalid + 0 단언을, 증인 W8 · W14 와

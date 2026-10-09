@@ -4,7 +4,7 @@
 # PROVES: Platform.state_machine_kept — 소유권 상태 기계 실물(validBits·tagVec)의 전이는 OWN_SET/OWN_CLR 명시 기입 사이클에만 — 암묵 전이·축출 부재 (E.7), 이양 커밋은 유효+태그 단일 에지 원자 (혼합 관측 사이클 부재), 충돌 기입은 무효 + loud sticky fault, RO 오프셋(OWN_STATUS) 기입은 전이 무효 + loud sticky (E.1.1)
 # PROVES: Platform.owner_check — 판정 데이터 원천: io.query.devOwned = 유효 ∧ 태그 일치 (프레임 32b 전 구간 — HiuPipeline granted 가 소비하는 값의 정의역 확인)
 # PROVES: MmioPage.unaligned_rejected — 유닛 절반(소유권 구역): 수락된(ready ∧ wstrobe) 비정렬 쓰기 ⇒ 다음 사이클 faultBadWrite (증인 W13) · 전이 없음 (전이 관문 f_selW 가 aligned 를 요구 — 원자성 단언들) · 건전성: sticky 상승은 RO 쓰기 · 비정렬 쓰기 뒤에만. 조립 구역과 cfg · cq 는 다른 태스크다 (lint_postformal _PARTIAL 등재)
-# VERIFIES: OwnershipTable.unaligned_read_zero — 소유권 구역의 수락된 비정렬 읽기(주소 하위 두 비트 ≠ 0)의 응답은 다음 사이클 rvalid + 0 이다 (03-hiu.typ:754 「비정렬 *읽기*는 0 · fault 없음이다」 · fault 없음은 sticky 건전성 단언) · 비0 OWN_IDX 를 둔 0x201 읽기 증인 W14. 파도 4 W6 검토가 찾은 미측정(rdSel 게이트의 aligned 탈락이 통과한 변이 M13)을 닫는다
+# VERIFIES: OwnershipTable.unaligned_read_zero — 소유권 구역의 수락된 비정렬 읽기(주소 하위 두 비트 ≠ 0)의 응답은 다음 사이클 rvalid + 0 이다 (03-hiu.typ:874 「비정렬 *읽기*는 0 · fault 없음이다」 · fault 없음은 sticky 건전성 단언) · 비0 OWN_IDX 를 둔 0x201 읽기 증인 W14. 파도 4 W6 검토가 찾은 미측정(rdSel 게이트의 aligned 탈락이 통과한 변이 M13)을 닫는다
 #
 # ══ 이 태스크가 재지 *않는* 것 — 정직 표기 ═══════════════════════════════
 #

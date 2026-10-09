@@ -264,7 +264,7 @@ class XlateStore(val cfg: Wt64Config = Wt64Config()) extends Component {
   // 무효화(e-defined.typ:308 「`[31]` V — 유효」)가 옛 유효 항목을 한 사이클 더
   // 적중시키고, 태그를 바꾸는 설치가 옛 태그를 한 사이클 더 적중시킨다.
   // 호스트 쪽 문(Wt64Top xlateArea)이 보는 표는 「HI 커밋 에지에 항목 전체가 바뀐다」이다 —
-  //   e-defined.typ:308 「기입이 항목 전체(스테이징 LO + 이 워드)를 *단일 에지에 커밋*한다」
+  //   03-hiu.typ:1552 「HI 가 항목 전체(V 포함)를 단일 에지에 커밋한다」
   // 채움 슬롯은 그 에지를 저장 블록 쪽으로 한 사이클 미루는 구현 세부다 — 가림이 그
   // 세부를 관측면에서 지운다.
   private val fillShadow = fillPend(io.lookup.part) && fillLine.idx === reqIdx
