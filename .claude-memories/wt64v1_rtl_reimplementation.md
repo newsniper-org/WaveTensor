@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 4e29961e-988b-4f27-9ede-dfb9c81925bc
-  modified: 2026-10-09T10:05:03.800Z
+  modified: 2026-10-11T10:31:02.976Z
 ---
 
 2026-08-20 사용자 지시로 **WT64v1 RTL 전면 재구현**이 착수됐다. 사용자 확정
@@ -159,7 +159,12 @@ metadata:
 요청해 정정 커밋 `8af46df` (FAULT_STATUS `[19]` 비소유 프레임 접근 신설 — `[4]` 는 자격 거부로
 좁힘, 자격이 먼저 · 배정 `[0]`–`[19]` · 예약 `[31:20]` · 겹치는 슬롯 구간은 v1.0 판정 안 함(수락,
 호스트 의무) · (a) 래치 한정 · minor (e) VA 조건 · `[12]` 「재키잉이 시작된」). 줄 수를 보존해
-인용 재조준 0. Y4 의 `8af46df` 대조 대기 (`2026-10-09-spec-fix-8af46df.md`). 파도에 더함:
+인용 재조준 0. Y4 는 `8af46df` 를 이견 없이 수용(Y4 `754c610`). 착수 정찰이 찾은 명확화 둘(S-3 `[12]`·`0xEC4`
+비트맵 정의역 = 마스크 유효한 *다른* 파티션 · S-2 `0xE14` sub-word 쓰기는 A·D 불변)과 사실 정정 F-1(HIU-4
+「증명됨」 → 미착수 — 인용 불변식 `Inv_AtMostOneCandidate` 가 항진)을 spec 커밋 `b81df18` 로 냈다(Y4 대조 대기,
+`2026-10-11-spec-b81df18.md`). **RTL 파도 착수 2026-10-11**: W0(낡은 증거 7 재스윕) `3b80087` → W1([19] · 0xFF8 ·
+0xEC4 · [11]/[12]) → W2(판정 래치) → W3(형상 비노출 문 · HIU-4 진짜 증명) → W4(0xE14 · DP-4 α) → W5 Y4 착지 통지.
+작업 지시서 · 보고서는 `/var/tmp/wt-s310/`. 파도에 더함:
 permViol 가르기 · N_BITS 20 · FLT_CLEAR_RSV · Wt64Top_props/HiuMask_props/assembly.sby 의 `[4]`·`[31:19]`
 자리. 다음: 이견 없으면 RTL 파도(형상 비노출 문 · ACTIVE_PART ·
 HIU_SHAPE · 0xEC4 · d-i 래치 + HiuMask_props/GUARD-MAP · XlateObs 확장(같은 파티션 축출) ·
