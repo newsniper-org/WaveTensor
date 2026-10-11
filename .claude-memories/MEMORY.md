@@ -17,7 +17,7 @@
 - [yosys bind 묵살 함정](yosys_bind_trap.md) — bind 조용히 무시 → 공허 PASS; 사람 적발로는 못 막는다(3팀이 적발했는데도 둘이 빠져나갔다), make rtl-postformal 의 HOLLOW 게이트가 유일한 그물
 - [sby 합성 태스크 회귀 함정](sby_composite_regression.md) — 모듈 태스크만 돌리면 그것을 인스턴스하는 합성 증명이 조용히 깨진다; [files] 역색인이 완료 기준
 - [ultracode 를 기본 effort 로](ultracode_default.md) — 따로 지시하지 않는 한 매 작업마다 워크플로 + 전수 검증; 단일 실행은 같은 사각지대를 반복한다
-- [솔버 실명 함정](solver_blindness_trap.md) — 엔진이 웨지되면 게이트가 「영영 안 끝남」으로 위장한다; 변이 4/4 를 z3 가 TIMEOUT, abc bmc3 는 초 단위 적발 — 수락 기준은 무변이 GREEN 이 아니라 「변이를 잡는다」
+- [솔버 실명 함정](solver_blindness_trap.md) — 엔진이 웨지되면 게이트가 「영영 안 끝남」으로 위장한다; 변이 4/4 를 z3 가 TIMEOUT, abc bmc3 는 초 단위 적발 — 수락 기준은 무변이 GREEN 이 아니라 「변이를 잡는다」; 넓은 섀도우는 엔진 교체보다 환경 축약 · **느림 ≠ 웨지**(입력 sha · 도구 판 · 기계 부하부터)
 - [clean-room 에어락](cleanroom_airlock.md) — legacy 는 격리 에이전트 하나만 만진다; 그 에이전트는 rtl/ 를 못 보고 보고에 소스를 못 담는다 (오염 통로는 파일 접근이 아니라 보고서다)
 - [롤링 자산 핀 함정](rolling_asset_pin_trap.md) — 버전 태그가 롤링 CI 산출물이면 핀이 아니다; 캐시가 실패를 삼켜 이미지와 Dockerfile 이 다른 도구를 말했다
 - [음성 시험 상주화](selftest_residency.md) — 손으로 돌린 시험은 없는 것과 같다; 「어느 검사가 자기시험을 갖는가」도 손 목록이 아니라 기계가 닫은 정의역이어야 하고, **주석은 호출이 아니다**(미끼 주석 한 줄이 머릿돌 검사를 충족시켰다)

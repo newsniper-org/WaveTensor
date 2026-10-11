@@ -164,7 +164,7 @@ metadata:
 「증명됨」 → 미착수 — 인용 불변식 `Inv_AtMostOneCandidate` 가 항진)을 spec 커밋 `b81df18` 로 냈다(Y4 대조 대기,
 `2026-10-11-spec-b81df18.md`). **RTL 파도 착수 2026-10-11**: W0(낡은 증거 7 재스윕) `3b80087` → W1([19] · 0xFF8 ·
 0xEC4 · [11]/[12]) → W2(판정 래치) → W3(형상 비노출 문 · HIU-4 진짜 증명) → W4(0xE14 · DP-4 α) → W5 Y4 착지 통지.
-작업 지시서 · 보고서는 `/var/tmp/wt-s310/`. 파도에 더함:
+작업 지시서 · 보고서는 `/var/tmp/wt-s310/`. **W1 착지 `9b6eee6` (2026-10-12)** — 선-formal 554 run · hiumask/engine/assembly 재스윕 · cocotb 36 · 전수 postformal 23 PASS; DP-17 로 B.5 「비소유 loud」 해소(3.9 *부분* · HIU-5/6 *부분 증명*); 덮임 판정 기준 = 가드의 GUARD-MAP RTL 범위를 앵커 태스크가 전부 재는가(범위가 절단 조립에 걸치면 `_PARTIAL`). 파도에 더함:
 permViol 가르기 · N_BITS 20 · FLT_CLEAR_RSV · Wt64Top_props/HiuMask_props/assembly.sby 의 `[4]`·`[31:19]`
 자리. 다음: 이견 없으면 RTL 파도(형상 비노출 문 · ACTIVE_PART ·
 HIU_SHAPE · 0xEC4 · d-i 래치 + HiuMask_props/GUARD-MAP · XlateObs 확장(같은 파티션 축출) ·
