@@ -3,7 +3,7 @@
     "XlateSurface.ent_part_exists",
     "XlateSurface.flush_part_exists"
   ],
-  "at": "2026-09-26T11:13:57Z",
+  "at": "2026-10-11T09:18:25Z",
   "cover": {
     "reached": 3,
     "reached_names": [
@@ -16,7 +16,7 @@
   },
   "inputs": {
     "rtl/generated/XlateStagingP2.sv": "abad7c8b4e2472ba0ad94f2aad9750af8f4c27f41d144332bfe69a641f35953e",
-    "rtl/sv/assert/XlateStaging_props.sv": "9894139360b1deb2819b305c4dd7d2fc7fdd1ffbed610331a49102ab39f1df83"
+    "rtl/sv/assert/XlateStaging_props.sv": "7c326d5a9f944321d7d68a85c5c33122771f32719109cf75059421df5d641050"
   },
   "per_task": {
     "bmc": {
