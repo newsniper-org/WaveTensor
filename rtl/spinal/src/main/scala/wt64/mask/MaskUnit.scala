@@ -362,9 +362,9 @@ case class MaskUnit(cfg: Wt64Config = Wt64Config()) extends Component {
   // 호스트가 수리할 축은 여전히 논스 배정이다.
   private val nonceFlat = Vec(nonce.map(_.asBits)) // 파티션당 192b
   private val reqNonce  = nonceFlat(io.rekey.part)
-  private val nonceDup = (0 until parts)
+  private val nonceDupQ = (0 until parts)
     .map(q => maskValid(q) && (U(q, partW bits) =/= io.rekey.part) && (nonceFlat(q) === reqNonce))
-    .reduce(_ || _)
+  private val nonceDup = nonceDupQ.reduce(_ || _)
   private val nonceDupFire = rekeyFire && nonceDup
 
   // 논스 기입 적중 — 워드 0..5 만 (idx 6·7 은 예약 오프셋 정책으로 무시 —
@@ -543,4 +543,52 @@ case class MaskUnit(cfg: Wt64Config = Wt64Config()) extends Component {
   io.faultNoMask        := StickyFault(noMaskFire, io.faultClearNoMask)
   io.faultNonceDup      := StickyFault(nonceDupFire, io.faultClearNonceDup)
   io.faultWrDuringRekey := StickyFault(dirtyAtFinal, io.faultClearWrRekey)
+
+  // ═══ 0xEC4 MASK_DUP_CAPTURE — [12] 사건의 캡처 (3.10 v1.0 묶음 RTL 파도 W1, 2026-10-11) ═══
+  // 클래스 *끝*: 위쪽 줄 좌표(test_mask_golden.py · MaskEngine_props.sv · HiuMask_props.sv ·
+  // MaskEngine.tla 가 따옴표로 인용한다)를 밀지 않는다. 선-formal 은 rtl/formal/tla/Mask.tla 의
+  // [12] 판정 가드 셋과 캡처 가드 다섯이다 (GUARD-MAP 여덟은 파일 끝).
+  //
+  //   [7:0]   capPart — 사건의 p (재키잉이 *시작된* MASK_REKEY 의 대상 파티션, 0 확장)
+  //   [15:8]  capMap  — 그 순간 p 의 새 논스와 논스가 같았던, 마스크가 유효한 *다른* 파티션 q 의
+  //                     비트맵(0 확장). [12] 의 OR(nonceDup)가 접는 바로 그 q 별 항(nonceDupQ)이라
+  //                     bit p 는 늘 0 이고, 래치된 비트맵 ≠ 0 ⇔ 그 사건이 [12] 를 세웠다가 구조다
+  //   [16]    io.faultNonceDup **그 자체** — 별도 유효 레지스터가 없어 불변식 [16] ⇔ [12] 가 구조다
+  //   [31:17] 0
+  //
+  // 래치는 [16] = 0 이거나 같은 사이클에 해제될 때의 세움 사건(nonceDupFire)에서만 한다 — [16] = 1
+  // 동안의 새 발화는 덮지 않는다(첫 사건 보존). 해제는 [12] 와 같은 신호 io.faultClearNonceDup
+  // (조립에서 IO 해제선 ∨ 0xF84 [12] W1C)이고 필드 둘을 0 으로 지운다. 해제와 세움이 같은
+  // 사이클이면 세움이 이겨 새 사건(p 와 비트맵 둘 다)을 래치한다 — 해제 when 다음에 래치 when 을
+  // 두어 마지막 대입이 이긴다 (StickyFault 의 「발화가 해제를 이긴다」와 같은 방향). busy · 거절
+  // 발화는 rekeyFire 가 아니라 캡처를 움직이지 않고, 겹친 해제만 일어난다. reset 0. 캡처는 래치
+  // 순간의 스냅숏이다 — 뒤의 논스 · maskValid 변경은 움직이지 않는다. 쓰기 거절 + [6] 과 읽기
+  // 결선은 조립(Wt64Top 파일 끝 dupArea)이 진다. 머리 「fault 폴딩 규정」과의 관계: 이 워드는 새
+  // fault 축이 아니라 [12] 의 부속 관측면이다 — [16] 이 [12] 레지스터 그 자체라 접을 것이 없다.
+  require(parts <= 8, "MASK_DUP_CAPTURE [15:8] 비트맵은 파티션 8 이하 — 조용히 자르지 않는다")
+  val dupCapture = out port Bits(32 bits)
+  private val capPart = Reg(UInt(partW bits)) init 0
+  private val capMap  = Reg(Bits(parts bits)) init 0
+  when(io.faultClearNonceDup) {
+    capPart := 0
+    capMap  := 0
+  }
+  when(nonceDupFire && (!io.faultNonceDup || io.faultClearNonceDup)) {
+    capPart := io.rekey.part
+    capMap  := Vec(nonceDupQ).asBits
+  }
+  dupCapture := B(0, 15 bits) ## io.faultNonceDup ## capMap.resize(8) ## capPart.asBits.resize(8)
 }
+
+// ── GUARD-MAP — Mask 모델의 [12] 판정 · 0xEC4 캡처 가드 여덟 (3.10 v1.0 묶음 RTL 파도 W1, 2026-10-11) ──
+// 머리 GUARD-MAP 절(키 · 논스 저장 스코프 · REKEY 유휴 수락) 다음의 Mask 가드들이다. 파일 *끝*에
+// 둔 것은 위쪽 피인용 좌표와 익명 when 의 줄을 밀지 않기 위해서다. 후-formal 앵커는 MaskUnit 단독
+// 하네스 rtl/formal/sby/MaskUnit/engine.sby (smtbmc z3 금지 — abc bmc3 · abc pdr · btormc).
+// GUARD-MAP: Mask.dup_on_started_rekey -> nonceDupFire = rekeyFire ∧ nonceDup — rekeyFire = io.rekey.valid ∧ io.rekey.ready(= !engineBusy) 라 [12] 는 재키잉이 *시작된* 수락 사이클에서만 선다. io.rekey.valid 는 조립(Wt64Top maskArea)이 예약 비트 · 형상 밖 파티션 검사를 통과한 MASK_REKEY 기입에만 세우므로 거절 + [6] 발화와 busy 미수락 발화는 [12] 를 움직이지 않는다. 캡처도 같은 nonceDupFire 하나만 본다
+// GUARD-MAP: Mask.cap_first_event -> 캡처 래치 조건 when(nonceDupFire ∧ (¬io.faultNonceDup ∨ io.faultClearNonceDup)) 의 ¬io.faultNonceDup 항 — [16](= [12]) = 1 이고 해제가 없는 사이클의 새 발화는 capPart · capMap 을 덮지 않는다
+// GUARD-MAP: Mask.cap_clear_whole -> when(io.faultClearNonceDup) { capPart := 0 · capMap := 0 } — 해제선(조립에서 IO 해제선 ∨ fclr(12))이 필드 둘을 지운다. [16] 은 io.faultNonceDup 레지스터 그 자체라 같은 해제로 함께 내려가므로 해제 뒤 워드 전체가 0 이다
+// GUARD-MAP: Mask.cap_set_beats_clear -> 래치 조건의 ∨ io.faultClearNonceDup 항 + 래치 when 이 해제 when *뒤*(마지막 대입이 이긴다) — 해제와 세움이 같은 사이클이면 [16] 은 StickyFault 규약으로 서고 필드 둘은 새 사건의 p 와 비트맵을 담는다
+// GUARD-MAP: Mask.cap_bitmap_exact -> bit p 0 은 capMap := Vec(nonceDupQ).asBits 가 [12] 의 nonceDup 과 *같은* nonceDupQ 를 재사용하는 공유 구조에서 온다 — nonceDupQ(q) 의 연언에 (U(q) ≠ io.rekey.part) 항이 있어 p 자신은 비교에 들지 않는다. 모델의 가드 삭제(BmSet 의 q ≠ p 만 끈다 — [12] 의 DupSet 은 그대로)에 한 줄로 대응하는 RTL 줄은 없다: nonceDupQ 의 q ≠ p 항을 지우면 [12] 판정도 함께 바뀌어 engine.sby 의 n_dup_rise_src 가 함께 운다(W1 검증 변이 RV3). 비트맵만 바꾸는 모델 충실 판은 capMap 대입을 고친 것이다(engine.sby 역-변이 ME6 · ME6b). capPart := io.rekey.part 는 같은 래치 when 안이라 p 와 비트맵이 한 사건의 것이다
+// GUARD-MAP: Mask.cap_bitmap_domain -> capMap 의 비트 q = nonceDupQ(q) = maskValid(q) ∧ q ≠ p ∧ (nonceFlat(q) = reqNonce) — [12] 의 nonceDup 이 reduce(∨) 로 접는 바로 그 q 별 항이다(정의가 하나). 마스크 유효 ∧ 논스 동치 정의역 밖의 파티션은 비트맵에 들 수 없다
+// GUARD-MAP: Mask.start_ignores_dup -> busy 진입(PH_IDLE 가지의 when(rekeyFire) { … phase := PH_HROUND })은 rekeyFire 하나로 정해지고 nonceDup · io.faultNonceDup 은 io.rekey.ready(= !engineBusy) · phase 갱신 식 어디에도 들지 않는다 — [12] 를 세운 시작된 발화도 완료 전까지 busy(0xEC0 [8]) = 1 이다
+// GUARD-MAP: Mask.complete_ignores_dup -> 엔진 완료(PH_FINAL 가지의 phase := PH_IDLE — engineBusy 하강)는 무조건이다: PH_CROUND 의 cnt 종료와 PH_FINAL 어디에도 io.faultNonceDup · nonceDup 항이 없어 [12] = 1 이어도 재키잉은 완료된다

@@ -58,6 +58,8 @@ module HiuPipeline (
   output wire          missStall,
   output wire [1:0]    missPart,
   output wire [31:0]   missVpn,
+  output wire          faultOwn,
+  input  wire          faultOwnClear,
   input  wire          clk,
   input  wire          reset
 );
@@ -143,6 +145,8 @@ module HiuPipeline (
   wire                permViol;
   reg                 _zz_io_faultPerm;
   reg                 _zz_io_missNotice;
+  wire                ownViol;
+  reg                 _zz_faultOwn;
 
   assign _zz_io_occupancy = (_zz_io_occupancy_1 + _zz_io_occupancy_12);
   assign _zz_io_occupancy_1 = (_zz_io_occupancy_2 + _zz_io_occupancy_10);
@@ -241,7 +245,7 @@ module HiuPipeline (
   assign when_HiuPipeline_l405 = (s6_valid && s6_anyHit);
   assign entitle = (s6_write ? s6_perm_w : s6_perm_r);
   assign granted = (((s6_valid && s6_anyHit) && io_owner_devOwned) && entitle);
-  assign permViol = ((s6_valid && s6_anyHit) && (! (io_owner_devOwned && entitle)));
+  assign permViol = ((s6_valid && s6_anyHit) && (! entitle));
   assign io_rsp_valid = (s6_valid && advance);
   assign io_rsp_granted = granted;
   assign io_rsp_part = s6_part;
@@ -282,6 +286,8 @@ module HiuPipeline (
   assign missStall = missWait;
   assign missPart = (missWait ? s3_part : 2'b00);
   assign missVpn = (missWait ? s3_vpn : 32'h0);
+  assign ownViol = (((s6_valid && s6_anyHit) && entitle) && (! io_owner_devOwned));
+  assign faultOwn = _zz_faultOwn;
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       s1_valid <= 1'b0;
@@ -291,6 +297,7 @@ module HiuPipeline (
       s6_valid <= 1'b0;
       _zz_io_faultPerm <= 1'b0;
       _zz_io_missNotice <= 1'b0;
+      _zz_faultOwn <= 1'b0;
     end else begin
       if(advance) begin
         s1_valid <= io_req_valid;
@@ -310,6 +317,12 @@ module HiuPipeline (
       end
       if(missWait) begin
         _zz_io_missNotice <= 1'b1;
+      end
+      if(faultOwnClear) begin
+        _zz_faultOwn <= 1'b0;
+      end
+      if(ownViol) begin
+        _zz_faultOwn <= 1'b1;
       end
     end
   end

@@ -211,6 +211,7 @@ module Wt64Top (
   output wire          io_fault_reasm,
   output wire          io_fault_reasmCap,
   output wire          io_fault_hiuPerm,
+  output wire          io_fault_hiuOwn,
   output wire          io_fault_hiuMiss,
   output wire          io_fault_cfgDupOwner,
   output wire          io_fault_cfgBadWrite,
@@ -268,6 +269,7 @@ module Wt64Top (
   wire       [117:0]  mog_io_up_3_payload;
   wire                hiu_io_faultClear;
   wire                hiu_io_missClear;
+  wire                hiu_faultOwnClear;
   wire                own_io_wstrobe;
   wire                own_io_rstrobe;
   wire                own_io_faultClearCollide;
@@ -471,6 +473,7 @@ module Wt64Top (
   wire                hiu_missStall;
   wire       [1:0]    hiu_missPart;
   wire       [31:0]   hiu_missVpn;
+  wire                hiu_faultOwn;
   wire       [31:0]   own_io_rdata;
   wire                own_io_rvalid;
   wire                own_io_ready;
@@ -525,6 +528,7 @@ module Wt64Top (
   wire                mask_io_faultNoMask;
   wire                mask_io_faultNonceDup;
   wire                mask_io_faultWrDuringRekey;
+  wire       [31:0]   mask_dupCapture;
   wire                fps_io_req_ready;
   wire                fps_io_oDone;
   wire                fps_io_oExecValid;
@@ -688,11 +692,20 @@ module Wt64Top (
   wire                pageArea_isSqRo;
   wire                pageArea_sqWr;
   wire                pageArea_identWr;
+  wire                pageArea_shapeWr;
   wire                pageArea_unalWr;
-  wire                when_Wt64Top_l1780;
+  wire                when_Wt64Top_l1782;
   wire                fpBindArea_rej;
   wire                when_Common_l336_1;
   reg                 _zz_io_fault_fpCfgBadWrite;
+  wire       [31:0]   identArea_shape;
+  wire                identArea_rd;
+  reg                 identArea_rv;
+  wire                dupArea_isDup;
+  wire                dupArea_rd;
+  wire                dupArea_wr;
+  reg        [31:0]   dupArea_reg;
+  reg                 dupArea_rv;
 
   assign _zz_maskArea_readValue = maskArea_maskPart;
   assign _zz_abortArea_readValue = reasm_io_abortCount;
@@ -1008,6 +1021,8 @@ module Wt64Top (
     .missStall         (hiu_missStall              ), //o
     .missPart          (hiu_missPart[1:0]          ), //o
     .missVpn           (hiu_missVpn[31:0]          ), //o
+    .faultOwn          (hiu_faultOwn               ), //o
+    .faultOwnClear     (hiu_faultOwnClear          ), //i
     .clk               (clk                        ), //i
     .reset             (reset                      )  //i
   );
@@ -1178,6 +1193,7 @@ module Wt64Top (
     .io_faultClearNoMask   (mask_io_faultClearNoMask   ), //i
     .io_faultClearNonceDup (mask_io_faultClearNonceDup ), //i
     .io_faultClearWrRekey  (mask_io_faultClearWrRekey  ), //i
+    .dupCapture            (mask_dupCapture[31:0]      ), //o
     .clk                   (clk                        ), //i
     .reset                 (reset                      )  //i
   );
@@ -1385,6 +1401,7 @@ module Wt64Top (
   assign io_mem_gateOpen = mog_io_gateOpen;
   assign io_hiuReq_ready = hiu_io_req_ready;
   assign hiu_io_faultClear = (io_faultClear_hiuPerm || (fltClrAccept && io_mmio_wdata[4]));
+  assign hiu_faultOwnClear = (fltClrAccept && io_mmio_wdata[19]);
   assign io_phys_valid = (hiu_io_rsp_valid && hiu_io_rsp_granted);
   assign io_phys_frame = hiu_io_rsp_frame;
   assign io_hiuRsp_valid = hiu_io_rsp_valid;
@@ -1477,7 +1494,10 @@ module Wt64Top (
     if(xstg_io_badWrite) begin
       surfBadWr = 1'b1;
     end
-    if(when_Wt64Top_l1780) begin
+    if(when_Wt64Top_l1782) begin
+      surfBadWr = 1'b1;
+    end
+    if(dupArea_wr) begin
       surfBadWr = 1'b1;
     end
   end
@@ -1584,7 +1604,7 @@ module Wt64Top (
   assign faultArea_isSummary = (faultArea_wordOff == 4'b0010);
   assign faultArea_isCapSt = (faultArea_wordOff == 4'b0011);
   assign faultArea_isCapClr = (faultArea_wordOff == 4'b0100);
-  assign faultArea_clrRsvBad = ((io_mmio_wdata & 32'hfff80000) != 32'h0);
+  assign faultArea_clrRsvBad = ((io_mmio_wdata & 32'hfff00000) != 32'h0);
   assign faultArea_doClr = ((faultArea_wr && faultArea_isClear) && (! faultArea_clrRsvBad));
   assign fltClrAccept = faultArea_doClr;
   assign capWord_io_wr = (faultArea_wr && faultArea_isCapClr);
@@ -1595,6 +1615,7 @@ module Wt64Top (
   assign io_fault_reasm = reasm_io_fault;
   assign io_fault_reasmCap = reasm_io_capAbsent;
   assign io_fault_hiuPerm = hiu_io_faultPerm;
+  assign io_fault_hiuOwn = hiu_faultOwn;
   assign io_fault_hiuMiss = hiu_io_missNotice;
   assign io_fault_cfgDupOwner = cfgBlk_io_faultDupOwner;
   assign io_fault_cfgBadWrite = cfgBlk_io_faultBadWrite;
@@ -1640,6 +1661,7 @@ module Wt64Top (
     faultWords_status[16] = io_fault_cqOverflow;
     faultWords_status[17] = 1'b0;
     faultWords_status[18] = 1'b0;
+    faultWords_status[19] = io_fault_hiuOwn;
   end
 
   always @(*) begin
@@ -1702,6 +1724,12 @@ module Wt64Top (
     if(xlateArea_obsRv) begin
       io_mmio_rdata = xlateArea_obsReg;
     end
+    if(identArea_rv) begin
+      io_mmio_rdata = identArea_shape;
+    end
+    if(dupArea_rv) begin
+      io_mmio_rdata = dupArea_reg;
+    end
   end
 
   assign mask_io_faultClearNoMask = (io_faultClear_maskNoMask || (fltClrAccept && io_mmio_wdata[11]));
@@ -1743,11 +1771,17 @@ module Wt64Top (
   assign pageArea_isSqRo = (pageArea_sqWord == 5'h03);
   assign pageArea_sqWr = ((io_mmio_wstrobe && selSq) && mmioAligned);
   assign pageArea_identWr = (((io_mmio_wstrobe && selIdent) && mmioAligned) && (io_mmio_addr[5 : 2] == 4'b1111));
+  assign pageArea_shapeWr = (((io_mmio_wstrobe && selIdent) && mmioAligned) && (io_mmio_addr[5 : 2] == 4'b1110));
   assign pageArea_unalWr = ((io_mmio_wstrobe && (! mmioAligned)) && (! ((selOwn || selCq) || selCfg)));
-  assign when_Wt64Top_l1780 = (((pageArea_legWr || (pageArea_sqWr && (pageArea_isSqRw || pageArea_isSqRo))) || pageArea_identWr) || pageArea_unalWr);
+  assign when_Wt64Top_l1782 = ((((pageArea_legWr || (pageArea_sqWr && (pageArea_isSqRw || pageArea_isSqRo))) || pageArea_identWr) || pageArea_shapeWr) || pageArea_unalWr);
   assign fpBindArea_rej = (((fpArea_wr && fpArea_isBind) && fpArea_bindRsvBad) && fps_io_loadReady);
   assign when_Common_l336_1 = (fltClrAccept && io_mmio_wdata[6]);
   assign io_fault_fpCfgBadWrite = _zz_io_fault_fpCfgBadWrite;
+  assign identArea_shape = 32'h00001004;
+  assign identArea_rd = ((((io_mmio_rstrobe && (! io_mmio_wstrobe)) && selIdent) && mmioAligned) && (io_mmio_addr[5 : 2] == 4'b1110));
+  assign dupArea_isDup = (io_mmio_addr[6 : 2] == 5'h11);
+  assign dupArea_rd = (maskArea_rd && dupArea_isDup);
+  assign dupArea_wr = (maskArea_wr && dupArea_isDup);
   always @(posedge clk) begin
     tagQ_wave <= io_instr_tag_wave;
     tagQ_epoch <= io_instr_tag_epoch;
@@ -1768,6 +1802,9 @@ module Wt64Top (
       xlateArea_obsReg <= 32'h0;
       xlateArea_obsRv <= 1'b0;
       _zz_io_fault_fpCfgBadWrite <= 1'b0;
+      identArea_rv <= 1'b0;
+      dupArea_reg <= 32'h0;
+      dupArea_rv <= 1'b0;
     end else begin
       if(when_Wt64Top_l1274) begin
         maskArea_maskPart <= maskArea_partField[1:0];
@@ -1805,6 +1842,11 @@ module Wt64Top (
       if(fpBindArea_rej) begin
         _zz_io_fault_fpCfgBadWrite <= 1'b1;
       end
+      identArea_rv <= identArea_rd;
+      if(dupArea_rd) begin
+        dupArea_reg <= mask_dupCapture;
+      end
+      dupArea_rv <= dupArea_rd;
     end
   end
 
@@ -2795,14 +2837,12 @@ module MaskUnit (
   input  wire          io_faultClearNoMask,
   input  wire          io_faultClearNonceDup,
   input  wire          io_faultClearWrRekey,
+  output wire [31:0]   dupCapture,
   input  wire          clk,
   input  wire          reset
 );
 
   reg        [191:0]  _zz_reqNonce;
-  wire                _zz_nonceDup;
-  wire                _zz_nonceDup_1;
-  wire       [1:0]    _zz_nonceDup_2;
   reg        [31:0]   _zz_st_4;
   reg        [31:0]   _zz_st_5;
   reg        [31:0]   _zz_st_6;
@@ -2824,6 +2864,9 @@ module MaskUnit (
   wire       [0:0]    _zz__zz_maskFrame_0_4;
   reg        [31:0]   _zz_rFrame;
   reg                 _zz_noMaskFire;
+  wire       [7:0]    _zz_dupCapture;
+  wire       [7:0]    _zz_dupCapture_1;
+  wire       [1:0]    _zz_dupCapture_2;
   reg        [31:0]   key_0_0;
   reg        [31:0]   key_0_1;
   reg        [31:0]   key_0_2;
@@ -3020,6 +3063,10 @@ module MaskUnit (
   wire       [191:0]  nonceFlat_2;
   wire       [191:0]  nonceFlat_3;
   wire       [191:0]  reqNonce;
+  wire                nonceDupQ_0;
+  wire                nonceDupQ_1;
+  wire                nonceDupQ_2;
+  wire                nonceDupQ_3;
   wire                nonceDup;
   wire                nonceDupFire;
   wire                nonceWrHit;
@@ -3060,15 +3107,18 @@ module MaskUnit (
   reg                 _zz_io_faultNoMask;
   reg                 _zz_io_faultNonceDup;
   reg                 _zz_io_faultWrDuringRekey;
+  reg        [1:0]    capPart;
+  reg        [3:0]    capMap;
+  wire                when_MaskUnit_l576;
 
   assign _zz__zz_maskFrame_0 = (st_1[11 : 0] + 12'h46e);
   assign _zz__zz_maskFrame_0_1 = (_zz__zz_maskFrame_0_2 + _zz__zz_maskFrame_0_3);
   assign _zz__zz_maskFrame_0_2 = (st_0[31 : 12] + 20'h61707);
   assign _zz__zz_maskFrame_0_4 = (12'h79b <= st_0[11 : 0]);
   assign _zz__zz_maskFrame_0_3 = {19'd0, _zz__zz_maskFrame_0_4};
-  assign _zz_nonceDup = (2'b00 != io_rekey_part);
-  assign _zz_nonceDup_1 = (2'b01 != io_rekey_part);
-  assign _zz_nonceDup_2 = 2'b10;
+  assign _zz_dupCapture = {4'd0, capMap};
+  assign _zz_dupCapture_2 = capPart;
+  assign _zz_dupCapture_1 = {6'd0, _zz_dupCapture_2};
   always @(*) begin
     case(io_rekey_part)
       2'b00 : begin
@@ -3290,7 +3340,11 @@ module MaskUnit (
   assign nonceFlat_2 = {nonce_2_5,{nonce_2_4,{nonce_2_3,{nonce_2_2,{nonce_2_1,nonce_2_0}}}}};
   assign nonceFlat_3 = {nonce_3_5,{nonce_3_4,{nonce_3_3,{nonce_3_2,{nonce_3_1,nonce_3_0}}}}};
   assign reqNonce = _zz_reqNonce;
-  assign nonceDup = (((((maskValid_0 && _zz_nonceDup) && (nonceFlat_0 == reqNonce)) || ((maskValid_1 && _zz_nonceDup_1) && (nonceFlat_1 == reqNonce))) || ((maskValid_2 && (_zz_nonceDup_2 != io_rekey_part)) && (nonceFlat_2 == reqNonce))) || ((maskValid_3 && (2'b11 != io_rekey_part)) && (nonceFlat_3 == reqNonce)));
+  assign nonceDupQ_0 = ((maskValid_0 && (2'b00 != io_rekey_part)) && (nonceFlat_0 == reqNonce));
+  assign nonceDupQ_1 = ((maskValid_1 && (2'b01 != io_rekey_part)) && (nonceFlat_1 == reqNonce));
+  assign nonceDupQ_2 = ((maskValid_2 && (2'b10 != io_rekey_part)) && (nonceFlat_2 == reqNonce));
+  assign nonceDupQ_3 = ((maskValid_3 && (2'b11 != io_rekey_part)) && (nonceFlat_3 == reqNonce));
+  assign nonceDup = (((nonceDupQ_0 || nonceDupQ_1) || nonceDupQ_2) || nonceDupQ_3);
   assign nonceDupFire = (rekeyFire && nonceDup);
   assign nonceWrHit = (io_nonceWr_valid && (io_nonceWr_idx < 3'b110));
   assign wrActNow = ((io_keyWr_valid && (io_keyWr_part == actPart)) || (nonceWrHit && (io_nonceWr_part == actPart)));
@@ -3341,6 +3395,8 @@ module MaskUnit (
   assign io_faultNoMask = _zz_io_faultNoMask;
   assign io_faultNonceDup = _zz_io_faultNonceDup;
   assign io_faultWrDuringRekey = _zz_io_faultWrDuringRekey;
+  assign when_MaskUnit_l576 = (nonceDupFire && ((! io_faultNonceDup) || io_faultClearNonceDup));
+  assign dupCapture = {{{15'h0,io_faultNonceDup},_zz_dupCapture},_zz_dupCapture_1};
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       key_0_0 <= 32'h0;
@@ -3432,6 +3488,8 @@ module MaskUnit (
       _zz_io_faultNoMask <= 1'b0;
       _zz_io_faultNonceDup <= 1'b0;
       _zz_io_faultWrDuringRekey <= 1'b0;
+      capPart <= 2'b00;
+      capMap <= 4'b0000;
     end else begin
       case(phase)
         3'b000 : begin
@@ -3815,6 +3873,14 @@ module MaskUnit (
       end
       if(dirtyAtFinal) begin
         _zz_io_faultWrDuringRekey <= 1'b1;
+      end
+      if(io_faultClearNonceDup) begin
+        capPart <= 2'b00;
+        capMap <= 4'b0000;
+      end
+      if(when_MaskUnit_l576) begin
+        capPart <= io_rekey_part;
+        capMap <= {nonceDupQ_3,{nonceDupQ_2,{nonceDupQ_1,nonceDupQ_0}}};
       end
     end
   end
@@ -6408,6 +6474,8 @@ module HiuPipeline (
   output wire          missStall,
   output wire [1:0]    missPart,
   output wire [31:0]   missVpn,
+  output wire          faultOwn,
+  input  wire          faultOwnClear,
   input  wire          clk,
   input  wire          reset
 );
@@ -6493,6 +6561,8 @@ module HiuPipeline (
   wire                permViol;
   reg                 _zz_io_faultPerm;
   reg                 _zz_io_missNotice;
+  wire                ownViol;
+  reg                 _zz_faultOwn;
 
   assign _zz_io_occupancy = (_zz_io_occupancy_1 + _zz_io_occupancy_12);
   assign _zz_io_occupancy_1 = (_zz_io_occupancy_2 + _zz_io_occupancy_10);
@@ -6591,7 +6661,7 @@ module HiuPipeline (
   assign when_HiuPipeline_l405 = (s6_valid && s6_anyHit);
   assign entitle = (s6_write ? s6_perm_w : s6_perm_r);
   assign granted = (((s6_valid && s6_anyHit) && io_owner_devOwned) && entitle);
-  assign permViol = ((s6_valid && s6_anyHit) && (! (io_owner_devOwned && entitle)));
+  assign permViol = ((s6_valid && s6_anyHit) && (! entitle));
   assign io_rsp_valid = (s6_valid && advance);
   assign io_rsp_granted = granted;
   assign io_rsp_part = s6_part;
@@ -6632,6 +6702,8 @@ module HiuPipeline (
   assign missStall = missWait;
   assign missPart = (missWait ? s3_part : 2'b00);
   assign missVpn = (missWait ? s3_vpn : 32'h0);
+  assign ownViol = (((s6_valid && s6_anyHit) && entitle) && (! io_owner_devOwned));
+  assign faultOwn = _zz_faultOwn;
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       s1_valid <= 1'b0;
@@ -6641,6 +6713,7 @@ module HiuPipeline (
       s6_valid <= 1'b0;
       _zz_io_faultPerm <= 1'b0;
       _zz_io_missNotice <= 1'b0;
+      _zz_faultOwn <= 1'b0;
     end else begin
       if(advance) begin
         s1_valid <= io_req_valid;
@@ -6660,6 +6733,12 @@ module HiuPipeline (
       end
       if(missWait) begin
         _zz_io_missNotice <= 1'b1;
+      end
+      if(faultOwnClear) begin
+        _zz_faultOwn <= 1'b0;
+      end
+      if(ownViol) begin
+        _zz_faultOwn <= 1'b1;
       end
     end
   end

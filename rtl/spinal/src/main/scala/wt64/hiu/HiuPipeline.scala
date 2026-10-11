@@ -19,7 +19,7 @@
 // GUARD-MAP: Decode.stall_uniform         -> advance 하나가 파이프 전 단계 레지스터의 공통 enable 이다 — 마스킹 단(s4)의 valid·마스킹 frame 레지스터는 io.mask 왕복 반대편(MaskUnit — io.en 에 같은 advance = io.req.ready 를 물리는 것이 결선 계약)에 있고 나머지 단·필드 전부가 when(advance) 하나 안이다. 정지 원천(외부 io.hold · E.3 미적중 채움 대기)이 무엇이든 파이프 전체가 함께 서고, 요청별·단계별 enable 이 없다 (E.4 3항 「모든 요청이 같은 지점에서 정지 가능하므로 경로가 갈리지 않는다」)
 // GUARD-MAP: Platform.xlate_local         -> 변환 값의 유일한 원천은 XlateStore(로컬 저장 블록 + 채움 바이패스)다 — 호스트는 install 포트의 채움 공급자일 뿐이다. hostRsp leg 는 이 모듈의 판정(lookAny)·값(lookFrame/lookPerm)·정지(missWait) 어느 축에도 소비되지 않는다 — 포트는 §3.3.1 측정 트랙의 「의도된 미결선」(「응답 비트만 세우고 주소를 반환하지 않는다」)으로 남으며 승격 조건은 「전송 방식별 자격 계약이 규범으로 기록되는 시점」이다 (§3.3.1 규범 1·2 · HIU-11 세 축 — 구조)
 // GUARD-MAP: Platform.state_machine_kept  -> 소유권 판정(io.owner.devOwned 의 granted 논리곱 참여)은 승인 조합식에 무조건 존재한다 — 이를 우회하는 elaborate 파라미터도 런타임 구성 비트도 없다 (§3.4.1 「소유권 상태 기계 자체는 그대로 유지한다」 — 판정이 구성 무관하게 상존. 마스킹 우회 파라미터를 두지 않은 판단도 같은 정신이다 — io.mask 주석)
-// GUARD-MAP: Platform.owner_check         -> granted 는 devOwned 를 논리곱의 항으로 요구하고, 비소유 적중은 값 차단(io.rsp.frame/perm 이 0 유지) + StickyFault(io.faultPerm) 다 (HIU-10 · §3.2 「비소유 접근의 관측 결과는 값 차단 + loud fault」 · §3.8 권한 위반 — D11 사후 게이팅)
+// GUARD-MAP: Platform.owner_check         -> granted 는 devOwned 를 논리곱의 항으로 요구하고, 비소유 적중은 값 차단(granted 의 devOwned 항 — io.rsp.frame/perm 이 0 유지) + 원인별 보고 [4]/[19] 다: 자격 거부는 permViol → io.faultPerm([4]), 자격 허용 ∧ 비소유는 ownViol → 클래스 끝 faultOwn([19]) — 비소유 적중이면 둘 중 정확히 하나가 sticky 로 선다 (HIU-10 · §3.2 「비소유 접근의 관측 결과는 값 차단 + loud fault」 · §3.8 권한 위반 — D11 사후 게이팅)
 // GUARD-MAP: Platform.flush_on_handoff    -> ENV — 이양 시 비우기는 넘기는 쪽(호스트 소프트웨어)의 의무다 (§3.4.1 규범 3항 「넘기는 쪽이 비운다」 · §3.10 호스트 ABI 경계). 장치 쪽 강제 지점이 없고, 하드웨어 일관성 구성에서의 생략 역시 호스트 ABI 합의 사항이다
 //
 // ## §3.2 여섯 단계 — 상태열이 곧 계약이다
@@ -105,8 +105,8 @@
 // 일곱째 단계도 전단 확인도 없다. s6 에서 소유권 상태(io.owner — 상태
 // 기계의 거처는 구성 표면의 페이지 소유권 표, 부록 E.7)를 조합 조회하고,
 // 판정은 경로를 가르지 않고 결과를 게이트한다 (사후 게이팅). 비소유·자격
-// 미달의 관측 결과는 값 차단 + sticky fault 뿐이고, 타이밍은 승인된 경우와
-// 구별 불가능하다 (같은 단계열·같은 enable).
+// 미달의 관측 결과는 값 차단 + 원인별 sticky fault(자격 [4] · 비소유 [19]) 뿐이고,
+// 타이밍은 승인된 경우와 구별 불가능하다 (같은 단계열·같은 enable).
 //
 // ## flush × 채움 상호작용 — 파이프 관점의 계약 (환류 항목)
 //
@@ -224,7 +224,7 @@ class HiuPipeline(val cfg: Wt64Config = Wt64Config()) extends Component {
     /** E.11 ① 파이프 점유 — s1..s6 유효 수 (0..6). 순수 조합 관측,
       * 새 상태 없음 (머리 E.11 절). */
     val occupancy = out port UInt(3 bits)
-    /** 권한 위반 sticky (§3.8 — 비소유·자격 미달. HIU-10). */
+    /** 자격 거부 sticky (§3.8 — FAULT_STATUS [4], 자격 미달만. 비소유는 클래스 끝 faultOwn [19]. HIU-10). */
     val faultPerm  = out port Bool()
     val faultClear = in port Bool()
     /** 미적중 sticky 통지 (E.3) — fault 가 아니다 (§3.8 폴딩 규범:
@@ -404,11 +404,11 @@ class HiuPipeline(val cfg: Wt64Config = Wt64Config()) extends Component {
   io.owner.frame := 0
   when(s6.valid && s6.anyHit) { io.owner.frame := s6.frame }
 
-  // 자격 — 요청 종류 대 권한 (§3.2 「소유권·자격」). 실행 권한(x)은 요청
-  // 종류에 실행이 없으므로 판정에 불참하고 값으로만 방출된다.
+  // 자격 — 요청 종류 대 권한 (§3.2 「소유권·자격」 · x 는 판정 불참, 값으로만 방출). 보고는 원인별이다 —
+  // 자격 거부 → permViol([4]) · 자격 허용 ∧ 비소유 → 클래스 끝 ownViol([19]). 둘은 배타다 (자격이 먼저).
   private val entitle  = Mux(s6.write, s6.perm.w, s6.perm.r)
   private val granted  = s6.valid && s6.anyHit && io.owner.devOwned && entitle
-  private val permViol = s6.valid && s6.anyHit && !(io.owner.devOwned && entitle)
+  private val permViol = s6.valid && s6.anyHit && !entitle
 
   // 방출 — valid 는 판정과 무관하게 퇴장 사이클에 선다 (상태열 균일).
   io.rsp.valid    := s6.valid && advance
@@ -436,8 +436,8 @@ class HiuPipeline(val cfg: Wt64Config = Wt64Config()) extends Component {
     .reduce(_ + _)
 
   // ── sticky — 합성 상태 비트 (§3.8 · 공용 StickyFault) ────────────
-  // 권한 위반(비소유·자격 미달)과 미적중 통지는 서로 다른 신호다 — 어느
-  // 쪽도 다른 쪽을 세우지 않는다 (§3.8 폴딩 규범).
+  // 자격 거부([4])·비소유 접근([19] — 클래스 끝 faultOwn)·미적중 통지는 서로 다른 신호다 —
+  // 어느 쪽도 다른 쪽을 세우지 않는다 (§3.8 폴딩 규범).
   io.faultPerm  := StickyFault(set = permViol, clear = io.faultClear)
   io.missNotice := StickyFault(set = missWait, clear = io.missClear)
 
@@ -459,6 +459,24 @@ class HiuPipeline(val cfg: Wt64Config = Wt64Config()) extends Component {
   missStall := missWait
   missPart  := Mux(missWait, s3.part, U(0, partW bits))
   missVpn   := Mux(missWait, s3.vpn, U(0, VPN_W bits))
+
+  // ── 3.10 v1.0 묶음 RTL 파도 W1 (2026-10-11) — FAULT_STATUS [19] 비소유 프레임 접근 ──────
+  // 클래스 *끝*: 위쪽 줄 좌표(:348 missWait 등 — xlatestore.sby · lint_postformal 이 인용)를
+  // 밀지 않는다. 선-formal 은 rtl/formal/tla/Platform.tla (가드 entitle_first · own_reported —
+  // 원인별 보고: 자격 거부는 [4] 만, 자격 허용 ∧ 비소유는 [19] 만, 한 접근에 둘이 함께 서지
+  // 않는다. 거부 채움 R = W = X = 0 은 entitle = 0 이라 언제나 [4] 다).
+  //
+  // 값 차단 · granted · 상태열은 그대로다 — granted 는 위 승인 줄 그대로(devOwned ∧ entitle)
+  // 이고, 바뀐 것은 보고 비트의 귀속뿐이다: 위 permViol 이 자격 거부(¬entitle)로 좁혀졌고,
+  // 자격이 허용된 비소유 적중은 여기 ownViol 이 별도 sticky 로 든다. 두 식은 entitle 항으로
+  // 배타다. io 번들 밖 포트라 이름에 io_ 접두가 없다 (installSlotFree 관례) — 조립(Wt64Top)
+  // 이 faultOwn 을 io.fault.hiuOwn · FAULT_STATUS [19] 로 내고, faultOwnClear 에 0xF84 [19]
+  // W1C(fclr(19)) 하나를 물린다. **IO 해제선은 없다** — 표면 이후 축의 규율(Wt64Top
+  // io.faultClear 주석)이다. 캡처 워드도 없다 (정본이 [19] 에 캡처를 두지 않는다).
+  val faultOwn      = out port Bool()
+  val faultOwnClear = in port Bool()
+  private val ownViol = s6.valid && s6.anyHit && entitle && !io.owner.devOwned
+  faultOwn := StickyFault(set = ownViol, clear = faultOwnClear)
 }
 
 // ── GUARD-MAP — 미적중 관측면(XlateObs.tla)의 파이프라인 쪽 가드 셋 (파도 4) ─────────
@@ -468,3 +486,11 @@ class HiuPipeline(val cfg: Wt64Config = Wt64Config()) extends Component {
 // GUARD-MAP: XlateObs.obs_part_stalled -> missPart = Mux(missWait, s3.part, 0) — 정지 중(missWait = s3.valid ∧ ¬적중)에는 조회 지점 s3 의 파티션 그 자체다. s3 는 advance 가 0 인 동안 when(advance) 밖이라 동결된다 — 정지 중에 파티션을 바꾸는 경로가 없다
 // GUARD-MAP: XlateObs.obs_vpn_stalled -> missVpn = Mux(missWait, s3.vpn, 0) — 정지 중에는 s3 의 VPN 그 자체다. 포착 레지스터가 없다 — 첫 미적중이 아니라 *지금* 정지한 요청의 VPN 이고, 해제 없이 온 둘째 정지는 둘째 요청의 VPN 을 낸다
 // GUARD-MAP: XlateObs.obs_no_residue -> missPart · missVpn 의 Mux 기본 가지가 상수 0 이다 — 정지가 없으면(missWait = 0) 조회 지점에 산 요청이 있어도 · 끝난 정지가 있었어도 0 이다. 상태가 없으므로 끝난 정지의 잔재를 들 자리가 없다
+
+// ── GUARD-MAP — 비소유 프레임 접근 [19] 원인별 보고(Platform.tla 확장)의 파이프라인 쪽 가드 넷 (3.10 v1.0 묶음 RTL 파도 W1) ──
+// 다섯째 Platform.owner_check 는 머리 GUARD-MAP 절에 있다(문면만 원인별로 개정 — 키 그대로). 파일
+// *끝*에 둔 것은 위 익명 when 과 피인용 좌표를 밀지 않기 위해서다 (XlateObs 절과 같은 이유).
+// GUARD-MAP: Platform.entitle_gates_value -> 승인 줄 granted = s6.valid ∧ s6.anyHit ∧ io.owner.devOwned ∧ entitle 의 entitle 항(W1 이 바꾸지 않은 줄) — 자격 거부 접근은 granted = 0 이라 값 게이트 when(granted) 가 io.rsp.frame/perm 을 기본 0 으로 두고 io.rsp.granted 가 내려간다(승인 거부). 처분이 비소유와 같고 갈리는 것은 보고 비트([4] 대 [19])뿐이다. 거부 채움(R = W = X = 0)도 이 항으로 차단되므로 그 요청은 값 없이 퇴장해 드레인이 완주한다
+// GUARD-MAP: Platform.perm_entitle_only -> permViol = s6.valid ∧ s6.anyHit ∧ ¬entitle — io.owner.devOwned 는 이 식의 항이 아니다. [4](io.faultPerm = StickyFault(permViol) → Wt64Top io.fault.hiuPerm → FAULT_STATUS B_XLATE_PERM)는 자격 거부에서만 서고, 자격이 허용된 비소유 적중은 [4] 를 세우지 않는다
+// GUARD-MAP: Platform.entitle_first -> 클래스 끝 ownViol = s6.valid ∧ s6.anyHit ∧ entitle ∧ ¬io.owner.devOwned 의 entitle 항 — 자격 거부가 비소유를 가린다. permViol(¬entitle) 과 ownViol(entitle) 은 그 항으로 배타라 한 접근이 [4] 와 [19] 를 함께 세우지 않고, 거부 채움은 소유와 무관하게 [4] 만 세운다
+// GUARD-MAP: Platform.own_reported -> 클래스 끝 faultOwn = StickyFault(set = ownViol, clear = faultOwnClear) — 자격이 허용된 비소유 장치 접근이 [19] 원천을 세운다(조용한 거부가 아니다). 조립이 faultOwn → io.fault.hiuOwn → faultWords.status(Fault.B_OWN_FRAME = 19) 로 내고(Fault.N_BITS = 20 · 0xF84 예약 [31:20]), 해제는 faultOwnClear = fclr(Fault.B_OWN_FRAME) 하나다 — IO 해제선 없음

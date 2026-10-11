@@ -43,6 +43,9 @@
 \*   03-hiu.typ:1623 「이 장치는 거기 워드를 두지 않는다. 쓰기는」
 \*   03-hiu.typ:1624 「거절 + loud fault (FAULT_STATUS `[6]`), 읽기는 0 · fault 없음이다」
 \*   e-defined.typ:505 「쓰기는 E.1.1 RO 규범대로 거절 + loud fault 다」 — 0xFFC.
+\*   3.10 v1.0 묶음의 RO 워드 둘 (W1, 2026-10-11 — 부류 ro 에 든다 · 아래 「주소 부류」)
+\*   e-defined.typ:503 「쓰기는 E.1.1 RO 규범대로 거절 + loud fault 다」 — 0xFF8 HIU_SHAPE.
+\*   e-defined.typ:347 「쓰기는 E.1.1 RO 규범대로 거절 + `[6]`」 — 0xEC4 MASK_DUP_CAPTURE.
 \*   소비 회로가 없는 RW 워드 (E.1.3 규범 끝 — 판정 T1-i (β) · CQ_BASE 포함)
 \*   e-defined.typ:743 「*소비 회로가 없는 RW 워드 — 쓰기는 거절, 읽기는 0.*」
 \*   e-defined.typ:743 「레지스터만 실물화해 되읽기를 주는 것은 금지다」
@@ -133,7 +136,8 @@
 \*   rw     소비자 있는 RW 워드 (MASK_PART 등)
 \*   cqsz   CQ_SIZE — 돌려줄 실물 값이 있고 같은 값 기입만 수락(무동작)
 \*   wo     WO 워드 (키 · 논스 · FLUSH 등) — 읽기 0
-\*   ro     RO 워드 (0x38C SQ_HEAD · 0xFFC HIU_ABI_VERSION 포함)
+\*   ro     RO 워드 (0x38C SQ_HEAD · 0xFFC HIU_ABI_VERSION 포함 · 3.10 v1.0 묶음의 0xFF8
+\*          HIU_SHAPE · 0xEC4 MASK_DUP_CAPTURE 도 여기다 — 쓰기 거절 + [6], 읽기는 실물 값)
 \*   gate   쓰기가 유닛 ready 를 기다리는 WO 워드 (FP_PROG · FP_BIND — 선택자 표 소거)
 \*   gateR  읽기·쓰기 모두 유닛 ready 를 기다리는 RW 워드 (사상표 — 초기화 소거 · CHECK)
 \*   nocons 소비 회로 없는 RW 워드 (0x300/0x304 · 0x380/0x384 · 0x388 · 0x390)
@@ -151,6 +155,14 @@
 \*   유닛 모델의 몫이다. 여기서 효과는 불투명 사건 하나(eff)다.
 \* · 읽기 *값*의 뜻 — "data" 는 불투명한 실물 값이다. 0xE04–0xE0C 관측 값 · 0xFFC 의 판 값
 \*   (합의 전 0 은 값 의미라 가드가 아니다 — 판정 T1-ii) · CAP/FAULT 워드 배치는 모델 밖.
+\*   0xFF8 의 형상 값 · 0xEC4 의 캡처 필드도 값이다 (값은 assembly · MaskUnit/engine 의 몫).
+\* · 예약 비트의 *자리* — bad 는 「예약 비트 비0」 이라는 사유만 싣고 어느 비트가 예약인지는
+\*   싣지 않는다. 0xF84 FAULT_CLEAR 의 엄격 범위가 [31:20] 이라는 것은 bad 의 정의역이지
+\*   부류 처분이 아니다 — e-defined.typ:497 「`[31:20]` 예약 = 0 (엄격)」. W1 이전 RTL 은
+\*   [31:19] 라 [19] 해제 기입이 거절 + [6] 이었다 — 조립 assembly(acF84 · w5_fclr_rsv)가 잰다.
+\* · W1 이전 RTL 의 0xFF8 · 0xEC4 디코드 — 그 RTL 은 둘을 예약 · 미정의로 디코드해 쓰기를
+\*   조용히 흡수했다. 부류 오배정은 위 첫 항(주소 디코드)이고, RO 쓰기 흡수의 처분 반례는
+\*   짝 today_surface(ro_rejected 삭제 → Prop_NoSilentDrop)가 이미 낸다 — 새 run 이 없다.
 \* · 바이트 인에이블 — 장치 포트에 없다. 이 모델의 비정렬(al = FALSE)은 그 잔재(주소 하위
 \*   두 비트)의 처분만 재고, 어댑터 쪽 이행(정본 경계 밖)은 재지 않는다.
 \* · [6] 의 sticky · W1C · 발화 우선 — loud 는 그 스텝의 발화 펄스다 (CapWord 와 같은 부류).

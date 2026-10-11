@@ -35,14 +35,12 @@ module MaskUnit (
   input  wire          io_faultClearNoMask,
   input  wire          io_faultClearNonceDup,
   input  wire          io_faultClearWrRekey,
+  output wire [31:0]   dupCapture,
   input  wire          clk,
   input  wire          reset
 );
 
   reg        [191:0]  _zz_reqNonce;
-  wire                _zz_nonceDup;
-  wire                _zz_nonceDup_1;
-  wire       [1:0]    _zz_nonceDup_2;
   reg        [31:0]   _zz_st_4;
   reg        [31:0]   _zz_st_5;
   reg        [31:0]   _zz_st_6;
@@ -64,6 +62,9 @@ module MaskUnit (
   wire       [0:0]    _zz__zz_maskFrame_0_4;
   reg        [31:0]   _zz_rFrame;
   reg                 _zz_noMaskFire;
+  wire       [7:0]    _zz_dupCapture;
+  wire       [7:0]    _zz_dupCapture_1;
+  wire       [1:0]    _zz_dupCapture_2;
   reg        [31:0]   key_0_0;
   reg        [31:0]   key_0_1;
   reg        [31:0]   key_0_2;
@@ -260,6 +261,10 @@ module MaskUnit (
   wire       [191:0]  nonceFlat_2;
   wire       [191:0]  nonceFlat_3;
   wire       [191:0]  reqNonce;
+  wire                nonceDupQ_0;
+  wire                nonceDupQ_1;
+  wire                nonceDupQ_2;
+  wire                nonceDupQ_3;
   wire                nonceDup;
   wire                nonceDupFire;
   wire                nonceWrHit;
@@ -300,15 +305,18 @@ module MaskUnit (
   reg                 _zz_io_faultNoMask;
   reg                 _zz_io_faultNonceDup;
   reg                 _zz_io_faultWrDuringRekey;
+  reg        [1:0]    capPart;
+  reg        [3:0]    capMap;
+  wire                when_MaskUnit_l576;
 
   assign _zz__zz_maskFrame_0 = (st_1[11 : 0] + 12'h46e);
   assign _zz__zz_maskFrame_0_1 = (_zz__zz_maskFrame_0_2 + _zz__zz_maskFrame_0_3);
   assign _zz__zz_maskFrame_0_2 = (st_0[31 : 12] + 20'h61707);
   assign _zz__zz_maskFrame_0_4 = (12'h79b <= st_0[11 : 0]);
   assign _zz__zz_maskFrame_0_3 = {19'd0, _zz__zz_maskFrame_0_4};
-  assign _zz_nonceDup = (2'b00 != io_rekey_part);
-  assign _zz_nonceDup_1 = (2'b01 != io_rekey_part);
-  assign _zz_nonceDup_2 = 2'b10;
+  assign _zz_dupCapture = {4'd0, capMap};
+  assign _zz_dupCapture_2 = capPart;
+  assign _zz_dupCapture_1 = {6'd0, _zz_dupCapture_2};
   always @(*) begin
     case(io_rekey_part)
       2'b00 : begin
@@ -530,7 +538,11 @@ module MaskUnit (
   assign nonceFlat_2 = {nonce_2_5,{nonce_2_4,{nonce_2_3,{nonce_2_2,{nonce_2_1,nonce_2_0}}}}};
   assign nonceFlat_3 = {nonce_3_5,{nonce_3_4,{nonce_3_3,{nonce_3_2,{nonce_3_1,nonce_3_0}}}}};
   assign reqNonce = _zz_reqNonce;
-  assign nonceDup = (((((maskValid_0 && _zz_nonceDup) && (nonceFlat_0 == reqNonce)) || ((maskValid_1 && _zz_nonceDup_1) && (nonceFlat_1 == reqNonce))) || ((maskValid_2 && (_zz_nonceDup_2 != io_rekey_part)) && (nonceFlat_2 == reqNonce))) || ((maskValid_3 && (2'b11 != io_rekey_part)) && (nonceFlat_3 == reqNonce)));
+  assign nonceDupQ_0 = ((maskValid_0 && (2'b00 != io_rekey_part)) && (nonceFlat_0 == reqNonce));
+  assign nonceDupQ_1 = ((maskValid_1 && (2'b01 != io_rekey_part)) && (nonceFlat_1 == reqNonce));
+  assign nonceDupQ_2 = ((maskValid_2 && (2'b10 != io_rekey_part)) && (nonceFlat_2 == reqNonce));
+  assign nonceDupQ_3 = ((maskValid_3 && (2'b11 != io_rekey_part)) && (nonceFlat_3 == reqNonce));
+  assign nonceDup = (((nonceDupQ_0 || nonceDupQ_1) || nonceDupQ_2) || nonceDupQ_3);
   assign nonceDupFire = (rekeyFire && nonceDup);
   assign nonceWrHit = (io_nonceWr_valid && (io_nonceWr_idx < 3'b110));
   assign wrActNow = ((io_keyWr_valid && (io_keyWr_part == actPart)) || (nonceWrHit && (io_nonceWr_part == actPart)));
@@ -581,6 +593,8 @@ module MaskUnit (
   assign io_faultNoMask = _zz_io_faultNoMask;
   assign io_faultNonceDup = _zz_io_faultNonceDup;
   assign io_faultWrDuringRekey = _zz_io_faultWrDuringRekey;
+  assign when_MaskUnit_l576 = (nonceDupFire && ((! io_faultNonceDup) || io_faultClearNonceDup));
+  assign dupCapture = {{{15'h0,io_faultNonceDup},_zz_dupCapture},_zz_dupCapture_1};
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       key_0_0 <= 32'h0;
@@ -672,6 +686,8 @@ module MaskUnit (
       _zz_io_faultNoMask <= 1'b0;
       _zz_io_faultNonceDup <= 1'b0;
       _zz_io_faultWrDuringRekey <= 1'b0;
+      capPart <= 2'b00;
+      capMap <= 4'b0000;
     end else begin
       case(phase)
         3'b000 : begin
@@ -1055,6 +1071,14 @@ module MaskUnit (
       end
       if(dirtyAtFinal) begin
         _zz_io_faultWrDuringRekey <= 1'b1;
+      end
+      if(io_faultClearNonceDup) begin
+        capPart <= 2'b00;
+        capMap <= 4'b0000;
+      end
+      if(when_MaskUnit_l576) begin
+        capPart <= io_rekey_part;
+        capMap <= {nonceDupQ_3,{nonceDupQ_2,{nonceDupQ_1,nonceDupQ_0}}};
       end
     end
   end

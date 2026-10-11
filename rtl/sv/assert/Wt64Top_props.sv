@@ -76,6 +76,18 @@
 //   e-defined.typ:743 「*소비 회로가 없는 RW 워드 — 쓰기는 거절, 읽기는 0.*」
 //   e-defined.typ:505 「합의 전 값은 0 이고 *판 0 은 물려받은 `0x000`–`0x11F` 에 어떤 레이아웃도 약속하지 않는다*」
 //   e-defined.typ:505 「쓰기는 E.1.1 RO 규범대로 거절 + loud fault 다」
+//   ── W1 (3.10 v1.0 묶음 RTL 파도 — 표면 비트·워드, 2026-10-11) 이 더한 근거 ──
+//   e-defined.typ:495 「`[31:20]` RO 예약 = 0」 — FAULT_STATUS 는 [19:0] (비트 스물).
+//   e-defined.typ:497 「`[31:20]` 예약 = 0 (엄격)」 — FAULT_CLEAR 의 예약 비트 경계.
+//   e-defined.typ:497 「호스트 대면 fault 해제 표면은 이 워드 하나다」 — [19] 에는 IO 해제선이 없다.
+//   e-defined.typ:523 「비소유 프레임 접근 — 자격(권한 비트)은 허용했으나」 — [19] 의 원천.
+//   e-defined.typ:503 「`[7:0]` 실재 파티션 수 · `[23:8]` 파티션당 항목 용량」 — 0xFF8 HIU_SHAPE.
+//   e-defined.typ:503 「두 필드 다 *개수*로 인코딩한다」 — log2 가 아니다.
+//   e-defined.typ:765 「참조 구현의 형상은 *파티션 4 × 항목 16 = 64 항목 · 직접 사상 · 항목 8 B* 이며」
+//     — 하네스 상수 F_PARTS · F_SLOTS 의 출처 (직접 사상이라 파티션당 저장 칸 수 = 파티션당 항목 16).
+//     RTL 상수를 베끼지 않는다 (차등 정의역 함정).
+//   e-defined.typ:347 「읽기는 아무것도 해제하지 않는다」 — 0xEC4 (a_rd_pure 의 근거).
+//   e-defined.typ:347 「`[31:17]` RO 예약 = 0」 — 0xEC4 의 배치 (값의 뜻은 MaskUnit/engine.sby).
 //
 // ## 구역 분류 — 정의 정책과 예약 정책을 섞지 않는다 (워드 단위)
 //
@@ -85,12 +97,16 @@
 //                      (b-gaps.typ:811 「물려받은 `0x000`–`0x11F` 의 방향 처분」 — 그 미결 행을 판정이 닫았다.)
 //   rResv 0x120–0x1FF  예약 — 정렬 쓰기 무-fault · 읽기 0.
 //   미배선 두 구역(0x380 · 0xFC0)과 변환 저장소 제어(0xE00)의 표에 없는 워드.
-//     uResv  표에 없는 워드 (0x394–0x3FC · 0xE14–0xE7C · 0xFC0–0xFF8) — 예약 정책:
+//     uResv  표에 없는 워드 (0x394–0x3FC · 0xE14–0xE7C · 0xFC0–0xFF4) — 예약 정책:
 //            정렬 쓰기 무-fault(surfMust 밖 → a_surf_rise) · 읽기 0.
 //     sqTbl  명령 링 표 워드 다섯 (0x380–0x390) — RW 넷은 소비 회로가 없는 워드(E.1.3 규범
 //            끝 — 판정 T1-i β), SQ_HEAD(0x38C)는 RO. 정렬 쓰기 거절 + [6](surfMust) · 읽기
 //            0(resvA). 0xFFC 는 RO 판 워드(판정 T1-ii): 정렬 쓰기 거절 + [6](surfMust) ·
 //            읽기는 합의 전 값 0 (a_rd_abi — 이제 규범 값이라 결함의 동결이 아니다).
+//     shapeW 0xFF8 HIU_SHAPE (W1) — RO 워드: 정렬 쓰기 거절 + [6](surfMust) · 정렬 읽기는
+//            응답 + 정본 표에서 유도한 형상 값(a_rd_shape) · 비정렬 읽기 0(resvA).
+//   0xEC4 MASK_DUP_CAPTURE (W1) — 조립 구역 RO 워드: 정렬 쓰기 거절 + [6](surfMust) · 정렬
+//     읽기는 응답 + 수락 사이클의 mask.dupCapture 핀(a_rd_dupcap) · undefA 는 0xEC8 부터다.
 //   변환 저장소 두 구역 (파도 3 — XlateStaging 이 배선했다):
 //     xWo    WO 워드 (0xC00–0xDFC · 0xE00 · 0xE10) — 읽기는 resvA(응답 + 읽기 0). 쓰기의
 //            처분은 문의 판정이다 — 거절은 surfMust (그림자가 판정한 HI 의 빈 스테이징·
@@ -126,6 +142,7 @@ module Wt64Top_props (
   input logic        io_mmio_ready,
   input logic        io_fault_cfgSurfBadWrite,
   input logic        io_fault_fpCfgBadWrite,
+  input logic        io_fault_hiuOwn,      // W1 — FAULT_STATUS [19] 원천별 수출 (a_fsrc_b19)
   // hiu 의 최상위 직결 입력 (파도 4 W6 — a_hiu_pass: 읽기가 요청 · hold · hostRsp 에 닿지 않는다)
   input logic        io_hiuReq_valid, io_hiuReq_write, input logic [1:0] io_hiuReq_part,
   input logic [31:0] io_hiuReq_vpn,
@@ -205,6 +222,8 @@ module Wt64Top_props (
   // 파도 4 — hiu 의 io 번들 밖 출력 (절단 핀): 슬롯 여유 · 미적중 관측 값 · 미적중 sticky
   input logic        hiu__missStall, hiu__io_missNotice, input logic [1:0] hiu__missPart,
   input logic [31:0] hiu__missVpn,
+  // W1 — hiu 의 io 번들 밖 [19] 원천 (절단 출력 핀) · 그 해제 (절단 입력 핀 — IO 해제선 없음)
+  input logic        hiu__faultOwn, hiu__faultOwnClear,
   input logic [11:0] own__io_addr, input logic own__io_wstrobe, input logic [31:0] own__io_wdata,
   input logic        own__io_rstrobe, own__io_rvalid, own__io_ready,
   input logic [31:0] own__io_query_frame, input logic own__io_query_devOwned,
@@ -228,6 +247,7 @@ module Wt64Top_props (
   input logic        mask__io_rsp_valid, input logic [31:0] mask__io_rsp_frame,
   input logic        mask__io_faultNoMask, mask__io_faultNonceDup, mask__io_faultWrDuringRekey,
   input logic        mask__io_faultClearNoMask, mask__io_faultClearNonceDup, mask__io_faultClearWrRekey,
+  input logic [31:0] mask__dupCapture,     // W1 — 0xEC4 캡처 워드 (절단 출력 핀 — 뜻은 MaskUnit/engine.sby)
   input logic        fps__io_oCapAbsent, fps__io_oBusy,
   input logic        fps__io_progWr_valid, input logic [7:0] fps__io_progWr_slot, input logic [7:0] fps__io_progWr_idx,
   input logic [15:0] fps__io_progWr_step,
@@ -270,7 +290,8 @@ module Wt64Top_props (
   wire rAsm   = rMask || rFp || rAbort || rFault;
   wire rXctl  = (A >= 12'hE00) && (A < 12'hE80);
   wire uResv  = ((A >= 12'h394) && (A < 12'h400)) || ((A >= 12'hE14) && (A < 12'hE80)) ||
-                ((A >= 12'hFC0) && (A < 12'hFFC));
+                ((A >= 12'hFC0) && (A < 12'hFF8));                // W1 — 0xFF8 은 HIU_SHAPE 다
+  wire shapeW = (A >= 12'hFF8) && (A < 12'hFFC);   // HIU_SHAPE 0xFF8 (비정렬 바이트 0xFF9–0xFFB 포함)
   wire xWo    = rXent || ((A >= 12'hE00) && (A < 12'hE04)) || ((A >= 12'hE10) && (A < 12'hE14));
   wire xRo    = (A >= 12'hE04) && (A < 12'hE10);
   wire sqTbl  = (A >= 12'h380) && (A < 12'h394);  // 명령 링 표 워드 다섯 (0x380–0x390)
@@ -314,28 +335,36 @@ module Wt64Top_props (
   wire aTag   = (A >= 12'hF40) && (A <= 12'hF4C);
   wire woA    = aKey || aNonce || (A == 12'hEBC) || (A == 12'hF00) || (A == 12'hF04) ||
                 aTag || (A == 12'hF84) || (A == 12'hF90);
-  wire undefA = ((A >= 12'hEC4) && (A <= 12'hEFC)) || ((A >= 12'hF0C) && (A <= 12'hF3C)) ||
+  wire undefA = ((A >= 12'hEC8) && (A <= 12'hEFC)) || ((A >= 12'hF0C) && (A <= 12'hF3C)) ||  // W1 — 0xEC4 는 MASK_DUP_CAPTURE 다
                 ((A >= 12'hF5C) && (A <= 12'hF7C)) || ((A >= 12'hF94) && (A <= 12'hFBC));
   // xWo 는 woA 가 아니라 여기다 — 그 읽기의 rvalid·rdata 는 resvRv 경로(mux 기본 0)라
   // 절단된 유닛 rvalid 가 자유인 이 모델에서는 a_rd_resv0 의 유닛 rvalid 예외가 필요하다
   // (조립 네 구역의 WO 는 mapRv 가 mux 최우선이라 a_rd_wo 로 정확 등식을 잰다).
-  wire resvA  = rLeg || rResv || uResv || sqTbl || xWo || (abiW && !al) || ((rAsm || rXctl) && !al);
+  wire resvA  = rLeg || rResv || uResv || sqTbl || xWo || (abiW && !al) || (shapeW && !al) || ((rAsm || rXctl) && !al);
   wire [11:0] f_kOff = A - 12'hE80;
   wire [11:0] f_nOff = A - 12'hEA4;
 
-  wire partOk = (D[31:8] == 24'd0) && (D[7:0] < 8'd4);
-  wire acF84  = W && (A == 12'hF84) && (D[31:19] == 13'd0);
+  // 형상 상수 — 정본 표에서 독립 유도한다 (머리 「정본」 절의 참조 구현 형상 인용 —
+  // 「파티션 4 × 항목 16」 · 직접 사상). partOk 의 파티션 수와 HIU_SHAPE [7:0] 이 *같은 상수*다:
+  // 둘이 갈리면 하나가 틀렸다. RTL 의 cfg 를 베끼지 않는다 (차등 정의역 함정).
+  localparam integer F_PARTS = 4;    // 실재 파티션 수
+  localparam integer F_SLOTS = 16;   // 파티션당 저장 칸 수 (직접 사상 — 파티션당 항목 수)
+  // 0xFF8 의 기대 읽기 값 — [31:24] 0 · [23:8] 칸 수 · [7:0] 파티션 수 (둘 다 개수)
+  localparam [31:0] F_HIU_SHAPE = (F_SLOTS << 8) | F_PARTS;
+  wire partOk = (D[31:8] == 24'd0) && ({24'd0, D[7:0]} < F_PARTS);
+  wire acF84  = W && (A == 12'hF84) && (D[31:20] == 12'd0);   // W1 — 예약 [31:20] (비트 스물)
   wire acF90  = W && (A == 12'hF90) && (D[31:4]  == 28'd0);
 
   wire surfMust = xHiRej || (W && al && (
       ((A == 12'hE00) && !partOk) || (A == 12'hE04) || (A == 12'hE08) || (A == 12'hE0C) ||
       ((A == 12'hE10) && (D[31:1] != 31'd0)) ||
       ((A == 12'hEA0) && !partOk) || ((A == 12'hEBC) && !partOk) || (A == 12'hEC0) ||
+      (A == 12'hEC4) || (A == 12'hFF8) ||              // W1 — MASK_DUP_CAPTURE · HIU_SHAPE (RO)
       (A == 12'hF08) ||
       ((A == 12'hF44) && (D[27:16] != 12'd0)) ||
       ((A == 12'hF48) && (D[31:16] != 16'd0)) || ((A == 12'hF4C) && (D[31:1] != 31'd0)) ||
       (A == 12'hF50) || (A == 12'hF54) || (A == 12'hF58) ||
-      (A == 12'hF80) || ((A == 12'hF84) && (D[31:19] != 13'd0)) || (A == 12'hF88) || (A == 12'hF8C) ||
+      (A == 12'hF80) || ((A == 12'hF84) && (D[31:20] != 12'd0)) || (A == 12'hF88) || (A == 12'hF8C) ||
       ((A == 12'hF90) && (D[31:4] != 28'd0)))) ||
       (W && rLeg) ||                                   // T3 (d) — 물려받은 구간 쓰기 (정렬 무관)
       (W && al && (sqTbl || (A == 12'hFFC))) ||        // T1-i β 소비 없는 RW 넷 · SQ_HEAD RO · T1-ii 판 워드 RO
@@ -352,7 +381,7 @@ module Wt64Top_props (
     else if (W && al && (A == 12'hEA0) && partOk) f_win <= D[1:0];
   end
 
-  wire [18:0] f_expSt = {2'b00, cq__io_faultOverflow, fps__io_faultBadProg, fps__io_faultBpViolation,
+  wire [19:0] f_expSt = {hiu__faultOwn, 2'b00, cq__io_faultOverflow, fps__io_faultBadProg, fps__io_faultBpViolation,
       mask__io_faultWrDuringRekey, mask__io_faultNonceDup, mask__io_faultNoMask, bank__io_fault,
       shared_1__io_faultBpViolation, merge__io_fault, own__io_faultCollide,
       (cfgBlk__io_faultBadWrite || io_fault_cfgSurfBadWrite || cq__io_faultBadWrite || own__io_faultBadWrite ||
@@ -424,6 +453,9 @@ module Wt64Top_props (
     a_fclr_b14: assert (fps__io_faultClearBp == (io_faultClear_fpBp || (acF84 && D[14])));
     a_fclr_b15: assert (fps__io_faultClearBadProg == (io_faultClear_fpBadProg || (acF84 && D[15])));
     a_fclr_b16: assert (cq__io_faultClearOverflow == (acF84 && D[16]));
+    // W1 — [19] 의 해제는 0xF84 [19] 하나다: IO 해제선이 없다 (정본 「호스트 대면 fault 해제 표면은
+    // 이 워드 하나다」 · 표면 이후 축의 규율). 예약 경계는 acF84 의 [31:20] 이다.
+    a_fclr_b19: assert (hiu__faultOwnClear == (acF84 && D[19]));
     a_miss_clr: assert (hiu__io_missClear == (io_faultClear_hiuMiss ||
                         (W && al && (A == 12'hE10) && (D[31:1] == 31'd0) && D[0])));
     // 변환 저장소의 문 (파도 3) — 오라클은 그림자 스테이징(f_xv · f_xnum · f_xfr)이다.
@@ -471,6 +503,17 @@ module Wt64Top_props (
     // hiu 의 요청 · hold · hostRsp 입력 핀 = 최상위 IO 그대로 (파도 4 W6 검토 — XlateObs.obs_read_pure 의 「조립 몫
     // 전부」가 이 열 핀을 요구한다: 읽기가 파이프라인을 잡거나 요청을 누르거나 응답을 먹는 변이 N15 · N16 · N22 가
     // 이 단언 전에는 세 태스크를 다 통과했다). 절단 입력 핀 열을 묶어 「재지 않는 핀」 hiu 10 → 0.
+    // W1 — [19] 원천별 수출: 최상위 io.fault.hiuOwn 은 hiu 의 faultOwn 핀 그대로다 ([4] 와 다른 넷).
+    a_fsrc_b19:  assert (io_fault_hiuOwn == hiu__faultOwn);
+    // W1 — 읽기 무부작용 (조립 절반 · 정본 0xEC4 「읽기는 아무것도 해제하지 않는다」): 읽기 사이클에
+    // [12] 와 캡처 워드 · [19] 원천의 상태를 움직일 수 있는 절단 입력 핀(해제 둘 · 재키잉 · 키 ·
+    // 논스 기입)이 읽기 때문에 서지 않는다 — 해제 핀은 IO 해제선 그대로다. 유닛 절반(그 핀이
+    // 서지 않으면 [12] · 캡처 · [19] 가 그대로다)은 MaskUnit/engine.sby 의 n_dup_hold · n_dup_rise_src ·
+    // c_first · c_clr_zero 와 hiumask.sby 의 o_own_hold · o_own_rise 다 — 합성은 서술이다.
+    // a_fclr_b12 · a_fclr_b19 · a_rekey_iff · a_key_valid · a_nonce_valid 에서 유도된다 (a_mask_env 와
+    // 같은 처분 — 읽기 무부작용을 이름으로 드는 서명).
+    a_rd_pure:   assert (!R || (mask__io_faultClearNonceDup == io_faultClear_maskNonceDup && !hiu__faultOwnClear &&
+                                !mask__io_rekey_valid && !mask__io_keyWr_valid && !mask__io_nonceWr_valid));
     a_hiu_pass:  assert (hiu__io_req_valid == io_hiuReq_valid && hiu__io_req_write == io_hiuReq_write &&
                          hiu__io_req_part == io_hiuReq_part && hiu__io_req_vpn == io_hiuReq_vpn &&
                          hiu__io_hold == io_hiuHold &&
@@ -509,8 +552,14 @@ module Wt64Top_props (
     if ($past(R && al && (A == 12'hF50)))          a_rd_acnt:  assert (io_mmio_rvalid && io_mmio_rdata == {24'd0, $past(reasm__io_abortCount)});
     if ($past(R && al && (A == 12'hF54)))          a_rd_ainc:  assert (io_mmio_rvalid && io_mmio_rdata == {29'd0, $past(reasm__io_incomplete)});
     if ($past(R && al && (A == 12'hF58)))          a_rd_arm:   assert (io_mmio_rvalid && io_mmio_rdata == {29'd0, $past(stg_io_armed)});
-    if ($past(R && al && (A == 12'hF80)))          a_rd_fst:   assert (io_mmio_rvalid && io_mmio_rdata == {13'd0, $past(f_expSt)});
+    if ($past(R && al && (A == 12'hF80)))          a_rd_fst:   assert (io_mmio_rvalid && io_mmio_rdata == {12'd0, $past(f_expSt)});
     if ($past(R && al && (A == 12'hF88)))          a_rd_fsum:  assert (io_mmio_rvalid && io_mmio_rdata == {31'd0, |$past(f_expSt)});
+    // W1 — 0xFF8 HIU_SHAPE: 정렬 읽기의 다음 사이클 응답 + 정본 표에서 유도한 형상 값 (RTL 상수를
+    // 베끼지 않는다). resvRv 경로가 아니라 덮어쓰기라 유닛 rvalid 예외가 없는 정확 등식이다.
+    if ($past(R && al && (A == 12'hFF8)))          a_rd_shape:  assert (io_mmio_rvalid && io_mmio_rdata == F_HIU_SHAPE);
+    // W1 — 0xEC4 MASK_DUP_CAPTURE: 정렬 읽기의 다음 사이클 rdata = 수락 사이클의 mask.dupCapture 핀
+    // (조립에 캡처를 드는 상태가 없다 — 값의 뜻은 MaskUnit/engine.sby 의 c_* 가 든다).
+    if ($past(R && al && (A == 12'hEC4)))          a_rd_dupcap: assert (io_mmio_rvalid && io_mmio_rdata == $past(mask__dupCapture));
     if ($past(R && al && (A == 12'hF8C))) begin
       a_rd_capst: assert (io_mmio_rvalid && io_mmio_rdata == {28'd0, $past(capWord_io_word[3:1]), $past(reasm__io_capAbsent)});
       a_rd_capb3: assert (!io_mmio_rdata[3]);
@@ -565,7 +614,7 @@ module Wt64Top_props (
   always @(posedge clk) if (f_step) w4_ro_wr: cover ($past(W && al && A == 12'hF58 && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite);
   // W5 ← Wt64Top.word_reserved_strict · a_rekey_iff · a_fclr_b0 — [무관] 예약 비0 기입은 거절+loud 이고 효과가 없다
   always @(posedge clk) if (f_step) w5_rekey_rsv: cover ($past(W && al && A == 12'hEBC && D[31:8] != 24'd0 && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite && !$past(mask__io_rekey_valid));
-  always @(posedge clk) if (f_step) w5_fclr_rsv:  cover (W && al && A == 12'hF84 && D[19] && D[0] && !io_faultClear_decodeWalk && !walk__io_iFaultClear);
+  always @(posedge clk) if (f_step) w5_fclr_rsv:  cover (W && al && A == 12'hF84 && D[20] && D[0] && !io_faultClear_decodeWalk && !walk__io_iFaultClear);
   // W6 ← Wt64Top.partition_reject · a_win_pins — [무관] MASK_PART [7:0]=4 (형상 파티션 수 밖) 거절
   always @(posedge clk) if (f_step) w6_part_rej: cover ($past(W && al && A == 12'hEA0 && D == 32'd4 && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite);
   // W7 ← Wt64Top.surf_fire_beats_clear · a_surf_fire · a_surf_clear — [무관] 해제선과 거절 사건의 겹침 · MMIO W1C 해제
@@ -574,8 +623,8 @@ module Wt64Top_props (
   // W8 ← Wt64Top.fault_status_map · a_rd_fst · a_rd_fsum — [의존: rdata mux] [6] 은 조립 sticky 로도 선다 — 실물 도달은 W4 궤적 + 읽기
   always @(posedge clk) if (f_step) w8_fst_rd6: cover ($past(R && A == 12'hF80) && io_mmio_rdata[6]);
   always @(posedge clk) if (f_step) w8_fsum_rd: cover ($past(R && A == 12'hF88) && io_mmio_rdata[0]);
-  // W9 ← Wt64Top.fault_clear_routing · a_fclr_b16 — [무관] 19비트 전부 1 인 수락 W1C 가 첫·끝 축에 닿는다
-  always @(posedge clk) if (f_step) w9_fclr_all: cover (W && A == 12'hF84 && D[31:19] == 13'd0 && D[18:0] == 19'h7FFFF && walk__io_iFaultClear && cq__io_faultClearOverflow);
+  // W9 ← Wt64Top.fault_clear_routing · a_fclr_b16 · a_fclr_b19 — [무관] 20비트 전부 1 인 수락 W1C 가 첫·끝 축에 닿는다 (W1 — 끝 축은 [19])
+  always @(posedge clk) if (f_step) w9_fclr_all: cover (W && A == 12'hF84 && D[31:20] == 12'd0 && D[19:0] == 20'hFFFFF && walk__io_iFaultClear && cq__io_faultClearOverflow && hiu__faultOwnClear);
   // W10 ← Wt64Top.cap_status_wiring · a_cap0_clr · a_cap2_rise · a_rd_capst — w10_cap0_clr [무관] ·
   //       w10_cap2_gate [의존: walk 핀 — 실물 근거 없음(DecodeWalk 의 등급이 iValid 와 무관하게 계산된다는 설계 서술뿐)] ·
   //       w10_capst_rd2 [의존: walk 핀 — 실물 근거 DecodeWalk_props.sv w3_capabsent]
@@ -646,6 +695,22 @@ module Wt64Top_props (
   always @(posedge clk) if (f_step) w39_xread_pure: cover (R && al && A == 12'hE04 && !io_faultClear_hiuMiss && !hiu__io_missClear && !hiu__io_flush_valid);
   // W40 ← XlateSurface.flush_drops_staging · XlateSurface.hi_needs_staging · XlateSurface.reject_loud · a_xhi_iff · a_surf_fire — [무관] 래치 파티션의 적법 XLATE_FLUSH 가 스테이징을 비운 뒤(그림자: 유효 0 · 번호 ≠ reset 값 0 — 번호는 LO 로만 바뀌고 LO 는 유효를 세우므로 그 조합은 flush 하강뿐이다) 같은 번호의 HI 가 거절되고 조립 sticky 를 세운다 — 판정 전 RTL 이 옛 프레임을 커밋하던 입력 (판정 T5 (a))
   always @(posedge clk) if (f_step) w40_xflush_ends: cover ($past(xHiW && !f_xv && (f_xnum != 6'd0) && (A[8:3] == f_xnum) && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite);
+  // ── W1 증인 (3.10 v1.0 묶음 — FAULT_STATUS [19] · 0xFF8 HIU_SHAPE · 0xEC4 MASK_DUP_CAPTURE) ──
+  // W41 ← MmioPage.ro_rejected · Wt64Top.hiu_shape · a_surf_fire — [무관] HIU_SHAPE(0xFF8) 정렬 쓰기가 조립 sticky 를 처음 세운다 (예약 관대였던 HEAD 의 반전 — uResv 축소의 절단 무관 증인)
+  always @(posedge clk) if (f_step) w41_shape_wr: cover ($past(W && al && A == 12'hFF8 && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite);
+  // W42 ← MmioPage.ro_rejected · Wt64Top.mask_surface · a_surf_fire — [무관] MASK_DUP_CAPTURE(0xEC4) 정렬 쓰기가 조립 sticky 를 처음 세운다 (미정의 워드였던 HEAD 의 반전)
+  always @(posedge clk) if (f_step) w42_dupcap_wr: cover ($past(W && al && A == 12'hEC4 && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite);
+  // W43 ← MmioPage.resv_lenient · a_surf_rise — [무관] 줄어든 uResv 의 끝 워드(0xFF4) 정렬 쓰기 뒤 조립 sticky 가 서지 않는다 (예약 관대가 0xFF8 앞에서 끝난다)
+  always @(posedge clk) if (f_step) w43_resv_ff4: cover ($past(W && al && A == 12'hFF4 && !io_fault_cfgSurfBadWrite) && !io_fault_cfgSurfBadWrite);
+  // W44 ← Wt64Top.hiu_shape · a_rd_shape — [의존: rdata mux 콘에 유닛 rdata 핀 — 값은 덮어쓰기라 핀과 무관(실물 근거 = 이 등식)] 0xFF8 읽기가 형상 값을 낸다
+  always @(posedge clk) if (f_step) w44_shape_rd: cover ($past(R && al && A == 12'hFF8) && io_mmio_rvalid && io_mmio_rdata == F_HIU_SHAPE);
+  // W45 ← Wt64Top.mask_surface · a_rd_dupcap — [의존: mask__dupCapture 핀 — 실물 근거 MaskEngine_props.sv w11_dup_latch] 0xEC4 읽기가 [16] = 1 · 비트맵 비0 인 캡처를 낸다
+  always @(posedge clk) if (f_step) w45_dupcap_rd: cover ($past(R && al && A == 12'hEC4) && io_mmio_rvalid && io_mmio_rdata[16] && io_mmio_rdata[15:8] != 8'd0);
+  // W46 ← Wt64Top.fault_status_map · a_rd_fst · a_fsrc_b19 — [의존: hiu__faultOwn 핀 — 실물 근거 HiuMask_props.sv w13_unowned_loud] 0xF80 읽기가 [19] 를 내고 원천별 수출도 선다
+  always @(posedge clk) if (f_step) w46_fst_rd19: cover ($past(R && al && A == 12'hF80 && io_fault_hiuOwn) && io_mmio_rdata[19] && !io_mmio_rdata[4]);
+  // W47 ← Wt64Top.fault_clear_routing · a_fclr_b19 · a_rd_pure — [무관] 0xF84 [19] 수락 기입이 IO 해제선 없이 [19] 해제 핀을 세우고, 0xEC4 읽기 사이클에는 해제 핀이 서지 않는다
+  always @(posedge clk) if (f_step) w47_fclr_b19: cover (W && al && A == 12'hF84 && D == 32'h0008_0000 && hiu__faultOwnClear);
+  always @(posedge clk) if (f_step) w47_read_pure: cover (R && al && A == 12'hEC4 && !io_faultClear_maskNonceDup && !mask__io_faultClearNonceDup && !hiu__faultOwnClear);
 `endif
 endmodule
 

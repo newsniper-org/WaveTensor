@@ -424,7 +424,13 @@ _LEGACY_SCHEMAS = {
 # 둘은 **상한**(늘면 실패)이다. 상한 쪽이 있는 이유: 구조 skip 과 부분 덮임은
 # 「CHECK 분모를 비우는」 방향의 부정을 가능하게 하므로, 그것을 늘리는 일은
 # 반드시 이 파일을 고치는 *명시적 서명*을 거쳐야 한다.
-_MIN_COVERED = 134     # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다.
+_MIN_COVERED = 146     # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다.
+                       # 134 → 146 (2026-10-12, 3.10 v1.0 묶음의 RTL 파도 W1 착지 — 실측 146 = 완전 103 + 부분 43:
+                       # 새 가드 열둘(Platform 넷 entitle_gates_value · perm_entitle_only · entitle_first ·
+                       # own_reported — hiumask.sby · Mask 여덟 dup_on_started_rekey · cap_first_event ·
+                       # cap_clear_whole · cap_set_beats_clear · cap_bitmap_exact · cap_bitmap_domain ·
+                       # start_ignores_dup · complete_ignores_dup — engine.sby)이 전부 앵커를 갖고 태어났다.
+                       # 그중 넷이 태어나면서 부분 — 아래 _PARTIAL 의 W1 머리 주석. 분모 134 → 146)
                        # 133 → 134 (2026-09-26, 태그 코덱 전파 파도 — 새 가드 Payload.key_drops_side 완전 덮임: 실측 95 + 39)
                        # 116 → 133 (2026-09-26 실측 133 — 파도 4 통합 착지: 9 + 6 + 2 · 완전 92 → 94 · 부분 24 → 39.
                        # 아래 세 문단은 각 축 판의 116 기준 증분 서명이다):
@@ -463,7 +469,16 @@ _MIN_COVERED = 134     # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다
                        # 실측 아래 8 칸 헐거운 채로는 앵커 여덟이 조용히 사라져도
                        # 게이트가 침묵한다 (2026-09-21 전수 반증 세 렌즈가 같은
                        # 것을 지적했다).
-_MAX_PARTIAL = 39      # 부분 덮임뿐인 가드 수. 늘지 않는다 (늘리려면 근거와 함께)
+_MAX_PARTIAL = 43      # 부분 덮임뿐인 가드 수. 늘지 않는다 (늘리려면 근거와 함께)
+                       #
+                       # 39 → 43 (2026-10-12, 3.10 v1.0 묶음의 RTL 파도 W1 착지 — 실측 부분 43 · 완전 103).
+                       # 새 가드 열둘 중 넷이 **태어나면서 부분**이다: Platform.own_reported (파이프라인
+                       # 절반 — [19] 배치 · 해제 라우팅은 조립이 다른 이름으로 재고 조립은 hiu 를 절단한다) ·
+                       # Platform.entitle_gates_value (granted 까지 — 하류 반영은 hiu 밖) ·
+                       # Mask.cap_bitmap_domain · Mask.dup_on_started_rekey (논스 탐침 축약의 대가 — 착지 판정
+                       # 수락). complete_ignores_dup 은 관계 단언 e_busy_len_same 으로 닫아 올리지 않았고,
+                       # cap_clear_whole 은 가드 문면(「해제가 워드 전체를 지운다」)을 유닛이 전부 재므로
+                       # 올리지 않았다 (해제 입력의 합류는 assembly a_fclr_b12 — 아래 W1 머리 주석).
                        #
                        # 24 → 39 (2026-09-26, 파도 4 통합 착지 실측 — 8 (MmioPage) + 5 (XlateObs) + 2 (XlateSurface
                        # T5 · T4) = 15. 아래 세 문단은 각 축 판의 24 기준 증분 서명이다):
@@ -580,7 +595,13 @@ _MAX_STRUCTURAL_RESIDUAL = 1
                        # 숨기는 것보다 낫지만, **늘어도 되는 것은 아니다.**
                        # 줄이는 길은 그 축을 실제로 재고 칸을 _NOTHING_LEFT 로
                        # 바꾸는 것뿐이다.
-_MIN_EVIDENCED = 168   # 실행 증거로 뒷받침된 앵커 수. 줄지 않는다.
+_MIN_EVIDENCED = 180   # 실행 증거로 뒷받침된 앵커 수. 줄지 않는다.
+                       #
+                       # 168 → 180 (2026-10-12, 3.10 v1.0 묶음의 RTL 파도 W1 착지 — PROVES +12: hiumask.sby
+                       # Platform 넷 · engine.sby Mask 여덟. 새 VERIFIES Wt64Top.hiu_shape 는 이 계수의 대상이
+                       # 아니다. sby_impact 역색인 다섯(assembly · AbortStaging/props · XlateStaging/props ·
+                       # hiumask · engine) 재스윕과 착지 편집(ownershiptable · engine 머리 문면) 뒤 재스윕
+                       # 직후 실측: 앵커 180 전부 신선)
                        #
                        # 167 → 168 (2026-09-26, 태그 코덱 전파 파도 — PROVES Payload.key_drops_side
                        # (Reassembly/props.sby). 새 VERIFIES CompletionUnit.cd_tag1_device_authored 는 이
@@ -705,9 +726,14 @@ _PARTIAL = {
         "관측면 도달. 그 둘은 소비쪽(HiuPipeline)에 있고 이 태스크의 top 밖이다",
     ),
     ("Platform", "owner_check", "rtl/formal/sby/HiuMask/hiumask.sby"): (
-        "승인 소비 축 — granted ⊆ devOwned · 비소유의 값 차단 · loud sticky",
+        "승인 소비 축 — granted ⊆ devOwned · 비소유의 값 차단 · 원인별 loud sticky "
+        "(자격 허용 ∧ 비소유 → faultOwn [19] — o_own_loud · 자격 거부 → io_faultPerm [4] — "
+        "o_perm_loud · 둘 다 명시 해제 없이 내려가지 않는다) (W1 2026-10-12 — 옛 문면 「loud sticky」 는 "
+        "두 원인을 [4] 하나로 접던 판)",
         "devOwned 값 자체가 옳게 계산된다는 것 (OwnershipTable 앵커의 몫). "
-        "이 태스크에서 io_owner_devOwned 는 자유 입력이다",
+        "이 태스크에서 io_owner_devOwned 는 자유 입력이다. 그리고 sticky 의 관측면 도달 — "
+        "FAULT_STATUS [4] · [19] 배치와 0xF84 해제 라우팅은 Wt64Top/assembly.sby 가 다른 이름으로 "
+        "(VERIFIES fault_status_map · fault_clear_routing) 재고 그 태스크는 hiu 를 절단한다 — 합성은 서술이다",
     ),
     ("Platform", "xlate_local", "rtl/formal/sby/HiuMask/hiumask.sby"): (
         "판정·값·정지 세 축 — 호스트 응답(io_hostRsp_*)이 s4 판정 비트 · 조회 "
@@ -1246,6 +1272,57 @@ _PARTIAL = {
         "flush.part 로 자르는 별칭 없음 (p_flush_iff · p_bad_iff · 증인 W19)",
         "표 불변 — XlateStore 프레임 조건(위 항목들과 같다) · 파티션 2 형상의 조립은 재지 않는다",
     ),
+
+    # ── 아래 넷: 태어나면서 부분인 앵커 (2026-10-12, 3.10 v1.0 묶음의 RTL 파도 W1 — [19] · 0xEC4 · [12]) ──
+    #
+    # 새 가드 열둘(Platform 넷 · Mask 여덟) 중 넷. 정본 B.5 「비소유 접근은 loud fault 의
+    # 후-formal 미증명」 행을 해소로 옮긴 근거가 hiumask(파이프라인 절반) + assembly(조립 절반)
+    # 이고 **그 합성은 서술**이다 — own_reported 칸이 그 자백의 거처다 (B.5 가 이름한 「자백이
+    # 기계 밖」 형태를 막는다). Mask 둘은 engine.sby 논스 탐침 축약의 대가다: [12] 판정 · 비트맵의
+    # 논스 항은 고정 탐침 여섯 자리 중 하나의 1비트 등치 환경에서만 형식으로 잰다 (착지 판정 —
+    # 축약 수락. formal anyconst 비트 탐침 대안은 채택하지 않았다).
+    # 올리지 *않은* 둘: Mask.complete_ignores_dup — 상계 e_busy_bounded 에 관계 단언
+    # e_busy_len_same 을 더해 「완료는 [12] 와 무관」 을 잰다 (그 단언은 정본보다 강하다 — engine.sby
+    # 머리 자백. 남는 「창 길이 값 42」 는 가드 문면이 요구하지 않는다) · Mask.cap_clear_whole —
+    # 가드 문면이 「해제가 워드 전체를 지운다」 이고 유닛이 그것을 전부 잰다 (해제 입력 = IO 해제선
+    # ∨ 0xF84 [12] 의 합류는 assembly a_fclr_b12).
+    ("Platform", "own_reported", "rtl/formal/sby/HiuMask/hiumask.sby"): (
+        "파이프라인 절반 — 자격 허용 ∧ 비소유 적중은 다음 에지에 sticky faultOwn 을 세우고 "
+        "(o_own_loud) · 해제 없이 내려가지 않으며 (o_own_hold) · 해제로 내려간다 (o_own_clear) · "
+        "증인 W13 · W27 · W28",
+        "faultOwn → io.fault.hiuOwn → FAULT_STATUS [19] 배치 · 0xF84 [19] 해제 라우팅 — "
+        "Wt64Top/assembly.sby 의 VERIFIES fault_status_map · fault_clear_routing (a_rd_fst · "
+        "a_fsrc_b19 · a_fclr_b19) 가 다른 이름으로 잰다. 그 태스크에서 hiu 는 절단돼 두 증명의 "
+        "합성은 서술이다 (정본 3.9 비소유 접근 행 *부분* · HIU-5 · HIU-6 *부분 증명* 의 근거). "
+        "이 태스크에서 faultOwnClear 는 자유 입력이다",
+    ),
+    ("Platform", "entitle_gates_value", "rtl/formal/sby/HiuMask/hiumask.sby"): (
+        "자격 쪽 값 차단 · 승인 거부 — granted ⇒ entitle (o_grant_entitle) · ¬entitle ⇒ ¬granted ∧ "
+        "값 0 (o_ent_blocked — 유도 단언, 아래 _DERIVED) · 증인 W26",
+        "승인이 거부된 쓰기가 하류(메모리)에 반영되지 않는다는 것 — granted 의 하류 소비는 hiu "
+        "밖이고, 조립(Wt64Top/assembly.sby)에서 hiu 응답 핀은 절단(자유)이다. 이 태스크는 granted "
+        "까지만 잰다 (선-formal Platform.tla 머리 「안 잰다」 의 쓰기 미반영 몫을 granted 까지만 덮는다)",
+    ),
+    ("Mask", "cap_bitmap_domain", "rtl/formal/sby/MaskUnit/engine.sby"): (
+        "유효 항 — 래치 사건 비트맵 ⊆ 유효한 다른 파티션 · bit p 0 · 비0 (c_latch, 자유 환경) · "
+        "논스 항 — 탐침 환경에서 비트맵 = 유효 ∧ 논스 등치 (c_latch_dom) · 증인 W18 · W19 · W20",
+        "논스 탐침 축약의 대가 — (가) 두 비트 자리 이상이 동시에 다른 쌍에만 나타나는 비교 결함 · "
+        "(나) 고정 탐침 여섯 밖 한 자리만 무시하는 결함. formal 측정 0. cocotb 가 지향 표본으로 "
+        "잰다 — test_mask_golden 의 nonce_dup_compare_every_bit 가 (나) 를 비교기 넷 × 192 자리 "
+        "전부(변이 X14 실측), (가) 를 이웃 두 비트 차이 191 자리(변이 X23 · X24 실측), "
+        "sec1_golden_exact 가 80 라인 무작위 쌍(X23 · X24 실측). 세 비트 이상 · 이웃하지 않은 "
+        "두 비트 차이에만 나타나는 결함은 어디서도 전수로 재지 않는다",
+    ),
+    ("Mask", "dup_on_started_rekey", "rtl/formal/sby/MaskUnit/engine.sby"): (
+        "유닛 절반 — [12] 상승 원천은 수락(valid ∧ ready) ∧ 유효한 다른 파티션 ∧ (탐침 환경) 같은 "
+        "논스뿐 (n_dup_rise_src) · 그 사건이면 해제와 겹쳐도 선다 (n_dup_fire — 탐침 환경) · "
+        "비하강 · 해제 (n_dup_hold · n_dup_clear) · 증인 W12 · W16",
+        "(i) 값 검사 거절(예약 비0 · 없는 파티션) MASK_REKEY 가 rekey.valid 를 세우지 않는 조립 "
+        "절반 — Wt64Top/assembly.sby a_rekey_iff (다른 이름) (ii) 논스 탐침 축약의 대가 — 위 "
+        "cap_bitmap_domain 과 같다: 탐침 밖 한 자리 · 두 비트 이상 결함은 formal 측정 0 이고 "
+        "cocotb nonce_dup_compare_every_bit · sec1_golden_exact 가 지향 표본으로 잰다 (세 비트 "
+        "이상 · 이웃하지 않은 두 비트 차이는 어디서도 전수로 재지 않는다)",
+    ),
 }
 
 # ── 구조 skip 표 ─────────────────────────────────────────────────────────
@@ -1510,6 +1587,16 @@ _DERIVED = {
         "접히지 않아 항진이 아니다 (b) 형제를 지우면 반증력을 되찾는 backstop "
         "이다 (c) 전건을 devOwned 로 둔 문면이 「자격(entitle)만 다른 경우」와 "
         "갈라 주는 문서적 값을 진다. 비용은 assert 23 중 1셀",
+    ),
+    ("Platform", "entitle_gates_value", "rtl/formal/sby/HiuMask/hiumask.sby"): (
+        "o_ent_blocked (¬entitle → ¬granted ∧ 값 차단)",
+        "같은 태스크의 o_grant_entitle(granted → entitle)과 Isolation.approve_gates_value "
+        "((값≠0) → granted)에서 유도된다 — 독립 반증력 0 (변이 HW7 에서 o_grant_entitle 과 같은 "
+        "스텝에 함께 깨지고, 둘을 뗀 HW7r 은 PASS). 유지 근거는 owner_check ② 와 같다: 상수로 "
+        "접히지 않고 · 형제를 지우면 반증력을 되찾는 backstop 이며 · 전건을 entitle 로 둔 문면이 "
+        "정본 「처분이 같다」 를 이름으로 든다. 비용은 assert 53 중 1셀 (2026-10-12 W1 착지). "
+        "같은 부류의 조립층 단언 a_rd_pure 는 VERIFIES 단언이라 키가 없다 — assembly.sby 머리 "
+        "「유도 단언 둘」 절이 든다",
     ),
 }
 

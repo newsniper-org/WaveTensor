@@ -50,15 +50,15 @@ mkdtemp 루트는 **통과한 실행이 스스로 지운다** — 실패한 실�
 
 ---
 
-## 실행 결과 (2026-09-26, 호스트)
+## 실행 결과 (2026-10-12, 호스트 — W1 통합 생성물 · 검증 수리 뒤)
 
 ```
-Mask:  11 tests passed (skip 0, 하한 11)
-Shape: 21 tests passed (skip 0, 하한 21)
-run_wt64: 요청 스위트 2건 / cocotb 테스트 32건 전부 통과
+Mask:  12 tests passed (skip 0, 하한 12)
+Shape: 24 tests passed (skip 0, 하한 24)
+run_wt64: 요청 스위트 2건 / cocotb 테스트 36건 전부 통과
 ```
 
-(2026-09-26 파도 4 — Shape 15 → 16 `abort_tag1_word_legality` · 통합 착지 16 → 21: 페이지 통합 `page_disposition` · `fp_clear_window` ·
+(2026-10-12 W1 검증 수리 — Mask 11 → 12 `nonce_dup_compare_every_bit`(논스 비교 전폭 — 아래 「W1」 절의 「검증 수리」) · N14 에 reset · `[4]` 단독 해제 · `0xF88` 요약 행. 2026-10-11 W1(3.10 RTL 파도 — 표면 비트·워드) — Shape 21 → 24 `hiu_shape_word` · `mask_dup_capture` · `fault19_nonowned_access`, Mask 11 그대로(두 시험을 넓힘 — 아래 「W1」 절). 2026-09-26 파도 4 — Shape 15 → 16 `abort_tag1_word_legality` · 통합 착지 16 → 21: 페이지 통합 `page_disposition` · `fp_clear_window` ·
 3B `xlate_miss_observed` · `xlate_miss_obs_second_stall` · 3A `xlate_other_flush_keeps_staging` (`xlate_hi_releases_stall` 은 제자리에서 `xlate_flush_ends_staging`).
 2026-09-26 파도 3 — 변환 저장소의 MMIO 문: Shape 6 → 13, 지향 시험 일곱
 `xlate_*`, 같은 날 반증 검토 뒤 수리로 13 → 15 — 인접 HI 의 D-2 버스 정지 값 시험 둘.
@@ -78,13 +78,13 @@ run_wt64: 요청 스위트 2건 / cocotb 테스트 32건 전부 통과
 | 사영 뒤 서로 다른 `maskFrame` | **73/80** | 같음 |
 | 사영 뒤 서로 다른 자극점 | **79/80** | 같음 |
 | 재키잉 지연 | 수락 엣지 **포함** 43사이클 / **제외** 42엣지 / `io_busy` 상승 41사이클 | `fixed_latency_path_invariant` |
-| `faultNonceDup` 등가 대조 (golden 루프 안) | **80/80 라인** — 기대 1 이 17라인 (pinned 1–7 · edge 42–43 · key_word 쌍 뒤 줄 65…79), 나머지 63은 기대 0 | `sec1_golden_exact` |
+| `faultNonceDup` 등가 대조 (golden 루프 안) | **80/80 라인** — 기대 1 이 17라인 (pinned 1–7 · edge 42–43 · key_word 쌍 뒤 줄 65…79), 나머지 63은 기대 0. `dupCapture`(0xEC4 유닛 쪽) 등가 **80/80** + 해제 뒤 0 **17/17** · 다중 비트 비트맵 **7라인** (2–7 · 43) | `sec1_golden_exact` |
 | 임대별 키 범위 — 값 수준 | part 1/2 각자 golden → part 1 키만 갈아 `maskReady` 정확히 `0b0100` · part 2 값 불변 → 재키잉 뒤 `0b0110` · 값 셋 golden | `key_scope_cross_partition_value` |
 | 계산 중 **다른** 파티션 기입 | `maskReady == 0b0001` · `faultWrDuringRekey == 0` · part 0 값 golden | `wr_other_partition_during_rekey_is_clean` |
 | 변이 실측 (사본 worktree, 생성 SV 한 자리씩 — M2 만 case 블록 24줄) | **4/4 잡힘** — 아래 표 | Mask 스위트 전체 |
 | 구성 표면 소거 구간 | **65535 엣지** | `cfg_surface_integrity` |
-| ISA-1 대조면 | **119/121** 출력 (제외: `io_push_1_stall`·`io_push_2_stall`) | `compare_face_is_pinned` |
-| IO fault 해제선 | 19 (fault 출력 23 − MMIO 전용 4) | 같음 |
+| ISA-1 대조면 | **120/122** 출력 (제외: `io_push_1_stall`·`io_push_2_stall`) | `compare_face_is_pinned` |
+| IO fault 해제선 | 19 (fault 출력 26 − MMIO 전용 7 — `NO_IO_CLEAR` 는 이름까지 생성물과 등식) | 같음 |
 
 ---
 
@@ -101,7 +101,7 @@ io_rsp_frame  ==  io_req_frame ^ (mask64 >> 12) & 0xFFFFFFFF
 `mask64[43:12]` 는 E.9 3항의 적용 슬라이스이고 (`PA_W=44` · `PAGE_W=12` ·
 `FRAME_W=32`, `XlateStore.scala:60-70`), RTL 은 64비트 마스크를 레지스터에
 두지 않고 그 32비트만 상수 분해로 만든다 (`MaskUnit.scala:443-483` 「is(PH_FINAL) {」
-이하, 생성물 `MaskUnit.sv:304-307` 「st_1[11 : 0] + 12'h46e」 에서 상수 셋 대조 확인).
+이하, 생성물 `MaskUnit.sv:312-315` 「st_1[11 : 0] + 12'h46e」 에서 상수 셋 대조 확인).
 
 **`!=`·popcount·통계형 확산 검사가 한 곳도 없다.** 정본 §5.2.4 가 이름한
 「확산은 세어서 확인할 수 없다 — **틀린 값도 다르다**」의 수신인이 이
@@ -184,6 +184,71 @@ ISA-2 사상 경유(존재 축) · ISA-1 자리 무관성 · 구성 표면 무�
 `!=` 는 「σ 가 관측 가능한가」의 부수 확인으로만 쓰이며 그 사실이 코드에
 적혀 있다.
 
+### W1 — 표면 비트 · 워드 (3.10 v1.0 묶음의 RTL 파도 첫 하위 파도)
+
+새 표면 셋을 호스트가 보는 값으로 잰다. 기대값은 **정본 표에서 독립 유도**한다 —
+RTL companion 의 상수(비트 자리 · 오프셋 · 형상)를 import 하지 않는다 (차등 정의역
+함정 — 기대측이 RTL 에서 오면 RTL 과 함께 틀리고 시험은 *부재*로 침묵한다).
+
+| 시험 | 스위트 | 재는 것 |
+|---|---|---|
+| `hiu_shape_word` (N12) | Shape | `0xFF8` 읽기 == 참조 형상(정본 E.2 「파티션 4 × 항목 16 · 직접 사상」)에서 유도한 `0x0000_1004` (개수 인코딩) · 재읽기 불변 · 쓰기 셋(전폭 1 · 읽은 값 · 0)이 값과 무관하게 거절 + `[6]` · 값 불변 · `[7:0]` 이 XLATE_FLUSH 수락 정의역과 맞물림 |
+| `mask_dup_capture` (N13) | Shape | `0xEC4` 23 행 표 — reset 0 · 래치(p · 비트맵 · `[16]`) · 읽기 무부작용 · RO 쓰기 거절 · 첫 사건 보존 · `0xF84` `[12]` 와 내부 해제선이 워드 전체를 지움 · 비트맵 정의역 셋(유효한 p 자신 · 유효 하강 · 다른 논스) · 거절 + `[6]` 발화 둘과 엔진 바쁨 미수락 발화의 불변 · 같은 사이클 해제 + 발화의 새 사건 래치(p · 비트맵 둘 다 앞 사건과 다르게) · 바쁨/거절 발화 + 해제선은 해제만 |
+| `fault19_nonowned_access` (N14) | Shape | reset 직후(해제 전) `[4]` · `[19]` · `[6]` 과 원천별 수출 둘이 0 + 원인별 보고 12 접근 행(적중 · 「정지 → 채움」 두 경로) — 자격 거부 → `[4]` 만 · 자격 허용 ∧ 비소유 → `[19]` 만 · 자격이 먼저 · 거부 채움은 프레임 무관 `[4]`, 행마다 승인 0 · 값 0 · 사이클 수가 양성 대조와 같음(상태열 균일) + sticky/`0xF84`/`0xF88` 10 행 — `[31:20]` 예약 비0 은 거절 + `[6]` · 한 비트도 안 내림 · `[19]` = 1 인 채 `1 << 4` 는 `[4]` 만 내림 · `[19]` 하나만 선 FAULT_STATUS = `1 << 19` · FAULT_SUMMARY = 1 · `1 << 19` 는 `[19]` 만 내림 + 원천별 수출 `io_fault_hiuOwn`/`io_fault_hiuPerm` |
+| `sec1_golden_exact` (넓힘) | Mask | 80 라인마다 `dupCapture` 등가 + 겹친 라인의 해제 뒤 0 + 다중 비트 비트맵 라인 비공허 |
+| `fault_nonce_dup` (넓힘) | Mask | `[12]` · `dupCapture` 10 행 표 — 래치 · 첫 사건 보존 · 해제 · 유효한 p 자신 제외 · 같은 엣지 해제 + 발화(p · 비트맵 둘 다 새 사건) · 바쁨 미수락 + 해제선 · 유효 하강 제외 |
+| `nonce_dup_compare_every_bit` (검증 수리) | Mask | 논스 비교 전폭 1540 행 — 비교기 넷(q) × (기저 논스 유효화 1 + p = q+1 에 한 비트 차이 192 + 이웃 두 비트 차이 191 + 같은 논스 양성 대조 1). 차이 행은 `[12]` = 0 · 캡처 0, 양성 대조는 `[12]` = 1 · 캡처 = (p, {q}). 행마다 전건(q 유효 · 모형 겹침 없음)을 그 자리에서 단언 |
+
+`zero_inputs` 는 이제 생성물 머리의 입력 포트 집합과 `SHAPE_INPUTS`(+ `io_faultClear_*`)를
+매 부팅 기계로 대조한다 — 아래 함정 ⑥ 의 Shape 판.
+
+**통합 실측 (2026-10-11, W1 생성물 — `Wt64Top.sv` sha256 `03d89ffe…d0cd7` · `MaskUnit.sv`
+`d9c9f968…6a4f`)** — `make rtl-sim` 필터 없이 35/35(Mask 11 · Shape 24). 생성물 포트 목록에서
+다시 센 계수: 출력 121 → **122** · 대조면 119 → **120** · 입력 120 그대로 · IO 해제선 **19**
+그대로 · fault 출력 25 → **26** · `NO_IO_CLEAR` 6 → **7**(`io_fault_hiuOwn`). `compare_face_is_pinned`
+는 이제 `NO_IO_CLEAR` 의 *이름*도 「같은 이름 해제선이 없는 fault 출력」 집합과 등식으로 본다
+(수의 등식은 이름이 바뀐 축을 못 본다 — 아래 변이 MS12).
+
+**HEAD 음성 대조 (2026-10-11, HEAD `3b80087` 생성물 · 이 파일들 그대로)** — 의도한 이유로 죽는 것:
+N12 `0xFF8` 읽기 0(예약 오프셋), N13 `0xEC4` 열이 래치 행마다 0 · `0xEC4` 쓰기 행의 `[6]` 0(10/23 행,
+`[12]` 열은 23 행 전부 모형과 같다 — 지향 23 행의 읽기 관측일 뿐 HEAD `[12]` 판정의 동치를 말하지 않는다), N14 비소유 · 자격 허용 세 행(적중 읽기 · 쓰기 · 채움)이 `[19]`
+대신 `[4]` · sticky/`0xF84` 7 행 전부(`[19]` 원천 없음 · `[31:19]` 예약으로 `1 << 19` 거절 + `[6]`).
+함께 죽지만 값 음성 대조가 *아닌* 것: `compare_face_is_pinned`(출력 121 ≠ 122) 와 `clear_all_faults` 를
+부르는 궤적 시험 넷(`io_fault_hiuOwn` 핸들 부재) — 못박은 표가 W1 생성물을 적기 때문이다. 계수 두 줄과
+`NO_IO_CLEAR` 만 HEAD 값으로 되돌린 사본으로 다시 돌리면 기존 21 은 통과하고 N12 · N13 · N14 셋만 같은
+이유로 죽는다. Mask 9/11: 넓힌 두 시험은 **포트 부재**(`dupCapture` 없음)로 죽는다 — 값 음성 대조가
+아니다(`fault_nonce_dup` 의 `[12]` 열은 10 행 전부 모형과 같다 — 지향 10 행의 읽기 관측이다). 캡처 *값*의 음성 대조는 아래 변이가 맡는다.
+
+**변이 실측 (2026-10-11, W1 생성물의 rsync 사본에 생성 SV 한 자리씩 · 스위트 전체)** — 23 변이 전부
+잡힘, 새 시험 · 검사마다 그것만 죽이는 변이가 있다:
+
+| 변이 (생성 SV 자리) | 죽은 시험 |
+|---|---|
+| MaskUnit 래치 조건에서 보유 항 삭제(첫 사건 보존 제거) · 해제 우선(세움 승리 제거) · 비트맵에서 유효 항 삭제 · 비트맵에서 `q ≠ p` 항 삭제 | `fault_nonce_dup` 만 |
+| MaskUnit 비트맵에서 논스 항 삭제 | `sec1_golden_exact` 만 (`fault_nonce_dup` 의 유효 파티션은 논스가 전부 같다 — 이 축은 `sec1` 몫) |
+| MaskUnit 해제가 필드를 안 지움 · `dupCapture[16]` 을 0 으로 | 둘 다 |
+| Wt64Top `0xFF8` 값을 log2 인코딩 `0x0402` 로 · `0xFF8` 쓰기를 거절식에서 뺌 | `hiu_shape_word` 만 |
+| Wt64Top `0xEC4` 쓰기 거절 삭제 · `0xEC4` 읽기에서 `[16]` 결손 · 최상위 안 MaskUnit 의 첫 사건 보존 제거 | `mask_dup_capture` 만 |
+| Wt64Top `permViol` 을 HEAD 꼴로 · `ownViol` 에서 자격 항 삭제 · `[19]` 해제 미결선 · `0xF84` 예약을 `[31:19]` 로 · `granted` 에서 자격 항 삭제(값 누출) | `fault19_nonowned_access` 만 |
+| 최상위 출력 하나 추가 · 해제선 하나를 `io_faultClear_hiuOwn` 으로 개명(수는 그대로) · `[19]` 에 IO 해제선을 붙임 | `compare_face_is_pinned` 만 |
+| 최상위 입력 하나 추가 · 하나 제거(내부 상수로) · `input` 줄 하나 들여쓰기 변경(파서가 흘림) | 부팅하는 23 시험 전부 — 아래 함정 ⑥ Shape 판 |
+
+**검증 수리 (2026-10-12 — 독립 변이 반증이 찾은 탈출 셋)** — W1 생성물은 그대로이고 시험만 넓혔다
+(생성물 sha 는 위 통합 실측과 같다). 무변이 `make rtl-sim` 필터 없이 36/36(Mask 12 · Shape 24).
+
+| 탈출 변이 (생성 SV) | 수리 전 | 수리 뒤 |
+|---|---|---|
+| X14 — 논스 비교기 넷이 워드 0 비트 1 을 무시 (`engine.sby` 탐침 여섯 밖 한 자리) | engine prove · bmc PASS · Mask 11/11 · Shape 24/24 — **어디서도 안 잡힘** | `nonce_dup_compare_every_bit` **만** 죽음 — 「한 비트 차이 4 행: (q, p, 비트) = (0,1,1) (1,2,1) (2,3,1) (3,0,1)」 |
+| 비교기 하나만 · 한 자리만 무시 — q=2 비트 150 · q=0 비트 191 · q=3 비트 64 (이 단계의 손 변이 — 비교기 넷이 다 훑이는지) | — | 셋 다 `nonce_dup_compare_every_bit` **만** · 각자 정확히 그 (q, 비트) 한 행 |
+| X23 · X24 — 패리티 접기 비교(192 비트 전체 · 워드별) | `sec1_golden_exact`(+ X23 은 `key_scope_cross_partition_value`) | 그대로 + `nonce_dup_compare_every_bit`(이웃 두 비트 차이 X23 764 행 · X24 744 행 — 워드 경계를 건너는 쌍 20 개는 워드별 패리티를 바꾼다 — 와 기저 논스 유효화 3 행) — 두 층 |
+| X21 — `faultOwn` reset 값 1 | N14 통과 — `clear_all_faults` 를 부르는 궤적 시험 넷이 시작 상태 가드로 *우연히* 잡음 | 그대로 + `fault19_nonowned_access` 의 reset 행 「관측 (0, 1, 0, 0, 1) · 기대 0」 |
+| X04 — `[4]` 해제(`io_faultClear`)가 `faultOwn` 도 내림 | hiumask `o_own_hold` 만 · Shape 24/24 | + `fault19_nonowned_access` 의 「`[19]` = 1 인 채 `0xF84` ← `[4]`」 행 (0,0,0) ≠ (0,1,0) |
+| X02 — FAULT_SUMMARY 가 `[19]` 를 뺌 | assembly `a_rd_fsum` 만 · Shape 24/24 | + `fault19_nonowned_access` 의 요약 행 (0x00080000, 0) ≠ (0x00080000, 1) |
+
+`nonce_dup_compare_every_bit` 의 HEAD `3b80087` 생성물 대조는 포트 부재(`dupCapture` 없음)로 죽는다 — 값
+음성 대조가 아니다. 이 시험의 값 대조는 위 X14 계열이다 (HEAD 의 비교기는 W1 과 같은 식이라 그 생성물에서
+값 대조가 성립할 자리가 없다).
+
 ---
 
 ## ⛔ 이 하네스의 층위 — 호스트 ABI 가 아니다
@@ -219,7 +284,7 @@ ISA-2 사상 경유(존재 축) · ISA-1 자리 무관성 · 구성 표면 무�
 | 4 | fp32 산술 정확성 (`golden_fp32` 비트 일치) | `StepSequencer.scala:425-426` 이 `UInt` 정수곱·정수합 — 산술은 축 (b) 후속 |
 | 5 | `mask64` 의 32비트 (`[63:44]`·`[11:0]`) | `MaskUnit.scala:289-296` 「저장은 적용 비트만」 — 레지스터도 배선도 없다. **비교 불가가 아니라 비교 대상 부재** |
 | 6 | `SUBKEY`(256b)·`BLOCK`(512b) 를 통한 부분 수리 검출 | 내는 포트가 없다. `st_0..st_15` 의 계층 peek 은 포트 계약이 아니라 SpinalHDL 명명의 우연이라 통과 기준으로 쓰지 않는다 |
-| 7 | `FAULT_STATUS[17]`·`[18]` | `Wt64Top.sv:1641` 「faultWords_status[17] = 1'b0;」 과 다음 줄 `[18]` 상수 0 — 원천 부재. **0 을 「정상」으로 읽으면 안 된다** |
+| 7 | `FAULT_STATUS[17]`·`[18]` | `Wt64Top.sv:1662` 「faultWords_status[17] = 1'b0;」 과 다음 줄 `[18]` 상수 0 — 원천 부재. **0 을 「정상」으로 읽으면 안 된다** |
 | 8 | `SharedUnit`·`MemOrderGate` 독립 `.sv` 의 top 대표성 | 형상 불일치 — 독립본 16비트 vs top 인스턴스 161/128비트 |
 | 9 | OPREF **B** 참조의 LBID 축 | 제시 자체가 없다 — `Wt64Top.scala:86` 「OPREF B 토큰의 RouteJudge 제시는 미배선」 (TODO 2항), `tokIn` 은 사이클당 하나. ISA-2 α 는 **OPREF A 축만** 덮는다 |
 | 10 | 변환 저장소 관측 세 워드의 값 (`0xE04` · `0xE08`/`0xE0C`) | 회로 0건 — 정지 상태·정지한 요청의 VPN 을 내는 배선이 없다. 읽기는 응답 + 0, 쓰기는 거절 + `[6]` (파도 3 은 `0xE00` · `0xE10` 과 쓰기 방향만 닫았다) |
@@ -372,6 +437,17 @@ RTL 계약을 바꾸는 파도는 후-formal 만이 아니라 **cocotb 골든도
 가리키게 됐는데(제자리는 XlateStore 의 폭 상수 인용 하나) 아무도 몰랐다 (`lint_section_refs` 의 R5 는 상한만 걸고 대상 대조는
 따옴표 있는 인용에만 한다). 재조준하며 전부 같은 줄 축자 「…」 결속으로
 바꿨다 — 다음 RTL 편집이 줄을 밀면 STALE 로 지목된다. 래칫 항목은 14 → 0.
+
+**Shape 판 (W1, 2026-10-11)** — `test_shape_equiv.py` 에는 같은 검사가 없었다
+(`zero_inputs` 가 손으로 고른 이름만 0 으로 두고, 그 밖의 새 입력은 조용히 0 으로 남았다).
+3.10 RTL 파도는 최상위 입력을 빼고(`io_hiuReq_part` 은퇴 예정) 더하므로, 이제 `zero_inputs`
+가 생성물 머리의 `input` 이름 전량을 `SHAPE_INPUTS`(+ 접두로 거두는 `io_faultClear_*`)와
+**등식으로** 대조한다 — 누락 · 잉여면 전 시험이 죽고, 파서가 `input` 줄을 흘렸는지(줄 수 등식)도
+먼저 본다. 변이 실측(2026-10-11, W1 생성물 사본 · Shape 스위트 전체): 쓰이지 않는 입력 하나
+(`io_mutIn`) 추가 · 입력 하나(`io_mem_slotSel`)를 포트 목록에서 빼 내부 상수로 · `input` 줄 하나의
+들여쓰기 변경 — 셋 다 부팅하는 23 시험 전부가 각각 「누락 ['io_mutIn']」 · 「잉여 ['io_mem_slotSel']」 ·
+「input 줄 120 중 119 만 읽었다」 로 죽고, 부팅하지 않는 `compare_face_is_pinned` 하나만 통과했다 —
+검사의 자리는 `zero_inputs` 하나이고 `boot` · `boot_hiu` 가 둘 다 부른다.
 
 ---
 

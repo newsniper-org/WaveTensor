@@ -167,10 +167,30 @@ expect_pass "증인 유효성: 데이터를 지우면 증인이 선다" \
 # 전 파티션의 maskValid 를 떨어뜨렸다 — 아래 두 가드 삭제가 정확히 그 형태와
 # 동형이다. rekey_explicit_target 은 e-defined.typ:351 7항이 명시적으로
 # 기각한 "창이 재키잉 authority 를 겸함" 갈래를 모델링한다.
+#
+# FAULT_STATUS [12] 논스 재사용 판정 · 0xEC4 MASK_DUP_CAPTURE (v1.0 묶음 · W1,
+# 2026-10-11): 변수 dup · cap · ev 를 더했다. [16] 은 결정 W1-4 대로 dup 그
+# 자체(구조)라 Inv_CapIffDup 은 가드가 아니라 구조이고, 그것을 깨는 것은 짝
+# 「오늘의 RTL」(W1 전 RTL — HEAD 3b80087: CapWired = FALSE — 0xEC4 미디코드, 읽기 0) 하나다. 가드 여덟
+# (dup_on_started_rekey · cap_first_event · cap_clear_whole · cap_set_beats_clear ·
+# cap_bitmap_exact · cap_bitmap_domain · start_ignores_dup · complete_ignores_dup)의
+# 정본 근거(같은 줄 축자 결속)와 RTL 대응 예정 이름은 모델 머리에 있다. RTL 의
+# [12] 판정 쪽은 이 배터리가 측정하지 않는다(W1 RTL 의 [12] 는 후-formal engine.sby 가 탐침 축약 아래에서 잰다) — CapWired 는 워드만 바꾸므로 대비 MUST PASS 는
+# 모델 자기 정합 이상을 재지 못해 두지 않았다(읽기 대조는 모델 머리).
+# 대형 cfg 는 VIEW StateView(쓰기 전용 변수를 지문에서 뺀다 — 모델 「규모」 해설)를
+# 건다: VIEW 없이 1회 실측 11분 34초 · 7,881,960 distinct(F4 확장 전), VIEW 를 건 판은
+# 수십 초 (판정 같음 — 가드 삭제와 짝을 파티션 3 + VIEW 로 돌려 반례가 그대로 나는
+# 것을 따로 확인했다). 비트맵의 겹침 항(maskValid · 논스 동치)은 파티션 3 에서만
+# 보이므로 그 측정의 MUST-FAIL 대조 cap_bitmap_domain 삭제 run 도 같은 파티션 3 +
+# VIEW 로 돈다 — 대형 설정이나 VIEW 를 바꾸는 편집이 그 측정을 조용히 끄지 못한다.
+# 축 누출 (실측 행렬 — 새 가드 여덟 × 속성 하나씩 건 cfg): 각 삭제는 자기 목표만
+# 깬다. 예외 둘 — dup_on_started_rekey 삭제는 계약 Prop_DupExact 도, cap_clear_whole
+# 삭제는 Prop_RejectedFireInert 의 해제 갈래도 깬다(둘 다 같은 결함의 다른 면이고,
+# 목표 속성이 먼저 보고된다). cap_set_beats_clear 와 cap_clear_whole 은 서로를 깨지 않는다.
 # ---------------------------------------------------------------------------
 M=Mask.tla
 expect_pass "임대별 마스크 키 좋은 모델 (파티션 2)"  Mask.cfg       "$M"
-expect_pass "임대별 마스크 키 좋은 모델 (파티션 3)"  Mask_large.cfg "$M"
+expect_pass "임대별 마스크 키 좋은 모델 (파티션 3 · VIEW)"  Mask_large.cfg "$M"
 
 expect_fail "가드 삭제: key_scoped_storage (키 전역 1벌)" \
             Mask_del_key_scoped_storage.cfg "$M" Prop_KeyScoped
@@ -185,6 +205,37 @@ expect_fail "증인: 키 기입이 실재하는가"            Mask_witness_NoKe
 expect_fail "증인: REKEY 수락이 실재하는가"          Mask_witness_NoRekeyAccept.cfg       "$M" Witness_NoRekeyAccept
 expect_fail "증인: 창-지목 어긋남이 실재하는가"      Mask_witness_NoWindowTargetDrift.cfg "$M" Witness_NoWindowTargetDrift
 expect_fail "증인: busy 중 REKEY 시도가 실재하는가"  Mask_witness_NoBusyRekeyAttempt.cfg  "$M" Witness_NoBusyRekeyAttempt
+
+expect_fail "가드 삭제: dup_on_started_rekey (busy · 거절 발화도 [12] 판정)" \
+            Mask_del_dup_on_started_rekey.cfg "$M" Prop_RejectedFireInert
+expect_fail "가드 삭제: cap_first_event (둘째 사건이 캡처를 덮음)" \
+            Mask_del_cap_first_event.cfg "$M" Prop_CapFirstEvent
+expect_fail "가드 삭제: cap_clear_whole (해제가 [7:0] · [15:8] 을 남김)" \
+            Mask_del_cap_clear_whole.cfg "$M" Inv_CapClearedZero
+expect_fail "가드 삭제: cap_set_beats_clear (같은 사이클 해제가 이김)" \
+            Mask_del_cap_set_beats_clear.cfg "$M" Prop_CapSetBeatsClear
+expect_fail "가드 삭제: cap_bitmap_exact (비트맵에 p 자신)" \
+            Mask_del_cap_bitmap_exact.cfg "$M" Prop_CapBitmapExact
+expect_fail "가드 삭제: cap_bitmap_domain (비트맵 = 다른 파티션 전부 · 파티션 3 · VIEW)" \
+            Mask_del_cap_bitmap_domain.cfg "$M" Prop_CapBitmapExact
+expect_fail "가드 삭제: start_ignores_dup ([12] 가 재키잉을 중단)" \
+            Mask_del_start_ignores_dup.cfg "$M" Prop_StartGoesBusy
+expect_fail "가드 삭제: complete_ignores_dup ([12] 가 완료를 막음)" \
+            Mask_del_complete_ignores_dup.cfg "$M" Inv_BusyCanComplete
+
+expect_fail "증인: [12] 세움이 실재하는가"                 Mask_witness_NoDupEvent.cfg           "$M" Witness_NoDupEvent
+expect_fail "증인: 캡처 유효 중 둘째 사건이 실재하는가"     Mask_witness_NoSecondEvent.cfg        "$M" Witness_NoSecondEvent
+expect_fail "증인: 해제와 발화의 같은 사이클이 실재하는가" Mask_witness_NoClearFireOverlap.cfg   "$M" Witness_NoClearFireOverlap
+expect_fail "증인: 겹침 있는 busy 발화가 실재하는가"       Mask_witness_NoBusyDupAttempt.cfg     "$M" Witness_NoBusyDupAttempt
+expect_fail "증인: 겹침 있는 거절 발화가 실재하는가"       Mask_witness_NoRejectedDupAttempt.cfg "$M" Witness_NoRejectedDupAttempt
+expect_fail "증인: 거절 · busy 발화와 해제의 겹침이 실재하는가" Mask_witness_NoRejectedClearOverlap.cfg "$M" Witness_NoRejectedClearOverlap
+expect_fail "증인: 내부 해제선의 캡처 해제가 실재하는가"   Mask_witness_NoIoClearHeld.cfg        "$M" Witness_NoIoClearHeld
+expect_fail "증인: p 자신이 유효한 채 세움이 실재하는가"   Mask_witness_NoSelfValidDup.cfg       "$M" Witness_NoSelfValidDup
+expect_fail "증인: 비트맵 다중 비트가 실재하는가 (파티션 3)" Mask_witness_NoMultiBitmap.cfg      "$M" Witness_NoMultiBitmap
+expect_fail "증인: 같은 p 재래치의 낡은 비트맵이 실재하는가 (파티션 3)" Mask_witness_NoStaleRelatch.cfg "$M" Witness_NoStaleRelatch
+
+expect_fail "짝: 오늘의 RTL(W1 전 · HEAD 3b80087) — 0xEC4 미디코드 → [16] ⇔ [12] 깨짐" \
+            Mask_pair_today.cfg "$M" Inv_CapIffDup
 
 # ---------------------------------------------------------------------------
 # CAP_STATUS · CAP_CLEAR — 능력 부재 관측 워드 (파도 B, 정본 1126a38:
@@ -652,6 +703,15 @@ echo "======================================================================="
 # 앞의 넷과 성격이 다르다. 이것은 **관계 속성**이라 두 세계(plain/rich)를
 # 같은 동작열로 lockstep 구동하고 관측을 비교한다. 기계 하나가 "잘 도는" 것은
 # 플랫폼 독립의 증거가 아니다 — 종속은 고장이 아니라 *다르게 도는 것*이다.
+#
+# 승인 거부의 보고 비트 [4] · [19] (3.10 v1.0 묶음 · W1, 2026-10-11 —
+# e-defined.typ:527 「한 접근에 둘이 함께 서지 않는다」): 사상에 권한 비트를 싣고
+# 장치 접근마다 접근자 · 승인 판정 · 원인(자격 · 소유 · 거부 채움)과 보고 비트를
+# 기록한다(보고 축은 장치 접근 한정 — 근거는 모델 머리). 가드 넷(entitle_gates_value ·
+# perm_entitle_only · entitle_first · own_reported)은 RTL 의 네 자리와 일대일이다 —
+# 대응 예정 이름은 모델 머리. 짝 「오늘의 RTL」(W1 전 RTL — HEAD 3b80087: 둘 다 [4] — permViol = ¬(소유 ∧ 자격),
+# [19] 원천 없음)이 Inv_ReportBitByCause 를 깨고, 같은 판의 대비 MUST PASS 가 남은
+# 간극이 원인 귀속 하나뿐임을 붙잡는다. 좋은 모델 cfg 셋은 새 불변식 일곱을 함께 건다.
 # ---------------------------------------------------------------------------
 M=Platform.tla
 expect_pass "HIU-8/9/10 기저 — 페이지 1"       Platform_base.cfg   "$M"
@@ -666,12 +726,30 @@ expect_fail "가드 삭제: state_machine_kept (일관성 있으면 규약 생�
     Platform_del_state_machine_kept.cfg "$M" Inv_SameFaultPolicy
 expect_fail "가드 삭제: owner_check (비소유 접근)" \
     Platform_del_owner_check.cfg        "$M" Inv_UnownedFaults
+expect_fail "가드 삭제: entitle_gates_value (자격 거부가 값을 받는다)" \
+    Platform_del_entitle_gates_value.cfg "$M" Inv_EntDeniedBlocked
+expect_fail "가드 삭제: perm_entitle_only ([4] 가 비소유도 접는다)" \
+    Platform_del_perm_entitle_only.cfg  "$M" Inv_Bit4EntOnly
+expect_fail "가드 삭제: entitle_first (자격 거부 ∧ 비소유 → [4] · [19] 동시)" \
+    Platform_del_entitle_first.cfg      "$M" Inv_OneBitPerAccess
+expect_fail "가드 삭제: entitle_first — 거부 채움 축 (회수 페이지가 [19] 도 세운다)" \
+    Platform_del_entitle_first_fill.cfg "$M" Inv_DenyFillIs4
+expect_fail "가드 삭제: own_reported ([19] 원천 없음 — 조용한 비소유 거부)" \
+    Platform_del_own_reported.cfg       "$M" Inv_UnownedLoud
 
 expect_fail "증인: 값 읽기가 실재하는가"        Platform_witness_NoValueRead.cfg      "$M" Witness_NoValueRead
 expect_fail "증인: fault 가 실재하는가"         Platform_witness_NoFault.cfg          "$M" Witness_NoFault
 expect_fail "증인: 소유권 이양이 실재하는가"     Platform_witness_NoHandoff.cfg        "$M" Witness_NoHandoff
 expect_fail "증인: 지역 사본이 실제로 어긋나는가" Platform_witness_NoDivergentCache.cfg "$M" Witness_NoDivergentCache
 expect_fail "증인: 두 세계의 배후 저장이 어긋나는가" Platform_witness_NoMemSkew.cfg     "$M" Witness_NoMemSkew
+expect_fail "증인: 자격 거부 [4] 가 실재하는가"       Platform_witness_NoEntDeny.cfg       "$M" Witness_NoEntDeny
+expect_fail "증인: 비소유 프레임 접근 [19] 가 실재하는가" Platform_witness_NoOwnDeny.cfg    "$M" Witness_NoOwnDeny
+expect_fail "증인: 자격 거부 ∧ 비소유 장치 접근이 실재하는가" Platform_witness_NoBothCauses.cfg  "$M" Witness_NoBothCauses
+expect_fail "증인: 장치 소유 프레임 위 거부 채움 장치 접근이 실재하는가" Platform_witness_NoDenyFillOwned.cfg "$M" Witness_NoDenyFillOwned
+
+expect_fail "짝: 오늘의 RTL(W1 전 · HEAD 3b80087) — 두 원인을 [4] 에 접는다 (HIU-10 원인별 보고)" \
+    Platform_pair_today.cfg             "$M" Inv_ReportBitByCause
+expect_pass "대비: 오늘의 RTL(W1 전 · HEAD 3b80087) — 원인 귀속 밖의 불변식은 전부 통과"  Platform_today.cfg "$M"
 
 # ---------------------------------------------------------------------------
 # SEC-3 — 무소실 (NoLoss.tla)

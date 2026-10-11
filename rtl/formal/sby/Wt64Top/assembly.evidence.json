@@ -32,9 +32,9 @@
     "XlateObs.obs_no_residue",
     "XlateObs.obs_read_pure"
   ],
-  "at": "2026-10-11T09:18:25Z",
+  "at": "2026-10-11T21:28:05Z",
   "cover": {
-    "reached": 49,
+    "reached": 57,
     "reached_names": [
       "Wt64Top.chk.w10_cap0_clr",
       "Wt64Top.chk.w10_cap2_gate",
@@ -76,6 +76,14 @@
       "Wt64Top.chk.w39_xread_pure",
       "Wt64Top.chk.w3_key_rd_after_wr",
       "Wt64Top.chk.w40_xflush_ends",
+      "Wt64Top.chk.w41_shape_wr",
+      "Wt64Top.chk.w42_dupcap_wr",
+      "Wt64Top.chk.w43_resv_ff4",
+      "Wt64Top.chk.w44_shape_rd",
+      "Wt64Top.chk.w45_dupcap_rd",
+      "Wt64Top.chk.w46_fst_rd19",
+      "Wt64Top.chk.w47_fclr_b19",
+      "Wt64Top.chk.w47_read_pure",
       "Wt64Top.chk.w4_ro_wr",
       "Wt64Top.chk.w5_fclr_rsv",
       "Wt64Top.chk.w5_rekey_rsv",
@@ -90,12 +98,12 @@
     "unreached_names": []
   },
   "inputs": {
-    "rtl/generated/Wt64Top.sv": "3b6d8416e0b9d46d4a210f69a018a3803ef557fc87ae1401e8a3d5129467f8ce",
-    "rtl/sv/assert/Wt64Top_props.sv": "d33d535c71d72e091796377d90a2cf5a5cfba591668ef509ca8c20f7a8afe9d4"
+    "rtl/generated/Wt64Top.sv": "03d89ffe132bfe0b223f25a79dd2a04baac35e05f13ce2d855caa5ea523d0cd7",
+    "rtl/sv/assert/Wt64Top_props.sv": "6e22319e35fd7809a9d612b6bfa0246af01afa35b2f919b76ced4c9e4e50105f"
   },
   "per_task": {
     "bmc": {
-      "assert": 103,
+      "assert": 108,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -105,11 +113,11 @@
       "assert": 0,
       "const_a": 0,
       "const_en0": 0,
-      "cover": 49,
+      "cover": 57,
       "mode": "cover"
     },
     "prove": {
-      "assert": 103,
+      "assert": 108,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -117,7 +125,7 @@
     }
   },
   "sby": "rtl/formal/sby/Wt64Top/assembly.sby",
-  "sby_sha256": "327e60188841da82b0926e45d1d834f51af4c80d52b6df9d158df4b87539486d",
+  "sby_sha256": "b8b60268e9d5dc7b027504bf53d6c9f5671bab7d0ac4589ddb4124241a62ba05",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

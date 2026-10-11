@@ -60,6 +60,16 @@ DUT 는 `rtl/generated/Wt64Top.sv` (형상 A, `Wt64Config()` 기본값 —
     기입의 커밋)도 값 수준에서 잰다.
     조회 쪽은 여전히 내부 포트이므로 이것도 **끝-끝 호스트 ABI 등가는 아니다**
     (호스트 쪽 문 · 디코드 진입 층위의 요청).
+  · **표면 비트 · 워드** (W1 — 3.10 v1.0 묶음의 RTL 파도 첫 하위 파도) —
+    `0xFF8` HIU_SHAPE 의 값과 RO 처분(`hiu_shape_word`), `0xEC4`
+    MASK_DUP_CAPTURE 의 래치 · 첫 사건 보존 · 해제 · 같은 사이클 해제 + 발화 ·
+    거절/미수락 발화 불변 · 읽기 무부작용(`mask_dup_capture`), FAULT_STATUS
+    `[4]`/`[19]` 의 원인별 보고와 `0xF84` 예약 `[31:20]` 엄격
+    (`fault19_nonowned_access`). 기대값은 정본 표에서 유도한다 — RTL 상수를
+    import 하지 않는다 (파일 끝 W1 절 머리).
+  · **입력 포트 정의역** — `zero_inputs` 가 생성물 머리의 입력 포트 집합과
+    `SHAPE_INPUTS`(+ `io_faultClear_*`)를 매 부팅 기계로 대조한다. 포트가 늘거나
+    줄면 전 시험이 크게 죽는다 (Mask `generated_input_ports()` 의 Shape 판).
 
 **재지 못한다 (이름을 적는다 — 여기 없는 것은 미측정이지 통과가 아니다)**
   1. **형상 B/C 와의 실제 대조** — `Wt64Config(nPoints=2)` 로 두 번째 SV 를
@@ -149,8 +159,12 @@ SHAPE_DEPENDENT = {"io_push_1_stall", "io_push_2_stall"}
 # 예약 거절의 수락 게이트된 sticky. 형상 무관 출력이라 대조면에 든다 — 118/116 → 119/117.
 # 재유도 기록 (태그 코덱 전파 파도): 태그 번들의 thread 16b 한 포트가 epoch · poison · trace
 # 세 포트가 됐다 — 출력 쪽은 io_route_tokOut_payload_tag_* 하나(+2). 형상 무관 — 119/117 → 121/119.
-EXPECT_OUTPUTS = 121
-EXPECT_COMPARE_FACE = 119
+# 재유도 기록 (W1 표면 비트·워드 — 3.10 v1.0 묶음): io_fault_hiuOwn 신설 (+1) — FAULT_STATUS
+# [19] 원천별 수출, IO 해제선 없음(0xF84 [19] 로만 내려간다 → NO_IO_CLEAR 6 → 7). 0xEC4 캡처는
+# MaskUnit 안이라 최상위 포트가 늘지 않았고 입력 집합도 그대로다(120). 형상 무관 — 121/119 →
+# 122/120 (W1 통합 생성물 포트 목록에서 실측, 2026-10-11).
+EXPECT_OUTPUTS = 122
+EXPECT_COMPARE_FACE = 120
 
 
 def parse_clear_ports():
@@ -183,8 +197,28 @@ def parse_output_ports():
     return names
 
 
+def parse_input_ports():
+    """생성물 머리(첫 모듈 = Wt64Top)의 입력 이름 전량과 `input` 줄 수.
+
+    둘을 함께 돌려주는 이유: 정규식이 어떤 `input` 줄(예: 새 꼴의 폭 선언)을
+    흘리면 그 포트는 정의역 대조 밖에 조용히 태어난다. `zero_inputs` 가 두 수의
+    등식을 매번 본다.
+    """
+    names, raw = [], 0
+    for line in TOP_SV.read_text().splitlines():
+        if re.match(r"^\s*input\b", line):
+            raw += 1
+        m = re.match(r"^\s{2}input\s+wire\s*(?:\[[^\]]+\])?\s*(\w+)\s*,?\s*$", line)
+        if m:
+            names.append(m.group(1))
+        if line.startswith(");"):
+            break
+    return names, raw
+
+
 OUT_PORTS = parse_output_ports()
 CLEAR_PORTS = parse_clear_ports()
+IN_PORTS, IN_PORT_LINES = parse_input_ports()
 COMPARE_FACE = [n for n in OUT_PORTS if n not in SHAPE_DEPENDENT]
 
 # 해제선이 없는 sticky — 여기 있는 것은 IO 해제선이 아니라 **MMIO 로만**
@@ -193,11 +227,16 @@ COMPARE_FACE = [n for n in OUT_PORTS if n not in SHAPE_DEPENDENT]
 # 는 `capWord.io.word` 라 해제가 `capWord.io.clrAcc` 뿐). 궤적 대조 전에 IO 만
 # 흔들면 이 축들은 sticky 로 남고, 그 잔재가 다음 궤적의 시작 상태를 바꾼다.
 # `fpCfgBadWrite` 는 0xF84[6] 로만 내려간다 (D1 (b) — IO 해제선을 새로 만들지 않았다). 궤적 대조
-# 시험의 자극은 이 여섯을 세우지 않으므로 지금은 무해하지만, 세우는 자극이
+# 시험의 자극은 이 일곱을 세우지 않으므로 지금은 무해하지만, 세우는 자극이
 # 추가되면 여기가 먼저 깨져야 한다 — 그래서 이름으로 적어 둔다.
+# W1 의 `hiuOwn`([19])도 이 부류다 — `hiu.faultOwnClear` 는 `fclr(19)` 하나만 받는다(IO 해제선을
+# 만들지 않는다는 표면 이후 축의 규율). 이 목록의 *이름*도 `compare_face_is_pinned` 가 생성물의
+# 「같은 이름 해제선이 없는 fault 출력」 집합과 등식으로 대조한다 — 수의 등식만으로는 이름이
+# 바뀐 축을 못 본다.
 NO_IO_CLEAR = ["io_fault_ownBadWrite", "io_fault_cqOverflow",
                "io_fault_cqBadWrite", "io_fault_fpCapAbsent",
-               "io_fault_ehCapAbsent", "io_fault_fpCfgBadWrite"]
+               "io_fault_ehCapAbsent", "io_fault_fpCfgBadWrite",
+               "io_fault_hiuOwn"]
 EXPECT_CLEAR_PORTS = 19
 
 # 자주 보는 자리의 색인 — 매번 `.index()` 하면 이름 오타가 ValueError 로만
@@ -259,24 +298,53 @@ async def settle(dut):
     await Timer(SETTLE_NS, "ns")
 
 
+# ⚠ 이 목록이 `zero_inputs` 의 초기화 정의역이다 (W1 — Mask 하네스
+#   `generated_input_ports()` 의 Shape 판). 포트가 늘었는데 여기 없으면 Verilator
+#   미구동 입력은 0 으로 남고, 그 0 이 *뜻을 가진 채* 시험이 조용히 다른 계약을
+#   잰다 — Mask 의 `io_keyWr_part` 가 정확히 그렇게 빠져 있었다 (README 함정 ⑥).
+#   이 파도들은 최상위 입력을 빼고(`io_hiuReq_part` 은퇴 예정) 더한다. 그래서
+#   `zero_inputs` 가 생성물 머리의 입력 집합과 이 목록을 **매 부팅 기계로**
+#   대조한다 (누락 · 잉여 = 전 시험 FAIL). 주석은 호출이 아니다.
+#   `io_faultClear_*` 는 여기 적지 않는다 — 위 `parse_clear_ports()` 가 접두로
+#   거두고(손 표 금지 — 그 주석), 0 이 곧 제품 결선 값이며(해제선은 0 으로
+#   묶인다), 그 계수는 `compare_face_is_pinned` 가 못박는다.
+_TAG_FIELDS = ("wave", "epoch", "poison", "trace", "lnid", "precision", "dim")
+SHAPE_INPUTS = (
+    ["io_instr_valid"]
+    + [f"io_instr_words_{i}" for i in range(INSTR_WORDS)]
+    + [f"io_instr_tag_{n}" for n in _TAG_FIELDS]
+    + [f"io_mem_cfgPreds_{i}" for i in range(4)]
+    + ["io_mem_epochClear", "io_mem_complete", "io_mem_slotSel"]
+    + [f"io_mem_down_{i}_ready" for i in range(4)]
+    + ["io_hiuReq_valid", "io_hiuReq_part", "io_hiuReq_vpn", "io_hiuReq_write",
+       "io_hiuHold", "io_hostRsp_valid", "io_hostRsp_frame",
+       "io_hostRsp_perm_r", "io_hostRsp_perm_w", "io_hostRsp_perm_x"]
+    + [f"io_push_{i}_{n}" for i in range(3)
+       for n in (["strb"] + [f"result_head_tag_{t}" for t in _TAG_FIELDS]
+                 + ["result_head_seq", "result_head_total", "result_head_last",
+                    "result_body"])]
+    + ["io_sharedReq_valid", "io_sharedReq_payload"]
+    + ["io_bank_acqValid", "io_bank_acqSlot", "io_bank_acqProd", "io_bank_wrValid",
+       "io_bank_wrSlot", "io_bank_wrProd", "io_bank_wrData", "io_bank_rdSlot"]
+    + ["io_fp_reqValid", "io_fp_opKind", "io_fp_precision", "io_fp_a", "io_fp_b", "io_fp_c"]
+    + ["io_mmio_addr", "io_mmio_wstrobe", "io_mmio_wdata", "io_mmio_rstrobe"]
+)
+
+
 def zero_inputs(dut):
-    dut.io_instr_valid.value = 0
-    for i in range(INSTR_WORDS):
-        getattr(dut, f"io_instr_words_{i}").value = 0
-    for n in ("wave", "epoch", "poison", "trace", "lnid", "precision", "dim"):
-        getattr(dut, f"io_instr_tag_{n}").value = 0
-    for n in ("io_mmio_addr", "io_mmio_wdata", "io_mmio_wstrobe", "io_mmio_rstrobe",
-              "io_hiuReq_valid", "io_hiuReq_part", "io_hiuReq_vpn", "io_hiuReq_write",
-              "io_hiuHold", "io_hostRsp_valid",
-              "io_sharedReq_valid", "io_bank_acqValid", "io_bank_wrValid",
-              "io_fp_reqValid", "io_mem_epochClear", "io_mem_complete",
-              "io_mem_slotSel"):
+    # 포트 정의역 대조 — 위 `SHAPE_INPUTS` 주석. 파서가 줄을 흘리지 않았는지가 먼저다.
+    assert len(IN_PORTS) == IN_PORT_LINES, (
+        f"생성물 머리의 input 줄 {IN_PORT_LINES} 중 {len(IN_PORTS)} 만 읽었다 — "
+        f"파서가 줄을 흘리면 그 포트는 정의역 대조 밖에 태어난다")
+    assert len(set(SHAPE_INPUTS)) == len(SHAPE_INPUTS), "SHAPE_INPUTS 에 중복 이름이 있다"
+    gen = set(IN_PORTS) - {"clk", "reset"}
+    want = set(SHAPE_INPUTS) | set(CLEAR_PORTS)
+    assert gen == want, (
+        f"SHAPE_INPUTS(+ io_faultClear_*) 가 생성물 입력 포트와 다르다 — 누락 "
+        f"{sorted(gen - want)} · 잉여 {sorted(want - gen)}. 미구동 입력은 0 으로 남아 "
+        f"그 0 이 뜻을 가진 채 시험이 조용히 다른 계약을 잰다 (README 함정 ⑥ 의 Shape 판)")
+    for n in SHAPE_INPUTS:
         getattr(dut, n).value = 0
-    for i in range(3):
-        getattr(dut, f"io_push_{i}_strb").value = 0
-    for i in range(4):
-        getattr(dut, f"io_mem_cfgPreds_{i}").value = 0
-        getattr(dut, f"io_mem_down_{i}_ready").value = 0
     for n in CLEAR_PORTS:
         getattr(dut, n).value = 0
 
@@ -588,6 +656,16 @@ async def compare_face_is_pinned(dut):
     assert n_fault_out - len(CLEAR_PORTS) == len(NO_IO_CLEAR), (
         f"fault 출력 {n_fault_out} − IO 해제선 {len(CLEAR_PORTS)} ≠ "
         f"MMIO 전용 {len(NO_IO_CLEAR)}축 — 해제 경로 비대칭 표가 낡았다")
+    # 이름 등식 (W1) — 해제선 `io_faultClear_X` 는 fault 출력 `io_fault_X` 의 해제다. 짝 없는
+    # 해제선이 없어야 하고, 짝 없는 fault 출력의 집합이 곧 NO_IO_CLEAR 다.
+    axes = {n[len("io_faultClear_"):] for n in CLEAR_PORTS}
+    orphan = sorted(a for a in axes if f"io_fault_{a}" not in OUT_PORTS)
+    assert not orphan, f"짝 fault 출력이 없는 IO 해제선: {orphan}"
+    no_clr = sorted(n for n in OUT_PORTS
+                    if n.startswith("io_fault_") and n[len("io_fault_"):] not in axes)
+    assert no_clr == sorted(NO_IO_CLEAR), (
+        f"해제선이 없는 fault 출력 {no_clr} ≠ NO_IO_CLEAR {sorted(NO_IO_CLEAR)} — 해제 경로 "
+        f"비대칭 표의 이름이 낡았다 (clear_all_faults 가 MMIO 전용 축을 잘못 지목한다)")
     for n in SHAPE_DEPENDENT:
         assert n in OUT_PORTS, f"형상 의존 출력 {n} 이 생성물에 없다 — 표가 낡았다"
         assert n not in COMPARE_FACE
@@ -825,22 +903,23 @@ async def boot_hiu(dut):
     await step(dut)
 
 
-async def install_entry(dut, part, idx, tag, frame, v=1):
+async def install_entry(dut, part, idx, tag, frame, v=1, r=1, w=0, x=0):
     await mmio_write(dut, xent(part, idx), frame)            # LO — 스테이징
-    await mmio_write(dut, xent(part, idx) + 4, hi_word(tag, v=v))  # HI — 커밋 발화
+    await mmio_write(dut, xent(part, idx) + 4, hi_word(tag, v=v, r=r, w=w, x=x))  # HI — 커밋 발화
 
 
-async def hiu_lookup(dut, part, vpn, window=LOOKUP_WINDOW):
+async def hiu_lookup(dut, part, vpn, window=LOOKUP_WINDOW, write=0):
     """읽기 요청 하나를 제시하고 결과를 돌려준다.
 
-    반환: dict(rsp, granted, frame, stalled, trace). `rsp=0` 이면 창 안에 응답이
+    반환: dict(rsp, granted, frame, phys, stalled, trace, fromFill). `write` 는 요청
+    종류(자격 판정이 R 대신 W 를 본다 — W1 N14). `rsp=0` 이면 창 안에 응답이
     없었고 `stalled` 는 그동안 `io.hiuReq.ready` 가 0 이던 사이클 수다 — 미적중
     정지다. `trace` 는 접수 뒤 사이클마다의 ready 표본이다 (`assert_miss` 가
     정지의 *모양*을 등식으로 잰다).
     """
     dut.io_hiuReq_part.value = part
     dut.io_hiuReq_vpn.value = vpn
-    dut.io_hiuReq_write.value = 0
+    dut.io_hiuReq_write.value = write
     dut.io_hiuReq_valid.value = 1
     await settle(dut)
     n = 0
@@ -851,6 +930,7 @@ async def hiu_lookup(dut, part, vpn, window=LOOKUP_WINDOW):
             raise AssertionError("hiu_lookup: 요청 접수 ready 가 안 선다 — 앞 요청이 정지 중이다")
     await step(dut)                                         # 접수 엣지
     dut.io_hiuReq_valid.value = 0
+    dut.io_hiuReq_write.value = 0
     stalled = 0
     trace = []
     for _ in range(window):
@@ -859,24 +939,26 @@ async def hiu_lookup(dut, part, vpn, window=LOOKUP_WINDOW):
             return dict(rsp=1, granted=int(dut.io_hiuRsp_granted.value),
                         frame=int(dut.io_phys_frame.value),
                         phys=int(dut.io_phys_valid.value), stalled=stalled,
-                        trace=trace)
+                        trace=trace, fromFill=int(dut.io_hiuRsp_fromFill.value))
         rdy = int(dut.io_hiuReq_ready.value)
         trace.append(rdy)
         if rdy == 0:
             stalled += 1
         await step(dut)
-    return dict(rsp=0, granted=0, frame=0, phys=0, stalled=stalled, trace=trace)
+    return dict(rsp=0, granted=0, frame=0, phys=0, stalled=stalled, trace=trace, fromFill=0)
 
 
 async def wait_rsp(dut, window=20):
-    """정지가 풀린 뒤 그 요청의 응답을 기다린다."""
-    for _ in range(window):
+    """정지가 풀린 뒤 그 요청의 응답을 기다린다. `wait` 는 응답까지의 엣지 수다."""
+    for n in range(window):
         await settle(dut)
         if int(dut.io_hiuRsp_valid.value):
             return dict(rsp=1, granted=int(dut.io_hiuRsp_granted.value),
-                        frame=int(dut.io_phys_frame.value))
+                        frame=int(dut.io_phys_frame.value),
+                        phys=int(dut.io_phys_valid.value),
+                        fromFill=int(dut.io_hiuRsp_fromFill.value), wait=n)
         await step(dut)
-    return dict(rsp=0, granted=0, frame=0)
+    return dict(rsp=0, granted=0, frame=0, phys=0, fromFill=0, wait=window)
 
 
 async def fault6(dut):
@@ -1524,3 +1606,522 @@ async def xlate_other_flush_keeps_staging(dut):
     assert_hit(await hiu_lookup(dut, part, vpn_of(tag2, idx)), frame2,
                "거절된 flush 를 건넌 스테이징의 커밋")
     dut._log.info("타 파티션 flush · 거절된 flush 는 스테이징에 닿지 않는다 — HI 커밋 · 적중 (판정 T5 (a) 범위)")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# W1 — 표면 비트 · 워드: 0xFF8 HIU_SHAPE · 0xEC4 MASK_DUP_CAPTURE · FAULT_STATUS [19]
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# 3.10 v1.0 묶음이 신설한 세 표면의 *호스트가 보는 값* 시험 (N12 · N13 · N14).
+# 선-formal 은 rtl/formal/tla/ 의 Platform.tla(원인별 보고 [4]/[19]) · Mask.tla(캡처) ·
+# MmioPage.tla(RO 처분)이고, 후-formal 은 hiumask · engine · assembly 하네스다. 여기는
+# 그 결과가 0xF80 · 0xEC4 · 0xFF8 의 값으로 나타나는지를 잰다.
+#
+# **기대값은 정본 표에서 독립 유도한다** — RTL companion 의 상수(비트 자리 · 오프셋 ·
+# 형상 · 비트 수)를 import 하지도 옮겨 적지도 않는다. 기대측이 RTL 에서 오면 RTL 과
+# 함께 틀리고, 시험은 실패하지 않고 *부재*로 침묵한다 (차등 정의역 함정). 비트 자리는
+# 정본 「FAULT_STATUS 비트 배정」 표, 오프셋은 E.1.2 표, 형상은 E.2 의 참조 구현 문장이다:
+#   e-defined.typ:765 「파티션 4 × 항목 16 = 64 항목 · 직접 사상 · 항목 8 B」
+#   e-defined.typ:503 「두 필드 다 *개수*로 인코딩한다」
+#
+# 표 시험(N13 · N14)은 행마다 관측을 모으고 **끝에 정본 모형의 행 표와 통째로 등가
+# 비교**한다 — 어긋난 행이 한 번에 전부 보이게(음성 대조의 기록이 「첫 실패 한 줄」로
+# 줄지 않게). 자극의 전건(엔진 유휴 · 키 기입의 유효 하강 · 정지 도달)은 행 표가 아니라
+# 그 자리에서 단언한다 — 전건이 무너진 행은 비교 대상이 아니다.
+
+B_XLATE_PERM = 4         # [4]  변환 권한 위반 — 자격(권한 비트) 거부
+B_MASK_NONCE_DUP = 12    # [12] 논스 재사용 재키잉
+B_OWN_FRAME = 19         # [19] 비소유 프레임 접근 — 3.10 v1.0 묶음이 [4] 에서 갈라 신설
+FLT_RSV_LO = 20          # 0xF84 예약 [31:20] (엄격) 의 최하위 비트
+FAULT_SUMMARY = 0xF88    # RO — [0] = FAULT_STATUS 의 정의 비트 어느 하나라도 1 (E.1.2 `0xF88` 행)
+
+HIU_SHAPE = 0xFF8
+REF_PARTS = 4            # 참조 구현의 파티션 수
+REF_SLOTS_PER_PART = 16  # 직접 사상이라 파티션당 저장 칸 = 파티션당 항목 16
+HIU_SHAPE_REF = (REF_SLOTS_PER_PART << 8) | REF_PARTS   # [23:8] 칸 수 · [7:0] 파티션 수 — 0x0000_1004
+
+MASK_KEY0 = 0xE80          # MASK_KEY[0..7]   WO — MASK_PART 창이 대상 파티션
+MASK_NONCE0 = 0xEA4        # MASK_NONCE[0..5] WO — 같은 창
+MASK_REKEY = 0xEBC         # WO — 기입이 발화 · [7:0] 파티션 · [31:8] 예약(엄격)
+MASK_STATUS = 0xEC0        # RO — [7:0] 파티션별 준비 · [8] busy · [9] 재키잉 수락 가능
+MASK_DUP_CAPTURE = 0xEC4   # RO — [7:0] p · [15:8] 비트맵 · [16] 캡처 유효 · [31:17] 0
+MASK_KEY_WORDS = 8
+MASK_NONCE_WORDS = 6
+
+
+def bit(v, b):
+    return (v >> b) & 1
+
+
+def table_diff(rows, want):
+    """행 표 대조의 실패 문면 — 어긋난 행에 `!!` 를 단다. 32b 값은 16진으로."""
+    def fmt(t):
+        return "(" + ", ".join(f"0x{x:08X}" if isinstance(x, int) and x > 0xFF else repr(x)
+                               for x in t) + ")"
+    out = []
+    for (lg, *g), (lw, *w) in zip(rows, want):
+        mark = "  " if (lg, g) == (lw, w) else "!!"
+        out.append(f"  {mark} {lg}: 관측 {fmt(g)} · 기대 {fmt(w)}")
+    if len(rows) != len(want):
+        out.append(f"  !! 행 수 {len(rows)} ≠ 기대 {len(want)}")
+    return "\n".join(out)
+
+
+@cocotb.test()
+async def hiu_shape_word(dut):
+    """N12 — `0xFF8` HIU_SHAPE (W1-3 · DP-7). 정본 E.1.2 `0xFF8` 행: RO · `[7:0]` 실재
+    파티션 수 · `[23:8]` 파티션당 저장 칸 수 · `[31:24]` 0 · 두 필드 다 개수 인코딩 ·
+    쓰기는 거절 + `[6]`.
+
+    재는 것: ① 읽기 값 == 참조 형상에서 유도한 0x0000_1004 (재읽기 불변 · 읽기는 fault
+    없음) ② 쓰기 셋(전폭 1 · 읽은 값 그대로 · 0)이 *값과 무관하게* 거절 + `[6]` 이고 값을
+    움직이지 않는다 ③ `[7:0]` 이 「실재 파티션 수」라는 뜻을 다른 표면과 맞물려 본다 —
+    그 수 미만의 XLATE_FLUSH 는 수락, 그 수 자체는 없는 파티션 값이라 거절 + `[6]`.
+
+    재지 않는 것: `[23:8]` 의 칸 수는 *정보*이고 정합성이 거기 기대지 않는다(정본
+    `0xC00` (g)) — 임의 VPN 집합의 동시 상주는 보장이 아니므로 칸 수를 상주 실험으로
+    재지 않는다. DUT 는 기본 형상(참조 구현) 하나뿐이라 다른 형상의 값은 미측정이다.
+    HEAD 생성물에서는 `0xFF8` 이 예약 오프셋이라 ① 이 0 을 읽어 죽는다 — 정본상
+    `[7:0]` = 0 은 「표면 없음」이므로 장치가 자기 표면을 부인하는 꼴이다.
+    """
+    await boot_hiu(dut)
+    v = await mmio_read(dut, HIU_SHAPE)
+    assert v == HIU_SHAPE_REF, (
+        f"0xFF8 HIU_SHAPE = 0x{v:08X} ≠ 참조 형상 0x{HIU_SHAPE_REF:08X} — 읽은 값의 [7:0] "
+        f"파티션 {v & 0xFF} · [23:8] 칸 {(v >> 8) & 0xFFFF} · [31:24] {v >> 24} (기대 "
+        f"{REF_PARTS} · {REF_SLOTS_PER_PART} · 0 — 개수 인코딩이지 log2 가 아니다)")
+    assert await mmio_read(dut, HIU_SHAPE) == v, "0xFF8 재읽기가 달라졌다"
+    assert await fault6(dut) == 0, "0xFF8 읽기가 [6] 을 세웠다 — 읽기는 fault 가 없다"
+    for what, data in (("전폭 1", 0xFFFF_FFFF), ("읽은 값 그대로", v), ("0", 0)):
+        await mmio_write(dut, HIU_SHAPE, data)
+        assert await fault6(dut) == 1, (
+            f"0xFF8 쓰기({what} 0x{data:08X})가 거절 + [6] 이 아니다 — RO 워드의 쓰기는 "
+            f"값과 무관하게 거절이다 (조용한 흡수)")
+        await clear_fault6(dut)
+        got = await mmio_read(dut, HIU_SHAPE)
+        assert got == v, f"거절된 0xFF8 쓰기({what})가 값을 움직였다: 0x{got:08X} ≠ 0x{v:08X}"
+    parts = v & 0xFF
+    for p in range(parts):
+        await mmio_write(dut, XCTL_FLUSH, p)
+        assert await fault6(dut) == 0, (
+            f"0xFF8 [7:0] = {parts} 인데 파티션 {p} 의 XLATE_FLUSH 가 거절됐다 — 「실재 "
+            f"파티션 수」가 파티션을 받는 표면과 맞물리지 않는다")
+    await mmio_write(dut, XCTL_FLUSH, parts)
+    assert await fault6(dut) == 1, (
+        f"0xFF8 [7:0] = {parts} 인데 파티션 값 {parts} 의 XLATE_FLUSH 가 수락됐다 — "
+        f"[7:0] 이 실재 파티션 수보다 작다")
+    await clear_fault6(dut)
+    dut._log.info(f"HIU_SHAPE 0x{v:08X} — 파티션 {parts} · 칸 {(v >> 8) & 0xFFFF} · RO 쓰기 셋 "
+                  f"거절 + [6] · 값 불변 · [7:0] 이 XLATE_FLUSH 수락 정의역과 일치")
+
+
+# ── N13 — 0xEC4 MASK_DUP_CAPTURE (W1-4 · DP-8) ─────────────────────────────
+#
+# 기대 모형은 정본 E.1.2 `0xEC4` 행 · `0xEBC` 행의 문장을 그대로 옮긴 것이다:
+#   e-defined.typ:347 「`[16]` = 1 동안의 새 발화는 캡처를 덮지 않는다」
+#   e-defined.typ:347 「해제와 새 발화가 같은 사이클이면 새 사건을 래치한다」
+#   e-defined.typ:345 「거절 + `[6]` 인 발화는 `[12]` 도 `0xEC4` 도 움직이지 않는다」
+# 비트맵의 정의역(마스크가 유효한 *다른* 파티션 중 논스가 p 의 새 논스와 같은 것)에서
+# 「마스크 유효」는 발화 직전에 호스트가 보는 MASK_STATUS `[7:0]` 이고, 논스는 하네스가
+# 쓴 값이다. `[12]` 를 동반한 재키잉 뒤의 준비 비트는 정본상 구현 정의라 가정하지 않고
+# 읽는다 — 대신 시나리오가 발화를 요구하는 행마다 모형이 실제로 발화를 예측했는지를
+# 그 자리에서 단언한다 (전건 확인 — 준비 비트가 바뀌어 행이 공허해지면 크게 죽는다).
+
+class DupCaptureModel:
+    """`[12]`(= `0xEC4` `[16]`)와 캡처 필드의 정본 모형 — RTL 을 보지 않는다."""
+
+    def __init__(self):
+        self.dup = False      # [12] — 불변식 [16] ⇔ [12] 라 둘이 한 변수다
+        self.cap = (0, 0)     # (p, 비트맵) — dup 일 때만 뜻이 있다
+
+    def word(self):
+        p, bm = self.cap
+        return ((1 << 16) | (bm << 8) | p) if self.dup else 0
+
+    def started(self, p, ready, nonce, clear=False):
+        """*재키잉이 시작된* 발화(엔진 유휴에서 수락 · 값 검사 통과)의 수락 사이클.
+        `clear` 는 같은 사이클의 해제다. 발화(겹침)가 있었는지를 돌려준다."""
+        mine = nonce.get(p)
+        hits = [q for q in sorted(ready)
+                if q != p and mine is not None and nonce.get(q) == mine]
+        fire, held = bool(hits), self.dup
+        if clear:
+            self.cap = (0, 0)
+        if fire and (not held or clear):
+            self.cap = (p, sum(1 << q for q in hits))
+        self.dup = fire or (held and not clear)
+        return fire
+
+    def inert(self, clear=False):
+        """거절 + [6] 인 발화 · 엔진 바쁨으로 수락되지 않은 발화 · 해제 단독.
+        세움도 래치도 없다 — 같은 사이클 해제만 일어날 수 있다."""
+        if clear:
+            self.dup, self.cap = False, (0, 0)
+
+
+async def mask_cfg(dut, part, nonce_words, key_words=None):
+    """MASK_PART 창을 `part` 로 두고 (키와) 논스를 쓴다 — 둘 다 그 파티션의 준비를 내린다."""
+    await mmio_write(dut, MASK_PART, part)
+    for i, k in enumerate(key_words or ()):
+        await mmio_write(dut, MASK_KEY0 + 4 * i, k)
+    for i, n in enumerate(nonce_words):
+        await mmio_write(dut, MASK_NONCE0 + 4 * i, n)
+
+
+async def mask_status(dut):
+    """MASK_STATUS → (준비 파티션 집합, busy, 재키잉 수락 가능)."""
+    v = await mmio_read(dut, MASK_STATUS)
+    return {q for q in range(8) if bit(v, q)}, bit(v, 8), bit(v, 9)
+
+
+async def mask_rekey(dut, word, io_clear=False):
+    """MASK_REKEY 한 기입. 수락 에지에 내부 해제선 `io_faultClear_maskNonceDup` 을 맞출 수 있다.
+
+    그 선은 호스트 계약 밖의 조립 IO 다 (E.1.2 `0xF84` 행 — 제품 결선은 0). 0xF84 W1C 와
+    MASK_REKEY 는 버스가 하나라 같은 사이클에 올 수 없으므로 「같은 사이클 해제 + 발화」는
+    이 선으로만 만든다 — 정본 `0xEC4` 행이 이 선도 `[12]` 와 같은 해제 신호라고 적는다.
+    """
+    dut.io_mmio_addr.value = MASK_REKEY
+    dut.io_mmio_wdata.value = word
+    dut.io_mmio_wstrobe.value = 1
+    if io_clear:
+        dut.io_faultClear_maskNonceDup.value = 1
+    await settle(dut)
+    assert int(dut.io_mmio_ready.value) == 1, (
+        "MASK_REKEY 기입이 버스에서 잡혔다 — 해제선을 수락 에지에 맞출 수 없다")
+    await step(dut)            # 수락 에지 — 발화(와 해제)가 이 에지 하나에 실린다
+    dut.io_mmio_wstrobe.value = 0
+    dut.io_faultClear_maskNonceDup.value = 0
+    await step(dut)
+    await settle(dut)
+
+
+async def mask_wait_idle(dut, limit=64):
+    """MASK_STATUS `[8]` 하강까지 — 준비 집합을 돌려준다. 상한 초과는 FAIL."""
+    for _ in range(limit):
+        ready, busy, _ = await mask_status(dut)
+        if not busy:
+            return ready
+    raise AssertionError(
+        f"MASK_STATUS [8] busy 가 {limit} 회 읽기 안에 내려가지 않았다 — 미완료는 통과가 아니다")
+
+
+@cocotb.test()
+async def mask_dup_capture(dut):
+    """N13 — `0xEC4` MASK_DUP_CAPTURE 의 MMIO 판 (W1-4 · DP-8 · 선-formal Mask.tla).
+
+    재는 것 (행 표 — 행마다 `0xF80` `[12]` · `[6]` · `0xEC4` 를 뜬다):
+      · reset 0 · 겹침 없는 재키잉은 0 · 첫 겹침에서 p · 비트맵(다른 유효 파티션 중
+        같은 논스) · `[16]` 래치, 불변식 `[16]` ⇔ `[12]` (기대 행이 한 변수에서 나온다)
+      · 읽기 무부작용 — `0xEC4` · `0xF80` 읽기가 `[12]` · 캡처를 내리지 않는다
+      · `0xEC4` 쓰기 → 거절 + `[6]` · 캡처 불변
+      · 첫 사건 보존 — `[16]` = 1 동안의 새 겹침 발화는 덮지 않는다
+      · `0xF84` `[12]` 해제가 워드 전체(p · 비트맵 포함)를 지운다
+      · 비트맵 정의역 셋 — 유효한 p 자신(재재키잉) · 유효가 내려간 같은 논스 파티션 ·
+        유효하지만 논스가 다른 파티션은 들지 않는다
+      · 거절 + `[6]` 인 발화(예약 비트 · 없는 파티션 값)와 엔진 바쁨으로 미수락된
+        발화는 전건이 서 있어도 `[12]` · `0xEC4` 를 움직이지 않는다
+      · 같은 사이클 해제(내부 해제선) + 발화 → 세움이 이기고 *새* 사건을 래치한다 —
+        p 와 비트맵이 *둘 다* 앞 사건과 다르게 골라, 한쪽만 새로 담는 판을 가른다
+      · 내부 해제선 단독도 워드를 지운다 · 바쁨 미수락 발화 · 거절 발화에 해제선이
+        겹치면 해제만 일어난다
+
+    재지 않는 것: 논스 192b 의 전폭 비교(여기 논스는 두 값뿐 — engine.sby 몫) ·
+    reset 형식 단언(W1-8 미실시 — reset 직후 0 은 한 점 관측일 뿐) · 0xF84 W1C 와 발화의
+    같은 사이클(버스가 하나라 만들 수 없다).
+    HEAD 생성물에서는 `0xEC4` 가 디코드되지 않아 읽기 0 · 쓰기 무시다 — `[12]` 열은 모형과
+    같고 `0xEC4` 열 · 쓰기 거절 행만 어긋날 것으로 예상한다 (음성 대조).
+    """
+    await boot_hiu(dut)
+    NA = [0xA5A5_0000 | i for i in range(MASK_NONCE_WORDS)]
+    NB = [0xB4B4_0000 | i for i in range(MASK_NONCE_WORDS)]
+
+    def key(p):
+        return [0x1000_0000 | (p << 8) | i for i in range(MASK_KEY_WORDS)]
+
+    model, nonce = DupCaptureModel(), {}
+    rows, want = [], []
+
+    async def note(label, exp6=0):
+        f = await mmio_read(dut, FAULT_STATUS)
+        c = await mmio_read(dut, MASK_DUP_CAPTURE)
+        rows.append((label, bit(f, B_MASK_NONCE_DUP), bit(f, B_CFG_BADWRITE), c))
+        want.append((label, int(model.dup), exp6, model.word()))
+
+    async def started(p, label, must_fire, io_clear=False, wait=True):
+        ready, busy, rk = await mask_status(dut)
+        assert (busy, rk) == (0, 1), (
+            f"[{label}] 발화 직전 엔진이 유휴가 아니다 (busy={busy} · 수락 가능={rk}) — 자극이 계약 밖")
+        fire = model.started(p, ready, nonce, clear=io_clear)
+        assert fire == must_fire, (
+            f"[{label}] 전건 불성립 — 준비 {sorted(ready)} · 논스 모형으로 겹침 예측 {fire} ≠ "
+            f"시나리오 {must_fire}. 공허한 행은 비교 대상이 아니다")
+        await mask_rekey(dut, p, io_clear=io_clear)
+        await note(label)
+        if wait:
+            after = await mask_wait_idle(dut)
+            if not must_fire:
+                assert p in after, (
+                    f"[{label}] 겹침 없는 재키잉이 끝났는데 파티션 {p} 준비가 서지 않았다 (준비 {sorted(after)})")
+
+    async def clear12(label):
+        await mmio_write(dut, FAULT_CLEAR, 1 << B_MASK_NONCE_DUP)
+        model.inert(clear=True)
+        await note(label)
+
+    async def pulse_io_clear(label):
+        dut.io_faultClear_maskNonceDup.value = 1
+        await step(dut)
+        dut.io_faultClear_maskNonceDup.value = 0
+        await step(dut)
+        model.inert(clear=True)
+        await note(label)
+
+    await note("reset — [12] · 0xEC4 0")
+    nonce[0] = tuple(NA)
+    await mask_cfg(dut, 0, NA, key(0))
+    await started(0, "p0 재키잉 — 겹침 없음", must_fire=False)
+    nonce[2] = tuple(NB)
+    await mask_cfg(dut, 2, NB, key(2))
+    await started(2, "p2 재키잉 — 다른 논스", must_fire=False)
+    nonce[1] = tuple(NA)
+    await mask_cfg(dut, 1, NA, key(1))
+    await started(1, "p1 재키잉 — p0 과 같은 논스: 래치", must_fire=True)
+    for _ in range(2):
+        await mmio_read(dut, MASK_DUP_CAPTURE)
+        await mmio_read(dut, FAULT_STATUS)
+    await note("0xEC4 · 0xF80 재읽기 둘 — 읽기는 아무것도 해제하지 않는다")
+    await mmio_write(dut, MASK_DUP_CAPTURE, 0xFFFF_FFFF)
+    await note("0xEC4 쓰기 — 거절 + [6] · 캡처 불변", exp6=1)
+    await clear_fault6(dut)
+    nonce[3] = tuple(NA)
+    await mask_cfg(dut, 3, NA, key(3))
+    await started(3, "p3 재키잉 — [16]=1 동안의 새 겹침 발화는 덮지 않는다", must_fire=True)
+    await clear12("0xF84 [12] — [12] 와 워드 전체 해제")
+    await started(3, "p3 재재키잉 — 유효한 p 자신은 비트맵에 들지 않는다", must_fire=True)
+    await clear12("0xF84 [12] — 해제")
+    await mmio_write(dut, MASK_PART, 1)
+    await mmio_write(dut, MASK_KEY0, 0x5A5A_5A5A)
+    ready, _, _ = await mask_status(dut)
+    assert 1 not in ready, (
+        f"p1 키 기입 뒤 준비 {sorted(ready)} — 키 기입이 그 파티션의 마스크 유효를 떨어뜨리지 "
+        f"않았다: 자극이 계약 밖")
+    await started(3, "p3 재재키잉 — 유효가 내려간 p1(같은 논스) · 논스가 다른 p2 는 들지 않는다",
+                  must_fire=True)
+    await clear12("0xF84 [12] — 해제")
+    for what, word in (("예약 [31:8] 비0", (1 << 8) | 3), ("없는 파티션 값", REF_PARTS)):
+        await mask_rekey(dut, word)
+        model.inert()
+        await note(f"MASK_REKEY {what} — 거절 + [6] · [12] · 0xEC4 불변", exp6=1)
+        await clear_fault6(dut)
+    await started(2, "p2 재재키잉 — 겹침 없음 (엔진 바쁨을 만든다)", must_fire=False, wait=False)
+    _, busy, rk = await mask_status(dut)
+    assert (busy, rk) == (1, 0), f"엔진 바쁨 창이 아니다 (busy={busy} · 수락 가능={rk}) — 자극이 계약 밖"
+    await mask_rekey(dut, 3)
+    model.inert()
+    await note("엔진 바쁨 중 MASK_REKEY(p3, 겹칠 전건) — 미수락: [12] · 0xEC4 불변")
+    after = await mask_wait_idle(dut)
+    assert 2 in after, f"p2 재키잉이 끝났는데 준비가 서지 않았다 (준비 {sorted(after)})"
+    await started(0, "p0 재재키잉 — p3 과 겹침: 래치", must_fire=True)
+    held = model.cap
+    await started(3, "내부 해제선 + p3 발화가 같은 사이클 — 세움이 이기고 새 사건을 래치",
+                  must_fire=True, io_clear=True)
+    assert model.cap[0] != held[0] and model.cap[1] != held[1], (
+        f"시나리오 결함 — 새 사건 {model.cap} 이 앞 사건 {held} 와 p 또는 비트맵이 같다. "
+        f"한쪽만 새로 담는 판을 가르지 못한다 (이것은 DUT 판정이 아니라 자극의 비공허 확인이다)")
+    await pulse_io_clear("내부 해제선 단독 — [12] 와 워드 전체 해제")
+    await started(0, "p0 재재키잉 — 다시 붙든다 (엔진 바쁨)", must_fire=True, wait=False)
+    _, busy, rk = await mask_status(dut)
+    assert (busy, rk) == (1, 0), f"엔진 바쁨 창이 아니다 (busy={busy} · 수락 가능={rk}) — 자극이 계약 밖"
+    await mask_rekey(dut, 3, io_clear=True)
+    model.inert(clear=True)
+    await note("엔진 바쁨 미수락 발화 + 내부 해제선 — 해제만 (세움 · 래치 없음)")
+    await mask_wait_idle(dut)
+    await started(0, "p0 재재키잉 — 다시 붙든다", must_fire=True)
+    await mask_rekey(dut, (1 << 8) | 3, io_clear=True)
+    model.inert(clear=True)
+    await note("거절 + [6] 발화 + 내부 해제선 — 해제만", exp6=1)
+    await clear_fault6(dut)
+
+    assert rows == want, (
+        "0xEC4 MASK_DUP_CAPTURE 행 표가 정본 모형과 다르다 — 열은 ([12], [6], 0xEC4):\n"
+        + table_diff(rows, want))
+    dut._log.info(f"MASK_DUP_CAPTURE: {len(rows)} 행 전부 정본 모형과 등가 — 래치 · 첫 사건 보존 · "
+                  f"해제(0xF84 · 내부 선) · 비트맵 정의역 셋 · 거절/미수락 불변 · 같은 사이클 세움 승리 · "
+                  f"읽기 무부작용 · RO 쓰기 거절")
+
+
+# ── N14 — FAULT_STATUS [19] 비소유 프레임 접근 (W1-1 · W1-2 · 선-formal Platform.tla) ──
+#
+#   e-defined.typ:527 「자격이 허용된 접근이 장치 소유가 아닌 프레임에 닿을 때만 `[19]` 가 선다」
+#   e-defined.typ:527 「프레임이 무엇이든 `[4]` 로만 선다」
+#   e-defined.typ:497 「예약 비트가 0 이 아니면 기입 전체를 거절(+ `[6]`)하고 한 비트도 내리지 않는다」
+# 자격 = 요청 종류(읽기 · 쓰기)에 대한 권한 비트(R · W). 처분(값 차단 · 승인 거부 ·
+# 상태열)은 두 원인이 같고 갈리는 것은 보고 비트뿐이다 — 그래서 행마다 승인 · 값 ·
+# 응답까지의 사이클 수도 함께 뜬다(사이클 수의 기준은 같은 경로의 양성 대조 행).
+
+FRAME_DEV = 0x0000_1040    # OWN_SET 으로 장치에 넘긴다
+FRAME_HOST = 0x0000_2081   # 아무에게도 넘기지 않는다 — reset 소유는 호스트. 소유권 표의
+                           # 직접 사상 슬롯(하위 비트)이 FRAME_DEV 와 겹치지 않게 골랐다
+
+# (이름, 파티션, 색인, 태그, 프레임, (R, W, X), 쓰기, 경로, 기대 (승인, [4], [19]))
+#   경로 "hit"  = 미리 커밋한 항목에 적중
+#   경로 "fill" = 미적중 정지를 그 VPN 의 항목 커밋(채움)이 풀어 판정 (E.3 2항 — 거부 채움 포함)
+N14_CASES = [
+    ("소유 · 자격 허용 읽기 (적중 양성 대조)",          0, 1, 0x00A0001, FRAME_DEV, (1, 0, 0), 0, "hit", (1, 0, 0)),
+    ("소유 · R=0 읽기 — 자격 거부",                     0, 2, 0x00A0002, FRAME_DEV, (0, 1, 1), 0, "hit", (0, 1, 0)),
+    ("소유 · W=0 쓰기 — 자격 거부",                     0, 3, 0x00A0003, FRAME_DEV, (1, 0, 1), 1, "hit", (0, 1, 0)),
+    ("비소유 · 자격 허용 읽기",                         1, 4, 0x00B0004, FRAME_HOST, (1, 0, 0), 0, "hit", (0, 0, 1)),
+    ("비소유 · 자격 허용 쓰기",                         1, 5, 0x00B0005, FRAME_HOST, (0, 1, 0), 1, "hit", (0, 0, 1)),
+    ("비소유 · R=0 읽기 — 자격이 먼저",                 1, 6, 0x00B0006, FRAME_HOST, (0, 1, 1), 0, "hit", (0, 1, 0)),
+    ("비소유 · W=0 쓰기 — 자격이 먼저",                 1, 7, 0x00B0007, FRAME_HOST, (1, 0, 1), 1, "hit", (0, 1, 0)),
+    ("거부 채움(RWX=0) · 소유 프레임 읽기",             2, 8, 0x00C0008, FRAME_DEV, (0, 0, 0), 0, "hit", (0, 1, 0)),
+    ("거부 채움(RWX=0) · 비소유 프레임 쓰기",           2, 9, 0x00C0009, FRAME_HOST, (0, 0, 0), 1, "hit", (0, 1, 0)),
+    ("정지 → 자격 허용 채움 · 소유 (채움 양성 대조)",   3, 10, 0x00D000A, FRAME_DEV, (1, 0, 0), 0, "fill", (1, 0, 0)),
+    ("정지 → 자격 허용 채움 · 비소유",                  3, 11, 0x00D000B, FRAME_HOST, (1, 0, 0), 0, "fill", (0, 0, 1)),
+    ("정지 → 거부 채움 · 비소유",                       3, 12, 0x00D000C, FRAME_HOST, (0, 0, 0), 0, "fill", (0, 1, 0)),
+]
+
+
+async def hiu_report(dut):
+    """FAULT_STATUS 의 ([4], [19], [6]). 응답 사이클 뒤 sticky 가 앉고 MMIO 읽기가 한 에지
+    늦으므로(실측) 두 에지를 먼저 흘린다."""
+    await step(dut, 2)
+    f = await mmio_read(dut, FAULT_STATUS)
+    return bit(f, B_XLATE_PERM), bit(f, B_OWN_FRAME), bit(f, B_CFG_BADWRITE)
+
+
+async def clear_hiu_report(dut, what):
+    """[4] · [19] 를 0xF84 로 한 비트씩 — 선 것만 — 내리고 셋 다 0 인지 본다. 한 비트씩인
+    이유: 한 기입에 섞으면 [19] 의 예약 거절(HEAD)이 [4] 해제까지 삼켜 행이 서로 번진다."""
+    f = await mmio_read(dut, FAULT_STATUS)
+    for b in (B_XLATE_PERM, B_OWN_FRAME):
+        if bit(f, b):
+            await mmio_write(dut, FAULT_CLEAR, 1 << b)
+    got = await hiu_report(dut)
+    assert got == (0, 0, 0), (
+        f"[{what}] 앞 정리: 0xF84 한 비트 해제 뒤 ([4], [19], [6]) = {got} — 해제가 거절됐거나 "
+        f"비트가 내려가지 않았다")
+
+
+@cocotb.test()
+async def fault19_nonowned_access(dut):
+    """N14 — FAULT_STATUS `[19]` 비소유 프레임 접근 · 원인별 보고 (W1-1 · W1-2 · DP-9 · DP-11).
+
+    재는 것 (행 표):
+      · 접근 12 행 — 자격 거부(R=0 읽기 · W=0 쓰기) → `[4]` 만 · 자격 허용 ∧ 비소유
+        → `[19]` 만 · 자격 거부 ∧ 비소유 → `[4]` 만(자격이 먼저) · 거부 채움(V=1 · RWX=0) →
+        프레임과 무관하게 `[4]` 만. 적중 경로 9 행(양성 대조 포함)과 「미적중 정지를 채움이
+        풀어 판정」 경로 3 행(양성 대조 · 자격 허용 비소유 · 거부 채움 비소유).
+        행마다 승인 0 · 값 0(값 차단) · 응답까지의 사이클 수가 같은 경로의 양성 대조와
+        같음(상태열 균일)을 함께 본다. 한 접근에 `[4]` · `[19]` 가 함께 서지 않는다.
+      · reset 직후 — 어떤 해제도 하기 전에 `[4]` · `[19]` · `[6]` = 0 이고 원천별 수출 둘도 0
+        (W1 검증 결함 X21 — `[19]` 원천의 reset 값 1 을 이 시험이 놓쳤다. 행마다 먼저 해제하는
+        정리 헬퍼가 그 1 을 지워 버렸다. reset 의 *형식* 단언은 W1-8 로 미뤘고, 이것은 한 점 관측이다)
+      · `[19]` sticky — 사이클이 흘러도 · 승인된 접근 뒤에도 · `0xF80` 재읽기 뒤에도 선다
+      · `0xF84` — 예약 `[31:20]` 비0 기입은 거절 + `[6]` 이고 한 비트도 내리지 않는다
+        (`[4]` 를 함께 실은 기입도) · `[19]` = 1 인 채 `1 << 4` 는 `[4]` 만 내리고 `[19]` 는 남는다
+        (검증 결함 X04 — `[4]` 해제가 `[19]` 원천까지 내리는 판) · `1 << 19` 는 `[6]` 없이 `[19]` 만
+        내린다 (`[4]` 는 남는다)
+      · `0xF88` FAULT_SUMMARY — `[19]` *하나만* 선 상태(0xF84 로 `[18:0]` 을 지운 뒤)에서
+        FAULT_STATUS = `1 << 19` · FAULT_SUMMARY = 1 (검증 결함 X02 — 요약이 `[19]` 를 빼는 판)
+      · 원천별 수출 — `io_fault_hiuOwn` = `[19]` · `io_fault_hiuPerm` = `[4]` (포트 계약)
+
+    재지 않는 것: 호스트 쪽 접근(HIU 요청 경로는 장치 쪽뿐이다) · `[19]` 해제와 발화의
+    같은 사이클(assembly `a_fclr_b19` · StickyFault 공용 규약 몫) · 표현 불가 프레임 ·
+    X 권한(요청 종류에 실행이 없다 — 판정 불참). 마스크는 구성하지 않았다 — 마스킹
+    단은 항등이고 `[11]` 이 서지만 접근 · sticky 행은 `[4]` · `[19]` · `[6]` 만 본다 (요약 행은
+    `[18:0]` 을 지운 뒤 FAULT_STATUS 워드 전체를 본다). reset 값은 한 점 관측이다(형식 단언 아님).
+    HEAD 생성물에서는 비소유 · 자격 허용 행이 `[4]` 를 세우고(`[19]` 원천 없음),
+    `0xF84` 의 `1 << 19` · `1 << 20` 이 `[31:19]` 예약으로 거절될 것으로 예상한다.
+    """
+    await boot_hiu(dut)
+    rows, want = [], []
+    # reset 직후 — 어떤 해제도 하기 전 (W1 검증 결함 X21). 열은 ([4], [19], [6], hiuPerm, hiuOwn).
+    rst = await hiu_report(dut)
+    rows.append(("reset 직후 — 해제 전", *rst,
+                 int(dut.io_fault_hiuPerm.value), int(dut.io_fault_hiuOwn.value)))
+    want.append(("reset 직후 — 해제 전", 0, 0, 0, 0, 0))
+    await mmio_write(dut, OWN_SET, FRAME_DEV)
+    lat_ref = {}
+    for (name, part, idx, tag, frame, (r, w, x), wr, path, (eg, e4, e19)) in N14_CASES:
+        await clear_hiu_report(dut, name)
+        vpn = vpn_of(tag, idx)
+        if path == "hit":
+            await install_entry(dut, part, idx, tag, frame, r=r, w=w, x=x)
+            res = await hiu_lookup(dut, part, vpn, write=wr)
+            lat = len(res["trace"])
+        else:
+            res = await hiu_lookup(dut, part, vpn, write=wr)
+            assert_miss(dut, res, f"{name} — 채움 전 정지")
+            await install_entry(dut, part, idx, tag, frame, r=r, w=w, x=x)
+            res = await wait_rsp(dut)
+            lat = res["wait"]
+        lat_ref.setdefault(path, lat)          # 경로마다 첫 행 = 양성 대조
+        b4, b19, b6 = await hiu_report(dut)
+        rows.append((name, res["rsp"], res["granted"], res["phys"], res["frame"],
+                     res["fromFill"], lat, b4, b19, b6))
+        want.append((name, 1, eg, eg, frame if eg else 0, int(path == "fill"), lat_ref[path],
+                     e4, e19, 0))
+
+    # sticky · 0xF84 행 — 열은 ([4], [19], [6]).
+    unowned = N14_CASES[3]
+    denied = N14_CASES[1]
+    granted = N14_CASES[0]
+
+    async def access(case):
+        _, part, idx, tag, _, _, wr, _, _ = case
+        res = await hiu_lookup(dut, part, vpn_of(tag, idx), write=wr)
+        assert res["rsp"] == 1, f"[{case[0]}] 재적중에 응답이 없다 ({res})"
+
+    async def note(label, exp):
+        rows.append((label, *(await hiu_report(dut))))
+        want.append((label, *exp))
+
+    await clear_hiu_report(dut, "sticky 행")
+    await access(unowned)
+    await note("[19] 세움 — 비소유 · 자격 허용 재적중", (0, 1, 0))
+    await step(dut, 8)
+    await access(granted)
+    await mmio_read(dut, FAULT_STATUS)
+    await note("[19] sticky — 8 사이클 · 승인된 접근 · 0xF80 재읽기 뒤에도", (0, 1, 0))
+    await access(denied)
+    await note("[4] 도 세운다 — 자격 거부 재적중 (둘은 원천이 다른 sticky)", (1, 1, 0))
+    await mmio_write(dut, FAULT_CLEAR, (1 << B_XLATE_PERM) | (1 << FLT_RSV_LO))
+    await note("0xF84 ← [4] | [20] — 예약 비0: 거절 + [6] · 한 비트도 내리지 않는다", (1, 1, 1))
+    await clear_fault6(dut)
+    await mmio_write(dut, FAULT_CLEAR, (1 << B_OWN_FRAME) | (1 << 31))
+    await note("0xF84 ← [19] | [31] — 예약 비0: 거절 + [6] · [19] 유지", (1, 1, 1))
+    await clear_fault6(dut)
+    await mmio_write(dut, FAULT_CLEAR, 1 << B_XLATE_PERM)
+    await note("0xF84 ← [4] — [19] = 1 인 채 [4] 만 내린다 ([19] 는 원천이 다른 sticky)", (0, 1, 0))
+    await mmio_write(dut, FAULT_CLEAR, (1 << B_OWN_FRAME) - 1)
+    await step(dut, 2)
+    st, sm = await mmio_read(dut, FAULT_STATUS), await mmio_read(dut, FAULT_SUMMARY)
+    rows.append(("0xF84 ← [18:0] — [19] 하나만 남긴 (FAULT_STATUS, FAULT_SUMMARY)", st, sm))
+    want.append(("0xF84 ← [18:0] — [19] 하나만 남긴 (FAULT_STATUS, FAULT_SUMMARY)", 1 << B_OWN_FRAME, 1))
+    await access(denied)
+    await note("[4] 다시 세움 — 자격 거부 재적중", (1, 1, 0))
+    await mmio_write(dut, FAULT_CLEAR, 1 << B_OWN_FRAME)
+    await note("0xF84 ← [19] — [6] 없이 [19] 만 내린다 ([4] 는 1 을 쓰지 않았다)", (1, 0, 0))
+    await mmio_write(dut, FAULT_CLEAR, 1 << B_XLATE_PERM)
+    await note("0xF84 ← [4] — 정리", (0, 0, 0))
+
+    assert rows == want, (
+        "FAULT_STATUS [4]/[19] 원인별 보고 행 표가 정본과 다르다 — reset 행의 열은 ([4], [19], [6], "
+        "hiuPerm, hiuOwn) · 접근 행의 열은 (응답, 승인, phys, 값, fromFill, 사이클, [4], [19], [6]) · "
+        "sticky/0xF84 행의 열은 ([4], [19], [6]) · 요약 행은 (FAULT_STATUS, FAULT_SUMMARY):\n"
+        + table_diff(rows, want))
+
+    # 원천별 수출 (포트 계약 — io.fault.hiuOwn 이 [19] 원천, io.fault.hiuPerm 이 [4] 원천).
+    await access(unowned)
+    await step(dut, 2)
+    got = (int(dut.io_fault_hiuPerm.value), int(dut.io_fault_hiuOwn.value))
+    assert got == (0, 1), f"비소유 · 자격 허용 접근 뒤 (hiuPerm, hiuOwn) = {got} ≠ (0, 1)"
+    await mmio_write(dut, FAULT_CLEAR, 1 << B_OWN_FRAME)
+    await access(denied)
+    await step(dut, 2)
+    got = (int(dut.io_fault_hiuPerm.value), int(dut.io_fault_hiuOwn.value))
+    assert got == (1, 0), f"자격 거부 접근 뒤 (hiuPerm, hiuOwn) = {got} ≠ (1, 0)"
+    dut._log.info(f"원인별 보고: reset 1 행 + 접근 {len(N14_CASES)} 행(적중 · 채움 경로) + sticky/0xF84/"
+                  f"0xF88 {len(rows) - len(N14_CASES) - 1} 행이 정본과 등가 · 원천별 수출 hiuOwn/hiuPerm 확인")

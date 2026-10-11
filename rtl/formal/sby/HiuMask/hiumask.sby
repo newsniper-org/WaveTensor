@@ -9,7 +9,11 @@
 # PROVES: Isolation.query_no_serve — **적중 면과 미적중 면 둘 다**: 로컬이 답하는 사이클의 s4 입력 값(io.mask.req.frame 과 같은 그물)은 저장 leg 값 그 자체이고, 로컬이 *미적중*하는 사이클의 값은 0 · 판정 비트는 0 이다 — 호스트 응답이 서 있어도 그렇다. 두 면의 전건이 서로 여집합이라 조회 사이클 전체가 덮인다 (충돌 궤적 도달성은 증인 W9, 미적중 면 **전건 도달성**은 증인 W10 — 그 증인은 전건이 도달함만 든다: 결론 두 항(값 0 · 정지 유지)이 오늘 구조에서 전건으로부터 따라오므로 leg 의 *활성*은 증명하지 않는다. 그 한계는 아래 §미측정 잔여 ③ 와 HiuMask_props.sv 의 W10 주석이 적는다 — 2026-08-31 확장)
 # PROVES: Platform.xlate_local — **판정·값·정지 세 축**: 호스트 응답(io_hostRsp_*)은 s4 판정 비트(캡처 등식의 우변이 XlateStore 독립 출력 x_hit 다) · 조회 값 접기 · advance 어느 식에도 들어가지 않는다. 지속 상태 불오염 축과 2사본 구성 간 동일성은 이 태스크가 재지 않는다 — 아래 §미측정 잔여 ③
 # PROVES: Decode.evict_inline — 캡처 축: 전진 에지의 s4 몸 = 그 사이클의 조회 데이터 그 자체 (대체 전용 상태·전용 데이터 경로·전용 판정 비트 부재) + 대체 궤적이 실제로 도달하고 여섯 단을 완주한다는 증인 W11·W12
-# PROVES: Platform.owner_check — **승인 소비 축**: granted ⊆ devOwned · 비소유의 값 차단(전건이 devOwned) · 비소유 적중의 loud fault (sticky 상승 + 명시 해제 없는 비하강). OwnershipTable 앵커(devOwned 의 데이터 원천 축)와 분업이다 — 그쪽은 「옳게 계산한다」, 이쪽은 「옳게 쓴다」
+# PROVES: Platform.owner_check — **승인 소비 축**: granted ⊆ devOwned · 비소유의 값 차단(전건이 devOwned) · 비소유 적중의 loud fault — W1 부터 원인별: 자격 허용 ∧ 비소유는 faultOwn([19] 원천 — o_own_loud), 자격 거부는 io_faultPerm([4] — o_perm_loud) · 명시 해제 없는 비하강. OwnershipTable 앵커(devOwned 의 데이터 원천 축)와 분업이다 — 그쪽은 「옳게 계산한다」, 이쪽은 「옳게 쓴다」
+# PROVES: Platform.entitle_gates_value (W1 — 3.10 v1.0 묶음 [19]) — 자격 쪽 값 차단 · 승인 거부: granted ⇒ entitle (o_grant_entitle) · ¬entitle ⇒ ¬granted ∧ 값 0 (o_ent_blocked — o_grant_entitle 과 approve_gates_value 에서 유도되는 backstop). 장치 소유 · 자격 거부 · 저장 프레임 비0 의 접근이 막히는 궤적이 증인 W26. granted 에서 entitle 항을 지운 구현은 owner_check ①② · approve_gates_value 를 전부 통과하고 이 둘에서만 반례가 난다
+# PROVES: Platform.perm_entitle_only (W1) — FAULT_STATUS [4] 의 상승 원천은 자격 거부(승인 단 적중 ∧ ¬entitle)뿐이다 — devOwned 는 항이 아니다 (o_perm_rise) · 자격 거부는 해제와 겹쳐도 [4] 를 세운다 (o_perm_loud) · 거부 채움 증인 W25. 지상 진리는 승인 단 단 몸(s6_*) + 자유 입력 io_owner_devOwned
+# PROVES: Platform.entitle_first (W1) — [19] 원천(faultOwn)의 상승 원천은 자격 허용 ∧ 비소유 적중뿐이다 — 자격 거부(거부 채움 포함)는 비소유여도 [19] 를 세우지 않는다 (o_own_rise). 두 상승 원천의 전건이 서로소라 o_perm_rise ∧ o_own_rise 가 「한 접근에 둘이 함께 서지 않는다」의 정확 등식이다 · 증인 W25 · W13
+# PROVES: Platform.own_reported (W1) — 파이프라인 절반: 자격 허용 ∧ 비소유 적중은 다음 에지에 sticky faultOwn 을 세운다 (o_own_loud) · 해제 없이 내려가지 않고 (o_own_hold) · 해제로 내려간다 (o_own_clear) · 증인 W13 · W27 · W28. faultOwn → FAULT_STATUS [19] 배치 · 원천별 수출 · 0xF84 [19] 해제 라우팅은 Wt64Top/assembly.sby (hiu 절단 — 합성은 서술, lint_postformal _PARTIAL 등재)
 # PROVES: Mask.key_write_own_only (2026-09-15 신설, 정본 7fa5f2e — 임대별 마스크 키) — 파티션 p 로 향한 키 기입이 있었던 에지에서 q != p 의 maskReady 비트는 그 에지를 건너 그대로다. 재구현 착수 시점 RTL(키 기입 시 전 파티션 무효화)에 걸면 반례가 난다 — §역-변이 실측 mutF.
 # PROVES: Mask.key_scoped_storage (2026-09-15 신설) — REKEY(p) 수락 다음 사이클, 엔진의 유도 초기 상태(st_4..st_11)는 keyWr 입력을 그대로 미러링하는 독립 섀도우의 p 슬롯과 같다(지상 진리를 DUT 의 key 저장 자체가 아니라 keyWr 입력에서 다시 적는다 — lookAny 규율과 같은 자리). 키가 전역 1벌이던 재구현 착수 시점 RTL 에 걸면 반례가 난다 — §역-변이 실측 mutG.
 # PROVES: XlateObs.obs_stall_live (2026-09-26 파도 4 — 미적중 관측 값) — 파이프라인 절반: missStall == 조회 지점 로컬 미적중(거울 valid f_v[3] ∧ ¬x_hit) — *지금* 정지 중인가의 레벨이지 sticky 가 아니다 (m_obs_stall · 증인 W19). STATUS[0] 로의 포장은 Wt64Top/assembly.sby (lint_postformal _PARTIAL 등재)
@@ -125,7 +129,7 @@
 #    실측: 둘 다 수리 전 생성 SV 에서 반례가 났다 (미적중 면 step 1,
 #    캡처 등식 step 3). 즉 종전 판이 「항진이라 못 잰다」로 버린 축에
 #    **실물 결함이 살아 있었다** — 공허를 피하려다 축을 통째로 버린 것이다.
-#    이 하네스는 같은 규율(`f_nonowned_hit` 선언의 「검사 어휘로 지상 진리를
+#    이 하네스는 같은 규율(옛 `f_nonowned_hit` 선언 — W1 에서 f_ent_deny · f_unowned 로 갈림 — 의 「검사 어휘로 지상 진리를
 #    적으면 그 신호를 지운 구현에서 전건이 함께 사라진다」)을 permViol 에는
 #    지키고 lookAny 에는 빠뜨렸고, 필요한 재료(x_hit tap)는 이미 들어와 있었다.
 #    ※ 수리로 lookAny 는 넷 자체가 사라졌다 — 위 규율 문면의 실물 확인이다.
@@ -149,7 +153,7 @@
 #   mutA 조회 leg 우선순위 역전 (호스트가 로컬을 이긴다)
 #          → 적중 면 값 등식 `x_hit -> lookFrame == x_frame` 만 실패
 #   mutB permViol 이 sticky 를 세우지 않는다 (조용한 fault)
-#          → 비소유 적중의 loud fault (`$past(f_nonowned_hit) -> io_faultPerm`)
+#          → 비소유 적중의 loud fault (옛 단언 `$past(f_nonowned_hit) -> io_faultPerm` — W1 이 o_perm_loud · o_own_loud 로 갈랐다)
 #            만 실패
 #   mutC 승인 판정과 값을 s5 로 당긴다 (조기 포워딩)
 #          → no_early_forward 의 시간축 `값축 비0 -> f_v[6]` 만 실패.
@@ -333,6 +337,85 @@
 #      한정 없이 쓰면 smtbmc cover 가 Unused option 으로 죽는다). 컨테이너의 yosys-abc 이름은
 #      scripts/sby_sweep.sh 의 셔김이 잇는다. 속성 집합 · 깊이 · [script] · [files] 는 불변 —
 #      바뀐 것은 bmc 엔진 한 줄과 그 재생 옵션 한 줄이다.
+#
+# ## W1 (3.10 v1.0 묶음 RTL 파도 — FAULT_STATUS [19], 2026-10-11)
+#
+# 선-formal rtl/formal/tla/Platform.tla 의 새 가드 넷(entitle_gates_value · perm_entitle_only ·
+# entitle_first · own_reported)을 위 PROVES 넷으로 앵커했다. HiuPipeline 의 새 클래스 끝 포트
+# faultOwn(out) · faultOwnClear(in)를 래퍼 HiuMask_comp 의 top 포트로 냈다 — faultOwnClear 는
+# 자유 입력이다 (조립에서는 0xF84 [19] 하나가 구동한다 — IO 해제선 없음). MaskUnit 의 새 출력
+# dupCapture 는 이 합성에서 미결선이다 (캡처는 MaskUnit/engine.sby 가 단독 하네스로 잰다).
+#   · 지상 진리: 옛 단일 술어 f_nonowned_hit 를 원인별 둘(f_ent_deny · f_unowned)로 갈랐다 —
+#     정의상 서로소이고 합이 옛 술어다. 자격(entitle)도 승인 단 단 몸에서 다시 쓴다.
+#   · 단언: o_perm_loud(옛 무명 loud 단언의 원인별 판 — 옛 식은 자격 허용 ∧ 비소유에도 [4] 를
+#     요구해 W1 RTL 에서 반례가 나는 것이 옳다) · o_perm_rise · o_own_loud · o_own_rise ·
+#     o_own_hold · o_own_clear · o_grant_entitle · o_ent_blocked. 증인 W13 을 [19] 판
+#     (w13_unowned_loud)으로 바꾸고 W25–W28 을 더했다.
+#   · 엔진 · 깊이 · [script] · [files] 는 불변이다 (bmc abc bmc3 d24 · prove smtbmc z3 k=12 ·
+#     cover btormc d60). 새 단언은 전부 승인 단 레지스터와 sticky 한 단의 1-스텝 관계라 k-귀납이
+#     거울 보조 불변식 없이 선다고 판단했다 — prove 가 UNKNOWN · TIMEOUT 이면 그것은 통과가 아니고
+#     abc pdr 로 옮긴다 (솔버 실명 함정).
+#   · 셀 · 소요 (W1 통합 실측, 2026-10-11 · 컨테이너 wavetensor-dev:scala · SBY v0.66 · Yosys 0.66 ·
+#     기계 부하 load 15–50 — 다른 역할의 실행과 겹쳤다): assert 46 → 53 (bmc · prove) · cover 25 → 29 ·
+#     const_a 0. bmc abc bmc3 d24 PASS 236 s · prove smtbmc z3 k=12 PASS 351 s (UNKNOWN · TIMEOUT 아님 —
+#     k-귀납이 섰다) · cover btor btormc d60 PASS 6 s · 29/29 도달 (W13 · W25 · W26 k 9 · W27 · W28 k 10).
+#
+# ### 역-변이 실측 — W1 (2026-10-11 통합, 비상주)
+#
+# 방법: 파도 4 절과 같다 — 생성물 사본(HiuPipeline.sv) 한 곳을 문자열 치환(정확히 1 회 매치) · 이 하네스
+# 그대로 · bmc 는 abc bmc3 depth 16 (aigsmt z3 재생) · cover 는 btor btormc depth 60. 라벨 격리는 prep 뒤
+# `chformal -assert -remove c:* c:<라벨> %d` + 계수 1. 구동기는 /var/tmp/wt-s310 아래 scratch 에만 있었고
+# 커밋하지 않았다. 입력 sha256 앞 16자: HiuPipeline.sv 56039485fc8dd922 · MaskUnit.sv d9c9f968c6136d71 ·
+# HiuMask_props.sv d593ef90ab4c3dd5. 무변이 HB0 bmc PASS · cover 29/29.
+#
+#   id     치환 (생성 SV)
+#          겨냥 가드              ⇒ 결과 (첫 적발 라벨 · step · 소요 / cover 미도달)
+#   HW1    permViol 의 (! entitle) → (! (io_owner_devOwned && entitle)) (HEAD 꼴)
+#          perm_entitle_only      ⇒ bmc ⇒ o_perm_rise (step 9 · 43s) · cover FAIL 미도달 w13_unowned_loud
+#   HW2    ownViol 에서 && entitle 탈락
+#          entitle_first          ⇒ bmc ⇒ o_own_rise (step 9 · 80s) · cover FAIL 미도달 w25_ent_deny_loud
+#   HW3    ownViol = 1'b0 ([19] 원천 없음)
+#          own_reported           ⇒ bmc ⇒ o_own_loud (step 9 · 38s) · cover FAIL 미도달 w13_unowned_loud w27_own_clear w28_own_hold
+#   HW4    faultOwn 해제 if(faultOwnClear) → if(1'b1) (레벨화)
+#          own_reported           ⇒ bmc ⇒ o_own_hold (step 10 · 61s) · cover FAIL 미도달 w28_own_hold
+#   HW5    faultOwn 해제 if(faultOwnClear) → if(1'b0) (해제 무시)
+#          own_reported           ⇒ bmc ⇒ o_own_clear (step 10 · 65s) · cover FAIL 미도달 w27_own_clear
+#   HW6    faultOwn 의 해제 · 세움 대입 순서 교환 (해제가 이긴다)
+#          own_reported           ⇒ bmc ⇒ o_own_loud (step 9 · 47s)
+#   HW7    granted 에서 && entitle 탈락
+#          entitle_gates_value    ⇒ bmc ⇒ o_ent_blocked o_grant_entitle (step 7 · 20s) · cover FAIL 미도달 w26_ent_deny_owned
+#   HW7i   HW7 · 격리 o_grant_entitle
+#          entitle_gates_value    ⇒ bmc ⇒ o_grant_entitle (step 7 · 8s)
+#   HW7r   HW7 · o_grant_entitle · o_ent_blocked 를 뗀 하네스 (나머지 51 단언)
+#          entitle_gates_value    ⇒ bmc PASS 48s
+#   HW8    permViol = 1'b0
+#          perm_entitle_only      ⇒ bmc ⇒ o_perm_loud (step 9 · 27s)
+#   HW9    faultOwn = _zz_io_faultPerm (원천 혼선)
+#          own_reported           ⇒ bmc ⇒ o_own_loud (step 9 · 47s)
+#   HW1P   HW1 + ownViol = 1'b0 (짝 「오늘의 RTL」 꼴)
+#          —                      ⇒ bmc ⇒ o_own_loud o_perm_rise (step 9 · 68s)
+#   HW1Pi  HW1P · 격리 o_perm_rise
+#          —                      ⇒ bmc ⇒ o_perm_rise (step 9 · 16s)
+#   HW1Pj  HW1P · 격리 o_own_loud
+#          —                      ⇒ bmc ⇒ o_own_loud (step 9 · 5s)
+#   HH0    HEAD 3b80087 HiuPipeline.sv + 포트 스텁(faultOwn = 0)
+#          음성 대조                  ⇒ bmc ⇒ o_own_loud o_perm_rise (step 9 · 39s)
+#   HH0i   HH0 · 격리 o_perm_rise
+#          음성 대조                  ⇒ bmc ⇒ o_perm_rise (step 9 · 12s)
+#   HH0j   HH0 · 격리 o_own_loud
+#          음성 대조                  ⇒ bmc ⇒ o_own_loud (step 9 · 17s)
+#   HH1    HEAD 3b80087 HiuPipeline.sv 그대로
+#          음성 대조                  ⇒ bmc ERROR rc=16
+#
+# 라벨 ↔ 그것만 죽이는 변이: o_perm_rise HW1 · o_perm_loud HW8 · o_own_rise HW2 · o_own_loud HW3 · HW6 · HW9 ·
+# o_own_hold HW4 · o_own_clear HW5 · o_grant_entitle HW7i(격리 — HW7 첫 적발은 o_ent_blocked 와 함께).
+# o_ent_blocked 는 o_grant_entitle 과 approve_gates_value 에서 유도된다 — 단독 사살 변이가 원리적으로 없다
+# (owner_check ② 와 같은 처분 · lint_postformal _DERIVED 등재). HW7r 이 그 짝의 반대면이다: 둘을 뗀
+# 하네스에서 granted 의 entitle 항 탈락은 나머지 51 단언을 전부 통과한다 (깊이 16 bmc).
+# 증인 ↔ 그것만 미도달인 변이: W13 HW1 · W25 HW2 · W26 HW7 · W27 HW5 · W28 HW4.
+# HEAD 음성 대조: HH1(HEAD 생성물 그대로)은 정교화에서 ERROR rc=16 — 「does not have a port named 'faultOwnClear'」
+# (공허 PASS 아님). HH0(HEAD 생성물 + faultOwn = 0 포트 스텁)과 HW1P(짝 「오늘의 RTL」 꼴)는 o_perm_rise · o_own_loud 를
+# 깬다 — 자격 허용 ∧ 비소유 접근이 [4] 를 세우고 [19] 원천이 없다. 선-formal 짝 Platform_pair_today 의 RTL 판이다.
 
 [tasks]
 bmc

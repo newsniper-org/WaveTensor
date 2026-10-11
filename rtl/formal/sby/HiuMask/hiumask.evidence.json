@@ -9,6 +9,10 @@
     "Platform.xlate_local",
     "Decode.evict_inline",
     "Platform.owner_check",
+    "Platform.entitle_gates_value",
+    "Platform.perm_entitle_only",
+    "Platform.entitle_first",
+    "Platform.own_reported",
     "Mask.key_write_own_only",
     "Mask.key_scoped_storage",
     "XlateObs.obs_stall_live",
@@ -21,9 +25,9 @@
     "XlateSurface.mclr_keeps_stall",
     "Mask.rekey_idle_only"
   ],
-  "at": "2026-09-26T11:52:33Z",
+  "at": "2026-10-11T18:14:47Z",
   "cover": {
-    "reached": 25,
+    "reached": 29,
     "reached_names": [
       "u_mask.u_mask_props.w16_keywr_while_other_ready",
       "u_mask.u_mask_props.w17_rekey_fires",
@@ -33,7 +37,7 @@
       "u_pipe.u_hiu_props.w10_host_leg_inert",
       "u_pipe.u_hiu_props.w11_replace_reached",
       "u_pipe.u_hiu_props.w12_replace_completes",
-      "u_pipe.u_hiu_props.w13_nonowner_loud",
+      "u_pipe.u_hiu_props.w13_unowned_loud",
       "u_pipe.u_hiu_props.w14_fault_rise",
       "u_pipe.u_hiu_props.w15_fault_clear",
       "u_pipe.u_hiu_props.w19_obs_stall",
@@ -44,6 +48,10 @@
       "u_pipe.u_hiu_props.w22_clear_lowers",
       "u_pipe.u_hiu_props.w23_clear_in_stall",
       "u_pipe.u_hiu_props.w24_slot_split",
+      "u_pipe.u_hiu_props.w25_ent_deny_loud",
+      "u_pipe.u_hiu_props.w26_ent_deny_owned",
+      "u_pipe.u_hiu_props.w27_own_clear",
+      "u_pipe.u_hiu_props.w28_own_hold",
       "u_pipe.u_hiu_props.w2_two_inflight",
       "u_pipe.u_hiu_props.w3_hold_loaded",
       "u_pipe.u_hiu_props.w4_misswait_stall",
@@ -55,13 +63,13 @@
     "unreached_names": []
   },
   "inputs": {
-    "rtl/generated/HiuPipeline.sv": "94d4cee889141528e65801392d39c3fd26185f162779768b810be184cca92551",
-    "rtl/generated/MaskUnit.sv": "142c9a6792765ce698262e4abc103264ad84a2f451788100954c9bc65ea0624b",
-    "rtl/sv/assert/HiuMask_props.sv": "ced1b09deb9e46e50c69eb5509552ebf347368ab99efbcdd2af5c0d38c079864"
+    "rtl/generated/HiuPipeline.sv": "56039485fc8dd9225c61dbc67c346a1bc553c43187304ea42bca2402683caf01",
+    "rtl/generated/MaskUnit.sv": "d9c9f968c6136d71f6a756acd87984964977f4bb71a16ecd2c5eb9262bcd6a4f",
+    "rtl/sv/assert/HiuMask_props.sv": "da9e3b62062888495867f273865529c87b7d5ce3968c7eaf796c9511402b0b36"
   },
   "per_task": {
     "bmc": {
-      "assert": 46,
+      "assert": 53,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -71,11 +79,11 @@
       "assert": 0,
       "const_a": 0,
       "const_en0": 0,
-      "cover": 25,
+      "cover": 29,
       "mode": "cover"
     },
     "prove": {
-      "assert": 46,
+      "assert": 53,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -83,7 +91,7 @@
     }
   },
   "sby": "rtl/formal/sby/HiuMask/hiumask.sby",
-  "sby_sha256": "07ebed92f577c7028da3462a86b5c0286bd13500aaa448c45d71de5e272a05c3",
+  "sby_sha256": "a00a3a18b922394a876b9eb188d845c81c473ee52d67e2013fbd52f6d6cdc383",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

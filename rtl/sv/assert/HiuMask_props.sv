@@ -40,7 +40,33 @@
 //   · Decode.evict_inline — advance 에지의 s4 몸은 조회 데이터 그 자체.
 //     대체 전용 상태도 대체 전용 데이터 경로도 없다 (+ 대체 궤적 도달 증인).
 //   · Platform.owner_check — granted ⊆ devOwned · 비소유의 값 차단 ·
-//     비소유 적중의 loud fault (sticky 상승 + 명시 해제 없는 비하강).
+//     비소유 적중의 loud fault (sticky 상승 + 명시 해제 없는 비하강) — W1 부터
+//     *원인별*: 자격 허용 ∧ 비소유는 faultOwn([19] 원천), 자격 거부는
+//     io_faultPerm([4]) 이다 (아래 W1 항).
+//   · W1 (3.10 v1.0 묶음 RTL 파도 — FAULT_STATUS [19], 2026-10-11) — 선-formal
+//     rtl/formal/tla/Platform.tla 의 새 가드 넷. 정본 (좌표 뒤 「」 는 그 줄의 축자):
+//       e-defined.typ:527 「권한 비트가 그 접근을 허용하지 않으면 소유와 무관하게 `[4]` 만 서고」
+//       e-defined.typ:527 「자격이 허용된 접근이 장치 소유가 아닌 프레임에 닿을 때만 `[19]` 가 선다」
+//       e-defined.typ:527 「한 접근에 둘이 함께 서지 않는다」
+//       e-defined.typ:527 「값 차단 · 승인 거부 · 상태열」 — 둘의 처분이 같고 갈리는 것은
+//         보고 비트뿐이다.
+//       e-defined.typ:527 「프레임이 무엇이든 `[4]` 로만 선다」 — 거부 채움(R = W = X = 0).
+//     지상 진리는 승인 단의 단 몸(s6_*) + 자유 입력 io_owner_devOwned 로 다시 쓴다 —
+//     DUT 의 entitle · permViol · ownViol 를 참조하지 않는다 (아래 f_ent_deny ·
+//     f_unowned 선언 해설):
+//       Platform.entitle_gates_value — o_grant_entitle (granted ⇒ entitle) ·
+//         o_ent_blocked (¬entitle ⇒ ¬granted ∧ 값 0 — o_grant_entitle 과
+//         approve_gates_value 에서 유도되는 backstop · owner_check ② 와 같은 처분)
+//       Platform.perm_entitle_only — o_perm_rise ([4] 상승 원천은 자격 거부뿐 —
+//         devOwned 는 항이 아니다) · o_perm_loud (자격 거부는 [4] 를 세운다)
+//       Platform.entitle_first — o_own_rise ([19] 상승 원천은 자격 허용 ∧ 비소유뿐 —
+//         거부 채움은 비소유여도 [19] 가 아니다). 두 상승 원천의 전건이 서로소라
+//         o_perm_rise ∧ o_own_rise 가 「한 접근에 둘이 함께 서지 않는다」의 정확
+//         등식이다.
+//       Platform.own_reported — o_own_loud (자격 허용 ∧ 비소유 적중은 faultOwn 을
+//         세운다 — 조용한 거부가 아니다) · o_own_hold (해제 없이 안 내려감) ·
+//         o_own_clear (해제로 내려감). FAULT_STATUS [19] 배치와 0xF84 [19] 해제
+//         라우팅은 조립층 Wt64Top/assembly.sby 몫이다 (hiu 가 그 태스크에서 절단).
 //   · (결선 계약) MaskUnit 고정 1사이클 왕복 — req.valid → 다음 enable 에
 //     rsp.valid. 계약 문면: MaskUnit.scala io.en/io.req 주석.
 //   · Mask.key_write_own_only (2026-09-15 신설, 정본 7fa5f2e — 임대별
@@ -150,6 +176,10 @@ module HiuMask_comp (
   output wire        missStall,
   output wire [1:0]  missPart,
   output wire [31:0] missVpn,
+  // W1 — FAULT_STATUS [19] 원천 (클래스 끝 포트) · 그 해제 (자유 입력 — 조립이
+  // 0xF84 [19] 를 잇는다. IO 해제선은 없다)
+  output wire        faultOwn,
+  input  wire        faultOwnClear,
   // MaskUnit 구성 표면 (자유 입력 — 속성은 구성 무관하게 서야 한다)
   input  wire        io_keyWr_valid,
   input  wire [1:0]  io_keyWr_part,  // 2026-09-15 파도: 정본 7fa5f2e — 키도 창을 거친다
@@ -228,6 +258,8 @@ module HiuMask_comp (
     .missStall          (missStall),
     .missPart           (missPart),
     .missVpn            (missVpn),
+    .faultOwn           (faultOwn),
+    .faultOwnClear      (faultOwnClear),
     .clk                (clk),
     .reset              (reset)
   );
@@ -258,6 +290,9 @@ module HiuMask_comp (
     .io_faultClearNoMask    (io_faultClearNoMask),
     .io_faultClearNonceDup  (io_faultClearNonceDup),
     .io_faultClearWrRekey   (io_faultClearWrRekey),
+    // W1 — 0xEC4 캡처 워드 (클래스 끝 출력). 이 합성은 재지 않는다 — 캡처는
+    // MaskUnit/engine.sby 가 단독 하네스로 잰다 (미결선 출력).
+    .dupCapture             (),
     .clk                    (clk),
     .reset                  (reset)
   );
@@ -358,7 +393,7 @@ module HiuPipeline_props (
   //
   // ※ `lookAny` tap 은 2026-08-31 파도가 **뺐다**. 그것은 DUT 자신의 판정
   //    어휘였고, 지상 진리로 쓰는 순간 「lookAny 가 무엇으로 정의되든 참」인
-  //    등식이 된다 — 아래 `f_nonowned_hit` 선언이 permViol 에 대해 스스로
+  //    등식이 된다 — 아래 지상 진리 선언(옛 `f_nonowned_hit` — W1 에서 f_ent_deny · f_unowned 로 갈림)이 스스로
   //    적어 둔 함정을 이 자리에서만 어기고 있었다 (「검사 어휘로 지상 진리를
   //    적으면 그 신호를 지운 구현에서 전건이 함께 사라진다」 — 좌표가 아니라
   //    식별자로 가리킨다. 줄 좌표는 이 파일을 고칠 때마다 미끄러지고, 실제로
@@ -384,7 +419,11 @@ module HiuPipeline_props (
   input wire         io_install_valid,
   input wire         io_install_ready,
   input wire [1:0]   io_install_part,
-  input wire         installSlotFree      // 슬롯 여유 (클래스 끝 포트)
+  input wire         installSlotFree,     // 슬롯 여유 (클래스 끝 포트)
+  // ── W1 tap (2026-10-11) — FAULT_STATUS [19] · 승인 단 프레임 ───────────────
+  input wire [31:0]  s6_frame,            // 승인 단의 저장 프레임 (증인 W26 — 막힌 값이 비0)
+  input wire         faultOwn,            // [19] 원천 sticky (클래스 끝 포트)
+  input wire         faultOwnClear        // 그 해제 (자유 입력)
 );
   // f_ok — 「직전 에지도 이번 에지도 reset 밖」. $past(reset) 을 쓰지 않고
   // 명시 레지스터로 지연시킨다: yosys 0.66 은 clocked block 밖의 $past 를
@@ -407,11 +446,17 @@ module HiuPipeline_props (
     else if (advance) f_v <= {f_v[5:1], io_req_valid};
   end
 
-  // 지상 진리 — 승인 단에 선 비소유(또는 무자격) 적중. DUT 의 permViol
+  // 지상 진리 — 승인 단에 선 적중의 원인별 둘(자격 거부 · 자격 허용 ∧ 비소유). DUT 의 permViol · ownViol
   // 신호를 참조하지 않고 단 몸과 자유 입력으로 다시 쓴다 (검사 어휘로
   // 지상 진리를 적으면 그 신호를 지운 구현에서 전건이 함께 사라진다).
-  wire f_nonowned_hit = s6_valid && s6_anyHit
-                        && !(io_owner_devOwned && (s6_write ? s6_perm_w : s6_perm_r));
+  //
+  // W1 (2026-10-11) — 옛 단일 술어 `f_nonowned_hit`(= 적중 ∧ ¬(devOwned ∧ entitle))를
+  // 원인별 둘로 갈랐다. 정본이 자격을 먼저 두므로 두 술어는 정의상 서로소이고 합이 옛
+  // 술어다: f_ent_deny ∨ f_unowned ≡ f_nonowned_hit. 자격(entitle)도 DUT 의 entitle
+  // 넷이 아니라 승인 단의 단 몸(쓰기면 W · 읽기면 R)에서 다시 쓴다.
+  wire f_entitle  = s6_write ? s6_perm_w : s6_perm_r;
+  wire f_ent_deny = s6_valid && s6_anyHit && !f_entitle;                        // → [4] 만
+  wire f_unowned  = s6_valid && s6_anyHit &&  f_entitle && !io_owner_devOwned;  // → [19] 만
 
   always @(posedge clk) begin
     if (f_ok) begin
@@ -447,7 +492,7 @@ module HiuPipeline_props (
       //   ※ 판정 비트의 우변은 `x_hit` 다 — 종전 판(2026-08-26)은
       //     `$past(lookAny)` 였고, 그것은 DUT 의 판정 어휘를 지상 진리로
       //     삼아 lookAny 의 정의가 무엇이든(hit || hostPresent 여도) 참이
-      //     되는 등식이었다. `f_nonowned_hit` 선언의 규율을 permViol 에만
+      //     되는 등식이었다. 옛 `f_nonowned_hit` 선언의 규율을 permViol 에만
       //     지키고 이 자리에 빠뜨린 결함이다 (2026-08-31 수리). x_hit 는
       //     XlateStore 소유의 독립 출력이라 접기 정의와 무관하다.
       //   ※ 반증력 실측 — 아래 §반증력 실측표의 ① 항.
@@ -460,16 +505,42 @@ module HiuPipeline_props (
       end
 
       // ── Platform.owner_check ③ — loud fault (승격 항목 1: fault 축) ─────
-      // 비소유(또는 무자격) 적중이 승인 단에 서면 *다음 에지에* sticky 가
-      // 선다. 전건은 permViol 의 재인용이 아니라 지상 진리(승인 단의 단
-      // 몸 + 자유 입력 devOwned)로 적는다 — 그래야 permViol 을 지워도
-      // 반례가 난다. 해제와의 우선순위는 RTL 이 permViol 우선이므로
-      // faultClear 를 전건에서 빼지 않는다 (뺐다면 그것이 반례 원천).
-      if ($past(f_nonowned_hit))
-        assert (io_faultPerm);
+      // 승인 단에 선 적중이 원인별 sticky 를 *다음 에지에* 세운다 — 자격 거부는
+      // [4](io_faultPerm) · 자격 허용 ∧ 비소유는 [19](faultOwn). 전건은 permViol ·
+      // ownViol 의 재인용이 아니라 지상 진리(승인 단의 단 몸 + 자유 입력 devOwned)로
+      // 적는다 — 그래야 그 신호를 지워도 반례가 난다. 해제와의 우선순위는 RTL 이 세움
+      // 우선이므로 해제를 전건에서 빼지 않는다 (뺐다면 그것이 반례 원천).
+      //
+      // W1 — 원인별로 갈랐다. 자격 거부는 [4](io_faultPerm), 자격 허용 ∧ 비소유는
+      // [19](faultOwn). 옛 단언 `$past(f_nonowned_hit) → io_faultPerm` 은 자격 허용 ∧
+      // 비소유에서도 [4] 를 요구했으므로 W1 RTL 에서 *반례가 나는 것이 옳다* — 그 절반이
+      // 아래 o_own_loud 로 옮겨 갔다.
+      // Platform.perm_entitle_only — 자격 거부는 [4] 를 세운다 (해제와 겹쳐도).
+      if ($past(f_ent_deny))
+        o_perm_loud: assert (io_faultPerm);
       // 그리고 명시 해제 없이는 내려가지 않는다 — 「크게 알린다」의 둘째 항.
       if ($past(io_faultPerm) && !$past(io_faultClear))
         assert (io_faultPerm);
+      // Platform.perm_entitle_only — [4] 의 상승 원천은 자격 거부뿐이다: devOwned 는
+      // 항이 아니다. 자격 허용 ∧ 비소유 접근이 [4] 를 세우는 구현(오늘의 RTL 형 —
+      // permViol = ¬(devOwned ∧ entitle))이 여기서 반례를 낸다.
+      if (io_faultPerm && !$past(io_faultPerm))
+        o_perm_rise: assert ($past(f_ent_deny));
+      // Platform.own_reported — 자격 허용 ∧ 비소유 적중은 다음 에지에 faultOwn([19]
+      // 원천)을 세운다 — 해제와 겹쳐도 (조용한 거부가 아니다).
+      if ($past(f_unowned))
+        o_own_loud: assert (faultOwn);
+      // Platform.entitle_first — [19] 의 상승 원천은 자격 허용 ∧ 비소유뿐이다: 자격
+      // 거부(거부 채움 포함)는 비소유여도 [19] 를 세우지 않는다. o_perm_rise 와 함께
+      // 「한 접근에 둘이 함께 서지 않는다」의 정확 등식이다 (두 전건이 서로소).
+      if (faultOwn && !$past(faultOwn))
+        o_own_rise: assert ($past(f_unowned));
+      // Platform.own_reported — sticky: 해제 없이 내려가지 않는다.
+      if ($past(faultOwn) && !$past(faultOwnClear))
+        o_own_hold: assert (faultOwn);
+      // Platform.own_reported — 해제가 실제로 내린다 (새 원천이 없는 사이클).
+      if ($past(faultOwn && faultOwnClear && !f_unowned))
+        o_own_clear: assert (!faultOwn);
     end
   end
 
@@ -503,6 +574,21 @@ module HiuPipeline_props (
       if (!io_owner_devOwned)
         assert (io_rsp_frame == 32'h0
                 && !io_rsp_perm_r && !io_rsp_perm_w && !io_rsp_perm_x);
+
+      // ── W1 · Platform.entitle_gates_value — 자격 쪽 짝 ─────────────────────
+      // 정본: 자격 거부와 비소유는 「값 차단 · 승인 거부 · 상태열」이 같고 보고
+      // 비트만 갈린다. 위 owner_check ①② 는 devOwned 쪽만 들었다 — granted 에서
+      // entitle 항을 지운 구현(자격 거부 접근이 승인되어 값을 돌려받는다)은 ①② ·
+      // approve_gates_value 를 전부 통과한다 (선-formal 결함 1 의 RTL 판).
+      // granted 는 entitle 을 논리곱의 항으로 요구한다.
+      if (io_rsp_granted)
+        o_grant_entitle: assert (f_entitle);
+      // 자격 거부는 승인 거부 + 값 차단 — 전건을 entitle 로 두는 것이 요점이다
+      // (owner_check ② 와 같은 이유). o_grant_entitle 과 approve_gates_value 에서
+      // 유도되는 backstop 이다 (lint_postformal _DERIVED 등재).
+      if (!f_entitle)
+        o_ent_blocked: assert (!io_rsp_granted && io_rsp_frame == 32'h0
+                               && !io_rsp_perm_r && !io_rsp_perm_w && !io_rsp_perm_x);
 
       // Isolation.query_no_serve + Platform.xlate_local — *적중 면*.
       // 로컬 저장 leg 이 답하는 사이클에 s4 로 들어가는 값(= io.mask.req
@@ -574,7 +660,7 @@ module HiuPipeline_props (
   //
   // 요청 데이터 거울 — io_req_part · io_req_vpn 을 거울 f_v 와 같은 enable(advance)로
   // 시프트한다. 관측 값의 지상 진리를 DUT 의 s3_* 가 아니라 이 거울에서 적는다 — 검사
-  // 어휘로 지상 진리를 적으면 그 신호가 틀린 구현에서 등식이 함께 선다 (위 f_nonowned_hit ·
+  // 어휘로 지상 진리를 적으면 그 신호가 틀린 구현에서 등식이 함께 선다 (위 f_ent_deny · f_unowned ·
   // lookAny 해설과 같은 규율). reset 이 없는 레지스터인 것은 DUT 의 단 몸과 같다.
   reg [1:0]  f_p1, f_p2, f_p3;
   reg [31:0] f_n1, f_n2, f_n3;
@@ -695,7 +781,7 @@ module HiuPipeline_props (
     if (f_ok && !$past(advance) && !$past(io_hold))
       w4_misswait_stall: cover (s3_valid);
 
-  // W5 ← Isolation.approve_gates_value · Isolation.no_early_forward
+  // W5 ← Isolation.approve_gates_value · Isolation.no_early_forward · o_grant_entitle
   //      활성면: 승인이 실제로 나고 값축이 비0 이다
   //      (이것 없이는 「무엇도 승인되지 않는 기계」가 단언을 통과한다)
   always @(posedge clk) if (f_ok) w5_granted_nonzero: cover (io_rsp_granted && (io_rsp_frame != 32'h0));
@@ -837,12 +923,16 @@ module HiuPipeline_props (
   //       한 궤적으로 함께 든다 (위 f_rep_pend 주석).
   always @(posedge clk) if (f_ok) w12_replace_completes: cover (f_rep[6] && io_rsp_valid);
 
-  // W13 ← Platform.owner_check · Isolation.approve_gates_value
-  //       비소유 적중이 실제로 일어나고, 값이 차단된 채로
-  //       크게 알려진다 (fault 축의 활성면 — 승격 항목 1)
+  // W13 ← Platform.owner_check · Platform.own_reported · Platform.entitle_first ·
+  //       Isolation.approve_gates_value · o_own_loud · o_own_rise
+  //       자격이 허용된 비소유 적중이 실제로 일어나고, 값이 차단된 채로
+  //       크게 알려진다 (fault 축의 활성면 — 승격 항목 1). W1 부터 그 비트는 [19]
+  //       원천 faultOwn 이고 [4] 는 서지 않는다 — 옛 라벨 w13_nonowner_loud 는 [4] 를
+  //       요구했으므로 원인별 판에서 이름과 식을 함께 바꿨다.
   always @(posedge clk)
-    if (f_ok) w13_nonowner_loud: cover (io_rsp_valid && !io_owner_devOwned && !io_rsp_granted
-                     && (io_rsp_frame == 32'h0) && io_faultPerm);
+    if (f_ok) w13_unowned_loud: cover ($past(f_unowned && io_rsp_valid && !io_rsp_granted && (io_rsp_frame == 32'h0)
+                                            && !faultOwn && !io_faultPerm)
+                                      && faultOwn && !io_faultPerm);
 
   // W14 ← Platform.owner_check
   //       sticky 가 *처음* 서는 순간. 이미 서 있는 상태를 지나가는 것과
@@ -879,6 +969,33 @@ module HiuPipeline_props (
   // W24 ← m_slot_pass · m_slot_split — 슬롯은 비었는데 같은 파티션 flush 가 설치를 막는
   //       사이클 (두 신호가 실제로 갈린다)
   always @(posedge clk) if (f_ok) w24_slot_split: cover (installSlotFree && !io_install_ready);
+
+  // ── W1 증인 (2026-10-11) — FAULT_STATUS [4] / [19] 원인별 · 자격의 값 차단 ──────────
+  // W25 ← Platform.perm_entitle_only · Platform.entitle_first · o_perm_loud · o_perm_rise
+  //       거부 채움(승인 단 R = W = 0)이 *비소유* 프레임에 닿는다 — [4] 만 0→1 로 서고
+  //       [19] 는 서지 않는다 (정본 「프레임이 무엇이든 [4] 로만」. 선-formal 증인
+  //       Witness_NoBothCauses 의 RTL 판).
+  always @(posedge clk)
+    if (f_ok) w25_ent_deny_loud: cover ($past(f_ent_deny && !io_owner_devOwned && !s6_perm_r && !s6_perm_w
+                                             && io_rsp_valid && !io_faultPerm && !faultOwn)
+                                       && io_faultPerm && !faultOwn);
+  // W26 ← Platform.entitle_gates_value · o_grant_entitle · o_ent_blocked
+  //       *장치 소유* 프레임에 대한 자격 거부 접근 — 저장 프레임이 비0 인데 승인이 없고
+  //       값이 0 이며 [4] 가 선다 (선-formal 증인 Witness_NoDenyFillOwned 와 같은 자리 —
+  //       owner_check ② 의 devOwned 전건으로는 이 사이클이 막히지 않는다).
+  always @(posedge clk)
+    if (f_ok) w26_ent_deny_owned: cover ($past(f_ent_deny && io_owner_devOwned && io_rsp_valid && !io_rsp_granted
+                                              && (io_rsp_frame == 32'h0) && (s6_frame != 32'h0) && !io_faultPerm)
+                                        && io_faultPerm && !faultOwn);
+  // W27 ← Platform.own_reported · o_own_clear
+  //       선 [19] 원천이 해제로 실제로 내려간다 (영구 1 이 아니다).
+  always @(posedge clk)
+    if (f_ok) w27_own_clear: cover ($past(faultOwn && faultOwnClear && !f_unowned) && !faultOwn);
+  // W28 ← Platform.own_reported · o_own_hold
+  //       새 원천도 해제도 없는 에지를 건너 [19] 가 선 채다 (레벨이 아니라 sticky —
+  //       RegNext(ownViol) 형 구현은 여기서 0 으로 떨어진다).
+  always @(posedge clk)
+    if (f_ok) w28_own_hold: cover ($past(faultOwn && !faultOwnClear && !f_unowned) && faultOwn);
 `endif // HIUMASK_COVER
 endmodule
 
@@ -1214,5 +1331,8 @@ bind HiuPipeline HiuPipeline_props u_hiu_props (
   .io_install_valid  (io_install_valid),
   .io_install_ready  (io_install_ready),
   .io_install_part   (io_install_part),
-  .installSlotFree   (installSlotFree)
+  .installSlotFree   (installSlotFree),
+  .s6_frame          (s6_frame),
+  .faultOwn          (faultOwn),
+  .faultOwnClear     (faultOwnClear)
 );

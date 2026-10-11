@@ -106,9 +106,15 @@ SUITES = {
         # wr_other_partition_during_rekey_is_clean) 신설. 하한이지 계수가 아니다.
         # 2026-09-22 10 → 11: 파도 D — FINAL 엣지 같은-파티션 동시 기입 지향
         # 시험(wr_same_partition_at_final_edge_is_loud) 신설.
-        "expect_min": 11,
+        # 2026-10-11 11 그대로: W1(3.10 RTL 파도) — 0xEC4 캡처(dupCapture)는 기존 두 시험을
+        # 넓혀 잰다(sec1_golden_exact 의 캡처 등가 · fault_nonce_dup 의 캡처 행 표). 새 시험 0.
+        # 2026-10-12 11 → 12: W1 검증 수리 — 논스 비교 전폭 지향 스윕(nonce_dup_compare_every_bit).
+        # engine.sby 의 논스 탐침 축약 밖 한 자리만 무시하는 비교 결함(변이 X14)을 어느 게이트도
+        # 잡지 못했다 — 비교기 넷 × 한 비트 차이 192 + 이웃 두 비트 차이 191.
+        "expect_min": 12,
         "what": "SEC-1 golden 정확 대조 (mask64[43:12] 사영) + fault 3축 + 고정 지연 "
-                "+ 임대별 키 범위(값)",
+                "+ 임대별 키 범위(값) + 0xEC4 캡처 워드(래치 · 첫 사건 · 해제 · 세움 승리) "
+                "+ 논스 비교 전폭(192 자리 × 비교기 넷)",
     },
     "Shape": {
         "top": "Wt64Top",
@@ -127,11 +133,15 @@ SUITES = {
         # T2 · T3 의 호스트 가시 처분) · fp_clear_window(D1 (b)) · 3B — 미적중 관측 값 지향 시험 둘
         # (xlate_miss_observed · xlate_miss_obs_second_stall) · 3A — xlate_other_flush_keeps_staging
         # (T5 (a); xlate_hi_releases_stall 은 제자리에서 xlate_flush_ends_staging 으로 다시 썼다).
-        "expect_min": 21,
+        # 2026-10-11 21 → 24: W1(3.10 RTL 파도 — 표면 비트·워드) — hiu_shape_word(N12, 0xFF8) ·
+        # mask_dup_capture(N13, 0xEC4 MMIO 판) · fault19_nonowned_access(N14, [4]/[19] 원인별 보고
+        # · 0xF84 [31:20]). 셋 다 HEAD 생성물에서 FAIL 하는 음성 대조를 가졌다. 그리고
+        # zero_inputs 가 입력 포트 정의역을 생성물과 기계로 대조한다(시험 수 무관).
+        "expect_min": 24,
         "what": "ISA-2 순열 (LBID·LNID 존재 축) + ISA-1 자리 무관성 + 비교기 자기대조 "
                 "+ 변환 저장소 MMIO 문 (설치·flush·V=0·거절·정지 해제·인접 HI 버스 정지) "
                 "+ 소거 문 TAG1 워드 적법성 + 페이지 처분 · FP 소거 창 + 미적중 관측 값(정지 게이트 스냅샷) "
-                "+ 스테이징 수명(flush 가 끝낸다)",
+                "+ 스테이징 수명(flush 가 끝낸다) + HIU_SHAPE · MASK_DUP_CAPTURE · [19] 원인별 보고",
     },
 }
 
@@ -239,7 +249,7 @@ UNMEASURED = [
      "재구현 MaskUnit 에 부표준키·블록 워드를 내는 포트가 없다 — 계층 peek 은 "
      "포트 계약이 아니라 SpinalHDL 명명의 우연이므로 통과 기준으로 쓰지 않는다"),
     ("FAULT_STATUS[17]·[18]",
-     "Wt64Top.sv:1641 「faultWords_status[17] = 1'b0;」 과 그 다음 줄 [18] 상수 0 — "
+     "Wt64Top.sv:1662 「faultWords_status[17] = 1'b0;」 과 그 다음 줄 [18] 상수 0 — "
      "엔트로피원·명령 디스크립터 원천 부재. "
      "0 을 「정상」으로 읽으면 안 된다"),
     ("SharedUnit·MemOrderGate 독립 .sv 의 top 대표성",

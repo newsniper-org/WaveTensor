@@ -89,7 +89,7 @@ volatile 구역을 「매 커밋 거짓 실패한다」며 면제했는데 **덮
     요구하지 않으면 식별자·버전 문자열(`E.5` 신호명 등)과 구별할 문법이 없다.
   · **`scripts/` 의 정본 인용 89건** — 큐레이트되는 문면인데도 정의역 밖이다.
     검사기의 **음성 시험 픽스처가 일부러 틀린 좌표를 문자열로 담기** 때문이다
-    (`lint_guide_derived_tables.py:861`). 넣으면 축 0 이 그 픽스처를 하드
+    (`lint_guide_derived_tables.py:868`). 넣으면 축 0 이 그 픽스처를 하드
     실패로 물고, 그 반작용이 F-52 다. 픽스처를 문면에서 구별할 문법이 생기면
     닫을 수 있다.
   · 비정본 문서의 `§N.M` — `token-pressure.md` 류는 **자기 `### N.M` 번호
@@ -344,7 +344,7 @@ SCAN_EXCLUDE_PREFIX = (
 #    자신의 절 번호(`selfnum`)다.
 #  · **`scripts/` (약 400건)** — 큐레이트되는 문면이고 정본을 인용한다. 그런데
 #    **검사기의 변이 픽스처가 일부러 틀린 좌표를 문자열로 담는다** — 실측
-#    `lint_guide_derived_tables.py:861` 의 `"…근거는 @sec:extpayload 4.9 다."`
+#    `lint_guide_derived_tables.py:868` 의 `"…근거는 @sec:extpayload 4.9 다."`
 #    는 음성 시험이 심는 변이이고 §4.9 는 없어야 정상이다. 정의역에 넣으면
 #    축 0 이 그 자리를 하드 실패로 문다. 「검사기가 서로의 음성 시험을 깨는」
 #    형태이고 그 반작용이 F-52 다. ⇒ 픽스처를 문면에서 구별할 문법이 생기기
@@ -753,7 +753,7 @@ AX2_UNMEASURED_HARD_MAX: dict[str, int] = {
     "rtl/formal/sby/MmioConfig/mmio_config.sby": 2,
     "rtl/formal/sby/MmioConfig/mmio_deep.sby": 1,
     "rtl/formal/sby/OperandDecode/body_judge.sby": 7,
-    "rtl/formal/sby/OwnershipTable/ownershiptable.sby": 3,
+    "rtl/formal/sby/OwnershipTable/ownershiptable.sby": 2,  # 3 → 2 (2026-10-12 W1 착지 — 머리 정직 표기 개정이 §6.7 하나를 뺐다)
     "rtl/formal/sby/RouteJudge/route_judge.sby": 3,
     "rtl/formal/sby/RouteMmio/route_mmio.sby": 2,
     "rtl/formal/sby/SharedUnit/depth0.sby": 1,
@@ -859,7 +859,7 @@ AX2_UNMEASURED_HARD_MAX: dict[str, int] = {
     "rtl/spinal/src/main/scala/wt64/gen/GenXlateStore.scala": 1,
     "rtl/spinal/src/main/scala/wt64/hiu/HiuPipeline.scala": 27,
     "rtl/spinal/src/main/scala/wt64/hiu/MmioConfig.scala": 27,
-    "rtl/spinal/src/main/scala/wt64/hiu/OwnershipTable.scala": 18,
+    "rtl/spinal/src/main/scala/wt64/hiu/OwnershipTable.scala": 17,  # 18 → 17 (2026-10-12 W1 착지 — 같은 개정)
     "rtl/spinal/src/main/scala/wt64/hiu/XlateStore.scala": 29,
     "rtl/spinal/src/main/scala/wt64/host/CompletionUnit.scala": 43,
     # 2026-09-20 상승 19 → 20 (임대별 마스크 키 파도, 정본 7fa5f2e):

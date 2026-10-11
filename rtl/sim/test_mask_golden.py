@@ -22,7 +22,7 @@ E.9 3항(마스크는 페이지 프레임 부분에만)에 따라 적용 슬라�
 
 RTL 은 64비트 마스크를 레지스터에 두지 않는다 (`MaskUnit.scala:289-296` 「저장은 적용 비트만」).
 `PH_FINAL`(`MaskUnit.scala:443` 「is(PH_FINAL) {」 이하)이 그 32비트만 상수 분해로 직접 만든다 — 생성물
-`MaskUnit.sv:304-307` 「st_1[11 : 0] + 12'h46e」 에서 상수 셋(`12'h79b` · `20'h61707` · `12'h46e`)을
+`MaskUnit.sv:312-315` 「st_1[11 : 0] + 12'h46e」 에서 상수 셋(`12'h79b` · `20'h61707` · `12'h46e`)을
 대조 확인했다. 이 사영은 **정보 손실이 없다** (벡터 전 라인에서
 `(PHYS[43:12] ^ mask64[43:12]) == MASKED[43:12]` 성립 — 아래 회계가 매
 실행 재확인한다).
@@ -121,6 +121,30 @@ fault 는 **`io_fault*` 실포트로만** 관측한다. 시뮬 전용 단언으�
    바뀌어야 한다.
 7. **부채널·상수 시간성은 대상 밖** — 여기서 보는 것은 사이클 수 동일성뿐
    이다 (게이트 지연·전력·EM 아님).
+
+═══════════════════════════════════════════════════════════════════════════
+## 0xEC4 MASK_DUP_CAPTURE — 캡처 워드의 유닛 쪽 (W1 — 3.10 v1.0 묶음)
+═══════════════════════════════════════════════════════════════════════════
+
+정본 E.1.2 `0xEC4` 행이 `[12]` 의 「어느 파티션과 겹쳤는가」를 워드로 낸다:
+`[7:0]` 세운 재키잉의 파티션 p · `[15:8]` 마스크가 유효한 *다른* 파티션 중 논스가
+p 의 새 논스와 같았던 것의 비트맵(p 번 비트는 늘 0) · `[16]` 캡처 유효 · `[31:17]` 0.
+첫 사건 보존 · 해제는 `[12]` 와 같은 신호 · 같은 사이클 해제 + 발화는 새 사건 래치 ·
+불변식 `[16]` ⇔ `[12]`. 포트 계약(W1-4)은 클래스 끝 출력 `dupCapture`(32b)이고
+`[16]` 은 `io_faultNonceDup` 레지스터 그 자체다. 이 파일은 그 포트를 **두 자리**에서
+잰다 — `sec1_golden_exact` 가 80 라인 매번 캡처 워드를 하네스 모형과 등가로(겹친 라인은
+p · 비트맵 · `[16]`, 그 밖은 0, 해제 뒤 0), `fault_nonce_dup` 이 첫 사건 보존 · 같은
+사이클 해제 + 발화 · 비트맵 정의역(p 자신 · 유효 하강 파티션) · 바쁨 미수락 발화 +
+해제선 겹침을 행 표로. 기대값은 정본 문장에서 유도한 모형이 낸다 — RTL 을 보지 않는다.
+MMIO 쪽(읽기 결선 · RO 쓰기 거절 · 거절 + `[6]` 발화 · 읽기 무부작용)은
+`test_shape_equiv.py` 의 `mask_dup_capture` 가 잰다. 생성물에 `dupCapture` 가 없으면
+(HEAD) 이 두 시험은 **포트 부재**로 죽는다 — 그것은 값 음성 대조가 아니다.
+
+「논스가 같았던」의 *비트별* 정확성(192 비트 전폭 등치)은 셋째 시험
+`nonce_dup_compare_every_bit` 가 잰다 (W1 검증 수리 — 2026-10-12). 후-formal
+`MaskUnit/engine.sby` 는 논스 비교를 탐침 여섯 자리로 축약해 재므로, 그 밖의 한 자리만
+무시하는 비교 결함(변이 X14)은 형식 게이트와 위 두 시험을 전부 통과했다. 이 시험이 비교기
+넷 × 192 자리(한 비트 차이)와 이웃 두 비트 차이 191 자리를 지향으로 훑는다.
 
 (옛 8항 「FINAL 엣지의 같은-파티션 동시 기입 모서리는 재지 않는다」는 파도 D
 (2026-09-22)에서 **이제 잰다** — `wr_same_partition_at_final_edge_is_loud`.
@@ -377,16 +401,21 @@ async def clear_wr_rekey(dut):
     assert int(dut.io_faultWrDuringRekey.value) == 0, "해제선이 faultWrDuringRekey sticky 를 내리지 못했다"
 
 
-async def rekey(dut, part, expect_accept=True):
+async def rekey(dut, part, expect_accept=True, clear_dup=False):
     """재키잉 펄스. **`io_rekey_ready` 를 같은 엣지에서 확인한다.**
 
     `MaskUnit.scala:344` 「io.rekey.ready := !engineBusy」 이고 미수락은 무언
     드롭이 아니라 ready 하강으로 관측되는 것이 계약이다. ready 를 안 보고 쏘면
     **하네스가 스스로 조용한 드롭을 만든다.**
+
+    `clear_dup` 은 같은 엣지에 `io_faultClearNonceDup` 을 함께 세운다 — 같은 사이클
+    해제 + 발화(W1 — 0xEC4 「세움이 이긴다」)를 만드는 유일한 자리다.
     """
     dut.io_rekey_valid.value = 1
     dut.io_rekey_part.value = part
-    # `MaskUnit.sv:421` 「assign io_rekey_ready = (! engineBusy);」 는 레지스터만의
+    if clear_dup:
+        dut.io_faultClearNonceDup.value = 1
+    # `MaskUnit.sv:429` 「assign io_rekey_ready = (! engineBusy);」 는 레지스터만의
     # 함수라 방금 쓴 입력에 의존하지 않는다 — 델타 없이 지금 값이 이 엣지의 값이다.
     ready = int(dut.io_rekey_ready.value)
     assert ready == (1 if expect_accept else 0), (
@@ -394,6 +423,7 @@ async def rekey(dut, part, expect_accept=True):
         f"{1 if expect_accept else 0} — 미수락은 ready 하강으로만 관측된다")
     await step(dut)
     dut.io_rekey_valid.value = 0
+    dut.io_faultClearNonceDup.value = 0
 
 
 async def wait_mask_ready(dut, part, limit=200):
@@ -431,6 +461,32 @@ async def translate(dut, part, frame):
     got = int(dut.io_rsp_frame.value)
     assert valid == 1, "io_rsp_valid 가 요청 다음 엣지에 서지 않았다 (고정 1사이클 계약)"
     return got
+
+
+def dup_word(p, hits):
+    """0xEC4 기대 워드 — 정본 `0xEC4` 행: `[7:0]` p · `[15:8]` 겹친 *다른* 유효 파티션
+    비트맵 · `[16]` 캡처 유효 · `[31:17]` 0. 겹침이 없으면 사건이 없으므로 0."""
+    assert p not in hits, "모형 결함 — p 자신은 비트맵에 들지 않는다"
+    if not hits:
+        return 0
+    return (1 << 16) | (sum(1 << q for q in hits) << 8) | p
+
+
+def _hx(t):
+    """행 표 실패 문면 — 32b 워드는 16진으로."""
+    return "(" + ", ".join(f"0x{x:08X}" if isinstance(x, int) and x > 0xFF else repr(x)
+                           for x in t) + ")"
+
+
+def cap_word(dut):
+    """`dupCapture` 출력 포트(W1-4 포트 계약)의 값. 포트가 없으면 크게 죽는다 —
+    그 실패는 **포트 부재**이지 캡처 값의 음성 대조가 아니다(HEAD 생성물이 그렇다)."""
+    h = getattr(dut, "dupCapture", None)
+    if h is None:
+        raise AssertionError(
+            "생성물 MaskUnit.sv 에 출력 포트 dupCapture 가 없다 — 0xEC4 캡처(W1-4)가 착지하지 "
+            "않은 생성물이다. 이 실패는 포트 부재이지 캡처 값의 음성 대조가 아니다")
+    return int(h.value)
 
 
 async def clear_nonce_dup(dut):
@@ -480,6 +536,13 @@ async def sec1_golden_exact(dut):
     기대가 1 이면 해제해 내리고 다음 라인으로 간다 — sticky 를 침묵 속에
     두고 가지 않는다. 기대 계산이 RTL 과 어긋나면 그것이 발견이지 우회 대상이
     아니다.
+
+    **0xEC4 캡처 등가 (W1)** — 같은 모형이 겹친 다른 유효 파티션의 *목록*을 내고,
+    매 라인 `dupCapture` 를 `dup_word(part, 그 목록)` 과 등가로 잰다(겹침 없는 라인은
+    0). 겹친 라인은 해제 뒤 워드 전체가 0 인지도 본다(해제가 p · 비트맵까지 지운다).
+    비트맵이 두 비트 이상인 라인이 하나도 없으면 다중 비트 축이 공허하므로 FAIL 이다.
+    이 루프는 install 이 p 자신의 유효를 먼저 내리므로 「유효한 p 자신」 축은 여기서
+    서지 않는다 — 그 축은 `fault_nonce_dup` 의 재재키잉 행이 잰다.
     """
     recs = load_vectors()
     await boot(dut)
@@ -488,13 +551,15 @@ async def sec1_golden_exact(dut):
     per_family = {}
     valid_nonce = {}     # 모델: maskValid 가 선 파티션 → 그 파티션의 논스
     dup_lines = []       # faultNonceDup 이 (기대대로) 선 라인 번호
+    multi_lines = []     # 캡처 비트맵이 두 비트 이상인 라인 번호
     for i, r in enumerate(recs):
         part = i % PARTS  # 파티션도 골고루 — 사영·저장이 파티션별인지 함께 본다
         # install 의 키·논스 기입이 이 파티션의 maskValid 를 먼저 떨어뜨린다
         # (모델도 같은 순서로 지운다). 수락 시점의 전건은 **다른** 유효 파티션.
         valid_nonce.pop(part, None)
-        exp_dup = 1 if any(q != part and n == r["NONCE"]
-                           for q, n in valid_nonce.items()) else 0
+        hits = sorted(q for q, n in valid_nonce.items() if q != part and n == r["NONCE"])
+        exp_dup = 1 if hits else 0
+        exp_cap = dup_word(part, hits)
         await install(dut, r["KEY"], r["NONCE"], part)
         valid_nonce[part] = r["NONCE"]  # wait_mask_ready 가 유효화를 확인했다
 
@@ -504,9 +569,20 @@ async def sec1_golden_exact(dut):
             "파티션→논스 %s) 과 RTL E.9 2항 검사가 어긋난다"
             % (i, FAMILY_NAME[r["family"]], part, got_dup, exp_dup,
                {q: "%048x" % n for q, n in valid_nonce.items() if q != part}))
+        got_cap = cap_word(dut)
+        assert got_cap == exp_cap, (
+            "라인 %d (%s, part=%d): dupCapture=0x%08X ≠ 기대 0x%08X — 겹친 다른 유효 파티션 %s "
+            "(0xEC4: [7:0] p · [15:8] 비트맵 · [16] 유효)"
+            % (i, FAMILY_NAME[r["family"]], part, got_cap, exp_cap, hits))
+        if len(hits) >= 2:
+            multi_lines.append(i)
         if exp_dup:
             dup_lines.append(i)
             await clear_nonce_dup(dut)
+            got_cap = cap_word(dut)
+            assert got_cap == 0, (
+                "라인 %d: 해제선이 [12] 는 내렸는데 dupCapture=0x%08X 가 남았다 — 해제는 워드 "
+                "전체를 지운다 (p · 비트맵 포함)" % (i, got_cap))
 
         req = frame_of(r["PHYS"])
         exp = frame_of(r["MASKED"])          # 파일이 실은 값에서 유도
@@ -532,6 +608,9 @@ async def sec1_golden_exact(dut):
     # dup 이 선 라인이 0 이면 E.9 2항 축은 루프에서 공허하다 — 그것은 벡터
     # 구성(pinned 8줄이 같은 논스)에 반하므로 FAIL 이지 「통과」가 아니다.
     assert dup_lines, "golden 루프에서 faultNonceDup 이 한 번도 서지 않았다 — E.9 2항 축이 공허하다"
+    assert multi_lines, (
+        "golden 루프에서 캡처 비트맵이 두 비트 이상인 라인이 없다 — 0xEC4 [15:8] 의 다중 비트 축이 공허하다")
+    assert cap_word(dut) == 0, "golden 루프 끝에 dupCapture 가 남았다 — [12] 는 0 인데 워드가 비0"
 
     distinct_mask = len({frame_of(r["MASK"]) for r in recs})
     distinct_stim = len({(r["KEY"], r["NONCE"], frame_of(r["PHYS"])) for r in recs})
@@ -541,7 +620,8 @@ async def sec1_golden_exact(dut):
         f"서로 다른 자극점 {distinct_stim}/{len(recs)} "
         f"(축소는 사영의 필연 — 판별력은 64비트가 아니라 {FRAME_W}비트) · "
         f"faultNonceDup 등가 대조 {compared}건 중 기대 1 이 {len(dup_lines)}건 "
-        f"(라인 {dup_lines})")
+        f"(라인 {dup_lines}) · dupCapture 등가 {compared}건 + 해제 뒤 0 {len(dup_lines)}건 "
+        f"(다중 비트 비트맵 라인 {multi_lines})")
 
 
 @cocotb.test()
@@ -1004,20 +1084,67 @@ async def fault_nonce_dup(dut):
     그리고 계약의 사각지대를 함께 적는다: `maskValid` 가 서지 않은 파티션과의
     논스 중복은 **검사되지 않는다** (`MaskUnit.scala:365-367` 「maskValid(q) &&」).
     그것은 하네스의 누락이 아니라 RTL 계약의 범위다 — 우회로 「해결」하지 않는다.
+
+    **0xEC4 캡처 (W1 — 정본 `0xEC4` 행)** — 같은 전건 위에 사건을 이어 붙여 행 표로
+    잰다 (행마다 `io_faultNonceDup` · `dupCapture`, 끝에 모형 행 표와 통째로 등가):
+      · 첫 겹침의 래치 (p=1 · 비트맵 {0})
+      · 첫 사건 보존 — `[16]` = 1 동안의 새 겹침 발화(p=2 · {0,1})는 덮지 않는다
+      · 해제선이 `[12]` 와 워드 전체를 지운다
+      · 유효한 p 자신(재재키잉 — 같은 논스로 유효한 채)은 비트맵에 들지 않는다
+      · 해제선과 발화가 같은 엣지 → 세움이 이기고 *새* 사건을 래치 — p 와 비트맵이
+        *둘 다* 앞 사건과 다르게 골라, 한쪽만 새로 담는 판을 가른다
+      · 엔진 바쁨으로 미수락된 발화에 해제선이 겹치면 해제만 일어난다
+      · 마스크 유효가 내려간 같은 논스 파티션은 비트맵에 들지 않는다
+    「마스크 유효」는 발화 직전 `io_maskReady` 를 읽어 쓴다 — `[12]` 를 동반한 재키잉
+    뒤의 준비 비트는 정본상 구현 정의라 가정하지 않는다. 대신 행마다 모형이 겹침을
+    예측했는지를 그 자리에서 단언한다(전건 확인 — 공허한 행 금지).
     """
     recs = load_vectors()
     r = recs[3]
+    N = r["NONCE"]
     await boot(dut)
+    nonce = {}           # 하네스가 쓴 논스 — 파티션 → 값
+    rows, want = [], []
+    exp = [0, 0]         # 모형: [[12], 캡처 워드]
 
-    await install(dut, r["KEY"], r["NONCE"], 0)   # part0 유효
+    def note(label):
+        try:
+            cap = cap_word(dut)
+        except AssertionError:
+            cap = "포트 없음"   # 행 표가 그대로 실패를 낸다 — 아래 대조에서 크게 죽는다
+        rows.append((label, int(dut.io_faultNonceDup.value), cap))
+        want.append((label, exp[0], exp[1]))
+
+    def started(p, label, clear=False):
+        """수락될 발화 직전의 모형 갱신 — 정본 `0xEC4` 행의 래치 규칙 그대로."""
+        ready = int(dut.io_maskReady.value)
+        hits = [q for q in range(PARTS)
+                if q != p and (ready >> q) & 1 and nonce.get(q) == nonce.get(p)]
+        assert hits, (
+            f"[{label}] 전건 불성립 — 준비 {ready:#06b} · 논스 모형으로 겹침이 없다. 공허한 행은 "
+            f"비교 대상이 아니다")
+        held = exp[0] == 1
+        if clear:
+            exp[1] = 0
+        if not held or clear:
+            exp[1] = dup_word(p, hits)
+        exp[0] = 1
+        return hits
+
+    await install(dut, r["KEY"], N, 0)   # part0 유효
+    nonce[0] = N
     assert int(dut.io_faultNonceDup.value) == 0
+    note("p0 설치 — 겹침 없음")
 
-    await write_nonce(dut, 1, r["NONCE"])
+    await write_nonce(dut, 1, N)
+    nonce[1] = N
     await step(dut)
+    started(1, "p1 — p0 과 같은 논스")
     await rekey(dut, 1)
     assert int(dut.io_faultNonceDup.value) == 1, (
         "유효한 타 파티션과 논스 전폭이 같은데 faultNonceDup 이 서지 않았다 — "
         "같은 키스트림 재사용이고 그것은 마스킹이 아니다")
+    note("p1 재키잉 — 래치 (p=1 · {0})")
 
     # 계산은 계속한다 — 판정이 경로·시간을 가르지 않는다 (처분은 호스트 몫).
     n = await wait_mask_ready(dut, 1)
@@ -1025,10 +1152,167 @@ async def fault_nonce_dup(dut):
         f"dup 이 사이클을 갈랐다: {n} ≠ {REKEY_TO_READY} — 판정이 시간을 가르면 "
         "부채널이다")
 
+    await write_nonce(dut, 2, N)
+    nonce[2] = N
+    await step(dut)
+    started(2, "p2 — 첫 사건 보존")
+    await rekey(dut, 2)
+    note("p2 재키잉 — [16]=1 동안의 새 겹침(p=2 · {0,1})은 덮지 않는다")
+    await wait_engine_idle(dut)
+
     await clear_nonce_dup(dut)
+    exp[:] = [0, 0]
+    note("해제선 — [12] 와 워드 전체 0")
+
+    held = started(1, "p1 재재키잉 — p 자신 제외")
+    await rekey(dut, 1)
+    note("p1 재재키잉 — 유효한 p 자신은 비트맵에 들지 않는다 (p=1 · {0,2})")
+    held = (1, tuple(held))
+    await wait_engine_idle(dut)
+
+    await write_nonce(dut, 3, N)
+    nonce[3] = N
+    await step(dut)
+    new = started(3, "p3 — 같은 엣지 해제 + 발화", clear=True)
+    assert held[0] != 3 and tuple(new) != held[1], (
+        f"시나리오 결함 — 새 사건 (3, {new}) 이 앞 사건 {held} 와 p 또는 비트맵이 같다 "
+        f"(DUT 판정이 아니라 자극의 비공허 확인이다)")
+    await rekey(dut, 3, clear_dup=True)
+    note("해제선 + p3 발화가 같은 엣지 — 세움이 이기고 새 사건 (p=3 · {0,1,2})")
+    await wait_engine_idle(dut)
+
+    started(0, "p0 재재키잉 — 첫 사건 보존 · 바쁨을 만든다")
+    await rekey(dut, 0)
+    note("p0 재재키잉 — 여전히 첫 사건 보존")
+    await rekey(dut, 1, expect_accept=False, clear_dup=True)
+    exp[:] = [0, 0]
+    note("엔진 바쁨 미수락 발화 + 해제선 — 해제만 (세움 · 래치 없음)")
+    await wait_engine_idle(dut)
+
+    await write_key_word(dut, 2, 0, 0x5A5A_5A5A)    # p2 유효 하강 — 논스는 그대로 N
+    await step(dut)
+    assert (int(dut.io_maskReady.value) >> 2) & 1 == 0, (
+        "p2 키 기입이 그 파티션의 maskValid 를 떨어뜨리지 않았다 — 자극이 계약 밖")
+    started(3, "p3 재재키잉 — 유효 하강 파티션 제외")
+    await rekey(dut, 3)
+    note("p3 재재키잉 — 유효가 내려간 p2(같은 논스)는 들지 않는다 (p=3 · {0,1})")
+    await wait_engine_idle(dut)
+    await clear_nonce_dup(dut)
+    exp[:] = [0, 0]
+    note("해제선 — 정리")
+
+    assert rows == want, (
+        "faultNonceDup · dupCapture 행 표가 정본 모형과 다르다 — 열은 ([12], 0xEC4 워드):\n"
+        + "\n".join(("     " if g == w else "  !! ") + f"{g[0]}: 관측 {_hx(g[1:])} · 기대 {_hx(w[1:])}"
+                    for g, w in zip(rows, want)))
     dut._log.info(
         "faultNonceDup: 발화 + 사이클 불변 + 해제 확인. "
-        "사각지대(미유효 파티션과의 중복)는 RTL 계약의 범위이지 이 하네스의 누락이 아니다")
+        "사각지대(미유효 파티션과의 중복)는 RTL 계약의 범위이지 이 하네스의 누락이 아니다. "
+        f"0xEC4 캡처 {len(rows)} 행 — 래치 · 첫 사건 보존 · 해제 · p 자신 제외 · 같은 엣지 세움 승리 "
+        "(p · 비트맵 둘 다 새 사건) · 바쁨 미수락 + 해제 · 유효 하강 제외가 모형과 등가")
+
+
+@cocotb.test()
+async def nonce_dup_compare_every_bit(dut):
+    """`[12]` · `0xEC4` 판정의 논스 비교 — **192 자리 전부 · 비교기 넷 전부** (W1 검증 결함 X14).
+
+    정본 `0xEC4` 행 · E.9 2항: 겹침은 마스크가 유효한 다른 파티션 q 중 「논스가 p 의 새 논스와
+    같았던」 것이다 — 192 비트 전폭 등치. 후-formal `MaskUnit/engine.sby` 는 논스 비교를 *탐침*
+    축약(고정 여섯 자리 — 워드마다 비트 하나)으로만 잰다. 그래서 그 여섯 밖의 한 비트 자리만
+    무시하는 비교기 결함((나) 부류 — 검증 단계 변이 X14: 워드 0 비트 1 을 무시)은 engine 의
+    bmc · prove 와 기존 cocotb 열한 시험을 전부 통과했다. 이 시험이 그 축의 거처다.
+
+    자극: 파티션 q 를 기저 논스 B(q) 로 유효화하고, 짝 p = (q+1) mod 4 에 B(q) 와
+      · *정확히 한 비트*만 다른 논스 192 개(비트 0..191) — (나) 부류: 한 자리만 무시하는 비교기
+      · *이웃한 두 비트*만 다른 논스 191 개 — (가) 부류의 대표: 패리티 접기 비교(192 비트 전체 ·
+        워드별)는 짝수 개 비트 차이를 같다고 본다 (검증 단계 X23 · X24)
+    를 차례로 써 재키잉한다. 매 행 `[12]` = 0 · 캡처 워드 = 0 이어야 한다(겹침 없음). 끝에 같은
+    논스 B(q) 로 양성 대조 — `[12]` = 1 · 캡처 = `dup_word(p, {q})` — 를 두어 비교기 q 가 살아
+    있음을 함께 본다(늘 0 을 내는 비교기가 스윕을 공허하게 통과하지 못하게).
+
+    q 가 넷이고 p 도 넷이라 비교기 nonceDupQ(q) 넷과 기준 논스 선택(p 의 논스) 갈래 넷이 전부
+    전폭으로 훑인다. 기저 논스는 서로 워드마다 16 비트씩 달라(워드 무늬 0 · 0x0F0F_0F0F ·
+    0x3333_3333 · 0x5555_5555) 앞 라운드에 유효로 남은 파티션과 두 비트 이하 차이로 겹칠 수 없다
+    — 그래도 행마다 하네스 모형(준비 비트 · 쓴 논스)으로 겹침이 없음을 그 자리에서 단언한다
+    (전건 확인 — DUT 판정이 아니라 자극의 비공허 확인). 어긋난 행은 해제해 내리고 계속 훑어
+    **전부** 모은 뒤 끝에 한 번에 보고한다 — 결함이 몇 자리인지가 문면에 남는다.
+
+    재지 않는 것: 세 비트 이상 · 이웃하지 않은 두 비트 차이에만 나타나는 비교 결함(지향 표본 밖
+    — `sec1_golden_exact` 의 80 라인 무작위 논스 쌍이 일부를 잰다) · 논스 기입 경로 자체(쓴
+    논스가 저장에 그대로 앉는다는 것 — golden 루프의 마스크 값이 잰다).
+    """
+    recs = load_vectors()
+    K, N = recs[3]["KEY"], recs[3]["NONCE"]
+    pattern = [0x0000_0000, 0x0F0F_0F0F, 0x3333_3333, 0x5555_5555]
+    base = [N ^ sum(pattern[q] << (32 * i) for i in range(6)) for q in range(PARTS)]
+    await boot(dut)
+    nonce = {}           # 하네스가 쓴 논스 — 파티션 → 값
+    bad = []             # (q, p, 차이 비트들, [12], 캡처)
+    pos_bad = []         # 양성 대조 어긋남 — (q, p, [12], 캡처, 기대 캡처)
+    rows = 0
+
+    def overlap(p):
+        ready = int(dut.io_maskReady.value)
+        return ready, [q for q in range(PARTS)
+                       if q != p and (ready >> q) & 1 and nonce.get(q) == nonce.get(p)]
+
+    async def fire(p, n):
+        """p 에 논스 n 을 쓰고 유휴 1 엣지 뒤 재키잉 · 완료까지 → (준비, 모형 겹침, [12], 캡처)."""
+        await write_nonce(dut, p, n)
+        nonce[p] = n
+        await step(dut)  # 유휴 1엣지 — 같은 엣지 기입은 dirty (install 주석)
+        ready, hits = overlap(p)
+        await rekey(dut, p)
+        await wait_engine_idle(dut)
+        return ready, hits, int(dut.io_faultNonceDup.value), cap_word(dut)
+
+    for q in range(PARTS):
+        p = (q + 1) % PARTS
+        await write_key(dut, q, K)
+        await write_nonce(dut, q, base[q])
+        nonce[q] = base[q]
+        await step(dut)
+        _, hits = overlap(q)
+        assert not hits, f"q={q} 유효화 — 시나리오 결함: 모형이 겹침 {hits} 을 예측한다"
+        await rekey(dut, q)
+        await wait_mask_ready(dut, q)
+        rows += 1
+        d, c = int(dut.io_faultNonceDup.value), cap_word(dut)
+        if (d, c) != (0, 0):     # 기저 논스끼리는 워드마다 16 비트씩 다르다 — 겹침이 아니다
+            bad.append((q, q, "유효화", d, hex(c)))
+            await clear_nonce_dup(dut)
+
+        diffs = [(b,) for b in range(192)] + [(b, b + 1) for b in range(191)]
+        for bits in diffs:
+            n = base[q] ^ sum(1 << b for b in bits)
+            ready, hits, d, c = await fire(p, n)
+            rows += 1
+            assert (ready >> q) & 1 and not hits, (
+                f"q={q} · p={p} · 차이 {bits}: 전건 불성립 — 준비 {ready:#06b} · 모형 겹침 {hits} "
+                f"(비교기 q 가 유효한 채 겹침 없는 자극이어야 한다)")
+            if (d, c) != (0, 0):
+                bad.append((q, p, bits, d, hex(c)))
+                await clear_nonce_dup(dut)
+
+        ready, hits, d, c = await fire(p, base[q])
+        rows += 1
+        assert hits == [q], f"q={q} 양성 대조 — 시나리오 결함: 모형 겹침 {hits} ≠ [{q}]"
+        if (d, c) != (1, dup_word(p, hits)):   # 비교기가 죽어 있으면 위 스윕은 공허하게 통과한다
+            pos_bad.append((q, p, d, hex(c), hex(dup_word(p, hits))))
+        if d:
+            await clear_nonce_dup(dut)
+
+    one = [x for x in bad if isinstance(x[2], tuple) and len(x[2]) == 1]
+    two = [x for x in bad if isinstance(x[2], tuple) and len(x[2]) == 2]
+    base_rows = [x for x in bad if not isinstance(x[2], tuple)]
+    assert not bad and not pos_bad, (
+        f"논스가 다른데 [12] · 캡처가 섰다 — 한 비트 차이 {len(one)} 행 · 이웃 두 비트 차이 "
+        f"{len(two)} 행 · 기저 논스 유효화(워드마다 16 비트 차이) {len(base_rows)} 행 "
+        f"(열: q, p, 차이 비트, [12], 캡처). 처음 열둘: {bad[:12]} / 같은 논스 양성 대조 어긋남 "
+        f"{len(pos_bad)} 행 (열: q, p, [12], 캡처, 기대 캡처): {pos_bad}")
+    dut._log.info(
+        f"논스 비교 전폭: {rows} 행 — 비교기 넷 × (유효화 1 + 한 비트 192 + 이웃 두 비트 191 + 양성 대조 1) · "
+        "어긋남 0 · 양성 대조 넷 모두 [12] = 1 · 캡처 등가")
 
 
 @cocotb.test()

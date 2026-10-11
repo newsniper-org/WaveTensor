@@ -3,14 +3,38 @@
     "MaskEngine.dirty_scoped",
     "MaskEngine.dirty_no_validate",
     "MaskEngine.dirty_loud",
-    "MaskEngine.invalidate_beats_validate"
+    "MaskEngine.invalidate_beats_validate",
+    "Mask.dup_on_started_rekey",
+    "Mask.cap_first_event",
+    "Mask.cap_clear_whole",
+    "Mask.cap_set_beats_clear",
+    "Mask.cap_bitmap_exact",
+    "Mask.cap_bitmap_domain",
+    "Mask.start_ignores_dup",
+    "Mask.complete_ignores_dup"
   ],
-  "at": "2026-09-26T14:01:56Z",
+  "at": "2026-10-11T18:28:31Z",
   "cover": {
-    "reached": 10,
+    "reached": 26,
     "reached_names": [
       "u_MaskEngine_props.w10_final_reserved_nonce_is_clean",
+      "u_MaskEngine_props.w11_dup_latch",
+      "u_MaskEngine_props.w12_busy_dup_attempt",
+      "u_MaskEngine_props.w13_second_event",
+      "u_MaskEngine_props.w14_clear_fire_overlap",
+      "u_MaskEngine_props.w15_clear_zero",
+      "u_MaskEngine_props.w16_busy_attempt_clear",
+      "u_MaskEngine_props.w17_self_valid_latch",
+      "u_MaskEngine_props.w18_multi_bitmap",
+      "u_MaskEngine_props.w19_invalid_same_nonce",
       "u_MaskEngine_props.w1_final_overlap_write",
+      "u_MaskEngine_props.w20_valid_diff_nonce",
+      "u_MaskEngine_props.w21_complete_with_dup",
+      "u_MaskEngine_props.w22_dup_start_busy",
+      "u_MaskEngine_props.w23_nomask_rise",
+      "u_MaskEngine_props.w24_dup_clear",
+      "u_MaskEngine_props.w24_nomask_clear",
+      "u_MaskEngine_props.w25_probe_dup_fire",
       "u_MaskEngine_props.w2_dirty_final",
       "u_MaskEngine_props.w3_other_write_busy_then_clean_final",
       "u_MaskEngine_props.w4_clean_final",
@@ -24,12 +48,12 @@
     "unreached_names": []
   },
   "inputs": {
-    "rtl/generated/MaskUnit.sv": "142c9a6792765ce698262e4abc103264ad84a2f451788100954c9bc65ea0624b",
-    "rtl/sv/assert/MaskEngine_props.sv": "37e4a999e7bc992def39b65c27dcf79aa4cb74eacfd159da982a896b0f69dd15"
+    "rtl/generated/MaskUnit.sv": "d9c9f968c6136d71f6a756acd87984964977f4bb71a16ecd2c5eb9262bcd6a4f",
+    "rtl/sv/assert/MaskEngine_props.sv": "6472d9d81cd1706a127200ed45cbedb3562e59ba651df2b1fe69a444c4a1ecbe"
   },
   "per_task": {
     "bmc": {
-      "assert": 11,
+      "assert": 29,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -39,11 +63,11 @@
       "assert": 0,
       "const_a": 0,
       "const_en0": 0,
-      "cover": 10,
+      "cover": 26,
       "mode": "cover"
     },
     "prove": {
-      "assert": 11,
+      "assert": 29,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -51,7 +75,7 @@
     }
   },
   "sby": "rtl/formal/sby/MaskUnit/engine.sby",
-  "sby_sha256": "e5ae31373737b2ddbcab1bf35d3c2375d97b75f2aee2b30e8c9337926e57946d",
+  "sby_sha256": "d4fe619d56f18efabf76a856411eab572397da18c7022736e7df7feae5bc3cb6",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

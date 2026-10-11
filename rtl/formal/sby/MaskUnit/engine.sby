@@ -5,6 +5,14 @@
 # PROVES: MaskEngine.dirty_no_validate — 직전 사이클까지의 오염(f_dirty — 수락 사이클 자체의 같은-파티션 기입 포함)이 있는 완료는 활성 파티션을 유효화하지 않는다 (a_dirty_final_no_validate — 도달은 W2·W8). 오염 완료도 유효화하는 변이가 반례를 낸다 — §역-변이 실측 mutD
 # PROVES: MaskEngine.dirty_loud — 유효화하지 않은 완료는 sticky faultWrDuringRekey 를 세운다 — **FINAL 사이클 자체의 활성 파티션 기입도 포함** (a_final_overlap_loud — 도달은 W1·W9) · 레지스터 경로 (a_dirty_final_loud — W2·W6·W8) · 상승 원천은 완료 엣지뿐 (a_fault_rise_at_final_only). 파도 D 이전 판(레지스터 compDirty 만 실음)이 a_final_overlap_loud 에서 bmc 반례 — §역-변이 실측 mutA
 # PROVES: MaskEngine.invalidate_beats_validate — 완료와 같은 사이클(FINAL)의 활성 파티션 기입은 유효화를 이긴다: 완료 뒤 그 비트는 0 (a_final_overlap_no_validate — 도달은 W1·W9). 유효화가 이기게 뒤집은 변이가 반례를 낸다 — §역-변이 실측 mutC
+# PROVES: Mask.dup_on_started_rekey (W1 — 3.10 v1.0 묶음 [12]) — FAULT_STATUS [12] 의 상승 원천은 *재키잉이 시작된* 발화(수락 = valid ∧ ready)에서 마스크가 유효한 다른 파티션 q ≠ p 의 논스가 p 의 논스와 같은 사건뿐이다 — 논스 항은 탐침 환경에서만 정확하고 자유 환경에서는 유효한 다른 파티션이 있는 수락이라는 상계다 (n_dup_rise_src — busy 미수락 발화 증인 W12 · 해제와 겹친 busy 발화 증인 W16) · 그 사건이면 해제와 겹쳐도 선다 (n_dup_fire · W11) · 해제 없이 내려가지 않고 해제로 내려간다 (n_dup_hold · n_dup_clear · W24). 지상 진리는 io_nonceWr_* 를 미러링한 논스 섀도우와 MASK_STATUS 포트 io_maskReady 다. 값 검사 거절 발화가 이 유닛에 닿지 않는 조립 절반은 assembly.sby a_rekey_iff (lint_postformal _PARTIAL 등재)
+# PROVES: Mask.cap_first_event (W1 — 0xEC4) — [16] = 1 ∧ 해제 없음인 사이클을 건너 캡처 필드 [15:0] 불변 — 새 세움 사건이 와도 덮지 않는다 (c_first · 증인 W13)
+# PROVES: Mask.cap_clear_whole (W1) — [12] = 0 이면 캡처 워드 전체 0 — 해제(이 유닛의 io_faultClearNonceDup — 조립이 IO 해제선 ∨ 0xF84 [12] 를 합류)가 p · 비트맵까지 지운다 (c_clr_zero · 증인 W15 · W16)
+# PROVES: Mask.cap_set_beats_clear (W1) — [16] = 1 인 채 해제와 세움 사건이 같은 사이클이면 다음 엣지 워드 = 새 사건 그 자체 — p 와 비트맵 전부를 섀도우와 비교한다 (c_set_wins · 증인 W14 — 새 p ≠ 옛 p)
+# PROVES: Mask.cap_bitmap_exact (W1) — 래치 사건([16] = 0 에서의 세움 사건)의 다음 엣지 워드 = {[31:16] = 1 · [7:0] = p · [15:12] = 0 · 비트맵 ⊆ 유효한 다른 파티션 — bit p 는 늘 0 · 비트맵 비0} (c_latch — 자유 환경 · 자기 유효 증인 W17). 비트맵의 *정확* 등식은 아래 cap_bitmap_domain 의 c_latch_dom 이다
+# PROVES: Mask.cap_bitmap_domain (W1) — 같은 래치 사건의 비트맵 = [12] 판정과 같은 정의역(마스크 유효 ∧ 논스 등치)의 q 별 항: 유효 항은 c_latch(⊆ 유효한 다른 파티션 — 자유 환경), 논스 항까지의 정확 등식은 c_latch_dom(탐침 환경 — 탐침 축약 아래) (다중 비트 W18 · 유효 아님 W19 · 논스 다름 W20). 탐침 축약 밖의 비교 결함(한 자리만 무시 · 짝수 비트 접기)은 이 태스크가 재지 않는다 — cocotb test_mask_golden nonce_dup_compare_every_bit · sec1_golden_exact 몫
+# PROVES: Mask.start_ignores_dup (W1) — 시작된 재키잉은 다음 엣지에 busy — [12] 를 세운 사건이어도 (e_start_busy · W22) · 유휴면 수락 가능 — 수락 판정에 논스 재사용 항이 없다 (e_idle_ready — W1 RTL 에서는 io_busy = engineBusy · io_rekey_ready = !engineBusy 라 구조 항등이고, 반증력은 ready 식에 항을 더하는 변이 ME14 류에만 있다)
+# PROVES: Mask.complete_ignores_dup (W1) — busy 창은 상계 F_BUSY_BOUND 사이클 안에 끝나고 (e_busy_bounded) · 완료된 창의 길이는 첫 창(구조상 [12] = 0 인 창)의 길이와 같다 (e_busy_len_same) — [12] 가 선 채로도 (W21). 상계는 유계 근사이지 정본 상수가 아니고, 길이 관계가 상계 안의 [12] 의존 지연을 막는다 (MaskEngine_props.sv 해설 — 검증 변이 RV4). **e_busy_len_same 은 정본보다 강한 단언이다** — 정본 「완료는 [12] 와 무관하게 온다」는 창마다 길이가 같기를 요구하지 않는데, 이 단언은 오늘 엔진의 고정 스텝 수(창 길이 상수)에 기대어 그것을 건다. 정당한 RTL 이 창 길이를 다른 것(예: 파티션)에 기대게 바꾸면 여기서 운다 — 그때 「[12] 만 다른 두 창」으로 좁혀 다시 적는다 (착지 판정 2026-10-12 — 수락)
 #
 # 대상: rtl/generated/MaskUnit.sv (SpinalHDL 생성물, 손편집 금지 — 원본
 # rtl/spinal/src/main/scala/wt64/mask/MaskUnit.scala 머리 GUARD-MAP 「MaskEngine
@@ -33,7 +41,70 @@
 # MaskEngine_props.sv 파일 머리 「이 태스크가 재지 **않는** 것」 절이 정본이다
 # — busy 창의 정확한 길이(cocotb 지향 시험 몫) · 마스크 값 · 저장의 파티션
 # 범위와 REKEY 유휴 수락(hiumask.sby) · MASK_PART 라우팅(Wt64Top/assembly.sby, CHECK) ·
-# 논스 재사용·미준비 통과·요청 경로.
+# 요청 경로. (논스 재사용 [12] · 미준비 통과 [11] 의 발화와 0xEC4 캡처는 W1 부터 여기서
+# 잰다 — 아래 「W1」 절.) 논스 비교의 탐침 축약이 재지 않는 두 부류 — (가) 두 비트 자리 이상이
+# 동시에 다른 쌍에만 나타나는 비교 결함 · (나) 탐침 여섯 밖 한 비트 자리만 무시하는 결함 — 의
+# 거처는 cocotb 의 지향 표본이다: rtl/sim/test_mask_golden.py 의 nonce_dup_compare_every_bit ((나) 는
+# 비교기 넷 × 192 자리 전부 · (가) 는 이웃 두 비트 차이 191 자리만) · sec1_golden_exact (80 라인 무작위
+# 논스 쌍). 형식 증명이 아니다 — (가) 의 나머지(세 비트 이상 · 이웃하지 않은 두 비트 차이에만 나타나는
+# 결함)는 어디서도 전수로 재지 않는다. W1 검증이 (나) 의 실례 X14 를 이 태스크가 통과시키는 것을 실측했다.
+#
+# ## W1 (3.10 v1.0 묶음 RTL 파도 — 표면 비트·워드, 2026-10-11) — 이 태스크가 더한 것
+#
+# 선-formal rtl/formal/tla/Mask.tla 의 새 가드 여덟(위 PROVES 여덟)과 [11] 의 발화를 이
+# 유닛 단독 하네스에 실었다. 지상 진리는 포트에서 다시 쓴다: 논스 *탐침*(아래) · MASK_STATUS 포트
+# io_maskReady · 수락 valid ∧ ready · 캡처 워드는 클래스 끝 포트 dupCapture. DUT 의 nonceDupQ ·
+# nonceDup · capPart · capMap · nonce 저장은 하나도 참조하지 않는다.
+#   · 논스 탐침 — 지시서의 축약($anyconst 로 (q, 워드) 하나만 추적)을 (워드, 비트) 자리 하나로
+#     좁혔다. 래퍼의 anyconst 둘: f_rm(탐침 환경 여부) · f_ps(고정 여섯 자리 — 워드마다 하나, 비트
+#     0 · 7 · 13 · 19 · 26 · 31 — 중 선택). f_rm = 1 이면 assume as_probe_env 가 논스 기입을 탐침
+#     자리로만 보내 나머지 논스 비트가 reset 값 0 에 머물고, 논스 등치가 탐침 비트 등치로 정확히
+#     환원된다. f_rm = 0 의 자유 환경 궤적은 종전 그대로 남는다 — 기존 MaskEngine 앵커 넷과 논스
+#     무관 W1 단언은 그 위에서도 선다. 근거 · 실측 · 대가(두 비트 자리 이상이 동시에 다른 논스
+#     쌍 · 여섯 밖 한 자리만의 비교 결함은 재지 않는다)는 MaskEngine_props.sv 「논스 탐침」 절이
+#     소유한다.
+#   · 왜 전폭 섀도우가 아닌가 (실측, 2026-10-11 · 진행 중 W1 생성물 스냅숏): 4 × 192b 전폭
+#     섀도우 판은 세 엔진이 전부 첫 세움 사건이 가능한 스텝 46 에서 웨지했다 (abc bmc3 프레임
+#     46 에서 8 분+ · abc pdr F[44] 4 분+ · btormc k=46 — 같은 판에서 논스 무관 단언만 남긴
+#     bmc3 50 프레임은 2 초). 섀도우 ↔ DUT 저장의 등치 miter 다. ABC 전처리(scorr)는 reset
+#     제약을 써야 둘을 합치는데 sby 가 제약을 먼저 접어 다중 속성 모델에서 되살리지 못했다.
+#   · assume: as_reset_shape 에 as_probe_word · as_probe_env 둘이 더해졌다 (전수 목록은 하네스 머리).
+#     anyconst 2 (래퍼 — f_rm · f_ps) — 이 태스크에는 anyconst 금지 핀이 없다 (그 금지는 assembly 의 ② 뿐).
+#   · 엔진은 그대로 셋(abc bmc3 · abc pdr · btor btormc) — smtbmc z3 금지(위 §실측 표의
+#     step 23 웨지). 엔진 전처리(scorr 등)는 쓰지 않는다 — 위 실측대로 sby 의 제약 접기와
+#     맞물리지 않고, -m 판은 거짓 반례를 냈다.
+#   · cover 깊이 50 → 96 · bmc 깊이 50 그대로. 둘째 세움 사건 · 해제와 겹친 사건 · 자기 유효 ·
+#     다중 비트맵 · [12] 가 선 채의 완료는 엔진이 *두 번* 완주해야 서는 궤적이다: q 수락 스텝 1 →
+#     유휴 스텝 44 · p 수락 스텝 44([12] 스텝 45) → 유휴 스텝 87 · 셋째 수락 스텝 87 → 관측
+#     스텝 88. cover 96 = 88 + 여유 8 (btormc 실측 도달 k 최대 89 — W13 · W14 · W17 · W18 · W20).
+#     bmc 는 96 으로 올리지 않았다 — 실측(스냅숏 · 부하 load 25±): abc bmc3 프레임 45 까지 2 초,
+#     46 에서 267 초 · 47 95 초 · 48 46 초 · 49 142 초(누적 552 초 = 깊이 50) · 그 뒤도 프레임당
+#     분 단위라 96 은 시간 단위다. 그래서 스텝 88 이후에야 서는 결함(c_first · c_set_wins ·
+#     e_busy_bounded · 자기 유효 비트맵)의 사살은 prove(abc pdr — 무계)가 낸다 — W1 변이 실측이
+#     그렇게 쟀다 (보고서 · 통합 단계의 역-변이 절).
+#   · 「같은 p 의 재래치 + 비트맵 변화」는 재키잉 세 번 이상이라 이 깊이 밖이다 —
+#     c_latch_dom · c_set_wins 가 비트맵 전량 비교로 그 변이를 무계(pdr)로만 잡는다
+#     (MaskEngine_props.sv 「재지 않는 것」).
+#   · 셀 · 소요 (W1 통합 실측, 2026-10-11 · 같은 컨테이너 · 기계 부하 load 15–50 — 다른 역할의
+#     실행과 겹쳤다): assert 11 → 28 (bmc · prove) · cover 10 → 26 · assume 1 → 3 · anyconst 2 ·
+#     const_a 0. bmc abc bmc3 d50 PASS 642 s (「No output asserted in 50 frames」 — W1 이전 0.27 s) ·
+#     prove abc pdr PASS 288 s (불변식 F[48] · 1149 절 · 927/929 플롭 — W1 이전 0.19 s) · cover btor
+#     btormc d96 PASS 618 s · 26/26 도달 (W23 k 3 · W24 [11] k 4 · 기존 W1–W10 k 45–46 · W11 · W19 ·
+#     W22 · W25 k 46 · W12 · W15 · W16 · W24 [12] k 47 · W21 k 88 · W13 · W14 · W17 · W18 · W20 k 89).
+#     아래 §실측 표는 W1 이전 판이다.
+#   · 검증 수리 (2026-10-12 — 독립 변이 반증 뒤, 아래 「§역-변이 — W1 검증 수리」 절): 단언 하나를 더했다 —
+#     e_busy_len_same (완료된 창의 길이 = 첫 창의 길이 · 첫 창은 구조상 [12] = 0 — complete_ignores_dup 의
+#     관계 절반. 새 assume · anyconst · cover 0). 계층 모델 assert 28 → 29 · cover 26 그대로 · assume 3 ·
+#     anyconst 2. **증명 모델(AIGER — flatten · 상수 전파 뒤 솔버에 가는 것)의 $assert 는 27** 이다: c_iff
+#     ([16] == [12]) · c_rsv ([31:17] == 0) 는 W1 RTL 에서 dupCapture[16] 이 io_faultNonceDup 넷 그 자체이고
+#     [31:17] 이 상수 0 이라 구조 상수로 접혀 사라진다 (수리 전에도 26 — 같은 둘이 없었다). 둘은 구조 sanity 이지
+#     앵커가 아니고, 반증력은 구조를 바꾸는 변이(ME11b · ME20i)에만 있다. e_idle_ready (busy ∨ ready) 도 W1 RTL
+#     에서는 io_busy = engineBusy · io_rekey_ready = !engineBusy 라 구조 항등이다 — AIGER 에 남지만 반증력은
+#     ready 식에 항을 더하는 변이(ME14 류)에만 있다. lint_tautology 의 const_a 0 은 계층 모델을 세므로 이
+#     접힘의 증거가 아니다. 사본 실측(저장소 생성물 바이트 동일 · 수리판 하네스 · 기계 부하 load 35–55):
+#     prove abc pdr PASS 164 s (불변식 F[79] · 1278 절 · 938/940 플롭) · bmc abc bmc3 d50 PASS 545 s
+#     (「No output asserted in 50 frames」). cover(btor btormc d96 — 새 cover 0)의 판정 · 도달은 이 판의
+#     저장소 스윕 증거(engine.evidence.json — 도달 이름 목록)가 든다.
 #
 # ## 깊이 근거
 #
@@ -41,7 +112,8 @@
 # 엣지(스텝 43), 완료 엣지 관측(io_busy 하강 · 유효화 · sticky)은 스텝 44 다.
 # 가장 깊은 증인은 W7(첫 재키잉 완료 뒤 두 번째 수락이 유효 비트를 떨어뜨림 —
 # 스텝 45)과 W5(완료의 sticky 를 해제로 내림 — 스텝 45). bmc·cover 50 = 45 +
-# 여유 5 (설계 문면의 하한 48 이상). prove 의 깊이 56 은 smtbmc k-귀납으로
+# 여유 5 (설계 문면의 하한 48 이상) — W1 판에서 cover 만 96 으로 올렸다 (위 「W1」 절 — 엔진 두
+# 번 완주 궤적의 증인 W13 · W14 · W17 · W18 · W20 · W21; bmc 는 50 그대로). prove 의 깊이 56 은 smtbmc k-귀납으로
 # 되돌릴 때의 기준값이다: 귀납 세계의 도달 불가 상태(HROUND/CROUND 의 cnt 가
 # 20..31)에서 FINAL 까지 최장 54 스텝이라 그 위여야 하네스 f_dirty 와 DUT
 # compDirty 의 불일치 상태가 접두에 남지 않는다 — abc pdr 는 깊이 인자를 쓰지
@@ -133,6 +205,169 @@
 #   재실행: 사본을 /tmp 아래에 두고 [files] 를 그 사본으로 돌린 .sby 를
 #   컨테이너 안에서 `sby -f --prefix <dir>` 로 직접 돌린다 (태스크가 셋이라
 #   `-d` 는 거부된다) — 스윕은 증거를 저장소에 쓰므로 변이에는 쓰지 않는다.
+#
+# ## §역-변이 — W1 (2026-10-11 통합, 비상주)
+#
+# 방법: 위 절과 같다 — 생성물 사본(MaskUnit.sv) 한 곳을 문자열 치환(정확히 1 회 매치) · 이 하네스 그대로 ·
+# 사살은 prove(abc pdr — 무계)로 잰다 (스텝 88 이후에만 서는 결함이 있어 bmc 깊이 50 으로는 못 잡는 몫이 있다
+# — 아래 step 열). 라벨 격리는 prep 뒤 `chformal -assert -remove c:* c:<라벨> %d` + 계수 1. 증인 사살은 같은
+# 사본의 cover(btor btormc — 얕은 증인은 깊이 50 · 깊은 증인은 96). 구동기는 /var/tmp/wt-s310 아래 scratch 에만
+# 있었고 커밋하지 않았다. 입력 sha256 앞 16자: MaskUnit.sv d9c9f968c6136d71 · MaskEngine_props.sv
+# 3c74216fc6d423e1. 무변이 EB0 prove PASS. smtbmc z3 는 쓰지 않았다.
+#
+#   id     치환 (생성 SV)
+#          겨냥 가드              ⇒ 결과 (첫 적발 라벨 · step · 소요)
+#   EB0    무변이
+#          —                      ⇒ prove PASS 105s
+#   ME1    nonceDupFire = (rekeyFire && nonceDup) → (io_rekey_valid && nonceDup)
+#          dup_on_started_rekey   ⇒ prove ⇒ n_dup_rise_src (step 58 · 58s)
+#   ME2    nonceDupFire = 1'b0
+#          dup_on_started_rekey   ⇒ prove ⇒ n_dup_fire (step 46 · 26s)
+#   ME3    [12] sticky 해제 if(io_faultClearNonceDup) → if(1'b0)
+#          (해제 규약)                ⇒ prove ⇒ n_dup_clear (step 47 · 211s)
+#   ME3h   같은 자리 → if(1'b1) ([12] 레벨화)
+#          (비하강)                  ⇒ prove ⇒ c_clr_zero (step 46 · 100s)
+#   ME3hi  ME3h · 격리 n_dup_hold
+#          (비하강)                  ⇒ prove ⇒ n_dup_hold (step 53 · 73s)
+#   ME4    nonceDupQ_1 에서 maskValid_1 && 탈락 ([12] · 비트맵 공용)
+#          cap_bitmap_domain · dup ⇒ prove ⇒ c_latch n_dup_rise_src (step 11 · 5s)
+#   ME5    capMap 만 유효 항 무시 ((q≠p) ∧ 논스 등치)
+#          cap_bitmap_domain      ⇒ prove ⇒ c_latch c_latch_dom (step 46 · 157s)
+#   ME6    capMap … | (4'b0001 << io_rekey_part) (bit p 상시 1)
+#          cap_bitmap_exact       ⇒ prove ⇒ c_latch c_latch_dom (step 46 · 234s)
+#   ME6b   capMap 에서 q ≠ p 항 탈락 (p 자신이 유효일 때만 드러남)
+#          cap_bitmap_exact       ⇒ prove ⇒ c_set_wins (step 90 · 273s)
+#   ME6bi  ME6b · 격리 c_latch
+#          cap_bitmap_exact       ⇒ prove ⇒ c_latch (step 93 · 82s)
+#   ME7    when_MaskUnit_l576 = nonceDupFire (둘째 사건이 덮음)
+#          cap_first_event        ⇒ prove ⇒ c_first (step 132 · 182s)
+#   ME8    when_MaskUnit_l576 에서 || io_faultClearNonceDup 탈락
+#          cap_set_beats_clear    ⇒ prove ⇒ c_set_wins (step 89 · 511s)
+#   ME9    캡처 필드 해제 if(io_faultClearNonceDup) → if(1'b0)
+#          cap_clear_whole        ⇒ prove ⇒ c_clr_zero (step 46 · 139s)
+#   ME10   필드 해제 블록을 래치 블록 뒤로 (해제가 이긴다 — 순진한 관용구)
+#          cap_set_beats_clear    ⇒ prove ⇒ c_latch c_latch_dom (step 46 · 152s)
+#   ME11   [16] = io_faultNonceDup || (capMap != 0)
+#          (동치 변이)                ⇒ prove PASS 122s
+#   ME11b  [16] = (capPart != 2'b00)
+#          (구조 [16] ⇔ [12])       ⇒ prove ⇒ c_iff (step 54 · 97s)
+#   ME12   dupCapture 의 p · 비트맵 필드 자리 교환
+#          (워드 배치)                ⇒ prove ⇒ c_latch c_latch_dom (step 47 · 194s)
+#   ME13   IDLE 의 phase <= 3'b001 → (nonceDup ? 3'b000 : 3'b001)
+#          start_ignores_dup      ⇒ prove ⇒ e_start_busy (step 47 · 79s)
+#   ME14   io_rekey_ready = (! engineBusy) → ((! engineBusy) && (! nonceDup))
+#          start_ignores_dup      ⇒ prove ⇒ e_idle_ready (step 51 · 82s)
+#   ME15   CROUND→FINAL 전이 when_MaskUnit_l439 → (when_MaskUnit_l439 && (! _zz_io_faultNonceDup))
+#          complete_ignores_dup   ⇒ prove ⇒ e_busy_bounded (step 94 · 531s)
+#   ME16   noMaskFire 에서 io_en && 탈락
+#          ([11])                 ⇒ prove ⇒ n_nomask_rise_src (step 3 · 3s)
+#   ME17   nonceDupQ_1 비교를 하위 160b 로 (워드 5 무시)
+#          cap_bitmap_domain · dup ⇒ prove ⇒ c_latch_dom n_dup_rise_src (step 46 · 56s)
+#   ME18   capMap 이 논스 항 무시 (유효한 다른 파티션 전부)
+#          cap_bitmap_domain      ⇒ prove ⇒ c_set_wins (step 132 · 178s)
+#   ME18i  ME18 · 격리 c_latch_dom
+#          cap_bitmap_domain      ⇒ prove ⇒ c_latch_dom (step 90 · 228s)
+#   ME19   noMaskFire = 1'b0
+#          ([11])                 ⇒ prove ⇒ n_nomask_fire (step 3 · 2s)
+#   ME19h  [11] sticky 해제 → if(1'b1) (레벨화)
+#          ([11] 비하강)             ⇒ prove ⇒ n_nomask_hold (step 4 · 3s)
+#   ME20   dupCapture [31:17] 의 15'h0 → 15'h4000 ([31] 상수 1)
+#          (워드 배치)                ⇒ prove ⇒ c_clr_zero c_rsv (step 2 · 2s)
+#   ME20i  ME20 · 격리 c_rsv
+#          (워드 배치)                ⇒ prove ⇒ c_rsv (step 2 · 2s)
+#   ME21   capMap 이 최하위 비트 하나만 (x & (~x + 1))
+#          cap_bitmap_domain      ⇒ prove ⇒ c_set_wins (step 89 · 214s)
+#   EH1    HEAD 3b80087 MaskUnit.sv 그대로
+#          음성 대조                  ⇒ prove ERROR rc=16
+#   EH0    HEAD 3b80087 MaskUnit.sv + 캡처 스텁 dupCapture = {15'h0, [12], 16'h0}
+#          음성 대조                  ⇒ prove ⇒ c_latch c_latch_dom (step 46 · 149s)
+#   EH0_c_clr_zero         ⇒ PASS 1s
+#   EH0_c_first            ⇒ PASS 2s
+#   EH0_c_latch            ⇒ FAIL c_latch (step 52) 64s
+#   EH0_c_latch_dom        ⇒ FAIL c_latch_dom (step 47) 55s
+#   EH0_c_set_wins         ⇒ FAIL c_set_wins (step 95) 53s
+#   EH0_e_busy_bounded     ⇒ PASS 2s
+#   EH0_e_idle_ready       ⇒ PASS 1s
+#   EH0_e_start_busy       ⇒ PASS 1s
+#   EH0_n_dup_clear        ⇒ PASS 15s
+#   EH0_n_dup_fire         ⇒ PASS 10s
+#   EH0_n_dup_hold         ⇒ PASS 3s
+#   EH0_n_dup_rise_src     ⇒ PASS 11s
+#   EH0_n_nomask_fire      ⇒ PASS 1s
+#   EH0_n_nomask_hold      ⇒ PASS 1s
+#   EH0_n_nomask_rise_src  ⇒ PASS 1s
+#
+#   증인 사살 (cover — 미도달 목록. 깊이 50 판의 k 89 증인 미도달은 깊이 밖이라 사살이 아니다):
+#   C1     ME1 (깊이 50)
+#          증인                     ⇒ cover FAIL 미도달 w21_complete_with_dup w20_valid_diff_nonce w18_multi_bitmap w17_self_valid_latch w14_clear_fire_overlap w13_second_event w12_busy_dup_attempt
+#   C9     ME9 (깊이 50)
+#          증인                     ⇒ cover FAIL 미도달 w21_complete_with_dup w20_valid_diff_nonce w18_multi_bitmap w17_self_valid_latch w16_busy_attempt_clear w15_clear_zero w14_clear_fire_overlap w13_second_event
+#   C13    ME13 (깊이 50)
+#          증인                     ⇒ cover FAIL 미도달 w22_dup_start_busy w21_complete_with_dup w20_valid_diff_nonce w18_multi_bitmap w17_self_valid_latch
+#   C19    ME19 (깊이 50)
+#          증인                     ⇒ cover FAIL 미도달 w24_nomask_clear w23_nomask_rise w21_complete_with_dup w20_valid_diff_nonce w18_multi_bitmap w17_self_valid_latch w14_clear_fire_overlap w13_second_event
+#   C2     ME2 (깊이 96)
+#          증인                     ⇒ cover FAIL 미도달 w25_probe_dup_fire w24_dup_clear w22_dup_start_busy w21_complete_with_dup w20_valid_diff_nonce w19_invalid_same_nonce w18_multi_bitmap w17_self_valid_latch w16_busy_attempt_clear w15_clear_zero w14_clear_fire_overlap w13_second_event w11_dup_latch
+#   C3h    ME3h (깊이 96)
+#          증인                     ⇒ cover FAIL 미도달 w21_complete_with_dup w14_clear_fire_overlap w13_second_event
+#   C21    ME21 (깊이 96)
+#          증인                     ⇒ cover FAIL 미도달 w18_multi_bitmap
+#   CW17   nonceDupFire 에 && !maskValid(p) (깊이 96)
+#          증인                     ⇒ cover FAIL 미도달 w17_self_valid_latch
+#   CWR    io_rekey_ready 에 && !io_faultNonceDup (깊이 96)
+#          증인                     ⇒ cover FAIL 미도달 w14_clear_fire_overlap w13_second_event
+#
+# 라벨 ↔ 그것만 죽이는 변이 (첫 적발 단독 또는 격리 — 새 단언 열일곱 전부): n_dup_fire ME2 · n_dup_rise_src ME1 ·
+# n_dup_hold ME3hi(격리) · n_dup_clear ME3 · c_first ME7 · c_latch ME6bi(격리) · c_latch_dom ME18i(격리) ·
+# c_set_wins ME8 · c_clr_zero ME9 · c_iff ME11b · c_rsv ME20i(격리) · e_start_busy ME13 · e_idle_ready ME14 ·
+# e_busy_bounded ME15 · n_nomask_fire ME19 · n_nomask_rise_src ME16 · n_nomask_hold ME19h. ME11 은 동치 변이다
+# (capMap ≠ 0 ⇒ [12] 가 불변식이라 [16] 이 관측상 같다 — 대조로 둔다).
+# step 열은 pdr 반례의 길이다 (최단이 아니다 — 최단 길이는 재지 않았다). 그러나 엔진이 두 번 완주해야 서는
+# 결함(둘째 사건 ME7 · 해제와 겹친 둘째 사건 ME8 · 자기 유효 ME6b · 완료 대기 ME15 — 스텝 88 이상)은 구조상
+# bmc 깊이 50 밖이고, 그 반증력은 prove(abc pdr — 무계)가 진다 (W1 절의 깊이 처분 근거).
+# 증인 ↔ 미도달 변이: W12 C1 (깊이 50 안의 얕은 증인 중 W12 만) · W15 · W16 C9 · W22 C13 · W23 · W24 [11] C19 ·
+# W13 · W14 · W21 C3h (그 셋만) · W13 · W14 CWR (그 둘만) · W17 CW17 (그것만) · W18 C21 (그것만) · W11 · W19 · W20 · W24 [12] · W25 는
+# C2([12] 원천 0)에서만 미도달이다 — W19 · W20 은 탐침 환경 배치(무효 동일 논스 · 유효 다른 논스)의 전건 도달
+# 증인이라 그것만 지우는 자연 변이가 없다.
+# HEAD 음성 대조: EH1(HEAD 생성물 그대로)은 정교화 ERROR rc=16 — 「does not have a port named 'dupCapture'」
+# (공허 PASS 아님). EH0(HEAD 생성물 + [16] 만 구조로 싣는 캡처 스텁)은 c_latch · c_latch_dom · c_set_wins 를
+# 깨고(격리 실측), [11] · [12] 발화 · 진행 단언 열둘(n_* · e_* · c_first · c_clr_zero — 뒤 둘은 스텁 필드가 상수
+# 0 이라 성립)은 통과한다. 잰 것은 이것보다 좁다: HEAD 의 [12] 식도 n_dup_* 넷을 통과한다 — 탐침 환경(고정 여섯
+# 자리 중 하나의 1 비트 논스 등치)에서는 그 넷이 [12] 의 다음 상태를 결정하므로 *그 환경 안에서* HEAD 와 W1 의
+# [12] 는 같고, 자유 환경에서는 논스 무관 상계만 같다. 「[12] 판정 불변」 · 「모델과 같다」 같은 한정 없는 문장으로
+# 옮기지 말 것 — 정본 3.9 의 [11]/[12] 행에 적는다면 이 한정을 그대로 붙인다 (지시서: 「오늘 RTL 의 [12] 판정이
+# 모델과 같다」는 읽기 대조이지 측정이 아니다).
+
+# ## §역-변이 — W1 검증 수리 (2026-10-12, 비상주)
+#
+# 독립 변이 반증(검증 단계 V · RV)이 이 태스크의 탈출 넷(RV4 · X14 · X23 · X24)을 냈다. RV4 는 하네스를 고쳐
+# 닫았고(e_busy_len_same), 셋은 논스 탐침 축약 밖이라 이 태스크로 닫지 않고 그것을 잡는 cocotb 시험을 거처로
+# 적었다. 방법은 위 절과 같다(생성물 사본 · 이 하네스 · prove abc pdr). 사본 구동기는 /var/tmp/wt-s310 아래
+# scratch 에만 있었고 커밋하지 않았다.
+#
+#   id     치환 (생성 SV)
+#          겨냥                    ⇒ 수리 전 하네스 / 수리판 하네스
+#   RV4    CROUND 본문을 [12] = 1 일 때 한 사이클 붙듦 (rv_hold — rekeyFire · reset 에서 0)
+#          complete_ignores_dup   ⇒ prove PASS 247s — **탈출** (상계 F_BUSY_BOUND 48 안의 지연) /
+#                                   prove ⇒ e_busy_len_same (step 95 · pdr 189s · 재생 포함 612s) — 그것만
+#   ME15   (재실행) CROUND→FINAL 전이에 ∧ ¬[12] (완료가 [12] 를 기다림)
+#          complete_ignores_dup   ⇒ 수리판 prove ⇒ e_busy_bounded (step 94 · pdr 172s · 재생 포함 887s) — 상계는 그대로 그 몫
+#   RV3    nonceDupQ_1 의 (2'b01 != io_rekey_part) 항 → 1'b1 (q ≠ p 공유 항 삭제 — [12] 와 비트맵 함께)
+#          cap_bitmap_exact       ⇒ prove ⇒ c_latch n_dup_rise_src (step 49 · 339s — 검증 단계 실측)
+#                                   모델의 가드 삭제(BmSet 의 q ≠ p 만 끈다 — DupSet 은 그대로)에 한 줄로 대응하는
+#                                   RTL 줄은 없다: 그 항은 [12] 의 nonceDup 과 공유된다. 모델 충실 판은 capMap 만
+#                                   바꾼 ME6 · ME6b 다 (MaskUnit.scala 파일 끝 GUARD-MAP 문면)
+#   X14    nonceDupQ_0..3 의 비교를 ((nonceFlat | 192'h2) == (reqNonce | 192'h2)) 로 (워드 0 비트 1 무시)
+#          cap_bitmap_domain · dup ⇒ prove PASS 193s · bmc PASS 835s — **탈출** (탐침 여섯 밖 한 자리 — (나) 부류).
+#                                   이 태스크는 고치지 않았다 — 거처는 cocotb test_mask_golden
+#                                   nonce_dup_compare_every_bit (그것만 FAIL — 비교기 넷 각자의 비트 1 행)
+#   X23 · X24  192 비트 패리티 비교 · 워드별 패리티 비교 ((가) 부류)
+#          cap_bitmap_domain · dup ⇒ prove · bmc PASS — **탈출**. 거처는 cocotb sec1_golden_exact ·
+#                                   nonce_dup_compare_every_bit (이웃 두 비트 차이 행)
+#
+# 라벨 ↔ 그것만 죽이는 변이에 더한다: e_busy_len_same RV4 (수리 전 하네스의 단언 28 은 RV4 를 전부 통과했다 —
+# 그 단언만 죽인다). 증인은 새로 두지 않았다 — W21([12] = 1 인 채 완료 — 그 창은 늘 둘째 이후)이 그 전건 도달을
+# 겸한다.
 
 [tasks]
 bmc
@@ -145,7 +380,7 @@ bmc: depth 50
 prove: mode prove
 prove: depth 56
 cover: mode cover
-cover: depth 50
+cover: depth 96
 multiclock off
 bmc: aigsmt z3
 prove: aigsmt z3

@@ -25,7 +25,7 @@ make rtl-formal        # 또는  sh rtl/formal/tla/run.sh
 | **HIU-1 · 2** 격리 · flush 후 미적중 · **HIU-4** 적중 유일성 | `XlateStore.tla` | HIU-1 · 2 **증명됨** · HIU-4 **미착수** — 인용된 `Inv_AtMostOneCandidate` 가 항진이라 아무것도 재지 않는다(정본 부록 D 사실 정정 2026-10-11); 3.10 RTL 파도 W3 에서 XlateSurface 의 적중 유일성 불변식으로 대체 |
 | **HIU-3** 유효 게이팅 전수 | `XlateStore.tla` | **부분 증명** — 전수성은 정적 검사 몫 |
 | **ISA-3 · ISA-4 · ISA-8** 전역 미스만 fault · 계층당 1회 · 사상 축 | `Route.tla` | **부분 증명** (시간축·귀납 기계증명 비었음) |
-| **HIU-8 · HIU-9 · HIU-10** 플랫폼 독립 · 소유권 배타성 | `Platform.tla` | **증명됨** |
+| **HIU-8 · HIU-9 · HIU-10** 플랫폼 독립 · 소유권 배타성 | `Platform.tla` | **증명됨** — 3.10 v1.0 묶음 RTL 파도 W1 의 선-formal(2026-10-11 — 파도 착지 2026-10-12): HIU-10 의 「loud」 를 원인별 보고(자격 거부 `[4]` · 자격 허용 ∧ 비소유 `[19]`)로 가른 가드 넷 · 불변식 일곱을 더했다 — 가드 여덟 · 23 run (아래 절) |
 | **SEC-3** 무소실 | `NoLoss.tla` | **증명됨** |
 | **EXT-1 · EXT-2 · EXT-3** 순회 종료성 · 종료 후 무효과 · 검산 독립 | `Walk.tla` | **증명됨** |
 | **FAB-1 · FAB-9 · FAB-10 · FAB-5 · FAB-6** 단일 생산자 · 병합 게이팅 · 소비자 무결성 · 무손실 · 진행성 | `Fabric.tla` | **증명됨** — FAB-6 의 공정성 가정은 §2.6 진행 전파 규범이 계약으로 승격 |
@@ -33,6 +33,7 @@ make rtl-formal        # 또는  sh rtl/formal/tla/run.sh
 | **EXT-4** 재조립 배타성 | `Payload.tla` | **증명됨** |
 | **EXT-6** 메모리 순서 (명시적 순서 의존) | `MemOrder.tla` | **증명됨** — 과잉 게이팅 금지가 §4.4.4 규범으로 승격 |
 | **SEC-2 · SEC-7** 경로 간 동일성 · 예약 필드 불투과 | `Decode.tla` | **증명됨** |
+| **E.1.2 임대별 마스크 키 · MASK_REKEY · FAULT_STATUS `[12]` 논스 재사용 판정 · `0xEC4` MASK_DUP_CAPTURE** | `Mask.tla` | **증명됨** — 가드 열둘(키 · 재키잉 넷 + W1 여덟) + 증인 열넷 + 짝 1, 29 run. 축 모델. 대형 cfg 는 `VIEW StateView`. 짝 「오늘의 RTL」(W1 전 RTL — HEAD 3b80087)이 `Inv_CapIffDup` 을 깬다 (아래 절) |
 | **E.1.2 CAP_STATUS/CAP_CLEAR** 축 격리 · sticky · 예약 위반 원자 거절 · 발화 우선 | `CapWord.tla` | **증명됨** — 가드 넷(axis_isolated · sticky_until_clear · clear_atomic · set_beats_clear) + 증인 넷, 9 run. 축은 불투명 토큰 넷 — 사건→축 배정은 정본 표의 몫 |
 | **E.1.2 · E.3 변환 저장소의 MMIO 문** `0xC00` LO 스테이징 · HI 단일 에지 커밋 · 번호 래치 · `0xE00` flush 발화·범위 · `0xE10` 해제 · RO 쓰기 거절 · 거절 loud · 하류 거부 처분 | `XlateSurface.tla` | **증명됨** — 가드 열일곱(lo_stages_only · hi_fires · hi_entry_match · hi_needs_staging · hi_commit_whole · hi_v_carried · flush_fires · flush_scoped · flush_valid_only · flush_part_exists · flush_rsv_strict · reject_loud · mclr_fires · mclr_needs_one · mclr_rsv_strict · mclr_keeps_stall · ro_rejected) + 증인 열여섯 + 짝·대안·발견 여섯 + 진행 1, 42 run. 축 모델(라벨이 색인 속성 ID 를 인용하지 않는다). 정본이 닫지 않은 자리 넷은 모델 머리 「발견」 — 스테이징 소진은 rtl/README.md T5 |
 | **E.1.2 · E.12 · E.12.1 재조립 문맥 소거의 문** `0xF40` 스테이징 세 워드 · 워드 적법성(TAG1 poison·trace·예약 · TAG2/FIRE 예약 · RO 쓰기) · 거절의 무효과·loud · 워드별 무장 · 재기입 덮음 · 발화 성립(무장 완비 · `[0]`=1) · 잔류 소진 | `AbortSurface.tla` | **증명됨** — 가드 열셋(poison_trace_zero · epoch_word_rsv_strict · shape_word_rsv_strict · fire_rsv_strict · ro_rejected · legal_first · reject_loud · arm_on_accept · arm_own_word · stage_writes_value · fire_needs_armed · fire_needs_one · fire_drains_arm) + 증인 열하나 + 짝 셋 · 대비 1, 30 run. 축 모델. sub-word 처분은 상수 `Subword`(판정 T2 — RTL 은 W4). 짝 둘이 D2 이전 RTL(TAG1 무검사)과 동형 |
@@ -305,7 +306,7 @@ FAB-3 의 방어적 캡(교훈 ①)도, 여기의 정의-대-변수도, `loud_fa
 않으면 출력 비교가 무의미하므로 이 lockstep 이 모델의 전제 전부다.
 두 세계는 *플랫폼 능력에서만* 다르다.
 
-12 run: 기저 1 + 형상 sweep 2 + 가드 삭제 4 + 증인 5.
+23 run: 기저 1 + 형상 sweep 2 + 가드 삭제 9 + 증인 9 + 짝 「오늘의 RTL」 1 + 대비 1 (3.10 v1.0 묶음 RTL 파도 W1 전에는 12 run: 기저 1 + 형상 sweep 2 + 가드 삭제 4 + 증인 5 — 아래 「W1」 절이 더한 것이 가드 넷 · 삭제 run 다섯 · 증인 넷 · 짝 · 대비다).
 
 | 가드 | 지우면 | 정본 근거 |
 |---|---|---|
@@ -313,6 +314,10 @@ FAB-3 의 방어적 캡(교훈 ①)도, 여기의 정의-대-변수도, `loud_fa
 | `flush_on_handoff` | plain 만 낡은 값을 들고 남는다 → `Inv_SameObservation` | §3.4.1 3번 「넘기는 쪽이 비운다」 |
 | `state_machine_kept` | rich 가 상태 기계를 생략한다 → `Inv_SameFaultPolicy` | §3.4.1 규범 「일관성이 있어도 규약은 남는다」 |
 | `owner_check` | 비소유 접근이 조용히 값을 돌려준다 → `Inv_UnownedFaults` | HIU-10 · §5.5 loud-fault-never-silent |
+| `entitle_gates_value` (W1) | 자격 거부 장치 접근(거부 채움이 전형)이 값을 돌려받고 쓰기가 반영된다 → `Inv_EntDeniedBlocked` | E.1.2 「FAULT_STATUS 비트 배정」 — 값 차단 · 승인 거부는 두 원인이 같다 |
+| `perm_entitle_only` (W1) | 자격 허용 ∧ 비소유 접근이 `[4]` 를 세운다 → `Inv_Bit4EntOnly` | 같은 규범 — `[4]` 는 자격 거부만 |
+| `entitle_first` (W1) | 자격 거부 ∧ 비소유 접근이 `[4]` · `[19]` 를 함께 세운다 → `Inv_OneBitPerAccess` · 거부 채움 축 → `Inv_DenyFillIs4` | 같은 규범 — 자격이 먼저, 한 접근에 둘이 함께 서지 않는다 |
+| `own_reported` (W1) | 자격 허용 ∧ 비소유 접근이 어느 비트도 세우지 않는다(조용한 거부) → `Inv_UnownedLoud` | 정본 3.4.1 4항 — 소유하지 않은 쪽의 접근은 loud fault |
 
 ### 이 모델이 실제로 말하는 것
 
@@ -342,6 +347,29 @@ plain 이 fault 하는 접근을 rich 가 통과시킨다.
 둘은 같은 종속이다. 어느 쪽이든 *PE 가 보는 세계가 호스트에 따라 달라진다.*
 정본 문장은 한 방향만 적고 있어 좁다 — §3.4.1 에 대칭 형태를 환류했다.
 
+
+### W1 — 승인 거부의 보고 비트 `[4]` · `[19]` (3.10 v1.0 묶음, 2026-10-11)
+
+3.10 v1.0 묶음이 `[4]` 에서 `[19]` 「비소유 프레임 접근」을 갈라 신설했다 — 자격이 먼저: 권한 비트가 그
+접근을 허용하지 않으면 소유와 무관하게 `[4]` 만, 자격 허용 ∧ 비소유일 때만 `[19]`, 한 접근에 둘이 함께
+서지 않는다. 거부 채움(R=W=X=0)은 프레임이 무엇이든 `[4]` 다. 사상에 권한 비트를 싣고 장치 접근마다 접근자 ·
+승인 판정 · 원인 사실 · 보고 비트를 기록한다 (보고 축은 **장치 접근 한정** — 호스트 접근은 보고 비트를
+세우지 않고, `Inv_ReportBitByCause` 가 그것을 상주로 잰다). 정본 좌표 · RTL 대응 이름은 모델 머리가 소유한다.
+
+- 새 불변식 일곱(좋은 모델 cfg 셋이 전부 건다): `Inv_ReportBitByCause`(보고 비트 = 원인의 정확 등식) ·
+  `Inv_OneBitPerAccess` · `Inv_Bit4EntOnly` · `Inv_UnownedLoud`(앞판 「loud」 의 보존 — 둘 중 하나는 선다) ·
+  `Inv_DenyFillIs4` · `Inv_EntDeniedBlocked` · `Inv_DenyIffReported`(「갈리는 것은 보고 비트뿐」).
+- 새 증인 넷(전부 장치 접근으로 도달): `NoEntDeny` · `NoOwnDeny` · `NoBothCauses` · `NoDenyFillOwned`.
+- 짝 「오늘의 RTL」(W1 전 RTL — HEAD 3b80087: `permViol = ¬(devOwned ∧ entitle)` 하나로 두 원인을 `[4]` 에
+  접고 `[19]` 원천이 없다) = 가드 둘(`perm_entitle_only` · `own_reported`)을 지운 판이 `Inv_ReportBitByCause` 를
+  깨고, 같은 판의 대비 MUST PASS 가 나머지 불변식 · HIU-8/9 를 전부 통과한다 — 그 RTL 의 간극은 원인 귀속
+  하나뿐이었다. 이름은 착지 뒤에도 유지한다(XlateSurface 짝 선례).
+- 재지 않는 것(모델 머리 「안 잰다」 가 닫힌 목록): sticky · W1C · 발화 우선 · 표현 불가 프레임 · 실행 권한 ·
+  `[19]` 캡처 · 호스트 쪽 자격 · 보고 · 쓰기 경로 단독의 승인 무시. RTL 쪽 몫은 후-formal `hiumask.sby`(원인별
+  상승 원천 · sticky · 값 차단) · `assembly.sby`(배치 · 해제 라우팅)이고 둘의 합성은 서술이다
+  (`lint_postformal` `_PARTIAL` 의 `Platform.own_reported` · `Platform.entitle_gates_value`).
+- 실측: Platform 절 23/23 선언대로 (전량 배터리 554/554 — 컨테이너 · 2026-10-11 21:15 KST 완료 · 부록 D 문장과
+  같은 판). 형상 sweep 페이지 2 · 주소 2 는 89,388 distinct.
 
 ## SEC-3 — `NoLoss.tla`
 
@@ -728,3 +756,39 @@ e-defined.typ:874 「정지가 영구가 되지 않을 책임은 호스트에 �
 
 **재지 않는 것** (모델 머리 「닫지 않은 자리」가 닫힌 목록): 비트 배치(RTL 조립층 `a_rd_xstatus` ·
 `a_rd_xvpnlo` · `a_rd_xvpnhi`) · 읽기 응답의 시각 · 적중 요청의 나머지 단 · 0xE10 의 문 쪽 적법성(`XlateSurface.tla`).
+
+## E.1.2 임대별 마스크 키 · `[12]` 논스 재사용 판정 · `0xEC4` MASK_DUP_CAPTURE — `Mask.tla`
+
+축 모델이다 (라벨이 색인 속성 ID 를 인용하지 않는다). 임대별 키 · 논스 · 마스크 유효 · MASK_PART 창 ·
+MASK_REKEY 의 명시적 지목을 싣고, 3.10 v1.0 묶음 RTL 파도 W1 의 선-formal (2026-10-11 — 파도 착지 2026-10-12)이 FAULT_STATUS `[12]` 판정과
+`0xEC4` 캡처를 같은 모델에 실었다 — 「재키잉이 시작된」 발화의 정의(`rekey_idle_only` ·
+`rekey_explicit_target`)가 이미 여기 살기 때문이다. 정본 좌표(같은 줄 축자 결속)와 RTL 대응 이름은 모델
+머리가 소유한다.
+
+29 run: 좋은 모델 2(파티션 2 / 파티션 3 · `VIEW StateView`) + 가드 삭제 12 + 증인 14 + 짝 「오늘의 RTL」 1
+(W1 전에는 10 run — 가드 넷 · 증인 넷 · 좋은 모델 둘).
+
+| 가드 (W1) | 지우면 → 목표 속성 |
+|---|---|
+| `dup_on_started_rekey` | busy · 거절 발화도 `[12]` 를 세운다 → `Prop_RejectedFireInert` |
+| `cap_first_event` | 둘째 사건이 캡처를 덮는다 → `Prop_CapFirstEvent` |
+| `cap_clear_whole` | 해제가 `[7:0]` · `[15:8]` 을 남긴다 → `Inv_CapClearedZero` |
+| `cap_set_beats_clear` | 같은 사이클 해제가 이긴다 → `Prop_CapSetBeatsClear` |
+| `cap_bitmap_exact` | 비트맵에 p 자신이 든다 → `Prop_CapBitmapExact` |
+| `cap_bitmap_domain` | 비트맵 = 다른 파티션 전부 → `Prop_CapBitmapExact` (파티션 3 · VIEW — 비트맵의 겹침 항은 파티션 3 에서만 보인다) |
+| `start_ignores_dup` | `[12]` 를 세운 시작된 발화가 엔진을 busy 로 보내지 않는다 → `Prop_StartGoesBusy` |
+| `complete_ignores_dup` | `[12]` 가 서 있는 동안 완료가 막힌다 → `Inv_BusyCanComplete` |
+
+- `[16]` 은 결정대로 `[12]` sticky 그 자체(`Word.on = dup`)라 `Inv_CapIffDup` 은 가드가 아니라 **구조**다 —
+  그것을 깨는 것은 짝 「오늘의 RTL」(W1 전 RTL — HEAD 3b80087: `CapWired = FALSE`, `0xEC4` 미디코드 · 읽기 0) 하나다.
+  그 짝은 워드만 바꾸므로 RTL 의 `[12]` 판정 쪽은 이 배터리가 재지 않는다 — W1 RTL 의 `[12]` 는 후-formal
+  `engine.sby` 가 **탐침 축약 아래에서** 잰다 (고정 탐침 여섯 자리 중 하나의 1비트 논스 등치 환경). 그래서 대비
+  MUST PASS 를 두지 않았다.
+- 계약 둘(가드 목표 아님): `Prop_DupExact`(`[12]` 한 비트의 전체 의미) · `Inv_CapIffDup`(구조).
+- 대형 cfg 의 `VIEW StateView` 는 동작이 *읽는* 변수 전부다 — 동작이 읽지 않는 기록 · 증인용 변수(`ev` · `lastWinWrite` ·
+  `reqPart` · `engKey` · 증인 sticky 들)를 지문에서 뺀다. 그 cfg 를 바꾸는 편집이 `cap_bitmap_domain` 측정을 조용히 끄지 못하도록 그 삭제 run 도 같은 설정으로 돈다.
+- 재지 않는 것(모델 머리의 닫힌 목록): `0xEC4` 쓰기 거절 + `[6]`(MmioPage `ro_rejected`) · `0xEC4` 읽기 결선
+  (assembly `a_rd_dupcap`) · 논스 192b 전폭 비교(engine.sby — 탐침 축약, 탐침 밖은 cocotb 지향 표본) · 읽기 무부작용
+  (assembly `a_rd_pure` — 유도 단언) · `0xF84` 예약 비트 거절(assembly) · reset 형식 단언(W1 에서 하지 않았다).
+- 실측: Mask 절 29/29 선언대로 (전량 배터리 554/554 — 2026-10-11). 파티션 2 좋은 모델 159,024 distinct · 파티션 3 ·
+  VIEW 92,352 distinct.
