@@ -22,7 +22,7 @@ make rtl-formal        # 또는  sh rtl/formal/tla/run.sh
 |---|---|---|
 | **FAB-2** 공유 자원 배타성 + 무처분 없음 | `SharedUnit.tla` | **증명됨** |
 | **FAB-3** 기입 자격 · **FAB-4** 소유 구간 | `ResultBank.tla` | **증명됨** |
-| **HIU-1 · 2 · 4** 격리 · flush 후 미적중 · 적중 유일성 | `XlateStore.tla` | **증명됨** |
+| **HIU-1 · 2** 격리 · flush 후 미적중 · **HIU-4** 적중 유일성 | `XlateStore.tla` | HIU-1 · 2 **증명됨** · HIU-4 **미착수** — 인용된 `Inv_AtMostOneCandidate` 가 항진이라 아무것도 재지 않는다(정본 부록 D 사실 정정 2026-10-11); 3.10 RTL 파도 W3 에서 XlateSurface 의 적중 유일성 불변식으로 대체 |
 | **HIU-3** 유효 게이팅 전수 | `XlateStore.tla` | **부분 증명** — 전수성은 정적 검사 몫 |
 | **ISA-3 · ISA-4 · ISA-8** 전역 미스만 fault · 계층당 1회 · 사상 축 | `Route.tla` | **부분 증명** (시간축·귀납 기계증명 비었음) |
 | **HIU-8 · HIU-9 · HIU-10** 플랫폼 독립 · 소유권 배타성 | `Platform.tla` | **증명됨** |

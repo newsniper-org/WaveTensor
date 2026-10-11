@@ -31,4 +31,5 @@
 - [동시 실행 에이전트 상한 4](agent_concurrency_cap.md) — 사용자 지시 2026-09-21, 크레딧 고갈 방지; Workflow 팬아웃·fork 합쳐 4 이하
 - [백그라운드 대기 루프가 메모리 가드에 죽는다](background_task_oom_kill.md) — run_in_background Bash 폴링은 실사용량과 무관하게 죽는다; nohup 백그라운드 + Monitor 조합을 쓸 것
 - [tmpfs /tmp 고갈 함정](tmpfs_scratch_exhaustion.md) — /tmp 는 24G tmpfs; 세션 scratch·wt_sim_*·wt-sby-out 이 쌓여 검증 에이전트가 ENOSPC 로 죽었다(2026-09-26); 커밋한 파도의 scratch 는 치운다
+- [임시 공간 순서 /tmp → /var/tmp → 외장 SSD](scratch_space_fallback.md) — 사용자 지시 2026-10-11; /var/tmp 도 모자라면 PSSD T9 에 전용 폴더(개인 파일과 섞지 말 것)
 - [형제 저장소 요청 채널](sibling_request_channel.md) — 상대 파일을 고치지 말고 `.local-requests-to/from` · `.local-replies-to/from` 에 「어떻게 할까요?」 메시지; Y4 에 「읽기 전용 조건부」 소스 접근 허용(2026-10-01)
