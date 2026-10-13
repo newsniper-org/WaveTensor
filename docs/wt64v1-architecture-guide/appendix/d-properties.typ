@@ -32,10 +32,10 @@
   *진행 현황*: 선-formal 대상 31건 중 *28건*이 모델을 가졌다 — 모델 12개
   (색인 속성을 덮는 것; 그 밖에 저장·워드·엔진 창·MMIO 문·소거 문·구성 페이지 처분·미적중 관측면의 축 모델 일곱
   Mask · CapWord · MaskEngine · XlateSurface · AbortSurface · MmioPage · XlateObs 이 있어 `.tla` 는 19편이다),
-  전체 *554 run* 이 선언대로 행동했다 (Decode `ch_judged` 5 · Mask 29 · CapWord 9 · MaskEngine 10 · Platform 23 ·
-  XlateSurface 축 50 · AbortSurface 축 30 · MmioPage 축 29 · XlateObs 축 22 · Payload 태그 정제 축(키가 poison · trace 를 뺀다) 6 run 을 포함한 554 run 한 판을
-  2026-10-11 컨테이너에서 전량 재실행해 실측했다 — 이탈 0, `run.sh` 종료 코드 0. 그 앞
-  판 524 run 은 2026-09-26 실측이고, 3.10 v1.0 묶음의 RTL 파도 W1 의 선-formal 이 Platform 12 → 23 · Mask 10 → 29 를 더했다).
+  전체 *573 run* 이 선언대로 행동했다 (Decode `ch_judged` 5 · Mask 29 · CapWord 9 · MaskEngine 10 · Platform 23 ·
+  XlateSurface 축 50 · AbortSurface 축 30 · MmioPage 축 29 · XlateObs 축 41 · Payload 태그 정제 축(키가 poison · trace 를 뺀다) 6 run 을 포함한 573 run 한 판을
+  2026-10-12 컨테이너에서 전량 재실행해 실측했다 — 이탈 0, `run.sh` 종료 코드 0. 그 앞
+  판 554 run 은 2026-10-11 실측이고, 3.10 v1.0 묶음의 RTL 파도 W2 의 선-formal 이 XlateObs 22 → 41 을 더했다).
   #등급("실측")
 
   날짜는 *run 을 실제로 돌린 날*에만 붙는다. 앞의 두 수(대상 31 · 모델을
@@ -197,7 +197,7 @@
   align: (left, center, center, left, center),
   table.header([*번호*], [*단계*], [*축*], [*요지*], [*상태*]),
   [HIU-1], [선], [(a)], [파티션 격리], [*증명됨*],
-  [HIU-2], [선], [(a)], [flush 후 미적중 — flush · V=0 COMMIT 에지 *뒤에 판정되는* 조회, *데이터가 남아 있음에도* (증명은 flush 축 — V=0 COMMIT 축과 판정 시점 범위는 3.10 v1.0 묶음이 더했고 선-formal 확장 착지 대기)], [*증명됨*],
+  [HIU-2], [선], [(a)], [flush 후 미적중 — flush · V=0 COMMIT 에지 *뒤에 판정되는* 조회, *데이터가 남아 있음에도* (증명은 flush 축과 판정 시점 범위 — 판정 시점 범위는 3.10 v1.0 묶음이 더했고 그 RTL 파도 W2 (2026-10-12)의 선-formal `XlateObs.tla` 판정 래치 절이 *모델 위에서* 잰다: 에지 전에 판정되지 않은 요청은 V=0 COMMIT 에지 뒤 정지한다(`Prop_V0AfterEdgeMisses`) · 자기 조회로 판정되지 않은 요청은 앞 요청의 판정을 물려받지 않는다(`Prop_NoInheritedVerdict`) · 에지 전에 판정된 요청은 판정 시점의 값을 들고 떠난다(`Prop_LatchedSurvivesRetract`). 같은 묶음이 더한 V=0 COMMIT 축은 W3 착지 대기)], [*증명됨*],
   [HIU-3], [선], [(a)], [유효 게이팅 전수 — *정적 검사로 완결 가능*], [*부분 증명*],
   [HIU-4], [선], [(a)], [적중 유일성 — 같은 (파티션, VPN) 에 동시에 적중하는 항목은 최대 하나 (뒤 커밋이 앞 항목을 대체) (*사실 정정 2026-10-11 — 앞판은 「증명됨」이었다*: 증명으로 인용된 불변식(`XlateStore.tla` 의 `Inv_AtMostOneCandidate`)이 항진이다 — `Entries` 가 파티션 × 색인의 곱이라 `<<p, i>>` 와 같은 원소는 늘 정확히 하나다. 성질은 직접 사상 구조로 참이나 기계 증명은 없다 · 3.10 v1.0 묶음의 RTL 파도 가운데 형상 비노출 `0xC00` 문과 `XlateSurface.tla` 재작성을 맡는 하위 파도(작업 번호 W3)에서 XlateSurface 의 적중 유일성 불변식으로 대체 예정이고, 형상 중립 대체도 그 선-formal 확장에 실린다)], [미착수],
   [HIU-5], [후], [(a)], [fault 의 합성 존재성 — 시뮬 전용 아님 (잰 것은 FAULT_STATUS `[4]` · `[19]` 축 — 3.10 v1.0 묶음의 RTL 파도 W1 (run: 조립층 2026-10-11 · 파이프라인 하네스 2026-10-12): 원인별 상승 원천 · 발화 · sticky 는 HIU 파이프라인 단독 하네스의 무계 증명, `0xF80` `[19]` 배치 · 요약 · `0xF84` `[19]` 해제 라우팅 · 원천별 수출은 조립층 태스크 — 조립층이 HIU 파이프라인을 절단하므로 *둘의 합성은 서술*이다. 다른 축은 이 행이 세지 않는다)], [*부분 증명*],

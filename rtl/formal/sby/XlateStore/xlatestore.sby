@@ -51,7 +51,7 @@
 #
 # Isolation.tla:428-429 가 금지하는 것은 「채움이 진행 중이면 트레이스에 fwait 가
 # 낀다」= *타이밍* 부채널이다. 그 타이밍은 XlateStore 에 존재하지 않는다 —
-# 실제 정지는 HiuPipeline.scala:348 「private val missWait = s3.valid && !xlate.io.rsp.hit」 와 그 다음 줄 advance 다. 그래서 잴 수 있는
+# 실제 정지는 HiuPipeline.scala:348 「private val missWait = s3.valid && !lookAny」 (W2 — lookAny = 판정 래치 ∨ 조회 적중) 와 그 다음 줄 advance 다. 그래서 잴 수 있는
 # 잔여분(「채움이 정지를 만들지 않는다」의 단조성 형태:
 # advance_with_fill >= advance_without_fill 를 fillPend/fillSlot 만 다른 2사본
 # miter 로) 은 HiuMask 하네스의 몫이지 이 태스크의 몫이 아니다. 세우려면

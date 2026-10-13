@@ -1890,6 +1890,6 @@ class Wt64Top(
 // ── GUARD-MAP — 미적중 관측면(XlateObs.tla)의 포장·읽기 쪽 가드 셋 (파도 4, 2026-09-26) ──
 // 파이프라인 쪽 셋(obs_part_stalled · obs_vpn_stalled · obs_no_residue)은 hiu/HiuPipeline.scala
 // 파일 끝이 든다. 파일 *끝*에 둔 것은 앞쪽 익명 when 의 줄 좌표를 밀지 않기 위해서다.
-// GUARD-MAP: XlateObs.obs_stall_live -> xlateArea 의 obsStatus[0] = hiu.missStall = missWait(s3.valid ∧ ¬적중)이다 — 지금 정지 중인가의 레벨이지 sticky 가 아니다. 정지가 풀리는 사이클(항목 기입의 채움 바이패스 적중)에 0 이 된다
-// GUARD-MAP: XlateObs.obs_sticky -> obsStatus[1] = hiu.io.missNotice = StickyFault(set = missWait, clear = missClear) — 미적중 sticky 그 자체다. [0] 과 [1] 은 서로 다른 넷에서 온다 — 정지가 끝나도 [1] 은 0xE10 해제(또는 IO 해제선)가 내릴 때까지 1 이다
+// GUARD-MAP: XlateObs.obs_stall_live -> xlateArea 의 obsStatus[0] = hiu.missStall = missWait(s3.valid ∧ ¬lookAny — ¬(판정 래치 ∨ 조회 적중), HiuPipeline 클래스 끝 · 3.10 v1.0 묶음 W2)이다 — 지금 정지 중인가의 레벨이지 sticky 가 아니다. 정지가 풀리는 사이클(항목 기입의 채움 바이패스 적중)에 0 이 되고, 판정이 래치된 요청은 hold 로 머무는 동안 그 항목이 밀려나도 다시 1 이 되지 않는다
+// GUARD-MAP: XlateObs.obs_sticky -> obsStatus[1] = hiu.io.missNotice = StickyFault(set = missWait, clear = missClear) — 미적중 sticky 그 자체다(set 원천 missWait 는 판정 래치를 아는 정지다 — 래치된 요청의 항목이 밀려나도 [1] 을 세우지 않는다). [0] 과 [1] 은 서로 다른 넷에서 온다 — 정지가 끝나도 [1] 은 0xE10 해제(또는 IO 해제선)가 내릴 때까지 1 이다
 // GUARD-MAP: XlateObs.obs_read_pure -> 읽기 경로(obsRd → obsReg/obsRv → io.mmio.rdata)는 레지스터 두 개와 rdata 덮어쓰기뿐이다 — hiu.io.missClear(= IO 해제선 ∨ xstg.io.missClr — 문의 0xE10 *쓰기*) · hiu.io.install · hiu.io.flush(문의 쓰기 판정)의 콘에 rstrobe 가 없다. 읽기는 hiu 에 해제 · 설치 · flush 어느 명령도 내지 않고, hiu 의 요청 · hold · hostRsp 입력은 최상위 IO 직결이라 읽기가 닿지 않는다 (조립 하네스 a_hiu_pass · hiu 가 그 명령 없이 sticky 를 내리지 않는다는 절반은 obs_sticky — HiuPipeline 의 StickyFault)

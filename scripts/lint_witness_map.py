@@ -238,7 +238,9 @@ _MAX_ANCHOR_UNWITNESSED = 0   # 늘지 않는다. 줄이는 길은 증인 신설
 _MAX_UNRESOLVED = 0   # 오늘 0. 늘리려면 근거와 함께.
 
 # ── 하한 래칫 ──────────────────────────────────────────────────────────────
-_MIN_WITNESS_MAPPED = 411   # 대응 선언이 붙은 cover 문 수. 줄지 않는다.
+_MIN_WITNESS_MAPPED = 419   # 대응 선언이 붙은 cover 문 수. 줄지 않는다.
+                             # 411 → 419 (2026-10-12 실측 419/419 — 3.10 v1.0 묶음의 RTL 파도 W2 착지: +8 =
+                             # HiuMask_props.sv 29 → 37 (W29–W36 — 판정 래치 증인 여덟))
                              # 383 → 411 (2026-10-12 실측 411/411 — 3.10 v1.0 묶음의 RTL 파도 W1 착지: +28 =
                              # HiuMask_props.sv 25 → 29 (W13 → [19] · W25–W28) · MaskEngine_props.sv 10 → 26
                              # (W11–W25 — W24 [11] · [12] 두 라벨, 라벨 열여섯) · Wt64Top_props.sv 49 → 57 (W41–W47 · 라벨 여덟))
@@ -264,7 +266,10 @@ _MIN_WITNESS_MAPPED = 411   # 대응 선언이 붙은 cover 문 수. 줄지 않�
                              # 게이트가 침묵했다. 334 에 수리판이 XlateStaging_props.sv 에 더한
                              # cover 둘(w13_mclr_zero · w14_mclr_rsv)을 더해 336 — w11_missclr 는
                              # w12_missclr 로 태그만 옮겼다).
-_MIN_ANCHOR_WITNESSED = 208  # 증인이 선 앵커 수. 줄지 않는다.
+_MIN_ANCHOR_WITNESSED = 211  # 증인이 선 앵커 수. 줄지 않는다.
+                             # 208 → 211 (2026-10-12 실측 211/211 — 3.10 v1.0 묶음의 RTL 파도 W2 착지: PROVES
+                             # 셋(hiumask.sby XlateObs.verdict_latch · latch_clears_on_leave · latch_one_value)이 전부
+                             # 증인을 갖고 태어났다)
                              # 195 → 208 (2026-10-12 실측 208/208 — 3.10 v1.0 묶음의 RTL 파도 W1 착지: PROVES
                              # 열둘(hiumask.sby Platform 넷 · engine.sby Mask 여덟) · VERIFIES Wt64Top.hiu_shape
                              # (assembly.sby W44) 하나가 전부 증인을 갖고 태어났다)

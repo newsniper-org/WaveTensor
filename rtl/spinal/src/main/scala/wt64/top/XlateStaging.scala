@@ -238,7 +238,7 @@ class XlateStaging(val parts: Int) extends Component {
 // GUARD-MAP: XlateSurface.mclr_fires -> XLATE_MISS_CLEAR(0xE10) 의 기입이 [31:1] = 0 이고 [0] = 1 이면 missClr 가 그 사이클에 선다. 상위(Wt64Top xlateArea)가 그것을 IO 해제선과 논리합해 hiu.io.missClear 로 잇고, HiuPipeline 의 io.missNotice := StickyFault(set = missWait, clear = io.missClear) 가 해제로 받는다 — 정지가 없는 사이클이면 sticky 가 내려간다. 정지 중에는 set(missWait 레벨)이 이긴다 (모델 발견 4 — 정지 중 해제의 유실)
 // GUARD-MAP: XlateSurface.mclr_needs_one -> missClr 의 논리곱 항에 wdata(0) 가 있다 — [0] = 0 · [31:1] = 0 의 기입은 missClr 도 badWrite 도 세우지 않는다 (적법한 무동작 — 모델의 noop)
 // GUARD-MAP: XlateSurface.mclr_rsv_strict -> [31:1] 비0 인 XLATE_MISS_CLEAR 는 missClr 를 세우지 않고 badWrite 를 세운다 (워드 안 예약 엄격 — MISS_CLEAR_RSV)
-// GUARD-MAP: XlateSurface.mclr_keeps_stall -> missClr 는 commit.valid · flush.valid 어느 것의 항에도 없고 상위에서 hiu.io.missClear 하나로만 간다. HiuPipeline 의 정지 missWait = s3.valid && !xlate.io.rsp.hit 와 advance 에 missClear 항이 없다 — 정지를 푸는 것은 적중(= 그 항목의 커밋)뿐이다
+// GUARD-MAP: XlateSurface.mclr_keeps_stall -> missClr 는 commit.valid · flush.valid 어느 것의 항에도 없고 상위에서 hiu.io.missClear 하나로만 간다. HiuPipeline 의 정지 missWait = s3.valid && !lookAny(lookAny = 판정 래치 ∨ xlate.io.rsp.hit — 3.10 v1.0 묶음 W2 판정 래치) 와 advance 에 missClear 항이 없다 — 정지를 푸는 것은 적중(= 그 항목의 커밋)뿐이다(래치 포착도 적중에서만 선다)
 // GUARD-MAP: XlateSurface.ro_rejected -> 0xE04 · 0xE08 · 0xE0C(isCtlRo) 의 쓰기는 badWrite 를 세우고 commit · flush · missClr 어느 것도 세우지 않는다 — 흡수 가지가 없다 (loud 로 잇는 것은 reject_loud 의 surfBadWr → FAULT_STATUS [6])
 //
 // ── GUARD-MAP 이어서 — 파도 4 판정 T5 (a) · T4 (ii) 의 착지 (2026-09-26, 정본 f229c8b) ──

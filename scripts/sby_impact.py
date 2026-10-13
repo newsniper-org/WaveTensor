@@ -118,6 +118,13 @@ def main() -> None:
 
     changed_set = set(changed)
     hit = {sby: sorted(fs & changed_set) for sby, fs in index.items() if fs & changed_set}
+    # 바뀐 .sby 는 그 자신이 영향 태스크다 — [files] 에 자기를 적지 않으므로 위 교집합이
+    # 놓친다 (W2 실측 2026-10-12: xlatestore.sby 의 주석 인용만 고친 편집이 목록에서 빠졌고
+    # 사람이 손으로 더해 덮었다 — 합성 태스크 회귀 함정과 같은 부류의 구멍). 레시피 · 앵커 ·
+    # 엔진이 바뀌면 그 태스크의 증거는 낡는다 (lint_postformal --require-fresh 의 「.sby 자신」).
+    for sby in index:
+        if str(sby) in changed_set:
+            hit.setdefault(sby, []).append(f"{sby} (.sby 자신 — 레시피 · 앵커)")
 
     if not hit:
         print(f"sby_impact: 변경 {len(changed)}건 중 sby 입력 0건 — 돌릴 태스크 없음")

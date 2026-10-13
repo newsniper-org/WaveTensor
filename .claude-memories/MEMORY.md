@@ -33,3 +33,5 @@
 - [tmpfs /tmp 고갈 함정](tmpfs_scratch_exhaustion.md) — /tmp 는 24G tmpfs; 세션 scratch·wt_sim_*·wt-sby-out 이 쌓여 검증 에이전트가 ENOSPC 로 죽었다(2026-09-26); 커밋한 파도의 scratch 는 치운다
 - [임시 공간 순서 /tmp → /var/tmp → 외장 SSD](scratch_space_fallback.md) — 사용자 지시 2026-10-11; /var/tmp 도 모자라면 PSSD T9 에 전용 폴더(개인 파일과 섞지 말 것)
 - [형제 저장소 요청 채널](sibling_request_channel.md) — 상대 파일을 고치지 말고 `.local-requests-to/from` · `.local-replies-to/from` 에 「어떻게 할까요?」 메시지; Y4 에 「읽기 전용 조건부」 소스 접근 허용(2026-10-01)
+- [대외 소개 표현](public_framing.md) — 표어 「여럿이 나눠 써도 서로의 데이터가 새지 않는 계산용 칩 설계도」; AI 가속기로 좁히지 말 것(AI 는 첫 시장), 증명 범위·성능을 넘는 문구 금지 (2026-10-12)
+- [GitHub 원격은 public](github_remote_public.md) — origin(…-private)은 newsniper-org/WaveTensor 로 옮겨져 공개, 2026-07-15 까지 30 커밋만; 공개 의도 미확인, push 는 지시 없이 하지 않는다

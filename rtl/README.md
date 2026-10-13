@@ -1616,7 +1616,7 @@ e-defined.typ:323 「정지 중(`[0]` = 1)에만 정지한 요청의 값을 내�
 ### 선-formal — `XlateObs.tla` (RTL 편집보다 먼저)
 
 가드 여섯(obs_stall_live · obs_sticky · obs_part_stalled · obs_vpn_stalled · obs_no_residue · obs_read_pure) ·
-고정 속성 Prop_NoTear(찢김 없음) · HostSpec 아래 진행 Prop_StallResolves(관측면만 보는 폴링 호스트가 모든 정지를
+고정 속성 Prop_NoTear(찢김 없음) · HostSpec 아래 진행(W2 에서 강화 — 아래 W2 절) Prop_StallResolves (관측면만 보는 폴링 호스트가 모든 정지를
 푼다 — 채널의 충분성) · 22 run. 블록 22/22 GREEN 을 컨테이너에서 RTL 편집 전(15:21 KST)에 남겼고 분리 검사
 6/6(비상주). 기각 갈래 둘이 반례로 선다 — 첫 미적중 포착(B)은 `obs_vpn_stalled` · `obs_no_residue` 삭제와 동형,
 비게이트(C)는 대안 run. 짝 「오늘의 RTL」(세 워드 읽기 0)은 진행을 깬다 —
@@ -1630,7 +1630,7 @@ rtl/formal/tla/README.md XlateObs 절). `lint_guard_map` ENFORCED 16 → 17.
 - `XlateStore` 클래스 끝: `installSlotFree = !fillPend(install.part)` (flush 와 무관한 슬롯 여유). `:200`
   (`when_XlateStore_l200`) 무손상.
 - `HiuPipeline` 클래스 끝: `installSlotFree`(통과) · `missStall = missWait` · `missPart`/`missVpn` =
-  `Mux(missWait, s3.*, 0)` — 정지 게이트 스냅샷의 몸. `:348` (missWait) 무손상. GUARD-MAP 셋(part · vpn ·
+  `Mux(missWait, s3.*, 0)` — 정지 게이트 스냅샷의 몸. `:348` (missWait) 무손상 (W2 에서 줄은 그대로 식이 `s3.valid && !lookAny` 로 바뀌었다 — 아래 W2 절). GUARD-MAP 셋(part · vpn ·
   no_residue)은 파일 끝.
 - `Wt64Top.scala`: xlateArea 의 ready 덮어쓰기(`:1714`)와 문의 `installReady`(`:1690`) 두 대입이 같은
   `hiu.installSlotFree` 를 먹는다 (조건 ① — 커밋 = needReady ∧ 그 사이클의 ready 가 구조로 유지된다).
@@ -1876,4 +1876,84 @@ Wt64Top 배치까지 걸치는 `own_reported` 는 부분, HiuPipeline 안의 항
 **이월 · 재지 않는 것.** reset 의 *형식* 단언(이번에 하지 않았다 — N14 머리의 reset 한 점 관측만) · 합성(위) ·
 논스 비교의 세 비트 이상 · 이웃하지 않은 두 비트 차이에만 나타나는 결함(어디서도 전수로 재지 않는다) · 참조 형상이
 아닌 형상의 `0xFF8` · cocotb 시험 docstring 의 「안 잰다」(N13 의 `0xF84` W1C 와 발화의 같은 사이클 · N14 의 호스트
-쪽 접근과 X 권한) · `[14]` · `[15]` 의 유닛 발화 우선. 다음 하위 파도는 판정 래치(W2)다.
+쪽 접근과 X 권한) · `[14]` · `[15]` 의 유닛 발화 우선. 다음 하위 파도는 판정 래치(W2)다 — 아래 W2 절 (2026-10-12).
+
+## 3.10 v1.0 묶음 RTL 파도 W2 — 판정 래치 (2026-10-12)
+
+정본 3.6.2 「판정 시점과 판정 래치」(3.10 v1.0 묶음 신설)의 RTL 따라잡기 둘째 하위 파도다 — 판정 시점은 조회
+지점의 첫 적중 사이클이고, 그 판정이 요청이 떠날 때까지 유지되며 승인 단 소유권 조회와 마스킹에 같은 값으로
+쓰인다. W2 전 RTL 은 매 사이클 다시 판정했다 — 풀린 요청이 조회 지점 뒤 단의 배압으로 머무는 동안 같은
+파티션의 다른 커밋이 칸을 덮으면 다시 미적중했다(결과 (d) 반례). 순서는 정본 6.3 그대로(선-formal → RTL →
+후-formal → cocotb). 기준 HEAD a8cda09 (RTL 9b6eee6).
+
+**선-formal (RTL 편집보다 먼저).** `XlateObs.tla` 에 판정 래치 절 — 가드 6 → 9 (`verdict_latch` ·
+`latch_clears_on_leave` · `latch_one_value`) · 고정 속성 `Prop_LatchedSurvivesRetract` · `Prop_V0AfterEdgeMisses` ·
+대안 넷(`clear_late` · `capture_beats_clear` · `sticky_raw_miss` · `value_no_latch`) · 22 → 41 run. 진행
+`Prop_StallResolves` 를 「정지한 *그* 요청은 결국 떠난다」(요청 꼬리표 tok)로 강화했다 — 옛 꼴은 래치 없는 판의
+라이브락을 통과시켰다(대비 run 실측). 연속 전진 `LeaveArrive` 를 들였다 — 거품 하나를 강제하던 첫 판에서는 대안
+둘(늦은 비움 · 포착이 비움을 이김)이 배터리를 통과했다(독립 반증이 찾음). 큰 cfg 는 `VIEW StateView`. 닫힌 목록
+16 항. 전량 배터리 **573/573 선언대로** — 컨테이너 · 2026-10-12 11:54–13:25 KST · 게이트 GREEN (부록 D 문장과 같은
+판). 모델 쪽 서술은 `rtl/formal/tla/README.md` XlateObs 절의 「W2」. `XlateStore.tla` · `Isolation.tla` 는 주석만.
+
+**RTL (`HiuPipeline.scala` 줄 1–479 줄 중립 — 같은 자리 치환 · 새 코드는 클래스 끝 · 파일 끝).**
+- 제자리 셋: `lookAny` · `lookFill` 선언, `:348` `missWait = s3.valid && !lookAny`(줄 그대로 · 식만), `s4.fromFill :=
+  lookFill`. `when_HiuPipeline_l405` 등 생성 `when_*` 이름 집합은 HEAD 와 같다(109종).
+- 클래스 끝 래치: `lat`(hit · frame · perm · fromFill — hit 만 reset 0) · `latCapture = s3.valid && !lat.hit &&
+  xlate.io.rsp.hit` · `when(advance){비움}.elsewhen(latCapture){포착}` — 비움이 첫 가지(같은 에지의 포착을 이긴다) ·
+  `lookAny = lat.hit || xlate.io.rsp.hit` · `lookFill` 래치 선택 · `when(lat.hit)` 가 `lookFrame` · `lookPerm` 의 마지막
+  대입이라 `io.mask.req.frame` 과 `s4.frame`(→ `io.owner.frame`)이 한 값이다.
+- GUARD-MAP: 파일 끝 새 줄 셋(`XlateObs.verdict_latch` · `latch_clears_on_leave` · `latch_one_value` — RTL 범위가 전부
+  HiuPipeline 안) · 머리 문면 개정(`no_early_forward` 「판정 래치도 io.rsp 에 배선되지 않는다」 · `query_no_serve` ·
+  `lookup_unbranched` · `stall_uniform` · `evict_inline` 「판정 *전*의 대체」 한정 — 착지) · obs_* 셋 「missWait =
+  s3.valid ∧ ¬lookAny」. `Wt64Top.scala` obs 두 줄 · `XlateStaging.scala` `mclr_keeps_stall` 한 줄 · `XlateStore.scala`
+  DP-18 정정(HIU-3 정적 검사는 실재한 적이 없다)은 문면만. `lint_guard_map` 가드 153 → 156 전수 · CHECK 149 ·
+  ENFORCED 18 불변. 생성물 20 편 중 HiuPipeline · Wt64Top 둘만 바뀌었고 `make rtl-gen` 두 번이 바이트 동일하다 (착지
+  편집 뒤에도 20 편 sha256 불변). verilator 경고 집합 HEAD 와 같다.
+
+**후-formal (영향 다섯 태스크 — 수리 전 `sby_impact` 가 낸 넷 + 바뀐 `.sby` 자신 `XlateStore/xlatestore`, 아래 — 재스윕 PASS · hollow 0 · uncounted 0; 착지 수정이 머리 문면을 고친 `HiuMask/hiumask` 는 한 번 더 스윕해 PASS — assert 57 · cover 37/37).**
+- `HiuMask/hiumask` — assert 53 → 57 · cover 29 → 37 (W29–W36). 지상 진리 `f_lat` 은 DUT 래치가 아니라 거울 valid ·
+  XlateStore 독립 출력 · advance 에서 짓는다(새 tap 은 기존 포트 `io_mask_req_frame` · `io_owner_frame` 둘뿐). 고친
+  단언: 캡처 등식 `e_cap_hit` · `e_cap_fill` · `q_hit_*`(전건 x_hit ∨ f_lat · 값 = 판정 값) · `q_miss_*` ·
+  `d_stall_src`(¬(x_hit ∨ f_lat)) · `m_obs_*` · `m_sticky`. 새 단언: `l_hold` · `l_one_value` · `l_clear` ·
+  `l_capture_gated` — 뒤 둘은 유도 단언(격리에서만 단독으로 운다 — `_DERIVED`). **prove 엔진을 smtbmc z3 에서 abc
+  pdr 로 옮겼다** — 포트만 보는 하네스에서 f_lat 과 DUT 래치의 일치는 귀납 불변식이어야 하는데 k-귀납은 hold 가
+  무한히 설 수 있어 닫히지 않는다(z3 depth 4 UNKNOWN 실측). bmc abc bmc3 d24 · cover btormc d60 불변.
+- `XlateStore/xlatestore` · `Wt64Top/assembly` · `AbortStaging/props` · `XlateStaging/props` — 단언 무변경 재스윕
+  PASS(xlatestore 는 `:54` 인용 재조준). 그때 `sby_impact` 는 바뀐 `.sby` 자신을 영향 태스크로 내지 않았다 —
+  **수리했다: 바뀐 `.sby` 는 이제 자기 자신을 영향 태스크로 낸다**(「(.sby 자신 — 레시피 · 앵커)」 표시).
+- 역-변이(비상주): 단언 변이 26 전부 잡힘 · pdr 로 아홉 재확인 · 새 증인 여덟마다 미도달 변이(W29 는 전건 도달 증인).
+  HEAD 음성 대조: bmc d24 · pdr 둘 다 `d_stall_src` · `m_obs_stall` · `m_obs_zero` FAIL, cover 36/37. 표는 `hiumask.sby`
+  W2 절. `latCapture` 의 `s3.valid` 항 변이 둘은 miter 로 관측 동치가 증명됐다(같은 절 「동치 변이」 — 유효 게이트
+  실물은 XlateStore 의 hit 이 lookup.valid 를 곱하는 자리).
+
+**cocotb (`rtl/sim/` — 그 README 의 W2 절).** Shape 24 → 26 — N8 `xlate_released_judgment_survives_eviction`(결과
+(d) 반례 그대로 · 경쟁 커밋 C+2 · flush C+1 · 호스트 leg 상주 · `0xF84` W1C 펄스) · N9
+`xlate_latched_hit_survives_retire`(V=0 · flush · 대체 · 권한만 바뀌는 대체 · hold 없는 대조) — `make rtl-sim`
+**38/38**(Mask 12 · Shape 26). HEAD 음성 대조: N8 · N9 가 의도한 이유(재미적중 · 떠나는 시점 재판정)로 FAIL, 기존 24
+통과. 변이 46 중 42 잡힘 · 생존 넷은 처분(동치 둘 · 거품 데이터 — hiumask 가 잡음 · reset 비움 — Verilator 0 초기화).
+대조면 계수 불변(최상위 포트가 늘지 않았다).
+
+**정본 사실(F) 편집 — 같은 줄 치환, 정본 파일 줄 수 불변.** 3.9 「변환 판정 래치」 행 *미구현* → *구현*(측정 출처 ·
+미측정 둘) · 3.9 미적중 관측 행 꼬리(결과 (d) 는 W2 착지 · 새 COMMIT 문 위 재측과 「항목 기입」 좁힘은 W3) · 부록
+D run 554 → 573 (XlateObs 22 → 41, 배터리 날짜 2026-10-12) · HIU-2 괄호(판정 시점 범위를 증명 쪽으로 — 모델 위,
+V=0 COMMIT 축은 W3 착지 대기 · 상태 낱말 「증명됨」 유지) · B.5 메모리 파이프 드레인 행 「드레인 정의역 ① 이 둘을
+덮는다」 에 「구조상 — 점유를 재는 단언은 아직 없다」 한정.
+
+**래칫 (실측 서명).** `lint_postformal` PROVES 180 → 183 · 분모 146 → 149 (완전 103 → 106 · 부분 43 그대로) —
+`_MIN_COVERED` 149 · `_MAX_PARTIAL` 43 · `_MIN_EVIDENCED` 183. 새 앵커 셋은 **완전**이다(GUARD-MAP 범위가 HiuPipeline
+안 — W1 덮임 기준). `_DERIVED` 에 `XlateObs.latch_clears_on_leave`(`l_clear`) · `XlateObs.verdict_latch`
+(`l_capture_gated`) — `latch_clears_on_leave` 의 전 단언 반증력은 형제 `q_miss_*` · `d_stall_src` 가 든다.
+`_PARTIAL` 기존 행 아홉의 「잰다」 칸을 판정 래치에 맞춰 고쳤다(분류 불변). `lint_witness_map` 증인 411 → 419 · 앵커
+208 → 211 (`_MIN_WITNESS_MAPPED` 419 · `_MIN_ANCHOR_WITNESSED` 211). `lint_guard_map` ENFORCED 18 불변.
+
+**미측정 · 이월.**
+- 결과 (h) 「자발 축출은 없다」 — 선-formal 에서 구조이고 진행 PASS 가 거기 기댄다. RTL 측정은 W3 의 몫이다 — W3 착지
+  체크리스트에 후보 가드 `evict_on_commit_only` 를 올린다.
+- 래치된 조회 지점 요청이 드레인 정의역 ①(`io.occupancy` = 단 valid 의 수)에 드는 것은 구조이고, 그 점유를 재는
+  단언은 없다.
+- HIU-3 정적 검사 본체 — 판정 래치가 저장 값의 새 보유 경로이므로 범위에 래치를 넣는다. `l_capture_gated` 는 그
+  짝이지만 유도 단언이고 반증력은 `d_stall_src` · `q_miss_*` 가 든다.
+- reset 의 *형식* 단언(W1 에서 이월 그대로 — 빈 래치의 reset 값은 관측으로만 문다).
+- `latCapture` 의 `s3.valid` 항은 관측 동치다(miter 증명 — 위). 지울지는 다음 RTL 편집의 판단이다.
+- cocotb 시험 docstring 의 「안 잰다」(N8: C+3 이후 경쟁 커밋 · V=0 축출 · reset 래치 비움 / N9: 대체의 같은 에지
+  꼴 · 드레인 관측 「완전한 철회」).

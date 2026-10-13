@@ -6525,6 +6525,8 @@ module HiuPipeline (
   reg                 lookPerm_r;
   reg                 lookPerm_w;
   reg                 lookPerm_x;
+  wire                lookAny;
+  wire                lookFill;
   reg        [1:0]    s4_part;
   reg                 s4_write;
   reg                 s4_anyHit;
@@ -6563,6 +6565,13 @@ module HiuPipeline (
   reg                 _zz_io_missNotice;
   wire                ownViol;
   reg                 _zz_faultOwn;
+  reg                 lat_hit;
+  reg        [31:0]   lat_frame;
+  reg                 lat_perm_r;
+  reg                 lat_perm_w;
+  reg                 lat_perm_x;
+  reg                 lat_fromFill;
+  wire                latCapture;
 
   assign _zz_io_occupancy = (_zz_io_occupancy_1 + _zz_io_occupancy_12);
   assign _zz_io_occupancy_1 = (_zz_io_occupancy_2 + _zz_io_occupancy_10);
@@ -6622,12 +6631,18 @@ module HiuPipeline (
     if(xlate_io_rsp_hit) begin
       lookFrame = xlate_io_rsp_frame;
     end
+    if(lat_hit) begin
+      lookFrame = lat_frame;
+    end
   end
 
   always @(*) begin
     lookPerm_r = 1'b0;
     if(xlate_io_rsp_hit) begin
       lookPerm_r = xlate_io_rsp_perm_r;
+    end
+    if(lat_hit) begin
+      lookPerm_r = lat_perm_r;
     end
   end
 
@@ -6636,6 +6651,9 @@ module HiuPipeline (
     if(xlate_io_rsp_hit) begin
       lookPerm_w = xlate_io_rsp_perm_w;
     end
+    if(lat_hit) begin
+      lookPerm_w = lat_perm_w;
+    end
   end
 
   always @(*) begin
@@ -6643,12 +6661,15 @@ module HiuPipeline (
     if(xlate_io_rsp_hit) begin
       lookPerm_x = xlate_io_rsp_perm_x;
     end
+    if(lat_hit) begin
+      lookPerm_x = lat_perm_x;
+    end
   end
 
   assign io_mask_req_valid = s3_valid;
   assign io_mask_req_part = s3_part;
   assign io_mask_req_frame = lookFrame;
-  assign missWait = (s3_valid && (! xlate_io_rsp_hit));
+  assign missWait = (s3_valid && (! lookAny));
   assign advance = ((! io_hold) && (! missWait));
   assign io_req_ready = advance;
   always @(*) begin
@@ -6704,6 +6725,9 @@ module HiuPipeline (
   assign missVpn = (missWait ? s3_vpn : 32'h0);
   assign ownViol = (((s6_valid && s6_anyHit) && entitle) && (! io_owner_devOwned));
   assign faultOwn = _zz_faultOwn;
+  assign latCapture = ((s3_valid && (! lat_hit)) && xlate_io_rsp_hit);
+  assign lookAny = (lat_hit || xlate_io_rsp_hit);
+  assign lookFill = (lat_hit ? lat_fromFill : xlate_io_rsp_fromFill);
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       s1_valid <= 1'b0;
@@ -6714,6 +6738,7 @@ module HiuPipeline (
       _zz_io_faultPerm <= 1'b0;
       _zz_io_missNotice <= 1'b0;
       _zz_faultOwn <= 1'b0;
+      lat_hit <= 1'b0;
     end else begin
       if(advance) begin
         s1_valid <= io_req_valid;
@@ -6740,6 +6765,13 @@ module HiuPipeline (
       if(ownViol) begin
         _zz_faultOwn <= 1'b1;
       end
+      if(advance) begin
+        lat_hit <= 1'b0;
+      end else begin
+        if(latCapture) begin
+          lat_hit <= 1'b1;
+        end
+      end
     end
   end
 
@@ -6756,8 +6788,8 @@ module HiuPipeline (
       s3_write <= s2_write;
       s4_part <= s3_part;
       s4_write <= s3_write;
-      s4_anyHit <= xlate_io_rsp_hit;
-      s4_fromFill <= xlate_io_rsp_fromFill;
+      s4_anyHit <= lookAny;
+      s4_fromFill <= lookFill;
       s4_frame <= lookFrame;
       s4_perm_r <= lookPerm_r;
       s4_perm_w <= lookPerm_w;
@@ -6780,6 +6812,15 @@ module HiuPipeline (
       s6_perm_r <= s5_perm_r;
       s6_perm_w <= s5_perm_w;
       s6_perm_x <= s5_perm_x;
+    end
+    if(!advance) begin
+      if(latCapture) begin
+        lat_frame <= xlate_io_rsp_frame;
+        lat_perm_r <= xlate_io_rsp_perm_r;
+        lat_perm_w <= xlate_io_rsp_perm_w;
+        lat_perm_x <= xlate_io_rsp_perm_x;
+        lat_fromFill <= xlate_io_rsp_fromFill;
+      end
     end
   end
 

@@ -14,10 +14,12 @@
 //   · Decode.stall_uniform    — advance 하나가 합성 전 단의 공통 enable.
 //     정지 원천(io_hold · E.3 미적중 채움 대기) 무관 전 단이 함께 선다 —
 //     MaskUnit 쪽 s4 몸(rValid/rFrame = io_rsp_valid/frame) 포함.
-//     그리고 **정지 원천 자체가 그 둘뿐**이다 (2026-08-31 신설):
-//     advance == !io_hold && !(s3_valid && !x_hit). E.3 2항 파생 요건
+//     그리고 **정지 원천 자체가 그 둘뿐**이다 (2026-08-31 신설 · W2 개정):
+//     advance == !io_hold && !(s3_valid && !(x_hit || f_lat)). E.3 2항 파생 요건
 //     「정지를 푸는 것은 항목 기입뿐이다」의 관측형이며, 호스트 응답이
-//     정지 해제 주체가 될 수 없음을 기계로 세운다.
+//     정지 해제 주체가 될 수 없음을 기계로 세운다. W2 부터 정지는 *판정 전*
+//     (판정 래치 지상 진리 f_lat 이 빔)의 로컬 미적중이다 — 판정된 요청은 그
+//     항목이 밀려나도 다시 서지 않는다 (아래 W2 항).
 //   · Isolation.coh_no_shortcut / Decode.lookup_unbranched — 상태열 균일:
 //     검사자 수리(shift 거울 f_v)가 조회 결과·판정·구성 어느 것도 보지 않고
 //     io_req_valid 만 advance 로 시프트하는데, 그것이 단 valid 열과 항상
@@ -30,9 +32,11 @@
 //     6번째 지점(f_v[6] = 승인 단)뿐. 실행(s5)과 승인(s6) 사이의 일시
 //     누출 부재 (Isolation.tla:554-558 — 「둘은 같은 규범의 서로 다른 두 항」).
 //   · Isolation.query_no_serve / Platform.xlate_local — **양 면 다** 잰다
-//     (2026-08-31 확장). 적중 면: 로컬 저장 leg 이 답하면 s4 로 들어가는
-//     값은 저장 leg 값 그 자체다. **미적중 면**: 로컬이 미적중이면 값은
-//     0 이고 판정 비트는 0 이다 — 호스트 응답이 서 있어도 그렇다.
+//     (2026-08-31 확장 · W2 개정). 적중 면: 로컬 저장 leg 이 답했으면(지금
+//     적중이거나 판정이 래치됐으면) s4 로 들어가는 값은 그 로컬 판정 값
+//     그 자체다(래치면 첫 적중 사이클의 저장 leg 값). **미적중 면**: 판정 전
+//     로컬 미적중이면 값은 0 이고 판정 비트는 0 이다 — 호스트 응답이 서
+//     있어도 그렇다.
 //     종전 판은 적중 면만 재서 정의역이 구멍의 *여집합*이었다: 실제 구멍은
 //     「로컬이 답할 때」가 아니라 「로컬이 미적중일 때」에 있었고, 그
 //     사이클에 호스트 leg 이 값·판정·정지 셋 다에 들어갔다
@@ -96,12 +100,39 @@
 //     않는다 · 읽기 같은 제3 원천이 없다. XlateObs.obs_sticky 와 XlateSurface 의 mclr_fires ·
 //     mclr_needs_one 의 파이프라인 절반을 잰다 (종전 「어느 형식 태스크도 재지 않는다」).
 //   · XlateSurface.mclr_keeps_stall 파이프라인 절반 — 새 단언이 아니다. 아래 정지 원천
-//     등식(advance == !io_hold && !(s3_valid && !x_hit))이 io_missClear 가 자유 입력인
+//     등식(advance == !io_hold && !(s3_valid && !(x_hit || f_lat)) — W2 판정 전 미적중)이 io_missClear 가 자유 입력인
 //     합성에서 이미 서 있었다 — 해제가 정지를 풀 수 없다는 것의 관측형이다. 원장이 그
 //     절반을 「안 잰다」로 과소 계수하고 있었다 (hiumask.sby §역-변이 KEEPSTALL 실측).
 //   · 슬롯 여유 통과 결선 m_slot_pass · m_slot_split (파도 4 SLOTFREE) — HiuPipeline 의
 //     installSlotFree 가 XlateStore 의 슬롯 여유 그대로이고, install.ready 와의 차이는
 //     같은 파티션 flush 항 하나다 (XlateStore_props.sv a_ready_split 의 합성 쪽 대응).
+//   · W2 (3.10 v1.0 묶음 RTL 파도 — 판정 래치, 2026-10-12) — 선-formal
+//     rtl/formal/tla/XlateObs.tla 의 새 가드 셋. 정본 (좌표 뒤 「」 는 그 줄의 축자):
+//       03-hiu.typ:734 「처음 적중한 사이클이다」 — 판정 시점.
+//       03-hiu.typ:737 「같은 값으로 쓰인다」 — 소유권 조회 주소와 마스킹 입력 프레임.
+//       03-hiu.typ:742 「전에 다른 커밋이 그 항목을 밀어내도 다시 미적중하지 않는다」
+//       03-hiu.typ:1324 「스냅샷을 들고 끝까지 간다」
+//     지상 진리 f_lat · f_lfr · f_lperm · f_lfill 은 **DUT 의 래치 레지스터가 아니라**
+//     거울 valid f_v[3] · XlateStore 독립 출력 x_hit/x_frame/x_perm_*/x_fromFill ·
+//     advance 에서 다시 짓는다 (검사 어휘 규율 — 아래 f_ent_deny · f_unowned · lookAny
+//     해설과 같은 자리): 조회 지점의 요청이 처음 적중한 사이클에 떠나지 못하면 그
+//     사이클의 조회값을 잡고, 떠나는 에지(advance)에 비운다. 판정 = x_hit ∨ f_lat.
+//       XlateObs.verdict_latch — l_hold (래치된 요청이 떠나는 에지의 s4 캡처 = 래치
+//         값: frame · perm · fromFill 이 같은 래치를 탄다) · 정지 원천 등식(판정된
+//         요청은 다시 서지 않는다) · query_no_serve 두 면 · l_capture_gated (판정은
+//         유효 게이트된 적중 x_hit 에서만 선다 — HIU-3 짝)
+//       XlateObs.latch_clears_on_leave — l_clear (떠나는 에지 직후 조회 지점의 요청 —
+//         연속 전진이면 같은 에지에 s2 에서 들어온 다음 요청 — 의 판정은 그 요청 자신의
+//         조회값뿐이다 — 앞 요청의 판정을 물려받지 않는다)
+//       XlateObs.latch_one_value — l_one_value (승인 단 소유권 조회 주소 io_owner_frame
+//         = 같은 요청이 s3→s4 에서 마스킹에 실은 io_mask_req_frame — 거울 시프트로 잰다)
+//       XlateObs.obs_* 파이프라인 절반 — f_stall = f_v[3] ∧ ¬(x_hit ∨ f_lat) 이
+//         m_obs_* · m_sticky 로 전파된다 (래치된 요청은 정지가 아니다 — 미적중 sticky
+//         의 set 원천도 판정 전 미적중뿐이다)
+//     l_clear · l_capture_gated 는 정지 원천 등식 · query_no_serve 두 면을 각각 전진
+//     에지 직후 사이클 · 그 뒤 사이클로 좁힌 사영이다 — 이 하네스는 포트(기존 tap)만
+//     보므로 DUT 래치를 따로 관측할 길이 없고, 두 단언의 반증력은 격리 실측으로 든다
+//     (hiumask.sby 「W2」 절).
 //
 // ## Mask.rekey_explicit_target 은 조립층이 잰다 — 여기서 앵커하지 않는다
 //
@@ -423,7 +454,11 @@ module HiuPipeline_props (
   // ── W1 tap (2026-10-11) — FAULT_STATUS [19] · 승인 단 프레임 ───────────────
   input wire [31:0]  s6_frame,            // 승인 단의 저장 프레임 (증인 W26 — 막힌 값이 비0)
   input wire         faultOwn,            // [19] 원천 sticky (클래스 끝 포트)
-  input wire         faultOwnClear        // 그 해제 (자유 입력)
+  input wire         faultOwnClear,       // 그 해제 (자유 입력)
+  // ── W2 tap (2026-10-12) — 판정 래치의 두 소비자. 둘 다 HiuPipeline 의 기존 포트다 —
+  //    DUT 의 래치 레지스터는 tap 하지 않는다 (지상 진리는 아래 f_lat — 검사 어휘 규율) ──
+  input wire [31:0]  io_mask_req_frame,   // 마스킹 입력 프레임 (s3→s4 캡처 = MaskUnit io_req_frame)
+  input wire [31:0]  io_owner_frame       // 승인 단 소유권 조회 주소 (s6)
 );
   // f_ok — 「직전 에지도 이번 에지도 reset 밖」. $past(reset) 을 쓰지 않고
   // 명시 레지스터로 지연시킨다: yosys 0.66 은 clocked block 밖의 $past 를
@@ -444,6 +479,47 @@ module HiuPipeline_props (
   always @(posedge clk) begin
     if (reset)        f_v <= 6'h0;
     else if (advance) f_v <= {f_v[5:1], io_req_valid};
+  end
+
+  // ── W2 (2026-10-12) — 판정 래치의 지상 진리 ─────────────────────────────
+  // 정본의 판정 시점은 조회 지점의 *첫 적중 사이클*이고 판정은 요청이 떠날 때까지
+  // 유지된다. 그 「판정」을 DUT 의 래치 레지스터가 아니라 거울 valid f_v[3] ·
+  // XlateStore 독립 출력 x_* · advance 에서 다시 쓴다 — DUT 래치를 지상 진리로
+  // 삼으면 래치를 잘못 지은 구현에서 등식이 함께 선다 (포트 목록의 lookAny 해설 ·
+  // 아래 f_ent_deny 선언과 같은 규율). 조회 지점의 요청이 적중한 사이클에 떠나지
+  // 못하면(advance = 0) 그 사이클 끝 에지에 조회값을 잡고, 떠나는 에지에 비운다.
+  // 첫 적중 사이클에 바로 떠나는 요청은 래치가 필요 없다 — 판정 값이 그 사이클의
+  // 조회값이다. 래치가 서 있으면 조회 지점의 요청은 유효하다(f_lat ⇒ f_v[3] —
+  // 포착이 f_v[3] 을 요구하고 f_v[3] 이 바뀌는 에지는 advance 뿐이며 그 에지가
+  // 래치를 비운다).
+  reg        f_lat = 1'b0;
+  reg [31:0] f_lfr;
+  reg [2:0]  f_lperm;                    // {x, w, r}
+  reg        f_lfill;
+  always @(posedge clk) begin
+    if (reset)        f_lat <= 1'b0;
+    else if (advance) f_lat <= 1'b0;
+    else if (f_v[3] && !f_lat && x_hit) begin
+      f_lat   <= 1'b1;
+      f_lfr   <= x_frame;
+      f_lperm <= {x_perm_x, x_perm_w, x_perm_r};
+      f_lfill <= x_fromFill;
+    end
+  end
+  // 판정 — 적중(지금 로컬 적중이거나 판정이 래치됨)과 그 값(래치면 래치 값).
+  wire        f_jhit  = x_hit || f_lat;
+  wire [31:0] f_jfr   = f_lat ? f_lfr   : x_frame;
+  wire [2:0]  f_jperm = f_lat ? f_lperm : {x_perm_x, x_perm_w, x_perm_r};
+
+  // 마스킹 입력 프레임 거울 — io_mask_req_frame 을 s4..s6 로 advance 에 시프트한다
+  // (l_one_value: 승인 단의 소유권 조회 주소가 *같은 요청이* 마스킹에 실은 값이다).
+  reg [31:0] f_mf4, f_mf5, f_mf6;
+  always @(posedge clk) begin
+    if (advance) begin
+      f_mf4 <= io_mask_req_frame;
+      f_mf5 <= f_mf4;
+      f_mf6 <= f_mf5;
+    end
   end
 
   // 지상 진리 — 승인 단에 선 적중의 원인별 둘(자격 거부 · 자격 허용 ∧ 비소유). DUT 의 permViol · ownViol
@@ -481,9 +557,9 @@ module HiuPipeline_props (
       end
 
       // ── Decode.evict_inline — 캡처 축 (2026-08-26 신설) ─────────────────
-      // 전진 에지의 s4 몸은 *그 사이클의 조회 데이터 그 자체*다. 대체
+      // 전진 에지의 s4 몸은 *그 요청의 판정 데이터 그 자체*다 — 판정 전이면 그 사이클의 조회 데이터, 판정이 래치된 요청이면 첫 적중 사이클의 조회 데이터다(W2 — 아래 l_hold; 판정 *뒤*의 대체는 그 요청에 보이지 않는다). 대체
       // (유효 ∧ 태그 불일치)에 전용 상태도, 전용 데이터 경로도, 전용
-      // 판정 비트도 없다 — 대체는 미적중과 똑같이 anyHit=0 캡처로만
+      // 판정 비트도 없다 — 판정 *전*의 대체는 미적중과 똑같이 anyHit=0 캡처로만
       // 나타난다. 축출 상태를 둔 구현(대체 사이클에 다른 것을 싣거나
       // 단을 한 번 더 도는 구현)이면 여기서 반례가 난다.
       //   ※ 항진 아님: s4_* 는 EN=advance 인 DFF, $past(·) 는 EN=1 인
@@ -496,13 +572,34 @@ module HiuPipeline_props (
       //     지키고 이 자리에 빠뜨린 결함이다 (2026-08-31 수리). x_hit 는
       //     XlateStore 소유의 독립 출력이라 접기 정의와 무관하다.
       //   ※ 반증력 실측 — 아래 §반증력 실측표의 ① 항.
+      //   ※ W2 (2026-10-12) — 판정 비트의 우변을 `$past(x_hit || f_lat)` 로 넓혔다:
+      //     래치된 요청은 그 항목이 밀려나 x_hit 이 내려가도 적중으로 떠난다
+      //     (03-hiu.typ:742 「전에 다른 커밋이 그 항목을 밀어내도 다시 미적중하지 않는다」).
+      //     fromFill 은 래치되지 않은 전진만 여기서 잰다 — 래치된 전진의 fromFill ·
+      //     frame · perm 은 l_hold 가 래치 값으로 잰다. frame · perm 은 여전히
+      //     「s4 몸 = 그 사이클의 접기 결과 lookFrame」 전달 등식이고, 접기 결과가
+      //     판정 값이라는 것은 query_no_serve 두 면이 잰다.
       if ($past(advance)) begin
-        assert (s4_anyHit   == $past(x_hit));
-        assert (s4_fromFill == $past(x_fromFill));
+        e_cap_hit: assert (s4_anyHit == $past(f_jhit));
         assert (s4_frame    == $past(lookFrame));
         assert ({s4_perm_x, s4_perm_w, s4_perm_r}
                   == $past({lookPerm_x, lookPerm_w, lookPerm_r}));
       end
+      if ($past(advance && !f_lat))
+        e_cap_fill: assert (s4_fromFill == $past(x_fromFill));
+
+      // ── XlateObs.verdict_latch — l_hold (W2, 2026-10-12) ──────────────────
+      // 판정이 래치된 요청이 떠나는 에지의 s4 캡처는 래치 값 그 자체다 — 판정 데이터의
+      // 필드(fromFill · frame · perm)마다 같은 래치를 탄다 (XlateObs.tla 닫힌 목록 5 의
+      // 몫). 그 사이의 대체 커밋 · V=0 · flush · 같은 파티션 축출이 무엇을 했든
+      // 03-hiu.typ:1324 「스냅샷을 들고 끝까지 간다」. 값 쪽 마지막 대입(lookFrame ·
+      // lookPerm 의 래치 가지)을 지운 구현 — 선-formal 대안 value_no_latch — 과
+      // fromFill 을 조회값에서 다시 읽는 구현이 여기서 반례를 낸다. 래치가 없는
+      // 구현(W2 전 RTL)은 같은 VPN 의 대체 커밋 뒤에 떠나는 궤적과 채움 바이패스로
+      // 판정돼 저장에서 떠나는 궤적(fromFill 1 → 0)에서 반례를 낸다.
+      if ($past(advance && f_lat))
+        l_hold: assert ({s4_fromFill, s4_frame, s4_perm_x, s4_perm_w, s4_perm_r}
+                        == $past({f_lfill, f_lfr, f_lperm}));
 
       // ── Platform.owner_check ③ — loud fault (승격 항목 1: fault 축) ─────
       // 승인 단에 선 적중이 원인별 sticky 를 *다음 에지에* 세운다 — 자격 거부는
@@ -606,9 +703,13 @@ module HiuPipeline_props (
       //   ※ 「우선순위 축」이라는 부제도 뗐다. `.sby` 앵커와 _PARTIAL 은
       //     이 파도부터 「판정·값·정지 세 축」으로 적으며, 순위는 leg 이
       //     둘일 때만 뜻을 갖는 낱말이다 (오늘 leg 은 하나다).
-      if (x_hit) begin
-        assert (lookFrame == x_frame);
-        assert ({lookPerm_x, lookPerm_w, lookPerm_r} == {x_perm_x, x_perm_w, x_perm_r});
+      //   ※ W2 (2026-10-12) — 전건을 판정 적중 f_jhit = x_hit ∨ f_lat 로, 값을 판정
+      //     값 f_jfr · f_jperm(래치면 첫 적중 사이클의 저장 leg 값)으로 넓혔다. 판정이
+      //     래치된 사이클에도 호스트 leg 은 값 축에 들어가지 못한다 — 래치를 호스트
+      //     leg 에서 포착하는 구현이 여기서 반례를 낸다.
+      if (f_jhit) begin
+        q_hit_frame: assert (lookFrame == f_jfr);
+        q_hit_perm:  assert ({lookPerm_x, lookPerm_w, lookPerm_r} == f_jperm);
       end
 
       // ── Isolation.query_no_serve — *미적중 면* (2026-08-31 신설) ────────
@@ -629,9 +730,13 @@ module HiuPipeline_props (
       // 값 축 「같은 값을 관측한다」.
       //
       // 반증력 실측 — 아래 §반증력 실측표의 ②③ 항.
-      if (!x_hit) begin
-        assert (lookFrame == 32'h0);
-        assert (!lookPerm_r && !lookPerm_w && !lookPerm_x);
+      //
+      // W2 (2026-10-12) — 전건을 「판정 전 로컬 미적중」 ¬(x_hit ∨ f_lat) 로 좁혔다
+      // (래치된 요청은 x_hit 이 내려가도 미적중이 아니다 — 위 적중 면이 잰다). 두 면의
+      // 전건은 여전히 서로 여집합이라 조회 사이클 전체가 덮인다.
+      if (!f_jhit) begin
+        q_miss_frame: assert (lookFrame == 32'h0);
+        q_miss_perm:  assert (!lookPerm_r && !lookPerm_w && !lookPerm_x);
       end
 
       // ── Decode.stall_uniform — *정지 원천* 축 (2026-08-31 신설) ─────────
@@ -652,7 +757,16 @@ module HiuPipeline_props (
       // 해제 주체도 없다.
       //
       // 반증력 실측 — 아래 §반증력 실측표의 ④ 항.
-      assert (advance == (!io_hold && !(s3_valid && !x_hit)));
+      //
+      // W2 (2026-10-12) — 로컬 미적중 원천은 *판정 전*의 미적중이다: ¬(x_hit ∨ f_lat).
+      // 판정이 래치된 요청은 그 항목이 축출 · 철회 · flush 로 x_hit 을 잃어도 다시
+      // 서지 않는다(03-hiu.typ:742 「전에 다른 커밋이 그 항목을 밀어내도 다시 미적중하지 않는다」
+      // — 선-formal Prop_NoReMiss). 래치가 없는 구현(W2 전 RTL — 매 사이클 다시
+      // 판정)은 「정지 → 커밋으로 풀림 → hold 로 머묾 → 같은 파티션 다른 VPN 커밋이
+      // 축출 → 재정지」에서 반례를 낸다. 그리고 판정을 남에게서 물려받은 요청 ·
+      // 유효 게이트된 적중 없이 판정된 요청이 서지 않는 구현도 여기서 운다 (아래
+      // l_clear · l_capture_gated 는 이 식의 그 두 갈래를 이름으로 든 사영이다).
+      d_stall_src: assert (advance == (!io_hold && !(s3_valid && !f_jhit)));
     end
   end
 
@@ -672,8 +786,12 @@ module HiuPipeline_props (
     end
   end
   // 조회 지점의 로컬 미적중 — 거울 valid 와 XlateStore 독립 출력 x_hit 로 적는다 (DUT
-  // missWait 를 재인용하지 않는다).
-  wire f_stall = f_v[3] && !x_hit;
+  // missWait 를 재인용하지 않는다). W2 (2026-10-12) — *판정 전*의 미적중이다: 판정이
+  // 래치된 요청(지상 진리 f_lat)은 x_hit 이 내려가도 정지가 아니다. 이 정의가
+  // m_obs_stall · m_obs_part · m_obs_vpn · m_obs_zero · m_sticky 로 전파된다 —
+  // 특히 미적중 sticky 의 set 원천이 원시 미적중(s3 ∧ ¬x_hit)인 구현은 m_sticky 가
+  // 래치된 요청의 항목이 밀려난 사이클(증인 W29)에 잡는다.
+  wire f_stall = f_v[3] && !f_jhit;
 
   always @(*) begin
     if (f_past_valid && !reset) begin
@@ -711,6 +829,46 @@ module HiuPipeline_props (
       // 해제 없이는 내려가지 않고 · 제3 원천(읽기 등)이 없다. 지상 진리의 정지는 거울
       // valid + x_hit 다. (StickyFault 규약 — Common.scala 의 「발화가 이긴다」.)
       m_sticky: assert (io_missNotice == $past(f_stall || (io_missNotice && !io_missClear)));
+    end
+  end
+
+  // ── W2 (2026-10-12) — 판정 래치의 비움 · 포착 게이트 · 한 값 ──────────────────
+  always @(posedge clk) begin
+    if (f_ok) begin
+      // XlateObs.latch_clears_on_leave — l_clear. 떠나는 에지(advance) 직후 사이클에
+      // 조회 지점에 선 것(연속 전진이면 같은 에지에 s2 에서 들어온 다음 요청 · 아니면
+      // 거품)의 판정은 *그 자신의* 조회값뿐이다: 적중이면 값이 그 조회값이고, 아니면
+      // 값 0 · 유효 요청이면 정지한다. 비움이 한 에지 늦거나(대안 clear_late) 같은 에지의
+      // 포착이 비움을 이기면(대안 capture_beats_clear) 다음 요청이 앞 요청의 판정을
+      // 물려받아 미적중인데도 서지 않거나 남의 값을 싣는다 — 다른 파티션의 판정일 수도
+      // 있다(HIU-1 꼴). 증인 W31 · W32 가 연속 전진 에지를 덮는다. 유도 단언이다 — 그 구현들은 격리에서 여기서 울고, 전 단언 bmc 에서는 형제 q_miss_perm 이 먼저 운다(hiumask.sby §W2).
+      if ($past(advance))
+        l_clear: assert (x_hit ? (lookFrame == x_frame
+                                  && {lookPerm_x, lookPerm_w, lookPerm_r} == {x_perm_x, x_perm_w, x_perm_r})
+                               : (lookFrame == 32'h0 && !lookPerm_r && !lookPerm_w && !lookPerm_x
+                                  && (!s3_valid || !advance)));
+      // XlateObs.verdict_latch 의 포착 조건 — l_capture_gated (HIU-3 짝). 조회 지점에
+      // 한 에지 이상 머문 요청이 아직 유효 게이트된 적중(x_hit)을 한 번도 보지 못했으면
+      // (지상 진리 판정 없음) 장치도 그것을 판정된 것으로 다루지 않는다 — 정지하고 값은
+      // 0 이다. 래치가 저장 값의 새 보유 경로이므로 「포착은 유효 게이트된 적중에서만」을
+      // 관측으로 잰다: 적중 항 없이 포착하는 구현 · 호스트 leg 에서 포착하는 구현이
+      // 격리에서 여기서 운다(유도 단언 — 전 단언 bmc 에서는 형제 d_stall_src 가 먼저 운다). (첫 사이클은 위 l_clear 가 든다 — 두 단언의 전건은 서로소다.)
+      if (!$past(advance) && f_v[3] && !f_jhit)
+        l_capture_gated: assert (!advance && lookFrame == 32'h0
+                                 && !lookPerm_r && !lookPerm_w && !lookPerm_x);
+    end
+  end
+
+  always @(*) begin
+    if (f_past_valid && !reset) begin
+      // XlateObs.latch_one_value — l_one_value. 승인 단(s6)의 소유권 조회 주소는 *같은
+      // 요청이* s3→s4 에서 마스킹 입력으로 실은 프레임이다 (03-hiu.typ:737 「같은 값으로 쓰인다」).
+      // 거울 f_mf4..6 은 io_mask_req_frame 을 advance 로 시프트한 것이라 소유권 조회가
+      // 저장 블록이나 조회 응답을 다시 읽는 구현 · 마스킹이 래치 아닌 조회값을 먹는
+      // 구현이 래치된 요청의 항목이 바뀐 궤적(증인 W30)에서 반례를 낸다. 유효 요청은
+      // 판정 없이 s4 로 가지 못하므로(정지 원천 등식) s6 의 유효 요청은 적중이다.
+      if (f_v[6])
+        l_one_value: assert (io_owner_frame == f_mf6);
     end
   end
 
@@ -842,7 +1000,8 @@ module HiuPipeline_props (
   reg f_rep_pend = 1'b0;
   always @(posedge clk) begin
     if (reset)                    f_rep_pend <= 1'b0;
-    else if (f_replace && !x_hit) f_rep_pend <= 1'b1;  // 대체 미적중이 조회에 섰다
+    else if (f_replace && !x_hit && !f_lat)            // 대체 미적중이 조회에 섰다 (W2 — 판정이
+                                  f_rep_pend <= 1'b1;  // 래치된 요청의 축출은 대체 미적중이 아니다)
     else if (advance)             f_rep_pend <= 1'b0;  // 그 요청이 s4 로 떠났다
   end
 
@@ -882,8 +1041,9 @@ module HiuPipeline_props (
   //       ⚠⚠ **이 증인은 「호스트 leg 이 죽은 세계」에서 자명하다.** 결론
   //       두 항(`lookFrame == 0` · `!advance`)은 오늘 설계에서 전건으로부터
   //       *구조적으로* 따라온다 — 접기의 기본 구동이 0 이고 미적중 가지가
-  //       없으므로 `!x_hit → lookFrame == 0` 이고, `missWait = s3_valid &&
-  //       !x_hit` 이므로 `s3_valid && !x_hit → !advance` 다. 즉 남는 자유도는
+  //       없으므로 판정 전(래치 빔) `!x_hit → lookFrame == 0` 이고, W2 부터
+  //       `missWait = s3_valid && !lookAny` · `lookAny = 래치 ∨ x_hit` 이므로
+  //       `s3_valid && !x_hit && !f_lat → !advance` 다. 즉 남는 자유도는
   //       `x_hostPresent && io_hostRsp_frame != 0` 뿐이고 그 둘은 팬아웃이
   //       없는 자유 입력이다 (HiuPipeline.sv 에서 io_hostRsp_* 는 XlateStore
   //       를 통과해 미결선 넷 다섯으로 끝난다). **그러므로 이 cover 가
@@ -904,14 +1064,15 @@ module HiuPipeline_props (
   //           두 단언(값 0 · 정지 유지)이고, 이 cover 는 그 단언들이
   //           공허하지 않다는 것만 든다.
   always @(posedge clk)
-    if (f_ok) w10_host_leg_inert: cover (s3_valid && !x_hit && x_hostPresent
+    if (f_ok) w10_host_leg_inert: cover (s3_valid && !x_hit && !f_lat && x_hostPresent
                      && (io_hostRsp_frame != 32'h0)
                      && (lookFrame == 32'h0) && !advance);
 
   // W11 ← Decode.evict_inline
   //       본체: 대체 궤적이 실제로 도달 가능하다
-  //       (유효한 칸을 다른 태그로 조회 → 미적중으로만 나타난다)
-  always @(posedge clk) if (f_ok) w11_replace_reached: cover (f_replace && !x_hit);
+  //       (유효한 칸을 다른 태그로 조회 → 미적중으로만 나타난다). W2 — 판정이 래치된
+  //       요청의 항목이 밀려난 사이클은 대체 미적중이 아니므로 !f_lat 로 뺀다.
+  always @(posedge clk) if (f_ok) w11_replace_reached: cover (f_replace && !x_hit && !f_lat);
 
   // W12 ← Decode.evict_inline · Isolation.coh_no_shortcut
   //       그 대체 요청이 여섯 단을 완주해 응답이 난다. 거울 등식은 전
@@ -996,6 +1157,52 @@ module HiuPipeline_props (
   //       RegNext(ownViol) 형 구현은 여기서 0 으로 떨어진다).
   always @(posedge clk)
     if (f_ok) w28_own_hold: cover ($past(faultOwn && !faultOwnClear && !f_unowned) && faultOwn);
+
+  // ── W2 증인 (2026-10-12) — 판정 래치 ─────────────────────────────────────────────
+  // 판정이 래치된 요청이 그 항목이 바뀐 채(축출 · 철회 · 대체 — 지금 조회가 미적중이거나
+  // 래치와 다른 값) 떠났다는 꼬리표를 단으로 실어 나른다 (거울과 같은 enable).
+  reg [6:4] f_lmv = 3'h0;
+  always @(posedge clk) begin
+    if (reset)        f_lmv <= 3'h0;
+    else if (advance) f_lmv <= {f_lmv[5:4], f_v[3] && f_lat && (!x_hit || (x_frame != f_lfr))};
+  end
+  // W29 ← XlateObs.verdict_latch · d_stall_src · m_sticky
+  //       래치가 실제로 일을 하는 궤적 — 판정이 래치된 요청이 hold 로 조회 지점에 머무는 동안
+  //       그 항목이 밀려나 로컬 조회가 미적중이다. 래치 없는 구현은 여기서 다시 서고, sticky 의
+  //       set 원천이 원시 미적중인 구현은 여기서 sticky 를 세운다.
+  always @(posedge clk) if (f_ok) w29_latched_evicted: cover (f_lat && !x_hit && s3_valid && io_hold);
+  // W30 ← XlateObs.verdict_latch · XlateObs.latch_one_value · l_one_value · l_hold
+  //       그 요청이 다시 서지 않고 여섯 단을 완주해 응답하고, 승인 단의 소유권 조회 주소가
+  //       비0 이다 — 한 요청이 두 판정을 가질 수 있는 궤적에서 한 값이 실제로 실린다.
+  always @(posedge clk) if (f_ok) w30_latched_completes: cover (f_lmv[6] && io_rsp_valid && (io_owner_frame != 32'h0));
+  // W31 ← XlateObs.latch_clears_on_leave · l_clear
+  //       연속 전진 에지 — 판정이 래치된 요청이 떠나는 *그* 에지에 s2 의 다음 요청이 조회
+  //       지점에 들어오고, 그 요청은 미적중이다 (비움이 한 에지 늦은 구현은 여기서 앞
+  //       요청의 판정을 물려받는다).
+  always @(posedge clk) if (f_ok) w31_clear_after_latched: cover ($past(advance && f_lat && f_v[2]) && s3_valid && !x_hit);
+  // W32 ← XlateObs.latch_clears_on_leave · l_clear
+  //       연속 전진 에지 — 첫 적중 사이클에 바로 떠나는 요청(포착 조건과 비움이 같은 에지에
+  //       겹친다) 뒤에 들어온 다음 요청이 미적중이다 (포착이 비움을 이기는 구현은 여기서
+  //       앞 요청의 판정을 물려받는다).
+  always @(posedge clk) if (f_ok) w32_clear_after_fresh: cover ($past(advance && f_v[3] && x_hit && !f_lat && f_v[2]) && s3_valid && !x_hit);
+  // W33 ← XlateObs.verdict_latch · l_hold · q_hit_frame
+  //       판정이 래치된 요청의 항목이 다른 값의 V=1 재커밋으로 대체된 채 떠나는 에지 — 래치
+  //       값과 지금 조회값이 실제로 갈린다 (값 절반 — 선-formal 대안 value_no_latch 의 전건).
+  always @(posedge clk) if (f_ok) w33_replaced_leaves: cover (f_lat && x_hit && (x_frame != f_lfr) && advance);
+  // W34 ← l_hold
+  //       채움 바이패스로 판정이 래치된 요청이 저장 블록 적중으로 떠나는 에지 — fromFill
+  //       절반이 실제로 갈린다 (래치 1 · 지금 조회 0).
+  always @(posedge clk) if (f_ok) w34_fill_latched_leaves: cover (f_lat && f_lfill && x_hit && !x_fromFill && advance);
+  // W35 ← l_capture_gated · XlateObs.verdict_latch
+  //       판정 없는 요청이 조회 지점에 한 에지 이상 머물고, 그 사이클에 호스트 leg 이 비0
+  //       값을 들고 서 있다 — 포착 조건이 적중 항을 빠뜨리거나 호스트 leg 을 먹는 구현이
+  //       래치할 바로 그 전건이다.
+  always @(posedge clk) if (f_ok) w35_unjudged_dwell: cover (!$past(advance) && f_v[3] && !f_jhit && x_hostPresent && (io_hostRsp_frame != 32'h0));
+  // W36 ← XlateObs.verdict_latch · d_stall_src · l_hold
+  //       철회의 효력 범위 — 판정이 래치된 요청이 머무는 동안 그 파티션의 flush 에지를 건너고,
+  //       조회가 미적중인 채 다시 서지 않고 떠난다 (flush 는 조회에만 효력이 있다 — 선-formal
+  //       증인 Witness_NoRetractWhileLatched 의 RTL 판).
+  always @(posedge clk) if (f_ok) w36_latched_across_flush: cover ($past(f_lat && !advance && io_flush_valid && (io_flush_part == s3_part)) && f_lat && !x_hit && advance);
 `endif // HIUMASK_COVER
 endmodule
 
@@ -1334,5 +1541,7 @@ bind HiuPipeline HiuPipeline_props u_hiu_props (
   .installSlotFree   (installSlotFree),
   .s6_frame          (s6_frame),
   .faultOwn          (faultOwn),
-  .faultOwnClear     (faultOwnClear)
+  .faultOwnClear     (faultOwnClear),
+  .io_mask_req_frame (io_mask_req_frame),
+  .io_owner_frame    (io_owner_frame)
 );

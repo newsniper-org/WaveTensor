@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
 # SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
 #
-# PROVES: Decode.stall_uniform — advance 하나가 합성(HiuPipeline×MaskUnit) 전 단의 공통 enable — 정지 원천 무관 전 단 동결 (MaskUnit 쪽 s4 몸 rValid/rFrame 포함) + **정지 원천 축**: advance == !io_hold && !(s3_valid && !x_hit) — 정지 원천은 외부 hold 와 조회 지점 로컬 미적중 둘뿐이고 해제 주체는 항목 기입 하나다 (E.3 2항 파생 요건 「정지를 푸는 것은 항목 기입뿐이다」의 관측형 — 2026-08-31 신설)
+# PROVES: Decode.stall_uniform — advance 하나가 합성(HiuPipeline×MaskUnit) 전 단의 공통 enable — 정지 원천 무관 전 단 동결 (MaskUnit 쪽 s4 몸 rValid/rFrame 포함) + **정지 원천 축**: advance == !io_hold && !(s3_valid && !(x_hit || f_lat)) — 정지 원천은 외부 hold 와 조회 지점의 *판정 전* 로컬 미적중 둘뿐이고 해제 주체는 항목 기입 하나다 (E.3 2항 파생 요건 「정지를 푸는 것은 항목 기입뿐이다」의 관측형 — 2026-08-31 신설). W2 (2026-10-12): f_lat 은 판정 래치의 지상 진리(DUT 래치가 아니라 f_v[3] · x_hit · x_* · advance 에서 짓는다) — 판정된 요청은 항목이 밀려나도 다시 서지 않는다 (d_stall_src · 증인 W4 · W29). 판정 래치는 단계 레지스터가 아니다 — $stable 의 단 몸 연접에 들지 않는다
 # PROVES: Isolation.coh_no_shortcut — 상태열 균일: 조회·판정을 보지 않는 6단 시프트 거울이 단 valid 열과 항상 일치 — 유효 요청의 단 통과 enable-사이클 수는 상수 6, 단계열은 하나 (§5.3)
-# PROVES: Decode.lookup_unbranched — 조회 결과가 단 배치를 바꾸지 않는다: 거울 일치 + 응답은 정확히 6번째 enable 지점 (단계 선택 mux 부재의 관측형)
+# PROVES: Decode.lookup_unbranched — 조회 결과가 단 배치를 바꾸지 않는다: 거울 일치 + 응답은 정확히 6번째 enable 지점 (단계 선택 mux 부재의 관측형). W2 — 판정이 래치된 요청도 같은 단계열을 지난다 (거울은 래치를 보지 않는다 · 래치된 요청의 완주 증인 W30)
 # PROVES: Isolation.approve_gates_value — 값축: io.rsp 값축(frame·perm)이 비0 인 사이클은 granted 인 사이클뿐 — 미승인 요청의 값 축 관측은 0 (승인 게이트가 값을 통제하는 유일 지점)
 # PROVES: Isolation.no_early_forward — 시간축: 그 값이 실리는 사이클은 거울 f_v 의 6번째 지점(승인 단)뿐 — 실행(s5)과 승인(s6) 사이의 일시 누출 부재. 문면의 「배선 부재」는 elaborate 사실이므로 그 관측형으로 좁혀 잰다 (아래 §미측정 잔여 ②)
-# PROVES: Isolation.query_no_serve — **적중 면과 미적중 면 둘 다**: 로컬이 답하는 사이클의 s4 입력 값(io.mask.req.frame 과 같은 그물)은 저장 leg 값 그 자체이고, 로컬이 *미적중*하는 사이클의 값은 0 · 판정 비트는 0 이다 — 호스트 응답이 서 있어도 그렇다. 두 면의 전건이 서로 여집합이라 조회 사이클 전체가 덮인다 (충돌 궤적 도달성은 증인 W9, 미적중 면 **전건 도달성**은 증인 W10 — 그 증인은 전건이 도달함만 든다: 결론 두 항(값 0 · 정지 유지)이 오늘 구조에서 전건으로부터 따라오므로 leg 의 *활성*은 증명하지 않는다. 그 한계는 아래 §미측정 잔여 ③ 와 HiuMask_props.sv 의 W10 주석이 적는다 — 2026-08-31 확장)
-# PROVES: Platform.xlate_local — **판정·값·정지 세 축**: 호스트 응답(io_hostRsp_*)은 s4 판정 비트(캡처 등식의 우변이 XlateStore 독립 출력 x_hit 다) · 조회 값 접기 · advance 어느 식에도 들어가지 않는다. 지속 상태 불오염 축과 2사본 구성 간 동일성은 이 태스크가 재지 않는다 — 아래 §미측정 잔여 ③
-# PROVES: Decode.evict_inline — 캡처 축: 전진 에지의 s4 몸 = 그 사이클의 조회 데이터 그 자체 (대체 전용 상태·전용 데이터 경로·전용 판정 비트 부재) + 대체 궤적이 실제로 도달하고 여섯 단을 완주한다는 증인 W11·W12
+# PROVES: Isolation.query_no_serve — **적중 면과 미적중 면 둘 다**: 로컬이 답한(지금 적중이거나 판정이 래치된 — 전건 x_hit || f_lat) 사이클의 s4 입력 값(io.mask.req.frame 과 같은 그물)은 로컬 판정 값 그 자체(래치면 첫 적중 사이클의 저장 leg 값 — q_hit_frame · q_hit_perm)이고, 판정 전 로컬이 *미적중*하는 사이클의 값은 0 · 판정 비트는 0 이다 (q_miss_frame · q_miss_perm · e_cap_hit) — 호스트 응답이 서 있어도 그렇다. 래치를 호스트 leg 에서 포착하는 구현(MG2)은 미적중 면 q_miss_frame 이 격리에서 잡는다 — 전 단언에서는 d_stall_src · m_obs_* 가 먼저 운다, 적중 면 q_hit_* 의 MG2 실측은 없다 (W2). 두 면의 전건이 서로 여집합이라 조회 사이클 전체가 덮인다 (충돌 궤적 도달성은 증인 W9, 미적중 면 **전건 도달성**은 증인 W10 — 그 증인은 전건이 도달함만 든다: 결론 두 항(값 0 · 정지 유지)이 오늘 구조에서 전건으로부터 따라오므로 leg 의 *활성*은 증명하지 않는다. 그 한계는 아래 §미측정 잔여 ③ 와 HiuMask_props.sv 의 W10 주석이 적는다 — 2026-08-31 확장)
+# PROVES: Platform.xlate_local — **판정·값·정지 세 축**: 호스트 응답(io_hostRsp_*)은 s4 판정 비트(캡처 등식 e_cap_hit 의 우변이 XlateStore 독립 출력 x_hit 와 그것에서 지은 래치 지상 진리 f_lat 이다) · 조회 값 접기 · advance 어느 식에도 들어가지 않는다. 지속 상태 불오염 축과 2사본 구성 간 동일성은 이 태스크가 재지 않는다 — 아래 §미측정 잔여 ③
+# PROVES: Decode.evict_inline — 캡처 축: 전진 에지의 s4 몸 = 그 요청의 판정 데이터 그 자체 — 판정 전이면 그 사이클의 조회 데이터, 판정이 래치된 요청이면 첫 적중 사이클의 조회 데이터(W2 — l_hold; 판정 *뒤*의 대체는 그 요청에 보이지 않는다 · 증인 W33) (대체 전용 상태·전용 데이터 경로·전용 판정 비트 부재) + 대체 궤적이 실제로 도달하고 여섯 단을 완주한다는 증인 W11·W12
 # PROVES: Platform.owner_check — **승인 소비 축**: granted ⊆ devOwned · 비소유의 값 차단(전건이 devOwned) · 비소유 적중의 loud fault — W1 부터 원인별: 자격 허용 ∧ 비소유는 faultOwn([19] 원천 — o_own_loud), 자격 거부는 io_faultPerm([4] — o_perm_loud) · 명시 해제 없는 비하강. OwnershipTable 앵커(devOwned 의 데이터 원천 축)와 분업이다 — 그쪽은 「옳게 계산한다」, 이쪽은 「옳게 쓴다」
 # PROVES: Platform.entitle_gates_value (W1 — 3.10 v1.0 묶음 [19]) — 자격 쪽 값 차단 · 승인 거부: granted ⇒ entitle (o_grant_entitle) · ¬entitle ⇒ ¬granted ∧ 값 0 (o_ent_blocked — o_grant_entitle 과 approve_gates_value 에서 유도되는 backstop). 장치 소유 · 자격 거부 · 저장 프레임 비0 의 접근이 막히는 궤적이 증인 W26. granted 에서 entitle 항을 지운 구현은 owner_check ①② · approve_gates_value 를 전부 통과하고 이 둘에서만 반례가 난다
 # PROVES: Platform.perm_entitle_only (W1) — FAULT_STATUS [4] 의 상승 원천은 자격 거부(승인 단 적중 ∧ ¬entitle)뿐이다 — devOwned 는 항이 아니다 (o_perm_rise) · 자격 거부는 해제와 겹쳐도 [4] 를 세운다 (o_perm_loud) · 거부 채움 증인 W25. 지상 진리는 승인 단 단 몸(s6_*) + 자유 입력 io_owner_devOwned
@@ -16,15 +16,18 @@
 # PROVES: Platform.own_reported (W1) — 파이프라인 절반: 자격 허용 ∧ 비소유 적중은 다음 에지에 sticky faultOwn 을 세운다 (o_own_loud) · 해제 없이 내려가지 않고 (o_own_hold) · 해제로 내려간다 (o_own_clear) · 증인 W13 · W27 · W28. faultOwn → FAULT_STATUS [19] 배치 · 원천별 수출 · 0xF84 [19] 해제 라우팅은 Wt64Top/assembly.sby (hiu 절단 — 합성은 서술, lint_postformal _PARTIAL 등재)
 # PROVES: Mask.key_write_own_only (2026-09-15 신설, 정본 7fa5f2e — 임대별 마스크 키) — 파티션 p 로 향한 키 기입이 있었던 에지에서 q != p 의 maskReady 비트는 그 에지를 건너 그대로다. 재구현 착수 시점 RTL(키 기입 시 전 파티션 무효화)에 걸면 반례가 난다 — §역-변이 실측 mutF.
 # PROVES: Mask.key_scoped_storage (2026-09-15 신설) — REKEY(p) 수락 다음 사이클, 엔진의 유도 초기 상태(st_4..st_11)는 keyWr 입력을 그대로 미러링하는 독립 섀도우의 p 슬롯과 같다(지상 진리를 DUT 의 key 저장 자체가 아니라 keyWr 입력에서 다시 적는다 — lookAny 규율과 같은 자리). 키가 전역 1벌이던 재구현 착수 시점 RTL 에 걸면 반례가 난다 — §역-변이 실측 mutG.
-# PROVES: XlateObs.obs_stall_live (2026-09-26 파도 4 — 미적중 관측 값) — 파이프라인 절반: missStall == 조회 지점 로컬 미적중(거울 valid f_v[3] ∧ ¬x_hit) — *지금* 정지 중인가의 레벨이지 sticky 가 아니다 (m_obs_stall · 증인 W19). STATUS[0] 로의 포장은 Wt64Top/assembly.sby (lint_postformal _PARTIAL 등재)
-# PROVES: XlateObs.obs_sticky (파도 4) — 파이프라인 절반: io_missNotice 의 차기 상태 = 정지 ∨ (sticky ∧ ¬해제) — 정지가 해제를 이기고 · 해제 없이는 내려가지 않고 · 제3 원천이 없다 (m_sticky · 증인 W21). STATUS[1] 포장은 assembly (_PARTIAL)
-# PROVES: XlateObs.obs_part_stalled (파도 4) — 파이프라인 절반: 정지 중 missPart = 그 요청의 파티션 — 지상 진리는 io_req_part 를 advance 로 시프트한 거울 f_p3 (m_obs_part · m_cap_1..3 · 증인 W19). [15:8] 포장은 assembly (_PARTIAL)
-# PROVES: XlateObs.obs_vpn_stalled (파도 4) — 파이프라인 절반: 정지 중 missVpn = 그 요청의 VPN (거울 f_n3) — 첫 미적중 포착이 아니다 (m_obs_vpn · 증인 W19 · 역-변이 H2). VPN 두 워드 포장은 assembly (_PARTIAL)
-# PROVES: XlateObs.obs_no_residue (파도 4) — 파이프라인 절반: 정지가 없으면 missPart · missVpn = 0 — 조회 지점에 산 적중 요청 · 끝난 정지의 값이 새지 않는다 (m_obs_zero · 증인 W20 둘). 포장이 상태 없이 핀을 그대로 싣는다는 절반은 assembly (_PARTIAL)
+# PROVES: XlateObs.obs_stall_live (2026-09-26 파도 4 — 미적중 관측 값) — 파이프라인 절반: missStall == 조회 지점의 *판정 전* 로컬 미적중(거울 valid f_v[3] ∧ ¬(x_hit ∨ f_lat) — W2) — *지금* 정지 중인가의 레벨이지 sticky 가 아니다 · 판정이 래치된 요청은 항목이 밀려나도 정지가 아니다 (m_obs_stall · 증인 W19 · W29). STATUS[0] 로의 포장은 Wt64Top/assembly.sby (lint_postformal _PARTIAL 등재)
+# PROVES: XlateObs.obs_sticky (파도 4) — 파이프라인 절반: io_missNotice 의 차기 상태 = 정지 ∨ (sticky ∧ ¬해제) — 정지가 해제를 이기고 · 해제 없이는 내려가지 않고 · 제3 원천이 없다 · 정지는 판정 전 미적중이다(W2 — 원시 미적중 set 은 래치된 요청의 항목이 밀려난 사이클에 반례) (m_sticky · 증인 W21 · W29). STATUS[1] 포장은 assembly (_PARTIAL)
+# PROVES: XlateObs.obs_part_stalled (파도 4) — 파이프라인 절반: 정지(판정 전 미적중 — W2) 중 missPart = 그 요청의 파티션 — 지상 진리는 io_req_part 를 advance 로 시프트한 거울 f_p3 (m_obs_part · m_cap_1..3 · 증인 W19). [15:8] 포장은 assembly (_PARTIAL)
+# PROVES: XlateObs.obs_vpn_stalled (파도 4) — 파이프라인 절반: 정지(판정 전 미적중 — W2) 중 missVpn = 그 요청의 VPN (거울 f_n3) — 첫 미적중 포착이 아니다 (m_obs_vpn · 증인 W19 · 역-변이 H2). VPN 두 워드 포장은 assembly (_PARTIAL)
+# PROVES: XlateObs.obs_no_residue (파도 4) — 파이프라인 절반: 정지가 없으면 missPart · missVpn = 0 — 조회 지점에 산 적중 요청 · 판정이 래치된 요청(W2) · 끝난 정지의 값이 새지 않는다 (m_obs_zero · 증인 W20 둘 · W29). 포장이 상태 없이 핀을 그대로 싣는다는 절반은 assembly (_PARTIAL)
 # PROVES: XlateSurface.mclr_fires (파도 4 — 원장 수리) — 파이프라인 절반: 정지가 없을 때 해제(io_missClear)가 미적중 sticky 를 내린다 (m_sticky · 증인 W22). 문 절반은 XlateStaging/props.sby · 해제 핀 합류는 assembly a_miss_clr — 합성은 서술 (_PARTIAL)
 # PROVES: XlateSurface.mclr_needs_one (파도 4 — 원장 수리) — 파이프라인 절반: 해제 없이는 sticky 가 내려가지 않는다 (m_sticky · 증인 W21). [0]=0 기입이 해제 핀을 세우지 않는 문 절반은 XlateStaging/props.sby (_PARTIAL)
-# PROVES: XlateSurface.mclr_keeps_stall (파도 4 — 원장 수리) — 파이프라인 절반: 정지 원천 등식 advance == !io_hold && !(s3_valid && !x_hit) 이 io_missClear 자유 입력 아래 선다 — 해제는 정지를 풀 수 없다 (2026-08-31 신설 단언 · 증인 W23 · 역-변이 H1). 원장이 이 절반을 「어느 형식 태스크도 재지 않는다」로 과소 계수하고 있었다. 문 절반은 XlateStaging/props.sby (_PARTIAL)
+# PROVES: XlateSurface.mclr_keeps_stall (파도 4 — 원장 수리) — 파이프라인 절반: 정지 원천 등식 advance == !io_hold && !(s3_valid && !(x_hit || f_lat)) (W2 — 판정 전 미적중) 이 io_missClear 자유 입력 아래 선다 — 해제는 정지를 풀 수 없다 (2026-08-31 신설 단언 · 증인 W23 · 역-변이 H1). 원장이 이 절반을 「어느 형식 태스크도 재지 않는다」로 과소 계수하고 있었다. 문 절반은 XlateStaging/props.sby (_PARTIAL)
 # PROVES: Mask.rekey_idle_only (2026-09-15 신설) — rekeyFire(= io_rekey_valid && io_rekey_ready) 가 발화한 사이클의 phase 는 IDLE 이었다. 이 축의 로직은 이번 파도가 건드리지 않는다 — 회귀 그물(io_rekey_ready = !engineBusy 배선의 실물 확인)이다.
+# PROVES: XlateObs.verdict_latch (W2 — 3.10 v1.0 묶음 판정 래치, 2026-10-12) — 조회 지점의 첫 적중 사이클에 판정을 래치하고 떠날 때까지 유지한다: 판정된 요청은 항목이 축출 · 철회(flush · V=0) · 대체돼도 다시 서지 않고 (d_stall_src · 증인 W29 · W36) · 떠나는 에지의 s4 캡처는 필드마다(fromFill · frame · perm) 래치 값이다 (l_hold · 증인 W33 · W34 — 값 쪽 마지막 대입을 지운 구현 = 선-formal 대안 value_no_latch 가 여기서 운다) · 판정 값은 로컬 판정 값이다 (q_hit_frame · q_hit_perm) · 판정은 유효 게이트된 적중 x_hit 에서만 선다 (l_capture_gated · 증인 W35 — HIU-3 짝. l_capture_gated 는 유도 단언이라 격리에서만 단독으로 운다 — 전 단언에서 이 축을 무는 것은 형제 d_stall_src · q_miss_* · m_obs_* 다(MG1 · MG2). RTL 의 유효 게이트 실물은 XlateStore 의 hit 이 lookup.valid 를 곱하는 자리이고 latCapture 의 s3.valid 항은 관측 동치다 — §W2 동치 변이 M13. HIU-3 정적 검사 본체는 아직 없다 · 이월) · 그 요청은 여섯 단을 완주한다 (증인 W30). 지상 진리 f_lat · f_lfr · f_lperm · f_lfill 은 DUT 래치가 아니라 f_v[3] · x_* · advance 에서 짓는다
+# PROVES: XlateObs.latch_clears_on_leave (W2) — 요청이 떠나는 *그* 에지에 래치를 비우고 그 비움이 같은 에지의 포착보다 앞선다: 떠나는 에지 직후 조회 지점의 요청(연속 전진이면 같은 에지에 s2 에서 들어온 다음 요청)의 판정은 그 요청 자신의 조회값뿐이다 (l_clear · 증인 W31 · W32 — 선-formal 대안 clear_late · capture_beats_clear 와 비움 삭제는 격리에서 l_clear 로 운다. l_clear 는 유도 단언이라 전 단언 bmc 에서는 형제 q_miss_perm 이 먼저 운다(MC1 · MC1b · MC2 · MC3) — 이 가드의 전 단언 반증력은 형제 q_miss_* · d_stall_src 가 든다). reset 값의 빈 래치는 형식 단언이 없다(W1-8 · W2-9 이월) — 관측으로만 문다: reset 값을 1 로 바꾼 구현은 reset 직후 첫 사이클의 미적중 면 q_miss_* 와 첫 전진의 캡처 등식 e_cap_hit 에서 반례를 낸다 (§W2 역-변이 MZ1 — bmc · pdr)
+# PROVES: XlateObs.latch_one_value (W2) — 래치된 판정은 승인 단 소유권 조회 주소와 마스킹 입력 프레임에 같은 값으로 쓰인다: s6 의 io_owner_frame = 같은 요청이 s3→s4 에서 낸 io_mask_req_frame (거울 시프트 f_mf4..6 · l_one_value · 증인 W30) — 소유권 조회가 조회 응답을 다시 읽거나 마스킹이 래치 아닌 조회값을 먹는 구현이 여기서 운다
 #
 # (결선 계약) MaskUnit 고정 1사이클 왕복 — req.valid → 다음 enable 에 rsp.valid.
 # 결선 계약 자체(io.en = advance, req↔rsp 직결)는 하네스 HiuMask_comp 가 실물로 든다.
@@ -132,7 +135,7 @@
 #    이 하네스는 같은 규율(옛 `f_nonowned_hit` 선언 — W1 에서 f_ent_deny · f_unowned 로 갈림 — 의 「검사 어휘로 지상 진리를
 #    적으면 그 신호를 지운 구현에서 전건이 함께 사라진다」)을 permViol 에는
 #    지키고 lookAny 에는 빠뜨렸고, 필요한 재료(x_hit tap)는 이미 들어와 있었다.
-#    ※ 수리로 lookAny 는 넷 자체가 사라졌다 — 위 규율 문면의 실물 확인이다.
+#    ※ 수리로 lookAny 는 넷 자체가 사라졌다 — 위 규율 문면의 실물 확인이다. (W2 2026-10-12: lookAny 넷이 「판정 래치 ∨ 조회 적중」으로 다시 생겼다 — 호스트 leg 은 여전히 항이 아니고, 지상 진리도 여전히 DUT 어휘가 아니라 x_hit 와 그것에서 지은 f_lat 이다.)
 #    잔여: 「호스트가 *저장 블록의* 적중 판정을 바꾸지 못한다」(io_rsp_hit =
 #    fillHit || storeHit 에 hostRsp 가 들어가지 않는다)는 여전히 XlateStore
 #    안의 명제이고 위 ③ 의 miter 와 같은 태스크 몫이다.
@@ -416,6 +419,185 @@
 # HEAD 음성 대조: HH1(HEAD 생성물 그대로)은 정교화에서 ERROR rc=16 — 「does not have a port named 'faultOwnClear'」
 # (공허 PASS 아님). HH0(HEAD 생성물 + faultOwn = 0 포트 스텁)과 HW1P(짝 「오늘의 RTL」 꼴)는 o_perm_rise · o_own_loud 를
 # 깬다 — 자격 허용 ∧ 비소유 접근이 [4] 를 세우고 [19] 원천이 없다. 선-formal 짝 Platform_pair_today 의 RTL 판이다.
+#
+# ## W2 (3.10 v1.0 묶음 RTL 파도 — 판정 래치, 2026-10-12)
+#
+# 선-formal rtl/formal/tla/XlateObs.tla 의 새 가드 셋(verdict_latch · latch_clears_on_leave ·
+# latch_one_value)을 위 PROVES 셋으로 앵커했다. 판정 시점은 조회 지점의 첫 적중 사이클이고, 판정은
+# 요청이 떠날 때까지 유지되며, 승인 단 소유권 조회와 마스킹에 같은 값으로 쓰인다.
+#   · 지상 진리 f_lat · f_lfr · f_lperm · f_lfill — DUT 래치(lat_*)가 아니라 거울 valid f_v[3] ·
+#     XlateStore 독립 출력 x_hit · x_frame · x_perm_* · x_fromFill · advance 에서 짓는다 (검사 어휘
+#     규율). 판정 적중 f_jhit = x_hit ∨ f_lat. 하네스는 DUT 래치를 tap 하지 않는다 — 새 tap 은 기존
+#     포트 둘(io_mask_req_frame · io_owner_frame)뿐이고 [script] 의 bind 텍스트 전개는 그대로다.
+#   · 고친 단언: 캡처 등식 판정 비트 e_cap_hit ($past(x_hit || f_lat)) · fromFill 은 래치 안 된 전진만
+#     (e_cap_fill) · query_no_serve 적중 면 q_hit_frame · q_hit_perm (전건 f_jhit · 값 = 판정 값) ·
+#     미적중 면 q_miss_frame · q_miss_perm (전건 ¬f_jhit) · 정지 원천 등식 d_stall_src
+#     (¬(x_hit ∨ f_lat)) · f_stall = f_v[3] ∧ ¬f_jhit 이 m_obs_stall · m_obs_part · m_obs_vpn ·
+#     m_obs_zero · m_sticky 로 전파 · 증인 쪽 f_rep_pend · W10 · W11 의 전건에 ¬f_lat.
+#   · 새 단언: l_hold · l_clear · l_capture_gated · l_one_value. l_clear · l_capture_gated 는 d_stall_src ·
+#     q_hit_* · q_miss_* 를 전진 에지 직후 사이클 · 그 뒤 사이클로 좁힌 사영이다 — 포트만 보는 하네스는
+#     DUT 래치를 따로 관측할 길이 없어 형제를 둔 채 그 둘만 죽이는 변이가 원리적으로 없다(유도 단언 —
+#     lint_postformal _DERIVED 등재 대상). 반증력은 격리 실측이 든다 (아래 표의 「격리」 열).
+#   · 새 증인 W29–W36 (태그는 번호형 — lint_witness_map 접두 규칙 [A-Z]+[0-9]+ 가 w2x_* 를 막는다).
+#   · 셀: assert 53 → 57 (bmc · prove) · cover 29 → 37.
+#
+# ### 엔진 — prove 를 abc pdr 로 옮겼다 (W2 실측)
+#
+# 포트만 보는 하네스에서 지상 진리 f_lat 과 DUT 래치의 일치는 귀납 불변식이어야 한다. k-귀납은 그것을
+# 세우지 못한다: 임의 시작점에서 둘이 어긋난 채 io_hold 가 서 있으면 어느 등식도 깨지지 않는 궤적이
+# 몇 스텝이든 이어지고(외부 hold 는 무한히 설 수 있다), 그 끝의 전진 한 번에서 캡처 등식이 깨진다 — k 를
+# 올려도 닫히지 않는다. 보조 불변식으로 닫으려면 DUT 래치 이름(lat_hit 등)을 tap 해야 하는데 이 판은
+# 그것을 하지 않는다. PDR 은 그 불변식을 스스로 찾는다 (MaskUnit/engine.sby · assembly.sby 와 같은 처분).
+# 실측 (2026-10-12, 컨테이너 wavetensor-dev:scala · SBY v0.66 · Yosys 0.66 · 같은 기계의 다른 실행과
+# 겹친 부하 load 6–19, 착지 판 생성물 rtl/generated/HiuPipeline.sv sha256 앞 16자 442c2711e47d1501 ·
+# MaskUnit.sv d9c9f968c6136d71 · 하네스 HiuMask_props.sv ae299efeae8ad596):
+#
+#   태스크  엔진          결과       시간                         비고
+#   prove   smtbmc z3     UNKNOWN    55 초 (depth 4)               basecase PASS · induction FAIL — 귀납 반례의 시작 상태가
+#                                    도달 불가 조합 lat_hit=1 ∧ f_lat=0 ∧ s3 빔 · io_hold=1 로 넷 스텝 머문 뒤 전진에서
+#                                    e_cap_hit · e_cap_fill · l_one_value. 위 해설의 꼴 그대로다 — hold 를 늘리면 어느
+#                                    깊이에서도 같은 반례가 선다 (하네스 초안 실측: depth 12 는 induction 이 step 12→6
+#                                    마다 반례로 내려오다 step 5 에서 8 분 41 초 「waiting for solver」 — 벽시계 12 분
+#                                    48 초에 끊음. 판정 아님)
+#   prove   abc pdr       PASS       97 초                         Invariant F[8] 1736 절 · 1442 플롭(8099 중) · assert 57
+#   bmc     abc bmc3      PASS       294 초 (depth 24)             assert 57 · 그대로 둔다
+#   cover   btor btormc   PASS       5 초                          37/37 도달 (W29 k 6 · W30 k 9 · W31 k 7 · W32–W35 k 6 ·
+#                                                                  W36 k 7 · 최심 W16 k 45)
+#   ⇒ prove 만 abc pdr (모드 한정 aigsmt z3 가 반례를 재생한다). bmc · cover 의 엔진 · 깊이 · [script] ·
+#     [files] 는 불변이다. 위 시간은 저장소 밖 사본(같은 .sby 레시피) 실측이고, 저장소 스윕
+#     (scripts/sby_sweep.sh) 의 판정 · 셀은 hiumask.evidence.json 이 든다.
+#   ⇒ PDR 이 눈멀지 않았다는 실측 (아래 표 「pdr」 열): MV1 · MF1 · MS1 · MD1 · MG1 · MO1 · MC1 · MC2 · MZ1 아홉이 전부 pdr 에서도 FAIL (첫 적발 라벨은 표의 「pdr」).
+#
+# ### HEAD 음성 대조 — W2 (2026-10-12, 비상주)
+#
+# W2 전 RTL(HEAD 9b6eee6 생성물 HiuPipeline.sv 56039485fc8dd922 — 래치 없음, 매 사이클 다시 판정)에
+# 이 하네스를 그대로 걸었다. 새 tap 둘은 HEAD 에도 있는 포트라 정교화가 선다 (스텁 없음).
+#   전체 bmc d24 FAIL step 5 — d_stall_src · m_obs_stall · m_obs_zero (판정된 요청이 항목을 잃고 다시
+#   선다 — 선-formal 짝 「오늘의 RTL(W2 전 — HEAD 9b6eee6)」의 RTL 판) · prove(abc pdr) FAIL 같은 셋 (75 초).
+#   격리(bmc d16) FAIL: d_stall_src @5 · q_hit_frame @5 · q_hit_perm @5 · m_obs_stall @5 · m_obs_zero @5 · l_hold @7 · m_sticky @7
+#   격리 PASS (HEAD 가 어기지 않는 축 — 기대대로): e_cap_fill · e_cap_hit · l_capture_gated · l_clear · l_one_value · m_obs_part · m_obs_vpn · q_miss_frame · q_miss_perm
+#     ※ 새 단언 넷 중 l_hold 만 HEAD 에서 운다. l_clear · l_capture_gated · l_one_value 는 래치가 *있는*
+#       구현의 결함(비움 · 포착 게이트 · 한 값)을 재는 단언이라 래치 없는 HEAD 는 자명하게 지킨다 —
+#       반증력은 아래 역-변이 표가 든다. HEAD 의 결함은 「판정이 유지되지 않는다」이고 그것은 l_hold ·
+#       d_stall_src · q_hit_* · m_obs_stall · m_obs_zero · m_sticky 가 운다.
+#   cover(btormc d60): 36/37 — W36 만 미도달 (래치 없는 장치는 flush 로 항목을 잃은 판정된 요청이 다시
+#   서므로 「미적중인 채 떠남」이 없다).
+#
+# ### 역-변이 실측 — W2 (2026-10-12 통합, 비상주)
+#
+# 방법: 파도 4 · W1 절과 같다 — 생성물 사본(위 착지 판 스냅숏) 한 곳을 문자열 치환(정확히 1 회 매치) ·
+# 이 하네스 그대로 · bmc 는 abc bmc3 depth 16 (aigsmt z3 재생) · cover 는 btor btormc depth 60 ·
+# prove 는 abc pdr. 라벨 격리는 prep 뒤 `chformal -assert -remove c:* c:<라벨> %d` + 계수
+# `select -assert-count 1 t:$check r:FLAVOR=assert %i` (yosys 0.66 은 prep 직후 단언을 $check 셀로
+# 든다 — t:$assert 로 세면 0 이 나와 실행이 죽는다). 「연속 전진」 열은 비상주 변형 하네스(환경 가정
+# 하나 추가 — reset 밖에서 io_req_valid = 1: 전진 에지마다 s2 의 다음 요청이 s3 로 들어온다)에서
+# l_clear 를 격리한 실측이다 — 변형 하네스 무변이 bmc d16 은 전 단언 PASS (67 초). 구동기는
+# /var/tmp/wt-s310/W2HI 아래 scratch 에만 있었고 커밋하지 않았다. 무변이 B0 bmc d16 PASS 65 초 ·
+# cover 37/37. 「첫 적발」은 전 단언 bmc 의 첫 위반 스텝에서 운 라벨 전부다 (abc bmc3 는 그 스텝에서
+# 멈춘다). 이름 없는 단언은 props 줄로 적는다.
+#
+#   id     치환 (생성 SV)
+#          겨냥 가드               ⇒ 전 단언 bmc 첫 적발 (라벨 @ step · 소요) · 격리 · 연속 전진 · pdr · cover
+#   MV1    lookFrame · lookPerm_r/w/x 의 if(lat_hit) 마지막 대입 넷 삭제 (대안 value_no_latch)
+#          verdict_latch(값)       ⇒ q_hit_frame @5 (16s) · cover 37/37 · 격리 l_hold @7 · 격리 q_hit_perm @5 · pdr q_hit_frame
+#   MP1    lookPerm_r 의 if(lat_hit) 마지막 대입 하나만 삭제 (권한 한 필드가 래치를 안 탄다)
+#          verdict_latch(값)       ⇒ q_hit_perm @5 (17s) · 격리 l_hold @7
+#   MF1    s4_fromFill <= lookFill → <= xlate_io_rsp_fromFill (fromFill 이 래치를 안 탄다)
+#          verdict_latch(값)       ⇒ l_hold @7 (19s) · 격리 l_hold @7 · pdr l_hold
+#   MF2    lookFill = lat_hit ? lat_fromFill : xlate_io_rsp_fromFill → … : 1'b0 (래치 안 된 fromFill 소실)
+#          verdict_latch(값)       ⇒ e_cap_fill @6 (17s)
+#   ME1    s4_anyHit <= lookAny → <= xlate_io_rsp_hit (판정 비트가 래치를 모른다)
+#          verdict_latch(판정)      ⇒ e_cap_hit @7 (32s) · 격리 e_cap_hit @7
+#   MR1    latCapture 에서 (! lat_hit) 탈락 (적중마다 다시 포착 — 대체를 따라간다)
+#          verdict_latch          ⇒ q_hit_frame @6 (21s)
+#   MN1    lookAny = (lat_hit || hit) → hit (정지 쪽 래치 삭제)
+#          verdict_latch(정지)      ⇒ d_stall_src m_obs_stall @5 (20s) · cover 미도달 w36_latched_across_flush · 격리 d_stall_src @5
+#   MD1    advance 의 missWait → s3_valid && !xlate_io_rsp_hit (advance 만 원시 미적중 — missWait · 관측은 그대로)
+#          verdict_latch(정지)      ⇒ d_stall_src @5 (15s) · pdr d_stall_src
+#   MS1    sticky set if(missWait) → if(s3_valid && !xlate_io_rsp_hit) (대안 sticky_raw_miss)
+#          verdict_latch(sticky)  ⇒ m_sticky @7 (50s) · cover 37/37 · pdr m_sticky
+#   MS2    missStall = missWait → 원시 미적중
+#          obs_stall_live         ⇒ m_obs_stall @5 (13s)
+#   MS3    missPart 의 Mux 조건 missWait → 원시 미적중
+#          obs_no_residue         ⇒ m_obs_zero @5 (17s)
+#   MH3    missPart = 2'b00 (상수 — 파도 4 H3 의 착지 판 재측)
+#          obs_part_stalled       ⇒ m_obs_part @4 (15s)
+#   MH2    missVpn 의 값 가지 s3_vpn → s2_vpn
+#          obs_vpn_stalled        ⇒ m_obs_vpn @4 (13s)
+#   MC1    비움 · 데이터 포착 조건을 RegNext(s3_valid && advance) 로 (대안 clear_late — 모델 그대로: 늦은 비움 대기가 포착을 이긴다)
+#          latch_clears_on_leave  ⇒ q_miss_perm @5 (16s) · cover 37/37 · 격리 l_clear @6 · pdr q_miss_perm · 연속 전진 격리 l_clear @6
+#   MC1b   비움만 RegNext(s3_valid && advance) 로 늦춤 · 포착은 advance 에서 그대로 막힘
+#          latch_clears_on_leave  ⇒ q_miss_perm @6 (16s) · 격리 l_clear @7 · 연속 전진 격리 l_clear @7
+#   MC2    when(latCapture).elsewhen(advance) 비움 + 데이터 포착의 !advance 게이트 제거 (대안 capture_beats_clear)
+#          latch_clears_on_leave  ⇒ q_miss_perm @5 (13s) · cover 37/37 · 격리 l_clear @6 · pdr q_miss_perm · 연속 전진 격리 l_clear @6
+#   MC3    if(advance) 비움 → if(1'b0) (비움 삭제)
+#          latch_clears_on_leave  ⇒ q_miss_perm @5 (13s) · 격리 l_clear @6 · 연속 전진 격리 l_clear @6
+#   MZ1    reset 가지 lat_hit <= 1'b0 → 1'b1 (reset 값 — 형식 단언 없음, W1-8 · W2-9 이월)
+#          latch_clears_on_leave  ⇒ q_miss_perm @1 (9s) · 격리 e_cap_hit @3 · 격리 l_clear PASS · pdr q_miss_perm
+#   MG1    latCapture 에서 적중 항 탈락 (유효 게이트된 적중 없이 포착)
+#          verdict_latch(포착)      ⇒ d_stall_src m_obs_stall @5 (18s) · 격리 l_capture_gated @6 · pdr d_stall_src m_obs_stall
+#   MG2    포착 조건에 || io_hostRsp_valid · 래치 프레임 = 미적중이면 io_hostRsp_frame (호스트 leg 에서 포착)
+#          verdict_latch(포착)      ⇒ d_stall_src m_obs_part m_obs_stall @5 (17s) · 격리 l_capture_gated @6 · 격리 q_miss_frame @5
+#   MA1    lookFrame 의 적중 가지 = hostRsp_valid ? hostRsp_frame : 조회값 (호스트 우선)
+#          query_no_serve         ⇒ q_hit_frame @4 (13s)
+#   MQ1    lookFrame 기본 구동 32'h0 → io_hostRsp_frame (미적중 면에 호스트 leg)
+#          query_no_serve         ⇒ q_miss_frame @1 (9s) · 격리 l_capture_gated @6 · 격리 l_clear @3
+#   MQ2    lookPerm_x 기본 구동 1'b0 → io_hostRsp_perm_x
+#          query_no_serve         ⇒ q_miss_perm @1 (9s)
+#   MO1    io_mask_req_frame = lookFrame → xlate_io_rsp_frame (마스킹이 래치 아닌 조회값을 먹는다)
+#          latch_one_value        ⇒ l_one_value @8 (61s) · pdr l_one_value
+#   MO2    io_owner_frame = s6_frame → s5_frame
+#          latch_one_value        ⇒ l_one_value @7 (35s)
+#   MO3    s4_frame <= lookFrame → <= xlate_io_rsp_frame (소유권 쪽이 조회값을 다시 읽는다)
+#          latch_one_value        ⇒ props:584 (캡처 frame 줄) l_hold @7 (26s) · 격리 l_one_value @8
+#
+# 라벨 ↔ 그것만 죽이는 변이 (전 단언 bmc 의 첫 적발이 그 라벨 하나):
+#   l_hold MF1 (fromFill) · MP1 은 q_hit_perm 이 먼저 — 격리 l_hold @7 · MV1 격리 l_hold @7 (수락 기준 (2))
+#   e_cap_hit ME1 @7 · e_cap_fill MF2 @6 · q_hit_frame MA1 @4 · MR1 @6 · MV1 @5 · q_hit_perm MP1 @5 · q_miss_frame MQ1 @1 ·
+#   q_miss_perm MQ2 @1 · MC1 · MC2 · MC3 @5 · MZ1 @1 · d_stall_src MD1 @5 (MN1 · MG1 은 m_obs_stall 과 같은 스텝 — 격리 d_stall_src @5) ·
+#   m_sticky MS1 @7 (수락 기준 (3)) · m_obs_stall MS2 @5 · m_obs_zero MS3 @5 · m_obs_part MH3 @4 · m_obs_vpn MH2 @4 ·
+#   l_one_value MO1 @8 · MO2 @7 (MO3 은 l_hold · 캡처 frame 줄이 먼저 — 격리 l_one_value @8).
+# l_clear 와 l_capture_gated 는 격리에서만 단독으로 운다 — 위 해설대로 d_stall_src · q_* 의 사영이라 형제를
+# 둔 채 그것만 죽이는 변이가 원리적으로 없다 (o_ent_blocked 와 같은 처분 — lint_postformal _DERIVED 등재
+# 대상). 수락 기준 셋: (1) l_clear 는 연속 전진 에지에서 운다 — 「연속 전진」 열 넷이 그 실측이고, 기본
+# 하네스의 MC1 격리 반례도 그 꼴이다(떠나는 에지에 s2 유효 · 다음 사이클 s3 유효 ∧ 미적중 ∧ 정지 안 함 —
+# 앞 요청의 판정을 물려받았다). (2) l_hold 는 값 쪽 마지막 대입 삭제(MV1 — 대안 value_no_latch)를
+# 격리에서 잡는다 (전 단언에서는 같은 결함을 q_hit_frame 이 두 스텝 먼저 잡는다). (3) m_sticky 는 sticky
+# set = 원시 미적중(MS1 — 대안 sticky_raw_miss)을 단독으로 잡는다.
+#
+# 증인 ↔ 미도달로 만드는 변이 (cover btormc d60):
+#   W29 ← KW29 XlateStore 가 같은 조회 키에 한 번 적중하면 키가 바뀌거나 조회가 내려갈 때까지 적중을 유지 (W29 · W36 미도달 —
+#         둘 다 「판정된 요청이 항목을 잃은 채 머문다」를 전건으로 든다. W29 만 지우는 변이는 찾지 못했다: 전건이 지상
+#         진리 · XlateStore 출력 · 환경 입력 io_hold 로만 적혀 W1 engine 의 W19 · W20 과 같은 전건 도달 증인이다)
+#   W30 ← KW30 io_owner_frame = 32'h0 (W30 만)
+#   W31 ← KW31 s3_valid <= s2_valid && !lat_hit (래치된 요청이 떠나는 에지에 다음 요청을 막는다 — W31 만)
+#   W32 ← KW32 s3_valid <= s2_valid && !(첫 적중에 떠나는 요청) (W32 만)
+#   W33 ← KW33 advance 에 「래치 ∧ 적중 ∧ 조회 프레임 ≠ 래치 프레임이면 기다린다」 항 (W33 만)
+#   W34 ← KW34 XlateStore io_rsp_fromFill = 1'b0 (W34 만)
+#   W35 ← KW35 XlateStore io_rsp_hostPresent = 1'b0 (W35 · W10 — W10 도 전건이 ¬f_lat 로 좁혀진 증인이다)
+#   W36 ← MN1 정지 쪽 래치 삭제 (W36 만; HEAD 생성물에서도 W36 만 미도달)
+#   W11 · W12 (전건이 ¬f_lat 로만 좁혀졌다) — 이 파도의 사살 변이는 없다 (시도 KW11 「저장 적중이 태그를 안 본다」는
+#         채움 그림자 경로로 W11 이 여전히 도달해 무효). 반대로 MV1 · MS1 · MC1 · MC2 아래 cover 는 37/37 이다 —
+#         증인이 결함에 매여 있지 않다 (2026-08-31 W10 · W12 교훈의 역대조).
+#
+# ### 동치 변이 — 어느 단언 · 시험도 못 잡는 것이 정상인 둘 (W2 독립 반증, 2026-10-12, 비상주)
+#
+# 독립 반증(44 변이 · hiumask bmc abc bmc3 d24 · prove abc pdr · Shape 스위트 — 생성 SV 의 module HiuPipeline
+# 구간 치환, 저장소 밖 사본)에서 bmc 와 pdr 를 둘 다 통과한 변이는 둘이다. 둘 다 출력 동치 miter 로 *동치가
+# 증명*됐다 — 좋은 사본 ∥ 변이 사본, XlateStore 는 두 사본이 공유하는 자유 스텁(hit ⇒ lookup.valid ·
+# fromFill ⇒ hit), MaskUnit 왕복은 사본마다 advance 로 닫음, 초기값 setundef -zero -init, abc pdr. 감도
+# 대조 M00 PASS · M01(래치 삭제) FAIL @5. 생존 변이로 계수하지 마라:
+#   M13  latCapture 에서 s3_valid 항 탈락 — XlateStore 가 hit 을 이미 lookup.valid(= s3.valid)로 게이트한다
+#        (생성 SV `storeHit = (((io_lookup_valid && storeValid) && …` · `fillHit = (((io_lookup_valid &&
+#        fillShadow) && …`). 「포착은 유효 게이트된 적중에서만」의 실물 게이트는 XlateStore 의 그 두 항이고
+#        latCapture 의 s3.valid 항은 관측상 중복이다(bmc PASS 299 초 · pdr PASS 95 초 · Shape 26/26 · miter
+#        PASS). 그 축을 무는 단언은 l_capture_gated(유도 — 격리)와 형제 d_stall_src · q_miss_* 이고, 읽기
+#        경로 전수의 정적 검사(HIU-3)는 아직 없다 — 이월.
+#   M33  래치 비움 조건 advance → !io_hold — 래치가 선 사이클은 missWait = 0 이라 advance == !io_hold 이고,
+#        래치가 빈 사이클의 비움은 무동작이다(bmc PASS 257 초 · pdr PASS 97 초 · miter PASS).
+# 같은 실측의 M42(비움을 advance ∧ s2_valid 로 — 거품이 들어오는 에지에 안 비움)는 동치가 아니다: 전 단언
+# bmc 는 q_miss_perm 이 거품 사이클의 래치 값으로 잡고(격리 l_clear 도 FAIL) cocotb 는 못 잡는다(거품의
+# 데이터는 응답이 없다) — 유효 한정 miter 로는 동치다.
 
 [tasks]
 bmc
@@ -427,13 +609,13 @@ bmc: mode bmc
 bmc: depth 24
 bmc: aigsmt z3
 prove: mode prove
-prove: depth 12
+prove: aigsmt z3
 cover: mode cover
 cover: depth 60
 
 [engines]
 bmc: abc bmc3
-prove: smtbmc z3
+prove: abc pdr
 cover: btor btormc
 
 [script]

@@ -38,7 +38,7 @@ make rtl-formal        # 또는  sh rtl/formal/tla/run.sh
 | **E.1.2 · E.3 변환 저장소의 MMIO 문** `0xC00` LO 스테이징 · HI 단일 에지 커밋 · 번호 래치 · `0xE00` flush 발화·범위 · `0xE10` 해제 · RO 쓰기 거절 · 거절 loud · 하류 거부 처분 | `XlateSurface.tla` | **증명됨** — 가드 열일곱(lo_stages_only · hi_fires · hi_entry_match · hi_needs_staging · hi_commit_whole · hi_v_carried · flush_fires · flush_scoped · flush_valid_only · flush_part_exists · flush_rsv_strict · reject_loud · mclr_fires · mclr_needs_one · mclr_rsv_strict · mclr_keeps_stall · ro_rejected) + 증인 열여섯 + 짝·대안·발견 여섯 + 진행 1, 42 run. 축 모델(라벨이 색인 속성 ID 를 인용하지 않는다). 정본이 닫지 않은 자리 넷은 모델 머리 「발견」 — 스테이징 소진은 rtl/README.md T5 |
 | **E.1.2 · E.12 · E.12.1 재조립 문맥 소거의 문** `0xF40` 스테이징 세 워드 · 워드 적법성(TAG1 poison·trace·예약 · TAG2/FIRE 예약 · RO 쓰기) · 거절의 무효과·loud · 워드별 무장 · 재기입 덮음 · 발화 성립(무장 완비 · `[0]`=1) · 잔류 소진 | `AbortSurface.tla` | **증명됨** — 가드 열셋(poison_trace_zero · epoch_word_rsv_strict · shape_word_rsv_strict · fire_rsv_strict · ro_rejected · legal_first · reject_loud · arm_on_accept · arm_own_word · stage_writes_value · fire_needs_armed · fire_needs_one · fire_drains_arm) + 증인 열하나 + 짝 셋 · 대비 1, 30 run. 축 모델. sub-word 처분은 상수 `Subword`(판정 T2 — RTL 은 W4). 짝 둘이 D2 이전 RTL(TAG1 무검사)과 동형 |
 | **3.7 · 3.10 · E.1.1 · E.1.3 구성 페이지의 처분** 포트 수락·응답 · RO 쓰기 · WO 읽기 · 예약 오프셋(정렬 워드) · 비정렬 쓰기 · 물려받은 `0x000`–`0x11F` · 소비 회로 없는 RW 워드 · 거절 loud | `MmioPage.tla` | **증명됨** — 가드 아홉(rsp_on_accept · effect_on_accept · ro_rejected · wo_read_zero · resv_lenient · unaligned_rejected · leg_write_rejected · nocons_rejected · reject_loud) + 증인 열 + 짝·대안 여덟 · 대비 1, 29 run. 축 모델. 고정 속성의 예외 집합(SpecReject · SpecQuiet)이 곧 판정 내용이라 판정을 유도하지 못한다. 짝 둘이 D1 이전 조립과 동형 |
-| **E.1.2 · E.3 변환 미적중의 관측면** `0xE04` XLATE_STATUS · `0xE08`/`0xE0C` XLATE_MISS_VPN 의 *값* — 정지 게이트 스냅샷(정지 중에만 그 요청 · 정지가 없으면 0) · 찢김 없음 · 읽기 무해제 · 채널의 충분성 | `XlateObs.tla` | **증명됨** — 가드 여섯(obs_stall_live · obs_sticky · obs_part_stalled · obs_vpn_stalled · obs_no_residue · obs_read_pure) + 고정 속성 Prop_NoTear · 진행 Prop_StallResolves(폴링 호스트 HostSpec) + 증인 일곱 + 대안 1 · 진행 짝 둘 · 짝 둘 · 대비 1, 22 run. 축 모델. 짝 「오늘의 RTL」(세 워드 읽기 0)이 정지 영구로 운다 |
+| **E.1.2 · E.3 변환 미적중의 관측면** `0xE04` XLATE_STATUS · `0xE08`/`0xE0C` XLATE_MISS_VPN 의 *값* — 정지 게이트 스냅샷(정지 중에만 그 요청 · 정지가 없으면 0) · 찢김 없음 · 읽기 무해제 · 채널의 충분성 · **3.6.2 판정 시점과 판정 래치**(W2) | `XlateObs.tla` | **증명됨** (모델 위) — 가드 아홉(obs_stall_live · obs_sticky · obs_part_stalled · obs_vpn_stalled · obs_no_residue · obs_read_pure + W2 verdict_latch · latch_clears_on_leave · latch_one_value) + 고정 속성 Prop_NoTear · Prop_LatchedSurvivesRetract · Prop_V0AfterEdgeMisses · 진행 Prop_StallResolves(「정지한 *그* 요청은 결국 떠난다」 — 요청 꼬리표 tok · 폴링 호스트 HostSpec · 경쟁자 · 하류 배압) + 증인 열셋 + 대안 다섯 · 고정 속성 반증 둘 · 진행 짝 셋 · 짝 셋 · 대비 셋, 41 run (W2 전 22). 축 모델. 짝 「파도 3 까지의 RTL」(세 워드 읽기 0)이 정지 영구로, 짝 「오늘의 RTL」(W2 전 RTL — HEAD 9b6eee6, 래치 없음)이 재미적중으로 운다 |
 
 순서는 부록 D.5 규범 그대로다 — **근거는 "실제로 무너진 곳"** 이다.
 
@@ -722,7 +722,7 @@ CQ_SIZE 의 같은 값 수락(무동작)은 고정 속성 `Prop_NoSilentDrop` �
 수락된 기입의 의미(각 구역 모델) · 읽기 값의 뜻(0xE04–0xE0C · 0xFFC 판 값) · 바이트 인에이블 · `[6]` 의
 sticky · 시간 · 한 스텝의 접근 여럿.
 
-## E.1.2 · E.3 변환 미적중의 관측면 — `XlateObs.tla` (파도 4 3B, 2026-09-26)
+## E.1.2 · E.3 변환 미적중의 관측면 — `XlateObs.tla` (파도 4 3B, 2026-09-26 · 판정 래치 W2, 2026-10-12)
 
 `XlateSurface.tla` 는 호스트 쪽 *문*이고 세 RO 워드(`0xE04`–`0xE0C`)의 *읽기*는 그 모델의 상태가 아니다.
 파도 3 까지 RTL 은 세 워드 읽기를 0 으로 두었고(미배선) 정본은 필드만 정한 채 셋 — 정지가 없을 때의 값 ·
@@ -730,13 +730,13 @@ sticky · 시간 · 한 스텝의 접근 여럿.
 셋을 정했고, 6.3 의 요구대로 그 결정을 이 모델로 돌려보냈다. 정본 좌표와 각 가드의 문장은 모델 머리가
 소유한다.
 
-22 run: 좋은 모델 2(파티션 2 · VPN 2 / 파티션 3 규모) + 가드 삭제 6 + 대안 1(비게이트 — 갈래 (C)) + 진행 1
+파도 4 판 22 run (W2 가 41 로 늘렸다 — 아래 「W2」): 좋은 모델 2(파티션 2 · VPN 2 / 파티션 3 규모) + 가드 삭제 6 + 대안 1(비게이트 — 갈래 (C)) + 진행 1
 (HostSpec) + 진행 짝 2(첫 미적중 포착 VPN · 상수 파티션) + 짝 「오늘의 RTL」 1 + 대비 1 + 짝 「새는 파이프」 1
 + 증인 7. RTL 편집 전에 블록 22/22 GREEN(컨테이너 · 2026-09-26 15:21 KST)을 남겼다.
 - 가드 삭제 셋이 기각 갈래와 동형이다: `obs_vpn_stalled` 삭제 = 첫 미적중 포착(갈래 (B)) ·
   `obs_no_residue` 삭제(`ObsNoStall` = "latched") = 그 포착값의 잔재 · 대안(`ObsNoStall` = "live") = 비게이트
   (갈래 (C) — 조회 지점의 살아 있는 요청이 샌다).
-- 진행 `Prop_StallResolves` 는 관측면만 보고 채우는 호스트(HostSpec)가 모든 정지를 푸는가 —
+- 진행 `Prop_StallResolves` 는 관측면만 보고 채우는 호스트(HostSpec)가 모든 정지를 푸는가 (W2 에서 「정지한 그 요청은 결국 떠난다」로 강화 — 아래 「W2」) —
   e-defined.typ:881 「채널이 없으면 2항은 이행 불가능한」의 *충분성* 쪽이다. 짝 「오늘의 RTL」(`Wired` = FALSE)이 그 문장의 기계 판이다.
 - `Prop_NoTear`(찢김 없음)는 가드가 아니다 — 몸이 관측 회로가 아니라 E.4 3항 일제 정지(RTL 주장은
   `Decode.stall_uniform`)라서다. 짝 「새는 파이프」(`Pipe` = "leaky")가 반증력을 든다.
@@ -756,6 +756,55 @@ e-defined.typ:874 「정지가 영구가 되지 않을 책임은 호스트에 �
 
 **재지 않는 것** (모델 머리 「닫지 않은 자리」가 닫힌 목록): 비트 배치(RTL 조립층 `a_rd_xstatus` ·
 `a_rd_xvpnlo` · `a_rd_xvpnhi`) · 읽기 응답의 시각 · 적중 요청의 나머지 단 · 0xE10 의 문 쪽 적법성(`XlateSurface.tla`).
+
+### W2 — 판정 래치 (3.10 v1.0 묶음의 RTL 파도 W2 선-formal, 2026-10-12)
+
+정본 3.6.2 「판정 시점과 판정 래치」 · 3.7.2 철회의 효력 범위 · E.1.2 `0xC00` 결과 (d) · (h) · E.3 2항의 좁힘을
+같은 모델에 실었다 — 판정 래치가 미적중 정지(`Stalled`)의 정의를 바꾸고 관측면이 그 정지를 읽기 때문이다. 모델
+변경(판정 값을 드는 `tbl` · 같은 파티션 축출 집합을 비결정으로 고르는 `Install` · 연속 전진 `LeaveArrive` · 요청
+꼬리표 `tok` · HostSpec 의 경쟁자와 하류 배압) · 정본 좌표 · RTL GUARD-MAP 예정 문면은 모델 머리가 소유한다.
+여기서 「증명됨」은 *모델 위의* 사실이다 — RTL 측정은 `hiumask.sby` 와 형상 시험 N8 · N9 다 (`rtl/README.md` W2 절).
+
+41 run (`run.sh` XlateObs 절을 세어 확인): 좋은 모델 2 + 가드 삭제 9(옛 여섯 + 아래 셋) + 대안 5(비게이트 ·
+`clear_late` · `capture_beats_clear` · `sticky_raw_miss` · `value_no_latch`) + 고정 속성 반증 2 + 진행 1 + 진행 짝 3
+(첫 미적중 포착 VPN · 상수 파티션 · 래치 없음 라이브락) + 짝 3(「파도 3 까지의 RTL」 · 「새는 파이프」 · 「오늘의
+RTL」 W2 전) + 대비 3(`[0]` sticky · 옛 진행 꼴 `Prop_StallLifts` · 기각한 꼴 `Prop_StallEmpties`) + 증인 13.
+
+| 가드 (W2) | 지우면 → 목표 속성 |
+|---|---|
+| `verdict_latch` | 판정된 요청이 hold 로 머무는 동안 항목이 철회 · 축출되면 다시 정지 → `Prop_NoReMiss` |
+| `latch_clears_on_leave` | 다음 요청이 앞 요청의 판정을 물려받음 → `Prop_NoInheritedVerdict` |
+| `latch_one_value` | 소유권 조회가 떠나는 시점의 저장 시야를 다시 읽어 한 요청이 두 값 → `Prop_OneValue` |
+
+- 고정 속성 둘(가드 아님): `Prop_LatchedSurvivesRetract`(떠나는 값은 그 요청의 첫 적중 조회값 — 판정 뒤 철회 ·
+  대체가 바꾸지 못한다) · `Prop_V0AfterEdgeMisses`(마지막 커밋이 V=0 인 (파티션, VPN) 의 요청은 그 에지 전에
+  판정되지 않았으면 정지 — HIU-2 V=0 축의 *판정 시점 범위*). 반증은 가드 삭제판 단독 cfg 둘이 든다.
+  `Prop_StickyRiseOnStall` 은 대안 `sticky_raw_miss` 가 반증한다.
+- 진행을 강화했다 — `Prop_StallResolves` = 「정지한 *그* 요청은 결국 떠난다」: (Stalled ∧ tok = b) ~> (¬s3.on ∨
+  tok ≠ b). 옛 꼴 Stalled ~> ¬Stalled(`Prop_StallLifts`)는 래치 없는 판의 라이브락(정지 → 채움으로 풀림 → hold
+  로 머묾 → 경쟁 커밋 축출 → 다시 정지)을 통과시킨다 — 대비 run 실측 PASS. 「조회 지점이 언젠가 빈다」
+  (`Prop_StallEmpties`)는 연속 전진 아래 좋은 모델도 깬다 — 대비 run 실측 FAIL. 그래서 요청 꼬리표로 적었다. 진행 짝
+  「래치 없음 + 경쟁 커밋자 + 하류 배압」이 새 꼴을 깨 「결과 (d) 없이 (h) 의 수렴이 없다」가 기계로 선다. 하류
+  배압의 유한성(Depart = Leave ∨ LeaveArrive 의 약한 공정성)은 *환경 가정*이다(닫힌 목록 11).
+- 연속 전진 `LeaveArrive` — 첫 판은 떠남과 다음 도착 사이에 거품 스텝을 강제했고, 그 아래에서 「한 에지 늦은
+  비움」 · 「포착이 비움을 이김」이 배터리를 통과했다(독립 반증이 찾음). LeaveArrive 를 들이자 둘 다 3 스텝에
+  `Prop_NoInheritedVerdict` 로 울고, 지금은 상주 대안이다. 역대조(비상주): LeaveArrive 만 뺀 사본에서 두 대안이
+  작은 좋은 cfg 를 통과한다 (모델 머리 「발견 (W2 독립 반증)」).
+- 큰 cfg(`XlateObs_large.cfg`)는 `VIEW StateView` 로 돈다 — 한 스텝짜리 출력(rd · ev · lv)과 요청 꼬리표 tok 를
+  접는다(건전성 근거는 모델의 StateView 주석). 대안 `clear_late` 는 lv.on 을 읽으므로 VIEW 아래 돌리지 않는다. 다른
+  cfg 는 VIEW 없이 돈다.
+- 모델은 RTL 보다 관대하다(모델 머리 「래치 포착의 원자성」) — BFS 최단 반례는 축출 · 철회를 첫 적중 사이클 끝
+  에지에 둔다. RTL 에서 같은 파티션 *커밋*은 그 에지에 수락되지 않으므로(채움 슬롯 점유) 커밋 축출의 RTL 꼴은
+  hold ≥ 2 사이클 뒤의 경쟁 커밋이다. flush 는 채움 슬롯을 기다리지 않아 그 에지에 수락된다 — 형상 시험 N8 의 flush
+  사례가 그 꼴이다 (`rtl/sim/README.md` W2 절).
+- 닫힌 목록 16 항(모델 머리). RTL 로 넘긴 것: 두 소비 값의 동일성(3 — hiumask `l_one_value`) · 필드별 분리(5 —
+  `l_hold`) · 포착 게이트(6 — `l_capture_gated`, 유도 단언; HIU-3 정적 검사 본체는 없다) · reset 비움(8 — 형식 단언
+  이월). **미측정으로 남은 것**: 결과 (h) 「자발 축출은 없다」(13 — 이 모델에서 구조이고 진행 PASS 가 거기 기댄다;
+  W3 후보 가드 `evict_on_commit_only`) · 래치된 요청이 드레인 정의역 ①(HIU 점유 = 단 valid 의 수)에 드는가(14 — 그
+  점유를 재는 단언이 없다) · HIU-2 V=0 축의 저장 측(15 — W3 까지 착지 대기; 여기서 재는 것은 판정 시점 범위뿐).
+- 실측: XlateObs 절 41/41 선언대로 · 전량 배터리 573/573 선언대로 — 컨테이너 · 2026-10-12 11:54–13:25 KST · 게이트
+  GREEN (부록 D 문장과 같은 판). 작은 좋은 모델 150,784 distinct · 큰 좋은 모델(VIEW) 618,496 distinct · 진행 MUST
+  PASS 149,248 distinct (`run.sh` 절 머리 주석).
 
 ## E.1.2 임대별 마스크 키 · `[12]` 논스 재사용 판정 · `0xEC4` MASK_DUP_CAPTURE — `Mask.tla`
 

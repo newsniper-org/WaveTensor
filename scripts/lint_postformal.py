@@ -424,7 +424,11 @@ _LEGACY_SCHEMAS = {
 # 둘은 **상한**(늘면 실패)이다. 상한 쪽이 있는 이유: 구조 skip 과 부분 덮임은
 # 「CHECK 분모를 비우는」 방향의 부정을 가능하게 하므로, 그것을 늘리는 일은
 # 반드시 이 파일을 고치는 *명시적 서명*을 거쳐야 한다.
-_MIN_COVERED = 146     # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다.
+_MIN_COVERED = 149     # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다.
+                       # 146 → 149 (2026-10-12, 3.10 v1.0 묶음의 RTL 파도 W2 착지 — 실측 149 = 완전 106 + 부분 43:
+                       # 새 가드 셋(XlateObs.verdict_latch · latch_clears_on_leave · latch_one_value — hiumask.sby)이
+                       # 전부 앵커를 갖고 **완전**으로 태어났다(GUARD-MAP 범위가 HiuPipeline 안이고 합성 DUT 가 품는다).
+                       # 그중 둘의 이름 단언(l_clear · l_capture_gated)은 유도 단언이다 — 아래 _DERIVED. 분모 146 → 149)
                        # 134 → 146 (2026-10-12, 3.10 v1.0 묶음의 RTL 파도 W1 착지 — 실측 146 = 완전 103 + 부분 43:
                        # 새 가드 열둘(Platform 넷 entitle_gates_value · perm_entitle_only · entitle_first ·
                        # own_reported — hiumask.sby · Mask 여덟 dup_on_started_rekey · cap_first_event ·
@@ -595,7 +599,10 @@ _MAX_STRUCTURAL_RESIDUAL = 1
                        # 숨기는 것보다 낫지만, **늘어도 되는 것은 아니다.**
                        # 줄이는 길은 그 축을 실제로 재고 칸을 _NOTHING_LEFT 로
                        # 바꾸는 것뿐이다.
-_MIN_EVIDENCED = 180   # 실행 증거로 뒷받침된 앵커 수. 줄지 않는다.
+_MIN_EVIDENCED = 183   # 실행 증거로 뒷받침된 앵커 수. 줄지 않는다.
+                       # 180 → 183 (2026-10-12, 3.10 v1.0 묶음의 RTL 파도 W2 착지 — 실측 183/183 신선:
+                       # hiumask.sby PROVES 셋(XlateObs.verdict_latch · latch_clears_on_leave · latch_one_value) ·
+                       # 증거 hiumask.evidence.json 재스윕(bmc · prove abc pdr assert 57 · cover 37/37))
                        #
                        # 168 → 180 (2026-10-12, 3.10 v1.0 묶음의 RTL 파도 W1 착지 — PROVES +12: hiumask.sby
                        # Platform 넷 · engine.sby Mask 여덟. 새 VERIFIES Wt64Top.hiu_shape 는 이 계수의 대상이
@@ -737,7 +744,9 @@ _PARTIAL = {
     ),
     ("Platform", "xlate_local", "rtl/formal/sby/HiuMask/hiumask.sby"): (
         "판정·값·정지 세 축 — 호스트 응답(io_hostRsp_*)이 s4 판정 비트 · 조회 "
-        "값 접기 · advance 어느 식에도 들어가지 않는다 (2026-08-31 확장)",
+        "값 접기 · advance 어느 식에도 들어가지 않는다 (2026-08-31 확장) · 판정 "
+        "래치 포착에도 들어가지 않는다 — 래치 지상 진리 f_lat 도 x_hit 에서 짓는다 "
+        "(W2 2026-10-12)",
         "① 지속 상태 불오염 축 (hostRsp 가 저장 자원 기입 콘에 부재) — "
         "**② 와 같은 이유로 오늘은 공허다.** 이 축의 강한 형태도 "
         "io_hostRsp_* 만 다른 2사본 miter 인데, 아래 실측대로 그 입력에는 "
@@ -785,14 +794,20 @@ _PARTIAL = {
     ("Isolation", "no_early_forward", "rtl/formal/sby/HiuMask/hiumask.sby"): (
         "시간축 관측형 — 값이 실리는 사이클은 거울 f_v 의 6번째 지점뿐",
         "GUARD-MAP 문면이 주장하는 「s3·s4·s5 운반 레지스터가 io.rsp 에 배선돼 "
-        "있지 않다」는 elaborate 시점 사실 자체. 관측형으로 좁혀 재고 있으며, "
+        "있지 않다」는 elaborate 시점 사실 자체 — W2 (2026-10-12) 가 같은 문면에 "
+        "「판정 래치(클래스 끝 lat)도 io.rsp 에 배선되지 않는다」를 더했고 그것도 "
+        "같은 부류(elaborate 사실)다. 관측형으로 좁혀 재고 있으며, "
         "문면을 시간축으로 개정하거나 STRUCTURAL 로 격하하는 것이 남은 결정이다 "
         "(hiumask.sby §미측정 잔여 ②)",
     ),
     ("Isolation", "query_no_serve", "rtl/formal/sby/HiuMask/hiumask.sby"): (
-        "값 축 **양 면** + 판정 축 — 로컬 적중 사이클의 값은 저장 leg 값 그 "
-        "자체이고, 로컬 *미적중* 사이클의 값은 0 · 판정 비트는 0 이다 "
-        "(캡처 등식의 우변이 XlateStore 독립 출력 x_hit — 2026-08-31 확장)",
+        "값 축 **양 면** + 판정 축 — 적중 면은 전건 x_hit ∨ f_lat(로컬이 답한 — "
+        "지금 적중이거나 판정이 래치된 — 사이클)이고 값은 로컬 판정 값 그 자체(래치면 "
+        "첫 적중 사이클의 저장 leg 값 — q_hit_frame · q_hit_perm), 미적중 면은 전건 "
+        "¬(x_hit ∨ f_lat)(판정 전 로컬 미적중)일 때 값 0 · 판정 비트 0 이다 "
+        "(q_miss_frame · q_miss_perm · e_cap_hit — 캡처 등식의 우변이 XlateStore 독립 "
+        "출력 x_hit 와 그것에서 지은 래치 지상 진리 f_lat — 2026-08-31 확장 · W2 "
+        "2026-10-12 개정). 래치를 호스트 leg 에서 포착하는 구현(MG2)은 미적중 면 q_miss_frame 이 격리에서 잡는다(전 단언에서는 d_stall_src · m_obs_* 가 먼저 — 적중 면 q_hit_* 의 MG2 실측은 없다)",
         "XlateStore 의 `io.rsp.hit` **계산** 축 — 호스트 응답이 fillHit/storeHit "
         "에 들어가지 않는다는 것. 이 태스크의 top 밖이고 XlateStore 2사본 miter "
         "몫이다 (hiumask.sby §미측정 잔여 ⑤).\n"
@@ -1095,8 +1110,9 @@ _PARTIAL = {
         "합류(a_miss_clr). 합성은 서술이다",
     ),
     ("XlateSurface", "mclr_keeps_stall", "rtl/formal/sby/HiuMask/hiumask.sby"): (
-        "파이프라인 절반 — 정지 원천 등식 advance == !io_hold && !(s3_valid && !x_hit) 이 "
-        "io_missClear 자유 입력 아래 선다 (2026-08-31 단언 · 증인 W23 · 역-변이 H1 · H1i)",
+        "파이프라인 절반 — 정지 원천 등식 advance == !io_hold && !(s3_valid && !(x_hit || f_lat)) "
+        "(d_stall_src — W2 2026-10-12: 판정 전 미적중) 이 io_missClear 자유 입력 아래 선다 "
+        "(2026-08-31 단언 · 증인 W23 · 역-변이 H1 · H1i)",
         "문 절반(0xE10 이 commit · flush 를 세우지 않는다 — XlateStaging/props.sby)과 조립 합류. "
         "세 조각의 합성은 서술이다",
     ),
@@ -1110,7 +1126,8 @@ _PARTIAL = {
     # 조립 명제(읽기가 hiu 의 해제 · 설치 · flush 입력에 닿지 않는다)라 assembly 앵커 하나로
     # 문면이 닫혀 이 표에 없다 — hiu 쪽 「해제 없이 sticky 가 내려가지 않는다」는 obs_sticky 의 몫.
     ("XlateObs", "obs_stall_live", "rtl/formal/sby/HiuMask/hiumask.sby"): (
-        "파이프라인 절반 — missStall == 조회 지점 로컬 미적중 (m_obs_stall · 증인 W19)",
+        "파이프라인 절반 — missStall == 조회 지점의 판정 전 로컬 미적중 f_v[3] ∧ ¬(x_hit ∨ f_lat) "
+        "(m_obs_stall · 증인 W19 · W29 — W2 2026-10-12)",
         "STATUS[0] 로의 포장 — Wt64Top/assembly.sby a_rd_xstatus. 합성은 서술이다",
     ),
     ("XlateObs", "obs_stall_live", "rtl/formal/sby/Wt64Top/assembly.sby"): (
@@ -1118,7 +1135,9 @@ _PARTIAL = {
         "그 핀이 *지금* 정지 중인가의 레벨이라는 것 — hiu 는 절단 핀(자유)이다. hiumask.sby m_obs_stall",
     ),
     ("XlateObs", "obs_sticky", "rtl/formal/sby/HiuMask/hiumask.sby"): (
-        "파이프라인 절반 — io_missNotice 의 차기 상태 = 정지 ∨ (sticky ∧ ¬해제) (m_sticky · 증인 W21)",
+        "파이프라인 절반 — io_missNotice 의 차기 상태 = 정지 ∨ (sticky ∧ ¬해제) — 정지는 판정 전 "
+        "미적중이다: 원시 미적중으로 set 하는 구현(MS1)은 m_sticky 가 단독으로 잡는다 (m_sticky · "
+        "증인 W21 · W29 — W2 2026-10-12)",
         "STATUS[1] 로의 포장 — assembly a_rd_xstatus. 합성은 서술이다",
     ),
     ("XlateObs", "obs_sticky", "rtl/formal/sby/Wt64Top/assembly.sby"): (
@@ -1126,7 +1145,7 @@ _PARTIAL = {
         "그 핀이 sticky 규약을 따른다는 것 — hiumask.sby m_sticky",
     ),
     ("XlateObs", "obs_part_stalled", "rtl/formal/sby/HiuMask/hiumask.sby"): (
-        "파이프라인 절반 — 정지 중 missPart = 그 요청의 파티션 (거울 f_p3 · m_obs_part · m_cap_1..3)",
+        "파이프라인 절반 — 정지(판정 전 미적중 — W2) 중 missPart = 그 요청의 파티션 (거울 f_p3 · m_obs_part · m_cap_1..3)",
         "[15:8] 로의 0 확장 포장 — assembly a_rd_xstatus. 합성은 서술이다",
     ),
     ("XlateObs", "obs_part_stalled", "rtl/formal/sby/Wt64Top/assembly.sby"): (
@@ -1134,7 +1153,7 @@ _PARTIAL = {
         "핀 값이 정지한 요청의 파티션이라는 것 — hiumask.sby m_obs_part",
     ),
     ("XlateObs", "obs_vpn_stalled", "rtl/formal/sby/HiuMask/hiumask.sby"): (
-        "파이프라인 절반 — 정지 중 missVpn = 그 요청의 VPN (거울 f_n3 · m_obs_vpn · 역-변이 H2)",
+        "파이프라인 절반 — 정지(판정 전 미적중 — W2) 중 missVpn = 그 요청의 VPN (거울 f_n3 · m_obs_vpn · 역-변이 H2)",
         "VPN 두 워드 포장(0xE08 = VPN · 0xE0C = 0) — assembly a_rd_xvpnlo · a_rd_xvpnhi. 합성은 서술이다",
     ),
     ("XlateObs", "obs_vpn_stalled", "rtl/formal/sby/Wt64Top/assembly.sby"): (
@@ -1142,7 +1161,8 @@ _PARTIAL = {
         "핀 값이 *지금* 정지한 요청의 VPN 이라는 것(첫 미적중 포착이 아니다) — hiumask.sby m_obs_vpn",
     ),
     ("XlateObs", "obs_no_residue", "rtl/formal/sby/HiuMask/hiumask.sby"): (
-        "파이프라인 절반 — 정지가 없으면 missPart · missVpn = 0 (m_obs_zero · 증인 W20 둘)",
+        "파이프라인 절반 — 정지가 없으면(판정이 래치된 요청 포함 — W2) missPart · missVpn = 0 "
+        "(m_obs_zero · 증인 W20 둘 · W29)",
         "포장이 상태 없이 핀을 싣는다는 것 — assembly a_rd_xstatus · a_rd_xvpnlo. 합성은 서술이다",
     ),
     ("XlateObs", "obs_no_residue", "rtl/formal/sby/Wt64Top/assembly.sby"): (
@@ -1434,7 +1454,7 @@ _STRUCTURAL = {
         # 부재는 XlateStore 의 사실이지만 모델 문면은 XlateStore 밖까지 말한다.
         # Isolation.tla:428-429 가 금지하는 것은 「채움이 진행 중이면 트레이스에
         # fwait 가 낀다」 = *파티션 간 타이밍 부채널*이고, 실제 정지는 이 모듈이
-        # 아니라 HiuPipeline.scala:348-349 의 missWait/advance 에 있다 (2026-09-26 재조준 — 옛 :334-335).
+        # 아니라 HiuPipeline.scala:348-349 의 missWait/advance 에 있다 (2026-09-26 재조준 — 옛 :334-335 · W2 2026-10-12: 줄은 그대로이고 missWait 의 식이 s3.valid ∧ ¬lookAny — lookAny = 판정 래치 ∨ 조회 적중).
         # 그래서 부재 증명만으로는 가드 문면이 닫히지 않는다.
         "unmeasured": (
             "파티션 간 타이밍 부채널 — 「채움이 정지를 만들지 않는다」의 단조성 "
@@ -1597,6 +1617,30 @@ _DERIVED = {
         "정본 「처분이 같다」 를 이름으로 든다. 비용은 assert 53 중 1셀 (2026-10-12 W1 착지). "
         "같은 부류의 조립층 단언 a_rd_pure 는 VERIFIES 단언이라 키가 없다 — assembly.sby 머리 "
         "「유도 단언 둘」 절이 든다",
+    ),
+    # ── 아래 둘: 3.10 v1.0 묶음 RTL 파도 W2 (2026-10-12 착지) — 판정 래치 ──
+    # 두 앵커 다 GUARD-MAP 범위가 HiuPipeline 안이고 합성 DUT 가 그것을 전부 품어 **완전** 덮임이다
+    # (_PARTIAL 에 없다). 이름 단언 둘이 유도 단언이라는 사실을 여기 적는다 — 「그 가드를 무는 이름
+    # 단언이 있다」로 읽히면 안 된다. latch_clears_on_leave 의 전 단언 반증력은 형제 q_miss_* ·
+    # d_stall_src 가 든다 (hiumask.sby §W2 역-변이 표 · W2 독립 검증 결함 6).
+    ("XlateObs", "latch_clears_on_leave", "rtl/formal/sby/HiuMask/hiumask.sby"): (
+        "l_clear (떠나는 에지 직후 사이클의 판정은 그 요청 자신의 조회값뿐)",
+        "d_stall_src · q_hit_* · q_miss_* 를 직전 에지가 전진인 사이클로 좁힌 사영이다 — 그 사이클에는 "
+        "지상 진리 f_lat 이 비어 있다. 독립 반증력 0 (전 단언 bmc 에서는 MC1 · MC1b · MC2 · MC3 을 형제 "
+        "q_miss_perm 이 먼저 잡는다). 격리에서는 단독으로 운다: MC1 @6 · MC1b @7 · MC2 @6 · MC3 @6, "
+        "연속 전진 변형 하네스에서도 같다. 유지 근거는 owner_check ② 와 같다: 상수로 접히지 않고 · "
+        "형제를 지우면 반증력을 되찾는 backstop 이다. reset 값의 빈 래치는 형식 단언이 없다(W1-8 · "
+        "W2-9 이월 — 관측으로만 문다, MZ1). 비용은 assert 57 중 1셀 (2026-10-12 W2 착지)",
+    ),
+    ("XlateObs", "verdict_latch", "rtl/formal/sby/HiuMask/hiumask.sby"): (
+        "l_capture_gated (한 에지 이상 머문, 판정 없는 요청은 정지하고 값이 0)",
+        "d_stall_src · q_miss_* 를 직전 에지가 전진이 아닌 사이클로 좁힌 사영이다 — 독립 반증력 0. "
+        "격리 MG1 · MG2 · MQ1 @6. HIU-3 짝 「포착은 유효 게이트된 적중에서만」을 이름으로 든다 — "
+        "그 축의 반증력은 d_stall_src · q_miss_* 가 들고, RTL 의 유효 게이트 실물은 XlateStore 의 "
+        "hit 이 lookup.valid 를 곱하는 자리다(latCapture 의 s3.valid 항은 관측 동치 — hiumask.sby "
+        "§W2 동치 변이 M13). HIU-3 정적 검사 본체는 없다(이월). 이 앵커의 나머지 이름 단언 "
+        "(d_stall_src · l_hold · q_hit_*)은 독립 반증력을 갖는다. 비용은 assert 57 중 1셀 "
+        "(2026-10-12 W2 착지)",
     ),
 }
 

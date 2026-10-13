@@ -67,6 +67,12 @@ DUT 는 `rtl/generated/Wt64Top.sv` (형상 A, `Wt64Config()` 기본값 —
     `[4]`/`[19]` 의 원인별 보고와 `0xF84` 예약 `[31:20]` 엄격
     (`fault19_nonowned_access`). 기대값은 정본 표에서 유도한다 — RTL 상수를
     import 하지 않는다 (파일 끝 W1 절 머리).
+  · **판정 래치** (W2 — 같은 묶음의 둘째 하위 파도) — 미적중 정지를 커밋이 풀고 요청이 하류
+    hold 로 조회 지점에 머무는 동안 같은 칸의 다른 VPN 커밋이 그 항목을 밀어내도 다시
+    미적중하지 않고 그 커밋 항목으로 승인된다(`xlate_released_judgment_survives_eviction`).
+    판정이 래치된 요청은 hold 중의 V=0 COMMIT · flush · 대체 커밋을 건너 래치된 값으로 승인되고,
+    그 에지 뒤에 판정된 요청만 철회 · 대체를 본다 · 떠난 요청의 판정을 다음 요청이 물려받지
+    않는다(`xlate_latched_hit_survives_retire`). 칸 고르기 하나가 화이트박스다 (파일 끝 W2 절 머리).
   · **입력 포트 정의역** — `zero_inputs` 가 생성물 머리의 입력 포트 집합과
     `SHAPE_INPUTS`(+ `io_faultClear_*`)를 매 부팅 기계로 대조한다. 포트가 늘거나
     줄면 전 시험이 크게 죽는다 (Mask `generated_input_ports()` 의 Shape 판).
@@ -2125,3 +2131,440 @@ async def fault19_nonowned_access(dut):
     assert got == (1, 0), f"자격 거부 접근 뒤 (hiuPerm, hiuOwn) = {got} ≠ (1, 0)"
     dut._log.info(f"원인별 보고: reset 1 행 + 접근 {len(N14_CASES)} 행(적중 · 채움 경로) + sticky/0xF84/"
                   f"0xF88 {len(rows) - len(N14_CASES) - 1} 행이 정본과 등가 · 원천별 수출 hiuOwn/hiuPerm 확인")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# W2 — 판정 래치: 판정은 그 요청이 조회 지점을 떠날 때까지 산다 (N8 · N9)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# 3.10 v1.0 묶음 RTL 파도의 둘째 하위 파도. 선-formal 은 rtl/formal/tla/XlateObs.tla 의 판정
+# 래치 절(가드 verdict_latch · latch_clears_on_leave · latch_one_value), 후-formal 은 hiumask
+# 하네스다. 여기는 그 결과가 호스트 쪽 문(0xC00 기입 · 0xE04 관측)과 HIU 요청 경로의 응답
+# 값으로 나타나는지를 잰다. 정본 (같은 줄 축자):
+#   03-hiu.typ:734 「처음 적중한 사이클이다」 — 판정 시점
+#   03-hiu.typ:735 「요청이 조회 지점을 떠날 때까지 유지되고, 그 뒤의 커밋 · flush 는 그 요청의」
+#   03-hiu.typ:737 「같은 값으로 쓰인다」 — 승인 단 소유권 조회 주소와 마스킹 입력 프레임
+#   03-hiu.typ:738 「판정 래치는 경로를 가르지 않는다」
+#   03-hiu.typ:741 「수락되면 풀리고, 그 커밋 항목으로 판정된다」
+#   03-hiu.typ:742 「전에 다른 커밋이 그 항목을 밀어내도 다시 미적중하지 않는다」
+#   03-hiu.typ:754 「조회 지점 뒤의 단이 배압으로 서 있으면 풀린 요청이 조회 지점에 머물고」
+#   03-hiu.typ:755 「사이에 같은 파티션의 다른 커밋이 그 칸을 덮으면 요청은」 — 반례의 몸
+#   03-hiu.typ:763 「한 단이라도 저장 블록을 다시 읽으면 한 요청이 두」
+#   03-hiu.typ:1323 「조회에만 효력이 있다」 — V=0 COMMIT · flush 의 효력 범위
+#   03-hiu.typ:1324 「스냅샷을 들고 끝까지 간다」
+#   e-defined.typ:310 「풀린 그 요청은 그 커밋 항목으로 판정되고」 — 결과 (d)
+#   e-defined.typ:310 「효력은 그 커밋 에지 뒤에 판정되는 조회에만 미친다 — 그 전에 판정이 래치된 요청은 래치된 판정으로 끝까지 간다」 — 결과 (a)
+#
+# 기대값은 위 문장과 이 시험이 쓴 값(프레임 · 권한 · 소유)에서 유도한다 — RTL 의 래치 신호를 보지
+# 않는다(포트 계약만: io_hiuHold · io_hiuReq · io_hiuRsp · io_phys · io_hostRsp · 0xE04 · FAULT_STATUS).
+# 판정 = 03-hiu.typ:734 「그 판정(적중 · 프레임 · 권한)은」 — 응답 칸의 승인 · 값 · 권한(io_hiuRsp_perm —
+# 승인일 때만 실린다)이 그것이다. **예외 하나 — 응답의 fromFill 칸은 정본 밖이다.** 정본 전체에 fromFill
+# 은 없다 — RTL 진단 포트다. 그 기대(판정이 채움 바이패스 사이클의 것이면 1)는 RTL 진단 계약(GUARD-MAP
+# verdict_latch · latch_one_value 의 「fromFill 도 같은 래치」)에서 온다. 판정 값의 칸이 아니다.
+#
+# **화이트박스 하나 (N8):** 같은 칸을 다투는 VPN 둘을 고르는 것은 오늘 문의 형상 지식이다 —
+# 직접 사상 · 색인 = VPN[3:0] (위 `vpn_of`), 같은 (파티션, 색인)의 다른 태그가 그 칸을 덮는다
+# (위 xlate_adjacent_hi_stalls_then_commits 의 「tagA 덮임」). 형상 비노출 문(W3)에서는 호스트가
+# 어느 VPN 둘이 한 칸을 다투는지 모른다 — 그 판에서 고르기는 헬퍼(`entry_ops` · `install_entry`)와
+# 함께 바뀐다. 시험은 축출이 실제로 일어났는지를 끝에서 전건으로 확인한다(B 적중 · A 미적중).
+#
+# **타이밍 (N8):** RTL 에서 가능한 반례의 꼴은 hold ≥ 2 사이클 뒤의 경쟁 커밋이다 — HI(A) 수락
+# C → C+1 채움 바이패스 적중(정지 해제 · hold 로 조회 지점에 머묾 · 채움 슬롯 해제) → C+2 같은
+# 칸의 다른 VPN HI(B) 수락(채움 슬롯이 비어 정지 없음) → C+3 채움 가림으로 A 가 안 보인다.
+# 모델의 BFS 최단 반례(축출을 첫 적중 사이클 끝 에지에 둔다)는 RTL 에서 그 에지가 같은 파티션
+# 커밋을 받지 않으므로(채움 슬롯 점유) 그대로는 재현되지 않는다 (XlateObs.tla 머리 「원자성」 2).
+# `mmio_burst` 의 인접 구동과 정지 계수 [0, 0, 0, 0] 이 C · C+2 를 못박는다.
+
+
+def entry_ops(part, idx, tag, frame, v=1, r=1, w=0, x=0):
+    """`install_entry` 와 같은 기입 열(오늘 문 — LO 스테이징 · HI 커밋)을 `mmio_burst` 용
+    (주소, 데이터) 목록으로 낸다. 문이 바뀌면(W3) `install_entry` 와 함께 바뀐다."""
+    return [(xent(part, idx), frame), (xent(part, idx) + 4, hi_word(tag, v=v, r=r, w=w, x=x))]
+
+
+async def set_hold(dut, v):
+    """하류 배압 `io_hiuHold` — 파이프 전체가 함께 선다(advance 하강). 같은 사이클에 정착한다."""
+    dut.io_hiuHold.value = v
+    await settle(dut)
+
+
+async def present_seq(dut, reqs, hold_at_s3=False, write=0):
+    """요청 열(`write` — 전부 읽기 또는 전부 쓰기)을 **인접** 제시한다 — 첫 요청의 접수 엣지 바로
+    다음 사이클에 둘째 요청.
+
+    돌아올 때 첫 요청은 조회 지점(s3)에 막 닿은 사이클에 있다 — 접수 뒤 `MISS_LEAD` 엣지(위
+    실측 상수; 파이프 깊이가 바뀌면 `assert_miss` 가 먼저 크게 깨진다). `hold_at_s3` 이면 그
+    사이클의 엣지 전에 hold 를 올린다 — 첫 요청이 *첫 적중 사이클*에 떠나지 못한다(판정이
+    래치되는 자리). 둘째 요청은 그때 s2 에 있고, 첫 요청이 떠나는 *그* 에지에 조회 지점에 든다.
+    """
+    assert 1 <= len(reqs) <= MISS_LEAD + 1, "present_seq: 첫 요청이 s3 에 닿기 전에 다 들어가야 한다"
+    for i, (part, vpn) in enumerate(reqs):
+        dut.io_hiuReq_part.value = part
+        dut.io_hiuReq_vpn.value = vpn
+        dut.io_hiuReq_write.value = write
+        dut.io_hiuReq_valid.value = 1
+        await settle(dut)
+        assert int(dut.io_hiuReq_ready.value) == 1, (
+            f"present_seq: 요청 {i} 의 접수 사이클에 ready = 0 — 파이프에 앞 요청이 남아 있다")
+        await step(dut)                                      # 접수 엣지
+    dut.io_hiuReq_valid.value = 0
+    dut.io_hiuReq_write.value = 0
+    await step(dut, MISS_LEAD - (len(reqs) - 1))             # 첫 요청이 조회 지점에 닿는다
+    if hold_at_s3:
+        await set_hold(dut, 1)
+
+
+def rwx(r, w, x):
+    """권한 칸 — `R`·`W`·`X` 가 선 자리만 글자, 나머지 `-` (행 표에서 읽히게)."""
+    return ("R" if r else "-") + ("W" if w else "-") + ("X" if x else "-")
+
+
+async def collect_rsp(dut, window):
+    """`window` 사이클 동안 응답을 거둔다 — 응답마다 (사이클, 승인, phys, 값, fromFill, 권한).
+    권한은 응답의 io_hiuRsp_perm_r/w/x 다 — 승인일 때만 실리고 거부면 `---` (값 게이트).
+    사이클은 부른 사이클이 0 이다 (`wait_rsp` 의 `wait` 와 같은 셈)."""
+    got = []
+    for n in range(window):
+        await settle(dut)
+        if int(dut.io_hiuRsp_valid.value):
+            got.append((n, int(dut.io_hiuRsp_granted.value), int(dut.io_phys_valid.value),
+                        int(dut.io_phys_frame.value), int(dut.io_hiuRsp_fromFill.value),
+                        rwx(int(dut.io_hiuRsp_perm_r.value), int(dut.io_hiuRsp_perm_w.value),
+                            int(dut.io_hiuRsp_perm_x.value))))
+        await step(dut)
+    return got
+
+
+def flat_rsp(got):
+    """행 표 칸 — (응답 수, 응답마다 사이클 · 승인 · phys · 값 · fromFill · 권한 …)."""
+    return (len(got),) + tuple(x for r in got for x in r)
+
+
+def host_leg(dut, v, frame=0):
+    """호스트 응답 leg(io_hostRsp_*)을 세우거나 내린다 — 판정 · 값 · 정지 어느 축에도 들지 않는
+    의도된 미결선 입력이다(GUARD-MAP Isolation.query_no_serve · Platform.xlate_local). 세울 때는
+    비0 프레임과 RWX 전부 — 새면 승인된 오값 · 권한으로 드러난다."""
+    dut.io_hostRsp_valid.value = v
+    dut.io_hostRsp_frame.value = frame if v else 0
+    dut.io_hostRsp_perm_r.value = v
+    dut.io_hostRsp_perm_w.value = v
+    dut.io_hostRsp_perm_x.value = v
+
+
+N8_IDX_C, N8_TAG_C, N8_FC = 9, 0x00C8C03, 0x0000_3CC3   # 대조 — 저장 적중 요청
+N8_TAG_B, N8_FB = 0x00B8B02, 0x0000_3B82                 # 경쟁 커밋 — 같은 (파티션, 색인)의 다른 VPN
+N8_FH = 0x0000_3E05                                      # 호스트 응답 leg 의 프레임 (장치 소유 — 새면 승인된 오값)
+# (이름, 파티션, 색인, 태그, 프레임, 정지를 푸는 커밋 뒤에 잇는 기입, 그 열의 정지 계수 기대)
+#   프레임은 전부 OWN_SET 한다 — 소유권 표 직접 사상 슬롯(하위 6b)이 서로 겹치지 않게 골랐다.
+N8_CASES = [
+    ("경쟁 커밋 — C+2 에 같은 칸의 다른 VPN B", 1, 6, 0x00A8A01, 0x0000_3A41,
+     entry_ops(1, 6, N8_TAG_B, N8_FB), (0, 0, 0, 0)),
+    ("flush(p) — C+1 = 풀린 첫 적중 사이클의 끝 에지", 2, 6, 0x00A8A04, 0x0000_3D04,
+     [(XCTL_FLUSH, 2)], (0, 0, 0)),
+]
+N8_HOLD_MORE = 16
+
+
+@cocotb.test()
+async def xlate_released_judgment_survives_eviction(dut):
+    """N8 — 풀린 판정은 축출을 건너 산다 (결과 (d) · 판정 시점과 판정 래치).
+
+    반례 그대로: R(p, A) 미적중 정지 → 하류 hold 를 올린다 → A 의 커밋이 정지를 풀고 R 은 hold 로
+    조회 지점에 머문다 → 같은 파티션의 축출이 A 를 밀어낸다 → hold 를 놓는다. 정본은 R 이 다시
+    미적중하지 않고 *A 의 커밋 항목으로* 승인된다고 적는다. 축출 원인은 정본이 이름한 둘이다
+    (e-defined.typ:312 「장치는 축출을 같은 파티션에 대한 호스트 COMMIT 과 flush 의 결과로만 한다」):
+      · 경쟁 커밋 — RTL 에서 가장 이른 꼴. HI(A) 수락 C → C+1 채움 바이패스 적중(풀림) → C+2 같은
+        칸의 다른 VPN HI(B) 수락 → C+3 채움 가림 (위 W2 절 머리 「타이밍」)
+      · flush(p) — flush 는 채움 슬롯을 기다리지 않으므로 풀린 첫 적중 사이클 C+1 에 수락되고 그
+        끝 에지(= 래치 포착 에지)에 A 의 진행 중 채움 줄과 유효 비트를 함께 지운다. 모델의 BFS 최단
+        꼴(첫 적중 사이클 끝 에지의 철회)이 RTL 에서 서는 경로다 — 판정은 그 에지 *앞* 사이클에
+        났으므로 정본상 산다(e-defined.typ:310 「효력은 그 커밋 에지 뒤에 판정되는 조회에만 미친다」).
+        판정 시점이 첫 적중 사이클이라는 것(늦은 포착이 아니라는 것)을 값으로 가르는 행이다
+
+    재는 것 (행 표 — 끝에 통째로 등가 비교):
+      · 대조 — 저장 적중 요청을 첫 적중 사이클에 hold 로 잡았다 놓으면 놓은 뒤 `w_ref` 사이클에
+        승인된다. `w_ref` = 래치가 끼지 않는 적중 조회의 길이 − `MISS_LEAD` (같은 실행의 실측)
+      · 사례마다: 전건 — 정지 중 관측면이 R 을 말한다 (`[0]` · `[1]` · 파티션 · VPN) · 버스트가 정지
+        없이 인접 수락된다(HI(A) 가 C — 계수가 C+1 · C+2 를 못박는다) · `[6]` 0 · 축출 뒤 hold 중 관측면
+        `[0]` = 0 (재미적중 없음) — 정지 해제 뒤 `0xE10` 해제가 sticky `[1]` 을 내리고 다시 서지 않는다
+        (sticky set 이 정지 레벨이므로 재미적중이면 남는다). 16 사이클 뒤에도 같다 · hold 를 놓으면
+        R 이 놓은 뒤 `w_ref` 사이클에(대조와 같은 상태열 — 판정 래치는 경로를 가르지 않는다) A 의
+        프레임 · 권한(R--)으로 승인된다 · fromFill = 1 — **정본 밖** 칸이다(W2 절 머리 「예외 하나」:
+        RTL 진단 계약 — GUARD-MAP verdict_latch · latch_one_value 의 fromFill 래치. 판정이 채움 바이패스
+        적중 사이클의 것) · 응답 뒤 관측면 0 · `[4]` · `[19]` · `[6]` = 0
+      · 사례마다 hold 를 올린 뒤부터 응답까지 **호스트 응답 leg(io_hostRsp — 장치 소유 비0 프레임 ·
+        RWX)을 세워 둔다.** 정지를 푸는 것도 판정을 짓는 것도 항목 기입뿐이다
+        (e-defined.typ:889 「정지를 푸는 것은 2항의 항목 기입뿐이다」 — 정지를 풀린 요청의 판정도
+        03-hiu.typ:741 「수락되면 풀리고, 그 커밋 항목으로 판정된다」) — 래치를 호스트 leg 에서 포착하는 구현은 첫 관측 행(정지가 사라진다)과 응답 행(그 프레임)에서 운다
+      · 래치가 선 hold 중에 `0xF84` W1C(`[4]` · `[19]`, 둘 다 0 인 채)를 한 번 쓴다 — 판정은 요청이
+        떠날 때까지 산다(03-hiu.typ:735 「요청이 조회 지점을 떠날 때까지 유지되고」) · 해제가 래치를 비우는
+        구현은 「hold 더」 행(재미적중)에서 운다
+      · 끝의 전건(표 대조 뒤): 경쟁 커밋 사례 — B 는 B 의 프레임으로 적중하고 A 는 미적중 · flush
+        사례 — A 는 미적중(진행 중 채움 줄까지 지워졌다). 축출이 실제로 일어났다
+
+    재지 않는 것: C+3 이후의 경쟁 커밋(가장 이른 꼴 하나만 — 래치는 그 뒤 에지마다 같은 값을 든다) ·
+    호스트 leg 이 *먼저* 서 있다가 정지가 오는 순서 · IO 해제선 io_faultClear_hiuPerm(W1C 와 같은 hiu
+    해제로 합류 — 합류 자체는 조립층 몫) · 권한 필드의 래치(경쟁 커밋 B 의 권한이 A 와 같다 — N9 의 권한 행) ·
+    V=0 COMMIT 축출(채움 슬롯 때문에 C+2 가 가장 이르다 — N9 가 저장 적중 래치로 잰다) · flush 와 같은
+    사이클의 채움 *거절* 창(어느 모델에도 없다 — model_feedback) · 동시에 정지하는 조회 지점 여럿(형상
+    밖) · 호스트 ABI 층위(조회는 내부 포트 io.hiuReq) · reset 의 래치 비움(형식 단언 이월 W2-9).
+    HEAD(9b6eee6) 생성물에서는 축출 뒤(C+3 의 채움 가림 · C+2 의 flush 된 칸)부터 R 이 다시 미적중해
+    관측면이 R 을 다시 말하고(`0xE10` 해제도 sticky 를 못 내린다) hold 를 놓아도 응답이 없을 것으로
+    예상한다.
+    """
+    await boot_hiu(dut)
+    for f in (N8_FC, N8_FB, N8_FH, *(c[4] for c in N8_CASES)):
+        await mmio_write(dut, OWN_SET, f)
+    rows, want = [], []
+
+    # 기준 — 래치가 끼지 않는 적중 조회(hold 없음)의 길이.
+    pc = N8_CASES[0][1]
+    vc = vpn_of(N8_TAG_C, N8_IDX_C)
+    await install_entry(dut, pc, N8_IDX_C, N8_TAG_C, N8_FC)
+    ref = await hiu_lookup(dut, pc, vc)
+    assert_hit(ref, N8_FC, "기준 — 저장 적중")
+    w_ref = len(ref["trace"]) - MISS_LEAD
+    dut._log.info(f"실측: 적중 조회 접수 → 응답 {len(ref['trace'])} 사이클 · 조회 지점 도달 MISS_LEAD "
+                  f"{MISS_LEAD} · 조회 지점 → 응답 {w_ref}")
+
+    lbl = "대조 — 저장 적중을 첫 적중 사이클에 hold 로 잡았다 놓음 · 응답"
+    await present_seq(dut, [(pc, vc)], hold_at_s3=True)
+    await step(dut, N8_HOLD_MORE)
+    await set_hold(dut, 0)
+    rows.append((lbl, *flat_rsp(await collect_rsp(dut, 12))))
+    want.append((lbl, 1, w_ref, 1, 1, N8_FC, 0, "R--"))
+
+    for name, p, idx, tag, fa, evict, stall_want in N8_CASES:
+        va = vpn_of(tag, idx)
+        res = await hiu_lookup(dut, p, va)
+        assert_miss(dut, res, f"{name} — R(p, A) 빈 칸")           # 정지 (ready 표본열 등식)
+        await set_hold(dut, 1)
+        host_leg(dut, 1, N8_FH)                                     # 응답까지 세워 둔다 (머리 「재는 것」)
+        lbl = f"{name} · 정지한 R — hold · 호스트 leg 을 올린 뒤 관측면 (STATUS, VPN, VPN_HI)"
+        rows.append((lbl, *await read_obs(dut)))
+        want.append((lbl, xstatus_word(1, 1, p), va, 0))
+        stalls = await mmio_burst(dut, entry_ops(p, idx, tag, fa) + evict)
+        lbl = f"{name} · LO(A) · HI(A) 수락 C · 뒤 기입 인접 — 정지 계수"
+        rows.append((lbl, *stalls))
+        want.append((lbl, *stall_want))
+        lbl = f"{name} · 버스트 뒤 [6] (적법한 기입뿐)"
+        rows.append((lbl, await fault6(dut)))
+        want.append((lbl, 0))
+        await mmio_write(dut, XCTL_MISS_CLEAR, 1)
+        lbl = f"{name} · 축출 뒤 hold 중 · 0xE10 해제 뒤 관측면 — 재미적중 없음"
+        rows.append((lbl, *await read_obs(dut)))
+        want.append((lbl, 0, 0, 0))
+        await mmio_write(dut, FAULT_CLEAR, (1 << B_XLATE_PERM) | (1 << B_OWN_FRAME))   # 해제는 판정을 안 비운다
+        await step(dut, N8_HOLD_MORE)
+        lbl = f"{name} · 0xF84 [4]·[19] W1C · hold {N8_HOLD_MORE} 사이클 더 — 관측면 · io_fault_hiuMiss"
+        rows.append((lbl, *await read_obs(dut), int(dut.io_fault_hiuMiss.value)))
+        want.append((lbl, 0, 0, 0, 0))
+        await set_hold(dut, 0)
+        lbl = f"{name} · hold 해제 — R 의 응답 (수, 사이클, 승인, phys, 값, fromFill, 권한)"
+        rows.append((lbl, *flat_rsp(await collect_rsp(dut, 12))))
+        want.append((lbl, 1, w_ref, 1, 1, fa, 1, "R--"))
+        host_leg(dut, 0)
+        b4, b19, b6 = await hiu_report(dut)
+        lbl = f"{name} · 응답 뒤 관측면 · [4] · [19] · [6]"
+        rows.append((lbl, *await read_obs(dut), b4, b19, b6))
+        want.append((lbl, 0, 0, 0, 0, 0, 0))
+        if int(dut.io_hiuReq_ready.value) == 0:
+            # 음성 대조의 기록을 잇기 위한 회복 — R 이 다시 미적중한 채 남았다(위 행이 이미 그것을
+            # 적었다). A 를 다시 커밋해 풀어 다음 사례가 빈 파이프에서 시작하게 한다. 정본대로인
+            # 생성물에서는 이 가지가 돌지 않는다(위 행이 정지 0 을 요구한다).
+            await install_entry(dut, p, idx, tag, fa)
+            await wait_rsp(dut)
+
+    assert rows == want, (
+        "풀린 판정이 축출을 건너 살지 못했다 (결과 (d) · 판정 래치) — 행 표가 정본과 다르다:\n"
+        + table_diff(rows, want))
+
+    # 전건 — 축출이 실제로 일어났다. 경쟁 커밋: B 가 그 칸에 있고 A 는 없다 (A 의 미적중 정지는 A 를
+    # 다시 커밋해 푼다). flush: A 는 없다 (진행 중 채움 줄까지 지워졌다).
+    (_, p1, i1, t1, f1, _, _), (_, p2, i2, t2, _, _, _) = N8_CASES
+    assert_hit(await hiu_lookup(dut, p1, vpn_of(N8_TAG_B, i1)), N8_FB, "경쟁 커밋 B 의 VPN")
+    assert_miss(dut, await hiu_lookup(dut, p1, vpn_of(t1, i1)), "B 에 밀려난 A 의 VPN (반례 전건)")
+    await install_entry(dut, p1, i1, t1, f1)
+    r = await wait_rsp(dut)
+    assert r["rsp"] == 1 and r["frame"] == f1, f"A 재커밋이 전건 확인의 정지를 풀지 못했다 ({r})"
+    assert_miss(dut, await hiu_lookup(dut, p2, vpn_of(t2, i2)), "flush 된 A 의 VPN (반례 전건)")
+    dut._log.info(f"정지 → A 커밋이 풀고 hold 로 머묾 → C+2 경쟁 커밋 · C+1 flush 가 A 를 밀어냄 → 재미적중 "
+                  f"없음 · 놓은 뒤 {w_ref} 사이클에 A 의 프레임으로 승인 (대조와 같은 상태열) · 축출 전건 확인")
+
+
+# ── N9 — 래치된 판정과 철회(V=0 COMMIT · flush) · 대체 커밋의 효력 범위 ─────────────
+#
+# 행마다 같은 (파티션, VPN) 의 요청 둘 R1 · R2 를 인접 제시하고, R1 이 조회 지점에 닿은 첫 적중
+# 사이클에 hold 를 올린다 — R1 의 판정은 그 사이클의 것(저장 적중 · 프레임 FA)이다. hold 중에
+# 철회 · 대체를 하고 hold 를 놓는다. R2 는 그때 s2 에 있다가 R1 이 떠나는 *그* 에지에 조회 지점에
+# 들므로 철회 · 대체 에지 *뒤에* 판정된다 — 정본이 가르는 두 요청이 한 줄에 선다. 철회 행에서
+# R2 는 미적중으로 정지하고(정지는 파이프 전체를 세운다 — 앞선 R1 도 그동안 선다) 채움 커밋(FC)이
+# 그것을 푼다. 대체 행의 새 프레임 FB 는 호스트 소유로 둔다 — 그래서 R2(FB 로 판정)는 값 차단 +
+# `[19]` 이고, 어느 단이든 R1 의 판정 대신 저장 블록을 다시 읽으면 R1 의 소유권 조회가 FB 를 보아
+# 승인이 무너진다 (한 요청 한 값 — 03-hiu.typ:763 「한 단이라도 저장 블록을 다시 읽으면 한 요청이 두」).
+# 철회는 두 시각에 둔다 — 포착 뒤(hold 두 사이클 뒤)와 *포착 에지 자체*(R1 의 첫 적중 사이클에 기입을
+# 실어 그 끝 에지에 수락 — 저장 적중의 칸은 채움 슬롯이 비어 V=0 도 기다리지 않는다). 둘째가 판정
+# 시점이 첫 적중 사이클이라는 것을 값으로 가른다: 판정은 그 에지 *앞* 사이클에 났으므로 산다.
+# 마지막 행은 hold 없는 대조다 — 적중 R1 은 첫 적중 에지에 떠나고 그 에지에 미적중 R2 가 든다.
+# 권한 행의 대체는 *권한만* 바꾸고(같은 프레임 FA · A 의 권한 -WX → B 의 R--) R1 · R2 가 쓰기
+# 요청이다 — 자격(쓰기는 W)이 래치된 권한을 보는지 새 권한을 보는지가 승인 · `[4]` 로 갈리고, 응답의
+# 권한 칸이 R · W · X 각 필드의 래치를 값으로 가른다 (판정의 셋째 칸 — 03-hiu.typ:734 「그 판정(적중 · 프레임 · 권한)은」).
+
+N9_FA = 0x0000_5104      # OWN_SET — 래치될 판정의 프레임
+N9_FC = 0x0000_5245      # OWN_SET — 철회 뒤 채움 커밋의 프레임
+N9_FD = 0x0000_5487      # OWN_SET — hold 없는 행의 채움 프레임
+N9_FB = 0x0000_5386      # 넘기지 않는다(호스트 소유) — 대체 커밋의 새 프레임. 슬롯(하위 6b)이 위 셋과 다르다
+
+# (이름, 파티션, 색인, 태그, 철회 종류, 포착 에지와 같은 에지인가)
+N9_CASES = [
+    ("대조 — hold 중 철회 없음", 0, 2, 0x0090002, None, False),
+    ("V=0 COMMIT — 포착 뒤", 1, 3, 0x0090003, "v0", False),
+    ("flush(p) — 포착 뒤", 2, 4, 0x0090004, "flush", False),
+    ("같은 VPN 재커밋(대체) — 새 프레임은 호스트 소유", 3, 5, 0x0090005, "replace", False),
+    ("같은 VPN 재커밋(대체) — 권한만 바뀜(-WX → R--) · 쓰기 요청 둘", 3, 6, 0x0090006, "perm", False),
+    ("V=0 COMMIT — 포착 에지와 같은 에지", 1, 10, 0x009000A, "v0", True),
+    ("flush(p) — 포착 에지와 같은 에지", 2, 11, 0x009000B, "flush", True),
+]
+N9_NOHOLD = ("hold 없음 — 적중 R1 은 첫 적중 에지에 떠나고 미적중 R2 가 그 에지에 든다",
+             0, 7, 0x0090007, 8, 0x0090008)
+
+
+async def n9_clean(dut, what):
+    """행 사이 정리 — 미적중 sticky · [4] · [19] 를 내리고 파이프가 비었는지 본다."""
+    if int(dut.io_fault_hiuMiss.value):
+        await mmio_write(dut, XCTL_MISS_CLEAR, 1)
+    f = await mmio_read(dut, FAULT_STATUS)
+    for b in (B_XLATE_PERM, B_OWN_FRAME):
+        if bit(f, b):
+            await mmio_write(dut, FAULT_CLEAR, 1 << b)
+    got = (*(await hiu_report(dut)), int(dut.io_fault_hiuMiss.value), int(dut.io_hiuReq_ready.value))
+    assert got == (0, 0, 0, 0, 1), (
+        f"[{what}] 앞 정리: ([4], [19], [6], hiuMiss, ready) = {got} ≠ (0, 0, 0, 0, 1) — 앞 행의 "
+        f"잔재(정지 · sticky)가 남았다")
+
+
+@cocotb.test()
+async def xlate_latched_hit_survives_retire(dut):
+    """N9 — 래치된 판정은 철회 · 대체를 건너 그 요청과 함께 끝까지 간다 (3.7.2 철회의 효력 범위 ·
+    결과 (a)(b) 의 「그 에지 뒤에 판정되는」 한정 · 판정 래치의 한 값).
+
+    재는 것 (행 표 — 끝에 통째로 등가 비교, 위 「N9」 절의 자극):
+      · 대조 — 철회 없이 hold 를 놓으면 R1 · R2 가 놓은 뒤 `w_ref` · `w_ref`+1 사이클에 FA 로 승인
+        (응답마다 권한 칸 — 승인이면 그 판정의 권한, 거부면 `---`)
+      · V=0 COMMIT · flush(p) — 포착 뒤 · 포착 에지와 같은 에지 둘 다 — hold 중 관측면 `[0]` = 0 ·
+        `[1]` = 0 (래치된 R1 은 정지가 아니다).
+        놓으면 R2 가 그 에지 뒤에 판정돼 미적중 정지(관측면이 R2 의 (p, VPN))하고 응답이 없다.
+        채움 커밋(FC)이 R2 를 풀면 R1 은 *래치된* FA 로(fromFill 0 — 저장 적중의 판정), R2 는 FC 로
+        (fromFill 1) 승인된다 — 사이클은 정지 하나를 채움이 푸는 기준 경로(`w_fill`)와 같은 셈
+      · 대체(같은 VPN · 새 프레임 FB, 호스트 소유) — R1 은 FA 로 승인 · R2 는 FB 로 판정돼 값 차단
+        (승인 0 · 값 0) + `[19]`
+      · 권한만 바뀌는 대체(같은 VPN · 같은 프레임 FA · 권한 -WX → R--)와 쓰기 요청 둘 — R1 은 래치된
+        권한으로 승인되고(응답 권한 `-WX`) R2 는 새 권한(W = 0)으로 판정돼 자격 거부(승인 0 · 값 0 ·
+        권한 `---`) + `[4]`. 자격이 래치 아닌 저장 시야의 W 를 보거나(R1 거부) W 래치가 R 을 잡거나
+        (R1 거부) 어느 권한 필드가 래치를 안 타면(응답 권한 칸) 이 행이 운다
+      · hold 없음 대조 — R1 이 첫 적중 에지에 떠나면 판정은 R1 과 함께 나가고 같은 에지에 든 미적중
+        R2 는 자기 조회로 정지한다(물려받지 않는다). 채움(FD)이 R2 를 풀면 R1 FA · R2 FD
+      · 행마다 끝 `[4]` · `[19]` · `[6]` (대체 행만 `[19]` = 1 · 권한 행만 `[4]` = 1) · 철회 · 대체 기입
+        뒤 `[6]` = 0
+
+    재지 않는 것: 대체가 포착 에지와 같은 에지인 꼴(대체는 LO · HI 두 기입이라 한 에지에 싣지
+    못한다 — 같은 에지는 철회 둘이 잰다) · 다른 파티션 flush 의 무효과(flush 범위는
+    xlate_flush_then_miss) · 드레인 관측면으로 「완전한 철회」를 재는 것(관측면 미배선 — 이월) ·
+    권한 행 밖의 쓰기 요청 · reset 의 래치 비움(이월 W2-9). HEAD(9b6eee6) 생성물에서는 V=0 · flush
+    행에서 R1 이 hold 중 다시 미적중하고(관측면 `[0]` = 1) 채움 커밋의 FC 로 판정되며, 대체 행 · 권한
+    행에서 R1 이 떠나는 시점의 저장 시야(FB · R--)로 판정돼 승인이 무너질 것으로 예상한다.
+    """
+    await boot_hiu(dut)
+    for f in (N9_FA, N9_FC, N9_FD):
+        await mmio_write(dut, OWN_SET, f)
+    rows, want = [], []
+
+    # 기준 둘 — 정지 하나를 채움이 푸는 경로(`w_fill`, 채움 기입이 돌아온 사이클부터) · 래치가
+    # 끼지 않는 적중 조회의 길이(`w_ref` = 조회 지점 → 응답).
+    rp, ri, rt = 0, 1, 0x0090001
+    assert_miss(dut, await hiu_lookup(dut, rp, vpn_of(rt, ri)), "기준 — 빈 칸")
+    await install_entry(dut, rp, ri, rt, N9_FA)
+    r = await wait_rsp(dut)
+    assert r["rsp"] == 1 and r["granted"] == 1 and r["frame"] == N9_FA, f"기준 채움이 정지를 풀지 못했다 ({r})"
+    w_fill = r["wait"]
+    ref = await hiu_lookup(dut, rp, vpn_of(rt, ri))
+    assert_hit(ref, N9_FA, "기준 — 저장 적중")
+    w_ref = len(ref["trace"]) - MISS_LEAD
+    dut._log.info(f"실측: 채움 기입 → 응답 {w_fill} 사이클 · 조회 지점 → 응답 {w_ref} 사이클")
+
+    for name, p, idx, tag, kind, at_edge in N9_CASES:
+        await n9_clean(dut, name)
+        vpn = vpn_of(tag, idx)
+        wr = int(kind == "perm")                             # 권한 행만 쓰기 요청 — 자격이 W 를 본다
+        await install_entry(dut, p, idx, tag, N9_FA, **(dict(r=0, w=1, x=1) if wr else {}))
+        await present_seq(dut, [(p, vpn), (p, vpn)], hold_at_s3=True, write=wr)
+        ops = {None: [], "v0": [(xent(p, idx) + 4, hi_word(tag, v=0))], "flush": [(XCTL_FLUSH, p)],
+               "replace": entry_ops(p, idx, tag, N9_FB), "perm": entry_ops(p, idx, tag, N9_FA)}[kind]
+        if at_edge:
+            # R1 의 첫 적중 사이클(hold 가 막 섰다)에 기입을 싣는다 — 수락 에지 = 래치 포착 에지.
+            (addr, data), = ops
+            dut.io_mmio_addr.value = addr
+            dut.io_mmio_wdata.value = data
+            dut.io_mmio_wstrobe.value = 1
+            await settle(dut)
+            assert int(dut.io_mmio_ready.value) == 1, (
+                f"[{name}] 포착 에지에 실은 기입이 버스에서 잡혔다 — 같은 에지가 아니다")
+            await step(dut)                                  # 포착 에지 = 수락 에지
+            dut.io_mmio_wstrobe.value = 0
+            await step(dut)
+        else:
+            await step(dut, 2)                               # R1 의 판정이 래치된 뒤
+            for addr, data in ops:
+                await mmio_write(dut, addr, data)
+        await step(dut, 4)
+        lbl = f"{name} · hold 중 관측면 (STATUS, VPN, VPN_HI) · [6]"
+        rows.append((lbl, *await read_obs(dut), await fault6(dut)))
+        want.append((lbl, 0, 0, 0, 0))
+        await set_hold(dut, 0)
+        got = await collect_rsp(dut, 12)
+        lbl = f"{name} · hold 해제 뒤 응답 (수, 사이클, 승인, phys, 값, fromFill, 권한 …)"
+        rows.append((lbl, *flat_rsp(got)))
+        if kind is None:
+            want.append((lbl, 2, w_ref, 1, 1, N9_FA, 0, "R--", w_ref + 1, 1, 1, N9_FA, 0, "R--"))
+        elif kind in ("replace", "perm"):
+            want.append((lbl, 2, w_ref, 1, 1, N9_FA, 0, "-WX" if wr else "R--",
+                         w_ref + 1, 0, 0, 0, 0, "---"))
+        else:
+            want.append((lbl, 0))
+            lbl = f"{name} · hold 해제 뒤 관측면 — R2 가 그 에지 뒤에 판정돼 미적중"
+            rows.append((lbl, *await read_obs(dut)))
+            want.append((lbl, xstatus_word(1, 1, p), vpn, 0))
+            await install_entry(dut, p, idx, tag, N9_FC)
+            lbl = f"{name} · 채움(FC) 뒤 응답 (수, 사이클, 승인, phys, 값, fromFill, 권한 …)"
+            rows.append((lbl, *flat_rsp(await collect_rsp(dut, 12))))
+            want.append((lbl, 2, w_fill - 1, 1, 1, N9_FA, 0, "R--", w_fill, 1, 1, N9_FC, 1, "R--"))
+        lbl = f"{name} · 끝 [4] · [19] · [6]"
+        rows.append((lbl, *await hiu_report(dut)))
+        want.append((lbl, wr, int(kind == "replace"), 0))
+
+    name, p, i1, t1, i2, t2 = N9_NOHOLD
+    await n9_clean(dut, name)
+    v1, v2 = vpn_of(t1, i1), vpn_of(t2, i2)
+    await install_entry(dut, p, i1, t1, N9_FA)
+    await present_seq(dut, [(p, v1), (p, v2)], hold_at_s3=False)
+    lbl = f"{name} · 응답 (수 …)"
+    rows.append((lbl, *flat_rsp(await collect_rsp(dut, 12))))
+    want.append((lbl, 0))
+    lbl = f"{name} · 관측면 — R2 자신의 정지"
+    rows.append((lbl, *await read_obs(dut)))
+    want.append((lbl, xstatus_word(1, 1, p), v2, 0))
+    await install_entry(dut, p, i2, t2, N9_FD)
+    lbl = f"{name} · 채움(FD) 뒤 응답"
+    rows.append((lbl, *flat_rsp(await collect_rsp(dut, 12))))
+    want.append((lbl, 2, w_fill - 1, 1, 1, N9_FA, 0, "R--", w_fill, 1, 1, N9_FD, 1, "R--"))
+    lbl = f"{name} · 끝 [4] · [19] · [6]"
+    rows.append((lbl, *await hiu_report(dut)))
+    want.append((lbl, 0, 0, 0))
+
+    assert rows == want, (
+        "래치된 판정이 철회 · 대체를 건너 그 요청과 함께 가지 않았다 (철회의 효력 범위 · 결과 (a)(b) · "
+        "판정 래치의 한 값) — 행 표가 정본과 다르다:\n" + table_diff(rows, want))
+    dut._log.info(f"래치된 R1 은 V=0 · flush · 대체를 건너 FA 로 승인 · 그 에지 뒤에 판정된 R2 는 미적중"
+                  f"(철회) 또는 새 프레임(대체 — 호스트 소유라 차단 + [19]) · 권한만 바뀐 대체에서 쓰기 R1 은 "
+                  f"래치된 -WX 로 승인 · R2 는 R-- 로 거부 + [4] · hold 없는 대조에서 판정을 물려받지 않음 — "
+                  f"{len(rows)} 행")

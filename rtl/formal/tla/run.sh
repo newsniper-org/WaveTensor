@@ -592,14 +592,19 @@ expect_fail "짝: ready 만 고친 판 — 응답 가드 없음" \
 # e-defined.typ:323 「정지 중(`[0]` = 1)에만 정지한 요청의 값을 내고 정지가 없으면 0 이다」 ·
 # e-defined.typ:323 「여러 워드 읽기가 찢기지 않는다」 ·
 # e-defined.typ:881 「채널이 없으면 2항은 이행 불가능한」)
+# 와 조회 지점의 *판정 시점* — 판정 래치 (3.10 v1.0 묶음 RTL 파도 W2, 2026-10-12:
+# 03-hiu.typ:735 「요청이 조회 지점을 떠날 때까지 유지되고, 그 뒤의 커밋 · flush 는 그 요청의」 ·
+# e-defined.typ:310 「풀린 그 요청은 그 커밋 항목으로 판정되고」 ·
+# e-defined.typ:312 「그러므로 (d) 와 함께 드라이버는 미적중 채움으로 언제나 수렴한다」)
 #
 # XlateSurface.tla(위)는 문이고 세 RO 워드의 *읽기*는 그 모델의 상태가 아니다. 이
-# 모델이 관측 값의 1단이다 — 가드 여섯(정지 사실 · sticky · 정지 중의 파티션 · VPN ·
-# 정지 없는 0 · 읽기 무해제), 고정 속성 Prop_NoTear(찢김 없음 — 몸은 E.4 3항의 일제
-# 정지라 가드가 아니고 짝 「새는 파이프」가 반증력을 든다), 그리고 HostSpec(관측면만
-# 보고 채우는 폴링 호스트) 아래의 진행 Prop_StallResolves — E.3 채널의 *충분성*.
+# 모델이 관측 값의 1단이다 — 파도 4 가드 여섯(정지 사실 · sticky · 정지 중의 파티션 ·
+# VPN · 정지 없는 0 · 읽기 무해제 — W2 가 셋을 더했다, 아래), 고정 속성 Prop_NoTear(찢김
+# 없음 — 몸은 E.4 3항의 일제 정지라 가드가 아니고 짝 「새는 파이프」가 반증력을 든다),
+# 그리고 HostSpec(관측면만 보고 채우는 폴링 호스트) 아래의 진행 Prop_StallResolves —
+# E.3 채널의 *충분성*.
 # 기각 갈래 둘이 반례로 선다: 첫 미적중 포착(B — 끝난 정지의 잔재 · 둘째 정지의 VPN)과
-# 비게이트(C — 살아 있는 요청이 샌다). 짝 「오늘의 RTL」(세 워드 읽기 0)은 :881 의 기계 판.
+# 비게이트(C — 살아 있는 요청이 샌다). 짝 「파도 3 까지의 RTL」(세 워드 읽기 0)은 :881 의 기계 판.
 #
 # 원형(스크래치)이 뺀 run 하나 — 「obs_stall_live 를 지운 기계도 호스트가 푼다」(PASS
 # 기대)가 FAIL 이었다. 말더듬 인공물이다: [0] 이 sticky 를 내면 정지가 선 그 스텝의
@@ -610,11 +615,55 @@ expect_fail "짝: ready 만 고친 판 — 응답 가드 없음" \
 # 그래서 빼지 않고 뿌리를 고쳤다: HostSpec 에 읽기 공정성(폴링)을 걸었다 — 근거는
 # e-defined.typ:874 「정지가 영구가 되지 않을 책임은 호스트에 있다」 — 그리고 원형이 뺀 run 은 대비
 # MUST PASS 로 들어온다 (obs_stall_live 는 충분성이 아니라 정지 사실의 가드다).
-# 가드 삭제 cfg 는 가드 속성 여섯을 전부 건다 — 지운 가드의 자기 속성이 첫 위반으로 난다.
+#
+# W2 (판정 래치): 표가 판정 *값*을 들고, COMMIT 이 같은 파티션의 다른 VPN 을 비결정으로
+# 축출한다(형상 중립 과근사 — 다른 파티션은 불가). 장치 래치 lat 과 정본 판정 유령 jd 를
+# 나눴다 — 가드는 lat 을 짓고 속성의 참 쪽은 jd(와 CanonV)만 읽는다. 래치는 매 스텝 *스텝
+# 이전* 조회값을 잡는다(포착 원자성 근거는 모델 머리). 연속 전진 LeaveArrive — 앞 요청이
+# 떠나는 에지에 다음 요청이 들어온다 — 가 Next · HostNext 에 있다. 가드 셋과 첫 위반(BFS 최단 깊이):
+#   verdict_latch          → Prop_NoReMiss            (깊이 3 — 판정 뒤 철회 · 축출로 재정지)
+#   latch_clears_on_leave  → Prop_NoInheritedVerdict  (깊이 3 — 연속 전진의 다음 요청이 판정을 물려받음)
+#   latch_one_value        → Prop_OneValue            (깊이 4 — 소유권 조회가 저장을 다시 읽음)
+# 고정 속성 셋은 가드가 아니고 반증은 단독 cfg 가 든다: Prop_LatchedSurvivesRetract
+# (떠나는 값 = 판정 시점의 스냅샷 — verdict_latch 삭제, 깊이 4) · Prop_V0AfterEdgeMisses
+# (V=0 에지 뒤 판정 조회는 미적중 — latch_clears_on_leave 삭제, 깊이 4) · Prop_StickyRiseOnStall
+# ([1] 은 판정 없는 요청이 있을 때만 선다 — 대안 sticky_raw_miss, 깊이 4).
+# 대안 넷(Alts — 그럴듯하게 *잘못 지은* RTL, 가드 삭제가 아니다)은 각각 상주 MUST FAIL 이다:
+#   clear_late          래치 비움이 한 에지 늦다       → Prop_NoInheritedVerdict    (깊이 3)
+#   capture_beats_clear 포착이 비움을 이긴다            → Prop_NoInheritedVerdict    (깊이 3)
+#   sticky_raw_miss     [1] 의 set 이 원시 미적중       → Prop_StickyRiseOnStall     (깊이 4)
+#   value_no_latch      값 쪽 마지막 대입 없음          → Prop_LatchedSurvivesRetract (깊이 4)
+# 앞 둘은 W2 첫 판(조회 지점이 비어야 도착 — 떠남과 도착 사이 거품 강제)에서 작은 · 진행 · 큰
+# run 을 전부 통과했다(독립 반증 변이 M2b · M18) — 거품 에지가 늦은 비움을 대신 해 줬다.
+# 연속 전진을 들인 뒤 둘 다 3 스텝에 운다: 다음 요청이 앞 요청의 판정(다른 파티션 것일 수
+# 있다)을 물려받는다.
+# 짝 「오늘의 RTL」(W2 전 RTL — HEAD 9b6eee6: missWait = s3.valid ∧ ¬조회 적중, 래치 없음)은
+# HostSpec 아래에서 재미적중을 낸다 — 정지 → 호스트 채움 → hold 로 머묾 → 경쟁 커밋 축출.
+# BFS 최단 반례는 축출을 풀린 사이클(첫 적중) 끝 에지에 둔다 — 모델의 관대한 인터리빙이고 RTL
+# 에서는 그 에지가 같은 파티션 커밋을 받지 않는다(채움 슬롯 점유). RTL 에서 가능한 꼴은
+# hold ≥ 2 사이클 뒤의 경쟁 커밋이다(cfg 머리). 끝-끝 음성 대조는 그 꼴을 쓴다.
+# 진행: HostSpec 에 경쟁자(정지 중인 요청의 항목 밖의 V=1 · V=0 COMMIT 과 flush — 결과 (h)
+# 가 이름한 축출 원인 그대로 · 풀린 · 래치된 요청 자신의 항목의 철회 · 대체 포함)와 하류
+# 배압(떠남 Depart = Leave ∨ LeaveArrive 의 약한 공정성 — 환경 가정, 모델 머리 닫힌 목록
+# 11)을 더했다. Prop_StallResolves 는 「정지한 *그* 요청은 결국 떠난다」 — 도착마다
+# 뒤집히는 요청 꼬리표 tok 로 적는다: (Stalled ∧ tok = b) ~> (~s3.on ∨ tok ≠ b).
+# 옛 꼴 둘은 대비 전용이다: Stalled ~> ~Stalled(Prop_StallLifts)는 래치 없는 판의 라이브락을
+# 통과시키고(매 정지가 순간이나마 풀린다 — 실측 PASS), Stalled ~> ~s3.on(Prop_StallEmpties)은
+# 연속 전진 아래 좋은 모델도 깬다(요청이 끊임없이 이어지면 조회 지점이 영영 비지 않는다 —
+# 실측 FAIL). 래치 없는 판은 요청별 꼴을 깬다 — 결과 (d) 가 없으면 (h) 의 수렴이 무너진다는
+# 연결이 기계로 선다.
+# 가드 삭제 cfg 는 가드 속성 아홉을 전부 건다 — 지운 가드의 자기 속성이 첫 위반으로 난다.
+# 고정 속성은 걸지 않는다(Prop_NoTear 와 같은 관례) — Prop_StickyRiseOnStall 을 더한 사본도 아홉
+# 판 모두 첫 위반 · 깊이가 같았다(2026-10-12 비상주 실측).
+# 소요 (2026-10-12 실측, 컨테이너 · -workers 1 · 다른 세션의 솔버로 기계 부하 load 8–10):
+# 작은 좋은 모델 150,784 distinct · 31 s, 큰 좋은 모델 618,496 distinct · 3 분 7 초(VIEW StateView —
+# 한 스텝짜리 출력과 요청 꼬리표를 접는다 — 파도 4 판은 13,344 distinct · 4 s), 진행 MUST PASS
+# 149,248 distinct · 3 분 25 초, 대비 MUST PASS 둘 4 분 42 초 · 2 분 28 초, 진행 짝 「VPN 첫 미적중
+# 포착」 1 분 3 초, 나머지 각 0–3 s. 이 절 41 run 을 뽑아 돌린 전체가 967 s 다.
 # ---------------------------------------------------------------------------
 M=XlateObs.tla
-expect_pass "관측면 좋은 모델 (파티션 2 · VPN 2)"   XlateObs.cfg       "$M"
-expect_pass "관측면 좋은 모델 (파티션 3 · 규모)"    XlateObs_large.cfg "$M"
+expect_pass "관측면 좋은 모델 (파티션 2 · VPN 2 · 판정 값 2)"   XlateObs.cfg       "$M"
+expect_pass "관측면 좋은 모델 (파티션 3 · 판정 값 2 · 규모 — VIEW StateView)" XlateObs_large.cfg "$M"
 
 expect_fail "가드 삭제: obs_stall_live ([0] 이 sticky 를 냄)" \
             XlateObs_del_obs_stall_live.cfg "$M" Prop_StatusStall
@@ -630,18 +679,45 @@ expect_fail "가드 삭제: obs_read_pure (STATUS 읽기가 sticky 를 내림)" 
             XlateObs_del_obs_read_pure.cfg "$M" Prop_ReadPure
 expect_fail "대안: 비게이트 (정지 없는 관측이 살아 있는 요청을 냄)" \
             XlateObs_alt_live.cfg "$M" Prop_NoStallNoData
+expect_fail "가드 삭제: verdict_latch (래치 없음 — 판정된 요청이 다시 정지)" \
+            XlateObs_del_verdict_latch.cfg "$M" Prop_NoReMiss
+expect_fail "가드 삭제: latch_clears_on_leave (다음 요청이 판정을 물려받음)" \
+            XlateObs_del_latch_clears_on_leave.cfg "$M" Prop_NoInheritedVerdict
+expect_fail "가드 삭제: latch_one_value (소유권 조회가 저장을 다시 읽음)" \
+            XlateObs_del_latch_one_value.cfg "$M" Prop_OneValue
+expect_fail "고정 속성 반증: 래치 없음 → 떠나는 값이 판정 뒤 커밋을 따른다" \
+            XlateObs_del_verdict_latch_value.cfg "$M" Prop_LatchedSurvivesRetract
+expect_fail "고정 속성 반증: 비우지 않는 래치 → V=0 에지 뒤 도착 요청이 적중" \
+            XlateObs_del_latch_clears_on_leave_v0.cfg "$M" Prop_V0AfterEdgeMisses
+expect_fail "대안: 래치 비움이 한 에지 늦다 (연속 전진의 다음 요청이 판정을 물려받음)" \
+            XlateObs_alt_clear_late.cfg "$M" Prop_NoInheritedVerdict
+expect_fail "대안: 포착이 비움을 이긴다 (첫 적중 에지에 떠난 요청의 판정이 남음)" \
+            XlateObs_alt_capture_beats_clear.cfg "$M" Prop_NoInheritedVerdict
+expect_fail "대안: [1] 의 set 이 원시 미적중 (래치된 요청의 축출이 sticky 를 세움)" \
+            XlateObs_alt_sticky_raw_miss.cfg "$M" Prop_StickyRiseOnStall
+expect_fail "대안: 값 쪽 래치 없음 (정지만 래치 — 떠나는 값이 판정 뒤 커밋을 따른다)" \
+            XlateObs_alt_value_no_latch.cfg "$M" Prop_LatchedSurvivesRetract
 
-expect_pass "진행: 관측면만 보는 폴링 호스트가 모든 정지를 푼다"  XlateObs_live.cfg "$M"
+expect_pass "진행: 폴링 호스트 아래 정지한 그 요청은 결국 떠난다 (경쟁자 · 하류 배압 · 연속 전진 포함)" \
+            XlateObs_live.cfg "$M"
 expect_fail "진행 짝: VPN 첫 미적중 포착 → 둘째 정지 영구" \
             XlateObs_live_del_vpn.cfg "$M" Prop_StallResolves
 expect_fail "진행 짝: [15:8] 상수 0 → 파티션 0 밖 정지 영구" \
             XlateObs_live_del_part.cfg "$M" Prop_StallResolves
-expect_fail "짝: 오늘의 RTL — 세 워드 읽기 0 → 정지 영구 (:881)" \
+expect_fail "짝: 파도 3 까지의 RTL — 세 워드 읽기 0 → 정지 영구 (:881)" \
             XlateObs_pair_today.cfg "$M" Prop_StallResolves
 expect_pass "대비: [0] 이 sticky 여도 폴링 호스트는 푼다 (원형이 뺀 run)" \
             XlateObs_live_del_stall_live.cfg "$M"
+expect_fail "진행 짝: 래치 없음 + 경쟁 커밋자 + 하류 배압 → 라이브락 (결과 (d) 없이 (h) 없음)" \
+            XlateObs_live_del_verdict_latch.cfg "$M" Prop_StallResolves
+expect_pass "대비: 같은 라이브락 판이 옛 진행 꼴(정지가 순간 걷힘)은 통과한다 — 강화의 근거" \
+            XlateObs_live_del_verdict_latch_lifts.cfg "$M"
+expect_fail "대비: 연속 전진 아래 「조회 지점이 언젠가 빈다」는 좋은 모델도 깬다 — 요청 꼬리표의 근거" \
+            XlateObs_live_empties.cfg "$M" Prop_StallEmpties
 expect_fail "짝: 새는 파이프 — 스냅샷 뒤 정지한 요청이 밀려나 찢긴다" \
             XlateObs_pair_leaky.cfg "$M" Prop_NoTear
+expect_fail "짝: 오늘의 RTL (W2 전 RTL — HEAD 9b6eee6, 래치 없음) — 채움 뒤 경쟁 커밋 축출로 재미적중 (RTL 꼴은 hold ≥ 2 사이클)" \
+            XlateObs_pair_today_latch.cfg "$M" Prop_NoReMiss
 
 expect_fail "증인: 정지 중의 읽기가 실재하는가"               XlateObs_witness_NoRdStall.cfg      "$M" Witness_NoRdStall
 expect_fail "증인: 정지가 풀린 뒤 sticky 가 선 채의 읽기가 실재하는가" XlateObs_witness_NoRdAfter.cfg "$M" Witness_NoRdAfter
@@ -650,6 +726,13 @@ expect_fail "증인: 파티션 값 0 이 아닌 정지의 읽기가 실재하는
 expect_fail "증인: 해제 없이 온 둘째 정지의 읽기가 실재하는가"  XlateObs_witness_NoRdNewStall.cfg  "$M" Witness_NoRdNewStall
 expect_fail "증인: 스냅샷 뒤 · 항목 기입 전의 읽기가 실재하는가" XlateObs_witness_NoSnapRead.cfg   "$M" Witness_NoSnapRead
 expect_fail "증인: 끝난 정지의 파티션 flush(임대 회전)가 실재하는가" XlateObs_witness_NoLease.cfg  "$M" Witness_NoLease
+expect_fail "증인: 판정된 요청이 떠나지 않고 머무는가 (하류 배압)" XlateObs_witness_NoHoldAfterHit.cfg "$M" Witness_NoHoldAfterHit
+expect_fail "증인: 래치된 요청의 항목을 같은 파티션 다른 VPN 커밋이 축출하는가" XlateObs_witness_NoEvictWhileLatched.cfg "$M" Witness_NoEvictWhileLatched
+expect_fail "증인: 래치된 요청의 항목을 V=0 · flush 가 무효로 하는가" XlateObs_witness_NoRetractWhileLatched.cfg "$M" Witness_NoRetractWhileLatched
+expect_fail "증인: 래치된 요청의 항목을 다른 값의 V=1 재커밋이 대체하는가" XlateObs_witness_NoReplaceWhileLatched.cfg "$M" Witness_NoReplaceWhileLatched
+expect_fail "증인: V=0 이 마지막 커밋인 항목에 요청이 도착하는가" XlateObs_witness_NoArriveAfterV0.cfg "$M" Witness_NoArriveAfterV0
+expect_fail "증인 (진행 환경): 래치된 요청의 항목이 경쟁 커밋에 축출되는가" \
+            XlateObs_live_witness_NoEvictWhileLatched.cfg "$M" Witness_NoEvictWhileLatched
 
 # ---------------------------------------------------------------------------
 # ISA-3 · ISA-4 — route fault 의 판정 주체와 범위 (부록 D.5 우선순위 4번)

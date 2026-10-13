@@ -10,13 +10,13 @@
 //
 // ── GUARD-MAP ────────────────────────────────────────────────────────────
 // GUARD-MAP: Isolation.approve_gates_value -> io.rsp.frame/perm 은 기본 0 구동에 when(granted) 단 한 곳에서만 실린다 — granted = 승인 판정(적중 ∧ 소유 ∧ 자격)이며, 미승인 요청의 값 축 관측은 0 이다 (§3.2 규범 2항 「값이 새면 격리 위반」). 게이트가 값을 통제하는 유일 지점이다
-// GUARD-MAP: Isolation.no_early_forward   -> 소비자 인터페이스(io.rsp)에 닿는 배선은 승인 단계(s6) 조합 판정 뒤에만 존재한다 — s3 조회값과 s4·s5 운반 레지스터는 io.rsp 어디에도 배선되지 않는다. io.owner.frame 은 승인 자신의 소유권 조회 주소이고 io.mask.req 는 마스킹 단(s4) 자신의 왕복 요청이다 — 둘 다 소비자가 아니라 파이프 단계의 몸이며, io.mask 는 MaskUnit 외에 결선하지 않는 것이 통합자 결선 계약이다 (io.mask 주석)
+// GUARD-MAP: Isolation.no_early_forward   -> 소비자 인터페이스(io.rsp)에 닿는 배선은 승인 단계(s6) 조합 판정 뒤에만 존재한다 — s3 조회값 · 판정 래치(클래스 끝 lat)와 s4·s5 운반 레지스터는 io.rsp 어디에도 배선되지 않는다. io.owner.frame 은 승인 자신의 소유권 조회 주소이고 io.mask.req 는 마스킹 단(s4) 자신의 왕복 요청이다 — 둘 다 소비자가 아니라 파이프 단계의 몸이며, io.mask 는 MaskUnit 외에 결선하지 않는 것이 통합자 결선 계약이다 (io.mask 주석)
 // GUARD-MAP: Isolation.query_offpath      -> STRUCTURAL(port-absence) — 이 모듈에 호스트 질의 발행 포트가 없다 — io.hostRsp 는 선택 경로가 밀어 넣는 입력이고 XlateStore 로 통과할 뿐 파이프가 소비하지 않는다. 질의 왕복(query·qwait)이 단계열 s1..s6 에 존재하지 않는다 (§3.3.1 「질의 왕복은 가변 지연」 — 요청 경로 밖)
-// GUARD-MAP: Isolation.query_no_serve     -> 호스트 응답(xlate.io.rsp.hostPresent/hostFrame/hostPerm)은 판정·값 어느 축에도 **무조건** 들어가지 않는다 — 조회 캡처(s3→s4)의 값 접기는 when(hit) 한 가지뿐이고 lookAny = hit 이라 호스트 leg 에 가지가 없다. 전건이 「로컬이 답하면」이 아니라 항상이다 — 로컬 *미적중* 사이클이 정확히 이 가드가 지켜야 할 자리이기 때문이다 (§3.6.2 규범 2 최하 순위 · §3.3.1 규범 1 「변환은 장치 안에서 완결」 · 규범 2 「늘어도 안 된다」 · HIU-8 로컬 우선. 접기가 승인이 아니라 캡처에 있는 이유는 마스킹(s4)이 승인(s6)에 선행해 마스킹 대상 값이 s4 전에 확정되어야 하기 때문)
+// GUARD-MAP: Isolation.query_no_serve     -> 호스트 응답(xlate.io.rsp.hostPresent/hostFrame/hostPerm)은 판정·값 어느 축에도 **무조건** 들어가지 않는다 — 조회 캡처(s3→s4)의 값 접기는 when(hit) 와 클래스 끝 판정 래치의 마지막 대입 when(lat.hit) 둘뿐이고 lookAny = lat.hit ∨ hit 이며, 래치는 로컬 조회값(xlate.io.rsp.hit/frame/perm/fromFill)만 포착한다(포착 조건 latCapture 의 적중 항도 xlate.io.rsp.hit) — 호스트 leg 에 가지가 없다. 전건이 「로컬이 답하면」이 아니라 항상이다 — 로컬 *미적중* 사이클이 정확히 이 가드가 지켜야 할 자리이기 때문이다 (§3.6.2 규범 2 최하 순위 · §3.3.1 규범 1 「변환은 장치 안에서 완결」 · 규범 2 「늘어도 안 된다」 · HIU-8 로컬 우선. 접기가 승인이 아니라 캡처에 있는 이유는 마스킹(s4)이 승인(s6)에 선행해 마스킹 대상 값이 s4 전에 확정되어야 하기 때문)
 // GUARD-MAP: Isolation.coh_no_shortcut    -> 단계 전진(advance · 단계 valid 시프트)은 판정·구성 신호와 독립이고, 일관성 가용 신호는 이 모듈에 배선 자체가 없다 — 승인 변종(approve_own/approve_coh)은 판정 입력(io.owner.devOwned)에만 존재하고 단계열은 하나다 (§3.4.1 「일관성이 있어도 규약은 남는다」 · §5.3 상태열 동일성)
-// GUARD-MAP: Decode.lookup_unbranched     -> 조회 결과(hit·fromFill)는 s4 캡처 **데이터**로만 흐르고 단계 배치를 바꾸지 않는다 — D12 값 접기도 값 mux 지 단계 mux 가 아니고, 조회 뒤 모든 요청이 마스킹→실행→승인을 무조건 지난다 (단계 선택 mux 부재 — 시프트 구조. E.4 규범 1·2항). 조회 결과가 닿는 유일한 제어는 E.4 3항이 명시 허용한 조회 지점의 일제 정지(advance)다
-// GUARD-MAP: Decode.evict_inline          -> 축출 상태가 없다 — 대체(유효 ∧ 태그 불일치, §3.6.2 규범 4)는 미적중과 똑같이 캡처 데이터(anyHit=0)로만 나타나고, 저장 기입은 XlateStore 의 채움 경로(호스트 install, E.3 「장치는 채우지 않는다」)가 요청 경로 밖에서 수행하므로 단계열에 축출이 낄 자리가 구조적으로 없다
-// GUARD-MAP: Decode.stall_uniform         -> advance 하나가 파이프 전 단계 레지스터의 공통 enable 이다 — 마스킹 단(s4)의 valid·마스킹 frame 레지스터는 io.mask 왕복 반대편(MaskUnit — io.en 에 같은 advance = io.req.ready 를 물리는 것이 결선 계약)에 있고 나머지 단·필드 전부가 when(advance) 하나 안이다. 정지 원천(외부 io.hold · E.3 미적중 채움 대기)이 무엇이든 파이프 전체가 함께 서고, 요청별·단계별 enable 이 없다 (E.4 3항 「모든 요청이 같은 지점에서 정지 가능하므로 경로가 갈리지 않는다」)
+// GUARD-MAP: Decode.lookup_unbranched     -> 조회 결과(hit·frame·perm·fromFill)는 s4 캡처와 판정 래치(클래스 끝 lat)의 **데이터**로만 흐르고 단계 배치를 바꾸지 않는다 — D12 값 접기도 래치 값 선택(lat.hit ? 래치값 : 조회값)도 값 mux 지 단계 mux 가 아니고, 조회 뒤 모든 요청이 마스킹→실행→승인을 무조건 지난다 (단계 선택 mux 부재 — 시프트 구조. E.4 규범 1·2항). 래치 포착 enable(latCapture)은 데이터 레지스터의 enable 이지 단계 제어가 아니다. 조회 결과가 닿는 유일한 *단계* 제어는 E.4 3항이 명시 허용한 조회 지점의 일제 정지(advance — missWait 를 거쳐 lookAny = 래치 ∨ 적중 이 든다)다 — 판정이 래치된 요청은 그 정지를 다시 일으키지 않으며, 적중 · 래치 어느 판정이든 같은 단계열을 지난다
+// GUARD-MAP: Decode.evict_inline          -> 축출 상태가 없다 — 판정 *전*의 대체(유효 ∧ 태그 불일치, §3.6.2 규범 4)는 미적중과 똑같이 캡처 데이터(anyHit=0)로만 나타나고(판정이 래치된 요청의 캡처는 첫 적중 사이클의 것이다 — W2 판정 래치: 판정 *뒤*의 대체는 그 요청에 보이지 않는다 · hiumask l_hold · 증인 W33), 저장 기입은 XlateStore 의 채움 경로(호스트 install, E.3 「장치는 채우지 않는다」)가 요청 경로 밖에서 수행하므로 단계열에 축출이 낄 자리가 구조적으로 없다
+// GUARD-MAP: Decode.stall_uniform         -> advance 하나가 파이프 전 단계 레지스터의 공통 enable 이다 — 마스킹 단(s4)의 valid·마스킹 frame 레지스터는 io.mask 왕복 반대편(MaskUnit — io.en 에 같은 advance = io.req.ready 를 물리는 것이 결선 계약)에 있고 나머지 단·필드 전부가 when(advance) 하나 안이다. 클래스 끝 판정 래치(lat)는 단계 레지스터가 아니다 — 판정 데이터만 들고, advance 에 비워지며(when(advance) 가 첫 가지 · 포착은 .elsewhen(latCapture)), 어느 단의 enable 도 아니다. 정지 원천(외부 io.hold · E.3 미적중 채움 대기 — 판정 전(래치 빔)의 로컬 미적중)이 무엇이든 파이프 전체가 함께 서고, 요청별·단계별 enable 이 없다 (E.4 3항 「모든 요청이 같은 지점에서 정지 가능하므로 경로가 갈리지 않는다」)
 // GUARD-MAP: Platform.xlate_local         -> 변환 값의 유일한 원천은 XlateStore(로컬 저장 블록 + 채움 바이패스)다 — 호스트는 install 포트의 채움 공급자일 뿐이다. hostRsp leg 는 이 모듈의 판정(lookAny)·값(lookFrame/lookPerm)·정지(missWait) 어느 축에도 소비되지 않는다 — 포트는 §3.3.1 측정 트랙의 「의도된 미결선」(「응답 비트만 세우고 주소를 반환하지 않는다」)으로 남으며 승격 조건은 「전송 방식별 자격 계약이 규범으로 기록되는 시점」이다 (§3.3.1 규범 1·2 · HIU-11 세 축 — 구조)
 // GUARD-MAP: Platform.state_machine_kept  -> 소유권 판정(io.owner.devOwned 의 granted 논리곱 참여)은 승인 조합식에 무조건 존재한다 — 이를 우회하는 elaborate 파라미터도 런타임 구성 비트도 없다 (§3.4.1 「소유권 상태 기계 자체는 그대로 유지한다」 — 판정이 구성 무관하게 상존. 마스킹 우회 파라미터를 두지 않은 판단도 같은 정신이다 — io.mask 주석)
 // GUARD-MAP: Platform.owner_check         -> granted 는 devOwned 를 논리곱의 항으로 요구하고, 비소유 적중은 값 차단(granted 의 devOwned 항 — io.rsp.frame/perm 이 0 유지) + 원인별 보고 [4]/[19] 다: 자격 거부는 permViol → io.faultPerm([4]), 자격 허용 ∧ 비소유는 ownViol → 클래스 끝 faultOwn([19]) — 비소유 적중이면 둘 중 정확히 하나가 sticky 로 선다 (HIU-10 · §3.2 「비소유 접근의 관측 결과는 값 차단 + loud fault」 · §3.8 권한 위반 — D11 사후 게이팅)
@@ -92,12 +92,12 @@
 //
 // ## E.3 미적중 배압 — 정지는 조회 지점 하나, 파이프 전체가 함께 선다
 //
-// 미적중은 오류가 아니다 (§3.6.2 규범 3). s3 의 요청이 로컬 미적중이면 파이프 전체가 정지하고(missWait → advance 하강)
+// 미적중은 오류가 아니다 (§3.6.2 규범 3). s3 의 요청이 판정 전(판정 래치 빔)이고 로컬 미적중이면 파이프 전체가 정지하고(missWait → advance 하강)
 // 미적중을 sticky 로 알린다 (io.missNotice — fault 가 아니다. §3.8 폴딩
 // 규범: 미적중 표시와 fault 는 서로 다른 신호이며 어느 쪽도 다른 쪽을
 // 세우지 않는다). 호스트가 항목을 기입하면 채움 바이패스(XlateStore D12
 // 1순위)가 같은 사이클에 적중을 세워 정지가 풀린다 — E.3 의 「호스트가
-// 기입하면 정지가 풀린다」가 신선도 순서 그대로 구현된 것이다. 타임아웃은
+// 기입하면 정지가 풀린다」가 신선도 순서 그대로 구현된 것이다. 풀린 요청은 그 판정을 래치해(클래스 끝 판정 래치) 조회 지점을 떠날 때까지 든다 — 하류 hold 로 머무는 동안 같은 파티션의 다른 커밋이 그 항목을 밀어내도 다시 정지하지 않는다(그래서 정지와 경쟁 커밋이 엇갈려도 채움이 수렴한다). 타임아웃은
 // 두지 않는다 (E.3: 타임아웃은 조용한 실패의 다른 이름).
 //
 // ## D11 — 소유권·자격 확인은 접근 승인(6) 안이다 (§3.2 규범)
@@ -114,18 +114,18 @@
 // 버퍼 줄을 취하고, 같은 사이클의 같은 파티션 install 을 거절한다
 // (install.ready 하강). 파이프 관점에서 검증한 계약은 둘이다:
 //
-//   1. flush(p) **다음 에지부터** s3 에서 평가되는 조회는 p 의 이전 컨텍스트
+//   1. flush(p) **다음 에지부터** s3 에서 평가되는 조회(그 에지 뒤의 판정 — 앞서 래치된 판정은 2항)는 p 의 이전 컨텍스트
 //      항목으로도, flush 이전에 점유된 채움 줄로도 적중할 수 없다 — 채움
 //      줄을 함께 취하지 않았다면 flush 뒤 창 하나에서 이전 컨텍스트의 줄이
 //      커밋·바이패스 적중해 HIU-2 가 깨졌을 것이다. 현행 구현이 그 창을
 //      닫는다 (XlateStore flush 블록이 텍스트상 마지막 — 같은 사이클 커밋을
 //      이긴다).
-//   2. flush 발화 사이클에 이미 s3 를 지난(s4~s6 의) 요청은 flush 이전
-//      변환을 데이터로 들고 승인까지 간다 — 조회 시점 스냅샷이 계약이다.
+//   2. flush 발화 사이클에 이미 판정된 요청 — s3 를 지난(s4~s6 의) 요청과 s3 에서 판정이
+//      래치된 요청(클래스 끝 판정 래치 — flush 는 래치를 비우지 않는다) — 은 flush 이전 변환을 데이터로 들고 승인까지 간다 — 판정 시점 스냅샷이 계약이다.
 //      이양 전 요청 경로의 정온(quiesce)은 호스트 ABI 의무다 (§3.4.1 전이
 //      시점 규범 · §3.10 — flush_on_handoff ENV 줄과 같은 자리).
 //
-// 이 상호작용 자체는 어느 모델에도 없다 (XlateStore.tla 에 채움이 · Isolation.tla 에 flush 가 없다) — model_feedback 유지.
+// 1항의 창(flush 와 같은 사이클의 install 거절 · 채움 줄 취소)은 어느 모델에도 없다 (XlateStore.tla 에 채움이 · Isolation.tla 에 flush 가 없다) — model_feedback 유지. 2항의 s3 몫(래치된 판정이 flush · V=0 · 대체 커밋을 건넌다)은 XlateObs.tla 판정 래치 절(W2)이 잰다.
 
 package wt64.hiu
 
@@ -278,7 +278,7 @@ class HiuPipeline(val cfg: Wt64Config = Wt64Config()) extends Component {
   // ── 조회 값 접기 — D12 전순서의 이 모듈 몫 (query_no_serve 의 몸통) ──
   // 변환 값의 원천은 XlateStore(바이패스∨저장 — 1>2 순위를 그쪽이 이미
   // 접었다) 하나다. 접기가 캡처에 있는 이유는 머리 「s4 왕복」절 —
-  // 마스킹 대상은 s4 전에 확정돼야 한다.
+  // 마스킹 대상은 s4 전에 확정돼야 한다. 유효 값은 판정 래치 ? 래치값 : 조회값 이다 — 클래스 끝 when(lat.hit) 가 마지막 대입이다.
   //
   // 호스트 응답 leg(xlate.io.rsp.hostPresent/hostFrame/hostPerm)은 이
   // 접기에 **가지를 갖지 않는다**. §3.3.1 규범 2 「지원하는 호스트에서
@@ -300,8 +300,8 @@ class HiuPipeline(val cfg: Wt64Config = Wt64Config()) extends Component {
     lookFrame := xlate.io.rsp.frame
     lookPerm  := xlate.io.rsp.perm
   }
-  private val lookAny = xlate.io.rsp.hit
-
+  private val lookAny  = Bool() // 판정 적중 = 판정 래치 ∨ 조회 적중 — 구동은 클래스 끝(아래 missWait 가 읽으므로 선언만 여기)
+  private val lookFill = Bool() // 판정 fromFill = 래치 ? 래치값 : 조회값 — 구동은 클래스 끝(s4 캡처가 읽는다)
   // 마스킹 왕복의 요청 변 — s3→s4 캡처가 곧 MaskUnit req 다. 반대편
   // 레지스터(en = advance)가 s4 의 valid·마스킹 frame 레지스터를 대체한다.
   io.mask.req.valid := s3.valid
@@ -336,16 +336,16 @@ class HiuPipeline(val cfg: Wt64Config = Wt64Config()) extends Component {
   private val s6 = new Carry
 
   // ── 일제 정지 — 유일한 정지 지점 (stall_uniform 의 CHECK 몸통) ────
-  // E.3 미적중 채움 대기: s3 의 요청이 로컬(바이패스·저장) 미적중이면
-  // 선다. 정지를 푸는 것은 **항목 기입 하나**다 — 호스트 install →
-  // 채움 바이패스(XlateStore D12 1순위) 적중 → 같은 사이클 해제.
+  // E.3 미적중 채움 대기: s3 의 요청이 판정 전(판정 래치 빔)이고 로컬(바이패스·저장)
+  // 미적중이면 선다(lookAny = 래치 ∨ 조회 적중 — 구동은 클래스 끝). 정지를 푸는 것은 **항목 기입 하나**다 — 호스트 install →
+  // 채움 바이패스(XlateStore D12 1순위) 적중 → 같은 사이클 해제(hold 로 머물면 그 사이클 끝 에지에 판정을 래치한다).
   // E.3 2항 파생 요건이 그 배타성을 축자로 못박는다: 「해제는 정지를
   // 풀지 않는다 — 정지를 푸는 것은 2항의 항목 기입뿐이다」.
   // 그러므로 hostRsp leg 은 이 식의 항이 될 수 없다 — 그것이 항이면
   // 서비스 없는 구성이 영구 정지하는 접근을 서비스 있는 구성이 통과시켜
   // HIU-11 의 *상태열* 축이 깨진다 (§3.3.1 규범 2 「늘어도 안 된다」).
   // E.4 3항이 이 지점 하나를 명시 허용한다.
-  private val missWait = s3.valid && !xlate.io.rsp.hit
+  private val missWait = s3.valid && !lookAny
   private val advance  = !io.hold && !missWait
   io.req.ready := advance
 
@@ -365,13 +365,13 @@ class HiuPipeline(val cfg: Wt64Config = Wt64Config()) extends Component {
     s3.vpn   := s2.vpn
     s3.write := s2.write
 
-    // 조회 스냅샷 캡처 — flush × 채움 계약 2항의 「조회 시점 스냅샷」.
+    // 판정 스냅샷 캡처 — flush × 채움 계약 2항의 「판정 시점 스냅샷」(lookAny · lookFill · lookFrame/lookPerm = 래치 ? 래치값 : 조회값).
     // valid·마스킹 frame 의 캡처는 io.mask 왕복 반대편에서 같은 enable 로
     // 일어난다 (결선 계약 — 이 when 에 그 두 필드의 대입이 없는 이유).
     s4.part     := s3.part
     s4.write    := s3.write
     s4.anyHit   := lookAny
-    s4.fromFill := xlate.io.rsp.fromFill
+    s4.fromFill := lookFill
     s4.frame    := lookFrame
     s4.perm     := lookPerm
 
@@ -477,15 +477,56 @@ class HiuPipeline(val cfg: Wt64Config = Wt64Config()) extends Component {
   val faultOwnClear = in port Bool()
   private val ownViol = s6.valid && s6.anyHit && entitle && !io.owner.devOwned
   faultOwn := StickyFault(set = ownViol, clear = faultOwnClear)
+
+  // ── 3.10 v1.0 묶음 RTL 파도 W2 (2026-10-12) — 판정 래치 (정본 3.6.2 「판정 시점과 판정 래치」) ──────
+  // 클래스 *끝*: 위쪽 줄 좌표(missWait 줄 — xlatestore.sby · lint_postformal 이 인용)와 익명 when
+  // 이름을 밀지 않는다. 위의 lookAny · lookFill 은 선언만 위에 있고(전방 참조는 elaborate 때 null 이다)
+  // 구동은 여기다. 선-formal 은 rtl/formal/tla/XlateObs.tla — 가드 verdict_latch · latch_clears_on_leave ·
+  // latch_one_value, 그리고 이 블록의 그럴듯한 오구현 넷(대안 clear_late · capture_beats_clear ·
+  // sticky_raw_miss · value_no_latch)이 각각 상주 MUST FAIL run 으로 반증된다.
+  //
+  // 판정 시점은 조회 지점(s3)에서 요청이 처음 적중한 사이클이다. 그 사이클에 떠나지 못하면(io.hold)
+  // 판정(적중 · 프레임 · 권한 · fromFill)을 여기 래치해 떠날 때까지 든다 — 그 사이의 커밋 · flush ·
+  // 축출은 이 요청의 판정을 바꾸지 못한다(조회에만 효력). 래치는 단계 레지스터가 아니다: 판정
+  // 데이터만 들고, 요청이 떠나는 *그* 에지(advance)에 비워지며, 그 비움이 같은 에지의 포착보다
+  // 앞선다(첫 가지). reset 값도 빈 래치다. 상태열은 그대로다 — 래치는 정지 판정(lookAny → missWait)
+  // 과 값에만 들고 어느 단의 enable 도 아니다. 이름은 고정이다(이름 있는 Area · 이름 있는 포착
+  // 조건 — 익명 when 안의 Reg 가 아니다): lat_hit · lat_frame · lat_perm_r/w/x · lat_fromFill · latCapture.
+  private val lat = new Area {
+    val hit      = RegInit(False)
+    val frame    = Reg(UInt(FRAME_W bits))
+    val perm     = Reg(XlatePerm())
+    val fromFill = Reg(Bool())
+  }
+  // 포착 조건 — 판정 전(래치 빔)의 유효 게이트된 로컬 적중. xlate.io.rsp.hit 은 XlateStore 안에서
+  // lookup.valid(= s3.valid) 로 게이트된다. 호스트 leg(hostPresent/hostFrame/hostPerm)은 항이 아니다.
+  private val latCapture = s3.valid && !lat.hit && xlate.io.rsp.hit
+  when(advance) {
+    lat.hit := False // 떠나는 그 에지에 비운다 — 같은 에지의 포착보다 앞(첫 가지)
+  }.elsewhen(latCapture) {
+    lat.hit      := True
+    lat.frame    := xlate.io.rsp.frame
+    lat.perm     := xlate.io.rsp.perm
+    lat.fromFill := xlate.io.rsp.fromFill
+  }
+  // 유효 판정 — 정지(missWait)와 s4 캡처가 읽는 lookAny · lookFill, 그리고 lookFrame/lookPerm 의 마지막
+  // 대입. 마스킹 입력(io.mask.req.frame)과 승인 단 소유권 조회의 원천(s4.frame → s5 → s6 →
+  // io.owner.frame)이 같은 lookFrame 한 신호다 — 어느 단도 저장 블록을 다시 읽지 않는다.
+  lookAny  := lat.hit || xlate.io.rsp.hit
+  lookFill := Mux(lat.hit, lat.fromFill, xlate.io.rsp.fromFill)
+  when(lat.hit) {
+    lookFrame := lat.frame
+    lookPerm  := lat.perm
+  }
 }
 
 // ── GUARD-MAP — 미적중 관측면(XlateObs.tla)의 파이프라인 쪽 가드 셋 (파도 4) ─────────
 // 나머지 셋(obs_stall_live · obs_sticky · obs_read_pure)은 STATUS 워드의 포장과 읽기
 // 경로가 사는 top/Wt64Top.scala 파일 끝이 든다. 파일 *끝*에 둔 것은 위 익명 when 의
 // 줄 좌표를 밀지 않기 위해서다.
-// GUARD-MAP: XlateObs.obs_part_stalled -> missPart = Mux(missWait, s3.part, 0) — 정지 중(missWait = s3.valid ∧ ¬적중)에는 조회 지점 s3 의 파티션 그 자체다. s3 는 advance 가 0 인 동안 when(advance) 밖이라 동결된다 — 정지 중에 파티션을 바꾸는 경로가 없다
-// GUARD-MAP: XlateObs.obs_vpn_stalled -> missVpn = Mux(missWait, s3.vpn, 0) — 정지 중에는 s3 의 VPN 그 자체다. 포착 레지스터가 없다 — 첫 미적중이 아니라 *지금* 정지한 요청의 VPN 이고, 해제 없이 온 둘째 정지는 둘째 요청의 VPN 을 낸다
-// GUARD-MAP: XlateObs.obs_no_residue -> missPart · missVpn 의 Mux 기본 가지가 상수 0 이다 — 정지가 없으면(missWait = 0) 조회 지점에 산 요청이 있어도 · 끝난 정지가 있었어도 0 이다. 상태가 없으므로 끝난 정지의 잔재를 들 자리가 없다
+// GUARD-MAP: XlateObs.obs_part_stalled -> missPart = Mux(missWait, s3.part, 0) — 정지 중(missWait = s3.valid ∧ ¬lookAny — ¬(판정 래치 ∨ 조회 적중), W2)에는 조회 지점 s3 의 파티션 그 자체다. s3 는 advance 가 0 인 동안 when(advance) 밖이라 동결된다 — 정지 중에 파티션을 바꾸는 경로가 없다. 판정이 래치된 요청은 그 항목이 밀려나도 정지가 아니므로 0 이다
+// GUARD-MAP: XlateObs.obs_vpn_stalled -> missVpn = Mux(missWait, s3.vpn, 0) — 정지 중에는 s3 의 VPN 그 자체다. 미적중 포착 레지스터가 없다(클래스 끝 판정 래치는 *적중* 판정만 잡고 이 Mux 의 값 항이 아니다) — 첫 미적중이 아니라 *지금* 정지한 요청의 VPN 이고, 해제 없이 온 둘째 정지는 둘째 요청의 VPN 을 낸다
+// GUARD-MAP: XlateObs.obs_no_residue -> missPart · missVpn 의 Mux 기본 가지가 상수 0 이다 — 정지가 없으면(missWait = 0 — 판정이 래치된 요청 포함) 조회 지점에 산 요청이 있어도 · 끝난 정지가 있었어도 0 이다. 값 가지에 상태가 없으므로(판정 래치는 정지 판정 missWait 에만 들고 값 항이 아니며 떠나는 에지에 비워진다) 끝난 정지의 잔재를 들 자리가 없다
 
 // ── GUARD-MAP — 비소유 프레임 접근 [19] 원인별 보고(Platform.tla 확장)의 파이프라인 쪽 가드 넷 (3.10 v1.0 묶음 RTL 파도 W1) ──
 // 다섯째 Platform.owner_check 는 머리 GUARD-MAP 절에 있다(문면만 원인별로 개정 — 키 그대로). 파일
@@ -494,3 +535,10 @@ class HiuPipeline(val cfg: Wt64Config = Wt64Config()) extends Component {
 // GUARD-MAP: Platform.perm_entitle_only -> permViol = s6.valid ∧ s6.anyHit ∧ ¬entitle — io.owner.devOwned 는 이 식의 항이 아니다. [4](io.faultPerm = StickyFault(permViol) → Wt64Top io.fault.hiuPerm → FAULT_STATUS B_XLATE_PERM)는 자격 거부에서만 서고, 자격이 허용된 비소유 적중은 [4] 를 세우지 않는다
 // GUARD-MAP: Platform.entitle_first -> 클래스 끝 ownViol = s6.valid ∧ s6.anyHit ∧ entitle ∧ ¬io.owner.devOwned 의 entitle 항 — 자격 거부가 비소유를 가린다. permViol(¬entitle) 과 ownViol(entitle) 은 그 항으로 배타라 한 접근이 [4] 와 [19] 를 함께 세우지 않고, 거부 채움은 소유와 무관하게 [4] 만 세운다
 // GUARD-MAP: Platform.own_reported -> 클래스 끝 faultOwn = StickyFault(set = ownViol, clear = faultOwnClear) — 자격이 허용된 비소유 장치 접근이 [19] 원천을 세운다(조용한 거부가 아니다). 조립이 faultOwn → io.fault.hiuOwn → faultWords.status(Fault.B_OWN_FRAME = 19) 로 내고(Fault.N_BITS = 20 · 0xF84 예약 [31:20]), 해제는 faultOwnClear = fclr(Fault.B_OWN_FRAME) 하나다 — IO 해제선 없음
+
+// ── GUARD-MAP — 판정 래치(XlateObs.tla 확장)의 파이프라인 쪽 가드 셋 (3.10 v1.0 묶음 RTL 파도 W2) ──
+// 모델 머리 「RTL GUARD-MAP 예정 문면」의 RTL 쪽 사실이다. 파일 *끝*에 둔 것은 위 익명 when 과
+// 피인용 좌표(missWait 줄)를 밀지 않기 위해서다 (XlateObs · Platform 절과 같은 이유).
+// GUARD-MAP: XlateObs.verdict_latch -> missWait = s3.valid && !lookAny 이고 클래스 끝 lookAny := lat.hit || xlate.io.rsp.hit 다 — 판정 래치가 서 있으면 조회가 미적중이어도(그 항목이 같은 파티션의 다른 커밋에 밀려나거나 V=0 · flush 로 철회돼도) 정지가 아니다. 래치 레지스터(이름 고정 Area lat — lat_hit · lat_frame · lat_perm_r/w/x · lat_fromFill)는 latCapture = s3.valid && !lat.hit && xlate.io.rsp.hit 이고 advance 가 0 인(첫 적중에 hold 로 머무는) 사이클 끝 에지에 조회값(hit · frame · perm · fromFill)을 잡는다. 값 쪽은 같은 래치를 따른다 — 클래스 끝 when(lat.hit) 가 lookFrame · lookPerm 의 마지막 대입이고 lookFill = Mux(lat.hit, lat.fromFill, xlate.io.rsp.fromFill) 이라 유효 값 = 래치 ? 래치값 : 조회값 이다. 이 줄은 항 둘(정지 쪽 lookAny · 값 쪽 마지막 대입)을 묶는다 — 값 절반의 반증은 고정 속성 Prop_LatchedSurvivesRetract(대안 value_no_latch)가 든다. 미적중 sticky(io.missNotice = StickyFault(set = missWait))와 관측 missStall · missPart · missVpn 도 같은 missWait 를 읽는다(대안 sticky_raw_miss)
+// GUARD-MAP: XlateObs.latch_clears_on_leave -> 클래스 끝 when(advance) { lat.hit := False }.elsewhen(latCapture) { … } — 래치는 요청이 조회 지점을 떠나는 *그* 에지(advance — s3→s4 캡처의 enable 이고 같은 에지에 s2 의 요청이 s3 로 들어온다)에 비워지며(지연 비움이 아니다 — 대안 clear_late), 비움이 첫 가지라 같은 에지의 포착을 이긴다(대안 capture_beats_clear). reset 값도 빈 래치다(lat.hit = RegInit(False)). 그래서 다음 요청은 앞 요청의 판정을 물려받지 않고 자기 조회로만 판정된다
+// GUARD-MAP: XlateObs.latch_one_value -> io.mask.req.frame := lookFrame(마스킹 입력)과 s4.frame := lookFrame(→ s5.frame → s6.frame → io.owner.frame — 승인 단 소유권 조회 주소)이 같은 lookFrame 한 신호에서 온다 — 클래스 끝 when(lat.hit) 마지막 대입이 둘에 같은 래치 값을 싣는다. s5 · s6 은 s4.frame 을 나를 뿐이고 어느 단도 저장 블록(xlate.io.rsp)을 다시 읽지 않는다. 권한 · fromFill 도 같은 래치(lookPerm 마지막 대입 · lookFill)를 탄다

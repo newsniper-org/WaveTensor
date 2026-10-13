@@ -137,11 +137,16 @@ SUITES = {
         # mask_dup_capture(N13, 0xEC4 MMIO 판) · fault19_nonowned_access(N14, [4]/[19] 원인별 보고
         # · 0xF84 [31:20]). 셋 다 HEAD 생성물에서 FAIL 하는 음성 대조를 가졌다. 그리고
         # zero_inputs 가 입력 포트 정의역을 생성물과 기계로 대조한다(시험 수 무관).
-        "expect_min": 24,
+        # 2026-10-12 24 → 26: W2(3.10 RTL 파도 — 판정 래치) — xlate_released_judgment_survives_eviction
+        # (N8, 결과 (d) 의 반례: 정지 → 커밋이 풀고 hold 로 머묾 → C+2 의 같은 칸 다른 VPN 커밋이 밀어냄)
+        # · xlate_latched_hit_survives_retire(N9, 래치된 판정과 V=0 · flush · 대체 커밋의 효력 범위).
+        # 둘 다 HEAD(9b6eee6) 생성물에서 의도한 이유(재미적중 · 떠나는 시점의 재판정)로 FAIL 한다.
+        "expect_min": 26,
         "what": "ISA-2 순열 (LBID·LNID 존재 축) + ISA-1 자리 무관성 + 비교기 자기대조 "
                 "+ 변환 저장소 MMIO 문 (설치·flush·V=0·거절·정지 해제·인접 HI 버스 정지) "
                 "+ 소거 문 TAG1 워드 적법성 + 페이지 처분 · FP 소거 창 + 미적중 관측 값(정지 게이트 스냅샷) "
-                "+ 스테이징 수명(flush 가 끝낸다) + HIU_SHAPE · MASK_DUP_CAPTURE · [19] 원인별 보고",
+                "+ 스테이징 수명(flush 가 끝낸다) + HIU_SHAPE · MASK_DUP_CAPTURE · [19] 원인별 보고 "
+                "+ 판정 래치(풀린 판정의 축출 생존 · 래치된 판정과 철회 · 대체의 효력 범위)",
     },
 }
 
