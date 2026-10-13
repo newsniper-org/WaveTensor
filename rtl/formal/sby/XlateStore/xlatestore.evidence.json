@@ -7,17 +7,21 @@
     "Isolation.capacity_partitioned",
     "Isolation.fill_tagged",
     "Isolation.fill_slot_per_partition",
-    "XlateSurface.hi_v_carried"
+    "XlateSurface.commit_v_carried",
+    "XlateSurface.evict_in_partition",
+    "XlateSurface.evict_on_commit_only",
+    "XlateSurface.stall_independent"
   ],
-  "at": "2026-10-13T02:11:54Z",
+  "at": "2026-10-13T14:05:43Z",
   "cover": {
-    "reached": 14,
+    "reached": 15,
     "reached_names": [
       "XlateStore.u_xlate_props.w10_dark_after_flush",
       "XlateStore.u_xlate_props.w11_v0_kills",
       "XlateStore.u_xlate_props.w12_shadow_hides",
       "XlateStore.u_xlate_props.w13_slot_busy",
       "XlateStore.u_xlate_props.w13_split_flush",
+      "XlateStore.u_xlate_props.w14_pend_drains",
       "XlateStore.u_xlate_props.w1_fill_hit",
       "XlateStore.u_xlate_props.w2_store_hit",
       "XlateStore.u_xlate_props.w3_body_changes",
@@ -32,12 +36,12 @@
     "unreached_names": []
   },
   "inputs": {
-    "rtl/generated/XlateStore.sv": "ec982336f8a26213492307e823ad09ab77edc0f86378de764ce11dd3c147e79e",
-    "rtl/sv/assert/XlateStore_props.sv": "dac3c1a5d822de473efc6191ea0197eb9d4c53909e70195fcc020e8e3a1ecdb2"
+    "rtl/generated/XlateStore.sv": "95bee24acd84dad1d329481ee74ce04305f31b344f78a97e2a0c485ecb658b8d",
+    "rtl/sv/assert/XlateStore_props.sv": "1259a5510ebc9b72e53815072131b02d0d5a824a42558c74ecd52684e7579fae"
   },
   "per_task": {
     "bmc": {
-      "assert": 53,
+      "assert": 54,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -47,11 +51,11 @@
       "assert": 0,
       "const_a": 0,
       "const_en0": 0,
-      "cover": 14,
+      "cover": 15,
       "mode": "cover"
     },
     "prove": {
-      "assert": 53,
+      "assert": 54,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -59,7 +63,7 @@
     }
   },
   "sby": "rtl/formal/sby/XlateStore/xlatestore.sby",
-  "sby_sha256": "906ff1091cd6e2165ddea0e0560f8315e20b33888e6a46f031f3d087c94b773c",
+  "sby_sha256": "24e3a2cfbdd7e42e3d911782d8aa28d3267b361a14bbc9428335c828f00d5f14",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

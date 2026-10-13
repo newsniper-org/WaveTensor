@@ -135,17 +135,17 @@ expect_fail "증인: 기입이 실재하는가"       ResultBank_witness_NoWrite
 expect_fail "증인: 구간 만료가 실재하는가"  ResultBank_witness_NoFullInterval.cfg "$M" Witness_NoFullInterval
 
 # ---------------------------------------------------------------------------
-# HIU-1 · HIU-2 · HIU-3 · HIU-4 — 변환 저장 블록 (부록 D.5 우선순위 3번)
+# HIU-1 · HIU-2 · HIU-3 — 변환 저장 블록 (부록 D.5 우선순위 3번 · HIU-4 는 XlateSurface 절)
 #
-# 넷을 한 모델에 두는 이유는 넷이 **같은 구조 위의 성질**이기 때문이다.
-# 따로 쓰면 저장 블록을 네 벌 모델링하게 되고 그 네 벌이 드리프트한다.
+# 셋을 한 모델에 두는 이유는 셋이 **같은 구조 위의 성질**이기 때문이다.
+# 따로 쓰면 저장 블록을 세 벌 모델링하게 되고 그 세 벌이 드리프트한다.
 #
 # 핵심은 §3.6.3 — flush 는 유효 비트만 지우고 **데이터는 남는다.**
 # 유효 비트가 유일한 방벽이다.
 # ---------------------------------------------------------------------------
 M=XlateStore.tla
-expect_pass "HIU-1/2/3/4 좋은 모델 (파티션 2 · 색인 2)"  XlateStore.cfg       "$M"
-expect_pass "HIU-1/2/3/4 좋은 모델 (파티션 3 · 색인 2)"  XlateStore_large.cfg "$M"
+expect_pass "HIU-1/2/3 좋은 모델 (파티션 2 · 색인 2)"    XlateStore.cfg       "$M"
+expect_pass "HIU-1/2/3 좋은 모델 (파티션 3 · 색인 2)"    XlateStore_large.cfg "$M"
 
 expect_fail "가드 삭제: valid_check"     XlateStore_del_valid_check.cfg     "$M" Inv_ValidGated
 expect_fail "가드 삭제: partition_check" XlateStore_del_partition_check.cfg "$M" Inv_PartitionIsolated
@@ -300,72 +300,100 @@ expect_fail "증인: 깨끗한 완료의 유효화가 실재하는가"     MaskE
 expect_fail "증인: busy 중 타 파티션 기입이 실재하는가"   MaskEngine_witness_NoOtherWriteBusy.cfg "$M" Witness_NoOtherWriteBusy
 
 # ---------------------------------------------------------------------------
-# 변환 저장소의 MMIO 문 — 0xC00 항목 배열(XLATE_ENTRY_LO/HI) · 0xE00 XLATE_FLUSH
-# (파도 3, 2026-09-26:
-# 03-hiu.typ:1552 「HI 가 항목 전체(V 포함)를 단일 에지에 커밋한다」 ·
-# e-defined.typ:321 「기입이 곧 발화」 · e-defined.typ:419 「조용한 무시는 금지다」)
+# 변환 저장소의 MMIO 문 — 0xC00 형상 비노출 항목 표면(기저마다 VPN · FRAME · COMMIT ·
+# VPN_HI · 예약-엄격 28 워드) · 0xE00 XLATE_FLUSH · 0xE10 XLATE_MISS_CLEAR · RO 세 워드
+# (3.10 v1.0 묶음 RTL 파도 W3 재작성, 2026-10-13:
+# e-defined.typ:297 「호스트는 (VPN, 프레임, 권한)만 기입하고 장치 안 어느 칸에 둘지는 *장치가 정한다*」 ·
+# e-defined.typ:310 「같은 (파티션, VPN) 에 두 항목이 동시에 적중하지 않는다 — 뒤 커밋이 앞 항목을 대체한다」 ·
+# e-defined.typ:308 「정지 중에는 효과가 없고, 수락되면 커밋되며, 드롭하지 않는다」)
 #
-# XlateStore.tla(위)은 저장 블록, Isolation.tla 는 조회·채움의 비간섭이고, 이
-# 모델은 호스트가 두드리는 문이다 — 32b 버스가 64b 항목을 두 워드로 쪼개는
-# 자리의 스테이징·커밋 원자성, flush 발화의 범위, 거절의 처분. 오늘의 RTL 은
-# 두 구역을 selUnwired 로 열거만 하고 쓰기를 조용히 흡수한다(파도 2 의 T1) —
-# 짝 「오늘의 RTL」 둘이 그 기계와 동형이다. flush 쪽 짝은 항목을 HI 문으로
-# 세운다: 문을 둘 다 지우면 표에 산 항목이 없어 flush 결함이 공허하게 숨는다
-# (실측 — 그 판은 통과했다).
-#
-# 하류 거부(XlateStore install.ready = 0)의 처분은 설계 결정이라 대안 셋을 다
-# 돌린다 — 버스 정지(좋은 모델) · 거절 + loud(옳은 드라이버가 FAULT [6] 을
-# 받는다) · 조용한 흡수. 그리고 정지가 호스트 조치 없이 풀린다는 진행 속성과,
-# 그 공정성(채움 슬롯은 버스와 독립으로 비워진다)을 뺀 대조군.
-# 가드 삭제 cfg 는 가드 속성 열아홉을 전부 건다 — 지운 가드의 자기 속성이 첫 위반으로 난다
-# (TLC 는 첫 위반 하나만 보고한다 — 「자기 속성*만*」 은 이 러너가 재지 않는다).
-#
-# 같은 날 수리 — 0xE10 XLATE_MISS_CLEAR 와 RO 세 워드(0xE04–0xE0C)의 쓰기 처분
-# (e-defined.typ:329 「`[0]` 에 1 기입 = 미적중 sticky 해제 · `[31:1]` 예약 = 0 (엄격)」 ·
-# e-defined.typ:202 「*RO 오프셋의 쓰기* — 거절 + loud fault 다」). RTL 이 모델보다
-# 먼저 배선한 결정(검토자 D-7)을 6.3 규율대로 모델로 돌려보냈다: 가드 다섯 ·
-# 증인 다섯 · 발견 run 하나(정지 중 해제의 유실 — set 이 해제를 이긴다).
-#
-# 파도 4 개정 (2026-09-26 — 판정 T5 (a) · T4 (ii), 정본 f229c8b):
-# e-defined.typ:306 「커밋은 스테이징을 소진하지 않는다」 ·
-# e-defined.typ:321 「다른 파티션을 래치한 스테이징은 건드리지 않는다」 ·
-# e-defined.typ:424 「상한 아래 형상에서는 그 주소가 없는 파티션을 가리키고」.
-# 가드 둘(flush_drops_staging · ent_part_exists) · 증인 셋 · 기각 대안 둘(스테이징
-# 수명 consume · global) · 격리 짝 하나 · 상한 아래 형상의 좋은 모델 하나. 판정 전의
-# 증인 Witness_NoStaleRecommit(MUST FAIL — flush 를 건넌 옛 LO 재커밋이 도달했다)는
-# 좋은 모델의 고정 속성 Inv_NoStaleRecommit 으로 뒤집혀 올라갔다 — 그 run 을 지웠다.
-# 순증 +8 (42 → 50). 형상 밖 파티션 주소(BelowCap)는 전용 cfg 넷에서만 켠다 — large
-# 는 배터리 안이라 새 입력으로 부풀리지 않는다 (모델 머리 「규모」).
-# 규모 실측(2026-09-26 · 컨테이너 · -workers 1 · 다른 파도의 TLC · sby 와 같은 시각에 돈 단독 run):
-#   HEAD f229c8b 판 large   62,060,261 generated · 2,400,988 distinct · 34분 29초 (같은 환경 기준)
-#   개정판 large           54,546,301 generated · 2,089,284 distinct · 33분 52초 — PASS
-# 도달 상태는 오히려 줄었다(flush 를 건넌 옛 LO 재커밋이 사라졌다). 첫 개정판은 같은 도달에 44분 05초였다 —
-# 상태당 비용이 약 1.4배였고(같은 물리 코어의 두 SMT 스레드에 HEAD 판과 나란히 고정한 대조 실측), 원인
-# 둘을 모델 머리 「규모」 옆 두 정의(WinParts · DevEntPhantom 의 BelowCap 선두 연언)에서 걷어 1.15배로
-# 줄였다. 새 고스트 0 · large 안의 대안 상수는 끔(StgAlt = "flush" · BelowCap = FALSE) — 줄일 것이 더 없다.
-# 분리 검사(비상주 실측 2026-09-26 — 가드를 지운 판에 자기 속성 · 그 격리 귀결만 뺀 나머지
-# 속성 전부): flush_drops_staging 삭제(Prop_FlushEndsStaging · Inv_NoStaleRecommit 제외) PASS
-# 494,797 generated · 27,204 distinct / ent_part_exists 삭제 + BelowCap(Prop_EntPhantomRejected ·
-# Prop_EntNoAlias 제외) PASS 771,027 · 34,634 — 새 가드가 기존 계약을 깨지 않고 기존 가드가
-# 새 속성을 대신 지지 않는다. (그 실측이 Retry 의 held 파티션 조회가 형상 밖 번호에서 표
-# 밖으로 나가던 것을 잡았다 — AliasEnt 로 고쳤다.)
+# 앞판(파도 3 · 4 — 호스트가 색인을 고르는 LO/HI 직접 배열, 50 run)을 대체한다. 표는
+# [Parts -> [Slots -> [vpn, fr, v]]] 이고 COMMIT 의 칸은 장치가 비결정으로 고른다 — 같은
+# 파티션에 같은 VPN 의 유효 칸이 있으면 그 칸(대체 탐색). HIU-4 의 진짜 증명이
+# Inv_AtMostOneValidPerVpn(XlateStore.tla 의 항진 Inv_AtMostOneCandidate 를 대체 — DP-12)이다 —
+# 단 칸 1 cfg(작은 · 대형 · 상한 아래)에서는 공허하고(한 원소 집합의 부분집합), 반증력은 칸 2
+# cfg 둘 · commit_replaces_vpn 삭제 · _pair_host_index 가 든다.
+# HIU-2 의 V=0 축이 Prop_V0Misses, 하류 정지의 처분 · 풀림이 Prop_StallDataBlind(데이터 사유는
+# 정지를 건너뛰지 않는다 ← RefuseDomain full) · Prop_AddrRejectNoWait(주소 · 상태 사유는 기다리지
+# 않는다 ← RefuseDomain kind) · Prop_HoldInert · Prop_StallEnds 다. 가드 29 = 앞판 이름 유지 13 · 개명 6(LO/HI 전용 — DP-14) · 신설 10.
+# 가드 삭제 cfg 는 가드 속성 전부(28 · stall_independent 는 LiveSpec 의 Prop_StallEnds)를
+# 건다 — 지운 가드의 자기 속성이 첫 위반으로 난다. commit_replaces_vpn 삭제 cfg 는
+# 귀결 Prop_V0Misses 를 빼고 짝 _pair_v0_replace 가 그 축을 따로 잰다.
+# cfg 분할(K2): 작은 cfg(칸 1 · VPN 1)는 VIEW 없이, 대형(칸 1 = 직접 사상 동형 · VPN 2) ·
+# 칸 2 전용 둘(파티션 1 · VPN 3 = 축출 깊이 · 파티션 2 · VPN 1 = 대체 탐색의 파티션 선택) ·
+# 상한 아래는 VIEW StateView(보조 넷 acc · why · loud ·
+# ev 를 접는다 — 모델 StateView 주석). 대안 상수는 대형에서 끈다. 증인은 VIEW 없이.
+# 짝 _pair_host_index(형상 노출 — 호스트 칸 지목)는 W3 전 RTL(aa91e86)의 기계가 아니다 —
+# 그 RTL 은 저장 키가 태그 ‖ 색인 = VPN 이라 같은 VPN 이 두 색인에 앉지 못한다(모델 머리
+# 「짝 · 대안」). W3 전 RTL 이 새 정본에 어기는 것은 예약-엄격 자리 수락(rsvw_rejected 삭제
+# run) · VPN_HI · COMMIT 예약 수락 등 문의 처분이다.
+# 규모 실측(2026-10-13 · 컨테이너 · -workers 1 · 같은 시각에 다른 TLC 둘):
+#   작은 cfg (VIEW 없음)      4,971,953 generated · 169,160 distinct · 6분 52초 — PASS
+#   대형 (칸 1 · VPN 2 · VIEW) 2,778,242 generated · 243,949 distinct · 3분 35초 — PASS
+#   칸 2 전용 (1 · 2 · 3 · VIEW) 1,098,322 generated · 148,378 distinct · 1분 12초 — PASS
+#   칸 2 · 파티션 2 (2 · 2 · 1 · VIEW) 6,566,288 generated · 634,025 distinct · 약 10분 — PASS
+#   상한 아래 (VIEW)          280,772 generated · 20,389 distinct · 20초 — PASS
+#   진행 (LiveSpec)           4,971,953 generated · 169,160 distinct · 8분 35초 — PASS
+#   절 전체 77 run 24분 30초 (수정판 재실측 · 같은 시각 다른 TLC 하나 — 앞판 74 run 20분 14초). 비상주: 파티션 2 · 칸 2 · VPN 2 판은
+#   50분에 4,387,451 distinct · 큐 2,144,360 으로 끝나지 않아 중단했다 — 그래서 칸 2 전용 cfg 는
+#   파티션 1 · VPN 3 이고, 칸 2 의 파티션 간 몫은 파티션 2 · 칸 2 · VPN 1 cfg 가 든다. 작은 cfg 를 VIEW 로 돌리면
+#   20,389 distinct · 14초 — VIEW 가 보조 넷만 접는다는 실측 대조다(같은 속성 · 같은 판정).
+# 분리 검사(비상주 실측 2026-10-13 — 가드마다 지운 판에 자기 속성을 뺀 가드 · 고정 속성 전부,
+# 위반을 하나씩 빼며 PASS 까지): 28 행 전부 PASS 에 닿는다 (자기 속성의 첫 위반은 위 삭제 run).
+#   다른 가드의 속성까지 깨는 삭제 11 행(귀결 — 같은 RTL 항을 나누거나 정본 유령과 어긋난다):
+#   frame_stages_only · commit_whole → TableByDoor · commit_needs_vpn → FlushEndsStaging ·
+#   commit_needs_frame → VpnDropsFrame · frame_pair_check → FlushEndsStaging · CommitNeedsFrame ·
+#   CommitWhole · CommitCommits · VpnDropsFrame · vpnhi_strict → CommitCommits ·
+#   commit_replaces_vpn → V0Misses(짝 v0_replace) · flush_part_exists · flush_rsv_strict → CommitCommits
+#   (잘린 · 예약 flush 가 장치 스테이징을 내린다) · flush_drops_staging → CommitNeedsFrame ·
+#   VpnDropsFrame · ent_part_exists → 여덟(별칭 래치). 나머지 17 행은 고정 속성 귀결만이거나 없음.
+#   stall_independent 행은 재지 않았다 — 삭제가 Drain 을 막기만 해 안전 속성의 도달 집합이 줄 뿐이다.
+#   행렬 전문은 W3 착지 기록에 싣는다(비상주). 고정 속성 셋(AddrRejectNoWait · HoldInert ·
+#   RejectInert)과 StallOnlyByEntry 의 키 항은 독립 검증 뒤 더했다 — 행렬은 그 전 측정이다.
+#   변이 실측(비상주 · 2026-10-13): 주소 · 상태 사유 정지(전부 · 기저 항만) → AddrRejectNoWait ·
+#   태그 탐색이 다른 파티션을 읽음 → V0Misses(칸 2 · 파티션 2 cfg 만) · 다른 키의 V=1 이 미적중
+#   정지를 풂(다른 파티션 · 같은 파티션 다른 VPN — 후자는 대형 cfg) → StallOnlyByEntry · 거절이
+#   하류 점유를 세움 · 거절이 sticky 를 내림 → RejectInert · 잡는 스텝이 다른 하류를 비움 → HoldInert.
 # ---------------------------------------------------------------------------
 M=XlateSurface.tla
-expect_pass "MMIO 문 좋은 모델 (파티션 2 · 색인 1 · 정지)"  XlateSurface.cfg       "$M"
-expect_pass "MMIO 문 좋은 모델 (파티션 2 · 색인 2 · 정지)"  XlateSurface_large.cfg "$M"
+expect_pass "MMIO 문 좋은 모델 — 작은 (파티션 2 · 칸 1 · VPN 1 · VIEW 없음)"  XlateSurface.cfg        "$M"
+expect_pass "MMIO 문 좋은 모델 — 대형 (칸 1 = 직접 사상 동형 · VPN 2)"       XlateSurface_large.cfg  "$M"
+expect_pass "MMIO 문 좋은 모델 — 칸 2 전용 (파티션 1 · 칸 2 · VPN 3 — 축출 실재)"  XlateSurface_slots2.cfg "$M"
+expect_pass "MMIO 문 좋은 모델 — 칸 2 · 파티션 2 (VPN 1 — 대체 탐색의 파티션 선택)"  XlateSurface_slots2_parts2.cfg "$M"
+expect_pass "MMIO 문 좋은 모델 — 상한 아래 형상 (형상 밖 기저 1)"           XlateSurface_phantom.cfg "$M"
 
-expect_fail "가드 삭제: lo_stages_only (LO 가 표를 곧장 덮음)" \
-            XlateSurface_del_lo_stages_only.cfg "$M" Prop_LoStagesOnly
-expect_fail "가드 삭제: hi_fires (적법한 HI 흡수)" \
-            XlateSurface_del_hi_fires.cfg "$M" Prop_HiCommits
-expect_fail "가드 삭제: hi_entry_match (번호 불일치 커밋)" \
-            XlateSurface_del_hi_entry_match.cfg "$M" Prop_MismatchRejected
-expect_fail "가드 삭제: hi_needs_staging (HI 만 쓴 부분 기입 커밋)" \
-            XlateSurface_del_hi_needs_staging.cfg "$M" Prop_UnstagedRejected
-expect_fail "가드 삭제: hi_commit_whole (V 먼저 · 프레임 다음 에지)" \
-            XlateSurface_del_hi_commit_whole.cfg "$M" Prop_HiCommitWhole
-expect_fail "가드 삭제: hi_v_carried (커밋이 언제나 유효)" \
-            XlateSurface_del_hi_v_carried.cfg "$M" Prop_ValidFromV
+expect_fail "가드 삭제: frame_stages_only (FRAME 이 산 칸을 곧장 덮음)" \
+            XlateSurface_del_frame_stages_only.cfg "$M" Prop_StagesOnly
+expect_fail "가드 삭제: commit_fires (적법한 COMMIT 흡수)" \
+            XlateSurface_del_commit_fires.cfg "$M" Prop_CommitCommits
+expect_fail "가드 삭제: commit_base_match (다른 파티션에 커밋)" \
+            XlateSurface_del_commit_base_match.cfg "$M" Prop_BaseMismatchRejected
+expect_fail "가드 삭제: commit_needs_vpn (쓰이지 않은 VPN 커밋)" \
+            XlateSurface_del_commit_needs_vpn.cfg "$M" Prop_NoVpnRejected
+expect_fail "가드 삭제: commit_whole (V 먼저 · VPN · 프레임 다음 에지)" \
+            XlateSurface_del_commit_whole.cfg "$M" Prop_CommitWhole
+expect_fail "가드 삭제: commit_v_carried (V=0 이 유효로 커밋 — HIU-2 V=0 축)" \
+            XlateSurface_del_commit_v_carried.cfg "$M" Prop_V0Misses
+expect_fail "가드 삭제: vpn_drops_frame (묵은 프레임이 새 VPN 에 묶임)" \
+            XlateSurface_del_vpn_drops_frame.cfg "$M" Prop_VpnDropsFrame
+expect_fail "가드 삭제: commit_needs_frame (FRAME 없는 V=1 커밋)" \
+            XlateSurface_del_commit_needs_frame.cfg "$M" Prop_CommitNeedsFrame
+expect_fail "가드 삭제: frame_pair_check (짝 불일치 FRAME 수락)" \
+            XlateSurface_del_frame_pair_check.cfg "$M" Prop_FramePairRejected
+expect_fail "가드 삭제: vpnhi_strict (비0 VPN_HI 수락)" \
+            XlateSurface_del_vpnhi_strict.cfg "$M" Prop_VpnHiStrict
+expect_fail "가드 삭제: rsvw_rejected (예약-엄격 워드 쓰기 흡수)" \
+            XlateSurface_del_rsvw_rejected.cfg "$M" Prop_RsvwRejected
+expect_fail "가드 삭제: commit_rsv_strict (COMMIT [27:0] 비0 커밋)" \
+            XlateSurface_del_commit_rsv_strict.cfg "$M" Prop_CommitRsvRejected
+expect_fail "가드 삭제: commit_replaces_vpn (같은 VPN 이 두 칸에 유효 — HIU-4)" \
+            XlateSurface_del_commit_replaces_vpn.cfg "$M" Inv_AtMostOneValidPerVpn
+expect_fail "가드 삭제: evict_in_partition (다른 파티션 칸 축출)" \
+            XlateSurface_del_evict_in_partition.cfg "$M" Prop_CommitScoped
+expect_fail "가드 삭제: evict_on_commit_only (자발 축출)" \
+            XlateSurface_del_evict_on_commit_only.cfg "$M" Prop_TableByDoor
+expect_fail "가드 삭제: stall_independent (미적중 정지가 채움 커밋을 막음 → 정지 영구)" \
+            XlateSurface_del_stall_independent.cfg "$M" Prop_StallEnds
 expect_fail "가드 삭제: flush_fires (적법한 flush 흡수)" \
             XlateSurface_del_flush_fires.cfg "$M" Prop_FlushClears
 expect_fail "가드 삭제: flush_scoped (전역 발화)" \
@@ -388,54 +416,69 @@ expect_fail "가드 삭제: mclr_keeps_stall (해제가 미적중 정지를 풂)
             XlateSurface_del_mclr_keeps_stall.cfg "$M" Prop_MclrKeepsStall
 expect_fail "가드 삭제: ro_rejected (RO 오프셋 쓰기 흡수)" \
             XlateSurface_del_ro_rejected.cfg "$M" Prop_RoRejected
-expect_fail "가드 삭제: flush_drops_staging (flush 를 건넌 옛 LO 재커밋)" \
+expect_fail "가드 삭제: flush_drops_staging (flush 를 건넌 VPN · FRAME 재사용)" \
             XlateSurface_del_flush_drops_staging.cfg "$M" Prop_FlushEndsStaging
-expect_fail "가드 삭제: ent_part_exists (형상 밖 항목 주소 수락)" \
+expect_fail "가드 삭제: ent_part_exists (없는 파티션 기저 수락)" \
             XlateSurface_del_ent_part_exists.cfg "$M" Prop_EntPhantomRejected
 
-expect_fail "증인: 살아 있는 항목 위 LO 가 실재하는가"      XlateSurface_witness_NoLoOverLive.cfg    "$M" Witness_NoLoOverLive
-expect_fail "증인: 번호 불일치 HI 가 실재하는가"           XlateSurface_witness_NoMismatch.cfg      "$M" Witness_NoMismatch
-expect_fail "증인: 스테이징이 빈 HI 가 실재하는가"         XlateSurface_witness_NoUnstaged.cfg      "$M" Witness_NoUnstaged
-expect_fail "증인: 프레임을 바꾸는 커밋이 실재하는가"       XlateSurface_witness_NoFrameChange.cfg   "$M" Witness_NoFrameChange
-expect_fail "증인: V=0 단일 항목 무효화가 실재하는가"      XlateSurface_witness_NoKill.cfg          "$M" Witness_NoKill
-expect_fail "증인: 산 파티션의 flush 가 실재하는가"        XlateSurface_witness_NoFlushLive.cfg     "$M" Witness_NoFlushLive
-expect_fail "증인: 타 파티션이 산 동안의 flush 가 실재하는가" XlateSurface_witness_NoFlushOther.cfg "$M" Witness_NoFlushOther
-expect_fail "증인: 없는 파티션 값 flush 가 실재하는가"     XlateSurface_witness_NoPhantom.cfg       "$M" Witness_NoPhantom
-expect_fail "증인: 예약 위반 flush 가 실재하는가"          XlateSurface_witness_NoRsv.cfg           "$M" Witness_NoRsv
-expect_fail "증인: 하류 거부로 버스 정지가 실재하는가"     XlateSurface_witness_NoStall.cfg         "$M" Witness_NoStall
-expect_fail "증인: 정지가 풀린 뒤 선 sticky 의 해제가 실재하는가" XlateSurface_witness_NoClearLive.cfg "$M" Witness_NoClearLive
-expect_fail "증인: 선 sticky 위 [0]=0 기입이 실재하는가"   XlateSurface_witness_NoZeroLive.cfg      "$M" Witness_NoZeroLive
-expect_fail "증인: 예약 위반 해제가 실재하는가"            XlateSurface_witness_NoMclrRsv.cfg       "$M" Witness_NoMclrRsv
-expect_fail "증인: 미적중 정지 중의 해제가 실재하는가"     XlateSurface_witness_NoClearInStall.cfg  "$M" Witness_NoClearInStall
-expect_fail "증인: RO 오프셋 쓰기가 실재하는가"            XlateSurface_witness_NoRo.cfg            "$M" Witness_NoRo
-expect_fail "증인: 스테이징이 찬 파티션의 flush 가 실재하는가" XlateSurface_witness_NoFlushStaged.cfg "$M" Witness_NoFlushStaged
-expect_fail "증인: flush 를 건넌 스테이징 위 같은 번호 HI 가 실재하는가" \
-            XlateSurface_witness_NoStaleHi.cfg "$M" Witness_NoStaleHi
-expect_fail "증인: 형상 밖 파티션의 항목 기입이 실재하는가" XlateSurface_witness_NoEntPhantom.cfg "$M" Witness_NoEntPhantom
-expect_pass "MMIO 문 좋은 모델 (파티션 2 + 형상 밖 1 · 색인 1 · 정지)" XlateSurface_phantom.cfg "$M"
+expect_fail "증인: 산 칸 위 다른 프레임의 FRAME 이 실재하는가"   XlateSurface_witness_NoFrameOverLive.cfg    "$M" Witness_NoFrameOverLive
+expect_fail "증인: 산 VPN 의 프레임 대체 커밋이 실재하는가 (칸 2 전용 상수)" XlateSurface_witness_NoFrameChange.cfg   "$M" Witness_NoFrameChange
+expect_fail "증인: 래치와 다른 기저의 COMMIT 이 실재하는가"     XlateSurface_witness_NoBaseMismatch.cfg     "$M" Witness_NoBaseMismatch
+expect_fail "증인: VPN 없는 COMMIT 이 실재하는가"               XlateSurface_witness_NoVpnless.cfg          "$M" Witness_NoVpnless
+expect_fail "증인: V=0 단일 항목 무효화가 실재하는가"           XlateSurface_witness_NoKill.cfg             "$M" Witness_NoKill
+expect_fail "증인: FRAME 없는 V=1 COMMIT 이 실재하는가"          XlateSurface_witness_NoFramelessV1.cfg      "$M" Witness_NoFramelessV1
+expect_fail "증인: 묵은 프레임 위 V=1 COMMIT 이 실재하는가"      XlateSurface_witness_NoStaleFrameCommit.cfg "$M" Witness_NoStaleFrameCommit
+expect_fail "증인: 짝 불일치 FRAME · VPN_HI 가 실재하는가"       XlateSurface_witness_NoPairMismatch.cfg     "$M" Witness_NoPairMismatch
+expect_fail "증인: 비0 VPN_HI 가 실재하는가"                     XlateSurface_witness_NoVpnHiRsv.cfg         "$M" Witness_NoVpnHiRsv
+expect_fail "증인: 예약-엄격 워드 쓰기가 실재하는가"             XlateSurface_witness_NoRsvw.cfg             "$M" Witness_NoRsvw
+expect_fail "증인: COMMIT [27:0] 비0 이 실재하는가"              XlateSurface_witness_NoCommitRsv.cfg        "$M" Witness_NoCommitRsv
+expect_fail "증인: 다른 VPN 의 산 칸 축출이 실재하는가 (칸 2 전용 상수)" XlateSurface_witness_NoEvict.cfg            "$M" Witness_NoEvict
+expect_fail "증인: 산 항목이 실재하는가 (자발 축출의 전건)"      XlateSurface_witness_NoResident.cfg         "$M" Witness_NoResident
+expect_fail "증인: 하류 정지와 미적중 정지가 겹치는가"           XlateSurface_witness_NoStallInMiss.cfg      "$M" Witness_NoStallInMiss
+expect_fail "증인: 하류 거부로 버스 정지가 실재하는가"           XlateSurface_witness_NoStall.cfg            "$M" Witness_NoStall
+expect_fail "증인: 정지 뒤 수락 사이클의 데이터 사유 거절이 실재하는가" XlateSurface_witness_NoDataHeld.cfg  "$M" Witness_NoDataHeld
+expect_fail "증인: 산 파티션의 flush 가 실재하는가"              XlateSurface_witness_NoFlushLive.cfg        "$M" Witness_NoFlushLive
+expect_fail "증인: 타 파티션이 산 동안의 flush 가 실재하는가"    XlateSurface_witness_NoFlushOther.cfg       "$M" Witness_NoFlushOther
+expect_fail "증인: 없는 파티션 값 flush 가 실재하는가"           XlateSurface_witness_NoPhantom.cfg          "$M" Witness_NoPhantom
+expect_fail "증인: 예약 위반 flush 가 실재하는가"                XlateSurface_witness_NoRsv.cfg              "$M" Witness_NoRsv
+expect_fail "증인: 정지가 풀린 뒤 선 sticky 의 해제가 실재하는가" XlateSurface_witness_NoClearLive.cfg      "$M" Witness_NoClearLive
+expect_fail "증인: 선 sticky 위 [0]=0 기입이 실재하는가"         XlateSurface_witness_NoZeroLive.cfg         "$M" Witness_NoZeroLive
+expect_fail "증인: 예약 위반 해제가 실재하는가"                  XlateSurface_witness_NoMclrRsv.cfg          "$M" Witness_NoMclrRsv
+expect_fail "증인: 미적중 정지 중의 해제가 실재하는가"           XlateSurface_witness_NoClearInStall.cfg     "$M" Witness_NoClearInStall
+expect_fail "증인: RO 오프셋 쓰기가 실재하는가"                  XlateSurface_witness_NoRo.cfg               "$M" Witness_NoRo
+expect_fail "증인: 스테이징이 래치한 파티션의 flush 가 실재하는가" XlateSurface_witness_NoFlushStaged.cfg    "$M" Witness_NoFlushStaged
+expect_fail "증인: flush 를 건넌 스테이징 위 FRAME · VPN_HI · COMMIT 이 실재하는가" \
+            XlateSurface_witness_NoStaleUse.cfg "$M" Witness_NoStaleUse
+expect_fail "증인: 없는 파티션 기저의 기입이 실재하는가"         XlateSurface_witness_NoEntPhantom.cfg       "$M" Witness_NoEntPhantom
 
-expect_fail "짝: 오늘의 RTL — XLATE_FLUSH 가 사라진다 (T1)" \
-            XlateSurface_pair_today_flush.cfg "$M" Prop_FlushClears
-expect_fail "짝: 오늘의 RTL — 항목 기입이 사라진다" \
-            XlateSurface_pair_today_entry.cfg "$M" Prop_HiCommits
+expect_fail "짝: 형상 노출 — 호스트 칸 지목(HostIndex) → HIU-4 반례 (칸 2)" \
+            XlateSurface_pair_host_index.cfg "$M" Inv_AtMostOneValidPerVpn
+expect_fail "짝: 대체 탐색 없는 V=0 → 산 같은 VPN 이 남음 (HIU-2 V=0 축 · 칸 2)" \
+            XlateSurface_pair_v0_replace.cfg "$M" Prop_V0Misses
+expect_fail "대안: 정지 판정이 데이터 필드를 봄 (RefuseDomain = full)" \
+            XlateSurface_pair_refuse_full.cfg "$M" Prop_StallDataBlind
+expect_fail "대안: 정지 판정이 종류만 봄 — 주소 · 상태 사유도 기다린다 (RefuseDomain = kind)" \
+            XlateSurface_pair_refuse_kind.cfg "$M" Prop_AddrRejectNoWait
 expect_fail "대안: 하류 거부 → 거절 + loud (옳은 드라이버에 fault)" \
             XlateSurface_pair_refusal_reject.cfg "$M" Prop_RejectOnlyMalformed
 expect_fail "대안: 하류 거부 → 조용한 흡수" \
-            XlateSurface_pair_refusal_drop.cfg "$M" Prop_HiCommits
-# 판정 T5 가 기각한 두 갈래. consume 의 반례가 정본 해설(e-defined.typ 「바로 위 세
-# 스텝이 곧 반례다」)의 세 스텝 그대로다 — 실측 반례: LO{p1,i1}=f1 → flush(p1)(stale) →
-# HI{p1,i1} 커밋(프레임 f1 · 커밋된 적 없는 LO 라 소진이 할 일이 없었다). 가드 삭제 판의
-# 반례도 같은 세 스텝이다. global 의 반례는 두 스텝(LO{p1} → flush(p2) 가 p1 스테이징을 비움).
-expect_fail "대안: 스테이징 수명 → 커밋 소진 (flush 를 건넌 옛 LO 를 못 막는다)" \
+            XlateSurface_pair_refusal_drop.cfg "$M" Prop_CommitCommits
+expect_fail "대안: 스테이징 수명 → 커밋 소진 (flush 를 건넌 VPN · FRAME 을 못 막는다)" \
             XlateSurface_pair_stg_consume.cfg "$M" Prop_FlushEndsStaging
+expect_fail "대안: 스테이징 수명 → 커밋 소진 (커밋 뒤 같은 스테이징의 재커밋이 거절된다)" \
+            XlateSurface_pair_stg_consume_commit.cfg "$M" Prop_CommitCommits
 expect_fail "대안: 스테이징 수명 → flush 가 모든 스테이징을 비움 (전역)" \
             XlateSurface_pair_stg_global.cfg "$M" Prop_FlushStagingScoped
-expect_fail "짝: 형상 밖 항목 주소를 잘라 설치 (격리 위반 — :425 별칭)" \
+expect_fail "짝: 없는 파티션 기저를 잘라 커밋 (격리 위반 — 별칭)" \
             XlateSurface_pair_ent_alias.cfg "$M" Prop_EntNoAlias
-expect_pass "진행: 버스 정지는 호스트 조치 없이 풀린다"   XlateSurface_live.cfg "$M"
+expect_fail "짝: 파도 3 이전 RTL — XLATE_FLUSH 가 사라진다 (T1)" \
+            XlateSurface_pair_today_flush.cfg "$M" Prop_FlushClears
+expect_fail "짝: 파도 3 이전 RTL — 항목 기입이 사라진다" \
+            XlateSurface_pair_today_entry.cfg "$M" Prop_CommitCommits
+expect_pass "진행: 하류 정지는 호스트 조치 없이 풀린다"   XlateSurface_live.cfg "$M"
 expect_fail "짝: 채움 슬롯 Drain 공정성 없음 → 정지 영구" \
             XlateSurface_pair_live_nodrain.cfg "$M" Prop_StallEnds
-# 판정 4 (모델 머리말) — 정지 중 해제의 유실을 붙잡는 run. set(정지 레벨)이
+# 판정 4 (모델 머리 고정 속성) — 정지 중 해제의 유실을 붙잡는 run. set(정지 레벨)이
 # 해제를 이기는 RTL 규약의 귀결이고, 정본이 그것을 문면으로 정했다 —
 # e-defined.typ:329 「정지 *중에* 쓴 해제는 유실된다」.
 expect_fail "발견: 정지 중 0xE10 해제는 sticky 를 내리지 못한다" \

@@ -580,7 +580,7 @@ SpinalHDL 은 익명 `when` 조건 신호를 **소스 줄 번호**로 이름 짓
 안정된 이름을 주면 이 부류가 사라지지만, 그 개명이 StickyFault 를 쓰는 *전 모듈*의
 생성물 이름을 움직이므로 하네스 전수를 함께 흔든다. 같은 형태의 참조가
 `ResultBank_props.sv`(`when_ResultBank_l163/l181`) · `SharedUnit_props.sv`
-(`when_SharedUnit_l192`) · `XlateStore_props.sv`(`when_XlateStore_l200`) 에도 있고,
+(`when_SharedUnit_l192`) · `XlateStore_props.sv`(`when_XlateStore_l200` — 2026-10-13 W3 의 `installFire` 로 사라졌다) 에도 있고,
 그쪽은 각 모듈 자기 파일의 줄 번호라 이번에 흔들리지 않았다.
 
 ### 이 파도의 후-formal 실측 (영향 태스크 전수)
@@ -1274,7 +1274,7 @@ bmc · prove 와 조립 bmc 를 전부 통과했다 — 에포크가 매칭 키�
   항목 · 미구현을 고정하는 단언)은 assembly.sby 머리 「PASS 가 보증하지 않는 것」 절 하나가
   소유한다 — 여기 되풀이하지 않고, 그 절은 이 장을 되가리키지 않는다.
 
-## 변환 저장소의 MMIO 문 — 파도 3 (2026-09-26)
+## 변환 저장소의 MMIO 문 — 파도 3 (2026-09-26 — 앞판 LO/HI 문의 기록 · 2026-10-13 W3 가 형상 비노출 문으로 대체, 아래 W3 절)
 
 정본 3.9 · E.1.3 이 「내부만」으로 적던 두 행 — 변환 항목 배열(`0xC00`–`0xDFC`) · XLATE_FLUSH
 (`0xE00`) — 을 닫는다. 항목 설치와 flush 의 논리는 `XlateStore` 에 이미 있었고 없던 것이 E.3
@@ -1628,7 +1628,7 @@ rtl/formal/tla/README.md XlateObs 절). `lint_guard_map` ENFORCED 16 → 17.
 ### RTL — 제자리 · 클래스 끝 · 파일 끝
 
 - `XlateStore` 클래스 끝: `installSlotFree = !fillPend(install.part)` (flush 와 무관한 슬롯 여유). `:200`
-  (`when_XlateStore_l200`) 무손상.
+  (`when_XlateStore_l200`) 무손상 (2026-10-13 W3 DP-22 가 그 줄을 `when(installFire)` 로 — 줄 자리 그대로 · 생성 이름은 사라졌다).
 - `HiuPipeline` 클래스 끝: `installSlotFree`(통과) · `missStall = missWait` · `missPart`/`missVpn` =
   `Mux(missWait, s3.*, 0)` — 정지 게이트 스냅샷의 몸. `:348` (missWait) 무손상 (W2 에서 줄은 그대로 식이 `s3.valid && !lookAny` 로 바뀌었다 — 아래 W2 절). GUARD-MAP 셋(part · vpn ·
   no_residue)은 파일 끝.
@@ -1936,7 +1936,7 @@ Wt64Top 배치까지 걸치는 `own_reported` 는 부분, HiuPipeline 안의 항
 **정본 사실(F) 편집 — 같은 줄 치환, 정본 파일 줄 수 불변.** 3.9 「변환 판정 래치」 행 *미구현* → *구현*(측정 출처 ·
 미측정 둘) · 3.9 미적중 관측 행 꼬리(결과 (d) 는 W2 착지 · 새 COMMIT 문 위 재측과 「항목 기입」 좁힘은 W3) · 부록
 D run 554 → 573 (XlateObs 22 → 41, 배터리 날짜 2026-10-12) · HIU-2 괄호(판정 시점 범위를 증명 쪽으로 — 모델 위,
-V=0 COMMIT 축은 W3 착지 대기 · 상태 낱말 「증명됨」 유지) · B.5 메모리 파이프 드레인 행 「드레인 정의역 ① 이 둘을
+V=0 COMMIT 축은 W3 착지 대기 — 2026-10-13 착지, 아래 W3 절 · 상태 낱말 「증명됨」 유지) · B.5 메모리 파이프 드레인 행 「드레인 정의역 ① 이 둘을
 덮는다」 에 「구조상 — 점유를 재는 단언은 아직 없다」 한정.
 
 **래칫 (실측 서명).** `lint_postformal` PROVES 180 → 183 · 분모 146 → 149 (완전 103 → 106 · 부분 43 그대로) —
@@ -1947,7 +1947,7 @@ V=0 COMMIT 축은 W3 착지 대기 · 상태 낱말 「증명됨」 유지) · B
 208 → 211 (`_MIN_WITNESS_MAPPED` 419 · `_MIN_ANCHOR_WITNESSED` 211). `lint_guard_map` ENFORCED 18 불변.
 
 **미측정 · 이월.**
-- 결과 (h) 「자발 축출은 없다」 — 선-formal 에서 구조이고 진행 PASS 가 거기 기댄다. RTL 측정은 W3 의 몫이다 — W3 착지
+- 결과 (h) 「자발 축출은 없다」 — 선-formal 에서 구조이고 진행 PASS 가 거기 기댄다. RTL 측정은 W3 의 몫이다(2026-10-13 착지 — 아래 W3 절) — W3 착지
   체크리스트에 후보 가드 `evict_on_commit_only` 를 올린다.
 - 래치된 조회 지점 요청이 드레인 정의역 ①(`io.occupancy` = 단 valid 의 수)에 드는 것은 구조이고, 그 점유를 재는
   단언은 없다.
@@ -1957,3 +1957,107 @@ V=0 COMMIT 축은 W3 착지 대기 · 상태 낱말 「증명됨」 유지) · B
 - `latCapture` 의 `s3.valid` 항은 관측 동치다(miter 증명 — 위). 지울지는 다음 RTL 편집의 판단이다.
 - cocotb 시험 docstring 의 「안 잰다」(N8: C+3 이후 경쟁 커밋 · V=0 축출 · reset 래치 비움 / N9: 대체의 같은 에지
   꼴 · 드레인 관측 「완전한 철회」).
+
+## 3.10 v1.0 묶음 RTL 파도 W3 — 형상 비노출 `0xC00` 문 (2026-10-13)
+
+정본 E.1.2 `0xC00` 「변환 항목 표면 — 0xC00 구역 (형상 비노출)」(3.10 v1.0 묶음)의 RTL 따라잡기 셋째 하위 파도다 —
+호스트는 (VPN, 프레임, 권한)만 기입하고 칸은 장치가 고른다. 앞판 문(항목 기저 `0xC00` + (파티션 ≪ 7) + (색인 ≪ 3) ·
+LO 스테이징 · HI 커밋 — 위 「변환 저장소의 MMIO 문 — 파도 3」 절)을 대체한다. 순서는 정본 6.3 그대로(선-formal →
+RTL → 후-formal → cocotb). 기준 HEAD 9409704 (RTL aa91e86).
+
+**선-formal (RTL 편집보다 먼저).** `XlateSurface.tla` 재작성 — 가드 29(개명 여섯 · 신설 열 · 유지 열셋) · 증인 28 ·
+새 고정 속성 일곱 `Inv_AtMostOneValidPerVpn`(HIU-4 — 칸 1 cfg 에서는 공허, 반증력은 칸 2 좋은 cfg 둘 · 가드 삭제
+`del_commit_replaces_vpn` · 짝 `pair_host_index`) · `Prop_V0Misses`(HIU-2 V=0 축) · `Prop_StallDataBlind` ·
+`Prop_AddrRejectNoWait` · `Prop_HoldInert` · `Prop_RejectInert` · `Prop_CommitScoped` · 유지 `Prop_StallEnds` · `Prop_TableByDoor` · 대안 상수
+`RefuseDomain` 세 값(addrstate · full · kind). run 50 → 77 = 좋은 cfg 다섯 · 가드 삭제 29 · 증인 28 · 짝 여섯 · 대안 일곱
+· 발견 1 · 진행 1. `XlateStore.tla` 의 항진 `Inv_AtMostOneCandidate` 를 지웠다(DP-12 — 사용자 확정 2026-10-13 · 정의와
+cfg 의 `INVARIANT` 줄 · run 7 · 줄 수 176 불변). `MmioPage.tla` 는 `nocons` 부류에 예약-엄격 28 워드를 적는 주석뿐(run
+29 불변). `XlateObs.tla` 는 `hi_v_carried` → `commit_v_carried` 문면 줄 중립. 배터리 573 → 600 run — 실측: XlateSurface 절 77/77 선언대로 · 전량 배터리 600/600 선언대로 — 컨테이너 · 2026-10-13 18:37–19:58 KST · 게이트 GREEN(`run.sh` 종료 코드 0 경로) · 이탈 0 · 입력 sha 620건 불변 (부록 D 문장과 같은 판).
+
+**RTL (줄 인용 대상은 줄 중립 · 새 코드는 끝).**
+- `XlateStaging.scala` 전면 재작성 — 상태 `stgVpnValid` · `stgFrameValid` · `stgPart` · `stgVpn` · `stgFrame`. `needReady =
+  wrEnt ∧ isCommit ∧ pairOk`(wdata 없음) · `cmAcc = needReady ∧ installReady` · `cmDataBad = [27:0] ≠ 0 ∨ ([31] ∧
+  ¬stgFrameValid)`(V=0 의 `[30:28]` 은 수락 — DP-20) · `commit.valid = cmAcc ∧ ¬cmDataBad`. 번들은 `part` · `vpn` 32b ·
+  `frame` · `perm` · `v` — 색인 · 태그를 내지 않는다(A″). 거절은 두 선: `badWrite`(주소 · 상태 사유 · 예약-엄격 워드 ·
+  VPN_HI 비0 · flush 구역 — 콘에 `installReady` 없음)와 새 `badData = cmAcc ∧ cmDataBad`(DP-15).
+- `XlateStore.scala` (`:1-329` 줄 중립) — DP-22 `:196` `val installFire` · `:200` 은 그 자리에서 `when(installFire)` ·
+  `:132` require 삭제(앞판 8 B 근거 — 색인 < 16 형상을 막았다) · object 에 `idxOf` · `tagOf` · `capPerPart` · GUARD-MAP
+  `:329` 제자리 개명 + 끝 셋(`evict_in_partition` · `evict_on_commit_only` · `stall_independent`). flush 의 자기 파티션
+  `fillPend` 취하 항은 로직 그대로 두고 주석을 「방어 중복」으로 고쳤다(W3 검토 — 대기 ≤ 1 이 그 사이클 커밋으로
+  빠지고 flush 대입이 마지막이라 이미 성립, miter 로 관측 동치 증명).
+- `Wt64Top.scala` (`:1-1641` 줄 중립) — `object Xent` 를 12 줄 그대로 새 워드로 · `xTagW` 제거 · 새 포트
+  `io.fault.xlateCfgBadWrite` = `StickyFault(xstg.io.badData, fclr(B_CFG_BADWRITE))` 를 `[6]` 논리합에 · `xlateArea` require
+  셋(`xlateParts ≤ 4` · `FRAME_W` · `VPN_W` = 32) · 설치 결선 `install.idx/tag := XlateStore.idxOf/tagOf(commit.vpn)` ·
+  ready 덮어쓰기 `when(wrEnt ∧ isCommit ∧ needReady)` · 파일 끝 GUARD-MAP `commit_replaces_vpn`. MmioPage GUARD-MAP
+  여섯 줄 문면(`nocons_rejected` 에 예약-엄격 28 워드 등).
+- GUARD-MAP 29 = XlateStaging 24 + XlateStore 4 + Wt64Top 1. `lint_guard_map` 가드 156 → 166 전수 · CHECK 159 ·
+  ENFORCED 18 불변. `make rtl-gen` 두 번 바이트 동일 — 바뀐 생성물은 Wt64Top · XlateStagingP2 · XlateStore ·
+  HiuPipeline 넷(이 착지 편집 전후 20 편 sha256 불변).
+
+**생성 이름 변화.** 새 최상위 출력 `io_fault_xlateCfgBadWrite`. XlateStaging 포트 `io_commit_vpn[31:0]` · `io_badData` 신설
+· `io_commit_idx` · `io_commit_tag` 소멸(`io_woff[6:0]` 은 그대로, 해석이 {part 2b, word 5b}). 레지스터 `stgValid` ·
+`stgNum` 소멸 → `stgVpnValid` · `stgFrameValid` · `stgPart` · `stgVpn`. Wt64Top `xlateArea_isHi` 소멸 → `xlateArea_isCommit`.
+`when_XlateStore_l200` 소멸 → `installFire`. `when_Wt64Top_l1714` → `l1731` · `l1782` → `l1799` · `when_Common_l336_2`
+신설(하네스 참조 0 — `lint_generated_names` OK).
+
+**구조 게이트.** `lint_ready_cone` — `io_mmio_ready` 콘 {addr, wstrobe}. 자기시험에 **M4 상주**(문의 `io_needReady` 식에
+`&& !cmDataBad` → 콘에 wdata — 모델 대안 `RefuseDomain = "full"` 의 RTL 짝) — 3/3 → 4/4.
+
+**후-formal (영향 일곱 태스크 — 재스윕 PASS · hollow 0 · uncounted 0).**
+
+| 태스크 | bmc | prove | cover | assert · cover |
+|---|---|---|---|---|
+| XlateStaging/props | abc bmc3 | abc pdr | z3 | 14 · 26/26 |
+| XlateStaging/p2 | abc bmc3 | abc pdr | z3 | 15 · 3/3 |
+| AbortStaging/props | z3 | z3 | z3 | 26 · 14/14 |
+| HiuMask/hiumask | abc bmc3 | abc pdr | btormc | 57 · 37/37 |
+| XlateStore/xlatestore | z3 깊이 20 | z3 | z3 | 54 · 15/15 |
+| XlateDoor/door (**신설**) | btormc 깊이 16 | `prove_stall` abc pdr (단언 2) | btormc | 4 · 7/7 |
+| Wt64Top/assembly | abc bmc3 | abc pdr | z3 | 116 · 63/63 |
+
+- `XlateStaging_props.sv` 전면 재작성 — 그림자 `f_vv` · `f_fv` · `f_lp` · `f_vpn` · `f_fr`, `p_need_iff`(데이터 필드 무관) ·
+  `p_commit_iff` · `p_commit_fields` · `p_baddata_iff` · `p_bad_iff` 등, 증인 W1–W29 전부 단독 사살 변이가 있다.
+- `XlateDoor/door.sby` 신설(DP-13 (C)) — XlateStaging + XlateStore + `xlateArea` 결선 복제, bind 없이 래퍼 인스턴스.
+  `d_hit_sound` · `d_hit_live`(표 축 — **bmc 깊이 16 유계** · 무계 증명은 미수렴: abc pdr 프레임 3 정체 · btormc
+  -kind k=20 미폐) · `d_stall_bounded` · `d_ready_only_commit`(정지 축 — `prove_stall` abc pdr 무계 증명). 복제와 실물의
+  같음은 assembly `a_door_install` · `a_door_ready` (composite_wiring).
+- `xlatestore.sby` 에 `s_pend_bounded` + 증인 W14 · assembly 에 (A) 조립 절반 `a_xhold_quiet` · `a_ready_only_slot` ·
+  `a_xcm_*` · `a_xbad_*` · 무결성 핀 재서명(③ 116 / 63).
+- 역-변이 표는 다섯 `.sby` 머리(비상주). 독립 반증(W3V): 변이 54 — 뜻 있는 51 은 전부 sby · cocotb 중 하나 이상이
+  잡았고 셋(M12b · M20b · M24)은 miter abc pdr 로 원본과 동치 증명. HEAD 음성 대조: 직접 부착은 ERROR(포트 · 넷
+  없음)로 소리 나게 실패, 어댑터로 감싼 HEAD 문은 props · door 의 판정 단언이 FAIL.
+- **`scripts/sby_sweep.sh` 수리** — btor 엔진 요약의 증인 갈래를 cover 모드 태스크에만 적용한다. door 의 bmc 가 btor
+  btormc 라 단언 넷이 「미도달 증인」으로 실렸다(reached + unreached ≠ cover 셀 — `lint_postformal` 항등 ·
+  `lint_witness_map` 이 울었다). 착지에서 door 를 다시 스윕해 증인 7 도달 / 0 미도달.
+
+**cocotb (`rtl/sim/` — 그 README 의 W3 · W3 수정 절).** Shape 26 → 37 — N1–N7 · 선-formal 인계 셋(kind · consume · 다른 키)
+· W3 수정 `xlate_high_vpn_bits_distinguish`. `make rtl-sim` **49/49**(Mask 12 · Shape 37). W3 의 새 시험 열은 HEAD(aa91e86)
+생성물에서 전부 FAIL(넷은 정본이 새로 거는 축에서 — 예약-엄격 워드 · VPN_HI 비0 · COMMIT 예약 비트 · 래치 이동 뒤
+V=1) · W3 수정 시험은 HEAD 대조 없음(수락 근거는 변이 M26 · M43 · M13b 사살 — rtl/sim/README 「W3 수정」 절). 변이 K1–K10b 열넷 전부 잡힘.
+
+**정본 사실(F) 편집 — 같은 줄 치환, 정본 파일 줄 수 불변.** 3.9 `0xC00` 행 이름 · 비고를 새 문의 사실로(워드 표 ·
+측정 출처 · 하류 정지 상한 · 데이터 사유 `[6]` 합류 · 미측정) · 3.9 flush 행 · 미적중 관측 행 꼬리 · 판정 래치 행의
+결과 (h) 측정 · 03-hiu HIU-2 · HIU-4 속성 본문 측정 문장 · E.1.2 `0xC00` 머리 「재구현 착지 전이라도」 · E.1.3 착지
+목록의 「새 문은 재구현 착지 대기」 · 부록 D 진행 현황(600 run · XlateSurface 축 77 · 모델을 가진 수 29 · 색인 모델
+13 · 축 모델 여섯 · 모델 없는 둘) · HIU-2 · HIU-4 행(HIU-4 *미착수* → *증명됨* — 모델 위, RTL 은 유계).
+
+**래칫 (실측 서명).** `lint_postformal` PROVES 183 → 200 · 분모 149 → 159 (완전 106 → 115 · 부분 43 → 44) —
+`_MIN_COVERED` 159 · `_MAX_PARTIAL` 44 · `_MIN_EVIDENCED` 200. 새 가드 열 중 `commit_replaces_vpn` 하나가 태어나면서 부분
+(`_PARTIAL` 신설 — door 가 결선 복제를 재고 유계) · `stall_independent@xlatestore` 도 `_PARTIAL` 에 실렸으나 door 앵커가
+완전이라 가드는 완전. 개명 여섯의 키 이동 13 · 낡은 어휘(LO/HI · `a_xhi_*` · `p_lo_quiet` · `a_xstall_noeffect`) 정리 ·
+`nocons_rejected` 를 세 절반(명령 링 · 0xC00 예약-엄격 · 완료 링 descriptor)으로. `lint_witness_map` 증인 419 → 443 ·
+앵커 211 → 229. `lint_section_refs` `XlateStore.scala` R5 축2 29 → 25 · R6 축2 1 → 0. `lint_guard_map` ENFORCED 18 불변.
+
+**미측정 · 이월.**
+- DP-23 — 참조 형상이 아닌 형상(색인 ≠ 16)의 elaborate · 하네스 형상 매개화. `:132` require 는 지웠으나 색인 8
+  생성 형상은 만들지 않았다.
+- door 표 축(`d_hit_sound` · `d_hit_live`)의 무계 증명 미수렴 — 유계(bmc 16)로 착지. 후보: XlateStore 내부 탭 보조
+  불변식 · 형상 축약.
+- XlateStore flush 의 자기 파티션 `fillPend` 취하 항은 방어 중복 — 그 항만 재는 단언이 없다(지우면 관측 동치).
+- 하류 정지 상한: 단언 상수 `F_N = 4`(= `xlateParts`)는 느슨한 상한이고 실제는 1 사이클 — drain 을 2–3 사이클 늦추는
+  결함은 `d_stall_bounded` 를 통과한다(정본은 상수를 걸지 않는다).
+- reset 의 *형식* 단언(W1 · W2 에서 이월 그대로).
+- HIU-3 정적 검사 본체(W2 에서 이월 그대로).
+- cocotb `xlate_commit_addr_reject_no_wait` 의 축은 합성 RTL 에서 도달 불가 — 수락 근거는 props `p_need_iff` · assembly
+  `a_ready_only_slot` · `a_door_ready`.
+- `rtl/sim/run_wt64.py` UNMEASURED 10번 「관측 세 워드 — 회로 0건」은 파도 4 3B 이후 거짓 — 아직 지우지 않았다.

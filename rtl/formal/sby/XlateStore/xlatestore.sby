@@ -8,7 +8,10 @@
 # PROVES: Isolation.capacity_partitioned — validBits/fillPend 의 전이는 자기 파티션 사건(flush·커밋·설치)에만 — q 사건이 p 구간 불변
 # PROVES: Isolation.fill_tagged — 채움 적중 = 자기 파티션 pend ∧ idx ∧ tag 논리곱 (타 파티션 슬롯은 후보 아님)
 # PROVES: Isolation.fill_slot_per_partition — 슬롯 몸체 기입은 자기 파티션 설치 사이클에만
-# PROVES: XlateSurface.hi_v_carried — 저장 절반: 커밋은 그 유효 비트를 줄의 v 로 쓰고(1 세움 · 0 내림 — 오라클의 v · idx 는 커밋되는 슬롯의 몸체이지 DUT 커밋 줄 mux 가 아니다: 착지판은 mux 출력을 오라클로 써서 다른 슬롯의 v 를 고르는 변이 XS1 이 통과했다 — 2026-09-26 수리) · 채움 적중은 줄의 v 를 요구하고 · 대기 중인 줄은 같은 항목의 옛 저장 판을 가린다 (파도 3 — 문 절반 install.v = HI [31] 은 XlateStaging/props.sby)
+# PROVES: XlateSurface.commit_v_carried — 저장 절반: 커밋은 그 유효 비트를 줄의 v 로 쓰고(1 세움 · 0 내림 — 오라클의 v · idx 는 커밋되는 슬롯의 몸체이지 DUT 커밋 줄 mux 가 아니다: 착지판은 mux 출력을 오라클로 써서 다른 슬롯의 v 를 고르는 변이 XS1 이 통과했다 — 2026-09-26 수리) · 채움 적중은 줄의 v 를 요구하고 · 대기 중인 줄은 같은 항목의 옛 저장 판을 가린다 (W3 개명 ← hi_v_carried — 문 절반 install.v = COMMIT [31] 은 XlateStaging/props.sby)
+# PROVES: XlateSurface.evict_in_partition — 저장 절반: 커밋 기입 주소는 {commitSel, idx} 하나 — commitSel = 채움 슬롯 번호 = 파티션이라 다른 파티션 구간의 몸체 · 유효 비트는 커밋 에지에도 불변 (Isolation.install_scoped · capacity_partitioned 와 같은 단언 — 같은 RTL 항을 두 가드가 가리킨다)
+# PROVES: XlateSurface.evict_on_commit_only — 저장 절반: validBits · fillPend · 슬롯 몸체 · 저장 Mem 의 전이 원천은 설치 · 커밋 · flush 전수이고 그 밖의 에지(시간 · 조회)는 $stable (g_part 의 $stable 가지 · 몸체 관측 전칭). 문이 COMMIT 아닌 기입으로 설치를 내지 않는다는 절반은 XlateStaging/props.sby
+# PROVES: XlateSurface.stall_independent — 저장 절반 · 시간 상한(DP-21): 설치가 오지 않는 연속 PARTS(=4) 사이클 뒤 대기 줄이 없다 (s_pend_bounded — 조회 입력이 자유인 위에서: commitFire 의 콘에 조회 · hold · 미적중 정지 · 소거 입력이 없다) · 증인 W14. 정지된 COMMIT 의 ready 가 미적중 정지에 기대지 않는다는 조립 절반은 XlateDoor/door.sby · Wt64Top/assembly.sby a_ready_only_slot
 #
 # ## 이 태스크가 *재지 않는* 것 — Isolation.fill_offpath (2차 파도 판정)
 #
@@ -128,6 +131,29 @@
 #                 우선으로 버린다 — 그 배타는 조립 하네스 a_xonehot 이 잰다
 #   증인 W13 (w13_split_flush · w13_slot_busy) — 두 신호가 실제로 갈리고, 슬롯이 실제로 찬다.
 # 셀: assert 51 → 53 (bmc · prove) · cover 12 → 14 (cover). 위 「항진 검사 실측」 절의 49 · 10 은 2026-08-26 판이다.
+#
+# ## W3 — 하류 정지 유계 · install.fire 이름 (3.10 v1.0 묶음, 2026-10-13)
+#
+# DP-22: 하네스의 설치 발화 지상 진리가 생성 이름 when_XlateStore_l200(줄 번호 매인 이름)에서
+# XlateStore 의 이름 있는 val installFire 로 옮겼다 — 같은 커밋. 이제 :200 위 줄 수는 이 하네스와
+# 무관하다.
+# DP-21: s_pend_bounded — f_quiet(설치 발화 없는 연속 사이클 수) ≥ PARTS 이면 fillPend = 0.
+# 전건 「설치가 오지 않는 동안」은 정지된 COMMIT 이 버스를 잡는다는 조립 사실의 이행이다
+# (assembly a_xhold_quiet · door.sby). 이 블록의 조회 입력은 자유라 「조회가 커밋을 막는」 결함이
+# 여기서 운다. 증인 W14 (조회가 선 채 대기 줄이 빠진다).
+# 실측 사실(비상주 — W3 하네스 초안): 이 블록에서 fillPend 는 늘 onehot0 이다(설치 포트 하나 ·
+# 커밋 사이클당 하나) — 「넷 다 대기」 증인은 도달 불가이고, 정지는 실제로 1 사이클이다. DP-21 의
+# 상수 xlateParts 는 그 위의 느슨한 상한이다.
+# 셀: assert 53 → 54 (bmc · prove) · cover 14 → 15 (cover).
+# 역-변이 (비상주 실측, 2026-10-13 후-formal 통합 — 사본의 XlateStore.sv 한 식):
+#   S1 commitFire 에 「¬조회 유효」 항 (조회가 커밋을 막는다)  kg(--keep-going z3 깊이 12) 위반 = s_pend_bounded
+#      단독 · cov 미도달 = W14 단독. door.sby 에서도 d_stall_bounded 단독 · prove_stall pdr FAIL.
+#   S2 validBits := 1 (V 무시)    commit_v_carried 저장 단언(g_part) FAIL · door d_hit_sound
+#   S3 색인 15 커밋 버림          g_part FAIL · door d_hit_live 만
+#   S4 조회 색인 ≠ 설치 색인       이 태스크는 PASS (자기 일관) — door d_hit_live 가 잡는다 (commit_replaces_vpn 의 RTL 유비)
+# 증인 대상 추가(W3 · W4 · W7 → evict_on_commit_only · evict_in_partition)는 기존 증인의 귀속이다 — 문면 불변.
+# HEAD(aa91e86) 음성 대조: HEAD 생성물에는 이름 있는 installFire 가 없어 bind 의 .f_install_fire(installFire) 가
+# 묵시 선언 무구동 선이 되고 bmc 가 FAIL 한다 (공허 PASS 아님 — DP-22 결선이 증거에 실린다).
 
 [tasks]
 bmc

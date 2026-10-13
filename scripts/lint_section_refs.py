@@ -860,7 +860,7 @@ AX2_UNMEASURED_HARD_MAX: dict[str, int] = {
     "rtl/spinal/src/main/scala/wt64/hiu/HiuPipeline.scala": 27,
     "rtl/spinal/src/main/scala/wt64/hiu/MmioConfig.scala": 27,
     "rtl/spinal/src/main/scala/wt64/hiu/OwnershipTable.scala": 17,  # 18 → 17 (2026-10-12 W1 착지 — 같은 개정)
-    "rtl/spinal/src/main/scala/wt64/hiu/XlateStore.scala": 29,
+    "rtl/spinal/src/main/scala/wt64/hiu/XlateStore.scala": 25,  # 29 → 25 (2026-10-13 W3 착지 — 형상 비노출 0xC00 문: 스칼라독 재작성이 따옴표 없는 좌표를 줄였다)
     "rtl/spinal/src/main/scala/wt64/host/CompletionUnit.scala": 43,
     # 2026-09-20 상승 19 → 20 (임대별 마스크 키 파도, 정본 7fa5f2e):
     # 논스 재사용 검사 해설에 신설 `§3.7` 인용 1건 — "같은 키 아래" 이던
@@ -940,7 +940,7 @@ AX2_SOFT_HARD_MAX: dict[str, int] = {
     "rtl/spinal/src/main/scala/wt64/fp/StepSequencer.scala": 1,
     "rtl/spinal/src/main/scala/wt64/hiu/HiuPipeline.scala": 2,
     "rtl/spinal/src/main/scala/wt64/hiu/MmioConfig.scala": 2,
-    "rtl/spinal/src/main/scala/wt64/hiu/XlateStore.scala": 1,
+    # (XlateStore.scala 1 → 0 — 2026-10-13 W3 착지: 의역 0 건이라 항목을 지웠다 · 이 줄은 자리 보존)
     "rtl/spinal/src/main/scala/wt64/host/CompletionUnit.scala": 1,
     "rtl/spinal/src/main/scala/wt64/mask/MaskUnit.scala": 2,
     "rtl/spinal/src/main/scala/wt64/memorder/MemOrderGate.scala": 1,

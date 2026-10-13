@@ -10,10 +10,11 @@ import wt64.top.XlateStaging
   *
   * 파티션 2 판(`XlateStagingP2`) 하나만 낸다. 기본 형상(파티션 4 — 인코딩 상한)의
   * 문은 Wt64Top.sv 안에 있고 XlateStaging/props.sby 가 거기서 잰다. 상한에서는
-  * 항목 배열의 형상 밖 주소 가지(entPhantom)가 elaborate 상수 False 라 어느
-  * 태스크도 그 가지를 재지 못한다 — 판정 T4 (ii) 의 처분(형상 밖 주소의 LO · HI 는
+  * 항목 표면의 형상 밖 기저 가지(phantom)가 elaborate 상수 False 라 어느
+  * 태스크도 그 가지를 재지 못한다 — 판정 T4 (ii) 의 처분(형상 밖 기저의 어느 워드든
   * 거절 + loud · 스테이징 부동)을 재려면 그 가지가 서는 형상이 따로 elaborate 돼야
-  * 한다. 이 생성물을 XlateStaging/p2.sby 가 잰다.
+  * 한다. 이 생성물을 XlateStaging/p2.sby 가 잰다. 3.10 v1.0 묶음 W3 의 문은 형상 중
+  * 파티션 수만 받는다(칸 수 · 색인 함수는 모른다 — 커밋이 VPN 을 낸다).
   *
   * GenSharedUnit(깊이 0) · GenStepSequencer(P = 1) 선례: 경계 형상의 elaborate 가
   * 실제로 서는지를 생성 단계에서 상시 확인한다 (조건이 안 맞으면 스스로 건너뛰고

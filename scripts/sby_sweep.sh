@@ -337,6 +337,10 @@ for f in "$@"; do
     fi
     # ── btor 갈래 — 이름은 bad 심볼, 도달은 엔진 로그, 미도달은 차집합 ──
     sdir=$(dirname "$s")
+    # btor 갈래는 cover 태스크에서만 — bmc · prove 태스크의 bad 심볼은 단언이지 증인이 아니다.
+    # (W3 2026-10-13 실측: XlateDoor/door.sby 의 bmc 가 btor btormc 라 단언 넷이 「미도달 증인」
+    #  으로 실려 reached+unreached ≠ cover 셀 — lint_postformal 항등 · lint_witness_map 이 운다.)
+    grep -qx 'mode cover' "$sdir/config.sby" 2>/dev/null || continue
     bt="$sdir/model/design_btor.btor"
     el="$sdir/$beng/logfile.txt"
     if [ ! -f "$bt" ] || [ ! -f "$el" ]; then

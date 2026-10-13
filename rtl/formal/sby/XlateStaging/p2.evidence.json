@@ -3,24 +3,24 @@
     "XlateSurface.ent_part_exists",
     "XlateSurface.flush_part_exists"
   ],
-  "at": "2026-10-13T01:59:43Z",
+  "at": "2026-10-13T13:55:49Z",
   "cover": {
     "reached": 3,
     "reached_names": [
-      "XlateStaging_check.w17_ent_ph_lo",
-      "XlateStaging_check.w18_ent_ph_hi",
-      "XlateStaging_check.w19_flush_ph2"
+      "XlateStaging_check.w27_ent_ph_vpn",
+      "XlateStaging_check.w28_ent_ph_cm",
+      "XlateStaging_check.w29_flush_ph2"
     ],
     "unreached": 0,
     "unreached_names": []
   },
   "inputs": {
-    "rtl/generated/XlateStagingP2.sv": "abad7c8b4e2472ba0ad94f2aad9750af8f4c27f41d144332bfe69a641f35953e",
-    "rtl/sv/assert/XlateStaging_props.sv": "7c326d5a9f944321d7d68a85c5c33122771f32719109cf75059421df5d641050"
+    "rtl/generated/XlateStagingP2.sv": "0635c969f64db12f0b8e3bac488b4450db1bcede00d927ccd69dd8758d565e1c",
+    "rtl/sv/assert/XlateStaging_props.sv": "c4e625f90ac9766e3c6e6523ea5cbee01563fc8617d43c52977ffe6c935740d1"
   },
   "per_task": {
     "bmc": {
-      "assert": 13,
+      "assert": 15,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -34,7 +34,7 @@
       "mode": "cover"
     },
     "prove": {
-      "assert": 13,
+      "assert": 15,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -42,7 +42,7 @@
     }
   },
   "sby": "rtl/formal/sby/XlateStaging/p2.sby",
-  "sby_sha256": "a8772afcc2c7cd6f04ec8838b6b7f1ea989df2242d427a198daf525a65ed8fcf",
+  "sby_sha256": "a50ca892b6e8dc0ae2f209f3ce7d1a888705264064444168df9f6b9d8821f124",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

@@ -424,7 +424,7 @@ _LEGACY_SCHEMAS = {
 # 둘은 **상한**(늘면 실패)이다. 상한 쪽이 있는 이유: 구조 skip 과 부분 덮임은
 # 「CHECK 분모를 비우는」 방향의 부정을 가능하게 하므로, 그것을 늘리는 일은
 # 반드시 이 파일을 고치는 *명시적 서명*을 거쳐야 한다.
-_MIN_COVERED = 149     # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다.
+_MIN_COVERED = 159     # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다. · 149 → 159 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 159 = 완전 115 + 부분 44: 새 가드 열이 전부 앵커를 가졌다 — 아홉 완전 · commit_replaces_vpn 하나 부분)
                        # 146 → 149 (2026-10-12, 3.10 v1.0 묶음의 RTL 파도 W2 착지 — 실측 149 = 완전 106 + 부분 43:
                        # 새 가드 셋(XlateObs.verdict_latch · latch_clears_on_leave · latch_one_value — hiumask.sby)이
                        # 전부 앵커를 갖고 **완전**으로 태어났다(GUARD-MAP 범위가 HiuPipeline 안이고 합성 DUT 가 품는다).
@@ -473,7 +473,7 @@ _MIN_COVERED = 149     # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다
                        # 실측 아래 8 칸 헐거운 채로는 앵커 여덟이 조용히 사라져도
                        # 게이트가 침묵한다 (2026-09-21 전수 반증 세 렌즈가 같은
                        # 것을 지적했다).
-_MAX_PARTIAL = 43      # 부분 덮임뿐인 가드 수. 늘지 않는다 (늘리려면 근거와 함께)
+_MAX_PARTIAL = 44      # 부분 덮임뿐인 가드 수. 늘지 않는다 (늘리려면 근거와 함께) · 43 → 44 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 — 새 가드 열 중 commit_replaces_vpn 하나가 태어나면서 부분: 유일한 앵커 door.sby 가 xlateArea 결선의 복제를 재고 bmc 16 유계 — _PARTIAL 의 W3 머리 주석)
                        #
                        # 39 → 43 (2026-10-12, 3.10 v1.0 묶음의 RTL 파도 W1 착지 — 실측 부분 43 · 완전 103).
                        # 새 가드 열둘 중 넷이 **태어나면서 부분**이다: Platform.own_reported (파이프라인
@@ -599,7 +599,7 @@ _MAX_STRUCTURAL_RESIDUAL = 1
                        # 숨기는 것보다 낫지만, **늘어도 되는 것은 아니다.**
                        # 줄이는 길은 그 축을 실제로 재고 칸을 _NOTHING_LEFT 로
                        # 바꾸는 것뿐이다.
-_MIN_EVIDENCED = 183   # 실행 증거로 뒷받침된 앵커 수. 줄지 않는다.
+_MIN_EVIDENCED = 200   # 실행 증거로 뒷받침된 앵커 수. 줄지 않는다. · 183 → 200 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 — PROVES 200 · 신선 200)
                        # 180 → 183 (2026-10-12, 3.10 v1.0 묶음의 RTL 파도 W2 착지 — 실측 183/183 신선:
                        # hiumask.sby PROVES 셋(XlateObs.verdict_latch · latch_clears_on_leave · latch_one_value) ·
                        # 증거 hiumask.evidence.json 재스윕(bmc · prove abc pdr assert 57 · cover 37/37))
@@ -649,7 +649,7 @@ _MIN_EVIDENCED = 183   # 실행 증거로 뒷받침된 앵커 수. 줄지 않는
                        # 태스크 다섯(assembly · XlateStaging/props 신설 · AbortStaging ·
                        # xlatestore · hiumask) 재스윕 직후 실측: 앵커 105 전부 신선.
                        # 새 앵커 열둘 = XlateStaging/props.sby PROVES 11 + xlatestore.sby
-                       # 의 XlateSurface.hi_v_carried).
+                       # 의 XlateSurface.commit_v_carried).
                        #
                        # 80 → 93 (2026-09-26, 파도 2 — Wt64Top/assembly.sby 스윕
                        # 직후 실측: 앵커 93 전부 신선). 80 은 2026-08-26 의 값에
@@ -890,30 +890,30 @@ _PARTIAL = {
     # xlatestore.sby 가 *다른 가드 이름으로*(또는 같은 이름의 저장 절반 앵커로) 잰다.
     # 두 태스크의 합성은 서술이다 — 값 수준 끝-끝은 rtl/sim/test_shape_equiv.py 의
     # xlate_* 지향 시험이 잰다 (형식 증명이 아니다).
-    ("XlateSurface", "hi_fires", "rtl/formal/sby/XlateStaging/props.sby"): (
-        "문 절반 — 하류가 받을 수 있는 적법 HI ⇔ commit.valid (흡수 가지 없음) · 같은 LO 로 온 "
-        "HI 의 재커밋(t_no_drain)",
+    ("XlateSurface", "commit_fires", "rtl/formal/sby/XlateStaging/props.sby"): (
+        "문 절반 — 하류가 받을 수 있는 주소 · 상태 적법이고 데이터 적법인 COMMIT ⇔ commit.valid "
+        "(흡수 가지 없음 · p_commit_iff) · 같은 스테이징의 재커밋 — 소진 없음 (t_no_drain · 증인 W9)",
         "표 효과 — install.fire 가 채움 줄을 점유하고 다음 에지에 유효 비트를 세운다는 것. "
         "XlateStore 몫이고 xlatestore.sby 가 Isolation.fill_slot_per_partition · "
         "Isolation.capacity_partitioned 의 이름으로 잰다 (f_pend 세움 · validBits 커밋 전이)",
     ),
-    ("XlateSurface", "hi_commit_whole", "rtl/formal/sby/XlateStaging/props.sby"): (
-        "문 절반 — commit 번들 하나가 항목 전 필드(LO 프레임 · HI 태그·권한·V · 번호)를 한 "
-        "사이클에 나른다 (p_commit_fields · p_commit_part)",
+    ("XlateSurface", "commit_whole", "rtl/formal/sby/XlateStaging/props.sby"): (
+        "문 절반 — commit 번들 하나가 항목 전 필드(스테이징 VPN 32b · FRAME(V=1) · COMMIT 권한·V · "
+        "래치 파티션)를 한 사이클에 나른다 (p_commit_fields · p_commit_part)",
         "저장 절반 — XlateStore 가 install.fire 한 에지에 채움 줄 전체를 싣고(f_slot 등식) 대기 "
         "중인 줄이 그 항목의 옛 판을 가린다(가림 단언)는 것. xlatestore.sby 의 "
-        "Isolation.fill_slot_per_partition · XlateSurface.hi_v_carried 앵커가 잰다",
+        "Isolation.fill_slot_per_partition · XlateSurface.commit_v_carried 앵커가 잰다",
     ),
-    ("XlateSurface", "hi_v_carried", "rtl/formal/sby/XlateStaging/props.sby"): (
-        "문 절반 — commit.v = XLATE_ENTRY_HI [31] (p_commit_fields)",
+    ("XlateSurface", "commit_v_carried", "rtl/formal/sby/XlateStaging/props.sby"): (
+        "문 절반 — commit.v = XLATE_ENTRY_COMMIT [31] (p_commit_fields)",
         "저장 절반 — 커밋이 유효 비트를 v 로 쓰고 채움 적중이 v 를 요구하고 대기 줄이 옛 판을 "
         "가린다는 것. 같은 가드의 xlatestore.sby 앵커가 잰다 — 두 앵커의 합성은 서술이다",
     ),
-    ("XlateSurface", "hi_v_carried", "rtl/formal/sby/XlateStore/xlatestore.sby"): (
+    ("XlateSurface", "commit_v_carried", "rtl/formal/sby/XlateStore/xlatestore.sby"): (
         "저장 절반 — 커밋의 validBits 전이가 줄의 v 를 쓴다(1 세움 · 0 내림) · fillHit ⇒ 줄의 v · "
         "가림(대기 줄과 같은 색인이면 storeHit 없음) · 증인 W11(V=0 커밋이 산 비트를 내림) · "
         "W12(가림이 산 저장 항목을 숨김)",
-        "문 절반 — install.v 가 HI [31] 그 자체라는 것. 이 태스크에서 io_install_v 는 자유 "
+        "문 절반 — install.v 가 COMMIT [31] 그 자체라는 것. 이 태스크에서 io_install_v 는 자유 "
         "입력이다 (XlateStaging/props.sby 의 같은 가드 앵커가 잰다)",
     ),
     ("XlateSurface", "flush_fires", "rtl/formal/sby/XlateStaging/props.sby"): (
@@ -945,23 +945,23 @@ _PARTIAL = {
     # 전부 tbl' = tbl(표 불변)로 끝난다. 두 태스크가 재는 것은 「핀이 서지 않는다」까지이고
     # 「핀이 서지 않으면 표가 움직이지 않는다」는 XlateStore 의 프레임 조건이다. 그 다섯은
     # 아래 「반증 검토 뒤 수리」 절에 두 태스크 앵커 모두 올렸다.
-    ("XlateSurface", "hi_fires", "rtl/formal/sby/Wt64Top/assembly.sby"): (
-        "문·조립 절반 — 그림자가 적법이라 판정한 HI 가 install.ready 사이클에 오면 "
-        "install.valid 핀, 그 밖에는 없다 (a_xhi_iff — 흡수·LO 발 커밋·거부 사이클의 valid 를 "
-        "한 등식이 막는다) · 같은 LO 로 온 HI 의 재커밋 증인 W25",
+    ("XlateSurface", "commit_fires", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "문·조립 절반 — 그림자가 적법이라 판정한 COMMIT 이 install.ready 사이클에 오면 "
+        "install.valid 핀, 그 밖에는 없다 (a_xcm_iff — 흡수·스테이징 기입 발 커밋·거부 사이클의 "
+        "valid 를 한 등식이 막는다) · 같은 스테이징의 재커밋 증인 W25",
         "표 효과 — install.fire 가 채움 줄을 점유하고 다음 에지에 유효 비트를 세운다는 것. "
         "install.ready 는 이 태스크의 절단 핀(자유)이다. xlatestore.sby 가 "
         "Isolation.fill_slot_per_partition · Isolation.capacity_partitioned 의 이름으로 잰다",
     ),
-    ("XlateSurface", "hi_commit_whole", "rtl/formal/sby/Wt64Top/assembly.sby"): (
-        "문·조립 절반 — 커밋 사이클의 설치 핀 전부 = 그림자 LO 프레임 ‖ HI 태그·권한·V ‖ 래치 "
-        "번호 {part, idx}, 한 사이클 (a_xhi_fields)",
+    ("XlateSurface", "commit_whole", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "문·조립 절반 — 커밋 사이클의 설치 핀 전부 = 그림자 VPN 의 idx · tag(VPN[3:0] · VPN[31:4]) ‖ "
+        "FRAME(V=1) ‖ COMMIT 권한·V ‖ 래치 파티션, 한 사이클 (a_xcm_fields)",
         "저장 절반 — XlateStore 가 install.fire 한 에지에 채움 줄 전체를 싣고 대기 줄이 그 "
         "항목의 옛 판을 가린다는 것. xlatestore.sby 의 Isolation.fill_slot_per_partition · "
-        "XlateSurface.hi_v_carried 앵커가 잰다",
+        "XlateSurface.commit_v_carried 앵커가 잰다",
     ),
-    ("XlateSurface", "hi_v_carried", "rtl/formal/sby/Wt64Top/assembly.sby"): (
-        "문·조립 절반 — 커밋 사이클의 install.v 핀 = XLATE_ENTRY_HI [31] (a_xhi_fields · V=0 "
+    ("XlateSurface", "commit_v_carried", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "문·조립 절반 — 커밋 사이클의 install.v 핀 = XLATE_ENTRY_COMMIT [31] (a_xcm_fields · V=0 "
         "커밋 증인 W19)",
         "저장 절반 — 커밋이 유효 비트를 v 로 쓰고 채움 적중이 v 를 요구하고 대기 줄이 옛 판을 "
         "가린다는 것. 같은 가드의 xlatestore.sby 앵커가 잰다 — 두 앵커의 합성은 서술이다",
@@ -985,47 +985,47 @@ _PARTIAL = {
     # Prop_UnstagedRejected · Prop_PhantomRejected · Prop_RsvRejected). 문 태스크와 조립
     # 태스크가 재는 것은 「그 기입이 설치·flush 핀을 세우지 않는다」(그리고 거절이면
     # badWrite · 조립 sticky)까지다. 하류 절반은 전부 같다 — XlateStore 의 프레임 조건.
-    ("XlateSurface", "lo_stages_only", "rtl/formal/sby/XlateStaging/props.sby"): (
-        "문 절반 — 수락된 LO 는 commit · flush · missClr · badWrite 어느 것도 세우지 않는다 "
-        "(p_lo_quiet) · 커밋의 전건에 LO 가 없다 (p_commit_iff) · 스테이징만 움직인다는 것은 "
-        "그림자 오라클의 갱신 규칙이 이후 HI 판정으로 잰다",
+    ("XlateSurface", "frame_stages_only", "rtl/formal/sby/XlateStaging/props.sby"): (
+        "문 절반 — 수락된 FRAME 은 commit · flush · missClr · badWrite 어느 것도 세우지 않는다 "
+        "(p_stage_quiet · 증인 W26) · 커밋의 전건에 FRAME 기입이 없다 (p_commit_iff) · 스테이징만 "
+        "움직인다는 것은 그림자 오라클의 갱신 규칙이 이후 COMMIT 판정으로 잰다",
         "표 불변 — 설치·flush 핀이 둘 다 서지 않는 사이클에 XlateStore 의 유효 비트 · 채움 pend · "
         "슬롯 몸체가 커밋(채움 줄 → 저장, 가시성 보존) 밖으로 움직이지 않는다는 프레임 조건. "
         "xlatestore.sby 의 g_part $stable 가지가 Isolation.capacity_partitioned · "
         "Isolation.fill_slot_per_partition 의 이름으로 잰다 — 두 태스크의 합성은 서술이다",
     ),
-    ("XlateSurface", "lo_stages_only", "rtl/formal/sby/Wt64Top/assembly.sby"): (
-        "문·조립 절반 — 정렬된 LO 쓰기는 설치 핀도 flush 핀도 조립 sticky 도 세우지 않는다 "
-        "(a_xhi_iff · a_xflush_iff · a_surf_rise)",
+    ("XlateSurface", "frame_stages_only", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "문·조립 절반 — 수락된 FRAME 쓰기는 설치 핀도 flush 핀도 조립 sticky 도 세우지 않는다 "
+        "(a_xcm_iff · a_xflush_iff · a_surf_rise)",
         "표 불변 — 설치·flush 핀이 둘 다 서지 않는 사이클에 XlateStore 의 유효 비트 · 채움 pend · "
         "슬롯 몸체가 커밋(채움 줄 → 저장, 가시성 보존) 밖으로 움직이지 않는다는 프레임 조건. "
         "xlatestore.sby 의 g_part $stable 가지가 Isolation.capacity_partitioned · "
         "Isolation.fill_slot_per_partition 의 이름으로 잰다 — 두 태스크의 합성은 서술이다",
     ),
-    ("XlateSurface", "hi_entry_match", "rtl/formal/sby/XlateStaging/props.sby"): (
-        "문 절반 — 래치 번호와 다른 항목의 HI 는 커밋 없음 + badWrite · 스테이징 부동 "
-        "(p_commit_iff · p_bad_iff · 그림자 갱신 규칙)",
+    ("XlateSurface", "commit_base_match", "rtl/formal/sby/XlateStaging/props.sby"): (
+        "문 절반 — 래치 파티션과 다른 기저의 COMMIT 은 정지 없이 커밋 없음 + badWrite · 스테이징 "
+        "부동 (p_commit_iff · p_need_iff · p_bad_iff · 그림자 갱신 규칙 · 증인 W2)",
         "표 불변 — 설치·flush 핀이 둘 다 서지 않는 사이클에 XlateStore 의 유효 비트 · 채움 pend · "
         "슬롯 몸체가 커밋(채움 줄 → 저장, 가시성 보존) 밖으로 움직이지 않는다는 프레임 조건. "
         "xlatestore.sby 의 g_part $stable 가지가 Isolation.capacity_partitioned · "
         "Isolation.fill_slot_per_partition 의 이름으로 잰다 — 두 태스크의 합성은 서술이다",
     ),
-    ("XlateSurface", "hi_entry_match", "rtl/formal/sby/Wt64Top/assembly.sby"): (
-        "문·조립 절반 — 번호 불일치 HI 는 설치 핀 없음 (a_xhi_iff) + 조립 sticky (a_surf_fire)",
+    ("XlateSurface", "commit_base_match", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "문·조립 절반 — 래치 파티션과 다른 기저의 COMMIT 은 설치 핀 없음 (a_xcm_iff) + 조립 sticky (a_surf_fire)",
         "표 불변 — 설치·flush 핀이 둘 다 서지 않는 사이클에 XlateStore 의 유효 비트 · 채움 pend · "
         "슬롯 몸체가 커밋(채움 줄 → 저장, 가시성 보존) 밖으로 움직이지 않는다는 프레임 조건. "
         "xlatestore.sby 의 g_part $stable 가지가 Isolation.capacity_partitioned · "
         "Isolation.fill_slot_per_partition 의 이름으로 잰다 — 두 태스크의 합성은 서술이다",
     ),
-    ("XlateSurface", "hi_needs_staging", "rtl/formal/sby/XlateStaging/props.sby"): (
-        "문 절반 — 빈 스테이징의 HI 는 번호와 무관하게 커밋 없음 + badWrite (p_commit_iff · p_bad_iff)",
+    ("XlateSurface", "commit_needs_vpn", "rtl/formal/sby/XlateStaging/props.sby"): (
+        "문 절반 — VPN 유효 없는 COMMIT 은 정지 없이 커밋 없음 + badWrite (p_commit_iff · p_bad_iff · 증인 W3)",
         "표 불변 — 설치·flush 핀이 둘 다 서지 않는 사이클에 XlateStore 의 유효 비트 · 채움 pend · "
         "슬롯 몸체가 커밋(채움 줄 → 저장, 가시성 보존) 밖으로 움직이지 않는다는 프레임 조건. "
         "xlatestore.sby 의 g_part $stable 가지가 Isolation.capacity_partitioned · "
         "Isolation.fill_slot_per_partition 의 이름으로 잰다 — 두 태스크의 합성은 서술이다",
     ),
-    ("XlateSurface", "hi_needs_staging", "rtl/formal/sby/Wt64Top/assembly.sby"): (
-        "문·조립 절반 — 빈 스테이징의 HI 는 설치 핀 없음 (a_xhi_iff) + 조립 sticky (a_surf_fire) · "
+    ("XlateSurface", "commit_needs_vpn", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "문·조립 절반 — VPN 유효 없는 COMMIT 은 설치 핀 없음 (a_xcm_iff) + 조립 sticky (a_surf_fire) · "
         "증인 W21",
         "표 불변 — 설치·flush 핀이 둘 다 서지 않는 사이클에 XlateStore 의 유효 비트 · 채움 pend · "
         "슬롯 몸체가 커밋(채움 줄 → 저장, 가시성 보존) 밖으로 움직이지 않는다는 프레임 조건. "
@@ -1195,7 +1195,7 @@ _PARTIAL = {
     ("MmioPage", "effect_on_accept", "rtl/formal/sby/Wt64Top/assembly.sby"): (
         "조립 절반 — FP_BIND 예약 거절은 수락된(loadReady) 기입에서만 별도 sticky (a_fpbad_fire · "
         "a_fpbad_rise · 증인 W34 · W35) · 조립 sticky 는 수락 전 사건에서 서지 않는다 (a_surf_rise) · "
-        "정지된 HI 무효과 (a_xstall_noeffect)",
+        "정지된 COMMIT 무효과 (a_xhold_quiet)",
         "유닛 수락 게이트 — StepSequencer 가 progWr/bindWr 를 loadReady 로 스스로 게이트한다는 것 "
         "(그 유닛의 형식 태스크 0 건 — 값 수준은 cocotb fp_clear_window ②) · own · cq · cfgBlk 의 "
         "acceptW 게이트는 각 유닛 태스크가 다른 단언으로 잰다",
@@ -1237,13 +1237,14 @@ _PARTIAL = {
         "prove 가 없다)",
     ),
     ("MmioPage", "nocons_rejected", "rtl/formal/sby/Wt64Top/assembly.sby"): (
-        "명령 링 넷(0x380 · 0x384 · 0x388 · 0x390) 정렬 쓰기 ⇒ 조립 sticky (a_surf_fire · 증인 W30) · "
-        "읽기 응답 + 0 (resvA)",
-        "완료 링 base 둘(0x300 · 0x304) — descriptor.sby 의 같은 가드 앵커",
+        "명령 링 절반 — 넷(0x380 · 0x384 · 0x388 · 0x390) 정렬 쓰기 ⇒ 조립 sticky (a_surf_fire · 증인 "
+        "W30) · 읽기 응답 + 0 (resvA) · 0xC00 예약-엄격 절반 — 28 워드(+0x10..+0x7C) 정렬 쓰기 ⇒ 조립 "
+        "sticky (a_surf_fire 의 xRsW 항 · 증인 W49) · 효과 없음 (a_xcm_iff)",
+        "완료 링 descriptor 절반 — base 둘(0x300 · 0x304) — descriptor.sby 의 같은 가드 앵커",
     ),
     ("MmioPage", "nocons_rejected", "rtl/formal/sby/CompletionUnit/descriptor.sby"): (
         "완료 링 base 둘 — 정렬 쓰기 ⇒ faultBadWrite (축 6 등식 · 증인 W7) — bmc(유계)",
-        "명령 링 넷 — assembly.sby · 두 워드의 되읽기 0 (readValue 가 덮지 않는 구조 — 이 태스크는 값 "
+        "명령 링 넷 · 0xC00 예약-엄격 28 워드 — assembly.sby · 두 워드의 되읽기 0 (readValue 가 덮지 않는 구조 — 이 태스크는 값 "
         "경로를 창 읽기로만 잰다)",
     ),
     ("MmioPage", "reject_loud", "rtl/formal/sby/Wt64Top/assembly.sby"): (
@@ -1261,8 +1262,8 @@ _PARTIAL = {
     # (XlateStagingP2 — 형상 밖 가지가 서는 형상)의 문 단독이고 그 형상의 조립은 어느 태스크도
     # 재지 않는다 (assembly.sby 「보증하지 않는 것」 (g)).
     ("XlateSurface", "flush_drops_staging", "rtl/formal/sby/XlateStaging/props.sby"): (
-        "문 절반 — 래치 파티션의 수락된 XLATE_FLUSH 뒤 LO 없이 온 HI 는 번호와 무관하게 커밋 · "
-        "정지 없음 + badWrite · 다른 파티션 flush · 거절된 flush · 같은 사이클 LO 는 스테이징을 "
+        "문 절반 — 래치 파티션의 수락된 XLATE_FLUSH 뒤 VPN 없이 온 COMMIT 은 커밋 · "
+        "정지 없음 + badWrite · 다른 파티션 flush · 거절된 flush · 같은 사이클 VPN 은 스테이징을 "
         "비우지 않는다 (그림자의 flush 하강 규칙 + p_commit_iff · p_bad_iff · p_need_iff · "
         "t_flush_ends · 증인 W15 · W16)",
         "표 불변 — 설치·flush 핀이 둘 다 서지 않는 사이클에 XlateStore 의 유효 비트 · 채움 pend · "
@@ -1271,26 +1272,49 @@ _PARTIAL = {
         "Isolation.fill_slot_per_partition 의 이름으로 잰다 — 두 태스크의 합성은 서술이다",
     ),
     ("XlateSurface", "flush_drops_staging", "rtl/formal/sby/Wt64Top/assembly.sby"): (
-        "문·조립 절반 — 래치 파티션의 적법 0xE00 뒤 LO 없는 HI 는 설치 핀 없음 (a_xhi_iff — 그림자 "
-        "flush 하강) + 조립 sticky (a_surf_fire) · 다른 파티션 · 거절된 flush 뒤의 적법 HI 는 "
-        "커밋 (a_xhi_iff) · 증인 W40",
+        "문·조립 절반 — 래치 파티션의 적법 0xE00 뒤 VPN 없는 COMMIT 은 설치 핀 없음 (a_xcm_iff — 그림자 "
+        "flush 하강) + 조립 sticky (a_surf_fire) · 다른 파티션 · 거절된 flush 뒤의 적법 COMMIT 은 "
+        "커밋 (a_xcm_iff) · 증인 W40",
         "표 불변 — 설치·flush 핀이 둘 다 서지 않는 사이클에 XlateStore 의 유효 비트 · 채움 pend · "
         "슬롯 몸체가 커밋(채움 줄 → 저장, 가시성 보존) 밖으로 움직이지 않는다는 프레임 조건. "
         "xlatestore.sby 의 g_part $stable 가지가 Isolation.capacity_partitioned · "
         "Isolation.fill_slot_per_partition 의 이름으로 잰다 — 두 태스크의 합성은 서술이다",
     ),
     ("XlateSurface", "ent_part_exists", "rtl/formal/sby/XlateStaging/p2.sby"): (
-        "문 절반 (파티션 2 판) — 형상 밖 주소(addr[8:7] ≥ 2)의 LO · HI 는 커밋 · 정지 없음 + "
-        "badWrite · 형상 밖 LO 는 스테이징을 쓰지 않는다 (p_ent_phantom · p_bad_iff · 그림자 갱신 "
-        "규칙 loAcc + p_commit_iff · 증인 W17 · W18)",
+        "문 절반 (파티션 2 판) — 형상 밖 기저(addr[8:7] ≥ 2)의 기입은 커밋 · 정지 없음 + "
+        "badWrite · 형상 밖 VPN 은 스테이징을 쓰지 않는다 (p_ent_phantom · p_bad_iff · 그림자 갱신 "
+        "규칙 vpnAcc + p_commit_iff · 증인 W27 · W28)",
         "표 불변 — XlateStore 프레임 조건(위 항목들과 같다). 그리고 파티션 2 형상의 조립 — "
         "xlateArea 의 partW = 1 결선 · badWrite → [6] 합류는 어느 태스크도 재지 않는다 "
         "(assembly.sby 「보증하지 않는 것」 (g))",
     ),
     ("XlateSurface", "flush_part_exists", "rtl/formal/sby/XlateStaging/p2.sby"): (
         "문 절반 (파티션 2 판) — [7:0] ≥ 2 의 XLATE_FLUSH 는 flush 없음 + badWrite — 1b "
-        "flush.part 로 자르는 별칭 없음 (p_flush_iff · p_bad_iff · 증인 W19)",
+        "flush.part 로 자르는 별칭 없음 (p_flush_iff · p_bad_iff · 증인 W29)",
         "표 불변 — XlateStore 프레임 조건(위 항목들과 같다) · 파티션 2 형상의 조립은 재지 않는다",
+    ),
+
+    # ── 아래 둘: 태어나면서 부분인 앵커 (2026-10-13, 3.10 v1.0 묶음 RTL 파도 W3 — 형상 비노출 0xC00 문) ──
+    #
+    # 새 가드 열 중 둘. 나머지 여덟(vpn_drops_frame · commit_needs_frame · frame_pair_check · vpnhi_strict ·
+    # rsvw_rejected · commit_rsv_strict @props · evict_in_partition · evict_on_commit_only @xlatestore)은
+    # GUARD-MAP RTL 범위가 앵커 태스크의 DUT 안이라 완전이다 (W3-9). stall_independent 는 door.sby 앵커가
+    # 완전(문 · 저장 실물 + 결선 복제 — 복제의 같음은 assembly a_door_ready)이라 가드는 완전으로 남는다.
+    ("XlateSurface", "commit_replaces_vpn", "rtl/formal/sby/XlateDoor/door.sby"): (
+        "끝-끝 축 (bmc 깊이 16 유계) — 문 · 저장 실물 위에서 같은 (파티션, VPN) 의 커밋이 앞 항목을 "
+        "대체한다: 키 적중 값은 마지막 커밋 값 · V=0 뒤 미적중 · V=1 뒤 적중 (d_hit_sound · d_hit_live · "
+        "증인 W1–W4 · W7). 무계 증명은 미수렴(abc pdr 프레임 3 정체 · btormc -kind k=20 미폐) — 유계다",
+        "GUARD-MAP 이 가리키는 실물 — Wt64Top xlateArea 의 install.idx/tag := idxOf/tagOf(commit.vpn) 결선. "
+        "door.sby 는 그 복제를 잰다. 복제와 실물의 같음은 Wt64Top/assembly.sby 의 a_door_install "
+        "(VERIFIES Wt64Top.composite_wiring)이고 그 태스크는 이 가드의 앵커가 아니다 — 두 태스크의 합성은 "
+        "서술이다. 그리고 무계 — 깊이 16 밖의 행동은 재지 않는다",
+    ),
+    ("XlateSurface", "stall_independent", "rtl/formal/sby/XlateStore/xlatestore.sby"): (
+        "저장 절반 — 설치 발화 없는 연속 4 사이클 뒤 대기 줄이 없다 (s_pend_bounded — 조회 입력 자유, "
+        "commitFire 콘에 조회 · hold · 미적중 정지 항 없음) · 증인 W14",
+        "전건 「설치가 오지 않는 동안」의 이행 — 정지된 COMMIT 이 버스를 잡아 새 설치가 오지 않는다는 "
+        "조립 사실. Wt64Top/assembly.sby a_xhold_quiet · a_ready_only_slot 과 XlateDoor/door.sby "
+        "d_stall_bounded 가 잰다 (이 가드의 door 앵커는 완전 — 가드는 완전 덮임)",
     ),
 
     # ── 아래 넷: 태어나면서 부분인 앵커 (2026-10-12, 3.10 v1.0 묶음의 RTL 파도 W1 — [19] · 0xEC4 · [12]) ──

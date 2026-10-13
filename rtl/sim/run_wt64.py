@@ -141,12 +141,25 @@ SUITES = {
         # (N8, 결과 (d) 의 반례: 정지 → 커밋이 풀고 hold 로 머묾 → C+2 의 같은 칸 다른 VPN 커밋이 밀어냄)
         # · xlate_latched_hit_survives_retire(N9, 래치된 판정과 V=0 · flush · 대체 커밋의 효력 범위).
         # 둘 다 HEAD(9b6eee6) 생성물에서 의도한 이유(재미적중 · 떠나는 시점의 재판정)로 FAIL 한다.
-        "expect_min": 26,
+        # 2026-10-13 26 → 36: W3(3.10 RTL 파도 — 형상 비노출 0xC00 문) — 옛 문의 xlate_* 는 제자리에서
+        # VPN → FRAME → COMMIT 문으로 다시 썼고(xlate_hi_rejects_are_loud → xlate_commit_rejects_are_loud ·
+        # 인접 HI 둘 → 인접 COMMIT 둘), 새 열: N1–N7(xlate_reserved_words_strict · xlate_vpn_hi_rules ·
+        # xlate_vpn_rewrite_drops_frame · xlate_commit_data_reject_after_stall · xlate_same_vpn_replaces ·
+        # xlate_v0_nonresident · xlate_evict_scoped) + 선-formal 인계 셋(xlate_commit_addr_reject_no_wait ·
+        # xlate_staging_survives_commit · xlate_other_key_keeps_stall). 열 다 HEAD(aa91e86) 생성물에서 FAIL 한다.
+        # 2026-10-13 36 → 37: W3 수정 — xlate_high_vpn_bits_distinguish (높은 VPN 비트 [31] · [20] 만 다른 VPN 은
+        # 다른 항목). W3 검증 변이 M26(저장 태그 비교 [15:0] 만) · M43(설치 태그 [27] 0 고정)이 formal 만 잡고
+        # Shape 를 통과했다. 같은 수리로 xlate_other_flush_keeps_staging 에 파티션 1 vs 3 행(M13b — flush
+        # 파티션 비교가 bit0 만).
+        "expect_min": 37,
         "what": "ISA-2 순열 (LBID·LNID 존재 축) + ISA-1 자리 무관성 + 비교기 자기대조 "
-                "+ 변환 저장소 MMIO 문 (설치·flush·V=0·거절·정지 해제·인접 HI 버스 정지) "
+                "+ 변환 저장소 MMIO 문 — 형상 비노출 0xC00 (VPN·FRAME·COMMIT 설치·flush·V=0·거절·정지 해제·"
+                "인접 COMMIT 하류 정지·예약-엄격 워드·VPN_HI·VPN 재기입·데이터 사유의 정지 뒤 거절·주소 사유의 "
+                "무대기 거절·스테이징 비소진·다른 키 정지 유지·대체·V=0 비상주·축출 범위) "
                 "+ 소거 문 TAG1 워드 적법성 + 페이지 처분 · FP 소거 창 + 미적중 관측 값(정지 게이트 스냅샷) "
                 "+ 스테이징 수명(flush 가 끝낸다) + HIU_SHAPE · MASK_DUP_CAPTURE · [19] 원인별 보고 "
-                "+ 판정 래치(풀린 판정의 축출 생존 · 래치된 판정과 철회 · 대체의 효력 범위)",
+                "+ 판정 래치(풀린 판정의 축출 생존 · 래치된 판정과 철회 · 대체의 효력 범위) "
+                "+ VPN 높은 비트 키 구별",
     },
 }
 
@@ -254,7 +267,7 @@ UNMEASURED = [
      "재구현 MaskUnit 에 부표준키·블록 워드를 내는 포트가 없다 — 계층 peek 은 "
      "포트 계약이 아니라 SpinalHDL 명명의 우연이므로 통과 기준으로 쓰지 않는다"),
     ("FAULT_STATUS[17]·[18]",
-     "Wt64Top.sv:1662 「faultWords_status[17] = 1'b0;」 과 그 다음 줄 [18] 상수 0 — "
+     "Wt64Top.sv:1667 「faultWords_status[17] = 1'b0;」 과 그 다음 줄 [18] 상수 0 — "
      "엔트로피원·명령 디스크립터 원천 부재. "
      "0 을 「정상」으로 읽으면 안 된다"),
     ("SharedUnit·MemOrderGate 독립 .sv 의 top 대표성",

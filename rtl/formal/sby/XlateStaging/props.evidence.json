@@ -1,11 +1,17 @@
 {
   "anchors": [
-    "XlateSurface.lo_stages_only",
-    "XlateSurface.hi_fires",
-    "XlateSurface.hi_entry_match",
-    "XlateSurface.hi_needs_staging",
-    "XlateSurface.hi_commit_whole",
-    "XlateSurface.hi_v_carried",
+    "XlateSurface.frame_stages_only",
+    "XlateSurface.commit_fires",
+    "XlateSurface.commit_base_match",
+    "XlateSurface.commit_needs_vpn",
+    "XlateSurface.commit_whole",
+    "XlateSurface.commit_v_carried",
+    "XlateSurface.vpn_drops_frame",
+    "XlateSurface.commit_needs_frame",
+    "XlateSurface.frame_pair_check",
+    "XlateSurface.vpnhi_strict",
+    "XlateSurface.rsvw_rejected",
+    "XlateSurface.commit_rsv_strict",
     "XlateSurface.flush_fires",
     "XlateSurface.flush_scoped",
     "XlateSurface.flush_part_exists",
@@ -18,9 +24,9 @@
     "XlateSurface.ro_rejected",
     "XlateSurface.flush_drops_staging"
   ],
-  "at": "2026-10-13T01:59:45Z",
+  "at": "2026-10-13T13:55:52Z",
   "cover": {
-    "reached": 16,
+    "reached": 26,
     "reached_names": [
       "XlateStaging_check.w10_stall",
       "XlateStaging_check.w11_ro_wr",
@@ -29,11 +35,21 @@
       "XlateStaging_check.w14_mclr_rsv",
       "XlateStaging_check.w15_flush_ends",
       "XlateStaging_check.w16_other_keeps",
+      "XlateStaging_check.w17_vpn_drops",
+      "XlateStaging_check.w18_no_frame",
+      "XlateStaging_check.w19_frame_pair",
       "XlateStaging_check.w1_commit",
+      "XlateStaging_check.w20_vpnhi_bad",
+      "XlateStaging_check.w21_vpnhi_zero",
+      "XlateStaging_check.w22_rsvw",
+      "XlateStaging_check.w23_cm_rsv",
+      "XlateStaging_check.w24_bad_after_stall",
+      "XlateStaging_check.w25_v0_perm",
+      "XlateStaging_check.w26_frame_over",
       "XlateStaging_check.w2_mismatch",
       "XlateStaging_check.w3_unstaged",
       "XlateStaging_check.w4_v0_commit",
-      "XlateStaging_check.w5_lo_over",
+      "XlateStaging_check.w5_vpn_over",
       "XlateStaging_check.w6_flush3",
       "XlateStaging_check.w7_phantom",
       "XlateStaging_check.w8_rsv",
@@ -43,12 +59,12 @@
     "unreached_names": []
   },
   "inputs": {
-    "rtl/generated/Wt64Top.sv": "ff28cb10edd53f8f6afb8980774f6c7c36d5411daf04f3ceccff092ccc33bc0c",
-    "rtl/sv/assert/XlateStaging_props.sv": "7c326d5a9f944321d7d68a85c5c33122771f32719109cf75059421df5d641050"
+    "rtl/generated/Wt64Top.sv": "2b3aeb9bbb0e62647626ac9f76996491687b72776068898db891699c443a4312",
+    "rtl/sv/assert/XlateStaging_props.sv": "c4e625f90ac9766e3c6e6523ea5cbee01563fc8617d43c52977ffe6c935740d1"
   },
   "per_task": {
     "bmc": {
-      "assert": 12,
+      "assert": 14,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -58,11 +74,11 @@
       "assert": 0,
       "const_a": 0,
       "const_en0": 0,
-      "cover": 16,
+      "cover": 26,
       "mode": "cover"
     },
     "prove": {
-      "assert": 12,
+      "assert": 14,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -70,7 +86,7 @@
     }
   },
   "sby": "rtl/formal/sby/XlateStaging/props.sby",
-  "sby_sha256": "efc8fd2f5effacad8ba1f1d66d1cda4a0f779d743a973f71c4abac8940417422",
+  "sby_sha256": "05286abaf16dca40ec9bfceb3f176396a66476338e885b490e84ad0a43a9e428",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

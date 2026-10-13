@@ -180,7 +180,7 @@ module HiuMask_comp (
   input  wire        io_install_perm_r,
   input  wire        io_install_perm_w,
   input  wire        io_install_perm_x,
-  input  wire        io_install_v,        // XLATE_ENTRY_HI [31] — 자유 입력 (파도 3)
+  input  wire        io_install_v,        // XLATE_ENTRY_COMMIT [31] — 자유 입력 (파도 3 · W3 개명)
   input  wire        io_flush_valid,
   input  wire [1:0]  io_flush_part,
   input  wire        io_hostRsp_valid,

@@ -22,7 +22,7 @@ make rtl-formal        # 또는  sh rtl/formal/tla/run.sh
 |---|---|---|
 | **FAB-2** 공유 자원 배타성 + 무처분 없음 | `SharedUnit.tla` | **증명됨** |
 | **FAB-3** 기입 자격 · **FAB-4** 소유 구간 | `ResultBank.tla` | **증명됨** |
-| **HIU-1 · 2** 격리 · flush 후 미적중 · **HIU-4** 적중 유일성 | `XlateStore.tla` | HIU-1 · 2 **증명됨** · HIU-4 **미착수** — 인용된 `Inv_AtMostOneCandidate` 가 항진이라 아무것도 재지 않는다(정본 부록 D 사실 정정 2026-10-11); 3.10 RTL 파도 W3 에서 XlateSurface 의 적중 유일성 불변식으로 대체 |
+| **HIU-1 · 2** 격리 · flush 후 미적중 (HIU-4 는 W3 에서 `XlateSurface.tla` 로 옮겼다) | `XlateStore.tla` | HIU-1 · 2 **증명됨** — HIU-4 로 인용되던 `Inv_AtMostOneCandidate` 는 항진이라(정본 부록 D 사실 정정 2026-10-11) 3.10 v1.0 묶음 RTL 파도 W3 (2026-10-13, DP-12 사용자 확정)이 정의와 cfg 의 `INVARIANT` 줄을 지웠다(run 수 7 불변 · 줄 수 176 보존 — 지운 자리는 주석). HIU-4 의 증명 거처는 `XlateSurface.Inv_AtMostOneValidPerVpn` (아래 행) |
 | **HIU-3** 유효 게이팅 전수 | `XlateStore.tla` | **부분 증명** — 전수성은 정적 검사 몫 |
 | **ISA-3 · ISA-4 · ISA-8** 전역 미스만 fault · 계층당 1회 · 사상 축 | `Route.tla` | **부분 증명** (시간축·귀납 기계증명 비었음) |
 | **HIU-8 · HIU-9 · HIU-10** 플랫폼 독립 · 소유권 배타성 | `Platform.tla` | **증명됨** — 3.10 v1.0 묶음 RTL 파도 W1 의 선-formal(2026-10-11 — 파도 착지 2026-10-12): HIU-10 의 「loud」 를 원인별 보고(자격 거부 `[4]` · 자격 허용 ∧ 비소유 `[19]`)로 가른 가드 넷 · 불변식 일곱을 더했다 — 가드 여덟 · 23 run (아래 절) |
@@ -35,9 +35,9 @@ make rtl-formal        # 또는  sh rtl/formal/tla/run.sh
 | **SEC-2 · SEC-7** 경로 간 동일성 · 예약 필드 불투과 | `Decode.tla` | **증명됨** |
 | **E.1.2 임대별 마스크 키 · MASK_REKEY · FAULT_STATUS `[12]` 논스 재사용 판정 · `0xEC4` MASK_DUP_CAPTURE** | `Mask.tla` | **증명됨** — 가드 열둘(키 · 재키잉 넷 + W1 여덟) + 증인 열넷 + 짝 1, 29 run. 축 모델. 대형 cfg 는 `VIEW StateView`. 짝 「오늘의 RTL」(W1 전 RTL — HEAD 3b80087)이 `Inv_CapIffDup` 을 깬다 (아래 절) |
 | **E.1.2 CAP_STATUS/CAP_CLEAR** 축 격리 · sticky · 예약 위반 원자 거절 · 발화 우선 | `CapWord.tla` | **증명됨** — 가드 넷(axis_isolated · sticky_until_clear · clear_atomic · set_beats_clear) + 증인 넷, 9 run. 축은 불투명 토큰 넷 — 사건→축 배정은 정본 표의 몫 |
-| **E.1.2 · E.3 변환 저장소의 MMIO 문** `0xC00` LO 스테이징 · HI 단일 에지 커밋 · 번호 래치 · `0xE00` flush 발화·범위 · `0xE10` 해제 · RO 쓰기 거절 · 거절 loud · 하류 거부 처분 | `XlateSurface.tla` | **증명됨** — 가드 열일곱(lo_stages_only · hi_fires · hi_entry_match · hi_needs_staging · hi_commit_whole · hi_v_carried · flush_fires · flush_scoped · flush_valid_only · flush_part_exists · flush_rsv_strict · reject_loud · mclr_fires · mclr_needs_one · mclr_rsv_strict · mclr_keeps_stall · ro_rejected) + 증인 열여섯 + 짝·대안·발견 여섯 + 진행 1, 42 run. 축 모델(라벨이 색인 속성 ID 를 인용하지 않는다). 정본이 닫지 않은 자리 넷은 모델 머리 「발견」 — 스테이징 소진은 rtl/README.md T5 |
+| **E.1.2 · E.3 변환 저장소의 MMIO 문** `0xC00` 형상 비노출 항목 표면(VPN · FRAME · COMMIT · VPN_HI · 예약-엄격 28 워드) · 스테이징 (f) · 커밋 결과 (a)(b)(c)(g)(h) · **HIU-4** 적중 유일성 · **HIU-2** V=0 축 · 하류 정지 처분 · `0xE00` flush 발화·범위 · `0xE10` 해제 · RO 쓰기 거절 · 거절 loud | `XlateSurface.tla` | **증명됨** (모델 위) — 3.10 v1.0 묶음 RTL 파도 W3 (2026-10-13) 재작성(앞판은 파도 3 · 4 의 LO/HI 직접 배열 문 — 아래 절은 그 기록). 가드 스물아홉(개명 여섯 · 신설 열 · 유지 열셋 — commit_fires · commit_base_match · commit_needs_vpn · commit_whole · commit_v_carried · frame_stages_only · commit_replaces_vpn · vpn_drops_frame · commit_needs_frame · frame_pair_check · vpnhi_strict · rsvw_rejected · commit_rsv_strict · evict_in_partition · evict_on_commit_only · stall_independent · flush_fires · flush_scoped · flush_valid_only · flush_part_exists · flush_rsv_strict · flush_drops_staging · ent_part_exists · reject_loud · mclr_fires · mclr_needs_one · mclr_rsv_strict · mclr_keeps_stall · ro_rejected) + 증인 스물여덟 + 짝 여섯 · 대안 일곱 · 발견 1 + 진행 1, 77 run (좋은 cfg 다섯 — 작은 · 대형 · 칸 2 · 칸 2 × 파티션 2 · 형상 밖 기저). 새 고정 속성 일곱 `Inv_AtMostOneValidPerVpn`(HIU-4 — 칸 1 cfg 에서는 공허, 반증력은 칸 2 cfg 둘 · `del_commit_replaces_vpn` · `pair_host_index`) · `Prop_V0Misses`(HIU-2 V=0 축) · `Prop_StallDataBlind` · `Prop_AddrRejectNoWait` · `Prop_HoldInert` · `Prop_RejectInert` · `Prop_CommitScoped` · 유지 `Prop_StallEnds`(하류 정지 유계 · 진행) · `Prop_TableByDoor`(W3 부터 칸 2 cfg 에도 걸리고 `del_evict_on_commit_only` 가 반증). 대안 상수 `RefuseDomain` = full · kind 가 정지 판정의 데이터 무관을 반증으로 받친다. 라벨이 HIU-1/2/3 · HIU-4 를 인용해 색인 모델로 센다 (부록 D 「모델 13개」). 실측: XlateSurface 절 77/77 선언대로 · 전량 배터리 600/600 선언대로 — 컨테이너 · 2026-10-13 18:37–19:58 KST · 게이트 GREEN(`run.sh` 종료 코드 0 경로) · 이탈 0 · 입력 sha 620건 불변 (부록 D 문장과 같은 판) |
 | **E.1.2 · E.12 · E.12.1 재조립 문맥 소거의 문** `0xF40` 스테이징 세 워드 · 워드 적법성(TAG1 poison·trace·예약 · TAG2/FIRE 예약 · RO 쓰기) · 거절의 무효과·loud · 워드별 무장 · 재기입 덮음 · 발화 성립(무장 완비 · `[0]`=1) · 잔류 소진 | `AbortSurface.tla` | **증명됨** — 가드 열셋(poison_trace_zero · epoch_word_rsv_strict · shape_word_rsv_strict · fire_rsv_strict · ro_rejected · legal_first · reject_loud · arm_on_accept · arm_own_word · stage_writes_value · fire_needs_armed · fire_needs_one · fire_drains_arm) + 증인 열하나 + 짝 셋 · 대비 1, 30 run. 축 모델. sub-word 처분은 상수 `Subword`(판정 T2 — RTL 은 W4). 짝 둘이 D2 이전 RTL(TAG1 무검사)과 동형 |
-| **3.7 · 3.10 · E.1.1 · E.1.3 구성 페이지의 처분** 포트 수락·응답 · RO 쓰기 · WO 읽기 · 예약 오프셋(정렬 워드) · 비정렬 쓰기 · 물려받은 `0x000`–`0x11F` · 소비 회로 없는 RW 워드 · 거절 loud | `MmioPage.tla` | **증명됨** — 가드 아홉(rsp_on_accept · effect_on_accept · ro_rejected · wo_read_zero · resv_lenient · unaligned_rejected · leg_write_rejected · nocons_rejected · reject_loud) + 증인 열 + 짝·대안 여덟 · 대비 1, 29 run. 축 모델. 고정 속성의 예외 집합(SpecReject · SpecQuiet)이 곧 판정 내용이라 판정을 유도하지 못한다. 짝 둘이 D1 이전 조립과 동형 |
+| **3.7 · 3.10 · E.1.1 · E.1.3 구성 페이지의 처분** 포트 수락·응답 · RO 쓰기 · WO 읽기 · 예약 오프셋(정렬 워드) · 비정렬 쓰기 · 물려받은 `0x000`–`0x11F` · 소비 회로 없는 RW 워드(W3 부터 `0xC00` 예약-엄격 28 워드 — XlateSurface 의 rsvw — 도 이 부류: 쓰기 거절 + `[6]` · 읽기 0) · 거절 loud | `MmioPage.tla` | **증명됨** — 가드 아홉(rsp_on_accept · effect_on_accept · ro_rejected · wo_read_zero · resv_lenient · unaligned_rejected · leg_write_rejected · nocons_rejected · reject_loud) + 증인 열 + 짝·대안 여덟 · 대비 1, 29 run. 축 모델. 고정 속성의 예외 집합(SpecReject · SpecQuiet)이 곧 판정 내용이라 판정을 유도하지 못한다. 짝 둘이 D1 이전 조립과 동형 |
 | **E.1.2 · E.3 변환 미적중의 관측면** `0xE04` XLATE_STATUS · `0xE08`/`0xE0C` XLATE_MISS_VPN 의 *값* — 정지 게이트 스냅샷(정지 중에만 그 요청 · 정지가 없으면 0) · 찢김 없음 · 읽기 무해제 · 채널의 충분성 · **3.6.2 판정 시점과 판정 래치**(W2) | `XlateObs.tla` | **증명됨** (모델 위) — 가드 아홉(obs_stall_live · obs_sticky · obs_part_stalled · obs_vpn_stalled · obs_no_residue · obs_read_pure + W2 verdict_latch · latch_clears_on_leave · latch_one_value) + 고정 속성 Prop_NoTear · Prop_LatchedSurvivesRetract · Prop_V0AfterEdgeMisses · 진행 Prop_StallResolves(「정지한 *그* 요청은 결국 떠난다」 — 요청 꼬리표 tok · 폴링 호스트 HostSpec · 경쟁자 · 하류 배압) + 증인 열셋 + 대안 다섯 · 고정 속성 반증 둘 · 진행 짝 셋 · 짝 셋 · 대비 셋, 41 run (W2 전 22). 축 모델. 짝 「파도 3 까지의 RTL」(세 워드 읽기 0)이 정지 영구로, 짝 「오늘의 RTL」(W2 전 RTL — HEAD 9b6eee6, 래치 없음)이 재미적중으로 운다 |
 
 순서는 부록 D.5 규범 그대로다 — **근거는 "실제로 무너진 곳"** 이다.
@@ -143,7 +143,7 @@ RTL 이 아직 없으므로 지향 테스트로 **변환**하는 것은 단계 2
 - `-workers 1` **PIN**. 여러 워커에서는 BFS 방문 순서가 스레드 스케줄에 의존해
   MUST-FAIL run 의 상태 수가 재현되지 않는다.
 
-## HIU-1 · 2 · 3 · 4 — `XlateStore.tla`
+## HIU-1 · 2 · 3 · 4 — `XlateStore.tla` (HIU-4 는 2026-10-13 W3 에서 `XlateSurface.Inv_AtMostOneValidPerVpn` 로 옮겼다 — 위 표)
 
 넷을 한 모델에 둔 이유는 넷이 **같은 구조 위의 성질**이기 때문이다. 따로 쓰면
 저장 블록을 네 벌 모델링하게 되고 그 네 벌이 드리프트한다.
@@ -603,7 +603,7 @@ SEC-2 는 「사이클 수」가 아니라 **상태열**이다 — `Strong_SameP
 세 경로(적중·대체·미적중) 각각의 도달성 증인이 있다 — 하나라도 도달
 불가면 SEC-2 는 남은 둘만 비교하는 명제가 된다.
 
-## E.1.2 · E.3 변환 저장소의 MMIO 문 — `XlateSurface.tla` (파도 3, 2026-09-26)
+## E.1.2 · E.3 변환 저장소의 MMIO 문 — `XlateSurface.tla` (파도 3, 2026-09-26 — 앞판 LO/HI 문의 기록. 2026-10-13 W3 재작성판은 위 표 행 · 모델 머리)
 
 `XlateStore.tla`(저장 블록) · `Isolation.tla`(조회·채움의 비간섭)가 설치와 flush 를 원자 동작
 하나로 두는 자리를 연다 — 호스트는 32b 버스로 한 워드씩 쓰므로 항목 하나(64b)는 LO · HI 두

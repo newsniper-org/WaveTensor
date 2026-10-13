@@ -50,14 +50,16 @@ DUT 는 `rtl/generated/Wt64Top.sv` (형상 A, `Wt64Config()` 기본값 —
     앉혀도 궤적이 바이트 동일. 형상 하나 안에서 확인 가능한 ISA-1 의 몫이다
   · 구성 표면 무결성 — 소거 구간 대기 · 수락 · 거절 4부류가 실제로 loud
   · 궤적 비교기의 양·음성 자기대조
-  · **변환 저장소의 MMIO 문** (파도 3) — `0xC00` XLATE_ENTRY_LO/HI · `0xE00`
+  · **변환 저장소의 MMIO 문** (파도 3 → W3 형상 비노출 문) — `0xC00` 파티션 기저마다
+    XLATE_ENTRY_VPN · FRAME · COMMIT · VPN_HI 와 예약-엄격 28 워드 · `0xE00`
     XLATE_FLUSH · `0xE10` XLATE_MISS_CLEAR 를 *호스트 ABI 오프셋으로* 기입하고
     HIU 요청(`io.hiuReq`, 내부 제시 포트)의 적중·정지·승인 프레임으로 잰다.
     정본이 상주를 요구하는 시험(03-hiu.typ:802 「항목 설치 → 컨텍스트 전환 → *같은 주소*의 변환이 미적중하는지 확인한다」)의
     기입 쪽이 처음으로 MMIO 로 표현 가능해졌다 — 설치 → flush → 같은 주소 미적중.
-    같은 항목 HI 두 워드를 쉬는 사이클 없이 잇는 원시 구동(`mmio_burst`)으로
-    하류 거부의 처분(D-2 버스 정지 — 정확히 한 사이클 · `[6]` 무발화 · 풀린
-    기입의 커밋)도 값 수준에서 잰다.
+    COMMIT 을 쉬는 사이클 없이 잇는 원시 구동(`mmio_burst`)으로 하류 정지의
+    처분(적법한 COMMIT 만 정지 — 정확히 한 사이클 · `[6]` 무발화 · 풀린 기입의
+    커밋 · 데이터 사유는 정지 뒤 수락 사이클에 거절 · 주소 사유는 곧장 거절)도
+    값 수준에서 잰다.
     조회 쪽은 여전히 내부 포트이므로 이것도 **끝-끝 호스트 ABI 등가는 아니다**
     (호스트 쪽 문 · 디코드 진입 층위의 요청).
   · **표면 비트 · 워드** (W1 — 3.10 v1.0 묶음의 RTL 파도 첫 하위 파도) —
@@ -169,8 +171,12 @@ SHAPE_DEPENDENT = {"io_push_1_stall", "io_push_2_stall"}
 # [19] 원천별 수출, IO 해제선 없음(0xF84 [19] 로만 내려간다 → NO_IO_CLEAR 6 → 7). 0xEC4 캡처는
 # MaskUnit 안이라 최상위 포트가 늘지 않았고 입력 집합도 그대로다(120). 형상 무관 — 121/119 →
 # 122/120 (W1 통합 생성물 포트 목록에서 실측, 2026-10-11).
-EXPECT_OUTPUTS = 122
-EXPECT_COMPARE_FACE = 120
+# 재유도 기록 (W3 형상 비노출 0xC00 문 — 3.10 v1.0 묶음): io_fault_xlateCfgBadWrite 신설 (+1) —
+# COMMIT 의 데이터 사유 거절(FRAME 유효 없는 V=1 · [27:0] 비0)을 수락 사이클에 세우는 원천별 sticky
+# (fpCfgBadWrite 선례). IO 해제선 없음(0xF84 [6] 로만 내려간다 → NO_IO_CLEAR 7 → 8). 입력 집합은
+# 그대로다. 형상 무관 — 122/120 → 123/121 (W3 생성물 포트 목록에서 실측, 2026-10-13).
+EXPECT_OUTPUTS = 123
+EXPECT_COMPARE_FACE = 121
 
 
 def parse_clear_ports():
@@ -239,10 +245,11 @@ COMPARE_FACE = [n for n in OUT_PORTS if n not in SHAPE_DEPENDENT]
 # 만들지 않는다는 표면 이후 축의 규율). 이 목록의 *이름*도 `compare_face_is_pinned` 가 생성물의
 # 「같은 이름 해제선이 없는 fault 출력」 집합과 등식으로 대조한다 — 수의 등식만으로는 이름이
 # 바뀐 축을 못 본다.
+# W3 의 `xlateCfgBadWrite`(COMMIT 데이터 사유 거절)도 `fpCfgBadWrite` 와 같은 부류다 — `fclr(6)` 하나만 받는다.
 NO_IO_CLEAR = ["io_fault_ownBadWrite", "io_fault_cqOverflow",
                "io_fault_cqBadWrite", "io_fault_fpCapAbsent",
                "io_fault_ehCapAbsent", "io_fault_fpCfgBadWrite",
-               "io_fault_hiuOwn"]
+               "io_fault_hiuOwn", "io_fault_xlateCfgBadWrite"]
 EXPECT_CLEAR_PORTS = 19
 
 # 자주 보는 자리의 색인 — 매번 `.index()` 하면 이름 오타가 ValueError 로만
@@ -854,7 +861,7 @@ async def isa1_comparator_selfcheck(dut):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 변환 저장소의 MMIO 문 — 0xC00 항목 배열 · 0xE00 저장소 제어 (파도 3)
+# 변환 저장소의 MMIO 문 — 0xC00 형상 비노출 항목 표면 · 0xE00 저장소 제어 (파도 3 → W3)
 # ═══════════════════════════════════════════════════════════════════════════
 #
 # 기입은 호스트 ABI 오프셋이고, 관측은 HIU 요청 경로의 내부 제시 포트다
@@ -867,9 +874,42 @@ async def isa1_comparator_selfcheck(dut):
 # 마스크는 reset 값 0)이고 `io.phys.frame` 이 설치한 프레임 그대로다.
 #
 # 이 시험들은 구성 소거 구간(`boot`)을 기다리지 않는다 — 두 구역은 MmioConfig 를
-# 거치지 않고 ready 가 하류 install.ready(HI 쓰기) 아니면 1 이다.
+# 거치지 않고 ready 가 하류 채움 슬롯(적법한 COMMIT 의 하류 정지) 아니면 1 이다.
+#
+# ── W3 — 형상 비노출 문 (3.10 v1.0 묶음의 RTL 파도 셋째 하위 파도) ─────────────
+#
+# 앞판 문(항목 기저 = 파티션 · 색인 · LO 스테이징 · HI 커밋)은 정본에서 사라졌다. 이제 호스트는
+# 파티션 기저에 (VPN, 프레임, 권한)만 쓰고 칸은 장치가 고른다. **기대값은 정본 E.1.2 `0xC00` 행에서
+# 독립 유도한다** — RTL 의 디코드 상수 · 신호를 import 하지도 옮겨 적지도 않는다 (차등 정의역 함정):
+#   e-defined.typ:298 「`addr[8:7]` = 파티션 · 상한 4 다」
+#   e-defined.typ:299 「어느 항목이 상주하는지를 돌려주는 표면은 없다」
+#   e-defined.typ:305 「수락된 기입이 그 주소의 파티션을 래치한다」 — VPN.
+#   e-defined.typ:306 「래치 파티션의 기저에서만 수락한다」 — FRAME.
+#   e-defined.typ:306 「커밋은 스테이징을 소진하지 않는다」
+#   e-defined.typ:308 「`[27:0]` 예약 = 0 (엄격)」 — COMMIT.
+#   e-defined.typ:308 「정지 중에는 효과가 없고, 수락되면 커밋되며, 드롭하지 않는다」
+#   e-defined.typ:308 「기다리지 않고 곧장 거절 + `[6]` 이다」 — 주소 · 스테이징 상태 사유.
+#   e-defined.typ:308 「수락 사이클에 거절된다 — 그 수락은 위 유계 정지 뒤일 수 있다」 — 데이터 사유.
+#   e-defined.typ:308 「비0 기입은 거절 + `[6]` · 스테이징 불변이며」 — VPN_HI.
+#   e-defined.typ:308 「수락된 VPN_HI 기입은 FRAME 스테이징 유효를 내린다.」
+#   e-defined.typ:308 「*표의 워드로 등재한다* — 쓰기는 거절 + `[6]`, 읽기는 0」 — 예약-엄격 28 워드.
+#   e-defined.typ:310 「같은 (파티션, VPN) 에 두 항목이 동시에 적중하지 않는다 — 뒤 커밋이 앞 항목을 대체한다」 — (a).
+#   e-defined.typ:310 「V=0 COMMIT 뒤 같은 (파티션, VPN) 조회는 반드시 미적중이다.」 — (b).
+#   e-defined.typ:310 「축출은 같은 파티션 안에서만 일어난다」 — (c).
+#   e-defined.typ:310 「미적중 정지는 정지한 요청의 (파티션, VPN) 에 대한 V=1 커밋(거부 채움 포함)이 수락되면 풀린다」 — (d).
+#   e-defined.typ:311 「VPN 기입은 기입 주소의 파티션을 래치하고 FRAME 스테이징 유효를 내린다」 — (f) 1항.
+#   e-defined.typ:311 「V=1 COMMIT 은 *FRAME 유효*를 요구한다」 — (f) 3항.
+#   e-defined.typ:311 「V=0 COMMIT 은 VPN 유효만 요구한다」
+#   e-defined.typ:311 「래치와 다른 파티션 기저의 COMMIT · VPN 없는 COMMIT · FRAME 유효 없는 V=1 COMMIT」 — (f) 4항.
+#   e-defined.typ:311 「래치 파티션에 대한 *수락된* flush 가 두 스테이징 유효를 모두 내린다」 — (f) 7항.
+#   e-defined.typ:873 「VPN · FRAME 스테이징 기입과 V=0 COMMIT 은 정지를 풀지 않는다」 — E.3 2항.
+# 형상 A 는 파티션 상한 넷이 전부 실재한다 — 「없는 파티션 기저」 거절은 이 DUT 에서 표현할 수 없다
+# (후-formal XlateStaging/p2.sby 몫).
 
 XENT_BASE = 0xC00
+X_VPN, X_FRAME, X_COMMIT, X_VPN_HI = 0x00, 0x04, 0x08, 0x0C   # 기저 안 워드 (E.1.2 `0xC00` 표)
+X_RSV_WORDS = tuple(range(0x10, 0x80, 4))                     # 기저 `+0x10`~`+0x7C` 예약-엄격 28
+X_PARTS = 4                                                   # `addr[8:7]` — 상한 4 (형상 A 는 넷 다 실재)
 XCTL_FLUSH = 0xE00
 XCTL_STATUS = 0xE04
 XCTL_MISS_CLEAR = 0xE10
@@ -885,19 +925,30 @@ LOOKUP_WINDOW = 20
 MISS_LEAD = 2
 
 
-def xent(part, idx):
-    """03-hiu.typ:1552 「오늘 문의 항목 기저 주소는 `0xC00` + (파티션 ≪ 7) + (색인 ≪ 3) 이다」"""
-    return XENT_BASE + (part << 7) + (idx << 3)
+def xbase(part):
+    """파티션 기저 — e-defined.typ:298 「`addr[8:7]` = 파티션 · 상한 4 다」 (기저 = `0xC00` + (p ≪ 7))."""
+    return XENT_BASE + (part << 7)
 
 
-def hi_word(tag, v=1, r=1, w=0, x=0):
-    """XLATE_ENTRY_HI — `[31]` V · `[30:28]` R·W·X · `[27:0]` 태그."""
-    return (v << 31) | (r << 30) | (w << 29) | (x << 28) | (tag & 0x0FFFFFFF)
+def commit_word(v=1, r=1, w=0, x=0, rsv=0):
+    """XLATE_ENTRY_COMMIT — `[31]` V · `[30:28]` R·W·X · `[27:0]` 예약 = 0 (엄격). `rsv` 는 음성 자극용."""
+    return (v << 31) | (r << 30) | (w << 29) | (x << 28) | (rsv & 0x0FFFFFFF)
 
 
-def vpn_of(tag, idx):
-    """VPN = {태그 28b, 색인 4b} — XlateStore reqIdx = vpn[3:0] · reqTag = vpn[31:4]."""
-    return ((tag & 0x0FFFFFFF) << 4) | (idx & 0xF)
+def vpn_of(hi, lo):
+    """VPN 32b 값 = {hi 28b, lo 4b}. 형상 비노출 문에서 VPN 은 *그냥 값*이다 — 이 함수는 W3 전
+    시험(N8 · N9 · N14 · 관측면 시험)이 쓰던 VPN 값을 그대로 다시 짓는 편의일 뿐이고(기대값 불변),
+    문은 이것을 모른다. **화이트박스는 두 자리**(N8 의 경쟁 커밋 · `xlate_other_key_keeps_stall` 의
+    같은 칸 행)뿐이다 — 거기서만 하위 4b 를 「참조 형상(직접 사상 4 × 16)의 같은 칸」으로 읽는다."""
+    return ((hi & 0x0FFFFFFF) << 4) | (lo & 0xF)
+
+
+def commit_ops(part, vpn, frame, v=1, r=1, w=0, x=0):
+    """항목 하나의 기입 열 VPN → FRAME → COMMIT 을 (주소, 데이터) 목록으로 — `mmio_burst` 와
+    `commit_entry` 의 공용. 열의 순서는 E.1.2 `0xC00` 스테이징 (f) 그대로다."""
+    b = xbase(part)
+    return [(b + X_VPN, vpn), (b + X_FRAME, frame),
+            (b + X_COMMIT, commit_word(v=v, r=r, w=w, x=x))]
 
 
 async def boot_hiu(dut):
@@ -909,9 +960,11 @@ async def boot_hiu(dut):
     await step(dut)
 
 
-async def install_entry(dut, part, idx, tag, frame, v=1, r=1, w=0, x=0):
-    await mmio_write(dut, xent(part, idx), frame)            # LO — 스테이징
-    await mmio_write(dut, xent(part, idx) + 4, hi_word(tag, v=v, r=r, w=w, x=x))  # HI — 커밋 발화
+async def commit_entry(dut, part, vpn, frame, v=1, r=1, w=0, x=0):
+    """VPN → FRAME → COMMIT 세 워드. `[6]` 은 여기서 읽지 않는다 — 채움 경로(정지를 푸는 커밋)에서
+    MMIO 읽기를 끼우면 풀린 요청의 응답 사이클을 지나친다. 적법성은 부르는 쪽이 `fault6` 으로 본다."""
+    for addr, data in commit_ops(part, vpn, frame, v=v, r=r, w=w, x=x):
+        await mmio_write(dut, addr, data)
 
 
 async def hiu_lookup(dut, part, vpn, window=LOOKUP_WINDOW, write=0):
@@ -976,12 +1029,24 @@ async def clear_fault6(dut):
     assert await fault6(dut) == 0, "0xF84[6] W1C 가 [6] 을 내리지 못했다"
 
 
+async def write_f6(dut, addr, data):
+    """기입 하나의 `[6]` 처분 — 앞에 선 `[6]` 을 지우고 쓴 뒤 읽고, 선 것은 다시 지운다. 행 표용
+    (원천을 이 기입 하나로 좁힌다 — page_expect_loud 의 행 표 판)."""
+    if await fault6(dut):
+        await clear_fault6(dut)
+    await mmio_write(dut, addr, data)
+    f = await fault6(dut)
+    if f:
+        await clear_fault6(dut)
+    return f
+
+
 def assert_hit(res, frame, what):
     assert res["rsp"] == 1 and res["stalled"] == 0, (
         f"{what}: 적중을 기대했는데 응답 {res['rsp']} · 정지 {res['stalled']} 사이클")
     assert res["granted"] == 1 and res["phys"] == 1, f"{what}: 승인이 없다 ({res})"
     assert res["frame"] == frame, (
-        f"{what}: 승인 프레임 0x{res['frame']:08X} ≠ 설치한 LO 프레임 0x{frame:08X}")
+        f"{what}: 승인 프레임 0x{res['frame']:08X} ≠ 커밋한 프레임 0x{frame:08X}")
 
 
 def assert_miss(dut, res, what):
@@ -1000,21 +1065,31 @@ def assert_miss(dut, res, what):
     assert int(dut.io_fault_hiuMiss.value) == 1, f"{what}: 미적중인데 hiuMiss sticky 가 서지 않았다"
 
 
+def lookup_cell(res):
+    """행 표 칸 — 조회 결과를 (적중, 승인, 프레임) 또는 ("miss",) 로. 정지가 창 끝까지면 미적중이다."""
+    want_miss = [1] * MISS_LEAD + [0] * (LOOKUP_WINDOW - MISS_LEAD)
+    if res["rsp"] == 0 and res["trace"] == want_miss:
+        return ("miss",)
+    if res["rsp"] == 1 and res["stalled"] == 0:
+        return ("hit", res["granted"], res["frame"])
+    return ("?", res["rsp"], res["stalled"], tuple(res["trace"]))
+
+
 @cocotb.test()
 async def xlate_mmio_install_hits(dut):
-    """(1) LO → HI 두 워드 기입으로 설치한 항목에 조회가 적중하고, 승인된
-    프레임이 LO 로 실은 값 그대로다. 적법한 두 기입은 [6] 을 세우지 않는다."""
+    """(1) VPN → FRAME → COMMIT 세 워드 기입으로 커밋한 항목에 조회가 적중하고, 승인된
+    프레임이 FRAME 으로 실은 값 그대로다. 적법한 세 기입은 [6] 을 세우지 않는다. 다른 파티션의
+    같은 VPN 은 미적중이다 — 기저 `addr[8:7]` 이 곧 파티션."""
     await boot_hiu(dut)
-    part, idx, tag, frame = 1, 5, 0x0ABCDEF, 0x1234_5678
+    part, vpn, frame = 1, vpn_of(0x0ABCDEF, 5), 0x1234_5678
     await mmio_write(dut, OWN_SET, frame)
-    await install_entry(dut, part, idx, tag, frame)
-    assert await fault6(dut) == 0, "적법한 LO/HI 기입이 [6] 을 세웠다 (허위 fault)"
-    res = await hiu_lookup(dut, part, vpn_of(tag, idx))
-    assert_hit(res, frame, "MMIO 설치 뒤 조회")
-    # 다른 파티션의 같은 (색인, 태그) 는 미적중이다 — 항목 주소 addr[8:7] 이 곧 파티션.
-    res = await hiu_lookup(dut, 0, vpn_of(tag, idx))
+    await commit_entry(dut, part, vpn, frame)
+    assert await fault6(dut) == 0, "적법한 VPN · FRAME · COMMIT 기입이 [6] 을 세웠다 (허위 fault)"
+    res = await hiu_lookup(dut, part, vpn)
+    assert_hit(res, frame, "MMIO 커밋 뒤 조회")
+    res = await hiu_lookup(dut, 0, vpn)
     assert_miss(dut, res, "타 파티션의 같은 VPN")
-    dut._log.info("MMIO LO/HI 설치 → 적중 · 프레임 일치 · 타 파티션 미적중 (항목 주소 = 파티션)")
+    dut._log.info("MMIO VPN/FRAME/COMMIT → 적중 · 프레임 일치 · 타 파티션 미적중 (기저 = 파티션)")
 
 
 @cocotb.test()
@@ -1023,119 +1098,149 @@ async def xlate_flush_then_miss(dut):
     다음 조회가 미적중으로 정지하고 hiuMiss 가 선다 — 정본이 회귀 상주를 요구하는
     「검증 방법」 규범의 기입 쪽이다: 설치 → 컨텍스트 전환 flush → 같은 주소 미적중.
 
-    값 수준 두 단계를 더 잰다 (반증 검토 뒤 수리):
-    · flush 는 *그 파티션만* 지운다 — 같은 (색인, 태그)를 다른 파티션에 세워 두고
-      flush 를 건넌 뒤 그 항목이 적중함을 본다 (전역 발화 금지 · flush_scoped).
-      이 단계는 flush 파티션의 미적중 조회 *앞*에 둔다 — 미적중은 파이프를 정지시켜
-      다음 조회를 받지 않는다.
-    · LO 는 스테이징일 뿐이다 — 산 항목 위에 다른 프레임의 LO 를 써도 HI 전까지
-      조회는 옛 프레임을 승인하고 [6] 도 없다 (lo_stages_only). LO 가 표를 곧장
-      덮는 기계라면 여기서 새 프레임(또는 미승인)이 나온다."""
+    값 수준 두 단계를 더 잰다:
+    · flush 는 *그 파티션만* 지운다 — 같은 VPN 을 다른 파티션에 세워 두고 flush 를 건넌 뒤
+      그 항목이 적중함을 본다 (전역 발화 금지 · flush_scoped). 이 단계는 flush 파티션의
+      미적중 조회 *앞*에 둔다 — 미적중은 파이프를 정지시켜 다음 조회를 받지 않는다.
+    · FRAME 은 스테이징일 뿐이다 — 산 항목의 VPN 을 다시 쓰고 다른 프레임의 FRAME 을 써도
+      COMMIT 전까지 조회는 옛 프레임을 승인하고 [6] 도 없다 (frame_stages_only). FRAME 이
+      표를 곧장 덮는 기계라면 여기서 새 프레임(또는 미승인)이 나온다."""
     await boot_hiu(dut)
-    part, idx, tag, frame = 2, 3, 0x00C0FFE, 0x0000_BEEF
-    opart, oframe = 1, 0x0000_F00D          # 다른 파티션 — 같은 색인 · 같은 태그
+    part, vpn, frame = 2, vpn_of(0x00C0FFE, 3), 0x0000_BEEF
+    opart, oframe = 1, 0x0000_F00D          # 다른 파티션 — 같은 VPN
     await mmio_write(dut, OWN_SET, frame)
     await mmio_write(dut, OWN_SET, oframe)
-    await install_entry(dut, part, idx, tag, frame)
-    await install_entry(dut, opart, idx, tag, oframe)
-    assert_hit(await hiu_lookup(dut, part, vpn_of(tag, idx)), frame, "flush 전")
-    # LO over live — 스테이징만 움직이고 표의 옛 판은 그대로다.
-    await mmio_write(dut, xent(part, idx), 0x0000_DEAD)
-    assert await fault6(dut) == 0, "산 항목 위의 적법한 LO 가 [6] 을 세웠다"
-    assert_hit(await hiu_lookup(dut, part, vpn_of(tag, idx)), frame,
-               "산 항목 위 LO 뒤 (HI 전) — LO 가 표에 닿았다")
+    await commit_entry(dut, part, vpn, frame)
+    await commit_entry(dut, opart, vpn, oframe)
+    assert_hit(await hiu_lookup(dut, part, vpn), frame, "flush 전")
+    # FRAME over live — 스테이징만 움직이고 표의 옛 판은 그대로다.
+    await mmio_write(dut, xbase(part) + X_VPN, vpn)
+    await mmio_write(dut, xbase(part) + X_FRAME, 0x0000_DEAD)
+    assert await fault6(dut) == 0, "산 항목 위의 적법한 VPN · FRAME 이 [6] 을 세웠다"
+    assert_hit(await hiu_lookup(dut, part, vpn), frame,
+               "산 항목 위 FRAME 뒤 (COMMIT 전) — FRAME 이 표에 닿았다")
     await mmio_write(dut, XCTL_FLUSH, part)
     assert await fault6(dut) == 0, "적법한 XLATE_FLUSH 가 [6] 을 세웠다"
-    assert_hit(await hiu_lookup(dut, opart, vpn_of(tag, idx)), oframe,
-               f"파티션 {part} flush 뒤 파티션 {opart} 의 같은 (색인, 태그) — flush 가 번졌다")
-    assert_miss(dut, await hiu_lookup(dut, part, vpn_of(tag, idx)), "flush 뒤 같은 VPN")
-    dut._log.info("산 항목 위 LO → 옛 프레임 유지 · 0xE00 flush → 같은 VPN 미적중(정지 + hiuMiss) · "
+    assert_hit(await hiu_lookup(dut, opart, vpn), oframe,
+               f"파티션 {part} flush 뒤 파티션 {opart} 의 같은 VPN — flush 가 번졌다")
+    assert_miss(dut, await hiu_lookup(dut, part, vpn), "flush 뒤 같은 VPN")
+    dut._log.info("산 항목 위 FRAME → 옛 프레임 유지 · 0xE00 flush → 같은 VPN 미적중(정지 + hiuMiss) · "
                   "타 파티션 항목 생존")
 
 
 @cocotb.test()
 async def xlate_flush_ends_staging(dut):
-    """(3) 판정 T5 (a) — 래치 파티션의 *수락된* 0xE00 flush 가 스테이징 유효를 내린다
-    (E.1.2 `0xC00` · `0xE00` 행 · E.9 6항 ⑵). 그리고 정지를 푸는 것은 항목
-    기입이다 (E.3 2항).
+    """(3) 래치 파티션의 *수락된* 0xE00 flush 가 두 스테이징 유효(VPN · FRAME)를 다 내린다
+    (E.1.2 `0xC00` 스테이징 (f) 7항). 그리고 정지를 푸는 것은 V=1 커밋이다 (E.3 2항).
 
-    설치 → flush(p) → 같은 VPN 미적중 정지 → LO 없이 HI 한 워드(V=1). 판정 전 RTL 은
-    이 HI 가 flush 를 건넌 스테이징 잔재(옛 임대의 LO 프레임)를 새 태그 · V=1 로 커밋해
-    정지를 풀었다 — 조용한 옛 프레임 재커밋(이 시험의 옛 이름 xlate_hi_releases_stall 이
-    인계철선으로 들던 귀결)이다. 판정 뒤에는 그 HI 가 빈 스테이징의 HI 라 거절 +
-    `[6]` 이고 아무것도 커밋하지 않는다 — 정지가 그대로다. 새 임대의 항목은 LO 부터
-    쓴다: `[6]` 을 지우고 LO(새 프레임) → HI 를 쓰면 정지한 요청이 풀려 *새* 프레임으로
-    승인된다."""
+    커밋 → flush(p) → 같은 VPN 미적중 정지 → VPN · FRAME 없이 COMMIT 한 워드(V=1). flush 를 건넌
+    스테이징 잔재(옛 임대의 VPN · 프레임)가 남는 기계는 이 COMMIT 으로 옛 프레임을 다시 커밋해 정지를
+    푼다 — 조용한 옛 프레임 재커밋이다. 정본대로면 그 COMMIT 은 「VPN 없는 COMMIT」 이라 곧장 거절 +
+    `[6]` 이고 아무것도 커밋하지 않는다 — 정지가 그대로다. FRAME · VPN_HI 한 워드도 같다(VPN 유효
+    없음). 새 임대의 항목은 VPN 부터 쓴다: `[6]` 을 지우고 VPN → FRAME(새 프레임) → COMMIT 을 쓰면
+    정지한 요청이 풀려 *새* 프레임으로 승인된다."""
     await boot_hiu(dut)
-    part, idx, tag, frame = 3, 9, 0x0123456, 0x0BAD_F00D
+    part, vpn, frame = 3, vpn_of(0x0123456, 9), 0x0BAD_F00D
     nframe = 0x0C0D_E000                      # 새 임대의 프레임
     await mmio_write(dut, OWN_SET, frame)
     await mmio_write(dut, OWN_SET, nframe)
-    await install_entry(dut, part, idx, tag, frame)
+    await commit_entry(dut, part, vpn, frame)
     await mmio_write(dut, XCTL_FLUSH, part)
     assert await fault6(dut) == 0, "적법한 XLATE_FLUSH 가 [6] 을 세웠다"
-    res = await hiu_lookup(dut, part, vpn_of(tag, idx))
+    res = await hiu_lookup(dut, part, vpn)
     assert_miss(dut, res, "flush 뒤")
-    await mmio_write(dut, xent(part, idx) + 4, hi_word(tag))   # HI 만 — LO 없음
-    assert await fault6(dut) == 1, (
-        "flush 를 건넌 스테이징 위의 HI 한 워드가 거절되지 않았다 — 옛 임대의 LO 프레임이 "
-        "새 임대의 태그·V 로 다시 커밋된다 (판정 T5 (a) 위반 · E.1.2 `0xC00` 행)")
-    rsp = await wait_rsp(dut)
-    assert rsp["rsp"] == 0, (
-        f"거절된 HI 뒤에 정지한 요청이 풀렸다 — 무언가가 커밋됐다 ({rsp})")
-    await clear_fault6(dut)
-    await install_entry(dut, part, idx, tag, nframe)            # 새 임대 — LO 부터
-    assert await fault6(dut) == 0, "새 임대의 LO → HI 가 [6] 을 세웠다 (허위 fault)"
+    for what, off, data in (("COMMIT(V=1) 한 워드", X_COMMIT, commit_word()),
+                            ("FRAME 한 워드", X_FRAME, frame),
+                            ("VPN_HI(0) 한 워드", X_VPN_HI, 0)):
+        await mmio_write(dut, xbase(part) + off, data)
+        assert await fault6(dut) == 1, (
+            f"flush 를 건넌 스테이징 위의 {what} 가 거절되지 않았다 — 옛 임대의 VPN · 프레임이 "
+            f"남았다 (E.1.2 0xC00 스테이징 (f) 7항 위반)")
+        await clear_fault6(dut)
+        rsp = await wait_rsp(dut, window=4)
+        assert rsp["rsp"] == 0, f"거절된 {what} 뒤에 정지한 요청이 풀렸다 — 무언가가 커밋됐다 ({rsp})"
+    await commit_entry(dut, part, vpn, nframe)                 # 새 임대 — VPN 부터
     rsp = await wait_rsp(dut)
     assert rsp["rsp"] == 1 and rsp["granted"] == 1 and rsp["frame"] == nframe, (
-        f"LO → HI 가 정지를 풀지 못했거나 승인 프레임이 새 LO 프레임 0x{nframe:08X} 와 "
+        f"VPN → FRAME → COMMIT 이 정지를 풀지 못했거나 승인 프레임이 새 프레임 0x{nframe:08X} 와 "
         f"다르다 ({rsp})")
-    dut._log.info("flush 뒤 HI 한 워드 → 거절 + [6] · 정지 유지(재커밋 없음) · "
-                  "LO → HI 가 정지를 풀고 새 프레임으로 승인 (판정 T5 (a) · E.3 2항)")
+    assert await fault6(dut) == 0, "새 임대의 VPN → FRAME → COMMIT 이 [6] 을 세웠다 (허위 fault)"
+    dut._log.info("flush 뒤 COMMIT · FRAME · VPN_HI 한 워드 → 거절 + [6] · 정지 유지(재커밋 없음) · "
+                  "VPN → FRAME → COMMIT 이 정지를 풀고 새 프레임으로 승인 ((f) 7항 · E.3 2항)")
 
 
 @cocotb.test()
 async def xlate_v0_invalidates(dut):
-    """(4) HI `[31]` V=0 은 단일 항목 무효화다 — 그 항목의 다음 조회가 미적중이다.
-    설치 포트가 V 를 무시하고 언제나 유효를 세우면(수리 전 XlateStore) 이 조회가
-    적중한다 — HIU-3 형 격리 결함."""
+    """(4) COMMIT `[31]` V=0 은 그 (파티션, VPN) 의 단일 항목 무효화다 — 다음 조회가 미적중이다
+    (결과 (b)). V=0 COMMIT 은 *VPN 유효만* 요구한다 — 같은 VPN 을 다시 써서 FRAME 유효를 내린 뒤의
+    V=0 COMMIT 도 수락된다 (e-defined.typ:311 「V=0 COMMIT 은 VPN 유효만 요구한다」). 설치 포트가 V 를
+    무시하고 언제나 유효를 세우면 이 조회가 적중한다 — HIU-3 형 격리 결함."""
     await boot_hiu(dut)
-    part, idx, tag, frame = 0, 7, 0x0FEDCBA, 0x7777_0001
+    part, vpn, frame = 0, vpn_of(0x0FEDCBA, 7), 0x7777_0001
     await mmio_write(dut, OWN_SET, frame)
-    await install_entry(dut, part, idx, tag, frame)
-    assert_hit(await hiu_lookup(dut, part, vpn_of(tag, idx)), frame, "V=1 설치 뒤")
-    await mmio_write(dut, xent(part, idx) + 4, hi_word(tag, v=0))
-    assert await fault6(dut) == 0, "V=0 HI 는 적법한 기입인데 [6] 을 세웠다"
-    assert_miss(dut, await hiu_lookup(dut, part, vpn_of(tag, idx)), "V=0 HI 뒤")
-    dut._log.info("V=0 HI → 그 항목 미적중 (단일 항목 무효화)")
+    await commit_entry(dut, part, vpn, frame)
+    assert_hit(await hiu_lookup(dut, part, vpn), frame, "V=1 커밋 뒤")
+    await mmio_write(dut, xbase(part) + X_VPN, vpn)            # FRAME 유효를 내린다 — (f) 1항
+    await mmio_write(dut, xbase(part) + X_COMMIT, commit_word(v=0))
+    assert await fault6(dut) == 0, "FRAME 유효 없는 V=0 COMMIT 은 적법한 기입인데 [6] 을 세웠다"
+    assert_miss(dut, await hiu_lookup(dut, part, vpn), "V=0 COMMIT 뒤")
+    dut._log.info("VPN 재기입(FRAME 유효 하강) → V=0 COMMIT 수락 → 그 VPN 미적중 (단일 항목 무효화)")
 
 
 @cocotb.test()
-async def xlate_hi_rejects_are_loud(dut):
-    """(5) HI 의 거절 둘 — reset 직후 LO 없이 온 HI(빈 스테이징) · 스테이징된
-    번호와 다른 항목의 HI — 가 0xF80[6] 을 세우고 아무것도 커밋하지 않는다.
-    거절은 스테이징을 움직이지 않는다: 불일치 HI 뒤에도 원래 항목의 HI 는 그
-    LO 프레임으로 커밋된다."""
+async def xlate_commit_rejects_are_loud(dut):
+    """(5) 스테이징 짝 검사의 거절이 전부 0xF80[6] 을 세우고 아무것도 움직이지 않는다
+    (E.1.2 `0xC00` 스테이징 (f) 2항 · 4항 · 표의 VPN_HI 행). 앞판의 「번호 불일치」 개념은 사라졌고
+    거절 목록이 바뀌었다 — 행 표로 잰다:
+      · reset 직후(VPN 유효 없음) — V=1 COMMIT · V=0 COMMIT · FRAME · VPN_HI(0)
+      · VPN{1} · FRAME{1} 이 선 뒤 — 래치와 다른 기저(2)의 COMMIT · FRAME · VPN_HI(0) ·
+        `[27:0]` 비0 COMMIT(최하위 · 최상위 예약 비트 하나씩) · VPN_HI 비0
+    거절은 스테이징을 움직이지 않는다: 그 뒤의 적법한 COMMIT{1} 이 FRAME{1} 의 프레임으로 커밋된다
+    (FRAME{2} 가 덮었거나 VPN_HI 비0 이 FRAME 유효를 내렸으면 여기서 갈린다). 거절된 COMMIT 은
+    커밋하지 않았다: 기저 2 의 같은 VPN 은 미적중이다. FRAME 유효 없는 V=1 COMMIT 은
+    `xlate_vpn_rewrite_drops_frame` · `xlate_vpn_hi_rules` 가, 하류가 찬 동안의 데이터 사유 거절은
+    `xlate_commit_data_reject_after_stall` 이 잰다."""
     await boot_hiu(dut)
-    fa, fb = 0x0000_A0A0, 0x0000_B0B0
+    fa = 0x0000_A0A0
+    va = vpn_of(0x0000AAA, 1)
     await mmio_write(dut, OWN_SET, fa)
-    await mmio_write(dut, OWN_SET, fb)
-    # 빈 스테이징 — reset 래치 번호(항목 0)와 같은 항목 0 의 HI 도 거절이다.
-    await mmio_write(dut, xent(0, 0) + 4, hi_word(0x11))
-    assert await fault6(dut) == 1, "LO 없이 온 HI(reset 직후 항목 0)가 [6] 을 세우지 않았다"
-    await clear_fault6(dut)
-    # 번호 불일치 — LO 는 (0,1), HI 는 (0,2).
-    await mmio_write(dut, xent(0, 1), fa)
-    await mmio_write(dut, xent(0, 2) + 4, hi_word(0x22))
-    assert await fault6(dut) == 1, "번호 불일치 HI 가 [6] 을 세우지 않았다"
-    await clear_fault6(dut)
-    # 거절은 스테이징을 움직이지 않았다 — (0,1) 의 HI 가 fa 로 커밋된다.
-    await mmio_write(dut, xent(0, 1) + 4, hi_word(0x33))
-    assert await fault6(dut) == 0
-    assert_hit(await hiu_lookup(dut, 0, vpn_of(0x33, 1)), fa, "거절 뒤 원래 항목의 커밋")
-    # 거절된 두 HI 는 아무것도 커밋하지 않았다.
-    assert_miss(dut, await hiu_lookup(dut, 0, vpn_of(0x22, 2)), "번호 불일치 HI 의 항목")
-    dut._log.info("빈 스테이징 HI · 번호 불일치 HI → [6] · 무커밋 · 스테이징 부동")
+    rows, want = [], []
+    for what, off, data in (("V=1 COMMIT", X_COMMIT, commit_word()),
+                            ("V=0 COMMIT", X_COMMIT, commit_word(v=0)),
+                            ("FRAME", X_FRAME, fa),
+                            ("VPN_HI(0)", X_VPN_HI, 0)):
+        lbl = f"reset 직후 — 기저 0 의 {what} (VPN 유효 없음)"
+        rows.append((lbl, await write_f6(dut, xbase(0) + off, data)))
+        want.append((lbl, 1))
+    await mmio_write(dut, xbase(1) + X_VPN, va)
+    await mmio_write(dut, xbase(1) + X_FRAME, fa)
+    lbl = "VPN{1} · FRAME{1} — 적법한 스테이징"
+    rows.append((lbl, await fault6(dut)))
+    want.append((lbl, 0))
+    for what, addr, data in (("래치와 다른 기저 2 의 COMMIT", xbase(2) + X_COMMIT, commit_word()),
+                             ("래치와 다른 기저 2 의 FRAME", xbase(2) + X_FRAME, 0x0000_B0B0),
+                             ("래치와 다른 기저 2 의 VPN_HI(0)", xbase(2) + X_VPN_HI, 0),
+                             ("COMMIT [27:0] = 0x1", xbase(1) + X_COMMIT, commit_word(rsv=0x1)),
+                             ("COMMIT [27:0] = 1<<27", xbase(1) + X_COMMIT, commit_word(rsv=1 << 27)),
+                             ("V=0 COMMIT [27:0] = 0x1", xbase(1) + X_COMMIT, commit_word(v=0, rsv=0x1)),
+                             ("VPN_HI = 0x1", xbase(1) + X_VPN_HI, 0x1),
+                             ("VPN_HI = 0x8000_0000", xbase(1) + X_VPN_HI, 0x8000_0000)):
+        lbl = f"래치 1 · {what}"
+        rows.append((lbl, await write_f6(dut, addr, data)))
+        want.append((lbl, 1))
+    lbl = "거절 뒤 적법한 COMMIT{1}"
+    rows.append((lbl, await write_f6(dut, xbase(1) + X_COMMIT, commit_word())))
+    want.append((lbl, 0))
+    lbl = "조회 (1, va) — 거절이 스테이징을 움직이지 않았다"
+    rows.append((lbl, lookup_cell(await hiu_lookup(dut, 1, va))))
+    want.append((lbl, ("hit", 1, fa)))
+    lbl = "조회 (2, va) — 기저 2 의 거절된 COMMIT 은 커밋하지 않았다"
+    rows.append((lbl, lookup_cell(await hiu_lookup(dut, 2, va))))
+    want.append((lbl, ("miss",)))
+    assert rows == want, (
+        "스테이징 짝 검사의 거절이 정본과 다르다 (E.1.2 0xC00 스테이징 (f) 2항 · 4항 · VPN_HI 행):\n"
+        + table_diff(rows, want))
+    dut._log.info(f"짝 검사 거절 {len(rows) - 4}건 → [6] · 스테이징 부동 · 무커밋 — {len(rows)} 행")
 
 
 @cocotb.test()
@@ -1144,14 +1249,14 @@ async def xlate_flush_reject_no_alias(dut):
     [6] 이고 flush 가 없다 — 8b 필드를 2b 로 잘라 파티션 0 을 지우는 별칭이
     없다. RO 오프셋(0xE04) 쓰기도 거절 + [6] 이다."""
     await boot_hiu(dut)
-    part, idx, tag, frame = 0, 4, 0x0055AA5, 0x0CAF_E000
+    part, vpn, frame = 0, vpn_of(0x0055AA5, 4), 0x0CAF_E000
     await mmio_write(dut, OWN_SET, frame)
-    await install_entry(dut, part, idx, tag, frame)
+    await commit_entry(dut, part, vpn, frame)
     for what, word in (("없는 파티션 4", 0x0000_0004), ("예약 [31:8] 비0 · 파티션 0", 0x0000_0100)):
         await mmio_write(dut, XCTL_FLUSH, word)
         assert await fault6(dut) == 1, f"XLATE_FLUSH({what}) 가 [6] 을 세우지 않았다"
         await clear_fault6(dut)
-        assert_hit(await hiu_lookup(dut, part, vpn_of(tag, idx)), frame,
+        assert_hit(await hiu_lookup(dut, part, vpn), frame,
                    f"XLATE_FLUSH({what}) 뒤 파티션 0 항목")
     await mmio_write(dut, XCTL_STATUS, 0)
     assert await fault6(dut) == 1, "RO 오프셋 0xE04 쓰기가 [6] 을 세우지 않았다"
@@ -1161,7 +1266,7 @@ async def xlate_flush_reject_no_alias(dut):
 @cocotb.test()
 async def xlate_missclear_keeps_stall(dut):
     """(7) 0xE10 XLATE_MISS_CLEAR 는 정지를 풀지 않는다 — e-defined.typ:329 「*정지 자체는 이것으로 풀리지 않는다*」.
-    예약 [31:1] 비0 은 거절 + [6] 이다. 정지는 뒤이은 항목 기입이 풀고, 그 뒤의
+    예약 [31:1] 비0 은 거절 + [6] 이다. 정지는 뒤이은 V=1 커밋이 풀고, 그 뒤의
     `[0]`=1 기입이 미적중 sticky 를 내린다.
 
     ⚠ 정지 *중*의 해제는 sticky 를 내리지 못한다 (실측): 미적중 sticky 의 set 이
@@ -1170,9 +1275,9 @@ async def xlate_missclear_keeps_stall(dut):
     그래서 이 시험은 정지 중 해제가 *정지도 sticky 도* 풀지 않음을, 정지가 풀린
     뒤 해제가 sticky 를 실제로 내림을 따로 잰다."""
     await boot_hiu(dut)
-    part, idx, tag, frame = 1, 1, 0x0000777, 0x0000_1111
+    part, vpn, frame = 1, vpn_of(0x0000777, 1), 0x0000_1111
     await mmio_write(dut, OWN_SET, frame)
-    res = await hiu_lookup(dut, part, vpn_of(tag, idx))
+    res = await hiu_lookup(dut, part, vpn)
     assert_miss(dut, res, "빈 표")
     await mmio_write(dut, XCTL_MISS_CLEAR, 0x3)
     assert await fault6(dut) == 1, "MISS_CLEAR 예약 [31:1] 비0 이 [6] 을 세우지 않았다"
@@ -1182,7 +1287,7 @@ async def xlate_missclear_keeps_stall(dut):
     assert int(dut.io_hiuRsp_valid.value) == 0
     assert int(dut.io_fault_hiuMiss.value) == 1, (
         "정지 중인데 미적중 sticky 가 내려갔다 — set(정지 레벨)이 해제를 이겨야 한다")
-    await install_entry(dut, part, idx, tag, frame)
+    await commit_entry(dut, part, vpn, frame)
     rsp = await wait_rsp(dut)
     assert rsp["rsp"] == 1 and rsp["granted"] == 1 and rsp["frame"] == frame, (
         f"항목 기입이 정지를 풀지 못했다 ({rsp})")
@@ -1198,93 +1303,617 @@ async def xlate_missclear_keeps_stall(dut):
     dut._log.info("0xE10 → 정지 유지 · 정지 뒤 sticky 해제 · 예약 비0 은 loud · 항목 기입이 정지를 푼다")
 
 
-# ── 인접 HI — D-2 버스 정지의 값 수준 시험 (파도 3 반증 검토 뒤 수리) ─────────
+# ── 인접 COMMIT — 하류 정지의 값 수준 시험 (파도 3 반증 검토 뒤 수리 → W3 문) ──────
 #
 # `mmio_write` 는 기입마다 쉬는 엣지를 하나 남긴다 (LNID 축의 CHECK 사이클) —
-# 그래서 위 일곱은 HI 두 워드를 *인접*시키지 못하고, 정지가 실제로 서는 유일한
-# 경우(모델 머리 「같은 항목 HI 연속만 만난다」 — XlateSurface.tla 「안 잰다」
-# 의 시간 항)를 한 번도 만들지 않는다. 실측(검토 세션): 생성물 사본에서 ready
-# 덮어쓰기를 끊으면(`assign when_Wt64Top_l1714 = 1'b0;`) 둘째 HI 가 조용히
-# 드롭되는데 위 일곱은 7/7 PASS 였다 — 「정지하고, 같은 기입이 커밋된다」는
-# 어디서도 재지 않았다. 아래 원시 구동기는 쉬는 사이클 없이 기입을 잇고
-# ready = 0 동안 같은 기입(주소·데이터·스트로브)을 잡아 둔다 — 버스 마스터가
-# 정지에 대해 지는 의무 그대로다.
+# 그래서 위 시험들은 COMMIT 두 워드를 *인접*시키지 못하고, 정지가 실제로 서는 유일한
+# 경우(하류 채움 슬롯이 찬 사이클의 COMMIT)를 한 번도 만들지 않는다. 실측(파도 3 검토 세션):
+# 생성물 사본에서 ready 덮어쓰기를 끊으면 둘째 기입이 조용히 드롭되는데 착지판 일곱은 7/7
+# PASS 였다. 아래 원시 구동기는 쉬는 사이클 없이 기입을 잇고 ready = 0 동안 같은 기입(주소 ·
+# 데이터 · 스트로브)을 잡아 둔다 — 버스 마스터가 정지에 대해 지는 의무 그대로다.
 
-async def mmio_burst(dut, ops, max_stall=8):
+async def mmio_burst(dut, ops, max_stall=8, probe=None):
     """쓰기 열을 **인접** 구동한다 — 수락 엣지 바로 다음 사이클에 다음 기입.
 
     반환: 기입마다 ready = 0 으로 잡혀 있던 사이클 수 (정지 계수). 정지 중에는
     스트로브를 내리지 않는다 — 내리면 그것은 정지가 아니라 철회이고, 철회된
-    기입의 효과를 재는 것은 이 시험이 아니다.
+    기입의 효과를 재는 것은 이 시험이 아니다. `probe` 를 주면 기입마다 사이클별
+    (ready, probe(dut)) 표본열을 함께 돌려준다 — 마지막 표본은 수락 엣지 *뒤*다.
     """
-    stalls = []
+    stalls, samples = [], []
     for addr, data in ops:
         dut.io_mmio_addr.value = addr
         dut.io_mmio_wdata.value = data
         dut.io_mmio_wstrobe.value = 1
         await settle(dut)
         n = 0
+        trace = []
         while int(dut.io_mmio_ready.value) == 0:
+            if probe:
+                trace.append((0, probe(dut)))
             n += 1
             if n > max_stall:
                 raise AssertionError(
                     f"mmio_burst(0x{addr:03X}): ready 가 {max_stall} 엣지 넘게 0 이다 — "
-                    f"정지가 풀리지 않는다 (D-2 정지는 유계여야 한다)")
+                    f"정지가 풀리지 않는다 (하류 정지는 유계여야 한다)")
             await step(dut)          # 같은 기입을 잡아 둔 채 한 엣지
+        if probe:
+            trace.append((1, probe(dut)))
         stalls.append(n)
         await step(dut)              # 수락 엣지 — 다음 기입이 곧바로 잇는다
+        if probe:
+            trace.append(("acc", probe(dut)))
+            samples.append(tuple(trace))
     dut.io_mmio_wstrobe.value = 0
     await step(dut)
     await settle(dut)
-    return stalls
+    return (stalls, samples) if probe else stalls
 
 
 @cocotb.test()
-async def xlate_adjacent_hi_stalls_then_commits(dut):
-    """(8) 같은 항목의 인접 HI 둘 — 둘째 HI 는 첫 HI 가 채운 채움 슬롯 때문에
-    하류가 거부하고(install.ready = 0), 문은 그것을 거절도 드롭도 아닌 **버스
-    정지**로 처분한다(D-2): 정확히 한 사이클 ready = 0, `[6]` 무발화, 그리고
-    풀린 그 기입이 LO 프레임으로 커밋된다 — tagB 가 F 로 적중하고 tagA 는 덮였다.
+async def xlate_adjacent_commit_stalls_then_commits(dut):
+    """(8) 같은 스테이징의 인접 COMMIT 둘 — 둘째 COMMIT 은 첫 COMMIT 이 채운 하류 채움 슬롯 때문에
+    **버스 정지**를 받는다(e-defined.typ:308 「정지 중에는 효과가 없고, 수락되면 커밋되며, 드롭하지 않는다」):
+    정확히 한 사이클 ready = 0, `[6]` 무발화, 그리고 풀린 그 기입이 커밋된다. 첫 COMMIT 은 R=0(거부
+    채움), 둘째는 R=1 — 둘째가 같은 (파티션, VPN) 의 앞 항목을 대체했으면 읽기가 승인되고, 드롭됐으면
+    거부 채움이 남아 승인 0 · `[4]` 다 (결과 (a) 「뒤 커밋이 앞 항목을 대체한다」).
 
-    정지 계수 [0, 0, 1] 은 첫 HI 가 실제로 커밋했다는 증거이기도 하다 (슬롯을
-    채운 것은 그 커밋뿐이다)."""
+    정지 계수 [0, 0, 0, 1] 은 첫 COMMIT 이 실제로 커밋했다는 증거이기도 하다 (슬롯을 채운 것은
+    그 커밋뿐이다). 커밋이 스테이징을 소진하지 않으므로(:306) 둘째 COMMIT 은 VPN · FRAME 을 다시
+    쓰지 않고도 적법하다."""
     await boot_hiu(dut)
-    part, idx, fr = 1, 2, 0x0000_A000
-    tag_a, tag_b = 0x0000111, 0x0000222
+    part, vpn, fr = 1, vpn_of(0x0000111, 2), 0x0000_A000
     await mmio_write(dut, OWN_SET, fr)
-    stalls = await mmio_burst(dut, [(xent(part, idx), fr),
-                                    (xent(part, idx) + 4, hi_word(tag_a)),
-                                    (xent(part, idx) + 4, hi_word(tag_b))])
-    assert stalls == [0, 0, 1], (
-        f"LO · HI(tagA) · HI(tagB) 인접 — 정지 계수 {stalls} ≠ [0, 0, 1]. "
-        f"둘째 HI 의 정지가 없으면 그 기입은 하류가 거부한 사이클에 수락돼 조용히 "
-        f"사라진다 (:419)")
-    assert await fault6(dut) == 0, "적법한 HI 의 하류 거부가 [6] 을 세웠다 — 정지여야 한다 (D-2)"
-    assert_hit(await hiu_lookup(dut, part, vpn_of(tag_b, idx)), fr,
-               "정지 뒤 수락된 둘째 HI(tagB)")
-    assert_miss(dut, await hiu_lookup(dut, part, vpn_of(tag_a, idx)),
-                "둘째 HI 가 덮은 첫 HI(tagA)")
-    dut._log.info("인접 HI 둘 → 둘째 HI 한 사이클 정지 · [6]=0 · tagB 가 LO 프레임으로 적중 · tagA 덮임")
+    b = xbase(part)
+    stalls = await mmio_burst(dut, [(b + X_VPN, vpn), (b + X_FRAME, fr),
+                                    (b + X_COMMIT, commit_word(r=0)),
+                                    (b + X_COMMIT, commit_word(r=1))])
+    assert stalls == [0, 0, 0, 1], (
+        f"VPN · FRAME · COMMIT(R=0) · COMMIT(R=1) 인접 — 정지 계수 {stalls} ≠ [0, 0, 0, 1]. "
+        f"둘째 COMMIT 의 정지가 없으면 그 기입은 하류가 찬 사이클에 수락돼 조용히 사라진다")
+    assert await fault6(dut) == 0, "적법한 COMMIT 의 하류 정지가 [6] 을 세웠다 — 정지여야 한다"
+    assert_hit(await hiu_lookup(dut, part, vpn), fr, "정지 뒤 수락된 둘째 COMMIT(R=1)")
+    assert int(dut.io_fault_hiuPerm.value) == 0, "둘째 COMMIT 이 대체하지 못해 첫 COMMIT 의 R=0 이 남았다"
+    dut._log.info("인접 COMMIT 둘 → 둘째 한 사이클 정지 · [6]=0 · 둘째(R=1)가 첫(R=0)을 대체 · 승인")
 
 
 @cocotb.test()
 async def xlate_adjacent_v0_stalls_then_invalidates(dut):
-    """(9) 같은 항목의 인접 HI(V=1) · HI(V=0) — 무효화 워드가 정지를 건너서도
-    사라지지 않는다. 정지 계수 [0, 0, 1] · `[6]` 무발화 · 그 항목의 다음 조회는
-    미적중이다. V=0 이 드롭되면 앞 HI 의 유효 항목이 남아 적중한다 — 드라이버가
+    """(9) 같은 스테이징의 인접 COMMIT(V=1) · COMMIT(V=0) — 무효화 워드가 정지를 건너서도
+    사라지지 않는다. 정지 계수 [0, 0, 0, 1] · `[6]` 무발화 · 그 VPN 의 다음 조회는
+    미적중이다. V=0 이 드롭되면 앞 COMMIT 의 유효 항목이 남아 적중한다 — 드라이버가
     무효화했다고 믿는 항목이 살아 있는 HIU-3 형 결함이다."""
     await boot_hiu(dut)
-    part, idx, tag, fr = 0, 3, 0x0000333, 0x0000_A100
+    part, vpn, fr = 0, vpn_of(0x0000333, 3), 0x0000_A100
     await mmio_write(dut, OWN_SET, fr)
-    stalls = await mmio_burst(dut, [(xent(part, idx), fr),
-                                    (xent(part, idx) + 4, hi_word(tag, v=1)),
-                                    (xent(part, idx) + 4, hi_word(tag, v=0))])
-    assert stalls == [0, 0, 1], (
-        f"LO · HI(V=1) · HI(V=0) 인접 — 정지 계수 {stalls} ≠ [0, 0, 1]")
-    assert await fault6(dut) == 0, "적법한 V=0 HI 의 하류 거부가 [6] 을 세웠다 — 정지여야 한다 (D-2)"
-    assert_miss(dut, await hiu_lookup(dut, part, vpn_of(tag, idx)),
-                "정지 뒤 수락된 V=0 HI 의 항목")
-    dut._log.info("인접 HI(V=1) · HI(V=0) → 한 사이클 정지 · [6]=0 · 무효화 생존(미적중)")
+    stalls = await mmio_burst(dut, commit_ops(part, vpn, fr)
+                              + [(xbase(part) + X_COMMIT, commit_word(v=0))])
+    assert stalls == [0, 0, 0, 1], (
+        f"VPN · FRAME · COMMIT(V=1) · COMMIT(V=0) 인접 — 정지 계수 {stalls} ≠ [0, 0, 0, 1]")
+    assert await fault6(dut) == 0, "적법한 V=0 COMMIT 의 하류 정지가 [6] 을 세웠다 — 정지여야 한다"
+    assert_miss(dut, await hiu_lookup(dut, part, vpn), "정지 뒤 수락된 V=0 COMMIT 의 VPN")
+    dut._log.info("인접 COMMIT(V=1) · COMMIT(V=0) → 한 사이클 정지 · [6]=0 · 무효화 생존(미적중)")
+
+
+# ── W3 신설 — 형상 비노출 문의 규범 하나씩 (N1–N7 · 선-formal 인계 셋) ─────────────────────
+#
+# 기대값은 위 절 머리의 정본 문장에서 유도한다. 행 표 시험은 끝에 통째로 등가 비교한다(어긋난 행이
+# 한 번에 다 보이게 — HEAD 음성 대조의 기록이 첫 실패 한 줄로 줄지 않게). 자극의 전건(커밋이 실제로
+# 들었다 등)은 행으로 넣어 같이 본다.
+#
+# `[6]` 의 사이클 표본(`f6_now`)은 MMIO 로 읽을 수 없는 *정지 중* 값을 재려고 0xF80 `[6]` 의 원천
+# 포트를 논리합으로 읽는다. 원천 목록은 손 표가 아니라 생성물 출력 중 `io_fault_*BadWrite` 전량이고
+# (위 `parse_output_ports`), 쓰는 시험마다 끝에 그 논리합이 MMIO `[6]` 과 같은지 대조한다 — 원천이
+# 하나 빠지거나 더해지면 그 대조가 운다.
+F6_SOURCES = [n for n in OUT_PORTS if re.fullmatch(r"io_fault_\w+BadWrite", n)]
+
+
+def f6_now(dut):
+    """0xF80 `[6]` 원천들의 지금 값 (논리합) — 사이클 표본용."""
+    return int(any(int(getattr(dut, n).value) for n in F6_SOURCES))
+
+
+async def f6_agrees(dut, what):
+    """원천 논리합이 MMIO `[6]` 과 같은지 — `f6_now` 의 정의역이 낡지 않았는지의 대조."""
+    await step(dut, 2)
+    port, mmio = f6_now(dut), await fault6(dut)
+    assert port == mmio, (
+        f"[{what}] `[6]` 원천 포트 논리합 {port} ≠ 0xF80[6] {mmio} — 원천 목록 {F6_SOURCES} 이 "
+        f"[6] 의 합류와 다르다 (사이클 표본이 다른 것을 잰다)")
+    return mmio
+
+
+async def lookup_row(dut, part, vpn):
+    """행 표용 조회 칸 (`lookup_cell` 꼴). 앞 요청이 미적중으로 정지해 있어 새 요청을 접수할 수 없으면
+    `("blocked",)` 를 돌려준다 — 예외로 끊지 않는다: 기대가 적중인 행에서 앞 조회가 정지했다면 그 행이
+    이미 표에 어긋남으로 적혔고, 음성 대조의 기록이 첫 정지에서 끊기지 않게 나머지 행도 채운다."""
+    await settle(dut)
+    if int(dut.io_hiuReq_ready.value) == 0:
+        return ("blocked",)
+    return lookup_cell(await hiu_lookup(dut, part, vpn))
+
+
+@cocotb.test()
+async def xlate_reserved_words_strict(dut):
+    """N1 — 파티션 기저마다 `+0x10`~`+0x7C` 예약-엄격 28 워드: 쓰기는 거절 + `[6]`, 읽기는 0
+    (e-defined.typ:308 「*표의 워드로 등재한다* — 쓰기는 거절 + `[6]`, 읽기는 0」). 표의 네 워드도
+    읽기는 0 이다 (e-defined.typ:299 「표의 워드는 전부 *기입 전용*이고 읽기는 0 이다」) — 읽기는 `[6]`
+    을 세우지 않는다. 거절은 기입이 아니므로 스테이징을 움직이지 않는다: 네 기저 × 28 워드를 다 쓴 뒤
+    VPN{1} · FRAME{1} 의 COMMIT{1} 이 수락되어 그 프레임으로 적중한다. 데이터는 앞판 배치(색인마다 LO ·
+    HI 8 B)의 적법한 기입처럼 보이게 고른다 — HI 자리(`+8k+4`)에는 V=1 COMMIT 워드, LO 자리에는 VPN 값.
+    예약 워드를 앞판처럼 받아들이는(또는 조용히 삼키는) 문은 여기서 `[6]` 0 행으로 운다. 형상 A 는
+    파티션 넷이 다 실재하므로 「없는 파티션 기저」 축은 이 DUT 밖이다(머리 주석)."""
+    await boot_hiu(dut)
+    va, fa = vpn_of(0x0000E1E, 0xE), 0x0000_6E10
+    await mmio_write(dut, OWN_SET, fa)
+    rows, want = [], []
+    await mmio_write(dut, xbase(1) + X_VPN, va)
+    await mmio_write(dut, xbase(1) + X_FRAME, fa)
+    lbl = "VPN{1} · FRAME{1} — 적법한 스테이징"
+    rows.append((lbl, await fault6(dut)))
+    want.append((lbl, 0))
+    for p in range(X_PARTS):
+        for off in X_RSV_WORDS:
+            data = commit_word() if off % 8 == 4 else va
+            lbl = f"기저 {p} +0x{off:02X} — 쓰기 [6] · 읽기"
+            rows.append((lbl, await write_f6(dut, xbase(p) + off, data), await mmio_read(dut, xbase(p) + off)))
+            want.append((lbl, 1, 0))
+        lbl = f"기저 {p} 표의 네 워드 읽기 (VPN, FRAME, COMMIT, VPN_HI) · 읽기 뒤 [6]"
+        rows.append((lbl, *[await mmio_read(dut, xbase(p) + o) for o in (X_VPN, X_FRAME, X_COMMIT, X_VPN_HI)],
+                     await fault6(dut)))
+        want.append((lbl, 0, 0, 0, 0, 0))
+    lbl = "예약 워드 112 기입 뒤 COMMIT{1} — [6]"
+    rows.append((lbl, await write_f6(dut, xbase(1) + X_COMMIT, commit_word())))
+    want.append((lbl, 0))
+    lbl = "조회 (1, va) — 거절이 스테이징을 움직이지 않았다"
+    rows.append((lbl, (await lookup_row(dut, 1, va))))
+    want.append((lbl, ("hit", 1, fa)))
+    lbl = "조회 (0, va) — 기저 0 의 예약 워드 기입은 아무것도 커밋하지 않았다"
+    rows.append((lbl, (await lookup_row(dut, 0, va))))
+    want.append((lbl, ("miss",)))
+    assert rows == want, (
+        "예약-엄격 28 워드의 처분이 정본과 다르다 (E.1.2 0xC00 표 「(예약-엄격 워드 28)」 행):\n"
+        + table_diff(rows, want))
+    dut._log.info(f"예약-엄격 워드 {X_PARTS} × {len(X_RSV_WORDS)} → 쓰기 [6] · 읽기 0 · 스테이징 부동 — {len(rows)} 행")
+
+
+@cocotb.test()
+async def xlate_vpn_hi_rules(dut):
+    """N2 — XLATE_ENTRY_VPN_HI 는 VPN 워드의 일부다 (e-defined.typ:308 「*VPN 워드의 일부로 취급한다*」):
+      · VPN 유효가 없으면 거절 + `[6]` (「래치 파티션의 기저에서만 수락하고(VPN 유효가 없으면 거절 + `[6]`)」)
+      · 비0 은 거절 + `[6]` · 스테이징 불변 (「비0 기입은 거절 + `[6]` · 스테이징 불변이며」) — 뒤의 V=1
+        COMMIT 이 그 앞 FRAME 으로 커밋된다
+      · 0 은 수락되고 FRAME 유효를 내린다 (「수락된 VPN_HI 기입은 FRAME 스테이징 유효를 내린다.」) — 뒤의
+        V=1 COMMIT 은 「FRAME 유효 없는 V=1 COMMIT」 이라 거절 + `[6]` 이고 커밋하지 않는다(표의 판이 앞
+        프레임 그대로). VPN 유효와 래치는 남는다: FRAME 을 다시 쓰면 V=1 COMMIT 이 수락된다
+      · 래치와 다른 기저의 VPN_HI(0) 은 거절 + `[6]`
+      · V=0 COMMIT 은 VPN 유효만 요구한다 — VPN_HI(0) 로 FRAME 유효가 내려간 뒤에도 수락되어 무효화한다"""
+    await boot_hiu(dut)
+    p, q = 2, 0
+    va, f1, f2, f3 = vpn_of(0x00012AB, 0xC), 0x0000_7101, 0x0000_7242, 0x0000_7383
+    for f in (f1, f2, f3):
+        await mmio_write(dut, OWN_SET, f)
+    b = xbase(p)
+    rows, want = [], []
+
+    def row(lbl, got, exp):
+        rows.append((lbl, got))
+        want.append((lbl, exp))
+
+    row("reset 직후 VPN_HI(0) — VPN 유효 없음 · [6]", await write_f6(dut, b + X_VPN_HI, 0), 1)
+    for addr, data in commit_ops(p, va, f1):
+        await mmio_write(dut, addr, data)
+    row("VPN · FRAME(f1) · COMMIT — [6]", await fault6(dut), 0)
+    row("조회 — f1 커밋", (await lookup_row(dut, p, va)), ("hit", 1, f1))
+    row("커밋 뒤 VPN_HI = 0xFFFF_FFFF — [6]", await write_f6(dut, b + X_VPN_HI, 0xFFFF_FFFF), 1)
+    # 각 FRAME 앞에 같은 VPN 을 다시 쓴다 — 산 FRAME 위 재기입(「FRAME 재기입은 덮는다」)은 이 시험의 축이
+    # 아니다(`xlate_same_vpn_replaces` 몫). 여기서는 VPN_HI 의 처분만 가른다.
+    await mmio_write(dut, b + X_VPN, va)
+    row("VPN · FRAME(f2) — [6]", await write_f6(dut, b + X_FRAME, f2), 0)
+    row("VPN_HI = 0x1 — [6]", await write_f6(dut, b + X_VPN_HI, 0x1), 1)
+    row("비0 VPN_HI 뒤 V=1 COMMIT — [6] (FRAME 유효가 남았다)", await write_f6(dut, b + X_COMMIT, commit_word()), 0)
+    row("조회 — f2 로 커밋됐다 (스테이징 불변)", (await lookup_row(dut, p, va)), ("hit", 1, f2))
+    await mmio_write(dut, b + X_VPN, va)
+    row("VPN · FRAME(f3) — [6]", await write_f6(dut, b + X_FRAME, f3), 0)
+    row("VPN_HI = 0 — [6] (수락)", await write_f6(dut, b + X_VPN_HI, 0), 0)
+    row("VPN_HI(0) 뒤 V=1 COMMIT — [6] (FRAME 유효 없음)", await write_f6(dut, b + X_COMMIT, commit_word()), 1)
+    row("조회 — 거절된 COMMIT 은 f3 을 커밋하지 않았다 (f2 그대로)",
+        (await lookup_row(dut, p, va)), ("hit", 1, f2))
+    row("래치와 다른 기저 0 의 VPN_HI(0) — [6]", await write_f6(dut, xbase(q) + X_VPN_HI, 0), 1)
+    row("FRAME(f3) 다시 — [6] (VPN 유효 · 래치가 남았다)", await write_f6(dut, b + X_FRAME, f3), 0)
+    row("V=1 COMMIT — [6]", await write_f6(dut, b + X_COMMIT, commit_word()), 0)
+    row("조회 — f3", (await lookup_row(dut, p, va)), ("hit", 1, f3))
+    row("VPN_HI = 0 — [6] (수락 — FRAME 유효를 다시 내린다)", await write_f6(dut, b + X_VPN_HI, 0), 0)
+    row("V=0 COMMIT — [6] (VPN 유효만 요구)", await write_f6(dut, b + X_COMMIT, commit_word(v=0)), 0)
+    row("조회 — V=0 COMMIT 뒤 미적중", (await lookup_row(dut, p, va)), ("miss",))
+    assert rows == want, (
+        "VPN_HI 의 처분이 정본과 다르다 (E.1.2 0xC00 표의 VPN_HI 행 · 스테이징 (f) 3항):\n"
+        + table_diff(rows, want))
+    dut._log.info(f"VPN_HI: VPN 없음 · 비0 · 다른 기저 → [6] · 스테이징 불변 / 0 → 수락 · FRAME 유효 하강 → "
+                  f"V=1 거절 · V=0 수락 — {len(rows)} 행")
+
+
+@cocotb.test()
+async def xlate_vpn_rewrite_drops_frame(dut):
+    """N3 — VPN 재기입이 FRAME 유효를 내린다 — 묵은 프레임이 새 VPN 에 묶이지 않는다
+    (e-defined.typ:311 「재기입은 래치를 덮는다 — 묵은 프레임이 새 VPN 에 묶이지 않게 하는 장치이고」):
+      · VPN{p}(va) · FRAME{p}(fx) · VPN{p}(vb) · V=1 COMMIT → 거절 + `[6]` · 무커밋 — vb 는 앞서 커밋한 fb,
+        va 는 fa 로 적중한다(묵은 fx 가 어느 쪽에도 묶이지 않았다)
+      · VPN{p}(va) · FRAME{p}(fx) · VPN{q}(vb) — 래치가 q 로 옮는다: COMMIT{p} 는 기저 불일치로, COMMIT{q}(V=1)
+        는 FRAME 없음으로 거절 + `[6]`
+      · V=0 COMMIT{q} 는 VPN 유효만 요구하므로 수락된다. VPN{p}(vb) · V=0 COMMIT{p} 도 수락되고 (p, vb) 는
+        미적중이다
+    앞서 커밋한 두 항목이 둘 다 적중하는 것은 전건 행이다(두 VPN 의 하위 4b 를 다르게 골랐다 — 축출이
+    끼면 전건 행이 먼저 운다)."""
+    await boot_hiu(dut)
+    p, q = 2, 3
+    va, vb = vpn_of(0x0003A3A, 1), vpn_of(0x0003B3B, 2)
+    fa, fb, fx = 0x0000_8A01, 0x0000_8B02, 0x0000_8C03
+    for f in (fa, fb, fx):
+        await mmio_write(dut, OWN_SET, f)
+    rows, want = [], []
+
+    def row(lbl, got, exp):
+        rows.append((lbl, got))
+        want.append((lbl, exp))
+
+    await commit_entry(dut, p, va, fa)
+    await commit_entry(dut, p, vb, fb)
+    row("전건 — (p, va) · (p, vb) 커밋 뒤 [6]", await fault6(dut), 0)
+    row("전건 — 조회 (p, va)", (await lookup_row(dut, p, va)), ("hit", 1, fa))
+    row("전건 — 조회 (p, vb)", (await lookup_row(dut, p, vb)), ("hit", 1, fb))
+    await mmio_write(dut, xbase(p) + X_VPN, va)
+    await mmio_write(dut, xbase(p) + X_FRAME, fx)
+    await mmio_write(dut, xbase(p) + X_VPN, vb)
+    row("VPN(va) · FRAME(fx) · VPN(vb) — [6]", await fault6(dut), 0)
+    row("· V=1 COMMIT — [6] (FRAME 유효 없음)", await write_f6(dut, xbase(p) + X_COMMIT, commit_word()), 1)
+    row("· 조회 (p, vb) — 묵은 fx 가 vb 에 묶이지 않았다", (await lookup_row(dut, p, vb)), ("hit", 1, fb))
+    row("· 조회 (p, va) — fx 가 va 로도 가지 않았다", (await lookup_row(dut, p, va)), ("hit", 1, fa))
+    await mmio_write(dut, xbase(p) + X_VPN, va)
+    await mmio_write(dut, xbase(p) + X_FRAME, fx)
+    await mmio_write(dut, xbase(q) + X_VPN, vb)
+    row("VPN{p}(va) · FRAME{p}(fx) · VPN{q}(vb) — [6]", await fault6(dut), 0)
+    row("· COMMIT{p} V=1 — [6] (래치가 q 로 옮았다)", await write_f6(dut, xbase(p) + X_COMMIT, commit_word()), 1)
+    row("· COMMIT{q} V=1 — [6] (FRAME 유효 없음)", await write_f6(dut, xbase(q) + X_COMMIT, commit_word()), 1)
+    row("· 조회 (p, va) — 거절된 두 COMMIT 은 아무것도 바꾸지 않았다", (await lookup_row(dut, p, va)),
+        ("hit", 1, fa))
+    row("· COMMIT{q} V=0 — [6] (VPN 유효만 요구)", await write_f6(dut, xbase(q) + X_COMMIT, commit_word(v=0)), 0)
+    await mmio_write(dut, xbase(p) + X_VPN, vb)
+    row("VPN{p}(vb) · COMMIT{p} V=0 — [6]", await write_f6(dut, xbase(p) + X_COMMIT, commit_word(v=0)), 0)
+    row("· 조회 (p, vb) — V=0 이 수락돼 미적중", (await lookup_row(dut, p, vb)), ("miss",))
+    assert rows == want, (
+        "VPN 재기입의 처분이 정본과 다르다 (E.1.2 0xC00 스테이징 (f) 1항 · 3항 · 4항):\n"
+        + table_diff(rows, want))
+    dut._log.info(f"VPN 재기입 → FRAME 유효 하강 · 래치 이동 → V=1 거절 · 무커밋 · V=0 수락 — {len(rows)} 행")
+
+
+@cocotb.test()
+async def xlate_commit_data_reject_after_stall(dut):
+    """N4 — 하류 채움 슬롯이 찬 동안의 데이터 사유 COMMIT 은 *유계 정지 뒤 수락 사이클에* 거절된다
+    (e-defined.typ:308 「그 수락은 위 유계 정지 뒤일 수 있다」). 정지 판정은 주소 · 상태만 본다 — 데이터가
+    틀린 COMMIT 도 적법한 COMMIT 과 똑같이 정지를 받고, `[6]` 은 정지 중에는 서지 않다가 수락 에지에
+    선다. 두 사유를 다 잰다:
+      · `[27:0]` 비0 — VPN · FRAME · COMMIT(V=1) · COMMIT(V=0, `[27:0]` = 1) 인접. 정지 계수 [0, 0, 0, 1].
+        넷째의 사이클 표본 (ready, `[6]`) = 정지 (0, 0) · 수락 사이클 (1, 0) · 수락 에지 뒤 (·, 1).
+        거절된 V=0 은 무효화하지 않았다 — 조회가 적중한다
+      · FRAME 유효 없는 V=1 — VPN(vb) · COMMIT(V=0) · COMMIT(V=1) 인접 (VPN 이 FRAME 유효를 내렸다). 정지
+        계수 [0, 0, 1], 셋째의 표본은 위와 같다. 거절된 V=1 은 커밋하지 않았다 — (p, vb) 는 미적중이다
+    ready 콘에 wdata 가 없어야 한다는 구조 규율(`scripts/lint_ready_cone.py`)의 값 수준 짝이다 — 정지가
+    데이터를 보는 문(정지 없이 곧장 거절)은 정지 계수 행에서, 수락 전에 `[6]` 을 세우는 문은 표본 행에서
+    운다. 정지 상한은 `mmio_burst` 의 `max_stall` 이 크게 운다(단일 버스 마스터라 실측은 1 사이클)."""
+    await boot_hiu(dut)
+    p = 1
+    va, vb, fa = vpn_of(0x000D4D4, 4), vpn_of(0x000D5D5, 5), 0x0000_9D41
+    await mmio_write(dut, OWN_SET, fa)
+    b = xbase(p)
+    rows, want = [], []
+    legal = ((1, 0), ("acc", 0))
+    stalled_reject = ((0, 0), (1, 0), ("acc", 1))
+
+    stalls, samples = await mmio_burst(
+        dut, commit_ops(p, va, fa) + [(b + X_COMMIT, commit_word(v=0, rsv=0x1))], probe=f6_now)
+    lbl = "[27:0] 비0 — VPN · FRAME · COMMIT · COMMIT(V=0, rsv=1) 인접: 정지 계수"
+    rows.append((lbl, *stalls))
+    want.append((lbl, 0, 0, 0, 1))
+    lbl = "· 기입마다 사이클 표본 (ready, [6])"
+    rows.append((lbl, *samples))
+    want.append((lbl, legal, legal, legal, stalled_reject))
+    lbl = "· 원천 논리합 = 0xF80[6]"
+    rows.append((lbl, await f6_agrees(dut, "rsv")))
+    want.append((lbl, 1))
+    await clear_fault6(dut)
+    lbl = "· 조회 (p, va) — 거절된 V=0 은 무효화하지 않았다"
+    rows.append((lbl, (await lookup_row(dut, p, va))))
+    want.append((lbl, ("hit", 1, fa)))
+
+    stalls, samples = await mmio_burst(
+        dut, [(b + X_VPN, vb), (b + X_COMMIT, commit_word(v=0)), (b + X_COMMIT, commit_word())], probe=f6_now)
+    lbl = "FRAME 유효 없는 V=1 — VPN(vb) · COMMIT(V=0) · COMMIT(V=1) 인접: 정지 계수"
+    rows.append((lbl, *stalls))
+    want.append((lbl, 0, 0, 1))
+    lbl = "· 기입마다 사이클 표본 (ready, [6])"
+    rows.append((lbl, *samples))
+    want.append((lbl, legal, legal, stalled_reject))
+    lbl = "· 원천 논리합 = 0xF80[6]"
+    rows.append((lbl, await f6_agrees(dut, "frameless")))
+    want.append((lbl, 1))
+    await clear_fault6(dut)
+    lbl = "· 조회 (p, vb) — 거절된 V=1 은 커밋하지 않았다"
+    rows.append((lbl, (await lookup_row(dut, p, vb))))
+    want.append((lbl, ("miss",)))
+    assert rows == want, (
+        "데이터 사유 COMMIT 의 처분이 정본과 다르다 (E.1.2 0xC00 COMMIT 행 — 정지는 주소 · 상태만, 거절은 "
+        "수락 사이클에):\n" + table_diff(rows, want))
+    dut._log.info("데이터 사유 COMMIT 두 갈래 → 한 사이클 정지 · 정지 중 [6]=0 · 수락 에지에 [6] · 무커밋")
+
+
+@cocotb.test()
+async def xlate_commit_addr_reject_no_wait(dut):
+    """선-formal 인계 「kind」 — 주소 · 스테이징 상태 사유의 COMMIT 은 하류 정지를 기다리지 않는다
+    (e-defined.typ:308 「기다리지 않고 곧장 거절 + `[6]` 이다」). 모델의 대안 판(정지 판정이 기입 종류만
+    보고 주소 · 상태를 안 본다)이 반례를 내는 자극의 값 판: 적법한 COMMIT{p} 바로 다음 사이클(하류가 찬
+    사이클)에 래치와 다른 기저 q 의 COMMIT — 정지 계수 [0, 0, 0, 0] · 그 사이클 표본 (1, 0) → 수락 에지
+    뒤 `[6]` 1 · 무커밋 ((q, va) 미적중). 「VPN 없는 COMMIT」은 단일 버스 마스터에서 하류가 찬 사이클에
+    만들 수 없다(커밋은 스테이징을 소진하지 않고 flush 는 한 사이클을 먹는다) — 이 시험은 기저 불일치
+    갈래만 잰다. 하류 채움 슬롯은 파티션별이라(Isolation.fill_slot_per_partition) 이 RTL 에서 q 의 슬롯은
+    비어 있다 — 그래서 이 시험이 잡는 것은 「정지 판정이 주소를 안 볼 뿐 아니라 슬롯도 파티션을 안
+    가리는」 문이다(변이 표 참조).
+
+    **측정력 — 이 축은 합성 RTL 에서 도달 불가다** (W3 독립 검증): 채움 대기는 설치 다음 사이클에
+    무조건 비워지므로, 찬 슬롯을 만나는 COMMIT 은 직전 사이클에 수락된 *같은 파티션* COMMIT 의
+    스테이징을 그대로 갖는다 — 늘 주소 · 상태 적법이다. 그래서 「주소 · 상태 사유 COMMIT 이 정지를
+    기다린다」 변이(needReady 에서 pairOk 탈락 · ready 덮어쓰기가 needReady 를 안 봄)는 이 시험도,
+    door.sby(prove_stall 무계 증명)도 통과한다 — 원리적으로 관측되지 않는다. 그 축의 수락 근거는
+    하류 슬롯을 자유 입력으로 절단한 하네스다: XlateStaging/props.sby p_need_iff ·
+    Wt64Top/assembly.sby a_ready_only_slot · a_door_ready. 이 시험은 그 처분의 값 수준 회귀 기록이다."""
+    await boot_hiu(dut)
+    p, q = 1, 2
+    va, fa = vpn_of(0x000E7E7, 7), 0x0000_AE71
+    await mmio_write(dut, OWN_SET, fa)
+    rows, want = [], []
+    stalls, samples = await mmio_burst(
+        dut, commit_ops(p, va, fa) + [(xbase(q) + X_COMMIT, commit_word())], probe=f6_now)
+    lbl = "VPN{p} · FRAME{p} · COMMIT{p} · COMMIT{q} 인접 — 정지 계수"
+    rows.append((lbl, *stalls))
+    want.append((lbl, 0, 0, 0, 0))
+    lbl = "· 넷째의 사이클 표본 (ready, [6])"
+    rows.append((lbl, samples[3]))
+    want.append((lbl, ((1, 0), ("acc", 1))))
+    lbl = "· 원천 논리합 = 0xF80[6]"
+    rows.append((lbl, await f6_agrees(dut, "kind")))
+    want.append((lbl, 1))
+    await clear_fault6(dut)
+    lbl = "· 조회 (p, va) — 앞 COMMIT 은 커밋됐다"
+    rows.append((lbl, (await lookup_row(dut, p, va))))
+    want.append((lbl, ("hit", 1, fa)))
+    lbl = "· 조회 (q, va) — 거절된 COMMIT{q} 는 커밋하지 않았다"
+    rows.append((lbl, (await lookup_row(dut, q, va))))
+    want.append((lbl, ("miss",)))
+    assert rows == want, (
+        "주소 사유 COMMIT 이 하류 정지를 기다렸거나 조용했다 (E.1.2 0xC00 COMMIT 행):\n"
+        + table_diff(rows, want))
+    dut._log.info("하류가 찬 사이클의 기저 불일치 COMMIT → 정지 없음 · 수락 에지에 [6] · 무커밋")
+
+
+@cocotb.test()
+async def xlate_staging_survives_commit(dut):
+    """선-formal 인계 「consume」 — 커밋은 스테이징을 소진하지 않는다
+    (e-defined.typ:311 「같은 짝의 재커밋 · V=0 되풀이는 매번 커밋한다」). VPN · FRAME 을 한 번만 쓰고 COMMIT 한 워드씩 V=1 → V=0 → V=1
+    (미적중 정지를 푸는 채움) → V=1 R=0 을 잇는다. 네 COMMIT 이 다 수락되고(`[6]` 0) 매번 커밋한다:
+    적중 → 미적중 정지 → 그 정지가 셋째 COMMIT 으로 풀려 승인 → 넷째(R=0)가 대체해 다음 읽기는 자격
+    거부(승인 0 · `[4]`). 커밋이 VPN 유효 또는 FRAME 유효를 소진하는 문은 둘째 이후에서 「VPN 없는 COMMIT」
+    또는 「FRAME 없는 V=1」 거절로 운다."""
+    await boot_hiu(dut)
+    p = 3
+    va, fa = vpn_of(0x000C5C5, 0xB), 0x0000_BC51
+    await mmio_write(dut, OWN_SET, fa)
+    b = xbase(p)
+    rows, want = [], []
+    await commit_entry(dut, p, va, fa)
+    lbl = "VPN · FRAME · COMMIT(V=1) — [6] · 조회"
+    rows.append((lbl, await fault6(dut), (await lookup_row(dut, p, va))))
+    want.append((lbl, 0, ("hit", 1, fa)))
+    lbl = "같은 스테이징 COMMIT(V=0) 한 워드 — [6]"
+    rows.append((lbl, await write_f6(dut, b + X_COMMIT, commit_word(v=0))))
+    want.append((lbl, 0))
+    lbl = "· 조회 — 무효화됐다 (미적중 정지)"
+    rows.append((lbl, await lookup_row(dut, p, va)))
+    want.append((lbl, ("miss",)))
+    await mmio_write(dut, b + X_COMMIT, commit_word())
+    rsp = await wait_rsp(dut)
+    lbl = "같은 스테이징 COMMIT(V=1) 한 워드 — 정지한 요청의 응답 (응답, 승인, 프레임)"
+    rows.append((lbl, rsp["rsp"], rsp["granted"], rsp["frame"]))
+    want.append((lbl, 1, 1, fa))
+    lbl = "· [6]"
+    rows.append((lbl, await fault6(dut)))
+    want.append((lbl, 0))
+    lbl = "같은 스테이징 COMMIT(V=1, R=0) 한 워드 — [6]"
+    rows.append((lbl, await write_f6(dut, b + X_COMMIT, commit_word(r=0))))
+    want.append((lbl, 0))
+    cell = await lookup_row(dut, p, va)
+    b4, _, _ = await hiu_report(dut)
+    lbl = "· 읽기 조회 · [4] — R=0 이 대체했다 (적중 · 자격 거부)"
+    rows.append((lbl, cell, b4))
+    want.append((lbl, ("hit", 0, 0), 1))
+    assert rows == want, (
+        "커밋이 스테이징을 소진했다 (E.1.2 0xC00 스테이징 (f) 5항):\n" + table_diff(rows, want))
+    dut._log.info("한 스테이징의 COMMIT 넷(V=1 · V=0 · V=1 채움 · V=1 R=0) → 매번 커밋 · [6] 0")
+
+
+@cocotb.test()
+async def xlate_other_key_keeps_stall(dut):
+    """선-formal 인계 「다른 키」 — 미적중 정지를 푸는 것은 정지한 요청의 (파티션, VPN) 에 대한 V=1
+    COMMIT 뿐이다 (e-defined.typ:873 「같은 (파티션, VPN) 에 대한 V=1 COMMIT(거부 채움 포함)의 수락」 ·
+    「VPN · FRAME 스테이징 기입과 V=0 COMMIT 은 정지를 풀지 않는다」). R(p, va) 를 미적중 정지시키고
+    행마다 기입 열 하나를 쓴 뒤 네 사이클 동안 응답 없음 · ready 0 · 관측면이 여전히 R 을 말함 · `[6]` 0
+    을 본다:
+      · 같은 파티션 · 다른 VPN — 참조 형상의 *같은 칸*(하위 4b 같음 — 화이트박스, `vpn_of` 머리)과 다른 칸
+      · 다른 파티션 · 같은 VPN
+      · 같은 (p, va) 의 VPN · FRAME 스테이징 기입만
+    끝에 COMMIT(V=1) 한 워드(스테이징이 이미 (p, va, fa))가 정지를 풀고 fa 로 승인된다. 전건(표 대조
+    뒤): 다른 칸 · 다른 파티션의 커밋은 실제로 들었다(적중). 칸 대조(하위 4b)만 보고 태그를 안 보는 채움
+    적중, 파티션을 안 가리는 채움 적중은 첫 두 행에서 운다. V=0 COMMIT 축은 `xlate_v0_nonresident` 다."""
+    await boot_hiu(dut)
+    p, q = 1, 3
+    va = vpn_of(0x0001F1F, 5)
+    vsame, vother = vpn_of(0x0002F2F, 5), vpn_of(0x0001F1F, 6)
+    fa, fs, fo, fq = 0x0000_C151, 0x0000_C252, 0x0000_C353, 0x0000_C454
+    for f in (fa, fs, fo, fq):
+        await mmio_write(dut, OWN_SET, f)
+    assert_miss(dut, await hiu_lookup(dut, p, va), "R(p, va) — 빈 표")
+    held = (xstatus_word(1, 1, p), va, 0)
+    rows, want = [], []
+    for what, ops in (
+            ("같은 파티션 · 같은 칸의 다른 VPN 의 V=1 커밋", commit_ops(p, vsame, fs)),
+            ("같은 파티션 · 다른 칸의 다른 VPN 의 V=1 커밋", commit_ops(p, vother, fo)),
+            ("다른 파티션 · 같은 VPN 의 V=1 커밋", commit_ops(q, va, fq)),
+            ("같은 (p, va) 의 VPN · FRAME 스테이징 기입만", commit_ops(p, va, fa)[:2])):
+        for addr, data in ops:
+            await mmio_write(dut, addr, data)
+        rsp = await wait_rsp(dut, window=4)
+        lbl = f"{what} — (응답, ready, 관측면, [6])"
+        rows.append((lbl, rsp["rsp"], int(dut.io_hiuReq_ready.value), await read_obs(dut), await fault6(dut)))
+        want.append((lbl, 0, 0, held, 0))
+    await mmio_write(dut, xbase(p) + X_COMMIT, commit_word())
+    rsp = await wait_rsp(dut)
+    lbl = "(p, va) 의 COMMIT(V=1) — 정지한 요청의 응답 (응답, 승인, 프레임)"
+    rows.append((lbl, rsp["rsp"], rsp["granted"], rsp["frame"]))
+    want.append((lbl, 1, 1, fa))
+    assert rows == want, (
+        "정지한 요청과 다른 키의 커밋 · 스테이징 기입이 미적중 정지를 풀었다 (E.3 2항 · 결과 (d)):\n"
+        + table_diff(rows, want))
+    assert_hit(await hiu_lookup(dut, p, vother), fo, "전건 — 다른 칸 커밋이 들었다")
+    assert_hit(await hiu_lookup(dut, q, va), fq, "전건 — 다른 파티션 커밋이 들었다")
+    dut._log.info("다른 키의 V=1 커밋 · 스테이징 기입 → 정지 유지 · 관측면 불변 / 정지한 키의 COMMIT 이 푼다")
+
+
+@cocotb.test()
+async def xlate_same_vpn_replaces(dut):
+    """N5 — 결과 (a): 같은 (파티션, VPN) 의 뒤 커밋이 앞 항목을 대체하고 둘이 동시에 적중하지 않는다
+    (e-defined.typ:310 「같은 (파티션, VPN) 에 두 항목이 동시에 적중하지 않는다 — 뒤 커밋이 앞 항목을 대체한다」).
+      · VPN · FRAME(f1) · COMMIT → f1 적중
+      · 같은 스테이징 위 FRAME(f2) 재기입 · COMMIT → f2 적중 (e-defined.typ:311 「FRAME 재기입은 덮는다」)
+      · VPN · FRAME(f3) · COMMIT → f3 적중
+      · V=0 COMMIT → 미적중 — 앞 판(f1 · f2)이 다른 칸에 남아 있었다면 무효화 뒤 그것이 드러난다
+    다른 파티션에 같은 VPN 을 f4 로 세워 두고 끝에 그것이 그대로임을 본다 (대체는 파티션 안의 일)."""
+    await boot_hiu(dut)
+    p, q = 0, 2
+    va = vpn_of(0x0005A5A, 3)
+    f1, f2, f3, f4 = 0x0000_D031, 0x0000_D072, 0x0000_D0B3, 0x0000_D0F4
+    for f in (f1, f2, f3, f4):
+        await mmio_write(dut, OWN_SET, f)
+    b = xbase(p)
+    rows, want = [], []
+    await commit_entry(dut, q, va, f4)
+    await commit_entry(dut, p, va, f1)
+    lbl = "(q, va, f4) · (p, va, f1) 커밋 — [6] · 조회 (p, va)"
+    rows.append((lbl, await fault6(dut), (await lookup_row(dut, p, va))))
+    want.append((lbl, 0, ("hit", 1, f1)))
+    await mmio_write(dut, b + X_FRAME, f2)
+    await mmio_write(dut, b + X_COMMIT, commit_word())
+    lbl = "FRAME(f2) 재기입 · COMMIT — [6] · 조회"
+    rows.append((lbl, await fault6(dut), (await lookup_row(dut, p, va))))
+    want.append((lbl, 0, ("hit", 1, f2)))
+    await commit_entry(dut, p, va, f3)
+    lbl = "VPN · FRAME(f3) · COMMIT — [6] · 조회"
+    rows.append((lbl, await fault6(dut), (await lookup_row(dut, p, va))))
+    want.append((lbl, 0, ("hit", 1, f3)))
+    lbl = "다른 파티션 (q, va) — 그대로 f4"
+    rows.append((lbl, (await lookup_row(dut, q, va))))
+    want.append((lbl, ("hit", 1, f4)))
+    await mmio_write(dut, b + X_COMMIT, commit_word(v=0))
+    lbl = "V=0 COMMIT — [6] · 조회 (앞 판이 드러나지 않는다)"
+    rows.append((lbl, await fault6(dut), (await lookup_row(dut, p, va))))
+    want.append((lbl, 0, ("miss",)))
+    assert rows == want, (
+        "같은 (파티션, VPN) 재커밋이 앞 항목을 대체하지 않았다 (결과 (a)):\n" + table_diff(rows, want))
+    dut._log.info(f"같은 (p, VPN) 재커밋 셋 → 마지막 프레임만 적중 · V=0 뒤 미적중 · 다른 파티션 불변 — {len(rows)} 행")
+
+
+@cocotb.test()
+async def xlate_v0_nonresident(dut):
+    """N6 — 결과 (b): 상주하지 않는 VPN 의 V=0 COMMIT 은 그 (파티션, VPN) 의 조회 결과를 바꾸지 않는다
+    (e-defined.typ:310 「그 VPN 이 상주하지 않았으면 그 (파티션, VPN) 에 관해서는 조회 결과가 바뀌지 않는다」) —
+    미적중은 미적중이다. 두 자리에서 잰다:
+      · R(p, vb) 가 미적중으로 정지한 동안 VPN(vb) · FRAME · V=0 COMMIT(p, vb) — 정지가 풀리지 않는다 (E.3 2항
+        「VPN · FRAME 스테이징 기입과 V=0 COMMIT 은 정지를 풀지 않는다」 — V=0 이 그 칸을 「채움」으로 보이게
+        하는 문이 여기서 운다). 같은 스테이징의 V=1 COMMIT 이 푼다
+      · 정지 없는 자리: 아무것도 커밋한 적 없는 (p, vd) 의 V=0 COMMIT 뒤 조회는 미적중
+    같은 파티션의 다른 항목(va)이 밀려나는 것은 *허용*이지 요구가 아니다 — 단언하지 않는다."""
+    await boot_hiu(dut)
+    p = 2
+    va, vb, vd = vpn_of(0x0006A6A, 8), vpn_of(0x0006B6B, 9), vpn_of(0x0006D6D, 0xA)
+    fa, fb = 0x0000_E681, 0x0000_E692
+    for f in (fa, fb):
+        await mmio_write(dut, OWN_SET, f)
+    await commit_entry(dut, p, va, fa)
+    assert_miss(dut, await hiu_lookup(dut, p, vb), "R(p, vb) — 상주하지 않는 VPN")
+    rows, want = [], []
+    for addr, data in commit_ops(p, vb, fb, v=0):
+        await mmio_write(dut, addr, data)
+    rsp = await wait_rsp(dut, window=4)
+    lbl = "정지 중 VPN(vb) · FRAME · V=0 COMMIT — (응답, ready, 관측면, [6])"
+    rows.append((lbl, rsp["rsp"], int(dut.io_hiuReq_ready.value), await read_obs(dut), await fault6(dut)))
+    want.append((lbl, 0, 0, (xstatus_word(1, 1, p), vb, 0), 0))
+    await mmio_write(dut, xbase(p) + X_COMMIT, commit_word())
+    rsp = await wait_rsp(dut)
+    lbl = "같은 스테이징 V=1 COMMIT — 응답 (응답, 승인, 프레임)"
+    rows.append((lbl, rsp["rsp"], rsp["granted"], rsp["frame"]))
+    want.append((lbl, 1, 1, fb))
+    await mmio_write(dut, xbase(p) + X_VPN, vd)
+    lbl = "커밋한 적 없는 (p, vd) 의 V=0 COMMIT — [6]"
+    rows.append((lbl, await write_f6(dut, xbase(p) + X_COMMIT, commit_word(v=0))))
+    want.append((lbl, 0))
+    lbl = "· 조회 (p, vd) — 미적중"
+    rows.append((lbl, (await lookup_row(dut, p, vd))))
+    want.append((lbl, ("miss",)))
+    assert rows == want, (
+        "상주하지 않는 VPN 의 V=0 COMMIT 이 그 (파티션, VPN) 의 조회를 바꿨다 (결과 (b) · E.3 2항):\n"
+        + table_diff(rows, want))
+    dut._log.info("상주하지 않는 VPN 의 V=0 COMMIT → 정지 유지 · 미적중 그대로")
+
+
+@cocotb.test()
+async def xlate_evict_scoped(dut):
+    """N7 — 결과 (c): 축출은 같은 파티션 안에서만 일어난다
+    (e-defined.typ:310 「축출은 같은 파티션 안에서만 일어난다」 ·
+    e-defined.typ:312 「장치는 축출을 같은 파티션에 대한 호스트 COMMIT 과 flush 의 결과로만 한다」).
+    파티션 q 에 항목 넷을 세우고, 파티션 p 에 하위 4b 가 0~F 를 다 덮는 VPN 서른둘을 커밋한 뒤(q 의 넷과 같은
+    VPN 값 포함 — 파티션 사이 별칭) q 의 VPN 넷을 p 에서 V=0 으로 무효화한다. q 의 넷은 전부 처음 프레임으로
+    적중한다. p 의 마지막 커밋은 적중한다(결과 (a) — 그 뒤 축출이 없다). p 의 다른 항목은 서로 밀어냈을 수
+    있다 — 단언하지 않는다(형상 비노출)."""
+    await boot_hiu(dut)
+    p, q = 1, 3
+    # 프레임은 전부 OWN_SET 한다 — 소유권 표 직접 사상 슬롯(하위 6b)이 서로 겹치지 않게 골랐다.
+    qents = [(vpn_of(0x0007000 + i, 4 * i + 1), 0x0000_F010 + i) for i in range(4)]
+    fp = 0x0000_F220
+    for _, f in qents:
+        await mmio_write(dut, OWN_SET, f)
+    await mmio_write(dut, OWN_SET, fp)
+    for v, f in qents:
+        await commit_entry(dut, q, v, f)
+    pvpns = [vpn_of(0x0007100 + k, k % 16) for k in range(28)] + [v for v, _ in qents]
+    for v in pvpns:
+        await commit_entry(dut, p, v, fp)
+    for v, _ in qents:
+        await mmio_write(dut, xbase(p) + X_VPN, v)
+        await mmio_write(dut, xbase(p) + X_COMMIT, commit_word(v=0))
+    vlast = vpn_of(0x00071FF, 0xF)
+    await commit_entry(dut, p, vlast, fp)
+    rows, want = [], []
+    lbl = f"p 에 커밋 {len(pvpns) + 1} · V=0 {len(qents)} 뒤 [6]"
+    rows.append((lbl, await fault6(dut)))
+    want.append((lbl, 0))
+    for v, f in qents:
+        lbl = f"조회 (q, 0x{v:08X})"
+        rows.append((lbl, (await lookup_row(dut, q, v))))
+        want.append((lbl, ("hit", 1, f)))
+    lbl = "조회 (p, 마지막 커밋)"
+    rows.append((lbl, (await lookup_row(dut, p, vlast))))
+    want.append((lbl, ("hit", 1, fp)))
+    assert rows == want, (
+        "다른 파티션의 커밋 · 무효화가 이 파티션 항목을 밀어냈다 (결과 (c)):\n" + table_diff(rows, want))
+    dut._log.info(f"파티션 {p} 의 커밋 {len(pvpns) + 1} · V=0 {len(qents)} → 파티션 {q} 항목 {len(qents)} 전부 생존")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1511,8 +2140,7 @@ async def xlate_miss_observed(dut):
     바꾸지 않는다(정지한 요청을 바꾸는 것은 항목 기입뿐) · 항목 기입 뒤 [0]=0 · [15:8] · VPN
     0 (잔재 없음) · sticky [1] 은 0xE10 까지 남는다."""
     await boot_hiu(dut)
-    part, idx, tag, frame = 2, 5, 0x0ABC123, 0x0000_5A5A
-    vpn = vpn_of(tag, idx)
+    part, vpn, frame = 2, vpn_of(0x0ABC123, 5), 0x0000_5A5A
     await mmio_write(dut, OWN_SET, frame)
     assert await read_obs(dut) == (0, 0, 0), "정지 전의 관측 세 워드는 0 이어야 한다"
     res = await hiu_lookup(dut, part, vpn)
@@ -1527,10 +2155,11 @@ async def xlate_miss_observed(dut):
     await mmio_write(dut, XCTL_FLUSH, part)
     assert await read_obs(dut) == want, "정지한 파티션의 flush 가 스냅샷을 바꿨다 — 정지한 요청을 바꾸는 것은 항목 기입뿐이다"
     assert int(dut.io_hiuReq_ready.value) == 0
-    # 호스트는 관측면만으로 항목을 안다 — 읽은 파티션 · VPN 그대로 기입한다.
+    # 호스트는 관측면만으로 항목을 안다 — 읽은 파티션 · VPN 그대로 VPN 워드에 쓴다 (W3 — 색인 ·
+    # 태그 분해가 사라졌다. 관측한 VPN 이 곧 기입할 값이다).
     status, vlo, _ = got
     hpart, hvpn = (status >> 8) & 0xFF, vlo
-    await install_entry(dut, hpart, hvpn & 0xF, hvpn >> 4, frame)
+    await commit_entry(dut, hpart, hvpn, frame)
     rsp = await wait_rsp(dut)
     assert rsp["rsp"] == 1 and rsp["granted"] == 1 and rsp["frame"] == frame, (
         f"관측면이 알려 준 항목을 기입했는데 정지가 풀리지 않았다 ({rsp})")
@@ -1550,14 +2179,13 @@ async def xlate_miss_obs_second_stall(dut):
     영구가 된다 (XlateObs.tla 진행 짝 live_del_vpn 의 값 판)."""
     await boot_hiu(dut)
     f1, f2 = 0x0000_1111, 0x0000_2222
-    p1, i1, t1 = 1, 3, 0x0000ABC
-    p2, i2, t2 = 3, 7, 0x0DEF000
-    v1, v2 = vpn_of(t1, i1), vpn_of(t2, i2)
+    p1, v1 = 1, vpn_of(0x0000ABC, 3)
+    p2, v2 = 3, vpn_of(0x0DEF000, 7)
     await mmio_write(dut, OWN_SET, f1)
     await mmio_write(dut, OWN_SET, f2)
     assert_miss(dut, await hiu_lookup(dut, p1, v1), "첫 요청")
     assert await read_obs(dut) == (xstatus_word(1, 1, p1), v1, 0)
-    await install_entry(dut, p1, i1, t1, f1)
+    await commit_entry(dut, p1, v1, f1)
     r = await wait_rsp(dut)
     assert r["rsp"] == 1 and r["frame"] == f1, f"첫 항목 기입이 정지를 풀지 못했다 ({r})"
     await step(dut, 2)
@@ -1567,7 +2195,7 @@ async def xlate_miss_obs_second_stall(dut):
     assert got == (xstatus_word(1, 1, p2), v2, 0), (
         f"둘째 정지의 관측 {tuple(hex(v) for v in got)} — 파티션 {p2} · VPN 0x{v2:08X} 이어야 한다 "
         f"(첫 요청 0x{v1:08X} 가 읽히면 첫 미적중 포착이다)")
-    await install_entry(dut, (got[0] >> 8) & 0xFF, got[1] & 0xF, got[1] >> 4, f2)
+    await commit_entry(dut, (got[0] >> 8) & 0xFF, got[1], f2)
     r = await wait_rsp(dut)
     assert r["rsp"] == 1 and r["frame"] == f2, f"둘째 관측으로 채운 항목이 정지를 풀지 못했다 ({r})"
     dut._log.info("둘째 정지 → 둘째 요청의 파티션 · VPN (첫 미적중 포착 아님) · 관측면만으로 두 정지를 다 푼다")
@@ -1579,39 +2207,90 @@ async def xlate_miss_obs_second_stall(dut):
 # e-defined.typ:321 「다른 파티션을 래치한 스테이징은 건드리지 않는다」 · 거절된 flush 는
 # 효과가 없다 (「없는 파티션 값의 처분」 1항 · E.12.1 1항과 같은 형태). xlate_flush_ends_staging 의 짝이다 —
 # 파티션을 가리지 않고 비우는 판(전역 비움)이나 거절된 flush 로도 비우는 판은 여기서
-# 적법한 LO → HI 를 거절 + [6] 으로 만든다.
+# 적법한 VPN → FRAME → COMMIT 의 COMMIT 을 「VPN 없는 COMMIT」 거절 + [6] 으로 만든다.
 
 @cocotb.test()
 async def xlate_other_flush_keeps_staging(dut):
-    """LO{p}(F) → flush(q ≠ p) → HI{p} 는 거절 없이 커밋되어 F 로 적중한다. 이어서
-    LO{p}(F2) → 예약 위반 flush(p)(거절 + [6]) → [6] 해제 → HI{p} 도 커밋되어 F2 로
-    적중한다 — 거절된 flush 는 스테이징에 닿지 않는다."""
+    """VPN{p} · FRAME{p}(F) → flush(q ≠ p) → COMMIT{p} 는 거절 없이 커밋되어 F 로 적중한다. 이어서
+    VPN{p}(v2) · FRAME{p}(F2) → 예약 위반 flush(p)(거절 + [6]) → [6] 해제 → COMMIT{p} 도 커밋되어
+    F2 로 적중한다 — 거절된 flush 는 스테이징에 닿지 않는다."""
     await boot_hiu(dut)
-    part, opart, idx = 2, 1, 4
-    tag, frame = 0x0055AA5, 0x0000_C0DE
-    tag2, frame2 = 0x0066BB6, 0x0000_C1E5    # 소유권 표 직접 사상 — frame 과 다른 슬롯(하위 6b)
+    part, opart = 2, 1
+    vpn, frame = vpn_of(0x0055AA5, 4), 0x0000_C0DE
+    vpn2, frame2 = vpn_of(0x0066BB6, 4), 0x0000_C1E5    # 소유권 표 직접 사상 — frame 과 다른 슬롯(하위 6b)
+    b = xbase(part)
     await mmio_write(dut, OWN_SET, frame)
     await mmio_write(dut, OWN_SET, frame2)
-    await mmio_write(dut, xent(part, idx), frame)              # LO{p}
+    await mmio_write(dut, b + X_VPN, vpn)                      # VPN{p}
+    await mmio_write(dut, b + X_FRAME, frame)                  # FRAME{p}
     await mmio_write(dut, XCTL_FLUSH, opart)                   # flush(q ≠ p) — 수락
-    assert await fault6(dut) == 0, "적법한 XLATE_FLUSH 가 [6] 을 세웠다"
-    await mmio_write(dut, xent(part, idx) + 4, hi_word(tag))   # HI{p}
+    assert await fault6(dut) == 0, "적법한 VPN · FRAME · XLATE_FLUSH 가 [6] 을 세웠다"
+    await mmio_write(dut, b + X_COMMIT, commit_word())         # COMMIT{p}
     assert await fault6(dut) == 0, (
-        f"파티션 {opart} 의 flush 뒤 파티션 {part} 을 래치한 스테이징의 HI 가 거절됐다 — "
+        f"파티션 {opart} 의 flush 뒤 파티션 {part} 을 래치한 스테이징의 COMMIT 이 거절됐다 — "
         f"flush 가 다른 파티션의 스테이징까지 비웠다 (E.1.2 `0xE00` 행 위반 · 전역 비움)")
-    assert_hit(await hiu_lookup(dut, part, vpn_of(tag, idx)), frame,
-               "타 파티션 flush 를 건넌 스테이징의 커밋")
-    await mmio_write(dut, xent(part, idx), frame2)             # LO{p}(F2)
+    assert_hit(await hiu_lookup(dut, part, vpn), frame, "타 파티션 flush 를 건넌 스테이징의 커밋")
+    await mmio_write(dut, b + X_VPN, vpn2)                     # VPN{p}(v2)
+    await mmio_write(dut, b + X_FRAME, frame2)                 # FRAME{p}(F2)
     await mmio_write(dut, XCTL_FLUSH, (1 << 8) | part)         # 예약 [31:8] 비0 — 거절
     assert await fault6(dut) == 1, "예약 위반 XLATE_FLUSH 가 거절되지 않았다"
     await clear_fault6(dut)
-    await mmio_write(dut, xent(part, idx) + 4, hi_word(tag2))  # HI{p}
+    await mmio_write(dut, b + X_COMMIT, commit_word())         # COMMIT{p}
     assert await fault6(dut) == 0, (
-        "거절된 XLATE_FLUSH 뒤의 적법한 HI 가 거절됐다 — 거절된 flush 가 스테이징을 비웠다 "
+        "거절된 XLATE_FLUSH 뒤의 적법한 COMMIT 이 거절됐다 — 거절된 flush 가 스테이징을 비웠다 "
         "(거절된 기입은 기입이 아니다)")
-    assert_hit(await hiu_lookup(dut, part, vpn_of(tag2, idx)), frame2,
-               "거절된 flush 를 건넌 스테이징의 커밋")
-    dut._log.info("타 파티션 flush · 거절된 flush 는 스테이징에 닿지 않는다 — HI 커밋 · 적중 (판정 T5 (a) 범위)")
+    assert_hit(await hiu_lookup(dut, part, vpn2), frame2, "거절된 flush 를 건넌 스테이징의 커밋")
+    # 파티션 번호의 *모든* 비트를 본다 — 래치 1 (0b01) · flush 3 (0b11) 은 bit1 만 다르다. 위 쌍(2 · 1)은
+    # bit0 이 다르므로 flush 파티션 비교가 bit0 만 보는 문(W3 검증 변이 M13b)을 이 행만 잡는다.
+    lpart, fpart = 1, 3
+    vpn3, frame3 = vpn_of(0x0077CC7, 5), 0x0000_C339        # 소유권 슬롯(하위 6b) 0x39 — 위 둘과 다르다
+    lb = xbase(lpart)
+    await mmio_write(dut, OWN_SET, frame3)
+    await mmio_write(dut, lb + X_VPN, vpn3)                    # VPN{1}
+    await mmio_write(dut, lb + X_FRAME, frame3)                # FRAME{1}
+    await mmio_write(dut, XCTL_FLUSH, fpart)                   # flush(3) — 수락, 래치 파티션 1 과 bit1 만 다르다
+    assert await fault6(dut) == 0, "적법한 VPN · FRAME · XLATE_FLUSH(3) 가 [6] 을 세웠다"
+    await mmio_write(dut, lb + X_COMMIT, commit_word())        # COMMIT{1}
+    assert await fault6(dut) == 0, (
+        f"파티션 {fpart} 의 flush 뒤 파티션 {lpart} 을 래치한 스테이징의 COMMIT 이 거절됐다 — flush 의 파티션 "
+        f"비교가 번호의 일부 비트만 본다 (E.1.2 `0xE00` 행 위반)")
+    assert_hit(await hiu_lookup(dut, lpart, vpn3), frame3, "bit1 만 다른 파티션의 flush 를 건넌 스테이징의 커밋")
+    dut._log.info("타 파티션 flush · 거절된 flush 는 스테이징에 닿지 않는다 — COMMIT 커밋 · 적중 (판정 T5 (a) 범위) · "
+                  "파티션 번호 전 비트 비교 (1 vs 3)")
+
+
+@cocotb.test()
+async def xlate_high_vpn_bits_distinguish(dut):
+    """VPN 은 32b 전부가 키다 — 높은 비트만 다른 두 VPN 은 다른 항목이다 (E.1.2 `0xC00` 행 결과 (a)(b)).
+
+    기대값은 형상과 무관하다: 커밋한 VPN 은 적중하고, 커밋하지 않은 VPN 은 미적중이다. 자극은 측정력을
+    위해 참조 형상(직접 사상 4 × 16)에서 *같은 칸*에 떨어지도록 하위 4b 를 맞췄다 — 그래야 저장 태그
+    비교가 높은 비트를 버리는 결함이 다른 VPN 의 항목을 적중시킨다 (W3 검증 변이 M26 · M43 은 formal 만
+    잡고 Shape 스위트를 통과했다):
+      · VPN[31] = 1 인 A 를 커밋하고 조회한다 — 설치 태그 최상위 비트를 버리는 문은 여기서 미적중한다.
+      · A 와 VPN[31] 만 다른 B(미커밋)는 미적중이다 — 태그 비교가 하위 비트만 보는 저장은 A 를 내준다.
+      · B 를 커밋해 정지를 풀고(E.3 2항), B 와 VPN[20] 만 다른 D(미커밋)는 미적중이다 — 태그 [16] 축."""
+    await boot_hiu(dut)
+    p = 1
+    va = (1 << 31) | vpn_of(0x0012345, 6)
+    vb = va ^ (1 << 31)
+    vd = vb ^ (1 << 20)
+    fa, fb = 0x0000_7A11, 0x0000_7B22                          # 소유권 슬롯 0x11 · 0x22
+    await mmio_write(dut, OWN_SET, fa)
+    await mmio_write(dut, OWN_SET, fb)
+    await commit_entry(dut, p, va, fa)
+    assert await fault6(dut) == 0, "VPN[31] = 1 인 적법한 VPN · FRAME · COMMIT 이 [6] 을 세웠다"
+    assert_hit(await hiu_lookup(dut, p, va), fa, f"VPN 0x{va:08X} 커밋 뒤 — 설치 태그가 높은 비트를 잃었다")
+    assert_miss(dut, await hiu_lookup(dut, p, vb),
+                f"미커밋 VPN 0x{vb:08X} (커밋한 0x{va:08X} 와 [31] 만 다름) — 태그 비교가 높은 비트를 버린다")
+    await commit_entry(dut, p, vb, fb)                         # 정지를 푸는 커밋
+    rsp = await wait_rsp(dut)
+    assert rsp["rsp"] == 1 and rsp["granted"] == 1 and rsp["frame"] == fb, (
+        f"VPN 0x{vb:08X} 의 커밋이 정지를 풀지 못했거나 승인 프레임이 0x{fb:08X} 가 아니다 ({rsp})")
+    assert await fault6(dut) == 0, "적법한 VPN · FRAME · COMMIT 이 [6] 을 세웠다"
+    assert_miss(dut, await hiu_lookup(dut, p, vd),
+                f"미커밋 VPN 0x{vd:08X} (커밋한 0x{vb:08X} 와 [20] 만 다름) — 태그 비교가 높은 비트를 버린다")
+    dut._log.info("높은 VPN 비트([31] · [20])만 다른 VPN 은 다른 항목 — 커밋한 쪽 적중 · 안 한 쪽 미적중")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -2054,13 +2733,13 @@ async def fault19_nonowned_access(dut):
         await clear_hiu_report(dut, name)
         vpn = vpn_of(tag, idx)
         if path == "hit":
-            await install_entry(dut, part, idx, tag, frame, r=r, w=w, x=x)
+            await commit_entry(dut, part, vpn, frame, r=r, w=w, x=x)
             res = await hiu_lookup(dut, part, vpn, write=wr)
             lat = len(res["trace"])
         else:
             res = await hiu_lookup(dut, part, vpn, write=wr)
             assert_miss(dut, res, f"{name} — 채움 전 정지")
-            await install_entry(dut, part, idx, tag, frame, r=r, w=w, x=x)
+            await commit_entry(dut, part, vpn, frame, r=r, w=w, x=x)
             res = await wait_rsp(dut)
             lat = res["wait"]
         lat_ref.setdefault(path, lat)          # 경로마다 첫 행 = 양성 대조
@@ -2162,24 +2841,21 @@ async def fault19_nonowned_access(dut):
 # 은 없다 — RTL 진단 포트다. 그 기대(판정이 채움 바이패스 사이클의 것이면 1)는 RTL 진단 계약(GUARD-MAP
 # verdict_latch · latch_one_value 의 「fromFill 도 같은 래치」)에서 온다. 판정 값의 칸이 아니다.
 #
-# **화이트박스 하나 (N8):** 같은 칸을 다투는 VPN 둘을 고르는 것은 오늘 문의 형상 지식이다 —
-# 직접 사상 · 색인 = VPN[3:0] (위 `vpn_of`), 같은 (파티션, 색인)의 다른 태그가 그 칸을 덮는다
-# (위 xlate_adjacent_hi_stalls_then_commits 의 「tagA 덮임」). 형상 비노출 문(W3)에서는 호스트가
-# 어느 VPN 둘이 한 칸을 다투는지 모른다 — 그 판에서 고르기는 헬퍼(`entry_ops` · `install_entry`)와
-# 함께 바뀐다. 시험은 축출이 실제로 일어났는지를 끝에서 전건으로 확인한다(B 적중 · A 미적중).
+# **화이트박스 하나 (N8):** 같은 칸을 다투는 VPN 둘을 고르는 것은 참조 형상의 지식이다 —
+# 직접 사상 · 칸 = VPN[3:0] (위 `vpn_of`), 같은 (파티션, 칸)의 다른 VPN 의 커밋이 그 칸을 덮는다.
+# 형상 비노출 문(W3)에서 호스트는 어느 VPN 둘이 한 칸을 다투는지 모르고 정본도 그것을 걸지 않는다 —
+# 이 고르기는 *자극을 축출이 일어나는 쪽으로 보내는* 데만 쓰고 기대값에는 들지 않는다(기대값은
+# 「풀린 요청은 그 커밋 항목으로 판정된다」 하나다). 시험은 축출이 실제로 일어났는지를 끝에서 전건으로
+# 확인한다(B 적중 · A 미적중) — 형상이 바뀌어 축출이 안 일어나면 전건이 크게 운다.
 #
-# **타이밍 (N8):** RTL 에서 가능한 반례의 꼴은 hold ≥ 2 사이클 뒤의 경쟁 커밋이다 — HI(A) 수락
-# C → C+1 채움 바이패스 적중(정지 해제 · hold 로 조회 지점에 머묾 · 채움 슬롯 해제) → C+2 같은
-# 칸의 다른 VPN HI(B) 수락(채움 슬롯이 비어 정지 없음) → C+3 채움 가림으로 A 가 안 보인다.
-# 모델의 BFS 최단 반례(축출을 첫 적중 사이클 끝 에지에 둔다)는 RTL 에서 그 에지가 같은 파티션
-# 커밋을 받지 않으므로(채움 슬롯 점유) 그대로는 재현되지 않는다 (XlateObs.tla 머리 「원자성」 2).
-# `mmio_burst` 의 인접 구동과 정지 계수 [0, 0, 0, 0] 이 C · C+2 를 못박는다.
-
-
-def entry_ops(part, idx, tag, frame, v=1, r=1, w=0, x=0):
-    """`install_entry` 와 같은 기입 열(오늘 문 — LO 스테이징 · HI 커밋)을 `mmio_burst` 용
-    (주소, 데이터) 목록으로 낸다. 문이 바뀌면(W3) `install_entry` 와 함께 바뀐다."""
-    return [(xent(part, idx), frame), (xent(part, idx) + 4, hi_word(tag, v=v, r=r, w=w, x=x))]
+# **타이밍 (N8, W3 문):** RTL 에서 가능한 반례의 꼴은 hold 중의 경쟁 커밋이다 — COMMIT(A) 수락
+# C → C+1 채움 바이패스 적중(정지 해제 · hold 로 조회 지점에 머묾 · 채움 슬롯 해제) · VPN(B) 수락 →
+# C+2 FRAME(B) → C+3 같은 칸의 다른 VPN 의 COMMIT(B) 수락(채움 슬롯이 비어 정지 없음) → C+4 채움
+# 가림으로 A 가 안 보인다. W3 전 문(LO · HI 두 워드)에서는 C+2 였다 — 세 워드 열(VPN 이 FRAME 유효를
+# 내리므로 B 는 FRAME 을 다시 써야 한다)이 가장 이른 꼴을 한 에지 미룬다. 모델의 BFS 최단 반례(축출을 첫
+# 적중 사이클 끝 에지에 둔다)는 RTL 에서 그 에지가 같은 파티션 커밋을 받지 않으므로(채움 슬롯 점유)
+# 그대로는 재현되지 않는다 (XlateObs.tla 머리 「원자성」 2).
+# `mmio_burst` 의 인접 구동과 정지 계수 [0, 0, 0, 0, 0, 0] 이 C · C+3 을 못박는다.
 
 
 async def set_hold(dut, v):
@@ -2257,10 +2933,10 @@ N8_FH = 0x0000_3E05                                      # 호스트 응답 leg 
 # (이름, 파티션, 색인, 태그, 프레임, 정지를 푸는 커밋 뒤에 잇는 기입, 그 열의 정지 계수 기대)
 #   프레임은 전부 OWN_SET 한다 — 소유권 표 직접 사상 슬롯(하위 6b)이 서로 겹치지 않게 골랐다.
 N8_CASES = [
-    ("경쟁 커밋 — C+2 에 같은 칸의 다른 VPN B", 1, 6, 0x00A8A01, 0x0000_3A41,
-     entry_ops(1, 6, N8_TAG_B, N8_FB), (0, 0, 0, 0)),
+    ("경쟁 커밋 — C+3 에 같은 칸의 다른 VPN B", 1, 6, 0x00A8A01, 0x0000_3A41,
+     commit_ops(1, vpn_of(N8_TAG_B, 6), N8_FB), (0, 0, 0, 0, 0, 0)),
     ("flush(p) — C+1 = 풀린 첫 적중 사이클의 끝 에지", 2, 6, 0x00A8A04, 0x0000_3D04,
-     [(XCTL_FLUSH, 2)], (0, 0, 0)),
+     [(XCTL_FLUSH, 2)], (0, 0, 0, 0)),
 ]
 N8_HOLD_MORE = 16
 
@@ -2273,8 +2949,8 @@ async def xlate_released_judgment_survives_eviction(dut):
     조회 지점에 머문다 → 같은 파티션의 축출이 A 를 밀어낸다 → hold 를 놓는다. 정본은 R 이 다시
     미적중하지 않고 *A 의 커밋 항목으로* 승인된다고 적는다. 축출 원인은 정본이 이름한 둘이다
     (e-defined.typ:312 「장치는 축출을 같은 파티션에 대한 호스트 COMMIT 과 flush 의 결과로만 한다」):
-      · 경쟁 커밋 — RTL 에서 가장 이른 꼴. HI(A) 수락 C → C+1 채움 바이패스 적중(풀림) → C+2 같은
-        칸의 다른 VPN HI(B) 수락 → C+3 채움 가림 (위 W2 절 머리 「타이밍」)
+      · 경쟁 커밋 — RTL 에서 가장 이른 꼴. COMMIT(A) 수락 C → C+1 채움 바이패스 적중(풀림) · VPN(B) →
+        C+2 FRAME(B) → C+3 같은 칸의 다른 VPN 의 COMMIT(B) 수락 → C+4 채움 가림 (위 W2 절 머리 「타이밍」)
       · flush(p) — flush 는 채움 슬롯을 기다리지 않으므로 풀린 첫 적중 사이클 C+1 에 수락되고 그
         끝 에지(= 래치 포착 에지)에 A 의 진행 중 채움 줄과 유효 비트를 함께 지운다. 모델의 BFS 최단
         꼴(첫 적중 사이클 끝 에지의 철회)이 RTL 에서 서는 경로다 — 판정은 그 에지 *앞* 사이클에
@@ -2285,7 +2961,7 @@ async def xlate_released_judgment_survives_eviction(dut):
       · 대조 — 저장 적중 요청을 첫 적중 사이클에 hold 로 잡았다 놓으면 놓은 뒤 `w_ref` 사이클에
         승인된다. `w_ref` = 래치가 끼지 않는 적중 조회의 길이 − `MISS_LEAD` (같은 실행의 실측)
       · 사례마다: 전건 — 정지 중 관측면이 R 을 말한다 (`[0]` · `[1]` · 파티션 · VPN) · 버스트가 정지
-        없이 인접 수락된다(HI(A) 가 C — 계수가 C+1 · C+2 를 못박는다) · `[6]` 0 · 축출 뒤 hold 중 관측면
+        없이 인접 수락된다(COMMIT(A) 가 C — 계수가 C+1 · C+3 을 못박는다) · `[6]` 0 · 축출 뒤 hold 중 관측면
         `[0]` = 0 (재미적중 없음) — 정지 해제 뒤 `0xE10` 해제가 sticky `[1]` 을 내리고 다시 서지 않는다
         (sticky set 이 정지 레벨이므로 재미적중이면 남는다). 16 사이클 뒤에도 같다 · hold 를 놓으면
         R 이 놓은 뒤 `w_ref` 사이클에(대조와 같은 상태열 — 판정 래치는 경로를 가르지 않는다) A 의
@@ -2302,13 +2978,13 @@ async def xlate_released_judgment_survives_eviction(dut):
       · 끝의 전건(표 대조 뒤): 경쟁 커밋 사례 — B 는 B 의 프레임으로 적중하고 A 는 미적중 · flush
         사례 — A 는 미적중(진행 중 채움 줄까지 지워졌다). 축출이 실제로 일어났다
 
-    재지 않는 것: C+3 이후의 경쟁 커밋(가장 이른 꼴 하나만 — 래치는 그 뒤 에지마다 같은 값을 든다) ·
+    재지 않는 것: C+4 이후의 경쟁 커밋(가장 이른 꼴 하나만 — 래치는 그 뒤 에지마다 같은 값을 든다) ·
     호스트 leg 이 *먼저* 서 있다가 정지가 오는 순서 · IO 해제선 io_faultClear_hiuPerm(W1C 와 같은 hiu
     해제로 합류 — 합류 자체는 조립층 몫) · 권한 필드의 래치(경쟁 커밋 B 의 권한이 A 와 같다 — N9 의 권한 행) ·
     V=0 COMMIT 축출(채움 슬롯 때문에 C+2 가 가장 이르다 — N9 가 저장 적중 래치로 잰다) · flush 와 같은
     사이클의 채움 *거절* 창(어느 모델에도 없다 — model_feedback) · 동시에 정지하는 조회 지점 여럿(형상
     밖) · 호스트 ABI 층위(조회는 내부 포트 io.hiuReq) · reset 의 래치 비움(형식 단언 이월 W2-9).
-    HEAD(9b6eee6) 생성물에서는 축출 뒤(C+3 의 채움 가림 · C+2 의 flush 된 칸)부터 R 이 다시 미적중해
+    W2 착지 전 생성물(9b6eee6, LO · HI 문)에서는 축출 뒤(채움 가림 · flush 된 칸)부터 R 이 다시 미적중해
     관측면이 R 을 다시 말하고(`0xE10` 해제도 sticky 를 못 내린다) hold 를 놓아도 응답이 없을 것으로
     예상한다.
     """
@@ -2320,7 +2996,7 @@ async def xlate_released_judgment_survives_eviction(dut):
     # 기준 — 래치가 끼지 않는 적중 조회(hold 없음)의 길이.
     pc = N8_CASES[0][1]
     vc = vpn_of(N8_TAG_C, N8_IDX_C)
-    await install_entry(dut, pc, N8_IDX_C, N8_TAG_C, N8_FC)
+    await commit_entry(dut, pc, vc, N8_FC)
     ref = await hiu_lookup(dut, pc, vc)
     assert_hit(ref, N8_FC, "기준 — 저장 적중")
     w_ref = len(ref["trace"]) - MISS_LEAD
@@ -2343,8 +3019,8 @@ async def xlate_released_judgment_survives_eviction(dut):
         lbl = f"{name} · 정지한 R — hold · 호스트 leg 을 올린 뒤 관측면 (STATUS, VPN, VPN_HI)"
         rows.append((lbl, *await read_obs(dut)))
         want.append((lbl, xstatus_word(1, 1, p), va, 0))
-        stalls = await mmio_burst(dut, entry_ops(p, idx, tag, fa) + evict)
-        lbl = f"{name} · LO(A) · HI(A) 수락 C · 뒤 기입 인접 — 정지 계수"
+        stalls = await mmio_burst(dut, commit_ops(p, va, fa) + evict)
+        lbl = f"{name} · VPN(A) · FRAME(A) · COMMIT(A) 수락 C · 뒤 기입 인접 — 정지 계수"
         rows.append((lbl, *stalls))
         want.append((lbl, *stall_want))
         lbl = f"{name} · 버스트 뒤 [6] (적법한 기입뿐)"
@@ -2372,7 +3048,7 @@ async def xlate_released_judgment_survives_eviction(dut):
             # 음성 대조의 기록을 잇기 위한 회복 — R 이 다시 미적중한 채 남았다(위 행이 이미 그것을
             # 적었다). A 를 다시 커밋해 풀어 다음 사례가 빈 파이프에서 시작하게 한다. 정본대로인
             # 생성물에서는 이 가지가 돌지 않는다(위 행이 정지 0 을 요구한다).
-            await install_entry(dut, p, idx, tag, fa)
+            await commit_entry(dut, p, va, fa)
             await wait_rsp(dut)
 
     assert rows == want, (
@@ -2384,11 +3060,11 @@ async def xlate_released_judgment_survives_eviction(dut):
     (_, p1, i1, t1, f1, _, _), (_, p2, i2, t2, _, _, _) = N8_CASES
     assert_hit(await hiu_lookup(dut, p1, vpn_of(N8_TAG_B, i1)), N8_FB, "경쟁 커밋 B 의 VPN")
     assert_miss(dut, await hiu_lookup(dut, p1, vpn_of(t1, i1)), "B 에 밀려난 A 의 VPN (반례 전건)")
-    await install_entry(dut, p1, i1, t1, f1)
+    await commit_entry(dut, p1, vpn_of(t1, i1), f1)
     r = await wait_rsp(dut)
     assert r["rsp"] == 1 and r["frame"] == f1, f"A 재커밋이 전건 확인의 정지를 풀지 못했다 ({r})"
     assert_miss(dut, await hiu_lookup(dut, p2, vpn_of(t2, i2)), "flush 된 A 의 VPN (반례 전건)")
-    dut._log.info(f"정지 → A 커밋이 풀고 hold 로 머묾 → C+2 경쟁 커밋 · C+1 flush 가 A 를 밀어냄 → 재미적중 "
+    dut._log.info(f"정지 → A 커밋이 풀고 hold 로 머묾 → C+3 경쟁 커밋 · C+1 flush 가 A 를 밀어냄 → 재미적중 "
                   f"없음 · 놓은 뒤 {w_ref} 사이클에 A 의 프레임으로 승인 (대조와 같은 상태열) · 축출 전건 확인")
 
 
@@ -2467,7 +3143,7 @@ async def xlate_latched_hit_survives_retire(dut):
       · 행마다 끝 `[4]` · `[19]` · `[6]` (대체 행만 `[19]` = 1 · 권한 행만 `[4]` = 1) · 철회 · 대체 기입
         뒤 `[6]` = 0
 
-    재지 않는 것: 대체가 포착 에지와 같은 에지인 꼴(대체는 LO · HI 두 기입이라 한 에지에 싣지
+    재지 않는 것: 대체가 포착 에지와 같은 에지인 꼴(대체는 VPN · FRAME · COMMIT 세 기입이라 한 에지에 싣지
     못한다 — 같은 에지는 철회 둘이 잰다) · 다른 파티션 flush 의 무효과(flush 범위는
     xlate_flush_then_miss) · 드레인 관측면으로 「완전한 철회」를 재는 것(관측면 미배선 — 이월) ·
     권한 행 밖의 쓰기 요청 · reset 의 래치 비움(이월 W2-9). HEAD(9b6eee6) 생성물에서는 V=0 · flush
@@ -2483,7 +3159,7 @@ async def xlate_latched_hit_survives_retire(dut):
     # 끼지 않는 적중 조회의 길이(`w_ref` = 조회 지점 → 응답).
     rp, ri, rt = 0, 1, 0x0090001
     assert_miss(dut, await hiu_lookup(dut, rp, vpn_of(rt, ri)), "기준 — 빈 칸")
-    await install_entry(dut, rp, ri, rt, N9_FA)
+    await commit_entry(dut, rp, vpn_of(rt, ri), N9_FA)
     r = await wait_rsp(dut)
     assert r["rsp"] == 1 and r["granted"] == 1 and r["frame"] == N9_FA, f"기준 채움이 정지를 풀지 못했다 ({r})"
     w_fill = r["wait"]
@@ -2496,10 +3172,12 @@ async def xlate_latched_hit_survives_retire(dut):
         await n9_clean(dut, name)
         vpn = vpn_of(tag, idx)
         wr = int(kind == "perm")                             # 권한 행만 쓰기 요청 — 자격이 W 를 본다
-        await install_entry(dut, p, idx, tag, N9_FA, **(dict(r=0, w=1, x=1) if wr else {}))
+        await commit_entry(dut, p, vpn, N9_FA, **(dict(r=0, w=1, x=1) if wr else {}))
         await present_seq(dut, [(p, vpn), (p, vpn)], hold_at_s3=True, write=wr)
-        ops = {None: [], "v0": [(xent(p, idx) + 4, hi_word(tag, v=0))], "flush": [(XCTL_FLUSH, p)],
-               "replace": entry_ops(p, idx, tag, N9_FB), "perm": entry_ops(p, idx, tag, N9_FA)}[kind]
+        # V=0 은 COMMIT 한 워드다 — 위 커밋의 스테이징(VPN 유효 · 래치 p)이 남아 있다(커밋은 스테이징을
+        # 소진하지 않는다 — e-defined.typ:311 「*커밋은 스테이징을 소진하지 않는다*」). 대체는 세 워드 열이다.
+        ops = {None: [], "v0": [(xbase(p) + X_COMMIT, commit_word(v=0))], "flush": [(XCTL_FLUSH, p)],
+               "replace": commit_ops(p, vpn, N9_FB), "perm": commit_ops(p, vpn, N9_FA)}[kind]
         if at_edge:
             # R1 의 첫 적중 사이클(hold 가 막 섰다)에 기입을 싣는다 — 수락 에지 = 래치 포착 에지.
             (addr, data), = ops
@@ -2534,7 +3212,7 @@ async def xlate_latched_hit_survives_retire(dut):
             lbl = f"{name} · hold 해제 뒤 관측면 — R2 가 그 에지 뒤에 판정돼 미적중"
             rows.append((lbl, *await read_obs(dut)))
             want.append((lbl, xstatus_word(1, 1, p), vpn, 0))
-            await install_entry(dut, p, idx, tag, N9_FC)
+            await commit_entry(dut, p, vpn, N9_FC)
             lbl = f"{name} · 채움(FC) 뒤 응답 (수, 사이클, 승인, phys, 값, fromFill, 권한 …)"
             rows.append((lbl, *flat_rsp(await collect_rsp(dut, 12))))
             want.append((lbl, 2, w_fill - 1, 1, 1, N9_FA, 0, "R--", w_fill, 1, 1, N9_FC, 1, "R--"))
@@ -2545,7 +3223,7 @@ async def xlate_latched_hit_survives_retire(dut):
     name, p, i1, t1, i2, t2 = N9_NOHOLD
     await n9_clean(dut, name)
     v1, v2 = vpn_of(t1, i1), vpn_of(t2, i2)
-    await install_entry(dut, p, i1, t1, N9_FA)
+    await commit_entry(dut, p, v1, N9_FA)
     await present_seq(dut, [(p, v1), (p, v2)], hold_at_s3=False)
     lbl = f"{name} · 응답 (수 …)"
     rows.append((lbl, *flat_rsp(await collect_rsp(dut, 12))))
@@ -2553,7 +3231,7 @@ async def xlate_latched_hit_survives_retire(dut):
     lbl = f"{name} · 관측면 — R2 자신의 정지"
     rows.append((lbl, *await read_obs(dut)))
     want.append((lbl, xstatus_word(1, 1, p), v2, 0))
-    await install_entry(dut, p, i2, t2, N9_FD)
+    await commit_entry(dut, p, v2, N9_FD)
     lbl = f"{name} · 채움(FD) 뒤 응답"
     rows.append((lbl, *flat_rsp(await collect_rsp(dut, 12))))
     want.append((lbl, 2, w_fill - 1, 1, 1, N9_FA, 0, "R--", w_fill, 1, 1, N9_FD, 1, "R--"))

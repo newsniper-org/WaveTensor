@@ -2,18 +2,18 @@
 \* SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
 --------------------------- MODULE XlateStore ---------------------------
 (***************************************************************************)
-(* HIU-1 · HIU-2 · HIU-3 · HIU-4 선-formal 모델 — 변환 저장 블록.          *)
+(* HIU-1 · HIU-2 · HIU-3 선-formal 모델 — 변환 저장 블록 (HIU-4 는 밖).   *)
 (*                                                                         *)
-(* 넷을 한 모델에 두는 이유는 넷이 *같은 구조 위의 성질*이기 때문이다.     *)
-(* 따로 쓰면 저장 블록을 네 번 모델링하게 되고, 그 네 벌이 드리프트한다.   *)
+(* 셋을 한 모델에 두는 이유는 셋이 *같은 구조 위의 성질*이기 때문이다.     *)
+(* 따로 쓰면 저장 블록을 세 번 모델링하게 되고, 그 세 벌이 드리프트한다.   *)
 (*                                                                         *)
 (*   HIU-1 파티션 격리 — 파티션 p 의 요청이 q != p 가 설치한 항목으로      *)
 (*         적중하는 일은 없다.                                             *)
 (*   HIU-2 flush 후 미적중 — flush · V=0 COMMIT 의 에지 *뒤에 판정되는*    *)
-(*         조회에서 그 에지가 무효로 한 항목은 적중하지 않는다 (여기는 flush 축 — 판정 시점 범위는 XlateObs.tla · V=0 COMMIT 축은 XlateSurface.tla 재작성(W3) 착지 대기). *저장 블록에 데이터가 남아 있음에도.* *)
+(*         조회에서 그 에지가 무효로 한 항목은 적중하지 않는다 (여기는 flush 축 — 판정 시점 범위는 XlateObs.tla · V=0 COMMIT 축은 XlateSurface.Prop_V0Misses). *저장 블록에 데이터가 남아 있음에도.* *)
 (*   HIU-3 유효 게이팅 전수 — 저장 블록에서 값을 읽는 모든 경로가 유효     *)
 (*         비트로 게이트된다. 게이트되지 않은 경로가 하나라도 있으면 위반. *)
-(*   HIU-4 적중 유일성 — 하나의 요청에 대해 적중하는 항목은 최대 하나.     *)
+(*   HIU-4 적중 유일성 — 이 모델 밖: XlateSurface.Inv_AtMostOneValidPerVpn *)
 (*                                                                         *)
 (* ## 이 모델의 핵심 — 데이터는 남는다                                     *)
 (*                                                                         *)
@@ -106,8 +106,8 @@ Flush(p) ==
 (* 조회.                                                                   *)
 (*                                                                         *)
 (* 적중 조건은 셋의 논리곱이다 (§3.6.2): 파티션 일치 · 태그 일치 ·         *)
-(* 유효 비트. 직접 사상이므로 후보는 `{p, i}` 하나뿐이고 — 그것이 HIU-4    *)
-(* 를 *구조로* 만족시키는 방식이다.                                        *)
+(* 유효 비트. 직접 사상이므로 후보는 `{p, i}` 하나뿐이다 — HIU-4(같은     *)
+(* VPN 의 유효 칸 유일성)는 XlateSurface.Inv_AtMostOneValidPerVpn 몫.      *)
 (*                                                                         *)
 (*   valid_check     지우면 유효하지 않은 항목도 돌려준다 → HIU-3          *)
 (*   partition_check 지우면 남의 파티션 항목도 돌려준다 → HIU-1            *)
@@ -154,11 +154,11 @@ Inv_PartitionIsolated ==
 Inv_InvalidNeverHits ==
     (hitEntry # NoPart) => (installer[hitEntry] # NoPart /\ valid[hitEntry])
 
-\* HIU-4 — 직접 사상이므로 하나의 (파티션, 색인) 에 후보는 하나뿐이다.
-\* 구조로 만족되지만, 구조가 실제로 그런지 확인하는 것이 이 불변식이다.
-Inv_AtMostOneCandidate ==
-    \A p \in Partitions, i \in Indices :
-        Cardinality({ e \in Entries : e = <<p, i>> }) =< 1
+\* HIU-4 — 지웠다 (W3 · DP-12): 옛 Inv_AtMostOneCandidate 는 항진이었다 — Entries 가
+\* 파티션 × 색인의 곱이라 <<p, i>> 와 같은 원소는 늘 정확히 하나다. 아무것도 재지 않았다.
+\* HIU-4 는 XlateSurface.Inv_AtMostOneValidPerVpn 이 잰다 (형상 비노출 문 · 칸 2 cfg 와 짝
+\* XlateSurface_pair_host_index). 이 모델의 거동은 바뀌지 않는다 — 공허한 불변식만 지웠고
+\* (b)(d) 덮임(합의 「XlateStore.tla 불변」)은 그대로다. 줄 수는 보존한다.
 
 (***************************************************************************)
 (* 위험 도달성 증인                                                        *)

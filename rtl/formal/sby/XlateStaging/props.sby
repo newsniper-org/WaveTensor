@@ -1,28 +1,37 @@
 # SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
 # SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
 #
-# 변환 저장소의 호스트 쪽 문 — XlateStaging 의 측정 (파도 3, 2026-09-26 · 파도 4 개정 같은 날).
-# 선-formal 계약: rtl/formal/tla/XlateSurface.tla (가드 열아홉 — 여기 앵커 열일곱 · flush_valid_only 는
-# DELEGATED(XlateStore) · ent_part_exists 는 상한 아래 형상에서만 입력이 서므로 p2.sby).
+# 변환 저장소의 호스트 쪽 문 — XlateStaging 의 측정 (파도 3, 2026-09-26 · 3.10 v1.0 묶음 W3 재작성
+# 2026-10-13 — `0xC00` 형상 비노출 항목 표면).
+# 선-formal 계약: rtl/formal/tla/XlateSurface.tla (가드 스물아홉 — 여기 앵커 스물셋 · flush_valid_only 는
+# DELEGATED(XlateStore) · ent_part_exists 는 상한 아래 형상에서만 입력이 서므로 p2.sby · 저장 쪽
+# 넷(commit_replaces_vpn · evict_in_partition · evict_on_commit_only · stall_independent)은
+# xlatestore.sby · XlateDoor/door.sby).
 #
-# PROVES: XlateSurface.lo_stages_only — 문 절반 전부: 수락된 LO 는 commit · flush · missClr · badWrite 어느 것도 세우지 않는다 (p_lo_quiet) · 커밋의 전건에 LO 가 없다 (p_commit_iff)
-# PROVES: XlateSurface.hi_fires — 문 절반: 하류가 받을 수 있는(installReady) 적법 HI ⇔ commit.valid (p_commit_iff) · 같은 LO 로 온 HI 의 재커밋 (t_no_drain). 하류(install.fire → 채움 → 커밋)는 xlatestore.sby
-# PROVES: XlateSurface.hi_entry_match — 번호 불일치 HI 는 커밋 없음 + badWrite · 스테이징 부동 (p_commit_iff · p_bad_iff · 그림자 갱신 규칙)
-# PROVES: XlateSurface.hi_needs_staging — 빈 스테이징(reset)의 HI 는 번호와 무관하게 커밋 없음 + badWrite (p_commit_iff · p_bad_iff)
-# PROVES: XlateSurface.hi_commit_whole — 문 절반: 한 commit 번들이 항목 전 필드(LO 프레임 · HI 태그·권한·V · 번호)를 한 사이클에 나른다 (p_commit_fields · p_commit_part). 한 에지에 채움 줄 전체를 싣고 옛 판을 가리는 저장 절반은 xlatestore.sby
-# PROVES: XlateSurface.hi_v_carried — 문 절반: commit.v = HI [31] (p_commit_fields). 유효 비트로의 운반·채움 가림은 xlatestore.sby 앵커
+# PROVES: XlateSurface.frame_stages_only — 문 절반 전부: 수락된 VPN · FRAME · VPN_HI 는 commit · flush · missClr · badWrite · badData 어느 것도 세우지 않는다 (p_stage_quiet) · 커밋의 전건에 그 셋이 없다 (p_commit_iff)
+# PROVES: XlateSurface.commit_fires — 문 절반: 하류가 받을 수 있는(installReady) 주소 · 상태 적법 COMMIT 중 데이터 적법 ⇔ commit.valid (p_commit_iff) · 같은 스테이징으로 온 COMMIT 의 재커밋 (t_no_drain). 하류(install.fire → 채움 → 커밋)는 xlatestore.sby · 문 → 표 끝-끝은 door.sby
+# PROVES: XlateSurface.commit_base_match — 래치 파티션과 다른 기저의 COMMIT 은 커밋 · 정지 없음 + badWrite (곧장) · 스테이징 부동 (p_commit_iff · p_need_iff · p_bad_iff · 그림자 갱신 규칙)
+# PROVES: XlateSurface.commit_needs_vpn — VPN 유효 없는(reset · 래치 파티션 flush 뒤) COMMIT 은 기저와 무관하게 커밋 · 정지 없음 + badWrite (p_commit_iff · p_need_iff · p_bad_iff · t_flush_ends)
+# PROVES: XlateSurface.commit_whole — 문 절반: 한 commit 번들이 항목 전 필드(스테이징 VPN · FRAME · COMMIT 권한 · V · 래치 파티션)를 한 사이클에 나른다 (p_commit_fields · p_commit_part). 한 에지에 채움 줄 전체를 싣고 옛 판을 가리는 저장 절반은 xlatestore.sby
+# PROVES: XlateSurface.commit_v_carried — 문 절반: commit.v = COMMIT [31] (p_commit_fields) · V=0 COMMIT 은 FRAME 없이 커밋된다 (p_commit_iff — cmBad 의 FRAME 항은 V=1 만). 유효 비트로의 운반 · 채움 가림은 xlatestore.sby 앵커
+# PROVES: XlateSurface.vpn_drops_frame — 수락된 VPN · 0 의 VPN_HI 뒤 같은 기저의 V=1 COMMIT 은 새 FRAME 없이 커밋되지 않는다 (그림자 갱신 규칙 + p_commit_iff · p_baddata_iff · t_vpn_drops)
+# PROVES: XlateSurface.commit_needs_frame — FRAME 유효 없는 V=1 COMMIT 은 수락 사이클에 커밋 없음 + badData (p_commit_iff · p_baddata_iff) · V=0 은 FRAME 을 요구하지 않는다
+# PROVES: XlateSurface.frame_pair_check — 래치 기저가 아니거나 VPN 유효가 없는 FRAME · VPN_HI 는 badWrite · 스테이징 부동 (p_bad_iff · 그림자 갱신 규칙 frAcc/vhAcc + p_commit_fields 의 frame 등식)
+# PROVES: XlateSurface.vpnhi_strict — 비0 VPN_HI 는 badWrite 이고 FRAME 유효가 그대로다 (p_bad_iff · 그림자 갱신 규칙 vhAcc + p_commit_iff)
+# PROVES: XlateSurface.rsvw_rejected — 기저 +0x10..+0x7C 예약-엄격 28 워드의 쓰기는 badWrite 이고 커밋 · 정지 · 스테이징이 없다 (p_bad_iff · p_need_iff · p_commit_iff · 그림자 갱신 규칙)
+# PROVES: XlateSurface.commit_rsv_strict — [27:0] 비0 COMMIT 은 수락 사이클에 커밋 없음 + badData (p_commit_iff · p_baddata_iff) · 정지 판정은 그 항을 보지 않는다 (p_need_iff)
 # PROVES: XlateSurface.flush_fires — 문 절반: 적법 XLATE_FLUSH ⇔ flush.valid 같은 사이클 (p_flush_iff). 유효 비트를 지우는 저장 절반은 xlatestore.sby
 # PROVES: XlateSurface.flush_scoped — 문 절반: flush.part = 기입 [1:0] 하나 (p_flush_part · p_flush_iff 가 [7:0] < 4 를 요구). 그 파티션만 지우는 저장 절반은 xlatestore.sby (Isolation.capacity_partitioned)
 # PROVES: XlateSurface.flush_part_exists — [7:0] ≥ 4 의 XLATE_FLUSH 는 flush 없음 + badWrite (p_flush_iff · p_bad_iff)
 # PROVES: XlateSurface.flush_rsv_strict — [31:8] 비0 의 XLATE_FLUSH 는 flush 없음 + badWrite (p_flush_iff · p_bad_iff)
-# PROVES: XlateSurface.reject_loud — 문 절반: 거절 사건 전수 ⇔ badWrite (p_bad_iff — 조용한 거절도 허위 fault 도 막는다). badWrite → FAULT_STATUS [6] sticky 는 Wt64Top/assembly.sby
-# PROVES: XlateSurface.mclr_fires — 문 절반: 0xE10 의 [0]=1 · [31:1]=0 기입 ⇔ missClr 같은 사이클 (p_missclr_iff). 해제 핀으로의 합류는 Wt64Top/assembly.sby (a_miss_clr), 정지가 없을 때 sticky 가 내려간다는 파이프라인 절반은 어느 태스크도 재지 않는다 (lint_postformal _PARTIAL)
+# PROVES: XlateSurface.reject_loud — 문 절반: 주소 · 상태 사유 거절 사건 전수 ⇔ badWrite (p_bad_iff — 조용한 거절도 허위 fault 도 막는다) · 데이터 사유 ⇔ 수락 사이클의 badData (p_baddata_iff). badWrite → 조립 sticky · badData → 원천별 sticky → FAULT_STATUS [6] 는 Wt64Top/assembly.sby
+# PROVES: XlateSurface.mclr_fires — 문 절반: 0xE10 의 [0]=1 · [31:1]=0 기입 ⇔ missClr 같은 사이클 (p_missclr_iff). 해제 핀으로의 합류는 Wt64Top/assembly.sby (a_miss_clr), 정지가 없을 때 sticky 가 내려간다는 파이프라인 절반은 hiumask.sby (lint_postformal _PARTIAL)
 # PROVES: XlateSurface.mclr_needs_one — 문 절반: [0]=0 기입은 missClr 없음 · badWrite 없음 (p_missclr_iff · p_bad_iff — 적법한 무동작). sticky 가 움직이지 않는다는 하류 절반은 _PARTIAL
 # PROVES: XlateSurface.mclr_rsv_strict — 문 절반: [31:1] 비0 의 0xE10 기입은 missClr 없음 + badWrite (p_missclr_iff · p_bad_iff). sticky 불변 · [6] 의 하류는 _PARTIAL
 # PROVES: XlateSurface.mclr_keeps_stall — 문 절반: missClr 가 서는 기입은 commit · flush 를 세우지 않는다 (p_commit_iff · p_flush_iff — 정지를 푸는 항목 커밋의 전건에 0xE10 이 없다). 파이프라인의 정지(missWait)에 해제 항이 없다는 절반은 _PARTIAL
 # PROVES: XlateSurface.ro_rejected — 문 절반: 0xE04 · 0xE08 · 0xE0C 쓰기 ⇒ badWrite 이고 commit · flush · missClr 없음 (p_bad_iff · p_commit_iff · p_flush_iff · p_missclr_iff). 아무것도 움직이지 않는다는 하류 절반은 _PARTIAL
-# PROVES: XlateSurface.flush_drops_staging — 문 절반: 래치 파티션의 수락된 XLATE_FLUSH 뒤 LO 없이 온 HI 는 번호와 무관하게 커밋 없음 + badWrite · 다른 파티션의 flush 와 거절된 flush 는 스테이징에 닿지 않는다 (그림자의 flush 하강 규칙 + p_commit_iff · p_bad_iff · t_flush_ends — 판정 T5 (a)). 표 불변의 하류 절반은 _PARTIAL
-# VERIFIES: XlateStaging.stall_quiet — 하류 수락을 기다리는 것은 적법 HI 뿐이고 (p_need_iff) 수락되지 않은(installReady = 0) 적법 HI 는 아무것도 움직이지 않는다 (p_stall_quiet — 설계 판정 D-2)
+# PROVES: XlateSurface.flush_drops_staging — 문 절반: 래치 파티션의 수락된 XLATE_FLUSH 뒤 VPN 없이 온 FRAME · COMMIT · VPN_HI 는 거절 + badWrite (두 유효를 함께 내린다 — t_flush_ends · 그림자의 flush 하강 규칙 + p_commit_iff · p_bad_iff) · 다른 파티션의 flush 와 거절된 flush 는 스테이징에 닿지 않는다 (W16). 표 불변의 하류 절반은 _PARTIAL
+# VERIFIES: XlateStaging.stall_quiet — 하류 수락을 기다리는 것은 주소 · 상태 적법 COMMIT 뿐이고 데이터 필드와 무관하다 (p_need_iff — 모델 Prop_StallDataBlind · Prop_AddrRejectNoWait 의 RTL 쪽) · 수락되지 않은(installReady = 0) 적법 COMMIT 은 아무것도 움직이지 않는다 (p_stall_quiet — :308 「정지 중에는 효과가 없고」) · 데이터 사유는 그 뒤 수락 사이클에 거절된다 (p_baddata_iff · 증인 W24)
 #
 # ## 이 태스크가 재지 않는 것
 #
@@ -30,11 +39,13 @@
 #     elaborate 상수 False 다. 파티션 2 판(XlateStagingP2.sv)을 p2.sby 가 잰다.
 #   · 표 효과 — 커밋이 유효 비트를 V 로 쓰고, flush 가 그 파티션의 유효 비트만
 #     지우고, 채움 슬롯이 커밋 전까지 그 항목의 옛 판을 가린다는 것. 하류
-#     XlateStore 의 몫이고 xlatestore.sby 가 잰다. 문 → 저장 합성은 어느 한
-#     태스크도 재지 않는다 — lint_postformal _PARTIAL 이 가드마다 그 칸을 든다
-#     (값 수준은 rtl/sim/test_shape_equiv.py 의 MMIO 끝-끝 지향 시험).
+#     XlateStore 의 몫이고 xlatestore.sby 가 잰다. 문 → 저장 합성 중 COMMIT 의 (a)(b)
+#     · 정지 유계는 XlateDoor/door.sby 가 잰다 (W3). 그 밖의 가드(flush · 거절의 표
+#     불변)는 lint_postformal _PARTIAL 이 가드마다 그 칸을 든다.
 #   · 결선 — 워드 디코드(addr → woff · 스트로브) · installReady ↔ mmio ready ·
-#     badWrite → surfBadWr — 는 조립층 Wt64Top/assembly.sby 가 잰다.
+#     badWrite → surfBadWr · badData → io.fault.xlateCfgBadWrite · commit.vpn → idxOf/tagOf
+#     — 는 조립층 Wt64Top/assembly.sby 가 잰다.
+#   · DUT 스테이징 레지스터 이름 — 하네스는 포트만 본다 (그림자 오라클).
 #
 # ## 부착 — 래퍼 (AbortStaging/props.sby 선례)
 #
@@ -50,9 +61,60 @@
 # 성질이다. abc pdr 는 그 귀납 불변식을 스스로 찾는다 (Wt64Top/assembly.sby 와
 # 같은 처분). bmc 는 abc bmc3, cover 는 smtbmc z3 (도달 step 을 이름과 함께 남긴다).
 #
-# 깊이: 이 컴포넌트의 상태는 스테이징 세 레지스터뿐이고 전이는 전부 1사이클이다.
-# 가장 깊은 증인(W9 — LO → HI → HI · W15/W16 — LO → flush → HI)이 reset 뒤 4
-# 사이클이면 닿는다. bmc 12 · cover 10 은 AbortStaging/props.sby 와 같은 여유다.
+# 깊이: 이 컴포넌트의 상태는 스테이징 다섯 레지스터뿐이고 전이는 전부 1사이클이다.
+# 가장 깊은 증인(W17 — VPN → FRAME → VPN → COMMIT · W15 — VPN → FRAME → flush → COMMIT)이
+# reset 뒤 5 사이클이면 닿는다. bmc 12 · cover 10 은 AbortStaging/props.sby 와 같은 여유다.
+#
+# ## W3 — 역-변이 표 (비상주 실측, 2026-10-13 후-formal 통합 — 수락 기준 「변이를 잡는다」)
+#
+# 변이는 저장소가 아니라 /var/tmp 사본(생성물 Wt64Top.sv 의 XlateStaging · XlateStagingP2.sv 의 한 식)에서
+# 만들었다. kg = bmc smtbmc --keep-going z3 깊이 10(위반 단언 전수) · iso = 그 단언 하나만 남긴 bmc 깊이 12 ·
+# cov = cover 깊이 10. 「단독」 = kg 위반 집합이 그 단언 하나 / cov 미도달이 그 증인 하나. 무변이(NONE ·
+# NONE_P2) kg PASS · cov 26/26 · 3/3.
+#
+#   단언            단독 사살 변이 (사본의 한 식)
+#   p_commit_iff    CM_NORSV (commit.valid 에서 [27:0] 항 삭제 — commit_rsv_strict)
+#   p_commit_fields VPN_WDATA · FRAME_WDATA · PERM_SWAP · K_FRAME_ZERO · V_CONST(+t_no_drain 늦게)
+#   p_commit_part   PART_DATA (commit.part 원천 = wdata)
+#   p_need_iff      NEED_DATA (RefuseDomain = full — ready 콘에 wdata) · K_NEED_RDY · K_STALL_HIDE_OK
+#   p_baddata_iff   BD_NO_RSV (데이터 사유 [27:0] 조용한 거절)
+#   p_flush_iff     FL_RSV_FIRE ([31:8] 비0 flush 핀 발화 — 스테이징 · 거절은 정상)
+#   p_flush_part    FL_PART_SRC (flush.part 원천 = 래치)
+#   p_missclr_iff   K_MC_ZERO · MC_RSV
+#   p_bad_iff       RSVW_OK (예약 워드 흡수 — W3 전 RTL 의 꼴) · RO_OK · BD_IN_BW(DP-15 위반) · K_FL_RSV_OK ·
+#                   K_MC0_REJ · K_CM_SILENT_MM · K_CM_UNSTAGED0(+t_flush_ends 늦게)
+#   _DERIVED 후보 — 그것만 죽이는 변이가 원리적으로 없다 (관측하는 출력이 전부 위 iff 단언에 이미 묶여
+#   있다). 대신 iso 로 각자 반증력을 쟀다:
+#   p_stage_quiet   BD_ON_FRAME · CM_ON_VPN (iso FAIL — 첫 위반에 p_baddata_iff / p_commit_iff 동반)
+#   p_stall_quiet   BD_EARLY · CM_ON_STALL (iso FAIL)
+#   t_no_drain      CONSUME (iso FAIL — 커밋이 스테이징을 소진)
+#   t_flush_ends    FLUSH_KEEPS (iso FAIL — flush 가 스테이징을 안 비움)
+#   t_vpn_drops     VPN_KEEPS_FR · VH_KEEPS_FR · BD_NO_FR (iso FAIL)
+#
+#   증인   단독 사살 변이                 증인   단독 사살 변이
+#   W1     K_FRAME_ZERO                   W14    MC_RSV
+#   W2     K_CM_SILENT_MM                 W15    FLUSH_KEEPS
+#   W3     K_CM_UNSTAGED0                 W16    FLUSH_GLOBAL
+#   W4     K_V0_NEEDS_FR                  W17    VPN_KEEPS_FR · CM_NOFRCHK
+#   W5     K_VPN_REJ_FULL                 W18    BD_IN_BW
+#   W6     K_FL3                          W19    K_FR_REJ_NOPART
+#   W7     FL_NOPART                      W20    VH_ANY
+#   W8     K_FL_RSV_OK · FL_RSV_FIRE      W21    K_VH_ALWAYS_REJ
+#   W9     CONSUME                        W22    RSVW_OK
+#   W10    K_STALL_HIDE_OK                W23    BD_NO_RSV · CM_NORSV
+#   W11    RO_OK                          W24    BD_EARLY · NEED_DATA
+#   W12    K_MC_ZERO                      W25    RSV_PERM (DP-20 위반)
+#   W13    K_MC0_REJ                      W26    K_FR_ONCE_REJ
+#
+# 증인 문면 강화 (이 통합에서): W2 · W3 · W7 · W8 · W11 · W14 · W15 · W19 · W20 · W22 (와 p2.sby 의 W27–W29)는
+# 다른 구역 스트로브를 끄고(!io_wrCtl / !io_wrEnt) W17 은 [27:0] = 0 을 요구한다 — 앞판은 RO_OK · VH_ANY ·
+# FLUSH_KEEPS · P2_PH_NOREJ 변이 아래 다른 구역의 거절로 W11 · W20 · W15 · W27 이 도달했다 (하네스 증인 머리).
+# 등가 변이 하나 — FLUSH_ONE (flush 가 FRAME 유효를 내리지 않는다)은 kg · cov 모두 생존: VPN 유효를 다시
+# 세우는 것은 VPN 기입뿐이고 그 기입이 FRAME 유효를 내리므로 (f) 7항의 FRAME 절반은 RTL 포트에서 관측 불가다.
+# HEAD(aa91e86) 음성 대조: 이 하네스를 HEAD 생성물에 직접 붙이면 ERROR (`io_badData` 포트 없음 — 공허 PASS
+# 아님). HEAD 문을 새 포트 꼴로 감싼 어댑터(commit.vpn = {tag, idx} · badData = 0) 위 kg: p_bad_iff ·
+# p_baddata_iff · p_commit_fields · p_commit_iff · p_need_iff · p_stage_quiet · t_flush_ends · t_no_drain ·
+# t_vpn_drops FAIL — 예약-엄격 워드 · VPN_HI 비0 · COMMIT [27:0] 비0 을 HEAD 가 수락한다.
 
 [tasks]
 bmc

@@ -50,15 +50,15 @@ mkdtemp 루트는 **통과한 실행이 스스로 지운다** — 실패한 실�
 
 ---
 
-## 실행 결과 (2026-10-12, 호스트 — W2 생성물 · 판정 래치)
+## 실행 결과 (2026-10-13, 호스트 — W3 생성물 · 형상 비노출 `0xC00` 문)
 
 ```
 Mask:  12 tests passed (skip 0, 하한 12)
-Shape: 26 tests passed (skip 0, 하한 26)
-run_wt64: 요청 스위트 2건 / cocotb 테스트 38건 전부 통과
+Shape: 37 tests passed (skip 0, 하한 37)
+run_wt64: 요청 스위트 2건 / cocotb 테스트 49건 전부 통과
 ```
 
-(2026-10-12 W2(판정 래치) — Shape 24 → 26 `xlate_released_judgment_survives_eviction` · `xlate_latched_hit_survives_retire`(아래 「W2」 절). 2026-10-12 W1 검증 수리 — Mask 11 → 12 `nonce_dup_compare_every_bit`(논스 비교 전폭 — 아래 「W1」 절의 「검증 수리」) · N14 에 reset · `[4]` 단독 해제 · `0xF88` 요약 행. 2026-10-11 W1(3.10 RTL 파도 — 표면 비트·워드) — Shape 21 → 24 `hiu_shape_word` · `mask_dup_capture` · `fault19_nonowned_access`, Mask 11 그대로(두 시험을 넓힘 — 아래 「W1」 절). 2026-09-26 파도 4 — Shape 15 → 16 `abort_tag1_word_legality` · 통합 착지 16 → 21: 페이지 통합 `page_disposition` · `fp_clear_window` ·
+(2026-10-13 W3 수정 — Shape 36 → 37 `xlate_high_vpn_bits_distinguish` · `xlate_other_flush_keeps_staging` 에 파티션 1 vs 3 행(아래 「W3 수정」 절). 2026-10-13 W3(형상 비노출 `0xC00` 문) — Shape 26 → 36: 옛 문의 `xlate_*` 를 제자리에서 VPN → FRAME → COMMIT 문으로 다시 쓰고 새 열(N1–N7 · 선-formal 인계 셋 — 아래 「W3」 절). 2026-10-12 W2(판정 래치) — Shape 24 → 26 `xlate_released_judgment_survives_eviction` · `xlate_latched_hit_survives_retire`(아래 「W2」 절). 2026-10-12 W1 검증 수리 — Mask 11 → 12 `nonce_dup_compare_every_bit`(논스 비교 전폭 — 아래 「W1」 절의 「검증 수리」) · N14 에 reset · `[4]` 단독 해제 · `0xF88` 요약 행. 2026-10-11 W1(3.10 RTL 파도 — 표면 비트·워드) — Shape 21 → 24 `hiu_shape_word` · `mask_dup_capture` · `fault19_nonowned_access`, Mask 11 그대로(두 시험을 넓힘 — 아래 「W1」 절). 2026-09-26 파도 4 — Shape 15 → 16 `abort_tag1_word_legality` · 통합 착지 16 → 21: 페이지 통합 `page_disposition` · `fp_clear_window` ·
 3B `xlate_miss_observed` · `xlate_miss_obs_second_stall` · 3A `xlate_other_flush_keeps_staging` (`xlate_hi_releases_stall` 은 제자리에서 `xlate_flush_ends_staging`).
 2026-09-26 파도 3 — 변환 저장소의 MMIO 문: Shape 6 → 13, 지향 시험 일곱
 `xlate_*`, 같은 날 반증 검토 뒤 수리로 13 → 15 — 인접 HI 의 D-2 버스 정지 값 시험 둘.
@@ -83,8 +83,8 @@ run_wt64: 요청 스위트 2건 / cocotb 테스트 38건 전부 통과
 | 계산 중 **다른** 파티션 기입 | `maskReady == 0b0001` · `faultWrDuringRekey == 0` · part 0 값 golden | `wr_other_partition_during_rekey_is_clean` |
 | 변이 실측 (사본 worktree, 생성 SV 한 자리씩 — M2 만 case 블록 24줄) | **4/4 잡힘** — 아래 표 | Mask 스위트 전체 |
 | 구성 표면 소거 구간 | **65535 엣지** | `cfg_surface_integrity` |
-| ISA-1 대조면 | **120/122** 출력 (제외: `io_push_1_stall`·`io_push_2_stall`) | `compare_face_is_pinned` |
-| IO fault 해제선 | 19 (fault 출력 26 − MMIO 전용 7 — `NO_IO_CLEAR` 는 이름까지 생성물과 등식) | 같음 |
+| ISA-1 대조면 | **121/123** 출력 (제외: `io_push_1_stall`·`io_push_2_stall`) | `compare_face_is_pinned` |
+| IO fault 해제선 | 19 (fault 출력 27 − MMIO 전용 8 — `NO_IO_CLEAR` 는 이름까지 생성물과 등식. W3 의 `io_fault_xlateCfgBadWrite` 는 `0xF84[6]` 로만 내려간다) | 같음 |
 
 ---
 
@@ -164,9 +164,9 @@ p 의 값 golden. 변이 실측 mutScope(사본 생성물에서 `wrActNow` 의 �
 ### `Shape` — `test_shape_equiv.py` (DUT `Wt64Top.sv`)
 
 ISA-2 사상 경유(존재 축) · ISA-1 자리 무관성 · 구성 표면 무결성 ·
-변환 저장소의 MMIO 문(파도 3 — `xlate_*` 아홉: 설치 → 적중 · flush → 같은 VPN
-미적중 · HI 한 워드가 정지를 푼다 · V=0 무효화 · HI 거절 둘의 `[6]` · flush 거절과
-절단 별칭 부재 · `0xE10` 은 정지를 풀지 않는다 · 그리고 반증 검토 뒤 더한 인접 HI 둘 —
+변환 저장소의 MMIO 문(파도 3 — `xlate_*` 아홉 · W3 에서 형상 비노출 문으로 제자리 재작성(아래 「W3」 절):
+설치 → 적중 · flush → 같은 VPN 미적중 · 정지를 푸는 COMMIT · V=0 무효화 · 짝 검사 거절의 `[6]` · flush
+거절과 절단 별칭 부재 · `0xE10` 은 정지를 풀지 않는다 · 그리고 반증 검토 뒤 더한 인접 기입 둘(파도 3 의 HI · W3 의 COMMIT) —
 쉬는 사이클 없는 원시 구동 `mmio_burst` 로 D-2 버스 정지가 정확히 한 사이클이고 `[6]` 이
 서지 않으며 풀린 기입이 커밋됨(tagB 적중 · V=0 무효화 생존)을 값으로 잰다. 착지판 일곱은
 기입마다 쉬는 엣지를 남겨 정지를 한 번도 만들지 않았고, ready 덮어쓰기를 끊은 생성물
@@ -254,12 +254,13 @@ N12 `0xFF8` 읽기 0(예약 오프셋), N13 `0xEC4` 열이 래치 행마다 0 ·
 정본 3.6.2 「판정 시점과 판정 래치」 · 3.7.2 「철회의 효력 범위」 · E.1.2 `0xC00` 결과 (a)(b)(d) 를 HIU 요청
 경로의 응답 값과 `0xE04` 관측으로 잰다. 기대값은 정본 문장과 시험이 쓴 값(프레임 · 소유)에서 유도한다 —
 RTL 의 래치 신호(`lat_*`)를 보지 않는다(포트 계약만: `io_hiuHold` · `io_hiuReq` · `io_hiuRsp` · `io_phys` ·
-`0xE04` · FAULT_STATUS). 두 시험은 오늘 문의 헬퍼(`install_entry` · 새 `entry_ops`)로 쓴다 — 형상 비노출
-문(W3)에서는 헬퍼만 바뀐다.
+`0xE04` · FAULT_STATUS). 두 시험의 헬퍼는 W3 에서 형상 비노출 문의 `commit_entry` · `commit_ops`(VPN →
+FRAME → COMMIT)로 바뀌었다 — 로직 · 기대값은 그대로이고, 세 워드 열이 경쟁 커밋의 가장 이른 꼴을 한 에지
+미룬다(C+3 수락 · C+4 채움 가림 · 버스트 정지 계수 `[0, 0, 0, 0, 0, 0]`).
 
 | 시험 | 재는 것 |
 |---|---|
-| `xlate_released_judgment_survives_eviction` (N8) | 결과 (d) 의 반례 그대로 — 미적중 정지 → hold → A 의 커밋이 풀고 요청은 hold 로 조회 지점에 머묾 → 같은 파티션 축출 → 놓음. 축출 원인 둘(정본이 이름한 COMMIT · flush): **경쟁 커밋** — HI(A) 수락 C → C+1 채움 바이패스 적중 → C+2 같은 칸의 다른 VPN HI(B) 수락 → C+3 채움 가림. RTL 에서 가장 이른 꼴이고 인접 버스트의 정지 계수 `[0, 0, 0, 0]` 이 C · C+2 를 못박는다. **flush(p)** — 채움 슬롯을 기다리지 않으므로 C+1(풀린 첫 적중 사이클)에 수락되고 그 끝 에지 = 래치 포착 에지에 A 의 진행 중 채움 줄과 유효 비트를 지운다. 사례마다 hold 를 올린 뒤부터 응답까지 호스트 응답 leg(`io_hostRsp` — 장치 소유 비0 프레임 · RWX 전부)을 세워 둔다 — 래치를 호스트 leg 에서 포착하는 구현은 첫 관측 행(정지가 사라진다)과 응답 행(그 프레임)에서 운다. hold 중 `0xE04` `[0]` = 0 · `0xE10` 뒤 `[1]` = 0 · 래치가 선 hold 중 `0xF84` W1C(`[4]` · `[19]`)를 한 번 쓰고 16 사이클 더 — 관측면 0 · `io_fault_hiuMiss` 0(해제 펄스로 래치를 비우는 구현은 이 행에서 재미적중으로 운다) · 놓은 뒤 3 사이클(대조 — 저장 적중을 hold 로 잡았다 놓은 것과 같은 상태열)에 A 의 프레임 · fromFill 1 로 승인 · `[4]` · `[19]` · `[6]` 0 — 15 행. 끝에 축출 전건(B 적중 · A 미적중 · flush 된 A 미적중). 같은 칸 고르기는 화이트박스(직접 사상 — 색인 = VPN 하위 4b) |
+| `xlate_released_judgment_survives_eviction` (N8) | 결과 (d) 의 반례 그대로 — 미적중 정지 → hold → A 의 커밋이 풀고 요청은 hold 로 조회 지점에 머묾 → 같은 파티션 축출 → 놓음. 축출 원인 둘(정본이 이름한 COMMIT · flush): **경쟁 커밋** — COMMIT(A) 수락 C → C+1 채움 바이패스 적중 · VPN(B) → C+2 FRAME(B) → C+3 같은 칸의 다른 VPN COMMIT(B) 수락 → C+4 채움 가림(W2 판은 LO · HI 두 워드라 C+2 · C+3 이었다). RTL 에서 가장 이른 꼴이고 인접 버스트의 정지 계수 `[0, 0, 0, 0, 0, 0]` 이 C · C+3 을 못박는다. **flush(p)** — 채움 슬롯을 기다리지 않으므로 C+1(풀린 첫 적중 사이클)에 수락되고 그 끝 에지 = 래치 포착 에지에 A 의 진행 중 채움 줄과 유효 비트를 지운다. 사례마다 hold 를 올린 뒤부터 응답까지 호스트 응답 leg(`io_hostRsp` — 장치 소유 비0 프레임 · RWX 전부)을 세워 둔다 — 래치를 호스트 leg 에서 포착하는 구현은 첫 관측 행(정지가 사라진다)과 응답 행(그 프레임)에서 운다. hold 중 `0xE04` `[0]` = 0 · `0xE10` 뒤 `[1]` = 0 · 래치가 선 hold 중 `0xF84` W1C(`[4]` · `[19]`)를 한 번 쓰고 16 사이클 더 — 관측면 0 · `io_fault_hiuMiss` 0(해제 펄스로 래치를 비우는 구현은 이 행에서 재미적중으로 운다) · 놓은 뒤 3 사이클(대조 — 저장 적중을 hold 로 잡았다 놓은 것과 같은 상태열)에 A 의 프레임 · fromFill 1 로 승인 · `[4]` · `[19]` · `[6]` 0 — 15 행. 끝에 축출 전건(B 적중 · A 미적중 · flush 된 A 미적중). 같은 칸 고르기는 화이트박스(직접 사상 — 색인 = VPN 하위 4b) |
 | `xlate_latched_hit_survives_retire` (N9) | 같은 (p, VPN) 요청 둘 R1 · R2 를 인접 제시하고 R1 의 첫 적중 사이클에 hold — R2 는 R1 이 떠나는 그 에지에 조회 지점에 들어 철회 · 대체 에지 *뒤에* 판정된다. 대조(철회 없음) · V=0 COMMIT 과 flush(p) 각각 포착 뒤 · 포착 에지와 같은 에지(R1 의 첫 적중 사이클에 기입을 실어 그 끝 에지에 수락) · 같은 VPN 대체(새 프레임은 호스트 소유) · 권한만 바뀌는 대체(같은 프레임 FA · 권한 -WX → R-- · 요청 둘 다 쓰기 — R1 은 래치된 권한으로 승인되고 응답 권한 칸이 `-WX`, R2 는 자격 거부 `---` · 끝에 `[4]` = 1) · hold 없는 대조(적중 R1 이 첫 적중 에지에 떠나고 미적중 R2 가 그 에지에 든다). R1 은 언제나 래치된 FA(fromFill 0)로 승인되고, R2 는 철회면 미적중 정지 → 채움 FC 로, 대체면 FB(호스트 소유 → 값 차단 + `[19]`)로 판정된다. hold 없는 대조의 R2 는 자기 조회로 정지한다(판정을 물려받지 않는다). 응답 사이클 칸은 기준 경로 둘(래치 없는 적중의 조회 지점 → 응답 3 · 정지 하나를 채움이 푸는 경로 2)과 같은 셈 · 응답 행마다 권한 칸 — 33 행 |
 
 **`LOOKUP_WINDOW` · `MISS_LEAD` 실측** — 래치는 단 수를 바꾸지 않는다. 두 시험이 매 실행 로그에 남기는 실측:
@@ -293,6 +294,59 @@ cocotb 시험의 정의역에도 없었다):
 | 늦은 포착(조회 지점에서 한 사이클 머문 뒤의 적중만) | N9 만 — 포착 에지와 같은 에지의 V=0 · flush 두 행 |
 
 **검증 수리 (2026-10-12 — 독립 변이 반증이 찾은 탈출 다섯)** — 생성물은 그대로이고 시험만 넓혔다. 권한 필드의 래치를 가르지 못하던 셋(값 쪽 래치에서 권한만 빠짐 등)은 N9 의 권한 행에서, 호스트 leg 포착은 N8 의 호스트 leg 상주 행에서, `faultClear` 가 래치를 비우는 구현은 N8 의 `0xF84` W1C 행에서 이제 죽는다. 같은 방법의 46 변이 재실측(Shape 스위트)에서 42 잡힘 · 생존 넷은 처분이 있다 — 둘은 `latCapture` 의 `s3.valid` 항 변이로 miter 로 동치가 증명됐고(`hiumask.sby` 「동치 변이」 절), 하나는 거품 데이터라 `hiumask` 가 잡으며, 하나는 reset 의 래치 비움(Verilator 0 초기화 — reset 형식 단언 이월). 전 스위트 38/38 그대로.
+
+
+### W3 — 형상 비노출 `0xC00` 문 (3.10 v1.0 묶음의 RTL 파도 셋째 하위 파도)
+
+호스트는 파티션 기저 `0xC00` + (p ≪ 7) 에 VPN(`+0x00`) · FRAME(`+0x04`) · COMMIT(`+0x08`) · VPN_HI(`+0x0C`)
+만 쓰고 칸은 장치가 고른다. 기대값은 정본 E.1.2 `0xC00` 행 · 결과 (a)–(d) · 스테이징 (f) · E.3 2항의 문장에서
+독립 유도한다(`test_shape_equiv.py` 의 절 머리에 축자 인용 목록). 헬퍼는 `xbase` · `commit_word` · `commit_ops` ·
+`commit_entry` 로 바뀌었고(앞판 `xent` · `hi_word` · `install_entry` 은퇴), 옛 문의 `xlate_*` 열둘(W2 의 N8 · N9
+헬퍼 포함)은 제자리에서 다시 썼다 — `xlate_hi_rejects_are_loud` → `xlate_commit_rejects_are_loud` (행 표 16 행),
+인접 HI 둘 → `xlate_adjacent_commit_stalls_then_commits` · `xlate_adjacent_v0_stalls_then_invalidates`.
+`[6]` 의 정지 중 사이클 표본은 생성물 출력 중 `io_fault_*BadWrite` 전량의 논리합(`f6_now`)이고, 쓰는 시험마다
+끝에 그 값이 `0xF80[6]` 과 같은지 대조한다. 행 표의 조회 칸은 앞 조회가 정지해 접수가 막히면 `("blocked",)` 로
+적는다(음성 대조 기록이 첫 정지에서 끊기지 않게).
+
+| 시험 | 재는 것 |
+|---|---|
+| `xlate_reserved_words_strict` (N1) | 네 기저 × `+0x10`~`+0x7C` 28 워드: 쓰기마다 `[6]` · 되읽기 0 (데이터는 앞판 LO · HI 의 적법한 기입처럼) · 표의 네 워드 읽기 0 · 읽기는 `[6]` 무발화 · 112 기입 뒤 COMMIT{1} 수락 · (1, va) 적중 · (0, va) 미적중 — 120 행 |
+| `xlate_vpn_hi_rules` (N2) | VPN 없는 VPN_HI · 비0 둘 · 다른 기저 → `[6]` · 스테이징 불변(뒤 V=1 COMMIT 이 앞 FRAME 으로 커밋) / VPN_HI(0) 수락 → FRAME 유효 하강 → V=1 COMMIT `[6]` · 무커밋(표의 판 그대로) · FRAME 재기입 뒤 V=1 수락 · VPN_HI(0) 뒤 V=0 수락 → 미적중 |
+| `xlate_vpn_rewrite_drops_frame` (N3) | VPN(va) · FRAME(fx) · VPN(vb) · V=1 → `[6]` · fx 가 어느 VPN 에도 묶이지 않음 · VPN{q} 가 래치를 옮김 → COMMIT{p} · COMMIT{q}(V=1) `[6]` · V=0 COMMIT{q} 수락 · VPN{p}(vb) · V=0 → 미적중 |
+| `xlate_commit_data_reject_after_stall` (N4) | 하류가 찬 사이클의 데이터 사유 COMMIT 둘(`[27:0]` 비0 · FRAME 유효 없는 V=1): 정지 계수 `[…, 1]` · 사이클 표본 (ready, `[6]`) = 정지 (0, 0) · 수락 사이클 (1, 0) · 수락 에지 뒤 1 · 무커밋 |
+| `xlate_commit_addr_reject_no_wait` (인계 「kind」) | 적법한 COMMIT{p} 바로 다음 사이클의 기저 불일치 COMMIT{q}: 정지 0 · 수락 에지에 `[6]` · 무커밋. 이 RTL 의 채움 슬롯은 파티션별이라 q 의 슬롯은 비어 있다 — 잡는 것은 「정지가 주소를 안 보고 슬롯도 파티션을 안 가리는」 문. **「주소 · 상태 사유가 정지를 기다린다」 축 자체는 합성 RTL 에서 도달 불가**(아래 「W3 수정」 절) — 수락 근거는 props `p_need_iff` · assembly `a_ready_only_slot` |
+| `xlate_staging_survives_commit` (인계 「consume」) | 한 스테이징의 COMMIT 넷(V=1 → V=0 → 정지를 푸는 V=1 → V=1 R=0) 전부 수락 · 매번 커밋(적중 · 미적중 · 승인 · 자격 거부 + `[4]`) |
+| `xlate_other_key_keeps_stall` (인계 「다른 키」) | R(p, va) 정지 중 같은 칸(화이트박스 — 하위 4b)의 다른 VPN · 다른 칸 · 다른 파티션 같은 VPN 의 V=1 커밋 · (p, va) 스테이징 기입만 — 매번 응답 없음 · ready 0 · 관측면 불변 · `[6]` 0. COMMIT(V=1) 한 워드가 푼다. 전건: 다른 칸 · 다른 파티션 커밋은 적중 |
+| `xlate_same_vpn_replaces` (N5) | 같은 (p, VPN) 재커밋 셋(새 열 · 산 FRAME 위 FRAME 재기입 · 새 열) → 매번 마지막 프레임만 적중 · 다른 파티션 같은 VPN 불변 · V=0 뒤 미적중(앞 판이 드러나지 않음) |
+| `xlate_v0_nonresident` (N6) | R(p, vb) 정지 중 VPN · FRAME · V=0 COMMIT(p, vb) — 정지 유지 · 관측면 불변 · 같은 스테이징 V=1 이 푼다 · 커밋한 적 없는 (p, vd) 의 V=0 뒤 미적중. 같은 파티션 다른 항목의 축출은 단언하지 않는다(허용) |
+| `xlate_evict_scoped` (N7) | q 에 항목 넷 · p 에 커밋 33(하위 4b 0~F 전부 · q 와 같은 VPN 값 포함) · q 의 VPN 넷을 p 에서 V=0 → q 의 넷 전부 처음 프레임으로 적중 · p 의 마지막 커밋 적중 |
+
+**HEAD 음성 대조 (2026-10-13, HEAD `aa91e86` 생성물 · 이 파일들 그대로 — rsync 사본)** — 새 열 전부 FAIL. 정본이
+새로 거는 축 넷은 의도한 이유로 운다: N1 은 112 예약 워드 쓰기가 전부 `[6]` 0(앞판 LO · HI 로 수락), N2 는
+VPN_HI(= 앞판 색인 1 의 HI 자리) 비0 기입이 `[6]` 0, N4 는 `[27:0]` 비0 COMMIT(= 앞판 태그)이 정지도 `[6]` 도 없이
+수락, 「kind」 는 기저 불일치 COMMIT(= 앞판 다른 색인의 LO)이 `[6]` 0, N3 은 VPN 재기입 · 래치 이동 뒤의 V=1 이
+`[6]` 0. 나머지 다섯(N5 · N6 · N7 · consume · 다른 키)은 앞판 문이 세 워드 열을 커밋으로 읽지 않아 첫 적중 · 정지
+해제 행에서 운다(문 배치 자체가 다르다).
+
+**변이 실측 (2026-10-13, W3 생성물의 rsync 사본 — 생성 `Wt64Top.sv` 한 자리씩 · Shape 36 전체)** — 새 시험마다
+그것을 죽이는 변이가 있고, 아래 「그것만」 열이 그 시험 하나만 죽인 변이다:
+
+| 변이 (생성 SV 자리) | 죽은 시험 |
+|---|---|
+| K1 `isRsvw` = 0 (예약 워드 흡수) | N1 만 |
+| K2 수락된 VPN_HI 가 FRAME 유효를 안 내림 | N2 만 |
+| K2b VPN_HI 관대(`vhLegal` = `pairOk`) | N2 · `xlate_commit_rejects_are_loud` |
+| K3 VPN 재기입이 FRAME 유효를 안 내림 | N3 · N4 |
+| K3b 파티션이 바뀐 VPN 재기입만 FRAME 유효를 안 내림 | N3 만 |
+| K4a RefuseDomain=full (`needReady` 에 ¬`cmDataBad` · 데이터 사유를 곧장 거절) | N4 만 |
+| K4b 데이터 사유 거절이 수락 전(정지 중)에 섬 (`badData` = `needReady` ∧ `cmDataBad`) | N4 만 |
+| K5 정지가 주소 사유도 붙잡고 슬롯 여유가 전역(`fillPend` 논리합) | 「kind」 만 |
+| K6 V=0 커밋이 VPN 유효를 소진 | 「consume」 · N4 · N6 (셋 다 같은 스테이징의 V=0 → V=1 을 쓴다 — 「consume」 만 죽이는 변이는 못 찾았다) |
+| K7 채움 적중이 태그를 안 봄 | 「다른 키」 만 |
+| K8 산 FRAME 위 재기입 무시 | N5 만 |
+| K9 채움 적중이 V 를 안 봄 | N6 만 |
+| K10 파티션 1 커밋이 파티션 3 같은 칸을 지움 | N7 · 「다른 키」(전건 행) |
+| K10b V=0 커밋이 모든 파티션의 같은 칸을 지움 | N7 만 |
 
 ---
 
@@ -329,7 +383,7 @@ cocotb 시험의 정의역에도 없었다):
 | 4 | fp32 산술 정확성 (`golden_fp32` 비트 일치) | `StepSequencer.scala:425-426` 이 `UInt` 정수곱·정수합 — 산술은 축 (b) 후속 |
 | 5 | `mask64` 의 32비트 (`[63:44]`·`[11:0]`) | `MaskUnit.scala:289-296` 「저장은 적용 비트만」 — 레지스터도 배선도 없다. **비교 불가가 아니라 비교 대상 부재** |
 | 6 | `SUBKEY`(256b)·`BLOCK`(512b) 를 통한 부분 수리 검출 | 내는 포트가 없다. `st_0..st_15` 의 계층 peek 은 포트 계약이 아니라 SpinalHDL 명명의 우연이라 통과 기준으로 쓰지 않는다 |
-| 7 | `FAULT_STATUS[17]`·`[18]` | `Wt64Top.sv:1662` 「faultWords_status[17] = 1'b0;」 과 다음 줄 `[18]` 상수 0 — 원천 부재. **0 을 「정상」으로 읽으면 안 된다** |
+| 7 | `FAULT_STATUS[17]`·`[18]` | `Wt64Top.sv:1667` 「faultWords_status[17] = 1'b0;」 과 다음 줄 `[18]` 상수 0 — 원천 부재. **0 을 「정상」으로 읽으면 안 된다** |
 | 8 | `SharedUnit`·`MemOrderGate` 독립 `.sv` 의 top 대표성 | 형상 불일치 — 독립본 16비트 vs top 인스턴스 161/128비트 |
 | 9 | OPREF **B** 참조의 LBID 축 | 제시 자체가 없다 — `Wt64Top.scala:86` 「OPREF B 토큰의 RouteJudge 제시는 미배선」 (TODO 2항), `tokIn` 은 사이클당 하나. ISA-2 α 는 **OPREF A 축만** 덮는다 |
 | 10 | 변환 저장소 관측 세 워드의 값 (`0xE04` · `0xE08`/`0xE0C`) | 회로 0건 — 정지 상태·정지한 요청의 VPN 을 내는 배선이 없다. 읽기는 응답 + 0, 쓰기는 거절 + `[6]` (파도 3 은 `0xE00` · `0xE10` 과 쓰기 방향만 닫았다) |
@@ -410,7 +464,7 @@ sticky 는 *역사의 누적*이다. 두 궤적을 따로 돌려 사이클 정�
 ### ③ `io_mmio_ready` 를 아무 주소에서나 폴링하면 소거 구간이 **0 사이클**로 보인다
 
 `io.mmio.ready` 의 기본값은 `True` 이고 — `Wt64Top.scala:1593` 「io.mmio.ready := True」 —
-몇 구역에서만 덮인다(구성 구역은 `cfgBlk.io.ready` · 적법한 XLATE_ENTRY_HI 쓰기는 하류 `install.ready`). 예약 오프셋(예: `addr=0`)에서 폴링하면
+몇 구역에서만 덮인다(구성 구역은 `cfgBlk.io.ready` · 주소 · 상태 적법 XLATE_ENTRY_COMMIT 쓰기는 하류 `installSlotFree`). 예약 오프셋(예: `addr=0`)에서 폴링하면
 reset 해제 직후 1 이 읽힌다. 그것을 「소거 끝」으로 읽으면 **이후 구성 기입이
 통째로 무시된 채 본시험이 돈다.**
 
@@ -551,3 +605,27 @@ cocotb — 이 하네스는 없다). RTL 계약을 바꾸는 파도의 게이트
 
 `synth/lattice/fp_ops/run_fp_ops_tests.py` 자신의 결함 셋(위 표)도 그대로
 남아 있다 — 그 파일도 편집 배정 밖이다.
+
+---
+
+## W3 수정 (2026-10-13) — 독립 검증 결함 처분
+
+W3 독립 검증(생성 SV 변이 54)에서 **formal 만 잡고 Shape 스위트를 통과한 변이 셋**을 시험이 잡게 했다.
+기대값은 형상과 무관하다(커밋한 VPN 은 적중 · 커밋하지 않은 VPN 은 미적중 · 다른 파티션의 flush 는
+스테이징에 닿지 않는다). 자극만 참조 형상에서 같은 칸에 떨어지도록 하위 4b 를 맞췄다.
+
+| 변이 (생성 SV 자리) | 그 전 | 지금 죽는 시험 |
+|---|---|---|
+| M26 저장 적중 태그 비교가 `[15:0]` 만 | Shape 통과 (door · xlatestore 만) | `xlate_high_vpn_bits_distinguish` 만 |
+| M43 설치 태그 `[27]`(= VPN[31]) 0 고정 | Shape 통과 (assembly `a_door_install` 만) | `xlate_high_vpn_bits_distinguish` 만 |
+| M13b `stgFlushDrop` 의 파티션 비교가 bit0 만 | Shape 통과 (props · door · assembly 만) | `xlate_other_flush_keeps_staging`(새 행 — 래치 1 · flush 3) 만 |
+
+실측: rsync 사본(생성물 = 저장소 W3 생성물)에 변이 하나씩 · Shape 37 전체 — 셋 다 36/37(위 열 하나만 FAIL).
+무변이 저장소 `make rtl-sim` 49/49 (Mask 12 · Shape 37).
+
+**측정 불가로 판정된 축 — 「주소 · 상태 사유 COMMIT 이 정지를 기다린다」.** 채움 대기는 설치 다음 사이클에
+무조건 비워지므로 찬 슬롯을 만나는 COMMIT 은 직전 사이클에 수락된 같은 파티션 COMMIT 의 스테이징을 그대로
+갖는다 — 늘 주소 · 상태 적법이다. 그 축을 어기는 변이(M04 · M04b · M28)는 Shape 와 door.sby(prove_stall
+무계 증명 포함)를 통과한다 — 합성 RTL 에서 관측되지 않는다. 수락 근거는 하류 슬롯을 절단한 하네스
+(`XlateStaging/props.sby` `p_need_iff` · `Wt64Top/assembly.sby` `a_ready_only_slot` · `a_door_ready`)이고,
+`xlate_commit_addr_reject_no_wait` 는 그 처분의 값 수준 회귀 기록이다.

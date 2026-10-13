@@ -38,12 +38,16 @@ wdata 판정(예약 · 없는 파티션 · `[7:0]` 파티션)이었다 — 넷�
 
 ## 자기시험 `--self-test`
 
-생성물 사본에 변이를 셋 먹여 **정해진 문면으로** 실패하는지 본다 (다른 이유의 실패는
+생성물 사본에 변이를 넷 먹여 **정해진 문면으로** 실패하는지 본다 (다른 이유의 실패는
 통과로 치지 않는다):
   M1 SLOTFREE 이전 구조 — ready 덮어쓰기를 `hiu_io_install_ready` 로 되돌린다 (파도 3 착지판의
      모양 그대로 — 2026-09-26 실측: f229c8b 생성물에서 이 검사는 실패한다).
   M2 ready 기본값에 wdata 비트 — 경로를 직접 심는다.
   M3 양성 대조 — 출력 포트 이름을 바꿔 콘을 못 재게 한다 (「없다」가 아니라 「못 쟀다」로 울어야 한다).
+  M4 문의 정지 판정에 데이터 사유 — XlateStaging `io_needReady` 식에 `&& !cmDataBad` (W3 형상 비노출
+     0xC00 문 — 정지는 주소 · 스테이징 상태만 본다. 정본 좌표와 축자:
+     e-defined.typ:308 「수락 사이클에 거절된다 — 그 수락은 위 유계 정지 뒤일 수 있다」
+     모델 대안 RefuseDomain = "full". 2026-10-13 착지에서 상주화 — 주석은 호출이 아니다).
 """
 import argparse
 import shutil
@@ -116,6 +120,9 @@ _MUTATIONS = (
      "    io_mmio_ready = io_mmio_wdata[0];", MSG_PATH),
     ("M3 양성 대조 — 출력 포트 개명",
      "io_mmio_ready", "io_mmio_rdy", MSG_POS),
+    ("M4 문의 정지 판정에 데이터 사유 (needReady ∧ ¬cmDataBad)",
+     "  assign io_needReady = ((io_wrEnt && isCommit) && pairOk);",
+     "  assign io_needReady = (((io_wrEnt && isCommit) && pairOk) && (! cmDataBad));", MSG_PATH),
 )
 
 
@@ -129,7 +136,7 @@ def self_test() -> int:
     with tempfile.TemporaryDirectory(prefix="wt-ready-cone-st-") as td:
         for name, old, new, want in _MUTATIONS:
             n = src.count(old)
-            if n == 0 or (name.startswith(("M1", "M2")) and n != 1):
+            if n == 0 or (name.startswith(("M1", "M2", "M4")) and n != 1):
                 print(f"  {name}: 변이 대상이 {n} 곳 — 자기시험을 생성물에 맞춰 고칠 것", file=sys.stderr)
                 bad += 1
                 continue

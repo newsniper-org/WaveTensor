@@ -3,7 +3,8 @@
 //
 // XlateStore 후-formal 하네스 (§6.3) — CHECK 축: valid_check ·
 // partition_check · flush_keeps_data (+ Isolation 의 채움·커밋 격리 가드 ·
-// 파도 3 의 XlateSurface.hi_v_carried 저장 절반 — V 의 유효 비트 운반과 채움 가림).
+// XlateSurface.commit_v_carried 저장 절반 — V 의 유효 비트 운반과 채움 가림 (파도 3 ·
+// W3 개명 hi_v_carried → commit_v_carried) · W3 의 하류 정지 유계 s_pend_bounded).
 //
 // 저장 Mem 내용의 불변성은 bind 모듈이 Mem 을 직접 들 수 없으므로 설계
 // 자신의 읽기 포트(storeBody_* = store[entryAddr])를 관측 창으로 쓴다:
@@ -41,7 +42,7 @@ module XlateStore_props (
   input wire        io_rsp_perm_r,
   input wire        io_rsp_perm_w,
   input wire        io_rsp_perm_x,
-  input wire        f_install_fire,      // when_XlateStore_l200 = install.fire
+  input wire        f_install_fire,      // installFire = install.fire (W3 DP-22 — 이름 있는 val, 줄 번호 생성 이름 함정 해소)
   input wire        io_install_valid,    // 파도 4 SLOTFREE — 증인 W13 전용
   input wire        io_install_ready,    // 파도 4 SLOTFREE — 아래 a_ready_split
   input wire        installSlotFree,     // 파도 4 SLOTFREE — 클래스 끝 포트 (io_ 접두 없음)
@@ -52,7 +53,7 @@ module XlateStore_props (
   input wire        io_install_perm_r,
   input wire        io_install_perm_w,
   input wire        io_install_perm_x,
-  input wire        io_install_v,        // XLATE_ENTRY_HI [31] (파도 3)
+  input wire        io_install_v,        // XLATE_ENTRY_COMMIT [31] (파도 3 · W3 표면)
   input wire        io_flush_valid,
   input wire [1:0]  io_flush_part,
   input wire [15:0] f_vb0,               // validBits_0..3 — 파티션별 유효 비트
@@ -133,9 +134,9 @@ module XlateStore_props (
       if (fillHit)
         assert (io_lookup_valid && f_pend[io_lookup_part]
                 && (f_slot_sel_idx == reqIdx) && (f_slot_sel_tag == reqTag));
-      // XlateSurface.hi_v_carried (저장 절반) — 채움 적중은 줄의 v 를 요구하고
+      // XlateSurface.commit_v_carried (저장 절반) — 채움 적중은 줄의 v 를 요구하고
       // (V=0 줄은 적중하지 않는다), 대기 중인 줄은 같은 항목의 옛 저장 판을
-      // 가린다 (HI 커밋 다음 에지부터 그 항목은 새 판으로만 보인다).
+      // 가린다 (COMMIT 수락 다음 에지부터 그 항목은 새 판으로만 보인다).
       if (fillHit)
         assert (f_slot_sel_v);
       if (io_lookup_valid && f_shadow)
@@ -177,7 +178,7 @@ module XlateStore_props (
         if ($past(io_flush_valid) && ($past(io_flush_part) == p[1:0]))
           assert (f_vb[p] == 16'h0);                       // flush 는 유효만 지운다
         else if ($past(commitFire) && ($past(commitSel) == p[1:0]))
-          // XlateSurface.hi_v_carried — 커밋은 그 비트를 줄의 v 로 쓴다 (1 세움 · 0 내림).
+          // XlateSurface.commit_v_carried — 커밋은 그 비트를 줄의 v 로 쓴다 (1 세움 · 0 내림).
           // v·idx 는 슬롯 p 의 몸체에서 읽는다 (DUT 커밋 줄 mux 가 아니다 — 위 f_slot_c 주석).
           assert (f_vb[p] == ($past(f_sl[0])
                                 ? ($past(f_vb[p]) |  (16'h1 << $past(f_sl[67:64])))
@@ -212,6 +213,27 @@ module XlateStore_props (
       end
     end
   end endgenerate
+
+  // ── 하류 정지 유계 — DP-21 · XlateSurface.stall_independent (3.10 v1.0 묶음 W3) ──────
+  // 정본 e-defined.typ:308 「정지는 *장치 의무로서 유계 시간 안에 풀린다*」 ·
+  // e-defined.typ:308 「호스트 조치에 기대지 않고 다른 정지(미적중 정지 · 초기화 소거 구간)와 독립이다」. 문의 정지는 installSlotFree
+  // (= !fillPend(part))가 0 인 동안이므로, 유계는 「대기 줄이 설치 없이 유계 사이클 안에 빠진다」다.
+  // 전건 「설치가 오지 않는 동안」 — 실제 장치에서는 정지된 COMMIT 이 버스를 잡고 있어 새 설치가
+  // 오지 않는다 (모델 XlateSurface 의 버스 단일성: held 동안 Present 꺼짐 — 닫힌 목록 3).
+  // f_quiet = 설치 발화(installFire)가 없는 연속 사이클 수 (포화 7). 상수 PARTS = 4 = 형상 파티션
+  // 수 (DP-21 「설치가 오지 않는 동안 ≤ xlateParts 사이클」). 이 블록에는 hold · 미적중 정지 ·
+  // 초기화 소거 입력이 포트로 없다 — 조회 입력(io_lookup_*)은 자유이므로 「조회가 커밋을 막는」
+  // 꼴의 결함(commitFire 에 조회 항)은 이 단언이 운다 (변이 표 S1).
+  localparam F_PARTS = 4;
+  reg [2:0] f_quiet = 3'd0;
+  always @(posedge clk) begin
+    if (reset || f_install_fire) f_quiet <= 3'd0;
+    else if (f_quiet != 3'd7)    f_quiet <= f_quiet + 3'd1;
+  end
+  always @(*) begin
+    if (f_ok)
+      s_pend_bounded: assert (!((f_quiet >= F_PARTS) && (f_pend != 4'd0)));
+  end
 
   // ── 저장 Mem 몸체 — 읽기 포트 관측 전칭 ─────────────────────────────────
   always @(posedge clk) begin
@@ -259,7 +281,7 @@ module XlateStore_props (
   //      적중의 전 경로가 살아 있다 (바이패스가 아닌 저장 블록 적중)
   always @(posedge clk) if (f_ok) w2_store_hit: cover (storeHit && !fillHit);
 
-  // W3 ← XlateStore.flush_keeps_data · Isolation.install_scoped
+  // W3 ← XlateStore.flush_keeps_data · Isolation.install_scoped · XlateSurface.evict_on_commit_only
   //      저장 Mem 이 *변할 수 있다*: 관측 중인 바로 그 주소를 커밋이
   //      갈아엎는 에지. 이것 없이는 아래 두 불변 단언(W4 축·flush 축)이
   //      「메모리가 아무 때도 안 변한다」로 공허하게 성립한다.
@@ -268,7 +290,7 @@ module XlateStore_props (
         && ($past({commitSel, f_cl_idx}) == entryAddr))
       w3_body_changes: cover (f_body != $past(f_body));
 
-  // W4 ← Isolation.install_scoped
+  // W4 ← Isolation.install_scoped · XlateSurface.evict_in_partition
   //      단언의 전제: 커밋 에지인데 기입 주소가 관측 주소와
   //      다른 사이클이 실재한다
   always @(posedge clk)
@@ -292,7 +314,7 @@ module XlateStore_props (
     if (f_ok && $past(io_flush_valid) && ($past(io_flush_part) == 2'd0))
       w6_flush_clears: cover (($past(f_vb0) != 16'h0) && (f_vb0 == 16'h0));
 
-  // W7 ← Isolation.capacity_partitioned
+  // W7 ← Isolation.capacity_partitioned · XlateSurface.evict_in_partition · XlateSurface.evict_on_commit_only
   //      전제: 타 파티션(q=1) 커밋 에지를 건너는데
   //      p=0 의 유효 비트열이 비어 있지 않다. 그 「불변」 단언이 0 → 0 의
   //      자명한 성립이 아니라는 증거.
@@ -328,7 +350,7 @@ module XlateStore_props (
         && ($past(reqIdx) == reqIdx) && ($past(reqTag) == reqTag))
       w10_dark_after_flush: cover (!storeHit && !fillHit);
 
-  // W11 ← XlateSurface.hi_v_carried
+  // W11 ← XlateSurface.commit_v_carried
   //       V=0 커밋이 *살아 있는* 유효 비트를 실제로 내린다 (단일 항목 무효화).
   //       커밋이 언제나 유효를 세우는 기계라면 이 증인이 안 잡힌다. 가드는 슬롯 0
   //       의 몸체에서 v·idx 를 읽는다 — DUT 의 커밋 줄 mux 가 아니다.
@@ -337,7 +359,7 @@ module XlateStore_props (
       w11_v0_kills: cover (($past(f_vb0 & (16'h1 << f_slot0[67:64])) != 16'h0)
                            && ((f_vb0 & (16'h1 << $past(f_slot0[67:64]))) == 16'h0));
 
-  // W12 ← XlateSurface.hi_v_carried
+  // W12 ← XlateSurface.commit_v_carried
   //       가림이 실제로 일한다: 저장 블록에는 같은 태그의 유효 항목이 있는데
   //       대기 중인 V=0 줄이 그 항목을 가려 조회가 미적중이다.
   always @(posedge clk)
@@ -351,6 +373,15 @@ module XlateStore_props (
   //       그리고 슬롯이 실제로 차서 여유가 내려간다 (a_slot_free 가 0 == 0 이 아니다).
   always @(posedge clk) if (f_ok) w13_split_flush: cover (installSlotFree && !io_install_ready);
   always @(posedge clk) if (f_ok) w13_slot_busy:   cover (!installSlotFree && io_install_valid);
+
+  // W14 ← XlateSurface.stall_independent · s_pend_bounded
+  //       대기 줄이 설치 없이 (flush 도 없이) 커밋으로 빠진다 — 조회가 같은 사이클에 서 있어도.
+  //       s_pend_bounded 의 전건(대기 줄 + 무설치 구간)이 실재한다. 「넷 다 대기」는 이 블록에서
+  //       도달 불가다 (설치 포트 하나 · 커밋 사이클당 하나 — 대기는 늘 많아야 하나: 실측 기록은
+  //       xlatestore.sby 「W3」 절).
+  always @(posedge clk)
+    if (f_ok && $past(f_pend != 4'd0) && !$past(f_install_fire) && !$past(io_flush_valid) && $past(io_lookup_valid))
+      w14_pend_drains: cover (f_pend == 4'd0 && f_quiet >= 3'd1);
 `endif // XLATE_COVER
 endmodule
 
@@ -365,7 +396,7 @@ bind XlateStore XlateStore_props u_xlate_props (
   .io_rsp_perm_r   (io_rsp_perm_r),
   .io_rsp_perm_w   (io_rsp_perm_w),
   .io_rsp_perm_x   (io_rsp_perm_x),
-  .f_install_fire  (when_XlateStore_l200),
+  .f_install_fire  (installFire),
   .io_install_valid (io_install_valid),
   .io_install_ready (io_install_ready),
   .installSlotFree (installSlotFree),

@@ -217,6 +217,7 @@ module Wt64Top (
   output wire          io_fault_cfgBadWrite,
   output wire          io_fault_cfgSurfBadWrite,
   output wire          io_fault_fpCfgBadWrite,
+  output wire          io_fault_xlateCfgBadWrite,
   output wire          io_fault_ownCollide,
   output wire          io_fault_ownBadWrite,
   output wire          io_fault_fabricBp,
@@ -267,6 +268,8 @@ module Wt64Top (
   wire       [117:0]  mog_io_up_2_payload;
   wire                mog_io_up_3_valid;
   wire       [117:0]  mog_io_up_3_payload;
+  wire       [3:0]    hiu_io_install_idx;
+  wire       [27:0]   hiu_io_install_tag;
   wire                hiu_io_faultClear;
   wire                hiu_io_missClear;
   wire                hiu_faultOwnClear;
@@ -562,8 +565,7 @@ module Wt64Top (
   wire                xstg_io_needReady;
   wire                xstg_io_commit_valid;
   wire       [1:0]    xstg_io_commit_part;
-  wire       [3:0]    xstg_io_commit_idx;
-  wire       [27:0]   xstg_io_commit_tag;
+  wire       [31:0]   xstg_io_commit_vpn;
   wire       [31:0]   xstg_io_commit_frame;
   wire                xstg_io_commit_perm_r;
   wire                xstg_io_commit_perm_w;
@@ -573,6 +575,7 @@ module Wt64Top (
   wire       [1:0]    xstg_io_flush_part;
   wire                xstg_io_missClr;
   wire                xstg_io_badWrite;
+  wire                xstg_io_badData;
   wire       [1:0]    _zz_maskArea_readValue;
   wire       [7:0]    _zz_abortArea_readValue;
   wire       [2:0]    _zz_abortArea_readValue_1;
@@ -674,8 +677,10 @@ module Wt64Top (
   reg                 resvRv;
   wire                xlateArea_wrEnt;
   wire                xlateArea_wrCtl;
-  wire                xlateArea_isHi;
-  wire                when_Wt64Top_l1714;
+  wire                xlateArea_isCommit;
+  wire                when_Common_l336_1;
+  reg                 _zz_io_fault_xlateCfgBadWrite;
+  wire                when_Wt64Top_l1731;
   wire                xlateArea_obsRd;
   wire       [4:0]    xlateArea_obsWord;
   wire       [31:0]   xlateArea_obsStatus;
@@ -694,9 +699,9 @@ module Wt64Top (
   wire                pageArea_identWr;
   wire                pageArea_shapeWr;
   wire                pageArea_unalWr;
-  wire                when_Wt64Top_l1782;
+  wire                when_Wt64Top_l1799;
   wire                fpBindArea_rej;
-  wire                when_Common_l336_1;
+  wire                when_Common_l336_2;
   reg                 _zz_io_fault_fpCfgBadWrite;
   wire       [31:0]   identArea_shape;
   wire                identArea_rd;
@@ -989,8 +994,8 @@ module Wt64Top (
     .io_install_valid  (xstg_io_commit_valid       ), //i
     .io_install_ready  (hiu_io_install_ready       ), //o
     .io_install_part   (xstg_io_commit_part[1:0]   ), //i
-    .io_install_idx    (xstg_io_commit_idx[3:0]    ), //i
-    .io_install_tag    (xstg_io_commit_tag[27:0]   ), //i
+    .io_install_idx    (hiu_io_install_idx[3:0]    ), //i
+    .io_install_tag    (hiu_io_install_tag[27:0]   ), //i
     .io_install_frame  (xstg_io_commit_frame[31:0] ), //i
     .io_install_perm_r (xstg_io_commit_perm_r      ), //i
     .io_install_perm_w (xstg_io_commit_perm_w      ), //i
@@ -1299,8 +1304,7 @@ module Wt64Top (
     .io_needReady     (xstg_io_needReady         ), //o
     .io_commit_valid  (xstg_io_commit_valid      ), //o
     .io_commit_part   (xstg_io_commit_part[1:0]  ), //o
-    .io_commit_idx    (xstg_io_commit_idx[3:0]   ), //o
-    .io_commit_tag    (xstg_io_commit_tag[27:0]  ), //o
+    .io_commit_vpn    (xstg_io_commit_vpn[31:0]  ), //o
     .io_commit_frame  (xstg_io_commit_frame[31:0]), //o
     .io_commit_perm_r (xstg_io_commit_perm_r     ), //o
     .io_commit_perm_w (xstg_io_commit_perm_w     ), //o
@@ -1310,6 +1314,7 @@ module Wt64Top (
     .io_flush_part    (xstg_io_flush_part[1:0]   ), //o
     .io_missClr       (xstg_io_missClr           ), //o
     .io_badWrite      (xstg_io_badWrite          ), //o
+    .io_badData       (xstg_io_badData           ), //o
     .clk              (clk                       ), //i
     .reset            (reset                     )  //i
   );
@@ -1494,7 +1499,7 @@ module Wt64Top (
     if(xstg_io_badWrite) begin
       surfBadWr = 1'b1;
     end
-    if(when_Wt64Top_l1782) begin
+    if(when_Wt64Top_l1799) begin
       surfBadWr = 1'b1;
     end
     if(dupArea_wr) begin
@@ -1648,7 +1653,7 @@ module Wt64Top (
     faultWords_status[3] = io_fault_reasm;
     faultWords_status[4] = io_fault_hiuPerm;
     faultWords_status[5] = io_fault_cfgDupOwner;
-    faultWords_status[6] = ((((io_fault_cfgBadWrite || io_fault_cfgSurfBadWrite) || io_fault_cqBadWrite) || io_fault_ownBadWrite) || io_fault_fpCfgBadWrite);
+    faultWords_status[6] = (((((io_fault_cfgBadWrite || io_fault_cfgSurfBadWrite) || io_fault_cqBadWrite) || io_fault_ownBadWrite) || io_fault_fpCfgBadWrite) || io_fault_xlateCfgBadWrite);
     faultWords_status[7] = io_fault_ownCollide;
     faultWords_status[8] = io_fault_fabricBp;
     faultWords_status[9] = io_fault_sharedBp;
@@ -1697,7 +1702,7 @@ module Wt64Top (
     if(when_Wt64Top_l1598) begin
       io_mmio_ready = fps_io_loadReady;
     end
-    if(when_Wt64Top_l1714) begin
+    if(when_Wt64Top_l1731) begin
       io_mmio_ready = hiu_installSlotFree;
     end
   end
@@ -1737,10 +1742,14 @@ module Wt64Top (
   assign mask_io_faultClearWrRekey = (io_faultClear_maskWrRekey || (fltClrAccept && io_mmio_wdata[13]));
   assign xlateArea_wrEnt = ((io_mmio_wstrobe && selXent) && mmioAligned);
   assign xlateArea_wrCtl = ((io_mmio_wstrobe && selXctl) && mmioAligned);
-  assign xlateArea_isHi = io_mmio_addr[2];
+  assign xlateArea_isCommit = (io_mmio_addr[6 : 2] == 5'h02);
   assign xstg_io_woff = io_mmio_addr[8 : 2];
+  assign hiu_io_install_idx = xstg_io_commit_vpn[3 : 0];
+  assign hiu_io_install_tag = xstg_io_commit_vpn[31 : 4];
   assign hiu_io_missClear = (io_faultClear_hiuMiss || xstg_io_missClr);
-  assign when_Wt64Top_l1714 = ((xlateArea_wrEnt && xlateArea_isHi) && xstg_io_needReady);
+  assign when_Common_l336_1 = (fltClrAccept && io_mmio_wdata[6]);
+  assign io_fault_xlateCfgBadWrite = _zz_io_fault_xlateCfgBadWrite;
+  assign when_Wt64Top_l1731 = ((xlateArea_wrEnt && xlateArea_isCommit) && xstg_io_needReady);
   assign xlateArea_obsRd = (((io_mmio_rstrobe && (! io_mmio_wstrobe)) && selXctl) && mmioAligned);
   assign xlateArea_obsWord = io_mmio_addr[6 : 2];
   assign xlateArea_obsStatus = {{{{16'h0,_zz_xlateArea_obsStatus},6'h0},hiu_io_missNotice},hiu_missStall};
@@ -1773,9 +1782,9 @@ module Wt64Top (
   assign pageArea_identWr = (((io_mmio_wstrobe && selIdent) && mmioAligned) && (io_mmio_addr[5 : 2] == 4'b1111));
   assign pageArea_shapeWr = (((io_mmio_wstrobe && selIdent) && mmioAligned) && (io_mmio_addr[5 : 2] == 4'b1110));
   assign pageArea_unalWr = ((io_mmio_wstrobe && (! mmioAligned)) && (! ((selOwn || selCq) || selCfg)));
-  assign when_Wt64Top_l1782 = ((((pageArea_legWr || (pageArea_sqWr && (pageArea_isSqRw || pageArea_isSqRo))) || pageArea_identWr) || pageArea_shapeWr) || pageArea_unalWr);
+  assign when_Wt64Top_l1799 = ((((pageArea_legWr || (pageArea_sqWr && (pageArea_isSqRw || pageArea_isSqRo))) || pageArea_identWr) || pageArea_shapeWr) || pageArea_unalWr);
   assign fpBindArea_rej = (((fpArea_wr && fpArea_isBind) && fpArea_bindRsvBad) && fps_io_loadReady);
-  assign when_Common_l336_1 = (fltClrAccept && io_mmio_wdata[6]);
+  assign when_Common_l336_2 = (fltClrAccept && io_mmio_wdata[6]);
   assign io_fault_fpCfgBadWrite = _zz_io_fault_fpCfgBadWrite;
   assign identArea_shape = 32'h00001004;
   assign identArea_rd = ((((io_mmio_rstrobe && (! io_mmio_wstrobe)) && selIdent) && mmioAligned) && (io_mmio_addr[5 : 2] == 4'b1110));
@@ -1799,6 +1808,7 @@ module Wt64Top (
       mapRdReg <= 32'h0;
       mapRv <= 1'b0;
       resvRv <= 1'b0;
+      _zz_io_fault_xlateCfgBadWrite <= 1'b0;
       xlateArea_obsReg <= 32'h0;
       xlateArea_obsRv <= 1'b0;
       _zz_io_fault_fpCfgBadWrite <= 1'b0;
@@ -1832,11 +1842,17 @@ module Wt64Top (
         end
       end
       resvRv <= resvRd;
+      if(when_Common_l336_1) begin
+        _zz_io_fault_xlateCfgBadWrite <= 1'b0;
+      end
+      if(xstg_io_badData) begin
+        _zz_io_fault_xlateCfgBadWrite <= 1'b1;
+      end
       if(xlateArea_obsRd) begin
         xlateArea_obsReg <= xlateArea_obsValue;
       end
       xlateArea_obsRv <= xlateArea_obsRd;
-      if(when_Common_l336_1) begin
+      if(when_Common_l336_2) begin
         _zz_io_fault_fpCfgBadWrite <= 1'b0;
       end
       if(fpBindArea_rej) begin
@@ -1862,8 +1878,7 @@ module XlateStaging (
   output wire          io_needReady,
   output wire          io_commit_valid,
   output wire [1:0]    io_commit_part,
-  output wire [3:0]    io_commit_idx,
-  output wire [27:0]   io_commit_tag,
+  output wire [31:0]   io_commit_vpn,
   output wire [31:0]   io_commit_frame,
   output wire          io_commit_perm_r,
   output wire          io_commit_perm_w,
@@ -1873,57 +1888,73 @@ module XlateStaging (
   output wire [1:0]    io_flush_part,
   output wire          io_missClr,
   output wire          io_badWrite,
+  output wire          io_badData,
   input  wire          clk,
   input  wire          reset
 );
 
-  wire                isHi;
-  wire       [5:0]    num;
-  wire       [1:0]    numPart;
+  wire       [1:0]    entPart;
+  wire       [4:0]    entWord;
+  wire                isVpn;
+  wire                isFrame;
+  wire                isCommit;
+  wire                isVpnHi;
+  wire                isRsvw;
   wire       [4:0]    ctlWord;
   wire                isFlush;
   wire                isMissC;
   wire                isCtlRo;
-  wire                entPhantom;
-  reg                 stgValid;
-  reg        [5:0]    stgNum;
+  wire                phantom;
+  reg                 stgVpnValid;
+  reg                 stgFrameValid;
+  reg        [1:0]    stgPart;
+  reg        [31:0]   stgVpn;
   reg        [31:0]   stgFrame;
-  wire                loWr;
-  wire                loOk;
-  wire                hiWr;
-  wire                hiLegal;
-  wire                hiRej;
+  wire                pairOk;
+  wire                vhLegal;
+  wire                vpnOk;
+  wire                frOk;
+  wire                vhOk;
+  wire                cmAcc;
+  wire                cmDataBad;
   wire       [7:0]    partField;
   wire                flRsvBad;
   wire                flPartBad;
   wire                flWr;
   wire                mcRsvBad;
   wire                mcWr;
+  wire                entRej;
   wire                stgFlushDrop;
 
-  assign isHi = io_woff[0];
-  assign num = io_woff[6 : 1];
-  assign numPart = num[5 : 4];
+  assign entPart = io_woff[6 : 5];
+  assign entWord = io_woff[4 : 0];
+  assign isVpn = (entWord == 5'h0);
+  assign isFrame = (entWord == 5'h01);
+  assign isCommit = (entWord == 5'h02);
+  assign isVpnHi = (entWord == 5'h03);
+  assign isRsvw = (5'h04 <= entWord);
   assign ctlWord = io_woff[4 : 0];
   assign isFlush = (ctlWord == 5'h0);
   assign isMissC = (ctlWord == 5'h04);
   assign isCtlRo = (((ctlWord == 5'h01) || (ctlWord == 5'h02)) || (ctlWord == 5'h03));
-  assign entPhantom = 1'b0;
-  assign loWr = (io_wrEnt && (! isHi));
-  assign loOk = (loWr && (! entPhantom));
-  assign hiWr = (io_wrEnt && isHi);
-  assign hiLegal = (((! entPhantom) && stgValid) && (stgNum == num));
-  assign hiRej = (hiWr && (! hiLegal));
-  assign io_needReady = (hiWr && hiLegal);
-  assign io_commit_valid = ((hiWr && hiLegal) && io_installReady);
-  assign io_commit_part = numPart;
-  assign io_commit_idx = num[3 : 0];
-  assign io_commit_tag = io_wdata[27 : 0];
+  assign phantom = 1'b0;
+  assign pairOk = (((! phantom) && stgVpnValid) && (stgPart == entPart));
+  assign vhLegal = (pairOk && ((io_wdata & 32'hffffffff) == 32'h0));
+  assign vpnOk = ((io_wrEnt && isVpn) && (! phantom));
+  assign frOk = ((io_wrEnt && isFrame) && pairOk);
+  assign vhOk = ((io_wrEnt && isVpnHi) && vhLegal);
+  assign io_needReady = ((io_wrEnt && isCommit) && pairOk);
+  assign cmAcc = (io_needReady && io_installReady);
+  assign cmDataBad = (((io_wdata & 32'h0fffffff) != 32'h0) || (io_wdata[31] && (! stgFrameValid)));
+  assign io_commit_valid = (cmAcc && (! cmDataBad));
+  assign io_commit_part = entPart;
+  assign io_commit_vpn = stgVpn;
   assign io_commit_frame = stgFrame;
   assign io_commit_perm_r = io_wdata[30];
   assign io_commit_perm_w = io_wdata[29];
   assign io_commit_perm_x = io_wdata[28];
   assign io_commit_v = io_wdata[31];
+  assign io_badData = (cmAcc && cmDataBad);
   assign partField = io_wdata[7 : 0];
   assign flRsvBad = ((io_wdata & 32'hffffff00) != 32'h0);
   assign flPartBad = (8'h04 <= partField);
@@ -1933,21 +1964,33 @@ module XlateStaging (
   assign mcRsvBad = ((io_wdata & 32'hfffffffe) != 32'h0);
   assign mcWr = (io_wrCtl && isMissC);
   assign io_missClr = ((mcWr && (! mcRsvBad)) && io_wdata[0]);
-  assign io_badWrite = (((((loWr && entPhantom) || hiRej) || (flWr && (flRsvBad || flPartBad))) || (mcWr && mcRsvBad)) || (io_wrCtl && isCtlRo));
-  assign stgFlushDrop = ((io_flush_valid && (! loOk)) && (stgNum[5 : 4] == partField[1 : 0]));
+  assign entRej = (io_wrEnt && (((phantom || isRsvw) || ((isFrame || isCommit) && (! pairOk))) || (isVpnHi && (! vhLegal))));
+  assign io_badWrite = (((entRej || (flWr && (flRsvBad || flPartBad))) || (mcWr && mcRsvBad)) || (io_wrCtl && isCtlRo));
+  assign stgFlushDrop = ((io_flush_valid && (! vpnOk)) && (stgPart == partField[1 : 0]));
   always @(posedge clk or posedge reset) begin
     if(reset) begin
-      stgValid <= 1'b0;
-      stgNum <= 6'h0;
+      stgVpnValid <= 1'b0;
+      stgFrameValid <= 1'b0;
+      stgPart <= 2'b00;
+      stgVpn <= 32'h0;
       stgFrame <= 32'h0;
     end else begin
-      if(loOk) begin
-        stgValid <= 1'b1;
-        stgNum <= num;
+      if(vpnOk) begin
+        stgVpn <= io_wdata;
+        stgPart <= entPart;
+        stgVpnValid <= 1'b1;
+        stgFrameValid <= 1'b0;
+      end
+      if(frOk) begin
         stgFrame <= io_wdata;
+        stgFrameValid <= 1'b1;
+      end
+      if(vhOk) begin
+        stgFrameValid <= 1'b0;
       end
       if(stgFlushDrop) begin
-        stgValid <= 1'b0;
+        stgVpnValid <= 1'b0;
+        stgFrameValid <= 1'b0;
       end
     end
   end
@@ -35032,10 +35075,10 @@ module XlateStore (
   reg                 fillSlot_3_perm_w;
   reg                 fillSlot_3_perm_x;
   reg                 fillSlot_3_v;
+  wire                installFire;
   wire                flushSamePart;
   wire                _zz_io_install_ready;
   wire       [3:0]    _zz_1;
-  wire                when_XlateStore_l200;
   wire       [3:0]    _zz_2;
   wire                _zz_3;
   wire                _zz_4;
@@ -35192,11 +35235,11 @@ module XlateStore (
     endcase
   end
 
+  assign installFire = (io_install_valid && io_install_ready);
   assign flushSamePart = (io_flush_valid && (io_flush_part == io_install_part));
   assign _zz_io_install_ready = _zz__zz_io_install_ready;
   assign _zz_1 = ({3'd0,1'b1} <<< io_install_part);
   assign io_install_ready = ((! _zz_io_install_ready) && (! flushSamePart));
-  assign when_XlateStore_l200 = (io_install_valid && io_install_ready);
   assign _zz_2 = ({3'd0,1'b1} <<< io_install_part);
   assign _zz_3 = _zz_2[0];
   assign _zz_4 = _zz_2[1];
@@ -35306,7 +35349,7 @@ module XlateStore (
       fillPend_2 <= 1'b0;
       fillPend_3 <= 1'b0;
     end else begin
-      if(when_XlateStore_l200) begin
+      if(installFire) begin
         if(_zz_1[0]) begin
           fillPend_0 <= 1'b1;
         end
@@ -35376,7 +35419,7 @@ module XlateStore (
   end
 
   always @(posedge clk) begin
-    if(when_XlateStore_l200) begin
+    if(installFire) begin
       if(_zz_3) begin
         fillSlot_0_idx <= io_install_idx;
       end

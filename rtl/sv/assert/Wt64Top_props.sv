@@ -21,14 +21,14 @@
 // ## 피연산자 규율
 //
 //   기대측(오라클)은 top 포트 · 절단 핀 · 구체 유닛 출력 · 이 파일의 그림자
-//   레지스터(f_win · 변환 문의 f_xv/f_xnum/f_xfr)와 주소 리터럴로만 짓는다. DUT 어휘
+//   레지스터(f_win · 변환 문의 f_xvv/f_xfv/f_xlp/f_xvpn/f_xfr)와 주소 리터럴로만 짓는다. DUT 어휘
 //   (sel*, *Area_*, fltClrAccept, surfBadWr)를 재인용하지 않는다. DUT 측은 top 출력
 //   포트 · 절단 핀 · 구체 유닛 출력뿐이다 — Wt64Top 내부 wire 와 순번 이름(_zz_*)·
 //   줄번호 매인 이름은 참조하지 않는다. 변환 문(xstg)의 판정 출력(needReady ·
-//   commit.* · badWrite)은 오라클에 쓰지 않는다 — 문의 적법성은 MMIO 이력에서 다시
-//   지은 그림자 스테이징으로 판정하고, xstg 는 DUT 측으로만 본다 (a_xstall_noeffect
-//   의 badWrite 한 곳). 그래서 워드 디코드 → 스테이징 의미 → 설치 핀이 한 오라클
-//   아래 끝-끝으로 잰다 (「구체 문의 출력 = 핀」 결선 등식은 이것에 포섭된다).
+//   commit.* · badWrite · badData)은 오라클에 쓰지 않는다 — 문의 적법성은 MMIO 이력에서 다시
+//   지은 그림자 스테이징으로 판정하고, xstg 는 DUT 측으로만 본다 (a_xhold_quiet 의
+//   badWrite · badData 와 XlateDoor 결선 복제 등식 a_door_* — 복제의 같음은 DUT ↔ DUT 핀 등식이다).
+//   그래서 워드 디코드 → 스테이징 의미 → 설치 핀이 한 오라클 아래 끝-끝으로 잰다.
 //   생성물에서 상수에 묶인 넷(축 3 set · FAULT_STATUS [17]/[18] · CAP_STATUS
 //   [31:4])은 MMIO 읽기 표면으로만 잰다 — 계층 모델에서는 lint_tautology 의 상수
 //   접힘 검사가 모듈 경계를 못 넘으므로, 반증력은 .sby 머리의 역-변이 표가 든다.
@@ -60,8 +60,14 @@
 //   e-defined.typ:473 「소거 대상 태그의 wave 필드」
 //   e-defined.typ:475 「`[15:0]` LNID」
 //   e-defined.typ:477 「`[15:8]` precision · `[7:0]` dim」
-//   03-hiu.typ:1552 「LO 는 스테이징(항목 번호 래치 · reset 은 빈 스테이징)이고」
-//   03-hiu.typ:1552 「HI 가 항목 전체(V 포함)를 단일 에지에 커밋한다」
+//   ── W3 (3.10 v1.0 묶음 — 형상 비노출 0xC00 문, 2026-10-13) — 앞판의 3.9 LO/HI 인용 둘을 대체 ──
+//   e-defined.typ:305 「수락된 기입이 그 주소의 파티션을 래치한다」
+//   e-defined.typ:306 「래치 파티션의 기저에서만 수락한다」
+//   e-defined.typ:308 「유효 비트를 담은 워드가 마지막이므로 부분 기입 상태가 유효해질 수 없다」
+//   e-defined.typ:308 「기다리지 않고 곧장 거절 + `[6]` 이다」
+//   e-defined.typ:308 「수락 사이클에 거절된다 — 그 수락은 위 유계 정지 뒤일 수 있다」
+//   e-defined.typ:308 「*표의 워드로 등재한다* — 쓰기는 거절 + `[6]`, 읽기는 0」
+//   e-defined.typ:311 「VPN 기입은 기입 주소의 파티션을 래치하고 FRAME 스테이징 유효를 내린다」
 //   e-defined.typ:321 「`[7:0]` 파티션 — *기입이 곧 발화*다 · `[31:8]` 예약 = 0 (엄격)」
 //   e-defined.typ:329 「*정지 자체는 이것으로 풀리지 않는다*」
 //   e-defined.typ:323 「`[0]` 미적중으로 정지 중 · `[1]` 미적중 sticky · `[15:8]` 정지한 요청의 파티션」
@@ -108,10 +114,13 @@
 //   0xEC4 MASK_DUP_CAPTURE (W1) — 조립 구역 RO 워드: 정렬 쓰기 거절 + [6](surfMust) · 정렬
 //     읽기는 응답 + 수락 사이클의 mask.dupCapture 핀(a_rd_dupcap) · undefA 는 0xEC8 부터다.
 //   변환 저장소 두 구역 (파도 3 — XlateStaging 이 배선했다):
-//     xWo    WO 워드 (0xC00–0xDFC · 0xE00 · 0xE10) — 읽기는 resvA(응답 + 읽기 0). 쓰기의
-//            처분은 문의 판정이다 — 거절은 surfMust (그림자가 판정한 HI 의 빈 스테이징·
-//            번호 불일치 · 0xE00/0xE10 예약·없는 파티션), LO · 적법 기입 · 정지된 HI 는
-//            무-fault (surfMust 에 없다 → a_surf_rise).
+//     xWo    항목 표면 (0xC00–0xDFC) · 0xE00 · 0xE10 — 읽기는 resvA(응답 + 읽기 0 — 네 WO 워드와
+//            예약-엄격 28 워드가 같다). 항목 표면은 기저 0xC00 + (p≪7) 안 오프셋 A[6:2] 로 가른다
+//            (W3): VPN(0) · FRAME(1) · COMMIT(2) · VPN_HI(3) · 예약-엄격(4..31). 쓰기의 처분은 문의
+//            판정이다 — 주소 · 상태 사유 거절(짝 불일치 FRAME/VPN_HI/COMMIT · 비0 VPN_HI · 예약-엄격
+//            워드 · 0xE00/0xE10 예약 · 없는 파티션)은 surfMust(조립 sticky), 데이터 사유(FRAME 없는
+//            V=1 · [27:0] 비0 COMMIT)는 *수락 사이클*에만 원천별 sticky io_fault_xlateCfgBadWrite
+//            (xBadAcc — a_xbad_*), VPN · 적법 FRAME/VPN_HI · 커밋 · 정지된 COMMIT 은 무-fault.
 //     xRo    RO 워드 (0xE04–0xE0C) — 정렬 쓰기는 거절 + [6](surfMust). 정렬 읽기는
 //            응답 + 값 — 파도 4 가 관측 값을 배선했다 (a_rd_xstatus · a_rd_xvpnlo ·
 //            a_rd_xvpnhi — 값은 절단 핀 hiu__missStall · hiu__missPart · hiu__missVpn ·
@@ -142,6 +151,7 @@ module Wt64Top_props (
   input logic        io_mmio_ready,
   input logic        io_fault_cfgSurfBadWrite,
   input logic        io_fault_fpCfgBadWrite,
+  input logic        io_fault_xlateCfgBadWrite,  // W3 — COMMIT 데이터 사유 거절의 원천별 sticky (DP-15)
   input logic        io_fault_hiuOwn,      // W1 — FAULT_STATUS [19] 원천별 수출 (a_fsrc_b19)
   // hiu 의 최상위 직결 입력 (파도 4 W6 — a_hiu_pass: 읽기가 요청 · hold · hostRsp 에 닿지 않는다)
   input logic        io_hiuReq_valid, io_hiuReq_write, input logic [1:0] io_hiuReq_part,
@@ -180,6 +190,13 @@ module Wt64Top_props (
   input logic [7:0]  stg_io_tag_precision,
   input logic [7:0]  stg_io_tag_dim,
   input logic        xstg_io_badWrite,
+  // W3 — 문의 출력 · 입력 넷 (DUT 측 — 오라클이 아니다: a_xhold_quiet 과 XlateDoor 결선 복제 등식 a_door_*)
+  input logic        xstg_io_badData, xstg_io_needReady,
+  input logic [6:0]  xstg_io_woff,
+  input logic        xstg_io_commit_valid, input logic [1:0] xstg_io_commit_part,
+  input logic [31:0] xstg_io_commit_vpn, input logic [31:0] xstg_io_commit_frame,
+  input logic        xstg_io_commit_perm_r, xstg_io_commit_perm_w, xstg_io_commit_perm_x, xstg_io_commit_v,
+  input logic        xstg_io_flush_valid, input logic [1:0] xstg_io_flush_part,
   // ── evert pins ──
   input logic        walk__io_oValid, walk__io_oCapAbsent, walk__io_oFault, walk__io_iFaultClear,
   input logic        od__io_oFault, od__io_iFaultClear,
@@ -296,39 +313,58 @@ module Wt64Top_props (
   wire xRo    = (A >= 12'hE04) && (A < 12'hE10);
   wire sqTbl  = (A >= 12'h380) && (A < 12'h394);  // 명령 링 표 워드 다섯 (0x380–0x390)
   wire abiW   = (A >= 12'hFFC);                    // 판 워드 0xFFC (비정렬 바이트 0xFFD–0xFFF 포함)
-  wire xLoW   = W && al && rXent && !A[2];    // XLATE_ENTRY_LO 의 정렬된 쓰기 (정지되지 않는다 — a_ready_one)
-  wire xHiW   = W && al && rXent && A[2];     // XLATE_ENTRY_HI 의 정렬된 쓰기
+  // 변환 항목 표면 (W3) — 기저 0xC00 + (p≪7): A[8:7] = 파티션 · A[6:2] = 기저 안 워드 색인.
+  wire [1:0] xp = A[8:7];
+  wire [4:0] xw = A[6:2];
+  wire xEnt   = W && al && rXent;               // 항목 표면의 정렬된 쓰기
+  wire xVpnW  = xEnt && (xw == 5'd0);           // XLATE_ENTRY_VPN    (정지되지 않는다 — a_ready_only_slot)
+  wire xFrW   = xEnt && (xw == 5'd1);           // XLATE_ENTRY_FRAME
+  wire xCmW   = xEnt && (xw == 5'd2);           // XLATE_ENTRY_COMMIT (정지 후보)
+  wire xVhW   = xEnt && (xw == 5'd3);           // XLATE_ENTRY_VPN_HI
+  wire xRsW   = xEnt && (xw >= 5'd4);           // 예약-엄격 28 워드
 
-  // ── 변환 문의 그림자 스테이징 — 모델 XlateSurface.tla 의 stg 를 MMIO 이력에서 다시 짓는다 ──
-  // 갱신 원천은 둘이다 — 정렬된 LO 쓰기(유효 · 번호 · 프레임)와, 래치 번호의 파티션에 대한
-  // 적법 XLATE_FLUSH(유효만 내린다 — 판정 T5 (a) · E.1.2 `0xE00` 행 · 다른 파티션을
-  // 래치한 스테이징은 건드리지 않는다). HI(커밋 · 거절 · 정지) · 거절된 flush · 다른
-  // 파티션 flush · MISS_CLEAR · RO 쓰기는 건드리지 않는다 — 이 규칙이 D-3 여섯 사실을
-  // 싣는다 (소진 없음 · reset = 빈 스테이징 · 거절은 기입이 아니다 · 래치 파티션 flush 가
-  // 유효를 내린다 · LO 는 덮는다 · 정지된 HI 무효과). 두 원천은 주소가 달라 한 사이클에
-  // 겹치지 않는다. 기본 형상(파티션 4)이라 형상 밖 파티션의 LO 거절 가지는 없다
-  // (assembly.sby 「보증하지 않는 것」 (g)). DUT 의 스테이징과 이 그림자의 일치는 prove
-  // (abc pdr)가 귀납 불변식으로 스스로 찾는다 — xstg 내부 레지스터를 참조하지 않는다.
-  logic        f_xv   = 1'b0;
-  logic [5:0]  f_xnum = 6'd0;
+  // ── 변환 문의 그림자 스테이징 — 모델 XlateSurface.tla 의 stg = [vv, fv, p, vpn, fr] 를 MMIO 이력에서 ──
+  // 다시 짓는다 (XlateStaging_props.sv 와 같은 규칙). 갱신 원천 넷: VPN(래치 · FRAME 유효 하강) ·
+  // 래치 기저의 FRAME(VPN 유효 필요) · 래치 기저의 0 VPN_HI(FRAME 유효 하강) · 래치 파티션의 적법
+  // XLATE_FLUSH(두 유효 하강). COMMIT(커밋 · 거절 · 정지) · 거절 · 다른 파티션 flush · MISS_CLEAR ·
+  // RO 쓰기는 건드리지 않는다 (e-defined.typ:306 「커밋은 스테이징을 소진하지 않는다」). 원천들은
+  // 주소가 달라 한 사이클에 겹치지 않고, 항목 표면의 비COMMIT 쓰기는 ready = 1 이라 수락 = 스트로브다
+  // (a_ready_only_slot). 기본 형상(파티션 4)이라 형상 밖 기저 가지는 없다 ((g)). DUT 의 스테이징과
+  // 이 그림자의 일치는 prove(abc pdr)가 귀납 불변식으로 스스로 찾는다 — xstg 내부 레지스터를 참조하지 않는다.
+  logic        f_xvv  = 1'b0;
+  logic        f_xfv  = 1'b0;
+  logic [1:0]  f_xlp  = 2'd0;
+  logic [31:0] f_xvpn = 32'd0;
   logic [31:0] f_xfr  = 32'd0;
+  wire xPair  = f_xvv && (f_xlp == xp);         // 래치 기저 ∧ VPN 유효
   always @(posedge clk) begin
     if (reset) begin
-      f_xv   <= 1'b0;
-      f_xnum <= 6'd0;
+      f_xvv  <= 1'b0;
+      f_xfv  <= 1'b0;
+      f_xlp  <= 2'd0;
+      f_xvpn <= 32'd0;
       f_xfr  <= 32'd0;
-    end else if (xLoW) begin
-      f_xv   <= 1'b1;
-      f_xnum <= A[8:3];
+    end else if (xVpnW) begin
+      f_xvv  <= 1'b1;
+      f_xfv  <= 1'b0;
+      f_xlp  <= xp;
+      f_xvpn <= D;
+    end else if (xFrW && xPair) begin
+      f_xfv  <= 1'b1;
       f_xfr  <= D;
-    end else if (W && al && (A == 12'hE00) && partOk && (D[1:0] == f_xnum[5:4])) begin
-      f_xv   <= 1'b0;
+    end else if (xVhW && xPair && (D == 32'd0)) begin
+      f_xfv  <= 1'b0;
+    end else if (W && al && (A == 12'hE00) && partOk && (D[1:0] == f_xlp)) begin
+      f_xvv  <= 1'b0;
+      f_xfv  <= 1'b0;
     end
   end
-  // 정본의 적법성 (모델 SpecHiOK) — 스테이징이 차 있고 래치 번호가 이 워드의 번호다.
-  wire xLegal = f_xv && (f_xnum == A[8:3]);
-  wire xHold  = xHiW && xLegal;               // 적법한 HI — 하류 거부로 버스 정지 가능 (D-2)
-  wire xHiRej = xHiW && !xLegal;              // 빈 스테이징 · 번호 불일치 — 하류 상태와 무관하게 곧장 거절
+  // 정본 판정 — 주소 · 상태로 적법한 COMMIT(정지 후보 · 모델 Refused 의 정의역)과 데이터 사유.
+  wire xHold  = xCmW && xPair;                  // 주소 · 상태 적법 COMMIT — 하류 거부로 버스 정지 가능
+  wire xDBad  = (D[27:0] != 28'd0) || (D[31] && !f_xfv);   // 데이터 사유 (V=0 의 [30:28] 은 항이 아니다 — DP-20)
+  wire xBadAcc = xHold && hiu__installSlotFree && xDBad;    // 수락 사이클의 데이터 사유 거절 (원천별 sticky)
+  // 주소 · 상태 사유 — 하류 상태와 무관하게 곧장 거절 (조립 sticky).
+  wire xRej   = (xFrW && !xPair) || (xCmW && !xPair) || (xVhW && !(xPair && (D == 32'd0))) || xRsW;
 
   wire aKey   = (A >= 12'hE80) && (A <= 12'hE9C);
   wire aNonce = (A >= 12'hEA4) && (A <= 12'hEB8);
@@ -355,7 +391,7 @@ module Wt64Top_props (
   wire acF84  = W && (A == 12'hF84) && (D[31:20] == 12'd0);   // W1 — 예약 [31:20] (비트 스물)
   wire acF90  = W && (A == 12'hF90) && (D[31:4]  == 28'd0);
 
-  wire surfMust = xHiRej || (W && al && (
+  wire surfMust = xRej || (W && al && (
       ((A == 12'hE00) && !partOk) || (A == 12'hE04) || (A == 12'hE08) || (A == 12'hE0C) ||
       ((A == 12'hE10) && (D[31:1] != 31'd0)) ||
       ((A == 12'hEA0) && !partOk) || ((A == 12'hEBC) && !partOk) || (A == 12'hEC0) ||
@@ -385,7 +421,7 @@ module Wt64Top_props (
       mask__io_faultWrDuringRekey, mask__io_faultNonceDup, mask__io_faultNoMask, bank__io_fault,
       shared_1__io_faultBpViolation, merge__io_fault, own__io_faultCollide,
       (cfgBlk__io_faultBadWrite || io_fault_cfgSurfBadWrite || cq__io_faultBadWrite || own__io_faultBadWrite ||
-       io_fault_fpCfgBadWrite),
+       io_fault_fpCfgBadWrite || io_fault_xlateCfgBadWrite),
       cfgBlk__io_faultDupOwner, hiu__io_faultPerm, reasm__io_fault, rj__io_fault, od__io_oFault, walk__io_oFault};
 
   wire src1 = fps__io_oCapAbsent;
@@ -405,11 +441,13 @@ module Wt64Top_props (
     // D1 (b) — 선택자 표 소거를 기다리는 것은 정렬 FP_PROG/FP_BIND *쓰기*뿐 (읽기·비정렬은 기다리지 않는다)
     a_ready_fpw: assert (!(W && al && ((A == 12'hF00) || (A == 12'hF04))) || io_mmio_ready == fps__io_loadReady);
     a_ready_one: assert ((rOwn || rCq || rCfg || (W && al && ((A == 12'hF00) || (A == 12'hF04))) || xHold) || io_mmio_ready);
-    // 적법한 XLATE_ENTRY_HI 쓰기의 ready = 하류 슬롯 여유 (D-2 — 하류 거부는 버스 정지다). 파도 4
-    // SLOTFREE: install.ready 가 아니라 hiu.installSlotFree — flush 와 무관해 wdata 가 ready 의
-    // 조합 콘에 없다 (구조 콘 검사 scripts/lint_ready_cone.py). 둘의 차이(같은 파티션 flush)는
-    // 문의 항목 기입과 flush 발화의 배타(a_xonehot)가 이 조립에서 만들지 않는다.
-    a_ready_xhi: assert (!xHold || io_mmio_ready == hiu__installSlotFree);
+    // W3 (A) 조립 절반 — 항목 표면 쓰기의 ready 는 주소 · 상태 적법 COMMIT 이면 *정확히* 하류 슬롯 여유
+    // (hiu.installSlotFree)이고 그 밖(VPN · FRAME · VPN_HI · 예약-엄격 · 주소 · 상태 사유 거절 COMMIT)이면
+    // 1 이다. 등식이라 그 ready 가 다른 정지 원천(미적중 정지 hiu__missStall · cfgBlk ready · FP 소거
+    // loadReady)을 보지 않는다 — 「다른 정지와 독립」의 ready 쪽 (모델 stall_independent 의 ready 측 ·
+    // Prop_AddrRejectNoWait 의 조립 쪽 「기다리지 않고 곧장」). wdata 는 xHold 에 없다 (구조 콘 검사
+    // scripts/lint_ready_cone.py). 둘의 차이(같은 파티션 flush)는 a_xonehot 이 조립에서 만들지 않는다.
+    a_ready_only_slot: assert (!xEnt || io_mmio_ready == (xHold ? hiu__installSlotFree : 1'b1));
     // mask
     a_key_valid:   assert (mask__io_keyWr_valid == (W && al && aKey));
     a_key_idx:     assert (!mask__io_keyWr_valid || mask__io_keyWr_idx == f_kOff[4:2]);
@@ -458,23 +496,27 @@ module Wt64Top_props (
     a_fclr_b19: assert (hiu__faultOwnClear == (acF84 && D[19]));
     a_miss_clr: assert (hiu__io_missClear == (io_faultClear_hiuMiss ||
                         (W && al && (A == 12'hE10) && (D[31:1] == 31'd0) && D[0])));
-    // 변환 저장소의 문 (파도 3) — 오라클은 그림자 스테이징(f_xv · f_xnum · f_xfr)이다.
-    // hi_fires · hi_entry_match · hi_needs_staging · lo_stages_only — 설치 핀의 전건 전수:
-    // 하류가 받을 수 있는(install.ready) 적법 HI ⇔ install.valid. 흡수(적법한데 없음) ·
-    // LO 발 커밋 · 빈 스테이징/번호 불일치의 커밋 · 거부된 사이클의 valid(= 조용한 드롭)를
-    // 이 한 등식이 막는다.
-    a_xhi_iff:    assert (hiu__io_install_valid == (xHold && hiu__installSlotFree));
-    a_xhi_part:   assert (hiu__io_install_part == A[8:7]);  // valid 무관 — ready 가 그 HI 의 파티션을 본다
-    // hi_commit_whole · hi_v_carried (문 절반) — 커밋 사이클의 핀 = 래치 LO ‖ HI 필드 ‖ 래치 번호.
-    // 권한 비트 배정 [30]=R · [29]=W · [28]=X 는 호스트 ABI 합의 입력이다 (XlateStaging.scala 머리).
-    a_xhi_fields: assert (!hiu__io_install_valid ||
-                          ({hiu__io_install_part, hiu__io_install_idx} == f_xnum && hiu__io_install_frame == f_xfr &&
-                           hiu__io_install_tag == D[27:0] && hiu__io_install_v == D[31] &&
+    // 변환 저장소의 문 (파도 3 · W3 재작성) — 오라클은 그림자 스테이징(f_xvv · f_xfv · f_xlp · f_xvpn · f_xfr)이다.
+    // commit_fires · commit_base_match · commit_needs_vpn · commit_needs_frame · commit_rsv_strict ·
+    // frame_stages_only — 설치 핀의 전건 전수: 하류가 받을 수 있는 주소 · 상태 적법 COMMIT 중 데이터
+    // 적법한 것 ⇔ install.valid. 흡수 · VPN/FRAME/VPN_HI 발 커밋 · 다른 기저/VPN 없음/FRAME 없는 V=1 ·
+    // [27:0] 비0 의 커밋 · 거부된 사이클의 valid(= 조용한 드롭)를 이 한 등식이 막는다.
+    a_xcm_iff:    assert (hiu__io_install_valid == (xHold && hiu__installSlotFree && !xDBad));
+    a_xcm_part:   assert (!xHold || hiu__io_install_part == f_xlp);  // valid 무관 — ready 가 그 COMMIT 의 파티션 슬롯을 본다
+    // commit_whole · commit_v_carried (문 절반) — 커밋 사이클의 핀 = 래치 VPN(칸 분할 idx = VPN[3:0] ·
+    // tag = VPN[31:4] — DP-1 직접 사상 · 조회와 같은 함수 XlateStore.idxOf/tagOf, 그 같음은 door.sby) ‖
+    // FRAME(V=1) ‖ COMMIT 권한 · V ‖ 래치 파티션. 권한 비트 배정 [30]=R · [29]=W · [28]=X 는 호스트 ABI.
+    a_xcm_fields: assert (!hiu__io_install_valid ||
+                          (hiu__io_install_part == f_xlp && hiu__io_install_idx == f_xvpn[3:0] &&
+                           hiu__io_install_tag == f_xvpn[31:4] && (!D[31] || hiu__io_install_frame == f_xfr) &&
+                           hiu__io_install_v == D[31] &&
                            hiu__io_install_perm_r == D[30] && hiu__io_install_perm_w == D[29] &&
                            hiu__io_install_perm_x == D[28]));
-    // D-2 — 수락되지 않은(정지된) 적법 HI 는 아무것도 움직이지 않는다 (문의 거절선 포함).
-    a_xstall_noeffect: assert (!(xHold && !hiu__installSlotFree) ||
-                               (!hiu__io_install_valid && !xstg_io_badWrite && !hiu__io_flush_valid));
+    // W3 (A) 조립 절반 — 정지 중(주소 · 상태 적법 COMMIT ∧ 슬롯 점유)에는 설치 · flush 핀이 서지 않고
+    // 문의 두 거절선도 서지 않는다 (:308 「정지 중에는 효과가 없고」). 버스가 하나뿐이라 정지 중 새
+    // 설치가 없다 — xlatestore.sby s_pend_bounded 의 전건 「설치가 오지 않는 동안」의 조립 쪽 이행.
+    a_xhold_quiet: assert (!(xHold && !hiu__installSlotFree) ||
+                           (!hiu__io_install_valid && !xstg_io_badWrite && !xstg_io_badData && !hiu__io_flush_valid));
     // flush_fires · flush_part_exists · flush_rsv_strict — 적법 XLATE_FLUSH ⇔ flush 핀 (같은 사이클,
     // ready 무관) · flush_scoped (문 절반) — 파티션 하나, 그 기입의 [7:0] 그 자체 (절단 별칭 없음).
     a_xflush_iff:  assert (hiu__io_flush_valid == (W && al && (A == 12'hE00) && partOk));
@@ -500,6 +542,19 @@ module Wt64Top_props (
                          rj__io_bankWr_valid == cfgBlk__io_bankWr_valid && rj__io_bankWr_lbid == cfgBlk__io_bankWr_lbid &&
                          rj__io_bankWr_mapped == cfgBlk__io_bankWr_mapped);
     a_bp_relief: assert (reasm__io_deliver_ready == cq__io_comp_ready && cq__io_comp_valid == reasm__io_deliver_valid);
+    // W3 — XlateDoor 결선 복제의 같음 (composite_wiring · DP-13 (C)): rtl/formal/sby/XlateDoor/door.sby 의
+    // XlateDoor_check 가 문 · 저장 사이에 복제한 결선이 실물 xlateArea 와 같다 — 설치 번들(idx = VPN[3:0] ·
+    // tag = VPN[31:4]) · flush · 워드 오프셋 · ready 덮어쓰기. 복제가 실물과 갈리면 door.sby 의 끝-끝
+    // 측정(정지 유계 · (a)(b))이 다른 기계를 잰 것이 된다 — 이 넷이 그 다리다(출력 쪽만 직접 — 입력 wrEnt · wrCtl · wdata · installReady 는 xlateArea_* 넷이라 간접: a_xcm_iff · a_xcm_fields · a_xhold_quiet · a_xflush_iff · a_ready_only_slot).
+    a_door_install: assert (hiu__io_install_valid == xstg_io_commit_valid && hiu__io_install_part == xstg_io_commit_part &&
+                            hiu__io_install_idx == xstg_io_commit_vpn[3:0] && hiu__io_install_tag == xstg_io_commit_vpn[31:4] &&
+                            hiu__io_install_frame == xstg_io_commit_frame && hiu__io_install_v == xstg_io_commit_v &&
+                            hiu__io_install_perm_r == xstg_io_commit_perm_r && hiu__io_install_perm_w == xstg_io_commit_perm_w &&
+                            hiu__io_install_perm_x == xstg_io_commit_perm_x);
+    a_door_flush:   assert (hiu__io_flush_valid == xstg_io_flush_valid && hiu__io_flush_part == xstg_io_flush_part);
+    a_door_woff:    assert (xstg_io_woff == A[8:2]);
+    a_door_ready:   assert (!(W && al && (rXent || rXctl)) ||
+                            io_mmio_ready == ((rXent && (xw == 5'd2) && xstg_io_needReady) ? hiu__installSlotFree : 1'b1));
     // hiu 의 요청 · hold · hostRsp 입력 핀 = 최상위 IO 그대로 (파도 4 W6 검토 — XlateObs.obs_read_pure 의 「조립 몫
     // 전부」가 이 열 핀을 요구한다: 읽기가 파이프라인을 잡거나 요청을 누르거나 응답을 먹는 변이 N15 · N16 · N22 가
     // 이 단언 전에는 세 태스크를 다 통과했다). 절단 입력 핀 열을 묶어 「재지 않는 핀」 hiu 10 → 0.
@@ -574,6 +629,13 @@ module Wt64Top_props (
     a_fpbad_rise:  assert (!(io_fault_fpCfgBadWrite && !$past(io_fault_fpCfgBadWrite)) || $past(fpBad));
     a_fpbad_hold:  assert (!($past(io_fault_fpCfgBadWrite) && !$past(clrF)) || io_fault_fpCfgBadWrite);
     a_fpbad_clear: assert (!$past(io_fault_fpCfgBadWrite && clrF && !fpBad) || !io_fault_fpCfgBadWrite);
+    // W3 — COMMIT 데이터 사유 거절의 원천별 sticky (DP-15 · fpBindArea 선례): 수락 사이클(슬롯 여유)의
+    // 데이터 사유 COMMIT 에서만 선다 · 발화 우선 · 비하강 · 0xF84[6] 해제 (IO 해제선 없음). 정지 중
+    // (슬롯 점유)의 데이터 사유 COMMIT 은 세우지 않는다 — 「수락 사이클에 거절된다」.
+    a_xbad_fire:   assert (!$past(xBadAcc) || io_fault_xlateCfgBadWrite);
+    a_xbad_rise:   assert (!(io_fault_xlateCfgBadWrite && !$past(io_fault_xlateCfgBadWrite)) || $past(xBadAcc));
+    a_xbad_hold:   assert (!($past(io_fault_xlateCfgBadWrite) && !$past(clrF)) || io_fault_xlateCfgBadWrite);
+    a_xbad_clear:  assert (!$past(io_fault_xlateCfgBadWrite && clrF && !xBadAcc) || !io_fault_xlateCfgBadWrite);
     // abort arm
     a_arm_src:  assert (stg_io_armed == $past(stg_io_armed) || $past(W && al && aTag));
     a_arm_set0: assert (!$past(W && al && (A == 12'hF40)) || stg_io_armed[0]);
@@ -648,22 +710,22 @@ module Wt64Top_props (
   always @(posedge clk) if (f_step) w17_resv_wr: cover ($past(W && al && A == 12'hFC0 && !io_fault_cfgSurfBadWrite) && !io_fault_cfgSurfBadWrite);
   // W18 ← XlateSurface.flush_fires · XlateSurface.flush_scoped · Wt64Top.xlate_surface · a_xflush_iff · a_xflush_part · a_xonehot — [무관] 0xE00 기입이 파티션 3 flush 핀을 세운다
   always @(posedge clk) if (f_step) w18_xflush3: cover (hiu__io_flush_valid && hiu__io_flush_part == 2'd3);
-  // W19 ← XlateSurface.hi_fires · XlateSurface.hi_commit_whole · XlateSurface.hi_v_carried · Wt64Top.xlate_surface · a_xhi_iff · a_xhi_fields — [의존: hiu__installSlotFree 핀 — 실물 근거 XlateStore_props.sv w8_slot_written (채움 슬롯이 비어 슬롯 여유가 선다)] V=0 HI 가 래치된 LO 프레임과 함께 설치 핀에 닿는다
-  always @(posedge clk) if (f_step) w19_xhi_v0: cover (hiu__io_install_valid && !hiu__io_install_v && hiu__io_install_frame != 32'd0);
-  // W20 ← Wt64Top.xlate_surface · a_ready_xhi · a_xstall_noeffect — [의존: hiu__installSlotFree 핀 — 실물 근거 XlateStore_props.sv w13_slot_busy (점유 중 슬롯 여유 하강)] HI 쓰기가 하류 거부로 버스를 정지시킨다
+  // W19 ← XlateSurface.commit_fires · XlateSurface.commit_whole · XlateSurface.commit_v_carried · Wt64Top.xlate_surface · a_xcm_iff · a_xcm_fields — [의존: hiu__installSlotFree 핀 — 실물 근거 XlateStore_props.sv w8_slot_written (채움 슬롯이 비어 슬롯 여유가 선다)] V=0 COMMIT 이 래치된 VPN 과 함께 설치 핀에 닿는다 (FRAME 없이도 — V=0 은 VPN 유효만 요구한다)
+  always @(posedge clk) if (f_step) w19_xcm_v0: cover (hiu__io_install_valid && !hiu__io_install_v && {hiu__io_install_tag, hiu__io_install_idx} != 32'd0 && !f_xfv);
+  // W20 ← Wt64Top.xlate_surface · a_ready_only_slot · a_xhold_quiet — [의존: hiu__installSlotFree 핀 — 실물 근거 XlateStore_props.sv w13_slot_busy (점유 중 슬롯 여유 하강)] 주소 · 상태 적법 COMMIT 쓰기가 하류 거부로 버스를 정지시킨다
   always @(posedge clk) if (f_step) w20_xstall: cover (xHold && !io_mmio_ready);
-  // W21 ← XlateSurface.hi_needs_staging · XlateSurface.reject_loud · Wt64Top.xlate_surface · a_surf_fire — [무관] reset 뒤 LO 없이(빈 스테이징) 온 HI(0xC04 — 래치 번호 reset 값 0 과 같은 항목)는 하류 상태와 무관하게 곧장 거절되고 조립 sticky 를 세운다
-  always @(posedge clk) if (f_step) w21_xhi_rej: cover ($past(W && al && A == 12'hC04 && !f_xv && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite);
+  // W21 ← XlateSurface.commit_needs_vpn · XlateSurface.reject_loud · Wt64Top.xlate_surface · a_surf_fire — [무관] reset 뒤 VPN 없이(빈 스테이징) 온 COMMIT(0xC08 — 래치 파티션 reset 값 0 과 같은 기저)은 하류 상태와 무관하게 곧장 거절되고 조립 sticky 를 세운다
+  always @(posedge clk) if (f_step) w21_xcm_rej: cover ($past(W && al && A == 12'hC08 && !f_xvv && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite);
   // W22 ← Wt64Top.xlate_surface · a_miss_clr — [무관] 0xE10 [0]=1 이 IO 해제선 없이 미적중 해제 핀을 세운다
   always @(posedge clk) if (f_step) w22_missclr: cover (hiu__io_missClear && !io_faultClear_hiuMiss);
   // W23 ← XlateSurface.flush_part_exists · XlateSurface.reject_loud · Wt64Top.xlate_surface · a_xflush_iff · a_surf_fire — [무관] 없는 파티션(4)의 XLATE_FLUSH 는 flush 핀 없이 조립 sticky 를 세운다
   always @(posedge clk) if (f_step) w23_xflush_rej: cover ($past(W && al && A == 12'hE00 && D == 32'd4 && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite && !$past(hiu__io_flush_valid));
-  // W24 ← XlateSurface.lo_stages_only · a_xhi_iff · a_surf_rise — [무관] 이미 찬 스테이징을 다른 번호·프레임의 LO 가 덮고 조용하다 (flush 핀도 조립 sticky 도 서지 않는다)
-  always @(posedge clk) if (f_step) w24_xlo_over: cover ($past(xLoW && f_xv && A[8:3] != f_xnum && D != f_xfr && !io_fault_cfgSurfBadWrite) && !io_fault_cfgSurfBadWrite && !$past(hiu__io_flush_valid));
-  // W25 ← XlateSurface.hi_fires · a_xhi_iff · a_xhi_fields — [의존: hiu__installSlotFree 핀 — 실물 근거 XlateStaging_props.sv w9_recommit (같은 LO 로 온 HI 둘이 둘 다 커밋 — 문 단독)] LO 없이 같은 항목의 HI 가 다시 커밋된다 (D-3 (1) 소진 없음 — 같은 임대 재커밋. flush 를 건넌 재커밋은 판정 T5 가 끊었다 — W29)
-  always @(posedge clk) if (f_step) w25_xrecommit: cover (hiu__io_install_valid && $past(hiu__io_install_valid, 2) && !$past(xLoW) && {hiu__io_install_part, hiu__io_install_idx} == $past({hiu__io_install_part, hiu__io_install_idx}, 2));
-  // W26 ← XlateSurface.hi_entry_match · XlateSurface.reject_loud · a_xhi_iff · a_surf_fire — [무관] 스테이징된 번호와 다른 항목의 HI 가 거절되고 조립 sticky 를 세운다
-  always @(posedge clk) if (f_step) w26_xhi_mismatch: cover ($past(xHiW && f_xv && A[8:3] != f_xnum && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite);
+  // W24 ← XlateSurface.frame_stages_only · a_xcm_iff · a_surf_rise — [무관] FRAME 까지 찬 스테이징을 다른 파티션 · VPN 의 VPN 기입이 덮고 조용하다 (flush 핀도 조립 sticky 도 서지 않는다)
+  always @(posedge clk) if (f_step) w24_xvpn_over: cover ($past(xVpnW && f_xvv && f_xfv && xp != f_xlp && D != f_xvpn && !io_fault_cfgSurfBadWrite) && !io_fault_cfgSurfBadWrite && !$past(hiu__io_flush_valid));
+  // W25 ← XlateSurface.commit_fires · a_xcm_iff · a_xcm_fields — [의존: hiu__installSlotFree 핀 — 실물 근거 XlateStaging_props.sv w9_recommit (같은 스테이징으로 온 COMMIT 둘이 둘 다 커밋 — 문 단독)] VPN 없이 같은 항목의 COMMIT 이 다시 커밋된다 (e-defined.typ:306 「커밋은 스테이징을 소진하지 않는다」. flush 를 건넌 재커밋은 W40 이 끊는다)
+  always @(posedge clk) if (f_step) w25_xrecommit: cover (hiu__io_install_valid && $past(hiu__io_install_valid, 2) && !$past(xVpnW) && {hiu__io_install_part, hiu__io_install_tag, hiu__io_install_idx} == $past({hiu__io_install_part, hiu__io_install_tag, hiu__io_install_idx}, 2));
+  // W26 ← XlateSurface.commit_base_match · XlateSurface.reject_loud · a_xcm_iff · a_surf_fire — [무관] 래치 파티션과 다른 기저의 COMMIT 이 곧장 거절되고 조립 sticky 를 세운다
+  always @(posedge clk) if (f_step) w26_xcm_mismatch: cover ($past(xCmW && f_xvv && xp != f_xlp && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite);
   // W27 ← XlateSurface.flush_rsv_strict · XlateSurface.reject_loud · a_xflush_iff · a_surf_fire — [무관] 실재 파티션이지만 [31:8] 비0 인 XLATE_FLUSH 는 flush 핀 없이 조립 sticky 를 세운다
   always @(posedge clk) if (f_step) w27_xflush_rsv: cover ($past(W && al && A == 12'hE00 && D[31:8] != 24'd0 && D[7:0] < 8'd4 && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite && !$past(hiu__io_flush_valid));
   // W28 ← Wt64Top.word_reserved_strict · Wt64Top.abort_surface · AbortSurface.reject_loud · AbortSurface.legal_first · a_surf_fire · a_arm_rej1 — [무관] ABORT_TAG1 [26] trace 비0 정렬 쓰기는 조립 sticky 를 세우고 무장 [1] 을 세우지 않는다
@@ -691,10 +753,10 @@ module Wt64Top_props (
   always @(posedge clk) if (f_step) w37_xvpn_hi: cover ($past(R && al && A == 12'hE0C && hiu__missStall && hiu__missVpn != 32'd0) && io_mmio_rvalid && io_mmio_rdata == 32'd0);
   // W38 ← XlateObs.obs_no_residue · XlateObs.obs_sticky · a_rd_xstatus — [의존: hiu__missStall · hiu__io_missNotice 핀 — 실물 근거 HiuMask_props.sv w20_after_zero · w21_sticky_holds] 정지가 없는데 sticky 가 선 채의 STATUS 읽기 — [0] 0 · [1] 1 · 파티션 0 (두 비트가 갈린다)
   always @(posedge clk) if (f_step) w38_xstatus_after: cover ($past(R && al && A == 12'hE04) && io_mmio_rvalid && !io_mmio_rdata[0] && io_mmio_rdata[1] && io_mmio_rdata[15:8] == 8'd0);
-  // W39 ← XlateObs.obs_read_pure · a_miss_clr · a_hiu_pass — [무관] STATUS 읽기 사이클에 IO 해제선 없이 미적중 해제 핀도 flush 핀도 서지 않는다 (읽기는 해제 명령을 내지 않는다 — 설치 핀은 콘에 절단 핀 hiu__installSlotFree 가 들어 여기 넣지 않는다: a_xhi_iff 가 W 를 전건에 든다)
+  // W39 ← XlateObs.obs_read_pure · a_miss_clr · a_hiu_pass — [무관] STATUS 읽기 사이클에 IO 해제선 없이 미적중 해제 핀도 flush 핀도 서지 않는다 (읽기는 해제 명령을 내지 않는다 — 설치 핀은 콘에 절단 핀 hiu__installSlotFree 가 들어 여기 넣지 않는다: a_xcm_iff 가 W 를 전건에 든다)
   always @(posedge clk) if (f_step) w39_xread_pure: cover (R && al && A == 12'hE04 && !io_faultClear_hiuMiss && !hiu__io_missClear && !hiu__io_flush_valid);
-  // W40 ← XlateSurface.flush_drops_staging · XlateSurface.hi_needs_staging · XlateSurface.reject_loud · a_xhi_iff · a_surf_fire — [무관] 래치 파티션의 적법 XLATE_FLUSH 가 스테이징을 비운 뒤(그림자: 유효 0 · 번호 ≠ reset 값 0 — 번호는 LO 로만 바뀌고 LO 는 유효를 세우므로 그 조합은 flush 하강뿐이다) 같은 번호의 HI 가 거절되고 조립 sticky 를 세운다 — 판정 전 RTL 이 옛 프레임을 커밋하던 입력 (판정 T5 (a))
-  always @(posedge clk) if (f_step) w40_xflush_ends: cover ($past(xHiW && !f_xv && (f_xnum != 6'd0) && (A[8:3] == f_xnum) && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite);
+  // W40 ← XlateSurface.flush_drops_staging · XlateSurface.commit_needs_vpn · XlateSurface.reject_loud · a_xcm_iff · a_surf_fire — [무관] 래치 파티션의 적법 XLATE_FLUSH 가 스테이징을 비운 뒤(그림자: VPN 유효 0 · VPN ≠ reset 값 0 — VPN 값은 VPN 기입으로만 바뀌고 그 기입은 유효를 세우므로 그 조합은 flush 하강뿐이다) 같은 기저의 COMMIT 이 거절되고 조립 sticky 를 세운다 — 판정 전 RTL 이 옛 스테이징을 커밋하던 입력 (판정 T5 (a) · (f) 7항)
+  always @(posedge clk) if (f_step) w40_xflush_ends: cover ($past(xCmW && !f_xvv && (f_xvpn != 32'd0) && (xp == f_xlp) && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite);
   // ── W1 증인 (3.10 v1.0 묶음 — FAULT_STATUS [19] · 0xFF8 HIU_SHAPE · 0xEC4 MASK_DUP_CAPTURE) ──
   // W41 ← MmioPage.ro_rejected · Wt64Top.hiu_shape · a_surf_fire — [무관] HIU_SHAPE(0xFF8) 정렬 쓰기가 조립 sticky 를 처음 세운다 (예약 관대였던 HEAD 의 반전 — uResv 축소의 절단 무관 증인)
   always @(posedge clk) if (f_step) w41_shape_wr: cover ($past(W && al && A == 12'hFF8 && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite);
@@ -711,6 +773,18 @@ module Wt64Top_props (
   // W47 ← Wt64Top.fault_clear_routing · a_fclr_b19 · a_rd_pure — [무관] 0xF84 [19] 수락 기입이 IO 해제선 없이 [19] 해제 핀을 세우고, 0xEC4 읽기 사이클에는 해제 핀이 서지 않는다
   always @(posedge clk) if (f_step) w47_fclr_b19: cover (W && al && A == 12'hF84 && D == 32'h0008_0000 && hiu__faultOwnClear);
   always @(posedge clk) if (f_step) w47_read_pure: cover (R && al && A == 12'hEC4 && !io_faultClear_maskNonceDup && !mask__io_faultClearNonceDup && !hiu__faultOwnClear);
+  // ── W3 증인 (3.10 v1.0 묶음 — 형상 비노출 0xC00 문) ──
+  // W48 ← XlateSurface.commit_needs_frame · XlateSurface.reject_loud · a_xbad_fire · a_xbad_rise — [의존: hiu__installSlotFree 핀 — 실물 근거 XlateStaging_props.sv w18_no_frame (수락 사이클의 데이터 사유 거절)] FRAME 없는 V=1 COMMIT 이 수락되어 원천별 sticky 를 처음 세우고 조립 sticky 는 서지 않는다
+  always @(posedge clk) if (f_step) w48_xbad_noframe: cover ($past(xBadAcc && !f_xfv && D[31] && D[27:0] == 28'd0 && !io_fault_xlateCfgBadWrite && !io_fault_cfgSurfBadWrite) && io_fault_xlateCfgBadWrite && !io_fault_cfgSurfBadWrite);
+  // W49 ← XlateSurface.rsvw_rejected · XlateSurface.reject_loud · a_surf_fire — [무관] 래치 기저의 예약-엄격 워드(+0x7C) 정렬 쓰기가 조립 sticky 를 처음 세운다 (W3 전 RTL 은 그 자리를 LO/HI 로 수락했다)
+  always @(posedge clk) if (f_step) w49_xrsvw: cover ($past(xRsW && (xw == 5'd31) && xPair && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite);
+  // W50 ← XlateSurface.vpnhi_strict · XlateSurface.reject_loud · a_surf_fire — [무관] 래치 기저의 비0 VPN_HI 정렬 쓰기가 조립 sticky 를 처음 세운다
+  always @(posedge clk) if (f_step) w50_xvpnhi: cover ($past(xVhW && xPair && D != 32'd0 && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite);
+  // W51 ← XlateSurface.frame_pair_check · XlateSurface.reject_loud · a_surf_fire — [무관] VPN 이 래치된 기저와 다른 기저의 FRAME 정렬 쓰기가 조립 sticky 를 처음 세운다
+  always @(posedge clk) if (f_step) w51_xframe_pair: cover ($past(xFrW && f_xvv && xp != f_xlp && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite);
+  // W52 ← XlateSurface.vpn_drops_frame · XlateSurface.commit_rsv_strict · a_xbad_fire · a_xcm_iff — [의존: hiu__installSlotFree 핀 — 실물 근거 XlateStaging_props.sv w17_vpn_drops · w23_cm_rsv] FRAME 까지 찬 스테이징에 VPN 을 다시 쓴 뒤의 V=1 COMMIT · 또는 [27:0] 비0 COMMIT 이 수락되어 설치 핀 없이 원천별 sticky 를 세운다
+  always @(posedge clk) if (f_step) w52_xbad_vpn_drops: cover ($past(xBadAcc && D[31] && !f_xfv && D[27:0] == 28'd0 && !io_fault_xlateCfgBadWrite) && $past(xVpnW && f_xfv, 2) && io_fault_xlateCfgBadWrite);
+  always @(posedge clk) if (f_step) w52_xbad_rsv: cover ($past(xBadAcc && f_xfv && D[27:0] != 28'd0 && !hiu__io_install_valid && !io_fault_xlateCfgBadWrite) && io_fault_xlateCfgBadWrite);
 `endif
 endmodule
 

@@ -1,0 +1,119 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# 변환 저장소의 문 → 표 끝-끝 — XlateStaging + XlateStore + Wt64Top xlateArea 결선 복제의 합성 측정
+# (3.10 v1.0 묶음 RTL 파도 W3, 2026-10-13 · 설계 결정 DP-13 (C)).
+# 선-formal 계약: rtl/formal/tla/XlateSurface.tla — Inv_AtMostOneValidPerVpn(HIU-4) · Prop_V0Misses(HIU-2
+# V=0 축) · Prop_V1Hits · Prop_StallEnds 와 가드 commit_replaces_vpn · stall_independent.
+#
+# PROVES: XlateSurface.commit_replaces_vpn — 끝-끝 (bmc 깊이 16 유계 — 무계 증명은 미수렴, 「엔진」): 같은 (파티션, VPN) 의 커밋은 앞 항목을 대체한다 — 키 조회가 적중하면 값은 언제나 그 키의 마지막 커밋 값이고 정본상 유효다 (d_hit_sound — 재커밋 뒤 옛 값 적중 · V=0 뒤 남은 칸 적중 · 다른 VPN 의 값 적중이 전부 여기서 깨진다) · V=1 커밋 뒤 같은 파티션의 다른 커밋 · flush 없이 키 조회는 적중한다 (d_hit_live — (a)) · V=0 커밋 뒤 키 조회는 미적중이다 (d_hit_sound — (b), 증인 W4). 설치 분할(idx = VPN[3:0] · tag = VPN[31:4])은 Wt64Top xlateArea 의 복제이고 실물과의 같음은 Wt64Top/assembly.sby composite_wiring (a_door_install)
+# PROVES: XlateSurface.stall_independent — 끝-끝 · 시간 상한(DP-21): 주소 · 상태 적법 COMMIT 이 ready 0 을 보는 연속 사이클은 F_N = 4(형상 파티션 수)를 넘지 않는다 (d_stall_bounded) — 조회 입력이 자유인 위에서(미적중 쪽이 무엇을 하든) · ready 를 내리는 것은 그 COMMIT 뿐이다 (d_ready_only_commit) · 증인 W5 · W6. 저장 블록 단독의 대기 줄 유계는 xlatestore.sby s_pend_bounded
+# VERIFIES: XlateDoor.stall_bounded — 정본 e-defined.typ:308 「정지는 *장치 의무로서 유계 시간 안에 풀린다*」 의 RTL 측정: 정지 유계 상수 = xlateParts (DP-21 — 정본은 상수를 걸지 않는다 · 3.9 사실로 적는다). 구조상 대기 채움 줄 ≤ 1 이라 실제 정지는 1 사이클이다 (근거: XlateStore_props.sv W14 주석 · xlatestore.sby 「W3」 절 — 단언 상수 F_N = 4 는 느슨한 상한이고, drain 을 2–3 사이클 늦추는 결함은 이 단언을 통과한다)
+#
+# ## 왜 이 태스크가 있는가 (DP-13 (C))
+#
+# Y4 r2 #5 · 합의 r2-ack §2 #5 가 하류 정지 유계를 「xlatestore.sby 와 assembly.sby 양쪽에」 요구했다.
+# assembly 는 hiu(XlateStore 내장)를 절단하므로 installSlotFree 가 자유 핀이라 유계를 원리적으로 잴 수
+# 없다 — 「보증하지 않는 것」 (m). 절단을 건드리거나(무결성 핀 ① 14 · ② assume 0 의 서명 개정) 가정-보증
+# (B)을 들이지 않고, 문 · 저장 · 결선 복제만 남긴 별도 합성 태스크로 그 몫을 실측으로 채운다. 조립
+# 쪽은 assembly 의 (A) 절반(a_xhold_quiet · a_ready_only_slot)과 결선 등식(composite_wiring)이 든다.
+#
+# ## 부착 — 래퍼 인스턴스 (bind 없음)
+#
+# XlateDoor_check 가 XlateStaging 과 XlateStore 를 직접 인스턴스하고 xlateArea 결선을 복제한다
+# (하네스 머리). 두 모듈은 Wt64Top.sv 안에 있다 — `prep -top XlateDoor_check` 가 나머지 모듈을 지운다
+# (XlateStaging/props.sby 선례). XlateStore 의 HiuPipeline 내장본과 Wt64Top 내장본은 같은 생성기 판이다.
+#
+# ## 이 태스크가 재지 않는 것
+#
+#   · 판정 시점 — 「에지 뒤에 판정되는 조회」의 래치 범위는 XlateObs · hiumask.sby (이 하네스의 조회는
+#     XlateStore 포트의 같은 사이클 조합 응답이다).
+#   · 조립 결선의 실물 — 복제와 실물의 같음은 assembly composite_wiring. 파티션 2 형상의 조립은 어느
+#     태스크도 재지 않는다 (assembly 「(g)」).
+#   · 미적중 정지 해제 (d) — 파이프라인 몫 (hiumask.sby).
+#   · 형상 ≠ 참조 형상(색인 ≠ 16 · DP-23 — 선택 · 이월). idx/tag 비트 폭은 기본 형상 값이다.
+#
+# ## 엔진 · 깊이 — z3 를 쓰지 않는다
+#
+# 저장 Mem(64 × 63b)과 채움 슬롯 넷이 들어 상태가 크다. smtbmc z3 는 큰 하네스에서 웨지한다(engine.sby ·
+# hiumask.sby 실측 — 메모리 「솔버 실명 함정」). 그래서 bmc · cover 는 btor btormc, prove_stall 은 abc pdr(그림자 ·
+# 추적 키 오라클의 일치를 귀납 불변식으로 스스로 찾는다 — 포트만 보는 하네스라 k-귀납은 도달 불가
+# 상태에서 거짓 반례를 낸다: props.sby 머리와 같은 근거). cover 의 btormc 는 hiumask 선례다.
+# bmc 에 abc bmc3 을 쓰지 않는 이유 — 저장 Mem 을 비트로 풀어 깊이마다 시간이 두 배가 됐다(실측: R 초안
+# 스냅숏에서 bmc3 깊이 10 에 427 초 · btormc 깊이 11 에 약 1 분).
+# prove 는 정지 축만 든다(prove_stall — 하네스 매크로 XLATEDOOR_STALL, R 초안 생성물에서 abc pdr 2 초 PASS).
+# 넷을 한 pdr 에 들면 프레임 3 에서 10 분 넘게 전진하지 않았다(실측). **표 축(d_hit_sound · d_hit_live)의 무계
+# 증명은 미수렴이다** — 매크로 XLATEDOOR_HIT(조회 주소 = 추적 키 assume 을 더한 판)로 abc pdr 가 29 분 동안
+# 프레임 3 에서 멈췄고(추적 키를 한 칸으로 고정한 판도 같다), btormc -kind 는 k = 20 까지 귀납을 닫지 못한 채
+# 25 분 timeout 이었다 (W3 하네스 초안 실측 — UNKNOWN 은 통과가 아니다). 포트만 보는 오라클이라 귀납 불변식이
+# 저장 Mem 64 줄 × 추적 키의 관계를 요구한다. 그래서 표 축은 bmc 깊이 16(유계)이 재고, 반증력은 아래 변이 ·
+# HEAD 대조가 든다 — 무계 증명은 착지 결정 대기 (XlateStore 내부 탭 보조 불변식 · 형상 축약 중 택일). 가장 깊은 증인(W3 — VPN · FRAME · COMMIT · FRAME · COMMIT · 이관 · 조회)이 reset 뒤
+# 9 사이클 안이다. bmc 16 · cover 16.
+#
+# ## W3 — 역-변이 표 (비상주 실측, 2026-10-13 후-formal 통합)
+#
+# 사본(생성물 Wt64Top.sv 의 XlateStaging · XlateStore 한 식)에서. 단언은 하나만 남긴 bmc(btor btormc 깊이 12),
+# 증인은 cover 하나만 남긴 태스크 일곱(btor btormc 깊이 16 — btormc 요약은 어느 cover 가 닿았는지 이름을 싣지
+# 않으므로 하나씩 가른다). 무변이: 단언 넷 PASS · 증인 7/7.
+#
+#   변이 (사본의 한 식)                                 죽는 단언              미도달 증인
+#   V_ALWAYS     커밋이 validBits 를 늘 1 로 (V 무시)       d_hit_sound            —
+#   NO_TAG       저장 적중이 태그를 안 본다                 d_hit_sound            W7
+#   FILL_NO_V    채움 적중이 줄의 v 를 안 본다              d_hit_sound            W4
+#   NO_SHADOW    대기 줄이 옛 저장 판을 안 가린다           d_hit_sound            W4
+#   NEVER_VALID  커밋이 validBits 를 늘 0 으로              d_hit_live             W2 · W3 · W7
+#   NO_STOREHIT  저장 적중 없음                            d_hit_live             W2 · W3 · W7
+#   NO_FILLHIT   채움 적중 없음                            d_hit_live             W1
+#   NO_EVICT     다른 태그가 산 칸은 덮지 않는다 (2-way 흉내)  d_hit_live             W7
+#   RECOMMIT_KILLS 산 칸의 같은 태그 · 다른 프레임 재커밋이 유효를 내린다  d_hit_live  W3
+#   STALL_LOOKUP commitFire 에 「¬조회 유효」 (조회가 커밋을 막는다)  d_stall_bounded  W5
+#   BD_ZERO      문의 badData 상수 0                       —                      W6
+#   NEED_RDY     needReady 에 installReady (정지 비가시)    d_hit_live · d_hit_sound  W5 · W6
+#   DM_RDY       (이중) needReady = 모든 COMMIT + 채움 커밋 격사이클 지연  d_ready_only_commit  —
+#   NEED_NOPAIR · NEED_VPN  (문 단독 needReady 변이)        생존 — 이 합성에서 등가: ready 덮어쓰기 복제가 isCommit 으로
+#                거르고, 채움 대기는 1 사이클이라 그 사이에 같은 파티션의 비적법 COMMIT 이 올 수 없다 (문 단독
+#                p_need_iff 가 잡는다). 그래서 d_ready_only_commit 의 단독 사살은 대기를 늘리는 이중 변이다.
+#
+# 증인 W2 는 단독 사살 변이가 원리적으로 없다 — W3 의 궤적이 같은 사이클에 W2 의 조건(키 산 채 저장 적중)을
+# 늘 만족한다(재커밋 직후 1 사이클은 그 파티션 슬롯이 차 있어 다른 커밋이 끼지 못한다). W3 · W7 은 이
+# 통합에서 강화했다 — 앞판은 RECOMMIT_KILLS · NO_EVICT · NO_TAG 아래 축출 뒤 재설치 · V=0 무효화 · 미설치
+# 경로로 도달했다 (재커밋/축출 사이클에 키가 실제로 적중하고 있어야 한다).
+# HEAD(aa91e86) 음성 대조: 직접 부착 ERROR (`io_badData` 포트 없음). HEAD 문을 새 포트 꼴로 감싼 어댑터
+# (commit.vpn = {tag, idx} · badData = 0) + HEAD 저장 위에서 d_hit_sound · d_hit_live FAIL (HEAD 문은 호스트가
+# 색인을 고르는 LO/HI 표면이라 같은 버스 이력이 다른 칸 · 다른 커밋을 낸다) · d_stall_bounded · d_ready_only_commit PASS.
+
+[tasks]
+bmc
+prove_stall
+cover
+
+[options]
+bmc: mode bmc
+bmc: depth 16
+prove_stall: mode prove
+cover: mode cover
+cover: depth 16
+multiclock off
+# 반례 재생(aiger → 트레이스) 전용 — 판정 엔진이 아니다 (props.sby 선례). 없으면 abc 의 FAIL 이 트레이스 없는 ERROR 가 된다.
+prove_stall: aigsmt z3
+timeout 1800
+
+[engines]
+bmc: btor btormc
+prove_stall: abc pdr
+cover: btor btormc
+
+[script]
+# 증인(cover)은 cover 태스크에서만 컴파일한다 — bmc 모델은 단언 넷 전부, prove_stall 은 정지 축 둘만 든다
+# (하네스 「prove 태스크 둘」 · 위 「엔진」).
+bmc:         read_verilog -sv -formal XlateDoor_props.sv
+prove_stall: read_verilog -sv -formal -DXLATEDOOR_STALL XlateDoor_props.sv
+cover:       read_verilog -sv -formal -DXLATEDOOR_COVER XlateDoor_props.sv
+read_verilog -sv -formal Wt64Top.sv
+prep -top XlateDoor_check
+
+# [files] 경로는 저장소 루트 기준이다 — sby 는 상대 경로를 sby 파일이 아니라
+# *호출 cwd* 기준으로 푼다.
+[files]
+rtl/generated/Wt64Top.sv
+rtl/sv/assert/XlateDoor_props.sv

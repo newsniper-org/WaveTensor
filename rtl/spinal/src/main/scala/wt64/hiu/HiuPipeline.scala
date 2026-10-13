@@ -193,7 +193,7 @@ class HiuPipeline(val cfg: Wt64Config = Wt64Config()) extends Component {
       val tag   = in port UInt(tagW bits)
       val frame = in port UInt(FRAME_W bits)
       val perm  = in port XlatePerm()
-      val v     = in port Bool() // XLATE_ENTRY_HI [31] — 통과만 한다 (0 = 단일 항목 무효화)
+      val v     = in port Bool() // XLATE_ENTRY_COMMIT [31] — 통과만 한다 (0 = 단일 항목 무효화)
     }
     /** 파티션 flush — XlateStore 로 통과 (§3.6.3). */
     val flush = new Bundle {

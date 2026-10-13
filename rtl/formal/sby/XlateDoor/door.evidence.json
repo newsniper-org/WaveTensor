@@ -1,0 +1,55 @@
+{
+  "anchors": [
+    "XlateSurface.commit_replaces_vpn",
+    "XlateSurface.stall_independent"
+  ],
+  "at": "2026-10-13T13:55:48Z",
+  "cover": {
+    "reached": 7,
+    "reached_names": [
+      "w1_hit_fill",
+      "w2_hit_store",
+      "w3_replace",
+      "w4_v0_miss",
+      "w5_stall_release",
+      "w6_bad_after_stall",
+      "w7_evicted"
+    ],
+    "unreached": 0,
+    "unreached_names": []
+  },
+  "inputs": {
+    "rtl/generated/Wt64Top.sv": "2b3aeb9bbb0e62647626ac9f76996491687b72776068898db891699c443a4312",
+    "rtl/sv/assert/XlateDoor_props.sv": "1ac9ae966f472d93e0835837ff99047a997571f76479627cf97c8d8828db18c9"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 4,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 7,
+      "mode": "cover"
+    },
+    "prove_stall": {
+      "assert": 2,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
+  },
+  "sby": "rtl/formal/sby/XlateDoor/door.sby",
+  "sby_sha256": "914f0b9d36fa363cce0c5715013d51a8412cfb1bafc343e03d9f4ddc29cf4b5b",
+  "schema": "wt64-postformal-evidence/2",
+  "tasks": "bmc:PASS cover:PASS prove_stall:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
+}

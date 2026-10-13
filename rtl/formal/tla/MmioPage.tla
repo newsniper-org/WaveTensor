@@ -141,6 +141,10 @@
 \*   gate   쓰기가 유닛 ready 를 기다리는 WO 워드 (FP_PROG · FP_BIND — 선택자 표 소거)
 \*   gateR  읽기·쓰기 모두 유닛 ready 를 기다리는 RW 워드 (사상표 — 초기화 소거 · CHECK)
 \*   nocons 소비 회로 없는 RW 워드 (0x300/0x304 · 0x380/0x384 · 0x388 · 0x390)
+\*          · 3.10 v1.0 묶음의 0xC00 예약-엄격 28 워드(기저마다 +0x10..+0x7C — XlateSurface 의 rsvw)도 처분이 같다(쓰기 거절 + [6] · 읽기 0)
+\*            — 근거는 e:743 이 아니라 e-defined.typ:308 「*표의 워드로 등재한다* — 쓰기는 거절 + `[6]`, 읽기는 0」 ·
+\*            03-hiu.typ:828 「*명시 예외 — `0xC00` 구역의 예약-엄격 워드.*」. W3 전 RTL(aa91e86)은 이 자리를 앞판 색인 2–15 의
+\*            LO/HI 로 수락해 스테이징 · 커밋한다 — NoConsPolicy 의 대안(흡수 · 저장) 밖의 넷째 처분이고 짝은 XlateSurface 의 rsvw_rejected 삭제 run 이다
 \*   resv   표에 없는 워드 오프셋 (3.7 예약)
 \*   leg    물려받은 0x000–0x11F
 \* 요청의 bad 는 「워드 안의 거절 사유」다 — 정의 부류(rw · cqsz · wo · gate · gateR)에서만

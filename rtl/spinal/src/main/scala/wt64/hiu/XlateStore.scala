@@ -3,14 +3,14 @@
 //
 // WT64v1 재구현 — 변환 저장 블록 + 채움 경로 (정본 §3.6 전부 · 부록 E.2 · E.3).
 //
-// 선-formal 계약: rtl/formal/tla/XlateStore.tla (HIU-1~4 축) +
+// 선-formal 계약: rtl/formal/tla/XlateStore.tla (HIU-1~3 축 · HIU-4 는 XlateSurface) +
 // rtl/formal/tla/Isolation.tla 의 저장·채움 축 (SEC-4). 승인 축 5가드
 // (approve_gates_value · no_early_forward · query_offpath · query_no_serve ·
 // coh_no_shortcut)는 착지한 HiuPipeline.scala 의 CHECK 로 이관됐다.
 //
 // GUARD-MAP: XlateStore.valid_check        -> storeHit = lookup.valid ∧ storeValid ∧ 태그 일치 ∧ ¬fillShadow — storeValid(validBits(part)(idx)) 가 논리곱의 항이고, rsp.frame/rsp.perm 은 hit 인 가지에서만 구동된다 (miss 시 0). 채움 줄은 fillLine.v 가 논리곱의 항이다 (V=0 줄은 적중하지 않는다)
 // GUARD-MAP: XlateStore.partition_check    -> entryAddr = lookup.part @@ reqIdx — 저장 주소 상위가 요청 파티션 그 자체라 남의 파티션 항목은 조회 주소 공간에 존재하지 않는다. validBits·fillSlot 도 part 로 색인된다
-// GUARD-MAP: XlateStore.flush_keeps_data   -> flush 는 validBits(flush.part) := 0 (와 자기 파티션 채움 버퍼 취하) 만 수행 — store Mem 에는 flush 에서 비롯한 쓰기 포트 자체가 없다. 태그·데이터는 남는다 (§3.6.3)
+// GUARD-MAP: XlateStore.flush_keeps_data   -> flush 는 validBits(flush.part) := 0 (자기 파티션 채움 버퍼 취하는 방어 중복 — 대기 채움 ≤ 1 이 그 사이클 커밋으로 빠지고 flush 대입이 마지막이라 이미 성립, 아래 flush 블록) 만 수행 — store Mem 에는 flush 에서 비롯한 쓰기 포트 자체가 없다. 태그·데이터는 남는다 (§3.6.3)
 // GUARD-MAP: Isolation.install_scoped      -> 커밋 주소 = commitSel @@ 그 슬롯의 idx — 버퍼 슬롯 번호가 곧 파티션이므로 기입이 자기 파티션 밖 항목 주소를 만들 수 없다 (구조 보장)
 // GUARD-MAP: Isolation.capacity_partitioned -> 직접 사상 + validBits 는 파티션별 레지스터, Mem 주소 상위 = 파티션 — q 의 설치·커밋·flush 가 p 구간의 유효 비트·주소를 건드릴 경로가 구조적으로 없다 (축출이 경계를 못 넘는다)
 // GUARD-MAP: Isolation.fill_tagged         -> fillHit 는 fillSlot(lookup.part) 하나만 후보로 삼는다 — 타 파티션 슬롯은 아예 조회되지 않고(파티션 검사의 구조화), idx·tag 일치와 줄의 v 가 논리곱의 항이다
@@ -42,20 +42,20 @@ import spinal.core._
 import spinal.lib._
 import wt64._
 
-/** 지역 폭 정의 — 정본이 폭을 확정하지 않은 자리의 확정 지점.
-  *
-  * 부록 E.2 가 못박은 것: 항목 폭 8 B, 페이지 4 KiB 고정, 필드는
-  * {유효 1b, 태그(가상 주소 상위), 물리 프레임, 권한 r·w·x}.
-  * 가상·물리 주소의 전체 폭은 정본 어디에도 없다 — 그래서 여기서 정하고
-  * 보고서 model_feedback 으로 되돌린다 (§6.3 「모델에 없는 결정은 모델로」):
-  *
-  *   VA_W = PA_W = 44. 근거: 기본 형상(파티션 4 × 색인 16)에서 항목이
-  *   정확히 8 B 를 채운다 — 유효 1 + 권한 3 + 태그 28 + 프레임 32 = 64b.
-  *   예약 비트를 만들지 않는 선택이다 (「예약」은 §3.7/§5.6 이 경고한
-  *   양의성 있는 낱말이라, 없는 편이 가장 싸다).
-  *
-  * Common.scala 는 수정 금지라 지역 정의다 — promote 후보. */
+/** 지역 폭 정의와 VPN 분할 — 정본이 폭을 확정하지 않은 자리의 확정 지점 (Common.scala 수정 금지 —
+  * promote 후보). VA_W = PA_W = 44 의 근거: 표면이 VPN 32b · FRAME 32b 이고 페이지가 4 KiB
+  * 고정이라 44b 가 유도된다 (E.2 해설). 항목의 저장 폭은 형상이다 — 호스트 계약이 아니다.
+  * 분할(칸 = VPN 하위 idxW 비트 · 태그 = 나머지 — 직접 사상 · 연관도 1, DP-1)은 이 한 정의다:
+  * 조회(reqIdx · reqTag)와 커밋 결선(Wt64Top xlateArea — 문은 VPN 32b 를 낸다)이 같은 함수를
+  * 부르므로 같은 VPN 은 같은 칸으로 가서 덮인다 (결과 (a)(b) 의 정합이 여기에 기댄다). */
 object XlateStore {
+  /** 칸 색인 = VPN 하위 idxW 비트. */
+  def idxOf(vpn: UInt, idxW: Int): UInt = vpn(idxW - 1 downto 0)
+  /** 저장 태그 = VPN 의 나머지 위 비트. */
+  def tagOf(vpn: UInt, idxW: Int): UInt = vpn(vpn.getWidth - 1 downto idxW)
+  /** 파티션당 저장 칸 수 — 직접 사상이라 색인 수 (0xFF8 HIU_SHAPE `[23:8]` 의 출처). */
+  def capPerPart(cfg: Wt64Config): Int = cfg.xlateIdx
+  // ── 폭 ──
   /** 가상 주소 폭 (비트). */
   val VA_W = 44
   /** 물리 주소 폭 (비트). */
@@ -95,7 +95,7 @@ case class XlateFillLine(idxW: Int, tagW: Int, frameW: Int) extends Bundle {
   val tag   = UInt(tagW bits)
   val frame = UInt(frameW bits)
   val perm  = XlatePerm()
-  val v     = Bool() // XLATE_ENTRY_HI [31] — 커밋이 유효 비트에 그대로 싣는다 (0 = 단일 항목 무효화)
+  val v     = Bool() // XLATE_ENTRY_COMMIT [31] — 커밋이 유효 비트에 그대로 싣는다 (0 = 단일 항목 무효화)
 }
 
 /** 변환 저장 블록 + 채움 경로.
@@ -127,10 +127,10 @@ class XlateStore(val cfg: Wt64Config = Wt64Config()) extends Component {
   private val idxW  = log2Up(cfg.xlateIdx)
   private val tagW  = VPN_W - idxW
 
-  // 부록 E.2: 항목 폭 8 B. 유효 1b 는 레지스터에 살지만 항목 폭 계산에는
-  // 포함된다 — 폭이 넘치면 E.2 위반이므로 elaborate 에서 죽는다.
-  require(1 + 3 + tagW + FRAME_W <= 64,
-    "변환 항목이 8 B 를 넘는다 — 부록 E.2 (유효 1 + 권한 3 + 태그 + 프레임)")
+  // 옛 require 「유효 1 + 권한 3 + 태그 + 프레임 ≤ 64b」(앞판 E.2 의 항목 폭 8 B)는 지웠다 —
+  // 항목의 저장 폭은 이제 형상이다(E.2). 그 require 가 색인 < 16 형상(태그 > 28b)을 막고 있었다.
+  // 저장 줄 폭은 tagW + FRAME_W + 3 이고 상한은 합성 자원(Mem 폭)의 일이다 — 계약이 아니다.
+  // (3.10 v1.0 묶음 W3)
 
   val io = new Bundle {
     /** 조회 — 같은 사이클 조합 응답. */
@@ -169,7 +169,7 @@ class XlateStore(val cfg: Wt64Config = Wt64Config()) extends Component {
       val tag   = in port UInt(tagW bits)
       val frame = in port UInt(FRAME_W bits)
       val perm  = in port XlatePerm()
-      val v     = in port Bool() // 유효 — XLATE_ENTRY_HI `[31]` 그대로. 0 이면 그 항목을 무효로 커밋한다
+      val v     = in port Bool() // 유효 — XLATE_ENTRY_COMMIT `[31]` 그대로. 0 이면 그 항목을 무효로 커밋한다
     }
     /** 파티션 단위 flush — 유효 비트만 (§3.6.3). */
     val flush = new Bundle {
@@ -193,11 +193,11 @@ class XlateStore(val cfg: Wt64Config = Wt64Config()) extends Component {
   // 없다 — 슬롯 번호가 파티션이다 (install_scoped: 자기 파티션 밖 줄을 표현할 수단이 없다).
   val fillPend = Vec.fill(cfg.xlateParts)(RegInit(False))
   val fillSlot = Vec.fill(cfg.xlateParts)(Reg(XlateFillLine(idxW, tagW, FRAME_W)))
-
+  val installFire = io.install.valid && io.install.ready // install.fire — 이름 있는 신호(DP-22 · 하네스가 이 이름으로 잡는다)
   // ── 채움 경로 ① — 호스트 기입이 버퍼 자리를 점유한다 ─────────────
   private val flushSamePart = io.flush.valid && io.flush.part === io.install.part
   io.install.ready := !fillPend(io.install.part) && !flushSamePart
-  when(io.install.valid && io.install.ready) {
+  when(installFire) {
     fillPend(io.install.part)       := True
     fillSlot(io.install.part).idx   := io.install.idx
     fillSlot(io.install.part).tag   := io.install.tag
@@ -228,14 +228,14 @@ class XlateStore(val cfg: Wt64Config = Wt64Config()) extends Component {
     enable  = commitFire,
   )
   when(commitFire) {
-    validBits(commitSel)(commitLine.idx) := commitLine.v // HI [31] 그대로 — 0 이면 단일 항목 무효화
+    validBits(commitSel)(commitLine.idx) := commitLine.v // COMMIT [31] 그대로 — 0 이면 단일 항목 무효화
     fillPend(commitSel)                  := False
   }
 
   // ── flush — 유효 비트만 (§3.6.3 「유효 비트가 유일한 방벽」) ──────
   // store Mem 은 건드리지 않는다 — 건드릴 쓰기 포트가 이 경로에 없다.
-  // 자기 파티션의 진행 중 채움도 함께 취한다: 남겨 두면 flush 뒤에 이전
-  // 컨텍스트의 줄이 커밋돼 HIU-2 (flush 후 미적중)가 창 하나만큼 깨진다.
+  // 자기 파티션의 진행 중 채움 취하(fillPend := False)는 방어 중복이다 — 관측 효과가 없다: 대기 채움은
+  // 한 번에 ≤ 1 이라 그 사이클 commitFire 가 어차피 비우고, 아래 validBits 대입이 마지막이라 이긴다(이 항을 뺀 판과 포트 동치 — W3 검증 abc pdr miter).
   // 이 결정은 모델(XlateStore.tla 에 채움이, Isolation.tla 에 flush 가 없다)에 없다 — model_feedback.
   // 이 블록이 텍스트상 마지막인 것은 의도다 — 같은 사이클의 커밋이 같은
   // 파티션의 유효 비트를 세워도 flush 의 전체 덮어쓰기가 이긴다.
@@ -245,8 +245,8 @@ class XlateStore(val cfg: Wt64Config = Wt64Config()) extends Component {
   }
 
   // ── 조회 — 같은 사이클 조합 판정 ─────────────────────────────────
-  private val reqIdx = io.lookup.vpn(idxW - 1 downto 0)
-  private val reqTag = io.lookup.vpn(VPN_W - 1 downto idxW)
+  private val reqIdx = idxOf(io.lookup.vpn, idxW) // 커밋 결선과 한 정의 (companion)
+  private val reqTag = tagOf(io.lookup.vpn, idxW)
 
   // 항목 주소 = {파티션, 색인} 연접. 파티션이 주소의 상위이므로 남의
   // 파티션 항목은 이 요청의 주소 공간에 존재하지 않는다 (partition_check).
@@ -260,11 +260,11 @@ class XlateStore(val cfg: Wt64Config = Wt64Config()) extends Component {
 
   // 채움 가림 — 대기 중인 줄은 *그 항목의 가장 새 판*이다 (3.6.2 해설: 신선도).
   // 같은 {파티션, 색인} 의 저장 판은 대기 동안 보이지 않는다. 이것이 없으면
-  // XLATE_ENTRY_HI 가 커밋한 항목이 한 사이클 동안 옛 판으로 보인다 — V=0
+  // XLATE_ENTRY_COMMIT 이 커밋한 항목이 한 사이클 동안 옛 판으로 보인다 — V=0
   // 무효화(e-defined.typ:308 「`[31]` V — 유효」)가 옛 유효 항목을 한 사이클 더
   // 적중시키고, 태그를 바꾸는 설치가 옛 태그를 한 사이클 더 적중시킨다.
-  // 호스트 쪽 문(Wt64Top xlateArea)이 보는 표는 「HI 커밋 에지에 항목 전체가 바뀐다」이다 —
-  //   03-hiu.typ:1552 「HI 가 항목 전체(V 포함)를 단일 에지에 커밋한다」
+  // 호스트 쪽 문(Wt64Top xlateArea)이 보는 표는 「COMMIT 에지에 항목 전체가 바뀐다」이다 —
+  //   e-defined.typ:308 「유효 비트를 담은 워드가 마지막이므로 부분 기입 상태가 유효해질 수 없다」
   // 채움 슬롯은 그 에지를 저장 블록 쪽으로 한 사이클 미루는 구현 세부다 — 가림이 그
   // 세부를 관측면에서 지운다.
   private val fillShadow = fillPend(io.lookup.part) && fillLine.idx === reqIdx
@@ -314,16 +314,19 @@ class XlateStore(val cfg: Wt64Config = Wt64Config()) extends Component {
   // flush 우선으로 그 설치를 버린다(조용한 드롭) — 조립 하네스 a_xonehot 이 배타를
   // 기계로 잡는다. install.ready 자체는 이 블록의 단독 계약으로 남는다
   // (XlateStore_props.sv a_ready_split 이 둘의 관계를 핀한다).
-  // 클래스 *끝*인 이유: io 번들 안이면 :200 (when_XlateStore_l200 — XlateStore_props.sv
-  // 가 이름으로 잡는 install.fire) 이 밀린다. 포트 이름은 io_ 접두 없이 installSlotFree.
+  // 클래스 *끝*인 이유: io 번들 안이면 아래 줄이 밀린다(옛 when_XlateStore_l200 — W3 부터 이름 있는
+  // installFire 라 줄 이름이 없다, DP-22). 포트 이름은 io_ 접두 없이 installSlotFree.
   val installSlotFree = out port Bool()
   installSlotFree := !fillPend(io.install.part)
 }
 
-// ── GUARD-MAP — 호스트 쪽 문(XlateSurface.tla)의 가드 하나 ─────────────────
-// 문의 나머지 열하나는 top/XlateStaging.scala 머리가 든다. 이 가드만 여기
-// 있는 이유: V 를 유효 비트로 옮기는 식(커밋의 validBits := commitLine.v ·
-// 채움 적중의 fillLine.v 연언 · 채움 가림)이 이 파일에 산다. 파일 *끝*에 둔
-// 것은 when_XlateStore_l200(XlateStore_props.sv 가 이름으로 잡는 install.fire)
-// 을 밀지 않기 위해서다.
-// GUARD-MAP: XlateSurface.hi_v_carried -> install.v(= XLATE_ENTRY_HI [31], XlateStaging 이 wdata(31) 을 그대로 싣는다)가 채움 줄의 v 로 들어가고 커밋이 validBits(commitSel)(idx) := commitLine.v 로 그 값을 그대로 쓴다 — 커밋이 유효를 상수 True 로 세우는 경로가 없다. 대기 중에는 fillHit 가 fillLine.v 를 논리곱의 항으로 요구하고 fillShadow 가 같은 항목의 옛 저장 판을 가리므로 V=0 커밋은 HI 수락 다음 에지부터 적중하지 않는다
+// ── GUARD-MAP — 호스트 쪽 문(XlateSurface.tla)의 저장 쪽 가드 넷 (3.10 v1.0 묶음 W3) ──────
+// 문의 스물넷은 top/XlateStaging.scala 가, commit_replaces_vpn 은 Wt64Top xlateArea 아래가 든다.
+// 이 넷이 여기 있는 이유: V 를 유효 비트로 옮기는 식 · 희생 칸의 파티션 · 저장 쓰기 원천 ·
+// 채움 슬롯의 비움 발화가 이 파일에 산다. 파일 *끝*에 둔 것은 위쪽 줄 좌표(xlatestore.sby 가
+// 축자 인용하는 줄들)를 밀지 않기 위해서다. 칸 선택은 직접 사상(칸 = idxOf(VPN))이라 같은 (파티션,
+// VPN) 은 늘 같은 칸이고 연관도 1 · 교체 상태 없음(DP-2)이다.
+// GUARD-MAP: XlateSurface.commit_v_carried -> install.v(= XLATE_ENTRY_COMMIT [31], XlateStaging 이 wdata(31) 을 그대로 싣는다)가 채움 줄의 v 로 들어가고 커밋이 validBits(commitSel)(idx) := commitLine.v 로 그 값을 그대로 쓴다 — 커밋이 유효를 상수 True 로 세우는 경로가 없다. 대기 중에는 fillHit 가 fillLine.v 를 논리곱의 항으로 요구하고 fillShadow 가 같은 칸의 옛 저장 판을 가리므로 V=0 커밋은 COMMIT 수락 다음 에지부터 그 (파티션, VPN) 에 적중하지 않는다
+// GUARD-MAP: XlateSurface.evict_in_partition -> 커밋 주소 = commitSel @@ commitLine.idx 이고 commitSel 은 PriorityMux(fillPend) 가 고른 채움 슬롯 번호 = 그 줄을 받은 install.part 다 — 희생 칸(덮이는 칸)은 늘 COMMIT 의 파티션 구간 안이고 validBits(commitSel) 만 쓴다 (Isolation.install_scoped 사상과 같은 항 — 두 가드가 같은 구조를 가리킨다)
+// GUARD-MAP: XlateSurface.evict_on_commit_only -> validBits 의 대입 원천은 when(commitFire) 의 validBits(commitSel)(idx) := commitLine.v 와 when(io.flush.valid) 의 validBits(flush.part) := 0 둘뿐이고 store 의 쓰기 포트는 store.write(enable = commitFire) 하나다 — 시간 · 조회 · 배경 경로가 없다(조회는 store.readAsync 와 validBits 읽기뿐). 다른 파티션의 활동은 남의 validBits 를 쓰지 않는다
+// GUARD-MAP: XlateSurface.stall_independent -> commitFire = fillPend.orR 이고 commitSel = PriorityMux(fillPend) 다 — 채움 슬롯의 저장 커밋은 점유가 있으면 매 사이클 발화하고 그 콘에 hold · 미적중 정지 · 버스(io.install · ready) 입력이 없다(이 블록은 그 입력을 갖지 않는다). 정지된 COMMIT 은 버스를 잡고 있어 새 설치가 오지 않으므로 xlateParts 사이클 안에 그 슬롯이 빈다 — 측정은 xlatestore.sby s_pend_bounded · w_pend_drains 와 XlateDoor/door.sby (ready 쪽은 assembly a_ready_only_slot)
