@@ -653,4 +653,12 @@ class CompletionUnit(val cqDepth: Int = 8) extends Component {
     winWord  := io.addr(4 downto 2)
   }
   io.rdata := winSel ? ringRd.subdivideIn(32 bits)(winWord) | rdataReg
+
+  // ═══ 드레인 집계 포트 — `0xE14` 결속 판정의 D 원천 (3.10 v1.0 묶음 W4 · DP-5) ═══
+  // 위 allZero 그대로다 — `0x37C` DRAIN_ALLZERO 읽기와 같은 식(여섯 카운트 ∧ 자기 완료 큐 점유 0)
+  // 이라 D 와 그 워드가 따로 표류할 자리가 없다. 조립(Wt64Top xlateArea)이 ActivePart.drainNow 로
+  // 잇는다. 클래스 끝에 둔 이유: 위 줄 좌표(와 SpinalHDL 줄번호 이름)를 밀지 않기 위해서다.
+  // 「핀 = 0x37C 읽기 = 여섯 입력 전부 0」 의 측정은 후-formal descriptor.sby 몫이다.
+  val drainAllZero = out port Bool()
+  drainAllZero := allZero
 }

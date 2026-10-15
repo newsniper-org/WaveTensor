@@ -1,0 +1,69 @@
+{
+  "anchors": [
+    "ActivePart.value_first",
+    "ActivePart.rsv_strict",
+    "ActivePart.ro_field_ignored",
+    "ActivePart.drain_gates_switch",
+    "ActivePart.same_value_noop",
+    "ActivePart.ad_every_accept",
+    "ActivePart.d_includes_same_cycle",
+    "ActivePart.pend_stalls_req",
+    "ActivePart.pend_stalls_mmio",
+    "ActivePart.req_part_from_bound",
+    "ActivePart.reject_loud"
+  ],
+  "at": "2026-10-15T06:44:09Z",
+  "cover": {
+    "reached": 12,
+    "reached_names": [
+      "w10_held",
+      "w11_d_post",
+      "w12_pulse",
+      "w1_switch",
+      "w2_drain_rej",
+      "w3_same_d1",
+      "w4_same_d0",
+      "w5_vrej_d1",
+      "w6_vrej_d0",
+      "w7_rsv",
+      "w8_ro",
+      "w9_alias"
+    ],
+    "unreached": 0,
+    "unreached_names": []
+  },
+  "inputs": {
+    "rtl/generated/Wt64Top.sv": "c39bcb4ce73460cdf2ba0b17738dcdb2cae29bc4599b1e97e993712df859ba23",
+    "rtl/sv/assert/ActivePart_props.sv": "fafa62694f14f4619877a5e1161c8c0b4a5f1156db626ece7fbc93c46fec6f22"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 8,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 12,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 8,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
+  },
+  "sby": "rtl/formal/sby/ActivePart/activepart.sby",
+  "sby_sha256": "31fed252ed6f16b9429705968d3e7042f0ef8c5e7eaa7f2b95681c2a95cdb79f",
+  "schema": "wt64-postformal-evidence/2",
+  "tasks": "bmc:PASS cover:PASS prove:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
+}

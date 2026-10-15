@@ -111,8 +111,7 @@ module Wt64Top (
   output wire [3:0]    io_mem_token,
   output wire [3:0]    io_mem_gateOpen,
   input  wire          io_hiuReq_valid,
-  output wire          io_hiuReq_ready,
-  input  wire [1:0]    io_hiuReq_part,
+  output reg           io_hiuReq_ready,
   input  wire [31:0]   io_hiuReq_vpn,
   input  wire          io_hiuReq_write,
   input  wire          io_hiuHold,
@@ -251,6 +250,7 @@ module Wt64Top (
   input  wire          io_faultClear_maskWrRekey,
   input  wire          io_faultClear_fpBp,
   input  wire          io_faultClear_fpBadProg,
+  output wire          io_fault_actCfgBadWrite,
   input  wire          clk,
   input  wire          reset
 );
@@ -268,6 +268,7 @@ module Wt64Top (
   wire       [117:0]  mog_io_up_2_payload;
   wire                mog_io_up_3_valid;
   wire       [117:0]  mog_io_up_3_payload;
+  reg                 hiu_io_req_valid;
   wire       [3:0]    hiu_io_install_idx;
   wire       [27:0]   hiu_io_install_tag;
   wire                hiu_io_faultClear;
@@ -328,6 +329,7 @@ module Wt64Top (
   wire       [3:0]    capWord_io_set;
   wire                capWord_io_wr;
   wire       [6:0]    xstg_io_woff;
+  wire                actp_io_wr;
   wire                walk_io_oValid;
   wire                walk_io_oMalformed;
   wire                walk_io_oCapAbsent;
@@ -549,6 +551,7 @@ module Wt64Top (
   wire                cq_io_irq;
   wire                cq_io_faultOverflow;
   wire                cq_io_faultBadWrite;
+  wire                cq_drainAllZero;
   wire                stg_io_badWrite;
   wire       [2:0]    stg_io_armed;
   wire                stg_io_fire;
@@ -576,6 +579,11 @@ module Wt64Top (
   wire                xstg_io_missClr;
   wire                xstg_io_badWrite;
   wire                xstg_io_badData;
+  wire       [1:0]    actp_io_activePart;
+  wire       [31:0]   actp_io_actWord;
+  wire                actp_io_badWrite;
+  wire                actp_io_stallMmio;
+  wire                actp_io_stallReq;
   wire       [1:0]    _zz_maskArea_readValue;
   wire       [7:0]    _zz_abortArea_readValue;
   wire       [2:0]    _zz_abortArea_readValue_1;
@@ -673,16 +681,18 @@ module Wt64Top (
   reg        [31:0]   mapRdReg;
   reg                 mapRv;
   wire                resvOffset;
-  wire                resvRd;
+  reg                 resvRd;
   reg                 resvRv;
   wire                xlateArea_wrEnt;
   wire                xlateArea_wrCtl;
   wire                xlateArea_isCommit;
   wire                when_Common_l336_1;
   reg                 _zz_io_fault_xlateCfgBadWrite;
-  wire                when_Wt64Top_l1731;
-  wire                xlateArea_obsRd;
+  wire                when_Wt64Top_l1735;
   wire       [4:0]    xlateArea_obsWord;
+  wire                xlateArea_isAct;
+  wire                xlateArea_actStall;
+  wire                xlateArea_obsRd;
   wire       [31:0]   xlateArea_obsStatus;
   wire       [31:0]   xlateArea_obsVpnLo;
   wire       [31:0]   xlateArea_obsVpnHi;
@@ -699,7 +709,7 @@ module Wt64Top (
   wire                pageArea_identWr;
   wire                pageArea_shapeWr;
   wire                pageArea_unalWr;
-  wire                when_Wt64Top_l1799;
+  wire                when_Wt64Top_l1831;
   wire                fpBindArea_rej;
   wire                when_Common_l336_2;
   reg                 _zz_io_fault_fpCfgBadWrite;
@@ -711,6 +721,8 @@ module Wt64Top (
   wire                dupArea_wr;
   reg        [31:0]   dupArea_reg;
   reg                 dupArea_rv;
+  wire                when_Common_l336_3;
+  reg                 _zz_io_fault_actCfgBadWrite;
 
   assign _zz_maskArea_readValue = maskArea_maskPart;
   assign _zz_abortArea_readValue = reasm_io_abortCount;
@@ -978,9 +990,9 @@ module Wt64Top (
     .reset             (reset                       )  //i
   );
   HiuPipeline hiu (
-    .io_req_valid      (io_hiuReq_valid            ), //i
+    .io_req_valid      (hiu_io_req_valid           ), //i
     .io_req_ready      (hiu_io_req_ready           ), //o
-    .io_req_part       (io_hiuReq_part[1:0]        ), //i
+    .io_req_part       (actp_io_activePart[1:0]    ), //i
     .io_req_vpn        (io_hiuReq_vpn[31:0]        ), //i
     .io_req_write      (io_hiuReq_write            ), //i
     .io_hold           (io_hiuHold                 ), //i
@@ -1262,6 +1274,7 @@ module Wt64Top (
     .io_faultClearOverflow (cq_io_faultClearOverflow                   ), //i
     .io_faultBadWrite      (cq_io_faultBadWrite                        ), //o
     .io_faultClearBadWrite (cq_io_faultClearBadWrite                   ), //i
+    .drainAllZero          (cq_drainAllZero                            ), //o
     .clk                   (clk                                        ), //i
     .reset                 (reset                                      )  //i
   );
@@ -1317,6 +1330,18 @@ module Wt64Top (
     .io_badData       (xstg_io_badData           ), //o
     .clk              (clk                       ), //i
     .reset            (reset                     )  //i
+  );
+  ActivePart actp (
+    .io_wr         (actp_io_wr             ), //i
+    .io_wdata      (io_mmio_wdata[31:0]    ), //i
+    .io_drainNow   (cq_drainAllZero        ), //i
+    .io_activePart (actp_io_activePart[1:0]), //o
+    .io_actWord    (actp_io_actWord[31:0]  ), //o
+    .io_badWrite   (actp_io_badWrite       ), //o
+    .io_stallMmio  (actp_io_stallMmio      ), //o
+    .io_stallReq   (actp_io_stallReq       ), //o
+    .clk           (clk                    ), //i
+    .reset         (reset                  )  //i
   );
   assign walk_io_iFaultClear = (io_faultClear_decodeWalk || (fltClrAccept && io_mmio_wdata[0]));
   assign od_io_iFaultClear = (io_faultClear_operandDecode || (fltClrAccept && io_mmio_wdata[1]));
@@ -1404,7 +1429,20 @@ module Wt64Top (
   assign io_mem_down_3_payload = mog_io_down_3_payload;
   assign io_mem_token = mog_io_token;
   assign io_mem_gateOpen = mog_io_gateOpen;
-  assign io_hiuReq_ready = hiu_io_req_ready;
+  always @(*) begin
+    hiu_io_req_valid = io_hiuReq_valid;
+    if(actp_io_stallReq) begin
+      hiu_io_req_valid = 1'b0;
+    end
+  end
+
+  always @(*) begin
+    io_hiuReq_ready = hiu_io_req_ready;
+    if(actp_io_stallReq) begin
+      io_hiuReq_ready = 1'b0;
+    end
+  end
+
   assign hiu_io_faultClear = (io_faultClear_hiuPerm || (fltClrAccept && io_mmio_wdata[4]));
   assign hiu_faultOwnClear = (fltClrAccept && io_mmio_wdata[19]);
   assign io_phys_valid = (hiu_io_rsp_valid && hiu_io_rsp_granted);
@@ -1499,7 +1537,7 @@ module Wt64Top (
     if(xstg_io_badWrite) begin
       surfBadWr = 1'b1;
     end
-    if(when_Wt64Top_l1799) begin
+    if(when_Wt64Top_l1831) begin
       surfBadWr = 1'b1;
     end
     if(dupArea_wr) begin
@@ -1667,6 +1705,9 @@ module Wt64Top (
     faultWords_status[17] = 1'b0;
     faultWords_status[18] = 1'b0;
     faultWords_status[19] = io_fault_hiuOwn;
+    if(io_fault_actCfgBadWrite) begin
+      faultWords_status[6] = 1'b1;
+    end
   end
 
   always @(*) begin
@@ -1702,15 +1743,24 @@ module Wt64Top (
     if(when_Wt64Top_l1598) begin
       io_mmio_ready = fps_io_loadReady;
     end
-    if(when_Wt64Top_l1731) begin
+    if(when_Wt64Top_l1735) begin
       io_mmio_ready = hiu_installSlotFree;
+    end
+    if(xlateArea_actStall) begin
+      io_mmio_ready = 1'b0;
     end
   end
 
   assign when_Wt64Top_l1598 = (fpArea_wr && (fpArea_isProg || fpArea_isBind));
   assign mapRd = (((maskArea_rd || fpArea_rd) || abortArea_rd) || faultArea_rd);
   assign resvOffset = (! (((((((((selOwn || selCq) || selCfg) || selXent) || selXctl) || selMask) || selFp) || selAbort) || selFault) || selUnwired));
-  assign resvRd = ((io_mmio_rstrobe && (! io_mmio_wstrobe)) && ((((resvOffset || selUnwired) || selXent) || selXctl) || ((((selMask || selFp) || selAbort) || selFault) && (! mmioAligned))));
+  always @(*) begin
+    resvRd = ((io_mmio_rstrobe && (! io_mmio_wstrobe)) && ((((resvOffset || selUnwired) || selXent) || selXctl) || ((((selMask || selFp) || selAbort) || selFault) && (! mmioAligned))));
+    if(xlateArea_actStall) begin
+      resvRd = 1'b0;
+    end
+  end
+
   assign io_mmio_rvalid = ((((own_io_rvalid || cq_io_rvalid) || cfgBlk_io_rvalid) || mapRv) || resvRv);
   always @(*) begin
     io_mmio_rdata = 32'h0;
@@ -1749,9 +1799,11 @@ module Wt64Top (
   assign hiu_io_missClear = (io_faultClear_hiuMiss || xstg_io_missClr);
   assign when_Common_l336_1 = (fltClrAccept && io_mmio_wdata[6]);
   assign io_fault_xlateCfgBadWrite = _zz_io_fault_xlateCfgBadWrite;
-  assign when_Wt64Top_l1731 = ((xlateArea_wrEnt && xlateArea_isCommit) && xstg_io_needReady);
-  assign xlateArea_obsRd = (((io_mmio_rstrobe && (! io_mmio_wstrobe)) && selXctl) && mmioAligned);
+  assign when_Wt64Top_l1735 = ((xlateArea_wrEnt && xlateArea_isCommit) && xstg_io_needReady);
   assign xlateArea_obsWord = io_mmio_addr[6 : 2];
+  assign xlateArea_isAct = ((selXctl && mmioAligned) && (xlateArea_obsWord == 5'h05));
+  assign xlateArea_actStall = (actp_io_stallMmio && xlateArea_isAct);
+  assign xlateArea_obsRd = ((((io_mmio_rstrobe && (! io_mmio_wstrobe)) && selXctl) && mmioAligned) && (! xlateArea_actStall));
   assign xlateArea_obsStatus = {{{{16'h0,_zz_xlateArea_obsStatus},6'h0},hiu_io_missNotice},hiu_missStall};
   assign xlateArea_obsVpnLo = hiu_missVpn;
   assign xlateArea_obsVpnHi = 32'h0;
@@ -1766,6 +1818,9 @@ module Wt64Top (
       5'h03 : begin
         _zz_xlateArea_obsValue = xlateArea_obsVpnHi;
       end
+      5'h05 : begin
+        _zz_xlateArea_obsValue = actp_io_actWord;
+      end
       default : begin
         _zz_xlateArea_obsValue = 32'h0;
       end
@@ -1773,6 +1828,7 @@ module Wt64Top (
   end
 
   assign xlateArea_obsValue = _zz_xlateArea_obsValue;
+  assign actp_io_wr = (io_mmio_wstrobe && xlateArea_isAct);
   assign pageArea_selLeg = ((io_mmio_addr[11 : 8] == 4'b0000) || (io_mmio_addr[11 : 5] == 7'h08));
   assign pageArea_legWr = (io_mmio_wstrobe && pageArea_selLeg);
   assign pageArea_sqWord = io_mmio_addr[6 : 2];
@@ -1782,7 +1838,7 @@ module Wt64Top (
   assign pageArea_identWr = (((io_mmio_wstrobe && selIdent) && mmioAligned) && (io_mmio_addr[5 : 2] == 4'b1111));
   assign pageArea_shapeWr = (((io_mmio_wstrobe && selIdent) && mmioAligned) && (io_mmio_addr[5 : 2] == 4'b1110));
   assign pageArea_unalWr = ((io_mmio_wstrobe && (! mmioAligned)) && (! ((selOwn || selCq) || selCfg)));
-  assign when_Wt64Top_l1799 = ((((pageArea_legWr || (pageArea_sqWr && (pageArea_isSqRw || pageArea_isSqRo))) || pageArea_identWr) || pageArea_shapeWr) || pageArea_unalWr);
+  assign when_Wt64Top_l1831 = ((((pageArea_legWr || (pageArea_sqWr && (pageArea_isSqRw || pageArea_isSqRo))) || pageArea_identWr) || pageArea_shapeWr) || pageArea_unalWr);
   assign fpBindArea_rej = (((fpArea_wr && fpArea_isBind) && fpArea_bindRsvBad) && fps_io_loadReady);
   assign when_Common_l336_2 = (fltClrAccept && io_mmio_wdata[6]);
   assign io_fault_fpCfgBadWrite = _zz_io_fault_fpCfgBadWrite;
@@ -1791,6 +1847,8 @@ module Wt64Top (
   assign dupArea_isDup = (io_mmio_addr[6 : 2] == 5'h11);
   assign dupArea_rd = (maskArea_rd && dupArea_isDup);
   assign dupArea_wr = (maskArea_wr && dupArea_isDup);
+  assign when_Common_l336_3 = (fltClrAccept && io_mmio_wdata[6]);
+  assign io_fault_actCfgBadWrite = _zz_io_fault_actCfgBadWrite;
   always @(posedge clk) begin
     tagQ_wave <= io_instr_tag_wave;
     tagQ_epoch <= io_instr_tag_epoch;
@@ -1815,6 +1873,7 @@ module Wt64Top (
       identArea_rv <= 1'b0;
       dupArea_reg <= 32'h0;
       dupArea_rv <= 1'b0;
+      _zz_io_fault_actCfgBadWrite <= 1'b0;
     end else begin
       if(when_Wt64Top_l1274) begin
         maskArea_maskPart <= maskArea_partField[1:0];
@@ -1863,6 +1922,76 @@ module Wt64Top (
         dupArea_reg <= mask_dupCapture;
       end
       dupArea_rv <= dupArea_rd;
+      if(when_Common_l336_3) begin
+        _zz_io_fault_actCfgBadWrite <= 1'b0;
+      end
+      if(actp_io_badWrite) begin
+        _zz_io_fault_actCfgBadWrite <= 1'b1;
+      end
+    end
+  end
+
+
+endmodule
+
+module ActivePart (
+  input  wire          io_wr,
+  input  wire [31:0]   io_wdata,
+  input  wire          io_drainNow,
+  output wire [1:0]    io_activePart,
+  output wire [31:0]   io_actWord,
+  output wire          io_badWrite,
+  output wire          io_stallMmio,
+  output wire          io_stallReq,
+  input  wire          clk,
+  input  wire          reset
+);
+
+  wire       [7:0]    _zz_pendV;
+  wire       [7:0]    _zz_io_actWord;
+  reg        [1:0]    bound;
+  reg                 aReg;
+  reg                 dReg;
+  reg                 actPend;
+  reg        [1:0]    pendV;
+  reg                 pendOk;
+  wire                acc;
+  wire                valOk;
+  wire                pendSame;
+  wire                applyNow;
+
+  assign _zz_pendV = io_wdata[7 : 0];
+  assign _zz_io_actWord = {6'd0, bound};
+  assign acc = (io_wr && (! actPend));
+  assign valOk = ((! (8'h04 <= io_wdata[7 : 0])) && (io_wdata[31 : 10] == 22'h0));
+  assign pendSame = (pendV == bound);
+  assign applyNow = ((actPend && pendOk) && (pendSame || io_drainNow));
+  assign io_badWrite = ((acc && (! valOk)) || ((actPend && pendOk) && (! applyNow)));
+  assign io_stallMmio = actPend;
+  assign io_stallReq = actPend;
+  assign io_activePart = bound;
+  assign io_actWord = {{{22'h0,dReg},aReg},_zz_io_actWord};
+  always @(posedge clk or posedge reset) begin
+    if(reset) begin
+      bound <= 2'b00;
+      aReg <= 1'b0;
+      dReg <= 1'b0;
+      actPend <= 1'b0;
+      pendV <= 2'b00;
+      pendOk <= 1'b0;
+    end else begin
+      actPend <= acc;
+      if(acc) begin
+        pendV <= _zz_pendV[1:0];
+        pendOk <= valOk;
+      end
+      if(actPend) begin
+        aReg <= applyNow;
+        dReg <= io_drainNow;
+      end
+      if(applyNow) begin
+        bound <= pendV;
+      end
     end
   end
 
@@ -2178,6 +2307,7 @@ module CompletionUnit (
   input  wire          io_faultClearOverflow,
   output wire          io_faultBadWrite,
   input  wire          io_faultClearBadWrite,
+  output wire          drainAllZero,
   input  wire          clk,
   input  wire          reset
 );
@@ -2386,6 +2516,7 @@ module CompletionUnit (
   assign ringRd = ring_spinal_port1;
   assign io_rvalid = acceptR_regNext;
   assign io_rdata = (winSel ? _zz_io_rdata : rdataReg);
+  assign drainAllZero = allZero;
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       headReg <= 32'h0;

@@ -414,16 +414,16 @@ object Wt64Top {
     val RSV_LO  = 0x10 // +0x10..+0x7C 예약-엄격 28 워드 — 쓰기 거절 + [6] · 읽기 0
   }
 
-  /** 변환 저장소 제어 (R_XCTL) — 구역 안 바이트 오프셋. **배선 (파도 3 · 4)**: FLUSH
-    * 발화와 MISS_CLEAR 해제는 XlateStaging 이 판정하고(최상위 IO `io.flush` 은
-    * 은퇴), 세 RO 워드의 쓰기는 거절 + [6] 이다. 관측 *값*은 파도 4 가 배선했다
-    * — hiu 의 정지 게이트 스냅샷(missStall·missPart·missVpn) · sticky (xlateArea 끝). */
+  /** 변환 저장소 제어 (R_XCTL) — 구역 안 바이트 오프셋. FLUSH 발화와 MISS_CLEAR 해제는 XlateStaging
+    * 이 판정하고(최상위 IO `io.flush` 은퇴) 세 RO 워드의 쓰기는 거절 + [6] · 관측 값은 hiu 의 정지 게이트
+    * 스냅샷 · sticky (파도 3 · 4 — xlateArea 끝). ACTIVE_PART 는 ActivePart (W4 — 결속 · A · D, xlateArea). */
   object Xctl {
     val FLUSH        = 0x00 // WO  [7:0] 파티션 — 기입이 곧 발화 · [31:8] 예약(엄격)
     val STATUS       = 0x04 // RO  [0] 미적중 정지 · [1] 미적중 sticky · [15:8] 파티션
     val MISS_VPN_LO  = 0x08 // RO
     val MISS_VPN_HI  = 0x0C // RO
     val MISS_CLEAR   = 0x10 // WO  [0] 에 1 기입 = sticky 해제 (정지는 안 풀린다)
+    val ACTIVE_PART  = 0x14 // RW  [7:0] 결속 파티션 · [8] A · [9] D (RO 필드 — 쓰기 무시) · [31:10] 예약(엄격)
   }
 
   /** 장치 식별 (R_IDENT) — 구역 안 바이트 오프셋. `0xFFC` = 페이지 마지막 워드 (규칙 4). **부분**: RO 쓰기는 거절 + [6] (파일 끝 pageArea · E.1.1). `0xFFC` 읽기 값은 합의 전 0 이고 판 0 은
@@ -714,11 +714,11 @@ class Wt64Top(
       val gateOpen = out port Bits(memSlots bits)
     }
 
-    // ── HIU 요청 경로 — 요청 원천(메모리 파이프) 미착지로 외부 제시 ──────
+    // ── HIU 요청 경로 — 요청 원천(메모리 파이프) 미착지로 외부 제시 · 파티션은 0xE14 결속 ──
     val hiuReq = new Bundle {
       val valid = in port Bool()
       val ready = out port Bool()
-      val part  = in port UInt(partW bits)
+      // part — 은퇴 (W4, 2026-10-15): 요청 파티션은 0xE14 XLATE_ACTIVE_PART 결속이다 (파일 끝 xlateArea · ActivePart)
       val vpn   = in port UInt(VPN_W bits)
       val write = in port Bool()
     }
@@ -1022,7 +1022,7 @@ class Wt64Top(
 
   // ═══ HIU — 요청 파이프 ↔ 소유권 표(E.7) ↔ 마스킹 단 ══════════════════
   hiu.io.req.valid := io.hiuReq.valid
-  hiu.io.req.part  := io.hiuReq.part
+  // hiu.io.req.part 는 파일 끝 xlateArea 가 결속(actp.io.activePart)으로 구동하고, 판정 사이클 정지가 위아래 valid · ready 를 덮는다 (W4)
   hiu.io.req.vpn   := io.hiuReq.vpn
   hiu.io.req.write := io.hiuReq.write
   io.hiuReq.ready  := hiu.io.req.ready
@@ -1261,7 +1261,7 @@ class Wt64Top(
       * 검사는 폭이 아니라 *기입 시점 거절*로 선다 (MmioConfig 선례). */
     val partField = io.mmio.wdata(PART_FIELD_W - 1 downto 0).asUInt
     val partBad   = XlateStaging.partBad(partField, cfg.xlateParts) // 한 정의 —
-                    // XLATE_FLUSH(XlateStaging) 도 같은 함수를 부른다 (파티션을 받는 표면 셋)
+                    // XLATE_FLUSH(XlateStaging) · 0xE14(ActivePart) 도 같은 함수를 부른다 (파티션을 값으로 받는 표면 넷)
 
     // MASK_PART(0xEA0) — 키·논스 두 기입 모두의 대상 파티션 창 (정본
     // 7fa5f2e, e-defined.typ:344·351 7항 — 구 MASK_NONCE_PART 를 넓힌 것).
@@ -1539,8 +1539,8 @@ class Wt64Top(
     status(Fault.B_REASM)       := io.fault.reasm
     status(Fault.B_XLATE_PERM)  := io.fault.hiuPerm
     status(Fault.B_CFG_DUP)     := io.fault.cfgDupOwner
-    // `[6]` 이 넷 + 다섯을 접는다 (E.1.2 해설). *여섯* 원천(MmioConfig · 이
-    // 조립이 직접 디코드하는 표면 · FP_BIND 예약 거절(D1 (b)) · COMMIT 데이터 사유 거절(DP-15 — 둘 다 수락 게이트) · 완료 유닛 · 소유권 표)의 같은 부류가
+    // `[6]` 이 넷 + 다섯을 접는다 (E.1.2 해설). *일곱* 원천(MmioConfig · 이
+    // 조립이 직접 디코드하는 표면 · FP_BIND 예약 거절(D1 (b)) · COMMIT 데이터 사유 거절(DP-15 — 둘 다 수락 게이트) · 완료 유닛 · 소유권 표 — 일곱째 0xE14 거절(W4 D1)은 클래스 끝에서 합류)의 같은 부류가
     // *여기서* 한 비트로 합류한다 — 수리 주체가 드라이버 하나이고 고칠
     // 동작이 같다(자기가 방금 쓴 워드를 고쳐 다시 쓴다). 폴딩 지점을 명시
     // 하라는 §5.6 3항의 이행이며, 관측면 상류에서는 접지 않았다.
@@ -1680,6 +1680,10 @@ class Wt64Top(
   // — install.ready 는 flush.valid 를 조합으로 본다(flushSamePart). 배타가 깨지면 설치가 조용히
   // 버려진다 — 하네스 a_xonehot.
   val xstg = new XlateStaging(cfg.xlateParts)
+  // `0xE14` XLATE_ACTIVE_PART — 결속 워드와 수락 판정 (A, D) (3.10 v1.0 묶음 W4 · 선-formal
+  // rtl/formal/tla/ActivePart.tla). 요청 파티션의 원천이다 — 최상위 io.hiuReq.part 는 은퇴했다.
+  // 결선은 아래 xlateArea 끝(「결속」 절)이고, xlateArea 가 참조하므로 그 앞에 선언한다.
+  val actp = new ActivePart(cfg.xlateParts)
   val xlateArea = new Area { // 공개 — 참조자가 없는 Area 는 private 이면 unused 로 컴파일이 멈춘다
     // 형상 — 창(512 B)이 거는 상한은 파티션 기저 넷(addr[8:7]) 하나다. 파티션당 칸 수 · 색인
     // 함수는 형상이고 표면에 없다 — 조용히 창 밖으로 넘치는 형상은 금지다 —
@@ -1739,12 +1743,15 @@ class Wt64Top(
     // 읽기 수락 사이클에 잡아 다음 사이클에 낸다 (MmioConfig 포트 계약 「수락 다음 사이클에
     // rdata 유효」). rvalid 는 위 resvRv 그대로다(resvRd 가 selXctl 읽기를 이미 센다) —
     // 여기는 rdata 만 *마지막 대입*으로 덮는다. 정렬된 selXctl 읽기 전부가 이 경로다:
-    // 표의 세 RO 워드 밖(WO 워드 · 표에 없는 워드)은 mux 기본값 0. 워드 색인은 addr[6:2]
+    // 표의 세 RO 워드 · 0xE14 밖(WO 워드 · 표에 없는 워드)은 mux 기본값 0. 워드 색인은 addr[6:2]
     // 5b 전폭 — 0xE24 같은 별칭이 0xE04 로 읽히지 않는다. 읽기는 아무것도 해제하지 않는다:
     // 이 경로는 hiu 의 어떤 입력(missClear · install · flush)에도 닿지 않는다 (obs_read_pure).
-    // 이 구역의 읽기 ready 는 1 이다(위 덮어쓰기는 COMMIT 쓰기만) — 수락 = rstrobe.
-    val obsRd   = io.mmio.rstrobe && !io.mmio.wstrobe && selXctl && mmioAligned
+    // 이 구역의 읽기 ready 는 1 이다(위 덮어쓰기는 COMMIT 쓰기만 · 단 판정 사이클 0xE14 는 actStall).
     val obsWord = io.mmio.addr(6 downto 2)
+    // 정렬 0xE14 접근 — 판정 사이클(actPend)에는 수락하지 않는다 (아래 「결속」 절 · pend_stalls_mmio).
+    val isAct    = selXctl && mmioAligned && obsWord === Xctl.ACTIVE_PART / 4
+    val actStall = actp.io.stallMmio && isAct
+    val obsRd   = io.mmio.rstrobe && !io.mmio.wstrobe && selXctl && mmioAligned && !actStall
     val obsStatus = B(0, 16 bits) ## hiu.missPart.resize(8).asBits ## B(0, 6 bits) ##
                     hiu.io.missNotice.asBits ## hiu.missStall.asBits
     val obsVpnLo = hiu.missVpn.resize(32).asBits
@@ -1754,10 +1761,35 @@ class Wt64Top(
       (Xctl.STATUS >> 2)      -> obsStatus,
       (Xctl.MISS_VPN_LO >> 2) -> obsVpnLo,
       (Xctl.MISS_VPN_HI >> 2) -> obsVpnHi,
+      (Xctl.ACTIVE_PART >> 2) -> actp.io.actWord,
       default                 -> B(0, 32 bits))
     val obsReg = RegNextWhen(obsValue, obsRd) init (B(0, 32 bits))
     val obsRv  = RegNext(obsRd) init (False)
     when(obsRv) { io.mmio.rdata := obsReg }
+
+    // ── 결속 — 0xE14 XLATE_ACTIVE_PART (W4 · 판정은 ActivePart, 여기는 결선) ──────────────
+    // 쓰기: 정렬 0xE14 만(isAct — 비정렬 0xE15–0xE17 은 pageArea.unalWr 의 페이지 거절 + [6] 이고
+    // A · D · 결속에 닿지 않는다). D 원천은 CompletionUnit.drainAllZero(0x37C 읽기와 같은 allZero).
+    // 정지(actPend 그 자체, 1 사이클) 둘:
+    //   · MMIO — 정렬 0xE14 접근의 ready 를 내리고 그 읽기의 rvalid 원천 resvRd(아래)를 끈다 — obsRd 의
+    //     ¬actStall 항(위)은 rdata 포착 위생이다(obsRv 는 rdata 만 고른다 · 포트 관측 동치). 범위는 isAct 하나다 — 페이지 전역으로 내리면 ready 를 보지 않는 날 스트로브 구역
+    //     (own · cq · cfgBlk · pageArea · 0xE00 발화)이 효과를 내면서 버스에는 미수락을 보여 재시도 =
+    //     이중 효과다. ready 는 주소 · 상태만의 함수다(wdata 없음 — lint_ready_cone).
+    //   · HIU 요청 — valid 와 ready 를 *둘 다* 덮는다. HiuPipeline 의 ready(= advance)는 valid 와
+    //     무관해 ready 만 내리면 정지 사이클의 요청이 s1 에 실리고 재전송된다(이중 접수).
+    actp.io.wr       := io.mmio.wstrobe && isAct
+    actp.io.wdata    := io.mmio.wdata
+    actp.io.drainNow := cq.drainAllZero
+    // 거절(actp.io.badWrite — 값 · 드레인 판정)은 surfBadWr 이 아니라 원천별 sticky io_fault_actCfgBadWrite 다 (클래스 끝 · W4 D1)
+    hiu.io.req.part := actp.io.activePart
+    when(actp.io.stallReq) {
+      hiu.io.req.valid := False
+      io.hiuReq.ready  := False
+    }
+    when(actStall) {
+      io.mmio.ready := False
+      resvRd        := False
+    }
   }
 
   // ═══ 페이지 처분 — 합의 전 · 소비 회로 없는 워드 · 비정렬 쓰기 (파도 4 페이지 통합) ═══
@@ -1859,6 +1891,18 @@ class Wt64Top(
     when(wr) { surfBadWr := True }
     when(rv) { io.mmio.rdata := reg }
   }
+
+  // ═══ 0xE14 거절 — 원천별 sticky (3.10 v1.0 묶음 W4 D1 · DP-15 선례) ═══
+  // actp.io.badWrite(값 검사 거절 — 수락 사이클 · 드레인 판정 거절 — 판정 사이클)를 조립 sticky surfBadWr 에
+  // 매지 않는다: 드레인 거절의 콘에 절단 핀 cq.drainAllZero 가 들어 조립 cover 의 절단 무관 증인 판별(④)이
+  // 운다 (xlateCfgBadWrite 의 installSlotFree 와 같은 꼴). 기능은 같다 — [6] 한 비트로 합류하고 해제는
+  // 0xF84[6] 하나다(IO 해제선 없음). 포트를 io.fault 번들이 아니라 여기 둔 것은 줄 중립 때문이고, 이름은
+  // 번들 꼴(io_fault_*)로 둬 해제 경로 비대칭 표(NO_IO_CLEAR)와 fault 출력 계수에 든다. [6] 합류도 여기다 —
+  // faultWords 의 논리합 줄에서 이 포트를 읽으면 전방 참조다.
+  val actCfgBadWrite = out port Bool()
+  actCfgBadWrite.setName("io_fault_actCfgBadWrite")
+  actCfgBadWrite := StickyFault(actp.io.badWrite, fclr(Fault.B_CFG_BADWRITE))
+  when(actCfgBadWrite) { faultWords.status(Fault.B_CFG_BADWRITE) := True }
 }
 
 // ── GUARD-MAP — AbortSurface 열셋 (파도 4, 2026-09-26) ──────────────────────
@@ -1895,24 +1939,29 @@ class Wt64Top(
 // raw 로 나가고 유닛이 자기 수락으로 게이트한다 — StepSequencer 는 loadReady 로(그 유닛에는
 // 형식 태스크가 0 건), 나머지 셋은 acceptW 로. 파일 끝에 둔 이유는 AbortSurface 절과 같다.
 //
-// GUARD-MAP: MmioPage.rsp_on_accept -> 조립이 직접 응답하는 읽기(mapRd · resvRd → rvalid)는 ready 가 1 인 접근에서만 선다 — ready 하강은 정렬 FP_PROG/FP_BIND *쓰기*(fpArea.wr — D1 (b))와 주소 · 상태로 적법한 XLATE_ENTRY_COMMIT *쓰기*(xlateArea 의 wrEnt ∧ isCommit ∧ xstg.io.needReady)뿐이라 이 구역의 읽기는 언제나 수락이고 rvalid 는 그 수락 다음 사이클 1펄스다. own · cq · cfg 구역의 rvalid 는 각 유닛의 acceptR(ready ∧ rstrobe) 다음 사이클이다 (own · cq 는 ready 상수 1 · cfgBlk 는 소거·CHECK 중 ready 0)
-// GUARD-MAP: MmioPage.effect_on_accept -> 조립 구역 쓰기의 효과와 거절선(maskArea · dupArea · fpArea · abortArea · faultArea · xlateArea · pageArea 의 wr · surfBadWr)은 ready 가 1 인 쓰기에서만 선다 — 소거를 기다리는 FP_BIND 의 예약 거절은 surfBadWr 이 아니라 fpBindArea.rej(= fpArea.wr ∧ isBind ∧ bindRsvBad ∧ fps.io.loadReady) → io.fault.fpCfgBadWrite 로, 0xC00 COMMIT 의 데이터 사유 거절은 xstg.io.badData(= cmAcc ∧ cmDataBad) → io.fault.xlateCfgBadWrite 로 수락에 매이고, 정지된 COMMIT 의 커밋은 xstg 의 installReady 게이트(cmAcc)가 막는다. 발행 펄스 fps.io.progWr/bindWr 는 raw 이고 StepSequencer 가 loadReady 로 스스로 게이트하며(유닛 수락 관례), own · cq · cfgBlk 는 자기 acceptW 로 게이트한다
+// GUARD-MAP: MmioPage.rsp_on_accept -> 조립이 직접 응답하는 읽기(mapRd · resvRd → rvalid)는 ready 가 1 인 접근에서만 선다 — ready 하강은 정렬 FP_PROG/FP_BIND *쓰기*(fpArea.wr — D1 (b))와 주소 · 상태로 적법한 XLATE_ENTRY_COMMIT *쓰기*(xlateArea 의 wrEnt ∧ isCommit ∧ xstg.io.needReady)와 0xE14 판정 사이클의 정렬 0xE14 접근(xlateArea.actStall = actp.io.stallMmio ∧ isAct — 읽기 포함, 1 사이클)뿐이다. 앞의 둘은 쓰기만이라 읽기는 수락이고, actStall 읽기는 rvalid 원천 resvRd 가 when(actStall) 의 resvRd := False 로 꺼져(rvalid 원천은 resvRd 하나 — obsRd 의 ¬actStall 항은 rdata 포착 위생 · 포트 관측 동치) 수락 사이클에만 rvalid 가 그 다음 사이클 1펄스로 선다. own · cq · cfg 구역의 rvalid 는 각 유닛의 acceptR(ready ∧ rstrobe) 다음 사이클이다 (own · cq 는 ready 상수 1 · cfgBlk 는 소거·CHECK 중 ready 0)
+// GUARD-MAP: MmioPage.effect_on_accept -> 조립 구역 쓰기의 효과와 거절선(maskArea · dupArea · fpArea · abortArea · faultArea · xlateArea · pageArea 의 wr · surfBadWr)은 ready 가 1 인 쓰기에서만 선다 — 소거를 기다리는 FP_BIND 의 예약 거절은 surfBadWr 이 아니라 fpBindArea.rej(= fpArea.wr ∧ isBind ∧ bindRsvBad ∧ fps.io.loadReady) → io.fault.fpCfgBadWrite 로, 0xC00 COMMIT 의 데이터 사유 거절은 xstg.io.badData(= cmAcc ∧ cmDataBad) → io.fault.xlateCfgBadWrite 로 수락에 매이고, 정지된 COMMIT 의 커밋은 xstg 의 installReady 게이트(cmAcc)가 막는다. 0xE14 판정 사이클에 정지된 0xE14 기입은 ActivePart 의 acc = io.wr ∧ ¬actPend 가 버린다(효과 · badWrite 없음) — 그 정지는 isAct 범위라 다른 구역의 쓰기는 정지 사이클에도 ready 1 로 수락된다(날 스트로브 구역의 이중 효과 없음). 발행 펄스 fps.io.progWr/bindWr 는 raw 이고 StepSequencer 가 loadReady 로 스스로 게이트하며(유닛 수락 관례), own · cq · cfgBlk 는 자기 acceptW 로 게이트한다
 // GUARD-MAP: MmioPage.ro_rejected -> RO 워드의 정렬 쓰기는 거절 + [6] 이고 상태를 움직이지 않는다: 조립 구역은 maskArea(0xEC0) · dupArea(0xEC4 — 3.10 v1.0 묶음) · fpArea(0xF08) · abortArea(0xF50–0xF58) · faultArea(0xF80 · 0xF88 · 0xF8C) · xstg(0xE04–0xE0C) · pageArea(0x38C SQ_HEAD 의 isSqRo · 0xFF8 의 shapeWr · 0xFFC 의 identWr)가 surfBadWr 로, 유닛 구역은 OwnershipTable statusWr(0x204) · CompletionUnit isRoOff 가 자기 faultBadWrite 로
 // GUARD-MAP: MmioPage.wo_read_zero -> WO 워드의 읽기는 0 이다: 조립 구역의 readValue 가 WO 워드(키 · 논스 · MASK_REKEY · FP_PROG · FP_BIND · ABORT_TAG0–2 · ABORT_FIRE · FAULT_CLEAR · CAP_CLEAR)를 덮지 않고, 변환 WO(0xC00–0xDFC — 기저마다 VPN · FRAME · COMMIT · VPN_HI 와 예약-엄격 28 워드(+0x10..+0x7C) 전부 · 0xE00 · 0xE10)는 resvRd(값 배선 0 건)로 0 을 낸다 · OwnershipTable 은 OWN_SET/OWN_CLR 에 rdSel 0 · CompletionUnit 은 IRQ_CLEAR 를 readValue 에서 뺀다
-// GUARD-MAP: MmioPage.resv_lenient -> 표에 없는 *정렬* 워드 오프셋(0x120–0x1FF · 구역 안 미정의 워드 — 0xC00 기저의 예약-엄격 28 워드는 표의 워드라 여기 들지 않는다(nocons_rejected) · 0x394–0x3FC · 0xFC0–0xFF4)의 쓰기는 surfBadWr 을 세우는 어느 식에도 들지 않는다 — pageArea 의 식 다섯은 물려받은 구간 · 명령 링 표 워드 다섯 · 0xFF8 · 0xFFC · 비정렬만 들고, dupArea 는 0xEC4 하나만 든다(마스킹 구역의 정의 워드는 이제 0..17). 유닛 구역의 표 밖 정렬 오프셋도 유닛 거절식에 없다
+// GUARD-MAP: MmioPage.resv_lenient -> 표에 없는 *정렬* 워드 오프셋(0x120–0x1FF · 구역 안 미정의 워드 — 0xC00 기저의 예약-엄격 28 워드는 표의 워드라 여기 들지 않는다(nocons_rejected) · 0xE00 구역은 0xE18–0xE7C(0xE14 는 3.10 v1.0 묶음 W4 부터 표의 워드 — xlateArea isAct · ActivePart) · 0x394–0x3FC · 0xFC0–0xFF4)의 쓰기는 surfBadWr 을 세우는 어느 식에도 들지 않는다 — pageArea 의 식 다섯은 물려받은 구간 · 명령 링 표 워드 다섯 · 0xFF8 · 0xFFC · 비정렬만 들고, dupArea 는 0xEC4 하나만 든다(마스킹 구역의 정의 워드는 이제 0..17). 유닛 구역의 표 밖 정렬 오프셋도 유닛 거절식에 없다
 // GUARD-MAP: MmioPage.unaligned_rejected -> 비정렬 쓰기는 페이지 어디서든 거절 + [6] 이고 효과가 없다: own · cq · cfg 밖은 pageArea.unalWr(= wstrobe ∧ !mmioAligned ∧ !(selOwn ∨ selCq ∨ selCfg)) → surfBadWr 이고 조립 구역의 wr 은 전부 mmioAligned 를 요구한다 · 세 유닛 구역은 MmioConfig chkUnalWr · OwnershipTable 과 CompletionUnit badWrite 의 (acceptW ∧ !aligned) 가 자기 faultBadWrite 로 (판정 T2 (a))
 // GUARD-MAP: MmioPage.leg_write_rejected -> pageArea.legWr = wstrobe ∧ selLeg(접두 비교 둘 — addr[11:8] = 0 · addr[11:5] = 0x08) → surfBadWr. 이 구간은 ready 가 1 이라 수락 = 스트로브이고 어느 유닛 스트로브도 서지 않아 효과가 없다. 읽기는 resvOffset 경로의 0 이다 (판정 T3 (d))
 // GUARD-MAP: MmioPage.nocons_rejected -> 소비 회로가 없는 RW 워드의 정렬 쓰기는 거절 + [6] 이다: 명령 링 넷(0x380 · 0x384 · 0x388 · 0x390 — pageArea.isSqRw) → surfBadWr · 완료 링 base 둘(0x300 · 0x304 — CompletionUnit isBase) → 그 유닛 badWrite · 0xC00 기저의 예약-엄격 28 워드(+0x10..+0x7C — 3.10 v1.0 묶음이 표의 워드로 등재) → XlateStaging isRsvw 의 entRej → badWrite → surfBadWr. 어느 쪽에도 저장 레지스터가 없어 읽기는 0 이다 (판정 T1-i β)
-// GUARD-MAP: MmioPage.reject_loud -> 거절은 전부 FAULT_STATUS [6] 에 닿는다: 조립 거절선 surfBadWr → io.fault.cfgSurfBadWrite(StickyFault) · FP_BIND 예약 거절 → io.fault.fpCfgBadWrite · 0xC00 COMMIT 데이터 사유 거절 → io.fault.xlateCfgBadWrite · 유닛 faultBadWrite 셋(cfgBlk · own · cq)이 faultWords.status(B_CFG_BADWRITE) 논리합에서 한 비트로 합류한다. 해제는 0xF84[6] 하나다
+// GUARD-MAP: MmioPage.reject_loud -> 거절은 전부 FAULT_STATUS [6] 에 닿는다: 조립 거절선 surfBadWr → io.fault.cfgSurfBadWrite(StickyFault) · FP_BIND 예약 거절 → io.fault.fpCfgBadWrite · 0xC00 COMMIT 데이터 사유 거절 → io.fault.xlateCfgBadWrite · 0xE14 값 · 드레인 판정 거절 actp.io.badWrite → io_fault_actCfgBadWrite(클래스 끝 원천별 sticky — W4 D1 · 그 [6] 합류는 클래스 끝의 when) · 유닛 faultBadWrite 셋(cfgBlk · own · cq)이 faultWords.status(B_CFG_BADWRITE) 논리합에서 한 비트로 합류한다. 해제는 0xF84[6] 하나다
 // ── GUARD-MAP — 미적중 관측면(XlateObs.tla)의 포장·읽기 쪽 가드 셋 (파도 4, 2026-09-26) ──
 // 파이프라인 쪽 셋(obs_part_stalled · obs_vpn_stalled · obs_no_residue)은 hiu/HiuPipeline.scala
 // 파일 끝이 든다. 파일 *끝*에 둔 것은 앞쪽 익명 when 의 줄 좌표를 밀지 않기 위해서다.
 // GUARD-MAP: XlateObs.obs_stall_live -> xlateArea 의 obsStatus[0] = hiu.missStall = missWait(s3.valid ∧ ¬lookAny — ¬(판정 래치 ∨ 조회 적중), HiuPipeline 클래스 끝 · 3.10 v1.0 묶음 W2)이다 — 지금 정지 중인가의 레벨이지 sticky 가 아니다. 정지가 풀리는 사이클(항목 기입의 채움 바이패스 적중)에 0 이 되고, 판정이 래치된 요청은 hold 로 머무는 동안 그 항목이 밀려나도 다시 1 이 되지 않는다
 // GUARD-MAP: XlateObs.obs_sticky -> obsStatus[1] = hiu.io.missNotice = StickyFault(set = missWait, clear = missClear) — 미적중 sticky 그 자체다(set 원천 missWait 는 판정 래치를 아는 정지다 — 래치된 요청의 항목이 밀려나도 [1] 을 세우지 않는다). [0] 과 [1] 은 서로 다른 넷에서 온다 — 정지가 끝나도 [1] 은 0xE10 해제(또는 IO 해제선)가 내릴 때까지 1 이다
-// GUARD-MAP: XlateObs.obs_read_pure -> 읽기 경로(obsRd → obsReg/obsRv → io.mmio.rdata)는 레지스터 두 개와 rdata 덮어쓰기뿐이다 — hiu.io.missClear(= IO 해제선 ∨ xstg.io.missClr — 문의 0xE10 *쓰기*) · hiu.io.install · hiu.io.flush(문의 쓰기 판정)의 콘에 rstrobe 가 없다. 읽기는 hiu 에 해제 · 설치 · flush 어느 명령도 내지 않고, hiu 의 요청 · hold · hostRsp 입력은 최상위 IO 직결이라 읽기가 닿지 않는다 (조립 하네스 a_hiu_pass · hiu 가 그 명령 없이 sticky 를 내리지 않는다는 절반은 obs_sticky — HiuPipeline 의 StickyFault)
+// GUARD-MAP: XlateObs.obs_read_pure -> 읽기 경로(obsRd → obsReg/obsRv → io.mmio.rdata)는 레지스터 두 개와 rdata 덮어쓰기뿐이다 — hiu.io.missClear(= IO 해제선 ∨ xstg.io.missClr — 문의 0xE10 *쓰기*) · hiu.io.install · hiu.io.flush(문의 쓰기 판정)의 콘에 rstrobe 가 없다. 읽기는 hiu 에 해제 · 설치 · flush 어느 명령도 내지 않고, hiu 의 요청 · hold · hostRsp 입력은 최상위 IO 직결이거나(요청 파티션 · 정지는 actp — 0xE14 *쓰기*의 actPend · 결속만 움직인다) 읽기가 닿지 않는다 (조립 하네스 a_hiu_pass · hiu 가 그 명령 없이 sticky 를 내리지 않는다는 절반은 obs_sticky — HiuPipeline 의 StickyFault)
 // ── GUARD-MAP — XlateSurface 의 조립 쪽 가드 하나 (3.10 v1.0 묶음 W3, 2026-10-13) ──────────────────
 // 문의 스물넷은 XlateStaging.scala, 저장 쪽 넷은 hiu/XlateStore.scala 끝이 든다. 이 가드가 여기 있는
 // 이유: 문은 VPN 을 내고 칸 색인 · 태그를 가르는 결선이 xlateArea 에 산다. RTL 측정은 이중 유효
 // 불변식이 아니라 XlateDoor/door.sby 의 (a)(b) 단언이다 — 설치와 조회가 다른 분할을 쓰는 결함은 조회
 // 후보가 한 칸뿐이라 「두 칸 동시 유효」로 나타나지 않고 V=1 미적중 · V=0 뒤 적중으로 나타난다.
 // GUARD-MAP: XlateSurface.commit_replaces_vpn -> xlateArea 의 hiu.io.install.idx := XlateStore.idxOf(xstg.io.commit.vpn, idxW) · hiu.io.install.tag := XlateStore.tagOf(xstg.io.commit.vpn, idxW) 가 XlateStore 조회의 reqIdx = idxOf(lookup.vpn, idxW) · reqTag = tagOf(lookup.vpn, idxW) 와 *같은 함수*다 — 같은 (파티션, VPN) 의 COMMIT 은 늘 같은 칸(commitSel @@ idx)으로 가서 그 칸을 덮으므로 그 (파티션, VPN) 이 두 칸에 유효할 수 없고, 대기 중에는 fillShadow 가 그 칸의 옛 판을 가린다 (직접 사상 · 연관도 1 — DP-1 · DP-2)
+// ── GUARD-MAP — ActivePart 의 조립 쪽 가드 둘 (3.10 v1.0 묶음 W4, 2026-10-15) ──────────────────
+// 나머지 열은 top/ActivePart.scala 머리가 든다. 이 둘이 여기 있는 이유: 요청 파티션의 원천과
+// `0xE14` 기입의 정의역(정렬 게이트)은 컴포넌트가 아니라 xlateArea 의 결선이다.
+// GUARD-MAP: ActivePart.req_part_from_bound -> xlateArea 「결속」 절의 hiu.io.req.part := actp.io.activePart(= bound 레지스터)가 HIU 요청 파티션의 유일한 구동이다 — 최상위 io.hiuReq.part 입력은 은퇴했다(io 번들의 같은 줄 은퇴 주석 · hiu 결선 절의 같은 줄 주석). 요청은 접수 시점의 결속 아래 도착하고, 결속이 바뀌는 판정 사이클에는 when(actp.io.stallReq) 가 접수를 막는다
+// GUARD-MAP: ActivePart.unaligned_outside -> actp.io.wr := io.mmio.wstrobe && isAct 이고 isAct = selXctl ∧ mmioAligned ∧ addr[6:2] === Xctl.ACTIVE_PART / 4 — 비정렬 0xE15–0xE17 쓰기는 isAct 가 서지 않아 ActivePart 에 닿지 않고(A · D · 결속 불변) pageArea.unalWr → surfBadWr 의 페이지 sub-word 거절 + [6] 만 받는다. 판정 사이클 정지(actStall)도 isAct 범위라 비정렬 접근을 잡지 않는다

@@ -778,6 +778,98 @@ expect_fail "증인 (진행 환경): 래치된 요청의 항목이 경쟁 커밋
             XlateObs_live_witness_NoEvictWhileLatched.cfg "$M" Witness_NoEvictWhileLatched
 
 # ---------------------------------------------------------------------------
+# 0xE14 XLATE_ACTIVE_PART — 결속 파티션과 그 수락 판정 (A, D) (3.10 v1.0 묶음 · W4, 2026-10-15)
+#
+# 요청의 파티션 = 접수 시점의 결속, 결속은 드레인 경계에서만 바뀐다 — 값 검사가 먼저, 다른 값은
+# D = 1 일 때만 교체, 같은 값은 fault 없이 무동작이고 D 를 보고, 버스 수락된 기입은 전부 (A, D) 를
+# 남긴다. D 는 수락 에지 *직후* 상태(같은 사이클 접수 포함)로 표집한다 (E.1.2 결속 파티션의 수락 판정).
+# W4 전 RTL(HEAD f67e3d6)은 0xE14 를 예약 오프셋으로 흡수하고 요청 파티션을 최상위 포트로 받았다 —
+# 짝 _pair_today_* 가 그 기계다.
+#
+# D 표집 꼴(DP-4)의 근거 run: 좋은 모델은 α(t+1 표집 · t+1 동안 접수 · MMIO 정지). 대안 β
+# (ALLZERO(t) ∧ ¬접수(t))는 「마지막 일이 기입과 같은 에지에 빠져나가는」 모서리에서 D = 0 을 내
+# 적법한 결속 전환을 거절 + [6] 한다(거짓 loud — 상태 3 개: 요청 접수 → 다른 값 기입 ∧ 그 일 퇴장).
+# β 는 격리 몸을 지키고(_alt_beta_iso 통과) 그 모서리의 전환을 영영 못 한다(_alt_beta_edge 통과).
+# 대안 lag(α 인데 t 접수가 t+1 점유에 아직 안 듦)는 격리를 깬다(_alt_lag → Inv_WorkUnderBound) — α 가
+# 기대는 RTL 사실(req.fire(t) ⇒ occupancy(t+1) ≥ 1)의 기록이고 그 측정 몫은 HiuPipeline 태스크다.
+# 대안 hold(정지 한 사이클 더)는 Prop_StallOnlyPend 로 실패 — 정지 = actPend 그 자체의 앵커.
+# 고정 속성 여섯은 전부 상주 음성 run 을 갖는다(짝 · 대안 · _del_*_{a0d1,iso,stale}).
+#
+# 실측 2026-10-15 (컨테이너 · -workers 1): 작은 cfg 90,221 생성 · 1,233 distinct · 2 s; 큰 cfg(파티션 4 ·
+# 상한 2) 984,733 생성 · 7,359 distinct · 19 s. 삭제 12 · 고정 속성 음성 3 · 증인 18 · 짝 3 · 대안 6 은 각
+# 1 s 안팎 (절 44 run · 61 s — 검증 반영 판, Prop_StallOnlyPend · 기입별 grej 를 더한 뒤 같은 상태 수).
+# 분리 검사(비상주 — 가드 속성 12 + 고정 5 를 걸고 하나씩 벗김): 가드 속성 사이의 교차는
+# Prop_ReadIsSpec 하나뿐이다 — 레지스터를 틀리게 남기는 삭제 여덟이 *다음* 되읽기에서 그것도 깬다
+# (pend_stalls_mmio 의 목표 속성이고 삭제 cfg 에서는 늘 자기 속성 뒤에 온다). 고정 속성은 대개 함께
+# 깨진다(Inv_ObsIsSpec 여덟 · 격리 몸 넷 — drain_gates_switch · d_includes_same_cycle · pend_stalls_req · req_part_from_bound). reject_loud 만 자기 속성 하나다. 비상주 변이 둘: D 게이트
+# 반전 → Prop_A0D1IsValueReject, 값 거절에 D 미표집 → Prop_DIsPostEdge.
+# ---------------------------------------------------------------------------
+M=ActivePart.tla
+expect_pass "결속 좋은 모델 — 작은 (파티션 2 · 일 상한 1 · α)"            ActivePart.cfg       "$M"
+expect_pass "결속 좋은 모델 — 큰 (파티션 4 = 인코딩 상한 · 일 상한 2 · α)"  ActivePart_large.cfg "$M"
+
+expect_fail "가드 삭제: value_first (없는 값이 같은 값으로 접혀 수락)" \
+            ActivePart_del_value_first.cfg "$M" Prop_ValueFirst
+expect_fail "가드 삭제: rsv_strict ([31:10] 비0 수락)" \
+            ActivePart_del_rsv_strict.cfg "$M" Prop_RsvRejected
+expect_fail "가드 삭제: ro_field_ignored ([9:8] 을 예약-엄격으로 — RMW 드라이버 거절)" \
+            ActivePart_del_ro_field_ignored.cfg "$M" Prop_RoFieldIgnored
+expect_fail "가드 삭제: drain_gates_switch (D = 0 에서 결속 교체)" \
+            ActivePart_del_drain_gates_switch.cfg "$M" Prop_SwitchOnlyDrained
+expect_fail "가드 삭제: same_value_noop (같은 값 ∧ D = 0 → 거절 + [6])" \
+            ActivePart_del_same_value_noop.cfg "$M" Prop_SameValueNoFault
+expect_fail "가드 삭제: ad_every_accept (거절 뒤 앞 기입의 A = 1 이 남음)" \
+            ActivePart_del_ad_every_accept.cfg "$M" Prop_AdEveryAccept
+expect_fail "가드 삭제: d_includes_same_cycle (기입 사이클 에지 전 표집 — 같은 사이클 접수 누락)" \
+            ActivePart_del_d_includes_same_cycle.cfg "$M" Prop_DIsPostEdge
+expect_fail "가드 삭제: pend_stalls_req (판정 사이클에 옛 결속으로 접수 → 교체를 건넘)" \
+            ActivePart_del_pend_stalls_req.cfg "$M" Prop_NoAcceptAcrossSwitch
+expect_fail "가드 삭제: pend_stalls_mmio (판정 전 되읽기)" \
+            ActivePart_del_pend_stalls_mmio.cfg "$M" Prop_ReadIsSpec
+expect_fail "가드 삭제: req_part_from_bound (요청 파티션이 포트에서 옴)" \
+            ActivePart_del_req_part_from_bound.cfg "$M" Prop_ReqPartIsBound
+expect_fail "가드 삭제: unaligned_outside (0xE15–0xE17 이 0xE14 기입으로 처리)" \
+            ActivePart_del_unaligned_outside.cfg "$M" Prop_UnalignedInert
+expect_fail "가드 삭제: reject_loud (조용한 거절)" \
+            ActivePart_del_reject_loud.cfg "$M" Prop_RejectLoud
+expect_fail "고정 속성 음성: ad_every_accept 삭제 → A = 0 ∧ D = 1 이 값 거절과 어긋남" \
+            ActivePart_del_ad_every_accept_a0d1.cfg "$M" Prop_A0D1IsValueReject
+expect_fail "고정 속성 음성: pend_stalls_req 삭제 → 옛 결속의 일이 남음 (격리 몸)" \
+            ActivePart_del_pend_stalls_req_iso.cfg "$M" Inv_WorkUnderBound
+expect_fail "고정 속성 음성: pend_stalls_req 삭제 → 교체 에지 뒤 옛 결속의 일" \
+            ActivePart_del_pend_stalls_req_stale.cfg "$M" Prop_NoStaleWorkAfterSwitch
+
+expect_fail "증인: 결속 교체가 실재하는가"                       ActivePart_witness_NoSwitch.cfg "$M" Witness_NoSwitch
+expect_fail "증인: 드레인 판정 거절이 실재하는가"                ActivePart_witness_NoDrainReject.cfg "$M" Witness_NoDrainReject
+expect_fail "증인: 같은 값 ∧ D = 0 (fault 없음 · D = 0 보고)"   ActivePart_witness_NoSameUndrained.cfg "$M" Witness_NoSameUndrained
+expect_fail "증인: A = 0 ∧ D = 1 (드레인된 값 거절)"            ActivePart_witness_NoA0D1.cfg "$M" Witness_NoA0D1
+expect_fail "증인: 없는 파티션 값 기입이 도착하는가"            ActivePart_witness_NoPhantomWr.cfg "$M" Witness_NoPhantomWr
+expect_fail "증인: 실재 값 ∧ [31:10] 비0 기입이 도착하는가"     ActivePart_witness_NoRsvWr.cfg "$M" Witness_NoRsvWr
+expect_fail "증인: [9:8] 을 쓴 기입이 적용되는가"               ActivePart_witness_NoRoApplied.cfg "$M" Witness_NoRoApplied
+expect_fail "증인: 같은 사이클 접수만으로 드레인 거절"          ActivePart_witness_NoSameCycleReject.cfg "$M" Witness_NoSameCycleReject
+expect_fail "증인: 마지막 일이 같은 에지에 퇴장한 전환 (β 의 모서리)" ActivePart_witness_NoEdgeLeaveSwitch.cfg "$M" Witness_NoEdgeLeaveSwitch
+expect_fail "증인: 판정 사이클의 요청 정지가 실재하는가"        ActivePart_witness_NoReqStall.cfg "$M" Witness_NoReqStall
+expect_fail "증인: 판정 사이클의 MMIO 정지가 실재하는가"        ActivePart_witness_NoMmioStall.cfg "$M" Witness_NoMmioStall
+expect_fail "증인: 교체 뒤 요청이 새 파티션을 다는가"           ActivePart_witness_NoReqAfterSwitch.cfg "$M" Witness_NoReqAfterSwitch
+expect_fail "증인: 비정렬 쓰기가 도착하는가"                    ActivePart_witness_NoUnaligned.cfg "$M" Witness_NoUnaligned
+expect_fail "증인: 판정 뒤 되읽기가 A = 1 을 보는가"           ActivePart_witness_NoSettledRead.cfg "$M" Witness_NoSettledRead
+expect_fail "증인: 거절이 A = 1 을 내리는가"                    ActivePart_witness_NoALowered.cfg "$M" Witness_NoALowered
+expect_fail "증인: (0,0) 값 거절 ∧ 드레인 안 됨"                ActivePart_witness_NoValRejUndrained.cfg "$M" Witness_NoValRejUndrained
+expect_fail "증인: (1,1) 같은 값 ∧ 드레인됨"                    ActivePart_witness_NoSameDrained.cfg "$M" Witness_NoSameDrained
+expect_fail "증인: 값 거절과 같은 사이클의 요청 접수"           ActivePart_witness_NoValRejSameCycle.cfg "$M" Witness_NoValRejSameCycle
+
+expect_fail "짝: W4 전 RTL — 0xE14 쓰기 흡수"                  ActivePart_pair_today_absorb.cfg "$M" Inv_ObsIsSpec
+expect_fail "짝: W4 전 RTL — 요청 파티션이 포트"               ActivePart_pair_today_port.cfg "$M" Prop_ReqPartIsBound
+expect_fail "짝: 같은 값 ∧ D = 0 → 거절 (기각한 대안)"          ActivePart_pair_same_reject.cfg "$M" Prop_SameValueNoFault
+expect_fail "대안 β: D 가 수락 에지 직후 상태와 어긋남"         ActivePart_alt_beta.cfg "$M" Prop_DIsPostEdge
+expect_fail "대안 β: 적법한 전환이 거절 + [6] (거짓 loud)"     ActivePart_alt_beta_loud.cfg "$M" Prop_LoudOnlySpec
+expect_pass "대안 β: 격리 몸은 지킨다 (관측 결함이지 격리 결함 아님)" ActivePart_alt_beta_iso.cfg "$M"
+expect_pass "대안 β: 같은 에지 퇴장 전환을 영영 못 한다"       ActivePart_alt_beta_edge.cfg "$M"
+expect_fail "대안 lag: t 접수가 t+1 점유에 안 듦 → 옛 결속의 일이 교체를 건넘" \
+            ActivePart_alt_lag.cfg "$M" Inv_WorkUnderBound
+expect_fail "대안 hold: 정지를 판정 사이클 밖으로 늘임"         ActivePart_alt_stall_hold.cfg "$M" Prop_StallOnlyPend
+
+# ---------------------------------------------------------------------------
 # ISA-3 · ISA-4 — route fault 의 판정 주체와 범위 (부록 D.5 우선순위 4번)
 #
 # 앞의 셋과 성격이 다르다. 이미 일어난 결함이 아니라 **일어나면 설계를

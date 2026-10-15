@@ -103,7 +103,7 @@
 //                      (b-gaps.typ:811 「물려받은 `0x000`–`0x11F` 의 방향 처분」 — 그 미결 행을 판정이 닫았다.)
 //   rResv 0x120–0x1FF  예약 — 정렬 쓰기 무-fault · 읽기 0.
 //   미배선 두 구역(0x380 · 0xFC0)과 변환 저장소 제어(0xE00)의 표에 없는 워드.
-//     uResv  표에 없는 워드 (0x394–0x3FC · 0xE14–0xE7C · 0xFC0–0xFF4) — 예약 정책:
+//     uResv  표에 없는 워드 (0x394–0x3FC · 0xE18–0xE7C · 0xFC0–0xFF4) — 예약 정책:
 //            정렬 쓰기 무-fault(surfMust 밖 → a_surf_rise) · 읽기 0.
 //     sqTbl  명령 링 표 워드 다섯 (0x380–0x390) — RW 넷은 소비 회로가 없는 워드(E.1.3 규범
 //            끝 — 판정 T1-i β), SQ_HEAD(0x38C)는 RO. 정렬 쓰기 거절 + [6](surfMust) · 읽기
@@ -152,9 +152,10 @@ module Wt64Top_props (
   input logic        io_fault_cfgSurfBadWrite,
   input logic        io_fault_fpCfgBadWrite,
   input logic        io_fault_xlateCfgBadWrite,  // W3 — COMMIT 데이터 사유 거절의 원천별 sticky (DP-15)
+  input logic        io_fault_actCfgBadWrite,    // W4 D1 — 0xE14 값 · 드레인 판정 거절의 원천별 sticky (Wt64Top 클래스 끝 · a_actbad_*)
   input logic        io_fault_hiuOwn,      // W1 — FAULT_STATUS [19] 원천별 수출 (a_fsrc_b19)
-  // hiu 의 최상위 직결 입력 (파도 4 W6 — a_hiu_pass: 읽기가 요청 · hold · hostRsp 에 닿지 않는다)
-  input logic        io_hiuReq_valid, io_hiuReq_write, input logic [1:0] io_hiuReq_part,
+  // hiu 의 최상위 입력 (파도 4 W6 — a_hiu_pass: 읽기가 요청 · hold · hostRsp 에 닿지 않는다 · W4 — 요청 valid/ready 는 0xE14 판정 사이클(f_apend — 쓰기 원인)에 게이트 · 파티션은 결속)
+  input logic        io_hiuReq_valid, io_hiuReq_write, io_hiuReq_ready,  // W4 — io_hiuReq_part 은퇴 · ready 는 출력 (a_hiu_pass)
   input logic [31:0] io_hiuReq_vpn,
   input logic        io_hiuHold,
   input logic        io_hostRsp_valid, input logic [31:0] io_hostRsp_frame,
@@ -276,7 +277,9 @@ module Wt64Top_props (
   input logic        cq__io_comp_valid, cq__io_comp_ready,
   input logic [15:0] cq__io_drain_pipe, cq__io_drain_pending, cq__io_drain_output,
   input logic [15:0] cq__io_drain_ownSlots, cq__io_drain_contexts, cq__io_drain_tokens,
-  input logic        cq__io_faultOverflow, cq__io_faultClearOverflow, cq__io_faultBadWrite, cq__io_faultClearBadWrite
+  input logic        cq__io_faultOverflow, cq__io_faultClearOverflow, cq__io_faultBadWrite, cq__io_faultClearBadWrite,
+  // W4 — cq 의 클래스 끝 출력 drainAllZero (절단 출력 핀 — 뜻은 descriptor.sby a_daz_fn) = actp.io.drainNow 원천
+  input logic        cq__drainAllZero
 );
   initial assume (reset);
 
@@ -306,7 +309,7 @@ module Wt64Top_props (
   wire rFault = (A >= 12'hF80) && (A < 12'hFC0);
   wire rAsm   = rMask || rFp || rAbort || rFault;
   wire rXctl  = (A >= 12'hE00) && (A < 12'hE80);
-  wire uResv  = ((A >= 12'h394) && (A < 12'h400)) || ((A >= 12'hE14) && (A < 12'hE80)) ||
+  wire uResv  = ((A >= 12'h394) && (A < 12'h400)) || ((A >= 12'hE18) && (A < 12'hE80)) ||
                 ((A >= 12'hFC0) && (A < 12'hFF8));                // W1 — 0xFF8 은 HIU_SHAPE 다
   wire shapeW = (A >= 12'hFF8) && (A < 12'hFFC);   // HIU_SHAPE 0xFF8 (비정렬 바이트 0xFF9–0xFFB 포함)
   wire xWo    = rXent || ((A >= 12'hE00) && (A < 12'hE04)) || ((A >= 12'hE10) && (A < 12'hE14));
@@ -391,6 +394,47 @@ module Wt64Top_props (
   wire acF84  = W && (A == 12'hF84) && (D[31:20] == 12'd0);   // W1 — 예약 [31:20] (비트 스물)
   wire acF90  = W && (A == 12'hF90) && (D[31:4]  == 28'd0);
 
+  // ── W4 — 0xE14 XLATE_ACTIVE_PART 의 그림자 (모델 ActivePart.tla 의 pend · bound · regA · regD) ──
+  // MMIO 이력과 절단 핀 cq__drainAllZero(= actp.io.drainNow 원천)로만 짓는다 — actp 의 레지스터 · 출력을 읽지 않는다.
+  // 수락 = 정렬 0xE14 쓰기 ∧ io_mmio_ready (판정 사이클의 정지는 ready 하강 — a_ready_act). 수락된 기입은 값 검사와
+  // 무관하게 판정 사이클(f_apend) 하나를 연다(α · ad_every_accept). 판정 사이클의 핀 값이 「수락 에지 직후의 상태」다
+  // (d_includes_same_cycle — 그 핀이 t 접수를 세는 것은 HiuMask/occ.sby · a_drain_order · descriptor.sby 의 합성).
+  // 비정렬 0xE15–0xE17 은 수락돼도 그림자를 움직이지 않는다 (unaligned_outside — 거절 + [6] 은 surfMust 의 T2 항).
+  // 값 검사는 정본 참조 형상 F_PARTS (partOk 와 같은 상수) · [31:10] 엄격 · [9:8] 은 어느 식에도 없다 (ro_field_ignored).
+  wire        actAcc   = W && al && (A == 12'hE14) && io_mmio_ready;
+  wire        actValOk = ({24'd0, D[7:0]} < F_PARTS) && (D[31:10] == 22'd0);
+  logic       f_apend  = 1'b0;
+  logic       f_apok   = 1'b0;
+  logic [7:0] f_apv    = 8'd0;
+  logic [7:0] f_bound  = 8'd0;
+  logic       f_A      = 1'b0;
+  logic       f_D      = 1'b0;
+  wire        actApply = f_apend && f_apok && ((f_apv == f_bound) || cq__drainAllZero);
+  wire        actVRej  = actAcc && !actValOk;                                             // 값 거절 — 수락 사이클
+  wire        actDRej  = f_apend && f_apok && (f_apv != f_bound) && !cq__drainAllZero;    // 드레인 거절 — 판정 사이클
+  // W4 D1 — 두 거절은 조립 sticky(surfMust)가 아니라 원천별 sticky io_fault_actCfgBadWrite 에 선다 (a_actbad_* ·
+  // xlateCfgBadWrite 의 xBadAcc 선례). 드레인 거절의 전건에 절단 핀이 있어 조립 sticky 에 매면 ④ 가 운다.
+  wire        actBad   = actVRej || actDRej;
+  always @(posedge clk) begin
+    if (reset) begin
+      f_apend <= 1'b0; f_apok <= 1'b0; f_apv <= 8'd0; f_bound <= 8'd0; f_A <= 1'b0; f_D <= 1'b0;
+    end else begin
+      f_apend <= actAcc;
+      if (actAcc) begin
+        f_apv  <= D[7:0];
+        f_apok <= actValOk;
+      end
+      if (f_apend) begin
+        f_A <= actApply;
+        f_D <= cq__drainAllZero;
+        if (actApply) f_bound <= f_apv;
+      end
+    end
+  end
+  // 판정 사이클의 정지 대상 — 정렬 0xE14 접근(읽기 · 쓰기 · 유휴 제시 모두). 구역 범위는 isAct 하나다 (P-fix 6 ·
+  // R 초안 xlateArea.actStall = stallMmio ∧ isAct). R_XCTL 전체로 넓히면 a_ready_one 이 깨진다 — 보고 「결정」.
+  wire        actHold  = f_apend && al && (A == 12'hE14);
+
   wire surfMust = xRej || (W && al && (
       ((A == 12'hE00) && !partOk) || (A == 12'hE04) || (A == 12'hE08) || (A == 12'hE0C) ||
       ((A == 12'hE10) && (D[31:1] != 31'd0)) ||
@@ -405,6 +449,7 @@ module Wt64Top_props (
       (W && rLeg) ||                                   // T3 (d) — 물려받은 구간 쓰기 (정렬 무관)
       (W && al && (sqTbl || (A == 12'hFFC))) ||        // T1-i β 소비 없는 RW 넷 · SQ_HEAD RO · T1-ii 판 워드 RO
       (W && !al && !(rOwn || rCq || rCfg));            // T2 (a) — 비정렬 쓰기 (세 유닛 구역 밖 전부)
+  // W4 D1 — 0xE14 값 거절 · 드레인 거절(actBad)은 surfMust 밖이다 — 원천별 sticky io_fault_actCfgBadWrite (a_actbad_*).
   // FP_BIND(0xF04) [30:24] 예약 거절 — D1 (b): 조립 sticky 가 아니라 수락(loadReady) 게이트된 별도
   // sticky(io_fault_fpCfgBadWrite)다. 해제선은 0xF84[6] 하나다 (IO 해제선 없음).
   wire fpBad = W && al && (A == 12'hF04) && (D[30:24] != 7'd0) && fps__io_loadReady;
@@ -421,7 +466,7 @@ module Wt64Top_props (
       mask__io_faultWrDuringRekey, mask__io_faultNonceDup, mask__io_faultNoMask, bank__io_fault,
       shared_1__io_faultBpViolation, merge__io_fault, own__io_faultCollide,
       (cfgBlk__io_faultBadWrite || io_fault_cfgSurfBadWrite || cq__io_faultBadWrite || own__io_faultBadWrite ||
-       io_fault_fpCfgBadWrite || io_fault_xlateCfgBadWrite),
+       io_fault_fpCfgBadWrite || io_fault_xlateCfgBadWrite || io_fault_actCfgBadWrite),
       cfgBlk__io_faultDupOwner, hiu__io_faultPerm, reasm__io_fault, rj__io_fault, od__io_oFault, walk__io_oFault};
 
   wire src1 = fps__io_oCapAbsent;
@@ -440,7 +485,7 @@ module Wt64Top_props (
                           (!rCfg || io_mmio_ready == cfgBlk__io_ready));
     // D1 (b) — 선택자 표 소거를 기다리는 것은 정렬 FP_PROG/FP_BIND *쓰기*뿐 (읽기·비정렬은 기다리지 않는다)
     a_ready_fpw: assert (!(W && al && ((A == 12'hF00) || (A == 12'hF04))) || io_mmio_ready == fps__io_loadReady);
-    a_ready_one: assert ((rOwn || rCq || rCfg || (W && al && ((A == 12'hF00) || (A == 12'hF04))) || xHold) || io_mmio_ready);
+    a_ready_one: assert ((rOwn || rCq || rCfg || (W && al && ((A == 12'hF00) || (A == 12'hF04))) || xHold || actHold) || io_mmio_ready);
     // W3 (A) 조립 절반 — 항목 표면 쓰기의 ready 는 주소 · 상태 적법 COMMIT 이면 *정확히* 하류 슬롯 여유
     // (hiu.installSlotFree)이고 그 밖(VPN · FRAME · VPN_HI · 예약-엄격 · 주소 · 상태 사유 거절 COMMIT)이면
     // 1 이다. 등식이라 그 ready 가 다른 정지 원천(미적중 정지 hiu__missStall · cfgBlk ready · FP 소거
@@ -554,8 +599,8 @@ module Wt64Top_props (
     a_door_flush:   assert (hiu__io_flush_valid == xstg_io_flush_valid && hiu__io_flush_part == xstg_io_flush_part);
     a_door_woff:    assert (xstg_io_woff == A[8:2]);
     a_door_ready:   assert (!(W && al && (rXent || rXctl)) ||
-                            io_mmio_ready == ((rXent && (xw == 5'd2) && xstg_io_needReady) ? hiu__installSlotFree : 1'b1));
-    // hiu 의 요청 · hold · hostRsp 입력 핀 = 최상위 IO 그대로 (파도 4 W6 검토 — XlateObs.obs_read_pure 의 「조립 몫
+                            io_mmio_ready == ((rXent && (xw == 5'd2) && xstg_io_needReady) ? hiu__installSlotFree : !actHold));
+    // hiu 의 요청 · hold · hostRsp 입력 핀 = 최상위 IO 그대로, 단 W4 예외 — 요청 valid · ready 는 0xE14 판정 사이클(f_apend 는 쓰기만이 연다 — 읽기는 정지를 일으키지 않아 obs_read_pure 그대로)에 게이트 · 파티션은 결속 a_hiu_part (파도 4 W6 검토 — XlateObs.obs_read_pure 의 「조립 몫
     // 전부」가 이 열 핀을 요구한다: 읽기가 파이프라인을 잡거나 요청을 누르거나 응답을 먹는 변이 N15 · N16 · N22 가
     // 이 단언 전에는 세 태스크를 다 통과했다). 절단 입력 핀 열을 묶어 「재지 않는 핀」 hiu 10 → 0.
     // W1 — [19] 원천별 수출: 최상위 io.fault.hiuOwn 은 hiu 의 faultOwn 핀 그대로다 ([4] 와 다른 넷).
@@ -569,12 +614,20 @@ module Wt64Top_props (
     // 같은 처분 — 읽기 무부작용을 이름으로 드는 서명).
     a_rd_pure:   assert (!R || (mask__io_faultClearNonceDup == io_faultClear_maskNonceDup && !hiu__faultOwnClear &&
                                 !mask__io_rekey_valid && !mask__io_keyWr_valid && !mask__io_nonceWr_valid));
-    a_hiu_pass:  assert (hiu__io_req_valid == io_hiuReq_valid && hiu__io_req_write == io_hiuReq_write &&
-                         hiu__io_req_part == io_hiuReq_part && hiu__io_req_vpn == io_hiuReq_vpn &&
+    a_hiu_pass:  assert (hiu__io_req_valid == (io_hiuReq_valid && !f_apend) && io_hiuReq_ready == (hiu__io_req_ready && !f_apend) &&
+                         hiu__io_req_write == io_hiuReq_write && hiu__io_req_vpn == io_hiuReq_vpn &&
                          hiu__io_hold == io_hiuHold &&
                          hiu__io_hostRsp_valid == io_hostRsp_valid && hiu__io_hostRsp_frame == io_hostRsp_frame &&
                          hiu__io_hostRsp_perm_r == io_hostRsp_perm_r && hiu__io_hostRsp_perm_w == io_hostRsp_perm_w &&
                          hiu__io_hostRsp_perm_x == io_hostRsp_perm_x);
+    // W4 — 위 a_hiu_pass 는 pend_stalls_req 의 Top 절반이다: 판정 사이클(f_apend)에 hiu 의 valid *와* 최상위 ready 를
+    // 둘 다 내린다 (ready 만 내리면 HiuPipeline 이 advance 에 s1.valid := io.req.valid 로 실어 이중 접수 — P-fix 6).
+    // 그 밖의 사이클에는 둘 다 통과다. io_hiuReq_part 은 은퇴했고 요청 파티션은 아래 a_hiu_part.
+    // req_part_from_bound (Top 절반) — hiu 의 요청 파티션 핀 = 그림자 결속 (매 사이클 · valid 무관).
+    a_hiu_part:  assert (hiu__io_req_part == f_bound[1:0]);
+    // pend_stalls_mmio (Top 절반) · Prop_StallOnlyPend — 판정 사이클의 정렬 0xE14 접근은 수락되지 않는다. 하강의
+    // 반대 방향(「ready 하강 ⇒ 판정 사이클」 · 다른 구역은 정지하지 않는다)은 a_ready_one 의 actHold 항.
+    a_ready_act: assert (!actHold || !io_mmio_ready);
   end
 
   always @(posedge clk) if (f_step) begin
@@ -592,6 +645,13 @@ module Wt64Top_props (
         {16'd0, 6'd0, $past(hiu__missPart), 6'd0, $past(hiu__io_missNotice), $past(hiu__missStall)});
     if ($past(R && al && (A == 12'hE08)))          a_rd_xvpnlo:  assert (io_mmio_rvalid && io_mmio_rdata == $past(hiu__missVpn));
     if ($past(R && al && (A == 12'hE0C)))          a_rd_xvpnhi:  assert (io_mmio_rvalid && io_mmio_rdata == 32'd0);
+    // W4 — 0xE14 되읽기 (수락 사이클의 그림자 레지스터 — 판정 사이클 읽기는 a_ready_act 가 막는다). 덮어쓰기가 rdata mux
+    // 의 xlateArea 관측 가지라 유닛 rvalid 예외가 없는 정확 등식이다. a_bind_rd = 결속 [7:0] · 예약 [31:10] = 0,
+    // a_bind_upd = (A, D) 갱신 표 [8] · [9] — 둘을 갈라 결속 결함과 판정 결함이 각자 단독으로 운다.
+    if ($past(R && al && (A == 12'hE14) && io_mmio_ready)) begin
+      a_bind_rd:  assert (io_mmio_rvalid && io_mmio_rdata[7:0] == $past(f_bound) && io_mmio_rdata[31:10] == 22'd0);
+      a_bind_upd: assert (io_mmio_rdata[8] == $past(f_A) && io_mmio_rdata[9] == $past(f_D));
+    end
     if ($past(R && al && woA))                     a_rd_wo:    assert (io_mmio_rvalid && io_mmio_rdata == 32'd0);
     // T1-ii — 0xFFC 읽기는 합의 전 값 0 — e-defined.typ:505 「합의 전 값은 0 이고」. resvRv 경로라 유닛 rvalid 예외는 a_rd_resv0 와 같다.
     if ($past(R && al && (A == 12'hFFC)))          a_rd_abi:   assert (io_mmio_rvalid &&
@@ -636,6 +696,12 @@ module Wt64Top_props (
     a_xbad_rise:   assert (!(io_fault_xlateCfgBadWrite && !$past(io_fault_xlateCfgBadWrite)) || $past(xBadAcc));
     a_xbad_hold:   assert (!($past(io_fault_xlateCfgBadWrite) && !$past(clrF)) || io_fault_xlateCfgBadWrite);
     a_xbad_clear:  assert (!$past(io_fault_xlateCfgBadWrite && clrF && !xBadAcc) || !io_fault_xlateCfgBadWrite);
+    // W4 D1 — 0xE14 거절의 원천별 sticky (DP-15 선례): 값 거절(수락 사이클) · 드레인 거절(판정 사이클)에서만 선다 ·
+    // 발화 우선 · 비하강 · 0xF84[6] 해제 (IO 해제선 없음). 같은 값 · D=1 다른 값 · 정지된 기입은 세우지 않는다.
+    a_actbad_fire:  assert (!$past(actBad) || io_fault_actCfgBadWrite);
+    a_actbad_rise:  assert (!(io_fault_actCfgBadWrite && !$past(io_fault_actCfgBadWrite)) || $past(actBad));
+    a_actbad_hold:  assert (!($past(io_fault_actCfgBadWrite) && !$past(clrF)) || io_fault_actCfgBadWrite);
+    a_actbad_clear: assert (!$past(io_fault_actCfgBadWrite && clrF && !actBad) || !io_fault_actCfgBadWrite);
     // abort arm
     a_arm_src:  assert (stg_io_armed == $past(stg_io_armed) || $past(W && al && aTag));
     a_arm_set0: assert (!$past(W && al && (A == 12'hF40)) || stg_io_armed[0]);
@@ -785,6 +851,19 @@ module Wt64Top_props (
   // W52 ← XlateSurface.vpn_drops_frame · XlateSurface.commit_rsv_strict · a_xbad_fire · a_xcm_iff — [의존: hiu__installSlotFree 핀 — 실물 근거 XlateStaging_props.sv w17_vpn_drops · w23_cm_rsv] FRAME 까지 찬 스테이징에 VPN 을 다시 쓴 뒤의 V=1 COMMIT · 또는 [27:0] 비0 COMMIT 이 수락되어 설치 핀 없이 원천별 sticky 를 세운다
   always @(posedge clk) if (f_step) w52_xbad_vpn_drops: cover ($past(xBadAcc && D[31] && !f_xfv && D[27:0] == 28'd0 && !io_fault_xlateCfgBadWrite) && $past(xVpnW && f_xfv, 2) && io_fault_xlateCfgBadWrite);
   always @(posedge clk) if (f_step) w52_xbad_rsv: cover ($past(xBadAcc && f_xfv && D[27:0] != 28'd0 && !hiu__io_install_valid && !io_fault_xlateCfgBadWrite) && io_fault_xlateCfgBadWrite);
+  // ── W4 증인 (3.10 v1.0 묶음 — 0xE14 XLATE_ACTIVE_PART) ──
+  // W53 ← ActivePart.same_value_noop · ActivePart.reject_loud · a_bind_upd · a_actbad_rise — [의존: cq__drainAllZero 핀 — 실물 근거 HiuOcc_props.sv w1_occ_first (점유 ≠ 0 ⇒ 핀 0 — descriptor.sby w13_daz_pipe)] 같은 값 ∧ D=0: 0xE14 sticky(io_fault_actCfgBadWrite) 없이 되읽기 A=1 · D=0
+  always @(posedge clk) if (f_step) w53_act_same_d0: cover ($past(R && al && A == 12'hE14 && io_mmio_ready && f_A && !f_D && !io_fault_actCfgBadWrite) && io_mmio_rdata[9:8] == 2'b01 && !io_fault_actCfgBadWrite);
+  // W54 ← ActivePart.drain_gates_switch · ActivePart.req_part_from_bound · a_hiu_part · a_bind_rd — [의존: cq__drainAllZero 핀 — 실물 근거 descriptor.sby w11_daz_rd1] D=1 판정 사이클의 다른 값 기입이 hiu 요청 파티션 핀을 바꾼다
+  always @(posedge clk) if (f_step) w54_act_switch: cover ($past(f_apend && f_apok && f_apv != f_bound && cq__drainAllZero) && hiu__io_req_part != $past(hiu__io_req_part));
+  // W55 ← ActivePart.pend_stalls_req · a_hiu_pass — [무관] 0xE14 쓰기 다음 사이클(판정 사이클)에 제시된 요청은 hiu 에 닿지 않는다 (valid 게이트 — 콘에 io_mmio_ready 를 넣지 않으려고 그림자 대신 버스 사건으로 쓴다)
+  always @(posedge clk) if (f_step) w55_act_req_stall: cover ($past(W && al && A == 12'hE14) && io_hiuReq_valid && !hiu__io_req_valid);
+  // W56 ← ActivePart.pend_stalls_mmio · a_ready_act · a_ready_one — [의존: io_mmio_ready mux 콘에 유닛 ready 핀 — 실물 근거 ActivePart_props.sv w10_held] 판정 사이클의 0xE14 읽기는 잡히고 다음 사이클에 수락된다
+  always @(posedge clk) if (f_step) w56_act_rd_held: cover ($past(R && al && A == 12'hE14 && !io_mmio_ready) && R && al && A == 12'hE14 && io_mmio_ready);
+  // W57 ← ActivePart.value_first · ActivePart.reject_loud · a_actbad_fire — [의존: cq__drainAllZero 핀 — 실물 근거 ActivePart_props.sv w9_alias (수락 사이클의 값 거절 → badWrite — 유닛 단독)] 없는 값(4)의 정렬 0xE14 기입 다음 사이클 0xE14 sticky(io_fault_actCfgBadWrite)가 처음 선다. 그 sticky 의 set 콘에 드레인 판정 거절(절단 핀 cq__drainAllZero)이 들어 [의존] 이다 (W4 D1 — 원천별 sticky 로 옮기며 ④ 는 핀 제외 없는 원판으로 돌아갔다). 앞 사이클에 0xE14 쓰기가 없다는 버스 사건 전건이 드레인 거절(앞 기입의 판정 사이클)로 sticky 가 서는 가짜 경로를 끊는다 (W4H — 이 전건 없이는 값 검사를 지운 VAL_NONE 아래에서도 도달)
+  always @(posedge clk) if (f_step) w57_act_val_rej: cover ($past(W && al && A == 12'hE14 && D == 32'd4 && !io_fault_actCfgBadWrite) && $past(!(W && al && A == 12'hE14), 2) && io_fault_actCfgBadWrite);
+  // W58 ← ActivePart.unaligned_outside · MmioPage.unaligned_rejected · a_surf_fire · a_hiu_pass — [무관] 비정렬 0xE15 쓰기가 조립 sticky 를 세우고 판정 사이클을 열지 않는다 — 다음 사이클 제시된 요청이 hiu 에 닿는다 (요청 정지 없음). 정렬 게이트를 뺀 변이(UNAL_WR)는 그 쓰기를 0xE14 기입으로 받아 다음 사이클 요청을 막는다. 앞 사이클 0xE14 쓰기 없음 전건은 W4 D1 전(드레인 거절이 조립 sticky 에 합류하던 판)의 가짜 경로를 끊던 것이고 지금은 잉여다 — 증인 뜻을 바꾸지 않으려고 둔다 (W4H — 앞판 「파티션 핀 그대로」 는 교체가 판정 다음 에지라 UNAL_WR 아래에서도 도달)
+  always @(posedge clk) if (f_step) w58_act_unal: cover ($past(W && A == 12'hE15 && D == 32'd1 && !io_fault_cfgSurfBadWrite) && $past(!(W && al && A == 12'hE14), 2) && io_fault_cfgSurfBadWrite && io_hiuReq_valid && hiu__io_req_valid);
 `endif
 endmodule
 

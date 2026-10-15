@@ -36,11 +36,19 @@
     "XlateObs.obs_part_stalled",
     "XlateObs.obs_vpn_stalled",
     "XlateObs.obs_no_residue",
-    "XlateObs.obs_read_pure"
+    "XlateObs.obs_read_pure",
+    "ActivePart.unaligned_outside",
+    "ActivePart.req_part_from_bound",
+    "ActivePart.pend_stalls_req",
+    "ActivePart.pend_stalls_mmio",
+    "ActivePart.drain_gates_switch",
+    "ActivePart.same_value_noop",
+    "ActivePart.value_first",
+    "ActivePart.reject_loud"
   ],
-  "at": "2026-10-13T13:50:17Z",
+  "at": "2026-10-15T09:40:43Z",
   "cover": {
-    "reached": 63,
+    "reached": 69,
     "reached_names": [
       "Wt64Top.chk.w10_cap0_clr",
       "Wt64Top.chk.w10_cap2_gate",
@@ -97,6 +105,12 @@
       "Wt64Top.chk.w51_xframe_pair",
       "Wt64Top.chk.w52_xbad_rsv",
       "Wt64Top.chk.w52_xbad_vpn_drops",
+      "Wt64Top.chk.w53_act_same_d0",
+      "Wt64Top.chk.w54_act_switch",
+      "Wt64Top.chk.w55_act_req_stall",
+      "Wt64Top.chk.w56_act_rd_held",
+      "Wt64Top.chk.w57_act_val_rej",
+      "Wt64Top.chk.w58_act_unal",
       "Wt64Top.chk.w5_fclr_rsv",
       "Wt64Top.chk.w5_rekey_rsv",
       "Wt64Top.chk.w6_part_rej",
@@ -110,12 +124,12 @@
     "unreached_names": []
   },
   "inputs": {
-    "rtl/generated/Wt64Top.sv": "2b3aeb9bbb0e62647626ac9f76996491687b72776068898db891699c443a4312",
-    "rtl/sv/assert/Wt64Top_props.sv": "31b6b593dc97d23ac0317f8786d5d18804e81a0644516baadd31d1754cb4f549"
+    "rtl/generated/Wt64Top.sv": "c39bcb4ce73460cdf2ba0b17738dcdb2cae29bc4599b1e97e993712df859ba23",
+    "rtl/sv/assert/Wt64Top_props.sv": "e2458f535bace3e63dee9d52b03c80da39de7f07ca0d9b65e11e2565093ea14d"
   },
   "per_task": {
     "bmc": {
-      "assert": 116,
+      "assert": 124,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -125,11 +139,11 @@
       "assert": 0,
       "const_a": 0,
       "const_en0": 0,
-      "cover": 63,
+      "cover": 69,
       "mode": "cover"
     },
     "prove": {
-      "assert": 116,
+      "assert": 124,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -137,7 +151,7 @@
     }
   },
   "sby": "rtl/formal/sby/Wt64Top/assembly.sby",
-  "sby_sha256": "d8cfebd52d8ad66866f8544357d4402c22ebf661623fdc59ab2c15dad72f0a1b",
+  "sby_sha256": "7365c29e98f4c2ae3d6eec8df932923696fc465c14af459cff2e275c994ca2d7",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

@@ -1,0 +1,43 @@
+{
+  "anchors": [],
+  "at": "2026-10-15T07:20:53Z",
+  "cover": {
+    "reached": 3,
+    "reached_names": [
+      "u_occ.w1_occ_first",
+      "u_occ.w2_occ_swap",
+      "u_occ.w3_occ_hold"
+    ],
+    "unreached": 0,
+    "unreached_names": []
+  },
+  "inputs": {
+    "rtl/generated/HiuPipeline.sv": "044e14d5a118198471c428187653b0c090a791e987456ce93f6bd4f27cfd0fb7",
+    "rtl/generated/MaskUnit.sv": "d9c9f968c6136d71f6a756acd87984964977f4bb71a16ecd2c5eb9262bcd6a4f",
+    "rtl/sv/assert/HiuMask_props.sv": "8b701257e4b112a509571cf91b1a8f752c98bf62cd6f5a095aa685bba1d187dd",
+    "rtl/sv/assert/HiuOcc_props.sv": "61580102af2f74c3daabc03850cac2035f5a23196398db079a8f13b9c5dbbddd"
+  },
+  "per_task": {
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 3,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 2,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
+  },
+  "sby": "rtl/formal/sby/HiuMask/occ.sby",
+  "sby_sha256": "38d8463d858fefffd17ee4ba35f73dba0493b87cffba0c885c2517e34a4d7457",
+  "schema": "wt64-postformal-evidence/2",
+  "tasks": "cover:PASS prove:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
+}

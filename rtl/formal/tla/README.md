@@ -37,8 +37,9 @@ make rtl-formal        # 또는  sh rtl/formal/tla/run.sh
 | **E.1.2 CAP_STATUS/CAP_CLEAR** 축 격리 · sticky · 예약 위반 원자 거절 · 발화 우선 | `CapWord.tla` | **증명됨** — 가드 넷(axis_isolated · sticky_until_clear · clear_atomic · set_beats_clear) + 증인 넷, 9 run. 축은 불투명 토큰 넷 — 사건→축 배정은 정본 표의 몫 |
 | **E.1.2 · E.3 변환 저장소의 MMIO 문** `0xC00` 형상 비노출 항목 표면(VPN · FRAME · COMMIT · VPN_HI · 예약-엄격 28 워드) · 스테이징 (f) · 커밋 결과 (a)(b)(c)(g)(h) · **HIU-4** 적중 유일성 · **HIU-2** V=0 축 · 하류 정지 처분 · `0xE00` flush 발화·범위 · `0xE10` 해제 · RO 쓰기 거절 · 거절 loud | `XlateSurface.tla` | **증명됨** (모델 위) — 3.10 v1.0 묶음 RTL 파도 W3 (2026-10-13) 재작성(앞판은 파도 3 · 4 의 LO/HI 직접 배열 문 — 아래 절은 그 기록). 가드 스물아홉(개명 여섯 · 신설 열 · 유지 열셋 — commit_fires · commit_base_match · commit_needs_vpn · commit_whole · commit_v_carried · frame_stages_only · commit_replaces_vpn · vpn_drops_frame · commit_needs_frame · frame_pair_check · vpnhi_strict · rsvw_rejected · commit_rsv_strict · evict_in_partition · evict_on_commit_only · stall_independent · flush_fires · flush_scoped · flush_valid_only · flush_part_exists · flush_rsv_strict · flush_drops_staging · ent_part_exists · reject_loud · mclr_fires · mclr_needs_one · mclr_rsv_strict · mclr_keeps_stall · ro_rejected) + 증인 스물여덟 + 짝 여섯 · 대안 일곱 · 발견 1 + 진행 1, 77 run (좋은 cfg 다섯 — 작은 · 대형 · 칸 2 · 칸 2 × 파티션 2 · 형상 밖 기저). 새 고정 속성 일곱 `Inv_AtMostOneValidPerVpn`(HIU-4 — 칸 1 cfg 에서는 공허, 반증력은 칸 2 cfg 둘 · `del_commit_replaces_vpn` · `pair_host_index`) · `Prop_V0Misses`(HIU-2 V=0 축) · `Prop_StallDataBlind` · `Prop_AddrRejectNoWait` · `Prop_HoldInert` · `Prop_RejectInert` · `Prop_CommitScoped` · 유지 `Prop_StallEnds`(하류 정지 유계 · 진행) · `Prop_TableByDoor`(W3 부터 칸 2 cfg 에도 걸리고 `del_evict_on_commit_only` 가 반증). 대안 상수 `RefuseDomain` = full · kind 가 정지 판정의 데이터 무관을 반증으로 받친다. 라벨이 HIU-1/2/3 · HIU-4 를 인용해 색인 모델로 센다 (부록 D 「모델 13개」). 실측: XlateSurface 절 77/77 선언대로 · 전량 배터리 600/600 선언대로 — 컨테이너 · 2026-10-13 18:37–19:58 KST · 게이트 GREEN(`run.sh` 종료 코드 0 경로) · 이탈 0 · 입력 sha 620건 불변 (부록 D 문장과 같은 판) |
 | **E.1.2 · E.12 · E.12.1 재조립 문맥 소거의 문** `0xF40` 스테이징 세 워드 · 워드 적법성(TAG1 poison·trace·예약 · TAG2/FIRE 예약 · RO 쓰기) · 거절의 무효과·loud · 워드별 무장 · 재기입 덮음 · 발화 성립(무장 완비 · `[0]`=1) · 잔류 소진 | `AbortSurface.tla` | **증명됨** — 가드 열셋(poison_trace_zero · epoch_word_rsv_strict · shape_word_rsv_strict · fire_rsv_strict · ro_rejected · legal_first · reject_loud · arm_on_accept · arm_own_word · stage_writes_value · fire_needs_armed · fire_needs_one · fire_drains_arm) + 증인 열하나 + 짝 셋 · 대비 1, 30 run. 축 모델. sub-word 처분은 상수 `Subword`(판정 T2 — RTL 은 W4). 짝 둘이 D2 이전 RTL(TAG1 무검사)과 동형 |
-| **3.7 · 3.10 · E.1.1 · E.1.3 구성 페이지의 처분** 포트 수락·응답 · RO 쓰기 · WO 읽기 · 예약 오프셋(정렬 워드) · 비정렬 쓰기 · 물려받은 `0x000`–`0x11F` · 소비 회로 없는 RW 워드(W3 부터 `0xC00` 예약-엄격 28 워드 — XlateSurface 의 rsvw — 도 이 부류: 쓰기 거절 + `[6]` · 읽기 0) · 거절 loud | `MmioPage.tla` | **증명됨** — 가드 아홉(rsp_on_accept · effect_on_accept · ro_rejected · wo_read_zero · resv_lenient · unaligned_rejected · leg_write_rejected · nocons_rejected · reject_loud) + 증인 열 + 짝·대안 여덟 · 대비 1, 29 run. 축 모델. 고정 속성의 예외 집합(SpecReject · SpecQuiet)이 곧 판정 내용이라 판정을 유도하지 못한다. 짝 둘이 D1 이전 조립과 동형 |
+| **3.7 · 3.10 · E.1.1 · E.1.3 구성 페이지의 처분** 포트 수락·응답 · RO 쓰기 · WO 읽기 · 예약 오프셋(정렬 워드) · 비정렬 쓰기 · 물려받은 `0x000`–`0x11F` · rw 부류(W4 부터 `0xE14` XLATE_ACTIVE_PART 도 — 그 기입의 의미는 `ActivePart.tla`, 값 거절은 `bad` 에 접힌다) · 소비 회로 없는 RW 워드(W3 부터 `0xC00` 예약-엄격 28 워드 — XlateSurface 의 rsvw — 도 이 부류: 쓰기 거절 + `[6]` · 읽기 0) · 거절 loud | `MmioPage.tla` | **증명됨** — 가드 아홉(rsp_on_accept · effect_on_accept · ro_rejected · wo_read_zero · resv_lenient · unaligned_rejected · leg_write_rejected · nocons_rejected · reject_loud) + 증인 열 + 짝·대안 여덟 · 대비 1, 29 run. 축 모델. 고정 속성의 예외 집합(SpecReject · SpecQuiet)이 곧 판정 내용이라 판정을 유도하지 못한다. 짝 둘이 D1 이전 조립과 동형. W4 (2026-10-15)는 주석 셋만 — run 29 불변 |
 | **E.1.2 · E.3 변환 미적중의 관측면** `0xE04` XLATE_STATUS · `0xE08`/`0xE0C` XLATE_MISS_VPN 의 *값* — 정지 게이트 스냅샷(정지 중에만 그 요청 · 정지가 없으면 0) · 찢김 없음 · 읽기 무해제 · 채널의 충분성 · **3.6.2 판정 시점과 판정 래치**(W2) | `XlateObs.tla` | **증명됨** (모델 위) — 가드 아홉(obs_stall_live · obs_sticky · obs_part_stalled · obs_vpn_stalled · obs_no_residue · obs_read_pure + W2 verdict_latch · latch_clears_on_leave · latch_one_value) + 고정 속성 Prop_NoTear · Prop_LatchedSurvivesRetract · Prop_V0AfterEdgeMisses · 진행 Prop_StallResolves(「정지한 *그* 요청은 결국 떠난다」 — 요청 꼬리표 tok · 폴링 호스트 HostSpec · 경쟁자 · 하류 배압) + 증인 열셋 + 대안 다섯 · 고정 속성 반증 둘 · 진행 짝 셋 · 짝 셋 · 대비 셋, 41 run (W2 전 22). 축 모델. 짝 「파도 3 까지의 RTL」(세 워드 읽기 0)이 정지 영구로, 짝 「오늘의 RTL」(W2 전 RTL — HEAD 9b6eee6, 래치 없음)이 재미적중으로 운다 |
+| **E.1.2 · 3.7.2 결속 파티션** `0xE14` XLATE_ACTIVE_PART — 요청 파티션 = 접수 시점의 결속 · 값 검사 먼저 · 다른 값은 D = 1 일 때만 교체 · 같은 값은 fault 없는 무동작 · 수락마다 (A, D) · D 는 수락 에지 직후 상태(같은 사이클 접수 포함) · 판정 사이클의 요청 · MMIO 정지 · 비정렬 무효과 · 거절 loud | `ActivePart.tla` | **증명됨** (모델 위) — 3.10 v1.0 묶음 RTL 파도 W4 (2026-10-15) 신설. 가드 열둘(value_first · rsv_strict · ro_field_ignored · drain_gates_switch · same_value_noop · ad_every_accept · d_includes_same_cycle · pend_stalls_req · pend_stalls_mmio · req_part_from_bound · unaligned_outside · reject_loud) + 고정 속성 여섯(Inv_ObsIsSpec · Inv_WorkUnderBound · Prop_NoStaleWorkAfterSwitch · Prop_LoudOnlySpec · Prop_A0D1IsValueReject · Prop_StallOnlyPend — 전부 상주 음성 run) + 증인 열여덟 + 짝 셋(W4 전 RTL 두 꼴 — 쓰기 흡수 · 포트 결속 · 기각한 「같은 값 ∧ D = 0 → 거절」) + 대안 여섯(D 표집 β 넷 — 정본 어긋남 · 거짓 loud · 격리 몸 PASS · 같은 에지 퇴장 전환 불가 PASS · lag · 정지 hold), 44 run. 축 모델. DP-4 α 의 근거가 β 반례다 (아래 절) |
 
 순서는 부록 D.5 규범 그대로다 — **근거는 "실제로 무너진 곳"** 이다.
 
@@ -800,8 +801,8 @@ RTL」 W2 전) + 대비 3(`[0]` sticky · 옛 진행 꼴 `Prop_StallLifts` · �
 - 닫힌 목록 16 항(모델 머리). RTL 로 넘긴 것: 두 소비 값의 동일성(3 — hiumask `l_one_value`) · 필드별 분리(5 —
   `l_hold`) · 포착 게이트(6 — `l_capture_gated`, 유도 단언; HIU-3 정적 검사 본체는 없다) · reset 비움(8 — 형식 단언
   이월). **미측정으로 남은 것**: 결과 (h) 「자발 축출은 없다」(13 — 이 모델에서 구조이고 진행 PASS 가 거기 기댄다;
-  W3 후보 가드 `evict_on_commit_only`) · 래치된 요청이 드레인 정의역 ①(HIU 점유 = 단 valid 의 수)에 드는가(14 — 그
-  점유를 재는 단언이 없다) · HIU-2 V=0 축의 저장 측(15 — W3 까지 착지 대기; 여기서 재는 것은 판정 시점 범위뿐).
+  W3 후보 가드 `evict_on_commit_only`) · 래치된 요청이 드레인 정의역 ①(HIU 점유 = 단 valid 의 수)에 드는가(14 — W2 당시 그
+  점유를 재는 단언이 없었다 · W4 (2026-10-15)부터 `HiuMask/occ.sby` `h_occ_conserve` 가 잰다, reset 점유 0 은 구조) · HIU-2 V=0 축의 저장 측(15 — W3 까지 착지 대기; 여기서 재는 것은 판정 시점 범위뿐).
 - 실측: XlateObs 절 41/41 선언대로 · 전량 배터리 573/573 선언대로 — 컨테이너 · 2026-10-12 11:54–13:25 KST · 게이트
   GREEN (부록 D 문장과 같은 판). 작은 좋은 모델 150,784 distinct · 큰 좋은 모델(VIEW) 618,496 distinct · 진행 MUST
   PASS 149,248 distinct (`run.sh` 절 머리 주석).
@@ -841,3 +842,43 @@ MASK_REKEY 의 명시적 지목을 싣고, 3.10 v1.0 묶음 RTL 파도 W1 의 �
   (assembly `a_rd_pure` — 유도 단언) · `0xF84` 예약 비트 거절(assembly) · reset 형식 단언(W1 에서 하지 않았다).
 - 실측: Mask 절 29/29 선언대로 (전량 배터리 554/554 — 2026-10-11). 파티션 2 좋은 모델 159,024 distinct · 파티션 3 ·
   VIEW 92,352 distinct.
+
+## E.1.2 · 3.7.2 결속 파티션 — `ActivePart.tla` (3.10 v1.0 묶음의 RTL 파도 W4 선-formal, 2026-10-15)
+
+축 모델이다 (라벨이 색인 속성 ID 를 인용하지 않는다). 정본 E.1.2 `0xE14` XLATE_ACTIVE_PART 행 · 「결속 파티션의 수락
+판정 — 0xE14 의 (A, D) 쌍」 · 3.7.2 「결속 전환」을 싣는다 — 요청의 파티션은 접수 시점의 결속이고, 결속은 드레인
+경계에서만 바뀐다. 정본 좌표 · RTL GUARD-MAP 예정 문면 · 닫힌 「안 잰다」 목록은 모델 머리가 소유한다. 여기서
+「증명됨」은 *모델 위의* 사실이다 — RTL 측정은 `ActivePart/activepart.sby` · `Wt64Top/assembly.sby` ·
+`CompletionUnit/descriptor.sby` `prove_daz` · `HiuMask/occ.sby` 와 형상 시험 N10 · N11 · N15 다 (`rtl/README.md` W4 절).
+
+44 run (`run.sh` ActivePart 절을 세어 확인): 좋은 모델 2(파티션 2 · 일 상한 1 / 파티션 4 · 일 상한 2) + 가드 삭제 12 +
+고정 속성 음성 3(`_del_ad_every_accept_a0d1` · `_del_pend_stalls_req_iso` · `_del_pend_stalls_req_stale`) + 증인 18 + 짝 3
+(W4 전 RTL — `0xE14` 쓰기 흡수 · 요청 파티션이 포트 · 기각한 「같은 값 ∧ D = 0 → 거절」) + 대안 6(β 넷 · lag · hold).
+
+| 가드 | 지우면 → 목표 속성 |
+|---|---|
+| `value_first` | 없는 값이 같은 값으로 접혀 수락 → `Prop_ValueFirst` |
+| `rsv_strict` | `[31:10]` 비0 수락 → `Prop_RsvRejected` |
+| `ro_field_ignored` | `[9:8]` 을 예약-엄격으로(RMW 드라이버 거절) → `Prop_RoFieldIgnored` |
+| `drain_gates_switch` | D = 0 에서 결속 교체 → `Prop_SwitchOnlyDrained` |
+| `same_value_noop` | 같은 값 ∧ D = 0 → 거절 + `[6]` → `Prop_SameValueNoFault` |
+| `ad_every_accept` | 거절 뒤 앞 기입의 A = 1 이 남음 → `Prop_AdEveryAccept` |
+| `d_includes_same_cycle` | 기입 사이클 에지 전 표집 — 같은 사이클 접수 누락 → `Prop_DIsPostEdge` |
+| `pend_stalls_req` | 판정 사이클에 옛 결속으로 접수 → `Prop_NoAcceptAcrossSwitch` |
+| `pend_stalls_mmio` | 판정 전 되읽기 → `Prop_ReadIsSpec` |
+| `req_part_from_bound` | 요청 파티션이 포트에서 옴 → `Prop_ReqPartIsBound` |
+| `unaligned_outside` | `0xE15`–`0xE17` 이 `0xE14` 기입으로 처리 → `Prop_UnalignedInert` |
+| `reject_loud` | 조용한 거절 → `Prop_RejectLoud` |
+
+- 고정 속성 여섯(가드 아님 — 전부 상주 음성 run): `Inv_ObsIsSpec` · `Inv_WorkUnderBound`(격리 몸) ·
+  `Prop_NoStaleWorkAfterSwitch` · `Prop_LoudOnlySpec` · `Prop_A0D1IsValueReject` · `Prop_StallOnlyPend`(정지 = 판정 사이클
+  그 자체 — 대안 hold 가 반증).
+- D 표집 꼴(DP-4)의 근거: 좋은 모델은 α(t 수락 → t+1 표집 · t+1 동안 접수 · MMIO 정지). 대안 β(ALLZERO(t) ∧ ¬접수(t))는
+  「마지막 일이 기입과 같은 에지에 빠져나가는」 모서리에서 D = 0 을 내 적법한 전환을 거절 + `[6]` 한다(`_alt_beta` ·
+  `_alt_beta_loud`) — 격리 몸은 지키고(`_alt_beta_iso` MUST PASS) 그 모서리의 전환을 영영 못 한다(`_alt_beta_edge` MUST
+  PASS). 정본과 다른 관측이라 S-1 은 불필요했다. 대안 lag(α 인데 t 접수가 t+1 점유에 아직 안 듦)는 격리를 깬다
+  (`Inv_WorkUnderBound`) — α 가 기대는 RTL 사실의 기록이고 그 측정은 `HiuMask/occ.sby` `h_occ_accept` · `h_occ_conserve`.
+- 비정렬 `0xE15`–`0xE17` 의 처분(A · D · 결속 불변)은 정본 E.1.2 「결속 파티션의 수락 판정」 명확화가 이미 닫았다 —
+  S-2 는 불필요했다.
+- 실측(`run.sh` 절 머리 주석): 작은 cfg 1,233 distinct · 큰 cfg(파티션 4 · 상한 2) 7,359 distinct.
+- 실측: ActivePart 절 44/44 선언대로(run [251]–[294]) · 전량 배터리 644/644 선언대로 — 컨테이너 `w4g-gate-tlc` · 2026-10-15 13:15–15:06 KST · 게이트 GREEN(「전체 644 run 이 선언대로 행동했다」 줄 — `run.sh` 종료 코드 0 경로) · 이탈 0 · 입력 sha 665건 중 663건 불변 — 두 건(`ActivePart.tla` · `MmioPage.tla`)은 배터리 끝(15:06:32) 뒤 15:06–15:07 에 바뀌었다(오케스트레이터의 배터리 뒤 주석 정정 — W4R2 결함 2 · MmioPage 는 HEAD 대비 주석 줄만 · ActivePart 는 배터리 입력 사본 대비 주석 줄 셋) — 바뀐 두 편은 15:07–15:08 절 재실행(MmioPage 29 + ActivePart 44 = 73/73 선언대로 · 게이트 GREEN · `gate-w4g/post`)으로 재확인, 그 입력 sha 665/665 = 현재 판 (부록 D 문장과 같은 판) · 이어서 `XlateObs.tla` 닫힌 목록 14 주석(점유 미측정 → W4 `h_occ_conserve`)을 고치고 XlateObs 절 41/41 선언대로 · GREEN (15:43–15:59 · `gate-w4g/post2`, XlateObs.tla sha 2611c0bf).

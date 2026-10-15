@@ -50,15 +50,15 @@ mkdtemp 루트는 **통과한 실행이 스스로 지운다** — 실패한 실�
 
 ---
 
-## 실행 결과 (2026-10-13, 호스트 — W3 생성물 · 형상 비노출 `0xC00` 문)
+## 실행 결과 (2026-10-15, 호스트 — W4 생성물 · `0xE14` XLATE_ACTIVE_PART · `io_hiuReq_part` 은퇴)
 
 ```
 Mask:  12 tests passed (skip 0, 하한 12)
-Shape: 37 tests passed (skip 0, 하한 37)
-run_wt64: 요청 스위트 2건 / cocotb 테스트 49건 전부 통과
+Shape: 44 tests passed (skip 0, 하한 44)
+run_wt64: 요청 스위트 2건 / cocotb 테스트 56건 전부 통과
 ```
 
-(2026-10-13 W3 수정 — Shape 36 → 37 `xlate_high_vpn_bits_distinguish` · `xlate_other_flush_keeps_staging` 에 파티션 1 vs 3 행(아래 「W3 수정」 절). 2026-10-13 W3(형상 비노출 `0xC00` 문) — Shape 26 → 36: 옛 문의 `xlate_*` 를 제자리에서 VPN → FRAME → COMMIT 문으로 다시 쓰고 새 열(N1–N7 · 선-formal 인계 셋 — 아래 「W3」 절). 2026-10-12 W2(판정 래치) — Shape 24 → 26 `xlate_released_judgment_survives_eviction` · `xlate_latched_hit_survives_retire`(아래 「W2」 절). 2026-10-12 W1 검증 수리 — Mask 11 → 12 `nonce_dup_compare_every_bit`(논스 비교 전폭 — 아래 「W1」 절의 「검증 수리」) · N14 에 reset · `[4]` 단독 해제 · `0xF88` 요약 행. 2026-10-11 W1(3.10 RTL 파도 — 표면 비트·워드) — Shape 21 → 24 `hiu_shape_word` · `mask_dup_capture` · `fault19_nonowned_access`, Mask 11 그대로(두 시험을 넓힘 — 아래 「W1」 절). 2026-09-26 파도 4 — Shape 15 → 16 `abort_tag1_word_legality` · 통합 착지 16 → 21: 페이지 통합 `page_disposition` · `fp_clear_window` ·
+(2026-10-15 W4(결속 파티션) — Shape 37 → 44: 조회 헬퍼가 파티션을 `0xE14` 결속으로 만들고(`bind_part`) 새 일곱(`active_part_*` 여섯 · `reset_values_norm` — 아래 「W4」 절). 2026-10-13 W3 수정 — Shape 36 → 37 `xlate_high_vpn_bits_distinguish` · `xlate_other_flush_keeps_staging` 에 파티션 1 vs 3 행(아래 「W3 수정」 절). 2026-10-13 W3(형상 비노출 `0xC00` 문) — Shape 26 → 36: 옛 문의 `xlate_*` 를 제자리에서 VPN → FRAME → COMMIT 문으로 다시 쓰고 새 열(N1–N7 · 선-formal 인계 셋 — 아래 「W3」 절). 2026-10-12 W2(판정 래치) — Shape 24 → 26 `xlate_released_judgment_survives_eviction` · `xlate_latched_hit_survives_retire`(아래 「W2」 절). 2026-10-12 W1 검증 수리 — Mask 11 → 12 `nonce_dup_compare_every_bit`(논스 비교 전폭 — 아래 「W1」 절의 「검증 수리」) · N14 에 reset · `[4]` 단독 해제 · `0xF88` 요약 행. 2026-10-11 W1(3.10 RTL 파도 — 표면 비트·워드) — Shape 21 → 24 `hiu_shape_word` · `mask_dup_capture` · `fault19_nonowned_access`, Mask 11 그대로(두 시험을 넓힘 — 아래 「W1」 절). 2026-09-26 파도 4 — Shape 15 → 16 `abort_tag1_word_legality` · 통합 착지 16 → 21: 페이지 통합 `page_disposition` · `fp_clear_window` ·
 3B `xlate_miss_observed` · `xlate_miss_obs_second_stall` · 3A `xlate_other_flush_keeps_staging` (`xlate_hi_releases_stall` 은 제자리에서 `xlate_flush_ends_staging`).
 2026-09-26 파도 3 — 변환 저장소의 MMIO 문: Shape 6 → 13, 지향 시험 일곱
 `xlate_*`, 같은 날 반증 검토 뒤 수리로 13 → 15 — 인접 HI 의 D-2 버스 정지 값 시험 둘.
@@ -83,8 +83,8 @@ run_wt64: 요청 스위트 2건 / cocotb 테스트 49건 전부 통과
 | 계산 중 **다른** 파티션 기입 | `maskReady == 0b0001` · `faultWrDuringRekey == 0` · part 0 값 golden | `wr_other_partition_during_rekey_is_clean` |
 | 변이 실측 (사본 worktree, 생성 SV 한 자리씩 — M2 만 case 블록 24줄) | **4/4 잡힘** — 아래 표 | Mask 스위트 전체 |
 | 구성 표면 소거 구간 | **65535 엣지** | `cfg_surface_integrity` |
-| ISA-1 대조면 | **121/123** 출력 (제외: `io_push_1_stall`·`io_push_2_stall`) | `compare_face_is_pinned` |
-| IO fault 해제선 | 19 (fault 출력 27 − MMIO 전용 8 — `NO_IO_CLEAR` 는 이름까지 생성물과 등식. W3 의 `io_fault_xlateCfgBadWrite` 는 `0xF84[6]` 로만 내려간다) | 같음 |
+| ISA-1 대조면 | **122/124** 출력 (제외: `io_push_1_stall`·`io_push_2_stall`) | `compare_face_is_pinned` |
+| IO fault 해제선 | 19 (fault 출력 28 − MMIO 전용 9 — `NO_IO_CLEAR` 는 이름까지 생성물과 등식. W3 의 `io_fault_xlateCfgBadWrite` 와 W4 의 `io_fault_actCfgBadWrite` 는 `0xF84[6]` 로만 내려간다) | 같음 |
 
 ---
 
@@ -350,6 +350,50 @@ VPN_HI(= 앞판 색인 1 의 HI 자리) 비0 기입이 `[6]` 0, N4 는 `[27:0]` 
 
 ---
 
+### W4 — `0xE14` XLATE_ACTIVE_PART · 결속 파티션 (3.10 v1.0 묶음의 RTL 파도 넷째 하위 파도)
+
+요청 파티션은 이제 최상위 입력 `io_hiuReq_part`(은퇴)가 아니라 `0xE14` 결속이다. 그래서 조회 헬퍼
+(`hiu_lookup` · `present_seq`)는 파티션 인자를 **결속으로 만든다** — `bind_part(p)` 가 `0xE14 ← p` 를 쓰고
+되읽어 `[7:0]` = p ∧ `[8]` A = 1 을 단언한다(단언하지 않으면 거절된 전환 뒤 조회가 옛 파티션에서 조용히
+돈다 — 함정 ⑥ 의 결속 판). 확인한 결속은 부팅마다 잊고 다시 확인한다(`_BOUND`). 옛 37 시험은 몸체 변경 없이
+이 헬퍼로 옮겨 37/37 PASS 였다. `xlate_miss_obs_second_stall` 은 p1 → p2 전환을 명시적 `bind_part` 와 D = 1
+단언으로 바꿨다. 기대값은 정본 E.1.2 `0xE14` 행 · 「결속 파티션의 수락 판정」 · reset 값 규범에서 유도했다
+(시험 파일 W4 절 머리의 축자 인용) — RTL 상수를 import 하지 않는다.
+
+| 시험 | 재는 것 |
+|---|---|
+| N10 `active_part_ad_table` | (A, D) 네 칸 × 사유 — 드레인됨: 다른 값 교체 · 같은 값 무동작 · 값 거절 A0 D1 + `[6]`. 미드레인(미적중으로 붙든 요청): 다른 값 A0 D0 + `[6]` · 같은 값 A1 D0 fault 없음 · 값 거절 A0 D0. 절단 별칭 5 · 6 · `[31:10]` 비0(같은 값 포함) · 없는 값 4–255 전량. 거절된 전환이 붙든 요청을 옮기지 않는다(관측 `[15:8]`) |
+| N10 `active_part_d_sample_edges` | 같은 사이클 접수(요청 접수와 다른 값 기입이 같은 에지 → D0 거절 · 그 요청은 옛 결속으로 응답; 같은 값이면 A1 D0 무fault) · β 모서리(응답이 떠나는 그 에지의 기입 → D1 교체) · 한 사이클 이른 대조(→ D0 거절) |
+| `active_part_rmw_ro_ignored` | `[9:8]` 네 값 모두 무시 — 되읽은 워드 되쓰기 수락 · `[9]` = 1 기입이 D 를 만들지 않는다 |
+| `active_part_unaligned_outside` | `0xE15`–`0xE17` 쓰기 → `[6]` · 결속 · A · D 각각이 바뀔 수밖에 없는 상태에서 불변 |
+| `active_part_judgment_stall` | t+1 한 사이클: HIU 접수 ready (1,0,1,1) · MMIO ready `0xE14` (0,1) · `0xF80` · `0xE04` · `0xE15` · `0x208` (1,1) · 직후 읽기 rvalid 한 번 · 판정 뒤 값 · 정지 사이클 요청 응답 한 번 · 인접 둘 정지 계수 [0, 1]. 시간 모양은 설계 선택(α) 확인이다 — 정본은 응답 시간을 걸지 않는다 |
+| N11 `active_part_binds_lookup` | 같은 VPN 을 1 · 3 에 다른 프레임 — 결속만 바꾸면 승인 프레임이 바뀐다 · `io.hiuRsp.part` 메아리 · 빈 파티션 2 결속 → 미적중 · 관측 `[15:8]` = 2 |
+| N15 `reset_values_norm` | 전원 reset 과 실행 중 reset 각각 뒤: `0xF80` · `0xE04` · `0xF8C` · `0x320` · `0xE14` · `0xEC4` · `0xEA0` · `0xEC0[7:0]` = 0 · `0x324` = 1 · 파이프 빔 · 스테이징 무효 · 소유권 전 페이지 호스트 · 소거 sweep ≤ 2^16 이고 처음부터. 실행 중 reset 앞에 각 워드가 비0 이었음을 전건으로 단언한다 — `0x320` 만 비0 으로 만들지 못했다(완료 큐 push 원천을 구동하지 않는다 — 한 점 관측) |
+
+**HEAD(f67e3d6) 음성 대조** — 생성물 사본에서 입력 정의역만 HEAD 에 맞추고(`io_hiuReq_part` 를 0 으로 구동)
+돌렸다. 새 일곱 + `xlate_miss_obs_second_stall` 이 8/8 FAIL — `bind_part` 단언(되읽기 0 — 쓰기 흡수)에서 운다.
+단언을 끈 판에서도 8/8 FAIL 이고 이유가 의도대로다: `0xE14` 쓰기가 흡수돼 되읽기 0 · `[6]` 없음, 붙든 요청의
+관측 `[15:8]` = 0(포트 파티션), 포트 파티션 0 이라 결속 1 · 3 의 항목이 미적중(N11 · D 표집 · N15 가 조회
+정지에서 막힌다), 판정 정지 없음. N15 의 reset 워드 행은 HEAD 에서도 0 이다(`0xE14` 미구현 — 읽기 0) —
+HEAD 에서 N15 가 우는 자리는 결속 축이다.
+
+**변이** (W4 생성물 사본 · 한 자리씩 · Shape 44 전체):
+
+| 변이 | 죽은 시험 |
+|---|---|
+| K1 값 검사가 `[6:0]` 만 봄 (128–131 … 별칭) | N10 ad_table 만 |
+| K2b HIU 점유가 s1 을 세지 않음 (같은 사이클 접수 누락) | N10 d_sample 만 |
+| K2c HIU 점유가 s6 을 세지 않음 (떠나기 전 일 누락) | N10 d_sample 만 |
+| K2 D 를 기입 사이클 t 에 표집 (β 꼴) | d_sample · binds_lookup + 옛 `xlate_*` 아홉 — `bind_part` 가 앞 응답이 떠나는 바로 그 에지에 수락되는 일이 흔해(β 모서리) 옛 시험이 거짓 거절로 운다 |
+| K3 `[9:8]` 엄격 | rmw 만 |
+| K4 쓰기 스트로브가 정렬을 보지 않음 | unaligned 만 |
+| K5 MMIO 정지 없음 | judgment_stall 만 |
+| K5b 정지 중 HIU valid 게이트 없음 | judgment_stall 만 |
+| K6 `rsp.part` 메아리가 3 을 1 로 | binds_lookup 만 |
+| K7 결속 reset 값 1 | reset_values_norm 만 |
+| K8 같은 값도 D 를 요구 | ad_table · d_sample · rmw · unaligned |
+| K6b 요청 파티션 0 고정 (HEAD 꼴) | 29 시험 |
+
 ## ⛔ 이 하네스의 층위 — 호스트 ABI 가 아니다
 
 **투입 방향(호스트 명령 큐 / E.5 명령 링)은 RTL 에 미착지다.**
@@ -370,7 +414,7 @@ VPN_HI(= 앞판 색인 1 의 HI 자리) 비0 기입이 `[6]` 0, N4 는 `[27:0]` 
 
 ---
 
-## 미측정 원장 — 11축
+## 미측정 원장 — 10축
 
 `make rtl-sim` 이 통과 계수와 **같은 자리에** 이 원장을 인쇄한다. 착지하면
 그 항이 사라진다.
@@ -383,11 +427,12 @@ VPN_HI(= 앞판 색인 1 의 HI 자리) 비0 기입이 `[6]` 0, N4 는 `[27:0]` 
 | 4 | fp32 산술 정확성 (`golden_fp32` 비트 일치) | `StepSequencer.scala:425-426` 이 `UInt` 정수곱·정수합 — 산술은 축 (b) 후속 |
 | 5 | `mask64` 의 32비트 (`[63:44]`·`[11:0]`) | `MaskUnit.scala:289-296` 「저장은 적용 비트만」 — 레지스터도 배선도 없다. **비교 불가가 아니라 비교 대상 부재** |
 | 6 | `SUBKEY`(256b)·`BLOCK`(512b) 를 통한 부분 수리 검출 | 내는 포트가 없다. `st_0..st_15` 의 계층 peek 은 포트 계약이 아니라 SpinalHDL 명명의 우연이라 통과 기준으로 쓰지 않는다 |
-| 7 | `FAULT_STATUS[17]`·`[18]` | `Wt64Top.sv:1667` 「faultWords_status[17] = 1'b0;」 과 다음 줄 `[18]` 상수 0 — 원천 부재. **0 을 「정상」으로 읽으면 안 된다** |
+| 7 | `FAULT_STATUS[17]`·`[18]` | `Wt64Top.sv:1705` 「faultWords_status[17] = 1'b0;」 과 다음 줄 `[18]` 상수 0 — 원천 부재. **0 을 「정상」으로 읽으면 안 된다** |
 | 8 | `SharedUnit`·`MemOrderGate` 독립 `.sv` 의 top 대표성 | 형상 불일치 — 독립본 16비트 vs top 인스턴스 161/128비트 |
 | 9 | OPREF **B** 참조의 LBID 축 | 제시 자체가 없다 — `Wt64Top.scala:86` 「OPREF B 토큰의 RouteJudge 제시는 미배선」 (TODO 2항), `tokIn` 은 사이클당 하나. ISA-2 α 는 **OPREF A 축만** 덮는다 |
-| 10 | 변환 저장소 관측 세 워드의 값 (`0xE04` · `0xE08`/`0xE0C`) | 회로 0건 — 정지 상태·정지한 요청의 VPN 을 내는 배선이 없다. 읽기는 응답 + 0, 쓰기는 거절 + `[6]` (파도 3 은 `0xE00` · `0xE10` 과 쓰기 방향만 닫았다) |
-| 11 | 변환 조회의 호스트 ABI 층위 | 요청 원천(메모리 파이프) 미착지 — 조회는 내부 포트 `io.hiuReq` 제시다. `xlate_*` 시험의 기입 쪽만 호스트 ABI 오프셋이다 |
+| 10 | 변환 조회의 호스트 ABI 층위 | 요청 원천(메모리 파이프) 미착지 — 조회의 VPN · valid 는 내부 포트 `io.hiuReq` 제시이고, 파티션은 `0xE14` XLATE_ACTIVE_PART MMIO 결속이다(W4 — `io_hiuReq_part` 은퇴). `xlate_*` · `active_part_*` 시험의 기입 쪽만 호스트 ABI 오프셋이다 |
+
+(옛 10번 「변환 저장소 관측 세 워드의 값 — 회로 0건」은 파도 4(`9ec42ee`)부터 거짓이었다 — `xlate_miss_observed` 가 잰다. W4 에서 지웠다.)
 
 ### 2번 별항 — ISA-1 형상 축이 미측정인 이유와 남은 20줄
 
@@ -539,7 +584,7 @@ RTL 계약을 바꾸는 파도는 후-formal 만이 아니라 **cocotb 골든도
 
 **Shape 판 (W1, 2026-10-11)** — `test_shape_equiv.py` 에는 같은 검사가 없었다
 (`zero_inputs` 가 손으로 고른 이름만 0 으로 두고, 그 밖의 새 입력은 조용히 0 으로 남았다).
-3.10 RTL 파도는 최상위 입력을 빼고(`io_hiuReq_part` 은퇴 예정) 더하므로, 이제 `zero_inputs`
+3.10 RTL 파도는 최상위 입력을 빼고(`io_hiuReq_part` — W4 에서 은퇴) 더하므로, 이제 `zero_inputs`
 가 생성물 머리의 `input` 이름 전량을 `SHAPE_INPUTS`(+ 접두로 거두는 `io_faultClear_*`)와
 **등식으로** 대조한다 — 누락 · 잉여면 전 시험이 죽고, 파서가 `input` 줄을 흘렸는지(줄 수 등식)도
 먼저 본다. 변이 실측(2026-10-11, W1 생성물 사본 · Shape 스위트 전체): 쓰이지 않는 입력 하나

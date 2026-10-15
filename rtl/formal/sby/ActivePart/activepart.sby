@@ -1,0 +1,119 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# `0xE14` XLATE_ACTIVE_PART — ActivePart 컴포넌트 단독 측정 (3.10 v1.0 묶음 RTL 파도 W4, 2026-10-15 ·
+# 설계 결정 DP-4 α · DP-6). 하네스: rtl/sv/assert/ActivePart_props.sv (래퍼 ActivePart_check).
+# 선-formal 계약: rtl/formal/tla/ActivePart.tla — 가드 12 · 고정 속성 여섯.
+#
+# PROVES: ActivePart.value_first — 값 검사가 같은 값 비교 *앞*이다: 없는 파티션 값(≥ 정본 참조 형상 4)은 하위 비트가 현재 결속과 같아도(절단 별칭) 수락 사이클에 거절선 · 판정 사이클에 A = 0 · 결속 불변 (p_bad_iff · p_word_a · p_word_bound · 증인 W9 — 모델 머리 「앵커는 검사 순서가 아니라 절단 사례」). 오라클의 값 검사는 8b 전폭 비교다
+# PROVES: ActivePart.rsv_strict — `[31:10]` 비0 의 수락 기입은 실재 파티션 값이어도 거절 (p_bad_iff · p_word_a · 증인 W7)
+# PROVES: ActivePart.ro_field_ignored — `[9:8]` 은 값 검사 · 같은 값 판정 · 저장 어느 식에도 없다: `[9:8]` 비0 의 적법 기입은 거절 없이 적용되고 되읽기 `[9:8]` 은 판정 결과다 (p_bad_iff · p_word_a · p_word_d · 증인 W8)
+# PROVES: ActivePart.drain_gates_switch — 다른 값은 판정 사이클 drainNow = 1 일 때만 결속을 바꾼다 · drainNow = 0 이면 A = 0 · 거절선 · 결속 불변 (p_word_bound · p_part · p_word_a · p_bad_iff · 증인 W1 · W2)
+# PROVES: ActivePart.same_value_noop — 같은 값은 D 와 무관하게 A = 1 · 거절선 없음 · D 는 그대로 보고 (p_word_a · p_bad_iff · p_word_d · 증인 W3 · W4)
+# PROVES: ActivePart.ad_every_accept — 수락된 기입은 값 검사와 무관하게 판정 사이클 하나를 열고 A · D 를 *둘 다* 갱신한다 · 어떤 사유든 거절이면 A = 0 (p_word_a · p_word_d · 증인 W5 — A0D1 · W6 — 값 거절이 앞 D = 1 을 0 으로 덮는다)
+# PROVES: ActivePart.d_includes_same_cycle — D 는 수락 사이클(t)이 아니라 판정 사이클(t+1)의 drainNow 다 — 「수락 에지 직후의 상태」 (p_word_d · 증인 W11). D 원천의 시점(t 접수가 t+1 drainAllZero 에 든다)은 이 태스크 밖 — HiuMask/occ.sby h_occ_accept · h_occ_conserve + assembly a_drain_order + descriptor.sby a_daz_fn 의 합성
+# PROVES: ActivePart.pend_stalls_req — 유닛 절반: io_stallReq = 판정 사이클 그 자체 (p_stall_req · 증인 W12). Top 의 valid · ready 둘 다 게이트는 assembly a_hiu_pass
+# PROVES: ActivePart.pend_stalls_mmio — 유닛 절반: io_stallMmio = 판정 사이클 그 자체 · 정지 중 기입은 수락이 아니라 효과도 거절선도 없다 (p_stall_mmio · p_bad_iff · 증인 W10). Top 의 ready 하강 범위는 assembly a_ready_act · a_ready_one
+# PROVES: ActivePart.req_part_from_bound — 유닛 절반: io_activePart = 결속 (p_part). Top 결선 hiu.io.req.part := actp.io.activePart 는 assembly a_hiu_part
+# PROVES: ActivePart.reject_loud — 거절선 = 값 거절(수락 사이클) ∨ 드레인 거절(판정 사이클), 등식 (p_bad_iff · 증인 W2 · W7 · W9). 원천별 sticky io_fault_actCfgBadWrite(Wt64Top 클래스 끝 · W4 D1) → FAULT_STATUS `[6]` 결선은 assembly a_actbad_fire · a_actbad_rise · a_rd_fst
+#
+# 가드 12 중 unaligned_outside 는 이 태스크에 없다 — 정렬 게이트는 Top 의 io_wr 원천(xlateArea 쓰기 스트로브 ∧ isAct ∧
+# mmioAligned)이고 이 유닛은 그 아래에 있다. 앵커는 assembly(a_bind_rd · a_bind_upd · a_hiu_part — `0xE15`–`0xE17` 쓰기가
+# 그림자를 움직이지 않는 위에서 등식).
+#
+# ## 이 태스크가 재지 않는 것
+#
+#   · D 원천 — io_drainNow 는 매 사이클 자유다. 「핀 = `0x37C` 읽기 = 여섯 카운트 ∧ CQ_OCC 0」 은 descriptor.sby,
+#     「t 접수가 t+1 점유에 든다 · 파이프 안 인계에 0 틈 없음」 은 HiuMask/occ.sby (모델 닫힌 목록 3 (a)(b)).
+#   · Top 결선 — 정렬 게이트 · ready 하강의 구역 범위 · rdata mux · 원천별 sticky io_fault_actCfgBadWrite · hiu 요청 게이트 (assembly).
+#   · `[6]` sticky(io_fault_actCfgBadWrite) · W1C (assembly a_actbad_hold · a_actbad_clear — surfBadWr 이 아니다, W4 D1).
+#   · reset 값 (W4-9 — cocotb N15 reset_values_norm). 여기 그림자의 reset 은 오라클의 출발점일 뿐이다.
+#   · 형상 ≠ 참조 형상 — F_PARTS = 4 는 정본 참조 형상 상수다. io_activePart 폭 2b 도 그 형상의 것이다.
+#
+# ## 엔진 · 깊이 — z3 를 쓰지 않는다
+#
+# 상태가 작다(레지스터 십여 비트 + 32b 값 하나). 그래도 판정 엔진은 메모리 「솔버 실명 함정」 규율대로
+# bmc = abc bmc3 · prove = abc pdr(그림자와 DUT 레지스터의 일치를 귀납 불변식으로 스스로 찾는다 — 포트만 보는
+# 오라클이라 k-귀납은 도달 불가 상태에서 거짓 반례를 낸다: door.sby · props.sby 와 같은 근거) · cover = btor btormc.
+# aigsmt z3 는 반례 재생(트레이스) 전용이다 — 판정 엔진이 아니다.
+# 가장 깊은 증인(W8 · W9 — 기입 → 판정 → 되읽기 · W5 · W6 은 앞 기입이 A/D 를 1 로 남긴 위)이 reset 뒤 6 사이클 안이다.
+# bmc 12 · cover 12 (두 배 여유).
+#
+# ## 역-변이 표 (비상주 실측, 2026-10-15 W4 후-formal 통합 — 생성물 Wt64Top.sv sha256 9742c7ad935b3faa)
+#
+# 사본의 ActivePart 한 식에서. 단언은 bmc smtbmc --keep-going z3 깊이 12(위반 집합 전부), 증인은 cover smtbmc
+# z3 깊이 12(미도달 이름 전부) — 판정 엔진(abc · btormc)은 이름 귀속을 싣지 않으므로 사본 실측은 z3 로 갈랐다.
+# 무변이: 단언 여덟 PASS · 증인 12/12. 「단독」 = 위반 · 미도달 집합이 그 하나.
+#
+#   변이 (사본의 한 식)                                  죽는 단언                          미도달 증인
+#   WORD_BOUND   되읽기 [8] 자리에 결속 비트를 겹침          p_word_bound                       W8
+#   A_APPLY_ONLY A 를 적용 때만 1 로 (거절이 A 를 안 내림)   p_word_a                           W5
+#   D_EARLY      D 를 수락 사이클 t 에 표집 (β 꼴)            p_word_d                           W11
+#   D_SWITCH0    교체 적용의 D 를 0 으로                      p_word_d                           W1
+#   D_SAME0      같은 값 판정의 D 를 0 으로                   p_word_d                           W3
+#   D_VREJ0      값 거절의 D 를 0 으로                        p_word_d                           W5
+#   D_VREJ1      값 거절의 D 를 1 로                          p_word_d                           W6
+#   D_VREJ_KEEP  값 거절은 D 를 갱신하지 않는다               p_word_d                           —
+#   WORD_RSV     되읽기 [10] 에 D 를 복제                     p_word_rsv                         —
+#   PART_PEND    요청 파티션 포트 = 판정 전 pendV              p_part                             W1
+#   STALL_IDLE   유휴(io_wr 없음) ∧ A 이면 MMIO 정지          p_stall_mmio                       —
+#   NO_STALL_REQ 요청 정지 상수 0                             p_stall_req                        W12
+#   QUIET        드레인 거절선 없음                           p_bad_iff                          W2
+#   BAD_UNACC    정지 중(미수락) 기입도 값 거절선             p_bad_iff                          W10
+#   SAME_REJECT  같은 값도 D=1 을 요구                        p_bad_iff · p_word_a               W4
+#   ALIAS_SAME   하위 두 비트가 결속과 같은 없는 값을 같은 값으로  p_bad_iff · p_word_a            W9
+#   RO_STRICT    [9:8] 비0 거절                               p_bad_iff · p_part · p_word_a · p_word_bound  W8
+#   NO_RSV       [31:10] 검사 없음                            (같은 넷)                          W7
+#   NO_DRAIN_GATE 다른 값도 D 무관 적용                       (같은 넷)                          W2
+#   VAL_ALIAS · VAL_NONE  값 검사를 하위 두 비트로 · 없앰      (같은 넷)                          W9
+#   PEND_VALONLY 값 거절은 판정 사이클을 열지 않는다          p_stall_mmio · p_stall_req · p_word_a · p_word_d  W5
+#   WORD_SWAP    되읽기 [8] · [9] 맞바꿈                      p_word_a · p_word_d                W4 · W5
+#   NO_STALL_MMIO · STALL_HOLD  MMIO 정지 없음 · 정지 2 사이클  일곱 (p_word_rsv 외 전부)          W10
+#
+# 단언 여덟 · 증인 열둘 전부 단독 사살 변이가 있다. W8 · W9 · W11 은 이 통합에서 강화했다 — 두 사이클 전 전건이
+# reset 사이클이어도 섰던 앞판은 reset 중 io_wr 이 포트상 acc 로 보이는 가짜 수락으로 ALIAS_SAME · D_EARLY
+# 아래에서도 도달했다 (f_step2). p_word_rsv 는 무변이 RTL 에서 상수로 접힌다(abc 「combinational network」 —
+# 되읽기 [31:10] 이 결선 상수) — 반증력은 WORD_RSV 가 든다.
+# HEAD(f67e3d6) 음성 대조: 직접 부착 ERROR — `ActivePart' … is not part of the design (HEAD 에 유닛이 없다).
+
+[tasks]
+bmc
+prove
+cover
+
+[options]
+bmc: mode bmc
+bmc: depth 12
+prove: mode prove
+cover: mode cover
+cover: depth 12
+multiclock off
+# 반례 재생(aiger → 트레이스) 전용 — 판정 엔진이 아니다 (door.sby 선례).
+bmc: aigsmt z3
+prove: aigsmt z3
+timeout 900
+
+[engines]
+bmc: abc bmc3
+prove: abc pdr
+cover: btor btormc
+
+[script]
+# 증인(cover)은 cover 태스크에서만 컴파일한다 — bmc · prove 모델은 단언 여덟 전부.
+bmc:   read_verilog -sv -formal ActivePart_props.sv
+prove: read_verilog -sv -formal ActivePart_props.sv
+cover: read_verilog -sv -formal -DACTIVEPART_COVER ActivePart_props.sv
+read_verilog -sv -formal Wt64Top.sv
+prep -top ActivePart_check
+# 무결성 — 래퍼 아래 셀이 ActivePart 인스턴스 하나뿐이고(통째로 지워지는 HOLLOW 를 막는다) assume 은 reset 하나다.
+select -assert-count 1 ActivePart_check/t:ActivePart
+select -assert-count 1 t:$check r:FLAVOR=assume %i
+bmc:   select -assert-count 8 ActivePart_check/t:$check ActivePart_check/r:FLAVOR=assert %i
+prove: select -assert-count 8 ActivePart_check/t:$check ActivePart_check/r:FLAVOR=assert %i
+cover: select -assert-count 12 ActivePart_check/t:$check ActivePart_check/r:FLAVOR=cover %i
+
+# [files] 경로는 저장소 루트 기준이다 — sby 는 상대 경로를 sby 파일이 아니라
+# *호출 cwd* 기준으로 푼다.
+[files]
+rtl/generated/Wt64Top.sv
+rtl/sv/assert/ActivePart_props.sv

@@ -118,7 +118,7 @@ object XlateStaging {
   val MISS_CLEAR_RSV = 0xFFFFFFFEL
 
   /** 8b 파티션 필드의 「없는 값」 판정 — **한 정의**. 파티션을 값이나 주소로 받는 표면
-    * 넷(XLATE_FLUSH · MASK_PART · MASK_REKEY · 이 문의 항목 기저 `addr[8:7]`)이 전부
+    * 다섯(XLATE_FLUSH · MASK_PART · MASK_REKEY · 0xE14 결속 값(ActivePart) · 이 문의 항목 기저 `addr[8:7]`)이 전부
     * 이것을 부른다 (Wt64Top 의 maskArea 포함). 필드가 형상의 값 공간을 다 덮으면 상수
     * False 다. */
   def partBad(field: UInt, parts: Int): Bool =

@@ -24,7 +24,7 @@
     "XlateSurface.ro_rejected",
     "XlateSurface.flush_drops_staging"
   ],
-  "at": "2026-10-13T13:55:52Z",
+  "at": "2026-10-15T09:46:34Z",
   "cover": {
     "reached": 26,
     "reached_names": [
@@ -59,7 +59,7 @@
     "unreached_names": []
   },
   "inputs": {
-    "rtl/generated/Wt64Top.sv": "2b3aeb9bbb0e62647626ac9f76996491687b72776068898db891699c443a4312",
+    "rtl/generated/Wt64Top.sv": "c39bcb4ce73460cdf2ba0b17738dcdb2cae29bc4599b1e97e993712df859ba23",
     "rtl/sv/assert/XlateStaging_props.sv": "c4e625f90ac9766e3c6e6523ea5cbee01563fc8617d43c52977ffe6c935740d1"
   },
   "per_task": {

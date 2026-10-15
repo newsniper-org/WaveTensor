@@ -39,6 +39,7 @@ module CompletionUnit (
   input  wire          io_faultClearOverflow,
   output wire          io_faultBadWrite,
   input  wire          io_faultClearBadWrite,
+  output wire          drainAllZero,
   input  wire          clk,
   input  wire          reset
 );
@@ -247,6 +248,7 @@ module CompletionUnit (
   assign ringRd = ring_spinal_port1;
   assign io_rvalid = acceptR_regNext;
   assign io_rdata = (winSel ? _zz_io_rdata : rdataReg);
+  assign drainAllZero = allZero;
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       headReg <= 32'h0;

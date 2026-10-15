@@ -133,7 +133,7 @@
 \*
 \* ## 주소 부류 (E.1 페이지의 추상 — 어느 오프셋이 어느 부류인가는 모델 밖)
 \*
-\*   rw     소비자 있는 RW 워드 (MASK_PART 등)
+\*   rw     소비자 있는 RW 워드 (MASK_PART 등 · 3.10 v1.0 묶음의 0xE14 XLATE_ACTIVE_PART — 그 기입의 의미는 ActivePart.tla)
 \*   cqsz   CQ_SIZE — 돌려줄 실물 값이 있고 같은 값 기입만 수락(무동작)
 \*   wo     WO 워드 (키 · 논스 · FLUSH 등) — 읽기 0
 \*   ro     RO 워드 (0x38C SQ_HEAD · 0xFFC HIU_ABI_VERSION 포함 · 3.10 v1.0 묶음의 0xFF8
@@ -148,7 +148,7 @@
 \*   resv   표에 없는 워드 오프셋 (3.7 예약)
 \*   leg    물려받은 0x000–0x11F
 \* 요청의 bad 는 「워드 안의 거절 사유」다 — 정의 부류(rw · cqsz · wo · gate · gateR)에서만
-\* 뜻이 있다 (예약 비트 비0 · FP_BIND [30:24] · CQ_SIZE 의 다른 값). 그 거절은 가드가 아니다 —
+\* 뜻이 있다 (예약 비트 비0 · FP_BIND [30:24] · CQ_SIZE 의 다른 값 · 0xE14 의 없는 값 · [31:10] 비0). 0xE14 의 드레인 판정 거절은 내용 거절이 아니라 시점 거절이다(E:208) — 이 모델이 그 사유를 bad 에 접는 것은 *추상 선택*이고 판정은 ActivePart.tla 몫. 그 거절은 가드가 아니다 —
 \* 각 표면의 모델(XlateSurface · AbortSurface)과 유닛 계약이 진다. 여기서는 고정 처분이다.
 \*
 \* ## 이 모델이 다루지 않는 것 (「안 잰다」 — 닫힌 목록)
@@ -171,7 +171,7 @@
 \*   두 비트)의 처분만 재고, 어댑터 쪽 이행(정본 경계 밖)은 재지 않는다.
 \* · [6] 의 sticky · W1C · 발화 우선 — loud 는 그 스텝의 발화 펄스다 (CapWord 와 같은 부류).
 \* · 시간 — 모델의 스텝은 원자적이다. 소거 구간의 길이 · 수락 지연의 사이클 수는 없다.
-\*   rdy 는 한 번 서면 내려가지 않는 추상이다 (CHECK 1사이클 busy 는 gateR 의 잡힘으로 흡수).
+\*   rdy 는 한 번 서면 내려가지 않는 추상이다 (CHECK 1사이클 busy 는 gateR 의 잡힘으로 흡수 · 0xE14 판정 사이클의 MMIO 정지는 ActivePart.pend_stalls_mmio 몫 — 정지는 정렬 0xE14 하나(isAct) 범위라 다른 구역 기입은 정지 사이클에도 수락되고 효과는 1회 — 이중 효과 없음은 이 모델의 effect_on_accept 가 조립에서 진다).
 \* · 한 스텝에 접근 여럿 — 버스는 한 번에 하나다.
 \*
 EXTENDS Naturals, FiniteSets

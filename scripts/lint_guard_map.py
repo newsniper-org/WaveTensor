@@ -143,12 +143,17 @@ ENFORCED = [
     # (HiuPipeline.scala 파일 끝 셋 — 정지 게이트 스냅샷 · Wt64Top.scala 파일 끝 셋 — 포장 ·
     # 읽기 경로). 둘 다 파일 끝이라 앞쪽 익명 when 의 줄 좌표를 밀지 않는다.
     "XlateObs",
+    # 3.10 v1.0 묶음 RTL 파도 W4 (2026-10-15) — 0xE14 XLATE_ACTIVE_PART · hiuReq.part 은퇴.
+    # 선-formal(ActivePart.tla — run.sh 절 44 run)이 RTL 보다 먼저 착지했고 GUARD-MAP 열둘이
+    # 전수다 (ActivePart.scala 머리 열 · Wt64Top.scala 파일 끝 둘 — req_part_from_bound ·
+    # unaligned_outside). 둘 다 새 파일 또는 파일 끝이라 앞쪽 줄 좌표를 밀지 않는다.
+    "ActivePart",
 ]
 # 미착지: NoLoss — 기계 전체 회계는 모듈이 아니라 합성 속성이다. RTL 대응물은
 # 후-formal 이 조합 위에서 검사한다 (모듈 단위 GUARD-MAP 강제 부적합).
 # 이 판단이 틀렸다고 판명되면 목록에 올리고 사유를 갱신하라.
 
-_MIN_ENFORCED = 18  # 래칫 바닥 — 이 수 아래로 줄이는 편집은 실패한다 (14 → 15: 파도 3 XlateSurface · 15 → 16: 2026-09-26 파도 4 AbortSurface · 16 → 18: 2026-09-26 파도 4 통합 — 페이지 통합 MmioPage · 3B XlateObs)
+_MIN_ENFORCED = 19  # 래칫 바닥 — 이 수 아래로 줄이는 편집은 실패한다 (14 → 15: 파도 3 XlateSurface · 15 → 16: 2026-09-26 파도 4 AbortSurface · 16 → 18: 2026-09-26 파도 4 통합 — 페이지 통합 MmioPage · 3B XlateObs · 18 → 19: 2026-10-15 3.10 v1.0 묶음 RTL 파도 W4 ActivePart)
 
 # 구조 skip 건수 래칫 — **상한**이다 (늘면 실패). 방향이 위 래칫과 반대인 것에
 # 주의하라. STRUCTURAL 은 CHECK 분모를 비우는 방향이므로 늘리는 일은 반드시

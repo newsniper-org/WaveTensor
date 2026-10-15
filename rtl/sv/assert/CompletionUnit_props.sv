@@ -96,7 +96,15 @@ module CompletionUnit_props (
   input wire [2:0]    f_head,
   input wire [2:0]    f_tail,
   // ── anyconst 칸 (래퍼 소유) ───────────────────────────────────────────
-  input wire [2:0]    f_slot
+  input wire [2:0]    f_slot,
+  // ── W4 (3.10 v1.0 묶음 — 0xE14 의 D 원천, DP-5) — 드레인 여섯 입력 · drainAllZero 출력 핀 ──
+  input wire [15:0]   io_drain_pipe,
+  input wire [15:0]   io_drain_pending,
+  input wire [15:0]   io_drain_output,
+  input wire [15:0]   io_drain_ownSlots,
+  input wire [15:0]   io_drain_contexts,
+  input wire [15:0]   io_drain_tokens,
+  input wire          io_drainAllZero
 );
   // 형상 상수 — CompletionUnit(cqDepth = 8) ⇒ 포인터 3b. INV-T1 무관 (형식
   // 검사는 *이 형상*을 재는 자리다 — 형상 독립성은 lint_isa7 의 축).
@@ -359,6 +367,32 @@ module CompletionUnit_props (
       w10_trace_in:    cover ($past(f_winRead) && ($past(f_head) == f_slot) && $past(f_written) && ($past(f_winWord) == 3'd2) && s_trace && (s_epoch != 4'd0));
     end
   end
+
+  // ══ 축 7 — drainAllZero 핀 = `0x37C` 읽기 = 여섯 입력 전부 0 ∧ CQ_OCC 0 (W4 · DP-5 · E.11) ══
+  // `0xE14` 의 D 원천(ActivePart.io_drainNow — 모델 ActivePart.tla 닫힌 목록 3 (a))이 호스트가 `0x37C` 로 읽는
+  // 값과 *같은 식* 하나라는 것 (authority 하나 — map-formal D-4 (b)). 기대측은 정본 E.11 의 일곱 항(여섯 카운트 +
+  // 자기 완료 큐 점유)을 1차 입력과 노출 포인터로 다시 짓는다 — RTL 의 allZero · occ 를 참조하지 않는다.
+  //   a_daz_fn  핀 = 재구성 술어 (조합 · 매 사이클). 「핀이 0x37C 와 다른 식」(항 탈락 · CQ_OCC 탈락 · 지연 래치)이 깨진다.
+  //   a_daz_rd  수락된 정렬 0x37C 읽기의 다음 사이클 응답 = {31'0, 수락 사이클의 재구성 술어} — 읽기 mux 쪽 절반.
+  // 둘이 같은 재구성 술어를 기대하므로 「핀 = 읽기」 는 합성으로 선다 (핀과 읽기가 *서로* 같은데 둘 다 틀린 꼴도 깨진다).
+  // 시점: 술어가 조합이라 「t 에 접수된 요청이 t+1 의 drainAllZero 에 든다」 는 입력 쪽 사실로 환원된다 —
+  // HiuMask/occ.sby h_occ_accept · h_occ_conserve (파이프 점유) · assembly a_drain_order (점유 → io_drain_pipe 결선).
+  wire f_dazExp = (io_drain_pipe == 16'd0) && (io_drain_pending == 16'd0) && (io_drain_output == 16'd0) &&
+                  (io_drain_ownSlots == 16'd0) && (io_drain_contexts == 16'd0) && (io_drain_tokens == 16'd0) && f_empty;
+  wire f_dazRd  = f_acceptR && f_aligned && (io_addr == 8'h7C);
+  always @(*) if (f_past_valid && !reset) a_daz_fn: assert (io_drainAllZero == f_dazExp);
+  always @(posedge clk) if (f_ok && $past(f_dazRd)) a_daz_rd: assert (io_rvalid && io_rdata == {31'd0, $past(f_dazExp)});
+  // W11 ← CompletionUnit.drain_allzero_pin · a_daz_rd — 링이 비고 여섯이 0 인 사이클의 0x37C 읽기가 1 을 낸다
+  // W12 ← CompletionUnit.drain_allzero_pin · a_daz_fn — 여섯 입력이 전부 0 이어도 링이 비지 않으면 핀이 0 이다 (CQ_OCC 항)
+  // W13 ← CompletionUnit.drain_allzero_pin · a_daz_fn · a_daz_rd — 다른 다섯이 0 이고 io_drain_pipe 하나만 비0 인 사이클의 읽기가 0 을 낸다 (파이프 항 — 0xE14 의 D 가 HIU 접수를 보는 자리)
+  always @(posedge clk) if (f_ok) begin
+    w11_daz_rd1:  cover ($past(f_dazRd) && io_rvalid && io_rdata == 32'd1);
+    w12_daz_occ:  cover (!f_empty && (io_drain_pipe | io_drain_pending | io_drain_output | io_drain_ownSlots |
+                         io_drain_contexts | io_drain_tokens) == 16'd0 && !io_drainAllZero);
+    w13_daz_pipe: cover ($past(f_dazRd && f_empty && io_drain_pipe != 16'd0 && (io_drain_pending | io_drain_output |
+                         io_drain_ownSlots | io_drain_contexts | io_drain_tokens) == 16'd0) && io_rvalid && io_rdata == 32'd0);
+  end
+
 endmodule
 
 // 형식 검증 톱 — 대상 + props 결선 (내부 포트는 sby [script] 의 expose 가 만든다).
@@ -395,6 +429,7 @@ module CompletionUnit_formal (
   wire        io_irq;
   wire        io_faultOverflow;
   wire        io_faultBadWrite;
+  wire        io_drainAllZero;      // W4 — 클래스 끝 포트 (DP-5)
   // expose 가 올린 링 포인터
   wire [2:0]  head;
   wire [2:0]  tail;
@@ -422,6 +457,7 @@ module CompletionUnit_formal (
     .io_faultClearOverflow(io_faultClearOverflow),
     .io_faultBadWrite(io_faultBadWrite),
     .io_faultClearBadWrite(io_faultClearBadWrite),
+    .drainAllZero(io_drainAllZero),   // 클래스 끝 포트 — io 번들 밖 (HiuPipeline.installSlotFree 선례)
     .clk(clk), .reset(reset),
     // ── expose 로 올린 내부 상태 포트 ──
     .head(head), .tail(tail)
@@ -452,7 +488,11 @@ module CompletionUnit_formal (
     .io_faultClearOverflow(io_faultClearOverflow),
     .io_faultBadWrite(io_faultBadWrite),
     .io_faultClearBadWrite(io_faultClearBadWrite),
-    .f_head(head), .f_tail(tail), .f_slot(f_slot)
+    .f_head(head), .f_tail(tail), .f_slot(f_slot),
+    .io_drain_pipe(io_drain_pipe), .io_drain_pending(io_drain_pending),
+    .io_drain_output(io_drain_output), .io_drain_ownSlots(io_drain_ownSlots),
+    .io_drain_contexts(io_drain_contexts), .io_drain_tokens(io_drain_tokens),
+    .io_drainAllZero(io_drainAllZero)
   );
 endmodule
 

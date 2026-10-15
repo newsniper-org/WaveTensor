@@ -75,6 +75,11 @@ DUT 는 `rtl/generated/Wt64Top.sv` (형상 A, `Wt64Config()` 기본값 —
     판정이 래치된 요청은 hold 중의 V=0 COMMIT · flush · 대체 커밋을 건너 래치된 값으로 승인되고,
     그 에지 뒤에 판정된 요청만 철회 · 대체를 본다 · 떠난 요청의 판정을 다음 요청이 물려받지
     않는다(`xlate_latched_hit_survives_retire`). 칸 고르기 하나가 화이트박스다 (파일 끝 W2 절 머리).
+  · **결속 파티션** (W4 — 같은 묶음의 넷째 하위 파도) — 요청 파티션은 포트(`io_hiuReq_part` 은퇴)가
+    아니라 `0xE14` XLATE_ACTIVE_PART 결속이다. 조회 헬퍼는 결속을 기입하고 되읽어(`[7:0]` = p ∧ A = 1)
+    확인한다(`bind_part`). (A, D) 표 네 칸과 값 검사 · D 표집 시점(같은 사이클 접수 · 마지막 일이 떠나는
+    에지) · `[9:8]` 쓰기 무시 · 비정렬 `0xE15`–`0xE17` · 판정 사이클 정지 · 결속 → 조회 파티션 · reset
+    값 규범(전원 · 실행 중 reset) (파일 끝 W4 절 머리).
   · **입력 포트 정의역** — `zero_inputs` 가 생성물 머리의 입력 포트 집합과
     `SHAPE_INPUTS`(+ `io_faultClear_*`)를 매 부팅 기계로 대조한다. 포트가 늘거나
     줄면 전 시험이 크게 죽는다 (Mask `generated_input_ports()` 의 Shape 판).
@@ -175,8 +180,12 @@ SHAPE_DEPENDENT = {"io_push_1_stall", "io_push_2_stall"}
 # COMMIT 의 데이터 사유 거절(FRAME 유효 없는 V=1 · [27:0] 비0)을 수락 사이클에 세우는 원천별 sticky
 # (fpCfgBadWrite 선례). IO 해제선 없음(0xF84 [6] 로만 내려간다 → NO_IO_CLEAR 7 → 8). 입력 집합은
 # 그대로다. 형상 무관 — 122/120 → 123/121 (W3 생성물 포트 목록에서 실측, 2026-10-13).
-EXPECT_OUTPUTS = 123
-EXPECT_COMPARE_FACE = 121
+# 재유도 기록 (W4 — 0xE14 XLATE_ACTIVE_PART · 수정 라운드 D1): io_fault_actCfgBadWrite 신설 (+1) — 0xE14 값 ·
+# 드레인 판정 거절의 원천별 sticky (xlateCfgBadWrite 선례 · Wt64Top 클래스 끝 포트, 이름은 번들 꼴). IO 해제선
+# 없음(0xF84 [6] 로만 내려간다 → NO_IO_CLEAR 8 → 9). 입력 쪽은 io_hiuReq_part 은퇴(−1)이고 해제선 수는 그대로다.
+# 형상 무관 — 123/121 → 124/122 (W4F2 생성물 포트 목록에서 실측, 2026-10-15).
+EXPECT_OUTPUTS = 124
+EXPECT_COMPARE_FACE = 122
 
 
 def parse_clear_ports():
@@ -246,10 +255,12 @@ COMPARE_FACE = [n for n in OUT_PORTS if n not in SHAPE_DEPENDENT]
 # 「같은 이름 해제선이 없는 fault 출력」 집합과 등식으로 대조한다 — 수의 등식만으로는 이름이
 # 바뀐 축을 못 본다.
 # W3 의 `xlateCfgBadWrite`(COMMIT 데이터 사유 거절)도 `fpCfgBadWrite` 와 같은 부류다 — `fclr(6)` 하나만 받는다.
+# W4 의 `actCfgBadWrite`(0xE14 값 · 드레인 판정 거절 — D1)도 같은 부류다 — `fclr(6)` 하나만 받는다.
 NO_IO_CLEAR = ["io_fault_ownBadWrite", "io_fault_cqOverflow",
                "io_fault_cqBadWrite", "io_fault_fpCapAbsent",
                "io_fault_ehCapAbsent", "io_fault_fpCfgBadWrite",
-               "io_fault_hiuOwn", "io_fault_xlateCfgBadWrite"]
+               "io_fault_hiuOwn", "io_fault_xlateCfgBadWrite",
+               "io_fault_actCfgBadWrite"]
 EXPECT_CLEAR_PORTS = 19
 
 # 자주 보는 자리의 색인 — 매번 `.index()` 하면 이름 오타가 ValueError 로만
@@ -315,7 +326,7 @@ async def settle(dut):
 #   `generated_input_ports()` 의 Shape 판). 포트가 늘었는데 여기 없으면 Verilator
 #   미구동 입력은 0 으로 남고, 그 0 이 *뜻을 가진 채* 시험이 조용히 다른 계약을
 #   잰다 — Mask 의 `io_keyWr_part` 가 정확히 그렇게 빠져 있었다 (README 함정 ⑥).
-#   이 파도들은 최상위 입력을 빼고(`io_hiuReq_part` 은퇴 예정) 더한다. 그래서
+#   이 파도들은 최상위 입력을 빼고(W4 — `io_hiuReq_part` 은퇴) 더한다. 그래서
 #   `zero_inputs` 가 생성물 머리의 입력 집합과 이 목록을 **매 부팅 기계로**
 #   대조한다 (누락 · 잉여 = 전 시험 FAIL). 주석은 호출이 아니다.
 #   `io_faultClear_*` 는 여기 적지 않는다 — 위 `parse_clear_ports()` 가 접두로
@@ -329,7 +340,7 @@ SHAPE_INPUTS = (
     + [f"io_mem_cfgPreds_{i}" for i in range(4)]
     + ["io_mem_epochClear", "io_mem_complete", "io_mem_slotSel"]
     + [f"io_mem_down_{i}_ready" for i in range(4)]
-    + ["io_hiuReq_valid", "io_hiuReq_part", "io_hiuReq_vpn", "io_hiuReq_write",
+    + ["io_hiuReq_valid", "io_hiuReq_vpn", "io_hiuReq_write",
        "io_hiuHold", "io_hostRsp_valid", "io_hostRsp_frame",
        "io_hostRsp_perm_r", "io_hostRsp_perm_w", "io_hostRsp_perm_x"]
     + [f"io_push_{i}_{n}" for i in range(3)
@@ -369,6 +380,7 @@ async def boot(dut):
     `INIT_SWEEP` 주석의 함정). 그래서 폴링 주소를 구성 구역에 둔다.
     """
     zero_inputs(dut)
+    forget_bound()
     # 클럭은 **테스트마다** 새로 띄운다. cocotb 2.0 은 테스트가 끝날 때 그
     # 테스트가 `start_soon` 한 태스크를 전부 취소하므로, 「한 번만 띄우고
     # 재사용」은 성립하지 않는다 — 두 번째 테스트에서 클럭이 죽은 채로 돌고,
@@ -913,6 +925,7 @@ X_PARTS = 4                                                   # `addr[8:7]` — 
 XCTL_FLUSH = 0xE00
 XCTL_STATUS = 0xE04
 XCTL_MISS_CLEAR = 0xE10
+XCTL_ACTIVE_PART = 0xE14   # W4 — 결속 파티션 (E.1.2 `0xE14` XLATE_ACTIVE_PART 행)
 OWN_SET = 0x208
 FAULT_STATUS = 0xF80
 FAULT_CLEAR = 0xF84
@@ -953,6 +966,7 @@ def commit_ops(part, vpn, frame, v=1, r=1, w=0, x=0):
 
 async def boot_hiu(dut):
     zero_inputs(dut)
+    forget_bound()
     cocotb.start_soon(Clock(dut.clk, CLK_NS, unit="ns").start())
     dut.reset.value = 1
     await step(dut, 3)
@@ -967,6 +981,40 @@ async def commit_entry(dut, part, vpn, frame, v=1, r=1, w=0, x=0):
         await mmio_write(dut, addr, data)
 
 
+# ── 결속 파티션 (W4 — `io_hiuReq_part` 은퇴) ─────────────────────────────────
+# 요청의 파티션은 이제 포트가 아니라 `0xE14` XLATE_ACTIVE_PART 결속이다 — E.1.2 `0xE14` 행의 *결속 파티션*
+# (요청이 지금 어느 임대 아래 도착하는가를 장치에 알리는 구성 상태). 조회 헬퍼는 파티션을 인자로 계속 받되, 그 값을 *결속으로* 만든다.
+#
+# ⚠ 함정 ⑥ 의 결속 판: 결속 기입을 되읽어 확인하지 않으면 거절된 전환(드레인되지 않은 다른 값 —
+#   A = 0 · 거절 + `[6]`)이 조용히 옛 파티션에서 조회를 돌린다. 그래서 `bind_part` 는 언제나
+#   `[7:0]` = p ∧ `[8]` A = 1 을 단언한다. 같은 값 기입은 D 와 무관하게 A = 1 · fault 없음이다
+#   ((A, D) 표 둘째 줄) — reset 값 0 에 뜻을 싣지 않으므로(「reset 값 0 에 뜻을 싣지
+#   않는다」) 부팅 뒤 첫 조회도 결속 기입을 한 번 거친다.
+# `_BOUND` 는 *이 헬퍼가 확인한* 결속이다 — 부팅마다 None(미확인)으로 돌아간다. 0xE14 를 직접 쓰는
+# 시험은 끝에 `forget_bound` 를 부른다(다음 조회가 다시 확인한다).
+_BOUND = [None]
+
+
+def forget_bound():
+    _BOUND[0] = None
+
+
+async def bind_part(dut, part):
+    """`0xE14` ← part, 되읽어 `[7:0]` = part ∧ `[8]` A = 1 을 단언한다. 되읽은 워드를 돌려준다."""
+    await mmio_write(dut, XCTL_ACTIVE_PART, part)
+    w = await mmio_read(dut, XCTL_ACTIVE_PART)
+    assert (w & 0xFF) == part and (w >> 8) & 1 == 1, (
+        f"bind_part({part}): 0xE14 되읽기 0x{w:08X} — [7:0] = {part} ∧ [8] A = 1 이 아니다. 결속 전환이 "
+        f"거절됐는데(드레인 안 됨 · 값 거절) 조회를 이어 가면 옛 파티션에서 조용히 돈다 (함정 ⑥ 의 결속 판)")
+    _BOUND[0] = part
+    return w
+
+
+async def ensure_bound(dut, part):
+    if _BOUND[0] != part:
+        await bind_part(dut, part)
+
+
 async def hiu_lookup(dut, part, vpn, window=LOOKUP_WINDOW, write=0):
     """읽기 요청 하나를 제시하고 결과를 돌려준다.
 
@@ -976,7 +1024,7 @@ async def hiu_lookup(dut, part, vpn, window=LOOKUP_WINDOW, write=0):
     정지다. `trace` 는 접수 뒤 사이클마다의 ready 표본이다 (`assert_miss` 가
     정지의 *모양*을 등식으로 잰다).
     """
-    dut.io_hiuReq_part.value = part
+    await ensure_bound(dut, part)                           # 요청 파티션 = 결속 (W4)
     dut.io_hiuReq_vpn.value = vpn
     dut.io_hiuReq_write.value = write
     dut.io_hiuReq_valid.value = 1
@@ -998,13 +1046,14 @@ async def hiu_lookup(dut, part, vpn, window=LOOKUP_WINDOW, write=0):
             return dict(rsp=1, granted=int(dut.io_hiuRsp_granted.value),
                         frame=int(dut.io_phys_frame.value),
                         phys=int(dut.io_phys_valid.value), stalled=stalled,
-                        trace=trace, fromFill=int(dut.io_hiuRsp_fromFill.value))
+                        trace=trace, fromFill=int(dut.io_hiuRsp_fromFill.value),
+                        part=int(dut.io_hiuRsp_part.value))
         rdy = int(dut.io_hiuReq_ready.value)
         trace.append(rdy)
         if rdy == 0:
             stalled += 1
         await step(dut)
-    return dict(rsp=0, granted=0, frame=0, phys=0, stalled=stalled, trace=trace, fromFill=0)
+    return dict(rsp=0, granted=0, frame=0, phys=0, stalled=stalled, trace=trace, fromFill=0, part=None)
 
 
 async def wait_rsp(dut, window=20):
@@ -1015,9 +1064,10 @@ async def wait_rsp(dut, window=20):
             return dict(rsp=1, granted=int(dut.io_hiuRsp_granted.value),
                         frame=int(dut.io_phys_frame.value),
                         phys=int(dut.io_phys_valid.value),
-                        fromFill=int(dut.io_hiuRsp_fromFill.value), wait=n)
+                        fromFill=int(dut.io_hiuRsp_fromFill.value), wait=n,
+                        part=int(dut.io_hiuRsp_part.value))
         await step(dut)
-    return dict(rsp=0, granted=0, frame=0, phys=0, fromFill=0, wait=window)
+    return dict(rsp=0, granted=0, frame=0, phys=0, fromFill=0, wait=window, part=None)
 
 
 async def fault6(dut):
@@ -2189,6 +2239,11 @@ async def xlate_miss_obs_second_stall(dut):
     r = await wait_rsp(dut)
     assert r["rsp"] == 1 and r["frame"] == f1, f"첫 항목 기입이 정지를 풀지 못했다 ({r})"
     await step(dut, 2)
+    # W4 — 요청 파티션은 결속이다. p1 → p2 전환은 0xE14 기입이고, 첫 요청이 응답으로 떠난 뒤라
+    # 드레인됐다(D = 1 · A = 1 · 결속 교체 — e-defined.typ:332 「A = 1 · 결속 교체」).
+    w = await bind_part(dut, p2)
+    assert (w >> 9) & 1 == 1, (
+        f"p{p1} → p{p2} 결속 전환의 D = 0 (0xE14 = 0x{w:08X}) — 첫 요청이 응답으로 떠난 뒤라 드레인돼 있어야 한다")
     # 해제(0xE10) 없이 둘째 미적중 — sticky 는 선 채다.
     assert_miss(dut, await hiu_lookup(dut, p2, v2), "둘째 요청")
     got = await read_obs(dut)
@@ -2874,8 +2929,11 @@ async def present_seq(dut, reqs, hold_at_s3=False, write=0):
     래치되는 자리). 둘째 요청은 그때 s2 에 있고, 첫 요청이 떠나는 *그* 에지에 조회 지점에 든다.
     """
     assert 1 <= len(reqs) <= MISS_LEAD + 1, "present_seq: 첫 요청이 s3 에 닿기 전에 다 들어가야 한다"
+    parts = {p for p, _ in reqs}
+    assert len(parts) == 1, (
+        "present_seq: 인접 요청은 한 결속 아래 있다 — 사이에 결속을 바꾸려면 드레인이 필요하다 (W4)")
+    await ensure_bound(dut, parts.pop())                     # 요청 파티션 = 결속 (W4)
     for i, (part, vpn) in enumerate(reqs):
-        dut.io_hiuReq_part.value = part
         dut.io_hiuReq_vpn.value = vpn
         dut.io_hiuReq_write.value = write
         dut.io_hiuReq_valid.value = 1
@@ -3246,3 +3304,545 @@ async def xlate_latched_hit_survives_retire(dut):
                   f"(철회) 또는 새 프레임(대체 — 호스트 소유라 차단 + [19]) · 권한만 바뀐 대체에서 쓰기 R1 은 "
                   f"래치된 -WX 로 승인 · R2 는 R-- 로 거부 + [4] · hold 없는 대조에서 판정을 물려받지 않음 — "
                   f"{len(rows)} 행")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# W4 — `0xE14` XLATE_ACTIVE_PART · 결속 파티션 (3.10 v1.0 묶음 RTL 파도 넷째 하위 파도)
+# ═══════════════════════════════════════════════════════════════════════════
+# 기대값은 정본 문면에서 유도한다 — RTL 상수 · 모듈 이름을 import 하지 않는다. 근거(축자):
+#   e-defined.typ:329 「`[8]` APPLIED (A — 마지막 기입이 적용됐는가)」
+#   e-defined.typ:329 「`[9]` DRAINED (D — 마지막 기입 수락 에지의 드레인 판정)」
+#   e-defined.typ:329 「`[9:8]` *쓰기 무시*」
+#   e-defined.typ:329 「reset 값은 `[7:0]` = 0 · `[9:8]` = 0 이고」
+#   e-defined.typ:332 「*값 검사가 먼저다.*」
+#   e-defined.typ:332 「없는 파티션 값(아래 「없는 파티션 값의 처분」) · `[31:10]` 비0 은 거절 + `[6]` · 결속 불변이다」
+#   e-defined.typ:332 「그 기입 수락 에지 직후의 상태*(같은 사이클의 요청 접수 포함)에 대해 표집한다」
+#   e-defined.typ:332 「버스 수락된 `0xE14` 기입은 어느 것이든 A · D 를 갱신한다」
+#   e-defined.typ:332 「A = 0 ∧ D = 1 은 값 거절과 같은 뜻이다」
+#   e-defined.typ:332 「「버스 수락된 `0xE14` 기입」이 아니므로 A · D 도 결속도 움직이지 않는다」
+#   (A, D) 표 (같은 규범): 다른 값 — D=1 「A = 1 · 결속 교체」 · D=0 「A = 0 · 거절 + `[6]` · 결속 불변」,
+#   같은 값 — D=1 A = 1 · 무동작 · D=0 「A = 1 · 무동작 · *fault 없음* — D = 0 이 보고된다」.
+#
+# 드레인 판정 D 는 「옛 결속 아래 받아들인 일이 하나도 남지 않음」(v1.0 = `0x37C` DRAIN_ALLZERO) 이다.
+# 이 하네스는 미드레인을 *미적중으로 붙든 요청 하나*로 만든다(정지가 창 끝까지 — `assert_miss`).
+#
+# 판정 사이클 (선-formal ActivePart.tla 의 α — W4-2): 수락 사이클 t 에 잡고 t+1 에 판정 · 적용한다. t+1 동안
+# HIU 요청 접수와 *정렬 `0xE14` 접근*만 1 사이클 정지한다(정본은 응답 시간을 규범으로 걸지 않는다 — 이
+# 시간 모양은 *설계 선택의 값 수준 확인*이고 정본 요구가 아니다. 정본 요구는 그 정지가 지키는 것 — 판정
+# 전 · 적용 전에 옛 결속으로 받는 요청이 없고 판정 전 레지스터가 되읽히지 않는다 — 이다).
+#
+# 재지 않는 것: 바이트 인에이블 절반(장치 포트에 표현이 없다 — 3.9 「sub-word 쓰기 거절」 행 · 정본도 미측정)
+# · 비정렬 *읽기* `0xE15`–`0xE17`(MmioPage · assembly 몫 — ActivePart.tla 닫힌 목록 15) · 명령 링 일의
+# 드레인 항(v1.0 원천 부재) · 형식 단언(W4-9 — 값 수준 한 점들이다).
+
+def ap_word(part, a, d):
+    """XLATE_ACTIVE_PART 되읽기 기대 — `[7:0]` 결속 · `[8]` A · `[9]` D · `[31:10]` 0."""
+    return (part & 0xFF) | (int(a) << 8) | (int(d) << 9)
+
+
+async def ap_read(dut):
+    return await mmio_read(dut, XCTL_ACTIVE_PART)
+
+
+def drive_ap_write(dut, data, addr=XCTL_ACTIVE_PART):
+    dut.io_mmio_addr.value = addr
+    dut.io_mmio_wdata.value = data
+    dut.io_mmio_wstrobe.value = 1
+
+
+def release_bus(dut):
+    dut.io_mmio_wstrobe.value = 0
+    dut.io_mmio_rstrobe.value = 0
+    dut.io_mmio_addr.value = 0
+    dut.io_mmio_wdata.value = 0
+
+
+async def ap_accept(dut, data):
+    """정렬 `0xE14` 기입 하나를 수락 에지 t 까지 구동하고 버스를 놓는다 — 돌아오면 t+1(판정 사이클)이다."""
+    drive_ap_write(dut, data)
+    await settle(dut)
+    assert int(dut.io_mmio_ready.value) == 1, "ap_accept: 0xE14 기입 사이클에 ready = 0 — 앞 판정이 남아 있다"
+    await step(dut)
+    release_bus(dut)
+    await settle(dut)
+
+
+async def collect_parts(dut, window):
+    """`window` 사이클 동안 응답마다 (사이클, 승인, 프레임, rsp.part)."""
+    got = []
+    for n in range(window):
+        await settle(dut)
+        if int(dut.io_hiuRsp_valid.value):
+            got.append((n, int(dut.io_hiuRsp_granted.value), int(dut.io_phys_frame.value),
+                        int(dut.io_hiuRsp_part.value)))
+        await step(dut)
+    return got
+
+
+class ApTable:
+    """행 표 — 기입 하나마다 (`[6]`, 0xE14 되읽기) 를 정본 기대와 나란히 적는다."""
+
+    def __init__(self, dut):
+        self.dut, self.rows, self.want = dut, [], []
+
+    def row(self, label, got, exp):
+        self.rows.append((label, got))
+        self.want.append((label, exp))
+
+    async def wr(self, label, data, exp_word, exp6, addr=XCTL_ACTIVE_PART):
+        f = await write_f6(self.dut, addr, data)
+        w = await ap_read(self.dut)
+        self.row(label, (f, f"0x{w:08X}"), (exp6, f"0x{exp_word:08X}"))
+
+    def check(self, what):
+        assert self.rows == self.want, f"{what} — 행 표가 정본과 다르다:\n" + table_diff(self.rows, self.want)
+
+
+async def hold_undrained(dut, part, vpn):
+    """미드레인 상태 — 결속 `part` 아래 미적중 요청 하나를 조회 지점에 붙든다(정지가 창 끝까지)."""
+    assert_miss(dut, await hiu_lookup(dut, part, vpn), f"미드레인 전건 — 결속 {part} 의 미적중 정지")
+
+
+async def release_undrained(dut, part, vpn, frame):
+    """붙든 요청을 항목 커밋으로 풀고 응답을 받는다 — 응답 dict 를 돌려준다."""
+    await commit_entry(dut, part, vpn, frame)
+    r = await wait_rsp(dut)
+    await step(dut, 2)
+    return r
+
+
+@cocotb.test()
+async def active_part_ad_table(dut):
+    """N10 — `0xE14` (A, D) 표 네 칸 × 사유 · 값 검사.
+
+    드레인됨(D=1): 다른 값 → A=1 · 교체 · 같은 값 → A=1 · 무동작 · 없는 값 → A=0 · D=1 · `[6]`.
+    미드레인(D=0 — 미적중으로 붙든 요청): 다른 값 → A=0 · `[6]` · 결속 불변 · 같은 값 → A=1 · fault 없음
+    (D=0 보고) · 없는 값 → A=0 · D=0 · `[6]`. 값 검사가 먼저다 — 절단 별칭(5 · 6 은 상한 4 의 하위 두 비트로
+    1 · 2 와 같다) · 같은 값의 `[31:10]` 비0 도 거절이다(V7 교훈 — 검사 순서가 아니라 절단 사례로 잰다).
+    없는 값 4–255 전량. 미드레인의 거절이 붙든 요청의 파티션을 옮기지 않는다(관측면 `[15:8]`). 드레인 회복
+    뒤 다시 D=1. 기입마다 `[6]` 을 지우고 쓰고 읽는다(원천을 그 기입 하나로 좁힌다).
+    """
+    await boot_hiu(dut)
+    t = ApTable(dut)
+    F = 0x0000_4E14
+    await mmio_write(dut, OWN_SET, F)
+    await t.wr("D=1 · 다른 값 1 → A=1 · 교체", 1, ap_word(1, 1, 1), 0)
+    await t.wr("D=1 · 없는 값 7 → A=0 · D=1 · [6] · 결속 불변", 7, ap_word(1, 0, 1), 1)
+    await t.wr("D=1 · 같은 값 1 → A=1 · 무동작", 1, ap_word(1, 1, 1), 0)
+    await t.wr("D=1 · 절단 별칭 5 (≡ 지금 결속 1) → 값 거절", 5, ap_word(1, 0, 1), 1)
+    await t.wr("D=1 · 같은 값 1 → A=1", 1, ap_word(1, 1, 1), 0)
+    await t.wr("D=1 · 절단 별칭 6 (≡ 2) → 값 거절 · 결속 불변", 6, ap_word(1, 0, 1), 1)
+    await t.wr("D=1 · [31:10] 비0 (bit 10) · 값 2 → 거절", (1 << 10) | 2, ap_word(1, 0, 1), 1)
+    await t.wr("D=1 · 같은 값 1 → A=1", 1, ap_word(1, 1, 1), 0)
+    await t.wr("D=1 · [31:10] 비0 (bit 31) · 같은 값 1 → 거절 (같은 값도 값 검사가 먼저)",
+               (1 << 31) | 1, ap_word(1, 0, 1), 1)
+    bad = []
+    for v in range(X_PARTS, 256):
+        f = await write_f6(dut, XCTL_ACTIVE_PART, v)
+        w = await ap_read(dut)
+        if (f, w) != (1, ap_word(1, 0, 1)):
+            bad.append((v, f, f"0x{w:08X}"))
+    t.row(f"D=1 · 없는 값 {X_PARTS}–255 전량 → 거절 · A=0 · D=1 · 결속 1 (어긋난 값 목록)", tuple(bad), ())
+    await t.wr("D=1 · 다른 값 2 → A=1 · 교체", 2, ap_word(2, 1, 1), 0)
+
+    va = vpn_of(0x0E14A00, 4)
+    await hold_undrained(dut, 2, va)
+    await t.wr("D=0 · 다른 값 3 → A=0 · D=0 · [6] · 결속 불변", 3, ap_word(2, 0, 0), 1)
+    await t.wr("D=0 · 같은 값 2 → A=1 · D=0 · fault 없음", 2, ap_word(2, 1, 0), 0)
+    await t.wr("D=0 · 없는 값 9 → A=0 · D=0 · [6]", 9, ap_word(2, 0, 0), 1)
+    await t.wr("D=0 · 같은 값 2 → A=1 · D=0", 2, ap_word(2, 1, 0), 0)
+    await t.wr("D=0 · [31:10] 비0 · 같은 값 2 → 값 거절", (1 << 20) | 2, ap_word(2, 0, 0), 1)
+    await t.wr("D=0 · 다른 값 0 → A=0 · [6]", 0, ap_word(2, 0, 0), 1)
+    t.row("붙든 요청의 관측 — 거절된 전환이 요청을 옮기지 않았다", await read_obs(dut),
+          (xstatus_word(1, 1, 2), va, 0))
+    t.row("붙든 요청은 여전히 정지 (접수 ready)", int(dut.io_hiuReq_ready.value), 0)
+    r = await release_undrained(dut, 2, va, F)
+    t.row("커밋이 푼 응답 — 결속 2 의 항목", (r["rsp"], r["granted"], r["frame"]), (1, 1, F))
+    await t.wr("드레인 회복 · 같은 값 2 → A=1 · D=1", 2, ap_word(2, 1, 1), 0)
+    await t.wr("드레인 회복 · 다른 값 3 → A=1 · D=1 · 교체", 3, ap_word(3, 1, 1), 0)
+    forget_bound()
+    t.check("(A, D) 표")
+    await f6_agrees(dut, "active_part_ad_table")
+    dut._log.info(f"(A, D) 네 칸 · 값 검사(별칭 · 예약 · 없는 값 {256 - X_PARTS}) · 미드레인 거절의 무이동 — "
+                  f"{len(t.rows)} 행")
+
+
+@cocotb.test()
+async def active_part_d_sample_edges(dut):
+    """N10 (D 표집 시점) — D 는 *기입 수락 에지 직후의 상태*(같은 사이클의 요청 접수 포함)다.
+
+      · 같은 사이클 접수 — 빈 파이프에서 요청 접수와 다른 값 기입이 같은 에지 → D=0 → 거절 + `[6]` ·
+        결속 불변. 그 요청은 옛 결속(1)의 항목으로 응답한다. 같은 값이면 A=1 · D=0 · fault 없음.
+      · β 모서리 — 마지막 일이 응답으로 떠나는 *그* 에지에 수락된 다른 값 기입 → D=1 · 교체 · fault 없음
+        (선-formal 대안 β 는 여기서 거짓 `[6]` 을 낸다 — ActivePart_alt_beta_edge).
+      · 한 사이클 이른 대조 — 응답이 떠나기 한 에지 전에 수락된 기입 → 수락 직후 일이 남아 D=0 · 거절.
+    """
+    await boot_hiu(dut)
+    t = ApTable(dut)
+    F1, F2 = 0x0000_51E1, 0x0000_51E2
+    va = vpn_of(0x0D5A0E1, 7)
+    await mmio_write(dut, OWN_SET, F1)
+    await mmio_write(dut, OWN_SET, F2)
+    await commit_entry(dut, 1, va, F1)
+    await commit_entry(dut, 2, va, F2)
+    await bind_part(dut, 1)
+    if await fault6(dut):
+        await clear_fault6(dut)
+
+    async def same_edge(data):
+        dut.io_hiuReq_vpn.value = va
+        dut.io_hiuReq_write.value = 0
+        dut.io_hiuReq_valid.value = 1
+        drive_ap_write(dut, data)
+        await settle(dut)
+        pre = (int(dut.io_hiuReq_ready.value), int(dut.io_mmio_ready.value))
+        await step(dut)                                 # 같은 에지 — 요청 접수 + 0xE14 기입 수락
+        dut.io_hiuReq_valid.value = 0
+        release_bus(dut)
+        got = await collect_parts(dut, LOOKUP_WINDOW)
+        return pre, tuple((g, f, p) for (_, g, f, p) in got)
+
+    pre, got = await same_edge(2)
+    t.row("같은 사이클 · 다른 값 2 — 두 ready", pre, (1, 1))
+    t.row("같은 사이클 · 다른 값 2 — 그 요청의 응답 (한 번 · 옛 결속 1 의 F1)", got, ((1, F1, 1),))
+    t.row("같은 사이클 · 다른 값 2 — ([6], 0xE14)", (await fault6(dut), f"0x{await ap_read(dut):08X}"),
+          (1, f"0x{ap_word(1, 0, 0):08X}"))
+    await clear_fault6(dut)
+    pre, got = await same_edge(1)
+    t.row("같은 사이클 · 같은 값 1 — 응답", got, ((1, F1, 1),))
+    t.row("같은 사이클 · 같은 값 1 — ([6], 0xE14) = A=1 · D=0 · fault 없음",
+          (await fault6(dut), f"0x{await ap_read(dut):08X}"), (0, f"0x{ap_word(1, 1, 0):08X}"))
+
+    async def edge_run(write_at):
+        """요청 하나를 접수하고, `write_at`(None 이면 응답 사이클)에 다른 값 2 기입을 수락시킨다.
+        돌려준다: (응답 사이클, 응답 열, 기입 사이클의 mmio ready)."""
+        dut.io_hiuReq_vpn.value = va
+        dut.io_hiuReq_valid.value = 1
+        await settle(dut)
+        assert int(dut.io_hiuReq_ready.value) == 1
+        await step(dut)                                 # 접수 에지
+        dut.io_hiuReq_valid.value = 0
+        got, rdy, done = [], None, False
+        for n in range(LOOKUP_WINDOW):
+            await settle(dut)
+            v = int(dut.io_hiuRsp_valid.value)
+            if v:
+                got.append((n, int(dut.io_hiuRsp_granted.value), int(dut.io_phys_frame.value),
+                            int(dut.io_hiuRsp_part.value)))
+            if not done and ((write_at is None and v) or write_at == n):
+                drive_ap_write(dut, 2)
+                await settle(dut)
+                rdy = int(dut.io_mmio_ready.value)
+                await step(dut)                         # 기입 수락 에지 (β: 응답이 떠나는 그 에지)
+                release_bus(dut)
+                done = True
+                continue
+            await step(dut)
+        return got, rdy
+
+    got, rdy = await edge_run(None)
+    assert len(got) == 1, f"β 모서리 전건 — 응답이 하나여야 한다 ({got})"
+    lat = got[0][0]
+    t.row("β 모서리 — 응답 (옛 결속 1) · 기입 사이클 ready", (tuple(g[1:] for g in got), rdy), (((1, F1, 1),), 1))
+    t.row("β 모서리 — ([6], 0xE14) = D=1 · A=1 · 교체", (await fault6(dut), f"0x{await ap_read(dut):08X}"),
+          (0, f"0x{ap_word(2, 1, 1):08X}"))
+    await bind_part(dut, 1)
+    assert lat >= 1, f"응답 지연 {lat} — 한 사이클 이른 대조를 만들 수 없다"
+    got, rdy = await edge_run(lat - 1)
+    t.row("한 사이클 이른 대조 — 응답 (같은 지연 · 옛 결속 1) · 기입 사이클 ready",
+          (tuple(g for g in got), rdy), (((lat, 1, F1, 1),), 1))
+    t.row("한 사이클 이른 대조 — ([6], 0xE14) = D=0 · A=0 · 결속 불변",
+          (await fault6(dut), f"0x{await ap_read(dut):08X}"), (1, f"0x{ap_word(1, 0, 0):08X}"))
+    forget_bound()
+    t.check("D 표집 시점")
+    await f6_agrees(dut, "active_part_d_sample_edges")
+    dut._log.info(f"D 표집: 같은 사이클 접수 포함 · β 모서리(응답 지연 {lat}) 교체 · 한 사이클 이른 거절")
+
+
+@cocotb.test()
+async def active_part_rmw_ro_ignored(dut):
+    """`[9:8]` 쓰기 무시 — 되읽은 워드를 그대로 되쓰는 RMW 드라이버가 거절받지 않는다(RW 워드 안의 RO 필드).
+    `[9:8]` 의 네 값 모두에서 `[7:0]` 만 값이다. `[9]` 에 1 을 써도 D 가 되지 않는다(미드레인의 다른 값은
+    `[9]` = 1 로 써도 거절이다)."""
+    await boot_hiu(dut)
+    t = ApTable(dut)
+    F = 0x0000_9898
+    await mmio_write(dut, OWN_SET, F)
+    w0 = await bind_part(dut, 2)
+    t.row("bind 2 되읽기", f"0x{w0:08X}", f"0x{ap_word(2, 1, 1):08X}")
+    await t.wr("RMW — 되읽은 워드 그대로 ([9:8]=11 · 같은 값)", w0, ap_word(2, 1, 1), 0)
+    await t.wr("[9:8]=11 · 다른 값 3 → 교체", 0x300 | 3, ap_word(3, 1, 1), 0)
+    await t.wr("[9:8]=01 · 다른 값 1 → 교체", 0x100 | 1, ap_word(1, 1, 1), 0)
+    await t.wr("[9:8]=10 · 다른 값 0 → 교체", 0x200 | 0, ap_word(0, 1, 1), 0)
+    await t.wr("없는 값 7 → A=0 · D=1", 7, ap_word(0, 0, 1), 1)
+    await t.wr("RMW — A=0 · D=1 워드 그대로 ([9:8]=10 · 같은 값 0) → 적용", ap_word(0, 0, 1), ap_word(0, 1, 1), 0)
+    forget_bound()
+    va = vpn_of(0x0989800, 2)
+    await hold_undrained(dut, 0, va)
+    await t.wr("D=0 · RMW — 0xE14 를 [9:8]=11 로 · 같은 값 0 → A=1 · D=0 · fault 없음", 0x300, ap_word(0, 1, 0), 0)
+    await t.wr("D=0 · [9]=1 · 다른 값 1 → 거절 ([9] 쓰기가 D 를 만들지 않는다)", 0x200 | 1, ap_word(0, 0, 0), 1)
+    r = await release_undrained(dut, 0, va, F)
+    t.row("커밋이 푼 응답", (r["rsp"], r["granted"], r["frame"]), (1, 1, F))
+    await t.wr("드레인 회복 · [9:8]=01 · 다른 값 2 → 교체", 0x100 | 2, ap_word(2, 1, 1), 0)
+    forget_bound()
+    t.check("[9:8] 쓰기 무시")
+    await f6_agrees(dut, "active_part_rmw_ro_ignored")
+
+
+@cocotb.test()
+async def active_part_unaligned_outside(dut):
+    """비정렬 `0xE15`–`0xE17` 쓰기는 「버스 수락된 `0xE14` 기입」이 아니다 — 페이지 수준 sub-word 거절 + `[6]`
+    이고 A · D · 결속이 움직이지 않는다. 세 축을 각각 그 값이 바뀔 수밖에 없는 상태에서 잰다: 결속(다른 값을
+    씀) · A(A=0 에서 적법한 같은 값을 씀) · D(D=0 으로 보고된 뒤 드레인 회복 상태에서 씀)."""
+    await boot_hiu(dut)
+    t = ApTable(dut)
+    F = 0x0000_E15E
+    await mmio_write(dut, OWN_SET, F)
+    await bind_part(dut, 2)
+    for a in (1, 2, 3):
+        await t.wr(f"0x{XCTL_ACTIVE_PART + a:03X} ← 1 (다른 값) · 드레인됨 → [6] · 결속 2 그대로", 1,
+                   ap_word(2, 1, 1), 1, addr=XCTL_ACTIVE_PART + a)
+    await t.wr("정렬 0xE14 ← 7 (없는 값) → A=0", 7, ap_word(2, 0, 1), 1)
+    for a in (1, 2, 3):
+        await t.wr(f"0x{XCTL_ACTIVE_PART + a:03X} ← 2 (적법한 같은 값) → [6] · A 가 서지 않는다", 2,
+                   ap_word(2, 0, 1), 1, addr=XCTL_ACTIVE_PART + a)
+    va = vpn_of(0x0E15E00, 9)
+    await hold_undrained(dut, 2, va)
+    await t.wr("미드레인 · 정렬 0xE14 ← 2 → A=1 · D=0", 2, ap_word(2, 1, 0), 0)
+    r = await release_undrained(dut, 2, va, F)
+    t.row("커밋이 푼 응답", (r["rsp"], r["granted"], r["frame"]), (1, 1, F))
+    for a in (1, 2, 3):
+        await t.wr(f"0x{XCTL_ACTIVE_PART + a:03X} ← 2 · 드레인 회복 뒤 → [6] · D 가 1 로 갱신되지 않는다", 2,
+                   ap_word(2, 1, 0), 1, addr=XCTL_ACTIVE_PART + a)
+    await t.wr("대조 — 정렬 0xE14 ← 2 → D=1 (드레인 회복은 실재한다)", 2, ap_word(2, 1, 1), 0)
+    forget_bound()
+    t.check("비정렬 0xE15–0xE17")
+    await f6_agrees(dut, "active_part_unaligned_outside")
+
+
+@cocotb.test()
+async def active_part_judgment_stall(dut):
+    """판정 사이클(t+1)의 정지 — 정확히 한 사이클 · HIU 요청 접수와 정렬 `0xE14` 접근만.
+
+      · HIU 접수 ready: 기입 전 1 · t+1 0 · t+2 1 · t+3 1
+      · MMIO ready, t+1 · t+2: `0xE14` (0, 1) · `0xF80` · `0xE04` · `0xE15` · `0x208` (1, 1)
+      · 직후 되읽기: t+1 에 strobe — (ready, rvalid) 열 (0,0) (1,0) (1,1) (1,0) · rvalid 한 번 · 값은 판정 *뒤*
+      · 정지 사이클에 제시한 요청: 접수 ready 열 (0, 1) · 응답 한 번(이중 접수 없음)
+      · 인접 `0xE14` 기입 둘: 정지 계수 [0, 1] · 둘째도 판정 뒤 수락 · 적용
+    시간 모양은 설계 선택(α)의 확인이다 — 정본은 응답 시간을 걸지 않는다(위 절 머리)."""
+    await boot_hiu(dut)
+    t = ApTable(dut)
+    F1, F2 = 0x0000_5A11, 0x0000_5A12
+    va = vpn_of(0x05A11A0, 3)
+    await mmio_write(dut, OWN_SET, F1)
+    await mmio_write(dut, OWN_SET, F2)
+    await commit_entry(dut, 1, va, F1)
+    await commit_entry(dut, 2, va, F2)
+    await bind_part(dut, 1)
+    await settle(dut)
+
+    pre = int(dut.io_hiuReq_ready.value)
+    await ap_accept(dut, 1)
+    tr = []
+    for _ in range(3):
+        tr.append(int(dut.io_hiuReq_ready.value))
+        await step(dut)
+    t.row("HIU 접수 ready — 기입 전 · t+1 · t+2 · t+3", (pre, *tr), (1, 0, 1, 1))
+
+    for probe in (XCTL_ACTIVE_PART, FAULT_STATUS, XCTL_STATUS, XCTL_ACTIVE_PART + 1, OWN_SET):
+        await ap_accept(dut, 1)
+        dut.io_mmio_addr.value = probe
+        await settle(dut)
+        r1 = int(dut.io_mmio_ready.value)
+        await step(dut)
+        r2 = int(dut.io_mmio_ready.value)
+        release_bus(dut)
+        await step(dut)
+        t.row(f"MMIO ready @0x{probe:03X} — t+1 · t+2", (r1, r2),
+              (0, 1) if probe == XCTL_ACTIVE_PART else (1, 1))
+
+    await ap_accept(dut, 2)                                   # 드레인됨 · 다른 값 → 교체
+    dut.io_mmio_addr.value = XCTL_ACTIVE_PART
+    dut.io_mmio_rstrobe.value = 1
+    seq, accepted = [], False
+    for _ in range(4):
+        await settle(dut)
+        rdy, rv = int(dut.io_mmio_ready.value), int(dut.io_mmio_rvalid.value)
+        seq.append((rdy, rv, f"0x{int(dut.io_mmio_rdata.value):08X}" if rv else "-"))
+        await step(dut)
+        if rdy and not accepted:
+            accepted = True
+            dut.io_mmio_rstrobe.value = 0
+    release_bus(dut)
+    t.row("t+1 부터 0xE14 읽기 — (ready, rvalid, 값) 열", tuple(seq),
+          ((0, 0, "-"), (1, 0, "-"), (1, 1, f"0x{ap_word(2, 1, 1):08X}"), (1, 0, "-")))
+
+    await ap_accept(dut, 2)                                   # 같은 값 — 결속 2 그대로
+    dut.io_hiuReq_vpn.value = va
+    dut.io_hiuReq_valid.value = 1
+    rtr = []
+    for _ in range(4):
+        await settle(dut)
+        r = int(dut.io_hiuReq_ready.value)
+        rtr.append(r)
+        await step(dut)
+        if r:
+            break
+    dut.io_hiuReq_valid.value = 0
+    got = await collect_parts(dut, LOOKUP_WINDOW)
+    t.row("판정 사이클에 제시한 요청 — 접수 ready 열", tuple(rtr), (0, 1))
+    t.row("그 요청의 응답 — 한 번 · 결속 2 의 F2", tuple((g, f) for (_, g, f, _) in got), ((1, F2),))
+
+    stalls = await mmio_burst(dut, [(XCTL_ACTIVE_PART, 1), (XCTL_ACTIVE_PART, 3)])
+    t.row("인접 0xE14 기입 둘 (1 → 3) — 정지 계수", tuple(stalls), (0, 1))
+    t.row("인접 둘째도 판정 뒤 적용 — ([6], 0xE14)", (await fault6(dut), f"0x{await ap_read(dut):08X}"),
+          (0, f"0x{ap_word(3, 1, 1):08X}"))
+    forget_bound()
+    t.check("판정 사이클 정지")
+    await f6_agrees(dut, "active_part_judgment_stall")
+
+
+@cocotb.test()
+async def active_part_binds_lookup(dut):
+    """N11 — 결속이 조회 파티션을 정한다. 같은 VPN 을 파티션 1 · 3 에 서로 다른 프레임으로 커밋하고 결속만
+    바꾸면 승인 프레임이 바뀐다. `io.hiuRsp.part` 는 그 요청의 결속 파티션 메아리다. 빈 파티션 2 에 결속하면
+    같은 VPN 이 미적중이고 관측면 `0xE04 [15:8]` = 2 · 그 정지를 파티션 2 커밋이 푼다. 결속 전환은 매번
+    드레인된 다른 값 기입이다(되읽기 A = 1 · D = 1)."""
+    await boot_hiu(dut)
+    t = ApTable(dut)
+    fp, fq, fr = 0x0000_B111, 0x0000_B333, 0x0000_B222
+    for f in (fp, fq, fr):
+        await mmio_write(dut, OWN_SET, f)
+    va = vpn_of(0x0B1D000, 6)
+    await commit_entry(dut, 1, va, fp)
+    await commit_entry(dut, 3, va, fq)
+    for part, frame in ((1, fp), (3, fq), (1, fp), (3, fq)):
+        w = await bind_part(dut, part)
+        t.row(f"결속 {part} — 0xE14", f"0x{w:08X}", f"0x{ap_word(part, 1, 1):08X}")
+        res = await hiu_lookup(dut, part, va)
+        t.row(f"결속 {part} — 조회 va · rsp.part", (lookup_cell(res), res["part"]), (("hit", 1, frame), part))
+    w = await bind_part(dut, 2)
+    t.row("결속 2 — 0xE14", f"0x{w:08X}", f"0x{ap_word(2, 1, 1):08X}")
+    res = await hiu_lookup(dut, 2, va)
+    t.row("결속 2 — 조회 va (빈 파티션)", lookup_cell(res), ("miss",))
+    t.row("결속 2 — 관측면", await read_obs(dut), (xstatus_word(1, 1, 2), va, 0))
+    await commit_entry(dut, 2, va, fr)
+    r = await wait_rsp(dut)
+    t.row("파티션 2 커밋이 푼 응답 · rsp.part", (r["rsp"], r["granted"], r["frame"], r["part"]), (1, 1, fr, 2))
+    forget_bound()
+    t.check("결속 → 조회 파티션")
+
+
+async def reset_and_sweep(dut):
+    """실행 중 reset — 클럭은 그대로 두고 reset 을 세웠다 내린 뒤 구성 구역 ready 까지의 엣지 수(`boot` 와 같은 셈)."""
+    release_bus(dut)
+    zero_inputs(dut)
+    forget_bound()
+    dut.reset.value = 1
+    await step(dut, 3)
+    dut.reset.value = 0
+    await step(dut)
+    dut.io_mmio_addr.value = LNID_TBL_BASE
+    await settle(dut)
+    n = 0
+    while int(dut.io_mmio_ready.value) == 0:
+        await step(dut)
+        n += 1
+        if n > (1 << 16) + 64:
+            raise AssertionError(f"실행 중 reset 뒤 구성 구역 ready 가 {n} 엣지 안에 서지 않았다")
+    dut.io_mmio_addr.value = 0
+    await step(dut)
+    return n
+
+
+IRQ_STATUS = 0x320
+IRQ_MASK = 0x324
+CAP_STATUS = 0xF8C
+
+
+@cocotb.test()
+async def reset_values_norm(dut):
+    """N15 — reset 값 규범 (E.1.2 「reset 값」 규범 1–5항 · `0xE14` 행 · `0x324` 행).
+
+      e-defined.typ:216 「`0xEA0` MASK_PART = 0 · `0xEC4` MASK_DUP_CAPTURE = 0.」
+      e-defined.typ:216 「`0xE14` XLATE_ACTIVE_PART = 0.」
+      e-defined.typ:216 「FAULT_STATUS · `0xE04` `[1]` 미적중 · `0xF8C` CAP_STATUS · `0x320` IRQ_STATUS 의 sticky 전부 = 0.」
+      e-defined.typ:216 「모든 파티션의 마스크 유효 = 0」 — `0xEC0` `[7:0]` (e-defined.typ:347 「`[7:0]` 파티션별 마스크 준비」)
+      e-defined.typ:216 「미적중 정지 해제(요청 파이프 단이 빈다)」
+      e-defined.typ:216 「항목 스테이징 무효(`0xC00` (f))」 — VPN 없는 COMMIT 은 거절 + `[6]`
+      e-defined.typ:216 「페이지 소유권 표는 전 페이지 *호스트 소유*다」 — OWN_SET 없는 프레임 적중 → `[19]`
+      e-defined.typ:216 「*사상표 소거 sweep 은 reset 마다 처음부터 다시 돌고, reset 해제 뒤 ≤ `2^LNID_W` 장치 사이클 안에 끝난다*」
+      e-defined.typ:261 「`[0]` 1 = 마스크(끔), *reset 값 1*」
+
+    두 번 잰다 — 전원 reset 직후, 그리고 상태를 더럽힌 뒤의 실행 중 reset 직후(더럽힘은 각 워드가 실제로
+    0 이 아니었음을 전건으로 단언한다 — 공허한 「0 그대로」를 막는다). 실행 중 reset 앞에 비0 으로 만들지
+    못한 워드: `0x320` IRQ_STATUS(완료 큐 push 원천 — 재조립 배달 — 을 이 하네스가 구동하지 않는다) — 그 워드는
+    한 점 관측이다. 형식 단언은 하지 않는다(W4-9)."""
+    n1 = await boot(dut)
+    t = ApTable(dut)
+    sweep_max = 1 << 16
+
+    async def words():
+        out = []
+        for a in (FAULT_STATUS, XCTL_STATUS, CAP_STATUS, IRQ_STATUS, XCTL_ACTIVE_PART,
+                  MASK_DUP_CAPTURE, MASK_PART):
+            out.append(f"0x{await mmio_read(dut, a):08X}")
+        out.append((await mmio_read(dut, MASK_STATUS)) & 0xFF)
+        out.append(await mmio_read(dut, IRQ_MASK))
+        return tuple(out)
+
+    zero = tuple("0x00000000" for _ in range(7)) + (0, 1)
+    va = vpn_of(0x0A5E700, 5)
+    FH = 0x0000_7E57                                            # OWN_SET 하지 않는 프레임
+
+    async def after_reset(tag, n):
+        t.row(f"{tag} — 소거 sweep 엣지 수 ≤ 2^16 · ≥ 2^16 - 8 (처음부터)", INIT_SWEEP - 8 <= n <= sweep_max, True)
+        t.row(f"{tag} — 0xF80 · 0xE04 · 0xF8C · 0x320 · 0xE14 · 0xEC4 · 0xEA0 · 0xEC0[7:0] · 0x324",
+              await words(), zero)
+        t.row(f"{tag} — HIU 접수 ready (파이프가 빔)", int(dut.io_hiuReq_ready.value), 1)
+        f = await write_f6(dut, xbase(1) + X_COMMIT, commit_word(v=0))
+        t.row(f"{tag} — 스테이징 무효: VPN 없는 V=0 COMMIT → [6]", f, 1)
+        await commit_entry(dut, 1, va, FH)
+        res = await hiu_lookup(dut, 1, va)
+        await step(dut, 2)                                       # sticky 가 앉는 두 에지 (hiu_report 와 같은 셈)
+        t.row(f"{tag} — 호스트 소유 프레임 적중: 승인 0 · [19]", (res["rsp"], res["granted"],
+              bit(await mmio_read(dut, FAULT_STATUS), B_OWN_FRAME)), (1, 0, 1))
+
+    await after_reset("전원 reset", n1)
+
+    # ── 더럽힌다 ──
+    if await fault6(dut):
+        await clear_fault6(dut)
+    await mmio_write(dut, IRQ_MASK, 0)
+    await bind_part(dut, 2)
+    await mmio_write(dut, XCTL_ACTIVE_PART, 7)                # 값 거절 → [6] · 0xE14 = (2, A0, D1)
+    NA = [0xD1D1_0000 | i for i in range(MASK_NONCE_WORDS)]
+    for p in (0, 1):                                          # 같은 논스 두 파티션 → [12] · 0xEC4
+        await mask_cfg(dut, p, NA, [0x2000_0000 | (p << 8) | i for i in range(MASK_KEY_WORDS)])
+        await mask_rekey(dut, p)
+        await mask_wait_idle(dut)
+    await mmio_write(dut, MASK_PART, 3)
+    dut.io_fp_reqValid.value = 1                               # 미상주 step 프로그램 요청 → CAP_STATUS [1]
+    await step(dut, 2)
+    dut.io_fp_reqValid.value = 0
+    await step(dut, 2)
+    vb = vpn_of(0x0A5E7B0, 6)
+    await bind_part(dut, 2)
+    assert_miss(dut, await hiu_lookup(dut, 2, vb), "더럽힘 — 미적중 정지를 남긴 채 reset")
+    xb = xbase(3)
+    await mmio_write(dut, xb + X_VPN, va)                      # 스테이징 유효 (파티션 3)
+    await mmio_write(dut, xb + X_FRAME, FH)
+    await mmio_write(dut, OWN_SET, FH)                         # FH 를 장치 소유로
+    dirty = await words()
+    nz = tuple(i for i, (a, b) in enumerate(zip(dirty, zero)) if a != b)
+    t.row("더럽힘 전건 — 비0 이 된 워드 (0xF80 · 0xE04 · 0xF8C · 0xE14 · 0xEC4 · 0xEA0 · 0xEC0 · 0x324)",
+          nz, (0, 1, 2, 4, 5, 6, 7, 8))
+    t.row("더럽힘 전건 — HIU 접수 ready 0 (정지 중)", int(dut.io_hiuReq_ready.value), 0)
+
+    n2 = await reset_and_sweep(dut)
+    t.row("실행 중 reset — 스테이징(파티션 3)도 무효: VPN 없는 COMMIT → [6]",
+          await write_f6(dut, xbase(3) + X_COMMIT, commit_word(v=1)), 1)
+    await after_reset("실행 중 reset", n2)
+    forget_bound()
+    t.check("reset 값")
+    dut._log.info(f"reset 값: 전원 reset sweep {n1} · 실행 중 reset sweep {n2} 엣지 · 워드 9 · 스테이징 · 소유권 · 정지")

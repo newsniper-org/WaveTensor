@@ -424,7 +424,7 @@ _LEGACY_SCHEMAS = {
 # 둘은 **상한**(늘면 실패)이다. 상한 쪽이 있는 이유: 구조 skip 과 부분 덮임은
 # 「CHECK 분모를 비우는」 방향의 부정을 가능하게 하므로, 그것을 늘리는 일은
 # 반드시 이 파일을 고치는 *명시적 서명*을 거쳐야 한다.
-_MIN_COVERED = 159     # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다. · 149 → 159 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 159 = 완전 115 + 부분 44: 새 가드 열이 전부 앵커를 가졌다 — 아홉 완전 · commit_replaces_vpn 하나 부분)
+_MIN_COVERED = 171     # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다. · 149 → 159 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 159 = 완전 115 + 부분 44: 새 가드 열이 전부 앵커를 가졌다 — 아홉 완전 · commit_replaces_vpn 하나 부분) · 159 → 171 (2026-10-15, 3.10 v1.0 묶음의 RTL 파도 W4 착지 실측 171 = 완전 126 + 부분 45: ActivePart 가드 열둘이 전부 앵커를 가졌다 — 열하나 완전 · d_includes_same_cycle 하나 부분)
                        # 146 → 149 (2026-10-12, 3.10 v1.0 묶음의 RTL 파도 W2 착지 — 실측 149 = 완전 106 + 부분 43:
                        # 새 가드 셋(XlateObs.verdict_latch · latch_clears_on_leave · latch_one_value — hiumask.sby)이
                        # 전부 앵커를 갖고 **완전**으로 태어났다(GUARD-MAP 범위가 HiuPipeline 안이고 합성 DUT 가 품는다).
@@ -473,7 +473,7 @@ _MIN_COVERED = 159     # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다
                        # 실측 아래 8 칸 헐거운 채로는 앵커 여덟이 조용히 사라져도
                        # 게이트가 침묵한다 (2026-09-21 전수 반증 세 렌즈가 같은
                        # 것을 지적했다).
-_MAX_PARTIAL = 44      # 부분 덮임뿐인 가드 수. 늘지 않는다 (늘리려면 근거와 함께) · 43 → 44 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 — 새 가드 열 중 commit_replaces_vpn 하나가 태어나면서 부분: 유일한 앵커 door.sby 가 xlateArea 결선의 복제를 재고 bmc 16 유계 — _PARTIAL 의 W3 머리 주석)
+_MAX_PARTIAL = 45      # 부분 덮임뿐인 가드 수. 늘지 않는다 (늘리려면 근거와 함께) · 43 → 44 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 — 새 가드 열 중 commit_replaces_vpn 하나가 태어나면서 부분: 유일한 앵커 door.sby 가 xlateArea 결선의 복제를 재고 bmc 16 유계 — _PARTIAL 의 W3 머리 주석) · 44 → 45 (2026-10-15, 3.10 v1.0 묶음의 RTL 파도 W4 착지 실측 — ActivePart.d_includes_same_cycle 이 태어나면서 부분: 유일한 앵커 activepart.sby 의 DUT 는 유닛뿐이고 D 원천의 시점은 occ · assembly · descriptor 셋의 합성 서술 — _PARTIAL 의 W4 머리 주석)
                        #
                        # 39 → 43 (2026-10-12, 3.10 v1.0 묶음의 RTL 파도 W1 착지 — 실측 부분 43 · 완전 103).
                        # 새 가드 열둘 중 넷이 **태어나면서 부분**이다: Platform.own_reported (파이프라인
@@ -599,7 +599,7 @@ _MAX_STRUCTURAL_RESIDUAL = 1
                        # 숨기는 것보다 낫지만, **늘어도 되는 것은 아니다.**
                        # 줄이는 길은 그 축을 실제로 재고 칸을 _NOTHING_LEFT 로
                        # 바꾸는 것뿐이다.
-_MIN_EVIDENCED = 200   # 실행 증거로 뒷받침된 앵커 수. 줄지 않는다. · 183 → 200 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 — PROVES 200 · 신선 200)
+_MIN_EVIDENCED = 219   # 실행 증거로 뒷받침된 앵커 수. 줄지 않는다. · 183 → 200 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 — PROVES 200 · 신선 200) · 200 → 219 (2026-10-15, 3.10 v1.0 묶음의 RTL 파도 W4 착지 실측 — PROVES 219 · 신선 219: activepart 11 · assembly ActivePart 8)
                        # 180 → 183 (2026-10-12, 3.10 v1.0 묶음의 RTL 파도 W2 착지 — 실측 183/183 신선:
                        # hiumask.sby PROVES 셋(XlateObs.verdict_latch · latch_clears_on_leave · latch_one_value) ·
                        # 증거 hiumask.evidence.json 재스윕(bmc · prove abc pdr assert 57 · cover 37/37))
@@ -1292,6 +1292,53 @@ _PARTIAL = {
         "문 절반 (파티션 2 판) — [7:0] ≥ 2 의 XLATE_FLUSH 는 flush 없음 + badWrite — 1b "
         "flush.part 로 자르는 별칭 없음 (p_flush_iff · p_bad_iff · 증인 W29)",
         "표 불변 — XlateStore 프레임 조건(위 항목들과 같다) · 파티션 2 형상의 조립은 재지 않는다",
+    ),
+
+    # ── 아래 다섯: 태어나면서 부분인 앵커 (2026-10-15, 3.10 v1.0 묶음 RTL 파도 W4 — 0xE14 XLATE_ACTIVE_PART) ──
+    #
+    # 기준은 W3-9 그대로 (GUARD-MAP RTL 범위를 앵커 태스크가 전부 재면 완전). ActivePart 가드 열둘 중 일곱
+    # (value_first · rsv_strict · ro_field_ignored · drain_gates_switch · same_value_noop · ad_every_accept @activepart ·
+    # unaligned_outside @assembly) 은 GUARD-MAP 이 유닛 또는 xlateArea 결선 안이라 완전이다. 아래 넷의 activepart 앵커는
+    # GUARD-MAP 문면이 「조립이 …」 결선까지 걸치는데 activepart 의 DUT 는 유닛뿐이라 부분이지만, 같은 가드의
+    # assembly 앵커(actp 비절단 — 유닛 + 결선 실물)가 완전이라 가드는 완전으로 남는다. d_includes_same_cycle 은 유일한
+    # 앵커가 부분이라 가드가 부분이다 (_MAX_PARTIAL +1).
+    ("ActivePart", "d_includes_same_cycle", "rtl/formal/sby/ActivePart/activepart.sby"): (
+        "유닛 축 — D 는 판정 사이클(t+1)의 io_drainNow 다: 수락 사이클 drainNow 를 래치하는 경로가 없다 "
+        "(p_word_d · 증인 W11 — D_EARLY 단독 사살)",
+        "GUARD-MAP 둘째 문장 — io.drainNow 의 원천이 CompletionUnit.drainAllZero(0x37C 와 같은 allZero)이고 "
+        "t 에 접수된 요청이 t+1 의 파이프 점유에 이미 든다는 것. 셋으로 나뉘어 각자 잰다: HiuMask/occ.sby "
+        "h_occ_conserve · h_occ_accept (VERIFIES HiuPipeline.occ_timing — 접수 ⇒ 다음 점유 · 인계 0 틈 없음) · "
+        "Wt64Top/assembly.sby a_drain_order (점유 → cq.io.drain.pipe 같은 사이클 결선) · CompletionUnit/descriptor.sby "
+        "a_daz_fn (VERIFIES CompletionUnit.drain_allzero_pin — 핀 = 일곱 항의 조합 술어). 그 셋은 이 가드의 앵커가 "
+        "아니고 합성은 서술이다. assembly 는 hiu · cq 를 절단해 핀이 자유다 (a_bind_upd 는 판정 사이클 핀을 "
+        "D 로 잡는 결선만 잰다). 그리고 HIU 밖 다섯 카운트(공유 · 병합 · 뱅크 · 재조립 · 토큰)의 같은 사이클 "
+        "유입 시점은 어느 태스크도 재지 않는다 (occ.sby 「안 잰다」)",
+    ),
+    ("ActivePart", "pend_stalls_req", "rtl/formal/sby/ActivePart/activepart.sby"): (
+        "유닛 절반 — io_stallReq = 판정 사이클 그 자체, 늘이지도 래치하지도 않는다 (p_stall_req · 증인 W12 — "
+        "NO_STALL_REQ 단독)",
+        "Top 결선 — when(actp.io.stallReq) 로 hiu.io.req.valid 와 io.hiuReq.ready 를 둘 다 내리는 것. "
+        "Wt64Top/assembly.sby a_hiu_pass 가 같은 가드의 앵커로 잰다 (READY_ONLY · VALID_ONLY 단독) — 가드는 완전",
+    ),
+    ("ActivePart", "pend_stalls_mmio", "rtl/formal/sby/ActivePart/activepart.sby"): (
+        "유닛 절반 — io_stallMmio = 판정 사이클 그 자체 · 정지 중 기입은 수락이 아니라 효과도 거절선도 없다 "
+        "(p_stall_mmio · p_bad_iff · 증인 W10 — STALL_IDLE · BAD_UNACC 단독)",
+        "Top 결선 — 정렬 0xE14(isAct) 접근의 ready 하강 · rvalid 원천 resvRd 게이트(obsRd 의 ¬actStall 항은 rdata 위생 — W4 D2) · 구역 범위. Wt64Top/assembly.sby "
+        "a_ready_act · a_ready_one(actHold 항) · a_door_ready 가 같은 가드의 앵커로 잰다 — 정지된 읽기의 응답 게이트(RD_STALL_RESV)는 MmioPage.rsp_on_accept 앵커의 a_rv_acc 가 잡는다 · 가드는 완전",
+    ),
+    ("ActivePart", "req_part_from_bound", "rtl/formal/sby/ActivePart/activepart.sby"): (
+        "유닛 절반 — io_activePart = 결속 레지스터 (p_part — PART_PEND 단독)",
+        "GUARD-MAP 이 가리키는 실물은 Wt64Top xlateArea 의 hiu.io.req.part := actp.io.activePart 결선과 "
+        "io.hiuReq.part 은퇴다. Wt64Top/assembly.sby a_hiu_part 가 같은 가드의 앵커로 잰다 (PART_CONST 단독) — "
+        "가드는 완전",
+    ),
+    ("ActivePart", "reject_loud", "rtl/formal/sby/ActivePart/activepart.sby"): (
+        "유닛 축 — io_badWrite = 값 거절(수락 사이클) ∨ 드레인 거절(판정 사이클), 등식 (p_bad_iff — QUIET · "
+        "BAD_UNACC 단독)",
+        "GUARD-MAP 둘째 문장 — 조립이 Wt64Top 클래스 끝의 원천별 sticky io_fault_actCfgBadWrite = "
+        "StickyFault(actp.io.badWrite, fclr(B_CFG_BADWRITE)) 로 FAULT_STATUS [6] 에 잇는 것 (W4 D1 — surfBadWr 합류가 "
+        "아니다). Wt64Top/assembly.sby a_actbad_fire · a_actbad_rise · a_actbad_hold · a_actbad_clear · a_rd_fst 가 같은 "
+        "가드의 앵커로 잰다 (ACT_NOSET · ACT_EXTRA · ACT_PULSE · ACT_CLR_B0 각 단독 — W4F2 변이) — 가드는 완전",
     ),
 
     # ── 아래 둘: 태어나면서 부분인 앵커 (2026-10-13, 3.10 v1.0 묶음 RTL 파도 W3 — 형상 비노출 0xC00 문) ──

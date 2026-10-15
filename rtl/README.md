@@ -1224,7 +1224,7 @@ bmc · prove 와 조립 bmc 를 전부 통과했다 — 에포크가 매칭 키�
   배선했다 — 판정 E04 (A) · 아래 파도 4 3B 절). 아래는 파도 2 의 원문이다.
   `0x380`·`0xC00`·`0xE00`·`0xFC0` 구역에는
   표에 *있는* 워드(`0x380`–`0x390` · `0xC00`–`0xDFC` · `0xE00`–`0xE10` · `0xFFC`)와 표에 *없는*
-  워드(`0x394`–`0x3FC` · `0xE14`–`0xE7C` · `0xFC0`–`0xFF8` — 파도 2 원문 그대로; `0xFF8` 은 3.10 v1.0 묶음 뒤 표의 워드이고 RTL 파도 W1 이 배선해 지금 예약은 `0xFC0`–`0xFF4`)가 섞여 있다. 없는 워드는 예약 오프셋
+  워드(`0x394`–`0x3FC` · `0xE14`–`0xE7C` · `0xFC0`–`0xFF8` — 파도 2 원문 그대로; `0xFF8` 은 3.10 v1.0 묶음 뒤 표의 워드이고 RTL 파도 W1 이 배선해 지금 예약은 `0xFC0`–`0xFF4`; `0xE14` 는 RTL 파도 W4 (2026-10-15)가 배선해 지금 예약은 `0xE18`–`0xE7C`)가 섞여 있다. 없는 워드는 예약 오프셋
   정책(쓰기 무시 · 읽기 0)이 정본 그대로이고 하네스가 단언한다 — 정렬 쓰기 무-fault · 읽기 0.
   있는 워드의 쓰기는 조용히 흡수된다: RO 워드(`0x38C` · `0xE04`–`0xE0C` · `0xFFC`) 쓰기는
   E.1.1 RO 규범(거절 + loud)의 정의역이고, `0xE00` XLATE_FLUSH 의 흡수는 「없는 파티션 값의
@@ -1686,7 +1686,7 @@ flush 도 스냅샷 불변 · 관측면만으로 채워 정지 해제 · 해제 
   않고」)은 이 축의 정본 사실 편집(E.1.3 행 퇴역)으로 사라졌다 — volatile 구역이라 lint 는 인쇄만 한다.
   Y4 메모 갱신(W6)의 몫.
 - (확인 — 파도 4 통합) 읽기 수락 규율(D1 — 3C 축): 관측 읽기 경로 `obsRd` 는 rstrobe ∧ ¬wstrobe 를 수락으로 쓴다(이
-  구역 읽기 ready = 1). D1 수리 (b) 는 ready 하강을 정렬 FP *쓰기*로 좁혔을 뿐 읽기 전건에 ready 를 더하지 않아 `obsRd` 는 그대로다 (`a_rv_acc` 가 통합판에서 선다).
+  구역 읽기 ready = 1 — W4 (2026-10-15) 뒤 예외 하나: 정렬 `0xE14` 의 판정 사이클 ready 0 · 아래 W4 절). D1 수리 (b) 는 ready 하강을 정렬 FP *쓰기*로 좁혔을 뿐 읽기 전건에 ready 를 더하지 않아 `obsRd` 는 그대로다 (`a_rv_acc` 가 통합판에서 선다).
 
 ### 음성 실측 (비상주 — 생성물 사본 · `COCOTB_TEST_FILTER` · 빌드는 /var/tmp)
 
@@ -1717,7 +1717,7 @@ flush 도 스냅샷 불변 · 관측면만으로 채워 정지 해제 · 해제 
   3C 의 새 이름 `when_Wt64Top_l1751` 이 통합판에서 `when_Wt64Top_l1780` 이다(하네스 참조 0 · `lint_generated_names`
   OK). 기존 이름 이동은 0 이다. GUARD-MAP 은 파일 끝에 AbortSurface 열셋 · MmioPage 아홉 · XlateObs 셋 순이다.
 - D1 (b) 는 ready 하강을 정렬 FP *쓰기*로 좁혔을 뿐 읽기 전건에 ready 를 더하지 않았다 — 3B 가 조건부로 적은
-  `obsRd` 의 수락 항 추가는 필요 없다 (이 구역 읽기 ready = 1 — `a_rv_acc` 가 통합판에서 선다).
+  `obsRd` 의 수락 항 추가는 필요 없다 (이 구역 읽기 ready = 1 — `a_rv_acc` 가 통합판에서 선다 · W4 (2026-10-15) 뒤 예외: 정렬 `0xE14` 판정 사이클 — 아래 W4 절).
 - 정본 상태 낱말: 명령 링 · 두 링의 base 행을 *미구현* → *부분* 으로 세 문서(3.9 · E.1.3 · 위 표면 대조표)에서
   함께 옮겼다 — 쓰기 거절 + `[6]` · 읽기 0 의 처분이 실물이고 소비 회로가 없다(「부분」 — 그 행 안에서 갈린다).
 
@@ -1850,7 +1850,7 @@ VERIFIES `CompletionUnit.unaligned_read_zero` · `OwnershipTable.unaligned_read_
 **정본 사실(F) 편집 — 같은 줄 치환, 정본 파일 줄 수 불변.** 3.9 장치 전역 fault 표면 행(스무 축 중 열여덟 · 원천
 없는 둘 · 어긋남 두 문장 삭제 · `[11]`/`[12]` 측정 사실과 탐침 한정) · `0xEC4` · `0xFF8` 행 *미구현* → *구현* 을
 위 구현 구역으로(줄 보존 — 옮긴 자리는 주석 줄) · 함정 「자리를 준 것은 구현이 아니다」 의 행 수 열한 → 아홉 ·
-E.1.3 착지 대기 목록에서 `0xEC4` · `0xFF8` · `[19]` 를 뺐다(`0xE14` · 새 `0xC00` 문은 남는다) · E.7 각주(「재구현은
+E.1.3 착지 대기 목록에서 `0xEC4` · `0xFF8` · `[19]` 를 뺐다(`0xE14` · 새 `0xC00` 문은 남는다 — 새 문은 W3 (2026-10-13), `0xE14` 는 W4 (2026-10-15)가 뺐다) · E.7 각주(「재구현은
 `[4]` 에 접는다」 → W1 전까지) · 부록 D run 524 → 554 (Platform 12 → 23 · Mask 10 → 29, 배터리 날짜 2026-10-11).
 위 표면 대조표의 「(물러남)」 칸에 세 표면의 사실을 적었다. 상태 낱말은 세 문서가 같다.
 
@@ -2060,4 +2060,130 @@ V=1) · W3 수정 시험은 HEAD 대조 없음(수락 근거는 변이 M26 · M4
 - HIU-3 정적 검사 본체(W2 에서 이월 그대로).
 - cocotb `xlate_commit_addr_reject_no_wait` 의 축은 합성 RTL 에서 도달 불가 — 수락 근거는 props `p_need_iff` · assembly
   `a_ready_only_slot` · `a_door_ready`.
-- `rtl/sim/run_wt64.py` UNMEASURED 10번 「관측 세 워드 — 회로 0건」은 파도 4 3B 이후 거짓 — 아직 지우지 않았다.
+- `rtl/sim/run_wt64.py` UNMEASURED 10번 「관측 세 워드 — 회로 0건」은 파도 4 3B 이후 거짓 — 아직 지우지 않았다. — W4 (2026-10-15)가 지웠다(원장 10축).
+
+## 3.10 v1.0 묶음 RTL 파도 W4 — `0xE14` XLATE_ACTIVE_PART · `hiuReq.part` 은퇴 (2026-10-15)
+
+정본 E.1.2 `0xE14` 행 · 「결속 파티션의 수락 판정 — 0xE14 의 (A, D) 쌍」 · 3.7.2 「결속 전환」(3.10 v1.0 묶음)의 RTL
+따라잡기 넷째 하위 파도다 — 요청의 파티션은 결속이고, 결속은 드레인 판정 D = 1 에서만 다른 값으로 바뀐다. 순서는
+정본 6.3 그대로(선-formal → RTL → 후-formal → cocotb). 기준 HEAD 7d9894a (RTL f67e3d6). 3.7.2 「v1.0 의 결속은
+격리를 주장하지 않는다」는 그대로다 — 이 파도는 결속 전환이 격리를 준다고 주장하지 않는다.
+
+**선-formal (RTL 편집보다 먼저).** `ActivePart.tla` 신설(축 모델 — 라벨이 색인 속성 ID 를 인용하지 않는다) — 가드 12
+(value_first · rsv_strict · ro_field_ignored · drain_gates_switch · same_value_noop · ad_every_accept ·
+d_includes_same_cycle · pend_stalls_req · pend_stalls_mmio · req_part_from_bound · unaligned_outside · reject_loud) ·
+고정 속성 여섯(`Inv_ObsIsSpec` · `Inv_WorkUnderBound` · `Prop_NoStaleWorkAfterSwitch` · `Prop_LoudOnlySpec` ·
+`Prop_A0D1IsValueReject` · `Prop_StallOnlyPend` — 전부 상주 음성 run) · 대안 상수 `DSample`(α 좋은 모델 · β · lag) ·
+`StallAlt`(hold) · `SameAlt`(reject). run 44 = 좋은 cfg 둘 · 가드 삭제 12 · 고정 속성 음성 3 · 증인 18 · 짝 셋(W4 전
+RTL — 쓰기 흡수 · 포트 결속 · 기각한 「같은 값 ∧ D = 0 → 거절」) · 대안 여섯(β 넷 — 정본 어긋남 · 거짓 loud · 격리
+몸은 지킴(MUST PASS) · 같은 에지 퇴장 전환 불가(MUST PASS) · lag · hold). DP-4 의 근거가 β 다 — 기입 사이클 표집은
+마지막 일이 같은 에지에 떠나는 모서리에서 적법한 전환을 거절 + `[6]` 한다(S-1 불필요, α 확정). `MmioPage.tla` 는
+주석 셋(rw 부류에 `0xE14` · `bad` 에 그 값 거절 · rdy 추상의 판정 사이클 정지 — run 29 불변). 여기서 「증명됨」은
+*모델 위의* 사실이다. 배터리 600 → 644 run — 실측: ActivePart 절 44/44 선언대로(run [251]–[294]) · 전량 배터리 644/644 선언대로 — 컨테이너 `w4g-gate-tlc` · 2026-10-15 13:15–15:06 KST · 게이트 GREEN(「전체 644 run 이 선언대로 행동했다」 줄 — `run.sh` 종료 코드 0 경로) · 이탈 0 · 입력 sha 665건 중 663건 불변 — 두 건(`ActivePart.tla` · `MmioPage.tla`)은 배터리 끝(15:06:32) 뒤 15:06–15:07 에 바뀌었다(오케스트레이터의 배터리 뒤 주석 정정 — W4R2 결함 2 · MmioPage 는 HEAD 대비 주석 줄만 · ActivePart 는 배터리 입력 사본 대비 주석 줄 셋) — 바뀐 두 편은 15:07–15:08 절 재실행(MmioPage 29 + ActivePart 44 = 73/73 선언대로 · 게이트 GREEN · `gate-w4g/post`)으로 재확인, 그 입력 sha 665/665 = 현재 판 (부록 D 문장과 같은 판).
+
+**RTL (줄 인용 대상은 줄 중립 · 새 코드는 끝).**
+- `ActivePart.scala` 신설 — 포트 `wr` · `wdata` · `drainNow` · `activePart` · `actWord` · `badWrite` · `stallMmio` ·
+  `stallReq`, 상태 `bound` · `aReg` · `dReg` · `actPend` · `pendV` · `pendOk`. `acc = wr ∧ ¬actPend` · `valOk =
+  ¬XlateStaging.partBad(wdata[7:0]) ∧ wdata[31:10] = 0`(`[9:8]` 은 어느 식에도 없다) · `applyNow = actPend ∧ pendOk ∧
+  (pendSame ∨ drainNow)` · `when(actPend){aReg := applyNow; dReg := drainNow}` · `badWrite = (acc ∧ ¬valOk) ∨ (actPend
+  ∧ pendOk ∧ ¬applyNow)` · 두 정지 = `actPend` 그 자체(α — 판정 사이클 하나). reset `[9:0]` = 0.
+- `CompletionUnit.scala` 클래스 끝 +8 — 출력 `drainAllZero := allZero`(`0x37C` 읽기와 같은 식 — DP-5 · DP-10).
+- `Wt64Top.scala` (클래스 끝 앞쪽은 줄 중립) — `Xctl.ACTIVE_PART = 0x14`(스칼라독 줄 흡수) · `io.hiuReq.part` 입력 선언과 hiu
+  결선을 같은 줄 은퇴 주석으로 · xlateArea 끝 「결속」 절: `isAct = selXctl ∧ mmioAligned ∧ addr[6:2] = 5` ·
+  `actp.io.wr := wstrobe ∧ isAct` · `drainNow := cq.drainAllZero` · `hiu.io.req.part := actp.io.activePart`(요청
+  파티션의 유일한 구동) · `when(stallReq){hiu.io.req.valid := False; io.hiuReq.ready := False}` · `when(actStall){
+  io.mmio.ready := False; resvRd := False}`(정지는 isAct 범위 — 다른 구역 · 비정렬 `0xE15`–`0xE17` 은 판정 사이클에도
+  ready 1 · 효과 1회) · 읽기 mux `ACTIVE_PART → actWord`. 클래스 끝 +12(W4 D1): 원천별 sticky 출력
+  `io_fault_actCfgBadWrite = StickyFault(actp.io.badWrite, fclr(B_CFG_BADWRITE))` 와 `[6]` 합류 — `surfBadWr` 합류가
+  아니다(DP-15 `xlateCfgBadWrite` 선례). 이로써 `[6]` 은 *일곱* 원천이다 — MmioConfig · 조립이 직접 디코드하는 표면
+  (`surfBadWr`) · FP_BIND 예약 거절 · COMMIT 데이터 사유 거절 · 완료 유닛 · 소유권 표 · `0xE14` 거절.
+- `XlateStaging.scala` 주석 「표면 넷」 → 「다섯」(`0xE14` 추가 — 줄 중립).
+- GUARD-MAP 12 = ActivePart.scala 머리 10 + Wt64Top 파일 끝 2(req_part_from_bound · unaligned_outside) · MmioPage 넷(rsp_on_accept ·
+  effect_on_accept · resv_lenient — `0xE00` 구역은 `0xE18`–`0xE7C` · reject_loud)과 XlateObs.obs_read_pure 문면. `lint_guard_map` 가드 166 → 178 전수 · **ENFORCED 18 → 19**(ActivePart).
+  `make rtl-gen` 두 번 바이트 동일 — 바뀐 생성물은 Wt64Top(`c39bcb4ce73460cd`) · CompletionUnit(`9b8749d942c3a315`)
+  둘(이 착지 편집 전후 20 편 sha256 불변).
+- obsRd 의 `¬actStall` 항은 둔다(W4 D2) — rdata 포착 위생이고 포트 관측 동치다. 정지된 `0xE14` 읽기의 rvalid 원천은
+  `resvRd` 하나이고, 「정지 중 rvalid 2회」 변이(R 보고 M8)를 막는 것은 그 `resvRd` 게이트다(RD_STALL_RESV →
+  `a_rv_acc`). obsRd 쪽 변이 RD_STALL_RV 는 포트에서 구별되지 않는 생존 변이다.
+
+**생성 이름 변화.** 사라짐 — 최상위 입력 `io_hiuReq_part`. 신설 — 최상위 출력 `io_fault_actCfgBadWrite` ·
+CompletionUnit 출력 `drainAllZero`(`io_` 접두 없음 — HiuPipeline `installSlotFree` 선례 · Wt64Top 넷 `cq_drainAllZero`)
+· 모듈 `ActivePart`(인스턴스 `actp` · `actp_io_*`) · `xlateArea_isAct` · `xlateArea_actStall`. `hiu_io_req_valid` 는
+덮어쓰기가 생긴 reg 다. 이동 — `when_Wt64Top_l1731` → `l1735` · `l1799` → `l1831` (하네스 참조 0 — `lint_generated_names`
+OK).
+
+**구조 게이트.** `lint_ready_cone` — `io_mmio_ready` 콘 {addr, wstrobe} 그대로(wdata 없음), 자기시험 4/4.
+
+**후-formal (영향 일곱 태스크 — 재스윕 PASS · hollow 0 · uncounted 0 · 증거 json 일곱 신선).**
+
+| 태스크 | bmc | prove | cover | assert · cover |
+|---|---|---|---|---|
+| ActivePart/activepart (**신설**) | abc bmc3 깊이 12 | abc pdr | btormc 깊이 12 | 8 · 12/12 |
+| HiuMask/occ (**신설**) | — | abc pdr | btormc 깊이 12 | 2 · 3/3 |
+| CompletionUnit/descriptor | z3 깊이 10 | `prove_daz` abc pdr (단언 2) | z3 | 17 · 20/20 |
+| Wt64Top/assembly | abc bmc3 | abc pdr | z3 | 124 · 69/69 |
+| XlateDoor/door | btormc 깊이 16 | `prove_stall` abc pdr (단언 2) | btormc | 4 · 7/7 |
+| XlateStaging/props | abc bmc3 | abc pdr | z3 | 14 · 26/26 |
+| AbortStaging/props | z3 | z3 | z3 | 26 · 14/14 |
+
+- `ActivePart_props.sv`(래퍼 `ActivePart_check`) — 포트 오라클 그림자, 단언 8(`p_word_bound` · `p_word_a` · `p_word_d` ·
+  `p_word_rsv` · `p_part` · `p_stall_mmio` · `p_stall_req` · `p_bad_iff`) · 증인 12, 전부 단독 사살 변이가 있다
+  (`activepart.sby` 머리 역-변이 표). `unaligned_outside` 의 앵커는 assembly 다(정렬 게이트가 유닛 위에 있다).
+- `HiuOcc_props.sv` — `h_occ_accept`(접수 ⇒ 다음 점유 ≥ 1) · `h_occ_conserve`(점유는 접수로만 늘고 응답 퇴장으로만
+  준다 · 단계 인계 0 틈 없음). `h_occ_accept` 는 단독 변이가 없다(`h_occ_conserve` 에서 유도 — VERIFIES 단언이라
+  `_DERIVED` 키 없음, `.sby` 머리 기록). bind 텍스트 전개는 hiumask 선례와 같은 예외로 수락했다(W4 D3 — HOLLOW 는
+  `select -assert-count` 가 지킨다). 이 태스크가 3.9 판정 래치 행의 「미측정 하나」(래치된 요청의 점유 포함)를 환류했다 —
+  reset 점유 0 은 구조이고 단언이 없다.
+- `descriptor.sby` — `a_daz_fn`(핀 = 일곱 항의 조합 술어) · `a_daz_rd`(`0x37C` 읽기 = 수락 사이클 술어) + 증인 W11–W13,
+  `prove_daz` abc pdr 무계.
+- `assembly.sby` — `actp` 비절단 · 그림자 `f_bound` · `f_A` · `f_D` · 단언 `a_bind_rd` · `a_bind_upd` · `a_hiu_part` ·
+  `a_ready_act` · `a_hiu_pass`(재작성 — valid 와 ready 둘 다) · `a_actbad_fire/rise/hold/clear`(원천별 sticky) · `uResv` 에서
+  `0xE14` 제외 · `a_ready_one` 의 actHold 항 · 증인 W53–W58. 무결성 핀 재서명: ① 절단 14 그대로 · 남긴 인스턴스 4 → 5
+  (`actp`) ② assume 1 ③ assert 116 → 124 · cover 63 → 69 ④ 37 → 39(w55 · w58 — R 초안 39 → W4H 40(w57 을 넣고
+  절단 핀 `cq__drainAllZero` 를 제외한 판) → D1 39(w57 은 [의존], 핀 제외 *없는* 원판)) ⑥ 272 · 221 → 222 · 104 · 66 → 67
+  · 「재지 않는 핀」 168 그대로. W4 D1 뒤 옛 결선(`actp.badWrite → surfBadWr`)을 사본에 되넣으면 ④ 가 ERROR(rc 16)로
+  운다 — 상주 검사다(W4F2 OLD_WIRING · W4F2V M_DOUBLE).
+- 이 착지 라운드의 `.sby` 편집(W4R2F — 결함 1 · 7)은 문면뿐이고 재스윕 PASS 다: activepart 8 · 12/12 · assembly 124 ·
+  69/69, HOLLOW 0 — 계수 변화 없음.
+- 독립 반증(W4V · W4F2V · W4R2): 살아남은 결함 변이 0. HEAD(f67e3d6) 음성 대조 — 직접 부착은 ERROR(ActivePart ·
+  `drainAllZero` · `cq__drainAllZero` 없음)로 소리 나게 실패, occ 는 HEAD 에서도 참인 사실이라 PASS(반증력은 변이),
+  어댑터로 감싼 HEAD 조립은 `a_bind_*` · `a_hiu_*` · `a_ready_act` · `a_door_ready` · `a_surf_fire` 가 FAIL.
+
+**cocotb (`rtl/sim/` — 그 README 의 W4 절).** Shape 37 → 44 — N10 `active_part_ad_table` · `active_part_d_sample_edges`
+· `active_part_rmw_ro_ignored` · `active_part_unaligned_outside` · `active_part_judgment_stall` · N11
+`active_part_binds_lookup` · N15 `reset_values_norm`. 헬퍼 `bind_part(p)` 가 요청 파티션 포트 구동을 대체했다.
+`make rtl-sim` **56/56**(Mask 12 · Shape 44). 새 일곱과 `xlate_miss_obs_second_stall` 이 HEAD 생성물에서 8/8 FAIL. 변이
+K1–K8 열둘(K2b · K2c · K5b · K6b 포함) 전부 잡힘. W4 D1 뒤 대조면 122/124 · `NO_IO_CLEAR` 9(`io_fault_actCfgBadWrite` 는 `0xF84[6]` 로만 내려간다).
+cocotb 는 `[6]` 한 비트만 보므로 새 원천 sticky 축의 변이 여섯 — M_CLR_EXTRA · M_UNAL_IN · M_DOUBLE · M_MERGE_SURF ·
+M_MERGE_SRC · M_CLR_WINS — 은 Shape 44/44 를 통과한다. 그 축(원천 분리 · 이중 보고 · 발화 우선)은 **형식 단언 몫**이고
+assembly `a_actbad_*` · `a_surf_*` · ④ 가 여섯 모두 잡는다(W4F2V). 거꾸로 새 sticky 의 reset 값(M_RESET1)은 cocotb 만
+잡는다(Shape 28 FAIL — 그 축을 이름으로 재는 것은 N15 `reset_values_norm`) — 형식 쪽 `f_expSt[6]` 는 기대값을 그 포트로 짓는다(W4-9 — reset 형식 단언은 하지 않는다).
+
+**정본 사실(F) 편집 — 같은 줄 치환, 정본 파일 줄 수 불변.** 3.9 `0xE14` 행 *부분* → *구현* 을 위 구현 구역으로(옮긴
+자리는 주석 줄 · 옮긴 행은 `0xEC4` · `0xFF8` 행과 한 줄) — α · 정지 범위 · 원천별 sticky · 요청 파티션 = 결속 · 측정
+출처 · 이월 · 함정 「자리를 준 것은 구현이 아니다」 의 행 수 아홉 → 여덟 · 3.9 판정 래치 행과 B.5 드레인 정의역 행의
+「점유를 재는 단언 없음」 → `HiuMask/occ.sby` `h_occ_conserve`(reset 점유 0 은 구조) · E.1.3 착지 대기 문장에서 `0xE14`
+를 뺐다 · 부록 D 진행 현황(644 run · ActivePart 축 44 · 축 모델 일곱 · `.tla` 20편 · 배터리 날짜 2026-10-15). E.1.2 의
+`0xE14` 규범 행은 손대지 않았다 — 비정렬 `0xE15`–`0xE17` 의 처분은 E.1.2 「결속 파티션의 수락 판정」 명확화가 이미
+닫았다(S-2 후보 삭제).
+
+**래칫 (실측 서명).** `lint_postformal` PROVES 200 → 219 · 분모 159 → 171 (완전 115 → 126 · 부분 44 → 45) —
+`_MIN_COVERED` 171 · `_MAX_PARTIAL` 45 · `_MIN_EVIDENCED` 219. `_PARTIAL` 에 W4 다섯: `d_includes_same_cycle@activepart`
+(유일한 앵커 — D 원천의 시점은 occ · assembly `a_drain_order` · descriptor `a_daz_fn` 의 합성 서술이라 가드가 부분) ·
+`pend_stalls_req` · `pend_stalls_mmio` · `req_part_from_bound` · `reject_loud` `@activepart`(유닛 절반 — 같은 가드의
+assembly 앵커가 완전이라 가드는 완전). `lint_witness_map` 증인 443 → 467 · 앵커 229 → 250. `lint_guard_map` ENFORCED
+18 → 19 · 가드 166 → 178.
+
+**미측정 · 이월.**
+- 응답 파티션 메아리(`io.hiuRsp.part`)의 앵커 — 조립 하네스가 `io_hiuRsp_*` 출력을 묶지 않는다(W4 전부터 미측정 ·
+  W4 D4 이월). 「메아리 = 지금 결속」 은 드레인 규칙 아래의 불변이다.
+- D 원천의 시점(기입 사이클 접수가 판정 사이클 D 에 든다) — 셋의 합성 서술(`_PARTIAL` 자백). HIU 밖 다섯 카운트
+  (공유 · 병합 · 뱅크 · 재조립 · 토큰)의 같은 사이클 유입 시점은 어느 태스크도 재지 않는다.
+- reset 의 *형식* 단언(W1–W3 에서 이월 그대로) — 새 sticky 의 reset 값은 cocotb N15 만.
+- 유도 후보 둘(`.sby` 머리 기록 · 키 부류 아님): `h_occ_accept` · `a_door_ready` 의 `!actHold` 항. `p_word_rsv` 는 무변이
+  RTL 에서 상수로 접힌다(반증력은 WORD_RSV).
+- 참조 형상이 아닌 형상(파티션 ≠ 4) — `ActivePart` 의 2b 결속 폭과 하네스 `F_PARTS` 가 참조 형상의 것이다.
+- 선-formal 쪽 주석 정정 셋(`ActivePart.tla` GUARD-MAP 예정 문면의 옛 `surfBadWr` · 닫힌 목록 6 과 `MmioPage.tla` rdy
+  주석의 「정지 중 다른 구역 기입이 효과를 내지 않음」 — RTL 은 다른 구역 기입을 정지 사이클에도 수락하고 효과는 한
+  번이다)은 완료 — 배터리 끝 뒤 2026-10-15 15:06–15:07 에 주석 줄만 정정(배터리 입력 사본 대비), 두 절(MmioPage 29 ·
+  ActivePart 44)을 현재 입력으로 다시 돌려 73/73 GREEN(15:08 · `gate-w4g/post`) (W4R2 결함 2) · 이어서 `XlateObs.tla` 닫힌 목록 14 주석(점유 미측정 → W4 `h_occ_conserve`)을 고치고 XlateObs 절 41/41 선언대로 · GREEN (15:43–15:59 · `gate-w4g/post2`, XlateObs.tla sha 2611c0bf).

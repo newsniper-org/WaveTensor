@@ -151,7 +151,13 @@ SUITES = {
         # 다른 항목). W3 검증 변이 M26(저장 태그 비교 [15:0] 만) · M43(설치 태그 [27] 0 고정)이 formal 만 잡고
         # Shape 를 통과했다. 같은 수리로 xlate_other_flush_keeps_staging 에 파티션 1 vs 3 행(M13b — flush
         # 파티션 비교가 bit0 만).
-        "expect_min": 37,
+        # 2026-10-15 37 → 44: W4(3.10 RTL 파도 — 0xE14 XLATE_ACTIVE_PART · io_hiuReq_part 은퇴) — 조회 헬퍼가
+        # 파티션을 결속으로 만든다(bind_part — 되읽기 [7:0] = p ∧ [8] A = 1 단언). 새 일곱: active_part_ad_table(N10 —
+        # (A, D) 네 칸 · 값 검사) · active_part_d_sample_edges(N10 — 같은 사이클 접수 · β 모서리 · 한 사이클 이른 대조) ·
+        # active_part_rmw_ro_ignored([9:8] 쓰기 무시) · active_part_unaligned_outside(0xE15–0xE17) ·
+        # active_part_judgment_stall(판정 사이클 1 사이클 정지 · 범위) · active_part_binds_lookup(N11) ·
+        # reset_values_norm(N15). 일곱 다 HEAD(f67e3d6) 생성물에서 FAIL 한다.
+        "expect_min": 44,
         "what": "ISA-2 순열 (LBID·LNID 존재 축) + ISA-1 자리 무관성 + 비교기 자기대조 "
                 "+ 변환 저장소 MMIO 문 — 형상 비노출 0xC00 (VPN·FRAME·COMMIT 설치·flush·V=0·거절·정지 해제·"
                 "인접 COMMIT 하류 정지·예약-엄격 워드·VPN_HI·VPN 재기입·데이터 사유의 정지 뒤 거절·주소 사유의 "
@@ -159,7 +165,9 @@ SUITES = {
                 "+ 소거 문 TAG1 워드 적법성 + 페이지 처분 · FP 소거 창 + 미적중 관측 값(정지 게이트 스냅샷) "
                 "+ 스테이징 수명(flush 가 끝낸다) + HIU_SHAPE · MASK_DUP_CAPTURE · [19] 원인별 보고 "
                 "+ 판정 래치(풀린 판정의 축출 생존 · 래치된 판정과 철회 · 대체의 효력 범위) "
-                "+ VPN 높은 비트 키 구별",
+                "+ VPN 높은 비트 키 구별 "
+                "+ 0xE14 결속 파티션((A, D) 표 · D 표집 시점 · [9:8] 쓰기 무시 · 비정렬 밖 · 판정 사이클 정지 · "
+                "결속 → 조회 파티션) + reset 값 규범",
     },
 }
 
@@ -267,7 +275,7 @@ UNMEASURED = [
      "재구현 MaskUnit 에 부표준키·블록 워드를 내는 포트가 없다 — 계층 peek 은 "
      "포트 계약이 아니라 SpinalHDL 명명의 우연이므로 통과 기준으로 쓰지 않는다"),
     ("FAULT_STATUS[17]·[18]",
-     "Wt64Top.sv:1667 「faultWords_status[17] = 1'b0;」 과 그 다음 줄 [18] 상수 0 — "
+     "Wt64Top.sv:1705 「faultWords_status[17] = 1'b0;」 과 그 다음 줄 [18] 상수 0 — "
      "엔트로피원·명령 디스크립터 원천 부재. "
      "0 을 「정상」으로 읽으면 안 된다"),
     ("SharedUnit·MemOrderGate 독립 .sv 의 top 대표성",
@@ -275,12 +283,10 @@ UNMEASURED = [
     ("OPREF B 참조의 LBID 축",
      "제시 자체가 없다 — Wt64Top.scala:86 「OPREF B 토큰의 RouteJudge 제시는 미배선」 "
      "(TODO 2항), tokIn 은 사이클당 하나"),
-    ("변환 저장소 관측 세 워드의 값 (0xE04 XLATE_STATUS · 0xE08/0xE0C XLATE_MISS_VPN)",
-     "회로 0건 — 정지 상태·정지한 요청의 VPN 을 관측면에 내는 배선이 없다. 읽기는 응답 + 0 "
-     "이고 쓰기는 거절 + [6] 이다 (파도 3 이 0xE00·0xE10 과 쓰기 방향만 닫았다)"),
     ("변환 조회의 호스트 ABI 층위 (MMIO 로 설치한 항목을 호스트 요청이 조회)",
-     "요청 원천(메모리 파이프) 미착지 — 조회는 내부 포트 io.hiuReq 제시다. "
-     "xlate_* 시험의 기입 쪽만 호스트 ABI 오프셋이다"),
+     "요청 원천(메모리 파이프) 미착지 — 조회의 VPN·valid 는 내부 포트 io.hiuReq 제시이고, "
+     "파티션은 0xE14 XLATE_ACTIVE_PART MMIO 결속이다(W4 — io_hiuReq_part 은퇴). "
+     "xlate_* · active_part_* 시험의 기입 쪽만 호스트 ABI 오프셋이다"),
 ]
 
 

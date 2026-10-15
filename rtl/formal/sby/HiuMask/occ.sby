@@ -1,0 +1,87 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# 파이프 점유의 시점 · 보존 — HiuPipeline + MaskUnit 합성(HiuMask_comp) 위의 별도 태스크
+# (3.10 v1.0 묶음 RTL 파도 W4, 2026-10-15). 검사자: rtl/sv/assert/HiuOcc_props.sv.
+# 선-formal 계약: rtl/formal/tla/ActivePart.tla 닫힌 목록 3 (b) — α 가 기대는 RTL 사실 (_alt_lag 가 그 의존을 기록한다).
+#
+# VERIFIES: HiuPipeline.occ_timing — 같은 사이클 접수는 다음 사이클 점유에 든다: req.fire(t) ⇒ io.occupancy(t+1) ≥ 1 (h_occ_accept · 증인 W1) · 점유는 접수로만 늘고 응답 퇴장(io.rsp.valid)으로만 준다 — occupancy(t+1) = occupancy(t) + fire(t) − rsp.valid(t) (h_occ_conserve · 증인 W2 · W3) — 단계 인계(s3 → MaskUnit s4 → s5)에 점유 0 틈이 없다. **무계 증명**(abc pdr). `0xE14` 판정 α 의 「t+1 DRAIN_ALLZERO 가 t 의 같은 사이클 접수를 센다」 는 이것 + Wt64Top/assembly.sby a_drain_order(점유 → cq.io.drain.pipe 같은 사이클) + CompletionUnit/descriptor.sby a_daz_fn(핀 = 일곱 항의 조합 술어)의 합성이다
+#
+# ## 왜 hiumask.sby 에 넣지 않았나
+#
+# hiumask.sby 는 bmc 깊이 24 가 50 분대다(lint_section_refs.py 주석 실측). 검사자를 HiuMask_props.sv 에 넣으면 그 파일이
+# hiumask 의 [files] 라 무관한 재스윕을 부른다. 여기서는 HiuMask_props.sv 를 *읽기만* 하고(HiuMask_comp 결선 · ENV
+# assume 재사용 — 같은 합성을 재는 것이 보장된다) 검사자는 새 파일에 둔다. HiuMask_props.sv 가 바뀌면 이 태스크도
+# 재스윕 대상이다 ([files] 역색인 — 메모리 「sby 합성 태스크 회귀 함정」).
+#
+# ## 이 태스크가 재지 않는 것
+#
+#   · 점유 → cq 결선 · cq 의 핀 술어 · 핀 → actp.drainNow — 위 합성의 다른 셋 (assembly · descriptor).
+#   · HIU 밖 정의역(공유 · 병합 · 뱅크 · 재조립 · 토큰)의 같은 사이클 유입 — v1.0 의 0xE14 판정 사이클 정지는 HIU 접수만
+#     막는다(pend_stalls_req). 그 다섯 카운트의 시점은 각 유닛 태스크 몫이고 여기 없다 (착지 판단 — 보고 「미해결 질문」).
+#   · 점유 값의 상한(≤ 6) · 정지 원천의 뜻 — hiumask.sby.
+#
+# ## 엔진 · 깊이 — z3 를 판정에 쓰지 않는다
+#
+# 저장 Mem 이 든 합성이다 (door.sby 와 같은 근거). prove = abc pdr (보존 등식은 단계 valid 의 귀납 불변 — 포트만 보는
+# 등식이라 k-귀납은 도달 불가 상태의 거짓 반례를 낼 수 있다), cover = btor btormc 깊이 12. bmc 태스크는 두지 않는다 —
+# 무계 증명이 상위다(prove 가 UNKNOWN/TIMEOUT 이면 통과가 아니다 — 그때 bmc 로 내리지 말고 보고한다).
+
+# ## 역-변이 표 (2026-10-15 W4 후-formal 통합 · 비상주)
+#
+# 사본의 HiuPipeline 한 식(생성물 HiuPipeline.sv sha256 044e14d5a1181984). 단언 = bmc smtbmc --keep-going z3 깊이 12
+# 와 이 파일의 prove(abc pdr) — 둘의 위반 집합이 같았다. 증인 = cover smtbmc z3 깊이 12 (btormc 요약은 미도달
+# 이름을 귀속하지 않아 사본에서는 z3 로 갈랐다). 무변이: prove · bmc PASS · 3/3.
+#
+#   변이                                            죽는 단언                        미도달 증인
+#   OCC_LAG     점유가 s1 을 세지 않는다 (모델 _alt_lag)  h_occ_accept · h_occ_conserve    W1
+#   OCC_GAP_S4  점유가 MaskUnit s4 를 세지 않는다 (인계 틈)  h_occ_conserve                 —
+#   NO_SWAP     s6 가 차 있으면 접수하지 않는다           h_occ_conserve                   W2
+#   READY_ONE   req.ready 상수 1 (advance 무관)           h_occ_accept · h_occ_conserve    W3
+#
+# h_occ_conserve 와 증인 셋은 단독 사살 변이가 있다. h_occ_accept 는 없다 — h_occ_conserve 에서 유도된다
+# (fire(t) ⇒ occ(t+1) = occ(t) + 1 − rsp(t) ≥ 1, rsp(t) ⇒ occ(t) ≥ 1). _DERIVED 후보.
+# W1 은 이 통합에서 강화했다 — 앞판 「점유 0 의 접수 ⇒ 다음 점유 1」 은 hold 로 s1 에 잡혀 보이지 않던 일이 s2 로
+# 넘어가며 OCC_LAG 아래에서도 도달했다 (reset 뒤 첫 접수로 고정 — f_fired).
+# HEAD(f67e3d6) 음성 대조: PASS — HiuPipeline · MaskUnit 은 HEAD 와 같은 sha 이고 이 사실은 HEAD 에서도 참이다
+# (선-formal P-fix 진술). 반증력은 위 변이가 든다.
+#
+[tasks]
+prove
+cover
+
+[options]
+prove: mode prove
+prove: aigsmt z3
+cover: mode cover
+cover: depth 12
+multiclock off
+timeout 1800
+
+[engines]
+prove: abc pdr
+cover: btor btormc
+
+[script]
+# ① HiuMask_props.sv 에서 모듈 본문만 (bind 두 줄 제외) — HiuMask_comp 가 첫 모듈이다
+exec -- sh -c "sed /^bind/Q HiuMask_props.sv > hm_mods.sv"
+# ② HiuMask_comp 의 *첫* endmodule 앞에 검사자 인스턴스(bind 문 텍스트 전개)를 넣는다
+exec -- sh -c "sed -n s/^bind.HiuMask_comp.//p HiuOcc_props.sv > occ_inj.sv"
+exec -- sh -c "sed /^endmodule/Q hm_mods.sv > hm_comp.sv && cat occ_inj.sv >> hm_comp.sv && sed -n /^endmodule/,+99999p hm_mods.sv >> hm_comp.sv"
+exec -- sh -c "sed /^bind/Q HiuOcc_props.sv > occ_only.sv"
+prove: read_verilog -sv -formal occ_only.sv
+cover: read_verilog -sv -formal -DHIUOCC_COVER occ_only.sv
+read_verilog -sv -formal hm_comp.sv
+read_verilog -sv -formal MaskUnit.sv
+read_verilog -sv -formal HiuPipeline.sv
+prep -top HiuMask_comp
+# 무결성 — 검사자 인스턴스가 실재하고(bind 묵살 HOLLOW 방지) 단언 · 증인 셀 수가 이 파일의 것이다.
+select -assert-count 1 HiuMask_comp/t:HiuOcc_props
+prove: select -assert-count 2 HiuOcc_props/t:$check HiuOcc_props/r:FLAVOR=assert %i
+cover: select -assert-count 3 HiuOcc_props/t:$check HiuOcc_props/r:FLAVOR=cover %i
+
+[files]
+rtl/generated/MaskUnit.sv
+rtl/generated/HiuPipeline.sv
+rtl/sv/assert/HiuMask_props.sv
+rtl/sv/assert/HiuOcc_props.sv

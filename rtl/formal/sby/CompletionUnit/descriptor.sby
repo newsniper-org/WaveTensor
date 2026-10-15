@@ -18,6 +18,7 @@
 # VERIFIES: CompletionUnit.window_no_leak — 빈 링의 창 읽기는 0: 미기입 저장소를 관측면에 내지 않는다 (E.1.2 창 행). desc_full_write 와 짝 — 살아 있는 칸은 이번 기입을 내고, 살아 있지 않으면 아무것도 내지 않는다
 # VERIFIES: CompletionUnit.overflow_sticky — 가득인 링에 밀어 넣기는 loud sticky (§3.8 「오버플로」) 이며 링 상태를 움직이지 않는다 (FAB-10 동형). 발화가 해제를 이긴다 · 명시적 해제 외엔 내려가지 않는다
 # VERIFIES: CompletionUnit.unaligned_read_zero — 비정렬 읽기(주소 하위 두 비트 ≠ 0)의 응답은 다음 사이클 rvalid + 0 이다 — 창 포함 구역 전역 (03-hiu.typ:874 「비정렬 *읽기*는 0 · fault 없음이다」 · fault 없음은 축 6 등식) · 비어 있지 않은 링의 창 비정렬 읽기 증인 W8. 파도 4 W6 검토가 찾은 미측정(winSel 의 aligned 탈락이 통과한 변이 M12)을 닫는다
+# VERIFIES: CompletionUnit.drain_allzero_pin — W4 (3.10 v1.0 묶음 · DP-5): 클래스 끝 출력 drainAllZero(io 번들 밖 — 하네스 넷 io_drainAllZero · = `0xE14` 의 D 원천 — ActivePart.io_drainNow) 는 정본 E.11 일곱 항(여섯 드레인 입력 전부 0 ∧ 자기 완료 큐 점유 0 — 노출 포인터로 재구성)의 조합 술어와 매 사이클 같고 (a_daz_fn), 수락된 정렬 `0x37C` DRAIN_ALLZERO 읽기의 다음 사이클 응답은 같은 술어의 수락 사이클 값이다 (a_daz_rd) — 「핀 = `0x37C` 읽기 = 여섯 입력 전부 0」 의 합성. **무계 증명**(prove_daz — abc pdr, 두 단언만 남긴 판)과 bmc 가 함께 잰다. 증인 W11(읽기 1) · W12(CQ_OCC 항 — 여섯 0 인데 핀 0) · W13(파이프 항 — 읽기 0). 시점(t 접수가 t+1 핀에 든다)은 HiuMask/occ.sby h_occ_accept · h_occ_conserve + assembly a_drain_order 의 합성 — 이 단언은 술어가 조합이라는 것(래치 없음)을 든다
 # PROVES: MmioPage.unaligned_rejected — 유닛 절반(완료 구역): 비정렬 쓰기 ⇒ 다음 사이클 faultBadWrite — 거절 사유를 정본 표로 독립 재구성한 차기 상태 등식(축 6 · 증인 W6). 조립 구역과 own · cfg 는 다른 태스크다 (lint_postformal _PARTIAL 등재)
 # PROVES: MmioPage.nocons_rejected — CQ_BASE 절반: CQ_BASE_LO/HI(+0x00 · +0x04) 정렬 쓰기 ⇒ 다음 사이클 faultBadWrite (축 6 등식 · 증인 W7) · 되읽기 0 은 readValue 가 두 워드를 덮지 않는 구조다(이 태스크는 값 경로를 창 읽기로만 잰다). 명령 링 넷(0x380–0x390)은 Wt64Top/assembly.sby (lint_postformal _PARTIAL 등재)
 #
@@ -31,8 +32,8 @@
 #    그림자` 인데 링 저장소가 포트로 노출되지 않아 적을 수 없다. BMC 는
 #    reset 부터 깊이 14 까지 전수이고, 잔류의 일반형이 그 초기 상태에 있다.
 #    「덮인 깊이 안에서 전수」와 「무한 깊이」는 다르다 — 그 차이가 여기 있다.
-#  · 드레인 집계(E.11) · IRQ 마스크(E.6)는 이 태스크의 축이 아니다. 후속 파도
-#    몫이며 미측정이지 통과가 아니다. 거절된 구성 기입(E.1.1)은 파도 4 가 축 6 으로
+#  · IRQ 마스크(E.6)는 이 태스크의 축이 아니다. 후속 파도 몫이며 미측정이지
+#    통과가 아니다. 드레인 집계(E.11)는 W4 가 축 7 로 세웠다 — 핀 · `0x37C` 읽기 · 일곱 항. 거절된 구성 기입(E.1.1)은 파도 4 가 축 6 으로
 #    세웠다 — sticky 의 차기 상태 등식(비정렬 · RO · CQ_BASE · 예약 · CQ_SIZE 값). 거절된
 #    기입이 레지스터(head · IRQ 마스크)를 움직이지 않는다는 절반은 재지 않는다.
 #
@@ -78,19 +79,44 @@
 #   CM3  trace 자리 ← 0 (보존 탈락)                                 ⇒ a_cd_tag1_trace (· 축 2 등식)
 #   셋 다 사살 (rc=2 — 게이트 자신의 bmc 태스크 엔진 smtbmc z3 · CM1 은 2026-09-27 같은 엔진에서 재사살, 벽시계 1 초). 실측 판: bmc assert 15 · cover 17 전부 도달 (W9 · W10 신설).
 
+# ## 역-변이 표 — W4 축 7 (drainAllZero 핀 · 0x37C 읽기, 2026-10-15 후-formal 통합 · 비상주)
+#
+# 사본의 CompletionUnit 한 식(생성물 CompletionUnit.sv sha256 9b8749d942c3a315). bmc = smtbmc --keep-going z3 깊이 10
+# (위반 전수) · cover = 이 파일 그대로(smtbmc z3 깊이 14) · prove_daz = 이 파일 그대로(abc pdr). 무변이: 셋 PASS · 20/20.
+#
+#   변이                                                 bmc 위반 (= prove_daz)   미도달 증인
+#   PIN_NO_OCC   핀이 CQ_OCC 항을 뺀다 (여섯 0 이면 1)      a_daz_fn                W12
+#   PIN_NO_PIPE  핀이 파이프 항을 뺀다                      a_daz_fn                —
+#   PIN_LATCH    핀 = 한 사이클 늦은 allZero (래치)          a_daz_fn                —
+#   RD_NO_OCC    0x37C 읽기 값이 점유 1 을 0 으로 본다        a_daz_rd                —
+#   RD_NO_PIPE   0x37C 읽기 값이 파이프 항을 뺀다             a_daz_rd                W13
+#   RD_CONST0    0x37C 읽기 값 상수 0                         a_daz_rd                W11
+#
+# 두 단언 · 증인 셋 전부 단독 사살 변이가 있다. 축 7 밖 단언 열다섯은 여섯 변이 모두에서 PASS 다.
+# HEAD(f67e3d6) 음성 대조: 직접 부착 ERROR — CompletionUnit 에 `drainAllZero` 포트가 없다.
+#
 [tasks]
 bmc
 cover
+prove_daz
 
 [options]
 bmc: mode bmc
 bmc: depth 10
 cover: mode cover
 cover: depth 14
+prove_daz: mode prove
+# 반례 재생 전용 — 판정 엔진이 아니다 (door.sby 선례)
+prove_daz: aigsmt z3
 multiclock off
 
+# prove_daz (W4) — 축 7 의 두 단언만 남긴 판의 무계 증명. 나머지 축은 귀납 불변이 링 저장소를 요구해(머리
+# 「k-귀납(prove)이 없다」) 이 태스크에서 chformal 로 지운다. 엔진은 abc pdr — z3 를 판정에 쓰지 않는다
+# (메모리 「솔버 실명 함정」). bmc · cover 는 앞 판 그대로 smtbmc z3 (작은 설계 · 실측 분 단위).
 [engines]
-smtbmc z3
+bmc: smtbmc z3
+cover: smtbmc z3
+prove_daz: abc pdr
 
 [script]
 # expose + 래퍼 부착 — bind 미사용 사유는 CompletionUnit_props.sv 파일 머리.
@@ -104,6 +130,8 @@ prep -top CompletionUnit_formal
 # 였고, memory_map 으로 비트벡터만 남기면 전 깊이가 분 단위로 끝난다.
 memory_map
 async2sync
+prove_daz: chformal -assert -cover -remove CompletionUnit_props/c:* CompletionUnit_props/c:a_daz_* %d
+prove_daz: select -assert-count 2 CompletionUnit_props/t:$assert
 
 # [files] 경로는 저장소 루트 기준이다 — sby 는 상대 경로를 sby 파일이
 # 아니라 *호출 cwd* 기준으로 푼다 (스윕 실측: ../ 경로가 루트 호출에서 깨짐).

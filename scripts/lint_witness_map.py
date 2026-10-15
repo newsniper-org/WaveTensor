@@ -238,7 +238,7 @@ _MAX_ANCHOR_UNWITNESSED = 0   # 늘지 않는다. 줄이는 길은 증인 신설
 _MAX_UNRESOLVED = 0   # 오늘 0. 늘리려면 근거와 함께.
 
 # ── 하한 래칫 ──────────────────────────────────────────────────────────────
-_MIN_WITNESS_MAPPED = 443   # 대응 선언이 붙은 cover 문 수. 줄지 않는다. · 419 → 443 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 — 문 하네스 재작성 · door.sby 신설 · 조립 W3 증인)
+_MIN_WITNESS_MAPPED = 467   # 대응 선언이 붙은 cover 문 수. 줄지 않는다. · 419 → 443 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 — 문 하네스 재작성 · door.sby 신설 · 조립 W3 증인) · 443 → 467 (2026-10-15, 3.10 v1.0 묶음의 RTL 파도 W4 착지 실측 — activepart.sby 신설 12 · occ.sby 신설 3 · descriptor W11–W13 · 조립 W53–W58)
                              # 411 → 419 (2026-10-12 실측 419/419 — 3.10 v1.0 묶음의 RTL 파도 W2 착지: +8 =
                              # HiuMask_props.sv 29 → 37 (W29–W36 — 판정 래치 증인 여덟))
                              # 383 → 411 (2026-10-12 실측 411/411 — 3.10 v1.0 묶음의 RTL 파도 W1 착지: +28 =
@@ -266,7 +266,7 @@ _MIN_WITNESS_MAPPED = 443   # 대응 선언이 붙은 cover 문 수. 줄지 않�
                              # 게이트가 침묵했다. 334 에 수리판이 XlateStaging_props.sv 에 더한
                              # cover 둘(w13_mclr_zero · w14_mclr_rsv)을 더해 336 — w11_missclr 는
                              # w12_missclr 로 태그만 옮겼다).
-_MIN_ANCHOR_WITNESSED = 229  # 증인이 선 앵커 수. 줄지 않는다. · 211 → 229 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 229/229)
+_MIN_ANCHOR_WITNESSED = 250  # 증인이 선 앵커 수. 줄지 않는다. · 211 → 229 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 229/229) · 229 → 250 (2026-10-15, 3.10 v1.0 묶음의 RTL 파도 W4 착지 실측 250/250)
                              # 208 → 211 (2026-10-12 실측 211/211 — 3.10 v1.0 묶음의 RTL 파도 W2 착지: PROVES
                              # 셋(hiumask.sby XlateObs.verdict_latch · latch_clears_on_leave · latch_one_value)이 전부
                              # 증인을 갖고 태어났다)
