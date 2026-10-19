@@ -36,3 +36,4 @@
 - [대외 소개 표현](public_framing.md) — 표어 「여럿이 나눠 써도 서로의 데이터가 새지 않는 계산용 칩 설계도」; AI 가속기로 좁히지 말 것(AI 는 첫 시장), 증명 범위·성능을 넘는 문구 금지 (2026-10-12)
 - [GitHub 원격은 public](github_remote_public.md) — origin(…-private)은 newsniper-org/WaveTensor 로 옮겨져 공개, 2026-07-15 까지 30 커밋만; 공개 의도 미확인, push 는 지시 없이 하지 않는다
 - [한도 내성 에이전트](limit_resilient_agents.md) — 모든 sby/TLC/sim 은 nohup + 로그, 역할별 progress.md 로 재개; 전경 컨테이너 금지 (2026-10-13)
+- [sticky 세움 건전성](sticky_set_soundness.md) — 0→1 에지 전건만으론 해제 사이클 거짓 재세움을 놓친다; 세움 사건 전건 또는 해제 완전성 짝이 있어야 닫힌다 (W6 2026-10-19)
