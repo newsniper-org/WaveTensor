@@ -157,7 +157,13 @@ SUITES = {
         # active_part_rmw_ro_ignored([9:8] 쓰기 무시) · active_part_unaligned_outside(0xE15–0xE17) ·
         # active_part_judgment_stall(판정 사이클 1 사이클 정지 · 범위) · active_part_binds_lookup(N11) ·
         # reset_values_norm(N15). 일곱 다 HEAD(f67e3d6) 생성물에서 FAIL 한다.
-        "expect_min": 44,
+        # 2026-10-18 44 → 46: W6(3.10 RTL 파도 — 0xF0C FP_SHAPE 배선 · [7] OWN_SET 거절) — fp_shape_word(정상 상태 —
+        # 판 값에서 유도한 읽기 · RO 쓰기 셋 · 비정렬 · 표 밖 이웃 관대) · own_set_collide(E.7 6 · 7항 — 하한 · 거절 무효과 ·
+        # [7] sticky · 상승 건전성 · 같은 태그 무연산 · OWN_CLR 무거절 · 7항 순서 되읽기 · 승인 경로 [19]). fp_clear_window 는
+        # 제자리에서 넓혔다(④–⑥ 소거 중 0xF0C 읽기 응답 · 0xF0C/0xF08 쓰기 즉시 거절). fp_shape_word · fp_clear_window 는
+        # HEAD(b0a4c47) 생성물에서 FAIL(0xF0C 쓰기 흡수) · own_set_collide 는 HEAD 에서도 PASS — OwnershipTable 논리는 W6 이전과
+        # 같다(W6 RTL 은 GUARD-MAP 만 더했다). 그 시험의 수락 기준은 HEAD 대조가 아니라 변이다(W6-sim 변이 표).
+        "expect_min": 46,
         "what": "ISA-2 순열 (LBID·LNID 존재 축) + ISA-1 자리 무관성 + 비교기 자기대조 "
                 "+ 변환 저장소 MMIO 문 — 형상 비노출 0xC00 (VPN·FRAME·COMMIT 설치·flush·V=0·거절·정지 해제·"
                 "인접 COMMIT 하류 정지·예약-엄격 워드·VPN_HI·VPN 재기입·데이터 사유의 정지 뒤 거절·주소 사유의 "
@@ -167,7 +173,8 @@ SUITES = {
                 "+ 판정 래치(풀린 판정의 축출 생존 · 래치된 판정과 철회 · 대체의 효력 범위) "
                 "+ VPN 높은 비트 키 구별 "
                 "+ 0xE14 결속 파티션((A, D) 표 · D 표집 시점 · [9:8] 쓰기 무시 · 비정렬 밖 · 판정 사이클 정지 · "
-                "결속 → 조회 파티션) + reset 값 규범",
+                "결속 → 조회 파티션) + reset 값 규범 "
+                "+ 0xF0C FP_SHAPE(판 값 유도 읽기 · RO 거절 · 소거 중 처분) + OWN_SET 거절과 [7](E.7 6 · 7항)",
     },
 }
 
@@ -275,7 +282,7 @@ UNMEASURED = [
      "재구현 MaskUnit 에 부표준키·블록 워드를 내는 포트가 없다 — 계층 peek 은 "
      "포트 계약이 아니라 SpinalHDL 명명의 우연이므로 통과 기준으로 쓰지 않는다"),
     ("FAULT_STATUS[17]·[18]",
-     "Wt64Top.sv:1705 「faultWords_status[17] = 1'b0;」 과 그 다음 줄 [18] 상수 0 — "
+     "Wt64Top.sv:1712 「faultWords_status[17] = 1'b0;」 과 그 다음 줄 [18] 상수 0 — "
      "엔트로피원·명령 디스크립터 원천 부재. "
      "0 을 「정상」으로 읽으면 안 된다"),
     ("SharedUnit·MemOrderGate 독립 .sv 의 top 대표성",

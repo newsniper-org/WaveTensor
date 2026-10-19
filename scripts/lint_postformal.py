@@ -424,7 +424,7 @@ _LEGACY_SCHEMAS = {
 # 둘은 **상한**(늘면 실패)이다. 상한 쪽이 있는 이유: 구조 skip 과 부분 덮임은
 # 「CHECK 분모를 비우는」 방향의 부정을 가능하게 하므로, 그것을 늘리는 일은
 # 반드시 이 파일을 고치는 *명시적 서명*을 거쳐야 한다.
-_MIN_COVERED = 171     # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다. · 149 → 159 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 159 = 완전 115 + 부분 44: 새 가드 열이 전부 앵커를 가졌다 — 아홉 완전 · commit_replaces_vpn 하나 부분) · 159 → 171 (2026-10-15, 3.10 v1.0 묶음의 RTL 파도 W4 착지 실측 171 = 완전 126 + 부분 45: ActivePart 가드 열둘이 전부 앵커를 가졌다 — 열하나 완전 · d_includes_same_cycle 하나 부분)
+_MIN_COVERED = 177     # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다. · 149 → 159 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 159 = 완전 115 + 부분 44: 새 가드 열이 전부 앵커를 가졌다 — 아홉 완전 · commit_replaces_vpn 하나 부분) · 159 → 171 (2026-10-15, 3.10 v1.0 묶음의 RTL 파도 W4 착지 실측 171 = 완전 126 + 부분 45: ActivePart 가드 열둘이 전부 앵커를 가졌다 — 열하나 완전 · d_includes_same_cycle 하나 부분) · 171 → 177 (2026-10-19, 3.10 v1.0 묶음의 RTL 파도 W6 착지 실측 177 = 완전 130 + 부분 47: Platform 의 새 가드 여섯이 전부 앵커를 가졌다 — 넷 완전 · set_reject_loud · seven_reject_only 둘 부분)
                        # 146 → 149 (2026-10-12, 3.10 v1.0 묶음의 RTL 파도 W2 착지 — 실측 149 = 완전 106 + 부분 43:
                        # 새 가드 셋(XlateObs.verdict_latch · latch_clears_on_leave · latch_one_value — hiumask.sby)이
                        # 전부 앵커를 갖고 **완전**으로 태어났다(GUARD-MAP 범위가 HiuPipeline 안이고 합성 DUT 가 품는다).
@@ -473,7 +473,7 @@ _MIN_COVERED = 171     # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다
                        # 실측 아래 8 칸 헐거운 채로는 앵커 여덟이 조용히 사라져도
                        # 게이트가 침묵한다 (2026-09-21 전수 반증 세 렌즈가 같은
                        # 것을 지적했다).
-_MAX_PARTIAL = 45      # 부분 덮임뿐인 가드 수. 늘지 않는다 (늘리려면 근거와 함께) · 43 → 44 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 — 새 가드 열 중 commit_replaces_vpn 하나가 태어나면서 부분: 유일한 앵커 door.sby 가 xlateArea 결선의 복제를 재고 bmc 16 유계 — _PARTIAL 의 W3 머리 주석) · 44 → 45 (2026-10-15, 3.10 v1.0 묶음의 RTL 파도 W4 착지 실측 — ActivePart.d_includes_same_cycle 이 태어나면서 부분: 유일한 앵커 activepart.sby 의 DUT 는 유닛뿐이고 D 원천의 시점은 occ · assembly · descriptor 셋의 합성 서술 — _PARTIAL 의 W4 머리 주석)
+_MAX_PARTIAL = 47      # 부분 덮임뿐인 가드 수. 늘지 않는다 (늘리려면 근거와 함께) · 43 → 44 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 — 새 가드 열 중 commit_replaces_vpn 하나가 태어나면서 부분: 유일한 앵커 door.sby 가 xlateArea 결선의 복제를 재고 bmc 16 유계 — _PARTIAL 의 W3 머리 주석) · 44 → 45 (2026-10-15, 3.10 v1.0 묶음의 RTL 파도 W4 착지 실측 — ActivePart.d_includes_same_cycle 이 태어나면서 부분: 유일한 앵커 activepart.sby 의 DUT 는 유닛뿐이고 D 원천의 시점은 occ · assembly · descriptor 셋의 합성 서술 — _PARTIAL 의 W4 머리 주석) · 45 → 47 (2026-10-19, 3.10 v1.0 묶음의 RTL 파도 W6 착지 실측 — Platform.set_reject_loud · seven_reject_only 가 태어나면서 부분: 유닛 앵커 ownershiptable.sby 의 DUT 는 유닛뿐이고 assembly 앵커는 own 을 절단한다 — 합성은 서술, _PARTIAL 의 W6 머리 주석)
                        #
                        # 39 → 43 (2026-10-12, 3.10 v1.0 묶음의 RTL 파도 W1 착지 — 실측 부분 43 · 완전 103).
                        # 새 가드 열둘 중 넷이 **태어나면서 부분**이다: Platform.own_reported (파이프라인
@@ -599,7 +599,7 @@ _MAX_STRUCTURAL_RESIDUAL = 1
                        # 숨기는 것보다 낫지만, **늘어도 되는 것은 아니다.**
                        # 줄이는 길은 그 축을 실제로 재고 칸을 _NOTHING_LEFT 로
                        # 바꾸는 것뿐이다.
-_MIN_EVIDENCED = 219   # 실행 증거로 뒷받침된 앵커 수. 줄지 않는다. · 183 → 200 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 — PROVES 200 · 신선 200) · 200 → 219 (2026-10-15, 3.10 v1.0 묶음의 RTL 파도 W4 착지 실측 — PROVES 219 · 신선 219: activepart 11 · assembly ActivePart 8)
+_MIN_EVIDENCED = 227   # 실행 증거로 뒷받침된 앵커 수. 줄지 않는다. · 183 → 200 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 — PROVES 200 · 신선 200) · 200 → 219 (2026-10-15, 3.10 v1.0 묶음의 RTL 파도 W4 착지 실측 — PROVES 219 · 신선 219: activepart 11 · assembly ActivePart 8) · 219 → 227 (2026-10-19, 3.10 v1.0 묶음의 RTL 파도 W6 착지 실측 — PROVES 227 · 신선 227: ownershiptable Platform 여섯 · assembly Platform 둘)
                        # 180 → 183 (2026-10-12, 3.10 v1.0 묶음의 RTL 파도 W2 착지 — 실측 183/183 신선:
                        # hiumask.sby PROVES 셋(XlateObs.verdict_latch · latch_clears_on_leave · latch_one_value) ·
                        # 증거 hiumask.evidence.json 재스윕(bmc · prove abc pdr assert 57 · cover 37/37))
@@ -1302,6 +1302,35 @@ _PARTIAL = {
     # GUARD-MAP 문면이 「조립이 …」 결선까지 걸치는데 activepart 의 DUT 는 유닛뿐이라 부분이지만, 같은 가드의
     # assembly 앵커(actp 비절단 — 유닛 + 결선 실물)가 완전이라 가드는 완전으로 남는다. d_includes_same_cycle 은 유일한
     # 앵커가 부분이라 가드가 부분이다 (_MAX_PARTIAL +1).
+    # ── 아래 넷: 태어나면서 부분인 앵커 (2026-10-18, 3.10 v1.0 묶음 RTL 파도 W6 — OWN_SET 거절 · FAULT_STATUS [7]) ──
+    #
+    # 기준은 W3-9 그대로. W6 가드 여섯 중 넷(set_reject_inert · set_reject_floor · set_owned_noop · clr_no_reject)은
+    # GUARD-MAP 이 OwnershipTable 유닛 안이라 ownershiptable.sby 앵커가 완전이다. set_reject_loud · seven_reject_only 는
+    # GUARD-MAP 문면이 「조립이 own.io.faultCollide → io.fault.ownCollide → FAULT_STATUS [7]」 까지 걸치는데 유닛 앵커의
+    # DUT 는 유닛뿐이고 assembly 앵커는 own 을 절단한다 — 두 앵커가 다 부분이라 가드가 부분이다 (_MAX_PARTIAL +2).
+    # 이 자백은 두 .sby 의 PROVES 문면에 먼저 있었다 (「합성은 서술 (lint_postformal _PARTIAL)」) — 표에 없던 동안
+    # 이 lint 는 두 가드를 완전으로 셌다 (W6 검증 F3 · 메모리 「자백이 기계 밖에 있으면 없는 것과 같다」).
+    ("Platform", "set_reject_loud", "rtl/formal/sby/OwnershipTable/ownershiptable.sby"): (
+        "유닛 절반 — 충돌 기입 ⇒ 다음 사이클 sticky io_faultCollide (완전성 · 증인 W7 · W15) · 해제 없이 내려가지 않는다",
+        "FAULT_STATUS [7] 배치 · 원천별 수출 io.fault.ownCollide · 0xF84 [7] 해제 합류 — Wt64Top/assembly.sby 의 같은 "
+        "가드 앵커가 재고 그 태스크는 own 을 절단한다 — 합성은 서술이다",
+    ),
+    ("Platform", "set_reject_loud", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "Top 절반 — FAULT_STATUS [7] = own 의 faultCollide 핀 (a_rd_fst) · io_fault_ownCollide = 그 핀 (a_fsrc_b7) · "
+        "0xF84 [7] 해제 합류 (a_fclr_b7) · 증인 W63",
+        "충돌 기입이 그 핀을 세운다는 유닛 절반 — own 이 절단돼 핀이 자유다. ownershiptable.sby 가 재고 합성은 서술이다",
+    ),
+    ("Platform", "seven_reject_only", "rtl/formal/sby/OwnershipTable/ownershiptable.sby"): (
+        "유닛 절반 — io_faultCollide 의 세움(0→1 · 해제 사이클의 재세움)은 직전 정렬 OWN_SET 뒤에만 (s_col_src) · "
+        "f_slot 겨냥이면 남의 페이지 점유 (s_col_slot) · 증인 W15",
+        "조립의 어떤 사건도 [7] 을 따로 세우지 않는다는 것 — FAULT_STATUS [7] · io_fault_ownCollide 가 own 핀과 등식임은 "
+        "Wt64Top/assembly.sby (own 절단) 가 재고 합성은 서술이다",
+    ),
+    ("Platform", "seven_reject_only", "rtl/formal/sby/Wt64Top/assembly.sby"): (
+        "Top 절반 — [7] 의 조립 원천은 own 핀 하나 (a_rd_fst · a_fsrc_b7 등식) · 증인 W63",
+        "그 핀이 정렬 OWN_SET 거절에서만 선다는 유닛 절반 — own 이 절단돼 핀이 자유다. ownershiptable.sby s_col_src · "
+        "s_col_slot 이 재고 합성은 서술이다",
+    ),
     ("ActivePart", "d_includes_same_cycle", "rtl/formal/sby/ActivePart/activepart.sby"): (
         "유닛 축 — D 는 판정 사이클(t+1)의 io_drainNow 다: 수락 사이클 drainNow 를 래치하는 경로가 없다 "
         "(p_word_d · 증인 W11 — D_EARLY 단독 사살)",

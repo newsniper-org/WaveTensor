@@ -38,7 +38,7 @@
 //   0xC00–0xDFF  변환 항목 표면 — 형상 비노출 (E.1.2 · E.3)      — 배선 (XlateStaging)
 //   0xE00–0xE7F  변환 저장소 제어 — flush · 미적중 관측 (§3.6.3)   — 배선 (관측 값 = hiu 스냅샷, 파도 4)
 //   0xE80–0xEFF  마스킹 — 키 · 논스 · 재키잉 · 논스 중복 캡처 (E.9)  — 배선 (`0xEC4` 캡처 읽기·쓰기 거절은 파일 끝 dupArea)
-//   0xF00–0xF3F  step 프로그램 적재 (@fabric 2.5)                  — 배선
+//   0xF00–0xF3F  step 프로그램 적재 (@fabric 2.5)                  — 배선 (`0xF0C` FP_SHAPE 읽기·쓰기 거절은 클래스 끝 fpShapeArea — 판 0 동안 워드 전체 0)
 //   0xF40–0xF7F  재조립 문맥 소거 (E.12)                           — 배선
 //   0xF80–0xFBF  장치 전역 fault · 능력 부재 (§3.8)                — 배선
 //   0xFC0–0xFFF  장치 식별 — HIU_SHAPE (`0xFF8`) · HIU_ABI_VERSION (`0xFFC`) — 부분 (RO 쓰기 거절 + [6] · `0xFF8` 은 형상 읽기(파일 끝 identArea) · `0xFFC` 읽기는 합의 전 0 — 판정 T1-ii)
@@ -274,7 +274,7 @@ object Wt64Top {
   // step 프로그램 적재 (R_FP, 0xF00)
   val F_PROG   = 0x00 // WO  [31:24] slot · [23:16] idx · [15:0] step
   val F_BIND   = 0x04 // WO  [31] en · [30:24] 예약(엄격) · [23:16] slot · [15:0] key
-  val F_STATUS = 0x08 // RO  [0] loadReady · [1] busy
+  val F_STATUS = 0x08 // RO  [0] loadReady · [1] busy — 다음 워드 0x0C FP_SHAPE(RO)의 오프셋 · 값은 파일 끝 FpShape (줄 중립)
 
   // 재조립 문맥 소거 (R_ABORT, 0xF40)
   val A_TAG0       = 0x00 // WO  태그 wave 32b (스테이징)
@@ -432,7 +432,7 @@ object Wt64Top {
   object Ident {
     val HIU_SHAPE   = 0x38 // RO  `0xFF8` — [7:0] 실재 파티션 수 · [23:8] 파티션당 저장 칸 수(개수) · [31:24] 0 — 값은 형상 cfg 한 곳
     val ABI_VERSION = 0x3C // RO  `0xFFC` — [31:0] 호스트 ABI 판
-    val PRE_AGREEMENT = 0  // 합의 전 판 값 — resvRd 경로의 0 이 곧 이 값이다 (pageArea 의 require)
+    val PRE_AGREEMENT = 0  // 합의 전 판 값 — resvRd 경로의 0 이 곧 이 값이다 (pageArea 의 require) · 0xF0C FP_SHAPE 의 판 게이트도 이 값이다 (클래스 끝 fpShapeArea → 파일 끝 FpShape.word)
   }
   require(R_IDENT.base + Ident.ABI_VERSION == 0xFFC, "ABI 판이 페이지 마지막 워드가 아니다 (규칙 4)")
 }
@@ -1903,6 +1903,32 @@ class Wt64Top(
   actCfgBadWrite.setName("io_fault_actCfgBadWrite")
   actCfgBadWrite := StickyFault(actp.io.badWrite, fclr(Fault.B_CFG_BADWRITE))
   when(actCfgBadWrite) { faultWords.status(Fault.B_CFG_BADWRITE) := True }
+
+  // ═══ 0xF0C FP_SHAPE — step sequencer 형상 읽기 · 쓰기 거절 (3.10 v1.0 묶음 RTL 파도 W6, 2026-10-18) ═══
+  //
+  // 정본 E.1.2 의 RO 워드(FP_SHAPE 행): [8:0] P = 프로그램 슬롯 수 · [17:9] stepMax = 슬롯당 step 수 상한(둘 다
+  // *개수* — 로그도, 1 을 뺀 값도 아니다) · [23:18] RO 예약 0 · [31:24] step 부호화 번호(v1.0 = 1). 번호 ≠ 0 은
+  // 0xFFC ≠ 0 과 함께만 낸다 — 판 0 동안 워드 전체가 0 이다. 값은 elaboration 상수 하나(파일 끝 FpShape.word)
+  // 이고, 그 판 게이트는 0xFFC 와 *같은 근원*(Ident.PRE_AGREEMENT)이다 — 판 값이 바뀌는 날 0xFFC 와 이 워드가
+  // 한 정의에서 함께 바뀐다. P · stepMax 는 fps 인스턴스의 실제 파라미터(fps.p)에서 온다(손 리터럴 0 · 9b 필드
+  // 범위는 FpShape.word 의 require).
+  // 읽기: fpArea.rd(selFp ∧ 정렬 ∧ ¬wstrobe)가 이 워드를 센다 — rvalid 원천은 mapRd → mapRv(수락 다음 1펄스)이고
+  // resvRd 가 아니다. fpArea.readValue 의 기본값 0 이 mapRdReg 에 실리고, 여기는 rdata 만 *마지막 대입*으로
+  // 덮는다(identArea · dupArea 선례 — 값이 elaborate 상수라 수락 사이클 스냅숏이 따로 필요 없다). 판 0 이라 지금
+  // 덮는 값도 0 이지만 경로는 배선이다.
+  // 쓰기: RO 라 거절 + [6] (E.1.1) — surfBadWr 이고 효과가 없다(이 워드를 쓰는 저장이 없다). [15] 의 원천이 아니다
+  // (fps 의 어떤 입력에도 닿지 않는다). 비정렬 0xF0D–0xF0F 는 pageArea.unalWr 의 페이지 sub-word 거절이다.
+  // 선택자 표 소거 중: ready 하강은 정렬 0xF00 · 0xF04 *쓰기*뿐이라(ready 절의 when(fpArea.wr ∧ (isProg ∨ isBind)))
+  // 이 워드의 쓰기는 정지 없이 즉시 거절 + [6] 이고 읽기는 응답한다 (E.1 reset 값 규범 6항 — 0xF08 과 같다).
+  val fpShapeArea = new Area { // 공개 — 참조자가 없는 Area 는 private 이면 unused 로 컴파일이 멈춘다
+    val value   = FpShape.word(Ident.PRE_AGREEMENT, fps.p) // elaboration 상수 — 판 0 이면 0
+    val isShape = fpArea.wordOff === FpShape.OFF / 4
+    val rd      = fpArea.rd && isShape
+    val wr      = fpArea.wr && isShape
+    val rv      = RegNext(rd) init (False)
+    when(wr) { surfBadWr := True }
+    when(rv) { io.mmio.rdata := B(value, 32 bits) }
+  }
 }
 
 // ── GUARD-MAP — AbortSurface 열셋 (파도 4, 2026-09-26) ──────────────────────
@@ -1939,11 +1965,11 @@ class Wt64Top(
 // raw 로 나가고 유닛이 자기 수락으로 게이트한다 — StepSequencer 는 loadReady 로(그 유닛에는
 // 형식 태스크가 0 건), 나머지 셋은 acceptW 로. 파일 끝에 둔 이유는 AbortSurface 절과 같다.
 //
-// GUARD-MAP: MmioPage.rsp_on_accept -> 조립이 직접 응답하는 읽기(mapRd · resvRd → rvalid)는 ready 가 1 인 접근에서만 선다 — ready 하강은 정렬 FP_PROG/FP_BIND *쓰기*(fpArea.wr — D1 (b))와 주소 · 상태로 적법한 XLATE_ENTRY_COMMIT *쓰기*(xlateArea 의 wrEnt ∧ isCommit ∧ xstg.io.needReady)와 0xE14 판정 사이클의 정렬 0xE14 접근(xlateArea.actStall = actp.io.stallMmio ∧ isAct — 읽기 포함, 1 사이클)뿐이다. 앞의 둘은 쓰기만이라 읽기는 수락이고, actStall 읽기는 rvalid 원천 resvRd 가 when(actStall) 의 resvRd := False 로 꺼져(rvalid 원천은 resvRd 하나 — obsRd 의 ¬actStall 항은 rdata 포착 위생 · 포트 관측 동치) 수락 사이클에만 rvalid 가 그 다음 사이클 1펄스로 선다. own · cq · cfg 구역의 rvalid 는 각 유닛의 acceptR(ready ∧ rstrobe) 다음 사이클이다 (own · cq 는 ready 상수 1 · cfgBlk 는 소거·CHECK 중 ready 0)
-// GUARD-MAP: MmioPage.effect_on_accept -> 조립 구역 쓰기의 효과와 거절선(maskArea · dupArea · fpArea · abortArea · faultArea · xlateArea · pageArea 의 wr · surfBadWr)은 ready 가 1 인 쓰기에서만 선다 — 소거를 기다리는 FP_BIND 의 예약 거절은 surfBadWr 이 아니라 fpBindArea.rej(= fpArea.wr ∧ isBind ∧ bindRsvBad ∧ fps.io.loadReady) → io.fault.fpCfgBadWrite 로, 0xC00 COMMIT 의 데이터 사유 거절은 xstg.io.badData(= cmAcc ∧ cmDataBad) → io.fault.xlateCfgBadWrite 로 수락에 매이고, 정지된 COMMIT 의 커밋은 xstg 의 installReady 게이트(cmAcc)가 막는다. 0xE14 판정 사이클에 정지된 0xE14 기입은 ActivePart 의 acc = io.wr ∧ ¬actPend 가 버린다(효과 · badWrite 없음) — 그 정지는 isAct 범위라 다른 구역의 쓰기는 정지 사이클에도 ready 1 로 수락된다(날 스트로브 구역의 이중 효과 없음). 발행 펄스 fps.io.progWr/bindWr 는 raw 이고 StepSequencer 가 loadReady 로 스스로 게이트하며(유닛 수락 관례), own · cq · cfgBlk 는 자기 acceptW 로 게이트한다
-// GUARD-MAP: MmioPage.ro_rejected -> RO 워드의 정렬 쓰기는 거절 + [6] 이고 상태를 움직이지 않는다: 조립 구역은 maskArea(0xEC0) · dupArea(0xEC4 — 3.10 v1.0 묶음) · fpArea(0xF08) · abortArea(0xF50–0xF58) · faultArea(0xF80 · 0xF88 · 0xF8C) · xstg(0xE04–0xE0C) · pageArea(0x38C SQ_HEAD 의 isSqRo · 0xFF8 의 shapeWr · 0xFFC 의 identWr)가 surfBadWr 로, 유닛 구역은 OwnershipTable statusWr(0x204) · CompletionUnit isRoOff 가 자기 faultBadWrite 로
+// GUARD-MAP: MmioPage.rsp_on_accept -> 조립이 직접 응답하는 읽기(mapRd · resvRd → rvalid)는 ready 가 1 인 접근에서만 선다 — ready 하강은 정렬 FP_PROG/FP_BIND *쓰기*(fpArea.wr — D1 (b) · 0xF08 · 0xF0C 의 쓰기와 0xF00 구역 읽기는 정지하지 않는다 — 0xF0C 읽기의 rvalid 는 fpArea.rd → mapRd)와 주소 · 상태로 적법한 XLATE_ENTRY_COMMIT *쓰기*(xlateArea 의 wrEnt ∧ isCommit ∧ xstg.io.needReady)와 0xE14 판정 사이클의 정렬 0xE14 접근(xlateArea.actStall = actp.io.stallMmio ∧ isAct — 읽기 포함, 1 사이클)뿐이다. 앞의 둘은 쓰기만이라 읽기는 수락이고, actStall 읽기는 rvalid 원천 resvRd 가 when(actStall) 의 resvRd := False 로 꺼져(rvalid 원천은 resvRd 하나 — obsRd 의 ¬actStall 항은 rdata 포착 위생 · 포트 관측 동치) 수락 사이클에만 rvalid 가 그 다음 사이클 1펄스로 선다. own · cq · cfg 구역의 rvalid 는 각 유닛의 acceptR(ready ∧ rstrobe) 다음 사이클이다 (own · cq 는 ready 상수 1 · cfgBlk 는 소거·CHECK 중 ready 0)
+// GUARD-MAP: MmioPage.effect_on_accept -> 조립 구역 쓰기의 효과와 거절선(maskArea · dupArea · fpArea · fpShapeArea · abortArea · faultArea · xlateArea · pageArea 의 wr · surfBadWr)은 ready 가 1 인 쓰기에서만 선다 — 소거를 기다리는 FP_BIND 의 예약 거절은 surfBadWr 이 아니라 fpBindArea.rej(= fpArea.wr ∧ isBind ∧ bindRsvBad ∧ fps.io.loadReady) → io.fault.fpCfgBadWrite 로, 0xC00 COMMIT 의 데이터 사유 거절은 xstg.io.badData(= cmAcc ∧ cmDataBad) → io.fault.xlateCfgBadWrite 로 수락에 매이고, 정지된 COMMIT 의 커밋은 xstg 의 installReady 게이트(cmAcc)가 막는다. 0xE14 판정 사이클에 정지된 0xE14 기입은 ActivePart 의 acc = io.wr ∧ ¬actPend 가 버린다(효과 · badWrite 없음) — 그 정지는 isAct 범위라 다른 구역의 쓰기는 정지 사이클에도 ready 1 로 수락된다(날 스트로브 구역의 이중 효과 없음). 발행 펄스 fps.io.progWr/bindWr 는 raw 이고 StepSequencer 가 loadReady 로 스스로 게이트하며(유닛 수락 관례), own · cq · cfgBlk 는 자기 acceptW 로 게이트한다
+// GUARD-MAP: MmioPage.ro_rejected -> RO 워드의 정렬 쓰기는 거절 + [6] 이고 상태를 움직이지 않는다: 조립 구역은 maskArea(0xEC0) · dupArea(0xEC4 — 3.10 v1.0 묶음) · fpArea(0xF08) · fpShapeArea(0xF0C FP_SHAPE — 3.10 v1.0 묶음 W6 · 선택자 표 소거 중에도 정지 없이 즉시) · abortArea(0xF50–0xF58) · faultArea(0xF80 · 0xF88 · 0xF8C) · xstg(0xE04–0xE0C) · pageArea(0x38C SQ_HEAD 의 isSqRo · 0xFF8 의 shapeWr · 0xFFC 의 identWr)가 surfBadWr 로, 유닛 구역은 OwnershipTable statusWr(0x204) · CompletionUnit isRoOff 가 자기 faultBadWrite 로
 // GUARD-MAP: MmioPage.wo_read_zero -> WO 워드의 읽기는 0 이다: 조립 구역의 readValue 가 WO 워드(키 · 논스 · MASK_REKEY · FP_PROG · FP_BIND · ABORT_TAG0–2 · ABORT_FIRE · FAULT_CLEAR · CAP_CLEAR)를 덮지 않고, 변환 WO(0xC00–0xDFC — 기저마다 VPN · FRAME · COMMIT · VPN_HI 와 예약-엄격 28 워드(+0x10..+0x7C) 전부 · 0xE00 · 0xE10)는 resvRd(값 배선 0 건)로 0 을 낸다 · OwnershipTable 은 OWN_SET/OWN_CLR 에 rdSel 0 · CompletionUnit 은 IRQ_CLEAR 를 readValue 에서 뺀다
-// GUARD-MAP: MmioPage.resv_lenient -> 표에 없는 *정렬* 워드 오프셋(0x120–0x1FF · 구역 안 미정의 워드 — 0xC00 기저의 예약-엄격 28 워드는 표의 워드라 여기 들지 않는다(nocons_rejected) · 0xE00 구역은 0xE18–0xE7C(0xE14 는 3.10 v1.0 묶음 W4 부터 표의 워드 — xlateArea isAct · ActivePart) · 0x394–0x3FC · 0xFC0–0xFF4)의 쓰기는 surfBadWr 을 세우는 어느 식에도 들지 않는다 — pageArea 의 식 다섯은 물려받은 구간 · 명령 링 표 워드 다섯 · 0xFF8 · 0xFFC · 비정렬만 들고, dupArea 는 0xEC4 하나만 든다(마스킹 구역의 정의 워드는 이제 0..17). 유닛 구역의 표 밖 정렬 오프셋도 유닛 거절식에 없다
+// GUARD-MAP: MmioPage.resv_lenient -> 표에 없는 *정렬* 워드 오프셋(0x120–0x1FF · 구역 안 미정의 워드 — 0xC00 기저의 예약-엄격 28 워드는 표의 워드라 여기 들지 않는다(nocons_rejected) · 0xE00 구역은 0xE18–0xE7C(0xE14 는 3.10 v1.0 묶음 W4 부터 표의 워드 — xlateArea isAct · ActivePart) · 0xF00 구역은 0xF10–0xF3C(0xF0C 는 3.10 v1.0 묶음 W6 부터 표의 워드 — fpShapeArea) · 0x394–0x3FC · 0xFC0–0xFF4)의 쓰기는 surfBadWr 을 세우는 어느 식에도 들지 않는다 — pageArea 의 식 다섯은 물려받은 구간 · 명령 링 표 워드 다섯 · 0xFF8 · 0xFFC · 비정렬만 들고, dupArea 는 0xEC4 하나만, fpShapeArea 는 0xF0C 하나만 든다(마스킹 구역의 정의 워드는 이제 0..17 · step 적재 구역은 0..3). 유닛 구역의 표 밖 정렬 오프셋도 유닛 거절식에 없다
 // GUARD-MAP: MmioPage.unaligned_rejected -> 비정렬 쓰기는 페이지 어디서든 거절 + [6] 이고 효과가 없다: own · cq · cfg 밖은 pageArea.unalWr(= wstrobe ∧ !mmioAligned ∧ !(selOwn ∨ selCq ∨ selCfg)) → surfBadWr 이고 조립 구역의 wr 은 전부 mmioAligned 를 요구한다 · 세 유닛 구역은 MmioConfig chkUnalWr · OwnershipTable 과 CompletionUnit badWrite 의 (acceptW ∧ !aligned) 가 자기 faultBadWrite 로 (판정 T2 (a))
 // GUARD-MAP: MmioPage.leg_write_rejected -> pageArea.legWr = wstrobe ∧ selLeg(접두 비교 둘 — addr[11:8] = 0 · addr[11:5] = 0x08) → surfBadWr. 이 구간은 ready 가 1 이라 수락 = 스트로브이고 어느 유닛 스트로브도 서지 않아 효과가 없다. 읽기는 resvOffset 경로의 0 이다 (판정 T3 (d))
 // GUARD-MAP: MmioPage.nocons_rejected -> 소비 회로가 없는 RW 워드의 정렬 쓰기는 거절 + [6] 이다: 명령 링 넷(0x380 · 0x384 · 0x388 · 0x390 — pageArea.isSqRw) → surfBadWr · 완료 링 base 둘(0x300 · 0x304 — CompletionUnit isBase) → 그 유닛 badWrite · 0xC00 기저의 예약-엄격 28 워드(+0x10..+0x7C — 3.10 v1.0 묶음이 표의 워드로 등재) → XlateStaging isRsvw 의 entRej → badWrite → surfBadWr. 어느 쪽에도 저장 레지스터가 없어 읽기는 0 이다 (판정 T1-i β)
@@ -1965,3 +1991,30 @@ class Wt64Top(
 // `0xE14` 기입의 정의역(정렬 게이트)은 컴포넌트가 아니라 xlateArea 의 결선이다.
 // GUARD-MAP: ActivePart.req_part_from_bound -> xlateArea 「결속」 절의 hiu.io.req.part := actp.io.activePart(= bound 레지스터)가 HIU 요청 파티션의 유일한 구동이다 — 최상위 io.hiuReq.part 입력은 은퇴했다(io 번들의 같은 줄 은퇴 주석 · hiu 결선 절의 같은 줄 주석). 요청은 접수 시점의 결속 아래 도착하고, 결속이 바뀌는 판정 사이클에는 when(actp.io.stallReq) 가 접수를 막는다
 // GUARD-MAP: ActivePart.unaligned_outside -> actp.io.wr := io.mmio.wstrobe && isAct 이고 isAct = selXctl ∧ mmioAligned ∧ addr[6:2] === Xctl.ACTIVE_PART / 4 — 비정렬 0xE15–0xE17 쓰기는 isAct 가 서지 않아 ActivePart 에 닿지 않고(A · D · 결속 불변) pageArea.unalWr → surfBadWr 의 페이지 sub-word 거절 + [6] 만 받는다. 판정 사이클 정지(actStall)도 isAct 범위라 비정렬 접근을 잡지 않는다
+
+// ═══ FpShape — 0xF0C FP_SHAPE 값의 한 정의 (3.10 v1.0 묶음 RTL 파도 W6, 2026-10-18) ═══
+//
+// 판 값(abiVersion)이 0 이면 워드 전체 0 — 정본 「번호 0 은 배선 · 합의 전의 값뿐이다」 · 「번호 ≠ 0 도 0xFFC ≠ 0 과
+// 함께만 낸다」. 비0 이면 (부호화 번호 1 << 24) | (stepMax << 9) | P 이고, 재구현 기본 형상(P = 10 · stepMax = 32)에서
+// 0x0100_400A 다. 호출자는 0xFFC 의 판 값 근원(Wt64Top.Ident.PRE_AGREEMENT)을 넘긴다 — 판 값이 커밋되는 날 그 근원 하나를
+// 바꾸면 이 워드가 함께 바뀐다(판 값만 바꾼 생성 변형은 그 증거 절차다 — W6-3). 필드 밖 형상은 조용히 자르지 않고
+// elaborate 가 멈춘다 — 9b 필드는 슬롯 · 색인 필드(8b)가 가리킬 수 있는 최대 256 까지 담는다.
+object FpShape {
+  val OFF     = 0x0C // R_FP 구역 안 바이트 오프셋 — F_PROG · F_BIND · F_STATUS 다음 워드
+  val ENC_V1  = 1    // [31:24] step 부호화 번호 — 3.10 「step 워드와 선택 열쇠의 배치」의 v1.0 배치
+  val FIELD_W = 9    // [8:0] P · [17:9] stepMax
+  val SM_LO   = 9
+  val ENC_LO  = 24
+  require(Wt64Top.R_FP.base + OFF == 0xF0C && OFF < Wt64Top.R_FP.size,
+    "FP_SHAPE 오프셋이 0xF0C 가 아니다 (E.1.2 step 프로그램 적재)")
+  require(Seq(Wt64Top.F_PROG, Wt64Top.F_BIND, Wt64Top.F_STATUS).forall(_ != OFF),
+    "FP_SHAPE 오프셋이 같은 구역의 다른 워드와 겹친다")
+  def word(abiVersion: Long, p: StepSeqParams): Long = {
+    require(p.progDepth >= 1 && p.progDepth < (1 << FIELD_W),
+      s"FP_SHAPE [8:0] 필드 밖 형상 — P ${p.progDepth} (조용히 자르지 않는다)")
+    require(p.stepMax >= 1 && p.stepMax < (1 << FIELD_W),
+      s"FP_SHAPE [17:9] 필드 밖 형상 — stepMax ${p.stepMax} (조용히 자르지 않는다)")
+    if (abiVersion == 0) 0L
+    else (ENC_V1.toLong << ENC_LO) | (p.stepMax.toLong << SM_LO) | p.progDepth.toLong
+  }
+}

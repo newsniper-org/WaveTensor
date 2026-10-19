@@ -723,6 +723,10 @@ module Wt64Top (
   reg                 dupArea_rv;
   wire                when_Common_l336_3;
   reg                 _zz_io_fault_actCfgBadWrite;
+  wire                fpShapeArea_isShape;
+  wire                fpShapeArea_rd;
+  wire                fpShapeArea_wr;
+  reg                 fpShapeArea_rv;
 
   assign _zz_maskArea_readValue = maskArea_maskPart;
   assign _zz_abortArea_readValue = reasm_io_abortCount;
@@ -1543,6 +1547,9 @@ module Wt64Top (
     if(dupArea_wr) begin
       surfBadWr = 1'b1;
     end
+    if(fpShapeArea_wr) begin
+      surfBadWr = 1'b1;
+    end
   end
 
   assign maskArea_wordOff = io_mmio_addr[6 : 2];
@@ -1785,6 +1792,9 @@ module Wt64Top (
     if(dupArea_rv) begin
       io_mmio_rdata = dupArea_reg;
     end
+    if(fpShapeArea_rv) begin
+      io_mmio_rdata = 32'h0;
+    end
   end
 
   assign mask_io_faultClearNoMask = (io_faultClear_maskNoMask || (fltClrAccept && io_mmio_wdata[11]));
@@ -1849,6 +1859,9 @@ module Wt64Top (
   assign dupArea_wr = (maskArea_wr && dupArea_isDup);
   assign when_Common_l336_3 = (fltClrAccept && io_mmio_wdata[6]);
   assign io_fault_actCfgBadWrite = _zz_io_fault_actCfgBadWrite;
+  assign fpShapeArea_isShape = (fpArea_wordOff == 4'b0011);
+  assign fpShapeArea_rd = (fpArea_rd && fpShapeArea_isShape);
+  assign fpShapeArea_wr = (fpArea_wr && fpShapeArea_isShape);
   always @(posedge clk) begin
     tagQ_wave <= io_instr_tag_wave;
     tagQ_epoch <= io_instr_tag_epoch;
@@ -1874,6 +1887,7 @@ module Wt64Top (
       dupArea_reg <= 32'h0;
       dupArea_rv <= 1'b0;
       _zz_io_fault_actCfgBadWrite <= 1'b0;
+      fpShapeArea_rv <= 1'b0;
     end else begin
       if(when_Wt64Top_l1274) begin
         maskArea_maskPart <= maskArea_partField[1:0];
@@ -1928,6 +1942,7 @@ module Wt64Top (
       if(actp_io_badWrite) begin
         _zz_io_fault_actCfgBadWrite <= 1'b1;
       end
+      fpShapeArea_rv <= fpShapeArea_rd;
     end
   end
 

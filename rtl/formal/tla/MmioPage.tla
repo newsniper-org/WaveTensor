@@ -46,6 +46,9 @@
 \*   3.10 v1.0 묶음의 RO 워드 둘 (W1, 2026-10-11 — 부류 ro 에 든다 · 아래 「주소 부류」)
 \*   e-defined.typ:503 「쓰기는 E.1.1 RO 규범대로 거절 + loud fault 다」 — 0xFF8 HIU_SHAPE.
 \*   e-defined.typ:347 「쓰기는 E.1.1 RO 규범대로 거절 + `[6]`」 — 0xEC4 MASK_DUP_CAPTURE.
+\*   3.10 v1.0 묶음의 RO 워드 하나 더 (W6, 2026-10-18 — 부류 resv 에서 ro 로 옮긴다)
+\*   e-defined.typ:463 「쓰기는 E.1.1 RO 규범대로 거절 + `[6]` 이다」 — 0xF0C FP_SHAPE.
+\*   e-defined.typ:216 「`0xF08` · `0xF0C` 쓰기와 비정렬 쓰기는 즉시 거절 + `[6]` 이고」 — 소거 중에도 잡지 않는다.
 \*   소비 회로가 없는 RW 워드 (E.1.3 규범 끝 — 판정 T1-i (β) · CQ_BASE 포함)
 \*   e-defined.typ:743 「*소비 회로가 없는 RW 워드 — 쓰기는 거절, 읽기는 0.*」
 \*   e-defined.typ:743 「레지스터만 실물화해 되읽기를 주는 것은 금지다」
@@ -104,7 +107,7 @@
 \*   effect_on_accept   :989 · 02:557 — 수락되지 않은 접근은 효과도 loud 도 없다.
 \*                      지우면 잡혀 있는 거절 사유 기입이 수락 전에 [6] 을 세운다(D1 의
 \*                      FP_BIND 예약 거절). → Prop_HeldQuiet
-\*   ro_rejected        e:202 — RO 워드의 정렬 쓰기는 거절 (0x38C · 0xFFC 포함). → Prop_RoRejected
+\*   ro_rejected        e:202 — RO 워드의 정렬 쓰기는 거절 (0x38C · 0xFFC · W6 의 0xF0C 포함). → Prop_RoRejected
 \*   wo_read_zero       e:198 — WO 워드의 읽기는 0 (쓴 값을 되읽지 않는다). → Prop_WoReadZero
 \*   resv_lenient       e:205 · e:206 — 표에 없는 *정렬* 워드 오프셋의 쓰기는 거절하지 않는다.
 \*                      지우면 예약 오프셋 쓰기가 loud 가 된다. → Prop_ResvQuiet
@@ -137,7 +140,9 @@
 \*   cqsz   CQ_SIZE — 돌려줄 실물 값이 있고 같은 값 기입만 수락(무동작)
 \*   wo     WO 워드 (키 · 논스 · FLUSH 등) — 읽기 0
 \*   ro     RO 워드 (0x38C SQ_HEAD · 0xFFC HIU_ABI_VERSION 포함 · 3.10 v1.0 묶음의 0xFF8
-\*          HIU_SHAPE · 0xEC4 MASK_DUP_CAPTURE 도 여기다 — 쓰기 거절 + [6], 읽기는 실물 값)
+\*          HIU_SHAPE · 0xEC4 MASK_DUP_CAPTURE 도 여기다 — 쓰기 거절 + [6], 읽기는 실물 값
+\*          · W6 부터 0xF0C FP_SHAPE 도 — 앞판까지 resv 였다. 선택자 표 소거 중에도 수락된다
+\*          (Ready 의 OTHER 갈래 — 잡히는 것은 gate 의 정렬 쓰기뿐이다))
 \*   gate   쓰기가 유닛 ready 를 기다리는 WO 워드 (FP_PROG · FP_BIND — 선택자 표 소거)
 \*   gateR  읽기·쓰기 모두 유닛 ready 를 기다리는 RW 워드 (사상표 — 초기화 소거 · CHECK)
 \*   nocons 소비 회로 없는 RW 워드 (0x300/0x304 · 0x380/0x384 · 0x388 · 0x390)
@@ -145,7 +150,7 @@
 \*            — 근거는 e:743 이 아니라 e-defined.typ:308 「*표의 워드로 등재한다* — 쓰기는 거절 + `[6]`, 읽기는 0」 ·
 \*            03-hiu.typ:828 「*명시 예외 — `0xC00` 구역의 예약-엄격 워드.*」. W3 전 RTL(aa91e86)은 이 자리를 앞판 색인 2–15 의
 \*            LO/HI 로 수락해 스테이징 · 커밋한다 — NoConsPolicy 의 대안(흡수 · 저장) 밖의 넷째 처분이고 짝은 XlateSurface 의 rsvw_rejected 삭제 run 이다
-\*   resv   표에 없는 워드 오프셋 (3.7 예약)
+\*   resv   표에 없는 워드 오프셋 (3.7 예약 — W6 부터 0xF0C 는 여기 들지 않는다)
 \*   leg    물려받은 0x000–0x11F
 \* 요청의 bad 는 「워드 안의 거절 사유」다 — 정의 부류(rw · cqsz · wo · gate · gateR)에서만
 \* 뜻이 있다 (예약 비트 비0 · FP_BIND [30:24] · CQ_SIZE 의 다른 값 · 0xE14 의 없는 값 · [31:10] 비0). 0xE14 의 드레인 판정 거절은 내용 거절이 아니라 시점 거절이다(E:208) — 이 모델이 그 사유를 bad 에 접는 것은 *추상 선택*이고 판정은 ActivePart.tla 몫. 그 거절은 가드가 아니다 —
@@ -160,6 +165,9 @@
 \* · 읽기 *값*의 뜻 — "data" 는 불투명한 실물 값이다. 0xE04–0xE0C 관측 값 · 0xFFC 의 판 값
 \*   (합의 전 0 은 값 의미라 가드가 아니다 — 판정 T1-ii) · CAP/FAULT 워드 배치는 모델 밖.
 \*   0xFF8 의 형상 값 · 0xEC4 의 캡처 필드도 값이다 (값은 assembly · MaskUnit/engine 의 몫).
+\*   0xF0C 의 형상 값도 값이다 — 판 0 동안 워드 전체 0 · 판 ≠ 0 이면 부호화 번호 1 과 실제 P ·
+\*   stepMax (e-defined.typ:463 「*번호 ≠ 0 도 `0xFFC` ≠ 0 과 함께만 낸다*」) 는 판 값과의 *결합*이라
+\*   부류 처분이 아니다 — 값과 그 결합은 assembly 몫 (W6).
 \* · 예약 비트의 *자리* — bad 는 「예약 비트 비0」 이라는 사유만 싣고 어느 비트가 예약인지는
 \*   싣지 않는다. 0xF84 FAULT_CLEAR 의 엄격 범위가 [31:20] 이라는 것은 bad 의 정의역이지
 \*   부류 처분이 아니다 — e-defined.typ:497 「`[31:20]` 예약 = 0 (엄격)」. W1 이전 RTL 은
@@ -167,6 +175,16 @@
 \* · W1 이전 RTL 의 0xFF8 · 0xEC4 디코드 — 그 RTL 은 둘을 예약 · 미정의로 디코드해 쓰기를
 \*   조용히 흡수했다. 부류 오배정은 위 첫 항(주소 디코드)이고, RO 쓰기 흡수의 처분 반례는
 \*   짝 today_surface(ro_rejected 삭제 → Prop_NoSilentDrop)가 이미 낸다 — 새 run 이 없다.
+\* · W6 이전 RTL 의 0xF0C 디코드 — 그 RTL 의 step 프로그램 적재 구역은 0xF00 · 0xF04 · 0xF08 만
+\*   디코드해 0xF0C 를 미배정(resv)으로 다뤘다(정본 E.1.3 FP_SHAPE 행의 착지 전 RTL 사실 — 쓰기 무효과 · 읽기 0).
+\*   부류 오배정은 첫 항(주소 디코드)이다. 처분은 같은 판정이다: 오배정된 resv 정렬 쓰기의
+\*   Why 는 "absorb" 이고, ro_rejected 를 지운 ro 정렬 쓰기의 Why 도 "absorb" 다(DevReject 거짓 ·
+\*   Defined 밖) — 읽기는 resv 의 "zero" 와 ro 의 "data" 가 둘 다 Prop_NoStaleRead 의 허용값이라
+\*   읽기 축은 가르지 않는다. 그러므로 삭제 run del_ro_rejected(→ Prop_RoRejected)와 짝
+\*   today_surface(→ Prop_NoSilentDrop)가 그 처분의 반례를 이미 낸다 — 새 run 이 없다 (비상주
+\*   탐침 W6: ro_rejected *하나만* 지운 판도 Prop_NoSilentDrop 으로 운다 — 고정 속성이 가드
+\*   속성 없이도 잡는다). 소거 중의 즉시 거절 · 읽기 응답은 부류 ro 의 Ready = TRUE 가 싣는다 —
+\*   RTL 의 ready 하강이 정렬 0xF00/0xF04 쓰기에만 걸리는가는 D1 수리 갈래 (b) 의 조립 몫이다.
 \* · 바이트 인에이블 — 장치 포트에 없다. 이 모델의 비정렬(al = FALSE)은 그 잔재(주소 하위
 \*   두 비트)의 처분만 재고, 어댑터 쪽 이행(정본 경계 밖)은 재지 않는다.
 \* · [6] 의 sticky · W1C · 발화 우선 — loud 는 그 스텝의 발화 펄스다 (CapWord 와 같은 부류).

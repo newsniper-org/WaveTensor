@@ -50,15 +50,15 @@ mkdtemp 루트는 **통과한 실행이 스스로 지운다** — 실패한 실�
 
 ---
 
-## 실행 결과 (2026-10-15, 호스트 — W4 생성물 · `0xE14` XLATE_ACTIVE_PART · `io_hiuReq_part` 은퇴)
+## 실행 결과 (2026-10-18, 호스트 — W6 생성물 · `0xF0C` FP_SHAPE 배선 · OWN_SET 거절 GUARD-MAP)
 
 ```
 Mask:  12 tests passed (skip 0, 하한 12)
-Shape: 44 tests passed (skip 0, 하한 44)
-run_wt64: 요청 스위트 2건 / cocotb 테스트 56건 전부 통과
+Shape: 46 tests passed (skip 0, 하한 46)
+run_wt64: 요청 스위트 2건 / cocotb 테스트 58건 전부 통과
 ```
 
-(2026-10-15 W4(결속 파티션) — Shape 37 → 44: 조회 헬퍼가 파티션을 `0xE14` 결속으로 만들고(`bind_part`) 새 일곱(`active_part_*` 여섯 · `reset_values_norm` — 아래 「W4」 절). 2026-10-13 W3 수정 — Shape 36 → 37 `xlate_high_vpn_bits_distinguish` · `xlate_other_flush_keeps_staging` 에 파티션 1 vs 3 행(아래 「W3 수정」 절). 2026-10-13 W3(형상 비노출 `0xC00` 문) — Shape 26 → 36: 옛 문의 `xlate_*` 를 제자리에서 VPN → FRAME → COMMIT 문으로 다시 쓰고 새 열(N1–N7 · 선-formal 인계 셋 — 아래 「W3」 절). 2026-10-12 W2(판정 래치) — Shape 24 → 26 `xlate_released_judgment_survives_eviction` · `xlate_latched_hit_survives_retire`(아래 「W2」 절). 2026-10-12 W1 검증 수리 — Mask 11 → 12 `nonce_dup_compare_every_bit`(논스 비교 전폭 — 아래 「W1」 절의 「검증 수리」) · N14 에 reset · `[4]` 단독 해제 · `0xF88` 요약 행. 2026-10-11 W1(3.10 RTL 파도 — 표면 비트·워드) — Shape 21 → 24 `hiu_shape_word` · `mask_dup_capture` · `fault19_nonowned_access`, Mask 11 그대로(두 시험을 넓힘 — 아래 「W1」 절). 2026-09-26 파도 4 — Shape 15 → 16 `abort_tag1_word_legality` · 통합 착지 16 → 21: 페이지 통합 `page_disposition` · `fp_clear_window` ·
+(2026-10-18 W6(`0xF0C` FP_SHAPE · `[7]`) — Shape 44 → 46: `fp_shape_word` · `own_set_collide` 신설, `fp_clear_window` 를 제자리에서 넓힘(④–⑥ — 아래 「W6」 절). 2026-10-15 W4(결속 파티션) — Shape 37 → 44: 조회 헬퍼가 파티션을 `0xE14` 결속으로 만들고(`bind_part`) 새 일곱(`active_part_*` 여섯 · `reset_values_norm` — 아래 「W4」 절). 2026-10-13 W3 수정 — Shape 36 → 37 `xlate_high_vpn_bits_distinguish` · `xlate_other_flush_keeps_staging` 에 파티션 1 vs 3 행(아래 「W3 수정」 절). 2026-10-13 W3(형상 비노출 `0xC00` 문) — Shape 26 → 36: 옛 문의 `xlate_*` 를 제자리에서 VPN → FRAME → COMMIT 문으로 다시 쓰고 새 열(N1–N7 · 선-formal 인계 셋 — 아래 「W3」 절). 2026-10-12 W2(판정 래치) — Shape 24 → 26 `xlate_released_judgment_survives_eviction` · `xlate_latched_hit_survives_retire`(아래 「W2」 절). 2026-10-12 W1 검증 수리 — Mask 11 → 12 `nonce_dup_compare_every_bit`(논스 비교 전폭 — 아래 「W1」 절의 「검증 수리」) · N14 에 reset · `[4]` 단독 해제 · `0xF88` 요약 행. 2026-10-11 W1(3.10 RTL 파도 — 표면 비트·워드) — Shape 21 → 24 `hiu_shape_word` · `mask_dup_capture` · `fault19_nonowned_access`, Mask 11 그대로(두 시험을 넓힘 — 아래 「W1」 절). 2026-09-26 파도 4 — Shape 15 → 16 `abort_tag1_word_legality` · 통합 착지 16 → 21: 페이지 통합 `page_disposition` · `fp_clear_window` ·
 3B `xlate_miss_observed` · `xlate_miss_obs_second_stall` · 3A `xlate_other_flush_keeps_staging` (`xlate_hi_releases_stall` 은 제자리에서 `xlate_flush_ends_staging`).
 2026-09-26 파도 3 — 변환 저장소의 MMIO 문: Shape 6 → 13, 지향 시험 일곱
 `xlate_*`, 같은 날 반증 검토 뒤 수리로 13 → 15 — 인접 HI 의 D-2 버스 정지 값 시험 둘.
@@ -394,6 +394,44 @@ HEAD 에서 N15 가 우는 자리는 결속 축이다.
 | K8 같은 값도 D 를 요구 | ad_table · d_sample · rmw · unaligned |
 | K6b 요청 파티션 0 고정 (HEAD 꼴) | 29 시험 |
 
+### W6 — `0xF0C` FP_SHAPE · OWN_SET 거절과 `[7]` (3.10 v1.0 묶음의 RTL 파도 여섯째 하위 파도)
+
+기대값은 정본 E.1.2 FP_SHAPE 행 · reset 값 규범 6항 · E.1.3 · E.7 6 · 7항에서 유도했다(시험 파일 W6 절 머리의
+축자 인용). FP_SHAPE 의 기대는 `0xFFC` 를 *읽어서* 만든다 — 0 이면 워드 전체 0, 아니면 `(1 << 24) | (stepMax << 9) | P`
+(P = 10 · stepMax = 32 는 E.1.3 의 RTL 사실 문장). 그래서 판 값 커밋 날 시험은 고칠 것이 없고, 판 0 인 채 비0 을 내는
+생성물은 운다. 판 0 동안 rdata 의 *원천*(배선 상수 0 대 예약 읽기 0)은 포트로 가를 수 없다 — assembly 의 몫이다.
+
+| 시험 | 재는 것 |
+|---|---|
+| `fp_shape_word` (신설) | 소거가 끝난 정상 상태: 읽기 = 판 값 유도 기대 · rvalid 1회 · 재읽기 불변 · fault 없음 · RO 쓰기 셋(전폭 1 · `0x0100_400A` · 0) → 거절 + `[6]` · `[15]` 아님 · 값 · FP_STATUS 불변 · 비정렬 `0xF0D`–`0xF0F` 쓰기 `[6]` · 비정렬 읽기 0 · 표 밖 이웃 `0xF10`–`0xF3C` 정렬 워드 열둘 전부 관대(쓰기 무시 · 읽기 0 — 넷 표본 판은 `0xF14` 별칭 변이를 놓쳤다, W6 검증 OBS-1) |
+| `fp_clear_window` ④–⑥ (보강) | 선택자 표 소거 중: `0xF0C` 읽기는 기다리지 않고 rvalid 1회 · 기대 값 · `0xF0C` · `0xF08` 쓰기는 제시 사이클 ready = 1(정지 없음) · 거절 + `[6]` · `[15]` 아님 · fpCfgBadWrite 무관 · 값 불변. 끝에서 loadReady = 0 을 다시 본다(창 안 전건) |
+| `own_set_collide` (신설) | 같은 칸 · 다른 태그 프레임 둘(칸 = 프레임 하위 6b — 자극을 거절 쪽으로 보내는 화이트박스, 기대값에는 들지 않는다)과 다른 칸 하나. 하한(빈 표의 첫 OWN_SET 커밋 — 표를 비운 뒤 한 번 더) · 거절 → 무효과(대상 호스트 소유 · 점유자 유지) · `[7]` · `io_fault_ownCollide` · `[6]` 없음 · `[7]` sticky · `[7]` = 1 인 채 다른 칸 커밋 · `0xF84` W1C · 같은 태그 무연산 · OWN_CLR 무거절(점유자 다른 태그 · 회수 · 이미 호스트) · 칸이 빈 뒤 커밋 · 역방향 거절. 전이 대상의 OWN_STATUS 는 전이 수락 바로 다음 사이클의 읽기다(E.7 7항 장치 포트 순서). 끝에 승인 경로 — 거절된 프레임의 자격 허용 읽기는 `[19]` · 커밋된 프레임은 승인 |
+
+**HEAD(b0a4c47) 음성 대조** — `fp_shape_word` · `fp_clear_window` FAIL(`0xF0C` 쓰기가 `[6]` 없이 흡수 — 표 밖 정렬 워드).
+`own_set_collide` 는 HEAD 에서도 PASS 다 — OwnershipTable 논리는 W6 이전과 같고 W6 RTL 은 GUARD-MAP 만 더했다. 그 시험의
+수락 기준은 아래 변이다.
+
+**변이** (W6 생성물 사본 · 한 자리씩 · Shape 46 전체):
+
+| 변이 | 죽은 시험 |
+|---|---|
+| F1 `0xF0C` 쓰기의 `surfBadWr` 제거 | fp_shape_word · fp_clear_window |
+| F2 판 0 인 채 rdata `0x0100_400A` | fp_shape_word · fp_clear_window |
+| F4 디코드 별칭 `wordOff[1:0] == 3` (`0xF1C` · `0xF2C` · `0xF3C` 도 RO) | fp_shape_word 만 |
+| F5 소거 중 `0xF0C` 쓰기 정지 | fp_clear_window 만 |
+| F6 `0xF0C` 쓰기 거절을 loadReady 로 게이트(소거 중 흡수) | fp_clear_window 만 |
+| F7 소거 중 `0xF0C` 읽기 정지 | fp_clear_window 만 |
+| F8 소거 중 `0xF08` 쓰기 정지 | fp_clear_window 만 |
+| O1 OWN_CLR 이 collide | own_set_collide 만 |
+| O2 커밋(빈 칸)이 collide | own_set_collide 만 |
+| O3 같은 태그 무연산이 collide | own_set_collide 만 |
+| O4 거절 갈래가 점유자를 덮음(축출) | own_set_collide 만 |
+| O5 `[7]` 상수 0 | own_set_collide 만 |
+| O6 `[7]` 비sticky(매 사이클 해제) | own_set_collide 만 |
+| O7 `0xF84[7]` W1C 끊김 | own_set_collide 만 |
+| O8 OWN_CLR 이 태그를 안 봄(남의 페이지 회수) | own_set_collide 만 |
+| O9 빈 표에서 collide(하한 위반) | own_set_collide 만 |
+
 ## ⛔ 이 하네스의 층위 — 호스트 ABI 가 아니다
 
 **투입 방향(호스트 명령 큐 / E.5 명령 링)은 RTL 에 미착지다.**
@@ -427,7 +465,7 @@ HEAD 에서 N15 가 우는 자리는 결속 축이다.
 | 4 | fp32 산술 정확성 (`golden_fp32` 비트 일치) | `StepSequencer.scala:425-426` 이 `UInt` 정수곱·정수합 — 산술은 축 (b) 후속 |
 | 5 | `mask64` 의 32비트 (`[63:44]`·`[11:0]`) | `MaskUnit.scala:289-296` 「저장은 적용 비트만」 — 레지스터도 배선도 없다. **비교 불가가 아니라 비교 대상 부재** |
 | 6 | `SUBKEY`(256b)·`BLOCK`(512b) 를 통한 부분 수리 검출 | 내는 포트가 없다. `st_0..st_15` 의 계층 peek 은 포트 계약이 아니라 SpinalHDL 명명의 우연이라 통과 기준으로 쓰지 않는다 |
-| 7 | `FAULT_STATUS[17]`·`[18]` | `Wt64Top.sv:1705` 「faultWords_status[17] = 1'b0;」 과 다음 줄 `[18]` 상수 0 — 원천 부재. **0 을 「정상」으로 읽으면 안 된다** |
+| 7 | `FAULT_STATUS[17]`·`[18]` | `Wt64Top.sv:1712` 「faultWords_status[17] = 1'b0;」 과 다음 줄 `[18]` 상수 0 — 원천 부재. **0 을 「정상」으로 읽으면 안 된다** |
 | 8 | `SharedUnit`·`MemOrderGate` 독립 `.sv` 의 top 대표성 | 형상 불일치 — 독립본 16비트 vs top 인스턴스 161/128비트 |
 | 9 | OPREF **B** 참조의 LBID 축 | 제시 자체가 없다 — `Wt64Top.scala:86` 「OPREF B 토큰의 RouteJudge 제시는 미배선」 (TODO 2항), `tokIn` 은 사이클당 하나. ISA-2 α 는 **OPREF A 축만** 덮는다 |
 | 10 | 변환 조회의 호스트 ABI 층위 | 요청 원천(메모리 파이프) 미착지 — 조회의 VPN · valid 는 내부 포트 `io.hiuReq` 제시이고, 파티션은 `0xE14` XLATE_ACTIVE_PART MMIO 결속이다(W4 — `io_hiuReq_part` 은퇴). `xlate_*` · `active_part_*` 시험의 기입 쪽만 호스트 ABI 오프셋이다 |

@@ -26,11 +26,11 @@
 # PROVES: AbortSurface.ro_rejected — 조립 몫 전부: 0xF50 · 0xF54 · 0xF58 의 정렬 쓰기는 다음 사이클 조립 sticky → FAULT_STATUS [6] (a_surf_fire — surfMust) · 무장 부동 (a_arm_src — 무장이 움직이는 기입은 정렬된 0xF40–0xF4C 뿐). RO 세 워드는 AbortStaging 에 닿지 않아 유닛 태스크에 앵커가 없다
 # PROVES: AbortSurface.reject_loud — 조립 sticky 절반: 소거 구역의 거절 사건 전수(TAG1 [27:16] · TAG2 [31:16] · FIRE [31:1] 비0 · RO 세 워드 쓰기) ⇒ 다음 사이클 조립 sticky → FAULT_STATUS [6] (a_surf_fire · a_rd_fst) · 적법한 소거 구역 쓰기와 무장 미완 발화는 sticky 를 세우지 않는다 (a_surf_rise — surfMust 밖). 거절 판정 badWrite 의 문 절반은 AbortStaging/props.sby
 # PROVES: AbortSurface.legal_first — 조립 절반: 거절된 TAG1 기입(poison · trace · 예약)은 무장 [1] 을 움직이지 않는다 (a_arm_rej1) · RO 세 워드와 비정렬 쓰기는 무장을 움직이지 않는다 (a_arm_src). 거절 사유별 스테이징·무장·발화 부동의 문 절반은 AbortStaging/props.sby
-# PROVES: MmioPage.rsp_on_accept — 조립 절반: 조립이 낸 rvalid(유닛 rvalid 가 없는 사이클)는 직전 사이클에 *수락된*(ready = 1) 조립 구역 읽기의 응답이다 (a_rv_acc — 주소 기준 ready 로 되돌린 D1 이전 생성물에서 죽는다) · 조립 구역 읽기는 소거를 기다리지 않는다 (a_ready_one · a_ready_fpw — 소거는 정렬 FP 쓰기만) · 증인 W33. 유닛 rvalid 계약(own · cq · cfg)은 유닛 태스크 몫이고 MmioConfig p_rvalid_next 만 서 있다 (lint_postformal _PARTIAL 등재)
+# PROVES: MmioPage.rsp_on_accept — 조립 절반: 조립이 낸 rvalid(유닛 rvalid 가 없는 사이클)는 직전 사이클에 *수락된*(ready = 1) 조립 구역 읽기의 응답이다 (a_rv_acc — 주소 기준 ready 로 되돌린 D1 이전 생성물에서 죽는다) · 조립 구역 읽기는 소거를 기다리지 않는다 (a_ready_one · a_ready_fpw — 소거는 정렬 FP 쓰기만) · 증인 W33 · W62(0xF0C). 유닛 rvalid 계약(own · cq · cfg)은 유닛 태스크 몫이고 MmioConfig p_rvalid_next 만 서 있다 (lint_postformal _PARTIAL 등재)
 # PROVES: MmioPage.effect_on_accept — 조립 절반: FP_BIND 예약 거절은 수락된(loadReady) 기입에서만 별도 sticky 를 세운다 (a_fpbad_fire · a_fpbad_rise — 수락 증인 W34 · 잡힌 기입 무-fault 증인 W35) · 조립 sticky 는 수락 전 사건에서 서지 않는다 (a_surf_rise — surfMust 는 ready 1 인 쓰기만 든다) · 정지된 COMMIT 무효과 (a_xhold_quiet). 유닛 쪽 수락 게이트(StepSequencer 의 loadReady — 형식 태스크 0 건 · own · cq · cfgBlk 의 acceptW)는 이 태스크 밖이다 (_PARTIAL)
-# PROVES: MmioPage.ro_rejected — 조립 몫: RO 워드(0xEC0 · 0xEC4 · 0xF08 · 0xF50–0xF58 · 0xF80 · 0xF88 · 0xF8C · 0xE04–0xE0C · 0x38C · 0xFF8 · 0xFFC)의 정렬 쓰기 ⇒ 다음 사이클 조립 sticky → [6] (a_surf_fire — surfMust · 증인 W4 · W31 · W1 의 W41(0xFF8) · W42(0xEC4)) · 유닛 스트로브 · 효과 없음 (구역 라우팅 단언). 유닛 RO(own 0x204 · cq RO 워드)는 ownershiptable.sby · descriptor.sby 가 다른 단언으로 잰다 (_PARTIAL)
+# PROVES: MmioPage.ro_rejected — 조립 몫: RO 워드(0xEC0 · 0xEC4 · 0xF08 · 0xF0C(W6) · 0xF50–0xF58 · 0xF80 · 0xF88 · 0xF8C · 0xE04–0xE0C · 0x38C · 0xFF8 · 0xFFC)의 정렬 쓰기 ⇒ 다음 사이클 조립 sticky → [6] (a_surf_fire — surfMust · 증인 W4 · W31 · W1 의 W41(0xFF8) · W42(0xEC4) · W6 의 W59(0xF0C) · W61(소거 중 0xF0C — 정지 없이 즉시)) · 유닛 스트로브 · 효과 없음 (구역 라우팅 단언). 유닛 RO(own 0x204 · cq RO 워드)는 ownershiptable.sby · descriptor.sby 가 다른 단언으로 잰다 (_PARTIAL)
 # PROVES: MmioPage.wo_read_zero — 조립 구역 WO 워드 읽기 ⇒ 응답 + 0 · fault 없음 (a_rd_wo — 이제 ready 전건 없음 · 변환 WO 는 a_rd_resv0 · 증인 W3). 유닛 WO(OWN_SET/OWN_CLR · IRQ_CLEAR)의 읽기 *값*은 어느 태스크도 재지 않는다 (_PARTIAL)
-# PROVES: MmioPage.resv_lenient — 표에 없는 정렬 워드 오프셋(0x120–0x1FF · 구역 안 미정의 워드 · 0x394–0x3FC · 0xE18–0xE7C — W4 가 0xE14 를 뗐다 · 0xFC0–0xFF4 — W1 이 0xFF8 을 뗐다)의 쓰기는 조립 sticky 를 세우지 않는다 (a_surf_rise — surfMust 밖 · 증인 W17 · 줄어든 끝 워드 W43) · 그 읽기와 비정렬 읽기는 응답 + 0 (a_rd_resv_rv · a_rd_resv0 · a_rd_undef · 증인 W2). 유닛 구역의 표 밖 정렬 오프셋 쓰기의 무-fault 는 유닛 태스크의 sticky 등식이 다른 가드 이름으로 잰다 (_PARTIAL)
+# PROVES: MmioPage.resv_lenient — 표에 없는 정렬 워드 오프셋(0x120–0x1FF · 구역 안 미정의 워드 — W6 가 0xF0C 를 뗐다 · 0x394–0x3FC · 0xE18–0xE7C — W4 가 0xE14 를 뗐다 · 0xFC0–0xFF4 — W1 이 0xFF8 을 뗐다)의 쓰기는 조립 sticky 를 세우지 않는다 (a_surf_rise — surfMust 밖 · 증인 W17 · 줄어든 끝 워드 W43) · 그 읽기와 비정렬 읽기는 응답 + 0 (a_rd_resv_rv · a_rd_resv0 · a_rd_undef · 증인 W2). 유닛 구역의 표 밖 정렬 오프셋 쓰기의 무-fault 는 유닛 태스크의 sticky 등식이 다른 가드 이름으로 잰다 (_PARTIAL)
 # PROVES: MmioPage.unaligned_rejected — 조립 몫: own · cq · cfg 밖 비정렬 쓰기 ⇒ 다음 사이클 조립 sticky (a_surf_fire — surfMust 의 T2 항 · 증인 W32) · 효과 없음 (a_arm_src · a_arm_unal · a_xcm_iff 등 — 조립 구역 wr 은 전부 정렬을 요구). 세 유닛 구역은 mmio_config.sby · ownershiptable.sby · descriptor.sby 의 같은 가드 앵커 (_PARTIAL)
 # PROVES: MmioPage.leg_write_rejected — 물려받은 0x000–0x11F 쓰기(정렬 무관) ⇒ 다음 사이클 조립 sticky → [6] (a_surf_fire — surfMust 의 T3 항 · 증인 W29) · 유닛 스트로브 없음 (a_own_strb · a_cq_strb · a_cfg_strb) · 읽기 응답 + 0 (a_rd_resv_rv · a_rd_resv0 — resvA). 조립만의 표면이라 이 앵커 하나로 문면이 닫힌다
 # PROVES: MmioPage.nocons_rejected — 명령 링 절반: 0x380 · 0x384 · 0x388 · 0x390 정렬 쓰기 ⇒ 다음 사이클 조립 sticky (a_surf_fire — surfMust 의 T1 항 · 증인 W30) · 읽기 응답 + 0 (resvA — 저장 없음) · 0xC00 예약-엄격 28 워드 절반: 정렬 쓰기 ⇒ 다음 사이클 조립 sticky (a_surf_fire — surfMust 의 xRsW 항 · 증인 W49) · 효과 없음 (a_xcm_iff). 완료 링 base 둘은 descriptor.sby (_PARTIAL)
@@ -49,6 +49,8 @@
 # PROVES: ActivePart.same_value_noop — W4 · 끝-끝: 같은 값은 핀과 무관하게 되읽기 A = 1 이고 0xE14 원천별 sticky 를 세우지 않는다 (a_bind_upd · a_actbad_rise · 증인 W53)
 # PROVES: ActivePart.value_first — W4 · 끝-끝: 없는 값(≥ F_PARTS — partOk 와 같은 상수)은 절단 별칭 없이 수락 사이클에 0xE14 원천별 sticky (a_actbad_fire — actBad 의 actVRej · 증인 W57) · 결속 불변 (a_hiu_part)
 # PROVES: ActivePart.reject_loud — W4 · Top 절반: 값 거절(수락 사이클) · 드레인 거절(판정 사이클) ⇒ 다음 사이클 원천별 sticky io_fault_actCfgBadWrite (W4 D1 — DP-15 선례) → FAULT_STATUS [6] (a_rd_fst — f_expSt [6]) · 그 밖의 0xE14 기입은 sticky 를 세우지 않는다 (a_actbad_fire · a_actbad_rise · 증인 W53 · W57) · 발화 우선 · 비하강 · 0xF84[6] 해제 (a_actbad_hold · a_actbad_clear). 유닛 거절선 등식은 activepart.sby p_bad_iff
+# PROVES: Platform.set_reject_loud — W6 · Top 절반: FAULT_STATUS [7] = own 의 faultCollide 핀 (a_rd_fst — f_expSt [7]) · 원천별 수출 io_fault_ownCollide = 그 핀 (a_fsrc_b7) · 0xF84 [7] 해제 합류 (a_fclr_b7) · 증인 W63. 충돌 기입이 그 핀을 세우는 유닛 절반은 OwnershipTable/ownershiptable.sby — 이 태스크에서 own 은 절단돼 합성은 서술이다 (lint_postformal _PARTIAL)
+# PROVES: Platform.seven_reject_only — W6 · Top 절반: [7] 의 조립 원천은 own 핀 하나다 — 0xF80 [7] 과 io_fault_ownCollide 가 그 핀과 등식이라 (a_rd_fst · a_fsrc_b7) 조립의 어떤 사건도 [7] 을 따로 세우지 않는다 (상승 건전성의 조립 절반) · 증인 W63. 그 핀이 정렬 OWN_SET 거절에서만 오른다는 유닛 절반은 ownershiptable.sby s_col_src · s_col_slot (own 절단 — 합성은 서술, _PARTIAL)
 # VERIFIES: Wt64Top.region_routing — own/cq/cfgBlk 스트로브·버스 핀이 E.1 영역 배치 범위와 정확히 같다 · ready 라우팅
 # VERIFIES: Wt64Top.word_reserved_strict — 워드 안 예약 비0 은 거절 + [6] + 무효과
 # VERIFIES: Wt64Top.partition_reject — 실재하지 않는 파티션 값은 거절 + [6] + 무효과
@@ -59,7 +61,7 @@
 # VERIFIES: Wt64Top.abort_surface — E.12.1 1항의 조립 몫(정렬 게이트·워드별 무장·스테이징 값 결선) · 5항 후단의 조립 국소 경로
 # VERIFIES: Wt64Top.mask_surface — 키·논스 워드 처분 · 창 레지스터 · MASK_STATUS · HiuMask ENV onehot0 떠맡기 · W1: 0xEC4 MASK_DUP_CAPTURE 읽기 = 수락 사이클의 mask.dupCapture 핀 (a_rd_dupcap · 증인 W45) · 쓰기 거절 + [6] (surfMust · W42) · 읽기 무부작용의 조립 절반 (a_rd_pure · W47)
 # VERIFIES: Wt64Top.hiu_shape — W1: 0xFF8 HIU_SHAPE 정렬 읽기 = 정본 표(참조 구현 형상 — 파티션 4 × 항목 16 · 직접 사상)에서 하네스가 독립 유도한 상수 0x0000_1004 (a_rd_shape · 증인 W44) · 쓰기 거절 + [6] (surfMust · W41) · partOk 의 파티션 수와 같은 하네스 상수 F_PARTS
-# VERIFIES: Wt64Top.fp_surface — FP_PROG/FP_BIND 발행(유닛 수락 관례 — 발행 펄스는 raw 이고 StepSequencer 가 loadReady 로 게이트한다) · FP_STATUS
+# VERIFIES: Wt64Top.fp_surface — FP_PROG/FP_BIND 발행(유닛 수락 관례 — 발행 펄스는 raw 이고 StepSequencer 가 loadReady 로 게이트한다) · FP_STATUS · W6: 0xF0C FP_SHAPE 정렬 읽기 = 판 상수 F_FP_SHAPE(판 0 동안 0 — 근거 인용은 Wt64Top_props.sv 머리) 다음 사이클 응답 (a_rd_fpshape · 증인 W60) · 쓰기 거절 + [6] 무효과 (surfMust · W59) · 소거 중 쓰기 즉시 거절 · 읽기 응답 (a_ready_one · W61 · W62)
 # VERIFIES: Wt64Top.drain_wiring — DRAIN 여섯 핀의 정의역 순서 (조립 절반)
 # VERIFIES: Wt64Top.composite_wiring — HiuMask_comp · RouteMmio · XlateDoor(W3 — a_door_install · a_door_flush · a_door_woff · a_door_ready: door.sby 의 XlateDoor_check 가 복제한 xlateArea 결선 — VPN 분할 · flush · 워드 오프셋 · ready 덮어쓰기 — 문의 *입력* 쪽(wrEnt · wrCtl · wdata · installReady)은 직접 등식이 없고 간접이다: xstg 입력 핀이 DUT 어휘 넷(xlateArea_*)에 물려 핀으로 볼 수 없어 a_xcm_iff · a_xcm_fields · a_xhold_quiet · a_xflush_iff · a_ready_only_slot 이 끝-끝으로 막는다) 하네스가 복제한 결선과 bp_relief 의 핀 등식
 # VERIFIES: Wt64Top.xlate_surface — 변환 저장소 MMIO 문 중 XlateSurface 가드 이름 밖의 것 (파도 3 · W3 개정): 항목 표면 쓰기의 ready = 주소 · 상태 적법 COMMIT 이면 하류 슬롯 여유 · 그 밖은 1 (a_ready_only_slot — 다른 정지 원천을 보지 않는다 · 설계 판정 D-2) · 그 밖의 두 구역 접근은 ready = 1 (a_ready_one) · 정지된 COMMIT 무효과 — 설치 · flush · 두 거절선 없음 (a_xhold_quiet — xlatestore s_pend_bounded 전건 「설치가 오지 않는 동안」의 조립 쪽 이행) · 설치 part 핀은 주소 · 상태 적법 COMMIT 의 래치 파티션 (a_xcm_part) · 설치·flush onehot0 (a_xonehot) · RO 세 워드 쓰기와 0xE10 예약 → [6] (surfMust) · 0xE10 해제 합류 (a_miss_clr) · 두 구역 읽기 응답 (a_rd_resv_rv · a_rd_resv0 — 관측 세 워드의 값은 위 XlateObs PROVES) · 데이터 사유 sticky 의 비하강 · 해제 (a_xbad_hold · a_xbad_clear)
@@ -237,6 +239,13 @@
 #      io_fault_actCfgBadWrite) · cover 69 그대로 · ④ 40 → 39 (40 = W4H 핀 제외 판 37 + w55 · w57 · w58; w57 이 [의존] 으로 — 그 sticky 의 콘에 드레인 거절의
 #      절단 핀이 든다) · 선택식은 핀 제외 *없는* 원판으로 돌아갔다 · ⑥ 그대로 (새 포트는 최상위 출력이라 `*__*` 밖).
 #      이 수는 W4F2 작업 트리 생성물(Wt64Top.sv sha256 앞 16자 c39bcb4ce73460cd) 위에서 잰 실측이다.
+#   W6 (2026-10-18 — 0xF0C FP_SHAPE · [7] 조립 절반) 재서명: ① 14 · 5 그대로 ② 그대로 ③ assert 124 → 126 (a_rd_fpshape ·
+#      a_fsrc_b7) · cover 69 → 74 (W59–W63) ④ 39 → 40 (w59_fpshape_wr) ⑥ 272 · 222 · 104 · 67 그대로 (own__io_faultCollide 는 이미
+#      f_expSt 가 묶었다 · io_fault_ownCollide 는 최상위 출력이라 `*__*` 밖). 0xF0C 는 undefA(무-fault)에서 surfMust 의 RO 목록으로
+#      옮겼다. 실측은 W6 R 생성물(Wt64Top.sv sha256 앞 16자 2d93ad7b82c97b57) 위.
+#      ⚠ 판 0 에서 a_rd_fpshape 의 기대값 0 은 mapRdReg 기본값과 같아 fpShapeArea 덮어쓰기 경로를 포트가 가르지 못한다 —
+#      그 경로의 반증력은 비0 판 생성 변형(RTL `FpShape.word(1, fps.p)` 한 토큰 · 하네스 F_ABI_NZ = 1 한 토큰 —
+#      착지하지 않는 실험 사본)이 진다: 판 값 커밋 날 이 절차를 상주 증거로 다시 잰다 (W6H 보고 · 역-변이 표 W6 절).
 #
 # ## W4 콘 처분 — 조립 sticky 콘의 절단 핀 cq__drainAllZero (2026-10-15 · 착지 결정 D1 = (A) 적용)
 #
@@ -541,7 +550,7 @@
 #                 파도 3 의 XlateSurface 셋 · 파도 4 3B 의 XlateObs 다섯을 놓쳤다). 이 앵커들은 lint_witness_map
 #                 의 「앵커 N/N 에 증인」에 들지만 그 계수는 증인 *선언*을 세지 실물 도달을 세지 않는다.
 #                 (MmioPage.resv_lenient — 옛 undefined_offset — 은 절단 무관 증인 W17 이 있다.)
-# CUT-DEP-ONLY: MmioPage.effect_on_accept · MmioPage.rsp_on_accept · MmioPage.wo_read_zero · Wt64Top.composite_wiring · Wt64Top.drain_wiring · Wt64Top.fault_status_map · XlateObs.obs_no_residue · XlateObs.obs_part_stalled · XlateObs.obs_stall_live · XlateObs.obs_sticky · XlateObs.obs_vpn_stalled · XlateSurface.commit_fires · XlateSurface.commit_needs_frame · XlateSurface.commit_rsv_strict · XlateSurface.commit_v_carried · XlateSurface.commit_whole · XlateSurface.vpn_drops_frame · ActivePart.drain_gates_switch · ActivePart.pend_stalls_mmio · ActivePart.req_part_from_bound · ActivePart.same_value_noop · ActivePart.value_first · ActivePart.reject_loud
+# CUT-DEP-ONLY: MmioPage.effect_on_accept · MmioPage.rsp_on_accept · MmioPage.wo_read_zero · Wt64Top.composite_wiring · Wt64Top.drain_wiring · Wt64Top.fault_status_map · XlateObs.obs_no_residue · XlateObs.obs_part_stalled · XlateObs.obs_stall_live · XlateObs.obs_sticky · XlateObs.obs_vpn_stalled · XlateSurface.commit_fires · XlateSurface.commit_needs_frame · XlateSurface.commit_rsv_strict · XlateSurface.commit_v_carried · XlateSurface.commit_whole · XlateSurface.vpn_drops_frame · ActivePart.drain_gates_switch · ActivePart.pend_stalls_mmio · ActivePart.req_part_from_bound · ActivePart.same_value_noop · ActivePart.value_first · ActivePart.reject_loud · Platform.set_reject_loud · Platform.seven_reject_only
 #   도달 step (실측)  w11_arm_rd_full 6 · w11_fire 5 · w25_xrecommit 5 · w40_xflush_ends 5 · w7_surf_overlap 4 ·
 #                 w7_surf_clear 4 · w10_capst_rd2 4 · w24_xlo_over 4 · w26_xhi_mismatch 4 ·
 #                 나머지 마흔여덟 3 (2026-10-11 W1 재실측 — W41–W47 여덟 라벨 전부 3 · 나머지 아홉의 step 은 2026-09-26
@@ -1027,7 +1036,7 @@
 #                                       cq: CompletionUnit_props.sv 축 6 차기 상태 등식 · **bmc 뿐(유계)** (파도 4) ·
 #                                       surf: 이 태스크 a_surf_fire · fpCfg(FP_BIND 예약 거절 — 조립이 드는
 #                                       둘째 sticky, D1 (b)): 이 태스크 a_fpbad_fire
-#   [7]        own collide              OwnershipTable_props.sv `if ($past(f_collide)) assert (io_faultCollide)` · prove
+#   [7]        own collide              OwnershipTable_props.sv `if ($past(f_collide)) assert (io_faultCollide)` · prove (W6 — 건전성 짝 s_col_src · s_col_slot · 조립은 a_fsrc_b7 · a_rd_fst 등식)
 #   [8]        merge                    FabricMerge_props.sv 의 Fabric.fault_raised 절 `if ($past(shoveAny)) assert (fault)` · contracts prove
 #   [9]        shared_1                 SharedUnit_props.sv a_bp_fault_set · **다른 elaboration** (payload 161b 대 16b)
 #   [10]       bank                     ResultBank_props.sv a_fault_loud · prove
@@ -1180,13 +1189,13 @@ select -assert-count 67 Wt64Top/c:chk %ci1 Wt64Top/i:*__* %i
 prep -top Wt64Top
 select -assert-count 1 t:$check r:FLAVOR=assume %i
 select -assert-none t:$anyseq t:$anyconst %u t:$allseq %u t:$allconst %u
-bmc:   select -assert-count 124 Wt64Top_props/t:$check Wt64Top_props/r:FLAVOR=assert %i
-prove: select -assert-count 124 Wt64Top_props/t:$check Wt64Top_props/r:FLAVOR=assert %i
-cover: select -assert-count 69 Wt64Top_props/t:$check Wt64Top_props/r:FLAVOR=cover %i
+bmc:   select -assert-count 126 Wt64Top_props/t:$check Wt64Top_props/r:FLAVOR=assert %i
+prove: select -assert-count 126 Wt64Top_props/t:$check Wt64Top_props/r:FLAVOR=assert %i
+cover: select -assert-count 74 Wt64Top_props/t:$check Wt64Top_props/r:FLAVOR=cover %i
 cover: design -save pre_cone
 cover: flatten
-cover: select -assert-count 39 Wt64Top/c:chk.w1_* Wt64Top/c:chk.w4_* %u Wt64Top/c:chk.w5_* %u Wt64Top/c:chk.w6_* %u Wt64Top/c:chk.w7_* %u Wt64Top/c:chk.w9_* %u Wt64Top/c:chk.w10_cap0_clr %u Wt64Top/c:chk.w11_fire %u Wt64Top/c:chk.w12_* %u Wt64Top/c:chk.w13_* %u Wt64Top/c:chk.w14_* %u Wt64Top/c:chk.w17_* %u Wt64Top/c:chk.w18_* %u Wt64Top/c:chk.w21_* %u Wt64Top/c:chk.w22_* %u Wt64Top/c:chk.w23_* %u Wt64Top/c:chk.w24_* %u Wt64Top/c:chk.w26_* %u Wt64Top/c:chk.w27_* %u Wt64Top/c:chk.w28_* %u Wt64Top/c:chk.w29_* %u Wt64Top/c:chk.w30_* %u Wt64Top/c:chk.w31_* %u Wt64Top/c:chk.w32_* %u Wt64Top/c:chk.w39_* %u Wt64Top/c:chk.w40_* %u Wt64Top/c:chk.w41_* %u Wt64Top/c:chk.w42_* %u Wt64Top/c:chk.w43_* %u Wt64Top/c:chk.w47_* %u Wt64Top/c:chk.w49_* %u Wt64Top/c:chk.w50_* %u Wt64Top/c:chk.w51_* %u Wt64Top/c:chk.w55_* %u Wt64Top/c:chk.w58_* %u
-cover: select -assert-none Wt64Top/c:chk.w1_* Wt64Top/c:chk.w4_* %u Wt64Top/c:chk.w5_* %u Wt64Top/c:chk.w6_* %u Wt64Top/c:chk.w7_* %u Wt64Top/c:chk.w9_* %u Wt64Top/c:chk.w10_cap0_clr %u Wt64Top/c:chk.w11_fire %u Wt64Top/c:chk.w12_* %u Wt64Top/c:chk.w13_* %u Wt64Top/c:chk.w14_* %u Wt64Top/c:chk.w17_* %u Wt64Top/c:chk.w18_* %u Wt64Top/c:chk.w21_* %u Wt64Top/c:chk.w22_* %u Wt64Top/c:chk.w23_* %u Wt64Top/c:chk.w24_* %u Wt64Top/c:chk.w26_* %u Wt64Top/c:chk.w27_* %u Wt64Top/c:chk.w28_* %u Wt64Top/c:chk.w29_* %u Wt64Top/c:chk.w30_* %u Wt64Top/c:chk.w31_* %u Wt64Top/c:chk.w32_* %u Wt64Top/c:chk.w39_* %u Wt64Top/c:chk.w40_* %u Wt64Top/c:chk.w41_* %u Wt64Top/c:chk.w42_* %u Wt64Top/c:chk.w43_* %u Wt64Top/c:chk.w47_* %u Wt64Top/c:chk.w49_* %u Wt64Top/c:chk.w50_* %u Wt64Top/c:chk.w51_* %u Wt64Top/c:chk.w55_* %u Wt64Top/c:chk.w58_* %u %ci* Wt64Top/i:*__* %i
+cover: select -assert-count 40 Wt64Top/c:chk.w1_* Wt64Top/c:chk.w4_* %u Wt64Top/c:chk.w5_* %u Wt64Top/c:chk.w6_* %u Wt64Top/c:chk.w7_* %u Wt64Top/c:chk.w9_* %u Wt64Top/c:chk.w10_cap0_clr %u Wt64Top/c:chk.w11_fire %u Wt64Top/c:chk.w12_* %u Wt64Top/c:chk.w13_* %u Wt64Top/c:chk.w14_* %u Wt64Top/c:chk.w17_* %u Wt64Top/c:chk.w18_* %u Wt64Top/c:chk.w21_* %u Wt64Top/c:chk.w22_* %u Wt64Top/c:chk.w23_* %u Wt64Top/c:chk.w24_* %u Wt64Top/c:chk.w26_* %u Wt64Top/c:chk.w27_* %u Wt64Top/c:chk.w28_* %u Wt64Top/c:chk.w29_* %u Wt64Top/c:chk.w30_* %u Wt64Top/c:chk.w31_* %u Wt64Top/c:chk.w32_* %u Wt64Top/c:chk.w39_* %u Wt64Top/c:chk.w40_* %u Wt64Top/c:chk.w41_* %u Wt64Top/c:chk.w42_* %u Wt64Top/c:chk.w43_* %u Wt64Top/c:chk.w47_* %u Wt64Top/c:chk.w49_* %u Wt64Top/c:chk.w50_* %u Wt64Top/c:chk.w51_* %u Wt64Top/c:chk.w55_* %u Wt64Top/c:chk.w58_* %u Wt64Top/c:chk.w59_* %u
+cover: select -assert-none Wt64Top/c:chk.w1_* Wt64Top/c:chk.w4_* %u Wt64Top/c:chk.w5_* %u Wt64Top/c:chk.w6_* %u Wt64Top/c:chk.w7_* %u Wt64Top/c:chk.w9_* %u Wt64Top/c:chk.w10_cap0_clr %u Wt64Top/c:chk.w11_fire %u Wt64Top/c:chk.w12_* %u Wt64Top/c:chk.w13_* %u Wt64Top/c:chk.w14_* %u Wt64Top/c:chk.w17_* %u Wt64Top/c:chk.w18_* %u Wt64Top/c:chk.w21_* %u Wt64Top/c:chk.w22_* %u Wt64Top/c:chk.w23_* %u Wt64Top/c:chk.w24_* %u Wt64Top/c:chk.w26_* %u Wt64Top/c:chk.w27_* %u Wt64Top/c:chk.w28_* %u Wt64Top/c:chk.w29_* %u Wt64Top/c:chk.w30_* %u Wt64Top/c:chk.w31_* %u Wt64Top/c:chk.w32_* %u Wt64Top/c:chk.w39_* %u Wt64Top/c:chk.w40_* %u Wt64Top/c:chk.w41_* %u Wt64Top/c:chk.w42_* %u Wt64Top/c:chk.w43_* %u Wt64Top/c:chk.w47_* %u Wt64Top/c:chk.w49_* %u Wt64Top/c:chk.w50_* %u Wt64Top/c:chk.w51_* %u Wt64Top/c:chk.w55_* %u Wt64Top/c:chk.w58_* %u Wt64Top/c:chk.w59_* %u %ci* Wt64Top/i:*__* %i
 cover: select -assert-any Wt64Top/c:chk.w10_cap2_gate %ci* Wt64Top/i:*__* %i
 cover: design -load pre_cone
 

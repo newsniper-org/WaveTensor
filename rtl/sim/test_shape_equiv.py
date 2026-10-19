@@ -2091,12 +2091,81 @@ async def page_disposition(dut):
         await page_expect_read0(dut, a, "비정렬 읽기")
 
 
+# ── W6 — 0xF0C FP_SHAPE (E.1.2 FP_SHAPE 행 · E.1.3) ─────────────────────
+#
+# 기대값은 정본에서 유도한다 (같은 줄 축자):
+#   e-defined.typ:463 「*번호 ≠ 0 도 `0xFFC` ≠ 0 과 함께만 낸다*」 — 0xFFC 가 0 이면 워드 전체 0
+#   e-defined.typ:463 「쓰기는 E.1.1 RO 규범대로 거절 + `[6]` 이다 (`[15]` 의 원천이 아니다)」
+#   e-defined.typ:463 「선택자 표 소거 중에도 읽기는 응답한다 (E.1 의 reset 값 규범 6항)」
+#   e-defined.typ:216 「`0xF08` · `0xF0C` 쓰기와 비정렬 쓰기는 즉시 거절 + `[6]` 이고」
+#   e-defined.typ:738 「재구현의 형상($P$ = 10 · stepMax = 32 — RTL 사실)에서 `0xFFC` 가 0 이 아니게 된 뒤의 읽기는 `0x0100_400A` 다」
+# 판 값은 *읽어서* 쓴다 — 0xFFC 를 읽어 0 이면 0, 아니면 (1 << 24) | (stepMax << 9) | P. 그래서 판 값
+# 커밋 날 이 시험은 고칠 것이 없고, 판 0 인 채 비0 을 내는 생성물(판 게이트 누락)은 여기서 운다.
+# 재지 못하는 것: 판 0 동안 rdata 의 *원천*(배선된 판 상수 0 인가 · 예약 읽기 0 인가)은 값이 같아
+# 포트로 가를 수 없다 — 그 축은 assembly(W6-3)의 몫이다.
+FP_SHAPE = 0xF0C
+HIU_ABI_VERSION = 0xFFC
+FP_SHAPE_REF_P = 10          # E.1.3 FP_SHAPE 행의 RTL 사실 — 프로그램 슬롯 수
+FP_SHAPE_REF_STEPMAX = 32    # E.1.3 FP_SHAPE 행의 RTL 사실 — 슬롯당 step 수 상한
+FP_SHAPE_ENC_V1 = 1          # E.1.2 FP_SHAPE 행 — 부호화 번호 1 = v1.0 배치
+B_FP_PROG = 15               # FAULT_STATUS [15] — 0xF0C 쓰기는 그 원천이 아니다
+
+
+async def fp_shape_expect(dut):
+    """0xFFC 를 읽어 FP_SHAPE 기대값을 유도한다 (위 정본 문장 둘)."""
+    abi = await mmio_read(dut, HIU_ABI_VERSION)
+    if abi == 0:
+        return abi, 0
+    return abi, (FP_SHAPE_ENC_V1 << 24) | (FP_SHAPE_REF_STEPMAX << 9) | FP_SHAPE_REF_P
+
+
+async def read_counted(dut, addr, tail=4):
+    """정렬 읽기 하나를 버스 규약대로(ready 까지 붙듦) 제시하고 (붙든 사이클, rvalid 횟수, 값 목록).
+    잡혀 있는 동안의 응답도 센다 — 주소 기준 ready 의 「매 사이클 응답」을 놓치지 않게."""
+    dut.io_mmio_addr.value = addr
+    dut.io_mmio_rstrobe.value = 1
+    await settle(dut)
+    held, rv, vals = 0, 0, []
+    while int(dut.io_mmio_ready.value) == 0 and held < 64:
+        await step(dut)
+        held += 1
+        if int(dut.io_mmio_rvalid.value):
+            rv += 1
+            vals.append(int(dut.io_mmio_rdata.value))
+    await step(dut)                                  # 수락 엣지
+    dut.io_mmio_rstrobe.value = 0
+    for _ in range(tail):
+        await settle(dut)
+        if int(dut.io_mmio_rvalid.value):
+            rv += 1
+            vals.append(int(dut.io_mmio_rdata.value))
+        await step(dut)
+    return held, rv, vals
+
+
+async def write_now(dut, addr, data):
+    """기입 하나를 *지금* 제시한다 — ready 를 기다리지 않는다. 제시 사이클의 ready 를 돌려준다
+    (ready = 0 이면 그 기입은 수락되지 않은 채 철회된다 — 부르는 쪽이 정지를 결함으로 본다)."""
+    dut.io_mmio_addr.value = addr
+    dut.io_mmio_wdata.value = data
+    dut.io_mmio_wstrobe.value = 1
+    await settle(dut)
+    rdy = int(dut.io_mmio_ready.value)
+    await step(dut)
+    dut.io_mmio_wstrobe.value = 0
+    await step(dut)
+    return rdy
+
+
 @cocotb.test()
 async def fp_clear_window(dut):
     """선택자 표 초기화 소거(2^16 사이클) 중의 FP 구역 — D1 (b).
 
     버스 마스터 규약대로 스트로브를 ready 까지 붙든다. 주소 기준 ready(D1 이전)에서는 ①
     의 읽기가 잡힌 채 매 사이클 응답한다 — 음성 대조는 그 생성물 사본에서 ① 이 운다.
+
+    W6 보강 ④–⑥ (E.1 reset 값 규범 6항): 소거 중 `0xF0C` 읽기는 응답하고, `0xF0C` · `0xF08` 쓰기는
+    정지 없이 즉시 거절 + `[6]` 이다. 정지 · 흡수 · 응답 지연 변이는 이 행들만 잡는다 (W6-sim 변이 표).
     """
     await boot_hiu(dut)             # 소거를 기다리지 않는다 — 창 *안*에서 잰다
     st = await mmio_read(dut, FP_STATUS)
@@ -2135,6 +2204,34 @@ async def fp_clear_window(dut):
     assert await fault6(dut) == 1, "③ 0xF01 비정렬 쓰기에 [6] 이 서지 않았다"
     await clear_fault6(dut)
     assert int(dut.io_fault_fpCfgBadWrite.value) == 0
+    # ④–⑥ W6 — 0xF0C FP_SHAPE · 0xF08 FP_STATUS 의 소거 중 처분 (E.1 reset 값 규범 6항 · E.1.2 FP_SHAPE 행).
+    #   ④ 0xF0C 읽기: 기다리지 않는다 · rvalid 정확히 1회 · 값 = 판 값에서 유도한 기대(판 0 이면 0)
+    #   ⑤ 0xF0C 쓰기 · ⑥ 0xF08 쓰기: 제시 사이클에 ready = 1(정지 없음) · 거절 + [6] · fpCfgBadWrite 무관 ·
+    #      [15] 의 원천이 아니다 · 0xF0C 값 불변. 끝에서 loadReady = 0 을 다시 본다 — 행이 창 *안*이었다는 전건.
+    abi, want_shape = await fp_shape_expect(dut)
+    held, rv, vals = await read_counted(dut, FP_SHAPE)
+    assert held == 0, (f"④ 소거 중 0xF0C 읽기가 {held} 사이클 잡혔다 (그동안 rvalid {rv} 회) — "
+                       f"FP_SHAPE 읽기는 소거 중에도 응답한다 (E.1.2 FP_SHAPE 행)")
+    assert rv == 1 and vals == [want_shape], (
+        f"④ 소거 중 0xF0C rvalid {rv} 회 · 값 {[hex(x) for x in vals]} — 정확히 1회 · "
+        f"0x{want_shape:08X}(0xFFC = 0x{abi:08X} 에서 유도) 이어야 한다")
+    for tag, addr, data in (("⑤ 0xF0C FP_SHAPE", FP_SHAPE, 0xFFFF_FFFF),
+                            ("⑥ 0xF08 FP_STATUS", FP_STATUS, 0xFFFF_FFFF)):
+        if await fault6(dut):
+            await clear_fault6(dut)
+        rdy = await write_now(dut, addr, data)
+        assert rdy == 1, f"{tag}: 소거 중 쓰기가 정지했다(ready = 0) — 정렬 0xF00 · 0xF04 쓰기만 기다린다"
+        f = await mmio_read(dut, FAULT_STATUS)
+        assert bit(f, B_CFG_BADWRITE) == 1, f"{tag}: 소거 중 쓰기에 [6] 이 서지 않았다 — 조용한 흡수"
+        assert bit(f, B_FP_PROG) == 0, f"{tag}: 쓰기가 [15] 를 세웠다 — RO 쓰기는 [15] 의 원천이 아니다"
+        assert int(dut.io_fault_fpCfgBadWrite.value) == 0, f"{tag}: 쓰기가 fpCfgBadWrite(0xF04 거절선)를 세웠다"
+        await clear_fault6(dut)
+    held, rv, vals = await read_counted(dut, FP_SHAPE)
+    assert (held, rv, vals) == (0, 1, [want_shape]), (
+        f"⑤ 뒤 0xF0C 재읽기 (붙듦, rvalid, 값) = ({held}, {rv}, {[hex(x) for x in vals]}) — 거절된 쓰기는 값을 움직이지 않는다")
+    st = await mmio_read(dut, FP_STATUS)
+    assert st & 1 == 0, (f"④–⑥ 뒤 FP_STATUS [0] loadReady = 1 (0x{st:08X}) — 행이 소거 창 밖으로 흘렀다 "
+                         f"(공허한 행)")
     # ② [30:24] ≠ 0 FP_BIND 를 소거 중에 제시 → loadReady 전까지 ready = 0 · 어느 sticky 도 안 선다 ·
     #   수락 뒤 fpCfgBadWrite = 1 · 0xF80[6] = 1
     dut.io_mmio_addr.value = FP_BIND
@@ -3846,3 +3943,214 @@ async def reset_values_norm(dut):
     forget_bound()
     t.check("reset 값")
     dut._log.info(f"reset 값: 전원 reset sweep {n1} · 실행 중 reset sweep {n2} 엣지 · 워드 9 · 스테이징 · 소유권 · 정지")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# W6 — 0xF0C FP_SHAPE (정상 상태) · OWN_SET 거절과 FAULT_STATUS [7] (E.7 6 · 7항)
+# ═══════════════════════════════════════════════════════════════════════════
+
+FP_RESV_NEIGHBORS = tuple(range(0xF10, 0xF40, 4))   # 0xF00 구역의 표 밖 정렬 워드 열둘 전부(0xF10–0xF3C) — 관대(쓰기 무시 · 읽기 0). 넷만 표본하던 판은 0xF14 별칭 변이(V2)를 놓쳤다 (W6 검증 OBS-1)
+
+
+@cocotb.test()
+async def fp_shape_word(dut):
+    """W6-5 — `0xF0C` FP_SHAPE, 선택자 표 소거가 끝난 정상 상태 (E.1.2 FP_SHAPE 행 · E.1.3).
+
+    재는 것: ① 읽기 값 = 0xFFC 에서 유도한 기대(판 0 이면 워드 전체 0) · rvalid 정확히 1회 ·
+    재읽기 불변 · 읽기는 fault 없음 ② RO 쓰기 셋(전폭 1 · 판 값 커밋 뒤의 참조 값 0x0100_400A · 0)이
+    값과 무관하게 거절 + `[6]` · `[15]` 아님 · 값 불변 · FP_STATUS 불변 ③ 비정렬 `0xF0D`–`0xF0F` 쓰기는
+    거절 + `[6]` · 비정렬 읽기는 0 · fault 없음 ④ 디코드가 `0xF0C` *하나*다 — 구역의 표 밖 정렬 워드
+    (`0xF10`–`0xF3C` 정렬 워드 열둘 전부)는 여전히 관대다(쓰기 무시 · 읽기 0 · fault 없음).
+
+    재지 않는 것: 판 0 동안 rdata 의 원천(배선 상수 0 대 예약 읽기 0 — 값이 같다) · 비0 판 값의
+    필드(판 값 커밋 전이라 이 생성물에서는 0 이다 — 판 값 커밋 날 ① 의 기대가 0xFFC 를 따라 바뀐다).
+    HEAD 생성물에서는 `0xF0C` 가 표 밖 정렬 워드라 ② 의 첫 쓰기가 [6] 없이 흡수돼 운다.
+    """
+    await boot(dut)
+    n = 0
+    while (await mmio_read(dut, FP_STATUS)) & 1 == 0:      # 정상 상태 전건 — 두 소거 길이는 우연히 같을 뿐
+        await step(dut, 64)
+        n += 1
+        if n > (INIT_SWEEP >> 6) + 4:
+            raise AssertionError("fp_shape_word: 선택자 표 소거가 끝나지 않는다 — 미완료는 통과가 아니다")
+    await clear_all_faults(dut)
+    if await fault6(dut):
+        await clear_fault6(dut)
+    abi, want = await fp_shape_expect(dut)
+    st0 = await mmio_read(dut, FP_STATUS)
+    rows, exp = [], []
+    # ①
+    for label in ("① 읽기", "① 재읽기"):
+        held, rv, vals = await read_counted(dut, FP_SHAPE)
+        rows.append((label, held, rv, tuple(vals), await fault6(dut)))
+        exp.append((label, 0, 1, (want,), 0))
+    # ②
+    for what, data in (("전폭 1", 0xFFFF_FFFF), ("참조 값 0x0100_400A", 0x0100_400A), ("0", 0)):
+        if await fault6(dut):
+            await clear_fault6(dut)
+        await mmio_write(dut, FP_SHAPE, data)
+        f = await mmio_read(dut, FAULT_STATUS)
+        f6, f15 = bit(f, B_CFG_BADWRITE), bit(f, B_FP_PROG)
+        if f6:
+            await clear_fault6(dut)
+        held, rv, vals = await read_counted(dut, FP_SHAPE)
+        st = await mmio_read(dut, FP_STATUS)
+        label = f"② 쓰기 {what} → ([6], [15], 재읽기, FP_STATUS 불변)"
+        rows.append((label, f6, f15, tuple(vals), int(st == st0)))
+        exp.append((label, 1, 0, (want,), 1))
+    # ③
+    for a in (FP_SHAPE + 1, FP_SHAPE + 2, FP_SHAPE + 3):
+        label = f"③ 비정렬 0x{a:03X} 쓰기 → ([6], 0xF0C 재읽기)"
+        f6 = await write_f6(dut, a, 0xFFFF_FFFF)
+        rows.append((label, f6, await mmio_read(dut, FP_SHAPE)))
+        exp.append((label, 1, want))
+    label = "③ 비정렬 0xF0D 읽기 → (값, [6])"
+    rows.append((label, await mmio_read(dut, FP_SHAPE + 1), await fault6(dut)))
+    exp.append((label, 0, 0))
+    # ④
+    for a in FP_RESV_NEIGHBORS:
+        label = f"④ 표 밖 0x{a:03X} → (쓰기 [6], 읽기 값, 읽기 [6])"
+        f6 = await write_f6(dut, a, 0xFFFF_FFFF)
+        v = await mmio_read(dut, a)
+        rows.append((label, f6, v, await fault6(dut)))
+        exp.append((label, 0, 0, 0))
+    assert rows == exp, (
+        f"0xF0C FP_SHAPE 행 표가 정본과 다르다 (0xFFC = 0x{abi:08X} → 기대 0x{want:08X}):\n"
+        + table_diff(rows, exp))
+    dut._log.info(f"FP_SHAPE 0x{want:08X} (0xFFC 0x{abi:08X}) — 읽기 · RO 쓰기 셋 · 비정렬 · 표 밖 이웃 "
+                  f"{len(rows)} 행이 정본과 등가")
+
+
+OWN_IDX = 0x200
+OWN_STATUS = 0x204
+OWN_CLR = 0x20C
+B_OWN_COLLIDE = 7            # FAULT_STATUS [7] — E.7 6항의 OWN_SET 거절이 유일한 원천 (E.1.2 FAULT_STATUS 행)
+# 직접 사상 소유권 표에서 같은 칸을 다투는 프레임 둘 — 칸 = 프레임 하위 6b (참조 형상 · RTL 사실,
+# OwnershipTable ownEntries = 64). 화이트박스는 *자극을 거절이 일어나는 쪽으로 보내는* 데만 쓴다 —
+# 정본은 어느 프레임이 거절되는가를 걸지 않는다 —
+#   e-defined.typ:1387 「어느 프레임이 거절되는가는 구현의 형상이 정하고 호스트 계약이 아니다」
+# 기대값은 「거절이면 무효과 · [7]」이고, 거절이 실제로
+# 일어났는가는 시험이 전건으로 단언한다(형상이 바뀌어 거절이 안 나면 크게 운다).
+OWN_FA = 0x0001_0005
+OWN_FB = 0x0002_0005         # OWN_FA 와 같은 칸 · 다른 태그
+OWN_FC = 0x0001_0006         # 다른 칸
+
+
+async def own_status(dut, f):
+    """OWN_IDX ← f, OWN_STATUS 읽기. `[31:1]` 은 RO 예약 0 이라 워드 전체를 돌려준다."""
+    await mmio_write(dut, OWN_IDX, f)
+    return await mmio_read(dut, OWN_STATUS)
+
+
+async def own_transition_then_status(dut, waddr, f):
+    """E.7 7항의 장치 포트 순서 — OWN_IDX ← f 를 먼저 두고, 전이 기입(waddr ← f)의 수락 엣지 *바로 다음
+    사이클*에 OWN_STATUS 읽기를 제시한다(사이에 다른 전이 · OWN_IDX 기입 없음). 그 읽기의 워드를 돌려준다."""
+    await mmio_write(dut, OWN_IDX, f)
+    dut.io_mmio_addr.value = waddr
+    dut.io_mmio_wdata.value = f
+    dut.io_mmio_wstrobe.value = 1
+    await settle(dut)
+    for _ in range(8):
+        if int(dut.io_mmio_ready.value):
+            break
+        await step(dut)
+    else:
+        raise AssertionError(f"own_transition_then_status(0x{waddr:03X}): ready 가 8엣지 안에 안 섰다")
+    await step(dut)                                  # 전이 기입 수락 엣지
+    dut.io_mmio_wstrobe.value = 0
+    dut.io_mmio_addr.value = OWN_STATUS
+    dut.io_mmio_rstrobe.value = 1
+    await settle(dut)
+    for _ in range(8):
+        if int(dut.io_mmio_ready.value):
+            break
+        await step(dut)
+    else:
+        raise AssertionError("own_transition_then_status: OWN_STATUS 읽기 ready 가 8엣지 안에 안 섰다")
+    await step(dut)                                  # 읽기 수락 엣지
+    dut.io_mmio_rstrobe.value = 0
+    assert int(dut.io_mmio_rvalid.value) == 1, "OWN_STATUS 읽기에 rvalid 가 없다"
+    v = int(dut.io_mmio_rdata.value)
+    await step(dut)
+    return v
+
+
+@cocotb.test()
+async def own_set_collide(dut):
+    """W6-5 — OWN_SET 의 형상 · 점유 거절과 FAULT_STATUS `[7]` (E.7 6 · 7항).
+
+      e-defined.typ:1387 「거절은 *무효과*다 — 어느 페이지의 상태도 바뀌지 않고, 대상은 호스트 소유로 남으며, 아무것도 축출하지 않는다」
+      e-defined.typ:1387 「거절은 loud sticky fault FAULT_STATUS `[7]` 을 세운다」
+      e-defined.typ:1387 「장치 소유 페이지가 하나도 없을 때의 OWN_SET 에는 형상 · 점유에 따른 거절이 없다」
+      e-defined.typ:1387 「*이미 장치 소유인 페이지*의 OWN_SET 은 무연산이다 (거절이 아니다)」
+      e-defined.typ:1387 「장치 소유인 페이지면 회수하고, 아니면 무연산이다」
+      e-defined.typ:527 「`[7]` 은 E.7 6항의 OWN_SET 거절 *하나*」 — 상승 건전성: 커밋 · 무연산 · OWN_CLR 은 [7] 을 세우지 않는다
+      e-defined.typ:1388 「그 전이 기입의 결과 — 커밋이든 거절이든 — 를 본다」 — 전이 대상의 OWN_STATUS 는 수락 바로 다음 사이클의 읽기
+
+    행 표의 열: (전이 대상 OWN_STATUS(7항 순서 읽기), [7], [6], io_fault_ownCollide, FA · FB · FC 의 OWN_STATUS).
+    끝에 승인 경로로 무효과를 한 번 더 본다 — 거절된 프레임에 닿는 자격 허용 접근은 `[19]`(비소유)이고
+    커밋된 프레임은 승인된다.
+
+    재지 않는 것: 연관 형상의 집합 가득 참(DUT 는 직접 사상 하나) · 호스트 버스 어댑터의 끝-끝 순서(정본 경계
+    밖) · 같은 사이클 해제와 거절(assembly · StickyFault 공용 규약 몫).
+    """
+    await boot_hiu(dut)
+    rows, exp = [], []
+
+    async def row(label, target_st, want):
+        f = await mmio_read(dut, FAULT_STATUS)
+        port = int(dut.io_fault_ownCollide.value)
+        sts = []
+        for fr in (OWN_FA, OWN_FB, OWN_FC):
+            sts.append(await own_status(dut, fr))
+        rows.append((label, target_st, bit(f, B_OWN_COLLIDE), bit(f, B_CFG_BADWRITE), port, *sts))
+        exp.append((label, *want))
+
+    async def trans(label, waddr, fr, want):
+        st = await own_transition_then_status(dut, waddr, fr)
+        await row(label, st, want)
+
+    await row("reset 직후 — 전 페이지 호스트 소유 · [7] = 0", None, (None, 0, 0, 0, 0, 0, 0))
+    await trans("하한: 빈 표의 첫 OWN_SET FA → 커밋", OWN_SET, OWN_FA, (1, 0, 0, 0, 1, 0, 0))
+    await trans("OWN_SET FB (같은 칸 · 다른 태그) → 거절: 무효과 · [7]", OWN_SET, OWN_FB, (0, 1, 0, 1, 1, 0, 0))
+    await step(dut, 16)
+    await mmio_read(dut, FAULT_STATUS)
+    await row("[7] sticky — 16 사이클 · 재읽기 뒤에도", None, (None, 1, 0, 1, 1, 0, 0))
+    await trans("[7] = 1 인 채 OWN_SET FC (다른 칸) → 커밋", OWN_SET, OWN_FC, (1, 1, 0, 1, 1, 0, 1))
+    await mmio_write(dut, FAULT_CLEAR, 1 << B_OWN_COLLIDE)
+    await row("0xF84 ← [7] — 해제 · 소유 상태 불변", None, (None, 0, 0, 0, 1, 0, 1))
+    await trans("OWN_SET FA (이미 장치 소유) → 무연산 · [7] 없음", OWN_SET, OWN_FA, (1, 0, 0, 0, 1, 0, 1))
+    await trans("OWN_CLR FB (호스트 소유 · 칸은 FA 가 차지) → 무연산 · FA 불변", OWN_CLR, OWN_FB, (0, 0, 0, 0, 1, 0, 1))
+    await trans("OWN_CLR FA → 회수 · [7] 없음", OWN_CLR, OWN_FA, (0, 0, 0, 0, 0, 0, 1))
+    await trans("OWN_CLR FA (이미 호스트 소유) → 무연산 · [7] 없음", OWN_CLR, OWN_FA, (0, 0, 0, 0, 0, 0, 1))
+    await trans("OWN_SET FB (칸이 비었다) → 커밋", OWN_SET, OWN_FB, (1, 0, 0, 0, 0, 1, 1))
+    await trans("OWN_SET FA (칸을 FB 가 차지) → 거절: 무효과 · [7]", OWN_SET, OWN_FA, (0, 1, 0, 1, 0, 1, 1))
+    await mmio_write(dut, FAULT_CLEAR, 1 << B_OWN_COLLIDE)
+    await trans("OWN_CLR FC → 회수 (FB 는 남는다)", OWN_CLR, OWN_FC, (0, 0, 0, 0, 0, 1, 0))
+    await trans("OWN_CLR FB → 회수 — 표가 다시 빈다", OWN_CLR, OWN_FB, (0, 0, 0, 0, 0, 0, 0))
+    await trans("하한 (다시): 빈 표의 OWN_SET FA → 커밋", OWN_SET, OWN_FA, (1, 0, 0, 0, 1, 0, 0))
+    await trans("OWN_SET FB → 거절 (다시)", OWN_SET, OWN_FB, (0, 1, 0, 1, 1, 0, 0))
+
+    # 전건 — 거절 행이 실제로 거절이었다 (형상이 바뀌면 여기서 크게 운다)
+    rej = [r for r in rows if "→ 거절" in r[0]]
+    assert len(rej) == 3 and all(r[1] == 0 for r in rej), (
+        "거절 행의 OWN_SET 이 커밋됐다(대상 OWN_STATUS = 1) — 같은 칸 가정이 깨져 거절 행이 공허하다: "
+        + repr([(r[0], r[1]) for r in rej]))
+    assert rows == exp, (
+        "OWN_SET 거절 · [7] 행 표가 정본과 다르다 — 열은 (대상 OWN_STATUS(7항 순서), [7], [6], ownCollide, "
+        "FA, FB, FC):\n" + table_diff(rows, exp))
+
+    # 승인 경로의 무효과 — 지금 FA 소유 · FB 거절(호스트 소유). 자격 허용 읽기 둘.
+    await mmio_write(dut, FAULT_CLEAR, 1 << B_OWN_COLLIDE)
+    got = []
+    for name, fr, idx, tag in (("FA (커밋)", OWN_FA, 1, 0x0E0001), ("FB (거절)", OWN_FB, 2, 0x0E0002)):
+        await clear_hiu_report(dut, name)
+        vpn = vpn_of(tag, idx)
+        await commit_entry(dut, 0, vpn, fr, r=1)
+        res = await hiu_lookup(dut, 0, vpn)
+        b4, b19, b6 = await hiu_report(dut)
+        got.append((name, res["rsp"], res["granted"], b4, b19, b6))
+    want = [("FA (커밋)", 1, 1, 0, 0, 0), ("FB (거절)", 1, 0, 0, 1, 0)]
+    assert got == want, ("승인 경로 — 거절된 OWN_SET 의 프레임이 장치 소유로 승인됐거나 커밋이 승인되지 "
+                         "않았다 — 열은 (응답, 승인, [4], [19], [6]):\n" + table_diff(got, want))
+    dut._log.info(f"OWN_SET 거절 · [7]: {len(rows)} 행 + 승인 경로 2 행이 정본과 등가")

@@ -2,18 +2,31 @@
   "anchors": [
     "Platform.state_machine_kept",
     "Platform.owner_check",
-    "MmioPage.unaligned_rejected"
+    "MmioPage.unaligned_rejected",
+    "Platform.set_reject_inert",
+    "Platform.set_reject_loud",
+    "Platform.set_reject_floor",
+    "Platform.set_owned_noop",
+    "Platform.clr_no_reject",
+    "Platform.seven_reject_only"
   ],
-  "at": "2026-10-15T09:08:29Z",
+  "at": "2026-10-19T09:59:37Z",
   "cover": {
-    "reached": 14,
+    "reached": 21,
     "reached_names": [
       "OwnershipTable_formal.u_own_props.w10_noop_set",
       "OwnershipTable_formal.u_own_props.w11_noop_clr",
       "OwnershipTable_formal.u_own_props.w12_wo_read",
       "OwnershipTable_formal.u_own_props.w13_unal_wr",
       "OwnershipTable_formal.u_own_props.w14_unal_rd",
+      "OwnershipTable_formal.u_own_props.w15_col_rise",
+      "OwnershipTable_formal.u_own_props.w16_floor_set",
+      "OwnershipTable_formal.u_own_props.w17_clr_other",
+      "OwnershipTable_formal.u_own_props.w18_noop_keep",
+      "OwnershipTable_formal.u_own_props.w19_rd_commit",
       "OwnershipTable_formal.u_own_props.w1_handoff",
+      "OwnershipTable_formal.u_own_props.w20_rd_reject",
+      "OwnershipTable_formal.u_own_props.w21_rej_keep",
       "OwnershipTable_formal.u_own_props.w2_reclaim",
       "OwnershipTable_formal.u_own_props.w3_owned",
       "OwnershipTable_formal.u_own_props.w4_owned_high",
@@ -28,11 +41,11 @@
   },
   "inputs": {
     "rtl/generated/OwnershipTable.sv": "1ccc3d356a6fed3b6e5cef987d72e78873e00054209113212f59e2488c4d917c",
-    "rtl/sv/assert/OwnershipTable_props.sv": "6aef2088c20b333c533f7b8f8aac3af9a9862116398e0e7f81a1409018f7c68f"
+    "rtl/sv/assert/OwnershipTable_props.sv": "55555cf3077411590ad401c3427fb360a8b606770ce3ba69a9e06356136c74ed"
   },
   "per_task": {
     "bmc": {
-      "assert": 22,
+      "assert": 27,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -42,11 +55,11 @@
       "assert": 0,
       "const_a": 0,
       "const_en0": 0,
-      "cover": 14,
+      "cover": 21,
       "mode": "cover"
     },
     "prove": {
-      "assert": 22,
+      "assert": 27,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -54,7 +67,7 @@
     }
   },
   "sby": "rtl/formal/sby/OwnershipTable/ownershiptable.sby",
-  "sby_sha256": "7a68a14b8bf2954eac6855630eb98bad6fd2b2cf802fa9f4f6389d98e8938bad",
+  "sby_sha256": "5aa0a805d65cd16f312db2178237f1b04684d218e0b13a5c54b801213ea7e6ba",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

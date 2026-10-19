@@ -134,6 +134,66 @@
 \*   · 거부된 쓰기의 미반영은 판정(obsDec)과 같은 AccFault 로 구조적이다 — 쓰기 경로만 따로
 \*     승인을 무시하는 변이는 RTL 쪽(hiumask granted ⇒ 값 · 쓰기)의 몫이다.
 \*
+\* ## OWN_SET 의 거절 — FAULT_STATUS [7] (3.10 v1.0 묶음 · W6, 2026-10-18)
+\*
+\* 정본 (좌표 뒤 「」 는 그 줄의 축자 — lint_section_refs 축 1 이 대조한다)
+\*   e-defined.typ:1387 「장치는 OWN_SET 을 *거절할 수 있다*」
+\*   e-defined.typ:1387 「어느 프레임이 거절되는가는 구현의 형상이 정하고 호스트 계약이 아니다」
+\*   e-defined.typ:1387 「거절은 *무효과*다」 · 「아무것도 축출하지 않는다」 · 「축출은 암묵 전이다」
+\*   e-defined.typ:1387 「거절은 loud sticky fault FAULT_STATUS `[7]` 을 세운다」
+\*   e-defined.typ:1387 「장치 소유 페이지가 하나도 없을 때의 OWN_SET 에는 형상 · 점유에 따른 거절이 없다」
+\*   e-defined.typ:1387 「*이미 장치 소유인 페이지*의 OWN_SET 은 무연산이다」
+\*   e-defined.typ:1387 「*OWN_CLR 은 형상 · 점유로 거절되지 않는다*」
+\*   e-defined.typ:527 「`[7]` 은 E.7 6항의 OWN_SET 거절 *하나*」 — [7] 의 유일한 원천.
+\*
+\* 앞판의 Handoff 는 용량이 없어 이양을 *늘* 커밋했다 — 정본이 허락한 거절이 모델에 없었고,
+\* 그래서 「거절은 무효과」「[7] 은 거절에서만」 을 걸 자리도 없었다. 이 판은 거절을 형상
+\* 중립의 *비결정 분기* OwnSetReject 로 들인다: 정본이 거절을 형상에 맡기므로(「호스트 계약이
+\* 아니다」) 모델은 「언제 거절하는가」 를 정하지 않고 *거절이 허락되는 울타리*(하한 · 이미 소유
+\* 무연산)와 *거절의 처분*(무효과 · 축출 없음 · [7])만 건다. 어떤 형상이든 이 울타리 안의
+\* 거절은 전부 탐색된다. 상수 SetShape = "direct" 는 HEAD RTL 의 형상(직접 사상 — 같은 색인 ·
+\* 다른 태그면 거절, 아니면 커밋)을 결정적으로 고정한 대비 — 울타리가 RTL 을 배제하지 않음을
+\* 보인다 (페이지 셋 · 둘이 한 칸 · 하나가 혼자 — 충돌 커밋 불가 · 비충돌 공존 둘 다 도달).
+\*
+\* 가드 여섯 — RTL 자리는 OwnershipTable.scala (GUARD-MAP 은 그 파일 끝)
+\*   set_reject_inert   거절은 무효과 — 소유 · 배후 저장 · 사본이 그대로다. 지우면 거절이
+\*                      대상을 앉히고 다른 장치 소유 페이지를 축출한다(직접 사상 덮어쓰기)
+\*                      → Prop_SetRejectInert.
+\*   set_reject_loud    거절은 [7] 을 세운다. 지우면 조용한 거절 → Prop_SetRejectLoud.
+\*   set_reject_floor   하한 — 다른 장치 소유 페이지가 없으면 거절이 허락되지 않는다. 지우면
+\*                      빈 표의 OWN_SET 이 거절된다 → Prop_SetRejectFloor.
+\*   set_owned_noop     이미 장치 소유인 페이지의 OWN_SET 은 무연산(거절 아님). 지우면 그 기입이
+\*                      거절 + [7] 이 된다 → Prop_OwnedSetNoop.
+\*   clr_no_reject      OWN_CLR 에는 거절 분기가 없다. 지우면 OWN_CLR 이 거절 + [7] 이 된다
+\*                      → Prop_ClrNoReject.
+\*   seven_reject_only  [7] 은 거절에서만 선다 — 커밋 · 무연산은 [7] 을 세우지 않는다(상승 건전성).
+\*                      지우면 커밋된 OWN_SET 이 [7] 을 세운다 → Prop_SevenRejectOnly.
+\* 고정 속성 Prop_NoImplicitTransition — 소유가 바뀌는 페이지는 그 스텝의 *커밋된* 전이 기입의
+\*   대상 하나뿐이다(축출 · 암묵 전이 없음). 상주 음성 = set_reject_inert 삭제의 둘째 run.
+\* 대비 SetShape = "direct" 의 Inv_SlotExclusive — 한 칸에 장치 소유 페이지는 하나.
+\* 측정 범위 (공허 칸 — 결함 아님): 거절은 하한 울타리 때문에 페이지 1 판(Platform_base)에서
+\*   한 번도 열리지 않는다 — 그 판의 Prop_SetRejectInert · Prop_SetRejectLoud · Prop_SetRejectFloor 는
+\*   전건 공허다. 거절 축은 페이지 ≥ 2 판(shapeA · shapeB · direct)이 재고, 증인 Witness_NoSetReject
+\*   (페이지 2)가 그 도달을 상주로 보인다. Prop_SevenRejectOnly 의 전건(거절 밖의 [7])은 좋은
+\*   모델 어디서도 도달하지 않는다 — 상승 건전성이므로 당연하고, 반증력은 seven_reject_only 삭제
+\*   run 이 진다. Prop_OwnedSetNoop · Prop_ClrNoReject 의 전건은 base 에서도 도달한다(Handoff 무연산 ·
+\*   회수). HEAD 의미론(「늘 커밋」 — OwnSetReject 를 Next 에서 뺀 판) 음성은 모델 변이로 쟀다:
+\*   증인 NoSetReject 두 판과 거절 분기에 기대는 삭제 다섯이 그 판에서 전부 반례 없이 통과한다.
+\*
+\* 이 판이 재지 않는 것 (닫힌 목록 — 위 목록에 더한다)
+\*   · E.7 7항 읽기 순서 — 모델의 스텝은 원자적이라 전이 기입 *뒤의* 어느 관측도 그 결과를
+\*     본다. 이것은 모델의 구조이지 측정이 아니다. 알맹이(읽기는 수락 사이클의 표 스냅숏 ·
+\*     전이는 수락 다음 에지부터 보인다)는 사이클 축이라 ownershiptable.sby 의 몫이다.
+\*   · 어느 형상이 *언제* 거절하는가 · 거절의 완전성(거절해야 할 때 거절하는가) — 정본이
+\*     호스트 계약 밖으로 둔다. 직접 사상 64 칸의 완전성은 ownershiptable.sby 가 잰다.
+\*     거절의 정의 자체 —
+\*       e-defined.typ:1387 「그 프레임이 장치 소유로 앉을 수 있는 저장 칸이 전부 *다른* 장치 소유 페이지로 차 있는 경우다」
+\*     — 는 저장 칸을 가진 형상의 문장이라 "any" 는 그 형상 중립 그림자(하한 울타리 「다른 장치
+\*     소유 페이지 ∃」 — set_owned_noop 울타리와 합치면 정본 하한 「하나도 없을 때」 와 동치)만
+\*     싣는다. 저장 칸 조건 자체는 대비 "direct" 의 Collide 에만 있다.
+\*   · [7] 의 sticky · W1C · 발화 우선 — own7 은 그 스텝의 발화 펄스다.
+\*   · sub-word OWN_SET/OWN_CLR 의 거절 + [6] — MmioPage.unaligned_rejected 의 몫이다.
+\*
 EXTENDS Naturals, FiniteSets
 
 CONSTANTS
@@ -142,10 +202,13 @@ CONSTANTS
     NoMap,        \* 「사상 없음」 표식 (모델 값)
     NoCache,      \* 「지역 사본 없음」 표식 (모델 값)
     NoVal,        \* 「관측값 없음」 표식 (모델 값)
-    DisabledGuards
+    DisabledGuards,
+    SetShape      \* OWN_SET 거절의 형상 — "any"(울타리 안 비결정 · 좋은 모델) | "direct"(HEAD RTL 직접 사상 대비)
 
 AllGuards == {"xlate_local", "flush_on_handoff", "state_machine_kept", "owner_check",
-              "entitle_gates_value", "perm_entitle_only", "entitle_first", "own_reported"}
+              "entitle_gates_value", "perm_entitle_only", "entitle_first", "own_reported",
+              "set_reject_inert", "set_reject_loud", "set_reject_floor", "set_owned_noop",
+              "clr_no_reject", "seven_reject_only"}
 On(g) == g \notin DisabledGuards
 
 Worlds == {"plain", "rich"}
@@ -157,6 +220,7 @@ FaultBits == {4, 19}          \* FAULT_STATUS 의 승인 거부 보고 비트
 
 \* 이 모델의 전제. 두 세계가 *같지 않아야* 비교가 뜻을 갖는다.
 ASSUME Cardinality(Pages) >= 1 /\ Cardinality(Vaddrs) >= 1
+ASSUME SetShape \in {"any", "direct"}
 
 VARIABLES
     xlate,     \* [Worlds -> [Vaddrs -> Pages \cup {NoMap}]]  장치 내부 변환표
@@ -172,10 +236,14 @@ VARIABLES
     obsAcc,    \* Acc \cup {"none"}    직전 접근의 종류 (두 세계 공통 — lockstep)
     obsEnt,    \* [Worlds -> BOOLEAN]  직전 접근을 권한 비트가 허용했는가
     obsFill,   \* [Worlds -> BOOLEAN]  직전 접근이 거부 채움(perm = {}) 사상을 지났는가
-    obsBits    \* [Worlds -> SUBSET FaultBits]  직전 접근이 세운 보고 비트 (발화 펄스)
+    obsBits,   \* [Worlds -> SUBSET FaultBits]  직전 접근이 세운 보고 비트 (발화 펄스)
+    ownOp,     \* {"none", "set", "clr"}  직전 스텝의 소유권 전이 기입 (W6 — 두 세계 공통)
+    ownRes,    \* {"none", "commit", "noop", "reject"}  그 기입의 처분
+    ownPg,     \* Pages \cup {NoMap}  그 기입의 대상 (NoMap = 전이 기입 없음)
+    own7       \* [Worlds -> BOOLEAN]  그 스텝의 FAULT_STATUS [7] 발화 펄스
 
 vars == <<xlate, perm, owner, mem, cache, obsKind, obsVal, obsOwned,
-          obsWho, obsDec, obsAcc, obsEnt, obsFill, obsBits>>
+          obsWho, obsDec, obsAcc, obsEnt, obsFill, obsBits, ownOp, ownRes, ownPg, own7>>
 
 TypeOK ==
     /\ xlate \in [Worlds -> [Vaddrs -> Pages \cup {NoMap}]]
@@ -192,6 +260,10 @@ TypeOK ==
     /\ obsEnt \in [Worlds -> BOOLEAN]
     /\ obsFill \in [Worlds -> BOOLEAN]
     /\ obsBits \in [Worlds -> SUBSET FaultBits]
+    /\ ownOp \in {"none", "set", "clr"}
+    /\ ownRes \in {"none", "commit", "noop", "reject"}
+    /\ ownPg \in Pages \cup {NoMap}
+    /\ own7 \in [Worlds -> BOOLEAN]
 
 (***************************************************************************)
 (* 소유권 강제.                                                            *)
@@ -262,6 +334,11 @@ ClearObs ==
     /\ obsFill'  = [w \in Worlds |-> FALSE]
     /\ obsBits'  = [w \in Worlds |-> {}]
 
+\* 소유권 전이 기입이 없는 스텝 — 전이 관측 펄스를 내린다 (W6).
+OwnIdle ==
+    /\ ownOp' = "none" /\ ownRes' = "none" /\ ownPg' = NoMap
+    /\ own7' = [w \in Worlds |-> FALSE]
+
 Init ==
     /\ xlate = [w \in Worlds |-> [va \in Vaddrs |-> NoMap]]
     /\ perm = [w \in Worlds |-> [va \in Vaddrs |-> {}]]
@@ -277,6 +354,8 @@ Init ==
     /\ obsEnt = [w \in Worlds |-> TRUE]
     /\ obsFill = [w \in Worlds |-> FALSE]
     /\ obsBits = [w \in Worlds |-> {}]
+    /\ ownOp = "none" /\ ownRes = "none" /\ ownPg = NoMap
+    /\ own7 = [w \in Worlds |-> FALSE]
 
 (***************************************************************************)
 (* 변환 항목 기입 — 호스트가 구성 표면으로 기입한다 (§3.3).                *)
@@ -286,7 +365,7 @@ Init ==
 MapVa(va, pg, ps) ==
     /\ xlate' = [w \in Worlds |-> [xlate[w] EXCEPT ![va] = pg]]
     /\ perm' = [w \in Worlds |-> [perm[w] EXCEPT ![va] = ps]]
-    /\ ClearObs
+    /\ ClearObs /\ OwnIdle
     /\ UNCHANGED <<owner, mem, cache>>
 
 (***************************************************************************)
@@ -301,7 +380,7 @@ HostFill(va, pg, ps) ==
     /\ xlate["rich"][va] = NoMap
     /\ xlate' = [xlate EXCEPT !["rich"] = [@ EXCEPT ![va] = pg]]
     /\ perm' = [perm EXCEPT !["rich"] = [@ EXCEPT ![va] = ps]]
-    /\ ClearObs
+    /\ ClearObs /\ OwnIdle
     /\ UNCHANGED <<owner, mem, cache>>
 
 (***************************************************************************)
@@ -324,6 +403,7 @@ Write(a, va, v) ==
     /\ obsKind' = [w \in Worlds |-> "none"]
     /\ obsVal'  = [w \in Worlds |-> NoVal]
     /\ Observe(a, va, "w")
+    /\ OwnIdle
     /\ UNCHANGED <<xlate, perm, owner>>
 
 (***************************************************************************)
@@ -338,7 +418,13 @@ Read(a, va) ==
                            THEN cache[w][a][xlate[w][va]]
                            ELSE mem[w][xlate[w][va]]]
     /\ Observe(a, va, "r")
+    /\ OwnIdle
     /\ UNCHANGED <<xlate, perm, owner, mem, cache>>
+
+\* 대비 SetShape = "direct" 의 칸 — 페이지 하나만 혼자, 나머지는 한 칸을 나눈다 (같은 색인 · 다른 태그).
+SoloPg == CHOOSE p \in Pages : TRUE
+Slot(pg) == IF pg = SoloPg THEN 1 ELSE 0
+Collide(pg) == \E q \in Pages \ {pg} : owner["plain"][q] = "dev" /\ Slot(q) = Slot(pg)
 
 (***************************************************************************)
 (* 소유권 이양 — 구성 표면의 명시적 쓰기로만 (§3.4.1 2번). 암묵 전이 없음. *)
@@ -352,6 +438,7 @@ Read(a, va) ==
 (***************************************************************************)
 Handoff(frm, to, pg) ==
     /\ frm # to
+    /\ ~(to = "dev" /\ SetShape = "direct" /\ Collide(pg))   \* 직접 사상 대비: 충돌 이양은 커밋할 수 없다
     /\ owner' = [w \in Worlds |->
                    IF owner[w][pg] = frm THEN [owner[w] EXCEPT ![pg] = to]
                    ELSE owner[w]]
@@ -367,7 +454,44 @@ Handoff(frm, to, pg) ==
                      THEN [cache[w] EXCEPT ![frm] = [@ EXCEPT ![pg] = NoCache]]
                      ELSE cache[w]]
     /\ ClearObs
+    /\ ownOp' = (IF to = "dev" THEN "set" ELSE "clr")
+    /\ ownRes' = (IF owner["plain"][pg] = frm THEN "commit" ELSE "noop")
+    /\ ownPg' = pg
+    \* seven_reject_only — [7] 은 거절에서만. 지운 판: 커밋된 OWN_SET 이 [7] 을 세운다.
+    /\ own7' = [w \in Worlds |-> ~On("seven_reject_only") /\ to = "dev" /\ owner[w][pg] = frm]
     /\ UNCHANGED <<xlate, perm>>
+
+(***************************************************************************)
+(* OWN_SET 의 거절 (W6 — 머리 「OWN_SET 의 거절」). 형상 중립 비결정 분기.  *)
+(* 두 세계에 같이 든다 (lockstep — 거절은 장치의 성질이지 플랫폼의 성질이  *)
+(* 아니다).                                                                *)
+(***************************************************************************)
+
+\* 거절이 허락되는 울타리 — 가드 의존. "direct" 는 정확히 충돌일 때만.
+SetRejectable(pg) ==
+    /\ (SetShape = "direct" => Collide(pg))
+    /\ (On("set_owned_noop") => owner["plain"][pg] # "dev")
+    /\ (On("set_reject_floor") => \E q \in Pages \ {pg} : owner["plain"][q] = "dev")
+
+\* set_reject_inert 를 지운 판 — 직접 사상 덮어쓰기: 대상을 앉히고 다른 장치 소유 페이지를 축출한다.
+Overwrite(w, pg) == [p \in Pages |-> IF p = pg THEN "dev" ELSE "host"]
+
+OwnSetReject(pg) ==
+    /\ SetRejectable(pg)
+    /\ owner' = IF On("set_reject_inert") THEN owner
+                ELSE [w \in Worlds |-> Overwrite(w, pg)]
+    /\ ownOp' = "set" /\ ownRes' = "reject" /\ ownPg' = pg
+    /\ own7' = [w \in Worlds |-> On("set_reject_loud")]
+    /\ ClearObs
+    /\ UNCHANGED <<xlate, perm, mem, cache>>
+
+\* clr_no_reject 를 지운 판에만 열린다 — OWN_CLR 이 거절 + [7].
+OwnClrReject(pg) ==
+    /\ ~On("clr_no_reject")
+    /\ ownOp' = "clr" /\ ownRes' = "reject" /\ ownPg' = pg
+    /\ own7' = [w \in Worlds |-> TRUE]
+    /\ ClearObs
+    /\ UNCHANGED <<xlate, perm, owner, mem, cache>>
 
 Next ==
     \/ \E va \in Vaddrs, pg \in Pages, ps \in Perms : MapVa(va, pg, ps)
@@ -375,6 +499,8 @@ Next ==
     \/ \E a \in Agents, va \in Vaddrs, v \in Values : Write(a, va, v)
     \/ \E a \in Agents, va \in Vaddrs : Read(a, va)
     \/ \E frm, to \in Agents, pg \in Pages : Handoff(frm, to, pg)
+    \/ \E pg \in Pages : OwnSetReject(pg)
+    \/ \E pg \in Pages : OwnClrReject(pg)
 
 Spec == Init /\ [][Next]_vars
 
@@ -439,6 +565,37 @@ Inv_DenyIffReported ==
                         => (obsDec[w] = "deny" <=> obsBits[w] # {})
 
 (***************************************************************************)
+(* OWN_SET 의 거절 — 가드 속성 여섯 + 고정 속성 (W6 — 머리).              *)
+(***************************************************************************)
+
+\* set_reject_inert — 거절은 무효과 (소유 · 배후 저장 · 사본 그대로 — 축출 없음).
+Prop_SetRejectInert ==
+    [][ ownRes' = "reject" => (owner' = owner /\ mem' = mem /\ cache' = cache) ]_vars
+\* set_reject_loud — 거절은 [7] 을 세운다.
+Prop_SetRejectLoud == [][ ownRes' = "reject" => \A w \in Worlds : own7'[w] ]_vars
+\* set_reject_floor — 하한: 다른 장치 소유 페이지가 없으면 거절이 없다.
+Prop_SetRejectFloor ==
+    [][ (ownOp' = "set" /\ ownRes' = "reject")
+          => \E q \in Pages \ {ownPg'} : owner["plain"][q] = "dev" ]_vars
+\* set_owned_noop — 이미 장치 소유인 페이지의 OWN_SET 은 무연산이다 (거절이 아니다).
+Prop_OwnedSetNoop ==
+    [][ (ownOp' = "set" /\ owner["plain"][ownPg'] = "dev") => ownRes' = "noop" ]_vars
+\* clr_no_reject — OWN_CLR 은 거절되지 않는다.
+Prop_ClrNoReject == [][ ownOp' = "clr" => ownRes' # "reject" ]_vars
+\* seven_reject_only — [7] 은 거절에서만 선다 (상승 건전성).
+Prop_SevenRejectOnly == [][ (\E w \in Worlds : own7'[w]) => ownRes' = "reject" ]_vars
+
+\* 고정 — 소유가 바뀌는 페이지는 그 스텝의 커밋된 전이 기입의 대상 하나뿐 (축출 · 암묵 전이 없음).
+Prop_NoImplicitTransition ==
+    [][ \A w \in Worlds, p \in Pages :
+          owner'[w][p] # owner[w][p] => (ownRes' = "commit" /\ p = ownPg') ]_vars
+
+\* 대비 "direct" — 한 칸에 장치 소유 페이지는 하나 (직접 사상의 저장 실물).
+Inv_SlotExclusive ==
+    \A p, q \in Pages : (p # q /\ owner["plain"][p] = "dev" /\ owner["plain"][q] = "dev")
+                          => Slot(p) # Slot(q)
+
+(***************************************************************************)
 (* 위험 도달성 증인 — 좋은 모델에서 반드시 반증돼야 한다.                  *)
 (***************************************************************************)
 
@@ -479,5 +636,14 @@ Witness_NoBothCauses == ~(obsWho = "dev" /\ ~obsEnt["plain"] /\ ~obsOwned["plain
 \* 의 소유 쪽 절반 (이양을 지나야 도달한다). 비소유 쪽 절반은 entitle_first 거부 채움 삭제
 \* run 의 반례가 보인다.
 Witness_NoDenyFillOwned == ~(obsWho = "dev" /\ obsFill["plain"] /\ obsOwned["plain"])
+
+\* W6 — OWN_SET 거절이 실재하는가 (안 일어나면 거절 가드 넷이 공허하다).
+Witness_NoSetReject == ownRes # "reject"
+\* 이미 장치 소유인 페이지의 OWN_SET(무연산)이 실재하는가 — set_owned_noop 의 입력.
+Witness_NoOwnedSetNoop == ~(ownOp = "set" /\ ownRes = "noop")
+\* OWN_CLR 의 회수 커밋이 실재하는가 — clr_no_reject 의 입력이 무연산뿐이 아님.
+Witness_NoClrCommit == ~(ownOp = "clr" /\ ownRes = "commit")
+\* 장치 소유 페이지 둘이 공존하는가 — 대비 "direct" 에서 비충돌 커밋이 점유 중에도 일어남.
+Witness_NoCoOwned == Cardinality({p \in Pages : owner["plain"][p] = "dev"}) <= 1
 
 =============================================================================

@@ -2187,3 +2187,123 @@ assembly 앵커가 완전이라 가드는 완전). `lint_witness_map` 증인 443
   주석의 「정지 중 다른 구역 기입이 효과를 내지 않음」 — RTL 은 다른 구역 기입을 정지 사이클에도 수락하고 효과는 한
   번이다)은 완료 — 배터리 끝 뒤 2026-10-15 15:06–15:07 에 주석 줄만 정정(배터리 입력 사본 대비), 두 절(MmioPage 29 ·
   ActivePart 44)을 현재 입력으로 다시 돌려 73/73 GREEN(15:08 · `gate-w4g/post`) (W4R2 결함 2) · 이어서 `XlateObs.tla` 닫힌 목록 14 주석(점유 미측정 → W4 `h_occ_conserve`)을 고치고 XlateObs 절 41/41 선언대로 · GREEN (15:43–15:59 · `gate-w4g/post2`, XlateObs.tla sha 2611c0bf).
+
+## 3.10 v1.0 묶음 RTL 파도 W6 — `0xF0C` FP_SHAPE 배선 · `[7]` 세움 건전성 (2026-10-19)
+
+spec `f6bc4df`(동결 전 정정 — OWN_SET 거절 · `0xF0C` FP_SHAPE)의 RTL 따라잡기 여섯째 하위 파도다(사용자 지시
+2026-10-18 「지금 착수해.」 — Y4 rc3 를 기다리지 않는다). 순서는 정본 6.3 그대로(선-formal → RTL → 후-formal →
+cocotb). 기준 HEAD b0a4c47. **판 워드 `0xFFC` 는 0 그대로다** — 비0 판 값 커밋은 이 파도 밖이고, 이 파도는 그
+커밋의 전제(3.10 「판의 뜻」 2항 — FP_SHAPE 배선이 판 커밋과 함께이거나 먼저)를 연다.
+
+**선-formal (RTL 편집보다 먼저).** `Platform.tla` — 앞판 `Handoff` 는 용량이 없어 이양을 늘 커밋했다. E.7 6항의
+거절을 형상 중립 비결정 분기 `OwnSetReject` 로 들이고(언제 거절하는지는 정하지 않는다 — 울타리 둘(하한 · 이미
+소유 무연산)과 처분(무효과 · 축출 없음 · `[7]`)만 건다), 가드 여섯(set_reject_inert · set_reject_loud ·
+set_reject_floor · set_owned_noop · clr_no_reject · seven_reject_only) · 고정 속성 `Prop_NoImplicitTransition` ·
+직접 사상 대비 형상 `SetShape = "direct"`(`Inv_SlotExclusive` · 증인 둘)를 더했다 — 가드 8 → 14 · 절 23 → 36 run
+(36/36 선언대로). base(페이지 1)에서는 하한 울타리 때문에 거절이 열리지 않아 거절 축이 전건 공허다 — 페이지 ≥ 2
+판과 증인 `Witness_NoSetReject` 가 진다(모델 머리 「측정 범위」). HEAD 의미론(늘 커밋) 음성 — `OwnSetReject` 를 뺀
+변이 판에서 증인 2 · 거절 의존 삭제 5 가 반례 없이 통과한다(clr · seven 삭제는 거절과 무관한 경로라 계속 운다).
+`MmioPage.tla` 는 주석만 — `0xF0C` 를 resv 에서 ro 부류로(run 29 불변 — 상주 `del_ro_rejected` · 짝 `today_surface` 가
+그 처분 반례를 이미 낸다). 상세는 `rtl/formal/tla/README.md` Platform 절 「W6」 · MmioPage 절. 여기서 「증명됨」은
+*모델 위의* 사실이다. 배터리 644 → 657 run — 컨테이너 `w6g-gate-tlc` · 2026-10-19 (부록 D 문장과 같은 판).
+
+**RTL (줄 인용 대상은 줄 중립 · 새 코드는 끝).**
+- `Wt64Top.scala` — 클래스 끝 `fpShapeArea`: `isShape = fpArea.wordOff === FpShape.OFF / 4` · `rd`/`wr` 는 `fpArea` 의
+  정렬 읽기 · 쓰기 ∧ isShape · `rv = RegNext(rd)` · `when(wr){ surfBadWr := True }` · `when(rv){ io.mmio.rdata :=
+  value }`. 파일 끝 `object FpShape` — 값의 한 정의 `word(abiVersion, p)`: 판 0 이면 0, 아니면 `(1 << 24) | (stepMax
+  << 9) | P`. P · stepMax 는 `fps.p`(step sequencer 인스턴스의 실제 `StepSeqParams` — 10 · 32)에서 오고 손 리터럴이
+  없다 · 9b 필드 범위는 `require`. 판 값의 근원은 `Ident.PRE_AGREEMENT` 하나 — `0xFFC` 판 값을 커밋하는 날 이 워드가
+  함께 바뀐다(그날은 pageArea 의 `require` 가 먼저 울어 `0xFFC` 읽기 배선을 강제한다). 같은 줄 치환 :41 · :277 ·
+  :435. 읽기의 rvalid 원천은 `fpArea.rd → mapRd → mapRv`(resvRd 가 아니다), rdata 원천은 `fpShapeArea.rv` 의 마지막
+  대입. 쓰기는 `surfBadWr` → `[6]` · 효과 없음 · `[15]` 원천 아님. 선택자 표 소거 중의 ready 하강은 정렬 `0xF00` ·
+  `0xF04` 쓰기에만 걸린다(논리 불변 — 확인만) → `0xF0C` 쓰기는 정지 없이 즉시 거절 + `[6]` · 읽기는 응답.
+- `OwnershipTable.scala` — 논리 불변. :109 같은 줄(「Platform 가드는 W1 까지가 HiuPipeline.scala 머리, W6 의 여섯은
+  이 파일 끝」) · 파일 끝 GUARD-MAP 여섯.
+- GUARD-MAP: 새 여섯(OwnershipTable 끝) · 고친 넷(Wt64Top 끝 — `MmioPage.rsp_on_accept` · `effect_on_accept` ·
+  `ro_rejected` · `resv_lenient`, 0xF0C 를 표 밖 목록에서 RO 로). `lint_guard_map` 가드 178 → 184 · CHECK 171 → 177 ·
+  ENFORCED 19 그대로.
+- `make rtl-gen` 두 번 바이트 동일 — 바뀐 생성물은 `Wt64Top.sv`(`2d93ad7b82c97b57`) 하나. verilator `--lint-only -Wall`
+  경고 집합 46 → 46(위치 뺀 대조 차이 0).
+
+**생성 이름 변화.** 신설 — `fpShapeArea_isShape` · `fpShapeArea_rd` · `fpShapeArea_wr`(wire) · `fpShapeArea_rv`(reg,
+reset 0). 새 대입 둘(surfBadWr 블록의 `if(fpShapeArea_wr)` · rdata 블록 끝의 `if(fpShapeArea_rv) io_mmio_rdata =
+32'h0;`). 사라진 이름 0 · `when_*_l*` 변화 0 · 포트 변화 0. 선언 넷과 surfBadWr 블록 셋이 앞에 들어가 그 뒤가 +7 —
+`rtl/sim` 의 `Wt64Top.sv` 인용 둘을 `:1705` → `:1712` 로 옮겼다(`lint_section_refs` R3).
+
+**후-formal (영향 둘 — 전수 재스윕 PASS · hollow 0 · uncounted 0 · 증거 json 26 신선).**
+
+| 태스크 | bmc | prove | cover | assert · cover |
+|---|---|---|---|---|
+| OwnershipTable/ownershiptable | abc bmc3 깊이 20 (`aigsmt z3`) | smtbmc z3 k-귀납 깊이 6 | z3 깊이 8 | 27 · 21/21 |
+| Wt64Top/assembly | abc bmc3 | abc pdr | z3 | 124 → 126 · 69 → 74 |
+
+- `OwnershipTable_props.sv` — *세움 건전성* `s_col_src`(`[7]` 의 세움 = 0→1, 그리고 1 인 채 해제 사이클의 재세움 —
+  전건 `io_faultCollide && !$past(io_faultCollide && !io_faultClearCollide)` — 은 직전 정렬 OWN_SET 뒤에만) ·
+  `s_col_slot`(그 기입이 f_slot 을 겨냥했으면 그 칸은 다른 태그가 점유 — f_slot 자유 상수라 64 색인 전칭;
+  `$past(f_collide)` 는 f_hit 을 품어 anyconst 사영에서 건전하지 않아 쓰지 않았다) · 하한 `s_col_floor` · 읽기 순서
+  `s_rd_snap`(수락된 OWN_STATUS 읽기의 응답 = 수락 사이클의 표 스냅숏) + 그 귀납 보조 `s_idx_shadow`(idxReg expose ↔
+  그림자) · `[6]` RO 쓰기 건전성의 전건도 같은 세움 사건 꼴로 · 증인 W15–W21. 가드 여섯마다 `# PROVES: Platform.*` 앵커.
+- **엔진 — bmc 교체 · prove 유지 사유** — prove 를 abc pdr 로 옮기는 시도는 `s_idx_shadow` 를 둔 판에서도 frame 2 에서 2400 s 정체였다
+  (TIMEOUT 은 통과가 아니다) → W6 전 그대로 smtbmc z3 k-귀납 깊이 6(실측 PASS 133–143 s). bmc 는 z3 깊이 20 이 W6 하네스에서 2400 s
+  TIMEOUT 이라 abc bmc3 로 옮겼고, 반례 재생기의 기본 yices 가 이미지에 없어 FAIL 이 ERROR(rc 16)로 바뀌므로 `aigsmt z3`
+  를 더했다(assembly 선례). 느림이지 웨지가 아니다 — 전수 스윕의 OperandDecode 처럼 입력 sha · 도구 판은 앞판과 같다.
+- `Wt64Top_props.sv` — `0xF0C` 를 `undefA`(무-fault)에서 `surfMust` 의 RO 목록으로 · `a_rd_fpshape`(정렬 읽기의 다음 사이클
+  응답 + `F_FP_SHAPE` — 판 0 동안 0) · `a_fsrc_b7`(`io_fault_ownCollide` = own 핀) · `a_ready_one` 에 소거 중 `0xF0C` ·
+  증인 W59–W63. 무결성 핀 재서명: ① 14 · 5 그대로 ② 그대로 ③ assert 124 → 126 · cover 69 → 74 ④ 39 → 40(w59_fpshape_wr)
+  ⑥ 272 · 222 · 104 · 67 그대로. `[7]` 행(`.sby` 원장)에 건전성 짝을 적었다.
+- **판 0 한정 (자백은 `.sby` 머리와 3.9 행).** `a_rd_fpshape` 의 기대값 0 은 예약 읽기의 기본 0 과 같아 판 0 에서는
+  상수 덮어쓰기 경로의 결선을 포트가 가르지 못한다(cocotb 변이 V4 `fpShapeArea_rd := 0` 도 생존). 그 경로의 반증력은
+  비0 판 생성 변형(RTL `FpShape.word(1, fps.p)` 한 토큰 · 하네스 `F_ABI_NZ = 1` 한 토큰 — 착지하지 않은 실험 사본)이
+  졌다: 생성물 diff 는 `32'h0` → `32'h0100400a` 한 줄이고, 변형 위 assembly bmc · prove · cover PASS, RTL 만 · 하네스만
+  바꾼 판과 덮어쓰기 삭제 · rv 탈락 변이는 `a_rd_fpshape` 로 운다. **판 값 커밋 날 이 절차를 상주 증거로 다시 잰다.**
+- 역-변이 (전부 잡힘 — 착지 엔진):
+  - ownershiptable (prove · bmc 둘 다): OWN_CLR 이 collide → `s_col_src` · 빈 칸 커밋이 collide → `s_col_floor` ·
+    `s_col_slot` · 같은 태그 무연산이 collide → `s_col_slot` · sticky set 상수 0 → 완전성 단언 · 충돌 갈래 축출 →
+    「시제 축」 else 가지 · 표 지연 읽기 → `s_rd_snap` · `[7]` = 1 · 해제 사이클의 OWN_CLR 재세움(V_SETONCLR) →
+    `s_col_src` · 같은 꼴의 `[6]` 재세움(V_BADSETCLR) → RO 쓰기 건전성. 뒤 둘은 검증 1회차(F1)가 찾았다 — 전건이 0→1
+    에지이던 판은 둘 다 prove PASS 였다(이 유닛은 해제 완전성을 WO 읽기 사이클에서만 잰다).
+  - assembly (bmc): 0xF0C 쓰기 흡수 → `a_surf_fire` · 소거 중 0xF0C 쓰기 · 읽기 정지 → `a_ready_one` · 판 0 인 채 비0 값
+    · rv 탈락 → `a_rd_fpshape` · 응답 앞당김 → `a_rd_xvpnlo` · `[7]` 수출 · 상태 결선 끊김 → `a_fsrc_b7` · `a_rd_fst`.
+- 조립 sticky 넷(surf · fpbad · xbad · actbad)의 `a_*_rise` 는 0→1 에지 전건이지만 `a_*_clear`(해제 ∧ 원천 없음 ⇒ 다음
+  0)가 짝이라 해제 사이클의 거짓 재세움도 닫혀 있다 — surf 는 변이 R2_F10ONCLR 이 bmc · prove 둘 다 `a_surf_clear` 로
+  운다(검증 2회차). `a_cap1/2_rise` 도 `a_cap1/2_clr` 짝이 있다. 이월이 아니다.
+- HEAD(b0a4c47) 음성 대조 — assembly bmc FAIL(`a_surf_fire` — 0xF0C 쓰기 흡수) · cover 미도달(w59 · w61). ownershiptable
+  은 HEAD 생성물에서도 bmc · cover PASS(r1 하네스 — prove 는 HEAD 에서 돌리지 않았다) — OwnershipTable 논리가 W6 전과 같기 때문이고, 새 단언의 반증력은 위 변이가 진다.
+- `make rtl-postformal` 전수(W6H, 2026-10-18 17:57–21:52): SWEEP-DONE total=26 fail=0 hollow=0 uncounted=0 ·
+  `lint_postformal --require-fresh` · `lint_tautology --audit --require-models` rc=0. 그 뒤 바뀐 입력은 props 주석 한 줄
+  (검증 2회차)뿐이고 `sby_impact` 가 영향을 ownershiptable 하나로 닫아 그 태스크만 다시 돌렸다(PASS 27 · 21/21).
+
+**cocotb (`rtl/sim/` — 그 README 의 W6 절).** Shape 44 → 46 — `fp_shape_word`(정상 상태: 판 값 유도 기대 · RO 쓰기 셋
+거절 + `[6]` · `[15]` 아님 · 비정렬 · 표 밖 이웃 열둘 관대) · `own_set_collide`(하한 · 거절 무효과 · 무축출 · `[7]` sticky ·
+W1C · 같은 태그 무연산 · OWN_CLR 무거절 · 칸이 빈 뒤 커밋 · 전이 수락 바로 다음 사이클의 OWN_STATUS 읽기 — E.7 7항 한
+점) 신설 · `fp_clear_window` ④–⑥ 보강(소거 중 `0xF0C` 읽기 응답 · `0xF0C` · `0xF08` 쓰기 즉시 거절). `make rtl-sim`
+**58/58**(Mask 12 · Shape 46). HEAD 생성물에서 `fp_shape_word` · `fp_clear_window` FAIL(쓰기 흡수), `own_set_collide`
+PASS(회귀 고정 — 수락 기준은 변이). 변이 16 전부 잡힘(시험마다 단독 사살 ≥ 1) + 별칭 V2(`0xF14`) → `fp_shape_word`.
+
+**정본 사실(F) 편집 — 같은 줄 치환, 정본 파일 줄 수 불변.** E.1.2 FP_SHAPE 행 끝 「배선은 아직이다」 → 착지 사실(규범
+문면 불변) · E.1.3 FP_SHAPE *미구현* 행이 표에서 물러나 머리 줄에 W1 · W4 꼴로 접었다 — `0xFFC` 행의 「아래 FP_SHAPE
+행의 배선을 전제한다」 → 그 전제가 착지했다는 사실 · `0x0100_400A` 문장은 판 값 커밋 뒤 사실로 남겼다 · 3.9 FP_SHAPE
+행 *미구현* → *구현* 을 위 구현 구역으로(`0xE14` · `0xEC4` · `0xFF8` 행과 한 줄 — 옛 자리는 `0xFFC` 행이 그대로 산다) ·
+3.9 소유권 표 행의 「상승 건전성을 일반으로 재는 단언은 없다 · 읽기 순서도 없다」 → 세움 건전성 · 하한 · `s_rd_snap` ·
+조립 절반 `_PARTIAL` · 선-formal 확장 · B.5 의 「FP_SHAPE 배선은 아직」 · 3.10 「판의 뜻」 2항 괄호의 「E.1.3 미구현 행」
+→ 「E.1.3」 · 부록 D(657 run · Platform 36). 3.7 예약 정책 공간 948 B 는 spec 이 이미 맞췄다(확인만). 함정 「자리를 준
+것은 구현이 아니다」 의 「아래 여덟 행」 은 그대로 맞다 — spec 이 FP_SHAPE 를 아래 뭉치에 더하며 아홉이 됐던 것을
+W6 가 다시 여덟로 돌렸다.
+
+**래칫 (실측 서명).** `lint_postformal` PROVES 219 → 227 · 분모 171 → 177 (완전 126 → 130 · 부분 45 → 47) —
+`_MIN_COVERED` 177 · `_MAX_PARTIAL` 47 · `_MIN_EVIDENCED` 227. `_PARTIAL` 에 W6 넷: `set_reject_loud` · `seven_reject_only`
+× (`ownershiptable.sby` · `assembly.sby`) — GUARD-MAP 문면이 own 핀 → 조립 → FAULT_STATUS `[7]` 까지 걸치는데 유닛
+앵커의 DUT 는 유닛뿐이고 assembly 앵커는 own 을 절단한다(두 앵커가 다 부분이라 가드가 부분). 이 자백은 두 `.sby`
+의 PROVES 문면에 먼저 있었고 표에 없던 동안 lint 는 두 가드를 완전으로 셌다. `lint_witness_map` 증인 467 → 479 ·
+앵커 250 → 259. `lint_guard_map` 가드 178 → 184 · CHECK 171 → 177 · ENFORCED 19 그대로.
+
+**미측정 · 이월.**
+- fpbad · xbad · actbad · cap1 · cap2 의 해제 사이클 재세움 변이는 돌리지 않았다 — `_clear` 짝의 문면 대조와 논증으로
+  닫았고 실측은 surf 하나(R2_F10ONCLR)다.
+- 판 0 에서 FP_SHAPE 덮어쓰기 경로(cocotb V4 · `a_rd_fpshape` 의 기대 0)는 포트로 구별되지 않는다 — 비0 판 생성 변형으로
+  한 번 쟀고 판 값 커밋 때 상주로 다시 잰다.
+- E.7 7항 읽기 순서는 모델 수준에서 재지 않는다(원자 스텝 구조) — RTL 은 `s_rd_snap` 과 cocotb 한 점.
+- 거절 완전성(어느 프레임이 거절되는가 — 직접 사상 충돌 ⇒ 거절)은 정본이 호스트 계약 밖으로 둔다 — 모델은 형상 중립
+  그림자만 싣는다. 직접 사상 64 칸의 충돌 판정은 RTL 사실이고 유닛 하네스의 완전성 · `s_col_slot` 이 잰다.
+- `[7]` 의 조립 절반과 유닛 절반의 합성은 서술이다(`_PARTIAL`). reset 의 형식 단언은 W1–W4 에서 이월 그대로.
+- 참조 형상이 아닌 형상(P · stepMax · 소유권 표 크기) — 재지 않는다.

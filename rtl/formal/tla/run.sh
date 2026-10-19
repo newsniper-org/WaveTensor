@@ -930,6 +930,19 @@ echo "======================================================================="
 # 대응 예정 이름은 모델 머리. 짝 「오늘의 RTL」(W1 전 RTL — HEAD 3b80087: 둘 다 [4] — permViol = ¬(소유 ∧ 자격),
 # [19] 원천 없음)이 Inv_ReportBitByCause 를 깨고, 같은 판의 대비 MUST PASS 가 남은
 # 간극이 원인 귀속 하나뿐임을 붙잡는다. 좋은 모델 cfg 셋은 새 불변식 일곱을 함께 건다.
+#
+# OWN_SET 의 거절 · FAULT_STATUS [7] (3.10 v1.0 묶음 · W6, 2026-10-18 —
+# e-defined.typ:1387 「장치는 OWN_SET 을 *거절할 수 있다*」): 앞판 Handoff 는 이양을 늘 커밋했다. 거절을 형상 중립
+# 비결정 분기 OwnSetReject 로 들이고(SetShape = "any" — 울타리 안의 모든 거절을 탐색) 가드
+# 여섯(set_reject_inert · set_reject_loud · set_reject_floor · set_owned_noop · clr_no_reject ·
+# seven_reject_only)과 고정 속성 Prop_NoImplicitTransition 을 건다 — 좋은 cfg 셋이 일곱 속성을
+# 함께 건다. 대비 SetShape = "direct"(HEAD RTL OwnershipTable 의 직접 사상 — 페이지 셋 · 둘이
+# 한 칸)가 울타리가 RTL 을 배제하지 않음과 Inv_SlotExclusive 를 보이고 증인 둘이 그 판의
+# 충돌 거절 · 점유 중 비충돌 커밋 도달을 보인다. E.7 7항 읽기 순서는 모델의 원자 스텝 구조라
+# 재지 않는다(모델 머리 닫힌 목록 — ownershiptable.sby 몫). 23 → 36 run.
+# 측정 범위: base(페이지 1)는 거절 축이 공허하다 — 거절은 하한 울타리(다른 장치 소유 페이지 ∃)
+# 때문에 페이지 1 에서 열리지 않는다. 거절 축은 페이지 ≥ 2 판(shapeA · shapeB · direct)이 재고
+# 증인 NoSetReject(페이지 2)가 도달을 보인다.
 # ---------------------------------------------------------------------------
 M=Platform.tla
 expect_pass "HIU-8/9/10 기저 — 페이지 1"       Platform_base.cfg   "$M"
@@ -954,6 +967,20 @@ expect_fail "가드 삭제: entitle_first — 거부 채움 축 (회수 페이�
     Platform_del_entitle_first_fill.cfg "$M" Inv_DenyFillIs4
 expect_fail "가드 삭제: own_reported ([19] 원천 없음 — 조용한 비소유 거부)" \
     Platform_del_own_reported.cfg       "$M" Inv_UnownedLoud
+expect_fail "가드 삭제: set_reject_inert (거절이 덮어쓰고 축출한다)" \
+    Platform_del_set_reject_inert.cfg   "$M" Prop_SetRejectInert
+expect_fail "고정 속성 음성: 같은 판 — 축출은 암묵 전이" \
+    Platform_del_set_reject_inert_implicit.cfg "$M" Prop_NoImplicitTransition
+expect_fail "가드 삭제: set_reject_loud (조용한 OWN_SET 거절)" \
+    Platform_del_set_reject_loud.cfg    "$M" Prop_SetRejectLoud
+expect_fail "가드 삭제: set_reject_floor (빈 표의 OWN_SET 이 거절된다)" \
+    Platform_del_set_reject_floor.cfg   "$M" Prop_SetRejectFloor
+expect_fail "가드 삭제: set_owned_noop (이미 소유 페이지의 OWN_SET 이 거절된다)" \
+    Platform_del_set_owned_noop.cfg     "$M" Prop_OwnedSetNoop
+expect_fail "가드 삭제: clr_no_reject (OWN_CLR 이 거절된다)" \
+    Platform_del_clr_no_reject.cfg      "$M" Prop_ClrNoReject
+expect_fail "가드 삭제: seven_reject_only (커밋된 OWN_SET 이 [7] 을 세운다)" \
+    Platform_del_seven_reject_only.cfg  "$M" Prop_SevenRejectOnly
 
 expect_fail "증인: 값 읽기가 실재하는가"        Platform_witness_NoValueRead.cfg      "$M" Witness_NoValueRead
 expect_fail "증인: fault 가 실재하는가"         Platform_witness_NoFault.cfg          "$M" Witness_NoFault
@@ -964,10 +991,16 @@ expect_fail "증인: 자격 거부 [4] 가 실재하는가"       Platform_witne
 expect_fail "증인: 비소유 프레임 접근 [19] 가 실재하는가" Platform_witness_NoOwnDeny.cfg    "$M" Witness_NoOwnDeny
 expect_fail "증인: 자격 거부 ∧ 비소유 장치 접근이 실재하는가" Platform_witness_NoBothCauses.cfg  "$M" Witness_NoBothCauses
 expect_fail "증인: 장치 소유 프레임 위 거부 채움 장치 접근이 실재하는가" Platform_witness_NoDenyFillOwned.cfg "$M" Witness_NoDenyFillOwned
+expect_fail "증인: OWN_SET 거절이 실재하는가"              Platform_witness_NoSetReject.cfg     "$M" Witness_NoSetReject
+expect_fail "증인: 이미 소유 페이지의 OWN_SET 무연산이 실재하는가" Platform_witness_NoOwnedSetNoop.cfg "$M" Witness_NoOwnedSetNoop
+expect_fail "증인: OWN_CLR 회수 커밋이 실재하는가"         Platform_witness_NoClrCommit.cfg     "$M" Witness_NoClrCommit
 
 expect_fail "짝: 오늘의 RTL(W1 전 · HEAD 3b80087) — 두 원인을 [4] 에 접는다 (HIU-10 원인별 보고)" \
     Platform_pair_today.cfg             "$M" Inv_ReportBitByCause
 expect_pass "대비: 오늘의 RTL(W1 전 · HEAD 3b80087) — 원인 귀속 밖의 불변식은 전부 통과"  Platform_today.cfg "$M"
+expect_pass "대비: HEAD RTL 형상(직접 사상 — 충돌이면 거절) — 울타리 안 · 한 칸 한 페이지" Platform_direct.cfg "$M"
+expect_fail "증인: 직접 사상 판의 충돌 거절이 실재하는가" Platform_direct_witness_NoSetReject.cfg "$M" Witness_NoSetReject
+expect_fail "증인: 직접 사상 판의 점유 중 비충돌 커밋이 실재하는가" Platform_direct_witness_NoCoOwned.cfg "$M" Witness_NoCoOwned
 
 # ---------------------------------------------------------------------------
 # SEC-3 — 무소실 (NoLoss.tla)

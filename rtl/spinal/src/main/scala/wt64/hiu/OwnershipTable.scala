@@ -106,7 +106,7 @@
 //
 // ## Platform.tla 대응 — 정식 GUARD-MAP 줄의 거처에 관한 주의
 //
-// Platform 모델의 가드 넷은 전부 HiuPipeline.scala 머리에 정식 줄이 있다
+// Platform 모델의 가드는 W1 까지가 HiuPipeline.scala 머리, W6 의 여섯은 이 파일 끝에 정식 줄이 있다
 // (lint_guard_map 은 가드당 저장소 전체 정확히 한 줄 — 여기 재기재 금지).
 // 이 모듈은 그 판정들의 **데이터 원천**이다:
 //
@@ -343,3 +343,11 @@ case class OwnershipTable(cfg: Wt64Config = Wt64Config(), ownEntries: Int = 64) 
   // (§3.7 드레인 · §3.10) — 여기서는 커밋의 원자성(단일 에지)과 조회
   // 스냅숏의 일관성만 보장한다 (io.query 주석의 계약).
 }
+
+// ── GUARD-MAP — OWN_SET 의 거절 · FAULT_STATUS [7] (Platform.tla 확장 — 3.10 v1.0 묶음 RTL 파도 W6 · e-defined E.7 6항) ──
+// GUARD-MAP: Platform.set_reject_inert -> setWr 의 충돌 갈래 `.elsewhen(!slotMine) { collide := True }` 는 validBits · tagVec 에 어떤 대입도 하지 않는다 — 대상 프레임은 호스트 소유로 남고 점유 슬롯(같은 색인 · 다른 태그)의 유효 · 태그도 그대로다(축출 배선 없음). 이양 커밋은 `!slotBusy` 갈래 하나뿐이다
+// GUARD-MAP: Platform.set_reject_loud -> io.faultCollide := StickyFault(collide, io.faultClearCollide) — 충돌 거절 사이클의 collide 가 sticky 를 세우고 조립이 own.io.faultCollide → io.fault.ownCollide → FAULT_STATUS [7](Fault.B_OWN_COLLIDE) 로 낸다
+// GUARD-MAP: Platform.set_reject_floor -> collide 는 slotBusy = validBits(wIdx) 를 전건으로 한다 — 장치 소유 페이지가 하나도 없으면(validBits = 0) 어느 OWN_SET 도 거절되지 않고 `!slotBusy` 커밋 갈래로 간다
+// GUARD-MAP: Platform.set_owned_noop -> collide 는 ¬slotMine(chkTag ≠ wTag — 쓰기 사이클 chkAddr = wIdx)을 요구한다 — slotBusy ∧ slotMine(이미 장치 소유)은 대입도 collide 도 없는 무연산 갈래다
+// GUARD-MAP: Platform.clr_no_reject -> clrWr 갈래에는 collide 대입이 없다 — slotBusy ∧ slotMine 이면 validBits(wIdx) := False, 아니면 무연산. 비정렬 OWN_CLR 의 거절 + [6] 은 형상 · 점유 축이 아니다(faultBadWrite — MmioPage.unaligned_rejected)
+// GUARD-MAP: Platform.seven_reject_only -> faultCollide 의 set 원천은 collide 하나이고 collide 는 기본 False · setWr ∧ slotBusy ∧ ¬slotMine 에서만 True — 커밋(!slotBusy) · 무연산(slotMine) · OWN_CLR · 다른 오프셋 · 읽기는 [7] 을 세우지 않는다(상승 건전성)

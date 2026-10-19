@@ -62,7 +62,8 @@ module OwnershipTable_props (
   // ── expose 로 승격된 상태 (래퍼가 anyconst 슬롯으로 사영해 넘긴다) ────
   input wire [63:0]   f_valid,         // validBits — 전 슬롯 (비트 선택은 값싸다)
   input wire [5:0]    f_slot,          // anyconst 슬롯 (래퍼 소유 — 아래 주석)
-  input wire [25:0]   f_sTag           // tagVec[f_slot] — 래퍼의 64:1 case 먹스
+  input wire [25:0]   f_sTag,          // tagVec[f_slot] — 래퍼의 64:1 case 먹스
+  input wire [31:0]   f_idxReg         // W6 — idxReg (expose) — 그림자 f_iReg 와의 등식(s_idx_shadow)에만 쓴다
 );
   // 형상 상수 — OwnershipTable(ownEntries = 64) · FRAME_W = 32 ⇒ idxW 6 · tagW 26.
   localparam integer TAGW    = 26;
@@ -222,9 +223,9 @@ module OwnershipTable_props (
         assert (io_faultBadWrite);
       if ($past(io_faultBadWrite && !io_faultClearBadWrite))
         assert (io_faultBadWrite);
-      // 건전성 — 상승 원천은 두 거절뿐이다. 표 밖 *정렬* 오프셋 쓰기(예약 오프셋 정책)와
+      // 건전성 — 세움 원천은 두 거절뿐이다(세움 = 직전 「유지 · 비해제」가 아닌데 1 — 해제 사이클의 재세움 포함). 표 밖 *정렬* 오프셋 쓰기(예약 오프셋 정책)와
       // 적법한 전이 기입은 이 sticky 를 세우지 않는다 (MmioPage.resv_lenient 의 유닛 절반).
-      if (io_faultBadWrite && !$past(io_faultBadWrite))
+      if (io_faultBadWrite && !$past(io_faultBadWrite && !io_faultClearBadWrite))
         assert ($past(f_statusWr || f_unalWr));
     end
   end
@@ -266,7 +267,7 @@ module OwnershipTable_props (
   // (머리말) 증인을 명시적으로 둔다.
   //
   // 각 줄의 `←` 오른쪽이 **그 증인이 살리는 대상**이다 — 여기서는 전부 이
-  // 태스크의 `# PROVES:` 앵커다 (이 하네스의 단언에는 라벨이 없다).
+  // 태스크의 `# PROVES:` 앵커다 (W6 전 단언에는 라벨이 없다 — W6 의 다섯만 s_* 라벨).
   // 줄번호로 매지 않는다. scripts/lint_witness_map.py 가 참조 실재성만 재고
   // 「그 궤적이 정말 그 전건을 세우는가」는 재지 못한다.
   //
@@ -283,10 +284,10 @@ module OwnershipTable_props (
   //       (프레임 전폭이 전이 경로를 통과한다).
   // W6  ← Platform.state_machine_kept — 충돌 기입 형상 도달 (기입 무효화
   //       가지의 전건).
-  // W7  ← Platform.state_machine_kept — 충돌 sticky fault 가 실제로 선다.
+  // W7  ← Platform.state_machine_kept · Platform.set_reject_loud — 충돌 sticky fault 가 실제로 선다.
   // W8  ← Platform.state_machine_kept — RO 오프셋 기입 도달.
   // W9  ← Platform.state_machine_kept — RO 기입 sticky fault 가 실제로 선다.
-  // W10 ← Platform.state_machine_kept — 무연산 항등(이미 소유한 슬롯에 SET):
+  // W10 ← Platform.state_machine_kept · Platform.set_owned_noop — 무연산 항등(이미 소유한 슬롯에 SET):
   //       「명시 기입 사이클인데 전이가 없다」는 갈래가 실재한다.
   // W11 ← Platform.state_machine_kept — 무연산 항등의 CLR 면.
   // W12 ← Platform.state_machine_kept — WO 오프셋 읽기 도달 (조용함 단언의
@@ -313,6 +314,84 @@ module OwnershipTable_props (
       w14_unal_rd:   cover ($past(f_unalRd && f_region && (io_addr[7:2] == W_IDX)) && f_idxNz && io_rvalid);
     end
   end
+
+  // ══ W6 (3.10 v1.0 묶음 RTL 파도 W6 · e-defined E.7 6 · 7항) — OWN_SET 거절의 [7] 상승 건전성 · 하한 · 읽기 순서 ══
+  //
+  // 정본 근거 (e-defined.typ — 좌표 + 축자):
+  //   e-defined.typ:1387 「그 프레임이 장치 소유로 앉을 수 있는 저장 칸이 전부 *다른* 장치 소유 페이지로 차 있는 경우다」
+  //   e-defined.typ:1387 「거절은 loud sticky fault FAULT_STATUS `[7]` 을 세운다」
+  //   e-defined.typ:1387 「*이미 장치 소유인 페이지*의 OWN_SET 은 무연산이다 (거절이 아니다)」
+  //   e-defined.typ:1387 「*OWN_CLR 은 형상 · 점유로 거절되지 않는다*」
+  //   e-defined.typ:527 「`[7]` 은 E.7 6항의 OWN_SET 거절 *하나*」
+  //   e-defined.typ:1388 「그 전이 기입의 결과 — 커밋이든 거절이든 — 를 본다」
+  //
+  // 위 「충돌은 loud」 절의 `if ($past(f_collide)) assert (io_faultCollide)` 는 *완전성*(충돌 ⇒ [7])이다.
+  // 그 반대 방향 — [7] 의 세움(0→1 · 그리고 해제와 같은 사이클의 재세움: 전건은 0→1 에지가 아니라 「직전 유지 · 비해제가 아닌데 1」 — W6 검증 F1: 이 유닛은 해제 완전성(해제 ∧ 원천 없음 ⇒ 다음 0)을 WO 읽기 사이클에서만 재므로 0→1 만 보면 [7]=1 · 해제 사이클의 거짓 세움이 빠진다. 에지 전건이라도 전 사이클 해제 완전성 짝이 있으면 닫힌다 — 조립 a_*_rise 는 a_*_clear 가 닫는다, W6 검증 2회차)은 정렬 OWN_SET 이 남의 페이지로 찬 칸을 지목한 사이클 뒤에만 — 이 이 절이다
+  // (선례: 위 RO 절의 badWrite 상승 건전성 단언 `assert ($past(f_statusWr || f_unalWr))`).
+  //
+  // ⚠ `$past(f_collide)` 꼴은 쓰지 않는다. f_collide 는 f_hit(기입 색인 = anyconst 슬롯)를 품어서, f_slot 밖
+  //   색인의 *정당한* 충돌이 올바른 RTL 에서도 가짜 반례를 낸다 (W6-P-fix minor-1). 그래서 둘로 가른다 —
+  //   s_col_src 는 색인 무관: 원천이 정렬 OWN_SET 하나다 (OWN_CLR · 다른 오프셋 · 읽기 · 비정렬 · 기입 없음 배제).
+  //   s_col_slot 은 f_slot 을 겨냥한 실행에서만: 그 칸이 남의 페이지로 점유돼 있었다. f_slot 이 자유 상수라
+  //   둘째 단언이 64 색인 전부를 덮는다 (위 「시제 축」 절의 사영 논거).
+  // 하한(장치 소유 0 이면 거절 없음)은 색인 무관 전건이 필요해 f_valid 64b 전부로 따로 잰다 — s_col_floor.
+  // s_col_slot 이 f_slot 보편으로 하한을 함의하지만 그 유도는 사람의 논거라 가드 문면을 단언 하나로 직접 든다
+  // (그래서 s_col_floor 만 죽이는 변이는 원리적으로 없다 — 하한을 깨는 RTL 은 f_slot = 기입 색인인 실행에서
+  // s_col_slot 도 깬다. 보고 · .sby 머리 역-변이 표).
+  // 무효과(대상 · 점유 슬롯의 유효 · 태그 불변)는 위 「시제 축」 else 가지가 이미 잰다 (충돌 기입 · 무연산 항등은 그 가지다).
+  //
+  // E.7 7항 (읽기 순서) — OWN_STATUS 읽기의 응답은 *수락 사이클의* 표 상태를 OWN_IDX 그림자 프레임으로 본 값이다
+  // (s_rd_snap). 커밋 원자성(위 「시제 축」 — 유효 + 태그가 기입 다음 에지에 함께)과 합치면 「전이 수락 뒤에
+  // 수락된 읽기는 그 결과를 본다」가 된다 (W19 · W20). 장치 포트 밖(호스트 버스 어댑터의 순서)은 경계 밖이다.
+  // OWN_IDX 는 1차 입력에서 다시 짓는다 (머리말 「독립 재구성 원칙」 — RTL 의 idxReg 를 읽지 않는다).
+  reg  [31:0]     f_iReg = 32'd0;                    // OWN_IDX 그림자 (reset 0 — 정렬 0x200 쓰기만 바꾼다)
+  always @(posedge clk) begin
+    if (reset)        f_iReg <= 32'd0;
+    else if (f_idxWr) f_iReg <= io_wdata;
+  end
+  wire            f_iHit = (f_iReg[5:0] == f_slot);  // OWN_IDX 가 anyconst 슬롯을 가리키는가
+  wire [TAGW-1:0] f_iTag = f_iReg[31:6];
+  wire            f_stRd = io_ready && !io_wstrobe && io_rstrobe && f_aligned && f_region
+                           && (io_addr[7:2] == W_STATUS);
+  always @(posedge clk) begin
+    if (f_ok) begin
+      if (io_faultCollide && !$past(io_faultCollide && !io_faultClearCollide)) begin
+        s_col_src:  assert ($past(f_setWr));                       // 원천은 정렬 OWN_SET 하나
+        if ($past(f_hit))
+          s_col_slot: assert ($past(f_sVal) && !$past(f_mine));    // f_slot 겨냥이면 남의 페이지로 점유
+      end
+      if ($past(f_setWr) && ($past(f_valid) == 64'd0))
+        s_col_floor: assert (!(io_faultCollide && !$past(io_faultCollide && !io_faultClearCollide)));   // 하한 — 빈 표의 OWN_SET 은 거절 없음
+      // 귀납 보조 — RTL 의 OWN_IDX 레지스터가 1차 입력에서 다시 지은 그림자와 같다. RTL 을 *믿는* 것이 아니라
+      // RTL 을 그림자에 대고 재는 단언이다 (어긋나면 운다). 이것 없이는 s_rd_snap 이 k-귀납 · PDR 에서
+      // 「idxReg ≠ f_iReg 인 채 기입 없이 머무는 시작 상태」를 반례로 내 증명이 서지 않는다 (W6H 실측 — PDR 정체).
+      s_idx_shadow: assert (f_idxReg == f_iReg);
+      if ($past(f_stRd) && $past(f_iHit))
+        s_rd_snap:  assert (io_rvalid && io_rdata == {31'd0, $past(f_sVal && (f_sTag == f_iTag))});
+    end
+  end
+
+  // W15 ← Platform.seven_reject_only · Platform.set_reject_loud · s_col_src · s_col_slot — f_slot 을 겨냥한 충돌 기입이
+  //       [7] sticky 를 처음 세운다 (상승 건전성 두 단언의 전건)
+  // W16 ← Platform.set_reject_floor · s_col_floor — 빈 표(장치 소유 0)의 첫 OWN_SET 이 커밋되고 [7] 이 서지 않는다
+  // W17 ← Platform.clr_no_reject · s_col_src — 남의 페이지가 앉은 칸을 지목한 정렬 OWN_CLR(OWN_SET 이면 충돌일 형상)
+  //       뒤에도 [7] 이 서지 않고 점유가 남는다
+  // W18 ← Platform.set_owned_noop · s_col_slot — 이미 장치 소유인 페이지의 OWN_SET 뒤 [7] 이 서지 않고 소유가 남는다
+  // W19 ← OwnershipTable.read_order · s_rd_snap — OWN_SET 커밋 다음 사이클에 수락된 OWN_STATUS 읽기가 [0] = 1 을 본다
+  // W20 ← OwnershipTable.read_order · s_rd_snap — 거절된 OWN_SET 의 프레임을 다음 사이클에 읽으면 [0] = 0 (호스트 소유)
+  // W21 ← Platform.set_reject_inert — 충돌 기입 다음 에지에 점유자(같은 색인 · 다른 태그)가 유효 · 태그 그대로 남는다
+  //       (else 가지 $stable 의 전건 — 축출 배선이 있으면 이 궤적의 f_sVal 이 내려간다)
+  always @(posedge clk) begin
+    if (f_ok) begin
+      w15_col_rise:  cover ($past(f_collide && !io_faultCollide) && io_faultCollide);
+      w16_floor_set: cover ($past(f_setWr && f_hit && (f_valid == 64'd0)) && f_sVal && !io_faultCollide);
+      w17_clr_other: cover ($past(f_clrWr && f_hit && f_sVal && !f_mine && !io_faultCollide) && !io_faultCollide && f_sVal);
+      w18_noop_keep: cover ($past(f_setWr && f_hit && f_sVal && f_mine && !io_faultCollide) && !io_faultCollide && f_sVal);
+      w19_rd_commit: cover ($past(f_stRd && f_iHit) && $past(f_setWr && f_hit && !f_sVal && (f_wTag == f_iTag), 2) && io_rvalid && io_rdata[0]);
+      w21_rej_keep:  cover ($past(f_collide) && f_sVal && (f_sTag == $past(f_sTag)));
+      w20_rd_reject: cover ($past(f_stRd && f_iHit) && $past(f_collide && (f_wTag == f_iTag), 2) && io_rvalid && !io_rdata[0]);
+    end
+  end
 endmodule
 
 // 형식 검증 톱 — 대상 + props 결선 (내부 포트는 sby [script] 의 expose 가 만든다).
@@ -329,6 +408,7 @@ module OwnershipTable_formal (
 );
   wire [31:0] io_rdata;
   wire        io_rvalid;
+  wire [31:0] idxReg;
   wire        io_ready;
   wire        io_query_devOwned;
   wire        io_faultCollide;
@@ -355,7 +435,7 @@ module OwnershipTable_formal (
     .io_faultBadWrite(io_faultBadWrite), .io_faultClearBadWrite(io_faultClearBadWrite),
     .clk(clk), .reset(reset),
     // ── expose 로 올린 내부 상태 포트 ──
-    .validBits(validBits),
+    .validBits(validBits), .idxReg(idxReg),
     .tagVec_0(tagVec_0),   .tagVec_1(tagVec_1),   .tagVec_2(tagVec_2),   .tagVec_3(tagVec_3),
     .tagVec_4(tagVec_4),   .tagVec_5(tagVec_5),   .tagVec_6(tagVec_6),   .tagVec_7(tagVec_7),
     .tagVec_8(tagVec_8),   .tagVec_9(tagVec_9),   .tagVec_10(tagVec_10), .tagVec_11(tagVec_11),
@@ -432,7 +512,8 @@ module OwnershipTable_formal (
     .io_faultClearBadWrite (io_faultClearBadWrite),
     .f_valid               (validBits),
     .f_slot                (f_slot),
-    .f_sTag                (f_sTag)
+    .f_sTag                (f_sTag),
+    .f_idxReg              (idxReg)
   );
 endmodule
 

@@ -25,7 +25,7 @@ make rtl-formal        # 또는  sh rtl/formal/tla/run.sh
 | **HIU-1 · 2** 격리 · flush 후 미적중 (HIU-4 는 W3 에서 `XlateSurface.tla` 로 옮겼다) | `XlateStore.tla` | HIU-1 · 2 **증명됨** — HIU-4 로 인용되던 `Inv_AtMostOneCandidate` 는 항진이라(정본 부록 D 사실 정정 2026-10-11) 3.10 v1.0 묶음 RTL 파도 W3 (2026-10-13, DP-12 사용자 확정)이 정의와 cfg 의 `INVARIANT` 줄을 지웠다(run 수 7 불변 · 줄 수 176 보존 — 지운 자리는 주석). HIU-4 의 증명 거처는 `XlateSurface.Inv_AtMostOneValidPerVpn` (아래 행) |
 | **HIU-3** 유효 게이팅 전수 | `XlateStore.tla` | **부분 증명** — 전수성은 정적 검사 몫 |
 | **ISA-3 · ISA-4 · ISA-8** 전역 미스만 fault · 계층당 1회 · 사상 축 | `Route.tla` | **부분 증명** (시간축·귀납 기계증명 비었음) |
-| **HIU-8 · HIU-9 · HIU-10** 플랫폼 독립 · 소유권 배타성 | `Platform.tla` | **증명됨** — 3.10 v1.0 묶음 RTL 파도 W1 의 선-formal(2026-10-11 — 파도 착지 2026-10-12): HIU-10 의 「loud」 를 원인별 보고(자격 거부 `[4]` · 자격 허용 ∧ 비소유 `[19]`)로 가른 가드 넷 · 불변식 일곱을 더했다 — 가드 여덟 · 23 run (아래 절) |
+| **HIU-8 · HIU-9 · HIU-10** 플랫폼 독립 · 소유권 배타성 | `Platform.tla` | **증명됨** — 3.10 v1.0 묶음 RTL 파도 W1 의 선-formal(2026-10-11 — 파도 착지 2026-10-12): HIU-10 의 「loud」 를 원인별 보고(자격 거부 `[4]` · 자격 허용 ∧ 비소유 `[19]`)로 가른 가드 넷 · 불변식 일곱을 더했다 — 가드 여덟 · 23 run. 3.10 v1.0 묶음 RTL 파도 W6 의 선-formal(2026-10-18 — 파도 착지 2026-10-19): E.7 6항 OWN_SET 거절을 형상 중립 비결정 분기로 들이고 가드 여섯(set_reject_inert · set_reject_loud · set_reject_floor · set_owned_noop · clr_no_reject · seven_reject_only) · 고정 속성 `Prop_NoImplicitTransition` · 직접 사상 대비 형상 `direct` 를 더했다 — 가드 열넷 · 36 run (아래 절) |
 | **SEC-3** 무소실 | `NoLoss.tla` | **증명됨** |
 | **EXT-1 · EXT-2 · EXT-3** 순회 종료성 · 종료 후 무효과 · 검산 독립 | `Walk.tla` | **증명됨** |
 | **FAB-1 · FAB-9 · FAB-10 · FAB-5 · FAB-6** 단일 생산자 · 병합 게이팅 · 소비자 무결성 · 무손실 · 진행성 | `Fabric.tla` | **증명됨** — FAB-6 의 공정성 가정은 §2.6 진행 전파 규범이 계약으로 승격 |
@@ -37,7 +37,7 @@ make rtl-formal        # 또는  sh rtl/formal/tla/run.sh
 | **E.1.2 CAP_STATUS/CAP_CLEAR** 축 격리 · sticky · 예약 위반 원자 거절 · 발화 우선 | `CapWord.tla` | **증명됨** — 가드 넷(axis_isolated · sticky_until_clear · clear_atomic · set_beats_clear) + 증인 넷, 9 run. 축은 불투명 토큰 넷 — 사건→축 배정은 정본 표의 몫 |
 | **E.1.2 · E.3 변환 저장소의 MMIO 문** `0xC00` 형상 비노출 항목 표면(VPN · FRAME · COMMIT · VPN_HI · 예약-엄격 28 워드) · 스테이징 (f) · 커밋 결과 (a)(b)(c)(g)(h) · **HIU-4** 적중 유일성 · **HIU-2** V=0 축 · 하류 정지 처분 · `0xE00` flush 발화·범위 · `0xE10` 해제 · RO 쓰기 거절 · 거절 loud | `XlateSurface.tla` | **증명됨** (모델 위) — 3.10 v1.0 묶음 RTL 파도 W3 (2026-10-13) 재작성(앞판은 파도 3 · 4 의 LO/HI 직접 배열 문 — 아래 절은 그 기록). 가드 스물아홉(개명 여섯 · 신설 열 · 유지 열셋 — commit_fires · commit_base_match · commit_needs_vpn · commit_whole · commit_v_carried · frame_stages_only · commit_replaces_vpn · vpn_drops_frame · commit_needs_frame · frame_pair_check · vpnhi_strict · rsvw_rejected · commit_rsv_strict · evict_in_partition · evict_on_commit_only · stall_independent · flush_fires · flush_scoped · flush_valid_only · flush_part_exists · flush_rsv_strict · flush_drops_staging · ent_part_exists · reject_loud · mclr_fires · mclr_needs_one · mclr_rsv_strict · mclr_keeps_stall · ro_rejected) + 증인 스물여덟 + 짝 여섯 · 대안 일곱 · 발견 1 + 진행 1, 77 run (좋은 cfg 다섯 — 작은 · 대형 · 칸 2 · 칸 2 × 파티션 2 · 형상 밖 기저). 새 고정 속성 일곱 `Inv_AtMostOneValidPerVpn`(HIU-4 — 칸 1 cfg 에서는 공허, 반증력은 칸 2 cfg 둘 · `del_commit_replaces_vpn` · `pair_host_index`) · `Prop_V0Misses`(HIU-2 V=0 축) · `Prop_StallDataBlind` · `Prop_AddrRejectNoWait` · `Prop_HoldInert` · `Prop_RejectInert` · `Prop_CommitScoped` · 유지 `Prop_StallEnds`(하류 정지 유계 · 진행) · `Prop_TableByDoor`(W3 부터 칸 2 cfg 에도 걸리고 `del_evict_on_commit_only` 가 반증). 대안 상수 `RefuseDomain` = full · kind 가 정지 판정의 데이터 무관을 반증으로 받친다. 라벨이 HIU-1/2/3 · HIU-4 를 인용해 색인 모델로 센다 (부록 D 「모델 13개」). 실측: XlateSurface 절 77/77 선언대로 · 전량 배터리 600/600 선언대로 — 컨테이너 · 2026-10-13 18:37–19:58 KST · 게이트 GREEN(`run.sh` 종료 코드 0 경로) · 이탈 0 · 입력 sha 620건 불변 (부록 D 문장과 같은 판) |
 | **E.1.2 · E.12 · E.12.1 재조립 문맥 소거의 문** `0xF40` 스테이징 세 워드 · 워드 적법성(TAG1 poison·trace·예약 · TAG2/FIRE 예약 · RO 쓰기) · 거절의 무효과·loud · 워드별 무장 · 재기입 덮음 · 발화 성립(무장 완비 · `[0]`=1) · 잔류 소진 | `AbortSurface.tla` | **증명됨** — 가드 열셋(poison_trace_zero · epoch_word_rsv_strict · shape_word_rsv_strict · fire_rsv_strict · ro_rejected · legal_first · reject_loud · arm_on_accept · arm_own_word · stage_writes_value · fire_needs_armed · fire_needs_one · fire_drains_arm) + 증인 열하나 + 짝 셋 · 대비 1, 30 run. 축 모델. sub-word 처분은 상수 `Subword`(판정 T2 — RTL 은 W4). 짝 둘이 D2 이전 RTL(TAG1 무검사)과 동형 |
-| **3.7 · 3.10 · E.1.1 · E.1.3 구성 페이지의 처분** 포트 수락·응답 · RO 쓰기 · WO 읽기 · 예약 오프셋(정렬 워드) · 비정렬 쓰기 · 물려받은 `0x000`–`0x11F` · rw 부류(W4 부터 `0xE14` XLATE_ACTIVE_PART 도 — 그 기입의 의미는 `ActivePart.tla`, 값 거절은 `bad` 에 접힌다) · 소비 회로 없는 RW 워드(W3 부터 `0xC00` 예약-엄격 28 워드 — XlateSurface 의 rsvw — 도 이 부류: 쓰기 거절 + `[6]` · 읽기 0) · 거절 loud | `MmioPage.tla` | **증명됨** — 가드 아홉(rsp_on_accept · effect_on_accept · ro_rejected · wo_read_zero · resv_lenient · unaligned_rejected · leg_write_rejected · nocons_rejected · reject_loud) + 증인 열 + 짝·대안 여덟 · 대비 1, 29 run. 축 모델. 고정 속성의 예외 집합(SpecReject · SpecQuiet)이 곧 판정 내용이라 판정을 유도하지 못한다. 짝 둘이 D1 이전 조립과 동형. W4 (2026-10-15)는 주석 셋만 — run 29 불변 |
+| **3.7 · 3.10 · E.1.1 · E.1.3 구성 페이지의 처분** 포트 수락·응답 · RO 쓰기 · WO 읽기 · 예약 오프셋(정렬 워드) · 비정렬 쓰기 · 물려받은 `0x000`–`0x11F` · rw 부류(W4 부터 `0xE14` XLATE_ACTIVE_PART 도 — 그 기입의 의미는 `ActivePart.tla`, 값 거절은 `bad` 에 접힌다) · 소비 회로 없는 RW 워드(W3 부터 `0xC00` 예약-엄격 28 워드 — XlateSurface 의 rsvw — 도 이 부류: 쓰기 거절 + `[6]` · 읽기 0) · 거절 loud | `MmioPage.tla` | **증명됨** — 가드 아홉(rsp_on_accept · effect_on_accept · ro_rejected · wo_read_zero · resv_lenient · unaligned_rejected · leg_write_rejected · nocons_rejected · reject_loud) + 증인 열 + 짝·대안 여덟 · 대비 1, 29 run. 축 모델. 고정 속성의 예외 집합(SpecReject · SpecQuiet)이 곧 판정 내용이라 판정을 유도하지 못한다. 짝 둘이 D1 이전 조립과 동형. W4 (2026-10-15)는 주석 셋만 — run 29 불변. W6 (2026-10-19)는 주석만 — `0xF0C` FP_SHAPE 를 resv(표 밖 정렬 워드) 부류에서 ro 부류로 옮겼다 · run 29 불변 (새 run 이 필요 없는 근거는 아래 절) |
 | **E.1.2 · E.3 변환 미적중의 관측면** `0xE04` XLATE_STATUS · `0xE08`/`0xE0C` XLATE_MISS_VPN 의 *값* — 정지 게이트 스냅샷(정지 중에만 그 요청 · 정지가 없으면 0) · 찢김 없음 · 읽기 무해제 · 채널의 충분성 · **3.6.2 판정 시점과 판정 래치**(W2) | `XlateObs.tla` | **증명됨** (모델 위) — 가드 아홉(obs_stall_live · obs_sticky · obs_part_stalled · obs_vpn_stalled · obs_no_residue · obs_read_pure + W2 verdict_latch · latch_clears_on_leave · latch_one_value) + 고정 속성 Prop_NoTear · Prop_LatchedSurvivesRetract · Prop_V0AfterEdgeMisses · 진행 Prop_StallResolves(「정지한 *그* 요청은 결국 떠난다」 — 요청 꼬리표 tok · 폴링 호스트 HostSpec · 경쟁자 · 하류 배압) + 증인 열셋 + 대안 다섯 · 고정 속성 반증 둘 · 진행 짝 셋 · 짝 셋 · 대비 셋, 41 run (W2 전 22). 축 모델. 짝 「파도 3 까지의 RTL」(세 워드 읽기 0)이 정지 영구로, 짝 「오늘의 RTL」(W2 전 RTL — HEAD 9b6eee6, 래치 없음)이 재미적중으로 운다 |
 | **E.1.2 · 3.7.2 결속 파티션** `0xE14` XLATE_ACTIVE_PART — 요청 파티션 = 접수 시점의 결속 · 값 검사 먼저 · 다른 값은 D = 1 일 때만 교체 · 같은 값은 fault 없는 무동작 · 수락마다 (A, D) · D 는 수락 에지 직후 상태(같은 사이클 접수 포함) · 판정 사이클의 요청 · MMIO 정지 · 비정렬 무효과 · 거절 loud | `ActivePart.tla` | **증명됨** (모델 위) — 3.10 v1.0 묶음 RTL 파도 W4 (2026-10-15) 신설. 가드 열둘(value_first · rsv_strict · ro_field_ignored · drain_gates_switch · same_value_noop · ad_every_accept · d_includes_same_cycle · pend_stalls_req · pend_stalls_mmio · req_part_from_bound · unaligned_outside · reject_loud) + 고정 속성 여섯(Inv_ObsIsSpec · Inv_WorkUnderBound · Prop_NoStaleWorkAfterSwitch · Prop_LoudOnlySpec · Prop_A0D1IsValueReject · Prop_StallOnlyPend — 전부 상주 음성 run) + 증인 열여덟 + 짝 셋(W4 전 RTL 두 꼴 — 쓰기 흡수 · 포트 결속 · 기각한 「같은 값 ∧ D = 0 → 거절」) + 대안 여섯(D 표집 β 넷 — 정본 어긋남 · 거짓 loud · 격리 몸 PASS · 같은 에지 퇴장 전환 불가 PASS · lag · 정지 hold), 44 run. 축 모델. DP-4 α 의 근거가 β 반례다 (아래 절) |
 
@@ -307,7 +307,7 @@ FAB-3 의 방어적 캡(교훈 ①)도, 여기의 정의-대-변수도, `loud_fa
 않으면 출력 비교가 무의미하므로 이 lockstep 이 모델의 전제 전부다.
 두 세계는 *플랫폼 능력에서만* 다르다.
 
-23 run: 기저 1 + 형상 sweep 2 + 가드 삭제 9 + 증인 9 + 짝 「오늘의 RTL」 1 + 대비 1 (3.10 v1.0 묶음 RTL 파도 W1 전에는 12 run: 기저 1 + 형상 sweep 2 + 가드 삭제 4 + 증인 5 — 아래 「W1」 절이 더한 것이 가드 넷 · 삭제 run 다섯 · 증인 넷 · 짝 · 대비다).
+36 run: 기저 1 + 형상 sweep 2 + 가드 삭제 15(W6 여섯 포함) + 고정 속성 음성 1 + 증인 12 + 짝 「오늘의 RTL」 1 + 대비 1 + 직접 사상 대비 1 + 그 증인 2 (3.10 v1.0 묶음 RTL 파도 W6 전에는 23 run: 기저 1 + 형상 sweep 2 + 가드 삭제 9 + 증인 9 + 짝 「오늘의 RTL」 1 + 대비 1 — 아래 「W6」 절이 더한 것이 가드 여섯 · 삭제 run 여섯 · 고정 속성 음성 · 증인 셋 · 직접 사상 대비와 그 증인 둘이다. W1 전에는 12 run: 기저 1 + 형상 sweep 2 + 가드 삭제 4 + 증인 5 — 아래 「W1」 절이 더한 것이 가드 넷 · 삭제 run 다섯 · 증인 넷 · 짝 · 대비다).
 
 | 가드 | 지우면 | 정본 근거 |
 |---|---|---|
@@ -319,6 +319,12 @@ FAB-3 의 방어적 캡(교훈 ①)도, 여기의 정의-대-변수도, `loud_fa
 | `perm_entitle_only` (W1) | 자격 허용 ∧ 비소유 접근이 `[4]` 를 세운다 → `Inv_Bit4EntOnly` | 같은 규범 — `[4]` 는 자격 거부만 |
 | `entitle_first` (W1) | 자격 거부 ∧ 비소유 접근이 `[4]` · `[19]` 를 함께 세운다 → `Inv_OneBitPerAccess` · 거부 채움 축 → `Inv_DenyFillIs4` | 같은 규범 — 자격이 먼저, 한 접근에 둘이 함께 서지 않는다 |
 | `own_reported` (W1) | 자격 허용 ∧ 비소유 접근이 어느 비트도 세우지 않는다(조용한 거부) → `Inv_UnownedLoud` | 정본 3.4.1 4항 — 소유하지 않은 쪽의 접근은 loud fault |
+| `set_reject_inert` (W6) | 거절이 대상을 앉히고 다른 장치 소유 페이지를 축출한다(직접 사상 덮어쓰기) → `Prop_SetRejectInert` (같은 판의 둘째 run → 고정 속성 `Prop_NoImplicitTransition`) | E.7 6항 — 거절은 무효과 · 아무것도 축출하지 않는다 (축출은 암묵 전이 — 3.4.1 2항) |
+| `set_reject_loud` (W6) | 조용한 거절 → `Prop_SetRejectLoud` | E.7 6항 — 거절은 loud sticky `[7]` |
+| `set_reject_floor` (W6) | 빈 표(장치 소유 0)의 OWN_SET 이 거절된다 → `Prop_SetRejectFloor` | E.7 6항 하한 |
+| `set_owned_noop` (W6) | 이미 장치 소유 페이지의 OWN_SET 이 거절 + `[7]` → `Prop_OwnedSetNoop` | E.7 6항 — 이미 소유면 무연산 |
+| `clr_no_reject` (W6) | OWN_CLR 이 거절 + `[7]` → `Prop_ClrNoReject` | E.7 6항 — OWN_CLR 은 형상 · 점유로 거절되지 않는다 |
+| `seven_reject_only` (W6) | 커밋된 OWN_SET 이 `[7]` 을 세운다(상승 건전성 위반) → `Prop_SevenRejectOnly` | E.1.2 FAULT_STATUS — `[7]` 의 원천은 OWN_SET 거절 하나 |
 
 ### 이 모델이 실제로 말하는 것
 
@@ -371,6 +377,52 @@ plain 이 fault 하는 접근을 rich 가 통과시킨다.
   (`lint_postformal` `_PARTIAL` 의 `Platform.own_reported` · `Platform.entitle_gates_value`).
 - 실측: Platform 절 23/23 선언대로 (전량 배터리 554/554 — 컨테이너 · 2026-10-11 21:15 KST 완료 · 부록 D 문장과
   같은 판). 형상 sweep 페이지 2 · 주소 2 는 89,388 distinct.
+
+### W6 — OWN_SET 의 거절과 FAULT_STATUS `[7]` (3.10 v1.0 묶음, 2026-10-18 — 파도 착지 2026-10-19)
+
+앞판 `Handoff` 는 용량이 없어 이양을 *늘* 커밋했다 — 정본(E.7 6항 — 동결 전 호스트 측 대조)이 허락한 거절이
+모델에 없었고 「거절은 무효과」 「`[7]` 은 거절에서만」 을 걸 자리도 없었다. 이 판은 거절을 형상 중립의
+*비결정 분기* `OwnSetReject` 로 들인다 — 정본이 「어느 프레임이 거절되는가는 구현의 형상이 정하고 호스트 계약이
+아니다」 라 했으므로 *언제* 거절하는지는 정하지 않고, 허락 울타리 둘(하한 · 이미 소유 무연산)과 처분(무효과 ·
+축출 없음 · `[7]`)만 건다. 두 세계(plain · rich)에 같이 든다. 정본 좌표 · RTL 대응 이름은 모델 머리가 소유한다.
+
+- 새 상수 `SetShape`: `"any"`(좋은 모델 — 울타리 안의 비결정 거절) · `"direct"`(HEAD RTL 형상 대비 — 페이지 셋 중
+  둘이 한 칸을 나눠 같은 색인 · 다른 태그면 거절, 아니면 커밋). 기존 cfg 23 은 `SetShape = "any"` 한 줄씩을 더했다.
+  새 변수 넷(펄스): `ownOp` · `ownRes` · `ownPg` · `own7`.
+- 가드 여섯(위 표) · 고정 속성 `Prop_NoImplicitTransition`(소유가 바뀌는 페이지는 그 스텝의 *커밋된* 전이 기입의 대상
+  하나뿐 — 상주 음성은 `del_set_reject_inert_implicit`) · 대비 `Inv_SlotExclusive`(`direct` cfg 에만 — 한 칸에 장치 소유
+  하나). 가드 삭제 반례 생성 수(실측): inert 272 · loud 272 · floor 14 · owned_noop 1,924 · clr 14 · seven 13.
+- 증인 다섯(전부 반증 · 상주): 좋은 모델 `NoSetReject` · `NoOwnedSetNoop` · `NoClrCommit`, `direct` 판 `NoSetReject` ·
+  `NoCoOwned` — 충돌 거절과 점유 중 비충돌 커밋이 둘 다 도달한다(울타리가 RTL 형상을 배제하지 않는다).
+- **측정 범위 — base 공허 칸 (결함 아님).** 거절은 하한 울타리 때문에 페이지 1 판(`Platform_base`)에서 한 번도
+  열리지 않는다 — 그 판의 `Prop_SetRejectInert` · `Prop_SetRejectLoud` · `Prop_SetRejectFloor` 는 전건 공허다. 거절 축은
+  페이지 ≥ 2 판(shapeA · shapeB · direct)이 재고, 증인 `Witness_NoSetReject`(페이지 2)가 그 도달을 상주로 보인다.
+  `Prop_SevenRejectOnly` 의 전건(거절 밖의 `[7]`)은 좋은 모델 어디서도 도달하지 않는다 — 상승 건전성이라 당연하고
+  반증력은 `seven_reject_only` 삭제 run 이 진다. `Prop_OwnedSetNoop` · `Prop_ClrNoReject` 의 전건은 base 에서도
+  도달한다(Handoff 무연산 · 회수).
+- **HEAD 의미론(늘 커밋) 음성** — `OwnSetReject` 를 Next 에서 뺀 변이 판(비상주 · W6-P-fix)에서 증인 2(`NoSetReject` 의
+  두 판 — 154,387 · 3,090,133 생성)와 거절 의존 삭제 5(inert · inert_implicit · loud · floor · owned_noop)가 반례 없이
+  통과한다 — 거절이 없는 의미론에서 그 run 들이 우는 것은 거절 분기 덕이다. `clr_no_reject` · `seven_reject_only`
+  삭제는 거절과 무관한 경로(OwnClrReject · Handoff 의 `own7`)로 그 판에서도 운다(14 · 13 생성 — 예상과 같다). HEAD 모델에
+  새 cfg 를 먹인 판의 TLC 구성 오류(정의 없는 이름)는 의미론 음성이 아니므로 음성 대조로 적지 않는다.
+- 분리 검사(비상주): 각 삭제 판(페이지 2)에 나머지 W6 속성 · HIU-8/9/10 · 보고 불변식을 걸면 다섯(clr · owned_noop ·
+  floor · loud · seven)은 자기 속성만 깬다. `set_reject_inert` 삭제는 `Inv_SameObservation`(HIU-9)도 깬다(13,567 생성) —
+  축출이 넘기는 쪽의 비우기 없이 일어나 plain 세계에 낡은 사본이 남기 때문이다(「축출은 암묵 전이」의 귀결 — 결함이
+  아니다). 그 불변식을 뺀 inert 분리 판은 나머지를 전부 통과한다(2,922,889 생성).
+- 상태 수(좋은 모델 · 새 속성 일곱을 함께 건다): base 3,661 / 305 distinct · shapeA 169,657 / 9,155 · shapeB 4,095,427 /
+  125,883 · direct(페이지 3) 3,475,341 / 142,765 · today 대비 계속 PASS. 짝 「오늘의 RTL」 은 계속 `Inv_ReportBitByCause` 로 운다.
+- 재지 않는 것(모델 머리 「안 잰다」 닫힌 목록에 더했다): E.7 7항 읽기 순서(모델의 스텝은 원자적이라 구조이지 측정이
+  아니다 — 사이클 축은 `ownershiptable.sby` 의 `s_rd_snap`) · 어느 형상이 *언제* 거절하는가와 거절의 완전성(정본이
+  호스트 계약 밖으로 둔다 — 직접 사상 64 칸은 유닛 하네스 몫) · `[7]` 의 sticky · W1C · 발화 우선 · sub-word
+  OWN_SET/OWN_CLR 의 거절 + `[6]`(`MmioPage.unaligned_rejected`). 거절의 정의(E.7 6항 「그 프레임이 장치 소유로 앉을 수
+  있는 저장 칸이 전부 *다른* 장치 소유 페이지로 차 있는 경우」)는 저장 칸을 가진 형상의 문장이라 `"any"` 는 그 형상 중립
+  그림자(하한 울타리)만 싣고, 저장 칸 조건 자체는 `"direct"` 의 `Collide` 에만 있다.
+- RTL 쪽 몫: GUARD-MAP 여섯은 `OwnershipTable.scala` 파일 끝. 후-formal 은 `ownershiptable.sby`(유닛 — 세움 건전성
+  `s_col_src` · `s_col_slot` · 하한 `s_col_floor` · 완전성 · 무축출 · 읽기 순서 `s_rd_snap`)와 `assembly.sby`(조립 —
+  FAULT_STATUS `[7]` = own 핀 `a_rd_fst` · 원천별 수출 `a_fsrc_b7`)이고, 조립이 own 을 절단해 둘의 합성은 서술이다
+  (`lint_postformal` `_PARTIAL` 의 `Platform.set_reject_loud` · `Platform.seven_reject_only`). 여기서 「증명됨」은 *모델 위의* 사실이다.
+- 실측: Platform 절 36/36 선언대로(W6-P 424 s · 머리 주석 정정 뒤 W6-P-fix 재실행 245 s — 컨테이너 · `-workers 1` · run 마다
+  고유 metadir). 전량 배터리 644 → 657 run — 컨테이너 `w6g-gate-tlc` · 2026-10-19 (부록 D 문장과 같은 판).
 
 ## SEC-3 — `NoLoss.tla`
 
@@ -718,6 +770,15 @@ CQ_SIZE 의 같은 값 수락(무동작)은 고정 속성 `Prop_NoSilentDrop` �
 **한계** (모델 머리): 고정 속성의 예외 집합이 판정의 내용 그 자체다 — 판정이 달랐다면 두 집합을 바꿔 적었을
 것이고 모델은 똑같이 통과했을 것이다. 기계로 보이는 것은 가드 ↔ 속성 대응 · 증인 도달 · 짝의 반례 · 규범
 사이의 공존(예약 관대 ∧ 비정렬 엄격 · CQ_SIZE 같은 값 수락 ∧ 소비 없는 워드 거절)뿐이다.
+
+**W6 (3.10 v1.0 묶음 RTL 파도 W6, 2026-10-18 — 착지 2026-10-19) — 주석만, run 29 불변.** `0xF0C` FP_SHAPE 가 정의 워드(RO)가
+돼 부류 열거에서 resv 를 떠나 ro 에 든다 (모델 머리 — 정본 인용 둘 · 「W6 이전 RTL 의 0xF0C 디코드」 항). 새 run 이 필요 없는
+근거: W6 이전 RTL 의 resv 처분과 `ro_rejected` 를 지운 ro 정렬 쓰기의 처분이 모델 안에서 같은 판정(`"absorb"`)이라 상주 run
+둘(`del_ro_rejected` → `Prop_RoRejected` · 짝 `today_surface` → `Prop_NoSilentDrop`)이 그 반례를 이미 낸다 — 비상주 탐침
+(`ro_rejected` 하나만 지운 판에 `Prop_NoSilentDrop` 만 건 판)도 34 생성에서 운다. 읽기는 resv 의 0 과 ro 의 data 가 둘 다
+`Prop_NoStaleRead` 의 허용값이라 가르지 않는다. 소거 중의 처분(쓰기 즉시 거절 · 읽기 응답)은 ro 부류의 `Ready = TRUE` 가
+이미 싣는다. 부류 오배정 자체와 판 0 동안 워드 전체 0 이라는 *값*은 모델 밖 — 조립 후-formal(`assembly.sby` `a_surf_fire` ·
+`a_rd_fpshape` · `a_ready_one`) 몫이다. 절 실측 29/29 선언대로.
 
 **재지 않는 것** (모델 머리가 닫힌 목록): 어느 오프셋이 어느 부류인가(주소 디코드 — 조립 후-formal) ·
 수락된 기입의 의미(각 구역 모델) · 읽기 값의 뜻(0xE04–0xE0C · 0xFFC 판 값) · 바이트 인에이블 · `[6]` 의
