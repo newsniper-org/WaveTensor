@@ -850,7 +850,7 @@ AX2_UNMEASURED_HARD_MAX: dict[str, int] = {
     "rtl/spinal/src/main/scala/wt64/fabric/FabricMerge.scala": 19,
     "rtl/spinal/src/main/scala/wt64/fabric/ResultBank.scala": 16,
     "rtl/spinal/src/main/scala/wt64/fabric/SharedUnit.scala": 11,
-    "rtl/spinal/src/main/scala/wt64/fp/StepSequencer.scala": 27,
+    "rtl/spinal/src/main/scala/wt64/fp/StepSequencer.scala": 25,
     "rtl/spinal/src/main/scala/wt64/gen/GenFabricMerge.scala": 1,
     "rtl/spinal/src/main/scala/wt64/gen/GenHiuPipeline.scala": 1,
     "rtl/spinal/src/main/scala/wt64/gen/GenReassembly.scala": 1,
