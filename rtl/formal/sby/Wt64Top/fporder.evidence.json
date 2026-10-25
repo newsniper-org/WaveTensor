@@ -1,0 +1,51 @@
+{
+  "anchors": [],
+  "at": "2026-10-25T14:58:27Z",
+  "cover": {
+    "reached": 6,
+    "reached_names": [
+      "Wt64Top.chk.w1_busy_rd",
+      "Wt64Top.chk.w2_done_rd",
+      "Wt64Top.chk.w3_rel_same",
+      "Wt64Top.chk.w4_rebind",
+      "Wt64Top.chk.w5_cap",
+      "Wt64Top.chk.w6_gap"
+    ],
+    "unreached": 0,
+    "unreached_names": []
+  },
+  "inputs": {
+    "rtl/generated/Wt64Top.sv": "2d93ad7b82c97b5743b9a63af92481f51662bf22476fe7b145e4b9d8d86b844a",
+    "rtl/sv/assert/Wt64TopFp_props.sv": "c05d9a7db0be73fc78d20daea80ff85e0ff626d473b5ecff8dc61a50b9c019f9"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 4,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 6,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 2,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
+  },
+  "sby": "rtl/formal/sby/Wt64Top/fporder.sby",
+  "sby_sha256": "5f201273a764c971185a1743a012bc293e65b654491bfce4e0620ac43854ada3",
+  "schema": "wt64-postformal-evidence/2",
+  "tasks": "bmc:PASS cover:PASS prove:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
+}

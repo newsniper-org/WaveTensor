@@ -1,0 +1,54 @@
+{
+  "anchors": [
+    "Platform.set_reject_loud",
+    "Platform.seven_reject_only"
+  ],
+  "at": "2026-10-25T15:05:05Z",
+  "cover": {
+    "reached": 6,
+    "reached_names": [
+      "Wt64Top.chk.w1_rej_rd",
+      "Wt64Top.chk.w2_rerise",
+      "Wt64Top.chk.w3_rd_commit",
+      "Wt64Top.chk.w4_rd_reject",
+      "Wt64Top.chk.w5_rd_clr",
+      "Wt64Top.chk.w6_hold"
+    ],
+    "unreached": 0,
+    "unreached_names": []
+  },
+  "inputs": {
+    "rtl/generated/Wt64Top.sv": "2d93ad7b82c97b5743b9a63af92481f51662bf22476fe7b145e4b9d8d86b844a",
+    "rtl/sv/assert/Wt64TopOwn_props.sv": "d6e0dfe7866bfdd6133994d7e253e23758ddbb913efe790e2b63acad983278be"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 7,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 6,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 7,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
+  },
+  "sby": "rtl/formal/sby/Wt64Top/ownasm.sby",
+  "sby_sha256": "d2cc621c9502d6ec5c6c73302f668e3e7e969a02fb35786d6ced1f6932cca329",
+  "schema": "wt64-postformal-evidence/2",
+  "tasks": "bmc:PASS cover:PASS prove:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
+}

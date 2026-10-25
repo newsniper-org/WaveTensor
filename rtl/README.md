@@ -2270,8 +2270,8 @@ reset 0). 새 대입 둘(surfBadWr 블록의 `if(fpShapeArea_wr)` · rdata 블�
 - HEAD(b0a4c47) 음성 대조 — assembly bmc FAIL(`a_surf_fire` — 0xF0C 쓰기 흡수) · cover 미도달(w59 · w61). ownershiptable
   은 HEAD 생성물에서도 bmc · cover PASS(r1 하네스 — prove 는 HEAD 에서 돌리지 않았다) — OwnershipTable 논리가 W6 전과 같기 때문이고, 새 단언의 반증력은 위 변이가 진다.
 - `make rtl-postformal` 전수(W6H, 2026-10-18 17:57–21:52): SWEEP-DONE total=26 fail=0 hollow=0 uncounted=0 ·
-  `lint_postformal --require-fresh` · `lint_tautology --audit --require-models` rc=0. 그 뒤 바뀐 입력은 props 주석 한 줄
-  (검증 2회차)뿐이고 `sby_impact` 가 영향을 ownershiptable 하나로 닫아 그 태스크만 다시 돌렸다(PASS 27 · 21/21).
+  `lint_postformal --require-fresh` · `lint_tautology --audit --require-models` rc=0. 그 뒤 바뀐 입력은 props 주석 한 줄(검증 2회차)이었고, 커밋된 증거 json 26 은
+  W6 착지 직전에 착지 트리 전체를 다시 돈 전수 스윕(2026-10-19 16:46–19:51 KST — `at` 07:46Z–10:51Z · SWEEP-DONE 26 · fail 0 · hollow 0 · uncounted 0)의 것이다(W7 에서 바로잡음).
 
 **cocotb (`rtl/sim/` — 그 README 의 W6 절).** Shape 44 → 46 — `fp_shape_word`(정상 상태: 판 값 유도 기대 · RO 쓰기 셋
 거절 + `[6]` · `[15]` 아님 · 비정렬 · 표 밖 이웃 열둘 관대) · `own_set_collide`(하한 · 거절 무효과 · 무축출 · `[7]` sticky ·
@@ -2307,3 +2307,105 @@ W6 가 다시 여덟로 돌렸다.
   그림자만 싣는다. 직접 사상 64 칸의 충돌 판정은 RTL 사실이고 유닛 하네스의 완전성 · `s_col_slot` 이 잰다.
 - `[7]` 의 조립 절반과 유닛 절반의 합성은 서술이다(`_PARTIAL`). reset 의 형식 단언은 W1–W4 에서 이월 그대로.
 - 참조 형상이 아닌 형상(P · stepMax · 소유권 표 크기) — 재지 않는다.
+
+## 판 값 커밋 전 측정 파도 W7 — C2 · `[7]` · E.7 7항의 최상위 측정 (2026-10-26)
+
+3.10 v1.0 동결(정본 `b16fc07` · Y4 `783b119`/`3ba1e58`) 뒤, 판 값 커밋 전에 남은 측정 넷을 하네스로 닫는 파도다(사용자
+지시 2026-10-23 「시작해.」 — 근거는 Y4 동결 통지 §4-1 · 우리 sign-off §2 조건 4 · Y4 rc4 답 §4-2 4). 기준 HEAD a852ee6.
+**RTL(`rtl/spinal` · `rtl/generated`) · `rtl/sim` · 선-formal 은 바꾸지 않았다** — 생성물 `Wt64Top.sv` 는 W6 의
+`2d93ad7b82c97b57` 그대로이고 판 워드 `0xFFC` 는 0 그대로다. 정본은 *사실* 문장만 바뀌었다(3.9 두 행 — 아래).
+
+**후-formal — 새 비절단 조립 태스크 둘 (assembly 와 같은 설계 T — 이름-고정 분할 · 본문 텍스트 전개 · `expose -evert`).**
+
+| 태스크 | 남긴 인스턴스 | bmc | prove | cover | assert · cover | 착지 게이트 실측 (부하 ~4.5) |
+|---|---|---|---|---|---|---|
+| Wt64Top/fporder | `fps`(StepSequencer) + 검사자 (절단 17) | smtbmc z3 깊이 16 (「소거 완료 직후」 가정) | smtbmc z3 k-귀납 깊이 4 (reset 기점) | z3 깊이 10 (같은 가정) | bmc 4 · prove 2 · 6/6 | bmc 77 s · prove 1 s · cover 4 s |
+| Wt64Top/ownasm | `own`(OwnershipTable) + 검사자 (절단 17) | smtbmc z3 깊이 8 | abc pdr (무계 · `aigsmt z3`) | z3 깊이 8 | 7 · 6/6 | bmc 397 s · prove 62 s · cover 5 s |
+
+- **M1 (C2 — 정본 E.1.2 FP_STATUS 행 「`[1]` 의 읽기 순서」) — 판정 (i).** assembly 는 `fps` 를 절단한다(절단 선택식
+  안). (ii) 유닛 하네스 + 결선 등식은 또 하나의 합성 서술이라 (i) 를 택했다. 조회가 *본* 값 `selRd` 와 `initDone` 은
+  `fps` 의 포트가 아니라 `expose StepSequencer/w:selRd StepSequencer/w:initDone` 로 포트를 만들고 `proc` 뒤 `connect -port`
+  로 검사자 와이어에 이었다(앞에서는 「Found processes」) — 결선 실재는 무결성 핀 ④ 가 잰다. RTL 노출은 필요 없었다.
+  - `a_ord_done`(첫 절 — `[1]` = 0 읽기의 수락 사이클 앞에 접수된 걷기는 그 사이클까지 done, 열쇠 무관이라 정본보다 강하다)
+    + 귀납 보조 `h_open`(열린 걷기 ⇔ `oBusy ∨ done`) — prove 무계. `a_ord_sel`(둘째 절 — 결속을 바꾸는 효과 있는 `0xF04`
+    기입 뒤 `[1]` = 0 읽기의 수락 사이클부터(같은 사이클 포함) 접수된 조회의 `selRd` = 반영된 항목 `{V, 슬롯}`) ·
+    `a_ord_cap`(그 걷기의 최상위 `io_fp_capAbsent`, V 축) — bmc 유계 16(비상주 깊이 24 PASS 1730 s). 증인 W1–W6 — W3
+    는 읽기와 *같은 사이클* 조회(검증 4회차가 r+1 로 잘못 놓인 것을 찾았다), W6 은 그 *다음 사이클*(`f_ord` 가 아직 0 —
+    검증 1회차가 전건의 그 틈을 찾아 `$past(f_ord)` → `$past(ordNow)` 로 고쳤다).
+  - 오라클은 MMIO 이력(예약 비0 거절 · 슬롯 ≥ P 거절 · en = 0 해제 · 그 밖 결속)이고 `bindWrBad` · `selWrEn` 을 읽지 않는다.
+  - 소거 2^16 사이클: reset 기점 bmc · cover 는 `initDone` 에 닿지 못해 t0 에 `initDone ∧ ¬busy` 를 가정한다
+    (`-DWT64TOPFP_POSTINIT` — `MmioConfig/mmio_config.sby` 선례). `sim -w` 로 소거를 실제로 지나는 길은 65540 사이클에
+    12.7 분이라 상주에서 접었다. 둘째 절의 무계는 원리적으로 막혀 있다 — 표 한 칸 내용 ↔ 그림자의 불변식을 검사자가
+    들 수단이 없다(단언 넷 전부의 k-귀납은 귀납 단계 UNKNOWN — 통과 아님).
+  - 앵커 `# VERIFIES: Wt64Top.fp_bind_order`(StepSequencer 에는 선-formal 모델 · GUARD-MAP 이 없다).
+- **M2 (`[7]` 세움 건전성 · 완전성을 최상위 `0xF80[7]` 까지).** 오라클은 자유 상수 칸 `f_idx` 의 (유효, 태그) 그림자를
+  MMIO 이력 + 정본 거절 · 무연산 · 회수 규칙 + 참조 형상 후보 칸(프레임 `[5:0]`)으로 짓는다 — RTL 의 표 상태를 읽지
+  않고 귀납 보조도 없다. `t7_rst`(t0 reset 바로 다음 사이클 `[7]` = 0 — E.1 reset 값; 검증 4회차가 하네스가 그 사이클을
+  건너뛰어 reset 때 이미 선 `[7]` 이 통과하던 틈을 찾았다) · `t7_src`(세움 = 0→1 과 1 인 채 해제 사이클의 재세움 ⇒ 직전
+  수락된 정렬 OWN_SET) · `t7_slot`(그 기입이 `f_idx` 를 지목했으면 그림자로 다른 태그가 점유 — 64 칸 전칭) · `t7_cmp`
+  (그림자 거절 ⇒ 다음 사이클 `[7]`) · `t7_hold`(해제 — IO 해제선 ∨ `acF84 ∧ D[7]` — 없이는 내려가지 않는다; 검증 1회차가
+  src · cmp · rd 셋으로는 「한 사이클 펄스」 · 「아무 W1C 로나 해제」 가 산다는 것을 찾았다) · `t7_rd`(`0xF80` 읽기의 `[7]`
+  = 수락 사이클의 포트). 앵커 `# PROVES: Platform.set_reject_loud` · `Platform.seven_reject_only` — 두 가드가 완전 덮임으로.
+- **M3 (E.7 7항 조립 통과).** `o_rd` — OWN_IDX 그림자가 `f_idx` 칸의 프레임을 가리키는 수락된 `0x204` 읽기의 다음 사이클
+  MMIO 응답 = 그 수락 사이클까지 수락된 전이 기입의 결과(커밋 1 · 거절 0 · 회수 0). 예외 항 `cq__io_rvalid ∨
+  cfgBlk__io_rvalid` — 두 유닛이 절단돼 rvalid 핀이 자유다(cfgBlk 를 구체로 두면 역방향 표 2^16 이 비트로 풀려 bmc3 가
+  스텝 6 을 끝내지 못했다). 증인 W3 커밋 · W4 거절 · W5 회수는 `!$past(reset,2)` · 절단 rvalid 0 을 걸어 예외 항 없이 닿는다
+  (검증 7회차가 W3–W5 가 예외 항 · reset 사이클로만 닿던 것을 찾았다). 앵커 `# VERIFIES: Wt64Top.own_read_order`.
+- **M4.** `a_ready_one`(`Wt64Top_props.sv` — 예외 항에 `0xF08` 읽기가 없다)이 `0xF08` 읽기의 ready = 1 을 이미 잰다 —
+  변이 STALL_F08(busy 동안 `0xF08` 읽기 정지 — 정본이 허락하는 「반영 전 읽기 정지」)을 assembly bmc 가 `a_ready_one` 으로
+  FAIL, `fporder` 는 bmc · prove 둘 다 PASS(규범이 허락하는 판이라 통과가 정답). 3.9 의 「(RTL 사실)」 을 측정으로 올렸다.
+  W6 절 끝 불릿의 「ownershiptable 하나만 다시 돌렸다」 는 커밋된 증거와 맞지 않아 W6 착지 직전 전수 스윕 사실로 바로잡았다.
+- `Wt64Top_props.sv` · `assembly.sby` 는 바꾸지 않았다 — assembly 무결성 핀 재서명 없음. 나머지 증거 json 26 은 착지
+  게이트 스윕이 `at` 을 갱신했다(walk_decode 는 `sby_sha256` 도 — 아래).
+- 역-변이 (기저 = HEAD a852ee6 생성물 + 착지 하네스 · HEAD 음성 대조는 `headwt` detach — 생성물 sha 가 작업 트리와 같다):
+  - fporder (keep-going bmc 깊이 12 / prove): BUSY_LATE → `a_ord_done` 단독 · BUSY_EXEC · V_BUSY_GAP → `a_ord_done` ·
+    `h_open` · WR_DELAY(결속이 한 사이클 늦게 보임 — 순서 결함 그 자체) · V_REL_NOP → `a_ord_sel` · `a_ord_cap` · SLOT_XOR
+    → `a_ord_sel` 단독 · CAPA_LOST → `a_ord_cap` 단독 · DONE_SPUR → prove `h_open` 단독(bmc 는 소거 뒤 시작이라 도달
+    불가) · STALL_F08 → PASS(정답 — 위 M4). 같은 사이클 항을 뺀 판(WR_DELAY_NOTERM)에서 WR_DELAY 가 bmc 16 을 통과해
+    그 항이 WR_DELAY 의 유일한 사살자임을 쟀다.
+  - ownasm (abc pdr — keep-going bmc 깊이 8 로 귀속 확인): COL_CLR · V_SETONCLR · CLR_NONE → `t7_src` · COL_MINE → `t7_slot`
+    · STICKY0 · V_EVICT → `t7_cmp` · NONSTICKY · CLR_ANY → `t7_hold` 단독 · B7_EXPORT · B7_STATUS · V_B7_LATE → `t7_rd` ·
+    RD_STALE → `o_rd` · RST1(`[7]` reset 값 1) → `t7_rst` 단독.
+  - 새 단언마다 그것만 죽이는 변이 ≥ 1. TIMEOUT · UNKNOWN 은 통과로 세지 않았다(BUSY_* 의 prove UNKNOWN 은 귀납 반례이고
+    확정 반례는 keep-going bmc 가 냈다).
+- **`DecodeWalk/walk_decode` prove 한도 1800 → 3600 s (늘리는 방향만 — 그 `.sby` 의 규율).** W7 과 무관한 태스크가 W7H
+  전수 스윕(부하 ~50–60)에서 TIMEOUT 했다 — 입력 · `.sby` · 도구 sha 가 10-19 PASS 증거와 같고, 프로세스 시간 115 s /
+  벽시계 1800 s 의 CPU 기아였지 웨지가 아니다. CPU 를 오래 쓰는 태스크다:
+
+  | 부하 | 벽시계 | 프로세스 | 출처 |
+  |---|---|---|---|
+  | 8–15 | 1134–1245 s | 약 1214 s | W7H 단독 · W7F1 스윕 |
+  | ~40 | 2298 s | 2100 s | W7F2 스윕 |
+  | 미기록 | 1421 · 2664 s | 1390 · 2180 s | W7F4 (디스크로 죽은 게이트 안 — 이 태스크 자체는 PASS) |
+  | ~4.5 | 866 s | 929 s | 착지 게이트 (W7F7) |
+
+  부하 ~40 의 실측은 옛 1800 s 한도였다면 TIMEOUT 이었다. 여유는 부하 ~40 실측 대비 약 1.5 배다. **게이트는 부하 < ~30
+  에서 돌린다** — 그 위에서는 보증이 없다. 주석 · 한도만 바뀌어 `.sby` sha 가 바뀌었다(`cb6db89f…` — 증거의 `sby_sha256`).
+- **착지 게이트 (W7F7, 2026-10-25 21:02–2026-10-26 00:21 KST).** 작업 트리에서 `make rtl-postformal` 한 번 —
+  SWEEP-DONE total=28 fail=0 hollow=0 uncounted=0 · `lint_postformal --require-fresh` · `lint_tautology --audit
+  --require-models`(저작 상수 0 · 병합-상수 38 = walk_decode 19 × 2) · MAKE_RC=0. 증거 json 28 전부 그 한 실행
+  (`at` 2026-10-25T12:02:49Z–15:21:45Z — 이어 붙인 증거 없음). 그 앞 게이트 셋은 nvme btrfs 메타데이터 포화
+  (8.5/9.0 GiB — `df` 는 88 G 여유)로 ENOSPC · SIGBUS · 잘린 JSON 에 죽었다(W7F4) — 설계 결함이 아니라 디스크였고, 그 뒤
+  큰 산출물은 tmpfs(`SBY_OUT=/tmp/…`)에 둔다.
+
+**정본 사실(F) 편집 — 같은 줄 치환, 정본 파일 줄 수 불변 · 규범 문면 바이트 동일.** 3.9 FP_SHAPE 행의 「`0xF08` `[1]`
+의 읽기 순서는 *미측정*」 절 → `fporder.sby` 측정(첫 절 무계 · 둘째 절 유계 16 · 변이 반증력) · 「(RTL 사실)」 → `a_ready_one`
+측정과 STALL_F08 대조 · 끝의 「미측정은 통과가 아니다」 는 그대로. 3.9 소유권 표 행의 「합성은 서술이다 — 그 자백은 …
+원장」 → `ownasm.sby` 의 `t7_*` 측정 + 두 가드 완전 덮임 · E.7 7항 문장 끝에 최상위 판 `o_rd`. E.1.2 FP_STATUS 행 ·
+E.7 6 · 7항 규범 · B.5(이 측정이 닫는 행이 없다 — 새 행 금지) · 부록 D(선-formal 변경 0) 는 그대로.
+
+**래칫 (실측 서명).** `lint_postformal` PROVES 227 → 229 · 분모 177 그대로(완전 130 → 132 · 부분 47 → 45) —
+`_MAX_PARTIAL` 47 → 45 · `_MIN_COVERED` 177 · `_MIN_EVIDENCED` 227 → 229 (신선 229/229 · 파일 28). `_PARTIAL` 의 W6 넷은
+각 태스크가 혼자 재는 폭이 그대로라 앵커 단위 부분으로 남고 「재지 않는」 문면의 「합성은 서술이다」 만 「합성은
+Wt64Top/ownasm.sby 가 잰다 (W7)」 로 — 가드는 새 앵커가 표 밖이라 완전. `lint_witness_map` 증인 479 → 491(fporder 6 ·
+ownasm 6) · 앵커 259 → 263(263/263). `lint_guard_map` 가드 184 · CHECK 177 · ENFORCED 19 그대로(새 가드 없음).
+
+**미측정 · 이월.**
+- C2 둘째 절의 무계(유계 깊이 16) · 소거 구간과 소거 완료로의 전이(시작 가정) · 슬롯 축의 최상위 포트 판(`selRd` 까지).
+- `o_rd` 의 cq · cfgBlk 응답 덮어쓰기 부재(예외 항 — 유닛 사실).
+- t0 뒤의 reset · 참조 형상이 아닌 형상 — 재지 않는다. 호스트 버스 어댑터의 순서는 정본 경계 밖.
+- W6 이월(fpbad · xbad · actbad · cap1/2 해제 사이클 재세움 변이 · 판 0 의 FP_SHAPE 덮어쓰기 경로 · E.7 7항 모델 수준)은
+  그대로다. W6 이월의 「`[7]` 합성은 서술」 은 위 M2 로 닫혔다.
+- `OwnershipTable/ownershiptable.sby` :9 · :13 과 `Wt64Top/assembly.sby` :52-53 PROVES 문면의 「합성은 서술」 은 W7
+  ownasm 으로 낡았다 · `Wt64Top/ownasm.sby` :6 과 `Wt64TopOwn_props.sv` :113 의 「t7_src 가 함의한다」 는 t7_src · t7_slot 이
+  정확하다 — 문면만이고 sha 가 증거 json 에 핀돼 있어 다음 하네스 개정 때 고친다.

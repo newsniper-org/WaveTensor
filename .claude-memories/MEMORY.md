@@ -31,9 +31,10 @@
 - [동시 실행 에이전트 상한 4](agent_concurrency_cap.md) — 사용자 지시 2026-09-21, 크레딧 고갈 방지; Workflow 팬아웃·fork 합쳐 4 이하
 - [백그라운드 대기 루프가 메모리 가드에 죽는다](background_task_oom_kill.md) — run_in_background Bash 폴링은 실사용량과 무관하게 죽는다; nohup 백그라운드 + Monitor 조합을 쓸 것
 - [tmpfs /tmp 고갈 함정](tmpfs_scratch_exhaustion.md) — /tmp 는 24G tmpfs; 세션 scratch·wt_sim_*·wt-sby-out 이 쌓여 검증 에이전트가 ENOSPC 로 죽었다(2026-09-26); 커밋한 파도의 scratch 는 치운다
-- [임시 공간 순서 /tmp → /var/tmp → 외장 SSD](scratch_space_fallback.md) — 사용자 지시 2026-10-11; /var/tmp 도 모자라면 PSSD T9 에 전용 폴더(개인 파일과 섞지 말 것)
+- [임시 공간 배치](scratch_space_fallback.md) — 2026-10-25 개정: 큰 산출물은 /tmp(swap 받침), 재개 캐시만 외장 SSD wt-tmp/ (/var/tmp/wt-s310 은 심링크); nvme 피함; **podman 스토리지 건드리지 말 것**
 - [형제 저장소 요청 채널](sibling_request_channel.md) — 상대 파일을 고치지 말고 `.local-requests-to/from` · `.local-replies-to/from` 에 「어떻게 할까요?」 메시지; Y4 에 「읽기 전용 조건부」 소스 접근 허용(2026-10-01)
 - [대외 소개 표현](public_framing.md) — 표어 「여럿이 나눠 써도 서로의 데이터가 새지 않는 계산용 칩 설계도」; AI 가속기로 좁히지 말 것(AI 는 첫 시장), 증명 범위·성능을 넘는 문구 금지 (2026-10-12)
 - [GitHub 원격은 public](github_remote_public.md) — origin(…-private)은 newsniper-org/WaveTensor 로 옮겨져 공개, 2026-07-15 까지 30 커밋만; 공개 의도 미확인, push 는 지시 없이 하지 않는다
 - [한도 내성 에이전트](limit_resilient_agents.md) — 모든 sby/TLC/sim 은 nohup + 로그, 역할별 progress.md 로 재개; 전경 컨테이너 금지 (2026-10-13)
 - [sticky 세움 건전성](sticky_set_soundness.md) — 0→1 에지 전건만으론 해제 사이클 거짓 재세움을 놓친다; 세움 사건 전건 또는 해제 완전성 짝이 있어야 닫힌다 (W6 2026-10-19)
+- [btrfs 메타데이터 ENOSPC](btrfs_metadata_enospc.md) — df 88G 여유인데 메타 청크 포화로 쓰기 간헐 실패 → 게이트가 SIGBUS·21 FAIL 로 위장; `btrfs filesystem df /` 먼저, balance 는 sudo(사용자 몫)

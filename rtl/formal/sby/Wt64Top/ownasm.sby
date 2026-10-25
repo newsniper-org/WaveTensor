@@ -1,0 +1,133 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# Wt64Top 소유권 조립 — OwnershipTable 을 절단하지 않은 최상위 조립 (판 값 커밋 전 측정 파도 W7 — M2 · M3, 2026-10-23).
+#
+# PROVES: Platform.set_reject_loud — 최상위 끝-끝: f_idx 칸(자유 상수 — 64 칸 전칭)을 지목한 수락된 정렬 OWN_SET 이 MMIO 이력 그림자로 다른 태그의 페이지가 차지한 칸이면 다음 사이클 최상위 io_fault_ownCollide (t7_cmp) · 그 [7] 은 해제(IO 해제선 · D[7] = 1 인 0xF84 W1C — 정확한 식)가 없으면 내려가지 않는다 (t7_hold — sticky; 해제가 실제로 내린다는 반대 절반은 t7_src 의 세움 사건 정의가 함의한다) · 0xF80 읽기의 [7] = 수락 사이클의 그 포트 (t7_rd) · 증인 W1 · W6. own 이 구체라 유닛 핀 · 조립 결선 · 읽기 mux 가 한 모델이다
+# PROVES: Platform.seven_reject_only — 최상위 끝-끝: t0 reset 바로 다음 사이클의 io_fault_ownCollide = 0 (t7_rst — E.1 reset 값; 그래서 그 뒤의 1 은 모두 세움 사건을 거친다) · io_fault_ownCollide 의 세움(0→1 · 해제 사이클의 재세움)은 직전 사이클의 수락된 정렬 OWN_SET 뒤에만 (t7_src — 색인 무관) · 그 기입이 f_idx 칸을 지목했으면 그 칸은 그림자로 다른 태그의 페이지가 차지하고 있었다 (t7_slot) · 0xF80 [7] = 그 포트 (t7_rd) · 증인 W1 · W2
+# VERIFIES: Wt64Top.own_read_order — E.7 7항의 최상위 판: OWN_IDX(MMIO 그림자)가 f_idx 칸의 프레임 f 를 가리키는 수락된 0x204 읽기의 다음 사이클 MMIO 응답 = 그 수락 사이클까지 수락된 전이 기입들의 결과(그림자 — 커밋 1 · 거절 · 회수 · 호스트 소유 0) (o_rd) · 증인 W3 커밋 · W4 거절 · W5 회수 — 각각 전이 수락 바로 다음 사이클의 읽기. 호스트 버스 어댑터의 순서는 경계 밖
+#
+# ## 왜 이 태스크가 있는가 (W7 M2 · M3 — Y4 sign-off 조건 4 · rc4 답 §4-2 4)
+#
+# assembly.sby 는 own 을 절단한다 — own 의 faultCollide 핀이 매 스텝 자유라, FAULT_STATUS [7] = 그 핀(a_rd_fst ·
+# a_fsrc_b7)과 「그 핀은 정렬 OWN_SET 의 형상 · 점유 거절에서만 선다」(OwnershipTable/ownershiptable.sby s_col_*)의
+# 합성이 서술이었다 — 후-formal 커버리지 lint 의 부분 덮임 원장 넷(Platform.set_reject_loud · seven_reject_only ×
+# 두 태스크)이 그 자백이다. E.7 7항의 읽기 순서도 유닛 s_rd_snap(장치 포트 절반)과 끝-끝 시험 한 점뿐이었다.
+# 절단을 건드리지 않고(assembly 의 무결성 핀 ① 14 · ② 서명 그대로), 같은 기제로 own 만 남긴 별도 조립 태스크가 그
+# 합성을 한 모델 안의 실측으로 바꾼다 (선례: XlateDoor/door.sby — DP-13 (C)).
+#
+# ## 기제 — assembly.sby 와 같은 설계 T
+#
+# Wt64Top.sv 를 `module Wt64Top (` 줄로 이름-고정 분할하고 검사자 Wt64TopOwn_props 를 본문 endmodule 앞에 텍스트로
+# 넣는다 (bind 없음 — yosys 0.66 은 bind 를 묵살한다). 절단 정의역은 선택식이 닫는다: Wt64Top 의 모든 인스턴스 −
+# OwnershipTable − 검사자 = 17 (손 목록이 아니다 — 새 인스턴스는 17 에서 운다). own 은 구체라 MMIO 기입 → own →
+# own.io.faultCollide → io.fault.ownCollide · faultWords [7] → 0xF80 rdata 가 한 모델이다.
+#
+# ## 무결성 핀 — 하네스 무결성만 (설계 성질은 넣지 않는다)
+#
+#   ① 절단 17 (expose 앞) · 남김 2 (own · chk — hierarchy 뒤)
+#   ② $check(FLAVOR=assume) 2 — 단발 reset (t0 에 1 · 그 뒤 0, OwnershipTable_props.sv 규약) · $anyconst 1 (f_idx) ·
+#      $anyseq · $allseq · $allconst 0 (절단 핀 assume 0 건)
+#   ③ assert 7 (bmc · prove) / cover 6 (cover) — 하네스를 고치면 이 수를 함께 고치는 것이 서명이다
+#
+# ## 오라클 — MMIO 이력 그림자 (하네스 머리 「오라클」)
+#
+# 자유 상수 칸 f_idx 의 (유효, 태그) 그림자를 정본 거절 · 무연산 · 회수 규칙과 참조 형상 후보 칸(프레임 [5:0] —
+# RTL 사실)으로 짓는다. RTL 의 validBits · tagVec · collide · idxReg 를 읽지 않는다 — 귀납 보조 단언도 없다
+# (abc pdr 가 그림자 ↔ 표의 관계를 스스로 찾는다). [7] 해제 오라클은 assembly 의 acF84 와 같은 식 + IO 해제선.
+#
+# ## 이 태스크가 재지 않는 것
+#
+#   · 다른 형상 — 후보 칸 = 프레임 [5:0] 은 참조 형상의 RTL 사실이다 (E.7 6항 「어느 프레임이 거절되는가는 구현의
+#     형상이 정하고 호스트 계약이 아니다」). 연관 형상은 재지 않는다.
+#   · cq · cfgBlk 의 rdata 덮어쓰기 — 둘은 절단돼 rvalid 핀이 자유라 o_rd 는 그 두 핀이 0 인 사이클만 잰다 (예외 항).
+#     실물에서 그 rvalid 는 자기 구역 읽기의 다음 사이클에만 서므로 own 읽기 다음 사이클에는 0 이다 — 유닛 사실이고
+#     이 태스크는 재지 않는다 (cfgBlk 를 구체로 두면 역방향 표 2^16 워드가 비트로 풀려 bmc 가 스텝 6 에서 분 단위로
+#     멎었다 — 실측 2026-10-23). t7_rd(0xF80)는 mapRdReg 덮어쓰기가 두 유닛 가지 뒤라 예외가 없다.
+#   · reset 이 t0 뒤에 다시 오는 궤적 (단발 reset 규약). t0 reset 바로 다음 사이클(f_step 이 빼는 칸)은 잰다 — t7_rst (W7 검증 V4-1).
+#   · 무효과 · 무축출 · 하한 · 같은 태그 무연산 · OWN_CLR 무거절 — 유닛 태스크(ownershiptable.sby)의 몫. 여기서는 그림자
+#     규칙이 그 정본 규칙을 *가정*하고 그 위에서 [7] 과 OWN_STATUS 를 잰다 (규칙이 RTL 과 다르면 t7_slot · t7_cmp · o_rd
+#     가 운다 — 역-변이 COL_MINE · RD_STALE).
+#
+# ## 엔진 · 깊이
+#
+# prove = abc pdr (무계 — 실측 PASS 162–393 s, 부하 50–60 아래). bmc = smtbmc z3 깊이 8 (실측 PASS 552 s · keep-going) —
+# abc bmc3 깊이 12 는 스텝 6 에 336 s · 스텝 7 에서 분 단위로 정체해 접었다 (느림 — 웨지 판정 전에 바꿨다; 무계 증명이
+# 따로 선다). cover = smtbmc z3 깊이 8 (가장 깊은 증인 W1 · W2 · W4 · W5 가 스텝 5 — 실측 10–80 s).
+# 증인 W3 · W4 · W5 는 reset 밖의 전이 기입(!$past(reset, 2))과 절단 핀 cq · cfgBlk rvalid 가 0 인 응답을 요구한다 — o_rd 의 예외 항이
+# 아니라 검사 항으로 닿는다 (W7 검증 V7-1: 그 항 앞의 판은 t0 reset 사이클의 OWN_SET 과 자유 핀 cfgBlk__io_rdata 로 닿았다;
+# 고친 판 실측 도달 스텝 W3 4 · W4 5 · W5 5).
+# aigsmt z3 는 pdr 반례 재생 전용이다 (판정 엔진이 아니다 — yices 부재).
+#
+# ## 역-변이 표 (비상주 실측, 2026-10-23 W7H → W7-F1 재측 — HEAD a852ee6 생성물 Wt64Top.sv sha256 앞 16자 2d93ad7b82c97b57 사본의 한 식)
+#
+# 판정 엔진 prove(abc pdr)와 귀속용 bmc(smtbmc --keep-going z3 깊이 8 — 위반 집합 전부). W7-F1 (검증 V1-2 — t7_hold 추가 뒤)
+# 재측: 무변이 prove PASS 119 s · bmc 깊이 8 PASS 528 s · cover 6/6 PASS 11 s.
+#
+#   변이 (사본의 한 식)                                             prove(pdr) 죽는 단언
+#   COL_CLR     OWN_CLR 기입이 collide                                 t7_src
+#   V_SETONCLR  [7] = 1 · 해제 사이클의 OWN_CLR 이 collide (재세움)    t7_src
+#   CLR_NONE    0xF84 W1C [7] 이 해제선에 합류하지 않음 (조립)          t7_src (해제 뒤 1 = 세움 사건 — 해제 완전성)
+#   COL_MINE    같은 태그(이미 장치 소유) OWN_SET 도 collide          t7_slot
+#   STICKY0     sticky set 상수 0                                     t7_cmp
+#   V_EVICT     충돌 OWN_SET 이 칸을 덮어씀 (축출)                     t7_cmp
+#   NONSTICKY   해제 조건을 상수 1 로 — [7] 이 한 사이클 펄스 (유닛)    t7_hold 단독
+#   CLR_ANY     0xF84 의 D[7] 게이트를 뺌 — 어느 W1C 든 [7] 을 내림 (조립) t7_hold 단독
+#   B7_EXPORT   최상위 포트 = collide ∨ badWrite (상태 [7] 은 own 핀)   t7_rd
+#   B7_STATUS   FAULT_STATUS [7] = 포트 ∨ badWrite                     t7_rd
+#   V_B7_LATE   0xF80 [7] 이 한 사이클 늦은 포트                        t7_rd
+#   RD_STALE    OWN_STATUS 가 한 사이클 늦은 validBits 를 읽음          o_rd
+#   RST1        OwnershipTable 의 collide sticky reset 값 1 (유닛)         t7_rst 단독 (W7-F4 — t7_rst 앞 하네스는 PASS 로 놓쳤다)
+#
+# pdr 는 첫 반례에서 멈추므로 위 열은 「적어도 이것이 죽는다」다. keep-going bmc 위반 집합 — W7-F1: NONSTICKY t7_hold ·
+# CLR_ANY t7_hold · CLR_NONE t7_src (t7_hold 의 단독 사살 둘). W7H (t7_hold 앞 하네스): COL_CLR t7_src · V_SETONCLR t7_src ·
+# COL_MINE t7_slot · STICKY0 t7_cmp · B7_EXPORT t7_src · t7_slot · t7_rd · B7_STATUS t7_rd · RD_STALE o_rd.
+#
+# HEAD 음성 대조: 변이 사본의 기저가 HEAD(a852ee6) 생성물 그 자체다 — RTL 은 W7 이 바꾸지 않았다(생성물 sha 동일).
+# 무변이 기저가 통과하고 변이 열셋이 전부 운다.
+
+[tasks]
+bmc
+prove
+cover
+
+[options]
+bmc: mode bmc
+bmc: depth 8
+prove: mode prove
+prove: aigsmt z3
+cover: mode cover
+cover: depth 8
+multiclock off
+
+[engines]
+bmc: smtbmc z3
+prove: abc pdr
+cover: smtbmc z3
+
+[script]
+exec -- sh -c "sed /^bind/Q Wt64TopOwn_props.sv > props_only.sv"
+exec -- sh -c "sed -n s/^bind.Wt64Top.//p Wt64TopOwn_props.sv > inj.sv"
+exec -- sh -c "sed -n /^module.Wt64Top..$/,/^endmodule/p Wt64Top.sv | sed /^endmodule/d > top_dut.sv"
+exec -- sh -c "cat inj.sv >> top_dut.sv && echo endmodule >> top_dut.sv"
+exec -- sh -c "sed /^module.Wt64Top..$/,/^endmodule/d Wt64Top.sv > rest.sv"
+bmc:   read_verilog -formal -sv props_only.sv
+prove: read_verilog -formal -sv props_only.sv
+cover: read_verilog -formal -sv -DWT64TOPOWN_COVER props_only.sv
+read_verilog -formal -sv top_dut.sv
+read_verilog -formal -sv rest.sv
+select -assert-count 17 Wt64Top/c:* Wt64Top/t:$* %d Wt64Top/t:OwnershipTable %d Wt64Top/t:Wt64TopOwn_props %d
+expose -evert -sep __ Wt64Top/c:* Wt64Top/t:$* %d Wt64Top/t:OwnershipTable %d Wt64Top/t:Wt64TopOwn_props %d
+hierarchy -top Wt64Top
+select -assert-count 2 Wt64Top/c:* Wt64Top/t:$* %d
+prep -top Wt64Top
+select -assert-count 2 t:$check r:FLAVOR=assume %i
+select -assert-count 1 t:$anyconst
+select -assert-none t:$anyseq t:$allseq %u t:$allconst %u
+bmc:   select -assert-count 7 Wt64TopOwn_props/t:$check Wt64TopOwn_props/r:FLAVOR=assert %i
+prove: select -assert-count 7 Wt64TopOwn_props/t:$check Wt64TopOwn_props/r:FLAVOR=assert %i
+cover: select -assert-count 6 Wt64TopOwn_props/t:$check Wt64TopOwn_props/r:FLAVOR=cover %i
+
+[files]
+rtl/generated/Wt64Top.sv
+rtl/sv/assert/Wt64TopOwn_props.sv

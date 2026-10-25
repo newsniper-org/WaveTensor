@@ -473,7 +473,7 @@ _MIN_COVERED = 177     # 완전+부분 덮임 CHECK 가드 수. 줄지 않는다
                        # 실측 아래 8 칸 헐거운 채로는 앵커 여덟이 조용히 사라져도
                        # 게이트가 침묵한다 (2026-09-21 전수 반증 세 렌즈가 같은
                        # 것을 지적했다).
-_MAX_PARTIAL = 47      # 부분 덮임뿐인 가드 수. 늘지 않는다 (늘리려면 근거와 함께) · 43 → 44 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 — 새 가드 열 중 commit_replaces_vpn 하나가 태어나면서 부분: 유일한 앵커 door.sby 가 xlateArea 결선의 복제를 재고 bmc 16 유계 — _PARTIAL 의 W3 머리 주석) · 44 → 45 (2026-10-15, 3.10 v1.0 묶음의 RTL 파도 W4 착지 실측 — ActivePart.d_includes_same_cycle 이 태어나면서 부분: 유일한 앵커 activepart.sby 의 DUT 는 유닛뿐이고 D 원천의 시점은 occ · assembly · descriptor 셋의 합성 서술 — _PARTIAL 의 W4 머리 주석) · 45 → 47 (2026-10-19, 3.10 v1.0 묶음의 RTL 파도 W6 착지 실측 — Platform.set_reject_loud · seven_reject_only 가 태어나면서 부분: 유닛 앵커 ownershiptable.sby 의 DUT 는 유닛뿐이고 assembly 앵커는 own 을 절단한다 — 합성은 서술, _PARTIAL 의 W6 머리 주석)
+_MAX_PARTIAL = 45      # 부분 덮임뿐인 가드 수. 늘지 않는다 (늘리려면 근거와 함께) · 43 → 44 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 — 새 가드 열 중 commit_replaces_vpn 하나가 태어나면서 부분: 유일한 앵커 door.sby 가 xlateArea 결선의 복제를 재고 bmc 16 유계 — _PARTIAL 의 W3 머리 주석) · 44 → 45 (2026-10-15, 3.10 v1.0 묶음의 RTL 파도 W4 착지 실측 — ActivePart.d_includes_same_cycle 이 태어나면서 부분: 유일한 앵커 activepart.sby 의 DUT 는 유닛뿐이고 D 원천의 시점은 occ · assembly · descriptor 셋의 합성 서술 — _PARTIAL 의 W4 머리 주석) · 45 → 47 (2026-10-19, 3.10 v1.0 묶음의 RTL 파도 W6 착지 실측 — Platform.set_reject_loud · seven_reject_only 가 태어나면서 부분: 유닛 앵커 ownershiptable.sby 의 DUT 는 유닛뿐이고 assembly 앵커는 own 을 절단한다 — 합성은 서술, _PARTIAL 의 W6 머리 주석) · 47 → 45 (2026-10-26, 판 값 커밋 전 측정 파도 W7 착지 실측 — Platform.set_reject_loud · seven_reject_only 가 완전으로: own 을 절단하지 않은 Wt64Top/ownasm.sby 의 두 앵커가 유닛 · 조립 합성을 한 모델에서 잰다. 옛 네 앵커는 각자 부분으로 _PARTIAL 에 남는다 — 가드는 앵커 하나라도 표 밖이면 완전, _PARTIAL 의 W7 머리 주석)
                        #
                        # 39 → 43 (2026-10-12, 3.10 v1.0 묶음의 RTL 파도 W1 착지 — 실측 부분 43 · 완전 103).
                        # 새 가드 열둘 중 넷이 **태어나면서 부분**이다: Platform.own_reported (파이프라인
@@ -599,7 +599,7 @@ _MAX_STRUCTURAL_RESIDUAL = 1
                        # 숨기는 것보다 낫지만, **늘어도 되는 것은 아니다.**
                        # 줄이는 길은 그 축을 실제로 재고 칸을 _NOTHING_LEFT 로
                        # 바꾸는 것뿐이다.
-_MIN_EVIDENCED = 227   # 실행 증거로 뒷받침된 앵커 수. 줄지 않는다. · 183 → 200 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 — PROVES 200 · 신선 200) · 200 → 219 (2026-10-15, 3.10 v1.0 묶음의 RTL 파도 W4 착지 실측 — PROVES 219 · 신선 219: activepart 11 · assembly ActivePart 8) · 219 → 227 (2026-10-19, 3.10 v1.0 묶음의 RTL 파도 W6 착지 실측 — PROVES 227 · 신선 227: ownershiptable Platform 여섯 · assembly Platform 둘)
+_MIN_EVIDENCED = 229   # 실행 증거로 뒷받침된 앵커 수. 줄지 않는다. · 183 → 200 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 — PROVES 200 · 신선 200) · 200 → 219 (2026-10-15, 3.10 v1.0 묶음의 RTL 파도 W4 착지 실측 — PROVES 219 · 신선 219: activepart 11 · assembly ActivePart 8) · 219 → 227 (2026-10-19, 3.10 v1.0 묶음의 RTL 파도 W6 착지 실측 — PROVES 227 · 신선 227: ownershiptable Platform 여섯 · assembly Platform 둘) · 227 → 229 (2026-10-26, 판 값 커밋 전 측정 파도 W7 착지 실측 — PROVES 229 · 신선 229: ownasm Platform 둘)
                        # 180 → 183 (2026-10-12, 3.10 v1.0 묶음의 RTL 파도 W2 착지 — 실측 183/183 신선:
                        # hiumask.sby PROVES 셋(XlateObs.verdict_latch · latch_clears_on_leave · latch_one_value) ·
                        # 증거 hiumask.evidence.json 재스윕(bmc · prove abc pdr assert 57 · cover 37/37))
@@ -1310,26 +1310,29 @@ _PARTIAL = {
     # DUT 는 유닛뿐이고 assembly 앵커는 own 을 절단한다 — 두 앵커가 다 부분이라 가드가 부분이다 (_MAX_PARTIAL +2).
     # 이 자백은 두 .sby 의 PROVES 문면에 먼저 있었다 (「합성은 서술 (lint_postformal _PARTIAL)」) — 표에 없던 동안
     # 이 lint 는 두 가드를 완전으로 셌다 (W6 검증 F3 · 메모리 「자백이 기계 밖에 있으면 없는 것과 같다」).
+    # W7 (2026-10-26, 판 값 커밋 전 측정 파도): own 을 절단하지 않은 Wt64Top/ownasm.sby 가 두 가드의 앵커를 새로 세워
+    # 합성을 한 모델에서 잰다 (t7_rst · t7_src · t7_slot · t7_cmp · t7_hold · t7_rd) — 그 앵커가 표 밖이라 두 가드는 완전이
+    # 됐다 (_MAX_PARTIAL 47 → 45). 아래 넷은 각 태스크가 혼자 재는 폭이 그대로라 앵커 단위 부분으로 남는다.
     ("Platform", "set_reject_loud", "rtl/formal/sby/OwnershipTable/ownershiptable.sby"): (
         "유닛 절반 — 충돌 기입 ⇒ 다음 사이클 sticky io_faultCollide (완전성 · 증인 W7 · W15) · 해제 없이 내려가지 않는다",
         "FAULT_STATUS [7] 배치 · 원천별 수출 io.fault.ownCollide · 0xF84 [7] 해제 합류 — Wt64Top/assembly.sby 의 같은 "
-        "가드 앵커가 재고 그 태스크는 own 을 절단한다 — 합성은 서술이다",
+        "가드 앵커가 재고 그 태스크는 own 을 절단한다 — 합성은 Wt64Top/ownasm.sby 가 잰다 (W7)",
     ),
     ("Platform", "set_reject_loud", "rtl/formal/sby/Wt64Top/assembly.sby"): (
         "Top 절반 — FAULT_STATUS [7] = own 의 faultCollide 핀 (a_rd_fst) · io_fault_ownCollide = 그 핀 (a_fsrc_b7) · "
         "0xF84 [7] 해제 합류 (a_fclr_b7) · 증인 W63",
-        "충돌 기입이 그 핀을 세운다는 유닛 절반 — own 이 절단돼 핀이 자유다. ownershiptable.sby 가 재고 합성은 서술이다",
+        "충돌 기입이 그 핀을 세운다는 유닛 절반 — own 이 절단돼 핀이 자유다. ownershiptable.sby 가 재고 합성은 Wt64Top/ownasm.sby 가 잰다 (W7)",
     ),
     ("Platform", "seven_reject_only", "rtl/formal/sby/OwnershipTable/ownershiptable.sby"): (
         "유닛 절반 — io_faultCollide 의 세움(0→1 · 해제 사이클의 재세움)은 직전 정렬 OWN_SET 뒤에만 (s_col_src) · "
         "f_slot 겨냥이면 남의 페이지 점유 (s_col_slot) · 증인 W15",
         "조립의 어떤 사건도 [7] 을 따로 세우지 않는다는 것 — FAULT_STATUS [7] · io_fault_ownCollide 가 own 핀과 등식임은 "
-        "Wt64Top/assembly.sby (own 절단) 가 재고 합성은 서술이다",
+        "Wt64Top/assembly.sby (own 절단) 가 재고 합성은 Wt64Top/ownasm.sby 가 잰다 (W7)",
     ),
     ("Platform", "seven_reject_only", "rtl/formal/sby/Wt64Top/assembly.sby"): (
         "Top 절반 — [7] 의 조립 원천은 own 핀 하나 (a_rd_fst · a_fsrc_b7 등식) · 증인 W63",
         "그 핀이 정렬 OWN_SET 거절에서만 선다는 유닛 절반 — own 이 절단돼 핀이 자유다. ownershiptable.sby s_col_src · "
-        "s_col_slot 이 재고 합성은 서술이다",
+        "s_col_slot 이 재고 합성은 Wt64Top/ownasm.sby 가 잰다 (W7)",
     ),
     ("ActivePart", "d_includes_same_cycle", "rtl/formal/sby/ActivePart/activepart.sby"): (
         "유닛 축 — D 는 판정 사이클(t+1)의 io_drainNow 다: 수락 사이클 drainNow 를 래치하는 경로가 없다 "

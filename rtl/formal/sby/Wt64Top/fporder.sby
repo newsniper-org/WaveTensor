@@ -1,0 +1,143 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# Wt64Top step sequencer 조립 — StepSequencer 를 절단하지 않은 최상위 조립에서 FP_STATUS [1] 의 읽기 순서 (판 값 커밋 전 측정 파도 W7 — M1, 2026-10-23).
+#
+# VERIFIES: Wt64Top.fp_bind_order — e-defined.typ:463 FP_STATUS 「`[1]` 의 읽기 순서 — 장치 포트에서」(C2)의 최상위 판: 수락된 0xF08 읽기가 [1] = 0 을 내면 그 수락 사이클 앞에 접수된 걷기는 그 사이클까지 done 이 났다 (a_ord_done — 열쇠 무관) · f_key(자유 상수) 결속을 바꾸는 효과 있는 0xF04 기입 뒤에 수락된 [1] = 0 읽기의 수락 사이클부터 접수된 f_key 조회는 — 수락 사이클 r 자신 · 응답 사이클 r + 1 · 그 뒤 모든 사이클 — 그 기입이 반영된 항목을 본다 (a_ord_sel — 유닛 selRd · a_ord_cap — 최상위 io_fp_capAbsent 의 V 축) · 증인 W1–W6 (W6 = r + 1 조회)
+#
+# ## 왜 이 태스크가 있는가 (W7 M1 — Y4 sign-off 조건 4 · rc4 답 §4-2 4)
+#
+# 3.9 FP_SHAPE 행은 C2 를 *미측정*으로 적었다: 장치 포트 쪽 두 고리(결속 기입이 같은 사이클에 결속 포트를 구동한다 —
+# a_bind_src · a_bind_acc, `[1]` 은 읽기 수락 사이클의 oBusy — a_rd_fstat)는 assembly.sby 가 재지만 assembly 는
+# StepSequencer(fps)를 절단하고 fps 에는 유닛 하네스가 없어, 「oBusy ⇔ 걷기 진행」 · 「조회는 접수 사이클에 발사」 ·
+# 「결속 기입은 다음 사이클부터 보인다」의 합성이 서술이었다. 브리프 판정 (i) — 절단하지 않는 조립 태스크(door.sby ·
+# activepart 선례)로 합성 자체를 단언한다. (ii) 유닛 하네스 + 결선 등식의 합성은 또 하나의 서술이라 택하지 않았다.
+#
+# ## 기제 — assembly.sby 와 같은 설계 T + 내부 신호 둘의 expose
+#
+# Wt64Top.sv 를 이름-고정 분할하고 검사자를 본문에 텍스트로 넣는다 (bind 없음). 절단 정의역 = Wt64Top 의 모든
+# 인스턴스 − StepSequencer − 검사자 = 17. 조회가 *본* 값(선택자 표 동기 읽기 데이터 selRd)과 소거 완료(initDone)는
+# fps 의 포트가 아니라서 `expose StepSequencer/w:…` 로 포트를 만들고 `connect -port fps …` 로 검사자 앞 와이어
+# (하네스 끝 bind 줄이 본문에 선언한다)에 잇는다 — ownershiptable.sby 의 expose 선례 · RTL 은 바꾸지 않는다. 그 결선이
+# 실재함을 무결성 핀(아래 ④)이 잰다 (connect 를 빼면 와이어가 미구동이라 공허해진다).
+#
+# ## 소거 2^16 사이클 — 시작 상태가 셋으로 갈린다 (정직 표기)
+#
+# 선택자 표(65536 × 5b)의 reset 소거가 2^16 사이클이라 reset 기점 bmc · cover 는 initDone 에 닿지 못한다 (걷기 접수 ·
+# 결속 기입이 소거 중 막힌다). MmioConfig/mmio_config.sby 의 cover · post 선례를 따른다.
+#
+#   bmc   「소거 완료 직후」 시작 (-DWT64TOPFP_POSTINIT): reset 을 인가하지 않고 t0 에 initDone ∧ ¬busy 를 가정한다.
+#         선택자 표 내용 · 나머지 레지스터는 자유다 (과대근사 — 단언은 궤적 안의 결속 기입만 기대값에 쓰므로
+#         초기 표 내용과 무관하다). 단언 넷 전부 · 깊이 16 — **유계**다 (실측 PASS 247 s).
+#   cover 같은 시작 상태 · 깊이 10. 증인 여섯(가장 깊은 W4 가 스텝 6 — 실측 PASS 8 s).
+#   prove reset 기점 k-귀납 (-DWT64TOPFP_INDUCT · smtbmc z3 · 깊이 4): a_ord_done 과 그 귀납 보조 h_open 둘만 —
+#         **무계**다 (기저는 소거 구간이라 자명하고 귀납 단계가 임의 상태에서 닫는다 — 실측 PASS 4 s).
+#
+# a_ord_sel · a_ord_cap 의 무계 증명은 미수렴이 아니라 *원리적으로 막혀 있다*: 그 단언은 선택자 표 한 칸의 내용과 그림자의
+# 관계를 귀납 불변식으로 요구하는데 yosys 자유 프론트엔드에는 메모리 내용을 검사자에 드는 수단이 없고(mmio_deep.sby 머리와
+# 같은 사정), 65536 워드를 비트로 풀면 abc 가 받지 못한다. 실측: 단언 넷을 모두 든 k-귀납(깊이 8)은 기저 PASS · 귀납
+# 단계 FAIL a_ord_sel (UNKNOWN — 통과가 아니다). sim -w 로 소거를 실제로 지난 시작 상태를 지어 보는 길도 쟀다 —
+# yosys sim 65540 사이클이 12.7 분이라(부하 아래) 상주 태스크에 넣지 않았다. 그래서 둘째 절은 **유계 깊이 16** 이다.
+# 깊이 24 는 비상주 실측 PASS(1730 s · 부하 50–60 — 깊이 20 에서 스텝당 수 분으로 자라 상주 깊이는 16 이다).
+#
+# ## 무결성 핀 — 하네스 무결성만
+#
+#   ① 절단 17 (expose 앞) · 남김 2 (fps · chk)
+#   ② $check(FLAVOR=assume) — prove 2 (단발 reset) · bmc · cover 2 (!reset · t0 소거 완료 가정) · $anyconst — bmc · cover 1
+#      (f_key) · prove 0 (둘째 절이 컴파일되지 않아 f_key 가 지워진다) · $anyseq · $allseq · $allconst 0
+#   ③ assert — bmc 4 · prove 2 / cover 6
+#   ④ fpsx_selRd · fpsx_initDone 의 구동자가 fps 의 selRd · initDone 포트다 (각 1)
+#
+# ## 이 태스크가 재지 않는 것
+#
+#   · 슬롯 축의 끝-끝 포트 판 — 새 슬롯의 프로그램이 걸린다는 것은 selRd(expose) 까지만 잰다. 포트 판(a_ord_cap)은 V 축뿐이다.
+#   · 소거 구간과 소거 완료로의 전이 — bmc · cover 는 그 뒤에서 시작한다 (소거 중 정지 · 즉시 거절은 assembly a_ready_fpw ·
+#     a_ready_one 과 cocotb fp_clear_window).
+#   · 비0 판 — FP_SHAPE · 판 워드와 무관하다.
+#   · 호스트 버스 어댑터의 순서 — 정본 경계 밖.
+#
+# ## 역-변이 표 (비상주 실측, 2026-10-23 W7H → W7-F1 재측 — HEAD a852ee6 생성물 sha256 앞 16자 2d93ad7b82c97b57 사본의 한 식)
+#
+# 귀속 = bmc smtbmc --keep-going z3 깊이 12 (위반 집합 전부) · prove = 착지 엔진. W7-F1 (검증 V1-1 — 둘째 절 전건을
+# $past(ordNow) 로 고친 뒤) 재측: 무변이 bmc 깊이 16 PASS 134 s · prove PASS 6 s · cover 6/6 PASS 10 s.
+#
+#   변이 (사본의 한 식)                                          keep-going bmc 위반            prove (k-귀납)
+#   BUSY_LATE  FP_STATUS [1] 에 oBusy 를 한 사이클 늦게 (조립)       a_ord_done                     UNKNOWN (귀납 반례 a_ord_done)
+#   BUSY_EXEC  oBusy = 실행 상태만 (조회 사이클 빠짐 — 유닛)        a_ord_done · h_open            UNKNOWN (귀납 반례 h_open)
+#   V_BUSY_GAP 조회 사이클에 V = 0 이면 busy 를 먼저 내림 (유닛)    a_ord_done · h_open            UNKNOWN (귀납 반례 h_open)
+#   WR_DELAY   선택자 표 쓰기를 한 사이클 늦게 (유닛)               a_ord_sel · a_ord_cap          (둘째 절은 prove 밖)
+#   V_REL_NOP  en = 0 해제가 표에 쓰이지 않음 (유닛)                a_ord_sel · a_ord_cap          (둘째 절은 prove 밖)
+#   SLOT_XOR   결속 슬롯 결선 [16] 반전 (조립)                      a_ord_sel                      (둘째 절은 prove 밖)
+#   CAPA_LOST  V = 0 조회의 capAbsent 를 내지 않음 (유닛)           a_ord_cap                      (둘째 절은 prove 밖)
+#   DONE_SPUR  소거 중 접수 거절 사이클에 거짓 done (유닛)          — (소거 뒤 시작이라 도달 불가)  FAIL h_open (기저)
+#   STALL_F08  busy 동안 0xF08 읽기를 미룸 (조립 — 정본이 허락하는 「반영 전 읽기 정지」)
+#                                                                  — (통과해야 한다)               PASS
+#
+# 증인 W6(w6_gap)은 수락 사이클 r 의 다음 사이클 r + 1 조회 — f_ord 가 아직 0 인 칸 — 가 도달 가능함을 보인다. 옛 전건
+# ($past(f_ord))은 그 한 사이클을 재지 않았고 변이 표로는 그 틈이 보이지 않았다 (W7 검증 V1-1 — 증인으로 닫는다).
+# 증인 W3(w3_rel_same)은 수락 사이클 r 자신의 조회 — a_ord_sel 둘째 항(검사 사이클 r + 1 의 f_rdPend ∧ 그 읽기 자신의
+# 응답 [1] = 0) — 가 도달 가능함을 보인다. 옛 W3 식은 조회를 r + 1 에 두고 [1] 을 한 사이클 늦게 봐 W6 과 같은 칸이었다
+# (W7 검증 V4-2 — 같은 사이클 칸에 전용 증인이 없었다).
+#
+# STALL_F08 은 음성의 반대편이다: 정본은 반영 전 읽기 정지를 허락하므로 이 태스크의 단언이 그것을 결함으로 잡으면 정본보다
+# 강한 것이다 — 통과가 정답이다. 같은 변이를 assembly.sby bmc 는 a_ready_one 으로 잡는다 (「오늘 RTL 은 그 정지를 쓰지
+# 않는다」는 RTL 사실의 측정 — 3.9 FP_SHAPE 행).
+
+[tasks]
+bmc
+prove
+cover
+
+[options]
+bmc: mode bmc
+bmc: depth 16
+prove: mode prove
+prove: depth 4
+cover: mode cover
+cover: depth 10
+multiclock off
+
+[engines]
+bmc: smtbmc z3
+prove: smtbmc z3
+cover: smtbmc z3
+
+[script]
+exec -- sh -c "sed /^bind/Q Wt64TopFp_props.sv > props_only.sv"
+exec -- sh -c "sed -n s/^bind.Wt64Top.//p Wt64TopFp_props.sv > inj.sv"
+exec -- sh -c "sed -n /^module.Wt64Top..$/,/^endmodule/p Wt64Top.sv | sed /^endmodule/d > top_dut.sv"
+exec -- sh -c "cat inj.sv >> top_dut.sv && echo endmodule >> top_dut.sv"
+exec -- sh -c "sed /^module.Wt64Top..$/,/^endmodule/d Wt64Top.sv > rest.sv"
+bmc:   read_verilog -formal -sv -DWT64TOPFP_POSTINIT props_only.sv
+prove: read_verilog -formal -sv -DWT64TOPFP_INDUCT props_only.sv
+cover: read_verilog -formal -sv -DWT64TOPFP_POSTINIT -DWT64TOPFP_COVER props_only.sv
+read_verilog -formal -sv top_dut.sv
+read_verilog -formal -sv rest.sv
+select -assert-count 17 Wt64Top/c:* Wt64Top/t:$* %d Wt64Top/t:StepSequencer %d Wt64Top/t:Wt64TopFp_props %d
+expose -evert -sep __ Wt64Top/c:* Wt64Top/t:$* %d Wt64Top/t:StepSequencer %d Wt64Top/t:Wt64TopFp_props %d
+hierarchy -top Wt64Top
+select -assert-count 2 Wt64Top/c:* Wt64Top/t:$* %d
+proc
+expose StepSequencer/w:selRd StepSequencer/w:initDone
+cd Wt64Top
+connect -port fps selRd fpsx_selRd
+connect -port fps initDone fpsx_initDone
+cd ..
+hierarchy -top Wt64Top
+prep -top Wt64Top
+select -assert-count 1 Wt64Top/w:fpsx_selRd %ci1:+[selRd] Wt64Top/c:fps %i
+select -assert-count 1 Wt64Top/w:fpsx_initDone %ci1:+[initDone] Wt64Top/c:fps %i
+bmc:   select -assert-count 2 t:$check r:FLAVOR=assume %i
+cover: select -assert-count 2 t:$check r:FLAVOR=assume %i
+prove: select -assert-count 2 t:$check r:FLAVOR=assume %i
+bmc:   select -assert-count 1 t:$anyconst
+cover: select -assert-count 1 t:$anyconst
+prove: select -assert-none t:$anyconst
+select -assert-none t:$anyseq t:$allseq %u t:$allconst %u
+bmc:   select -assert-count 4 Wt64TopFp_props/t:$check Wt64TopFp_props/r:FLAVOR=assert %i
+prove: select -assert-count 2 Wt64TopFp_props/t:$check Wt64TopFp_props/r:FLAVOR=assert %i
+cover: select -assert-count 6 Wt64TopFp_props/t:$check Wt64TopFp_props/r:FLAVOR=cover %i
+
+[files]
+rtl/generated/Wt64Top.sv
+rtl/sv/assert/Wt64TopFp_props.sv
