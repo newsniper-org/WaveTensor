@@ -1,6 +1,6 @@
 ---
 name: github-remote-public
-description: origin(Honey-Be/WaveTensor-private)은 newsniper-org/WaveTensor 로 옮겨져 public — 2026-07-15 까지 30 커밋만 올라가 있다 (2026-10-12 확인)
+description: origin(Honey-Be/WaveTensor-private)은 newsniper-org/WaveTensor 로 옮겨져 public — 2026-10-26 사용자 지시로 main 1500438 까지 push(그 전엔 2026-07-15 의 30 커밋뿐); ssh 에이전트 없음 → gh 자격 증명 HTTPS 로 push
 metadata:
   node_type: memory
   type: project
@@ -18,3 +18,5 @@ push 하지 않았다. 저장소 이름의 「-private」와 실제 공개 상�
 
 **How to apply:** 공개 여부 · 라이선스가 걸린 판단(사업 모델, 이중 라이선스, 공개 시점)에서 이 사실을 전제로
 삼고, push 는 사용자 지시 없이 하지 않는다. 상태는 `gh repo view` 로 다시 확인한다.
+
+**2026-10-26 갱신:** 사용자 지시 「push해.」로 `main` 을 `09a33ce..1500438` fast-forward push 했다(273 커밋 — 정본 · 재구현 · 형식 검증 전부가 이제 공개). 태그는 올리지 않았다(Y4 가 권한 `b16fc07` 주석 태그는 따로 확인 대기). 이 호스트엔 ssh 에이전트가 없어(`ssh_askpass` 부재 · publickey 거부) 설정을 바꾸지 않고 `git -c credential.helper= -c credential.helper='!gh auth git-credential' push https://github.com/Honey-Be/WaveTensor-private.git main:main` 으로 올렸다. 이후 push 도 여전히 지시가 있을 때만.
