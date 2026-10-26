@@ -238,7 +238,7 @@ _MAX_ANCHOR_UNWITNESSED = 0   # 늘지 않는다. 줄이는 길은 증인 신설
 _MAX_UNRESOLVED = 0   # 오늘 0. 늘리려면 근거와 함께.
 
 # ── 하한 래칫 ──────────────────────────────────────────────────────────────
-_MIN_WITNESS_MAPPED = 491   # 대응 선언이 붙은 cover 문 수. 줄지 않는다. · 419 → 443 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 — 문 하네스 재작성 · door.sby 신설 · 조립 W3 증인) · 443 → 467 (2026-10-15, 3.10 v1.0 묶음의 RTL 파도 W4 착지 실측 — activepart.sby 신설 12 · occ.sby 신설 3 · descriptor W11–W13 · 조립 W53–W58) · 467 → 479 (2026-10-19, 3.10 v1.0 묶음의 RTL 파도 W6 착지 실측 — ownershiptable W15–W21 · 조립 W59–W63) · 479 → 491 (2026-10-26, 판 값 커밋 전 측정 파도 W7 착지 실측 — fporder.sby 신설 6 · ownasm.sby 신설 6)
+_MIN_WITNESS_MAPPED = 497   # 대응 선언이 붙은 cover 문 수. 줄지 않는다. · 419 → 443 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 — 문 하네스 재작성 · door.sby 신설 · 조립 W3 증인) · 443 → 467 (2026-10-15, 3.10 v1.0 묶음의 RTL 파도 W4 착지 실측 — activepart.sby 신설 12 · occ.sby 신설 3 · descriptor W11–W13 · 조립 W53–W58) · 467 → 479 (2026-10-19, 3.10 v1.0 묶음의 RTL 파도 W6 착지 실측 — ownershiptable W15–W21 · 조립 W59–W63) · 479 → 491 (2026-10-26, 판 값 커밋 전 측정 파도 W7 착지 실측 — fporder.sby 신설 6 · ownasm.sby 신설 6) · 491 → 497 (2026-10-26, 3.10 v1.0 판 값 커밋 W8 착지 실측 — 조립 W64–W66 · abi0.sby 신설 Z1–Z3)
                              # 411 → 419 (2026-10-12 실측 419/419 — 3.10 v1.0 묶음의 RTL 파도 W2 착지: +8 =
                              # HiuMask_props.sv 29 → 37 (W29–W36 — 판정 래치 증인 여덟))
                              # 383 → 411 (2026-10-12 실측 411/411 — 3.10 v1.0 묶음의 RTL 파도 W1 착지: +28 =
@@ -266,7 +266,7 @@ _MIN_WITNESS_MAPPED = 491   # 대응 선언이 붙은 cover 문 수. 줄지 않�
                              # 게이트가 침묵했다. 334 에 수리판이 XlateStaging_props.sv 에 더한
                              # cover 둘(w13_mclr_zero · w14_mclr_rsv)을 더해 336 — w11_missclr 는
                              # w12_missclr 로 태그만 옮겼다).
-_MIN_ANCHOR_WITNESSED = 263  # 증인이 선 앵커 수. 줄지 않는다. · 211 → 229 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 229/229) · 229 → 250 (2026-10-15, 3.10 v1.0 묶음의 RTL 파도 W4 착지 실측 250/250) · 250 → 259 (2026-10-19, 3.10 v1.0 묶음의 RTL 파도 W6 착지 실측 259/259) · 259 → 263 (2026-10-26, 판 값 커밋 전 측정 파도 W7 착지 실측 263/263 — fporder VERIFIES 하나 · ownasm PROVES 둘 + VERIFIES 하나)
+_MIN_ANCHOR_WITNESSED = 265  # 증인이 선 앵커 수. 줄지 않는다. · 211 → 229 (2026-10-13, 3.10 v1.0 묶음의 RTL 파도 W3 착지 실측 229/229) · 229 → 250 (2026-10-15, 3.10 v1.0 묶음의 RTL 파도 W4 착지 실측 250/250) · 250 → 259 (2026-10-19, 3.10 v1.0 묶음의 RTL 파도 W6 착지 실측 259/259) · 259 → 263 (2026-10-26, 판 값 커밋 전 측정 파도 W7 착지 실측 263/263 — fporder VERIFIES 하나 · ownasm PROVES 둘 + VERIFIES 하나) · 263 → 265 (2026-10-26, 3.10 v1.0 판 값 커밋 W8 착지 실측 265/265 — assembly VERIFIES Wt64Top.abi_version · abi0 VERIFIES Wt64Top.abi_version_v0)
                              # 208 → 211 (2026-10-12 실측 211/211 — 3.10 v1.0 묶음의 RTL 파도 W2 착지: PROVES
                              # 셋(hiumask.sby XlateObs.verdict_latch · latch_clears_on_leave · latch_one_value)이 전부
                              # 증인을 갖고 태어났다)

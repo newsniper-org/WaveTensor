@@ -3,7 +3,7 @@
 #
 # Wt64Top 소유권 조립 — OwnershipTable 을 절단하지 않은 최상위 조립 (판 값 커밋 전 측정 파도 W7 — M2 · M3, 2026-10-23).
 #
-# PROVES: Platform.set_reject_loud — 최상위 끝-끝: f_idx 칸(자유 상수 — 64 칸 전칭)을 지목한 수락된 정렬 OWN_SET 이 MMIO 이력 그림자로 다른 태그의 페이지가 차지한 칸이면 다음 사이클 최상위 io_fault_ownCollide (t7_cmp) · 그 [7] 은 해제(IO 해제선 · D[7] = 1 인 0xF84 W1C — 정확한 식)가 없으면 내려가지 않는다 (t7_hold — sticky; 해제가 실제로 내린다는 반대 절반은 t7_src 의 세움 사건 정의가 함의한다) · 0xF80 읽기의 [7] = 수락 사이클의 그 포트 (t7_rd) · 증인 W1 · W6. own 이 구체라 유닛 핀 · 조립 결선 · 읽기 mux 가 한 모델이다
+# PROVES: Platform.set_reject_loud — 최상위 끝-끝: f_idx 칸(자유 상수 — 64 칸 전칭)을 지목한 수락된 정렬 OWN_SET 이 MMIO 이력 그림자로 다른 태그의 페이지가 차지한 칸이면 다음 사이클 최상위 io_fault_ownCollide (t7_cmp) · 그 [7] 은 해제(IO 해제선 · D[7] = 1 인 0xF84 W1C — 정확한 식)가 없으면 내려가지 않는다 (t7_hold — sticky; 해제가 실제로 내린다는 반대 절반은 t7_src · t7_slot 의 세움 사건 정의가 함의한다) · 0xF80 읽기의 [7] = 수락 사이클의 그 포트 (t7_rd) · 증인 W1 · W6. own 이 구체라 유닛 핀 · 조립 결선 · 읽기 mux 가 한 모델이다
 # PROVES: Platform.seven_reject_only — 최상위 끝-끝: t0 reset 바로 다음 사이클의 io_fault_ownCollide = 0 (t7_rst — E.1 reset 값; 그래서 그 뒤의 1 은 모두 세움 사건을 거친다) · io_fault_ownCollide 의 세움(0→1 · 해제 사이클의 재세움)은 직전 사이클의 수락된 정렬 OWN_SET 뒤에만 (t7_src — 색인 무관) · 그 기입이 f_idx 칸을 지목했으면 그 칸은 그림자로 다른 태그의 페이지가 차지하고 있었다 (t7_slot) · 0xF80 [7] = 그 포트 (t7_rd) · 증인 W1 · W2
 # VERIFIES: Wt64Top.own_read_order — E.7 7항의 최상위 판: OWN_IDX(MMIO 그림자)가 f_idx 칸의 프레임 f 를 가리키는 수락된 0x204 읽기의 다음 사이클 MMIO 응답 = 그 수락 사이클까지 수락된 전이 기입들의 결과(그림자 — 커밋 1 · 거절 · 회수 · 호스트 소유 0) (o_rd) · 증인 W3 커밋 · W4 거절 · W5 회수 — 각각 전이 수락 바로 다음 사이클의 읽기. 호스트 버스 어댑터의 순서는 경계 밖
 #

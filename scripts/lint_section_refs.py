@@ -745,7 +745,7 @@ AX2_UNMEASURED_HARD_MAX: dict[str, int] = {
     "docs/wt64v1-architecture-guide/chapters/06-formal.typ": 1,
     "proofs/tla/README.md": 12,
     "proofs/tla/trace_to_directed.md": 2,
-    "rtl/README.md": 78,
+    "rtl/README.md": 77,  # 78 → 77 (2026-10-26 W8 판 값 커밋 착지 — 「자리는 있고 회로는 없다」 표의 HIU_ABI_VERSION 행이 물러나 그 행의 `§3.10 합의 대상` 이 사라졌다)
     "rtl/formal/sby/CompletionUnit/descriptor.sby": 2,
     "rtl/formal/sby/DecodeWalk/walk_decode.sby": 1,
     "rtl/formal/sby/FabricMerge/contracts.sby": 1,
@@ -870,7 +870,7 @@ AX2_UNMEASURED_HARD_MAX: dict[str, int] = {
     "rtl/spinal/src/main/scala/wt64/memorder/MemOrderGate.scala": 10,
     "rtl/spinal/src/main/scala/wt64/payload/Reassembly.scala": 52,
     "rtl/spinal/src/main/scala/wt64/route/RouteJudge.scala": 11,
-    "rtl/spinal/src/main/scala/wt64/top/Wt64Top.scala": 63,
+    "rtl/spinal/src/main/scala/wt64/top/Wt64Top.scala": 61,  # 63 → 61 (2026-10-26 W8 판 값 커밋 착지 — `§3.10` 문면 둘(Ident 스칼라독의 합의 전 처분 · selIdent 주석의 판 번호 대기)이 판 값 배선으로 사라졌다)
     "rtl/sv/assert/CompletionUnit_props.sv": 6,
     "rtl/sv/assert/DecodeWalk_props.sv": 15,
     "rtl/sv/assert/FabricMerge_props.sv": 9,

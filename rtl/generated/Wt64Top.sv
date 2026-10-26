@@ -723,6 +723,11 @@ module Wt64Top (
   reg                 dupArea_rv;
   wire                when_Common_l336_3;
   reg                 _zz_io_fault_actCfgBadWrite;
+  wire       [31:0]   abiArea_ver;
+  wire                abiArea_live;
+  wire                abiArea_rd;
+  reg                 abiArea_rv;
+  wire       [31:0]   fpShapeArea_value;
   wire                fpShapeArea_isShape;
   wire                fpShapeArea_rd;
   wire                fpShapeArea_wr;
@@ -1792,8 +1797,11 @@ module Wt64Top (
     if(dupArea_rv) begin
       io_mmio_rdata = dupArea_reg;
     end
+    if(abiArea_rv) begin
+      io_mmio_rdata = abiArea_ver;
+    end
     if(fpShapeArea_rv) begin
-      io_mmio_rdata = 32'h0;
+      io_mmio_rdata = fpShapeArea_value;
     end
   end
 
@@ -1859,6 +1867,10 @@ module Wt64Top (
   assign dupArea_wr = (maskArea_wr && dupArea_isDup);
   assign when_Common_l336_3 = (fltClrAccept && io_mmio_wdata[6]);
   assign io_fault_actCfgBadWrite = _zz_io_fault_actCfgBadWrite;
+  assign abiArea_ver = 32'h00010000;
+  assign abiArea_live = (abiArea_ver != 32'h0);
+  assign abiArea_rd = ((((io_mmio_rstrobe && (! io_mmio_wstrobe)) && selIdent) && mmioAligned) && (io_mmio_addr[5 : 2] == 4'b1111));
+  assign fpShapeArea_value = (abiArea_live ? 32'h0100400a : 32'h0);
   assign fpShapeArea_isShape = (fpArea_wordOff == 4'b0011);
   assign fpShapeArea_rd = (fpArea_rd && fpShapeArea_isShape);
   assign fpShapeArea_wr = (fpArea_wr && fpShapeArea_isShape);
@@ -1887,6 +1899,7 @@ module Wt64Top (
       dupArea_reg <= 32'h0;
       dupArea_rv <= 1'b0;
       _zz_io_fault_actCfgBadWrite <= 1'b0;
+      abiArea_rv <= 1'b0;
       fpShapeArea_rv <= 1'b0;
     end else begin
       if(when_Wt64Top_l1274) begin
@@ -1942,6 +1955,7 @@ module Wt64Top (
       if(actp_io_badWrite) begin
         _zz_io_fault_actCfgBadWrite <= 1'b1;
       end
+      abiArea_rv <= abiArea_rd;
       fpShapeArea_rv <= fpShapeArea_rd;
     end
   end

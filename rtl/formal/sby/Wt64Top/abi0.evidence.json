@@ -1,0 +1,48 @@
+{
+  "anchors": [],
+  "at": "2026-10-26T09:47:21Z",
+  "cover": {
+    "reached": 3,
+    "reached_names": [
+      "Wt64Top.chk.z1_abi_rd",
+      "Wt64Top.chk.z2_pair_sh",
+      "Wt64Top.chk.z3_pair_abi"
+    ],
+    "unreached": 0,
+    "unreached_names": []
+  },
+  "inputs": {
+    "rtl/generated/Wt64Top.sv": "10de0838edb34dc56bfa57c7c93d255b9b49efc104b3602e3d1d8c2cc8cac682",
+    "rtl/sv/assert/Wt64TopAbi_props.sv": "c44141d810f1378382b5b3bfc94215939d15f996306f5f09d8f62b1dc7ebca55"
+  },
+  "per_task": {
+    "bmc": {
+      "assert": 4,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    },
+    "cover": {
+      "assert": 0,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 3,
+      "mode": "cover"
+    },
+    "prove": {
+      "assert": 4,
+      "const_a": 0,
+      "const_en0": 0,
+      "cover": 0,
+      "mode": "assert"
+    }
+  },
+  "sby": "rtl/formal/sby/Wt64Top/abi0.sby",
+  "sby_sha256": "23f755317464bd0c2f4856055c56eac10a5f210380fd1fab061096f15a6bcf55",
+  "schema": "wt64-postformal-evidence/2",
+  "tasks": "bmc:PASS cover:PASS prove:PASS",
+  "tool": "SBY v0.66",
+  "verdict": "PASS",
+  "yosys": "Yosys 0.66 (git sha1 86f2ddebc-dirty)"
+}

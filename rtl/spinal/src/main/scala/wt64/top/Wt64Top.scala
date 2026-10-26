@@ -38,10 +38,10 @@
 //   0xC00–0xDFF  변환 항목 표면 — 형상 비노출 (E.1.2 · E.3)      — 배선 (XlateStaging)
 //   0xE00–0xE7F  변환 저장소 제어 — flush · 미적중 관측 (§3.6.3)   — 배선 (관측 값 = hiu 스냅샷, 파도 4)
 //   0xE80–0xEFF  마스킹 — 키 · 논스 · 재키잉 · 논스 중복 캡처 (E.9)  — 배선 (`0xEC4` 캡처 읽기·쓰기 거절은 파일 끝 dupArea)
-//   0xF00–0xF3F  step 프로그램 적재 (@fabric 2.5)                  — 배선 (`0xF0C` FP_SHAPE 읽기·쓰기 거절은 클래스 끝 fpShapeArea — 판 0 동안 워드 전체 0)
+//   0xF00–0xF3F  step 프로그램 적재 (@fabric 2.5)                  — 배선 (`0xF0C` FP_SHAPE 읽기·쓰기 거절은 클래스 끝 fpShapeArea — 판 게이트는 0xFFC 의 넷 abiArea.live · 판 0 이면 워드 전체 0)
 //   0xF40–0xF7F  재조립 문맥 소거 (E.12)                           — 배선
 //   0xF80–0xFBF  장치 전역 fault · 능력 부재 (§3.8)                — 배선
-//   0xFC0–0xFFF  장치 식별 — HIU_SHAPE (`0xFF8`) · HIU_ABI_VERSION (`0xFFC`) — 부분 (RO 쓰기 거절 + [6] · `0xFF8` 은 형상 읽기(파일 끝 identArea) · `0xFFC` 읽기는 합의 전 0 — 판정 T1-ii)
+//   0xFC0–0xFFF  장치 식별 — HIU_SHAPE (`0xFF8`) · HIU_ABI_VERSION (`0xFFC`) — 배선 (RO 쓰기 거절 + [6] · `0xFF8` 은 형상 읽기(파일 끝 identArea) · `0xFFC` 읽기는 판 상수 Ident.VERSION = v1.0 `0x0001_0000`(클래스 끝 abiArea — 판 값 커밋 W8))
 //   그 밖        예약 — 정렬 쓰기 무시 · 읽기 0 (§3.7). 비정렬 쓰기는 페이지 전역 거절 + [6] (판정 T2)
 //
 // **「미배선」은 「예약」이 아니다.** 예약 오프셋은 *표에 없는* 오프셋이고,
@@ -244,10 +244,10 @@ object Wt64Top {
   val R_ABORT = Region(0xF40, 0x040, "재조립 문맥 소거 (E.12)")
   val R_FAULT = Region(0xF80, 0x040, "장치 전역 fault · 능력 부재 (§3.8)")
 
-  // UNWIRED — 자리는 배정됐고 소비자 회로가 없다 (R_XCTL 의 관측 워드 셋도 — Xctl).
+  // UNWIRED — 자리는 배정됐고 소비자 회로가 없다: R_SQ (R_XCTL 의 관측 워드 셋도 — Xctl). R_IDENT 는 selUnwired 의 rvalid 경로만 함께 쓰고 표 워드 둘은 배선됐다.
   // 부재 사유는 rtl/README.md 「자리는 있고 회로는 없다」 표가 행마다 소유한다.
   val R_SQ    = Region(0x380, 0x080, "명령 방향 — 명령 링 (E.5)")
-  val R_IDENT = Region(0xFC0, 0x040, "장치 식별 (§3.7 측정 트랙)") // 부분 — `0xFF8` HIU_SHAPE 읽기만 배선 (파일 끝 identArea)
+  val R_IDENT = Region(0xFC0, 0x040, "장치 식별 (§3.7 측정 트랙)") // 배선 — `0xFF8` HIU_SHAPE 읽기(파일 끝 identArea) · `0xFFC` 판 워드 읽기(클래스 끝 abiArea — W8)
 
   /** 드리프트 방지 — 구역 base 는 소유 모듈의 상수와 같은 값이어야 한다.
     * 두 곳이 따로 표류하면 디코더는 A 를 고르고 모듈은 B 를 해석한다. */
@@ -382,12 +382,12 @@ object Wt64Top {
     val N_CAP_BITS       = 4
   }
 
-  // ═══ 변환 저장소 두 구역 · UNWIRED 구역의 워드 ═════════════════════════
+  // ═══ 변환 저장소 두 구역 · selUnwired 구역(Sq · Ident)의 워드 ═════════════════════════
   //
   // 값을 여기 적는 이유: 「예약이라 이름이 없다」와 「이름은 있는데 회로가
   // 없다」는 다른 사실이고, 뒤의 것은 다음 사람이 배선할 때 자리를 다시
   // 정하지 않게 한다. Xent · Xctl 은 파도 3 이 XlateStaging 으로 배선했고
-  // (Xctl 의 관측 세 워드는 값만 UNWIRED), Sq · Ident 는 회로에 닿지 않는다.
+  // (Xctl 의 관측 세 워드는 값만 UNWIRED), Sq 는 회로에 닿지 않고 Ident 의 표 워드 둘은 읽기 값이 배선됐다 (identArea · abiArea).
 
   /** 명령 링 (R_SQ) — 구역 안 바이트 오프셋. 완료 방향과 *같은 상대 오프셋*
     * 이라 드라이버가 한 구조체를 base 만 바꿔 두 링에 쓴다 (구역 간 거리
@@ -426,13 +426,13 @@ object Wt64Top {
     val ACTIVE_PART  = 0x14 // RW  [7:0] 결속 파티션 · [8] A · [9] D (RO 필드 — 쓰기 무시) · [31:10] 예약(엄격)
   }
 
-  /** 장치 식별 (R_IDENT) — 구역 안 바이트 오프셋. `0xFFC` = 페이지 마지막 워드 (규칙 4). **부분**: RO 쓰기는 거절 + [6] (파일 끝 pageArea · E.1.1). `0xFFC` 읽기 값은 합의 전 0 이고 판 0 은
-    * 물려받은 `0x000`–`0x11F` 에 어떤 레이아웃도 약속하지 않는다 (판정 T1-ii — §3.10 합의 전의
-    * 처분). 비0 판 값과 필드 분할은 합의가 정한다 — 여기서 임의로 박지 않는다. `0xFF8` 은 형상 읽기다 (파일 끝 identArea). */
+  /** 장치 식별 (R_IDENT) — 구역 안 바이트 오프셋. `0xFFC` = 페이지 마지막 워드 (규칙 4). RO 쓰기는 거절 + [6] (파일 끝 pageArea · E.1.1). `0xFFC` 읽기 값은 판 상수 VERSION 이다 —
+    * 판 = (major << 16) | minor 이고 v1.0 = `0x0001_0000` 이다 (3.10 「판의 뜻」 1항 — 양측 sign-off 뒤 별도 커밋, 판 값 커밋 W8). 비0 판의 장치는 0xF0C
+    * FP_SHAPE 의 번호 ≠ 0 과 실제 P · stepMax 를 함께 낸다 (「판의 뜻」 2항) — 둘 다 클래스 끝 abiArea.ver 한 넷에서 데이터 경로로 나온다. `0xFF8` 은 형상 읽기다 (파일 끝 identArea). */
   object Ident {
     val HIU_SHAPE   = 0x38 // RO  `0xFF8` — [7:0] 실재 파티션 수 · [23:8] 파티션당 저장 칸 수(개수) · [31:24] 0 — 값은 형상 cfg 한 곳
     val ABI_VERSION = 0x3C // RO  `0xFFC` — [31:0] 호스트 ABI 판
-    val PRE_AGREEMENT = 0  // 합의 전 판 값 — resvRd 경로의 0 이 곧 이 값이다 (pageArea 의 require) · 0xF0C FP_SHAPE 의 판 게이트도 이 값이다 (클래스 끝 fpShapeArea → 파일 끝 FpShape.word)
+    val VERSION: Long = (1L << 16) | 0L // 판 상수 하나 — (major 1 << 16) | minor 0 = v1.0. 클래스 끝 abiArea.ver 가 이 값을 싣고, 0xFFC 읽기와 0xF0C FP_SHAPE 판 게이트가 그 넷에서 데이터 경로로 나온다 (판 값 커밋 W8 — 옛 PRE_AGREEMENT = 0 과 require 묶음을 대체)
   }
   require(R_IDENT.base + Ident.ABI_VERSION == 0xFFC, "ABI 판이 페이지 마지막 워드가 아니다 (규칙 4)")
 }
@@ -1171,16 +1171,16 @@ class Wt64Top(
   private val selAbort = sel(R_ABORT)
   private val selFault = sel(R_FAULT) // 장치 전역 fault — 이 파도가 배선했다
 
-  // ── UNWIRED 구역 둘 + 변환 저장소 두 구역 ─────────────────────────────
+  // ── selUnwired 구역 둘(Sq 미배선 · Ident 표 워드 둘 배선) + 변환 저장소 두 구역 ─────────────────────────────
   //
-  // selSq 는 소비 회로를 구동하지 않고 selIdent 는 0xFF8 형상 읽기 하나만 구동하지만(파일 끝 identArea) *디코더가 구역을 열거한다*는
+  // selSq 는 소비 회로를 구동하지 않고 selIdent 는 0xFF8 형상 읽기(파일 끝 identArea)와 0xFFC 판 읽기(클래스 끝 abiArea)만 구동하지만 *디코더가 구역을 열거한다*는
   // 사실 자체가 산출물이다: 「예약이라 이름이 없다」와 「이름은 있는데 회로가
   // 없다」가 코드에서 구별된다. 처분은 읽기 0 · 표 워드 쓰기 거절 + [6](파일 끝 pageArea — 판정 T1)이고,
-  // 그것은 *소비자가 없어서*이지 표에 없어서가 아니다. 변환 두 구역은 파도 3.
+  // 그것은 *소비자가 없어서*이지 표에 없어서가 아니다 (Sq — Ident 는 RO 쓰기 거절이고 표 워드 둘의 읽기 값이 배선됐다). 변환 두 구역은 파도 3.
   private val selSq    = sel(R_SQ)    // 명령 링 — 명령 방향 실물 0건
   private val selXent  = sel(R_XENT)  // 변환 항목 표면 — XlateStaging (파일 끝 xlateArea)
   private val selXctl  = sel(R_XCTL)  // 변환 저장소 제어 — XlateStaging (관측 값은 xlateArea 끝)
-  private val selIdent = sel(R_IDENT) // HIU_ABI_VERSION — 판 번호가 §3.10 대기 · HIU_SHAPE(0xFF8) 읽기만 배선 (파일 끝 identArea)
+  private val selIdent = sel(R_IDENT) // HIU_ABI_VERSION(0xFFC — 판 상수, 클래스 끝 abiArea · W8) · HIU_SHAPE(0xFF8 — 파일 끝 identArea) 읽기를 배선
   private val selUnwired = selSq || selIdent
 
   // 영역별 스트로브 게이트 — 한 접근은 정확히 한 블록에 닿는다.
@@ -1621,7 +1621,7 @@ class Wt64Top(
   // 예약 오프셋 · **미배선 구역** · 변환 두 구역의 읽기 · 네 구역의 비정렬 접근 —
   // 전부 읽기 0 이고 rvalid 는 돌려준다 (응답 없는 읽기는 버스 행 멈춤이다).
   // 한 식에 접지 않고 열거해 두는 이유: 전기적으로 같아도 *사실*이 다르다.
-  // `selUnwired` 는 표에 있는 오프셋이고 (Sq·Ident) 소비자 회로만 없다 (Ident 의 0xFF8 은 rvalid 만 여기, 값은 identArea 끝이 덮는다). 변환 두
+  // `selUnwired` 는 표에 있는 오프셋이고 (Sq·Ident) Sq 는 소비자 회로가 없고 Ident 는 표 워드 둘이 다 배선됐다 (0xFF8 · 0xFFC 는 rvalid 만 여기, 값은 identArea · abiArea 끝이 덮는다). 변환 두
   // 구역은 WO 워드의 읽기 0(E.1.1) · 관측 세 워드의 rvalid 다 (값은 xlateArea 끝이 덮는다).
   private val resvRd = io.mmio.rstrobe && !io.mmio.wstrobe &&
     (resvOffset || selUnwired || selXent || selXctl ||
@@ -1800,8 +1800,8 @@ class Wt64Top(
   // RO SQ_HEAD) · T1-ii 0xFFC 쓰기 · T2 (a) 비정렬 쓰기. 넷 다 ready = 1 인 쓰기라(own · cq ·
   // cfg 밖 · FP 정지는 정렬 쓰기뿐 · 변환 정지는 정렬 COMMIT 뿐) 수락 = 스트로브이고 거절선의
   // 콘에 절단 핀이 없다 — 조립 cover 의 절단 무관 증인 판별(④)이 그것을 기계로 확인한다.
-  // 읽기 경로는 바꾸지 않는다: 네 부류의 읽기는 이미 resvRd 의 0 이다 (0xFFC 는 합의 전
-  // 값 0 — Ident.PRE_AGREEMENT). 파일 *끝*에 둔 이유는 xlateArea 와 같다 — 위쪽 줄 좌표
+  // 읽기 경로는 바꾸지 않는다: 네 부류의 읽기 rvalid 는 resvRd 다 (0xFFC 의 값은 판 값 커밋 W8 부터 클래스 끝
+  // abiArea 의 덮어쓰기 — Ident.VERSION). 파일 *끝*에 둔 이유는 xlateArea 와 같다 — 위쪽 줄 좌표
   // (when_Wt64Top_lNNNN)를 밀지 않는다.
   val pageArea = new Area { // 공개 — 참조자가 없는 Area 는 private 이면 unused 로 컴파일이 멈춘다
     // T3 (d) — 이 장치는 물려받은 구간에 워드를 두지 않는다. 접두 비교 둘(0x000–0x0FF ·
@@ -1816,10 +1816,10 @@ class Wt64Top(
                  sqWord === Sq.SIZE / 4 || sqWord === Sq.TAIL / 4
     val isSqRo = sqWord === Sq.HEAD / 4
     val sqWr   = io.mmio.wstrobe && selSq && mmioAligned
-    // T1-ii — 0xFFC HIU_ABI_VERSION 은 RO: 쓰기는 거절 + [6]. 읽기 값은 합의 전 0 이고 그 값의
-    // 출처는 값 배선 0 건(resvRd)이다 — 합의가 비0 판을 정하는 날 이 require 가 먼저 운다.
-    require(Ident.PRE_AGREEMENT == 0,
-      "합의 전 판 값은 0 이다 — 비0 판은 3.10 합의가 정하고, 그때 resvRd 에서 0xFFC 를 빼고 읽기를 배선한다")
+    // T1-ii — 0xFFC HIU_ABI_VERSION 은 RO: 쓰기는 거절 + [6]. 읽기 값은 판 상수(Ident.VERSION)이고 rvalid 는 resvRd ·
+    // rdata 는 클래스 끝 abiArea 의 마지막 대입이다 — 판 값 커밋(W8)이 옛 「판 0 require」를 데이터 경로로 바꿨다.
+    require(Ident.VERSION >= 0L && Ident.VERSION <= 0xFFFFFFFFL,
+      "판 워드는 32b 다 — (major << 16) | minor (3.10 「판의 뜻」 1항)")
     val identWr = io.mmio.wstrobe && selIdent && mmioAligned && word(R_IDENT) === Ident.ABI_VERSION / 4
     // 3.10 v1.0 묶음 — 0xFF8 HIU_SHAPE 도 RO 다: 쓰기는 거절 + [6] 이고 효과가 없다 (읽기 값은 파일 끝 identArea).
     val shapeWr = io.mmio.wstrobe && selIdent && mmioAligned && word(R_IDENT) === Ident.HIU_SHAPE / 4
@@ -1856,7 +1856,7 @@ class Wt64Top(
   // 생성 이름 when_XlateStore_l200 함정은 W3 의 이름 있는 installFire(DP-22)로 사라졌다.
   // 읽기는 xlateArea 관측 워드와 같은 꼴이다: rvalid 는 resvRd(selUnwired 가 selIdent 를 센다)가
   // 주고 여기는 rdata 만 *마지막 대입*으로 덮는다. 값이 elaborate 상수라 수락 사이클 스냅숏이 따로
-  // 필요 없다. 쓰기 거절 + [6] 은 위 pageArea.shapeWr 이고, 0xFFC 는 합의 전 0 그대로다.
+  // 필요 없다. 쓰기 거절 + [6] 은 위 pageArea.shapeWr 이고, 0xFFC 의 값은 클래스 끝 abiArea 다.
   val identArea = new Area { // 공개 — 위와 같은 이유
     val parts      = cfg.xlateParts
     val capPerPart = XlateStore.capPerPart(cfg) // 직접 사상 — 파티션당 저장 칸 수 = 색인 수 (한 정의)
@@ -1904,30 +1904,50 @@ class Wt64Top(
   actCfgBadWrite := StickyFault(actp.io.badWrite, fclr(Fault.B_CFG_BADWRITE))
   when(actCfgBadWrite) { faultWords.status(Fault.B_CFG_BADWRITE) := True }
 
+  // ═══ 0xFFC HIU_ABI_VERSION — 판 워드 읽기 (3.10 v1.0 판 값 커밋 W8, 2026-10-26) ═══
+  //
+  // 정본 3.10 「판의 뜻」 1항: 판 워드 = (major << 16) | minor · v1.0 = 0x0001_0000. 2항: 비0 판 값은 양측 sign-off
+  // 뒤 별도 커밋에서만 RTL 에 들어가고 FP_SHAPE 배선과 함께이거나 그 뒤다 — 이 Area 가 그 커밋이다(FP_SHAPE 는 W6).
+  // 판 상수는 Ident.VERSION 하나이고 이 Area 의 ver 넷이 그것을 싣는다. 0xFFC 읽기 값과 아래 fpShapeArea 의 판 게이트
+  // (live = ver ≠ 0)가 *둘 다 이 넷에서* 데이터 경로로 나온다 — 그래서 「0xF0C[31:24] ≠ 0 ⇔ 0xFFC ≠ 0」 은 상수 둘을
+  // require 로 맞춰 둔 우연이 아니라 회로의 구조다(판 상수 하나만 바꾼 생성 변형에서 생성물 차이가 ver 대입 한 줄뿐이다
+  // — 조립 하네스의 판 0 태스크가 그 한 줄을 0 으로 바꾼 사본을 잰다).
+  // 읽기: identArea(0xFF8)와 같은 꼴 — rvalid 는 resvRd(selUnwired 가 selIdent 를 센다)가 주고 여기는 rdata 만 *마지막
+  // 대입*으로 덮는다. 정렬 읽기만 — 비정렬 0xFFD–0xFFF 읽기는 resvRd 의 0 그대로다(E.1.1 읽기 관대 축). 값이 elaborate
+  // 상수라 수락 사이클 스냅숏이 따로 필요 없다. 쓰기 거절 + [6] 은 위 pageArea.identWr 그대로다(RO — 효과 없음).
+  val abiArea = new Area { // 공개 — 참조자가 없는 Area 는 private 이면 unused 로 컴파일이 멈춘다
+    val ver  = Bits(32 bits)
+    ver := B(Ident.VERSION, 32 bits) // 판 상수가 들어오는 유일한 자리
+    val live = ver =/= 0             // FP_SHAPE 판 게이트 — 판 ≠ 0 일 때만 번호 ≠ 0 을 낸다
+    val rd   = io.mmio.rstrobe && !io.mmio.wstrobe && selIdent && mmioAligned && word(R_IDENT) === Ident.ABI_VERSION / 4
+    val rv   = RegNext(rd) init (False)
+    when(rv) { io.mmio.rdata := ver }
+  }
+
   // ═══ 0xF0C FP_SHAPE — step sequencer 형상 읽기 · 쓰기 거절 (3.10 v1.0 묶음 RTL 파도 W6, 2026-10-18) ═══
   //
   // 정본 E.1.2 의 RO 워드(FP_SHAPE 행): [8:0] P = 프로그램 슬롯 수 · [17:9] stepMax = 슬롯당 step 수 상한(둘 다
   // *개수* — 로그도, 1 을 뺀 값도 아니다) · [23:18] RO 예약 0 · [31:24] step 부호화 번호(v1.0 = 1). 번호 ≠ 0 은
-  // 0xFFC ≠ 0 과 함께만 낸다 — 판 0 동안 워드 전체가 0 이다. 값은 elaboration 상수 하나(파일 끝 FpShape.word)
-  // 이고, 그 판 게이트는 0xFFC 와 *같은 근원*(Ident.PRE_AGREEMENT)이다 — 판 값이 바뀌는 날 0xFFC 와 이 워드가
-  // 한 정의에서 함께 바뀐다. P · stepMax 는 fps 인스턴스의 실제 파라미터(fps.p)에서 온다(손 리터럴 0 · 9b 필드
-  // 범위는 FpShape.word 의 require).
+  // 0xFFC ≠ 0 과 함께만 낸다 — 판 0 동안 워드 전체가 0 이다. 형상 부분은 elaboration 상수(파일 끝 FpShape.word)이고
+  // 판 게이트는 위 abiArea.live — 0xFFC 가 읽히는 바로 그 넷(abiArea.ver)의 ≠ 0 — 이다(판 값 커밋 W8 부터 데이터
+  // 경로로 같은 근원이다 · W6 까지는 Ident.PRE_AGREEMENT 상수를 두 자리가 따로 읽고 require 로만 묶였다). P · stepMax 는
+  // fps 인스턴스의 실제 파라미터(fps.p)에서 온다(손 리터럴 0 · 9b 필드 범위는 FpShape.word 의 require).
   // 읽기: fpArea.rd(selFp ∧ 정렬 ∧ ¬wstrobe)가 이 워드를 센다 — rvalid 원천은 mapRd → mapRv(수락 다음 1펄스)이고
   // resvRd 가 아니다. fpArea.readValue 의 기본값 0 이 mapRdReg 에 실리고, 여기는 rdata 만 *마지막 대입*으로
-  // 덮는다(identArea · dupArea 선례 — 값이 elaborate 상수라 수락 사이클 스냅숏이 따로 필요 없다). 판 0 이라 지금
-  // 덮는 값도 0 이지만 경로는 배선이다.
+  // 덮는다(identArea · dupArea 선례 — 값이 판 상수와 elaborate 상수의 조합이라 수락 사이클 스냅숏이 따로 필요 없다).
+  // 판 v1.0 에서 덮는 값은 0x0100_400A 이고, 판 0 변형에서는 0 이다(그때도 경로는 배선이다).
   // 쓰기: RO 라 거절 + [6] (E.1.1) — surfBadWr 이고 효과가 없다(이 워드를 쓰는 저장이 없다). [15] 의 원천이 아니다
   // (fps 의 어떤 입력에도 닿지 않는다). 비정렬 0xF0D–0xF0F 는 pageArea.unalWr 의 페이지 sub-word 거절이다.
   // 선택자 표 소거 중: ready 하강은 정렬 0xF00 · 0xF04 *쓰기*뿐이라(ready 절의 when(fpArea.wr ∧ (isProg ∨ isBind)))
   // 이 워드의 쓰기는 정지 없이 즉시 거절 + [6] 이고 읽기는 응답한다 (E.1 reset 값 규범 6항 — 0xF08 과 같다).
   val fpShapeArea = new Area { // 공개 — 참조자가 없는 Area 는 private 이면 unused 로 컴파일이 멈춘다
-    val value   = FpShape.word(Ident.PRE_AGREEMENT, fps.p) // elaboration 상수 — 판 0 이면 0
+    val value   = Mux(abiArea.live, B(FpShape.word(fps.p), 32 bits), B(0, 32 bits)) // 판 게이트는 0xFFC 의 넷 — 판 0 이면 워드 전체 0
     val isShape = fpArea.wordOff === FpShape.OFF / 4
     val rd      = fpArea.rd && isShape
     val wr      = fpArea.wr && isShape
     val rv      = RegNext(rd) init (False)
     when(wr) { surfBadWr := True }
-    when(rv) { io.mmio.rdata := B(value, 32 bits) }
+    when(rv) { io.mmio.rdata := value }
   }
 }
 
@@ -1994,10 +2014,10 @@ class Wt64Top(
 
 // ═══ FpShape — 0xF0C FP_SHAPE 값의 한 정의 (3.10 v1.0 묶음 RTL 파도 W6, 2026-10-18) ═══
 //
-// 판 값(abiVersion)이 0 이면 워드 전체 0 — 정본 「번호 0 은 배선 · 합의 전의 값뿐이다」 · 「번호 ≠ 0 도 0xFFC ≠ 0 과
-// 함께만 낸다」. 비0 이면 (부호화 번호 1 << 24) | (stepMax << 9) | P 이고, 재구현 기본 형상(P = 10 · stepMax = 32)에서
-// 0x0100_400A 다. 호출자는 0xFFC 의 판 값 근원(Wt64Top.Ident.PRE_AGREEMENT)을 넘긴다 — 판 값이 커밋되는 날 그 근원 하나를
-// 바꾸면 이 워드가 함께 바뀐다(판 값만 바꾼 생성 변형은 그 증거 절차다 — W6-3). 필드 밖 형상은 조용히 자르지 않고
+// 형상 부분 (부호화 번호 1 << 24) | (stepMax << 9) | P — 재구현 기본 형상(P = 10 · stepMax = 32)에서 0x0100_400A 다.
+// 판 게이트는 여기 없다: 정본 「번호 0 은 배선 · 합의 전의 값뿐이다」 · 「번호 ≠ 0 도 0xFFC ≠ 0 과 함께만 낸다」 는
+// 클래스 끝 fpShapeArea 가 abiArea.live(0xFFC 가 읽히는 넷의 ≠ 0)로 이 값을 고르는 회로로 선다 (판 값 커밋 W8 — W6 까지는
+// 판 값을 인자로 받아 상수로 접었다). 필드 밖 형상은 조용히 자르지 않고
 // elaborate 가 멈춘다 — 9b 필드는 슬롯 · 색인 필드(8b)가 가리킬 수 있는 최대 256 까지 담는다.
 object FpShape {
   val OFF     = 0x0C // R_FP 구역 안 바이트 오프셋 — F_PROG · F_BIND · F_STATUS 다음 워드
@@ -2009,12 +2029,11 @@ object FpShape {
     "FP_SHAPE 오프셋이 0xF0C 가 아니다 (E.1.2 step 프로그램 적재)")
   require(Seq(Wt64Top.F_PROG, Wt64Top.F_BIND, Wt64Top.F_STATUS).forall(_ != OFF),
     "FP_SHAPE 오프셋이 같은 구역의 다른 워드와 겹친다")
-  def word(abiVersion: Long, p: StepSeqParams): Long = {
+  def word(p: StepSeqParams): Long = {
     require(p.progDepth >= 1 && p.progDepth < (1 << FIELD_W),
       s"FP_SHAPE [8:0] 필드 밖 형상 — P ${p.progDepth} (조용히 자르지 않는다)")
     require(p.stepMax >= 1 && p.stepMax < (1 << FIELD_W),
       s"FP_SHAPE [17:9] 필드 밖 형상 — stepMax ${p.stepMax} (조용히 자르지 않는다)")
-    if (abiVersion == 0) 0L
-    else (ENC_V1.toLong << ENC_LO) | (p.stepMax.toLong << SM_LO) | p.progDepth.toLong
+    (ENC_V1.toLong << ENC_LO) | (p.stepMax.toLong << SM_LO) | p.progDepth.toLong
   }
 }

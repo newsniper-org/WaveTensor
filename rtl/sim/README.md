@@ -50,15 +50,17 @@ mkdtemp 루트는 **통과한 실행이 스스로 지운다** — 실패한 실�
 
 ---
 
-## 실행 결과 (2026-10-18, 호스트 — W6 생성물 · `0xF0C` FP_SHAPE 배선 · OWN_SET 거절 GUARD-MAP)
+## 실행 결과 (2026-10-26, 호스트 — W8 생성물 · 판 값 커밋 `0xFFC` = `0x0001_0000` · FP_SHAPE 판 게이트)
 
 ```
-Mask:  12 tests passed (skip 0, 하한 12)
-Shape: 46 tests passed (skip 0, 하한 46)
-run_wt64: 요청 스위트 2건 / cocotb 테스트 58건 전부 통과
+Mask:      12 tests passed (skip 0, 하한 12)
+Shape:     47 tests passed (skip 0, 하한 47)
+ShapeAbi0:  3 tests passed (skip 0, 하한 3)
+run_wt64: 요청 스위트 3건 / cocotb 테스트 62건 전부 통과
 ```
 
-(2026-10-18 W6(`0xF0C` FP_SHAPE · `[7]`) — Shape 44 → 46: `fp_shape_word` · `own_set_collide` 신설, `fp_clear_window` 를 제자리에서 넓힘(④–⑥ — 아래 「W6」 절). 2026-10-15 W4(결속 파티션) — Shape 37 → 44: 조회 헬퍼가 파티션을 `0xE14` 결속으로 만들고(`bind_part`) 새 일곱(`active_part_*` 여섯 · `reset_values_norm` — 아래 「W4」 절). 2026-10-13 W3 수정 — Shape 36 → 37 `xlate_high_vpn_bits_distinguish` · `xlate_other_flush_keeps_staging` 에 파티션 1 vs 3 행(아래 「W3 수정」 절). 2026-10-13 W3(형상 비노출 `0xC00` 문) — Shape 26 → 36: 옛 문의 `xlate_*` 를 제자리에서 VPN → FRAME → COMMIT 문으로 다시 쓰고 새 열(N1–N7 · 선-formal 인계 셋 — 아래 「W3」 절). 2026-10-12 W2(판정 래치) — Shape 24 → 26 `xlate_released_judgment_survives_eviction` · `xlate_latched_hit_survives_retire`(아래 「W2」 절). 2026-10-12 W1 검증 수리 — Mask 11 → 12 `nonce_dup_compare_every_bit`(논스 비교 전폭 — 아래 「W1」 절의 「검증 수리」) · N14 에 reset · `[4]` 단독 해제 · `0xF88` 요약 행. 2026-10-11 W1(3.10 RTL 파도 — 표면 비트·워드) — Shape 21 → 24 `hiu_shape_word` · `mask_dup_capture` · `fault19_nonowned_access`, Mask 11 그대로(두 시험을 넓힘 — 아래 「W1」 절). 2026-09-26 파도 4 — Shape 15 → 16 `abort_tag1_word_legality` · 통합 착지 16 → 21: 페이지 통합 `page_disposition` · `fp_clear_window` ·
+(2026-10-26 W8(판 값 커밋) — Shape 46 → 47: `abi_version_pair` 신설 · `page_disposition` 의 `0xFFC` 읽기 기대와 `fp_shape_expect` 를
+판 리터럴로 · 새 스위트 `ShapeAbi0`(판 0 변형 — 아래 「W8」 절). 2026-10-18 W6(`0xF0C` FP_SHAPE · `[7]`) — Shape 44 → 46: `fp_shape_word` · `own_set_collide` 신설, `fp_clear_window` 를 제자리에서 넓힘(④–⑥ — 아래 「W6」 절). 2026-10-15 W4(결속 파티션) — Shape 37 → 44: 조회 헬퍼가 파티션을 `0xE14` 결속으로 만들고(`bind_part`) 새 일곱(`active_part_*` 여섯 · `reset_values_norm` — 아래 「W4」 절). 2026-10-13 W3 수정 — Shape 36 → 37 `xlate_high_vpn_bits_distinguish` · `xlate_other_flush_keeps_staging` 에 파티션 1 vs 3 행(아래 「W3 수정」 절). 2026-10-13 W3(형상 비노출 `0xC00` 문) — Shape 26 → 36: 옛 문의 `xlate_*` 를 제자리에서 VPN → FRAME → COMMIT 문으로 다시 쓰고 새 열(N1–N7 · 선-formal 인계 셋 — 아래 「W3」 절). 2026-10-12 W2(판정 래치) — Shape 24 → 26 `xlate_released_judgment_survives_eviction` · `xlate_latched_hit_survives_retire`(아래 「W2」 절). 2026-10-12 W1 검증 수리 — Mask 11 → 12 `nonce_dup_compare_every_bit`(논스 비교 전폭 — 아래 「W1」 절의 「검증 수리」) · N14 에 reset · `[4]` 단독 해제 · `0xF88` 요약 행. 2026-10-11 W1(3.10 RTL 파도 — 표면 비트·워드) — Shape 21 → 24 `hiu_shape_word` · `mask_dup_capture` · `fault19_nonowned_access`, Mask 11 그대로(두 시험을 넓힘 — 아래 「W1」 절). 2026-09-26 파도 4 — Shape 15 → 16 `abort_tag1_word_legality` · 통합 착지 16 → 21: 페이지 통합 `page_disposition` · `fp_clear_window` ·
 3B `xlate_miss_observed` · `xlate_miss_obs_second_stall` · 3A `xlate_other_flush_keeps_staging` (`xlate_hi_releases_stall` 은 제자리에서 `xlate_flush_ends_staging`).
 2026-09-26 파도 3 — 변환 저장소의 MMIO 문: Shape 6 → 13, 지향 시험 일곱
 `xlate_*`, 같은 날 반증 검토 뒤 수리로 13 → 15 — 인접 HI 의 D-2 버스 정지 값 시험 둘.
@@ -432,6 +434,41 @@ HEAD 에서 N15 가 우는 자리는 결속 축이다.
 | O8 OWN_CLR 이 태그를 안 봄(남의 페이지 회수) | own_set_collide 만 |
 | O9 빈 표에서 collide(하한 위반) | own_set_collide 만 |
 
+### W8 — 판 값 커밋 `0xFFC` = `0x0001_0000` · FP_SHAPE 판 게이트 (3.10 v1.0 동결 뒤 첫 장치 변화)
+
+기대값은 정본 문면과 Y4 합의(판 = `(major << 16) | minor`)에서 하네스가 따로 짓는다 — `HIU_ABI_EXPECT = (HIU_ABI_MAJOR 1 << 16) |
+HIU_ABI_MINOR 0`(시험 파일 W6 절 머리의 `03-hiu.typ` 1651 행 인용) · `fp_shape_ref(abi)` = 판 0 이면 0, 아니면 `(1 << 24) | (32 << 9) | 10`.
+W6 판은 FP_SHAPE 기대를 `0xFFC` 를 *읽어서* 지었다 — 그 꼴은 두 워드가 함께 판 0 으로 되돌아간 생성물(아래 ABI0)을 통과시킨다. 이제
+`fp_shape_expect` 는 읽은 판 값을 리터럴과 대조하고 기대는 리터럴에서 낸다.
+
+| 시험 | 재는 것 |
+|---|---|
+| `abi_version_pair` (신설) | 선택자 표 소거 중과 뒤 각각: `0xFFC` → `0xF0C` · `0xF0C` → `0xFFC` 두 순서로 읽어 붙듦 0 · rvalid 1회 · 값 = 리터럴 기대 · 쌍조건(`0xF0C[31:24]` ≠ 0 ⇔ `0xFFC` ≠ 0 — MMIO 응답만으로) · `0xFFC` RO 쓰기 넷(전폭 1 · 0 · 판 값 그 자체 · major+1) 거절 + `[6]` · 값 불변 · 비정렬 `0xFFD`–`0xFFF` 읽기 0 · fault 없음 |
+| `page_disposition` (보강) | `0xFFC` 읽기 = `HIU_ABI_EXPECT`(W6 까지는 「합의 전 0」) · 읽기 fault 없음 |
+| `fp_shape_word` · `fp_clear_window` (보강) | 기대를 판 리터럴에서 — 읽은 `0xFFC` 가 리터럴과 다르면 그 자리에서 운다 |
+
+**`ShapeAbi0` 스위트 (신설).** 생성물 `Wt64Top.sv` 의 `assign abiArea_ver = 32'h00010000;` 한 줄만 `32'h0` 으로 바꾼 사본을 빌드 자리에 짓고
+(저장소에 쓰지 않는다 · 치환 수 정확히 1 을 요구 — 0 이면 「미측정이지 통과가 아니다」로 실패) `abi_version_pair` · `fp_shape_word` ·
+`page_disposition` 셋을 `WT_ABI_MAJOR` = `WT_ABI_MINOR` = 0 으로 돌린다. 그 사본은 `Ident.VERSION` 만 0 으로 바꾼 Spinal elaboration 의
+생성물과 바이트 동일하다(rtl/README.md W8 절). 러너는 `testcase` 표로 고른 시험만 세고, 고르지 않은 시험이 skip 이 아니면 실패로 센다.
+
+**변이** (W8 생성물 사본 · 한 식씩 · Shape 는 판 의존 넷(`abi_version_pair` · `fp_shape_word` · `page_disposition` · `fp_clear_window`) ·
+ShapeAbi0 셋):
+
+| 변이 | Shape | ShapeAbi0 |
+|---|---|---|
+| BASE 무변이 | 4/4 PASS | 3/3 PASS |
+| GATE_LIT1 — FP_SHAPE 게이트를 판 넷 대신 별도 리터럴 1 에 | PASS (v1.0 에서 포트로 안 갈린다) | fp_shape_word · abi_version_pair |
+| ABI_RD_LIT — `0xFFC` 읽기를 판 넷 대신 별도 리터럴 `0x0001_0000` 에 | PASS (같은 까닭) | page_disposition · fp_shape_word · abi_version_pair |
+| GATE_LIT0 — 게이트를 리터럴 0 에 | fp_clear_window · fp_shape_word · abi_version_pair | PASS |
+| ENC2 · P11 · SM33 — FP_SHAPE 번호 2 · P 11 · stepMax 33 | fp_clear_window · fp_shape_word · abi_version_pair (셋 다 같다) | PASS |
+| MAJ2 · MIN1 — 판 `0x0002_0000` · `0x0001_0001` | page_disposition · fp_clear_window · fp_shape_word · abi_version_pair | 치환 0 번 — 스위트 실패(미측정) |
+| ABI0 — 판 상수를 0 으로 되돌림(두 워드가 함께 0) | page_disposition · fp_clear_window · fp_shape_word · abi_version_pair | 치환 0 번 — 스위트 실패 |
+| ABI_NORD — `0xFFC` 덮어쓰기 탈락 | page_disposition · fp_clear_window · fp_shape_word · abi_version_pair | PASS |
+| SH_NORD — `0xF0C` 덮어쓰기 탈락 | fp_clear_window · fp_shape_word · abi_version_pair | PASS |
+
+**HEAD(`1500438`) 음성 대조** — Shape 의 판 의존 넷이 전부 FAIL(`0xFFC` 가 0 · FP_SHAPE 가 0) · ShapeAbi0 은 HEAD 생성물에 판 상수 줄이 없어 치환 0 번으로 실패한다(통과로 세지 않는다). 판 0 변형이 잡는 것은 v1.0 에서 포트로 갈리지 않는 *결합* 결함(GATE_LIT1 · ABI_RD_LIT) — 본선이 잡는 값 결함은 판 0 에서 통과하는 것이 정답이다.
+
 ## ⛔ 이 하네스의 층위 — 호스트 ABI 가 아니다
 
 **투입 방향(호스트 명령 큐 / E.5 명령 링)은 RTL 에 미착지다.**
@@ -465,7 +502,7 @@ HEAD 에서 N15 가 우는 자리는 결속 축이다.
 | 4 | fp32 산술 정확성 (`golden_fp32` 비트 일치) | `StepSequencer.scala:425-426` 이 `UInt` 정수곱·정수합 — 산술은 축 (b) 후속 |
 | 5 | `mask64` 의 32비트 (`[63:44]`·`[11:0]`) | `MaskUnit.scala:289-296` 「저장은 적용 비트만」 — 레지스터도 배선도 없다. **비교 불가가 아니라 비교 대상 부재** |
 | 6 | `SUBKEY`(256b)·`BLOCK`(512b) 를 통한 부분 수리 검출 | 내는 포트가 없다. `st_0..st_15` 의 계층 peek 은 포트 계약이 아니라 SpinalHDL 명명의 우연이라 통과 기준으로 쓰지 않는다 |
-| 7 | `FAULT_STATUS[17]`·`[18]` | `Wt64Top.sv:1712` 「faultWords_status[17] = 1'b0;」 과 다음 줄 `[18]` 상수 0 — 원천 부재. **0 을 「정상」으로 읽으면 안 된다** |
+| 7 | `FAULT_STATUS[17]`·`[18]` | `Wt64Top.sv:1717` 「faultWords_status[17] = 1'b0;」 과 다음 줄 `[18]` 상수 0 — 원천 부재. **0 을 「정상」으로 읽으면 안 된다** |
 | 8 | `SharedUnit`·`MemOrderGate` 독립 `.sv` 의 top 대표성 | 형상 불일치 — 독립본 16비트 vs top 인스턴스 161/128비트 |
 | 9 | OPREF **B** 참조의 LBID 축 | 제시 자체가 없다 — `Wt64Top.scala:86` 「OPREF B 토큰의 RouteJudge 제시는 미배선」 (TODO 2항), `tokIn` 은 사이클당 하나. ISA-2 α 는 **OPREF A 축만** 덮는다 |
 | 10 | 변환 조회의 호스트 ABI 층위 | 요청 원천(메모리 파이프) 미착지 — 조회의 VPN · valid 는 내부 포트 `io.hiuReq` 제시이고, 파티션은 `0xE14` XLATE_ACTIVE_PART MMIO 결속이다(W4 — `io_hiuReq_part` 은퇴). `xlate_*` · `active_part_*` 시험의 기입 쪽만 호스트 ABI 오프셋이다 |

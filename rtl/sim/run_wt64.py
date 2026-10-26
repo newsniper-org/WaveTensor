@@ -163,7 +163,11 @@ SUITES = {
         # 제자리에서 넓혔다(④–⑥ 소거 중 0xF0C 읽기 응답 · 0xF0C/0xF08 쓰기 즉시 거절). fp_shape_word · fp_clear_window 는
         # HEAD(b0a4c47) 생성물에서 FAIL(0xF0C 쓰기 흡수) · own_set_collide 는 HEAD 에서도 PASS — OwnershipTable 논리는 W6 이전과
         # 같다(W6 RTL 은 GUARD-MAP 만 더했다). 그 시험의 수락 기준은 HEAD 대조가 아니라 변이다(W6-sim 변이 표).
-        "expect_min": 46,
+        # 2026-10-26 46 → 47: W8(3.10 v1.0 판 값 커밋 — 0xFFC = 0x0001_0000 · FP_SHAPE 판 게이트를 판 상수 한 넷에서) —
+        # abi_version_pair(판 워드 · FP_SHAPE 의 리터럴 기대 · MMIO 응답 둘의 쌍조건 · 소거 중 · RO 쓰기 넷 · 비정렬). page_disposition
+        # 의 0xFFC 읽기 기대와 fp_shape_word/fp_clear_window 의 기대 유도는 제자리에서 판 리터럴로 바꿨다(W6 판은 0xFFC 를 읽어
+        # 기대를 지었다 — 0xFFC 와 FP_SHAPE 가 함께 판 0 으로 되돌아간 생성물이 그 꼴을 통과한다).
+        "expect_min": 47,
         "what": "ISA-2 순열 (LBID·LNID 존재 축) + ISA-1 자리 무관성 + 비교기 자기대조 "
                 "+ 변환 저장소 MMIO 문 — 형상 비노출 0xC00 (VPN·FRAME·COMMIT 설치·flush·V=0·거절·정지 해제·"
                 "인접 COMMIT 하류 정지·예약-엄격 워드·VPN_HI·VPN 재기입·데이터 사유의 정지 뒤 거절·주소 사유의 "
@@ -174,12 +178,27 @@ SUITES = {
                 "+ VPN 높은 비트 키 구별 "
                 "+ 0xE14 결속 파티션((A, D) 표 · D 표집 시점 · [9:8] 쓰기 무시 · 비정렬 밖 · 판정 사이클 정지 · "
                 "결속 → 조회 파티션) + reset 값 규범 "
-                "+ 0xF0C FP_SHAPE(판 값 유도 읽기 · RO 거절 · 소거 중 처분) + OWN_SET 거절과 [7](E.7 6 · 7항)",
+                "+ 0xF0C FP_SHAPE(판 리터럴 유도 읽기 · RO 거절 · 소거 중 처분) + OWN_SET 거절과 [7](E.7 6 · 7항) "
+                "+ 0xFFC 판 워드 v1.0 · FP_SHAPE 판 게이트 쌍조건(W8)",
+    },
+    # W8 — 판 0 변형. 생성물 Wt64Top.sv 의 판 상수 대입 한 줄만 0 으로 바꾼 사본을 *빌드 자리에* 짓는다(저장소에 쓰지 않는다).
+    # 그 사본은 Ident.VERSION 만 0 으로 바꾼 Spinal elaboration 의 생성물과 바이트 동일하다(W8 실측 — 차이가 그 한 줄뿐).
+    # 치환은 정확히 한 번이어야 한다 — 0 번이면 판 상수가 그 줄에 없다는 뜻이고 그때 「판 0 에서도 통과」는 공허다.
+    # 같은 시험 모듈의 판 의존 시험 셋만 판 0 리터럴(WT_ABI_MAJOR/MINOR = 0)로 돌린다 — 쌍조건이 그 변형에서도 참(둘 다 0)인가.
+    "ShapeAbi0": {
+        "top": "Wt64Top",
+        "src": "Wt64Top.sv",
+        "test_module": "test_shape_equiv",
+        "derive": (r"^(  assign abiArea_ver = 32'h)00010000;$", r"\g<1>0;"),
+        "testcase": ["abi_version_pair", "fp_shape_word", "page_disposition"],
+        "env": {"WT_ABI_MAJOR": "0", "WT_ABI_MINOR": "0"},
+        "expect_min": 3,
+        "what": "판 0 변형(판 상수 한 줄 0) — 0xFFC = 0 · FP_SHAPE 워드 전체 0 · 쌍조건 · 페이지 처분",
     },
 }
 
 
-def tally(results_xml):
+def tally(results_xml, only=None):
     """결과 XML 을 **직접** 센다.
 
     `cocotb_tools.check_results.get_results` 를 쓰지 않는 이유는 그것이
@@ -195,14 +214,28 @@ def tally(results_xml):
     tree = ElementTree.parse(p)
     n = fail = skip = 0
     names = []
+    seen = set()
     for ts in tree.iter("testsuite"):
         for tc in ts.iter("testcase"):
+            if only is not None and tc.get("name") not in only:
+                # 선택 실행(testcase 표 — 판 0 변형 스위트): cocotb 는 고르지 않은 시험도 <skipped> 로 적는다.
+                # 그 skip 은 「돌았는데 값을 안 봤다」가 아니라 「고르지 않았다」라 세지 않는다 — 다만 고르지 않은
+                # 시험이 *돌았다면*(skip 이 아니면) 선택이 먹지 않은 것이라 실패로 센다.
+                if next(tc.iter("skipped"), None) is None:
+                    fail += 1
+                    names.append(f"{tc.get('name', '?')}(고르지 않았는데 돌았다)")
+                continue
+            seen.add(tc.get("name"))
             n += 1
             names.append(tc.get("name", "?"))
             if next(tc.iter("failure"), None) is not None:
                 fail += 1
             if next(tc.iter("skipped"), None) is not None:
                 skip += 1
+    if only is not None:
+        missing = [x for x in only if x not in seen]
+        if missing:
+            raise RuntimeError(f"고른 시험이 결과에 없다: {missing} — 미측정이지 통과가 아니다")
     return n, fail, skip, names
 
 
@@ -216,6 +249,15 @@ def run_one(name, build_root):
 
     runner = get_runner("verilator")
     build_dir = Path(build_root) / name  # 스위트마다 격리 — MODDUP 회피의 절반
+    if "derive" in cfg:
+        import re
+        pat, rep = cfg["derive"]
+        text, n = re.subn(pat, rep, src.read_text(encoding="utf-8"), flags=re.M)
+        if n != 1:
+            sys.exit(f"{name}: 변형 치환이 {n} 번 — 정확히 1 번이어야 한다 ({pat}). 미측정이지 통과가 아니다")
+        build_dir.mkdir(parents=True, exist_ok=True)
+        src = build_dir / ("derived_" + cfg["src"])
+        src.write_text(text, encoding="utf-8")
     runner.build(
         sources=[str(src)],  # 길이 1 — 위 규칙
         includes=[str(REPO / "include")],
@@ -230,10 +272,12 @@ def run_one(name, build_root):
     results_xml = runner.test(
         hdl_toplevel=cfg["top"],
         test_module=cfg["test_module"],
+        testcase=cfg.get("testcase"),
+        extra_env=cfg.get("env", {}),
         build_dir=str(build_dir),
         test_dir=str(build_dir),
     )
-    n, fail, skip, names = tally(results_xml)
+    n, fail, skip, names = tally(results_xml, cfg.get("testcase"))
 
     bad = []
     if fail:
@@ -282,7 +326,7 @@ UNMEASURED = [
      "재구현 MaskUnit 에 부표준키·블록 워드를 내는 포트가 없다 — 계층 peek 은 "
      "포트 계약이 아니라 SpinalHDL 명명의 우연이므로 통과 기준으로 쓰지 않는다"),
     ("FAULT_STATUS[17]·[18]",
-     "Wt64Top.sv:1712 「faultWords_status[17] = 1'b0;」 과 그 다음 줄 [18] 상수 0 — "
+     "Wt64Top.sv:1717 「faultWords_status[17] = 1'b0;」 과 그 다음 줄 [18] 상수 0 — "
      "엔트로피원·명령 디스크립터 원천 부재. "
      "0 을 「정상」으로 읽으면 안 된다"),
     ("SharedUnit·MemOrderGate 독립 .sv 의 top 대표성",

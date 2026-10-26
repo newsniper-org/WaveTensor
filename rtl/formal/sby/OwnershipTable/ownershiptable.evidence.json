@@ -10,7 +10,7 @@
     "Platform.clr_no_reject",
     "Platform.seven_reject_only"
   ],
-  "at": "2026-10-25T14:20:35Z",
+  "at": "2026-10-26T09:12:36Z",
   "cover": {
     "reached": 21,
     "reached_names": [
@@ -67,7 +67,7 @@
     }
   },
   "sby": "rtl/formal/sby/OwnershipTable/ownershiptable.sby",
-  "sby_sha256": "5aa0a805d65cd16f312db2178237f1b04684d218e0b13a5c54b801213ea7e6ba",
+  "sby_sha256": "43a04a8d1724f25ace2681435e2fba606e089f75630c4c04db1d17f7c550016d",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

@@ -380,7 +380,7 @@ sticky 를 들어 워드는 레벨을 통과시키고 수락된 W1C 를 그쪽 c
 | FAULT_STATUS `[17]` 엔트로피 | `0xF80[17]` | 미구현 | 비트 *자리*는 ABI 로 확정됐고 **세울 원천이** 없다 — 엔트로피원 유닛 자체가 재구현에 미착지다. 생성물에서 상수 0 (`faultWords_status[17] = 1'b0`). 해제 경로도 참조되지 않아 회로가 서지 않는다 |
 | FAULT_STATUS `[18]` 명령 디스크립터 | `0xF80[18]` | 미구현 | E.5.4 가 만든 새 원천 (모르는 kind · 예약 비0 · 부적법한 길이). 명령 링 소비자가 미착지라 세울 주체가 없다 — `[17]` 과 같은 부류·같은 처분이며 생성물에서 상수 0 (`faultWords_status[18] = 1'b0`) |
 | CAP_STATUS `[3]` 연산 미지원 | `0xF8C[3]` | 미구현 | 정본 E.1.2 가 1장 1.6.2 의 넷(EINSUM 패턴 · 순열 형태 · 브로드캐스트 · 축약)을 한 축에 접었는데 지원 여부를 판정하는 회로가 재구현에 0건이다. 워드 컴포넌트의 sticky 는 일반 계약이라 남아 있고 top 이 set 을 False 로 묶는다 — 생성물에서 `capSet_3 = 1'b0`. `[2]` 는 2026-09-21 파도가 배선해 이 표의 대상이 아니다 |
-| HIU_ABI_VERSION | `0xFFC` | 부분 | RO 쓰기는 거절 + `[6]` · 읽기는 합의 전 값 0 이다 (`Ident.PRE_AGREEMENT` — 판정 T1-ii · 파도 4 페이지 통합 — 판 0 은 어떤 레이아웃도 약속하지 않는다). 비0 판 값과 필드 분할이 **§3.10 합의 대상**으로 남는다 — 틀린 값을 내는 것이 값을 안 내는 것보다 나쁘다 |
+| (물러남) HIU_ABI_VERSION | `0xFFC` | — | 판 값 커밋 W8(2026-10-26)이 값을 배선해 이 표에서 물러났다 — RO 쓰기 거절 + `[6]`(파도 4 페이지 통합 · 판정 T1-ii)에 이어 정렬 읽기가 판 상수 `Ident.VERSION` = v1.0 `0x0001_0000` 이고(클래스 끝 `abiArea`), FP_SHAPE 의 판 게이트가 같은 넷에서 나온다 (아래 「판 값 커밋 W8」 장) |
 
 ### 워드 안의 예약 비트 — 엄격 (결정 A 와 같은 형태)
 
@@ -2354,7 +2354,7 @@ W6 가 다시 여덟로 돌렸다.
 - **M4.** `a_ready_one`(`Wt64Top_props.sv` — 예외 항에 `0xF08` 읽기가 없다)이 `0xF08` 읽기의 ready = 1 을 이미 잰다 —
   변이 STALL_F08(busy 동안 `0xF08` 읽기 정지 — 정본이 허락하는 「반영 전 읽기 정지」)을 assembly bmc 가 `a_ready_one` 으로
   FAIL, `fporder` 는 bmc · prove 둘 다 PASS(규범이 허락하는 판이라 통과가 정답). 3.9 의 「(RTL 사실)」 을 측정으로 올렸다.
-  W6 절 끝 불릿의 「ownershiptable 하나만 다시 돌렸다」 는 커밋된 증거와 맞지 않아 W6 착지 직전 전수 스윕 사실로 바로잡았다.
+  W6 절 끝 불릿의 「`sby_impact` 가 영향을 ownershiptable 하나로 닫아 그 태스크만 다시 돌렸다」 는 커밋된 증거와 맞지 않아 W6 착지 직전 전수 스윕 사실로 바로잡았다.
 - `Wt64Top_props.sv` · `assembly.sby` 는 바꾸지 않았다 — assembly 무결성 핀 재서명 없음. 나머지 증거 json 26 은 착지
   게이트 스윕이 `at` 을 갱신했다(walk_decode 는 `sby_sha256` 도 — 아래).
 - 역-변이 (기저 = HEAD a852ee6 생성물 + 착지 하네스 · HEAD 음성 대조는 `headwt` detach — 생성물 sha 가 작업 트리와 같다):
@@ -2409,3 +2409,104 @@ ownasm 6) · 앵커 259 → 263(263/263). `lint_guard_map` 가드 184 · CHECK 1
 - `OwnershipTable/ownershiptable.sby` :9 · :13 과 `Wt64Top/assembly.sby` :52-53 PROVES 문면의 「합성은 서술」 은 W7
   ownasm 으로 낡았다 · `Wt64Top/ownasm.sby` :6 과 `Wt64TopOwn_props.sv` :113 의 「t7_src 가 함의한다」 는 t7_src · t7_slot 이
   정확하다 — 문면만이고 sha 가 증거 json 에 핀돼 있어 다음 하네스 개정 때 고친다.
+
+## 판 값 커밋 W8 — `0xFFC` = `0x0001_0000` · FP_SHAPE 판 게이트를 판 상수 한 넷에서 (2026-10-26)
+
+3.10 v1.0 동결(정본 `b16fc07` · Y4 `783b119`/`3ba1e58`) 뒤 처음으로 **장치 동작을 바꾸는** 커밋이다 — 우리 sign-off
+(`.local-replies-to/Y4/2026-10-22-signoff-v1.0-b16fc07-783b119.md`) §2 조건 4 「이행 방식(명시)」 그대로(사용자 지시
+2026-10-26 「시작해.」). 기준 HEAD `1500438`(= 원격 main). 장치 동작 변화는 `0xFFC` 읽기 값과 FP_SHAPE(`0xF0C`) 읽기 값
+둘뿐이고 최상위 포트 변화는 0 이다.
+
+**RTL (`Wt64Top.scala` · `StepSequencer.scala` 주석).**
+- `Ident.PRE_AGREEMENT = 0` 을 **판 상수 하나** `Ident.VERSION = (1L << 16) | 0L`(v1.0 = `0x0001_0000`)로 바꿨다. 클래스 끝
+  `abiArea` 의 넷 `ver` 가 그 상수를 싣는 유일한 자리이고, `0xFFC` 정렬 읽기의 rdata(마지막 대입 — rvalid 는 그대로
+  `resvRd` 경로, identArea 선례)와 FP_SHAPE 판 게이트 `live = ver ≠ 0` 이 **둘 다 그 넷에서** 나온다. `fpShapeArea.value =
+  Mux(abiArea.live, FpShape.word(fps.p), 0)` — `FpShape.word` 는 판 인자를 잃고 형상 부분만 짓는다(9b require 그대로).
+  W6 까지의 구조(두 자리가 `PRE_AGREEMENT` 를 따로 읽고 pageArea 의 `require(PRE_AGREEMENT == 0)` 로만 묶임)는 없어졌다 —
+  그 require 자리는 32b 범위 require 로 바뀌었다(줄 중립).
+- 낡은 문면(동결 통지 · Y4 대조 요청 줄): `Wt64Top.scala` 435 행(Ident 상수 주석) · 1911–1914 · 1917–1918 행이던 fpShapeArea 머리
+  주석(W8 뒤 1931–1934 · 1937–1938 행) · 1997–2000 행이던 FpShape 머리 주석(W8 뒤 2017–2020 행) — 「판 값과 같은 근원」 이 이제 데이터 경로로
+  참이다. 그 밖의 같은 부류(HEAD 행 번호 — 1906 행 위는 W8 뒤와 같다): 41 · 44 · 247 · 250 · 385 · 390 · 429–431 · 1174 · 1176 · 1179 · 1183 · 1624 · 1803–1804 · 1819–1822 · 1859 행. `StepSequencer.scala` 105–107 행의 「잠정 결정」 문면(호스트 측 합의로 미룬 항목이라던 것) → 3.10 「step
+  워드와 선택 열쇠의 배치 — v1.0 동결」 이 정한 배치(동결 밖: 래치 쓰임 · 데이터 폭 · 연산 번호 매김).
+- 생성물: `make rtl-gen` 두 번 바이트 동일 · 바뀐 것은 `Wt64Top.sv` 하나(`10de0838edb34dc5…`, +15 −1). diff 전부: 새 넷
+  `abiArea_ver` · `abiArea_live` · `abiArea_rd` · `abiArea_rv`(reg) · `fpShapeArea_value` 의 선언 다섯 · 대입 넷 · reset/갱신
+  두 줄, rdata 조합 블록의 `if(abiArea_rv) io_mmio_rdata = abiArea_ver;` 한 가지, fpShapeArea 가지의 `32'h0` →
+  `fpShapeArea_value`. 포트 변화 0 · 사라진 이름 0 · `when_*_l*` 이름 변화 0 · verilator `--lint-only -Wall` 경고 15 → 15
+  (같은 집합). 선언 다섯이 앞에 들어가 그 뒤 줄이 +5 밀렸다 — `rtl/sim` 인용 둘이 `Wt64Top.sv` 1712 → 1717 행으로.
+- **판 0 elaboration.** `Ident.VERSION` 만 `0L` 로 바꾼 rsync 사본(`/tmp`)의 `runMain wt64.gen.GenWt64Top` 생성물
+  (sha256 `dd44c3d9588cda22…`)은 커밋 생성물과 **`assign abiArea_ver = …;` 한 줄만** 다르다 — 판 상수가 두 워드에 데이터
+  경로로 닿는다는 구조의 실측이다. 그 한 줄을 `sed` 로 바꾼 사본이 그 생성물과 바이트 동일하다(cmp) — 아래 판 0 태스크와
+  cocotb 판 0 스위트가 그 치환을 상주로 쓴다(치환 수 정확히 1 을 핀한다).
+
+**장치 값 실측 (참조 형상).** `0xFFC` = `0x0001_0000` · `0xF0C` = `0x0100_400A`(부호화 번호 1 · stepMax 32 · P 10) — W6 가
+판 게이트만 1 로 바꾼 변형에서 잰 값과 같다. 판 0 변형에서 둘 다 0. 측정: 아래 형식 단언(무계 abc pdr)과 cocotb.
+
+**후-formal.**
+- `Wt64Top/assembly.sby` (`Wt64Top_props.sv`) — `a_rd_abi` 를 예외 항 없는 정확 등식 `rdata == F_ABI` 로 다시 썼다(W8 전에는
+  mux 기본 0 이라 유닛 rvalid 예외 항이 있었다). 기대는 하네스 리터럴 `F_ABI = (F_MAJOR 1 << 16) | F_MINOR 0` ·
+  `F_FP_SHAPE = (F_ABI ≠ 0) ? (F_ENC 1 << 24) | (F_STEPMAX 32 << 9) | F_P 10 : 0` — RTL 상수를 읽지 않는다(근거 인용: `03-hiu.typ` 1651 행
+  · `e-defined.typ` 463 행 필드 배치 · `e-defined.typ` 738 행 형상 사실). 쌍조건 **`a_pair_sh`**(`0xF0C` 응답 `[31:24]` ≠ 0 ⇔ 앞서 응답된
+  `0xFFC` ≠ 0) · **`a_pair_abi`**(역방향) — 하네스 그림자가 마지막 응답 rdata 를 잡고, 기대 리터럴을 쓰지 않는다. 증인 W64 ·
+  W65 · W66 — 셋 다 검사 항으로 닿는다(전건 ∧ 결론의 두 변이 판대로 선 사이클). 무결성 재서명 ③ assert 126 → 128 · cover
+  74 → 77 · ① ② ④ ⑥ 그대로 · `# CUT-DEP-ONLY:` 에 `Wt64Top.abi_version`(증인 셋 다 [의존] — rdata mux 콘). 앵커 `# VERIFIES:
+  Wt64Top.abi_version`. W6 의 「판 0 한정」(기대 0 이 mux 기본 0 과 같아 덮어쓰기 경로를 포트가 못 가름)은 닫혔다.
+- `Wt64Top/abi0.sby` (`Wt64TopAbi_props.sv`) **신설** — 판 0 변형. `[script]` 첫 넷이 작업 사본 생성물의 판 상수 한 줄을
+  `[file abi0.sed]` 로 바꾸고 전후 계수를 핀한다(그 줄이 v1.0 꼴이 아니면 ERROR — 공허 PASS 가 아니다). 하위 인스턴스 18 전부
+  절단 · 검사자만 남김. `a_v0_rd_abi`(= 0) · `a_v0_rd_sh`(= 0) · `a_v0_pair_sh` · `a_v0_pair_abi` · 증인 Z1–Z3. 앵커 `# VERIFIES:
+  Wt64Top.abi_version_v0`. assembly 안의 태스크로 두지 않은 까닭: cover 태스크가 둘이면 스윕 · `lint_postformal` 의 증인 계수
+  항등(cover 셀 = 도달 + 미도달)이 깨지고 `lint_witness_map` (8) 의 `cover:` 핀이 하나다(실측 — 첫 판이 「cover 셀 77 · 증인
+  154」 로 울었다).
+- 역-변이 (W8 생성물 사본의 한 식 · bmc = abc bmc3 16 · prove = abc pdr · 판 0 = abi0.sby):
+
+  | 변이 | 본선 bmc / prove | 판 0 bmc / prove | cocotb Shape / ShapeAbi0 |
+  |---|---|---|---|
+  | BASE | PASS / PASS | PASS / PASS | 4/4 · 3/3 PASS |
+  | GATE_LIT1 — 게이트를 별도 리터럴 1 에 | PASS / PASS (v1.0 에서 포트로 안 갈림) | `a_v0_rd_sh` / `a_v0_rd_sh` | PASS / fp_shape_word · abi_version_pair |
+  | ABI_RD_LIT — `0xFFC` 읽기를 별도 리터럴 `0x0001_0000` 에 | PASS / PASS | `a_v0_rd_abi` / `a_v0_pair_abi` · `a_v0_rd_abi` | PASS / 셋 다 |
+  | GATE_LIT0 — 게이트를 리터럴 0 에 | `a_rd_fpshape` / `a_pair_abi` | PASS / PASS | fp_clear_window · fp_shape_word · abi_version_pair / PASS |
+  | ENC2 · P11 · SM33 — 번호 · P · stepMax 필드 | `a_rd_fpshape` / `a_rd_fpshape` | PASS / PASS | fp_clear_window · fp_shape_word · abi_version_pair / PASS |
+  | MAJ2 · MIN1 — 판 `0x0002_0000` · `0x0001_0001` | `a_rd_abi` / `a_rd_abi` | ERROR (계수 핀) | 넷 다 / 치환 0 번 FAIL |
+  | ABI0 — 판 상수를 0 으로 되돌림 | `a_rd_abi` / `a_rd_abi` | ERROR (계수 핀) | 넷 다 / 치환 0 번 FAIL |
+  | ABI_NORD — `0xFFC` 덮어쓰기 탈락 | `a_rd_abi` / `a_pair_abi` · `a_rd_abi` | PASS / PASS | 넷 다 / PASS |
+  | SH_NORD — `0xF0C` 덮어쓰기 탈락 | `a_rd_fpshape` / `a_pair_abi` | PASS / PASS | fp_clear_window · fp_shape_word · abi_version_pair / PASS |
+  | HEAD `1500438` 생성물 | `a_rd_abi` / `a_pair_abi` · `a_rd_abi` | ERROR (계수 핀) | 넷 다 / 치환 0 번 FAIL |
+
+  쌍조건 단독(값 단언을 뺀 하네스 사본 · prove): GATE_LIT1 · ABI_RD_LIT → `a_v0_pair_abi` · GATE_LIT0 · SH_NORD · ABI_NORD →
+  `a_pair_abi`; `a_pair_abi` 까지 뺀 사본에서 GATE_LIT1 → `a_v0_pair_sh` · GATE_LIT0 → `a_pair_sh`. 새 단언 여덟 각각에 그것만으로
+  잡히는 변이가 있다. abc 엔진은 첫 반례의 위반만 보고하므로 표의 단언은 잡은 것이지 위반 전수가 아니다. TIMEOUT · UNKNOWN 0.
+- W7 이월 문면을 함께 고쳤다(전수 재스윕에 실림): `Wt64TopOwn_props.sv` · `ownasm.sby` 의 「t7_src 가 함의」 → t7_src · t7_slot ·
+  `ownershiptable.sby` · `assembly.sby` PROVES 의 「합성은 서술」 → 「합성은 Wt64Top/ownasm.sby 가 잰다 (W7)」.
+- 검토 2회차가 W8 자신의 하네스 주석에 남은 판 0 문면을 더 찾아 고쳤다(주석만 · 줄 수 불변 · 아래 게이트가 고친 뒤의 입력으로 돌았다):
+  `assembly.sby` 의 T1 판정 주석과 「미구현을 고정하는 단언」 꼬리(「`0xFFC` 읽기 0 은 `a_rd_abi`」 · 「resvA · `a_rd_abi`」 → 정렬 읽기는
+  abiArea 덮어쓰기의 `F_ABI` = `0x0001_0000` · 판 0 은 abi0.sby 의 `a_v0_rd_abi`) · `Wt64Top_props.sv` 의 `a_rd_abi` 머리(「판 0 변형에서 0」)
+  · `a_rd_fpshape` 머리(「판 0 동안 0」) · 증인 W60 설명(「판 0 의 형상 워드 0」 → v1.0 `0x0100_400A`).
+
+**cocotb.** `abi_version_pair` 신설(판 리터럴 기대 · MMIO 응답 둘의 쌍조건 — 두 읽기 순서 × 선택자 표 소거 중 · 뒤 · RO 쓰기 넷 ·
+비정렬 `0xFFD`–`0xFFF`). `page_disposition` 의 `0xFFC` 읽기 기대 0 → 판 리터럴 · `fp_shape_expect` 는 `0xFFC` 를 읽어 기대를
+짓던 꼴(W6)을 버리고 리터럴과 대조한다 — 그 꼴은 두 워드가 함께 판 0 으로 되돌아간 생성물을 통과시킨다(ABI0 변이). 새 스위트
+`ShapeAbi0` — 같은 시험 모듈의 판 의존 시험 셋(`abi_version_pair` · `fp_shape_word` · `page_disposition`)을 판 0 사본(빌드 자리에
+짓는다 · 치환 수 1 핀)과 판 0 리터럴로 돌린다. 러너는 고른 시험만 세고 고르지 않은 시험이 돌면 실패로 센다. `make rtl-sim`
+**62/62**(Mask 12 · Shape 47 · ShapeAbi0 3).
+
+**TLA.** 돌리지 않았다 — 판 값이 어느 모델에도 닿지 않는다: `MmioPage.tla` 는 읽기 *값* 을 불투명 실물(`"data"`)로 두고 `0xFFC`
+의 판 값과 `0xF0C` 의 판 결합을 「값 · 결합은 assembly 몫」으로 모델 밖에 둔다(그 파일 「이 모델이 다루지 않는 것」 절). `.tla` ·
+`.cfg` · `run.sh` 변경 0 · 배터리 657 run 그대로(부록 D 계수 불변).
+
+**정본 사실(F) — 같은 줄 치환 · 정본 파일 줄 수 불변 · 규범 문면 바이트 동일.** `03-hiu.typ` 1556 행(FP_SHAPE 셀 — 「판 값과 같은 근원의
+elaboration 상수」 · 「판 0 한정」 → 이번 측정 · 같은 줄 끝에 `HIU_ABI_VERSION` 행을 *구현* 으로 옮겨 붙였다) · 1566 행(옛 `0xFFC`
+*부분* 행 → 줄 보존 주석) · 1581 행(「아래 여덟 행」 → 일곱 — 그 행이 물러난 셈) · `e-defined.typ` 723 행(E.1.3 머리의 W6 FP_SHAPE 문장) ·
+737–738 행(E.1.3 `0xFFC` *부분* 행 → 물러남 — 줄 보존 주석 + 물러남 기록 칸; 하네스 · 시험이 인용하는 「재구현의 형상(…)에서
+`0xFFC` 가 0 이 아니게 된 뒤의 읽기는 `0x0100_400A` 다」 는 축자 보존) · `b-gaps.typ` 1410 행(B.5 기존 행 안 FP_SHAPE 사실 절).
+`e-defined.typ` 463 행 끝의 W6 착지 사실 절(「판 0 동안 읽기는 워드 전체 0 … 비0 판의 값은 판 값 커밋이 연다」)과 67 행 · 3.10 의
+「그 전까지 판은 0」 꼴은 조건문이라 지금도 참이고 규범 줄이라 그대로다. B.5 새 행 0 · 부록 D 불변.
+
+**래칫 (실측 서명).** `lint_witness_map` `_MIN_WITNESS_MAPPED` 491 → 497(조립 W64–W66 · abi0 Z1–Z3) · `_MIN_ANCHOR_WITNESSED` 263 → 265
+(265/265). `lint_section_refs` R5 `Wt64Top.scala` 63 → 61(따옴표 없는 `§3.10` 둘이 사라졌다). `lint_postformal` PROVES 229 · 분모 177
+(완전 132 · 부분 45) 그대로 — 새 앵커는 VERIFIES 둘이다. `lint_guard_map` 184 · CHECK 177 · ENFORCED 19 그대로(GUARD-MAP 문면 변경 0).
+
+**착지 게이트.** 작업 트리에서 `make rtl-postformal` 한 번(2026-10-26 16:02–19:17 KST — 검토 2회차 주석 수정 뒤의 입력 · 게이트 앞뒤 입력 sha 75 편 대조 불변) — SWEEP-DONE total=29 fail=0 hollow=0 uncounted=0 · `lint_postformal --require-fresh`(PROVES 229 · 완전 132 · 부분 45 · sby 29) · `lint_tautology --audit --require-models`(86 태스크 · $assert 2263 · 저작 상수 0 · 병합-상수 38) · MAKE_RC=0. 증거 json 29 전부 그 한 실행(`at` 07:02:27Z–10:17:38Z — 이어 붙인 증거 없음 · 생성물이 바뀌어 전수 재스윕). 시간(그 실행의 sby 로그): assembly bmc 5 s · prove 4 s · cover 24 s · abi0 bmc 2 s · prove 1 s · cover 2 s · walk_decode prove 853 s(한도 3600) · body_judge prove 4790 s(입력 sha 불변 — 원래 느린 태스크). 같은 실행의 앞단: `make lint` · `make guide`(268쪽) · `make rtl-gen` 두 번 바이트 동일(수정 전과도 동일) · `make rtl-lint` · `make rtl-sim` 62/62 — 전부 rc=0.
+
+**미측정 · 이월.**
+- 판 0 변형의 쓰기 거절 · 소거 중 처분 · 물려받은 구간 — 판과 무관한 경로라 본선만 잰다.
+- 참조 형상이 아닌 형상 — 재지 않는다. W6 · W7 이월(fpbad · xbad · actbad · cap1/2 해제 사이클 재세움 변이 · E.7 7항 모델 수준 ·
+  C2 둘째 절 무계 · `o_rd` 예외 항)은 그대로다. W6 이월의 「판 0 의 FP_SHAPE 덮어쓰기 경로」 는 이 파도가 닫았다.

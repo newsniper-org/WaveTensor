@@ -98,8 +98,17 @@
 //   e-defined.typ:463 「*번호 ≠ 0 도 `0xFFC` ≠ 0 과 함께만 낸다*」 — 판 0 동안 워드 전체 0 (F_FP_SHAPE).
 //   e-defined.typ:463 「쓰기는 E.1.1 RO 규범대로 거절 + `[6]` 이다」 — 0xF0C 는 surfMust 의 RO 목록.
 //   e-defined.typ:216 「`0xF08` · `0xF0C` 쓰기와 비정렬 쓰기는 즉시 거절 + `[6]` 이고」 — 소거 중에도 정지 없음 (a_ready_one).
-//   e-defined.typ:738 「`0xFFC` 가 0 이 아니게 된 뒤의 읽기는 `0x0100_400A` 다」 — 비0 판 기대값 F_FP_SHAPE_V1
-//     (형상 P = 10 · stepMax = 32 는 같은 줄의 RTL 사실 문면이다 — RTL 상수를 베끼지 않는다).
+//   e-defined.typ:738 「`0xFFC` 가 0 이 아니게 된 뒤의 읽기는 `0x0100_400A` 다」 — 비0 판 기대값의 정본 대조점
+//     (하네스는 이 값을 베끼지 않고 아래 W8 근거의 필드 배치 · 판 · 형상 리터럴에서 다시 짓는다 — 둘이 갈리면 하나가 틀렸다).
+//   ── W8 (3.10 v1.0 판 값 커밋 — 0xFFC = 0x0001_0000 · FP_SHAPE 판 게이트, 2026-10-26) 이 더한 근거 ──
+//   03-hiu.typ:1651 「`[31:16]` major · `[15:0]` minor. v1.0 = `0x0001_0000`.」 — F_MAJOR = 1 · F_MINOR = 0 → F_ABI.
+//   e-defined.typ:463 「`[8:0]` $P$ = 프로그램 슬롯 수」 — F_P 의 자리.
+//   e-defined.typ:463 「`[17:9]` stepMax = 슬롯당 step 수 상한」 — F_STEPMAX 의 자리.
+//   e-defined.typ:463 「`[31:24]` step 부호화 번호」 — F_ENC 의 자리 (값 1 = v1.0 배치 — 같은 행).
+//   e-defined.typ:463 「두 수는 *개수*로 인코딩하고」 — 1 을 빼지 않는다.
+//   e-defined.typ:738 「재구현의 형상($P$ = 10 · stepMax = 32 — RTL 사실)」 — F_P = 10 · F_STEPMAX = 32 (RTL 상수를 베끼지 않는다).
+//   쌍조건 a_pair_sh · a_pair_abi 는 위 「*번호 ≠ 0 도 `0xFFC` ≠ 0 과 함께만 낸다*」 와 같은 행의 「번호가 0 이면 워드 전체가 0 이다」 를
+//     MMIO 읽기 응답 둘 사이의 관계로 잰다 — 기대 리터럴을 쓰지 않는다 (판 0 변형은 Wt64TopAbi_props.sv · Wt64Top/abi0.sby 가 같은 꼴로 잰다).
 //   e-defined.typ:527 「`[7]` 은 E.7 6항의 OWN_SET 거절 *하나*」 — [7] = own 핀 그 자체 (a_rd_fst · a_fsrc_b7).
 //
 // ## 구역 분류 — 정의 정책과 예약 정책을 섞지 않는다 (워드 단위)
@@ -115,11 +124,11 @@
 //     sqTbl  명령 링 표 워드 다섯 (0x380–0x390) — RW 넷은 소비 회로가 없는 워드(E.1.3 규범
 //            끝 — 판정 T1-i β), SQ_HEAD(0x38C)는 RO. 정렬 쓰기 거절 + [6](surfMust) · 읽기
 //            0(resvA). 0xFFC 는 RO 판 워드(판정 T1-ii): 정렬 쓰기 거절 + [6](surfMust) ·
-//            읽기는 합의 전 값 0 (a_rd_abi — 이제 규범 값이라 결함의 동결이 아니다).
+//            정렬 읽기는 응답 + F_ABI(a_rd_abi — W8 부터 v1.0 0x0001_0000 · 판 0 변형은 abi0.sby) · 비정렬 읽기 0(resvA).
 //     shapeW 0xFF8 HIU_SHAPE (W1) — RO 워드: 정렬 쓰기 거절 + [6](surfMust) · 정렬 읽기는
 //            응답 + 정본 표에서 유도한 형상 값(a_rd_shape) · 비정렬 읽기 0(resvA).
 //   0xF0C FP_SHAPE (W6) — 조립 구역 RO 워드: 정렬 쓰기 거절 + [6](surfMust — 소거 중에도 즉시, a_ready_one) ·
-//     정렬 읽기는 응답 + F_FP_SHAPE(a_rd_fpshape — 판 0 동안 0) · undefA 는 0xF10 부터다.
+//     정렬 읽기는 응답 + F_FP_SHAPE(a_rd_fpshape — F_ABI 에서 유도 · 판 0 이면 0) · undefA 는 0xF10 부터다.
 //   0xEC4 MASK_DUP_CAPTURE (W1) — 조립 구역 RO 워드: 정렬 쓰기 거절 + [6](surfMust) · 정렬
 //     읽기는 응답 + 수락 사이클의 mask.dupCapture 핀(a_rd_dupcap) · undefA 는 0xEC8 부터다.
 //   변환 저장소 두 구역 (파도 3 — XlateStaging 이 배선했다):
@@ -400,11 +409,43 @@ module Wt64Top_props (
   localparam integer F_SLOTS = 16;   // 파티션당 저장 칸 수 (직접 사상 — 파티션당 항목 수)
   // 0xFF8 의 기대 읽기 값 — [31:24] 0 · [23:8] 칸 수 · [7:0] 파티션 수 (둘 다 개수)
   localparam [31:0] F_HIU_SHAPE = (F_SLOTS << 8) | F_PARTS;
-  // W6 — 0xF0C FP_SHAPE 의 기대 읽기 값. 판 0 동안 워드 전체 0 (위 근거 절의 FP_SHAPE 행 인용). F_ABI_NZ 는 판 값 커밋 날
-  // 0xFFC 의 a_rd_abi 와 함께 바꾸는 한 토큰이다 — 비0 판 생성 변형 측정(W6H, 착지 밖)은 이 토큰만 1 로 바꿔 쟀다.
-  localparam integer F_ABI_NZ      = 0;
-  localparam [31:0]  F_FP_SHAPE_V1 = 32'h0100_400A;   // 위 근거 절 E.1.3 행 인용의 참조 값 (부호화 번호 1 · stepMax 32 · P 10)
-  localparam [31:0]  F_FP_SHAPE    = (F_ABI_NZ != 0) ? F_FP_SHAPE_V1 : 32'd0;
+  // W8 — 판 워드 0xFFC 와 0xF0C FP_SHAPE 의 기대 읽기 값. 지상 진리는 정본 문면(위 W8 근거)과 Y4 합의(판 = (major << 16) | minor)다 —
+  // RTL 의 Ident.VERSION · FpShape 를 읽지 않고 (판, P, stepMax) 리터럴에서 다시 짓는다. 판 0 변형(생성물의 판 상수 대입 한 줄만
+  // 0 으로 바꾼 사본)은 Wt64TopAbi_props.sv · Wt64Top/abi0.sby 가 잰다.
+  localparam integer F_MAJOR   = 1;   // v1.0
+  localparam integer F_MINOR   = 0;
+  localparam [31:0]  F_ABI     = (F_MAJOR << 16) | F_MINOR;
+  localparam integer F_ENC     = 1;    // [31:24] step 부호화 번호 — v1.0 배치
+  localparam integer F_P       = 10;   // [8:0]  P (개수)
+  localparam integer F_STEPMAX = 32;   // [17:9] stepMax (개수)
+  localparam [31:0]  F_FP_SHAPE_V1 = (F_ENC << 24) | (F_STEPMAX << 9) | F_P;
+  localparam [31:0]  F_FP_SHAPE    = (F_ABI != 32'd0) ? F_FP_SHAPE_V1 : 32'd0;
+  // W8 — 쌍조건의 그림자: 마지막으로 응답된 0xFFC · 0xF0C 정렬 읽기의 MMIO rdata (DUT 내부를 읽지 않는다). 응답 사이클은
+  // 수락 다음 사이클의 rvalid 다(a_rd_abi · a_rd_fpshape 가 그 rvalid 를 따로 잰다). 상대 워드를 한 번이라도 읽은 뒤의 응답만
+  // 쌍조건의 전건에 든다.
+  logic        f_abiSeen = 1'b0;
+  logic [31:0] f_abiVal  = 32'd0;
+  logic        f_shSeen  = 1'b0;
+  logic [31:0] f_shVal   = 32'd0;
+  logic        f_rdAbiP  = 1'b0;
+  logic        f_rdShP   = 1'b0;
+  always @(posedge clk) begin
+    f_rdAbiP <= !reset && R && al && (A == 12'hFFC);
+    f_rdShP  <= !reset && R && al && (A == 12'hF0C);
+    if (reset) begin
+      f_abiSeen <= 1'b0;
+      f_shSeen  <= 1'b0;
+    end else begin
+      if (f_rdAbiP && io_mmio_rvalid) begin
+        f_abiSeen <= 1'b1;
+        f_abiVal  <= io_mmio_rdata;
+      end
+      if (f_rdShP && io_mmio_rvalid) begin
+        f_shSeen  <= 1'b1;
+        f_shVal   <= io_mmio_rdata;
+      end
+    end
+  end
   wire partOk = (D[31:8] == 24'd0) && ({24'd0, D[7:0]} < F_PARTS);
   wire acF84  = W && (A == 12'hF84) && (D[31:20] == 12'd0);   // W1 — 예약 [31:20] (비트 스물)
   wire acF90  = W && (A == 12'hF90) && (D[31:4]  == 28'd0);
@@ -672,9 +713,9 @@ module Wt64Top_props (
       a_bind_upd: assert (io_mmio_rdata[8] == $past(f_A) && io_mmio_rdata[9] == $past(f_D));
     end
     if ($past(R && al && woA))                     a_rd_wo:    assert (io_mmio_rvalid && io_mmio_rdata == 32'd0);
-    // T1-ii — 0xFFC 읽기는 합의 전 값 0 — e-defined.typ:505 「합의 전 값은 0 이고」. resvRv 경로라 유닛 rvalid 예외는 a_rd_resv0 와 같다.
-    if ($past(R && al && (A == 12'hFFC)))          a_rd_abi:   assert (io_mmio_rvalid &&
-        ((own__io_rvalid || cq__io_rvalid || cfgBlk__io_rvalid) || io_mmio_rdata == 32'd0));
+    // T1-ii · W8 — 0xFFC 정렬 읽기의 다음 사이클 응답 + F_ABI (v1.0 = 0x0001_0000 — 판 0 은 abi0.sby 의 a_v0_rd_abi 가 잰다). rvalid 는 resvRv 경로이고 값은
+    // abiArea 덮어쓰기가 rdata mux 의 나중 대입이라 유닛 rvalid 예외가 없는 정확 등식이다 (W8 전에는 mux 기본 0 이라 예외 항이 있었다).
+    if ($past(R && al && (A == 12'hFFC)))          a_rd_abi:   assert (io_mmio_rvalid && io_mmio_rdata == F_ABI);
     // D1 · 「보증하지 않는 것」 (c) 의 조립 절반 — 조립이 낸 rvalid 는 직전 사이클에 *수락된* 조립 구역 읽기의 응답이다
     if (io_mmio_rvalid && !own__io_rvalid && !cq__io_rvalid && !cfgBlk__io_rvalid)
                                                    a_rv_acc:   assert ($past(R && io_mmio_ready && !(rOwn || rCq || rCfg)));
@@ -691,11 +732,16 @@ module Wt64Top_props (
     // W1 — 0xFF8 HIU_SHAPE: 정렬 읽기의 다음 사이클 응답 + 정본 표에서 유도한 형상 값 (RTL 상수를
     // 베끼지 않는다). resvRv 경로가 아니라 덮어쓰기라 유닛 rvalid 예외가 없는 정확 등식이다.
     if ($past(R && al && (A == 12'hFF8)))          a_rd_shape:  assert (io_mmio_rvalid && io_mmio_rdata == F_HIU_SHAPE);
-    // W6 — 0xF0C FP_SHAPE: 정렬 읽기의 다음 사이클 응답 + F_FP_SHAPE (판 0 동안 0). fpShapeArea 덮어쓰기가 rdata
+    // W6 — 0xF0C FP_SHAPE: 정렬 읽기의 다음 사이클 응답 + F_FP_SHAPE (v1.0 0x0100_400A · 판 0 이면 0). fpShapeArea 덮어쓰기가 rdata
     // mux 의 마지막 대입이라 유닛 rvalid 예외가 없는 정확 등식이다. 소거 중(loadReady 0)에도 같다 — 읽기는 정지하지
-    // 않는다 (a_ready_one · 증인 W62). ⚠ 판 0 에서는 값이 mapRdReg 의 기본 0 과 같아 덮어쓰기 경로의 결선을 포트가
-    // 가르지 못한다 — 그 경로는 비0 판 생성 변형에서만 잰다 (.sby 머리 W6 절).
+    // 않는다 (a_ready_one · 증인 W62). W8 부터 판 v1.0 이라 기대가 0x0100_400A 이고 덮어쓰기 경로가 포트로 갈린다 — 판 0 변형
+    // (abi0.sby)에서는 기대 0 이다(그때는 W6 처럼 mapRdReg 기본 0 과 겹치지만, 그 변형의 일은 쌍조건이다).
     if ($past(R && al && (A == 12'hF0C)))          a_rd_fpshape: assert (io_mmio_rvalid && io_mmio_rdata == F_FP_SHAPE);
+    // W8 — 쌍조건 (e-defined.typ:463 「*번호 ≠ 0 도 `0xFFC` ≠ 0 과 함께만 낸다*」 · 「번호가 0 이면 워드 전체가 0 이다」 의 MMIO 판):
+    // 0xF0C 응답의 [31:24] ≠ 0 ⇔ 앞서 응답된 0xFFC ≠ 0, 그리고 그 역방향. 기대 리터럴을 쓰지 않는다 — 두 워드가 같은 근원에서
+    // 나오는지를 응답만으로 잰다(게이트를 따로 묶은 리터럴이 판 0 변형에서 깨진다).
+    if ($past(R && al && (A == 12'hF0C)) && f_abiSeen) a_pair_sh:  assert ((io_mmio_rdata[31:24] != 8'd0) == (f_abiVal != 32'd0));
+    if ($past(R && al && (A == 12'hFFC)) && f_shSeen)  a_pair_abi: assert ((io_mmio_rdata != 32'd0) == (f_shVal[31:24] != 8'd0));
     // W1 — 0xEC4 MASK_DUP_CAPTURE: 정렬 읽기의 다음 사이클 rdata = 수락 사이클의 mask.dupCapture 핀
     // (조립에 캡처를 드는 상태가 없다 — 값의 뜻은 MaskUnit/engine.sby 의 c_* 가 든다).
     if ($past(R && al && (A == 12'hEC4)))          a_rd_dupcap: assert (io_mmio_rvalid && io_mmio_rdata == $past(mask__dupCapture));
@@ -891,7 +937,7 @@ module Wt64Top_props (
   // ── W6 증인 (3.10 v1.0 묶음 — 0xF0C FP_SHAPE · [7] 조립 절반) ──
   // W59 ← MmioPage.ro_rejected · Wt64Top.fp_surface · a_surf_fire — [무관] FP_SHAPE(0xF0C) 정렬 쓰기가 조립 sticky 를 처음 세운다 (미정의 워드였던 HEAD 의 반전)
   always @(posedge clk) if (f_step) w59_fpshape_wr: cover ($past(W && al && A == 12'hF0C && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite);
-  // W60 ← Wt64Top.fp_surface · a_rd_fpshape — [의존: rdata mux 콘에 유닛 rdata 핀 — 값은 덮어쓰기라 핀과 무관(실물 근거 = 이 등식)] 0xF0C 읽기가 판 0 의 형상 워드 0 을 낸다
+  // W60 ← Wt64Top.fp_surface · a_rd_fpshape — [의존: rdata mux 콘에 유닛 rdata 핀 — 값은 덮어쓰기라 핀과 무관(실물 근거 = 이 등식)] 0xF0C 읽기가 판 v1.0 의 형상 워드 F_FP_SHAPE(0x0100_400A)를 낸다 (W6 의 판 0 값 0 은 W8 에서 물러났다 — 판 0 은 abi0.sby)
   always @(posedge clk) if (f_step) w60_fpshape_rd: cover ($past(R && al && A == 12'hF0C) && io_mmio_rvalid && io_mmio_rdata == F_FP_SHAPE);
   // W61 ← MmioPage.ro_rejected · Wt64Top.fp_surface · a_ready_one · a_surf_fire — [의존: fps__io_loadReady 핀 — 실물 근거 없음(StepSequencer 의 sby 태스크 0 건 — cocotb 가 소거 창을 값 수준으로 잰다)] 소거 중 0xF0C 쓰기는 정지 없이 수락되고 조립 sticky 를 처음 세운다
   always @(posedge clk) if (f_step) w61_fpshape_wr_clr: cover ($past(W && al && A == 12'hF0C && !fps__io_loadReady && io_mmio_ready && !io_fault_cfgSurfBadWrite) && io_fault_cfgSurfBadWrite);
@@ -899,6 +945,16 @@ module Wt64Top_props (
   always @(posedge clk) if (f_step) w62_fpshape_rd_clr: cover ($past(R && al && A == 12'hF0C && !fps__io_loadReady && io_mmio_ready) && io_mmio_rvalid && io_mmio_rdata == F_FP_SHAPE);
   // W63 ← Platform.set_reject_loud · Platform.seven_reject_only · Wt64Top.fault_status_map · a_rd_fst · a_fsrc_b7 — [의존: own__io_faultCollide 핀 — 실물 근거 OwnershipTable_props.sv w15_col_rise] 0xF80 읽기가 [7] 을 내고 원천별 수출도 선다
   always @(posedge clk) if (f_step) w63_fst_b7: cover ($past(R && al && A == 12'hF80 && own__io_faultCollide) && io_mmio_rvalid && io_mmio_rdata[7] && io_fault_ownCollide);
+  // ── W8 증인 (3.10 v1.0 판 값 커밋 — 0xFFC · FP_SHAPE 판 게이트의 쌍조건) — 각 증인은 단언의 *검사 항*으로 닿는다:
+  //    전건이 서고 결론의 두 변이 판대로(v1.0 은 둘 다 ≠ 0 — 판 0 변형의 둘 다 0 은 Wt64TopAbi_props.sv) 선 사이클이다 ──
+  // W64 ← Wt64Top.abi_version · a_rd_abi — [의존: rdata mux 콘에 유닛 rdata 핀 — 값은 덮어쓰기라 핀과 무관(실물 근거 = 이 등식)] 0xFFC 읽기가 판 워드를 낸다
+  always @(posedge clk) if (f_step) w64_abi_rd: cover ($past(R && al && A == 12'hFFC) && io_mmio_rvalid && io_mmio_rdata == F_ABI);
+  // W65 ← Wt64Top.abi_version · a_pair_sh — [의존: rdata mux 콘에 유닛 rdata 핀 — 값은 덮어쓰기라 핀과 무관(실물 근거 = a_rd_abi · a_rd_fpshape)] 0xFFC 를 읽은 뒤의 0xF0C 응답에서 쌍조건의 두 변이 판대로 선다
+  always @(posedge clk) if (f_step) w65_pair_sh: cover ($past(R && al && A == 12'hF0C) && f_abiSeen && io_mmio_rvalid &&
+      ((io_mmio_rdata[31:24] != 8'd0) == (F_ABI != 32'd0)) && ((f_abiVal != 32'd0) == (F_ABI != 32'd0)));
+  // W66 ← Wt64Top.abi_version · a_pair_abi — [의존: rdata mux 콘에 유닛 rdata 핀 — 값은 덮어쓰기라 핀과 무관(실물 근거 = a_rd_abi · a_rd_fpshape)] 0xF0C 를 읽은 뒤의 0xFFC 응답에서 쌍조건의 두 변이 판대로 선다
+  always @(posedge clk) if (f_step) w66_pair_abi: cover ($past(R && al && A == 12'hFFC) && f_shSeen && io_mmio_rvalid &&
+      ((io_mmio_rdata != 32'd0) == (F_ABI != 32'd0)) && ((f_shVal[31:24] != 8'd0) == (F_ABI != 32'd0)));
 `endif
 endmodule
 

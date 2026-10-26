@@ -2076,9 +2076,12 @@ async def page_disposition(dut):
     for a in (0x300, 0x304):
         await page_expect_loud(dut, a, 0x12345678, "CQ_BASE")
         await page_expect_read0(dut, a, "CQ_BASE 되읽기")
-    # T1-ii — 0xFFC HIU_ABI_VERSION: RO 쓰기 거절 + [6] · 읽기는 합의 전 값 0
+    # T1-ii · W8 — 0xFFC HIU_ABI_VERSION: RO 쓰기 거절 + [6] (같은 값의 쓰기도) · 읽기는 판 워드 — 기대는 아래
+    # HIU_ABI_EXPECT(정본 「v1.0 = `0x0001_0000`」 의 (major << 16) | minor 리터럴 · 판 0 변형 스위트에서 0)이고 RTL 을 읽지 않는다
     await page_expect_loud(dut, 0xFFC, 0x00010000, "HIU_ABI_VERSION")
-    await page_expect_read0(dut, 0xFFC, "HIU_ABI_VERSION 읽기 (합의 전 0)")
+    v = await mmio_read(dut, 0xFFC)
+    assert v == HIU_ABI_EXPECT, f"HIU_ABI_VERSION 읽기 0x{v:08X} — 0x{HIU_ABI_EXPECT:08X} 이어야 한다 (판 값 커밋 W8)"
+    assert await fault6(dut) == 0, "HIU_ABI_VERSION 읽기가 [6] 을 세웠다 — 읽기는 관대다"
     # T2 (a) — 비정렬 쓰기: 페이지 어디서든 거절 + [6] · 효과 없음
     for a in (0xE81, 0xF01, 0x122, 0x381, 0x041, 0xFC1, 0xF85, 0x201, 0x301, 0x401):
         await page_expect_loud(dut, a, 0x3, "비정렬 쓰기")
@@ -2099,24 +2102,37 @@ async def page_disposition(dut):
 #   e-defined.typ:463 「선택자 표 소거 중에도 읽기는 응답한다 (E.1 의 reset 값 규범 6항)」
 #   e-defined.typ:216 「`0xF08` · `0xF0C` 쓰기와 비정렬 쓰기는 즉시 거절 + `[6]` 이고」
 #   e-defined.typ:738 「재구현의 형상($P$ = 10 · stepMax = 32 — RTL 사실)에서 `0xFFC` 가 0 이 아니게 된 뒤의 읽기는 `0x0100_400A` 다」
-# 판 값은 *읽어서* 쓴다 — 0xFFC 를 읽어 0 이면 0, 아니면 (1 << 24) | (stepMax << 9) | P. 그래서 판 값
-# 커밋 날 이 시험은 고칠 것이 없고, 판 0 인 채 비0 을 내는 생성물(판 게이트 누락)은 여기서 운다.
-# 재지 못하는 것: 판 0 동안 rdata 의 *원천*(배선된 판 상수 0 인가 · 예약 읽기 0 인가)은 값이 같아
-# 포트로 가를 수 없다 — 그 축은 assembly(W6-3)의 몫이다.
+#   03-hiu.typ:1651 「`[31:16]` major · `[15:0]` minor. v1.0 = `0x0001_0000`.」 — 판 워드의 기대 (W8)
+# W8 (판 값 커밋) — 기대값은 *읽어서* 쓰지 않는다: 판 워드와 FP_SHAPE 의 기대는 둘 다 아래 리터럴 (판, P, stepMax) 에서
+# 하네스가 따로 짓고(RTL 의 Ident.VERSION · FpShape 를 베끼지 않는다), 두 워드가 같은 근원이라는 것은 abi_version_pair 가
+# MMIO 응답 둘 사이의 쌍조건으로 잰다. W6 판은 0xFFC 를 읽어 기대를 유도했다 — 그 꼴은 0xFFC 와 FP_SHAPE 가 *함께* 틀린
+# 생성물(판 0 으로 되돌아간 판 상수)을 통과시킨다. 판 0 변형 스위트(run_wt64.py ShapeAbi0 — 생성물의 판 상수 대입 한 줄만
+# 0 으로 바꾼 사본)는 WT_ABI_MAJOR / WT_ABI_MINOR = 0 으로 판만 바꿔 같은 시험을 돌린다.
 FP_SHAPE = 0xF0C
 HIU_ABI_VERSION = 0xFFC
+HIU_ABI_MAJOR = int(os.environ.get("WT_ABI_MAJOR", "1"))   # v1.0 — 판 0 변형 스위트만 0 을 준다
+HIU_ABI_MINOR = int(os.environ.get("WT_ABI_MINOR", "0"))
+HIU_ABI_EXPECT = (HIU_ABI_MAJOR << 16) | HIU_ABI_MINOR
 FP_SHAPE_REF_P = 10          # E.1.3 FP_SHAPE 행의 RTL 사실 — 프로그램 슬롯 수
 FP_SHAPE_REF_STEPMAX = 32    # E.1.3 FP_SHAPE 행의 RTL 사실 — 슬롯당 step 수 상한
 FP_SHAPE_ENC_V1 = 1          # E.1.2 FP_SHAPE 행 — 부호화 번호 1 = v1.0 배치
 B_FP_PROG = 15               # FAULT_STATUS [15] — 0xF0C 쓰기는 그 원천이 아니다
 
 
-async def fp_shape_expect(dut):
-    """0xFFC 를 읽어 FP_SHAPE 기대값을 유도한다 (위 정본 문장 둘)."""
-    abi = await mmio_read(dut, HIU_ABI_VERSION)
+def fp_shape_ref(abi):
+    """판 값에서 FP_SHAPE 기대를 짓는다 (위 정본 문장들 — 판 0 이면 워드 전체 0)."""
     if abi == 0:
-        return abi, 0
-    return abi, (FP_SHAPE_ENC_V1 << 24) | (FP_SHAPE_REF_STEPMAX << 9) | FP_SHAPE_REF_P
+        return 0
+    return (FP_SHAPE_ENC_V1 << 24) | (FP_SHAPE_REF_STEPMAX << 9) | FP_SHAPE_REF_P
+
+
+async def fp_shape_expect(dut):
+    """판 워드를 읽어 *리터럴 기대와 대조*하고 (판 리터럴, FP_SHAPE 기대) 를 돌려준다 — W8 부터 기대는 읽은 값이 아니라
+    HIU_ABI_EXPECT 에서 나온다(읽은 값이 다르면 여기서 운다)."""
+    abi = await mmio_read(dut, HIU_ABI_VERSION)
+    assert abi == HIU_ABI_EXPECT, (
+        f"0xFFC 판 워드 0x{abi:08X} — 0x{HIU_ABI_EXPECT:08X} 이어야 한다 (판 = (major << 16) | minor · v1.0 = 0x0001_0000)")
+    return HIU_ABI_EXPECT, fp_shape_ref(HIU_ABI_EXPECT)
 
 
 async def read_counted(dut, addr, tail=4):
@@ -3956,14 +3972,14 @@ FP_RESV_NEIGHBORS = tuple(range(0xF10, 0xF40, 4))   # 0xF00 구역의 표 밖 �
 async def fp_shape_word(dut):
     """W6-5 — `0xF0C` FP_SHAPE, 선택자 표 소거가 끝난 정상 상태 (E.1.2 FP_SHAPE 행 · E.1.3).
 
-    재는 것: ① 읽기 값 = 0xFFC 에서 유도한 기대(판 0 이면 워드 전체 0) · rvalid 정확히 1회 ·
+    재는 것: ① 읽기 값 = 판 리터럴에서 유도한 기대(판 0 이면 워드 전체 0) · rvalid 정확히 1회 ·
     재읽기 불변 · 읽기는 fault 없음 ② RO 쓰기 셋(전폭 1 · 판 값 커밋 뒤의 참조 값 0x0100_400A · 0)이
     값과 무관하게 거절 + `[6]` · `[15]` 아님 · 값 불변 · FP_STATUS 불변 ③ 비정렬 `0xF0D`–`0xF0F` 쓰기는
     거절 + `[6]` · 비정렬 읽기는 0 · fault 없음 ④ 디코드가 `0xF0C` *하나*다 — 구역의 표 밖 정렬 워드
     (`0xF10`–`0xF3C` 정렬 워드 열둘 전부)는 여전히 관대다(쓰기 무시 · 읽기 0 · fault 없음).
 
-    재지 않는 것: 판 0 동안 rdata 의 원천(배선 상수 0 대 예약 읽기 0 — 값이 같다) · 비0 판 값의
-    필드(판 값 커밋 전이라 이 생성물에서는 0 이다 — 판 값 커밋 날 ① 의 기대가 0xFFC 를 따라 바뀐다).
+    W8 부터 ① 의 기대는 판 리터럴(HIU_ABI_EXPECT)에서 지은 0x0100_400A 다(판 0 변형 스위트에서는 0). 재지 않는 것:
+    판 0 변형에서 rdata 의 원천(배선 상수 0 대 예약 읽기 0 — 값이 같다 · 그 변형의 일은 abi_version_pair 의 쌍조건이다).
     HEAD 생성물에서는 `0xF0C` 가 표 밖 정렬 워드라 ② 의 첫 쓰기가 [6] 없이 흡수돼 운다.
     """
     await boot(dut)
@@ -4019,6 +4035,71 @@ async def fp_shape_word(dut):
         + table_diff(rows, exp))
     dut._log.info(f"FP_SHAPE 0x{want:08X} (0xFFC 0x{abi:08X}) — 읽기 · RO 쓰기 셋 · 비정렬 · 표 밖 이웃 "
                   f"{len(rows)} 행이 정본과 등가")
+
+
+@cocotb.test()
+async def abi_version_pair(dut):
+    """W8 — 판 값 커밋: 0xFFC 판 워드와 0xF0C FP_SHAPE 판 게이트 (3.10 「판의 뜻」 1 · 2항 · E.1.2 FP_SHAPE 행).
+
+    재는 것: ① 0xFFC 정렬 읽기 = HIU_ABI_EXPECT(리터럴 — v1.0 0x0001_0000) · rvalid 정확히 1회 · fault 없음 ·
+    재읽기 불변 ② 0xF0C 정렬 읽기 = fp_shape_ref(HIU_ABI_EXPECT) ③ 쌍조건 — MMIO 응답만으로: 0xF0C [31:24] ≠ 0 ⇔
+    0xFFC ≠ 0, 두 읽기 순서(0xFFC → 0xF0C · 0xF0C → 0xFFC)와 선택자 표 소거 중 · 뒤 둘 다에서 ④ 판 워드의 RO 쓰기
+    넷(전폭 1 · 0 · 판 값 그 자체 · major+1)이 거절 + [6] 이고 값이 불변 ⑤ 비정렬 0xFFD–0xFFF 읽기 0 · fault 없음.
+    기대는 RTL 을 읽지 않는다 — 판 0 변형 스위트(ShapeAbi0)가 같은 시험을 판 0 리터럴로 돌린다.
+    """
+    await boot_hiu(dut)             # 소거를 기다리지 않는다 — ③ 의 첫 행은 창 *안*에서 잰다 (fp_clear_window 선례)
+    await clear_all_faults(dut)
+    if await fault6(dut):
+        await clear_fault6(dut)
+    want_abi, want_sh = HIU_ABI_EXPECT, fp_shape_ref(HIU_ABI_EXPECT)
+    rows, exp = [], []
+
+    def pair(sh, abi):
+        return int(((sh >> 24) & 0xFF) != 0) == int(abi != 0)
+
+    async def pair_rows(phase):
+        held, rv, va = await read_counted(dut, HIU_ABI_VERSION)
+        held2, rv2, vs = await read_counted(dut, FP_SHAPE)
+        label = f"{phase} 0xFFC → 0xF0C (붙듦, rvalid, 값 ‖ 붙듦, rvalid, 값, 쌍조건)"
+        rows.append((label, held, rv, tuple(va), held2, rv2, tuple(vs), int(len(va) == 1 and len(vs) == 1 and pair(vs[0], va[0]))))
+        exp.append((label, 0, 1, (want_abi,), 0, 1, (want_sh,), 1))
+        held, rv, vs = await read_counted(dut, FP_SHAPE)
+        held2, rv2, va = await read_counted(dut, HIU_ABI_VERSION)
+        label = f"{phase} 0xF0C → 0xFFC (붙듦, rvalid, 값 ‖ 붙듦, rvalid, 값, 쌍조건)"
+        rows.append((label, held, rv, tuple(vs), held2, rv2, tuple(va), int(len(va) == 1 and len(vs) == 1 and pair(vs[0], va[0]))))
+        exp.append((label, 0, 1, (want_sh,), 0, 1, (want_abi,), 1))
+
+    # ③ 선택자 표 소거 중 (boot 직후 — FP_STATUS [0] = 0 인 동안)
+    if (await mmio_read(dut, FP_STATUS)) & 1 == 0:
+        await pair_rows("③ 소거 중")
+    else:
+        raise AssertionError("abi_version_pair: boot 직후 선택자 표 소거가 이미 끝났다 — 소거 중 행을 잴 수 없다")
+    n = 0
+    while (await mmio_read(dut, FP_STATUS)) & 1 == 0:
+        await step(dut, 64)
+        n += 1
+        if n > (INIT_SWEEP >> 6) + 4:
+            raise AssertionError("abi_version_pair: 선택자 표 소거가 끝나지 않는다 — 미완료는 통과가 아니다")
+    # ① ② ③ 소거 뒤
+    await pair_rows("①②③ 정상")
+    # ④ RO 쓰기 넷
+    for what, data in (("전폭 1", 0xFFFF_FFFF), ("0", 0), ("판 값 그 자체", want_abi), ("major+1", want_abi + (1 << 16))):
+        f6 = await write_f6(dut, HIU_ABI_VERSION, data)
+        if f6:
+            await clear_fault6(dut)
+        v = await mmio_read(dut, HIU_ABI_VERSION)
+        label = f"④ 0xFFC 쓰기 {what} → ([6], 재읽기)"
+        rows.append((label, f6, v))
+        exp.append((label, 1, want_abi))
+    # ⑤ 비정렬 읽기
+    for a in (0xFFD, 0xFFE, 0xFFF):
+        label = f"⑤ 비정렬 0x{a:03X} 읽기 → (값, [6])"
+        rows.append((label, await mmio_read(dut, a), await fault6(dut)))
+        exp.append((label, 0, 0))
+    assert rows == exp, (
+        f"판 워드 · FP_SHAPE 쌍 표가 정본과 다르다 (판 리터럴 0x{want_abi:08X} → FP_SHAPE 0x{want_sh:08X}):\n"
+        + table_diff(rows, exp))
+    dut._log.info(f"판 워드 0x{want_abi:08X} · FP_SHAPE 0x{want_sh:08X} — 쌍조건 · RO 쓰기 · 비정렬 {len(rows)} 행이 정본과 등가")
 
 
 OWN_IDX = 0x200

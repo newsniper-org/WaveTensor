@@ -1,0 +1,105 @@
+# SPDX-License-Identifier: SHL-2.1 OR CERN-OHL-W-2.0
+# SPDX-FileCopyrightText: 2026 윤병익 (BYUNG-IK YEUN) and WaveTensor contributors
+#
+# Wt64Top 판 0 변형 — 0xFFC 판 워드와 0xF0C FP_SHAPE 판 게이트의 쌍조건을 판 0 에서 잰다 (3.10 v1.0 판 값 커밋 W8, 2026-10-26).
+#
+# VERIFIES: Wt64Top.abi_version_v0 — 판 0 변형(생성물의 판 상수 대입 한 줄만 0 으로 바꾼 사본)에서 0xFFC 정렬 읽기 = 0 (a_v0_rd_abi · 증인 Z1) · 0xF0C 정렬 읽기 = 워드 전체 0 (a_v0_rd_sh) · 쌍조건 — 0xF0C 응답 [31:24] ≠ 0 ⇔ 앞서 응답된 0xFFC ≠ 0 과 그 역 (a_v0_pair_sh · a_v0_pair_abi — 기대 리터럴 없이 MMIO 응답 둘 사이의 관계 · 증인 Z2 · Z3). 판 v1.0 본선의 같은 꼴은 assembly.sby 의 Wt64Top.abi_version
+#
+# ## 왜 이 태스크가 있는가 (우리 sign-off §2 조건 4 「판 0 변형도 함께 elaborate 해 쌍조건이 이를 갖게 한다」)
+#
+# 판 상수는 RTL 에 한 곳(Wt64Top.Ident.VERSION)이고 클래스 끝 abiArea.ver 넷이 그것을 싣는다. 0xFFC 읽기 값과 FP_SHAPE 의
+# 판 게이트(abiArea.live = ver ≠ 0)가 둘 다 그 넷에서 나온다. v1.0 본선에서는 두 워드가 다 0 이 아니라서, 게이트를 판 넷
+# 대신 별도 리터럴 1 에 묶은 생성물(또는 0xFFC 읽기를 별도 리터럴에 묶은 생성물)이 포트로 갈리지 않는다. 판을 0 으로 바꾼
+# 변형에서는 그런 생성물의 두 워드가 갈라져 쌍조건이 운다 — 그래서 변형을 *상주로* 잰다.
+#
+# ## 변형 절차 — 생성물 한 줄 치환 = Spinal 판 0 elaboration (W8 실측)
+#
+# [script] 첫 넷이 sby 작업 사본의 Wt64Top.sv 에서 `  assign abiArea_ver = 32'h00010000;` 한 줄을 `32'h0` 으로 바꾼다
+# ([file abi0.sed]). 전후 계수 핀: 바꾸기 전 v1.0 줄이 정확히 하나 · 뒤에 0 개 · 판 0 줄이 정확히 하나 — 생성물이 그 줄을
+# 잃으면(판 상수가 다른 꼴로 들어오면) 태스크가 ERROR 로 운다(공허 PASS 가 아니다). W8 실측: Ident.VERSION 만 0L 로 바꾼
+# rsync 사본의 `runMain wt64.gen.GenWt64Top` 생성물(sha256 dd44c3d9588cda22…)은 커밋 생성물과 그 한 줄만 다르고, 이 치환의
+# 결과와 바이트 동일하다(cmp). 즉 이 태스크의 설계는 판 0 elaboration 그 자체다. 생성물이 바뀌면 그 동일성은 다시 잰다
+# (rtl/README.md W8 절 — 절차).
+#
+# ## 기제 — assembly.sby 와 같은 설계 T, 하위 인스턴스 전부 절단
+#
+# Wt64Top.sv 를 이름-고정 분할하고 검사자를 본문에 텍스트로 넣는다 (bind 없음). 하위 인스턴스 18 을 전부 expose -evert 로
+# 뗀다 — 0xFFC · 0xF0C 의 rdata 는 rdata mux 의 나중 대입(abiArea · fpShapeArea 덮어쓰기)이라 절단된 유닛의 자유 rvalid ·
+# rdata 핀과 무관한 정확 등식이고, rvalid 원천(resvRv · mapRv)은 Wt64Top 본문의 레지스터다. 그래서 예외 항이 없다.
+#
+# ## 무결성 핀
+#
+#   ① 절단 18 · 남김 1 (검사자) ② assume 1 · $anyseq · $anyconst · $allseq · $allconst 0 ③ assert 4 / cover 3
+#   ④ 변형 계수 핀 셋 ([script] 첫 넷)
+#
+# ## 엔진
+#
+#   bmc   smtbmc z3 깊이 12            prove  abc pdr (무계)            cover  smtbmc z3 깊이 12
+#   W8 실측(부하 ~5): 아래 rtl/README.md W8 절의 표.
+#
+# ## 역-변이 (비상주 · /tmp 사본의 한 식 — 결과는 rtl/README.md W8 절)
+#
+#   GATE_LIT1   fpShapeArea_value 의 게이트 abiArea_live → 1'b1 (별도 리터럴)   bmc · prove FAIL a_v0_rd_sh (v1.0 본선은 PASS — 포트로 안 갈린다)
+#   ABI_RD_LIT  0xFFC rdata 덮어쓰기 abiArea_ver → 32'h00010000 (별도 리터럴)    bmc FAIL a_v0_rd_abi · prove FAIL a_v0_pair_abi · a_v0_rd_abi (본선 PASS)
+#   쌍조건 단독 (a_v0_rd_* 를 뺀 하네스 사본 · prove): 위 둘 다 a_v0_pair_abi 로 FAIL — 리터럴 없이 결합 결함을 잡는다.
+#   본선이 잡는 변이(필드 · 판 · 덮어쓰기 탈락)는 이 태스크에서 ERROR(판 상수 줄이 v1.0 꼴이 아니면 계수 핀) 또는 통과다 —
+#   그것들은 assembly.sby 의 몫이다 (그 파일의 W8 역-변이 표).
+#
+# ## 재지 않는 것 (닫힌 목록)
+#
+#   · 판 0 변형의 쓰기 거절 · 소거 중 처분 — 판과 무관한 경로라 assembly.sby 본선이 잰다.
+#   · 판 0 변형의 0x000–0x11F 처분 — 판과 무관하다 (assembly.sby).
+#   · 참조 형상이 아닌 형상.
+
+[tasks]
+bmc
+prove
+cover
+
+[options]
+bmc: mode bmc
+bmc: depth 12
+prove: mode prove
+cover: mode cover
+cover: depth 12
+multiclock off
+prove: aigsmt z3
+timeout 600
+
+[engines]
+bmc: smtbmc z3
+prove: abc pdr
+cover: smtbmc z3
+
+[script]
+exec -expect-stdout ^1$ -- grep -c abiArea_ver.=.32.h00010000 Wt64Top.sv
+exec -expect-return 0 -- sed -i -f abi0.sed Wt64Top.sv
+exec -expect-stdout ^0$ -- grep -c abiArea_ver.=.32.h00010000 Wt64Top.sv
+exec -expect-stdout ^1$ -- grep -c abiArea_ver.=.32.h0.$ Wt64Top.sv
+exec -- sh -c "sed /^bind/Q Wt64TopAbi_props.sv > props_only.sv"
+exec -- sh -c "sed -n s/^bind.Wt64Top.//p Wt64TopAbi_props.sv > inj.sv"
+exec -- sh -c "sed -n /^module.Wt64Top..$/,/^endmodule/p Wt64Top.sv | sed /^endmodule/d > top_dut.sv"
+exec -- sh -c "cat inj.sv >> top_dut.sv && echo endmodule >> top_dut.sv"
+exec -- sh -c "sed /^module.Wt64Top..$/,/^endmodule/d Wt64Top.sv > rest.sv"
+bmc:   read_verilog -formal -sv props_only.sv
+prove: read_verilog -formal -sv props_only.sv
+cover: read_verilog -formal -sv -DWT64TOPABI_COVER props_only.sv
+read_verilog -formal -sv top_dut.sv
+read_verilog -formal -sv rest.sv
+select -assert-count 18 Wt64Top/c:* Wt64Top/t:$* %d Wt64Top/t:Wt64TopAbi_props %d
+expose -evert -sep __ Wt64Top/c:* Wt64Top/t:$* %d Wt64Top/t:Wt64TopAbi_props %d
+hierarchy -top Wt64Top
+select -assert-count 1 Wt64Top/c:* Wt64Top/t:$* %d
+prep -top Wt64Top
+select -assert-count 1 t:$check r:FLAVOR=assume %i
+select -assert-none t:$anyseq t:$anyconst %u t:$allseq %u t:$allconst %u
+bmc:   select -assert-count 4 Wt64TopAbi_props/t:$check Wt64TopAbi_props/r:FLAVOR=assert %i
+prove: select -assert-count 4 Wt64TopAbi_props/t:$check Wt64TopAbi_props/r:FLAVOR=assert %i
+cover: select -assert-count 3 Wt64TopAbi_props/t:$check Wt64TopAbi_props/r:FLAVOR=cover %i
+
+[files]
+rtl/generated/Wt64Top.sv
+rtl/sv/assert/Wt64TopAbi_props.sv
+
+[file abi0.sed]
+s/^\(  assign abiArea_ver = 32'h\)00010000;$/\10;/

@@ -48,9 +48,9 @@
     "Platform.set_reject_loud",
     "Platform.seven_reject_only"
   ],
-  "at": "2026-10-25T14:57:09Z",
+  "at": "2026-10-26T09:47:46Z",
   "cover": {
-    "reached": 74,
+    "reached": 77,
     "reached_names": [
       "Wt64Top.chk.w10_cap0_clr",
       "Wt64Top.chk.w10_cap2_gate",
@@ -120,6 +120,9 @@
       "Wt64Top.chk.w61_fpshape_wr_clr",
       "Wt64Top.chk.w62_fpshape_rd_clr",
       "Wt64Top.chk.w63_fst_b7",
+      "Wt64Top.chk.w64_abi_rd",
+      "Wt64Top.chk.w65_pair_sh",
+      "Wt64Top.chk.w66_pair_abi",
       "Wt64Top.chk.w6_part_rej",
       "Wt64Top.chk.w7_surf_clear",
       "Wt64Top.chk.w7_surf_overlap",
@@ -131,12 +134,12 @@
     "unreached_names": []
   },
   "inputs": {
-    "rtl/generated/Wt64Top.sv": "2d93ad7b82c97b5743b9a63af92481f51662bf22476fe7b145e4b9d8d86b844a",
-    "rtl/sv/assert/Wt64Top_props.sv": "30259fea7be5c4291896f70f2e79de77be6115835b8adbf53135735edf3c35f9"
+    "rtl/generated/Wt64Top.sv": "10de0838edb34dc56bfa57c7c93d255b9b49efc104b3602e3d1d8c2cc8cac682",
+    "rtl/sv/assert/Wt64Top_props.sv": "b568cfa0b18a44bf4da6c436e6f4940daa9edda578f0d1e7da884128202b4b75"
   },
   "per_task": {
     "bmc": {
-      "assert": 126,
+      "assert": 128,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -146,11 +149,11 @@
       "assert": 0,
       "const_a": 0,
       "const_en0": 0,
-      "cover": 74,
+      "cover": 77,
       "mode": "cover"
     },
     "prove": {
-      "assert": 126,
+      "assert": 128,
       "const_a": 0,
       "const_en0": 0,
       "cover": 0,
@@ -158,7 +161,7 @@
     }
   },
   "sby": "rtl/formal/sby/Wt64Top/assembly.sby",
-  "sby_sha256": "b4c197d7be3091c4c7c966207cc344471a36278aab48c5d16e030857551f6a02",
+  "sby_sha256": "b0242b09c3fb0377ba94aae4baabfad98de4ac9694b8d586406c877973024607",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

@@ -110,7 +110,7 @@ module Wt64TopOwn_props (
     if ($past(collK))                t7_cmp:  assert (io_fault_ownCollide);
     // M2 — sticky: 해제(clr7 — IO 해제선 또는 D[7] = 1 인 0xF84 W1C, assembly a_fclr_b7 의 acF84 와 같은 정확한 식)가
     // 없으면 [7] 은 내려가지 않는다. D[7] = 0 인 0xF84 기입 · 예약 비트가 선 0xF84 기입도 [7] 을 내리지 않는다는 것이 이 식에
-    // 든다 (W7 검증 V1-2). 해제가 실제로 내린다는 반대 절반은 t7_src 가 함의한다 — 해제 사이클 다음에 [7] 이 1 이면 그것은
+    // 든다 (W7 검증 V1-2). 해제가 실제로 내린다는 반대 절반은 t7_src · t7_slot 이 함의한다 — 해제 사이클 다음에 [7] 이 1 이면 그것은
     // 세움 사건(rise7)이라 직전 OWN_SET 을 요구한다.
     if ($past(io_fault_ownCollide && !clr7)) t7_hold: assert (io_fault_ownCollide);
     // M2 — 0xF80 읽기의 [7] = 수락 사이클의 최상위 [7] (같은 모델 안에서 읽기까지 닫는다)
