@@ -62,7 +62,7 @@
 # VERIFIES: Wt64Top.mask_surface — 키·논스 워드 처분 · 창 레지스터 · MASK_STATUS · HiuMask ENV onehot0 떠맡기 · W1: 0xEC4 MASK_DUP_CAPTURE 읽기 = 수락 사이클의 mask.dupCapture 핀 (a_rd_dupcap · 증인 W45) · 쓰기 거절 + [6] (surfMust · W42) · 읽기 무부작용의 조립 절반 (a_rd_pure · W47)
 # VERIFIES: Wt64Top.hiu_shape — W1: 0xFF8 HIU_SHAPE 정렬 읽기 = 정본 표(참조 구현 형상 — 파티션 4 × 항목 16 · 직접 사상)에서 하네스가 독립 유도한 상수 0x0000_1004 (a_rd_shape · 증인 W44) · 쓰기 거절 + [6] (surfMust · W41) · partOk 의 파티션 수와 같은 하네스 상수 F_PARTS
 # VERIFIES: Wt64Top.fp_surface — FP_PROG/FP_BIND 발행(유닛 수락 관례 — 발행 펄스는 raw 이고 StepSequencer 가 loadReady 로 게이트한다) · FP_STATUS · W6: 0xF0C FP_SHAPE 정렬 읽기 = 판 상수 F_FP_SHAPE(W8 부터 (판, P, stepMax) 리터럴에서 유도 — v1.0 은 0x0100_400A · 판 0 변형은 0 · 근거 인용은 Wt64Top_props.sv 머리) 다음 사이클 응답 (a_rd_fpshape · 증인 W60) · 쓰기 거절 + [6] 무효과 (surfMust · W59) · 소거 중 쓰기 즉시 거절 · 읽기 응답 (a_ready_one · W61 · W62)
-# VERIFIES: Wt64Top.abi_version — W8 (판 값 커밋): 0xFFC 정렬 읽기 = 하네스가 (major 1 << 16) | minor 0 에서 지은 F_ABI = 0x0001_0000, 다음 사이클 응답 · 정확 등식 (a_rd_abi · 증인 W64) · FP_SHAPE 판 게이트의 쌍조건 — 0xF0C 응답 [31:24] ≠ 0 ⇔ 앞서 응답된 0xFFC ≠ 0 과 그 역 (a_pair_sh · a_pair_abi — 기대 리터럴 없이 MMIO 응답 둘 사이의 관계 · 증인 W65 · W66). 판 0 변형은 따로 Wt64Top/abi0.sby 가 잰다 (생성물의 판 상수 대입 한 줄만 0 으로 바꾼 사본 — Spinal 판 0 elaboration 과 바이트 동일 · 같은 쌍조건이 둘 다 0 으로 선다)
+# VERIFIES: Wt64Top.abi_version — W8 (판 값 커밋): 0xFFC 정렬 읽기 = 하네스가 (major 1 << 16) | minor 0 에서 지은 F_ABI = 0x0001_0000, 다음 사이클 응답 · 정확 등식 (a_rd_abi · 증인 W64) · FP_SHAPE 판 게이트의 쌍조건 — 0xF0C 응답 [31:24] ≠ 0 ⇔ 앞서 응답된 0xFFC ≠ 0 과 그 역 (a_pair_sh · a_pair_abi — 기대 리터럴 없이 MMIO 응답 둘 사이의 관계 · 증인 W65 · W66). 판 0 변형은 따로 Wt64Top/abi0.sby 가 잰다 (생성물의 판 상수 대입 한 줄만 0 으로 바꾼 사본 — Spinal 판 0 elaboration 과 바이트 동일(W8 실측 — 생성물 sha256 10de0838… 에서 한 번) · 같은 쌍조건이 둘 다 0 으로 선다)
 # VERIFIES: Wt64Top.drain_wiring — DRAIN 여섯 핀의 정의역 순서 (조립 절반)
 # VERIFIES: Wt64Top.composite_wiring — HiuMask_comp · RouteMmio · XlateDoor(W3 — a_door_install · a_door_flush · a_door_woff · a_door_ready: door.sby 의 XlateDoor_check 가 복제한 xlateArea 결선 — VPN 분할 · flush · 워드 오프셋 · ready 덮어쓰기 — 문의 *입력* 쪽(wrEnt · wrCtl · wdata · installReady)은 직접 등식이 없고 간접이다: xstg 입력 핀이 DUT 어휘 넷(xlateArea_*)에 물려 핀으로 볼 수 없어 a_xcm_iff · a_xcm_fields · a_xhold_quiet · a_xflush_iff · a_ready_only_slot 이 끝-끝으로 막는다) 하네스가 복제한 결선과 bp_relief 의 핀 등식
 # VERIFIES: Wt64Top.xlate_surface — 변환 저장소 MMIO 문 중 XlateSurface 가드 이름 밖의 것 (파도 3 · W3 개정): 항목 표면 쓰기의 ready = 주소 · 상태 적법 COMMIT 이면 하류 슬롯 여유 · 그 밖은 1 (a_ready_only_slot — 다른 정지 원천을 보지 않는다 · 설계 판정 D-2) · 그 밖의 두 구역 접근은 ready = 1 (a_ready_one) · 정지된 COMMIT 무효과 — 설치 · flush · 두 거절선 없음 (a_xhold_quiet — xlatestore s_pend_bounded 전건 「설치가 오지 않는 동안」의 조립 쪽 이행) · 설치 part 핀은 주소 · 상태 적법 COMMIT 의 래치 파티션 (a_xcm_part) · 설치·flush onehot0 (a_xonehot) · RO 세 워드 쓰기와 0xE10 예약 → [6] (surfMust) · 0xE10 해제 합류 (a_miss_clr) · 두 구역 읽기 응답 (a_rd_resv_rv · a_rd_resv0 — 관측 세 워드의 값은 위 XlateObs PROVES) · 데이터 사유 sticky 의 비하강 · 해제 (a_xbad_hold · a_xbad_clear)
@@ -80,7 +80,7 @@
 # _PARTIAL 항목 · GUARD-MAP 의 Mask.rekey_explicit_target DELEGATED). 이 태스크가 그
 # 뿌리의 *MMIO 표면 쪽*을 처음으로 잰다. RTL 논리 변경 0 이다 (생성물 바이트 동일).
 #
-# ## 앵커 — PROVES 서른일곱 · VERIFIES 열넷인 이유 (W1 이 Wt64Top.hiu_shape 하나를 더했다 · W3 가 XlateSurface 여섯을 더했다 · W8 이 Wt64Top.abi_version 하나를 더했다)
+# ## 앵커 — PROVES 마흔일곱 · VERIFIES 열다섯인 이유 (W1 이 Wt64Top.hiu_shape 하나를 더했다 · W3 가 XlateSurface 여섯을 더했다 · W4 가 ActivePart 여덟을 · W6 이 Platform 둘을 더했다 · W8 이 Wt64Top.abi_version 하나를 더했다)
 #
 # `# PROVES:` 는 GUARD-MAP 의 실재 CHECK 가드에만 선다 (scripts/lint_postformal 머리).
 # Mask.rekey_explicit_target 은 이 파도에서 DELEGATED(Wt64Top) → CHECK 로 올랐고 정식
@@ -134,7 +134,7 @@
 # 완전이다. unaligned_rejected 는 유닛 태스크 셋이, nocons_rejected 는 descriptor.sby 가 같은 가드
 # 이름으로도 앵커한다.
 #
-# 나머지 열넷(VERIFIES)은 결선·배치의 정본 조항만 있고 선-formal 가드가 없다 — 구역 라우팅 ·
+# 나머지 열다섯(VERIFIES)은 결선·배치의 정본 조항만 있고 선-formal 가드가 없다 — 구역 라우팅 ·
 # 워드 안 예약 비트 · 비트 배치 같은 결선 사실은 어느 TLA 모델의 상태도 아니다. 그래서 VERIFIES
 # 로 둔다 (AbortStaging/props.sby 머리
 # 「PROVES 가 아니라 VERIFIES 인 이유」 와 같은 처분). Wt64Top.xlate_surface 는 문 가운데

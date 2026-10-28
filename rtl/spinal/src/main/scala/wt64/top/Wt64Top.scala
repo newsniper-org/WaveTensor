@@ -2021,7 +2021,7 @@ class Wt64Top(
 // elaborate 가 멈춘다 — 9b 필드는 슬롯 · 색인 필드(8b)가 가리킬 수 있는 최대 256 까지 담는다.
 object FpShape {
   val OFF     = 0x0C // R_FP 구역 안 바이트 오프셋 — F_PROG · F_BIND · F_STATUS 다음 워드
-  val ENC_V1  = 1    // [31:24] step 부호화 번호 — 3.10 「step 워드와 선택 열쇠의 배치」의 v1.0 배치
+  val ENC_V1  = 1    // [31:24] step 부호화 번호 — 3.10 「step 워드와 선택 열쇠의 배치」의 v1.0 배치. 판 상수(Ident.VERSION)와 따로 있는 상수다 — 1 이 아닌 비0 번호는 그 배치 동결의 변경이라 major 이므로, 이 값을 바꿀 때는 판 major 를 함께 올리고 판 major 를 올릴 때는 이 값도 함께 본다
   val FIELD_W = 9    // [8:0] P · [17:9] stepMax
   val SM_LO   = 9
   val ENC_LO  = 24

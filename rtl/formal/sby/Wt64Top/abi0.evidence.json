@@ -1,6 +1,6 @@
 {
   "anchors": [],
-  "at": "2026-10-26T09:47:21Z",
+  "at": "2026-10-28T02:04:33Z",
   "cover": {
     "reached": 3,
     "reached_names": [
@@ -13,7 +13,7 @@
   },
   "inputs": {
     "rtl/generated/Wt64Top.sv": "10de0838edb34dc56bfa57c7c93d255b9b49efc104b3602e3d1d8c2cc8cac682",
-    "rtl/sv/assert/Wt64TopAbi_props.sv": "c44141d810f1378382b5b3bfc94215939d15f996306f5f09d8f62b1dc7ebca55"
+    "rtl/sv/assert/Wt64TopAbi_props.sv": "f3092b7edaab4b5356126e5d488bdbe58bbdc6672057ec6531a14616d173fcd1"
   },
   "per_task": {
     "bmc": {
@@ -39,7 +39,7 @@
     }
   },
   "sby": "rtl/formal/sby/Wt64Top/abi0.sby",
-  "sby_sha256": "23f755317464bd0c2f4856055c56eac10a5f210380fd1fab061096f15a6bcf55",
+  "sby_sha256": "1758fd3dfe7074a176385027a2910f94f59624b6b3e974577af521ae2bf8a516",
   "schema": "wt64-postformal-evidence/2",
   "tasks": "bmc:PASS cover:PASS prove:PASS",
   "tool": "SBY v0.66",

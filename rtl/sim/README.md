@@ -450,7 +450,7 @@ W6 판은 FP_SHAPE 기대를 `0xFFC` 를 *읽어서* 지었다 — 그 꼴은 �
 **`ShapeAbi0` 스위트 (신설).** 생성물 `Wt64Top.sv` 의 `assign abiArea_ver = 32'h00010000;` 한 줄만 `32'h0` 으로 바꾼 사본을 빌드 자리에 짓고
 (저장소에 쓰지 않는다 · 치환 수 정확히 1 을 요구 — 0 이면 「미측정이지 통과가 아니다」로 실패) `abi_version_pair` · `fp_shape_word` ·
 `page_disposition` 셋을 `WT_ABI_MAJOR` = `WT_ABI_MINOR` = 0 으로 돌린다. 그 사본은 `Ident.VERSION` 만 0 으로 바꾼 Spinal elaboration 의
-생성물과 바이트 동일하다(rtl/README.md W8 절). 러너는 `testcase` 표로 고른 시험만 세고, 고르지 않은 시험이 skip 이 아니면 실패로 센다.
+생성물과 바이트 동일하다 — 생성물 sha256 `10de0838…` 에서 한 번 잰 바이트 동일이고 생성물이 바뀐 뒤에는 재지 않는다(rtl/README.md W8 절). 러너는 `testcase` 표로 고른 시험만 세고, 고르지 않은 시험이 skip 이 아니면 실패로 센다.
 
 **변이** (W8 생성물 사본 · 한 식씩 · Shape 는 판 의존 넷(`abi_version_pair` · `fp_shape_word` · `page_disposition` · `fp_clear_window`) ·
 ShapeAbi0 셋):

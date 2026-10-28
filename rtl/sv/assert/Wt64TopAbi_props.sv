@@ -10,7 +10,7 @@
 // 판 v1.0 본선의 같은 단언(a_rd_abi · a_rd_fpshape · a_pair_sh · a_pair_abi)은 assembly.sby 의 Wt64Top_props.sv 가
 // 든다. v1.0 에서는 FP_SHAPE 의 판 게이트를 판 넷 대신 *별도 리터럴 1* 에 묶은 생성물이 포트로 갈리지 않는다 — 두
 // 워드가 우연히 둘 다 0 이 아니기 때문이다. 판 0 변형(생성물의 판 상수 대입 한 줄만 0 으로 바꾼 사본 — Ident.VERSION
-// 만 0 으로 바꾼 Spinal elaboration 의 생성물과 바이트 동일)에서는 그 생성물의 0xF0C 가 0 이 아니고 0xFFC 는 0 이라
+// 만 0 으로 바꾼 Spinal elaboration 의 생성물과 바이트 동일 — W8 실측, 생성물 sha256 10de0838… 에서 한 번)에서는 그 생성물의 0xF0C 가 0 이 아니고 0xFFC 는 0 이라
 // 쌍조건이 운다. 같은 하네스에 cover 태스크를 둘 두면 증거 계수 항등이 깨져 태스크를 갈랐다(assembly.sby W8 절).
 //
 // ## 정본 (좌표 뒤 「」 는 그 줄의 축자)
